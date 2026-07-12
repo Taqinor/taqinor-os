@@ -67,7 +67,10 @@ describe('router code-splitting contract (O165)', () => {
     expect(skeletonFallbacks.length).toBe(suspenseOpens.length)
 
     // WithLayout (chokepoint des écrans authentifiés) monte un Suspense.
-    expect(source).toMatch(/<Suspense fallback=\{<Fallback \/>\}>\{children\}<\/Suspense>/)
+    // VX134(c) — le contenu de route est enveloppé d'un `.route-fade` (fondu au
+    // changement de route) À L'INTÉRIEUR du Suspense ; l'invariant reste : la
+    // frontière Suspense à repli squelette enveloppe le contenu de route.
+    expect(source).toMatch(/<Suspense fallback=\{<Fallback \/>\}>[\s\S]*?<div key=\{pathname\} className="route-fade">\{children\}<\/div>[\s\S]*?<\/Suspense>/)
   })
 
   it('ne tire aucune lib lourde dans le bundle initial du routeur', () => {

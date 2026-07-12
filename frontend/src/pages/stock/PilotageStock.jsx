@@ -297,6 +297,17 @@ export default function PilotageStock({ onBcfGenere }) {
       .map((p) => ({ label: p.sku ? `${p.nom} (${p.sku})` : p.nom, value: p.quantite_suggere ?? 0 }))
   }, [reappro.data])
 
+  // VX148 — top 5 consommation mensuelle moyenne (barres horizontales) :
+  // dérivé du même rapport que la mini-table « Prévisions de demande »
+  // ci-dessus, zéro appel réseau supplémentaire (même patron que top5Reappro).
+  const top5Previsions = useMemo(() => {
+    const rows = previsions.data ?? []
+    return [...rows]
+      .sort((a, b) => (b.consommation_mensuelle_moy ?? 0) - (a.consommation_mensuelle_moy ?? 0))
+      .slice(0, 5)
+      .map((p) => ({ label: p.sku ? `${p.nom} (${p.sku})` : p.nom, value: p.consommation_mensuelle_moy ?? 0 }))
+  }, [previsions.data])
+
   // VX33 — donut rotation actif/ralenti/immobile : mêmes compteurs que le KPI
   // « Stock dormant » et la mini-table rotation ci-dessous.
   const rotationBuckets = useMemo(() => {
@@ -412,6 +423,23 @@ export default function PilotageStock({ onBcfGenere }) {
         <ChartEmpty title="Aucune donnée" description="Aucun produit en stock." />
       ) : (
         <RotationDonut data={rotationBuckets} />
+      ),
+    },
+    {
+      // VX148 — la table « Prévisions de demande » restait sans graphique
+      // (contrairement à réappro/rotation, complétées en VX33).
+      title: 'Top consommation mensuelle',
+      node: previsions.loading ? (
+        <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground"><Spinner /> Chargement…</div>
+      ) : previsions.error ? (
+        <p className="py-3 text-sm text-muted-foreground">{previsions.error}</p>
+      ) : top5Previsions.length === 0 ? (
+        <ChartEmpty title="Aucune consommation" description="Aucune sortie de stock sur la période." />
+      ) : (
+        <BarArrondie
+          data={top5Previsions} categoryKey="label" dataKey="value"
+          tone="info" layout="vertical" height={200} name="Conso / mois"
+        />
       ),
     },
   ]

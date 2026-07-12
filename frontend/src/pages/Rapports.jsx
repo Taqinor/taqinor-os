@@ -16,9 +16,11 @@ import {
   Button, Card, CardHeader, CardTitle, CardDescription, CardContent,
   Tabs, TabsList, TabsTrigger, TabsContent, Skeleton, EmptyState, Input, Spinner,
 } from '../ui'
-// VX28 — un seul langage de graphique (kit ui/charts), un seul PageHeader, un
-// seul moteur de table de reporting (Table partagé).
-import { BarArrondie } from '../ui/charts'
+// VX28/VX148 — un seul langage de graphique (kit ui/charts), un seul
+// PageHeader, un seul moteur de table de reporting (Table partagé). VX148 —
+// un `BarArrondie` au-dessus des tables comparatives les plus consultées (la
+// table garde le détail chiffré) + `ChartEmpty` pour un graphe sans donnée.
+import { BarArrondie, ChartEmpty } from '../ui/charts'
 import { PageHeader } from '../ui/PageHeader'
 import { Table as SharedTable } from './reporting/Table'
 import { StateBlock } from '../components/StateBlock'
@@ -627,6 +629,21 @@ export function Component() {
         <TabsContent value="ventes">
           {renderReportCard('sales', 'Ventes & pipeline', () => (
             <ReportCard title="Ventes & pipeline" kind="sales" params={periodParams}>
+              {/* VX148 — entonnoir en graphe AU-DESSUS de la table (qui garde
+                  le détail chiffré + les liens de drill-down). */}
+              {sales.funnel.length > 0 ? (
+                <BarArrondie
+                  data={sales.funnel.map((f) => ({ label: f.label, value: f.count }))}
+                  layout="vertical"
+                  tone="info"
+                  name="Leads"
+                  height={Math.max(140, sales.funnel.length * 34)}
+                  categoryWidth={110}
+                  tooltipFormat={(v) => `${fmt(v)} leads`}
+                />
+              ) : (
+                <ChartEmpty title="Aucun lead" />
+              )}
               {/* FG101 — funnel : clic sur étape → liste leads filtrée par stage */}
               <Table headers={['Étape', 'Leads']}
                      rows={sales.funnel.map(f => [
@@ -715,6 +732,21 @@ export function Component() {
                 {' · '}achat (interne) : <span className="tabular-nums">{fmt(stock.valorisation_achat)} DH</span>
               </p>
               <Subhead>Par catégorie</Subhead>
+              {/* VX148 — valeur vente HT par catégorie, en graphe (la table
+                  garde le détail nb articles + total). */}
+              {stock.par_categorie.length > 0 ? (
+                <BarArrondie
+                  data={stock.par_categorie.map((c) => ({ label: c.categorie__nom || '—', value: Number(c.valeur_vente) || 0 }))}
+                  layout="vertical"
+                  tone="primary"
+                  name="Valeur vente HT"
+                  height={Math.max(140, stock.par_categorie.length * 34)}
+                  categoryWidth={110}
+                  tooltipFormat={(v) => `${fmt(v)} DH`}
+                />
+              ) : (
+                <ChartEmpty title="Aucune catégorie" />
+              )}
               <Table headers={['Catégorie', 'Articles', 'Valeur vente HT']}
                      rows={stock.par_categorie.map(c => [c.categorie__nom || '—', fmt(c.nb), fmt(c.valeur_vente)])}
                      footer={['Total', fmt(sumBy(stock.par_categorie, 'nb')), fmt(sumBy(stock.par_categorie, 'valeur_vente'))]} />
@@ -741,6 +773,21 @@ export function Component() {
                 {' · '}garanties expirant ≤90 j : <span className="tabular-nums">{fmt(service.garanties_expirantes_90j)}</span>
               </p>
               <Subhead>Chantiers par statut</Subhead>
+              {/* VX148 — répartition en graphe AU-DESSUS de la table (qui
+                  garde le lien de drill-down par statut). */}
+              {service.chantiers_par_statut.length > 0 ? (
+                <BarArrondie
+                  data={service.chantiers_par_statut.map((c) => ({ label: c.statut, value: c.count }))}
+                  layout="vertical"
+                  tone="info"
+                  name="Chantiers"
+                  height={Math.max(140, service.chantiers_par_statut.length * 34)}
+                  categoryWidth={110}
+                  tooltipFormat={(v) => `${fmt(v)} chantier(s)`}
+                />
+              ) : (
+                <ChartEmpty title="Aucun chantier" />
+              )}
               {/* FG101 — clic sur statut → liste chantiers filtrée */}
               <Table headers={['Statut', 'Nombre']}
                      rows={service.chantiers_par_statut.map(c => [
@@ -864,7 +911,7 @@ export function Component() {
                       tooltipFormat={(v) => formatNumber(v)}
                     />
                   ) : (
-                    <EmptyState icon={BarChart3} title="Aucune donnée" className="border-0 py-6" />
+                    <ChartEmpty title="Aucune donnée" />
                   )}
                 </>
               ) : <p className="text-sm text-muted-foreground">Chargement…</p>}

@@ -20,7 +20,7 @@ test('E4: generate a devis from a lead, preview renders, download works', async 
 
   // VX71 — scan axe DYNAMIQUE sur le dialog PDF/devis réellement ouvert (état
   // atteignable seulement après l'interaction, jamais couvert par un scan statique).
-  await assertNoSeriousA11yViolations(page, { include: '.ldp-panel' })
+  await assertNoSeriousA11yViolations(page, { include: '.ldp-body' })
 
   // Download produces a PDF file.
   const [download] = await Promise.all([
@@ -30,6 +30,6 @@ test('E4: generate a devis from a lead, preview renders, download works', async 
   expect(download.suggestedFilename()).toMatch(/\.pdf$/i)
 
   // The new devis now shows in this lead's devis list (header badge count).
-  await page.locator('.ldp-panel .modal-close').click()
+  await page.locator('.ldp-header .modal-close').click()
   await expect(page.locator('.lead-devis-badge')).toContainText(/[1-9]\d* devis/)
 })

@@ -1,4 +1,5 @@
-import { HelpCircle } from 'lucide-react'
+import { HelpCircle, BookOpen } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { cn } from '../lib/cn'
 import { Popover, PopoverTrigger, PopoverContent } from './Popover'
 
@@ -9,6 +10,10 @@ import { Popover, PopoverTrigger, PopoverContent } from './Popover'
    bouton — il ne doit JAMAIS provoquer de re-layout) qui ouvre un `Popover`
    du kit avec un contenu FR concis (2-4 phrases, jamais de lien vers une doc
    externe — tout tient dans la bulle).
+
+   VX247(d) — un lien interne discret vers le lexique (`/aide/lexique`, une
+   page de l'app, PAS une doc externe) POINTE vers le glossaire complet au
+   lieu de dupliquer une définition détaillée dans chaque bulle.
 
    Usage :
      <span className="inline-flex items-center gap-1.5">
@@ -36,6 +41,12 @@ export function HelpTip({ label = 'Aide', children, side = 'top', align = 'cente
       </PopoverTrigger>
       <PopoverContent side={side} align={align} className="w-72 text-sm leading-relaxed text-foreground">
         {children}
+        <Link
+          to="/aide/lexique"
+          className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+        >
+          <BookOpen className="size-3.5" aria-hidden="true" /> Voir le lexique complet
+        </Link>
       </PopoverContent>
     </Popover>
   )

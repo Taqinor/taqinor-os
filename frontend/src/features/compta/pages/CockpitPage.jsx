@@ -9,6 +9,7 @@ import { BarArrondie } from '../../../ui/charts'
 import { toast, Card, CardHeader, CardTitle, CardDescription, CardContent } from '../../../ui'
 import { formatMAD, formatNumber, formatPercent } from '../../../lib/format'
 import comptaApi from '../../../api/comptaApi'
+import api from '../../../api/axios'
 
 // VX115 — les 4 destinations où le comptable externe va chercher son export
 // mensuel (index de navigation pur : ZÉRO logique d'export dupliquée ici).
@@ -49,10 +50,39 @@ const EXPORT_DESTINATIONS = [
    encours clients, avec liens de drill-down vers les états.)
    ========================================================================== */
 
+// VX232(a) — résolution pure `tiers_id` → nom (extraite pour un test unitaire
+// direct, sans dépendre du rendu recharts) ; repli « Tiers #N » si la fiche a
+// été supprimée entre-temps ou n'a pas encore été chargée.
+// eslint-disable-next-line react-refresh/only-export-components -- helper pur co-localisé, testé isolément
+export function resolveTiersLabel(tiersId, tiersById) {
+  if (!tiersId) return 'Non affecté'
+  return tiersById[tiersId] || `Tiers #${tiersId}`
+}
+
 export default function CockpitPage() {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  // VX232(a) — résout `tiers_id` en nom réel côté FRONTEND (répertoire unifié
+  // `apps/tiers`), chargé une fois : le KPI n°1 affichait « Tiers #42 » brut ;
+  // repli « Tiers #N » conservé si la fiche a été supprimée entre-temps.
+  const [tiersById, setTiersById] = useState({})
+
+  useEffect(() => {
+    // Timeout court et dédié : purement décoratif (repli « Tiers #N » déjà
+    // correct), jamais bloquant pour le reste du cockpit.
+    api.get('/tiers/tiers/', { params: { page_size: 500 }, timeout: 4000 })
+      .then((res) => {
+        const list = Array.isArray(res.data) ? res.data : (res.data?.results || [])
+        const map = {}
+        list.forEach((t) => {
+          map[t.id] = (t.type_tiers === 'entreprise' && t.raison_sociale)
+            || `${t.prenom || ''} ${t.nom || ''}`.trim() || t.nom
+        })
+        setTiersById(map)
+      })
+      .catch(() => {}) // silencieux : le repli « Tiers #N » suffit.
+  }, [])
 
   const load = useCallback(() => {
     let alive = true
@@ -130,7 +160,7 @@ export default function CockpitPage() {
 
   // Top des encours clients (bar horizontal) — drill-down implicite vers états.
   const topEncours = (d.top_encours_clients || []).map((row) => ({
-    label: row.tiers_id ? `Tiers #${row.tiers_id}` : 'Non affecté',
+    label: resolveTiersLabel(row.tiers_id, tiersById),
     value: Number(row.encours) || 0,
   }))
 

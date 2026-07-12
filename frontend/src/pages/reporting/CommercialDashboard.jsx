@@ -6,7 +6,9 @@ import {
   Card, CardContent, CardTitle, Skeleton, EmptyState, Segmented, Stat, Button, Badge, toast,
   ErrorBoundary,
 } from '../../ui'
-import { BarArrondie } from '../../ui/charts'
+// VX148 — `ChartEmpty` sur la carte de graphe vide (entonnoir) : 0 site
+// d'appel dans `pages/**` malgré un kit déjà testé/thémé.
+import { BarArrondie, ChartEmpty } from '../../ui/charts'
 import { Table } from './Table'
 import { rowsToCSV, exportFileName } from '../../ui/datatable/csv'
 
@@ -133,7 +135,7 @@ export default function CommercialDashboard() {
                     Entonnoir de conversion
                   </CardTitle>
                   {funnelBars.length === 0 ? (
-                    <EmptyState
+                    <ChartEmpty
                       icon={Target}
                       title="Aucune donnée d'entonnoir"
                       description="Aucun lead n'a encore progressé dans le pipeline sur cette période."

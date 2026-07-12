@@ -19,6 +19,7 @@ export * from './FadeSwap'
 export * from './EmptyState'
 export * from './ErrorBoundary'
 export * from './NotFound'
+export * from './Forbidden'
 export * from './OfflineState'
 
 // Formulaire / contrôles
@@ -60,6 +61,7 @@ export * from './Tabs'
 export * from './Accordion'
 export * from './Progress'
 export * from './FloatingActionButton'
+export * from './ScrollProgress'
 
 // Données / listes (Groupe H — moteur DataTable réutilisable)
 export { DataTable, useDataTable, EditableCell, BulkActionBar, ColumnManager } from './datatable'

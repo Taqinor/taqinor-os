@@ -49,14 +49,16 @@ test('tout overlay `fixed inset-0` est au-dessus de l\'en-tête collant (barème
   )
 })
 
-test('les overlays legacy d\'index.css (.modal-overlay/.ldp-overlay) utilisent le barème --z-*', () => {
+test('les overlays legacy d\'index.css (.modal-overlay) utilisent le barème --z-*', () => {
+  // VX133 — `.ldp-overlay`/`.ldp-panel` bespoke sont retirés d'index.css : les
+  // deux consommateurs (LeadDevisPanel, InstallationDetail) sont migrés sur
+  // `Sheet`/`SheetContent`, dont l'overlay Radix (`z-[var(--z-overlay)]`,
+  // Sheet.jsx) est déjà couvert par le test `fixed inset-0` ci-dessus.
   const css = readFileSync(join(SRC, 'index.css'), 'utf8')
   const block = (name) => {
     const m = css.match(new RegExp(`\\${name}\\s*\\{([^}]*)\\}`))
     return m ? m[1] : ''
   }
   const modal = block('.modal-overlay')
-  const ldp = block('.ldp-overlay')
   assert.match(modal, /z-index:\s*var\(--z-(overlay|modal)/, '.modal-overlay doit utiliser var(--z-overlay|modal)')
-  assert.match(ldp, /z-index:\s*var\(--z-(modal|overlay)/, '.ldp-overlay doit utiliser var(--z-modal|overlay)')
 })

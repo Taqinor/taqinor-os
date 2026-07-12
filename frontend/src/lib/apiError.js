@@ -9,6 +9,10 @@
 //
 // Code en anglais, textes utilisateur en français. Aucun import React ici :
 // appelable depuis n'importe où (handlers, thunks, axios, formulaires).
+//
+// VX156 — le moment « erreur réseau » porte la voix Taqinor (honnête,
+// rassurante) au lieu d'un message générique.
+import { voice } from './voice.js'
 
 /**
  * getApiError(error, fallback?) → { message, fieldErrors? }
@@ -25,7 +29,7 @@ export function getApiError(error, fallback = 'Une erreur est survenue.') {
     return { message: 'La connexion a expiré. Vérifiez votre connexion et réessayez.' }
   }
   if (error?.message === 'Network Error') {
-    return { message: 'Impossible de contacter le serveur. Vérifiez votre connexion.' }
+    return { message: voice.networkError }
   }
 
   const status = error?.response?.status

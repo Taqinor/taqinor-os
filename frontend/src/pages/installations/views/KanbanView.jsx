@@ -41,6 +41,13 @@ import {
   SelectItem,
 } from '../../../ui'
 import { formatDate } from '../../../lib/format'
+import { usePrefersReducedMotion } from '../../../hooks/usePrefersReducedMotion'
+
+// VX135 — dropAnimation dnd-kit par défaut désalignée des tokens de
+// mouvement de l'app ; alignée --motion-*/--ease-out (tokens.css). Sous
+// reduced-motion, quasi instantanée (dnd-kit exige une durée > 0).
+const DROP_ANIMATION = { duration: 180, easing: 'cubic-bezier(0.23, 1, 0.32, 1)' }
+const DROP_ANIMATION_REDUCED = { duration: 1, easing: 'linear' }
 
 // Sentinelle « aucun installateur » (le Select du design system n'accepte pas '').
 const NO_TECH = '__none__'
@@ -209,6 +216,10 @@ export default function KanbanView({ items, onOpen, onChangeStatus, users, onRea
     useSensor(KeyboardSensor),
   )
   const [active, setActive] = useState(null)
+  // VX135 — préférence reduced-motion lue en JS : tilt + dropAnimation
+  // échappent tous deux au garde global CSS (transforms/animations posés
+  // impérativement par dnd-kit).
+  const prefersReducedMotion = usePrefersReducedMotion()
   // VX192 — remplace window.alert (bloquant, inaccessible) par un bandeau
   // role="status" annoncé (patron du kanban leads « On ne recule pas… »).
   const [refusMsg, setRefusMsg] = useState('')
@@ -282,9 +293,9 @@ export default function KanbanView({ items, onOpen, onChangeStatus, users, onRea
           </StatusColumn>
         ))}
       </div>
-      <DragOverlay>
+      <DragOverlay dropAnimation={prefersReducedMotion ? DROP_ANIMATION_REDUCED : DROP_ANIMATION}>
         {active ? (
-          <div className="kb-drag-overlay">
+          <div className={prefersReducedMotion ? 'kb-drag-overlay kb-drag-overlay--flat' : 'kb-drag-overlay'}>
             <ChantierCard inst={active} />
           </div>
         ) : null}

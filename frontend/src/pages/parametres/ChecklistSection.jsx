@@ -17,6 +17,7 @@ import {
   Card, CardContent, Input, Button, IconButton, Badge, Spinner, EmptyState,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
+import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { SectionTitle } from './peComponents'
 
 // Types d'installation qui peuvent auto-sélectionner un modèle (miroir des
@@ -43,6 +44,11 @@ export default function ChecklistSection() {
   const [newTemplate, setNewTemplate] = useState('')
   const [newType, setNewType] = useState('__none__')
   const [newEtape, setNewEtape] = useState({}) // { [templateId]: libellé }
+  // VX244 — un modèle de checklist chantier est repris par TOUT futur chantier
+  // du type correspondant : suppression à confirmation tapée (severity="high"),
+  // au lieu d'un `window.confirm` générique.
+  const [pendingDeleteTemplate, setPendingDeleteTemplate] = useState(null)
+  const [deletingTemplate, setDeletingTemplate] = useState(false)
 
   const load = () => installationsApi.getChecklistTemplates()
     .then(r => { setTemplates(r.data.results ?? r.data); setLoadError(false) })
@@ -91,10 +97,20 @@ export default function ChecklistSection() {
       load()
     } catch { /* */ }
   }
-  const delTemplate = async (t) => {
-    if (!window.confirm(`Supprimer le modèle « ${t.nom} » et ses étapes ?`)) return
-    try { await installationsApi.deleteChecklistTemplate(t.id); load() }
-    catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible (modèle protégé ?).') }
+  const delTemplate = (t) => setPendingDeleteTemplate(t)
+
+  const confirmDeleteTemplate = async () => {
+    if (!pendingDeleteTemplate) return
+    setDeletingTemplate(true)
+    try {
+      await installationsApi.deleteChecklistTemplate(pendingDeleteTemplate.id)
+      setPendingDeleteTemplate(null)
+      load()
+    } catch (e) {
+      toast.error(e?.response?.data?.detail ?? 'Suppression impossible (modèle protégé ?).')
+    } finally {
+      setDeletingTemplate(false)
+    }
   }
 
   // ── Étapes d'un modèle ──
@@ -299,6 +315,23 @@ export default function ChecklistSection() {
             <Plus className="size-4" aria-hidden="true" /> Ajouter
           </Button>
         </div>
+
+        <ConfirmDialog
+          open={!!pendingDeleteTemplate}
+          onOpenChange={(o) => { if (!o) setPendingDeleteTemplate(null) }}
+          severity="high"
+          title="Supprimer ce modèle de checklist"
+          description={
+            `« ${pendingDeleteTemplate?.nom ?? ''} » et toutes ses étapes seront `
+            + 'supprimés définitivement. Les chantiers déjà créés avec ce modèle ne '
+            + 'sont pas affectés ; les futurs chantiers du type correspondant '
+            + 'retomberont sur le modèle « Défaut ».'
+          }
+          confirmText={pendingDeleteTemplate?.nom}
+          confirmLabel="Supprimer définitivement"
+          loading={deletingTemplate}
+          onConfirm={confirmDeleteTemplate}
+        />
       </CardContent>
     </Card>
   )

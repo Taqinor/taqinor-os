@@ -311,6 +311,7 @@ export default function ModelesBcf() {
         onRowClick={openModele}
         emptyTitle="Aucun modèle de bon de commande"
         emptyDescription="Créez-en un pour réutiliser rapidement une liste d'articles récurrente."
+        emptyAction={<Button size="sm" onClick={() => setSelected({})}><Plus className="size-4" /> Nouveau modèle</Button>}
         aria-label="Modèles de bon de commande fournisseur"
       />
 

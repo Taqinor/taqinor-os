@@ -43,7 +43,14 @@ export const TabsContent = forwardRef(function TabsContent({ className, ...props
   return (
     <TabsPrimitive.Content
       ref={ref}
-      className={cn('mt-3 focus-visible:outline-none', className)}
+      className={cn(
+        'mt-3 focus-visible:outline-none',
+        // VX133 — Radix démonte le panel inactif par défaut (pas de
+        // crossfade possible sans forceMount des deux) : un fondu court à
+        // l'affichage du panel actif remplace le swap sec.
+        'data-[state=active]:animate-fade-in',
+        className,
+      )}
       {...props}
     />
   )

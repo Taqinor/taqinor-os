@@ -38,9 +38,10 @@ export function ModuleDashboard({
     return (
       <EmptyState
         icon={AlertTriangle}
+        tone="error"
         title="Impossible de charger le tableau de bord"
         description={typeof error === 'string' ? error : 'Une erreur est survenue lors du chargement des indicateurs.'}
-        className={cn('border-destructive/40', className)}
+        className={className}
       />
     )
   }
@@ -89,16 +90,19 @@ export function ModuleDashboard({
                   )}
                 </Stat>
               )
+              // VX136 — reveal au scroll (translateY 8px→0 + fondu) via
+              // scroll-timeline native ; `@supports` (index.css) gate tout,
+              // aucun impact sur les navigateurs sans support.
               return s.to ? (
                 <Link
                   key={s.to + i}
                   to={s.to}
-                  className="block rounded-xl transition-shadow hover:ring-2 hover:ring-ring/40 focus-ring"
+                  className="reveal-on-scroll block rounded-xl transition-shadow hover:ring-2 hover:ring-ring/40 focus-ring"
                 >
                   {stat}
                 </Link>
               ) : (
-                <div key={i}>{stat}</div>
+                <div key={i} className="reveal-on-scroll">{stat}</div>
               )
             })}
           </div>

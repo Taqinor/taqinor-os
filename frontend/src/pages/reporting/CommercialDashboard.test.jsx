@@ -42,6 +42,12 @@ describe('CommercialDashboard (VX29)', () => {
     await waitFor(() => expect(reportingApi.commercialDashboard).toHaveBeenCalled())
   })
 
+  it('VX148 — entonnoir vide rend ChartEmpty (pas un EmptyState nu)', async () => {
+    render(<CommercialDashboard />)
+    expect(await screen.findByText("Aucune donnée d'entonnoir")).toBeInTheDocument()
+    expect(screen.getByText("Aucun lead n'a encore progressé dans le pipeline sur cette période.")).toBeInTheDocument()
+  })
+
   it('rend un EmptyState avec title + description quand le classement est vide (bug corrigé)', async () => {
     render(<CommercialDashboard />)
     fireEvent.click(await screen.findByText('Classement'))

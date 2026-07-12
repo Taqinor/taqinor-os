@@ -114,7 +114,8 @@ const ventesApi = {
   getBonCommandePdf: (id) => api.get(`/ventes/bons-commande/${id}/pdf/`, { responseType: 'blob' }),
 
   // Factures
-  getFactures: (params) => api.get('/ventes/factures/', { params }),
+  // VX163 — `config` (ex. `{signal}`) transmis pour l'annulation en vol.
+  getFactures: (params, config) => api.get('/ventes/factures/', { params, ...config }),
   getFacture: (id) => api.get(`/ventes/factures/${id}/`),
   createFacture: (data) => api.post('/ventes/factures/', data),
   updateFacture: (id, data) => api.put(`/ventes/factures/${id}/`, data),

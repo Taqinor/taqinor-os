@@ -8,9 +8,16 @@ import {
   buildKanbanAnnouncements,
   kanbanScreenReaderInstructions,
 } from '../../kanban/kanbanA11y'
+import { usePrefersReducedMotion } from '../../../hooks/usePrefersReducedMotion'
 import { StatutTache } from '../constants'
 import ChronoButton from './ChronoWidget'
 import TacheChecklist from './TacheChecklist'
+
+// VX135 — dropAnimation dnd-kit par défaut désalignée des tokens de
+// mouvement de l'app ; alignée --motion-*/--ease-out (tokens.css). Sous
+// reduced-motion, quasi instantanée (dnd-kit exige une durée > 0).
+const DROP_ANIMATION = { duration: 180, easing: 'cubic-bezier(0.23, 1, 0.32, 1)' }
+const DROP_ANIMATION_REDUCED = { duration: 1, easing: 'linear' }
 
 /* XPRJ11 — Vue kanban des Tache par colonne de statut (a_faire/en_cours/
    bloque/termine — statuts PROPRES au module, jamais STAGES.py). Glisser-
@@ -128,6 +135,8 @@ export default function TachesKanbanView({ taches, onChangeStatut, busyTacheId }
   )
   const columns = useMemo(() => groupTachesByStatut(taches), [taches])
   const [activeTache, setActiveTache] = useState(null)
+  // VX135 — dropAnimation (JS pur) échappe au garde global CSS reduced-motion.
+  const prefersReducedMotion = usePrefersReducedMotion()
 
   // VX192 — annonces FR : id de tâche → libellé, id de colonne → nom de statut.
   const announcements = useMemo(() => {
@@ -177,7 +186,7 @@ export default function TachesKanbanView({ taches, onChangeStatut, busyTacheId }
           </StatutColumn>
         ))}
       </div>
-      <DragOverlay>
+      <DragOverlay dropAnimation={prefersReducedMotion ? DROP_ANIMATION_REDUCED : DROP_ANIMATION}>
         {activeTache ? <TacheCard tache={activeTache} /> : null}
       </DragOverlay>
     </DndContext>

@@ -23,11 +23,15 @@ import './index.css'
 // VX61 — capture Web Vitals RÉELS terrain (INP/LCP/CLS/TTFB), hand-roll
 // PerformanceObserver, no-op total si l'API est absente.
 import { initVitals } from './lib/vitals'
+// VX206 — socle local d'observabilité : promesses rejetées / erreurs non
+// gérées hors du rendu React (event handlers, `.then()`, outbox…).
+import { installGlobalErrors } from './lib/globalErrors'
 
 // Applique la préférence de thème/densité avant le rendu (aucun flash). Inerte
 // pour les écrans existants (couleurs en dur, aucun `dark:` utilisé).
 initTheme()
 initVitals()
+installGlobalErrors()
 
 // VX189(d) — avertisseur DEV-ONLY des Long Animation Frames (jank thread
 // principal). `import()` DYNAMIQUE derrière `import.meta.env.DEV` (jamais un

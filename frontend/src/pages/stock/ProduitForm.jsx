@@ -478,7 +478,9 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
         <Form onSubmit={handleSubmit} className="gap-6">
           <FormSection>
             <FormField label="Nom" required htmlFor="pf-nom" error={errors.nom}>
-              <Input id="pf-nom" ref={nomRef} invalid={!!errors.nom} value={fields.nom}
+              {/* VX240(b) — sans autofocus, la modale s'ouvrait sans qu'aucun
+                  champ ne soit prêt à recevoir la frappe. */}
+              <Input id="pf-nom" ref={nomRef} autoFocus invalid={!!errors.nom} value={fields.nom}
                      onChange={e => setField('nom', e.target.value)} placeholder="Nom du produit" />
             </FormField>
             <FormField label="SKU / Référence" htmlFor="pf-sku" error={errors.sku}>

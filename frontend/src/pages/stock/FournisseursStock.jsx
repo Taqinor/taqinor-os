@@ -343,6 +343,9 @@ export default function FournisseursStock() {
         onRowClick={(f) => setSelected(f)}
         emptyTitle="Aucun fournisseur"
         emptyDescription="Créez-en un avec « Nouveau fournisseur »."
+        emptyAction={canWrite
+          ? <Button size="sm" onClick={() => setSelected({})}><Plus className="size-4" /> Nouveau fournisseur</Button>
+          : undefined}
         aria-label="Fournisseurs"
       />
 

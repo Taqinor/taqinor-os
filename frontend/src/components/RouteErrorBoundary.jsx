@@ -5,6 +5,14 @@ import { AlertTriangle } from 'lucide-react'
 // barrel touche (dont datatable -> recharts/pdfjs-dist) finirait en
 // `<link rel="modulepreload">` sur chaque page, `/login` inclus.
 import { Button } from '../ui/Button'
+import { captureException } from '../lib/monitoring'
+
+// VX206 — identifiant support « horodatage court » quand le monitoring
+// distant est no-op (pas de DSN) : toujours quelque chose de transmissible,
+// jamais un écran de récupération muet.
+function shortTimestamp() {
+  return new Date().toTimeString().slice(0, 8)
+}
 
 /* L880 — Error-boundary de route GLOBALE.
  *
@@ -15,15 +23,26 @@ import { Button } from '../ui/Button'
  *
  * `key` est réinitialisée à chaque navigation (voir le router) pour que passer
  * à une autre page après une erreur reparte d'un état sain.
+ *
+ * VX206 — trace en console + capture vers le même chemin
+ * captureException-ou-no-op que `ui/ErrorBoundary.jsx` (VX72) et affiche un
+ * identifiant support sur l'écran de récupération.
  */
 export default class RouteErrorBoundary extends Component {
   constructor(props) {
     super(props)
-    this.state = { error: null }
+    this.state = { error: null, eventId: null }
   }
 
   static getDerivedStateFromError(error) {
     return { error }
+  }
+
+  componentDidCatch(error, info) {
+    console.error('[RouteErrorBoundary]', error, info?.componentStack)
+    captureException(error, { componentStack: info?.componentStack })
+      .then((eventId) => this.setState({ eventId: eventId || shortTimestamp() }))
+      .catch(() => this.setState({ eventId: shortTimestamp() }))
   }
 
   render() {
@@ -43,6 +62,11 @@ export default class RouteErrorBoundary extends Component {
           Cette page n’a pas pu s’afficher. Rechargez pour réessayer ; si le
           problème persiste, contactez votre administrateur.
         </p>
+        {this.state.eventId && (
+          <p className="text-xs text-muted-foreground">
+            Code erreur à transmettre : <span className="font-mono">{this.state.eventId}</span>
+          </p>
+        )}
         <div className="mt-1">
           <Button onClick={() => window.location.reload()}>
             Recharger la page

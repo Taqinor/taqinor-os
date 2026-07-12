@@ -500,6 +500,7 @@ export default function FacturesFournisseur() {
         onRowClick={openFacture}
         emptyTitle={aPayerSeul ? 'Aucune facture à payer' : 'Aucune facture fournisseur'}
         emptyDescription="Enregistrez une facture reçue d'un fournisseur avec « Nouvelle facture »."
+        emptyAction={<Button size="sm" onClick={() => setCreating(true)}><Plus className="size-4" /> Nouvelle facture</Button>}
         aria-label="Factures fournisseur"
       />
 

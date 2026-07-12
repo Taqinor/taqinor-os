@@ -358,7 +358,10 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
                 <div className="flex-1">
                   <Select value={fields.client ? String(fields.client) : undefined}
                           onValueChange={v => setField('client', v)}>
-                    <SelectTrigger id="dv-client" invalid={!!errors.client}>
+                    {/* VX240(a) — la modale s'ouvrait SANS aucun autofocus (le
+                        vendeur devait cliquer avant de pouvoir taper/choisir) ;
+                        premier champ utile focalisé à l'ouverture. */}
+                    <SelectTrigger id="dv-client" invalid={!!errors.client} autoFocus>
                       <SelectValue placeholder="— Sélectionner un client —" />
                     </SelectTrigger>
                     <SelectContent>
@@ -454,6 +457,15 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
                             produits={produits}
                             value={l.produit ? String(l.produit) : ''}
                             onChange={v => onProduitChange(l._key, v)}
+                            // VX238(c) — choisir un produit avance directement
+                            // le focus sur la Qté de CETTE ligne (réutilise
+                            // data-line-key, VX90) au lieu de rendre le focus
+                            // au bouton déclencheur.
+                            onPicked={() => {
+                              document
+                                .querySelector(`tr[data-line-key="${l._key}"] [data-role="line-qty"]`)
+                                ?.focus()
+                            }}
                           />
                         </td>
                         <td data-label="Désignation">
@@ -462,7 +474,7 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
                                  placeholder="Désignation" />
                         </td>
                         <td data-label="Qté">
-                          <Input type="number" min="0.01" step="0.01"
+                          <Input type="number" min="0.01" step="0.01" data-role="line-qty"
                                  className="h-[var(--control-h-sm)] text-right text-xs"
                                  value={l.quantite}
                                  onChange={e => setLine(l._key, 'quantite', e.target.value)} />

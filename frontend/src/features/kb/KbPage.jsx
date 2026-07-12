@@ -5,12 +5,8 @@ import {
   LayoutTemplate, Download, Upload, Star, BarChart3,
 } from 'lucide-react'
 import { ListShell } from '../../ui/module'
-import {
-  Button, Badge, Tag, toast, buttonVariants,
-  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogCancel,
-  AlertDialogAction,
-} from '../../ui'
+import { Button, Badge, Tag, toast, buttonVariants } from '../../ui'
+import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { formatDateTime } from '../../lib/format'
 import kbApi from '../../api/kbApi'
 import { KB_STATUT_MAP, StatutArticlePill, splitTags } from './kbStatus'
@@ -410,6 +406,9 @@ export default function KbPage() {
         exportName="base-de-connaissances"
         emptyTitle="Aucun article"
         emptyDescription="Aucun article ne correspond à cette recherche."
+        emptyAction={peutEditer
+          ? <Button size="sm" onClick={() => openEditor(null)}><Plus className="size-4" /> Nouvel article</Button>
+          : undefined}
       >
         {peutEditer && peremption.length > 0 && (
           <div className="flex items-center gap-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-warning">
@@ -422,31 +421,29 @@ export default function KbPage() {
       </ListShell>
 
       {confirmRemove && (
-        <AlertDialog open onOpenChange={(o) => { if (!o) setConfirmRemove(null) }}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle className="text-destructive">Supprimer cet article ?</AlertDialogTitle>
-              <AlertDialogDescription>
-                « {confirmRemove.article.titre} » sera supprimé définitivement.
-                {confirmRemove.loading
-                  ? ' Calcul des sous-articles…'
-                  : confirmRemove.nbDescendants > 0
-                    ? ` Ceci supprimera AUSSI ${confirmRemove.nbDescendants} `
-                      + `sous-article${confirmRemove.nbDescendants > 1 ? 's' : ''} (toute la branche).`
-                    : " Cet article n'a aucun sous-article."}
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Annuler</AlertDialogCancel>
-              <AlertDialogAction
-                disabled={confirmRemove.loading}
-                onClick={confirmRemoveArticle}
-              >
-                Supprimer
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+        // VX244 — KB-avec-enfants : dialog PONDÉRÉ. Un article SANS
+        // sous-arbre reste `medium` (pas de saisie) ; un article-PARENT
+        // (nbDescendants > 0 — toute la branche part avec lui, CASCADE)
+        // passe en `high` : confirmation TAPÉE du titre exact.
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => { if (!o) setConfirmRemove(null) }}
+          severity={confirmRemove.nbDescendants > 0 ? 'high' : 'medium'}
+          title="Supprimer cet article ?"
+          description={
+            `« ${confirmRemove.article.titre} » sera supprimé définitivement.`
+            + (confirmRemove.loading
+              ? ' Calcul des sous-articles…'
+              : confirmRemove.nbDescendants > 0
+                ? ` Ceci supprimera AUSSI ${confirmRemove.nbDescendants} `
+                  + `sous-article${confirmRemove.nbDescendants > 1 ? 's' : ''} (toute la branche).`
+                : " Cet article n'a aucun sous-article.")
+          }
+          confirmText={confirmRemove.nbDescendants > 0 ? confirmRemove.article.titre : undefined}
+          confirmLabel="Supprimer"
+          loading={confirmRemove.loading}
+          onConfirm={confirmRemoveArticle}
+        />
       )}
     </div>
   )

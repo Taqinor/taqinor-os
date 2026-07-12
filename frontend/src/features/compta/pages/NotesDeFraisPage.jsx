@@ -5,8 +5,19 @@ import { ListShell, statusPill } from '../../../ui/module'
 import { Button, Segmented, toast } from '../../../ui'
 import { formatMAD, formatDate } from '../../../lib/format'
 import comptaApi from '../../../api/comptaApi'
+import rhApi from '../../../api/rhApi'
 import useComptaList from '../components/useComptaList.js'
 import CrudDialog from '../components/CrudDialog.jsx'
+
+// VX229 — options employé chargées une fois à l'ouverture du dialog (au lieu
+// d'un champ « Employé (ID) » tapé à la main), « Nom Prénom » comme EmployeList.
+const employeAsync = () => rhApi.getEmployes({ page_size: 500 }).then((res) => {
+  const list = Array.isArray(res.data) ? res.data : (res.data?.results || [])
+  return list.map((e) => ({
+    value: e.id,
+    label: `${e.nom || ''} ${e.prenom || ''}`.trim() || `Employé #${e.id}`,
+  }))
+})
 
 /* ============================================================================
    FG135/FG136 — Notes de frais (écran VALIDATION / COMPTABLE).
@@ -102,13 +113,13 @@ const COLUMNS = {
 
 const FIELDS = {
   notesFrais: [
-    { name: 'employe', label: 'Employé (ID)', required: true },
+    { name: 'employe', label: 'Employé', async: employeAsync, required: true },
     { name: 'date_frais', label: 'Date', type: 'date', required: true },
     { name: 'montant', label: 'Montant', type: 'number', required: true },
     { name: 'motif', label: 'Motif' },
   ],
   rapportsNotesFrais: [
-    { name: 'employe', label: 'Employé (ID)', required: true },
+    { name: 'employe', label: 'Employé', async: employeAsync, required: true },
     { name: 'libelle', label: 'Libellé' },
   ],
   plafondsNotesFrais: [
@@ -121,7 +132,7 @@ const FIELDS = {
     { name: 'per_diem', label: 'Per diem', type: 'number' },
   ],
   indemnitesChantier: [
-    { name: 'employe', label: 'Employé (ID)', required: true },
+    { name: 'employe', label: 'Employé', async: employeAsync, required: true },
     { name: 'date_deplacement', label: 'Date', type: 'date', required: true },
     { name: 'libelle_chantier', label: 'Chantier' },
     { name: 'nombre_jours', label: 'Nombre de jours', type: 'number' },

@@ -13,10 +13,17 @@ import { useMemo, useState } from 'react'
 import { useSelector } from 'react-redux'
 import { NavLink } from 'react-router-dom'
 import { LayoutDashboard, Target, FileText, CalendarClock, Menu, ChevronLeft, X } from 'lucide-react'
-import { NAV_SECTIONS } from './Sidebar'
+// ODX7 — LEGACY_NAV_KEYS exclut du merge générique les 6 sections legacy
+// (stock/crm/ventes/installations/sav/reporting) que NAV_SECTIONS place déjà
+// explicitement à leur position historique (via `navFor()` dans Sidebar.jsx) :
+// sans ce filtre, leur `.nav` (désormais aussi présent dans le registre
+// générique) ferait doublon dans ce tiroir mobile.
+import { NAV_SECTIONS, LEGACY_NAV_KEYS } from './Sidebar'
 import { moduleNavSections } from '../../router/moduleRoutes'
 // ODX6 — même gating par module actif/désactivé que la Sidebar desktop.
 import { filterNavSections, selectModulesDesactives } from '../../router/moduleGating'
+
+const coquilleNavSections = moduleNavSections.filter((s) => !LEGACY_NAV_KEYS.has(s.key))
 
 // Destinations primaires — un sous-ensemble du menu, pensé pour le pouce.
 // Toutes existent pour tous les rôles (cf. router/index.jsx + Sidebar).
@@ -80,10 +87,10 @@ function AppGridDrawer({ onClose }) {
   const sections = useMemo(() => {
     const all = (() => {
       const adminIdx = NAV_SECTIONS.findIndex((s) => s.label === 'ADMINISTRATION')
-      if (adminIdx < 0) return [...NAV_SECTIONS, ...moduleNavSections]
+      if (adminIdx < 0) return [...NAV_SECTIONS, ...coquilleNavSections]
       return [
         ...NAV_SECTIONS.slice(0, adminIdx),
-        ...moduleNavSections,
+        ...coquilleNavSections,
         ...NAV_SECTIONS.slice(adminIdx),
       ]
     })()
