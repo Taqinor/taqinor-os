@@ -1,4 +1,5 @@
 import secrets
+import uuid
 
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
@@ -2294,3 +2295,83 @@ class BackgroundJob(TenantModel):
         self.statut = self.STATUT_FAILED
         self.message_erreur = (message or '')[:5000]
         self.save(update_fields=['statut', 'message_erreur', 'updated_at'])
+
+
+class OutboxEvent(TimestampedModel):
+    """NTPLT9 — événement métier en OUTBOX transactionnel.
+
+    Écrit DANS la transaction de l'appelant (``emit_reliable``) puis livré par un
+    worker (NTPLT10) aux handlers DURABLES — « aucun événement métier perdu,
+    même sur crash ». ``company`` est nullable (événements système transverses).
+    L'événement synchrone M6 existant est émis inchangé via
+    ``transaction.on_commit`` (façade préservée : zéro breaking change pour les
+    abonnés actuels).
+    """
+
+    STATUT_PENDING = 'pending'
+    STATUT_DELIVERED = 'delivered'
+    STATUT_FAILED = 'failed'
+    STATUT_DEAD = 'dead'
+    STATUT_CHOICES = [
+        (STATUT_PENDING, 'En attente'),
+        (STATUT_DELIVERED, 'Livré'),
+        (STATUT_FAILED, 'En échec (à réessayer)'),
+        (STATUT_DEAD, 'Abandonné (dead-letter)'),
+    ]
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='outbox_events', null=True, blank=True,
+        verbose_name='Société')
+    event_name = models.CharField('Événement', max_length=100)
+    payload = models.JSONField('Payload', default=dict, blank=True)
+    event_id = models.UUIDField(
+        'Event ID', default=uuid.uuid4, unique=True, editable=False)
+    occurred_at = models.DateTimeField('Survenu le', default=timezone.now)
+    statut = models.CharField(
+        'Statut', max_length=12, choices=STATUT_CHOICES,
+        default=STATUT_PENDING, db_index=True)
+    tentatives = models.PositiveIntegerField('Tentatives', default=0)
+    prochaine_tentative = models.DateTimeField(
+        'Prochaine tentative', null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Événement outbox'
+        verbose_name_plural = 'Événements outbox'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['statut', 'prochaine_tentative'],
+                         name='core_outbox_statut_next_idx'),
+            models.Index(fields=['event_name', '-created_at'],
+                         name='core_outbox_name_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.event_name}:{self.statut} ({self.event_id})'
+
+
+class ProcessedEvent(TimestampedModel):
+    """NTPLT10 (étend YDATA12) — déduplication CONSOMMATEUR par (event_id,
+    handler).
+
+    Une ligne = « ce handler a déjà traité cet événement ». La contrainte
+    unique ``(event_id, handler_name)`` garantit qu'un crash/rejeu ne
+    double-livre jamais un événement à un handler donné (livraison
+    at-least-once + dédup = effet exactement-une-fois côté consommateur).
+    """
+
+    event_id = models.UUIDField('Event ID')
+    handler_name = models.CharField('Handler', max_length=200)
+
+    class Meta:
+        verbose_name = 'Événement traité'
+        verbose_name_plural = 'Événements traités'
+        ordering = ['-created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['event_id', 'handler_name'],
+                name='core_processedevent_evt_handler'),
+        ]
+
+    def __str__(self):
+        return f'{self.event_id}->{self.handler_name}'
