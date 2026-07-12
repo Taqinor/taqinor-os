@@ -22,6 +22,7 @@ import {
 import { formatDateTime } from '../../lib/format'
 import { withOfflineFallback, FIELD_OPS } from './offline/fieldOutbox'
 import { compressImage } from '../../ui/file-utils'
+import { renderTrustedSvg } from '../../lib/trustedSvg'
 
 // N91/F21 — message commun quand une action a été MISE EN FILE (hors-ligne).
 const QUEUED_MSG = 'Hors ligne — enregistré, synchro au retour du réseau.'
@@ -495,12 +496,17 @@ export function CodePanel({ intervention }) {
     installationsApi.getCode(id).then((r) => setData(r.data)).catch(() => setData(null))
   }, [id])
   if (!data) return null
+  // VX201 — le SVG est sûr aujourd'hui (généré côté serveur), mais sans garde
+  // contre une régression future de la source : renderTrustedSvg refuse tout
+  // balisage suspect (<script>, on*=, javascript:) et rend `null` (aucun HTML
+  // injecté) plutôt que d'afficher un SVG non fiable.
+  const svgProps = renderTrustedSvg(data.qr_svg)
   return (
     <div className="flex flex-col items-center gap-1 py-2 text-sm">
       <span className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
         <QrCode className="size-4" aria-hidden="true" /> Code de l'intervention
       </span>
-      <div className="w-32" dangerouslySetInnerHTML={{ __html: data.qr_svg }} />
+      {svgProps && <div className="w-32" dangerouslySetInnerHTML={svgProps} />}
       <code className="text-[11px] text-muted-foreground">{data.token}</code>
     </div>
   )

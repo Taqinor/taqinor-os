@@ -45,6 +45,9 @@ const rootReducer = (state, action) => {
 
 export const store = configureStore({
   reducer: rootReducer,
+  // VX201 — en prod, l'extension Redux DevTools expose TOUT le state (PII,
+  // matrice de permissions, leads/devis/factures) : coupée hors dev.
+  devTools: import.meta.env.DEV,
 })
 
 export default store
