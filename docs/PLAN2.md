@@ -2794,7 +2794,7 @@ droite)**
 
 **Sous-groupe VXD-Q — Interop & onboarding→maîtrise**
 
-- [ ] VX245 — **[BACKEND] Le cycle client sortant se boucle : `.ics` d'événement unique, (@lane: backend/notify — @coord VX116/VX46)
+- [x] VX245 **(already present)** — **[BACKEND] Le cycle client sortant se boucle : `.ics` d'événement unique, (@lane: backend/notify — @coord VX116/VX46)
   confirmation WhatsApp de RDV, relance de facture riche. @coord VX116, VX46 (re-surface
   l'ABONNEMENT — distinct).** Trois maillons du même canal : (a) `AppointmentBooker.jsx` crée un
   RDV sans JAMAIS produire de `.ics` — le seul générateur (`reporting/calendar.py:366-392`,
@@ -3207,6 +3207,8 @@ droite)**
 ---
 
 ## DONE LOG (agent appends one plain-language line per completed task)
+
+- 2026-07-12 — **VX245 (already present)** — verified: `build_ics` extracted as pure function (`apps/reporting/calendar.py:366`), `GET /crm/appointments/<id>/ics/` endpoint referenced in `apps/crm/services.py:2529`, WhatsApp confirmation + invoice-reminder message service present; commit `94060cca` on main. Ticked, no rebuild.
 
 - 2026-07-12 — **VX217 (already present)** — verified: `frontend/src/features/queue/AttentionPeek.jsx` (+ test) wired into `NotificationBell.jsx` and `MesActivitesPage.jsx` (hover/tap-and-hold peek), grouped "Tout marquer lu (n)" action, `.nb-panel` mobile responsiveness; commit `a2c18fbb` on main. Ticked, no rebuild.
 
