@@ -33,6 +33,7 @@ import {
 import {
   Card, CardHeader, CardTitle, CardDescription, CardContent,
   StatusPill, Badge, Progress, EmptyState, Skeleton, SkeletonText,
+  ErrorBoundary,
 } from '../ui'
 import { StateBlock } from '../components/StateBlock'
 import { cn } from '../lib/cn'
@@ -254,6 +255,10 @@ export function KpiCard({ kpi, navigate }) {
   )
 }
 
+// VX205 — le graphique (recharts + données calculées) est isolé dans SA
+// PROPRE `ErrorBoundary` (déjà construite, `ui/ErrorBoundary.jsx`) : un throw
+// dans UNE carte-graphique ne fait plus disparaître tout le Dashboard, seule
+// cette carte affiche l'écran de récupération.
 function ChartCard({ title, description, children, isEmpty, emptyLabel, loading }) {
   return (
     <Card>
@@ -268,7 +273,7 @@ function ChartCard({ title, description, children, isEmpty, emptyLabel, loading 
         ) : isEmpty ? (
           <ChartEmpty description={emptyLabel} />
         ) : (
-          children
+          <ErrorBoundary>{children}</ErrorBoundary>
         )}
       </CardContent>
     </Card>
@@ -736,7 +741,11 @@ export function Component() {
               charge du jour, avant le mur de KPI générique. Commercial → leads à
               relancer + devis qui expirent ; SAV → tickets urgents + SLA en
               retard ; directeur → métrique héros CA promue + macro dessous. */}
+          {/* VX205 — carte cockpit isolée : un throw dans CE profil ne fait
+              plus disparaître le Dashboard entier (KPI/graphiques dessous
+              restent utilisables). */}
           {profile === 'commercial' && (
+            <ErrorBoundary>
             <div className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-2" data-testid="cockpit-commercial">
               <PriorityCard
                 title="Mes leads à relancer"
@@ -784,9 +793,11 @@ export function Component() {
                 )}
               />
             </div>
+            </ErrorBoundary>
           )}
 
           {profile === 'sav' && (
+            <ErrorBoundary>
             <div className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-2" data-testid="cockpit-sav">
               <PriorityCard
                 title="Mes tickets urgents"
@@ -833,9 +844,11 @@ export function Component() {
                 )}
               />
             </div>
+            </ErrorBoundary>
           )}
 
           {profile === 'directeur' && caTotal > 0 && (
+            <ErrorBoundary>
             <Card className="p-5" data-testid="cockpit-directeur">
               <div className="flex flex-wrap items-end justify-between gap-3">
                 <div>
@@ -851,14 +864,17 @@ export function Component() {
                 </Badge>
               </div>
             </Card>
+            </ErrorBoundary>
           )}
 
           {/* Cartes KPI */}
+          <ErrorBoundary>
           <div className="grid grid-cols-[repeat(auto-fit,minmax(170px,1fr))] gap-4">
             {kpis.map((kpi) => (
               <KpiCard key={kpi.label} kpi={kpi} navigate={navigate} />
             ))}
           </div>
+          </ErrorBoundary>
 
           {/* Rangée graphiques : CA mensuel + devis par statut */}
           <div className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-2">

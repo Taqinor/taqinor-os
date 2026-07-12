@@ -17,7 +17,7 @@ import {
 } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
 import {
-  Button, Badge, Spinner, Checkbox, Input, Textarea, toast,
+  Button, Badge, Spinner, Checkbox, Input, Textarea, toast, ErrorBoundary,
 } from '../../ui'
 import { formatDateTime } from '../../lib/format'
 import { withOfflineFallback, FIELD_OPS } from './offline/fieldOutbox'
@@ -25,6 +25,12 @@ import { compressImage } from '../../ui/file-utils'
 
 // N91/F21 — message commun quand une action a été MISE EN FILE (hors-ligne).
 const QUEUED_MSG = 'Hors ligne — enregistré, synchro au retour du réseau.'
+
+// VX205 — chaque panneau (monté comme un `TabsContent` indépendant du volet
+// détail intervention) enveloppe SA PROPRE `ErrorBoundary` (déjà construite,
+// `ui/ErrorBoundary.jsx`) : un throw dans UN panneau (ex. Mémos vocaux) ne
+// fait plus disparaître tout le volet — les autres onglets (Réserves,
+// Sécurité…) restent utilisables, quel que soit l'appelant.
 
 // ── F9 — N° de série par composant ───────────────────────────────────────────
 // VX227 — le garde-doublon des n° de série voit désormais l'UNION des deux
@@ -84,6 +90,7 @@ export function SerialsPanel({ intervention, onChanged, knownSeries = [] }) {
 
   if (loading) return <PanelLoading label="numéros de série" />
   return (
+    <ErrorBoundary>
     <div className="flex flex-col gap-3 py-2 text-sm">
       <p className="text-[12px] text-muted-foreground">
         Photographiez la plaque signalétique et saisissez le numéro de série. Le
@@ -128,6 +135,7 @@ export function SerialsPanel({ intervention, onChanged, knownSeries = [] }) {
           </div>
         ))}
     </div>
+    </ErrorBoundary>
   )
 }
 
@@ -174,6 +182,7 @@ export function ConsommationPanel({ intervention, onChanged }) {
   if (!data) return <PanelUnavailable label="Réconciliation indisponible." />
 
   return (
+    <ErrorBoundary>
     <div className="flex flex-col gap-3 py-2 text-sm">
       {data.valide && <Badge tone="success">Validée — stock mis à jour</Badge>}
       {(data.lignes || []).map((li) => (
@@ -219,6 +228,7 @@ export function ConsommationPanel({ intervention, onChanged }) {
         </Button>
       )}
     </div>
+    </ErrorBoundary>
   )
 }
 
@@ -281,6 +291,7 @@ export function MemosPanel({ intervention, onChanged }) {
 
   if (loading) return <PanelLoading label="mémos vocaux" />
   return (
+    <ErrorBoundary>
     <div className="flex flex-col gap-3 py-2 text-sm">
       {recording
         ? <Button size="sm" variant="destructive" onClick={stop}>
@@ -307,6 +318,7 @@ export function MemosPanel({ intervention, onChanged }) {
           </div>
         ))}
     </div>
+    </ErrorBoundary>
   )
 }
 
@@ -347,6 +359,7 @@ export function ReservesPanel({ intervention, onChanged }) {
 
   if (loading) return <PanelLoading label="réserves" />
   return (
+    <ErrorBoundary>
     <div className="flex flex-col gap-3 py-2 text-sm">
       <div className="flex flex-col gap-2 rounded border border-border p-2">
         <Textarea rows={2} placeholder="Réserve à reprendre (câble manquant, réglage onduleur…)"
@@ -377,6 +390,7 @@ export function ReservesPanel({ intervention, onChanged }) {
           </div>
         ))}
     </div>
+    </ErrorBoundary>
   )
 }
 
@@ -412,6 +426,7 @@ export function ToolReturnPanel({ intervention, onChanged }) {
   if (loading) return <PanelLoading label="retour d'outillage" />
   if (rows.length === 0) return <PanelUnavailable label="Aucun outil dans le kit de préparation." />
   return (
+    <ErrorBoundary>
     <div className="flex flex-col gap-2 py-2 text-sm">
       {rows.map((tr) => (
         <label key={tr.id} className="flex items-center gap-2 rounded border border-border p-2">
@@ -424,6 +439,7 @@ export function ToolReturnPanel({ intervention, onChanged }) {
       ))}
       <Button size="sm" disabled={busy} onClick={confirm}>Confirmer le retour</Button>
     </div>
+    </ErrorBoundary>
   )
 }
 
@@ -459,6 +475,7 @@ export function SafetyPanel({ intervention, onChanged }) {
   if (loading) return <PanelLoading label="consignes de sécurité" />
   if (!data) return <PanelUnavailable label="Consignes indisponibles." />
   return (
+    <ErrorBoundary>
     <div className="flex flex-col gap-2 py-2 text-sm">
       {(data.items || []).map((it) => (
         <label key={it.cle} className="flex items-center gap-2 rounded border border-border p-2">
@@ -472,6 +489,7 @@ export function SafetyPanel({ intervention, onChanged }) {
         ? <Badge tone="success">Signé par {data.signe_par_nom} le {formatDateTime(data.signe_le)}</Badge>
         : <Button size="sm" disabled={busy} onClick={sign}>Signer les consignes</Button>}
     </div>
+    </ErrorBoundary>
   )
 }
 
