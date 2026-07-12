@@ -86,6 +86,11 @@ _EFFORT_ESTIME_PAR_KIND = {
     'relance': 'moyen',
     'lead_chaud': 'eleve',    # premier contact à froid — plus long
     'devis_expire': 'eleve',  # relance devis + suivi
+    # VX214 — kinds d'EXÉCUTION.
+    'chantier_assigne': 'eleve',          # prise en main d'un chantier entier
+    'intervention_du_jour': 'moyen',
+    'da_approuvee_a_commander': 'faible',  # passer la commande — rapide
+    'ticket_transfere': 'moyen',
 }
 
 
@@ -337,6 +342,29 @@ class ActivityViewSet(viewsets.ModelViewSet):
             try:
                 from apps.crm.selectors import ma_file_commercial_items
                 items.extend(ma_file_commercial_items(company, request.user))
+            except Exception:  # pragma: no cover - défensif
+                pass
+
+        # ── 5) VX214 — kinds d'EXÉCUTION (jamais une 2ᵉ boîte) ──────────────
+        # Un chantier assigné, une intervention du jour, une DA approuvée à
+        # commander, un ticket transféré n'apparaissaient dans AUCUNE boîte.
+        # Reshape imposé (grand-verdict) : PAS de nouvel endpoint/écran — ces
+        # kinds rejoignent le MÊME `ma-file/`, via une fonction lecture-seule
+        # `selectors.affectations_pour(user)` par app cible (MÊME contrat
+        # `{kind, title, due, link, urgency}` que le bloc 4 ci-dessus).
+        if company is not None:
+            try:
+                from apps.installations.selectors import (
+                    affectations_pour as installations_affectations_pour,
+                )
+                items.extend(installations_affectations_pour(request.user))
+            except Exception:  # pragma: no cover - défensif
+                pass
+            try:
+                from apps.sav.selectors import (
+                    affectations_pour as sav_affectations_pour,
+                )
+                items.extend(sav_affectations_pour(request.user))
             except Exception:  # pragma: no cover - défensif
                 pass
 

@@ -10,22 +10,39 @@
 // Fonctions PURES (testables sans réseau/store) — le composant ne fait que
 // lire `state.auth.role_nom` et appeler `sortMaFileItems`.
 
-// Les 6 `kind` connus de l'endpoint `ma-file/` (apps/records/views.py) — un
+// Les `kind` connus de l'endpoint `ma-file/` (apps/records/views.py) — un
 // `kind` futur non listé ici retombe simplement en fin d'ordre (jamais une
-// exception, jamais un item perdu).
+// exception, jamais un item perdu). VX214 ajoute les 4 kinds d'EXÉCUTION
+// (chantier_assigne/intervention_du_jour/da_approuvee_a_commander/
+// ticket_transfere — jamais une 2ᵉ boîte, ils rejoignent CETTE même liste).
 const ALL_KINDS = [
   'activite', 'approbation', 'mention', 'relance', 'lead_chaud', 'devis_expire',
+  'chantier_assigne', 'intervention_du_jour', 'da_approuvee_a_commander',
+  'ticket_transfere',
 ]
 
 export const PERSONA_ORDER = {
   // Commercial : relances → leads chauds → devis expirants d'abord.
-  commercial: ['relance', 'lead_chaud', 'devis_expire', 'activite', 'approbation', 'mention'],
+  commercial: [
+    'relance', 'lead_chaud', 'devis_expire', 'activite', 'approbation', 'mention',
+    'chantier_assigne', 'intervention_du_jour', 'da_approuvee_a_commander', 'ticket_transfere',
+  ],
   // Comptable : factures échues (kind 'activite' côté finance) → approbations.
-  comptable: ['approbation', 'activite', 'mention', 'relance', 'lead_chaud', 'devis_expire'],
-  // Terrain (technicien/installateur) : interventions du jour d'abord.
-  terrain: ['activite', 'mention', 'approbation', 'relance', 'lead_chaud', 'devis_expire'],
+  comptable: [
+    'approbation', 'activite', 'mention', 'relance', 'lead_chaud', 'devis_expire',
+    'da_approuvee_a_commander', 'chantier_assigne', 'intervention_du_jour', 'ticket_transfere',
+  ],
+  // Terrain (technicien/installateur) : interventions du jour → chantiers
+  // assignés → tickets transférés d'abord (VX214 — l'exécution du jour).
+  terrain: [
+    'intervention_du_jour', 'chantier_assigne', 'ticket_transfere', 'da_approuvee_a_commander',
+    'activite', 'mention', 'approbation', 'relance', 'lead_chaud', 'devis_expire',
+  ],
   // Direction : approbations → escalades d'abord.
-  direction: ['approbation', 'mention', 'activite', 'relance', 'lead_chaud', 'devis_expire'],
+  direction: [
+    'approbation', 'mention', 'activite', 'relance', 'lead_chaud', 'devis_expire',
+    'chantier_assigne', 'intervention_du_jour', 'da_approuvee_a_commander', 'ticket_transfere',
+  ],
   // Défaut (rôle non reconnu) : ordre GLOBAL inchangé (urgence pure, aucune
   // priorité de kind — comportement VX83 préservé à l'identique).
   default: ALL_KINDS,
@@ -100,6 +117,8 @@ export function queueViewForRole(roleNom) {
 // un item n'a pas encore `effort_estime` (backend pas encore redéployé).
 const EFFORT_RANK_FALLBACK = {
   mention: 0, approbation: 0, activite: 1, relance: 1, lead_chaud: 2, devis_expire: 2,
+  da_approuvee_a_commander: 0, intervention_du_jour: 1, ticket_transfere: 1,
+  chantier_assigne: 2,
 }
 const EFFORT_ORDER = { faible: 0, moyen: 1, eleve: 2 }
 

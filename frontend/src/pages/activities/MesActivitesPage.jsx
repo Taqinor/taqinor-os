@@ -10,6 +10,7 @@ import {
 import {
   AlarmClock, CalendarCheck2, CalendarClock, ExternalLink, PartyPopper, Sparkles, Users,
   PhoneCall, MessageCircle, ListChecks, Plus, AtSign, ClipboardCheck, Flame, FileWarning,
+  HardHat, Wrench, ShoppingCart, ArrowRightLeft,
 } from 'lucide-react'
 import recordsApi from '../../api/recordsApi'
 import {
@@ -96,6 +97,11 @@ const MA_FILE_ICON = {
   relance: PhoneCall,
   lead_chaud: Flame,
   devis_expire: FileWarning,
+  // VX214 — kinds d'EXÉCUTION (chantier/intervention/DA/ticket transféré).
+  chantier_assigne: HardHat,
+  intervention_du_jour: Wrench,
+  da_approuvee_a_commander: ShoppingCart,
+  ticket_transfere: ArrowRightLeft,
 }
 const URGENCY_TONE = { overdue: 'danger', today: 'warning', upcoming: 'success' }
 const URGENCY_DOT = {

@@ -2526,3 +2526,116 @@ def kits_utilisant_produit(company, produit_id):
             'quantite': c.quantite,
         })
     return out
+
+
+# ── VX214 — kinds d'EXÉCUTION pour « Ma file » (jamais une 2ᵉ boîte) ────────
+
+def affectations_pour(user):
+    """VX214 — items d'EXÉCUTION (installations) affectés à `user`, prêts pour
+    l'union « Ma file » (``apps.records.views.ma_file``) — contrat commun
+    ``{kind, title, due, link, urgency}``, MÊME forme que ``crm.selectors.
+    ma_file_commercial_items`` (VX83). Lecture seule, scopée société +
+    utilisateur ; jamais un import de ``notifications``/``records``.
+
+    Trois familles :
+      * chantiers ASSIGNÉS à ce technicien, encore actifs (statut canonique
+        AVANT réception — ``RECEPTIONNE``/``CLOTURE`` exclus) — kind
+        ``chantier_assigne`` ;
+      * interventions DU JOUR (ou en retard) de ce technicien, pas encore
+        terminées — kind ``intervention_du_jour`` ;
+      * DA APPROUVÉES dont ce user est le demandeur, pas encore commandées
+        (transition suivante = ``marquer_commandee``) — kind
+        ``da_approuvee_a_commander``.
+    """
+    if user is None or not getattr(user, 'company_id', None):
+        return []
+    from .models import DemandeAchat, Installation, Intervention
+
+    company = user.company
+    today = None
+    items = []
+
+    actifs = [
+        s for s in Installation.STATUT_ORDER
+        if s not in (Installation.Statut.RECEPTIONNE, Installation.Statut.CLOTURE)
+    ]
+    chantiers = (Installation.objects
+                 .filter(company=company, technicien_responsable=user,
+                         statut__in=actifs)
+                 .select_related('client')
+                 .order_by('date_pose_prevue'))
+    for inst in chantiers:
+        if today is None:
+            from django.utils import timezone
+            today = timezone.localdate()
+        due = inst.date_pose_prevue
+        if due is None:
+            urgency = 'today'
+        elif due < today:
+            urgency = 'overdue'
+        elif due == today:
+            urgency = 'today'
+        else:
+            urgency = 'upcoming'
+        client_nom = getattr(inst.client, 'nom', '') or ''
+        items.append({
+            'kind': 'chantier_assigne',
+            'title': f'Chantier {client_nom or ("#" + str(inst.id))} — '
+                     f'{inst.get_statut_display()}',
+            'due': due,
+            'link': f'/chantiers?id={inst.id}',
+            'urgency': urgency,
+        })
+
+    non_terminees = [
+        s for s in Intervention.STATUT_ORDER
+        if s not in (Intervention.Statut.TERMINEE, Intervention.Statut.VALIDEE)
+    ]
+    interventions = (Intervention.objects
+                     .filter(company=company, technicien=user,
+                             statut__in=non_terminees)
+                     .select_related('installation', 'installation__client')
+                     .order_by('date_prevue'))
+    for interv in interventions:
+        if today is None:
+            from django.utils import timezone
+            today = timezone.localdate()
+        due = interv.date_prevue
+        if due is None:
+            urgency = 'today'
+        elif due < today:
+            urgency = 'overdue'
+        elif due == today:
+            urgency = 'today'
+        else:
+            urgency = 'upcoming'
+        # Ne remonte QUE le jour même/en retard dans « Ma file » (une
+        # intervention de la semaine prochaine n'a pas sa place dans la file
+        # d'aujourd'hui — « Ma journée » F22 reste l'écran de planning complet).
+        if urgency == 'upcoming':
+            continue
+        client_nom = getattr(getattr(interv, 'installation', None), 'client', None)
+        client_nom = getattr(client_nom, 'nom', '') or ''
+        items.append({
+            'kind': 'intervention_du_jour',
+            'title': f'Intervention {interv.get_type_intervention_display()} — '
+                     f'{client_nom or ("chantier #" + str(interv.installation_id))}',
+            'due': due,
+            'link': f'/chantiers?id={interv.installation_id}' if interv.installation_id else None,
+            'urgency': urgency,
+        })
+
+    das = (DemandeAchat.objects
+           .filter(company=company, statut=DemandeAchat.Statut.APPROUVEE,
+                   created_by=user)
+           .order_by('date_decision'))
+    for da in das:
+        items.append({
+            'kind': 'da_approuvee_a_commander',
+            'title': f'Réquisition {da.reference} approuvée — à commander',
+            'due': None,
+            'link': f'/chantiers?id={da.chantier_id}' if da.chantier_id else None,
+            'urgency': 'today',
+        })
+
+    return items
