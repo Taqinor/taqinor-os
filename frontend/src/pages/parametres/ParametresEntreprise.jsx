@@ -15,13 +15,13 @@ import parametresApi from '../../api/parametresApi'
 import installationsApi from '../../api/installationsApi'
 import stockApi from '../../api/stockApi'
 import customFieldsApi from '../../api/customFieldsApi'
-import { CheckCircle2, AlertCircle, Save, Search, X } from 'lucide-react'
+import { CheckCircle2, AlertCircle, Save, Search, X, Info } from 'lucide-react'
 import {
   Button, Spinner, TooltipProvider, Input,
 } from '../../ui'
 import {
   TABS, DEFAULT_PAYMENT_TERMS, DEFAULT_PREFIXES, DEFAULT_NUMBERING,
-  searchSettings, groupTabs,
+  searchSettings, groupTabs, saveModelForTab, SAVE_MODEL_HINTS,
 } from './peConstants'
 import SettingsSidebar from './SettingsSidebar'
 import OnboardingSection from './OnboardingSection'
@@ -829,6 +829,18 @@ export default function ParametresEntreprise() {
             <span className="text-sm text-destructive">{typeof error === 'string' ? error : JSON.stringify(error)}</span>
           </div>
         )}
+
+        {/* ── VX151 — modèle de sauvegarde annoncé AVANT édition : chaque onglet
+              dit s'il s'enregistre via le bouton partagé du bas, via ses
+              propres boutons de section, ou s'il n'a rien à enregistrer. ── */}
+        <p
+          className="mb-4 flex items-center gap-2 text-[13px] text-muted-foreground"
+          data-testid="settings-save-hint"
+          data-save-model={saveModelForTab(tab)}
+        >
+          <Info className="size-3.5 shrink-0" aria-hidden="true" />
+          {SAVE_MODEL_HINTS[saveModelForTab(tab)]}
+        </p>
 
         {/* ── Formulaire (un seul <form> couvre tous les onglets ; les champs
               masqués restent dans l'état React, donc Enregistrer sauve tout).
