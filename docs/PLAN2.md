@@ -804,7 +804,7 @@ grand-verdict — voir NE PAS FAIRE en fin de section pour le détail des kills/
 
 **Sous-groupe VXD-E — Craft-physics & tokens (les fondations que 3 rounds n'ont pas atteintes)**
 
-- [ ] VX121 — **Zéro couleur hors token : le sweep CSS et JS, avec garde CI.** Trois strates de (@lane: frontend/ui-core)
+- [x] VX121 — **Zéro couleur hors token : le sweep CSS et JS, avec garde CI.** Trois strates de (@lane: frontend/ui-core)
   couleur échappent encore à tout token : (a) ~500 hex slate au niveau composant dans `index.css`
   (`.form-control`/`.modal-*` L900-1156, `.lines-table` L1184-1220, `.data-table` L830-862,
   `.lead-nav` L1002-1006, `.page-loading/.page-error` L727-739) ; (b) les 6 ombres d'épinglage
@@ -3207,6 +3207,8 @@ droite)**
 ---
 
 ## DONE LOG (agent appends one plain-language line per completed task)
+
+- 2026-07-12 — **VX121 — zéro couleur hors token (dernier volet réel : AppointmentBooker).** Le sweep index.css (`scripts/check_hex.mjs`, 26 sélecteurs gardés, 0 hex) / DataTable `rgba(0,0,0…)` / `ChantierTimeline`/`ProductionPage` / bloc mort `.agent-*` était déjà fait par une vague antérieure — seul `AppointmentBooker.jsx` avait encore 4 fallbacks orphelins `var(--color-text-muted, #475569)` / `var(--color-success, #059669)` / `var(--color-surface-2, #f8f9fa)` / `var(--color-border, #e5e7eb)` (tokens qui n'existent nulle part dans `tokens.css` — silencieusement `unset` en dark mode). Remplacés par les vrais tokens déjà consommés plus haut dans le même fichier (`--muted-foreground`/`--success`/`--muted`/`--border`).
 
 - 2026-07-12 — **VX166/VX168/VX169/VX170/VX171 (already present).** Verified already built by a prior wave: VX166 `confirmLeaveIfDirty`/`guardedClose` wired on the 7 named adopters + `CrudDialog.jsx` (8 compta callers). VX168 dirty-guard on all 9 `features/flotte/*Dialog.jsx` + 6 `features/gestion_projet/components/*Dialog.jsx` + `EmployeDetail.jsx`/`Recrutement.jsx`, `autoFocus` present on 38 files repo-wide incl. UsersManagement/RolesManagement/KpiAlertesPage/CrudDialog. VX169 `hooks/useNavigationGuard.js` (`useBlocker`) mounted on all 5 named screens (ParametresEntreprise, EquipementSignalerPage, DashboardConfigPage, ArticleEditor, ReclamationEditor). VX170 `ui/useFormSafety.js` (dirty diff + `useDirtyGuard` + `confirmLeaveIfDirty` + optional route-level guard) + `lib/safeStorage.js` (pagehide-safe persistence) built and consumed by ClientForm/CrudDialog/flotte dialogs. VX171 `hooks/useServerFieldErrors.js` consumed by Client/Lead/Devis/Facture/Produit forms with `clearField` on every `set()`. No code changes needed.
 
