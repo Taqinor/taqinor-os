@@ -93,8 +93,9 @@ describe('CrudDialog — champ async Combobox (VX229)', () => {
 
     const combobox = await screen.findByRole('combobox')
     expect(combobox).toBeInTheDocument()
-    // Aucun <input id="cd-employe"> — le champ FK "(ID)" a disparu.
-    expect(document.querySelector('#cd-employe')).toBeNull()
+    // Aucun <input id="cd-employe"> — le champ FK "(ID)" a disparu (le
+    // déclencheur du Combobox garde l'id mais est un <button>, pas un <input>).
+    expect(document.querySelector('input#cd-employe')).toBeNull()
 
     fireEvent.click(combobox)
     fireEvent.click(await screen.findByText('Alaoui Yassine'))
