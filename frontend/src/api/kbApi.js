@@ -44,6 +44,9 @@ const kbApi = {
 
   // ── XKB8/21 — arbre + réordonnancement/déplacement/duplication ──
   arbre: () => api.get('/kb/articles/arbre/'),
+  // VX241(a) — compte RÉEL du sous-arbre qu'un DELETE cascaderait (parent
+  // est on_delete=CASCADE) : affiché AVANT confirmation de suppression.
+  descendantsCount: (id) => api.get(`/kb/articles/${id}/descendants-count/`),
   deplacer: (id, data) => api.post(`/kb/articles/${id}/deplacer/`, data),
   dupliquer: (id, data) => api.post(`/kb/articles/${id}/dupliquer/`, data),
   items: (id, params) => api.get(`/kb/articles/${id}/items/`, { params }),
