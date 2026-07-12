@@ -236,6 +236,22 @@ export default function MesActivitesPage() {
     } catch { setActionError('Action impossible — réessayez.') }
   }
 
+  // VX210(b) — « ⏰ Plus tard » sur un item d'approbation hétérogène de « Ma
+  // file » : masque-le +3 j via la table générique `SnoozedItem` (jamais
+  // retiré de l'inbox dédiée /approbations elle-même). Best-effort, discret
+  // (pas de picker — un délai fixe suffit ici, contrairement aux activités
+  // qui ont leur propre picker complet dans `ActivitiesPanel`).
+  const snoozeApprobationItem = async (it) => {
+    if (it.kind !== 'approbation' || !it.source || !it.source_id) return
+    const d = new Date(); d.setDate(d.getDate() + 3)
+    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    setActionError(null)
+    try {
+      await recordsApi.snoozeApprobation(it.source, it.source_id, iso)
+      loadMaFile()
+    } catch { setActionError('Action impossible — réessayez.') }
+  }
+
   const teamOverdue = useMemo(
     () => overdueByResponsable(teamActivities), [teamActivities])
 
@@ -377,11 +393,22 @@ export default function MesActivitesPage() {
                   key: 'actions',
                   header: '',
                   align: 'right',
-                  cell: (it) => (it.link ? (
-                    <Button size="sm" variant="outline" onClick={() => navigate(it.link)}>
-                      <ExternalLink /> Ouvrir
-                    </Button>
-                  ) : null),
+                  cell: (it) => (
+                    <span className="inline-flex items-center gap-1.5">
+                      {it.kind === 'approbation' && (
+                        <Button size="sm" variant="outline"
+                                title="Reporter de 3 jours"
+                                onClick={() => snoozeApprobationItem(it)}>
+                          ⏰
+                        </Button>
+                      )}
+                      {it.link && (
+                        <Button size="sm" variant="outline" onClick={() => navigate(it.link)}>
+                          <ExternalLink /> Ouvrir
+                        </Button>
+                      )}
+                    </span>
+                  ),
                 },
               ]}
               rows={maFile.items}

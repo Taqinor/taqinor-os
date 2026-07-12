@@ -1,10 +1,15 @@
 """Services (écritures/orchestration) de `records` — XKB34 (followers).
 
-`records` est une app de FONDATION : ce module n'importe jamais une app
-métier (crm/ventes/stock/installations/sav). Les diffusions vers
-`apps.notifications` (satellite) restent des imports fonction-locaux et
-best-effort — jamais d'exception remontée à l'appelant — exactement comme le
-fait déjà `views._notify_mentions` pour les @mentions du chatter (FG7).
+`records` est une app de FONDATION : ce module n'importe jamais les
+`models`/`views` d'une app métier (crm/ventes/stock/installations/sav) — les
+QUELQUES lectures cross-app nécessaires (VX210(c), voir
+`_trigger_event_survenu` ci-dessous) passent EXCLUSIVEMENT par le
+`selectors.py` PUBLIC de l'app cible (même contrat que `reporting.
+approbations` qui lit 5 apps métier via leurs selectors), jamais un import
+direct de ses `models`. Les diffusions vers `apps.notifications` (satellite)
+restent des imports fonction-locaux et best-effort — jamais d'exception
+remontée à l'appelant — exactement comme le fait déjà `views._notify_mentions`
+pour les @mentions du chatter (FG7).
 """
 from .models import Activity, Follower
 
@@ -162,3 +167,148 @@ def notify_followers(*, content_type, object_id, title, body='',
         except Exception:  # pragma: no cover - défensif
             continue
     return sent
+
+
+# =============================================================================
+# VX210 — le snooze devient un rappel ACTIF, généralisé, et déclenché par
+# l'événement métier. VX85 pose `snoozed_until` + exclusion passive : rien ne
+# RÉVEILLE l'item ni ne re-notifie à l'échéance — c'est ce que ce module
+# ajoute.
+# =============================================================================
+
+# VX210(c) — préfixes FERMÉS de `snooze_trigger_event` (« <préfixe>:<id> »).
+# On n'invente jamais un déclencheur à la volée : en ajouter un = une ligne
+# ici + un cas dans `_trigger_event_survenu`.
+TRIGGER_CLIENT_REPLY = 'client_reply'
+TRIGGER_DEVIS_SIGNED = 'devis_signed'
+TRIGGER_STOCK_ARRIVE = 'stock_arrive'
+SNOOZE_TRIGGER_PREFIXES = frozenset({
+    TRIGGER_CLIENT_REPLY, TRIGGER_DEVIS_SIGNED, TRIGGER_STOCK_ARRIVE,
+})
+
+
+def valid_snooze_trigger_event(value):
+    """VX210(c) — valide le format fermé ``<préfixe>:<id>`` (chaîne vide =
+    aucun déclencheur, toujours valide — comportement VX85 inchangé)."""
+    value = (value or '').strip()
+    if not value:
+        return True
+    prefix, sep, rest = value.partition(':')
+    return sep == ':' and prefix in SNOOZE_TRIGGER_PREFIXES and rest.strip() != ''
+
+
+def _trigger_event_survenu(trigger_event, company, since):
+    """VX210(c) — True si `trigger_event` (« préfixe:id ») est DÉJÀ survenu
+    depuis `since` (l'horodatage de pose du snooze, `Activity.snoozed_at`).
+
+    Lecture EXCLUSIVEMENT via le `selectors.py` PUBLIC de l'app cible (jamais
+    un import de ses `models` — même contrat cross-app que `reporting.
+    approbations`). Best-effort strict : toute app absente/erreur/argument
+    invalide renvoie ``False`` — un item ne se réveille JAMAIS à tort."""
+    if not trigger_event or since is None or company is None:
+        return False
+    prefix, _, raw_id = trigger_event.partition(':')
+    try:
+        target_id = int(raw_id)
+    except (TypeError, ValueError):
+        return False
+    try:
+        if prefix == TRIGGER_CLIENT_REPLY:
+            from apps.crm import selectors as crm_selectors
+            lead = crm_selectors.get_company_lead(company, target_id)
+            if lead is None:
+                return False
+            for entry in crm_selectors.lead_chatter_envelope(lead):
+                created = entry.get('created_at')
+                if created and created > since:
+                    return True
+            return False
+        if prefix == TRIGGER_DEVIS_SIGNED:
+            from apps.ventes import selectors as ventes_selectors
+            devis = ventes_selectors.get_devis_by_pk(target_id)
+            if devis is None or devis.company_id != company.id:
+                return False
+            return bool(ventes_selectors.is_devis_accepte(devis))
+        if prefix == TRIGGER_STOCK_ARRIVE:
+            from apps.stock import selectors as stock_selectors
+            produit = stock_selectors.get_produit_scoped(company, target_id)
+            return bool(produit and produit.quantite_stock > 0)
+    except Exception:  # pragma: no cover - défensif, ne réveille jamais à tort
+        return False
+    return False
+
+
+def _notifier_reveil_activite(activity):
+    """VX210(a) — notification LÉGÈRE « ⏰ De retour » au propriétaire d'une
+    activité réveillée. Best-effort, jamais une exception remontée (même
+    convention que `notify_followers`)."""
+    if activity.assigned_to_id is None:
+        return
+    try:
+        from apps.notifications.models import EventType as ET
+        from apps.notifications.services import notify
+        link = None
+        if activity.content_type_id and activity.object_id:
+            label = f'{activity.content_type.app_label}.{activity.content_type.model}'
+            if label == 'crm.lead':
+                link = f'/crm/leads?lead={activity.object_id}'
+            elif label == 'crm.client':
+                link = '/crm'
+            elif label == 'installations.installation':
+                link = '/chantiers'
+            elif label == 'sav.ticket':
+                link = '/sav'
+        notify(
+            activity.assigned_to, ET.SNOOZE_REVEIL,
+            f'⏰ De retour : {activity.summary or "Activité"}',
+            link=link, company=activity.company)
+    except Exception:  # pragma: no cover - défensif
+        pass
+
+
+def snooze_activity(activity, snoozed_until, trigger_event=''):
+    """VX210 — pose (ou annule) le snooze d'une activité, avec son
+    déclencheur optionnel (VX210(c)). Raccourci utilisé par la vue ; horodate
+    `snoozed_at` à la pose (borne « depuis » de `_trigger_event_survenu`)."""
+    from django.utils import timezone
+    if snoozed_until:
+        activity.snoozed_until = snoozed_until
+        activity.snooze_trigger_event = trigger_event or ''
+        activity.snoozed_at = timezone.now()
+    else:
+        activity.snoozed_until = None
+        activity.snooze_trigger_event = ''
+        activity.snoozed_at = None
+    activity.save(update_fields=[
+        'snoozed_until', 'snooze_trigger_event', 'snoozed_at'])
+    return activity
+
+
+def reveiller_snoozes(company):
+    """VX210(a)/(c) — sweep : réveille chaque `Activity` de `company` dont
+    `snoozed_until` est échu OU dont `snooze_trigger_event` est DÉJÀ survenu
+    (le premier des deux gagne). Nettoie les deux champs (idempotent — un item
+    déjà réveillé ne peut plus re-matcher) et notifie légèrement son
+    propriétaire. Renvoie le nombre d'items réveillés."""
+    from django.utils import timezone
+
+    today = timezone.now().date()
+    qs = Activity.objects.filter(company=company).exclude(
+        snoozed_until__isnull=True, snooze_trigger_event='')
+    woken = 0
+    for act in qs.select_related('assigned_to', 'company', 'content_type'):
+        due = act.snoozed_until is not None and act.snoozed_until <= today
+        triggered = False
+        if not due and act.snooze_trigger_event:
+            triggered = _trigger_event_survenu(
+                act.snooze_trigger_event, act.company, act.snoozed_at)
+        if not (due or triggered):
+            continue
+        act.snoozed_until = None
+        act.snooze_trigger_event = ''
+        act.snoozed_at = None
+        act.save(update_fields=[
+            'snoozed_until', 'snooze_trigger_event', 'snoozed_at'])
+        _notifier_reveil_activite(act)
+        woken += 1
+    return woken

@@ -64,6 +64,24 @@ def escalade_state_pour(instance):
     return (label, state.derniere_action_le)
 
 
+def approbations_snoozees_actives(user, company):
+    """VX210(b) — ensemble de ``(source, str(object_id))`` actuellement
+    snoozés par ``user`` (``SnoozedItem.snoozed_until`` strictement dans le
+    futur — le jour même, l'item redevient visible, même sémantique que
+    ``records.Activity.snoozed_until`` VX85). Point d'entrée cross-app
+    LECTURE SEULE pour que « Ma file » (``apps.records.views.ma_file``)
+    masque ces items SANS jamais importer ``notifications.models`` — jamais
+    un import de son ``models`` ailleurs."""
+    if company is None:
+        return set()
+    from .models import SnoozedItem
+    today = datetime.date.today()
+    qs = SnoozedItem.objects.filter(
+        user=user, company=company, snoozed_until__gt=today,
+    ).values_list('source', 'object_id')
+    return {(src, str(oid)) for src, oid in qs}
+
+
 def est_hors_fenetre_silence(moment, company) -> bool:
     """Renvoie True si ``moment`` (datetime) tombe DANS la fenêtre de silence
     (nuit ou jour férié/non-ouvré) — c-à-d qu'un SMS/WhatsApp ne DOIT PAS

@@ -1001,3 +1001,28 @@ def sweep_approval_reminders(company, *, today=None):
         logger.warning('sweep_approval_reminders: compta échoué : %s', exc)
 
     return count
+
+
+# =============================================================================
+# VX210(b) — snooze GÉNÉRIQUE d'un item d'approbation (SnoozedItem).
+# Écriture EXCLUSIVEMENT via ces deux fonctions — jamais un import direct de
+# `SnoozedItem` par un appelant cross-app (ex. `apps.records.views`).
+# =============================================================================
+
+def snooze_approbation_item(company, user, source, object_id, snoozed_until):
+    """Snooze/upsert un item d'approbation hétérogène (5 sources de
+    ``reporting.approbations``) jusqu'à ``snoozed_until`` pour ``user``.
+    Idempotent (une ligne existante est mise à jour, pas dupliquée)."""
+    from .models import SnoozedItem
+    obj, _created = SnoozedItem.objects.update_or_create(
+        user=user, source=source, object_id=object_id,
+        defaults={'company': company, 'snoozed_until': snoozed_until})
+    return obj
+
+
+def unsnooze_approbation_item(user, source, object_id):
+    """Annule le snooze d'un item d'approbation (redevient visible dans « Ma
+    file » immédiatement). No-op silencieux si rien n'était snoozé."""
+    from .models import SnoozedItem
+    SnoozedItem.objects.filter(
+        user=user, source=source, object_id=object_id).delete()
