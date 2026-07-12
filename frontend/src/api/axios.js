@@ -8,6 +8,9 @@ import { originFrom } from './origin'
 // volontairement sans React : ils émettent un toast / un événement window.
 import { errorMessageFrom, toastError } from '../lib/toast'
 import { emitSessionExpired } from '../providers/session-bridge'
+// VX161 — refresh 401 partagé avec iaApi.js (une seule promesse en vol,
+// jamais un POST /token/refresh/ par requête en échec).
+import { refreshSession } from './refreshCoordinator'
 
 const ORIGIN = originFrom(import.meta.env.VITE_API_URL)
 
@@ -44,12 +47,10 @@ api.interceptors.response.use(
     ) {
       originalRequest._retry = true
       try {
-        // Le cookie refresh_token est envoye automatiquement par le navigateur
-        await axios.post(
-          `${ORIGIN}/api/django/auth/token/refresh/`,
-          {},
-          { withCredentials: true }
-        )
+        // Le cookie refresh_token est envoye automatiquement par le navigateur.
+        // VX161 — promesse de refresh PARTAGÉE (avec iaApi.js) : N 401
+        // simultanés n'émettent qu'UN SEUL POST refresh.
+        await refreshSession(ORIGIN)
         // Rejoue la requete originale — le nouveau cookie access_token est pris
         return api(originalRequest)
       } catch {
