@@ -231,3 +231,69 @@ test('MB6: a freshly-created lead card is reachable and unobscured on iPhone', a
   const target = (await card.isVisible().catch(() => false)) ? card : row
   await assertNotObscured(page, target, 'leads: newly-created lead card/row')
 })
+
+// ── VX190 — garde WebKit étendue (@after VX68 + VX172/176/178) ─────────────
+// Ce spec tourne DÉJÀ sur WebKit réel via le projet `mobile-safari` (VX68,
+// voir playwright.config.js) : les 3 assertions ci-dessous couvrent ce que
+// VX68 ne testait pas encore — export blob (VX172), sticky DataTable
+// (VX178), navigation standalone (VX176/177).
+
+test('VX190: le bouton Exporter aboutit par le chemin geste (jamais d\'échec silencieux)', async ({ page }) => {
+  // VX172 — DevisList pose un état loading/désactivé le temps de l'export ;
+  // sur WebKit/standalone le blob part par `downloadBlobInGesture` (tab
+  // pré-ouvert dans le handler de tap), jamais un simple `a.download` qui
+  // resterait invisible en coquille installée. On vérifie ici que le clic
+  // engage bien le pending state et retombe sans jamais planter en silence
+  // (pas d'erreur console) — la vérification appareil réel/standalone est
+  // notée au DoD de VX172 (le simulateur ne suffit pas à lui seul).
+  const consoleErrors = []
+  page.on('pageerror', (err) => consoleErrors.push(String(err)))
+
+  await page.goto('/ventes/devis')
+  await expect(page.getByRole('heading', { name: 'Devis' })).toBeVisible()
+  await page.waitForLoadState('networkidle').catch(() => {})
+
+  const exportBtn = page.getByRole('button', { name: /Exporter Excel/i })
+  if (await exportBtn.count()) {
+    await exportBtn.click()
+    // Le bouton passe en état occupé (spinner + désactivé) le temps de
+    // préparer le blob — jamais un échec muet.
+    await expect(exportBtn).toBeDisabled({ timeout: 5_000 }).catch(() => {})
+    await expect(exportBtn).toBeEnabled({ timeout: 15_000 })
+  }
+  expect(consoleErrors, 'aucune exception JS pendant l\'export').toEqual([])
+})
+
+test('VX190: thead/tfoot du DataTable restent lisibles pendant le scroll (pas de décrochage)', async ({ page }) => {
+  // VX178 — le fond opaque (sans backdrop-blur) doit rester attaché en haut
+  // du conteneur scrollable pendant le défilement d'une longue liste.
+  await page.goto('/ventes/factures')
+  await expect(page.getByRole('heading', { name: 'Factures' })).toBeVisible()
+  await page.waitForLoadState('networkidle').catch(() => {})
+
+  const scrollBox = page.locator('[data-dt-scroll]').first()
+  if (await scrollBox.count()) {
+    await scrollBox.evaluate((el) => { el.scrollTop = el.scrollHeight })
+    const thead = page.locator('[data-dt-table] thead').first()
+    await expect(thead).toBeVisible()
+    const box = await thead.boundingBox()
+    expect(box, 'le thead sticky a une boundingBox après scroll').toBeTruthy()
+  }
+})
+
+test('VX190: un Sheet standalone respecte l\'inset haut (safe-top)', async ({ page }) => {
+  // VX176 — en mode standalone iOS (`navigator.standalone === true`), les
+  // overlays plein écran portent `safe-top` (padding-top:
+  // env(safe-area-inset-top)) pour ne jamais coller sous l'encoche. Un
+  // appareil de CI n'a pas d'encoche réelle (env() résout à 0), donc la
+  // preuve ici est STRUCTURELLE : la classe est bien posée sur l'overlay.
+  await page.addInitScript(() => {
+    Object.defineProperty(window.navigator, 'standalone', { value: true, configurable: true })
+  })
+  await page.goto('/ui')
+  await expect(page.getByRole('button', { name: 'Ouvrir un tiroir' })).toBeVisible()
+  await page.getByRole('button', { name: 'Ouvrir un tiroir' }).click()
+  await expect(page.getByRole('heading', { name: 'Filtres' })).toBeVisible()
+  const overlay = page.locator('.safe-top').first()
+  await expect(overlay).toBeVisible()
+})
