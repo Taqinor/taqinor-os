@@ -32,6 +32,7 @@ import {
   toast,
 } from '../../ui'
 import { formatMAD, toNumber, normalizeMaPhone, formatDateTime } from '../../lib/format'
+import { errorMessageFrom } from '../../lib/toast'
 import { useSavedViews } from '../../hooks/useSavedViews'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
 import useDocumentTitle from '../../hooks/useDocumentTitle'
@@ -921,7 +922,9 @@ export default function FactureList() {
     try {
       await dispatch(thunk(id)).unwrap()
     } catch (err) {
-      alert(err?.detail ?? JSON.stringify(err))
+      // VX63 — plus de JSON brut à l'écran : message FR lisible extrait du
+      // payload d'erreur (le sweep alert→toast reste la propriété de VX19).
+      alert(errorMessageFrom({ response: { data: err } }, 'Action impossible.'))
     } finally {
       setActionId(null)
     }

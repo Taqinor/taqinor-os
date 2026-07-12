@@ -1836,12 +1836,16 @@ export default function DevisList() {
     // (relance le même thunk que le montage initial), là où l'ancien
     // EmptyState d'erreur n'offrait aucun moyen de réessayer sans recharger
     // la page entière.
+    // VX63 — plus de JSON brut à l'écran : le payload d'erreur (chaîne OU objet
+    // DRF `{detail}`/`{champ:[...]}`) est traduit en message FR lisible via
+    // `frenchError`, au lieu d'un « Erreur de chargement. » générique qui
+    // masquait la vraie cause.
     return (
       <div className="page">
         {pageHeader}
         <StateBlock
           className="mt-4"
-          error={typeof error === 'string' ? error : 'Erreur de chargement.'}
+          error={frenchError(error, 'Erreur de chargement.')}
           onRetry={() => dispatch(fetchDevis())}
         />
       </div>
