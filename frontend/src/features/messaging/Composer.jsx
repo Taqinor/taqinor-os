@@ -13,6 +13,7 @@ import { toastError } from '../../lib/toast'
 import {
   sendMessage, editMessage, deleteMessage, selectActiveId,
 } from './store/messagingSlice'
+import { useActiveDescendant } from '../../hooks/useActiveDescendant'
 import MentionAutocomplete from './MentionAutocomplete'
 import { activeMention, insertMention, filterMembers, extractMentions } from './mentions'
 import { applyShortcut } from './richText'
@@ -50,6 +51,11 @@ export default function Composer({
   const [slashConfirming, setSlashConfirming] = useState(false)
   const [slashError, setSlashError] = useState('')
   const taRef = useRef(null)
+  // VX191 — `aria-activedescendant` : les popups @mention/slash annonçaient
+  // déjà l'item survolé visuellement (`.active`), rien au lecteur d'écran.
+  // Un seul des deux popups est ouvert à la fois (mention/slash exclusifs).
+  const mentionA11y = useActiveDescendant(mention?.index ?? -1)
+  const slashA11y = useActiveDescendant(slash?.index ?? -1)
 
   // Bascule en mode édition : préremplit le texte.
   useEffect(() => {
@@ -382,6 +388,11 @@ export default function Composer({
             disabled={!!slashProposal}
             placeholder="Écrire un message…  (@ pour mentionner, / pour une commande)"
             aria-label="Message"
+            role={mention || slash ? 'combobox' : undefined}
+            aria-expanded={mention || slash ? true : undefined}
+            aria-autocomplete={mention || slash ? 'list' : undefined}
+            aria-controls={mention ? mentionA11y.listId : slash ? slashA11y.listId : undefined}
+            aria-activedescendant={mention ? mentionA11y.activeId : slash ? slashA11y.activeId : undefined}
           />
           {mention && (
             <MentionAutocomplete
@@ -389,6 +400,8 @@ export default function Composer({
               activeIndex={mention.index}
               onPick={pickMention}
               onClose={() => setMention(null)}
+              listId={mentionA11y.listId}
+              getOptionId={mentionA11y.getOptionId}
             />
           )}
           {slash && (
@@ -397,6 +410,8 @@ export default function Composer({
               activeIndex={slash.index}
               onPick={pickSlash}
               onClose={() => setSlash(null)}
+              listId={slashA11y.listId}
+              getOptionId={slashA11y.getOptionId}
             />
           )}
         </div>
