@@ -2074,7 +2074,7 @@ détail en tête de document — voir **VX120**. Ne pas la reconstruire ici.*
   `frontend-lint` ; le kiosque redemande le jeton après inactivité ; le presse-papier est vidé au
   délai (mock). (T2 — M, sonnet) (@lane: backend/auth)
 
-- [ ] VX202 — **[BACKEND nginx] Pages publiques tokenisées : `noindex` + throttle client + (@lane: backend/auth)
+- [x] VX202 **(already present)** — **[BACKEND nginx] Pages publiques tokenisées : `noindex` + throttle client + (@lane: backend/auth)
   rate-limit des préfixes publics.** 10 routes `:token` publiques sans auth
   (`router/index.jsx:216-235` : `/rdv`, `/portail-contrats`, `/ged/signature|signataire|depot`,
   `/e`, `/suivi`, `/kb/public`…). Aucune page ne pose `<meta name="robots" content="noindex">` ;
