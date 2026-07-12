@@ -3,7 +3,7 @@ import { useDispatch } from 'react-redux'
 import { createClient, updateClient } from '../../features/crm/store/crmSlice'
 import {
   Form, FormSection, FormField, FormErrorSummary,
-  Input, Textarea, Segmented, Button, Switch, useDirtyGuard,
+  Input, Textarea, Segmented, Button, Switch, useDirtyGuard, confirmLeaveIfDirty,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 import { Combobox } from '../../ui/Combobox'
@@ -272,7 +272,7 @@ export default function ClientForm({ client = null, onClose }) {
   return (
     <ResponsiveDialog
       open
-      onOpenChange={(o) => { if (!o) onClose() }}
+      onOpenChange={(o) => { if (!o && confirmLeaveIfDirty(dirty)) onClose() }}
       title={isEdit ? 'Éditer le client' : 'Nouveau client'}
       className="sm:max-w-lg"
     >

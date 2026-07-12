@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-  Button, Input, Label, toast,
+  Button, Input, Label, toast, confirmLeaveIfDirty,
 } from '../../../ui'
+import { isDirty } from '../../../ui/form-utils'
 
 /* ============================================================================
    Boîte de dialogue CRUD générique du module Comptabilité.
@@ -25,16 +26,23 @@ export default function CrudDialog({
 }) {
   const [values, setValues] = useState({})
   const [saving, setSaving] = useState(false)
+  // VX166 — snapshot pris à l'ouverture, pour détecter une saisie perdue à la
+  // fermeture (Escape / clic-overlay / bouton Annuler).
+  const initialSnapshotRef = useRef({})
 
   // Réinitialise le formulaire à l'ouverture / au changement d'enregistrement.
   useEffect(() => {
     if (!open) return
     const base = {}
     for (const f of fields) base[f.name] = initial?.[f.name] ?? ''
+    initialSnapshotRef.current = base
     // eslint-disable-next-line react-hooks/set-state-in-effect -- reset à l'ouverture
     setValues(base)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initial])
+
+  const dirty = isDirty(initialSnapshotRef.current, values)
+  const closeIfConfirmed = () => { if (confirmLeaveIfDirty(dirty)) onClose?.() }
 
   const set = (name, v) => setValues((prev) => ({ ...prev, [name]: v }))
 
@@ -64,7 +72,7 @@ export default function CrudDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose?.() }}>
+    <Dialog open={open} onOpenChange={(o) => { if (!o) closeIfConfirmed() }}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
@@ -97,7 +105,7 @@ export default function CrudDialog({
             </div>
           ))}
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
+            <Button type="button" variant="outline" onClick={closeIfConfirmed}>Annuler</Button>
             <Button type="submit" disabled={saving}>
               {saving ? 'Enregistrement…' : 'Enregistrer'}
             </Button>

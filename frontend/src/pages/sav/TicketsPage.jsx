@@ -59,7 +59,7 @@ import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
   AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
-  Form, FormSection, FormField, FormActions, useDirtyGuard,
+  Form, FormSection, FormField, FormActions, useDirtyGuard, confirmLeaveIfDirty,
   DataTable,
   toast,
 } from '../../ui'
@@ -1043,7 +1043,7 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
 
   // ── Mobile/tablette (<1280px) : tiroir Sheet plein-tiroir (fallback inchangé). ──
   return (
-    <Sheet open onOpenChange={(o) => { if (!o) onClose() }}>
+    <Sheet open onOpenChange={(o) => { if (!o && confirmLeaveIfDirty(dirty)) onClose() }}>
       <SheetContent side="right" className="w-[min(46rem,calc(100%-1.5rem))] sm:max-w-3xl">
         <SheetHeader>
           <SheetTitle className="flex flex-wrap items-center gap-2">

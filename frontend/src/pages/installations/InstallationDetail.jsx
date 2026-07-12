@@ -51,7 +51,7 @@ import {
   Card, CardHeader, CardTitle, CardContent,
   Button, Input, Textarea, Checkbox, Label, StatusPill,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
-  FormField, FormActions, useDirtyGuard,
+  FormField, FormActions, useDirtyGuard, confirmLeaveIfDirty,
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
   AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
   Spinner, EmptyState,
@@ -740,7 +740,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
     : 'Disponible une fois le chantier installé et la checklist quasi-complète.'
 
   return (
-    <Sheet open onOpenChange={(o) => { if (!o) onClose?.() }}>
+    <Sheet open onOpenChange={(o) => { if (!o && confirmLeaveIfDirty(dirty)) onClose?.() }}>
       <SheetContent side="right" className="w-[min(64rem,calc(100%-1.5rem))] sm:max-w-none">
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">

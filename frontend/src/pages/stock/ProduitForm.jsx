@@ -15,7 +15,7 @@ import { formatMAD, formatPercent } from '../../lib/format'
 import {
   Button, Badge, Switch,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
-  Form, FormSection, FormField, useDirtyGuard,
+  Form, FormSection, FormField, useDirtyGuard, confirmLeaveIfDirty,
   Input, Textarea,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   toast,
@@ -456,7 +456,7 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
   const margeNegative = venteN > 0 && achatN > 0 && venteN < achatN
 
   return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+    <Dialog open onOpenChange={(o) => { if (!o && confirmLeaveIfDirty(dirty)) onClose() }}>
       <DialogContent className="max-h-[92vh] max-w-3xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{isEdit ? `Éditer — ${produit.nom}` : 'Nouveau produit'}</DialogTitle>

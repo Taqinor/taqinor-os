@@ -14,7 +14,7 @@ import ventesApi from '../../api/ventesApi'
 import {
   Button, IconButton,
   Dialog, DialogContent, DialogHeader, DialogTitle,
-  Form, FormField, FormActions, useDirtyGuard,
+  Form, FormField, FormActions, useDirtyGuard, confirmLeaveIfDirty,
   Input, Textarea, Label,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
@@ -287,7 +287,7 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
   }
 
   return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+    <Dialog open onOpenChange={(o) => { if (!o && confirmLeaveIfDirty(dirty)) onClose() }}>
       <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{isEdit ? `Éditer — ${facture.reference}` : 'Nouvelle facture'}</DialogTitle>
