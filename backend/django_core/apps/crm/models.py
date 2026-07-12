@@ -1755,3 +1755,255 @@ class BookingLink(models.Model):
     @property
     def is_used(self):
         return self.used_at is not None
+
+
+# ── FG234–237 — Partenaires & territoires commerciaux (ODX13, rapatriés de
+# compta : leur foyer Odoo naturel CRM/resellers) ──────────────────────────
+# ``db_table`` figé sur le nom historique (``compta_<model>``) — SORTIE
+# state-only de compta (migration ``crm.0059_odx13_partenaires_split`` +
+# ``compta.0109_odx13_partenaires_split``), aucune donnée déplacée. Les
+# anciennes routes ``/api/django/compta/…`` restent servies à l'identique
+# (les ViewSets/serializers restent physiquement dans ``apps.compta`` — voir
+# ``apps/crm/views.py``/``apps/crm/serializers.py`` pour le ré-export
+# transitoire des nouvelles routes ``/api/django/crm/…``).
+
+class Partenaire(models.Model):
+    """Partenaire commercial : apporteur d'affaires ou sous-revendeur (FG234).
+
+    Fiche minimale ici (compte + accès tokenisé + taux de commission). FG237
+    enrichit la fiche (statut d'agrément, zone, onboarding). Un partenaire
+    soumet des leads via le portail (``SoumissionLeadPartenaire``) et suit leur
+    statut. Scopé société ; le token d'accès est posé côté serveur.
+    """
+    class Type(models.TextChoices):
+        APPORTEUR = 'apporteur', "Apporteur d'affaires"
+        SOUS_REVENDEUR = 'sous_revendeur', 'Sous-revendeur'
+        INSTALLATEUR = 'installateur', 'Installateur'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='partenaires',
+        verbose_name='Société',
+    )
+    nom = models.CharField(max_length=200, verbose_name='Nom / raison sociale')
+    type_partenaire = models.CharField(
+        max_length=16, choices=Type.choices, default=Type.APPORTEUR,
+        verbose_name='Type de partenaire')
+    email = models.EmailField(blank=True, default='', verbose_name='Email')
+    telephone = models.CharField(
+        max_length=30, blank=True, default='', verbose_name='Téléphone')
+    taux_commission = models.DecimalField(
+        max_digits=5, decimal_places=2, default=0,
+        verbose_name='Taux de commission (%)')
+    token_acces = models.CharField(
+        max_length=64, unique=True, db_index=True,
+        verbose_name="Token d'accès")
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    # FG237 — Annuaire & onboarding installateurs partenaires.
+    statut_onboarding = models.CharField(
+        max_length=12,
+        choices=[
+            ('prospect', 'Prospect'),
+            ('en_cours', "En cours d'agrément"),
+            ('agree', 'Agréé (activé)'),
+            ('suspendu', 'Suspendu'),
+        ],
+        default='prospect',
+        verbose_name="Statut d'onboarding")
+    numero_agrement = models.CharField(
+        max_length=60, blank=True, default='',
+        verbose_name="Numéro d'agrément")
+    zone = models.CharField(
+        max_length=120, blank=True, default='',
+        verbose_name='Zone géographique')
+    date_activation = models.DateField(
+        null=True, blank=True, verbose_name="Date d'activation")
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    # ── ARC19 — Pont additif vers le répertoire unifié Tiers ──
+    # FK nullable (string-FK ``'tiers.Tiers'`` — jamais d'import de
+    # apps.tiers.models ici). L'identité reste MAÎTRE côté Partenaire ; ``tiers``
+    # n'en est qu'un MIROIR one-way réversible, posé par le hook de sauvegarde
+    # (apps/compta/tiers_bridge.py, sender re-pointé sur ``crm.Partenaire`` par
+    # ODX13) et backfillé par ``backfill_tiers`` (source re-pointée pareil).
+    tiers = models.ForeignKey(
+        'tiers.Tiers',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='partenaires',
+        verbose_name='Tiers (répertoire unifié)',
+        help_text="Fiche du répertoire unifié des parties prenantes reflétant "
+                  "ce partenaire. Renseignée automatiquement (miroir).")
+
+    class Meta:
+        verbose_name = 'Partenaire commercial'
+        verbose_name_plural = 'Partenaires commerciaux'
+        db_table = 'compta_partenaire'
+        ordering = ['nom']
+
+    def __str__(self):
+        return f'{self.nom} ({self.get_type_partenaire_display()})'
+
+
+class SoumissionLeadPartenaire(models.Model):
+    """Lead soumis par un partenaire via le portail (FG234).
+
+    Le partenaire renseigne les coordonnées d'un prospect ; on enregistre la
+    soumission scopée société. Après qualification, le lead réel est créé dans
+    ``crm`` (via son service, jamais importé ici) et référencé par ``lead_id``.
+    Le partenaire suit le statut de sa soumission.
+    """
+    class Statut(models.TextChoices):
+        SOUMIS = 'soumis', 'Soumis'
+        QUALIFIE = 'qualifie', 'Qualifié'
+        CONVERTI = 'converti', 'Converti'
+        REJETE = 'rejete', 'Rejeté'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='soumissions_lead_partenaire',
+        verbose_name='Société',
+    )
+    partenaire = models.ForeignKey(
+        Partenaire,
+        on_delete=models.CASCADE,
+        related_name='soumissions',
+        verbose_name='Partenaire',
+    )
+    nom_prospect = models.CharField(
+        max_length=200, verbose_name='Nom du prospect')
+    telephone_prospect = models.CharField(
+        max_length=30, blank=True, default='',
+        verbose_name='Téléphone du prospect')
+    email_prospect = models.EmailField(
+        blank=True, default='', verbose_name='Email du prospect')
+    ville = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Ville')
+    note = models.TextField(blank=True, default='', verbose_name='Note')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.SOUMIS,
+        verbose_name='Statut')
+    lead_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Id du lead créé')
+    date_soumission = models.DateTimeField(
+        auto_now_add=True, verbose_name='Soumis le')
+
+    class Meta:
+        verbose_name = 'Soumission de lead (partenaire)'
+        verbose_name_plural = 'Soumissions de lead (partenaire)'
+        db_table = 'compta_soumissionleadpartenaire'
+        ordering = ['-date_soumission']
+
+    def __str__(self):
+        return f'{self.nom_prospect} — {self.partenaire.nom}'
+
+
+# ── FG235 — Suivi des commissions partenaires ──────────────────────────────
+
+class CommissionPartenaire(models.Model):
+    """Commission due à un partenaire sur un devis signé/lead converti (FG235).
+
+    Calculée sur une base HT × taux (%). Le devis est référencé par id
+    (cross-app — jamais d'import ventes). Statut de règlement (due → payée). Le
+    relevé par partenaire s'obtient en agrégeant ces lignes (action ``releve``).
+    Scopée société.
+    """
+    class Statut(models.TextChoices):
+        DUE = 'due', 'Due'
+        PAYEE = 'payee', 'Payée'
+        ANNULEE = 'annulee', 'Annulée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='commissions_partenaire',
+        verbose_name='Société',
+    )
+    partenaire = models.ForeignKey(
+        Partenaire,
+        on_delete=models.CASCADE,
+        related_name='commissions',
+        verbose_name='Partenaire',
+    )
+    devis_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Id du devis signé')
+    lead_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Id du lead')
+    base_ht = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0,
+        verbose_name='Base HT (MAD)')
+    taux = models.DecimalField(
+        max_digits=5, decimal_places=2, default=0,
+        verbose_name='Taux de commission (%)')
+    montant = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0,
+        verbose_name='Montant de commission (MAD)')
+    statut = models.CharField(
+        max_length=8, choices=Statut.choices, default=Statut.DUE,
+        verbose_name='Statut')
+    paye_le = models.DateField(
+        null=True, blank=True, verbose_name='Payée le')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+
+    class Meta:
+        verbose_name = 'Commission partenaire'
+        verbose_name_plural = 'Commissions partenaire'
+        db_table = 'compta_commissionpartenaire'
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return f'Commission {self.montant} — {self.partenaire.nom}'
+
+
+# ── FG236 — Gestion des territoires / zones commerciales ───────────────────
+
+class TerritoireCommercial(models.Model):
+    """Zone commerciale : découpage géographique + affectation auto (FG236).
+
+    Un territoire regroupe des villes/régions (liste de mots-clés en minuscules)
+    et un commercial responsable (par id — ``owner_user_id``, jamais un import
+    hors foundation). Le service ``affecter_territoire`` associe un lead à la
+    zone qui matche sa ville, en respectant la priorité (plus haute d'abord).
+    Scopé société.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='territoires_commerciaux',
+        verbose_name='Société',
+    )
+    nom = models.CharField(max_length=120, verbose_name='Nom du territoire')
+    villes = models.JSONField(
+        default=list, blank=True,
+        verbose_name='Villes / régions (liste)')
+    owner_user_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Commercial responsable (id)')
+    priorite = models.IntegerField(
+        default=0, verbose_name='Priorité (haute = prioritaire)')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Territoire commercial'
+        verbose_name_plural = 'Territoires commerciaux'
+        db_table = 'compta_territoirecommercial'
+        ordering = ['-priorite', 'nom']
+
+    def __str__(self):
+        return self.nom
+
+    def matche_ville(self, ville):
+        """True si ``ville`` correspond à l'une des villes/régions du zonage."""
+        if not ville:
+            return False
+        cible = str(ville).strip().lower()
+        for v in (self.villes or []):
+            mot = str(v).strip().lower()
+            if mot and (mot == cible or mot in cible or cible in mot):
+                return True
+        return False

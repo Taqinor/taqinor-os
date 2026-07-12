@@ -1,4 +1,4 @@
-"""ARC19 — Miroir one-way ``compta.Partenaire`` → répertoire unifié
+"""ARC19 — Miroir one-way ``crm.Partenaire`` → répertoire unifié
 ``tiers.Tiers``.
 
 À la sauvegarde d'un Partenaire (apporteur / sous-revendeur / installateur),
@@ -6,20 +6,23 @@ on rattache (dédup email company-scopée) ou crée son ``Tiers`` miroir et on
 pose le drapeau ``is_partenaire``. L'identité reste MAÎTRE côté Partenaire ;
 ``tiers`` n'en est qu'un reflet réversible.
 
-ODX13-COMPATIBLE : le pont utilise un string-FK vers ``tiers`` (couche
-fondation) et un signal câblé sur ``compta.Partenaire`` — le futur déplacement
-du modèle vers ``crm`` par ``SeparateDatabaseAndState`` (non anticipé
-autrement) laisse ce pont intact.
+ODX13 — le modèle ``Partenaire`` a été rapatrié de ``compta`` vers ``crm``
+(``SeparateDatabaseAndState``, aucune donnée déplacée). Le string-FK vers
+``tiers`` (couche fondation) survit tel quel au move ; le sender du signal
+ci-dessous est re-pointé sur ``crm.Partenaire`` (l'app_label suit désormais
+la classe, physiquement dans ``apps.crm.models``) pour que le pont continue
+de se déclencher.
 
-Découplage : ce module vit dans ``apps.compta`` et n'appelle
-``apps.tiers.services`` que par un import FONCTION-LOCAL. Best-effort : un
-échec du miroir ne fait JAMAIS échouer la sauvegarde du Partenaire.
+Découplage : ce module reste dans ``apps.compta`` (câblé par
+``ComptaConfig.ready()``) et n'appelle ``apps.tiers.services`` que par un
+import FONCTION-LOCAL. Best-effort : un échec du miroir ne fait JAMAIS
+échouer la sauvegarde du Partenaire.
 """
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 
 
-@receiver(post_save, sender='compta.Partenaire',
+@receiver(post_save, sender='crm.Partenaire',
           dispatch_uid='compta_partenaire_mirror_tiers')
 def mirror_partenaire_to_tiers(sender, instance, **kwargs):
     partenaire = instance

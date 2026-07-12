@@ -890,6 +890,28 @@ class ProduitViewSet(CompanyScopedModelViewSet):
                 'route': '/sav/equipements',
             })
 
+        if prefix == labels.COLIS_PREFIX:
+            # ZSTK5 — résolution LECTURE SEULE vers un colis de préparation
+            # (FG322), scopé société. Import paresseux, aucune écriture.
+            from apps.installations.selectors import colis_scoped
+            colis = colis_scoped(request.user.company, obj_id)
+            if colis is None:
+                return Response(
+                    {'detail': 'Colis introuvable.'},
+                    status=status.HTTP_404_NOT_FOUND)
+            inst = colis.installation
+            client_nom = (getattr(inst.client, 'nom', '')
+                          if inst and inst.client_id else '')
+            return Response({
+                'type': 'colis',
+                'id': colis.id,
+                'label': colis.reference,
+                'chantier': inst.reference if inst else '',
+                'client': client_nom,
+                'statut': colis.statut,
+                'route': '/stock',
+            })
+
         return Response(
             {'detail': 'Type de code inconnu.'},
             status=status.HTTP_400_BAD_REQUEST)

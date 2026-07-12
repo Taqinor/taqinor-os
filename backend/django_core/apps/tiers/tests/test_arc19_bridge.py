@@ -85,7 +85,9 @@ class Arc19BackfillTests(TestCase):
         _dossier(self.company, matricule='M-BF', email='bf-emp@example.ma')
         call_command('backfill_tiers', stdout=out)
         text = out.getvalue()
-        self.assertIn('compta.Partenaire', text)
+        # ODX13 a rapatrié Partenaire de compta vers crm (state-only, même
+        # modèle historique) — le rapport de backfill suit le nouveau label.
+        self.assertIn('crm.Partenaire', text)
         self.assertIn('rh.DossierEmploye', text)
 
     def test_backfill_dossier_company_scoped(self):
