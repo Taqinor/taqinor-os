@@ -5,6 +5,8 @@ import { RouterProvider } from 'react-router-dom'
 import { store } from './store'
 import router from './router'
 import PwaPrompts from './features/pwa/PwaPrompts'
+// VX156 — moment d'accueil de marque, one-shot à la première connexion.
+import WelcomeMoment from './components/WelcomeMoment'
 import { ThemeProvider } from './design/ThemeProvider'
 import { initTheme } from './design/theme'
 // Providers UX globaux (lane BEHAVIORS). Toaster + ConfirmProvider +
@@ -35,6 +37,7 @@ createRoot(document.getElementById('root')).render(
           </ConfirmProvider>
           <Toaster />
           <PwaPrompts />
+          <WelcomeMoment />
         </ThemeProvider>
       </I18nProvider>
     </Provider>
