@@ -72,6 +72,10 @@ the journey the best in the world for the CLIENT and the COMMERCIAL user.*
 *From Reda: (1) when the client opens the returned quote he must see HIS OWN HOME in interactive 3D with the panels (zoom/rotate) — the web viewer is WEB_PLAN WJ25–WJ28, this QJ26 is the backend unlock; (2) when the client asks to be contacted, the lead's HANDLER and the handler's SUPERIOR must both be notified; (3) a « contacter mon supérieur » button on quote generation notifies the creator's superior; (4) support multi-villa quotes — multiply one villa ×N (identical) OR add different villas one by one, all in ONE quote document. Research confirmed the pieces exist: `CustomUser.supervisor` self-FK (added 2026-06-18), `Lead.owner` (handler), `Devis.created_by` (creator), the `notify()` service + extensible EventType (QJ2), and the `roof_layout` JSON already stored on the Devis — the public proposal payload just doesn't expose it, and no server-side contact-request endpoint exists yet.*
 
 
+#### DONE LOG — Lane frontend/ios (VXD-C iOS/perf/a11y forensique) (2026-07-12)
+
+21 tâches VXD-C (VX172-198/225-226) draînées en une lane worktree isolée. **Déjà présentes** (vérifiées contre la source réelle, wave-3) : VX172 (export blob geste iOS), VX173 (VoiceRecorder mimeType négocié), VX174 (sanitize + DatePicker bornée), VX175 (touch-action/scroll-x-touch/dvh/ellipsis sidebar), VX176 (safe-top Sheet/Dialog/AlertDialog), VX177 (ExternalLink), VX179 (SW StaleWhileRevalidate), VX181 (ThemeToggle hidden md:flex + menu utilisateur), VX185 (imports directs Header + check_bundle_budget étendu), VX186 (LeadsPage/CartePage/ParcInstallePage MapView lazy), VX187 (useDeferredValue + memo LeadCard/ListRow), VX189 (chunk icons + Sidebar useMemo + content-visibility + devPerfWarn), VX194 (--primary-text + IconButton 24×24 + contrast.test), VX197 (RouteFocus monté dans Layout), VX226 (priorité + refresh MaJourneePage). **Construites cette lane** : VX178 (backdrop-blur retiré du thead/tfoot sticky DataTable + BulkActionBar, fond `bg-muted`/`bg-popover` opaque) ; VX180 (variante Tailwind dédiée `dt-desktop:` = 768px réservée au DataTable, `DataTable.test.jsx` corrigé + nouveau `e2e/datatable-breakpoint.spec.js` à 700/1024px réels) ; VX190 (3 assertions WebKit ajoutées à `mobile.spec.js`, déjà couvert par le projet `mobile-safari` de VX68 : export geste, thead/tfoot lisibles au scroll, Sheet standalone `safe-top`) ; VX191 (hook `hooks/useActiveDescendant.js` + adoption dans `ProduitPicker`/`BcfProduitPicker`/`GlobalSearch`/`MentionAutocomplete`+`SlashCommandPicker` via `Composer` — `ToitureDesign`/`ShareRecord` restent hors scope de cette passe : DOM impératif non-React pour le premier, aucune nav clavier existante à batir pour le second) ; VX225 (`InterventionsPage` `DetailSheet.setStatut` lit enfin `err.response.data.statut` et rend la liste inline sous le Select, patron `ChantierGateTimeline`). **BLOQUÉE** : VX198 (garde ESLint jsx-a11y) — nécessite le nouveau dev-dep `eslint-plugin-jsx-a11y`, impossible à `npm install` dans ce worktree sans `node_modules` ; la tâche se marque elle-même `[GATED si dev-dep à ajouter]`.
+
 #### DONE LOG — Vague 2 (VX terrain/finance/CRM + QX groupe) (2026-07-12)
 
 Vague 2 du plan-run (23 tâches VX + tagging de tous les plans, un seul merge). Lanes drainées en parallèle : **finance/terrain** VX44 (photos chantier en rafale + partage WhatsApp), VX88 (Ma journée → tournée géo), VX94 (Enter-pour-ajouter capture), VX105 (statut technicien + persistance + toasts hors-ligne), VX106 (signature client terrain), VX107 (résumé client lecture seule), VX52 (avertissements conformité tactiles), VX63 (erreurs FR lisibles DevisList/FactureList), VX114 (déjà présent, export daté), VX116 (relance groupée + aperçu WhatsApp). **ventes** VX222 (relancer devis), VX230 (encaisser depuis Relances), VX231 (navigation finance vers la cible). **UI/data** VX41 (data-viz marque + comparaison période), VX33 (Pilotage stock tour de contrôle), VX66 (anti-double-soumission Button), VX26 (couleurs stage dérivées tokens), VX81 (exports XLSX/CSV horodatés), VX61 (Web Vitals réels + endpoint reporting), VX110 (copier TSV), VX246 (queue interop iOS), VX19 (zéro popup navigateur, +réparation FactureList post-refactor VX230). Backend DoD à suivre : VX105 (`ajouter-reserve` gated admin), VX106 (signature dans `intervention_pdf.py`). GATED (non buildé) : QXG1/QXG2/QXG4 (compte/contenu fondateur). Tagging : les 10 fichiers de plan (PLAN/PLAN2/new_tasks + 7 domaines) reçoivent un tag `@lane:`/`Files:` visible par le planner sur la 1ʳᵉ ligne (append-only vérifié).
@@ -1619,7 +1623,7 @@ pas la dupliquer ici, la numérotation continue directement à SEED-02.*
 
 **Sous-groupe VXD-C — iOS Safari / WebKit / PWA (la longue traîne au-delà de VX48-53/68)**
 
-- [ ] VX172 — **Exports blob (xlsx/csv/json/png) fiables sur iOS/standalone : routage par geste + (@lane: frontend/ios)
+- [x] VX172 — (déjà présent) **Exports blob (xlsx/csv/json/png) fiables sur iOS/standalone : routage par geste + (@lane: frontend/ios)
   pending visible + repli PDF réparé. @after VX48/49 — RE-SCOPÉ par le grand-verdict.**
   `downloadBlob.js:2-11` et ~20 call-sites posent `a.download` sur un `blob:` (`ClientList.jsx:138`,
   `LeadsPage.jsx:124/219`, `StockList.jsx:191/669/771`, `ClientRgpdActions.jsx:35`,
@@ -1642,7 +1646,7 @@ pas la dupliquer ici, la numérotation continue directement à SEED-02.*
   RÉEL/standalone notée au DoD (le simulateur ne suffit pas) ; e2e WebKit (VX189) : « Exporter »
   aboutit. (T2 — M, sonnet) (@lane: frontend/ios)
 
-- [ ] VX173 — **`VoiceRecorder` : mimeType négocié (fin du blob mp4 étiqueté « webm »).** (@lane: frontend/ios)
+- [x] VX173 — (déjà présent) **`VoiceRecorder` : mimeType négocié (fin du blob mp4 étiqueté « webm »).** (@lane: frontend/ios)
   `VoiceRecorder.jsx:64` : `new MediaRecorder(stream)` sans mimeType, `:70` étiquette
   `rec.mimeType || 'audio/webm'` — WebKit ne supporte pas webm et produit `audio/mp4` ⇒ message
   vocal mal typé, lecture/serveur KO sur iPhone. Le voisin
@@ -1652,7 +1656,7 @@ pas la dupliquer ici, la numérotation continue directement à SEED-02.*
   `features/ia/voice/useVoiceChat.js`. DoD : mock MediaRecorder mp4-only → blob `audio/mp4`,
   jamais « webm » en dur ; un vocal WebKit se relit. (T2 — S, sonnet) (@lane: frontend/ios)
 
-- [ ] VX174 — **Politique de saisie iOS sur les primitives (`sanitize`) + `DatePicker` là où (@lane: frontend/ios)
+- [x] VX174 — (déjà présent) **Politique de saisie iOS sur les primitives (`sanitize`) + `DatePicker` là où (@lane: frontend/ios)
   `min`/`max` porte une règle métier.** `ui/Input.jsx`/`Textarea.jsx` : ZÉRO défaut
   `autoCapitalize`/`autoCorrect` (29 fichiers overrident au coup par coup) — références
   `DEV-202607-…`, emails, ICE/IF, SKU, plaques auto-capitalisés/corrigés au clavier iPhone. Et 93
@@ -1667,7 +1671,7 @@ pas la dupliquer ici, la numérotation continue directement à SEED-02.*
   off ; WebKit : impossible de choisir une date < `min` sur un champ borné. (T2 — M, sonnet)
   (@lane: frontend/ios)
 
-- [ ] VX175 — **Plancher CSS tactile/viewport : `touch-action` global, momentum horizontal, (@lane: frontend/ios)
+- [x] VX175 — (déjà présent) **Plancher CSS tactile/viewport : `touch-action` global, momentum horizontal, (@lane: frontend/ios)
   `.modal` dvh, ellipse sidebar.** Quatre oublis mécaniques prouvés : (a) `touch-action:
   manipulation` n'existe que sur `.kb-drag-wrap` (`index.css:4180`) — double-tap-zoom parasite +
   délai 300 ms partout ailleurs : l'étendre au sélecteur global du tap-highlight
@@ -1683,7 +1687,7 @@ pas la dupliquer ici, la numérotation continue directement à SEED-02.*
   double-tap sans zoom ; `modal-viewport.test` étendu à `dvh` ; libellé tronqué → `…` + `title`
   présent en état déplié. (T2 — S, haiku/sonnet) (@lane: frontend/ios)
 
-- [ ] VX176 — **Safe-area complète : overlays plein écran + barres fixes (encoche/Dynamic Island (@lane: frontend/ios)
+- [x] VX176 — (déjà présent) **Safe-area complète : overlays plein écran + barres fixes (encoche/Dynamic Island (@lane: frontend/ios)
   en PWA standalone).** `black-translucent` (`index.html`) fait passer le contenu SOUS la barre
   d'état ; le header réserve `env(safe-area-inset-top)` (`index.css:467`) mais les overlays Radix
   `fixed inset-0` (`ui/Sheet.jsx:26`, `Dialog.jsx:40`, `AlertDialog.jsx:23`) n'ont AUCUN inset
@@ -1695,7 +1699,7 @@ pas la dupliquer ici, la numérotation continue directement à SEED-02.*
   standalone — l'en-tête d'un Sheet/AlertDialog n'est jamais sous l'encoche ; extension de
   `modal-viewport.test.jsx`. (T2 — S, sonnet) (@lane: frontend/ios)
 
-- [ ] VX177 — **`ExternalLink` : navigation standalone PWA maîtrisée.** En mode `standalone` iOS, (@lane: frontend/ios)
+- [x] VX177 — (déjà présent) **`ExternalLink` : navigation standalone PWA maîtrisée.** En mode `standalone` iOS, (@lane: frontend/ios)
   ~18 `<a target="_blank">` externes (GED/KB/RH/wa.me/`verifierIceUrl`) ouvrent un
   SFSafariViewController sans retour naturel ; un lien interne nu peut ÉJECTER hors de la coquille
   installée. `PwaPrompts.jsx:17` détecte `isStandalone()` sans jamais l'exploiter. Fix : un
@@ -1705,7 +1709,7 @@ pas la dupliquer ici, la numérotation continue directement à SEED-02.*
   call-sites externes. DoD : en standalone simulé, lien externe → nouvel onglet sans quitter la
   coquille ; lien interne → routeur ; test de rendu. (T2 — M, sonnet) (@lane: frontend/ios)
 
-- [ ] VX178 — **`backdrop-blur` retiré des surfaces sticky scrollées (jank WebKit du (@lane: frontend/ios — avant ARC49/53)
+- [x] VX178 — **`backdrop-blur` retiré des surfaces sticky scrollées (jank WebKit du (@lane: frontend/ios — avant ARC49/53)
   DataTable).** `ui/datatable/DataTable.jsx:436` (thead `sticky top-0` + `backdrop-blur`) + `:669`
   (tfoot sticky) + `BulkActionBar.jsx:39` : `backdrop-filter` recomposé à CHAQUE frame de scroll —
   jank et scintillement connus WebKit sur les grandes listes ; ARC49/53 vont migrer
@@ -1716,7 +1720,7 @@ pas la dupliquer ici, la numérotation continue directement à SEED-02.*
   sticky ; rendu visuel équivalent ; scroll 100+ lignes fluide en WebKit. (T2 — S, sonnet) (@lane:
   frontend/ios — avant ARC49/53)
 
-- [ ] VX179 — **Service worker : cache runtime `StaleWhileRevalidate` des images/médias (@lane: frontend/ios)
+- [x] VX179 — (déjà présent) **Service worker : cache runtime `StaleWhileRevalidate` des images/médias (@lane: frontend/ios)
   dynamiques.** `sw.js:41-65` : précache build-time + navigations network-first SEULEMENT — zéro
   `registerRoute` runtime : photos d'installation/GED et images KB re-téléchargées à chaque
   visite, et CASSÉES hors-ligne alors que la coquille, elle, marche. Fix : `registerRoute`
@@ -1728,7 +1732,7 @@ pas la dupliquer ici, la numérotation continue directement à SEED-02.*
 
 **Sous-groupe VXD-C (suite) — Viewport & performance réelle**
 
-- [ ] VX180 — **`DataTable`/`ListShell` : le seuil documenté (768px) n'est PAS le seuil réel (@lane: frontend/ios — avant ARC49/53)
+- [x] VX180 — **`DataTable`/`ListShell` : le seuil documenté (768px) n'est PAS le seuil réel (@lane: frontend/ios — avant ARC49/53)
   (Tailwind `sm` = 640px) — 42 pages affectées, indétectable par les tests actuels. AVANT
   ARC49/53.** `ui/datatable/DataTable.jsx:396` (`hidden … sm:block`) et `:702` (`sm:hidden`)
   utilisent l'utilitaire Tailwind par défaut (640px) alors que le code ET son test affirment 768px
@@ -1747,7 +1751,7 @@ pas la dupliquer ici, la numérotation continue directement à SEED-02.*
   700px réels, les cartes sont visibles et la table ne l'est pas ; les 42 pages `ListShell` non
   régressées. (T1 — M, sonnet ; opus si option globale) (@lane: frontend/ios — avant ARC49/53)
 
-- [ ] VX181 — **`.header-right` : 9 cibles interactives sans garde de largeur — débordement à (@lane: frontend/ios)
+- [x] VX181 — (déjà présent) **`.header-right` : 9 cibles interactives sans garde de largeur — débordement à (@lane: frontend/ios)
   320-375px.** `index.css:1943-1946` fige `.header-right { flex-shrink:0; flex:0 0 auto }` sur
   mobile alors qu'il empile : loupe repliée, `LanguageSwitcher`, 3 boutons `ThemeToggle` jamais
   masqués (rendu inconditionnel `Header.jsx:87`, seul le LIBELLÉ est `hidden sm:inline` —
@@ -1799,7 +1803,7 @@ pas la dupliquer ici, la numérotation continue directement à SEED-02.*
   générateur ; e2e non régressé. La garde `data-label` de VX50 ne couvre que les tables
   `.data-table` de LISTE, pas ces modales. (T2 — M, sonnet) (@lane: frontend/ios)
 
-- [ ] VX185 — **Le barrel `ui/index.js` fuit `datatable`/`recharts`/`pdfjs-dist` dans le preload (@lane: frontend/ios)
+- [x] VX185 — (déjà présent) **Le barrel `ui/index.js` fuit `datatable`/`recharts`/`pdfjs-dist` dans le preload (@lane: frontend/ios)
   du BOOT (~350 Ko gzip avant l'écran de connexion) + garde CI étendue.** Build réel :
   `dist/index.html` contient 21 `<link rel="modulepreload">` dont `pdfjs-dist` (125,6 Ko gzip),
   `recharts` (110,3), `datatable` (29,2) — chargés sur TOUTE page, `/login` inclus, sur le 4G
@@ -1816,7 +1820,7 @@ pas la dupliquer ici, la numérotation continue directement à SEED-02.*
   est rouge si on les réintroduit ; `Header.test.jsx` vert. (T2 — M, sonnet) (@lane:
   frontend/ios)
 
-- [ ] VX186 — **Code-splitting intra-écran : les 5 vues de LeadsPage + `MapView`/leaflet enfin (@lane: frontend/ios)
+- [x] VX186 — (déjà présent) **Code-splitting intra-écran : les 5 vues de LeadsPage + `MapView`/leaflet enfin (@lane: frontend/ios)
   lazy.** `pages/crm/leads/LeadsPage.jsx:22-26` importe STATIQUEMENT les 5 vues, le rendu
   (`:437-449`) ne fait qu'en choisir une : `CarteView` embarque leaflet (150,7 Ko/44,4 gzip, plus
   gros composant non-vendor), `ChartsView` embarque recharts → LeadsPage = PLUS GROS chunk de
@@ -1828,7 +1832,7 @@ pas la dupliquer ici, la numérotation continue directement à SEED-02.*
   MapView/ChartsView/CalendarView = chunks séparés chargés au premier clic d'onglet ; tests
   LeadsPage/KanbanView verts. (T2 — S/M, sonnet) (@lane: frontend/ios)
 
-- [ ] VX187 — **LeadsPage runtime : `useDeferredValue` sur le filtre + `React.memo` sur les (@lane: frontend/ios)
+- [x] VX187 — (déjà présent) **LeadsPage runtime : `useDeferredValue` sur le filtre + `React.memo` sur les (@lane: frontend/ios)
   cartes (l'exception MESURÉE au différé round-2).** `LeadsPage.jsx:76/:82` :
   `filterLeads(leads, filters)` recalcule en SYNCHRONE dans un `useMemo` à chaque frappe de la
   recherche ; et zéro `memo(` dans `LeadCard.jsx`/`ListView.jsx` : chaque frappe re-rend toutes
@@ -1857,7 +1861,7 @@ pas la dupliquer ici, la numérotation continue directement à SEED-02.*
   PAS les ProduitPicker inchangés (spy) ; le test noValidate/step="any" reste vert. (T2 — M,
   sonnet) (@lane: frontend/ventes — @with/after VX62)
 
-- [ ] VX189 — **Pack micro-perf mécanique : chunk `icons` unique, Sidebar `useMemo`, (@lane: frontend/ios)
+- [x] VX189 — (déjà présent) **Pack micro-perf mécanique : chunk `icons` unique, Sidebar `useMemo`, (@lane: frontend/ios)
   `content-visibility`, LoAF dev-warning.** Quatre gains prouvés, tous S, zéro dépendance : (a)
   126 chunks JS < 1 Ko gzip (icônes lucide individuelles, sur 345 chunks au total) —
   `manualChunks` dédié dans `vite.config.js:203-211` (`lucide-react` → chunk `icons` unique). (b)
@@ -1876,7 +1880,7 @@ pas la dupliquer ici, la numérotation continue directement à SEED-02.*
   250 ms → table console en dev, zéro référence au module en build prod. Sora/`/landing` EXCLU —
   VX57 le possède. (T2 — S, haiku ; sonnet pour le c) (@lane: frontend/ios)
 
-- [ ] VX190 — **Garde CI WebKit étendue : exports blob + sticky DataTable + standalone. @after (@lane: frontend/ios — @after VX68)
+- [x] VX190 — **Garde CI WebKit étendue : exports blob + sticky DataTable + standalone. @after (@lane: frontend/ios — @after VX68)
   VX68 + VX172/176/178.** VX68 ajoute les projets `mobile-safari` (WebKit réel) + `tablet` mais ne
   teste NI l'export blob (VX172), NI le rendu sticky/`backdrop-blur` du DataTable (VX178), NI la
   navigation standalone (VX176/177). Fix : 3 assertions ajoutées au spec WebKit une fois VX68
@@ -1893,7 +1897,7 @@ pas la dupliquer ici, la numérotation continue directement à SEED-02.*
 reduced-motion (`:67-87`), cibles 44px `pointer:coarse` (`:156-173`), DataTable exemplaire
 (`aria-sort`/`scope`/live).*
 
-- [ ] VX191 — **`useActiveDescendant` : brancher `aria-activedescendant` sur les 10 (@lane: frontend/ios — @coord VX128)
+- [x] VX191 — **`useActiveDescendant` : brancher `aria-activedescendant` sur les 10 (@lane: frontend/ios — @coord VX128)
   autocomplétions (grep = 0 partout).** *(Note : recoupe partiellement VX128 axe1 sur
   Combobox/MultiSelect/TimePicker — ce seed ÉTEND la couverture à `ProduitPicker.jsx`/
   `BcfProduitPicker.jsx`, `ToitureDesign.jsx`, `MentionAutocomplete.jsx`,
@@ -1941,7 +1945,7 @@ reduced-motion (`:67-87`), cibles 44px `pointer:coarse` (`:156-173`), DataTable 
   réparé ; e2e leads verts. `DevisGenerator` fait correctement `htmlFor`, preuve que c'est un
   défaut d'écran. (T2 — M, sonnet) (@lane: frontend/crm — @with VX144)
 
-- [ ] VX194 — **Plancher visuel WCAG 2.2 : texte accent brass 1.8:1 → ≥4.5:1 + cibles 24px (@lane: frontend/ios)
+- [x] VX194 — (déjà présent) **Plancher visuel WCAG 2.2 : texte accent brass 1.8:1 → ≥4.5:1 + cibles 24px (@lane: frontend/ios)
   desktop + test de contraste.** (a) `tokens.css:70` `--primary:#e8b54a` : en REMPLISSAGE de
   bouton c'est conforme, mais `Button` variant `link` = `text-primary` (`ui/Button.jsx:33`) rend
   le brass EN TEXTE sur `--background:#f6f8fc` ≈ 1.8:1 (échec 1.4.3 — 4.5:1 requis), consommé
@@ -1982,7 +1986,7 @@ reduced-motion (`:67-87`), cibles 44px `pointer:coarse` (`:156-173`), DataTable 
   défilable au clavier ; une erreur interrompt (assertive), un succès non ; tests RTL. (T2 — S,
   sonnet) (@lane: frontend/ios)
 
-- [ ] VX197 — **`RouteFocus` : skip-link + focus `<main>` + navigation annoncée. @coord VX82 (@lane: frontend/ios)
+- [x] VX197 — (déjà présent) **`RouteFocus` : skip-link + focus `<main>` + navigation annoncée. @coord VX82 (@lane: frontend/ios)
   pour le titre.** `Layout.jsx:68-78` : `<main>` sans `id`/`tabIndex` ; la barre de progression de
   route (`role="progressbar"` :71-75) n'a pas d'`aria-live` ; 0 skip-link, 0 focus déplacé, 0
   repère après navigation SPA (WCAG 2.4.1/2.4.3). Fix : `<RouteFocus>` monté dans Layout — à
@@ -1995,7 +1999,7 @@ reduced-motion (`:67-87`), cibles 44px `pointer:coarse` (`:156-173`), DataTable 
   du contenu (pas du header) ; le nom d'écran est annoncé une fois ; skip-link visible au premier
   Tab ; e2e clavier. (T2 — M, sonnet) (@lane: frontend/ios)
 
-- [ ] VX198 — **[GATED si dev-dep à ajouter] Garde statique jsx-a11y ciblée : empêcher d'ÉCRIRE (@lane: frontend/ios)
+- [BLOCKED: dev-dep manquante, npm install impossible dans ce worktree — `eslint-plugin-jsx-a11y` absent de package.json/eslint.config.js ; la tâche elle-même se marque [GATED si dev-dep à ajouter]] VX198 — **[GATED si dev-dep à ajouter] Garde statique jsx-a11y ciblée : empêcher d'ÉCRIRE (@lane: frontend/ios)
   la régression (complément build du scan runtime VX71).** Rien n'empêche la réintroduction des
   trous ci-dessus (label sans contrôle, rôle sans props ARIA requises, interactif non
   focalisable) — `eslint-plugin-jsx-a11y` absent de la config (à confirmer ; sinon [GATED]
@@ -2452,7 +2456,7 @@ droite)**
 
 **Sous-groupe VXD-L — Le technicien terrain**
 
-- [ ] VX225 — **La raison de blocage de statut cesse d'être jetée à la poubelle (@lane: frontend/ios — @coord VX105)
+- [x] VX225 — **La raison de blocage de statut cesse d'être jetée à la poubelle (@lane: frontend/ios — @coord VX105)
   (InterventionsPage). @coord VX105.** Défaut prouvé : le backend calcule un message FR précis et
   actionnable — `transition_block_reason` (`field_services.py:405-423`, « Photos obligatoires
   manquantes avant "Terminée" : Toiture avant, Câblage. ») — mais `InterventionsPage.jsx:262-272`
@@ -2467,7 +2471,7 @@ droite)**
   d'InterventionsPage, l'autre moitié du même défaut. (T2 — S, sonnet) (@lane: frontend/ios —
   @coord VX105)
 
-- [ ] VX226 — **« Ma journée » dit l'urgence et reste fraîche.** Deux défauts du même (@lane: frontend/ios)
+- [x] VX226 — (déjà présent) **« Ma journée » dit l'urgence et reste fraîche.** Deux défauts du même (@lane: frontend/ios)
   écran-pivot : (a) `priorite` existe, est ANNOTÉ et TRIÉ serveur (`views/intervention.py:129-144`)
   mais `MaJourneePage.jsx` ne le rend JAMAIS ; (b) `load()` n'est appelé qu'au montage (`:57`) —
   aucun bouton refresh, aucun `visibilitychange`, et le pull-to-refresh natif est coupé
