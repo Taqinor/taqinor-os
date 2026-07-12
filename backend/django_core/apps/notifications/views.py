@@ -53,8 +53,19 @@ class NotificationViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
 
     @action(detail=False, methods=['get'], url_path='unread-count')
     def unread_count(self, request):
-        count = self.get_queryset().filter(read=False).count()
-        return Response({'unread': count})
+        from . import severity as severity_module
+        qs = self.get_queryset().filter(read=False)
+        count = qs.count()
+        # VX208(b) — deux compteurs distincts : ACTIONS (rouge, badge cloche)
+        # vs INFOS (point gris) — un `DIGEST` (ou tout event non-action) ne
+        # doit JAMAIS gonfler le badge d'actions. Additif : `unread` reste le
+        # total inchangé pour les consommateurs existants.
+        actions = sum(
+            1 for et in qs.values_list('event_type', flat=True)
+            if severity_module.is_action(et))
+        return Response({
+            'unread': count, 'actions': actions, 'infos': count - actions,
+        })
 
     @action(detail=True, methods=['post'], url_path='read')
     def mark_read(self, request, pk=None):
@@ -76,10 +87,16 @@ class NotificationViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
 
     @action(detail=False, methods=['post'], url_path='read-all')
     def mark_all_read(self, request):
+        # VX208(c) — capture les ids AVANT la mise à jour : un « Annuler »
+        # exact restaure PRÉCISÉMENT ces notifications (pas « toutes les non
+        # lues au moment du clic », qui pourrait en inclure de nouvelles
+        # arrivées entre-temps). `read-all` cesse d'être irréversible.
+        ids = list(
+            self.get_queryset().filter(read=False).values_list('id', flat=True))
         now = timezone.now()
-        updated = self.get_queryset().filter(read=False).update(
+        updated = self.get_queryset().filter(id__in=ids).update(
             read=True, read_at=now)
-        return Response({'updated': updated})
+        return Response({'updated': updated, 'ids': ids})
 
 
 class NotificationPreferenceViewSet(TenantMixin, viewsets.ViewSet):
