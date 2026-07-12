@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useIsAdmin, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import { Download, ShieldOff } from 'lucide-react'
 import crmApi from '../../api/crmApi'
+import { downloadBlobInGesture } from '../../utils/downloadBlob'
 import {
   Button, toast,
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
@@ -23,19 +24,13 @@ export default function ClientRgpdActions({ client, onChanged }) {
   if (!canExport && !canAnonymize) return null
 
   const exporter = async () => {
+    const pending = downloadBlobInGesture()
     setBusy(true)
     try {
       const r = await crmApi.clientDataExport(client.id)
       const blob = new Blob(
         [JSON.stringify(r.data, null, 2)], { type: 'application/json' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `client-${client.id}-donnees-rgpd.json`
-      document.body.appendChild(a)
-      a.click()
-      a.remove()
-      setTimeout(() => URL.revokeObjectURL(url), 1000)
+      pending.deliver(blob, `client-${client.id}-donnees-rgpd.json`)
       toast.success('Export RGPD téléchargé')
     } catch (err) {
       toast.error(err?.response?.data?.detail

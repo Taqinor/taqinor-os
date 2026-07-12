@@ -12,14 +12,23 @@ import { useEffect, useMemo, useState } from 'react'
 import reportingApi from '../../api/reportingApi'
 
 // Route d'ouverture par type d'entité (cf. router/index.jsx).
+// VX220 — défaut prouvé : seul `lead` ouvrait le RECORD (`?lead=<id>`), tous
+// les autres types atterrissaient sur leur LISTE nue. `client`/`devis`/
+// `facture`/`chantier`/`ticket` réutilisent désormais chacun la convention de
+// lien profond DÉJÀ établie par sa propre page (jamais une deuxième
+// convention pour le même type) : `?devis=` (VX79/QX12, DevisList.jsx) et
+// `?id=` générique (VX79, InstallationsPage.jsx/TicketsPage.jsx, étendu ici à
+// ClientList.jsx/FactureList.jsx). `equipement`/`bon_commande`/`contrat`/
+// `dossier`/`produit` n'ont pas (encore) de lecteur de lien profond — routés
+// vers leur liste, comportement inchangé.
 export const ROUTE = {
   lead: (id) => `/crm/leads?lead=${id}`,
-  client: () => '/crm',
-  devis: () => '/ventes/devis',
-  facture: () => '/ventes/factures',
-  chantier: () => '/chantiers',
+  client: (id) => `/crm?id=${id}`,
+  devis: (id) => `/ventes/devis?devis=${id}`,
+  facture: (id) => `/ventes/factures?id=${id}`,
+  chantier: (id) => `/chantiers?id=${id}`,
   equipement: () => '/equipements',
-  ticket: () => '/sav',
+  ticket: (id) => `/sav?id=${id}`,
   bon_commande: () => '/ventes/bons-commande',
   contrat: () => '/sav/contrats',
   dossier: () => '/chantiers',

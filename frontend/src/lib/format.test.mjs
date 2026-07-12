@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import {
   toNumber, formatMAD, formatNumber, formatPercent,
   formatDate, formatDateTime, formatPhoneMA, canonicalPhoneMA, normalizeMaPhone,
-  timeAgo,
+  timeAgo, nbsp,
 } from './format.js'
 
 // Intl fr-FR utilise des espaces insécables variables (U+00A0 / U+202F) comme
@@ -116,4 +116,19 @@ test('normalizeMaPhone: format wa.me 212XXXXXXXXX ou null', () => {
   assert.equal(normalizeMaPhone(null), null)
   assert.equal(normalizeMaPhone('   '), null)
   assert.equal(normalizeMaPhone('abc'), null)
+})
+
+// VX122 — finesse française : espace fine insécable (U+202F) devant : ; ! ?
+test('nbsp: espace fine insécable devant la ponctuation double', () => {
+  assert.equal(nbsp('Priorité :'), 'Priorité :')
+  assert.equal(nbsp('Priorité :').codePointAt(8), 0x202f)
+  assert.equal(nbsp('Attention !'), 'Attention !')
+  assert.equal(nbsp('Vraiment ?'), 'Vraiment ?')
+  assert.equal(nbsp('a; b'), 'a ; b')
+  // idempotent : n'accumule pas une seconde espace fine
+  assert.equal(nbsp(nbsp('Priorité :')), 'Priorité :')
+  // remplace une espace normale/insécable existante, ne l'ajoute pas en plus
+  assert.equal(nbsp('Titre :'), 'Titre :')
+  assert.equal(nbsp(''), '')
+  assert.equal(nbsp(null), null)
 })

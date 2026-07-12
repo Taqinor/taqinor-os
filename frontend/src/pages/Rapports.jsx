@@ -10,10 +10,11 @@ import api from '../api/axios'
 import reportingApi from '../api/reportingApi'
 import crmApi from '../api/crmApi'
 import { downloadXlsx } from '../api/importApi'
+import { downloadBlobInGesture } from '../utils/downloadBlob'
 import { formatNumber } from '../lib/format'
 import {
   Button, Card, CardHeader, CardTitle, CardDescription, CardContent,
-  Tabs, TabsList, TabsTrigger, TabsContent, Skeleton, EmptyState, Input,
+  Tabs, TabsList, TabsTrigger, TabsContent, Skeleton, EmptyState, Input, Spinner,
 } from '../ui'
 // VX28 — un seul langage de graphique (kit ui/charts), un seul PageHeader, un
 // seul moteur de table de reporting (Table partagé).
@@ -137,17 +138,21 @@ function ReportCard({ title, kind, params, children }) {
 
 // Carte « insight » avec un bouton d'export personnalisé (chemin différent des
 // rapports T13/T14/T15). onExport optionnel : pas de bouton si absent.
-function InsightCard({ title, note, onExport, children }) {
+// VX172 — `busy` : pending visible pendant l'export (VX49 pose déjà le toast
+// d'erreur ; ceci ajoute juste l'état chargement manquant).
+// VX189(c) — `className` passthrough (ex. `cv-auto` — content-visibility sur
+// une carte liste/texte sous le pli, jamais sur une carte à graphique).
+function InsightCard({ title, note, onExport, busy, className, children }) {
   return (
-    <Card>
+    <Card className={className}>
       <CardHeader className="flex-row items-start justify-between gap-3">
         <div className="space-y-1">
           <CardTitle>{title}</CardTitle>
           {note && <CardDescription>{note}</CardDescription>}
         </div>
         {onExport && (
-          <Button variant="outline" size="sm" onClick={onExport}>
-            <Download /> Exporter Excel
+          <Button variant="outline" size="sm" onClick={onExport} disabled={!!busy}>
+            {busy ? <Spinner /> : <Download />} Exporter Excel
           </Button>
         )}
       </CardHeader>
@@ -522,8 +527,17 @@ export function Component() {
     resetAuditCard(); setAuditUser(''); setAuditType(''); setAuditSince('')
   }
 
-  const exportInsight = (slug, params) => () => reportingApi.insightXlsx(slug, params)
-    .then(r => downloadXlsx(r.data, `${slug}.xlsx`)).catch(() => {})
+  // VX172 — geste ouvert AVANT le premier `await` + pending visible par carte
+  // (clé = slug) sur les boutons « Exporter Excel » des Insights.
+  const [insightExportBusy, setInsightExportBusy] = useState({})
+  const exportInsight = (slug, params) => () => {
+    const pending = downloadBlobInGesture()
+    setInsightExportBusy((b) => ({ ...b, [slug]: true }))
+    reportingApi.insightXlsx(slug, params)
+      .then(r => pending.deliver(r.data, `${slug}.xlsx`))
+      .catch(() => {})
+      .finally(() => setInsightExportBusy((b) => ({ ...b, [slug]: false })))
+  }
 
   const periodParams = {}
   if (from) periodParams.from = from
@@ -746,7 +760,8 @@ export function Component() {
         <TabsContent value="insights">
           <div className="space-y-6">
             <InsightCard title="Revenu récurrent (contrats de maintenance)"
-                         onExport={exportInsight('recurring-revenue')}>
+                         onExport={exportInsight('recurring-revenue')}
+                         busy={insightExportBusy['recurring-revenue']}>
               {status.recurring === 'error' ? (
                 <StateBlock error="Rapport indisponible" onRetry={() => reloadCard('recurring')} />
               ) : recurring ? (
@@ -766,7 +781,8 @@ export function Component() {
             </InsightCard>
 
             <InsightCard title="Journal d'activité (qui a fait quoi)"
-                         onExport={exportInsight('audit-log', auditParams)}>
+                         onExport={exportInsight('audit-log', auditParams)}
+                         busy={insightExportBusy['audit-log']}>
               {/* L9 — filtres user / type / depuis pilotant l'endpoint et l'export. */}
               <div className="mb-3 flex flex-wrap items-end gap-2">
                 <Input value={auditUser} onChange={onAuditUser}
@@ -801,7 +817,8 @@ export function Component() {
 
             <InsightCard title="Coût de revient par chantier"
                          note="(interne — visible owner/responsable)"
-                         onExport={jobCosting ? exportInsight('job-costing') : undefined}>
+                         onExport={jobCosting ? exportInsight('job-costing') : undefined}
+                         busy={insightExportBusy['job-costing']}>
               {status.jobCosting === 'error' ? (
                 <p className="text-sm text-muted-foreground">Réservé admin / responsable.</p>
               ) : jobCosting ? (
@@ -825,7 +842,8 @@ export function Component() {
             </InsightCard>
 
             <InsightCard title="Analytics (délais & kWc installés)"
-                         onExport={exportInsight('analytics')}>
+                         onExport={exportInsight('analytics')}
+                         busy={insightExportBusy['analytics']}>
               {status.analytics === 'error' ? (
                 <StateBlock error="Rapport indisponible" onRetry={() => reloadCard('analytics')} />
               ) : analytics ? (
@@ -852,10 +870,14 @@ export function Component() {
               ) : <p className="text-sm text-muted-foreground">Chargement…</p>}
             </InsightCard>
 
+            {/* VX189(c) — cv-auto : dernière carte de l'onglet Insights, liste/
+                texte (Table), jamais un graphique recharts. */}
             <InsightCard title="Commissions commerciales"
                          note="(interne — visible admin ; configuré dans Paramètres)"
                          onExport={commissions?.enabled
-                           ? exportInsight('commissions') : undefined}>
+                           ? exportInsight('commissions') : undefined}
+                         busy={insightExportBusy.commissions}
+                         className="cv-auto">
               {status.commissions === 'error' && (
                 <p className="text-sm text-muted-foreground">Réservé admin.</p>
               )}

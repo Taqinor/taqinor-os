@@ -42,9 +42,18 @@ export function toastError(message, options = {}) {
   return toast.error(message, options)
 }
 
-/** Toast d'information neutre. */
+/** Toast d'information neutre. `toast.info` (pas le `toast()` générique) pour
+ * hériter du style/icône dédiés « info » posés dans Toaster.jsx (VX130). */
 export function toastInfo(message, options = {}) {
-  return toast(message, options)
+  return toast.info(message, options)
+}
+
+/** Toast d'avertissement — une situation à surveiller, PAS bloquante (sinon
+ * `toastError`). `toast.warning` pour le style/icône dédiés (VX130) — avant,
+ * seul `toast.error` existait pour tout signal non neutre (503 erreurs contre
+ * 1 seul avertissement dans tout le repo, un vocabulaire binaire trompeur). */
+export function toastWarning(message, options = {}) {
+  return toast.warning(message, options)
 }
 
 /**
@@ -109,6 +118,56 @@ export function toastWithUndo({
         try { onCommit() } catch { /* le commit gère ses propres erreurs */ }
       }
     }, duration)
+  }
+  return id
+}
+
+/** Délai minimal (ms) du registre destructif — voir `toastDestructive`. */
+export const DESTRUCTIVE_UNDO_MIN_MS = 6000
+
+/**
+ * toastDestructive — VX130 : le registre DESTRUCTIF que `toastWithUndo`
+ * n'offrait pas (aucun registre à délai d'annulation prolongé jusqu'ici).
+ * Même motif « safe undo » que `toastWithUndo`, mais pour une action à plus
+ * fort enjeu (suppression définitive, résiliation…) : rendu visuel danger
+ * (`toast.error`, style `error` de Toaster.jsx) ET délai d'annulation TOUJOURS
+ * ≥ `DESTRUCTIVE_UNDO_MIN_MS` (6 s — contre ~4 s par défaut sur un toast
+ * normal), pour laisser une vraie fenêtre de rattrapage sur un geste qu'on ne
+ * peut pas défaire une fois `onCommit` exécuté.
+ *
+ *   toastDestructive({
+ *     message: '1 lead supprimé définitivement.',
+ *     onCommit: () => api.delete(id),
+ *     onUndo:   () => restoreInUi(),
+ *   })
+ */
+export function toastDestructive({
+  message,
+  description,
+  onUndo,
+  onCommit,
+  duration = DESTRUCTIVE_UNDO_MIN_MS,
+  undoLabel = 'Annuler',
+} = {}) {
+  const safeDuration = Math.max(duration, DESTRUCTIVE_UNDO_MIN_MS)
+  let undone = false
+  const id = toast.error(message, {
+    description,
+    duration: safeDuration,
+    action: {
+      label: undoLabel,
+      onClick: () => {
+        undone = true
+        try { onUndo?.() } catch { /* l'undo ne doit jamais planter le toast */ }
+      },
+    },
+  })
+  if (typeof onCommit === 'function') {
+    setTimeout(() => {
+      if (!undone) {
+        try { onCommit() } catch { /* le commit gère ses propres erreurs */ }
+      }
+    }, safeDuration)
   }
   return id
 }

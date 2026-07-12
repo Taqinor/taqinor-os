@@ -97,7 +97,7 @@ export const FileUpload = forwardRef(function FileUpload(
         onDragLeave={() => setDragging(false)}
         className={cn(
           'flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-6 py-10 text-center transition-colors',
-          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+          'focus-ring',
           dragging
             ? 'border-primary bg-primary/5'
             : 'border-border bg-muted/40 hover:border-primary/50 hover:bg-accent',

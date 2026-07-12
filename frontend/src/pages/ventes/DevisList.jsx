@@ -15,7 +15,7 @@ import ventesApi from '../../api/ventesApi'
 import installationsApi from '../../api/installationsApi'
 import gestionProjetApi from '../../api/gestionProjetApi'
 import crmApi from '../../api/crmApi'
-import importApi, { downloadXlsx } from '../../api/importApi'
+import importApi from '../../api/importApi'
 import DevisForm from './DevisForm'
 import {
   Button, Badge, StatusPill, Card, EmptyState, Spinner,
@@ -28,13 +28,17 @@ import {
   DropdownMenuItem, DropdownMenuLabel,
 } from '../../ui'
 import { formatMAD, formatDateTime } from '../../lib/format'
-import { filenameFromResponse } from '../../utils/downloadBlob'
+import { filenameFromResponse, downloadBlobInGesture } from '../../utils/downloadBlob'
 import { openPdfBlob, openPdfInGesture } from '../../utils/pdfBlob'
 import { proposalParams, pdfBlob } from '../../features/ventes/previewPdf'
 import { useSavedViews } from '../../hooks/useSavedViews'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
+import { useRotatingLabel } from '../../hooks/useRotatingLabel'
 import { useHasPermission, useCanValiderVente } from '../../hooks/useHasPermission'
 import useDocumentTitle from '../../hooks/useDocumentTitle'
+// VX248 — raccourci d'ACTION sur le devis focalisé (le deep-link ?devis=,
+// même « record focalisé » que la surbrillance de ligne existante).
+import { useFocusedRecordShortcuts } from '../../providers/focusedRecordShortcuts'
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
 import { celebrateDealSigned } from '../../ui/celebrate'
 import { DataTable } from '../../ui/datatable'
@@ -73,6 +77,18 @@ function DevisTableSkeleton() {
 }
 
 const DL_SAVED_VIEWS_KEY = 'taqinor.ventes.devis.savedViews'
+
+// VX132 — chargement long CONSCIENT : la génération du devis PDF premium est
+// la latence connue la plus longue de l'app (schémas, produits, chiffrage) ;
+// un spinner MUET pendant tout ce temps ne dit rien d'utile. Libellés
+// honnêtes qui tournent pendant l'attente — ne touche QUE ce bouton côté
+// client, jamais le moteur `apps/ventes/quote_engine/` (règle #4).
+const PDF_GENERATION_LABELS = [
+  'Génération du PDF…',
+  'Mise en page des schémas…',
+  'Calcul du système…',
+  'Finalisation du document…',
+]
 
 // VX216(a) — un chantier « en cours » a sa nomenclature (bom) GELÉE : éditer
 // le devis lié APRÈS ce point crée un écart devis↔chantier invisible côté
@@ -320,6 +336,9 @@ function DevisRow({ d, ctx }) {
   // son statut stocké ni l'étape du lead.
   const effStatut = d.is_expired ? 'expire' : d.statut
   const isGenerating = pdfGenerating[d.id]
+  // VX132 — chargement long conscient : libellés honnêtes qui tournent
+  // pendant la génération du PDF premium (jamais de fausse barre de progression).
+  const pdfLabel = useRotatingLabel(PDF_GENERATION_LABELS, { active: !!isGenerating })
   const isDownloading = pdfDownloading[d.id]
   // QX21 — passé 30 s, on n'abandonne plus le suivi : ce badge reste visible
   // tant que le polling se poursuit (aucun second job n'est jamais relancé
@@ -578,7 +597,7 @@ function DevisRow({ d, ctx }) {
             loading={isGenerating}
             title="Générer le PDF (choix du format)"
           >
-            <FileText /> PDF
+            <FileText /> {isGenerating ? pdfLabel : 'PDF'}
           </Button>
           {/* QX21 — passé 30 s, on n'abandonne plus le suivi : ce badge reste
               visible tant que le polling se poursuit (aucun second job
@@ -1049,7 +1068,13 @@ export default function DevisList() {
     const s = searchParams.get('statut')
     return s && (s === 'tous' || STATUT_DISPLAY[s]) ? s : 'tous'
   })
-  const [query, setQuery] = useState('')
+  // VX250 — deep-link ?q=<texte> pré-règle la recherche (référence/client) au
+  // montage — même convention que ?statut= ci-dessus. Jusqu'ici posé par
+  // LIST_ROUTE.devis (entityRoutes.js, « voir tout » de GlobalSearch/⌘K) et
+  // RelationCounters (fiches 360°) sans jamais être lu : le lien n'atterrissait
+  // que sur la liste NUE. Le filtre `query` existant fait déjà exactement
+  // référence/client (ligne ci-dessous) — aucune nouvelle logique de filtre.
+  const [query, setQuery] = useState(() => searchParams.get('q') ?? '')
   // QX12 — deep-link ?devis=<pk> ouvre/surligne ce devis précis au montage
   // (notifications « Devis accepté »/« Devis expiré » qui pointaient vers une
   // route inexistante /devis/{pk} — le producteur redirige maintenant ici).
@@ -1139,6 +1164,17 @@ export default function DevisList() {
     const hasEtude = !!(d?.etude_params && Object.keys(d.etude_params).length > 0)
     setIncludeEtude(d?.mode_installation === 'industriel' && hasEtude)
   }
+
+  // VX248 — « a » génère le PDF du devis FOCALISÉ (le deep-link ?devis=<pk>
+  // déjà surligné/scrollé — même record que highlightId ci-dessus, jamais un
+  // second concept de « devis actif »). Absent hors deep-link (liste nue) :
+  // aucun devis n'est « focalisé » sans lien profond.
+  const highlightedDevis = highlightId ? devis.find(d => d.id === highlightId) : null
+  useFocusedRecordShortcuts(
+    'devisDetail',
+    { a: () => openPdfModal(highlightedDevis) },
+    !!highlightedDevis,
+  )
 
   // Ouvre la modale PDF pour le lot sélectionné (format partagé).
   const openBatchPdfModal = () => {
@@ -1390,6 +1426,9 @@ export default function DevisList() {
   const [refusMotifId, setRefusMotifId] = useState('')
   const [refusNote, setRefusNote] = useState('')
   const [refusBusy, setRefusBusy] = useState(false)
+  // VX172 — pending visible sur « Exporter Excel » (VX49 pose déjà le toast
+  // d'erreur ; ceci ajoute juste l'état chargement manquant).
+  const [xlsxBusy, setXlsxBusy] = useState(false)
 
   const openRefusModal = (d) => {
     setRefusTarget(d)
@@ -1844,10 +1883,16 @@ export default function DevisList() {
     <div className="page-header">
       <h2>Devis</h2>
       <div className="flex flex-wrap items-center gap-2">
-        <Button size="sm" variant="outline" disabled={loading || !!error}
-                onClick={() => importApi.exportList('devis', devis.map(d => d.id))
-                  .then(r => downloadXlsx(r.data, 'devis.xlsx')).catch(() => {})}>
-          <Download /> Exporter Excel
+        <Button size="sm" variant="outline" disabled={loading || !!error || xlsxBusy}
+                onClick={() => {
+                  const pending = downloadBlobInGesture()
+                  setXlsxBusy(true)
+                  importApi.exportList('devis', devis.map(d => d.id))
+                    .then(r => pending.deliver(r.data, 'devis.xlsx'))
+                    .catch(() => {})
+                    .finally(() => setXlsxBusy(false))
+                }}>
+          {xlsxBusy ? <Spinner /> : <Download />} Exporter Excel
         </Button>
         {/* VX80 — impression navigateur (feuille print.css : chrome masqué,
             noir-sur-blanc, table complète). Distinct des PDF WeasyPrint. */}

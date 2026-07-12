@@ -41,6 +41,10 @@ export const DialogContent = forwardRef(function DialogContent(
           'rounded-xl border border-border bg-card p-5 text-card-foreground shadow-ui-lg',
           'data-[state=open]:animate-pop-in data-[state=closed]:animate-pop-out',
           'focus:outline-none',
+          // VX176 — près de sa hauteur max, le haut de la Dialog approche le
+          // bord haut de l'écran (centrage vertical) : safe-area en PWA
+          // standalone.
+          'safe-top',
           className,
         )}
         {...props}
@@ -48,7 +52,7 @@ export const DialogContent = forwardRef(function DialogContent(
         {children}
         {showClose && (
           <DialogPrimitive.Close
-            className="absolute right-3 top-3 rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="absolute right-3 top-3 rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-ring"
             aria-label="Fermer"
           >
             <X className="size-4" />

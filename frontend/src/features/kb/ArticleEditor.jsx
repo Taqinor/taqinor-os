@@ -1,6 +1,8 @@
 import { useRef, useState } from 'react'
 import { ArrowLeft, Save, Send } from 'lucide-react'
 import { Button, Input, Textarea, Label, toast } from '../../ui'
+import { isDirty } from '../../ui/form-utils'
+import { useNavigationGuard } from '../../hooks/useNavigationGuard'
 import kbApi from '../../api/kbApi'
 import { KB_STATUT_MAP } from './kbStatus'
 import FilterSelect from './FilterSelect'
@@ -42,6 +44,10 @@ export default function ArticleEditor({ article, onCancel, onSaved }) {
   })
   const [saving, setSaving] = useState(false)
   const corpsRef = useRef(null)
+  // VX169 — garde de navigation IN-APP (snapshot pris au montage).
+  const [initialSnapshot] = useState(() => form)
+  const dirty = isDirty(initialSnapshot, form)
+  useNavigationGuard(dirty)
 
   const set = (key) => (e) =>
     setForm((f) => ({ ...f, [key]: e?.target ? e.target.value : e }))

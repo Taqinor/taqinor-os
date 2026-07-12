@@ -65,7 +65,7 @@ export function DetailShell({
         {backTo && (
           <Link
             to={backTo}
-            className="inline-flex w-fit items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="inline-flex w-fit items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground focus-ring"
           >
             <ArrowLeft className="size-4" aria-hidden="true" />
             {backLabel}

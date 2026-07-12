@@ -5,7 +5,7 @@
 //       vide et filtré à la frappe, avec une PUCE DE RACCOURCI clavier par ligne ;
 //   (b) la mémoire des entités récemment ouvertes via la palette, affichée quand
 //       la palette est vide.
-import { GOTO_SHORTCUTS } from './shortcuts.js'
+import { GOTO_SHORTCUTS, CREATE_SHORTCUTS } from './shortcuts.js'
 
 // Source UNIQUE de vérité : on dérive les actions de navigation des raccourcis
 // « g x » déjà définis (mêmes routes, mêmes libellés, même puce). Aucune route
@@ -17,6 +17,16 @@ export const NAV_ACTIONS = GOTO_SHORTCUTS.map((s) => ({
   keys: s.keys, // puce de raccourci, ex. 'g d'
 }))
 
+// VX220(b) — actions de CRÉATION (lead/devis/client), même source unique que
+// NAV_ACTIONS (dérivées de CREATE_SHORTCUTS) : la palette les affiche dans
+// leur PROPRE section « Créer », jamais mélangées à la navigation.
+export const CREATE_ACTIONS = CREATE_SHORTCUTS.map((s) => ({
+  id: s.keys.replace(/\s+/g, '-'), // ex. 'c-l'
+  label: s.label, // ex. 'Créer un lead'
+  to: s.to,
+  keys: s.keys, // puce de raccourci, ex. 'c l'
+}))
+
 /**
  * filterActions — sous-ensemble de NAV_ACTIONS dont le libellé ou le raccourci
  * contient la requête (insensible à la casse). Requête vide → toutes les actions
@@ -26,6 +36,15 @@ export function filterActions(query) {
   const q = (query || '').trim().toLowerCase()
   if (!q) return NAV_ACTIONS
   return NAV_ACTIONS.filter(
+    (a) => a.label.toLowerCase().includes(q) || a.keys.toLowerCase().includes(q),
+  )
+}
+
+/** filterCreateActions — même filtre que filterActions, sur CREATE_ACTIONS. */
+export function filterCreateActions(query) {
+  const q = (query || '').trim().toLowerCase()
+  if (!q) return CREATE_ACTIONS
+  return CREATE_ACTIONS.filter(
     (a) => a.label.toLowerCase().includes(q) || a.keys.toLowerCase().includes(q),
   )
 }

@@ -121,7 +121,8 @@ describe('DevisList — états de chargement (J141)', () => {
     const table = document.querySelector('table.data-table')
     expect(table).not.toBeNull()
     // Des cellules squelette sont rendues (placeholders animés), aucune vraie référence.
-    expect(table.querySelector('.animate-pulse, [class*="animate-pulse"]')).not.toBeNull()
+    // VX132 — le pulse Tailwind a été remplacé par le balayage CSS `.skeleton-shimmer`.
+    expect(table.querySelector('.skeleton-shimmer, [class*="skeleton-shimmer"]')).not.toBeNull()
   })
 })
 

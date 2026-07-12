@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-  Button, Label, Input, IconButton,
+  Button, Label, Input, IconButton, confirmLeaveIfDirty,
 } from '../../ui'
 import flotteApi from '../../api/flotteApi'
 
@@ -27,6 +27,9 @@ export default function MasseAffectationDialog({ conducteurs = [], vehicules = [
 
   const lignesValides = lignes.filter((l) => l.vehicule && l.conducteur)
   const peutEnregistrer = Boolean(dateDebut && lignesValides.length > 0)
+  // VX168 — garde de fermeture : dialogue de création, initial = tout vide.
+  const dirty = Boolean(dateDebut || lignes.some((l) => l.vehicule || l.conducteur))
+  const closeIfConfirmed = () => { if (confirmLeaveIfDirty(dirty)) onClose?.() }
 
   const submit = async (e) => {
     e.preventDefault()
@@ -53,7 +56,7 @@ export default function MasseAffectationDialog({ conducteurs = [], vehicules = [
   }
 
   return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose?.() }}>
+    <Dialog open onOpenChange={(o) => { if (!o) closeIfConfirmed() }}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>Réaffectation en masse</DialogTitle>
@@ -62,7 +65,7 @@ export default function MasseAffectationDialog({ conducteurs = [], vehicules = [
         <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="masse-date">Date de début (toutes les lignes)</Label>
-            <Input id="masse-date" type="date" value={dateDebut} onChange={(e) => setDateDebut(e.target.value)} />
+            <Input id="masse-date" type="date" autoFocus value={dateDebut} onChange={(e) => setDateDebut(e.target.value)} />
           </div>
 
           <div className="flex flex-col gap-2">
@@ -118,7 +121,7 @@ export default function MasseAffectationDialog({ conducteurs = [], vehicules = [
           )}
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>Fermer</Button>
+            <Button type="button" variant="outline" onClick={closeIfConfirmed}>Fermer</Button>
             <Button type="submit" disabled={!peutEnregistrer || saving}>
               {saving ? 'Enregistrement…' : 'Réaffecter'}
             </Button>

@@ -28,7 +28,7 @@ export const TabsTrigger = forwardRef(function TabsTrigger({ className, ...props
         'inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium',
         'text-muted-foreground transition-[color,background-color,box-shadow,transform]',
         pressCurve,
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+        'focus-ring',
         'disabled:pointer-events-none disabled:opacity-50',
         'data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-ui-xs',
         press,

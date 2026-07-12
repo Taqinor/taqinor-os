@@ -34,6 +34,9 @@ import { fetchTickets } from '../features/sav/store/ticketsSlice'
 import {
   ticketSlaLevel, TICKET_OPEN_STATUSES,
 } from '../features/sav/ticketStatuses'
+// VX219 — « Mes chiffres » : carte de performance personnelle (tous rôles),
+// extraite comme composant réutilisable dans CrmInsightsPanel.jsx.
+import { MesChiffresCard } from './crm/leads/CrmInsightsPanel'
 import {
   INSTALLATION_STATUSES, STATUS_LABELS, STATUS_COLORS, canonicalStatus,
 } from '../features/installations/statuses'
@@ -177,6 +180,45 @@ export function ticketsUrgents(tickets) {
 // eslint-disable-next-line react-refresh/only-export-components -- helper cockpit co-localisé
 export function ticketsSlaEnRetard(tickets, now = new Date()) {
   return (tickets ?? []).filter((t) => ticketSlaLevel(t, now) === 'late')
+}
+
+// VX219 — « Mes chiffres » : devis du MOIS COURANT scopés au vendeur
+// (`created_by === userId`, jamais agrégés à l'équipe), même ancrage mensuel
+// que caMensuel/devisSpark ci-dessus (`date_creation`). Fonction PURE, testée
+// sans monter le composant ni le store (`userId` absent → aucun scope, utile
+// en repli si l'utilisateur courant n'est pas encore chargé).
+// eslint-disable-next-line react-refresh/only-export-components -- helper cockpit co-localisé
+export function mesChiffresDuMois(devis, { userId, now = new Date() } = {}) {
+  const y = now.getFullYear()
+  const m = now.getMonth()
+  const mine = (devis ?? []).filter((d) => {
+    if (!d || !d.date_creation) return false
+    if (userId != null && d.created_by !== userId) return false
+    const dt = new Date(d.date_creation)
+    return dt.getFullYear() === y && dt.getMonth() === m
+  })
+  const emis = mine.filter((d) => ['envoye', 'accepte', 'refuse', 'expire'].includes(d.statut))
+  const acceptesList = mine.filter((d) => d.statut === 'accepte')
+  const caSigne = acceptesList.reduce((s, d) => s + num(d.total_affiche ?? d.total_ttc), 0)
+  return {
+    envoyes: emis.length,
+    acceptes: acceptesList.length,
+    tauxSignature: emis.length > 0 ? Math.round((acceptesList.length / emis.length) * 100) : 0,
+    caSigne,
+  }
+}
+
+// VX219 — leads « chauds » à traiter en priorité : les MIENS, non perdus/
+// archivés, triés par score décroissant (score absent → 0), plafonnés à
+// `limit`. Réutilise `Lead.score` déjà exposé (ScoreBadge/VX221) — zéro calcul
+// dupliqué.
+// eslint-disable-next-line react-refresh/only-export-components -- helper cockpit co-localisé
+export function leadsChauds(leads, { userId, limit = 3 } = {}) {
+  return (leads ?? [])
+    .filter((l) => l && !l.perdu && !l.is_archived && (userId == null || l.owner === userId))
+    .slice()
+    .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
+    .slice(0, limit)
 }
 
 // K148 — Delta tokenisé pour une carte KPI : flèche + SIGNE + couleur (jamais
@@ -329,7 +371,15 @@ function TodayBanner({ segments, navigate }) {
 
 /* VX27 — Carte « liste de priorités » d'une section de tête par rôle : titre +
    compteur, jusqu'à 5 lignes cliquables, état vide honnête. */
-function PriorityCard({ title, icon: Icon, tone = 'muted', items, renderItem, emptyLabel, toAll, navigate }) {
+// VX249(c) — `mine` : pastille partagée (même token que la cloche de
+// notifications/Ma file) — pleine = « assigné à moi/action », contour =
+// « information société ». VX27 posait déjà « Mes leads »/« Mes devis »/« Mes
+// tickets » (mine) à côté de « SLA en retard » (société) SANS convention
+// visuelle commune ; ceci retrofite le même token, jamais un second système.
+function PriorityCard({
+  title, icon: Icon, tone = 'muted', items, renderItem, emptyLabel, toAll, navigate,
+  mine = false,
+}) {
   const count = items.length
   return (
     <Card>
@@ -338,6 +388,11 @@ function PriorityCard({ title, icon: Icon, tone = 'muted', items, renderItem, em
           <span className="flex items-center gap-2">
             {Icon && <Icon className={cn('size-4', TODAY_TONE[tone] ?? 'text-muted-foreground')} aria-hidden="true" />}
             {title}
+            <span
+              className={`vx-pastille ${mine ? 'vx-pastille-mine' : 'vx-pastille-company'}`}
+              aria-hidden="true"
+              title={mine ? 'Vous concerne personnellement' : 'Information société'}
+            />
           </span>
           {count > 0 && <Badge tone={tone === 'danger' ? 'destructive' : tone === 'warning' ? 'warning' : 'primary'}>{count}</Badge>}
         </CardTitle>
@@ -592,6 +647,19 @@ export function Component() {
   const ticketsUrgentsList = useMemo(() => ticketsUrgents(tickets), [tickets])
   const slaEnRetard = useMemo(() => ticketsSlaEnRetard(tickets), [tickets])
 
+  // VX219 — « Mes chiffres » : dérivé des slices devis/leads déjà chargées,
+  // scopé à l'utilisateur courant (jamais l'équipe) — zéro appel réseau ajouté
+  // pour ces deux blocs (seule l'atteinte d'objectif, dans la carte elle-même,
+  // refait un appel scopé `?owner=`).
+  const mesChiffres = useMemo(
+    () => mesChiffresDuMois(devis, { userId: user?.id }),
+    [devis, user?.id],
+  )
+  const mesLeadsChauds = useMemo(
+    () => leadsChauds(leads, { userId: user?.id, limit: 3 }),
+    [leads, user?.id],
+  )
+
   // Bandeau « aujourd'hui » : segments non nuls uniquement, chacun cliquable
   // vers la liste ciblée (aucun cul-de-sac).
   const todaySegments = useMemo(() => {
@@ -769,6 +837,23 @@ export function Component() {
         </div>
       ) : (
         <div className="flex flex-col gap-4 sm:gap-5">
+          {/* VX219 — « Mes chiffres » : EN TÊTE, TOUS RÔLES (avant même le
+              cockpit par rôle) — le vendeur `normal`, jusqu'ici privé de toute
+              vue personnelle (`/reporting`+`/reporting/commercial` gatés
+              manager/admin), voit enfin SA propre performance. Ne dé-gate
+              RIEN : `/reporting/commercial` reste l'outil manager. */}
+          {user?.id != null && (
+            <MesChiffresCard
+              envoyes={mesChiffres.envoyes}
+              acceptes={mesChiffres.acceptes}
+              tauxSignature={mesChiffres.tauxSignature}
+              caSigne={mesChiffres.caSigne}
+              leadsChauds={mesLeadsChauds}
+              userId={user.id}
+              navigate={navigate}
+            />
+          )}
+
           {/* VX27 — SECTION DE TÊTE PAR RÔLE : chaque profil voit d'abord SA
               charge du jour, avant le mur de KPI générique. Commercial → leads à
               relancer + devis qui expirent ; SAV → tickets urgents + SLA en
@@ -783,6 +868,7 @@ export function Component() {
                 title="Mes leads à relancer"
                 icon={Phone}
                 tone="danger"
+                mine
                 items={relancesEnRetard}
                 emptyLabel="Aucune relance en retard. Beau travail."
                 toAll="/crm/leads"
@@ -805,6 +891,7 @@ export function Component() {
                 title="Mes devis qui expirent ≤ 7 j"
                 icon={CalendarClock}
                 tone="warning"
+                mine
                 items={devisExpirent}
                 emptyLabel="Aucun devis n'expire dans les 7 jours."
                 toAll="/ventes/devis"
@@ -835,6 +922,7 @@ export function Component() {
                 title="Mes tickets urgents"
                 icon={AlertTriangle}
                 tone="danger"
+                mine
                 items={ticketsUrgentsList}
                 emptyLabel="Aucun ticket urgent ouvert."
                 toAll="/sav/tickets"
@@ -1175,8 +1263,10 @@ export function Component() {
             <MesEquipesCard />
           </Suspense>
 
-          {/* FG8 — Flux d'activités planifiées (records.Activity) */}
-          <Card>
+          {/* FG8 — Flux d'activités planifiées (records.Activity).
+              VX189(c) — cv-auto : section liste/texte sous le pli, jamais un
+              graphique recharts (voir index.css). */}
+          <Card className="cv-auto">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Activity className="size-4 text-muted-foreground" aria-hidden="true" />
@@ -1191,9 +1281,9 @@ export function Component() {
             </CardContent>
           </Card>
 
-          {/* Alerte factures en retard */}
+          {/* Alerte factures en retard — VX189(c) cv-auto (liste, sous le pli). */}
           {facturesEnRetard.length > 0 && (
-            <Card className="border-destructive/30 bg-destructive/5">
+            <Card className="border-destructive/30 bg-destructive/5 cv-auto">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-destructive">
                   <Clock className="size-4" aria-hidden="true" />

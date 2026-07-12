@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Sparkles, X } from 'lucide-react'
-import { Button, Badge, EmptyState, toast } from '../../../ui'
+import { Button, Badge, EmptyState, toast, confirmLeaveIfDirty } from '../../../ui'
 import { ResponsiveDialog } from '../../../ui/ResponsiveDialog'
 import gestionProjetApi from '../../../api/gestionProjetApi'
 import { errMessage, TYPES_INSTALLATION } from '../constants'
@@ -17,6 +17,10 @@ export default function PlanIaDialog({ projetId, onClose, onConfirmed }) {
   const [proposition, setProposition] = useState(null)
   const [generating, setGenerating] = useState(false)
   const [confirming, setConfirming] = useState(false)
+  // VX168 — garde de fermeture : une proposition générée (non confirmée) ne
+  // doit pas être perdue sur un clic malheureux, pas plus qu'une saisie.
+  const dirty = Boolean(devisId || typeInstallation !== 'residentiel' || proposition)
+  const closeIfConfirmed = () => { if (confirmLeaveIfDirty(dirty)) onClose?.() }
 
   const genererPlan = async (e) => {
     e.preventDefault()
@@ -62,17 +66,17 @@ export default function PlanIaDialog({ projetId, onClose, onConfirmed }) {
   return (
     <ResponsiveDialog
       open
-      onOpenChange={(o) => { if (!o) onClose?.() }}
+      onOpenChange={(o) => { if (!o) closeIfConfirmed() }}
       title="Générer un plan de tâches par IA"
       description="Propose un brouillon de WBS depuis un devis lié — rien n'est créé tant que vous n'avez pas confirmé."
     >
       <div className="flex flex-col gap-4">
         {!proposition ? (
           <form onSubmit={genererPlan} noValidate className="flex flex-col gap-3">
-            <TextField id="pia-devis" label="ID du devis lié" inputMode="numeric" required value={devisId} onChange={(e) => setDevisId(e.target.value)} />
+            <TextField id="pia-devis" label="ID du devis lié" inputMode="numeric" required autoFocus value={devisId} onChange={(e) => setDevisId(e.target.value)} />
             <SelectField id="pia-type" label="Type d'installation" options={TYPES_INSTALLATION} value={typeInstallation} onChange={(e) => setTypeInstallation(e.target.value)} />
             <div className="mt-2 flex justify-end gap-2">
-              <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
+              <Button type="button" variant="outline" onClick={closeIfConfirmed}>Annuler</Button>
               <Button type="submit" disabled={generating}>
                 <Sparkles className="size-4" aria-hidden="true" /> {generating ? 'Génération…' : 'Proposer un plan'}
               </Button>

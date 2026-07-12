@@ -1,16 +1,16 @@
 import { cn } from '../lib/cn'
 
-/* G30 / L153 — Squelettes de chargement (respectent prefers-reduced-motion via
-   motion-safe). Variantes calquées sur la forme du contenu : ligne, bloc de
-   texte, avatar, carte, ligne de tableau — pour ne jamais provoquer de saut de
-   mise en page quand le vrai contenu arrive. */
+/* G30 / L153 — Squelettes de chargement (respectent prefers-reduced-motion —
+   toute animation se fige automatiquement via le garde global `*` d'index.css).
+   Variantes calquées sur la forme du contenu : ligne, bloc de texte, avatar,
+   carte, ligne de tableau — pour ne jamais provoquer de saut de mise en page
+   quand le vrai contenu arrive.
+   VX132 — balayage lumineux directionnel (`.skeleton-shimmer`, tokens.css)
+   au lieu du pulse Tailwind par défaut (simple pulsation d'opacité, sans
+   direction). CSS pur, zéro dépendance. */
 export function Skeleton({ className, ...props }) {
   return (
-    <div
-      aria-hidden="true"
-      className={cn('motion-safe:animate-pulse rounded-md bg-muted', className)}
-      {...props}
-    />
+    <div aria-hidden="true" className={cn('skeleton-shimmer rounded-md', className)} {...props} />
   )
 }
 

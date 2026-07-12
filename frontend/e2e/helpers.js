@@ -55,8 +55,10 @@ export async function createLead(page, { nom, facture } = {}) {
   await page.getByRole('button', { name: '+ Nouveau lead' }).click()
   const modal = leadModal(page)
   await expect(modal.getByRole('heading', { name: 'Nouveau lead' })).toBeVisible()
-  // Nom = the first .form-control input (Contact section, required field).
-  await modal.locator('input.form-control').first().fill(name)
+  // Nom = the required Contact field. Target its stable id (#lf-nom) rather
+  // than a CSS class: VX89/VX224 migrated it to the ui-core <Input> (no
+  // legacy `form-control` class), but the id is a preserved contract.
+  await modal.locator('#lf-nom').fill(name)
   if (facture != null) {
     await modal.getByPlaceholder('ex: 650').fill(String(facture))
   }

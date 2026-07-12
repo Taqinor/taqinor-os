@@ -12,6 +12,7 @@ import {
 import { DataTable } from '../../ui'
 import { formatMAD } from '../../lib/format'
 import paieApi from '../../api/paieApi'
+import { downloadBlobInGesture } from '../../utils/downloadBlob'
 import { StatutOrdre } from './statuses.jsx'
 import { ORDRE_STATUTS } from './paieLogic.js'
 
@@ -57,18 +58,15 @@ export default function PaieDeclarations() {
   )
 }
 
-/* Télécharge un objet JSON (état/fichier généré) en pièce jointe. */
+/* Télécharge un objet JSON (état/fichier généré) en pièce jointe.
+   VX172 — appelé avec la donnée déjà résolue (post-`await` de l'appelant) :
+   pas de fenêtre pré-ouverte possible ici, mais `downloadBlobInGesture()`
+   tente quand même l'onglet visible en iOS/standalone (repli `a.download`
+   automatique si bloqué) plutôt que le téléchargement invisible d'avant. */
 function downloadJson(obj, filename) {
   const blob = new Blob([JSON.stringify(obj, null, 2)],
     { type: 'application/json' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  setTimeout(() => URL.revokeObjectURL(url), 10000)
+  downloadBlobInGesture().deliver(blob, filename)
 }
 
 /* ── Ordres de virement ── */
@@ -567,19 +565,12 @@ function RhRegistresTab() {
   }
 
   const telechargerRegistre = async (format) => {
+    const pending = downloadBlobInGesture()
     setBusy(`registre-${format}`)
     try {
       const { data } = await paieApi.registreCongesFichier(
         Number(annee), format)
-      const blob = new Blob([data])
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `registre_conges_${annee}.${format}`
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      setTimeout(() => URL.revokeObjectURL(url), 10000)
+      pending.deliver(new Blob([data]), `registre_conges_${annee}.${format}`)
     } catch {
       toast.error('Export indisponible.')
     } finally { setBusy('') }
@@ -875,19 +866,13 @@ function AnalyseTab() {
   }
 
   const exporter = async () => {
+    const pending = downloadBlobInGesture()
     setBusy(true)
     try {
       const { data: blob } = await paieApi.analysePaieCsv({
         debut, fin, group_by: groupBy,
       })
-      const url = URL.createObjectURL(new Blob([blob]))
-      const a = document.createElement('a')
-      a.href = url
-      a.download = 'analyse_paie.csv'
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      setTimeout(() => URL.revokeObjectURL(url), 10000)
+      pending.deliver(new Blob([blob]), 'analyse_paie.csv')
     } catch {
       toast.error('Export CSV impossible.')
     } finally { setBusy(false) }

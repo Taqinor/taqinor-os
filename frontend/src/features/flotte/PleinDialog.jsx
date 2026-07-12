@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-  Button, Label, Input, FileUpload,
+  Button, Label, Input, FileUpload, confirmLeaveIfDirty,
 } from '../../ui'
 import flotteApi from '../../api/flotteApi'
 
@@ -27,6 +27,9 @@ export default function PleinDialog({ vehicules = [], onClose, onSaved }) {
   const [serverError, setServerError] = useState(null)
 
   const peutEnregistrer = Boolean(vehiculeId && datePlein)
+  // VX168 — garde de fermeture : dialogue de création, initial = tout vide.
+  const dirty = Boolean(vehiculeId || datePlein || kilometrage || quantite || prixTotal || station)
+  const closeIfConfirmed = () => { if (confirmLeaveIfDirty(dirty)) onClose?.() }
 
   const surOcr = async (files) => {
     const photo = files[0]
@@ -83,7 +86,7 @@ export default function PleinDialog({ vehicules = [], onClose, onSaved }) {
   }
 
   return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose?.() }}>
+    <Dialog open onOpenChange={(o) => { if (!o) closeIfConfirmed() }}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>Nouveau plein</DialogTitle>
@@ -102,6 +105,7 @@ export default function PleinDialog({ vehicules = [], onClose, onSaved }) {
             <Label htmlFor="plein-vehicule">Véhicule</Label>
             <select
               id="plein-vehicule"
+              autoFocus
               value={vehiculeId}
               onChange={(e) => setVehiculeId(e.target.value)}
               className="h-9 rounded-md border border-border bg-card px-3 text-sm"
@@ -145,7 +149,7 @@ export default function PleinDialog({ vehicules = [], onClose, onSaved }) {
           )}
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
+            <Button type="button" variant="outline" onClick={closeIfConfirmed}>Annuler</Button>
             <Button type="submit" disabled={!peutEnregistrer || saving}>
               {saving ? 'Enregistrement…' : 'Enregistrer'}
             </Button>

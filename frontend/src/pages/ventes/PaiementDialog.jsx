@@ -74,6 +74,10 @@ export default function PaiementDialog({ facture, onOpenChange, onSaved }) {
   const [payMontant, setPayMontant] = useState('')
   const [payDate, setPayDate] = useState(todayIso)
   const [payMode, setPayMode] = useState(lireDernierMode)  // VX93 — dernier mode utilisé
+  // VX249(b) — payMode : 1 des 4 champs VX93 « suggérés ». « Suggéré » tant que
+  // l'utilisateur n'a pas choisi LUI-MÊME un mode pour CE paiement.
+  const [payModeTouched, setPayModeTouched] = useState(false)
+  const [payModeFocused, setPayModeFocused] = useState(false)
   const [payReference, setPayReference] = useState('')
   // ZFAC11 — proposition d'arrondi de caisse (règlement espèces).
   const [arrondiCaisse, setArrondiCaisse] = useState(null)
@@ -99,6 +103,7 @@ export default function PaiementDialog({ facture, onOpenChange, onSaved }) {
     setPayMontant(facture.montant_du ?? '')
     setPayDate(todayIso())
     setPayMode(lireDernierMode())  // VX93 — pré-remplit avec le dernier mode utilisé
+    setPayModeTouched(false)  // VX249(b) — nouveau paiement → « suggéré » redevient vrai
     setPayReference('')
     setArrondiCaisse(null)
     setFactureActivites([])
@@ -145,6 +150,7 @@ export default function PaiementDialog({ facture, onOpenChange, onSaved }) {
         setPayMontant('')
         setPayDate(todayIso())
         setPayMode(lireDernierMode())  // VX93 — ré-applique le dernier mode saisi
+        setPayModeTouched(false)  // VX249(b) — paiement suivant → « suggéré » redevient vrai
         setPayReference('')
         loadActivites(facture.id)
         payMontantRef.current?.focus()
@@ -177,9 +183,23 @@ export default function PaiementDialog({ facture, onOpenChange, onSaved }) {
             <Input id="pay-date" type="date" required
                    value={payDate} onChange={e => setPayDate(e.target.value)} />
           </FormField>
-          <FormField label="Mode" htmlFor="pay-mode">
-            <Select value={payMode} onValueChange={setPayMode}>
-              <SelectTrigger id="pay-mode"><SelectValue /></SelectTrigger>
+          {/* VX249(b) — payMode « suggéré » : contour pointillé + micro-libellé
+              au focus tant que le dernier mode mémorisé n'a pas été touché,
+              retiré dès la première modification. */}
+          <FormField
+            label="Mode"
+            htmlFor="pay-mode"
+            hint={!payModeTouched && payModeFocused ? 'Suggéré — modifiable' : undefined}
+          >
+            <Select value={payMode} onValueChange={(v) => { setPayMode(v); setPayModeTouched(true) }}>
+              <SelectTrigger
+                id="pay-mode"
+                className={!payModeTouched ? 'vx-suggested-field' : undefined}
+                onFocus={() => setPayModeFocused(true)}
+                onBlur={() => setPayModeFocused(false)}
+              >
+                <SelectValue />
+              </SelectTrigger>
               <SelectContent>
                 {MODES_PAIEMENT.map(m => (
                   <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>

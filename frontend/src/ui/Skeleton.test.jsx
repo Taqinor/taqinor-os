@@ -14,11 +14,15 @@ import {
    ligne de tableau, avatar). On vérifie qu'elles rendent du DOM masqué aux
    lecteurs d'écran (aria-hidden) et sans violation d'accessibilité. */
 describe('Skeleton — variantes de mise en page (L153)', () => {
-  it('le bloc de base est masqué aux lecteurs d’écran et animé en motion-safe', () => {
+  it('le bloc de base est masqué aux lecteurs d’écran et porte le balayage shimmer (VX132)', () => {
     const { container } = render(<Skeleton />)
     const el = container.firstChild
     expect(el).toHaveAttribute('aria-hidden', 'true')
-    expect(el).toHaveClass('motion-safe:animate-pulse')
+    // VX132 — pulse Tailwind par défaut remplacé par un balayage lumineux
+    // directionnel (`.skeleton-shimmer`, tokens.css) ; se fige sous
+    // reduced-motion via le garde global `*` d'index.css (pas de variant
+    // motion-safe: dédié ici, cf. VX129 Progress).
+    expect(el).toHaveClass('skeleton-shimmer')
   })
 
   it('SkeletonLine rend une seule ligne (hauteur de texte)', () => {

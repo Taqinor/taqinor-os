@@ -1,10 +1,16 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, lazy, Suspense } from 'react'
 import { useNavigate } from 'react-router-dom'
 import reportingApi from '../api/reportingApi'
-import MapView, { escapeHtml } from '../components/MapView'
+// VX186 — `MapView` (leaflet, 150,7 Ko/44,4 gzip) en `lazy` : `escapeHtml`
+// (fonction pure, utilisée dans le `useMemo` des marqueurs) reste un import
+// statique — seul le COMPOSANT porte le poids de leaflet.
+import { escapeHtml } from '../components/MapView'
 import { Badge } from '../ui/Badge'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../ui/Select'
 import { EmptyState } from '../ui/EmptyState'
+import { Spinner } from '../ui/Spinner'
+
+const MapView = lazy(() => import('../components/MapView'))
 
 // N85 — Vue carte : leads, chantiers, systèmes installés et visites prévues sur
 // une carte (Leaflet / OpenStreetMap), filtrables par type ET par statut.
@@ -144,7 +150,9 @@ export default function CartePage() {
         />
       )}
 
-      <MapView markers={markers} onMarkerClick={openRecord} />
+      <Suspense fallback={<p className="page-loading"><Spinner /> Chargement de la carte…</p>}>
+        <MapView markers={markers} onMarkerClick={openRecord} />
+      </Suspense>
     </div>
   )
 }

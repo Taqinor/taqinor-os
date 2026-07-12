@@ -36,9 +36,14 @@ import PaiementDialog from './PaiementDialog'
 import { errorMessageFrom } from '../../lib/toast'
 import { useSavedViews } from '../../hooks/useSavedViews'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
+import { useRotatingLabel } from '../../hooks/useRotatingLabel'
 import useDocumentTitle from '../../hooks/useDocumentTitle'
+// VX248 — raccourci d'ACTION sur la facture focalisée (la modale d'édition
+// ouverte — seule vue « fiche » qui existe pour une facture, cf. VX220).
+import { useFocusedRecordShortcuts } from '../../providers/focusedRecordShortcuts'
 import { DataTable } from '../../ui/datatable'
 import { openPdfBlob, openPdfInGesture } from '../../utils/pdfBlob'
+import { downloadBlobInGesture } from '../../utils/downloadBlob'
 
 // VX21 — squelette de la liste (parité DevisList/DevisTableSkeleton) : reprend
 // les 8 colonnes du vrai tableau pour que la mise en page ne saute pas à
@@ -73,6 +78,16 @@ function FactureTableSkeleton() {
 }
 
 const FL_SAVED_VIEWS_KEY = 'taqinor.ventes.factures.savedViews'
+
+// VX132 — chargement long conscient (voir DevisList.jsx PDF_GENERATION_LABELS) :
+// libellés honnêtes côté client uniquement — le PDF facture reste le moteur
+// legacy INTOUCHÉ (règle #4). Sans effet visible si la génération est brève
+// (le libellé ne tourne qu'après ~2.5 s d'attente réelle).
+const FACTURE_PDF_GENERATION_LABELS = [
+  'Génération du PDF…',
+  'Mise en forme de la facture…',
+  'Finalisation du document…',
+]
 
 // ── ARC53 — Colonnes du frame `ui/datatable` en mode « ligne custom ».
 // L'écran rend chaque ligne via `renderRow` (<FactureRow>) ; ces définitions ne
@@ -176,6 +191,9 @@ function FactureRow({ f, ctx }) {
   const busy = actionId === f.id
   const isGenerating = pdfGenerating[f.id]
   const isDownloading = pdfDownloading[f.id]
+  // VX132 — chargement long conscient : libellés honnêtes qui tournent
+  // pendant la génération du PDF (jamais de fausse barre de progression).
+  const pdfLabel = useRotatingLabel(FACTURE_PDF_GENERATION_LABELS, { active: !!isGenerating })
   const isWaBusy = waBusy[f.id]
   // L853 — téléphone client normalisable (miroir backend).
   const waPhoneOk = !!normalizeMaPhone(f.client_telephone)
@@ -292,6 +310,16 @@ function FactureRow({ f, ctx }) {
             Payé {formatMAD(f.montant_paye)} / Dû {formatMAD(f.montant_du)}
           </div>
         )}
+        {/* VX250(a) — PendingStepsIndicator : lecture PURE de statuts déjà
+            chargés (`isPartiallyPaid`, déjà utilisé par l'onglet « Partielle »
+            ci-dessus) — ne change JAMAIS un statut, ZÉRO appel réseau. Plus
+            visible que la ligne « Payé/Dû » neutre au-dessus : seul un acompte
+            RÉELLEMENT partiel (reste dû > 0, pas annulée) l'affiche. */}
+        {isPartiallyPaid(f) && (
+          <div role="status" className="mt-0.5 text-xs font-medium text-warning">
+            Solde restant : {formatMAD(f.montant_du)}
+          </div>
+        )}
       </td>
       <td data-label="Statut">
         <StatusPill status={statutKey} label={STATUT_DISPLAY[statutKey] ?? STATUT_DISPLAY.brouillon} />
@@ -385,7 +413,7 @@ function FactureRow({ f, ctx }) {
           ) : (
             <Button size="sm" variant="outline" loading={isGenerating}
                     onClick={() => handleGenererPdf(f)} title="Générer le PDF">
-              <FileText /> PDF
+              <FileText /> {isGenerating ? pdfLabel : 'PDF'}
             </Button>
           )}
           {isAdmin && ['emise', 'payee', 'en_retard'].includes(f.statut) && (
@@ -502,6 +530,7 @@ export default function FactureList() {
   // VX82 — titre d'onglet dédié (chrome navigateur vivant).
   useDocumentTitle('Factures')
   const dispatch = useDispatch()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { factures, loading, error } = useSelector(s => s.ventes)
   const isAdmin = useSelector(s => s.auth.role) === 'admin'
   // VX21 — chargement différé anti-scintillement (parité DevisList) : spinner
@@ -568,11 +597,15 @@ export default function FactureList() {
   // atterrir sur la BONNE facture surlignée. On force l'onglet « toutes » pour
   // qu'elle ne soit jamais masquée par un filtre d'onglet, puis on la surligne
   // + scrolle 3 s (voir l'effet plus bas).
-  const [searchParams] = useSearchParams()
   const [highlightFactureId, setHighlightFactureId] = useState(
     () => searchParams.get('facture') || null)
   const [activeTab, setActiveTab]     = useState('toutes')
-  const [search, setSearch]           = useState('')
+  // VX250 — deep-link ?q=<texte> pré-règle la recherche (référence/client) au
+  // montage — posé par LIST_ROUTE.facture (entityRoutes.js) et RelationCounters
+  // (fiches 360°) sans jamais être lu jusqu'ici. Le filtre `search` existant
+  // fait déjà exactement référence/client (ci-dessous) — aucune nouvelle
+  // logique de filtre.
+  const [search, setSearch]           = useState(() => searchParams.get('q') ?? '')
   const [typeFilter, setTypeFilter]   = useState('')
   // ZFAC9 — bascule Liste/Kanban (wiring/données only, réutilise `filtered`).
   const [viewMode, setViewMode]       = useState('liste')
@@ -604,6 +637,9 @@ export default function FactureList() {
   const [exportStart, setExportStart] = useState(() => new Date().toISOString().slice(0, 8) + '01')
   const [exportEnd, setExportEnd] = useState(() => new Date().toISOString().slice(0, 10))
   const [exportComptableBusy, setExportComptableBusy] = useState(false)
+  // VX172 — pending visible sur « Exporter Excel » (VX49 pose déjà le toast
+  // d'erreur ; ceci ajoute juste l'état chargement manquant).
+  const [xlsxBusy, setXlsxBusy] = useState(false)
   // ── Envoi WhatsApp : busy par facture (L857), langue (L851), aperçu (L852) ──
   const [waBusy, setWaBusy] = useState({})
   const [waLangue, setWaLangue] = useState('fr')
@@ -837,6 +873,27 @@ export default function FactureList() {
   const closeForm = () => { setShowForm(false);   setEditFacture(null) }
   const onSaved   = () => dispatch(fetchFactures())
 
+  // VX220 — lien profond ?id=<pk> (patron VX79 déjà lu par InstallationsPage.jsx/
+  // TicketsPage.jsx) : la palette de commandes (⌘K) ouvre désormais la FACTURE
+  // exacte — la modale d'édition est la seule vue « fiche » qui existe pour une
+  // facture, donc c'est elle qui joue le rôle du panneau détail. Posé une fois
+  // les factures chargées (jamais avant, la recherche échouerait toujours) ;
+  // id introuvable → silencieux (jamais un crash). Le paramètre est retiré dans
+  // tous les cas pour ne pas rouvrir la modale à chaque re-render.
+  useEffect(() => {
+    const wantedId = searchParams.get('id')
+    if (!wantedId || loading) return
+    const match = factures.find(f => String(f.id) === String(wantedId))
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- ouverture one-shot pilotée par ?id=
+    if (match) openEdit(match)
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev)
+      next.delete('id')
+      return next
+    }, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, loading, factures])
+
   const doAction = async (thunk, id, confirmMsg) => {
     if (confirmMsg && !window.confirm(confirmMsg)) return
     setActionId(id)
@@ -879,6 +936,16 @@ export default function FactureList() {
       setPdfGenerating(prev => ({ ...prev, [f.id]: false }))
     }
   }
+
+  // VX248 — « a » génère le PDF de la facture FOCALISÉE (la modale d'édition
+  // ouverte via `?id=` (VX220) ou un clic « Modifier » — `editFacture` est la
+  // seule notion de « fiche » qui existe pour une facture). Absent quand
+  // aucune facture n'est ouverte (liste nue).
+  useFocusedRecordShortcuts(
+    'factureDetail',
+    { a: () => editFacture && handleGenererPdf(editFacture) },
+    !!editFacture,
+  )
 
   const handleTelechargerPdf = async (f) => {
     setPdfDownloading(prev => ({ ...prev, [f.id]: true }))
@@ -1121,9 +1188,16 @@ export default function FactureList() {
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start">
             <DropdownMenuItem
-              onSelect={() => importApi.exportList('factures', factures.map(f => f.id))
-                .then(r => downloadXlsx(r.data, 'factures.xlsx')).catch(() => {})}>
-              <Download className="size-3.5" aria-hidden="true" /> Exporter Excel
+              disabled={xlsxBusy}
+              onSelect={() => {
+                const pending = downloadBlobInGesture()
+                setXlsxBusy(true)
+                importApi.exportList('factures', factures.map(f => f.id))
+                  .then(r => pending.deliver(r.data, 'factures.xlsx'))
+                  .catch(() => {})
+                  .finally(() => setXlsxBusy(false))
+              }}>
+              {xlsxBusy ? <Spinner className="size-3.5" /> : <Download className="size-3.5" aria-hidden="true" />} Exporter Excel
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => setJournalOpen(true)}>
               <BookText className="size-3.5" aria-hidden="true" /> Journal comptable…

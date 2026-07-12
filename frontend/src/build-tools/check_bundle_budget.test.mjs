@@ -73,3 +73,71 @@ test('throws a clear error when assets dir is missing (build not run)', () => {
     rmSync(dir, { recursive: true, force: true })
   }
 })
+
+// ── VX185 — le budget mesurait chaque chunk ISOLÉMENT, jamais ce que
+// index.html PRÉCHARGE au boot (le vrai bug : un vendor lourd importé via le
+// barrel `ui/index.js` dans un composant statique se retrouvait en
+// <link rel="modulepreload"> sur TOUTE page, /login inclus). ────────────────
+
+test('no index.html: no modulepreload violation (backward-compatible, existing tests never build one)', () => {
+  const dir = makeDistDir()
+  try {
+    writeJsOfGzipSizeKb(path.join(dir, 'assets', 'index-abc.js'), 5)
+    const result = checkBundleBudget(dir)
+    assert.equal(result.preloadCount, 0)
+    assert.equal(result.violations.length, 0)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('flags a heavy vendor chunk (recharts/pdfjs-dist/datatable/roof-tool) preloaded at boot', () => {
+  const dir = makeDistDir()
+  try {
+    writeJsOfGzipSizeKb(path.join(dir, 'assets', 'index-abc.js'), 5)
+    writeFileSync(
+      path.join(dir, 'index.html'),
+      '<html><head>'
+      + '<link rel="modulepreload" href="/assets/index-abc.js">'
+      + '<link rel="modulepreload" href="/assets/datatable-xyz123.js">'
+      + '</head><body></body></html>',
+    )
+    const result = checkBundleBudget(dir)
+    assert.equal(result.preloadCount, 2)
+    assert.ok(result.violations.some((v) => v.includes('datatable-xyz123.js')))
+    assert.ok(result.violations.some((v) => v.includes('datatable')))
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('a non-heavy chunk in modulepreload is never flagged', () => {
+  const dir = makeDistDir()
+  try {
+    writeJsOfGzipSizeKb(path.join(dir, 'assets', 'index-abc.js'), 5)
+    writeFileSync(
+      path.join(dir, 'index.html'),
+      '<html><head><link rel="modulepreload" href="/assets/index-abc.js"></head><body></body></html>',
+    )
+    const result = checkBundleBudget(dir)
+    assert.equal(result.preloadCount, 1)
+    assert.equal(result.violations.length, 0)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('chunk count metric is reported and a runaway chunk count fails', () => {
+  const dir = makeDistDir()
+  try {
+    // 401 minuscule chunks > le plafond MAX_CHUNK_COUNT (400).
+    for (let i = 0; i < 401; i += 1) {
+      writeJsOfGzipSizeKb(path.join(dir, 'assets', `icon-${i}.js`), 0.1)
+    }
+    const result = checkBundleBudget(dir)
+    assert.equal(result.chunkCount, 401)
+    assert.ok(result.violations.some((v) => v.includes('NOMBRE DE CHUNKS')))
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})

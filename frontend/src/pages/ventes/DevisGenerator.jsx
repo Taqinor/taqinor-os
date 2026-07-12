@@ -94,6 +94,11 @@ const emptyLine = () => ({
   quantite: '0',
   prix_unit_ttc: '0',
   taux_tva: lireLastTva(),  // VX93 — dernière TVA saisie (défaut 20 %)
+  // VX249(b) — 1 des 4 champs VX93 exactement (avec owner/ville sur
+  // LeadForm.jsx et payMode sur FactureList.jsx) : reste « suggéré » (style
+  // discret dans DevisLineRow.jsx) tant que l'utilisateur n'a pas changé
+  // LUI-MÊME le taux de CETTE ligne — retiré via `setLine` ci-dessous.
+  _tvaSuggested: true,
   groupeIndex: null,
   groupeLabel: '',
 })
@@ -858,7 +863,12 @@ export default function DevisGenerator({
   // pré-remplir la prochaine ligne ajoutée (ecrireLastTva est un writer stable).
   const setLine = useCallback((key, k, v) => {
     if (k === 'taux_tva') ecrireLastTva(v)
-    setLines(ls => ls.map(l => (l._key === key ? { ...l, [k]: v } : l)))
+    setLines(ls => ls.map(l => (l._key === key
+      // VX249(b) — une modification MANUELLE du taux retire le style
+      // « suggéré » de CETTE ligne (jamais les autres) ; tout autre champ
+      // laisse `_tvaSuggested` inchangé.
+      ? { ...l, [k]: v, ...(k === 'taux_tva' ? { _tvaSuggested: false } : {}) }
+      : l)))
   }, [])
 
   // XSAL3 — badge « Tarif : <liste> » par ligne, quand le prix résolu vient

@@ -15,7 +15,8 @@ import savApi from '../../api/savApi'
 import api from '../../api/axios'
 import { downloadBlob } from '../../utils/downloadBlob'
 import { timeAgo } from '../../lib/format'
-import importApi, { downloadXlsx } from '../../api/importApi'
+import importApi from '../../api/importApi'
+import { downloadBlobInGesture } from '../../utils/downloadBlob'
 import installationsApi from '../../api/installationsApi'
 import AttachmentsPanel from '../../components/AttachmentsPanel'
 import TicketSuiviClientPanel from './TicketSuiviClientPanel'
@@ -52,6 +53,7 @@ import {
   Card,
   EmptyState,
   Skeleton,
+  Spinner,
   Input,
   Textarea,
   Checkbox,
@@ -60,7 +62,7 @@ import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
   AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
-  Form, FormSection, FormField, FormActions, useDirtyGuard,
+  Form, FormSection, FormField, FormActions, useDirtyGuard, confirmLeaveIfDirty,
   DataTable,
   toast,
 } from '../../ui'
@@ -1044,7 +1046,7 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
 
   // ── Mobile/tablette (<1280px) : tiroir Sheet plein-tiroir (fallback inchangé). ──
   return (
-    <Sheet open onOpenChange={(o) => { if (!o) onClose() }}>
+    <Sheet open onOpenChange={(o) => { if (!o && confirmLeaveIfDirty(dirty)) onClose() }}>
       <SheetContent side="right" className="w-[min(46rem,calc(100%-1.5rem))] sm:max-w-3xl">
         <SheetHeader>
           <SheetTitle className="flex flex-wrap items-center gap-2">
@@ -1347,6 +1349,9 @@ export default function TicketsPage() {
   const [selected, setSelected] = useState(null)
   const [searchParams, setSearchParams] = useSearchParams()
   const [view, setView] = useState('table') // L295/ZMFG3 — 'table' | 'kanban' | 'calendrier'
+  // VX172 — pending visible sur « Exporter Excel » (VX49 pose déjà le toast
+  // d'erreur ; ceci ajoute juste l'état chargement manquant).
+  const [xlsxBusy, setXlsxBusy] = useState(false)
   // Vues enregistrées (FG11).
   const { savedViews: ticketSavedViews, saveView: saveTicketView, deleteView: deleteTicketView } = useSavedViews(TP_SAVED_VIEWS_KEY)
   const saveCurrentTicketView = () => {
@@ -1529,10 +1534,16 @@ export default function TicketsPage() {
                 <Link2 /> Copier le lien
               </Button>
             )}
-            <Button variant="outline" size="sm"
-                    onClick={() => importApi.exportList('tickets', rows.map((r) => r.id))
-                      .then((r) => downloadXlsx(r.data, 'tickets.xlsx')).catch(() => {})}>
-              <Download /> Exporter Excel
+            <Button variant="outline" size="sm" disabled={xlsxBusy}
+                    onClick={() => {
+                      const pending = downloadBlobInGesture()
+                      setXlsxBusy(true)
+                      importApi.exportList('tickets', rows.map((r) => r.id))
+                        .then((r) => pending.deliver(r.data, 'tickets.xlsx'))
+                        .catch(() => {})
+                        .finally(() => setXlsxBusy(false))
+                    }}>
+              {xlsxBusy ? <Spinner /> : <Download />} Exporter Excel
             </Button>
           </div>
         </header>

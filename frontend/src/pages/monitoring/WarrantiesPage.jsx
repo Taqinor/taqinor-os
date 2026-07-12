@@ -12,6 +12,8 @@ import { useConfirmDialog, toast } from '../../ui/confirm'
 import { BarArrondie, ChartEmpty, resolveColor } from '../../ui/charts'
 import { formatMAD, formatNumber, formatPercent } from '../../lib/format'
 import MonitoringNav from './MonitoringNav'
+// VX132 — anti-scintillement propagé (voir InstallationsPage.jsx).
+import { useDelayedLoading } from '../../hooks/useDelayedLoading'
 
 /* WR6 — Garanties de production (FG282/FG284) : CRUD des garanties par
    système + statut annuel (réel vs garanti dégradé → manque / compensation)
@@ -44,6 +46,9 @@ export default function WarrantiesPage() {
   const [status, setStatus] = useState(null)
   const [curve, setCurve] = useState(null)
   const [loadingDetail, setLoadingDetail] = useState(false)
+  // VX132 — rien tant que l'attente reste imperceptible (< 300 ms).
+  const { showSpinner: showLoadingSpinner } = useDelayedLoading(loading)
+  const { showSpinner: showDetailSpinner } = useDelayedLoading(loadingDetail)
 
   const nameOf = useMemo(() => {
     const map = new Map(installations.map((i) => [i.id, i]))
@@ -244,7 +249,9 @@ export default function WarrantiesPage() {
       </div>
 
       {loading ? (
-        <p className="flex items-center gap-2 py-10 text-sm text-muted-foreground"><Spinner /> Chargement…</p>
+        showLoadingSpinner && (
+          <p className="flex items-center gap-2 py-10 text-sm text-muted-foreground"><Spinner /> Chargement…</p>
+        )
       ) : warranties.length === 0 ? (
         <EmptyState
           title="Aucune garantie de production"
@@ -269,7 +276,9 @@ export default function WarrantiesPage() {
             {nameOf(selected.installation)}
           </h2>
           {loadingDetail ? (
-            <p className="flex items-center gap-2 py-6 text-sm text-muted-foreground"><Spinner /> Chargement…</p>
+            showDetailSpinner && (
+              <p className="flex items-center gap-2 py-6 text-sm text-muted-foreground"><Spinner /> Chargement…</p>
+            )
           ) : (
             <>
               {status?.has_warranty && (

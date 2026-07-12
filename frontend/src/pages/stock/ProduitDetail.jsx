@@ -4,11 +4,10 @@ import { History, PackageSearch } from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import { useHasPermission } from '../../hooks/useHasPermission'
 import {
-  Spinner, Badge,
+  Spinner, Badge, RelationCounters,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
   Button, Tabs, TabsList, TabsTrigger, TabsContent,
 } from '../../ui'
-import RelationCounters from '../../ui/RelationCounters'
 
 // ZPUR10 / ZSTK3 — Fiche produit (au-delà du catalogue) : quantité « en
 // commande » (BCF brouillon/envoyé, jamais annulé/reçu) + rapport
@@ -170,19 +169,19 @@ export function ProduitDetail({ produit, onClose }) {
           </DialogDescription>
         </DialogHeader>
 
-        {/* VX159 — compteur de relations cliquable en tête (BCF ouverts du
-            produit), lien vers la liste des commandes fournisseur pré-filtrée
-            (?produit=). Lit les sources déjà portées par le produit. */}
+        {/* VX159/VX250 — RelationCounters : réutilise `produit.bcf_sources_en_commande`
+            déjà chargé (prop, ZÉRO appel réseau nouveau). Pas de filtre par
+            produit sur BonsCommandeFournisseur.jsx (hors périmètre de cette
+            tâche) : lien vers la liste NUE, jamais un pré-filtre qui MENT.
+            `prix_achat` ne transite jamais par ce composant (label/count
+            purement quantitatifs). */}
         <RelationCounters
-          className="mb-1"
-          counters={[
-            {
-              key: 'bcf',
-              label: 'BCF ouverts',
-              count: (produit.bcf_sources_en_commande ?? []).length,
-              to: `/stock/bons-commande-fournisseur?produit=${produit.id}`,
-            },
-          ]}
+          className="mb-3"
+          counters={[{
+            label: 'bons de commande en cours',
+            count: produit.bcf_sources_en_commande?.length ?? 0,
+            to: '/stock/bons-commande-fournisseur',
+          }]}
         />
 
         <Tabs defaultValue="en-commande">

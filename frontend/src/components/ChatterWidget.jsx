@@ -12,6 +12,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSelector } from 'react-redux'
 import { MessageSquare, Send, Trash2 } from 'lucide-react'
 import recordsApi from '../api/recordsApi'
+import { IconButton } from '../ui/IconButton'
 
 // Surligne les @mentions dans le texte.
 function renderBody(body) {
@@ -123,14 +124,21 @@ export default function ChatterWidget({ model, id, readOnly = false }) {
               <span className="chatter-date">{formatDate(c.created_at)}</span>
               {/* Suppression : auteur lui-même ou admin */}
               {!readOnly && (user?.username === c.author_username || isAdmin) && (
-                <button
+                // VX194(b) — WCAG 2.5.8 : ce bouton (Trash2 size=12, aucun CSS
+                // dédié) était largement sous 24×24 px hors `pointer: coarse`.
+                // `IconButton size="icon-sm"` pose le plancher AA sans faire
+                // grossir la ligne de métadonnées comme le ferait `icon`
+                // (~40px, --control-h).
+                <IconButton
                   className="chatter-delete"
+                  variant="ghost"
+                  size="icon-sm"
                   title="Supprimer"
-                  aria-label="Supprimer le commentaire"
+                  label="Supprimer le commentaire"
                   onClick={() => handleDelete(c.id)}
                 >
-                  <Trash2 size={12} />
-                </button>
+                  <Trash2 size={14} />
+                </IconButton>
               )}
             </div>
             <div className="chatter-body">{renderBody(c.body)}</div>
