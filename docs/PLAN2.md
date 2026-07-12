@@ -841,7 +841,7 @@ grand-verdict — voir NE PAS FAIRE en fin de section pour le détail des kills/
   Reporting) rendent le même titre sans toucher leur JSX ; `nbsp('Priorité')` vérifiable par
   `codePointAt` ; e2e verts. (T2 — M, sonnet) (@lane: frontend/ui-core)
 
-- [ ] VX123 — **Plancher d'accessibilité visuelle : anneau de focus token-isé consommé partout + (@lane: frontend/ui-core)
+- [x] VX123 — **Plancher d'accessibilité visuelle : anneau de focus token-isé consommé partout + (@lane: frontend/ui-core)
   modes de contraste système.** Le token `--focus-ring` (`tokens.css:98`) et l'utilitaire
   `shadow-focus-ring` (L248) sont du code mort décoratif : **24 fichiers** primitifs (corrigé par
   le grand-verdict : pas « 40+ ») répètent en dur `focus-visible:ring-2 ring-ring
@@ -3207,6 +3207,8 @@ droite)**
 ---
 
 ## DONE LOG (agent appends one plain-language line per completed task)
+
+- 2026-07-12 — **VX123 (already present).** Verified already built by a prior wave: `.focus-ring` utility (`design/tokens.css:418`) consumed everywhere (0 residual `focus-visible:ring-2 focus-visible:ring-ring` chains in `ui/`), the 4 remaining `outline: none` in `index.css` are all paired with their own focus indicator (not orphans), `@media (forced-colors: active)` maps card/table/modal/form/btn to real `CanvasText`/`ButtonBorder`/`Highlight` borders, `@media (prefers-contrast: more)` hardens `--border`/`--muted-foreground` via `color-mix`. No code changes.
 
 - 2026-07-12 — **VX122 — voix typographique F121 (dernier volet réel : 3 recettes eyebrow encore en dur).** `.page-header h2`/`nbsp()`/`ArticleDetail` max-w-prose étaient déjà branchés par une vague antérieure ; `.text-eyebrow`/`--text-eyebrow-tracking` (tokens.css) existaient déjà et étaient consommés par 5 sélecteurs (`.gen-metric-label`/`.gen-chart-title`/`.gen-total-label`/`.gs-group-title`/`.cmdk-group-title`) mais PAS par les 3 recettes-tableau restantes : `.data-table th`/`.lines-table th`/`.cal-weekday` gardaient encore `letter-spacing: 0.04em` codé en dur (divergence résiduelle avec les 0.05em d'autres sélecteurs) — basculées sur le token unique.
 
