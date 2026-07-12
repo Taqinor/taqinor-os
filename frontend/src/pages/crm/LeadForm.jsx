@@ -40,6 +40,12 @@ import {
 // VX89 — shell externe Escape + focus-trap + bottom-sheet mobile (comme ClientForm).
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
 import { toast } from '../../ui/confirm'
+// VX167 — garde de saisie sur LE modal n°1 de l'ERP (complément direct de
+// VX89 : Escape ferme désormais sans rien demander, comme l'overlay/✕ déjà
+// avant). `isDirty` (VX224, JSON diff ci-dessous) est la source de vérité
+// unique ; ce hook n'ajoute que le filet beforeunload + la confirmation
+// impérative sur fermeture volontaire (✕ / overlay / futur onOpenChange).
+import { useDirtyGuard, confirmLeaveIfDirty } from '../../ui/useDirtyGuard'
 import { formatMAD, normalizeMaPhone } from '../../lib/format'
 // VX224 — même garde « jamais en train de saisir » que les raccourcis
 // globaux (ShortcutsProvider) pour J/K, une seule source de vérité.
@@ -394,10 +400,20 @@ export default function LeadForm({
   // VX224 — instantané « propre » pour la garde de saisie (◀▶/J-K) : mis à
   // jour à chaque point où `fields` revient intentionnellement à un état non
   // modifié (montage, changement de lead, reset « créer un autre », sauvegarde
-  // réussie en édition). Comparaison JSON simple — suffisante ici ; aucune
-  // primitive dirty commune n'existe encore (VX167, @coord VXD-B).
+  // réussie en édition). Comparaison JSON simple — suffisante ici ; VX167
+  // branche cette même valeur sur la garde beforeunload + la confirmation de
+  // fermeture volontaire ci-dessous.
   const [cleanFieldsJSON, setCleanFieldsJSON] = useState(() => JSON.stringify(fields))
   const isDirty = JSON.stringify(fields) !== cleanFieldsJSON
+  // VX167 — filet de sortie navigateur (beforeunload), même contrat que les 7
+  // adoptants VX166.
+  useDirtyGuard(isDirty)
+  // VX167 — fermeture volontaire (✕ / overlay / Escape via onOpenChange) :
+  // demande confirmation si `isDirty`, sinon ferme immédiatement (parité avec
+  // `confirmLeaveIfDirty` des 7 formulaires VX166).
+  const guardedClose = () => {
+    if (confirmLeaveIfDirty(isDirty)) onClose()
+  }
   // VX224 — « Créer un autre » : pertinent uniquement à la création (jamais en
   // édition), persisté, défaut OFF. `nomRef` reçoit le focus au reset (même
   // geste que VX89 `autoFocus`, mais posé manuellement puisque le champ ne se
@@ -925,7 +941,7 @@ export default function LeadForm({
   return (
     <ResponsiveDialog
       open
-      onOpenChange={(o) => { if (!o) onClose() }}
+      onOpenChange={(o) => { if (!o) guardedClose() }}
       // p-0 : .modal-header/.modal-body/.modal-footer portent déjà chacun
       // leur propre padding (comme avant ResponsiveDialog) — sans ce reset,
       // le p-5 par défaut de DialogContent doublerait la marge visuelle.
@@ -1019,7 +1035,7 @@ export default function LeadForm({
                 {lead.is_archived ? 'Restaurer' : 'Archiver'}
               </Button>
             )}
-            <button type="button" className="modal-close" onClick={onClose}>✕</button>
+            <button type="button" className="modal-close" onClick={guardedClose}>✕</button>
           </div>
         </div>
 
@@ -1849,7 +1865,7 @@ export default function LeadForm({
                 ✓ Enregistré
               </span>
             )}
-            <Button type="button" variant="outline" onClick={onClose}>
+            <Button type="button" variant="outline" onClick={guardedClose}>
               Annuler
             </Button>
             <Button type="submit" loading={saving} disabled={saving}>
