@@ -9,7 +9,8 @@ import { fetchEquipements } from '../../features/sav/store/equipementsSlice'
 import savApi from '../../api/savApi'
 import installationsApi from '../../api/installationsApi'
 import stockApi from '../../api/stockApi'
-import importApi, { downloadXlsx } from '../../api/importApi'
+import importApi from '../../api/importApi'
+import { downloadBlobInGesture } from '../../utils/downloadBlob'
 import ExcelImport from '../../components/ExcelImport'
 import RegistreGarantiesDialog from './RegistreGarantiesDialog'
 import EquipementFiabilitePanel from './EquipementFiabilitePanel'
@@ -30,6 +31,7 @@ import {
   Card,
   EmptyState,
   Skeleton,
+  Spinner,
   Input,
   Textarea,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
@@ -440,6 +442,9 @@ export default function EquipementsPage() {
   const [selected, setSelected] = useState(null)
   // WR11/FG290 — registre des garanties par parc (échéancier).
   const [showRegistre, setShowRegistre] = useState(false)
+  // VX172 — pending visible sur « Exporter Excel » (VX49 pose déjà le toast
+  // d'erreur ; ceci ajoute juste l'état chargement manquant).
+  const [xlsxBusy, setXlsxBusy] = useState(false)
   // VX109 — import Excel/CSV du parc d'équipements.
   const [showImport, setShowImport] = useState(false)
 
@@ -552,10 +557,16 @@ export default function EquipementsPage() {
             <Button variant="outline" size="sm" onClick={() => setShowImport(true)}>
               <Upload /> Importer
             </Button>
-            <Button variant="outline" size="sm"
-                    onClick={() => importApi.exportList('equipements', rows.map((r) => r.id))
-                      .then((r) => downloadXlsx(r.data, 'equipements.xlsx')).catch(() => {})}>
-              <Download /> Exporter Excel
+            <Button variant="outline" size="sm" disabled={xlsxBusy}
+                    onClick={() => {
+                      const pending = downloadBlobInGesture()
+                      setXlsxBusy(true)
+                      importApi.exportList('equipements', rows.map((r) => r.id))
+                        .then((r) => pending.deliver(r.data, 'equipements.xlsx'))
+                        .catch(() => {})
+                        .finally(() => setXlsxBusy(false))
+                    }}>
+              {xlsxBusy ? <Spinner /> : <Download />} Exporter Excel
             </Button>
           </div>
         </header>

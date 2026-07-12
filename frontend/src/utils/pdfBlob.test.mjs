@@ -104,7 +104,7 @@ test('ouvrirPdfBlob : fenêtre usable -> "open", aucun repli', () => {
 
 // ── VX49 — un blob/DOM invalide ne plante jamais et ne fuit pas l'URL ──
 
-test('openPdfBlob : un DOM défaillant (createElement en échec) ne lève pas et révoque quand même', () => {
+test('openPdfBlob : un DOM défaillant (createElement en échec) ne lève pas et révoque quand même', async () => {
   let revoked = false
   const realSetTimeout = global.setTimeout
   global.setTimeout = (fn) => { fn(); return 0 } // exécute le revoke immédiatement (pas de vraie attente)
@@ -118,9 +118,43 @@ test('openPdfBlob : un DOM défaillant (createElement en échec) ne lève pas et
   }
 
   try {
-    assert.doesNotThrow(() => openPdfBlob(new Blob(['x']), 'x.pdf'))
+    // VX172 — openPdfBlob est désormais async (détection iOS/standalone avant
+    // le <a>) : on attend la promesse pour observer le `finally` (revoke).
+    await assert.doesNotReject(() => openPdfBlob(new Blob(['x']), 'x.pdf'))
     assert.equal(revoked, true)
   } finally {
     global.setTimeout = realSetTimeout
   }
+})
+
+// ── VX172 — openPdfBlob : repli iOS/standalone sans target=_blank ──────────
+
+test('openPdfBlob : iOS/standalone -> pas de target=_blank (download pur)', async () => {
+  global.window = {
+    navigator: { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)' },
+    matchMedia: () => ({ matches: false }),
+  }
+  global.URL = { createObjectURL: () => 'blob:fake-url', revokeObjectURL: () => {} }
+  const anchor = { click() {} }
+  global.document = { body: { appendChild() {}, removeChild() {} }, createElement: () => anchor }
+
+  await openPdfBlob(new Blob(['x'], { type: 'application/pdf' }), 'devis.pdf')
+
+  assert.equal(anchor.target, undefined)
+  assert.equal(anchor.download, 'devis.pdf')
+})
+
+test('openPdfBlob : desktop hors coquille -> garde target=_blank + noopener', async () => {
+  global.window = {
+    navigator: { userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+    matchMedia: () => ({ matches: false }),
+  }
+  global.URL = { createObjectURL: () => 'blob:fake-url', revokeObjectURL: () => {} }
+  const anchor = { click() {} }
+  global.document = { body: { appendChild() {}, removeChild() {} }, createElement: () => anchor }
+
+  await openPdfBlob(new Blob(['x'], { type: 'application/pdf' }), 'devis.pdf')
+
+  assert.equal(anchor.target, '_blank')
+  assert.equal(anchor.rel, 'noopener')
 })

@@ -1,4 +1,5 @@
 import api from './axios'
+import { downloadBlobInGesture } from '../utils/downloadBlob'
 
 // T9 — import réutilisable CSV/XLSX. Dry-run (aperçu/mapping) puis commit.
 // XPLT1/XPLT2 — mode upsert + mapping sauvegardé, envoyés en options (jamais
@@ -48,15 +49,12 @@ const importApi = {
 }
 
 // Télécharge un blob générique (CSV/XLSX/JSON/ZIP) en forçant le download.
+// VX172 — appelé avec le blob déjà résolu (post-`await` de l'appelant) : pas
+// de fenêtre pré-ouverte possible d'ici, mais `downloadBlobInGesture()`
+// tente quand même l'onglet visible en iOS/standalone (repli `a.download`
+// automatique si bloqué) au lieu du téléchargement invisible d'avant.
 export function downloadBlob(blobData, filename) {
-  const url = URL.createObjectURL(new Blob([blobData]))
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  setTimeout(() => URL.revokeObjectURL(url), 1000)
+  downloadBlobInGesture().deliver(new Blob([blobData]), filename)
 }
 
 // Récupère le nom de fichier proposé par le serveur (Content-Disposition).
@@ -66,16 +64,10 @@ export function filenameFromResponse(res, fallback) {
   return m ? m[1] : fallback
 }
 
-// Télécharge un blob .xlsx renvoyé par l'API.
+// Télécharge un blob .xlsx renvoyé par l'API. VX172 — même traitement que
+// downloadBlob() ci-dessus (helper générique partagé par les 2 noms).
 export function downloadXlsx(blobData, filename) {
-  const url = URL.createObjectURL(new Blob([blobData]))
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  setTimeout(() => URL.revokeObjectURL(url), 1000)
+  downloadBlob(blobData, filename)
 }
 
 export default importApi

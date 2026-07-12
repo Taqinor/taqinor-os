@@ -33,6 +33,7 @@ import { normalizeCode, isValidCode, resolveTarget } from '../../features/stock/
 import BarcodeScanner from '../../features/pwa/BarcodeScanner'
 import { toastError, toastSuccess, toastWithUndo } from '../../lib/toast'
 import { openPdfInGesture } from '../../utils/pdfBlob'
+import { downloadBlobInGesture } from '../../utils/downloadBlob'
 import { useCanCreateProduit, useHasPermission, useIsAdmin, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import {
   Button, IconButton, Badge, Checkbox, Input, Spinner, Skeleton,
@@ -185,14 +186,11 @@ function ValorisationModal({ onClose }) {
   const sourceLabel = (s) => (s === 'achats' ? 'Achats reçus' : s === 'catalogue' ? 'Prix catalogue' : '—')
   // Export Excel (admin/INTERNE — coûts jamais client-facing).
   const exportXlsx = async () => {
+    const pending = downloadBlobInGesture()
     setExporting(true)
     try {
       const res = await api.get('/stock/valorisation-xlsx/', { responseType: 'blob' })
-      const url = URL.createObjectURL(new Blob([res.data]))
-      const a = document.createElement('a')
-      a.href = url; a.download = 'valorisation.xlsx'
-      document.body.appendChild(a); a.click(); a.remove()
-      setTimeout(() => URL.revokeObjectURL(url), 1000)
+      pending.deliver(new Blob([res.data]), 'valorisation.xlsx')
     } catch { setError('Export indisponible.') } finally { setExporting(false) }
   }
   return (
@@ -666,14 +664,11 @@ export default function StockList() {
   }
   const exportSelection = async () => {
     if (!visibleSelected.size) return
+    const pending = downloadBlobInGesture()
     setBulkBusy(true)
     try {
       const res = await stockApi.exportProduitsXlsx([...visibleSelected])
-      const url = URL.createObjectURL(new Blob([res.data]))
-      const a = document.createElement('a')
-      a.href = url; a.download = 'produits.xlsx'
-      document.body.appendChild(a); a.click(); a.remove()
-      setTimeout(() => URL.revokeObjectURL(url), 1000)
+      pending.deliver(new Blob([res.data]), 'produits.xlsx')
     } catch { setBulkMsg('Export indisponible.') } finally { setBulkBusy(false) }
   }
   // N20 — Imprime des étiquettes QR pour la sélection (PDF ; jamais de prix
@@ -773,13 +768,10 @@ export default function StockList() {
   const exportFiltered = async () => {
     const ids = filtered.map(p => p.id)
     if (!ids.length) return
+    const pending = downloadBlobInGesture()
     try {
       const res = await stockApi.exportProduitsXlsx(ids)
-      const url = URL.createObjectURL(new Blob([res.data]))
-      const a = document.createElement('a')
-      a.href = url; a.download = 'produits.xlsx'
-      document.body.appendChild(a); a.click(); a.remove()
-      setTimeout(() => URL.revokeObjectURL(url), 1000)
+      pending.deliver(new Blob([res.data]), 'produits.xlsx')
     } catch { /* ignore */ }
   }
   // Rail de catégories (catalogue actif complet) — pilote le filtre `activeCat`.

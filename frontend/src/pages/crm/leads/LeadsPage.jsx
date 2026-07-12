@@ -8,6 +8,7 @@ import { Upload, Download, X, Plus, MoreHorizontal, Zap, GitMerge } from 'lucide
 import { useIsAdmin } from '../../../hooks/useHasPermission'
 import { fetchLeads, updateLead, leadStagePatched } from '../../../features/crm/store/crmSlice'
 import crmApi from '../../../api/crmApi'
+import { downloadBlobInGesture } from '../../../utils/downloadBlob'
 import { filterLeads, EMPTY_FILTERS, archivedParam, CONVERSION_STAGE } from '../../../features/crm/stages'
 import {
   toggleId, toggleAll, pruneSelection, bulkResultMessage,
@@ -129,16 +130,14 @@ export default function LeadsPage() {
   const [showExpressModal, setShowExpressModal] = useState(false)
 
   // Export Excel de la liste filtrée courante (T9) — respecte les filtres.
+  // VX172 — geste ouvert AVANT le premier `await` (voir downloadBlob.js).
   const exportFiltered = async () => {
     const ids = filtered.map((l) => l.id)
     if (!ids.length) return
+    const pending = downloadBlobInGesture()
     try {
       const res = await crmApi.exportLeadsXlsx(ids)
-      const url = URL.createObjectURL(new Blob([res.data]))
-      const a = document.createElement('a')
-      a.href = url; a.download = 'leads.xlsx'
-      document.body.appendChild(a); a.click(); a.remove()
-      setTimeout(() => URL.revokeObjectURL(url), 1000)
+      pending.deliver(new Blob([res.data]), 'leads.xlsx')
     } catch { /* ignore */ }
   }
 
@@ -241,17 +240,11 @@ export default function LeadsPage() {
 
   const exportSelection = async () => {
     if (!visibleSelected.size) return
+    const pending = downloadBlobInGesture()
     setBulkBusy(true)
     try {
       const res = await crmApi.exportLeadsXlsx([...visibleSelected])
-      const url = URL.createObjectURL(new Blob([res.data]))
-      const a = document.createElement('a')
-      a.href = url
-      a.download = 'leads.xlsx'
-      document.body.appendChild(a)
-      a.click()
-      a.remove()
-      setTimeout(() => URL.revokeObjectURL(url), 1000)
+      pending.deliver(new Blob([res.data]), 'leads.xlsx')
     } catch {
       setBulkMsg("Export indisponible — réessayez.")
     } finally {

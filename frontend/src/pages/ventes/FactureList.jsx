@@ -36,6 +36,7 @@ import { useDelayedLoading } from '../../hooks/useDelayedLoading'
 import useDocumentTitle from '../../hooks/useDocumentTitle'
 import { DataTable } from '../../ui/datatable'
 import { openPdfBlob, openPdfInGesture } from '../../utils/pdfBlob'
+import { downloadBlobInGesture } from '../../utils/downloadBlob'
 
 // VX21 — squelette de la liste (parité DevisList/DevisTableSkeleton) : reprend
 // les 8 colonnes du vrai tableau pour que la mise en page ne saute pas à
@@ -600,6 +601,9 @@ export default function FactureList() {
   const [exportStart, setExportStart] = useState(() => new Date().toISOString().slice(0, 8) + '01')
   const [exportEnd, setExportEnd] = useState(() => new Date().toISOString().slice(0, 10))
   const [exportComptableBusy, setExportComptableBusy] = useState(false)
+  // VX172 — pending visible sur « Exporter Excel » (VX49 pose déjà le toast
+  // d'erreur ; ceci ajoute juste l'état chargement manquant).
+  const [xlsxBusy, setXlsxBusy] = useState(false)
   // ── Envoi WhatsApp : busy par facture (L857), langue (L851), aperçu (L852) ──
   const [waBusy, setWaBusy] = useState({})
   const [waLangue, setWaLangue] = useState('fr')
@@ -1175,9 +1179,16 @@ export default function FactureList() {
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start">
             <DropdownMenuItem
-              onSelect={() => importApi.exportList('factures', factures.map(f => f.id))
-                .then(r => downloadXlsx(r.data, 'factures.xlsx')).catch(() => {})}>
-              <Download className="size-3.5" aria-hidden="true" /> Exporter Excel
+              disabled={xlsxBusy}
+              onSelect={() => {
+                const pending = downloadBlobInGesture()
+                setXlsxBusy(true)
+                importApi.exportList('factures', factures.map(f => f.id))
+                  .then(r => pending.deliver(r.data, 'factures.xlsx'))
+                  .catch(() => {})
+                  .finally(() => setXlsxBusy(false))
+              }}>
+              {xlsxBusy ? <Spinner className="size-3.5" /> : <Download className="size-3.5" aria-hidden="true" />} Exporter Excel
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => setJournalOpen(true)}>
               <BookText className="size-3.5" aria-hidden="true" /> Journal comptable…
