@@ -467,6 +467,15 @@ CELERY_RESULT_BACKEND = CELERY_BROKER_URL
 CELERY_TIMEZONE = 'Africa/Casablanca'
 CELERY_ENABLE_UTC = False
 
+# YDATA13 — le broker Redis doit lui aussi border le délai de re-livraison
+# d'un message NON acquitté (acks_late — voir YOPSB8 ci-dessous) : sans
+# `visibility_timeout` explicite, la valeur par défaut de kombu/redis
+# (souvent 1h) est une coïncidence, pas une garantie documentée. Fixé à
+# 3600s — largement > CELERY_TASK_TIME_LIMIT (180s) pour qu'un message ne
+# soit JAMAIS considéré "perdu" et re-livré en double pendant qu'une tâche
+# légitime est encore en cours d'exécution.
+CELERY_BROKER_TRANSPORT_OPTIONS = {'visibility_timeout': 3600}
+
 # YOPSB8 — réglages de production durcis. Sans limite de temps ni garde de
 # perte de worker, une tâche bloquée (ex. rendu PDF WeasyPrint qui hangs)
 # épingle un worker indéfiniment. Le rendu PDF mesuré est ~3-4,5s : marge
