@@ -202,6 +202,20 @@ class Channel(models.TextChoices):
     SMS = 'sms', 'SMS'
 
 
+class NotificationReason(models.TextChoices):
+    """VX212(a) — raison COURTE, fermée, de « pourquoi je reçois ça ».
+
+    `resolve_recipients` (services.py) applique des règles invisibles — des
+    notifs « pourquoi moi ? » qu'on ne pouvait couper qu'en fouillant la
+    grille des 42 événements. Un sous-ensemble REPRÉSENTATIF des sites
+    d'émission pose désormais cette raison (jamais une exception si non
+    posée — vide = comportement historique, raison inconnue/non classée)."""
+    ASSIGNE = 'assigne_a_vous', 'Assigné à vous'
+    MANAGER = 'manager', 'Vous êtes manager/responsable'
+    ROUTING_RULE = 'regle_de_routage', 'Règle de routage configurée'
+    FOLLOWING = 'vous_suivez', 'Vous suivez cet enregistrement'
+
+
 class Notification(models.Model):
     """Une notification in-app pour UN utilisateur d'UNE société.
 
@@ -221,6 +235,10 @@ class Notification(models.Model):
     body = models.TextField(blank=True, default='')
     # Lien interne (route front) vers l'enregistrement lié — ex. /crm/leads?lead=4.
     link = models.CharField(max_length=512, blank=True, default='')
+    # VX212(a) — « pourquoi je reçois ça » : posé au site d'émission (best-
+    # effort, optionnel). Vide = raison non classée (comportement historique).
+    reason = models.CharField(
+        max_length=20, choices=NotificationReason.choices, blank=True, default='')
     read = models.BooleanField(default=False)
     read_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)

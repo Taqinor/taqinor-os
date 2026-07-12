@@ -17,6 +17,10 @@ class NotificationSerializer(serializers.ModelSerializer):
     severity = serializers.SerializerMethodField()
     category = serializers.SerializerMethodField()
     is_action = serializers.SerializerMethodField()
+    # VX212(a) — « pourquoi je reçois ça » : raison courte + libellé FR,
+    # vide si non classée (comportement historique).
+    reason_label = serializers.CharField(
+        source='get_reason_display', read_only=True, default='')
 
     class Meta:
         model = Notification
@@ -24,11 +28,12 @@ class NotificationSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'event_type', 'event_label', 'title', 'body', 'link',
             'read', 'read_at', 'created_at',
-            'severity', 'category', 'is_action',
+            'severity', 'category', 'is_action', 'reason', 'reason_label',
         ]
         read_only_fields = [
             'id', 'event_type', 'event_label', 'title', 'body', 'link',
             'read_at', 'created_at', 'severity', 'category', 'is_action',
+            'reason', 'reason_label',
         ]
 
     def get_severity(self, obj):

@@ -497,6 +497,33 @@ export default function NotificationBell() {
                               ×{n.count}
                             </span>
                           )}
+                          {/* VX212(a) — « pourquoi je reçois ça » : raison
+                              courte + « Régler » → la ligne de préférence de
+                              CET événement (jamais besoin de fouiller la
+                              grille des 42 événements). */}
+                          {n.reason_label && (
+                            <span style={{
+                              display: 'block', fontSize: '0.75em',
+                              color: 'var(--muted-foreground, #888)',
+                            }}>
+                              {n.reason_label}
+                              {' · '}
+                              <span role="button" tabIndex={0}
+                                    style={{ textDecoration: 'underline', cursor: 'pointer' }}
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      goto(`/parametres/notifications#${n.event_type}`)
+                                    }}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter' || e.key === ' ') {
+                                        e.stopPropagation()
+                                        goto(`/parametres/notifications#${n.event_type}`)
+                                      }
+                                    }}>
+                                Régler
+                              </span>
+                            </span>
+                          )}
                         </span>
                         {!n.read ? (
                           <span className="nb-item-mark"

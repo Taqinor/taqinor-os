@@ -161,8 +161,10 @@ def notify_followers(*, content_type, object_id, title, body='',
     sent = 0
     for f in qs:
         try:
+            # VX212(a) — « pourquoi je reçois ça » : cette diffusion vient
+            # TOUJOURS d'un abonnement (`Follower`), jamais d'une autre voie.
             notify(f.user, ET.CHAT_MENTION, title, body=body,
-                   link=link, company=f.company)
+                   link=link, company=f.company, reason='vous_suivez')
             sent += 1
         except Exception:  # pragma: no cover - défensif
             continue
