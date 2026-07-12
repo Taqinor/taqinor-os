@@ -2214,7 +2214,7 @@ VX83-86/99-101 (round 3, non construit) — transcrire chaque @after tel quel.**
   notif lue de 61 j est purgée ; un lot proche péremption émet `STOCK_EXPIRATION_SOON` ; tests.
   (T2 — L, sonnet) (@lane: backend/notify)
 
-- [ ] VX210 — **[BACKEND additif] Le snooze devient un rappel actif, généralisé, et déclenché par (@lane: backend/notify — @after VX85)
+- [x] VX210 **(already present)** — **[BACKEND additif] Le snooze devient un rappel actif, généralisé, et déclenché par (@lane: backend/notify — @after VX85)
   l'événement métier. @after VX85.** VX85 pose `snoozed_until` + exclusion passive sur
   `records.Activity` seulement — rien ne RÉVEILLE l'item ni ne re-notifie à l'échéance. Fix : (a)
   sweep Celery `reveiller_snoozes` — à échéance, l'item revient dans la file ET émet une
@@ -3207,6 +3207,8 @@ droite)**
 ---
 
 ## DONE LOG (agent appends one plain-language line per completed task)
+
+- 2026-07-12 — **VX210 (already present)** — verified: sweep `reveiller_snoozes` (Celery task, `sweeps.py:553`) wakes both `records.Activity.snoozed_until` and the new `notifications.SnoozedItem` (approvals), `records.Activity.snooze_trigger_event` (closed choices, `records/services.py:181-313`) subscribed via events; `tests_vx210_reveil_snooze.py` covers both exit paths; commit `9eccf915` on main. Ticked, no rebuild.
 
 - 2026-07-12 — **VX208 (already present)** — verified: `apps/notifications/severity.py` (EVENT_SEVERITY/EVENT_CATEGORY dicts), serializer exposure, NotificationBell severity/category grouping + digest-excluded-from-badge + undo-via-mark_unread already shipped with `tests_vx208_severity_taxonomy.py`, commit `5b99b234` on main. Ticked, no rebuild.
 
