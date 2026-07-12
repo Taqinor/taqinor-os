@@ -343,6 +343,20 @@ REST_FRAMEWORK = {
     # count/next/previous/results reste identique à DRF.
     'DEFAULT_PAGINATION_CLASS': 'core.pagination.StandardPagination',
     'PAGE_SIZE': 50,
+    # YAPIC2 — backends de tri/recherche par défaut. Toute vue qui déclare son
+    # PROPRE `filter_backends` (37/97 aujourd'hui) N'EST PAS affectée (un
+    # attribut de classe explicite masque toujours ce défaut) ; les ~60
+    # restantes gagnent un tri/recherche standard là où il n'y en avait
+    # AUCUN. `ordering_fields`/`search_fields` restent None par défaut sur
+    # ces vues (DRF n'active alors ni tri ni recherche réels — seule une vue
+    # qui pose explicitement `ordering_fields`/`search_fields` les active) ;
+    # `scripts`/`tests/test_api_ordering_whitelist.py` (YAPIC2) garde qu'une
+    # vue posant `OrderingFilter` (explicitement OU via ce défaut) ET
+    # `ordering_fields` NE SOIT JAMAIS `'__all__'` ou implicite.
+    'DEFAULT_FILTER_BACKENDS': (
+        'rest_framework.filters.OrderingFilter',
+        'rest_framework.filters.SearchFilter',
+    ),
     # NTPLT42 — throttle applicatif PAR TENANT posé en défaut global : protège
     # l'instance partagée du script fou d'UN client sans toucher les autres. Le
     # budget vient de DEFAULT_THROTTLE_RATES['tenant'] (env TENANT_RATE_LIMIT).
