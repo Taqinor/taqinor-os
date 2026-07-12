@@ -66,9 +66,8 @@ describe('NotificationBell — onglets internes déclaratifs (VX14)', () => {
 
     // Onglet par défaut = Activités : le groupe "Activités en retard" est visible,
     // "Garanties" et "Factures impayées" ne le sont pas.
-    await waitFor(() => {
-      expect(screen.getByText('Relancer client A')).toBeInTheDocument()
-    })
+    await act(async () => { await vi.runOnlyPendingTimersAsync() })
+    expect(screen.getByText('Relancer client A')).toBeInTheDocument()
     expect(screen.queryByText('Onduleur X')).not.toBeInTheDocument()
     expect(screen.queryByText('FAC-001')).not.toBeInTheDocument()
 

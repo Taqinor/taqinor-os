@@ -48,25 +48,23 @@ describe('NotificationBell — préfixe (N) du titre d’onglet (VX82)', () => {
     getNotifications.mockResolvedValue({ data: { total: 3 } })
     renderBell()
     await act(async () => { await Promise.resolve() })
-    await waitFor(() => {
-      expect(document.title).toBe('(3) Devis · TAQINOR')
-    })
+    await act(async () => { await vi.runOnlyPendingTimersAsync() })
+    expect(document.title).toBe('(3) Devis · TAQINOR')
   })
 
   it('ne pose aucun préfixe quand tout est lu (total = 0)', async () => {
     getNotifications.mockResolvedValue({ data: { total: 0 } })
     renderBell()
     await act(async () => { await Promise.resolve() })
-    await waitFor(() => {
-      expect(document.title).toBe('Devis · TAQINOR')
-    })
+    await act(async () => { await vi.runOnlyPendingTimersAsync() })
+    expect(document.title).toBe('Devis · TAQINOR')
   })
 
   it('retire le préfixe une fois retombé à zéro (ne laisse pas de résidu)', async () => {
     getNotifications.mockResolvedValueOnce({ data: { total: 2 } })
     renderBell()
-    await act(async () => { await Promise.resolve() })
-    await waitFor(() => expect(document.title).toBe('(2) Devis · TAQINOR'))
+    await act(async () => { await Promise.resolve(); await Promise.resolve() })
+    expect(document.title).toBe('(2) Devis · TAQINOR')
 
     // Le rafraîchissement suivant (3 min) retombe à 0.
     getNotifications.mockResolvedValueOnce({ data: { total: 0 } })
@@ -74,6 +72,7 @@ describe('NotificationBell — préfixe (N) du titre d’onglet (VX82)', () => {
       vi.advanceTimersByTime(3 * 60 * 1000)
       await Promise.resolve()
     })
-    await waitFor(() => expect(document.title).toBe('Devis · TAQINOR'))
+    await act(async () => { await vi.runOnlyPendingTimersAsync() })
+    expect(document.title).toBe('Devis · TAQINOR')
   })
 })
