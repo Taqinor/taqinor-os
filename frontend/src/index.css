@@ -115,6 +115,63 @@ html { scroll-behavior: smooth; }
   }
 }
 
+/* ============================================================================
+   VX136 — Scroll-timeline natif (2026) : `grep view-timeline|animation-
+   timeline` = 0 avant cette passe. Compositor thread, zéro JS
+   d'orchestration, progressive enhancement pur via `@supports`.
+   ========================================================================== */
+
+/* (a) reveal des cartes KPI de ModuleDashboard : translateY 8px→0 + fondu au
+   fil du scroll. Navigateurs sans support (`@supports` échoue) : la règle
+   n'est jamais appliquée, l'élément reste à son état par défaut (opacity:1,
+   sans transform) — repli état final statique, aucun code dédié requis. */
+@supports (animation-timeline: view()) {
+  .reveal-on-scroll {
+    animation: reveal-on-scroll linear both;
+    animation-timeline: view();
+    animation-range: entry;
+  }
+}
+@keyframes reveal-on-scroll {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  /* Désactive explicitement la timeline (au lieu de compter sur l'effet de
+     bord d'un `animation-duration` forcé à 0.01ms sur une scroll-timeline). */
+  .reveal-on-scroll { animation: none; opacity: 1; transform: none; }
+}
+
+/* (b) ScrollProgress (ui/ScrollProgress.jsx) : barre 2px dont la largeur suit
+   `scroll(nearest)` — le scroll du plus proche ancêtre défilant (ex.
+   `.modal-body` des formulaires-fleuves LeadForm/DevisGenerator). Repli sans
+   support : piste jamais animée (scaleX(0) statique), aucune erreur ni saut
+   de mise en page. */
+.scroll-progress-bar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  height: 2px;
+  width: 100%;
+  flex-shrink: 0;
+  transform-origin: left;
+  background: var(--primary, #e8b54a);
+  transform: scaleX(0);
+}
+@supports (animation-timeline: scroll(nearest)) {
+  .scroll-progress-bar {
+    animation: scroll-progress-grow linear;
+    animation-timeline: scroll(nearest);
+  }
+}
+@keyframes scroll-progress-grow {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .scroll-progress-bar { animation: none; transform: scaleX(0); }
+}
+
 /* VX134(c) — le contenu de route post-Suspense apparaissait en cut dur à
    chaque navigation ; remonté (`key={pathname}`, router/index.jsx) avec un
    fondu court --motion-fast au lieu d'un swap sec. Se fige sous
