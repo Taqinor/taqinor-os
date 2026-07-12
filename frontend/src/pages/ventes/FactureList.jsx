@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useState, useMemo, useRef } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import {
   Search, Plus, Download, BookText, ListChecks, FileWarning,
   MessageCircle, Code2, Check, FileText, ReceiptText, MoreHorizontal,
@@ -505,6 +505,7 @@ export default function FactureList() {
   // VX82 — titre d'onglet dédié (chrome navigateur vivant).
   useDocumentTitle('Factures')
   const dispatch = useDispatch()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { factures, loading, error } = useSelector(s => s.ventes)
   const isAdmin = useSelector(s => s.auth.role) === 'admin'
   // VX21 — chargement différé anti-scintillement (parité DevisList) : spinner
@@ -893,6 +894,26 @@ export default function FactureList() {
   const openEdit  = f  => { setEditFacture(f);    setShowForm(true) }
   const closeForm = () => { setShowForm(false);   setEditFacture(null) }
   const onSaved   = () => dispatch(fetchFactures())
+
+  // VX220 — lien profond ?id=<pk> (patron VX79 déjà lu par InstallationsPage.jsx/
+  // TicketsPage.jsx) : la palette de commandes (⌘K) ouvre désormais la FACTURE
+  // exacte — la modale d'édition est la seule vue « fiche » qui existe pour une
+  // facture, donc c'est elle qui joue le rôle du panneau détail. Posé une fois
+  // les factures chargées (jamais avant, la recherche échouerait toujours) ;
+  // id introuvable → silencieux (jamais un crash). Le paramètre est retiré dans
+  // tous les cas pour ne pas rouvrir la modale à chaque re-render.
+  useEffect(() => {
+    const wantedId = searchParams.get('id')
+    if (!wantedId || loading) return
+    const match = factures.find(f => String(f.id) === String(wantedId))
+    if (match) openEdit(match)
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev)
+      next.delete('id')
+      return next
+    }, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, loading, factures])
 
   const doAction = async (thunk, id, confirmMsg) => {
     if (confirmMsg && !window.confirm(confirmMsg)) return

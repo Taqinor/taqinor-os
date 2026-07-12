@@ -277,6 +277,23 @@ export default function LeadsPage() {
   }
   const onSaved = () => refetch()
 
+  // VX220(b) — raccourci clavier « c l » (shortcuts.js/CommandPalette) navigue
+  // vers /crm/leads?new=1 : câblage MINIMAL du paramètre — ouvre directement le
+  // formulaire de création, jamais un deuxième mécanisme de quick-create
+  // (NTUX possède la palette générique, périmètre réduit ici aux raccourcis
+  // clavier directs, @coord NTUX9/10). Le paramètre est retiré une fois lu
+  // pour ne pas rouvrir le formulaire à chaque re-render.
+  useEffect(() => {
+    if (searchParams.get('new') !== '1') return
+    openNew()
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev)
+      next.delete('new')
+      return next
+    }, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
+
   // Ouvrir un doublon depuis l'avertissement du formulaire : on charge la fiche
   // complète puis on bascule le formulaire dessus (même panneau, autre lead).
   const onOpenDuplicate = (id) => {

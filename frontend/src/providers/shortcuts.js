@@ -3,6 +3,10 @@
 // dialogue d'aide « ? ».
 
 // Raccourcis « g puis lettre » → navigation directe vers un écran.
+// VX220(c) — audit d'exhaustivité vs les routes de PREMIER NIVEAU (cf.
+// router/index.jsx) : /planification et /approbations existaient sans
+// raccourci alors qu'elles sont des destinations quotidiennes (dispatch
+// planning, boîte d'approbations centralisée VX86) — ajoutées ci-dessous.
 export const GOTO_SHORTCUTS = [
   { keys: 'g d', to: '/dashboard', label: 'Aller au tableau de bord' },
   { keys: 'g l', to: '/crm/leads', label: 'Aller aux leads' },
@@ -12,6 +16,20 @@ export const GOTO_SHORTCUTS = [
   { keys: 'g s', to: '/stock', label: 'Aller au stock' },
   { keys: 'g h', to: '/chantiers', label: 'Aller aux chantiers' },
   { keys: 'g t', to: '/sav', label: 'Aller au SAV' },
+  { keys: 'g p', to: '/planification', label: 'Aller à la planification' },
+  { keys: 'g a', to: '/approbations', label: 'Aller aux approbations' },
+]
+
+// VX220(b) — raccourcis « c puis lettre » → CRÉATION directe (lead/devis/
+// client). Périmètre RÉDUIT à dessein : NTUX possède la palette de
+// quick-create générique (NTUX9/10, @coord) — ceci pose SEULEMENT le
+// câblage clavier direct + le paramètre `?new=1` lu par LeadsPage.jsx/
+// ClientList.jsx (DevisGenerator est déjà un écran de création dédié, aucun
+// paramètre nécessaire).
+export const CREATE_SHORTCUTS = [
+  { keys: 'c l', to: '/crm/leads?new=1', label: 'Créer un lead' },
+  { keys: 'c d', to: '/ventes/devis/nouveau', label: 'Créer un devis' },
+  { keys: 'c c', to: '/crm?new=1', label: 'Créer un client' },
 ]
 
 // VX73 — l'ERP tourne réellement sur Windows/Linux (glyphe ⌘ codé en dur
