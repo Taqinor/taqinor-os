@@ -2177,7 +2177,7 @@ VX83-86/99-101 (round 3, non construit) — transcrire chaque @after tel quel.**
   → les 3 surfaces affichent 5 ; aucune dérivation client parallèle restante. (T2 — M, sonnet)
   (@lane: backend/notify — @after VX83/VX86)
 
-- [ ] VX208 — **[BACKEND additif] La cloche cesse d'être une liste plate : sévérité, regroupement (@lane: backend/notify — @with VX14)
+- [x] VX208 **(already present)** — **[BACKEND additif] La cloche cesse d'être une liste plate : sévérité, regroupement (@lane: backend/notify — @with VX14)
   par entité, digest hors badge, et undo. @with VX14 (même fichier — la mise en onglets appartient
   à VX14, cette seed apporte la taxonomie/dédoublonnage/compteurs/undo).** Trois défauts prouvés
   sur la même surface : (a) `EventType` a 42 valeurs sans rang de sévérité ni catégorie — la
@@ -3207,6 +3207,8 @@ droite)**
 ---
 
 ## DONE LOG (agent appends one plain-language line per completed task)
+
+- 2026-07-12 — **VX208 (already present)** — verified: `apps/notifications/severity.py` (EVENT_SEVERITY/EVENT_CATEGORY dicts), serializer exposure, NotificationBell severity/category grouping + digest-excluded-from-badge + undo-via-mark_unread already shipped with `tests_vx208_severity_taxonomy.py`, commit `5b99b234` on main. Ticked, no rebuild.
 
 - 2026-07-12 — **VX207 (already present)** — verified during backend/notify lane drain: `GET /notifications/attention-summary/` (`views.py:438`, `urls.py:47`) already exists with a dedicated contract test (`tests_vx207_attention_summary.py`), commit `6e80ce75` on main. Ticked, no rebuild.
 
