@@ -4497,6 +4497,104 @@ class EntiteConsolidation(models.Model):
                 "Le pourcentage d'intérêt doit être entre 0 et 100 %.")
 
 
+# ── XPLT20 — Écritures inter-sociétés miroir (vente A → achat B) ──────────
+# FG153 (ci-dessus) livre l'élimination + états consolidés ; XPLT20 évite la
+# DOUBLE SAISIE MANUELLE d'une vente inter-groupe (ex. SARL → EI) en générant
+# côté B un BROUILLON de facture fournisseur (jamais auto-validé). Opt-in
+# STRICT par paire de sociétés : sans règle ``actif=True``, comportement
+# inchangé. SCHEMA+DECISION — voir docs/decisions/XPLT20-inter-societes.md :
+# le mécanisme est livré mais AUCUNE règle réelle n'est créée ici ; le
+# fondateur confirme le flux EI↔SARL et le(s) compte(s) de liaison avant
+# d'activer une paire.
+
+class RegleInterSociete(models.Model):
+    """Règle opt-in : une facture de ``societe_a`` désignant ``societe_b``
+    comme client (rapprochement ICE/IF de ``parametres.CompanyProfile``)
+    génère chez B une facture fournisseur miroir en BROUILLON. Désactivée
+    par défaut (``actif=False``). ``compte_liaison`` (CGNC) sert aux
+    écritures de liaison lettrables des deux côtés — laissé vide tant que le
+    fondateur ne l'a pas confirmé pour la paire réelle.
+    """
+    societe_a = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='regles_intersociete_source',
+        verbose_name='Société A (vendeuse)',
+    )
+    societe_b = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='regles_intersociete_cible',
+        verbose_name='Société B (acheteuse)',
+    )
+    actif = models.BooleanField(default=False, verbose_name='Actif')
+    compte_liaison = models.CharField(
+        max_length=20, blank=True, default='',
+        verbose_name='Compte de liaison (CGNC)')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+
+    class Meta:
+        verbose_name = 'Règle inter-sociétés'
+        verbose_name_plural = 'Règles inter-sociétés'
+        ordering = ['-date_creation']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['societe_a', 'societe_b'],
+                name='uniq_regle_intersociete_paire',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.societe_a_id} → {self.societe_b_id}'
+
+
+class EcritureLiaisonInterSociete(models.Model):
+    """Trace lettrable d'un miroir XPLT20 généré : une ligne par facture
+    source déjà miroirée (garde d'idempotence — une facture ne génère jamais
+    deux miroirs) + piste d'audit (montants, compte de liaison figé au
+    moment de la génération). Les factures source/miroir sont référencées
+    par id opaque (cross-app — jamais d'import de ``apps.ventes``/
+    ``apps.stock`` models ici).
+    """
+    regle = models.ForeignKey(
+        RegleInterSociete,
+        on_delete=models.CASCADE,
+        related_name='ecritures_liaison',
+        verbose_name='Règle',
+    )
+    facture_source_id = models.PositiveIntegerField(
+        verbose_name='Id de la facture (société A)')
+    facture_fournisseur_miroir_id = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='Id de la facture fournisseur miroir (société B)')
+    montant_ht = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0, verbose_name='Montant HT')
+    montant_tva = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0, verbose_name='Montant TVA')
+    montant_ttc = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0, verbose_name='Montant TTC')
+    compte_liaison = models.CharField(
+        max_length=20, blank=True, default='',
+        verbose_name='Compte de liaison (CGNC)')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+
+    class Meta:
+        verbose_name = 'Écriture de liaison inter-sociétés'
+        verbose_name_plural = 'Écritures de liaison inter-sociétés'
+        ordering = ['-date_creation']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['regle', 'facture_source_id'],
+                name='uniq_ecriture_liaison_regle_facture',
+            ),
+        ]
+
+    def __str__(self):
+        return f'Liaison facture#{self.facture_source_id} ({self.regle_id})'
+
+
 # ── FG209 — Promotions & campagnes de remise (codes datés) ─────────────────
 
 class CodePromotion(models.Model):
