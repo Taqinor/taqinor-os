@@ -79,6 +79,7 @@ the journey the best in the world for the CLIENT and the COMMERCIAL user.*
 - VX153 — already present: `features/ged/module.config.jsx` already renames "GESTION DOCUMENTAIRE" → "DOCUMENTS - AVANCE", `GedNavigator.jsx`/`GedSearch.jsx` have zero `text-[1x px]` arbitrary sizes left, and `pages/ia/AgentActions.jsx` already groups the historique tab by Aujourd'hui/Hier/date (with `AgentActions.historique.test.jsx` green) — checkbox had never been ticked.
 - VX154 — already present: `ui/TaqinorMark.jsx` + `ui/SolarLoader.jsx` already exist and are already wired into `Header.jsx` (replacing the generic `<Zap>`) and `RouteFallback.jsx`, with the `sun-rise` keyframe + its `prefers-reduced-motion` freeze rule already in `index.css` — checkbox had never been ticked.
 - VX159 — already present: `ui/RelationCounters.jsx` already exists and is already posed at the top of all 4 fiches (`ClientDetailPanel.jsx`, `FournisseurFiche360.jsx`, `ProduitDetail.jsx`, `LeadForm.jsx`), with `RelationCounters.test.jsx` + `RelationCountersMountPoints.test.mjs` green — checkbox had never been ticked.
+- VX233 — already present: `apps/parametres/views_audit.py` already lists `'tarification'` in `KNOWN_AUDIT_SECTIONS`, `parametresApi.getAuditSections()` already exists, `SettingsAuditFeed.jsx` already exists as a paramétrable component consumed by both `AvanceSection.jsx` (dynamic `<Select>`) and `TarificationSection.jsx` ("Voir l'historique" → `section="tarification"`) — checkbox had never been ticked.
 - VX156 — `lib/voice.js` + `<WelcomeMoment>` already existed (welcome moment wired in `main.jsx`) but the other 5 voice moments were never posed on a real screen. Wired `voice.devisSent` (DevisList email-send toast description), `voice.emptyQueue` (MesActivitesPage empty state, replacing the ad-hoc string), `voice.chantierDone` (InstallationDetail mise-en-service success toast, previously silent), `voice.networkError` (canonical `lib/apiError.js` Network-Error branch, updated its test). `voice.dealSigned` left for VX155 (SigneDialog/DealSignedCelebration territory, `@with VX40`).
 
 #### DONE LOG — Vague 2 (VX terrain/finance/CRM + QX groupe) (2026-07-12)
@@ -2586,7 +2587,7 @@ droite)**
 
 **Sous-groupe VXD-N — Le directeur/admin : contrôle et supervision**
 
-- [ ] VX233 — **[BACKEND 1 ligne] Le journal des paramètres montre TOUTES ses sections + la (@lane: frontend/brand)
+- [x] VX233 (already present) — **[BACKEND 1 ligne] Le journal des paramètres montre TOUTES ses sections + la (@lane: frontend/brand)
   tarification a son historique.** Défaut prouvé : `SettingsAuditLog` journalise déjà 6+ sections
   côté serveur et l'endpoint `settings_audit_sections` (`views_audit.py:53-68`) EXISTE — mais
   `parametresApi.js` ne l'expose pas et le seul consommateur (`AvanceSection.jsx:304-307`)
