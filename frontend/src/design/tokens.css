@@ -112,6 +112,43 @@
   --gen-chart-sans: var(--color-nuit-700);
   --gen-chart-avec: var(--primary);
 
+  /* VX26 — Couleurs de STAGE du pipeline CRM, dérivées de la palette de
+     marque (règle #2 : les 6 CLÉS restent importées de STAGES.py via
+     features/crm/stages.js — seule la SOURCE de couleur change ici, jamais
+     la liste). Un changement de --primary/--info/--success cascade ici. */
+  --stage-new: var(--info);            /* Nouveau — azur, entrée d'entonnoir */
+  --stage-contacted: color-mix(in oklch, var(--info) 55%, var(--color-nuit) 45%);
+  --stage-quote-sent: var(--primary);  /* Devis envoyé — brass, écho devis */
+  --stage-follow-up: color-mix(in oklch, var(--primary) 55%, var(--destructive) 45%);
+  --stage-signed: var(--success);      /* Signé — conversion */
+  --stage-cold: var(--muted-foreground); /* Froid — gris discret */
+
+  /* VX26 — Badge de score de lead (Chaud/Tiède/Froid, scoring.py backend),
+     même patron bg/texte/bordure que les autres pastilles sémantiques. */
+  --score-chaud-bg: color-mix(in oklch, var(--warning) 22%, var(--card) 78%);
+  --score-chaud-fg: color-mix(in oklch, var(--warning) 65%, var(--foreground) 35%);
+  --score-chaud-border: color-mix(in oklch, var(--warning) 45%, var(--card) 55%);
+  --score-tiede-bg: color-mix(in oklch, var(--info) 15%, var(--card) 85%);
+  --score-tiede-fg: color-mix(in oklch, var(--info) 70%, var(--foreground) 30%);
+  --score-tiede-border: color-mix(in oklch, var(--info) 35%, var(--card) 65%);
+  --score-froid-bg: var(--muted);
+  --score-froid-fg: var(--muted-foreground);
+  --score-froid-border: var(--border);
+
+  /* VX26 — Palette déterministe par responsable (CalendarView, hachage de
+     nom → couleur) : dérivée de la marque + accents sémantiques pour rester
+     distincte sur 10 valeurs, jamais un hex local. */
+  --owner-color-1: var(--info);
+  --owner-color-2: var(--success);
+  --owner-color-3: var(--primary);
+  --owner-color-4: color-mix(in oklch, var(--destructive) 55%, var(--color-encre-soft) 45%);
+  --owner-color-5: var(--destructive);
+  --owner-color-6: color-mix(in oklch, var(--info) 55%, var(--success) 45%);
+  --owner-color-7: color-mix(in oklch, var(--color-nuit-700) 45%, var(--info) 55%);
+  --owner-color-8: color-mix(in oklch, var(--warning) 70%, var(--color-nuit) 30%);
+  --owner-color-9: color-mix(in oklch, var(--destructive) 50%, var(--primary) 50%);
+  --owner-color-10: color-mix(in oklch, var(--success) 55%, var(--color-nuit) 45%);
+
   --border: #dde3f0;
   --input: #d2d9ea;
   /* Anneau de focus (F122). `--ring` = couleur azur (contraste ≥ 3:1 sur le

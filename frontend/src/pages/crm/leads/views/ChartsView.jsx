@@ -21,8 +21,10 @@ import {
   Card, CardHeader, CardTitle, CardDescription, CardContent, EmptyState, Button,
 } from '../../../../ui'
 
-const NAVY = '#0b1f3a'
-const GOLD = '#f5a623'
+// VX26 — navy/or dérivés des tokens de marque unifiés (VX1, tokens.css)
+// plutôt que du hex local recharts.
+const NAVY = 'var(--cat-navy)'
+const GOLD = 'var(--cat-gold)'
 const MOBILE_QUERY = '(max-width: 768px)'
 
 // Vrai sous 768px — pour incliner les libellés d'axe sur mobile.

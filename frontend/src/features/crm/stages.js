@@ -28,13 +28,16 @@ export const STAGE_LABELS = {
 }
 
 // Accent visuel par étape (entonnoir froid → chaud → signé, froid en gris).
+// VX26 — couleurs dérivées des tokens de marque (frontend/src/design/tokens.css)
+// plutôt que du hex local : les 6 CLÉS restent le miroir strict de STAGES.py,
+// seule la source de couleur a changé.
 export const STAGE_COLORS = {
-  NEW: '#3b82f6',
-  CONTACTED: '#8b5cf6',
-  QUOTE_SENT: '#f5a623',
-  FOLLOW_UP: '#f97316',
-  SIGNED: '#16a34a',
-  COLD: '#64748b',
+  NEW: 'var(--stage-new)',
+  CONTACTED: 'var(--stage-contacted)',
+  QUOTE_SENT: 'var(--stage-quote-sent)',
+  FOLLOW_UP: 'var(--stage-follow-up)',
+  SIGNED: 'var(--stage-signed)',
+  COLD: 'var(--stage-cold)',
 }
 
 // Libellés des choix du modèle Lead (apps/crm/models.py) — affichage seulement.
