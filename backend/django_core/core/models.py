@@ -2114,3 +2114,42 @@ class SequenceCounter(TenantModel):
     def next(cls, company, cle):
         """Réserve et renvoie UNE valeur (raccourci de ``allocate(...,1)``)."""
         return cls.allocate(company, cle, 1).start
+
+
+class TenantLimit(TenantModel):
+    """NTPLT7 — limite douce de consommation par société (enforcement DOUX).
+
+    Une clé parmi ``max_lignes_table`` / ``max_stockage_mo`` /
+    ``max_exports_jour`` porte une ``valeur`` (``0`` = illimité). Consultée par
+    dataimport / exports / upload via ``core.limits.verifier`` : un dépassement
+    NOTIFIE les admins et pose un en-tête ``X-Quota-Warning`` — JAMAIS un blocage
+    dur. Vente : les groupes multi-filiales exigent des garde-fous de
+    consommation par entité, sans jamais couper le service.
+    """
+
+    CLE_MAX_LIGNES = 'max_lignes_table'
+    CLE_MAX_STOCKAGE_MO = 'max_stockage_mo'
+    CLE_MAX_EXPORTS_JOUR = 'max_exports_jour'
+    CLE_CHOICES = [
+        (CLE_MAX_LIGNES, 'Lignes maximum par table'),
+        (CLE_MAX_STOCKAGE_MO, 'Stockage maximum (Mo)'),
+        (CLE_MAX_EXPORTS_JOUR, 'Exports maximum par jour'),
+    ]
+
+    cle = models.CharField('Clé', max_length=32, choices=CLE_CHOICES)
+    valeur = models.BigIntegerField(
+        'Valeur', default=0,
+        help_text='Plafond (0 = illimité).')
+
+    class Meta:
+        verbose_name = 'Limite tenant'
+        verbose_name_plural = 'Limites tenant'
+        ordering = ['company_id', 'cle']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'cle'],
+                name='core_tenantlimit_company_cle'),
+        ]
+
+    def __str__(self):
+        return f'{self.cle}={self.valeur} @{self.company_id}'
