@@ -56,6 +56,9 @@ const DocumentsPage = lazy(() => import('../pages/ged/DocumentsPage'))
 // VX78 — Écran 404 déjà construit (ui/NotFound.jsx), jusqu'ici jamais importé
 // par le routeur : le catch-all rebondissait en silence vers /dashboard.
 const NotFound = lazy(() => import('../ui/NotFound'))
+// VX131(c) — jumeau 403 de NotFound : un refus de rôle/permission rebondissait
+// en silence vers /dashboard (aucun écran dédié, aucune explication).
+const Forbidden = lazy(() => import('../ui/Forbidden'))
 
 // ── Auth loader ────────────────────────────────────────────────────────────────
 // Verifie la session via le cookie httpOnly — aucun token cote client.
@@ -106,16 +109,16 @@ const authLoader = async ({ request }) => {
 // ERR27 — Garde de rôle/permission sur les routes d'administration. Reflète
 // EXACTEMENT le gating du menu (Sidebar.jsx) : une route n'est accessible que si
 // le rôle (menu_tier) figure dans `roles` ET — si une permission est exigée —
-// qu'elle est présente dans les permissions de l'utilisateur. Sinon, l'utilisateur
-// authentifié mais non autorisé est renvoyé vers `/dashboard` (accessible à tous),
-// au lieu de monter la page d'admin via un lien direct.
+// qu'elle est présente dans les permissions de l'utilisateur.
+// VX131(c) — un refus rebondissait en SILENCE vers `/dashboard` (aucun écran
+// dédié, aucune explication) : redirige désormais vers `/403` (ui/Forbidden.jsx).
 const roleLoader = (roles, perm) => async ({ request }) => {
   const ok = await ensureSession()
   if (!ok) return buildLoginRedirect(request)
   const { role, permissions } = store.getState().auth
   const tier = role || 'normal'
   const allowed = roles.includes(tier) && (!perm || (permissions || []).includes(perm))
-  return allowed ? null : redirect('/dashboard')
+  return allowed ? null : redirect('/403')
 }
 
 // ODX6 — Garde de MODULE. Enveloppe un loader de base (auth ou rôle) : une fois
@@ -238,6 +241,11 @@ const router = createBrowserRouter([
   // UX1 — Routes des modules « coquille » enregistrées via le registre. Chaque
   // route est gatée par le même authLoader/roleLoader que le reste de l'app.
   ...buildModuleRoutes({ WithLayout, authLoader, roleLoader, moduleLoader }),
+
+  // VX131(c) — écran 403 dédié (roleLoader y redirige désormais un refus de
+  // rôle/permission), rendu via authLoader seul (un utilisateur non connecté
+  // qui atterrit ici passe d'abord par /login, comme toute route protégée).
+  { path: '/403', loader: authLoader, element: <WithLayout><Forbidden /></WithLayout> },
 
   // Catch-all — VX78 : un favori/lien périmé affiche désormais l'écran 404
   // (ui/NotFound.jsx) au lieu de rebondir en silence vers /dashboard.

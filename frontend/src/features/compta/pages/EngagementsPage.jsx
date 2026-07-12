@@ -10,9 +10,25 @@ import { Button, Segmented, Card, EmptyState, toast } from '../../../ui'
 import { formatMAD, formatDate } from '../../../lib/format'
 import { stampedFilename } from '../../../utils/downloadBlob'
 import { store } from '../../../store'
+import api from '../../../api/axios'
 import comptaApi from '../../../api/comptaApi'
 import useComptaList from '../components/useComptaList.js'
 import CrudDialog from '../components/CrudDialog.jsx'
+
+// VX229 — options du Combobox « Maître d'ouvrage / client » : le répertoire
+// unifié des tiers (`apps/tiers`, couche fondation), chargé une fois à
+// l'ouverture du dialog. `tiers_nom` reste FIGÉ au snapshot (doc modèle) mais
+// n'est plus tapé à la main — dérivé du tiers réel choisi (traçable vers sa
+// fiche via `tiers_type`/`tiers_id`).
+const tiersAsync = () => api.get('/tiers/tiers/', { params: { page_size: 500 } }).then((res) => {
+  const list = Array.isArray(res.data) ? res.data : (res.data?.results || [])
+  return list.map((t) => ({
+    value: t.id,
+    label: (t.type_tiers === 'entreprise' && t.raison_sociale)
+      || `${t.prenom || ''} ${t.nom || ''}`.trim() || t.nom,
+    tiersType: t.type_tiers,
+  }))
+})
 
 /* ============================================================================
    FG145–148 / XFAC14 / XACC26 / COMPTA39 — Engagements & clôtures avancées.
@@ -80,7 +96,14 @@ function RetenuesGarantiePanel() {
     { name: 'base', label: 'Base', type: 'number', required: true },
     { name: 'taux', label: 'Taux (%)', type: 'number' },
     { name: 'marche_ref', label: 'Marché' },
-    { name: 'tiers_nom', label: 'Maître d’ouvrage' },
+    // VX229 — un vrai tiers du répertoire unifié (traçable vers sa fiche) au
+    // lieu d'un « Maître d'ouvrage » en texte libre désynchronisé du
+    // référentiel ; `tiers_nom` reste posé (snapshot figé), dérivé lecture
+    // seule du tiers choisi.
+    {
+      name: 'tiers_id', label: 'Maître d’ouvrage / client', async: tiersAsync,
+      deriveFields: (opt) => ({ tiers_type: opt?.tiersType || '', tiers_nom: opt?.label || '' }),
+    },
     { name: 'date_levee_prevue', label: 'Levée prévue', type: 'date' },
   ]
 

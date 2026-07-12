@@ -38,9 +38,10 @@ export function ModuleDashboard({
     return (
       <EmptyState
         icon={AlertTriangle}
+        tone="error"
         title="Impossible de charger le tableau de bord"
         description={typeof error === 'string' ? error : 'Une erreur est survenue lors du chargement des indicateurs.'}
-        className={cn('border-destructive/40', className)}
+        className={className}
       />
     )
   }

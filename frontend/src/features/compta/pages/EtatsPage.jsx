@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Download, RefreshCw, FileText, GitCompare } from 'lucide-react'
+import { Download, RefreshCw, FileText, GitCompare, ArrowUp, ArrowDown, ChevronsUpDown } from 'lucide-react'
 import { Button, Segmented, Input, Label, Card, EmptyState, toast } from '../../../ui'
+import { Table as SharedTable } from '../../../pages/reporting/Table'
 import { formatMAD } from '../../../lib/format'
 import { stampedFilename } from '../../../utils/downloadBlob'
 import { store } from '../../../store'
@@ -55,34 +56,60 @@ function cellValue(key, val) {
   return String(val)
 }
 
-// Tableau générique à partir d'un tableau de lignes plates.
+// VX232(b) — tableau générique migré vers le primitif partagé `Table` (fin du
+// <table> HTML nu) ; en prime, un clic sur un en-tête trie la colonne (les
+// états CGNC — balance en tête — se contentaient d'un ordre serveur figé).
 function GenericTable({ lignes }) {
+  const [sort, setSort] = useState({ key: null, dir: 'asc' })
+
+  const cols = lignes.length
+    ? Object.keys(lignes[0]).filter((k) => typeof lignes[0][k] !== 'object')
+    : []
+
+  const sorted = useMemo(() => {
+    if (!sort.key) return lignes
+    const copy = [...lignes]
+    copy.sort((a, b) => {
+      const av = a[sort.key]
+      const bv = b[sort.key]
+      if (av == null && bv == null) return 0
+      if (av == null) return 1
+      if (bv == null) return -1
+      const cmp = (typeof av === 'number' && typeof bv === 'number')
+        ? av - bv
+        : String(av).localeCompare(String(bv), 'fr')
+      return sort.dir === 'asc' ? cmp : -cmp
+    })
+    return copy
+  }, [lignes, sort])
+
   if (!lignes.length) {
     return <EmptyState title="Aucune donnée" description="Aucune ligne pour cette période." />
   }
-  const cols = Object.keys(lignes[0]).filter((k) => typeof lignes[0][k] !== 'object')
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
-            {cols.map((c) => (
-              <th key={c} className="px-2 py-2 font-medium">{c.replace(/_/g, ' ')}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {lignes.map((row, i) => (
-            <tr key={i} className="border-b last:border-0">
-              {cols.map((c) => (
-                <td key={c} className="px-2 py-1.5 tabular-nums">{cellValue(c, row[c])}</td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  )
+
+  const toggleSort = (key) => setSort((prev) => (
+    prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' }))
+
+  const columns = cols.map((c) => ({
+    key: c,
+    align: MONEY_KEYS.has(c) ? 'right' : undefined,
+    header: (
+      <button
+        type="button"
+        onClick={() => toggleSort(c)}
+        className="inline-flex items-center gap-1 hover:text-foreground"
+      >
+        {c.replace(/_/g, ' ')}
+        {sort.key === c
+          ? (sort.dir === 'asc' ? <ArrowUp className="size-3" /> : <ArrowDown className="size-3" />)
+          : <ChevronsUpDown className="size-3 opacity-40" />}
+      </button>
+    ),
+    cellClassName: 'tabular-nums',
+    cell: (row) => cellValue(c, row[c]),
+  }))
+
+  return <SharedTable columns={columns} rows={sorted} aria-label="État comptable" />
 }
 
 function KeyValue({ obj }) {

@@ -284,6 +284,7 @@ export default function DemandesAchatList() {
         onRowClick={(d) => { setDetail(d); setRefusing(false); setMotifRefus('') }}
         emptyTitle="Aucune demande d'achat"
         emptyDescription="Créez une réquisition avec « Nouvelle demande »."
+        emptyAction={<Button size="sm" onClick={openCreate}><Plus className="size-4" /> Nouvelle demande</Button>}
         aria-label="Demandes d'achat"
       />
 

@@ -1079,6 +1079,7 @@ export default function BonsCommandeFournisseur() {
         ]}
         emptyTitle="Aucun bon de commande fournisseur"
         emptyDescription="Créez-en un avec « Nouveau bon de commande » ou depuis le besoin matériel d'un chantier."
+        emptyAction={<Button size="sm" onClick={() => setSelected({})}><Plus className="size-4" /> Nouveau bon de commande</Button>}
         aria-label="Bons de commande fournisseur"
       />
 

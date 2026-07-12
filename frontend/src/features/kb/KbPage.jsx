@@ -406,6 +406,9 @@ export default function KbPage() {
         exportName="base-de-connaissances"
         emptyTitle="Aucun article"
         emptyDescription="Aucun article ne correspond à cette recherche."
+        emptyAction={peutEditer
+          ? <Button size="sm" onClick={() => openEditor(null)}><Plus className="size-4" /> Nouvel article</Button>
+          : undefined}
       >
         {peutEditer && peremption.length > 0 && (
           <div className="flex items-center gap-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-warning">

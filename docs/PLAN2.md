@@ -801,7 +801,7 @@ force `company`).
   échec → rôle non supprimé + liste migrés/en-échec + reprise ciblée. (T1 — M/L, sonnet ; review
   opus : paie + rôles = surfaces finance/auth) (@lane: frontend/data)
 
-- [ ] VX118 — **[BUG] CANDIDAT BUILD : surfaces fantômes — deux features entières rendent sans (@lane: frontend/orphans)
+- [x] VX118 — **[BUG] CANDIDAT BUILD : surfaces fantômes — deux features entières rendent sans (@lane: frontend/orphans)
   AUCUN CSS + kiosque TV en JSON brut.** (a) le chat interne Discuss — `chat-list-*`, `chat-shell`,
   `chat-thread-*`, `chat-pinned-*`, `chat-composer-*` (11+ noms, 4 fichiers
   `features/messaging/*` : `ConversationList.jsx`, `MessageThread.jsx`, `Composer.jsx`,
@@ -1031,7 +1031,7 @@ grand-verdict — voir NE PAS FAIRE en fin de section pour le détail des kills/
   Badge) ; même glyphe AlertTriangle que l'EmptyState d'erreur ; changer `--motion-base` affecte
   les toasts ; 4 variantes distinctes testées. (T2 — M, sonnet) (@lane: frontend/ui-core)
 
-- [ ] VX131 — **Des états qui disent vrai : `tone` sur EmptyState, CTA sur les listes principales, (@lane: frontend/orphans)
+- [x] VX131 — **Des états qui disent vrai : `tone` sur EmptyState, CTA sur les listes principales, (@lane: frontend/orphans)
   page 403.** Trois trous du même système : (a) les 267 poses d'EmptyState partagent le wrapper
   gris neutre — un ÉCHEC de chargement est visuellement identique à « rien à afficher » ; pire,
   `DataTable.jsx:385` (erreur) garde l'icône grise quand `ErrorBoundary.jsx:38` la colore ; (b)
@@ -1332,7 +1332,7 @@ subset) pour les identifiants (`--font-mono`) — à soumettre au fondateur avan
 
 **Sous-groupe VXD-D — Ops & insight : les nombres sont le héros**
 
-- [ ] VX148 — **Le kit `ui/charts` réellement adopté : fin des 3 thèmes recopiés et des rapports (@lane: frontend/orphans)
+- [x] VX148 — **Le kit `ui/charts` réellement adopté : fin des 3 thèmes recopiés et des rapports (@lane: frontend/orphans)
   sans graphique.** Le kit maison (AreaSansAxe/BarArrondie/KpiSpark/ChartTooltip/ChartEmpty, thémé,
   testé, reduced-motion géré) est contourné par les écrans d'insight les plus importants :
   `Reporting.jsx` (L7-10, 39-49, radius codé `[0,6,6,0]` L384, KPI sans sparkline), `Rapports.jsx`
@@ -2567,7 +2567,7 @@ droite)**
 
 **Sous-groupe VXD-M — Le comptable : le mois compté en clics**
 
-- [ ] VX228 — **Le rapprochement bancaire ligne-à-ligne : le contrat d'interaction complet. (@lane: frontend/compta)
+- [x] VX228 — **Le rapprochement bancaire ligne-à-ligne : le contrat d'interaction complet. (@lane: frontend/compta)
   @coord FE-rapprochement-detail (cette seed EST sa spécification d'interaction — une seule
   tâche, jamais deux).** Défaut prouvé : `comptaApi.rapprochements.{lignesGl,resume,
   ajouterLigneReleve,pointer}` (`comptaApi.js:180-186`) n'ont AUCUN consommateur réel —
@@ -2584,7 +2584,7 @@ droite)**
   clôturable ; test du flux pointer→resume. (T2 — L, sonnet ; opus si scores de confiance à
   rendre) (@lane: frontend/compta)
 
-- [ ] VX229 — **`CrudDialog` apprend le Combobox : fin des champs FK « (ID) » tapés à la main.** (@lane: frontend/compta)
+- [x] VX229 — **`CrudDialog` apprend le Combobox : fin des champs FK « (ID) » tapés à la main.** (@lane: frontend/compta)
   Défaut prouvé : `CrudDialog.jsx:76-96` (la plomberie CRUD des 8 écrans compta) ne rend que
   `<Input>` ou `<select>` statique — résultat : `NotesDeFraisPage.jsx:104/110/123` (« Employé
   (ID) » ×3), `RapprochementsPage.jsx:285` (« Compte de contrepartie (ID) »), et PIRE,
@@ -2628,7 +2628,7 @@ droite)**
   sur la ligne surlignée ; recharger restaure l'onglet ; « Comparer au GL » ouvre le grand-livre
   pré-filtré ; tests MemoryRouter. (T2 — M, sonnet) (@lane: frontend/compta — @coord VX79/VX113)
 
-- [ ] VX232 — **Les états financiers deviennent LISIBLES : noms réels, tableaux exploitables, (@lane: frontend/compta)
+- [x] VX232 — **Les états financiers deviennent LISIBLES : noms réels, tableaux exploitables, (@lane: frontend/compta)
   exports hiérarchisés et traduits.** Quatre défauts de lisibilité du même module : (a) le KPI n°1
   du Cockpit affiche `Tiers #42` (`CockpitPage.jsx:101-104`) ; (b) les états CGNC
   (`EtatsPage.jsx:55-96`, `GenericTable`) sont des `<table>` HTML nus ; (c) les 6 boutons d'export
@@ -3275,6 +3275,18 @@ droite)**
 ---
 
 ## DONE LOG (agent appends one plain-language line per completed task)
+
+- 2026-07-12 — **VX148 — Le kit `ui/charts` réellement adopté : fin des thèmes de tooltip recopiés et des rapports sans graphique.** NOTE : `Reporting.jsx`/`Rapports.jsx`/`Journal.jsx` étaient déjà largement migrés par une vague antérieure (VX28) — le travail restant identifié après relecture réelle du code (pas des n° de ligne du plan, obsolètes) : `Reporting.jsx` — le camembert (recharts natif, seule forme non couverte par le kit) perd son dernier dictionnaire `CHART_TOOLTIP_STYLE` local au profit de `<ChartTooltip>` (`ui/charts/ChartTooltip.jsx` gagne un repli `p.payload?.color` pour les Pie sans besoin de dupliquer un style) ; 3 `EmptyState` de cartes-graphiques → `ChartEmpty`. `Rapports.jsx` — `BarArrondie` ajouté AU-DESSUS de 3 tables comparatives (entonnoir ventes, stock par catégorie, chantiers par statut — la table garde le détail + les liens de drill-down) ; `EmptyState` du graphe Analytics → `ChartEmpty`. `Journal.jsx` — le graphe vide rendait un `<p>` nu → `ChartEmpty`. `PilotageStock.jsx` — la table « Prévisions de demande » (seule des 4 rapports encore sans graphique après VX33) gagne un `BarArrondie` « Top consommation mensuelle », même patron que top5Reappro/rotation. `ProductionPage.jsx` — l'écran le plus consulté du monitoring n'avait AUCUN graphique : courbe de tendance kWh (`AreaSansAxe`, pattern `OmAnalyticsPage.jsx`) dérivée des relevés déjà chargés, `buildProductionChartData` extraite en fonction pure testée. `CommercialDashboard.jsx` — `EmptyState` de l'entonnoir vide → `ChartEmpty` (`Dashboard.jsx`/`CohortsPage.jsx` l'avaient déjà, vérifiés sans changement). `grep "from 'recharts'"` sur les 3 fichiers cibles ne montre plus que le Pie de Reporting.jsx (forme non couverte). Tests : CommercialDashboard.test.jsx (cas ChartEmpty), ProductionPage.test.jsx (buildProductionChartData unitaire), node --test rapports-attribution (4/4 verts, non-régression).
+
+- 2026-07-12 — **VX131 — Des états qui disent vrai : `tone` sur EmptyState, CTA sur les listes principales, page 403.** (a) `EmptyState.jsx` gagne `tone` (`neutral|error|warning`, calqué sur `ErrorBoundary`) qui colore bordure ET cercle d'icône ensemble (jamais l'icône seule) ; `DataTable.jsx` (erreur) et `ModuleDashboard.jsx` (erreur) migrés sur `tone="error"` — l'icône `AlertTriangle` restait grise malgré une bordure destructive. (b) `emptyAction` (nouvelle prop, filée `ListShell`→`DataTable`, les 2 sites de rendu desktop/mobile) : CTA identique à la toolbar sur 12 listes principales (ClientList, DemandesAchatList, ContratsList, KbPage, LitigesPage, ProjetsPage, FournisseursStock, NonConformites, ModelesBcf, ReceptionsFournisseur, BonsCommandeFournisseur, FacturesFournisseur) — StockList/DevisList/FactureList déjà conformes (vérifiées, non touchées) ; les CTA respectent les gardes de permission/état existants (`canWrite`/`peutEditer`/`bonsRecevables.length`). (c) `ui/Forbidden.jsx` (nouveau, jumeau de `NotFound.jsx`, tone="warning") câblé au routeur : `roleLoader` (`router/index.jsx`) redirige désormais un refus de rôle/permission vers `/403` (écran dédié) au lieu du `/dashboard` silencieux. Tests : `EmptyState.test.jsx` (3 tons), `DataTable.test.jsx` (emptyAction + tone error), `index.vx131Forbidden.test.mjs` (node --test, 4/4 verts).
+
+- 2026-07-12 — **VX118 — [BUG] surfaces fantômes : Discuss + LeadExpress + kiosque TV migrées sur le kit existant, zéro CSS ajouté.** (a) Discuss (`ConversationList.jsx`, `MessageThread.jsx`, `Composer.jsx`) : les 11+ classes `chat-list-*`/`chat-thread-*`/`chat-pinned-*`/`chat-composer-*` sans AUCUNE règle CSS migrées vers `cn()`+Tailwind (bandeau épinglé désormais fond/bordure visibles, item actif/non-lu distincts) ; `ChatPage.jsx` déjà co-listait du Tailwind réel, non touché. (b) `LeadExpressModal.jsx` : les 23 références `lem-*` (0 CSS depuis sa création) remplacées par `Dialog`+`Form`/`FormField`/`FormActions` (le langage des autres dialogues CRM) ; le handler Échap manuel retiré (Radix Dialog le gère nativement). (c) `DashboardsTvPage.jsx` : `<pre>{JSON.stringify(current.layout)}</pre>` remplacé par un rendu réel avec le kit existant (`Card`+`ui/charts`) — grands chiffres `text-6xl` pour les widgets scalaires, `AreaSansAxe`/`KpiSpark` en grand pour les séries, `ChartEmpty` pour un widget sans donnée exploitable, `EmptyState` si le dashboard n'a aucun widget ; forme réelle du layout lue depuis `dashboardFilters.js` (`layout.widgets[]`, seule convention déjà établie dans le repo — aucun schéma de widget-type préexistant ailleurs). Tests : DashboardsTvPage.test.jsx (nouveau cas stats/charts + garde `<pre>`=0).
+
+- 2026-07-12 — **VX232 — Les états financiers deviennent LISIBLES : noms réels, tableaux exploitables, exports hiérarchisés et traduits.** (a) `CockpitPage.jsx` KPI n°1 : `Tiers #42` résolu en nom réel — SCOPE ADAPTÉ EN FRONTEND-ONLY (le lane build-only ne touche pas le backend) : au lieu d'enrichir `apps/compta/selectors.py`, le cockpit charge une fois le répertoire unifié `apps/tiers` (`GET /tiers/tiers/`, timeout 4 s dédié, purement décoratif) et résout `tiers_id` côté client via `resolveTiersLabel` (export nommé, testé unitairement) ; repli « Tiers #N » identique si le tiers a été supprimé/pas encore chargé. (b) `EtatsPage.jsx` `GenericTable` migré du `<table>` HTML nu vers le primitif partagé `pages/reporting/Table.jsx`, plus tri au clic d'en-tête (ascendant/descendant, icônes lucide) — une balance rendue trie désormais au clic. (c)(d) `FiscalitePage.jsx` : les 6 exports fiscaux regroupés en 2 rangées sous-titrées « Mensuel » / « Annuel — exercice requis », chaque bouton (FEC/liasse/IS compris) porte désormais une phrase d'aide grise dédiée. Tests : `resolveTiersLabel` (unitaire) + `etats-page-sort.test.jsx` (rendu `report-table` + tri au clic). Backend inchangé — `apps/compta/selectors.py` non touché (hors périmètre de ce lane).
+
+- 2026-07-12 — **VX229 — `CrudDialog` apprend le Combobox : fin des champs FK « (ID) » tapés à la main.** Nouveau type de champ `{name, label, async: () => Promise<{value,label}[]>, deriveFields?: (opt) => object}` dans `CrudDialog.jsx` — options chargées une fois à l'ouverture, mémoïsées, rendu en `Combobox` de recherche. Migré : `NotesDeFraisPage.jsx` 3× « Employé (ID) » → Combobox « Nom Prénom » (`rhApi.getEmployes`) ; `RapprochementsPage.jsx` « Compte de contrepartie (ID) » → Combobox comptes (`comptaApi.comptes.list`) ; `EngagementsPage.jsx` retenue de garantie : `tiers_nom` texte libre → Combobox du répertoire unifié `apps/tiers` (`tiers_id`/`tiers_type` réels, `tiers_nom` dérivé lecture seule via `deriveFields`, traçable vers la fiche tiers). `marche_ref`/Cautions bancaires laissés tels quels (string-ref intentionnel, aucun modèle tiers dédié côté backend — zéro migration). Tests `crud-dialog-combobox.test.jsx` (rendu Combobox + dérivation tiers_id/tiers_type/tiers_nom à la création). Frontend pur, zéro migration.
+
+- 2026-07-12 — **VX228 — `RapprochementDetailDialog` : le contrat d'interaction complet du rapprochement bancaire.** `RapprochementsPage.jsx` gagne un dialog 2 volets (relevé | grand-livre pré-filtré montant) ouvert par clic de ligne (`bancaires`), consommant les 4 méthodes API déjà écrites (`lignesGl`/`resume`/`ajouterLigneReleve`/`pointer`) ; bandeau `resume()` en tête (solde relevé/pointé, écart) qui décroît EN DIRECT à chaque pointage, même langage visuel que le bandeau d'équilibre d'`EcrituresPage` ; « Suggestions » déplacée DANS le dialog (retirée des actions de ligne) ; « Clôturer » apparaît dans le dialog une fois l'écart à 0. Test `rapprochement-detail.test.jsx` (flux pointer→resume, écart 500→0). Frontend pur, zéro migration.
 
 - 2026-07-11 — **VX152 — fin des moteurs de table parallèles (dernier volet, landé seul).** GED (`GedNavigator`/`GedSearch`), `ClientDetailPanel` et OCR (`OcrUpload`) rejoignent le moteur de table déjà utilisé par leur voisin direct : GedNavigator/GedSearch → moteur `DataTable` partagé (GedNavigator via l'échappatoire `renderRow`/`renderHeaderRow` ARC49 pour préserver le DOM testé ; GedSearch en colonnes), `ClientDetailPanel` → primitif `Table` partagé (fin du 3e moteur maison `DocTable` ; plus aucune `<table>` HTML), OcrUpload → NOUVEAU primitif partagé `ui/KeyValueTable` alimenté par un point de rendu UNIQUE de `FIELD_LABELS` (helper `ocrFieldRows`). + volet `RolesManagement` (liste des rôles → `DataTable`, grille de permissions inchangée). Tests de source `node --test` par surface ; tests comportementaux existants (GedNavigator/GedSearch/OcrUpload) verts par préservation du DOM (cases/actions/testids conservés). Frontend pur, zéro migration. Landé SEUL par cherry-pick sur `main` (les autres commits VX de la branche — VX141/146/147/148 — restent en attente : VX141 introduit `DEVIS_TRACK_STAGES` qui fait échouer `check_stages.py`, à traiter séparément). (ROUTINE)
 

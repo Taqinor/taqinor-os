@@ -287,6 +287,7 @@ export default function LitigesPage() {
           exportName="litiges-reclamations"
           emptyTitle="Aucune réclamation"
           emptyDescription="Aucune réclamation ne correspond à ces filtres."
+          emptyAction={<Button size="sm" onClick={() => openEditor(null)}><Plus className="size-4" /> Nouvelle réclamation</Button>}
         />
       )}
 
