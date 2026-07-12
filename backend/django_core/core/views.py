@@ -70,6 +70,7 @@ from .serializers import (
     DataSubjectRequestSerializer,
     DeletionRecordSerializer,
     ModuleToggleSerializer,
+    OutboxEventSerializer,
     PaymentTransactionSerializer,
     RegistreTraitementSerializer,
     SavedQuerySerializer,
@@ -1000,6 +1001,42 @@ def _couts_xlsx_response(rows, periode):
                       'spreadsheetml.sheet'))
     resp['Content-Disposition'] = f'attachment; filename="{filename}"'
     return resp
+
+
+# ── NTPLT10 — Supervision de l'outbox (superuser : liste, filtre, rejeu) ─────
+
+
+class OutboxEventViewSet(viewsets.ReadOnlyModelViewSet):
+    """NTPLT10 — supervision de l'outbox transactionnel (SUPERUSER only).
+
+      * ``GET  core/outbox/``               — liste (filtre ``?statut=`` /
+        ``?event=``)
+      * ``GET  core/outbox/{id}/``          — un événement
+      * ``POST core/outbox/{id}/rejouer/``  — re-livre l'événement aux handlers
+
+    Vue transverse à toutes les sociétés, réservée à l'exploitant."""
+
+    serializer_class = OutboxEventSerializer
+    permission_classes = [_IsSuperUser]
+
+    def get_queryset(self):
+        from .models import OutboxEvent
+        qs = OutboxEvent.objects.all()
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        event = self.request.query_params.get('event')
+        if event:
+            qs = qs.filter(event_name=event)
+        return qs
+
+    @action(detail=True, methods=['post'])
+    def rejouer(self, request, pk=None):
+        """Re-livre l'événement aux handlers durables (dédup préservée)."""
+        from . import dispatch_outbox
+        event = self.get_object()
+        result = dispatch_outbox.replay(event)
+        return Response(result, status=status.HTTP_200_OK)
 
 
 # ── NTPLT29 — Jobs de fond avec progression (mes jobs) ──────────────────────

@@ -102,6 +102,22 @@ def beat_heartbeat_task():
     return {'ok': True}
 
 
+@shared_task(name='core.dispatch_outbox')
+def dispatch_outbox_task():
+    """NTPLT10 — livraison des événements outbox aux handlers durables.
+
+    Filet beat (toutes les 5 min) en plus de l'enqueue immédiat on_commit :
+    livre les événements ``pending``/``failed`` échus, applique retries
+    exponentiels bornés puis dead-letter. Idempotente (re-run ne double-livre
+    pas — dédup ``ProcessedEvent``). Queue ``default``."""
+    from . import dispatch_outbox
+
+    counts = dispatch_outbox.dispatch_pending()
+    logger.info('core.dispatch_outbox: livrés=%d échecs=%d dead=%d',
+                counts['delivered'], counts['failed'], counts['dead'])
+    return counts
+
+
 @shared_task(name='core.scan_live_isolation')
 def scan_live_isolation_task():
     """NTPLT8 — scan mensuel DRY-RUN d'étanchéité des DONNÉES vivantes.

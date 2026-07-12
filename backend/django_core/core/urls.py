@@ -37,6 +37,7 @@ from .views import (
     DataSubjectRequestViewSet,
     ModuleCatalogViewSet,
     ModuleToggleViewSet,
+    OutboxEventViewSet,
     PaymentTransactionViewSet,
     RegistreTraitementViewSet,
     SavedQueryViewSet,
@@ -103,6 +104,8 @@ router.register(r'changelog', ChangelogViewSet, basename='changelog')
 router.register(r'usage', TenantUsageSnapshotViewSet, basename='tenant-usage')
 # NTPLT29 — mes jobs de fond avec progression (scopé user + société).
 router.register(r'jobs-status', BackgroundJobViewSet, basename='background-job')
+# NTPLT10 — supervision de l'outbox transactionnel (SUPERUSER only).
+router.register(r'outbox', OutboxEventViewSet, basename='outbox-event')
 # XPLT10 — liens publics tokenisés + partage interne fin de dashboards.
 router.register(r'dashboards-partages', PartageDashboardViewSet,
                 basename='dashboard-partage')
