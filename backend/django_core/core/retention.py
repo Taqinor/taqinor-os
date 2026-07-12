@@ -96,3 +96,87 @@ def run_all_policies(now=None, apply_=False):
             'name': name, 'count': count, 'statut': statut, 'erreur': erreur,
         })
     return results
+
+
+# ---------------------------------------------------------------------------
+# NTPLT39 — Purge par DROP PARTITION pilotée par la rétention.
+#
+# Sur une table PARTITIONNÉE mensuellement (``core.partitioning``), purger par
+# ``DETACH PARTITION`` + ``DROP TABLE`` est INSTANTANÉ et sans bloat, là où un
+# ``DELETE`` par lots réécrit des millions de lignes. Cette politique se
+# branche dans le registre YOPSB10 comme n'importe quelle autre : elle reçoit
+# ``apply_`` du sweep (DRY-RUN par défaut) et ne supprime QUE si ``apply_`` est
+# vrai — mêmes flags d'activation (``RETENTION_AUTO_APPLY``).
+# ---------------------------------------------------------------------------
+
+
+def _partition_year_month(partition: str, table: str):
+    """Extrait ``(year, month)`` du suffixe ``_YYYY_MM`` d'une partition.
+
+    Renvoie ``None`` si le nom ne suit pas la convention (partition par défaut,
+    nom hors-format) — une telle partition n'est JAMAIS purgée.
+    """
+    suffix = partition[len(table) + 1:] if partition.startswith(
+        table + '_') else ''
+    parts = suffix.split('_')
+    if len(parts) != 2:
+        return None
+    try:
+        return int(parts[0]), int(parts[1])
+    except ValueError:
+        return None
+
+
+def drop_partitions_before(table: str, keep_months: int, now=None,
+                           apply_: bool = False) -> int:
+    """Purge les partitions mensuelles de ``table`` plus vieilles que la
+    fenêtre ``keep_months``.
+
+    DRY-RUN par défaut (``apply_=False``) : compte les partitions ÉLIGIBLES
+    sans rien détacher/supprimer. Avec ``apply_=True`` : ``DETACH`` puis
+    ``DROP TABLE`` chaque partition éligible (instantané). Renvoie le nombre de
+    partitions concernées (comptées en dry-run, réellement purgées sinon).
+    """
+    from django.db import connection
+    from django.utils import timezone
+    from . import partitioning
+
+    now = now or timezone.now()
+    # Seuil = premier jour du mois, reculé de keep_months.
+    year, month = now.year, now.month
+    for _ in range(keep_months):
+        if month == 1:
+            year, month = year - 1, 12
+        else:
+            month -= 1
+    threshold = (year, month)
+
+    eligible = []
+    for part in partitioning.list_partitions(table):
+        ym = _partition_year_month(part, table)
+        if ym is None:
+            continue
+        if ym < threshold:
+            eligible.append(part)
+
+    if apply_:
+        with connection.cursor() as cur:
+            for part in eligible:
+                cur.execute(
+                    f'ALTER TABLE "{table}" DETACH PARTITION "{part}";')
+                cur.execute(f'DROP TABLE IF EXISTS "{part}";')
+    return len(eligible)
+
+
+def register_partition_retention(name: str, table: str, keep_months: int):
+    """Enregistre une politique de rétention par DROP PARTITION pour ``table``.
+
+    À appeler dans le ``ready()`` de l'app propriétaire de la table. La
+    politique reçoit ``apply_`` du sweep (DRY-RUN par défaut) et purge les
+    partitions plus vieilles que ``keep_months`` mois.
+    """
+    def sweep(now, apply_):
+        return drop_partitions_before(
+            table, keep_months, now=now, apply_=apply_)
+
+    register_retention_policy(name, sweep)

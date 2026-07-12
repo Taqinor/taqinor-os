@@ -27,6 +27,7 @@ from .dashboard_partage import (
 )
 from .views import (
     ApiUsagePlanViewSet,
+    BackgroundJobViewSet,
     BackupRunViewSet,
     BrandedTemplateViewSet,
     BulkEditViewSet,
@@ -36,6 +37,7 @@ from .views import (
     DataSubjectRequestViewSet,
     ModuleCatalogViewSet,
     ModuleToggleViewSet,
+    OutboxEventViewSet,
     PaymentTransactionViewSet,
     RegistreTraitementViewSet,
     SavedQueryViewSet,
@@ -46,8 +48,10 @@ from .views import (
     TenantUsageSnapshotViewSet,
     TrashViewSet,
     WorkflowTemplateViewSet,
+    db_stats_view,
     health_live,
     health_ready,
+    maintenance_toggle,
     metrics_view,
     secrets_rotation_due,
 )
@@ -99,6 +103,10 @@ router.register(r'api-usage', ApiUsagePlanViewSet, basename='api-usage')
 router.register(r'changelog', ChangelogViewSet, basename='changelog')
 # NTPLT6 — compteurs d'usage par tenant (metering), SUPERUSER only.
 router.register(r'usage', TenantUsageSnapshotViewSet, basename='tenant-usage')
+# NTPLT29 — mes jobs de fond avec progression (scopé user + société).
+router.register(r'jobs-status', BackgroundJobViewSet, basename='background-job')
+# NTPLT10 — supervision de l'outbox transactionnel (SUPERUSER only).
+router.register(r'outbox', OutboxEventViewSet, basename='outbox-event')
 # XPLT10 — liens publics tokenisés + partage interne fin de dashboards.
 router.register(r'dashboards-partages', PartageDashboardViewSet,
                 basename='dashboard-partage')
@@ -120,4 +128,8 @@ urlpatterns = router.urls + [
     path('secrets/rotation/', secrets_rotation_due, name='secrets-rotation-due'),
     # YHARD6 — métriques Prometheus (admin OU IP-allowlist, jamais public).
     path('metrics/', metrics_view, name='metrics'),
+    # NTPLT55 — bascule superuser du mode maintenance (lecture seule).
+    path('maintenance/', maintenance_toggle, name='maintenance-toggle'),
+    # NTPLT19 — statistiques DB d'exploitation (SUPERUSER only, lecture seule).
+    path('db-stats/', db_stats_view, name='db-stats'),
 ]

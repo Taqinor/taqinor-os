@@ -21,10 +21,61 @@ from datetime import date, datetime
 from django.template.loader import get_template
 
 from apps.ventes.utils.pdf import _company_context
+# XSTK18 — réutilise (lecture seule, aucune écriture) les utilitaires AR déjà
+# vendored pour la facture legacy (XSAL13, `apps/ventes/utils/libelles_ar.py`) :
+# même police Noto Sans Arabic embarquée, même résolution de langue depuis
+# `Client.langue_document`. Import identique dans l'esprit à `_company_context`
+# ci-dessus (déjà cross-app) — jamais un import de `apps.ventes.models`/`views`.
+from apps.ventes.utils.libelles_ar import arabic_font_face_css, document_langue
 from core.pdf import render_pdf
 
 # Garantie par défaut (raisonnable) quand un produit n'a pas de texte garantie.
 DEFAULT_GARANTIE = "Garantie selon conditions constructeur."
+
+# XSTK18 — libellés FR/AR du bon de livraison (N22). Propres à ce module (le
+# BL n'est pas couvert par `libelles_ar.LIBELLES`, qui ne porte que la
+# facture legacy) : gabarit AR avec libellés fixes traduits, valeurs telles
+# quelles — pas de traduction automatique.
+_BON_LIVRAISON_LIBELLES = {
+    'fr': {
+        'titre': 'BON DE LIVRAISON',
+        'chantier': 'Chantier',
+        'expediteur': 'Expéditeur',
+        'livre_a': 'Livré à',
+        'date_livraison': 'Date de livraison',
+        'puissance': 'Puissance',
+        'designation': 'Désignation',
+        'quantite': 'Quantité',
+        'aucun_article': 'Aucun article rattaché à ce chantier.',
+        'reception_client': 'Réception client',
+        'reception_mention': 'Reçu en bon état — signature',
+        'genere_le': 'Document généré le',
+    },
+    'ar': {
+        'titre': 'إذن التسليم',
+        'chantier': 'الورش',
+        'expediteur': 'المرسل',
+        'livre_a': 'التسليم إلى',
+        'date_livraison': 'تاريخ التسليم',
+        'puissance': 'القدرة',
+        'designation': 'البيان',
+        'quantite': 'الكمية',
+        'aucun_article': 'لا يوجد أي عنصر مرتبط بهذا الورش.',
+        'reception_client': 'استلام الزبون',
+        'reception_mention': 'تم الاستلام في حالة جيدة — التوقيع',
+        'genere_le': 'تم إنشاء الوثيقة بتاريخ',
+    },
+}
+
+
+def _bl_libelle(cle, langue='fr'):
+    """XSTK18 — Traduction d'un libellé du bon de livraison. FR par défaut
+    (comportement inchangé quand `langue` n'est pas 'ar' ou que la clé est
+    absente du dictionnaire AR — retombe alors sur le FR, jamais une clé
+    brute affichée au client)."""
+    table = _BON_LIVRAISON_LIBELLES.get(langue) or _BON_LIVRAISON_LIBELLES['fr']
+    return table.get(cle) or _BON_LIVRAISON_LIBELLES['fr'].get(cle, cle)
+
 
 # Guide d'exploitation & maintenance par défaut (français). Texte générique
 # raisonnable, surchargeable plus tard si besoin.
@@ -199,14 +250,30 @@ def generate_pv_reception(chantier):
 
 
 def generate_bon_livraison(chantier):
-    """N22 — Bon de livraison."""
+    """N22 — Bon de livraison.
+
+    XSTK18 — rendu bilingue FR/AR (RTL) selon `chantier.client.langue_document`.
+    Mêmes données, mêmes identifiants légaux, numérotation inchangée. Le
+    rendu FR par défaut passe par le gabarit HISTORIQUE, intégralement
+    inchangé (`document_bon_livraison.html`) → byte-identique. Un client
+    `langue_document='ar'` passe par le NOUVEAU gabarit dédié
+    (`document_bon_livraison_ar.html`, RTL + police Noto Sans Arabic
+    embarquée) — jamais de traduction automatique, libellés fixes traduits.
+    """
     ctx = _base_context(chantier)
     ctx['composants'] = _composants(chantier)
     ctx['date_livraison'] = (
         _as_date(chantier.date_pose_reelle)
         or _as_date(chantier.date_mise_en_service)
     )
-    html = get_template('document_bon_livraison.html').render(ctx)
+    langue = document_langue(chantier.client)
+    if langue == 'ar':
+        ctx['L'] = lambda cle: _bl_libelle(cle, langue)
+        ctx['arabic_font_face_css'] = arabic_font_face_css()
+        template_name = 'document_bon_livraison_ar.html'
+    else:
+        template_name = 'document_bon_livraison.html'
+    html = get_template(template_name).render(ctx)
     return _html_to_pdf(html)
 
 

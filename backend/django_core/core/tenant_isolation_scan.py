@@ -258,3 +258,113 @@ def build_minimal_instance(model, company):
         kwargs[field.name] = _synthetic_scalar(field)
 
     return model.objects.create(**kwargs)
+
+
+# ── NTPLT8 — Scan d'ÉTANCHÉITÉ des DONNÉES vivantes (DRY-RUN mensuel) ────────
+#
+# YRBAC12 (ci-dessus) teste le CODE en CI. NTPLT8 contrôle les DONNÉES en prod :
+# une tâche beat mensuelle DRY-RUN vérifie qu'aucune ligne des grosses tables
+# company-scopées n'a un ``company_id`` NULL ou ORPHELIN (société supprimée). Le
+# rapport est remonté aux admins + journalisé en audit via un REPORTEUR
+# enregistré (core ne peut importer ni notifications ni audit — pattern hook,
+# comme core.retention / core.limits).
+
+import logging as _logging  # noqa: E402 — proche de son unique usage (scan)
+
+_logger = _logging.getLogger(__name__)
+
+# Reporteur enregistré : callable(report: dict) -> None. Peuplé par les apps
+# notifications/audit dans leur ``ready()`` ; ``None`` = simple log.
+_SCAN_REPORTER = None
+
+# Plafond de comptage par table (borne le scan — on veut savoir « y a-t-il des
+# anomalies », pas un décompte exact sur des dizaines de millions de lignes).
+_ANOMALY_MAX = 10_000
+
+
+def register_scan_reporter(fn) -> None:
+    """Enregistre le reporteur d'anomalies d'étanchéité (idempotent : remplace).
+
+    ``fn(report)`` reçoit le rapport (``dict``) et est responsable de notifier
+    les admins + écrire l'entrée d'audit. ``core`` ne connaît que ce callable."""
+    global _SCAN_REPORTER
+    _SCAN_REPORTER = fn
+
+
+def clear_scan_reporter() -> None:
+    """Retire le reporteur (test uniquement)."""
+    global _SCAN_REPORTER
+    _SCAN_REPORTER = None
+
+
+def _count_bounded(cursor, sql, params) -> int:
+    """COUNT borné (≤ _ANOMALY_MAX) d'une sous-requête d'anomalie."""
+    cursor.execute(sql, params)
+    row = cursor.fetchone()
+    return int(row[0]) if row else 0
+
+
+def scan_live_isolation() -> dict:
+    """Balaye les tables company-scopées à la recherche de lignes NULL/orphelin.
+
+    Pour chaque table découverte (``core.rls.discover_company_scoped_tables``) :
+      * ``null`` — nombre de lignes avec ``company_id`` NULL (borné) ;
+      * ``orphan`` — nombre de lignes dont ``company_id`` ne pointe plus une
+        société existante (société supprimée), borné.
+
+    DRY-RUN pur : ne modifie RIEN. Renvoie un rapport
+    ``{'tables': [...], 'anomalies': int, 'scanned': int}`` et, si des anomalies
+    existent, appelle le reporteur enregistré (best-effort). Une table qui
+    échoue au scan ne bloque pas les autres.
+    """
+    from django.db import connection
+    from . import rls
+
+    tables = []
+    total_anomalies = 0
+    scanned = 0
+    with connection.cursor() as cursor:
+        for entry in rls.discover_company_scoped_tables():
+            col = entry.company_column
+            try:
+                null_count = _count_bounded(
+                    cursor,
+                    f'SELECT COUNT(*) FROM (SELECT 1 FROM "{entry.table}" '
+                    f'WHERE "{col}" IS NULL LIMIT {_ANOMALY_MAX}) s', [])
+                orphan_count = _count_bounded(
+                    cursor,
+                    f'SELECT COUNT(*) FROM (SELECT 1 FROM "{entry.table}" t '
+                    f'WHERE t."{col}" IS NOT NULL AND NOT EXISTS ('
+                    f'SELECT 1 FROM "authentication_company" c '
+                    f'WHERE c.id = t."{col}") LIMIT {_ANOMALY_MAX}) s', [])
+            except Exception:  # noqa: BLE001 — table KO ne bloque pas le reste
+                _logger.warning('scan_live_isolation: échec sur %s',
+                                entry.table)
+                continue
+            scanned += 1
+            if null_count or orphan_count:
+                total_anomalies += null_count + orphan_count
+                tables.append({
+                    'table': entry.table, 'label': entry.label,
+                    'null': null_count, 'orphan': orphan_count,
+                })
+
+    report = {
+        'tables': tables, 'anomalies': total_anomalies, 'scanned': scanned,
+    }
+    if total_anomalies:
+        _report_anomalies(report)
+    return report
+
+
+def _report_anomalies(report: dict) -> None:
+    """Remonte le rapport d'anomalies (reporteur enregistré, sinon log)."""
+    if _SCAN_REPORTER is None:
+        _logger.warning('scan_live_isolation: %d anomalie(s) sur %d table(s) '
+                        '(aucun reporteur enregistré)',
+                        report['anomalies'], len(report['tables']))
+        return
+    try:
+        _SCAN_REPORTER(report)
+    except Exception:  # noqa: BLE001 — un reporteur KO ne casse pas le scan
+        _logger.exception('scan_live_isolation: reporteur en échec')

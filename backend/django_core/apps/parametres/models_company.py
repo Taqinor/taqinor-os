@@ -287,6 +287,32 @@ class CompanyProfile(models.Model):
         default=0,
         help_text="Expiration du mot de passe en jours (0 = jamais).")
 
+    # ── NTSEC10 — Politique de session par société ──────────────────────────
+    # Tous ADDITIFS et INERTES par défaut (0) → la durée de session/JWT actuelle
+    # et le nombre de sessions concurrentes restent strictement inchangés tant
+    # que la société ne fixe rien. Le câblage réel (refus de refresh JWT au-delà
+    # de la durée absolue/inactivité, éviction de la session la plus ancienne à
+    # la Nième) vit dans `apps/authentication` (couche cross-app) qui LIT ces
+    # champs ; ce modèle n'en porte que la configuration.
+    # Durée de vie absolue d'une session (heures) depuis sa création. 0 = durée
+    # JWT actuelle (défaut) → aucun plafond absolu appliqué.
+    session_absolute_hours = models.PositiveIntegerField(
+        default=0,
+        help_text="Durée de vie absolue d'une session (heures) depuis sa "
+                  "création. 0 = durée JWT actuelle (défaut).")
+    # Délai d'inactivité (minutes) au-delà duquel une session dormante ne peut
+    # plus rafraîchir son jeton. 0 = désactivé (défaut).
+    session_idle_minutes = models.PositiveIntegerField(
+        default=0,
+        help_text="Délai d'inactivité (minutes) au-delà duquel une session "
+                  "ne peut plus rafraîchir. 0 = désactivé (défaut).")
+    # Nombre maximum de sessions actives simultanées par utilisateur. À la
+    # Nième session, la plus ancienne est révoquée. 0 = illimité (défaut).
+    max_concurrent_sessions = models.PositiveIntegerField(
+        default=0,
+        help_text="Nombre maximum de sessions concurrentes par utilisateur "
+                  "(la plus ancienne est révoquée au-delà). 0 = illimité.")
+
     # ── QG9 — pourcentage des variantes de devis (dupliquer-variante) ──
     # Pourcentage symétrique appliqué autour du devis d'origine pour produire
     # les variantes de taille : échelles [1−p, 1.0, 1+p]. Défaut 20 %

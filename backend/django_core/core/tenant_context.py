@@ -72,6 +72,13 @@ def set_current_company(company_id: Optional[int]) -> bool:
         return False
     if company_id is None:
         return False
+    # NTPLT46 — le contexte tenant est résolu ici : en profiter pour tagger la
+    # société sur les futurs événements Sentry (no-op si Sentry non initialisé).
+    try:
+        from . import monitoring
+        monitoring.bind_company(company_id)
+    except Exception:  # noqa: BLE001 — un tag ne doit jamais casser une requête
+        pass
     if connection.vendor != 'postgresql':
         return False
     with connection.cursor() as cursor:

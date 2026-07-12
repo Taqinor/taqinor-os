@@ -84,6 +84,8 @@ urlpatterns = [
     path('api/django/litiges/', include('apps.litiges.urls')),
     # ARC17 — Répertoire des tiers (res.partner), couche fondation.
     path('api/django/tiers/', include('apps.tiers.urls')),
+    # XPLT21 — Softphone VoIP intégré (SIP/WebRTC, gated).
+    path('api/django/voip/', include('apps.voip.urls')),
     # XPOS1 — Vente comptoir (point of sale).
     path('api/django/pos/', include('apps.pos.urls')),
     # XPOS3 — Lien public tokenisé vers le PDF du ticket de caisse.
@@ -95,6 +97,8 @@ urlpatterns = [
          include('apps.installations.public_urls')),
     # XPUR22 — Portail fournisseur en lecture seule (sans login).
     path('api/django/public/stock/', include('apps.stock.public_urls')),
+    # NTSEC — Fondation Identité & accès (NTSEC11 : allowlist IP/CIDR).
+    path('api/django/identity/', include('apps.identity.urls')),
 ]
 
 # En production (DEBUG off + gunicorn), les statiques (admin Django) sont

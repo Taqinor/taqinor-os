@@ -374,6 +374,73 @@ RESTORE_DRILL_TABLES = [
     'crm_lead',
 ]
 
+# NTPLT62 — tables (avec colonne company) sur lesquelles le drill vérifie les
+# comptages PAR SOCIÉTÉ (top 5 par volume), pas seulement globaux. Prouve que la
+# restauration ramène bien les données de CHAQUE gros tenant, pas juste un total
+# global qui masquerait la perte d'une société entière.
+RESTORE_DRILL_TENANT_TABLES = [
+    ('ventes_devis', 'company_id'),
+    ('crm_lead', 'company_id'),
+]
+RESTORE_DRILL_TOP_TENANTS = 5
+
+
+def _top_tenants_live(limit=RESTORE_DRILL_TOP_TENANTS):
+    """IDs des sociétés les plus volumineuses dans la base LIVE (best-effort).
+
+    Somme des lignes des tables tenant ci-dessus, groupée par company_id. Renvoie
+    ``{company_id: total_live}``. Best-effort : une table absente est ignorée."""
+    from django.db import connection as _live
+    totals: dict = {}
+    if _live.vendor != 'postgresql':
+        return totals
+    with _live.cursor() as cur:
+        for table, col in RESTORE_DRILL_TENANT_TABLES:
+            try:
+                cur.execute(
+                    f'SELECT {col}, COUNT(*) FROM {table} '
+                    f'WHERE {col} IS NOT NULL GROUP BY {col}')
+                for company_id, n in cur.fetchall():
+                    totals[company_id] = totals.get(company_id, 0) + n
+            except Exception:  # noqa: BLE001 — table absente → ignorée
+                continue
+    top = sorted(totals.items(), key=lambda kv: kv[1], reverse=True)[:limit]
+    return dict(top)
+
+
+def detecter_ecarts_tenant(top_live, restored):
+    """Croise comptages live vs restaurés par société (NTPLT62).
+
+    Renvoie ``(comptages_par_societe, ecarts)`` où ``comptages_par_societe`` est
+    ``{company_id: {'live': n, 'restore': m}}`` et ``ecarts`` la liste des
+    sociétés avec ``live > 0`` mais ``restore == 0`` (perte totale d'un tenant)."""
+    comptages_par_societe = {}
+    ecarts = []
+    for company_id, live_n in top_live.items():
+        restore_n = int(restored.get(company_id, 0) or 0)
+        comptages_par_societe[str(company_id)] = {
+            'live': int(live_n), 'restore': restore_n}
+        if live_n > 0 and restore_n == 0:
+            ecarts.append(company_id)
+    return comptages_par_societe, ecarts
+
+
+def _tenant_counts_in_restored(cur, company_ids):
+    """Comptages par société DANS la base restaurée (cursor psycopg2 ouvert)."""
+    counts: dict = {cid: 0 for cid in company_ids}
+    if not company_ids:
+        return counts
+    for table, col in RESTORE_DRILL_TENANT_TABLES:
+        try:
+            cur.execute(
+                f'SELECT {col}, COUNT(*) FROM {table} '
+                f'WHERE {col} = ANY(%s) GROUP BY {col}', (list(company_ids),))
+            for company_id, n in cur.fetchall():
+                counts[company_id] = counts.get(company_id, 0) + n
+        except Exception:  # noqa: BLE001 — dégrade proprement
+            continue
+    return counts
+
 
 class RestoreDrillGuardError(Exception):
     """Levée si la base cible du drill == la base de production (jamais)."""
@@ -503,6 +570,10 @@ def restore_drill(run: BackupRun) -> BackupRun:
                         for table in RESTORE_DRILL_TABLES:
                             cur.execute(f'SELECT COUNT(*) FROM {table}')
                             comptages[table] = cur.fetchone()[0]
+                        # NTPLT62 — comptages PAR SOCIÉTÉ (top 5 par volume).
+                        top_live = _top_tenants_live()
+                        restored = _tenant_counts_in_restored(
+                            cur, list(top_live.keys()))
                 finally:
                     conn.close()
             except Exception as exc:  # noqa: BLE001
@@ -510,6 +581,17 @@ def restore_drill(run: BackupRun) -> BackupRun:
                 run.detail = {'message': f'Échec des comptages: {exc}'}
                 run.save(update_fields=['statut', 'detail', 'updated_at'])
                 return run
+
+            # NTPLT62 — écart si un gros tenant live n'a AUCUNE ligne restaurée
+            # (la restauration a perdu une société entière). Un restauré < live
+            # est normal (le dump est plus ancien) ; restauré == 0 alors que
+            # live > 0 est une ALERTE.
+            comptages_par_societe, ecarts = detecter_ecarts_tenant(
+                top_live, restored)
+            if ecarts:
+                logger.warning(
+                    'NTPLT62 — drill: %d société(s) sans données restaurées: %s',
+                    len(ecarts), ecarts)
         finally:
             # Toujours DROP la base scratch, succès ou échec (jamais laisser
             # traîner une base jetable en dehors du drill).
@@ -524,6 +606,9 @@ def restore_drill(run: BackupRun) -> BackupRun:
         'source_run_id': source.pk,
         'source_object_key': source.object_key,
         'comptages': comptages,
+        # NTPLT62 — comptages par société (top 5) + écarts (perte de tenant).
+        'comptages_par_societe': comptages_par_societe,
+        'ecarts_tenant': [str(c) for c in ecarts],
     }
     run.save(update_fields=['statut', 'termine_le', 'detail', 'updated_at'])
     return run
