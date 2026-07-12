@@ -9,12 +9,11 @@ Multi-tenant : la société est TOUJOURS posée côté serveur ; le queryset est
 scopé à la société du demandeur. Une étape SYSTÈME (protégée) ne se supprime
 pas — elle se désactive (même règle que les checklists/shot-list).
 """
-from rest_framework import status
 from rest_framework.permissions import BasePermission
-from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole
 from core.viewsets import CompanyScopedModelViewSet
+from apps.core.destroy_mixins import UsageGuardedDestroyMixin
 
 from ..models import StageModele
 from ..serializers_stage import StageModeleSerializer
@@ -47,10 +46,12 @@ class IsDirecteur(BasePermission):
         return getattr(user, 'is_admin_role', False)
 
 
-class StageModeleViewSet(CompanyScopedModelViewSet):
+class StageModeleViewSet(UsageGuardedDestroyMixin, CompanyScopedModelViewSet):
     """CH5 — étapes/gates configurables (Paramètres → Chantiers). Lecture tout
     rôle ; écriture Directeur uniquement. Amorce le cycle PV international de la
-    société à la première consultation."""
+    société à la première consultation.
+    VX241(b) — la suppression effective écrit désormais une ligne AuditLog
+    (UsageGuardedDestroyMixin) : StageModele n'est pas dans TRACKED_MODELS."""
     queryset = StageModele.objects.all()
     serializer_class = StageModeleSerializer
 
@@ -64,11 +65,7 @@ class StageModeleViewSet(CompanyScopedModelViewSet):
             seed_stages(request.user.company)
         return super().list(request, *args, **kwargs)
 
-    def destroy(self, request, *args, **kwargs):
-        stage = self.get_object()
+    def destroy_guard_message(self, stage):
         if stage.protege:
-            return Response(
-                {'detail': "Cette étape système est protégée — "
-                           "désactivez-la plutôt."},
-                status=status.HTTP_409_CONFLICT)
-        return super().destroy(request, *args, **kwargs)
+            return "Cette étape système est protégée — désactivez-la plutôt."
+        return None

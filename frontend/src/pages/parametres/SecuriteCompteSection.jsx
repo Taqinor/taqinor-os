@@ -266,12 +266,21 @@ export default function SecuriteCompteSection() {
     } finally { setBusy(false) }
   }
 
+  // VX201 — les codes de secours 2FA copiés restaient en clair sur le
+  // presse-papiers indéfiniment (souvent synchronisé cloud sur certains OS) :
+  // vidage best-effort ~60 s après la copie (on écrase par une chaîne vide ;
+  // best-effort car on ne peut pas vérifier que l'utilisateur n'a rien copié
+  // d'autre entre-temps — micro-avertissement affiché pour que ce ne soit
+  // jamais une surprise).
   const copyRecovery = () => {
     if (!recovery) return
     try {
       navigator.clipboard?.writeText(recovery.join('\n'))
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
+      setTimeout(() => {
+        try { navigator.clipboard?.writeText('') } catch { /* ignore */ }
+      }, 60000)
     } catch { /* clipboard indisponible : l'utilisateur recopie à la main */ }
   }
 
@@ -338,6 +347,11 @@ export default function SecuriteCompteSection() {
                 ? <><CheckCircle2 className="size-4" /> Copié</>
                 : <><Copy className="size-4" /> Copier</>}
             </Button>
+            {copied && (
+              <p className="mt-1.5 text-[10.5px] text-amber-700">
+                Le presse-papiers sera vidé automatiquement dans ~60 s.
+              </p>
+            )}
           </div>
         )}
 

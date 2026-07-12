@@ -5,6 +5,7 @@ from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from core.mixins import TenantMixin
 from core.viewsets import CompanyScopedModelViewSet
+from apps.core.destroy_mixins import UsageGuardedDestroyMixin
 from authentication.scoping import scope_queryset, scope_client_queryset
 from .models import (
     Appointment, Client, ConcurrentPerte, EquipeCommerciale, Lead, LeadTag,
@@ -1317,10 +1318,12 @@ class LeadViewSet(CompanyScopedModelViewSet):
         return export_leads_xlsx(leads)
 
 
-class LeadTagViewSet(CompanyScopedModelViewSet):
+class LeadTagViewSet(UsageGuardedDestroyMixin, CompanyScopedModelViewSet):
     """Étiquettes de lead gérées (Paramètres → CRM). Lecture tout rôle,
     écriture admin. Garde-fou (L780) : une étiquette référencée par des leads
-    ne se supprime pas — l'admin l'archive plutôt (l'historique est préservé)."""
+    ne se supprime pas — l'admin l'archive plutôt (l'historique est préservé).
+    VX241(b) — la suppression effective écrit désormais une ligne AuditLog
+    (UsageGuardedDestroyMixin) : LeadTag n'est pas dans TRACKED_MODELS."""
     queryset = LeadTag.objects.all()
     serializer_class = LeadTagSerializer
 
@@ -1329,20 +1332,19 @@ class LeadTagViewSet(CompanyScopedModelViewSet):
             return [IsAnyRole()]
         return [IsAdminRole()]
 
-    def destroy(self, request, *args, **kwargs):
-        tag = self.get_object()
+    def destroy_guard_message(self, tag):
         if _tag_en_usage(tag.company, tag.nom) > 0:
-            return Response(
-                {'detail': "Cette étiquette est utilisée par des leads — "
-                           "archivez-la plutôt que de la supprimer."},
-                status=status.HTTP_409_CONFLICT)
-        return super().destroy(request, *args, **kwargs)
+            return ("Cette étiquette est utilisée par des leads — "
+                    "archivez-la plutôt que de la supprimer.")
+        return None
 
 
-class MotifPerteViewSet(CompanyScopedModelViewSet):
+class MotifPerteViewSet(UsageGuardedDestroyMixin, CompanyScopedModelViewSet):
     """Motifs de perte gérés (Paramètres → CRM). Lecture tout rôle,
     écriture admin. Garde-fou (L779) : un motif utilisé par des leads ne se
-    supprime pas — l'admin l'archive plutôt (comme pour les canaux)."""
+    supprime pas — l'admin l'archive plutôt (comme pour les canaux).
+    VX241(b) — la suppression effective écrit désormais une ligne AuditLog
+    (UsageGuardedDestroyMixin) : MotifPerte n'est pas dans TRACKED_MODELS."""
     queryset = MotifPerte.objects.all()
     serializer_class = MotifPerteSerializer
 
@@ -1351,14 +1353,11 @@ class MotifPerteViewSet(CompanyScopedModelViewSet):
             return [IsAnyRole()]
         return [IsAdminRole()]
 
-    def destroy(self, request, *args, **kwargs):
-        motif = self.get_object()
+    def destroy_guard_message(self, motif):
         if _motif_en_usage(motif.company, motif.nom) > 0:
-            return Response(
-                {'detail': "Ce motif est utilisé par des leads — archivez-le "
-                           "plutôt que de le supprimer."},
-                status=status.HTTP_409_CONFLICT)
-        return super().destroy(request, *args, **kwargs)
+            return ("Ce motif est utilisé par des leads — archivez-le "
+                    "plutôt que de le supprimer.")
+        return None
 
 
 # Canaux par défaut (clés = Lead.Canal) — 'site_web' est PROTÉGÉ (webhook site).
@@ -1384,10 +1383,12 @@ def seed_canaux(company):
             defaults={'libelle': libelle, 'ordre': i, 'protege': protege})
 
 
-class CanalViewSet(CompanyScopedModelViewSet):
+class CanalViewSet(UsageGuardedDestroyMixin, CompanyScopedModelViewSet):
     """Canaux / sources de lead gérés (Paramètres → CRM). Lecture tout rôle,
     écriture admin. Garde-fous : un canal protégé ('site_web') ne se supprime
-    pas, et aucun canal utilisé par des leads ne se supprime."""
+    pas, et aucun canal utilisé par des leads ne se supprime.
+    VX241(b) — la suppression effective écrit désormais une ligne AuditLog
+    (UsageGuardedDestroyMixin) : Canal n'est pas dans TRACKED_MODELS."""
     queryset = Canal.objects.all()
     serializer_class = CanalSerializer
 
@@ -1403,19 +1404,14 @@ class CanalViewSet(CompanyScopedModelViewSet):
             seed_canaux(request.user.company)
         return super().list(request, *args, **kwargs)
 
-    def destroy(self, request, *args, **kwargs):
-        canal = self.get_object()
+    def destroy_guard_message(self, canal):
         if canal.protege:
-            return Response(
-                {'detail': "Ce canal est protégé (utilisé par le site web) et "
-                           "ne peut pas être supprimé."},
-                status=status.HTTP_409_CONFLICT)
+            return ("Ce canal est protégé (utilisé par le site web) et "
+                    "ne peut pas être supprimé.")
         if Lead.objects.filter(company=canal.company, canal=canal.cle).exists():
-            return Response(
-                {'detail': "Ce canal est utilisé par des leads — archivez-le "
-                           "plutôt que de le supprimer."},
-                status=status.HTTP_409_CONFLICT)
-        return super().destroy(request, *args, **kwargs)
+            return ("Ce canal est utilisé par des leads — archivez-le "
+                    "plutôt que de le supprimer.")
+        return None
 
 
 class ParrainageViewSet(CompanyScopedModelViewSet):

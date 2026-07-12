@@ -6,6 +6,7 @@ from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin, IsAdminRole
+from apps.core.destroy_mixins import UsageGuardedDestroyMixin
 
 from .models import Outillage, KitOutillage, KitOutillageItem
 from .serializers import (
@@ -114,9 +115,14 @@ class OutillageViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(OutillageSerializer(outil).data)
 
 
-class KitOutillageViewSet(TenantMixin, viewsets.ModelViewSet):
+class KitOutillageViewSet(UsageGuardedDestroyMixin, TenantMixin, viewsets.ModelViewSet):
     """Kits d'outillage (F2), gérés dans Paramètres. Lecture tout rôle ;
-    écriture admin. Les 3 kits par défaut sont semés à la première liste."""
+    écriture admin. Les 3 kits par défaut sont semés à la première liste.
+    VX241(b) — AUCUN garde ni ligne AuditLog n'existait avant sur ce
+    `destroy()` (un kit encore sélectionné par une préparation d'intervention
+    en cours pouvait disparaître silencieusement, ou l'admin ne savait jamais
+    QUI a supprimé quel kit) : UsageGuardedDestroyMixin bloque un kit en
+    usage (409 FR) et journalise la suppression effective."""
     queryset = KitOutillage.objects.prefetch_related('items__outil').all()
     serializer_class = KitOutillageSerializer
 
@@ -129,6 +135,15 @@ class KitOutillageViewSet(TenantMixin, viewsets.ModelViewSet):
         if request.user.company_id:
             seed_kits_outillage(request.user.company)
         return super().list(request, *args, **kwargs)
+
+    def destroy_guard_message(self, kit):
+        # `InterventionPreparation.kit` (apps/installations/models_field.py)
+        # est on_delete=SET_NULL — une préparation EN COURS perdrait
+        # silencieusement son kit sélectionné sans ce garde.
+        if kit.preparations.exists():
+            return ("Ce kit est sélectionné par une préparation d'intervention "
+                    "— désactivez-le plutôt que de le supprimer.")
+        return None
 
 
 class KitOutillageItemViewSet(TenantMixin, viewsets.ModelViewSet):

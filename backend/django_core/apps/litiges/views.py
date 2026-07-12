@@ -22,6 +22,7 @@ from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
 from core.permissions import WriteScopedPermissionMixin
+from apps.core.destroy_mixins import UsageGuardedDestroyMixin
 
 from .models import Reclamation, ReclamationActivity
 from .serializers import ReclamationActivitySerializer, ReclamationSerializer
@@ -40,8 +41,14 @@ class _LitigesBaseViewSet(
     write_permission = 'litige_gerer'
 
 
-class ReclamationViewSet(_LitigesBaseViewSet):
-    """Réclamations & litiges. Recherche par référence/objet/description."""
+class ReclamationViewSet(UsageGuardedDestroyMixin, _LitigesBaseViewSet):
+    """Réclamations & litiges. Recherche par référence/objet/description.
+    VX241(b) — AUCUN garde ni ligne AuditLog n'existait avant sur ce
+    `destroy()` : un dossier légal (contentieux/recouvrement) pouvait être
+    supprimé sans trace, y compris déjà pris en charge ou avec un historique
+    de chatter. UsageGuardedDestroyMixin bloque (409 FR) tout litige qui n'est
+    plus « ouvert » ou qui porte déjà une activité, et journalise la
+    suppression effective des dossiers vraiment vierges."""
     queryset = Reclamation.objects.select_related('created_by').all()
     serializer_class = ReclamationSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
@@ -51,6 +58,17 @@ class ReclamationViewSet(_LitigesBaseViewSet):
     def perform_create(self, serializer):
         serializer.save(
             company=self.request.user.company, created_by=self.request.user)
+
+    def destroy_guard_message(self, reclamation):
+        if reclamation.statut != Reclamation.Statut.OUVERTE:
+            return (
+                "Ce litige a été pris en charge (statut « "
+                f"{reclamation.get_statut_display()} ») — dossier légal, il "
+                "ne peut plus être supprimé.")
+        if reclamation.activites.exists():
+            return ("Ce litige a un historique enregistré — dossier légal, "
+                    "il ne peut plus être supprimé.")
+        return None
 
     # ── Tableau de bord (LITIGE6) ────────────────────────────────────────────
     @action(detail=False, methods=['get'], url_path='tableau-bord')

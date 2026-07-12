@@ -200,6 +200,36 @@ class KbArticleViewSet(_KbBaseViewSet):
         """XKB8 — Arbre des articles visibles (racines → enfants imbriqués)."""
         return Response(selectors.arbre_articles(self.get_queryset()))
 
+    @action(detail=True, methods=['get'], url_path='descendants-count')
+    def descendants_count(self, request, pk=None):
+        """VX241(a) — compte RÉEL du sous-arbre qu'un DELETE cascaderait
+        (``parent`` est ``on_delete=CASCADE``, ``apps/kb/models.py``) : le
+        frontend affiche ce nombre AVANT confirmation (``KbPage.jsx``,
+        ``handleRemove``) plutôt qu'un message générique qui mentait par
+        omission sur ce qui allait réellement disparaître.
+
+        Parcours PYTHON scopé à la société ENTIÈRE (pas le queryset filtré
+        par visibilité ACL du viewset — une cascade DB ne consulte aucune
+        ACL) : une seule requête ``(id, parent_id)`` puis BFS en mémoire,
+        robuste à un cycle éventuel déjà en base (chaque id compté une fois).
+        """
+        article = self.get_object()
+        paires = KbArticle.objects.filter(
+            company=article.company_id).values_list('id', 'parent_id')
+        enfants = {}
+        for id_, parent_id in paires:
+            if parent_id is not None:
+                enfants.setdefault(parent_id, []).append(id_)
+        vus = set()
+        pile = [article.id]
+        while pile:
+            courant = pile.pop()
+            for enfant_id in enfants.get(courant, []):
+                if enfant_id not in vus:
+                    vus.add(enfant_id)
+                    pile.append(enfant_id)
+        return Response({'nb_descendants': len(vus)})
+
     @action(detail=True, methods=['get'], url_path='items')
     def items(self, request, pk=None):
         """ZGED11 — Sous-articles de cet article rendus comme une COLLECTION

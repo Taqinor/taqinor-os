@@ -10,6 +10,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import api from '../../api/axios'
 import { Button } from '../../ui'
+import NoIndex from '../../components/NoIndex'
 
 export default function PublicBookingPage() {
   const { token } = useParams()
@@ -63,6 +64,7 @@ export default function PublicBookingPage() {
 
   return (
     <div className="ui-root page" style={{ maxWidth: 480, margin: '40px auto' }}>
+      <NoIndex />
       <h2>Réserver une visite</h2>
       {status === 'loading' && <p>Chargement…</p>}
       {status === 'invalid' && (

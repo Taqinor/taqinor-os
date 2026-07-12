@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "lint": "eslint .",
+    "lint": "eslint . && node scripts/check_no_danger.mjs",
+    "check-no-danger": "node scripts/check_no_danger.mjs",
     "preview": "vite preview",
     "e2e": "playwright test",
     "e2e:report": "playwright show-report",

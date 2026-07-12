@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Delete, Fingerprint } from 'lucide-react'
 import { Button, Input, Label } from '../../ui'
 import rhApi from '../../api/rhApi'
@@ -14,6 +14,15 @@ import rhApi from '../../api/rhApi'
    ========================================================================== */
 
 const TOKEN_KEY = 'rh_kiosque_token'
+// VX201 — le jeton de device restait en localStorage CLAIR et PERMANENT sur
+// une tablette en libre-service (surface d'attaque physique). Timeout
+// d'inactivité : au-delà de 5 min sans interaction sur le pavé PIN, le jeton
+// est oublié (oublierToken()) et l'écran de configuration réapparaît — un
+// device volé/laissé sans surveillance ne reste pas indéfiniment authentifié.
+// Le try/catch localStorage existant DEJA sur ce fichier joue le rôle du
+// helper défensif partagé `safeStorage` (VX170, pas encore construit) ; à
+// remplacer par cet import unique quand VX170 atterrit.
+const IDLE_TIMEOUT_MS = 5 * 60 * 1000
 
 export default function Kiosque() {
   const [token, setToken] = useState('')
@@ -39,21 +48,37 @@ export default function Kiosque() {
     setTokenSaisi('')
   }
 
-  const oublierToken = () => {
+  const oublierToken = useCallback(() => {
     try { window.localStorage.removeItem(TOKEN_KEY) } catch { /* ignore */ }
     setToken('')
     setPin('')
     setFeedback(null)
-  }
+  }, [])
+
+  // VX201 — timeout d'inactivité : reset au dernier moment d'interaction avec
+  // le pavé PIN (ajouter/effacer/pointer) tant qu'un jeton est configuré.
+  const lastActivityRef = useRef(Date.now())
+  const marquerActivite = useCallback(() => { lastActivityRef.current = Date.now() }, [])
+
+  useEffect(() => {
+    if (!token) return undefined
+    marquerActivite()
+    const id = setInterval(() => {
+      if (Date.now() - lastActivityRef.current >= IDLE_TIMEOUT_MS) oublierToken()
+    }, 5000)
+    return () => clearInterval(id)
+  }, [token, oublierToken, marquerActivite])
 
   const ajouter = (chiffre) => {
+    marquerActivite()
     setFeedback(null)
     setPin((p) => (p.length >= 12 ? p : p + chiffre))
   }
-  const effacer = () => setPin((p) => p.slice(0, -1))
+  const effacer = () => { marquerActivite(); setPin((p) => p.slice(0, -1)) }
 
   const pointer = async () => {
     if (!pin || busy) return
+    marquerActivite()
     setBusy(true)
     setFeedback(null)
     try {

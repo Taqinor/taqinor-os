@@ -7,6 +7,7 @@ from authentication.permissions import (  # noqa: F401
     IsAnyRole, IsResponsableOrAdmin, IsAdminRole,
 )
 from core.viewsets import CompanyScopedModelViewSet
+from apps.core.destroy_mixins import UsageGuardedDestroyMixin
 from django.utils import timezone  # noqa: F401
 
 from .. import activity  # noqa: F401
@@ -108,11 +109,14 @@ def seed_types_intervention(company):
 # package __init__ ré-exporte toutes les vues publiques.
 
 
-class SafetyChecklistSlotViewSet(CompanyScopedModelViewSet):
+class SafetyChecklistSlotViewSet(UsageGuardedDestroyMixin, CompanyScopedModelViewSet):
     """F18 — consignes de sécurité configurables (Paramètres → Sécurité).
     Lecture tout rôle, écriture admin. Les défauts (EPI portés, consignation
     électrique) sont semés à la première liste ; une consigne protégée garde sa
-    clé. Tout est scopé à la société ; la société est posée côté serveur."""
+    clé. Tout est scopé à la société ; la société est posée côté serveur.
+    VX241(b) — la suppression effective écrit désormais une ligne AuditLog
+    (UsageGuardedDestroyMixin) : SafetyChecklistSlot n'est pas dans
+    TRACKED_MODELS."""
     queryset = SafetyChecklistSlot.objects.all()
     serializer_class = SafetyChecklistSlotSerializer
 
@@ -126,10 +130,7 @@ class SafetyChecklistSlotViewSet(CompanyScopedModelViewSet):
             field_capture.seed_safety_slots(request.user.company)
         return super().list(request, *args, **kwargs)
 
-    def destroy(self, request, *args, **kwargs):
-        slot = self.get_object()
+    def destroy_guard_message(self, slot):
         if slot.protege:
-            return Response(
-                {'detail': "Cette consigne est protégée — désactivez-la plutôt."},
-                status=status.HTTP_409_CONFLICT)
-        return super().destroy(request, *args, **kwargs)
+            return "Cette consigne est protégée — désactivez-la plutôt."
+        return None

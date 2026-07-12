@@ -11,6 +11,12 @@ import { useParams } from 'react-router-dom'
 import gedApi from '../../api/gedApi'
 import { Button } from '../../ui'
 import { errMessage } from '../../features/ged/advanced/shared.js'
+import NoIndex from '../../components/NoIndex'
+
+// VX202 — throttle CLIENT de re-soumission (défense en profondeur ; le vrai
+// rate-limit vit côté nginx, backend/nginx/nginx.conf) : un échec ne doit pas
+// permettre un ré-essai en rafale immédiat.
+const THROTTLE_MS = 4000
 
 export default function PublicDepotPage() {
   const { token } = useParams()
@@ -21,6 +27,7 @@ export default function PublicDepotPage() {
   const [nom, setNom] = useState('')
   const [email, setEmail] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [throttled, setThrottled] = useState(false)
   const fileRef = useRef(null)
 
   useEffect(() => {
@@ -41,9 +48,12 @@ export default function PublicDepotPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+    if (throttled) return
     if (!file) { setError('Choisissez un fichier à déposer.'); return }
     setError(null)
     setSubmitting(true)
+    setThrottled(true)
+    setTimeout(() => setThrottled(false), THROTTLE_MS)
     try {
       await gedApi.deposerPublique(token, { file, nom: nom.trim(), email: email.trim() })
       setStatus('done')
@@ -59,6 +69,7 @@ export default function PublicDepotPage() {
 
   return (
     <div className="ui-root page" style={{ maxWidth: 520, margin: '40px auto', padding: '0 16px' }}>
+      <NoIndex />
       <h2>Déposer un document</h2>
 
       {status === 'loading' && <p role="status">Chargement…</p>}
@@ -107,9 +118,12 @@ export default function PublicDepotPage() {
             />
           </div>
           {error && <p role="alert" className="page-error">{error}</p>}
-          <Button type="submit" disabled={submitting || !file}>
+          <Button type="submit" disabled={submitting || !file || throttled}>
             {submitting ? 'Dépôt…' : 'Déposer'}
           </Button>
+          {throttled && !submitting && (
+            <p className="text-sm text-muted-foreground">Veuillez patienter avant de réessayer.</p>
+          )}
         </form>
       )}
     </div>
