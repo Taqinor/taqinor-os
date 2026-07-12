@@ -4,3 +4,8 @@
 # are not Django models at all), exactly one genuine model remains global by
 # design — reviewed, not a gap to fix here.
 notifications.VapidKeyPair
+# XPLT20 inter-société group config — inherently cross-company (societe_a/
+# societe_b), ships inert/founder-gated (docs/decisions/XPLT20-inter-societes.md);
+# scope decided when the founder configures a pair. No single owning company.
+compta.RegleInterSociete
+compta.EcritureLiaisonInterSociete

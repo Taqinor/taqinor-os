@@ -47,13 +47,16 @@ BASELINE_ALLOWLIST = {
     "backend/django_core/apps/ventes/quote_engine/builder.py:1268",
     "backend/django_core/apps/ventes/quote_engine/builder.py:741",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1262",
-    "backend/django_core/apps/compta/services.py:9020",
-    "backend/django_core/apps/compta/services.py:6964",
-    "backend/django_core/apps/compta/services.py:6967",
-    "backend/django_core/apps/compta/services.py:11488",
-    "backend/django_core/apps/compta/services.py:11890",
-    "backend/django_core/apps/compta/services.py:8273",
-    "backend/django_core/apps/compta/services.py:8277",
+    # compta/services.py entries re-based +101 lines (fold 2026-07-12 added
+    # ~101 lines above them; same NPS/ROI/percentage round() sites, unmoved
+    # logic — verified 1:1 shift, not new sites).
+    "backend/django_core/apps/compta/services.py:9121",
+    "backend/django_core/apps/compta/services.py:7065",
+    "backend/django_core/apps/compta/services.py:7068",
+    "backend/django_core/apps/compta/services.py:11589",
+    "backend/django_core/apps/compta/services.py:11991",
+    "backend/django_core/apps/compta/services.py:8374",
+    "backend/django_core/apps/compta/services.py:8378",
 }
 
 TARGET_FILES = [

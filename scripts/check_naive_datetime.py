@@ -57,10 +57,11 @@ DATEFIELD_AUTO_NOW_ALLOWLIST = {
     "backend/django_core/apps/ventes/models.py:1922",
 }
 TIMESTAMP_AS_DATEFIELD_ALLOWLIST = {
-    # CommissionPartenaire.paye_le — deliberate business "date paid" (no
-    # time-of-day needed), same pattern as the DATEFIELD_AUTO_NOW_ALLOWLIST
-    # ventes anchor dates above — not a timestamp bug.
-    "backend/django_core/apps/compta/models.py:5308",
+    # CommissionPartenaire.paye_le — date de paiement (jour, pas horodatage),
+    # champ pré-existant, même motif que les dates-ancre ventes du
+    # DATEFIELD_AUTO_NOW_ALLOWLIST ci-dessus — pas un bug d'horodatage.
+    # Modèle relocalisé compta→crm par ODX13 (2026-07-12) : clé remappée.
+    "backend/django_core/apps/crm/models.py:1947",
 }
 
 TIMESTAMP_NAME_RE = re.compile(

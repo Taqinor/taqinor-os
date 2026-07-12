@@ -4517,12 +4517,17 @@ class RegleInterSociete(models.Model):
     """
     societe_a = models.ForeignKey(
         'authentication.Company',
+        # on_delete: config de groupe inter-sociétés (XPLT20) — une règle n'a
+        # de sens que tant que ses DEUX sociétés existent ; supprimer une
+        # société retire ses règles (jamais de trace comptable réelle ici).
         on_delete=models.CASCADE,
         related_name='regles_intersociete_source',
         verbose_name='Société A (vendeuse)',
     )
     societe_b = models.ForeignKey(
         'authentication.Company',
+        # on_delete: idem societe_a — la règle disparaît avec l'une ou l'autre
+        # société de la paire (config de groupe, pas d'écriture).
         on_delete=models.CASCADE,
         related_name='regles_intersociete_cible',
         verbose_name='Société B (acheteuse)',
@@ -4559,6 +4564,8 @@ class EcritureLiaisonInterSociete(models.Model):
     """
     regle = models.ForeignKey(
         RegleInterSociete,
+        # on_delete: la trace de liaison (garde d'idempotence XPLT20) n'existe
+        # que pour sa règle ; retirer la règle retire ses traces inertes.
         on_delete=models.CASCADE,
         related_name='ecritures_liaison',
         verbose_name='Règle',
