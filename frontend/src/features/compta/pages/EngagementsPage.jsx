@@ -7,6 +7,8 @@ import {
 import { ListShell, statusPill } from '../../../ui/module'
 import { Button, Segmented, Card, EmptyState, toast } from '../../../ui'
 import { formatMAD, formatDate } from '../../../lib/format'
+import { stampedFilename } from '../../../utils/downloadBlob'
+import { store } from '../../../store'
 import comptaApi from '../../../api/comptaApi'
 import useComptaList from '../components/useComptaList.js'
 import CrudDialog from '../components/CrudDialog.jsx'
@@ -413,7 +415,9 @@ function ProvisionsPeriodePanel() {
     try {
       const res = await comptaApi.provisionsPeriode.exportCsv()
       const blob = res.data instanceof Blob ? res.data : new Blob([res.data])
-      comptaApi.downloadBlob(blob, 'provisions_fnp_fae.csv')
+      // VX81 — nom d'export horodaté (au lieu d'un nom nu figé).
+      const societe = store.getState().parametres?.profile?.nom
+      comptaApi.downloadBlob(blob, stampedFilename('provisions-fnp-fae', 'csv', societe))
     } catch {
       toast.error('Export indisponible.')
     }

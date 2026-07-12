@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ShoppingCart, RefreshCw, Download, FileText } from 'lucide-react'
 import stockApi from '../../api/stockApi'
+import { store } from '../../store'
 import { formatMAD } from '../../lib/format'
-import { downloadBlob } from '../../utils/downloadBlob'
+import { downloadBlob, stampedFilename } from '../../utils/downloadBlob'
 import { ouvrirPdfBlob, estBlobPdf, messageErreurBlob } from '../../utils/pdfBlob'
 import { ModuleDashboard } from '../../ui/module'
 import { Button, Badge, Spinner } from '../../ui'
@@ -136,7 +137,11 @@ export default function PilotageStock({ onBcfGenere }) {
     setAnalyseBusy('xlsx'); setAnalyseErr(null)
     try {
       const res = await stockApi.analyseAchatsXlsx()
-      downloadBlob(res.data, 'analyse-achats.xlsx')
+      // VX81 — nom d'export horodaté, société incluse quand connue (lue au
+      // clic, pas d'abonnement — le store singleton évite un useSelector qui
+      // forcerait ce panneau interne à dépendre d'un <Provider> en test).
+      const societe = store.getState().parametres?.profile?.nom
+      downloadBlob(res.data, stampedFilename('analyse-achats', 'xlsx', societe))
     } catch (e) {
       setAnalyseErr(await messageErreurBlob(e, {
         fallback: "L'export Excel de l'analyse d'achats a échoué.",
