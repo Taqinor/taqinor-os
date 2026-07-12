@@ -22,6 +22,7 @@ import ProduitPicker from '../../components/ProduitPicker'
 import ClientQuickCreateModal from './ClientQuickCreateModal'
 import AttachmentsPanel from '../../components/AttachmentsPanel'
 import { formatMAD } from '../../lib/format'
+import { useServerFieldErrors } from '../../hooks/useServerFieldErrors'
 
 let _keyCounter = 0
 const newKey = () => ++_keyCounter
@@ -47,7 +48,8 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
   const [produits, setProduits]         = useState([])
   const [bonsCommande, setBonsCommande] = useState([])
   const [saving, setSaving]             = useState(false)
-  const [errors, setErrors]             = useState({})
+  // VX171 — vérité serveur → champ ; le rouge s'efface à la frappe.
+  const { errors, setErrors, setFromResponse, clearField } = useServerFieldErrors()
   const [dirty, setDirty]               = useState(false)
   const [clientQuickCreateOpen, setClientQuickCreateOpen] = useState(false)
   useDirtyGuard(dirty)
@@ -135,7 +137,8 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
   const totalTTC = totalHT + totalTVA
   const tauxDistincts = Object.keys(tvaParTaux).filter(t => Number(t) > 0)
 
-  const setField = (k, v) => { setDirty(true); setFields(f => ({ ...f, [k]: v })) }
+  // VX171 — le rouge ne doit jamais mentir pendant que l'utilisateur corrige.
+  const setField = (k, v) => { setDirty(true); clearField(k); setFields(f => ({ ...f, [k]: v })) }
 
   const onBcChange = async (bcId) => {
     setField('bon_commande', bcId)
@@ -168,11 +171,13 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
 
   const setLine = (key, k, v) => {
     setDirty(true)
+    clearField('lines')
     setLines(ls => ls.map(l => l._key === key ? { ...l, [k]: v } : l))
   }
 
   const onProduitChange = (key, produitId) => {
     setDirty(true)
+    clearField('lines')
     const p = produits.find(p => String(p.id) === String(produitId))
     setLines(ls => ls.map(l =>
       l._key === key
@@ -189,6 +194,7 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
 
   const addLine    = () => {
     setDirty(true)
+    clearField('lines')
     setLines(ls => {
       const line = emptyLine()
       setPendingFocusKey(line._key) // VX90
@@ -197,6 +203,7 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
   }
   const removeLine = key => {
     setDirty(true)
+    clearField('lines')
     const line = lines.find(l => l._key === key)
     if (line?.id) setRemovedLineIds(ids => [...ids, line.id])
     setLines(ls => ls.filter(l => l._key !== key))
@@ -279,8 +286,9 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
       onSaved?.()
       onClose()
     } catch (err) {
-      const msg = err?.detail ?? err?.non_field_errors?.[0] ?? JSON.stringify(err)
-      setErrors(prev => ({ ...prev, submit: msg }))
+      // VX171 — mapping DRF générique (detail / {champ:[…]} / array) : chaque
+      // champ en erreur vire rouge, plus un toast anonyme.
+      setFromResponse(err)
     } finally {
       setSaving(false)
     }

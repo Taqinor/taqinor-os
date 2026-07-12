@@ -7,6 +7,7 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 import { useFormSafety } from '../../ui/useFormSafety'
+import { useServerFieldErrors } from '../../hooks/useServerFieldErrors'
 import { Combobox } from '../../ui/Combobox'
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
 import { toast } from '../../ui/confirm'
@@ -77,7 +78,9 @@ export default function ClientForm({ client = null, onClose }) {
   const isEdit = !!client
 
   const [saving, setSaving] = useState(false)
-  const [errors, setErrors] = useState({})
+  // VX171 — vérité serveur → champ ; le rouge s'efface à la frappe (clearField
+  // dans setField), jamais seulement au prochain submit.
+  const { errors, setErrors, setFromResponse, clearField } = useServerFieldErrors()
 
   // VX92 — « Créer un autre » : uniquement pertinent à la création (jamais en
   // édition), persisté (localStorage), défaut OFF.
@@ -139,24 +142,30 @@ export default function ClientForm({ client = null, onClose }) {
   // par la primitive commune (remplace le snapshot + useDirtyGuard maison).
   const { guardedClose } = useFormSafety(initial, fields, onClose)
 
-  const setField = (k, v) => setFields((f) => {
-    const next = { ...f, [k]: v }
-    // À la CRÉATION uniquement : la première fois qu'un identifiant entreprise
-    // (ICE / IF / RC) est renseigné, basculer le type vers « Entreprise » —
-    // parité avec le défaut en édition. On NE force jamais si un choix manuel
-    // a déjà été fait (type déjà « entreprise » → no-op ; un retour manuel à
-    // « particulier » est respecté car ce bloc ne se déclenche que sur la
-    // saisie d'un identifiant, pas sur le changement de type).
-    if (
-      !isEdit
-      && (k === 'ice' || k === 'if_fiscal' || k === 'rc')
-      && String(v ?? '').trim() !== ''
-      && f.type_client !== 'entreprise'
-    ) {
-      next.type_client = 'entreprise'
-    }
-    return next
-  })
+  // VX171 — le rouge ne doit jamais mentir pendant que l'utilisateur corrige :
+  // nettoyé AVANT le prochain submit, dès la frappe (hors du setState de
+  // `fields`, jamais d'effet de bord dans un updater React).
+  const setField = (k, v) => {
+    clearField(k)
+    setFields((f) => {
+      const next = { ...f, [k]: v }
+      // À la CRÉATION uniquement : la première fois qu'un identifiant entreprise
+      // (ICE / IF / RC) est renseigné, basculer le type vers « Entreprise » —
+      // parité avec le défaut en édition. On NE force jamais si un choix manuel
+      // a déjà été fait (type déjà « entreprise » → no-op ; un retour manuel à
+      // « particulier » est respecté car ce bloc ne se déclenche que sur la
+      // saisie d'un identifiant, pas sur le changement de type).
+      if (
+        !isEdit
+        && (k === 'ice' || k === 'if_fiscal' || k === 'rc')
+        && String(v ?? '').trim() !== ''
+        && f.type_client !== 'entreprise'
+      ) {
+        next.type_client = 'entreprise'
+      }
+      return next
+    })
+  }
 
   // QC1 — autocomplete entreprise (données propres). Avertissement de doublon
   // non bloquant quand on choisit un CLIENT existant (au lieu de recréer).
@@ -247,14 +256,8 @@ export default function ClientForm({ client = null, onClose }) {
         }
       }
     } catch (err) {
-      // Map DRF field errors back to form fields
-      const e = {}
-      if (err?.email)  e.email  = Array.isArray(err.email)  ? err.email[0]  : err.email
-      if (err?.nom)    e.nom    = Array.isArray(err.nom)    ? err.nom[0]    : err.nom
-      if (!e.email && !e.nom) {
-        e.submit = err?.detail ?? JSON.stringify(err)
-      }
-      setErrors(e)
+      // VX171 — mapping DRF générique (detail / {champ:[…]} / array).
+      setFromResponse(err)
     } finally {
       setSaving(false)
     }

@@ -21,6 +21,7 @@ import {
   toast,
 } from '../../ui'
 import { isDirty } from '../../ui/form-utils'
+import { useServerFieldErrors } from '../../hooks/useServerFieldErrors'
 
 // VX92 — « Créer un autre » : persisté par utilisateur/poste (localStorage),
 // défaut OFF (comportement historique inchangé). Un salon = 10 leads/produits
@@ -60,23 +61,13 @@ function ecrireLastTva(v) {
   }
 }
 
-// Traduit une erreur serveur DRF en phrase française lisible (jamais de JSON brut).
-function frSubmitError(err) {
-  if (!err) return 'Une erreur est survenue. Réessayez.'
-  if (typeof err === 'string') return err
-  if (err.detail) return err.detail
-  if (err.non_field_errors?.[0]) return err.non_field_errors[0]
-  if (err.sku?.[0]) {
-    return /unique|already exists|existe/i.test(err.sku[0])
-      ? 'Ce SKU est déjà utilisé par un autre produit.'
-      : `SKU : ${err.sku[0]}`
-  }
-  // Premier message de champ disponible, sinon repli générique (jamais de JSON).
-  for (const v of Object.values(err)) {
-    const m = Array.isArray(v) ? v[0] : v
-    if (typeof m === 'string') return m
-  }
-  return "L'enregistrement a échoué. Vérifiez les champs et réessayez."
+// VX171 — traduit le message SKU (contrainte d'unicité serveur) en phrase
+// française lisible AVANT de le confier à useServerFieldErrors — les autres
+// champs (nom, prix_vente…) sont mappés génériquement par le hook.
+function frSkuMessage(msg) {
+  return /unique|already exists|existe/i.test(msg)
+    ? 'Ce SKU est déjà utilisé par un autre produit.'
+    : msg
 }
 
 // N17 — listes de prix multi-fournisseurs par SKU. Le prix d'achat est INTERNE
@@ -291,7 +282,8 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
   const isEdit = !!produit
 
   const [saving, setSaving] = useState(false)
-  const [errors, setErrors] = useState({})
+  // VX171 — vérité serveur → champ ; le rouge s'efface à la frappe.
+  const { errors, setErrors, setFromResponse, clearField } = useServerFieldErrors()
 
   // VX92 — « Créer un autre » : uniquement pertinent à la création (jamais en
   // édition), persisté (localStorage), défaut OFF.
@@ -379,7 +371,8 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
     }
   }
 
-  const setField = (k, v) => setFields(f => ({ ...f, [k]: v }))
+  // VX171 — le rouge ne doit jamais mentir pendant que l'utilisateur corrige.
+  const setField = (k, v) => { clearField(k); setFields(f => ({ ...f, [k]: v })) }
 
   // Doublon de SKU détecté localement (unicité ('company','sku') côté serveur).
   // Le serveur reste l'autorité ; ceci évite un aller-retour pour un cas courant.
@@ -442,7 +435,14 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
         onClose()
       }
     } catch (err) {
-      setErrors(prev => ({ ...prev, submit: frSubmitError(err) }))
+      // VX171 — mapping DRF générique (detail / {champ:[…]} / array) ; le
+      // message SKU (contrainte d'unicité) reste traduit en français lisible.
+      const skuMsg = err && typeof err === 'object'
+        ? (Array.isArray(err.sku) ? err.sku[0] : err.sku)
+        : null
+      setFromResponse(
+        typeof skuMsg === 'string' ? { ...err, sku: frSkuMessage(skuMsg) } : err,
+      )
     } finally {
       setSaving(false)
     }
