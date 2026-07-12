@@ -594,6 +594,7 @@ CELERY_TASK_ROUTES = {
     'core.purge_backups': {'queue': 'scheduled'},
     'core.run_retention': {'queue': 'scheduled'},
     'core.beat_heartbeat': {'queue': 'scheduled'},
+    'core.purge_idempotency_records': {'queue': 'scheduled'},
     'monitoring.balayage_quotidien': {'queue': 'scheduled'},
     'stock.expiration_alerts': {'queue': 'scheduled'},
     'stock.relancer_bcf_en_retard': {'queue': 'scheduled'},

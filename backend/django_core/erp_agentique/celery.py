@@ -294,6 +294,12 @@ app.conf.beat_schedule = {
         'task': 'core.snapshot_tenant_usage',
         'schedule': crontab(hour=1, minute=45),
     },
+    # YAPIC10 — purge quotidienne des IdempotencyRecord (YAPIC9) plus vieux
+    # que 24 h, heure creuse.
+    'core-purge-idempotency-records': {
+        'task': 'core.purge_idempotency_records',
+        'schedule': crontab(hour=3, minute=15),
+    },
     # YSERV3 — balayage monitoring quotidien (synchro fournisseur + évaluation
     # de sous-performance), heure creuse matinale.
     'monitoring-balayage-quotidien': {
