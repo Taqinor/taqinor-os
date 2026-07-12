@@ -25,6 +25,7 @@ setup('authenticate', async ({ page }) => {
   // promo. Miroir du forçage de thème via localStorage dans visual.spec.js.
   await page.evaluate(() => {
     try { localStorage.setItem('taqinor-pwa-install-dismissed', '1') } catch { /* mode privé */ }
+    try { localStorage.setItem('taqinor:welcome:seen:v1', '1') } catch { /* mode privé */ }
   })
   await page.context().storageState({ path: AUTH_FILE })
 })
