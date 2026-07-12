@@ -92,3 +92,9 @@ pyHanko==0.28.0
 # provides standard Django HTTP/DB instrumentation (not wired by default —
 # add its middleware in settings if that richer surface is wanted later).
 django-prometheus==2.3.1
+
+# NTPLT46 — Sentry (supervision d'erreurs), dépendance OPTIONNELLE gated-founder.
+# core/monitoring.py importe sentry-sdk PARESSEUSEMENT et UNIQUEMENT si SENTRY_DSN
+# est configuré : sans DSN, ce paquet n'est jamais chargé (aucun coût, aucun appel
+# réseau). Décommenter + poser SENTRY_DSN pour activer (service payant à volume).
+# sentry-sdk==2.20.0
