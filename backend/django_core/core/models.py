@@ -1,4 +1,5 @@
 import secrets
+import uuid
 
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
@@ -2034,3 +2035,343 @@ class TenantUsageSnapshot(TimestampedModel):
 
     def __str__(self):
         return f'Usage {self.company_id} le {self.jour}'
+
+
+class IdempotencyKey(TimestampedModel):
+    """NTPLT28 — clé d'idempotence (repli DB du décorateur ``idempotent_task``).
+
+    Utilisée UNIQUEMENT quand Redis est indisponible : la contrainte unique sur
+    ``cle`` garantit qu'une exécution logique (identifiée par ``cle``) n'a lieu
+    qu'une fois. Aucune FK ``company`` : la clé encode elle-même son périmètre
+    (souvent l'``id`` société + le nom de la tâche + la fenêtre). ``created_at``
+    (hérité) sert de base au calcul d'expiration (``ttl``).
+    """
+
+    cle = models.CharField('Clé', max_length=255, unique=True)
+
+    class Meta:
+        verbose_name = "Clé d'idempotence"
+        verbose_name_plural = "Clés d'idempotence"
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return self.cle
+
+
+class SequenceCounter(TenantModel):
+    """NTPLT41 — allocateur de séquence HAUT DÉBIT (opt-in).
+
+    Compteur monotone par ``(company, cle)`` alloué SOUS ``select_for_update``
+    par BLOCS de N — pour les volumes élevés (numéros de jobs internes,
+    identifiants de chatter…) où le pattern gapless ``core.numbering`` (max +1
+    par scan, réservé aux documents FISCAUX) coûterait trop cher. Ici on
+    ASSUME les trous : un bloc réservé et non entièrement consommé laisse un
+    intervalle non attribué — jamais un doublon.
+
+    ``dernier`` = dernière valeur RÉSERVÉE. ``allocate(company, cle, n)`` verrou
+    la ligne, incrémente de ``n`` en une écriture et renvoie la plage
+    ``range(debut, debut + n)`` — 1 000 allocations concurrentes ne produisent
+    ni doublon ni trou NON documenté (les trous inter-blocs sont assumés).
+    """
+
+    cle = models.CharField(
+        'Clé', max_length=100,
+        help_text="Nom logique de la séquence (ex. 'job', 'chatter').")
+    dernier = models.BigIntegerField('Dernier réservé', default=0)
+
+    class Meta:
+        verbose_name = 'Compteur de séquence'
+        verbose_name_plural = 'Compteurs de séquence'
+        ordering = ['company_id', 'cle']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'cle'],
+                name='core_sequencecounter_company_cle'),
+        ]
+
+    def __str__(self):
+        return f'{self.cle}@{self.company_id}={self.dernier}'
+
+    @classmethod
+    def allocate(cls, company, cle, n=1):
+        """Réserve un bloc de ``n`` valeurs pour ``(company, cle)``.
+
+        Atomique et race-safe : verrou la ligne (``select_for_update``),
+        avance ``dernier`` de ``n`` en une écriture, renvoie ``range(debut,
+        fin)`` (les ``n`` entiers réservés). Crée la ligne si absente. ``n``
+        doit être ≥ 1.
+        """
+        from django.db import transaction
+        n = max(1, int(n))
+        with transaction.atomic():
+            row, _ = cls.objects.select_for_update().get_or_create(
+                company=company, cle=cle, defaults={'dernier': 0})
+            debut = row.dernier + 1
+            row.dernier = row.dernier + n
+            row.save(update_fields=['dernier', 'updated_at'])
+            return range(debut, debut + n)
+
+    @classmethod
+    def next(cls, company, cle):
+        """Réserve et renvoie UNE valeur (raccourci de ``allocate(...,1)``)."""
+        return cls.allocate(company, cle, 1).start
+
+
+class TenantLimit(TenantModel):
+    """NTPLT7 — limite douce de consommation par société (enforcement DOUX).
+
+    Une clé parmi ``max_lignes_table`` / ``max_stockage_mo`` /
+    ``max_exports_jour`` porte une ``valeur`` (``0`` = illimité). Consultée par
+    dataimport / exports / upload via ``core.limits.verifier`` : un dépassement
+    NOTIFIE les admins et pose un en-tête ``X-Quota-Warning`` — JAMAIS un blocage
+    dur. Vente : les groupes multi-filiales exigent des garde-fous de
+    consommation par entité, sans jamais couper le service.
+    """
+
+    CLE_MAX_LIGNES = 'max_lignes_table'
+    CLE_MAX_STOCKAGE_MO = 'max_stockage_mo'
+    CLE_MAX_EXPORTS_JOUR = 'max_exports_jour'
+    CLE_CHOICES = [
+        (CLE_MAX_LIGNES, 'Lignes maximum par table'),
+        (CLE_MAX_STOCKAGE_MO, 'Stockage maximum (Mo)'),
+        (CLE_MAX_EXPORTS_JOUR, 'Exports maximum par jour'),
+    ]
+
+    cle = models.CharField('Clé', max_length=32, choices=CLE_CHOICES)
+    valeur = models.BigIntegerField(
+        'Valeur', default=0,
+        help_text='Plafond (0 = illimité).')
+
+    class Meta:
+        verbose_name = 'Limite tenant'
+        verbose_name_plural = 'Limites tenant'
+        ordering = ['company_id', 'cle']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'cle'],
+                name='core_tenantlimit_company_cle'),
+        ]
+
+    def __str__(self):
+        return f'{self.cle}={self.valeur} @{self.company_id}'
+
+
+class MaintenanceMode(TimestampedModel):
+    """NTPLT55 — mode lecture seule (maintenance) activable À CHAUD.
+
+    Singleton en base (une seule ligne, ``pk=1``) mis en cache 5 s : quand
+    ``actif`` est vrai, le middleware ``core.maintenance.MaintenanceModeMiddleware``
+    répond 503 aux méthodes NON-SÛRES (POST/PUT/PATCH/DELETE) avec un message
+    français + ``Retry-After``, en laissant passer login/logout/health. Brique
+    indispensable des bascules de schéma délicates sous trafic. Transverse à
+    toutes les sociétés (pas de FK company) — piloté par l'exploitant.
+    """
+
+    CACHE_KEY = 'core:maintenance_mode'
+    CACHE_TTL = 5  # secondes — relit la DB au plus toutes les 5 s.
+
+    actif = models.BooleanField('Maintenance active', default=False)
+    message = models.CharField(
+        'Message', max_length=255,
+        default='Maintenance en cours, réessayez dans quelques instants.')
+
+    class Meta:
+        verbose_name = 'Mode maintenance'
+        verbose_name_plural = 'Mode maintenance'
+
+    def __str__(self):
+        return 'ACTIF' if self.actif else 'inactif'
+
+    @classmethod
+    def get_solo(cls):
+        """Renvoie (crée si absent) la ligne singleton (``pk=1``)."""
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+    @classmethod
+    def is_active(cls):
+        """État courant (``bool``), mis en cache ``CACHE_TTL`` secondes.
+
+        Dégrade en ``False`` (service ouvert) si le cache ET la DB échouent —
+        une panne d'infrastructure ne doit jamais fermer l'ERP par erreur.
+        """
+        from django.core.cache import cache
+        try:
+            cached = cache.get(cls.CACHE_KEY)
+            if cached is not None:
+                return bool(cached)
+        except Exception:  # noqa: BLE001 — cache KO → lit la DB
+            cached = None
+        try:
+            actif = cls.get_solo().actif
+        except Exception:  # noqa: BLE001 — DB KO → service ouvert (fail-open)
+            return False
+        try:
+            cache.set(cls.CACHE_KEY, actif, cls.CACHE_TTL)
+        except Exception:  # noqa: BLE001 — cache KO → tant pis
+            pass
+        return bool(actif)
+
+    @classmethod
+    def set_active(cls, actif, message=None):
+        """Active/désactive la maintenance + invalide le cache immédiatement."""
+        from django.core.cache import cache
+        obj = cls.get_solo()
+        obj.actif = bool(actif)
+        if message is not None:
+            obj.message = message
+        obj.save(update_fields=['actif', 'message', 'updated_at'])
+        try:
+            cache.set(cls.CACHE_KEY, obj.actif, cls.CACHE_TTL)
+        except Exception:  # noqa: BLE001 — cache KO → prochaine lecture relit DB
+            pass
+        return obj
+
+
+class BackgroundJob(TenantModel):
+    """NTPLT29 — job de fond avec progression (exports lourds, imports longs).
+
+    Trace un travail asynchrone lancé pour un utilisateur : ``kind`` (type
+    logique), ``statut`` (queued→running→done/failed), ``progress_pct``,
+    ``result_file_key`` (clé MinIO du livrable), ``message_erreur``. Company et
+    user sont TOUJOURS posés server-side (jamais depuis le corps de requête).
+    Socle de NTPLT30 (exports lourds asynchrones) et du commit dataimport long.
+    """
+
+    STATUT_QUEUED = 'queued'
+    STATUT_RUNNING = 'running'
+    STATUT_DONE = 'done'
+    STATUT_FAILED = 'failed'
+    STATUT_CHOICES = [
+        (STATUT_QUEUED, 'En file'),
+        (STATUT_RUNNING, 'En cours'),
+        (STATUT_DONE, 'Terminé'),
+        (STATUT_FAILED, 'Échoué'),
+    ]
+
+    user = models.ForeignKey(
+        'authentication.CustomUser', on_delete=models.CASCADE,
+        related_name='background_jobs', verbose_name='Utilisateur')
+    kind = models.CharField('Type', max_length=64)
+    statut = models.CharField(
+        'Statut', max_length=16, choices=STATUT_CHOICES,
+        default=STATUT_QUEUED)
+    progress_pct = models.PositiveSmallIntegerField('Progression (%)',
+                                                    default=0)
+    result_file_key = models.CharField(
+        'Clé fichier résultat', max_length=512, blank=True, default='')
+    message_erreur = models.TextField('Message d’erreur', blank=True,
+                                      default='')
+
+    class Meta:
+        verbose_name = 'Job de fond'
+        verbose_name_plural = 'Jobs de fond'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['company', 'user', '-created_at'],
+                         name='core_bgjob_co_user_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.kind}:{self.statut} ({self.progress_pct}%)'
+
+    def marquer_progression(self, pct):
+        """Met à jour la progression (borne 0-100) + passe en ``running``."""
+        self.progress_pct = max(0, min(100, int(pct)))
+        if self.statut == self.STATUT_QUEUED:
+            self.statut = self.STATUT_RUNNING
+        self.save(update_fields=['progress_pct', 'statut', 'updated_at'])
+
+    def marquer_termine(self, result_file_key=''):
+        """Passe le job en ``done`` (100 %) avec la clé du livrable."""
+        self.statut = self.STATUT_DONE
+        self.progress_pct = 100
+        self.result_file_key = result_file_key or ''
+        self.save(update_fields=['statut', 'progress_pct',
+                                 'result_file_key', 'updated_at'])
+
+    def marquer_echec(self, message=''):
+        """Passe le job en ``failed`` avec un message d'erreur."""
+        self.statut = self.STATUT_FAILED
+        self.message_erreur = (message or '')[:5000]
+        self.save(update_fields=['statut', 'message_erreur', 'updated_at'])
+
+
+class OutboxEvent(TimestampedModel):
+    """NTPLT9 — événement métier en OUTBOX transactionnel.
+
+    Écrit DANS la transaction de l'appelant (``emit_reliable``) puis livré par un
+    worker (NTPLT10) aux handlers DURABLES — « aucun événement métier perdu,
+    même sur crash ». ``company`` est nullable (événements système transverses).
+    L'événement synchrone M6 existant est émis inchangé via
+    ``transaction.on_commit`` (façade préservée : zéro breaking change pour les
+    abonnés actuels).
+    """
+
+    STATUT_PENDING = 'pending'
+    STATUT_DELIVERED = 'delivered'
+    STATUT_FAILED = 'failed'
+    STATUT_DEAD = 'dead'
+    STATUT_CHOICES = [
+        (STATUT_PENDING, 'En attente'),
+        (STATUT_DELIVERED, 'Livré'),
+        (STATUT_FAILED, 'En échec (à réessayer)'),
+        (STATUT_DEAD, 'Abandonné (dead-letter)'),
+    ]
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='outbox_events', null=True, blank=True,
+        verbose_name='Société')
+    event_name = models.CharField('Événement', max_length=100)
+    payload = models.JSONField('Payload', default=dict, blank=True)
+    event_id = models.UUIDField(
+        'Event ID', default=uuid.uuid4, unique=True, editable=False)
+    occurred_at = models.DateTimeField('Survenu le', default=timezone.now)
+    statut = models.CharField(
+        'Statut', max_length=12, choices=STATUT_CHOICES,
+        default=STATUT_PENDING, db_index=True)
+    tentatives = models.PositiveIntegerField('Tentatives', default=0)
+    prochaine_tentative = models.DateTimeField(
+        'Prochaine tentative', null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Événement outbox'
+        verbose_name_plural = 'Événements outbox'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['statut', 'prochaine_tentative'],
+                         name='core_outbox_statut_next_idx'),
+            models.Index(fields=['event_name', '-created_at'],
+                         name='core_outbox_name_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.event_name}:{self.statut} ({self.event_id})'
+
+
+class ProcessedEvent(TimestampedModel):
+    """NTPLT10 (étend YDATA12) — déduplication CONSOMMATEUR par (event_id,
+    handler).
+
+    Une ligne = « ce handler a déjà traité cet événement ». La contrainte
+    unique ``(event_id, handler_name)`` garantit qu'un crash/rejeu ne
+    double-livre jamais un événement à un handler donné (livraison
+    at-least-once + dédup = effet exactement-une-fois côté consommateur).
+    """
+
+    event_id = models.UUIDField('Event ID')
+    handler_name = models.CharField('Handler', max_length=200)
+
+    class Meta:
+        verbose_name = 'Événement traité'
+        verbose_name_plural = 'Événements traités'
+        ordering = ['-created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['event_id', 'handler_name'],
+                name='core_processedevent_evt_handler'),
+        ]
+
+    def __str__(self):
+        return f'{self.event_id}->{self.handler_name}'

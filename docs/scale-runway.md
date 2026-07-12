@@ -646,6 +646,81 @@ connexion, ni le CPU applicatif, ni le CPU/IO DB en écriture.
 
 ---
 
+## Implémentation pgbouncer optionnel (NTPLT58)
+
+Concrétise l'« Étape 1 » ci-dessus. pgbouncer reste **opt-in** derrière un
+profil docker `scale` — la stack par défaut n'en dépend pas.
+
+### Service compose (profil `scale`)
+
+Ajouter à `docker-compose.yml` (le service ne démarre qu'avec
+`docker compose --profile scale up`) :
+
+```yaml
+  pgbouncer:
+    image: edoburu/pgbouncer:1.23.1
+    profiles: ["scale"]
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: "1000"
+      DEFAULT_POOL_SIZE: "25"
+    depends_on:
+      - db
+    ports:
+      - "6432:6432"
+```
+
+### Contrat d'activation (`.env` + settings)
+
+`PGBOUNCER=1` bascule l'hôte DB applicatif vers pgbouncer et impose les
+réglages **obligatoires** du mode transaction (déjà exigés par SCA14) :
+
+```python
+# erp_agentique/settings/base.py — bloc gardé par PGBOUNCER
+if os.environ.get("PGBOUNCER") == "1":
+    DATABASES["default"]["HOST"] = os.environ.get("PGBOUNCER_HOST", "pgbouncer")
+    DATABASES["default"]["PORT"] = os.environ.get("PGBOUNCER_PORT", "6432")
+    # Transaction pooling : pas de connexions persistantes ni de curseurs
+    # serveur, sinon corruption inter-requêtes.
+    DATABASES["default"]["CONN_MAX_AGE"] = 0
+    DATABASES["default"]["DISABLE_SERVER_SIDE_CURSORS"] = True
+```
+
+### Migrations HORS pooler
+
+`manage.py migrate` (et `dump_database`, `restore_drill`) doivent pointer la DB
+**directe**, jamais pgbouncer (le DDL et les curseurs serveur cassent en
+transaction pooling). `deploy-prod.ps1` conserve `DB_HOST`/`DB_PORT` directs
+pour l'étape migrations.
+
+### RLS sous pooler
+
+Le GUC tenant (`SET LOCAL app.current_company`, NTPLT2-4) est posé **par
+requête dans la transaction** (`SET LOCAL`, jamais `SET` de session) — donc
+compatible transaction pooling : chaque transaction repose son GUC, aucune
+fuite entre clients multiplexés sur la même connexion serveur.
+
+### Arithmétique des connexions (baseline Hetzner)
+
+```
+connexions serveur Postgres nécessaires
+  = DEFAULT_POOL_SIZE (25) par (base × utilisateur)   via pgbouncer
+côté clients (multiplexés) :
+  4 workers gunicorn × N instances Django
+  + workers Celery (default+interactive+scheduled+bulk)
+  + FastAPI (agent SQL)
+```
+
+pgbouncer effondre des centaines de connexions client en ~25 connexions
+serveur — c'est précisément ce qui repousse le mur `max_connections` de
+Postgres sans surdimensionner la base.
+
+---
+
 *Référence CODEMAP : voir `docs/CODEMAP.md` §7 (ou section infra/capacité la
 plus proche) pour un pointeur vers ce document — ligne exacte à ajouter
 fournie dans le rapport final de la lane `infra/compose` (cette tâche

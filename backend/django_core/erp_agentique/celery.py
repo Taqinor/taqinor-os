@@ -101,6 +101,24 @@ app.conf.beat_schedule = {
         'task': 'notifications.reveiller_snoozes',
         'schedule': crontab(minute='*/30'),
     },
+    # NTPLT10 — filet beat de l'outbox : livre les événements pending/failed
+    # échus (en plus de l'enqueue on_commit immédiat) toutes les 5 minutes.
+    'core-dispatch-outbox': {
+        'task': 'core.dispatch_outbox',
+        'schedule': crontab(minute='*/5'),
+    },
+    # NTPLT36 — crée les partitions mensuelles à l'avance (M + M+1 + M+2,
+    # idempotent) ; une passe quotidienne suffit largement.
+    'core-ensure-partitions': {
+        'task': 'core.ensure_partitions',
+        'schedule': crontab(hour=3, minute=0),
+    },
+    # NTPLT8 — scan MENSUEL DRY-RUN d'étanchéité des données vivantes
+    # (company_id NULL/orphelin) ; le 1er du mois, ne modifie rien.
+    'core-scan-live-isolation': {
+        'task': 'core.scan_live_isolation',
+        'schedule': crontab(hour=4, minute=0, day_of_month=1),
+    },
     'automation-time-triggers-daily': {
         'task': 'automation.time_triggers_daily',
         'schedule': crontab(hour=8, minute=5),
@@ -372,19 +390,30 @@ app.conf.beat_schedule = {
 from celery.signals import task_success, task_failure  # noqa: E402
 
 
+def _queue_of(sender):
+    """NTPLT44 — nom de queue best-effort d'une tâche (routing_key), 'default'."""
+    try:
+        info = getattr(getattr(sender, 'request', None), 'delivery_info', None)
+        return (info or {}).get('routing_key') or 'default'
+    except Exception:  # noqa: BLE001 — best-effort
+        return 'default'
+
+
 @task_success.connect
-def _yhard6_on_task_success(**kwargs):
+def _yhard6_on_task_success(sender=None, **kwargs):
     try:
         from core import metrics
         metrics.record_task_success()
+        metrics.record_task_queue(_queue_of(sender), ok=True)  # NTPLT44
     except Exception:  # noqa: BLE001 — best-effort, ne doit jamais casser Celery
         pass
 
 
 @task_failure.connect
-def _yhard6_on_task_failure(**kwargs):
+def _yhard6_on_task_failure(sender=None, **kwargs):
     try:
         from core import metrics
         metrics.record_task_failure()
+        metrics.record_task_queue(_queue_of(sender), ok=False)  # NTPLT44
     except Exception:  # noqa: BLE001 — best-effort, ne doit jamais casser Celery
         pass

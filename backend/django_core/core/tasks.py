@@ -102,6 +102,53 @@ def beat_heartbeat_task():
     return {'ok': True}
 
 
+@shared_task(name='core.dispatch_outbox')
+def dispatch_outbox_task():
+    """NTPLT10 — livraison des événements outbox aux handlers durables.
+
+    Filet beat (toutes les 5 min) en plus de l'enqueue immédiat on_commit :
+    livre les événements ``pending``/``failed`` échus, applique retries
+    exponentiels bornés puis dead-letter. Idempotente (re-run ne double-livre
+    pas — dédup ``ProcessedEvent``). Queue ``default``."""
+    from . import dispatch_outbox
+
+    counts = dispatch_outbox.dispatch_pending()
+    logger.info('core.dispatch_outbox: livrés=%d échecs=%d dead=%d',
+                counts['delivered'], counts['failed'], counts['dead'])
+    return counts
+
+
+@shared_task(name='core.scan_live_isolation')
+def scan_live_isolation_task():
+    """NTPLT8 — scan mensuel DRY-RUN d'étanchéité des DONNÉES vivantes.
+
+    Vérifie sur la base RÉELLE qu'aucune ligne des tables company-scopées n'a un
+    ``company_id`` NULL ou orphelin (société supprimée). Complète YRBAC12 (qui
+    teste le CODE en CI) par un contrôle des DONNÉES en prod. Ne modifie rien ;
+    remonte les anomalies aux admins + audit via le reporteur enregistré."""
+    from . import tenant_isolation_scan
+
+    report = tenant_isolation_scan.scan_live_isolation()
+    logger.info('core.scan_live_isolation: %d anomalie(s) sur %d table(s)',
+                report['anomalies'], report['scanned'])
+    return {'anomalies': report['anomalies'], 'scanned': report['scanned']}
+
+
+@shared_task(name='core.ensure_partitions')
+def ensure_partitions_task():
+    """NTPLT36 — maintenance des partitions mensuelles À L'AVANCE.
+
+    Crée le mois courant + M+1/M+2 de chaque table partitionnée enregistrée
+    (``core.partitioning``), pour qu'une insertion future ait toujours sa
+    partition prête. Idempotent (re-run ne recrée rien). Queue ``scheduled``."""
+    from . import ensure_partitions
+
+    results = ensure_partitions.ensure_all()
+    logger.info('core.ensure_partitions: %d table(s) maintenue(s)',
+                len(results))
+    return {t: len(p) for t, p in results.items()}
+
+
 @shared_task(name='core.snapshot_tenant_usage')
 def snapshot_tenant_usage_task():
     """NTPLT6 — instantané NOCTURNE d'usage par tenant (metering).

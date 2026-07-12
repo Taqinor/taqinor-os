@@ -1,0 +1,61 @@
+# NTPLT21 — Manifeste des budgets de requêtes PAR ENDPOINT (contrat de perf).
+#
+# Ce fichier est le CONTRAT de performance par endpoint : chaque entrée
+# associe un endpoint LISTE à fort trafic à un plafond de requêtes SQL (le
+# nombre de requêtes ne doit PAS grandir avec le nombre de lignes — O(1)).
+#
+# `scripts/check_query_budgets.py` (job CI `stage-names` / lint) échoue si une
+# entrée `enforced: true` n'a PAS de test de budget correspondant (un fichier
+# de test qui référence l'URL de l'endpoint ET utilise `assertMaxQueries` /
+# `assertNumQueries`). Complète la sonde de parité YAPIC11.
+#
+# Ajouter un endpoint :
+#   1. écrire son test de budget (pattern 10 -> 25 objets, cf.
+#      apps/*/tests_yopsb13_*.py) ;
+#   2. l'ajouter ici en `enforced: true` avec le plafond mesuré.
+# Un endpoint encore non couvert se déclare `enforced: false` (documenté,
+# non gardé) en attendant son test.
+
+version: 1
+
+endpoints:
+  - path: /api/django/crm/leads/
+    budget: 12
+    enforced: true
+    note: "Liste des leads (YOPSB13)."
+
+  - path: /api/django/sav/tickets/
+    budget: 12
+    enforced: true
+    note: "Liste des tickets SAV (YOPSB13)."
+
+  - path: /api/django/stock/produits/
+    budget: 12
+    enforced: true
+    note: "Liste des produits (YOPSB13)."
+
+  - path: /api/django/ventes/devis/
+    budget: 15
+    enforced: true
+    note: "Liste des devis (YOPSB13) — appelle le moteur d'affichage TTC."
+
+  # --- Endpoints à couvrir (test de budget pas encore écrit) ---------------
+  - path: /api/django/ventes/factures/
+    budget: 15
+    enforced: false
+    note: "À couvrir : liste des factures."
+
+  - path: /api/django/stock/mouvements/
+    budget: 12
+    enforced: false
+    note: "À couvrir : liste des mouvements de stock."
+
+  - path: /api/django/installations/interventions/
+    budget: 12
+    enforced: false
+    note: "À couvrir : liste des interventions."
+
+  - path: /api/django/core/notifications/
+    budget: 10
+    enforced: false
+    note: "À couvrir : liste des notifications (polling du bell)."

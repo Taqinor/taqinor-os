@@ -1,0 +1,34 @@
+"""Sérialiseurs de la fondation Identité & accès."""
+import ipaddress
+
+from rest_framework import serializers
+
+from .models import IpAllowRule, NetworkPolicy
+
+
+class IpAllowRuleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = IpAllowRule
+        fields = ['id', 'policy', 'cidr', 'label', 'created_at']
+        read_only_fields = ['id', 'created_at']
+
+    def validate_cidr(self, value):
+        # Valider ICI (DRF → 400) et non seulement dans ``IpAllowRule.clean()``
+        # (django ValidationError au save → 500). Normalise aussi la saisie.
+        cidr = (value or '').strip()
+        try:
+            ipaddress.ip_network(cidr, strict=False)
+        except (ValueError, AttributeError):
+            raise serializers.ValidationError(
+                'Plage CIDR invalide (ex. 10.0.0.0/8).')
+        return cidr
+
+
+class NetworkPolicySerializer(serializers.ModelSerializer):
+    rules = IpAllowRuleSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = NetworkPolicy
+        fields = ['id', 'mode', 'applies_to', 'rules', 'created_at',
+                  'updated_at']
+        read_only_fields = ['id', 'rules', 'created_at', 'updated_at']

@@ -134,6 +134,14 @@ INSTALLED_APPS = [
     # ne dépend d'aucune app de domaine ; les domaines la référenceront
     # (ARC18/19). Contrat import-linter `tiers-is-a-base-layer`.
     'apps.tiers',
+    # NTSEC — Fondation Identité & accès (SSO/SCIM/politiques réseau &
+    # session). N'importe aucune app métier ; scopée société côté serveur.
+    # NTSEC11 y livre l'allowlist IP/CIDR (NetworkPolicy + middleware inerte
+    # par défaut).
+    'apps.identity',
+    # XPLT21 — Softphone VoIP intégré (SIP/WebRTC, gated). Interface
+    # fournisseur SWAPPABLE (NoOp par défaut) — additif, company-scopé.
+    'apps.voip',
 ]
 
 MIDDLEWARE = [
@@ -164,6 +172,16 @@ MIDDLEWARE = [
     # RLS, défense en profondeur multi-tenant). NO-OP TOTAL sans le flag env
     # POSTGRES_RLS_ENABLED=1 (défaut OFF) : aucune requête SQL supplémentaire.
     'core.tenant_context.TenantContextMiddleware',
+    # NTSEC11 — allowlist IP/CIDR par société. INERTE par défaut : ne bloque
+    # ni ne journalise rien tant qu'une société n'a pas de NetworkPolicy en
+    # mode monitor/enforce. Endpoints publics jamais soumis.
+    'apps.identity.middleware.NetworkPolicyMiddleware',
+    # NTPLT43/44/51 — observabilité par requête (request_id, contexte tenant,
+    # durée). Placé en DERNIER : mesure la durée au plus près de la vue. OPT-IN —
+    # sans LOG_FORMAT=json / SLOW_REQUEST_MS / scrape /metrics, il ne fait que
+    # poser un contextvar + deux lectures d'horloge (coût négligeable) et pose
+    # l'en-tête X-Request-ID sur la réponse.
+    'core.observability.RequestObservabilityMiddleware',
 ]
 
 ROOT_URLCONF = 'erp_agentique.urls'
@@ -213,6 +231,22 @@ DATABASES = {
         'PORT': os.environ.get('DB_PORT', '5432'),
         'CONN_MAX_AGE': int(os.environ.get('DB_CONN_MAX_AGE', '60')),
         'CONN_HEALTH_CHECKS': True,
+        # NTPLT18 — statement_timeout par défaut au niveau connexion. Sans lui,
+        # une requête ORM folle (jointure oubliée, LIKE non indexé sur des
+        # millions de lignes) peut épingler un worker gunicorn indéfiniment.
+        # Postgres tue tout statement dépassant ce délai (ms) — le worker se
+        # libère au lieu de geler. Pilotable par DB_STATEMENT_TIMEOUT_MS (défaut
+        # 30 000 = 30 s) ; 0 = désactivé (comportement historique). Les jobs
+        # légitimement longs élargissent explicitement le délai via
+        # `core.db_guards.statement_timeout()` (SET LOCAL). Les dumps/restores
+        # passent par pg_dump/pg_restore (subprocess) et ne sont donc PAS
+        # soumis à cette OPTION — aucun risque de les tronquer.
+        'OPTIONS': {
+            'options': (
+                f"-c statement_timeout="
+                f"{int(os.environ.get('DB_STATEMENT_TIMEOUT_MS', '30000'))}"
+            ),
+        } if int(os.environ.get('DB_STATEMENT_TIMEOUT_MS', '30000')) > 0 else {},
     }
 }
 
@@ -309,6 +343,15 @@ REST_FRAMEWORK = {
     # count/next/previous/results reste identique à DRF.
     'DEFAULT_PAGINATION_CLASS': 'core.pagination.StandardPagination',
     'PAGE_SIZE': 50,
+    # NTPLT42 — throttle applicatif PAR TENANT posé en défaut global : protège
+    # l'instance partagée du script fou d'UN client sans toucher les autres. Le
+    # budget vient de DEFAULT_THROTTLE_RATES['tenant'] (env TENANT_RATE_LIMIT).
+    # Rate None (env '0'/vide, ou sous les tests) = throttle inactif → aucun
+    # changement de comportement. Les surfaces anonymes (login/register) gardent
+    # leurs throttles dédiés (le throttle tenant se désactive sans société).
+    'DEFAULT_THROTTLE_CLASSES': (
+        'core.throttling.TenantRateThrottle',
+    ),
     # Fix 1 : taux de throttle par scope (appliqués per-view)
     'DEFAULT_THROTTLE_RATES': {
         'login': '5/minute',   # 5 tentatives/min par IP sur /token/
@@ -328,6 +371,10 @@ REST_FRAMEWORK = {
         # ouverture de session chat public (par IP).
         'public_sharelink': '30/minute',
         'public_livechat': '30/minute',
+        # NTPLT42 — budget par société (env TENANT_RATE_LIMIT, défaut 1200/min).
+        # '0'/vide → None = throttle tenant désactivé (rempli plus bas, après la
+        # définition de TESTING, où il est forcé off pour ne pas fausser la suite).
+        'tenant': None,
     },
     # YDATA9 — DRF sérialise déjà les `Decimal` en string par défaut (c'est
     # la valeur par défaut de DRF), mais rien ne le VERROUILLAIT explicitement
@@ -388,9 +435,21 @@ CACHES = {
         ),
         "OPTIONS": {
             "CLIENT_CLASS": "django_redis.client.DefaultClient",
+            # NTPLT24 — résilience Redis : une panne du cache dégrade en
+            # cache-miss (get→None, set→no-op) AU LIEU de propager une
+            # ConnectionError qui renverrait 500 sur TOUT l'ERP (chaque vue qui
+            # lit/écrit le cache). django-redis journalise l'exception ignorée
+            # via le logger 'django_redis' (LOGGING ci-dessous) pour ne pas
+            # masquer une panne réelle. Argument SLA : une brique de cache qui
+            # tombe ne couche pas le produit.
+            "IGNORE_EXCEPTIONS": True,
         }
     }
 }
+# NTPLT24 — journaliser (WARNING) les exceptions Redis ignorées par django-redis
+# au lieu de les avaler en silence. Fusionné avec toute config LOGGING existante.
+DJANGO_REDIS_LOG_IGNORED_EXCEPTIONS = True
+DJANGO_REDIS_LOGGER = 'django_redis'
 
 # CORS Configuration
 CORS_ALLOWED_ORIGINS = [
@@ -478,6 +537,9 @@ CELERY_TASK_ROUTES = {
     'reporting.controle_integrite': {'queue': 'scheduled'},
     # NTPLT6 — snapshot d'usage tenant (beat 01:45) → queue planifiée.
     'core.snapshot_tenant_usage': {'queue': 'scheduled'},
+    'core.dispatch_outbox': {'queue': 'scheduled'},
+    'core.ensure_partitions': {'queue': 'scheduled'},
+    'core.scan_live_isolation': {'queue': 'scheduled'},
     'ged.purge_corbeille_echue': {'queue': 'scheduled'},
     'ged.signature_relances_expiration': {'queue': 'scheduled'},
     'ged.verifier_integrite_archives': {'queue': 'scheduled'},
@@ -523,13 +585,26 @@ CELERY_TASK_ROUTES = {
     'qhse.escalader_checkins_en_retard': {'queue': 'scheduled'},
     # Notifications — balayage des leads chauds.
     'notifications.sweep_hot_leads': {'queue': 'scheduled'},
+    # NTPLT27 — 4e queue `bulk` pour le travail de masse (imports dataimport,
+    # exports planifiés volumineux, backfills, seed à l'échelle). Un import de
+    # 100 000 lignes ne doit plus retarder un digest planifié ni un rendu PDF
+    # interactif : il part sur `bulk`, consommée à part. Routage par CONVENTION
+    # de nommage (fnmatch — Celery matche les clés glob de task_routes) pour
+    # couvrir les tâches de masse présentes ET futures sans les énumérer une à
+    # une : tout nom `*.import_*`, `*.export_bulk_*`, `*.backfill_*`,
+    # `*.seed_*`. Aucune tâche existante ne matche ces motifs aujourd'hui —
+    # ajout purement additif, zéro changement de routage pour l'existant.
+    '*.import_*': {'queue': 'bulk'},
+    '*.backfill_*': {'queue': 'bulk'},
+    '*.seed_*': {'queue': 'bulk'},
+    '*.export_bulk_*': {'queue': 'bulk'},
 }
 # Le worker par défaut (sans -Q) écoute la queue nommée dans
 # task_default_queue — on la garde `default` pour ne rien casser ; en
-# production, lancer le worker avec `-Q default,interactive,scheduled` pour
-# qu'un worker UNIQUE consomme bien les 3 (comportement mono-worker inchangé
-# tant que ce -Q n'est pas explicitement restreint — voir
-# docs/deploy-prod / docker-compose.prod.yml).
+# production, lancer le worker avec `-Q default,interactive,scheduled,bulk`
+# (NTPLT27 ajoute `bulk`) pour qu'un worker UNIQUE consomme bien les 4
+# (comportement mono-worker inchangé tant que ce -Q n'est pas explicitement
+# restreint — voir docs/deploy-prod / docker-compose.prod.yml).
 CELERY_TASK_DEFAULT_QUEUE = 'default'
 
 # Email — django-anymail (N87). Compte d'envoi configurable : Brevo (ex-
@@ -733,6 +808,16 @@ if TESTING:
 # the test runner so the "unconfigured => empty endpoint => no-op" contract holds.
 VAPID_AUTOGENERATE = os.environ.get('VAPID_AUTOGENERATE', '0' if TESTING else '1') == '1'
 
+# NTPLT42 — résolution du budget throttle PAR TENANT (après TESTING). Env
+# TENANT_RATE_LIMIT (défaut '1200/min'). '0' ou vide → None (throttle désactivé).
+# Sous le test runner, DÉSACTIVÉ par défaut : une suite qui boucle des centaines
+# de requêtes pour la même société ne doit jamais échouer sur un 429 parasite
+# (un test ciblant explicitement le throttle pose TENANT_RATE_LIMIT lui-même).
+_tenant_rate = os.environ.get(
+    'TENANT_RATE_LIMIT', '0' if TESTING else '1200/min').strip()
+REST_FRAMEWORK['DEFAULT_THROTTLE_RATES']['tenant'] = (
+    _tenant_rate if _tenant_rate and _tenant_rate != '0' else None)
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Fondation IA (core.ai) — sélection des fournisseurs par capacité.
 # Dict {capacité: clé_fournisseur}. Le DÉFAUT de chaque capacité est 'noop' :
@@ -765,3 +850,26 @@ METRICS_ALLOWED_IPS = [
     ip.strip() for ip in os.environ.get('METRICS_ALLOWED_IPS', '').split(',')
     if ip.strip()
 ]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# NTPLT43 — logs JSON structurés taggés tenant (request_id/company/user/path/
+# status/duration_ms). ACTIVABLE par LOG_FORMAT=json ; par défaut, AUCUNE config
+# LOGGING n'est posée ici → le format actuel (défaut Django, ou celui de dev.py)
+# reste strictement inchangé. En mode json, chaque ligne de log est un objet JSON
+# ingérable tel quel par Loki/CloudWatch (doc: docs/observability.md).
+LOG_FORMAT = os.environ.get('LOG_FORMAT', '').strip().lower()
+if LOG_FORMAT == 'json':
+    from core.logging_ext import build_logging_config  # noqa: E402
+    LOGGING = build_logging_config(
+        level=os.environ.get('LOG_LEVEL', 'INFO').upper())
+
+# NTPLT43 — access log structuré par requête (une ligne INFO 'core.request' par
+# requête). OFF par défaut ; automatiquement activé quand LOG_FORMAT=json.
+REQUEST_ACCESS_LOG = (
+    os.environ.get('REQUEST_ACCESS_LOG', '1' if LOG_FORMAT == 'json' else '0')
+    == '1')
+
+# NTPLT51 — trace des requêtes HTTP lentes. 0 (défaut) = désactivée. Au-delà du
+# seuil (ms), une ligne WARNING 'core.slow_request' est émise (durée/path/tenant),
+# et en DEBUG le compte SQL + les 3 requêtes les plus longues (CaptureQueries).
+SLOW_REQUEST_MS = int(os.environ.get('SLOW_REQUEST_MS', '0') or '0')

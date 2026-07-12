@@ -611,3 +611,116 @@ incident_declared = django.dispatch.Signal()
 # user (peut être None), company. Aucun abonné obligatoire (pose du seam pour
 # audit/notifications/KPI d'un futur type de document construit sur le kit).
 document_statut_change = django.dispatch.Signal()
+
+
+# ===========================================================================
+# NTPLT9/10 — Outbox transactionnel FIABLE (façade au-dessus des signaux M6).
+#
+# ``emit_reliable(event, **kwargs)`` écrit une ligne ``core.OutboxEvent`` DANS la
+# transaction appelante puis, via ``transaction.on_commit``, émet l'événement
+# synchrone M6 EXISTANT inchangé (les abonnés actuels ne voient aucune
+# différence). Un worker (``core.dispatch_outbox``) livre ensuite la ligne aux
+# handlers DURABLES enregistrés par ``subscribe_durable`` — « aucun événement
+# perdu, même sur crash ». ``core`` reste fondation : aucun import d'app métier.
+# ===========================================================================
+
+# Registre {event_name: [(handler_name, handler, rejouable)]}. Peuplé par les
+# apps dans leur ``ready()`` via ``subscribe_durable``.
+_DURABLE_HANDLERS: dict = {}
+
+
+def subscribe_durable(name, handler, *, rejouable=False, handler_name=None):
+    """Abonne un handler DURABLE à l'événement ``name`` (livré par l'outbox).
+
+    ``handler(outbox_event)`` reçoit l'instance ``OutboxEvent`` livrée. Doit
+    être IDEMPOTENT (la livraison est at-least-once ; la dédup par
+    ``(event_id, handler_name)`` garantit l'effet exactement-une-fois).
+    ``rejouable=True`` autorise le rejeu ciblé support (NTPLT13). Ré-abonner le
+    même ``handler_name`` remplace (idempotent au rechargement d'app)."""
+    hname = handler_name or getattr(handler, '__name__', repr(handler))
+    entries = _DURABLE_HANDLERS.setdefault(name, [])
+    entries[:] = [e for e in entries if e[0] != hname]
+    entries.append((hname, handler, bool(rejouable)))
+
+
+def durable_handlers(name):
+    """Handlers durables (liste de tuples) enregistrés pour ``name``."""
+    return list(_DURABLE_HANDLERS.get(name, []))
+
+
+def clear_durable_handlers():
+    """Vide le registre des handlers durables (test uniquement)."""
+    _DURABLE_HANDLERS.clear()
+
+
+def _jsonify(value):
+    """Rend une valeur JSON-sérialisable pour le payload d'outbox.
+
+    Une instance de modèle → ``{'_model': 'app.Model', 'pk': ...}`` ; un
+    datetime → ISO ; les primitives telles quelles ; sinon ``str(value)``.
+    """
+    from datetime import date, datetime
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    if isinstance(value, (list, tuple)):
+        return [_jsonify(v) for v in value]
+    if isinstance(value, dict):
+        return {str(k): _jsonify(v) for k, v in value.items()}
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    meta = getattr(value, '_meta', None)
+    pk = getattr(value, 'pk', None)
+    if meta is not None and pk is not None:
+        return {'_model': f'{meta.app_label}.{meta.model_name}', 'pk': pk}
+    return str(value)
+
+
+def _resolve_company(company, kwargs):
+    """Déduit la société : arg explicite, sinon kwargs, sinon objet portant
+    ``company``. Renvoie l'instance/None (jamais une exception)."""
+    if company is not None:
+        return company
+    if 'company' in kwargs and kwargs['company'] is not None:
+        return kwargs['company']
+    for value in kwargs.values():
+        c = getattr(value, 'company', None)
+        if c is not None:
+            return c
+    return None
+
+
+def emit_reliable(event, *, sender=None, company=None, emitted_by=None,
+                  **kwargs):
+    """Émet un événement de façon FIABLE : outbox + signal M6 synchrone.
+
+    Écrit une ligne ``OutboxEvent`` dans la transaction courante (payload
+    JSON-sérialisé, enveloppe versionnée NTPLT12) puis, sur commit, envoie le
+    signal M6 existant ``events.<event>`` avec les kwargs d'origine — les
+    abonnés synchrones actuels sont préservés à l'identique. Renvoie
+    l'``OutboxEvent`` créé (ou ``None`` si l'événement est inconnu du bus).
+    """
+    from django.db import transaction
+
+    from .models import OutboxEvent
+
+    signal = globals().get(event)
+    if not isinstance(signal, django.dispatch.Signal):
+        # Événement inconnu du bus : on n'écrit rien (contrat catalogue NTPLT12
+        # le fera échouer en test) et on ne casse pas l'appelant.
+        return None
+
+    resolved_company = _resolve_company(company, kwargs)
+    payload = {k: _jsonify(v) for k, v in kwargs.items()}
+    row = OutboxEvent.objects.create(
+        company=resolved_company,
+        event_name=event,
+        payload=payload,
+    )
+
+    send_kwargs = dict(kwargs)
+
+    def _send_sync():
+        signal.send(sender=sender or 'core.emit_reliable', **send_kwargs)
+
+    transaction.on_commit(_send_sync)
+    return row

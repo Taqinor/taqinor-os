@@ -40,6 +40,21 @@ BEAT_HEARTBEAT_STALE_SECONDS = 15 * 60
 _lock = threading.Lock()
 _task_counters = {'success': 0, 'failure': 0}
 
+# NTPLT44 — compteurs Celery PAR QUEUE (best-effort, process-local). Clé = nom
+# de queue → {'success': n, 'failure': n}.
+_task_by_queue: dict = {}
+
+# NTPLT44 — métriques HTTP PAR TENANT avec garde-fou de CARDINALITÉ. Sans garde,
+# `company` comme label Prometheus exploserait la cardinalité (1 série par
+# société × statut × bucket) à 1000+ tenants — coût mémoire/scrape prohibitif.
+# On plafonne à TOP-N sociétés RÉELLES ; au-delà, tout est agrégé sous `other`.
+_CARDINALITY_CAP = 20
+# Buckets de latence (secondes) — échelle standard Prometheus.
+_LATENCY_BUCKETS = (0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0)
+# label company → {'count','sum','buckets':[...],'status':{class:n}}
+_http_by_tenant: dict = {}
+_http_real_companies: set = set()
+
 
 def record_task_success():
     with _lock:
@@ -51,9 +66,71 @@ def record_task_failure():
         _task_counters['failure'] += 1
 
 
+def record_task_queue(queue, ok):
+    """NTPLT44 — incrémente le compteur Celery de la queue nommée."""
+    queue = queue or 'default'
+    with _lock:
+        slot = _task_by_queue.setdefault(queue, {'success': 0, 'failure': 0})
+        slot['success' if ok else 'failure'] += 1
+
+
 def task_counters():
     with _lock:
         return dict(_task_counters)
+
+
+def task_queue_counters():
+    with _lock:
+        return {q: dict(v) for q, v in _task_by_queue.items()}
+
+
+def _tenant_label(company_id):
+    """Résout le label company avec garde de cardinalité (top-N, sinon other)."""
+    if company_id is None:
+        return 'system'
+    key = str(company_id)
+    if key in _http_real_companies:
+        return key
+    if len(_http_real_companies) < _CARDINALITY_CAP:
+        _http_real_companies.add(key)
+        return key
+    return 'other'
+
+
+def record_http_request(company_id, status, duration_ms):
+    """NTPLT44 — enregistre une requête HTTP (compteur + histogramme) par tenant.
+
+    Best-effort, process-local, jamais bloquant. La cardinalité `company` est
+    bornée (top-20 sociétés par volume observé, le reste → `other`)."""
+    try:
+        seconds = float(duration_ms) / 1000.0
+    except (TypeError, ValueError):
+        seconds = 0.0
+    status_class = f'{int(status) // 100}xx' if status else 'unknown'
+    with _lock:
+        label = _tenant_label(company_id)
+        slot = _http_by_tenant.setdefault(label, {
+            'count': 0, 'sum': 0.0,
+            'buckets': [0] * len(_LATENCY_BUCKETS),
+            'status': {},
+        })
+        slot['count'] += 1
+        slot['sum'] += seconds
+        slot['status'][status_class] = slot['status'].get(status_class, 0) + 1
+        for i, edge in enumerate(_LATENCY_BUCKETS):
+            if seconds <= edge:
+                slot['buckets'][i] += 1
+
+
+def http_tenant_metrics():
+    with _lock:
+        return {
+            label: {
+                'count': v['count'], 'sum': v['sum'],
+                'buckets': list(v['buckets']), 'status': dict(v['status']),
+            }
+            for label, v in _http_by_tenant.items()
+        }
 
 
 def mark_beat_heartbeat():
@@ -142,5 +219,49 @@ def render_prometheus_text():
                  'installé (1) ou absent (0) — métriques HTTP/DB additionnelles.')
     lines.append('# TYPE taqinor_django_prometheus_available gauge')
     lines.append(f'taqinor_django_prometheus_available {1 if _django_prometheus_available() else 0}')
+
+    # NTPLT44 — compteurs Celery PAR QUEUE.
+    queues = task_queue_counters()
+    if queues:
+        lines.append('# HELP taqinor_celery_queue_tasks_total Tâches Celery par '
+                     'queue et issue (depuis le démarrage du worker).')
+        lines.append('# TYPE taqinor_celery_queue_tasks_total counter')
+        for queue, slot in sorted(queues.items()):
+            for status_ in ('success', 'failure'):
+                lines.append(
+                    f'taqinor_celery_queue_tasks_total'
+                    f'{{queue="{queue}",status="{status_}"}} {slot[status_]}')
+
+    # NTPLT44 — requêtes HTTP PAR TENANT (compteur + histogramme de latence),
+    # cardinalité `company` bornée (top-20 + `other`).
+    tenants = http_tenant_metrics()
+    if tenants:
+        lines.append('# HELP taqinor_http_requests_total Requêtes HTTP par '
+                     'société (label borné : top-20 + other) et classe de statut.')
+        lines.append('# TYPE taqinor_http_requests_total counter')
+        for label, v in sorted(tenants.items()):
+            for status_class, n in sorted(v['status'].items()):
+                lines.append(
+                    f'taqinor_http_requests_total'
+                    f'{{company="{label}",status="{status_class}"}} {n}')
+        lines.append('# HELP taqinor_http_request_duration_seconds Latence des '
+                     'requêtes HTTP par société (histogramme).')
+        lines.append('# TYPE taqinor_http_request_duration_seconds histogram')
+        for label, v in sorted(tenants.items()):
+            cumulative = 0
+            for i, edge in enumerate(_LATENCY_BUCKETS):
+                cumulative += v['buckets'][i]
+                lines.append(
+                    f'taqinor_http_request_duration_seconds_bucket'
+                    f'{{company="{label}",le="{edge}"}} {cumulative}')
+            lines.append(
+                f'taqinor_http_request_duration_seconds_bucket'
+                f'{{company="{label}",le="+Inf"}} {v["count"]}')
+            lines.append(
+                f'taqinor_http_request_duration_seconds_sum'
+                f'{{company="{label}"}} {v["sum"]:.4f}')
+            lines.append(
+                f'taqinor_http_request_duration_seconds_count'
+                f'{{company="{label}"}} {v["count"]}')
 
     return '\n'.join(lines) + '\n'
