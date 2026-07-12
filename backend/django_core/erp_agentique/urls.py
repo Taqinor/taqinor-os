@@ -95,6 +95,8 @@ urlpatterns = [
          include('apps.installations.public_urls')),
     # XPUR22 — Portail fournisseur en lecture seule (sans login).
     path('api/django/public/stock/', include('apps.stock.public_urls')),
+    # NTSEC — Fondation Identité & accès (NTSEC11 : allowlist IP/CIDR).
+    path('api/django/identity/', include('apps.identity.urls')),
 ]
 
 # En production (DEBUG off + gunicorn), les statiques (admin Django) sont
