@@ -11,6 +11,7 @@ import { Eye, FileWarning } from 'lucide-react'
 import ventesApi from '../../../api/ventesApi'
 import { proposalParams, pdfBlob } from '../../../features/ventes/previewPdf'
 import { Button, Spinner, toast } from '../../../ui'
+import { ResponsiveDialog } from '../../../ui/ResponsiveDialog'
 import { celebrateDealSigned } from '../../../ui/celebrate'
 import { formatMAD } from '../../../lib/format'
 
@@ -220,12 +221,14 @@ export default function SigneDialog({ lead, onClose, onConfirmed }) {
   const leadNom = `${lead.nom ?? ''} ${lead.prenom ?? ''}`.trim() || 'ce lead'
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal sd-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <h3 className="modal-title">Passer en « Signé »</h3>
-          <button type="button" className="modal-close" onClick={onClose}>✕</button>
-        </div>
+    // VX182 — shell fait-main remplacé par ResponsiveDialog (Escape + focus-
+    // trap + bottom-sheet mobile) ; `sd-modal` conservée pour le sélecteur CSS
+    // scopé `.sd-modal .form-label` ; en-tête/pied inchangés.
+    <ResponsiveDialog open onOpenChange={(o) => { if (!o) onClose() }} className="sd-modal sm:max-w-lg" showClose={false}>
+      <div className="modal-header">
+        <h3 className="modal-title">Passer en « Signé »</h3>
+        <button type="button" className="modal-close" onClick={onClose}>✕</button>
+      </div>
 
         <div className="modal-body">
           {loading && (
@@ -274,6 +277,7 @@ export default function SigneDialog({ lead, onClose, onConfirmed }) {
                   className="form-control min-w-0 flex-1"
                   value={devisId}
                   onChange={(e) => onDevisChange(e.target.value)}
+                  autoFocus
                 >
                   {devisList.map((d) => (
                     <option key={d.id} value={d.id}>
@@ -384,7 +388,6 @@ export default function SigneDialog({ lead, onClose, onConfirmed }) {
             </Button>
           )}
         </div>
-      </div>
-    </div>
+    </ResponsiveDialog>
   )
 }

@@ -6,6 +6,7 @@ import { useState } from 'react'
 import crmApi from '../../../api/crmApi'
 import { Button } from '../../../ui'
 import { Combobox } from '../../../ui/Combobox'
+import { ResponsiveDialog } from '../../../ui/ResponsiveDialog'
 import { searchCompanies, hitsToOptions } from '../../../features/crm/companyLookup'
 
 const MODES = [
@@ -52,12 +53,13 @@ export default function ConvertirClientDialog({ lead, onClose, onConverted }) {
   const leadNom = `${lead.nom ?? ''} ${lead.prenom ?? ''}`.trim() || 'ce lead'
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <h3 className="modal-title">Convertir en client</h3>
-          <button type="button" className="modal-close" onClick={onClose}>✕</button>
-        </div>
+    // VX182 — shell fait-main remplacé par ResponsiveDialog (Escape + focus-
+    // trap + bottom-sheet mobile) ; en-tête/pied conservés à l'identique.
+    <ResponsiveDialog open onOpenChange={(o) => { if (!o) onClose() }} className="sm:max-w-lg" showClose={false}>
+      <div className="modal-header">
+        <h3 className="modal-title">Convertir en client</h3>
+        <button type="button" className="modal-close" onClick={onClose}>✕</button>
+      </div>
 
         <div className="modal-body">
           {result == null ? (
@@ -66,7 +68,7 @@ export default function ConvertirClientDialog({ lead, onClose, onConverted }) {
                 Que faire de <strong>{leadNom}</strong> ?
               </p>
               <div className="mb-2 flex flex-col gap-1.5">
-                {MODES.map((m) => (
+                {MODES.map((m, i) => (
                   <label key={m.value} className="sd-radio">
                     <input
                       type="radio"
@@ -74,6 +76,7 @@ export default function ConvertirClientDialog({ lead, onClose, onConverted }) {
                       value={m.value}
                       checked={mode === m.value}
                       onChange={() => setMode(m.value)}
+                      autoFocus={i === 0}
                     />
                     <span>{m.label}</span>
                   </label>
@@ -120,7 +123,6 @@ export default function ConvertirClientDialog({ lead, onClose, onConverted }) {
             <Button type="button" onClick={onClose}>Fermer</Button>
           )}
         </div>
-      </div>
-    </div>
+    </ResponsiveDialog>
   )
 }

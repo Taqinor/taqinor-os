@@ -1759,7 +1759,7 @@ pas la dupliquer ici, la numérotation continue directement à SEED-02.*
   `scrollWidth <= clientWidth` sur `.header` (Playwright) ; les 3 thèmes restent accessibles via le
   menu ; e2e mobile vert. (T2 — S/M, sonnet) (@lane: frontend/ios)
 
-- [ ] VX182 — **7 modales fait-main hors LeadForm : le même défaut que VX89 corrige, sur 7 (@lane: frontend/forms — @after VX89)
+- [x] VX182 — **7 modales fait-main hors LeadForm : le même défaut que VX89 corrige, sur 7 (@lane: frontend/forms — @after VX89)
   surfaces qu'il ne cite pas. @after VX89.** Grep négatif vérifié
   (`Escape|autoFocus|role="dialog"|aria-modal|ResponsiveDialog` = 0) sur 7 fichiers au même shell
   `.modal-overlay` brut que `LeadForm.jsx:588` : `features/logistique/PodCaptureDialog.jsx`,
@@ -3207,6 +3207,8 @@ droite)**
 ---
 
 ## DONE LOG (agent appends one plain-language line per completed task)
+
+- 2026-07-12 — **VX182 — 7 modales fait-main hors LeadForm passées à ResponsiveDialog.** `PodCaptureDialog`, `TransfertsScreen` (CreateDemandeDialog), `ClientDetailPanel`, `ConvertirClientDialog`, `LeadInsightsDialog`, `PlanActiviteDialog`, `SigneDialog` : shell `.modal-overlay`/`.modal` brut remplacé par `ResponsiveDialog` (Escape + focus-trap + overlay-click + bottom-sheet mobile, `showClose={false}` — le ✕ existant reste l'unique fermeture visible), `autoFocus` posé sur le premier contrôle réel de chacun (5/7 en ont un ; les 2 panneaux lecture-seule `ClientDetailPanel`/`LeadInsightsDialog` s'appuient sur le focus-trap par défaut de Radix). `sd-modal` conservée en className sur `SigneDialog` (sélecteur CSS scopé `.sd-modal .form-label` intact).
 
 - 2026-07-12 — **VX167 — LeadForm : dirty-tracking + garde de fermeture.** `isDirty` (déjà présent, VX224) branché sur `useDirtyGuard` (filet beforeunload) + `confirmLeaveIfDirty` posé sur les 3 chemins de fermeture volontaire (`onOpenChange` du `ResponsiveDialog`, bouton ✕, bouton Annuler du footer) — parité avec les 7 adoptants VX166.
 
