@@ -276,6 +276,11 @@ test('VX190: le bouton Exporter aboutit par le chemin geste (jamais d\'échec si
 test('VX190: thead/tfoot du DataTable restent lisibles pendant le scroll (pas de décrochage)', async ({ page }) => {
   // VX178 — le fond opaque (sans backdrop-blur) doit rester attaché en haut
   // du conteneur scrollable pendant le défilement d'une longue liste.
+  // VX180 — le DataTable ne rend un <table>/<thead> qu'AU-DELÀ du point de
+  // bascule `dt-desktop` (768px) ; en dessous (iPhone) ce sont des CARTES
+  // sans thead. On force donc une largeur bureau pour valider le thead sticky
+  // là où il existe réellement (sinon l'assertion teste un thead masqué).
+  await page.setViewportSize({ width: 1024, height: 800 })
   await page.goto('/ventes/factures')
   await expect(page.getByRole('heading', { name: 'Factures' })).toBeVisible()
   await page.waitForLoadState('networkidle').catch(() => {})
