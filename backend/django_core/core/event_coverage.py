@@ -239,3 +239,26 @@ def dangling_receiver_signals() -> set[str]:
     """Signaux référencés par un @receiver mais absents de core.events."""
     declared = set(declared_signals())
     return {n for n in _referenced_signal_names() if n not in declared}
+
+
+# --- NTPLT12 — couverture du CATALOGUE d'événements -------------------------
+
+
+def uncatalogued_events() -> set[str]:
+    """Signaux déclarés dans ``core.events`` mais ABSENTS de
+    ``core.event_catalog.CATALOG``.
+
+    Un ensemble non vide fait échouer le test de couverture NTPLT12 : tout
+    nouvel événement émis DOIT être documenté au catalogue (contrat
+    d'intégration stable pour les équipes IT du client)."""
+    from core import event_catalog
+    return set(declared_signals()) - event_catalog.catalog_names()
+
+
+def catalogued_but_undeclared() -> set[str]:
+    """Entrées du catalogue qui ne correspondent à AUCUN signal déclaré.
+
+    Détecte un catalogue qui référence un événement supprimé/renommé du bus —
+    l'autre sens de la dérive."""
+    from core import event_catalog
+    return event_catalog.catalog_names() - set(declared_signals())
