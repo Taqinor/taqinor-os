@@ -1,5 +1,3 @@
-import { Link } from 'react-router-dom'
-
 /* VX159 — RelationCounters : le seul bon réflexe d'Odoo, systématisé. En tête
    d'une fiche 360, une rangée de compteurs cliquables (« 3 devis · 1 facture ·
    2 tickets SAV »). @coord ARC46 (construisible avant RecordShell, migrable
@@ -18,7 +16,7 @@ import { Link } from 'react-router-dom'
      • counters : [{ key, label, count, to? }]
      • className : classes utilitaires additionnelles sur le conteneur */
 export default function RelationCounters({ counters = [], className = '' }) {
-  const visible = counters.filter((c) => c && Number.isFinite(Number(c.count)))
+  const visible = counters.filter((c) => c && c.count != null && Number.isFinite(Number(c.count)))
   if (visible.length === 0) return null
 
   const chip =
@@ -39,15 +37,15 @@ export default function RelationCounters({ counters = [], className = '' }) {
           </>
         )
         return c.to ? (
-          <Link
+          <a
             key={c.key}
-            to={c.to}
+            href={c.to}
             role="listitem"
             title={`Voir : ${c.label}`}
             className={`${chip} bg-card transition-colors hover:border-primary/50 hover:bg-accent`}
           >
             {inner}
-          </Link>
+          </a>
         ) : (
           <span key={c.key} role="listitem" className={`${chip} bg-muted/40`}>
             {inner}

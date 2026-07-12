@@ -19,6 +19,7 @@ vi.mock('../../api/notificationsApi', () => ({
     unreadCount: vi.fn(),
     markRead: vi.fn(),
     markAllRead: vi.fn(),
+    attentionSummary: vi.fn(() => Promise.resolve({ data: { approbations: 0 } })),
   },
 }))
 

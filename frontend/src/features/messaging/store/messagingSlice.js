@@ -205,7 +205,7 @@ const slice = createSlice({
         state.loadingMessages = true
         // VX164 — cette requête devient la DERNIÈRE demandée : un fulfilled
         // plus ancien (tick N-1 résolu en retard) sera ignoré ci-dessous.
-        state.activeMessagesRequestId = action.meta.requestId
+        state.activeMessagesRequestId = action.meta?.requestId
       })
       .addCase(fetchMessages.fulfilled, (state, action) => {
         state.loadingMessages = false
@@ -213,7 +213,7 @@ const slice = createSlice({
         // VX164 — no-op si une requête PLUS RÉCENTE a déjà été dispatchée
         // (le tick suivant est parti avant que celui-ci ne réponde) : le
         // payload le plus récemment DEMANDÉ gagne toujours.
-        if (action.meta.requestId !== state.activeMessagesRequestId) return
+        if (state.activeMessagesRequestId != null && action.meta?.requestId !== state.activeMessagesRequestId) return
         state.messages = toAsc(action.payload.page)
         state.nextOlder = action.payload.next
       })
