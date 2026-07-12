@@ -27,6 +27,16 @@ test('L423 : détail par option (kWc / total TTC) affiché à côté des radios'
   assert.match(SRC, /fmtMAD\(det\.ttc\)/)
 })
 
+// VX40 — le passage envoyé→accepté est le SEUL moment célébré de l'app :
+// toast riche + burst CSS-only autour de lui, câblé sur l'acceptation réelle
+// (juste après le POST accepterDevis, avant onConfirmed).
+test('VX40 : acceptation confirmée déclenche toast + celebrateDealSigned', () => {
+  assert.match(SRC, /from '\.\.\/\.\.\/\.\.\/ui\/celebrate'/)
+  assert.match(SRC, /await ventesApi\.accepterDevis\(selected\.id, \{ nom, date, option \}\)/)
+  assert.match(SRC, /toast\.success\(`Devis \$\{selected\.reference\} accepté/)
+  assert.match(SRC, /celebrateDealSigned\(\)/)
+})
+
 // ── Logique pure de optionsDetail, ré-implémentée à l'identique pour la tester
 //    sans parseur JSX (le code source ci-dessus en garantit la présence). ──
 const isBatteryLine = (d) =>

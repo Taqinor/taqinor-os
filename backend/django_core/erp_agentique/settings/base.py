@@ -160,6 +160,10 @@ MIDDLEWARE = [
     # résout le JWT DRF best-effort, superuser + endpoints /auth exemptés.
     # Porte la requête courante pour la capture du Journal d'activité (Feature G).
     'apps.audit.middleware.AuditActorMiddleware',
+    # NTPLT1 — pose le GUC Postgres app.current_company par requête (fondation
+    # RLS, défense en profondeur multi-tenant). NO-OP TOTAL sans le flag env
+    # POSTGRES_RLS_ENABLED=1 (défaut OFF) : aucune requête SQL supplémentaire.
+    'core.tenant_context.TenantContextMiddleware',
 ]
 
 ROOT_URLCONF = 'erp_agentique.urls'
@@ -212,6 +216,49 @@ DATABASES = {
     }
 }
 
+# NTPLT3 — Rôle applicatif non-BYPASSRLS pour le RUNTIME quand RLS est actif.
+#
+# Quand POSTGRES_RLS_ENABLED=1 ET DB_APP_USER est défini, le serveur
+# Django/Celery se connecte avec le rôle APPLICATIF (app_rls, sans BYPASSRLS —
+# cf. backend/db/rls_roles.sql) : il est alors PHYSIQUEMENT soumis aux policies
+# RLS (NTPLT2), et le GUC app.current_company (NTPLT1) décide des lignes
+# visibles. Une fuite cross-tenant devient impossible même via SQL brut.
+#
+# MAIS les chemins OWNER (migrations, seed, dumps, la commande `rls` elle-même,
+# les tests) DOIVENT rester sur le rôle OWNER/BYPASSRLS pour voir toutes les
+# lignes de tous les tenants — sinon `migrate`/`core.dump_database` échoueraient
+# flag ON. On garde donc l'OWNER pour ces commandes de gestion, l'app role
+# UNIQUEMENT pour le service runtime. Défaut OFF : sans le flag, la config est
+# byte-identique à ci-dessus (l'owner partout, aucun rôle applicatif requis).
+_RLS_ENABLED = os.environ.get('POSTGRES_RLS_ENABLED', '0') == '1'
+_DB_APP_USER = os.environ.get('DB_APP_USER', '').strip()
+# Commandes qui exigent le rôle OWNER (DDL / accès cross-tenant complet).
+_OWNER_COMMANDS = frozenset({
+    'migrate', 'makemigrations', 'sqlmigrate', 'dbshell', 'flush',
+    'loaddata', 'dumpdata', 'test', 'rls', 'dump_database', 'restore_drill',
+    'collectstatic', 'createsuperuser', 'shell', 'showmigrations',
+})
+
+
+def _running_owner_command() -> bool:
+    """True si l'invocation courante est une commande OWNER (manage.py <cmd>).
+
+    Détection par sys.argv (le seed passe par des commandes `seed_*`, toutes
+    couvertes par le préfixe). Hors manage.py (gunicorn/celery) → False, donc
+    le service runtime prend bien le rôle applicatif.
+    """
+    argv = sys.argv
+    if len(argv) < 2 or 'manage.py' not in argv[0]:
+        # gunicorn/celery/asgi : pas une commande manage.py → runtime app role.
+        return False
+    cmd = argv[1]
+    return cmd in _OWNER_COMMANDS or cmd.startswith('seed')
+
+
+if _RLS_ENABLED and _DB_APP_USER and not _running_owner_command():
+    DATABASES['default']['USER'] = _DB_APP_USER
+    DATABASES['default']['PASSWORD'] = os.environ.get('DB_APP_PASSWORD', '')
+
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
@@ -257,8 +304,11 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
     ),
-    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
-    'PAGE_SIZE': 100,
+    # YAPIC1 — pagination partagée avec plafond dur : page_size=50 par défaut,
+    # ``?page_size=`` autorisé, max_page_size=200 (plafond serveur). L'enveloppe
+    # count/next/previous/results reste identique à DRF.
+    'DEFAULT_PAGINATION_CLASS': 'core.pagination.StandardPagination',
+    'PAGE_SIZE': 50,
     # Fix 1 : taux de throttle par scope (appliqués per-view)
     'DEFAULT_THROTTLE_RATES': {
         'login': '5/minute',   # 5 tentatives/min par IP sur /token/
@@ -425,6 +475,8 @@ CELERY_TASK_ROUTES = {
     'reporting.email_saved_reports': {'queue': 'scheduled'},
     'reporting.evaluate_kpi_alertes': {'queue': 'scheduled'},
     'reporting.controle_integrite': {'queue': 'scheduled'},
+    # NTPLT6 — snapshot d'usage tenant (beat 01:45) → queue planifiée.
+    'core.snapshot_tenant_usage': {'queue': 'scheduled'},
     'ged.purge_corbeille_echue': {'queue': 'scheduled'},
     'ged.signature_relances_expiration': {'queue': 'scheduled'},
     'ged.verifier_integrite_archives': {'queue': 'scheduled'},

@@ -709,6 +709,22 @@ class Produit(models.Model):
         verbose_name='Périodicité par défaut',
         help_text='Périodicité proposée au contrat de maintenance créé '
                   '(vide = annuel).')
+    # ── ZSAL9 — Avertissement de vente (« sale warnings » façon Odoo) ──
+    # Message optionnel affiché quand ce produit est ajouté à un devis (ex.
+    # « produit en rupture prolongée »). Si ``avertissement_bloquant`` est True,
+    # une garde serveur refuse l'acceptation / la génération de facture d'un
+    # devis contenant ce produit SAUF override responsable/admin journalisé
+    # (patron XFAC28). Vide (défaut) = comportement historique inchangé. Jamais
+    # de prix d'achat exposé via ce champ.
+    avertissement_vente = models.TextField(
+        blank=True, default='',
+        verbose_name='Avertissement de vente',
+        help_text="Message affiché au devis quand ce produit est ajouté.")
+    avertissement_bloquant = models.BooleanField(
+        default=False,
+        verbose_name='Avertissement bloquant',
+        help_text="Si activé, empêche l'acceptation/facturation sans override "
+                  "responsable/admin.")
 
     class Meta:
         verbose_name = "Produit"

@@ -307,6 +307,78 @@ class TestScoringMultiTenant(TestCase):
         # La réponse reflète le score calculé à la volée
         self.assertEqual(actual, expected)
 
+
+# ── VX221 — décomposition « pourquoi ce score » ──────────────────────────────
+
+class TestScoreReasons(TestCase):
+    """VX221 — ``score_reasons`` expose les composantes NON NULLES du score,
+    triées par points décroissants, sans recalcul divergent de compute_score."""
+
+    def test_reasons_only_non_zero_sorted_desc(self):
+        from apps.crm.scoring import score_reasons
+        lead = _make_lead(
+            facture_hiver=10000,      # facture → 20
+            canal='reference',        # canal → 15
+            type_installation='industriel',  # type → 8
+        )
+        reasons = score_reasons(lead)
+        # Aucune composante à 0 n'est exposée.
+        self.assertTrue(all(r['points'] > 0 for r in reasons))
+        # Triée par points décroissants.
+        pts = [r['points'] for r in reasons]
+        self.assertEqual(pts, sorted(pts, reverse=True))
+        # Chaque entrée porte facteur + label + points.
+        for r in reasons:
+            self.assertIn('facteur', r)
+            self.assertIn('label', r)
+            self.assertIn('points', r)
+        # Le facteur « facture » (20) domine.
+        self.assertEqual(reasons[0]['facteur'], 'facture')
+        self.assertEqual(reasons[0]['points'], 20)
+
+    def test_reasons_are_pure_exposition_of_components(self):
+        """La somme des points bornée à 100 == compute_score : aucune
+        pondération différente n'est introduite."""
+        from apps.crm.scoring import score_reasons
+        lead = _make_lead(facture_hiver=3000, canal='site_web')
+        total = sum(r['points'] for r in score_reasons(lead))
+        self.assertEqual(min(total, 100), compute_score(lead))
+
+    def test_empty_lead_has_some_reasons_or_none(self):
+        """Un lead quasi vide n'expose que ses facteurs positifs (recency)."""
+        from apps.crm.scoring import score_reasons
+        lead = _make_lead()  # date_creation récente → recency > 0
+        reasons = score_reasons(lead)
+        facteurs = {r['facteur'] for r in reasons}
+        self.assertIn('recency', facteurs)
+
+
+class TestScoreReasonsApi(TestScoringMultiTenant):
+    """VX221 — ``score_reasons`` est exposé, company-scopé, en lecture seule."""
+
+    def test_score_reasons_present_and_scoped(self):
+        from rest_framework.test import APIClient
+        from rest_framework_simplejwt.tokens import AccessToken
+
+        api = APIClient()
+        api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user_a)}')
+        resp = api.get(f'/api/django/crm/leads/{self.lead_a.id}/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn('score_reasons', resp.data)
+        reasons = resp.data['score_reasons']
+        self.assertIsInstance(reasons, list)
+        # lead_a : grosse facture + référence → au moins ces 2 facteurs.
+        facteurs = {r['facteur'] for r in reasons}
+        self.assertIn('facture', facteurs)
+        self.assertIn('canal', facteurs)
+        # Un utilisateur d'une autre société ne peut pas lire ce lead.
+        api_b = APIClient()
+        api_b.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user_b)}')
+        resp_b = api_b.get(f'/api/django/crm/leads/{self.lead_a.id}/')
+        self.assertEqual(resp_b.status_code, 404)
+
     def test_ordering_by_score_desc(self):
         """?ordering=-score trie les leads de la plus haute à la plus basse note."""
         from rest_framework.test import APIClient

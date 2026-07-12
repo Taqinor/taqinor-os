@@ -33,8 +33,10 @@ import { openPdfBlob, openPdfInGesture } from '../../utils/pdfBlob'
 import { proposalParams, pdfBlob } from '../../features/ventes/previewPdf'
 import { useSavedViews } from '../../hooks/useSavedViews'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
-import { useHasPermission } from '../../hooks/useHasPermission'
+import { useHasPermission, useCanValiderVente } from '../../hooks/useHasPermission'
+import useDocumentTitle from '../../hooks/useDocumentTitle'
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
+import { celebrateDealSigned } from '../../ui/celebrate'
 import { DataTable } from '../../ui/datatable'
 import RoofViewer from './RoofViewer'
 import { StateBlock } from '../../components/StateBlock'
@@ -71,6 +73,20 @@ function DevisTableSkeleton() {
 }
 
 const DL_SAVED_VIEWS_KEY = 'taqinor.ventes.devis.savedViews'
+
+// VX216(a) — un chantier « en cours » a sa nomenclature (bom) GELÉE : éditer
+// le devis lié APRÈS ce point crée un écart devis↔chantier invisible côté
+// vendeur (l'installateur seul le voyait, InstallationDetail.jsx `devisDivergent`).
+// Statuts avant réception/clôture/annulation = composition encore gelée et
+// potentiellement engagée sur le terrain (miroir Installation.Statut ordonné,
+// apps/installations/models_installation.py).
+const CHANTIER_EN_COURS_STATUTS = [
+  'signe', 'materiel_commande', 'planifie', 'en_cours', 'installe',
+  // Statuts hérités équivalents (LEGACY_STATUT_MAP backend).
+  'a_planifier', 'pose_en_cours', 'pose', 'raccordement_onee', 'mise_en_service',
+]
+const chantierEnCours = (chantier) =>
+  !!chantier && CHANTIER_EN_COURS_STATUTS.includes(chantier.statut)
 
 // ── ARC49 — Colonnes du frame `ui/datatable` en mode « ligne custom ».
 // L'écran rend chaque ligne via `renderRow` (<DevisRow>), donc ces définitions
@@ -271,9 +287,10 @@ function DevisRow({ d, ctx }) {
   const {
     selectedIds, toggleSelected,
     versionsOpenId, setVersionsOpenId, roofOpenId, setRoofOpenId,
+    histoOpenId, toggleHistorique, histoCache, histoLoadingId,
     versionChain, effStatutOf,
     navigate, dispatch,
-    role, canDelete, highlightId,
+    role, canDelete, canValiderVente, highlightId,
     deletingId, statutActionId, superieurBusyId, shareBusyId, previewingId,
     pdfGenerating, pdfDownloading, pdfSlowPoll, convertingId, chantierBusy, projetBusy, factureGenId,
     openEdit, openVarianteModal, handleDelete, handleEnvoyer, handleContacterSuperieur,
@@ -306,72 +323,89 @@ function DevisRow({ d, ctx }) {
           aria-label={`Sélectionner ${d.reference}`}
         />
       </td>
-      <td>
-        <strong>{d.reference}</strong>
-        {d.version > 1 && (
-          <Badge tone="primary" className="ml-1.5">v{d.version}</Badge>
-        )}
-        {/* U7 — une révision remplacée (is_active=False) porte un
-            badge « Remplacé » explicite ; le lien ouvre l'historique
-            des versions (qui pointe vers la version courante). */}
-        {d.is_active === false && (
-          <Badge tone="neutral" className="ml-1.5">Remplacé</Badge>
-        )}
-        {d.superseded_by_ref && (
-          <div className="mt-0.5 text-xs text-warning">
-            remplacé par{' '}
-            <button
-              type="button"
-              className="font-medium underline hover:no-underline"
-              onClick={() => setVersionsOpenId(
-                versionsOpenId === d.id ? null : d.id)}
-              title="Voir la version qui remplace ce devis"
-            >
-              {d.superseded_by_ref}
-            </button>
-          </div>
-        )}
-        {(d.version > 1 || d.superseded_by_ref || d.version_parent_ref) && (
-          <div className="mt-0.5">
-            <button
-              type="button"
-              className="text-xs text-primary hover:underline"
-              onClick={() => setVersionsOpenId(
-                versionsOpenId === d.id ? null : d.id)}
-            >
-              {versionsOpenId === d.id ? 'Masquer les versions' : 'Voir les versions'}
-            </button>
-          </div>
-        )}
-        {/* QJ1 — Badge de consultation : affiché quand le lien public
-            a été ouvert au moins une fois. Nombre de vues + date. */}
-        {d.deja_consulte && (
-          <div
-            className="mt-0.5 inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary"
-            title={d.derniere_consultation
-              ? `Dernière ouverture : ${formatDateTime(d.derniere_consultation)}`
-              : 'Document consulté'}
-          >
-            <Eye className="size-3" aria-hidden="true" />
-            Consulté ×{d.nombre_vues ?? 1}
-          </div>
-        )}
-        {/* XSAL16 — résumé d'engagement par section de la proposition
-            web (« a passé 2 min sur le prix, n'a pas ouvert l'étude »).
-            Vide sans beacon (déjà serialisé, comportement QJ1 inchangé). */}
-        {engagementSummary(d.engagement) && (
-          <div
-            className="mt-0.5 text-xs text-muted-foreground"
-            title="Temps passé par section sur la proposition en ligne"
-          >
-            {engagementSummary(d.engagement)}
+      <td data-testid={`ref-cell-${d.id}`}>
+        {/* VX140 — cellule Référence à 2 niveaux : ligne 1 = référence + badges
+            de version en gras ; ligne 2 = métadonnées compactes (versions,
+            consultation, engagement) séparées par « · », muted, text-xs ;
+            chips de documents liés en dessous (rendues, pas title-only, pour
+            ne pas casser les tests U5 qui vérifient leur texte visible). */}
+        <div className="text-sm font-semibold">
+          {d.reference}
+          {d.version > 1 && (
+            <Badge tone="primary" className="ml-1.5">v{d.version}</Badge>
+          )}
+          {/* U7 — une révision remplacée (is_active=False) porte un
+              badge « Remplacé » explicite ; le lien ouvre l'historique
+              des versions (qui pointe vers la version courante). */}
+          {d.is_active === false && (
+            <Badge tone="neutral" className="ml-1.5">Remplacé</Badge>
+          )}
+        </div>
+        {(d.superseded_by_ref
+          || d.version > 1 || d.version_parent_ref
+          || d.deja_consulte || engagementSummary(d.engagement)) && (
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
+            {d.superseded_by_ref && (
+              <span className="text-warning">
+                remplacé par{' '}
+                <button
+                  type="button"
+                  className="font-medium underline hover:no-underline"
+                  onClick={() => setVersionsOpenId(
+                    versionsOpenId === d.id ? null : d.id)}
+                  title="Voir la version qui remplace ce devis"
+                >
+                  {d.superseded_by_ref}
+                </button>
+              </span>
+            )}
+            {d.superseded_by_ref
+              && (d.version > 1 || d.version_parent_ref || d.deja_consulte
+                || engagementSummary(d.engagement)) && <span aria-hidden="true">·</span>}
+            {(d.version > 1 || d.superseded_by_ref || d.version_parent_ref) && (
+              <button
+                type="button"
+                className="text-primary hover:underline"
+                onClick={() => setVersionsOpenId(
+                  versionsOpenId === d.id ? null : d.id)}
+              >
+                {versionsOpenId === d.id ? 'Masquer les versions' : 'Voir les versions'}
+              </button>
+            )}
+            {(d.version > 1 || d.version_parent_ref)
+              && (d.deja_consulte || engagementSummary(d.engagement)) && <span aria-hidden="true">·</span>}
+            {/* QJ1 — Badge de consultation : affiché quand le lien public
+                a été ouvert au moins une fois. Nombre de vues + date. */}
+            {d.deja_consulte && (
+              <span
+                className="inline-flex items-center gap-1 font-medium text-primary"
+                title={d.derniere_consultation
+                  ? `Dernière ouverture : ${formatDateTime(d.derniere_consultation)}`
+                  : 'Document consulté'}
+              >
+                <Eye className="size-3" aria-hidden="true" />
+                Consulté ×{d.nombre_vues ?? 1}
+              </span>
+            )}
+            {d.deja_consulte && engagementSummary(d.engagement) && <span aria-hidden="true">·</span>}
+            {/* XSAL16 — résumé d'engagement par section de la proposition
+                web (« a passé 2 min sur le prix, n'a pas ouvert l'étude »).
+                Vide sans beacon (déjà serialisé, comportement QJ1 inchangé). */}
+            {engagementSummary(d.engagement) && (
+              <span title="Temps passé par section sur la proposition en ligne">
+                {engagementSummary(d.engagement)}
+              </span>
+            )}
           </div>
         )}
         {/* U5 — Documents générés depuis ce devis : factures (chips
             cliquables → liste Factures) + bon de commande (→ BC).
             Lecture seule, données du serializer. */}
         {(d.factures_liees?.length > 0 || d.bon_commande_etat?.exists) && (
-          <div className="mt-1 flex flex-wrap gap-1">
+          <div
+            className="mt-1 flex flex-wrap gap-1"
+            title="Documents liés à ce devis"
+          >
             {d.bon_commande_etat?.exists && (
               <button
                 type="button"
@@ -397,9 +431,24 @@ function DevisRow({ d, ctx }) {
             ))}
           </div>
         )}
+        {/* VX216(a) — rend le seam devis↔chantier VISIBLE côté vendeur (avant,
+            seul InstallationDetail.jsx le détectait). Un chantier en cours a
+            sa nomenclature (bom) GELÉE : éditer ce devis maintenant crée un
+            écart que l'installateur découvrira seul sur le terrain. */}
+        {chantierEnCours(d.chantier) && (
+          <div
+            className="mt-1 inline-flex items-center gap-1 rounded-full border border-warning/40 bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning"
+            title="La nomenclature de ce chantier est gelée — éditer ce devis peut créer un écart devis↔chantier"
+          >
+            <AlertTriangle className="size-3" aria-hidden="true" />
+            Chantier en cours (compo gelée)
+          </div>
+        )}
       </td>
       <td data-label="Client">
-        {d.client_nom ?? '—'}
+        {/* VX7 — calm color : le nom client est une donnée PRIMAIRE (contraste
+            plein + poids medium), il ressort du chrome désaturé environnant. */}
+        <span className="font-medium text-foreground">{d.client_nom ?? '—'}</span>
         {d.lead && (
           <div className="mt-1">
             <button
@@ -419,8 +468,10 @@ function DevisRow({ d, ctx }) {
           </div>
         )}
       </td>
-      <td data-label="Créé le">{new Date(d.date_creation).toLocaleDateString('fr-FR')}</td>
-      <td className="m-hide">
+      {/* VX7 — calm color : les dates sont des métadonnées secondaires → mutées
+          (le contraste plein est réservé au client, au total TTC et au statut). */}
+      <td data-label="Créé le" className="text-muted-foreground">{new Date(d.date_creation).toLocaleDateString('fr-FR')}</td>
+      <td className="m-hide text-muted-foreground">
         {d.date_validite
           ? new Date(d.date_validite).toLocaleDateString('fr-FR')
           : '—'}
@@ -532,7 +583,7 @@ function DevisRow({ d, ctx }) {
               <Send /> Envoyer
             </Button>
           )}
-          {d.statut === 'envoye' && (
+          {d.statut === 'envoye' && canValiderVente && (
             <Button
               size="sm"
               title="Marquer accepté (date + nom + option) — déclenche la création du chantier"
@@ -541,7 +592,7 @@ function DevisRow({ d, ctx }) {
               <Check /> Accepter
             </Button>
           )}
-          {d.statut === 'envoye' && (
+          {d.statut === 'envoye' && canValiderVente && (
             <Button
               size="sm"
               variant="outline"
@@ -692,10 +743,24 @@ function DevisRow({ d, ctx }) {
                   Créer projet
                 </DropdownMenuItem>
               )}
+              {/* VX97 — journal des changements (qui/quand/ancien→nouveau),
+                  section repliable ; distinct de la chaîne de versions. */}
+              <DropdownMenuItem onSelect={() => toggleHistorique(d.id)}>
+                {histoOpenId === d.id ? "Masquer l'historique" : "Historique des modifications"}
+              </DropdownMenuItem>
               {/* QX27 — actions historiquement dans « Autres actions » :
                   Réviser, Approuver remise, Contacter mon supérieur, Email. */}
               {d.is_active && d.statut !== 'brouillon' && (
                 <DropdownMenuItem onSelect={() => {
+                  // VX216(a) — « Réviser » est le chemin d'édition réel d'un
+                  // devis accepté : avertit AVANT si un chantier en cours
+                  // (nomenclature gelée) est lié, pour éviter un écart
+                  // devis↔chantier découvert seul par l'installateur.
+                  if (chantierEnCours(d.chantier)) {
+                    toast.warning(
+                      `Le chantier ${d.chantier.reference} lié à ${d.reference} est en cours — sa nomenclature est gelée.`,
+                    )
+                  }
                   ventesApi.reviserDevis(d.id)
                     .then(() => dispatch(fetchDevis()))
                     .catch(() => {})
@@ -782,6 +847,51 @@ function DevisRow({ d, ctx }) {
         </td>
       </tr>
     )}
+    {/* VX97 — Panneau « Historique » : journal des changements du devis
+        (DevisActivity). Qui / quand / ancien→nouveau. `prix_achat` jamais
+        rendu (le journal ne le porte pas). */}
+    {histoOpenId === d.id && (
+      <tr>
+        <td colSpan={8} className="bg-muted/30">
+          <div className="px-3 py-2">
+            <p className="mb-1 text-xs font-medium text-muted-foreground">
+              Historique des modifications — {d.reference}
+            </p>
+            {histoLoadingId === d.id ? (
+              <p className="text-xs text-muted-foreground">Chargement…</p>
+            ) : (histoCache[d.id]?.length ?? 0) === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                Aucune modification consignée.
+              </p>
+            ) : (
+              <ul className="space-y-1 text-sm">
+                {histoCache[d.id].map(a => (
+                  <li key={a.id} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                    <span className="text-xs text-muted-foreground">
+                      {a.created_at ? formatDateTime(a.created_at) : '—'}
+                      {a.user_nom ? ` · ${a.user_nom}` : ''}
+                    </span>
+                    <span>
+                      {a.body
+                        ? a.body
+                        : (
+                          <>
+                            <strong>{a.field_label || a.field}</strong>
+                            {' : '}
+                            <span className="text-muted-foreground">{a.old_value || '—'}</span>
+                            {' → '}
+                            <span>{a.new_value || '—'}</span>
+                          </>
+                        )}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </td>
+      </tr>
+    )}
     {/* QG11 — Panneau « Voir le design 3D » : rendu LECTURE
         SEULE du plan de toiture stocké (roof_layout). */}
     {roofOpenId === d.id && (
@@ -814,6 +924,8 @@ function DevisRow({ d, ctx }) {
 }
 
 export default function DevisList() {
+  // VX82 — titre d'onglet dédié (chrome navigateur vivant).
+  useDocumentTitle('Devis')
   const dispatch = useDispatch()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -824,6 +936,11 @@ export default function DevisList() {
   // pourcentage des variantes (le backend variante-config renvoie 403 sinon).
   // Les autres rôles voient la valeur par défaut en lecture seule.
   const canEditVariantePct = useHasPermission(null, ['Directeur', 'Commercial responsable'])
+  // VX199 — accepter/refuser un devis exige la permission ERP fine
+  // `ventes_valider` (garde backend HasPermissionOrLegacy) : on cache
+  // l'affordance pour les rôles « lecture + une écriture » (ex. Commercial)
+  // qui recevraient sinon 403 sur l'appel direct.
+  const canValiderVente = useCanValiderVente()
   // J141 — chargement différé anti-scintillement : spinner discret puis squelette.
   const { showSpinner, showSkeleton } = useDelayedLoading(loading)
 
@@ -862,6 +979,25 @@ export default function DevisList() {
     const r = searchParams.get('design3d')
     return r ? Number(r) : null
   })
+
+  // VX97 — Panneau « Historique » (journal des changements DevisActivity : qui a
+  // fait quoi / ancien→nouveau) — distinct de la chaîne de VERSIONS ci-dessus.
+  // Feed existant monté en section repliable ; migrera vers ChatterTimeline (VX23)
+  // quand il atterrira. `prix_achat` n'apparaît jamais (le journal ne le porte pas).
+  const [histoOpenId, setHistoOpenId] = useState(null)
+  const [histoCache, setHistoCache] = useState({})   // id → entrées
+  const [histoLoadingId, setHistoLoadingId] = useState(null)
+  const toggleHistorique = (id) => {
+    if (histoOpenId === id) { setHistoOpenId(null); return }
+    setHistoOpenId(id)
+    if (histoCache[id] === undefined) {
+      setHistoLoadingId(id)
+      ventesApi.historiqueDevis(id)
+        .then(res => setHistoCache(c => ({ ...c, [id]: res.data || [] })))
+        .catch(() => setHistoCache(c => ({ ...c, [id]: [] })))
+        .finally(() => setHistoLoadingId(l => (l === id ? null : l)))
+    }
+  }
 
   // ── Filtre statut + recherche (référence / client) ──
   // QX12 — deep-link ?statut=<key> pré-règle le filtre au montage (liens de
@@ -1091,6 +1227,14 @@ export default function DevisList() {
   const openNew  = () => navigate('/ventes/devis/nouveau')
   const openEdit = (d) => {
     if (d.statut !== 'brouillon') return
+    // VX216(a) — garde défensive : un devis normalement brouillon ne porte
+    // pas encore de chantier, mais si un lien existe malgré tout (ex. flux
+    // hérité), le vendeur est prévenu avant d'éditer une composition gelée.
+    if (chantierEnCours(d.chantier)) {
+      toast.warning(
+        `Le chantier ${d.chantier.reference} lié à ${d.reference} est en cours — sa nomenclature est gelée.`,
+      )
+    }
     navigate(`/ventes/devis/nouveau?edit=${d.id}`)
   }
   const closeForm = () => { setShowForm(false); setEditDevis(null) }
@@ -1226,6 +1370,10 @@ export default function DevisList() {
       setAcceptTarget(null)
       dispatch(fetchDevis())
       toast.success(`Devis ${d.reference} marqué « Accepté ».`)
+      // VX40 — le SEUL moment célébré de l'app : devis envoyé→accepté (rare,
+      // lié au revenu). Burst CSS-only autour du toast ci-dessus ; rien sous
+      // reduced-motion (le toast reste le seul retour visuel).
+      celebrateDealSigned()
     } catch (err) {
       toast.error(frenchError(err, 'Acceptation impossible.'))
     } finally {
@@ -1557,9 +1705,10 @@ export default function DevisList() {
   const rowCtx = {
     selectedIds, toggleSelected,
     versionsOpenId, setVersionsOpenId, roofOpenId, setRoofOpenId,
+    histoOpenId, toggleHistorique, histoCache, histoLoadingId,
     versionChain, effStatutOf,
     navigate, dispatch,
-    role, canDelete, highlightId,
+    role, canDelete, canValiderVente, highlightId,
     deletingId, statutActionId, superieurBusyId, shareBusyId, previewingId,
     pdfGenerating, pdfDownloading, pdfSlowPoll, convertingId, chantierBusy, projetBusy, factureGenId,
     openEdit, openVarianteModal, handleDelete, handleEnvoyer, handleContacterSuperieur,
@@ -2023,7 +2172,7 @@ export default function DevisList() {
 
       {devis.length === 0 ? (
         <EmptyState
-          icon={FileStack}
+          illustrated
           title="Aucun devis"
           description="Créez votre premier devis depuis le générateur solaire."
           action={<Button onClick={openNew}><Plus /> Nouveau devis</Button>}
@@ -2068,7 +2217,7 @@ export default function DevisList() {
                 searchable={false}
                 hideToolbar
                 hidePagination
-                tableClassName="data-table"
+                tableClassName="data-table calm-list"
                 aria-label="Devis"
                 renderHeaderRow={() => devisHeaderRow.props.children}
                 renderRow={d => <DevisRow key={d.id} d={d} ctx={rowCtx} />}

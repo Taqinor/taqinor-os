@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react'
-import { useDispatch } from 'react-redux'
-import { Plus, Trash2 } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { useDispatch, useSelector } from 'react-redux'
+import { Link } from 'react-router-dom'
+import { History, Plus, Trash2 } from 'lucide-react'
 import {
   createDevis,
   updateDevis,
@@ -18,8 +19,10 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 import ProduitPicker from '../../components/ProduitPicker'
+import ClientQuickCreateModal from './ClientQuickCreateModal'
 import AttachmentsPanel from '../../components/AttachmentsPanel'
-import { formatMAD } from '../../lib/format'
+import { useHasPermission } from '../../hooks/useHasPermission'
+import { formatMAD, timeAgo } from '../../lib/format'
 import QuoteTotalsSummary from '../../features/ventes/QuoteTotalsSummary'
 
 let _keyCounter = 0
@@ -40,12 +43,20 @@ const emptyLine = () => ({
 export default function DevisForm({ devis = null, onClose, onSaved }) {
   const dispatch = useDispatch()
   const isEdit = !!devis
+  // VX98 — puce de fraîcheur + lien Journal. Le chip reste SILENCIEUX si le
+  // dernier auteur est l'utilisateur courant (« mon propre edit ») ou si null.
+  const currentUsername = useSelector((s) => s.auth?.user?.username)
+  const canViewJournal = useHasPermission('journal_activite_voir')
+  const freshBy = devis?.updated_by_nom
+  const freshAt = devis?.updated_at
+  const showFreshness = !!(freshBy && freshBy !== currentUsername)
 
   const [clients, setClients] = useState([])
   const [produits, setProduits] = useState([])
   const [saving, setSaving] = useState(false)
   const [errors, setErrors] = useState({})
   const [dirty, setDirty] = useState(false)
+  const [clientQuickCreateOpen, setClientQuickCreateOpen] = useState(false)
   useDirtyGuard(dirty)
 
   const [fields, setFields] = useState({
@@ -73,11 +84,28 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
   )
 
   const [removedLineIds, setRemovedLineIds] = useState([])
+  // VX90 — focus la nouvelle ligne (ProduitPicker) après « Ajouter ligne ».
+  const linesTableRef = useRef(null)
+  const [pendingFocusKey, setPendingFocusKey] = useState(null)
 
   useEffect(() => {
     crmApi.getClients().then(r => setClients(r.data.results ?? r.data)).catch(() => {})
     stockApi.getProduits().then(r => setProduits(r.data.results ?? r.data)).catch(() => {})
   }, [])
+
+  // VX90 — après ajout d'une ligne, focaliser son sélecteur produit + la faire
+  // défiler dans la vue (ref-walk DOM par data-line-key).
+  useEffect(() => {
+    if (pendingFocusKey == null) return
+    const row = linesTableRef.current
+      ?.querySelector(`[data-line-key="${pendingFocusKey}"]`)
+    if (row) {
+      row.querySelector('button[type="button"]')?.focus()
+      row.scrollIntoView({ block: 'nearest' })
+    }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset one-shot du focus (VX90)
+    setPendingFocusKey(null)
+  }, [pendingFocusKey, lines])
 
   // Live totals
   const remGlobal = parseFloat(fields.remise_globale) || 0
@@ -127,7 +155,14 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
     ))
   }
 
-  const addLine = () => { setDirty(true); setLines(ls => [...ls, emptyLine()]) }
+  const addLine = () => {
+    setDirty(true)
+    setLines(ls => {
+      const line = emptyLine()
+      setPendingFocusKey(line._key) // VX90
+      return [...ls, line]
+    })
+  }
 
   const removeLine = key => {
     setDirty(true)
@@ -225,25 +260,53 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
       <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{isEdit ? `Éditer — ${devis.reference}` : 'Nouveau devis'}</DialogTitle>
+          {isEdit && (showFreshness || canViewJournal) && (
+            <div className="mt-1 flex flex-wrap items-center gap-3 text-xs">
+              {/* VX98 — puce de fraîcheur : silencieuse sur mon propre edit / si null. */}
+              {showFreshness && (
+                <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/40 px-2 py-0.5 text-muted-foreground">
+                  <History className="size-3" aria-hidden="true" />
+                  modifié par {freshBy}{freshAt ? ` ${timeAgo(freshAt)}` : ''}
+                </span>
+              )}
+              {/* VX98 — 1 clic → Journal pré-filtré sur CE devis (permission requise). */}
+              {canViewJournal && (
+                <Link
+                  to={`/journal?model=devis&object_id=${devis.id}`}
+                  className="inline-flex items-center gap-1 text-primary hover:underline"
+                >
+                  <History className="size-3" aria-hidden="true" /> Historique
+                </Link>
+              )}
+            </div>
+          )}
         </DialogHeader>
 
         <Form onSubmit={handleSubmit} className="gap-5">
           {/* ── Infos générales ── */}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <FormField label="Client" required htmlFor="dv-client" error={errors.client}>
-              <Select value={fields.client ? String(fields.client) : undefined}
-                      onValueChange={v => setField('client', v)}>
-                <SelectTrigger id="dv-client" invalid={!!errors.client}>
-                  <SelectValue placeholder="— Sélectionner un client —" />
-                </SelectTrigger>
-                <SelectContent>
-                  {clients.map(c => (
-                    <SelectItem key={c.id} value={String(c.id)}>
-                      {c.nom}{c.prenom ? ` ${c.prenom}` : ''}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <Select value={fields.client ? String(fields.client) : undefined}
+                          onValueChange={v => setField('client', v)}>
+                    <SelectTrigger id="dv-client" invalid={!!errors.client}>
+                      <SelectValue placeholder="— Sélectionner un client —" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {clients.map(c => (
+                        <SelectItem key={c.id} value={String(c.id)}>
+                          {c.nom}{c.prenom ? ` ${c.prenom}` : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {/* VX91 — création rapide client (QG3), sans quitter le devis */}
+                <Button type="button" variant="outline" onClick={() => setClientQuickCreateOpen(true)}>
+                  <Plus /> Nouveau client
+                </Button>
+              </div>
             </FormField>
 
             <FormField label="Date de validité" htmlFor="dv-validite">
@@ -294,7 +357,7 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
                 bascule en cartes empilées sous 768px via `data-label`
                 (index.css ~2264-2296), au lieu du scroll horizontal permanent. */}
             <div className="lines-table-wrap">
-              <table className="lines-table">
+              <table className="lines-table" ref={linesTableRef}>
                 <thead>
                   <tr>
                     <th style={{ minWidth: 160 }}>Produit</th>
@@ -314,7 +377,7 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
                       (parseFloat(l.prix_unitaire) || 0) *
                       (1 - (parseFloat(l.remise) || 0) / 100)
                     return (
-                      <tr key={l._key}>
+                      <tr key={l._key} data-line-key={l._key}>
                         <td data-label="Produit">
                           {/* Picker partagé (recherche + prix) — même composant
                               que le générateur, fin de la divergence des deux
@@ -412,6 +475,17 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
             </Button>
           </FormActions>
         </Form>
+
+        {/* VX91 — création rapide client (QG3) ; sélectionne le nouveau client */}
+        <ClientQuickCreateModal
+          open={clientQuickCreateOpen}
+          onClose={() => setClientQuickCreateOpen(false)}
+          onCreated={(c) => {
+            setClients(cs => [...cs, c])
+            setField('client', String(c.id))
+            setClientQuickCreateOpen(false)
+          }}
+        />
       </DialogContent>
     </Dialog>
   )

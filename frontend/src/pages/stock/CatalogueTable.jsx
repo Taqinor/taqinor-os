@@ -292,6 +292,9 @@ export function CatalogueTable({
       summaryLabel="Valeur vente du catalogue affiché"
       emptyTitle={(produits?.length ?? 0) === 0 ? 'Aucun produit' : 'Aucun résultat'}
       emptyDescription="Aucun produit ne correspond au catalogue affiché."
+      // VX40 — pictogramme solaire illustré réservé au vrai catalogue vide
+      // (jamais au cas « filtres sans résultat », routine et non « rare »).
+      emptyIllustrated={(produits?.length ?? 0) === 0}
       aria-label="Catalogue produits en stock"
       className="min-w-0"
     />

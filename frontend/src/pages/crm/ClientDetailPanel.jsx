@@ -3,6 +3,7 @@ import api from '../../api/axios'
 import { Badge, Button, Spinner } from '../../ui'
 import { Table } from '../reporting/Table'
 import ClientRgpdActions from './ClientRgpdActions'
+import OwnerChain from '../../components/OwnerChain'
 import { formatMAD } from '../../lib/format'
 import { telHref, waHref } from '../../lib/contactLinks'
 
@@ -122,6 +123,18 @@ export default function ClientDetailPanel({ client, onClose, onNewDevis, onChang
             <p className="text-sm text-muted-foreground mb-4">
               Filiale de la société mère #{client.parent_id}.
             </p>
+          )}
+          {/* VX216(c) — chaîne de responsabilité, uniquement quand elle est
+              SANS AMBIGUÏTÉ (un client peut avoir plusieurs devis/chantiers —
+              on ne devine jamais lequel). L'endpoint fiche client n'expose ni
+              lead ni ticket SAV : chaîne partielle (Devis · Chantier), jamais
+              un lien inventé. */}
+          {data && data.devis?.length === 1 && data.chantiers?.length === 1 && (
+            <OwnerChain
+              className="mb-4"
+              devis={{ id: data.devis[0].id, nom: data.devis[0].reference }}
+              chantier={{ id: data.chantiers[0].id, nom: data.chantiers[0].reference }}
+            />
           )}
           {data && (
             <>

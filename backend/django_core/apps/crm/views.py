@@ -1,6 +1,6 @@
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
-from rest_framework.parsers import MultiPartParser
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from core.mixins import TenantMixin
@@ -27,6 +27,7 @@ from authentication.permissions import (
     IsAnyRole,
     IsResponsableOrAdmin,
     IsAdminRole,
+    HasPermissionOrLegacy,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -569,6 +570,10 @@ class LeadViewSet(CompanyScopedModelViewSet):
         old = Lead.objects.get(pk=serializer.instance.pk)
         super().perform_update(serializer)
         new_lead = serializer.instance
+        # VX98 — dernier auteur de modification (server-side, jamais du corps) :
+        # alimente la puce de fraîcheur. Pattern archived_by.
+        new_lead.updated_by = self.request.user
+        new_lead.save(update_fields=['updated_by'])
         activity.log_changes(old, new_lead, self.request.user)
         from .services import sync_relance_activity, maybe_set_first_contacted_at, recompute_lead_score
         sync_relance_activity(new_lead, self.request.user)
@@ -585,10 +590,16 @@ class LeadViewSet(CompanyScopedModelViewSet):
                                           'client_match', 'points_contact',
                                           'scan_carte']:
             return [IsAnyRole()]
+        elif self.action in ('merge', 'convertir_client'):
+            # VX199 — fusion / conversion de lead : permission ERP FINE
+            # (crm_modifier), pas le grossier IsResponsableOrAdmin. get_permissions
+            # PRIME sur le permission_classes de l'@action, donc la garde fine
+            # doit être ICI.
+            return [HasPermissionOrLegacy('crm_modifier')()]
         elif self.action in WRITE_ACTIONS + [
-            'noter', 'devis_auto', 'archiver', 'restaurer', 'merge',
+            'noter', 'devis_auto', 'archiver', 'restaurer',
             'whatsapp_devis', 'bulk', 'log_interaction',
-            'appliquer_plan', 'convertir_client',
+            'appliquer_plan',
         ]:
             # L'archivage réversible est ouvert à la Commerciale.
             return [IsResponsableOrAdmin()]
@@ -876,7 +887,7 @@ class LeadViewSet(CompanyScopedModelViewSet):
         return Response(out)
 
     @action(detail=True, methods=['post'], url_path='merge',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[HasPermissionOrLegacy('crm_modifier')])
     def merge(self, request, pk=None):
         """Fusionne d'autres leads DANS celui-ci (survivant). Sans perte :
         devis, chantiers, activités, pièces jointes et historique sont déplacés ;
@@ -933,7 +944,7 @@ class LeadViewSet(CompanyScopedModelViewSet):
             status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], url_path='convertir-client',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[HasPermissionOrLegacy('crm_modifier')])
     def convertir_client(self, request, pk=None):
         """ZSAL4 — assistant de conversion EXPLICITE lead → client (body
         {mode: nouveau|lier|aucun, client_id?}). Journalisé dans le chatter."""
@@ -1152,19 +1163,42 @@ class LeadViewSet(CompanyScopedModelViewSet):
         })
 
     @action(detail=True, methods=['post'], url_path='noter',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[IsResponsableOrAdmin],
+            parser_classes=[MultiPartParser, FormParser, JSONParser])
     def noter(self, request, pk=None):
         """Note manuelle (appel, commentaire…) — auteur pris de la requête.
 
         FG28 : si le lead est encore en NEW et n'a jamais été contacté, cette
         note constitue la première prise de contact → first_contacted_at est posé.
+
+        VX111 — accepte en plus un fichier multipart optionnel (`file`, ex.
+        photo prise depuis mobile pendant une visite) : réutilise le magasin
+        `records.Attachment` EXISTANT (déjà whitelisté ('crm','lead')) — la
+        pièce jointe créée cible directement le LEAD (visible aussi dans
+        AttachmentsPanel) et est liée à cette note. Jamais un second magasin.
         """
         lead = self.get_object()
         body = (request.data.get('body') or '').strip()
-        if not body:
+        file = request.FILES.get('file')
+        if not body and not file:
             return Response({'body': 'Note vide.'},
                             status=status.HTTP_400_BAD_REQUEST)
-        act = activity.log_note(lead, request.user, body)
+        attachment = None
+        if file:
+            from apps.records.storage import store_attachment
+            from apps.records.models import Attachment
+            from django.contrib.contenttypes.models import ContentType
+            meta, err = store_attachment(file, company=request.user.company)
+            if err:
+                return Response({'file': err}, status=status.HTTP_400_BAD_REQUEST)
+            ct = ContentType.objects.get(app_label='crm', model='lead')
+            attachment = Attachment.objects.create(
+                company=request.user.company, content_type=ct, object_id=lead.id,
+                uploaded_by=request.user, **meta)
+        act = activity.log_note(lead, request.user, body or '📎 Pièce jointe')
+        if attachment:
+            act.attachment = attachment
+            act.save(update_fields=['attachment'])
         # FG28 — première note = premier contact (même sans changer d'étape)
         if lead.stage == 'NEW' and lead.first_contacted_at is None:
             from django.utils import timezone

@@ -6,21 +6,41 @@ from .models import (
     WebsiteLeadPayload,
 )
 from .devis_auto import champs_manquants, message_manquants
-from .scoring import compute_score, score_label
+from .scoring import compute_score, score_label, score_reasons
 
 
 class LeadActivitySerializer(serializers.ModelSerializer):
     user_nom = serializers.SerializerMethodField()
+    # VX111 — pièce jointe optionnelle sur une note (photo prise depuis
+    # mobile). Même forme d'URL que AttachmentSerializer.get_url (proxy
+    # Django même origine, jamais MinIO direct) — pas de sérialiseur imbriqué
+    # pour rester compatible avec la structure plate consommée par
+    # ChatterTimeline côté frontend.
+    attachment_url = serializers.SerializerMethodField()
+    attachment_filename = serializers.SerializerMethodField()
+    attachment_mime = serializers.SerializerMethodField()
 
     class Meta:
         model = LeadActivity
         fields = [
             'id', 'kind', 'field', 'field_label', 'old_value', 'new_value',
             'body', 'outcome', 'bulk', 'user_nom', 'created_at',
+            'attachment_url', 'attachment_filename', 'attachment_mime',
         ]
 
     def get_user_nom(self, obj):
         return getattr(obj.user, 'username', None)
+
+    def get_attachment_url(self, obj):
+        if not obj.attachment_id:
+            return None
+        return f'/api/django/records/attachments/{obj.attachment_id}/download/'
+
+    def get_attachment_filename(self, obj):
+        return getattr(obj.attachment, 'filename', None)
+
+    def get_attachment_mime(self, obj):
+        return getattr(obj.attachment, 'mime', None)
 
 
 class _CurrentCompanyDefault:
@@ -157,8 +177,14 @@ class LeadSerializer(serializers.ModelSerializer):
     # FG27 — Score de qualité du lead (lecture seule, calculé à la volée).
     score = serializers.SerializerMethodField()
     score_label = serializers.SerializerMethodField()
+    # VX221 — décomposition « pourquoi ce score » (facteurs + points), pour le
+    # tooltip du badge. Pure exposition des composantes déjà calculées.
+    score_reasons = serializers.SerializerMethodField()
     # FG29 — Âge dans l'étape courante (jours depuis le dernier changement d'étape).
     stage_since_days = serializers.SerializerMethodField()
+    # VX98 — auteur de la dernière modification (puce de fraîcheur). Lecture seule.
+    updated_by_nom = serializers.CharField(
+        source='updated_by.username', read_only=True, default=None)
 
     @staticmethod
     def _canonical_phone(value):
@@ -240,6 +266,10 @@ class LeadSerializer(serializers.ModelSerializer):
 
     def get_score_label(self, obj):
         return score_label(compute_score(obj))
+
+    def get_score_reasons(self, obj):
+        # VX221 — liste [{facteur, label, points}] triée par points décroissants.
+        return score_reasons(obj)
 
     # FG29 — Âge dans l'étape courante
     def get_stage_since_days(self, obj):
@@ -345,6 +375,7 @@ class LeadSerializer(serializers.ModelSerializer):
             'company', 'external_system', 'external_id', 'client',
             'is_archived', 'archived_by', 'archived_at',
             'first_contacted_at',  # FG28 — posé server-side uniquement
+            'updated_by',  # VX98 — posé server-side (perform_update) uniquement
             # B3 — toiture 3D : pin/contour bruts + conso saisis par le client
             # (webhook site, posés server-side). Exposés en LECTURE SEULE sur la
             # fiche lead pour que la page de conception authentifiée réhydrate la

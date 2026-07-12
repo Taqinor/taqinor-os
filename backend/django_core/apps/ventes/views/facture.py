@@ -32,6 +32,7 @@ from authentication.permissions import (  # noqa: F401
     IsAnyRole,
     IsResponsableOrAdmin,
     IsAdminRole,
+    HasPermissionOrLegacy,
 )
 from core.viewsets import CompanyScopedModelViewSet  # noqa: F401  ARC5
 from ..utils.references import create_with_reference  # noqa: F401
@@ -292,10 +293,11 @@ class FactureViewSet(CompanyScopedModelViewSet):
                         ),
                         'champs_refuses': sorted(champs_touches),
                     })
-        serializer.save()
+        # VX98 — dernier auteur de modification (server-side, jamais du corps) :
+        # alimente la puce de fraîcheur. Pattern created_by.
+        serializer.save(updated_by=self.request.user)
 
-    @action(detail=True, methods=['post'], url_path='emettre',
-            permission_classes=[IsResponsableOrAdmin])
+    @action(detail=True, methods=['post'], url_path='emettre')
     def emettre(self, request, pk=None):
         facture = self.get_object()
         if facture.statut != Facture.Statut.BROUILLON:

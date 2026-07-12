@@ -112,28 +112,28 @@ export default function Header({ onMenu }) {
       </div>
 
       <div className="header-right">
-        <GlobalSearch />
-        {/* Déclencheur ⌘K — visible quand la barre de recherche est masquée
-            (mobile) et toujours utilisable comme raccourci palette. */}
-        <button type="button" className="header-cmdk" onClick={fireCommandPalette}
-                aria-label="Recherche et commandes (⌘K)" title="Recherche et commandes (⌘K)">
-          <Search size={16} aria-hidden="true" />
-          <kbd className="header-cmdk-kbd">⌘K</kbd>
-        </button>
-        {/* VX9 — bouton grille : ouvre le lanceur d'applications (overlay léger,
-            toutes les apps par catégorie). Raccourci clavier « g a ». */}
-        <button type="button" className="nb-btn" onClick={fireAppLauncher}
-                aria-label="Toutes les applications (g a)" title="Toutes les applications (g a)">
-          <LayoutGrid size={18} aria-hidden="true" />
-        </button>
-        <AppLauncher />
+        {/* VX2 — les 8 contrôles de l'en-tête regroupés en 3 grappes visuelles
+            (wrappers CSS uniquement, aucun changement de comportement) :
+            Recherche · Communication · Préférences + compte. */}
+        <div className="header-cluster header-cluster-search">
+          <GlobalSearch />
+          {/* Déclencheur ⌘K — visible quand la barre de recherche est masquée
+              (mobile) et toujours utilisable comme raccourci palette. */}
+          <button type="button" className="header-cmdk" onClick={fireCommandPalette}
+                  aria-label="Recherche et commandes (⌘K)" title="Recherche et commandes (⌘K)">
+            <Search size={16} aria-hidden="true" />
+            <kbd className="header-cmdk-kbd">⌘K</kbd>
+          </button>
+          {/* VX9 — bouton grille : ouvre le lanceur d'applications (overlay léger,
+              toutes les apps par catégorie). Raccourci clavier « g a ». */}
+          <button type="button" className="nb-btn" onClick={fireAppLauncher}
+                  aria-label="Toutes les applications (g a)" title="Toutes les applications (g a)">
+            <LayoutGrid size={18} aria-hidden="true" />
+          </button>
+          <AppLauncher />
+        </div>
 
-        <div className="header-user">
-          {/* XPLT19 — sélecteur de société active (multi-sociétés uniquement). */}
-          <CompanySwitcher />
-          {/* N93 — sélecteur de langue d'interface (FR / EN / العربية). */}
-          <LanguageSwitcher />
-          <ThemeToggle />
+        <div className="header-cluster header-cluster-comm">
           {/* FG350 — bascule du tiroir Copilote (agent FastAPI) accessible
               partout dans l'app shell. */}
           <button
@@ -148,6 +148,14 @@ export default function Header({ onMenu }) {
           </button>
           <ChatBell />
           <NotificationBell />
+        </div>
+
+        <div className="header-user header-cluster header-cluster-account">
+          {/* XPLT19 — sélecteur de société active (multi-sociétés uniquement). */}
+          <CompanySwitcher />
+          {/* N93 — sélecteur de langue d'interface (FR / EN / العربية). */}
+          <LanguageSwitcher />
+          <ThemeToggle />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button type="button" className="header-usermenu-trigger" aria-label="Menu utilisateur">

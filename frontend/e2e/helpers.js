@@ -45,7 +45,7 @@ export async function setLeadsView(page, view) {
   await page.getByRole('button', { name: label }).click()
 }
 
-const leadModal = (page) => page.locator('.modal.modal-xl')
+const leadModal = (page) => page.locator('[role="dialog"]').filter({ has: page.locator('.modal-title') })
 
 // Create a lead through the modal. Returns its display name (its nom).
 // `facture` (winter bill, MAD) makes the lead "devis-ready" for residential.
@@ -89,7 +89,9 @@ export async function closeLeadModal(page) {
 // the PDF preview to actually render (no broken-file fallback).
 export async function generateAutoDevis(page) {
   const modal = leadModal(page)
-  const autoBtn = modal.getByRole('button', { name: '⚡ Devis automatique' })
+  // Le libellé accessible est « Devis automatique » : l'éclair est une icône
+  // <Zap aria-hidden> (VX), pas un emoji dans le texte — ne pas le chercher.
+  const autoBtn = modal.getByRole('button', { name: 'Devis automatique' })
   await expect(autoBtn).toBeEnabled()
   await autoBtn.click()
   // The inline panel renders the PDF on <canvas> via pdf.js.

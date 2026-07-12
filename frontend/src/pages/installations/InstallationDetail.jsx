@@ -29,6 +29,7 @@ import {
   nextBestAction,
 } from '../../features/installations/statuses'
 import ProduitPicker from '../../components/ProduitPicker'
+import OwnerChain from '../../components/OwnerChain'
 import ChantierChecklist from './ChantierChecklist'
 import ChantierTimeline from './ChantierTimeline'
 import ChantierGateTimeline from './ChantierGateTimeline'
@@ -44,6 +45,7 @@ import {
   SOUS_GARANTIE_LABELS,
 } from '../../features/sav/ticketStatuses'
 import { formatDate } from '../../lib/format'
+import useDocumentTitle from '../../hooks/useDocumentTitle'
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle,
   Card, CardHeader, CardTitle, CardContent,
@@ -122,6 +124,11 @@ const equipStatutLabel = (v) =>
   EQUIP_STATUTS.find((s) => s.value === v)?.label ?? '—'
 
 export default function InstallationDetail({ installation, onClose, onSaved }) {
+  // VX82 — titre d'onglet dédié (chrome navigateur vivant) : la fiche
+  // installation est un panneau/hub ouvert par actif, donc dynamique (client)
+  // plutôt qu'une route dédiée — repli sur « Installation » si le client
+  // n'est pas encore chargé.
+  useDocumentTitle(installation?.client_nom ? `Installation · ${installation.client_nom}` : 'Installation')
   const dispatch = useDispatch()
   const navigate = useNavigate()
   const id = installation.id
@@ -241,6 +248,12 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   // picker par TYPE ; '' = tous les produits du BOM (comportement historique).
   const [equipSlot, setEquipSlot] = useState('')
   const [tickets, setTickets] = useState([])
+  // VX216(c) — le ticket SAV le plus récent de ce chantier, pour le maillon
+  // « SAV » de l'OwnerChain (lecture seule, aucun état nouveau à charger —
+  // `tickets` est déjà chargé pour la section Tickets plus bas).
+  const latestTicket = tickets.length > 0
+    ? [...tickets].sort((a, b) => (b.date_ouverture || '').localeCompare(a.date_ouverture || ''))[0]
+    : null
   const [newTicket, setNewTicket] = useState({ type: 'correctif', description: '', equipement: '' })
   const [ticketBusy, setTicketBusy] = useState(false)
   const [contrats, setContrats] = useState([])
@@ -786,9 +799,22 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
 
           {/* ── Liens ── */}
           <Section icon={Link2} title="Liens">
+            {/* VX216(c) — chaîne de responsabilité cliquable : personne ne
+                voyait « Lead : A · Devis : B · Chantier : C · SAV : D » d'un
+                coup d'œil quand le client rappelle. Maillons = deep-links
+                RÉELS existants (VX79 ?id=/?lead=/?devis=) ; un maillon sans
+                id connu est simplement absent. */}
+            <OwnerChain
+              className="mb-2"
+              lead={current.lead ? { id: current.lead, nom: current.lead_nom } : null}
+              devis={current.devis ? { id: current.devis, nom: current.devis_reference } : null}
+              chantier={{ id: current.id, nom: current.reference }}
+              sav={latestTicket ? { id: latestTicket.id, nom: latestTicket.reference } : null}
+            />
             <div className="flex flex-wrap gap-2">
               {current.devis && (
-                <Button size="sm" variant="outline" onClick={() => navigate('/ventes/devis')}>
+                <Button size="sm" variant="outline"
+                        onClick={() => navigate(`/ventes/devis?devis=${current.devis}`)}>
                   Voir le devis{current.devis_reference ? ` (${current.devis_reference})` : ''}
                 </Button>
               )}
@@ -798,7 +824,8 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                 </Button>
               )}
               {current.lead && (
-                <Button size="sm" variant="outline" onClick={() => navigate('/crm/leads')}>
+                <Button size="sm" variant="outline"
+                        onClick={() => navigate(`/crm/leads?lead=${current.lead}`)}>
                   Voir le lead
                 </Button>
               )}

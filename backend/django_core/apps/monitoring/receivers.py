@@ -11,9 +11,13 @@ signal (l'émetteur bougera avec ODX16/17-20 sans nous casser). Idempotent :
 une config déjà coupée (ou absente) → no-op strict. Additif : aucun statut
 d'abonnement modifié ici (la transition est déjà actée côté compta).
 """
+import logging
+
 from django.dispatch import receiver
 
-from core.events import abonnement_monitoring_resilie
+from core.events import abonnement_monitoring_resilie, chantier_receptionne
+
+logger = logging.getLogger(__name__)
 
 
 @receiver(abonnement_monitoring_resilie,
@@ -28,3 +32,28 @@ def _arreter_supervision_a_la_resiliation(sender, abonnement, motif, company,
     MonitoringConfig.objects.filter(
         company=company, installation_id=installation_id, enabled=True,
     ).update(enabled=False)
+
+
+@receiver(chantier_receptionne,
+          dispatch_uid="monitoring_seed_expected_kwh_reception")
+def _semer_attendu_a_reception(sender, installation, user, ancien_statut,
+                               **kwargs):
+    """YSERV8 — à la réception d'un chantier (événement YSERV4), sème la
+    production attendue du monitoring depuis le PR de recette FG278 ou l'étude
+    du devis. ``monitoring`` est satellite : on s'abonne par NOM de signal et on
+    lit les données ventes via ``services`` (jamais un import ventes.models).
+    Idempotent et non destructif : une valeur déjà saisie n'est jamais écrasée.
+    """
+    if installation is None or getattr(installation, 'pk', None) is None:
+        return
+    from .services import seed_expected_annual_kwh
+
+    # Best-effort : un semis de production attendue ne doit JAMAIS casser la
+    # réception d'un chantier (les abonnés de core.events sont synchrones —
+    # une exception ici remonterait à l'émetteur). On avale/loggue.
+    try:
+        seed_expected_annual_kwh(installation)
+    except Exception:  # noqa: BLE001 — effet aval best-effort, jamais bloquant
+        logger.warning(
+            'YSERV8 : semis production attendue ignoré pour installation %s',
+            getattr(installation, 'pk', '?'), exc_info=True)

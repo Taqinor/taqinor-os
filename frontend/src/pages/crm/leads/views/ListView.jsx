@@ -21,9 +21,13 @@ import {
 import AssigneePicker from '../../../../components/AssigneePicker'
 import InlineEdit from '../../../../components/InlineEdit'
 import LeadInsightsDialog from '../LeadInsightsDialog'
+// VX24 — ScoreBadge extrait vers features/crm (réutilisé par LeadCard/LeadSummaryBar).
+import ScoreBadge from '../../../../features/crm/ScoreBadge'
+// VX87 — nudge post-appel « Appel terminé — noter le résultat ? ».
+import CallLogPopover, { useCallEndedNudge } from '../../../../features/crm/CallLogPopover'
 import { allVisibleSelected } from '../../../../features/crm/bulk'
 import {
-  Button, Checkbox, IconButton, StatusPill,
+  Button, Checkbox, HelpTip, IconButton, StatusPill,
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
   DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator,
 } from '../../../../ui'
@@ -93,30 +97,8 @@ const SORTERS = {
   score: (a, b) => (a.score ?? 0) - (b.score ?? 0),
 }
 
-// Badge de score : couleur selon le libellé renvoyé par scoring.py.
-const SCORE_COLORS = {
-  Chaud: { bg: '#fef3c7', color: '#92400e', border: '#fcd34d' },
-  Tiede: { bg: '#e0f2fe', color: '#0369a1', border: '#7dd3fc' },
-  Froid: { bg: '#f1f5f9', color: '#64748b', border: '#cbd5e1' },
-}
-
-function ScoreBadge({ lead }) {
-  const score = lead.score ?? null
-  const label = lead.score_label ?? null
-  if (score === null && label === null) return <span className="lv-muted">—</span>
-  const s = score ?? 0
-  const lbl = label ?? (s >= 70 ? 'Chaud' : s >= 45 ? 'Tiede' : 'Froid')
-  const c = SCORE_COLORS[lbl] ?? SCORE_COLORS.Froid
-  return (
-    <span
-      className="lv-score-badge"
-      style={{ background: c.bg, color: c.color, border: `1px solid ${c.border}` }}
-      title={`Score de qualité : ${s}/100`}
-    >
-      {s}
-    </span>
-  )
-}
+// VX24 — ScoreBadge (+ SCORE_COLORS) déménagé vers features/crm/ScoreBadge.jsx.
+// VX221 — le tooltip « pourquoi ce score » (score_reasons) y est intégré.
 
 const todayISO = () => {
   const d = new Date()
@@ -130,16 +112,21 @@ const formatDateFR = (iso) => {
   return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString('fr-FR')
 }
 
-function SortableTh({ col, label, sort, onSort, className }) {
+function SortableTh({ col, label, sort, onSort, className, help }) {
   const active = sort.key === col
   return (
     <th className={className} aria-sort={active ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}>
-      <button type="button" className="lv-th-btn" onClick={() => onSort(col)}>
-        {label}
-        <span className="lv-sort-ind" aria-hidden="true">
-          {active ? (sort.dir === 'asc' ? '▲' : '▼') : ''}
-        </span>
-      </button>
+      {/* `help` reste HORS du bouton de tri : deux éléments interactifs ne
+          s'imbriquent jamais (<button> dans <button> serait invalide). */}
+      <span className="inline-flex items-center gap-1">
+        <button type="button" className="lv-th-btn" onClick={() => onSort(col)}>
+          {label}
+          <span className="lv-sort-ind" aria-hidden="true">
+            {active ? (sort.dir === 'asc' ? '▲' : '▼') : ''}
+          </span>
+        </button>
+        {help}
+      </span>
     </th>
   )
 }
@@ -157,6 +144,13 @@ export default function ListView({
   // WR9 — fiche « Parcours » (timeline multi-touch + correspondance client).
   const [insightsLead, setInsightsLead] = useState(null)
   const today = todayISO()
+
+  // VX87 — nudge post-appel : armé au tap tel: (mémorise QUEL lead a été
+  // appelé, une table n'a qu'un seul nudge visible à la fois — comme un
+  // vendeur ne passe qu'un appel à la fois), proposé au retour dans l'onglet.
+  const { nudgeVisible, armCallNudge, dismissNudge } = useCallEndedNudge()
+  const [nudgeLead, setNudgeLead] = useState(null)
+  const armCallNudgeFor = (lead) => { setNudgeLead(lead); armCallNudge() }
 
   const onArchive = async (lead) => {
     setBusyId(lead.id)
@@ -249,7 +243,8 @@ export default function ListView({
 
   return (
     <div className="lv-wrap">
-      <table className="data-table lv-table">
+      {/* VX7 — calm color : séparateurs adoucis + actions révélées au survol. */}
+      <table className="data-table lv-table calm-list">
         <thead>
           <tr>
             {onToggleSelect && (
@@ -263,7 +258,22 @@ export default function ListView({
             )}
             <SortableTh col="lead" label="Lead" sort={sort} onSort={onSort} />
             <SortableTh col="stage" label="Stade" sort={sort} onSort={onSort} />
-            <SortableTh col="score" label="Score" sort={sort} onSort={onSort} className="m-hide" />
+            <SortableTh
+              col="score" label="Score" sort={sort} onSort={onSort} className="m-hide"
+              // VX47 — aide contextuelle : « d'où vient ce chiffre » n'est
+              // expliqué nulle part côté écran (scoring.py reste opaque).
+              help={(
+                <HelpTip label="Aide — score de lead">
+                  Le score (0-100) combine des signaux automatiques : complétude
+                  du profil, montant de facture (budget), canal d'acquisition,
+                  type d'installation, ancienneté du lead et maturité d'achat
+                  déclarée (propriétaire, délai, financement…).
+                  <strong> Chaud</strong> (≥70), <strong>Tiède</strong> (45-69),
+                  <strong> Froid</strong> (&lt;45) — recalculé à chaque mise à
+                  jour du lead.
+                </HelpTip>
+              )}
+            />
             <SortableTh col="telephone" label="Téléphone" sort={sort} onSort={onSort} className="m-hide" />
             <SortableTh col="ville" label="Ville" sort={sort} onSort={onSort} className="m-hide" />
             <th className="m-hide">Facture</th>
@@ -318,7 +328,8 @@ export default function ListView({
                         {telHref(lead.telephone) && (
                           <a href={telHref(lead.telephone)} title="Appeler"
                              aria-label={`Appeler ${fullName(lead) || 'ce lead'}`}
-                             className="text-muted-foreground hover:text-foreground">
+                             className="text-muted-foreground hover:text-foreground"
+                             onClick={() => armCallNudgeFor(lead)}>
                             <PhoneCall className="size-3.5" aria-hidden="true" />
                           </a>
                         )}
@@ -356,7 +367,8 @@ export default function ListView({
                 </td>
                 <td className="m-hide" onClick={(e) => e.stopPropagation()}>
                   {lead.telephone ? (
-                    <a className="link-blue" href={`tel:${lead.telephone}`}>
+                    <a className="link-blue" href={`tel:${lead.telephone}`}
+                       onClick={() => armCallNudgeFor(lead)}>
                       {lead.telephone}
                     </a>
                   ) : '—'}
@@ -566,6 +578,28 @@ export default function ListView({
           lead={insightsLead}
           onClose={() => setInsightsLead(null)}
         />
+      )}
+      {/* VX87 — nudge post-appel : proposé au retour dans l'onglet après un
+          tap tel: sur une ligne, jamais intrusif — dismissable. */}
+      {nudgeVisible && nudgeLead && (
+        <div className="lv-call-nudge" role="status">
+          <span className="lv-call-nudge-text">
+            Appel terminé avec {fullName(nudgeLead) || 'ce lead'} — noter le résultat ?
+          </span>
+          <CallLogPopover
+            leadId={nudgeLead.id}
+            trigger={<button type="button" className="lv-call-nudge-log">Noter</button>}
+            onLogged={dismissNudge}
+          />
+          <button
+            type="button"
+            className="lv-call-nudge-dismiss"
+            aria-label="Ignorer"
+            onClick={dismissNudge}
+          >
+            ✕
+          </button>
+        </div>
       )}
     </div>
   )

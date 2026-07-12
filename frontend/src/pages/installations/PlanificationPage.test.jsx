@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 
@@ -23,12 +24,13 @@ const api = vi.hoisted(() => ({
   getRegimeSuggestion: vi.fn(),
   creerInterventionsStandard: vi.fn(),
   getChantierCout: vi.fn(),
+  updateIntervention: vi.fn(),
 }))
 
 vi.mock('../../api/installationsApi', () => ({ default: api }))
 vi.mock('../../ui/confirm', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
-import PlanificationPage, { OutilsChantierTab } from './PlanificationPage'
+import PlanificationPage, { OutilsChantierTab, moveInterventionLocal } from './PlanificationPage'
 
 function authReducer(role) {
   return (state = { role }) => state
@@ -104,5 +106,61 @@ describe('PlanificationPage (WR10)', () => {
     renderOutils('admin')
     await waitFor(() => expect(api.getInstallations).toHaveBeenCalled())
     expect(screen.getByText(/Synthèse coût \/ marge/)).toBeInTheDocument()
+  })
+})
+
+/* VX251 — dispatch au glisser-déposer : réaffecter une intervention d'un
+   technicien à un autre. On teste le cœur PUR de la réaffectation
+   (moveInterventionLocal) : le déplacement avant, l'aller-retour « Annuler »
+   (état identique), et la robustesse quand l'intervention est introuvable. */
+describe('VX251 · moveInterventionLocal (réaffectation dispatch)', () => {
+  const board = () => ([
+    { technicien: { id: 1, nom: 'Ali' }, interventions: [{ id: 10 }, { id: 11 }] },
+    { technicien: { id: 2, nom: 'Sara' }, interventions: [{ id: 20 }] },
+  ])
+
+  it("déplace l'intervention de la colonne source vers la cible", () => {
+    const next = moveInterventionLocal(board(), 10, '1', '2')
+    expect(next[0].interventions.map((x) => x.id)).toEqual([11])
+    expect(next[1].interventions.map((x) => x.id)).toEqual([20, 10])
+  })
+
+  it("l'aller-retour (déplacer puis annuler) restaure l'état d'origine", () => {
+    const start = board()
+    const moved = moveInterventionLocal(start, 10, '1', '2')
+    const undone = moveInterventionLocal(moved, 10, '2', '1')
+    expect(undone[0].interventions.map((x) => x.id).sort()).toEqual([10, 11])
+    expect(undone[1].interventions.map((x) => x.id)).toEqual([20])
+  })
+
+  it('renvoie la liste inchangée si l’intervention est introuvable', () => {
+    const start = board()
+    expect(moveInterventionLocal(start, 999, '1', '2')).toBe(start)
+  })
+})
+
+describe('VX251 · onglet dispatch (glisser-déposer)', () => {
+  it('rend des cartes intervention déplaçables + l’invite de réaffectation', async () => {
+    api.getCalendrierInterventions.mockResolvedValue({
+      data: [
+        { technicien: { id: 1, nom: 'Ali' }, interventions: [
+          { id: 10, installation_reference: 'CH-010', client_nom: 'Client A', date_prevue: '2026-07-15' },
+        ] },
+        { technicien: { id: 2, nom: 'Sara' }, interventions: [] },
+      ],
+    })
+    const store = configureStore({ reducer: { auth: authReducer('responsable') } })
+    render(
+      <Provider store={store}>
+        <PlanificationPage />
+      </Provider>,
+    )
+    // Bascule sur l'onglet « Calendrier techniciens ».
+    await userEvent.click(screen.getByText('Calendrier techniciens'))
+    await waitFor(() => expect(api.getCalendrierInterventions).toHaveBeenCalled())
+    await waitFor(() =>
+      expect(screen.getByText(/Glissez une intervention vers un autre technicien/)).toBeInTheDocument())
+    // La carte porte une poignée de déplacement accessible.
+    expect(screen.getByLabelText(/Déplacer l'intervention CH-010/)).toBeInTheDocument()
   })
 })

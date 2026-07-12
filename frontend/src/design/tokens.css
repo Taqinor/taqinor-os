@@ -101,6 +101,17 @@
   --module-accent-warning: var(--warning);         /* Analyse/reporting — #c8870f */
   --module-accent-lune: var(--color-lune-faint);   /* Documents/Intelligence — #8d96b4 */
 
+  /* VX1 — un seul or, un seul navy : les jetons « catalogue/générateur » du
+     langage navy/or (devis premium) pointent désormais sur la signature de
+     marque, plus aucune quatrième couleur locale. `--cat-gold` = la primary
+     brass, `--cat-navy` = la nuit de marque ; les variantes -soft dérivées. */
+  --cat-navy: var(--color-nuit);
+  --cat-navy-soft: var(--color-nuit-700);
+  --cat-gold: var(--primary);
+  --cat-gold-soft: var(--color-brass-50);
+  --gen-chart-sans: var(--color-nuit-700);
+  --gen-chart-avec: var(--primary);
+
   --border: #dde3f0;
   --input: #d2d9ea;
   /* Anneau de focus (F122). `--ring` = couleur azur (contraste ≥ 3:1 sur le
@@ -302,12 +313,13 @@
   --ui-text: 0.875rem;        /* 14px */
 }
 
-/* ── Racine de l'interface refonte (appliquée par les nouveaux écrans/showcase ;
-      n'affecte PAS les écrans existants tant qu'ils ne portent pas .ui-root) ── */
+/* ── Racine de l'interface refonte ────────────────────────────────────────
+   VX3 — la police de marque, le fond tokenisé et la couleur de texte sont
+   désormais portés directement par <body> (index.css), donc hérités partout.
+   `.ui-root` devient un no-op quasi total (rétro-compatible) : il ne reste que
+   `font-size: var(--ui-text)` pour les écrans refonte qui veulent la taille de
+   base de densité ; font-family/background/color sont hérités du <body>. */
 .ui-root {
-  font-family: var(--font-brand);
-  background: var(--background);
-  color: var(--foreground);
   font-size: var(--ui-text);
 }
 
@@ -337,6 +349,19 @@
 .tabular-nums {
   font-variant-numeric: tabular-nums slashed-zero;
   font-feature-settings: 'tnum' 1, 'zero' 1;
+}
+
+/* VX5 — utilitaire `.num` : « les chiffres deviennent les héros » (numeric
+   story Stripe/Mercury). Police d'affichage de marque + chiffres tabulaires à
+   zéro barré + tracking resserré : tout montant MAD / kWc / production /
+   référence / total aligne ses colonnes à graisse et chasse identiques. Le
+   FORMATAGE fr/MAD reste l'unique responsabilité de lib/format.js — `.num` ne
+   fait que la présentation typographique. */
+.num {
+  font-family: var(--font-display);
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-feature-settings: 'tnum' 1, 'zero' 1;
+  letter-spacing: -0.01em;
 }
 
 /* ── Animations d'overlay (Dialog/Popover/Dropdown/Tooltip…) ─────────────── */
@@ -369,6 +394,18 @@
 @keyframes stat-solidify {
   from { font-variation-settings: 'wght' 500 }
   to { font-variation-settings: 'wght' 600 }
+}
+
+/* VX40 — Le délice mesuré : burst CSS-only posé par ui/celebrate.js autour du
+   toast sonner « devis signé » (rare, significatif, jamais gamifié). Chaque
+   span anime sa propre paire angle/distance via les variables inline
+   --vx40-angle/--vx40-distance posées en JS. `celebrate.js` ne pose même pas
+   ces spans sous reduced-motion (garde JS en amont) ; la règle globale
+   `@media (prefers-reduced-motion: reduce)` d'index.css neutraliserait de
+   toute façon la translation si jamais posée. */
+@keyframes vx40-burst {
+  from { opacity: 1; transform: rotate(var(--vx40-angle)) translateX(0) scale(1) }
+  to { opacity: 0; transform: rotate(var(--vx40-angle)) translateX(var(--vx40-distance)) scale(0.4) }
 }
 
 /* Respect de prefers-reduced-motion (F/M : confort de mouvement) */

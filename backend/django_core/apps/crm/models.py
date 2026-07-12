@@ -172,6 +172,22 @@ class Client(models.Model):
         verbose_name='Tiers (répertoire unifié)',
         help_text="Fiche du répertoire unifié des parties prenantes reflétant "
                   "ce client. Renseignée automatiquement (miroir).")
+    # ── ZSAL9 — Avertissement de vente (« sale warnings » façon Odoo) ──
+    # Message optionnel affiché quand ce client est sélectionné dans le
+    # générateur de devis (ex. « client à traiter au comptant »). Si
+    # ``avertissement_bloquant`` est True, une garde serveur refuse
+    # l'acceptation / la génération de facture d'un devis pour ce client SAUF
+    # override responsable/admin journalisé (patron XFAC28). Vide (défaut) =
+    # comportement historique strictement inchangé. Jamais de prix d'achat ici.
+    avertissement_vente = models.TextField(
+        blank=True, default='',
+        verbose_name='Avertissement de vente',
+        help_text="Message affiché au devis quand ce client est sélectionné.")
+    avertissement_bloquant = models.BooleanField(
+        default=False,
+        verbose_name='Avertissement bloquant',
+        help_text="Si activé, empêche l'acceptation/facturation sans override "
+                  "responsable/admin.")
 
     class Meta:
         verbose_name = "Client"
@@ -688,6 +704,18 @@ class Lead(SoftDeleteModel):
     )
     archived_at = models.DateTimeField(null=True, blank=True)
 
+    # VX98 — dernier auteur d'une modification (posé server-side dans
+    # perform_update, jamais accepté du corps de requête). Alimente la puce de
+    # fraîcheur « modifié par X il y a N min » (silencieuse si NULL ou si c'est
+    # l'utilisateur courant). Pattern identique à archived_by ; date_modification
+    # (auto_now) porte l'horodatage.
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='leads_modifies',
+    )
+
     date_creation = models.DateTimeField(auto_now_add=True)
     date_modification = models.DateTimeField(auto_now=True)
 
@@ -846,6 +874,16 @@ class LeadActivity(models.Model):
     old_value = models.TextField(blank=True, null=True)
     new_value = models.TextField(blank=True, null=True)
     body = models.TextField(blank=True, null=True)
+    # VX111 — pièce jointe optionnelle sur une note manuelle (kind='note'),
+    # ex. photo prise depuis mobile pendant une visite. RÉUTILISE le magasin
+    # `records.Attachment` existant (déjà whitelisté ('crm','lead')) — jamais
+    # un second magasin de fichiers. SET_NULL : la note reste lisible même si
+    # la pièce jointe est supprimée indépendamment (ex. depuis AttachmentsPanel).
+    attachment = models.ForeignKey(
+        'records.Attachment', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='lead_notes',
+        verbose_name='Pièce jointe',
+    )
     # Marque une entrée issue d'une action « en masse » (édition groupée de
     # plusieurs leads) — l'Historique l'affiche avec un badge « en masse ».
     bulk = models.BooleanField(default=False)

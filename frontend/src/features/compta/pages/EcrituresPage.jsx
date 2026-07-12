@@ -4,7 +4,7 @@ import { ListShell, statusPill } from '../../../ui/module'
 import {
   Button, Segmented, Input, Label, Combobox,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-  toast,
+  HelpTip, toast,
 } from '../../../ui'
 import { formatMAD, formatDate } from '../../../lib/format'
 import comptaApi from '../../../api/comptaApi'
@@ -119,7 +119,19 @@ function EcritureDialog({ open, onClose, journaux, comptesOpts, onSaved }) {
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose?.() }}>
       <DialogContent className="max-w-3xl">
         <DialogHeader>
-          <DialogTitle>Nouvelle écriture</DialogTitle>
+          <DialogTitle className="flex items-center gap-1.5">
+            Nouvelle écriture
+            {/* VX47 — aide contextuelle : la partie double n'est pas intuitive
+                pour un nouvel employé. */}
+            <HelpTip label="Aide — écriture comptable">
+              Une écriture comptable est <strong>toujours équilibrée</strong> :
+              le total des lignes au <strong>débit</strong> doit être strictement
+              égal au total au <strong>crédit</strong>. Chaque ligne représente
+              un mouvement sur un compte — un compte est débité, un autre est
+              crédité pour le même montant. Le bouton « Enregistrer » reste
+              bloqué tant que l'écart affiché ci-dessous n'est pas à zéro.
+            </HelpTip>
+          </DialogTitle>
         </DialogHeader>
         <form onSubmit={submit} noValidate className="flex flex-col gap-3">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">

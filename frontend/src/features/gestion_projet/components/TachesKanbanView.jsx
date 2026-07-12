@@ -1,9 +1,13 @@
 import { useMemo, useState } from 'react'
 import {
-  DndContext, DragOverlay, PointerSensor, TouchSensor, useDraggable,
-  useDroppable, useSensor, useSensors,
+  DndContext, DragOverlay, KeyboardSensor, PointerSensor, TouchSensor,
+  useDraggable, useDroppable, useSensor, useSensors,
 } from '@dnd-kit/core'
 import { Badge } from '../../../ui'
+import {
+  buildKanbanAnnouncements,
+  kanbanScreenReaderInstructions,
+} from '../../kanban/kanbanA11y'
 import { StatutTache } from '../constants'
 import ChronoButton from './ChronoWidget'
 import TacheChecklist from './TacheChecklist'
@@ -119,9 +123,23 @@ export default function TachesKanbanView({ taches, onChangeStatut, busyTacheId }
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 8 } }),
+    // VX192 — sensor clavier natif (@dnd-kit/core), 0 dépendance.
+    useSensor(KeyboardSensor),
   )
   const columns = useMemo(() => groupTachesByStatut(taches), [taches])
   const [activeTache, setActiveTache] = useState(null)
+
+  // VX192 — annonces FR : id de tâche → libellé, id de colonne → nom de statut.
+  const announcements = useMemo(() => {
+    const colLabel = Object.fromEntries(COLONNES.map((c) => [c.key, c.label]))
+    const byId = new Map((taches ?? []).map((t) => [t.id, t]))
+    const labelFor = (id) => {
+      if (colLabel[id]) return colLabel[id]
+      const t = byId.get(id)
+      return t?.libelle ?? String(id)
+    }
+    return buildKanbanAnnouncements(labelFor)
+  }, [taches])
 
   const handleDragStart = ({ active }) => setActiveTache(active.data.current?.tache ?? null)
 
@@ -137,6 +155,10 @@ export default function TachesKanbanView({ taches, onChangeStatut, busyTacheId }
   return (
     <DndContext
       sensors={sensors}
+      accessibility={{
+        announcements,
+        screenReaderInstructions: kanbanScreenReaderInstructions,
+      }}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}

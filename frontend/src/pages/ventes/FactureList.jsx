@@ -1,10 +1,10 @@
-import { useEffect, useState, useMemo, useRef } from 'react'
+import { Fragment, useEffect, useState, useMemo, useRef } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { Link } from 'react-router-dom'
 import {
   Search, Plus, Download, BookText, ListChecks, FileWarning,
   MessageCircle, Code2, Check, FileText, ReceiptText, MoreHorizontal,
-  CreditCard, ShieldCheck, X, LayoutList, LayoutGrid, Printer,
+  CreditCard, ShieldCheck, X, LayoutList, LayoutGrid, Printer, Zap,
 } from 'lucide-react'
 import {
   fetchFactures,
@@ -24,7 +24,7 @@ import {
   Skeleton, SkeletonTableRow,
   Tabs, TabsList, TabsTrigger,
   Input, Checkbox,
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
   Form, FormField, FormActions,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
@@ -33,6 +33,7 @@ import {
 import { formatMAD, toNumber, normalizeMaPhone, formatDateTime } from '../../lib/format'
 import { useSavedViews } from '../../hooks/useSavedViews'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
+import useDocumentTitle from '../../hooks/useDocumentTitle'
 import { DataTable } from '../../ui/datatable'
 import { openPdfBlob, openPdfInGesture } from '../../utils/pdfBlob'
 
@@ -163,6 +164,24 @@ function ecrireCreerUnAutrePaiement(v) {
   }
 }
 
+// VX93 — défaut intelligent : dernier mode de paiement utilisé (localStorage).
+// Repli sur 'virement' (cas le plus courant) si absent. Toujours modifiable.
+const PAY_MODE_KEY = 'taqinor.factureList.paiement.dernierMode'
+function lireDernierMode() {
+  try {
+    return window.localStorage.getItem(PAY_MODE_KEY) || 'virement'
+  } catch {
+    return 'virement'
+  }
+}
+function ecrireDernierMode(v) {
+  try {
+    if (v) window.localStorage.setItem(PAY_MODE_KEY, v)
+  } catch {
+    // no-op silencieux.
+  }
+}
+
 // Prochaine action contextuelle (next-best-action) : clé de l'action mise en
 // avant selon statut/montant dû/retard. Une brouillon → Émettre ; une émise en
 // retard → Relancer ; une émise partiellement payée → Encaisser ; sinon null.
@@ -190,6 +209,7 @@ function FactureRow({ f, ctx }) {
     openEdit, doAction, emettreFacture, marquerPayeeFacture, annulerFacture,
     openPayModal, handleLienPaiement, handleTelechargerPdf, handleGenererPdf,
     openAvoirModal, handleWhatsApp, handleUbl, handleDgiExport, handleDgiConformite,
+    histoOpenId, toggleHistorique, histoCache, histoLoadingId,
   } = ctx
   const overdue = isOverdue(f)
   const statutKey = overdue && f.statut === 'emise' ? 'en_retard' : f.statut
@@ -204,7 +224,8 @@ function FactureRow({ f, ctx }) {
   const isDgiBusy = dgiBusy[f.id]
 
   return (
-    <tr key={f.id} className={overdue ? 'bg-destructive/5' : undefined}>
+    <Fragment key={f.id}>
+    <tr className={overdue ? 'bg-destructive/5' : undefined}>
       <td>
         <Checkbox
           checked={selectedIds.includes(f.id)}
@@ -239,9 +260,21 @@ function FactureRow({ f, ctx }) {
             {f.mentions_manquantes.length} mention(s) manquante(s)
           </Badge>
         )}
+        {/* VX97 — journal des changements (qui/quand/ancien→nouveau), repliable. */}
+        <div className="mt-0.5">
+          <button
+            type="button"
+            className="text-xs text-primary hover:underline"
+            onClick={() => toggleHistorique(f.id)}
+          >
+            {histoOpenId === f.id ? "Masquer l'historique" : 'Historique'}
+          </button>
+        </div>
       </td>
-      <td data-label="Client">{f.client_nom ?? '—'}</td>
-      <td data-label="Émission">{new Date(f.date_emission).toLocaleDateString('fr-FR')}</td>
+      {/* VX7 — calm color : nom client = donnée primaire (contraste plein +
+          poids medium) ; date d'émission = métadonnée secondaire (mutée). */}
+      <td data-label="Client"><span className="font-medium text-foreground">{f.client_nom ?? '—'}</span></td>
+      <td data-label="Émission" className="text-muted-foreground">{new Date(f.date_emission).toLocaleDateString('fr-FR')}</td>
       <td data-label="Échéance">
         {echeanceEditId === f.id ? (
           <span className="flex items-center gap-1">
@@ -306,13 +339,32 @@ function FactureRow({ f, ctx }) {
           </Badge>
         )}
         <div className="flex flex-wrap items-center gap-2">
+          {/* VX142(b) — l'action recommandée (nextBestAction) occupe TOUJOURS
+              le PREMIER slot de la rangée, icône + halo tokenisé (variant
+              "default"), ordre stable — plus de position mouvante selon les
+              autres boutons présents/absents. Rendue ici UNE seule fois ;
+              retirée de sa position historique plus bas pour ne jamais
+              apparaître deux fois. */}
+          {nba === 'emettre' && (
+            <Button size="sm" variant="default" loading={busy}
+                    onClick={() => doAction(emettreFacture, f.id)}
+                    title="Action recommandée">
+              <Zap className="size-3.5" aria-hidden="true" /> Émettre
+            </Button>
+          )}
+          {nba === 'encaisser' && (
+            <Button size="sm" variant="default"
+                    onClick={() => openPayModal(f)} title="Action recommandée — enregistrer un paiement">
+              <Zap className="size-3.5" aria-hidden="true" /> Encaisser
+            </Button>
+          )}
           {f.statut === 'brouillon' && (
             <Button size="sm" variant="outline" onClick={() => openEdit(f)}>
               Éditer
             </Button>
           )}
-          {f.statut === 'brouillon' && (
-            <Button size="sm" variant={nba === 'emettre' ? 'default' : 'outline'}
+          {f.statut === 'brouillon' && nba !== 'emettre' && (
+            <Button size="sm" variant="outline"
                     loading={busy} onClick={() => doAction(emettreFacture, f.id)}>
               Émettre
             </Button>
@@ -323,8 +375,8 @@ function FactureRow({ f, ctx }) {
               <Check /> Payée
             </Button>
           )}
-          {parseFloat(f.montant_du ?? 0) > 0 && f.statut !== 'annulee' && (
-            <Button size="sm" variant={nba === 'encaisser' ? 'default' : 'outline'}
+          {parseFloat(f.montant_du ?? 0) > 0 && f.statut !== 'annulee' && nba !== 'encaisser' && (
+            <Button size="sm" variant="outline"
                     onClick={() => openPayModal(f)} title="Enregistrer un paiement">
               Enregistrer paiement
             </Button>
@@ -400,10 +452,58 @@ function FactureRow({ f, ctx }) {
         </div>
       </td>
     </tr>
+    {/* VX97 — Panneau « Historique » : journal des changements de la facture
+        (FactureActivity). Qui / quand / ancien→nouveau. `prix_achat` jamais
+        rendu (le journal ne le porte pas). */}
+    {histoOpenId === f.id && (
+      <tr>
+        <td colSpan={8} className="bg-muted/30">
+          <div className="px-3 py-2">
+            <p className="mb-1 text-xs font-medium text-muted-foreground">
+              Historique des modifications — {f.reference}
+            </p>
+            {histoLoadingId === f.id ? (
+              <p className="text-xs text-muted-foreground">Chargement…</p>
+            ) : (histoCache[f.id]?.length ?? 0) === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                Aucune modification consignée.
+              </p>
+            ) : (
+              <ul className="space-y-1 text-sm">
+                {histoCache[f.id].map(a => (
+                  <li key={a.id} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                    <span className="text-xs text-muted-foreground">
+                      {a.created_at ? formatDateTime(a.created_at) : '—'}
+                      {a.user_nom ? ` · ${a.user_nom}` : ''}
+                    </span>
+                    <span>
+                      {a.body
+                        ? a.body
+                        : (
+                          <>
+                            <strong>{a.field_label || a.field}</strong>
+                            {' : '}
+                            <span className="text-muted-foreground">{a.old_value || '—'}</span>
+                            {' → '}
+                            <span>{a.new_value || '—'}</span>
+                          </>
+                        )}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </td>
+      </tr>
+    )}
+    </Fragment>
   )
 }
 
 export default function FactureList() {
+  // VX82 — titre d'onglet dédié (chrome navigateur vivant).
+  useDocumentTitle('Factures')
   const dispatch = useDispatch()
   const { factures, loading, error } = useSelector(s => s.ventes)
   const isAdmin = useSelector(s => s.auth.role) === 'admin'
@@ -486,6 +586,20 @@ export default function FactureList() {
   const [pdfGenerating, setPdfGenerating] = useState({})
   const [pdfDownloading, setPdfDownloading] = useState({})
   const [auditBusy, setAuditBusy] = useState(false)
+  // VX142(a) — Journal comptable : petit Dialog mois/trimestre à la place du
+  // window.prompt() texte libre (regroupé dans le menu « Exporter »).
+  const [journalOpen, setJournalOpen] = useState(false)
+  const [journalMode, setJournalMode] = useState('mois') // 'mois' | 'trimestre'
+  const [journalMois, setJournalMois] = useState(() => new Date().toISOString().slice(0, 7))
+  const [journalAnnee, setJournalAnnee] = useState(() => String(new Date().getFullYear()))
+  const [journalTrimestre, setJournalTrimestre] = useState('1')
+  const [journalBusy, setJournalBusy] = useState(false)
+  // VX142(a) — Export comptable : même traitement, deux champs date au lieu
+  // de deux window.prompt() successifs.
+  const [exportComptableOpen, setExportComptableOpen] = useState(false)
+  const [exportStart, setExportStart] = useState(() => new Date().toISOString().slice(0, 8) + '01')
+  const [exportEnd, setExportEnd] = useState(() => new Date().toISOString().slice(0, 10))
+  const [exportComptableBusy, setExportComptableBusy] = useState(false)
   // ── Envoi WhatsApp : busy par facture (L857), langue (L851), aperçu (L852) ──
   const [waBusy, setWaBusy] = useState({})
   const [waLangue, setWaLangue] = useState('fr')
@@ -515,7 +629,7 @@ export default function FactureList() {
   const [paySaving, setPaySaving] = useState(false)
   const [payMontant, setPayMontant] = useState('')
   const [payDate, setPayDate] = useState(today)
-  const [payMode, setPayMode] = useState('virement')
+  const [payMode, setPayMode] = useState(() => lireDernierMode())  // VX93 — dernier mode utilisé
   const [payReference, setPayReference] = useState('')
   // ZFAC11 — proposition d'arrondi de caisse (règlement espèces).
   const [arrondiCaisse, setArrondiCaisse] = useState(null)
@@ -534,11 +648,30 @@ export default function FactureList() {
     }
   }
 
+  // VX97 — Panneau « Historique » repliable dans le détail facture : journal des
+  // changements (FactureActivity) — qui/quand/ancien→nouveau — sur le document
+  // au plus gros blast-radius financier. Feed existant monté ; migrera vers
+  // ChatterTimeline (VX23). `prix_achat` jamais rendu (le journal ne le porte pas).
+  const [histoOpenId, setHistoOpenId] = useState(null)
+  const [histoCache, setHistoCache] = useState({})   // id → entrées
+  const [histoLoadingId, setHistoLoadingId] = useState(null)
+  const toggleHistorique = (id) => {
+    if (histoOpenId === id) { setHistoOpenId(null); return }
+    setHistoOpenId(id)
+    if (histoCache[id] === undefined) {
+      setHistoLoadingId(id)
+      api.get(`/ventes/factures/${id}/historique/`)
+        .then(res => setHistoCache(c => ({ ...c, [id]: res.data || [] })))
+        .catch(() => setHistoCache(c => ({ ...c, [id]: [] })))
+        .finally(() => setHistoLoadingId(l => (l === id ? null : l)))
+    }
+  }
+
   const openPayModal = (f) => {
     setPayTarget(f)
     setPayMontant(f.montant_du ?? '')
     setPayDate(today)
-    setPayMode('virement')
+    setPayMode(lireDernierMode())  // VX93 — pré-remplit avec le dernier mode utilisé
     setPayReference('')
     setArrondiCaisse(null)
     setFactureActivites([])
@@ -577,13 +710,14 @@ export default function FactureList() {
         reference: payReference || undefined,
       })
       dispatch(fetchFactures())
+      ecrireDernierMode(payMode)  // VX93 — mémorise le mode pour le prochain paiement
       toast.success('Paiement enregistré.')
       // VX92 — « Créer un autre » : on vide les champs (sauf la facture
       // ciblée, inchangée) et on refocalise le montant au lieu de fermer.
       if (payCreerUnAutre) {
         setPayMontant('')
         setPayDate(today)
-        setPayMode('virement')
+        setPayMode(lireDernierMode())  // VX93 — ré-applique le dernier mode saisi
         setPayReference('')
         loadActivites(payTarget.id)
         payMontantRef.current?.focus()
@@ -709,15 +843,15 @@ export default function FactureList() {
     () => aEcheoirSoon.reduce((s, f) => s + (toNumber(f.montant_du) || 0), 0),
     [aEcheoirSoon])
 
-  // Export comptable DGI (groundwork) : factures validées d'une plage, en
-  // .xlsx ET .csv (ventilation TVA par ligne + ICE + totaux). Borné société.
+  // VX142(a) — Export comptable DGI (groundwork) : factures validées d'une
+  // plage, en .xlsx ET .csv (ventilation TVA par ligne + ICE + totaux).
+  // Borné société. Plage saisie via le petit Dialog `exportComptableOpen`
+  // (deux champs date), plus de window.prompt().
   const handleExportComptable = async () => {
-    const start = window.prompt('Export comptable — date de début (AAAA-MM-JJ) :',
-      new Date().toISOString().slice(0, 8) + '01')
-    if (!start) return
-    const end = window.prompt('Date de fin (exclue, AAAA-MM-JJ) :',
-      new Date().toISOString().slice(0, 10))
-    if (!end) return
+    const start = exportStart
+    const end = exportEnd
+    if (!start || !end) return
+    setExportComptableBusy(true)
     const dl = async (fmt, ext) => {
       const res = await api.get('/ventes/export-comptable/', {
         params: { start, end, fmt }, responseType: 'blob',
@@ -727,8 +861,31 @@ export default function FactureList() {
     try {
       await dl('xlsx', 'xlsx')
       await dl('csv', 'csv')
+      setExportComptableOpen(false)
     } catch {
-      alert('Export comptable impossible.')
+      toast.error('Export comptable impossible.')
+    } finally {
+      setExportComptableBusy(false)
+    }
+  }
+
+  // VX142(a) — Journal des ventes + résumé TVA : plus de window.prompt(), la
+  // période (mois ou trimestre) vient du Dialog `journalOpen`.
+  const handleJournalComptable = async () => {
+    const v = journalMode === 'trimestre'
+      ? `${journalAnnee}-${journalTrimestre}`
+      : journalMois
+    const isQuarter = journalMode === 'trimestre'
+    const params = isQuarter ? { quarter: v } : { month: v }
+    setJournalBusy(true)
+    try {
+      const r = await ventesApi.journalVentes(params)
+      downloadXlsx(r.data, `journal-ventes-${v}.xlsx`)
+      setJournalOpen(false)
+    } catch {
+      toast.error('Journal comptable indisponible.')
+    } finally {
+      setJournalBusy(false)
     }
   }
 
@@ -965,6 +1122,7 @@ export default function FactureList() {
     openEdit, doAction, emettreFacture, marquerPayeeFacture, annulerFacture,
     openPayModal, handleLienPaiement, handleTelechargerPdf, handleGenererPdf,
     openAvoirModal, handleWhatsApp, handleUbl, handleDgiExport, handleDgiConformite,
+    histoOpenId, toggleHistorique, histoCache, histoLoadingId,
   }
 
   // VX21 — l'en-tête de page reste TOUJOURS visible (chargement, erreur,
@@ -1000,46 +1158,40 @@ export default function FactureList() {
             ))}
           </SelectContent>
         </Select>
-        <Button size="sm" variant="outline"
-                onClick={() => importApi.exportList('factures', factures.map(f => f.id))
-                  .then(r => downloadXlsx(r.data, 'factures.xlsx')).catch(() => {})}>
-          <Download /> Exporter Excel
-        </Button>
         {/* VX80 — impression navigateur (feuille print.css : chrome masqué,
             noir-sur-blanc, table complète). Distinct des PDF WeasyPrint. */}
         <Button size="sm" variant="outline" onClick={() => window.print()}>
           <Printer /> Imprimer
         </Button>
-        <Button size="sm" variant="outline" title="Journal des ventes + résumé TVA (comptable) — mois ou trimestre"
-                onClick={() => {
-                  const choix = window.prompt(
-                    'Période du journal des ventes :\n'
-                    + '— Mois : AAAA-MM (ex. 2026-06)\n'
-                    + '— Trimestre : AAAA-T (ex. 2026-2)',
-                    new Date().toISOString().slice(0, 7))
-                  if (!choix) return
-                  const v = choix.trim()
-                  // Trimestre (AAAA-Q avec Q de 1 à 4) vs mois (AAAA-MM).
-                  const isQuarter = /^\d{4}-[1-4]$/.test(v)
-                  const params = isQuarter ? { quarter: v } : { month: v }
-                  ventesApi.journalVentes(params)
-                    .then(r => downloadXlsx(r.data, `journal-ventes-${v}.xlsx`))
-                    .catch(() => {})
-                }}>
-          <BookText /> Journal comptable
-        </Button>
-        <Button size="sm" variant="outline"
-                title="Export comptable (factures validées d'une plage) — Excel + CSV"
-                onClick={handleExportComptable}>
-          <Download /> Export comptable
-        </Button>
-        {isAdmin && (
-          <Button size="sm" variant="outline" loading={auditBusy}
-                  title="Vérifier les trous/doublons de numérotation (Art. 145 — séquence continue)"
-                  onClick={handleAuditNumerotation}>
-            <ListChecks /> Audit numérotation
-          </Button>
-        )}
+        {/* VX142(a) — toolbar à 5 groupes : recherche+filtre, imprimer,
+            EXPORTER (menu unique, remplace 4 boutons à plat + le
+            window.prompt() du Journal comptable), langue WhatsApp, Nouvelle
+            facture. */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button size="sm" variant="outline">
+              <Download /> Exporter
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            <DropdownMenuItem
+              onSelect={() => importApi.exportList('factures', factures.map(f => f.id))
+                .then(r => downloadXlsx(r.data, 'factures.xlsx')).catch(() => {})}>
+              <Download className="size-3.5" aria-hidden="true" /> Exporter Excel
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => setJournalOpen(true)}>
+              <BookText className="size-3.5" aria-hidden="true" /> Journal comptable…
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => setExportComptableOpen(true)}>
+              <Download className="size-3.5" aria-hidden="true" /> Export comptable…
+            </DropdownMenuItem>
+            {isAdmin && (
+              <DropdownMenuItem disabled={auditBusy} onSelect={handleAuditNumerotation}>
+                <ListChecks className="size-3.5" aria-hidden="true" /> Audit numérotation
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
         {/* L851 — langue des messages WhatsApp (FR par défaut). */}
         <div role="group" aria-label="Langue des messages WhatsApp"
              className="inline-flex items-center gap-1"
@@ -1056,6 +1208,79 @@ export default function FactureList() {
         </div>
         <Button onClick={openNew}><Plus /> Nouvelle facture</Button>
       </div>
+      {/* VX142(a) — Journal comptable : Dialog mois/trimestre (remplace le
+          window.prompt() texte libre). */}
+      <Dialog open={journalOpen} onOpenChange={setJournalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Journal comptable</DialogTitle>
+            <DialogDescription>
+              Journal des ventes + résumé TVA (comptable), par mois ou par trimestre.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-3">
+            <div role="group" aria-label="Période" className="inline-flex gap-1">
+              {[['mois', 'Mois'], ['trimestre', 'Trimestre']].map(([val, label]) => (
+                <Button key={val} type="button" size="sm"
+                        variant={journalMode === val ? 'default' : 'outline'}
+                        aria-pressed={journalMode === val}
+                        onClick={() => setJournalMode(val)}>
+                  {label}
+                </Button>
+              ))}
+            </div>
+            {journalMode === 'mois' ? (
+              <Input type="month" value={journalMois}
+                     onChange={e => setJournalMois(e.target.value)}
+                     aria-label="Mois du journal" />
+            ) : (
+              <div className="flex gap-2">
+                <Input type="number" className="w-28" value={journalAnnee}
+                       onChange={e => setJournalAnnee(e.target.value)}
+                       aria-label="Année du trimestre" />
+                <Select value={journalTrimestre} onValueChange={setJournalTrimestre}>
+                  <SelectTrigger className="w-32" aria-label="Trimestre">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {['1', '2', '3', '4'].map(q => (
+                      <SelectItem key={q} value={q}>{`T${q}`}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setJournalOpen(false)}>Annuler</Button>
+            <Button loading={journalBusy} onClick={handleJournalComptable}>Télécharger</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {/* VX142(a) — Export comptable : Dialog plage de dates (remplace les
+          deux window.prompt() successifs). */}
+      <Dialog open={exportComptableOpen} onOpenChange={setExportComptableOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Export comptable</DialogTitle>
+            <DialogDescription>
+              Factures validées d'une plage de dates, en Excel + CSV (ventilation TVA, ICE, totaux).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex gap-2">
+            <Input type="date" value={exportStart}
+                   onChange={e => setExportStart(e.target.value)}
+                   aria-label="Date de début" />
+            <Input type="date" value={exportEnd}
+                   onChange={e => setExportEnd(e.target.value)}
+                   aria-label="Date de fin" />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setExportComptableOpen(false)}>Annuler</Button>
+            <Button loading={exportComptableBusy} onClick={handleExportComptable}>Télécharger</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 
@@ -1469,7 +1694,7 @@ export default function FactureList() {
               searchable={false}
               hideToolbar
               hidePagination
-              tableClassName="data-table"
+              tableClassName="data-table calm-list"
               tableRole="table"
               aria-label="Factures"
               renderHeaderRow={() => (

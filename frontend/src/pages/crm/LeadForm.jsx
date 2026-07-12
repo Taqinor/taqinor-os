@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useDispatch } from 'react-redux'
+import { useDispatch, useSelector } from 'react-redux'
 import {
   User, TrendingUp, Zap, Droplet, Home, ClipboardList, Globe,
-  FileText, Clock, Paperclip, GitMerge, History,
+  FileText, Clock, Paperclip, GitMerge, History, Lightbulb,
 } from 'lucide-react'
 import { createLead, updateLead, archiveLead, restoreLead } from '../../features/crm/store/crmSlice'
 import api from '../../api/axios'
@@ -15,6 +15,8 @@ import AssigneePicker from '../../components/AssigneePicker'
 import ActivitiesPanel from '../../components/ActivitiesPanel'
 import AttachmentsPanel from '../../components/AttachmentsPanel'
 import CustomFieldsInput from '../../components/CustomFieldsInput'
+// VX23 — chatter réutilisable (regroupement par jour, avatars, notes/logs).
+import ChatterTimeline from '../../components/ChatterTimeline'
 import AppointmentBooker from './leads/AppointmentBooker'
 import LeadDevisPanel from './leads/LeadDevisPanel'
 import SigneDialog from './leads/SigneDialog'
@@ -24,11 +26,17 @@ import {
   CONVERSION_STAGE, STAGE_LABELS, PRIORITE_LABELS, TYPE_INSTALLATION_LABELS,
 } from '../../features/crm/stages'
 import useCanaux from '../../features/crm/useCanaux'
+// VX24 — bandeau de faits clés (LeadSummaryBar) réutilise le même ScoreBadge.
+import ScoreBadge from '../../features/crm/ScoreBadge'
+// VX87 — journal d'appel en un geste (issue + note + prochaine relance).
+import CallLogPopover from '../../features/crm/CallLogPopover'
 import useKeyboardAwareScroll from '../../hooks/useKeyboardAwareScroll'
 import {
-  Button, Input, FormSection, FormField,
+  Button, IconButton, Input, FormSection, FormField,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from '../../ui'
+// VX89 — shell externe Escape + focus-trap + bottom-sheet mobile (comme ClientForm).
+import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
 import { formatMAD, normalizeMaPhone } from '../../lib/format'
 
 // Canal posé par défaut sur un lead créé à la main (jamais null) : une visite/
@@ -36,6 +44,17 @@ import { formatMAD, normalizeMaPhone } from '../../lib/format'
 const DEFAULT_CANAL = 'walk_in'
 // Validation e-mail minimale (le formulaire est noValidate) : « un@deux.trois ».
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+// VX93 — défauts intelligents : mémoire de la dernière ville saisie (par
+// localStorage, toujours modifiable, jamais bloquant ; le pattern owner=moi
+// utilise l'utilisateur courant côté composant). Silencieux si absent.
+const LAST_VILLE_KEY = 'vx93.lead.ville'
+const readLastVille = () => {
+  try { return localStorage.getItem(LAST_VILLE_KEY) || '' } catch { return '' }
+}
+const rememberVille = (v) => {
+  try { if (v && v.trim()) localStorage.setItem(LAST_VILLE_KEY, v.trim()) } catch { /* best-effort */ }
+}
 
 // VX143 — STAGE_LABELS/PRIORITE_LABELS/TYPE_INSTALLATION_LABELS viennent
 // désormais de features/crm/stages.js (miroir strict de STAGES.py) au lieu
@@ -46,12 +65,8 @@ const STATUT_DEVIS = {
   refuse: 'Refusé', expire: 'Expiré',
 }
 
-// FG30/QX27 — libellés FR du résultat d'un appel/e-mail journalisé (miroir de
-// LeadActivity.OUTCOMES côté serveur, apps/crm/models.py).
-const OUTCOME_LABELS = {
-  '': null, joint: 'Joint', non_joint: 'Non joint', rappel: 'À rappeler',
-  refuse: 'Refus', interesse: 'Intéressé',
-}
+// VX23 — OUTCOME_LABELS (résultat d'appel/e-mail journalisé) déménagé dans
+// ChatterTimeline.jsx, seule source de rendu du chatter désormais.
 // Langue préférée du contact — pré-sélectionne la langue du message WhatsApp.
 const LANGUES_PREFEREES = { fr: 'Français', darija: 'Darija' }
 const RACCORDEMENTS = { monophase: 'Monophasé', triphase: 'Triphasé', inconnu: 'Je ne sais pas' }
@@ -137,13 +152,44 @@ const buildNavSections = ({ agricole, isEdit, hasWebOrigin, dupCount = 0 }) => {
   return secs
 }
 
-function timeAgo(iso) {
-  const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000)
-  if (mins < 1) return "à l'instant"
-  if (mins < 60) return `il y a ${mins} min`
-  const h = Math.round(mins / 60)
-  if (h < 24) return `il y a ${h} h`
-  return new Date(iso).toLocaleDateString('fr-FR')
+// VX23 — timeAgo() déménagé dans ChatterTimeline.jsx (seul consommateur).
+
+// VX24 — nombre de jours entiers depuis une date ISO (ou null si absente).
+function joursDepuis(iso) {
+  if (!iso) return null
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return null
+  const jours = Math.floor((Date.now() - d.getTime()) / 86400000)
+  return jours >= 0 ? jours : null
+}
+
+// VX24 — LeadSummaryBar : le bandeau de faits clés façon Attio, en tête de
+// fiche. Score, montant estimé, prochaine activité, jours depuis dernière
+// modification — les 4 faits qui comptent pour préparer un appel, visibles
+// sans avoir à scroller dans les sections détaillées.
+function LeadSummaryBar({ lead }) {
+  if (!lead) return null
+  const jours = joursDepuis(lead.date_modification)
+  const montant = lead.montant_estime != null && lead.montant_estime !== ''
+    ? formatMAD(parseFloat(lead.montant_estime)) : null
+  return (
+    <div className="lead-summary-bar" data-testid="lead-summary-bar">
+      <span className="lead-summary-item" title="Score de qualité du lead">
+        <ScoreBadge lead={lead} />
+      </span>
+      <span className="lead-summary-item" title="Montant estimé (avant devis)">
+        {montant ?? '—'}
+      </span>
+      <span className="lead-summary-item" title="Prochaine activité planifiée">
+        {lead.next_activity
+          ? `⏰ ${lead.next_activity.summary} — ${lead.next_activity.due_date}`
+          : 'Aucune activité planifiée'}
+      </span>
+      <span className="lead-summary-item" title="Jours depuis la dernière modification">
+        {jours != null ? `Modifié il y a ${jours} j` : '—'}
+      </span>
+    </div>
+  )
 }
 
 export default function LeadForm({
@@ -155,6 +201,9 @@ export default function LeadForm({
   const dispatch = useDispatch()
   const navigate = useNavigate()
   const isEdit = !!lead
+  // VX93 — défaut « propriétaire = moi » à la création (le créateur est presque
+  // toujours le propriétaire) ; toujours modifiable ensuite.
+  const currentUserId = useSelector((s) => s.auth?.user?.id)
   // Canaux depuis le référentiel géré (Paramètres → CRM) + libellés statiques :
   // un canal ajouté en Paramètres apparaît dans le sélecteur sans redéploiement.
   const { labels: canalLabels } = useCanaux()
@@ -188,6 +237,9 @@ export default function LeadForm({
   const [waLangue, setWaLangue] = useState(() => lead?.langue_preferee || 'fr')
   // L852 — aperçu du message avant ouverture de wa.me.
   const [waPreview, setWaPreview] = useState(null) // { message, links, wa_url }
+  // VX87 — ouverture contrôlée du popover « Journaliser un appel » (section
+  // Historique), pour pouvoir la déclencher aussi depuis un futur nudge.
+  const [callLogOpen, setCallLogOpen] = useState(false)
 
   const toggleWaSelect = (id) => setWaSelected(prev => {
     const next = new Set(prev)
@@ -251,10 +303,14 @@ export default function LeadForm({
     // Contact
     nom: F('nom'), prenom: F('prenom'), societe: F('societe'),
     email: F('email'), telephone: F('telephone'), whatsapp: F('whatsapp'),
-    adresse: F('adresse'), ville: F('ville'),
+    adresse: F('adresse'),
+    // VX93 — ville pré-remplie avec la dernière saisie (création seulement).
+    ville: lead ? F('ville') : (F('ville') || readLastVille()),
     gps_lat: F('gps_lat'), gps_lng: F('gps_lng'),
     // Pipeline
-    stage: F('stage', 'NEW'), owner: F('owner', '') ?? '',
+    stage: F('stage', 'NEW'),
+    // VX93 — owner = utilisateur courant à la création (jamais en édition).
+    owner: lead ? (F('owner', '') ?? '') : (F('owner', '') || (currentUserId ? String(currentUserId) : '')),
     // Canal prérempli à la création (jamais null) ; en édition on respecte la
     // valeur du lead (y compris vide pour un ancien lead).
     canal: lead ? (F('canal', '') ?? '') : DEFAULT_CANAL,
@@ -294,6 +350,11 @@ export default function LeadForm({
   const [historique, setHistorique] = useState([])
   const [noteBody, setNoteBody] = useState('')
   const [noteError, setNoteError] = useState(null)
+  // VX111 — pièce jointe optionnelle sur la note en cours de rédaction (ex.
+  // photo prise depuis mobile). Réutilise records.Attachment côté serveur
+  // (jamais un second magasin) — voir crmApi via postNote().
+  const [noteFile, setNoteFile] = useState(null)
+  const noteFileInputRef = useRef(null)
   const [saving, setSaving] = useState(false)
   const [savedConfirm, setSavedConfirm] = useState(false)
   const savedConfirmTimer = useRef(null)
@@ -380,8 +441,7 @@ export default function LeadForm({
       await crmApi.mergeLeads(lead.id, [otherId])
       setDups(d => d.filter(x => x.id !== otherId))
       refreshLead()
-      api.get(`/crm/leads/${lead.id}/historique/`)
-        .then(r => setHistorique(r.data)).catch(() => {})
+      refreshHistorique()
     } catch (err) {
       alert(err?.response?.data?.detail ?? 'La fusion a échoué — réessayez.')
     }
@@ -554,14 +614,38 @@ export default function LeadForm({
     } catch { /* erreur silencieuse */ } finally { setArchiveBusy(false) }
   }
 
+  // VX87 — helper partagé : recharge l'Historique (chatter) sans tout
+  // recharger le lead. Consommé par le merge de doublons (déjà existant) et
+  // par CallLogPopover après une journalisation d'appel réussie.
+  const refreshHistorique = () => {
+    if (!lead?.id) return
+    api.get(`/crm/leads/${lead.id}/historique/`)
+      .then(r => setHistorique(r.data)).catch(() => {})
+  }
+
+  // VX111 — la note poste en multipart dès qu'une pièce jointe est attachée
+  // (endpoint `noter` désormais bilingue JSON/multipart côté serveur) ; sans
+  // fichier, comportement STRICTEMENT inchangé (JSON simple).
   const postNote = async () => {
     const body = noteBody.trim()
-    if (!body) return
+    if (!body && !noteFile) return
     setNoteError(null)
     try {
-      const r = await api.post(`/crm/leads/${lead.id}/noter/`, { body })
+      let r
+      if (noteFile) {
+        const form = new FormData()
+        form.append('body', body)
+        form.append('file', noteFile)
+        r = await api.post(`/crm/leads/${lead.id}/noter/`, form, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        })
+      } else {
+        r = await api.post(`/crm/leads/${lead.id}/noter/`, { body })
+      }
       setHistorique(h => [r.data, ...h])
       setNoteBody('')
+      setNoteFile(null)
+      if (noteFileInputRef.current) noteFileInputRef.current.value = ''
     } catch (err) {
       // La note reste saisie ; on explique l'échec au lieu de l'avaler.
       setNoteError(err?.response?.data?.detail
@@ -615,6 +699,7 @@ export default function LeadForm({
         savedConfirmTimer.current = setTimeout(() => setSavedConfirm(false), 2000)
       } else {
         await dispatch(createLead(payload)).unwrap()
+        rememberVille(fields.ville)  // VX93 — mémorise la ville pour le prochain lead
         onSaved?.()
         onClose()
       }
@@ -625,10 +710,28 @@ export default function LeadForm({
     }
   }
 
+  // VX89 — le modal n°1 de l'ERP (20-40 ouvertures/jour/commercial) était le
+  // SEUL à ne pas répondre à Escape ni focuser son champ requis : shell brut
+  // `div.modal-overlay` (MB4 prétendait la migration ResponsiveDialog faite —
+  // fact-check : faux pour ce fichier, corrigé ici). Le shell EXTERNE
+  // (overlay + conteneur) est désormais `ResponsiveDialog` (Escape + focus-
+  // trap + bottom-sheet mobile gratuits, comme ClientForm) ; l'entête
+  // personnalisée (avatar, badge devis, actions Convertir/Archiver, bouton
+  // fermer) et tout le `lead-form-layout` interne restent EXACTEMENT ceux
+  // d'avant — ResponsiveDialog est monté SANS `title` (donc sans rendre de
+  // second header) et avec `showClose={false}` (le bouton ✕ existant reste
+  // l'unique fermeture).
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal modal-xl" onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
+    <ResponsiveDialog
+      open
+      onOpenChange={(o) => { if (!o) onClose() }}
+      // p-0 : .modal-header/.modal-body/.modal-footer portent déjà chacun
+      // leur propre padding (comme avant ResponsiveDialog) — sans ce reset,
+      // le p-5 par défaut de DialogContent doublerait la marge visuelle.
+      className="sm:max-w-5xl p-0 overflow-hidden gap-0"
+      showClose={false}
+    >
+      <div className="modal-header">
           <h3 className="modal-title">
             {isEdit ? `Lead — ${lead.nom} ${lead.prenom || ''}` : 'Nouveau lead'}
             {isEdit && lead.is_archived && (
@@ -707,11 +810,18 @@ export default function LeadForm({
           </div>
         )}
 
+        {/* VX24 — bandeau de faits clés (LeadSummaryBar) : score, montant
+            estimé, prochaine activité, jours depuis dernière modification —
+            les 4 faits qui comptent, visibles sans scroller. */}
+        {isEdit && <LeadSummaryBar lead={liveLead} />}
+
         {/* ── Barre d'actions devis (style Odoo) — tout reste dans la fiche ── */}
         {isEdit && (
           <div className="lead-subbar">
             <div className="lead-subbar-bills">
-              <span className="lead-subbar-label">💡 Facture :</span>
+              <span className="lead-subbar-label">
+                <Lightbulb className="lead-subbar-icon" aria-hidden="true" size={14} /> Facture :
+              </span>
               {billEditing ? (
                 <>
                   <Input type="number" step="any" className="lead-bill-input"
@@ -755,19 +865,19 @@ export default function LeadForm({
                           ? 'Repère toit (GPS) disponible — ouvrir le plan déjà positionné'
                           : "Ouvrir l'outil de conception 3D du site avec ce lead déjà chargé"}
                         onClick={ouvrirConceptionToiture}>
-                  🏠 Concevoir la toiture (3D){roofReady ? ' 📍' : ''}
+                  <Home aria-hidden="true" size={14} /> Concevoir la toiture (3D){roofReady ? ' 📍' : ''}
                 </Button>
               )}
               <Button type="button" size="sm" className="gen-btn-orange"
                       disabled={!devisReady}
                       title={devisReady ? 'Créer le devis automatique (affiché ici)' : devisNotReadyMsg}
                       onClick={() => openDevisPanel('auto')}>
-                ⚡ Devis automatique
+                <Zap aria-hidden="true" size={14} /> Devis automatique
               </Button>
               <div className="lead-devis-menu-wrap" ref={devisMenuRef}>
                 <Button type="button" size="sm"
                         onClick={() => setDevisMenuOpen(o => !o)}>
-                  📝 Devis modifiable ▾
+                  <FileText aria-hidden="true" size={14} /> Devis modifiable ▾
                 </Button>
                 {devisMenuOpen && (
                   <div className="lead-devis-menu">
@@ -835,8 +945,12 @@ export default function LeadForm({
               )}
               <div className="form-row">
                 <div className="form-group fg-grow">
-                  <label className="form-label">Nom <span className="req">*</span></label>
-                  <input className={`form-control${errors.nom ? ' is-invalid' : ''}`}
+                  <label className="form-label" htmlFor="lf-nom">Nom <span className="req">*</span></label>
+                  {/* VX89 — le modal n°1 de l'ERP (20-40 ouvertures/jour/commercial)
+                      focusait jusqu'ici son champ requis nulle part : autoFocus
+                      posé explicitement (indépendant du focus-management par
+                      défaut de Radix Dialog/Sheet). */}
+                  <input id="lf-nom" autoFocus className={`form-control${errors.nom ? ' is-invalid' : ''}`}
                          value={fields.nom} onChange={e => set('nom', e.target.value)} />
                   {errors.nom && <div className="form-feedback">{errors.nom}</div>}
                 </div>
@@ -1372,78 +1486,55 @@ export default function LeadForm({
                   <input className="form-control" placeholder="Écrire une note (appel, commentaire…)"
                          value={noteBody} onChange={e => setNoteBody(e.target.value)}
                          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); postNote() } }} />
+                  {/* VX111 — attacher une pièce jointe à CETTE note (ex. photo
+                      prise depuis mobile pendant une visite) : réutilise le
+                      magasin records.Attachment existant, jamais un second
+                      magasin (décision tranchée dans cette tâche). */}
+                  <input
+                    ref={noteFileInputRef}
+                    type="file"
+                    accept="application/pdf,image/png,image/jpeg,image/webp"
+                    className="chatter-note-file-input"
+                    onChange={e => setNoteFile(e.target.files?.[0] ?? null)}
+                  />
+                  <IconButton
+                    type="button"
+                    variant="outline"
+                    label="Attacher une pièce jointe à la note"
+                    onClick={() => noteFileInputRef.current?.click()}
+                  >
+                    <Paperclip aria-hidden="true" size={16} />
+                  </IconButton>
                   <Button type="button" variant="outline" onClick={postNote}>
                     Noter
                   </Button>
+                  {/* VX87 — journal d'appel en un geste : issue + note +
+                      prochaine relance, le tout en 1 requête (logInteraction
+                      avait ZÉRO site d'appel avant cette tâche). */}
+                  <CallLogPopover
+                    leadId={lead.id}
+                    open={callLogOpen}
+                    onOpenChange={setCallLogOpen}
+                    onLogged={refreshHistorique}
+                  />
                 </div>
+                {noteFile && (
+                  <p className="chatter-note-file-preview" data-testid="chatter-note-file-preview">
+                    <Paperclip size={12} aria-hidden="true" /> {noteFile.name}
+                    <button type="button" className="chatter-note-file-clear"
+                            aria-label="Retirer la pièce jointe"
+                            onClick={() => { setNoteFile(null); if (noteFileInputRef.current) noteFileInputRef.current.value = '' }}>
+                      ✕
+                    </button>
+                  </p>
+                )}
                 {noteError && (
                   <p className="form-error" role="alert">{noteError}</p>
                 )}
-                <div className="chatter-timeline">
-                  {historique.length === 0 && (
-                    <p className="gen-hint">Aucune activité pour le moment.</p>
-                  )}
-                  {historique.map(a => (
-                    <div key={a.id} className={`chatter-item chatter-${a.kind}`}>
-                      {a.kind === 'note' && (
-                        <span>📝 <strong>Note&nbsp;:</strong> {a.body}</span>
-                      )}
-                      {a.kind === 'creation' && <span>✨ {a.body}</span>}
-                      {a.kind === 'modification' && (
-                        <span>
-                          ✏️ <strong>{a.field_label}&nbsp;:</strong>{' '}
-                          {a.old_value} → <strong>{a.new_value}</strong>
-                        </span>
-                      )}
-                      {/* FG30/QX27 — appel/e-mail journalisés (jusqu'ici rendus
-                          BLANCS faute de branche : aucune trace visible du
-                          contact). Corps libre + résultat (outcome) si posé. */}
-                      {a.kind === 'appel' && (
-                        <span>
-                          📞 <strong>Appel</strong>
-                          {OUTCOME_LABELS[a.outcome] && (
-                            <> — <strong>{OUTCOME_LABELS[a.outcome]}</strong></>
-                          )}
-                          {a.body ? <>&nbsp;: {a.body}</> : null}
-                        </span>
-                      )}
-                      {a.kind === 'email' && (
-                        <span>
-                          ✉️ <strong>E-mail</strong>
-                          {OUTCOME_LABELS[a.outcome] && (
-                            <> — <strong>{OUTCOME_LABELS[a.outcome]}</strong></>
-                          )}
-                          {a.body ? <>&nbsp;: {a.body}</> : null}
-                        </span>
-                      )}
-                      {/* QX32 — timeline unifiée : le cycle de vie du devis
-                          (envoyé/ouvert/signé/refusé) + le résumé d'engagement
-                          de la proposition en ligne, fusionnés par le serveur
-                          dans ce même historique (apps/ventes/selectors.py
-                          devis_events_for_lead) — le vendeur n'a plus besoin
-                          d'ouvrir la liste des devis pour préparer un appel. */}
-                      {a.kind === 'devis_sent' && (
-                        <span>📤 <strong>Devis envoyé</strong>{a.body ? <>&nbsp;: {a.body}</> : null}</span>
-                      )}
-                      {a.kind === 'devis_opened' && (
-                        <span>👁️ <strong>Proposition ouverte</strong>{a.body ? <>&nbsp;: {a.body}</> : null}</span>
-                      )}
-                      {a.kind === 'devis_signed' && (
-                        <span>✅ <strong>Devis signé</strong>{a.body ? <>&nbsp;: {a.body}</> : null}</span>
-                      )}
-                      {a.kind === 'devis_refused' && (
-                        <span>❌ <strong>Devis refusé</strong>{a.body ? <>&nbsp;: {a.body}</> : null}</span>
-                      )}
-                      {a.kind === 'devis_engagement' && (
-                        <span>📊 <strong>Engagement proposition</strong>{a.body ? <>&nbsp;: {a.body}</> : null}</span>
-                      )}
-                      {a.bulk && <span className="chatter-bulk">en masse</span>}
-                      <span className="chatter-meta">
-                        — par {a.user_nom ?? '?'} · {timeAgo(a.created_at)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
+                {/* VX23 — ChatterTimeline : composant réutilisable (regroupement
+                    par jour, avatars, distinction note/log). Remplace l'ancien
+                    journal texte plat rendu inline ici. */}
+                <ChatterTimeline entries={historique} />
               </Sec>
             )}
 
@@ -1467,7 +1558,6 @@ export default function LeadForm({
             </Button>
           </div>
         </form>
-      </div>
 
       {/* Panneau devis inline : créer / voir / télécharger sans quitter la fiche. */}
       {isEdit && devisPanel && (
@@ -1509,6 +1599,6 @@ export default function LeadForm({
           onConverted={refreshLead}
         />
       )}
-    </div>
+    </ResponsiveDialog>
   )
 }

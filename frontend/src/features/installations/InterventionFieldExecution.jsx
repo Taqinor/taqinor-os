@@ -9,9 +9,10 @@
 //     checklist des photos obligatoires manquantes (garde « Terminée »).
 // Tout le texte est en français ; les identifiants techniques restent en anglais.
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   CheckCircle2, MapPin, Navigation, Truck, Camera, Trash2, AlertTriangle,
-  PackageCheck,
+  PackageCheck, ShoppingCart, Images,
 } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
 import {
@@ -35,6 +36,7 @@ const PHASES = [
 // ── F5 — Liste de préparation ────────────────────────────────────────────────
 export function PreparationPanel({ intervention, onChanged }) {
   const id = intervention.id
+  const navigate = useNavigate()
   const [prep, setPrep] = useState(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
@@ -167,6 +169,18 @@ export function PreparationPanel({ intervention, onChanged }) {
         </Button>
       )}
 
+      {/* VX227 — un besoin NON prévu par la nomenclature part vers une nouvelle
+          demande d'achat, chantier pré-sélectionné (le tap ouvre la DA avec le
+          contexte terrain déjà renseigné, sans ressaisie). */}
+      {intervention.installation && (
+        <Button size="sm" variant="ghost" disabled={busy}
+          onClick={() => navigate(
+            `/chantiers/demandes-achat?chantier=${intervention.installation}&intervention=${id}`)}>
+          <ShoppingCart className="size-4" aria-hidden="true" />
+          Autre besoin non prévu → Nouvelle demande d'achat
+        </Button>
+      )}
+
       {/* ── Confirmation « Tout est chargé » ── */}
       <Button size="sm" onClick={confirmer}
         disabled={busy || prep.tout_charge || !allChecked}
@@ -294,6 +308,7 @@ function Row({ label, value }) {
 // ── F7/F8 — Capture guidée + galerie + photos obligatoires manquantes ────────
 export function PhotosPanel({ intervention, onChanged }) {
   const id = intervention.id
+  const navigate = useNavigate()
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
@@ -351,6 +366,18 @@ export function PhotosPanel({ intervention, onChanged }) {
     <div className="flex flex-col gap-4 py-2 text-sm">
       <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp"
         className="hidden" onChange={onFile} />
+
+      {/* VX227 — lien croisé discret vers les photos avant/pendant/après du
+          chantier : les deux magasins de photos (intervention vs chantier) ne
+          sont jamais fusionnés, mais restent navigables l'un vers l'autre. */}
+      {intervention.installation && (
+        <button type="button"
+          onClick={() => navigate(`/chantiers?id=${intervention.installation}`)}
+          className="flex items-center gap-1.5 self-start text-[12px] text-muted-foreground underline decoration-dotted underline-offset-2 hover:text-foreground">
+          <Images className="size-3.5" aria-hidden="true" />
+          Voir aussi les photos du chantier
+        </button>
+      )}
 
       {manquants.length > 0 && (
         <div className="rounded border border-destructive/40 bg-destructive/5 p-2">

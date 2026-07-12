@@ -122,6 +122,60 @@ def is_devis_accepte(devis):
     return devis.statut == Devis.Statut.ACCEPTE
 
 
+def production_attendue_pour_devis(devis_id):
+    """YSERV8 — production annuelle attendue (kWh) calculée au devis.
+
+    Point d'entrée cross-app en LECTURE SEULE pour ``apps.monitoring`` (jamais
+    un import direct de ``ventes.models``) : lit la production annuelle stockée
+    dans ``Devis.etude_params['production_annuelle']`` (semée par le moteur
+    solaire à la création). Renvoie un ``Decimal`` positif, ou ``None`` si le
+    devis n'existe pas, n'a pas d'étude, ou porte une valeur non exploitable.
+    """
+    from decimal import Decimal, InvalidOperation
+
+    from .models import Devis
+    devis = Devis.objects.filter(pk=devis_id).only('etude_params').first()
+    if devis is None:
+        return None
+    params = devis.etude_params or {}
+    raw = params.get('production_annuelle')
+    if raw is None:
+        return None
+    try:
+        val = Decimal(str(raw))
+    except (InvalidOperation, ValueError, TypeError):
+        return None
+    return val if val > 0 else None
+
+
+def pr_initial_pour_chantier(installation_id):
+    """YSERV8 — énergie annuelle attendue (kWh) du test de performance FG278.
+
+    Point d'entrée cross-app en LECTURE SEULE pour ``apps.monitoring`` : renvoie
+    l'``energie_attendue_kwh`` du dernier ``TestPerformanceReception`` (PR
+    initial de recette, FG278) lié au chantier donné, ou ``None`` s'il n'y en a
+    pas de valeur exploitable. Le PR de recette prime sur l'étude du devis quand
+    il existe (mesure terrain > prévision).
+    """
+    from decimal import Decimal, InvalidOperation
+
+    from .models import TestPerformanceReception
+    raw = (TestPerformanceReception.objects
+           .filter(chantier_id=installation_id,
+                   energie_attendue_kwh__isnull=False,
+                   energie_attendue_kwh__gt=0)
+           .order_by('-date_mesure', '-created_at')
+           .values_list('energie_attendue_kwh', flat=True)
+           .first())
+    if raw is None:
+        return None
+    try:
+        val = Decimal(str(raw))
+    except (InvalidOperation, ValueError, TypeError):
+        return None
+    return val if val > 0 else None
+
+
 # ── XPRJ21 — devis accepté → projet (gestion_projet) ─────────────────────────
 _MOTS_CLES_MO = (
     'pose', 'installation', 'main d’œuvre', "main d'œuvre",

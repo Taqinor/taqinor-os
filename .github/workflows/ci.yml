@@ -438,9 +438,11 @@ jobs:
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
-      - name: Install Playwright browser (chromium)
+      - name: Install Playwright browsers (chromium + webkit)
         working-directory: frontend
-        run: npx playwright install --with-deps chromium
+        # VX68 — WebKit (Safari réel) en plus de Chromium : le smoke ajoute un
+        # passage `mobile-safari` pour attraper ce qui ne casse QUE sur Safari.
+        run: npx playwright install --with-deps chromium webkit
       - name: Build frontend (no service worker for E2E)
         working-directory: frontend
         env:
@@ -468,6 +470,10 @@ jobs:
           # dans la matrice ordonnée → reste en e2e COMPLET (release-verify), pas
           # en smoke. La matrice complète + mobile tourne dans release-verify.yml.
           npx playwright test --project=chromium devis.spec.js health.spec.js
+          # VX68 — passage WebKit RÉEL (Safari) sur le spec mobile : capte les
+          # régressions qui n'apparaissent que sur Safari (VX48 window.open
+          # post-await, sticky, backdrop-blur). PR-only, hors matrice complète.
+          npx playwright test --project=mobile-safari
       - name: Upload Playwright report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
@@ -475,6 +481,64 @@ jobs:
           name: playwright-report
           path: frontend/playwright-report
           retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # NTPLT5 — suite d'étanchéité RLS, job FACULTATIF (non-required). N'entre
+  # PAS dans ci-gate → la protection de branche reste intacte. Lance la seule
+  # suite core.tests.test_rls avec POSTGRES_RLS_ENABLED=1 (elle est sautée
+  # partout ailleurs, donc n'alourdit jamais le gate backend-tests requis).
+  # ---------------------------------------------------------------------------
+  rls-tests:
+    needs: changes
+    if: ${{ needs.changes.outputs.backend == 'true' }}
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: erp_db
+          POSTGRES_USER: erp_user
+          POSTGRES_PASSWORD: ci_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U erp_user"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7.4-alpine
+        ports:
+          - 6379:6379
+    env:
+      DJANGO_SETTINGS_MODULE: erp_agentique.settings.dev
+      DJANGO_SECRET_KEY: ci-only-secret-key-not-used-in-production
+      DJANGO_DEBUG: 'True'
+      DB_NAME: erp_db
+      DB_USER: erp_user
+      DB_PASSWORD: ci_password
+      DB_HOST: localhost
+      DB_PORT: '5432'
+      REDIS_HOST: localhost
+      REDIS_PORT: '6379'
+      MINIO_ENDPOINT: localhost:9000
+      MINIO_ROOT_USER: erp_admin
+      MINIO_ROOT_PASSWORD: erp_minio_password
+      MINIO_BUCKET_PDF: erp-pdf
+      MINIO_BUCKET_UPLOADS: erp-uploads
+      # Active la suite RLS (sautée partout ailleurs).
+      POSTGRES_RLS_ENABLED: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: backend/django_core/requirements-dev.txt
+      - uses: ./.github/actions/backend-env
+      - name: Run RLS seal suite (opt-in — flag ON)
+        working-directory: backend/django_core
+        run: python manage.py test core.tests.test_rls -v 2
 
   # ---------------------------------------------------------------------------
   # Always-running aggregate gate. Pin THIS one job as the single required

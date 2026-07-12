@@ -41,7 +41,13 @@ const configs = Object.values(configModules)
   )
 
 // Sections de navigation Sidebar (gatées par rôle/permission, comme les autres).
-export const moduleNavSections = configs.map((c) => c.nav).filter(Boolean)
+// ODX6 — on propage la clé de module (`c.key`) sur la section de nav pour que le
+// gating par module actif/désactivé (router/moduleGating) puisse la masquer si
+// la société a désactivé ce module. Le `key` déjà présent dans un `nav` explicite
+// n'est pas écrasé.
+export const moduleNavSections = configs
+  .filter((c) => c.nav)
+  .map((c) => ({ key: c.key, ...c.nav }))
 
 // Titres de page (routes.meta) : [préfixe, titre], du plus spécifique au général.
 export const moduleTitles = configs.flatMap((c) => c.titles ?? [])
@@ -59,13 +65,20 @@ export const moduleSectionLabels = Object.assign(
    est simplement rendu comme enfant. */
 export function buildModuleRoutes(deps) {
   const { authLoader, roleLoader } = deps
+  // ODX6 — garde de module : un loader qui, une fois la session/le rôle
+  // vérifiés, redirige vers /dashboard si le module de cette route est
+  // désactivé pour la société. `moduleLoader(key)` reçoit du routeur le loader
+  // de base (auth ou rôle) et l'enveloppe. Sans `key` (route sans module) ou
+  // sans `moduleLoader` fourni, le comportement est inchangé.
+  const moduleLoader = deps.moduleLoader
   // Variable PascalCase (couverte par varsIgnorePattern '^[A-Z_]') plutôt qu'un
   // argument déstructuré : le lint local ne compte pas l'usage JSX seul.
   const WithLayout = deps.WithLayout
   return configs.flatMap((c) =>
     (c.routes ?? []).map((r) => {
       const Comp = r.component
-      const loader = r.roles ? roleLoader(r.roles, r.perm) : authLoader
+      const base = r.roles ? roleLoader(r.roles, r.perm) : authLoader
+      const loader = (c.key && moduleLoader) ? moduleLoader(c.key, base) : base
       return {
         path: r.path,
         loader,

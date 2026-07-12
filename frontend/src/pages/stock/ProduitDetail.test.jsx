@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { Provider } from 'react-redux'
+import { configureStore } from '@reduxjs/toolkit'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
 /* ============================================================================
@@ -18,8 +20,11 @@ vi.mock('../../api/stockApi', () => ({
 import stockApi from '../../api/stockApi'
 import { ProduitDetail } from './ProduitDetail.jsx'
 
+const store = configureStore({
+  reducer: { auth: (s = { role: 'Directeur', role_nom: 'Directeur', permissions: [] }) => s },
+})
 function wrapper({ children }) {
-  return <ThemeProvider>{children}</ThemeProvider>
+  return <Provider store={store}><ThemeProvider>{children}</ThemeProvider></Provider>
 }
 
 const produit = {

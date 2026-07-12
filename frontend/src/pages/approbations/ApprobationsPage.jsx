@@ -1,12 +1,17 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { CheckCircle2, Inbox, XCircle } from 'lucide-react'
+import { CheckCircle2, Inbox, Trash2, UserCog, XCircle } from 'lucide-react'
 import reportingApi from '../../api/reportingApi'
+import automationApi from '../../api/automationApi'
+import api from '../../api/axios'
 import { formatMAD } from '../../lib/format'
 import {
-  Badge, Button, DataTable, EmptyState, Select, SelectTrigger, SelectValue,
-  SelectContent, SelectItem, Spinner, toast,
+  Badge, Button, Card, DataTable, DateRangePicker, EmptyState, Form,
+  FormActions, FormField, FormSection, Select, SelectTrigger, SelectValue,
+  SelectContent, SelectItem, Spinner, Tabs, TabsList, TabsTrigger, TabsContent,
+  toast,
 } from '../../ui'
+import { useConfirmDialog } from '../../ui/confirm'
 
 /* ============================================================================
    XKB1/ZCTR7-9 — Boîte d'approbations centralisée (agrégateur cross-app).
@@ -42,7 +47,183 @@ function fetchApprobations(params) {
     .then((r) => r.data?.items ?? [])
 }
 
-export default function ApprobationsPage() {
+/* ============================================================================
+   VX103 — Onglet « Délégations » : suppléant + plage de dates, pur câblage sur
+   l'API existante (`automation/approval-delegations/`, XKB3). Pendant que la
+   délégation est active, le suppléant voit les items du délégant dans l'onglet
+   « File » ci-dessus (déjà géré serveur par `visible_demandeur_ids_for`) — rien
+   à faire ici pour ça. *(@coord NTWFL3 étend la couverture backend de cette
+   même délégation au moteur WorkflowStepInstance — cette UI ne suppose pas la
+   seule couverture ApprovalRequest.)* ============================================================================ */
+function isDelegationActive(d) {
+  const now = new Date()
+  return new Date(d.date_debut) <= now && now <= new Date(d.date_fin)
+}
+
+function DelegationsTab() {
+  const { confirmDelete } = useConfirmDialog()
+  const [delegations, setDelegations] = useState([])
+  const [users, setUsers] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [suppleant, setSuppleant] = useState('')
+  const [range, setRange] = useState({ start: null, end: null })
+
+  const load = () => {
+    setLoading(true)
+    return Promise.all([
+      automationApi.getDelegations(),
+      api.get('/users/'),
+    ])
+      .then(([delegRes, usersRes]) => {
+        setDelegations(delegRes.data?.results ?? delegRes.data ?? [])
+        setUsers(usersRes.data?.results ?? usersRes.data ?? [])
+      })
+      .catch(() => toast.error('Chargement des délégations impossible.'))
+      .finally(() => setLoading(false))
+  }
+
+  // Chargement initial — le setState a lieu dans les callbacks async.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { load() }, [])
+
+  const create = async (e) => {
+    e.preventDefault()
+    if (!suppleant || !range.start || !range.end) {
+      toast.error('Choisissez un suppléant et une plage de dates.')
+      return
+    }
+    setSaving(true)
+    try {
+      await automationApi.createDelegation({
+        suppleant: Number(suppleant),
+        date_debut: range.start.toISOString(),
+        date_fin: range.end.toISOString(),
+      })
+      toast.success('Délégation créée.')
+      setSuppleant('')
+      setRange({ start: null, end: null })
+      load()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail
+        || err?.response?.data?.suppleant?.[0]
+        || err?.response?.data?.non_field_errors?.[0]
+        || 'Création impossible.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const revoke = async (d) => {
+    const ok = await confirmDelete({
+      title: 'Révoquer cette délégation ?',
+      description: `La délégation vers « ${d.suppleant_nom || d.suppleant} » sera immédiatement retirée.`,
+      confirmLabel: 'Révoquer',
+    })
+    if (!ok) return
+    try {
+      await automationApi.deleteDelegation(d.id)
+      toast.success('Délégation révoquée.')
+      load()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || 'Révocation impossible.')
+    }
+  }
+
+  const userLabel = (id) => users.find((u) => u.id === id)?.username || `#${id}`
+
+  const now = new Date()
+  const actives = delegations.filter((d) => isDelegationActive(d))
+  const avenir = delegations.filter((d) => new Date(d.date_debut) > now)
+  const passees = delegations.filter((d) => new Date(d.date_fin) < now)
+
+  const renderRow = (d) => (
+    <li
+      key={d.id}
+      className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-card px-3 py-2.5"
+    >
+      <span className="flex items-center gap-2 text-sm">
+        <UserCog className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+        <span>
+          <strong className="font-medium text-foreground">{d.delegant_nom || userLabel(d.delegant)}</strong>
+          {' → '}
+          <strong className="font-medium text-foreground">{d.suppleant_nom || userLabel(d.suppleant)}</strong>
+        </span>
+        {isDelegationActive(d) && <Badge tone="success">Active</Badge>}
+        <span className="text-xs text-muted-foreground">
+          {new Date(d.date_debut).toLocaleDateString('fr-FR')} → {new Date(d.date_fin).toLocaleDateString('fr-FR')}
+        </span>
+      </span>
+      <Button
+        size="sm" variant="ghost"
+        onClick={() => revoke(d)}
+        data-testid={`delegation-revoke-${d.id}`}
+      >
+        <Trash2 /> Révoquer
+      </Button>
+    </li>
+  )
+
+  return (
+    <div className="flex flex-col gap-5">
+      <Card className="p-4 sm:p-5">
+        <Form onSubmit={create} className="gap-4">
+          <FormSection title="Nouvelle délégation" description="Pendant votre absence, votre suppléant voit et décide vos demandes en attente.">
+            <FormField label="Suppléant" required htmlFor="delegation-suppleant">
+              <Select value={suppleant ? String(suppleant) : undefined} onValueChange={setSuppleant}>
+                <SelectTrigger id="delegation-suppleant"><SelectValue placeholder="Choisir un suppléant…" /></SelectTrigger>
+                <SelectContent>
+                  {users.map((u) => (
+                    <SelectItem key={u.id} value={String(u.id)}>{u.username}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FormField>
+            <FormField label="Période" required htmlFor="delegation-periode">
+              <DateRangePicker id="delegation-periode" value={range} onChange={setRange} />
+            </FormField>
+          </FormSection>
+          <FormActions sticky={false}>
+            <Button type="submit" loading={saving}>Déléguer</Button>
+          </FormActions>
+        </Form>
+      </Card>
+
+      {loading ? (
+        <p className="flex items-center gap-2 py-6 text-sm text-muted-foreground"><Spinner /> Chargement…</p>
+      ) : delegations.length === 0 ? (
+        <EmptyState
+          icon={UserCog}
+          title="Aucune délégation"
+          description="Créez une délégation pour qu'un suppléant traite vos demandes pendant votre absence."
+        />
+      ) : (
+        <div className="flex flex-col gap-5">
+          {actives.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <h3 className="text-sm font-semibold text-foreground">Actives</h3>
+              <ul className="flex flex-col gap-2">{actives.map(renderRow)}</ul>
+            </div>
+          )}
+          {avenir.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <h3 className="text-sm font-semibold text-foreground">À venir</h3>
+              <ul className="flex flex-col gap-2">{avenir.map(renderRow)}</ul>
+            </div>
+          )}
+          {passees.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <h3 className="text-sm font-semibold text-muted-foreground">Passées</h3>
+              <ul className="flex flex-col gap-2">{passees.map(renderRow)}</ul>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ApprobationsFileTab() {
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [source, setSource] = useState('')
@@ -225,15 +406,7 @@ export default function ApprobationsPage() {
   ]
 
   return (
-    <div className="page">
-      <div className="page-header">
-        <h1 className="page-title">Approbations en attente</h1>
-        <div className="page-subtitle">
-          Boîte unique — automatisations, contrats, GED, réquisitions
-          installations et étapes de workflow en attente de votre décision.
-        </div>
-      </div>
-
+    <div>
       <div className="mb-4 flex flex-wrap items-end gap-3">
         <div className="flex flex-col gap-1">
           <span className="text-xs font-medium text-muted-foreground">Source</span>
@@ -292,6 +465,34 @@ export default function ApprobationsPage() {
           aria-label="Approbations en attente"
         />
       )}
+    </div>
+  )
+}
+
+export default function ApprobationsPage() {
+  return (
+    <div className="page">
+      <div className="page-header">
+        <h1 className="page-title">Approbations en attente</h1>
+        <div className="page-subtitle">
+          Boîte unique — automatisations, contrats, GED, réquisitions
+          installations et étapes de workflow en attente de votre décision, plus
+          la gestion de vos délégations d'absence.
+        </div>
+      </div>
+
+      <Tabs defaultValue="file">
+        <TabsList>
+          <TabsTrigger value="file">File</TabsTrigger>
+          <TabsTrigger value="delegations">Délégations</TabsTrigger>
+        </TabsList>
+        <TabsContent value="file">
+          <ApprobationsFileTab />
+        </TabsContent>
+        <TabsContent value="delegations">
+          <DelegationsTab />
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

@@ -11,7 +11,7 @@
 // aucune erreur, aucun blocage. Le backend web-push n'existe pas encore : on ne
 // fait qu'enregistrer la PERMISSION ; l'abonnement réel sera ajouté ensuite.
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import {
   Bell, Clock, ShieldCheck, Banknote, X, BellRing, Check, Settings,
   CalendarClock, RefreshCw, Inbox,
@@ -23,6 +23,9 @@ import { toastInfo } from '../../lib/toast'
 // badge nav Sidebar et la carte Dashboard) : rangée « N approbations » en
 // tête de la cloche.
 import { useApprobationsCount } from '../../hooks/useApprobationsCount'
+// VX56 — sondage sensible à la visibilité de l'onglet (patron partagé avec
+// `useChatPolling`) : cesse de sonder un onglet caché.
+import useVisibilityAwarePolling from '../../hooks/useVisibilityAwarePolling'
 
 // Bip court (Web Audio) joué à l'arrivée d'une nouvelle notification quand
 // l'app est ouverte. Best-effort : échoue silencieusement si l'autoplay audio
@@ -85,6 +88,40 @@ function initialPerm() {
 // duquel on affiche un indicateur discret « Mise à jour interrompue ».
 const STALL_THRESHOLD = 3
 
+// VX14 — Config DÉCLARATIVE des onglets du panneau (delta mince, vérifié).
+// Le panneau groupait DÉJÀ par domaine en sections empilées ; on les range
+// désormais dans 2-3 onglets internes avec compteur. Ajouter un domaine =
+// une entrée `groups` ici (pas du JSX copié) : chaque groupe déclare son id
+// (utilisé pour router son propre rendu existant) + une fonction `count(ctx)`
+// qui lit l'état du panneau (feed/data/approbations) pour le compteur total
+// de l'onglet — aucune duplication du rendu de groupe lui-même.
+const NOTIF_TABS = [
+  {
+    id: 'activites',
+    label: 'Activités',
+    groups: ['approbations', 'feed', 'activites_en_retard'],
+    count: (ctx) =>
+      (ctx.showApprobationsRow ? ctx.approbationsTotal : 0) +
+      ctx.feedUnread +
+      (ctx.data?.activites_en_retard?.length ?? 0),
+  },
+  {
+    id: 'echeances',
+    label: 'Échéances',
+    groups: ['garanties_expirantes', 'contrats_a_renouveler', 'visites_dues'],
+    count: (ctx) =>
+      (ctx.data?.garanties_expirantes?.length ?? 0) +
+      (ctx.data?.contrats_a_renouveler?.length ?? 0) +
+      (ctx.data?.visites_dues?.length ?? 0),
+  },
+  {
+    id: 'financier',
+    label: 'Financier',
+    groups: ['factures_impayees'],
+    count: (ctx) => ctx.data?.factures_impayees?.length ?? 0,
+  },
+]
+
 export default function NotificationBell() {
   const [data, setData] = useState(null)
   // L11 — distinguer un échec de fetch d'un vrai « rien à signaler ».
@@ -95,6 +132,8 @@ export default function NotificationBell() {
   const [feed, setFeed] = useState([])
   const [feedUnread, setFeedUnread] = useState(0)
   const [open, setOpen] = useState(false)
+  // VX14 — onglet interne actif du panneau (déclaratif, voir NOTIF_TABS).
+  const [activeTab, setActiveTab] = useState(NOTIF_TABS[0].id)
   // VX204 — compteur d'échecs consécutifs du sondage léger (`checkUnread`) :
   // rien ne détectait auparavant une SÉRIE d'échecs (silence total).
   const unreadFailRef = useRef(0)
@@ -108,6 +147,10 @@ export default function NotificationBell() {
   // notification (compteur en hausse) pour déclencher le bip + le toast.
   const prevUnreadRef = useRef(null)
   const navigate = useNavigate()
+  // VX82 — chaque changement de route peut poser un NOUVEAU titre de page
+  // (`useDocumentTitle` dans la page elle-même) : on réapplique le préfixe
+  // juste après pour qu'il survive à la navigation.
+  const location = useLocation()
   // VX86 — même hook que le badge nav Sidebar et la carte Dashboard : un seul
   // total cohérent affiché partout.
   const { total: approbationsTotal, loading: approbationsLoading, error: approbationsError } = useApprobationsCount()
@@ -156,22 +199,19 @@ export default function NotificationBell() {
       .catch(() => { setData(null); setDerivedError(true) })
       .finally(() => setLoaded(true))
     refreshFeed()
-    checkUnread()
   }
 
-  useEffect(() => {
-    load()
-    // Rafraîchissement complet (alertes dérivées + feed) toutes les 3 min.
-    const ivFull = setInterval(load, 3 * 60 * 1000)
-    // Sondage léger du compteur toutes les 30 s → alerte sonore + toast quasi
-    // temps réel dès qu'une notification arrive, app ouverte.
-    const ivPoll = setInterval(checkUnread, 30 * 1000)
-    return () => { clearInterval(ivFull); clearInterval(ivPoll) }
-    // mount-only: install the two intervals once; `load`/`checkUnread` are
-    // re-created each render but read via closure, re-running this on every
-    // render would restart both timers continuously.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  // VX56 — les deux cadences (rafraîchissement complet 3 min, sondage léger
+  // 30 s) sont désormais SUSPENDUES quand l'onglet est masqué et rafraîchies
+  // immédiatement au retour, via le hook partagé avec `useChatPolling`.
+  // `checkUnread` n'est plus appelé À L'INTÉRIEUR de `load` (VX56) : le hook
+  // partagé les programme déjà tous les deux au montage — les enchaîner ici
+  // aurait doublé chaque appel (mount + tous les ~3 min quand les deux
+  // cadences coïncident).
+  const { resume: resumePolling } = useVisibilityAwarePolling([
+    { fn: load, intervalMs: 3 * 60 * 1000 },
+    { fn: checkUnread, intervalMs: 30 * 1000 },
+  ])
 
   // Marque une notification persistée comme lue, puis recharge le compteur.
   // On ne met à jour l'UI QUE si le serveur a confirmé (succès) : un échec ne
@@ -202,6 +242,21 @@ export default function NotificationBell() {
   // Le compteur de la cloche cumule les alertes dérivées et les notifications
   // in-app persistées non lues.
   const total = derivedTotal + feedUnread
+
+  // VX82 — préfixe `(N)` sur le titre d'onglet quand des notifications sont
+  // non lues (chrome navigateur vivant). La cloche vit dans le header, monté
+  // pour toute la durée de vie du SPA — contrairement à `useDocumentTitle`
+  // (page-scoped, restaure l'ancien titre au démontage), on RETIRE puis
+  // RÉAPPLIQUE juste le préfixe à chaque changement de `total`, sans jamais
+  // toucher au reste du titre — ainsi ça compose sans ordre imposé avec le
+  // titre de page posé par `useDocumentTitle` (peu importe lequel des deux
+  // effets tourne en dernier après une navigation).
+  useEffect(() => {
+    const stripped = document.title.replace(/^\(\d+\+?\)\s*/, '')
+    document.title = total > 0 ? `(${total > 99 ? '99+' : total}) ${stripped}` : stripped
+     
+  }, [total, location.pathname])
+
   const goto = (path) => { navigate(path); setOpen(false) }
 
   // Demande l'autorisation à la DEMANDE de l'utilisateur (clic), jamais avant.
@@ -243,7 +298,7 @@ export default function NotificationBell() {
             <button
               type="button"
               className="nb-stalled"
-              onClick={() => { unreadFailRef.current = 0; setStalled(false); checkUnread() }}
+              onClick={() => { unreadFailRef.current = 0; setStalled(false); resumePolling() }}
             >
               Mise à jour interrompue — reprendre
             </button>
@@ -292,10 +347,31 @@ export default function NotificationBell() {
             <div className="nb-empty">Rien à signaler 🎉</div>
           ) : (
             <>
+              {/* VX14 — onglets internes déclaratifs (NOTIF_TABS) : remplace les
+                  groupes empilés par domaine. Chaque onglet affiche son
+                  compteur (somme des groupes qu'il contient). */}
+              <div className="nb-tabs" role="tablist" aria-label="Catégories de notifications">
+                {NOTIF_TABS.map((tab) => {
+                  const n = tab.count({ data, feedUnread, showApprobationsRow, approbationsTotal })
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      role="tab"
+                      aria-selected={activeTab === tab.id}
+                      className={`nb-tab${activeTab === tab.id ? ' nb-tab-active' : ''}`}
+                      onClick={() => setActiveTab(tab.id)}
+                    >
+                      {tab.label}
+                      {n > 0 && <span className="nb-tab-count">{n > 99 ? '99+' : n}</span>}
+                    </button>
+                  )
+                })}
+              </div>
               {/* VX86 — rangée « N approbations », EN TÊTE (avant les autres
                   groupes) : l'inbox d'approbations dort sinon dans la section
                   ANALYSE de la sidebar sans jamais apparaître ici. */}
-              {showApprobationsRow && (
+              {activeTab === 'activites' && showApprobationsRow && (
                 <div className="nb-group">
                   <div className="nb-group-title">
                     <Inbox size={13} aria-hidden="true" /> Approbations
@@ -311,7 +387,7 @@ export default function NotificationBell() {
                   </button>
                 </div>
               )}
-              {feed.length > 0 && (
+              {activeTab === 'activites' && feed.length > 0 && (
                 <div className="nb-group">
                   <div className="nb-group-title">
                     <BellRing size={13} aria-hidden="true" /> Activité récente
@@ -344,7 +420,7 @@ export default function NotificationBell() {
                   ))}
                 </div>
               )}
-              {data && (data.activites_en_retard?.length ?? 0) > 0 && (
+              {activeTab === 'activites' && data && (data.activites_en_retard?.length ?? 0) > 0 && (
                 <div className="nb-group">
                   <div className="nb-group-title">
                     {/* VX84 — ce groupe est désormais borné à `assigned_to=
@@ -362,7 +438,7 @@ export default function NotificationBell() {
                   ))}
                 </div>
               )}
-              {data && (data.garanties_expirantes?.length ?? 0) > 0 && (
+              {activeTab === 'echeances' && data && (data.garanties_expirantes?.length ?? 0) > 0 && (
                 <div className="nb-group">
                   <div className="nb-group-title">
                     <ShieldCheck size={13} aria-hidden="true" /> Garanties (≤ 90 j)
@@ -376,7 +452,7 @@ export default function NotificationBell() {
                   ))}
                 </div>
               )}
-              {data && (data.factures_impayees?.length ?? 0) > 0 && (
+              {activeTab === 'financier' && data && (data.factures_impayees?.length ?? 0) > 0 && (
                 <div className="nb-group">
                   <div className="nb-group-title">
                     <Banknote size={13} aria-hidden="true" /> Factures impayées
@@ -390,7 +466,7 @@ export default function NotificationBell() {
                   ))}
                 </div>
               )}
-              {data && (data.contrats_a_renouveler?.length ?? 0) > 0 && (
+              {activeTab === 'echeances' && data && (data.contrats_a_renouveler?.length ?? 0) > 0 && (
                 <div className="nb-group">
                   <div className="nb-group-title">
                     <RefreshCw size={13} aria-hidden="true" /> Contrats à renouveler (≤ 90 j)
@@ -404,7 +480,7 @@ export default function NotificationBell() {
                   ))}
                 </div>
               )}
-              {data && (data.visites_dues?.length ?? 0) > 0 && (
+              {activeTab === 'echeances' && data && (data.visites_dues?.length ?? 0) > 0 && (
                 <div className="nb-group">
                   <div className="nb-group-title">
                     <CalendarClock size={13} aria-hidden="true" /> Visites dues
@@ -417,6 +493,13 @@ export default function NotificationBell() {
                     </button>
                   ))}
                 </div>
+              )}
+              {/* VX14 — onglet actif sans le moindre élément : message dédié
+                  plutôt qu'un panneau vide silencieux. */}
+              {NOTIF_TABS.find((t) => t.id === activeTab)?.count(
+                { data, feedUnread, showApprobationsRow, approbationsTotal },
+              ) === 0 && (
+                <div className="nb-empty">Rien à signaler ici</div>
               )}
             </>
           )}

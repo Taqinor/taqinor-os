@@ -1867,6 +1867,61 @@ def verifier_credit_hold(client, *, override=False, user=None,
             chatter_target, user, result['motif'])
 
 
+class SaleWarningError(Exception):
+    """ZSAL9 — levée quand un devis porte un avertissement de vente BLOQUANT
+    (produit et/ou client) sans override responsable/admin.
+
+    Porte le message concaténé (``motif``) pour un 403 explicite."""
+
+    def __init__(self, motif):
+        super().__init__(motif)
+        self.motif = motif
+
+
+def verifier_sale_warnings(devis, *, override=False, user=None,
+                           chatter_target=None):
+    """ZSAL9 — vérifie les avertissements de vente (« sale warnings ») avant une
+    action sensible (accepter un devis, générer une facture).
+
+    Collecte les messages BLOQUANTS du client du devis et des produits de ses
+    lignes (lus via ``stock.selectors`` — jamais d'import de ``stock.models``).
+    Sans message bloquant → no-op. Avec au moins un message bloquant : lève
+    ``SaleWarningError`` SAUF si ``override=True`` (responsable/admin explicite),
+    auquel cas l'override est journalisé (chatter du devis si fourni). Les
+    avertissements NON bloquants n'empêchent jamais l'action (ils ne sont
+    qu'affichés côté écran). Ne renvoie rien ; lève ou passe silencieusement."""
+    motifs = []
+
+    client = getattr(devis, 'client', None)
+    if client is not None and getattr(client, 'avertissement_bloquant', False) \
+            and (getattr(client, 'avertissement_vente', '') or '').strip():
+        motifs.append(f'Client — {client.avertissement_vente.strip()}')
+
+    from apps.stock import selectors as stock_selectors
+    produit_ids = list(
+        devis.lignes.exclude(produit__isnull=True)
+        .values_list('produit_id', flat=True)
+    )
+    for row in stock_selectors.produits_avertissements(devis.company, produit_ids):
+        if row.get('avertissement_bloquant') \
+                and (row.get('avertissement_vente') or '').strip():
+            motifs.append(
+                f"Produit « {row.get('nom', '')} » — "
+                f"{row['avertissement_vente'].strip()}")
+
+    if not motifs:
+        return
+
+    motif = ' ; '.join(motifs)
+    if not override:
+        raise SaleWarningError(motif)
+
+    # Override responsable/admin : journalise au chatter du devis.
+    if chatter_target is not None:
+        from . import activity
+        activity.log_devis_sale_warning_override(chatter_target, user, motif)
+
+
 def _s2(x):
     from decimal import Decimal
     return str(Decimal(x or 0).quantize(Decimal('0.01')))

@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useSearchParams } from 'react-router-dom'
-import { Upload, Download, X, Plus, MoreHorizontal } from 'lucide-react'
+// VX45 — ⚡/🔀 (emoji fonctionnels, rendu variable selon l'OS) remplacés par
+// Zap/GitMerge (GitMerge = même icône que la section « Doublons » de
+// LeadForm.jsx, features/crm/stages : un seul vocabulaire visuel).
+import { Upload, Download, X, Plus, MoreHorizontal, Zap, GitMerge } from 'lucide-react'
 import { useIsAdmin } from '../../../hooks/useHasPermission'
 import { fetchLeads, updateLead, leadStagePatched } from '../../../features/crm/store/crmSlice'
 import crmApi from '../../../api/crmApi'
@@ -15,6 +18,7 @@ import {
 } from '../../../ui'
 import { errorMessageFrom, toastWithUndo, toastError } from '../../../lib/toast'
 import { useSavedViews } from '../../../hooks/useSavedViews'
+import useDocumentTitle from '../../../hooks/useDocumentTitle'
 import LeadForm from '../LeadForm'
 import ExcelImport from '../../../components/ExcelImport'
 import SavedViewsBar, { SaveViewButton } from '../../../components/SavedViewsBar'
@@ -29,11 +33,12 @@ import ListView from './views/ListView'
 import CalendarView from './views/CalendarView'
 import ChartsView from './views/ChartsView'
 import CarteView from './views/CarteView'  // FG37
+import ForecastView from './views/ForecastView'  // XSAL15
 
 const VIEW_KEY = 'taqinor.leads.view'
 const FILTERS_KEY = 'taqinor.leads.filters'
 const SAVED_VIEWS_KEY = 'taqinor.leads.savedViews'
-const VALID_VIEWS = ['kanban', 'liste', 'calendrier', 'graphique', 'carte']  // FG37
+const VALID_VIEWS = ['kanban', 'liste', 'calendrier', 'graphique', 'carte', 'prevision']  // FG37, XSAL15
 
 // loadSavedViews inlined removed — now using useSavedViews hook (FG11).
 
@@ -51,6 +56,8 @@ function loadFilters() {
 }
 
 export default function LeadsPage() {
+  // VX82 — titre d'onglet dédié (chrome navigateur vivant).
+  useDocumentTitle('Leads')
   const dispatch = useDispatch()
   const [searchParams, setSearchParams] = useSearchParams()
   const { leads, leadsLoading, error } = useSelector(s => s.crm)
@@ -407,7 +414,7 @@ export default function LeadsPage() {
             variant="outline"
             title="Saisie express : nom + téléphone + canal"
             onClick={() => setShowExpressModal(true)}
-          >⚡ Express</Button>
+          ><Zap aria-hidden="true" size={14} /> Express</Button>
           {/* VX145(b) — Doublons/Importer/Exporter sont des fréquences basses
               face aux 2 contrôles ci-dessus ; démotés dans un menu « ⋯ »
               (pattern DropdownMenu déjà importé dans ListView.jsx). */}
@@ -424,7 +431,7 @@ export default function LeadsPage() {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onSelect={() => setShowDoublons(true)}>
-                🔀 Doublons
+                <GitMerge aria-hidden="true" /> Doublons
                 {doublonsCount > 0 && (
                   <span className="count-badge" title="Groupes de doublons détectés">
                     {doublonsCount}
@@ -515,6 +522,9 @@ export default function LeadsPage() {
             onOpenLead={onOpenLead}
           />
         )}
+        {/* XSAL15 — Vue prévision : leads ouverts groupés par mois de clôture
+            prévue, glisser une carte replanifie le mois. */}
+        {view === 'prevision' && <ForecastView {...viewProps} />}
       </div>
 
       {(showForm || deepLead) && (

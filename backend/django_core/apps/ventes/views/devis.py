@@ -28,6 +28,7 @@ from authentication.permissions import (  # noqa: F401
     IsAnyRole,
     IsResponsableOrAdmin,
     IsAdminRole,
+    HasPermissionOrLegacy,
 )
 from core.viewsets import CompanyScopedModelViewSet  # noqa: F401  ARC5
 from ..utils.references import create_with_reference  # noqa: F401
@@ -111,9 +112,15 @@ class DevisViewSet(CompanyScopedModelViewSet):
             # variante_config : la LECTURE est ouverte à tous ; l'ÉCRITURE (PUT)
             # est re-vérifiée dans l'action (Directeur / Commercial responsable).
             return [IsAnyRole()]
+        elif self.action in ('accepter', 'refuser'):
+            # VX199 — validation/refus de devis : permission ERP FINE
+            # (ventes_valider), pas le grossier IsResponsableOrAdmin (qui passe
+            # pour tout rôle portant une écriture). get_permissions PRIME sur le
+            # permission_classes de l'@action, donc la garde fine doit être ICI.
+            return [HasPermissionOrLegacy('ventes_valider')()]
         elif self.action in WRITE_ACTIONS + [
             'generer_pdf', 'telecharger_pdf', 'convertir_en_bc', 'proposal',
-            'generer_facture', 'reviser', 'accepter', 'refuser', 'noter',
+            'generer_facture', 'reviser', 'noter',
             'layout', 'roof_image', 'from_layout', 'auto', 'share_link',
             'envoyer_email', 'dupliquer_variante', 'variantes',
             'save_preset', 'apply_preset', 'contacter_superieur',
@@ -1002,7 +1009,7 @@ class DevisViewSet(CompanyScopedModelViewSet):
             status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['post'], url_path='accepter',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[HasPermissionOrLegacy('ventes_valider')])
     def accepter(self, request, pk=None):
         """N25 — marque le devis « accepté » à une date choisie, en capturant le
         nom de la personne qui accepte ; l'acceptation est consignée dans le
@@ -1011,6 +1018,7 @@ class DevisViewSet(CompanyScopedModelViewSet):
         from datetime import date as _date
         from ..services import (
             accept_devis, AcceptError, verifier_credit_hold, CreditHoldError,
+            verifier_sale_warnings, SaleWarningError,
         )
         devis = self.get_object()
         nom = (request.data.get('nom') or '').strip()
@@ -1039,6 +1047,20 @@ class DevisViewSet(CompanyScopedModelViewSet):
                         'outre avec `override_credit: true`.'),
                      'credit_hold': True},
                     status=status.HTTP_403_FORBIDDEN)
+        # ZSAL9 — avertissement de vente BLOQUANT (produit/client). Vide (défaut)
+        # → no-op. Bloquant → 403, sauf override responsable/admin journalisé.
+        try:
+            verifier_sale_warnings(
+                devis, override=bool(request.data.get('override_avertissement')),
+                user=request.user, chatter_target=devis)
+        except SaleWarningError as exc:
+            return Response(
+                {'detail': (
+                    f'Avertissement de vente bloquant : {exc.motif}. '
+                    'Un responsable/admin peut passer outre avec '
+                    '`override_avertissement: true`.'),
+                 'sale_warning': True},
+                status=status.HTTP_403_FORBIDDEN)
         # A1 — option retenue (« Sans batterie » / « Avec batterie »). La
         # résolution (deux options → choix explicite obligatoire ; mono-option
         # → déduit du scénario) et le tampon d'acceptation passent désormais
@@ -1090,7 +1112,7 @@ class DevisViewSet(CompanyScopedModelViewSet):
         return option, None
 
     @action(detail=True, methods=['post'], url_path='refuser',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[HasPermissionOrLegacy('ventes_valider')])
     def refuser(self, request, pk=None):
         """FG44 — marque le devis « refusé » avec date + motif + chatter.
 
@@ -1383,6 +1405,10 @@ class DevisViewSet(CompanyScopedModelViewSet):
         self._guard_discount_approval(
             serializer.instance, ancien_statut, nouveau_statut, remise)
         super().perform_update(serializer)
+        # VX98 — dernier auteur de modification (server-side, jamais du corps) :
+        # alimente la puce de fraîcheur. Pattern archived_by.
+        serializer.instance.updated_by = self.request.user
+        serializer.instance.save(update_fields=['updated_by'])
         from apps.crm.services import avancer_stage_pour_devis
         avancer_stage_pour_devis(
             serializer.instance, ancien_statut,
@@ -1634,6 +1660,7 @@ class DevisViewSet(CompanyScopedModelViewSet):
         from ..services import (
             reserver_stock_devis_facture, StockInsuffisantError,
             verifier_credit_hold, CreditHoldError,
+            verifier_sale_warnings, SaleWarningError,
         )
         company = request.user.company
         # XFAC28 — blocage crédit dur (étend FG41). Flag OFF (défaut) → no-op.
@@ -1651,6 +1678,19 @@ class DevisViewSet(CompanyScopedModelViewSet):
                         'outre avec `override_credit: true`.'),
                      'credit_hold': True},
                     status=status.HTTP_403_FORBIDDEN)
+        # ZSAL9 — avertissement de vente BLOQUANT (produit/client). Vide → no-op.
+        try:
+            verifier_sale_warnings(
+                devis, override=bool(request.data.get('override_avertissement')),
+                user=request.user, chatter_target=devis)
+        except SaleWarningError as exc:
+            return Response(
+                {'detail': (
+                    f'Avertissement de vente bloquant : {exc.motif}. '
+                    'Un responsable/admin peut passer outre avec '
+                    '`override_avertissement: true`.'),
+                 'sale_warning': True},
+                status=status.HTTP_403_FORBIDDEN)
         try:
             # U9 — la facturation directe par échéancier court-circuite le bon
             # de commande : on réserve/consomme ici le stock matériel du devis,

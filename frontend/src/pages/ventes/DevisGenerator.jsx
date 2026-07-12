@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch } from 'react-redux'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
@@ -18,9 +18,9 @@ import crmApi from '../../api/crmApi'
 import stockApi from '../../api/stockApi'
 import ventesApi from '../../api/ventesApi'
 import parametresApi from '../../api/parametresApi'
-import ProduitPicker from '../../components/ProduitPicker'
 import ClientQuickCreateModal from './ClientQuickCreateModal'
 import DevisPresetPanel from './DevisPresetPanel'
+import DevisLineRow from './DevisLineRow'
 import { Combobox } from '../../ui/Combobox'
 import { searchCompanies } from '../../features/crm/companyLookup'
 import {
@@ -28,9 +28,12 @@ import {
   Input, Textarea, Label, Segmented,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+  HelpTip,
 } from '../../ui'
 import { useCanCreateProduit } from '../../hooks/useHasPermission'
 import useKeyboardAwareScroll from '../../hooks/useKeyboardAwareScroll'
+import { useDirtyGuard } from '../../ui/useDirtyGuard'
+import { useDraftAutosave } from '../../ui/useDraftAutosave'
 import {
   MONTHS_FR, CHART_MONTHS, DEFAULT_MONTHLY_BILLS, DAY_USAGE_DEFAULTS,
   formatMoney, estimerMois, estimerPanneaux, computeROI, ttcFromHt, htFromTtc,
@@ -41,13 +44,12 @@ import {
   isBattery, isHybridInverter, isReseauInverter, isPanel, isPompe,
   prixParKwc, discountForTarget,
   computeBuyCost, avecBatterieAvailability, KWH_PRICE, EFFICIENCY,
-  panneauxPourKwc, expectedTvaForDesignation,
+  panneauxPourKwc,
   TVA_STANDARD_DEFAUT, TVA_PANNEAUX_DEFAUT,
-  classifyProduct,
   kwhFromBill, buildEtudeParamsChoice, multiPropertyPreviewTTC,
   productibleForCity,
 } from '../../features/ventes/solar'
-import { formatNumber, formatMAD } from '../../lib/format'
+import { formatNumber, formatMAD, formatDateTime } from '../../lib/format'
 
 const MODE_OPTIONS = [
   { value: 'residentiel', label: '🏠 Résidentiel' },
@@ -57,6 +59,19 @@ const MODE_OPTIONS = [
 
 let _keyCounter = 0
 const newKey = () => ++_keyCounter
+
+// VX93 — défaut intelligent : dernier taux TVA saisi sur une ligne ajoutée à la
+// main (localStorage). Repli sur le taux standard (20 %) si absent. Toujours
+// modifiable ligne par ligne ; jamais bloquant.
+const LAST_TVA_KEY = 'taqinor.devisGenerator.lastTva'
+const lireLastTva = () => {
+  try { return window.localStorage.getItem(LAST_TVA_KEY) || String(TVA_STANDARD_DEFAUT) }
+  catch { return String(TVA_STANDARD_DEFAUT) }
+}
+const ecrireLastTva = (v) => {
+  try { if (v !== '' && v != null) window.localStorage.setItem(LAST_TVA_KEY, String(v)) }
+  catch { /* no-op silencieux */ }
+}
 
 const withKeys = (rows) => rows.map(r => ({
   _key: newKey(),
@@ -78,7 +93,7 @@ const emptyLine = () => ({
   designation: '',
   quantite: '0',
   prix_unit_ttc: '0',
-  taux_tva: '20',
+  taux_tva: lireLastTva(),  // VX93 — dernière TVA saisie (défaut 20 %)
   groupeIndex: null,
   groupeLabel: '',
 })
@@ -259,6 +274,10 @@ export default function DevisGenerator({
   const [tauxTva, setTauxTva] = useState('20.00')
   const [discountPct, setDiscountPct] = useState('0')
   const linesInitialized = useRef(false)
+  // VX90 — après « Ajouter ligne », déplacer le focus sur le sélecteur produit
+  // de la NOUVELLE ligne (ref-walk DOM via data-line-key ; pas de useFieldArray).
+  const linesTableRef = useRef(null)
+  const [pendingFocusKey, setPendingFocusKey] = useState(null)
 
   // ── QJ31 — Multi-propriétés (un seul devis, jamais scindé) ──
   // 'none' = mono-système (défaut, comportement historique inchangé) ;
@@ -318,6 +337,104 @@ export default function DevisGenerator({
   const [farmFuelPeriod, setFarmFuelPeriod] = useState('mois') // 'mois' | 'an'
   const [farmHmtStatic, setFarmHmtStatic] = useState('')
   const [farmHmtDrawdown, setFarmHmtDrawdown] = useState('')
+
+  // ── VX62 — Brouillon auto + garde de sortie ──
+  // Le formulaire (2 300+ lignes, ~20 min de saisie) n'avait NI brouillon NI
+  // garde : un onglet fermé/un swipe retour = tout perdu. On sauvegarde un
+  // snapshot débouncé dans localStorage (clé scopée lead/client/édition), on
+  // propose « Reprendre le brouillon » au montage, on purge au succès, et on
+  // pose useDirtyGuard pour la fermeture d'onglet.
+  const draftKey = editId
+    ? `devis:edit:${editId}`
+    : (leadId ? `devis:lead:${leadId}` : (clientId ? `devis:client:${clientId}` : 'devis:new'))
+  // Snapshot des champs éditables saillants (les référentiels leads/clients/
+  // produits ne sont jamais persistés — seulement la saisie de l'utilisateur).
+  const draftSnapshot = useMemo(() => ({
+    leadId, clientId, dateValidite, instType, scenario, recommendedChoice, note,
+    fHiver, fEte, monthly, distributeur, realBillMode, realBillMad, realBillKwh,
+    nbPanneaux, panelW, structureType, dayUsage, lines, tauxTva, discountPct,
+    multiMode, nombreProprietes, villaGroups, modeInstallation, consoMensuelle,
+    prixCible, remiseMax, accessoiresOnly,
+    pompeCv, pompeType, pompeAlim, pompeHmt, pompeDebit, pompeProfondeur,
+    pompeDistance, pompeHeures, farmRegion, farmCrop, farmSurfaceHa,
+    farmIrrigation, farmFuel, farmFuelSpend, farmFuelPeriod, farmHmtStatic,
+    farmHmtDrawdown,
+     
+  }), [
+    leadId, clientId, dateValidite, instType, scenario, recommendedChoice, note,
+    fHiver, fEte, monthly, distributeur, realBillMode, realBillMad, realBillKwh,
+    nbPanneaux, panelW, structureType, dayUsage, lines, tauxTva, discountPct,
+    multiMode, nombreProprietes, villaGroups, modeInstallation, consoMensuelle,
+    prixCible, remiseMax, accessoiresOnly,
+    pompeCv, pompeType, pompeAlim, pompeHmt, pompeDebit, pompeProfondeur,
+    pompeDistance, pompeHeures, farmRegion, farmCrop, farmSurfaceHa,
+    farmIrrigation, farmFuel, farmFuelSpend, farmFuelPeriod, farmHmtStatic,
+    farmHmtDrawdown,
+  ])
+  // « Dirty » = l'utilisateur a réellement saisi quelque chose de significatif
+  // (au moins un identifiant de cible OU une note OU des factures OU des
+  // paramètres techniques). Tant que le formulaire est vierge, ni brouillon ni
+  // garde ne s'activent (évite un bandeau/blocage sur un simple montage).
+  const dirty = Boolean(
+    leadId || clientId || note || fHiver || fEte || nbPanneaux
+    || consoMensuelle || prixCible || pompeHmt || pompeDebit || farmSurfaceHa,
+  )
+  const { restored, restore, discard, clear } = useDraftAutosave(draftKey, draftSnapshot, {
+    enabled: dirty,
+  })
+  useDirtyGuard(dirty)
+
+  // Restauration : réinjecte le snapshot sauvegardé dans tous les setters.
+  const handleRestoreDraft = () => {
+    const d = restore()
+    if (!d) return
+    if (d.leadId != null) setLeadId(d.leadId)
+    if (d.clientId != null) setClientId(d.clientId)
+    if (d.dateValidite != null) setDateValidite(d.dateValidite)
+    if (d.instType != null) setInstType(d.instType)
+    if (d.scenario != null) setScenario(d.scenario)
+    if (d.recommendedChoice != null) setRecommendedChoice(d.recommendedChoice)
+    if (d.note != null) setNote(d.note)
+    if (d.fHiver != null) setFHiver(d.fHiver)
+    if (d.fEte != null) setFEte(d.fEte)
+    if (d.monthly != null) setMonthly(d.monthly)
+    if (d.distributeur != null) setDistributeur(d.distributeur)
+    if (d.realBillMode != null) setRealBillMode(d.realBillMode)
+    if (d.realBillMad != null) setRealBillMad(d.realBillMad)
+    if (d.realBillKwh != null) setRealBillKwh(d.realBillKwh)
+    if (d.nbPanneaux != null) setNbPanneaux(d.nbPanneaux)
+    if (d.panelW != null) setPanelW(d.panelW)
+    if (d.structureType != null) setStructureType(d.structureType)
+    if (d.dayUsage != null) setDayUsage(d.dayUsage)
+    if (Array.isArray(d.lines)) { setLines(withKeys(d.lines)); linesInitialized.current = true }
+    if (d.tauxTva != null) setTauxTva(d.tauxTva)
+    if (d.discountPct != null) setDiscountPct(d.discountPct)
+    if (d.multiMode != null) setMultiMode(d.multiMode)
+    if (d.nombreProprietes != null) setNombreProprietes(d.nombreProprietes)
+    if (Array.isArray(d.villaGroups)) setVillaGroups(d.villaGroups)
+    if (d.modeInstallation != null) setModeInstallation(d.modeInstallation)
+    if (d.consoMensuelle != null) setConsoMensuelle(d.consoMensuelle)
+    if (d.prixCible != null) setPrixCible(d.prixCible)
+    if (d.remiseMax != null) setRemiseMax(d.remiseMax)
+    if (d.accessoiresOnly != null) setAccessoiresOnly(d.accessoiresOnly)
+    if (d.pompeCv != null) setPompeCv(d.pompeCv)
+    if (d.pompeType != null) setPompeType(d.pompeType)
+    if (d.pompeAlim != null) setPompeAlim(d.pompeAlim)
+    if (d.pompeHmt != null) setPompeHmt(d.pompeHmt)
+    if (d.pompeDebit != null) setPompeDebit(d.pompeDebit)
+    if (d.pompeProfondeur != null) setPompeProfondeur(d.pompeProfondeur)
+    if (d.pompeDistance != null) setPompeDistance(d.pompeDistance)
+    if (d.pompeHeures != null) setPompeHeures(d.pompeHeures)
+    if (d.farmRegion != null) setFarmRegion(d.farmRegion)
+    if (d.farmCrop != null) setFarmCrop(d.farmCrop)
+    if (d.farmSurfaceHa != null) setFarmSurfaceHa(d.farmSurfaceHa)
+    if (d.farmIrrigation != null) setFarmIrrigation(d.farmIrrigation)
+    if (d.farmFuel != null) setFarmFuel(d.farmFuel)
+    if (d.farmFuelSpend != null) setFarmFuelSpend(d.farmFuelSpend)
+    if (d.farmFuelPeriod != null) setFarmFuelPeriod(d.farmFuelPeriod)
+    if (d.farmHmtStatic != null) setFarmHmtStatic(d.farmHmtStatic)
+    if (d.farmHmtDrawdown != null) setFarmHmtDrawdown(d.farmHmtDrawdown)
+  }
 
   useEffect(() => {
     // Les trois échecs réseau sont SURFACÉS (bannière) au lieu d'avaler l'erreur :
@@ -735,8 +852,14 @@ export default function DevisGenerator({
     setMonthly(m => m.map((old, idx) => (idx === i ? v : old)))
 
   // ── Lignes ──
-  const setLine = (key, k, v) =>
+  // VX188 — callback stabilisé (identité stable via useCallback, clé de ligne
+  // en ARGUMENT) pour que `React.memo(DevisLineRow)` saute le re-rendu d'une
+  // ligne inchangée. VX93 — mémorise le dernier taux TVA saisi à la main pour
+  // pré-remplir la prochaine ligne ajoutée (ecrireLastTva est un writer stable).
+  const setLine = useCallback((key, k, v) => {
+    if (k === 'taux_tva') ecrireLastTva(v)
     setLines(ls => ls.map(l => (l._key === key ? { ...l, [k]: v } : l)))
+  }, [])
 
   // XSAL3 — badge « Tarif : <liste> » par ligne, quand le prix résolu vient
   // d'une liste de prix client (source !== 'standard'). Purement informatif +
@@ -770,7 +893,7 @@ export default function DevisGenerator({
     }
   }
 
-  const onProduitChange = (key, produitId) => {
+  const onProduitChange = useCallback((key, produitId) => {
     const p = produits.find(p => String(p.id) === String(produitId))
     setLines(ls => ls.map(l =>
       l._key === key
@@ -787,16 +910,18 @@ export default function DevisGenerator({
       const l = lines.find(x => x._key === key)
       refreshTarif(key, produitId, l?.quantite)
     }
-  }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [produits, lines])
 
   // Ré-interroge le tarif applicable quand la quantité change sur une ligne
   // déjà liée à un produit (paliers XSAL2), ou quand le client change (liste
   // XSAL1 assignée) — pour toutes les lignes liées à un produit.
-  const onQuantiteChange = (key, quantite) => {
+  const onQuantiteChange = useCallback((key, quantite) => {
     setLine(key, 'quantite', quantite)
     const l = lines.find(x => x._key === key)
     if (l?.produit) refreshTarif(key, l.produit, quantite)
-  }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lines, setLine])
 
   useEffect(() => {
     lines.forEach(l => { if (l.produit) refreshTarif(l._key, l.produit, l.quantite) })
@@ -808,7 +933,7 @@ export default function DevisGenerator({
   // (on garde le texte divergent, rien d'autre) ou « créer un nouveau produit
   // dans le stock » (clone serveur via /dupliquer/, puis on relie la ligne au
   // clone). Non bloquant : ne s'ouvre que sur une vraie divergence.
-  const onDesignationBlur = (key) => {
+  const onDesignationBlur = useCallback((key) => {
     if (!canRenameLine) return
     const l = lines.find(x => x._key === key)
     if (!l || !l.produit) return
@@ -818,7 +943,7 @@ export default function DevisGenerator({
     if (!nouveauNom || nouveauNom === (prod.nom || '').trim()) return
     setRenameError(null)
     setRenameDialog({ key, ancienNom: prod.nom, nouveauNom, produitId: l.produit })
-  }
+  }, [canRenameLine, lines, produits])
 
   // Option (a) — « Renommer sur ce devis seulement » : on garde la désignation
   // divergente telle quelle, aucun produit créé. Juste fermer le dialogue.
@@ -855,8 +980,33 @@ export default function DevisGenerator({
     }
   }
 
-  const addLine = () => setLines(ls => [...ls, emptyLine()])
-  const removeLine = (key) => setLines(ls => ls.filter(l => l._key !== key))
+  const addLine = () => setLines(ls => {
+    const line = emptyLine()
+    setPendingFocusKey(line._key) // VX90 — focus la nouvelle ligne après rendu.
+    return [...ls, line]
+  })
+  const removeLine = useCallback((key) =>
+    setLines(ls => ls.filter(l => l._key !== key)), [])
+  // VX188 — identité stable pour ProduitPicker.onProduitCreated (passé à
+  // chaque DevisLineRow) : setProduits est déjà un setState fonctionnel,
+  // aucune dépendance réelle.
+  const onProduitCreated = useCallback((p) => setProduits(ps => [...ps, p]), [])
+
+  // VX90 — quand une ligne vient d'être ajoutée, focaliser son ProduitPicker et
+  // la faire défiler dans la vue. On cible la ligne par son data-line-key, puis
+  // le premier bouton (le déclencheur du ProduitPicker) de cette ligne.
+  useEffect(() => {
+    if (pendingFocusKey == null) return
+    const row = linesTableRef.current
+      ?.querySelector(`[data-line-key="${pendingFocusKey}"]`)
+    if (row) {
+      const picker = row.querySelector('button[type="button"]')
+      picker?.focus()
+      row.scrollIntoView({ block: 'nearest' })
+    }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset one-shot du focus (VX90)
+    setPendingFocusKey(null)
+  }, [pendingFocusKey, lines])
 
   // ── QJ31 — Multi-propriétés ──────────────────────────────────────────────
   // Bascule de mode. En passant en « villas », chaque ligne sans groupe est
@@ -873,11 +1023,11 @@ export default function DevisGenerator({
   }
 
   // Assigne une ligne à un groupe villa (met à jour l'index + le libellé).
-  const setLineGroupe = (key, idx) => {
+  const setLineGroupe = useCallback((key, idx) => {
     const grp = villaGroups.find(g => g.index === idx)
     setLines(ls => ls.map(l =>
       l._key === key ? { ...l, groupeIndex: idx, groupeLabel: grp?.label ?? '' } : l))
-  }
+  }, [villaGroups])
 
   const addVillaGroup = () => {
     setVillaGroups(gs => {
@@ -1145,6 +1295,7 @@ export default function DevisGenerator({
         devisId = data.id
       }
 
+      clear() // VX62 — succès : purge le brouillon local.
       finish(devisId)
     } catch (err) {
       // Message HUMAIN, jamais de JSON brut — et le formulaire reste vivant.
@@ -1172,6 +1323,37 @@ export default function DevisGenerator({
   }
 
   const selectedClient = clients.find(c => String(c.id) === String(clientId))
+
+  // ZSAL9 — avertissements de vente (« sale warnings ») : message du client
+  // sélectionné + des produits présents dans les lignes. Purement informatif à
+  // l'écran (une bannière non intrusive) ; le blocage éventuel est appliqué
+  // côté serveur à l'acceptation/facturation (garde XFAC28-like).
+  const saleWarnings = useMemo(() => {
+    const out = []
+    if (selectedClient?.avertissement_vente) {
+      out.push({
+        key: `client-${selectedClient.id}`,
+        cible: selectedClient.nom || 'Client',
+        message: selectedClient.avertissement_vente,
+        bloquant: !!selectedClient.avertissement_bloquant,
+      })
+    }
+    const seen = new Set()
+    for (const l of lines) {
+      if (!l.produit || seen.has(l.produit)) continue
+      seen.add(l.produit)
+      const p = produits.find(x => String(x.id) === String(l.produit))
+      if (p?.avertissement_vente) {
+        out.push({
+          key: `produit-${p.id}`,
+          cible: p.nom || 'Produit',
+          message: p.avertissement_vente,
+          bloquant: !!p.avertissement_bloquant,
+        })
+      }
+    }
+    return out
+  }, [selectedClient, lines, produits])
 
   // QC1 — recherche client sur les données propres (endpoint /search/). On ne
   // retient QUE les correspondances de source « client » : le devis a besoin
@@ -1278,6 +1460,29 @@ export default function DevisGenerator({
       {/* noValidate : aucune contrainte navigateur — toute valeur saisie est
           acceptée telle quelle (les steps ne servent qu'aux flèches). */}
       <form id="gen-form" onSubmit={handleSubmit} noValidate className="flex flex-col gap-4 lg:flex-1 lg:min-w-0">
+        {restored && (
+          <div
+            data-testid="draft-restore-banner"
+            className="flex flex-col gap-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning sm:flex-row sm:items-center sm:justify-between"
+          >
+            <span>
+              Un brouillon non enregistré du{' '}
+              {(() => {
+                try { return formatDateTime(restored.savedAt) }
+                catch { return 'précédent' }
+              })()}{' '}
+              a été retrouvé.
+            </span>
+            <div className="flex gap-2">
+              <Button type="button" size="sm" variant="outline" onClick={handleRestoreDraft}>
+                Reprendre le brouillon
+              </Button>
+              <Button type="button" size="sm" variant="ghost" onClick={discard}>
+                Ignorer
+              </Button>
+            </div>
+          </div>
+        )}
         {refsLoading && (
           <div className="rounded-lg border border-info/30 bg-info/10 p-3 text-sm text-info">
             Chargement des données (leads, clients, produits)…
@@ -1286,6 +1491,26 @@ export default function DevisGenerator({
         {loadFailed.length > 0 && (
           <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
             Échec du chargement : {loadFailed.join(', ')}. Vérifiez votre connexion puis rechargez la page.
+          </div>
+        )}
+        {/* ZSAL9 — avertissements de vente (client/produits) : bannière non
+            intrusive ; un avertissement bloquant est signalé mais n'empêche pas
+            la saisie (le blocage réel est côté serveur à l'acceptation). */}
+        {saleWarnings.length > 0 && (
+          <div
+            data-testid="sale-warnings"
+            className="flex flex-col gap-1 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning"
+          >
+            {saleWarnings.map(w => (
+              <div key={w.key}>
+                <span className="font-medium">{w.cible} :</span> {w.message}
+                {w.bloquant && (
+                  <span className="ml-1 font-medium">
+                    (bloquant — un responsable devra passer outre)
+                  </span>
+                )}
+              </div>
+            ))}
           </div>
         )}
         {/* ── Mode d'installation (marché) ── */}
@@ -1509,6 +1734,16 @@ export default function DevisGenerator({
                 <span className="font-display text-sm font-semibold tracking-tight">
                   Facture réelle du client (recommandé)
                 </span>
+                {/* VX47 — aide contextuelle : le calcul « par tranche » selon
+                    le distributeur n'est pas intuitif pour un nouvel employé. */}
+                <HelpTip label="Aide — distributeur et tranches">
+                  Chaque distributeur (ONEE, Lydec, Redal) facture l'électricité
+                  par <strong>tranches</strong> : plus la consommation est
+                  élevée, plus le prix du kWh grimpe. En renseignant la facture
+                  ou consommation réelle du client, l'économie solaire est
+                  calculée avec le vrai barème du distributeur choisi — sans
+                  ces champs, une estimation par défaut est utilisée.
+                </HelpTip>
                 <span className="text-xs text-muted-foreground">
                   affine les économies avec le barème par tranche du distributeur
                 </span>
@@ -2085,7 +2320,7 @@ export default function DevisGenerator({
               Avenant / accessoires ou main-d'œuvre seuls (désactive la vérification équipement)
             </label>
             <div className="lines-table-wrap">
-              <table className="lines-table">
+              <table className="lines-table" ref={linesTableRef}>
                 <thead>
                   <tr>
                     <th style={{ minWidth: 160 }}>Désignation</th>
@@ -2099,115 +2334,30 @@ export default function DevisGenerator({
                   </tr>
                 </thead>
                 <tbody>
-                  {lines.map(l => {
-                    const lineTtc =
-                      (parseFloat(l.quantite) || 0) * (parseFloat(l.prix_unit_ttc) || 0)
-                    // Indice non bloquant : la désignation a été éditée et ne
-                    // correspond plus au nom du produit choisi — la classification
-                    // (réseau/hybride/batterie/panneau) pourrait changer la
-                    // répartition d'options du PDF. On n'altère jamais la saisie.
-                    const prodLie = l.produit
-                      ? produits.find(p => String(p.id) === String(l.produit))
-                      : null
-                    const designationDivergente = !!prodLie
-                      && (l.designation || '').trim() !== (prodLie.nom || '').trim()
-                    return (
-                      <tr key={l._key}>
-                        <td data-label="Désignation">
-                          {/* QP2 — désignation en LECTURE SEULE sauf pour
-                              Directeur + Commercial responsable. Un rôle non
-                              autorisé ne peut pas renommer une ligne (verrouillée
-                              au nom du produit) ; un rôle autorisé qui diverge du
-                              nom du produit reçoit au blur le choix « renommer
-                              ici » vs « créer un nouveau produit ». */}
-                          <Input className="h-[var(--control-h-sm)]" value={l.designation}
-                                 readOnly={!canRenameLine}
-                                 disabled={!canRenameLine}
-                                 title={!canRenameLine
-                                   ? 'Renommer une ligne est réservé au Directeur et au Commercial responsable'
-                                   : undefined}
-                                 onChange={e => setLine(l._key, 'designation', e.target.value)}
-                                 onBlur={() => onDesignationBlur(l._key)}
-                                 placeholder="Désignation" />
-                          {designationDivergente && (
-                            <div className="mt-0.5 text-xs text-warning"
-                                 title="La désignation diffère du nom du produit — vérifiez la classification PDF">
-                              Désignation modifiée (produit : {prodLie.nom})
-                            </div>
-                          )}
-                        </td>
-                        <td data-label="Produit (stock)">
-                          <ProduitPicker
-                            produits={produits}
-                            value={l.produit}
-                            onChange={id => onProduitChange(l._key, id)}
-                            typeFilter={classifyProduct(l.designation) || undefined}
-                            onProduitCreated={(p) => setProduits(ps => [...ps, p])}
-                          />
-                          {tarifBadges[l._key] && (
-                            <span className="mt-0.5 inline-block rounded bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary">
-                              Tarif : {tarifBadges[l._key]}
-                            </span>
-                          )}
-                        </td>
-                        {multiMode === 'villas' && (
-                          <td data-label="Villa">
-                            <Select
-                              value={l.groupeIndex != null ? String(l.groupeIndex) : '0'}
-                              onValueChange={(v) => setLineGroupe(l._key, parseInt(v, 10))}>
-                              <SelectTrigger className="h-[var(--control-h-sm)]"><SelectValue /></SelectTrigger>
-                              <SelectContent>
-                                {villaGroups.map(g => (
-                                  <SelectItem key={g.index} value={String(g.index)}>{g.label}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </td>
-                        )}
-                        <td data-label="Qté">
-                          <Input type="number" min="0" step="any"
-                                 className="h-[var(--control-h-sm)] ta-right" value={l.quantite}
-                                 onChange={e => onQuantiteChange(l._key, e.target.value)} />
-                        </td>
-                        <td data-label="Prix unit. TTC">
-                          <Input type="number" min="0" step="any"
-                                 className="h-[var(--control-h-sm)] ta-right" value={l.prix_unit_ttc}
-                                 onChange={e => setLine(l._key, 'prix_unit_ttc', e.target.value)} />
-                        </td>
-                        <td data-label="TVA %">
-                          <Input type="number" min="0" step="any"
-                                 className="h-[var(--control-h-sm)] ta-right w-14 text-xs text-muted-foreground"
-                                 value={l.taux_tva ?? '20'}
-                                 onChange={e => setLine(l._key, 'taux_tva', e.target.value)} />
-                          {(() => {
-                            // DC7 — AVERTISSEMENT de divergence uniquement : le
-                            // taux attendu suit la désignation + les repères TVA
-                            // société (expectedTvaForDesignation), et `Produit.tva`
-                            // reste la source autoritaire par ligne. On n'altère
-                            // JAMAIS la valeur saisie (frappe souveraine).
-                            const t = parseFloat(l.taux_tva)
-                            if (!Number.isFinite(t) || !(l.designation || '').trim()) return null
-                            const expected = expectedTvaForDesignation(l.designation, {
-                              tvaPanneaux: quoteLogic.tvaPanneaux,
-                              tvaStandard: quoteLogic.tvaStandard,
-                            })
-                            if (t !== expected) {
-                              return <div className="mt-0.5 text-xs text-warning">{`${expected} % attendu`}</div>
-                            }
-                            return null
-                          })()}
-                        </td>
-                        <td className="line-total" data-label="Total TTC">{formatMoney(lineTtc)}</td>
-                        <td>
-                          <IconButton type="button" label="Supprimer la ligne" size="sm"
-                                      className="text-destructive hover:bg-destructive/10"
-                                      onClick={() => removeLine(l._key)}>
-                            <Trash2 />
-                          </IconButton>
-                        </td>
-                      </tr>
-                    )
-                  })}
+                  {/* VX188 — ligne extraite en <DevisLineRow> mémoïsé : taper
+                      dans Note/farmSurfaceHa/n'importe lequel des autres
+                      useState ne re-rend plus les lignes inchangées (callbacks
+                      stabilisés ci-dessus, clé en argument). */}
+                  {lines.map(l => (
+                    <DevisLineRow
+                      key={l._key}
+                      line={l}
+                      produits={produits}
+                      multiMode={multiMode}
+                      villaGroups={villaGroups}
+                      canRenameLine={canRenameLine}
+                      tarifBadge={tarifBadges[l._key]}
+                      tvaPanneaux={quoteLogic.tvaPanneaux}
+                      tvaStandard={quoteLogic.tvaStandard}
+                      onSetField={setLine}
+                      onDesignationBlur={onDesignationBlur}
+                      onProduitChange={onProduitChange}
+                      onProduitCreated={onProduitCreated}
+                      onQuantiteChange={onQuantiteChange}
+                      onSetGroupe={setLineGroupe}
+                      onRemove={removeLine}
+                    />
+                  ))}
                 </tbody>
               </table>
             </div>

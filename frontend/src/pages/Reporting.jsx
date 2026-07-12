@@ -5,8 +5,7 @@ import {
   RefreshCw, Wallet, Clock, Users, Package, BarChart3, AlertTriangle, Download,
 } from 'lucide-react'
 import {
-  AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
-  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
+  PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend,
 } from 'recharts'
 import { fetchDashboard } from '../features/reporting/store/reportingSlice'
 import reportingApi from '../api/reportingApi'
@@ -17,6 +16,12 @@ import {
   Button, Card, CardHeader, CardTitle, CardContent, CardDescription,
   Stat, Badge, StatusPill, Segmented, Skeleton, EmptyState, Progress,
 } from '../ui'
+// VX28 — un seul langage de graphique (kit ui/charts) + un seul PageHeader.
+// Le camembert « Répartition des factures » reste en recharts natif (le kit ne
+// fournit pas de primitive Pie) ; l'aire CA et les barres top-produits passent
+// au kit.
+import { AreaSansAxe, BarArrondie } from '../ui/charts'
+import { PageHeader } from '../ui/PageHeader'
 import { Table } from './reporting/Table'
 
 // ── Formatage monétaire (DH, sans décimales — comme l'écran historique) ──────
@@ -35,32 +40,14 @@ const dhCompact = (v) => {
   return `${body} DH`
 }
 
-// Couleurs de séries pour recharts, tirées des tokens sémantiques (clair/sombre).
-const CHART_INFO = 'var(--color-info)'
-const CHART_PRIMARY = 'var(--color-primary)'
-const CHART_GRID = 'var(--color-border)'
-const CHART_AXIS = 'var(--color-muted-foreground)'
+// VX28 — le camembert « Répartition des factures » reste en recharts natif
+// (aucune primitive Pie dans le kit) ; il garde son style d'infobulle tokenisé.
 const CHART_TOOLTIP_STYLE = {
   borderRadius: 8,
   fontSize: 12,
   background: 'var(--color-popover)',
   border: '1px solid var(--color-border)',
   color: 'var(--color-popover-foreground)',
-}
-
-// ── Tooltip recharts thémé via tokens ───────────────────────────────────────
-function TooltipDH({ active, payload, label }) {
-  if (!active || !payload?.length) return null
-  return (
-    <div className="rounded-md border border-border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-ui-md">
-      <div className="mb-1 font-semibold">{label}</div>
-      {payload.map((p, i) => (
-        <div key={i} className="tabular-nums" style={{ color: p.color ?? CHART_INFO }}>
-          {p.name ?? 'CA'} : {dh(p.value)}
-        </div>
-      ))}
-    </div>
-  )
 }
 
 // ── Barre de conversion (J146 — composant Progress partagé) ──────────────────
@@ -238,9 +225,8 @@ export function Component() {
   if (loading) {
     return (
       <div className="ui-root page" style={{ maxWidth: 1200 }}>
-        <div className="page-header" style={{ marginBottom: '1.5rem' }}>
-          <h2>Reporting &amp; Analytics</h2>
-        </div>
+        {/* VX28 — PageHeader unifié. */}
+        <PageHeader title="Reporting & Analytics" icon={BarChart3} />
         <LoadingState />
       </div>
     )
@@ -249,9 +235,8 @@ export function Component() {
   if (error) {
     return (
       <div className="ui-root page" style={{ maxWidth: 1200 }}>
-        <div className="page-header" style={{ marginBottom: '1.5rem' }}>
-          <h2>Reporting &amp; Analytics</h2>
-        </div>
+        {/* VX28 — PageHeader unifié. */}
+        <PageHeader title="Reporting & Analytics" icon={BarChart3} />
         <EmptyState
           icon={AlertTriangle}
           title="Données indisponibles"
@@ -276,17 +261,21 @@ export function Component() {
 
   return (
     <div className="ui-root page" style={{ maxWidth: 1200 }}>
-      <div className="page-header" style={{ marginBottom: '1.5rem' }}>
-        <h2>Reporting &amp; Analytics</h2>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" size="sm" onClick={exportDashboard}>
-            <Download /> Exporter Excel
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => dispatch(fetchDashboard())}>
-            <RefreshCw /> Actualiser
-          </Button>
-        </div>
-      </div>
+      {/* VX28 — PageHeader unifié : titre + actions (export/actualiser). */}
+      <PageHeader
+        title="Reporting & Analytics"
+        icon={BarChart3}
+        actions={(
+          <>
+            <Button variant="outline" size="sm" onClick={exportDashboard}>
+              <Download /> Exporter Excel
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => dispatch(fetchDashboard())}>
+              <RefreshCw /> Actualiser
+            </Button>
+          </>
+        )}
+      />
 
       <PipelineSection />
 
@@ -324,29 +313,15 @@ export function Component() {
                 className="border-0 py-8"
               />
             ) : (
-              <ResponsiveContainer width="100%" height={220}>
-                <AreaChart data={caWindow} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
-                  <defs>
-                    <linearGradient id="caGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor={CHART_INFO} stopOpacity={0.2} />
-                      <stop offset="95%" stopColor={CHART_INFO} stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
-                  <XAxis dataKey="mois" tick={{ fontSize: 11, fill: CHART_AXIS }} stroke={CHART_GRID} />
-                  <YAxis
-                    tick={{ fontSize: 11, fill: CHART_AXIS }}
-                    stroke={CHART_GRID}
-                    tickFormatter={(v) => (v >= 1000 ? Math.round(v / 1000) + 'k' : v)}
-                  />
-                  <Tooltip content={<TooltipDH />} />
-                  <Area
-                    type="monotone" dataKey="ca" name="CA HT"
-                    stroke={CHART_INFO} strokeWidth={2.5}
-                    fill="url(#caGradient)" dot={false}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
+              <AreaSansAxe
+                data={caWindow}
+                dataKey="ca"
+                xKey="mois"
+                tone="info"
+                name="CA HT"
+                height={220}
+                tooltipFormat={(v) => dh(v)}
+              />
             )}
           </CardContent>
         </Card>
@@ -363,27 +338,17 @@ export function Component() {
                 className="border-0 py-8"
               />
             ) : (
-              <ResponsiveContainer width="100%" height={220}>
-                <BarChart
-                  data={top_produits}
-                  layout="vertical"
-                  margin={{ top: 4, right: 20, bottom: 0, left: 0 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} horizontal={false} />
-                  <XAxis type="number" tick={{ fontSize: 11, fill: CHART_AXIS }} stroke={CHART_GRID} />
-                  <YAxis
-                    dataKey="nom" type="category"
-                    tick={{ fontSize: 11, fill: CHART_AXIS }}
-                    stroke={CHART_GRID}
-                    width={100}
-                  />
-                  <Tooltip
-                    formatter={(v) => [formatNumber(v) + ' unités', 'Qté vendue']}
-                    contentStyle={CHART_TOOLTIP_STYLE}
-                  />
-                  <Bar dataKey="qte" fill={CHART_PRIMARY} radius={[0, 6, 6, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+              <BarArrondie
+                data={top_produits}
+                dataKey="qte"
+                categoryKey="nom"
+                layout="vertical"
+                tone="primary"
+                name="Qté vendue"
+                height={220}
+                categoryWidth={100}
+                tooltipFormat={(v) => `${formatNumber(v)} unités`}
+              />
             )}
           </CardContent>
         </Card>

@@ -5,7 +5,7 @@ import {
   generateAutoDevis, uniq, ADMIN, SECOND_USER,
 } from './helpers'
 
-const modalXl = (page) => page.locator('.modal.modal-xl')
+const modalXl = (page) => page.locator('[role="dialog"]').filter({ has: page.locator('.modal-title') })
 
 test('E3: create a lead, see it in list + kanban, open it', async ({ page }) => {
   await gotoLeads(page)

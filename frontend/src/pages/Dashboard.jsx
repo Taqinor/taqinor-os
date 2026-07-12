@@ -5,18 +5,28 @@ const MesEquipesCard = lazy(() => import('../components/MesEquipesCard'))
 // VX86 — carte « Attend votre décision » (boîte d'approbations centralisée),
 // chargée paresseusement comme les autres compléments autonomes du Dashboard.
 const ApprobationsAttentionCard = lazy(() => import('../components/ApprobationsAttentionCard'))
+// VX36 — bannière de prise en main (autonome : se masque si terminé/rejeté),
+// visible dès le premier login en haut du Dashboard.
+const OnboardingBanner = lazy(() => import('../components/OnboardingBanner'))
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import {
   Package, Users, FileCheck, FileText, AlertTriangle,
-  TrendingUp, Activity, ReceiptText, Clock,
+  TrendingUp, Activity, ReceiptText, Clock, Wrench, CalendarClock, Phone,
 } from 'lucide-react'
 import { AreaSansAxe, BarArrondie, KpiSpark, ChartEmpty } from '../ui/charts'
 import { ModuleHero } from '../ui/module/ModuleHero.jsx'
 import { fetchProduits } from '../features/stock/store/stockSlice'
-import { fetchClients } from '../features/crm/store/crmSlice'
+import { fetchClients, fetchLeads } from '../features/crm/store/crmSlice'
 import { fetchDevis, fetchFactures } from '../features/ventes/store/ventesSlice'
 import { fetchInstallations } from '../features/installations/store/installationsSlice'
+// VX27 — cockpit du matin par rôle : le SAV réutilise les helpers de statut/SLA
+// existants (aucune logique de ticket dupliquée ici) et les tickets déjà en
+// store (fetchTickets). Les endpoints existent — on ajoute seulement le fetch.
+import { fetchTickets } from '../features/sav/store/ticketsSlice'
+import {
+  ticketSlaLevel, TICKET_OPEN_STATUSES,
+} from '../features/sav/ticketStatuses'
 import {
   INSTALLATION_STATUSES, STATUS_LABELS, STATUS_COLORS, canonicalStatus,
 } from '../features/installations/statuses'
@@ -76,6 +86,89 @@ const AGE_BUCKETS = [
 const num = (v) => {
   const n = parseFloat(v)
   return Number.isFinite(n) ? n : 0
+}
+
+// ── VX27 — Cockpit du matin : layout par rôle + bandeau « aujourd'hui » ───────
+// Le Directeur, le Commercial et le Technicien SAV voyaient EXACTEMENT le même
+// mur de KPI. On dérive un « profil de cockpit » du role_nom déjà en store
+// (aucune source nouvelle) : commercial (ventes) / sav (terrain & support) /
+// directeur (macro). Défaut = directeur (vue macro complète, comportement
+// historique). Fonctions PURES exportées → testées sans monter le composant.
+
+// Renvoie 'commercial' | 'sav' | 'directeur' d'après le nom de rôle + le palier.
+// eslint-disable-next-line react-refresh/only-export-components -- helper cockpit co-localisé
+export function cockpitProfile({ roleNom, roleTier } = {}) {
+  const n = String(roleNom ?? '').toLowerCase()
+  // Les rôles direction/admin gardent la vue macro même si leur libellé
+  // contient un autre mot-clé.
+  if (roleTier === 'admin' || /directeur|gérant|gerant|patron|fondateur|admin/.test(n)) {
+    return 'directeur'
+  }
+  // SAV AVANT commercial : « après-vente » contient « vente » et serait sinon
+  // classé commercial par erreur (VX27 fix).
+  if (/sav|technicien|support|après-vente|apres-vente|maintenance|terrain/.test(n)) return 'sav'
+  if (/commercial|vente|sales/.test(n)) return 'commercial'
+  return 'directeur'
+}
+
+// YYYY-MM-DD du jour (local), pour comparer aux dates ISO des enregistrements.
+function isoToday(now = new Date()) {
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+}
+
+// Leads « à relancer » : relance planifiée aujourd'hui ou déjà dépassée, lead
+// non perdu/archivé. Si `ownerId` est fourni, on scope à « mes » leads (le
+// backend restreint déjà la visibilité ; ce filtre affine à l'assigné courant).
+// eslint-disable-next-line react-refresh/only-export-components -- helper cockpit co-localisé
+export function leadsARelancer(leads, { ownerId, now = new Date() } = {}) {
+  const today = isoToday(now)
+  return (leads ?? []).filter((l) => {
+    if (!l || l.is_archived || l.perdu) return false
+    if (ownerId != null && l.owner != null && l.owner !== ownerId) return false
+    const r = l.relance_date
+    return !!r && String(r).slice(0, 10) <= today
+  })
+}
+
+// Devis qui expirent bientôt : encore ouverts (brouillon/envoyé), date de
+// validité comprise entre aujourd'hui et +N jours (défaut 7).
+// eslint-disable-next-line react-refresh/only-export-components -- helper cockpit co-localisé
+export function devisQuiExpirent(devis, { days = 7, now = new Date() } = {}) {
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const end = new Date(start)
+  end.setDate(end.getDate() + days)
+  return (devis ?? []).filter((d) => {
+    if (!d || !['brouillon', 'envoye'].includes(d.statut)) return false
+    if (!d.date_validite) return false
+    const v = new Date(`${String(d.date_validite).slice(0, 10)}T00:00:00`)
+    if (Number.isNaN(v.getTime())) return false
+    return v >= start && v <= end
+  })
+}
+
+// Tickets SAV « à faire aujourd'hui » côté terrain : ouverts (nouveau/planifié/
+// en cours), non annulés. Proxy honnête de la charge du jour sans nouvel
+// endpoint (les interventions planifiées vivent dans les tickets ouverts).
+// eslint-disable-next-line react-refresh/only-export-components -- helper cockpit co-localisé
+export function ticketsAujourdhui(tickets) {
+  return (tickets ?? []).filter(
+    (t) => t && !t.annule && TICKET_OPEN_STATUSES.includes(t.statut),
+  )
+}
+
+// Tickets urgents : priorité haute/urgente, ouverts, non annulés.
+// eslint-disable-next-line react-refresh/only-export-components -- helper cockpit co-localisé
+export function ticketsUrgents(tickets) {
+  return (tickets ?? []).filter(
+    (t) => t && !t.annule && TICKET_OPEN_STATUSES.includes(t.statut)
+      && ['haute', 'urgente'].includes(t.priorite),
+  )
+}
+
+// Tickets en retard de SLA (réutilise ticketSlaLevel === 'late').
+// eslint-disable-next-line react-refresh/only-export-components -- helper cockpit co-localisé
+export function ticketsSlaEnRetard(tickets, now = new Date()) {
+  return (tickets ?? []).filter((t) => ticketSlaLevel(t, now) === 'late')
 }
 
 // K148 — Delta tokenisé pour une carte KPI : flèche + SIGNE + couleur (jamais
@@ -182,22 +275,106 @@ function ChartCard({ title, description, children, isEmpty, emptyLabel, loading 
   )
 }
 
+/* VX27 — Bandeau « aujourd'hui » : rangée compacte de segments cliquables
+   (« 3 interventions en cours · 2 relances en retard · 1 devis expire »).
+   Ne rend RIEN quand aucun signal (pas de bruit un matin calme). */
+const TODAY_TONE = {
+  info: 'text-info',
+  danger: 'text-destructive',
+  warning: 'text-warning',
+}
+function TodayBanner({ segments, navigate }) {
+  if (!segments || segments.length === 0) return null
+  return (
+    <Card className="mb-4 p-0" data-testid="today-banner">
+      <div className="flex flex-wrap items-center gap-x-1 gap-y-2 px-4 py-3">
+        <span className="mr-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Aujourd'hui
+        </span>
+        {segments.map((s, i) => {
+          const Icon = s.icon
+          return (
+            <span key={s.key} className="flex items-center">
+              {i > 0 && <span className="mx-1.5 text-border" aria-hidden="true">·</span>}
+              <button
+                type="button"
+                onClick={() => navigate(s.to)}
+                className="inline-flex items-center gap-1.5 rounded-md px-1.5 py-0.5 text-sm font-medium hover:bg-muted"
+              >
+                <Icon className={cn('size-4', TODAY_TONE[s.tone] ?? 'text-muted-foreground')} aria-hidden="true" />
+                <span>{s.text}</span>
+              </button>
+            </span>
+          )
+        })}
+      </div>
+    </Card>
+  )
+}
+
+/* VX27 — Carte « liste de priorités » d'une section de tête par rôle : titre +
+   compteur, jusqu'à 5 lignes cliquables, état vide honnête. */
+function PriorityCard({ title, icon: Icon, tone = 'muted', items, renderItem, emptyLabel, toAll, navigate }) {
+  const count = items.length
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center justify-between gap-2">
+          <span className="flex items-center gap-2">
+            {Icon && <Icon className={cn('size-4', TODAY_TONE[tone] ?? 'text-muted-foreground')} aria-hidden="true" />}
+            {title}
+          </span>
+          {count > 0 && <Badge tone={tone === 'danger' ? 'destructive' : tone === 'warning' ? 'warning' : 'primary'}>{count}</Badge>}
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {count === 0 ? (
+          <p className="py-4 text-center text-sm text-muted-foreground">{emptyLabel}</p>
+        ) : (
+          <ul className="flex flex-col divide-y divide-border">
+            {items.slice(0, 5).map((it) => renderItem(it))}
+            {count > 5 && toAll && (
+              <li className="pt-2">
+                <button type="button" onClick={() => navigate(toAll)}
+                        className="text-xs font-medium text-primary hover:underline">
+                  Voir les {count} →
+                </button>
+              </li>
+            )}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 export function Component() {
   const dispatch = useDispatch()
   const navigate = useNavigate()
   const { produits, loading: stockLoading, error: stockError } = useSelector((s) => s.stock)
-  const { clients, loading: crmLoading, error: crmError } = useSelector((s) => s.crm)
+  const { clients, leads, loading: crmLoading, error: crmError } = useSelector((s) => s.crm)
   const { devis, factures, loading: ventesLoading, error: ventesError } = useSelector((s) => s.ventes)
   const { items: installations, loading: instLoading } = useSelector((s) => s.installations)
+  // VX27 — tickets SAV (déjà en store via fetchTickets) pour le cockpit terrain.
+  const tickets = useSelector((s) => s.tickets.items)
+  const user = useSelector((s) => s.auth.user)
+  const roleNom = useSelector((s) => s.auth.role_nom)
+  const roleTier = useSelector((s) => s.auth.role)
+  const profile = cockpitProfile({ roleNom, roleTier })
 
   // VX67 — extrait en fonction nommée pour être réutilisable comme `onRetry`
-  // du StateBlock d'erreur ci-dessous (même 5 fetch qu'au montage).
+  // du StateBlock d'erreur ci-dessous.
+  // VX27 — on ajoute les fetchs frontend qui manquaient (leads + tickets SAV) :
+  // le Dashboard ne chargeait ni leads ni tickets alors que les endpoints
+  // existent — c'est ce qui empêchait le cockpit commercial/SAV d'exister.
   const reload = () => {
     dispatch(fetchProduits())
     dispatch(fetchClients())
     dispatch(fetchDevis())
     dispatch(fetchFactures())
     dispatch(fetchInstallations())
+    dispatch(fetchLeads())
+    dispatch(fetchTickets())
   }
   useEffect(() => {
     reload()
@@ -365,6 +542,62 @@ export function Component() {
     return items.sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 8)
   }, [devis, factures])
 
+  // VX27 — signaux « aujourd'hui » (dérivés des données déjà chargées, aucun
+  // appel réseau ajouté). Alimentent le bandeau compact ET les sections de tête
+  // par rôle. « Mes » leads scopés à l'utilisateur courant quand l'assigné est
+  // connu (le backend restreint déjà la visibilité).
+  const relancesEnRetard = useMemo(
+    () => leadsARelancer(leads, { ownerId: user?.id }),
+    [leads, user?.id],
+  )
+  const devisExpirent = useMemo(() => devisQuiExpirent(devis, { days: 7 }), [devis])
+  const interventionsAujourdhui = useMemo(() => ticketsAujourdhui(tickets), [tickets])
+  const ticketsUrgentsList = useMemo(() => ticketsUrgents(tickets), [tickets])
+  const slaEnRetard = useMemo(() => ticketsSlaEnRetard(tickets), [tickets])
+
+  // Bandeau « aujourd'hui » : segments non nuls uniquement, chacun cliquable
+  // vers la liste ciblée (aucun cul-de-sac).
+  const todaySegments = useMemo(() => {
+    const segs = []
+    if (interventionsAujourdhui.length > 0) {
+      segs.push({
+        key: 'interventions',
+        icon: Wrench,
+        text: `${interventionsAujourdhui.length} intervention${interventionsAujourdhui.length > 1 ? 's' : ''} en cours`,
+        to: '/sav/tickets',
+        tone: 'info',
+      })
+    }
+    if (relancesEnRetard.length > 0) {
+      segs.push({
+        key: 'relances',
+        icon: Phone,
+        text: `${relancesEnRetard.length} relance${relancesEnRetard.length > 1 ? 's' : ''} en retard`,
+        to: '/crm/leads',
+        tone: 'danger',
+      })
+    }
+    if (devisExpirent.length > 0) {
+      segs.push({
+        key: 'devis',
+        icon: CalendarClock,
+        text: `${devisExpirent.length} devis expire${devisExpirent.length > 1 ? 'nt' : ''} ≤ 7 j`,
+        to: '/ventes/devis',
+        tone: 'warning',
+      })
+    }
+    if (slaEnRetard.length > 0) {
+      segs.push({
+        key: 'sla',
+        icon: Clock,
+        text: `${slaEnRetard.length} SLA en retard`,
+        to: '/sav/tickets',
+        tone: 'danger',
+      })
+    }
+    return segs
+  }, [interventionsAujourdhui, relancesEnRetard, devisExpirent, slaEnRetard])
+
   // Chaque KPI pointe vers la liste correspondante : un compteur n'est plus
   // un cul-de-sac, il ouvre les enregistrements (la facture en retard ouvre la
   // liste factures, sur l'onglet « En retard » côté liste).
@@ -435,6 +668,18 @@ export function Component() {
         />
       </div>
 
+      {/* VX36 — bannière de prise en main (autonome : se masque si terminé ou
+          « ne plus afficher »). En tête, visible au premier login. */}
+      <Suspense fallback={null}>
+        <OnboardingBanner />
+      </Suspense>
+
+      {/* VX27 — bandeau « aujourd'hui » : les signaux du jour, cliquables. Se
+          masque de lui-même un matin sans alerte. */}
+      {!showLoading && !showError && (
+        <TodayBanner segments={todaySegments} navigate={navigate} />
+      )}
+
       {/* VX86 — carte « Attend votre décision » : autonome, se masque elle-même
           si rien n'attend l'utilisateur ; indépendante des sources loading/
           error ci-dessous (approbations n'a rien à voir avec stock/crm/ventes). */}
@@ -487,6 +732,127 @@ export function Component() {
         </div>
       ) : (
         <div className="flex flex-col gap-4 sm:gap-5">
+          {/* VX27 — SECTION DE TÊTE PAR RÔLE : chaque profil voit d'abord SA
+              charge du jour, avant le mur de KPI générique. Commercial → leads à
+              relancer + devis qui expirent ; SAV → tickets urgents + SLA en
+              retard ; directeur → métrique héros CA promue + macro dessous. */}
+          {profile === 'commercial' && (
+            <div className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-2" data-testid="cockpit-commercial">
+              <PriorityCard
+                title="Mes leads à relancer"
+                icon={Phone}
+                tone="danger"
+                items={relancesEnRetard}
+                emptyLabel="Aucune relance en retard. Beau travail."
+                toAll="/crm/leads"
+                navigate={navigate}
+                renderItem={(l) => (
+                  <li key={l.id}>
+                    <button type="button" onClick={() => navigate(`/crm/leads?lead=${l.id}`)}
+                            className="flex w-full items-center justify-between gap-3 py-2 text-left first:pt-0 hover:underline">
+                      <span className="truncate text-sm font-medium text-foreground">
+                        {`${l.nom ?? ''} ${l.prenom ?? ''}`.trim() || 'Lead'}
+                      </span>
+                      <span className="shrink-0 text-xs text-muted-foreground">
+                        {l.relance_date ? formatDate(l.relance_date) : ''}
+                      </span>
+                    </button>
+                  </li>
+                )}
+              />
+              <PriorityCard
+                title="Mes devis qui expirent ≤ 7 j"
+                icon={CalendarClock}
+                tone="warning"
+                items={devisExpirent}
+                emptyLabel="Aucun devis n'expire dans les 7 jours."
+                toAll="/ventes/devis"
+                navigate={navigate}
+                renderItem={(d) => (
+                  <li key={d.id}>
+                    <button type="button" onClick={() => navigate(`/ventes/devis?devis=${d.id}`)}
+                            className="flex w-full items-center justify-between gap-3 py-2 text-left first:pt-0 hover:underline">
+                      <span className="min-w-0 truncate text-sm">
+                        <span className="font-medium text-foreground">{d.reference}</span>
+                        <span className="text-muted-foreground"> · {d.client_nom || '—'}</span>
+                      </span>
+                      <span className="shrink-0 text-xs text-warning">
+                        {d.date_validite ? formatDate(d.date_validite) : ''}
+                      </span>
+                    </button>
+                  </li>
+                )}
+              />
+            </div>
+          )}
+
+          {profile === 'sav' && (
+            <div className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-2" data-testid="cockpit-sav">
+              <PriorityCard
+                title="Mes tickets urgents"
+                icon={AlertTriangle}
+                tone="danger"
+                items={ticketsUrgentsList}
+                emptyLabel="Aucun ticket urgent ouvert."
+                toAll="/sav/tickets"
+                navigate={navigate}
+                renderItem={(t) => (
+                  <li key={t.id}>
+                    <button type="button" onClick={() => navigate('/sav/tickets')}
+                            className="flex w-full items-center justify-between gap-3 py-2 text-left first:pt-0 hover:underline">
+                      <span className="min-w-0 truncate text-sm">
+                        <span className="font-medium text-foreground">{t.reference}</span>
+                        <span className="text-muted-foreground"> · {t.client_nom || '—'}</span>
+                      </span>
+                      <Badge tone={t.priorite === 'urgente' ? 'destructive' : 'warning'}>
+                        {t.priorite === 'urgente' ? 'Urgente' : 'Haute'}
+                      </Badge>
+                    </button>
+                  </li>
+                )}
+              />
+              <PriorityCard
+                title="SLA en retard"
+                icon={Clock}
+                tone="danger"
+                items={slaEnRetard}
+                emptyLabel="Aucun ticket au-delà de son SLA."
+                toAll="/sav/tickets"
+                navigate={navigate}
+                renderItem={(t) => (
+                  <li key={t.id}>
+                    <button type="button" onClick={() => navigate('/sav/tickets')}
+                            className="flex w-full items-center justify-between gap-3 py-2 text-left first:pt-0 hover:underline">
+                      <span className="min-w-0 truncate text-sm">
+                        <span className="font-medium text-foreground">{t.reference}</span>
+                        <span className="text-muted-foreground"> · {t.client_nom || '—'}</span>
+                      </span>
+                      <span className="shrink-0 text-xs font-medium text-destructive">En retard</span>
+                    </button>
+                  </li>
+                )}
+              />
+            </div>
+          )}
+
+          {profile === 'directeur' && caTotal > 0 && (
+            <Card className="p-5" data-testid="cockpit-directeur">
+              <div className="flex flex-wrap items-end justify-between gap-3">
+                <div>
+                  <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Chiffre d'affaires · 6 mois
+                  </span>
+                  <div className="num mt-1 text-4xl font-semibold leading-none text-foreground">
+                    {formatMAD(caTotal, { decimals: 0 })}
+                  </div>
+                </div>
+                <Badge tone="success">
+                  {formatPercent(conversion.taux)} de signature
+                </Badge>
+              </div>
+            </Card>
+          )}
+
           {/* Cartes KPI */}
           <div className="grid grid-cols-[repeat(auto-fit,minmax(170px,1fr))] gap-4">
             {kpis.map((kpi) => (

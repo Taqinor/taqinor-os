@@ -1,16 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useHasPermission } from '../hooks/useHasPermission'
 import { History } from 'lucide-react'
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-} from 'recharts'
 import auditApi from '../api/auditApi'
 import {
   Card, CardHeader, CardTitle, CardContent, Segmented, MultiSelect,
   Button, Badge, Skeleton, EmptyState, IconButton,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose,
 } from '../ui'
+// VX28 — un seul langage de graphique (kit ui/charts) + un seul PageHeader.
+import { BarArrondie } from '../ui/charts'
+import { PageHeader } from '../ui/PageHeader'
 import { formatDateTime, formatNumber } from '../lib/format'
 
 /* Journal d'activité (Feature G) — réservé au Directeur par défaut
@@ -23,22 +23,6 @@ import { formatDateTime, formatNumber } from '../lib/format'
    (model + object_id connus), un bouton ouvre une reconstruction champ-par-
    champ de l'objet à une date choisie (rejoue les diffs structurés côté
    serveur). Même permission que le reste du Journal (Directeur/admin). */
-
-const TOKEN = {
-  primary: 'var(--primary)',
-  muted: 'var(--muted-foreground)',
-  grid: 'var(--border)',
-  surface: 'var(--popover)',
-}
-
-const tooltipStyle = {
-  borderRadius: 10,
-  fontSize: 12,
-  border: `1px solid ${TOKEN.grid}`,
-  background: TOKEN.surface,
-  color: 'var(--popover-foreground)',
-  boxShadow: 'var(--shadow-md)',
-}
 
 const PERIODS = [
   { value: 'jour', label: 'Jour' },
@@ -201,6 +185,18 @@ function AsOfTrigger({ contentType, objectId, label }) {
 export default function Journal() {
   const allowed = useHasPermission('journal_activite_voir')
 
+  // VX98 — deep-link « Historique » depuis une fiche : ?model=devis&object_id=42
+  // pré-filtre le journal sur CET objet (le backend filtre content_type__model +
+  // object_id). Un bouton « Voir tout le journal » retire le filtre.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const modelParam = searchParams.get('model') || ''
+  const objectIdParam = searchParams.get('object_id') || ''
+  const clearObjectFilter = () => {
+    const next = new URLSearchParams(searchParams)
+    next.delete('model'); next.delete('object_id')
+    setSearchParams(next, { replace: true })
+  }
+
   const [period, setPeriod] = useState('jour')
   const [date, setDate] = useState(todayISO())
   const [users, setUsers] = useState([])
@@ -228,8 +224,11 @@ export default function Journal() {
     if (action) p.action = action
     if (moduleF) p.module = moduleF
     if (search.trim()) p.search = search.trim()
+    // VX98 — pré-filtre deep-link (fiche → journal sur cet objet).
+    if (modelParam) p.model = modelParam
+    if (objectIdParam) p.object_id = objectIdParam
     return p
-  }, [users, action, moduleF, search])
+  }, [users, action, moduleF, search, modelParam, objectIdParam])
 
   // Métadonnées (une fois).
   const loadMeta = () => {
@@ -311,14 +310,25 @@ export default function Journal() {
 
   return (
     <div className="ui-root min-h-full p-4 sm:p-6">
-      <header className="mb-5">
-        <h2 className="font-display text-xl font-bold tracking-tight text-foreground">
-          Journal d'activité
-        </h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Qui a fait quoi, et quand — heures en Africa/Casablanca.
-        </p>
-      </header>
+      {/* VX28 — PageHeader unifié (remplace le <h2> nu + sous-titre). */}
+      <PageHeader
+        title="Journal d'activité"
+        subtitle="Qui a fait quoi, et quand — heures en Africa/Casablanca."
+      />
+
+      {/* VX98 — bandeau « filtré sur cet objet » quand on arrive via le bouton
+          « Historique » d'une fiche (?model=&object_id=). */}
+      {(modelParam || objectIdParam) && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-sm">
+          <span className="text-foreground">
+            Journal filtré sur {modelParam || 'objet'}
+            {objectIdParam ? ` #${objectIdParam}` : ''}
+          </span>
+          <Button size="sm" variant="outline" onClick={clearObjectFilter}>
+            Voir tout le journal
+          </Button>
+        </div>
+      )}
 
       {/* Switcher période + date */}
       <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -399,15 +409,16 @@ export default function Journal() {
                   Aucune activité sur cette période.
                 </p>
               ) : (
-                <ResponsiveContainer width="100%" height={220}>
-                  <BarChart data={chartData} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={TOKEN.grid} vertical={false} />
-                    <XAxis dataKey="label" tick={{ fontSize: 11, fill: TOKEN.muted }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
-                    <YAxis allowDecimals={false} width={32} tick={{ fontSize: 11, fill: TOKEN.muted }} tickLine={false} axisLine={false} />
-                    <Tooltip cursor={{ fill: 'var(--muted)' }} contentStyle={tooltipStyle} formatter={(v) => [formatNumber(v), 'Évènements']} />
-                    <Bar dataKey="count" radius={[4, 4, 0, 0]} fill={TOKEN.primary} barSize={period === 'jour' ? 10 : 18} />
-                  </BarChart>
-                </ResponsiveContainer>
+                <BarArrondie
+                  data={chartData}
+                  dataKey="count"
+                  categoryKey="label"
+                  tone="primary"
+                  name="Évènements"
+                  height={220}
+                  barSize={period === 'jour' ? 10 : 18}
+                  tooltipFormat={(v) => formatNumber(v)}
+                />
               )}
             </CardContent>
           </Card>

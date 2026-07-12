@@ -65,6 +65,11 @@ def _apply_filters(qs, params):
     model = params.get('model')
     if model:
         qs = qs.filter(content_type__model=model)
+    # VX98 — deep-link « Historique » depuis une fiche : pré-filtre sur CET
+    # objet (index (content_type, object_id)). object_id est un CharField.
+    object_id = params.get('object_id')
+    if object_id:
+        qs = qs.filter(object_id=str(object_id))
     date_from = _parse_date(params.get('from'))
     date_to = _parse_date(params.get('to'))
     if date_from:
@@ -174,6 +179,10 @@ def _apply_filters_no_range(qs, params):
     model = params.get('model')
     if model:
         qs = qs.filter(content_type__model=model)
+    # VX98 — deep-link « Historique » depuis une fiche : pré-filtre sur CET objet.
+    object_id = params.get('object_id')
+    if object_id:
+        qs = qs.filter(object_id=str(object_id))
     search = (params.get('search') or '').strip()
     if search:
         from django.db.models import Q

@@ -35,6 +35,22 @@ vi.mock('../../api/ventesApi', () => ({
   },
 }))
 
+// VX188 — espionne les rendus de ProduitPicker (sans changer son comportement
+// réel) pour prouver que DevisLineRow (React.memo) saute le re-rendu d'une
+// ligne inchangée quand un état SANS RAPPORT (« Note ») change ailleurs dans
+// DevisGenerator.
+const produitPickerRenderSpy = vi.fn()
+vi.mock('../../components/ProduitPicker', async (importOriginal) => {
+  const actual = await importOriginal()
+  const Real = actual.default
+  return {
+    default: (props) => {
+      produitPickerRenderSpy(props.value)
+      return <Real {...props} />
+    },
+  }
+})
+
 import crmApi from '../../api/crmApi'
 import stockApi from '../../api/stockApi'
 import DevisGenerator from './DevisGenerator'
@@ -118,5 +134,24 @@ describe('VX137 — table de lignes : champs design system, saisie jamais rejet�
     await screen.findByDisplayValue('Smart Meter Huawei DTSU666')
     const table = document.querySelector('.lines-table')
     expect(table.querySelectorAll('input.form-control').length).toBe(0)
+  })
+})
+
+describe('VX188 — DevisLineRow mémoïsé : taper dans Note ne re-rend pas les lignes inchangées', () => {
+  it('taper dans « Note » ne ré-invoque PAS ProduitPicker pour la ligne existante', async () => {
+    renderGenerator()
+    await screen.findByDisplayValue('Smart Meter Huawei DTSU666')
+    produitPickerRenderSpy.mockClear()
+
+    const note = screen.getByPlaceholderText('Conditions de paiement, remarques internes...')
+    fireEvent.change(note, { target: { value: 'r' } })
+    fireEvent.change(note, { target: { value: 'rd' } })
+    fireEvent.change(note, { target: { value: 'rda' } })
+
+    // Le composant DevisGenerator entier re-rend à chaque frappe (state
+    // « note » au niveau parent) mais React.memo(DevisLineRow) doit sauter
+    // le re-rendu de la ligne inchangée : ProduitPicker n'est jamais
+    // ré-invoqué pour elle.
+    expect(produitPickerRenderSpy).not.toHaveBeenCalled()
   })
 })

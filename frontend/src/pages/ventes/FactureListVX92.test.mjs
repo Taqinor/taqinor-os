@@ -49,9 +49,12 @@ test('VX92 : ProduitForm — toggle persisté, OFF par défaut, jamais affiché 
 
 test('VX92 : ProduitForm — succès + toggle ON = reset formulaire + refocus nom (pas onClose)', () => {
   const start = PRODUIT_FORM_SRC.indexOf('onSaved?.()')
-  const block = PRODUIT_FORM_SRC.slice(start, start + 400)
+  // Fenêtre élargie (VX93 a inséré un commentaire + la ligne TVA « dernière
+  // saisie » dans le bloc « créer un autre »).
+  const block = PRODUIT_FORM_SRC.slice(start, start + 600)
   assert.match(block, /if \(!isEdit && creerUnAutre\) \{/)
-  assert.match(block, /setFields\(initialFields\)/)
+  // VX93 — le reset ré-applique la dernière TVA saisie (spread de initialFields).
+  assert.match(block, /setFields\(\{ \.\.\.initialFields/)
   assert.match(block, /nomRef\.current\?\.focus\(\)/)
   assert.match(block, /\} else \{\s*onClose\(\)\s*\}/)
 })

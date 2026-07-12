@@ -212,6 +212,19 @@ class Devis(models.Model):
         max_digits=12, decimal_places=2, null=True, blank=True,
         verbose_name='Marge HT figée (interne, manager-only)')
 
+    # VX98 — fraîcheur : horodatage (auto_now) + dernier auteur d'une
+    # modification (posé server-side dans perform_update, jamais accepté du
+    # corps). Alimente la puce « modifié par X il y a N min » (silencieuse si
+    # NULL ou si c'est l'utilisateur courant). updated_by suit le pattern
+    # archived_by ; NULL sur les devis antérieurs à la migration.
+    updated_at = models.DateTimeField(auto_now=True, null=True)
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='devis_modifies',
+    )
+
     class Meta:
         verbose_name = 'Devis'
         verbose_name_plural = 'Devis'
@@ -882,6 +895,19 @@ class Facture(models.Model):
         null=True, blank=True, verbose_name='Période de service — début')
     periode_service_fin = models.DateField(
         null=True, blank=True, verbose_name='Période de service — fin')
+
+    # VX98 — fraîcheur : horodatage (auto_now) + dernier auteur d'une
+    # modification (posé server-side dans perform_update, jamais accepté du
+    # corps). Alimente la puce « modifié par X il y a N min » (silencieuse si
+    # NULL ou si c'est l'utilisateur courant). updated_by suit le pattern
+    # created_by ; NULL sur les factures antérieures à la migration.
+    updated_at = models.DateTimeField(auto_now=True, null=True)
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='factures_modifiees',
+    )
 
     class Meta:
         verbose_name = 'Facture'

@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react'
 import {
   DndContext,
   DragOverlay,
+  KeyboardSensor,
   PointerSensor,
   TouchSensor,
   useDraggable,
@@ -15,6 +16,10 @@ import {
 import {
   formatMAD, groupLeadsByStage, PIPELINE_STAGES, STAGE_LABELS,
 } from '../../../../features/crm/stages'
+import {
+  buildKanbanAnnouncements,
+  kanbanScreenReaderInstructions,
+} from '../../../../features/kanban/kanbanA11y'
 import { useOptimisticSave } from '../../../../hooks/useOptimisticSave'
 import { toast } from '../../../../ui/confirm'
 import LeadCard from './LeadCard'
@@ -73,7 +78,11 @@ export function StageMover({ lead, onInlineSave }) {
 
 // Probabilité de conversion par étape (entonnoir) — UI seulement, sert au
 // prévisionnel pondéré (proba × total devis). Les leads perdus comptent 0.
-const STAGE_PROBABILITY = {
+// XSAL15 — exportée pour être réutilisée telle quelle par la vue « Prévision »
+// (regroupement par mois plutôt que par étape, MÊME calcul de pondération —
+// jamais une seconde table de probabilités déclarée ailleurs).
+// eslint-disable-next-line react-refresh/only-export-components -- STAGE_PROBABILITY co-localisé
+export const STAGE_PROBABILITY = {
   NEW: 0.1,
   CONTACTED: 0.25,
   QUOTE_SENT: 0.5,
@@ -175,9 +184,22 @@ export default function KanbanView({
     useSensor(TouchSensor, {
       activationConstraint: { delay: 150, tolerance: 8 },
     }),
+    // VX192 — sensor clavier natif (@dnd-kit/core), 0 dépendance.
+    useSensor(KeyboardSensor),
   )
   const columns = useMemo(() => groupLeadsByStage(leads), [leads])
   const [activeLead, setActiveLead] = useState(null)
+
+  // VX192 — annonces FR : id de lead → nom, id de colonne → libellé d'étape.
+  const announcements = useMemo(() => {
+    const byId = new Map((leads ?? []).map((l) => [l.id, l]))
+    const labelFor = (id) => {
+      if (STAGE_LABELS[id]) return STAGE_LABELS[id]
+      const l = byId.get(id)
+      return l?.nom || `#${id}`
+    }
+    return buildKanbanAnnouncements(labelFor)
+  }, [leads])
 
   const handleDragStart = ({ active }) => {
     setActiveLead(active.data.current?.lead ?? null)
@@ -204,6 +226,10 @@ export default function KanbanView({
   return (
     <DndContext
       sensors={sensors}
+      accessibility={{
+        announcements,
+        screenReaderInstructions: kanbanScreenReaderInstructions,
+      }}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}

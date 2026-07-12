@@ -41,8 +41,22 @@ services:
     # SCA10 — cible le cache Django sur l'instance Redis dédiée par défaut
     # (settings/base.py retombe sur REDIS_HOST si REDIS_CACHE_HOST est vide,
     # donc surchageable/annulable via .env sans casser la rétro-compatibilité).
+    #
+    # NTPLT3 — défense en profondeur RLS. Quand POSTGRES_RLS_ENABLED=1 ET
+    # DB_APP_USER/DB_APP_PASSWORD sont définis dans .env, ce service RUNTIME
+    # (gunicorn) se connecte avec le rôle applicatif NON-BYPASSRLS `app_rls`
+    # (cf. backend/db/rls_roles.sql) : il est physiquement soumis aux policies
+    # RLS (`manage.py rls --apply`), le GUC app.current_company (NTPLT1) décide
+    # des lignes visibles. migrate/seed/dump restent sur le rôle OWNER
+    # (settings détecte la commande manage.py). Défaut OFF : sans le flag,
+    # l'owner (${DB_USER}) est utilisé partout — comportement inchangé.
+    # Provisionner le rôle UNE fois : psql < backend/db/rls_roles.sql (mot de
+    # passe à choisir, jamais committé).
     environment:
       REDIS_CACHE_HOST: ${REDIS_CACHE_HOST:-redis_cache}
+      POSTGRES_RLS_ENABLED: ${POSTGRES_RLS_ENABLED:-0}
+      DB_APP_USER: ${DB_APP_USER:-}
+      DB_APP_PASSWORD: ${DB_APP_PASSWORD:-}
     depends_on:
       - db
       - redis
