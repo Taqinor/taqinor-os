@@ -27,6 +27,7 @@ from .dashboard_partage import (
 )
 from .views import (
     ApiUsagePlanViewSet,
+    BackgroundJobViewSet,
     BackupRunViewSet,
     BrandedTemplateViewSet,
     BulkEditViewSet,
@@ -100,6 +101,8 @@ router.register(r'api-usage', ApiUsagePlanViewSet, basename='api-usage')
 router.register(r'changelog', ChangelogViewSet, basename='changelog')
 # NTPLT6 — compteurs d'usage par tenant (metering), SUPERUSER only.
 router.register(r'usage', TenantUsageSnapshotViewSet, basename='tenant-usage')
+# NTPLT29 — mes jobs de fond avec progression (scopé user + société).
+router.register(r'jobs-status', BackgroundJobViewSet, basename='background-job')
 # XPLT10 — liens publics tokenisés + partage interne fin de dashboards.
 router.register(r'dashboards-partages', PartageDashboardViewSet,
                 basename='dashboard-partage')

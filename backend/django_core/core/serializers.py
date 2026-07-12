@@ -7,6 +7,7 @@ from rest_framework import serializers
 
 from .models import (
     ApiUsagePlan,
+    BackgroundJob,
     BackupRun,
     BrandedTemplate,
     ChangelogEntry,
@@ -312,5 +313,17 @@ class TenantUsageSnapshotSerializer(serializers.ModelSerializer):
             'id', 'company', 'company_nom', 'jour', 'lignes_par_table',
             'octets_minio', 'nb_requetes_api', 'nb_taches_celery',
             'created_at', 'updated_at',
+        ]
+        read_only_fields = fields
+
+
+class BackgroundJobSerializer(serializers.ModelSerializer):
+    """NTPLT29 — sortie lecture seule d'un job de fond avec progression."""
+
+    class Meta:
+        model = BackgroundJob
+        fields = [
+            'id', 'kind', 'statut', 'progress_pct', 'result_file_key',
+            'message_erreur', 'created_at', 'updated_at',
         ]
         read_only_fields = fields

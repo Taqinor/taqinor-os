@@ -61,6 +61,7 @@ from .models import (
 )
 from .serializers import (
     ApiUsagePlanSerializer,
+    BackgroundJobSerializer,
     BackupRunSerializer,
     BrandedTemplateSerializer,
     ChangelogEntrySerializer,
@@ -999,6 +1000,30 @@ def _couts_xlsx_response(rows, periode):
                       'spreadsheetml.sheet'))
     resp['Content-Disposition'] = f'attachment; filename="{filename}"'
     return resp
+
+
+# ── NTPLT29 — Jobs de fond avec progression (mes jobs) ──────────────────────
+
+
+class BackgroundJobViewSet(viewsets.ReadOnlyModelViewSet):
+    """NTPLT29 — suivi de MES jobs de fond (lecture seule, scopé user+société).
+
+      * ``GET core/jobs-status/``       — mes jobs (société + user courant)
+      * ``GET core/jobs-status/{id}/``  — un de mes jobs
+
+    Le queryset est DOUBLEMENT scopé : société de l'utilisateur ET utilisateur
+    lui-même — un utilisateur ne voit jamais les jobs d'un collègue. Les jobs
+    sont créés par ``core.jobs.submit`` (company/user forcés server-side), pas
+    par cette API (lecture seule)."""
+
+    serializer_class = BackgroundJobSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        from .models import BackgroundJob
+        user = self.request.user
+        return BackgroundJob.objects.filter(
+            company=user.company, user=user)
 
 
 # ── NTPLT55 — Bascule superuser du mode maintenance (lecture seule) ──────────

@@ -2225,3 +2225,72 @@ class MaintenanceMode(TimestampedModel):
         except Exception:  # noqa: BLE001 — cache KO → prochaine lecture relit DB
             pass
         return obj
+
+
+class BackgroundJob(TenantModel):
+    """NTPLT29 — job de fond avec progression (exports lourds, imports longs).
+
+    Trace un travail asynchrone lancé pour un utilisateur : ``kind`` (type
+    logique), ``statut`` (queued→running→done/failed), ``progress_pct``,
+    ``result_file_key`` (clé MinIO du livrable), ``message_erreur``. Company et
+    user sont TOUJOURS posés server-side (jamais depuis le corps de requête).
+    Socle de NTPLT30 (exports lourds asynchrones) et du commit dataimport long.
+    """
+
+    STATUT_QUEUED = 'queued'
+    STATUT_RUNNING = 'running'
+    STATUT_DONE = 'done'
+    STATUT_FAILED = 'failed'
+    STATUT_CHOICES = [
+        (STATUT_QUEUED, 'En file'),
+        (STATUT_RUNNING, 'En cours'),
+        (STATUT_DONE, 'Terminé'),
+        (STATUT_FAILED, 'Échoué'),
+    ]
+
+    user = models.ForeignKey(
+        'authentication.CustomUser', on_delete=models.CASCADE,
+        related_name='background_jobs', verbose_name='Utilisateur')
+    kind = models.CharField('Type', max_length=64)
+    statut = models.CharField(
+        'Statut', max_length=16, choices=STATUT_CHOICES,
+        default=STATUT_QUEUED)
+    progress_pct = models.PositiveSmallIntegerField('Progression (%)',
+                                                    default=0)
+    result_file_key = models.CharField(
+        'Clé fichier résultat', max_length=512, blank=True, default='')
+    message_erreur = models.TextField('Message d’erreur', blank=True,
+                                      default='')
+
+    class Meta:
+        verbose_name = 'Job de fond'
+        verbose_name_plural = 'Jobs de fond'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['company', 'user', '-created_at'],
+                         name='core_bgjob_co_user_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.kind}:{self.statut} ({self.progress_pct}%)'
+
+    def marquer_progression(self, pct):
+        """Met à jour la progression (borne 0-100) + passe en ``running``."""
+        self.progress_pct = max(0, min(100, int(pct)))
+        if self.statut == self.STATUT_QUEUED:
+            self.statut = self.STATUT_RUNNING
+        self.save(update_fields=['progress_pct', 'statut', 'updated_at'])
+
+    def marquer_termine(self, result_file_key=''):
+        """Passe le job en ``done`` (100 %) avec la clé du livrable."""
+        self.statut = self.STATUT_DONE
+        self.progress_pct = 100
+        self.result_file_key = result_file_key or ''
+        self.save(update_fields=['statut', 'progress_pct',
+                                 'result_file_key', 'updated_at'])
+
+    def marquer_echec(self, message=''):
+        """Passe le job en ``failed`` avec un message d'erreur."""
+        self.statut = self.STATUT_FAILED
+        self.message_erreur = (message or '')[:5000]
+        self.save(update_fields=['statut', 'message_erreur', 'updated_at'])
