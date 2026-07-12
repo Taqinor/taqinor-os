@@ -72,6 +72,10 @@ the journey the best in the world for the CLIENT and the COMMERCIAL user.*
 *From Reda: (1) when the client opens the returned quote he must see HIS OWN HOME in interactive 3D with the panels (zoom/rotate) — the web viewer is WEB_PLAN WJ25–WJ28, this QJ26 is the backend unlock; (2) when the client asks to be contacted, the lead's HANDLER and the handler's SUPERIOR must both be notified; (3) a « contacter mon supérieur » button on quote generation notifies the creator's superior; (4) support multi-villa quotes — multiply one villa ×N (identical) OR add different villas one by one, all in ONE quote document. Research confirmed the pieces exist: `CustomUser.supervisor` self-FK (added 2026-06-18), `Lead.owner` (handler), `Devis.created_by` (creator), the `notify()` service + extensible EventType (QJ2), and the `roof_layout` JSON already stored on the Devis — the public proposal payload just doesn't expose it, and no server-side contact-request endpoint exists yet.*
 
 
+#### DONE LOG — Vague 3, lane frontend/ventes (2026-07-12)
+
+VX138 (aperçu simulation → comparateur Sans/Avec 2 colonnes nommées + liseré de recommandation, tabular-nums sur `.gen-kwp`, 3 paliers visuels sur la chaîne de totaux, bandeau `.gen-actions-sticky` sticky au scroll à tous les paliers avec TTC condensé, accordéon « Plusieurs propriétés ? » replié par défaut en agricole).
+
 #### DONE LOG — Vague 2 (VX terrain/finance/CRM + QX groupe) (2026-07-12)
 
 Vague 2 du plan-run (23 tâches VX + tagging de tous les plans, un seul merge). Lanes drainées en parallèle : **finance/terrain** VX44 (photos chantier en rafale + partage WhatsApp), VX88 (Ma journée → tournée géo), VX94 (Enter-pour-ajouter capture), VX105 (statut technicien + persistance + toasts hors-ligne), VX106 (signature client terrain), VX107 (résumé client lecture seule), VX52 (avertissements conformité tactiles), VX63 (erreurs FR lisibles DevisList/FactureList), VX114 (déjà présent, export daté), VX116 (relance groupée + aperçu WhatsApp). **ventes** VX222 (relancer devis), VX230 (encaisser depuis Relances), VX231 (navigation finance vers la cible). **UI/data** VX41 (data-viz marque + comparaison période), VX33 (Pilotage stock tour de contrôle), VX66 (anti-double-soumission Button), VX26 (couleurs stage dérivées tokens), VX81 (exports XLSX/CSV horodatés), VX61 (Web Vitals réels + endpoint reporting), VX110 (copier TSV), VX246 (queue interop iOS), VX19 (zéro popup navigateur, +réparation FactureList post-refactor VX230). Backend DoD à suivre : VX105 (`ajouter-reserve` gated admin), VX106 (signature dans `intervention_pdf.py`). GATED (non buildé) : QXG1/QXG2/QXG4 (compte/contenu fondateur). Tagging : les 10 fichiers de plan (PLAN/PLAN2/new_tasks + 7 domaines) reçoivent un tag `@lane:`/`Files:` visible par le planner sur la 1ʳᵉ ligne (append-only vérifié).
@@ -1085,7 +1089,7 @@ grand-verdict — voir NE PAS FAIRE en fin de section pour le détail des kills/
   DevisGenerator.jsx` = 0 ; capture dark mode avant/après ; test « saisie jamais rejetée » vert.
   (T2 — S, sonnet) (@lane: frontend/ventes)
 
-- [ ] VX138 — **L'aperçu de simulation devient un comparateur : Sans/Avec groupés, chiffres héros (@lane: frontend/ventes)
+- [x] VX138 — **L'aperçu de simulation devient un comparateur : Sans/Avec groupés, chiffres héros (@lane: frontend/ventes)
   stables, totaux hiérarchisés, CTA sticky, cartes selon le mode.** Le moment de vente en direct
   souffre de cinq défauts convergents : (a) jusqu'à 12 `MetricCard` dans UNE grille homogène — les
   paires Sans/Avec batterie ne sont reliées que par une étoile noyée → 2 colonnes nommées « Option

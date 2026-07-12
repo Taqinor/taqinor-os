@@ -2706,16 +2706,12 @@ textarea.form-control {
      92vw (≈345px) débordait encore de la carte-ligne (~326px). La règle de
      base `min(100%, 380px)` épouse désormais exactement le déclencheur. */
 
-  /* ── Boutons d'action du générateur : footer collant ── */
+  /* ── Boutons d'action du générateur : footer collant (mobile) ──
+     VX138(d) — le `position: sticky` de base vit désormais HORS media query
+     (voir plus bas, section générateur) : sticky au scroll sur TOUS les
+     paliers, pas seulement mobile. Ici : marge de sécurité iOS + boutons
+     empilés pleine largeur, spécifiques au mobile. */
   .gen-actions-sticky {
-    position: sticky;
-    bottom: 0;
-    /* MB3 — footer d'actions collant = palier --z-sticky (au-dessus du contenu
-       du générateur qui défile en dessous). Vit dans .layout-content. */
-    z-index: var(--z-sticky, 1100);
-    background: #fff;
-    border-top: 1px solid #e2e8f0;
-    /* Boutons d'action au-dessus de l'indicateur d'accueil iOS. */
     padding: 10px 0 max(6px, env(safe-area-inset-bottom));
     flex-wrap: wrap;
   }
@@ -2758,6 +2754,22 @@ textarea.form-control {
 
 /* ── Générateur de devis solaire (/ventes/devis/nouveau) ───── */
 .gen-page { max-width: 1100px; }
+
+/* VX138(d) — bandeau d'actions sticky au scroll SUR TOUS LES PALIERS
+   (auparavant sticky uniquement sous la media query mobile) ; le contenu
+   spécifique mobile (marge de sécurité iOS, boutons pleine largeur) reste
+   dans la media query ci-dessous. */
+.gen-actions-sticky {
+  position: sticky;
+  bottom: 0;
+  /* MB3 — footer d'actions collant = palier --z-sticky (au-dessus du contenu
+     du générateur qui défile en dessous). Vit dans .layout-content. */
+  z-index: var(--z-sticky, 1100);
+  background: var(--card);
+  border-top: 1px solid var(--border);
+  padding-top: 0.6rem;
+  padding-bottom: 0.6rem;
+}
 
 /* VX4 — carte du générateur tokenisée (dark mode réel sur l'écran le plus
    stratégique ; VX17 a déjà migré .gen-metric / .lines-table et le chart). */
@@ -2809,6 +2821,10 @@ textarea.form-control {
   min-height: 2.4rem;
   display: flex;
   align-items: center;
+  /* VX138 — glyphes à largeur fixe : le kWc/kWh ne tremble plus horizontalement
+     pendant la frappe devant le client (même traitement que .gen-metric-value). */
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-feature-settings: 'tnum' 1, 'zero' 1;
 }
 
 .gen-radio-group { display: flex; gap: 0.5rem; margin-top: 0.2rem; }
@@ -2893,6 +2909,38 @@ textarea.form-control {
   grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   gap: 0.75rem;
   margin-bottom: 1.25rem;
+}
+
+/* VX138 — comparateur Sans/Avec batterie : 2 colonnes NOMMÉES (mode « Les
+   deux ») au lieu d'une grille homogène de jusqu'à 6 cartes reliées par la
+   seule étoile ; la recommandation est un liseré porté par TOUTE la colonne. */
+.gen-compare-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.9rem;
+  margin-bottom: 1.25rem;
+}
+
+.gen-compare-col {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, 10px);
+}
+
+.gen-compare-col-rec { border-color: var(--cat-gold); box-shadow: 0 0 0 2px var(--cat-gold); }
+
+.gen-compare-col-title {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--muted-foreground);
+  text-transform: uppercase;
+  letter-spacing: var(--text-eyebrow-tracking);
 }
 
 /* VX16 — rail récapitulatif STICKY du générateur (lg+ uniquement). Le masquage
@@ -2992,6 +3040,15 @@ textarea.form-control {
 .gen-total-value.orange { color: #f28e2b; }
 
 .gen-total-label.green, .gen-total-value.green { color: #16a34a; }
+
+/* VX138 — 3 paliers visuels sur la chaîne de totaux (paliers de typographie
+   F121 existants, `tokens.css`) : brut (tier-1, text-small) → remise/TVA
+   (tier-2, text-body medium) → total final (tier-3, text-h3 semibold) — le
+   TTC retenu devient le point focal au lieu d'un affichage plat à poids
+   uniforme. */
+.gen-tier-1 .gen-total-value { font-size: var(--text-small); }
+.gen-tier-2 .gen-discount-input { font-size: var(--text-body); font-weight: 500; }
+.gen-tier-3 .gen-total-value { font-size: var(--text-h3); font-weight: 700; }
 
 .gen-discount-input {
   width: 72px;
