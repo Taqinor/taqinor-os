@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { dirname, join } from 'node:path'
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from './Dialog'
 import {
   AlertDialog,
@@ -42,5 +45,20 @@ describe('Modals — sûreté viewport mobile (anti-débordement iPhone)', () =>
     const content = screen.getByRole('alertdialog')
     expect(content.className).toContain('max-h-[calc(100dvh-2rem)]')
     expect(content.className).toContain('overflow-y-auto')
+  })
+
+  // VX175(c) — le shell `.modal` (raw CSS, utilisé par les modales fait-main
+  // hors Dialog/AlertDialog, ex. LeadForm) était le SEUL bloc 100vh du
+  // fichier sans repli 100dvh : bas de modale rogné sous la barre d'adresse
+  // dynamique mobile. On vérifie la source CSS directement (pas de rendu —
+  // `.modal` n'est pas un composant React, juste une classe posée sur un
+  // shell brut).
+  it('.modal (CSS brut) porte la paire 100vh → 100dvh sur max-height', () => {
+    const here = dirname(fileURLToPath(import.meta.url))
+    const css = readFileSync(join(here, '..', 'index.css'), 'utf8')
+    const start = css.indexOf('.modal {')
+    const rule = css.slice(start, css.indexOf('}', start))
+    expect(rule).toContain('max-height: calc(100vh - 48px);')
+    expect(rule).toContain('max-height: calc(100dvh - 48px);')
   })
 })

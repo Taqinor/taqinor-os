@@ -375,7 +375,11 @@ export default function Sidebar({ collapsed, onToggle, onNavigate }) {
                   // FG16 — ancres du guide d'accueil (coachmarks) sur quelques
                   // liens clés : le spotlight cible ces attributs `data-coach`.
                   data-coach={COACH_ANCHORS[item.to]}
-                  title={collapsed ? label : undefined}
+                  // VX175(d) — `title` était réservé à l'état REPLIÉ ; en état
+                  // DÉPLIÉ, un libellé tronqué par `text-overflow: ellipsis`
+                  // (index.css) à texte-zoom élevé n'avait aucun repère
+                  // (tooltip natif) pour lire le nom complet.
+                  title={label}
                   onClick={onNavigate}
                   // VX58 — précharge le chunk de la destination dès le survol
                   // souris/clavier, avant le clic réel.
