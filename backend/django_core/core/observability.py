@@ -69,8 +69,13 @@ class RequestObservabilityMiddleware:
         self.debug = bool(getattr(settings, 'DEBUG', False))
 
     def __call__(self, request):
+        # YAPIC4 — `core.middleware.RequestIdMiddleware` (monté PLUS TÔT dans
+        # MIDDLEWARE) est désormais l'autorité sur l'id de corrélation ;
+        # réutilisé ici pour ne JAMAIS diverger sur la même requête. Repli
+        # sur la dérivation historique si ce middleware n'est pas monté
+        # (ex. settings custom) — comportement inchangé dans ce cas.
         incoming = request.META.get('HTTP_X_REQUEST_ID', '').strip()
-        request_id = incoming or uuid.uuid4().hex
+        request_id = getattr(request, 'request_id', None) or incoming or uuid.uuid4().hex
         ctx = {
             'request_id': request_id,
             'path': request.path,

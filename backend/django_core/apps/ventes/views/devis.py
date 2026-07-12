@@ -31,6 +31,7 @@ from authentication.permissions import (  # noqa: F401
     HasPermissionOrLegacy,
 )
 from core.viewsets import CompanyScopedModelViewSet  # noqa: F401  ARC5
+from core.idempotency import IdempotentCreateMixin  # noqa: F401  YAPIC9
 from ..utils.references import create_with_reference  # noqa: F401
 from ..utils.company_settings import create_numbered  # noqa: F401
 
@@ -54,7 +55,13 @@ def _company_qs(qs, user):
 # package __init__ ré-exporte toutes les vues publiques.
 
 
-class DevisViewSet(CompanyScopedModelViewSet):
+class DevisViewSet(IdempotentCreateMixin, CompanyScopedModelViewSet):
+    # YAPIC9 — pilote de core.idempotency.IdempotentCreateMixin : sans
+    # en-tête `Idempotency-Key`, comportement inchangé (le mixin ne fait que
+    # déléguer à super().create()). AVEC l'en-tête, un rejeu à corps
+    # identique renvoie le devis initial (pas de doublon) ; corps différent
+    # -> 409. perform_create ci-dessous reste la SEULE logique métier de
+    # création — le mixin ne touche jamais à la sémantique devis/statuts.
     # ARC5 — sweep TenantMixin : base transverse unique (CompanyScopedModelViewSet
     # = TenantMixin + ModelViewSet). get_queryset (portée de visibilité +
     # _company_qs) / perform_create / perform_update / get_permissions SURCHARGENT
