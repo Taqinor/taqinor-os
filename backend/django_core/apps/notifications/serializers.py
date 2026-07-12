@@ -10,6 +10,17 @@ from .models import (
 class NotificationSerializer(serializers.ModelSerializer):
     event_label = serializers.CharField(
         source='get_event_type_display', read_only=True)
+    # VX208 — taxonomie STATIQUE (`severity.py`, aucune migration) exposée en
+    # lecture : sévérité (tri/liseré critique), catégorie (groupement
+    # frontend) et `is_action` (compteur ACTIONS rouge vs INFOS point gris —
+    # un `DIGEST` n'est JAMAIS une action).
+    severity = serializers.SerializerMethodField()
+    category = serializers.SerializerMethodField()
+    is_action = serializers.SerializerMethodField()
+    # VX212(a) — « pourquoi je reçois ça » : raison courte + libellé FR,
+    # vide si non classée (comportement historique).
+    reason_label = serializers.CharField(
+        source='get_reason_display', read_only=True, default='')
 
     class Meta:
         model = Notification
@@ -17,11 +28,25 @@ class NotificationSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'event_type', 'event_label', 'title', 'body', 'link',
             'read', 'read_at', 'created_at',
+            'severity', 'category', 'is_action', 'reason', 'reason_label',
         ]
         read_only_fields = [
             'id', 'event_type', 'event_label', 'title', 'body', 'link',
-            'read_at', 'created_at',
+            'read_at', 'created_at', 'severity', 'category', 'is_action',
+            'reason', 'reason_label',
         ]
+
+    def get_severity(self, obj):
+        from . import severity as severity_module
+        return severity_module.severity_of(obj.event_type)
+
+    def get_category(self, obj):
+        from . import severity as severity_module
+        return severity_module.category_of(obj.event_type)
+
+    def get_is_action(self, obj):
+        from . import severity as severity_module
+        return severity_module.is_action(obj.event_type)
 
 
 class NotificationPreferenceSerializer(serializers.ModelSerializer):

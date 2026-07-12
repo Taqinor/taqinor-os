@@ -20,6 +20,7 @@ import { useParams } from 'react-router-dom'
 import gedApi from '../../api/gedApi'
 import { Button } from '../../ui'
 import { errMessage } from '../../features/ged/advanced/shared.js'
+import NoIndex from '../../components/NoIndex'
 
 // Types de champ dont la VALEUR doit être saisie par le signataire (XGED3).
 const CHAMP_SAISIE = new Set(['texte', 'date', 'case'])
@@ -173,6 +174,7 @@ export default function PublicSignaturePage({ mode = 'signature' }) {
 
   return (
     <div className="ui-root page" style={{ maxWidth: 640, margin: '40px auto', padding: '0 16px' }}>
+      <NoIndex />
       <h2>Signature électronique</h2>
       <p className="text-sm text-muted-foreground">
         Signature à valeur légale (loi 53-05). Consultez le document avant de signer.

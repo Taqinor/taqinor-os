@@ -17,6 +17,11 @@ const notificationsApi = {
   savePreference: (eventType, data) =>
     api.patch(`/notifications/preferences/${eventType}/`, data),
 
+  // VX207 — décompte canonique unique d'attention (cloche/badge sidebar/
+  // en-tête Ma file convergent tous sur ce seul endpoint) :
+  // { actions_dues, en_retard, aujourdhui, approbations, mentions_non_lues }.
+  attentionSummary: () => api.get('/notifications/attention-summary/'),
+
   // ── N92 — Web push (PWA), opt-in par appareil ──
   // Clé publique VAPID (chaîne vide tant que le push n'est pas configuré).
   getVapidPublicKey: () => api.get('/notifications/push/vapid-public-key/'),

@@ -9,6 +9,7 @@ import {
 } from '../../ui'
 import { DataTable } from '../../ui'
 import { formatMAD } from '../../lib/format'
+import { resilientMutation } from '../../lib/resilientMutation'
 import paieApi from '../../api/paieApi'
 import { StatutPeriode, StatutBulletin } from './statuses.jsx'
 import {
@@ -125,21 +126,27 @@ export default function PaieRunWizard() {
     try {
       // Importe d'abord les éléments variables RH du mois (best-effort).
       await paieApi.importerElementsRh(periode.id).catch(() => {})
-      let ok = 0
-      for (const pr of profils.filter((p) => p.actif !== false)) {
-        try {
-          await paieApi.genererBulletin({
-            periode: periode.id, profil: pr.id,
-          })
-          ok += 1
-        } catch { /* profil déjà validé / erreur → on continue */ }
-      }
+      const actifs = profils.filter((p) => p.actif !== false)
+      // VX117 — allSettled + rapport nominatif : un profil en échec ne bloque
+      // pas les autres, mais n'avance JAMAIS la période tout seul.
+      const { succeeded, failed } = await resilientMutation(actifs, (pr) =>
+        paieApi.genererBulletin({ periode: periode.id, profil: pr.id }))
       await loadBulletins(periode)
-      // La période passe en « calculée » dès qu'un bulletin existe.
-      await avancerVers(PERIODE_STATUTS.CALCULEE, { silencieux: true })
+      // La période ne passe en « calculée » que si TOUS les profils actifs
+      // ont un bulletin généré — un échec reste nommé, jamais avalé.
+      if (failed.length === 0) {
+        await avancerVers(PERIODE_STATUTS.CALCULEE, { silencieux: true })
+      }
       await loadAvertissements(periode)
-      toast.success(`${ok} bulletin(s) généré(s).`)
-      setStep('revue')
+      if (failed.length > 0) {
+        const noms = failed.map((f) => f.item.employe_nom || `profil #${f.item.id}`).join(', ')
+        toast.error(
+          `${succeeded.length} bulletin(s) généré(s), échec pour : ${noms}. `
+          + 'Période non avancée — corrigez puis relancez.')
+      } else {
+        toast.success(`${succeeded.length} bulletin(s) généré(s).`)
+        setStep('revue')
+      }
     } catch (e) {
       toast.error(errMsg(e, 'Génération impossible.'))
     } finally { setBusy('') }
@@ -160,15 +167,27 @@ export default function PaieRunWizard() {
     if (!periode) return
     setBusy('valider')
     try {
-      let ok = 0
-      for (const b of bulletins) {
-        if (b.statut === BULLETIN_STATUTS.VALIDE) continue
-        try { await paieApi.validerBulletin(b.id); ok += 1 } catch { /* */ }
-      }
+      const aValider = bulletins.filter((b) => b.statut !== BULLETIN_STATUTS.VALIDE)
+      // VX117 — allSettled + rapport nominatif : un bulletin en échec ne
+      // bloque pas les autres, mais n'avance JAMAIS la période tout seul.
+      const { succeeded, failed } = await resilientMutation(aValider, (b) =>
+        paieApi.validerBulletin(b.id))
       await loadBulletins(periode)
-      await avancerVers(PERIODE_STATUTS.VALIDEE, { silencieux: true })
-      toast.success(`${ok} bulletin(s) validé(s).`)
-      setStep('cloturer')
+      if (failed.length === 0) {
+        await avancerVers(PERIODE_STATUTS.VALIDEE, { silencieux: true })
+      }
+      if (failed.length > 0) {
+        const noms = failed.map((f) => {
+          const pr = profils.find((p) => p.id === f.item.profil)
+          return pr?.employe_nom || `profil #${f.item.profil}`
+        }).join(', ')
+        toast.error(
+          `${succeeded.length} bulletin(s) validé(s), échec pour : ${noms}. `
+          + 'Période non avancée — seuls les bulletins en échec restent à valider.')
+      } else {
+        toast.success(`${succeeded.length} bulletin(s) validé(s).`)
+        setStep('cloturer')
+      }
     } catch (e) {
       toast.error(errMsg(e, 'Validation impossible.'))
     } finally { setBusy('') }

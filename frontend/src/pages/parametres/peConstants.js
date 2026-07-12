@@ -66,6 +66,33 @@ export const TABS = [
   { key: 'avance',     label: 'Avancé',                   group: 'avance' },
 ]
 
+// ── Modèle de sauvegarde par onglet (VX151) ────────────────────────────────────
+// Le bouton « Enregistrer » partagé n'existe que sur 4/24 onglets (ceux qui
+// portent des champs du profil) ; les autres onglets sont des sections
+// autonomes qui gèrent leur propre persistance. Sans repère préalable,
+// l'utilisateur cherche un bouton de sauvegarde qui n'est pas là. Ce map
+// annonce, AVANT toute édition, la convention de chaque onglet.
+//   'form'    → bouton « Enregistrer » partagé, en bas de page.
+//   'section' → la section porte ses propres boutons d'enregistrement.
+//   'guide'   → onglet d'assistance, rien à enregistrer.
+// Un onglet absent de ce map est traité comme 'section' (défaut sûr : on
+// n'affirme jamais un bouton partagé qui n'existe pas).
+export const SAVE_MODEL_BY_TAB = {
+  onboarding: 'guide',
+  societe: 'form',
+  leads: 'form',
+  devis: 'form',
+  avance: 'form',
+}
+export const SAVE_MODEL_HINTS = {
+  form:    'Cet onglet s’enregistre avec le bouton « Enregistrer » en bas de page.',
+  section: 'Cet onglet dispose de ses propres boutons d’enregistrement dans la section.',
+  guide:   'Onglet d’assistance — aucun réglage à enregistrer ici.',
+}
+export function saveModelForTab(tab) {
+  return SAVE_MODEL_BY_TAB[tab] || 'section'
+}
+
 // L790 — index de recherche : { tab, libellés/mots-clés }. Une saisie qui
 // correspond à un mot-clé propose de sauter à l'onglet concerné. Liste
 // volontairement large mais simple à maintenir (un onglet par entrée).

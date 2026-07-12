@@ -502,6 +502,72 @@ def _sweep_hot_leads(company):
     return posted
 
 
+# ── VX210 — réveil actif des items snoozés (activités VX85 + approbations
+# VX210(b)), déclenché par l'échéance OU par un événement métier (VX210(c)).
+
+def _sweep_reveiller_snoozes_activites(company):
+    """VX210(a)/(c) — réveille les `records.Activity` snoozées de `company`.
+
+    `records` est une app de FONDATION : ce sweep VIT côté `notifications`
+    (satellite) et appelle `records.services.reveiller_snoozes` — jamais
+    l'inverse (records n'importe jamais `apps.notifications` pour SA propre
+    tâche planifiée)."""
+    try:
+        from apps.records import services as records_services
+        return records_services.reveiller_snoozes(company)
+    except Exception:  # pragma: no cover - défensif
+        logger.warning('sweeps: reveiller_snoozes (activités) société %s échouée',
+                       getattr(company, 'pk', None), exc_info=True)
+        return 0
+
+
+def _sweep_reveiller_snoozes_approbations(company):
+    """VX210(b) — réveille les `SnoozedItem` (approbations snoozées depuis
+    « Ma file ») échus : supprime la ligne (redevient visible immédiatement)
+    et notifie légèrement le propriétaire. Idempotent (une ligne supprimée ne
+    peut plus matcher au prochain passage)."""
+    try:
+        from django.utils import timezone
+
+        from .models import SnoozedItem
+        today = timezone.now().date()
+        rows = list(SnoozedItem.objects.filter(
+            company=company, snoozed_until__lte=today).select_related('user'))
+        for item in rows:
+            try:
+                notify(
+                    item.user, EventType.SNOOZE_REVEIL,
+                    '⏰ De retour : approbation en attente',
+                    link='/approbations', company=company)
+            except Exception:  # pragma: no cover - défensif
+                pass
+        if rows:
+            SnoozedItem.objects.filter(id__in=[r.id for r in rows]).delete()
+        return len(rows)
+    except Exception:  # pragma: no cover - défensif
+        logger.warning('sweeps: reveiller_snoozes (approbations) société %s échouée',
+                       getattr(company, 'pk', None), exc_info=True)
+        return 0
+
+
+@shared_task(name='notifications.reveiller_snoozes')
+def reveiller_snoozes():
+    """VX210 — sweep dédié (cadence propre, comme `sweep_hot_leads`) : réveille
+    les items snoozés (activités VX85/VX210(c) + approbations VX210(b)) de
+    TOUTES les sociétés, échéance ou déclencheur métier. Best-effort par
+    société ; renvoie le nombre total d'items réveillés."""
+    total = 0
+    for company in _companies():
+        try:
+            total += _sweep_reveiller_snoozes_activites(company)
+            total += _sweep_reveiller_snoozes_approbations(company)
+        except Exception:  # pragma: no cover
+            logger.warning('sweeps: reveiller_snoozes société %s échouée',
+                           getattr(company, 'pk', None), exc_info=True)
+    logger.info('reveiller_snoozes: %s item(s) réveillé(s)', total)
+    return total
+
+
 @shared_task(name='notifications.sweep_hot_leads')
 def sweep_hot_leads():
     """QX31be — balayage rapide (cadence minutes) : escalade les leads chauds

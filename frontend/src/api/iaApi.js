@@ -7,6 +7,9 @@ import { originFrom } from './origin'
 // on émet l'événement « session expirée » plutôt que de recharger durement la
 // page, ce qui préserve l'état des formulaires OCR/agent en cours.
 import { emitSessionExpired } from '../providers/session-bridge'
+// VX161 — refresh 401 partagé avec axios.js (une seule promesse en vol,
+// jamais un POST /token/refresh/ par requête en échec).
+import { refreshSession } from './refreshCoordinator'
 
 const ORIGIN = originFrom(import.meta.env.VITE_IA_API_URL)
 
@@ -34,11 +37,9 @@ iaApi_instance.interceptors.response.use(
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true
       try {
-        await axios.post(
-          `${ORIGIN}/api/django/auth/token/refresh/`,
-          {},
-          { withCredentials: true }
-        )
+        // VX161 — promesse de refresh PARTAGÉE (avec axios.js) : N 401
+        // simultanés (mix des deux instances) n'émettent qu'UN SEUL POST refresh.
+        await refreshSession(ORIGIN)
         return iaApi_instance(originalRequest)
       } catch {
         // Refresh echoue : la session est reellement expiree.

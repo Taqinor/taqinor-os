@@ -3811,6 +3811,63 @@ textarea.form-control {
   .nb-item-mark:hover { background: #e0e7ff; color: #1d4ed8; }
 }
 
+/* VX217(c) — la cloche s'ouvre en BOTTOM-SHEET sous 768px (le panneau
+   `.nb-panel` desktop, absolu ancré au bouton, déborde sur mobile sans
+   respecter l'encoche). Placé APRÈS la règle desktop `.nb-panel` ci-dessus
+   pour gagner la cascade à spécificité égale (la précédente tentative sous
+   768px à la ligne ~2666 était neutralisée par cette règle desktop qui la
+   suit dans le fichier — jamais un `!important`, l'ORDRE suffit).
+   Desktop INCHANGÉ (aucune règle hors de ce media query). */
+@media (max-width: 768px) {
+  .nb-panel {
+    position: fixed;
+    top: auto; left: 0; right: 0; bottom: 0;
+    width: 100%; max-width: 100%;
+    max-height: 75vh;
+    border-radius: 14px 14px 0 0;
+    padding-bottom: max(10px, env(safe-area-inset-bottom));
+    padding-left: max(6px, env(safe-area-inset-left));
+    padding-right: max(6px, env(safe-area-inset-right));
+  }
+}
+
+/* VX217(a) — <AttentionPeek> : popover d'aperçu (survol desktop / appui long
+   mobile) rendu depuis les données déjà dans la notif — jamais un nouvel
+   appel réseau, jamais `prix_achat`. */
+/* `display: block` (pas `contents`) : `mouseenter`/`mouseleave` restent
+   fiables sur l'ancre (le rendu `contents` d'un `<span>` a un comportement
+   d'événements souris incohérent entre navigateurs). `.nb-group` empile ses
+   enfants en flux bloc normal : cette ancre ne change rien à la mise en page. */
+.attention-peek-anchor { position: relative; display: block; width: 100%; }
+.attention-peek {
+  position: absolute; z-index: var(--z-tooltip, 1200);
+  top: 0; left: calc(100% + 8px);
+  width: 240px; max-width: min(240px, calc(100vw - 24px));
+  background: #fff; border: 1px solid #e2e8f0; border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.18);
+  padding: 10px 12px; font-size: 0.78rem; color: #0f172a;
+}
+.attention-peek-title { font-weight: 700; margin-bottom: 4px; }
+.attention-peek-row {
+  display: flex; justify-content: space-between; gap: 8px;
+  color: #475569; margin-top: 2px;
+}
+.attention-peek-actions { margin-top: 8px; display: flex; justify-content: flex-end; }
+/* Sous 768px (mobile), pas assez de place à droite : le peek s'ouvre
+   au-dessus/en-dessous plutôt qu'à côté (déclenché par appui long, pas de
+   survol souris). */
+@media (max-width: 768px) {
+  .attention-peek {
+    left: 0; right: 0; top: calc(100% + 4px);
+    width: auto; max-width: 100%;
+  }
+}
+/* VX217(b) — actions de GROUPE sur un item plié (VX208 dédoublonnage). */
+.nb-group-actions {
+  display: flex; justify-content: flex-end; gap: 6px;
+  padding: 2px 10px 6px;
+}
+
 /* N75 — page Préférences de notifications (événement × canaux). */
 .np-loading { display: flex; align-items: center; gap: 8px; padding: 16px; color: #64748b; }
 .np-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
@@ -6160,3 +6217,36 @@ textarea.form-control {
   .app-launcher-content[data-state="open"] { animation-duration: 150ms; }
 }
 .header-lang-code { font-size: 0.7rem; font-weight: 600; line-height: 1; }
+
+/* ============================================================================
+   VX154 — TaqinorMark + SolarLoader (mot-symbole soleil-éclair)
+   ----------------------------------------------------------------------------
+   Le glyphe est statique par défaut. Sous `.taqinor-mark--animate` (SolarLoader),
+   ses 12 rayons s'illuminent en SÉQUENCE via la keyframe `sun-rise`, chacun
+   décalé par sa variable `--ray-i`. Sous prefers-reduced-motion, on FIGE le
+   soleil pleinement éclairé (aucune illumination cyclique).
+   ========================================================================== */
+.taqinor-mark { display: inline-block; vertical-align: middle; }
+
+@keyframes sun-rise {
+  0%, 100% { opacity: 0.4; }
+  50%      { opacity: 1; }
+}
+.taqinor-mark--animate .taqinor-ray {
+  animation: sun-rise 1.15s ease-in-out infinite;
+  animation-delay: calc(var(--ray-i, 0) * 0.055s);
+}
+
+.solar-loader {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Attente signée mais respectueuse : rayons pleinement éclairés, sans cycle. */
+@media (prefers-reduced-motion: reduce) {
+  .taqinor-mark--animate .taqinor-ray {
+    animation: none !important;
+    opacity: 1 !important;
+  }
+}

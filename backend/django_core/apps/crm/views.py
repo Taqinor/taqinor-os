@@ -5,6 +5,7 @@ from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from core.mixins import TenantMixin
 from core.viewsets import CompanyScopedModelViewSet
+from apps.core.destroy_mixins import UsageGuardedDestroyMixin
 from authentication.scoping import scope_queryset, scope_client_queryset
 from .models import (
     Appointment, Client, ConcurrentPerte, EquipeCommerciale, Lead, LeadTag,
@@ -201,6 +202,11 @@ class ClientViewSet(CompanyScopedModelViewSet):
                 'id': f.id,
                 'reference': f.reference,
                 'statut': _statut(f),
+                # VX245(c) — clé RAW (additive, jamais lue par les autres
+                # consommateurs de `statut`) : « Relancer par WhatsApp »
+                # n'apparaît QUE sur une facture réellement en retard, sans
+                # dépendre du libellé FR affiché (fragile/localisé).
+                'statut_key': f.statut,
                 'total_ttc': str(f.total_ttc),
                 'date': _date(f),
             }
@@ -1312,10 +1318,12 @@ class LeadViewSet(CompanyScopedModelViewSet):
         return export_leads_xlsx(leads)
 
 
-class LeadTagViewSet(CompanyScopedModelViewSet):
+class LeadTagViewSet(UsageGuardedDestroyMixin, CompanyScopedModelViewSet):
     """Étiquettes de lead gérées (Paramètres → CRM). Lecture tout rôle,
     écriture admin. Garde-fou (L780) : une étiquette référencée par des leads
-    ne se supprime pas — l'admin l'archive plutôt (l'historique est préservé)."""
+    ne se supprime pas — l'admin l'archive plutôt (l'historique est préservé).
+    VX241(b) — la suppression effective écrit désormais une ligne AuditLog
+    (UsageGuardedDestroyMixin) : LeadTag n'est pas dans TRACKED_MODELS."""
     queryset = LeadTag.objects.all()
     serializer_class = LeadTagSerializer
 
@@ -1324,20 +1332,19 @@ class LeadTagViewSet(CompanyScopedModelViewSet):
             return [IsAnyRole()]
         return [IsAdminRole()]
 
-    def destroy(self, request, *args, **kwargs):
-        tag = self.get_object()
+    def destroy_guard_message(self, tag):
         if _tag_en_usage(tag.company, tag.nom) > 0:
-            return Response(
-                {'detail': "Cette étiquette est utilisée par des leads — "
-                           "archivez-la plutôt que de la supprimer."},
-                status=status.HTTP_409_CONFLICT)
-        return super().destroy(request, *args, **kwargs)
+            return ("Cette étiquette est utilisée par des leads — "
+                    "archivez-la plutôt que de la supprimer.")
+        return None
 
 
-class MotifPerteViewSet(CompanyScopedModelViewSet):
+class MotifPerteViewSet(UsageGuardedDestroyMixin, CompanyScopedModelViewSet):
     """Motifs de perte gérés (Paramètres → CRM). Lecture tout rôle,
     écriture admin. Garde-fou (L779) : un motif utilisé par des leads ne se
-    supprime pas — l'admin l'archive plutôt (comme pour les canaux)."""
+    supprime pas — l'admin l'archive plutôt (comme pour les canaux).
+    VX241(b) — la suppression effective écrit désormais une ligne AuditLog
+    (UsageGuardedDestroyMixin) : MotifPerte n'est pas dans TRACKED_MODELS."""
     queryset = MotifPerte.objects.all()
     serializer_class = MotifPerteSerializer
 
@@ -1346,14 +1353,11 @@ class MotifPerteViewSet(CompanyScopedModelViewSet):
             return [IsAnyRole()]
         return [IsAdminRole()]
 
-    def destroy(self, request, *args, **kwargs):
-        motif = self.get_object()
+    def destroy_guard_message(self, motif):
         if _motif_en_usage(motif.company, motif.nom) > 0:
-            return Response(
-                {'detail': "Ce motif est utilisé par des leads — archivez-le "
-                           "plutôt que de le supprimer."},
-                status=status.HTTP_409_CONFLICT)
-        return super().destroy(request, *args, **kwargs)
+            return ("Ce motif est utilisé par des leads — archivez-le "
+                    "plutôt que de le supprimer.")
+        return None
 
 
 # Canaux par défaut (clés = Lead.Canal) — 'site_web' est PROTÉGÉ (webhook site).
@@ -1379,10 +1383,12 @@ def seed_canaux(company):
             defaults={'libelle': libelle, 'ordre': i, 'protege': protege})
 
 
-class CanalViewSet(CompanyScopedModelViewSet):
+class CanalViewSet(UsageGuardedDestroyMixin, CompanyScopedModelViewSet):
     """Canaux / sources de lead gérés (Paramètres → CRM). Lecture tout rôle,
     écriture admin. Garde-fous : un canal protégé ('site_web') ne se supprime
-    pas, et aucun canal utilisé par des leads ne se supprime."""
+    pas, et aucun canal utilisé par des leads ne se supprime.
+    VX241(b) — la suppression effective écrit désormais une ligne AuditLog
+    (UsageGuardedDestroyMixin) : Canal n'est pas dans TRACKED_MODELS."""
     queryset = Canal.objects.all()
     serializer_class = CanalSerializer
 
@@ -1398,19 +1404,14 @@ class CanalViewSet(CompanyScopedModelViewSet):
             seed_canaux(request.user.company)
         return super().list(request, *args, **kwargs)
 
-    def destroy(self, request, *args, **kwargs):
-        canal = self.get_object()
+    def destroy_guard_message(self, canal):
         if canal.protege:
-            return Response(
-                {'detail': "Ce canal est protégé (utilisé par le site web) et "
-                           "ne peut pas être supprimé."},
-                status=status.HTTP_409_CONFLICT)
+            return ("Ce canal est protégé (utilisé par le site web) et "
+                    "ne peut pas être supprimé.")
         if Lead.objects.filter(company=canal.company, canal=canal.cle).exists():
-            return Response(
-                {'detail': "Ce canal est utilisé par des leads — archivez-le "
-                           "plutôt que de le supprimer."},
-                status=status.HTTP_409_CONFLICT)
-        return super().destroy(request, *args, **kwargs)
+            return ("Ce canal est utilisé par des leads — archivez-le "
+                    "plutôt que de le supprimer.")
+        return None
 
 
 class ParrainageViewSet(CompanyScopedModelViewSet):
@@ -1649,7 +1650,10 @@ class AppointmentViewSet(CompanyScopedModelViewSet):
     ordering = ['scheduled_at']
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS:
+        # VX245(a) — `ics` (téléchargement, lecture seule) rejoint les
+        # READ_ACTIONS : tout rôle peut télécharger le `.ics` d'un RDV qu'il
+        # peut déjà VOIR (queryset scopé société, jamais un nouveau droit).
+        if self.action in READ_ACTIONS or self.action == 'ics':
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]
 
@@ -1676,6 +1680,58 @@ class AppointmentViewSet(CompanyScopedModelViewSet):
         # and return the already-created appointment via the serializer for the
         # response. Patch self so the serializer picks up the instance.
         serializer.instance = appt
+
+    @action(detail=True, methods=['get'], url_path='ics')
+    def ics(self, request, pk=None):
+        """VX245(a) — `.ics` d'ÉVÉNEMENT UNIQUE pour CE rendez-vous (RFC 5545,
+        1 VEVENT horodaté) — distinct du flux d'ABONNEMENT complet de
+        `reporting.calendar.calendar_ics`. Réutilise la MÊME fonction pure
+        `build_ics` (extraite pour être réutilisable, jamais une 2ᵉ
+        implémentation ICS).
+
+        Scopé société via `get_object()` (`CompanyScopedModelViewSet` — le
+        RDV d'une autre société renvoie 404, jamais fabriqué)."""
+        appt = self.get_object()
+        from datetime import timedelta
+
+        from django.http import HttpResponse
+
+        from apps.reporting.calendar import build_ics
+
+        lead_nom = f'{appt.lead.nom} {appt.lead.prenom or ""}'.strip()
+        titre = f'RDV — {lead_nom}' if lead_nom else f'RDV #{appt.pk}'
+        events = [{
+            'uid': f'appointment-{appt.pk}',
+            'start_dt': appt.scheduled_at,
+            'end_dt': appt.scheduled_at + timedelta(hours=1),
+            'summary': titre,
+            'description': appt.notes or '',
+        }]
+        body = build_ics(request.user, events, calname=titre)
+        resp = HttpResponse(body, content_type='text/calendar; charset=utf-8')
+        resp['Content-Disposition'] = f'attachment; filename="rdv-{appt.pk}.ics"'
+        return resp
+
+    @action(detail=True, methods=['post'], url_path='confirmer-whatsapp',
+            permission_classes=[IsResponsableOrAdmin])
+    def confirmer_whatsapp(self, request, pk=None):
+        """VX245(b) — aperçu du message de CONFIRMATION WhatsApp post-RDV
+        (date/heure + lien `.ics`). N'ENVOIE RIEN : le commercial ouvre
+        WhatsApp lui-même après avoir vérifié l'aperçu (même convention que
+        `LeadViewSet.whatsapp_devis`)."""
+        appt = self.get_object()
+        from .services import build_appointment_confirmation_whatsapp
+
+        message, wa_url, ics_url = build_appointment_confirmation_whatsapp(
+            request, appt)
+        if wa_url is None:
+            return Response(
+                {'detail': 'Aucun numéro de téléphone.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response({
+            'message': message, 'wa_url': wa_url, 'ics_url': ics_url,
+        })
 
 
 # ── FG39 — ObjectifCommercial / KPI Target ────────────────────────────────────

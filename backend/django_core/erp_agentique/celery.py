@@ -95,6 +95,12 @@ app.conf.beat_schedule = {
         'task': 'notifications.sweep_daily',
         'schedule': crontab(hour=8, minute=0),
     },
+    # VX210 — réveille les items snoozés (activités + approbations) dont
+    # l'échéance de snooze est passée ; toutes les 30 min pour un réveil prompt.
+    'notifications-reveiller-snoozes': {
+        'task': 'notifications.reveiller_snoozes',
+        'schedule': crontab(minute='*/30'),
+    },
     'automation-time-triggers-daily': {
         'task': 'automation.time_triggers_daily',
         'schedule': crontab(hour=8, minute=5),

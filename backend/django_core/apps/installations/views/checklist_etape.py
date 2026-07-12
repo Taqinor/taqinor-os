@@ -7,6 +7,7 @@ from authentication.permissions import (  # noqa: F401
     IsAnyRole, IsResponsableOrAdmin, IsAdminRole,
 )
 from core.viewsets import CompanyScopedModelViewSet
+from apps.core.destroy_mixins import UsageGuardedDestroyMixin
 from django.utils import timezone  # noqa: F401
 
 from .. import activity  # noqa: F401
@@ -108,12 +109,15 @@ def seed_types_intervention(company):
 # package __init__ ré-exporte toutes les vues publiques.
 
 
-class ChecklistEtapeModeleViewSet(CompanyScopedModelViewSet):
+class ChecklistEtapeModeleViewSet(UsageGuardedDestroyMixin, CompanyScopedModelViewSet):
     """Étapes MODÈLE de la checklist d'exécution (Paramètres → Chantiers, N4).
     Lecture tout rôle, écriture admin. Une étape protégée garde sa clé ; la
     désactivation (actif=False) la retire des nouveaux chantiers sans toucher
     aux chantiers existants (cohérent N57). N74 — chaque étape appartient à un
-    `template` (filtrable via ?template=<id>)."""
+    `template` (filtrable via ?template=<id>).
+    VX241(b) — la suppression effective écrit désormais une ligne AuditLog
+    (UsageGuardedDestroyMixin) : ChecklistEtapeModele n'est pas dans
+    TRACKED_MODELS."""
     queryset = ChecklistEtapeModele.objects.all()
     serializer_class = ChecklistEtapeModeleSerializer
 
@@ -151,10 +155,7 @@ class ChecklistEtapeModeleViewSet(CompanyScopedModelViewSet):
         self._check_template_tenant(serializer)
         super().perform_update(serializer)
 
-    def destroy(self, request, *args, **kwargs):
-        etape = self.get_object()
+    def destroy_guard_message(self, etape):
         if etape.protege:
-            return Response(
-                {'detail': "Cette étape est protégée — désactivez-la plutôt."},
-                status=status.HTTP_409_CONFLICT)
-        return super().destroy(request, *args, **kwargs)
+            return "Cette étape est protégée — désactivez-la plutôt."
+        return None

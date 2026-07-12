@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
+import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
 /* ============================================================================
@@ -24,7 +25,8 @@ const store = configureStore({
   reducer: { auth: (s = { role: 'Directeur', role_nom: 'Directeur', permissions: [] }) => s },
 })
 function wrapper({ children }) {
-  return <Provider store={store}><ThemeProvider>{children}</ThemeProvider></Provider>
+  // VX159 — RelationCounters rend un <Link> : un Router est requis dans le test.
+  return <Provider store={store}><MemoryRouter><ThemeProvider>{children}</ThemeProvider></MemoryRouter></Provider>
 }
 
 const produit = {

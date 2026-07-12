@@ -1212,3 +1212,52 @@ def ticket_chatter_envelope(ticket):
         'created_at': a.created_at,
         'source': 'sav.ticketactivity',
     } for a in rows]
+
+
+# ── VX214 — kinds d'EXÉCUTION pour « Ma file » (jamais une 2ᵉ boîte) ────────
+
+def affectations_pour(user):
+    """VX214 — tickets SAV ouverts affectés à `user` (technicien responsable),
+    prêts pour l'union « Ma file » (``apps.records.views.ma_file``) — contrat
+    commun ``{kind, title, due, link, urgency}``, MÊME forme que ``crm.
+    selectors.ma_file_commercial_items`` (VX83). Lecture seule, scopée
+    société + utilisateur ; jamais un import de ``notifications``/``records``.
+
+    Un ticket « transféré » à ce technicien reste simplement un ticket OUVERT
+    (``OPEN_STATUTS``) dont il est le ``technicien_responsable`` — aucun champ
+    dédié d'horodatage de transfert n'existe aujourd'hui ; le champ qui
+    compte pour la file est « qui doit agir maintenant », pas « depuis
+    quand » (VX218 couvre déjà le badge « Nouveau » côté chantiers)."""
+    if user is None or not getattr(user, 'company_id', None):
+        return []
+    from django.utils import timezone
+
+    from .models import Ticket
+
+    company = user.company
+    today = timezone.localdate()
+    items = []
+
+    tickets = (Ticket.objects
+               .filter(company=company, technicien_responsable=user,
+                       statut__in=Ticket.OPEN_STATUTS)
+               .select_related('client')
+               .order_by('date_ouverture'))
+    for t in tickets:
+        due = t.date_ouverture
+        if due is None:
+            urgency = 'today'
+        elif due < today:
+            urgency = 'overdue'
+        else:
+            urgency = 'today'
+        client_nom = getattr(t.client, 'nom', '') or ''
+        items.append({
+            'kind': 'ticket_transfere',
+            'title': f'Ticket {t.reference} — {client_nom or "client"} '
+                     f'({t.get_statut_display()})',
+            'due': due,
+            'link': '/sav',
+            'urgency': urgency,
+        })
+    return items

@@ -181,6 +181,22 @@ class Activity(models.Model):
     snoozed_until = models.DateField(
         null=True, blank=True,
         verbose_name='Reportée (snooze) jusqu\'au')
+    # VX210(a) — horodatage de la POSE du snooze (distinct de `snoozed_until`,
+    # l'échéance de réveil) : sert de borne « depuis » pour évaluer un
+    # `snooze_trigger_event` (VX210(c) — un événement survenu AVANT le snooze
+    # ne doit jamais le réveiller rétroactivement). Nul tant qu'aucun snooze
+    # n'a jamais été posé.
+    snoozed_at = models.DateTimeField(null=True, blank=True)
+    # VX210(c) — déclencheur de réveil optionnel, format fermé `<clé>:<id>`
+    # (``client_reply:<lead_id>`` / ``devis_signed:<devis_id>`` /
+    # ``stock_arrive:<produit_id>`` — voir ``services.SNOOZE_TRIGGER_PREFIXES``).
+    # Le sweep `reveiller_snoozes` réveille l'item dès que L'UN des deux
+    # (l'échéance `snoozed_until` OU cet événement) survient en premier —
+    # jamais les deux nécessaires. Vide = comportement VX85 inchangé (horloge
+    # seule).
+    snooze_trigger_event = models.CharField(
+        max_length=100, blank=True, default='',
+        verbose_name='Déclencheur de réveil (VX210)')
     assigned_to = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='activities_assignees')

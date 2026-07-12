@@ -11,6 +11,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import kbApi from '../../api/kbApi'
 import { KbMarkdownBody } from '../../features/kb/kbMarkdown'
+import NoIndex from '../../components/NoIndex'
 
 export default function PublicArticlePage() {
   const { token } = useParams()
@@ -39,6 +40,7 @@ export default function PublicArticlePage() {
 
   return (
     <div className="ui-root page" style={{ maxWidth: 720, margin: '40px auto' }}>
+      <NoIndex />
       {status === 'loading' && <p>Chargement…</p>}
       {(status === 'invalid' || status === 'expired') && (
         <p role="alert" className="page-error">{error}</p>

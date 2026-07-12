@@ -292,7 +292,7 @@ export default function GedNavigator() {
           <Card>
             <CardContent className="p-2">
               <div className="mb-2 flex items-center gap-1 px-1">
-                <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                   {total} dossier{total > 1 ? 's' : ''}
                 </span>
                 <Button size="sm" variant="ghost" className="ml-auto"
@@ -304,7 +304,7 @@ export default function GedNavigator() {
               {visible.length === 0 ? (
                 // U14 — état vide de l'arbre : CTA pour créer le premier dossier.
                 <div className="px-2 py-4 text-center">
-                  <p className="text-[13px] text-muted-foreground">
+                  <p className="text-sm text-muted-foreground">
                     Aucun dossier dans cette armoire.
                   </p>
                   <Button size="sm" variant="secondary" className="mt-2"
@@ -322,7 +322,7 @@ export default function GedNavigator() {
                         aria-expanded={node.hasChildren ? isOpen : undefined}
                         aria-selected={isSel}>
                         <button type="button"
-                          className={`flex w-full items-center gap-1.5 rounded px-1.5 py-1.5 text-left text-[13px] hover:bg-muted${isSel ? ' bg-muted font-medium' : ''}`}
+                          className={`flex w-full items-center gap-1.5 rounded px-1.5 py-1.5 text-left text-sm hover:bg-muted${isSel ? ' bg-muted font-medium' : ''}`}
                           style={{ paddingLeft: `${node.depth * 16 + 6}px` }}
                           onClick={() => selectFolder(node)}>
                           <span className="flex size-4 shrink-0 items-center justify-center text-muted-foreground">
@@ -356,7 +356,7 @@ export default function GedNavigator() {
                 <>
                   <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2.5">
                     <FolderOpen className="size-4 text-primary" aria-hidden="true" />
-                    <span className="text-[13px] font-medium">{selected.nom}</span>
+                    <span className="text-sm font-medium">{selected.nom}</span>
                     <div className="ml-auto flex items-center gap-1">
                       <Button size="sm" variant="ghost"
                         onClick={() => setFolderDlg({ mode: 'rename', folder: selected })}>
@@ -375,7 +375,7 @@ export default function GedNavigator() {
                   {/* XGED14 — barre d'actions par lot (visible dès qu'une case est cochée). */}
                   {selectedIds.size > 0 && (
                     <div className="flex flex-wrap items-center gap-2 border-b border-border bg-muted/40 px-4 py-2">
-                      <span className="text-[13px] font-medium">
+                      <span className="text-sm font-medium">
                         {selectedIds.size} sélectionné{selectedIds.size > 1 ? 's' : ''}
                       </span>
                       <div className="ml-auto flex items-center gap-1">
@@ -391,7 +391,7 @@ export default function GedNavigator() {
                     </div>
                   )}
                   {loadingDocs ? (
-                    <div className="flex items-center gap-2 p-6 text-[13px] text-muted-foreground">
+                    <div className="flex items-center gap-2 p-6 text-sm text-muted-foreground">
                       <Loader2 className="size-4 animate-spin" aria-hidden="true" /> Chargement des documents…
                     </div>
                   ) : documents.length === 0 ? (
@@ -554,11 +554,11 @@ function DocumentPreviewDialog({ document: doc, onClose }) {
           <DialogTitle className="truncate">{doc?.nom || 'Aperçu'}</DialogTitle>
         </DialogHeader>
         {loading ? (
-          <div className="flex items-center gap-2 p-6 text-[13px] text-muted-foreground">
+          <div className="flex items-center gap-2 p-6 text-sm text-muted-foreground">
             <Loader2 className="size-4 animate-spin" aria-hidden="true" /> Chargement de l'aperçu…
           </div>
         ) : failed || !src ? (
-          <p className="p-4 text-[13px] text-muted-foreground">
+          <p className="p-4 text-sm text-muted-foreground">
             L'aperçu de ce document n'est pas disponible.
           </p>
         ) : isImage ? (
@@ -715,7 +715,7 @@ function FolderDialog({ state, onClose, cabinetId, folders, onChanged }) {
               value={nom} onChange={(e) => setNom(e.target.value)} autoFocus />
           )}
           {(mode === 'create' || mode === 'move') && (
-            <label className="grid gap-1 text-[13px]">
+            <label className="grid gap-1 text-sm">
               <span className="text-muted-foreground">Dossier parent (optionnel)</span>
               <Select value={parentId} onValueChange={(v) => setParentId(v === '__root__' ? '' : v)}>
                 <SelectTrigger aria-label="Dossier parent">
@@ -791,7 +791,7 @@ function UploadDialog({ open, onOpenChange, folder, onUploaded }) {
             onFiles={(files) => { setFile(files[0]); if (!nom) setNom(files[0]?.name || '') }}
             onReject={(rej) => toast.error(rej[0]?.error || 'Fichier refusé.')} />
           {file && (
-            <p className="text-[13px] text-muted-foreground">
+            <p className="text-sm text-muted-foreground">
               Fichier sélectionné : <span className="font-medium text-foreground">{file.name}</span>
             </p>
           )}

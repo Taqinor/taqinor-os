@@ -5,7 +5,12 @@ import {
   LayoutTemplate, Download, Upload, Star, BarChart3,
 } from 'lucide-react'
 import { ListShell } from '../../ui/module'
-import { Button, Badge, Tag, toast, buttonVariants } from '../../ui'
+import {
+  Button, Badge, Tag, toast, buttonVariants,
+  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogCancel,
+  AlertDialogAction,
+} from '../../ui'
 import { formatDateTime } from '../../lib/format'
 import kbApi from '../../api/kbApi'
 import { KB_STATUT_MAP, StatutArticlePill, splitTags } from './kbStatus'
@@ -100,8 +105,28 @@ export default function KbPage() {
   const openEditor = (a) => setEditing(a ?? {})
   const closeAll = () => { setSelected(null); setEditing(null) }
 
-  const handleRemove = async (a) => {
-    if (!window.confirm(`Supprimer l'article « ${a.titre} » ?`)) return
+  // VX241(a) — le confirm() générique mentait par omission : supprimer un
+  // article-PARENT (`parent` est on_delete=CASCADE) détruit tout le
+  // sous-arbre sans le dire. Affiche désormais le compte RÉEL de
+  // descendants (backend, jamais recalculé client-side sur une liste
+  // potentiellement filtrée/paginée) avant toute confirmation.
+  const [confirmRemove, setConfirmRemove] = useState(null) // { article, nbDescendants, loading } | null
+
+  const handleRemove = (a) => {
+    setConfirmRemove({ article: a, nbDescendants: null, loading: true })
+    kbApi.descendantsCount(a.id)
+      .then(({ data }) => setConfirmRemove(
+        (s) => (s && s.article.id === a.id
+          ? { ...s, nbDescendants: data?.nb_descendants ?? 0, loading: false }
+          : s)))
+      .catch(() => setConfirmRemove(
+        (s) => (s && s.article.id === a.id ? { ...s, loading: false } : s)))
+  }
+
+  const confirmRemoveArticle = async () => {
+    if (!confirmRemove) return
+    const a = confirmRemove.article
+    setConfirmRemove(null)
     try {
       await kbApi.removeArticle(a.id)
       toast.success('Article supprimé.')
@@ -395,6 +420,34 @@ export default function KbPage() {
         )}
         <ArticleTree onSelect={openDetail} />
       </ListShell>
+
+      {confirmRemove && (
+        <AlertDialog open onOpenChange={(o) => { if (!o) setConfirmRemove(null) }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle className="text-destructive">Supprimer cet article ?</AlertDialogTitle>
+              <AlertDialogDescription>
+                « {confirmRemove.article.titre} » sera supprimé définitivement.
+                {confirmRemove.loading
+                  ? ' Calcul des sous-articles…'
+                  : confirmRemove.nbDescendants > 0
+                    ? ` Ceci supprimera AUSSI ${confirmRemove.nbDescendants} `
+                      + `sous-article${confirmRemove.nbDescendants > 1 ? 's' : ''} (toute la branche).`
+                    : " Cet article n'a aucun sous-article."}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Annuler</AlertDialogCancel>
+              <AlertDialogAction
+                disabled={confirmRemove.loading}
+                onClick={confirmRemoveArticle}
+              >
+                Supprimer
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
     </div>
   )
 }

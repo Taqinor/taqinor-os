@@ -2,6 +2,19 @@ import { createSlice, createAsyncThunk } from '@reduxjs/toolkit'
 import crmApi from '../../../api/crmApi'
 import { fetchAllPages } from '../../../utils/fetchAllPages'
 
+// VX164 — garde anti-course PAR RESSOURCE sur les `update*.fulfilled` :
+// deux PATCH rapides du MÊME enregistrement, résolus dans l'ordre INVERSE
+// (le second dispatché répond avant le premier), ne doivent plus faire
+// régresser l'écran vers le payload le plus ANCIEN. `seqMap[id]` retient le
+// `requestId` (RTK) de la DERNIÈRE requête DISPATCHÉE pour cet id ; un
+// `.fulfilled` dont le `requestId` ne correspond plus (une requête plus
+// récente pour ce même id a déjà été lancée) est un no-op silencieux — le
+// payload le plus récemment DEMANDÉ gagne toujours, quel que soit l'ordre de
+// résolution réseau.
+function isStaleResourceUpdate(seqMap, id, requestId) {
+  return seqMap[id] != null && seqMap[id] !== requestId
+}
+
 // VX54 — la page 1 DRF (PAGE_SIZE=100) ne renvoyait que les 100 premiers
 // clients : FAUX dès 101 clients. Toutes les pages sont désormais lues, en
 // parallèle borné.
@@ -118,8 +131,18 @@ const crmSlice = createSlice({
     leads: [],
     leadsLoading: false,
     loading: false,
+    // VX165 — compteur de sondages EN VOL partagés sur `state.loading`
+    // (`loading` reste dérivé de ce compteur — rétrocompatible avec les
+    // sélecteurs existants) : le premier résolu n'éteint plus le spinner
+    // pendant qu'une requête sœur charge encore.
+    pendingCount: 0,
     error: null,
     selectedClient: null,
+    // VX164 — requestId (RTK) de la DERNIÈRE update dispatchée, par id — deux
+    // maps séparées (clients/leads sont des tables distinctes, leurs ids
+    // peuvent coïncider numériquement sans rapport entre eux).
+    clientUpdateSeq: {},
+    leadUpdateSeq: {},
   },
   reducers: {
     setSelectedClient(state, action) { state.selectedClient = action.payload },
@@ -134,18 +157,35 @@ const crmSlice = createSlice({
     },
   },
   extraReducers: (builder) => {
-    const pending = (state) => { state.loading = true; state.error = null }
-    const rejected = (state, action) => { state.loading = false; state.error = action.payload }
+    // VX165 — voir `pendingCount` ci-dessus : `pending` incrémente,
+    // `settleLoading` (fulfilled/rejected) décrémente et redérive `loading`.
+    const pending = (state) => {
+      state.pendingCount = (state.pendingCount || 0) + 1
+      state.loading = true
+      state.error = null
+    }
+    const settleLoading = (state) => {
+      state.pendingCount = Math.max(0, (state.pendingCount || 0) - 1)
+      state.loading = state.pendingCount > 0
+    }
+    const rejected = (state, action) => {
+      settleLoading(state)
+      state.error = action.payload
+    }
 
     builder
       .addCase(fetchClients.pending, pending)
       .addCase(fetchClients.fulfilled, (state, action) => {
-        state.loading = false
+        settleLoading(state)
         state.clients = action.payload.results ?? action.payload
       })
       .addCase(fetchClients.rejected, rejected)
       .addCase(createClient.fulfilled, (state, action) => { state.clients.push(action.payload) })
+      .addCase(updateClient.pending, (state, action) => {
+        state.clientUpdateSeq[action.meta.arg.id] = action.meta.requestId
+      })
       .addCase(updateClient.fulfilled, (state, action) => {
+        if (isStaleResourceUpdate(state.clientUpdateSeq, action.payload.id, action.meta.requestId)) return
         const idx = state.clients.findIndex(c => c.id === action.payload.id)
         if (idx !== -1) state.clients[idx] = action.payload
       })
@@ -164,7 +204,11 @@ const crmSlice = createSlice({
       .addCase(createLead.fulfilled, (state, action) => {
         state.leads.unshift(action.payload)
       })
+      .addCase(updateLead.pending, (state, action) => {
+        state.leadUpdateSeq[action.meta.arg.id] = action.meta.requestId
+      })
       .addCase(updateLead.fulfilled, (state, action) => {
+        if (isStaleResourceUpdate(state.leadUpdateSeq, action.payload.id, action.meta.requestId)) return
         const idx = state.leads.findIndex(l => l.id === action.payload.id)
         if (idx !== -1) state.leads[idx] = action.payload
       })

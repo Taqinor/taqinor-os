@@ -73,6 +73,7 @@ def lead_post_save(sender, instance, created, **kwargs):
             title='Nouveau lead assigné',
             body=(instance.nom or '') + (f' — {ville}' if ville else ''),
             link=f'/leads/{instance.pk}',
+            reason='assigne_a_vous',  # VX212(a)
         )
     except Exception:  # noqa: BLE001 — jamais bloquant
         logger.exception('notify LEAD_ASSIGNED failed (lead %s)', instance.pk)
@@ -174,8 +175,13 @@ def facture_payee_receiver(sender, instance, company, **kwargs):
 # événements routables.
 def bon_commande_cree_receiver(sender, instance, company, **kwargs):
     try:
-        from .services import notify_many, resolve_recipients
+        from .services import (
+            notify_many, resolve_recipients, resolve_recipients_reason,
+        )
         recipients = resolve_recipients(company, EventType.BON_COMMANDE_CREE)
+        # VX212(a) — « pourquoi je reçois ça » : règle de routage explicite,
+        # ou repli manager historique.
+        reason = resolve_recipients_reason(company, EventType.BON_COMMANDE_CREE)
         notify_many(
             recipients, EventType.BON_COMMANDE_CREE,
             'Bon de commande créé',
@@ -183,6 +189,7 @@ def bon_commande_cree_receiver(sender, instance, company, **kwargs):
                   'matériel à préparer.'),
             link=f'/bons-commande/{instance.pk}',
             company=company,
+            reason=reason,
         )
     except Exception:  # noqa: BLE001 — jamais bloquant
         logger.exception(
@@ -313,7 +320,7 @@ def automation_approval_post_save(sender, instance, created, **kwargs):
             for approver in _managers(company):
                 notify(
                     approver, EventType.APPROVAL_REQUESTED, title, body=body,
-                    link=link, company=company)
+                    link=link, company=company, reason='manager')
             return
 
         old = getattr(instance, _OLD_STATUT_ATTR, None)
@@ -361,7 +368,7 @@ def demande_approbation_post_save(sender, instance, created, **kwargs):
             for approver in _managers(company):
                 notify(
                     approver, EventType.APPROVAL_REQUESTED, title, body=body,
-                    link=link, company=company)
+                    link=link, company=company, reason='manager')
             return
 
         old = getattr(instance, _OLD_DEMANDE_STATUT_ATTR, None)
@@ -418,11 +425,20 @@ def demande_achat_post_save(sender, instance, created, **kwargs):
 
         if instance.statut == DemandeAchat.Statut.SOUMISE and old != instance.statut:
             title = 'Réquisition à approuver'
-            body = f'La réquisition {instance.reference} attend votre approbation.'
+            # VX212(b) — contexte décisionnel dans le corps (email ET in-app) :
+            # montant estimé (client-safe, `montant_estime`, JAMAIS
+            # `prix_achat`) + objet — pour ne plus approuver « à l'aveugle »
+            # depuis l'email seul (jamais de bouton « Approuver » par lien
+            # email — pas de mutation non-authentifiée).
+            montant = instance.montant_estime
+            body = (
+                f'La réquisition {instance.reference} attend votre '
+                f'approbation.\nMontant estimé : {montant} DH.\n'
+                f'Objet : {instance.objet}')
             for approver in _managers(company):
                 notify(
                     approver, EventType.APPROVAL_REQUESTED, title, body=body,
-                    link=link, company=company)
+                    link=link, company=company, reason='manager')
             return
 
         if old == instance.statut or old is None:
@@ -483,12 +499,14 @@ def ged_demande_approbation_post_save(sender, instance, created, **kwargs):
             if approbateur is not None:
                 notify(
                     approbateur, EventType.APPROVAL_REQUESTED, title,
-                    body=body, link=link, company=company)
+                    body=body, link=link, company=company,
+                    reason='assigne_a_vous')
             else:
                 for approver in _managers(company):
                     notify(
                         approver, EventType.APPROVAL_REQUESTED, title,
-                        body=body, link=link, company=company)
+                        body=body, link=link, company=company,
+                        reason='manager')
             return
 
         old = getattr(instance, _OLD_GED_DEMANDE_STATUT_ATTR, None)
