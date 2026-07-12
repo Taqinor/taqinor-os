@@ -12,7 +12,7 @@
 //
 // VX156 — le moment « erreur réseau » porte la voix Taqinor (honnête,
 // rassurante) au lieu d'un message générique.
-import { voice } from './voice'
+import { voice } from './voice.js'
 
 /**
  * getApiError(error, fallback?) → { message, fieldErrors? }
