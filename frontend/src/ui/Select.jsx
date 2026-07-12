@@ -20,15 +20,37 @@ const triggerBase =
   'aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 ' +
   '[&>span]:line-clamp-1 [&>span]:text-left'
 
+/* VX127 — `readOnly` ≠ `disabled`. Radix Select n'a pas de notion native
+   `readonly` (son trigger est un bouton, pas un champ) : on la simule —
+   focusable/lisible au clavier (contrairement à `disabled` qui retire le
+   trigger du tab order), mais l'ouverture est bloquée (pointer + clavier) et
+   le style reprend le même traitement que Input/Textarea readOnly (fond
+   distinct, curseur par défaut) plutôt que l'opacité 60 % de disabled. */
 export const SelectTrigger = forwardRef(function SelectTrigger(
-  { className, children, invalid, ...props },
+  { className, children, invalid, readOnly, onPointerDown, onKeyDown, ...props },
   ref,
 ) {
   return (
     <SelectPrimitive.Trigger
       ref={ref}
       aria-invalid={invalid || undefined}
-      className={cn(triggerBase, className)}
+      aria-readonly={readOnly || undefined}
+      onPointerDown={(e) => {
+        if (readOnly) { e.preventDefault(); return }
+        onPointerDown?.(e)
+      }}
+      onKeyDown={(e) => {
+        if (readOnly && ['Enter', ' ', 'ArrowDown', 'ArrowUp'].includes(e.key)) {
+          e.preventDefault()
+          return
+        }
+        onKeyDown?.(e)
+      }}
+      className={cn(
+        triggerBase,
+        readOnly && 'cursor-default bg-muted/40 [&>svg]:opacity-0',
+        className,
+      )}
       {...props}
     >
       {children}
