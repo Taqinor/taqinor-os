@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
@@ -63,7 +63,12 @@ describe('KpiAlertesPage (XPLT6 — alertes de seuil sur KPI agrégés)', () => 
   // réelle du KPI) au lieu de rester un chiffre affiché sans suite.
   it('VX236 : la dernière valeur (DSO) est un lien vers la balance âgée', async () => {
     renderPage(<KpiAlertesPage />)
-    const link = await screen.findByRole('link', { name: '45.00' })
+    // DataTable rend simultanément la table desktop (role="grid") et les
+    // cartes mobiles (même ligne dupliquée en jsdom, la visibilité CSS
+    // responsive n'étant pas évaluée) : on scope au tableau desktop pour
+    // ne matcher qu'une seule fois le lien « 45.00 ».
+    const grid = await screen.findByRole('grid', { name: 'Alertes KPI' })
+    const link = within(grid).getByRole('link', { name: '45.00' })
     expect(link).toHaveAttribute('href', '/reporting/balance-agee')
   })
 })

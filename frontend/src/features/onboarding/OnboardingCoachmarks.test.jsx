@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, beforeEach } from 'vitest'
-import { render, screen, cleanup } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 import OnboardingCoachmarks from './OnboardingCoachmarks'
@@ -39,7 +39,11 @@ describe('VX247 — OnboardingCoachmarks : étapes filtrées par rôle', () => {
       if (screen.queryByText('Invitez votre équipe')) { found = true; break }
       const nextBtn = screen.queryByRole('button', { name: /Suivant/ })
       if (!nextBtn) break
-      nextBtn.click()
+      // `.click()` natif ne suffit pas ici : le clic est un événement discret
+      // React 18 dont le flush n'est pas garanti synchrone hors `act()` —
+      // `fireEvent.click` (qui enveloppe l'appel dans `act()`) fait avancer
+      // l'étape de façon fiable avant l'assertion suivante.
+      fireEvent.click(nextBtn)
     }
     expect(found).toBe(true)
   })
@@ -50,7 +54,7 @@ describe('VX247 — OnboardingCoachmarks : étapes filtrées par rôle', () => {
       expect(screen.queryByText('Invitez votre équipe')).not.toBeInTheDocument()
       const nextBtn = screen.queryByRole('button', { name: /Suivant|Terminer/ })
       if (!nextBtn) break
-      nextBtn.click()
+      fireEvent.click(nextBtn)
     }
   })
 
@@ -64,7 +68,7 @@ describe('VX247 — OnboardingCoachmarks : étapes filtrées par rôle', () => {
       }
       const nextBtn = screen.queryByRole('button', { name: /Suivant/ })
       if (!nextBtn) break
-      nextBtn.click()
+      fireEvent.click(nextBtn)
     }
     throw new Error('étape raccourcis jamais atteinte')
   })

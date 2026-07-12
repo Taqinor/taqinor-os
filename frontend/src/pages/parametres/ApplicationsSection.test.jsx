@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeAll } from 'vitest'
-import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import { render, screen, cleanup, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
@@ -77,7 +77,11 @@ describe('ApplicationsSection (ODX5)', () => {
     listToggles.mockResolvedValue({ data: TOGGLES })
     renderWithRole('admin')
 
-    expect(await screen.findByText('Stock')).toBeInTheDocument()
+    // « Stock » désigne à la fois le titre de la catégorie et le libellé du
+    // module — on scope la recherche à la ligne du module (data-testid) pour
+    // ne pas être ambigu vis-à-vis du titre de groupe (même texte).
+    const stockRow = await screen.findByTestId('module-row-stock')
+    expect(within(stockRow).getByText('Stock')).toBeInTheDocument()
     expect(screen.getByText('Après-vente')).toBeInTheDocument()
     expect(screen.getByText('Flotte')).toBeInTheDocument()
     // Catégories du manifest rendues comme titres de groupe.
@@ -132,7 +136,9 @@ describe('ApplicationsSection (ODX5)', () => {
       .mockResolvedValueOnce({ data: { desactives: ['stock', 'sav'] } })
     const user = userEvent.setup()
     renderWithRole('admin')
-    await screen.findByText('Stock')
+    // « Stock » est ambigu (titre de catégorie + libellé de module) : on
+    // attend la ligne du module Stock via son data-testid.
+    await screen.findByTestId('module-row-stock')
 
     await user.click(screen.getByRole('switch', { name: 'Désactiver le module Stock' }))
 
