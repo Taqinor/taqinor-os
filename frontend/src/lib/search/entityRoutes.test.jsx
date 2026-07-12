@@ -37,6 +37,19 @@ describe('VX13 — entityRoutes (source unique GlobalSearch + CommandPalette)', 
     expect(TYPE_LABEL.devis).toBe('Devis')
   })
 
+  it('VX220 — ROUTE atterrit sur le RECORD (pas la liste) pour lead/client/devis/facture/chantier/ticket', () => {
+    // Défaut prouvé (avant VX220) : seul `lead` ouvrait la fiche, les autres
+    // types retombaient sur leur liste nue (`ROUTE.client() === '/crm'` etc.).
+    // Chaque type réutilise désormais la convention DÉJÀ établie par sa propre
+    // page — jamais une deuxième convention pour le même type.
+    expect(ROUTE.lead(42)).toBe('/crm/leads?lead=42')
+    expect(ROUTE.client(42)).toBe('/crm?id=42')
+    expect(ROUTE.devis(42)).toBe('/ventes/devis?devis=42')
+    expect(ROUTE.facture(42)).toBe('/ventes/factures?id=42')
+    expect(ROUTE.chantier(42)).toBe('/chantiers?id=42')
+    expect(ROUTE.ticket(42)).toBe('/sav?id=42')
+  })
+
   it('TYPE_ACCENT — chaque clé pointe vers une des 7 clés --module-accent-* de VX8', () => {
     const VALID = ['brass', 'azur', 'nuit', 'success', 'destructive', 'warning', 'lune']
     Object.values(TYPE_ACCENT).forEach((accent) => {

@@ -1272,6 +1272,26 @@ def devis_expirant_bientot(company, user, dans_jours=7, today=None):
     return out
 
 
+def leads_rappel_demande(company, user):
+    """VX223 — Leads ayant demandé un RAPPEL téléphonique
+    (``contact_preference=='phone_ok'``), le signal le plus chaud du pipeline
+    jusqu'ici réduit à un badge PASSIF sur ``LeadCard`` (aucune file ne
+    l'alimentait). Exclut perdu/archivé (funnel via STAGES.py — règle #2).
+    Portée de visibilité de l'utilisateur respectée (``scope_queryset(...,
+    ['owner'])``, même convention que ``relances_du_jour``/
+    ``leads_chauds_non_contactes``). Lecture seule, scopée société.
+    """
+    from authentication.scoping import scope_queryset
+    from .models import Lead
+
+    qs = Lead.objects.filter(
+        company=company, is_archived=False, perdu=False,
+        contact_preference='phone_ok',
+    )
+    qs = scope_queryset(qs, user, ['owner'])
+    return qs.order_by('-date_creation')
+
+
 def ma_file_commercial_items(company, user, today=None):
     """VX83 — Items COMMERCIAUX normalisés de la « Ma file » d'un utilisateur,
     prêts pour l'union cross-module de ``records`` (aucun agrégateur dupliqué
@@ -1279,11 +1299,18 @@ def ma_file_commercial_items(company, user, today=None):
     ``{kind, title, due, link, urgency, montant?}`` — contrat commun à toutes
     les familles de la file. Lecture seule, scopée société + visibilité.
 
-    Trois familles réunies :
+    Quatre familles réunies :
       * relances dues (FG31, ``relances_du_jour`` scope ``overdue`` — en retard
         seulement, l'urgence de la file) ;
       * leads chauds jamais contactés (``leads_chauds_non_contactes``) ;
-      * devis ``envoye`` proches d'expiration (``devis_expirant_bientot``).
+      * devis ``envoye`` proches d'expiration (``devis_expirant_bientot``) ;
+      * VX223 — rappels demandés (``leads_rappel_demande``), famille que VX83
+        n'énumérait pas : ``kind='rappel'``, ``urgency='high'`` (ni
+        ``overdue`` ni ``today`` — un rappel demandé n'a pas d'échéance
+        propre ; le tri de ``records.views.ActivityViewSet.ma_file`` retombe
+        sur son rang par défaut pour toute urgence inconnue — hors périmètre
+        de cette tâche, cf. ``FilterBar.jsx`` qui expose le même signal en
+        chip dédiée, cliquable indépendamment de « Ma file »).
     """
     from django.utils import timezone
     today = today or timezone.localdate()
@@ -1319,6 +1346,19 @@ def ma_file_commercial_items(company, user, today=None):
             'link': f'/crm/leads?lead={d["lead_id"]}',
             'urgency': 'overdue' if expire else 'today',
             'montant': d['total_ttc'] or None,
+        })
+
+    # VX223 — rappels demandés : signal le plus chaud du pipeline (un client a
+    # explicitement demandé un rappel), jusqu'ici un badge passif jamais
+    # remonté dans aucune file.
+    for lead in leads_rappel_demande(company, user):
+        nom = f'{lead.nom} {lead.prenom or ""}'.strip() or f'Lead #{lead.id}'
+        items.append({
+            'kind': 'rappel',
+            'title': f'Rappeler {nom} (rappel demandé)',
+            'due': None,
+            'link': f'/crm/leads?lead={lead.id}',
+            'urgency': 'high',
         })
 
     return items

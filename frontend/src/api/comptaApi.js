@@ -1,5 +1,6 @@
 import api from './axios'
 import { makeResourceFactory } from './resource'
+import { downloadBlobInGesture } from '../utils/downloadBlob'
 
 /* ============================================================================
    Comptabilité (apps/compta) — client API.
@@ -10,15 +11,12 @@ import { makeResourceFactory } from './resource'
    ========================================================================== */
 
 // Déclenche le téléchargement d'un blob (export fichier) côté navigateur.
+// VX172 — appelé avec le blob déjà résolu (post-`await` de l'appelant) : pas
+// de fenêtre pré-ouverte possible d'ici, mais `downloadBlobInGesture()`
+// tente quand même l'onglet visible en iOS/standalone (repli `a.download`
+// automatique si bloqué) au lieu du téléchargement invisible d'avant.
 export function downloadBlob(blob, filename) {
-  const url = URL.createObjectURL(blob instanceof Blob ? blob : new Blob([blob]))
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  setTimeout(() => URL.revokeObjectURL(url), 1000)
+  downloadBlobInGesture().deliver(blob instanceof Blob ? blob : new Blob([blob]), filename)
 }
 
 // ARC44 — Fabrique générique de CRUD REST sur une ressource du routeur compta

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-  Button, Label, Input, Checkbox,
+  Button, Label, Input, Checkbox, confirmLeaveIfDirty,
 } from '../../ui'
 import flotteApi from '../../api/flotteApi'
 
@@ -41,6 +41,9 @@ export default function InspectionDialog({ actifs = [], modeles = [], onClose, o
   }
 
   const peutEnregistrer = Boolean(actifFlotte && modeleId && signatureNom.trim())
+  // VX168 — garde de fermeture : dialogue de création, initial = tout vide.
+  const dirty = Boolean(actifFlotte || modeleId || signatureNom)
+  const closeIfConfirmed = () => { if (confirmLeaveIfDirty(dirty)) onClose?.() }
 
   const submit = async (e) => {
     e.preventDefault()
@@ -67,7 +70,7 @@ export default function InspectionDialog({ actifs = [], modeles = [], onClose, o
   }
 
   return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose?.() }}>
+    <Dialog open onOpenChange={(o) => { if (!o) closeIfConfirmed() }}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>Nouvelle inspection</DialogTitle>
@@ -78,6 +81,7 @@ export default function InspectionDialog({ actifs = [], modeles = [], onClose, o
             <Label htmlFor="insp-actif">Véhicule / engin</Label>
             <select
               id="insp-actif"
+              autoFocus
               value={actifFlotte}
               onChange={(e) => setActifFlotte(e.target.value)}
               className="h-9 rounded-md border border-border bg-card px-3 text-sm"
@@ -131,7 +135,7 @@ export default function InspectionDialog({ actifs = [], modeles = [], onClose, o
           )}
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
+            <Button type="button" variant="outline" onClick={closeIfConfirmed}>Annuler</Button>
             <Button type="submit" disabled={!peutEnregistrer || saving}>
               {saving ? 'Enregistrement…' : 'Valider l’inspection'}
             </Button>

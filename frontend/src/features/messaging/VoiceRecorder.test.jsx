@@ -85,4 +85,39 @@ describe('VoiceRecorder (S17)', () => {
     expect(api.post).not.toHaveBeenCalled()
     expect(screen.getByLabelText('Enregistrer une note vocale')).toBeInTheDocument()
   })
+
+  // ── VX173 — mimeType négocié (fin du blob mp4 étiqueté « webm ») ──────────
+  it('WebKit (MediaRecorder mp4-only) : le mémo envoyé est bien audio/mp4, jamais "webm" en dur', async () => {
+    // Simule Safari : webm non supporté, seul mp4 l'est — la négociation
+    // (`pickAudioMimeType`, source unique partagée avec useVoiceChat.js) doit
+    // choisir mp4 et le passer en option au constructeur.
+    class FakeMediaRecorderMp4Only {
+      static isTypeSupported(type) { return type === 'audio/mp4' }
+      constructor(stream, options) {
+        this.stream = stream
+        this.mimeType = options?.mimeType || ''
+        this.ondataavailable = null
+        this.onstop = null
+      }
+      start() { this.state = 'recording' }
+      stop() {
+        this.state = 'inactive'
+        this.ondataavailable?.({ data: new Blob(['x'], { type: this.mimeType || 'audio/mp4' }) })
+        this.onstop?.()
+      }
+    }
+    globalThis.MediaRecorder = FakeMediaRecorderMp4Only
+
+    render(<VoiceRecorder conversationId={7} />)
+    await userEvent.click(screen.getByLabelText('Enregistrer une note vocale'))
+    await userEvent.click(await screen.findByLabelText('Arrêter l’enregistrement'))
+    await userEvent.click(await screen.findByLabelText('Envoyer la note vocale'))
+
+    await waitFor(() => expect(api.post).toHaveBeenCalled())
+    const [, fd] = api.post.mock.calls[0]
+    const file = fd.get('file')
+    expect(file.type).toBe('audio/mp4')
+    expect(file.name.endsWith('.m4a')).toBe(true)
+    expect(file.type).not.toBe('audio/webm')
+  })
 })

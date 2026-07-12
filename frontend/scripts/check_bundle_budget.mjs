@@ -59,6 +59,55 @@ const VENDOR_CHUNK_BUDGETS_KB = {
   'roof-tool': 500,
 }
 
+// VX185 — YHARD7 mesure chaque chunk ISOLÉMENT, jamais ce que `index.html`
+// PRÉCHARGE au boot : un vendor lourd (dont un composant statique du header,
+// toujours monté, importe un named export via le barrel `ui/index.js`) se
+// retrouvait en `<link rel="modulepreload">` sur TOUTE page, `/login` inclus
+// — ~350 Ko gzip avant même l'écran de connexion sur le 4G marocain.
+const HEAVY_VENDOR_CHUNK_NAMES = ['recharts', 'pdfjs-dist', 'datatable', 'roof-tool']
+
+// Allowlist COMMENTÉE : un chunk lourd n'y figure QUE si son préchargement au
+// boot est un choix délibéré et justifié (commentaire obligatoire). Vide par
+// défaut — aucun vendor lourd ne doit précharger au boot aujourd'hui.
+const MODULEPRELOAD_ALLOWLIST = new Set([
+  // 'recharts-abcd1234.js', // ex. : justification ici si un jour nécessaire
+])
+
+// Plafond/métrique du NOMBRE de chunks (prolifération silencieuse — ex. 126
+// chunks < 1 Ko gzip d'icônes lucide individuelles, cf. VX189). Généreux :
+// n'attrape qu'une régression de structure massive, pas la croissance produit
+// normale (chaque écran lazy-loadé ajoute un chunk).
+const MAX_CHUNK_COUNT = 400
+
+// Extrait les `<link rel="modulepreload" href="...">` de `dist/index.html` et
+// signale tout vendor lourd nommé qui s'y trouve (hors allowlist). Silencieux
+// (aucune violation) si `index.html` est absent — ce script peut aussi
+// s'exécuter sur un `dist/` partiel en test.
+function checkModulePreloads(distDir) {
+  const indexPath = path.join(distDir, 'index.html')
+  if (!existsSync(indexPath)) return { violations: [], preloadCount: 0 }
+
+  const html = readFileSync(indexPath, 'utf8')
+  const preloads = [...html.matchAll(/<link[^>]*rel="modulepreload"[^>]*href="([^"]+)"/g)]
+    .map((m) => m[1])
+
+  const violations = []
+  for (const href of preloads) {
+    const fileName = href.split('/').pop()
+    if (MODULEPRELOAD_ALLOWLIST.has(fileName)) continue
+    const vendor = HEAVY_VENDOR_CHUNK_NAMES.find((v) => fileName.includes(v))
+    if (vendor) {
+      violations.push(
+        `  - modulepreload: ${fileName} précharge le vendor lourd "${vendor}" au BOOT `
+        + `(index.html, toute page dont /login) — importer directement le fichier source `
+        + `plutôt que le barrel ui/index.js dans un composant statique, ou ajouter `
+        + `${fileName} à MODULEPRELOAD_ALLOWLIST avec une justification si volontaire.`,
+      )
+    }
+  }
+  return { violations, preloadCount: preloads.length }
+}
+
 function parseArgs(argv) {
   const out = { dist: 'dist' }
   for (const arg of argv) {
@@ -119,7 +168,19 @@ export function checkBundleBudget(distDir) {
     )
   }
 
-  return { violations, totalKb, perFile }
+  // VX185 — nombre de chunks (métrique + plafond) et modulepreload de vendors
+  // lourds (index.html, si présent). Additif : n'affecte aucun des budgets
+  // ci-dessus.
+  const chunkCount = jsFiles.length
+  if (chunkCount > MAX_CHUNK_COUNT) {
+    violations.push(
+      `  - NOMBRE DE CHUNKS: ${chunkCount} > plafond ${MAX_CHUNK_COUNT}`,
+    )
+  }
+  const { violations: preloadViolations, preloadCount } = checkModulePreloads(distDir)
+  violations.push(...preloadViolations)
+
+  return { violations, totalKb, perFile, chunkCount, preloadCount }
 }
 
 function main() {
@@ -141,6 +202,10 @@ function main() {
   }
   console.log(
     `[check_bundle_budget] Total gzippé: ${result.totalKb.toFixed(1)} Ko (budget ${TOTAL_BUDGET_KB} Ko)`,
+  )
+  console.log(
+    `[check_bundle_budget] Chunks: ${result.chunkCount} (plafond ${MAX_CHUNK_COUNT}) · `
+    + `modulepreload index.html: ${result.preloadCount}`,
   )
 
   if (result.violations.length > 0) {

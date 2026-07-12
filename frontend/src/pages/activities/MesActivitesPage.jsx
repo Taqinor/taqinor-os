@@ -10,16 +10,21 @@ import {
 // VX217(a) — aperçu sans naviguer (survol desktop / appui long mobile).
 import AttentionPeek from '../../features/queue/AttentionPeek'
 import {
-  AlarmClock, CalendarCheck2, CalendarClock, ExternalLink, PartyPopper, Sparkles, Users,
-  PhoneCall, MessageCircle, ListChecks, Plus, AtSign, ClipboardCheck, Flame, FileWarning,
-  HardHat, Wrench, ShoppingCart, ArrowRightLeft,
+  AlarmClock, CalendarCheck2, CalendarClock, ExternalLink as ExternalLinkIcon, PartyPopper, Sparkles, Users,
+  PhoneCall, PhoneIncoming, MessageCircle, ListChecks, Plus, AtSign, ClipboardCheck, Flame,
+  FileWarning, HardHat, Wrench, ShoppingCart, ArrowRightLeft,
 } from 'lucide-react'
 import recordsApi from '../../api/recordsApi'
 import {
   Button, Badge, Card, CardHeader, CardTitle, CardContent,
   EmptyState, Spinner, Input,
 } from '../../ui'
+import { DatePicker } from '../../ui/DatePicker'
+import { today as todayDate } from '../../ui/date-utils'
+import ExternalLink from '../../ui/ExternalLink'
 import { Table } from '../reporting/Table'
+// VX132 — anti-scintillement propagé (voir InstallationsPage.jsx).
+import { useDelayedLoading } from '../../hooks/useDelayedLoading'
 
 // QX25 — « Mes activités » est la liste d'appels du jour : chaque ligne doit
 // être prête à appeler/WhatsApper en un tap, sans ouvrir la fiche. Le
@@ -51,6 +56,15 @@ const todayStr = () => {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
+
+// VX174 — la roue native iOS (`<input type="date">`) IGNORE `min` : contrainte
+// métier « pas d'échéance passée » contournable sur iPhone. `ui/DatePicker`
+// est borné en JS (isDateDisabled), infranchissable sur toute plateforme.
+// Conversion Date <-> "aaaa-mm-jj" (format déjà utilisé par le state/l'API).
+const dateFromYmd = (ymd) => (ymd ? new Date(`${ymd}T00:00:00`) : null)
+const ymdFromDate = (d) => (d
+  ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  : '')
 
 // Compteur d'activités EN RETARD par responsable, à partir de la liste complète
 // des activités de la société (ouvertes, échéance dépassée). Logique pure →
@@ -104,6 +118,11 @@ const MA_FILE_ICON = {
   intervention_du_jour: Wrench,
   da_approuvee_a_commander: ShoppingCart,
   ticket_transfere: ArrowRightLeft,
+  // VX223 — famille « rappel demandé » ajoutée à ma_file_commercial_items
+  // (apps/crm/selectors.py) sans icône dédiée jusqu'ici (repli AlarmClock
+  // silencieux) — distincte de `relance` (moi qui dois relancer) : ici c'est
+  // le CLIENT qui a demandé le rappel.
+  rappel: PhoneIncoming,
 }
 const URGENCY_TONE = { overdue: 'danger', today: 'warning', upcoming: 'success' }
 const URGENCY_DOT = {
@@ -116,6 +135,8 @@ export default function MesActivitesPage() {
   const [data, setData] = useState({ en_retard: [], aujourdhui: [], a_venir: [] })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
+  // VX132 — rien tant que l'attente reste imperceptible (< 300 ms).
+  const { showSpinner } = useDelayedLoading(loading)
   // Erreur d'ACTION (marquer fait / reporter) : distincte de l'échec de
   // chargement (qui, lui, remplace la liste par un état d'erreur).
   const [actionError, setActionError] = useState(null)
@@ -327,11 +348,11 @@ export default function MesActivitesPage() {
           value={todoText}
           onChange={e => setTodoText(e.target.value)}
         />
-        <input type="date" min={todayStr()}
-               className="form-control form-control-sm w-auto"
-               aria-label="Échéance de la tâche"
-               value={todoDate}
-               onChange={e => setTodoDate(e.target.value)} />
+        <DatePicker min={todayDate()}
+                    className="w-auto"
+                    aria-label="Échéance de la tâche"
+                    value={dateFromYmd(todoDate)}
+                    onChange={(d) => setTodoDate(ymdFromDate(d))} />
         <Button type="submit" size="sm"
                 loading={todoBusy} disabled={todoBusy || !todoText.trim()}>
           Ajouter
@@ -378,6 +399,12 @@ export default function MesActivitesPage() {
               <input type="checkbox" checked={quickWinsFirst} onChange={toggleQuickWins} />
               Victoires rapides d'abord
             </label>
+            {/* VX249 — même pastille que la cloche/Dashboard : « Ma file » est
+                ENTIÈREMENT personnelle par construction (chaque famille est
+                déjà scopée à l'utilisateur courant côté serveur) — pastille
+                pleine, jamais la variante société ici. */}
+            <span className="vx-pastille vx-pastille-mine" aria-hidden="true"
+                  title="Vous concerne personnellement" />
             <Badge tone="primary">{maFile.total}</Badge>
           </CardHeader>
           <CardContent className="p-0 sm:p-0">
@@ -448,7 +475,7 @@ export default function MesActivitesPage() {
                       )}
                       {it.link && (
                         <Button size="sm" variant="outline" onClick={() => navigate(it.link)}>
-                          <ExternalLink /> Ouvrir
+                          <ExternalLinkIcon /> Ouvrir
                         </Button>
                       )}
                     </span>
@@ -496,9 +523,11 @@ export default function MesActivitesPage() {
       </p>
 
       {loading ? (
-        <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
-          <Spinner /> Chargement…
-        </div>
+        showSpinner && (
+          <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
+            <Spinner /> Chargement…
+          </div>
+        )
       ) : error ? (
         <EmptyState
           icon={AlarmClock}
@@ -540,7 +569,7 @@ export default function MesActivitesPage() {
                           const link = targetLink(a)
                           return link ? (
                             <Button size="sm" variant="outline" onClick={() => navigate(link)}>
-                              <ExternalLink /> {a.target_label || 'Ouvrir'}
+                              <ExternalLinkIcon /> {a.target_label || 'Ouvrir'}
                             </Button>
                           ) : (a.target_label || '—')
                         },
@@ -565,11 +594,11 @@ export default function MesActivitesPage() {
                                 </a>
                               )}
                               {wa && (
-                                <a href={wa} target="_blank" rel="noopener noreferrer" title="Ouvrir WhatsApp"
+                                <ExternalLink href={wa} title="Ouvrir WhatsApp"
                                    aria-label={`WhatsApp ${a.target_label || ''}`}
                                    className="text-muted-foreground hover:text-foreground">
                                   <MessageCircle className="size-4" aria-hidden="true" />
-                                </a>
+                                </ExternalLink>
                               )}
                             </span>
                           )
@@ -581,10 +610,11 @@ export default function MesActivitesPage() {
                         align: 'right',
                         cell: (a) => (reschedId === a.id ? (
                           <span className="inline-flex flex-wrap items-center justify-end gap-1.5">
-                            <input type="date" min={todayStr()}
-                                   className="form-control form-control-sm w-auto"
-                                   value={reschedDate}
-                                   onChange={e => setReschedDate(e.target.value)} />
+                            <DatePicker min={todayDate()}
+                                        className="w-auto"
+                                        aria-label="Nouvelle échéance"
+                                        value={dateFromYmd(reschedDate)}
+                                        onChange={(d) => setReschedDate(ymdFromDate(d))} />
                             <Button size="sm" onClick={() => saveResched(a)}>OK</Button>
                             <Button size="sm" variant="outline" onClick={cancelResched}>Annuler</Button>
                           </span>

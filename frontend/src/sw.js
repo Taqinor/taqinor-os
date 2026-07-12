@@ -10,6 +10,8 @@
 //   - ne JAMAIS mettre l'API (/api/...) en cache (l'app reste connectée)
 import { precacheAndRoute, cleanupOutdatedCaches, matchPrecache } from 'workbox-precaching'
 import { NavigationRoute, registerRoute } from 'workbox-routing'
+import { StaleWhileRevalidate } from 'workbox-strategies'
+import { ExpirationPlugin } from 'workbox-expiration'
 
 cleanupOutdatedCaches()
 
@@ -62,6 +64,36 @@ registerRoute(
     },
     { denylist: [/^\/api\//] },
   ),
+)
+
+// ── VX179 — cache runtime StaleWhileRevalidate des images/médias dynamiques ──
+// Le précache ci-dessus est BUILD-TIME (shell) ; les navigations sont
+// network-first. Mais aucune route runtime n'existait pour les images
+// GÉNÉRÉES/UPLOADÉES après coup (photos d'installation/GED, images KB) :
+// re-téléchargées à chaque visite, et CASSÉES hors-ligne alors que la
+// coquille, elle, fonctionne. StaleWhileRevalidate sert le cache
+// IMMÉDIATEMENT (rapide, marche hors-ligne) puis rafraîchit en arrière-plan
+// (jamais périmé longtemps). `ExpirationPlugin` borne le cache (jamais de
+// croissance illimitée). Volontairement SEULEMENT les images — jamais une
+// réponse API JSON (règle du fichier : /api/ reste toujours réseau pur, sauf
+// ces endpoints binaires précis qui SERVENT une image, pas des données).
+const MEDIA_CACHE = 'taqinor-media-v1'
+registerRoute(
+  ({ request, url }) => (
+    request.destination === 'image'
+    && url.origin === self.location.origin
+    && (
+      url.pathname.startsWith('/media/')
+      || /^\/api\/django\/kb\/articles\/\d+\/couverture-image\/?$/.test(url.pathname)
+      || /^\/api\/django\/ged\/versions\/\d+\/apercu\/?$/.test(url.pathname)
+    )
+  ),
+  new StaleWhileRevalidate({
+    cacheName: MEDIA_CACHE,
+    plugins: [
+      new ExpirationPlugin({ maxEntries: 200, maxAgeSeconds: 30 * 24 * 60 * 60 }),
+    ],
+  }),
 )
 
 // ── N92 — Web push (PWA) ────────────────────────────────────────────────────

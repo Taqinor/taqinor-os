@@ -33,7 +33,11 @@ test('QX25 : viewProps transmet désormais onPlanifierRelance (c\'était le trou
 test('QX25 : LeadForm reçoit focusSection et saute vers la section "pipeline"', () => {
   assert.match(PAGE_SRC, /focusSection=\{showForm \? formFocusSection : null\}/)
   assert.match(FORM_SRC, /focusSection = null,/)
-  assert.match(FORM_SRC, /jumpTo\(focusSection\)/)
+  // VX223 — le même effet consomme AUSSI un canal sessionStorage (bouton
+  // « → Renseigner la facture ») quand `focusSection` est absent ; `target`
+  // vaut `focusSection` en priorité, `jumpTo(target)` reste le même geste.
+  assert.match(FORM_SRC, /let target = focusSection/)
+  assert.match(FORM_SRC, /jumpTo\(target\)/)
 })
 
 test('QX25 : KanbanView forwarde déjà onPlanifierRelance à LeadCard (non modifié, déjà correct)', () => {

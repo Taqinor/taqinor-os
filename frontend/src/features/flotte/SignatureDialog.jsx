@@ -3,7 +3,11 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
   Button, Label, Input,
 } from '../../ui'
+import { useFormSafety } from '../../ui/useFormSafety'
 import flotteApi from '../../api/flotteApi'
+
+// VX170 — snapshot de référence hors composant (constant, jamais recréé).
+const EMPTY = { nom: '' }
 
 /* ============================================================================
    XFLT17 — E-signature d'un état des lieux (loi 53-05).
@@ -19,6 +23,8 @@ export default function SignatureDialog({ etat, role, onClose, onSaved }) {
   const [serverError, setServerError] = useState(null)
 
   const peutEnregistrer = Boolean(nom.trim())
+  // VX168/VX170 — garde de fermeture composée par la primitive commune.
+  const { guardedClose } = useFormSafety(EMPTY, { nom }, onClose)
 
   const submit = async (e) => {
     e.preventDefault()
@@ -40,7 +46,7 @@ export default function SignatureDialog({ etat, role, onClose, onSaved }) {
   }
 
   return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose?.() }}>
+    <Dialog open onOpenChange={(o) => { if (!o) guardedClose() }}>
       <DialogContent className="max-w-sm">
         <DialogHeader>
           <DialogTitle>
@@ -59,7 +65,7 @@ export default function SignatureDialog({ etat, role, onClose, onSaved }) {
           )}
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
+            <Button type="button" variant="outline" onClick={guardedClose}>Annuler</Button>
             <Button type="submit" disabled={!peutEnregistrer || saving}>
               {saving ? 'Signature…' : 'Signer'}
             </Button>

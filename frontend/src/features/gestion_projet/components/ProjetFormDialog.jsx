@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Button, toast } from '../../../ui'
+import { Button, toast, confirmLeaveIfDirty } from '../../../ui'
+import { isDirty } from '../../../ui/form-utils'
 import { ResponsiveDialog } from '../../../ui/ResponsiveDialog'
 import gestionProjetApi from '../../../api/gestionProjetApi'
 import { errMessage } from '../constants'
@@ -34,6 +35,11 @@ export default function ProjetFormDialog({ projet, onClose, onSaved }) {
   const [showMarchePublic, setShowMarchePublic] = useState(
     !!(projet?.numero_marche || projet?.maitre_ouvrage || projet?.montant_marche))
   const [saving, setSaving] = useState(false)
+  // VX168 — garde de fermeture (snapshot pris au montage ; couvre édition ET
+  // création puisque `form` part déjà des valeurs de `projet` en édition).
+  const [initialSnapshot] = useState(() => form)
+  const dirty = isDirty(initialSnapshot, form)
+  const closeIfConfirmed = () => { if (confirmLeaveIfDirty(dirty)) onClose?.() }
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }))
 
@@ -75,13 +81,13 @@ export default function ProjetFormDialog({ projet, onClose, onSaved }) {
   return (
     <ResponsiveDialog
       open
-      onOpenChange={(o) => { if (!o) onClose?.() }}
+      onOpenChange={(o) => { if (!o) closeIfConfirmed() }}
       title={isEdit ? 'Modifier le projet' : 'Nouveau projet'}
       description="Le statut se pilote par les actions de transition (planifier, démarrer…)."
     >
       <form onSubmit={submit} noValidate className="flex flex-col gap-3">
         <div className="grid gap-3 sm:grid-cols-2">
-          <TextField id="code" label="Code" value={form.code} onChange={set('code')} placeholder="Auto si vide" />
+          <TextField id="code" label="Code" autoFocus value={form.code} onChange={set('code')} placeholder="Auto si vide" />
           <TextField id="nom" label="Nom" required value={form.nom} onChange={set('nom')} />
         </div>
         <TextAreaField id="description" label="Description" rows={2} value={form.description} onChange={set('description')} />
@@ -119,7 +125,7 @@ export default function ProjetFormDialog({ projet, onClose, onSaved }) {
           </div>
         )}
         <div className="mt-2 flex justify-end gap-2">
-          <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
+          <Button type="button" variant="outline" onClick={closeIfConfirmed}>Annuler</Button>
           <Button type="submit" disabled={saving}>{saving ? 'Enregistrement…' : 'Enregistrer'}</Button>
         </div>
       </form>

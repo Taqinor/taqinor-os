@@ -53,7 +53,9 @@ test('XSAL15 : réutilise @dnd-kit/core déjà installé, aucune nouvelle dépen
 
 test('XSAL15 : la vue est enregistrée dans ViewSwitcher et LeadsPage (VALID_VIEWS)', () => {
   assert.match(VIEWSWITCHER_SRC, /key: 'prevision', label: 'Vue prévision'/)
-  assert.match(LEADSPAGE_SRC, /import ForecastView from '\.\/views\/ForecastView'/)
+  // VX186 — LeadsPage charge ses vues en `lazy()` (le plus gros chunk de route
+  // du repo) : ForecastView reste enregistré, via un import dynamique.
+  assert.match(LEADSPAGE_SRC, /const ForecastView = lazy\(\(\) => import\('\.\/views\/ForecastView'\)\)/)
   assert.match(LEADSPAGE_SRC, /'kanban', 'liste', 'calendrier', 'graphique', 'carte', 'prevision'/)
   assert.match(LEADSPAGE_SRC, /\{view === 'prevision' && <ForecastView \{\.\.\.viewProps\} \/>\}/)
 })

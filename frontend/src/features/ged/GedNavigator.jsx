@@ -27,6 +27,7 @@ import {
 import { buildFolderTree, flattenVisible, countFolders } from './tree.js'
 import GedSearch from './GedSearch.jsx'
 import { DataTable } from '../../ui/datatable'
+import ExternalLink from '../../ui/ExternalLink'
 
 // VX152 — colonnes structurelles seules : le rendu réel de l'en-tête et des
 // lignes passe par renderHeaderRow/renderRow (échappatoire ARC49 du moteur), ce
@@ -570,9 +571,9 @@ function DocumentPreviewDialog({ document: doc, onClose }) {
         )}
         <DialogFooter>
           {src && (
-            <a href={src} target="_blank" rel="noreferrer">
+            <ExternalLink href={src}>
               <Button variant="outline">Ouvrir dans un onglet</Button>
-            </a>
+            </ExternalLink>
           )}
           <DialogClose asChild>
             <Button variant="ghost">Fermer</Button>

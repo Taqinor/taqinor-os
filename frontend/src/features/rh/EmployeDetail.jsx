@@ -5,13 +5,14 @@ import { RecordShell } from '../../ui/module'
 import {
   DefinitionList, EmptyState, Skeleton, Badge, toast,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-  Button, Label, Input, Textarea,
+  Button, Label, Input, Textarea, confirmLeaveIfDirty,
 } from '../../ui'
 import { formatMAD, formatDate, formatPhoneMA, formatPercent } from '../../lib/format'
 import { useSelector } from 'react-redux'
 import rhApi from '../../api/rhApi'
 import { openPdfInGesture } from '../../utils/pdfBlob'
 import { peutVoirSalaires } from './permissions.js'
+import ExternalLink from '../../ui/ExternalLink'
 import { StatutEmploye, TYPE_CONTRAT_LABELS } from './constants.jsx'
 
 /* ============================================================================
@@ -245,9 +246,9 @@ export default function EmployeDetail() {
             </p>
           </div>
           {d.url && (
-            <a className="link-blue text-xs" href={d.url} target="_blank" rel="noreferrer">
+            <ExternalLink className="link-blue text-xs" href={d.url}>
               Ouvrir
-            </a>
+            </ExternalLink>
           )}
         </div>
       )}
@@ -455,6 +456,10 @@ function SortieDialog({ employe, onClose, onSaved }) {
     { value: 'autre', label: 'Autre' },
   ]
 
+  // VX168 — garde de fermeture : dialogue de création, initial = tout vide.
+  const dirty = Boolean(dateSortie || motif || notes)
+  const closeIfConfirmed = () => { if (confirmLeaveIfDirty(dirty)) onClose?.() }
+
   const submit = async (e) => {
     e.preventDefault()
     if (!dateSortie || !motif) return
@@ -478,7 +483,7 @@ function SortieDialog({ employe, onClose, onSaved }) {
   }
 
   return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose?.() }}>
+    <Dialog open onOpenChange={(o) => { if (!o) closeIfConfirmed() }}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>Sortie de {employe.nom} {employe.prenom}</DialogTitle>
@@ -487,7 +492,7 @@ function SortieDialog({ employe, onClose, onSaved }) {
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="so-date">Date de sortie</Label>
-              <Input id="so-date" type="date" value={dateSortie} onChange={(e) => setDateSortie(e.target.value)} />
+              <Input id="so-date" type="date" autoFocus value={dateSortie} onChange={(e) => setDateSortie(e.target.value)} />
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="so-motif">Motif</Label>
@@ -513,7 +518,7 @@ function SortieDialog({ employe, onClose, onSaved }) {
           </div>
           {serverError && <p className="text-sm text-destructive" role="alert">{serverError}</p>}
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
+            <Button type="button" variant="outline" onClick={closeIfConfirmed}>Annuler</Button>
             <Button type="submit" disabled={!dateSortie || !motif || saving}>
               {saving ? 'Enregistrement…' : 'Enregistrer la sortie'}
             </Button>

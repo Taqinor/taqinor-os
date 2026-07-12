@@ -13,9 +13,9 @@ import crmApi from '../../api/crmApi'
 import stockApi from '../../api/stockApi'
 import { resilientMutation } from '../../lib/resilientMutation'
 import {
-  Button, IconButton,
+  Button, IconButton, RelationCounters,
   Dialog, DialogContent, DialogHeader, DialogTitle,
-  Form, FormField, FormActions, useDirtyGuard,
+  Form, FormField, FormActions, useDirtyGuard, confirmLeaveIfDirty,
   Input, Textarea, Label,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
@@ -23,6 +23,7 @@ import ProduitPicker from '../../components/ProduitPicker'
 import ClientQuickCreateModal from './ClientQuickCreateModal'
 import AttachmentsPanel from '../../components/AttachmentsPanel'
 import { useHasPermission } from '../../hooks/useHasPermission'
+import { useServerFieldErrors } from '../../hooks/useServerFieldErrors'
 import { formatMAD, timeAgo } from '../../lib/format'
 import QuoteTotalsSummary from '../../features/ventes/QuoteTotalsSummary'
 
@@ -55,7 +56,8 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
   const [clients, setClients] = useState([])
   const [produits, setProduits] = useState([])
   const [saving, setSaving] = useState(false)
-  const [errors, setErrors] = useState({})
+  // VX171 — vérité serveur → champ ; le rouge s'efface à la frappe.
+  const { errors, setErrors, setFromResponse, clearField } = useServerFieldErrors()
   const [dirty, setDirty] = useState(false)
   const [clientQuickCreateOpen, setClientQuickCreateOpen] = useState(false)
   useDirtyGuard(dirty)
@@ -137,15 +139,18 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
   }, 0)
   const totalTTC = totalHT + totalTVA
 
-  const setField = (k, v) => { setDirty(true); setFields(f => ({ ...f, [k]: v })) }
+  // VX171 — le rouge ne doit jamais mentir pendant que l'utilisateur corrige.
+  const setField = (k, v) => { setDirty(true); clearField(k); setFields(f => ({ ...f, [k]: v })) }
 
   const setLine = (key, k, v) => {
     setDirty(true)
+    clearField('lines')
     setLines(ls => ls.map(l => l._key === key ? { ...l, [k]: v } : l))
   }
 
   const onProduitChange = (key, produitId) => {
     setDirty(true)
+    clearField('lines')
     const p = produits.find(p => String(p.id) === String(produitId))
     setLines(ls => ls.map(l =>
       l._key === key
@@ -161,6 +166,7 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
 
   const addLine = () => {
     setDirty(true)
+    clearField('lines')
     setLines(ls => {
       const line = emptyLine()
       setPendingFocusKey(line._key) // VX90
@@ -170,6 +176,7 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
 
   const removeLine = key => {
     setDirty(true)
+    clearField('lines')
     const line = lines.find(l => l._key === key)
     if (line?.id) setRemovedLineIds(ids => [...ids, line.id])
     setLines(ls => ls.filter(l => l._key !== key))
@@ -271,15 +278,16 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
       onSaved?.()
       onClose()
     } catch (err) {
-      const msg = err?.detail ?? err?.non_field_errors?.[0] ?? 'Enregistrement impossible. Réessayez.'
-      setErrors(prev => ({ ...prev, submit: msg }))
+      // VX171 — mapping DRF générique (detail / {champ:[…]} / array) : chaque
+      // champ en erreur vire rouge, plus un toast anonyme.
+      setFromResponse(err)
     } finally {
       setSaving(false)
     }
   }
 
   return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+    <Dialog open onOpenChange={(o) => { if (!o && confirmLeaveIfDirty(dirty)) onClose() }}>
       <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{isEdit ? `Éditer — ${devis.reference}` : 'Nouveau devis'}</DialogTitle>
@@ -304,6 +312,43 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
             </div>
           )}
         </DialogHeader>
+
+        {isEdit && (
+          <>
+            {/* VX250(a) — <PendingStepsIndicator> : lecture PURE du statut déjà
+                chargé (`devis.statut`) — ne change JAMAIS un statut (chaîne
+                Devis/BonCommande/Facture préservée 1:1, règle #4). Disparaît
+                dès que le devis n'est plus « envoyé » (signé/refusé/expiré) —
+                ZÉRO appel réseau. */}
+            {devis.statut === 'envoye' && (
+              <p
+                role="status"
+                className="mt-2 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning"
+              >
+                En attente de signature client
+              </p>
+            )}
+            {/* VX159/VX250 — RelationCounters : réutilise devis.factures_liees/
+                bon_commande_etat/chantier déjà chargés (DevisSerializer,
+                U5/U8) — ZÉRO appel réseau nouveau. */}
+            <RelationCounters
+              className="mt-2"
+              counters={[
+                {
+                  label: 'factures liées',
+                  count: devis.factures_liees?.length ?? 0,
+                  to: `/ventes/factures?q=${encodeURIComponent(devis.client_nom ?? '')}`,
+                },
+                { label: 'bon de commande', count: devis.bon_commande_etat ? 1 : 0 },
+                {
+                  label: 'chantier',
+                  count: devis.chantier ? 1 : 0,
+                  to: devis.chantier ? `/chantiers?id=${devis.chantier.id}` : undefined,
+                },
+              ]}
+            />
+          </>
+        )}
 
         <Form onSubmit={handleSubmit} className="gap-5">
           {/* ── Infos générales ── */}

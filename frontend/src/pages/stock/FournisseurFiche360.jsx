@@ -11,9 +11,8 @@ import { formatMAD } from '../../lib/format'
 import { telHref } from '../../lib/contactLinks'
 import {
   Spinner, Tabs, TabsList, TabsTrigger, TabsContent,
-  Card, CardHeader, CardTitle, CardContent, Stat,
+  Card, CardHeader, CardTitle, CardContent, Stat, RelationCounters,
 } from '../../ui'
-import RelationCounters from '../../ui/RelationCounters'
 
 // XPUR25 — Fiche fournisseur 360 : une page à onglets qui rassemble les
 // briques déjà existantes (performance FG59, factures/solde AP, retours/avoirs,
@@ -54,20 +53,11 @@ function Indisponible({ message }) {
 }
 
 // ── Panneau résumé — consomme l'agrégat vue-360 (BLOCKED côté backend) ──────
-function ResumePanel({ fournisseurId }) {
-  const [data, setData] = useState(null)
-  const [unavailable, setUnavailable] = useState(false)
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    let active = true
-    stockApi.getFournisseur360(fournisseurId)
-      .then((r) => { if (active) setData(r.data ?? null) })
-      .catch(() => { if (active) setUnavailable(true) })
-      .finally(() => { if (active) setLoading(false) })
-    return () => { active = false }
-  }, [fournisseurId])
-
+// VX159/VX250 — la requête (`stockApi.getFournisseur360`) est REMONTÉE au
+// parent (`FournisseurFiche360`) : RelationCounters (tête de page) et ce
+// panneau consomment désormais le MÊME appel réseau — jamais un second fetch
+// dupliqué du même endpoint.
+function ResumePanel({ data, unavailable, loading }) {
   if (loading) {
     return (
       <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
@@ -83,15 +73,6 @@ function ResumePanel({ fournisseurId }) {
 
   return (
     <div className="flex flex-col gap-3">
-      {/* VX159 — compteurs de relations cliquables en tête (liste cible
-          pré-filtrée ?fournisseur=). Lit l'agrégat vue-360 déjà chargé. */}
-      <RelationCounters
-        counters={[
-          { key: 'bcf', label: 'BCF ouverts', count: data.bcf_ouverts ?? 0, to: `/stock/bons-commande-fournisseur?fournisseur=${fournisseurId}` },
-          { key: 'factures', label: 'factures ouvertes', count: data.factures_ouvertes ?? 0, to: `/stock/factures-fournisseur?fournisseur=${fournisseurId}` },
-          { key: 'retours', label: 'retours/avoirs', count: data.nb_retours_avoirs ?? 0, to: `/stock/retours-fournisseur?fournisseur=${fournisseurId}` },
-        ]}
-      />
       <div className="grid gap-3 sm:grid-cols-4">
       <Stat label="BCF ouverts" value={String(data.bcf_ouverts ?? 0)} />
       <Stat label="BCF en retard" value={String(data.bcf_en_retard ?? 0)} />
@@ -335,6 +316,21 @@ export default function FournisseurFiche360({
   // VX108 — tap-to-call : la fiche n'affichait aucun téléphone.
   const tel = telHref(fournisseurTelephone)
 
+  // VX159/VX250 — remonté depuis ResumePanel : RelationCounters (tête de
+  // page) ET le panneau résumé consomment le MÊME fetch, jamais un doublon.
+  const [resumeData, setResumeData] = useState(null)
+  const [resumeUnavailable, setResumeUnavailable] = useState(false)
+  const [resumeLoading, setResumeLoading] = useState(true)
+  useEffect(() => {
+    if (!fournisseurId || !canView) return undefined
+    let active = true
+    stockApi.getFournisseur360(fournisseurId)
+      .then((r) => { if (active) setResumeData(r.data ?? null) })
+      .catch(() => { if (active) setResumeUnavailable(true) })
+      .finally(() => { if (active) setResumeLoading(false) })
+    return () => { active = false }
+  }, [fournisseurId, canView])
+
   const tabs = useMemo(() => ([
     { value: 'performance', label: 'Performance', icon: BarChart3, Comp: OngletPerformance },
     { value: 'bcf', label: 'Bons de commande', icon: PackageCheck, Comp: OngletBcf },
@@ -378,6 +374,24 @@ export default function FournisseurFiche360({
             <a href={tel} className="link-blue" title="Appeler">☎ {fournisseurTelephone}</a>
           </p>
         )}
+        {/* VX159/VX250 — RelationCounters : réutilise `resumeData` (même fetch
+            que ResumePanel ci-dessous, jamais un doublon). L'agrégat 360 est
+            BLOCKED côté backend (voir note en tête de fichier) : ces
+            compteurs restent simplement absents tant qu'il 404 (jamais un
+            zéro trompeur). Pas de `to` : BonsCommandeFournisseur.jsx/
+            FacturesFournisseur.jsx n'ont pas de filtre par fournisseur (hors
+            périmètre de cette tâche) — jamais un lien qui MENT sur un
+            pré-filtre qu'il n'applique pas. */}
+        {resumeData && (
+          <RelationCounters
+            className="mt-2"
+            counters={[
+              { label: 'bons de commande ouverts', count: resumeData.bcf_ouverts ?? 0 },
+              { label: 'factures ouvertes', count: resumeData.factures_ouvertes ?? 0 },
+              { label: 'retours/avoirs', count: resumeData.nb_retours_avoirs ?? 0 },
+            ]}
+          />
+        )}
       </header>
 
       <Card>
@@ -385,7 +399,7 @@ export default function FournisseurFiche360({
           <CardTitle>Vue d&apos;ensemble</CardTitle>
         </CardHeader>
         <CardContent>
-          <ResumePanel fournisseurId={fournisseurId} />
+          <ResumePanel data={resumeData} unavailable={resumeUnavailable} loading={resumeLoading} />
         </CardContent>
       </Card>
 

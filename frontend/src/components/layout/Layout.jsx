@@ -6,6 +6,7 @@ import { fetchProfile } from '../../features/parametres/store/parametresSlice'
 import Sidebar from './Sidebar'
 import Header from './Header'
 import BottomTabBar from './BottomTabBar'
+import RouteFocus from './RouteFocus'
 import OnboardingCoachmarks from '../../features/onboarding/OnboardingCoachmarks'
 import { OfflineBanner } from '../../ui/OfflineState'
 import coreApi from '../../api/coreApi'
@@ -83,6 +84,10 @@ export default function Layout({ children }) {
 
   return (
     <div className={`layout${drawerOpen ? ' drawer-open' : ''}`}>
+      {/* VX197 — skip-link + annonce de route : DOIT être le tout premier
+          contenu du DOM pour que le skip-link soit le premier élément
+          focalisable au Tab (WCAG 2.4.1). */}
+      <RouteFocus />
       <Sidebar collapsed={collapsed} onToggle={toggleCollapsed}
                onNavigate={() => setDrawerOpen(false)} />
       {drawerOpen && (
@@ -93,12 +98,18 @@ export default function Layout({ children }) {
         {/* M61 — Bannière hors-ligne visible sur tous les écrans authentifiés.
             Inerte tant que la connexion est présente (rend null en ligne). */}
         <OfflineBanner />
-        <main className="layout-content">
+        {/* VX197 — `id="contenu"` = cible du skip-link ET du focus déplacé
+            après chaque navigation SPA (RouteFocus.jsx) ; `tabIndex={-1}`
+            rend le conteneur focalisable par script sans l'ajouter à l'ordre
+            de tabulation normal. */}
+        <main id="contenu" tabIndex={-1} className="layout-content">
           {/* I36 — Barre de progression de navigation : feedback instantané,
-              plus d'écran périmé muet. Ancrée en haut de la zone de contenu. */}
+              plus d'écran périmé muet. Ancrée en haut de la zone de contenu.
+              VX197 — aria-live="polite" : un lecteur d'écran n'avait aucun
+              moyen de savoir qu'une page était en cours de chargement. */}
           {navigation.state !== 'idle' && (
             <div className="route-progress" role="progressbar"
-                 aria-label="Chargement de la page" aria-busy="true">
+                 aria-label="Chargement de la page" aria-busy="true" aria-live="polite">
               <span className="route-progress-bar" />
             </div>
           )}

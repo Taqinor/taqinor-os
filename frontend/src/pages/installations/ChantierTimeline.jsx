@@ -5,19 +5,19 @@ import { formatDate } from '../../lib/format'
 
 const MILESTONES = [
   { key: 'date_signature', label: 'Signé', tone: 'var(--muted-foreground)' },
-  { key: 'date_materiel_commande', label: 'Matériel commandé', tone: '#a855f7' },
+  { key: 'date_materiel_commande', label: 'Matériel commandé', tone: 'var(--milestone-materiel)' },
   { key: 'date_pose_prevue', label: 'Pose prévue', tone: 'var(--info)' },
   { key: 'date_pose_reelle', label: 'Pose réelle', tone: 'var(--warning)' },
-  { key: 'date_mise_en_service', label: 'Mise en service', tone: '#0ea5e9' },
+  { key: 'date_mise_en_service', label: 'Mise en service', tone: 'var(--milestone-service)' },
   { key: 'date_reception', label: 'Réception', tone: 'var(--success)' },
-  { key: 'date_cloture', label: 'Clôture', tone: '#15803d' },
+  { key: 'date_cloture', label: 'Clôture', tone: 'var(--milestone-cloture)' },
 ]
 
 // N6 — jalons du dossier réglementaire (loi 82-21) : affichés à côté des jalons
 // de pose UNIQUEMENT quand la date correspondante est renseignée.
 const DOSSIER_MILESTONES = [
-  { key: 'dossier_date_depot', label: 'Dossier déposé', tone: '#0891b2' },
-  { key: 'dossier_date_approbation', label: 'Dossier approuvé', tone: '#15803d' },
+  { key: 'dossier_date_depot', label: 'Dossier déposé', tone: 'var(--milestone-dossier-depot)' },
+  { key: 'dossier_date_approbation', label: 'Dossier approuvé', tone: 'var(--milestone-dossier-approbation)' },
 ]
 
 function Milestone({ label, tone, date, done }) {

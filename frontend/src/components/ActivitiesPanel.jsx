@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react'
 import recordsApi from '../api/recordsApi'
 import AssigneePicker from './AssigneePicker'
+import { DatePicker } from '../ui/DatePicker'
+import { today as todayDate } from '../ui/date-utils'
 
 const STATE_DOT = {
   overdue: { c: '#dc2626', t: 'En retard' },
@@ -38,6 +40,16 @@ function snoozePresets() {
     { label: '+1 semaine', value: isoOf(semaine) },
   ]
 }
+
+// VX174 — la roue native iOS (`<input type="date">`) IGNORE `min` : un
+// technicien pouvait choisir une échéance dans le passé sur iPhone malgré la
+// contrainte métier "pas d'échéance passée". `ui/DatePicker` est borné en JS
+// (isDateDisabled), donc infranchissable sur toute plateforme. Conversion
+// Date <-> "aaaa-mm-jj" (format déjà utilisé par le state/l'API).
+const dateFromYmd = (ymd) => (ymd ? new Date(`${ymd}T00:00:00`) : null)
+const ymdFromDate = (d) => (d
+  ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  : '')
 
 export default function ActivitiesPanel({ model, id, users = [], onChange }) {
   const [types, setTypes] = useState([])
@@ -177,8 +189,8 @@ export default function ActivitiesPanel({ model, id, users = [], onChange }) {
             </div>
             <div className="form-group">
               <label className="form-label">Échéance</label>
-              <input type="date" className="form-control" min={todayStr()} value={form.due_date}
-                     onChange={e => setForm(f => ({ ...f, due_date: e.target.value }))} />
+              <DatePicker value={dateFromYmd(form.due_date)} min={todayDate()}
+                          onChange={(d) => setForm(f => ({ ...f, due_date: ymdFromDate(d) }))} />
             </div>
             <div className="form-group">
               <label className="form-label">Assigné à</label>
@@ -226,8 +238,8 @@ export default function ActivitiesPanel({ model, id, users = [], onChange }) {
               <span className="act-actions">
                 {reschedId === a.id ? (
                   <>
-                    <input type="date" className="form-control form-control-sm" min={todayStr()}
-                           value={reschedDate} onChange={e => setReschedDate(e.target.value)} />
+                    <DatePicker value={dateFromYmd(reschedDate)} min={todayDate()}
+                                onChange={(d) => setReschedDate(ymdFromDate(d))} />
                     <button type="button" className="btn btn-sm btn-primary" disabled={busy}
                             onClick={() => saveResched(a)}>{busy ? '…' : 'OK'}</button>
                     <button type="button" className="btn btn-sm btn-outline" onClick={cancelResched}>Annuler</button>

@@ -266,6 +266,13 @@ jobs:
       - name: Lint frontend (eslint)
         working-directory: frontend
         run: npm run lint
+      # VX121 — garde « zéro couleur hors token » : les blocs de composants déjà
+      # tokenisés d'index.css (form-control/modal/table/lead-nav/page-loading…)
+      # ne doivent plus jamais réintroduire un hex codé en dur (script maison,
+      # zéro dépendance — frontend/scripts/check_hex.mjs).
+      - name: Check hex colors outside design tokens (index.css)
+        working-directory: frontend
+        run: npm run check-hex
       # Logique pure (sizing solaire, parité catalogue, utils…) : node:test, AUTO-
       # DÉCOUVERTE via glob — tout nouveau *.test.mjs tourne sans liste à tenir.
       - name: Frontend unit tests (node:test — pure logic, auto-discovered)

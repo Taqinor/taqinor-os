@@ -473,6 +473,10 @@ export default function NotificationBell() {
                 <div className="nb-group">
                   <div className="nb-group-title">
                     <Inbox size={13} aria-hidden="true" /> Approbations
+                    {/* VX249 — pastille partagée (cloche/Ma file/Dashboard) :
+                        pleine = décision qui vous attend personnellement. */}
+                    <span className="vx-pastille vx-pastille-mine" aria-hidden="true"
+                          title="Vous attend personnellement" />
                   </div>
                   <button
                     type="button"
@@ -629,6 +633,11 @@ export default function NotificationBell() {
                         file ») : « pour moi », par opposition aux garanties/
                         contrats ci-dessous qui restent des alertes société. */}
                     <Clock size={13} aria-hidden="true" /> Activités en retard (pour moi)
+                    {/* VX249 — même pastille que ci-dessus : ce groupe précis
+                        EST personnel (assigned_to=moi), contrairement aux
+                        groupes Garanties/Factures/Contrats/Visites plus bas. */}
+                    <span className="vx-pastille vx-pastille-mine" aria-hidden="true"
+                          title="Vous concerne personnellement" />
                   </div>
                   {byUrgency(data.activites_en_retard).map((a) => (
                     <button key={`act-${a.id}`} type="button" className="nb-item"
@@ -643,6 +652,10 @@ export default function NotificationBell() {
                 <div className="nb-group">
                   <div className="nb-group-title">
                     <ShieldCheck size={13} aria-hidden="true" /> Garanties (≤ 90 j)
+                    {/* VX249 — pastille contour : alerte SOCIÉTÉ (pas assignée
+                        à un utilisateur), même token que ci-dessus. */}
+                    <span className="vx-pastille vx-pastille-company" aria-hidden="true"
+                          title="Information société" />
                   </div>
                   {byUrgency(data.garanties_expirantes).map((e) => (
                     <button key={`gar-${e.id}`} type="button" className="nb-item"
@@ -657,6 +670,8 @@ export default function NotificationBell() {
                 <div className="nb-group">
                   <div className="nb-group-title">
                     <Banknote size={13} aria-hidden="true" /> Factures impayées
+                    <span className="vx-pastille vx-pastille-company" aria-hidden="true"
+                          title="Information société" />
                   </div>
                   {byUrgency(data.factures_impayees).map((f) => (
                     <button key={`fac-${f.id}`} type="button" className="nb-item"
@@ -671,6 +686,8 @@ export default function NotificationBell() {
                 <div className="nb-group">
                   <div className="nb-group-title">
                     <RefreshCw size={13} aria-hidden="true" /> Contrats à renouveler (≤ 90 j)
+                    <span className="vx-pastille vx-pastille-company" aria-hidden="true"
+                          title="Information société" />
                   </div>
                   {byUrgency(data.contrats_a_renouveler).map((c) => (
                     <button key={`renew-${c.id}`} type="button" className="nb-item"
@@ -685,6 +702,8 @@ export default function NotificationBell() {
                 <div className="nb-group">
                   <div className="nb-group-title">
                     <CalendarClock size={13} aria-hidden="true" /> Visites dues
+                    <span className="vx-pastille vx-pastille-company" aria-hidden="true"
+                          title="Information société" />
                   </div>
                   {byUrgency(data.visites_dues).map((v) => (
                     <button key={`visite-${v.id}`} type="button" className="nb-item"

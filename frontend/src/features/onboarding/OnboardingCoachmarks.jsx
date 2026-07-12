@@ -11,7 +11,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { X, ArrowRight, ArrowLeft, Check } from 'lucide-react'
-import { Button } from '../../ui'
+// VX185/wave-3 perf: import direct (jamais le barrel `../../ui`) — monté
+// statiquement par Layout.jsx (Layout -> router/index.jsx -> main.jsx), donc
+// tout ce que le barrel touche (dont datatable -> recharts/pdfjs-dist)
+// finirait en `<link rel="modulepreload">` sur chaque page, `/login` inclus.
+import { Button } from '../../ui/Button'
 import {
   shouldAutoOpenCoachmarks, markCoachmarksSeen, REPLAY_EVENT,
 } from './onboardingHelpers'

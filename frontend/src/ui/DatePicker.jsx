@@ -16,7 +16,7 @@ import {
 const fieldBase =
   'flex w-full items-center gap-2 rounded-md border border-input bg-card text-foreground shadow-ui-xs ' +
   'h-[var(--control-h)] px-[var(--control-px)] text-base sm:text-sm transition-colors ' +
-  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-ring ' +
+  'focus-ring focus-visible:border-ring ' +
   'disabled:cursor-not-allowed disabled:opacity-60 ' +
   'aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30'
 
@@ -74,7 +74,7 @@ function CalendarGrid({
         <button
           type="button"
           aria-label="Mois précédent"
-          className="grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground focus-ring"
           onClick={() => onMonthChange(addMonths(month, -1))}
         >
           <ChevronLeft className="size-4" />
@@ -85,7 +85,7 @@ function CalendarGrid({
         <button
           type="button"
           aria-label="Mois suivant"
-          className="grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground focus-ring"
           onClick={() => onMonthChange(addMonths(month, 1))}
         >
           <ChevronRight className="size-4" />
@@ -124,7 +124,7 @@ function CalendarGrid({
                   // G128 — hauteur des cellules alignée sur le token de densité
                   // (compact ↔ confortable) plutôt qu'une hauteur fixe.
                   'grid h-[var(--control-h-sm)] place-items-center rounded-md text-sm tabular-nums transition-colors',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                  'focus-ring',
                   !dis && pressItem,
                   !inMonth && 'text-muted-foreground/50',
                   inMonth && !sel && !rangeEnd && 'text-foreground hover:bg-accent',

@@ -14,6 +14,10 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 import { DataTable } from '../../ui/datatable'
+// VX132 — anti-scintillement propagé : ce Spinner + Skeleton s'affichaient
+// SIMULTANÉMENT (l'anti-pattern que useDelayedLoading existe pour éviter —
+// voir InstallationsPage.jsx, déjà migrée).
+import { useDelayedLoading } from '../../hooks/useDelayedLoading'
 
 // Grille module × action (Feature D/RBAC). La SOURCE des codes est l'endpoint
 // /roles/permissions-disponibles (models.ALL_PERMISSIONS) ; cette table ne sert
@@ -156,6 +160,9 @@ function buildGroups(availableCodes) {
 export default function RolesManagement() {
   const [roles, setRoles] = useState([])
   const [loading, setLoading] = useState(true)
+  // VX132 — rien tant que l'attente reste imperceptible (< 300 ms), puis
+  // spinner discret OU squelette, jamais les deux ensemble.
+  const { showSpinner, showSkeleton } = useDelayedLoading(loading)
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState(EMPTY_FORM)
@@ -467,6 +474,7 @@ export default function RolesManagement() {
               <Label htmlFor="role-nom" required={!editing?.est_systeme}>Nom du rôle</Label>
               <Input
                 id="role-nom"
+                autoFocus
                 value={form.nom}
                 placeholder="ex: Comptable, Magasinier…"
                 disabled={!!editing?.est_systeme}
@@ -544,16 +552,24 @@ export default function RolesManagement() {
 
       {/* ── Liste ── */}
       {loading ? (
-        <Card className="p-5">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Spinner /> Chargement…
-          </div>
-          <div className="mt-4 space-y-3">
-            <Skeleton className="h-9 w-full" />
-            <Skeleton className="h-9 w-full" />
-            <Skeleton className="h-9 w-full" />
-          </div>
-        </Card>
+        <>
+          {showSpinner && (
+            <Card className="p-5">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Spinner /> Chargement…
+              </div>
+            </Card>
+          )}
+          {showSkeleton && (
+            <Card className="p-5">
+              <div className="space-y-3">
+                <Skeleton className="h-9 w-full" />
+                <Skeleton className="h-9 w-full" />
+                <Skeleton className="h-9 w-full" />
+              </div>
+            </Card>
+          )}
+        </>
       ) : error ? (
         <EmptyState
           icon={ShieldCheck}

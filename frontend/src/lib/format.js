@@ -192,7 +192,19 @@ export function normalizeMaPhone(value) {
   return '212' + local
 }
 
+/**
+ * VX122 — Finesse française : pose une espace fine insécable (U+202F) devant
+ * `: ; ! ?`, au lieu de l'espace normale (ou de rien) que 116 libellés FR
+ * laissent aujourd'hui. Idempotent : une espace normale/insécable/déjà-fine
+ * existante devant la ponctuation est remplacée, jamais cumulée.
+ * `nbsp('Priorité :').codePointAt(8) === 0x202f`.
+ */
+export function nbsp(str) {
+  if (!str) return str
+  return String(str).replace(/[ \t\u00A0\u202F]*([:;!?])/g, '\u202F$1')
+}
+
 export default {
   toNumber, formatMAD, formatNumber, formatPercent,
-  formatDate, formatDateTime, formatPhoneMA, canonicalPhoneMA, normalizeMaPhone,
+  formatDate, formatDateTime, formatPhoneMA, canonicalPhoneMA, normalizeMaPhone, nbsp,
 }

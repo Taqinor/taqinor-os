@@ -3,10 +3,9 @@ import { MessageCircle } from 'lucide-react'
 import api from '../../api/axios'
 import ventesApi from '../../api/ventesApi'
 import {
-  Badge, Button, Spinner,
+  Badge, Button, Spinner, RelationCounters,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '../../ui'
-import RelationCounters from '../../ui/RelationCounters'
 import { Table } from '../reporting/Table'
 import ClientRgpdActions from './ClientRgpdActions'
 import OwnerChain from '../../components/OwnerChain'
@@ -118,6 +117,23 @@ export default function ClientDetailPanel({ client, onClose, onNewDevis, onChang
           <button type="button" className="modal-close" onClick={onClose}>✕</button>
         </div>
         <div className="modal-body">
+          {/* VX159/VX250 — RelationCounters : réutilise `data` déjà chargé
+              (endpoint /crm/clients/<id>/documents/ ci-dessus) — ZÉRO appel
+              réseau nouveau. Devis/factures pré-filtrent désormais la liste
+              cible par nom (DevisList.jsx/FactureList.jsx lisent ?q=, VX250) ;
+              chantiers reste un compteur statique (InstallationsPage.jsx hors
+              périmètre de cette tâche — jamais un lien qui MENT sur un
+              pré-filtre qu'il n'applique pas). */}
+          {data && (
+            <RelationCounters
+              className="mb-4"
+              counters={[
+                { label: 'devis', count: data.devis?.length ?? 0, to: `/ventes/devis?q=${encodeURIComponent(nomComplet)}` },
+                { label: 'factures', count: data.factures?.length ?? 0, to: `/ventes/factures?q=${encodeURIComponent(nomComplet)}` },
+                { label: 'chantiers', count: data.chantiers?.length ?? 0 },
+              ]}
+            />
+          )}
           {(tel || wa) && (
             <div className="mb-4 flex flex-wrap gap-3 text-sm">
               {tel && (
@@ -131,19 +147,6 @@ export default function ClientDetailPanel({ client, onClose, onNewDevis, onChang
                 </a>
               )}
             </div>
-          )}
-          {/* VX159 — compteurs de relations en tête de fiche, cliquables vers
-              la liste cible pré-filtrée (?client=). Lit les documents déjà
-              chargés (aucune agrégation cross-app supplémentaire). */}
-          {data && (
-            <RelationCounters
-              className="mb-4"
-              counters={[
-                { key: 'devis', label: 'devis', count: data.devis?.length ?? 0, to: `/ventes/devis?client=${client.id}` },
-                { key: 'factures', label: 'factures', count: data.factures?.length ?? 0, to: `/ventes/factures?client=${client.id}` },
-                { key: 'chantiers', label: 'chantiers', count: data.chantiers?.length ?? 0, to: `/chantiers?client=${client.id}` },
-              ]}
-            />
           )}
           {loading && (
             <p className="page-loading"><Spinner /> Chargement des documents…</p>

@@ -3,6 +3,7 @@ import {
   ShieldAlert, ListChecks, CheckCircle2, QrCode, Plus, Wrench, AlertOctagon,
 } from 'lucide-react'
 import qhseApi from '../../api/qhseApi'
+import { downloadBlobInGesture } from '../../utils/downloadBlob'
 import {
   Tabs, TabsList, TabsTrigger, TabsContent, Badge, Dialog, DialogContent,
   DialogTitle, Button, Input, Label, toast,
@@ -65,16 +66,10 @@ function CreerLienSignalementDialog({ onClose, onCreated }) {
 }
 
 async function telechargerQr(lien) {
+  const pending = downloadBlobInGesture()
   try {
     const res = await qhseApi.liensSignalement.qr(lien.id)
-    const url = window.URL.createObjectURL(new Blob([res.data]))
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `signalement-qr-${lien.token?.slice(0, 8) || lien.id}.png`
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    window.URL.revokeObjectURL(url)
+    pending.deliver(new Blob([res.data]), `signalement-qr-${lien.token?.slice(0, 8) || lien.id}.png`)
   } catch {
     toast.error('Génération QR indisponible.')
   }

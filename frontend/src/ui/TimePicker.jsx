@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useMemo, useRef, useState } from 'react'
+import { forwardRef, useEffect, useId, useMemo, useRef, useState } from 'react'
 import * as PopoverPrimitive from '@radix-ui/react-popover'
 import { Clock } from 'lucide-react'
 import { cn } from '../lib/cn'
@@ -10,7 +10,7 @@ import { parseTime, formatTime, timeOptions } from './date-utils'
 const fieldBase =
   'flex w-full items-center gap-2 rounded-md border border-input bg-card text-foreground shadow-ui-xs ' +
   'h-[var(--control-h)] px-[var(--control-px)] text-base sm:text-sm transition-colors ' +
-  'focus-within:outline-none focus-within:ring-2 focus-within:ring-ring focus-within:border-ring ' +
+  'focus-ring focus-within:border-ring ' +
   'aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30'
 
 export const TimePicker = forwardRef(function TimePicker(
@@ -22,10 +22,14 @@ export const TimePicker = forwardRef(function TimePicker(
   const [cursor, setCursor] = useState(0)
   const inputRef = useRef(null)
   const listRef = useRef(null)
+  // VX128 — id stable par option, base pour `aria-activedescendant` (voir
+  // Combobox.jsx : ici l'input porte déjà role="combobox" directement).
+  const listId = useId()
 
   useEffect(() => { setText(value) }, [value])
 
   const options = useMemo(() => timeOptions(step), [step])
+  const activeOptId = open && options[cursor] ? `${listId}-opt-${cursor}` : undefined
 
   // Position initiale du curseur = créneau le plus proche de la valeur courante.
   useEffect(() => {
@@ -100,6 +104,8 @@ export const TimePicker = forwardRef(function TimePicker(
             role="combobox"
             aria-expanded={open}
             aria-autocomplete="list"
+            aria-controls={listId}
+            aria-activedescendant={activeOptId}
             autoComplete="off"
             disabled={disabled}
             placeholder={placeholder}
@@ -120,13 +126,14 @@ export const TimePicker = forwardRef(function TimePicker(
           onOpenAutoFocus={(e) => e.preventDefault()}
           className="z-[var(--z-popover)] max-h-56 w-[var(--radix-popover-trigger-width)] min-w-28 overflow-y-auto rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-ui-lg data-[state=open]:animate-pop-in data-[state=closed]:animate-pop-out focus:outline-none"
         >
-          <div ref={listRef} role="listbox">
+          <div ref={listRef} id={listId} role="listbox">
             {options.map((opt, i) => {
               const isCur = i === cursor
               const isSel = opt === value
               return (
                 <button
                   key={opt}
+                  id={`${listId}-opt-${i}`}
                   type="button"
                   role="option"
                   aria-selected={isSel}

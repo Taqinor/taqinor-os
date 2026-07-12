@@ -27,7 +27,9 @@ test('VX89 : ResponsiveDialog est monté avec open + onOpenChange → onClose', 
 })
 
 test('VX89 : le champ Nom porte autoFocus', () => {
-  assert.match(SRC, /<input id="lf-nom" autoFocus className=/)
+  // VX193 — migré vers <Input> (FormField) pour aria-invalid/aria-describedby ;
+  // l'autoFocus reste posé explicitement sur ce même champ.
+  assert.match(SRC, /<Input id="lf-nom" autoFocus/)
 })
 
 test('VX89 : le lead-form-layout interne (nav + modal-body) reste intact', () => {
