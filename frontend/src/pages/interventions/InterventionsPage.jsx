@@ -18,6 +18,10 @@ import {
 import installationsApi from '../../api/installationsApi'
 import crmApi from '../../api/crmApi'
 import { hapticTap } from '../../lib/haptics'
+// VX132 — anti-scintillement propagé : un Spinner nu clignotait sur tout
+// chargement (même sous 300 ms). useDelayedLoading (déjà sur InstallationsPage)
+// n'affiche rien tant que l'attente reste imperceptible.
+import { useDelayedLoading } from '../../hooks/useDelayedLoading'
 import {
   INTERVENTION_STATUSES,
   INTERVENTION_STATUS_LABELS,
@@ -568,13 +572,18 @@ export default function InterventionsPage() {
   // Appelé AVANT tout early-return : les hooks doivent s'exécuter dans le même
   // ordre à chaque rendu (rules-of-hooks).
   const { containerProps, pullDistance, refreshing } = usePullToRefresh(fetchData)
+  // VX132 — anti-scintillement : rien tant que l'attente reste imperceptible
+  // (< 300 ms), un spinner discret seulement si elle se prolonge vraiment.
+  const { showSpinner } = useDelayedLoading(loading)
 
   if (loading) {
     return (
       <div className="page lp-page">
-        <div className="flex items-center gap-2 py-16 text-sm text-muted-foreground">
-          <Spinner /> Chargement des interventions…
-        </div>
+        {showSpinner && (
+          <div className="flex items-center gap-2 py-16 text-sm text-muted-foreground">
+            <Spinner /> Chargement des interventions…
+          </div>
+        )}
       </div>
     )
   }

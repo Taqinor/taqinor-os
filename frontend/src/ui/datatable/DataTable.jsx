@@ -730,8 +730,12 @@ export const DataTable = forwardRef(function DataTable(
                   {loading ? (
                     /* H133 — lignes-squelettes calquées sur la VRAIE disposition
                        (une cellule par colonne, hauteur de densité). Jamais de
-                       spinner en parallèle : le squelette EST l'indicateur. */
-                    Array.from({ length: 6 }).map((unused, i) => (
+                       spinner en parallèle : le squelette EST l'indicateur.
+                       VX132 — le nombre de lignes suit `pageSize` (borné à 12
+                       pour rester léger) au lieu d'un compte FIXE à 6 : passer
+                       de 6 squelettes à 50 vraies lignes provoquait un saut
+                       brutal de la hauteur de la table (et donc du scroll). */
+                    Array.from({ length: Math.min(pageSize || 6, 12) }).map((unused, i) => (
                       <tr key={i} data-skeleton-row className="border-t border-border" style={{ height: densityRowHeight }}>
                         {expandable && <td className="px-2 py-2.5" />}
                         {selectable && <td className="px-3 py-2.5"><Skeleton className="size-4" /></td>}

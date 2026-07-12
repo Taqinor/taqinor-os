@@ -36,6 +36,8 @@ import {
   interventionStatusLabel, INTERVENTION_TYPES,
 } from '../../features/installations/statuses'
 import { formatDate } from '../../lib/format'
+// VX132 — anti-scintillement propagé (voir InstallationsPage.jsx).
+import { useDelayedLoading } from '../../hooks/useDelayedLoading'
 
 const TYPE_LABELS = Object.fromEntries(
   INTERVENTION_TYPES.map((t) => [t.value, t.label]))
@@ -87,6 +89,8 @@ function mapsHref(interv) {
 export default function MaJourneePage() {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
+  // VX132 — rien tant que l'attente reste imperceptible (< 300 ms).
+  const { showSpinner } = useDelayedLoading(loading)
   const [active, setActive] = useState(null)
   // VX42 — le FAB « Photo rapide » ouvre la fiche directement sur l'onglet
   // Photos ; sinon la fiche s'ouvre normalement sur la préparation.
@@ -137,9 +141,11 @@ export default function MaJourneePage() {
       </header>
 
       {loading ? (
-        <p className="flex items-center gap-2 py-8 text-sm text-muted-foreground">
-          <Spinner className="size-4" /> Chargement de vos interventions…
-        </p>
+        showSpinner && (
+          <p className="flex items-center gap-2 py-8 text-sm text-muted-foreground">
+            <Spinner className="size-4" /> Chargement de vos interventions…
+          </p>
+        )
       ) : rows.length === 0 ? (
         <EmptyState
           icon={ClipboardList}

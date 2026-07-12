@@ -33,6 +33,7 @@ import {
 import { formatMAD, toNumber, normalizeMaPhone, formatDateTime } from '../../lib/format'
 import { useSavedViews } from '../../hooks/useSavedViews'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
+import { useRotatingLabel } from '../../hooks/useRotatingLabel'
 import useDocumentTitle from '../../hooks/useDocumentTitle'
 import { DataTable } from '../../ui/datatable'
 import { openPdfBlob, openPdfInGesture } from '../../utils/pdfBlob'
@@ -70,6 +71,16 @@ function FactureTableSkeleton() {
 }
 
 const FL_SAVED_VIEWS_KEY = 'taqinor.ventes.factures.savedViews'
+
+// VX132 — chargement long conscient (voir DevisList.jsx PDF_GENERATION_LABELS) :
+// libellés honnêtes côté client uniquement — le PDF facture reste le moteur
+// legacy INTOUCHÉ (règle #4). Sans effet visible si la génération est brève
+// (le libellé ne tourne qu'après ~2.5 s d'attente réelle).
+const FACTURE_PDF_GENERATION_LABELS = [
+  'Génération du PDF…',
+  'Mise en forme de la facture…',
+  'Finalisation du document…',
+]
 
 // ── ARC53 — Colonnes du frame `ui/datatable` en mode « ligne custom ».
 // L'écran rend chaque ligne via `renderRow` (<FactureRow>) ; ces définitions ne
@@ -216,6 +227,9 @@ function FactureRow({ f, ctx }) {
   const busy = actionId === f.id
   const isGenerating = pdfGenerating[f.id]
   const isDownloading = pdfDownloading[f.id]
+  // VX132 — chargement long conscient : libellés honnêtes qui tournent
+  // pendant la génération du PDF (jamais de fausse barre de progression).
+  const pdfLabel = useRotatingLabel(FACTURE_PDF_GENERATION_LABELS, { active: !!isGenerating })
   const isWaBusy = waBusy[f.id]
   // L853 — téléphone client normalisable (miroir backend).
   const waPhoneOk = !!normalizeMaPhone(f.client_telephone)
@@ -396,7 +410,7 @@ function FactureRow({ f, ctx }) {
           ) : (
             <Button size="sm" variant="outline" loading={isGenerating}
                     onClick={() => handleGenererPdf(f)} title="Générer le PDF">
-              <FileText /> PDF
+              <FileText /> {isGenerating ? pdfLabel : 'PDF'}
             </Button>
           )}
           {isAdmin && ['emise', 'payee', 'en_retard'].includes(f.statut) && (

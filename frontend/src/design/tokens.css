@@ -433,6 +433,28 @@
   100% { transform: translateX(350%) }
 }
 
+/* VX132 — Squelette : balayage lumineux directionnel (au lieu du pulse
+   Tailwind par défaut, une simple pulsation d'opacité) — CSS pur, se fige
+   sous reduced-motion via le même garde global `*` (voir VX129 ci-dessus).
+   Classe plutôt qu'utilitaire Tailwind arbitraire : le dégradé imbriqué
+   (color-mix dans un linear-gradient) est plus lisible/maintenable en CSS
+   qu'en chaîne `bg-[linear-gradient(…)]` compressée. */
+.skeleton-shimmer {
+  background-color: var(--muted);
+  background-image: linear-gradient(
+    90deg,
+    var(--muted) 25%,
+    color-mix(in oklch, var(--muted) 55%, var(--card)) 50%,
+    var(--muted) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.6s ease-in-out infinite;
+}
+@keyframes skeleton-shimmer {
+  0% { background-position: 200% 0 }
+  100% { background-position: -200% 0 }
+}
+
 /* VX124 — Craft-physics : le chiffre KPI de <Stat> « se solidifie » au
    montage — la police variable (wght 100–900, brand.css) passe de 500 à 600
    sur --motion-slow. Sous prefers-reduced-motion, --motion-slow tombe à 0ms
