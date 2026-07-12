@@ -283,7 +283,8 @@ class UserSerializer(serializers.ModelSerializer):
         return value
 
     def validate_supervisor(self, value):
-        """Le superviseur doit être dans la même entreprise et jamais soi-même."""
+        """Le superviseur doit être dans la même entreprise, jamais soi-même,
+        et ne jamais engendrer de cycle dans la chaîne de supervision."""
         if value is None:
             return value
         request = self.context.get('request')
@@ -294,6 +295,22 @@ class UserSerializer(serializers.ModelSerializer):
         if self.instance is not None and value.id == self.instance.id:
             raise serializers.ValidationError(
                 "Un utilisateur ne peut pas être son propre superviseur.")
+        # VX235(b) — avant ce garde, seule l'auto-supervision directe était
+        # bloquée : un cycle A→B→C→A (poser le superviseur de A sur C, qui
+        # remonte déjà à B puis A) corrompait silencieusement
+        # `records_scope_sous_arbre` (parcours d'arbre supposé acyclique).
+        # Remonte la chaîne de superviseurs de `value` (borne 20 sauts) et
+        # rejette si `self.instance` y apparaît déjà.
+        if self.instance is not None:
+            seen = value.supervisor
+            for _ in range(20):
+                if seen is None:
+                    break
+                if seen.id == self.instance.id:
+                    raise serializers.ValidationError(
+                        'Ce superviseur créerait un cycle dans la chaîne '
+                        'de supervision.')
+                seen = seen.supervisor
         return value
 
     def get_avatar_url(self, obj):

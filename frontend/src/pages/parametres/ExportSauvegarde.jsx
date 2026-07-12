@@ -3,11 +3,33 @@ import { Download, Archive, Settings, Upload } from 'lucide-react'
 import PageHeader from '../../components/layout/PageHeader'
 import {
   Card, CardContent, Button, Checkbox, Segmented, Spinner, toast,
+  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogCancel,
+  AlertDialogAction,
 } from '../../ui'
 import api from '../../api/axios'
 import importApi, { downloadBlob, filenameFromResponse } from '../../api/importApi'
 
 const today = () => new Date().toISOString().slice(0, 10)
+
+// VX235(c) — les 6 catégories que `config-import/?mode=overwrite` peut
+// ÉCRASER (apps/parametres/views_config.py::config_export) — labels FR pour
+// l'aperçu de la confirmation destructive.
+const CFG_CATEGORY_LABELS = {
+  profile: 'Profil (société)',
+  document_templates: 'Modèles de documents',
+  roles: 'Rôles personnalisés',
+  message_templates: 'Modèles de message',
+  automation_rules: "Règles d'automatisation",
+  statuts: 'Statuts',
+}
+
+function nonEmpty(value) {
+  if (value == null) return false
+  if (Array.isArray(value)) return value.length > 0
+  if (typeof value === 'object') return Object.keys(value).length > 0
+  return true
+}
 
 // N97 — Export configurable & sauvegarde complète (admin uniquement).
 // L'utilisateur choisit les objets + le format et télécharge un fichier par
@@ -38,13 +60,18 @@ export default function ExportSauvegarde() {
     } finally { setCfgBusy(false) }
   }
 
-  const importConfig = async (file) => {
-    if (!file) return
+  // VX235(c) — `mode=overwrite` s'exécutait au simple choix de fichier, gardé
+  // par UNE case à cocher HTML native : zéro AlertDialog, zéro aperçu des
+  // catégories réellement écrasées. En mode « écraser », le fichier est
+  // d'abord PARSÉ et son aperçu affiché dans une AlertDialog destructive
+  // avant tout POST ; le mode « fusionner » (additif, jamais destructif)
+  // continue d'importer immédiatement, inchangé.
+  const [cfgPending, setCfgPending] = useState(null) // { bundle } | null
+
+  const doImport = async (bundle, overwrite) => {
     setCfgBusy(true)
     try {
-      const text = await file.text()
-      const bundle = JSON.parse(text)
-      const mode = cfgOverwrite ? '?mode=overwrite' : ''
+      const mode = overwrite ? '?mode=overwrite' : ''
       await api.post(`/parametres/config-import/${mode}`, bundle)
       toast.success('Configuration importée.')
     } catch {
@@ -53,6 +80,28 @@ export default function ExportSauvegarde() {
       setCfgBusy(false)
       if (cfgFileRef.current) cfgFileRef.current.value = ''
     }
+  }
+
+  const importConfig = async (file) => {
+    if (!file) return
+    try {
+      const text = await file.text()
+      const bundle = JSON.parse(text)
+      if (cfgOverwrite) {
+        setCfgPending({ bundle })
+        return
+      }
+      await doImport(bundle, false)
+    } catch {
+      toast.error('Fichier de configuration invalide ou import refusé.')
+      if (cfgFileRef.current) cfgFileRef.current.value = ''
+    }
+  }
+
+  const confirmImportOverwrite = () => {
+    const bundle = cfgPending?.bundle
+    setCfgPending(null)
+    if (bundle) doImport(bundle, true)
   }
 
   useEffect(() => {
@@ -246,6 +295,37 @@ export default function ExportSauvegarde() {
           </div>
         </CardContent>
       </Card>
+
+      <AlertDialog
+        open={!!cfgPending}
+        onOpenChange={(o) => {
+          if (!o) {
+            setCfgPending(null)
+            if (cfgFileRef.current) cfgFileRef.current.value = ''
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Écraser la configuration existante ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Ce fichier va REMPLACER les catégories suivantes (déjà
+              présentes dans ce fichier) — action irréversible :
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <ul className="ml-1 list-disc pl-4 text-sm text-foreground">
+            {Object.entries(CFG_CATEGORY_LABELS)
+              .filter(([key]) => nonEmpty(cfgPending?.bundle?.[key]))
+              .map(([key, label]) => <li key={key}>{label}</li>)}
+          </ul>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmImportOverwrite}>
+              Écraser et importer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

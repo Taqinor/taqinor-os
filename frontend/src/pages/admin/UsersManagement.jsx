@@ -335,10 +335,29 @@ export default function UsersManagement() {
       label: 'Désactiver',
       icon: UserX,
       onClick: async () => {
+        // VX235(d) — `bulkActions` ne vérifiait jamais `isLastAdmin` : une
+        // désactivation groupée pouvait vider TOUS les admins actifs d'un
+        // coup (contrairement à la ligne unique, qui n'a jamais ce garde non
+        // plus mais n'agit que sur UN compte à la fois). Ici : compte les
+        // admins ACTIFS de toute la société (pas seulement la sélection) et
+        // exclut de la désactivation groupée le(s) compte(s) nécessaire(s)
+        // pour qu'il en reste au moins un.
+        const activeAdmins = users.filter((u) => isAdminUser(u) && u.is_active).length
+        let remainingActiveAdmins = activeAdmins
+        const skipped = []
         for (const u of rows) {
-          if (u.is_active && u.username !== currentUsername && !u.is_protected) {
-            await setActive(u, false)
+          if (!u.is_active || u.username === currentUsername || u.is_protected) continue
+          if (isAdminUser(u) && remainingActiveAdmins <= 1) {
+            skipped.push(u.username)
+            continue
           }
+          if (isAdminUser(u)) remainingActiveAdmins -= 1
+          await setActive(u, false)
+        }
+        if (skipped.length > 0) {
+          toast.info(
+            `${skipped.length} compte(s) laissé(s) actif(s) — au moins un `
+            + `administrateur doit rester actif : ${skipped.join(', ')}.`)
         }
         clear?.()
       },

@@ -9,8 +9,9 @@ import {
   Badge, Button, Card, DataTable, DateRangePicker, EmptyState, Form,
   FormActions, FormField, FormSection, Select, SelectTrigger, SelectValue,
   SelectContent, SelectItem, Spinner, Tabs, TabsList, TabsTrigger, TabsContent,
-  toast,
+  Textarea, toast,
 } from '../../ui'
+import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
 import { useConfirmDialog } from '../../ui/confirm'
 
 /* ============================================================================
@@ -286,18 +287,26 @@ function ApprobationsFileTab() {
     }
   }
 
+  // VX235(a) — `window.prompt` appliquait UN motif à N demandes HÉTÉROGÈNES
+  // (« un motif menteur pour tous ») : le refus en masse ouvre désormais un
+  // ResponsiveDialog listant chaque item avec son PROPRE motif (un motif
+  // commun optionnel les pré-remplit tous, chacun reste modifiable ensuite).
+  const [refuserMasse, setRefuserMasse] = useState(null) // { items, motifs, motifCommun, submitting } | null
+
   const deciderEnMasse = async (selectedRows, decision, clear) => {
-    let motif = ''
     if (decision === 'refuser') {
-      motif = window.prompt('Motif du refus (obligatoire, appliqué à toute la sélection) :') || ''
-      if (!motif.trim()) {
-        toast.error('Un motif de refus est obligatoire.')
-        return
-      }
+      setRefuserMasse({
+        items: selectedRows,
+        motifs: Object.fromEntries(selectedRows.map((it) => [`${it.source}-${it.id}`, ''])),
+        motifCommun: '',
+        submitting: false,
+        clear,
+      })
+      return
     }
     const payload = selectedRows.map((it) => ({ source: it.source, id: it.id }))
     try {
-      const res = await reportingApi.deciderApprobationsEnMasse(payload, decision, motif)
+      const res = await reportingApi.deciderApprobationsEnMasse(payload, decision, '')
       const resultats = res.data?.resultats ?? []
       const ok = resultats.filter((r) => r.ok).length
       const ko = resultats.length - ok
@@ -311,6 +320,40 @@ function ApprobationsFileTab() {
     } catch {
       toast.error('Action en masse impossible.')
     }
+  }
+
+  const appliquerMotifCommun = () => {
+    setRefuserMasse((s) => (s ? {
+      ...s,
+      motifs: Object.fromEntries(Object.keys(s.motifs).map((k) => [k, s.motifCommun])),
+    } : s))
+  }
+
+  const confirmRefuserMasse = async () => {
+    if (!refuserMasse) return
+    const { items, motifs, clear } = refuserMasse
+    const vides = items.filter((it) => !motifs[`${it.source}-${it.id}`]?.trim())
+    if (vides.length > 0) {
+      toast.error('Un motif est obligatoire pour chaque demande refusée.')
+      return
+    }
+    setRefuserMasse((s) => (s ? { ...s, submitting: true } : s))
+    const resultats = await Promise.all(items.map((it) => {
+      const key = `${it.source}-${it.id}`
+      return reportingApi.deciderApprobation(it.source, it.id, 'refuser', motifs[key].trim())
+        .then(() => ({ ok: true }))
+        .catch(() => ({ ok: false }))
+    }))
+    const ok = resultats.filter((r) => r.ok).length
+    const ko = resultats.length - ok
+    if (ko === 0) {
+      toast.success(`${ok} demande(s) refusée(s).`)
+    } else {
+      toast.error(`${ok} refusée(s), ${ko} échec(s).`)
+    }
+    clear?.()
+    setRefuserMasse(null)
+    reload()
   }
 
   const columns = useMemo(() => [
@@ -464,6 +507,59 @@ function ApprobationsFileTab() {
           pageSize={25}
           aria-label="Approbations en attente"
         />
+      )}
+
+      {refuserMasse && (
+        <ResponsiveDialog
+          open
+          onOpenChange={(o) => { if (!o) setRefuserMasse(null) }}
+          title={`Refuser ${refuserMasse.items.length} demande(s)`}
+          description="Un motif propre à chaque demande — le motif commun ci-dessous ne fait que pré-remplir, chaque ligne reste modifiable."
+          footer={(
+            <>
+              <Button variant="ghost" onClick={() => setRefuserMasse(null)} disabled={refuserMasse.submitting}>
+                Annuler
+              </Button>
+              <Button variant="destructive" onClick={confirmRefuserMasse} disabled={refuserMasse.submitting}>
+                {refuserMasse.submitting ? 'Refus…' : 'Confirmer le refus'}
+              </Button>
+            </>
+          )}
+        >
+          <div className="flex flex-col gap-3">
+            <div className="flex items-end gap-2">
+              <div className="flex flex-1 flex-col gap-1">
+                <span className="text-xs font-medium text-muted-foreground">Motif commun (optionnel)</span>
+                <Textarea
+                  value={refuserMasse.motifCommun}
+                  onChange={(e) => setRefuserMasse((s) => (s ? { ...s, motifCommun: e.target.value } : s))}
+                  rows={2}
+                />
+              </div>
+              <Button type="button" variant="outline" size="sm" onClick={appliquerMotifCommun}>
+                Appliquer à tous
+              </Button>
+            </div>
+            <ul className="flex flex-col gap-3">
+              {refuserMasse.items.map((it) => {
+                const key = `${it.source}-${it.id}`
+                return (
+                  <li key={key} className="flex flex-col gap-1 border-b border-border pb-2 last:border-0">
+                    <span className="text-sm font-medium">{it.libelle || `#${it.id}`}</span>
+                    <Textarea
+                      aria-label={`Motif du refus — ${it.libelle || `#${it.id}`}`}
+                      value={refuserMasse.motifs[key] || ''}
+                      onChange={(e) => setRefuserMasse((s) => (s ? {
+                        ...s, motifs: { ...s.motifs, [key]: e.target.value },
+                      } : s))}
+                      rows={2}
+                    />
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
+        </ResponsiveDialog>
       )}
     </div>
   )
