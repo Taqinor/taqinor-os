@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
+import { Printer } from 'lucide-react'
 import contratsApi from '../../api/contratsApi'
 import {
   Button, Card, EmptyState, Skeleton, Badge, toast,
@@ -374,6 +375,11 @@ export default function ContratDetail() {
         </Button>
       ))}
       <Button size="sm" variant="outline" onClick={() => setDialog('renouveler')}>Renouveler</Button>
+      {/* VX246(b) — impression navigateur (print.css). Distincte du « PDF interne »
+          WeasyPrint ci-dessous, qu'elle ne remplace pas. */}
+      <Button size="sm" variant="outline" onClick={() => window.print()}>
+        <Printer size={15} strokeWidth={1.75} aria-hidden="true" /> Imprimer
+      </Button>
       <Button variant="outline" onClick={genererPdf}>PDF interne</Button>
     </>
   )

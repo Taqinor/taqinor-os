@@ -16,6 +16,7 @@ import {
   Card, CardContent, Input, Button, IconButton, Spinner, Switch,
 } from '../../ui'
 import { SectionTitle } from './peComponents'
+import { toast } from '../../ui/confirm'
 
 // Champ numérique étiqueté + indice. step="any" : la frappe reste souveraine.
 function NumField({ label, value, onChange, hint, suffix }) {
@@ -104,7 +105,7 @@ export default function TarificationSection() {
       setSaved(true)
       setTimeout(() => setSaved(false), 2500)
     } catch (e) {
-      alert(e?.response?.data?.detail
+      toast.error(e?.response?.data?.detail
         ?? JSON.stringify(e?.response?.data ?? 'Enregistrement impossible.'))
     } finally {
       setSaving(false)

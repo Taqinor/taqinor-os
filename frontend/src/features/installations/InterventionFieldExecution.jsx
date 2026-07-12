@@ -12,20 +12,46 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   CheckCircle2, MapPin, Navigation, Truck, Camera, Trash2, AlertTriangle,
-  PackageCheck, ShoppingCart, Images,
+  PackageCheck, ShoppingCart, Images, RotateCw, Upload, X, Phone, UserPlus,
+  ShieldCheck, Wrench, Clock,
 } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
+import savApi from '../../api/savApi'
 import {
   Button, Badge, Spinner, Checkbox, Progress, toast,
 } from '../../ui'
-import { formatDateTime } from '../../lib/format'
+import { formatDateTime, formatDate } from '../../lib/format'
+import { telHref } from '../../lib/contactLinks'
+import { downloadVCard } from '../../lib/vcard'
 import { withOfflineFallback, FIELD_OPS } from './offline/fieldOutbox'
 import CameraCapture from '../pwa/CameraCapture'
 import { compressImage } from '../../ui/file-utils'
+import {
+  makeCapturedPage, rotatePageInList, removePageFromList, rotateImageBlob,
+} from '../ged/capture'
+import { garantieLabel, garantieColor } from '../sav/equipement'
+import { TICKET_OPEN_STATUSES, TICKET_STATUS_LABELS } from '../sav/ticketStatuses'
 
 // N91/F21 — message commun quand une action a été MISE EN FILE (hors-ligne) :
 // elle se synchronisera toute seule au retour du réseau.
 const QUEUED_MSG = 'Hors ligne — enregistré, synchro au retour du réseau.'
+
+// VX105 — un upload photo/mémo n'est PAS filé (pas d'outbox binaire — territoire
+// FG386) : un échec réseau signifie que la photo est PERDUE si le technicien ne
+// la reprend pas. Le message d'échec doit donc être DISTINCT du « mis en file »
+// de succès du panneau voisin, et persistant (jamais l'illusion d'un envoi).
+function isNetworkFailure(err) {
+  return (typeof navigator !== 'undefined' && navigator.onLine === false) || !err?.response
+}
+function photoUploadError(err) {
+  if (isNetworkFailure(err)) {
+    toast.error(
+      'Photo NON envoyée — réseau indisponible. Reprenez-la au retour du réseau.',
+      { duration: Infinity })
+    return
+  }
+  toast.error(err?.response?.data?.detail ?? 'Téléversement impossible.')
+}
 
 const PHASES = [
   ['avant', 'Avant'],
@@ -199,6 +225,95 @@ export function PreparationPanel({ intervention, onChanged }) {
   )
 }
 
+// ── VX107 — Résumé client LECTURE SEULE (garantie + dernier ticket SAV +
+//    mise en service). « C'est encore sous garantie ? Vous êtes déjà venus ? »
+//    répondu sur site sans appeler le bureau ni ouvrir la fiche de 1 600 lignes.
+//    Mêmes appels savApi déjà en prod (InstallationDetail) — aucune route
+//    nouvelle, ZÉRO écriture. (Migre vers RecordShell quand ARC46 atterrira.)
+function ClientInfoPanel({ intervention }) {
+  const installationId = intervention.installation
+  const [equipements, setEquipements] = useState([])
+  const [tickets, setTickets] = useState([])
+  const [dateMes, setDateMes] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount loading state
+    if (!installationId) { setLoading(false); return undefined }
+    let alive = true
+    setLoading(true)
+    Promise.allSettled([
+      savApi.getEquipements({ installation: installationId }),
+      savApi.getTickets({ installation: installationId, ouvert: 'tous' }),
+      installationsApi.getInstallation(installationId),
+    ]).then(([eq, tk, inst]) => {
+      if (!alive) return
+      if (eq.status === 'fulfilled') setEquipements(eq.value.data?.results ?? eq.value.data ?? [])
+      if (tk.status === 'fulfilled') setTickets(tk.value.data?.results ?? tk.value.data ?? [])
+      if (inst.status === 'fulfilled') setDateMes(inst.value.data?.date_mise_en_service ?? null)
+    }).finally(() => { if (alive) setLoading(false) })
+    return () => { alive = false }
+  }, [installationId])
+
+  if (!installationId) return null
+  if (loading) return (
+    <div className="flex items-center gap-2 rounded border border-border bg-muted/40 p-2 text-[12px] text-muted-foreground">
+      <Spinner className="size-3.5" /> Chargement des infos client…
+    </div>
+  )
+
+  const mainEq = equipements[0]
+  // Dernier ticket OUVERT (le plus récent) — jamais un ticket clos.
+  const lastOpen = [...tickets]
+    .filter((t) => TICKET_OPEN_STATUSES.includes(t.statut))
+    .sort((a, b) => String(b.date_creation ?? '').localeCompare(String(a.date_creation ?? '')))[0]
+
+  return (
+    <div className="flex flex-col gap-1.5 rounded border border-border bg-muted/40 p-2 text-[12.5px]">
+      <span className="font-medium">Infos client</span>
+      {/* Garantie du matériel principal. */}
+      <div className="flex items-center gap-1.5">
+        <ShieldCheck className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+        {mainEq ? (
+          <span className="flex flex-wrap items-center gap-1">
+            <span className="text-muted-foreground">{mainEq.designation || mainEq.produit_nom || 'Matériel'} :</span>
+            <span style={{ color: garantieColor(mainEq) }} className="font-medium">
+              {garantieLabel(mainEq)}
+            </span>
+            {equipements.length > 1 && (
+              <span className="text-muted-foreground">+ {equipements.length - 1} autre(s)</span>
+            )}
+          </span>
+        ) : (
+          <span className="text-muted-foreground">Aucun équipement enregistré.</span>
+        )}
+      </div>
+      {/* Dernier ticket SAV ouvert. */}
+      <div className="flex items-center gap-1.5">
+        <Wrench className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+        {lastOpen ? (
+          <span className="flex flex-wrap items-center gap-1">
+            <span className="font-medium">{lastOpen.reference}</span>
+            <Badge tone="warning">{TICKET_STATUS_LABELS[lastOpen.statut] ?? lastOpen.statut}</Badge>
+            {lastOpen.description && (
+              <span className="truncate text-muted-foreground">— {lastOpen.description}</span>
+            )}
+          </span>
+        ) : (
+          <span className="text-muted-foreground">Aucun ticket SAV ouvert.</span>
+        )}
+      </div>
+      {/* Date de mise en service. */}
+      {dateMes && (
+        <div className="flex items-center gap-1.5 text-muted-foreground">
+          <Clock className="size-3.5 shrink-0" aria-hidden="true" />
+          <span>Mise en service le {formatDate(dateMes)}</span>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── F6 — Trajet & check-in GPS ───────────────────────────────────────────────
 export function TrajetPanel({ intervention, onChanged }) {
   const id = intervention.id
@@ -256,13 +371,36 @@ export function TrajetPanel({ intervention, onChanged }) {
 
   return (
     <div className="flex flex-col gap-3 py-2 text-sm">
+      {/* VX107 — résumé client lecture seule (garantie / dernier ticket SAV /
+          mise en service), consultable sans quitter le Sheet d'intervention. */}
+      <ClientInfoPanel intervention={intervention} />
       {hasAcces && (
         <div className="flex flex-col gap-1 rounded border border-border bg-muted/40 p-2">
           <span className="font-medium">Accès au site</span>
           {(intervention.contact_site_nom || intervention.contact_site_telephone) && (
-            <span>
-              Contact : {intervention.contact_site_nom}
-              {intervention.contact_site_telephone ? ` (${intervention.contact_site_telephone})` : ''}
+            <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span>Contact : {intervention.contact_site_nom || '—'}</span>
+              {/* VX246(e) — le numéro du contact site devient un lien tap-to-call
+                  (au lieu d'un texte à recomposer à la main sur le terrain). */}
+              {telHref(intervention.contact_site_telephone) && (
+                <a className="link-blue inline-flex items-center gap-1"
+                   href={telHref(intervention.contact_site_telephone)}>
+                  <Phone size={13} aria-hidden="true" />
+                  {intervention.contact_site_telephone}
+                </a>
+              )}
+              {/* VX246(d) — bouton discret : enregistre le contact (.vcf) dans le
+                  carnet d'adresses du téléphone d'un appui. */}
+              <button type="button"
+                className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                title="Enregistrer le contact (.vcf)"
+                onClick={() => downloadVCard({
+                  fullName: intervention.contact_site_nom,
+                  mobile: intervention.contact_site_telephone,
+                })}>
+                <UserPlus size={13} aria-hidden="true" />
+                vCard
+              </button>
             </span>
           )}
           {intervention.horaires_acces && <span>Horaires : {intervention.horaires_acces}</span>}
@@ -313,9 +451,17 @@ export function PhotosPanel({ intervention, onChanged }) {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const fileRef = useRef(null)
+  const burstRef = useRef(null)
   const pendingSlot = useRef(null)
+  const burstSlotRef = useRef(null)
+  const nextPageId = useRef(1)
   // FG385 — créneau dont la caméra en direct est ouverte (null = aucune).
   const [camSlot, setCamSlot] = useState(null)
+  // VX44 — rafale : file d'attente de photos {id, file, rotation} prises « de
+  // suite » (le pattern multi-pages de NumeriserPage), revues (retirer/tourner)
+  // avant l'envoi groupé vers le MÊME créneau. `pendingSlot` = le créneau ciblé.
+  const [rafale, setRafale] = useState([]) // [{id, file, rotation}]
+  const [rafaleSlot, setRafaleSlot] = useState(null) // {cle, libelle} ciblé
 
   const load = useCallback(() => installationsApi.getPhotos(id)
     .then((r) => setData(r.data))
@@ -324,6 +470,44 @@ export function PhotosPanel({ intervention, onChanged }) {
   useEffect(() => { load() }, [load])
 
   const pick = (slot) => { pendingSlot.current = slot; fileRef.current?.click() }
+  // VX44 — ouvre le sélecteur multi-fichiers pour une prise en rafale sur un
+  // créneau : plusieurs photos s'accumulent avant l'envoi groupé.
+  const pickRafale = (slot) => {
+    burstSlotRef.current = slot
+    setRafaleSlot(slot)
+    burstRef.current?.click()
+  }
+  const onBurstFiles = (e) => {
+    const files = Array.from(e.target.files ?? [])
+    e.target.value = ''
+    if (!files.length) return
+    setRafale((prev) => [
+      ...prev,
+      ...files.map((f) => makeCapturedPage(nextPageId.current++, f)),
+    ])
+  }
+  const rotateRafale = (pid) => setRafale((prev) => rotatePageInList(prev, pid))
+  const removeRafale = (pid) => setRafale((prev) => removePageFromList(prev, pid))
+  const clearRafale = () => { setRafale([]); setRafaleSlot(null) }
+  // Envoi groupé : applique la rotation choisie (canvas), compresse, puis
+  // téléverse chaque photo vers le créneau — une seule recharge à la fin.
+  const sendRafale = async () => {
+    const slot = burstSlotRef.current
+    if (!slot || rafale.length === 0) return
+    setBusy(true)
+    try {
+      for (const p of rafale) {
+        const oriented = p.rotation === 0 ? p.file : await rotateImageBlob(p.file, p.rotation)
+        const toSend = await compressImage(oriented)
+        await installationsApi.ajouterPhoto(id, toSend, slot.cle)
+      }
+      toast.success(`${rafale.length} photo${rafale.length > 1 ? 's' : ''} ajoutée${rafale.length > 1 ? 's' : ''}.`)
+      clearRafale()
+      await load(); onChanged?.()
+    } catch (err) {
+      photoUploadError(err)
+    } finally { setBusy(false) }
+  }
   // Flux d'upload commun (choix de fichier ET capture caméra en direct).
   const uploadPhoto = async (file, slot) => {
     if (!file) return
@@ -337,7 +521,7 @@ export function PhotosPanel({ intervention, onChanged }) {
       toast.success('Photo ajoutée.')
       await load(); onChanged?.()
     } catch (err) {
-      toast.error(err?.response?.data?.detail ?? 'Téléversement impossible.')
+      photoUploadError(err)
     } finally { setBusy(false) }
   }
   const onFile = async (e) => {
@@ -366,6 +550,47 @@ export function PhotosPanel({ intervention, onChanged }) {
     <div className="flex flex-col gap-4 py-2 text-sm">
       <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp"
         className="hidden" onChange={onFile} />
+      <input ref={burstRef} type="file" accept="image/png,image/jpeg,image/webp"
+        multiple capture="environment" className="hidden" onChange={onBurstFiles} />
+
+      {/* VX44 — file de rafale : plusieurs photos prises « de suite » sont
+          revues (tourner/retirer) puis envoyées d'un coup vers le créneau. */}
+      {rafale.length > 0 && (
+        <div className="flex flex-col gap-2 rounded border border-primary/40 bg-primary/5 p-2">
+          <span className="text-[12px] font-medium">
+            {rafale.length} photo{rafale.length > 1 ? 's' : ''} en attente
+            {rafaleSlot ? ` — ${rafaleSlot.libelle}` : ''}
+          </span>
+          <div className="flex flex-wrap gap-2">
+            {rafale.map((p) => (
+              <div key={p.id} className="relative">
+                <img src={URL.createObjectURL(p.file)} alt=""
+                  style={{ transform: `rotate(${p.rotation}deg)` }}
+                  className="size-20 rounded border border-border object-cover" />
+                <button type="button" disabled={busy} onClick={() => rotateRafale(p.id)}
+                  title="Pivoter"
+                  className="absolute -left-1.5 -top-1.5 rounded-full bg-black/60 p-0.5 text-white shadow disabled:opacity-50">
+                  <RotateCw className="size-3" aria-hidden="true" />
+                </button>
+                <button type="button" disabled={busy} onClick={() => removeRafale(p.id)}
+                  title="Retirer"
+                  className="absolute -right-1.5 -top-1.5 rounded-full bg-destructive p-0.5 text-white shadow disabled:opacity-50">
+                  <X className="size-3" aria-hidden="true" />
+                </button>
+              </div>
+            ))}
+          </div>
+          <div className="flex items-center gap-2">
+            <Button size="sm" onClick={sendRafale} disabled={busy}>
+              <Upload className="size-4" aria-hidden="true" />
+              Envoyer {rafale.length} photo{rafale.length > 1 ? 's' : ''}
+            </Button>
+            <Button size="sm" variant="ghost" onClick={clearRafale} disabled={busy}>
+              Tout effacer
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* VX227 — lien croisé discret vers les photos avant/pendant/après du
           chantier : les deux magasins de photos (intervention vs chantier) ne
@@ -411,6 +636,13 @@ export function PhotosPanel({ intervention, onChanged }) {
                     <Button size="sm" variant="outline" disabled={busy}
                       onClick={() => pick(slot.cle)}>
                       <Camera className="size-4" aria-hidden="true" /> Photo
+                    </Button>
+                    {/* VX44 — rafale : plusieurs photos d'affilée sans rouvrir
+                        le sélecteur, revues avant l'envoi groupé. */}
+                    <Button size="sm" variant="outline" disabled={busy}
+                      onClick={() => pickRafale(slot)}
+                      title="Prendre plusieurs photos de suite">
+                      <Images className="size-4" aria-hidden="true" /> Rafale
                     </Button>
                     <Button size="sm" variant="outline" disabled={busy}
                       onClick={() => setCamSlot((s) => (s === slot.cle ? null : slot.cle))}

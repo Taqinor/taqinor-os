@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import { useSearchParams } from 'react-router-dom'
 import { Plus, ArrowDownUp, X, Download, LayoutGrid, List } from 'lucide-react'
 import stockApi from '../../api/stockApi'
-import { downloadBlob } from '../../utils/downloadBlob'
+import { downloadBlob, stampedFilename } from '../../utils/downloadBlob'
 import {
   fetchMouvements,
   fetchProduits,
@@ -49,6 +49,8 @@ export default function MouvementsPage() {
   // décide ; comptes hérités : repli par palier. `hasFinePermissions` (présence
   // de codes ERP, PAS un droit) choisit la branche ; hooks inconditionnels.
   const hasFinePermissions = useSelector(s => (s.auth.permissions || []).length > 0)
+  // VX81 — nom d'export horodaté, société incluse quand connue.
+  const societe = useSelector(s => s.parametres?.profile?.nom)
   const canPostViaPerm = useHasPermission('stock_mouvement')
   const canPostViaRole = useIsAdminOrResponsable()
   const canPostMouvement = hasFinePermissions ? canPostViaPerm : canPostViaRole
@@ -94,7 +96,7 @@ export default function MouvementsPage() {
     setPivotExportBusy(true)
     try {
       const res = await stockApi.mouvementsAgregationXlsx({ group_by: pivotGroupBy })
-      downloadBlob(res.data, 'mouvements-agregation.xlsx')
+      downloadBlob(res.data, stampedFilename('mouvements-agregation', 'xlsx', societe))
     } catch {
       setPivotError('Export indisponible. Réessayez.')
     } finally { setPivotExportBusy(false) }
@@ -144,7 +146,7 @@ export default function MouvementsPage() {
       if (activeTab !== 'tous') params.type_mouvement = activeTab
       if (produitParam) params.produit = produitParam
       const res = await stockApi.exportMouvementsXlsx(params)
-      downloadBlob(res.data, 'mouvements-stock.xlsx')
+      downloadBlob(res.data, stampedFilename('mouvements-stock', 'xlsx', societe))
     } catch {
       setExportError('Export indisponible. Réessayez.')
     } finally { setExportBusy(false) }

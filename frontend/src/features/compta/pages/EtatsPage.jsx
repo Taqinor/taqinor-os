@@ -1,9 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Download, RefreshCw, FileText, GitCompare } from 'lucide-react'
 import { Button, Segmented, Input, Label, Card, EmptyState, toast } from '../../../ui'
 import { formatMAD } from '../../../lib/format'
+import { stampedFilename } from '../../../utils/downloadBlob'
+import { store } from '../../../store'
 import comptaApi from '../../../api/comptaApi'
 import { unwrap } from '../components/useComptaList.js'
+import useTabParam from '../components/useTabParam'
 
 /* ============================================================================
    UX5 — États comptables CGNC.
@@ -135,9 +139,14 @@ function EtatRender({ data }) {
 }
 
 export default function EtatsPage() {
-  const [etat, setEtat] = useState('balance')
-  const [dateDebut, setDateDebut] = useState('')
-  const [dateFin, setDateFin] = useState('')
+  // VX231(c/d) — l'état actif est persisté dans l'URL (?etat=…) ET c'est la
+  // cible du deep-link « Comparer au Grand-livre » (FiscalitePage) qui passe
+  // aussi ?date_debut/?date_fin ; on pré-remplit la plage depuis l'URL au
+  // montage pour ouvrir le GL déjà filtré sur la période de la déclaration.
+  const [searchParams] = useSearchParams()
+  const [etat, setEtat] = useTabParam('balance', 'etat')
+  const [dateDebut, setDateDebut] = useState(() => searchParams.get('date_debut') || '')
+  const [dateFin, setDateFin] = useState(() => searchParams.get('date_fin') || '')
   const [exercice, setExercice] = useState('')
   const [exercices, setExercices] = useState([])
   const [comparer, setComparer] = useState(false)
@@ -188,7 +197,9 @@ export default function EtatsPage() {
     try {
       const res = await current.fetch({ ...params, export: 'csv' })
       const blob = res.data instanceof Blob ? res.data : new Blob([res.data])
-      comptaApi.downloadBlob(blob, `${etat}.csv`)
+      // VX81 — nom d'export horodaté (au lieu d'un nom nu figé `${etat}.csv`).
+      const societe = store.getState().parametres?.profile?.nom
+      comptaApi.downloadBlob(blob, stampedFilename(etat, 'csv', societe))
     } catch {
       toast.error('Export CSV indisponible pour cet état.')
     }
@@ -199,7 +210,9 @@ export default function EtatsPage() {
     try {
       const res = await current.fetch({ ...params, export: 'pdf' })
       const blob = res.data instanceof Blob ? res.data : new Blob([res.data])
-      comptaApi.downloadBlob(blob, `${etat}.pdf`)
+      // VX81 — nom d'export horodaté (au lieu d'un nom nu figé `${etat}.pdf`).
+      const societe = store.getState().parametres?.profile?.nom
+      comptaApi.downloadBlob(blob, stampedFilename(etat, 'pdf', societe))
     } catch {
       toast.error('Export PDF indisponible pour cet état.')
     }

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useTabParam } from '../components/useTabParam'
 import {
   Plus, Pencil, Lock, Unlock, CheckCircle2, Calculator, Wand2,
 } from 'lucide-react'
@@ -128,7 +129,7 @@ const StatutExercice = statusPill({
 })
 
 export default function RapprochementsPage() {
-  const [tab, setTab] = useState('bancaires')
+  const [tab, setTab] = useTabParam('bancaires')  // VX231(c) — onglet persisté (?onglet=)
   const [dialog, setDialog] = useState(null)
   const [suggestionsFor, setSuggestionsFor] = useState(null)
 

@@ -202,7 +202,7 @@ export default function ApiWebhooksSection() {
       setRevealedKey(r.data.key)
       setNewKeyLabel(''); setNewKeyScopes([])
       loadAll()
-    } catch (e) { alert(e?.response?.data?.detail ?? 'Création impossible.') }
+    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Création impossible.') }
   }
   const revokeKey = async (k) => {
     if (!window.confirm(`Désactiver la clé « ${k.label} » ?`)) return
@@ -222,7 +222,7 @@ export default function ApiWebhooksSection() {
       setRevealedSecret(r.data.secret)
       setNewHookUrl(''); setNewHookLabel(''); setNewHookEvents([])
       loadAll()
-    } catch (e) { alert(e?.response?.data?.detail ?? 'Création impossible.') }
+    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Création impossible.') }
   }
   const toggleWebhook = async (h) => {
     try { await publicapiApi.updateWebhook(h.id, { enabled: !h.enabled }); loadAll() }

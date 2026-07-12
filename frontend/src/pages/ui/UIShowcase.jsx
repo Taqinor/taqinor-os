@@ -111,10 +111,10 @@ function DoneItem({ children }) {
 
 /* ── P170 · Démo : confirmation + toasts (ui/confirm) ──────────────────────── */
 function ConfirmToastDemo() {
-  const { confirm, confirmDelete } = useConfirmDialog()
+  const { confirm: askConfirm, confirmDelete } = useConfirmDialog()
 
   async function onConfirm() {
-    const ok = await confirm({
+    const ok = await askConfirm({
       title: 'Marquer comme contacté ?',
       description: 'Le lead passera à l’étape suivante du pipeline.',
       confirmLabel: 'Marquer',

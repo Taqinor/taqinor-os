@@ -11,6 +11,7 @@
 // texte est en français ; les identifiants techniques (clés) restent en anglais.
 import { useEffect, useState } from 'react'
 import { Plus, Trash2, ChevronUp, ChevronDown, AlertCircle } from 'lucide-react'
+import { toast } from '../../ui/confirm'
 import installationsApi from '../../api/installationsApi'
 import {
   Card, CardContent, Input, Button, IconButton, Badge, Spinner, EmptyState,
@@ -60,7 +61,7 @@ export default function ChecklistSection() {
         ordre: templates.length,
       })
       setNewTemplate(''); setNewType('__none__'); load()
-    } catch (e) { alert(e?.response?.data?.detail ?? 'Ajout impossible.') }
+    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Ajout impossible.') }
   }
   const renameTemplate = async (t, nom) => {
     if (!nom.trim() || nom === t.nom) return
@@ -72,7 +73,7 @@ export default function ChecklistSection() {
       await installationsApi.saveChecklistTemplate(t.id, {
         type_installation: type === '__none__' ? null : type })
       load()
-    } catch (e) { alert(e?.response?.data?.detail ?? 'Type impossible à changer.') }
+    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Type impossible à changer.') }
   }
   const toggleTemplateActif = async (t) => {
     try { await installationsApi.saveChecklistTemplate(t.id, { actif: !t.actif }); load() }
@@ -93,7 +94,7 @@ export default function ChecklistSection() {
   const delTemplate = async (t) => {
     if (!window.confirm(`Supprimer le modèle « ${t.nom} » et ses étapes ?`)) return
     try { await installationsApi.deleteChecklistTemplate(t.id); load() }
-    catch (e) { alert(e?.response?.data?.detail ?? 'Suppression impossible (modèle protégé ?).') }
+    catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible (modèle protégé ?).') }
   }
 
   // ── Étapes d'un modèle ──
@@ -106,7 +107,7 @@ export default function ChecklistSection() {
         libelle, ordre: (t.etapes ?? []).length,
       })
       setNewEtape(p => ({ ...p, [t.id]: '' })); load()
-    } catch (e) { alert(e?.response?.data?.detail ?? 'Ajout impossible.') }
+    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Ajout impossible.') }
   }
   const renameEtape = async (et, libelle) => {
     if (!libelle.trim() || libelle === et.libelle) return
@@ -137,7 +138,7 @@ export default function ChecklistSection() {
   const delEtape = async (et) => {
     if (!window.confirm(`Supprimer l'étape « ${et.libelle} » ?`)) return
     try { await installationsApi.deleteChecklistEtape(et.id); load() }
-    catch (e) { alert(e?.response?.data?.detail ?? 'Suppression impossible (étape protégée ?).') }
+    catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible (étape protégée ?).') }
   }
 
   if (loading) return (

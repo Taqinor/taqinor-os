@@ -10,6 +10,7 @@ import { MapPin } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
 import recordsApi from '../../api/recordsApi'
 import { Button, FileUpload, Spinner } from '../../ui'
+import { compressImage } from '../../ui/file-utils'
 import SignaturePad from './SignaturePad'
 
 export default function PodCaptureDialog({ livraison, onClose, onSaved }) {
@@ -70,8 +71,11 @@ export default function PodCaptureDialog({ livraison, onClose, onSaved }) {
         : await installationsApi.createPreuveLivraison(payload)
       const pod = res.data
       if (photoFile) {
+        // VX246(a) — la photo POD terrain (souvent 4-8 Mo) est compressée avant
+        // upload ; compressImage laisse passer intacts PDF/SVG et tout non-image.
+        const toSend = await compressImage(photoFile)
         const up = await recordsApi.uploadAttachment(
-          'installations.PreuveLivraison', pod.id, photoFile)
+          'installations.PreuveLivraison', pod.id, toSend)
         const attachmentId = up.data?.id
         if (attachmentId) {
           await installationsApi.updatePreuveLivraison(pod.id, { photo: attachmentId })

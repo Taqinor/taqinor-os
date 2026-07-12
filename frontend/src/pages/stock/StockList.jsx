@@ -39,7 +39,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription,
   AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
-  EmptyState, DataTable,
+  EmptyState, DataTable, Progress,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
 } from '../../ui'
@@ -628,8 +628,9 @@ export default function StockList() {
   const [invMsg, setInvMsg] = useState(null)
   const [showTransfert, setShowTransfert] = useState(false)
   const [showValorisation, setShowValorisation] = useState(false)
-  // WR3 — panneau « Pilotage stock » (analytics + auto-BCF), replié par défaut.
-  const [showPilotage, setShowPilotage] = useState(false)
+  // VX33 — panneau « Pilotage stock » (analytics + auto-BCF) : la tour de
+  // contrôle du stock, ouverte PAR DÉFAUT (le bouton reste pour la masquer).
+  const [showPilotage, setShowPilotage] = useState(true)
   // N20 — étiquettes QR/code-barres + champ de scan (résolution serveur).
   const [labelsBusy, setLabelsBusy]   = useState(false)
   const [scanOpen, setScanOpen]       = useState(false)
@@ -764,6 +765,17 @@ export default function StockList() {
   // Compteurs des filtres rail (sur le catalogue actif complet).
   const noPriceCount = useMemo(() => actifs.filter(p => sansPrix(p)).length, [actifs])
   const noSkuCount = useMemo(() => actifs.filter(p => !(p.sku ?? '').trim()).length, [actifs])
+  // VX33 — jauge « santé catalogue » : % de produits actifs avec prix / SKU
+  // renseignés (dérivé des mêmes compteurs, aucun nouvel appel réseau).
+  const pctAvecPrix = useMemo(
+    () => (actifs.length ? Math.round(((actifs.length - noPriceCount) / actifs.length) * 100) : 100),
+    [actifs.length, noPriceCount],
+  )
+  const pctAvecSku = useMemo(
+    () => (actifs.length ? Math.round(((actifs.length - noSkuCount) / actifs.length) * 100) : 100),
+    [actifs.length, noSkuCount],
+  )
+  const toneSante = (pct) => (pct >= 90 ? 'success' : pct >= 60 ? 'warning' : 'danger')
   // Liste des marques présentes (pour le filtre par marque).
   const marquesPresentes = useMemo(() => {
     const set = new Set(actifs.map(p => (p.marque || '').trim() || 'Génériques'))
@@ -819,7 +831,7 @@ export default function StockList() {
         })
       }
     } catch (err) {
-      alert(err?.detail ?? 'Erreur lors de la suppression.')
+      toastError(err?.detail ?? 'Erreur lors de la suppression.')
     }
   }
 
@@ -838,7 +850,7 @@ export default function StockList() {
         },
       })
     } catch (err) {
-      alert(err?.detail ?? 'Erreur lors du désarchivage.')
+      toastError(err?.detail ?? 'Erreur lors du désarchivage.')
     }
   }
 
@@ -848,7 +860,7 @@ export default function StockList() {
       await dispatch(forceDeleteArchivedProduit(p.id)).unwrap()
       setConfirmDelete(null)
     } catch (err) {
-      alert(err?.detail ?? 'Erreur lors de la suppression définitive.')
+      toastError(err?.detail ?? 'Erreur lors de la suppression définitive.')
     } finally {
       setDeleting(false)
     }
@@ -1165,6 +1177,31 @@ export default function StockList() {
               </span>
             ))}
           </div>
+
+          {/* VX33 — mini-jauge « santé catalogue », au-dessus du rail de
+              catégories : % de produits actifs avec prix / SKU renseignés. */}
+          {actifs.length > 0 && (
+            <div className="mt-1 flex flex-col gap-2 rounded-md border border-border p-2.5">
+              <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Santé catalogue
+              </span>
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>Prix renseigné</span>
+                  <span className="font-medium tabular-nums text-foreground">{pctAvecPrix}%</span>
+                </div>
+                <Progress value={pctAvecPrix} tone={toneSante(pctAvecPrix)} aria-label="Part du catalogue avec un prix renseigné" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>SKU renseigné</span>
+                  <span className="font-medium tabular-nums text-foreground">{pctAvecSku}%</span>
+                </div>
+                <Progress value={pctAvecSku} tone={toneSante(pctAvecSku)} aria-label="Part du catalogue avec un SKU renseigné" />
+              </div>
+            </div>
+          )}
+
           <button type="button"
                   className={`mt-1 flex items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors ${!activeCat && !searching ? 'bg-primary/10 font-medium text-foreground' : 'text-muted-foreground hover:bg-muted/60'}`}
                   onClick={() => { setActiveCat(''); setSearch('') }}>

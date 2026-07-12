@@ -19,6 +19,7 @@ import { CheckCircle2, AlertCircle, Save, Search, X } from 'lucide-react'
 import {
   Button, Spinner, TooltipProvider, Input,
 } from '../../ui'
+import { toast } from '../../ui/confirm'
 import {
   TABS, DEFAULT_PAYMENT_TERMS, DEFAULT_PREFIXES, DEFAULT_NUMBERING,
   searchSettings, groupTabs,
@@ -206,7 +207,7 @@ export default function ParametresEntreprise() {
         visible_liste: false,
       })
       loadCfDefs(cfModule)
-    } catch (e) { alert(cfErr(e, 'Ajout impossible.')) }
+    } catch (e) { toast.error(cfErr(e, 'Ajout impossible.')) }
   }
   // L809/L811/L812 — ouvre/ferme l'éditeur inline d'un champ existant.
   const openCfEdit = (d) => {
@@ -231,14 +232,14 @@ export default function ParametresEntreprise() {
       })
       cancelCfEdit()
       loadCfDefs(cfModule)
-    } catch (e) { alert(cfErr(e, 'Modification impossible.')) }
+    } catch (e) { toast.error(cfErr(e, 'Modification impossible.')) }
   }
   // L810 — bascule actif/inactif sans perdre custom_data.
   const toggleCfActif = async (d) => {
     try {
       await customFieldsApi.saveDef(d.id, { actif: !d.actif })
       loadCfDefs(cfModule)
-    } catch (e) { alert(cfErr(e, 'Modification impossible.')) }
+    } catch (e) { toast.error(cfErr(e, 'Modification impossible.')) }
   }
   // L813 — réordonne le champ d'un cran (haut/bas) et persiste l'ordre.
   const moveCf = async (d, dir) => {
@@ -251,7 +252,7 @@ export default function ParametresEntreprise() {
     try {
       await customFieldsApi.reorder(ordered.map(x => x.id))
       loadCfDefs(cfModule)
-    } catch (e) { alert(cfErr(e, 'Réordonnancement impossible.')) }
+    } catch (e) { toast.error(cfErr(e, 'Réordonnancement impossible.')) }
   }
   const delCf = async (d) => {
     if (!window.confirm(`Supprimer le champ « ${d.libelle} » ?`)) return
@@ -302,7 +303,7 @@ export default function ParametresEntreprise() {
       await installationsApi.saveChecklistEtape(null, {
         cle: slugify(libelle), libelle, ordre: checklistEtapes.length })
       setNewEtape(''); loadChecklistEtapes()
-    } catch (e) { alert(e?.response?.data?.detail ?? 'Ajout impossible.') }
+    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Ajout impossible.') }
   }
   const renameEtape = async (et, libelle) => {
     // ERR102 — recharger pour refléter une normalisation serveur du libellé.
@@ -336,7 +337,7 @@ export default function ParametresEntreprise() {
   const delEtape = async (et) => {
     if (!window.confirm(`Supprimer l'étape « ${et.libelle} » ?`)) return
     try { await installationsApi.deleteChecklistEtape(et.id); loadChecklistEtapes() }
-    catch (e) { alert(e?.response?.data?.detail ?? 'Suppression impossible (étape protégée ?).') }
+    catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible (étape protégée ?).') }
   }
 
   const addCanal = async () => {
@@ -345,7 +346,7 @@ export default function ParametresEntreprise() {
     try {
       await crmApi.saveCanal(null, { cle: slugify(libelle), libelle })
       setNewCanal(''); loadCanaux()
-    } catch (e) { alert(e?.response?.data?.detail ?? 'Ajout impossible.') }
+    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Ajout impossible.') }
   }
   const renameCanal = async (c, libelle) => {
     // ERR102 — recharger pour refléter une normalisation serveur du libellé.
@@ -354,12 +355,12 @@ export default function ParametresEntreprise() {
   const delCanal = async (c) => {
     if (!window.confirm(`Supprimer le canal « ${c.libelle} » ?`)) return
     try { await crmApi.deleteCanal(c.id); loadCanaux() }
-    catch (e) { alert(e?.response?.data?.detail ?? 'Suppression impossible.') }
+    catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible.') }
   }
   // L778 — archiver/réactiver un canal (préserve l'historique des leads).
   const archiveCanal = async (c) => {
     try { await crmApi.saveCanal(c.id, { archived: !c.archived }); loadCanaux() }
-    catch (e) { alert(e?.response?.data?.detail ?? 'Action impossible.') }
+    catch (e) { toast.error(e?.response?.data?.detail ?? 'Action impossible.') }
   }
   const addType = async () => {
     const libelle = newType.trim()
@@ -367,7 +368,7 @@ export default function ParametresEntreprise() {
     try {
       await installationsApi.saveTypeIntervention(null, { cle: slugify(libelle), libelle })
       setNewType(''); loadTypesItv()
-    } catch (e) { alert(e?.response?.data?.detail ?? 'Ajout impossible.') }
+    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Ajout impossible.') }
   }
   const renameType = async (t, libelle) => {
     // ERR102 — recharger pour refléter une normalisation serveur du libellé.
@@ -376,18 +377,18 @@ export default function ParametresEntreprise() {
   const delType = async (t) => {
     if (!window.confirm(`Supprimer le type « ${t.libelle} » ?`)) return
     try { await installationsApi.deleteTypeIntervention(t.id); loadTypesItv() }
-    catch (e) { alert(e?.response?.data?.detail ?? 'Suppression impossible.') }
+    catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible.') }
   }
   const addMarque = async () => {
     const nom = newMarque.trim()
     if (!nom) return
     try { await stockApi.saveMarque(null, { nom }); setNewMarque(''); loadMarques() }
-    catch (e) { alert(e?.response?.data?.detail ?? 'Ajout impossible.') }
+    catch (e) { toast.error(e?.response?.data?.detail ?? 'Ajout impossible.') }
   }
   const delMarque = async (m) => {
     if (!window.confirm(`Supprimer la marque « ${m.nom} » ?`)) return
     try { await stockApi.deleteMarque(m.id); loadMarques() }
-    catch (e) { alert(e?.response?.data?.detail ?? 'Suppression impossible.') }
+    catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible.') }
   }
 
   const setMsgField = (cle, key, val) =>
@@ -400,7 +401,7 @@ export default function ParametresEntreprise() {
       setMsgSavedCle(m.cle)
       setTimeout(() => setMsgSavedCle(null), 2500)
     } catch (e) {
-      alert(e?.response?.data?.detail ?? 'Enregistrement impossible.')
+      toast.error(e?.response?.data?.detail ?? 'Enregistrement impossible.')
     }
   }
   // L776 — réinitialiser un modèle WhatsApp au texte par défaut (endpoint reset).
@@ -413,7 +414,7 @@ export default function ParametresEntreprise() {
       setMsgSavedCle(m.cle)
       setTimeout(() => setMsgSavedCle(null), 2500)
     } catch (e) {
-      alert(e?.response?.data?.detail ?? 'Réinitialisation impossible.')
+      toast.error(e?.response?.data?.detail ?? 'Réinitialisation impossible.')
     }
   }
 
@@ -436,12 +437,12 @@ export default function ParametresEntreprise() {
     // L780 — la suppression est bloquée (409) si l'étiquette est utilisée :
     // on remonte le message serveur (qui propose l'archivage).
     try { await crmApi.deleteTag(t.id); loadTags() }
-    catch (e) { alert(e?.response?.data?.detail ?? 'Suppression impossible.') }
+    catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible.') }
   }
   // L778 — archiver/réactiver une étiquette.
   const archiveTag = async (t) => {
     try { await crmApi.saveTag(t.id, { archived: !t.archived }); loadTags() }
-    catch (e) { alert(e?.response?.data?.detail ?? 'Action impossible.') }
+    catch (e) { toast.error(e?.response?.data?.detail ?? 'Action impossible.') }
   }
   const addMotif = async () => {
     const nom = newMotif.trim()
@@ -457,13 +458,13 @@ export default function ParametresEntreprise() {
     // L779 — bloqué (409) si le motif est utilisé : on remonte le message
     // serveur (qui propose l'archivage).
     try { await crmApi.deleteMotifPerte(m.id); loadMotifs() }
-    catch (e) { alert(e?.response?.data?.detail ?? 'Suppression impossible.') }
+    catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible.') }
   }
   // L778 — archiver/réactiver un motif de perte.
   const archiveMotif = async (m) => {
     try {
       await crmApi.saveMotifPerte(m.id, { archived: !m.archived }); loadMotifs()
-    } catch (e) { alert(e?.response?.data?.detail ?? 'Action impossible.') }
+    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Action impossible.') }
   }
 
   const setNiveau = (id, key, val) =>
@@ -500,17 +501,17 @@ export default function ParametresEntreprise() {
         nom: `Niveau ${ordre + 1}`, delai_jours: 7, ordre, message: '',
       })
       loadNiveaux()
-    } catch (e) { alert(e?.response?.data?.detail ?? 'Ajout impossible.') }
+    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Ajout impossible.') }
   }
   const delNiveau = async (n) => {
     if (!window.confirm(`Supprimer le niveau « ${n.nom} » ?`)) return
     try { await ventesApi.deleteNiveauRelance(n.id); loadNiveaux() }
-    catch (e) { alert(e?.response?.data?.detail ?? 'Suppression impossible.') }
+    catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible.') }
   }
   // L768 — crée les niveaux par défaut (J+7 / J+15 / J+30) quand il n'y en a pas.
   const seedNiveaux = async () => {
     try { await ventesApi.seedNiveauxRelance(); loadNiveaux() }
-    catch (e) { alert(e?.response?.data?.detail ?? 'Création impossible.') }
+    catch (e) { toast.error(e?.response?.data?.detail ?? 'Création impossible.') }
   }
 
   useEffect(() => {

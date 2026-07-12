@@ -3,6 +3,7 @@ import { test, expect } from '@playwright/test'
 import {
   gotoLeads, setLeadsView, createLead, openLead, closeLeadModal,
   generateAutoDevis, uniq, ADMIN, SECOND_USER,
+  assertNoSeriousA11yViolations,
 } from './helpers'
 
 const modalXl = (page) => page.locator('[role="dialog"]').filter({ has: page.locator('.modal-title') })
@@ -57,6 +58,9 @@ test('E6: reassign a lead from a kanban card and from the lead view', async ({ p
   // ── from the lead view (picker + save) ──
   await openLead(page, name)
   const modal = modalXl(page)
+  // VX71 — scan axe DYNAMIQUE : le lead EN ÉDITION (dialog ouvert, picker
+  // assignee monté) est un état qu'un scan statique de build ne voit jamais.
+  await assertNoSeriousA11yViolations(page, { include: '[role="dialog"]' })
   const respGroup = modal.locator('.form-group', { hasText: 'Responsable' })
   await respGroup.locator('.ap-trigger').click()
   await page.locator('.ap-menu .ap-item', { hasText: ADMIN.username }).click()
@@ -112,4 +116,23 @@ test('E7: move a lead between stages, including into Signé', async ({ page }) =
   await expect(dialog).toHaveCount(0)
 
   await expect(page.locator('tr.lv-row', { hasText: name })).toContainText('Signé')
+})
+
+// VX71 — a11y DYNAMIQUE : le FORMULAIRE EN ERREUR (soumission avec Nom vide)
+// est un état affiché uniquement après interaction — un scan statique ne le
+// rend jamais. Le formulaire est `noValidate` (règle générateur de devis) :
+// la validation « Nom requis » est gérée côté React (LeadForm.jsx).
+test('VX71: lead form validation error state has no serious/critical a11y violation', async ({ page }) => {
+  await gotoLeads(page)
+  await page.getByRole('button', { name: '+ Nouveau lead' }).click()
+  const modal = page.locator('[role="dialog"]').filter({ has: page.locator('.modal-title') })
+  await expect(modal.getByRole('heading', { name: 'Nouveau lead' })).toBeVisible()
+
+  // Nom laissé vide → soumission déclenche l'erreur inline.
+  await modal.getByRole('button', { name: 'Créer le lead' }).click()
+  await expect(modal.getByText('Nom requis')).toBeVisible()
+
+  await assertNoSeriousA11yViolations(page, { include: '[role="dialog"]' })
+
+  await modal.locator('.modal-close').first().click()
 })

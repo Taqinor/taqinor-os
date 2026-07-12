@@ -68,7 +68,7 @@ export default function PdfCanvas({ blob, onError }) {
   }, [blob, onError])
 
   return (
-    <div className="ldp-pdfjs-wrap">
+    <div className="ldp-pdfjs-wrap" tabIndex={0} role="region" aria-label="Aperçu du PDF (défilement au clavier)">
       {rendering && (
         <p className="gen-hint ldp-pdf-loading">⏳ Rendu de l'aperçu…</p>
       )}

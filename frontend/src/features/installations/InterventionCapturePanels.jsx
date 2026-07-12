@@ -41,6 +41,10 @@ export function SerialsPanel({ intervention, onChanged, knownSeries = [] }) {
   const [designation, setDesignation] = useState('')
   const [numero, setNumero] = useState('')
   const fileRef = useRef(null)
+  // VX94 — refocus sur le premier champ après un ajout réussi (recette
+  // `newCatRef` prouvée dans ProduitForm) : la saisie sérialisée au pouce
+  // enchaîne sans viser « Ajouter » puis re-viser le champ.
+  const firstFieldRef = useRef(null)
 
   const load = useCallback(() => installationsApi.getSerials(id)
     .then((r) => setRows(r.data || []))
@@ -71,6 +75,7 @@ export function SerialsPanel({ intervention, onChanged, knownSeries = [] }) {
       setDesignation(''); setNumero('')
       if (fileRef.current) fileRef.current.value = ''
       toast.success('N° de série enregistré.')
+      firstFieldRef.current?.focus()
       await load(); onChanged?.()
     } catch (err) {
       toast.error(err?.response?.data?.detail ?? 'Enregistrement impossible.')
@@ -90,10 +95,12 @@ export function SerialsPanel({ intervention, onChanged, knownSeries = [] }) {
         numéro peut rester vide — il ne bloque jamais la suite.
       </p>
       <div className="flex flex-col gap-2 rounded border border-border p-2">
-        <Input placeholder="Composant (onduleur, panneau…)"
-          value={designation} onChange={(e) => setDesignation(e.target.value)} />
+        <Input ref={firstFieldRef} placeholder="Composant (onduleur, panneau…)"
+          value={designation} onChange={(e) => setDesignation(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (!busy) add() } }} />
         <Input placeholder="N° de série (optionnel)"
-          value={numero} onChange={(e) => setNumero(e.target.value)} />
+          value={numero} onChange={(e) => setNumero(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (!busy) add() } }} />
         {isDoublon(numero) && (
           <span className="text-[12px] text-destructive">
             Ce numéro de série existe déjà sur ce chantier (parc ou checklist).
@@ -138,6 +145,8 @@ export function ConsommationPanel({ intervention, onChanged }) {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [extra, setExtra] = useState({ designation: '', quantite_utilisee: '' })
+  // VX94 — refocus sur le premier champ « hors devis » après un ajout réussi.
+  const extraFirstRef = useRef(null)
 
   const load = useCallback(() => installationsApi.getConsommation(id)
     .then((r) => setData(r.data))
@@ -156,6 +165,7 @@ export function ConsommationPanel({ intervention, onChanged }) {
     try {
       await installationsApi.ajouterLigneConsommation(id, extra)
       setExtra({ designation: '', quantite_utilisee: '' })
+      extraFirstRef.current?.focus()
       await load()
     } catch { toast.error('Ajout impossible.') } finally { setBusy(false) }
   }
@@ -204,11 +214,13 @@ export function ConsommationPanel({ intervention, onChanged }) {
       {!data.valide && (
         <div className="flex flex-col gap-2 rounded border border-dashed border-border p-2">
           <span className="text-[12px] font-medium text-muted-foreground">Ligne hors devis (câble, vis, MC4…)</span>
-          <Input placeholder="Désignation" value={extra.designation}
-            onChange={(e) => setExtra({ ...extra, designation: e.target.value })} />
+          <Input ref={extraFirstRef} placeholder="Désignation" value={extra.designation}
+            onChange={(e) => setExtra({ ...extra, designation: e.target.value })}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (!busy) addExtra() } }} />
           <Input type="number" step="any" placeholder="Quantité utilisée"
             value={extra.quantite_utilisee}
-            onChange={(e) => setExtra({ ...extra, quantite_utilisee: e.target.value })} />
+            onChange={(e) => setExtra({ ...extra, quantite_utilisee: e.target.value })}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (!busy) addExtra() } }} />
           <Button size="sm" variant="outline" disabled={busy} onClick={addExtra}>Ajouter la ligne</Button>
         </div>
       )}
@@ -261,7 +273,19 @@ export function MemosPanel({ intervention, onChanged }) {
         const file = new File([blob], 'memo.webm', { type: 'audio/webm' })
         setBusy(true)
         try { await installationsApi.ajouterMemo(id, file); await load(); onChanged?.() }
-        catch (err) { toast.error(err?.response?.data?.detail ?? 'Mémo impossible.') }
+        catch (err) {
+          // VX105 — le mémo n'est PAS filé (pas d'outbox binaire — FG386) : un
+          // échec réseau = mémo perdu. Message DISTINCT et persistant, jamais
+          // l'illusion d'un envoi.
+          const offline = navigator.onLine === false || !err?.response
+          if (offline) {
+            toast.error(
+              'Mémo NON envoyé — réseau indisponible. Ré-enregistrez-le au retour du réseau.',
+              { duration: Infinity })
+          } else {
+            toast.error(err?.response?.data?.detail ?? 'Mémo impossible.')
+          }
+        }
         finally { setBusy(false) }
       }
       recorder.current = rec

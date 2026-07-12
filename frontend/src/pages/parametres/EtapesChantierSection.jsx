@@ -16,6 +16,7 @@ import {
   Card, CardContent, Input, Button, IconButton, Badge, Spinner, EmptyState,
 } from '../../ui'
 import { SectionTitle } from './peComponents'
+import { toast } from '../../ui/confirm'
 
 // Les exigences attachables à un gate (miroir des champs `exige_*` serveur).
 const EXIGENCES = [
@@ -60,7 +61,7 @@ export default function EtapesChantierSection() {
         libelle, ordre: stages.length,
       })
       setNewLibelle(''); load()
-    } catch (e) { alert(e?.response?.data?.detail ?? 'Ajout impossible.') }
+    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Ajout impossible.') }
   }
   const renameStage = async (s, libelle) => {
     if (!libelle.trim() || libelle === s.libelle) return
@@ -94,7 +95,7 @@ export default function EtapesChantierSection() {
   const delStage = async (s) => {
     if (!window.confirm(`Supprimer l'étape « ${s.libelle} » ?`)) return
     try { await installationsApi.deleteStageChantier(s.id); load() }
-    catch (e) { alert(e?.response?.data?.detail ?? 'Suppression impossible (étape système ?).') }
+    catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible (étape système ?).') }
   }
 
   if (loading) return <Spinner />

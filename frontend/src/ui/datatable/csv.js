@@ -45,6 +45,18 @@ export function rowsToCSV(rows, columns, { delimiter = ',', bom = true, eol = '\
   return bom ? UTF8_BOM + body : body
 }
 
+/**
+ * VX110 — Sérialise en TSV (séparé par tabulations), SANS BOM. C'est exactement
+ * ce qu'Excel/Sheets produisent au copier : collé dans une feuille, chaque `\t`
+ * crée une colonne et chaque ligne une rangée — collage aligné gratuit, sans
+ * passer par un fichier. Réutilise `escapeCSVCell` (garde anti-injection ERR97)
+ * avec le délimiteur tabulation, donc une cellule contenant une tabulation ou un
+ * saut de ligne est correctement quotée.
+ */
+export function rowsToTSV(rows, columns, { eol = '\r\n' } = {}) {
+  return rowsToCSV(rows, columns, { delimiter: '\t', bom: false, eol })
+}
+
 /** Nom de fichier d'export horodaté : « base-2026-06-18.csv ». */
 export function exportFileName(base = 'export', { ext = 'csv', date = new Date() } = {}) {
   const d = date instanceof Date && !Number.isNaN(date.getTime()) ? date : new Date()

@@ -4,6 +4,7 @@ import {
   PartyPopper, FileText, MessageCircle, Mail, History, ReceiptText, MoreHorizontal,
 } from 'lucide-react'
 import ventesApi from '../../api/ventesApi'
+import PaiementDialog from './PaiementDialog'
 import { openPdfBlob } from '../../utils/pdfBlob'
 import {
   Button, Badge, Card, EmptyState, Spinner, Checkbox, Input,
@@ -14,6 +15,7 @@ import {
   Select, SelectTrigger, SelectContent, SelectItem, SelectValue,
 } from '../../ui'
 import { formatMAD, formatDateTime, toNumber, normalizeMaPhone } from '../../lib/format'
+import { toast } from '../../ui/confirm'
 
 // Ajoute n jours à aujourd'hui (date ISO AAAA-MM-JJ).
 function todayPlus(days) {
@@ -37,6 +39,9 @@ export default function RelancesPage() {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [target, setTarget] = useState(null)  // facture being relancée
+  // VX230 — encaisser LÀ où on chasse l'impayé : la facture ciblée par la modale
+  // de paiement PARTAGÉE (PaiementDialog), sans quitter la vue de recouvrement.
+  const [payTarget, setPayTarget] = useState(null)
   const [note, setNote] = useState('')
   const [prochaine, setProchaine] = useState('')  // date de prochaine relance
   const [busy, setBusy] = useState(false)
@@ -88,17 +93,76 @@ export default function RelancesPage() {
 
   // Relance en lot : consigne une relance pour chaque facture cochée, au niveau
   // courant de chacune (sans note ni envoi forcé — comportement par défaut).
+  const doConsigner = async (ids) => {
+    for (const id of ids) {
+      const r = rows.find(x => String(x.id) === String(id))
+      await ventesApi.relancerFacture(id, { niveau: r?.niveau?.ordre })
+    }
+  }
+  // « Consigner uniquement » — comportement historique, byte-identique.
   const relancerSelection = async () => {
     const ids = Object.keys(selected).filter(id => selected[id])
     if (ids.length === 0) return
     if (!window.confirm(`Consigner une relance pour ${ids.length} facture(s) ?`)) return
     setBulkBusy(true)
     try {
-      for (const id of ids) {
-        const r = rows.find(x => String(x.id) === String(id))
-        await ventesApi.relancerFacture(id, { niveau: r?.niveau?.ordre })
-      }
+      await doConsigner(ids)
       setSelected({}); load()
+    } catch { /* */ } finally { setBulkBusy(false) }
+  }
+
+  // VX116 — file d'aperçus WhatsApp SÉQUENTIELS après consignation en lot.
+  // JAMAIS d'envoi wa.me sans clic explicite (règle manuel-wa.me du fondateur) :
+  // on montre le MÊME aperçu-puis-confirmer par client, l'un après l'autre.
+  const [waQueue, setWaQueue] = useState([]) // factures restant à prévisualiser
+  const [waQueueIdx, setWaQueueIdx] = useState(0)
+  const inWaQueue = waQueue.length > 0
+
+  const loadWaPreviewFor = async (r) => {
+    if (!r) return
+    try {
+      const res = await ventesApi.whatsappFacture(r.id, {
+        modele: 'relance', langue: waLangue,
+      })
+      setWaPreview({
+        reference: r.reference,
+        message: res.data?.message ?? '',
+        url: res.data?.url ?? '',
+        wa_url: res.data?.wa_url ?? '',
+      })
+    } catch {
+      // Un aperçu indisponible ne bloque pas la file : on l'affiche vide (sans
+      // wa_url, donc « Ouvrir WhatsApp » reste désactivé) et l'utilisateur passe.
+      setWaPreview({ reference: r.reference, message: 'Aperçu indisponible pour cette facture.', url: '', wa_url: '' })
+    }
+  }
+
+  const endWaQueue = () => { setWaQueue([]); setWaQueueIdx(0); setWaPreview(null); load() }
+
+  const advanceWaQueue = async () => {
+    const nextIdx = waQueueIdx + 1
+    if (nextIdx >= waQueue.length) { endWaQueue(); return }
+    setWaQueueIdx(nextIdx)
+    await loadWaPreviewFor(waQueue[nextIdx])
+  }
+
+  // « Consigner + aperçu WhatsApp pour chacun » : consigne d'abord (comme
+  // ci-dessus), puis démarre la séquence d'aperçus par client.
+  const relancerSelectionAvecWhatsapp = async () => {
+    const ids = Object.keys(selected).filter(id => selected[id])
+    if (ids.length === 0) return
+    if (!window.confirm(
+      `Consigner une relance pour ${ids.length} facture(s), puis prévisualiser un message WhatsApp pour chacune ?`)) return
+    const facturesSel = ids
+      .map(id => rows.find(x => String(x.id) === String(id)))
+      .filter(Boolean)
+    setBulkBusy(true)
+    try {
+      await doConsigner(ids)
+      setSelected({})
+      setWaQueue(facturesSel)
+      setWaQueueIdx(0)
+      await loadWaPreviewFor(facturesSel[0])
     } catch { /* */ } finally { setBulkBusy(false) }
   }
 
@@ -113,11 +177,11 @@ export default function RelancesPage() {
 
   // Relevé de compte client (PDF) — en plus de la balance âgée.
   const releve = async (r) => {
-    if (!r.client_id) { alert('Client introuvable pour cette facture.'); return }
+    if (!r.client_id) { toast.error('Client introuvable pour cette facture.'); return }
     try {
       const res = await ventesApi.getClientRelevePdf(r.client_id)
       openPdfBlob(res.data, `Releve_${r.client_nom || r.client_id}.pdf`)
-    } catch { alert('Relevé indisponible.') }
+    } catch { toast.error('Relevé indisponible.') }
   }
 
   const toggleSel = (id) => setSelected(s => ({ ...s, [id]: !s[id] }))
@@ -129,14 +193,14 @@ export default function RelancesPage() {
     try {
       const res = await ventesApi.getLettreRelancePdf(r.id)
       openPdfBlob(res.data, `Relance_${r.reference}.pdf`)
-    } catch { alert('PDF indisponible.') }
+    } catch { toast.error('PDF indisponible.') }
   }
   // Lettre de relance premium (langage visuel du devis) — niveau 1/2/3.
   const lettrePremium = async (r, niveau) => {
     try {
       const res = await ventesApi.getLettreRelancePremiumPdf(r.id, niveau)
       openPdfBlob(res.data, `Relance_${r.reference}_N${niveau}.pdf`)
-    } catch { alert('PDF indisponible.') }
+    } catch { toast.error('PDF indisponible.') }
   }
   // Rappel de paiement par WhatsApp : construit le message « relance » côté
   // serveur (FR/Darija) puis montre un aperçu (message + lien public) avant
@@ -154,16 +218,17 @@ export default function RelancesPage() {
         wa_url: res.data?.wa_url ?? '',
       })
     } catch (err) {
-      alert(err?.response?.data?.detail ?? 'Envoi WhatsApp impossible.')
+      toast.error(err?.response?.data?.detail ?? 'Envoi WhatsApp impossible.')
     } finally {
       setWaBusy(prev => ({ ...prev, [r.id]: false }))
     }
   }
 
-  // Ouvre wa.me après confirmation de l'aperçu.
+  // Ouvre wa.me après confirmation de l'aperçu. En file (VX116), avance vers le
+  // client suivant ; sinon ferme simplement l'aperçu.
   const ouvrirWhatsApp = () => {
     if (waPreview?.wa_url) window.open(waPreview.wa_url, '_blank', 'noopener')
-    setWaPreview(null)
+    if (inWaQueue) { advanceWaQueue() } else { setWaPreview(null) }
   }
 
   // Niveaux distincts présents (pour le filtre).
@@ -256,10 +321,25 @@ export default function RelancesPage() {
               </SelectContent>
             </Select>
           </label>
+          {/* VX116 — la relance en lot propose « Consigner uniquement »
+              (inchangé) ou « Consigner + aperçu WhatsApp pour chacun » (aperçu
+              séquentiel par client, jamais d'auto-envoi). */}
           {selCount > 0 && (
-            <Button size="sm" loading={bulkBusy} onClick={relancerSelection}>
-              Consigner pour la sélection ({selCount})
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="sm" loading={bulkBusy}>
+                  Relancer la sélection ({selCount})
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                <DropdownMenuItem onSelect={relancerSelection}>
+                  Consigner uniquement
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={relancerSelectionAvecWhatsapp}>
+                  Consigner + aperçu WhatsApp pour chacun
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
           {/* L851 — langue des rappels WhatsApp (FR par défaut). */}
           <div role="group" aria-label="Langue des rappels WhatsApp"
@@ -345,6 +425,15 @@ export default function RelancesPage() {
                           Exclure) vit dans un seul menu « Plus ». */}
                       <div className="flex flex-wrap items-center justify-end gap-2">
                         <Button size="sm" onClick={() => openRelancer(r)}>Relancer</Button>
+                        {/* VX230 — « Encaisser » : ouvre la MÊME modale de
+                            paiement que FactureList, sur place. Le chèque
+                            décroché après la relance s'enregistre sans quitter
+                            la vue de recouvrement. */}
+                        <Button size="sm" variant="outline"
+                                onClick={() => setPayTarget(r)}
+                                title="Enregistrer un paiement sur cette facture">
+                          <ReceiptText /> Encaisser
+                        </Button>
                         <Button size="sm" variant="outline"
                                 loading={!!waBusy[r.id]}
                                 disabled={!!waBusy[r.id] || !normalizeMaPhone(r.client_telephone)}
@@ -402,11 +491,17 @@ export default function RelancesPage() {
         </Card>
       )}
 
-      {/* ── L852 — Aperçu du rappel WhatsApp avant ouverture de wa.me ── */}
-      <Dialog open={!!waPreview} onOpenChange={(o) => { if (!o) setWaPreview(null) }}>
+      {/* ── L852 — Aperçu du rappel WhatsApp avant ouverture de wa.me ──
+          VX116 — en file (relance en lot + WhatsApp), le titre montre la
+          progression et « Annuler » clôt toute la séquence. */}
+      <Dialog open={!!waPreview}
+              onOpenChange={(o) => { if (!o) { if (inWaQueue) endWaQueue(); else setWaPreview(null) } }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Aperçu du rappel WhatsApp — {waPreview?.reference}</DialogTitle>
+            <DialogTitle>
+              Aperçu du rappel WhatsApp — {waPreview?.reference}
+              {inWaQueue ? ` (${waQueueIdx + 1}/${waQueue.length})` : ''}
+            </DialogTitle>
             <DialogDescription>
               {waLangue === 'darija' ? 'Variante Darija' : 'Variante Français'}
               {' '}— vérifiez le texte et le lien, puis ouvrez WhatsApp.
@@ -422,7 +517,15 @@ export default function RelancesPage() {
             </p>
           )}
           <DialogFooter>
-            <Button type="button" variant="ghost" onClick={() => setWaPreview(null)}>Annuler</Button>
+            <Button type="button" variant="ghost"
+                    onClick={() => { if (inWaQueue) endWaQueue(); else setWaPreview(null) }}>
+              {inWaQueue ? 'Arrêter' : 'Annuler'}
+            </Button>
+            {inWaQueue && (
+              <Button type="button" variant="outline" onClick={advanceWaQueue}>
+                Passer
+              </Button>
+            )}
             <Button type="button" variant="success" disabled={!waPreview?.wa_url}
                     onClick={ouvrirWhatsApp}>
               <MessageCircle /> Ouvrir WhatsApp
@@ -499,6 +602,15 @@ export default function RelancesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* VX230 — modale de paiement PARTAGÉE (extraite de FactureList). Sur
+          « onSaved », on recharge la liste des impayés : une facture soldée en
+          disparaît. */}
+      <PaiementDialog
+        facture={payTarget}
+        onOpenChange={(o) => { if (!o) setPayTarget(null) }}
+        onSaved={load}
+      />
     </div>
   )
 }

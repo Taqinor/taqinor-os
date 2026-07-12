@@ -4,6 +4,8 @@
 from django.conf import settings
 from django.db import models
 
+from core.models import TenantModel
+
 
 class SavedReport(models.Model):
     """N79 — Rapport sauvegardé + planification d'envoi par email.
@@ -384,3 +386,49 @@ class ClasseurPartageInterne(models.Model):
     def __str__(self):
         cible = self.utilisateur_id or self.role or '—'
         return f'Classeur {self.classeur_id} → {cible} ({self.niveau})'
+
+
+class WebVitalMetric(TenantModel):
+    """VX61 — une ligne par métrique Web Vitals RÉELLE mesurée sur le
+    terrain (INP/LCP/CLS/TTFB), envoyée par `frontend/src/lib/vitals.js`
+    (hand-roll `PerformanceObserver` — la lib `web-vitals` de Google reste
+    une dépendance GATÉE) via `navigator.sendBeacon`. Croissance rapide (une
+    ligne par métrique par navigation) — purgée par la politique de
+    rétention `reporting_web_vitals` (voir `apps.py ready()` + YOPSB10)."""
+
+    class Metric(models.TextChoices):
+        LCP = 'LCP', 'Largest Contentful Paint'
+        INP = 'INP', 'Interaction to Next Paint'
+        CLS = 'CLS', 'Cumulative Layout Shift'
+        TTFB = 'TTFB', 'Time to First Byte'
+
+    class Rating(models.TextChoices):
+        GOOD = 'good', 'Bon'
+        NEEDS_IMPROVEMENT = 'needs-improvement', 'À améliorer'
+        POOR = 'poor', 'Mauvais'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='reporting_web_vitals')
+    utilisateur = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='reporting_web_vitals')
+    route = models.CharField(max_length=255, blank=True, default='')
+    metric = models.CharField(max_length=10, choices=Metric.choices)
+    value = models.FloatField()
+    rating = models.CharField(
+        max_length=20, choices=Rating.choices, blank=True, default='')
+    navigation_id = models.CharField(max_length=64, blank=True, default='')
+
+    class Meta:
+        verbose_name = 'Métrique Web Vitals'
+        verbose_name_plural = 'Métriques Web Vitals'
+        ordering = ['-created_at', '-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'route', 'metric', 'created_at'],
+                name='rpt_vitals_p75_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.metric}={self.value} [{self.route}] ({self.company_id})'

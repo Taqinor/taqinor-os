@@ -30,6 +30,7 @@ from .integrity_views import integrite_insight
 from .sav_pivot import sav_tickets_pivot, sav_tickets_cout_moyen
 from .reports_field import field_service_report
 from .technicien_scorecard import technicien_scorecard
+from .vitals import collect_vital, vitals_p75
 
 # N79 — CRUD des rapports sauvegardés (router DRF, ajouté en additif).
 # FG96 — CRUD + effective/ pour la config tableau de bord.
@@ -116,4 +117,7 @@ urlpatterns = [
     # XFSM17 — scorecard coaching par technicien vs moyenne équipe.
     path('insights/technicien-scorecard/', technicien_scorecard,
          name='insights-technicien-scorecard'),
+    # VX61 — beacon Web Vitals RÉELS (POST, une ligne/métrique) + agrégat p75.
+    path('vitals/', collect_vital, name='reporting-vitals'),
+    path('vitals/p75/', vitals_p75, name='reporting-vitals-p75'),
 ]

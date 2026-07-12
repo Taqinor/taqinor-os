@@ -4,7 +4,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import {
   Download, Plus, FileText, FileDown, Check, ArrowRight, HardHat, FileStack,
   Copy, Send, X, Eye, Search, AlertTriangle, Box, ExternalLink,
-  Link2, FolderKanban, MoreHorizontal, Printer,
+  Link2, FolderKanban, MoreHorizontal, Printer, Bell, Share2,
 } from 'lucide-react'
 import {
   fetchDevis,
@@ -146,6 +146,23 @@ function daysUntil(isoDate) {
   const a = Date.UTC(target.getFullYear(), target.getMonth(), target.getDate())
   const b = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate())
   return Math.round((a - b) / 86400000)
+}
+
+// VX222 — « Relancer ce devis » : à partir de l'aperçu WhatsApp EXISTANT (même
+// modale, mêmes données), on remplace UNIQUEMENT le texte du message wa.me par
+// un RAPPEL (« petit rappel concernant votre devis ») au lieu de l'envoi
+// initial. On réutilise le numéro déjà normalisé côté serveur (base de
+// `waData.wa_url`, avant le `?text=`) + le lien public déjà émis (`waData.url`),
+// donc aucun backend ni duplication de logique de téléphone. Aperçu-puis-clic :
+// rien n'est envoyé automatiquement (règle manuel-wa.me fondateur).
+function buildRelanceMessage(waData, reference) {
+  const lien = waData?.url || ''
+  return `Bonjour, petit rappel concernant votre devis ${reference || ''}${lien ? ' : ' + lien : ''}`.trim()
+}
+function buildRelanceWaUrl(waData, reference) {
+  if (!waData?.wa_url) return null
+  const base = waData.wa_url.split('?')[0]   // https://wa.me/<numéro normalisé>
+  return `${base}?text=${encodeURIComponent(buildRelanceMessage(waData, reference))}`
 }
 
 // XSAL16 — libellés FR des sections suivies sur la proposition web (miroir de
@@ -293,9 +310,9 @@ function DevisRow({ d, ctx }) {
     role, canDelete, canValiderVente, highlightId,
     deletingId, statutActionId, superieurBusyId, shareBusyId, previewingId,
     pdfGenerating, pdfDownloading, pdfSlowPoll, convertingId, chantierBusy, projetBusy, factureGenId,
-    openEdit, openVarianteModal, handleDelete, handleEnvoyer, handleContacterSuperieur,
+    openEdit, openVarianteModal, handleDelete, handleEnvoyer, handleRelancer, handleContacterSuperieur,
     openEmailModal, handleCopierLienProposition, copierLienInterne, handlePreview, openPdfModal,
-    handleTelechargerPdf, openAcceptModal, openRefusModal, handleConvertBC,
+    handleTelechargerPdf, handlePartagerPdf, openAcceptModal, openRefusModal, handleConvertBC,
     handleChantier, handleCreerProjet, handleGenererFacture,
   } = ctx
   // Expiration calculée à la volée (T7) : un devis en attente dont la
@@ -583,6 +600,21 @@ function DevisRow({ d, ctx }) {
               <Send /> Envoyer
             </Button>
           )}
+          {/* VX222 — « Relancer » : pendant devis de la relance facture. Rouvre
+              le flux WhatsApp EXISTANT en mode rappel (aperçu-puis-clic, jamais
+              d'envoi auto) + consigne la relance au chatter. N'apparaît que sur
+              un devis « Envoyé ». */}
+          {d.statut === 'envoye' && (
+            <Button
+              size="sm"
+              variant="outline"
+              loading={statutActionId === d.id}
+              onClick={() => handleRelancer(d)}
+              title="Relancer ce devis par WhatsApp (message de rappel + note au chatter)"
+            >
+              <Bell /> Relancer
+            </Button>
+          )}
           {d.statut === 'envoye' && canValiderVente && (
             <Button
               size="sm"
@@ -672,6 +704,17 @@ function DevisRow({ d, ctx }) {
                 >
                   <FileDown className="size-3.5" aria-hidden="true" />
                   {isDownloading ? 'Téléchargement…' : 'Télécharger le dernier PDF'}
+                </DropdownMenuItem>
+              )}
+              {/* VX44 — partage natif du PDF (feuille de partage iOS/Android →
+                  WhatsApp/e-mail), repli téléchargement. */}
+              {d.fichier_pdf && (
+                <DropdownMenuItem
+                  disabled={isDownloading}
+                  onSelect={() => handlePartagerPdf(d)}
+                >
+                  <Share2 className="size-3.5" aria-hidden="true" />
+                  Partager le PDF
                 </DropdownMenuItem>
               )}
               {/* WR2 — Copier le lien de proposition (share_link) :
@@ -1262,6 +1305,10 @@ export default function DevisList() {
   const [waTarget, setWaTarget] = useState(null)   // devis ciblé
   const [waData, setWaData] = useState(null)        // { wa_url, message, url }
   const [waSending, setWaSending] = useState(false)
+  // VX222 — la même modale WhatsApp bascule en mode « relance » (message de
+  // rappel + note au chatter) au lieu de l'envoi initial. Réinitialisé à la
+  // fermeture pour qu'un « Envoyer » ultérieur reparte en mode initial.
+  const [relanceMode, setRelanceMode] = useState(false)
   const handleEnvoyer = async (d) => {
     setStatutActionId(d.id)
     try {
@@ -1276,17 +1323,35 @@ export default function DevisList() {
       setStatutActionId(null)
     }
   }
-  const closeWaModal = () => { setWaTarget(null); setWaData(null); setWaSending(false) }
+  // VX222 — « Relancer » un devis envoyé : rouvre la MÊME modale d'aperçu
+  // WhatsApp (whatsappPreviewDevis, lecture seule) mais en mode relance. Aucune
+  // mutation tant que le vendeur n'a pas cliqué « Ouvrir WhatsApp ».
+  const handleRelancer = (d) => { setRelanceMode(true); handleEnvoyer(d) }
+  const closeWaModal = () => {
+    setWaTarget(null); setWaData(null); setWaSending(false); setRelanceMode(false)
+  }
   // QX22 — clic réel sur « Ouvrir WhatsApp » : ouvre wa.me PUIS marque le devis
   // « Envoyé » côté serveur (whatsappDevis, l'action d'envoi véritable — jamais
   // au moment de l'ouverture de la modale). Le lien s'ouvre même si le marquage
   // échoue (le message a déjà été montré au vendeur ; on prévient de l'échec).
   const openWhatsApp = async () => {
     if (!waTarget) return
-    if (waData?.wa_url) window.open(waData.wa_url, '_blank', 'noopener')
+    // VX222 — mode relance : le lien wa.me porte un message de RAPPEL ; sinon,
+    // le lien d'aperçu initial (QX22) inchangé.
+    if (relanceMode) {
+      const rUrl = buildRelanceWaUrl(waData, waTarget.reference)
+      if (rUrl) window.open(rUrl, '_blank', 'noopener')
+    } else if (waData?.wa_url) window.open(waData.wa_url, '_blank', 'noopener')
     setWaSending(true)
     try {
       await ventesApi.whatsappDevis(waTarget.id)
+      // VX222 — consigne la relance au chatter du devis (DevisActivity, VX97) ;
+      // best-effort, ne bloque jamais l'ouverture WhatsApp déjà effectuée.
+      if (relanceMode) {
+        ventesApi.noterDevis(
+          waTarget.id, `Relance du devis ${waTarget.reference} envoyée par WhatsApp.`,
+        ).catch(() => {})
+      }
       dispatch(fetchDevis())
     } catch (err) {
       toast.error(frenchError(err, 'Le marquage « Envoyé » a échoué — vérifiez le devis.'))
@@ -1597,6 +1662,38 @@ export default function DevisList() {
     }
   }
 
+  // VX44 — « Partager le PDF » : quand la Web Share API accepte les fichiers
+  // (iOS 15+, Android Chrome), le PDF du devis part directement dans la feuille
+  // de partage native (WhatsApp, e-mail…) ; sinon repli propre sur le
+  // téléchargement. Aucun nouveau chemin PDF — c'est le PDF existant du devis
+  // (règle #4 : le rendu /proposal n'est pas touché).
+  const handlePartagerPdf = async (d) => {
+    setPdfDownloading(prev => ({ ...prev, [d.id]: true }))
+    try {
+      const res = await ventesApi.telechargerPdfDevis(d.id)
+      const filename = filenameFromResponse(res, `${d.reference}.pdf`)
+      const file = new File([res.data], filename, { type: 'application/pdf' })
+      const shareData = { files: [file], title: `Devis ${d.reference}` }
+      if (navigator.canShare?.(shareData) && navigator.share) {
+        try {
+          await navigator.share(shareData)
+        } catch (err) {
+          // L'utilisateur a annulé la feuille de partage : ne rien signaler.
+          if (err?.name !== 'AbortError') {
+            openPdfBlob(res.data, filename)
+          }
+        }
+      } else {
+        // Pas de partage natif de fichiers : repli sur le téléchargement.
+        openPdfBlob(res.data, filename)
+      }
+    } catch {
+      toast.error('Fichier introuvable. Régénérez le PDF.')
+    } finally {
+      setPdfDownloading(prev => ({ ...prev, [d.id]: false }))
+    }
+  }
+
   // Statut effectif : un devis dont la validité est dépassée s'affiche « Expiré »
   // sans changer son statut stocké (logique T7, partagée filtre/résumé/tableau).
   const effStatutOf = (d) => (d.is_expired ? 'expire' : d.statut)
@@ -1711,9 +1808,9 @@ export default function DevisList() {
     role, canDelete, canValiderVente, highlightId,
     deletingId, statutActionId, superieurBusyId, shareBusyId, previewingId,
     pdfGenerating, pdfDownloading, pdfSlowPoll, convertingId, chantierBusy, projetBusy, factureGenId,
-    openEdit, openVarianteModal, handleDelete, handleEnvoyer, handleContacterSuperieur,
+    openEdit, openVarianteModal, handleDelete, handleEnvoyer, handleRelancer, handleContacterSuperieur,
     openEmailModal, handleCopierLienProposition, copierLienInterne, handlePreview, openPdfModal,
-    handleTelechargerPdf, openAcceptModal, openRefusModal, handleConvertBC,
+    handleTelechargerPdf, handlePartagerPdf, openAcceptModal, openRefusModal, handleConvertBC,
     handleChantier, handleCreerProjet, handleGenererFacture,
   }
 
@@ -1793,12 +1890,16 @@ export default function DevisList() {
     // (relance le même thunk que le montage initial), là où l'ancien
     // EmptyState d'erreur n'offrait aucun moyen de réessayer sans recharger
     // la page entière.
+    // VX63 — plus de JSON brut à l'écran : le payload d'erreur (chaîne OU objet
+    // DRF `{detail}`/`{champ:[...]}`) est traduit en message FR lisible via
+    // `frenchError`, au lieu d'un « Erreur de chargement. » générique qui
+    // masquait la vraie cause.
     return (
       <div className="page">
         {pageHeader}
         <StateBlock
           className="mt-4"
-          error={typeof error === 'string' ? error : 'Erreur de chargement.'}
+          error={frenchError(error, 'Erreur de chargement.')}
           onRetry={() => dispatch(fetchDevis())}
         />
       </div>
@@ -2078,15 +2179,20 @@ export default function DevisList() {
       <Dialog open={!!waTarget} onOpenChange={(o) => { if (!o) closeWaModal() }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Envoyer par WhatsApp — {waTarget?.reference}</DialogTitle>
+            <DialogTitle>
+              {relanceMode ? 'Relancer par WhatsApp' : 'Envoyer par WhatsApp'} — {waTarget?.reference}
+            </DialogTitle>
           </DialogHeader>
           <div className="flex flex-col gap-3">
             <p className="text-sm text-muted-foreground">
-              Le devis est marqué « Envoyé ». Vérifiez le message ci-dessous
-              puis ouvrez WhatsApp — vous appuierez vous-même sur Envoyer.
+              {relanceMode
+                ? 'Vérifiez le message de rappel ci-dessous puis ouvrez WhatsApp — vous appuierez vous-même sur Envoyer.'
+                : 'Le devis est marqué « Envoyé ». Vérifiez le message ci-dessous puis ouvrez WhatsApp — vous appuierez vous-même sur Envoyer.'}
             </p>
             <div className="rounded-lg border border-border bg-muted/40 p-3 text-sm whitespace-pre-wrap">
-              {waData?.message || '…'}
+              {relanceMode
+                ? buildRelanceMessage(waData, waTarget?.reference)
+                : (waData?.message || '…')}
             </div>
             {!waData?.wa_url && (
               <p className="text-sm text-destructive">

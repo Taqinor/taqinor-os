@@ -2,6 +2,7 @@
 // Selectors mirror the REAL components (no data-testids exist in the app, so we
 // lean on visible text, placeholders, stable CSS classes and ARIA roles).
 import { expect } from '@playwright/test'
+import AxeBuilder from '@axe-core/playwright'
 
 // Seeded by `manage.py seed_demo` (company "TAQINOR Démo"). Throwaway only.
 export const ADMIN = { username: 'demo_admin', password: 'Demo@2026!' }
@@ -83,6 +84,25 @@ export async function openLead(page, name) {
 export async function closeLeadModal(page) {
   await leadModal(page).locator('.modal-close').first().click()
   await expect(leadModal(page)).toHaveCount(0)
+}
+
+// ── VX71 — a11y DYNAMIQUE (extension de YHARD8, qui ne scanne que du statique) ─
+// Scan axe-core APRÈS une interaction réelle (dialog ouvert, menu ouvert,
+// formulaire en erreur, toast) : seuls les scans statiques (build) existaient
+// jusqu'ici — un état atteint uniquement via interaction (ex. un dialog monté
+// au clic) n'était jamais couvert. `include` restreint le scan à la zone
+// pertinente (ex. le dialog ouvert) pour rester rapide et ciblé. Échoue
+// SEULEMENT sur `serious`/`critical` (anti-flake : `moderate`/`minor` sont du
+// bruit connu, pas un contrat gardé ici).
+export async function assertNoSeriousA11yViolations(page, { include } = {}) {
+  let builder = new AxeBuilder({ page })
+  if (include) builder = builder.include(include)
+  const results = await builder.analyze()
+  const serious = results.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical')
+  expect(
+    serious,
+    serious.map((v) => `${v.id} (${v.impact}) — ${v.nodes.length} nœud(s)`).join('\n'),
+  ).toEqual([])
 }
 
 // Generate the automatic devis from an already-open lead edit modal and wait for

@@ -11,17 +11,19 @@
 // 3 taps (ouvrir la fiche → onglet Trajet → bouton). Rail d'onglets
 // icône+libellé (au lieu des 9 icônes seules) avec bandeau « Prochaine
 // action ». FAB « Photo rapide » posé au pouce.
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   CalendarDays, MapPin, ChevronRight, ClipboardList, Navigation, Camera,
   Tag, ListChecks, Mic, ShieldCheck, Wrench, AlertOctagon, CloudRain, Phone,
+  PenLine,
 } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
 import {
   Spinner, EmptyState, Badge, StatusPill, StatusAccentCard,
   Sheet, SheetContent, SheetHeader, SheetTitle,
   Tabs, TabsList, TabsTrigger, TabsContent,
-  FloatingActionButton,
+  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+  toast, FloatingActionButton,
 } from '../../ui'
 import { useIsMobile } from '../../ui/ResponsiveDialog'
 import { usePullToRefresh } from '../../ui/usePullToRefresh'
@@ -32,10 +34,17 @@ import {
   SerialsPanel, ConsommationPanel, MemosPanel, ReservesPanel,
   ToolReturnPanel, SafetyPanel, CompteRenduButton, CodePanel,
 } from '../../features/installations/InterventionCapturePanels'
+import { SignatureClientPanel } from '../../features/installations/SignatureClientPanel'
 import {
   interventionStatusLabel, INTERVENTION_TYPES,
+  INTERVENTION_STATUSES, INTERVENTION_STATUS_LABELS,
 } from '../../features/installations/statuses'
 import { formatDate } from '../../lib/format'
+
+// VX105 — clés de persistance de session (survit à un backgrounding suivi d'un
+// rechargement — appel entrant en chantier) : fiche ouverte + onglet visité.
+const SS_ACTIVE = 'mj.activeId'
+const SS_TAB = 'mj.tab'
 
 const TYPE_LABELS = Object.fromEntries(
   INTERVENTION_TYPES.map((t) => [t.value, t.label]))
@@ -92,14 +101,49 @@ export default function MaJourneePage() {
   // Photos ; sinon la fiche s'ouvre normalement sur la préparation.
   const [initialTab, setInitialTab] = useState('prep')
   const today = useMemo(() => todayISO(), [])
+  // VX105 — ne restaure la fiche persistée qu'UNE fois (pas à chaque
+  // pull-to-refresh, sinon la fiche se rouvrirait après fermeture).
+  const restoredRef = useRef(false)
 
-  // Le rôle Technicien ne reçoit déjà que SES interventions (scope serveur).
+  // VX105 — ouvrir/fermer la fiche en persistant l'état de session.
+  const openInterv = useCallback((interv, tab = 'prep') => {
+    setInitialTab(tab); setActive(interv)
+    try {
+      sessionStorage.setItem(SS_ACTIVE, String(interv.id))
+      sessionStorage.setItem(SS_TAB, tab)
+    } catch { /* stockage indisponible */ }
+  }, [])
+  const closeInterv = useCallback(() => {
+    setActive(null)
+    try { sessionStorage.removeItem(SS_ACTIVE) } catch { /* */ }
+  }, [])
+
+  // VX88 — « Ma tournée » (FG73) : les interventions du jour du technicien
+  // ordonnées géographiquement (plus proche voisin), déjà scopées à lui côté
+  // serveur, avec un lien Itinéraire (`itineraire_url`) prêt par arrêt. On
+  // remplace `getInterventions({date_prevue})` (ordre priorité-puis-insertion,
+  // sans sens géographique) par cet endpoint déjà construit et testé.
   const load = useCallback(() => installationsApi
-    .getInterventions({ date_prevue: today })
+    .getMaTournee(today)
     .then((r) => {
-      const all = r.data?.results ?? r.data ?? []
-      // Filtre défensif : aujourd'hui uniquement (l'API peut ignorer le filtre).
-      setRows(all.filter((i) => (i.date_prevue || '').slice(0, 10) === today))
+      // Réponse : { date, stops: [ {...intervention, itineraire_url} ] }.
+      const stops = r.data?.stops ?? []
+      setRows(stops)
+      // VX105 — restauration one-shot de la fiche/onglet persistés (au retour
+      // après un backgrounding qui a rechargé la page).
+      if (!restoredRef.current) {
+        restoredRef.current = true
+        try {
+          const savedId = sessionStorage.getItem(SS_ACTIVE)
+          if (savedId) {
+            const found = stops.find((s) => String(s.id) === savedId)
+            if (found) {
+              setInitialTab(sessionStorage.getItem(SS_TAB) || 'prep')
+              setActive(found)
+            }
+          }
+        } catch { /* stockage indisponible */ }
+      }
     })
     .catch(() => setRows([]))
     .finally(() => setLoading(false)), [today])
@@ -149,14 +193,17 @@ export default function MaJourneePage() {
         <ol className="flex flex-col gap-2">
           {rows.map((interv, i) => {
             const tel = telHref(interv.contact_site_telephone)
-            const maps = mapsHref(interv)
+            // VX88 — un seul lien maps : l'itinéraire optimisé de « Ma tournée »
+            // (`itineraire_url`, GPS du chantier) prime ; repli sur mapsHref
+            // (GPS/ville) quand la tournée n'a pas pu le calculer.
+            const maps = interv.itineraire_url || mapsHref(interv)
             return (
               <li key={interv.id}>
                 <StatusAccentCard
                   variant="compact"
                   accent={typeAccent(interv.type_intervention)}
                   className="overflow-hidden !p-0">
-                  <button type="button" onClick={() => { setInitialTab('prep'); setActive(interv) }}
+                  <button type="button" onClick={() => openInterv(interv, 'prep')}
                     className="flex w-full items-center gap-3 p-3 text-left active:bg-accent">
                     <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
                       {i + 1}
@@ -222,7 +269,7 @@ export default function MaJourneePage() {
         interv={active ? (rows.find((r) => r.id === active.id) ?? active) : null}
         initialTab={initialTab}
         isMobile={isMobile}
-        onClose={() => setActive(null)}
+        onClose={closeInterv}
         onChanged={load} />
 
       {/* VX42 — FAB « Photo rapide » : ouvre directement la première
@@ -232,7 +279,7 @@ export default function MaJourneePage() {
         <FloatingActionButton
           label="Photo rapide"
           icon={<Camera className="size-5" aria-hidden="true" />}
-          onClick={() => { setInitialTab('photos'); setActive(rows[0]) }} />
+          onClick={() => openInterv(rows[0], 'photos')} />
       )}
     </div>
   )
@@ -249,6 +296,7 @@ const FLOW_TABS = [
   { value: 'conso', label: 'Conso', Icon: ListChecks },
   { value: 'memos', label: 'Mémos', Icon: Mic },
   { value: 'reserves', label: 'Réserves', Icon: AlertOctagon },
+  { value: 'signature', label: 'Signature', Icon: PenLine },
   { value: 'outils', label: 'Outils', Icon: Wrench },
 ]
 
@@ -268,6 +316,32 @@ function InterventionFlowSheet({ interv, initialTab, isMobile, onClose, onChange
   // (via `key={id:initialTab}`) quand l'intervention ou l'onglet visé change,
   // ce qui ré-initialise `tab` sans effet-setState (règle no-setstate-in-effect).
   const [tab, setTab] = useState(initialTab || 'prep')
+  const [busy, setBusy] = useState(false)
+  // VX105 — changer d'onglet persiste le choix (repris au retour après un
+  // rechargement provoqué par un backgrounding).
+  const changeTab = (t) => {
+    setTab(t)
+    try { sessionStorage.setItem(SS_TAB, t) } catch { /* stockage indisponible */ }
+  }
+  // VX105 — changement de statut depuis la fiche terrain. La garde serveur
+  // (`transition_block_reason`) n'est JAMAIS dupliquée côté client : on affiche
+  // le message 400 renvoyé tel quel.
+  const changeStatut = async (statut) => {
+    if (!interv || statut === interv.statut) return
+    setBusy(true)
+    try {
+      await installationsApi.updateIntervention(interv.id, { statut })
+      toast.success('Statut mis à jour.')
+      onChanged?.()
+    } catch (err) {
+      const data = err?.response?.data
+      toast.error(
+        data?.transition_block_reason
+        ?? data?.detail
+        ?? (typeof data?.statut === 'string' ? data.statut : null)
+        ?? 'Changement de statut impossible.')
+    } finally { setBusy(false) }
+  }
   if (!interv) return null
 
   const next = NEXT_ACTION[interv.statut]
@@ -290,6 +364,22 @@ function InterventionFlowSheet({ interv, initialTab, isMobile, onClose, onChange
             <StatusPill status={interv.statut} label={interventionStatusLabel(interv.statut)} dot={false} />
             {interv.site_ville && <span>{interv.site_ville}</span>}
           </div>
+          {/* VX105 — changer le statut depuis « Ma journée » : un technicien
+              qui finit peut marquer « Terminée » sans passer par l'écran
+              bureau. La garde de transition reste côté serveur. */}
+          <div className="flex flex-col gap-1 pt-1">
+            <span className="text-[12px] text-muted-foreground">Statut</span>
+            <Select value={interv.statut} onValueChange={changeStatut} disabled={busy}>
+              <SelectTrigger aria-label="Statut de l'intervention" className="h-9">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {INTERVENTION_STATUSES.map((s) => (
+                  <SelectItem key={s} value={s}>{INTERVENTION_STATUS_LABELS[s]}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <div className="pt-1"><CompteRenduButton intervention={interv} /></div>
         </SheetHeader>
 
@@ -299,14 +389,18 @@ function InterventionFlowSheet({ interv, initialTab, isMobile, onClose, onChange
           <div className="flex items-center justify-between gap-2 border-b border-info/30 bg-info/10 px-4 py-2 text-[13px]"
             data-testid="mj-next-action">
             <span><strong className="text-info">Prochaine action&nbsp;:</strong> {next.text}</span>
-            <button type="button" onClick={() => setTab(next.tab)}
+            <button type="button" onClick={() => changeTab(next.tab)}
               className="shrink-0 font-medium text-info underline-offset-2 active:underline">
               Y aller
             </button>
           </div>
         )}
 
-        <Tabs value={tab} onValueChange={setTab} className="p-3">
+        {/* VX105 — `forceMount` : chaque panneau se monte UNE fois et reste
+            monté (masqué quand inactif par Radix), au lieu de se
+            remonter-refetcher à chaque re-visite d'onglet — une app
+            backgroundée (appel entrant) ne perd plus la saisie en cours. */}
+        <Tabs value={tab} onValueChange={changeTab} className="p-3">
           <TabsList className="flex w-full gap-1 overflow-x-auto" data-testid="mj-tab-rail">
             {FLOW_TABS.map((t) => (
               <TabsTrigger key={t.value} value={t.value} className="shrink-0 flex-col gap-0.5 px-2.5 py-1.5 text-[11px] leading-tight">
@@ -315,15 +409,16 @@ function InterventionFlowSheet({ interv, initialTab, isMobile, onClose, onChange
               </TabsTrigger>
             ))}
           </TabsList>
-          <TabsContent value="prep"><PreparationPanel intervention={interv} onChanged={onChanged} /></TabsContent>
-          <TabsContent value="trajet"><TrajetPanel intervention={interv} onChanged={onChanged} /></TabsContent>
-          <TabsContent value="safety"><SafetyPanel intervention={interv} onChanged={onChanged} /></TabsContent>
-          <TabsContent value="photos"><PhotosPanel intervention={interv} onChanged={onChanged} /></TabsContent>
-          <TabsContent value="serials"><SerialsPanel intervention={interv} onChanged={onChanged} /></TabsContent>
-          <TabsContent value="conso"><ConsommationPanel intervention={interv} onChanged={onChanged} /></TabsContent>
-          <TabsContent value="memos"><MemosPanel intervention={interv} onChanged={onChanged} /></TabsContent>
-          <TabsContent value="reserves"><ReservesPanel intervention={interv} onChanged={onChanged} /></TabsContent>
-          <TabsContent value="outils">
+          <TabsContent value="prep" forceMount hidden={tab !== 'prep'}><PreparationPanel intervention={interv} onChanged={onChanged} /></TabsContent>
+          <TabsContent value="trajet" forceMount hidden={tab !== 'trajet'}><TrajetPanel intervention={interv} onChanged={onChanged} /></TabsContent>
+          <TabsContent value="safety" forceMount hidden={tab !== 'safety'}><SafetyPanel intervention={interv} onChanged={onChanged} /></TabsContent>
+          <TabsContent value="photos" forceMount hidden={tab !== 'photos'}><PhotosPanel intervention={interv} onChanged={onChanged} /></TabsContent>
+          <TabsContent value="serials" forceMount hidden={tab !== 'serials'}><SerialsPanel intervention={interv} onChanged={onChanged} /></TabsContent>
+          <TabsContent value="conso" forceMount hidden={tab !== 'conso'}><ConsommationPanel intervention={interv} onChanged={onChanged} /></TabsContent>
+          <TabsContent value="memos" forceMount hidden={tab !== 'memos'}><MemosPanel intervention={interv} onChanged={onChanged} /></TabsContent>
+          <TabsContent value="reserves" forceMount hidden={tab !== 'reserves'}><ReservesPanel intervention={interv} onChanged={onChanged} /></TabsContent>
+          <TabsContent value="signature" forceMount hidden={tab !== 'signature'}><SignatureClientPanel intervention={interv} onChanged={onChanged} /></TabsContent>
+          <TabsContent value="outils" forceMount hidden={tab !== 'outils'}>
             <ToolReturnPanel intervention={interv} onChanged={onChanged} />
             <CodePanel intervention={interv} />
           </TabsContent>
