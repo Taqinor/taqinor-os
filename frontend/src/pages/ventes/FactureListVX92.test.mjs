@@ -38,7 +38,10 @@ test('VX92 : le dialog paiement persiste le toggle "Créer un autre" en localSto
 
 test('VX92 : paiement — ON garde le dialog ouvert (reset + refocus), OFF ferme (identique)', () => {
   const start = PAIEMENT_DIALOG_SRC.indexOf('const handleEnregistrerPaiement')
-  const block = PAIEMENT_DIALOG_SRC.slice(start, start + 1200)
+  // Fenêtre élargie (VX155 a inséré le jalon toastMilestone « facture payée »
+  // entre l'appel API et le bloc « créer un autre » — même motif que la
+  // fenêtre ProduitForm ci-dessous).
+  const block = PAIEMENT_DIALOG_SRC.slice(start, start + 1700)
   assert.match(block, /if \(payCreerUnAutre\) \{/)
   assert.match(block, /payMontantRef\.current\?\.focus\(\)/)
   // VX230 — la fermeture passe désormais par onOpenChange(false) (le parent
