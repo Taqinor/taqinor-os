@@ -10,6 +10,12 @@ from rest_framework.decorators import action
 from rest_framework.renderers import JSONRenderer
 from rest_framework.response import Response
 
+from authentication.mixins import TenantMixin
+from authentication.permissions import IsAdminOrResponsableTier, IsAdminRole
+from apps.parametres.models import SettingsAuditLog
+from .models import Role, ALL_PERMISSIONS
+from .serializers import RoleSerializer
+
 
 class _CsvOrJSONRenderer(JSONRenderer):
     """XPLT12 — DRF négocie `?format=csv` AVANT le corps de la vue
@@ -18,11 +24,6 @@ class _CsvOrJSONRenderer(JSONRenderer):
     ensuite un `HttpResponse` CSV manuel (JSON reste le défaut sans `?format`)."""
     format = 'csv'
     media_type = 'text/csv'
-from authentication.mixins import TenantMixin
-from authentication.permissions import IsAdminOrResponsableTier, IsAdminRole
-from apps.parametres.models import SettingsAuditLog
-from .models import Role, ALL_PERMISSIONS
-from .serializers import RoleSerializer
 
 # XPLT12 — seuil par défaut (jours) au-delà duquel un compte est « dormant »
 # (aucune connexion depuis N jours). Paramétrable via ``?dormant_days=N``.
