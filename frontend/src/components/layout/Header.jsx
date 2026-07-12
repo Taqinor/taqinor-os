@@ -5,11 +5,16 @@ import {
   Menu, Search, LogOut, User as UserIcon, Settings, Zap, Bot, LayoutGrid,
   SlidersHorizontal, Sun, Moon, Monitor,
 } from 'lucide-react'
+// VX185 — imports DIRECTS (jamais le barrel `../../ui`) : Header est statique
+// (Layout.jsx → router/index.jsx → main.jsx), donc TOUT ce que le barrel
+// touche (dont `datatable` → recharts/pdfjs-dist, dernière ligne du barrel)
+// finissait en `<link rel="modulepreload">` sur CHAQUE page, `/login` inclus
+// (~350 Ko gzip avant l'écran de connexion, sur le 4G marocain).
+import { Avatar, AvatarFallback, initials } from '../../ui/Avatar'
 import {
-  Avatar, AvatarFallback, initials,
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
   DropdownMenuItem, DropdownMenuCheckboxItem, DropdownMenuLabel, DropdownMenuSeparator,
-} from '../../ui'
+} from '../../ui/DropdownMenu'
 import { logoutUser } from '../../features/auth/store/authSlice'
 import { toggleCopilot } from '../../features/ia/store/iaSlice'
 import GlobalSearch from './GlobalSearch'
