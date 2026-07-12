@@ -5,6 +5,7 @@ from .views import (
     AnnonceViewSet, HolidayViewSet, NotificationPreferenceViewSet,
     NotificationRoutingRuleViewSet, NotificationViewSet, WhatsAppTemplateViewSet,
     WorkingHoursConfigViewSet,
+    attention_summary,
     calendar_check, push_subscribe, push_unsubscribe, vapid_public_key,
 )
 from .views_whatsapp_bsp import WhatsAppBspWebhookView
@@ -41,4 +42,7 @@ urlpatterns = [
     ),
     # FG5 — Diagnostic calendrier ouvré.
     path('calendar/check/', calendar_check, name='notification-calendar-check'),
+    # VX207 — décompte canonique unique d'attention (cloche/badge sidebar/
+    # en-tête Ma file consomment tous ce seul endpoint).
+    path('attention-summary/', attention_summary, name='notification-attention-summary'),
 ]

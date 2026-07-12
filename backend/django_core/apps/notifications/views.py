@@ -416,6 +416,73 @@ def push_subscribe(request):
     return Response({'id': sub.id}, status=status.HTTP_201_CREATED)
 
 
+@api_view(['GET'])
+@permission_classes([IsAnyRole])
+def attention_summary(request):
+    """VX207 — décompte canonique UNIQUE d'attention pour l'utilisateur courant.
+
+    Après VX83/84/86 il existait ≥4 dérivations de compteur calculées par des
+    chemins différents (badge cloche = ``derivedTotal + feedUnread``, en-tête
+    Ma file, ``useApprobationsCount`` VX86, badge sidebar) sans garantie de
+    convergence. Cet endpoint renvoie le décompte canonique en réutilisant
+    EXACTEMENT les mêmes fonctions que « Ma file »
+    (``apps.records.views.ActivityViewSet.ma_file``) — jamais une 2ᵉ
+    dérivation : les 3 buckets d'activités assignées via ``records.models.
+    Activity`` + ``records.serializers.activity_state`` (même filtre snooze),
+    les approbations décidables via l'agrégateur ``reporting.approbations``
+    (mêmes ``_SOURCE_LOADERS``, jamais forké), les mentions non lues via
+    ``notifications.selectors.mentions_non_lues`` (même sélecteur cross-app).
+
+    Scopé recipient/assigned_to = ``request.user`` (jamais un autre
+    utilisateur, jamais une autre société)."""
+    from django.db.models import Q
+
+    from . import selectors as notif_selectors
+
+    company = request.user.company if request.user.company_id else None
+
+    en_retard = aujourdhui = 0
+    if company is not None:
+        from apps.records.models import Activity
+        from apps.records.serializers import activity_state
+
+        qs = Activity.objects.filter(
+            company=company, assigned_to=request.user, done=False,
+        ).filter(
+            Q(snoozed_until__isnull=True)
+            | Q(snoozed_until__lte=timezone.now().date()))
+        for act in qs.only('due_date', 'done'):
+            st = activity_state(act.due_date, act.done)
+            if st == 'overdue':
+                en_retard += 1
+            elif st == 'today':
+                aujourdhui += 1
+
+    nb_approbations = 0
+    if company is not None:
+        try:
+            from apps.reporting import approbations as appro
+            for source in appro._SOURCE_LOADERS:
+                nb_approbations += len(appro._SOURCE_LOADERS[source](company))
+        except Exception:  # pragma: no cover - défensif, jamais de 500
+            pass
+
+    nb_mentions = 0
+    try:
+        nb_mentions = notif_selectors.mentions_non_lues(
+            request.user, company).count()
+    except Exception:  # pragma: no cover - défensif
+        pass
+
+    return Response({
+        'actions_dues': en_retard + aujourdhui + nb_approbations,
+        'en_retard': en_retard,
+        'aujourdhui': aujourdhui,
+        'approbations': nb_approbations,
+        'mentions_non_lues': nb_mentions,
+    })
+
+
 @api_view(['POST'])
 @permission_classes([IsAnyRole])
 def push_unsubscribe(request):

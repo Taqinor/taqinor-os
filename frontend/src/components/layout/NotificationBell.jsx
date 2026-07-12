@@ -240,8 +240,12 @@ export default function NotificationBell() {
 
   const derivedTotal = data?.total ?? 0
   // Le compteur de la cloche cumule les alertes dérivées et les notifications
-  // in-app persistées non lues.
-  const total = derivedTotal + feedUnread
+  // in-app persistées non lues. VX207 — inclut désormais les approbations en
+  // attente (même compteur canonique `attention-summary` que le badge
+  // sidebar et l'en-tête « Ma file » via `useApprobationsCount`) : avant ce
+  // fix, la cloche pouvait afficher « 0 » pendant que la rangée « N
+  // approbations » du panneau ouvert affichait 5 — un badge qui ment.
+  const total = derivedTotal + feedUnread + (showApprobationsRow ? approbationsTotal : 0)
 
   // VX82 — préfixe `(N)` sur le titre d'onglet quand des notifications sont
   // non lues (chrome navigateur vivant). La cloche vit dans le header, monté
