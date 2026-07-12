@@ -1292,10 +1292,10 @@ export default function FactureList() {
             </DialogDescription>
           </DialogHeader>
           <div className="flex gap-2">
-            <Input type="date" value={exportStart}
+            <Input type="date" value={exportStart} required
                    onChange={e => setExportStart(e.target.value)}
                    aria-label="Date de début" />
-            <Input type="date" value={exportEnd}
+            <Input type="date" value={exportEnd} required
                    onChange={e => setExportEnd(e.target.value)}
                    aria-label="Date de fin" />
           </div>
