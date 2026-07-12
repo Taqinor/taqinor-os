@@ -677,8 +677,8 @@ export const DataTable = forwardRef(function DataTable(
                             c.align === 'right' && 'text-right',
                             c.align === 'center' && 'text-center',
                             (pinnedLeft || pinnedRight) && 'sticky z-[var(--z-sticky)] bg-muted/95',
-                            pinnedLeft && scrollLeft > 0 && 'shadow-[2px_0_4px_-2px_rgba(0,0,0,0.25)]',
-                            pinnedRight && 'shadow-[-2px_0_4px_-2px_rgba(0,0,0,0.25)]',
+                            pinnedLeft && scrollLeft > 0 && 'shadow-[2px_0_4px_-2px_rgb(12_19_53/0.25)]',
+                            pinnedRight && 'shadow-[-2px_0_4px_-2px_rgb(12_19_53/0.25)]',
                           )}
                         >
                           <div className={cn('flex items-center gap-1.5', c.align === 'right' && 'justify-end', c.align === 'center' && 'justify-center')}>
@@ -719,7 +719,7 @@ export const DataTable = forwardRef(function DataTable(
                         scope="col"
                         data-pinned="actions-right"
                         aria-label="Actions"
-                        className="sticky right-0 z-[var(--z-sticky)] w-12 bg-muted/95 px-3 shadow-[-2px_0_4px_-2px_rgba(0,0,0,0.25)]"
+                        className="sticky right-0 z-[var(--z-sticky)] w-12 bg-muted/95 px-3 shadow-[-2px_0_4px_-2px_rgb(12_19_53/0.25)]"
                       />
                     )}
                   </tr>
@@ -854,8 +854,8 @@ export const DataTable = forwardRef(function DataTable(
                                       c.align === 'center' && 'text-center',
                                       c.numeric && 'text-right tabular-nums',
                                       (pinnedLeft || pinnedRight || (firstCol && c.frozen)) && 'sticky z-[1] bg-inherit',
-                                      pinnedLeft && scrollLeft > 0 && 'shadow-[2px_0_4px_-2px_rgba(0,0,0,0.18)]',
-                                      pinnedRight && 'shadow-[-2px_0_4px_-2px_rgba(0,0,0,0.18)]',
+                                      pinnedLeft && scrollLeft > 0 && 'shadow-[2px_0_4px_-2px_rgb(12_19_53/0.18)]',
+                                      pinnedRight && 'shadow-[-2px_0_4px_-2px_rgb(12_19_53/0.18)]',
                                       firstCol && 'font-medium text-foreground',
                                     )}
                                   >
@@ -867,7 +867,7 @@ export const DataTable = forwardRef(function DataTable(
                                 <td
                                   className={cn(
                                     'sticky right-0 z-[1] bg-inherit px-2',
-                                    'shadow-[-2px_0_4px_-2px_rgba(0,0,0,0.18)]',
+                                    'shadow-[-2px_0_4px_-2px_rgb(12_19_53/0.18)]',
                                   )}
                                   onClick={(e) => e.stopPropagation()}
                                 >

@@ -225,7 +225,7 @@ export default function ProductionPage() {
       ) : (
         <div className="flex flex-col gap-4">
           {msg && (
-            <div className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${msg.ok ? 'border-emerald-300 text-emerald-700' : 'border-red-300 text-red-700'}`}>
+            <div className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${msg.ok ? 'border-success/40 text-success' : 'border-destructive/40 text-destructive'}`}>
               {msg.ok ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />} {msg.text}
             </div>
           )}

@@ -169,6 +169,15 @@
   --shadow-primary-hover: 0 1px 3px 0 color-mix(in oklch, var(--primary) 35%, rgb(12 19 53 / 0.10)),
                           0 1px 2px -1px rgb(12 19 53 / 0.08);
 
+  /* VX121 — jalons ChantierTimeline : couleurs sans rôle sémantique existant
+     (violet/sky/teal), sorties des constantes JS (invisibles au grep hex) et
+     posées ici comme seule source hex tolérée (à l'intérieur de :root). */
+  --milestone-materiel: #a855f7;
+  --milestone-service: #0ea5e9;
+  --milestone-cloture: #15803d;
+  --milestone-dossier-depot: #0891b2;
+  --milestone-dossier-approbation: #15803d;
+
   /* Z-index — échelle unique */
   --z-base: 0;
   --z-dropdown: 1000;
