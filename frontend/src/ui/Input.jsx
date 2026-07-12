@@ -15,15 +15,32 @@ const baseField =
   'aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 ' +
   'text-base sm:text-sm'
 
+// VX174 — politique de saisie iOS cohérente. Sans défaut, 29 fichiers
+// overridaient au coup par coup `autoCapitalize`/`autoCorrect` : références
+// (`DEV-202607-…`), emails, ICE/IF, SKU, plaques auto-capitalisées/corrigées
+// par le clavier iPhone. `sanitize` force les 4 attributs pertinents en un
+// seul prop, cohérent partout où il est posé (un prop explicite reste
+// prioritaire — spread APRÈS le préréglage).
+export const SANITIZE_PRESETS = {
+  // Codes/références/identifiants : jamais de capitalisation/correction.
+  code: { autoCapitalize: 'off', autoCorrect: 'off', spellCheck: false, autoComplete: 'off', inputMode: 'text' },
+  email: { autoCapitalize: 'off', autoCorrect: 'off', spellCheck: false, autoComplete: 'email', inputMode: 'email' },
+  name: { autoCapitalize: 'words', autoCorrect: 'off', spellCheck: false, autoComplete: 'name' },
+  // Coupe tout (cas générique sans sémantique de complétion connue).
+  off: { autoCapitalize: 'off', autoCorrect: 'off', spellCheck: false, autoComplete: 'off' },
+}
+
 export const Input = forwardRef(function Input(
-  { className, type = 'text', invalid, leading, trailing, ...props },
+  { className, type = 'text', invalid, leading, trailing, sanitize, ...props },
   ref,
 ) {
+  const sanitizeProps = sanitize ? SANITIZE_PRESETS[sanitize] : null
   const field = (
     <input
       ref={ref}
       type={type}
       aria-invalid={invalid || undefined}
+      {...sanitizeProps}
       className={cn(
         baseField,
         'h-[var(--control-h)] px-[var(--control-px)] py-0',

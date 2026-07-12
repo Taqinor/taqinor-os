@@ -10,6 +10,8 @@ import {
   Button, Badge, Card, CardHeader, CardTitle, CardContent,
   EmptyState, Spinner, Input,
 } from '../../ui'
+import { DatePicker } from '../../ui/DatePicker'
+import { today as todayDate } from '../../ui/date-utils'
 import { Table } from '../reporting/Table'
 
 // QX25 — « Mes activités » est la liste d'appels du jour : chaque ligne doit
@@ -42,6 +44,15 @@ const todayStr = () => {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
+
+// VX174 — la roue native iOS (`<input type="date">`) IGNORE `min` : contrainte
+// métier « pas d'échéance passée » contournable sur iPhone. `ui/DatePicker`
+// est borné en JS (isDateDisabled), infranchissable sur toute plateforme.
+// Conversion Date <-> "aaaa-mm-jj" (format déjà utilisé par le state/l'API).
+const dateFromYmd = (ymd) => (ymd ? new Date(`${ymd}T00:00:00`) : null)
+const ymdFromDate = (d) => (d
+  ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  : '')
 
 // Compteur d'activités EN RETARD par responsable, à partir de la liste complète
 // des activités de la société (ouvertes, échéance dépassée). Logique pure →
@@ -278,11 +289,11 @@ export default function MesActivitesPage() {
           value={todoText}
           onChange={e => setTodoText(e.target.value)}
         />
-        <input type="date" min={todayStr()}
-               className="form-control form-control-sm w-auto"
-               aria-label="Échéance de la tâche"
-               value={todoDate}
-               onChange={e => setTodoDate(e.target.value)} />
+        <DatePicker min={todayDate()}
+                    className="w-auto"
+                    aria-label="Échéance de la tâche"
+                    value={dateFromYmd(todoDate)}
+                    onChange={(d) => setTodoDate(ymdFromDate(d))} />
         <Button type="submit" size="sm"
                 loading={todoBusy} disabled={todoBusy || !todoText.trim()}>
           Ajouter
@@ -510,10 +521,11 @@ export default function MesActivitesPage() {
                         align: 'right',
                         cell: (a) => (reschedId === a.id ? (
                           <span className="inline-flex flex-wrap items-center justify-end gap-1.5">
-                            <input type="date" min={todayStr()}
-                                   className="form-control form-control-sm w-auto"
-                                   value={reschedDate}
-                                   onChange={e => setReschedDate(e.target.value)} />
+                            <DatePicker min={todayDate()}
+                                        className="w-auto"
+                                        aria-label="Nouvelle échéance"
+                                        value={dateFromYmd(reschedDate)}
+                                        onChange={(d) => setReschedDate(ymdFromDate(d))} />
                             <Button size="sm" onClick={() => saveResched(a)}>OK</Button>
                             <Button size="sm" variant="outline" onClick={cancelResched}>Annuler</Button>
                           </span>
