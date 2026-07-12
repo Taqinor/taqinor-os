@@ -1185,9 +1185,22 @@ function CalendarDayCell({ date: cellDate, inMonth, isToday, tickets, onSelect, 
 // createTicket avec juste la date_tournee proposée en info (posée ensuite par
 // le glisser-déposer si l'utilisateur veut affiner) — garde le composant
 // simple : ouvre la fiche standard n'est pas nécessaire, un POST minimal suffit.
+// VX240(d) — dernier type de ticket utilisé (localStorage, modifiable),
+// même patron que VX93 (lireLastTva/lireDernierMode) : le type ne reset plus
+// silencieusement à « correctif » à chaque ouverture.
+const TICKET_QC_TYPE_KEY = 'taqinor.tickets.quickCreate.lastType'
+const lireLastTicketType = () => {
+  try { return window.localStorage.getItem(TICKET_QC_TYPE_KEY) || 'correctif' }
+  catch { return 'correctif' }
+}
+const ecrireLastTicketType = (v) => {
+  try { if (v) window.localStorage.setItem(TICKET_QC_TYPE_KEY, v) }
+  catch { /* localStorage indisponible (navigation privée, quota) : no-op */ }
+}
+
 function CalendarQuickCreateDialog({ date: openDate, onClose, onCreated }) {
   const [description, setDescription] = useState('')
-  const [type, setType] = useState('correctif')
+  const [type, setType] = useState(lireLastTicketType)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState(null)
 
@@ -1198,6 +1211,7 @@ function CalendarQuickCreateDialog({ date: openDate, onClose, onCreated }) {
       const r = await savApi.createTicket({ type, description: description || undefined })
       // Pose la date planifiée sur le ticket fraîchement créé.
       await savApi.replanifierTicket(r.data.id, openDate)
+      ecrireLastTicketType(type)  // VX240(d) — mémorise le type pour la prochaine création
       onCreated?.()
       onClose()
     } catch (e) {
@@ -1218,8 +1232,9 @@ function CalendarQuickCreateDialog({ date: openDate, onClose, onCreated }) {
         </AlertDialogHeader>
         <div className="grid gap-3">
           <FormField label="Type">
+            {/* VX240(d) — la modale s'ouvrait sans aucun autofocus. */}
             <Select value={type} onValueChange={setType}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectTrigger autoFocus><SelectValue /></SelectTrigger>
               <SelectContent>
                 {TICKET_TYPES.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
               </SelectContent>

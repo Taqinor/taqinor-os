@@ -298,6 +298,14 @@ export default function DevisGenerator({
 
   // ── Multi-marchés ──
   const [modeInstallation, setModeInstallation] = useState('residentiel')
+  // VX138(e) — le bloc « Plusieurs propriétés ? » est un accordéon replié PAR
+  // DÉFAUT en agricole (carte non pertinente pour ce mode, jamais masquée) ;
+  // état local pour que l'utilisateur puisse toujours le rouvrir librement —
+  // seul un CHANGEMENT de mode réinitialise le défaut, pas les re-rendus.
+  const [multiAccordionOpen, setMultiAccordionOpen] = useState(() => modeInstallation !== 'agricole')
+  useEffect(() => {
+    setMultiAccordionOpen(modeInstallation !== 'agricole')
+  }, [modeInstallation])
   const [consoMensuelle, setConsoMensuelle] = useState('')
   const [prixCible, setPrixCible] = useState('')
   // ── Logique de devis éditable (D5 ; Paramètres → Avancé). Défauts = constantes
@@ -2173,35 +2181,45 @@ export default function DevisGenerator({
                   <MetricCard label="Production annuelle"
                               value={fmtNum(Math.round(roi.production_annuelle_kwh))}
                               unit="kWh / an" accent />
+                </div>
+                {/* VX138 — comparateur Sans/Avec : 2 colonnes NOMMÉES au lieu
+                    d'une grille homogène de jusqu'à 6 cartes reliées par la
+                    seule étoile — la recommandation devient un liseré porté
+                    par TOUTE la colonne. */}
+                <div className="gen-compare-grid">
                   {showSans && (
-                    <MetricCard label="Éco. Option 1 – Sans batterie"
-                                value={fmtNum(Math.round(roi.eco_annuelle_sans))}
-                                unit="MAD / an" recommended={sansRec} />
+                    <div className={`gen-compare-col${sansRec ? ' gen-compare-col-rec' : ''}`}>
+                      <div className="gen-compare-col-title">
+                        Sans batterie
+                        {sansRec && <span className="gen-rec-badge">★ Recommandé</span>}
+                      </div>
+                      <MetricCard label="Économies"
+                                  value={fmtNum(Math.round(roi.eco_annuelle_sans))}
+                                  unit="MAD / an" />
+                      <MetricCard label="ROI"
+                                  value={roi.payback_sans !== null ? roi.payback_sans + ' ans' : 'N/A'}
+                                  unit="retour sur invest." accent />
+                      <MetricCard label="Coût"
+                                  value={fmtNum(Math.round(totals.totalSans))}
+                                  unit="MAD TTC" />
+                    </div>
                   )}
                   {showAvec && (
-                    <MetricCard label="Éco. Option 2 – Avec batterie"
-                                value={fmtNum(Math.round(roi.eco_annuelle_avec))}
-                                unit="MAD / an" recommended={avecRec} />
-                  )}
-                  {showSans && (
-                    <MetricCard label="ROI Sans batterie"
-                                value={roi.payback_sans !== null ? roi.payback_sans + ' ans' : 'N/A'}
-                                unit="retour sur invest." recommended={sansRec} accent />
-                  )}
-                  {showAvec && (
-                    <MetricCard label="ROI Avec batterie"
-                                value={roi.payback_avec !== null ? roi.payback_avec + ' ans' : 'N/A'}
-                                unit="retour sur invest." recommended={avecRec} accent />
-                  )}
-                  {showSans && (
-                    <MetricCard label="Coût Option 1 – Sans"
-                                value={fmtNum(Math.round(totals.totalSans))}
-                                unit="MAD TTC" recommended={sansRec} />
-                  )}
-                  {showAvec && (
-                    <MetricCard label="Coût Option 2 – Avec"
-                                value={fmtNum(Math.round(totals.totalAvec))}
-                                unit="MAD TTC" recommended={avecRec} />
+                    <div className={`gen-compare-col${avecRec ? ' gen-compare-col-rec' : ''}`}>
+                      <div className="gen-compare-col-title">
+                        Avec batterie
+                        {avecRec && <span className="gen-rec-badge">★ Recommandé</span>}
+                      </div>
+                      <MetricCard label="Économies"
+                                  value={fmtNum(Math.round(roi.eco_annuelle_avec))}
+                                  unit="MAD / an" />
+                      <MetricCard label="ROI"
+                                  value={roi.payback_avec !== null ? roi.payback_avec + ' ans' : 'N/A'}
+                                  unit="retour sur invest." accent />
+                      <MetricCard label="Coût"
+                                  value={fmtNum(Math.round(totals.totalAvec))}
+                                  unit="MAD TTC" />
+                    </div>
                   )}
                 </div>
                 <div className="gen-chart-title">Économies mensuelles estimées (MAD / mois)</div>
@@ -2244,12 +2262,23 @@ export default function DevisGenerator({
             </Button>
           </GenCardHeader>
           <CardContent className="px-0 pt-0">
-            {/* ── QJ31 — Multi-propriétés (un seul devis) ── */}
-            <div className="mx-4 mt-4 rounded-lg border border-border bg-muted/30 p-3 sm:mx-5 sm:p-4">
+            {/* ── QJ31 — Multi-propriétés (un seul devis) ──
+                VX138(e) — accordéon : repliée PAR DÉFAUT en agricole (non
+                pertinent pour ce mode) mais jamais masquée ; l'utilisateur
+                peut toujours la rouvrir librement. */}
+            <details className="mx-4 mt-4 rounded-lg border border-border bg-muted/30 sm:mx-5"
+                      open={multiAccordionOpen}
+                      onToggle={e => setMultiAccordionOpen(e.currentTarget.open)}>
+              <summary className="cursor-pointer select-none px-3 py-3 font-display text-sm font-semibold tracking-tight sm:px-4">
+                Plusieurs propriétés ?
+                {multiMode !== 'none' && (
+                  <span className="ml-2 text-xs font-normal text-muted-foreground">
+                    ({multiMode === 'multiplier' ? '× N identiques' : '+ Villas différentes'})
+                  </span>
+                )}
+              </summary>
+              <div className="border-t border-border p-3 sm:p-4">
               <div className="flex flex-wrap items-center gap-3">
-                <span className="font-display text-sm font-semibold tracking-tight">
-                  Plusieurs propriétés ?
-                </span>
                 <Segmented
                   className="flex-wrap"
                   options={[
@@ -2320,7 +2349,8 @@ export default function DevisGenerator({
                   )}
                 </div>
               )}
-            </div>
+              </div>
+            </details>
 
             {errors.lines && <div className="px-4 py-2 text-xs text-destructive">{errors.lines}</div>}
             {/* QX20 — échappatoire documentée à la garde d'équipement solaire */}
@@ -2372,7 +2402,10 @@ export default function DevisGenerator({
               </table>
             </div>
 
-            <div className="gen-totals-row">
+            {/* VX138 — chaîne de totaux hiérarchisée (paliers F121 existants) :
+                brut (tier-1) → remise/TVA (tier-2) → total final (tier-3, le
+                TTC retenu devient le point focal). */}
+            <div className="gen-totals-row gen-tier-1">
               {showSans && (
                 <div className="gen-total-item">
                   <span className="gen-total-label">Total SANS batterie{sansRec ? ' ⭐' : ''}</span>
@@ -2387,7 +2420,7 @@ export default function DevisGenerator({
               )}
             </div>
             <div className="gen-totals-row gen-discount-row">
-              <div className="gen-total-item gen-total-inline">
+              <div className="gen-total-item gen-total-inline gen-tier-2">
                 <span className="gen-total-label">Réduction</span>
                 <input type="number" min="0" max="100" step="any" className="gen-discount-input"
                        value={discountPct} onChange={e => setDiscountPct(e.target.value)} />
@@ -2399,20 +2432,20 @@ export default function DevisGenerator({
                   </span>
                 )}
               </div>
-              <div className="gen-total-item gen-total-inline">
+              <div className="gen-total-item gen-total-inline gen-tier-2">
                 <span className="gen-total-label">TVA</span>
                 <input type="number" min="0" max="100" step="any" className="gen-discount-input"
                        value={tauxTva} onChange={e => setTauxTva(e.target.value)} />
                 <span style={{ fontWeight: 700 }}>%</span>
               </div>
               {parseFloat(discountPct) > 0 && showSans && (
-                <div className="gen-total-item">
+                <div className="gen-total-item gen-tier-3">
                   <span className="gen-total-label green">Total final SANS batterie</span>
                   <span className="gen-total-value green">{formatMoney(totals.totalSans)}</span>
                 </div>
               )}
               {parseFloat(discountPct) > 0 && showAvec && (
-                <div className="gen-total-item">
+                <div className="gen-total-item gen-tier-3">
                   <span className="gen-total-label green">Total final AVEC batterie</span>
                   <span className="gen-total-value green">{formatMoney(totals.totalAvec)}</span>
                 </div>
@@ -2539,6 +2572,16 @@ export default function DevisGenerator({
               </div>
             )}
             <div className="gen-actions-sticky mt-3 flex flex-wrap items-center justify-end gap-3">
+              {/* VX138(d) — bandeau sticky au scroll (plus seulement mobile) :
+                  TTC courant condensé, dérivé de `totals`/`kpiTotal` déjà en
+                  mémoire (même valeur que le rail latéral VX16) ; masqué en
+                  lg+ où le rail latéral l'affiche déjà. */}
+              <div className="mr-auto flex items-baseline gap-1.5 text-sm lg:hidden">
+                <span className="text-muted-foreground">Total TTC</span>
+                <strong className="tabular-nums text-base font-semibold text-foreground">
+                  {formatMoney(kpiTotal)}
+                </strong>
+              </div>
               {/* QJ28 — notification manuelle au supérieur (devis déjà enregistré) */}
               {editDevis && (
                 <Button type="button" variant="outline" loading={superieurBusy}

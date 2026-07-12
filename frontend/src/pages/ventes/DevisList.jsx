@@ -44,6 +44,7 @@ import { celebrateDealSigned } from '../../ui/celebrate'
 import { DataTable } from '../../ui/datatable'
 import RoofViewer from './RoofViewer'
 import { StateBlock } from '../../components/StateBlock'
+import DocumentStageTrack from '../../ui/DocumentStageTrack'
 
 // J141 — Squelette de la liste : reprend les 8 colonnes du vrai tableau pour que
 // la mise en page ne saute pas à l'arrivée des données. Affiché dans la même
@@ -126,6 +127,19 @@ const STATUT_DISPLAY = {
   refuse:    'Refusé',
   expire:    'Expiré',
 }
+
+// VX141 — piste `<DocumentStageTrack>` : couche STATUTS DOCUMENT (règle #4)
+// uniquement — brouillon/envoyé/accepté puis BC/facturé/chantier. Jamais les
+// stages STAGES.py du funnel CRM (règle #2) : aucune clé de stage n'est
+// importée ici, les deux couches ne se mélangent jamais.
+const DOC_STAGE_TRACK_STAGES = [
+  { key: 'brouillon', label: 'Brouillon' },
+  { key: 'envoye', label: 'Envoyé' },
+  { key: 'accepte', label: 'Accepté' },
+  { key: 'bc', label: 'BC' },
+  { key: 'facture', label: 'Facturé' },
+  { key: 'chantier', label: 'Chantier' },
+]
 
 // Filtres segmentés (statut) : « Tous » + les 5 statuts visibles.
 const STATUT_FILTERS = [
@@ -335,6 +349,22 @@ function DevisRow({ d, ctx }) {
   // date de validité est dépassée s'affiche « Expiré » sans changer
   // son statut stocké ni l'étape du lead.
   const effStatut = d.is_expired ? 'expire' : d.statut
+  // VX141 — parcours DOCUMENT (règle #4) affiché par <DocumentStageTrack> à
+  // côté du StatusPill : brouillon/envoyé sont pilotés par `d.statut` ; passé
+  // l'acceptation, `d.statut` reste figé à 'accepte' (règle #4 — les statuts
+  // Devis/BC/Facture sont préservés 1:1) donc la piste avance via la présence
+  // du BC / d'une facture liée / d'un chantier, jamais via `d.statut` lui-même.
+  // refuse/expire = statuts terminaux NÉGATIFS : la piste s'arrête au dernier
+  // jalon positif (envoyé) sans jamais franchir « Accepté ».
+  const docStageCurrent = (d.statut === 'refuse' || d.statut === 'expire' || d.is_expired)
+    ? 'envoye'
+    : d.statut === 'brouillon' ? 'brouillon'
+      : d.statut === 'envoye' ? 'envoye'
+        : chantierEnCours(d.chantier) ? 'chantier'
+          : (d.factures_liees?.length > 0) ? 'facture'
+            : d.bon_commande_etat?.exists ? 'bc'
+              : 'accepte'
+  const docStageBlocked = d.bon_commande_etat?.mismatch ? ['bc'] : []
   const isGenerating = pdfGenerating[d.id]
   // VX132 — chargement long conscient : libellés honnêtes qui tournent
   // pendant la génération du PDF premium (jamais de fausse barre de progression).
@@ -530,6 +560,15 @@ function DevisRow({ d, ctx }) {
       </td>
       <td data-label="Statut">
         <StatusPill status={effStatut} label={STATUT_DISPLAY[effStatut] ?? STATUT_DISPLAY.brouillon} />
+        {/* VX141 — le StatusPill est un fait isolé ; la piste ci-dessous
+            visualise la CHAÎNE complète (un devis accepté sans BC actif est
+            maintenant signalé visuellement, pas seulement en texte L563+). */}
+        <DocumentStageTrack
+          className="mt-1"
+          stages={DOC_STAGE_TRACK_STAGES}
+          current={docStageCurrent}
+          blocked={docStageBlocked}
+        />
         {d.statut === 'accepte' && d.option_acceptee && (
           <div className="mt-1 text-xs text-success">
             Option : {d.option_acceptee === 'avec_batterie' ? 'Avec batterie' : 'Sans batterie'}

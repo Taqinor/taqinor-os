@@ -84,7 +84,15 @@ the journey the best in the world for the CLIENT and the COMMERCIAL user.*
 - 2026-07-12 — VX163 : nouveau `lib/thunkHelpers.js` (`createCancellableThunk` — normalise l'annulation axios en vraie `AbortError` pour que RTK marque `meta.aborted===true` ; `dedupeInFlight` — `Map<clé,Promise>` in-vol). Appliqué aux 4 thunks visés : `fetchProduits` (stockSlice), `fetchDevis`/`fetchFactures` (ventesSlice), `fetchLeads` (crmSlice, clé incluant les params). `stockApi.getProduits`/`ventesApi.getFactures` acceptent désormais un `config` (signal).
 - 2026-07-12 — VX206 : `console.error('[ErrorBoundary]', …)` ajouté dans `ui/ErrorBoundary.jsx.componentDidCatch` ; `componentDidCatch` (absent) ajouté à `RouteErrorBoundary.jsx` avec `console.error` + `captureException` + identifiant support (`eventId` VX72 si DSN actif, sinon horodatage court `shortTimestamp()`) affiché sur l'écran de récupération ; nouveau `lib/globalErrors.js` (`installGlobalErrors` — `unhandledrejection` + `error` canalisés vers `captureException`-ou-no-op + `toastError` générique), câblé dans `main.jsx`.
 - 2026-07-12 — VX244 : nouvelle primitive `ui/ConfirmDialog.jsx` (`severity` low/medium/high, saisie tapée obligatoire en `high`, Escape annule toujours, Entrée ne confirme jamais un `high` — pas de `<form>`, bouton désactivé tant que la saisie ne correspond pas) + `ui/BulkDestructiveConfirm.jsx` (extrait du patron `ForceDeleteModal`, saisie du COMPTE). Migré (vérifié : aucune duplication de primitive existante — `ui/confirm.jsx`/`ConfirmProvider` n'ont ni sévérité ni saisie tapée) : litiges (`LitigesPage.jsx`, dossier légal), webhook/clé API (`ApiWebhooksSection.jsx` — 4 actions : révoquer/supprimer clé, régénérer/supprimer webhook), KB-avec-enfants (`KbPage.jsx`, VX241 — `high` seulement si `nbDescendants>0`), modèle de checklist chantier (`ChecklistSection.jsx`), consigne de sécurité terrain (`SecuriteTerrainSection.jsx`), et bulk leads (`BulkActionBar.jsx`, `BulkDestructiveConfirm` avec le compte tapé). Non fait : tests (aucun `vitest` disponible dans ce worktree pour les écrire/vérifier) et les ~4 sites additionnels non nommés explicitement par la tâche (~68 `window.confirm` totaux dans 44 fichiers — la tâche interdit explicitement de tous les migrer d'un coup).
+#### DONE LOG — Vague 3, lane frontend/ventes (2026-07-12)
 
+VX138 (aperçu simulation → comparateur Sans/Avec 2 colonnes nommées + liseré de recommandation, tabular-nums sur `.gen-kwp`, 3 paliers visuels sur la chaîne de totaux, bandeau `.gen-actions-sticky` sticky au scroll à tous les paliers avec TTC condensé, accordéon « Plusieurs propriétés ? » replié par défaut en agricole).
+
+VX141 (nouveau `ui/DocumentStageTrack.jsx` — piste horizontale brouillon→envoyé→accepté→BC→facturé→chantier posée dans la cellule Statut de DevisList à côté du StatusPill ; BC annulé après acceptation → puce BC rouge ; couche STATUTS DOCUMENT uniquement, aucune clé STAGES.py importée).
+
+VX238 (`ui/Segmented.jsx` roving tabindex + ArrowLeft/Right/Home/End sur le radiogroup ; `ui/Combobox.jsx` Tab sans preventDefault sélectionne l'option sous le curseur ; `components/ProduitPicker.jsx` idem + nouveau prop `onPicked` posé sur `DevisLineRow.jsx`/`DevisForm.jsx`/`FactureForm.jsx` pour avancer le focus sur la Qté de la même ligne via `data-line-key`/`data-role="line-qty"` au lieu de rendre le focus au bouton déclencheur).
+
+VX240 (autofocus posé sur DevisForm/FactureForm — champ Client — ProduitForm — Nom — et le dialog de création rapide de ticket SAV — Type ; mémoire localStorage ajoutée pour le type de ticket SAV rapide (TicketsPage.jsx) et le canal LeadExpressModal (payMode/pay-montant déjà couverts par VX92/93/249, hors scope du DoD) ; AttachmentsPanel.jsx upload multi-fichiers séquentiel avec indicateur « i/N », échec partiel n'annule pas les autres ; BonsCommandeFournisseur.jsx réplique le patron VX90 data-line-key/pendingFocusKey pour focaliser la ligne ajoutée.
 #### DONE LOG — Vague 2 (VX terrain/finance/CRM + QX groupe) (2026-07-12)
 
 Vague 2 du plan-run (23 tâches VX + tagging de tous les plans, un seul merge). Lanes drainées en parallèle : **finance/terrain** VX44 (photos chantier en rafale + partage WhatsApp), VX88 (Ma journée → tournée géo), VX94 (Enter-pour-ajouter capture), VX105 (statut technicien + persistance + toasts hors-ligne), VX106 (signature client terrain), VX107 (résumé client lecture seule), VX52 (avertissements conformité tactiles), VX63 (erreurs FR lisibles DevisList/FactureList), VX114 (déjà présent, export daté), VX116 (relance groupée + aperçu WhatsApp). **ventes** VX222 (relancer devis), VX230 (encaisser depuis Relances), VX231 (navigation finance vers la cible). **UI/data** VX41 (data-viz marque + comparaison période), VX33 (Pilotage stock tour de contrôle), VX66 (anti-double-soumission Button), VX26 (couleurs stage dérivées tokens), VX81 (exports XLSX/CSV horodatés), VX61 (Web Vitals réels + endpoint reporting), VX110 (copier TSV), VX246 (queue interop iOS), VX19 (zéro popup navigateur, +réparation FactureList post-refactor VX230). Backend DoD à suivre : VX105 (`ajouter-reserve` gated admin), VX106 (signature dans `intervention_pdf.py`). GATED (non buildé) : QXG1/QXG2/QXG4 (compte/contenu fondateur). Tagging : les 10 fichiers de plan (PLAN/PLAN2/new_tasks + 7 domaines) reçoivent un tag `@lane:`/`Files:` visible par le planner sur la 1ʳᵉ ligne (append-only vérifié).
@@ -1098,7 +1106,7 @@ grand-verdict — voir NE PAS FAIRE en fin de section pour le détail des kills/
   DevisGenerator.jsx` = 0 ; capture dark mode avant/après ; test « saisie jamais rejetée » vert.
   (T2 — S, sonnet) (@lane: frontend/ventes)
 
-- [ ] VX138 — **L'aperçu de simulation devient un comparateur : Sans/Avec groupés, chiffres héros (@lane: frontend/ventes)
+- [x] VX138 — **L'aperçu de simulation devient un comparateur : Sans/Avec groupés, chiffres héros (@lane: frontend/ventes)
   stables, totaux hiérarchisés, CTA sticky, cartes selon le mode.** Le moment de vente en direct
   souffre de cinq défauts convergents : (a) jusqu'à 12 `MetricCard` dans UNE grille homogène — les
   paires Sans/Avec batterie ne sont reliées que par une étoile noyée → 2 colonnes nommées « Option
@@ -1144,7 +1152,7 @@ grand-verdict — voir NE PAS FAIRE en fin de section pour le détail des kills/
   Éditer/Envoyer/PDF verts avec les mêmes sélecteurs `ap-*`. (T2 — M/L, sonnet) (@lane:
   frontend/ventes)
 
-- [ ] VX141 — **`DocumentStageTrack` : le statut devient un parcours.** `StatusPill` est un fait (@lane: frontend/ventes)
+- [x] VX141 — **`DocumentStageTrack` : le statut devient un parcours.** `StatusPill` est un fait (@lane: frontend/ventes)
   isolé (point + badge) ; rien dans DevisList/FactureList ne visualise la CHAÎNE
   brouillon→envoyé→accepté→BC→facturé→chantier — un devis accepté sans BC n'est signalé qu'en
   texte. Fix : petit composant `<DocumentStageTrack current stages>` — piste horizontale de 5-6
@@ -2676,7 +2684,7 @@ droite)**
   canonique ; coller « 12 500,00 » donne `12500` ; test du parseur sur 8 formats réels. (T2 — M,
   sonnet) (@lane: frontend/crm)
 
-- [ ] VX238 — **Primitives « mains rapides » : Segmented au clavier, Tab-qui-choisit, focus (@lane: frontend/ventes — @after VX90/VX91)
+- [x] VX238 — **Primitives « mains rapides » : Segmented au clavier, Tab-qui-choisit, focus (@lane: frontend/ventes — @after VX90/VX91)
   post-sélection. @after VX90/VX91.** Trois défauts de primitives partagées : (a)
   `ui/Segmented.jsx` (57 fichiers consommateurs) déclare `role="radiogroup"` mais n'implémente
   AUCUNE navigation flèches ; (b) `ProduitPicker.jsx:89-101`/`Combobox.jsx:97-110` gèrent
@@ -2708,7 +2716,7 @@ droite)**
   forme normalisée ; fusionner 2 doublons préserve les deux chatters + redirige les documents.
   (T2 — M, sonnet ; opus si fusion cross-app) (@lane: frontend/crm)
 
-- [ ] VX240 — **Parité mécanique des formulaires : autofocus, mémoire des défauts, (@lane: frontend/ventes — @after VX90)
+- [x] VX240 — **Parité mécanique des formulaires : autofocus, mémoire des défauts, (@lane: frontend/ventes — @after VX90)
   multi-fichiers, focus de ligne achats. @after VX90, @coord VX92/VX93.** Sept incohérences
   prouvées entre formulaires jumeaux : (a) `FactureForm.jsx:293-307`/`DevisForm.jsx:231-245`
   s'ouvrent SANS aucun autofocus ; (b) `ProduitForm.jsx:413-416` Nom sans autofocus ; (c) dialog

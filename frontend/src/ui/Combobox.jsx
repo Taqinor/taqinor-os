@@ -114,6 +114,12 @@ export const Combobox = forwardRef(function Combobox(
       pick(filtered[cursor])
     } else if (e.key === 'Escape') {
       setOpen(false)
+    } else if (e.key === 'Tab' && !e.shiftKey) {
+      // VX238(b) — Tab sélectionne l'option courante SANS bloquer la
+      // tabulation (pas de preventDefault) : le focus continue naturellement
+      // vers le champ suivant au lieu de blur à vide en perdant la recherche.
+      const opt = filtered[cursor]
+      if (opt && !opt.disabled) pick(opt)
     }
   }
 
