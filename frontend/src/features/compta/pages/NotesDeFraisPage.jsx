@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useTabParam } from '../components/useTabParam'
 import { Plus, Pencil, Check, X, Send, Download, BarChart3 } from 'lucide-react'
 import { ListShell, statusPill } from '../../../ui/module'
 import { Button, Segmented, toast } from '../../../ui'
@@ -130,7 +131,7 @@ const FIELDS = {
 const TRESO_ID_HINT = 'ID du compte de trésorerie payeur'
 
 export default function NotesDeFraisPage() {
-  const [tab, setTab] = useState('notesFrais')
+  const [tab, setTab] = useTabParam('notesFrais')  // VX231(c) — onglet persisté (?onglet=)
   const [dialog, setDialog] = useState(null)
 
   const list = useComptaList(RESOURCE[tab].list, undefined)

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTabParam } from '../components/useTabParam'
 import { useIsAdmin } from '../../../hooks/useHasPermission'
 import {
   Plus, Unlock, ShieldCheck, TrendingUp, Undo2, Send, CheckCircle2,
@@ -520,7 +521,7 @@ const TABS = [
 ]
 
 export default function EngagementsPage() {
-  const [tab, setTab] = useState('retenuesGarantie')
+  const [tab, setTab] = useTabParam('retenuesGarantie')  // VX231(c) — onglet persisté (?onglet=)
   const isAdmin = useIsAdmin()
   const tabs = isAdmin ? [...TABS, { value: 'pisteAudit', label: 'Piste d’audit' }] : TABS
 

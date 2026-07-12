@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { Wallet } from 'lucide-react'
 import ventesApi from '../../api/ventesApi'
 import { formatMAD } from '../../lib/format'
@@ -32,6 +32,25 @@ export default function PaiementsPage() {
   const [mode, setMode] = useState('all')
   const [du, setDu] = useState('')
   const [au, setAu] = useState('')
+  // VX231(b) — filtre client local, reflété dans l'URL (?client=<id>) : cliquer
+  // le nom d'un client dans le tableau restreint la liste à ses encaissements
+  // (id, jamais de donnée personnelle en clair dans l'URL). Le nom affiché reste
+  // la seule info exposée à l'écran.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const clientFilter = searchParams.get('client') || ''
+  const clientFilterNom = useMemo(() => {
+    if (!clientFilter) return ''
+    const hit = rows.find(p => String(p.client) === clientFilter)
+    return hit?.client_nom || ''
+  }, [rows, clientFilter])
+  const setClientFilter = (id) => {
+    setSearchParams(prev => {
+      const p = new URLSearchParams(prev)
+      if (id) p.set('client', String(id))
+      else p.delete('client')
+      return p
+    }, { replace: true })
+  }
 
   useEffect(() => {
     ventesApi.getPaiements({ ordering: '-date_paiement' })
@@ -43,12 +62,13 @@ export default function PaiementsPage() {
   const filtered = useMemo(() => {
     return rows.filter(p => {
       if (mode !== 'all' && p.mode !== mode) return false
+      if (clientFilter && String(p.client) !== clientFilter) return false
       const d = p.date_paiement || ''
       if (du && d < du) return false
       if (au && d > au) return false
       return true
     })
-  }, [rows, mode, du, au])
+  }, [rows, mode, du, au, clientFilter])
 
   const total = useMemo(
     () => filtered.reduce((s, p) => s + Number(p.montant || 0), 0),
@@ -60,6 +80,18 @@ export default function PaiementsPage() {
       <div className="page-header" style={{ marginBottom: '1.25rem' }}>
         <h2>Encaissements</h2>
       </div>
+
+      {/* VX231(b) — chip du filtre client actif (depuis un clic sur un nom). */}
+      {clientFilter && (
+        <div className="mb-3 flex items-center gap-2 text-sm">
+          <span className="rounded-md border border-border bg-muted/40 px-2 py-1">
+            Filtré sur {clientFilterNom || 'un client'}
+          </span>
+          <Button variant="outline" size="sm" onClick={() => setClientFilter('')}>
+            Effacer le filtre client
+          </Button>
+        </div>
+      )}
 
       {error && (
         <div className="mb-3 rounded border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -130,7 +162,21 @@ export default function PaiementsPage() {
                     </Link>
                   ) : '—'),
                 },
-                { key: 'client', header: 'Client', cell: (p) => p.client_nom || '—' },
+                {
+                  key: 'client',
+                  header: 'Client',
+                  // VX231(b) — nom cliquable → filtre local ?client=<id>.
+                  cell: (p) => (p.client && p.client_nom ? (
+                    <button
+                      type="button"
+                      className="font-medium text-info hover:underline"
+                      onClick={() => setClientFilter(p.client)}
+                      title={`Filtrer les encaissements de ${p.client_nom}`}
+                    >
+                      {p.client_nom}
+                    </button>
+                  ) : (p.client_nom || '—')),
+                },
                 { key: 'montant', header: 'Montant', align: 'right', cell: (p) => <strong>{dh(p.montant)}</strong> },
                 { key: 'date', header: 'Date', cell: (p) => p.date_paiement || '—' },
                 { key: 'mode', header: 'Mode', cell: (p) => p.mode_display || p.mode },

@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Download, RefreshCw, FileText, GitCompare } from 'lucide-react'
 import { Button, Segmented, Input, Label, Card, EmptyState, toast } from '../../../ui'
 import { formatMAD } from '../../../lib/format'
 import comptaApi from '../../../api/comptaApi'
 import { unwrap } from '../components/useComptaList.js'
+import useTabParam from '../components/useTabParam'
 
 /* ============================================================================
    UX5 — États comptables CGNC.
@@ -135,9 +137,14 @@ function EtatRender({ data }) {
 }
 
 export default function EtatsPage() {
-  const [etat, setEtat] = useState('balance')
-  const [dateDebut, setDateDebut] = useState('')
-  const [dateFin, setDateFin] = useState('')
+  // VX231(c/d) — l'état actif est persisté dans l'URL (?etat=…) ET c'est la
+  // cible du deep-link « Comparer au Grand-livre » (FiscalitePage) qui passe
+  // aussi ?date_debut/?date_fin ; on pré-remplit la plage depuis l'URL au
+  // montage pour ouvrir le GL déjà filtré sur la période de la déclaration.
+  const [searchParams] = useSearchParams()
+  const [etat, setEtat] = useTabParam('balance', 'etat')
+  const [dateDebut, setDateDebut] = useState(() => searchParams.get('date_debut') || '')
+  const [dateFin, setDateFin] = useState(() => searchParams.get('date_fin') || '')
   const [exercice, setExercice] = useState('')
   const [exercices, setExercices] = useState([])
   const [comparer, setComparer] = useState(false)

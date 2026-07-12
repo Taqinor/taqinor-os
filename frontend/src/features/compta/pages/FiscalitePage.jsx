@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Plus, Pencil, Download, FileText, Send, Bell } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Plus, Pencil, Download, FileText, Send, Bell, GitCompare } from 'lucide-react'
 import { ListShell, statusPill } from '../../../ui/module'
 import { Button, Segmented, Card, Label, EmptyState, toast } from '../../../ui'
 import { formatMAD, formatDate } from '../../../lib/format'
 import comptaApi from '../../../api/comptaApi'
 import useComptaList, { unwrap } from '../components/useComptaList.js'
+import useTabParam from '../components/useTabParam'
 import CrudDialog from '../components/CrudDialog.jsx'
 
 /* ============================================================================
@@ -207,7 +209,8 @@ function EcheancesPanel() {
 }
 
 export default function FiscalitePage() {
-  const [tab, setTab] = useState('declarationsTva')
+  const navigate = useNavigate()
+  const [tab, setTab] = useTabParam('declarationsTva')  // VX231(c) — onglet persisté (?onglet=)
   const [dialog, setDialog] = useState(null)
   const [exercice, setExercice] = useState('')
   const [exercices, setExercices] = useState([])
@@ -253,6 +256,15 @@ export default function FiscalitePage() {
           onClick: () => download(
             () => comptaApi.declarationsTva.export(row.id),
             `declaration_tva_${row.reference || row.id}.csv`) },
+        // VX231(d) — vérifier une déclaration TVA contre le Grand-livre sans
+        // renoter deux chiffres à la main : ouvre le GL pré-filtré sur la MÊME
+        // période (date_debut/date_fin de la déclaration).
+        ...(row.date_debut && row.date_fin ? [{
+          id: 'comparer-gl', label: 'Comparer au Grand-livre', icon: GitCompare,
+          onClick: () => navigate(
+            `/comptabilite/etats?etat=grand-livre`
+            + `&date_debut=${row.date_debut}&date_fin=${row.date_fin}`),
+        }] : []),
         ...(row.statut !== 'deposee' ? [{
           id: 'deposer', label: 'Déposer', icon: Send,
           onClick: () => act(() => comptaApi.declarationsTva.deposer(row.id), 'Déclaration déposée.'),

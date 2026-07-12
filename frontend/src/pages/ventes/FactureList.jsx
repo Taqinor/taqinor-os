@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useState, useMemo } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import {
   Search, Plus, Download, BookText, ListChecks, FileWarning,
   MessageCircle, Code2, Check, FileText, ReceiptText, MoreHorizontal,
@@ -167,6 +167,7 @@ function FactureRow({ f, ctx }) {
     openPayModal, handleLienPaiement, handleTelechargerPdf, handleGenererPdf,
     openAvoirModal, handleWhatsApp, handleUbl, handleDgiExport, handleDgiConformite,
     histoOpenId, toggleHistorique, histoCache, histoLoadingId,
+    highlightFactureId,
   } = ctx
   const overdue = isOverdue(f)
   const statutKey = overdue && f.statut === 'emise' ? 'en_retard' : f.statut
@@ -180,9 +181,16 @@ function FactureRow({ f, ctx }) {
   const isPayLinkBusy = payLinkBusy[f.id]
   const isDgiBusy = dgiBusy[f.id]
 
+  const isHighlighted = String(f.id) === String(highlightFactureId)
   return (
     <Fragment key={f.id}>
-    <tr className={overdue ? 'bg-destructive/5' : undefined}>
+    {/* VX231(a) — id d'ancrage + surbrillance temporaire pour le deep-link
+        ?facture=<id> (scroll + ring depuis PaiementsPage). */}
+    <tr id={`facture-row-${f.id}`}
+        className={[
+          overdue ? 'bg-destructive/5' : '',
+          isHighlighted ? 'ring-2 ring-inset ring-primary bg-primary/5' : '',
+        ].filter(Boolean).join(' ') || undefined}>
       <td>
         <Checkbox
           checked={selectedIds.includes(f.id)}
@@ -524,6 +532,13 @@ export default function FactureList() {
 
   const [showForm, setShowForm]       = useState(false)
   const [editFacture, setEditFacture] = useState(null)
+  // VX231(a) — deep-link ?facture=<id> (émis par PaiementsPage/Encaissements) :
+  // atterrir sur la BONNE facture surlignée. On force l'onglet « toutes » pour
+  // qu'elle ne soit jamais masquée par un filtre d'onglet, puis on la surligne
+  // + scrolle 3 s (voir l'effet plus bas).
+  const [searchParams] = useSearchParams()
+  const [highlightFactureId, setHighlightFactureId] = useState(
+    () => searchParams.get('facture') || null)
   const [activeTab, setActiveTab]     = useState('toutes')
   const [search, setSearch]           = useState('')
   const [typeFilter, setTypeFilter]   = useState('')
@@ -630,6 +645,18 @@ export default function FactureList() {
   }
 
   useEffect(() => { dispatch(fetchFactures()) }, [dispatch])
+
+  // VX231(a) — une fois les factures chargées, si un ?facture=<id> est ciblé,
+  // scrolle la ligne au centre et retire la surbrillance après 3 s (le repère
+  // visuel a fait son office). Ne se déclenche qu'une fois (la surbrillance se
+  // vide elle-même).
+  useEffect(() => {
+    if (!highlightFactureId || factures.length === 0) return undefined
+    const el = document.getElementById(`facture-row-${highlightFactureId}`)
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    const t = setTimeout(() => setHighlightFactureId(null), 3000)
+    return () => clearTimeout(t)
+  }, [highlightFactureId, factures.length])
 
   const filtered = useMemo(() => {
     let list = factures
@@ -1007,6 +1034,7 @@ export default function FactureList() {
     openPayModal, handleLienPaiement, handleTelechargerPdf, handleGenererPdf,
     openAvoirModal, handleWhatsApp, handleUbl, handleDgiExport, handleDgiConformite,
     histoOpenId, toggleHistorique, histoCache, histoLoadingId,
+    highlightFactureId,
   }
 
   // VX21 — l'en-tête de page reste TOUJOURS visible (chargement, erreur,
