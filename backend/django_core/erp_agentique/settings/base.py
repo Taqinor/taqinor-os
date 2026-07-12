@@ -331,6 +331,15 @@ REST_FRAMEWORK = {
     # count/next/previous/results reste identique à DRF.
     'DEFAULT_PAGINATION_CLASS': 'core.pagination.StandardPagination',
     'PAGE_SIZE': 50,
+    # NTPLT42 — throttle applicatif PAR TENANT posé en défaut global : protège
+    # l'instance partagée du script fou d'UN client sans toucher les autres. Le
+    # budget vient de DEFAULT_THROTTLE_RATES['tenant'] (env TENANT_RATE_LIMIT).
+    # Rate None (env '0'/vide, ou sous les tests) = throttle inactif → aucun
+    # changement de comportement. Les surfaces anonymes (login/register) gardent
+    # leurs throttles dédiés (le throttle tenant se désactive sans société).
+    'DEFAULT_THROTTLE_CLASSES': (
+        'core.throttling.TenantRateThrottle',
+    ),
     # Fix 1 : taux de throttle par scope (appliqués per-view)
     'DEFAULT_THROTTLE_RATES': {
         'login': '5/minute',   # 5 tentatives/min par IP sur /token/
@@ -350,6 +359,10 @@ REST_FRAMEWORK = {
         # ouverture de session chat public (par IP).
         'public_sharelink': '30/minute',
         'public_livechat': '30/minute',
+        # NTPLT42 — budget par société (env TENANT_RATE_LIMIT, défaut 1200/min).
+        # '0'/vide → None = throttle tenant désactivé (rempli plus bas, après la
+        # définition de TESTING, où il est forcé off pour ne pas fausser la suite).
+        'tenant': None,
     },
     # YDATA9 — DRF sérialise déjà les `Decimal` en string par défaut (c'est
     # la valeur par défaut de DRF), mais rien ne le VERROUILLAIT explicitement
@@ -779,6 +792,16 @@ if TESTING:
 # when no keys are provided via env, so web push works out of the box. OFF under
 # the test runner so the "unconfigured => empty endpoint => no-op" contract holds.
 VAPID_AUTOGENERATE = os.environ.get('VAPID_AUTOGENERATE', '0' if TESTING else '1') == '1'
+
+# NTPLT42 — résolution du budget throttle PAR TENANT (après TESTING). Env
+# TENANT_RATE_LIMIT (défaut '1200/min'). '0' ou vide → None (throttle désactivé).
+# Sous le test runner, DÉSACTIVÉ par défaut : une suite qui boucle des centaines
+# de requêtes pour la même société ne doit jamais échouer sur un 429 parasite
+# (un test ciblant explicitement le throttle pose TENANT_RATE_LIMIT lui-même).
+_tenant_rate = os.environ.get(
+    'TENANT_RATE_LIMIT', '0' if TESTING else '1200/min').strip()
+REST_FRAMEWORK['DEFAULT_THROTTLE_RATES']['tenant'] = (
+    _tenant_rate if _tenant_rate and _tenant_rate != '0' else None)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Fondation IA (core.ai) — sélection des fournisseurs par capacité.
