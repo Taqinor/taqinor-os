@@ -1119,7 +1119,9 @@ button:active, [role="button"]:active, a.btn:active,
   font-size: 0.75rem;
   font-weight: 600;
   color: var(--muted-foreground);
-  letter-spacing: 0.04em;
+  /* VX122 — tracking « eyebrow » unifié sur le token unique (remplace 0.04em
+     codé en dur, divergent de .lines-table th ci-dessous avant cette tâche). */
+  letter-spacing: var(--text-eyebrow-tracking);
   text-transform: uppercase;
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
@@ -1554,7 +1556,8 @@ textarea.form-control {
   font-size: 0.72rem;
   font-weight: 600;
   color: var(--muted-foreground);
-  letter-spacing: 0.04em;
+  /* VX122 — même token que .data-table th (remplace 0.04em codé en dur). */
+  letter-spacing: var(--text-eyebrow-tracking);
   text-transform: uppercase;
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
@@ -4484,7 +4487,9 @@ textarea.form-control {
   font-size: 0.75rem;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  /* VX122 — même token « eyebrow » que .data-table/.lines-table th (remplace
+     0.04em codé en dur). */
+  letter-spacing: var(--text-eyebrow-tracking);
   text-align: center;
   padding: 8px 4px;
 }

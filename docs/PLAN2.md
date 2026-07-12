@@ -826,7 +826,7 @@ grand-verdict — voir NE PAS FAIRE en fin de section pour le détail des kills/
   rgba(0,0,0 ui/` = 0 ; dark mode cohérent sur 6 écrans témoins ; garde CI verte puis rouge sur un
   hex injecté. (T2 — L, sonnet) (@lane: frontend/ui-core)
 
-- [ ] VX122 — **La voix typographique : police de marque par défaut + échelle F121 réellement (@lane: frontend/ui-core)
+- [x] VX122 — **La voix typographique : police de marque par défaut + échelle F121 réellement (@lane: frontend/ui-core)
   branchée + finesse française.** Quatre défauts d'une même cause : (a) `index.css:26` rend tout
   le legacy en `font-family: system-ui` alors qu'Archivo/Hanken Grotesk sont préchargées
   (`brand.css`) ; **rogné (grand-verdict) :** ce point (a) est déjà VX3 mot pour mot, ne pas le
@@ -3207,6 +3207,8 @@ droite)**
 ---
 
 ## DONE LOG (agent appends one plain-language line per completed task)
+
+- 2026-07-12 — **VX122 — voix typographique F121 (dernier volet réel : 3 recettes eyebrow encore en dur).** `.page-header h2`/`nbsp()`/`ArticleDetail` max-w-prose étaient déjà branchés par une vague antérieure ; `.text-eyebrow`/`--text-eyebrow-tracking` (tokens.css) existaient déjà et étaient consommés par 5 sélecteurs (`.gen-metric-label`/`.gen-chart-title`/`.gen-total-label`/`.gs-group-title`/`.cmdk-group-title`) mais PAS par les 3 recettes-tableau restantes : `.data-table th`/`.lines-table th`/`.cal-weekday` gardaient encore `letter-spacing: 0.04em` codé en dur (divergence résiduelle avec les 0.05em d'autres sélecteurs) — basculées sur le token unique.
 
 - 2026-07-12 — **VX121 — zéro couleur hors token (dernier volet réel : AppointmentBooker).** Le sweep index.css (`scripts/check_hex.mjs`, 26 sélecteurs gardés, 0 hex) / DataTable `rgba(0,0,0…)` / `ChantierTimeline`/`ProductionPage` / bloc mort `.agent-*` était déjà fait par une vague antérieure — seul `AppointmentBooker.jsx` avait encore 4 fallbacks orphelins `var(--color-text-muted, #475569)` / `var(--color-success, #059669)` / `var(--color-surface-2, #f8f9fa)` / `var(--color-border, #e5e7eb)` (tokens qui n'existent nulle part dans `tokens.css` — silencieusement `unset` en dark mode). Remplacés par les vrais tokens déjà consommés plus haut dans le même fichier (`--muted-foreground`/`--success`/`--muted`/`--border`).
 
