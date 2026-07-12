@@ -3,6 +3,9 @@ from django.contrib import admin
 from django.urls import path, include
 from rest_framework_simplejwt.views import TokenRefreshView, TokenVerifyView
 from authentication.views import CustomTokenObtainPairView
+from drf_spectacular.views import (
+    SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView,
+)
 
 _ADMIN_URL = os.environ.get('DJANGO_ADMIN_URL', 'api/django/admin/')
 
@@ -23,6 +26,19 @@ urlpatterns = [
         'api/django/token/verify/',
         TokenVerifyView.as_view(),
         name='token_verify',
+    ),
+    # YAPIC5 — schéma OpenAPI 3 (JSON) + docs interactives, derrière
+    # IsAuthenticated (SPECTACULAR_SETTINGS['SERVE_PERMISSIONS']).
+    path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
+    path(
+        'api/docs/',
+        SpectacularSwaggerView.as_view(url_name='schema'),
+        name='swagger-ui',
+    ),
+    path(
+        'api/redoc/',
+        SpectacularRedocView.as_view(url_name='schema'),
+        name='redoc',
     ),
     # App URLs
     path('api/django/', include('authentication.urls')),

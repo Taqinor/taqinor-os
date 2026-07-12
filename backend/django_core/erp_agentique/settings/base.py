@@ -55,6 +55,9 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
     'corsheaders',
+    # YAPIC5 — génération de schéma OpenAPI 3 (management command `spectacular`
+    # + templates Swagger/ReDoc). Requis par DEFAULT_SCHEMA_CLASS ci-dessous.
+    'drf_spectacular',
     # Local apps
     # App de fondation : modèles abstraits, mixins, bus d'événements
     # (core.events), portée des enregistrements (core.scoping) et fondation IA
@@ -383,6 +386,30 @@ REST_FRAMEWORK = {
     # décimales). Posé explicitement pour que ce comportement soit un choix
     # documenté, testé, jamais un défaut implicite qui pourrait dériver.
     'COERCE_DECIMAL_TO_STRING': True,
+    # YAPIC5 — schéma OpenAPI 3 auto-généré (drf-spectacular) : remplace le
+    # AutoSchema DRF par défaut pour que /api/schema/ + Swagger/ReDoc reflètent
+    # RÉELLEMENT les viewsets enregistrés (FG105 = page FR écrite à la main,
+    # ne bouge pas, reste la doc de référence de l'API PUBLIQUE api/public/).
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+}
+
+# YAPIC5 — réglages drf-spectacular. COMPONENT_SPLIT_REQUEST distingue les
+# schémas Request/Response (champs read_only exclus du corps de requête dans
+# le schéma généré). SERVE_PERMISSIONS gate /api/schema/, /api/docs/ et
+# /api/redoc/ derrière IsAuthenticated (pas d'exposition anonyme du contrat
+# d'API complet). SORT_OPERATIONS désactivé pour préserver l'ordre naturel de
+# `erp_agentique/urls.py` (plus lisible par app).
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'TAQINOR OS — API',
+    'DESCRIPTION': (
+        "Schéma OpenAPI 3 auto-généré des ViewSets DRF de l'ERP interne "
+        "(api/django/...). L'API publique par clé (api/public/...) garde sa "
+        "propre page de référence FR écrite à la main (apps/publicapi/docs.py)."
+    ),
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
+    'COMPONENT_SPLIT_REQUEST': True,
+    'SERVE_PERMISSIONS': ['rest_framework.permissions.IsAuthenticated'],
 }
 
 # Simple JWT Configuration
