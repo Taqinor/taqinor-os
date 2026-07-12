@@ -2,14 +2,13 @@
    Fichier de configuration de module (données + pages lazy), pas un module de
    composants : le fast-refresh ne s'y applique pas (cf. router/moduleRoutes). */
 import { lazy } from 'react'
+import { FileText, ShoppingCart, Receipt, FileMinus, Wallet, CalendarClock } from 'lucide-react'
 
 /* ============================================================================
    ARC54 — Migration des routes legacy Ventes vers le registre (phase 2, après
    les pilotes ARC48 stock/sav).
    ----------------------------------------------------------------------------
-   Routes-only (aucune section `nav` : Sidebar.jsx garde son menu Ventes
-   hard-codé, non touché — `buildModuleRoutes` traite `nav` comme optionnel via
-   `.filter(Boolean)`, donc « Sidebar sans doublon » tient trivialement ici).
+   Routes migrées ici (section `nav` ajoutée depuis par ODX7, voir plus bas).
    Les titres de page (`routes.meta.js` → `BASE_PAGE_TITLES`/`SECTION_LABELS`)
    restent déjà déclarés là-bas pour ces chemins et ne sont PAS dupliqués ici.
    Toutes ces routes utilisaient `authLoader` (aucun rôle/perm) dans
@@ -20,7 +19,15 @@ import { lazy } from 'react'
    `/ventes/devis/:id/3d` et `/devis-design/:id` portent un `errorElement`
    dédié (`<RouteErrorBoundary />`) que `buildModuleRoutes` ne sait pas
    exprimer (le registre ne construit que `{ path, loader, element }`).
+
+   ODX7 — la section `nav` ci-dessous est le littéral VENTES qui vivait dans
+   `Sidebar.jsx` (`NAV_SECTIONS`), déplacé ici À L'IDENTIQUE (regroupement
+   fonctionnel only, zéro changement visuel). Sidebar lit désormais cette
+   section par clé (`navFor('ventes')`), à la même place dans l'ordre
+   d'affichage.
    ========================================================================== */
+
+const navIcon = (Comp) => <Comp size={17} strokeWidth={1.75} aria-hidden="true" />
 
 // Pages chargées à la demande (code-splitting préservé — <Suspense> côté routeur).
 const DevisList = lazy(() => import('../../pages/ventes/DevisList'))
@@ -38,6 +45,18 @@ const ListesPrixPage = lazy(() => import('../../pages/ventes/ListesPrixPage'))
 const config = {
   key: 'ventes',
   order: 50,
+  nav: {
+    label: 'VENTES', labelKey: 'nav.section.ventes',
+    accent: 'brass',
+    items: [
+      { to: '/ventes/devis',         label: 'Devis',            k: 'nav.devis',      icon: navIcon(FileText),        roles: ['normal','responsable','admin'] },
+      { to: '/ventes/bons-commande', label: 'Bons de commande', k: 'nav.bons_commande', icon: navIcon(ShoppingCart),  roles: ['normal','responsable','admin'] },
+      { to: '/ventes/factures',      label: 'Factures',         k: 'nav.factures',   icon: navIcon(Receipt),     roles: ['normal','responsable','admin'] },
+      { to: '/ventes/avoirs',        label: 'Avoirs',           k: 'nav.avoirs',     icon: navIcon(FileMinus),        roles: ['normal','responsable','admin'] },
+      { to: '/ventes/paiements',     label: 'Encaissements',    k: 'nav.encaissements', icon: navIcon(Wallet),    roles: ['normal','responsable','admin'] },
+      { to: '/ventes/relances',      label: 'Relances / Impayés', k: 'nav.relances', icon: navIcon(CalendarClock),      roles: ['responsable','admin'] },
+    ],
+  },
   routes: [
     { path: '/ventes/devis', component: DevisList },
     // QX29 — « Relances du jour » : tableau d'action des devis (miroir ZSAV6).
