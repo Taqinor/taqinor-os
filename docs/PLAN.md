@@ -79,9 +79,9 @@ conformity warning banner).
 ### PWA / mobile / offline
 ### Localisation / audit / security / data
 ### Growth / multi-tenant platform
-- [ ] N100 — Build out multi-tenant operation on the existing tenant_id foundation (strict per-tenant isolation verification, tenant onboarding flow, per-tenant branding/white-label of client-facing documents, configurable per-plan feature limits, tenant-level billing). (UNGATED 2026-06-21 per "ungate all". **RECOMMENDATION: KEEP DEFERRED until a 2nd paying installer — the `company` foundation is ready so no debt accrues by waiting; building SaaS billing for zero customers adds cost + the biggest auth surface in the app. Do NOT let a drain build this unless you've decided to sell TAQINOR as a product.** See NEEDS YOUR INPUT.) (ARCH)
-- [ ] N101 — Tenant administration console (manage tenants/plans/usage/support) + self-serve signup for design-partner installers. (UNGATED 2026-06-21. **RECOMMENDATION: KEEP DEFERRED — pairs with N100; self-serve signup is a major auth surface, build only when going multi-installer.**) (ARCH) (@after: N100)
-- [ ] N102 — After the modules above are built, update the master project document + PLAN + DONE log in plain language to reflect the new post-sale, procurement/inventory, Moroccan billing/compliance, full-editability, and platform additions, noting which shipped and which were skipped. (UNGATED 2026-06-21 — depends on N100/N101; do last.) (@after: N100, N101)
+- [ ] N100 — Build out multi-tenant operation on the existing tenant_id foundation (strict per-tenant isolation verification, tenant onboarding flow, per-tenant branding/white-label of client-facing documents, configurable per-plan feature limits, tenant-level billing). (UNGATED 2026-06-21 per "ungate all". **RECOMMENDATION: KEEP DEFERRED until a 2nd paying installer — the `company` foundation is ready so no debt accrues by waiting; building SaaS billing for zero customers adds cost + the biggest auth surface in the app. Do NOT let a drain build this unless you've decided to sell TAQINOR as a product.** See NEEDS YOUR INPUT.) (ARCH) (@lane: backend/authentication)
+- [ ] N101 — Tenant administration console (manage tenants/plans/usage/support) + self-serve signup for design-partner installers. (UNGATED 2026-06-21. **RECOMMENDATION: KEEP DEFERRED — pairs with N100; self-serve signup is a major auth surface, build only when going multi-installer.**) (ARCH) (@lane: backend/authentication) (@after: N100)
+- [ ] N102 — After the modules above are built, update the master project document + PLAN + DONE log in plain language to reflect the new post-sale, procurement/inventory, Moroccan billing/compliance, full-editability, and platform additions, noting which shipped and which were skipped. (UNGATED 2026-06-21 — depends on N100/N101; do last.) Files: docs/CODEMAP.md, docs/PLAN.md, docs/DONE.md. (@after: N100, N101)
 
 ---
 
@@ -229,7 +229,7 @@ first run that ticks any `FG*` task refreshes CODEMAP §10 + `--write` in that c
 
 ### Plateforme, IA, intégrations, BI & mobile
 
-- [ ] FG386 — **Mode terrain hors-ligne (offline queue)** — file locale des éditions chantier/intervention synchronisée à la reconnexion (même architecture que N91/F21). (ARCH) (UNGATED 2026-07-01 — Reda ; BUILD IT dans le run principal.)
+- [ ] FG386 — **Mode terrain hors-ligne (offline queue)** — file locale des éditions chantier/intervention synchronisée à la reconnexion (même architecture que N91/F21). (ARCH) (UNGATED 2026-07-01 — Reda ; BUILD IT dans le run principal.) (@lane: backend/installations)
 
 ---
 
