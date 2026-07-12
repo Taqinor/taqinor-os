@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 import { ConfirmProvider } from '../../providers/ConfirmProvider'
@@ -111,10 +112,10 @@ describe('ApprobationsPage — onglet Délégations (VX103)', () => {
     renderPage(<ApprobationsPage />)
 
     const tab = await screen.findByRole('tab', { name: 'Délégations' })
-    tab.click()
+    await userEvent.click(tab)
 
     await waitFor(() => expect(automationApi.getDelegations).toHaveBeenCalled())
-    expect(await screen.findByText('meryem', { exact: false })).toBeTruthy()
+    expect((await screen.findAllByText('meryem', { exact: false })).length).toBeGreaterThan(0)
     expect(screen.getAllByText('Active').length).toBeGreaterThan(0)
   })
 
@@ -122,15 +123,15 @@ describe('ApprobationsPage — onglet Délégations (VX103)', () => {
     renderPage(<ApprobationsPage />)
 
     const tab = await screen.findByRole('tab', { name: 'Délégations' })
-    tab.click()
+    await userEvent.click(tab)
 
     const revokeBtn = await screen.findByTestId('delegation-revoke-5')
-    revokeBtn.click()
+    await userEvent.click(revokeBtn)
 
     // Confirmation Radix maison (jamais window.confirm) : on cherche le bouton
     // de confirmation destructif dans la boîte de dialogue qui s'ouvre.
     const confirmBtn = await screen.findByRole('button', { name: 'Révoquer', exact: true })
-    confirmBtn.click()
+    await userEvent.click(confirmBtn)
 
     await waitFor(() => expect(automationApi.deleteDelegation).toHaveBeenCalledWith(5))
   })
