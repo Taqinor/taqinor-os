@@ -729,7 +729,7 @@ sav.WorksheetMaintenanceModele
 stock.AchatsParametres
 stock.AcompteFournisseur
 stock.AvoirFournisseur
-stock.BonCommandeFournisseur
+achats.BonCommandeFournisseur
 stock.Categorie
 stock.CategorieFournisseur
 stock.ConditionnementProduit
@@ -737,7 +737,7 @@ stock.ContactFournisseur
 stock.DocumentConformiteFournisseur
 stock.EcheanceFactureFournisseur
 stock.EmplacementStock
-stock.FactureFournisseur
+achats.FactureFournisseur
 stock.FicheTechnique
 stock.Fournisseur
 stock.ImputationAvoirFournisseur
@@ -749,13 +749,13 @@ stock.Marque
 stock.ModeleBonCommandeFournisseur
 stock.MouvementStock
 stock.NomenclatureCodeBarres
-stock.PaiementFournisseur
+achats.PaiementFournisseur
 stock.PortailFournisseurToken
-stock.PrixFournisseur
+achats.PrixFournisseur
 stock.Produit
 stock.ProfilSaisonnier
-stock.ReceptionFournisseur
-stock.RetourFournisseur
+achats.ReceptionFournisseur
+achats.RetourFournisseur
 stock.RevalorisationStock
 stock.RevisionKit
 stock.SousTraitantProfile

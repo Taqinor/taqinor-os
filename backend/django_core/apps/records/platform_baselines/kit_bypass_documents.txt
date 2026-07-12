@@ -10,5 +10,5 @@
 # DISPARAÎT du scan — la liste ne peut que DÉCROÎTRE. Ne JAMAIS ajouter un
 # nouveau modèle ici pour contourner le garde : héritez de
 # core.documents.DocumentMetier. Format : une entrée app.NomClasse par ligne.
-stock.FactureFournisseur
+achats.FactureFournisseur
 ventes.NoteDebit
