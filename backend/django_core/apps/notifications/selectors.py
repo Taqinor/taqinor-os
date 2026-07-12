@@ -82,6 +82,39 @@ def approbations_snoozees_actives(user, company):
     return {(src, str(oid)) for src, oid in qs}
 
 
+def superior_contact_status(company, link):
+    """VX215 — boucle de retour « pris en charge » (version lecture seule) :
+    l'état `read` des `Notification` déjà émises pour un `link` donné (ex.
+    ``/ventes/devis?devis=<id>`` après « Contacter mon supérieur »), SANS
+    jamais exposer le contenu (titre/corps) des notifications d'autrui —
+    seulement si elles ont été vues et par qui. Point d'entrée cross-app
+    LECTURE SEULE (jamais un import de ``notifications.models`` ailleurs).
+
+    Renvoie ``{'requested': False}`` si aucune notification ne porte ce
+    ``link`` pour cette société, sinon ``{'requested': True, 'seen': bool,
+    'seen_by': [username, ...], 'requested_at': datetime}`` (le plus
+    ancien lecteur en tête n'est pas garanti — l'ordre suit la création des
+    notifications, pas la lecture)."""
+    if company is None or not link:
+        return {'requested': False}
+    from .models import EventType, Notification
+    notifs = list(
+        Notification.objects.filter(
+            company=company,
+            event_type=EventType.DEVIS_SUPERIOR_CONTACT_REQUESTED,
+            link=link,
+        ).select_related('recipient').order_by('-created_at'))
+    if not notifs:
+        return {'requested': False}
+    seen_by = [n.recipient.username for n in notifs if n.read]
+    return {
+        'requested': True,
+        'seen': bool(seen_by),
+        'seen_by': seen_by,
+        'requested_at': notifs[-1].created_at,
+    }
+
+
 def est_hors_fenetre_silence(moment, company) -> bool:
     """Renvoie True si ``moment`` (datetime) tombe DANS la fenêtre de silence
     (nuit ou jour férié/non-ouvré) — c-à-d qu'un SMS/WhatsApp ne DOIT PAS

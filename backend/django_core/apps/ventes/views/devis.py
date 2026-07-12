@@ -1328,6 +1328,22 @@ class DevisViewSet(CompanyScopedModelViewSet):
             'recipients': [u.username for u in recipients],
         })
 
+    @action(detail=True, methods=['get'],
+            url_path='superior-contact-status',
+            permission_classes=[IsAnyRole])
+    def superior_contact_status(self, request, pk=None):
+        """VX215 — boucle de retour « pris en charge » (version lecture
+        seule) : après « Contacter mon supérieur » (ci-dessus), l'ÉMETTEUR
+        voit si sa demande a été VUE — sans jamais lire le CONTENU des
+        notifications d'autrui, seulement l'état `read`/lecteur de CETTE
+        demande précise (scopée à ce devis + cet événement). Zéro nouveau
+        modèle : relit directement les `Notification` déjà créées par
+        `contacter_superieur` (même société, même `link`)."""
+        devis = self.get_object()
+        from apps.notifications.selectors import superior_contact_status
+        link = f'/ventes/devis?devis={devis.pk}'
+        return Response(superior_contact_status(devis.company, link))
+
     @action(detail=True, methods=['post'], url_path='noter',
             permission_classes=[IsResponsableOrAdmin])
     def noter(self, request, pk=None):
