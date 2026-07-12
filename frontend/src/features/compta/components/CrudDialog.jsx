@@ -78,12 +78,13 @@ export default function CrudDialog({
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
         <form onSubmit={submit} noValidate className="flex flex-col gap-3">
-          {fields.map((f) => (
+          {fields.map((f, i) => (
             <div key={f.name} className="flex flex-col gap-1">
               <Label htmlFor={`cd-${f.name}`} required={f.required}>{f.label}</Label>
               {f.options ? (
                 <select
                   id={`cd-${f.name}`}
+                  autoFocus={i === 0}
                   className="h-[var(--control-h)] rounded-md border border-input bg-card px-[var(--control-px)] text-sm"
                   value={values[f.name] ?? ''}
                   onChange={(e) => set(f.name, e.target.value)}
@@ -97,6 +98,7 @@ export default function CrudDialog({
                 <Input
                   id={`cd-${f.name}`}
                   type={f.type || 'text'}
+                  autoFocus={i === 0}
                   step={f.type === 'number' ? (f.step || 'any') : undefined}
                   value={values[f.name] ?? ''}
                   onChange={(e) => set(f.name, e.target.value)}

@@ -209,6 +209,7 @@ export default function KpiAlertesPage() {
             <Label htmlFor="ka-nom">Nom (optionnel)</Label>
             <Input
               id="ka-nom" value={form.nom}
+              autoFocus
               onChange={(e) => setForm((f) => ({ ...f, nom: e.target.value }))}
               placeholder="Ex. DSO trop élevé"
             />

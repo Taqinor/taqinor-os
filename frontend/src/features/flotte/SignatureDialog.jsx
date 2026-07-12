@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-  Button, Label, Input,
+  Button, Label, Input, confirmLeaveIfDirty,
 } from '../../ui'
 import flotteApi from '../../api/flotteApi'
 
@@ -19,6 +19,9 @@ export default function SignatureDialog({ etat, role, onClose, onSaved }) {
   const [serverError, setServerError] = useState(null)
 
   const peutEnregistrer = Boolean(nom.trim())
+  // VX168 — garde de fermeture : dialogue de création, initial = vide.
+  const dirty = Boolean(nom)
+  const closeIfConfirmed = () => { if (confirmLeaveIfDirty(dirty)) onClose?.() }
 
   const submit = async (e) => {
     e.preventDefault()
@@ -40,7 +43,7 @@ export default function SignatureDialog({ etat, role, onClose, onSaved }) {
   }
 
   return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose?.() }}>
+    <Dialog open onOpenChange={(o) => { if (!o) closeIfConfirmed() }}>
       <DialogContent className="max-w-sm">
         <DialogHeader>
           <DialogTitle>
@@ -59,7 +62,7 @@ export default function SignatureDialog({ etat, role, onClose, onSaved }) {
           )}
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
+            <Button type="button" variant="outline" onClick={closeIfConfirmed}>Annuler</Button>
             <Button type="submit" disabled={!peutEnregistrer || saving}>
               {saving ? 'Signature…' : 'Signer'}
             </Button>

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { AlertTriangle, ShieldCheck } from 'lucide-react'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-  Button, Label, Input, Checkbox,
+  Button, Label, Input, Checkbox, confirmLeaveIfDirty,
 } from '../../ui'
 import flotteApi from '../../api/flotteApi'
 import { controlePermis } from './flotte'
@@ -45,6 +45,9 @@ export default function AffectationDialog({ conducteurs = [], vehicules = [], on
 
   const permisBloque = !controle.ok && !force
   const peutEnregistrer = Boolean(conducteurId && vehiculeId && dateDebut) && !permisBloque
+  // VX168 — garde de fermeture : dialogue de création, initial = tout vide.
+  const dirty = Boolean(conducteurId || vehiculeId || dateDebut || dateFin || notes || force)
+  const closeIfConfirmed = () => { if (confirmLeaveIfDirty(dirty)) onClose?.() }
 
   const submit = async (e) => {
     e.preventDefault()
@@ -76,7 +79,7 @@ export default function AffectationDialog({ conducteurs = [], vehicules = [], on
   }
 
   return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose?.() }}>
+    <Dialog open onOpenChange={(o) => { if (!o) closeIfConfirmed() }}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>Nouvelle affectation</DialogTitle>
@@ -87,6 +90,7 @@ export default function AffectationDialog({ conducteurs = [], vehicules = [], on
             <Label htmlFor="aff-conducteur">Conducteur</Label>
             <select
               id="aff-conducteur"
+              autoFocus
               value={conducteurId}
               onChange={(e) => setConducteurId(e.target.value)}
               className="h-9 rounded-md border border-border bg-card px-3 text-sm"
@@ -162,7 +166,7 @@ export default function AffectationDialog({ conducteurs = [], vehicules = [], on
           )}
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
+            <Button type="button" variant="outline" onClick={closeIfConfirmed}>Annuler</Button>
             <Button type="submit" disabled={!peutEnregistrer || saving}>
               {saving ? 'Enregistrement…' : 'Enregistrer'}
             </Button>

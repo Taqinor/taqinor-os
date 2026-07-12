@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-  Button, Label, Input,
+  Button, Label, Input, confirmLeaveIfDirty,
 } from '../../ui'
 import flotteApi from '../../api/flotteApi'
 import { optionsFrom, ENERGIES } from './flotte'
@@ -45,6 +45,11 @@ export default function VehiculeCreateDialog({ modeles = [], onClose, onSaved })
   }
 
   const peutEnregistrer = Boolean(immatriculation.trim())
+  // VX168 — garde de fermeture : dialogue de création, initial = tout vide.
+  const dirty = Boolean(
+    immatriculation || marque || modele || modeleRefId || energie || puissanceFiscale || valeur,
+  )
+  const closeIfConfirmed = () => { if (confirmLeaveIfDirty(dirty)) onClose?.() }
 
   const submit = async (e) => {
     e.preventDefault()
@@ -75,7 +80,7 @@ export default function VehiculeCreateDialog({ modeles = [], onClose, onSaved })
   }
 
   return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose?.() }}>
+    <Dialog open onOpenChange={(o) => { if (!o) closeIfConfirmed() }}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>Nouveau véhicule</DialogTitle>
@@ -84,7 +89,7 @@ export default function VehiculeCreateDialog({ modeles = [], onClose, onSaved })
         <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="veh-immat">Immatriculation</Label>
-            <Input id="veh-immat" value={immatriculation} onChange={(e) => setImmatriculation(e.target.value)} />
+            <Input id="veh-immat" autoFocus value={immatriculation} onChange={(e) => setImmatriculation(e.target.value)} />
           </div>
 
           <div className="flex flex-col gap-1.5">
@@ -149,7 +154,7 @@ export default function VehiculeCreateDialog({ modeles = [], onClose, onSaved })
           )}
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
+            <Button type="button" variant="outline" onClick={closeIfConfirmed}>Annuler</Button>
             <Button type="submit" disabled={!peutEnregistrer || saving}>
               {saving ? 'Enregistrement…' : 'Créer'}
             </Button>

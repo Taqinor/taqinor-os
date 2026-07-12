@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-  Button, Label, Input,
+  Button, Label, Input, confirmLeaveIfDirty,
 } from '../../ui'
 import flotteApi from '../../api/flotteApi'
 
@@ -22,6 +22,9 @@ export default function GarageDialog({ onClose, onSaved }) {
   const [serverError, setServerError] = useState(null)
 
   const peutEnregistrer = Boolean(nom.trim())
+  // VX168 — garde de fermeture : dialogue de création, initial = tout vide.
+  const dirty = Boolean(nom || adresse || telephone || ice || identifiantFiscal)
+  const closeIfConfirmed = () => { if (confirmLeaveIfDirty(dirty)) onClose?.() }
 
   const submit = async (e) => {
     e.preventDefault()
@@ -50,7 +53,7 @@ export default function GarageDialog({ onClose, onSaved }) {
   }
 
   return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose?.() }}>
+    <Dialog open onOpenChange={(o) => { if (!o) closeIfConfirmed() }}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>Nouveau garage</DialogTitle>
@@ -59,7 +62,7 @@ export default function GarageDialog({ onClose, onSaved }) {
         <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="gar-nom">Nom</Label>
-            <Input id="gar-nom" value={nom} onChange={(e) => setNom(e.target.value)} />
+            <Input id="gar-nom" autoFocus value={nom} onChange={(e) => setNom(e.target.value)} />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="gar-adresse">Adresse</Label>
@@ -94,7 +97,7 @@ export default function GarageDialog({ onClose, onSaved }) {
           )}
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
+            <Button type="button" variant="outline" onClick={closeIfConfirmed}>Annuler</Button>
             <Button type="submit" disabled={!peutEnregistrer || saving}>
               {saving ? 'Enregistrement…' : 'Enregistrer'}
             </Button>

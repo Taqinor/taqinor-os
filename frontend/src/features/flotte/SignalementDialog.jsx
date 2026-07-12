@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-  Button, Label, Textarea,
+  Button, Label, Textarea, confirmLeaveIfDirty,
 } from '../../ui'
 import flotteApi from '../../api/flotteApi'
 import { optionsFrom, SIGNALEMENT_GRAVITES } from './flotte'
@@ -22,6 +22,9 @@ export default function SignalementDialog({ actifs = [], onClose, onSaved }) {
   const [serverError, setServerError] = useState(null)
 
   const peutEnregistrer = Boolean(actifFlotte && description.trim())
+  // VX168 — garde de fermeture : dialogue de création (gravité par défaut = 'moyenne').
+  const dirty = Boolean(actifFlotte || description || gravite !== 'moyenne')
+  const closeIfConfirmed = () => { if (confirmLeaveIfDirty(dirty)) onClose?.() }
 
   const submit = async (e) => {
     e.preventDefault()
@@ -47,7 +50,7 @@ export default function SignalementDialog({ actifs = [], onClose, onSaved }) {
   }
 
   return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose?.() }}>
+    <Dialog open onOpenChange={(o) => { if (!o) closeIfConfirmed() }}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>Signaler un problème</DialogTitle>
@@ -58,6 +61,7 @@ export default function SignalementDialog({ actifs = [], onClose, onSaved }) {
             <Label htmlFor="sig-actif">Véhicule / engin concerné</Label>
             <select
               id="sig-actif"
+              autoFocus
               value={actifFlotte}
               onChange={(e) => setActifFlotte(e.target.value)}
               className="h-9 rounded-md border border-border bg-card px-3 text-sm"
@@ -99,7 +103,7 @@ export default function SignalementDialog({ actifs = [], onClose, onSaved }) {
           )}
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
+            <Button type="button" variant="outline" onClick={closeIfConfirmed}>Annuler</Button>
             <Button type="submit" disabled={!peutEnregistrer || saving}>
               {saving ? 'Enregistrement…' : 'Signaler'}
             </Button>

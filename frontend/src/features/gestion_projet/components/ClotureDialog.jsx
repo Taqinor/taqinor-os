@@ -1,5 +1,6 @@
-import { useState } from 'react'
-import { Button, toast } from '../../../ui'
+import { useRef, useState } from 'react'
+import { Button, toast, confirmLeaveIfDirty } from '../../../ui'
+import { isDirty } from '../../../ui/form-utils'
 import { ResponsiveDialog } from '../../../ui/ResponsiveDialog'
 import gestionProjetApi from '../../../api/gestionProjetApi'
 import { errMessage } from '../constants'
@@ -20,6 +21,10 @@ export default function ClotureDialog({ projetId, onClose, onSaved }) {
   })
   const [saving, setSaving] = useState(false)
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }))
+  // VX168 — garde de fermeture (snapshot pris au montage).
+  const initialSnapshotRef = useRef(form)
+  const dirty = isDirty(initialSnapshotRef.current, form)
+  const closeIfConfirmed = () => { if (confirmLeaveIfDirty(dirty)) onClose?.() }
 
   const submit = async (e) => {
     e.preventDefault()
@@ -47,20 +52,20 @@ export default function ClotureDialog({ projetId, onClose, onSaved }) {
   return (
     <ResponsiveDialog
       open
-      onOpenChange={(o) => { if (!o) onClose?.() }}
+      onOpenChange={(o) => { if (!o) closeIfConfirmed() }}
       title="Clôturer le projet"
       description="Passe le projet à « Terminé » et enregistre le retour d'expérience."
     >
       <form onSubmit={submit} noValidate className="flex flex-col gap-3">
         <div className="grid gap-3 sm:grid-cols-2">
-          <TextField id="date_cloture" label="Date de clôture" type="date" required value={form.date_cloture} onChange={set('date_cloture')} />
+          <TextField id="date_cloture" label="Date de clôture" type="date" required autoFocus value={form.date_cloture} onChange={set('date_cloture')} />
           <TextField id="date_reception" label="Date de réception" type="date" value={form.date_reception} onChange={set('date_reception')} />
         </div>
         <TextAreaField id="points_positifs" label="Points positifs" rows={2} value={form.points_positifs} onChange={set('points_positifs')} />
         <TextAreaField id="points_amelioration" label="Points d'amélioration" rows={2} value={form.points_amelioration} onChange={set('points_amelioration')} />
         <TextAreaField id="recommandations" label="Recommandations" rows={2} value={form.recommandations} onChange={set('recommandations')} />
         <div className="mt-2 flex justify-end gap-2">
-          <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
+          <Button type="button" variant="outline" onClick={closeIfConfirmed}>Annuler</Button>
           <Button type="submit" disabled={saving}>{saving ? 'Clôture…' : 'Clôturer'}</Button>
         </div>
       </form>
