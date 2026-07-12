@@ -43,6 +43,14 @@ services:
 
   nginx:
     ports: !reset []
+    environment:
+      # VX200 — CSP par environnement : origine MinIO PUBLIQUE reelle (a poser
+      # dans le .env serveur des qu'un domaine/proxy MinIO existe) ; sans elle,
+      # repli sur le defaut dev http://localhost:9000 (comportement identique
+      # a avant VX200 : ni pire, juste une regle CSP inerte tant que MinIO
+      # n'est pas expose publiquement — voir docker-compose.prod.yml minio
+      # ports: !reset []).
+      MINIO_PUBLIC_ORIGIN: ${MINIO_PUBLIC_ORIGIN:-http://localhost:9000}
     mem_limit: 256m
     cpus: 0.5
 
