@@ -2499,7 +2499,7 @@ droite)**
 
 **Sous-groupe VXD-M — Le comptable : le mois compté en clics**
 
-- [ ] VX228 — **Le rapprochement bancaire ligne-à-ligne : le contrat d'interaction complet. (@lane: frontend/compta)
+- [x] VX228 — **Le rapprochement bancaire ligne-à-ligne : le contrat d'interaction complet. (@lane: frontend/compta)
   @coord FE-rapprochement-detail (cette seed EST sa spécification d'interaction — une seule
   tâche, jamais deux).** Défaut prouvé : `comptaApi.rapprochements.{lignesGl,resume,
   ajouterLigneReleve,pointer}` (`comptaApi.js:180-186`) n'ont AUCUN consommateur réel —
@@ -3207,6 +3207,8 @@ droite)**
 ---
 
 ## DONE LOG (agent appends one plain-language line per completed task)
+
+- 2026-07-12 — **VX228 — `RapprochementDetailDialog` : le contrat d'interaction complet du rapprochement bancaire.** `RapprochementsPage.jsx` gagne un dialog 2 volets (relevé | grand-livre pré-filtré montant) ouvert par clic de ligne (`bancaires`), consommant les 4 méthodes API déjà écrites (`lignesGl`/`resume`/`ajouterLigneReleve`/`pointer`) ; bandeau `resume()` en tête (solde relevé/pointé, écart) qui décroît EN DIRECT à chaque pointage, même langage visuel que le bandeau d'équilibre d'`EcrituresPage` ; « Suggestions » déplacée DANS le dialog (retirée des actions de ligne) ; « Clôturer » apparaît dans le dialog une fois l'écart à 0. Test `rapprochement-detail.test.jsx` (flux pointer→resume, écart 500→0). Frontend pur, zéro migration.
 
 - 2026-07-11 — **VX152 — fin des moteurs de table parallèles (dernier volet, landé seul).** GED (`GedNavigator`/`GedSearch`), `ClientDetailPanel` et OCR (`OcrUpload`) rejoignent le moteur de table déjà utilisé par leur voisin direct : GedNavigator/GedSearch → moteur `DataTable` partagé (GedNavigator via l'échappatoire `renderRow`/`renderHeaderRow` ARC49 pour préserver le DOM testé ; GedSearch en colonnes), `ClientDetailPanel` → primitif `Table` partagé (fin du 3e moteur maison `DocTable` ; plus aucune `<table>` HTML), OcrUpload → NOUVEAU primitif partagé `ui/KeyValueTable` alimenté par un point de rendu UNIQUE de `FIELD_LABELS` (helper `ocrFieldRows`). + volet `RolesManagement` (liste des rôles → `DataTable`, grille de permissions inchangée). Tests de source `node --test` par surface ; tests comportementaux existants (GedNavigator/GedSearch/OcrUpload) verts par préservation du DOM (cases/actions/testids conservés). Frontend pur, zéro migration. Landé SEUL par cherry-pick sur `main` (les autres commits VX de la branche — VX141/146/147/148 — restent en attente : VX141 introduit `DEVIS_TRACK_STAGES` qui fait échouer `check_stages.py`, à traiter séparément). (ROUTINE)
 
