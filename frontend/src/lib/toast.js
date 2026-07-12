@@ -48,6 +48,20 @@ export function toastInfo(message, options = {}) {
   return toast.info(message, options)
 }
 
+/**
+ * toastMilestone — VX155 : un cran au-dessus du succès plat pour les JALONS
+ * clients (devis envoyé, facture payée…) — un signal visuellement distinct
+ * d'un « ligne supprimée ». Icône soleil dédiée (surchargeable par l'appelant
+ * — ex. `<TaqinorMark>` depuis un composant JSX) + `description` porte le
+ * réf/client/montant du jalon. Reste un `toast.success` (mêmes garanties
+ * a11y/polite) : ce n'est PAS une gamification de la routine (règle VX40),
+ * seulement un jalon métier qui mérite mieux qu'un message plat.
+ */
+export function toastMilestone(message, options = {}) {
+  const { icon = '☀️', ...rest } = options
+  return toast.success(message, { icon, ...rest })
+}
+
 /** Toast d'avertissement — une situation à surveiller, PAS bloquante (sinon
  * `toastError`). `toast.warning` pour le style/icône dédiés (VX130) — avant,
  * seul `toast.error` existait pour tout signal non neutre (503 erreurs contre

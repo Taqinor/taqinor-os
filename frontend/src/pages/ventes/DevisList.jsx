@@ -30,6 +30,8 @@ import {
 import { formatMAD, formatDateTime } from '../../lib/format'
 // VX156 — le devis envoyé porte la voix Taqinor (moment « devis envoyé »).
 import { voice } from '../../lib/voice'
+// VX155 — jalon « devis envoyé » : un cran au-dessus du toast succès plat.
+import { toastMilestone } from '../../lib/toast'
 import { filenameFromResponse, downloadBlobInGesture } from '../../utils/downloadBlob'
 import { openPdfBlob, openPdfInGesture } from '../../utils/pdfBlob'
 import { proposalParams, pdfBlob } from '../../features/ventes/previewPdf'
@@ -42,7 +44,10 @@ import useDocumentTitle from '../../hooks/useDocumentTitle'
 // même « record focalisé » que la surbrillance de ligne existante).
 import { useFocusedRecordShortcuts } from '../../providers/focusedRecordShortcuts'
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
-import { celebrateDealSigned } from '../../ui/celebrate'
+// VX155 — la carte de victoire (enrichit VX40) remplace le toast plat +
+// celebrateDealSigned() appelés directement d'ici ; le burst reste posé,
+// mais DEPUIS <DealSignedCelebration> lui-même.
+import DealSignedCelebration from '../../ui/DealSignedCelebration'
 import { DataTable } from '../../ui/datatable'
 import RoofViewer from './RoofViewer'
 import { StateBlock } from '../../components/StateBlock'
@@ -1119,6 +1124,9 @@ export default function DevisList() {
   const [acceptDate, setAcceptDate] = useState('')
   const [acceptOption, setAcceptOption] = useState('sans_batterie')
   const [acceptBusy, setAcceptBusy] = useState(false)
+  // VX155 — carte de victoire (montant réel ; pas de kWc ici, la vue liste ne
+  // porte pas les lignes du devis — jamais un chiffre inventé).
+  const [dealCelebration, setDealCelebration] = useState(null)
 
   // QJ14 — Modale « Envoyer par email » (PDF premium + lien tokenisé → client).
   const [emailTarget, setEmailTarget]   = useState(null)
@@ -1138,9 +1146,11 @@ export default function DevisList() {
       await ventesApi.envoyerEmailDevis(emailTarget.id, payload)
       closeEmailModal()
       dispatch(fetchDevis())
-      // VX156 — moment « devis envoyé » : la voix Taqinor en description.
-      toast.success(`Devis ${emailTarget.reference} envoyé par email.`, {
-        description: voice.devisSent,
+      // VX156/VX155 — moment « devis envoyé » : un jalon (toastMilestone), pas
+      // un succès plat — réf/client/montant + la voix Taqinor en description.
+      toastMilestone(`Devis ${emailTarget.reference} envoyé par email.`, {
+        description: [emailTarget.client_nom, formatMAD(emailTarget.total_affiche ?? emailTarget.total_ttc), voice.devisSent]
+          .filter(Boolean).join(' · '),
       })
     } catch (err) {
       toast.error(frenchError(err, 'Envoi email impossible.'))
@@ -1478,11 +1488,14 @@ export default function DevisList() {
       })
       setAcceptTarget(null)
       dispatch(fetchDevis())
-      toast.success(`Devis ${d.reference} marqué « Accepté ».`)
-      // VX40 — le SEUL moment célébré de l'app : devis envoyé→accepté (rare,
-      // lié au revenu). Burst CSS-only autour du toast ci-dessus ; rien sous
-      // reduced-motion (le toast reste le seul retour visuel).
-      celebrateDealSigned()
+      // VX40/VX155 — le SEUL moment célébré de l'app : devis envoyé→accepté
+      // (rare, lié au revenu). La carte de victoire remplace le toast plat
+      // (montant réel ; pas de kWc dans la vue liste — jamais inventé).
+      setDealCelebration({
+        reference: d.reference,
+        montantTtc: parseFloat(d.total_affiche ?? d.total_ttc) || 0,
+        kwc: null,
+      })
     } catch (err) {
       toast.error(frenchError(err, 'Acceptation impossible.'))
     } finally {
@@ -2135,6 +2148,16 @@ export default function DevisList() {
             )}
           </div>
       </ResponsiveDialog>
+
+      {/* VX155 — carte de victoire posée sur l'acceptation inline (montant
+          réel ; pas de kWc dans cette vue liste). */}
+      <DealSignedCelebration
+        open={!!dealCelebration}
+        reference={dealCelebration?.reference}
+        montantTtc={dealCelebration?.montantTtc}
+        kwc={dealCelebration?.kwc}
+        onClose={() => setDealCelebration(null)}
+      />
 
       {/* QX26 — Modale de refus OBLIGATOIRE : motif MotifPerte (taxonomie
           partagée CRM) + note libre optionnelle. Le bouton de confirmation
