@@ -76,6 +76,7 @@ the journey the best in the world for the CLIENT and the COMMERCIAL user.*
 
 - 2026-07-12 — VX117 **(already present)** : `lib/resilientMutation.js` déjà extrait et consommé par `DevisForm.jsx`/`FactureForm.jsx`/`PaieRunWizard.jsx`/`RolesManagement.jsx` (allSettled + rapport nominatif, allOk gate) ; `DevisGenerator.jsx` a depuis migré vers les endpoints ATOMIQUES `createDevisAtomic`/`replaceLignesDevis` (QX21), qui suppriment le pattern « parent + N lignes en Promise.all » visé par cette tâche.
 - 2026-07-12 — VX161 **(already present)** : `api/refreshCoordinator.js` déjà construit et consommé par `axios.js` ET `iaApi.js` (promesse de refresh UNIQUE partagée, reset en `finally`).
+- 2026-07-12 — VX162 **(already present)** : `providers/session-bridge.js` a déjà `BroadcastChannel('taqinor-session')` + `broadcastLogout()`/`subscribeToSessionLogout()`, câblé depuis `authSlice.logoutUser.fulfilled` et consommé par `SessionProvider.jsx`.
 
 #### DONE LOG — Vague 2 (VX terrain/finance/CRM + QX groupe) (2026-07-12)
 
@@ -1498,7 +1499,7 @@ pas la dupliquer ici, la numérotation continue directement à SEED-02.*
   simultanées (mix des deux instances) → exactement UN POST refresh, les 5 rejouées après. (T1 —
   S, sonnet) (@lane: frontend/data)
 
-- [ ] VX162 — **`BroadcastChannel` de session : le logout se propage à tous les onglets.** (@lane: frontend/data)
+- [x] VX162 **(already present)** — **`BroadcastChannel` de session : le logout se propage à tous les onglets.** (@lane: frontend/data)
   `authSlice.js:17-28` ne notifie que l'onglet courant ; grep cross-tab exhaustif = 1 hit
   cosmétique (`GlobalSearch.jsx:144`). Sur un poste partagé (accueil/atelier), l'onglet B continue
   de MUTER des données au nom d'un utilisateur délibérément déconnecté jusqu'à son premier 401
