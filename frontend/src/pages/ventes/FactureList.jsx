@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState, useMemo, useRef } from 'react'
+import { Fragment, useEffect, useState, useMemo } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { Link } from 'react-router-dom'
 import {
@@ -20,17 +20,18 @@ import importApi, { downloadXlsx } from '../../api/importApi'
 import FactureForm from './FactureForm'
 import FactureKanbanBoard from './FactureKanbanBoard'
 import {
-  Button, Badge, StatusPill, Card, EmptyState, Spinner, Switch,
+  Button, Badge, StatusPill, Card, EmptyState, Spinner,
   Skeleton, SkeletonTableRow,
   Tabs, TabsList, TabsTrigger,
   Input, Checkbox,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
-  Form, FormField, FormActions,
+  FormField, FormActions,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
   toast,
 } from '../../ui'
 import { formatMAD, toNumber, normalizeMaPhone, formatDateTime } from '../../lib/format'
+import PaiementDialog from './PaiementDialog'
 import { useSavedViews } from '../../hooks/useSavedViews'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
 import useDocumentTitle from '../../hooks/useDocumentTitle'
@@ -130,57 +131,13 @@ const isPartiallyPaid = f =>
   toNumber(f.montant_paye) > 0 && toNumber(f.montant_du) > 0 &&
   f.statut !== 'annulee'
 
-const MODES_PAIEMENT = [
-  { value: 'especes',     label: 'Espèces' },
-  { value: 'virement',    label: 'Virement' },
-  { value: 'cheque',      label: 'Chèque' },
-  { value: 'carte',       label: 'Carte' },
-  { value: 'prelevement', label: 'Prélèvement' },
-  { value: 'autre',       label: 'Autre' },
-]
+// VX230 — MODES_PAIEMENT + défauts intelligents VX92/VX93 (localStorage) ont
+// suivi la modale de paiement dans le composant partagé PaiementDialog.jsx.
 
 const today = new Date().toISOString().slice(0, 10)
 const isOverdue = f =>
   f.is_overdue ||
   (f.statut === 'emise' && f.date_echeance && f.date_echeance < today)
-
-// VX92 — « Créer un autre » : persisté par utilisateur/poste (localStorage),
-// défaut OFF (comportement historique inchangé). Un relevé bancaire = 5
-// paiements à saisir d'affilée ; sans ce toggle chaque paiement coûte un
-// cycle fermer/rouvrir (~10-30 s).
-const PAY_CREER_UN_AUTRE_KEY = 'taqinor.factureList.paiement.creerUnAutre'
-function lireCreerUnAutrePaiement() {
-  try {
-    return window.localStorage.getItem(PAY_CREER_UN_AUTRE_KEY) === '1'
-  } catch {
-    return false
-  }
-}
-function ecrireCreerUnAutrePaiement(v) {
-  try {
-    window.localStorage.setItem(PAY_CREER_UN_AUTRE_KEY, v ? '1' : '0')
-  } catch {
-    // localStorage indisponible (navigation privée, quota) : no-op silencieux.
-  }
-}
-
-// VX93 — défaut intelligent : dernier mode de paiement utilisé (localStorage).
-// Repli sur 'virement' (cas le plus courant) si absent. Toujours modifiable.
-const PAY_MODE_KEY = 'taqinor.factureList.paiement.dernierMode'
-function lireDernierMode() {
-  try {
-    return window.localStorage.getItem(PAY_MODE_KEY) || 'virement'
-  } catch {
-    return 'virement'
-  }
-}
-function ecrireDernierMode(v) {
-  try {
-    if (v) window.localStorage.setItem(PAY_MODE_KEY, v)
-  } catch {
-    // no-op silencieux.
-  }
-}
 
 // Prochaine action contextuelle (next-best-action) : clé de l'action mise en
 // avant selon statut/montant dû/retard. Une brouillon → Émettre ; une émise en
@@ -624,29 +581,12 @@ export default function FactureList() {
   const clearSelection = () => setSelectedIds([])
   const [bulkBusy, setBulkBusy] = useState(false)
 
-  // ── Enregistrement de paiement ──
+  // ── Enregistrement de paiement (VX230 — modale extraite en PaiementDialog) ──
+  // FactureList ne garde que la facture CIBLÉE ; tout l'état de saisie, l'arrondi
+  // ZFAC11 et le chatter vivent désormais dans PaiementDialog (partagé avec
+  // RelancesPage). `onSaved` rafraîchit la liste après chaque encaissement.
   const [payTarget, setPayTarget] = useState(null) // facture ciblée
-  const [paySaving, setPaySaving] = useState(false)
-  const [payMontant, setPayMontant] = useState('')
-  const [payDate, setPayDate] = useState(today)
-  const [payMode, setPayMode] = useState(() => lireDernierMode())  // VX93 — dernier mode utilisé
-  const [payReference, setPayReference] = useState('')
-  // ZFAC11 — proposition d'arrondi de caisse (règlement espèces).
-  const [arrondiCaisse, setArrondiCaisse] = useState(null)
-  // VX92 — « Créer un autre » : persisté, défaut OFF.
-  const [payCreerUnAutre, setPayCreerUnAutre] = useState(() => lireCreerUnAutrePaiement())
-  const payMontantRef = useRef(null)
-
-  // Chatter facture (avoirs + paiements) chargé à l'ouverture de la modale.
-  const [factureActivites, setFactureActivites] = useState([])
-  const loadActivites = async (id) => {
-    try {
-      const res = await api.get(`/ventes/factures/${id}/historique/`)
-      setFactureActivites(res.data)
-    } catch {
-      setFactureActivites([])
-    }
-  }
+  const openPayModal = (f) => setPayTarget(f)
 
   // VX97 — Panneau « Historique » repliable dans le détail facture : journal des
   // changements (FactureActivity) — qui/quand/ancien→nouveau — sur le document
@@ -664,70 +604,6 @@ export default function FactureList() {
         .then(res => setHistoCache(c => ({ ...c, [id]: res.data || [] })))
         .catch(() => setHistoCache(c => ({ ...c, [id]: [] })))
         .finally(() => setHistoLoadingId(l => (l === id ? null : l)))
-    }
-  }
-
-  const openPayModal = (f) => {
-    setPayTarget(f)
-    setPayMontant(f.montant_du ?? '')
-    setPayDate(today)
-    setPayMode(lireDernierMode())  // VX93 — pré-remplit avec le dernier mode utilisé
-    setPayReference('')
-    setArrondiCaisse(null)
-    setFactureActivites([])
-    loadActivites(f.id)
-  }
-
-  // ZFAC11 — quand le mode passe à « espèces », interroge le reste à payer
-  // arrondi au pas de caisse société. Aucun arrondi configuré → applicable
-  // false, aucune proposition affichée (comportement inchangé). L'état n'est
-  // remis à jour que dans un callback asynchrone (la remise à zéro passe par
-  // la fonction de nettoyage) pour ne pas déclencher de re-rendu en cascade.
-  useEffect(() => {
-    if (!payTarget || payMode !== 'especes') return undefined
-    let annule = false
-    ventesApi.arrondiCaisseFacture(payTarget.id, 'especes')
-      .then(({ data }) => { if (!annule) setArrondiCaisse(data) })
-      .catch(() => { if (!annule) setArrondiCaisse(null) })
-    return () => { annule = true; setArrondiCaisse(null) }
-  }, [payTarget, payMode])
-
-  const appliquerArrondiCaisse = () => {
-    if (arrondiCaisse?.montant_arrondi != null) {
-      setPayMontant(arrondiCaisse.montant_arrondi)
-    }
-  }
-
-  const handleEnregistrerPaiement = async (e) => {
-    e.preventDefault()
-    if (!payTarget) return
-    setPaySaving(true)
-    try {
-      await ventesApi.enregistrerPaiement(payTarget.id, {
-        montant: parseFloat(payMontant),
-        date_paiement: payDate,
-        mode: payMode,
-        reference: payReference || undefined,
-      })
-      dispatch(fetchFactures())
-      ecrireDernierMode(payMode)  // VX93 — mémorise le mode pour le prochain paiement
-      toast.success('Paiement enregistré.')
-      // VX92 — « Créer un autre » : on vide les champs (sauf la facture
-      // ciblée, inchangée) et on refocalise le montant au lieu de fermer.
-      if (payCreerUnAutre) {
-        setPayMontant('')
-        setPayDate(today)
-        setPayMode(lireDernierMode())  // VX93 — ré-applique le dernier mode saisi
-        setPayReference('')
-        loadActivites(payTarget.id)
-        payMontantRef.current?.focus()
-      } else {
-        setPayTarget(null)
-      }
-    } catch (err) {
-      alert(err?.response?.data?.detail ?? 'Enregistrement du paiement impossible.')
-    } finally {
-      setPaySaving(false)
     }
   }
 
@@ -776,6 +652,14 @@ export default function FactureList() {
     }
     return list
   }, [factures, activeTab, search, typeFilter])
+
+  // VX230 — total « reste à encaisser » de la SÉLECTION filtrée courante (onglet
+  // + type + recherche), dérivé de `filtered` déjà en mémoire (zéro appel
+  // réseau). Répond au manque : le cockpit montre « Encaissé ce mois » mais
+  // jamais le dû de l'onglet « Partiellement payées » sous les yeux.
+  const resteAEncaisserOnglet = useMemo(
+    () => filtered.reduce((s, f) => s + (toNumber(f.montant_du) || 0), 0),
+    [filtered])
 
   const counts = useMemo(() => ({
     toutes:    factures.length,
@@ -1329,108 +1213,12 @@ export default function FactureList() {
         <FactureForm facture={editFacture} onClose={closeForm} onSaved={onSaved} />
       )}
 
-      {/* ── Modale d'enregistrement de paiement ── */}
-      <Dialog open={!!payTarget} onOpenChange={(o) => { if (!o) setPayTarget(null) }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Enregistrer un paiement — {payTarget?.reference}</DialogTitle>
-            <DialogDescription>
-              Payé {formatMAD(payTarget?.montant_paye)} / Dû {formatMAD(payTarget?.montant_du)}
-            </DialogDescription>
-          </DialogHeader>
-          <Form onSubmit={handleEnregistrerPaiement} className="gap-4">
-            <FormField label="Montant (MAD)" required htmlFor="pay-montant" fullWidth>
-              <Input id="pay-montant" ref={payMontantRef} type="number" min="0" step="any" required
-                     autoFocus
-                     value={payMontant} onChange={e => setPayMontant(e.target.value)} />
-            </FormField>
-            <FormField label="Date de paiement" required htmlFor="pay-date">
-              <Input id="pay-date" type="date" required
-                     value={payDate} onChange={e => setPayDate(e.target.value)} />
-            </FormField>
-            <FormField label="Mode" htmlFor="pay-mode">
-              <Select value={payMode} onValueChange={setPayMode}>
-                <SelectTrigger id="pay-mode"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {MODES_PAIEMENT.map(m => (
-                    <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </FormField>
-            {/* ZFAC11 — proposition d'arrondi de caisse (espèces). */}
-            {payMode === 'especes' && arrondiCaisse?.applicable && (
-              <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm">
-                <p className="text-amber-800">
-                  Arrondi espèces : {formatMAD(arrondiCaisse.montant_arrondi)}
-                  {' '}(écart de {formatMAD(arrondiCaisse.ecart)} tracé « Arrondi espèces »).
-                </p>
-                <Button type="button" variant="ghost" size="sm" className="mt-1"
-                        onClick={appliquerArrondiCaisse}>
-                  Appliquer le montant arrondi
-                </Button>
-              </div>
-            )}
-            <FormField label="Référence (optionnel)" htmlFor="pay-ref" fullWidth>
-              <Input id="pay-ref" type="text"
-                     value={payReference} onChange={e => setPayReference(e.target.value)} />
-            </FormField>
-            <FormActions sticky={false}>
-              {/* VX92 — « Créer un autre » : saisir plusieurs paiements d'affilée
-                  (ex. relevé bancaire) sans rouvrir la modale à chaque fois. */}
-              <label className="mr-auto flex items-center gap-2 text-sm text-muted-foreground">
-                <Switch
-                  checked={payCreerUnAutre}
-                  onCheckedChange={(v) => { setPayCreerUnAutre(v); ecrireCreerUnAutrePaiement(v) }}
-                  aria-label="Créer un autre"
-                />
-                Créer un autre
-              </label>
-              <Button type="button" variant="ghost" onClick={() => setPayTarget(null)}>Annuler</Button>
-              <Button type="submit" loading={paySaving}>Enregistrer</Button>
-            </FormActions>
-          </Form>
-          {/* Historique des paiements déjà encaissés sur cette facture. */}
-          <div className="mt-1 border-t pt-3">
-            <p className="mb-2 text-sm font-medium">Paiements encaissés</p>
-            {(payTarget?.paiements?.length ?? 0) === 0 ? (
-              <p className="text-sm text-muted-foreground">Aucun paiement enregistré.</p>
-            ) : (
-              <ul className="space-y-1 text-sm">
-                {payTarget.paiements.map(p => (
-                  <li key={p.id} className="flex justify-between gap-3 tabular-nums">
-                    <span className="text-muted-foreground">
-                      {p.date_paiement ? new Date(p.date_paiement).toLocaleDateString('fr-FR') : '—'}
-                      {p.mode_display ? ` · ${p.mode_display}` : ''}
-                      {p.reference ? ` · ${p.reference}` : ''}
-                    </span>
-                    <strong>{formatMAD(p.montant)}</strong>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-          {/* Chatter facture : avoirs créés + paiements encaissés (qui/quand). */}
-          <div className="mt-1 border-t pt-3">
-            <p className="mb-2 text-sm font-medium">Historique (avoirs &amp; paiements)</p>
-            {factureActivites.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Aucune activité consignée.</p>
-            ) : (
-              <ul className="space-y-1 text-sm">
-                {factureActivites.map(a => (
-                  <li key={a.id} className="flex justify-between gap-3">
-                    <span className="text-muted-foreground">
-                      {a.created_at ? formatDateTime(a.created_at) : '—'}
-                      {a.user_nom ? ` · ${a.user_nom}` : ''}
-                    </span>
-                    <span className="text-right">{a.body || a.field_label}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* ── Modale d'enregistrement de paiement (VX230 — composant partagé) ── */}
+      <PaiementDialog
+        facture={payTarget}
+        onOpenChange={(o) => { if (!o) setPayTarget(null) }}
+        onSaved={() => dispatch(fetchFactures())}
+      />
 
       {/* ── Modale d'avoir (total ou partiel par ligne) ── */}
       <Dialog open={!!avoirTarget} onOpenChange={(o) => { if (!o) setAvoirTarget(null) }}>
@@ -1581,6 +1369,18 @@ export default function FactureList() {
             ))}
           </TabsList>
         </Tabs>
+        {/* VX230 — « Reste à encaisser » de l'onglet/filtre courant (dérivé de
+            `filtered`). Visible dès qu'un reste dû existe dans la sélection —
+            surtout utile sur « Partiellement payées ». */}
+        {resteAEncaisserOnglet > 0 && (
+          <span
+            className="rounded-md border border-border bg-muted/40 px-2 py-1 text-xs text-muted-foreground tabular-nums"
+            title="Somme des montants encore dus sur les factures affichées (onglet + filtres courants)"
+          >
+            Reste à encaisser (onglet) :{' '}
+            <strong className="text-foreground">{formatMAD(resteAEncaisserOnglet)}</strong>
+          </span>
+        )}
         <div className="lp-saved-views">
           <Button type="button" variant="link" size="sm" onClick={saveCurrentFactView}>
             ⭐ Enregistrer cette vue

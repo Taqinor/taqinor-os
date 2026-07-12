@@ -4,6 +4,7 @@ import {
   PartyPopper, FileText, MessageCircle, Mail, History, ReceiptText, MoreHorizontal,
 } from 'lucide-react'
 import ventesApi from '../../api/ventesApi'
+import PaiementDialog from './PaiementDialog'
 import { openPdfBlob } from '../../utils/pdfBlob'
 import {
   Button, Badge, Card, EmptyState, Spinner, Checkbox, Input,
@@ -37,6 +38,9 @@ export default function RelancesPage() {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [target, setTarget] = useState(null)  // facture being relancée
+  // VX230 — encaisser LÀ où on chasse l'impayé : la facture ciblée par la modale
+  // de paiement PARTAGÉE (PaiementDialog), sans quitter la vue de recouvrement.
+  const [payTarget, setPayTarget] = useState(null)
   const [note, setNote] = useState('')
   const [prochaine, setProchaine] = useState('')  // date de prochaine relance
   const [busy, setBusy] = useState(false)
@@ -345,6 +349,15 @@ export default function RelancesPage() {
                           Exclure) vit dans un seul menu « Plus ». */}
                       <div className="flex flex-wrap items-center justify-end gap-2">
                         <Button size="sm" onClick={() => openRelancer(r)}>Relancer</Button>
+                        {/* VX230 — « Encaisser » : ouvre la MÊME modale de
+                            paiement que FactureList, sur place. Le chèque
+                            décroché après la relance s'enregistre sans quitter
+                            la vue de recouvrement. */}
+                        <Button size="sm" variant="outline"
+                                onClick={() => setPayTarget(r)}
+                                title="Enregistrer un paiement sur cette facture">
+                          <ReceiptText /> Encaisser
+                        </Button>
                         <Button size="sm" variant="outline"
                                 loading={!!waBusy[r.id]}
                                 disabled={!!waBusy[r.id] || !normalizeMaPhone(r.client_telephone)}
@@ -499,6 +512,15 @@ export default function RelancesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* VX230 — modale de paiement PARTAGÉE (extraite de FactureList). Sur
+          « onSaved », on recharge la liste des impayés : une facture soldée en
+          disparaît. */}
+      <PaiementDialog
+        facture={payTarget}
+        onOpenChange={(o) => { if (!o) setPayTarget(null) }}
+        onSaved={load}
+      />
     </div>
   )
 }
