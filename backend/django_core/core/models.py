@@ -2034,3 +2034,24 @@ class TenantUsageSnapshot(TimestampedModel):
 
     def __str__(self):
         return f'Usage {self.company_id} le {self.jour}'
+
+
+class IdempotencyKey(TimestampedModel):
+    """NTPLT28 — clé d'idempotence (repli DB du décorateur ``idempotent_task``).
+
+    Utilisée UNIQUEMENT quand Redis est indisponible : la contrainte unique sur
+    ``cle`` garantit qu'une exécution logique (identifiée par ``cle``) n'a lieu
+    qu'une fois. Aucune FK ``company`` : la clé encode elle-même son périmètre
+    (souvent l'``id`` société + le nom de la tâche + la fenêtre). ``created_at``
+    (hérité) sert de base au calcul d'expiration (``ttl``).
+    """
+
+    cle = models.CharField('Clé', max_length=255, unique=True)
+
+    class Meta:
+        verbose_name = "Clé d'idempotence"
+        verbose_name_plural = "Clés d'idempotence"
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return self.cle
