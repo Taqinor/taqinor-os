@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll } from 'vitest'
+import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
@@ -53,6 +53,12 @@ vi.mock('../../api/installationsApi', () => ({
 }))
 
 import installationsApi from '../../api/installationsApi'
+
+// getMaTournee est désormais partagé par les deux blocs (VX42 + VX226) : sans
+// reset, ses compteurs d'appels s'accumulent d'un test à l'autre et cassent les
+// assertions toHaveBeenCalledTimes. clearAllMocks vide l'historique d'appels
+// mais PRÉSERVE les implémentations (les stubs `rejected` des panneaux).
+beforeEach(() => vi.clearAllMocks())
 
 /* VX42 — Terrain un-tap : boutons directs Appeler/Itinéraire sur chaque
    carte (masqués si la donnée manque), FAB « Photo rapide » (masqué sans
@@ -151,9 +157,10 @@ describe('MaJourneePage (VX42)', () => {
    fraîcheur (bouton Actualiser + refetch throttlé sur visibilitychange). */
 describe('MaJourneePage (VX226)', () => {
   it('une intervention urgente porte une puce « Urgente » distincte du rang', async () => {
-    installationsApi.getInterventions.mockResolvedValue({
+    // VX88 — Ma journée consomme getMaTournee (stops), pas getInterventions.
+    installationsApi.getMaTournee.mockResolvedValue({
       data: {
-        results: [{
+        stops: [{
           id: 4,
           date_prevue: todayISO(),
           client_nom: 'Client Urgent',
@@ -170,9 +177,9 @@ describe('MaJourneePage (VX226)', () => {
   })
 
   it('une intervention priorité normale ne porte aucune puce (silence visuel)', async () => {
-    installationsApi.getInterventions.mockResolvedValue({
+    installationsApi.getMaTournee.mockResolvedValue({
       data: {
-        results: [{
+        stops: [{
           id: 5,
           date_prevue: todayISO(),
           client_nom: 'Client Normal',
@@ -191,40 +198,40 @@ describe('MaJourneePage (VX226)', () => {
 
   it('le bouton Actualiser relance le chargement au clic', async () => {
     const user = userEvent.setup()
-    installationsApi.getInterventions.mockResolvedValue({ data: { results: [] } })
+    installationsApi.getMaTournee.mockResolvedValue({ data: { stops: [] } })
     render(<MemoryRouter><MaJourneePage /></MemoryRouter>)
 
-    await waitFor(() => expect(installationsApi.getInterventions).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(installationsApi.getMaTournee).toHaveBeenCalledTimes(1))
     await user.click(screen.getByRole('button', { name: 'Actualiser' }))
-    await waitFor(() => expect(installationsApi.getInterventions).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(installationsApi.getMaTournee).toHaveBeenCalledTimes(2))
   })
 
   it('un retour sur l’onglet après ≥ 2 min déclenche un refetch silencieux (visibilitychange)', async () => {
-    installationsApi.getInterventions.mockResolvedValue({ data: { results: [] } })
+    installationsApi.getMaTournee.mockResolvedValue({ data: { stops: [] } })
     render(<MemoryRouter><MaJourneePage /></MemoryRouter>)
-    await waitFor(() => expect(installationsApi.getInterventions).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(installationsApi.getMaTournee).toHaveBeenCalledTimes(1))
 
     const realNow = Date.now
     try {
       Date.now = () => realNow() + 3 * 60 * 1000 // + 3 min (>= throttle 2 min)
       Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true })
       document.dispatchEvent(new Event('visibilitychange'))
-      await waitFor(() => expect(installationsApi.getInterventions).toHaveBeenCalledTimes(2))
+      await waitFor(() => expect(installationsApi.getMaTournee).toHaveBeenCalledTimes(2))
     } finally {
       Date.now = realNow
     }
   })
 
   it('un retour sur l’onglet avant 2 min ne déclenche PAS de refetch (throttle)', async () => {
-    installationsApi.getInterventions.mockResolvedValue({ data: { results: [] } })
+    installationsApi.getMaTournee.mockResolvedValue({ data: { stops: [] } })
     render(<MemoryRouter><MaJourneePage /></MemoryRouter>)
-    await waitFor(() => expect(installationsApi.getInterventions).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(installationsApi.getMaTournee).toHaveBeenCalledTimes(1))
 
     Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true })
     document.dispatchEvent(new Event('visibilitychange'))
     // Laisse le temps à un éventuel (mauvais) refetch de partir, puis vérifie
     // qu'il n'y en a PAS eu (throttle < 2 min depuis le fetch initial).
     await new Promise((r) => setTimeout(r, 20))
-    expect(installationsApi.getInterventions).toHaveBeenCalledTimes(1)
+    expect(installationsApi.getMaTournee).toHaveBeenCalledTimes(1)
   })
 })

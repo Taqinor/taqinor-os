@@ -9,7 +9,13 @@ import ClientForm from './ClientForm'
    <768 px). On vérifie que le formulaire s'ouvre dans un [role="dialog"] avec le
    bon titre et le bon bouton de soumission, aux deux points de rupture. */
 
-vi.mock('../../ui/confirm', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
+// VX170 — ClientForm compose désormais useFormSafety → useNavigationGuard →
+// useConfirmDialog() ; le mock doit exposer ce hook (sinon la garde plante au
+// montage). Repli neutre : aucune confirmation réelle n'est déclenchée ici.
+vi.mock('../../ui/confirm', () => ({
+  toast: { success: vi.fn(), error: vi.fn() },
+  useConfirmDialog: () => ({ confirm: vi.fn(), confirmDelete: vi.fn() }),
+}))
 vi.mock('../../components/AttachmentsPanel', () => ({ default: () => null }))
 
 function mockMatchMedia(mobile) {
