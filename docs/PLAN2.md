@@ -75,6 +75,7 @@ the journey the best in the world for the CLIENT and the COMMERCIAL user.*
 #### DONE LOG — Vague 3 (frontend/brand lane) (2026-07-12)
 
 - VX125 — already present: `docs/design-density-budget.md` (plafond 3 signaux ambiants, jamais 2 redisant le même chiffre, critère de retrait `<BetaBadge>`) already existed and is already referenced from `docs/CODEMAP.md §4` and commented in `design/tokens.css:13-17` — checkbox had simply never been ticked.
+- VX151 — already present: `peConstants.js` already carries `group`/`SETTINGS_GROUPS`/`saveModelForTab`/`SAVE_MODEL_HINTS`, and `ParametresEntreprise.jsx` already renders `<SettingsSidebar groups={tabGroups}>` (2-level nav) + the per-tab save-model hint before edition — checkbox had never been ticked.
 - VX156 — `lib/voice.js` + `<WelcomeMoment>` already existed (welcome moment wired in `main.jsx`) but the other 5 voice moments were never posed on a real screen. Wired `voice.devisSent` (DevisList email-send toast description), `voice.emptyQueue` (MesActivitesPage empty state, replacing the ad-hoc string), `voice.chantierDone` (InstallationDetail mise-en-service success toast, previously silent), `voice.networkError` (canonical `lib/apiError.js` Network-Error branch, updated its test). `voice.dealSigned` left for VX155 (SigneDialog/DealSignedCelebration territory, `@with VX40`).
 
 #### DONE LOG — Vague 2 (VX terrain/finance/CRM + QX groupe) (2026-07-12)
@@ -1325,7 +1326,7 @@ subset) pour les identifiants (`--font-mono`) — à soumettre au fondateur avan
   marque ; le rAF de fond se met en pause hors onglet actif (test mock `visibilitychange`).
   (T3 — S, sonnet) (@lane: frontend/brand — delta sur VX34)
 
-- [ ] VX151 — **Paramètres : 24 onglets deviennent une surface de réglages navigable.** `TABS` (@lane: frontend/brand)
+- [x] VX151 (already present) — **Paramètres : 24 onglets deviennent une surface de réglages navigable.** `TABS` (@lane: frontend/brand)
   (`peConstants.js` L27-50) + 3 onglets locaux = 24 onglets plats dans UN `<TabsList
   overflow-x-auto>` (L801) — ~9-10 visibles à 1280px, scroll horizontal à l'aveugle sans
   fade/chevron ; et le bouton « Enregistrer » n'existe que sur 4/24 onglets, chaque section ayant
