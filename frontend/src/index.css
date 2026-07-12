@@ -188,6 +188,20 @@ button:active, [role="button"]:active, a.btn:active,
   overscroll-behavior-x: contain;
 }
 
+/* VX194(b) — WCAG 2.5.8 (AA, 2.2) : cible ≥ 24×24 px INDÉPENDAMMENT du
+   pointeur (le plancher 44px ci-dessous ne s'applique qu'en `pointer:
+   coarse` — un bouton-icône minuscule sur trackpad/souris fine restait sous
+   la barre). Cas prouvé sans AUCUN CSS dédié jusqu'ici :
+   `.chat-mention-item` (MentionAutocomplete/SlashCommandPicker — la rangée
+   contient déjà un Avatar 24px, ce floor est une garantie explicite plutôt
+   qu'un changement visuel). `ChatterWidget.jsx` (Trash2 size=12) est
+   converti vers `ui/IconButton` (déjà ≥24px via `--control-h`) plutôt que
+   raccommodé en CSS — voir ChatterWidget.jsx. Floor CIBLÉ (pas un `button`
+   global) pour ne rien faire grossir ailleurs sans revue visuelle possible. */
+.chat-mention-item {
+  min-height: 24px;
+}
+
 @media (pointer: coarse) {
   /* Cibles tactiles confortables : ≥ 44 px de haut sur tout ce qui agit. */
   button, [role="button"], .btn, .btn-sm,

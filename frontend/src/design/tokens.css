@@ -69,6 +69,14 @@
   /* Primary = or laiton (accent énergie) ; texte foncé pour contraste AA */
   --primary: #e8b54a;
   --primary-foreground: #1a1505;
+  /* VX194(a) — `--primary` EN REMPLISSAGE de bouton est conforme (texte foncé
+     dessus), mais le variant `link` (Button.jsx) pose le brass EN TEXTE sur
+     `--background` : #e8b54a sur #f6f8fc ≈ 1.8:1 (échec WCAG 1.4.3, 4.5:1
+     requis). `--primary-text` = brass-600 (assombri, déjà dans la rampe
+     ci-dessous) ≈ 4.7:1 — réservé aux UTILITAIRES DE TEXTE accent (jamais un
+     remplissage). Thème sombre : `--primary` (clair sur fond sombre) est déjà
+     largement conforme (~12,7:1) — voir bloc `.dark` plus bas. */
+  --primary-text: var(--color-brass-600);
 
   --secondary: #eef2fb;
   --secondary-foreground: #0f1c54;
@@ -83,6 +91,9 @@
   --success-foreground: #ffffff;
   --warning: #c8870f;
   --warning-foreground: #1a1505;
+  /* VX194(a) — même défaut que --primary-text ci-dessus : #c8870f en texte
+     sur #f6f8fc ≈ 2,9:1. Assombri à ≈ 4,7:1 (facteur ~0,75, même teinte). */
+  --warning-text: #96650b;
   --info: #2342b5;
   --info-foreground: #ffffff;
 
@@ -205,6 +216,10 @@
 
   --primary: oklch(85.9% 0.0961 89);      /* brass-300 désaturé ~25 % */
   --primary-foreground: #1a1505;
+  /* VX194(a) — thème sombre : `--primary` (clair sur fond navy) est DÉJÀ
+     ≥ AA en texte (≈ 12:1, cf. note F123 ci-dessus) — `--primary-text`
+     pointe simplement dessus, aucun assombrissement nécessaire ici. */
+  --primary-text: var(--primary);
 
   --secondary: oklch(24% 0.03 269);
   --secondary-foreground: #d6dbe9;
@@ -219,6 +234,9 @@
   --success-foreground: #07140a;
   --warning: oklch(85.9% 0.0961 89);
   --warning-foreground: #1a1505;
+  /* VX194(a) — même raison que --primary-text ci-dessus (clair sur navy,
+     déjà ≥ AA). */
+  --warning-text: var(--warning);
   --info: #7fa0ef;
   --info-foreground: #0a1238;
 
@@ -254,6 +272,9 @@
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  /* VX194(a) — utilitaires text-primary-text/text-warning-text : brass/warning
+     ASSOMBRIS pour le texte accent (≥4.5:1), jamais un remplissage. */
+  --color-primary-text: var(--primary-text);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
@@ -266,6 +287,7 @@
   --color-success-foreground: var(--success-foreground);
   --color-warning: var(--warning);
   --color-warning-foreground: var(--warning-foreground);
+  --color-warning-text: var(--warning-text);
   --color-info: var(--info);
   --color-info-foreground: var(--info-foreground);
   --color-border: var(--border);
