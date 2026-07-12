@@ -93,6 +93,13 @@ pyHanko==0.28.0
 # add its middleware in settings if that richer surface is wanted later).
 django-prometheus==2.3.1
 
+# YAPIC5 — schéma OpenAPI 3 auto-généré + docs interactives Swagger/ReDoc
+# (NOUVELLE DÉPENDANCE, libre/MIT). Remplace le AutoSchema DRF nu : ~97
+# viewsets étaient documentés nulle part de façon machine-lisible ; FG105
+# (apps/publicapi/docs.py) reste une page FR statique pour l'API PUBLIQUE
+# uniquement et n'est pas remplacée.
+drf-spectacular==0.28.0
+
 # NTPLT46 — Sentry (supervision d'erreurs), dépendance OPTIONNELLE gated-founder.
 # core/monitoring.py importe sentry-sdk PARESSEUSEMENT et UNIQUEMENT si SENTRY_DSN
 # est configuré : sans DSN, ce paquet n'est jamais chargé (aucun coût, aucun appel
