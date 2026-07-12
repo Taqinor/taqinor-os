@@ -162,6 +162,13 @@ jobs:
       # FK, TenantModel base, or transitively via a FK to a scoped model).
       - name: Check multi-tenant company-FK completeness (YDATA4)
         run: python scripts/check_company_fk.py
+      # YDATA6/7 — money-semantic fields are DecimalField (never FloatField,
+      # GPS/rate names excepted) with explicit max_digits/decimal_places=2
+      # (4 tolerated for taux_*/*_pct/pourcentage rate fields).
+      - name: Check money fields are DecimalField (YDATA6)
+        run: python scripts/check_money_fields.py
+      - name: Check money DecimalField max_digits/decimal_places (YDATA7)
+        run: python scripts/check_money_fields.py --decimal-places
 
   # WOW6 — the fast backend suite is sharded 4× across free public-repo runners
   # (matrix legs run concurrently, each on its own 4-vCPU runner + Postgres). The
