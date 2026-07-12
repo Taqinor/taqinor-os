@@ -80,7 +80,7 @@ test('E7: move a lead between stages, including into Signé', async ({ page }) =
   const name = await createLead(page, { nom: uniq('Stage'), facture: 950 })
   await openLead(page, name)
   await generateAutoDevis(page)
-  await page.locator('.ldp-panel .modal-close').click()
+  await page.locator('.ldp-header .modal-close').click()
   await closeLeadModal(page)
 
   // Stage moves happen inline in the list (the canonical control besides kanban).

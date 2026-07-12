@@ -57,7 +57,9 @@ test('VX55 : fetchLeads/fetchClients transmettent le signal du thunk à chaque p
   const fetchLeadsBody = CRM_SLICE_SRC.slice(
     CRM_SLICE_SRC.indexOf("export const fetchLeads"),
     CRM_SLICE_SRC.indexOf("export const createLead"))
-  assert.match(fetchLeadsBody, /\{ rejectWithValue, signal \}/)
+  // VX163 — fetchLeads est enrobé par createCancellableThunk : signal destructuré
+  // du 2e arg (params, { signal }) plutôt que { rejectWithValue, signal }.
+  assert.match(fetchLeadsBody, /createCancellableThunk\('crm\/fetchLeads', \(params, \{ signal \}\)/)
   assert.match(fetchLeadsBody, /crmApi\.getLeads\(\{ \.\.\.\(params \?\? \{\}\), page \}, \{ signal \}\)/)
 })
 
@@ -65,7 +67,8 @@ test('VX55 : fetchDevis transmet le signal du thunk à chaque page', () => {
   const fetchDevisBody = VENTES_SLICE_SRC.slice(
     VENTES_SLICE_SRC.indexOf("export const fetchDevis"),
     VENTES_SLICE_SRC.indexOf("export const createDevis"))
-  assert.match(fetchDevisBody, /\{ rejectWithValue, signal \}/)
+  // VX163 — fetchDevis enrobé par createCancellableThunk : (_, { signal }).
+  assert.match(fetchDevisBody, /createCancellableThunk\('ventes\/fetchDevis', \(_, \{ signal \}\)/)
   assert.match(fetchDevisBody, /ventesApi\.getDevis\(\{ page \}, \{ signal \}\)/)
 })
 
