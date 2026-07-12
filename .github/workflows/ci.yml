@@ -169,6 +169,11 @@ jobs:
         run: python scripts/check_money_fields.py
       - name: Check money DecimalField max_digits/decimal_places (YDATA7)
         run: python scripts/check_money_fields.py --decimal-places
+      # YDATA8 — advisory: round() on a money-looking value in a pricing/tax
+      # module should use core.money.quantize_mad() instead (see
+      # docs/money-convention.md); baseline-allowlisted, fails only on NEW.
+      - name: Check money rounding convention (YDATA8, advisory)
+        run: python scripts/check_money_rounding.py
 
   # WOW6 — the fast backend suite is sharded 4× across free public-repo runners
   # (matrix legs run concurrently, each on its own 4-vCPU runner + Postgres). The
