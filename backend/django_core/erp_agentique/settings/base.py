@@ -671,6 +671,13 @@ INBOUND_EMAIL_HOST = os.environ.get('INBOUND_EMAIL_HOST', '')
 # endpoint returns 404 and sends no email. Flip to '1' to re-enable (see CLAUDE.md).
 CONTACT_FORM_ENABLED = os.environ.get('CONTACT_FORM_ENABLED', '0') == '1'
 
+# VX209 — heures calmes des notifications (mise en sourdine des canaux hors-app
+# email/WhatsApp/push hors heures ouvrées), OPT-IN, OFF par défaut : sans ceci
+# activé, aucune notification n'est jamais mise en sourdine (comportement
+# historique). Un réglage par société le remplacera à terme.
+NOTIFICATIONS_QUIET_HOURS_ENABLED = (
+    os.environ.get('NOTIFICATIONS_QUIET_HOURS_ENABLED', '0') == '1')
+
 # XRH33 — public careers/recruitment page, PARKED (OFF) by default (same
 # pattern as CONTACT_FORM_ENABLED). When off, both public rh careers
 # endpoints (list + apply) return 404. Founder decision to expose (or not)

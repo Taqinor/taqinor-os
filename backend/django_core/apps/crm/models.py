@@ -1763,7 +1763,7 @@ class BookingLink(models.Model):
 # state-only de compta (migration ``crm.0059_odx13_partenaires_split`` +
 # ``compta.0109_odx13_partenaires_split``), aucune donnée déplacée. Les
 # anciennes routes ``/api/django/compta/…`` restent servies à l'identique
-# (les ViewSets/serializers restent physiquement dans ``apps.compta`` — voir
+# (les ViewSets/serializers restent physiquement dans l'app compta — voir
 # ``apps/crm/views.py``/``apps/crm/serializers.py`` pour le ré-export
 # transitoire des nouvelles routes ``/api/django/crm/…``).
 

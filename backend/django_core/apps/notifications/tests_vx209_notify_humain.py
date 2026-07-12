@@ -15,7 +15,7 @@ import datetime
 from unittest import mock
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from authentication.models import Company
@@ -43,6 +43,9 @@ def _aware(y, m, d, hh, mm=0):
     return timezone.make_aware(datetime.datetime(y, m, d, hh, mm))
 
 
+# VX209 — heures calmes désormais OPT-IN (défaut off) : on l'active pour cette
+# suite qui vérifie précisément le comportement de mise en sourdine.
+@override_settings(NOTIFICATIONS_QUIET_HOURS_ENABLED=True)
 class NotifyQuietHoursTests(TestCase):
     """VX209(a)."""
 

@@ -394,7 +394,16 @@ def _in_quiet_hours_non_critique(event_type, company, respect_quiet_hours):
     seul l'appelant de `notify()` décide d'en tenir compte pour email/
     WhatsApp/push. Best-effort : toute erreur retombe sur `False` (ne JAMAIS
     faire échouer une notification pour une histoire d'heures calmes)."""
-    if not respect_quiet_hours:
+    from django.conf import settings
+    # VX209 — les heures calmes sont OPT-IN (le docstring parle d'un « flag
+    # actif ») : sans activation explicite au niveau du déploiement, AUCUNE
+    # notification n'est mise en sourdine — sinon on suppprimerait en silence
+    # tous les email/WhatsApp/push hors-heures-ouvrées de TOUTES les sociétés
+    # qui n'ont jamais rien configuré (régression). Défaut False = comportement
+    # historique (toujours notifier). Un vrai réglage par société remplacera ce
+    # drapeau global plus tard.
+    if not respect_quiet_hours or not getattr(
+            settings, 'NOTIFICATIONS_QUIET_HOURS_ENABLED', False):
         return False
     try:
         from . import severity as severity_module
