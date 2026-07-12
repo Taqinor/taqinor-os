@@ -82,6 +82,18 @@ def intervention_scoped(company, pk):
             .first())
 
 
+def colis_scoped(company, pk):
+    """ZSTK5 — Colis de préparation (FG322) scopé société, par id, avec
+    chantier/client + lignes préchargés (résolution du jeton scannable
+    ``COLIS:<id>`` par ``apps.stock.views.produit``)."""
+    from .models import Colis
+    return (Colis.objects
+            .filter(company=company, id=pk)
+            .select_related('installation', 'installation__client')
+            .prefetch_related('lignes')
+            .first())
+
+
 def intervention_recente_pour_chantier(company, installation_id, *,
                                        depuis_jours, avant=None,
                                        exclure_ticket_id=None):

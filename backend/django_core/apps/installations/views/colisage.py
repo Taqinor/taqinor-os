@@ -92,6 +92,38 @@ class ColisViewSet(CompanyScopedModelViewSet):
         colis.save(update_fields=['statut', 'date_modification'])
         return Response(self.get_serializer(colis).data)
 
+    @action(detail=True, methods=['get'])
+    def etiquette(self, request, pk=None):
+        """ZSTK5 — étiquette de colis (contenu + code-barres colis) : le
+        moteur d'étiquettes N20 (`apps.stock.labels`) encode `PRODUIT:`/
+        `SYSTEME:`/`INTERVENTION:`/`EQUIP:` mais pas le colis — on ajoute le
+        jeton `COLIS:<id>` (résolu par `apps.stock.views.produit.resolve`) et
+        on rend une étiquette (réutilise `_label_card`/la planche du moteur
+        N20) avec le n° de colis, le chantier/livraison et la liste condensée
+        du contenu (désignation + qté SEULEMENT — jamais de prix). Renvoie du
+        HTML prêt WeasyPrint, sur le patron des étiquettes FG85/XMFG7."""
+        from django.http import HttpResponse as HR
+
+        from apps.stock.labels import colis_token, render_labels_html
+
+        colis = self.get_object()
+        lignes = colis.lignes.all()
+        contenu = ', '.join(
+            f'{ligne.quantite}× '
+            f'{ligne.designation or (ligne.produit.nom if ligne.produit_id else "?")}'
+            for ligne in lignes
+        ) or 'Colis vide'
+        chantier = colis.installation.reference if colis.installation_id else ''
+        sous_titre = f'{chantier} — {contenu}' if chantier else contenu
+        items = [{
+            'token': colis_token(colis.id),
+            'titre': colis.reference,
+            'sous_titre': sous_titre,
+        }]
+        symbology = request.query_params.get('symbology', 'qr')
+        html = render_labels_html(items, symbology=symbology)
+        return HR(html, content_type='text/html; charset=utf-8')
+
 
 class ColisLigneViewSet(viewsets.ModelViewSet):
     """FG322 — lignes de colis. Pas de `company` propre : scope via le colis
