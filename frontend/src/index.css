@@ -6160,3 +6160,36 @@ textarea.form-control {
   .app-launcher-content[data-state="open"] { animation-duration: 150ms; }
 }
 .header-lang-code { font-size: 0.7rem; font-weight: 600; line-height: 1; }
+
+/* ============================================================================
+   VX154 — TaqinorMark + SolarLoader (mot-symbole soleil-éclair)
+   ----------------------------------------------------------------------------
+   Le glyphe est statique par défaut. Sous `.taqinor-mark--animate` (SolarLoader),
+   ses 12 rayons s'illuminent en SÉQUENCE via la keyframe `sun-rise`, chacun
+   décalé par sa variable `--ray-i`. Sous prefers-reduced-motion, on FIGE le
+   soleil pleinement éclairé (aucune illumination cyclique).
+   ========================================================================== */
+.taqinor-mark { display: inline-block; vertical-align: middle; }
+
+@keyframes sun-rise {
+  0%, 100% { opacity: 0.4; }
+  50%      { opacity: 1; }
+}
+.taqinor-mark--animate .taqinor-ray {
+  animation: sun-rise 1.15s ease-in-out infinite;
+  animation-delay: calc(var(--ray-i, 0) * 0.055s);
+}
+
+.solar-loader {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Attente signée mais respectueuse : rayons pleinement éclairés, sans cycle. */
+@media (prefers-reduced-motion: reduce) {
+  .taqinor-mark--animate .taqinor-ray {
+    animation: none !important;
+    opacity: 1 !important;
+  }
+}

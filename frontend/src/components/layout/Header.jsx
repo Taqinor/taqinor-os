@@ -1,7 +1,9 @@
 import { useSelector, useDispatch } from 'react-redux'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useState, useEffect } from 'react'
-import { Menu, Search, LogOut, User as UserIcon, Settings, Zap, Bot, LayoutGrid, SlidersHorizontal } from 'lucide-react'
+import { Menu, Search, LogOut, User as UserIcon, Settings, Bot, LayoutGrid, SlidersHorizontal } from 'lucide-react'
+// VX154 — mot-symbole soleil-éclair de la marque (remplace le <Zap> générique).
+import TaqinorMark from '../../ui/TaqinorMark'
 import {
   Avatar, AvatarFallback, initials,
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
@@ -97,7 +99,7 @@ export default function Header({ onMenu }) {
             <img src={brandLogoUrl} alt={brandName} className="header-brand-logo" />
           ) : (
             <span className="header-brand-bolt" aria-hidden="true">
-              <Zap size={14} strokeWidth={2.4} />
+              <TaqinorMark size={18} />
             </span>
           )}
         </button>
