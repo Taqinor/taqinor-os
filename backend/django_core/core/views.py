@@ -954,3 +954,48 @@ class TenantUsageSnapshotViewSet(viewsets.ReadOnlyModelViewSet):
         from . import usage
         done = usage.snapshot_all()
         return Response({'companies': len(done)}, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['get'])
+    def couts(self, request):
+        """NTPLT45 — rapport de coût par tenant (SUPERUSER only).
+
+        ``GET usage/couts/?periode=AAAA-MM`` → JSON par société (requêtes,
+        db_time, stockage, jobs). ``?format=xlsx`` → export tableur. Base
+        factuelle de la discussion prix/plan (N100).
+        """
+        from . import usage
+        periode = request.query_params.get('periode')
+        rows = usage.cout_par_tenant(periode=periode)
+        if request.query_params.get('format') == 'xlsx':
+            return _couts_xlsx_response(rows, periode)
+        return Response({'periode': periode, 'tenants': rows})
+
+
+def _couts_xlsx_response(rows, periode):
+    """Construit une réponse .xlsx du rapport de coût par tenant (NTPLT45)."""
+    import io
+
+    from django.http import HttpResponse
+    from openpyxl import Workbook
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Couts par tenant'
+    headers = ['Société', 'Requêtes', 'DB time (ms)', 'Stockage (Mo)',
+               'Jobs', 'Jours mesurés']
+    ws.append(headers)
+    for r in rows:
+        ws.append([
+            r['company_nom'], r['requetes'], r['db_time_ms'],
+            r['stockage_mo'], r['jobs'], r['jours_mesures'],
+        ])
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    filename = f"couts-tenant-{periode or 'total'}.xlsx"
+    resp = HttpResponse(
+        buffer.getvalue(),
+        content_type=('application/vnd.openxmlformats-officedocument.'
+                      'spreadsheetml.sheet'))
+    resp['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return resp
