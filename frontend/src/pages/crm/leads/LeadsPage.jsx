@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState, lazy, Suspense } from 'react'
+import {
+  useEffect, useMemo, useState, useCallback, useDeferredValue, lazy, Suspense,
+} from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useSearchParams } from 'react-router-dom'
 // VX45 — ⚡/🔀 (emoji fonctionnels, rendu variable selon l'OS) remplacés par
@@ -97,7 +99,16 @@ export default function LeadsPage() {
       localStorage.setItem(FILTERS_KEY, JSON.stringify(filters))
     } catch { /* stockage indisponible */ }
   }, [filters])
-  const filtered = useMemo(() => filterLeads(leads, filters), [leads, filters])
+  // VX187 — `filterLeads` recalculait en SYNCHRONE dans le commit de CHAQUE
+  // frappe de la recherche (le filtre est mis à jour à chaque `onChange`) :
+  // `useDeferredValue` dérive `filtered` d'une valeur qui suit `filters` avec
+  // un léger retard (React garde l'input dans la lane URGENTE, le recalcul
+  // lourd dans la lane DIFFÉRÉE). `isFiltersStale` (repli visuel possible :
+  // atténuer la liste pendant que React rattrape) est vrai UNIQUEMENT durant
+  // la fenêtre transitoire — jamais persistant.
+  const deferredFilters = useDeferredValue(filters)
+  const isFiltersStale = deferredFilters !== filters
+  const filtered = useMemo(() => filterLeads(leads, deferredFilters), [leads, deferredFilters])
 
   // Vues enregistrées nommées (FG11 — useSavedViews hook).
   const { savedViews, saveView, deleteView: deleteSavedView } = useSavedViews(SAVED_VIEWS_KEY)
@@ -258,7 +269,15 @@ export default function LeadsPage() {
   }
 
   const openNew = () => { setEditLead(null); setFormDevisIntent(null); setFormFocusSection(null); setShowForm(true) }
-  const onOpenLead = (lead) => { setEditLead(lead); setFormDevisIntent(null); setFormFocusSection(null); setShowForm(true) }
+  // VX187 — `useCallback` : cette fonction est passée à CHAQUE carte/ligne
+  // via `viewProps` (LeadCard, ListView) ; recréée à chaque rendu de
+  // LeadsPage, elle cassait React.memo(LeadCard) (nouvelle référence de prop
+  // à chaque frappe ailleurs sur la page → re-rendu de TOUTES les cartes).
+  // Les seules dépendances sont des setters `useState` — stables par
+  // définition, `[]` suffit.
+  const onOpenLead = useCallback((lead) => {
+    setEditLead(lead); setFormDevisIntent(null); setFormFocusSection(null); setShowForm(true)
+  }, [])
   const closeForm = () => {
     setShowForm(false)
     setEditLead(null)
@@ -285,12 +304,13 @@ export default function LeadsPage() {
 
   // ⚡ depuis une carte / la liste : ouvre la FICHE et y lance le devis auto
   // (tout reste dans la fiche du lead — aucune navigation ailleurs).
-  const onAutoQuote = (lead) => {
+  // VX187 — useCallback (même raison que onOpenLead ci-dessus).
+  const onAutoQuote = useCallback((lead) => {
     setEditLead(lead)
     setFormDevisIntent('auto')
     setFormFocusSection(null)
     setShowForm(true)
-  }
+  }, [])
 
   // QX25 — « Planifier une relance » (bouton jusqu'ici inerte sur la carte
   // kanban, LeadCard.jsx) : ouvre la fiche du lead directement sur la section
@@ -328,7 +348,11 @@ export default function LeadsPage() {
       .then(() => { refetch() })
   }
 
-  const changeStage = async (lead, newStage) => {
+  // VX187 — useCallback (même raison que onOpenLead/onAutoQuote ci-dessus) :
+  // passé à chaque carte/ligne comme `onChangeStage`. Seule dépendance externe
+  // réelle : `dispatch` (stable, useDispatch) — `setStageError`/`setBusyLeadId`
+  // sont des setters `useState`, également stables.
+  const changeStage = useCallback(async (lead, newStage) => {
     if (!lead || lead.stage === newStage) return
     // A2 — déplacer un lead dans « Signé » exige de choisir le devis accepté
     // et l'option : on ouvre le dialogue au lieu de déplacer l'étape.
@@ -364,7 +388,7 @@ export default function LeadsPage() {
     } finally {
       setBusyLeadId(null)
     }
-  }
+  }, [dispatch])
 
   // Only blank the page on the FIRST load. A background refetch (after saving a
   // bill, generating a devis, changing a stage…) must NOT unmount the page —
@@ -502,7 +526,9 @@ export default function LeadsPage() {
         </div>
       )}
 
-      <div className="lp-view-area">
+      {/* VX187 — atténuation discrète pendant que React rattrape le filtre
+          différé (jamais sur l'input lui-même, seulement la liste rendue). */}
+      <div className="lp-view-area" style={isFiltersStale ? { opacity: 0.6 } : undefined}>
         {view === 'kanban' && <KanbanView {...viewProps} />}
         {/* VX186 — Suspense autour des vues lazy uniquement (Kanban reste
             synchrone, jamais de flash sur le rendu par défaut). */}

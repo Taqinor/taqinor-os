@@ -1,6 +1,10 @@
 // Carte lead réutilisable (colonne kanban + aperçu DragOverlay).
 // Présentation pure : aucune mutation, tout vient des props et de stages.js.
-import { useRef, useState } from 'react'
+// VX187 — memo() : chaque frappe dans la recherche/un filtre re-rendait
+// TOUTES les cartes visibles (zéro `memo(` dans tout le fichier). Ne tient
+// que si les callbacks parents sont stables (voir useCallback sur
+// onOpenLead/onAutoQuote/changeStage dans LeadsPage.jsx).
+import { useRef, useState, memo } from 'react'
 // VX45 — emoji ⚡ fonctionnel remplacé par l'icône lucide (rendu variable
 // selon l'OS avec un emoji brut).
 import { Zap } from 'lucide-react'
@@ -152,7 +156,7 @@ const prochaineAction = (lead) => {
 }
 
 
-export default function LeadCard({
+function LeadCard({
   lead, busy = false, onOpen, onAutoQuote, users = [], onReassign,
   selected = false, onToggleSelect, onPlanifierRelance,
 }) {
@@ -553,3 +557,5 @@ export default function LeadCard({
     </div>
   )
 }
+
+export default memo(LeadCard)
