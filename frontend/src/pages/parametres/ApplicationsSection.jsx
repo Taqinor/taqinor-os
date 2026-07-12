@@ -83,9 +83,9 @@ export default function ApplicationsSection() {
     .finally(() => setLoading(false))
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- court-circuite le chargement pour un utilisateur non-admin
     if (!canManage) { setLoading(false); return }
     load()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canManage])
 
   const labelByKey = useMemo(

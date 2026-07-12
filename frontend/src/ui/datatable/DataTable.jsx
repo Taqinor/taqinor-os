@@ -81,7 +81,6 @@ function useRowFlip(rowKeys, disabled) {
         // Force un reflow pour que le navigateur applique l'état de départ
         // avant qu'on n'engage la transition vers l'état final (sinon les
         // deux changements de style sont regroupés en une seule frame).
-        // eslint-disable-next-line no-unused-expressions
         el.offsetHeight
         // Play : relâche vers la position finale, transitionnée.
         el.style.transition = 'transform var(--motion-base) var(--ease-standard)'

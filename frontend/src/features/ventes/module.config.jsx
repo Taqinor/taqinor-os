@@ -27,6 +27,7 @@ import { FileText, ShoppingCart, Receipt, FileMinus, Wallet, CalendarClock } fro
    d'affichage.
    ========================================================================== */
 
+// eslint-disable-next-line no-unused-vars -- Comp est un composant polymorphe, rendu via <Comp> ci-dessous
 const navIcon = (Comp) => <Comp size={17} strokeWidth={1.75} aria-hidden="true" />
 
 // Pages chargées à la demande (code-splitting préservé — <Suspense> côté routeur).

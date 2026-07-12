@@ -304,6 +304,7 @@ export default function DevisGenerator({
   // seul un CHANGEMENT de mode réinitialise le défaut, pas les re-rendus.
   const [multiAccordionOpen, setMultiAccordionOpen] = useState(() => modeInstallation !== 'agricole')
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- réinitialise le défaut d'accordéon à chaque changement de mode
     setMultiAccordionOpen(modeInstallation !== 'agricole')
   }, [modeInstallation])
   const [consoMensuelle, setConsoMensuelle] = useState('')

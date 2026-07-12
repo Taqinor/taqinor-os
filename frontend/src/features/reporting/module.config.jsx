@@ -30,6 +30,7 @@ import { BarChart3, Inbox, Tv } from 'lucide-react'
    même place dans l'ordre d'affichage.
    ========================================================================== */
 
+// eslint-disable-next-line no-unused-vars -- Comp est un composant polymorphe, rendu via <Comp> ci-dessous
 const navIcon = (Comp) => <Comp size={17} strokeWidth={1.75} aria-hidden="true" />
 
 // Pages chargées à la demande (code-splitting préservé — <Suspense> côté routeur).

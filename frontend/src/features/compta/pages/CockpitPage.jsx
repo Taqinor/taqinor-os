@@ -53,6 +53,7 @@ const EXPORT_DESTINATIONS = [
 // VX232(a) — résolution pure `tiers_id` → nom (extraite pour un test unitaire
 // direct, sans dépendre du rendu recharts) ; repli « Tiers #N » si la fiche a
 // été supprimée entre-temps ou n'a pas encore été chargée.
+// eslint-disable-next-line react-refresh/only-export-components -- helper pur co-localisé, testé isolément
 export function resolveTiersLabel(tiersId, tiersById) {
   if (!tiersId) return 'Non affecté'
   return tiersById[tiersId] || `Tiers #${tiersId}`

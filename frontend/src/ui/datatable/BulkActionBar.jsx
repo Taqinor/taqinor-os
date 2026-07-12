@@ -83,6 +83,7 @@ export function BulkActionBar({ count, actions = [], onClear, className }) {
 
   useEffect(() => {
     if (count > 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- (ré)ouvre la barre synchronement avec le compteur de sélection
       setMounted(true)
       wasOpen.current = true
     } else if (wasOpen.current) {

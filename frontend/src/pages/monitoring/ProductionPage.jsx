@@ -26,6 +26,7 @@ const todayISO = () => new Date().toISOString().slice(0, 10)
 // VX148 — dérive la tendance kWh (chronologique) des relevés bruts. Extrait
 // en fonction pure (nommée, exportée) pour un test unitaire direct, sans
 // dépendre du rendu Radix Select/ResizeObserver.
+// eslint-disable-next-line react-refresh/only-export-components -- helper pur co-localisé, testé isolément
 export function buildProductionChartData(readings) {
   return [...(readings || [])]
     .filter((r) => r.date)
