@@ -140,6 +140,13 @@
   --text-small: 0.875rem;      --text-small-lh: 1.45;    --text-small-ls: 0.005em;
   --text-caption: 0.75rem;     --text-caption-lh: 1.4;   --text-caption-ls: 0.02em;
 
+  /* VX122 — tracking unique des « eyebrows » (petits labels majuscules de
+     section) : avant, plusieurs sélecteurs index.css recopiaient font-size/
+     text-transform/letter-spacing avec un tracking divergent (0.04 vs
+     0.05em). Un seul token, une seule classe utilitaire `.text-eyebrow`
+     ci-dessous. */
+  --text-eyebrow-tracking: 0.04em;
+
   /* Élévation / ombres — échelle brute (rgb teinté nuit #0c1335). */
   --shadow-xs: 0 1px 2px 0 rgb(12 19 53 / 0.06);
   --shadow-sm: 0 1px 3px 0 rgb(12 19 53 / 0.10), 0 1px 2px -1px rgb(12 19 53 / 0.08);
@@ -342,6 +349,16 @@
 .text-body { font-size: var(--text-body); line-height: var(--text-body-lh); letter-spacing: var(--text-body-ls); }
 .text-small { font-size: var(--text-small); line-height: var(--text-small-lh); letter-spacing: var(--text-small-ls); }
 .text-caption { font-size: var(--text-caption); line-height: var(--text-caption-lh); letter-spacing: var(--text-caption-ls); }
+/* VX122 — « eyebrow » : petit label majuscule de section, consommant
+   --text-caption + le tracking unique --text-eyebrow-tracking (remplace les
+   recopies inline divergentes 0.04/0.05em d'index.css). */
+.text-eyebrow {
+  font-size: var(--text-caption);
+  line-height: var(--text-caption-lh);
+  letter-spacing: var(--text-eyebrow-tracking);
+  text-transform: uppercase;
+  font-weight: 600;
+}
 
 /* VX124 — Craft-physics : le tracking négatif fixe des paliers display/h1
    (-0.03em / -0.025em) sur-comprime un montant à 7 chiffres tabulaire

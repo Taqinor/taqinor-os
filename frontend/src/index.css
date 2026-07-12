@@ -861,10 +861,16 @@ button:active, [role="button"]:active, a.btn:active,
   margin-bottom: 1.5rem;
 }
 
+/* VX122 — la voix typographique de marque enfin branchée sur le titre de
+   page legacy le plus répété (66 écrans) : échelle F121 h1 (tokens.css) +
+   police d'affichage (déjà chargée, jusqu'ici system-ui par défaut, VX3). */
 .page-header h2 {
-  font-size: 1.25rem;
+  font-family: var(--font-display);
+  font-size: var(--text-h1);
+  line-height: var(--text-h1-lh);
+  letter-spacing: var(--text-h1-ls);
   font-weight: 700;
-  color: #0f172a;
+  color: var(--foreground);
   margin: 0;
 }
 
@@ -2839,7 +2845,7 @@ textarea.form-control {
   font-weight: 600;
   color: var(--muted-foreground);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: var(--text-eyebrow-tracking);
 }
 
 /* VX5 — métrique du générateur : chiffre héros en data typography `.num`. */
@@ -2872,7 +2878,7 @@ textarea.form-control {
   font-weight: 700;
   color: #555;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: var(--text-eyebrow-tracking);
   margin-bottom: 0.5rem;
 }
 
@@ -2897,7 +2903,7 @@ textarea.form-control {
   font-weight: 600;
   color: #64748b;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: var(--text-eyebrow-tracking);
   white-space: nowrap;
 }
 
@@ -3261,7 +3267,7 @@ textarea.form-control {
 .gs-group-title {
   font-size: 0.7rem;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: var(--text-eyebrow-tracking);
   color: #94a3b8;
   padding: 4px 10px;
 }
@@ -5525,7 +5531,7 @@ textarea.form-control {
   padding: 0.5rem 0.625rem 0.25rem;
   font-size: 0.72rem;
   font-weight: 600;
-  letter-spacing: 0.04em;
+  letter-spacing: var(--text-eyebrow-tracking);
   text-transform: uppercase;
   color: var(--muted-foreground, #94a3b8);
 }

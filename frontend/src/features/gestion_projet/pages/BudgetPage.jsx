@@ -5,7 +5,7 @@ import {
   Textarea, toast,
 } from '../../../ui'
 import { BarArrondie } from '../../../ui/charts'
-import { formatMAD, formatDate } from '../../../lib/format'
+import { formatMAD, formatDate, nbsp } from '../../../lib/format'
 import gestionProjetApi from '../../../api/gestionProjetApi'
 import { errMessage, StatutBudget, CATEGORIES_BUDGET, SanteRAG } from '../constants'
 import ProjetPicker from '../components/ProjetPicker'
@@ -176,9 +176,9 @@ export default function BudgetPage() {
               />
               {coutsReels.total && (
                 <div className="mt-3 flex flex-wrap gap-4 border-t border-border pt-3 text-sm">
-                  <span>Total budget : <strong>{formatMAD(coutsReels.total.budget)}</strong></span>
-                  <span>Total réel : <strong>{formatMAD(coutsReels.total.reel)}</strong></span>
-                  <span>Écart : <strong>{formatMAD(coutsReels.total.ecart)}</strong></span>
+                  <span>{nbsp('Total budget :')} <strong>{formatMAD(coutsReels.total.budget)}</strong></span>
+                  <span>{nbsp('Total réel :')} <strong>{formatMAD(coutsReels.total.reel)}</strong></span>
+                  <span>{nbsp('Écart :')} <strong>{formatMAD(coutsReels.total.ecart)}</strong></span>
                 </div>
               )}
               {coutsReels.nb_liens_depense != null && (
