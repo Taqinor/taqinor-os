@@ -23,6 +23,20 @@ function normalizePhone(raw) {
   return (raw || '').replace(/\D/g, '')
 }
 
+// VX240(e) — dernier canal utilisé (localStorage, modifiable), même patron
+// que VX93 (lireLastTva/lireDernierMode) : le canal ne reset plus en dur à
+// 'walk_in' à chaque ouverture (un salon/terrain saisit rafale sur le même
+// canal, retaper à chaque lead coûtait un clic évitable).
+const LEAD_EXPRESS_CANAL_KEY = 'taqinor.leadExpress.lastCanal'
+const lireLastCanal = () => {
+  try { return window.localStorage.getItem(LEAD_EXPRESS_CANAL_KEY) || 'walk_in' }
+  catch { return 'walk_in' }
+}
+const ecrireLastCanal = (v) => {
+  try { if (v) window.localStorage.setItem(LEAD_EXPRESS_CANAL_KEY, v) }
+  catch { /* localStorage indisponible (navigation privée, quota) : no-op */ }
+}
+
 export default function LeadExpressModal({ onClose, onSaved }) {
   const formId = useId()
   const nomRef = useRef(null)
@@ -32,7 +46,7 @@ export default function LeadExpressModal({ onClose, onSaved }) {
   const [telephone, setTelephone] = useState('')
   const [societe, setSociete] = useState('')
   const [email, setEmail] = useState('')
-  const [canal, setCanal] = useState('walk_in')
+  const [canal, setCanal] = useState(lireLastCanal)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   // FG35 — état de la vérification de doublons.
@@ -126,6 +140,7 @@ export default function LeadExpressModal({ onClose, onSaved }) {
         // owner et company sont injectés côté serveur
       }
       const res = await crmApi.createLead(payload)
+      ecrireLastCanal(canal)  // VX240(e) — mémorise le canal pour le prochain lead express
       onSaved?.(res.data)
       onClose?.()
     } catch (err) {

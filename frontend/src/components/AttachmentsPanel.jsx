@@ -30,6 +30,9 @@ export default function AttachmentsPanel({ model, id, onChange }) {
   const [busy, setBusy] = useState(false)
   const [progress, setProgress] = useState(undefined)
   const [error, setError] = useState(null)
+  // VX240(f) — 5 photos = 1 sélection : { current, total } pendant l'envoi
+  // séquentiel de plusieurs fichiers, affiché en « i/N » sous le dropzone.
+  const [uploadStep, setUploadStep] = useState(null)
   // L866 — pièces dont l'aperçu image a échoué (objet MinIO supprimé/404).
   const [brokenThumbs, setBrokenThumbs] = useState({})
 
@@ -39,31 +42,58 @@ export default function AttachmentsPanel({ model, id, onChange }) {
   }
   useEffect(() => { load() }, [model, id]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const upload = async (file) => {
-    if (!file) return
+  // Envoi d'UN fichier — inchangé (compression + endpoint + progression).
+  const uploadOne = async (file) => {
+    // VX246(a) — les images (photo terrain, capture d'écran) sont compressées
+    // avant l'envoi ; compressImage renvoie les PDF/non-images intacts, donc
+    // la pièce PDF passe telle quelle.
+    const toSend = await compressImage(file)
+    // L868 — progression d'upload : même endpoint que recordsApi
+    // (/records/attachments/, MÊME ORIGINE, cookie d'auth) avec
+    // onUploadProgress pour piloter la barre du dropzone sur les gros
+    // fichiers.
+    const fd = new FormData()
+    fd.append('model', model)
+    fd.append('id', id)
+    fd.append('file', toSend)
+    await api.post('/records/attachments/', fd, {
+      onUploadProgress: (e) => {
+        if (e.total) setProgress(Math.round((e.loaded / e.total) * 100))
+      },
+    })
+  }
+
+  // VX240(f) — `files` est TOUJOURS un tableau (FileUpload avec `multiple`) :
+  // on itère SÉQUENTIELLEMENT (une barre de progression cohérente, jamais N
+  // requêtes concurrentes) ; un échec sur UN fichier n'annule jamais les
+  // autres de la sélection — on continue et on résume les échecs à la fin.
+  const upload = async (files) => {
+    const list = (Array.isArray(files) ? files : [files]).filter(Boolean)
+    if (list.length === 0) return
     setBusy(true); setError(null); setProgress(0)
+    const failures = []
+    let lastDetail = null
     try {
-      // VX246(a) — les images (photo terrain, capture d'écran) sont compressées
-      // avant l'envoi ; compressImage renvoie les PDF/non-images intacts, donc
-      // la pièce PDF passe telle quelle.
-      const toSend = await compressImage(file)
-      // L868 — progression d'upload : même endpoint que recordsApi
-      // (/records/attachments/, MÊME ORIGINE, cookie d'auth) avec
-      // onUploadProgress pour piloter la barre du dropzone sur les gros
-      // fichiers.
-      const fd = new FormData()
-      fd.append('model', model)
-      fd.append('id', id)
-      fd.append('file', toSend)
-      await api.post('/records/attachments/', fd, {
-        onUploadProgress: (e) => {
-          if (e.total) setProgress(Math.round((e.loaded / e.total) * 100))
-        },
-      })
+      for (let i = 0; i < list.length; i++) {
+        setUploadStep(list.length > 1 ? { current: i + 1, total: list.length } : null)
+        setProgress(0)
+        try {
+          await uploadOne(list[i])
+        } catch (err) {
+          lastDetail = err.response?.data?.detail ?? null
+          failures.push(list[i].name ?? `#${i + 1}`)
+        }
+      }
       load(); onChange?.()
-    } catch (err) {
-      setError(err.response?.data?.detail ?? "Échec de l'envoi.")
-    } finally { setBusy(false); setProgress(undefined) }
+      if (failures.length === 1 && list.length === 1) {
+        // Un seul fichier : message précis inchangé (comportement historique).
+        setError(lastDetail ?? "Échec de l'envoi.")
+      } else if (failures.length) {
+        setError(`${failures.length}/${list.length} fichier(s) non envoyés : ${failures.join(', ')}.`)
+      }
+    } finally {
+      setBusy(false); setProgress(undefined); setUploadStep(null)
+    }
   }
 
   const remove = async (att) => {
@@ -81,11 +111,14 @@ export default function AttachmentsPanel({ model, id, onChange }) {
       <FileUpload
         accept={ACCEPT}
         maxSize={MAX_SIZE}
+        multiple
         busy={busy}
         disabled={busy}
         progress={progress}
-        hint={CONSTRAINTS}
-        onFiles={(files) => upload(files[0])}
+        // VX240(f) — 5 photos = 1 sélection : « i/N » visible sous le dropzone
+        // pendant l'envoi séquentiel, au lieu de 5 cycles complets.
+        hint={uploadStep ? `Envoi ${uploadStep.current}/${uploadStep.total}… — ${CONSTRAINTS}` : CONSTRAINTS}
+        onFiles={(files) => upload(files)}
         onReject={(rejected) => setError(rejected[0]?.error ?? 'Fichier refusé.')}
       />
 

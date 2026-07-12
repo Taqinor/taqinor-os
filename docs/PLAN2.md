@@ -80,6 +80,8 @@ VX141 (nouveau `ui/DocumentStageTrack.jsx` — piste horizontale brouillon→env
 
 VX238 (`ui/Segmented.jsx` roving tabindex + ArrowLeft/Right/Home/End sur le radiogroup ; `ui/Combobox.jsx` Tab sans preventDefault sélectionne l'option sous le curseur ; `components/ProduitPicker.jsx` idem + nouveau prop `onPicked` posé sur `DevisLineRow.jsx`/`DevisForm.jsx`/`FactureForm.jsx` pour avancer le focus sur la Qté de la même ligne via `data-line-key`/`data-role="line-qty"` au lieu de rendre le focus au bouton déclencheur).
 
+VX240 (autofocus posé sur DevisForm/FactureForm — champ Client — ProduitForm — Nom — et le dialog de création rapide de ticket SAV — Type ; mémoire localStorage ajoutée pour le type de ticket SAV rapide (TicketsPage.jsx) et le canal LeadExpressModal (payMode/pay-montant déjà couverts par VX92/93/249, hors scope du DoD) ; AttachmentsPanel.jsx upload multi-fichiers séquentiel avec indicateur « i/N », échec partiel n'annule pas les autres ; BonsCommandeFournisseur.jsx réplique le patron VX90 data-line-key/pendingFocusKey pour focaliser la ligne ajoutée.
+
 #### DONE LOG — Vague 2 (VX terrain/finance/CRM + QX groupe) (2026-07-12)
 
 Vague 2 du plan-run (23 tâches VX + tagging de tous les plans, un seul merge). Lanes drainées en parallèle : **finance/terrain** VX44 (photos chantier en rafale + partage WhatsApp), VX88 (Ma journée → tournée géo), VX94 (Enter-pour-ajouter capture), VX105 (statut technicien + persistance + toasts hors-ligne), VX106 (signature client terrain), VX107 (résumé client lecture seule), VX52 (avertissements conformité tactiles), VX63 (erreurs FR lisibles DevisList/FactureList), VX114 (déjà présent, export daté), VX116 (relance groupée + aperçu WhatsApp). **ventes** VX222 (relancer devis), VX230 (encaisser depuis Relances), VX231 (navigation finance vers la cible). **UI/data** VX41 (data-viz marque + comparaison période), VX33 (Pilotage stock tour de contrôle), VX66 (anti-double-soumission Button), VX26 (couleurs stage dérivées tokens), VX81 (exports XLSX/CSV horodatés), VX61 (Web Vitals réels + endpoint reporting), VX110 (copier TSV), VX246 (queue interop iOS), VX19 (zéro popup navigateur, +réparation FactureList post-refactor VX230). Backend DoD à suivre : VX105 (`ajouter-reserve` gated admin), VX106 (signature dans `intervention_pdf.py`). GATED (non buildé) : QXG1/QXG2/QXG4 (compte/contenu fondateur). Tagging : les 10 fichiers de plan (PLAN/PLAN2/new_tasks + 7 domaines) reçoivent un tag `@lane:`/`Files:` visible par le planner sur la 1ʳᵉ ligne (append-only vérifié).
@@ -2703,7 +2705,7 @@ droite)**
   forme normalisée ; fusionner 2 doublons préserve les deux chatters + redirige les documents.
   (T2 — M, sonnet ; opus si fusion cross-app) (@lane: frontend/crm)
 
-- [ ] VX240 — **Parité mécanique des formulaires : autofocus, mémoire des défauts, (@lane: frontend/ventes — @after VX90)
+- [x] VX240 — **Parité mécanique des formulaires : autofocus, mémoire des défauts, (@lane: frontend/ventes — @after VX90)
   multi-fichiers, focus de ligne achats. @after VX90, @coord VX92/VX93.** Sept incohérences
   prouvées entre formulaires jumeaux : (a) `FactureForm.jsx:293-307`/`DevisForm.jsx:231-245`
   s'ouvrent SANS aucun autofocus ; (b) `ProduitForm.jsx:413-416` Nom sans autofocus ; (c) dialog

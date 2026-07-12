@@ -353,7 +353,10 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
                 <div className="flex-1">
                   <Select value={fields.client ? String(fields.client) : undefined}
                           onValueChange={v => setField('client', v)}>
-                    <SelectTrigger id="fc-client" invalid={!!errors.client}>
+                    {/* VX240(a) — la modale s'ouvrait SANS aucun autofocus (le
+                        vendeur devait cliquer avant de pouvoir taper/choisir) ;
+                        premier champ utile focalisé à l'ouverture. */}
+                    <SelectTrigger id="fc-client" invalid={!!errors.client} autoFocus>
                       <SelectValue placeholder="— Sélectionner un client —" />
                     </SelectTrigger>
                     <SelectContent>
