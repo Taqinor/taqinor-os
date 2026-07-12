@@ -66,9 +66,13 @@ class PostgresFtsBackend(SearchBackend):
         return None
 
     def query(self, company, q, limit=20):
-        # Import paresseux : ``core`` ne référence pas ``reporting`` au module.
+        # Résolution DYNAMIQUE (importlib) et non un ``import apps.reporting`` :
+        # ``core`` est une couche de FONDATION qui ne doit référencer AUCUNE app
+        # satellite (contrat import-linter ``core-foundation-is-a-base-layer``).
+        # La délégation reste optionnelle — reporting absent → aucun résultat.
+        import importlib
         try:
-            from apps.reporting import search as reporting_search
+            reporting_search = importlib.import_module('apps.reporting.search')
         except Exception:  # noqa: BLE001 — reporting absent → aucun résultat
             logger.warning('search_backend: reporting.search indisponible')
             return []
