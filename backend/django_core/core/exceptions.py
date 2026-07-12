@@ -92,6 +92,32 @@ def _request_id(context) -> str | None:
     return getattr(request, 'request_id', None) if request is not None else None
 
 
+def _rate_limit_headers_for(exc, context):
+    """YAPIC12 — X-RateLimit-Limit/X-RateLimit-Remaining sur un 429. Ne
+    RE-DÉCLENCHE jamais ``allow_request`` (mutation de l'état du throttle,
+    ex. compteur cache) : lecture STATIQUE de la config de débit du premier
+    throttle scopé de la vue seulement — best-effort, jamais bloquant."""
+    if not isinstance(exc, drf_exceptions.Throttled):
+        return {}
+    view = context.get('view') if context else None
+    if view is None or not hasattr(view, 'get_throttles'):
+        return {}
+    try:
+        for throttle in view.get_throttles():
+            rate = getattr(throttle, 'rate', None) or (
+                throttle.get_rate() if hasattr(throttle, 'get_rate') else None)
+            if not rate:
+                continue
+            num_requests, _duration = throttle.parse_rate(rate)
+            return {
+                'X-RateLimit-Limit': str(num_requests),
+                'X-RateLimit-Remaining': '0',
+            }
+    except Exception:  # noqa: BLE001 — advisory headers, never break the 429
+        pass
+    return {}
+
+
 def taqinor_exception_handler(exc, context):
     """`REST_FRAMEWORK['EXCEPTION_HANDLER']` — enveloppe UNIQUE pour toute
     réponse d'erreur DRF, y compris les exceptions non reconnues par DRF
@@ -124,4 +150,6 @@ def taqinor_exception_handler(exc, context):
         },
     }
     response.data = body
+    for header, value in _rate_limit_headers_for(exc, context).items():
+        response[header] = value
     return response

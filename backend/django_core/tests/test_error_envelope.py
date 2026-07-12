@@ -74,3 +74,34 @@ class ErrorEnvelopeTests(SimpleTestCase):
         response = taqinor_exception_handler(exc, _context())
         self.assertEqual(response.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
         self.assertEqual(response.data['error']['code'], 'throttled')
+
+    def test_throttled_carries_retry_after_numeric(self):
+        """YAPIC12 — un dépassement renvoie 429 + Retry-After numérique,
+        via le Response DRF NATIF préservé (seul .data est reformaté)."""
+        exc = drf_exceptions.Throttled(wait=42)
+        response = taqinor_exception_handler(exc, _context())
+        self.assertEqual(response.get('Retry-After'), '42')
+
+    def test_throttled_with_scoped_view_adds_ratelimit_headers(self):
+        """YAPIC12 — X-RateLimit-Limit/-Remaining quand un scope s'applique
+        (lecture STATIQUE de la config, ne ré-invoque jamais allow_request)."""
+        class _FakeThrottle:
+            rate = '5/minute'
+
+            def parse_rate(self, rate):
+                return 5, 60
+
+        class _FakeView:
+            def get_throttles(self):
+                return [_FakeThrottle()]
+
+        exc = drf_exceptions.Throttled(wait=7)
+        response = taqinor_exception_handler(
+            exc, {'request': None, 'view': _FakeView()})
+        self.assertEqual(response.get('X-RateLimit-Limit'), '5')
+        self.assertEqual(response.get('X-RateLimit-Remaining'), '0')
+
+    def test_throttled_without_scoped_view_omits_ratelimit_headers(self):
+        exc = drf_exceptions.Throttled(wait=7)
+        response = taqinor_exception_handler(exc, _context())
+        self.assertNotIn('X-RateLimit-Limit', response)
