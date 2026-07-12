@@ -22,6 +22,7 @@ import TicketSuiviClientPanel from './TicketSuiviClientPanel'
 import TicketChecklistPanel from './TicketChecklistPanel'
 import TicketAdvancedPanel from './TicketAdvancedPanel'
 import { groupTicketsByDate } from './ticketCalendarUtils'
+import { buildCopyTSVAction } from '../../ui/datatable/BulkActionBar'
 import { telHref } from '../../lib/contactLinks'
 import { useIsMobile } from '../../ui/ResponsiveDialog'
 import { INTERVENTION_TYPES } from '../../features/installations/statuses'
@@ -1708,6 +1709,8 @@ export default function TicketsPage() {
                 emptyTitle="Aucun ticket"
                 emptyDescription="Aucun ticket ne correspond à votre recherche."
                 bulkActions={(selRows, selKeys, clear) => [
+                  // VX246(c) — « Copier » la sélection en TSV (colle en colonnes dans Excel).
+                  buildCopyTSVAction({ rows: selRows, filteredRows: selRows, columns }),
                   // L317 — assignation technicien en lot.
                   ...[...technicienById.entries()].map(([tid, nom]) => ({
                     id: `tech-${tid}`,

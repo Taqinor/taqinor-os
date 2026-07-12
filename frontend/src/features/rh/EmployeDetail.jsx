@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { LogOut, FileDown, CheckCircle2 } from 'lucide-react'
+import { LogOut, FileDown, CheckCircle2, Printer } from 'lucide-react'
 import { RecordShell } from '../../ui/module'
 import {
   DefinitionList, EmptyState, Skeleton, Badge, toast,
@@ -390,6 +390,12 @@ export default function EmployeDetail() {
 
   const headerActions = (
     <>
+      {/* VX246(b) — impression navigateur (feuille print.css : chrome masqué,
+          noir-sur-blanc). Distinct du PDF WeasyPrint du contrat. */}
+      <Button variant="outline" size="sm" onClick={() => window.print()}>
+        <Printer size={15} strokeWidth={1.75} aria-hidden="true" />
+        Imprimer
+      </Button>
       {estSorti ? (
         <Button variant="outline" size="sm" onClick={telechargerCertificat}>
           <FileDown size={15} strokeWidth={1.75} aria-hidden="true" />

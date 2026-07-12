@@ -13,7 +13,7 @@ import { Paperclip, FileText, ImageOff, Trash2 } from 'lucide-react'
 import recordsApi from '../api/recordsApi'
 import api from '../api/axios'
 import { FileUpload } from '../ui/FileUpload'
-import { formatFileSize } from '../ui/file-utils'
+import { formatFileSize, compressImage } from '../ui/file-utils'
 import { formatDate } from '../lib/format'
 
 const ACCEPT = 'application/pdf,image/png,image/jpeg,image/webp'
@@ -43,6 +43,10 @@ export default function AttachmentsPanel({ model, id, onChange }) {
     if (!file) return
     setBusy(true); setError(null); setProgress(0)
     try {
+      // VX246(a) — les images (photo terrain, capture d'écran) sont compressées
+      // avant l'envoi ; compressImage renvoie les PDF/non-images intacts, donc
+      // la pièce PDF passe telle quelle.
+      const toSend = await compressImage(file)
       // L868 — progression d'upload : même endpoint que recordsApi
       // (/records/attachments/, MÊME ORIGINE, cookie d'auth) avec
       // onUploadProgress pour piloter la barre du dropzone sur les gros
@@ -50,7 +54,7 @@ export default function AttachmentsPanel({ model, id, onChange }) {
       const fd = new FormData()
       fd.append('model', model)
       fd.append('id', id)
-      fd.append('file', file)
+      fd.append('file', toSend)
       await api.post('/records/attachments/', fd, {
         onUploadProgress: (e) => {
           if (e.total) setProgress(Math.round((e.loaded / e.total) * 100))
