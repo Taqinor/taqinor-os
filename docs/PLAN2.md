@@ -2560,7 +2560,7 @@ droite)**
   sur la ligne surlignée ; recharger restaure l'onglet ; « Comparer au GL » ouvre le grand-livre
   pré-filtré ; tests MemoryRouter. (T2 — M, sonnet) (@lane: frontend/compta — @coord VX79/VX113)
 
-- [ ] VX232 — **Les états financiers deviennent LISIBLES : noms réels, tableaux exploitables, (@lane: frontend/compta)
+- [x] VX232 — **Les états financiers deviennent LISIBLES : noms réels, tableaux exploitables, (@lane: frontend/compta)
   exports hiérarchisés et traduits.** Quatre défauts de lisibilité du même module : (a) le KPI n°1
   du Cockpit affiche `Tiers #42` (`CockpitPage.jsx:101-104`) ; (b) les états CGNC
   (`EtatsPage.jsx:55-96`, `GenericTable`) sont des `<table>` HTML nus ; (c) les 6 boutons d'export
@@ -3207,6 +3207,8 @@ droite)**
 ---
 
 ## DONE LOG (agent appends one plain-language line per completed task)
+
+- 2026-07-12 — **VX232 — Les états financiers deviennent LISIBLES : noms réels, tableaux exploitables, exports hiérarchisés et traduits.** (a) `CockpitPage.jsx` KPI n°1 : `Tiers #42` résolu en nom réel — SCOPE ADAPTÉ EN FRONTEND-ONLY (le lane build-only ne touche pas le backend) : au lieu d'enrichir `apps/compta/selectors.py`, le cockpit charge une fois le répertoire unifié `apps/tiers` (`GET /tiers/tiers/`, timeout 4 s dédié, purement décoratif) et résout `tiers_id` côté client via `resolveTiersLabel` (export nommé, testé unitairement) ; repli « Tiers #N » identique si le tiers a été supprimé/pas encore chargé. (b) `EtatsPage.jsx` `GenericTable` migré du `<table>` HTML nu vers le primitif partagé `pages/reporting/Table.jsx`, plus tri au clic d'en-tête (ascendant/descendant, icônes lucide) — une balance rendue trie désormais au clic. (c)(d) `FiscalitePage.jsx` : les 6 exports fiscaux regroupés en 2 rangées sous-titrées « Mensuel » / « Annuel — exercice requis », chaque bouton (FEC/liasse/IS compris) porte désormais une phrase d'aide grise dédiée. Tests : `resolveTiersLabel` (unitaire) + `etats-page-sort.test.jsx` (rendu `report-table` + tri au clic). Backend inchangé — `apps/compta/selectors.py` non touché (hors périmètre de ce lane).
 
 - 2026-07-12 — **VX229 — `CrudDialog` apprend le Combobox : fin des champs FK « (ID) » tapés à la main.** Nouveau type de champ `{name, label, async: () => Promise<{value,label}[]>, deriveFields?: (opt) => object}` dans `CrudDialog.jsx` — options chargées une fois à l'ouverture, mémoïsées, rendu en `Combobox` de recherche. Migré : `NotesDeFraisPage.jsx` 3× « Employé (ID) » → Combobox « Nom Prénom » (`rhApi.getEmployes`) ; `RapprochementsPage.jsx` « Compte de contrepartie (ID) » → Combobox comptes (`comptaApi.comptes.list`) ; `EngagementsPage.jsx` retenue de garantie : `tiers_nom` texte libre → Combobox du répertoire unifié `apps/tiers` (`tiers_id`/`tiers_type` réels, `tiers_nom` dérivé lecture seule via `deriveFields`, traçable vers la fiche tiers). `marche_ref`/Cautions bancaires laissés tels quels (string-ref intentionnel, aucun modèle tiers dédié côté backend — zéro migration). Tests `crud-dialog-combobox.test.jsx` (rendu Combobox + dérivation tiers_id/tiers_type/tiers_nom à la création). Frontend pur, zéro migration.
 

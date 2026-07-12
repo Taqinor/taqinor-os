@@ -121,13 +121,21 @@ const FIELDS = {
 // moment du téléchargement par `runExport` (stampedFilename), jamais un nom nu
 // — ces CSV partent chez le comptable, deux exports le même jour ne doivent
 // plus être indistinguables derrière un (1)/(2) de navigateur.
+// VX232 — un mot d'aide (`hint`) par export : « FEC »/« liasse »/« IS » ne
+// disaient rien à qui ne les connaît pas déjà.
 const EXPORTS = [
-  { key: 'exportFec', label: 'FEC (DGI)', fn: comptaApi.etats.exportFec, base: 'FEC', ext: 'txt', needsExercice: true },
-  { key: 'liasseFiscale', label: 'Liasse fiscale', fn: comptaApi.etats.liasseFiscale, base: 'liasse-fiscale', ext: 'csv', needsExercice: true },
-  { key: 'exportFiduciaire', label: 'Export fiduciaire', fn: comptaApi.etats.exportFiduciaire, base: 'export-fiduciaire', ext: 'csv', needsExercice: true },
-  { key: 'releveDeductionsTva', label: 'Relevé déductions TVA', fn: comptaApi.etats.releveDeductionsTva, base: 'releve-deductions-tva', ext: 'csv' },
-  { key: 'declarationHonoraires', label: 'Déclaration honoraires', fn: comptaApi.etats.declarationHonoraires, base: 'declaration-honoraires', ext: 'csv' },
-  { key: 'aideIs', label: 'Aide au calcul IS', fn: comptaApi.etats.aideIs, base: 'aide-is', ext: 'csv', needsExercice: true },
+  { key: 'exportFec', label: 'FEC (DGI)', fn: comptaApi.etats.exportFec, base: 'FEC', ext: 'txt', needsExercice: true,
+    hint: 'Format DGI officiel du Fichier des Écritures Comptables, à fournir en cas de contrôle fiscal.' },
+  { key: 'liasseFiscale', label: 'Liasse fiscale', fn: comptaApi.etats.liasseFiscale, base: 'liasse-fiscale', ext: 'csv', needsExercice: true,
+    hint: 'Bilan, CPC, ESG et ETIC de l’exercice, prêts à transmettre au comptable ou à la DGI.' },
+  { key: 'exportFiduciaire', label: 'Export fiduciaire', fn: comptaApi.etats.exportFiduciaire, base: 'export-fiduciaire', ext: 'csv', needsExercice: true,
+    hint: 'Export consolidé de l’exercice, au format attendu par le cabinet fiduciaire externe.' },
+  { key: 'releveDeductionsTva', label: 'Relevé déductions TVA', fn: comptaApi.etats.releveDeductionsTva, base: 'releve-deductions-tva', ext: 'csv',
+    hint: 'Détail des lignes de TVA déductible de la période, à joindre à la déclaration TVA.' },
+  { key: 'declarationHonoraires', label: 'Déclaration honoraires', fn: comptaApi.etats.declarationHonoraires, base: 'declaration-honoraires', ext: 'csv',
+    hint: 'Récapitulatif des honoraires versés à des tiers non-salariés sur la période.' },
+  { key: 'aideIs', label: 'Aide au calcul IS', fn: comptaApi.etats.aideIs, base: 'aide-is', ext: 'csv', needsExercice: true,
+    hint: 'Base de calcul de l’Impôt sur les Sociétés (IS) à partir du résultat fiscal de l’exercice.' },
 ]
 
 // XACC9 — Calendrier des échéances fiscales : lecture seule + génération/rappels.
@@ -375,12 +383,37 @@ export default function FiscalitePage() {
               ))}
             </select>
           </div>
-          <div className="flex flex-wrap gap-2">
-            {EXPORTS.map((exp) => (
-              <Button key={exp.key} variant="outline" size="sm" onClick={() => runExport(exp)}>
-                <Download className="size-4" /> {exp.label}
-              </Button>
-            ))}
+          {/* VX232 — 2 rangées sous-titrées : la routine mensuelle ne se mélange
+              plus avec l'annuel (exercice requis), chaque export porte sa phrase. */}
+          <div className="flex flex-col gap-4">
+            <div>
+              <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Mensuel</h4>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {EXPORTS.filter((exp) => !exp.needsExercice).map((exp) => (
+                  <div key={exp.key} className="flex flex-col gap-1 rounded-lg border border-border p-3">
+                    <Button variant="outline" size="sm" className="w-fit" onClick={() => runExport(exp)}>
+                      <Download className="size-4" /> {exp.label}
+                    </Button>
+                    <p className="text-xs text-muted-foreground">{exp.hint}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div>
+              <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Annuel — exercice requis
+              </h4>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {EXPORTS.filter((exp) => exp.needsExercice).map((exp) => (
+                  <div key={exp.key} className="flex flex-col gap-1 rounded-lg border border-border p-3">
+                    <Button variant="outline" size="sm" className="w-fit" onClick={() => runExport(exp)}>
+                      <Download className="size-4" /> {exp.label}
+                    </Button>
+                    <p className="text-xs text-muted-foreground">{exp.hint}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </Card>
       )}

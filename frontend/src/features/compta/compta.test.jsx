@@ -122,6 +122,19 @@ describe('CockpitPage — VX115 : KPI vers l’écran d’action + index des exp
   }, 30000)
 })
 
+describe('resolveTiersLabel — VX232(a) : le KPI n°1 ne montre plus « Tiers #42 » brut', () => {
+  it('résout un tiers connu vers son nom réel', async () => {
+    const { resolveTiersLabel } = await import('./pages/CockpitPage.jsx')
+    expect(resolveTiersLabel(3, { 3: 'SOMACHOR SA' })).toBe('SOMACHOR SA')
+  })
+
+  it('replie sur « Tiers #N » quand le répertoire ne contient pas ce tiers, et « Non affecté » sans tiers_id', async () => {
+    const { resolveTiersLabel } = await import('./pages/CockpitPage.jsx')
+    expect(resolveTiersLabel(42, {})).toBe('Tiers #42')
+    expect(resolveTiersLabel(null, {})).toBe('Non affecté')
+  })
+})
+
 describe('PlanComptablePage — rendu smoke (UX3)', () => {
   it('rend le titre et le sélecteur de vue', async () => {
     const { default: PlanComptablePage } = await import('./pages/PlanComptablePage.jsx')
