@@ -162,7 +162,7 @@ export default function AppointmentBooker({ leadId }) {
                   type="button"
                   onClick={() => handleDownloadIcs(a.id)}
                   style={{
-                    fontSize: 11, color: 'var(--color-text-muted, #475569)',
+                    fontSize: 11, color: 'var(--muted-foreground)',
                     background: 'none', border: 'none', cursor: 'pointer',
                     padding: '0 4px', marginLeft: 'auto',
                   }}
@@ -176,7 +176,7 @@ export default function AppointmentBooker({ leadId }) {
                   type="button"
                   onClick={() => handleConfirmWhatsapp(a.id)}
                   style={{
-                    fontSize: 11, color: 'var(--color-success, #059669)',
+                    fontSize: 11, color: 'var(--success)',
                     background: 'none', border: 'none', cursor: 'pointer',
                     padding: '0 4px',
                   }}
@@ -205,8 +205,8 @@ export default function AppointmentBooker({ leadId }) {
           {waPreview && (
             <div style={{
               marginTop: 6, padding: '8px 10px',
-              background: 'var(--color-surface-2, #f8f9fa)',
-              border: '1px solid var(--color-border, #e5e7eb)',
+              background: 'var(--muted)',
+              border: '1px solid var(--border)',
               borderRadius: 8, fontSize: 12,
             }}>
               <div style={{ fontWeight: 600, marginBottom: 4 }}>

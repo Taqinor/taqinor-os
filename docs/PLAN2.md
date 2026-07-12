@@ -812,7 +812,7 @@ grand-verdict — voir NE PAS FAIRE en fin de section pour le détail des kills/
 
 **Sous-groupe VXD-E — Craft-physics & tokens (les fondations que 3 rounds n'ont pas atteintes)**
 
-- [ ] VX121 — **Zéro couleur hors token : le sweep CSS et JS, avec garde CI.** Trois strates de (@lane: frontend/ui-core)
+- [x] VX121 — **Zéro couleur hors token : le sweep CSS et JS, avec garde CI.** Trois strates de (@lane: frontend/ui-core)
   couleur échappent encore à tout token : (a) ~500 hex slate au niveau composant dans `index.css`
   (`.form-control`/`.modal-*` L900-1156, `.lines-table` L1184-1220, `.data-table` L830-862,
   `.lead-nav` L1002-1006, `.page-loading/.page-error` L727-739) ; (b) les 6 ombres d'épinglage
@@ -834,7 +834,7 @@ grand-verdict — voir NE PAS FAIRE en fin de section pour le détail des kills/
   rgba(0,0,0 ui/` = 0 ; dark mode cohérent sur 6 écrans témoins ; garde CI verte puis rouge sur un
   hex injecté. (T2 — L, sonnet) (@lane: frontend/ui-core)
 
-- [ ] VX122 — **La voix typographique : police de marque par défaut + échelle F121 réellement (@lane: frontend/ui-core)
+- [x] VX122 — **La voix typographique : police de marque par défaut + échelle F121 réellement (@lane: frontend/ui-core)
   branchée + finesse française.** Quatre défauts d'une même cause : (a) `index.css:26` rend tout
   le legacy en `font-family: system-ui` alors qu'Archivo/Hanken Grotesk sont préchargées
   (`brand.css`) ; **rogné (grand-verdict) :** ce point (a) est déjà VX3 mot pour mot, ne pas le
@@ -849,7 +849,7 @@ grand-verdict — voir NE PAS FAIRE en fin de section pour le détail des kills/
   Reporting) rendent le même titre sans toucher leur JSX ; `nbsp('Priorité')` vérifiable par
   `codePointAt` ; e2e verts. (T2 — M, sonnet) (@lane: frontend/ui-core)
 
-- [ ] VX123 — **Plancher d'accessibilité visuelle : anneau de focus token-isé consommé partout + (@lane: frontend/ui-core)
+- [x] VX123 — **Plancher d'accessibilité visuelle : anneau de focus token-isé consommé partout + (@lane: frontend/ui-core)
   modes de contraste système.** Le token `--focus-ring` (`tokens.css:98`) et l'utilitaire
   `shadow-focus-ring` (L248) sont du code mort décoratif : **24 fichiers** primitifs (corrigé par
   le grand-verdict : pas « 40+ ») répètent en dur `focus-visible:ring-2 ring-ring
@@ -914,7 +914,7 @@ grand-verdict — voir NE PAS FAIRE en fin de section pour le détail des kills/
   assertant la classe pressée ; courbes identiques par `transition-timing-function` calculée ;
   rien sous `hover:none` ; e2e inchangés. (T2 — M, sonnet) (@lane: frontend/ui-core)
 
-- [ ] VX127 — **L'état LECTURE-SEULE existe enfin + EditableCell honnête (pending/erreur (@lane: frontend/ui-core)
+- [x] VX127 — **L'état LECTURE-SEULE existe enfin + EditableCell honnête (pending/erreur (@lane: frontend/ui-core)
   serveur/readOnly).** Aucun primitif ne distingue `readOnly` de `disabled` : une référence de
   devis ou un total TTC affiché en Input apparaît soit éditable soit grisé opacité 60 % (illisible,
   non copiable). Et `EditableCell.jsx:108` commit au blur sans état « enregistrement en cours »,
@@ -928,7 +928,7 @@ grand-verdict — voir NE PAS FAIRE en fin de section pour le détail des kills/
   rejeté → cellule rouverte + message ; tests unitaires des trois états. (T2 — M, sonnet) (@lane:
   frontend/ui-core)
 
-- [ ] VX128 — **Comboboxes audibles : `aria-activedescendant` câblé (0 occurrence dans tout le (@lane: frontend/ui-core)
+- [x] VX128 — **Comboboxes audibles : `aria-activedescendant` câblé (0 occurrence dans tout le (@lane: frontend/ui-core)
   repo).** `Combobox.jsx`, `MultiSelect.jsx`, `TimePicker.jsx` gèrent un curseur visuel
   (`data-cursor`, flèches) mais l'input `role="combobox"` ne pointe jamais l'option active — un
   utilisateur NVDA/VoiceOver entend « zone de liste » puis RIEN en parcourant ; c'est LE trou du
@@ -939,7 +939,7 @@ grand-verdict — voir NE PAS FAIRE en fin de section pour le détail des kills/
   === id de la 2ᵉ option ; le scan axe (VX71) le détecte corrigé. (T2 — S/M, sonnet) (@lane:
   frontend/ui-core)
 
-- [ ] VX129 — **Primitives complétées : menus pro, Textarea adulte, Progress indéterminé, Avatar (@lane: frontend/ui-core)
+- [x] VX129 — **Primitives complétées : menus pro, Textarea adulte, Progress indéterminé, Avatar (@lane: frontend/ui-core)
   riche, UNE grammaire de chip.** Pack de complétude sur 6 primitifs, tous prouvés incomplets par
   grep : (a) menus sans `RadioItem`/`Sub`/`SubTrigger` (0 occurrence) ni slot raccourci —
   ContextMenu n'a même pas CheckboxItem ; (b) Textarea nu : resize navigateur, ni autoResize ni
@@ -957,7 +957,7 @@ grand-verdict — voir NE PAS FAIRE en fin de section pour le détail des kills/
   max={3}>` de 5 → « +2 » ; jetons MultiSelect et Tag partagent rayon/hauteur (inspection). (T2 —
   L, sonnet) (@lane: frontend/ui-core)
 
-- [ ] VX130 — **Le toast devient un objet de marque : tokens, icônes lucide, durées motion, (@lane: frontend/ui-core)
+- [x] VX130 — **Le toast devient un objet de marque : tokens, icônes lucide, durées motion, (@lane: frontend/ui-core)
   registres réels.** `Toaster.jsx:13` délègue tout à sonner `richColors` : couleurs génériques hors
   tokens `--success/--warning/--info` (divergentes en dark), icônes internes sonner alors que TOUT
   le reste de l'app est lucide, durées indépendantes de `--motion-*`, et un vocabulaire binaire —
@@ -986,7 +986,7 @@ grand-verdict — voir NE PAS FAIRE en fin de section pour le détail des kills/
   liste vide → même CTA que la toolbar (test) ; route refusée → écran 403 dédié (pas le 404). (T1 —
   M, sonnet) (@lane: frontend/orphans)
 
-- [ ] VX132 — **L'attente premium : shimmer, crossfade, squelettes honnêtes, anti-scintillement (@lane: frontend/ui-core)
+- [x] VX132 — **L'attente premium : shimmer, crossfade, squelettes honnêtes, anti-scintillement (@lane: frontend/ui-core)
   propagé, chargement long conscient.** Cinq défauts d'une même expérience : (a) `Skeleton.jsx:11`
   est le pulse Tailwind par défaut — pas de balayage lumineux directionnel (CSS pur, motion-safe
   gardé) ; (b) le passage squelette→contenu est un swap sec partout — pas de `<FadeSwap>`
@@ -1549,7 +1549,7 @@ pas la dupliquer ici, la numérotation continue directement à SEED-02.*
 
 **Sous-groupe VXD-B — Formulaires : ne jamais perdre une saisie**
 
-- [ ] VX166 — **Câbler `confirmLeaveIfDirty` chez les 7 adoptants existants + `CrudDialog` (8 (@lane: frontend/forms)
+- [x] VX166 — **Câbler `confirmLeaveIfDirty` chez les 7 adoptants existants + `CrudDialog` (8 (@lane: frontend/forms)
   écrans compta d'un coup).** Les 7 formulaires qui calculent DÉJÀ `dirty` + `useDirtyGuard`
   (`ClientForm.jsx:240`, `ProduitForm.jsx:402`, `DevisForm.jsx:222`, `FactureForm.jsx:263`,
   `InstallationDetail.jsx:725`, `EquipementsPage.jsx:229`, `TicketsPage.jsx:529`) gardent
@@ -1562,7 +1562,7 @@ pas la dupliquer ici, la numérotation continue directement à SEED-02.*
   modale ouverte, champs intacts ; non-dirty inchangé ; smoke 2 pages compta. (T1 — S/M, sonnet)
   (@lane: frontend/forms)
 
-- [ ] VX167 — **LeadForm : dirty-tracking + garde de fermeture (le modal n°1 — complément direct (@lane: frontend/forms — @with/after VX89)
+- [x] VX167 — **LeadForm : dirty-tracking + garde de fermeture (le modal n°1 — complément direct (@lane: frontend/forms — @with/after VX89)
   de VX89). @with/after VX89.** `LeadForm.jsx:588` (overlay `onClick={onClose}`) et `:639` (bouton
   ✕) : ZÉRO notion de dirty dans tout le fichier (grep) — 15 champs (bien+GPS+relance+tags) perdus
   sur un mis-clic, à 20-40 ouvertures/jour/commercial. VX89 (Escape+autofocus via ResponsiveDialog)
@@ -1572,7 +1572,7 @@ pas la dupliquer ici, la numérotation continue directement à SEED-02.*
   modifier un champ → toute fermeture demande confirmation ; e2e leads verts. (T1 — M, sonnet)
   (@lane: frontend/forms — @with/after VX89)
 
-- [ ] VX168 — **Balayage garde+autoFocus : 13 dialogues flotte/gestion_projet + (@lane: frontend/forms)
+- [x] VX168 — **Balayage garde+autoFocus : 13 dialogues flotte/gestion_projet + (@lane: frontend/forms)
   `EmployeDetail`/`Recrutement` + autoFocus top-20.** 9 dialogues `features/flotte/*` (dont
   `PleinDialog` 11 useState, `SignalementDialog` saisie terrain) + 4
   `features/gestion_projet/components/*Dialog.jsx` : 0 dirty-guard (grep) ;
@@ -1585,7 +1585,7 @@ pas la dupliquer ici, la numérotation continue directement à SEED-02.*
   `document.activeElement` = premier champ. (T1 — L, sonnet ; haiku après le patron) (@lane:
   frontend/forms)
 
-- [ ] VX169 — **`useBlocker` : garde de navigation IN-APP des formulaires route-level.** (@lane: frontend/forms)
+- [x] VX169 — **`useBlocker` : garde de navigation IN-APP des formulaires route-level.** (@lane: frontend/forms)
   `useDirtyGuard` ne couvre que `beforeunload` — un clic sidebar pendant la saisie navigue
   instantanément (pushState, pas un déchargement) ; `useBlocker` de react-router v7
   (`createBrowserRouter` confirmé `router/index.jsx:207`) = 0 usage dans le repo. Fix :
@@ -1595,7 +1595,7 @@ pas la dupliquer ici, la numérotation continue directement à SEED-02.*
   (nouveau) + les 5 écrans. DoD : modifier ParametresEntreprise → clic lien sidebar →
   confirmation ; accepter navigue, annuler reste. (T2 — M, sonnet) (@lane: frontend/forms)
 
-- [ ] VX170 — **`useFormSafety` : LA primitive qui rend le mauvais câblage impossible (incl. (@lane: frontend/forms)
+- [x] VX170 — **`useFormSafety` : LA primitive qui rend le mauvais câblage impossible (incl. (@lane: frontend/forms)
   réparation WebKit du hook + `safeStorage`).** Le repo n'a pas de convention : chaque formulaire
   réinvente son snapshot (`isDirty` / `JSON.stringify` diff / `useMemo` custom) et personne ne
   branche les 3 mécanismes ensemble (tab-close + in-app-close + router) — les 7 « meilleurs
@@ -1613,7 +1613,7 @@ pas la dupliquer ici, la numérotation continue directement à SEED-02.*
   en quota plein ne crash pas et évince le plus ancien ; 3 formulaires migrés avec moins de code.
   (T2 — M, sonnet) (@lane: frontend/forms)
 
-- [ ] VX171 — **Vérité des erreurs de champ : serveur → champ (`useServerFieldErrors`) + erreurs (@lane: frontend/forms)
+- [x] VX171 — **Vérité des erreurs de champ : serveur → champ (`useServerFieldErrors`) + erreurs (@lane: frontend/forms)
   locales effacées à la frappe.** (a) DRF renvoie `{champ:[msg]}` mais 12 fichiers seulement posent
   `aria-invalid` — tout est écrasé en UN toast opaque ; `FormField` (`ui/Form.jsx:56-77`) est
   correctement câblé et sous-consommé. (b) `ClientForm.jsx:170-180`, `DevisForm.jsx:147/215`,
@@ -1767,7 +1767,7 @@ pas la dupliquer ici, la numérotation continue directement à SEED-02.*
   `scrollWidth <= clientWidth` sur `.header` (Playwright) ; les 3 thèmes restent accessibles via le
   menu ; e2e mobile vert. (T2 — S/M, sonnet) (@lane: frontend/ios)
 
-- [ ] VX182 — **7 modales fait-main hors LeadForm : le même défaut que VX89 corrige, sur 7 (@lane: frontend/forms — @after VX89)
+- [x] VX182 — **7 modales fait-main hors LeadForm : le même défaut que VX89 corrige, sur 7 (@lane: frontend/forms — @after VX89)
   surfaces qu'il ne cite pas. @after VX89.** Grep négatif vérifié
   (`Escape|autoFocus|role="dialog"|aria-modal|ResponsiveDialog` = 0) sur 7 fichiers au même shell
   `.modal-overlay` brut que `LeadForm.jsx:588` : `features/logistique/PodCaptureDialog.jsx`,
@@ -3235,6 +3235,20 @@ droite)**
 - 2026-07-12 — **VX208 (already present)** — verified: `apps/notifications/severity.py` (EVENT_SEVERITY/EVENT_CATEGORY dicts), serializer exposure, NotificationBell severity/category grouping + digest-excluded-from-badge + undo-via-mark_unread already shipped with `tests_vx208_severity_taxonomy.py`, commit `5b99b234` on main. Ticked, no rebuild.
 
 - 2026-07-12 — **VX207 (already present)** — verified during backend/notify lane drain: `GET /notifications/attention-summary/` (`views.py:438`, `urls.py:47`) already exists with a dedicated contract test (`tests_vx207_attention_summary.py`), commit `6e80ce75` on main. Ticked, no rebuild.
+
+- 2026-07-12 — **VX127/VX128/VX129/VX130/VX132 (already present).** Verified already built by a prior wave: VX127 `readOnly` variant on Input/Textarea/Select (distinct from `disabled`, selectable/copiable) + `EditableCell` spinner-during-save/rejected-cell-reopens-with-message/`readOnly` prop. VX128 `aria-activedescendant` wired on Combobox/MultiSelect/TimePicker following the cursor. VX129 primitives completeness pack — DropdownMenu RadioItem/Sub/SubTrigger, ContextMenu CheckboxItem, Textarea autoResize+maxLength counter, Progress `indeterminate`, Stat lucide ArrowUp/ArrowDown (no more text glyphs), Avatar presence + AvatarGroup "+N", Tag/MultiSelect chips sharing `tagBase`, Popover/HoverCard opt-in `arrow`. VX130 Toaster `richColors` removed in favor of per-type token classNames, lucide icons, `[data-sonner-toast]` duration on `--motion-base`, `toastInfo`/`toastWarning`/`toastDestructive` (≥6s registry) in `lib/toast.js` — all within the task's declared Files scope (`ui/Toaster.jsx`/`lib/toast.js`/`index.css`); expanding real-world `toast.warning` adoption across other app files was left alone as out of this task's named-files scope. VX132 `Skeleton` shimmer, `FadeSwap` (built + tested, 0 current consumers — DoD doesn't require migration), DataTable skeleton rows `Math.min(pageSize, 12)`, `useDelayedLoading` on 15 files, `useRotatingLabel` wired on DevisList/FactureList PDF generation. No code changes.
+
+- 2026-07-12 — **VX123 (already present).** Verified already built by a prior wave: `.focus-ring` utility (`design/tokens.css:418`) consumed everywhere (0 residual `focus-visible:ring-2 focus-visible:ring-ring` chains in `ui/`), the 4 remaining `outline: none` in `index.css` are all paired with their own focus indicator (not orphans), `@media (forced-colors: active)` maps card/table/modal/form/btn to real `CanvasText`/`ButtonBorder`/`Highlight` borders, `@media (prefers-contrast: more)` hardens `--border`/`--muted-foreground` via `color-mix`. No code changes.
+
+- 2026-07-12 — **VX122 — voix typographique F121 (dernier volet réel : 3 recettes eyebrow encore en dur).** `.page-header h2`/`nbsp()`/`ArticleDetail` max-w-prose étaient déjà branchés par une vague antérieure ; `.text-eyebrow`/`--text-eyebrow-tracking` (tokens.css) existaient déjà et étaient consommés par 5 sélecteurs (`.gen-metric-label`/`.gen-chart-title`/`.gen-total-label`/`.gs-group-title`/`.cmdk-group-title`) mais PAS par les 3 recettes-tableau restantes : `.data-table th`/`.lines-table th`/`.cal-weekday` gardaient encore `letter-spacing: 0.04em` codé en dur (divergence résiduelle avec les 0.05em d'autres sélecteurs) — basculées sur le token unique.
+
+- 2026-07-12 — **VX121 — zéro couleur hors token (dernier volet réel : AppointmentBooker).** Le sweep index.css (`scripts/check_hex.mjs`, 26 sélecteurs gardés, 0 hex) / DataTable `rgba(0,0,0…)` / `ChantierTimeline`/`ProductionPage` / bloc mort `.agent-*` était déjà fait par une vague antérieure — seul `AppointmentBooker.jsx` avait encore 4 fallbacks orphelins `var(--color-text-muted, #475569)` / `var(--color-success, #059669)` / `var(--color-surface-2, #f8f9fa)` / `var(--color-border, #e5e7eb)` (tokens qui n'existent nulle part dans `tokens.css` — silencieusement `unset` en dark mode). Remplacés par les vrais tokens déjà consommés plus haut dans le même fichier (`--muted-foreground`/`--success`/`--muted`/`--border`).
+
+- 2026-07-12 — **VX166/VX168/VX169/VX170/VX171 (already present).** Verified already built by a prior wave: VX166 `confirmLeaveIfDirty`/`guardedClose` wired on the 7 named adopters + `CrudDialog.jsx` (8 compta callers). VX168 dirty-guard on all 9 `features/flotte/*Dialog.jsx` + 6 `features/gestion_projet/components/*Dialog.jsx` + `EmployeDetail.jsx`/`Recrutement.jsx`, `autoFocus` present on 38 files repo-wide incl. UsersManagement/RolesManagement/KpiAlertesPage/CrudDialog. VX169 `hooks/useNavigationGuard.js` (`useBlocker`) mounted on all 5 named screens (ParametresEntreprise, EquipementSignalerPage, DashboardConfigPage, ArticleEditor, ReclamationEditor). VX170 `ui/useFormSafety.js` (dirty diff + `useDirtyGuard` + `confirmLeaveIfDirty` + optional route-level guard) + `lib/safeStorage.js` (pagehide-safe persistence) built and consumed by ClientForm/CrudDialog/flotte dialogs. VX171 `hooks/useServerFieldErrors.js` consumed by Client/Lead/Devis/Facture/Produit forms with `clearField` on every `set()`. No code changes needed.
+
+- 2026-07-12 — **VX182 — 7 modales fait-main hors LeadForm passées à ResponsiveDialog.** `PodCaptureDialog`, `TransfertsScreen` (CreateDemandeDialog), `ClientDetailPanel`, `ConvertirClientDialog`, `LeadInsightsDialog`, `PlanActiviteDialog`, `SigneDialog` : shell `.modal-overlay`/`.modal` brut remplacé par `ResponsiveDialog` (Escape + focus-trap + overlay-click + bottom-sheet mobile, `showClose={false}` — le ✕ existant reste l'unique fermeture visible), `autoFocus` posé sur le premier contrôle réel de chacun (5/7 en ont un ; les 2 panneaux lecture-seule `ClientDetailPanel`/`LeadInsightsDialog` s'appuient sur le focus-trap par défaut de Radix). `sd-modal` conservée en className sur `SigneDialog` (sélecteur CSS scopé `.sd-modal .form-label` intact).
+
+- 2026-07-12 — **VX167 — LeadForm : dirty-tracking + garde de fermeture.** `isDirty` (déjà présent, VX224) branché sur `useDirtyGuard` (filet beforeunload) + `confirmLeaveIfDirty` posé sur les 3 chemins de fermeture volontaire (`onOpenChange` du `ResponsiveDialog`, bouton ✕, bouton Annuler du footer) — parité avec les 7 adoptants VX166.
 
 - 2026-07-11 — **VX152 — fin des moteurs de table parallèles (dernier volet, landé seul).** GED (`GedNavigator`/`GedSearch`), `ClientDetailPanel` et OCR (`OcrUpload`) rejoignent le moteur de table déjà utilisé par leur voisin direct : GedNavigator/GedSearch → moteur `DataTable` partagé (GedNavigator via l'échappatoire `renderRow`/`renderHeaderRow` ARC49 pour préserver le DOM testé ; GedSearch en colonnes), `ClientDetailPanel` → primitif `Table` partagé (fin du 3e moteur maison `DocTable` ; plus aucune `<table>` HTML), OcrUpload → NOUVEAU primitif partagé `ui/KeyValueTable` alimenté par un point de rendu UNIQUE de `FIELD_LABELS` (helper `ocrFieldRows`). + volet `RolesManagement` (liste des rôles → `DataTable`, grille de permissions inchangée). Tests de source `node --test` par surface ; tests comportementaux existants (GedNavigator/GedSearch/OcrUpload) verts par préservation du DOM (cases/actions/testids conservés). Frontend pur, zéro migration. Landé SEUL par cherry-pick sur `main` (les autres commits VX de la branche — VX141/146/147/148 — restent en attente : VX141 introduit `DEVIS_TRACK_STAGES` qui fait échouer `check_stages.py`, à traiter séparément). (ROUTINE)
 
