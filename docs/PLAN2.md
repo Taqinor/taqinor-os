@@ -906,7 +906,7 @@ grand-verdict — voir NE PAS FAIRE en fin de section pour le détail des kills/
   assertant la classe pressée ; courbes identiques par `transition-timing-function` calculée ;
   rien sous `hover:none` ; e2e inchangés. (T2 — M, sonnet) (@lane: frontend/ui-core)
 
-- [ ] VX127 — **L'état LECTURE-SEULE existe enfin + EditableCell honnête (pending/erreur (@lane: frontend/ui-core)
+- [x] VX127 — **L'état LECTURE-SEULE existe enfin + EditableCell honnête (pending/erreur (@lane: frontend/ui-core)
   serveur/readOnly).** Aucun primitif ne distingue `readOnly` de `disabled` : une référence de
   devis ou un total TTC affiché en Input apparaît soit éditable soit grisé opacité 60 % (illisible,
   non copiable). Et `EditableCell.jsx:108` commit au blur sans état « enregistrement en cours »,
@@ -920,7 +920,7 @@ grand-verdict — voir NE PAS FAIRE en fin de section pour le détail des kills/
   rejeté → cellule rouverte + message ; tests unitaires des trois états. (T2 — M, sonnet) (@lane:
   frontend/ui-core)
 
-- [ ] VX128 — **Comboboxes audibles : `aria-activedescendant` câblé (0 occurrence dans tout le (@lane: frontend/ui-core)
+- [x] VX128 — **Comboboxes audibles : `aria-activedescendant` câblé (0 occurrence dans tout le (@lane: frontend/ui-core)
   repo).** `Combobox.jsx`, `MultiSelect.jsx`, `TimePicker.jsx` gèrent un curseur visuel
   (`data-cursor`, flèches) mais l'input `role="combobox"` ne pointe jamais l'option active — un
   utilisateur NVDA/VoiceOver entend « zone de liste » puis RIEN en parcourant ; c'est LE trou du
@@ -931,7 +931,7 @@ grand-verdict — voir NE PAS FAIRE en fin de section pour le détail des kills/
   === id de la 2ᵉ option ; le scan axe (VX71) le détecte corrigé. (T2 — S/M, sonnet) (@lane:
   frontend/ui-core)
 
-- [ ] VX129 — **Primitives complétées : menus pro, Textarea adulte, Progress indéterminé, Avatar (@lane: frontend/ui-core)
+- [x] VX129 — **Primitives complétées : menus pro, Textarea adulte, Progress indéterminé, Avatar (@lane: frontend/ui-core)
   riche, UNE grammaire de chip.** Pack de complétude sur 6 primitifs, tous prouvés incomplets par
   grep : (a) menus sans `RadioItem`/`Sub`/`SubTrigger` (0 occurrence) ni slot raccourci —
   ContextMenu n'a même pas CheckboxItem ; (b) Textarea nu : resize navigateur, ni autoResize ni
@@ -949,7 +949,7 @@ grand-verdict — voir NE PAS FAIRE en fin de section pour le détail des kills/
   max={3}>` de 5 → « +2 » ; jetons MultiSelect et Tag partagent rayon/hauteur (inspection). (T2 —
   L, sonnet) (@lane: frontend/ui-core)
 
-- [ ] VX130 — **Le toast devient un objet de marque : tokens, icônes lucide, durées motion, (@lane: frontend/ui-core)
+- [x] VX130 — **Le toast devient un objet de marque : tokens, icônes lucide, durées motion, (@lane: frontend/ui-core)
   registres réels.** `Toaster.jsx:13` délègue tout à sonner `richColors` : couleurs génériques hors
   tokens `--success/--warning/--info` (divergentes en dark), icônes internes sonner alors que TOUT
   le reste de l'app est lucide, durées indépendantes de `--motion-*`, et un vocabulaire binaire —
@@ -978,7 +978,7 @@ grand-verdict — voir NE PAS FAIRE en fin de section pour le détail des kills/
   liste vide → même CTA que la toolbar (test) ; route refusée → écran 403 dédié (pas le 404). (T1 —
   M, sonnet) (@lane: frontend/orphans)
 
-- [ ] VX132 — **L'attente premium : shimmer, crossfade, squelettes honnêtes, anti-scintillement (@lane: frontend/ui-core)
+- [x] VX132 — **L'attente premium : shimmer, crossfade, squelettes honnêtes, anti-scintillement (@lane: frontend/ui-core)
   propagé, chargement long conscient.** Cinq défauts d'une même expérience : (a) `Skeleton.jsx:11`
   est le pulse Tailwind par défaut — pas de balayage lumineux directionnel (CSS pur, motion-safe
   gardé) ; (b) le passage squelette→contenu est un swap sec partout — pas de `<FadeSwap>`
@@ -3207,6 +3207,8 @@ droite)**
 ---
 
 ## DONE LOG (agent appends one plain-language line per completed task)
+
+- 2026-07-12 — **VX127/VX128/VX129/VX130/VX132 (already present).** Verified already built by a prior wave: VX127 `readOnly` variant on Input/Textarea/Select (distinct from `disabled`, selectable/copiable) + `EditableCell` spinner-during-save/rejected-cell-reopens-with-message/`readOnly` prop. VX128 `aria-activedescendant` wired on Combobox/MultiSelect/TimePicker following the cursor. VX129 primitives completeness pack — DropdownMenu RadioItem/Sub/SubTrigger, ContextMenu CheckboxItem, Textarea autoResize+maxLength counter, Progress `indeterminate`, Stat lucide ArrowUp/ArrowDown (no more text glyphs), Avatar presence + AvatarGroup "+N", Tag/MultiSelect chips sharing `tagBase`, Popover/HoverCard opt-in `arrow`. VX130 Toaster `richColors` removed in favor of per-type token classNames, lucide icons, `[data-sonner-toast]` duration on `--motion-base`, `toastInfo`/`toastWarning`/`toastDestructive` (≥6s registry) in `lib/toast.js` — all within the task's declared Files scope (`ui/Toaster.jsx`/`lib/toast.js`/`index.css`); expanding real-world `toast.warning` adoption across other app files was left alone as out of this task's named-files scope. VX132 `Skeleton` shimmer, `FadeSwap` (built + tested, 0 current consumers — DoD doesn't require migration), DataTable skeleton rows `Math.min(pageSize, 12)`, `useDelayedLoading` on 15 files, `useRotatingLabel` wired on DevisList/FactureList PDF generation. No code changes.
 
 - 2026-07-12 — **VX123 (already present).** Verified already built by a prior wave: `.focus-ring` utility (`design/tokens.css:418`) consumed everywhere (0 residual `focus-visible:ring-2 focus-visible:ring-ring` chains in `ui/`), the 4 remaining `outline: none` in `index.css` are all paired with their own focus indicator (not orphans), `@media (forced-colors: active)` maps card/table/modal/form/btn to real `CanvasText`/`ButtonBorder`/`Highlight` borders, `@media (prefers-contrast: more)` hardens `--border`/`--muted-foreground` via `color-mix`. No code changes.
 
