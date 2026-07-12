@@ -139,6 +139,19 @@ appliquée. Nouveau `ui/ScrollProgress.jsx` (barre 2px, `scroll(nearest)`) posé
 `.modal-body` (LeadForm) et de la page (DevisGenerator, marche aussi `embedded` dans
 LeadDevisPanel — suit le conteneur qui défile réellement dans les deux cas). Les deux
 désactivent explicitement leur timeline sous `prefers-reduced-motion: reduce`.
+#### DONE LOG — Vague 3 (frontend/brand lane) (2026-07-12)
+
+- VX125 — already present: `docs/design-density-budget.md` (plafond 3 signaux ambiants, jamais 2 redisant le même chiffre, critère de retrait `<BetaBadge>`) already existed and is already referenced from `docs/CODEMAP.md §4` and commented in `design/tokens.css:13-17` — checkbox had simply never been ticked.
+- VX151 — already present: `peConstants.js` already carries `group`/`SETTINGS_GROUPS`/`saveModelForTab`/`SAVE_MODEL_HINTS`, and `ParametresEntreprise.jsx` already renders `<SettingsSidebar groups={tabGroups}>` (2-level nav) + the per-tab save-model hint before edition — checkbox had never been ticked.
+- VX153 — already present: `features/ged/module.config.jsx` already renames "GESTION DOCUMENTAIRE" → "DOCUMENTS - AVANCE", `GedNavigator.jsx`/`GedSearch.jsx` have zero `text-[1x px]` arbitrary sizes left, and `pages/ia/AgentActions.jsx` already groups the historique tab by Aujourd'hui/Hier/date (with `AgentActions.historique.test.jsx` green) — checkbox had never been ticked.
+- VX154 — already present: `ui/TaqinorMark.jsx` + `ui/SolarLoader.jsx` already exist and are already wired into `Header.jsx` (replacing the generic `<Zap>`) and `RouteFallback.jsx`, with the `sun-rise` keyframe + its `prefers-reduced-motion` freeze rule already in `index.css` — checkbox had never been ticked.
+- VX158 — part (a) (style "suggéré" pointillé sur les 4 champs VX93 : owner/ville `LeadForm.jsx`, TVA `ProduitForm.jsx`/`DevisGenerator.jsx`/`DevisLineRow.jsx`, payMode `PaiementDialog.jsx`) was already fully built by VX249(b) in a prior wave — verified, no changes needed there. Built part (b): `features/compta/pages/FiscalitePage.jsx` `EXPORTS` now carries a `help` phrase per export (FEC/liasse/export fiduciaire/relevé TVA/honoraires/aide IS), rendered as a static grey caption under each button, zero logic, visible without a click. New `FiscalitePage.vx158.test.mjs`.
+- VX159 — already present: `ui/RelationCounters.jsx` already exists and is already posed at the top of all 4 fiches (`ClientDetailPanel.jsx`, `FournisseurFiche360.jsx`, `ProduitDetail.jsx`, `LeadForm.jsx`), with `RelationCounters.test.jsx` + `RelationCountersMountPoints.test.mjs` green — checkbox had never been ticked.
+- VX233 — already present: `apps/parametres/views_audit.py` already lists `'tarification'` in `KNOWN_AUDIT_SECTIONS`, `parametresApi.getAuditSections()` already exists, `SettingsAuditFeed.jsx` already exists as a paramétrable component consumed by both `AvanceSection.jsx` (dynamic `<Select>`) and `TarificationSection.jsx` ("Voir l'historique" → `section="tarification"`) — checkbox had never been ticked.
+- VX155 — enrichit le Done= de VX40 : nouveau `ui/DealSignedCelebration.jsx` (carte de victoire — montant TTC + kWc réels, « ≈ X t CO₂ évitées/an » dérivée sur les mêmes hypothèses que le rapport de production estimée, TaqinorMark qui s'illumine ; sous reduced-motion, même carte sans mouvement) câblé sur les 2 chemins d'acceptation (`SigneDialog.jsx`, `DevisList.jsx` acceptation inline) à la place du toast plat + `celebrateDealSigned()` direct. Nouveau `toastMilestone` (`lib/toast.js`) — icône dédiée + description réf/client/montant — posé sur devis envoyé (`DevisList.jsx`) et facture payée (`PaiementDialog.jsx`, seulement quand le résiduel retombe à 0, jamais sur un règlement partiel). Tests : `DealSignedCelebration.test.jsx` (montant/kWc réels, reduced-motion sans mouvement, kWc absent jamais inventé), `toast.test.jsx` (toastMilestone), `SigneDialog.test.mjs` mis à jour.
+- VX236 — (a) `MesEquipesCard.jsx` : pipeline ouvert et CA signé ouvrent `/crm/leads?equipe=` / `/ventes/devis?statut=accepte&equipe=`, réellement filtrés sur les membres de l'équipe via un nouveau `hooks/useEquipeMembreIds.js` (client-side, réutilise `crmApi.getEquipes()` déjà existant — aucun endpoint nouveau) branché dans `LeadsPage.jsx`/`DevisList.jsx`. « Activités en retard » ouvre `/activites` (pas de filtre équipe — `MesActivitesPage` est bâtie autour de « mes » activités, pas d'un tri par owner-id ; laissé pour une tâche dédiée). (b) `Journal.jsx` `MODEL_ROUTES` devient `(objectId) => path`, réutilisant les deep-links VX79/VX22 (`?lead=`/`?devis=`/`?id=`) pour lead/client/devis/facture/installation/intervention/ticket — les modèles sans deep-link (avoir/équipement/produit/admin) gardent leur route de liste inchangée. (c) `KpiAlertesPage.jsx` : la « dernière valeur » devient un lien vers sa source réelle (DSO/encours échu → `/reporting/balance-agee`, valeur de stock → `/stock`). (d) NON construit : `MonitoringSection.jsx` (aperçu « N systèmes seraient signalés » au blur du seuil) nécessite le nouvel endpoint `[BACKEND additif] GET /parametres/monitoring/apercu/` — hors périmètre de ce lane (frontend-only) ; à reprendre dans une tâche backend dédiée. Tests : `useEquipeMembreIds.test.jsx`, `KpiAlertesPage.test.jsx` (nouveau cas).
+- VX247 — (a) `OnboardingCoachmarks.jsx` : `STEPS` porte désormais un `roles` optionnel filtré par le palier machine (`s.auth.role`) — les 2 étapes admin-only (profil société, inviter l'équipe) sont invisibles pour un rôle `normal`/`responsable` non prévu, et une nouvelle étape « Votre file de travail » cible `[data-coach="ma-file"]` (ancre ajoutée à `Sidebar.jsx` COACH_ANCHORS sur `/activites`) pour les rôles non-admin. (b) nouvelle étape FINALE sourcée de `GLOBAL_SHORTCUTS` (`providers/shortcuts.js`) — jamais un raccourci littéral dupliqué. (c) `Sidebar.jsx` affiche un badge « x/y » sur l'item Paramètres tant que la prise en main n'est pas à 100 % — réutilise le hook PARTAGÉ `useOnboardingSteps` (`onboardingHelpers.js`, déjà construit par VX36 pour `OnboardingBanner.jsx`) au lieu de créer un nouveau `hooks/useOnboardingProgress.js` dupliquant la même dérivation. (d) nouvelle `pages/aide/LexiquePage.jsx` (25 termes, recherche locale, route `/aide/lexique`) ; `ui/HelpTip.jsx` pointe désormais vers elle (lien interne, pas de doc externe — respecte la contrainte VX47). (e) NON construit : `[GATED-founder][BACKEND]` exposition de `seed_demo.py` — hors périmètre backend de ce lane, PROPOSER seulement selon la consigne du seed lui-même, jamais activer sans le fondateur. Tests : `OnboardingCoachmarks.test.jsx` (nouveau), `LexiquePage.test.jsx` (nouveau), `HelpTip.test.jsx` (cas ajouté + `MemoryRouter`).
+- VX156 — `lib/voice.js` + `<WelcomeMoment>` already existed (welcome moment wired in `main.jsx`) but the other 5 voice moments were never posed on a real screen. Wired `voice.devisSent` (DevisList email-send toast description), `voice.emptyQueue` (MesActivitesPage empty state, replacing the ad-hoc string), `voice.chantierDone` (InstallationDetail mise-en-service success toast, previously silent), `voice.networkError` (canonical `lib/apiError.js` Network-Error branch, updated its test). `voice.dealSigned` left for VX155 (SigneDialog/DealSignedCelebration territory, `@with VX40`).
 
 #### DONE LOG — Vague 2 (VX terrain/finance/CRM + QX groupe) (2026-07-12)
 
@@ -942,7 +955,7 @@ grand-verdict — voir NE PAS FAIRE en fin de section pour le détail des kills/
   montre la transition de wght, neutralisée sous reduced-motion. (T3 — S/M, sonnet) (@lane:
   frontend/ui-core)
 
-- [ ] VX125 — **[DECISION] Gouvernance anti-monday : budget de densité de signaux + badge de (@lane: frontend/brand)
+- [x] VX125 (already present) — **[DECISION] Gouvernance anti-monday : budget de densité de signaux + badge de (@lane: frontend/brand)
   maturité de module.** La plainte structurelle n°1 de monday.com 2026 (« density of statuses,
   colors, and columns… overwhelming ») est la trajectoire que VX construit un badge à la fois
   (VX84 cloche, VX86 approbations, VX98 fraîcheur, VX27 KPI) sans qu'aucune tâche ne pose de règle
@@ -1388,7 +1401,7 @@ subset) pour les identifiants (`--font-mono`) — à soumettre au fondateur avan
   marque ; le rAF de fond se met en pause hors onglet actif (test mock `visibilitychange`).
   (T3 — S, sonnet) (@lane: frontend/brand — delta sur VX34)
 
-- [ ] VX151 — **Paramètres : 24 onglets deviennent une surface de réglages navigable.** `TABS` (@lane: frontend/brand)
+- [x] VX151 (already present) — **Paramètres : 24 onglets deviennent une surface de réglages navigable.** `TABS` (@lane: frontend/brand)
   (`peConstants.js` L27-50) + 3 onglets locaux = 24 onglets plats dans UN `<TabsList
   overflow-x-auto>` (L801) — ~9-10 visibles à 1280px, scroll horizontal à l'aveugle sans
   fade/chevron ; et le bouton « Enregistrer » n'existe que sur 4/24 onglets, chaque section ayant
@@ -1419,7 +1432,7 @@ subset) pour les identifiants (`--font-mono`) — à soumettre au fondateur avan
   ClientDetailPanel.jsx` = 0 ; un seul point de rendu FIELD_LABELS dans OcrUpload ; tests existants
   verts. (T2 — L, sonnet) (@lane: frontend/brand)
 
-- [ ] VX153 — **GED/IA micro-pack : navigation réunifiée, tailles sémantiques, temps lisible.** (@lane: frontend/brand)
+- [x] VX153 (already present) — **GED/IA micro-pack : navigation réunifiée, tailles sémantiques, temps lisible.** (@lane: frontend/brand)
   Trois finitions du même périmètre : (a) « Documents » et « GESTION DOCUMENTAIRE » sont deux
   sections de menu pour UN espace conceptuel — un contournement technique de collision de clé
   assumé en commentaire (`module.config.jsx:36`) — fusionner/adjacenter les deux groupes sans
@@ -1432,7 +1445,7 @@ subset) pour les identifiants (`--font-mono`) — à soumettre au fondateur avan
   logs groupés par jour (`AgentActions.historique.test.jsx` vert). (T2 — S/M, haiku ; sonnet pour
   la décision de nav) (@lane: frontend/brand)
 
-- [ ] VX154 — **`TaqinorMark` + `SolarLoader` : le mot-symbole soleil-éclair porté dans l'app, (@lane: frontend/brand)
+- [x] VX154 (already present) — **`TaqinorMark` + `SolarLoader` : le mot-symbole soleil-éclair porté dans l'app, (@lane: frontend/brand)
   chaque attente signée.** Le glyphe le plus distinctif de la marque — le soleil rayonnant à
   éclair azur de `public/favicon.svg` — n'existe dans l'app React NULLE PART (grep = 0) : le header
   porte un `<Zap>` lucide générique sur carré jaune (`Header.jsx:60-62`), et chaque attente est
@@ -1446,7 +1459,7 @@ subset) pour les identifiants (`--font-mono`) — à soumettre au fondateur avan
   (snapshot, aria/data-* intacts) ; transition de route = petit soleil animé, figé sous
   reduced-motion ; rendu correct clair/sombre via tokens. (T3 — M, sonnet) (@lane: frontend/brand)
 
-- [ ] VX155 — **La gradation émotionnelle du funnel : signé célébré, envoyé/payé reconnus.** (@lane: frontend/brand — @with VX40)
+- [x] VX155 — **La gradation émotionnelle du funnel : signé célébré, envoyé/payé reconnus.** (@lane: frontend/brand — @with VX40)
   Le moment le plus important de tout l'ERP — un devis solaire SIGNÉ — est muet :
   `SigneDialog.jsx:190-213` appelle `accepterDevis` puis les 2 appelants (`LeadForm.jsx:1274`,
   `LeadsPage.jsx:485`) ferment la modale + refetch, zéro reconnaissance pour une affaire de 150 000
@@ -1467,7 +1480,7 @@ subset) pour les identifiants (`--font-mono`) — à soumettre au fondateur avan
   mouvement ; devis envoyé/facture payée → toast visuellement distinct du toast générique (test du
   helper). (T3 — M, sonnet) (@lane: frontend/brand — @with VX40)
 
-- [ ] VX156 — **Une voix avec un point de vue + le moment d'accueil.** La microcopie est correcte (@lane: frontend/brand)
+- [x] VX156 — **Une voix avec un point de vue + le moment d'accueil.** La microcopie est correcte (@lane: frontend/brand)
   mais interchangeable avec n'importe quel SaaS — aucun ton « fier du solaire », aucun vocabulaire
   métier aux moments émotionnels ; et la première connexion atterrit sur le Dashboard brut (les
   coachmarks FG16 sont un tour FONCTIONNEL, pas un accueil). Fix : (a) module `lib/voice.js` (~20
@@ -1496,7 +1509,7 @@ subset) pour les identifiants (`--font-mono`) — à soumettre au fondateur avan
   (test de la map) ; pastille = vraies valeurs du parc, absente si vide (test conditionnel). (T3 —
   M, sonnet) (@lane: frontend/brand)
 
-- [ ] VX158 — **Confiance et clarté : les valeurs suggérées se déclarent, le jargon fiscal se (@lane: frontend/brand — @after VX93)
+- [x] VX158 — **Confiance et clarté : les valeurs suggérées se déclarent, le jargon fiscal se (@lane: frontend/brand — @after VX93)
   traduit.** Deux leçons de produits finis (Ramp, Pennylane) : (a) VX93 pré-remplira
   owner/ville/TVA/mode de paiement depuis localStorage sans qu'AUCUN signal ne distingue une
   SUPPOSITION d'une donnée confirmée — un style réutilisable discret (contour pointillé + micro-
@@ -1511,7 +1524,7 @@ subset) pour les identifiants (`--font-mono`) — à soumettre au fondateur avan
   d'aide sans clic. (T3 — S, sonnet ; haiku pour le volet fiscal) (@lane: frontend/brand — @after
   VX93)
 
-- [ ] VX159 — **`RelationCounters` : le seul bon réflexe d'Odoo, systématisé. @coord ARC46.** (@lane: frontend/brand)
+- [x] VX159 (already present) — **`RelationCounters` : le seul bon réflexe d'Odoo, systématisé. @coord ARC46.** (@lane: frontend/brand)
   Chaque fiche 360 (Lead, Client, Fournisseur, Produit) affiche ses relations à sa façon — aucune
   convention « compteurs cliquables en tête de fiche » (« 3 devis · 1 facture impayée · 2 tickets
   SAV »). Fix : composant `ui/RelationCounters.jsx` posé en tête des 4 fiches, lisant les selectors
@@ -2645,7 +2658,7 @@ droite)**
 
 **Sous-groupe VXD-N — Le directeur/admin : contrôle et supervision**
 
-- [ ] VX233 — **[BACKEND 1 ligne] Le journal des paramètres montre TOUTES ses sections + la (@lane: frontend/brand)
+- [x] VX233 (already present) — **[BACKEND 1 ligne] Le journal des paramètres montre TOUTES ses sections + la (@lane: frontend/brand)
   tarification a son historique.** Défaut prouvé : `SettingsAuditLog` journalise déjà 6+ sections
   côté serveur et l'endpoint `settings_audit_sections` (`views_audit.py:53-68`) EXISTE — mais
   `parametresApi.js` ne l'expose pas et le seul consommateur (`AvanceSection.jsx:304-307`)
@@ -2695,7 +2708,7 @@ droite)**
   groupée laisse ≥1 admin actif ; tests des 4 gardes. (T2 — L, opus : auth/hiérarchie) (@lane:
   backend/auth)
 
-- [ ] VX236 — **Fin des culs-de-sac de pilotage : équipes cliquables, Journal deep-linké, seuils (@lane: frontend/brand — @after VX79)
+- [x] VX236 — **Fin des culs-de-sac de pilotage : équipes cliquables, Journal deep-linké, seuils (@lane: frontend/brand — @after VX79)
   avec retour. @after VX220 (Journal — la palette ⌘K de VX79 ne liste PAS Journal.jsx dans ses
   Files).** Quatre écrans de supervision qui montrent sans jamais mener : (a)
   `MesEquipesCard.jsx` (monté `Dashboard.jsx:662` — vu par CHAQUE directeur à chaque connexion) :
@@ -2901,7 +2914,7 @@ droite)**
   `.vcf` téléchargé s'importe ; le numéro du contact site est tapable ; tests. (T3 — M,
   haiku/sonnet) (@lane: frontend/ios — @after VX77/VX80/VX110/VX108)
 
-- [ ] VX247 — **[GATED-founder pour le volet (e)] Onboarding→maîtrise : le guide connaît le (@lane: frontend/brand — @coord NTMOB33/VX47)
+- [x] VX247 — **[GATED-founder pour le volet (e)] Onboarding→maîtrise : le guide connaît le (@lane: frontend/brand — @coord NTMOB33/VX47)
   rôle, annonce le clavier, se voit dans le shell, a une mémoire — et l'ERP peut se peupler
   d'exemple. @coord NTMOB33/VX47.** Le rapport prouve qu'un système d'onboarding ENTIER (FG16 :
   279 lignes de coachmarks + checklist réelle) est absent à 100 % de la carte VX1-116. Cinq

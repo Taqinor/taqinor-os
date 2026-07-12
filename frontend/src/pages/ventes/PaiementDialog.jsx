@@ -20,6 +20,8 @@ import {
   toast,
 } from '../../ui'
 import { formatMAD, formatDateTime } from '../../lib/format'
+// VX155 — jalon « facture payée » : un cran au-dessus du toast succès plat.
+import { toastMilestone } from '../../lib/toast'
 
 const MODES_PAIEMENT = [
   { value: 'especes',     label: 'Espèces' },
@@ -135,14 +137,24 @@ export default function PaiementDialog({ facture, onOpenChange, onSaved }) {
     if (!facture) return
     setPaySaving(true)
     try {
-      await ventesApi.enregistrerPaiement(facture.id, {
+      const res = await ventesApi.enregistrerPaiement(facture.id, {
         montant: parseFloat(payMontant),
         date_paiement: payDate,
         mode: payMode,
         reference: payReference || undefined,
       })
       ecrireDernierMode(payMode)  // VX93 — mémorise le mode pour le prochain paiement
-      toast.success('Paiement enregistré.')
+      // VX155 — « facture payée » (résiduel retombé à 0) est un JALON, pas un
+      // succès plat : toastMilestone avec réf/client/montant. Un règlement
+      // partiel reste le toast succès habituel.
+      if (res?.data?.statut === 'payee') {
+        toastMilestone('Facture réglée.', {
+          description: [facture.client_nom, res.data.reference ?? facture.reference,
+            formatMAD(res.data.total_ttc ?? facture.total_ttc)].filter(Boolean).join(' · '),
+        })
+      } else {
+        toast.success('Paiement enregistré.')
+      }
       onSaved?.()
       // VX92 — « Créer un autre » : on vide les champs (sauf la facture ciblée,
       // inchangée) et on refocalise le montant au lieu de fermer.

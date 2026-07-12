@@ -28,6 +28,13 @@ import {
   DropdownMenuItem, DropdownMenuLabel,
 } from '../../ui'
 import { formatMAD, formatDateTime } from '../../lib/format'
+// VX156 — le devis envoyé porte la voix Taqinor (moment « devis envoyé »).
+import { voice } from '../../lib/voice'
+// VX155 — jalon « devis envoyé » : un cran au-dessus du toast succès plat.
+import { toastMilestone } from '../../lib/toast'
+// VX236 — `?equipe=<id>` (lien depuis MesEquipesCard) filtre la liste sur les
+// membres de cette équipe — filtre client-side, aucun endpoint nouveau.
+import { useEquipeMembreIds } from '../../hooks/useEquipeMembreIds'
 import { filenameFromResponse, downloadBlobInGesture } from '../../utils/downloadBlob'
 import { openPdfBlob, openPdfInGesture } from '../../utils/pdfBlob'
 import { proposalParams, pdfBlob } from '../../features/ventes/previewPdf'
@@ -40,7 +47,10 @@ import useDocumentTitle from '../../hooks/useDocumentTitle'
 // même « record focalisé » que la surbrillance de ligne existante).
 import { useFocusedRecordShortcuts } from '../../providers/focusedRecordShortcuts'
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
-import { celebrateDealSigned } from '../../ui/celebrate'
+// VX155 — la carte de victoire (enrichit VX40) remplace le toast plat +
+// celebrateDealSigned() appelés directement d'ici ; le burst reste posé,
+// mais DEPUIS <DealSignedCelebration> lui-même.
+import DealSignedCelebration from '../../ui/DealSignedCelebration'
 import { DataTable } from '../../ui/datatable'
 import RoofViewer from './RoofViewer'
 import { StateBlock } from '../../components/StateBlock'
@@ -1156,6 +1166,9 @@ export default function DevisList() {
   const [acceptDate, setAcceptDate] = useState('')
   const [acceptOption, setAcceptOption] = useState('sans_batterie')
   const [acceptBusy, setAcceptBusy] = useState(false)
+  // VX155 — carte de victoire (montant réel ; pas de kWc ici, la vue liste ne
+  // porte pas les lignes du devis — jamais un chiffre inventé).
+  const [dealCelebration, setDealCelebration] = useState(null)
 
   // QJ14 — Modale « Envoyer par email » (PDF premium + lien tokenisé → client).
   const [emailTarget, setEmailTarget]   = useState(null)
@@ -1175,7 +1188,12 @@ export default function DevisList() {
       await ventesApi.envoyerEmailDevis(emailTarget.id, payload)
       closeEmailModal()
       dispatch(fetchDevis())
-      toast.success(`Devis ${emailTarget.reference} envoyé par email.`)
+      // VX156/VX155 — moment « devis envoyé » : un jalon (toastMilestone), pas
+      // un succès plat — réf/client/montant + la voix Taqinor en description.
+      toastMilestone(`Devis ${emailTarget.reference} envoyé par email.`, {
+        description: [emailTarget.client_nom, formatMAD(emailTarget.total_affiche ?? emailTarget.total_ttc), voice.devisSent]
+          .filter(Boolean).join(' · '),
+      })
     } catch (err) {
       toast.error(frenchError(err, 'Envoi email impossible.'))
     } finally {
@@ -1512,11 +1530,14 @@ export default function DevisList() {
       })
       setAcceptTarget(null)
       dispatch(fetchDevis())
-      toast.success(`Devis ${d.reference} marqué « Accepté ».`)
-      // VX40 — le SEUL moment célébré de l'app : devis envoyé→accepté (rare,
-      // lié au revenu). Burst CSS-only autour du toast ci-dessus ; rien sous
-      // reduced-motion (le toast reste le seul retour visuel).
-      celebrateDealSigned()
+      // VX40/VX155 — le SEUL moment célébré de l'app : devis envoyé→accepté
+      // (rare, lié au revenu). La carte de victoire remplace le toast plat
+      // (montant réel ; pas de kWc dans la vue liste — jamais inventé).
+      setDealCelebration({
+        reference: d.reference,
+        montantTtc: parseFloat(d.total_affiche ?? d.total_ttc) || 0,
+        kwc: null,
+      })
     } catch (err) {
       toast.error(frenchError(err, 'Acceptation impossible.'))
     } finally {
@@ -1776,6 +1797,11 @@ export default function DevisList() {
   // sans changer son statut stocké (logique T7, partagée filtre/résumé/tableau).
   const effStatutOf = (d) => (d.is_expired ? 'expire' : d.statut)
 
+  // VX236 — `?equipe=<id>` (lien depuis MesEquipesCard) : filtre additif sur
+  // les membres de l'équipe (commercial créateur du devis).
+  const equipeId = searchParams.get('equipe')
+  const equipeMembreIds = useEquipeMembreIds(equipeId)
+
   // T5 — Liste filtrée (statut effectif) + recherche (référence / client).
   // U7 — les révisions remplacées (is_active === false) sont masquées tant que
   // le bouton « voir les versions remplacées » n'est pas activé.
@@ -1784,12 +1810,13 @@ export default function DevisList() {
     return devis.filter(d => {
       if (!showSuperseded && d.is_active === false) return false
       if (statutFilter !== 'tous' && effStatutOf(d) !== statutFilter) return false
+      if (equipeId && equipeMembreIds && !equipeMembreIds.has(d.created_by)) return false
       if (!q) return true
       const ref = String(d.reference ?? '').toLowerCase()
       const client = String(d.client_nom ?? '').toLowerCase()
       return ref.includes(q) || client.includes(q)
     })
-  }, [devis, statutFilter, query, showSuperseded])
+  }, [devis, statutFilter, query, showSuperseded, equipeId, equipeMembreIds])
 
   // VX79 — lien profond ?devis=<pk> pointant vers un devis introuvable parmi
   // ceux chargés (une fois le chargement terminé) : signalé par un EmptyState
@@ -2169,6 +2196,16 @@ export default function DevisList() {
             )}
           </div>
       </ResponsiveDialog>
+
+      {/* VX155 — carte de victoire posée sur l'acceptation inline (montant
+          réel ; pas de kWc dans cette vue liste). */}
+      <DealSignedCelebration
+        open={!!dealCelebration}
+        reference={dealCelebration?.reference}
+        montantTtc={dealCelebration?.montantTtc}
+        kwc={dealCelebration?.kwc}
+        onClose={() => setDealCelebration(null)}
+      />
 
       {/* QX26 — Modale de refus OBLIGATOIRE : motif MotifPerte (taxonomie
           partagée CRM) + note libre optionnelle. Le bouton de confirmation

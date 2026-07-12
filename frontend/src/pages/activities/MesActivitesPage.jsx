@@ -25,6 +25,8 @@ import ExternalLink from '../../ui/ExternalLink'
 import { Table } from '../reporting/Table'
 // VX132 — anti-scintillement propagé (voir InstallationsPage.jsx).
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
+// VX156 — la file vide porte la voix Taqinor (moment « file vide »).
+import { voice } from '../../lib/voice'
 
 // QX25 — « Mes activités » est la liste d'appels du jour : chaque ligne doit
 // être prête à appeler/WhatsApper en un tap, sans ouvrir la fiche. Le
@@ -540,7 +542,7 @@ export default function MesActivitesPage() {
         <EmptyState
           icon={PartyPopper}
           title="Aucune activité planifiée"
-          description="Rien à traiter pour le moment — tout est à jour. 🎉"
+          description={voice.emptyQueue}
           className="mt-1"
         />
       ) : (

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { AlertTriangle, Plus, Trash2 } from 'lucide-react'
 import api from '../../api/axios'
 import reportingApi from '../../api/reportingApi'
@@ -26,6 +27,15 @@ const KPI_LABELS = {
   valeur_stock_totale: 'Valeur de stock totale (MAD)',
 }
 const KPI_OPTIONS = Object.keys(KPI_LABELS)
+
+// VX236 — la valeur d'une alerte affichait un chiffre sans jamais mener à sa
+// source : chaque KPI pointe vers l'écran qui le calcule réellement (DSO et
+// encours échu → balance âgée ; valeur de stock → l'écran stock).
+const KPI_SOURCE_ROUTE = {
+  dso: '/reporting/balance-agee',
+  encours_echu_total: '/reporting/balance-agee',
+  valeur_stock_totale: '/stock',
+}
 
 const OPERATEUR_LABELS = { sup: '>', sup_egal: '≥', inf: '<', inf_egal: '≤' }
 const OPERATEUR_OPTIONS = Object.keys(OPERATEUR_LABELS)
@@ -143,6 +153,15 @@ export default function KpiAlertesPage() {
     {
       id: 'derniere_valeur', header: 'Dernière valeur', width: 150,
       accessor: (r) => (r.derniere_valeur ?? '—'),
+      // VX236 — la valeur ouvre sa source (balance âgée / stock) au lieu de
+      // rester un chiffre affiché sans suite.
+      cell: (v, r) => (r.derniere_valeur == null
+        ? '—'
+        : (
+          <Link to={KPI_SOURCE_ROUTE[r.kpi] || '/reporting'} className="text-primary hover:underline">
+            {r.derniere_valeur}
+          </Link>
+        )),
     },
     {
       id: 'actif', header: 'Statut', width: 120,

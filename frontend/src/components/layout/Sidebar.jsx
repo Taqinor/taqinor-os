@@ -20,6 +20,9 @@ import { moduleNavSections, moduleConfigs } from '../../router/moduleRoutes'
 import { useT } from '../../i18n'
 // VX86 — compteur partagé des approbations en attente (badge nav discret).
 import { useApprobationsCount } from '../../hooks/useApprobationsCount'
+// VX247(c) — même hook PARTAGÉ que la bannière Dashboard (VX36) et l'onglet
+// Paramètres « Prise en main » : une seule dérivation de la progression.
+import { useOnboardingSteps } from '../../features/onboarding/onboardingHelpers'
 // VX58 — préchargement au survol/focus des destinations chaudes (même source
 // d'imports dynamiques que le routeur ; no-op sous Data Saver/2G).
 import { prefetchRoute } from '../../router/prefetchMap'
@@ -35,10 +38,12 @@ const PinnedApps = lazy(() => import('./PinnedApps'))
 
 // FG16 — ancres du guide d'accueil : map `to` → valeur `data-coach` posée sur
 // le lien correspondant, pour que le spotlight des coachmarks puisse le cibler.
+// VX247(a) — `ma-file` ancre la nouvelle étape non-admin (STEPS d'OnboardingCoachmarks).
 const COACH_ANCHORS = {
   '/stock': 'produits',
   '/parametres': 'parametres',
   '/admin/users': 'equipe',
+  '/activites': 'ma-file',
 }
 
 // ── P168 — Système d'icônes unifié (lucide-react) ─────────────────────────────
@@ -243,6 +248,10 @@ export default function Sidebar({ collapsed, onToggle, onNavigate }) {
   // chargement (jamais un « 0 » affiché avant que le compteur réel arrive).
   const { total: approbationsTotal, loading: approbationsLoading, error: approbationsError } = useApprobationsCount()
   const showApprobationsBadge = !approbationsLoading && !approbationsError && approbationsTotal > 0
+  // VX247(c) — la progression de prise en main n'existait QUE dans l'onglet
+  // Paramètres : badge « x/y » discret sur l'item Sidebar tant que <100 %.
+  // Réutilise le hook PARTAGÉ (VX36) — jamais une 2e dérivation de l'état.
+  const { doneCount: onboardingDone, total: onboardingTotal, allDone: onboardingAllDone } = useOnboardingSteps()
 
   // N93 — traduit un libellé de la coquille via sa clé i18n, en gardant le
   // libellé FR en dur comme repli (modules « coquille » sans clé → FR inchangé).
@@ -355,6 +364,16 @@ export default function Sidebar({ collapsed, onToggle, onNavigate }) {
                       aria-label={`${approbationsTotal} approbation${approbationsTotal > 1 ? 's' : ''} en attente`}
                     >
                       {approbationsTotal > 99 ? '99+' : approbationsTotal}
+                    </span>
+                  )}
+                  {/* VX247(c) — badge de progression « x/y » sur Paramètres tant
+                      que la prise en main n'est pas terminée à 100 %. */}
+                  {item.to === '/parametres' && !onboardingAllDone && (
+                    <span
+                      className="sidebar-nav-badge"
+                      aria-label={`Prise en main : ${onboardingDone} sur ${onboardingTotal} étapes complétées`}
+                    >
+                      {onboardingDone}/{onboardingTotal}
                     </span>
                   )}
                 </NavLink>

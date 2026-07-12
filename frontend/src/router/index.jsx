@@ -59,6 +59,8 @@ const NotFound = lazy(() => import('../ui/NotFound'))
 // VX131(c) — jumeau 403 de NotFound : un refus de rôle/permission rebondissait
 // en silence vers /dashboard (aucun écran dédié, aucune explication).
 const Forbidden = lazy(() => import('../ui/Forbidden'))
+// VX247(d) — glossaire métier statique (les HelpTip VX47 y pointent).
+const LexiquePage = lazy(() => import('../pages/aide/LexiquePage'))
 
 // ── Auth loader ────────────────────────────────────────────────────────────────
 // Verifie la session via le cookie httpOnly — aucun token cote client.
@@ -208,6 +210,8 @@ const router = createBrowserRouter([
 
   { path: '/dashboard', loader: authLoader, element: <WithLayout><Dashboard /></WithLayout> },
   { path: '/messages', loader: authLoader, element: <WithLayout><ChatPage /></WithLayout> },
+  // VX247(d) — glossaire métier (les HelpTip VX47 y pointent au lieu de dupliquer).
+  { path: '/aide/lexique', loader: authLoader, element: <WithLayout><LexiquePage /></WithLayout> },
 
   // Stock — migré vers frontend/src/features/stock/module.config.jsx (ARC48).
 
