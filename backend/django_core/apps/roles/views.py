@@ -25,6 +25,7 @@ class _CsvOrJSONRenderer(JSONRenderer):
     format = 'csv'
     media_type = 'text/csv'
 
+
 # XPLT12 — seuil par défaut (jours) au-delà duquel un compte est « dormant »
 # (aucune connexion depuis N jours). Paramétrable via ``?dormant_days=N``.
 DEFAULT_DORMANT_DAYS = 90
