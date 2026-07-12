@@ -88,10 +88,13 @@ test('E16+: an edit modal fits the iPhone viewport (no off-screen crop)', async 
   const vp = page.viewportSize()
   expect(box, 'le modal a une boundingBox').toBeTruthy()
   expect(box.y, 'le haut du modal est visible').toBeGreaterThanOrEqual(-1)
+  // Tolérance 2px : le modal `max-h-[calc(100dvh-2rem)]` tient au ras du bord ;
+  // l'arrondi sous-pixel de WebKit (dvh + frame d'anim) le pose parfois à
+  // ~1.2px du bord — jamais un vrai « crop » hors écran (qui ferait 10+px).
   expect(
     box.y + box.height,
     'le bas du modal tient dans le viewport iPhone',
-  ).toBeLessThanOrEqual(vp.height + 1)
+  ).toBeLessThanOrEqual(vp.height + 2)
 
   // L'action critique (réinitialiser le mot de passe) reste atteignable.
   const pwd = modal.getByText('Nouveau mot de passe', { exact: true })

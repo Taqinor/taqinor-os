@@ -430,7 +430,9 @@ describe('VX131 — état vide : CTA et tone d\'erreur', () => {
       { wrapper },
     )
     expect(screen.getByText('Erreur de chargement')).toBeInTheDocument()
-    const iconWrap = container.querySelector('svg').parentElement
+    // Scoper à l'EmptyState (son titre) — sinon querySelector('svg') attrape
+    // l'icône de la barre de recherche du DataTable, pas l'icône d'erreur.
+    const iconWrap = screen.getByText('Erreur de chargement').parentElement.querySelector('span')
     expect(iconWrap.className).toContain('bg-destructive/12')
     expect(iconWrap.className).toContain('text-destructive')
   })
