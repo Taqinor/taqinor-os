@@ -407,6 +407,9 @@ function NcrRegister() {
             <Plus size={16} /> Nouvelle NCR
           </Button>
         }
+        emptyTitle="Aucune non-conformité"
+        emptyDescription="Aucune NCR ne correspond à ces filtres."
+        emptyAction={<Button size="sm" onClick={() => setCreating(true)}><Plus size={16} /> Nouvelle NCR</Button>}
       />
       {creating && (
         <NcrCreateDialog onClose={() => setCreating(false)} onCreated={reload} />

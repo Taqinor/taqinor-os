@@ -19,6 +19,7 @@ export * from './FadeSwap'
 export * from './EmptyState'
 export * from './ErrorBoundary'
 export * from './NotFound'
+export * from './Forbidden'
 export * from './OfflineState'
 
 // Formulaire / contrôles

@@ -446,6 +446,7 @@ export default function ClientList() {
             onRowClick={(c) => setDetailClient(c)}
             emptyTitle="Aucun résultat"
             emptyDescription="Aucun client ne correspond à ces filtres."
+            emptyAction={<Button size="sm" onClick={openNew}><Plus className="size-4" /> Nouveau client</Button>}
             aria-label="Liste des clients"
           />
         </>

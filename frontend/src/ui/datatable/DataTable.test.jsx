@@ -404,6 +404,38 @@ describe('O166 — largeurs de colonnes mémoïsées (variables CSS)', () => {
   })
 })
 
+/* ============================== VX131 — ÉTATS VIDES : TONE + CTA ============================== */
+
+describe('VX131 — état vide : CTA et tone d\'erreur', () => {
+  it('emptyAction rend le même CTA que la toolbar (liste vide)', () => {
+    render(
+      <DataTable
+        data={[]}
+        columns={COLUMNS}
+        emptyTitle="Aucun client"
+        emptyAction={<button type="button">Nouveau client</button>}
+      />,
+      { wrapper },
+    )
+    // M154 replie aussi en cartes mobiles (CSS non appliquée sous jsdom) : le
+    // repli desktop ET le repli carte rendent chacun le même EmptyState — on
+    // vérifie qu'AU MOINS une occurrence porte le titre et le CTA.
+    expect(screen.getAllByText('Aucun client').length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('button', { name: 'Nouveau client' }).length).toBeGreaterThan(0)
+  })
+
+  it('une erreur de chargement rend l\'EmptyState en tone="error" (icône sur fond destructif)', () => {
+    const { container } = render(
+      <DataTable data={[]} columns={COLUMNS} error="Réseau indisponible" />,
+      { wrapper },
+    )
+    expect(screen.getByText('Erreur de chargement')).toBeInTheDocument()
+    const iconWrap = container.querySelector('svg').parentElement
+    expect(iconWrap.className).toContain('bg-destructive/12')
+    expect(iconWrap.className).toContain('text-destructive')
+  })
+})
+
 /* ============================== ARC49/ARC53 — ÉCHAPPATOIRES ADDITIVES ============================== */
 
 describe('ARC49/ARC53 — extensions opt-in (chemin de l\'argent)', () => {

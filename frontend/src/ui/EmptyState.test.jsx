@@ -31,3 +31,46 @@ describe('EmptyState — variante illustrated (VX40)', () => {
     expect(container.querySelector('svg')).toBeFalsy()
   })
 })
+
+describe('EmptyState — tone (VX131a) : un échec de chargement se DISTINGUE d’un « rien à afficher »', () => {
+  it('tone="neutral" (défaut) : icône grise, bordure en pointillés — comportement historique inchangé', () => {
+    const { container } = render(<EmptyState icon={Inbox} title="Aucune donnée" />)
+    const root = container.firstChild
+    expect(root.className).toContain('border-dashed')
+    const iconWrap = container.querySelector('svg').parentElement
+    expect(iconWrap.className).toContain('bg-muted')
+    expect(iconWrap.className).toContain('text-muted-foreground')
+  })
+
+  it('tone="error" : icône sur fond destructif, même langage que ErrorBoundary', () => {
+    const { container } = render(<EmptyState icon={Inbox} tone="error" title="Erreur de chargement" />)
+    const root = container.firstChild
+    expect(root.className).toContain('border-destructive/40')
+    const iconWrap = container.querySelector('svg').parentElement
+    expect(iconWrap.className).toContain('bg-destructive/12')
+    expect(iconWrap.className).toContain('text-destructive')
+  })
+
+  it('tone="warning" : icône sur fond avertissement', () => {
+    const { container } = render(<EmptyState icon={Inbox} tone="warning" title="Attention" />)
+    const root = container.firstChild
+    expect(root.className).toContain('border-warning/40')
+    const iconWrap = container.querySelector('svg').parentElement
+    expect(iconWrap.className).toContain('bg-warning/12')
+    expect(iconWrap.className).toContain('text-warning')
+  })
+})
+
+describe('EmptyState — action CTA (VX131b)', () => {
+  it('rend l’action fournie (même CTA que la toolbar de la liste)', () => {
+    render(
+      <EmptyState title="Aucun client" action={<button type="button">Nouveau client</button>} />,
+    )
+    expect(screen.getByRole('button', { name: 'Nouveau client' })).toBeInTheDocument()
+  })
+
+  it('sans action fournie, ne rend aucun bouton', () => {
+    render(<EmptyState title="Aucun client" />)
+    expect(screen.queryByRole('button')).not.toBeInTheDocument()
+  })
+})
