@@ -2,6 +2,18 @@ import { createSlice, createAsyncThunk } from '@reduxjs/toolkit'
 import stockApi from '../../../api/stockApi'
 import { fetchAllPages } from '../../../utils/fetchAllPages'
 
+// VX164 — garde anti-course PAR RESSOURCE sur les `update*.fulfilled` :
+// deux PATCH rapides du MÊME enregistrement, résolus dans l'ordre INVERSE
+// (le second dispatché répond avant le premier), ne doivent plus faire
+// régresser l'écran vers le payload le plus ANCIEN. `seqMap[id]` retient le
+// `requestId` (RTK) de la DERNIÈRE requête DISPATCHÉE pour cet id ; un
+// `.fulfilled` dont le `requestId` ne correspond plus est un no-op silencieux
+// — le payload le plus récemment DEMANDÉ gagne toujours, quel que soit
+// l'ordre de résolution réseau.
+function isStaleResourceUpdate(seqMap, id, requestId) {
+  return seqMap[id] != null && seqMap[id] !== requestId
+}
+
 // ── Produits ───────────────────────────────────────────────────
 // VX54 — la page 1 DRF (PAGE_SIZE=100) ne renvoyait que les 100 premiers
 // produits : StockList et les KPI/graphiques du Dashboard étaient FAUX dès
@@ -178,6 +190,12 @@ const stockSlice = createSlice({
     loading: false,
     error: null,
     selectedProduit: null,
+    // VX164 — requestId (RTK) de la DERNIÈRE update dispatchée, par id — une
+    // map par ressource (produits/fournisseurs/catégories sont des tables
+    // distinctes).
+    produitUpdateSeq: {},
+    fournisseurUpdateSeq: {},
+    categorieUpdateSeq: {},
   },
   reducers: {
     setSelectedProduit(state, action) { state.selectedProduit = action.payload },
@@ -198,7 +216,11 @@ const stockSlice = createSlice({
       .addCase(createProduit.fulfilled, (state, action) => {
         state.produits.push(action.payload)
       })
+      .addCase(updateProduit.pending, (state, action) => {
+        state.produitUpdateSeq[action.meta.arg.id] = action.meta.requestId
+      })
       .addCase(updateProduit.fulfilled, (state, action) => {
+        if (isStaleResourceUpdate(state.produitUpdateSeq, action.payload.id, action.meta.requestId)) return
         const idx = state.produits.findIndex(p => p.id === action.payload.id)
         if (idx !== -1) state.produits[idx] = action.payload
       })
@@ -240,7 +262,11 @@ const stockSlice = createSlice({
       .addCase(createFournisseur.fulfilled, (state, action) => {
         state.fournisseurs.push(action.payload)
       })
+      .addCase(updateFournisseur.pending, (state, action) => {
+        state.fournisseurUpdateSeq[action.meta.arg.id] = action.meta.requestId
+      })
       .addCase(updateFournisseur.fulfilled, (state, action) => {
+        if (isStaleResourceUpdate(state.fournisseurUpdateSeq, action.payload.id, action.meta.requestId)) return
         const idx = state.fournisseurs.findIndex(f => f.id === action.payload.id)
         if (idx !== -1) state.fournisseurs[idx] = action.payload
       })
@@ -249,7 +275,11 @@ const stockSlice = createSlice({
       })
 
       // Catégories (update/delete)
+      .addCase(updateCategorie.pending, (state, action) => {
+        state.categorieUpdateSeq[action.meta.arg.id] = action.meta.requestId
+      })
       .addCase(updateCategorie.fulfilled, (state, action) => {
+        if (isStaleResourceUpdate(state.categorieUpdateSeq, action.payload.id, action.meta.requestId)) return
         const idx = state.categories.findIndex(c => c.id === action.payload.id)
         if (idx !== -1) state.categories[idx] = action.payload
       })
