@@ -213,6 +213,22 @@ DATABASES = {
         'PORT': os.environ.get('DB_PORT', '5432'),
         'CONN_MAX_AGE': int(os.environ.get('DB_CONN_MAX_AGE', '60')),
         'CONN_HEALTH_CHECKS': True,
+        # NTPLT18 — statement_timeout par défaut au niveau connexion. Sans lui,
+        # une requête ORM folle (jointure oubliée, LIKE non indexé sur des
+        # millions de lignes) peut épingler un worker gunicorn indéfiniment.
+        # Postgres tue tout statement dépassant ce délai (ms) — le worker se
+        # libère au lieu de geler. Pilotable par DB_STATEMENT_TIMEOUT_MS (défaut
+        # 30 000 = 30 s) ; 0 = désactivé (comportement historique). Les jobs
+        # légitimement longs élargissent explicitement le délai via
+        # `core.db_guards.statement_timeout()` (SET LOCAL). Les dumps/restores
+        # passent par pg_dump/pg_restore (subprocess) et ne sont donc PAS
+        # soumis à cette OPTION — aucun risque de les tronquer.
+        'OPTIONS': {
+            'options': (
+                f"-c statement_timeout="
+                f"{int(os.environ.get('DB_STATEMENT_TIMEOUT_MS', '30000'))}"
+            ),
+        } if int(os.environ.get('DB_STATEMENT_TIMEOUT_MS', '30000')) > 0 else {},
     }
 }
 
