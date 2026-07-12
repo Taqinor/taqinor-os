@@ -1462,3 +1462,30 @@ backend/django_core/core/models.py:910
 backend/django_core/core/models.py:915
 backend/django_core/core/models.py:981
 backend/django_core/core/models.py:984
+
+# YDATA3 — SET_NULL on a tenant/owner-identity field (owner/responsable
+# assignee fields, plus one genuine CustomUser.company case flagged for
+# founder review) reviewed as-of 2026-07-12 and reused from this same file.
+backend/django_core/apps/audit/models.py:39
+backend/django_core/apps/compta/models.py:1496
+backend/django_core/apps/contrats/models.py:187
+backend/django_core/apps/crm/models.py:1124
+backend/django_core/apps/crm/models.py:1679
+backend/django_core/apps/crm/models.py:480
+backend/django_core/apps/gestion_projet/models.py:1668
+backend/django_core/apps/gestion_projet/models.py:81
+backend/django_core/apps/installations/models_kitting.py:188
+backend/django_core/apps/installations/models_program.py:68
+backend/django_core/apps/qhse/models.py:213
+backend/django_core/apps/qhse/models.py:3005
+backend/django_core/apps/qhse/models.py:3820
+backend/django_core/apps/qhse/models.py:4100
+backend/django_core/apps/qhse/models.py:4468
+backend/django_core/apps/qhse/models.py:4551
+backend/django_core/apps/qhse/models.py:4681
+backend/django_core/apps/qhse/models.py:5583
+backend/django_core/apps/reporting/models.py:33
+backend/django_core/apps/sav/models.py:210
+backend/django_core/apps/sav/models.py:514
+backend/django_core/apps/ventes/models.py:1891
+backend/django_core/authentication/models.py:159

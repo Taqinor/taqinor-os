@@ -148,10 +148,16 @@ jobs:
       # un nouveau check requis (protection de branche inchangée).
       - name: Platform-kernel guards (check_platform — ARC8/26/11/6)
         run: python scripts/check_platform.py
-      # YDATA1 — every FK/O2O declares on_delete=, every CASCADE is either
-      # inline-justified ('# on_delete: <reason>') or reviewed+allowlisted.
-      - name: Check on_delete completeness/justification (YDATA1)
+      # YDATA1/3 — every FK/O2O declares on_delete=, every CASCADE is either
+      # inline-justified ('# on_delete: <reason>') or reviewed+allowlisted;
+      # every SET_NULL has null=True and never targets a tenant/owner field.
+      - name: Check on_delete completeness/justification (YDATA1/3)
         run: python scripts/check_on_delete.py
+      # YDATA2 — financial-target FK (Devis/Facture/BonCommande/Paiement/
+      # Avoir/Company/Produit) sweep: fails only on a NEW un-reviewed
+      # CASCADE/SET_NULL (docs/on-delete-financial-audit.md is the baseline).
+      - name: Check financial-target on_delete sweep (YDATA2)
+        run: python scripts/check_on_delete.py --financial
 
   # WOW6 — the fast backend suite is sharded 4× across free public-repo runners
   # (matrix legs run concurrently, each on its own 4-vCPU runner + Postgres). The
