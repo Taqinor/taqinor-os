@@ -97,6 +97,87 @@ html { scroll-behavior: smooth; }
   }
 }
 
+/* VX134(e) — `applyTheme` basculait `.dark` d'un coup (couleurs OKLCH en cut
+   sec). `applyThemeWithTransition` (design/theme.js) pose cette classe
+   TRANSITOIRE le temps du changement (≤200ms), puis la retire — jamais
+   permanente. Sous reduced-motion, le garde global ci-dessus régit déjà les
+   transitions de couleur (120ms) : on ne le double pas ici. */
+@media (prefers-reduced-motion: no-preference) {
+  .theme-transitioning,
+  .theme-transitioning *,
+  .theme-transitioning *::before,
+  .theme-transitioning *::after {
+    transition: background-color 200ms var(--ease-standard),
+                border-color 200ms var(--ease-standard),
+                color 200ms var(--ease-standard),
+                fill 200ms var(--ease-standard),
+                stroke 200ms var(--ease-standard) !important;
+  }
+}
+
+/* ============================================================================
+   VX136 — Scroll-timeline natif (2026) : `grep view-timeline|animation-
+   timeline` = 0 avant cette passe. Compositor thread, zéro JS
+   d'orchestration, progressive enhancement pur via `@supports`.
+   ========================================================================== */
+
+/* (a) reveal des cartes KPI de ModuleDashboard : translateY 8px→0 + fondu au
+   fil du scroll. Navigateurs sans support (`@supports` échoue) : la règle
+   n'est jamais appliquée, l'élément reste à son état par défaut (opacity:1,
+   sans transform) — repli état final statique, aucun code dédié requis. */
+@supports (animation-timeline: view()) {
+  .reveal-on-scroll {
+    animation: reveal-on-scroll linear both;
+    animation-timeline: view();
+    animation-range: entry;
+  }
+}
+@keyframes reveal-on-scroll {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  /* Désactive explicitement la timeline (au lieu de compter sur l'effet de
+     bord d'un `animation-duration` forcé à 0.01ms sur une scroll-timeline). */
+  .reveal-on-scroll { animation: none; opacity: 1; transform: none; }
+}
+
+/* (b) ScrollProgress (ui/ScrollProgress.jsx) : barre 2px dont la largeur suit
+   `scroll(nearest)` — le scroll du plus proche ancêtre défilant (ex.
+   `.modal-body` des formulaires-fleuves LeadForm/DevisGenerator). Repli sans
+   support : piste jamais animée (scaleX(0) statique), aucune erreur ni saut
+   de mise en page. */
+.scroll-progress-bar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  height: 2px;
+  width: 100%;
+  flex-shrink: 0;
+  transform-origin: left;
+  background: var(--primary, #e8b54a);
+  transform: scaleX(0);
+}
+@supports (animation-timeline: scroll(nearest)) {
+  .scroll-progress-bar {
+    animation: scroll-progress-grow linear;
+    animation-timeline: scroll(nearest);
+  }
+}
+@keyframes scroll-progress-grow {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .scroll-progress-bar { animation: none; transform: scaleX(0); }
+}
+
+/* VX134(c) — le contenu de route post-Suspense apparaissait en cut dur à
+   chaque navigation ; remonté (`key={pathname}`, router/index.jsx) avec un
+   fondu court --motion-fast au lieu d'un swap sec. Se fige sous
+   reduced-motion via le garde global ci-dessus (animation-duration). */
+.route-fade { animation: var(--animate-fade-in); }
+
 /* N63 — Plancher d'accessibilité : anneau de focus clavier global. Les
    primitifs /src/ui ont déjà leur propre anneau `focus-visible` ; cette règle
    couvre les éléments interactifs LEGACY qui n'en avaient pas. `:focus-visible`
@@ -546,6 +627,14 @@ button:active, [role="button"]:active, a.btn:active,
   height: 1.05rem;
   border-radius: 0 3px 3px 0;
   background: var(--module-accent);
+  /* VX134(b) — chaque item nav porte SON PROPRE pseudo-élément : à la
+     navigation, le repère ne glisse jamais d'un item à l'autre (deux
+     éléments distincts, aucune mesure DOM partagée) — il téléportait. Une
+     mesure DOM pour faire glisser un indicateur PARTAGÉ entre items est
+     jugée invasive ici ; repli : un fondu --motion-fast à l'apparition de
+     chaque nouveau pseudo-élément actif (l'entrée d'un élément nouvellement
+     créé déclenche son animation CSS), moins sec qu'un pop instantané. */
+  animation: var(--animate-fade-in);
 }
 .sidebar-nav-item.active .sidebar-nav-icon { color: var(--module-accent); }
 /* I135 — anneau focus-visible sur les items (navigation clavier), aligné sur le
@@ -3483,6 +3572,9 @@ textarea.form-control {
   border-radius: 999px; padding: 0 4px;
   display: flex; align-items: center; justify-content: center;
 }
+/* VX134(d) — pulse UNIQUEMENT quand le total AUGMENTE (ChatBell), jamais à
+   chaque poll de 30 s qui ne change rien. */
+.nb-badge-pulse { animation: var(--animate-badge-pulse); }
 .nb-panel {
   position: absolute; top: calc(100% + 6px); right: 0;
   width: 320px; max-height: 70vh; overflow-y: auto;
@@ -4033,32 +4125,13 @@ textarea.form-control {
 
 /* ===== migrated from src/pages/crm/leads/leaddevispanel.css (P67) ===== */
 /* Panneau devis inline (slide-over Odoo) au-dessus de la fiche lead. */
-.ldp-overlay {
-  position: fixed;
-  inset: 0;
-  background: color-mix(in srgb, var(--nuit, #0f172a) 55%, transparent);
-  backdrop-filter: blur(3px);
-  z-index: var(--z-modal, 1300); /* au-dessus de l en-tete collant (--z-sticky=1100) ET de la fiche lead (.modal-overlay) */
-  display: flex;
-  justify-content: flex-end;
-}
-
-.ldp-panel {
-  background: var(--background, #f8fafc);
-  color: var(--foreground, inherit);
-  width: min(1100px, 100%);
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  box-shadow: -16px 0 48px rgba(0, 0, 0, 0.25);
-  animation: ldpIn var(--motion-base) var(--ease-out);
-}
-
-@keyframes ldpIn {
-  from { transform: translateX(40px); opacity: 0.4; }
-  to { transform: translateX(0); opacity: 1; }
-}
-
+/* VX133 — `.ldp-overlay`/`.ldp-panel`/`@keyframes ldpIn` (le vrai bord-glissé
+   bespoke, dupliqué par copier-coller sur 2 usages) sont retirés : les deux
+   consommateurs (LeadDevisPanel, InstallationDetail) sont migrés sur
+   `Sheet`/`SheetContent side="right"` (mêmes keyframes `slide-in/out-right`
+   que tout le reste de l'app, design/tokens.css). Le reste des classes
+   `.ldp-*` (header/body/preview/…) reste inchangé — seul le conteneur
+   overlay+panneau est remplacé. */
 .ldp-header {
   display: flex;
   align-items: center;
@@ -4255,7 +4328,8 @@ textarea.form-control {
 }
 
 @media (max-width: 640px) {
-  .ldp-panel { width: 100%; }
+  /* VX133 — la largeur du panneau est désormais portée par la className Sheet
+     (`w-[min(1100px,100%)]`, déjà responsive) ; plus de `.ldp-panel` ici. */
 
   /* Barre d'outils empilée sur mobile : format au-dessus, actions pleine
      largeur en dessous. */
@@ -5043,8 +5117,17 @@ textarea.form-control {
 .kb-drag-overlay .kb-card {
   cursor: grabbing;
   transform: rotate(2deg) scale(1.02);
+  /* VX135 — la carte sautait directement au tilt, sans transition de grab. */
+  transition: transform 120ms var(--ease-out);
   box-shadow: var(--shadow-ui-lg, 0 10px 24px rgba(15, 23, 42, 0.25));
 }
+/* VX135 — ce tilt est un transform STATIQUE (ni animation ni transition) :
+   le garde global reduced-motion (index.css, en tête de fichier) ne
+   neutralise que les animations/transitions CSS déclaratives, jamais un
+   transform posé en dur — il échappe donc structurellement à ce garde.
+   `usePrefersReducedMotion()` ajoute cette classe (3 kanbans) pour le
+   désactiver explicitement à la source. */
+.kb-drag-overlay--flat .kb-card { transform: none; }
 
 /* ---------- Cartes ---------- */
 
@@ -5678,12 +5761,9 @@ textarea.form-control {
 /* L56 — Palette de commandes (⌘K). Styles scoped, tokenisés sur le design
    system. N'altère pas src/index.css (propriété d'une autre lane). */
 .cmdk-content {
-  /* On surcharge la largeur/positionnement de DialogContent pour une palette
-     ancrée en haut, à la manière des palettes de commandes natives. Le
-     primitif applique déjà -translate-x-1/2 -translate-y-1/2 ; on neutralise
-     la translation verticale et on ancre le haut à 12vh. */
-  top: 12vh;
-  transform: translate(-50%, 0);
+  /* VX134(a) — le positionnement (ancré en haut) et l'animation vivent
+     désormais dans DialogContent `variant="command"` (ui/Dialog.jsx) ;
+     .cmdk-content ne porte plus que la mise en forme du contenu. */
   width: calc(100% - 2rem);
   max-width: 38rem;
   padding: 0;

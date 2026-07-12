@@ -28,7 +28,7 @@ import {
   Input, Textarea, Label, Segmented,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
-  HelpTip,
+  HelpTip, ScrollProgress,
 } from '../../ui'
 import { useCanCreateProduit } from '../../hooks/useHasPermission'
 import useKeyboardAwareScroll from '../../hooks/useKeyboardAwareScroll'
@@ -1462,6 +1462,11 @@ export default function DevisGenerator({
 
   return (
     <div className={embedded ? 'gen-embedded' : 'page gen-page'}>
+      {/* VX136 — formulaire-fleuve (2319+ l.) : barre de progression de
+          scroll native, `scroll(nearest)` suit le conteneur qui défile
+          réellement (`.layout-content` en page pleine, le Sheet englobant
+          quand `embedded` dans LeadDevisPanel). */}
+      <ScrollProgress />
       {!embedded && (
         <div className="page-header">
           <h2>Générateur de Devis Solaire</h2>

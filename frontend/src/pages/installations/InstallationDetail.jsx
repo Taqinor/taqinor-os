@@ -1555,9 +1555,12 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
       {/* ── Aperçu in-app d'un document après-vente AVANT téléchargement (L4) ──
           Panneau plein écran réutilisant l'aperçu PDF.js (canvas) du devis :
           même rendu inblocable, même source d'octets que le téléchargement. */}
-      {previewDoc && (
-        <div className="ldp-overlay" onClick={closePreview}>
-          <div className="ldp-panel" onClick={(e) => e.stopPropagation()}>
+      {/* VX133 — migré du `.ldp-overlay`/`.ldp-panel` bespoke (pop centré) vers
+          un Sheet imbriqué side="right" : glisse depuis son bord réel. */}
+      <Sheet open={!!previewDoc} onOpenChange={(o) => { if (!o) closePreview() }}>
+        <SheetContent side="right" showClose={false} className="w-[min(1100px,100%)] gap-0 p-0 sm:max-w-none">
+          {previewDoc && (
+            <>
             <div className="ldp-header">
               <h3 className="ldp-title">
                 {previewDoc.title}
@@ -1643,9 +1646,10 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                 </div>
               </div>
             </div>
-          </div>
-        </div>
-      )}
+            </>
+          )}
+        </SheetContent>
+      </Sheet>
     </Sheet>
   )
 }

@@ -152,7 +152,14 @@ function WithLayout({ children }) {
     <ShortcutsProvider>
       <Layout>
         <RouteErrorBoundary key={pathname}>
-          <Suspense fallback={<Fallback />}>{children}</Suspense>
+          <Suspense fallback={<Fallback />}>
+            {/* VX134(c) — le contenu de route post-Suspense apparaissait en cut
+                dur ; même pattern de remontage par `key={pathname}` que
+                RouteErrorBoundary ci-dessus, ici pour rejouer un fondu court
+                à chaque navigation (View Transition API notée en option
+                future — pas nécessaire pour ce simple fondu). */}
+            <div key={pathname} className="route-fade">{children}</div>
+          </Suspense>
         </RouteErrorBoundary>
       </Layout>
       <CommandPalette />

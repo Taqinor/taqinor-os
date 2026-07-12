@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import {
   normalizeTheme, normalizeDensity, resolveTheme, THEMES, DENSITIES,
-  TEXT_SCALE, FORMAT_FEATURES, tabularNumStyle,
+  TEXT_SCALE, FORMAT_FEATURES, tabularNumStyle, applyThemeWithTransition,
 } from './theme.js'
 
 const tokensCss = readFileSync(
@@ -106,4 +106,33 @@ test('F121: utilitaire de format = chiffres tabulaires + zéro barré', () => {
   // Le token CSS .tabular-nums porte les mêmes réglages.
   assert.match(tokensCss, /font-variant-numeric:\s*tabular-nums slashed-zero/)
   assert.match(tokensCss, /font-feature-settings:\s*'tnum' 1, 'zero' 1/)
+})
+
+/* ── VX134(e) — bascule de thème avec transition transitoire ─────────────── */
+test('applyThemeWithTransition : classe transitoire posée puis retirée (jamais permanente)', async () => {
+  const classes = new Set()
+  const fakeRoot = {
+    classList: {
+      add: (c) => classes.add(c),
+      remove: (c) => classes.delete(c),
+      toggle: (c, on) => { if (on) classes.add(c); else classes.delete(c) },
+      contains: (c) => classes.has(c),
+    },
+    style: {},
+    setAttribute: () => {},
+  }
+  globalThis.document = { documentElement: fakeRoot, querySelector: () => null }
+  globalThis.window = { matchMedia: () => ({ matches: false }) }
+  try {
+    applyThemeWithTransition('dark')
+    // Posée + thème appliqué IMMÉDIATEMENT (aucun FOUC — pas d'attente avant
+    // que .dark n'apparaisse).
+    assert.ok(classes.has('theme-transitioning'), 'la classe transitoire doit être posée tout de suite')
+    assert.ok(classes.has('dark'), 'le thème doit être appliqué tout de suite, sans attendre la transition')
+    await new Promise((resolve) => { setTimeout(resolve, 260) })
+    assert.ok(!classes.has('theme-transitioning'), 'la classe transitoire doit être retirée après coup — jamais permanente')
+  } finally {
+    delete globalThis.document
+    delete globalThis.window
+  }
 })

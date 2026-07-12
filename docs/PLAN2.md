@@ -93,6 +93,53 @@ VX141 (nouveau `ui/DocumentStageTrack.jsx` — piste horizontale brouillon→env
 VX238 (`ui/Segmented.jsx` roving tabindex + ArrowLeft/Right/Home/End sur le radiogroup ; `ui/Combobox.jsx` Tab sans preventDefault sélectionne l'option sous le curseur ; `components/ProduitPicker.jsx` idem + nouveau prop `onPicked` posé sur `DevisLineRow.jsx`/`DevisForm.jsx`/`FactureForm.jsx` pour avancer le focus sur la Qté de la même ligne via `data-line-key`/`data-role="line-qty"` au lieu de rendre le focus au bouton déclencheur).
 
 VX240 (autofocus posé sur DevisForm/FactureForm — champ Client — ProduitForm — Nom — et le dialog de création rapide de ticket SAV — Type ; mémoire localStorage ajoutée pour le type de ticket SAV rapide (TicketsPage.jsx) et le canal LeadExpressModal (payMode/pay-montant déjà couverts par VX92/93/249, hors scope du DoD) ; AttachmentsPanel.jsx upload multi-fichiers séquentiel avec indicateur « i/N », échec partiel n'annule pas les autres ; BonsCommandeFournisseur.jsx réplique le patron VX90 data-line-key/pendingFocusKey pour focaliser la ligne ajoutée.
+#### DONE LOG — Vague 3, lane frontend/motion (VX133-136) (2026-07-12)
+
+VX133 — Sheet glisse par bord réel (keyframes `slide-in/out-{right,left,top,bottom}` mappés
+`--motion-*`, tokens.css) au lieu du `pop-in` centré-zoomé ; `.ldp-panel`/`.ldp-overlay` bespoke
+retirés d'index.css, LeadDevisPanel + InstallationDetail (aperçu doc) migrés sur
+`Sheet`/`SheetContent side="right"` ; AccordionContent anime sa hauteur
+(`--radix-accordion-content-height`) ; TabsContent fondu court `--motion-fast` à l'affichage ;
+BulkActionBar reste monté pendant `slide-out-bottom` (exit-sans-lib) au lieu du cut sec
+`if (!count) return null`. `overlay-stacking.test.mjs` mis à jour (le test `.ldp-overlay` en CSS
+n'a plus d'objet, l'overlay Sheet/Radix est déjà couvert par le test `fixed inset-0`).
+
+VX134 — Palette ⌘K : `DialogContent` gagne une variante `variant="command"` (ancrée
+`top-[12vh]`, keyframes dédiés `command-in`/`command-out` `--motion-fast` dont l'état
+final inclut le recentrage horizontal — le `pop-in` générique écrasait le `transform:
+translate(-50%,0)` de `.cmdk-content` via son `to { transform: none }`). Liseré actif de
+la sidebar : fondu `--motion-fast` à l'apparition du pseudo-élément (mesure DOM pour un
+indicateur partagé jugée invasive, repli fondu). Route post-Suspense : `<div
+key={pathname} className="route-fade">` rejoue un fondu à chaque navigation. ChatBell :
+badge pulse (`--animate-badge-pulse`) uniquement quand le total AUGMENTE (`prevTotalRef`),
+jamais à la baisse ni sur poll inchangé ; 3 tests ajoutés. Thème : nouvelle
+`applyThemeWithTransition` (design/theme.js) pose une classe transitoire `.theme-
+transitioning` (≤200ms sur color/background-color/border-color/fill/stroke, index.css),
+retirée après coup — `applyTheme()`/`initTheme()` restent instantanés (pas de FOUC) ;
+`setStoredTheme` + le handler système de ThemeProvider l'utilisent. Test DOM fake dans
+theme.test.mjs vérifie la classe posée puis retirée.
+
+VX135 — nouveau hook `hooks/usePrefersReducedMotion.js` (matchMedia + listener live) : le
+tilt `rotate(2deg) scale(1.02)` du kanban (transform STATIQUE, échappe structurellement au
+garde CSS global) est désactivé via une classe `kb-drag-overlay--flat` dans les 3 kanbans
+(CRM leads, installations, Tâches) ; `dropAnimation` dnd-kit alignée aux tokens
+(`{duration:180, easing:cubic-bezier(0.23,1,0.32,1)}`, `{duration:1}` sous reduced-motion)
+sur les 3. `transition: transform 120ms var(--ease-out)` ajoutée sur `.kb-drag-overlay
+.kb-card` (transition de grab). Spinner : `motion-safe:animate-spin` (repli statique
+lisible, l'anneau partiel reste immobile au lieu de figer à un angle arbitraire). DataTable :
+FLIP minimal zéro dépendance (`useRowFlip`, `getBoundingClientRect` avant/après via
+`useLayoutEffect`, plafonné à 200 lignes, désactivé sous reduced-motion, jamais en mode
+`renderRow` custom) — trier/filtrer fait glisser les lignes vers leur nouvelle position au
+lieu de téléporter.
+
+VX136 — `.reveal-on-scroll` (index.css, `@supports (animation-timeline: view())`) sur les
+cartes KPI de `ModuleDashboard` : translateY 8px→0 + fondu au fil du scroll, repli état
+final statique (opacity:1) sur Firefox/Safari<18 — la règle n'est simplement jamais
+appliquée. Nouveau `ui/ScrollProgress.jsx` (barre 2px, `scroll(nearest)`) posé en tête de
+`.modal-body` (LeadForm) et de la page (DevisGenerator, marche aussi `embedded` dans
+LeadDevisPanel — suit le conteneur qui défile réellement dans les deux cas). Les deux
+désactivent explicitement leur timeline sous `prefers-reduced-motion: reduce`.
+
 #### DONE LOG — Vague 2 (VX terrain/finance/CRM + QX groupe) (2026-07-12)
 
 Vague 2 du plan-run (23 tâches VX + tagging de tous les plans, un seul merge). Lanes drainées en parallèle : **finance/terrain** VX44 (photos chantier en rafale + partage WhatsApp), VX88 (Ma journée → tournée géo), VX94 (Enter-pour-ajouter capture), VX105 (statut technicien + persistance + toasts hors-ligne), VX106 (signature client terrain), VX107 (résumé client lecture seule), VX52 (avertissements conformité tactiles), VX63 (erreurs FR lisibles DevisList/FactureList), VX114 (déjà présent, export daté), VX116 (relance groupée + aperçu WhatsApp). **ventes** VX222 (relancer devis), VX230 (encaisser depuis Relances), VX231 (navigation finance vers la cible). **UI/data** VX41 (data-viz marque + comparaison période), VX33 (Pilotage stock tour de contrôle), VX66 (anti-double-soumission Button), VX26 (couleurs stage dérivées tokens), VX81 (exports XLSX/CSV horodatés), VX61 (Web Vitals réels + endpoint reporting), VX110 (copier TSV), VX246 (queue interop iOS), VX19 (zéro popup navigateur, +réparation FactureList post-refactor VX230). Backend DoD à suivre : VX105 (`ajouter-reserve` gated admin), VX106 (signature dans `intervention_pdf.py`). GATED (non buildé) : QXG1/QXG2/QXG4 (compte/contenu fondateur). Tagging : les 10 fichiers de plan (PLAN/PLAN2/new_tasks + 7 domaines) reçoivent un tag `@lane:`/`Files:` visible par le planner sur la 1ʳᵉ ligne (append-only vérifié).
@@ -1018,7 +1065,7 @@ grand-verdict — voir NE PAS FAIRE en fin de section pour le détail des kills/
 
 **Sous-groupe VXD-F (suite) — Chorégraphie de mouvement**
 
-- [ ] VX133 — **Grammaire directionnelle des surfaces : chaque overlay entre par où il vit.** Un (@lane: frontend/motion)
+- [x] VX133 — **Grammaire directionnelle des surfaces : chaque overlay entre par où il vit.** Un (@lane: frontend/motion)
   seul keyframe `pop-in` (translateY 4px + scale 0.97, conçu pour un popover ancré) sert 14
   primitifs aux géométries incompatibles : le `Sheet` latéral de 26rem « pop » du centre au lieu de
   glisser de son bord (`Sheet.jsx:32`, 13 consommateurs), alors que la preuve du bon glissement
@@ -1039,7 +1086,7 @@ grand-verdict — voir NE PAS FAIRE en fin de section pour le détail des kills/
   rendu par côté. **@coord VX43** (Sheet.jsx partagé / bottom-sheets mobile). (T2/T3 — M/L, sonnet)
   (@lane: frontend/motion)
 
-- [ ] VX134 — **Chorégraphie de coquille : ⌘K, sidebar, route, badge, thème — cinq (@lane: frontend/motion)
+- [x] VX134 — **Chorégraphie de coquille : ⌘K, sidebar, route, badge, thème — cinq (@lane: frontend/motion)
   téléportations soignées.** Cinq surfaces de la coquille bougent « sec » : (a) la palette ⌘K
   réutilise le Dialog générique centré-zoomé — s'ancrer en haut avec un slide-down rapide
   `--motion-fast` ; (b) le liseré doré actif de la sidebar (`index.css:396-412`, pseudo-élément par
@@ -1059,7 +1106,7 @@ grand-verdict — voir NE PAS FAIRE en fin de section pour le détail des kills/
   **@coord axe3-VX190** (refonte cloche — ce seed ne touche que l'animation du compteur, pas son
   contenu). (T2/T3 — M, sonnet) (@lane: frontend/motion)
 
-- [ ] VX135 — **Mouvement piloté par JS rendu accessible + FLIP des listes.** La garde globale (@lane: frontend/motion)
+- [x] VX135 — **Mouvement piloté par JS rendu accessible + FLIP des listes.** La garde globale (@lane: frontend/motion)
   reduced-motion (`index.css:67-77`) ne neutralise QUE les animations CSS déclaratives : les
   transforms posés en JS par dnd-kit y échappent structurellement — le tilt `rotate(2deg)
   scale(1.02)` de la carte kanban tenue reste actif pour un utilisateur vestibulaire, aucun des 3
@@ -1081,7 +1128,7 @@ grand-verdict — voir NE PAS FAIRE en fin de section pour le détail des kills/
   si le hook FLIP doit se partager avec ARC49/53 — coordonner, ne pas dupliquer) (@lane:
   frontend/motion)
 
-- [ ] VX136 — **Scroll-timeline natif : reveal des cockpits + progression des formulaires (@lane: frontend/motion)
+- [x] VX136 — **Scroll-timeline natif : reveal des cockpits + progression des formulaires (@lane: frontend/motion)
   longs.** `grep view-timeline|animation-timeline` = 0 : aucun usage du mécanisme 2026 (compositor
   thread, zéro JS d'orchestration, progressive enhancement pur). Deux poses à haute valeur : (a)
   les cartes KPI de `ModuleDashboard` se révèlent (translateY 8px→0 + fondu) via `@supports

@@ -72,6 +72,25 @@ export function applyTheme(theme) {
   if (meta) meta.setAttribute('content', THEME_COLOR[resolved])
 }
 
+const THEME_TRANSITION_CLASS = 'theme-transitioning'
+const THEME_TRANSITION_MS = 200
+
+/**
+ * VX134(e) — `applyTheme` bascule `.dark` d'un coup (couleurs OKLCH en cut
+ * sec). Ici : pose une classe TRANSITOIRE (index.css l'anime en ≤200ms),
+ * applique le thème, puis retire la classe après coup — jamais permanente
+ * (pas de transition parasite sur un changement d'état non lié au thème).
+ * `applyTheme()` lui-même reste instantané (appelé par `initTheme()` au
+ * premier paint) : aucun FOUC n'est introduit par cette fonction séparée.
+ */
+export function applyThemeWithTransition(theme) {
+  if (typeof document === 'undefined') { applyTheme(theme); return }
+  const root = document.documentElement
+  root.classList.add(THEME_TRANSITION_CLASS)
+  applyTheme(theme)
+  setTimeout(() => root.classList.remove(THEME_TRANSITION_CLASS), THEME_TRANSITION_MS)
+}
+
 export function applyDensity(density) {
   if (typeof document === 'undefined') return
   document.documentElement.setAttribute('data-density', normalizeDensity(density))
@@ -80,7 +99,8 @@ export function applyDensity(density) {
 export function setStoredTheme(theme) {
   const t = normalizeTheme(theme)
   safeStorageSet(THEME_KEY, t)
-  applyTheme(t)
+  // VX134(e) — bascule explicite (toggle utilisateur) : transition douce.
+  applyThemeWithTransition(t)
   return t
 }
 export function setStoredDensity(density) {

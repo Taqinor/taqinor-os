@@ -60,6 +60,7 @@ export * from './Tabs'
 export * from './Accordion'
 export * from './Progress'
 export * from './FloatingActionButton'
+export * from './ScrollProgress'
 
 // Données / listes (Groupe H — moteur DataTable réutilisable)
 export { DataTable, useDataTable, EditableCell, BulkActionBar, ColumnManager } from './datatable'
