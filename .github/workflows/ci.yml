@@ -148,6 +148,10 @@ jobs:
       # un nouveau check requis (protection de branche inchangée).
       - name: Platform-kernel guards (check_platform — ARC8/26/11/6)
         run: python scripts/check_platform.py
+      # YDATA1 — every FK/O2O declares on_delete=, every CASCADE is either
+      # inline-justified ('# on_delete: <reason>') or reviewed+allowlisted.
+      - name: Check on_delete completeness/justification (YDATA1)
+        run: python scripts/check_on_delete.py
 
   # WOW6 — the fast backend suite is sharded 4× across free public-repo runners
   # (matrix legs run concurrently, each on its own 4-vCPU runner + Postgres). The
