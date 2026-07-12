@@ -13,18 +13,22 @@ import { useNavigate } from 'react-router-dom'
 import {
   CheckCircle2, MapPin, Navigation, Truck, Camera, Trash2, AlertTriangle,
   PackageCheck, ShoppingCart, Images, RotateCw, Upload, X,
+  ShieldCheck, Wrench, Clock,
 } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
+import savApi from '../../api/savApi'
 import {
   Button, Badge, Spinner, Checkbox, Progress, toast,
 } from '../../ui'
-import { formatDateTime } from '../../lib/format'
+import { formatDateTime, formatDate } from '../../lib/format'
 import { withOfflineFallback, FIELD_OPS } from './offline/fieldOutbox'
 import CameraCapture from '../pwa/CameraCapture'
 import { compressImage } from '../../ui/file-utils'
 import {
   makeCapturedPage, rotatePageInList, removePageFromList, rotateImageBlob,
 } from '../ged/capture'
+import { garantieLabel, garantieColor } from '../sav/equipement'
+import { TICKET_OPEN_STATUSES, TICKET_STATUS_LABELS } from '../sav/ticketStatuses'
 
 // N91/F21 — message commun quand une action a été MISE EN FILE (hors-ligne) :
 // elle se synchronisera toute seule au retour du réseau.
@@ -219,6 +223,94 @@ export function PreparationPanel({ intervention, onChanged }) {
   )
 }
 
+// ── VX107 — Résumé client LECTURE SEULE (garantie + dernier ticket SAV +
+//    mise en service). « C'est encore sous garantie ? Vous êtes déjà venus ? »
+//    répondu sur site sans appeler le bureau ni ouvrir la fiche de 1 600 lignes.
+//    Mêmes appels savApi déjà en prod (InstallationDetail) — aucune route
+//    nouvelle, ZÉRO écriture. (Migre vers RecordShell quand ARC46 atterrira.)
+function ClientInfoPanel({ intervention }) {
+  const installationId = intervention.installation
+  const [equipements, setEquipements] = useState([])
+  const [tickets, setTickets] = useState([])
+  const [dateMes, setDateMes] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (!installationId) { setLoading(false); return undefined }
+    let alive = true
+    setLoading(true)
+    Promise.allSettled([
+      savApi.getEquipements({ installation: installationId }),
+      savApi.getTickets({ installation: installationId, ouvert: 'tous' }),
+      installationsApi.getInstallation(installationId),
+    ]).then(([eq, tk, inst]) => {
+      if (!alive) return
+      if (eq.status === 'fulfilled') setEquipements(eq.value.data?.results ?? eq.value.data ?? [])
+      if (tk.status === 'fulfilled') setTickets(tk.value.data?.results ?? tk.value.data ?? [])
+      if (inst.status === 'fulfilled') setDateMes(inst.value.data?.date_mise_en_service ?? null)
+    }).finally(() => { if (alive) setLoading(false) })
+    return () => { alive = false }
+  }, [installationId])
+
+  if (!installationId) return null
+  if (loading) return (
+    <div className="flex items-center gap-2 rounded border border-border bg-muted/40 p-2 text-[12px] text-muted-foreground">
+      <Spinner className="size-3.5" /> Chargement des infos client…
+    </div>
+  )
+
+  const mainEq = equipements[0]
+  // Dernier ticket OUVERT (le plus récent) — jamais un ticket clos.
+  const lastOpen = [...tickets]
+    .filter((t) => TICKET_OPEN_STATUSES.includes(t.statut))
+    .sort((a, b) => String(b.date_creation ?? '').localeCompare(String(a.date_creation ?? '')))[0]
+
+  return (
+    <div className="flex flex-col gap-1.5 rounded border border-border bg-muted/40 p-2 text-[12.5px]">
+      <span className="font-medium">Infos client</span>
+      {/* Garantie du matériel principal. */}
+      <div className="flex items-center gap-1.5">
+        <ShieldCheck className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+        {mainEq ? (
+          <span className="flex flex-wrap items-center gap-1">
+            <span className="text-muted-foreground">{mainEq.designation || mainEq.produit_nom || 'Matériel'} :</span>
+            <span style={{ color: garantieColor(mainEq) }} className="font-medium">
+              {garantieLabel(mainEq)}
+            </span>
+            {equipements.length > 1 && (
+              <span className="text-muted-foreground">+ {equipements.length - 1} autre(s)</span>
+            )}
+          </span>
+        ) : (
+          <span className="text-muted-foreground">Aucun équipement enregistré.</span>
+        )}
+      </div>
+      {/* Dernier ticket SAV ouvert. */}
+      <div className="flex items-center gap-1.5">
+        <Wrench className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+        {lastOpen ? (
+          <span className="flex flex-wrap items-center gap-1">
+            <span className="font-medium">{lastOpen.reference}</span>
+            <Badge tone="warning">{TICKET_STATUS_LABELS[lastOpen.statut] ?? lastOpen.statut}</Badge>
+            {lastOpen.description && (
+              <span className="truncate text-muted-foreground">— {lastOpen.description}</span>
+            )}
+          </span>
+        ) : (
+          <span className="text-muted-foreground">Aucun ticket SAV ouvert.</span>
+        )}
+      </div>
+      {/* Date de mise en service. */}
+      {dateMes && (
+        <div className="flex items-center gap-1.5 text-muted-foreground">
+          <Clock className="size-3.5 shrink-0" aria-hidden="true" />
+          <span>Mise en service le {formatDate(dateMes)}</span>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── F6 — Trajet & check-in GPS ───────────────────────────────────────────────
 export function TrajetPanel({ intervention, onChanged }) {
   const id = intervention.id
@@ -276,6 +368,9 @@ export function TrajetPanel({ intervention, onChanged }) {
 
   return (
     <div className="flex flex-col gap-3 py-2 text-sm">
+      {/* VX107 — résumé client lecture seule (garantie / dernier ticket SAV /
+          mise en service), consultable sans quitter le Sheet d'intervention. */}
+      <ClientInfoPanel intervention={intervention} />
       {hasAcces && (
         <div className="flex flex-col gap-1 rounded border border-border bg-muted/40 p-2">
           <span className="font-medium">Accès au site</span>
