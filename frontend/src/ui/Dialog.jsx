@@ -23,7 +23,7 @@ export const DialogOverlay = forwardRef(function DialogOverlay({ className, ...p
 })
 
 export const DialogContent = forwardRef(function DialogContent(
-  { className, children, showClose = true, ...props },
+  { className, children, showClose = true, variant = 'default', ...props },
   ref,
 ) {
   return (
@@ -32,14 +32,19 @@ export const DialogContent = forwardRef(function DialogContent(
       <DialogPrimitive.Content
         ref={ref}
         className={cn(
-          // max-h + overflow : sans plafond de hauteur ni défilement interne, un
-          // formulaire long (ex. « éditer un utilisateur ») centré par
-          // -translate-y-1/2 débordait HORS de l'écran sur iPhone (haut et bas
-          // rognés, rôle + bouton Enregistrer inaccessibles). 100dvh suit la
-          // hauteur visible réelle d'iOS (barre d'adresse dynamique).
-          'fixed left-1/2 top-1/2 z-[var(--z-modal)] grid max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 overflow-y-auto overscroll-contain',
+          variant === 'command'
+            ? // VX134(a) — variante « command » (palette ⌘K) : ANCRÉE EN HAUT,
+              // jamais centrée verticalement — slide-down `--motion-fast`
+              // dédié (command-in/out, tokens.css), pas le pop-in centré-zoomé
+              // pensé pour un dialogue de confirmation.
+              'fixed left-1/2 top-[12vh] z-[var(--z-modal)] grid max-h-[calc(88vh-2rem)] w-[calc(100%-2rem)] max-w-lg gap-4 overflow-y-auto overscroll-contain data-[state=open]:animate-command-in data-[state=closed]:animate-command-out'
+            : // max-h + overflow : sans plafond de hauteur ni défilement interne, un
+              // formulaire long (ex. « éditer un utilisateur ») centré par
+              // -translate-y-1/2 débordait HORS de l'écran sur iPhone (haut et bas
+              // rognés, rôle + bouton Enregistrer inaccessibles). 100dvh suit la
+              // hauteur visible réelle d'iOS (barre d'adresse dynamique).
+              'fixed left-1/2 top-1/2 z-[var(--z-modal)] grid max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 overflow-y-auto overscroll-contain data-[state=open]:animate-pop-in data-[state=closed]:animate-pop-out',
           'rounded-xl border border-border bg-card p-5 text-card-foreground shadow-ui-lg',
-          'data-[state=open]:animate-pop-in data-[state=closed]:animate-pop-out',
           'focus:outline-none',
           // VX176 — près de sa hauteur max, le haut de la Dialog approche le
           // bord haut de l'écran (centrage vertical) : safe-area en PWA

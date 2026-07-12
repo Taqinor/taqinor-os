@@ -557,6 +557,38 @@
   to { height: 0 }
 }
 
+/* VX134(a) — Palette ⌘K : réutilisait le `pop-in`/`pop-out` centré-zoomé du
+   Dialog générique — pensé pour un dialogue de confirmation, incompatible
+   avec une palette ANCRÉE EN HAUT (son `to { transform: none }` écrasait le
+   recentrage horizontal que `.cmdk-content` tentait d'imposer en CSS
+   statique, un `transform` animé gagnant toujours sur une déclaration
+   normale pour la même propriété). Keyframe dédié dont l'état final INCLUT
+   le recentrage (`translate(-50%, 0)`) ; --motion-fast (plus rapide qu'un
+   modal centré, cf. DoD). */
+@theme {
+  --animate-command-in: command-in var(--motion-fast) var(--ease-standard) both;
+  --animate-command-out: command-out var(--motion-fast) var(--ease-standard) both;
+}
+@keyframes command-in {
+  from { opacity: 0; transform: translate(-50%, -8px) }
+  to { opacity: 1; transform: translate(-50%, 0) }
+}
+@keyframes command-out {
+  from { opacity: 1; transform: translate(-50%, 0) }
+  to { opacity: 0; transform: translate(-50%, -8px) }
+}
+
+/* VX134(d) — Badge non-lus de ChatBell : pulse UNIQUEMENT quand le total
+   AUGMENTE (jamais à chaque poll de 30 s qui ne change rien). */
+@theme {
+  --animate-badge-pulse: badge-pulse var(--motion-slow) var(--ease-standard);
+}
+@keyframes badge-pulse {
+  0% { transform: scale(1) }
+  50% { transform: scale(1.25) }
+  100% { transform: scale(1) }
+}
+
 /* VX129 — Progress indéterminé : une barre qui balaie la piste en boucle
    (au lieu d'une barre figée à 0 %, seul état possible jusqu'ici). Le garde
    global `@media (prefers-reduced-motion: reduce)` (index.css) neutralise

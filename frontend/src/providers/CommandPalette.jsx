@@ -186,6 +186,7 @@ export function CommandPalette() {
     <Dialog open={open} onOpenChange={(v) => (v ? setOpen(true) : close())}>
       <DialogContent
         className="cmdk-content"
+        variant="command"
         showClose={false}
         onKeyDown={onKeyDown}
         aria-label="Palette de commandes"

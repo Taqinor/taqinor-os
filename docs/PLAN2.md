@@ -83,6 +83,21 @@ BulkActionBar reste monté pendant `slide-out-bottom` (exit-sans-lib) au lieu du
 `if (!count) return null`. `overlay-stacking.test.mjs` mis à jour (le test `.ldp-overlay` en CSS
 n'a plus d'objet, l'overlay Sheet/Radix est déjà couvert par le test `fixed inset-0`).
 
+VX134 — Palette ⌘K : `DialogContent` gagne une variante `variant="command"` (ancrée
+`top-[12vh]`, keyframes dédiés `command-in`/`command-out` `--motion-fast` dont l'état
+final inclut le recentrage horizontal — le `pop-in` générique écrasait le `transform:
+translate(-50%,0)` de `.cmdk-content` via son `to { transform: none }`). Liseré actif de
+la sidebar : fondu `--motion-fast` à l'apparition du pseudo-élément (mesure DOM pour un
+indicateur partagé jugée invasive, repli fondu). Route post-Suspense : `<div
+key={pathname} className="route-fade">` rejoue un fondu à chaque navigation. ChatBell :
+badge pulse (`--animate-badge-pulse`) uniquement quand le total AUGMENTE (`prevTotalRef`),
+jamais à la baisse ni sur poll inchangé ; 3 tests ajoutés. Thème : nouvelle
+`applyThemeWithTransition` (design/theme.js) pose une classe transitoire `.theme-
+transitioning` (≤200ms sur color/background-color/border-color/fill/stroke, index.css),
+retirée après coup — `applyTheme()`/`initTheme()` restent instantanés (pas de FOUC) ;
+`setStoredTheme` + le handler système de ThemeProvider l'utilisent. Test DOM fake dans
+theme.test.mjs vérifie la classe posée puis retirée.
+
 #### DONE LOG — Vague 2 (VX terrain/finance/CRM + QX groupe) (2026-07-12)
 
 Vague 2 du plan-run (23 tâches VX + tagging de tous les plans, un seul merge). Lanes drainées en parallèle : **finance/terrain** VX44 (photos chantier en rafale + partage WhatsApp), VX88 (Ma journée → tournée géo), VX94 (Enter-pour-ajouter capture), VX105 (statut technicien + persistance + toasts hors-ligne), VX106 (signature client terrain), VX107 (résumé client lecture seule), VX52 (avertissements conformité tactiles), VX63 (erreurs FR lisibles DevisList/FactureList), VX114 (déjà présent, export daté), VX116 (relance groupée + aperçu WhatsApp). **ventes** VX222 (relancer devis), VX230 (encaisser depuis Relances), VX231 (navigation finance vers la cible). **UI/data** VX41 (data-viz marque + comparaison période), VX33 (Pilotage stock tour de contrôle), VX66 (anti-double-soumission Button), VX26 (couleurs stage dérivées tokens), VX81 (exports XLSX/CSV horodatés), VX61 (Web Vitals réels + endpoint reporting), VX110 (copier TSV), VX246 (queue interop iOS), VX19 (zéro popup navigateur, +réparation FactureList post-refactor VX230). Backend DoD à suivre : VX105 (`ajouter-reserve` gated admin), VX106 (signature dans `intervention_pdf.py`). GATED (non buildé) : QXG1/QXG2/QXG4 (compte/contenu fondateur). Tagging : les 10 fichiers de plan (PLAN/PLAN2/new_tasks + 7 domaines) reçoivent un tag `@lane:`/`Files:` visible par le planner sur la 1ʳᵉ ligne (append-only vérifié).
@@ -1029,7 +1044,7 @@ grand-verdict — voir NE PAS FAIRE en fin de section pour le détail des kills/
   rendu par côté. **@coord VX43** (Sheet.jsx partagé / bottom-sheets mobile). (T2/T3 — M/L, sonnet)
   (@lane: frontend/motion)
 
-- [ ] VX134 — **Chorégraphie de coquille : ⌘K, sidebar, route, badge, thème — cinq (@lane: frontend/motion)
+- [x] VX134 — **Chorégraphie de coquille : ⌘K, sidebar, route, badge, thème — cinq (@lane: frontend/motion)
   téléportations soignées.** Cinq surfaces de la coquille bougent « sec » : (a) la palette ⌘K
   réutilise le Dialog générique centré-zoomé — s'ancrer en haut avec un slide-down rapide
   `--motion-fast` ; (b) le liseré doré actif de la sidebar (`index.css:396-412`, pseudo-élément par

@@ -97,6 +97,30 @@ html { scroll-behavior: smooth; }
   }
 }
 
+/* VX134(e) — `applyTheme` basculait `.dark` d'un coup (couleurs OKLCH en cut
+   sec). `applyThemeWithTransition` (design/theme.js) pose cette classe
+   TRANSITOIRE le temps du changement (≤200ms), puis la retire — jamais
+   permanente. Sous reduced-motion, le garde global ci-dessus régit déjà les
+   transitions de couleur (120ms) : on ne le double pas ici. */
+@media (prefers-reduced-motion: no-preference) {
+  .theme-transitioning,
+  .theme-transitioning *,
+  .theme-transitioning *::before,
+  .theme-transitioning *::after {
+    transition: background-color 200ms var(--ease-standard),
+                border-color 200ms var(--ease-standard),
+                color 200ms var(--ease-standard),
+                fill 200ms var(--ease-standard),
+                stroke 200ms var(--ease-standard) !important;
+  }
+}
+
+/* VX134(c) — le contenu de route post-Suspense apparaissait en cut dur à
+   chaque navigation ; remonté (`key={pathname}`, router/index.jsx) avec un
+   fondu court --motion-fast au lieu d'un swap sec. Se fige sous
+   reduced-motion via le garde global ci-dessus (animation-duration). */
+.route-fade { animation: var(--animate-fade-in); }
+
 /* N63 — Plancher d'accessibilité : anneau de focus clavier global. Les
    primitifs /src/ui ont déjà leur propre anneau `focus-visible` ; cette règle
    couvre les éléments interactifs LEGACY qui n'en avaient pas. `:focus-visible`
@@ -546,6 +570,14 @@ button:active, [role="button"]:active, a.btn:active,
   height: 1.05rem;
   border-radius: 0 3px 3px 0;
   background: var(--module-accent);
+  /* VX134(b) — chaque item nav porte SON PROPRE pseudo-élément : à la
+     navigation, le repère ne glisse jamais d'un item à l'autre (deux
+     éléments distincts, aucune mesure DOM partagée) — il téléportait. Une
+     mesure DOM pour faire glisser un indicateur PARTAGÉ entre items est
+     jugée invasive ici ; repli : un fondu --motion-fast à l'apparition de
+     chaque nouveau pseudo-élément actif (l'entrée d'un élément nouvellement
+     créé déclenche son animation CSS), moins sec qu'un pop instantané. */
+  animation: var(--animate-fade-in);
 }
 .sidebar-nav-item.active .sidebar-nav-icon { color: var(--module-accent); }
 /* I135 — anneau focus-visible sur les items (navigation clavier), aligné sur le
@@ -3426,6 +3458,9 @@ textarea.form-control {
   border-radius: 999px; padding: 0 4px;
   display: flex; align-items: center; justify-content: center;
 }
+/* VX134(d) — pulse UNIQUEMENT quand le total AUGMENTE (ChatBell), jamais à
+   chaque poll de 30 s qui ne change rien. */
+.nb-badge-pulse { animation: var(--animate-badge-pulse); }
 .nb-panel {
   position: absolute; top: calc(100% + 6px); right: 0;
   width: 320px; max-height: 70vh; overflow-y: auto;
@@ -5603,12 +5638,9 @@ textarea.form-control {
 /* L56 — Palette de commandes (⌘K). Styles scoped, tokenisés sur le design
    system. N'altère pas src/index.css (propriété d'une autre lane). */
 .cmdk-content {
-  /* On surcharge la largeur/positionnement de DialogContent pour une palette
-     ancrée en haut, à la manière des palettes de commandes natives. Le
-     primitif applique déjà -translate-x-1/2 -translate-y-1/2 ; on neutralise
-     la translation verticale et on ancre le haut à 12vh. */
-  top: 12vh;
-  transform: translate(-50%, 0);
+  /* VX134(a) — le positionnement (ancré en haut) et l'animation vivent
+     désormais dans DialogContent `variant="command"` (ui/Dialog.jsx) ;
+     .cmdk-content ne porte plus que la mise en forme du contenu. */
   width: calc(100% - 2rem);
   max-width: 38rem;
   padding: 0;
