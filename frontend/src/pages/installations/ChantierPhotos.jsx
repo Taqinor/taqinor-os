@@ -123,6 +123,12 @@ export default function ChantierPhotos({ installationId }) {
   // Les pièces sans phase (anciennes / génériques) tombent dans « avant » par défaut.
   const byPhase = (key) => items.filter((a) => (a.phase || 'avant') === key)
 
+  // VX44 — compteur de complétion : total de fichiers + nombre de phases
+  // couvertes (avant/pendant/après), pour voir d'un coup d'œil ce qu'il reste
+  // à documenter sans quitter l'écran.
+  const totalFiles = items.length
+  const phasesCouvertes = PHASES.filter((p) => byPhase(p.key).length > 0).length
+
   // N4 — visionneuse : images seules de la phase, navigation préc/suiv.
   const phaseImages = (key) => byPhase(key).filter(isImage)
   const openViewer = (phaseKey, att) => {
@@ -160,6 +166,14 @@ export default function ChantierPhotos({ installationId }) {
           Voir aussi les photos de l'intervention
         </button>
       </div>
+      {/* VX44 — compteur de complétion des photos du chantier. */}
+      <div className="flex items-center gap-2 text-[12px] text-muted-foreground">
+        <Images className="size-3.5" aria-hidden="true" />
+        <span>
+          {totalFiles} photo{totalFiles > 1 ? 's' : ''} · {phasesCouvertes}/{PHASES.length} phase
+          {phasesCouvertes > 1 ? 's' : ''} couverte{phasesCouvertes > 1 ? 's' : ''}
+        </span>
+      </div>
       {/* VX149 — densité des vignettes : utile dès qu'un chantier accumule
           40+ photos, où le format compact fixe devient difficile à parcourir. */}
       <div className="flex items-center justify-end">
@@ -180,7 +194,16 @@ export default function ChantierPhotos({ installationId }) {
           return (
             <div key={p.key} className="min-w-[220px] flex-1">
               <div className="mb-1.5 flex items-center justify-between">
-                <strong className="text-sm text-foreground">{p.label} ({atts.length})</strong>
+                <strong className="flex items-center gap-1.5 text-sm text-foreground">
+                  {p.label} ({atts.length})
+                  {/* VX44 — badge sur une phase vide : signale ce qu'il reste
+                      à documenter. */}
+                  {atts.length === 0 && (
+                    <span className="rounded-full bg-warning/15 px-1.5 py-0.5 text-[10px] font-medium text-warning">
+                      À compléter
+                    </span>
+                  )}
+                </strong>
                 <input ref={fileRefs[p.key]} type="file" className="sr-only"
                        accept="application/pdf,image/png,image/jpeg,image/webp"
                        capture="environment"

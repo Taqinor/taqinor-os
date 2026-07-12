@@ -59,6 +59,7 @@ import {
   SerialsPanel, ConsommationPanel, MemosPanel, ReservesPanel,
   ToolReturnPanel, SafetyPanel, CompteRenduButton, CodePanel,
 } from '../../features/installations/InterventionCapturePanels'
+import { SignatureClientPanel } from '../../features/installations/SignatureClientPanel'
 import OfflineSyncIndicator from '../../features/installations/offline/OfflineSyncIndicator'
 import { formatDate, formatDateTime } from '../../lib/format'
 
@@ -381,6 +382,7 @@ function DetailSheet({ intervention, users, onClose, onChanged }) {
             <TabsTrigger value="conso" className="shrink-0">Consommé</TabsTrigger>
             <TabsTrigger value="memos" className="shrink-0">Mémos</TabsTrigger>
             <TabsTrigger value="reserves" className="shrink-0">Réserves</TabsTrigger>
+            <TabsTrigger value="signature" className="shrink-0">Signature</TabsTrigger>
             <TabsTrigger value="outils" className="shrink-0">Outils</TabsTrigger>
           </TabsList>
 
@@ -407,6 +409,9 @@ function DetailSheet({ intervention, users, onClose, onChanged }) {
           </TabsContent>
           <TabsContent value="reserves">
             <ReservesPanel intervention={intervention} onChanged={onChanged} />
+          </TabsContent>
+          <TabsContent value="signature">
+            <SignatureClientPanel intervention={intervention} onChanged={onChanged} />
           </TabsContent>
           <TabsContent value="outils">
             <div className="flex flex-col gap-3 py-2">

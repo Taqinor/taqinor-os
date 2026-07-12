@@ -4,7 +4,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import {
   Download, Plus, FileText, FileDown, Check, ArrowRight, HardHat, FileStack,
   Copy, Send, X, Eye, Search, AlertTriangle, Box, ExternalLink,
-  Link2, FolderKanban, MoreHorizontal, Printer, Bell,
+  Link2, FolderKanban, MoreHorizontal, Printer, Bell, Share2,
 } from 'lucide-react'
 import {
   fetchDevis,
@@ -312,7 +312,7 @@ function DevisRow({ d, ctx }) {
     pdfGenerating, pdfDownloading, pdfSlowPoll, convertingId, chantierBusy, projetBusy, factureGenId,
     openEdit, openVarianteModal, handleDelete, handleEnvoyer, handleRelancer, handleContacterSuperieur,
     openEmailModal, handleCopierLienProposition, copierLienInterne, handlePreview, openPdfModal,
-    handleTelechargerPdf, openAcceptModal, openRefusModal, handleConvertBC,
+    handleTelechargerPdf, handlePartagerPdf, openAcceptModal, openRefusModal, handleConvertBC,
     handleChantier, handleCreerProjet, handleGenererFacture,
   } = ctx
   // Expiration calculée à la volée (T7) : un devis en attente dont la
@@ -704,6 +704,17 @@ function DevisRow({ d, ctx }) {
                 >
                   <FileDown className="size-3.5" aria-hidden="true" />
                   {isDownloading ? 'Téléchargement…' : 'Télécharger le dernier PDF'}
+                </DropdownMenuItem>
+              )}
+              {/* VX44 — partage natif du PDF (feuille de partage iOS/Android →
+                  WhatsApp/e-mail), repli téléchargement. */}
+              {d.fichier_pdf && (
+                <DropdownMenuItem
+                  disabled={isDownloading}
+                  onSelect={() => handlePartagerPdf(d)}
+                >
+                  <Share2 className="size-3.5" aria-hidden="true" />
+                  Partager le PDF
                 </DropdownMenuItem>
               )}
               {/* WR2 — Copier le lien de proposition (share_link) :
@@ -1651,6 +1662,38 @@ export default function DevisList() {
     }
   }
 
+  // VX44 — « Partager le PDF » : quand la Web Share API accepte les fichiers
+  // (iOS 15+, Android Chrome), le PDF du devis part directement dans la feuille
+  // de partage native (WhatsApp, e-mail…) ; sinon repli propre sur le
+  // téléchargement. Aucun nouveau chemin PDF — c'est le PDF existant du devis
+  // (règle #4 : le rendu /proposal n'est pas touché).
+  const handlePartagerPdf = async (d) => {
+    setPdfDownloading(prev => ({ ...prev, [d.id]: true }))
+    try {
+      const res = await ventesApi.telechargerPdfDevis(d.id)
+      const filename = filenameFromResponse(res, `${d.reference}.pdf`)
+      const file = new File([res.data], filename, { type: 'application/pdf' })
+      const shareData = { files: [file], title: `Devis ${d.reference}` }
+      if (navigator.canShare?.(shareData) && navigator.share) {
+        try {
+          await navigator.share(shareData)
+        } catch (err) {
+          // L'utilisateur a annulé la feuille de partage : ne rien signaler.
+          if (err?.name !== 'AbortError') {
+            openPdfBlob(res.data, filename)
+          }
+        }
+      } else {
+        // Pas de partage natif de fichiers : repli sur le téléchargement.
+        openPdfBlob(res.data, filename)
+      }
+    } catch {
+      toast.error('Fichier introuvable. Régénérez le PDF.')
+    } finally {
+      setPdfDownloading(prev => ({ ...prev, [d.id]: false }))
+    }
+  }
+
   // Statut effectif : un devis dont la validité est dépassée s'affiche « Expiré »
   // sans changer son statut stocké (logique T7, partagée filtre/résumé/tableau).
   const effStatutOf = (d) => (d.is_expired ? 'expire' : d.statut)
@@ -1767,7 +1810,7 @@ export default function DevisList() {
     pdfGenerating, pdfDownloading, pdfSlowPoll, convertingId, chantierBusy, projetBusy, factureGenId,
     openEdit, openVarianteModal, handleDelete, handleEnvoyer, handleRelancer, handleContacterSuperieur,
     openEmailModal, handleCopierLienProposition, copierLienInterne, handlePreview, openPdfModal,
-    handleTelechargerPdf, openAcceptModal, openRefusModal, handleConvertBC,
+    handleTelechargerPdf, handlePartagerPdf, openAcceptModal, openRefusModal, handleConvertBC,
     handleChantier, handleCreerProjet, handleGenererFacture,
   }
 
@@ -1847,12 +1890,16 @@ export default function DevisList() {
     // (relance le même thunk que le montage initial), là où l'ancien
     // EmptyState d'erreur n'offrait aucun moyen de réessayer sans recharger
     // la page entière.
+    // VX63 — plus de JSON brut à l'écran : le payload d'erreur (chaîne OU objet
+    // DRF `{detail}`/`{champ:[...]}`) est traduit en message FR lisible via
+    // `frenchError`, au lieu d'un « Erreur de chargement. » générique qui
+    // masquait la vraie cause.
     return (
       <div className="page">
         {pageHeader}
         <StateBlock
           className="mt-4"
-          error={typeof error === 'string' ? error : 'Erreur de chargement.'}
+          error={frenchError(error, 'Erreur de chargement.')}
           onRetry={() => dispatch(fetchDevis())}
         />
       </div>
