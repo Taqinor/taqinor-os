@@ -391,6 +391,20 @@ REST_FRAMEWORK = {
     # RÉELLEMENT les viewsets enregistrés (FG105 = page FR écrite à la main,
     # ne bouge pas, reste la doc de référence de l'API PUBLIQUE api/public/).
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+    # YAPIC7 — stratégie de versionnement UNIQUE et documentée
+    # (docs/api-conventions.md). URLPathVersioning : `request.version` vaut
+    # 'v1' sur TOUTE vue, ancienne ('api/django/...') ou nouvelle
+    # ('api/v1/...') — AUCUNE route ne capture de segment `<version>` dans
+    # l'URL (préfixes littéraux dans erp_agentique/urls.py, délibérément :
+    # une capture injecterait un kwarg `version` dans chaque vue), donc
+    # `URLPathVersioning.determine_version` retombe systématiquement sur
+    # DEFAULT_VERSION. Le comportement de rejet d'une version hors
+    # ALLOWED_VERSIONS (propre, via `exceptions.NotFound`, jamais une 404
+    # Django brute) est prouvé en isolation par
+    # tests/test_api_versioning.py — pas par une route réelle.
+    'DEFAULT_VERSIONING_CLASS': 'rest_framework.versioning.URLPathVersioning',
+    'DEFAULT_VERSION': 'v1',
+    'ALLOWED_VERSIONS': ('v1',),
 }
 
 # YAPIC5 — réglages drf-spectacular. COMPONENT_SPLIT_REQUEST distingue les
