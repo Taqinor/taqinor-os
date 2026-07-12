@@ -11,12 +11,22 @@ import { makeResourceFactory } from './resource'
    demandée ni rendue côté client.
    ========================================================================== */
 
+/**
+ * ARC50 — pilote de typage : le schéma OpenAPI généré (YAPIC5 +
+ * `npm run gen:api-types`) documente la forme réelle de `Vehicule`. Ceci ne
+ * change AUCUN comportement runtime (JSDoc pur, ce repo n'exécute pas tsc) —
+ * uniquement de la documentation typée pour l'éditeur.
+ * @typedef {import('./types/schema').components['schemas']['Vehicule']} Vehicule
+ */
+
 // ARC44 — Fabrique CRUD standard (factory partagée `api/resource.js`), URLs
 // et forme des réponses inchangées.
 const crud = makeResourceFactory(api, '/flotte')
 
 const flotteApi = {
   // ── Parc : véhicules, engins, référentiels, actifs unifiés ──
+  // ARC50 — `crud('vehicules')` renvoie {list,get,create,update,remove} sur
+  // des `Vehicule` (voir le typedef ci-dessus, généré depuis l'OpenAPI).
   vehicules: crud('vehicules'),
   modelesVehicule: crud('modeles-vehicule'),
   engins: crud('engins'),
