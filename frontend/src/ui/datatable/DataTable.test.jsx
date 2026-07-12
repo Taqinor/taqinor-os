@@ -267,23 +267,29 @@ describe('H133 — performance perçue', () => {
 /* ============================== M154 — REPLI CARTES MOBILE ============================== */
 
 describe('M154 — repli tableau → cartes sur mobile', () => {
-  it('rend une vue cartes masquée en dessous de 768px (sm:hidden) avec chevron de détail', () => {
+  it('rend une vue cartes masquée en dessous de 768px (dt-desktop:hidden — VX180, PAS sm: = 640px) avec chevron de détail', () => {
     const { container } = render(
       <DataTable data={DATA} columns={COLUMNS} onRowClick={() => {}} />,
       { wrapper },
     )
     const cardsWrap = container.querySelector('[data-dt-cards]')
     expect(cardsWrap).toBeTruthy()
-    expect(cardsWrap.className).toContain('sm:hidden')
+    // VX180 — jsdom n'applique aucune media query : cette assertion ne peut
+    // structurellement PROUVER le seuil réel (voir e2e/datatable-breakpoint.spec.js
+    // pour la preuve à 700px réels) ; elle vérifie seulement que le composant
+    // utilise la variante DÉDIÉE `dt-desktop:` et non plus `sm:` (640px).
+    expect(cardsWrap.className).toContain('dt-desktop:hidden')
+    expect(cardsWrap.className).not.toContain('sm:hidden')
     // Métrique clé en grand + chevron vers le détail.
     expect(cardsWrap.querySelector('[data-card-chevron]')).toBeTruthy()
   })
 
-  it('masque l\'en-tête de tableau sur mobile (table dans un conteneur sm:block)', () => {
+  it('masque l\'en-tête de tableau sur mobile (table dans un conteneur dt-desktop:block — VX180, 768px)', () => {
     const { container } = render(<DataTable data={DATA} columns={COLUMNS} />, { wrapper })
     const tableWrap = container.querySelector('[data-dt-table]')
     expect(tableWrap.className).toContain('hidden')
-    expect(tableWrap.className).toContain('sm:block')
+    expect(tableWrap.className).toContain('dt-desktop:block')
+    expect(tableWrap.className).not.toContain('sm:block')
   })
 })
 
