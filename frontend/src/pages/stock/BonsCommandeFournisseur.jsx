@@ -17,6 +17,7 @@ import {
   Input, Textarea,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
+import { buildCopyTSVAction } from '../../ui/datatable/BulkActionBar'
 import {
   BCF_STATUTS,
   bcfStatutLabel,
@@ -1021,20 +1022,22 @@ export default function BonsCommandeFournisseur() {
         globalColumns={['reference', 'fournisseur_nom']}
         onRowClick={openBcf}
         selectable
-        bulkActions={(selRows, selKeys, clear) => (
-          // ZPUR6 — n'affiche l'action que si la sélection est éligible
+        bulkActions={(selRows, selKeys, clear) => [
+          // VX246(c) — « Copier » la sélection en TSV (colle en colonnes dans Excel).
+          buildCopyTSVAction({ rows: selRows, filteredRows: selRows, columns }),
+          // ZPUR6 — n'affiche l'action de fusion que si la sélection est éligible
           // (≥2 BCF BROUILLON du même fournisseur) — le backend re-vérifie
           // de toute façon, mais autant ne pas proposer une action vouée à
           // échouer.
-          selRows.length >= 2
+          ...(selRows.length >= 2
           && selRows.every((b) => b.statut === 'brouillon')
           && new Set(selRows.map((b) => b.fournisseur)).size === 1
             ? [{
                 id: 'fusionner', label: 'Fusionner en un seul BCF',
                 onClick: () => fusionner(selRows, selKeys, clear),
               }]
-            : []
-        )}
+            : []),
+        ]}
         emptyTitle="Aucun bon de commande fournisseur"
         emptyDescription="Créez-en un avec « Nouveau bon de commande » ou depuis le besoin matériel d'un chantier."
         aria-label="Bons de commande fournisseur"

@@ -12,7 +12,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   CheckCircle2, MapPin, Navigation, Truck, Camera, Trash2, AlertTriangle,
-  PackageCheck, ShoppingCart, Images, RotateCw, Upload, X,
+  PackageCheck, ShoppingCart, Images, RotateCw, Upload, X, Phone, UserPlus,
   ShieldCheck, Wrench, Clock,
 } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
@@ -21,6 +21,8 @@ import {
   Button, Badge, Spinner, Checkbox, Progress, toast,
 } from '../../ui'
 import { formatDateTime, formatDate } from '../../lib/format'
+import { telHref } from '../../lib/contactLinks'
+import { downloadVCard } from '../../lib/vcard'
 import { withOfflineFallback, FIELD_OPS } from './offline/fieldOutbox'
 import CameraCapture from '../pwa/CameraCapture'
 import { compressImage } from '../../ui/file-utils'
@@ -375,9 +377,29 @@ export function TrajetPanel({ intervention, onChanged }) {
         <div className="flex flex-col gap-1 rounded border border-border bg-muted/40 p-2">
           <span className="font-medium">Accès au site</span>
           {(intervention.contact_site_nom || intervention.contact_site_telephone) && (
-            <span>
-              Contact : {intervention.contact_site_nom}
-              {intervention.contact_site_telephone ? ` (${intervention.contact_site_telephone})` : ''}
+            <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span>Contact : {intervention.contact_site_nom || '—'}</span>
+              {/* VX246(e) — le numéro du contact site devient un lien tap-to-call
+                  (au lieu d'un texte à recomposer à la main sur le terrain). */}
+              {telHref(intervention.contact_site_telephone) && (
+                <a className="link-blue inline-flex items-center gap-1"
+                   href={telHref(intervention.contact_site_telephone)}>
+                  <Phone size={13} aria-hidden="true" />
+                  {intervention.contact_site_telephone}
+                </a>
+              )}
+              {/* VX246(d) — bouton discret : enregistre le contact (.vcf) dans le
+                  carnet d'adresses du téléphone d'un appui. */}
+              <button type="button"
+                className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                title="Enregistrer le contact (.vcf)"
+                onClick={() => downloadVCard({
+                  fullName: intervention.contact_site_nom,
+                  mobile: intervention.contact_site_telephone,
+                })}>
+                <UserPlus size={13} aria-hidden="true" />
+                vCard
+              </button>
             </span>
           )}
           {intervention.horaires_acces && <span>Horaires : {intervention.horaires_acces}</span>}

@@ -15,7 +15,7 @@ import {
   encodeSort, decodeSort, encodeFilters, decodeFilters,
   encodeState, decodeState, managedKeys,
 } from './urlState.js'
-import { escapeCSVCell, rowsToCSV, exportFileName, UTF8_BOM } from './csv.js'
+import { escapeCSVCell, rowsToCSV, rowsToTSV, exportFileName, UTF8_BOM } from './csv.js'
 
 /* ============================== TRI ============================== */
 
@@ -503,6 +503,27 @@ test('rowsToCSV: en-têtes + valeurs + exportValue + BOM', () => {
   // BOM présent par défaut
   assert.ok(rowsToCSV(rows, cols).startsWith(UTF8_BOM))
   assert.equal(UTF8_BOM.charCodeAt(0), 0xfeff)
+})
+
+test('rowsToTSV: tabulations, aucun BOM, cellules quotées (collage Excel)', () => {
+  const rows = [
+    { nom: 'Kasri, R', ville: 'Rabat', montant: 1000 },
+    { nom: 'Ben\tani', ville: 'Casa', montant: 2000 },
+  ]
+  const cols = [
+    { id: 'nom', header: 'Nom' },
+    { id: 'ville', header: 'Ville' },
+    { id: 'montant', header: 'Montant', exportValue: (r) => `${r.montant} MAD` },
+  ]
+  const tsv = rowsToTSV(rows, cols)
+  const lines = tsv.split('\r\n')
+  // Séparateur = tabulation ; une virgule NE force PAS le quoting (délimiteur tab)
+  assert.equal(lines[0], 'Nom\tVille\tMontant')
+  assert.equal(lines[1], 'Kasri, R\tRabat\t1000 MAD')
+  // Une cellule contenant une tabulation est quotée (RFC-4180 avec délimiteur tab)
+  assert.equal(lines[2], '"Ben\tani"\tCasa\t2000 MAD')
+  // Aucun BOM : le presse-papiers TSV n'en a pas besoin
+  assert.ok(!tsv.startsWith(UTF8_BOM))
 })
 
 test('exportFileName: base assainie + horodatage', () => {

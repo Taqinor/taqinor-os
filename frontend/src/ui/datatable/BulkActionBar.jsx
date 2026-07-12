@@ -1,10 +1,60 @@
-import { X, MoreHorizontal } from 'lucide-react'
+import { X, MoreHorizontal, Copy } from 'lucide-react'
 import { cn } from '../../lib/cn'
 import { Button } from '../Button'
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
   DropdownMenuItem, DropdownMenuLabel,
 } from '../DropdownMenu'
+import { rowsToTSV } from './csv.js'
+import { toast } from '../confirm'
+
+/* ============================================================================
+   VX110 — « Copier » vers le presse-papiers en TSV. Colle proprement en colonnes
+   dans Excel/Sheets, et en texte lisible dans WhatsApp — sans passer par un
+   fichier .csv. Réutilise la garde anti-injection via `rowsToTSV`/`escapeCSVCell`.
+   ========================================================================== */
+
+/** Écrit du texte au presse-papiers (Clipboard API + repli execCommand pour les
+ *  contextes qui la bloquent). Renvoie une promesse résolue à `true`/`false`. */
+async function writeClipboard(text) {
+  if (navigator?.clipboard?.writeText) {
+    try { await navigator.clipboard.writeText(text); return true } catch { /* repli */ }
+  }
+  try {
+    const ta = document.createElement('textarea')
+    ta.value = text
+    ta.setAttribute('readonly', '')
+    ta.style.position = 'fixed'
+    ta.style.opacity = '0'
+    document.body.appendChild(ta)
+    ta.select()
+    const ok = document.execCommand('copy')
+    ta.remove()
+    return ok
+  } catch { return false }
+}
+
+/** Copie les lignes fournies au presse-papiers en TSV, avec toast de résultat.
+ *  `rows` = la sélection si elle existe, sinon les lignes filtrées. */
+export async function copyRowsAsTSV(rows, columns) {
+  const list = rows || []
+  if (!list.length) { toast.error('Aucune ligne à copier.'); return false }
+  const ok = await writeClipboard(rowsToTSV(list, columns))
+  if (ok) toast.success(`${list.length} ligne(s) copiée(s) — collez dans Excel.`)
+  else toast.error('Copie impossible — réessayez.')
+  return ok
+}
+
+/** Descripteur d'action « Copier » prêt à pousser dans `bulkActions`. Copie la
+ *  sélection `rows`, ou `filteredRows` si aucune sélection. */
+export function buildCopyTSVAction({ rows, filteredRows, columns }) {
+  return {
+    id: 'copy-tsv',
+    label: 'Copier',
+    icon: Copy,
+    onClick: () => copyRowsAsTSV(rows?.length ? rows : (filteredRows || []), columns),
+  }
+}
 
 /* ============================================================================
    H32/H132 — Barre d'actions groupées flottante. CONFIGURABLE : les actions sont

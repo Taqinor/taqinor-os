@@ -16,6 +16,7 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '../../../ui'
+import { buildCopyTSVAction } from '../../../ui/datatable/BulkActionBar'
 import { formatDate } from '../../../lib/format'
 import importApi, { downloadXlsx } from '../../../api/importApi'
 
@@ -217,6 +218,8 @@ export default function ListView({ items, onOpen, users, onChangeStatus, onReass
   // L10 — actions groupées : changement de statut + réassignation en lot.
   const bulkActions = canBulk
     ? (rows, _keys, clear) => [
+      // VX246(c) — « Copier » la sélection en TSV (colle en colonnes dans Excel).
+      buildCopyTSVAction({ rows, filteredRows: rows, columns }),
       {
         id: 'statut',
         label: 'Changer le statut',
