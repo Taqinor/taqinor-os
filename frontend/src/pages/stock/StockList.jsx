@@ -831,7 +831,7 @@ export default function StockList() {
         })
       }
     } catch (err) {
-      alert(err?.detail ?? 'Erreur lors de la suppression.')
+      toastError(err?.detail ?? 'Erreur lors de la suppression.')
     }
   }
 
@@ -850,7 +850,7 @@ export default function StockList() {
         },
       })
     } catch (err) {
-      alert(err?.detail ?? 'Erreur lors du désarchivage.')
+      toastError(err?.detail ?? 'Erreur lors du désarchivage.')
     }
   }
 
@@ -860,7 +860,7 @@ export default function StockList() {
       await dispatch(forceDeleteArchivedProduit(p.id)).unwrap()
       setConfirmDelete(null)
     } catch (err) {
-      alert(err?.detail ?? 'Erreur lors de la suppression définitive.')
+      toastError(err?.detail ?? 'Erreur lors de la suppression définitive.')
     } finally {
       setDeleting(false)
     }

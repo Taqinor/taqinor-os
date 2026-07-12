@@ -15,6 +15,7 @@ import {
   Select, SelectTrigger, SelectContent, SelectItem, SelectValue,
 } from '../../ui'
 import { formatMAD, formatDateTime, toNumber, normalizeMaPhone } from '../../lib/format'
+import { toast } from '../../ui/confirm'
 
 // Ajoute n jours à aujourd'hui (date ISO AAAA-MM-JJ).
 function todayPlus(days) {
@@ -176,11 +177,11 @@ export default function RelancesPage() {
 
   // Relevé de compte client (PDF) — en plus de la balance âgée.
   const releve = async (r) => {
-    if (!r.client_id) { alert('Client introuvable pour cette facture.'); return }
+    if (!r.client_id) { toast.error('Client introuvable pour cette facture.'); return }
     try {
       const res = await ventesApi.getClientRelevePdf(r.client_id)
       openPdfBlob(res.data, `Releve_${r.client_nom || r.client_id}.pdf`)
-    } catch { alert('Relevé indisponible.') }
+    } catch { toast.error('Relevé indisponible.') }
   }
 
   const toggleSel = (id) => setSelected(s => ({ ...s, [id]: !s[id] }))
@@ -192,14 +193,14 @@ export default function RelancesPage() {
     try {
       const res = await ventesApi.getLettreRelancePdf(r.id)
       openPdfBlob(res.data, `Relance_${r.reference}.pdf`)
-    } catch { alert('PDF indisponible.') }
+    } catch { toast.error('PDF indisponible.') }
   }
   // Lettre de relance premium (langage visuel du devis) — niveau 1/2/3.
   const lettrePremium = async (r, niveau) => {
     try {
       const res = await ventesApi.getLettreRelancePremiumPdf(r.id, niveau)
       openPdfBlob(res.data, `Relance_${r.reference}_N${niveau}.pdf`)
-    } catch { alert('PDF indisponible.') }
+    } catch { toast.error('PDF indisponible.') }
   }
   // Rappel de paiement par WhatsApp : construit le message « relance » côté
   // serveur (FR/Darija) puis montre un aperçu (message + lien public) avant
@@ -217,7 +218,7 @@ export default function RelancesPage() {
         wa_url: res.data?.wa_url ?? '',
       })
     } catch (err) {
-      alert(err?.response?.data?.detail ?? 'Envoi WhatsApp impossible.')
+      toast.error(err?.response?.data?.detail ?? 'Envoi WhatsApp impossible.')
     } finally {
       setWaBusy(prev => ({ ...prev, [r.id]: false }))
     }

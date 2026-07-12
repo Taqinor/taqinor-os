@@ -13,6 +13,7 @@ import { ChevronUp, ChevronDown, Eye, EyeOff, RotateCcw, Save, CheckCircle2 } fr
 import parametresApi from '../../api/parametresApi'
 import { Card, CardContent, Input, IconButton, Button, Spinner, Badge } from '../../ui'
 import { SectionTitle } from './peComponents'
+import { toast } from '../../ui/confirm'
 
 // Les 3 domaines configurables (libellés FR). L'ordre d'apparition à l'écran.
 const DOMAINES = [
@@ -86,7 +87,7 @@ function DomaineList({ domaine, label, hint, icon }) {
       setSaved(true)
       setTimeout(() => setSaved(false), 2500)
     } catch (e) {
-      alert(e?.response?.data?.detail ?? 'Enregistrement impossible.')
+      toast.error(e?.response?.data?.detail ?? 'Enregistrement impossible.')
     } finally {
       setSaving(false)
     }

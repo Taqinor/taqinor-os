@@ -10,6 +10,7 @@
 // bouton « Enregistrer » global). Texte en français ; clés techniques en anglais.
 import { useEffect, useState } from 'react'
 import { Plus, Trash2, ChevronUp, ChevronDown, AlertCircle } from 'lucide-react'
+import { toast } from '../../ui/confirm'
 import outillageApi from '../../api/outillageApi'
 import installationsApi from '../../api/installationsApi'
 import {
@@ -59,7 +60,7 @@ export default function KitsSection() {
         nom, type_intervention: newType === NONE ? '' : newType, ordre: kits.length,
       })
       setNewKit(''); setNewType(NONE); load()
-    } catch (e) { alert(e?.response?.data?.detail ?? 'Ajout impossible.') }
+    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Ajout impossible.') }
   }
   const renameKit = async (k, nom) => {
     if (!nom.trim() || nom === k.nom) return
@@ -89,7 +90,7 @@ export default function KitsSection() {
   const delKit = async (k) => {
     if (!window.confirm(`Supprimer le kit « ${k.nom} » et sa liste d'outils ?`)) return
     try { await outillageApi.deleteKit(k.id); load() }
-    catch (e) { alert(e?.response?.data?.detail ?? 'Suppression impossible.') }
+    catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible.') }
   }
 
   // ── Outils d'un kit ──
@@ -101,7 +102,7 @@ export default function KitsSection() {
         kit: k.id, outil: Number(outil), ordre: (k.items ?? []).length,
       })
       setNewItem((p) => ({ ...p, [k.id]: undefined })); load()
-    } catch (e) { alert(e?.response?.data?.detail ?? 'Ajout impossible (outil déjà dans le kit ?).') }
+    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Ajout impossible (outil déjà dans le kit ?).') }
   }
   const moveItem = async (k, idx, dir) => {
     const items = k.items ?? []

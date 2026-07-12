@@ -29,7 +29,7 @@ export default function DocumentsArchive({ kind, id }) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
-  // L860 — erreur par ligne (clé = index) au lieu d'un alert() bloquant.
+  // L860 — erreur par ligne (clé = index) au lieu d'un pop-up bloquant.
   const [rowError, setRowError] = useState({})
   const [exporting, setExporting] = useState(false)
   // L865 — aperçu PDF inline : { reference, blob } | { reference, failed }.

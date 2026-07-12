@@ -7,6 +7,7 @@ import { downloadXlsx } from '../../api/importApi'
 import { openPdfBlob } from '../../utils/pdfBlob'
 import { formatMAD } from '../../lib/format'
 import { Button, Card, CardContent, Segmented, Skeleton, EmptyState } from '../../ui'
+import { toast } from '../../ui/confirm'
 import { Table } from './Table'
 import { StateBlock } from '../../components/StateBlock'
 
@@ -43,7 +44,7 @@ export default function BalanceAgeePage() {
     try {
       const res = await ventesApi.getClientRelevePdf(r.client_id)
       openPdfBlob(res.data, `Releve_${r.client_nom}.pdf`)
-    } catch { alert('Relevé indisponible.') }
+    } catch { toast.error('Relevé indisponible.') }
   }
 
   // Export .xlsx (une ligne par client, buckets + total) — borné société.

@@ -194,7 +194,7 @@ function AnalyseTab({ canSave }) {
         devisReference: r.data.devis_reference,
       })
     } catch (e) {
-      alert(e?.response?.data?.detail ?? 'Création impossible depuis ce document.')
+      toast.error(e?.response?.data?.detail ?? 'Création impossible depuis ce document.')
     } finally {
       setCrmLoading(false)
     }

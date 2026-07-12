@@ -16,6 +16,7 @@ import ventesApi from '../../api/ventesApi'
 import { downloadBlob } from '../../utils/downloadBlob'
 import { openPdfInGesture } from '../../utils/pdfBlob'
 import { errorMessageFrom } from '../../lib/toast'
+import { toast } from '../../ui/confirm'
 import { telHref } from '../../lib/contactLinks'
 import {
   pdfBlob, previewView, classifyFetchError, PREVIEW_VIEW,
@@ -599,7 +600,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
         downloadBlob(res.data, previewDoc.filename)
       }
     } catch {
-      alert('Téléchargement indisponible. Réessayez.')
+      toast.error('Téléchargement indisponible. Réessayez.')
     } finally {
       setPreviewDownloading(false)
     }
@@ -619,10 +620,10 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
         blob = pdfBlob(res.data)
       }
       if (!pending.deliver(blob, previewDoc.filename)) {
-        alert('Ouverture bloquée par le navigateur. Téléchargez le document.')
+        toast.error('Ouverture bloquée par le navigateur. Téléchargez le document.')
       }
     } catch {
-      alert('Ouverture impossible. Réessayez ou téléchargez le document.')
+      toast.error('Ouverture impossible. Réessayez ou téléchargez le document.')
     }
   }
 
@@ -660,10 +661,10 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   const commanderBesoin = async () => {
     try {
       const r = await installationsApi.commanderBesoin(current.id)
-      alert(`Bon de commande fournisseur créé : ${r.data.reference} (${r.data.nb_lignes} ligne(s)).`)
+      toast.success(`Bon de commande fournisseur créé : ${r.data.reference} (${r.data.nb_lignes} ligne(s)).`)
       chargerBesoin()
     } catch (e) {
-      alert(e?.response?.data?.detail || 'Création impossible.')
+      toast.error(e?.response?.data?.detail || 'Création impossible.')
     }
   }
 
