@@ -6482,7 +6482,8 @@ class DemandeTicketPortailViewSet(_ComptaBaseViewSet):
     # ``detail=False`` : appelables pendant la SAISIE, avant toute création
     # de ``DemandeTicketPortail``.
 
-    @action(detail=False, methods=['get'], url_path='suggestions-kb')
+    @action(detail=False, methods=['get'], url_path='suggestions-kb',
+            permission_classes=[IsResponsableOrAdmin])
     def suggestions_kb(self, request):
         """Articles KB (publiés + ``visible_portail``) suggérés pendant la
         saisie du sujet, avant soumission de la demande."""
@@ -6491,7 +6492,8 @@ class DemandeTicketPortailViewSet(_ComptaBaseViewSet):
         suggestions = suggestions_portail(request.user.company, texte)
         return Response({'suggestions': suggestions})
 
-    @action(detail=False, methods=['post'], url_path='consulter-article-kb')
+    @action(detail=False, methods=['post'], url_path='consulter-article-kb',
+            permission_classes=[IsResponsableOrAdmin])
     def consulter_article_kb(self, request):
         """Journalise la consultation d'un article suggéré (déflection) —
         appelée quand le client ouvre/lit une suggestion depuis le
