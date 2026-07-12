@@ -16,6 +16,8 @@ import {
   Card, CardContent, Input, Button, IconButton, Spinner, Switch,
 } from '../../ui'
 import { SectionTitle } from './peComponents'
+// VX233 — feed d'audit extrait, verrouillé sur la section « tarification ».
+import SettingsAuditFeed from './SettingsAuditFeed'
 
 // Champ numérique étiqueté + indice. step="any" : la frappe reste souveraine.
 function NumField({ label, value, onChange, hint, suffix }) {
@@ -40,6 +42,8 @@ export default function TarificationSection() {
   const [version, setVersion] = useState(1)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  // VX233 — historique de la tarification, révélé à la demande.
+  const [showHistory, setShowHistory] = useState(false)
 
   useEffect(() => {
     parametresApi.getTariffSettings()
@@ -271,6 +275,24 @@ export default function TarificationSection() {
           ? <><CheckCircle2 className="size-4" aria-hidden="true" /> Enregistré !</>
           : <><Save className="size-4" aria-hidden="true" /> Enregistrer</>}
       </Button>
+
+      {/* VX233 — historique des changements de la TARIFICATION (section
+          « tarification » seule) : qui a changé le barème/ROI, quand,
+          ancien→nouveau. Révélé à la demande. */}
+      <Card>
+        <CardContent className="space-y-3 pt-4 sm:pt-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <SectionTitle label="Historique de la tarification"
+              icon={<><circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" /></>} />
+            <Button type="button" size="sm" variant="ghost"
+              aria-expanded={showHistory}
+              onClick={() => setShowHistory(v => !v)}>
+              {showHistory ? 'Masquer l’historique' : 'Voir l’historique'}
+            </Button>
+          </div>
+          {showHistory && <SettingsAuditFeed section="tarification" />}
+        </CardContent>
+      </Card>
     </>
   )
 }
