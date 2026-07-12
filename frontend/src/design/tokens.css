@@ -9,6 +9,12 @@
    existants gardent exactement leur apparence ; les nouveaux primitifs /src/ui
    consomment ces tokens. L'adoption écran par écran viendra avec les groupes
    J/P. Palette extraite de la marque réelle (apps/web : brass/nuit/azur/lune).
+
+   VX125 — BUDGET DE DENSITÉ DE SIGNAUX (contrainte transversale). Ces tokens de
+   couleur/accent servent les signaux ambiants (badges, pastilles, accents de
+   module). Plafond : max 3 signaux ambiants simultanés par écran de liste,
+   jamais deux redisant le même chiffre. Règle complète et badge de maturité de
+   module : voir docs/design-density-budget.md.
    ========================================================================== */
 
 @theme {

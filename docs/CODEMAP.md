@@ -178,6 +178,11 @@ filter `get_queryset()` by `request.user.company` and force-assign `company` in
 `perform_create` (never read from the request body). The literal tenant field is
 **`company`** — there is no field named `tenant_id`.
 
+> **Contrainte transversale de conception (VX125).** Budget de densité de
+> signaux : max 3 signaux ambiants simultanés par écran de liste, jamais deux
+> redisant le même chiffre ; badge de maturité `<BetaBadge>` sur les modules
+> jeunes avec critère de retrait objectif. Voir `docs/design-density-budget.md`.
+
 API prefixes (from `erp_agentique/urls.py`, all under `/api/django/`):
 `authentication` → root, `stock/`, `crm/`, `ventes/`, `parametres/`, `roles/`,
 `reporting/`, `contact/`, `installations/`, `sav/`, `records/`, `imports/`
