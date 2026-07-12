@@ -26,12 +26,16 @@ function dateKey(raw) {
 }
 
 // Palette déterministe pour colorer par responsable (owner_nom).
+// VX26 — dérivée des tokens de marque (design/tokens.css --owner-color-*)
+// au lieu de hex locaux.
 const OWNER_PALETTE = [
-  '#2563eb', '#16a34a', '#f5a623', '#a21caf', '#dc2626',
-  '#0891b2', '#7c3aed', '#ca8a04', '#be185d', '#4d7c0f',
+  'var(--owner-color-1)', 'var(--owner-color-2)', 'var(--owner-color-3)',
+  'var(--owner-color-4)', 'var(--owner-color-5)', 'var(--owner-color-6)',
+  'var(--owner-color-7)', 'var(--owner-color-8)', 'var(--owner-color-9)',
+  'var(--owner-color-10)',
 ]
 function ownerColor(name) {
-  if (!name) return '#64748b'
+  if (!name) return 'var(--muted-foreground)'
   let h = 0
   for (const c of String(name)) h = (h * 31 + c.charCodeAt(0)) % 997
   return OWNER_PALETTE[h % OWNER_PALETTE.length]
@@ -43,9 +47,9 @@ const leadName = (lead) =>
 // Couleur de la pastille selon la dimension choisie (étape ou responsable) ;
 // un lead perdu reste rouge quelle que soit la dimension.
 function chipColor(lead, colorBy) {
-  if (isPerdu(lead)) return '#dc2626'
+  if (isPerdu(lead)) return 'var(--destructive)'
   if (colorBy === 'owner') return ownerColor(lead.owner_nom)
-  return STAGE_COLORS[lead.stage] ?? '#64748b'
+  return STAGE_COLORS[lead.stage] ?? 'var(--muted-foreground)'
 }
 
 function LeadChip({ lead, onOpenLead, colorBy, kind = 'relance' }) {

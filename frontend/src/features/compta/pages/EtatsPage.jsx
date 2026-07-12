@@ -3,6 +3,8 @@ import { useSearchParams } from 'react-router-dom'
 import { Download, RefreshCw, FileText, GitCompare } from 'lucide-react'
 import { Button, Segmented, Input, Label, Card, EmptyState, toast } from '../../../ui'
 import { formatMAD } from '../../../lib/format'
+import { stampedFilename } from '../../../utils/downloadBlob'
+import { store } from '../../../store'
 import comptaApi from '../../../api/comptaApi'
 import { unwrap } from '../components/useComptaList.js'
 import useTabParam from '../components/useTabParam'
@@ -195,7 +197,9 @@ export default function EtatsPage() {
     try {
       const res = await current.fetch({ ...params, export: 'csv' })
       const blob = res.data instanceof Blob ? res.data : new Blob([res.data])
-      comptaApi.downloadBlob(blob, `${etat}.csv`)
+      // VX81 — nom d'export horodaté (au lieu d'un nom nu figé `${etat}.csv`).
+      const societe = store.getState().parametres?.profile?.nom
+      comptaApi.downloadBlob(blob, stampedFilename(etat, 'csv', societe))
     } catch {
       toast.error('Export CSV indisponible pour cet état.')
     }
@@ -206,7 +210,9 @@ export default function EtatsPage() {
     try {
       const res = await current.fetch({ ...params, export: 'pdf' })
       const blob = res.data instanceof Blob ? res.data : new Blob([res.data])
-      comptaApi.downloadBlob(blob, `${etat}.pdf`)
+      // VX81 — nom d'export horodaté (au lieu d'un nom nu figé `${etat}.pdf`).
+      const societe = store.getState().parametres?.profile?.nom
+      comptaApi.downloadBlob(blob, stampedFilename(etat, 'pdf', societe))
     } catch {
       toast.error('Export PDF indisponible pour cet état.')
     }

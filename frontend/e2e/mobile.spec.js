@@ -2,7 +2,10 @@
 // no horizontal overflow on key pages, and the full nav menu is reachable
 // (verifies the C1 cut-off-menu fix).
 import { test, expect } from '@playwright/test'
-import { uniq, uiLogin, ADMIN, gotoLeads, createLead } from './helpers'
+import {
+  uniq, uiLogin, ADMIN, gotoLeads, createLead,
+  assertNoSeriousA11yViolations,
+} from './helpers'
 
 const PAGES = ['/dashboard', '/crm/leads', '/ventes/factures', '/parametres']
 
@@ -70,6 +73,11 @@ test('E16+: an edit modal fits the iPhone viewport (no off-screen crop)', async 
   const card = page.locator('[data-dt-cards] > div').filter({ hasText: username })
   await expect(card).toBeVisible()
   await card.getByRole('button', { name: "Plus d'actions sur la ligne" }).click()
+  const kebabMenu = page.getByRole('menu')
+  await expect(kebabMenu).toBeVisible()
+  // VX71 — scan axe DYNAMIQUE sur le menu KEBAB du DataTable réellement ouvert
+  // (état monté au clic, jamais couvert par un scan statique de build).
+  await assertNoSeriousA11yViolations(page, { include: '[role="menu"]' })
   await page.getByRole('menuitem', { name: 'Modifier' }).click()
 
   const modal = page.locator('.modal')

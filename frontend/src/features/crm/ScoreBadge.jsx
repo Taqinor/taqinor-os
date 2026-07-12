@@ -5,10 +5,12 @@
 // Présentation pure : aucune mutation, aucun appel réseau.
 
 // Badge de score : couleur selon le libellé renvoyé par scoring.py.
+// VX26 — dérivé des tokens de marque (design/tokens.css --score-*) au lieu
+// de hex locaux.
 const SCORE_COLORS = {
-  Chaud: { bg: '#fef3c7', color: '#92400e', border: '#fcd34d' },
-  Tiede: { bg: '#e0f2fe', color: '#0369a1', border: '#7dd3fc' },
-  Froid: { bg: '#f1f5f9', color: '#64748b', border: '#cbd5e1' },
+  Chaud: { bg: 'var(--score-chaud-bg)', color: 'var(--score-chaud-fg)', border: 'var(--score-chaud-border)' },
+  Tiede: { bg: 'var(--score-tiede-bg)', color: 'var(--score-tiede-fg)', border: 'var(--score-tiede-border)' },
+  Froid: { bg: 'var(--score-froid-bg)', color: 'var(--score-froid-fg)', border: 'var(--score-froid-border)' },
 }
 
 // VX221 — construit le tooltip « pourquoi ce score » à partir de la

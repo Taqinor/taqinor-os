@@ -4,6 +4,8 @@ import { Plus, Pencil, Download, FileText, Send, Bell, GitCompare } from 'lucide
 import { ListShell, statusPill } from '../../../ui/module'
 import { Button, Segmented, Card, Label, EmptyState, toast } from '../../../ui'
 import { formatMAD, formatDate } from '../../../lib/format'
+import { stampedFilename } from '../../../utils/downloadBlob'
+import { store } from '../../../store'
 import comptaApi from '../../../api/comptaApi'
 import useComptaList, { unwrap } from '../components/useComptaList.js'
 import useTabParam from '../components/useTabParam'
@@ -115,13 +117,17 @@ const FIELDS = {
 }
 
 // Exports fichiers (blob). Ceux exigeant un exercice sont marqués `needsExercice`.
+// VX81 — `base`/`ext` (plutôt qu'un `file` figé) : le nom réel est horodaté au
+// moment du téléchargement par `runExport` (stampedFilename), jamais un nom nu
+// — ces CSV partent chez le comptable, deux exports le même jour ne doivent
+// plus être indistinguables derrière un (1)/(2) de navigateur.
 const EXPORTS = [
-  { key: 'exportFec', label: 'FEC (DGI)', fn: comptaApi.etats.exportFec, file: 'FEC.txt', needsExercice: true },
-  { key: 'liasseFiscale', label: 'Liasse fiscale', fn: comptaApi.etats.liasseFiscale, file: 'liasse-fiscale.csv', needsExercice: true },
-  { key: 'exportFiduciaire', label: 'Export fiduciaire', fn: comptaApi.etats.exportFiduciaire, file: 'export-fiduciaire.csv', needsExercice: true },
-  { key: 'releveDeductionsTva', label: 'Relevé déductions TVA', fn: comptaApi.etats.releveDeductionsTva, file: 'releve-deductions-tva.csv' },
-  { key: 'declarationHonoraires', label: 'Déclaration honoraires', fn: comptaApi.etats.declarationHonoraires, file: 'declaration-honoraires.csv' },
-  { key: 'aideIs', label: 'Aide au calcul IS', fn: comptaApi.etats.aideIs, file: 'aide-is.csv', needsExercice: true },
+  { key: 'exportFec', label: 'FEC (DGI)', fn: comptaApi.etats.exportFec, base: 'FEC', ext: 'txt', needsExercice: true },
+  { key: 'liasseFiscale', label: 'Liasse fiscale', fn: comptaApi.etats.liasseFiscale, base: 'liasse-fiscale', ext: 'csv', needsExercice: true },
+  { key: 'exportFiduciaire', label: 'Export fiduciaire', fn: comptaApi.etats.exportFiduciaire, base: 'export-fiduciaire', ext: 'csv', needsExercice: true },
+  { key: 'releveDeductionsTva', label: 'Relevé déductions TVA', fn: comptaApi.etats.releveDeductionsTva, base: 'releve-deductions-tva', ext: 'csv' },
+  { key: 'declarationHonoraires', label: 'Déclaration honoraires', fn: comptaApi.etats.declarationHonoraires, base: 'declaration-honoraires', ext: 'csv' },
+  { key: 'aideIs', label: 'Aide au calcul IS', fn: comptaApi.etats.aideIs, base: 'aide-is', ext: 'csv', needsExercice: true },
 ]
 
 // XACC9 — Calendrier des échéances fiscales : lecture seule + génération/rappels.
@@ -305,7 +311,8 @@ export default function FiscalitePage() {
       const params = exp.needsExercice ? { exercice } : {}
       const res = await exp.fn(params)
       const blob = res.data instanceof Blob ? res.data : new Blob([res.data])
-      comptaApi.downloadBlob(blob, exp.file)
+      const societe = store.getState().parametres?.profile?.nom
+      comptaApi.downloadBlob(blob, stampedFilename(exp.base, exp.ext, societe))
       toast.success('Export téléchargé.')
     } catch {
       toast.error('Export indisponible — vérifiez les paramètres.')
