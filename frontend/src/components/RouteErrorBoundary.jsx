@@ -1,6 +1,10 @@
 import { Component } from 'react'
 import { AlertTriangle } from 'lucide-react'
-import { Button } from '../ui'
+// VX185/wave-3 perf: import direct (jamais le barrel `../ui`) — importé
+// statiquement par router/index.jsx (-> main.jsx), donc tout ce que le
+// barrel touche (dont datatable -> recharts/pdfjs-dist) finirait en
+// `<link rel="modulepreload">` sur chaque page, `/login` inclus.
+import { Button } from '../ui/Button'
 
 /* L880 — Error-boundary de route GLOBALE.
  *

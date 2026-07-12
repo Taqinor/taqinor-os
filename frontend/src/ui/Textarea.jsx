@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useRef, useState } from 'react'
+import { forwardRef, useCallback, useEffect, useRef, useState } from 'react'
 import { cn } from '../lib/cn'
 import { SANITIZE_PRESETS } from './Input'
 
@@ -21,14 +21,14 @@ export const Textarea = forwardRef(function Textarea(
   })
   const sanitizeProps = sanitize ? SANITIZE_PRESETS[sanitize] : null
 
-  const resize = () => {
+  const resize = useCallback(() => {
     const node = innerRef.current
     if (!autoResize || !node) return
     node.style.height = 'auto'
     node.style.height = `${node.scrollHeight}px`
-  }
+  }, [autoResize])
 
-  useEffect(() => { resize() }, [value, autoResize])
+  useEffect(() => { resize() }, [value, resize])
 
   const textarea = (
     <textarea

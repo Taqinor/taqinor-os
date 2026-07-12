@@ -7,7 +7,12 @@
 // EXCLUSIVEMENT depuis les données déjà présentes sur l'item (aucun appel
 // réseau supplémentaire), avec un bouton « Ouvrir » qui navigue enfin.
 import { useRef, useState } from 'react'
-import { Button } from '../../ui'
+// VX185/wave-3 perf: import direct (jamais le barrel `../../ui`) — monté par
+// NotificationBell.jsx, statique (Header.jsx -> Layout.jsx -> router/index.jsx
+// -> main.jsx), donc tout ce que le barrel touche (dont datatable ->
+// recharts/pdfjs-dist) finirait en `<link rel="modulepreload">` sur chaque
+// page, `/login` inclus.
+import { Button } from '../../ui/Button'
 import { formatDateTime as fmtDateTime } from '../../lib/format'
 
 const LONG_PRESS_MS = 500

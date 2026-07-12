@@ -224,8 +224,22 @@ export default defineConfig({
           // BUDGETS_KB['roof-tool']) pour lui donner son budget dédié.
           if (id.startsWith(RB_PREFIX)) return 'roof-tool'
           if (!id.includes('node_modules')) return undefined
-          if (/[\\/]node_modules[\\/]recharts[\\/]/.test(id)) return 'recharts'
-          if (/[\\/]node_modules[\\/]pdfjs-dist[\\/]/.test(id)) return 'pdfjs-dist'
+          // wave-3 CI fix (frontend-perf) — `recharts`/`pdfjs-dist` used to get a
+          // FORCED single named chunk here (like `radix-ui`/`react-vendor` below),
+          // but Rolldown's cross-chunk module dedup then attached a real symbol
+          // from deep inside that forced chunk to the BOOT entry chunk itself
+          // (verified via `--sourcemap`: `index-*.js` statically imported a symbol
+          // whose sourcemap resolved INTO `node_modules/recharts`/`pdfjs-dist`,
+          // even though no boot-graph source file imports either package or the
+          // `ui` barrel) — `<link rel="modulepreload">` on every page, `/login`
+          // included (`scripts/check_bundle_budget.mjs` HEAVY_VENDOR_CHUNK_NAMES).
+          // Leaving these two names OUT of `manualChunks` lets Rolldown's default
+          // per-route code-splitting handle them: verified this removes the boot
+          // leak entirely (0 modulepreload violations) while total gzip stays
+          // comfortably under budget — a real product/perf trade-off (loses the
+          // dedicated always-cached vendor chunk for these two), not a hash-based
+          // allowlist. `radix-ui`/`react-vendor` don't hit this — no boot-path
+          // code deduplicates against them — so they keep their forced chunk.
           if (/[\\/]node_modules[\\/]@radix-ui[\\/]/.test(id)) return 'radix-ui'
           if (/[\\/]node_modules[\\/](react|react-dom|react-router|react-router-dom|scheduler)[\\/]/.test(id)) {
             return 'react-vendor'

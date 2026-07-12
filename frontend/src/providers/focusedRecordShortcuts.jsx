@@ -31,6 +31,7 @@ import { isTypingTarget } from './shortcuts'
 // LeadForm.handleSubmit) ; COLD est un abandon délibéré. Ni l'un ni l'autre
 // ne reçoit de raccourci à une touche. Labels dérivés de STAGE_LABELS —
 // JAMAIS un libellé en dur (règle #2 — les clés viennent de STAGES.py).
+// eslint-disable-next-line react-refresh/only-export-components -- constante co-localisée, pas un composant
 export const LEAD_STAGE_SHORTCUTS = PIPELINE_STAGES.slice(0, 4).map((stage, i) => ({
   key: String(i + 1),
   stage,
@@ -42,6 +43,7 @@ export const LEAD_STAGE_SHORTCUTS = PIPELINE_STAGES.slice(0, 4).map((stage, i) =
 // Dashboard.jsx `cockpitProfile` (commercial/sav/directeur) SANS en dépendre
 // (évite une dépendance providers→pages) — voir `roleProfile` dans
 // ShortcutsProvider.jsx.
+// eslint-disable-next-line react-refresh/only-export-components -- registre co-localisé, pas un composant
 export const FOCUSED_RECORD_SHORTCUTS = {
   leadForm: {
     title: 'Fiche lead',
@@ -78,6 +80,7 @@ export const FOCUSED_RECORD_SHORTCUTS = {
  * Enregistre aussi `screenId` comme écran ACTIF (pour la cheatsheet) tant que
  * `enabled` est vrai, et le retire au démontage/désactivation.
  */
+// eslint-disable-next-line react-refresh/only-export-components -- hook co-localisé, pas un composant
 export function useFocusedRecordShortcuts(screenId, handlers, enabled = true) {
   const { setActiveScreen } = useActiveScreen()
 
@@ -124,6 +127,7 @@ export function ActiveScreenProvider({ children }) {
   )
 }
 
+// eslint-disable-next-line react-refresh/only-export-components -- hook co-localisé, pas un composant
 export function useActiveScreen() {
   return useContext(ActiveScreenContext)
 }

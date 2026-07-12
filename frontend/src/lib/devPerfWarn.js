@@ -43,11 +43,9 @@ export function installDevPerfWarn() {
     const observer = new PerformanceObserver((list) => {
       for (const entry of list.getEntries()) {
         const duree = Math.round(entry.duration * 10) / 10
-        // eslint-disable-next-line no-console -- avertissement DEV volontaire
         console.warn(`[perf] Long Animation Frame — ${duree} ms (seuil 50 ms)`)
         const scripts = topScripts(entry)
         if (scripts.length) {
-          // eslint-disable-next-line no-console -- table DEV volontaire
           console.table(scripts)
         }
       }

@@ -461,20 +461,14 @@ export default function LeadForm({
     if (fieldsSyncedFor.current === (lead?.id ?? null)) return
     fieldsSyncedFor.current = lead?.id ?? null
     const next = buildInitialFields(lead, currentUserId)
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setFields(next)
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setCleanFieldsJSON(JSON.stringify(next))
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setErrors({})
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setCustomData(lead?.custom_data || {})
     // VX249(b) — un changement de lead redémarre l'état « suggéré » (jamais
     // pertinent en édition de toute façon, ownerSuggested/villeSuggested
     // valent alors toujours false via `!isEdit`, mais on repart propre).
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setOwnerTouched(false)
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setVilleTouched(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lead?.id])

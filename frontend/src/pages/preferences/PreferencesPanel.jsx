@@ -12,7 +12,12 @@ import { useState } from 'react'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from '../../ui/Dialog'
-import { Segmented, Switch } from '../../ui'
+// VX185/wave-3 perf: import direct (jamais le barrel `../../ui`) — PreferencesPanel
+// est chargé par Header.jsx, statique (Layout.jsx -> router/index.jsx -> main.jsx),
+// donc tout ce que le barrel touche (dont datatable -> recharts/pdfjs-dist)
+// finirait en `<link rel="modulepreload">` sur chaque page.
+import { Segmented } from '../../ui/Segmented'
+import { Switch } from '../../ui/Switch'
 import { ThemeToggle } from '../../design/ThemeToggle'
 import { useDensity } from '../../design/theme-context'
 import { moduleConfigs } from '../../router/moduleRoutes'

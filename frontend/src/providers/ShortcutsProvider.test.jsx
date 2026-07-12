@@ -44,7 +44,6 @@ describe('ShortcutsProvider — cheatsheet « ? » (VX248)', () => {
     const focusedHeading = within(dialog).getByText(/pour votre rôle/)
     const generalHeading = within(dialog).getByText('Général')
     // Le groupe « … — pour votre rôle » apparaît AVANT « Général » dans le DOM.
-    // eslint-disable-next-line no-bitwise
     expect(focusedHeading.compareDocumentPosition(generalHeading) & Node.DOCUMENT_POSITION_FOLLOWING)
       .toBeTruthy()
     expect(within(dialog).getByText('Archiver / restaurer le lead')).toBeInTheDocument()
