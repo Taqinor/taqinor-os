@@ -78,6 +78,7 @@ the journey the best in the world for the CLIENT and the COMMERCIAL user.*
 - 2026-07-12 — VX161 **(already present)** : `api/refreshCoordinator.js` déjà construit et consommé par `axios.js` ET `iaApi.js` (promesse de refresh UNIQUE partagée, reset en `finally`).
 - 2026-07-12 — VX162 **(already present)** : `providers/session-bridge.js` a déjà `BroadcastChannel('taqinor-session')` + `broadcastLogout()`/`subscribeToSessionLogout()`, câblé depuis `authSlice.logoutUser.fulfilled` et consommé par `SessionProvider.jsx`.
 - 2026-07-12 — VX164 **(already present)** : les 3 volets sont déjà construits — (a) `messagingSlice.js` a `activeMessagesRequestId` (garde de séquence sur `fetchMessages.fulfilled`) ; (b) `crmSlice.js`/`ventesSlice.js`/`stockSlice.js` ont chacun `seqMap[id]`/`isStaleResourceUpdate` sur leurs réducteurs `update*/patch*.fulfilled` ; (c) `InlineEdit.jsx` a `committingRef` vérifié en tête de `commit()`.
+- 2026-07-12 — VX165 **(already present)** : `ventesSlice.js`/`crmSlice.js`/`stockSlice.js` ont déjà `pendingCount` incrémenté/décrémenté par `pending`/settled sur chaque fetch, `loading = pendingCount > 0`.
 
 #### DONE LOG — Vague 2 (VX terrain/finance/CRM + QX groupe) (2026-07-12)
 
@@ -1537,7 +1538,7 @@ pas la dupliquer ici, la numérotation continue directement à SEED-02.*
   final contient LES DEUX changements / le payload le plus récent DEMANDÉ ; Enter+blur synchrone →
   `onSave` 1×. (T2 — M, sonnet) (@lane: frontend/data)
 
-- [ ] VX165 — **Chargement par-ressource : le spinner ne ment plus (prérequis silencieux de (@lane: frontend/data)
+- [x] VX165 **(already present)** — **Chargement par-ressource : le spinner ne ment plus (prérequis silencieux de (@lane: frontend/data)
   VX67).** `ventesSlice.js:288-298/316-321/353-358` (miroirs crm/stock) : UN `state.loading`
   partagé par `fetchDevis`/`fetchBonsCommande`/`fetchFactures` — le premier résolu éteint le
   spinner pendant que les requêtes sœurs chargent encore. Fix : `pendingCount`
