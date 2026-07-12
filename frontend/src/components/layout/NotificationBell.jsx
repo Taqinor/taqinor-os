@@ -14,11 +14,11 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import {
   Bell, Clock, ShieldCheck, Banknote, X, BellRing, Check, Settings,
-  CalendarClock, RefreshCw, Inbox,
+  CalendarClock, RefreshCw, Inbox, EyeOff,
 } from 'lucide-react'
 import reportingApi from '../../api/reportingApi'
 import notificationsApi from '../../api/notificationsApi'
-import { toastInfo } from '../../lib/toast'
+import { toastInfo, toastWithUndo } from '../../lib/toast'
 // VX86 — compteur partagé des approbations en attente (même source que le
 // badge nav Sidebar et la carte Dashboard) : rangée « N approbations » en
 // tête de la cloche.
@@ -26,6 +26,8 @@ import { useApprobationsCount } from '../../hooks/useApprobationsCount'
 // VX56 — sondage sensible à la visibilité de l'onglet (patron partagé avec
 // `useChatPolling`) : cesse de sonder un onglet caché.
 import useVisibilityAwarePolling from '../../hooks/useVisibilityAwarePolling'
+// VX217(a) — aperçu sans naviguer (survol desktop / appui long mobile).
+import AttentionPeek from '../../features/queue/AttentionPeek'
 
 // Bip court (Web Audio) joué à l'arrivée d'une nouvelle notification quand
 // l'app est ouverte. Best-effort : échoue silencieusement si l'autoplay audio
@@ -48,6 +50,32 @@ function playBeep() {
     osc.stop(ctx.currentTime + 0.45)
     osc.onended = () => { try { ctx.close() } catch { /* noop */ } }
   } catch { /* best-effort : pas de son si l'autoplay est bloqué */ }
+}
+
+// VX208(a) — regroupe les notifications partageant le même `link` non vide :
+// « 5 notifs même facture » ne doit plus faire 5 lignes mais UNE, pliée, avec
+// son compteur. Les items sans `link` ne sont JAMAIS fusionnés (pas de fausse
+// identité). `feed` est déjà trié du plus récent au plus ancien par le
+// backend : la première occurrence rencontrée porte donc le titre le plus
+// récent, conservé tel quel. `read` de l'entrée pliée n'est vrai que si
+// TOUTES les occurrences sous-jacentes le sont (sinon elle reste « non lue »).
+function dedupeByLink(items) {
+  const order = []
+  const byKey = new Map()
+  for (const n of items) {
+    const key = n.link ? `link:${n.link}` : `id:${n.id}`
+    const existing = byKey.get(key)
+    if (existing) {
+      existing.count += 1
+      existing.ids.push(n.id)
+      existing.read = existing.read && n.read
+    } else {
+      const entry = { ...n, count: 1, ids: [n.id] }
+      byKey.set(key, entry)
+      order.push(entry)
+    }
+  }
+  return order
 }
 
 // L13 — tri par urgence : le plus en retard d'abord (date la plus ancienne).
@@ -100,9 +128,11 @@ const NOTIF_TABS = [
     id: 'activites',
     label: 'Activités',
     groups: ['approbations', 'feed', 'activites_en_retard'],
+    // VX208(b) — `feedActionsUnread` (jamais le `feedUnread` brut incluant
+    // les digests) : le compteur d'onglet suit la même règle que le badge.
     count: (ctx) =>
       (ctx.showApprobationsRow ? ctx.approbationsTotal : 0) +
-      ctx.feedUnread +
+      ctx.feedActionsUnread +
       (ctx.data?.activites_en_retard?.length ?? 0),
   },
   {
@@ -131,6 +161,10 @@ export default function NotificationBell() {
   // N75 — notifications in-app PERSISTÉES (moteur unifié) : feed + compteur.
   const [feed, setFeed] = useState([])
   const [feedUnread, setFeedUnread] = useState(0)
+  // VX208(b) — deux compteurs distincts : ACTIONS (badge rouge cloche, un
+  // `DIGEST` n'y contribue JAMAIS) vs INFOS (point gris, informationnel).
+  const [feedActionsUnread, setFeedActionsUnread] = useState(0)
+  const [feedInfosUnread, setFeedInfosUnread] = useState(0)
   const [open, setOpen] = useState(false)
   // VX14 — onglet interne actif du panneau (déclaratif, voir NOTIF_TABS).
   const [activeTab, setActiveTab] = useState(NOTIF_TABS[0].id)
@@ -183,6 +217,10 @@ export default function NotificationBell() {
         }
         prevUnreadRef.current = n
         setFeedUnread(n)
+        // VX208(b) — additif : `actions`/`infos` n'existent que depuis ce
+        // fix ; `?? 0` couvre un backend pas encore redéployé.
+        setFeedActionsUnread(r.data?.actions ?? 0)
+        setFeedInfosUnread(r.data?.infos ?? 0)
         // Un succès lève immédiatement l'indicateur de panne prolongée.
         unreadFailRef.current = 0
         setStalled(false)
@@ -223,11 +261,64 @@ export default function NotificationBell() {
     }).catch(() => {})
   }
 
+  // VX208(c) — bouton « Marquer non-lu » : `mark_unread` (`views.py:68`,
+  // `notificationsApi.js:11`) existait déjà sans le moindre consommateur.
+  const markOneUnread = (id) => {
+    notificationsApi.markUnread(id).then(() => {
+      setFeed((prev) => prev.map((n) => (n.id === id ? { ...n, read: false } : n)))
+      setFeedUnread((c) => c + 1)
+    }).catch(() => {})
+  }
+
+  // VX208(c) — « Tout lu » cesse d'être irréversible : le backend renvoie
+  // désormais les `ids` précisément marqués (`mark_all_read`, `views.py`),
+  // capturés AVANT la mise à jour — l'« Annuler » restaure PRÉCISÉMENT ces
+  // notifications (jamais « toutes les non lues au moment du clic », qui
+  // pourrait en inclure de nouvelles arrivées entre-temps) via `mark_unread`
+  // un par un (best-effort, chaque échec individuel n'empêche pas les autres).
   const markAll = () => {
-    notificationsApi.markAllRead().then(() => {
+    notificationsApi.markAllRead().then((r) => {
+      const ids = r.data?.ids ?? []
+      const prevFeed = feed
+      const prevUnread = feedUnread
       setFeed((prev) => prev.map((n) => ({ ...n, read: true })))
       setFeedUnread(0)
+      toastWithUndo({
+        message: `${ids.length || 'Tout'} marqué${ids.length > 1 ? 's' : ''} lu.`,
+        onUndo: () => {
+          setFeed(prevFeed)
+          setFeedUnread(prevUnread)
+          ids.forEach((id) => { notificationsApi.markUnread(id).catch(() => {}) })
+        },
+      })
     }).catch(() => {})
+  }
+
+  // VX217(b) — « Tout marquer lu » sur un GROUPE plié (VX208 dédoublonnage
+  // par `link`, `n.ids` = les ids UNITAIRES sous-jacents). Boucle sur les
+  // mêmes mutations `markRead`/`markUnread` déjà existantes — aucune
+  // nouvelle mutation serveur — avec un `toastWithUndo` restaurant EXACTEMENT
+  // l'état d'avant (mêmes ids, jamais « tout »).
+  const markGroupRead = (n) => {
+    const idsToMark = (n.ids || [n.id]).filter((id) => {
+      const original = feed.find((f) => f.id === id)
+      return original && !original.read
+    })
+    if (idsToMark.length === 0) return
+    const prevFeed = feed
+    const prevUnread = feedUnread
+    setFeed((prev) => prev.map((f) => (
+      idsToMark.includes(f.id) ? { ...f, read: true } : f)))
+    setFeedUnread((c) => Math.max(0, c - idsToMark.length))
+    idsToMark.forEach((id) => { notificationsApi.markRead(id).catch(() => {}) })
+    toastWithUndo({
+      message: `${idsToMark.length} notification${idsToMark.length > 1 ? 's' : ''} marquée${idsToMark.length > 1 ? 's' : ''} lue${idsToMark.length > 1 ? 's' : ''}.`,
+      onUndo: () => {
+        setFeed(prevFeed)
+        setFeedUnread(prevUnread)
+        idsToMark.forEach((id) => { notificationsApi.markUnread(id).catch(() => {}) })
+      },
+    })
   }
 
   useEffect(() => {
@@ -240,8 +331,15 @@ export default function NotificationBell() {
 
   const derivedTotal = data?.total ?? 0
   // Le compteur de la cloche cumule les alertes dérivées et les notifications
-  // in-app persistées non lues.
-  const total = derivedTotal + feedUnread
+  // in-app persistées non lues. VX207 — inclut désormais les approbations en
+  // attente (même compteur canonique `attention-summary` que le badge
+  // sidebar et l'en-tête « Ma file » via `useApprobationsCount`) : avant ce
+  // fix, la cloche pouvait afficher « 0 » pendant que la rangée « N
+  // approbations » du panneau ouvert affichait 5 — un badge qui ment.
+  // VX208(b) — utilise `feedActionsUnread` (jamais `feedUnread` brut) : un
+  // `DIGEST` non lu ne doit JAMAIS gonfler ce badge ACTIONS ; il reste visible
+  // séparément (point gris INFOS) sans jamais compter ici.
+  const total = derivedTotal + feedActionsUnread + (showApprobationsRow ? approbationsTotal : 0)
 
   // VX82 — préfixe `(N)` sur le titre d'onglet quand des notifications sont
   // non lues (chrome navigateur vivant). La cloche vit dans le header, monté
@@ -352,7 +450,7 @@ export default function NotificationBell() {
                   compteur (somme des groupes qu'il contient). */}
               <div className="nb-tabs" role="tablist" aria-label="Catégories de notifications">
                 {NOTIF_TABS.map((tab) => {
-                  const n = tab.count({ data, feedUnread, showApprobationsRow, approbationsTotal })
+                  const n = tab.count({ data, feedActionsUnread, showApprobationsRow, approbationsTotal })
                   return (
                     <button
                       key={tab.id}
@@ -387,39 +485,142 @@ export default function NotificationBell() {
                   </button>
                 </div>
               )}
-              {activeTab === 'activites' && feed.length > 0 && (
-                <div className="nb-group">
-                  <div className="nb-group-title">
-                    <BellRing size={13} aria-hidden="true" /> Activité récente
-                  </div>
-                  {feed.map((n) => (
-                    <button key={`notif-${n.id}`} type="button"
-                            className={`nb-item${n.read ? '' : ' nb-item-unread'}`}
-                            onClick={() => {
-                              if (!n.read) markOne(n.id)
-                              if (n.link) goto(n.link)
-                            }}>
-                      <span>
-                        {!n.read && <span className="nb-dot" aria-hidden="true" />}
-                        {n.title}
-                      </span>
-                      {!n.read && (
-                        <span className="nb-item-mark"
-                              role="button" tabIndex={0}
-                              aria-label="Marquer comme lu"
-                              onClick={(e) => { e.stopPropagation(); markOne(n.id) }}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter' || e.key === ' ') {
-                                  e.stopPropagation(); markOne(n.id)
-                                }
-                              }}>
-                          <Check size={13} aria-hidden="true" />
+              {/* VX208 — DIGEST est toujours une INFO pure (jamais une
+                  action, jamais mêlé aux vraies notifications) : replié dans
+                  son propre groupe, jamais compté dans le badge ACTIONS. */}
+              {activeTab === 'activites' && (() => {
+                const digestFeed = feed.filter((n) => n.event_type === 'digest')
+                const otherFeed = dedupeByLink(
+                  feed.filter((n) => n.event_type !== 'digest'))
+                if (otherFeed.length === 0 && digestFeed.length === 0) return null
+                return (
+                  <div className="nb-group">
+                    <div className="nb-group-title">
+                      <BellRing size={13} aria-hidden="true" /> Activité récente
+                      {feedInfosUnread > 0 && (
+                        <span style={{
+                          marginLeft: 6, color: 'var(--muted-foreground, #888)',
+                          fontWeight: 400,
+                        }}>
+                          · {feedInfosUnread} info{feedInfosUnread > 1 ? 's' : ''}
                         </span>
                       )}
-                    </button>
-                  ))}
-                </div>
-              )}
+                    </div>
+                    {otherFeed.map((n) => (
+                    <AttentionPeek key={`peek-${n.id}`} item={n}
+                                   onOpen={(it) => it.link && goto(it.link)}>
+                      <button type="button"
+                              className={`nb-item${n.read ? '' : ' nb-item-unread'}`}
+                              style={n.severity === 'critique'
+                                ? { borderLeft: '3px solid var(--destructive, #dc2626)' }
+                                : undefined}
+                              onClick={() => {
+                                if (!n.read) markOne(n.id)
+                                if (n.link) goto(n.link)
+                              }}>
+                        <span>
+                          {!n.read && <span className="nb-dot" aria-hidden="true" />}
+                          {n.title}
+                          {n.count > 1 && (
+                            <span style={{
+                              marginLeft: 4, color: 'var(--muted-foreground, #888)',
+                            }}>
+                              ×{n.count}
+                            </span>
+                          )}
+                          {/* VX212(a) — « pourquoi je reçois ça » : raison
+                              courte + « Régler » → la ligne de préférence de
+                              CET événement (jamais besoin de fouiller la
+                              grille des 42 événements). */}
+                          {n.reason_label && (
+                            <span style={{
+                              display: 'block', fontSize: '0.75em',
+                              color: 'var(--muted-foreground, #888)',
+                            }}>
+                              {n.reason_label}
+                              {' · '}
+                              <span role="button" tabIndex={0}
+                                    style={{ textDecoration: 'underline', cursor: 'pointer' }}
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      goto(`/parametres/notifications#${n.event_type}`)
+                                    }}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter' || e.key === ' ') {
+                                        e.stopPropagation()
+                                        goto(`/parametres/notifications#${n.event_type}`)
+                                      }
+                                    }}>
+                                Régler
+                              </span>
+                            </span>
+                          )}
+                        </span>
+                        {!n.read ? (
+                          <span className="nb-item-mark"
+                                role="button" tabIndex={0}
+                                aria-label="Marquer comme lu"
+                                onClick={(e) => { e.stopPropagation(); markOne(n.id) }}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' || e.key === ' ') {
+                                    e.stopPropagation(); markOne(n.id)
+                                  }
+                                }}>
+                            <Check size={13} aria-hidden="true" />
+                          </span>
+                        ) : (
+                          // VX208(c) — bouton « Marquer non-lu » : `mark_unread`
+                          // avait zéro consommateur avant ce fix.
+                          <span className="nb-item-mark"
+                                role="button" tabIndex={0}
+                                aria-label="Marquer non-lu"
+                                onClick={(e) => { e.stopPropagation(); markOneUnread(n.id) }}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' || e.key === ' ') {
+                                    e.stopPropagation(); markOneUnread(n.id)
+                                  }
+                                }}>
+                            <EyeOff size={13} aria-hidden="true" />
+                          </span>
+                        )}
+                      </button>
+                      {/* VX217(b) — actions de GROUPE : « Tout marquer lu »
+                          sur un item plié (VX208 dédoublonnage par `link`) —
+                          boucle sur les mutations UNITAIRES existantes,
+                          jamais une nouvelle mutation serveur. */}
+                      {n.count > 1 && !n.read && (
+                        <div className="nb-group-actions">
+                          <button type="button" className="nb-link-btn"
+                                  onClick={(e) => { e.stopPropagation(); markGroupRead(n) }}>
+                            <Check size={12} aria-hidden="true" /> Tout marquer lu ({n.count})
+                          </button>
+                        </div>
+                      )}
+                    </AttentionPeek>
+                    ))}
+                    {digestFeed.length > 0 && (
+                      <details>
+                        <summary style={{
+                          cursor: 'pointer', padding: '4px 8px',
+                          color: 'var(--muted-foreground, #888)', fontSize: '0.85em',
+                        }}>
+                          Récapitulatifs ({digestFeed.length})
+                        </summary>
+                        {digestFeed.map((n) => (
+                          <button key={`digest-${n.id}`} type="button"
+                                  className="nb-item"
+                                  onClick={() => {
+                                    if (!n.read) markOne(n.id)
+                                    if (n.link) goto(n.link)
+                                  }}>
+                            <span>{n.title}</span>
+                          </button>
+                        ))}
+                      </details>
+                    )}
+                  </div>
+                )
+              })()}
               {activeTab === 'activites' && data && (data.activites_en_retard?.length ?? 0) > 0 && (
                 <div className="nb-group">
                   <div className="nb-group-title">
@@ -497,7 +698,7 @@ export default function NotificationBell() {
               {/* VX14 — onglet actif sans le moindre élément : message dédié
                   plutôt qu'un panneau vide silencieux. */}
               {NOTIF_TABS.find((t) => t.id === activeTab)?.count(
-                { data, feedUnread, showApprobationsRow, approbationsTotal },
+                { data, feedActionsUnread, showApprobationsRow, approbationsTotal },
               ) === 0 && (
                 <div className="nb-empty">Rien à signaler ici</div>
               )}

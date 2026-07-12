@@ -14,6 +14,20 @@ const recordsApi = {
   deleteActivity: (id) => api.delete(`/records/activities/${id}/`),
   markActivityDone: (id, next) =>
     api.post(`/records/activities/${id}/done/`, next ? { next } : {}),
+  // VX210 — « ⏰ Plus tard » actif : `snoozed_until` (null pour annuler) +
+  // `snooze_trigger_event` optionnel (ex. 'client_reply:42') qui réveille
+  // l'item dès que l'événement survient, même avant l'échéance.
+  snoozeActivity: (id, snoozedUntil, triggerEvent) =>
+    api.post(`/records/activities/${id}/snooze/`, {
+      snoozed_until: snoozedUntil || null,
+      snooze_trigger_event: triggerEvent || '',
+    }),
+  // VX210(b) — snooze/annule le snooze d'une approbation hétérogène (5
+  // sources) depuis « Ma file ». `snoozedUntil` absent = annule.
+  snoozeApprobation: (source, id, snoozedUntil) =>
+    api.post('/records/activities/snooze-approbation/', {
+      source, id, snoozed_until: snoozedUntil || null,
+    }),
 
   // ── Tags (FG9) ──
   getTags: (q) => api.get('/records/tags/', { params: q ? { q } : {} }),

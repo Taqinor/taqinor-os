@@ -363,8 +363,20 @@ def _fold(line):
     return '\r\n'.join(out)
 
 
-def build_ics(user, events):
-    """Construit un VCALENDAR valide (évènements journée entière)."""
+def build_ics(user, events, *, calname=None):
+    """Construit un VCALENDAR valide.
+
+    VX245 — chaque `ev` supporte DEUX formes (jamais mélangées dans le
+    même dict) :
+      * journée entière (comportement HISTORIQUE, flux d'abonnement N84) —
+        `ev['date']` (objet `date`) ;
+      * évènement PONCTUEL horodaté (VX245, ex. un rendez-vous) —
+        `ev['start_dt']`/`ev['end_dt']` (objets `datetime` AWARE, UTC ou
+        convertis) : émet `DTSTART`/`DTEND` en heure précise au lieu de
+        `VALUE=DATE`.
+    `calname` : remplace le `X-WR-CALNAME` par défaut (utile pour un .ics
+    à évènement unique — « Rendez-vous Taqinor » plutôt que le nom d'agenda
+    complet de l'abonnement)."""
     stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
     lines = [
         'BEGIN:VCALENDAR',
@@ -372,21 +384,27 @@ def build_ics(user, events):
         'PRODID:-//Taqinor OS//Agenda//FR',
         'CALSCALE:GREGORIAN',
         'METHOD:PUBLISH',
-        f'X-WR-CALNAME:Agenda Taqinor — {_ics_escape(_user_label(user))}',
+        f'X-WR-CALNAME:{_ics_escape(calname or f"Agenda Taqinor — {_user_label(user)}")}',
     ]
     for ev in events:
-        d = ev['date']
-        dnext = d + timedelta(days=1)
-        lines += [
-            'BEGIN:VEVENT',
-            f"UID:{ev['uid']}@taqinor",
-            f'DTSTAMP:{stamp}',
-            f"DTSTART;VALUE=DATE:{d.strftime('%Y%m%d')}",
-            f"DTEND;VALUE=DATE:{dnext.strftime('%Y%m%d')}",
-            f"SUMMARY:{_ics_escape(ev['summary'])}",
-            f"DESCRIPTION:{_ics_escape(ev.get('description', ''))}",
-            'END:VEVENT',
-        ]
+        lines.append('BEGIN:VEVENT')
+        lines.append(f"UID:{ev['uid']}@taqinor")
+        lines.append(f'DTSTAMP:{stamp}')
+        if 'start_dt' in ev:
+            start = ev['start_dt'].astimezone(timezone.utc)
+            end = ev['end_dt'].astimezone(timezone.utc)
+            lines.append(f"DTSTART:{start.strftime('%Y%m%dT%H%M%SZ')}")
+            lines.append(f"DTEND:{end.strftime('%Y%m%dT%H%M%SZ')}")
+        else:
+            d = ev['date']
+            dnext = d + timedelta(days=1)
+            lines.append(f"DTSTART;VALUE=DATE:{d.strftime('%Y%m%d')}")
+            lines.append(f"DTEND;VALUE=DATE:{dnext.strftime('%Y%m%d')}")
+        lines.append(f"SUMMARY:{_ics_escape(ev['summary'])}")
+        lines.append(f"DESCRIPTION:{_ics_escape(ev.get('description', ''))}")
+        if ev.get('location'):
+            lines.append(f"LOCATION:{_ics_escape(ev['location'])}")
+        lines.append('END:VEVENT')
     lines.append('END:VCALENDAR')
     body = '\r\n'.join(_fold(ln) for ln in lines) + '\r\n'
     return body

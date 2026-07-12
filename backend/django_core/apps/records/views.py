@@ -74,6 +74,26 @@ class ChatterViewSetMixin:
                         status=status.HTTP_201_CREATED)
 
 
+# VX211 — [BACKEND léger] table STATIQUE (jamais du ML) de l'effort estimé
+# par `kind` de « Ma file » — alimente le départage optionnel « Victoires
+# rapides d'abord » côté frontend. Fermé, aligné sur les 6 `kind` actuels
+# (`activite`, `approbation`, `mention`, `relance`, `lead_chaud`,
+# `devis_expire`) ; un `kind` non listé retombe sur `'moyen'`.
+_EFFORT_ESTIME_PAR_KIND = {
+    'mention': 'faible',     # marquer lu / ouvrir — 1 clic
+    'approbation': 'faible',  # décider — déjà 1 clic via /approbations
+    'activite': 'moyen',
+    'relance': 'moyen',
+    'lead_chaud': 'eleve',    # premier contact à froid — plus long
+    'devis_expire': 'eleve',  # relance devis + suivi
+    # VX214 — kinds d'EXÉCUTION.
+    'chantier_assigne': 'eleve',          # prise en main d'un chantier entier
+    'intervention_du_jour': 'moyen',
+    'da_approuvee_a_commander': 'faible',  # passer la commande — rapide
+    'ticket_transfere': 'moyen',
+}
+
+
 def _company(request):
     return request.user.company if request.user.company_id else None
 
@@ -286,7 +306,20 @@ class ActivityViewSet(viewsets.ModelViewSet):
                 for source in appro._SOURCE_LOADERS:
                     appro_items.extend(appro._SOURCE_LOADERS[source](company))
                 appro._enrichir_urgence(appro_items, company)
+                # VX210(b) — masque les items SNOOZÉS depuis « Ma file »
+                # (`SnoozedItem`, jamais retiré de l'inbox dédiée
+                # `/approbations` elle-même — seule la FILE respecte le
+                # snooze). Best-effort : une erreur ne masque rien.
+                try:
+                    from apps.notifications import selectors as notif_selectors
+                    snoozed = notif_selectors.approbations_snoozees_actives(
+                        request.user, company)
+                except Exception:  # pragma: no cover - défensif
+                    snoozed = set()
                 for it in appro_items:
+                    key = (it.get('source'), str(it.get('id')))
+                    if key in snoozed:
+                        continue
                     nb_approbations += 1
                     items.append({
                         'kind': 'approbation',
@@ -311,6 +344,39 @@ class ActivityViewSet(viewsets.ModelViewSet):
                 items.extend(ma_file_commercial_items(company, request.user))
             except Exception:  # pragma: no cover - défensif
                 pass
+
+        # ── 5) VX214 — kinds d'EXÉCUTION (jamais une 2ᵉ boîte) ──────────────
+        # Un chantier assigné, une intervention du jour, une DA approuvée à
+        # commander, un ticket transféré n'apparaissaient dans AUCUNE boîte.
+        # Reshape imposé (grand-verdict) : PAS de nouvel endpoint/écran — ces
+        # kinds rejoignent le MÊME `ma-file/`, via une fonction lecture-seule
+        # `selectors.affectations_pour(user)` par app cible (MÊME contrat
+        # `{kind, title, due, link, urgency}` que le bloc 4 ci-dessus).
+        if company is not None:
+            try:
+                from apps.installations.selectors import (
+                    affectations_pour as installations_affectations_pour,
+                )
+                items.extend(installations_affectations_pour(request.user))
+            except Exception:  # pragma: no cover - défensif
+                pass
+            try:
+                from apps.sav.selectors import (
+                    affectations_pour as sav_affectations_pour,
+                )
+                items.extend(sav_affectations_pour(request.user))
+            except Exception:  # pragma: no cover - défensif
+                pass
+
+        # VX211 — [BACKEND léger] `effort_estime` DÉTERMINISTE par `kind`
+        # (table statique, jamais du ML) : alimente un tri secondaire
+        # OPTIONNEL côté frontend (« Victoires rapides d'abord »,
+        # `frontend/src/features/queue/queueViews.js`) — un simple
+        # DÉPARTAGE entre items d'urgence égale, jamais un remplacement du
+        # tri d'urgence lui-même.
+        for it in items:
+            it['effort_estime'] = _EFFORT_ESTIME_PAR_KIND.get(
+                it.get('kind'), 'moyen')
 
         # Classement plus-urgent-d'abord : en retard, puis aujourd'hui, puis
         # à venir ; à urgence égale, échéance la plus proche d'abord (les items
@@ -383,9 +449,67 @@ class ActivityViewSet(viewsets.ModelViewSet):
         Pose `snoozed_until` (l'activité disparaît de `mine`/`ma-file` jusqu'à
         cette date) sans jamais toucher `due_date` — le vrai changement
         d'échéance reste la mise à jour normale de `due_date` (bouton
-        « Reporter »). Corps : `{"snoozed_until": "YYYY-MM-DD"}` ; `null`/absent
-        annule le snooze (l'item redevient visible immédiatement)."""
+        « Reporter »). Corps : `{"snoozed_until": "YYYY-MM-DD",
+        "snooze_trigger_event": "client_reply:42"}` ; `snoozed_until`
+        `null`/absent annule le snooze (l'item redevient visible
+        immédiatement, y compris le déclencheur).
+
+        VX210(c) — `snooze_trigger_event` optionnel (choix fermé, voir
+        `services.valid_snooze_trigger_event`) : réveille l'item dès que cet
+        événement métier survient, MÊME avant `snoozed_until` (le premier des
+        deux gagne — cf. `services.reveiller_snoozes`)."""
+        from .services import snooze_activity, valid_snooze_trigger_event
         act = self.get_object()
+        raw = request.data.get('snoozed_until')
+        trigger = (request.data.get('snooze_trigger_event') or '').strip()
+        if not valid_snooze_trigger_event(trigger):
+            return Response({'snooze_trigger_event': 'Déclencheur invalide.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        d = None
+        if raw:
+            from django.utils.dateparse import parse_date
+            d = parse_date(str(raw))
+            if d is None:
+                return Response({'snoozed_until': 'Date invalide.'},
+                                status=status.HTTP_400_BAD_REQUEST)
+        snooze_activity(act, d, trigger)
+        return Response(ActivitySerializer(act).data)
+
+    @action(detail=False, methods=['post'], url_path='snooze-approbation',
+            permission_classes=[IsResponsableOrAdmin])
+    def snooze_approbation(self, request):
+        """VX210(b) — snooze/réaffiche un item HÉTÉROGÈNE d'approbation
+        (5 sources de `reporting.approbations`) depuis « Ma file », via la
+        table générique `SnoozedItem` (patron `ApprovalReminderState` — jamais
+        un import direct des modèles des 5 sources).
+
+        Corps : `{"source": "installations", "id": 5,
+        "snoozed_until": "YYYY-MM-DD"}` ; `snoozed_until` `null`/absent annule
+        le snooze. Vérifie que l'item existe RÉELLEMENT parmi les items en
+        attente de la société (jamais un `source`/`id` arbitraire)."""
+        company = _company(request)
+        if company is None:
+            return Response({'detail': 'Accès refusé.'},
+                            status=status.HTTP_403_FORBIDDEN)
+        from apps.reporting import approbations as appro
+        source = request.data.get('source')
+        obj_id = request.data.get('id')
+        if source not in appro._SOURCE_LOADERS or not obj_id:
+            return Response({'detail': 'Source ou id invalide.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        matches = [
+            it for it in appro._SOURCE_LOADERS[source](company)
+            if str(it.get('id')) == str(obj_id)]
+        if not matches:
+            return Response({'detail': 'Introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+
+        # VX210(b) — écriture EXCLUSIVEMENT via `notifications.services`
+        # (jamais un import direct de `SnoozedItem` ici, même convention que
+        # `notify()` déjà utilisé ailleurs dans ce fichier).
+        from apps.notifications.services import (
+            snooze_approbation_item, unsnooze_approbation_item,
+        )
         raw = request.data.get('snoozed_until')
         if raw:
             from django.utils.dateparse import parse_date
@@ -393,11 +517,10 @@ class ActivityViewSet(viewsets.ModelViewSet):
             if d is None:
                 return Response({'snoozed_until': 'Date invalide.'},
                                 status=status.HTTP_400_BAD_REQUEST)
-            act.snoozed_until = d
+            snooze_approbation_item(company, request.user, source, obj_id, d)
         else:
-            act.snoozed_until = None
-        act.save(update_fields=['snoozed_until'])
-        return Response(ActivitySerializer(act).data)
+            unsnooze_approbation_item(request.user, source, obj_id)
+        return Response({'ok': True})
 
     def perform_update(self, serializer):
         # VX85(c) — détecte un changement d'`assigned_to` AVANT de sauver (le

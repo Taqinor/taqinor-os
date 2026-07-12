@@ -1,9 +1,14 @@
 // VX86 — Compteur partagé des approbations en attente (boîte XKB1/ZCTR7-9),
 // pour rendre l'inbox `/approbations` VISIBLE là où l'utilisateur regarde déjà
 // (badge nav Sidebar, carte Dashboard, rangée cloche) sans tripler l'appel
-// réseau : un seul hook, un seul `GET reporting/approbations-en-attente/`
-// (total UNFILTRÉ, périmètre société résolu SERVEUR — jamais posté par le
-// client), ré-utilisé par les trois consommateurs.
+// réseau : un seul hook, ré-utilisé par les trois consommateurs.
+//
+// VX207 — source désormais l'endpoint canonique unique `GET notifications/
+// attention-summary/` (champ `approbations`, MÊMES `_SOURCE_LOADERS` que
+// `reporting.approbations_en_attente` et « Ma file ») au lieu d'interroger
+// `reporting/approbations-en-attente/` séparément — une seule dérivation de
+// comptage, jamais un chemin parallèle. Forme de retour INCHANGÉE
+// (`{ total, loading, error }`) : aucun consommateur n'a besoin de changer.
 //
 // Sondage périodique léger (30 s, comme `NotificationBell`'s `checkUnread`) ;
 // se met en pause quand l'onglet est masqué (`document.visibilityState`) pour
@@ -12,7 +17,7 @@
 // visibilité minimale et pourra migrer sur VX56 telle quelle plus tard sans
 // changer sa forme de retour.
 import { useEffect, useRef, useState } from 'react'
-import reportingApi from '../api/reportingApi'
+import notificationsApi from '../api/notificationsApi'
 
 const POLL_MS = 30 * 1000
 
@@ -36,11 +41,10 @@ export function useApprobationsCount() {
       // Ne sonde pas un onglet masqué (économie réseau) ; le prochain sondage
       // visible ou le retour au premier plan rattrapera l'état réel.
       if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
-      reportingApi.approbationsEnAttente()
+      notificationsApi.attentionSummary()
         .then((r) => {
           if (!aliveRef.current) return
-          const items = r.data?.items ?? []
-          setTotal(Array.isArray(items) ? items.length : 0)
+          setTotal(r.data?.approbations ?? 0)
           setError(false)
         })
         .catch(() => {

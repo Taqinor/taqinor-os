@@ -121,6 +121,15 @@ const crmApi = {
   createAppointment: (data) => api.post('/crm/appointments/', data),
   updateAppointment: (id, data) => api.patch(`/crm/appointments/${id}/`, data),
   deleteAppointment: (id) => api.delete(`/crm/appointments/${id}/`),
+  // VX245(a) — `.ics` d'événement unique pour CE rendez-vous (blob : le
+  // téléchargement authentifié passe par axios, jamais un `<a href>` brut
+  // qui n'enverrait pas le jeton Bearer).
+  getAppointmentIcs: (id) =>
+    api.get(`/crm/appointments/${id}/ics/`, { responseType: 'blob' }),
+  // VX245(b) — aperçu du message de confirmation WhatsApp (date/heure +
+  // lien .ics) ; n'envoie RIEN, ouvre wa.me seulement après confirmation.
+  confirmerAppointmentWhatsapp: (id) =>
+    api.post(`/crm/appointments/${id}/confirmer-whatsapp/`),
 
   // ZSAL2 — Plans d'activité (checklists commerciales applicables en un clic).
   getPlansActivite: () => api.get('/crm/plans-activite/'),

@@ -301,6 +301,22 @@ def _dispatch_webpush(user, title, body, link=None):
     return sent
 
 
+def resolve_recipients_reason(company, event_type):
+    """VX212(a) — la raison (`models.NotificationReason`) qu'appliquera
+    `resolve_recipients` pour cet événement+société : `'regle_de_routage'`
+    si une `NotificationRoutingRule` active existe, sinon `'manager'` (repli
+    historique — managers actifs). Best-effort : toute erreur renvoie ''
+    (raison non classée) plutôt qu'une exception."""
+    try:
+        from .models import NotificationReason
+        exists = NotificationRoutingRule.objects.filter(
+            company=company, event_type=event_type, enabled=True).exists()
+        return (NotificationReason.ROUTING_RULE if exists
+                else NotificationReason.MANAGER)
+    except Exception:  # pragma: no cover - défensif
+        return ''
+
+
 def resolve_recipients(company, event_type):
     """FG4 — Résout la liste des destinataires pour un événement et une société.
 
@@ -350,15 +366,18 @@ def resolve_recipients(company, event_type):
         return get_user_model().objects.none()
 
 
-def notify_many(recipients, event_type, title, body='', link=None, company=None):
+def notify_many(recipients, event_type, title, body='', link=None, company=None,
+                reason=''):
     """Émet une notification vers une liste de destinataires.
 
     Appelle `notify()` pour chaque utilisateur. Best-effort par destinataire :
-    une erreur sur l'un n'interrompt pas les suivants."""
+    une erreur sur l'un n'interrompt pas les suivants. `reason` (VX212(a)) —
+    transmise telle quelle à chaque `notify()`."""
     created = []
     for user in recipients:
         try:
-            n = notify(user, event_type, title, body=body, link=link, company=company)
+            n = notify(user, event_type, title, body=body, link=link,
+                       company=company, reason=reason)
             if n is not None:
                 created.append(n)
         except Exception as exc:  # pragma: no cover - défensif
@@ -367,7 +386,7 @@ def notify_many(recipients, event_type, title, body='', link=None, company=None)
 
 
 def notify(user, event_type, title, body='', link=None, company=None,
-           skip_email=False):
+           skip_email=False, reason=''):
     """Émet une notification pour `user` en respectant ses préférences.
 
     - Crée la ligne in-app si le canal in-app est activé (défaut : oui).
@@ -382,6 +401,12 @@ def notify(user, event_type, title, body='', link=None, company=None,
     diffusion email pour ce même événement (ex. le fan-out canal-aliasé
     e-mail du chat) d'éviter un double envoi — in-app/WhatsApp/push
     restent inchangés.
+
+    `reason` (VX212(a)) : raison COURTE optionnelle (`models.
+    NotificationReason`) — « pourquoi je reçois ça », posée par l'appelant
+    QUAND il la connaît (ex. `_managers(company)` → `'manager'`). Une valeur
+    hors énumération est silencieusement ignorée (jamais une exception) ;
+    vide = raison non classée, comportement historique inchangé.
     """
     if user is None or not getattr(user, 'pk', None):
         return None
@@ -391,6 +416,8 @@ def notify(user, event_type, title, body='', link=None, company=None,
 
     company = company if company is not None else getattr(user, 'company', None)
     prefs = resolve_prefs(user, event_type)
+    from .models import NotificationReason
+    reason = reason if reason in NotificationReason.values else ''
 
     created = None
     if prefs.get('in_app'):
@@ -398,7 +425,7 @@ def notify(user, event_type, title, body='', link=None, company=None,
             created = Notification.objects.create(
                 company=company, recipient=user, event_type=event_type,
                 title=str(title)[:255], body=str(body or '')[:MAX_BODY_LEN],
-                link=str(link or '')[:512])
+                link=str(link or '')[:512], reason=reason)
         except Exception as exc:  # pragma: no cover - défensif
             logger.warning('Création notification in-app échouée : %s', exc)
             created = None
@@ -1001,3 +1028,28 @@ def sweep_approval_reminders(company, *, today=None):
         logger.warning('sweep_approval_reminders: compta échoué : %s', exc)
 
     return count
+
+
+# =============================================================================
+# VX210(b) — snooze GÉNÉRIQUE d'un item d'approbation (SnoozedItem).
+# Écriture EXCLUSIVEMENT via ces deux fonctions — jamais un import direct de
+# `SnoozedItem` par un appelant cross-app (ex. `apps.records.views`).
+# =============================================================================
+
+def snooze_approbation_item(company, user, source, object_id, snoozed_until):
+    """Snooze/upsert un item d'approbation hétérogène (5 sources de
+    ``reporting.approbations``) jusqu'à ``snoozed_until`` pour ``user``.
+    Idempotent (une ligne existante est mise à jour, pas dupliquée)."""
+    from .models import SnoozedItem
+    obj, _created = SnoozedItem.objects.update_or_create(
+        user=user, source=source, object_id=object_id,
+        defaults={'company': company, 'snoozed_until': snoozed_until})
+    return obj
+
+
+def unsnooze_approbation_item(user, source, object_id):
+    """Annule le snooze d'un item d'approbation (redevient visible dans « Ma
+    file » immédiatement). No-op silencieux si rien n'était snoozé."""
+    from .models import SnoozedItem
+    SnoozedItem.objects.filter(
+        user=user, source=source, object_id=object_id).delete()

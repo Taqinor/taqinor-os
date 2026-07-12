@@ -1,9 +1,18 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useSelector } from 'react-redux'
 import { useIsAdmin } from '../../hooks/useHasPermission'
+// VX211 — « Ma file » par persona (ordre des `kind` selon le rôle) +
+// départage optionnel « Victoires rapides d'abord ».
+import {
+  getQuickWinsPref, setQuickWinsPref, sortMaFileItems,
+} from '../../features/queue/queueViews'
+// VX217(a) — aperçu sans naviguer (survol desktop / appui long mobile).
+import AttentionPeek from '../../features/queue/AttentionPeek'
 import {
   AlarmClock, CalendarCheck2, CalendarClock, ExternalLink, PartyPopper, Sparkles, Users,
   PhoneCall, MessageCircle, ListChecks, Plus, AtSign, ClipboardCheck, Flame, FileWarning,
+  HardHat, Wrench, ShoppingCart, ArrowRightLeft,
 } from 'lucide-react'
 import recordsApi from '../../api/recordsApi'
 import {
@@ -90,6 +99,11 @@ const MA_FILE_ICON = {
   relance: PhoneCall,
   lead_chaud: Flame,
   devis_expire: FileWarning,
+  // VX214 — kinds d'EXÉCUTION (chantier/intervention/DA/ticket transféré).
+  chantier_assigne: HardHat,
+  intervention_du_jour: Wrench,
+  da_approuvee_a_commander: ShoppingCart,
+  ticket_transfere: ArrowRightLeft,
 }
 const URGENCY_TONE = { overdue: 'danger', today: 'warning', upcoming: 'success' }
 const URGENCY_DOT = {
@@ -121,6 +135,17 @@ export default function MesActivitesPage() {
   // des activités + approbations + mentions + items commerciaux). Chargée à
   // part des buckets pour NE PAS régresser l'écran d'activités existant.
   const [maFile, setMaFile] = useState({ items: [], total: 0, resume: {} })
+  // VX211 — persona (ordre des `kind`) déduite de `state.auth.role_nom` ;
+  // départage « Victoires rapides d'abord » opt-in, persisté localStorage.
+  const roleNom = useSelector((s) => s.auth.role_nom)
+  const [quickWinsFirst, setQuickWinsFirst] = useState(getQuickWinsPref)
+  const toggleQuickWins = () => {
+    setQuickWinsFirst((v) => {
+      const next = !v
+      setQuickWinsPref(next)
+      return next
+    })
+  }
   // VX83 — quick-add « + À faire » : créer une activité personnelle assignée à
   // soi (XKB4). `todoText` vide = formulaire replié.
   const [todoText, setTodoText] = useState('')
@@ -236,6 +261,22 @@ export default function MesActivitesPage() {
     } catch { setActionError('Action impossible — réessayez.') }
   }
 
+  // VX210(b) — « ⏰ Plus tard » sur un item d'approbation hétérogène de « Ma
+  // file » : masque-le +3 j via la table générique `SnoozedItem` (jamais
+  // retiré de l'inbox dédiée /approbations elle-même). Best-effort, discret
+  // (pas de picker — un délai fixe suffit ici, contrairement aux activités
+  // qui ont leur propre picker complet dans `ActivitiesPanel`).
+  const snoozeApprobationItem = async (it) => {
+    if (it.kind !== 'approbation' || !it.source || !it.source_id) return
+    const d = new Date(); d.setDate(d.getDate() + 3)
+    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    setActionError(null)
+    try {
+      await recordsApi.snoozeApprobation(it.source, it.source_id, iso)
+      loadMaFile()
+    } catch { setActionError('Action impossible — réessayez.') }
+  }
+
   const teamOverdue = useMemo(
     () => overdueByResponsable(teamActivities), [teamActivities])
 
@@ -243,6 +284,14 @@ export default function MesActivitesPage() {
 
   // VX83 — en-tête compté « X en retard · Y aujourd'hui · Z approbation(s) ».
   const resume = maFile.resume || {}
+
+  // VX211 — ordre par persona (rôle) + départage optionnel « Victoires
+  // rapides d'abord ». JAMAIS un filtre : tous les items de `maFile.items`
+  // restent présents, seul leur ORDRE change. Un rôle non reconnu retombe
+  // sur l'ordre global d'origine (comportement VX83 inchangé).
+  const maFileItemsSorted = useMemo(
+    () => sortMaFileItems(maFile.items, { roleNom, quickWinsFirst }),
+    [maFile.items, roleNom, quickWinsFirst])
 
   return (
     <div className="page">
@@ -322,6 +371,13 @@ export default function MesActivitesPage() {
           <CardHeader className="flex-row items-center gap-2">
             <ListChecks className="size-4 text-muted-foreground" aria-hidden="true" />
             <CardTitle className="flex-1">File de travail</CardTitle>
+            {/* VX211 — départage optionnel, jamais actif par défaut (le tri
+                par défaut — ordre par persona puis urgence — reste inchangé
+                tant que ce n'est pas coché). */}
+            <label className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+              <input type="checkbox" checked={quickWinsFirst} onChange={toggleQuickWins} />
+              Victoires rapides d'abord
+            </label>
             <Badge tone="primary">{maFile.total}</Badge>
           </CardHeader>
           <CardContent className="p-0 sm:p-0">
@@ -343,10 +399,14 @@ export default function MesActivitesPage() {
                   cell: (it) => {
                     const Icon = MA_FILE_ICON[it.kind] || AlarmClock
                     return (
-                      <span className="inline-flex items-center gap-2">
-                        <Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-                        <span>{it.title}</span>
-                      </span>
+                      // VX217(a) — aperçu sans naviguer (déjà les données de
+                      // l'item : client/montant/échéance quand présents).
+                      <AttentionPeek item={it} onOpen={(x) => x.link && navigate(x.link)}>
+                        <span className="inline-flex items-center gap-2">
+                          <Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                          <span>{it.title}</span>
+                        </span>
+                      </AttentionPeek>
                     )
                   },
                 },
@@ -377,14 +437,25 @@ export default function MesActivitesPage() {
                   key: 'actions',
                   header: '',
                   align: 'right',
-                  cell: (it) => (it.link ? (
-                    <Button size="sm" variant="outline" onClick={() => navigate(it.link)}>
-                      <ExternalLink /> Ouvrir
-                    </Button>
-                  ) : null),
+                  cell: (it) => (
+                    <span className="inline-flex items-center gap-1.5">
+                      {it.kind === 'approbation' && (
+                        <Button size="sm" variant="outline"
+                                title="Reporter de 3 jours"
+                                onClick={() => snoozeApprobationItem(it)}>
+                          ⏰
+                        </Button>
+                      )}
+                      {it.link && (
+                        <Button size="sm" variant="outline" onClick={() => navigate(it.link)}>
+                          <ExternalLink /> Ouvrir
+                        </Button>
+                      )}
+                    </span>
+                  ),
                 },
               ]}
-              rows={maFile.items}
+              rows={maFileItemsSorted}
             />
           </CardContent>
         </Card>

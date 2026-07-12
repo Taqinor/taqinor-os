@@ -91,6 +91,10 @@ export default function NotificationsPreferences() {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [savingKey, setSavingKey] = useState('')
+  // VX212(a) — deep-link « Régler » depuis une notif (cloche) :
+  // `/parametres/notifications#<event_type>` doit ouvrir DIRECTEMENT la
+  // bonne ligne. `highlighted` = event_type mis en évidence temporairement.
+  const [highlighted, setHighlighted] = useState('')
 
   useEffect(() => {
     notificationsApi.getPreferences()
@@ -98,6 +102,17 @@ export default function NotificationsPreferences() {
       .catch(() => toast.error('Préférences indisponibles.'))
       .finally(() => setLoading(false))
   }, [])
+
+  useEffect(() => {
+    if (loading || rows.length === 0) return
+    const hash = (window.location.hash || '').replace(/^#/, '')
+    if (!hash) return
+    const el = document.getElementById(`np-row-${hash}`)
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    setHighlighted(hash)
+    const t = setTimeout(() => setHighlighted(''), 3000)
+    return () => clearTimeout(t)
+  }, [loading, rows])
 
   const toggle = (eventType, channel, value) => {
     // Optimiste : on applique localement, puis on persiste l'unique champ.
@@ -137,7 +152,10 @@ export default function NotificationsPreferences() {
               </thead>
               <tbody>
                 {rows.map((r) => (
-                  <tr key={r.event_type}>
+                  <tr key={r.event_type} id={`np-row-${r.event_type}`}
+                      style={highlighted === r.event_type
+                        ? { outline: '2px solid var(--primary, #2563eb)', outlineOffset: '-2px' }
+                        : undefined}>
                     <td>{r.event_label}</td>
                     {CHANNELS.map((c) => (
                       <td key={c.key} className="np-channel-cell">

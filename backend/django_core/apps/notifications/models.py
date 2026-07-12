@@ -187,6 +187,10 @@ class EventType(models.TextChoices):
     # VX213 — SLA : une demande d'achat reste SOUMISE au-delà du seuil sans
     # décision → relance des approbateurs (miroir de sav_ticket_breaching).
     DA_SOUMISE_STALE = 'da_soumise_stale', "Demande d'achat en attente (SLA)"
+    # VX210(a) — un item snoozé (``records.Activity`` VX85, ou une approbation
+    # VX210(b) via ``SnoozedItem``) revient dans la file : notification
+    # LÉGÈRE au propriétaire, jamais une nouvelle demande d'action.
+    SNOOZE_REVEIL = 'snooze_reveil', '⏰ De retour'
 
 
 class Channel(models.TextChoices):
@@ -196,6 +200,20 @@ class Channel(models.TextChoices):
     WHATSAPP = 'whatsapp', 'WhatsApp'
     EMAIL = 'email', 'Email'
     SMS = 'sms', 'SMS'
+
+
+class NotificationReason(models.TextChoices):
+    """VX212(a) — raison COURTE, fermée, de « pourquoi je reçois ça ».
+
+    `resolve_recipients` (services.py) applique des règles invisibles — des
+    notifs « pourquoi moi ? » qu'on ne pouvait couper qu'en fouillant la
+    grille des 42 événements. Un sous-ensemble REPRÉSENTATIF des sites
+    d'émission pose désormais cette raison (jamais une exception si non
+    posée — vide = comportement historique, raison inconnue/non classée)."""
+    ASSIGNE = 'assigne_a_vous', 'Assigné à vous'
+    MANAGER = 'manager', 'Vous êtes manager/responsable'
+    ROUTING_RULE = 'regle_de_routage', 'Règle de routage configurée'
+    FOLLOWING = 'vous_suivez', 'Vous suivez cet enregistrement'
 
 
 class Notification(models.Model):
@@ -217,6 +235,10 @@ class Notification(models.Model):
     body = models.TextField(blank=True, default='')
     # Lien interne (route front) vers l'enregistrement lié — ex. /crm/leads?lead=4.
     link = models.CharField(max_length=512, blank=True, default='')
+    # VX212(a) — « pourquoi je reçois ça » : posé au site d'émission (best-
+    # effort, optionnel). Vide = raison non classée (comportement historique).
+    reason = models.CharField(
+        max_length=20, choices=NotificationReason.choices, blank=True, default='')
     read = models.BooleanField(default=False)
     read_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -946,3 +968,53 @@ class ApprovalReminderState(models.Model):
 
     def __str__(self):
         return f'relance approbation {self.content_type_id}:{self.object_id} (palier {self.palier})'
+
+
+# =============================================================================
+# VX210(b) — snooze GÉNÉRIQUE d'un item d'approbation depuis « Ma file ».
+# =============================================================================
+
+class SnoozedItem(models.Model):
+    """VX210(b) — snooze d'un item HÉTÉROGÈNE de l'agrégateur d'approbations
+    (``reporting.approbations``, 5 sources : automation/contrats/ged/
+    installations/workflow) depuis « Ma file ». `records.Activity` a déjà son
+    propre ``snoozed_until`` (VX85) — cette table couvre tout le RESTE (une
+    approbation/facture n'a pas de ligne ``Activity`` à elle).
+
+    Clé ``(source, object_id)`` — la MÊME convention textuelle déjà utilisée
+    par tout l'agrégateur (``{source, id}``, ``_decider_approbation_core``),
+    plutôt qu'un ``ContentType`` Django : évite d'importer les modèles des 5
+    sources ici (frontière cross-app, CLAUDE.md). Une ligne = masqué pour CE
+    ``user`` jusqu'à ``snoozed_until`` (jour inclus) ; supprimée au réveil
+    (sweep ``reveiller_snoozes``), jamais accumulée."""
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='snoozed_items')
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='snoozed_items')
+    source = models.CharField(max_length=20)
+    object_id = models.PositiveIntegerField()
+    snoozed_until = models.DateField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Item reporté (snooze, VX210)'
+        verbose_name_plural = 'Items reportés (snooze, VX210)'
+        ordering = ['-created_at']
+        # PAS d'index secondaire explicite ici (table petite — une ligne par
+        # snooze actif — et les noms d'index Django hashés ne peuvent pas
+        # être reproduits à la main sans `makemigrations` ; voir la note
+        # « migration_index_name_divergence » : mieux vaut aucun index que
+        # divergence nom-hasard/migration). La contrainte d'unicité suffit
+        # comme index de recherche `(user, source, object_id)`.
+        constraints = [
+            models.UniqueConstraint(
+                fields=['user', 'source', 'object_id'],
+                name='notif_snoozed_item_user_source_obj_uniq',
+            ),
+        ]
+
+    def __str__(self):
+        return f'snooze {self.source}:{self.object_id} → {self.user_id}'
