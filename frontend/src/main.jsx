@@ -18,10 +18,14 @@ import { SessionProvider } from './providers/SessionProvider'
 // que toutes les routes disposent de `t()` / de la locale. FR par défaut.
 import { I18nProvider } from './i18n'
 import './index.css'
+// VX61 — capture Web Vitals RÉELS terrain (INP/LCP/CLS/TTFB), hand-roll
+// PerformanceObserver, no-op total si l'API est absente.
+import { initVitals } from './lib/vitals'
 
 // Applique la préférence de thème/densité avant le rendu (aucun flash). Inerte
 // pour les écrans existants (couleurs en dur, aucun `dark:` utilisé).
 initTheme()
+initVitals()
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
