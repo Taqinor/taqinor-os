@@ -156,12 +156,50 @@ summary:focus-visible,
      champs un texte ≥ 16 px (pas de zoom auto iOS). La nav basse et les actions
      collantes reçoivent les insets de zone sûre.
    ========================================================================== */
+/* VX175(a) — `touch-action: manipulation` étendu du seul `.kb-drag-wrap`
+   (index.css ~5145) à TOUT élément interactif : sans lui, un double-tap
+   rapide zoome la page (parasite) et chaque tap porte un délai de ~300 ms
+   avant l'action — les deux disparaissent avec `manipulation` (scroll +
+   pincer restent actifs, seul le double-tap-zoom est retiré). */
 a, button, [role="button"], input, select, textarea, label, summary {
   -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
 }
 button:active, [role="button"]:active, a.btn:active,
 .btn:active, .btn-sm:active {
   transform: scale(0.985);
+}
+
+/* VX175(b) — classe utilitaire pour tout conteneur `overflow-x: auto` :
+   `-webkit-overflow-scrolling: touch` (défilement inertiel iOS — sans elle,
+   le scroll saccade « step-by-step » sur Safari mobile) + `overscroll-
+   behavior-x: contain` (empêche le scroll horizontal de « fuiter » vers une
+   navigation retour/avant du navigateur). Appliquée aux 4 conteneurs
+   `overflow-x: auto` prouvés sans elle — `.lines-table-wrap`, `.lv-wrap`
+   (liste leads), `.kb-board` (kanban), `.lead-nav` mobile (@media 720px
+   plus bas). `.agent-sql-code` EXCLU : CSS mort, 0 consommateur, sa
+   suppression appartient à VX121, pas à cette tâche. */
+.scroll-x-touch,
+.lines-table-wrap,
+.lv-wrap,
+.kb-board,
+.lead-nav {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+
+/* VX194(b) — WCAG 2.5.8 (AA, 2.2) : cible ≥ 24×24 px INDÉPENDAMMENT du
+   pointeur (le plancher 44px ci-dessous ne s'applique qu'en `pointer:
+   coarse` — un bouton-icône minuscule sur trackpad/souris fine restait sous
+   la barre). Cas prouvé sans AUCUN CSS dédié jusqu'ici :
+   `.chat-mention-item` (MentionAutocomplete/SlashCommandPicker — la rangée
+   contient déjà un Avatar 24px, ce floor est une garantie explicite plutôt
+   qu'un changement visuel). `ChatterWidget.jsx` (Trash2 size=12) est
+   converti vers `ui/IconButton` (déjà ≥24px via `--control-h`) plutôt que
+   raccommodé en CSS — voir ChatterWidget.jsx. Floor CIBLÉ (pas un `button`
+   global) pour ne rien faire grossir ailleurs sans revue visuelle possible. */
+.chat-mention-item {
+  min-height: 24px;
 }
 
 @media (pointer: coarse) {
@@ -524,7 +562,18 @@ button:active, [role="button"]:active, a.btn:active,
 }
 
 .sidebar-nav-icon { display: flex; flex-shrink: 0; }
-.sidebar-nav-label { flex: 1; }
+/* VX175(d) — à texte-zoom élevé (accessibilité) ou libellé long, le label
+   était silencieusement COUPÉ par la largeur fixe de la sidebar sans aucun
+   repère visuel (pas de "…", pas de title en état déplié). `min-width: 0`
+   est nécessaire pour qu'un enfant flex accepte réellement `text-overflow`
+   (sinon il déborde son parent au lieu de tronquer). */
+.sidebar-nav-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 /* VX86 — pastille de compte (ex. « Approbations en attente ») : même langage
    que `.nb-badge` (cloche) pour un repère visuel cohérent dans toute la
@@ -620,6 +669,30 @@ button:active, [role="button"]:active, a.btn:active,
   padding-left: max(1.25rem, env(safe-area-inset-left));
   padding-right: max(1.25rem, env(safe-area-inset-right));
   flex-shrink: 0;
+}
+
+/* VX176 — safe-area sur les overlays PLEIN ÉCRAN Radix (Sheet/Dialog/
+   AlertDialog). `black-translucent` (index.html) fait passer le contenu SOUS
+   la barre d'état iOS ; seul `.header` (ci-dessus) réservait l'inset haut —
+   un Sheet latéral (side="left"/"right", `inset-y-0 h-full`, VX176a) ou une
+   Dialog/AlertDialog proche de sa hauteur max collait son bord sous
+   l'encoche/Dynamic Island en PWA standalone. `env()` vaut 0 hors iOS/
+   standalone : no-op ailleurs. */
+.safe-top {
+  padding-top: env(safe-area-inset-top);
+}
+
+/* VX189(c) — sections HORS-ÉCRAN de Dashboard/Rapports (listes/texte, sous
+   le pli) : `content-visibility: auto` saute le paint/layout du contenu tant
+   qu'il n'approche pas du viewport (gain mesuré sans une ligne de JS).
+   `contain-intrinsic-size` évite un saut de scrollbar au premier paint (le
+   navigateur réserve cette hauteur estimée avant d'avoir mesuré le contenu
+   réel). Réservé aux sections LISTE/TEXTE (jamais aux blocs contenant un
+   graphique recharts — un recharts monté alors que son conteneur measure
+   `display:none`-like ne peut pas lire ses dimensions et rend un SVG vide). */
+.cv-auto {
+  content-visibility: auto;
+  contain-intrinsic-size: 0 320px;
 }
 
 /* I136 — Repère de marque cliquable (pastille éclair → accueil). */
@@ -1141,7 +1214,12 @@ button:active, [role="button"]:active, a.btn:active,
   box-shadow: var(--shadow-modal);
   width: 100%;
   max-width: 580px;
+  /* VX175(c) — seul bloc 100vh du fichier resté SANS repli 100dvh (tous les
+     autres — #root, .layout, etc. — ont la paire) : sur mobile, la barre
+     d'adresse dynamique fait que 100vh dépasse le viewport RÉEL visible → le
+     bas de la modale était rogné sous la barre. dvh suit le viewport réel. */
   max-height: calc(100vh - 48px);
+  max-height: calc(100dvh - 48px);
   display: flex;
   flex-direction: column;
   overflow: hidden;

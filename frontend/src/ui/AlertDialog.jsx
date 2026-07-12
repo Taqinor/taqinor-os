@@ -23,6 +23,10 @@ export const AlertDialogContent = forwardRef(function AlertDialogContent({ class
           'fixed left-1/2 top-1/2 z-[var(--z-modal)] grid max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 gap-4 overflow-y-auto overscroll-contain',
           'rounded-xl border border-border bg-card p-5 text-card-foreground shadow-ui-lg',
           'data-[state=open]:animate-pop-in data-[state=closed]:animate-pop-out focus:outline-none',
+          // VX176 — près de sa hauteur max, le haut de l'AlertDialog approche
+          // le bord haut de l'écran (centrage vertical) : safe-area en PWA
+          // standalone.
+          'safe-top',
           className,
         )}
         {...props}

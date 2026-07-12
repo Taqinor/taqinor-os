@@ -1,5 +1,6 @@
 import { forwardRef, useEffect, useRef, useState } from 'react'
 import { cn } from '../lib/cn'
+import { SANITIZE_PRESETS } from './Input'
 
 /* G22 — Zone de texte multi-ligne (16px mobile anti-zoom).
    VX124 — caret-primary : curseur de saisie teinté marque (voir Input.jsx).
@@ -7,9 +8,10 @@ import { cn } from '../lib/cn'
    par défaut, texte pleine opacité et toujours sélectionnable/copiable.
    VX129 — pack de complétude : `autoResize` (grandit avec le contenu, plus
    de redimensionnement navigateur manuel) + `maxLength` avec compteur
-   « n/max » visible — jusqu'ici un Textarea nu (0 des deux). */
+   « n/max » visible — jusqu'ici un Textarea nu (0 des deux).
+   VX174 — même prop `sanitize` que Input.jsx (source unique SANITIZE_PRESETS). */
 export const Textarea = forwardRef(function Textarea(
-  { className, invalid, autoResize, maxLength, onChange, value, defaultValue, ...props },
+  { className, invalid, autoResize, maxLength, onChange, value, defaultValue, sanitize, ...props },
   ref,
 ) {
   const innerRef = useRef(null)
@@ -17,6 +19,7 @@ export const Textarea = forwardRef(function Textarea(
     const initial = value ?? defaultValue
     return typeof initial === 'string' ? initial.length : 0
   })
+  const sanitizeProps = sanitize ? SANITIZE_PRESETS[sanitize] : null
 
   const resize = () => {
     const node = innerRef.current
@@ -43,6 +46,7 @@ export const Textarea = forwardRef(function Textarea(
         onChange?.(e)
         resize()
       }}
+      {...sanitizeProps}
       className={cn(
         'flex min-h-20 w-full rounded-md border border-input bg-card px-3 py-2 text-foreground shadow-ui-xs',
         'transition-colors placeholder:text-muted-foreground caret-primary',

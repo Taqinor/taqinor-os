@@ -15,7 +15,7 @@ import ventesApi from '../../api/ventesApi'
 import installationsApi from '../../api/installationsApi'
 import gestionProjetApi from '../../api/gestionProjetApi'
 import crmApi from '../../api/crmApi'
-import importApi, { downloadXlsx } from '../../api/importApi'
+import importApi from '../../api/importApi'
 import DevisForm from './DevisForm'
 import {
   Button, Badge, StatusPill, Card, EmptyState, Spinner,
@@ -28,7 +28,7 @@ import {
   DropdownMenuItem, DropdownMenuLabel,
 } from '../../ui'
 import { formatMAD, formatDateTime } from '../../lib/format'
-import { filenameFromResponse } from '../../utils/downloadBlob'
+import { filenameFromResponse, downloadBlobInGesture } from '../../utils/downloadBlob'
 import { openPdfBlob, openPdfInGesture } from '../../utils/pdfBlob'
 import { proposalParams, pdfBlob } from '../../features/ventes/previewPdf'
 import { useSavedViews } from '../../hooks/useSavedViews'
@@ -1426,6 +1426,9 @@ export default function DevisList() {
   const [refusMotifId, setRefusMotifId] = useState('')
   const [refusNote, setRefusNote] = useState('')
   const [refusBusy, setRefusBusy] = useState(false)
+  // VX172 — pending visible sur « Exporter Excel » (VX49 pose déjà le toast
+  // d'erreur ; ceci ajoute juste l'état chargement manquant).
+  const [xlsxBusy, setXlsxBusy] = useState(false)
 
   const openRefusModal = (d) => {
     setRefusTarget(d)
@@ -1880,10 +1883,16 @@ export default function DevisList() {
     <div className="page-header">
       <h2>Devis</h2>
       <div className="flex flex-wrap items-center gap-2">
-        <Button size="sm" variant="outline" disabled={loading || !!error}
-                onClick={() => importApi.exportList('devis', devis.map(d => d.id))
-                  .then(r => downloadXlsx(r.data, 'devis.xlsx')).catch(() => {})}>
-          <Download /> Exporter Excel
+        <Button size="sm" variant="outline" disabled={loading || !!error || xlsxBusy}
+                onClick={() => {
+                  const pending = downloadBlobInGesture()
+                  setXlsxBusy(true)
+                  importApi.exportList('devis', devis.map(d => d.id))
+                    .then(r => pending.deliver(r.data, 'devis.xlsx'))
+                    .catch(() => {})
+                    .finally(() => setXlsxBusy(false))
+                }}>
+          {xlsxBusy ? <Spinner /> : <Download />} Exporter Excel
         </Button>
         {/* VX80 — impression navigateur (feuille print.css : chrome masqué,
             noir-sur-blanc, table complète). Distinct des PDF WeasyPrint. */}

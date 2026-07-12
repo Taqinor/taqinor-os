@@ -7,6 +7,7 @@ import { fetchClients, deleteClient, updateClient } from '../../features/crm/sto
 import ventesApi from '../../api/ventesApi'
 import crmApi from '../../api/crmApi'
 import { openPdfBlob } from '../../utils/pdfBlob'
+import { downloadBlobInGesture } from '../../utils/downloadBlob'
 import ClientForm from './ClientForm'
 import ClientDetailPanel from './ClientDetailPanel'
 import ExcelImport from '../../components/ExcelImport'
@@ -174,16 +175,16 @@ export default function ClientList() {
   }
 
   // Export Excel : DataTable nous passe le jeu courant (filtré par sa recherche).
+  // VX172 — `downloadBlobInGesture()` DOIT s'appeler avant le premier `await`
+  // (encore dans le geste de tap) : sur iOS/standalone il pré-ouvre un onglet
+  // vide immédiatement ; ailleurs c'est un no-op qui garde `a.download`.
   const exportRows = async (rows) => {
     const ids = rows.map(c => c.id)
     if (!ids.length) return
+    const pending = downloadBlobInGesture()
     try {
       const res = await crmApi.exportClientsXlsx(ids)
-      const url = URL.createObjectURL(new Blob([res.data]))
-      const a = document.createElement('a')
-      a.href = url; a.download = 'clients.xlsx'
-      document.body.appendChild(a); a.click(); a.remove()
-      setTimeout(() => URL.revokeObjectURL(url), 1000)
+      pending.deliver(new Blob([res.data]), 'clients.xlsx')
     } catch { toast.error('Export indisponible — réessayez.') }
   }
 

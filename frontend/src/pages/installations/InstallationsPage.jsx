@@ -13,7 +13,8 @@ import {
   installerLoad,
   isNewlyAssigned,
 } from '../../features/installations/statuses'
-import importApi, { downloadXlsx } from '../../api/importApi'
+import importApi from '../../api/importApi'
+import { downloadBlobInGesture } from '../../utils/downloadBlob'
 import crmApi from '../../api/crmApi'
 import {
   Button,
@@ -302,6 +303,9 @@ export default function InstallationsPage() {
 
   const [selected, setSelected] = useState(null)
   const [searchParams, setSearchParams] = useSearchParams()
+  // VX172 — pending visible sur « Exporter Excel » (VX49 pose déjà le toast
+  // d'erreur ; ceci ajoute juste l'état chargement manquant).
+  const [xlsxBusy, setXlsxBusy] = useState(false)
   const [users, setUsers] = useState([])
   useEffect(() => {
     crmApi.getAssignableUsers().then(r => setUsers(r.data?.results ?? r.data ?? [])).catch(() => {})
@@ -468,10 +472,17 @@ export default function InstallationsPage() {
             type="button"
             size="sm"
             variant="outline"
-            onClick={() => importApi.exportList('chantiers', filtered.map(i => i.id))
-              .then(r => downloadXlsx(r.data, 'chantiers.xlsx')).catch(() => {})}
+            disabled={xlsxBusy}
+            onClick={() => {
+              const pending = downloadBlobInGesture()
+              setXlsxBusy(true)
+              importApi.exportList('chantiers', filtered.map(i => i.id))
+                .then(r => pending.deliver(r.data, 'chantiers.xlsx'))
+                .catch(() => {})
+                .finally(() => setXlsxBusy(false))
+            }}
           >
-            <Download /> Exporter Excel
+            {xlsxBusy ? <Spinner /> : <Download />} Exporter Excel
           </Button>
           <Segmented
             size="sm"

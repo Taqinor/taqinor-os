@@ -12,6 +12,7 @@ import { useSelector } from 'react-redux'
 import rhApi from '../../api/rhApi'
 import { openPdfInGesture } from '../../utils/pdfBlob'
 import { peutVoirSalaires } from './permissions.js'
+import ExternalLink from '../../ui/ExternalLink'
 import { StatutEmploye, TYPE_CONTRAT_LABELS } from './constants.jsx'
 
 /* ============================================================================
@@ -245,9 +246,9 @@ export default function EmployeDetail() {
             </p>
           </div>
           {d.url && (
-            <a className="link-blue text-xs" href={d.url} target="_blank" rel="noreferrer">
+            <ExternalLink className="link-blue text-xs" href={d.url}>
               Ouvrir
-            </a>
+            </ExternalLink>
           )}
         </div>
       )}

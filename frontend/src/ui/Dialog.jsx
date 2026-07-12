@@ -41,6 +41,10 @@ export const DialogContent = forwardRef(function DialogContent(
           'rounded-xl border border-border bg-card p-5 text-card-foreground shadow-ui-lg',
           'data-[state=open]:animate-pop-in data-[state=closed]:animate-pop-out',
           'focus:outline-none',
+          // VX176 — près de sa hauteur max, le haut de la Dialog approche le
+          // bord haut de l'écran (centrage vertical) : safe-area en PWA
+          // standalone.
+          'safe-top',
           className,
         )}
         {...props}

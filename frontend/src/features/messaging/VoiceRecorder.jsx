@@ -3,6 +3,7 @@ import { Mic, Square, Trash2, Send } from 'lucide-react'
 import { IconButton } from '../../ui'
 import { toastError } from '../../lib/toast'
 import api from '../../api/axios'
+import { pickAudioMimeType } from '../ia/voice/useVoiceChat'
 
 /* S17 — Enregistreur de note vocale. Capture un court clip via le
    `MediaRecorder` du navigateur (aucune nouvelle dépendance), puis l'envoie
@@ -61,13 +62,21 @@ export default function VoiceRecorder({ conversationId, onSent, disabled = false
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       streamRef.current = stream
       chunksRef.current = []
-      const rec = new window.MediaRecorder(stream)
+      // VX173 — mimeType NÉGOCIÉ (source unique `pickAudioMimeType`, partagée
+      // avec `useVoiceChat.js`) : WebKit ne supporte pas webm et produit en
+      // silence de l'audio/mp4 — sans `mimeType` explicite, `rec.mimeType`
+      // reste étiqueté « webm » par le repli ci-dessous alors que les octets
+      // sont du mp4 (lecture/serveur KO sur iPhone).
+      const negotiatedType = pickAudioMimeType(window.MediaRecorder)
+      const rec = negotiatedType
+        ? new window.MediaRecorder(stream, { mimeType: negotiatedType })
+        : new window.MediaRecorder(stream)
       recorderRef.current = rec
       rec.ondataavailable = (e) => {
         if (e.data && e.data.size > 0) chunksRef.current.push(e.data)
       }
       rec.onstop = () => {
-        const type = rec.mimeType || 'audio/webm'
+        const type = rec.mimeType || negotiatedType || 'audio/webm'
         const blob = new Blob(chunksRef.current, { type })
         const url = URL.createObjectURL(blob)
         setClip({ blob, url })

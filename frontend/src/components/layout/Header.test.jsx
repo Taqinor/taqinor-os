@@ -20,6 +20,12 @@ vi.mock('../../design/ThemeToggle', () => ({ ThemeToggle: () => null }))
 // VX46 — PreferencesPanel dépend lui aussi d'un ThemeProvider (useDensity),
 // hors périmètre de ce test (comme ThemeToggle ci-dessus).
 vi.mock('../../pages/preferences/PreferencesPanel', () => ({ default: () => null }))
+// VX181 — Header appelle désormais useTheme() directement (3 options thème
+// du menu utilisateur, seul accès sous md où ThemeToggle est masqué) : même
+// hors-périmètre ThemeProvider que ci-dessus, on fournit un repli minimal.
+vi.mock('../../design/theme-context', () => ({
+  useTheme: () => ({ theme: 'system', setTheme: vi.fn() }),
+}))
 
 import Header from './Header'
 

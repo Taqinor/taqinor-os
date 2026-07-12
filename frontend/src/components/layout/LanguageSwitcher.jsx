@@ -1,8 +1,11 @@
 import { Globe } from 'lucide-react'
+// VX185 — import DIRECT (jamais le barrel `../../ui`) : LanguageSwitcher est
+// monté dans Header, statique sur toute page (voir Header.jsx pour le détail
+// du problème de preload).
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
   DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator,
-} from '../../ui'
+} from '../../ui/DropdownMenu'
 import { useI18n, LOCALES } from '../../i18n'
 
 // N93 — sélecteur compact de langue d'interface (FR / EN / العربية) monté dans

@@ -1,7 +1,7 @@
 // Vue LISTE des leads CRM — table dense et triable, façon Odoo.
 // Les étapes viennent EXCLUSIVEMENT de features/crm/stages (miroir de
 // STAGES.py) : aucune liste d'étapes n'est déclarée ici.
-import { Fragment, useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState, memo } from 'react'
 import { MoreHorizontal, PhoneCall, MessageCircle } from 'lucide-react'
 import { useDispatch } from 'react-redux'
 import { useIsAdmin } from '../../../../hooks/useHasPermission'
@@ -20,6 +20,7 @@ import {
 } from '../../../../features/crm/stages'
 import AssigneePicker from '../../../../components/AssigneePicker'
 import InlineEdit from '../../../../components/InlineEdit'
+import ExternalLink from '../../../../ui/ExternalLink'
 import LeadInsightsDialog from '../LeadInsightsDialog'
 // VX24 — ScoreBadge extrait vers features/crm (réutilisé par LeadCard/LeadSummaryBar).
 import ScoreBadge from '../../../../features/crm/ScoreBadge'
@@ -131,6 +132,349 @@ function SortableTh({ col, label, sort, onSort, className, help }) {
     </th>
   )
 }
+
+// VX187 — ligne extraite + memo() : `ListView` porte de l'état LOCAL sans
+// rapport avec le contenu des lignes (busyId, insightsLead, nudgeLead, sort…)
+// — chaque changement (ex. après un clic Archiver) re-rendait TOUTES les
+// lignes de la table, pas seulement celle concernée. `checked` est un
+// booléen dédié (pas le `Set` `selected` entier) pour que memo() compare une
+// primitive, pas une référence qui change de forme à chaque sélection.
+const ListRow = memo(function ListRow({
+  lead, checked, onToggleSelect, onOpenLead, armCallNudgeFor, onInlineSave,
+  users, onReassign, onAutoQuote, canDelete, busy, onRestore, onArchive,
+  onDelete, isMobile, onOpenInsights, today,
+  perduTarget, setPerduTarget, closePerdu, perduMotif, setPerduMotif,
+  perduBusy, confirmPerdu, motifsPerte,
+}) {
+  const perdu = isPerdu(lead)
+  const stars = PRIORITE_STARS[lead.priorite] ?? 1
+  const tags = tagList(lead)
+  const enRetard = lead.relance_date && lead.relance_date < today
+  return (
+    <tr
+      className={`lv-row${perdu ? ' lv-row-perdu' : ''}${lead.is_archived ? ' lv-row-archived' : ''}${checked ? ' lv-row-selected' : ''}`}
+      onClick={() => onOpenLead(lead)}
+    >
+      {onToggleSelect && (
+        <td
+          className="lv-check-col"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <Checkbox
+            aria-label={`Sélectionner ${fullName(lead) || 'ce lead'}`}
+            checked={checked}
+            onCheckedChange={() => onToggleSelect(lead.id)}
+          />
+        </td>
+      )}
+      <td data-label="Lead">
+        <div className="lv-lead-cell">
+          <span className="lv-lead-name">
+            {fullName(lead) || '—'}
+            {perdu && <span className="lv-badge-perdu">Perdu</span>}
+          </span>
+          {lead.societe ? (
+            <span className="lv-lead-societe">{lead.societe}</span>
+          ) : null}
+          {/* QX25 — repli tap-to-call mobile : la colonne Téléphone
+              (m-hide) disparaît sous 768px, ces icônes compactes
+              restent visibles dans la cellule Lead (jamais masquée). */}
+          {(telHref(lead.telephone) || waHref(lead.whatsapp)) && (
+            <span className="lv-lead-contact" style={{ display: 'inline-flex', gap: '8px', marginTop: '2px' }}
+                  onClick={(e) => e.stopPropagation()}>
+              {telHref(lead.telephone) && (
+                <a href={telHref(lead.telephone)} title="Appeler"
+                   aria-label={`Appeler ${fullName(lead) || 'ce lead'}`}
+                   className="text-muted-foreground hover:text-foreground"
+                   onClick={() => armCallNudgeFor(lead)}>
+                  <PhoneCall className="size-3.5" aria-hidden="true" />
+                </a>
+              )}
+              {waHref(lead.whatsapp) && (
+                <ExternalLink href={waHref(lead.whatsapp)}
+                   title="Ouvrir WhatsApp" aria-label={`WhatsApp ${fullName(lead) || 'ce lead'}`}
+                   className="text-muted-foreground hover:text-foreground">
+                  <MessageCircle className="size-3.5" aria-hidden="true" />
+                </ExternalLink>
+              )}
+            </span>
+          )}
+        </div>
+      </td>
+      <td data-label="Stade" onClick={(e) => e.stopPropagation()}>
+        <InlineEdit
+          value={lead.stage}
+          options={STAGE_OPTIONS}
+          disabled={!onInlineSave}
+          display={(
+            // Pastille d'étape via StatusPill (tons tokenisés depuis
+            // statusTone) — plus aucune palette #hex en dur ici. Le
+            // libellé FR vient de stages.js (miroir STAGES.py).
+            <StatusPill
+              status={lead.stage}
+              label={STAGE_LABELS[lead.stage] ?? lead.stage}
+              className="lv-stage-badge"
+            />
+          )}
+          onSave={(v) => onInlineSave(lead, 'stage', v)}
+        />
+      </td>
+      <td className="m-hide" data-label="Score">
+        <ScoreBadge lead={lead} />
+      </td>
+      <td className="m-hide" onClick={(e) => e.stopPropagation()}>
+        {lead.telephone ? (
+          <a className="link-blue" href={`tel:${lead.telephone}`}
+             onClick={() => armCallNudgeFor(lead)}>
+            {lead.telephone}
+          </a>
+        ) : '—'}
+      </td>
+      <td className="m-hide">{lead.ville || '—'}</td>
+      <td className="m-hide" onClick={(e) => e.stopPropagation()}>
+        <InlineEdit
+          value={lead.facture_hiver ?? ''}
+          type="number"
+          disabled={!onInlineSave}
+          placeholder="+ facture"
+          display={lead.facture_hiver != null && lead.facture_hiver !== '' ? (
+            <span>
+              {formatMAD(lead.facture_hiver, { decimals: 0 })}
+            </span>
+          ) : null}
+          onSave={(v) => onInlineSave(lead, 'facture_hiver', v === '' ? null : v)}
+        />
+      </td>
+      <td className="m-hide">{CANAL_LABELS[lead.canal] ?? '—'}</td>
+      <td className="m-hide" onClick={(e) => e.stopPropagation()}>
+        <AssigneePicker
+          users={users}
+          value={lead.owner ?? ''}
+          onChange={(id) => onReassign?.(lead, id)}
+          size={22}
+          disabled={!onReassign}
+        />
+      </td>
+      <td className="m-hide" onClick={(e) => e.stopPropagation()}>
+        <InlineEdit
+          value={lead.priorite ?? 'normale'}
+          options={PRIORITE_OPTIONS}
+          disabled={!onInlineSave}
+          display={(
+            <span
+              className="lv-stars"
+              title={PRIORITE_LABELS[lead.priorite] ?? PRIORITE_LABELS.normale}
+            >
+              <span className={stars >= 1 ? 'lv-star lv-star-on' : 'lv-star'}>★</span>
+              <span className={stars >= 2 ? 'lv-star lv-star-on' : 'lv-star'}>★</span>
+            </span>
+          )}
+          onSave={(v) => onInlineSave(lead, 'priorite', v)}
+        />
+      </td>
+      <td data-label="Relance" onClick={(e) => e.stopPropagation()}>
+        <InlineEdit
+          value={lead.relance_date ?? ''}
+          type="date"
+          disabled={!onInlineSave}
+          display={lead.relance_date ? (
+            <span className={enRetard ? 'lv-relance-late' : undefined}>
+              {formatDateFR(lead.relance_date)}
+            </span>
+          ) : null}
+          onSave={(v) => onInlineSave(lead, 'relance_date', v)}
+        />
+      </td>
+      <td className="m-hide">
+        {lead.next_activity ? (
+          <span
+            className={lead.next_activity.state === 'overdue'
+              ? 'lv-relance-late' : undefined}
+            title={lead.next_activity.summary || undefined}
+          >
+            {formatDateFR(lead.next_activity.due_date)}
+            {lead.next_activity.summary
+              ? ` · ${lead.next_activity.summary}` : ''}
+          </span>
+        ) : <span className="lv-muted">—</span>}
+      </td>
+      <td className="m-hide" onClick={(e) => e.stopPropagation()}>
+        <InlineEdit
+          value={lead.tags ?? ''}
+          type="text"
+          disabled={!onInlineSave}
+          placeholder="+ tags"
+          display={tags.length ? (
+            <span className="lv-tags">
+              {tags.map((t) => {
+                const c = tagColor(t)
+                return (
+                  <span
+                    key={t}
+                    className="lv-tag"
+                    style={{ background: c.bg, color: c.color }}
+                  >
+                    {t}
+                  </span>
+                )
+              })}
+            </span>
+          ) : null}
+          onSave={(v) => onInlineSave(lead, 'tags', v)}
+        />
+      </td>
+      <td data-label="Actions" onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+        {/* VX223 — « ✗ Perdu » : action à 2 clics toujours visible sur
+            la ligne (pas enfouie dans le menu « ⋯ » mobile — le
+            geste le plus fréquent du quotidien commercial). Absente
+            si déjà perdu. */}
+        {!perdu && (
+          <Popover
+            open={perduTarget?.id === lead.id}
+            onOpenChange={(v) => (v ? setPerduTarget(lead) : closePerdu())}
+          >
+            <PopoverTrigger asChild>
+              <IconButton
+                label="Marquer perdu"
+                variant="ghost"
+                size="icon"
+                className="size-8"
+              >
+                ✗
+              </IconButton>
+            </PopoverTrigger>
+            <PopoverContent align="start">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', minWidth: '220px' }}>
+                <p style={{ fontSize: '13px', fontWeight: 500, margin: 0 }}>Marquer perdu</p>
+                <input
+                  className="form-control"
+                  list={`lv-motifs-${lead.id}`}
+                  placeholder="Motif de perte"
+                  value={perduMotif}
+                  onChange={(e) => setPerduMotif(e.target.value)}
+                  autoFocus
+                />
+                <datalist id={`lv-motifs-${lead.id}`}>
+                  {(motifsPerte ?? []).map((m) => <option key={m.id} value={m.nom} />)}
+                </datalist>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px' }}>
+                  <Button type="button" variant="outline" size="sm" onClick={closePerdu}>
+                    Annuler
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="destructive"
+                    disabled={!perduMotif.trim() || perduBusy}
+                    loading={perduBusy}
+                    onClick={confirmPerdu}
+                  >
+                    Confirmer
+                  </Button>
+                </div>
+              </div>
+            </PopoverContent>
+          </Popover>
+        )}
+        {(() => {
+          // Actions de ligne dans l'ordre — partagées entre l'affichage
+          // boutons (desktop) et le menu « ⋯ » (mobile).
+          const actions = [
+            {
+              id: 'edit', label: 'Éditer',
+              onClick: () => onOpenLead(lead),
+            },
+            {
+              id: 'parcours', label: 'Parcours',
+              title: 'Points de contact & correspondance client',
+              onClick: () => onOpenInsights(lead),
+            },
+            {
+              id: 'devis', label: '⚡ Devis auto',
+              disabled: !lead.devis_auto?.pret,
+              title: lead.devis_auto?.pret
+                ? 'Devis auto'
+                : (lead.devis_auto?.message ?? 'Devis auto indisponible'),
+              onClick: () => onAutoQuote(lead),
+            },
+            lead.is_archived
+              ? {
+                id: 'restore', label: 'Restaurer',
+                disabled: busy,
+                onClick: () => onRestore(lead),
+              }
+              : {
+                id: 'archive', label: 'Archiver',
+                disabled: busy,
+                onClick: () => onArchive(lead),
+              },
+          ]
+          if (canDelete) {
+            actions.push({
+              id: 'delete', label: 'Supprimer', destructive: true,
+              disabled: busy,
+              onClick: () => onDelete(lead),
+            })
+          }
+          if (isMobile) {
+            // Mobile : un seul bouton « ⋯ » ouvre le menu d'actions.
+            return (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <IconButton
+                    label="Actions du lead"
+                    variant="ghost"
+                    size="icon"
+                    className="size-8"
+                  >
+                    <MoreHorizontal />
+                  </IconButton>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                  {actions.map((a) => (
+                    <Fragment key={a.id}>
+                      {a.destructive && <DropdownMenuSeparator />}
+                      <DropdownMenuItem
+                        destructive={a.destructive}
+                        disabled={a.disabled}
+                        onSelect={() => a.onClick()}
+                      >
+                        {a.label}
+                      </DropdownMenuItem>
+                    </Fragment>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )
+          }
+          return (
+            <div className="actions-cell">
+              {actions.map((a) => (
+                <Button
+                  key={a.id}
+                  type="button"
+                  size="sm"
+                  variant={a.destructive
+                    ? 'destructive'
+                    : (a.id === 'devis' ? undefined : 'outline')}
+                  className={a.id === 'devis' ? 'gen-btn-orange' : undefined}
+                  disabled={a.disabled}
+                  title={a.title}
+                  onClick={() => a.onClick()}
+                >
+                  {a.label}
+                </Button>
+              ))}
+            </div>
+          )
+        })()}
+        </div>
+      </td>
+    </tr>
+  )
+})
 
 export default function ListView({
   leads, onOpenLead, onAutoQuote, onRefetch, users = [], onReassign,
@@ -320,337 +664,36 @@ export default function ListView({
           </tr>
         </thead>
         <tbody>
-          {sorted.map((lead) => {
-            const perdu = isPerdu(lead)
-            const stars = PRIORITE_STARS[lead.priorite] ?? 1
-            const tags = tagList(lead)
-            const enRetard = lead.relance_date && lead.relance_date < today
-            return (
-              <tr
-                key={lead.id}
-                className={`lv-row${perdu ? ' lv-row-perdu' : ''}${lead.is_archived ? ' lv-row-archived' : ''}${selected.has(lead.id) ? ' lv-row-selected' : ''}`}
-                onClick={() => onOpenLead(lead)}
-              >
-                {onToggleSelect && (
-                  <td
-                    className="lv-check-col"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <Checkbox
-                      aria-label={`Sélectionner ${fullName(lead) || 'ce lead'}`}
-                      checked={selected.has(lead.id)}
-                      onCheckedChange={() => onToggleSelect(lead.id)}
-                    />
-                  </td>
-                )}
-                <td data-label="Lead">
-                  <div className="lv-lead-cell">
-                    <span className="lv-lead-name">
-                      {fullName(lead) || '—'}
-                      {perdu && <span className="lv-badge-perdu">Perdu</span>}
-                    </span>
-                    {lead.societe ? (
-                      <span className="lv-lead-societe">{lead.societe}</span>
-                    ) : null}
-                    {/* QX25 — repli tap-to-call mobile : la colonne Téléphone
-                        (m-hide) disparaît sous 768px, ces icônes compactes
-                        restent visibles dans la cellule Lead (jamais masquée). */}
-                    {(telHref(lead.telephone) || waHref(lead.whatsapp)) && (
-                      <span className="lv-lead-contact" style={{ display: 'inline-flex', gap: '8px', marginTop: '2px' }}
-                            onClick={(e) => e.stopPropagation()}>
-                        {telHref(lead.telephone) && (
-                          <a href={telHref(lead.telephone)} title="Appeler"
-                             aria-label={`Appeler ${fullName(lead) || 'ce lead'}`}
-                             className="text-muted-foreground hover:text-foreground"
-                             onClick={() => armCallNudgeFor(lead)}>
-                            <PhoneCall className="size-3.5" aria-hidden="true" />
-                          </a>
-                        )}
-                        {waHref(lead.whatsapp) && (
-                          <a href={waHref(lead.whatsapp)} target="_blank" rel="noopener noreferrer"
-                             title="Ouvrir WhatsApp" aria-label={`WhatsApp ${fullName(lead) || 'ce lead'}`}
-                             className="text-muted-foreground hover:text-foreground">
-                            <MessageCircle className="size-3.5" aria-hidden="true" />
-                          </a>
-                        )}
-                      </span>
-                    )}
-                  </div>
-                </td>
-                <td data-label="Stade" onClick={(e) => e.stopPropagation()}>
-                  <InlineEdit
-                    value={lead.stage}
-                    options={STAGE_OPTIONS}
-                    disabled={!onInlineSave}
-                    display={(
-                      // Pastille d'étape via StatusPill (tons tokenisés depuis
-                      // statusTone) — plus aucune palette #hex en dur ici. Le
-                      // libellé FR vient de stages.js (miroir STAGES.py).
-                      <StatusPill
-                        status={lead.stage}
-                        label={STAGE_LABELS[lead.stage] ?? lead.stage}
-                        className="lv-stage-badge"
-                      />
-                    )}
-                    onSave={(v) => onInlineSave(lead, 'stage', v)}
-                  />
-                </td>
-                <td className="m-hide" data-label="Score">
-                  <ScoreBadge lead={lead} />
-                </td>
-                <td className="m-hide" onClick={(e) => e.stopPropagation()}>
-                  {lead.telephone ? (
-                    <a className="link-blue" href={`tel:${lead.telephone}`}
-                       onClick={() => armCallNudgeFor(lead)}>
-                      {lead.telephone}
-                    </a>
-                  ) : '—'}
-                </td>
-                <td className="m-hide">{lead.ville || '—'}</td>
-                <td className="m-hide" onClick={(e) => e.stopPropagation()}>
-                  <InlineEdit
-                    value={lead.facture_hiver ?? ''}
-                    type="number"
-                    disabled={!onInlineSave}
-                    placeholder="+ facture"
-                    display={lead.facture_hiver != null && lead.facture_hiver !== '' ? (
-                      <span>
-                        {formatMAD(lead.facture_hiver, { decimals: 0 })}
-                      </span>
-                    ) : null}
-                    onSave={(v) => onInlineSave(lead, 'facture_hiver', v === '' ? null : v)}
-                  />
-                </td>
-                <td className="m-hide">{CANAL_LABELS[lead.canal] ?? '—'}</td>
-                <td className="m-hide" onClick={(e) => e.stopPropagation()}>
-                  <AssigneePicker
-                    users={users}
-                    value={lead.owner ?? ''}
-                    onChange={(id) => onReassign?.(lead, id)}
-                    size={22}
-                    disabled={!onReassign}
-                  />
-                </td>
-                <td className="m-hide" onClick={(e) => e.stopPropagation()}>
-                  <InlineEdit
-                    value={lead.priorite ?? 'normale'}
-                    options={PRIORITE_OPTIONS}
-                    disabled={!onInlineSave}
-                    display={(
-                      <span
-                        className="lv-stars"
-                        title={PRIORITE_LABELS[lead.priorite] ?? PRIORITE_LABELS.normale}
-                      >
-                        <span className={stars >= 1 ? 'lv-star lv-star-on' : 'lv-star'}>★</span>
-                        <span className={stars >= 2 ? 'lv-star lv-star-on' : 'lv-star'}>★</span>
-                      </span>
-                    )}
-                    onSave={(v) => onInlineSave(lead, 'priorite', v)}
-                  />
-                </td>
-                <td data-label="Relance" onClick={(e) => e.stopPropagation()}>
-                  <InlineEdit
-                    value={lead.relance_date ?? ''}
-                    type="date"
-                    disabled={!onInlineSave}
-                    display={lead.relance_date ? (
-                      <span className={enRetard ? 'lv-relance-late' : undefined}>
-                        {formatDateFR(lead.relance_date)}
-                      </span>
-                    ) : null}
-                    onSave={(v) => onInlineSave(lead, 'relance_date', v)}
-                  />
-                </td>
-                <td className="m-hide">
-                  {lead.next_activity ? (
-                    <span
-                      className={lead.next_activity.state === 'overdue'
-                        ? 'lv-relance-late' : undefined}
-                      title={lead.next_activity.summary || undefined}
-                    >
-                      {formatDateFR(lead.next_activity.due_date)}
-                      {lead.next_activity.summary
-                        ? ` · ${lead.next_activity.summary}` : ''}
-                    </span>
-                  ) : <span className="lv-muted">—</span>}
-                </td>
-                <td className="m-hide" onClick={(e) => e.stopPropagation()}>
-                  <InlineEdit
-                    value={lead.tags ?? ''}
-                    type="text"
-                    disabled={!onInlineSave}
-                    placeholder="+ tags"
-                    display={tags.length ? (
-                      <span className="lv-tags">
-                        {tags.map((t) => {
-                          const c = tagColor(t)
-                          return (
-                            <span
-                              key={t}
-                              className="lv-tag"
-                              style={{ background: c.bg, color: c.color }}
-                            >
-                              {t}
-                            </span>
-                          )
-                        })}
-                      </span>
-                    ) : null}
-                    onSave={(v) => onInlineSave(lead, 'tags', v)}
-                  />
-                </td>
-                <td data-label="Actions" onClick={(e) => e.stopPropagation()}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  {/* VX223 — « ✗ Perdu » : action à 2 clics toujours visible sur
-                      la ligne (pas enfouie dans le menu « ⋯ » mobile — le
-                      geste le plus fréquent du quotidien commercial). Absente
-                      si déjà perdu. */}
-                  {!perdu && (
-                    <Popover
-                      open={perduTarget?.id === lead.id}
-                      onOpenChange={(v) => (v ? setPerduTarget(lead) : closePerdu())}
-                    >
-                      <PopoverTrigger asChild>
-                        <IconButton
-                          label="Marquer perdu"
-                          variant="ghost"
-                          size="icon"
-                          className="size-8"
-                        >
-                          ✗
-                        </IconButton>
-                      </PopoverTrigger>
-                      <PopoverContent align="start">
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', minWidth: '220px' }}>
-                          <p style={{ fontSize: '13px', fontWeight: 500, margin: 0 }}>Marquer perdu</p>
-                          <input
-                            className="form-control"
-                            list={`lv-motifs-${lead.id}`}
-                            placeholder="Motif de perte"
-                            value={perduMotif}
-                            onChange={(e) => setPerduMotif(e.target.value)}
-                            autoFocus
-                          />
-                          <datalist id={`lv-motifs-${lead.id}`}>
-                            {(motifsPerte ?? []).map((m) => <option key={m.id} value={m.nom} />)}
-                          </datalist>
-                          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px' }}>
-                            <Button type="button" variant="outline" size="sm" onClick={closePerdu}>
-                              Annuler
-                            </Button>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="destructive"
-                              disabled={!perduMotif.trim() || perduBusy}
-                              loading={perduBusy}
-                              onClick={confirmPerdu}
-                            >
-                              Confirmer
-                            </Button>
-                          </div>
-                        </div>
-                      </PopoverContent>
-                    </Popover>
-                  )}
-                  {(() => {
-                    // Actions de ligne dans l'ordre — partagées entre l'affichage
-                    // boutons (desktop) et le menu « ⋯ » (mobile).
-                    const actions = [
-                      {
-                        id: 'edit', label: 'Éditer',
-                        onClick: () => onOpenLead(lead),
-                      },
-                      {
-                        id: 'parcours', label: 'Parcours',
-                        title: 'Points de contact & correspondance client',
-                        onClick: () => setInsightsLead(lead),
-                      },
-                      {
-                        id: 'devis', label: '⚡ Devis auto',
-                        disabled: !lead.devis_auto?.pret,
-                        title: lead.devis_auto?.pret
-                          ? 'Devis auto'
-                          : (lead.devis_auto?.message ?? 'Devis auto indisponible'),
-                        onClick: () => onAutoQuote(lead),
-                      },
-                      lead.is_archived
-                        ? {
-                          id: 'restore', label: 'Restaurer',
-                          disabled: busyId === lead.id,
-                          onClick: () => onRestore(lead),
-                        }
-                        : {
-                          id: 'archive', label: 'Archiver',
-                          disabled: busyId === lead.id,
-                          onClick: () => onArchive(lead),
-                        },
-                    ]
-                    if (canDelete) {
-                      actions.push({
-                        id: 'delete', label: 'Supprimer', destructive: true,
-                        disabled: busyId === lead.id,
-                        onClick: () => onDelete(lead),
-                      })
-                    }
-                    if (isMobile) {
-                      // Mobile : un seul bouton « ⋯ » ouvre le menu d'actions.
-                      return (
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <IconButton
-                              label="Actions du lead"
-                              variant="ghost"
-                              size="icon"
-                              className="size-8"
-                            >
-                              <MoreHorizontal />
-                            </IconButton>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                            {actions.map((a) => (
-                              <Fragment key={a.id}>
-                                {a.destructive && <DropdownMenuSeparator />}
-                                <DropdownMenuItem
-                                  destructive={a.destructive}
-                                  disabled={a.disabled}
-                                  onSelect={() => a.onClick()}
-                                >
-                                  {a.label}
-                                </DropdownMenuItem>
-                              </Fragment>
-                            ))}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      )
-                    }
-                    return (
-                      <div className="actions-cell">
-                        {actions.map((a) => (
-                          <Button
-                            key={a.id}
-                            type="button"
-                            size="sm"
-                            variant={a.destructive
-                              ? 'destructive'
-                              : (a.id === 'devis' ? undefined : 'outline')}
-                            className={a.id === 'devis' ? 'gen-btn-orange' : undefined}
-                            disabled={a.disabled}
-                            title={a.title}
-                            onClick={() => a.onClick()}
-                          >
-                            {a.label}
-                          </Button>
-                        ))}
-                      </div>
-                    )
-                  })()}
-                  </div>
-                </td>
-              </tr>
-            )
-          })}
+          {sorted.map((lead) => (
+            <ListRow
+              key={lead.id}
+              lead={lead}
+              checked={selected.has(lead.id)}
+              onToggleSelect={onToggleSelect}
+              onOpenLead={onOpenLead}
+              armCallNudgeFor={armCallNudgeFor}
+              onInlineSave={onInlineSave}
+              users={users}
+              onReassign={onReassign}
+              onAutoQuote={onAutoQuote}
+              canDelete={canDelete}
+              busy={busyId === lead.id}
+              onRestore={onRestore}
+              onArchive={onArchive}
+              onDelete={onDelete}
+              isMobile={isMobile}
+              onOpenInsights={setInsightsLead}
+              today={today}
+              perduTarget={perduTarget}
+              setPerduTarget={setPerduTarget}
+              closePerdu={closePerdu}
+              perduMotif={perduMotif}
+              setPerduMotif={setPerduMotif}
+              perduBusy={perduBusy}
+              confirmPerdu={confirmPerdu}
+              motifsPerte={motifsPerte}
+            />
+          ))}
           {!sorted.length && (
             <tr>
               <td colSpan={onToggleSelect ? 13 : 12} className="lv-empty">

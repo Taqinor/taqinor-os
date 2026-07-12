@@ -3,7 +3,11 @@
 // SAUF la mini-popover « ✗ Perdu » (VX223), qui suit le même patron que
 // CallLogPopover ci-dessous : un enfant auto-contenu appelle crmApi
 // directement plutôt que de faire remonter une prop de mutation supplémentaire.
-import { useEffect, useRef, useState } from 'react'
+// VX187 — memo() : chaque frappe dans la recherche/un filtre re-rendait
+// TOUTES les cartes visibles (zéro `memo(` dans tout le fichier). Ne tient
+// que si les callbacks parents sont stables (voir useCallback sur
+// onOpenLead/onAutoQuote/changeStage dans LeadsPage.jsx).
+import { useEffect, useRef, useState, memo } from 'react'
 // VX45 — emoji ⚡ fonctionnel remplacé par l'icône lucide (rendu variable
 // selon l'OS avec un emoji brut).
 import { Zap } from 'lucide-react'
@@ -21,6 +25,7 @@ import { telHref, waHref } from '../../../../lib/contactLinks'
 // VX122 — finesse française : espace fine insécable devant « : » du tooltip.
 import { nbsp } from '../../../../lib/format'
 import crmApi from '../../../../api/crmApi'
+import ExternalLink from '../../../../ui/ExternalLink'
 // VX24 — score de qualité désormais aussi visible sur la carte (ex Liste seule).
 // VX87 — nudge post-appel « Appel terminé — noter le résultat ? ».
 import ScoreBadge from '../../../../features/crm/ScoreBadge'
@@ -170,7 +175,7 @@ const prochaineAction = (lead) => {
 }
 
 
-export default function LeadCard({
+function LeadCard({
   lead, busy = false, onOpen, onAutoQuote, users = [], onReassign,
   selected = false, onToggleSelect, onPlanifierRelance,
   // VX223 — notifié après un « ✗ Perdu » réussi (optionnel : le kanban se
@@ -301,10 +306,8 @@ export default function LeadCard({
             </a>
           )}
           {wa && (
-            <a
+            <ExternalLink
               href={wa}
-              target="_blank"
-              rel="noopener noreferrer"
               aria-label="Ouvrir WhatsApp (glissement)"
               title="Ouvrir WhatsApp"
               onClick={(e) => { e.stopPropagation(); swipe.close() }}
@@ -316,7 +319,7 @@ export default function LeadCard({
               }}
             >
               💬
-            </a>
+            </ExternalLink>
           )}
         </div>
       )}
@@ -519,18 +522,16 @@ export default function LeadCard({
             </a>
           )}
           {wa && (
-            <a
+            <ExternalLink
               className="kb-card-wa"
               href={wa}
-              target="_blank"
-              rel="noopener noreferrer"
               title="Ouvrir WhatsApp"
               onClick={(e) => e.stopPropagation()}
               onPointerDown={(e) => e.stopPropagation()}
               onTouchStart={(e) => e.stopPropagation()}
             >
               WhatsApp
-            </a>
+            </ExternalLink>
           )}
         </div>
       )}
@@ -684,3 +685,5 @@ export default function LeadCard({
     </div>
   )
 }
+
+export default memo(LeadCard)

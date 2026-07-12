@@ -9,6 +9,17 @@ async function toastErreur(message, options) {
   } catch { /* pas d'UI de toast disponible (test / SSR) — silencieux */ }
 }
 
+// VX172 — import PARESSEUX (même contrainte node --test/SSR que le toast
+// ci-dessus) : `isIosOuStandalone` décide si `openPdfBlob` doit éviter la
+// combinaison `download`+`_blank` (fragile dans les mêmes conditions iOS
+// standalone que les exports blob — cf. downloadBlob.js).
+async function iosOuStandalone() {
+  try {
+    const { isIosOuStandalone } = await import('./downloadBlob.js')
+    return isIosOuStandalone()
+  } catch { return false }
+}
+
 // VX49 — Safari renvoie parfois un objet fenêtre non-null mais INERTE (popup
 // silencieusement bloquée) : `win.closed` vaut déjà `true`, ou `win.closed`
 // n'est même pas défini sur l'objet renvoyé. Un simple `if (win)` rate ce cas.
@@ -110,14 +121,21 @@ export async function messageErreurBlob(err, {
 // VX49 — un blob invalide (ou un DOM indisponible) ne doit jamais échouer en
 // silence : toast FR + `revokeObjectURL` garanti en `finally` (sinon fuite
 // mémoire sur des échecs répétés, ex. blob corrompu retenté en boucle).
-export function openPdfBlob(blob, filename) {
+// VX172 — `target=_blank` + `download` combinés est fragile dans les mêmes
+// conditions iOS/standalone que les exports blob (VX172) : en repli terminal
+// (ce chemin d'OUVERTURE seulement — jamais le moteur `/proposal`, règle #4),
+// on retire `_blank` en iOS/standalone pour ne garder qu'un `a.download` pur.
+export async function openPdfBlob(blob, filename) {
   let url
   try {
+    const standalone = await iosOuStandalone()
     url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.target = '_blank'
-    a.rel = 'noopener'
+    if (!standalone) {
+      a.target = '_blank'
+      a.rel = 'noopener'
+    }
     if (filename) a.download = filename
     document.body.appendChild(a)
     a.click()
