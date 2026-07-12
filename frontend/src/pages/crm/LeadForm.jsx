@@ -395,6 +395,20 @@ export default function LeadForm({
   // démonte pas entre deux créations).
   const [creerUnAutre, setCreerUnAutre] = useState(() => !isEdit && lireCreerUnAutre())
   const nomRef = useRef(null)
+
+  // VX249(b) — owner/ville sont 2 des 4 champs VX93 EXACTEMENT (avec TVA sur
+  // ProduitForm.jsx/DevisGenerator.jsx et payMode sur FactureList.jsx) : un
+  // style « suggéré » discret tant que la valeur pré-remplie n'a pas été
+  // touchée — jamais un système de confidence générique. « Suggéré » n'a de
+  // sens qu'À LA CRÉATION (VX93 ne pré-remplit jamais en édition) ; retiré dès
+  // la première modification.
+  const [ownerTouched, setOwnerTouched] = useState(false)
+  const [villeTouched, setVilleTouched] = useState(false)
+  const [ownerFocused, setOwnerFocused] = useState(false)
+  const [villeFocused, setVilleFocused] = useState(false)
+  const ownerSuggested = !isEdit && !ownerTouched
+  const villeSuggested = !isEdit && !villeTouched
+
   const [users, setUsers] = useState([])
   const [historique, setHistorique] = useState([])
   const [noteBody, setNoteBody] = useState('')
@@ -444,6 +458,13 @@ export default function LeadForm({
     setErrors({})
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setCustomData(lead?.custom_data || {})
+    // VX249(b) — un changement de lead redémarre l'état « suggéré » (jamais
+    // pertinent en édition de toute façon, ownerSuggested/villeSuggested
+    // valent alors toujours false via `!isEdit`, mais on repart propre).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setOwnerTouched(false)
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setVilleTouched(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lead?.id])
 
@@ -866,6 +887,11 @@ export default function LeadForm({
           setCleanFieldsJSON(JSON.stringify(reset))
           setErrors({})
           setDups([])
+          // VX249(b) — le lead SUIVANT reçoit de NOUVEAUX défauts VX93
+          // (owner=moi, ville mémorisée juste au-dessus) : « suggéré »
+          // redevient vrai, jamais figé « touché » par le lead précédent.
+          setOwnerTouched(false)
+          setVilleTouched(false)
           nomRef.current?.focus()
         } else {
           onClose()
@@ -1178,8 +1204,23 @@ export default function LeadForm({
                 <FormField label="WhatsApp" htmlFor="lf-whatsapp">
                   <Input id="lf-whatsapp" value={fields.whatsapp ?? ''} onChange={e => set('whatsapp', e.target.value)} />
                 </FormField>
-                <FormField label="Ville / quartier" htmlFor="lf-ville">
-                  <Input id="lf-ville" value={fields.ville ?? ''} onChange={e => set('ville', e.target.value)} />
+                {/* VX249(b) — 1 des 4 champs VX93 exactement : contour
+                    pointillé + micro-libellé au focus tant que la ville
+                    pré-remplie (dernière saisie mémorisée) n'a pas été
+                    touchée — retiré dès la première modification. */}
+                <FormField
+                  label="Ville / quartier"
+                  htmlFor="lf-ville"
+                  hint={villeSuggested && villeFocused ? 'Suggéré — modifiable' : undefined}
+                >
+                  <Input
+                    id="lf-ville"
+                    className={villeSuggested ? 'vx-suggested-field' : undefined}
+                    value={fields.ville ?? ''}
+                    onChange={e => { set('ville', e.target.value); setVilleTouched(true) }}
+                    onFocus={() => setVilleFocused(true)}
+                    onBlur={() => setVilleFocused(false)}
+                  />
                 </FormField>
                 <div className="form-group">
                   <FormField label="Email" htmlFor="lf-email" error={errors.email}>
@@ -1230,13 +1271,28 @@ export default function LeadForm({
                     {enumOptions(STAGE_LABELS)}
                   </select>
                 </FormField>
+                {/* VX249(b) — owner : 1 des 4 champs VX93 exactement. Pas de
+                    `className` exposé par AssigneePicker (hors périmètre de
+                    cette tâche) : le contour pointillé + le focus sont posés
+                    sur le WRAPPER (React normalise onFocus/onBlur en
+                    focusin/focusout — ils remontent bien depuis le bouton
+                    interne du picker). */}
                 <div className="form-group">
                   <label className="form-label">Responsable</label>
-                  <AssigneePicker
-                    users={users}
-                    value={fields.owner ?? ''}
-                    onChange={(id) => set('owner', id ?? '')}
-                  />
+                  <div
+                    className={ownerSuggested ? 'vx-suggested-field inline-block rounded-full' : undefined}
+                    onFocus={() => setOwnerFocused(true)}
+                    onBlur={() => setOwnerFocused(false)}
+                  >
+                    <AssigneePicker
+                      users={users}
+                      value={fields.owner ?? ''}
+                      onChange={(id) => { set('owner', id ?? ''); setOwnerTouched(true) }}
+                    />
+                  </div>
+                  {ownerSuggested && ownerFocused && (
+                    <p className="mt-1 text-xs text-muted-foreground">Suggéré — modifiable</p>
+                  )}
                 </div>
                 <FormField label="Relance le" htmlFor="lf-relance-date">
                   <Input id="lf-relance-date" type="date" value={fields.relance_date ?? ''} onChange={e => set('relance_date', e.target.value)} />

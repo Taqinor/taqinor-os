@@ -356,7 +356,15 @@ function TodayBanner({ segments, navigate }) {
 
 /* VX27 — Carte « liste de priorités » d'une section de tête par rôle : titre +
    compteur, jusqu'à 5 lignes cliquables, état vide honnête. */
-function PriorityCard({ title, icon: Icon, tone = 'muted', items, renderItem, emptyLabel, toAll, navigate }) {
+// VX249(c) — `mine` : pastille partagée (même token que la cloche de
+// notifications/Ma file) — pleine = « assigné à moi/action », contour =
+// « information société ». VX27 posait déjà « Mes leads »/« Mes devis »/« Mes
+// tickets » (mine) à côté de « SLA en retard » (société) SANS convention
+// visuelle commune ; ceci retrofite le même token, jamais un second système.
+function PriorityCard({
+  title, icon: Icon, tone = 'muted', items, renderItem, emptyLabel, toAll, navigate,
+  mine = false,
+}) {
   const count = items.length
   return (
     <Card>
@@ -365,6 +373,11 @@ function PriorityCard({ title, icon: Icon, tone = 'muted', items, renderItem, em
           <span className="flex items-center gap-2">
             {Icon && <Icon className={cn('size-4', TODAY_TONE[tone] ?? 'text-muted-foreground')} aria-hidden="true" />}
             {title}
+            <span
+              className={`vx-pastille ${mine ? 'vx-pastille-mine' : 'vx-pastille-company'}`}
+              aria-hidden="true"
+              title={mine ? 'Vous concerne personnellement' : 'Information société'}
+            />
           </span>
           {count > 0 && <Badge tone={tone === 'danger' ? 'destructive' : tone === 'warning' ? 'warning' : 'primary'}>{count}</Badge>}
         </CardTitle>
@@ -814,6 +827,7 @@ export function Component() {
                 title="Mes leads à relancer"
                 icon={Phone}
                 tone="danger"
+                mine
                 items={relancesEnRetard}
                 emptyLabel="Aucune relance en retard. Beau travail."
                 toAll="/crm/leads"
@@ -836,6 +850,7 @@ export function Component() {
                 title="Mes devis qui expirent ≤ 7 j"
                 icon={CalendarClock}
                 tone="warning"
+                mine
                 items={devisExpirent}
                 emptyLabel="Aucun devis n'expire dans les 7 jours."
                 toAll="/ventes/devis"
@@ -864,6 +879,7 @@ export function Component() {
                 title="Mes tickets urgents"
                 icon={AlertTriangle}
                 tone="danger"
+                mine
                 items={ticketsUrgentsList}
                 emptyLabel="Aucun ticket urgent ouvert."
                 toAll="/sav/tickets"

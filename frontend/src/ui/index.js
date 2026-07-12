@@ -3,6 +3,8 @@
 
 export * from './Button'
 export * from './IconButton'
+// VX249(a) — micro-accusé de sauvegarde au grain du champ (pulse vert).
+export * from './FieldSavedPulse'
 export * from './Spinner'
 export * from './Badge'
 export * from './StatusPill'

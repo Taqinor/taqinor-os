@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { useIsAdmin } from '../../hooks/useHasPermission'
 import {
   AlarmClock, CalendarCheck2, CalendarClock, ExternalLink, PartyPopper, Sparkles, Users,
-  PhoneCall, MessageCircle, ListChecks, Plus, AtSign, ClipboardCheck, Flame, FileWarning,
+  PhoneCall, PhoneIncoming, MessageCircle, ListChecks, Plus, AtSign, ClipboardCheck, Flame,
+  FileWarning,
 } from 'lucide-react'
 import recordsApi from '../../api/recordsApi'
 import {
@@ -90,6 +91,11 @@ const MA_FILE_ICON = {
   relance: PhoneCall,
   lead_chaud: Flame,
   devis_expire: FileWarning,
+  // VX223 — famille « rappel demandé » ajoutée à ma_file_commercial_items
+  // (apps/crm/selectors.py) sans icône dédiée jusqu'ici (repli AlarmClock
+  // silencieux) — distincte de `relance` (moi qui dois relancer) : ici c'est
+  // le CLIENT qui a demandé le rappel.
+  rappel: PhoneIncoming,
 }
 const URGENCY_TONE = { overdue: 'danger', today: 'warning', upcoming: 'success' }
 const URGENCY_DOT = {
@@ -322,6 +328,12 @@ export default function MesActivitesPage() {
           <CardHeader className="flex-row items-center gap-2">
             <ListChecks className="size-4 text-muted-foreground" aria-hidden="true" />
             <CardTitle className="flex-1">File de travail</CardTitle>
+            {/* VX249 — même pastille que la cloche/Dashboard : « Ma file » est
+                ENTIÈREMENT personnelle par construction (chaque famille est
+                déjà scopée à l'utilisateur courant côté serveur) — pastille
+                pleine, jamais la variante société ici. */}
+            <span className="vx-pastille vx-pastille-mine" aria-hidden="true"
+                  title="Vous concerne personnellement" />
             <Badge tone="primary">{maFile.total}</Badge>
           </CardHeader>
           <CardContent className="p-0 sm:p-0">

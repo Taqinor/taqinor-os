@@ -119,9 +119,17 @@ function DevisLineRowImpl({
                onChange={e => onSetField(l._key, 'prix_unit_ttc', e.target.value)} />
       </td>
       <td data-label="TVA %">
+        {/* VX249(b) — 1 des 4 champs VX93 exactement (avec owner/ville sur
+            LeadForm.jsx et tva sur ProduitForm.jsx) : contour pointillé tant
+            que le dernier taux mémorisé n'a pas été touché SUR CETTE LIGNE
+            (`_tvaSuggested`, posé par emptyLine()/setLine() dans
+            DevisGenerator.jsx) — retiré dès la première modification. Cellule
+            étroite (table dense) : `title` porte le micro-libellé plutôt
+            qu'une ligne de texte séparée qui casserait la hauteur de ligne. */}
         <Input type="number" min="0" step="any"
-               className="h-[var(--control-h-sm)] ta-right w-14 text-xs text-muted-foreground"
+               className={`h-[var(--control-h-sm)] ta-right w-14 text-xs text-muted-foreground${l._tvaSuggested ? ' vx-suggested-field' : ''}`}
                value={l.taux_tva ?? '20'}
+               title={l._tvaSuggested ? 'Suggéré — modifiable' : undefined}
                onChange={e => onSetField(l._key, 'taux_tva', e.target.value)} />
         {/* DC7 — AVERTISSEMENT de divergence uniquement : le taux attendu suit
             la désignation + les repères TVA société (expectedTvaForDesignation),
