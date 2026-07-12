@@ -73,6 +73,11 @@ export const SheetContent = forwardRef(function SheetContent(
           'fixed z-[var(--z-modal)] flex flex-col gap-4 overflow-y-auto border-border bg-card p-5 text-card-foreground shadow-ui-lg',
           'data-[state=open]:animate-pop-in data-[state=closed]:animate-pop-out focus:outline-none',
           SIDE[side],
+          // VX176 — un Sheet latéral (left/right) ou top est `inset-y-0
+          // h-full`/proche du bord haut : son bord colle sous l'encoche en
+          // PWA standalone sans l'inset. `bottom` n'a pas besoin de l'inset
+          // haut (ancré au bord bas, max-h-[85vh]).
+          side !== 'bottom' && 'safe-top',
           className,
         )}
         style={draggable && dragY ? { transform: `translateY(${dragY}px)`, transition: 'none' } : undefined}

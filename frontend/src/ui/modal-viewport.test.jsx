@@ -10,6 +10,7 @@ import {
   AlertDialogTitle,
   AlertDialogDescription,
 } from './AlertDialog'
+import { Sheet, SheetContent, SheetTitle } from './Sheet'
 
 /* Régression iPhone. Un modal haut, centré par `-translate-y-1/2`, débordait HORS
    de l'écran sur iPhone (haut + bas rognés → boutons Annuler/Confirmer/Enregistrer
@@ -60,5 +61,51 @@ describe('Modals — sûreté viewport mobile (anti-débordement iPhone)', () =>
     const rule = css.slice(start, css.indexOf('}', start))
     expect(rule).toContain('max-height: calc(100vh - 48px);')
     expect(rule).toContain('max-height: calc(100dvh - 48px);')
+  })
+
+  // ── VX176 — safe-area sur les overlays plein écran (encoche/Dynamic Island
+  // en PWA standalone) ──────────────────────────────────────────────────────
+  it('DialogContent porte safe-top (proche de sa hauteur max, il peut coller au bord haut)', () => {
+    render(
+      <Dialog defaultOpen>
+        <DialogContent>
+          <DialogTitle>Titre</DialogTitle>
+        </DialogContent>
+      </Dialog>,
+    )
+    expect(screen.getByRole('dialog').className).toContain('safe-top')
+  })
+
+  it('AlertDialogContent porte safe-top', () => {
+    render(
+      <AlertDialog defaultOpen>
+        <AlertDialogContent>
+          <AlertDialogTitle>Confirmer</AlertDialogTitle>
+        </AlertDialogContent>
+      </AlertDialog>,
+    )
+    expect(screen.getByRole('alertdialog').className).toContain('safe-top')
+  })
+
+  it('SheetContent latéral (side="right") porte safe-top — son bord touche le haut de l’écran', () => {
+    render(
+      <Sheet defaultOpen>
+        <SheetContent side="right">
+          <SheetTitle>Panneau</SheetTitle>
+        </SheetContent>
+      </Sheet>,
+    )
+    expect(screen.getByRole('dialog').className).toContain('safe-top')
+  })
+
+  it('SheetContent bottom N’A PAS besoin de safe-top (ancré au bord bas, max-h-[85vh])', () => {
+    render(
+      <Sheet defaultOpen>
+        <SheetContent side="bottom">
+          <SheetTitle>Tiroir</SheetTitle>
+        </SheetContent>
+      </Sheet>,
+    )
+    expect(screen.getByRole('dialog').className).not.toContain('safe-top')
   })
 })

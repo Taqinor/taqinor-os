@@ -657,6 +657,17 @@ button:active, [role="button"]:active, a.btn:active,
   flex-shrink: 0;
 }
 
+/* VX176 — safe-area sur les overlays PLEIN ÉCRAN Radix (Sheet/Dialog/
+   AlertDialog). `black-translucent` (index.html) fait passer le contenu SOUS
+   la barre d'état iOS ; seul `.header` (ci-dessus) réservait l'inset haut —
+   un Sheet latéral (side="left"/"right", `inset-y-0 h-full`, VX176a) ou une
+   Dialog/AlertDialog proche de sa hauteur max collait son bord sous
+   l'encoche/Dynamic Island en PWA standalone. `env()` vaut 0 hors iOS/
+   standalone : no-op ailleurs. */
+.safe-top {
+  padding-top: env(safe-area-inset-top);
+}
+
 /* I136 — Repère de marque cliquable (pastille éclair → accueil). */
 .header-brand {
   display: inline-flex;
