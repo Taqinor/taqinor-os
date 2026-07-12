@@ -201,7 +201,7 @@ export function normalizeMaPhone(value) {
  */
 export function nbsp(str) {
   if (!str) return str
-  return String(str).replace(/[ \t  ]*([:;!?])/g, ' $1')
+  return String(str).replace(/[ \t\u00A0\u202F]*([:;!?])/g, '\u202F$1')
 }
 
 export default {

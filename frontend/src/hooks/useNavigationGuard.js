@@ -32,11 +32,12 @@ export function useNavigationGuard(
 ) {
   const { confirm } = useConfirmDialog()
 
+  // Toujours appelé (même chemin de code à chaque rendu pour une instance
+  // donnée) ; seul le contexte routeur manquant peut faire lever une erreur,
+  // jamais `dirty`.
   let blocker = null
   try {
-    // eslint-disable-next-line react-hooks/rules-of-hooks -- toujours appelé
-    // (même chemin de code à chaque rendu pour une instance donnée) ; seul le
-    // contexte routeur manquant peut faire lever une erreur, jamais `dirty`.
+    // eslint-disable-next-line react-hooks/rules-of-hooks -- cf. commentaire ci-dessus
     blocker = useBlocker(
       ({ currentLocation, nextLocation }) =>
         dirty && currentLocation.pathname !== nextLocation.pathname,

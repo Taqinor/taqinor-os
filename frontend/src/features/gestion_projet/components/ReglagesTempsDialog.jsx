@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Button, Label, toast, confirmLeaveIfDirty } from '../../../ui'
 import { isDirty } from '../../../ui/form-utils'
 import { ResponsiveDialog } from '../../../ui/ResponsiveDialog'
@@ -15,14 +15,14 @@ export default function ReglagesTempsDialog({ onClose, onSaved }) {
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState(null)
   // VX168 — garde de fermeture : snapshot pris au premier chargement réussi.
-  const initialSnapshotRef = useRef(null)
+  const [initialSnapshot, setInitialSnapshot] = useState(null)
 
   useEffect(() => {
     let alive = true
     gestionProjetApi.getReglageTemps()
       .then((res) => {
         if (!alive) return
-        initialSnapshotRef.current = res.data
+        setInitialSnapshot(res.data)
         setForm(res.data)
       })
       .catch((err) => { if (alive) toast.error(errMessage(err, 'Chargement des réglages impossible.')) })
@@ -30,7 +30,7 @@ export default function ReglagesTempsDialog({ onClose, onSaved }) {
     return () => { alive = false }
   }, [])
 
-  const dirty = Boolean(form) && isDirty(initialSnapshotRef.current || {}, form)
+  const dirty = Boolean(form) && isDirty(initialSnapshot || {}, form)
   const closeIfConfirmed = () => { if (confirmLeaveIfDirty(dirty)) onClose?.() }
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }))

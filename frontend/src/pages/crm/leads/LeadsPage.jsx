@@ -318,6 +318,7 @@ export default function LeadsPage() {
   // pour ne pas rouvrir le formulaire à chaque re-render.
   useEffect(() => {
     if (searchParams.get('new') !== '1') return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- ouverture one-shot pilotée par ?new=1
     openNew()
     setSearchParams(prev => {
       const next = new URLSearchParams(prev)

@@ -15,11 +15,13 @@ import { cn } from '../lib/cn'
    Usage : incrémenter `pulseKey` (n'importe quel entier changeant, ex. un
    compteur de sauvegardes réussies) déclenche UN pulse. `pulseKey` initial
    à 0/null/undefined ne pulse jamais (pas de faux-pulse au montage). */
+// eslint-disable-next-line no-unused-vars -- `As` is the polymorphic JSX element (<As>), not detected by no-unused-vars
 export function FieldSavedPulse({ pulseKey, children, className, as: As = 'div' }) {
   const [pulsing, setPulsing] = useState(false)
 
   useEffect(() => {
     if (!pulseKey) return undefined
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- pulse animation on pulseKey change
     setPulsing(true)
     // Marge au-delà de --motion-pulse (350 ms) pour ne jamais couper
     // l'animation en cours si le thread est légèrement chargé.

@@ -10,7 +10,7 @@ import {
 // VX217(a) — aperçu sans naviguer (survol desktop / appui long mobile).
 import AttentionPeek from '../../features/queue/AttentionPeek'
 import {
-  AlarmClock, CalendarCheck2, CalendarClock, ExternalLink, PartyPopper, Sparkles, Users,
+  AlarmClock, CalendarCheck2, CalendarClock, ExternalLink as ExternalLinkIcon, PartyPopper, Sparkles, Users,
   PhoneCall, PhoneIncoming, MessageCircle, ListChecks, Plus, AtSign, ClipboardCheck, Flame,
   FileWarning, HardHat, Wrench, ShoppingCart, ArrowRightLeft,
 } from 'lucide-react'
@@ -475,7 +475,7 @@ export default function MesActivitesPage() {
                       )}
                       {it.link && (
                         <Button size="sm" variant="outline" onClick={() => navigate(it.link)}>
-                          <ExternalLink /> Ouvrir
+                          <ExternalLinkIcon /> Ouvrir
                         </Button>
                       )}
                     </span>
@@ -569,7 +569,7 @@ export default function MesActivitesPage() {
                           const link = targetLink(a)
                           return link ? (
                             <Button size="sm" variant="outline" onClick={() => navigate(link)}>
-                              <ExternalLink /> {a.target_label || 'Ouvrir'}
+                              <ExternalLinkIcon /> {a.target_label || 'Ouvrir'}
                             </Button>
                           ) : (a.target_label || '—')
                         },

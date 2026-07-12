@@ -110,6 +110,7 @@ export default function ClientList() {
   // même patron). Le paramètre est retiré une fois lu.
   useEffect(() => {
     if (searchParams.get('new') !== '1') return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- ouverture one-shot pilotée par ?new=1
     openNew()
     setSearchParams(prev => {
       const next = new URLSearchParams(prev)

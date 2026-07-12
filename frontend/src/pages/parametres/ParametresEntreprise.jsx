@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useIsAdmin } from '../../hooks/useHasPermission'
 import { useNavigationGuard } from '../../hooks/useNavigationGuard'
@@ -519,9 +519,9 @@ export default function ParametresEntreprise() {
   // VX169 — garde de navigation IN-APP : snapshot pris à chaque resynchro
   // depuis `profile` (montage ET après un enregistrement réussi qui refetch
   // le profil — la garde s'éteint alors naturellement, saisie sauvegardée).
-  const initialSnapshotRef = useRef(null)
-  const dirty = initialSnapshotRef.current != null
-    && isDirty(initialSnapshotRef.current, form)
+  const [initialSnapshot, setInitialSnapshot] = useState(null)
+  const dirty = initialSnapshot != null
+    && isDirty(initialSnapshot, form)
   useNavigationGuard(dirty)
 
   useEffect(() => {
@@ -584,9 +584,10 @@ export default function ParametresEntreprise() {
       // FG26 — rétention RGPD du journal d'audit.
       audit_retention_days: profile.audit_retention_days ?? 0,
     }
-    initialSnapshotRef.current = next
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    /* eslint-disable react-hooks/set-state-in-effect -- resynchro depuis `profile` */
+    setInitialSnapshot(next)
     setForm(next)
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [profile])
 
   useEffect(() => {

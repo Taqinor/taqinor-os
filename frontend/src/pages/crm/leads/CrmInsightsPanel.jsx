@@ -61,10 +61,12 @@ export function MesChiffresCard({
   const [attainmentError, setAttainmentError] = useState(false)
 
   useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect -- load-on-mount/re-fetch state */
     if (!userId) { setAttainment([]); return undefined }
     let alive = true
     setAttainment(null)
     setAttainmentError(false)
+    /* eslint-enable react-hooks/set-state-in-effect */
     crmApi.getObjectifsAttainment({ owner: userId })
       .then((r) => { if (alive) setAttainment(r.data ?? []) })
       .catch(() => { if (alive) { setAttainment([]); setAttainmentError(true) } })

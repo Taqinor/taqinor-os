@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import { Button, toast, confirmLeaveIfDirty } from '../../../ui'
 import { isDirty } from '../../../ui/form-utils'
 import { ResponsiveDialog } from '../../../ui/ResponsiveDialog'
@@ -22,8 +22,8 @@ export default function ClotureDialog({ projetId, onClose, onSaved }) {
   const [saving, setSaving] = useState(false)
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }))
   // VX168 — garde de fermeture (snapshot pris au montage).
-  const initialSnapshotRef = useRef(form)
-  const dirty = isDirty(initialSnapshotRef.current, form)
+  const [initialSnapshot] = useState(() => form)
+  const dirty = isDirty(initialSnapshot, form)
   const closeIfConfirmed = () => { if (confirmLeaveIfDirty(dirty)) onClose?.() }
 
   const submit = async (e) => {

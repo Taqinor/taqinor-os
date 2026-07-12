@@ -40,7 +40,6 @@ import {
 // VX89 — shell externe Escape + focus-trap + bottom-sheet mobile (comme ClientForm).
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
 import { toast } from '../../ui/confirm'
-import RelationCounters from '../../ui/RelationCounters'
 import { formatMAD, normalizeMaPhone } from '../../lib/format'
 // VX224 — même garde « jamais en train de saisir » que les raccourcis
 // globaux (ShortcutsProvider) pour J/K, une seule source de vérité.

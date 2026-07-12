@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
   Button, Input, Label, toast,
@@ -28,20 +28,21 @@ export default function CrudDialog({
   const [saving, setSaving] = useState(false)
   // VX166/VX170 — snapshot pris à l'ouverture (pour détecter une saisie
   // perdue à la fermeture) + garde composée par la primitive commune.
-  const initialSnapshotRef = useRef({})
+  const [initialSnapshot, setInitialSnapshot] = useState({})
 
   // Réinitialise le formulaire à l'ouverture / au changement d'enregistrement.
   useEffect(() => {
     if (!open) return
     const base = {}
     for (const f of fields) base[f.name] = initial?.[f.name] ?? ''
-    initialSnapshotRef.current = base
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset à l'ouverture
+    /* eslint-disable react-hooks/set-state-in-effect -- reset à l'ouverture */
+    setInitialSnapshot(base)
     setValues(base)
+    /* eslint-enable react-hooks/set-state-in-effect */
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initial])
 
-  const { guardedClose } = useFormSafety(initialSnapshotRef.current, values, onClose)
+  const { guardedClose } = useFormSafety(initialSnapshot, values, onClose)
 
   const set = (name, v) => setValues((prev) => ({ ...prev, [name]: v }))
 

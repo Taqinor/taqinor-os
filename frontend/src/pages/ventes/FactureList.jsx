@@ -597,7 +597,6 @@ export default function FactureList() {
   // atterrir sur la BONNE facture surlignée. On force l'onglet « toutes » pour
   // qu'elle ne soit jamais masquée par un filtre d'onglet, puis on la surligne
   // + scrolle 3 s (voir l'effet plus bas).
-  const [searchParams] = useSearchParams()
   const [highlightFactureId, setHighlightFactureId] = useState(
     () => searchParams.get('facture') || null)
   const [activeTab, setActiveTab]     = useState('toutes')
@@ -885,6 +884,7 @@ export default function FactureList() {
     const wantedId = searchParams.get('id')
     if (!wantedId || loading) return
     const match = factures.find(f => String(f.id) === String(wantedId))
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- ouverture one-shot pilotée par ?id=
     if (match) openEdit(match)
     setSearchParams(prev => {
       const next = new URLSearchParams(prev)

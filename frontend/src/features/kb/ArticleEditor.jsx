@@ -45,8 +45,8 @@ export default function ArticleEditor({ article, onCancel, onSaved }) {
   const [saving, setSaving] = useState(false)
   const corpsRef = useRef(null)
   // VX169 — garde de navigation IN-APP (snapshot pris au montage).
-  const initialSnapshotRef = useRef(form)
-  const dirty = isDirty(initialSnapshotRef.current, form)
+  const [initialSnapshot] = useState(() => form)
+  const dirty = isDirty(initialSnapshot, form)
   useNavigationGuard(dirty)
 
   const set = (key) => (e) =>
