@@ -2331,7 +2331,7 @@ droite)**
   Devis : B · Chantier : C · SAV : D » cliquable ; tests de rendu. (T2 — M, sonnet) (@lane:
   backend/notify)
 
-- [ ] VX217 — **La cloche finit le travail : aperçu sans naviguer, actions par entité, (@lane: backend/notify — @after VX208)
+- [x] VX217 **(already present)** — **La cloche finit le travail : aperçu sans naviguer, actions par entité, (@lane: backend/notify — @after VX208)
   bottom-sheet mobile. @after VX208.** Trois compléments du même organe : (a) chaque item de
   cloche/file est un cul-de-sac de navigation (`NotificationBell.jsx:272-275`, `goto(n.link)`) —
   traiter 8 relances = 8 allers-retours d'écran ; (b) les actions sont 100 % unitaires ; (c)
@@ -3207,6 +3207,8 @@ droite)**
 ---
 
 ## DONE LOG (agent appends one plain-language line per completed task)
+
+- 2026-07-12 — **VX217 (already present)** — verified: `frontend/src/features/queue/AttentionPeek.jsx` (+ test) wired into `NotificationBell.jsx` and `MesActivitesPage.jsx` (hover/tap-and-hold peek), grouped "Tout marquer lu (n)" action, `.nb-panel` mobile responsiveness; commit `a2c18fbb` on main. Ticked, no rebuild.
 
 - 2026-07-12 — **VX214 (already present)** — verified: `apps/records/views.py` `ma-file/` extended with execution kinds (`chantier_assigne`/`intervention_du_jour`/`da_approuvee_a_commander`/`ticket_transfere`) via `installations.selectors.affectations_pour`/`sav.selectors.affectations_pour` (no parallel endpoint/page); `tests_vx214_kinds_execution.py`; commits `3178b30f` + CI fix `956c5b9e` on main. Ticked, no rebuild.
 
