@@ -1541,7 +1541,7 @@ pas la dupliquer ici, la numérotation continue directement à SEED-02.*
 
 **Sous-groupe VXD-B — Formulaires : ne jamais perdre une saisie**
 
-- [ ] VX166 — **Câbler `confirmLeaveIfDirty` chez les 7 adoptants existants + `CrudDialog` (8 (@lane: frontend/forms)
+- [x] VX166 — **Câbler `confirmLeaveIfDirty` chez les 7 adoptants existants + `CrudDialog` (8 (@lane: frontend/forms)
   écrans compta d'un coup).** Les 7 formulaires qui calculent DÉJÀ `dirty` + `useDirtyGuard`
   (`ClientForm.jsx:240`, `ProduitForm.jsx:402`, `DevisForm.jsx:222`, `FactureForm.jsx:263`,
   `InstallationDetail.jsx:725`, `EquipementsPage.jsx:229`, `TicketsPage.jsx:529`) gardent
@@ -1564,7 +1564,7 @@ pas la dupliquer ici, la numérotation continue directement à SEED-02.*
   modifier un champ → toute fermeture demande confirmation ; e2e leads verts. (T1 — M, sonnet)
   (@lane: frontend/forms — @with/after VX89)
 
-- [ ] VX168 — **Balayage garde+autoFocus : 13 dialogues flotte/gestion_projet + (@lane: frontend/forms)
+- [x] VX168 — **Balayage garde+autoFocus : 13 dialogues flotte/gestion_projet + (@lane: frontend/forms)
   `EmployeDetail`/`Recrutement` + autoFocus top-20.** 9 dialogues `features/flotte/*` (dont
   `PleinDialog` 11 useState, `SignalementDialog` saisie terrain) + 4
   `features/gestion_projet/components/*Dialog.jsx` : 0 dirty-guard (grep) ;
@@ -1577,7 +1577,7 @@ pas la dupliquer ici, la numérotation continue directement à SEED-02.*
   `document.activeElement` = premier champ. (T1 — L, sonnet ; haiku après le patron) (@lane:
   frontend/forms)
 
-- [ ] VX169 — **`useBlocker` : garde de navigation IN-APP des formulaires route-level.** (@lane: frontend/forms)
+- [x] VX169 — **`useBlocker` : garde de navigation IN-APP des formulaires route-level.** (@lane: frontend/forms)
   `useDirtyGuard` ne couvre que `beforeunload` — un clic sidebar pendant la saisie navigue
   instantanément (pushState, pas un déchargement) ; `useBlocker` de react-router v7
   (`createBrowserRouter` confirmé `router/index.jsx:207`) = 0 usage dans le repo. Fix :
@@ -1587,7 +1587,7 @@ pas la dupliquer ici, la numérotation continue directement à SEED-02.*
   (nouveau) + les 5 écrans. DoD : modifier ParametresEntreprise → clic lien sidebar →
   confirmation ; accepter navigue, annuler reste. (T2 — M, sonnet) (@lane: frontend/forms)
 
-- [ ] VX170 — **`useFormSafety` : LA primitive qui rend le mauvais câblage impossible (incl. (@lane: frontend/forms)
+- [x] VX170 — **`useFormSafety` : LA primitive qui rend le mauvais câblage impossible (incl. (@lane: frontend/forms)
   réparation WebKit du hook + `safeStorage`).** Le repo n'a pas de convention : chaque formulaire
   réinvente son snapshot (`isDirty` / `JSON.stringify` diff / `useMemo` custom) et personne ne
   branche les 3 mécanismes ensemble (tab-close + in-app-close + router) — les 7 « meilleurs
@@ -1605,7 +1605,7 @@ pas la dupliquer ici, la numérotation continue directement à SEED-02.*
   en quota plein ne crash pas et évince le plus ancien ; 3 formulaires migrés avec moins de code.
   (T2 — M, sonnet) (@lane: frontend/forms)
 
-- [ ] VX171 — **Vérité des erreurs de champ : serveur → champ (`useServerFieldErrors`) + erreurs (@lane: frontend/forms)
+- [x] VX171 — **Vérité des erreurs de champ : serveur → champ (`useServerFieldErrors`) + erreurs (@lane: frontend/forms)
   locales effacées à la frappe.** (a) DRF renvoie `{champ:[msg]}` mais 12 fichiers seulement posent
   `aria-invalid` — tout est écrasé en UN toast opaque ; `FormField` (`ui/Form.jsx:56-77`) est
   correctement câblé et sous-consommé. (b) `ClientForm.jsx:170-180`, `DevisForm.jsx:147/215`,
@@ -3207,6 +3207,8 @@ droite)**
 ---
 
 ## DONE LOG (agent appends one plain-language line per completed task)
+
+- 2026-07-12 — **VX166/VX168/VX169/VX170/VX171 (already present).** Verified already built by a prior wave: VX166 `confirmLeaveIfDirty`/`guardedClose` wired on the 7 named adopters + `CrudDialog.jsx` (8 compta callers). VX168 dirty-guard on all 9 `features/flotte/*Dialog.jsx` + 6 `features/gestion_projet/components/*Dialog.jsx` + `EmployeDetail.jsx`/`Recrutement.jsx`, `autoFocus` present on 38 files repo-wide incl. UsersManagement/RolesManagement/KpiAlertesPage/CrudDialog. VX169 `hooks/useNavigationGuard.js` (`useBlocker`) mounted on all 5 named screens (ParametresEntreprise, EquipementSignalerPage, DashboardConfigPage, ArticleEditor, ReclamationEditor). VX170 `ui/useFormSafety.js` (dirty diff + `useDirtyGuard` + `confirmLeaveIfDirty` + optional route-level guard) + `lib/safeStorage.js` (pagehide-safe persistence) built and consumed by ClientForm/CrudDialog/flotte dialogs. VX171 `hooks/useServerFieldErrors.js` consumed by Client/Lead/Devis/Facture/Produit forms with `clearField` on every `set()`. No code changes needed.
 
 - 2026-07-12 — **VX182 — 7 modales fait-main hors LeadForm passées à ResponsiveDialog.** `PodCaptureDialog`, `TransfertsScreen` (CreateDemandeDialog), `ClientDetailPanel`, `ConvertirClientDialog`, `LeadInsightsDialog`, `PlanActiviteDialog`, `SigneDialog` : shell `.modal-overlay`/`.modal` brut remplacé par `ResponsiveDialog` (Escape + focus-trap + overlay-click + bottom-sheet mobile, `showClose={false}` — le ✕ existant reste l'unique fermeture visible), `autoFocus` posé sur le premier contrôle réel de chacun (5/7 en ont un ; les 2 panneaux lecture-seule `ClientDetailPanel`/`LeadInsightsDialog` s'appuient sur le focus-trap par défaut de Radix). `sd-modal` conservée en className sur `SigneDialog` (sélecteur CSS scopé `.sd-modal .form-label` intact).
 
