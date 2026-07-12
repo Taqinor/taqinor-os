@@ -134,6 +134,9 @@ INSTALLED_APPS = [
     # ne dépend d'aucune app de domaine ; les domaines la référenceront
     # (ARC18/19). Contrat import-linter `tiers-is-a-base-layer`.
     'apps.tiers',
+    # XPLT21 — Softphone VoIP intégré (SIP/WebRTC, gated). Interface
+    # fournisseur SWAPPABLE (NoOp par défaut) — additif, company-scopé.
+    'apps.voip',
 ]
 
 MIDDLEWARE = [
