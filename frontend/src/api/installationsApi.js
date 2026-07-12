@@ -220,6 +220,10 @@ const installationsApi = {
     api.post(`/installations/interventions/${id}/cocher-safety/`, { cle, coche }),
   signerSafety: (id) =>
     api.post(`/installations/interventions/${id}/signer-safety/`, {}),
+  // ── FG69 — signature client sur le compte-rendu d'intervention ──
+  signerClient: (id, { signature_client, signataire_nom }) =>
+    api.post(`/installations/interventions/${id}/signer-client/`,
+      { signature_client, signataire_nom }),
   getConsignesSecurite: () => api.get('/installations/consignes-securite/'),
   saveConsigneSecurite: (id, data) => id
     ? api.patch(`/installations/consignes-securite/${id}/`, data)

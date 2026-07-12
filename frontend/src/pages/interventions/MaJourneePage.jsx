@@ -15,6 +15,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   CalendarDays, MapPin, ChevronRight, ClipboardList, Navigation, Camera,
   Tag, ListChecks, Mic, ShieldCheck, Wrench, AlertOctagon, CloudRain, Phone,
+  PenLine,
 } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
 import {
@@ -33,6 +34,7 @@ import {
   SerialsPanel, ConsommationPanel, MemosPanel, ReservesPanel,
   ToolReturnPanel, SafetyPanel, CompteRenduButton, CodePanel,
 } from '../../features/installations/InterventionCapturePanels'
+import { SignatureClientPanel } from '../../features/installations/SignatureClientPanel'
 import {
   interventionStatusLabel, INTERVENTION_TYPES,
   INTERVENTION_STATUSES, INTERVENTION_STATUS_LABELS,
@@ -294,6 +296,7 @@ const FLOW_TABS = [
   { value: 'conso', label: 'Conso', Icon: ListChecks },
   { value: 'memos', label: 'Mémos', Icon: Mic },
   { value: 'reserves', label: 'Réserves', Icon: AlertOctagon },
+  { value: 'signature', label: 'Signature', Icon: PenLine },
   { value: 'outils', label: 'Outils', Icon: Wrench },
 ]
 
@@ -414,6 +417,7 @@ function InterventionFlowSheet({ interv, initialTab, isMobile, onClose, onChange
           <TabsContent value="conso" forceMount hidden={tab !== 'conso'}><ConsommationPanel intervention={interv} onChanged={onChanged} /></TabsContent>
           <TabsContent value="memos" forceMount hidden={tab !== 'memos'}><MemosPanel intervention={interv} onChanged={onChanged} /></TabsContent>
           <TabsContent value="reserves" forceMount hidden={tab !== 'reserves'}><ReservesPanel intervention={interv} onChanged={onChanged} /></TabsContent>
+          <TabsContent value="signature" forceMount hidden={tab !== 'signature'}><SignatureClientPanel intervention={interv} onChanged={onChanged} /></TabsContent>
           <TabsContent value="outils" forceMount hidden={tab !== 'outils'}>
             <ToolReturnPanel intervention={interv} onChanged={onChanged} />
             <CodePanel intervention={interv} />
