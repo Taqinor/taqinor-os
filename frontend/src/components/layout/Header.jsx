@@ -1,11 +1,14 @@
 import { useSelector, useDispatch } from 'react-redux'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useState, useEffect } from 'react'
-import { Menu, Search, LogOut, User as UserIcon, Settings, Zap, Bot, LayoutGrid, SlidersHorizontal } from 'lucide-react'
+import {
+  Menu, Search, LogOut, User as UserIcon, Settings, Zap, Bot, LayoutGrid,
+  SlidersHorizontal, Sun, Moon, Monitor,
+} from 'lucide-react'
 import {
   Avatar, AvatarFallback, initials,
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
-  DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator,
+  DropdownMenuItem, DropdownMenuCheckboxItem, DropdownMenuLabel, DropdownMenuSeparator,
 } from '../../ui'
 import { logoutUser } from '../../features/auth/store/authSlice'
 import { toggleCopilot } from '../../features/ia/store/iaSlice'
@@ -20,6 +23,7 @@ import LanguageSwitcher from './LanguageSwitcher'
 import AppLauncher from './AppLauncher'
 import { titleFor } from './routes.meta'
 import { ThemeToggle } from '../../design/ThemeToggle'
+import { useTheme } from '../../design/theme-context'
 import { useT } from '../../i18n'
 import { getCurrentTenantTheme, subscribeTenantTheme } from '../../design/tenantTheme'
 // VX46 — « Mes préférences » : panneau ouvert depuis le menu utilisateur.
@@ -52,6 +56,9 @@ export default function Header({ onMenu }) {
   const dispatch = useDispatch()
   const user = useSelector((state) => state.auth.user)
   const t = useT()
+  // VX181 — le ThemeToggle segmenté disparaît sous md (voir plus bas) ; ces 3
+  // options du menu utilisateur restent le SEUL accès au thème sur mobile.
+  const { theme, setTheme } = useTheme()
   // SCA24 — thème de société (logo/nom) posé par Layout ; Header s'abonne
   // sans refetch (pub/sub en mémoire, cf. design/tenantTheme.js). Repli neutre
   // (PRODUCT_NAME, pas de logo) tant qu'aucun thème n'est chargé/renseigné.
@@ -155,7 +162,11 @@ export default function Header({ onMenu }) {
           <CompanySwitcher />
           {/* N93 — sélecteur de langue d'interface (FR / EN / العربية). */}
           <LanguageSwitcher />
-          <ThemeToggle />
+          {/* VX181 — `.header-right` débordait à 320-375px (9 cibles
+              interactives, dont ce sélecteur segmenté jamais masqué) : masqué
+              sous md, ses 3 options rejoignent le menu utilisateur ci-dessous
+              (checkbox items) pour rester accessibles sur mobile. */}
+          <ThemeToggle className="hidden md:flex" />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button type="button" className="header-usermenu-trigger" aria-label="Menu utilisateur">
@@ -169,6 +180,23 @@ export default function Header({ onMenu }) {
               <DropdownMenuLabel>{username}</DropdownMenuLabel>
               {user?.email && <div className="header-usermenu-email">{user.email}</div>}
               <DropdownMenuSeparator />
+              {/* VX181 — thème accessible même sous md, où le ThemeToggle du
+                  header est masqué (débordement 320-375px, `.header-right`
+                  n'a aucune garde de largeur). */}
+              <DropdownMenuLabel className="md:hidden">Thème</DropdownMenuLabel>
+              <DropdownMenuCheckboxItem className="md:hidden" checked={theme === 'light'}
+                                         onSelect={() => setTheme('light')}>
+                <Sun aria-hidden="true" /> Clair
+              </DropdownMenuCheckboxItem>
+              <DropdownMenuCheckboxItem className="md:hidden" checked={theme === 'system'}
+                                         onSelect={() => setTheme('system')}>
+                <Monitor aria-hidden="true" /> Système
+              </DropdownMenuCheckboxItem>
+              <DropdownMenuCheckboxItem className="md:hidden" checked={theme === 'dark'}
+                                         onSelect={() => setTheme('dark')}>
+                <Moon aria-hidden="true" /> Sombre
+              </DropdownMenuCheckboxItem>
+              <DropdownMenuSeparator className="md:hidden" />
               {/* VX46 — « Mes préférences » : thème/densité/atterrissage/mouvement. */}
               <DropdownMenuItem onSelect={() => setPrefsOpen(true)}>
                 <SlidersHorizontal aria-hidden="true" /> Mes préférences
