@@ -36,6 +36,8 @@ const { rejected } = vi.hoisted(() => ({
 }))
 vi.mock('../../api/installationsApi', () => ({
   default: {
+    // VX88 — Ma journée consomme désormais « Ma tournée » (ordre géographique).
+    getMaTournee: vi.fn(),
     getInterventions: vi.fn(),
     getPreparation: vi.fn(rejected),
     getPhotos: vi.fn(rejected),
@@ -58,9 +60,9 @@ import installationsApi from '../../api/installationsApi'
    action » dans la fiche. */
 describe('MaJourneePage (VX42)', () => {
   it('affiche Appeler + Itinéraire quand contact/GPS sont présents, et le FAB', async () => {
-    installationsApi.getInterventions.mockResolvedValue({
+    installationsApi.getMaTournee.mockResolvedValue({
       data: {
-        results: [{
+        stops: [{
           id: 1,
           date_prevue: todayISO(),
           client_nom: 'Client Un',
@@ -87,9 +89,9 @@ describe('MaJourneePage (VX42)', () => {
   })
 
   it('masque Appeler/Itinéraire quand aucun contact ni GPS/ville ne sont renseignés', async () => {
-    installationsApi.getInterventions.mockResolvedValue({
+    installationsApi.getMaTournee.mockResolvedValue({
       data: {
-        results: [{
+        stops: [{
           id: 2,
           date_prevue: todayISO(),
           client_nom: 'Client Deux',
@@ -107,7 +109,7 @@ describe('MaJourneePage (VX42)', () => {
   })
 
   it("masque le FAB « Photo rapide » quand il n'y a aucune intervention aujourd'hui", async () => {
-    installationsApi.getInterventions.mockResolvedValue({ data: { results: [] } })
+    installationsApi.getMaTournee.mockResolvedValue({ data: { stops: [] } })
     render(<MemoryRouter><MaJourneePage /></MemoryRouter>)
 
     await waitFor(() => expect(
@@ -117,9 +119,9 @@ describe('MaJourneePage (VX42)', () => {
 
   it('la fiche ouvre sur un rail d’onglets icône+libellé avec le bandeau « Prochaine action »', async () => {
     const user = userEvent.setup()
-    installationsApi.getInterventions.mockResolvedValue({
+    installationsApi.getMaTournee.mockResolvedValue({
       data: {
-        results: [{
+        stops: [{
           id: 3,
           date_prevue: todayISO(),
           client_nom: 'Client Trois',

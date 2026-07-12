@@ -93,13 +93,16 @@ export default function MaJourneePage() {
   const [initialTab, setInitialTab] = useState('prep')
   const today = useMemo(() => todayISO(), [])
 
-  // Le rôle Technicien ne reçoit déjà que SES interventions (scope serveur).
+  // VX88 — « Ma tournée » (FG73) : les interventions du jour du technicien
+  // ordonnées géographiquement (plus proche voisin), déjà scopées à lui côté
+  // serveur, avec un lien Itinéraire (`itineraire_url`) prêt par arrêt. On
+  // remplace `getInterventions({date_prevue})` (ordre priorité-puis-insertion,
+  // sans sens géographique) par cet endpoint déjà construit et testé.
   const load = useCallback(() => installationsApi
-    .getInterventions({ date_prevue: today })
+    .getMaTournee(today)
     .then((r) => {
-      const all = r.data?.results ?? r.data ?? []
-      // Filtre défensif : aujourd'hui uniquement (l'API peut ignorer le filtre).
-      setRows(all.filter((i) => (i.date_prevue || '').slice(0, 10) === today))
+      // Réponse : { date, stops: [ {...intervention, itineraire_url} ] }.
+      setRows(r.data?.stops ?? [])
     })
     .catch(() => setRows([]))
     .finally(() => setLoading(false)), [today])
@@ -149,7 +152,10 @@ export default function MaJourneePage() {
         <ol className="flex flex-col gap-2">
           {rows.map((interv, i) => {
             const tel = telHref(interv.contact_site_telephone)
-            const maps = mapsHref(interv)
+            // VX88 — un seul lien maps : l'itinéraire optimisé de « Ma tournée »
+            // (`itineraire_url`, GPS du chantier) prime ; repli sur mapsHref
+            // (GPS/ville) quand la tournée n'a pas pu le calculer.
+            const maps = interv.itineraire_url || mapsHref(interv)
             return (
               <li key={interv.id}>
                 <StatusAccentCard
