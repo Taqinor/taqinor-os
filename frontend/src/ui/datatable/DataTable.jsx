@@ -1,4 +1,6 @@
-import { forwardRef, useCallback, useEffect, useMemo, useRef, useState, Fragment } from 'react'
+import {
+  forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, Fragment,
+} from 'react'
 import {
   ArrowUp, ArrowDown, ChevronsUpDown, Search, MoreHorizontal, MoreVertical,
   ChevronRight, Pin, PinOff, EyeOff, Download, ChevronLeft, Inbox, AlertTriangle,
@@ -30,6 +32,67 @@ import { rowsToCSV, exportFileName } from './csv.js'
 import { useDataTable } from './useDataTable.js'
 import { ColumnManager } from './ColumnManager.jsx'
 import { BulkActionBar } from './BulkActionBar.jsx'
+import { usePrefersReducedMotion } from '../../hooks/usePrefersReducedMotion'
+
+// VX135 — AUCUNE liste de l'app n'animait tri/filtre/ajout (téléportation des
+// lignes) : FLIP minimal (First-Last-Invert-Play), zéro dépendance. Mesure
+// `getBoundingClientRect` AVANT/APRÈS via un effet de LAYOUT (avant peinture) :
+// quand l'ORDRE des clés change (tri, filtre), chaque ligne encore présente
+// est réinjectée à son ANCIENNE position (transform, transition coupée) puis
+// relâchée vers sa position finale avec une transition — elle glisse au lieu
+// de téléporter. Plafonné (coût de mesure) et désactivé par le hook
+// reduced-motion (le garde CSS global ne peut pas neutraliser un transform
+// posé impérativement en JS).
+const ROW_FLIP_MAX_ROWS = 200
+
+function useRowFlip(rowKeys, disabled) {
+  const nodeMap = useRef(new Map())
+  const prevTops = useRef(new Map())
+  const prevOrderKey = useRef(null)
+
+  const registerRow = useCallback((key) => (el) => {
+    if (el) nodeMap.current.set(key, el)
+    else nodeMap.current.delete(key)
+  }, [])
+
+  useLayoutEffect(() => {
+    if (disabled || rowKeys.length === 0 || rowKeys.length > ROW_FLIP_MAX_ROWS) {
+      prevTops.current = new Map()
+      prevOrderKey.current = null
+      return
+    }
+    const orderKey = rowKeys.join(String.fromCharCode(31))
+    const nextTops = new Map()
+    for (const key of rowKeys) {
+      const el = nodeMap.current.get(key)
+      if (el) nextTops.set(key, el.getBoundingClientRect().top)
+    }
+    if (prevOrderKey.current !== null && prevOrderKey.current !== orderKey) {
+      for (const [key, prevTop] of prevTops.current) {
+        const nextTop = nextTops.get(key)
+        if (nextTop == null) continue
+        const delta = prevTop - nextTop
+        if (Math.abs(delta) < 1) continue
+        const el = nodeMap.current.get(key)
+        if (!el) continue
+        // Invert : replace la ligne à son ancienne position, sans transition.
+        el.style.transition = 'none'
+        el.style.transform = `translateY(${delta}px)`
+        // Force un reflow pour que le navigateur applique l'état de départ
+        // avant qu'on n'engage la transition vers l'état final (sinon les
+        // deux changements de style sont regroupés en une seule frame).
+        el.offsetHeight
+        // Play : relâche vers la position finale, transitionnée.
+        el.style.transition = 'transform var(--motion-base) var(--ease-standard)'
+        el.style.transform = ''
+      }
+    }
+    prevTops.current = nextTops
+    prevOrderKey.current = orderKey
+  }, [rowKeys, disabled])
+
+  return registerRow
+}
 
 /* ============================================================================
    H31/H32/H33 — Moteur de tableau réutilisable (la grille derrière toutes les
@@ -266,6 +329,10 @@ export const DataTable = forwardRef(function DataTable(
     // VX40 — pictogramme solaire illustré au lieu de l'icône Inbox générique,
     // réservé aux écrans les plus vus (opt-in, jamais par défaut).
     emptyIllustrated = false,
+    // VX131(b) — CTA optionnel sur l'état vide (ex. le même bouton « Nouveau »
+    // que la toolbar) : ~207/267 poses d'EmptyState n'en avaient AUCUN, y
+    // compris des listes qui EN ONT un dans leur toolbar.
+    emptyAction = null,
     'aria-label': ariaLabel = 'Tableau de données',
   },
   ref,
@@ -472,6 +539,20 @@ export const DataTable = forwardRef(function DataTable(
     : { startIndex: 0, endIndex: rows.length, paddingTop: 0, paddingBottom: 0 }
   const visibleRows = effectiveVirtualize ? rows.slice(win.startIndex, win.endIndex) : rows
 
+  // VX135 — FLIP minimal des lignes (tri/filtre) : plafonné, désactivé sous
+  // reduced-motion, jamais en mode `renderRow` custom (l'écran maîtrise sa
+  // propre structure de ligne — cf. commentaire ARC49 ci-dessous).
+  const prefersReducedMotion = usePrefersReducedMotion()
+  const rowFlipKeys = useMemo(() => (
+    typeof renderRow === 'function'
+      ? []
+      : visibleRows.map((row, vi) => {
+        const i = (effectiveVirtualize ? win.startIndex : 0) + vi
+        return keyOf(row, pageOffset + i)
+      })
+  ), [visibleRows, effectiveVirtualize, win.startIndex, pageOffset, keyOf, renderRow])
+  const registerRowFlip = useRowFlip(rowFlipKeys, prefersReducedMotion)
+
   // ARC49 — en mode `renderRow`, la ligne custom possède TOUTE sa structure de
   // cellules (sélection/actions/panneaux inclus) : le moteur n'ajoute aucune
   // colonne technique, et les cellules pleine largeur (vide/erreur) couvrent
@@ -599,9 +680,9 @@ export const DataTable = forwardRef(function DataTable(
       {error ? (
         <EmptyState
           icon={AlertTriangle}
+          tone="error"
           title="Erreur de chargement"
           description={typeof error === 'string' ? error : 'Impossible de charger les données.'}
-          className="border-destructive/40"
         />
       ) : (
         <>
@@ -789,6 +870,7 @@ export const DataTable = forwardRef(function DataTable(
                           illustrated={emptyIllustrated}
                           title={emptyTitle}
                           description={emptyDescription}
+                          action={emptyAction}
                           className="m-3 border-0"
                         />
                       </td>
@@ -830,6 +912,7 @@ export const DataTable = forwardRef(function DataTable(
                         return (
                           <Fragment key={rowKey}>
                             <tr
+                              ref={registerRowFlip(rowKey)}
                               role="row"
                               aria-rowindex={pageOffset + i + 1}
                               className={cn(
@@ -988,6 +1071,7 @@ export const DataTable = forwardRef(function DataTable(
                 illustrated={emptyIllustrated}
                 title={emptyTitle}
                 description={emptyDescription}
+                action={emptyAction}
               />
             ) : (
               rows.map((row, i) => {

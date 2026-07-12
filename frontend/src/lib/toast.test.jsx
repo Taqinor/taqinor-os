@@ -12,7 +12,7 @@ vi.mock('../ui/Toaster', () => ({
 
 import {
   toastError, toastSuccess, toastInfo, toastWarning, toastDestructive,
-  DESTRUCTIVE_UNDO_MIN_MS, subscribeAssertiveAnnouncer,
+  toastMilestone, DESTRUCTIVE_UNDO_MIN_MS, subscribeAssertiveAnnouncer,
 } from './toast'
 import { toast } from '../ui/Toaster'
 
@@ -81,5 +81,26 @@ describe('VX130 — toastDestructive : registre destructif à délai prolongé',
     toastDestructive({ message: 'Suppression.', duration: 9000 })
     const lastCall = toast.error.mock.calls.at(-1)
     expect(lastCall[1].duration).toBe(9000)
+  })
+})
+
+// VX155 — un cran au-dessus du succès plat pour les JALONS clients (devis
+// envoyé, facture payée) : icône dédiée (jamais celle, générique, du succès
+// plat) + description réf/client/montant portée par l'appelant.
+describe('VX155 — toastMilestone : un jalon distinct du succès plat', () => {
+  it('appelle toast.success avec une icône dédiée (distincte du succès générique)', () => {
+    toastMilestone('Devis DEV-0001 envoyé par email.', {
+      description: 'Client Bennani · 45 000,00 MAD',
+    })
+    const lastCall = toast.success.mock.calls.at(-1)
+    expect(lastCall[0]).toBe('Devis DEV-0001 envoyé par email.')
+    expect(lastCall[1].icon).toBeTruthy()
+    expect(lastCall[1].description).toBe('Client Bennani · 45 000,00 MAD')
+  })
+
+  it('l’appelant peut surcharger l’icône (ex. <TaqinorMark> depuis un composant JSX)', () => {
+    toastMilestone('Facture réglée.', { icon: 'CUSTOM_ICON' })
+    const lastCall = toast.success.mock.calls.at(-1)
+    expect(lastCall[1].icon).toBe('CUSTOM_ICON')
   })
 })

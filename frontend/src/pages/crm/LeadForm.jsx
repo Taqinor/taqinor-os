@@ -35,7 +35,7 @@ import useKeyboardAwareScroll from '../../hooks/useKeyboardAwareScroll'
 import {
   Button, IconButton, Input, FormSection, FormField, Switch,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
-  ErrorBoundary, RelationCounters,
+  ErrorBoundary, RelationCounters, ScrollProgress,
 } from '../../ui'
 // VX89 — shell externe Escape + focus-trap + bottom-sheet mobile (comme ClientForm).
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
@@ -1195,6 +1195,10 @@ export default function LeadForm({
                 })}
             </nav>
           <div className="modal-body" ref={bodyRef} onScroll={onBodyScroll}>
+            {/* VX136 — formulaire-fleuve (1297+ l.) : barre de progression de
+                scroll native, `scroll(nearest)` suit `.modal-body` (le
+                conteneur qui défile réellement, pas la fenêtre). */}
+            <ScrollProgress />
             <Sec id="contact" title="Contact">
               {dupMatches.length > 0 && (
                 <div className="lead-dup-warning" role="status">

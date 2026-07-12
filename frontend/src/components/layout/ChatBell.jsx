@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import { MessageSquare } from 'lucide-react'
@@ -12,6 +12,16 @@ export default function ChatBell() {
   const dispatch = useDispatch()
   const navigate = useNavigate()
   const total = useSelector(selectUnreadTotal)
+
+  // VX134(d) — le badge changeait de valeur à chaque poll de 30 s SANS AUCUN
+  // signal visuel. Pulse UNIQUEMENT quand le total AUGMENTE (jamais à la
+  // baisse après lecture, jamais quand le poll ne change rien).
+  const prevTotalRef = useRef(total)
+  const [pulsing, setPulsing] = useState(false)
+  useEffect(() => {
+    if (total > prevTotalRef.current) setPulsing(true)
+    prevTotalRef.current = total
+  }, [total])
 
   useEffect(() => {
     const poll = () => {
@@ -35,7 +45,14 @@ export default function ChatBell() {
       onClick={() => navigate('/messages')}
     >
       <MessageSquare size={19} aria-hidden="true" />
-      {total > 0 && <span className="nb-badge">{total > 99 ? '99+' : total}</span>}
+      {total > 0 && (
+        <span
+          className={`nb-badge${pulsing ? ' nb-badge-pulse' : ''}`}
+          onAnimationEnd={() => setPulsing(false)}
+        >
+          {total > 99 ? '99+' : total}
+        </span>
+      )}
     </button>
   )
 }

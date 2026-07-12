@@ -474,6 +474,9 @@ export default function ReceptionsFournisseur() {
         onRowClick={openReception}
         emptyTitle="Aucune réception fournisseur"
         emptyDescription="Créez-en une depuis un bon de commande fournisseur envoyé."
+        emptyAction={bonsRecevables.length > 0
+          ? <Button size="sm" onClick={() => setCreating(true)}><Plus className="size-4" /> Nouvelle réception</Button>
+          : undefined}
         aria-label="Réceptions fournisseur"
       />
 

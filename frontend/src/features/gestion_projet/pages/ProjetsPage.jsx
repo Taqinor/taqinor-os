@@ -118,6 +118,7 @@ export default function ProjetsPage() {
         onRowClick={(p) => navigate(`/projets/${p.id}`)}
         emptyTitle="Aucun projet"
         emptyDescription="Créez votre premier projet pour piloter un chantier."
+        emptyAction={<Button size="sm" onClick={() => setShowForm(true)}><Plus className="size-4" /> Nouveau projet</Button>}
       />
       {showForm && (
         <ProjetFormDialog

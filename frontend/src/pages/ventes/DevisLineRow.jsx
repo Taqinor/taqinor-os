@@ -87,6 +87,14 @@ function DevisLineRowImpl({
           onChange={id => onProduitChange(l._key, id)}
           typeFilter={classifyProduct(l.designation) || undefined}
           onProduitCreated={onProduitCreated}
+          // VX238(c) — choisir un produit avance directement le focus sur la
+          // Qté de CETTE ligne (réutilise data-line-key, VX90) au lieu de
+          // rendre le focus au bouton déclencheur (encore un Tab perdu).
+          onPicked={() => {
+            document
+              .querySelector(`tr[data-line-key="${l._key}"] [data-role="line-qty"]`)
+              ?.focus()
+          }}
         />
         {tarifBadge && (
           <span className="mt-0.5 inline-block rounded bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary">
@@ -109,7 +117,7 @@ function DevisLineRowImpl({
         </td>
       )}
       <td data-label="Qté">
-        <Input type="number" min="0" step="any"
+        <Input type="number" min="0" step="any" data-role="line-qty"
                className="h-[var(--control-h-sm)] ta-right" value={l.quantite}
                onChange={e => onQuantiteChange(l._key, e.target.value)} />
       </td>

@@ -132,6 +132,7 @@ export default function ContratsList() {
       exportName="contrats"
       emptyTitle="Aucun contrat"
       emptyDescription="Aucun contrat ne correspond à ces filtres."
+      emptyAction={<Button size="sm" onClick={() => navigate('/contrats/modeles')}><Plus className="size-4" /> Nouveau contrat</Button>}
       onRowClick={(c) => navigate(`/contrats/${c.id}`)}
     >
       <div className="flex flex-wrap items-center gap-2">

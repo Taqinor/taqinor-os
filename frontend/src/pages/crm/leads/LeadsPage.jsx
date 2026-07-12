@@ -21,6 +21,9 @@ import {
 } from '../../../ui'
 import { errorMessageFrom, toastWithUndo, toastError } from '../../../lib/toast'
 import { useSavedViews } from '../../../hooks/useSavedViews'
+// VX236 — `?equipe=<id>` (lien depuis MesEquipesCard) filtre la liste sur les
+// membres de cette équipe — filtre client-side, aucun endpoint nouveau.
+import { useEquipeMembreIds } from '../../../hooks/useEquipeMembreIds'
 import useDocumentTitle from '../../../hooks/useDocumentTitle'
 import LeadForm from '../LeadForm'
 import ExcelImport from '../../../components/ExcelImport'
@@ -121,10 +124,15 @@ export default function LeadsPage() {
   // la fenêtre transitoire — jamais persistant.
   const deferredFilters = useDeferredValue(filters)
   const isFiltersStale = deferredFilters !== filters
-  const filtered = useMemo(
-    () => filterLeads(leads, deferredFilters, { myUsername: currentUser?.username }),
-    [leads, deferredFilters, currentUser?.username],
-  )
+  // VX236 — `?equipe=<id>` : filtre additif sur les membres de l'équipe
+  // (posé APRÈS filterLeads, jamais une 2e logique de filtre dupliquée).
+  const equipeId = searchParams.get('equipe')
+  const equipeMembreIds = useEquipeMembreIds(equipeId)
+  const filtered = useMemo(() => {
+    const base = filterLeads(leads, deferredFilters, { myUsername: currentUser?.username })
+    if (!equipeId || !equipeMembreIds) return base
+    return base.filter((l) => equipeMembreIds.has(l.owner))
+  }, [leads, deferredFilters, currentUser?.username, equipeId, equipeMembreIds])
 
   // Vues enregistrées nommées (FG11 — useSavedViews hook).
   const { savedViews, saveView, deleteView: deleteSavedView } = useSavedViews(SAVED_VIEWS_KEY)

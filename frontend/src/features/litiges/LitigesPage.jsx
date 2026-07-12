@@ -4,6 +4,7 @@ import {
 } from 'lucide-react'
 import { ListShell, ModuleDashboard } from '../../ui/module'
 import { Button, Badge, Segmented, toast } from '../../ui'
+import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { formatMAD, formatDate } from '../../lib/format'
 import litigesApi from '../../api/litigesApi'
 import {
@@ -49,6 +50,10 @@ export default function LitigesPage() {
 
   const [selected, setSelected] = useState(null)
   const [editing, setEditing] = useState(null)
+  // VX244 — un litige est un DOSSIER LÉGAL : suppression à confirmation
+  // tapée (severity="high"), plus jamais un `window.confirm` natif.
+  const [pendingDelete, setPendingDelete] = useState(null)
+  const [deleting, setDeleting] = useState(false)
 
   const load = () => {
     setLoading(true)
@@ -78,14 +83,18 @@ export default function LitigesPage() {
   const openEditor = (r) => setEditing(r ?? {})
   const closeAll = () => { setSelected(null); setEditing(null) }
 
-  const handleRemove = async (r) => {
-    if (!window.confirm(`Supprimer la réclamation « ${r.objet} » ?`)) return
+  const handleRemove = (r) => setPendingDelete(r)
+
+  const confirmRemove = async () => {
+    if (!pendingDelete) return
+    setDeleting(true)
     try {
-      await litigesApi.remove(r.id)
+      await litigesApi.remove(pendingDelete.id)
       toast.success('Réclamation supprimée.')
+      setPendingDelete(null)
       closeAll()
       load()
-    } catch { toast.error('Suppression impossible.') }
+    } catch { toast.error('Suppression impossible.') } finally { setDeleting(false) }
   }
 
   const stats = useMemo(() => {
@@ -278,8 +287,21 @@ export default function LitigesPage() {
           exportName="litiges-reclamations"
           emptyTitle="Aucune réclamation"
           emptyDescription="Aucune réclamation ne correspond à ces filtres."
+          emptyAction={<Button size="sm" onClick={() => openEditor(null)}><Plus className="size-4" /> Nouvelle réclamation</Button>}
         />
       )}
+
+      <ConfirmDialog
+        open={!!pendingDelete}
+        onOpenChange={(o) => { if (!o) setPendingDelete(null) }}
+        severity="high"
+        title="Suppression définitive"
+        description="Ce dossier (réclamation, échanges, pièces jointes) sera définitivement supprimé. Cette action est irréversible."
+        confirmText={pendingDelete?.objet}
+        confirmLabel="Supprimer définitivement"
+        loading={deleting}
+        onConfirm={confirmRemove}
+      />
     </div>
   )
 }

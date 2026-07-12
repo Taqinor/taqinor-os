@@ -1,6 +1,7 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit'
 import ventesApi from '../../../api/ventesApi'
 import { fetchAllPages } from '../../../utils/fetchAllPages'
+import { createCancellableThunk, dedupeInFlight } from '../../../lib/thunkHelpers'
 
 // VX164 — garde anti-course PAR RESSOURCE sur les `update*/patch*.fulfilled` :
 // deux PATCH rapides du MÊME devis/BC/facture, résolus dans l'ordre INVERSE
@@ -27,14 +28,15 @@ const DEVIS_PAGE_CONCURRENCY = 5
 // VX55 — `signal` natif de createAsyncThunk câblé jusqu'à l'appel axios :
 // `thunk.abort()` (cleanup d'effet au démontage de DevisList) annule les pages
 // en vol au lieu de laisser une réponse tardive écraser l'état après navigation.
-export const fetchDevis = createAsyncThunk('ventes/fetchDevis', async (_, { rejectWithValue, signal }) => {
-  try {
-    const results = await fetchAllPages((page) => ventesApi.getDevis({ page }, { signal }).then((r) => r.data), { concurrency: DEVIS_PAGE_CONCURRENCY })
-    return { results }
-  } catch (err) {
-    return rejectWithValue(err.response?.data ?? err.message)
-  }
-})
+// VX163 — enrobé par `createCancellableThunk` (annulation → `meta.aborted ===
+// true`, propre plutôt qu'un `rejectWithValue`) + dé-duplication en vol (deux
+// montages simultanés de DevisList ne déclenchent qu'UNE seule pagination).
+export const fetchDevis = createCancellableThunk('ventes/fetchDevis', (_, { signal }) =>
+  dedupeInFlight('ventes/fetchDevis', () =>
+    fetchAllPages((page) => ventesApi.getDevis({ page }, { signal }).then((r) => r.data), { concurrency: DEVIS_PAGE_CONCURRENCY })
+      .then((results) => ({ results })),
+  ),
+)
 
 export const createDevis = createAsyncThunk('ventes/createDevis', async (data, { rejectWithValue }) => {
   try {
@@ -190,14 +192,13 @@ export const creerFactureFromBC = createAsyncThunk('ventes/creerFactureFromBC', 
 // VX54 — même bug de troncature silencieuse que fetchDevis : toutes les
 // pages désormais lues, en parallèle borné (les factures n'ont pas le N+1
 // QPERF1 des devis, donc la borne par défaut ~20 s'applique).
-export const fetchFactures = createAsyncThunk('ventes/fetchFactures', async (_, { rejectWithValue }) => {
-  try {
-    const results = await fetchAllPages((page) => ventesApi.getFactures({ page }).then((r) => r.data), { concurrency: 20 })
-    return { results }
-  } catch (err) {
-    return rejectWithValue(err.response?.data ?? err.message)
-  }
-})
+// VX163 — `{signal}` câblé + dé-duplication en vol (même patron que fetchDevis).
+export const fetchFactures = createCancellableThunk('ventes/fetchFactures', (_, { signal }) =>
+  dedupeInFlight('ventes/fetchFactures', () =>
+    fetchAllPages((page) => ventesApi.getFactures({ page }, { signal }).then((r) => r.data), { concurrency: 20 })
+      .then((results) => ({ results })),
+  ),
+)
 
 export const createFacture = createAsyncThunk('ventes/createFacture', async (data, { rejectWithValue }) => {
   try {

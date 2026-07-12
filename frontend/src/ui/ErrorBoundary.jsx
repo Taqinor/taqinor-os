@@ -20,6 +20,9 @@ export class ErrorBoundary extends Component {
   }
 
   componentDidCatch(error, info) {
+    // VX206 — socle local d'observabilité : trace TOUJOURS en console (avant
+    // le monitoring distant, qui peut être no-op sans DSN).
+    console.error('[ErrorBoundary]', error, info?.componentStack)
     if (typeof this.props.onError === 'function') this.props.onError(error, info)
     captureException(error, { componentStack: info?.componentStack })
       .then((eventId) => { if (eventId) this.setState({ eventId }) })

@@ -8,7 +8,11 @@ export function Spinner({ className, label = 'Chargement…', ...props }) {
       aria-label={label}
       viewBox="0 0 24 24"
       fill="none"
-      className={cn('size-4 animate-spin text-current', className)}
+      // VX135 — `motion-safe:` explicite (au lieu de compter seulement sur le
+      // garde global `*` d'index.css) : sous reduced-motion, la classe
+      // n'est même pas émise — repli STATIQUE lisible (le quart d'anneau
+      // plein reste visible, immobile, sans figer à un angle arbitraire).
+      className={cn('size-4 motion-safe:animate-spin text-current', className)}
       {...props}
     >
       <circle cx="12" cy="12" r="9" stroke="currentColor" strokeOpacity="0.25" strokeWidth="3" />

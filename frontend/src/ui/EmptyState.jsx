@@ -35,16 +35,29 @@ function SolarPictogram({ className }) {
   )
 }
 
+// VX131(a) — `tone` calqué sur ErrorBoundary : un ÉCHEC de chargement doit se
+// DISTINGUER visuellement de « rien à afficher » (jusqu'ici identiques — même
+// icône grise neutre quelle que soit la cause). `neutral` = comportement
+// historique inchangé.
+const TONE_STYLES = {
+  neutral: { border: 'border-dashed border-border', iconWrap: 'bg-muted text-muted-foreground' },
+  error: { border: 'border-destructive/40', iconWrap: 'bg-destructive/12 text-destructive' },
+  warning: { border: 'border-warning/40', iconWrap: 'bg-warning/12 text-warning' },
+}
+
 /* G30 — État vide : message + action suivante claire. `icon` = composant lucide
    (ignoré si `illustrated`). `illustrated` = pictogramme solaire SVG à la place
    du cercle d'icône, réservé aux 4-5 écrans les plus vus (règle Asana : le
-   délice mesuré, pas partout). */
-export function EmptyState({ icon, illustrated, title, description, action, className, ...props }) {
+   délice mesuré, pas partout). `tone` (neutral|error|warning, défaut neutral)
+   colore la bordure ET le cercle d'icône — jamais l'icône seule. */
+export function EmptyState({ icon, illustrated, tone = 'neutral', title, description, action, className, ...props }) {
   const Icon = icon
+  const t = TONE_STYLES[tone] || TONE_STYLES.neutral
   return (
     <div
       className={cn(
-        'flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border',
+        'flex flex-col items-center justify-center gap-3 rounded-xl border',
+        t.border,
         'px-6 py-12 text-center',
         className,
       )}
@@ -53,7 +66,7 @@ export function EmptyState({ icon, illustrated, title, description, action, clas
       {illustrated ? (
         <SolarPictogram />
       ) : Icon && (
-        <span className="flex size-11 items-center justify-center rounded-full bg-muted text-muted-foreground">
+        <span className={cn('flex size-11 items-center justify-center rounded-full', t.iconWrap)}>
           <Icon className="size-5" aria-hidden="true" />
         </span>
       )}

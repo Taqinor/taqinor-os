@@ -8,8 +8,9 @@ import {
   Button, Badge, Skeleton, EmptyState, IconButton,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose,
 } from '../ui'
-// VX28 — un seul langage de graphique (kit ui/charts) + un seul PageHeader.
-import { BarArrondie } from '../ui/charts'
+// VX28/VX148 — un seul langage de graphique (kit ui/charts) + un seul
+// PageHeader ; `ChartEmpty` pour le graphe sans donnée (au lieu d'un <p> nu).
+import { BarArrondie, ChartEmpty } from '../ui/charts'
 import { PageHeader } from '../ui/PageHeader'
 import { formatDateTime, formatNumber } from '../lib/format'
 
@@ -30,21 +31,26 @@ const PERIODS = [
   { value: 'mois', label: 'Mois' },
 ]
 
-// Modèle → route de liste (lien retour « au mieux »).
+// VX236 — Journal menait vers des LISTES NUES (le lien ne portait que la
+// route de base, jamais l'objet précis) : chaque entrée devient une FONCTION
+// `(objectId) => path`, réutilisant les deep-links déjà posés par VX79/VX22
+// (`?lead=`/`?devis=`/`?id=`) — jamais une route inventée. Les modèles sans
+// deep-link confirmé (avoir/équipement/produit/admin) retombent sur leur
+// route de liste inchangée (comportement identique à avant).
 const MODEL_ROUTES = {
-  lead: '/crm/leads',
-  client: '/crm',
-  devis: '/ventes/devis',
-  facture: '/ventes/factures',
-  avoir: '/ventes/avoirs',
-  installation: '/chantiers',
-  intervention: '/chantiers',
-  ticket: '/sav',
-  equipement: '/equipements',
-  produit: '/stock',
-  customuser: '/admin/users',
-  role: '/admin/roles',
-  companyprofile: '/parametres',
+  lead: (id) => `/crm/leads?lead=${id}`,
+  client: (id) => `/crm?id=${id}`,
+  devis: (id) => `/ventes/devis?devis=${id}`,
+  facture: (id) => `/ventes/factures?id=${id}`,
+  avoir: () => '/ventes/avoirs',
+  installation: (id) => `/chantiers?id=${id}`,
+  intervention: (id) => `/chantiers?id=${id}`,
+  ticket: (id) => `/sav?id=${id}`,
+  equipement: () => '/equipements',
+  produit: () => '/stock',
+  customuser: () => '/admin/users',
+  role: () => '/admin/roles',
+  companyprofile: () => '/parametres',
 }
 
 const todayISO = () => {
@@ -405,9 +411,7 @@ export default function Journal() {
               {loading && !stats ? (
                 <Skeleton className="h-48 w-full" />
               ) : !hasChartData ? (
-                <p className="py-8 text-center text-sm text-muted-foreground">
-                  Aucune activité sur cette période.
-                </p>
+                <ChartEmpty title="Aucune activité" description="Aucune activité sur cette période." />
               ) : (
                 <BarArrondie
                   data={chartData}
@@ -448,7 +452,11 @@ export default function Journal() {
                     <tr><td colSpan={6} className="px-4 py-10 text-center text-sm text-muted-foreground">Aucune entrée pour ces filtres.</td></tr>
                   ) : (
                     entries.map((e) => {
-                      const route = MODEL_ROUTES[e.model]
+                      // VX236 — MODEL_ROUTES est désormais `(objectId) => path` :
+                      // le lien pointe sur CET enregistrement précis quand un
+                      // deep-link existe, jamais seulement la liste nue.
+                      const routeFn = MODEL_ROUTES[e.model]
+                      const route = routeFn && e.object_id ? routeFn(e.object_id) : null
                       // YHARD3 — content_type "app_label.model" (`module` sert
                       // en fait l'app_label côté serializer, cf. auditApi).
                       const contentType = e.module && e.model ? `${e.module}.${e.model}` : null
@@ -461,7 +469,7 @@ export default function Journal() {
                           <td className="px-4 py-2.5"><Badge tone="info">{e.action_label}</Badge></td>
                           <td className="px-4 py-2.5">
                             {e.object_repr
-                              ? (route && e.object_id
+                              ? (route
                                   ? <Link to={route} className="text-primary hover:underline">{e.object_repr}</Link>
                                   : <span className="text-foreground">{e.object_repr}</span>)
                               : <span className="text-muted-foreground">—</span>}

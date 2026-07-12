@@ -331,7 +331,7 @@ export default function Composer({
   }
 
   return (
-    <div className="chat-composer border-t border-border p-2">
+    <div className="border-t border-border p-2">
       {/* XKB31 — carte de confirmation/résultat d'une commande /, au-dessus du
           composer tant qu'elle est active (bloque un nouvel envoi tant que non
           résolue, comme le Copilote). */}
@@ -344,21 +344,34 @@ export default function Composer({
       />
 
       {editing && (
-        <div className="chat-composer-editing">
+        <div className="mb-2 flex items-center justify-between gap-2 rounded-md bg-accent/30 px-3 py-1.5 text-xs text-muted-foreground">
           Modification du message
-          <button type="button" onClick={() => { onEditDone?.(); reset() }} aria-label="Annuler la modification">
+          <button
+            type="button"
+            onClick={() => { onEditDone?.(); reset() }}
+            aria-label="Annuler la modification"
+            className="rounded p-0.5 hover:bg-muted hover:text-foreground"
+          >
             <X size={14} aria-hidden="true" />
           </button>
         </div>
       )}
 
       {attachments.length > 0 && (
-        <ul className="chat-composer-atts">
+        <ul className="mb-2 flex flex-wrap gap-1.5">
           {attachments.map((a) => (
-            <li key={a.id}>
-              <Paperclip size={12} aria-hidden="true" /> {a.name}
-              <button type="button" aria-label={`Retirer ${a.name}`}
-                      onClick={() => setAttachments((p) => p.filter((x) => x.id !== a.id))}>
+            <li
+              key={a.id}
+              className="flex max-w-[12rem] items-center gap-1.5 rounded-full border border-border bg-muted/50 px-2.5 py-1 text-xs"
+            >
+              <Paperclip size={12} className="shrink-0 text-muted-foreground" aria-hidden="true" />
+              <span className="truncate">{a.name}</span>
+              <button
+                type="button"
+                aria-label={`Retirer ${a.name}`}
+                onClick={() => setAttachments((p) => p.filter((x) => x.id !== a.id))}
+                className="shrink-0 rounded-full p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
                 <X size={12} aria-hidden="true" />
               </button>
             </li>
@@ -366,21 +379,20 @@ export default function Composer({
         </ul>
       )}
 
-      <div className="chat-composer-row flex items-end gap-2">
+      <div className="flex items-end gap-2">
         <FileUpload
           accept="image/*,application/pdf"
           multiple
           onFiles={uploadFiles}
-          className="chat-composer-attach"
           aria-label="Joindre un fichier"
         >
           <Paperclip size={18} aria-hidden="true" />
         </FileUpload>
 
-        <div className="chat-composer-field relative flex-1">
+        <div className="relative flex-1">
           <textarea
             ref={taRef}
-            className="chat-composer-input w-full resize-none rounded-md border border-input bg-card px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="w-full resize-none rounded-md border border-input bg-card px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             value={text}
             onChange={onChange}
             onKeyDown={onKeyDown}

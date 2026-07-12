@@ -22,7 +22,7 @@ import {
 // fournit pas de primitive Pie) ; l'aire CA et les barres top-produits passent
 // au kit.
 import {
-  AreaSansAxe, BarArrondie, ChartTooltip,
+  AreaSansAxe, BarArrondie, ChartTooltip, ChartEmpty,
   CHART_TOKENS, CHART_GRID_STYLE, CHART_COMPARISON_STYLE, categoricalColor,
   animationDuration, CHART_ANIM_EASING,
 } from '../ui/charts'
@@ -43,16 +43,6 @@ const dhCompact = (v) => {
     maximumFractionDigits: 1,
   }).format(n)
   return `${body} DH`
-}
-
-// VX28 — le camembert « Répartition des factures » reste en recharts natif
-// (aucune primitive Pie dans le kit) ; il garde son style d'infobulle tokenisé.
-const CHART_TOOLTIP_STYLE = {
-  borderRadius: 8,
-  fontSize: 12,
-  background: 'var(--color-popover)',
-  border: '1px solid var(--color-border)',
-  color: 'var(--color-popover-foreground)',
 }
 
 // ── Barre de conversion (J146 — composant Progress partagé) ──────────────────
@@ -342,11 +332,10 @@ export function Component() {
           </CardHeader>
           <CardContent>
             {caVide ? (
-              <EmptyState
+              <ChartEmpty
                 icon={BarChart3}
                 title="Aucune facture payée"
                 description="Aucune facture payée sur la période sélectionnée."
-                className="border-0 py-8"
               />
             ) : caCompare && caCompareAvailable ? (
               <>
@@ -426,11 +415,10 @@ export function Component() {
           <CardHeader><CardTitle>Top 5 produits vendus (quantité)</CardTitle></CardHeader>
           <CardContent>
             {top_produits.length === 0 ? (
-              <EmptyState
+              <ChartEmpty
                 icon={Package}
                 title="Aucune vente"
                 description="Aucune vente enregistrée."
-                className="border-0 py-8"
               />
             ) : (
               <BarArrondie
@@ -456,7 +444,7 @@ export function Component() {
           <CardHeader><CardTitle>Répartition des factures</CardTitle></CardHeader>
           <CardContent>
             {statuts_factures.length === 0 ? (
-              <EmptyState icon={BarChart3} title="Aucune facture" className="border-0 py-8" />
+              <ChartEmpty icon={BarChart3} title="Aucune facture" />
             ) : (
               <ResponsiveContainer width="100%" height={200}>
                 <PieChart>
@@ -471,10 +459,7 @@ export function Component() {
                       <Cell key={i} fill={entry.color} />
                     ))}
                   </Pie>
-                  <Tooltip
-                    formatter={(v, n) => [formatNumber(v), n]}
-                    contentStyle={CHART_TOOLTIP_STYLE}
-                  />
+                  <Tooltip content={<ChartTooltip format={(v) => formatNumber(v)} />} />
                   <Legend iconType="circle" iconSize={10} wrapperStyle={{ fontSize: 12 }} />
                 </PieChart>
               </ResponsiveContainer>
