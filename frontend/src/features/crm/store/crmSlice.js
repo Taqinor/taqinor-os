@@ -131,6 +131,11 @@ const crmSlice = createSlice({
     leads: [],
     leadsLoading: false,
     loading: false,
+    // VX165 — compteur de sondages EN VOL partagés sur `state.loading`
+    // (`loading` reste dérivé de ce compteur — rétrocompatible avec les
+    // sélecteurs existants) : le premier résolu n'éteint plus le spinner
+    // pendant qu'une requête sœur charge encore.
+    pendingCount: 0,
     error: null,
     selectedClient: null,
     // VX164 — requestId (RTK) de la DERNIÈRE update dispatchée, par id — deux
@@ -152,13 +157,26 @@ const crmSlice = createSlice({
     },
   },
   extraReducers: (builder) => {
-    const pending = (state) => { state.loading = true; state.error = null }
-    const rejected = (state, action) => { state.loading = false; state.error = action.payload }
+    // VX165 — voir `pendingCount` ci-dessus : `pending` incrémente,
+    // `settleLoading` (fulfilled/rejected) décrémente et redérive `loading`.
+    const pending = (state) => {
+      state.pendingCount = (state.pendingCount || 0) + 1
+      state.loading = true
+      state.error = null
+    }
+    const settleLoading = (state) => {
+      state.pendingCount = Math.max(0, (state.pendingCount || 0) - 1)
+      state.loading = state.pendingCount > 0
+    }
+    const rejected = (state, action) => {
+      settleLoading(state)
+      state.error = action.payload
+    }
 
     builder
       .addCase(fetchClients.pending, pending)
       .addCase(fetchClients.fulfilled, (state, action) => {
-        state.loading = false
+        settleLoading(state)
         state.clients = action.payload.results ?? action.payload
       })
       .addCase(fetchClients.rejected, rejected)

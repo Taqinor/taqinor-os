@@ -188,6 +188,11 @@ const stockSlice = createSlice({
     fournisseurs: [],
     mouvements: [],
     loading: false,
+    // VX165 — compteur de sondages EN VOL partagés par `fetchProduits`/
+    // `fetchMouvements` (`loading` reste dérivé — rétrocompatible avec les
+    // sélecteurs existants) : le premier résolu n'éteint plus le spinner
+    // pendant qu'une requête sœur charge encore.
+    pendingCount: 0,
     error: null,
     selectedProduit: null,
     // VX164 — requestId (RTK) de la DERNIÈRE update dispatchée, par id — une
@@ -202,14 +207,27 @@ const stockSlice = createSlice({
     clearError(state) { state.error = null },
   },
   extraReducers: (builder) => {
-    const pending = (state) => { state.loading = true; state.error = null }
-    const rejected = (state, action) => { state.loading = false; state.error = action.payload }
+    // VX165 — voir `pendingCount` ci-dessus : `pending` incrémente,
+    // `settleLoading` (fulfilled/rejected) décrémente et redérive `loading`.
+    const pending = (state) => {
+      state.pendingCount = (state.pendingCount || 0) + 1
+      state.loading = true
+      state.error = null
+    }
+    const settleLoading = (state) => {
+      state.pendingCount = Math.max(0, (state.pendingCount || 0) - 1)
+      state.loading = state.pendingCount > 0
+    }
+    const rejected = (state, action) => {
+      settleLoading(state)
+      state.error = action.payload
+    }
 
     builder
       // Produits
       .addCase(fetchProduits.pending, pending)
       .addCase(fetchProduits.fulfilled, (state, action) => {
-        state.loading = false
+        settleLoading(state)
         state.produits = action.payload.results ?? action.payload
       })
       .addCase(fetchProduits.rejected, rejected)
@@ -290,7 +308,7 @@ const stockSlice = createSlice({
       // Mouvements
       .addCase(fetchMouvements.pending, pending)
       .addCase(fetchMouvements.fulfilled, (state, action) => {
-        state.loading = false
+        settleLoading(state)
         state.mouvements = action.payload.results ?? action.payload
       })
       .addCase(fetchMouvements.rejected, rejected)

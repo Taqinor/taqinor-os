@@ -306,6 +306,11 @@ const ventesSlice = createSlice({
     bonsCommande: [],
     factures: [],
     loading: false,
+    // VX165 — compteur de sondages EN VOL partagés par `fetchDevis`/
+    // `fetchBonsCommande`/`fetchFactures` : `loading` reste dérivé de ce
+    // compteur (rétrocompatible avec les sélecteurs existants), mais
+    // n'éteint plus tant qu'une requête sœur charge encore.
+    pendingCount: 0,
     error: null,
     pdfLoading: false,
     // VX164 — requestId (RTK) de la DERNIÈRE update/patch dispatchée, par id
@@ -318,14 +323,29 @@ const ventesSlice = createSlice({
     clearError(state) { state.error = null },
   },
   extraReducers: (builder) => {
-    const pending = (state) => { state.loading = true; state.error = null }
-    const rejected = (state, action) => { state.loading = false; state.error = action.payload }
+    // VX165 — `pending` incrémente le compteur PARTAGÉ ; `settleLoading`
+    // (appelé par CHAQUE fulfilled/rejected sœur) le décrémente et redérive
+    // `loading` — le premier résolu n'éteint plus le spinner pendant que
+    // `fetchDevis`/`fetchBonsCommande`/`fetchFactures` sœurs chargent encore.
+    const pending = (state) => {
+      state.pendingCount = (state.pendingCount || 0) + 1
+      state.loading = true
+      state.error = null
+    }
+    const settleLoading = (state) => {
+      state.pendingCount = Math.max(0, (state.pendingCount || 0) - 1)
+      state.loading = state.pendingCount > 0
+    }
+    const rejected = (state, action) => {
+      settleLoading(state)
+      state.error = action.payload
+    }
 
     builder
       // Devis
       .addCase(fetchDevis.pending, pending)
       .addCase(fetchDevis.fulfilled, (state, action) => {
-        state.loading = false
+        settleLoading(state)
         state.devis = action.payload.results ?? action.payload
       })
       .addCase(fetchDevis.rejected, rejected)
@@ -356,7 +376,7 @@ const ventesSlice = createSlice({
       // Bons de commande
       .addCase(fetchBonsCommande.pending, pending)
       .addCase(fetchBonsCommande.fulfilled, (state, action) => {
-        state.loading = false
+        settleLoading(state)
         state.bonsCommande = action.payload.results ?? action.payload
       })
       .addCase(fetchBonsCommande.rejected, rejected)
@@ -397,7 +417,7 @@ const ventesSlice = createSlice({
       // Factures
       .addCase(fetchFactures.pending, pending)
       .addCase(fetchFactures.fulfilled, (state, action) => {
-        state.loading = false
+        settleLoading(state)
         state.factures = action.payload.results ?? action.payload
       })
       .addCase(fetchFactures.rejected, rejected)
