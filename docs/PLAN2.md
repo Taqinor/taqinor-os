@@ -74,6 +74,7 @@ the journey the best in the world for the CLIENT and the COMMERCIAL user.*
 
 #### DONE LOG — Vague 3 (frontend/brand lane) (2026-07-12)
 
+- VX125 — already present: `docs/design-density-budget.md` (plafond 3 signaux ambiants, jamais 2 redisant le même chiffre, critère de retrait `<BetaBadge>`) already existed and is already referenced from `docs/CODEMAP.md §4` and commented in `design/tokens.css:13-17` — checkbox had simply never been ticked.
 - VX156 — `lib/voice.js` + `<WelcomeMoment>` already existed (welcome moment wired in `main.jsx`) but the other 5 voice moments were never posed on a real screen. Wired `voice.devisSent` (DevisList email-send toast description), `voice.emptyQueue` (MesActivitesPage empty state, replacing the ad-hoc string), `voice.chantierDone` (InstallationDetail mise-en-service success toast, previously silent), `voice.networkError` (canonical `lib/apiError.js` Network-Error branch, updated its test). `voice.dealSigned` left for VX155 (SigneDialog/DealSignedCelebration territory, `@with VX40`).
 
 #### DONE LOG — Vague 2 (VX terrain/finance/CRM + QX groupe) (2026-07-12)
@@ -878,7 +879,7 @@ grand-verdict — voir NE PAS FAIRE en fin de section pour le détail des kills/
   montre la transition de wght, neutralisée sous reduced-motion. (T3 — S/M, sonnet) (@lane:
   frontend/ui-core)
 
-- [ ] VX125 — **[DECISION] Gouvernance anti-monday : budget de densité de signaux + badge de (@lane: frontend/brand)
+- [x] VX125 (already present) — **[DECISION] Gouvernance anti-monday : budget de densité de signaux + badge de (@lane: frontend/brand)
   maturité de module.** La plainte structurelle n°1 de monday.com 2026 (« density of statuses,
   colors, and columns… overwhelming ») est la trajectoire que VX construit un badge à la fois
   (VX84 cloche, VX86 approbations, VX98 fraîcheur, VX27 KPI) sans qu'aucune tâche ne pose de règle
