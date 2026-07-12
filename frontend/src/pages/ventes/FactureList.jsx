@@ -34,6 +34,9 @@ import { formatMAD, toNumber, normalizeMaPhone, formatDateTime } from '../../lib
 import { useSavedViews } from '../../hooks/useSavedViews'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
 import useDocumentTitle from '../../hooks/useDocumentTitle'
+// VX248 — raccourci d'ACTION sur la facture focalisée (la modale d'édition
+// ouverte — seule vue « fiche » qui existe pour une facture, cf. VX220).
+import { useFocusedRecordShortcuts } from '../../providers/focusedRecordShortcuts'
 import { DataTable } from '../../ui/datatable'
 import { openPdfBlob, openPdfInGesture } from '../../utils/pdfBlob'
 
@@ -955,6 +958,16 @@ export default function FactureList() {
       setPdfGenerating(prev => ({ ...prev, [f.id]: false }))
     }
   }
+
+  // VX248 — « a » génère le PDF de la facture FOCALISÉE (la modale d'édition
+  // ouverte via `?id=` (VX220) ou un clic « Modifier » — `editFacture` est la
+  // seule notion de « fiche » qui existe pour une facture). Absent quand
+  // aucune facture n'est ouverte (liste nue).
+  useFocusedRecordShortcuts(
+    'factureDetail',
+    { a: () => editFacture && handleGenererPdf(editFacture) },
+    !!editFacture,
+  )
 
   const handleTelechargerPdf = async (f) => {
     setPdfDownloading(prev => ({ ...prev, [f.id]: true }))

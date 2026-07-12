@@ -41,6 +41,10 @@ import { formatMAD, normalizeMaPhone } from '../../lib/format'
 // VX224 — même garde « jamais en train de saisir » que les raccourcis
 // globaux (ShortcutsProvider) pour J/K, une seule source de vérité.
 import { isTypingTarget } from '../../providers/shortcuts'
+// VX248 — raccourcis d'ACTION sur la fiche focalisée (a archiver, d
+// déléguer, 1..4 changer d'étape) : registre + câblage partagés avec
+// DevisList.jsx/FactureList.jsx et la cheatsheet « ? ».
+import { useFocusedRecordShortcuts, LEAD_STAGE_SHORTCUTS } from '../../providers/focusedRecordShortcuts'
 
 // Canal posé par défaut sur un lead créé à la main (jamais null) : une visite/
 // un appel direct au showroom. Le webhook du site impose 'site_web' de son côté.
@@ -732,6 +736,35 @@ export default function LeadForm({
     } catch { /* erreur silencieuse */ } finally { setArchiveBusy(false) }
   }
 
+  // VX248 — raccourci « 1..4 » : changement d'étape COMMIS immédiatement
+  // (PATCH), pas juste une valeur de formulaire en attente — la « vélocité
+  // perçue » vient d'une ACTION, pas d'un champ à sauvegarder en plus. Les 4
+  // touches ne couvrent QUE NEW/CONTACTED/QUOTE_SENT/FOLLOW_UP
+  // (LEAD_STAGE_SHORTCUTS) : SIGNED reste exclu à dessein (exige le dialogue
+  // d'acceptation devis+option, cf. handleSubmit) et COLD est un abandon
+  // délibéré, jamais un raccourci à une touche.
+  const quickChangeStage = async (newStage) => {
+    if (!isEdit || fields.stage === newStage) return
+    try {
+      const updated = await dispatch(updateLead({ id: lead.id, data: { stage: newStage } })).unwrap()
+      setLiveLead(updated)
+      const merged = { ...fields, stage: updated.stage ?? newStage }
+      setFields(merged)
+      setCleanFieldsJSON(JSON.stringify(merged))
+      onSaved?.()
+    } catch { /* erreur silencieuse */ }
+  }
+
+  // VX248 — câblage des raccourcis d'ACTION sur CETTE fiche (registre
+  // focusedRecordShortcuts.js, partagé avec la cheatsheet « ? »). Actif
+  // uniquement en édition (archiver/déléguer/changer d'étape n'ont pas de
+  // sens sur un lead pas encore créé).
+  const leadShortcutHandlers = { a: toggleArchive, d: () => jumpTo('pipeline') }
+  LEAD_STAGE_SHORTCUTS.forEach((s) => {
+    leadShortcutHandlers[s.key] = () => quickChangeStage(s.stage)
+  })
+  useFocusedRecordShortcuts('leadForm', leadShortcutHandlers, isEdit)
+
   // VX87 — helper partagé : recharge l'Historique (chatter) sans tout
   // recharger le lead. Consommé par le merge de doublons (déjà existant) et
   // par CallLogPopover après une journalisation d'appel réussie.
@@ -938,12 +971,17 @@ export default function LeadForm({
               </Button>
             )}
             {isEdit && (
+              // VX248 — apprentissage passif : le raccourci s'affiche en
+              // tooltip sur le bouton équivalent (@coord VX129 — même slot
+              // qu'un futur <kbd> visuel ; en attendant, le title reste le
+              // canal d'apprentissage disponible aujourd'hui).
               <Button
                 type="button"
                 size="sm"
                 variant="outline"
                 disabled={archiveBusy}
                 onClick={toggleArchive}
+                title={lead.is_archived ? 'Restaurer (raccourci : A)' : 'Archiver (raccourci : A)'}
               >
                 {lead.is_archived ? 'Restaurer' : 'Archiver'}
               </Button>

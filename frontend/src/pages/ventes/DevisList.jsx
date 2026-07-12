@@ -35,6 +35,9 @@ import { useSavedViews } from '../../hooks/useSavedViews'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
 import { useHasPermission, useCanValiderVente } from '../../hooks/useHasPermission'
 import useDocumentTitle from '../../hooks/useDocumentTitle'
+// VX248 — raccourci d'ACTION sur le devis focalisé (le deep-link ?devis=,
+// même « record focalisé » que la surbrillance de ligne existante).
+import { useFocusedRecordShortcuts } from '../../providers/focusedRecordShortcuts'
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
 import { celebrateDealSigned } from '../../ui/celebrate'
 import { DataTable } from '../../ui/datatable'
@@ -1096,6 +1099,17 @@ export default function DevisList() {
     const hasEtude = !!(d?.etude_params && Object.keys(d.etude_params).length > 0)
     setIncludeEtude(d?.mode_installation === 'industriel' && hasEtude)
   }
+
+  // VX248 — « a » génère le PDF du devis FOCALISÉ (le deep-link ?devis=<pk>
+  // déjà surligné/scrollé — même record que highlightId ci-dessus, jamais un
+  // second concept de « devis actif »). Absent hors deep-link (liste nue) :
+  // aucun devis n'est « focalisé » sans lien profond.
+  const highlightedDevis = highlightId ? devis.find(d => d.id === highlightId) : null
+  useFocusedRecordShortcuts(
+    'devisDetail',
+    { a: () => openPdfModal(highlightedDevis) },
+    !!highlightedDevis,
+  )
 
   // Ouvre la modale PDF pour le lot sélectionné (format partagé).
   const openBatchPdfModal = () => {
