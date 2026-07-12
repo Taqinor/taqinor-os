@@ -713,7 +713,14 @@ def _notify_mentions(body, author, company, content_type=None, object_id=None):
     VX85(b) — passe désormais `link` (même mapping que
     `_ma_file_activity_link`/`targetLink`) : avant ce fix la mention n'était
     cliquable nulle part (absente de toute file), `content_type`/`object_id`
-    sont optionnels pour ne rien casser des appelants sans cible connue."""
+    sont optionnels pour ne rien casser des appelants sans cible connue.
+
+    VX209(b) — émet `ET.CHAT_MENTION` (et non plus `LEAD_ASSIGNED`, qui
+    faisait mentir le libellé ET couplait silencieusement la préférence
+    « lead_assigned » : un utilisateur coupant les notifs d'assignation de
+    lead perdait aussi ses mentions sans le savoir). `notifications.
+    selectors.mentions_non_lues` (VX83, « Ma file ») filtre déjà sur
+    `CHAT_MENTION` — cette émission était le chaînon manquant."""
     mentions = _parse_mentions(body)
     if not mentions:
         return
@@ -729,7 +736,7 @@ def _notify_mentions(body, author, company, content_type=None, object_id=None):
                 if user == author:
                     continue  # pas d'auto-notification
                 notify(
-                    user, ET.LEAD_ASSIGNED,  # réutilise l'event le plus proche
+                    user, ET.CHAT_MENTION,
                     f'{author.username} vous a mentionné',
                     body=body[:200],
                     link=link,

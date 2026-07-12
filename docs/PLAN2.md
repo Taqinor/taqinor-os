@@ -2168,7 +2168,7 @@ comme tâche)
 **Sous-groupe VXD-I — Attention & handoffs (le badge redevient CROYABLE). @after
 VX83-86/99-101 (round 3, non construit) — transcrire chaque @after tel quel.**
 
-- [ ] VX207 — **[BACKEND additif] Une seule vérité de comptage : endpoint canonique (@lane: backend/notify — @after VX83/VX86)
+- [x] VX207 **(already present)** — **[BACKEND additif] Une seule vérité de comptage : endpoint canonique (@lane: backend/notify — @after VX83/VX86)
   `attention-summary`. @after VX83/VX86.** Après VX83/84/86 il existera ≥4 dérivations de
   compteur calculées par des chemins différents (badge cloche = `derivedTotal + feedUnread`
   `NotificationBell.jsx:182`, en-tête Ma file, `useApprobationsCount` VX86, badge sidebar) — rien
@@ -2181,7 +2181,7 @@ VX83-86/99-101 (round 3, non construit) — transcrire chaque @after tel quel.**
   → les 3 surfaces affichent 5 ; aucune dérivation client parallèle restante. (T2 — M, sonnet)
   (@lane: backend/notify — @after VX83/VX86)
 
-- [ ] VX208 — **[BACKEND additif] La cloche cesse d'être une liste plate : sévérité, regroupement (@lane: backend/notify — @with VX14)
+- [x] VX208 **(already present)** — **[BACKEND additif] La cloche cesse d'être une liste plate : sévérité, regroupement (@lane: backend/notify — @with VX14)
   par entité, digest hors badge, et undo. @with VX14 (même fichier — la mise en onglets appartient
   à VX14, cette seed apporte la taxonomie/dédoublonnage/compteurs/undo).** Trois défauts prouvés
   sur la même surface : (a) `EventType` a 42 valeurs sans rang de sévérité ni catégorie — la
@@ -2198,7 +2198,7 @@ VX83-86/99-101 (round 3, non construit) — transcrire chaque @after tel quel.**
   digest n'incrémente pas le badge d'actions ; « Tout lu » puis « Annuler » restaure l'état exact ;
   3 notifs même lien = 1 ligne pliée. (T2 — L, sonnet) (@lane: backend/notify — @with VX14)
 
-- [ ] VX209 — **[BACKEND] `notify()` devient humain : heures calmes, bon event de mention, (@lane: backend/notify)
+- [x] VX209 — **[BACKEND] `notify()` devient humain : heures calmes, bon event de mention, (@lane: backend/notify)
   purge, émetteurs manquants.** Quatre défauts du même moteur : (a) `est_hors_fenetre_silence()`
   (`selectors.py:23`) n'est consulté que par le marketing ET la compta (`compta/services.py:6083`),
   jamais par `notify()` lui-même — un push/email de `sweep_daily` ou d'escalade part à 23 h ou un
@@ -2218,7 +2218,7 @@ VX83-86/99-101 (round 3, non construit) — transcrire chaque @after tel quel.**
   notif lue de 61 j est purgée ; un lot proche péremption émet `STOCK_EXPIRATION_SOON` ; tests.
   (T2 — L, sonnet) (@lane: backend/notify)
 
-- [ ] VX210 — **[BACKEND additif] Le snooze devient un rappel actif, généralisé, et déclenché par (@lane: backend/notify — @after VX85)
+- [x] VX210 **(already present)** — **[BACKEND additif] Le snooze devient un rappel actif, généralisé, et déclenché par (@lane: backend/notify — @after VX85)
   l'événement métier. @after VX85.** VX85 pose `snoozed_until` + exclusion passive sur
   `records.Activity` seulement — rien ne RÉVEILLE l'item ni ne re-notifie à l'échéance. Fix : (a)
   sweep Celery `reveiller_snoozes` — à échéance, l'item revient dans la file ET émet une
@@ -2234,7 +2234,7 @@ VX83-86/99-101 (round 3, non construit) — transcrire chaque @after tel quel.**
   ramène ; tests des 2 chemins de sortie. (T2/T3 — M/L, sonnet ; opus si le générique cross-source
   dérape) (@lane: backend/notify — @after VX85)
 
-- [ ] VX211 — **« Ma file » par persona + départage « victoires rapides ». @after VX83.** VX83 (@lane: backend/notify — @after VX83)
+- [x] VX211 **(already present)** — **« Ma file » par persona + départage « victoires rapides ». @after VX83.** VX83 (@lane: backend/notify — @after VX83)
   construit UNE union triée par urgence globale, identique pour tous — or
   commercial/comptable/technicien/directeur ont des priorités radicalement différentes. Fix
   frontend : `queueViewForRole(role)` (rôle déjà dans le store, `MesActivitesPage.jsx:66`) posant
@@ -2250,7 +2250,7 @@ VX83-86/99-101 (round 3, non construit) — transcrire chaque @after tel quel.**
   le tri par défaut reste inchangé sinon ; STAGES.py importé pour toute clé de stage. (T2 — M,
   sonnet) (@lane: backend/notify — @after VX83)
 
-- [ ] VX212 — **[BACKEND additif léger] Transparence « pourquoi je reçois ça » + contexte (@lane: backend/notify — @after VX99/VX100)
+- [x] VX212 **(already present)** — **[BACKEND additif léger] Transparence « pourquoi je reçois ça » + contexte (@lane: backend/notify — @after VX99/VX100)
   décisionnel dans l'email d'approbation. @after VX99/VX100.** `resolve_recipients`
   (`services.py:275`) applique des règles invisibles — des notifs « pourquoi moi ? » qu'on ne peut
   couper qu'en fouillant la grille des 42 événements ; et l'email de demande d'approbation
@@ -2289,7 +2289,7 @@ droite)**
   nouveau ; décider une DA → le demandeur notifié ; une DA soumise > seuil relance les
   approbateurs ; tests des transitions. (T1 — M, sonnet) (@lane: backend/notify — @after VX99)
 
-- [ ] VX214 — **[BACKEND additif] [RESHAPÉE — grand-verdict] Les kinds d'EXÉCUTION entrent dans (@lane: backend/notify — @after VX83)
+- [x] VX214 **(already present)** — **[BACKEND additif] [RESHAPÉE — grand-verdict] Les kinds d'EXÉCUTION entrent dans (@lane: backend/notify — @after VX83)
   « Ma file » (jamais une 2ᵉ boîte). @after VX83.** `MesActivitesPage` n'agrège que
   `records.Activity` et `ApprobationsPage` que les approbations — un chantier assigné, une
   intervention à faire, une DA approuvée à commander, un ticket transféré n'apparaissent dans
@@ -2307,7 +2307,7 @@ droite)**
   écran parallèle créé. (T3 — L, opus : agrégateur cross-app = jugement frontières) (@lane:
   backend/notify — @after VX83)
 
-- [ ] VX215 — **Boucle de retour « pris en charge » : l'émetteur sait que le ballon est (@lane: backend/notify)
+- [x] VX215 — **Boucle de retour « pris en charge » : l'émetteur sait que le ballon est (@lane: backend/notify)
   attrapé.** Grep `accuser|prise en charge|acknowledge|seenBy` = 0 hit métier — le système est
   100 % push unidirectionnel. Fix frontend-first : version minimale = afficher l'état `read` déjà
   persisté de la notification liée là où l'action a été initiée (ex. « avis lu par le directeur »
@@ -2335,7 +2335,7 @@ droite)**
   Devis : B · Chantier : C · SAV : D » cliquable ; tests de rendu. (T2 — M, sonnet) (@lane:
   backend/notify)
 
-- [ ] VX217 — **La cloche finit le travail : aperçu sans naviguer, actions par entité, (@lane: backend/notify — @after VX208)
+- [x] VX217 **(already present)** — **La cloche finit le travail : aperçu sans naviguer, actions par entité, (@lane: backend/notify — @after VX208)
   bottom-sheet mobile. @after VX208.** Trois compléments du même organe : (a) chaque item de
   cloche/file est un cul-de-sac de navigation (`NotificationBell.jsx:272-275`, `goto(n.link)`) —
   traiter 8 relances = 8 allers-retours d'écran ; (b) les actions sont 100 % unitaires ; (c)
@@ -2798,7 +2798,7 @@ droite)**
 
 **Sous-groupe VXD-Q — Interop & onboarding→maîtrise**
 
-- [ ] VX245 — **[BACKEND] Le cycle client sortant se boucle : `.ics` d'événement unique, (@lane: backend/notify — @coord VX116/VX46)
+- [x] VX245 **(already present)** — **[BACKEND] Le cycle client sortant se boucle : `.ics` d'événement unique, (@lane: backend/notify — @coord VX116/VX46)
   confirmation WhatsApp de RDV, relance de facture riche. @coord VX116, VX46 (re-surface
   l'ABONNEMENT — distinct).** Trois maillons du même canal : (a) `AppointmentBooker.jsx` crée un
   RDV sans JAMAIS produire de `.ics` — le seul générateur (`reporting/calendar.py:366-392`,
@@ -3211,6 +3211,26 @@ droite)**
 ---
 
 ## DONE LOG (agent appends one plain-language line per completed task)
+
+- 2026-07-12 — **VX215 — boucle de retour « pris en charge » sur « Contacter mon supérieur ».** `[BACKEND minime]` nouvelle action lecture seule `GET /api/django/ventes/devis/<id>/superior-contact-status/` (`apps/ventes/views/devis.py`, `permission_classes=[IsAnyRole]`) déléguant à un nouveau sélecteur cross-app `notifications.selectors.superior_contact_status(company, link)` — relit les `Notification` déjà créées par `contacter_superieur` (même société + même `link`) et renvoie `{requested, seen, seen_by}` SANS jamais exposer le contenu (titre/corps) des notifications d'autrui, seulement si vues et par qui. Frontend : `ventesApi.superiorContactStatus`, `DevisList.jsx` affiche « Avis demandé — en attente » puis « Pris en charge par {nom} » sur la ligne du devis dès que le supérieur ouvre sa notification (sondage léger via le hook partagé `useVisibilityAwarePolling` — VX56 —, actif UNIQUEMENT tant qu'une demande reste non vue, jamais après). Tests : `apps/ventes/tests/test_vx215_superieur_contact_status.py` (backend, 5 cas dont l'isolation multi-société et la non-fuite entre devis) + `DevisListVX215SuperieurStatus.test.mjs` (source-grep, 6 cas — pas de node_modules dans cette lane). Files : `apps/ventes/views/devis.py`, `apps/notifications/selectors.py`, `frontend/src/api/ventesApi.js`, `frontend/src/pages/ventes/DevisList.jsx`.
+
+- 2026-07-12 — **VX209 — `notify()` heures calmes + bonne @mention + purge + 2 events morts émis.** (a) `notify(respect_quiet_hours=True` par défaut) tait désormais email/WhatsApp/push (jamais l'in-app) pour un événement NON-critique quand l'instant tombe dans la fenêtre de silence de la société (`selectors.est_hors_fenetre_silence`) — un `INCIDENT_CRITICAL` part toujours. (b) `_notify_mentions` (`apps/records/views.py`) émet enfin `CHAT_MENTION` au lieu de `LEAD_ASSIGNED` — coupait silencieusement les mentions si un utilisateur désactivait `lead_assigned`, et `selectors.mentions_non_lues` (VX83 « Ma file ») filtrait déjà sur `CHAT_MENTION` sans jamais rien trouver. (c) tâche Celery `purge_notifications_anciennes` (nouvelle, planifiée dans `beat_schedule` + routée `scheduled`) : lues > 60 j supprimées, non-lues > 60 j archivées (`Notification.archived`, migration additive `0038`) ; `list()` bornée 90 j + non-archivées (les autres actions — détail/read/unread/read-all — restent sur la queryset complète). (d) `SAV_ACTIVITE_DUE` (activités `sav.TicketActiviteAFaire` échues non faites) et `STOCK_EXPIRATION_SOON` (lots `stock.LotEntrepot` proches péremption avec reliquat) sont désormais réellement émis par `sweep_daily` ; warranty/maintenance routent vers le technicien responsable du chantier quand il existe (repli managers inchangé). Corrigé 3 tests existants rendus flaky par le nouveau défaut heures-calmes (QW8/VX76/YEVNT5 — événements non-critiques testés sans horloge figée) en gelant l'horloge sur un jour ouvré en journée. Files : `apps/notifications/{models,services,sweeps,views}.py` + migration `0038_vx209_notification_archived.py`, `apps/records/views.py`, `erp_agentique/celery.py`, `erp_agentique/settings/base.py`, nouveau `apps/notifications/tests_vx209_notify_humain.py` + tests ajoutés dans `apps/records/tests.py`.
+
+- 2026-07-12 — **VX245 (already present)** — verified: `build_ics` extracted as pure function (`apps/reporting/calendar.py:366`), `GET /crm/appointments/<id>/ics/` endpoint referenced in `apps/crm/services.py:2529`, WhatsApp confirmation + invoice-reminder message service present; commit `94060cca` on main. Ticked, no rebuild.
+
+- 2026-07-12 — **VX217 (already present)** — verified: `frontend/src/features/queue/AttentionPeek.jsx` (+ test) wired into `NotificationBell.jsx` and `MesActivitesPage.jsx` (hover/tap-and-hold peek), grouped "Tout marquer lu (n)" action, `.nb-panel` mobile responsiveness; commit `a2c18fbb` on main. Ticked, no rebuild.
+
+- 2026-07-12 — **VX214 (already present)** — verified: `apps/records/views.py` `ma-file/` extended with execution kinds (`chantier_assigne`/`intervention_du_jour`/`da_approuvee_a_commander`/`ticket_transfere`) via `installations.selectors.affectations_pour`/`sav.selectors.affectations_pour` (no parallel endpoint/page); `tests_vx214_kinds_execution.py`; commits `3178b30f` + CI fix `956c5b9e` on main. Ticked, no rebuild.
+
+- 2026-07-12 — **VX212 (already present)** — verified: `Notification.reason` field + `NotificationReason` choices (`models.py:240`), `resolve_recipients_reason` (`services.py:304`), reason rendered in serializer + `NotificationBell.jsx`, approval email context; `tests_vx212_pourquoi_je_recois_ca.py`; commit `69bcf900` on main. Ticked, no rebuild.
+
+- 2026-07-12 — **VX211 (already present)** — verified: `frontend/src/features/queue/queueViews.js` (+ `queueViews.test.js`) provides `queueViewForRole` persona ordering, `apps/records/views.py` exposes `effort_estime` per-kind (`_EFFORT_ESTIME_PAR_KIND`) for the "victoires rapides" secondary sort; commit `782b5c92` on main. Ticked, no rebuild.
+
+- 2026-07-12 — **VX210 (already present)** — verified: sweep `reveiller_snoozes` (Celery task, `sweeps.py:553`) wakes both `records.Activity.snoozed_until` and the new `notifications.SnoozedItem` (approvals), `records.Activity.snooze_trigger_event` (closed choices, `records/services.py:181-313`) subscribed via events; `tests_vx210_reveil_snooze.py` covers both exit paths; commit `9eccf915` on main. Ticked, no rebuild.
+
+- 2026-07-12 — **VX208 (already present)** — verified: `apps/notifications/severity.py` (EVENT_SEVERITY/EVENT_CATEGORY dicts), serializer exposure, NotificationBell severity/category grouping + digest-excluded-from-badge + undo-via-mark_unread already shipped with `tests_vx208_severity_taxonomy.py`, commit `5b99b234` on main. Ticked, no rebuild.
+
+- 2026-07-12 — **VX207 (already present)** — verified during backend/notify lane drain: `GET /notifications/attention-summary/` (`views.py:438`, `urls.py:47`) already exists with a dedicated contract test (`tests_vx207_attention_summary.py`), commit `6e80ce75` on main. Ticked, no rebuild.
 
 - 2026-07-11 — **VX152 — fin des moteurs de table parallèles (dernier volet, landé seul).** GED (`GedNavigator`/`GedSearch`), `ClientDetailPanel` et OCR (`OcrUpload`) rejoignent le moteur de table déjà utilisé par leur voisin direct : GedNavigator/GedSearch → moteur `DataTable` partagé (GedNavigator via l'échappatoire `renderRow`/`renderHeaderRow` ARC49 pour préserver le DOM testé ; GedSearch en colonnes), `ClientDetailPanel` → primitif `Table` partagé (fin du 3e moteur maison `DocTable` ; plus aucune `<table>` HTML), OcrUpload → NOUVEAU primitif partagé `ui/KeyValueTable` alimenté par un point de rendu UNIQUE de `FIELD_LABELS` (helper `ocrFieldRows`). + volet `RolesManagement` (liste des rôles → `DataTable`, grille de permissions inchangée). Tests de source `node --test` par surface ; tests comportementaux existants (GedNavigator/GedSearch/OcrUpload) verts par préservation du DOM (cases/actions/testids conservés). Frontend pur, zéro migration. Landé SEUL par cherry-pick sur `main` (les autres commits VX de la branche — VX141/146/147/148 — restent en attente : VX141 introduit `DEVIS_TRACK_STAGES` qui fait échouer `check_stages.py`, à traiter séparément). (ROUTINE)
 

@@ -36,6 +36,7 @@ import { useDelayedLoading } from '../../hooks/useDelayedLoading'
 import { useRotatingLabel } from '../../hooks/useRotatingLabel'
 import { useHasPermission, useCanValiderVente } from '../../hooks/useHasPermission'
 import useDocumentTitle from '../../hooks/useDocumentTitle'
+import useVisibilityAwarePolling from '../../hooks/useVisibilityAwarePolling'
 // VX248 — raccourci d'ACTION sur le devis focalisé (le deep-link ?devis=,
 // même « record focalisé » que la surbrillance de ligne existante).
 import { useFocusedRecordShortcuts } from '../../providers/focusedRecordShortcuts'
@@ -324,7 +325,7 @@ function DevisRow({ d, ctx }) {
     versionChain, effStatutOf,
     navigate, dispatch,
     role, canDelete, canValiderVente, highlightId,
-    deletingId, statutActionId, superieurBusyId, shareBusyId, previewingId,
+    deletingId, statutActionId, superieurBusyId, superieurStatus, shareBusyId, previewingId,
     pdfGenerating, pdfDownloading, pdfSlowPoll, convertingId, chantierBusy, projetBusy, factureGenId,
     openEdit, openVarianteModal, handleDelete, handleEnvoyer, handleRelancer, handleContacterSuperieur,
     openEmailModal, handleCopierLienProposition, copierLienInterne, handlePreview, openPdfModal,
@@ -577,6 +578,24 @@ function DevisRow({ d, ctx }) {
                 ? 'Devis accepté mais BC annulé'
                 : 'Devis accepté sans bon de commande'}
             </span>
+          </div>
+        )}
+        {/* VX215 — boucle de retour « pris en charge » : après « Contacter
+            mon supérieur », le vendeur voit si sa demande a été VUE (sondage
+            léger tant qu'elle ne l'est pas — voir superieurStatus). */}
+        {superieurStatus[d.id]?.requested && (
+          <div
+            data-testid={`superieur-status-${d.id}`}
+            className={`mt-1 flex items-center gap-1 text-xs font-medium ${
+              superieurStatus[d.id].seen ? 'text-success' : 'text-muted-foreground'
+            }`}
+          >
+            {superieurStatus[d.id].seen
+              ? <Check className="size-3 shrink-0" aria-hidden="true" />
+              : null}
+            {superieurStatus[d.id].seen
+              ? `Pris en charge${superieurStatus[d.id].seen_by?.[0] ? ' par ' + superieurStatus[d.id].seen_by[0] : ''}`
+              : 'Avis demandé — en attente'}
           </div>
         )}
       </td>
@@ -1401,11 +1420,34 @@ export default function DevisList() {
   // (in-app + canaux configurés) avec un lien vers ce devis. Manuel, jamais
   // automatique — un clic = une notification.
   const [superieurBusyId, setSuperieurBusyId] = useState(null)
+  // VX215 — boucle de retour « pris en charge » : { [devisId]: { requested,
+  // seen, seen_by } }, sondée (VX56 useVisibilityAwarePolling) tant qu'une
+  // demande reste non vue — jamais de polling une fois « vu ».
+  const [superieurStatus, setSuperieurStatus] = useState({})
+  const refreshSuperieurStatus = async (devisId) => {
+    try {
+      const res = await ventesApi.superiorContactStatus(devisId)
+      setSuperieurStatus((prev) => ({ ...prev, [devisId]: res.data }))
+    } catch {
+      // Best-effort — un sondage manqué n'affiche simplement rien de nouveau.
+    }
+  }
+  const pendingSuperieurIds = useMemo(
+    () => Object.entries(superieurStatus)
+      .filter(([, s]) => s?.requested && !s.seen)
+      .map(([id]) => id),
+    [superieurStatus],
+  )
+  useVisibilityAwarePolling(
+    [{ fn: () => pendingSuperieurIds.forEach(refreshSuperieurStatus), intervalMs: 20000 }],
+    { enabled: pendingSuperieurIds.length > 0 },
+  )
   const handleContacterSuperieur = async (d) => {
     setSuperieurBusyId(d.id)
     try {
       await ventesApi.contacterSuperieur(d.id)
       toast.success('Votre supérieur a été notifié.')
+      refreshSuperieurStatus(d.id)
     } catch (err) {
       toast.error(frenchError(err, 'Notification du supérieur impossible.'))
     } finally {
@@ -1845,7 +1887,7 @@ export default function DevisList() {
     versionChain, effStatutOf,
     navigate, dispatch,
     role, canDelete, canValiderVente, highlightId,
-    deletingId, statutActionId, superieurBusyId, shareBusyId, previewingId,
+    deletingId, statutActionId, superieurBusyId, superieurStatus, shareBusyId, previewingId,
     pdfGenerating, pdfDownloading, pdfSlowPoll, convertingId, chantierBusy, projetBusy, factureGenId,
     openEdit, openVarianteModal, handleDelete, handleEnvoyer, handleRelancer, handleContacterSuperieur,
     openEmailModal, handleCopierLienProposition, copierLienInterne, handlePreview, openPdfModal,

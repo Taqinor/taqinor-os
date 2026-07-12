@@ -9,10 +9,12 @@ Couverture :
     l'envoi (la Notification in-app est quand même créée).
   - company-scoping : l'entrée d'audit porte la société du destinataire.
 """
+import datetime
 from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.utils import timezone
 
 from apps.audit.models import AuditLog
 from authentication.models import Company
@@ -20,6 +22,13 @@ from authentication.models import Company
 from .models import EventType, Notification, NotificationPreference
 
 User = get_user_model()
+
+# VX209(a) — `notify()` respecte désormais les heures calmes par défaut pour
+# les événements non-critiques (`LEAD_ASSIGNED` en fait partie) : ces tests
+# visent la piste d'audit des canaux, pas les heures calmes elles-mêmes — on
+# fige l'horloge sur un mercredi en journée pour rester déterministe quelle
+# que soit l'heure d'exécution de la CI.
+_WEEKDAY_DAYTIME = timezone.make_aware(datetime.datetime(2026, 7, 8, 14, 0))
 
 
 def _make_company(name='AuditNotifCo'):
@@ -53,6 +62,8 @@ class NotifyAuditTrailTests(TestCase):
             user=self.user, company=self.company,
             event_type=EventType.LEAD_ASSIGNED, email=True)
         with mock.patch(
+                'apps.notifications.services.timezone.now',
+                return_value=_WEEKDAY_DAYTIME), mock.patch(
                 'apps.notifications.services._dispatch_email',
                 return_value=True) as mocked:
             notify(self.user, EventType.LEAD_ASSIGNED, 'Titre', body='Corps')
@@ -66,6 +77,8 @@ class NotifyAuditTrailTests(TestCase):
             user=self.user, company=self.company,
             event_type=EventType.LEAD_ASSIGNED, whatsapp=True)
         with mock.patch(
+                'apps.notifications.services.timezone.now',
+                return_value=_WEEKDAY_DAYTIME), mock.patch(
                 'apps.notifications.services._dispatch_whatsapp',
                 return_value=True) as mocked:
             notify(self.user, EventType.LEAD_ASSIGNED, 'Titre', body='Corps')
@@ -79,6 +92,8 @@ class NotifyAuditTrailTests(TestCase):
             user=self.user, company=self.company,
             event_type=EventType.LEAD_ASSIGNED, email=True)
         with mock.patch(
+                'apps.notifications.services.timezone.now',
+                return_value=_WEEKDAY_DAYTIME), mock.patch(
                 'apps.notifications.services._dispatch_email',
                 return_value=False):
             notify(self.user, EventType.LEAD_ASSIGNED, 'Titre', body='Corps')
