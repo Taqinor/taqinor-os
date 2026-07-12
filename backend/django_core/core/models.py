@@ -2375,3 +2375,11 @@ class ProcessedEvent(TimestampedModel):
 
     def __str__(self):
         return f'{self.event_id}->{self.handler_name}'
+
+
+# YDATA12 — ProcessedWebhookEvent est déclaré dans core/idempotency.py (pour
+# éviter l'import circulaire : ce module aurait dû importer TenantModel
+# depuis ICI). Réexporté en TOUT dernier (même pattern que
+# apps/installations/models.py avec ses fichiers models_*.py éclatés) pour
+# que la découverte Django (app_label, migrations) le voie normalement.
+from core.idempotency import ProcessedWebhookEvent  # noqa: E402,F401
