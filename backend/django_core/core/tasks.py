@@ -102,6 +102,22 @@ def beat_heartbeat_task():
     return {'ok': True}
 
 
+@shared_task(name='core.scan_live_isolation')
+def scan_live_isolation_task():
+    """NTPLT8 — scan mensuel DRY-RUN d'étanchéité des DONNÉES vivantes.
+
+    Vérifie sur la base RÉELLE qu'aucune ligne des tables company-scopées n'a un
+    ``company_id`` NULL ou orphelin (société supprimée). Complète YRBAC12 (qui
+    teste le CODE en CI) par un contrôle des DONNÉES en prod. Ne modifie rien ;
+    remonte les anomalies aux admins + audit via le reporteur enregistré."""
+    from . import tenant_isolation_scan
+
+    report = tenant_isolation_scan.scan_live_isolation()
+    logger.info('core.scan_live_isolation: %d anomalie(s) sur %d table(s)',
+                report['anomalies'], report['scanned'])
+    return {'anomalies': report['anomalies'], 'scanned': report['scanned']}
+
+
 @shared_task(name='core.ensure_partitions')
 def ensure_partitions_task():
     """NTPLT36 — maintenance des partitions mensuelles À L'AVANCE.
