@@ -1,6 +1,9 @@
 // Carte lead réutilisable (colonne kanban + aperçu DragOverlay).
-// Présentation pure : aucune mutation, tout vient des props et de stages.js.
-import { useRef, useState } from 'react'
+// Présentation pure : aucune mutation, tout vient des props et de stages.js —
+// SAUF la mini-popover « ✗ Perdu » (VX223), qui suit le même patron que
+// CallLogPopover ci-dessous : un enfant auto-contenu appelle crmApi
+// directement plutôt que de faire remonter une prop de mutation supplémentaire.
+import { useEffect, useRef, useState } from 'react'
 // VX45 — emoji ⚡ fonctionnel remplacé par l'icône lucide (rendu variable
 // selon l'OS avec un emoji brut).
 import { Zap } from 'lucide-react'
@@ -17,10 +20,12 @@ import AssigneePicker from '../../../../components/AssigneePicker'
 import { telHref, waHref } from '../../../../lib/contactLinks'
 // VX122 — finesse française : espace fine insécable devant « : » du tooltip.
 import { nbsp } from '../../../../lib/format'
+import crmApi from '../../../../api/crmApi'
 // VX24 — score de qualité désormais aussi visible sur la carte (ex Liste seule).
 // VX87 — nudge post-appel « Appel terminé — noter le résultat ? ».
 import ScoreBadge from '../../../../features/crm/ScoreBadge'
 import CallLogPopover, { useCallEndedNudge } from '../../../../features/crm/CallLogPopover'
+import { Button, Popover, PopoverTrigger, PopoverContent } from '../../../../ui'
 
 // VX43 — Swipe-to-action horizontal maison (touchstart/move/end, zéro
 // dépendance). Les liens tel:/wa.me existaient déjà mais en texte 12px noyé
@@ -96,6 +101,18 @@ function useSwipeReveal(enabled) {
   }
 }
 
+// VX223 — canal léger « focus au prochain ouvert », posé par le bouton
+// « → Renseigner la facture » ci-dessous SANS ajouter de prop de navigation
+// à travers LeadsPage.jsx/KanbanView.jsx (qui composent déjà `onOpen`) :
+// LeadForm.jsx (même fichier de la tâche) consomme cette clé une fois puis la
+// retire — jamais un focus fantôme sur un futur lead sans rapport.
+const PENDING_FOCUS_KEY = 'taqinor.leadform.pendingFocus'
+function requestFocusSection(leadId, section) {
+  try {
+    sessionStorage.setItem(PENDING_FOCUS_KEY, JSON.stringify({ leadId, section }))
+  } catch { /* best-effort — sessionStorage indisponible (navigation privée…) */ }
+}
+
 const formatDateFr = (iso) =>
   new Date(`${iso}T00:00:00`).toLocaleDateString('fr-FR')
 
@@ -156,6 +173,9 @@ const prochaineAction = (lead) => {
 export default function LeadCard({
   lead, busy = false, onOpen, onAutoQuote, users = [], onReassign,
   selected = false, onToggleSelect, onPlanifierRelance,
+  // VX223 — notifié après un « ✗ Perdu » réussi (optionnel : le kanban se
+  // resynchronise de toute façon à son prochain refetch périodique existant).
+  onChanged,
 }) {
   const perdu = isPerdu(lead)
   const tags = tagList(lead)
@@ -220,6 +240,37 @@ export default function LeadCard({
   // VX87 — nudge post-appel : armé juste avant d'ouvrir tel:, proposé au
   // retour dans l'onglet (visibilitychange).
   const { nudgeVisible, armCallNudge, dismissNudge } = useCallEndedNudge()
+
+  // VX223 — « ✗ Perdu » en 2 clics : (1) ouvrir la mini-popover, (2) choisir
+  // un motif (datalist des motifs gérés, texte libre toléré) → confirmer, UNE
+  // seule requête PATCH `perdu`+`motif_perte` (jamais deux, jamais le
+  // formulaire complet). Motifs chargés paresseusement à la PREMIÈRE ouverture
+  // (jamais à chaque montage de carte — un kanban a des dizaines de cartes).
+  const [perduOpen, setPerduOpen] = useState(false)
+  const [perduMotif, setPerduMotif] = useState('')
+  const [perduBusy, setPerduBusy] = useState(false)
+  const [motifsPerte, setMotifsPerte] = useState(null) // null = pas encore chargés
+  useEffect(() => {
+    if (!perduOpen || motifsPerte !== null) return
+    crmApi.getMotifsPerte()
+      .then((r) => setMotifsPerte(((r.data?.results ?? r.data) || []).filter((m) => !m.archived)))
+      .catch(() => setMotifsPerte([]))
+  }, [perduOpen, motifsPerte])
+  const confirmPerdu = async () => {
+    const motif = perduMotif.trim()
+    if (!motif) return
+    setPerduBusy(true)
+    try {
+      await crmApi.updateLead(lead.id, { perdu: true, motif_perte: motif })
+      setPerduOpen(false)
+      setPerduMotif('')
+      onChanged?.()
+    } catch {
+      // best-effort — la carte se resynchronise au prochain refetch du kanban
+    } finally {
+      setPerduBusy(false)
+    }
+  }
 
   return (
     <div className="kb-swipe-wrap" style={{ position: 'relative' }}>
@@ -300,6 +351,69 @@ export default function LeadCard({
           <span className={alertePill.className} title={alertePill.title}>
             {alertePill.label}
           </span>
+        )}
+        {/* VX223 — « ✗ Perdu » en 2 clics : mini-popover motif, jamais besoin
+            d'ouvrir la fiche pour ce geste quotidien. Absent si déjà perdu. */}
+        {!perdu && (
+          <Popover
+            open={perduOpen}
+            onOpenChange={(v) => { setPerduOpen(v); if (!v) setPerduMotif('') }}
+          >
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                className="kb-mark-perdu"
+                title="Marquer perdu"
+                aria-label={`Marquer ${nomComplet} comme perdu`}
+                onPointerDown={(e) => e.stopPropagation()}
+                onTouchStart={(e) => e.stopPropagation()}
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                  width: '20px', height: '20px', border: 'none', background: 'transparent',
+                  color: 'var(--muted-foreground)', cursor: 'pointer', fontSize: '13px',
+                  lineHeight: 1, padding: 0,
+                }}
+              >
+                ✗
+              </button>
+            </PopoverTrigger>
+            <PopoverContent
+              align="start"
+              onClick={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
+            >
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', minWidth: '220px' }}>
+                <p style={{ fontSize: '13px', fontWeight: 500, margin: 0 }}>Marquer perdu</p>
+                <input
+                  className="form-control"
+                  list={`kb-motifs-${lead.id}`}
+                  placeholder="Motif de perte"
+                  value={perduMotif}
+                  onChange={(e) => setPerduMotif(e.target.value)}
+                  autoFocus
+                />
+                <datalist id={`kb-motifs-${lead.id}`}>
+                  {(motifsPerte ?? []).map((m) => <option key={m.id} value={m.nom} />)}
+                </datalist>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px' }}>
+                  <Button type="button" variant="outline" size="sm" onClick={() => setPerduOpen(false)}>
+                    Annuler
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="destructive"
+                    disabled={!perduMotif.trim() || perduBusy}
+                    loading={perduBusy}
+                    onClick={confirmPerdu}
+                  >
+                    Confirmer
+                  </Button>
+                </div>
+              </div>
+            </PopoverContent>
+          </Popover>
         )}
         <button
           type="button"
@@ -421,13 +535,25 @@ export default function LeadCard({
         </div>
       )}
 
+      {/* VX223 — texte inerte → bouton : ouvre la fiche ET fait défiler
+          jusqu'à la section « Profil énergétique » (champ bloquant du devis
+          auto), au lieu d'obliger à chercher soi-même où renseigner la
+          facture. */}
       {factureManquante && (
-        <div
-          className="kb-card-facture-manquante mt-0.5 text-[11px] text-warning"
-          title="Le devis auto (⚡) est désactivé tant qu'il manque des informations"
+        <button
+          type="button"
+          className="kb-card-facture-manquante mt-0.5 cursor-pointer border-0 bg-transparent p-0 text-left text-[11px] text-warning underline-offset-2 hover:underline"
+          title={factureManquante}
+          onPointerDown={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation()
+            requestFocusSection(lead.id, 'energie')
+            onOpen?.(lead)
+          }}
         >
-          Facture manquante : {factureManquante}
-        </div>
+          → Renseigner la facture
+        </button>
       )}
 
       {action && (

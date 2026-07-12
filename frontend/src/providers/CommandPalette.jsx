@@ -16,7 +16,9 @@ import { Search } from 'lucide-react'
 import {
   Dialog, DialogContent, DialogTitle, DialogDescription,
 } from '../ui/Dialog'
-import { filterActions, readRecentEntities, pushRecentEntity } from './commandActions'
+import {
+  filterActions, filterCreateActions, readRecentEntities, pushRecentEntity,
+} from './commandActions'
 // VX13 — ROUTE/TYPE_LABEL + recherche débouncée mutualisés avec GlobalSearch
 // (barre du haut) : plus aucune table dupliquée (cf. lib/search/entityRoutes.js).
 import { ROUTE, TYPE_LABEL, TYPE_ACCENT, useEntitySearch } from '../lib/search/entityRoutes'
@@ -36,6 +38,9 @@ export function CommandPalette() {
   // ne rien changer au reste du composant.
   const { groups, loading, failed: error } = useEntitySearch(term, { enabled: open })
   const actions = useMemo(() => filterActions(term), [term])
+  // VX220(b) — actions de CRÉATION, section dédiée « Créer » (jamais mélangée
+  // à la navigation « Actions » ci-dessus).
+  const createActions = useMemo(() => filterCreateActions(term), [term])
   // Récents (entités ouvertes via la palette) relus à chaque ouverture — DÉRIVÉS
   // via useMemo, donc aucun setState synchrone dans un effet (règle lint).
   const recent = useMemo(() => (open ? readRecentEntities() : []), [open])
@@ -53,6 +58,15 @@ export function CommandPalette() {
         return { ...a, index }
       })
       secs.push({ key: 'actions', title: 'Actions', kind: 'action', rows })
+    }
+    // VX220(b) — « Créer » — section dédiée, jamais mélangée à « Actions ».
+    if (createActions.length) {
+      const rows = createActions.map((a) => {
+        const index = f.length
+        f.push({ kind: 'create', action: a })
+        return { ...a, index }
+      })
+      secs.push({ key: 'create', title: 'Créer', kind: 'create', rows })
     }
     if (term.length < 2) {
       // « Récents » (entités) à vide.
@@ -76,7 +90,7 @@ export function CommandPalette() {
       }
     }
     return { sections: secs, flat: f }
-  }, [actions, recent, groups, term])
+  }, [actions, createActions, recent, groups, term])
 
   const close = useCallback(() => {
     setOpen(false)
@@ -130,7 +144,7 @@ export function CommandPalette() {
   // Ouvre une cible quelconque de la liste aplatie.
   const activate = useCallback((entry) => {
     if (!entry) return
-    if (entry.kind === 'action') {
+    if (entry.kind === 'action' || entry.kind === 'create') {
       navigate(entry.action.to)
     } else if (entry.kind === 'recent') {
       const make = ROUTE[entry.entity.type]
@@ -214,15 +228,15 @@ export function CommandPalette() {
               <div className="cmdk-group-title">{sec.title}</div>
               {sec.rows.map((r) => {
                 const i = r.index
-                if (sec.kind === 'action') {
+                if (sec.kind === 'action' || sec.kind === 'create') {
                   return (
                     <button
-                      key={`action-${r.id}`}
+                      key={`${sec.kind}-${r.id}`}
                       type="button"
                       className="cmdk-item"
                       data-active={i === activeClamped ? 'true' : 'false'}
                       onMouseMove={() => setActive(i)}
-                      onClick={() => activate({ kind: 'action', action: r })}
+                      onClick={() => activate({ kind: sec.kind, action: r })}
                     >
                       <span className="cmdk-item-label">{r.label}</span>
                       {r.keys && <span className="cmdk-kbd cmdk-item-kbd">{r.keys}</span>}

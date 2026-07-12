@@ -5,7 +5,7 @@ import { Fragment, useEffect, useMemo, useState } from 'react'
 import { MoreHorizontal, PhoneCall, MessageCircle } from 'lucide-react'
 import { useDispatch } from 'react-redux'
 import { useIsAdmin } from '../../../../hooks/useHasPermission'
-import { archiveLead, restoreLead, deleteLead } from '../../../../features/crm/store/crmSlice'
+import { archiveLead, restoreLead, deleteLead, updateLead } from '../../../../features/crm/store/crmSlice'
 import crmApi from '../../../../api/crmApi'
 import { toastWithUndo, toastError } from '../../../../lib/toast'
 import {
@@ -30,6 +30,7 @@ import {
   Button, Checkbox, HelpTip, IconButton, StatusPill,
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
   DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator,
+  Popover, PopoverTrigger, PopoverContent,
 } from '../../../../ui'
 import { formatMAD } from '../../../../lib/format'
 
@@ -144,6 +145,38 @@ export default function ListView({
   // WR9 — fiche « Parcours » (timeline multi-touch + correspondance client).
   const [insightsLead, setInsightsLead] = useState(null)
   const today = todayISO()
+
+  // VX223 — « ✗ Perdu » en 2 clics depuis une ligne : (1) ouvrir la
+  // mini-popover, (2) choisir un motif → confirmer, UNE seule requête PATCH
+  // `perdu`+`motif_perte`. Une seule popover à la fois dans la table (comme le
+  // nudge post-appel ci-dessous) — `perduTarget` porte le lead ciblé.
+  const [perduTarget, setPerduTarget] = useState(null)
+  const [perduMotif, setPerduMotif] = useState('')
+  const [perduBusy, setPerduBusy] = useState(false)
+  const [motifsPerte, setMotifsPerte] = useState(null) // null = pas encore chargés
+  useEffect(() => {
+    if (!perduTarget || motifsPerte !== null) return
+    crmApi.getMotifsPerte()
+      .then((r) => setMotifsPerte(((r.data?.results ?? r.data) || []).filter((m) => !m.archived)))
+      .catch(() => setMotifsPerte([]))
+  }, [perduTarget, motifsPerte])
+  const closePerdu = () => { setPerduTarget(null); setPerduMotif('') }
+  const confirmPerdu = async () => {
+    const motif = perduMotif.trim()
+    if (!motif || !perduTarget) return
+    setPerduBusy(true)
+    try {
+      await dispatch(updateLead({
+        id: perduTarget.id, data: { perdu: true, motif_perte: motif },
+      })).unwrap()
+      onRefetch?.()
+      closePerdu()
+    } catch {
+      toastError('Le lead n’a pas pu être marqué perdu — réessayez.')
+    } finally {
+      setPerduBusy(false)
+    }
+  }
 
   // VX87 — nudge post-appel : armé au tap tel: (mémorise QUEL lead a été
   // appelé, une table n'a qu'un seul nudge visible à la fois — comme un
@@ -467,6 +500,59 @@ export default function ListView({
                   />
                 </td>
                 <td data-label="Actions" onClick={(e) => e.stopPropagation()}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  {/* VX223 — « ✗ Perdu » : action à 2 clics toujours visible sur
+                      la ligne (pas enfouie dans le menu « ⋯ » mobile — le
+                      geste le plus fréquent du quotidien commercial). Absente
+                      si déjà perdu. */}
+                  {!perdu && (
+                    <Popover
+                      open={perduTarget?.id === lead.id}
+                      onOpenChange={(v) => (v ? setPerduTarget(lead) : closePerdu())}
+                    >
+                      <PopoverTrigger asChild>
+                        <IconButton
+                          label="Marquer perdu"
+                          variant="ghost"
+                          size="icon"
+                          className="size-8"
+                        >
+                          ✗
+                        </IconButton>
+                      </PopoverTrigger>
+                      <PopoverContent align="start">
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', minWidth: '220px' }}>
+                          <p style={{ fontSize: '13px', fontWeight: 500, margin: 0 }}>Marquer perdu</p>
+                          <input
+                            className="form-control"
+                            list={`lv-motifs-${lead.id}`}
+                            placeholder="Motif de perte"
+                            value={perduMotif}
+                            onChange={(e) => setPerduMotif(e.target.value)}
+                            autoFocus
+                          />
+                          <datalist id={`lv-motifs-${lead.id}`}>
+                            {(motifsPerte ?? []).map((m) => <option key={m.id} value={m.nom} />)}
+                          </datalist>
+                          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px' }}>
+                            <Button type="button" variant="outline" size="sm" onClick={closePerdu}>
+                              Annuler
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="destructive"
+                              disabled={!perduMotif.trim() || perduBusy}
+                              loading={perduBusy}
+                              onClick={confirmPerdu}
+                            >
+                              Confirmer
+                            </Button>
+                          </div>
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+                  )}
                   {(() => {
                     // Actions de ligne dans l'ordre — partagées entre l'affichage
                     // boutons (desktop) et le menu « ⋯ » (mobile).
@@ -560,6 +646,7 @@ export default function ListView({
                       </div>
                     )
                   })()}
+                  </div>
                 </td>
               </tr>
             )

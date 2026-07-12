@@ -36,6 +36,9 @@ import { useDelayedLoading } from '../../hooks/useDelayedLoading'
 import { useRotatingLabel } from '../../hooks/useRotatingLabel'
 import { useHasPermission, useCanValiderVente } from '../../hooks/useHasPermission'
 import useDocumentTitle from '../../hooks/useDocumentTitle'
+// VX248 — raccourci d'ACTION sur le devis focalisé (le deep-link ?devis=,
+// même « record focalisé » que la surbrillance de ligne existante).
+import { useFocusedRecordShortcuts } from '../../providers/focusedRecordShortcuts'
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
 import { celebrateDealSigned } from '../../ui/celebrate'
 import { DataTable } from '../../ui/datatable'
@@ -1065,7 +1068,13 @@ export default function DevisList() {
     const s = searchParams.get('statut')
     return s && (s === 'tous' || STATUT_DISPLAY[s]) ? s : 'tous'
   })
-  const [query, setQuery] = useState('')
+  // VX250 — deep-link ?q=<texte> pré-règle la recherche (référence/client) au
+  // montage — même convention que ?statut= ci-dessus. Jusqu'ici posé par
+  // LIST_ROUTE.devis (entityRoutes.js, « voir tout » de GlobalSearch/⌘K) et
+  // RelationCounters (fiches 360°) sans jamais être lu : le lien n'atterrissait
+  // que sur la liste NUE. Le filtre `query` existant fait déjà exactement
+  // référence/client (ligne ci-dessous) — aucune nouvelle logique de filtre.
+  const [query, setQuery] = useState(() => searchParams.get('q') ?? '')
   // QX12 — deep-link ?devis=<pk> ouvre/surligne ce devis précis au montage
   // (notifications « Devis accepté »/« Devis expiré » qui pointaient vers une
   // route inexistante /devis/{pk} — le producteur redirige maintenant ici).
@@ -1155,6 +1164,17 @@ export default function DevisList() {
     const hasEtude = !!(d?.etude_params && Object.keys(d.etude_params).length > 0)
     setIncludeEtude(d?.mode_installation === 'industriel' && hasEtude)
   }
+
+  // VX248 — « a » génère le PDF du devis FOCALISÉ (le deep-link ?devis=<pk>
+  // déjà surligné/scrollé — même record que highlightId ci-dessus, jamais un
+  // second concept de « devis actif »). Absent hors deep-link (liste nue) :
+  // aucun devis n'est « focalisé » sans lien profond.
+  const highlightedDevis = highlightId ? devis.find(d => d.id === highlightId) : null
+  useFocusedRecordShortcuts(
+    'devisDetail',
+    { a: () => openPdfModal(highlightedDevis) },
+    !!highlightedDevis,
+  )
 
   // Ouvre la modale PDF pour le lot sélectionné (format partagé).
   const openBatchPdfModal = () => {

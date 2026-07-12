@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Pencil, FileText, Trash2, Upload, Plus, FilePlus } from 'lucide-react'
 import { useIsAdmin } from '../../hooks/useHasPermission'
 import { fetchClients, deleteClient, updateClient } from '../../features/crm/store/crmSlice'
@@ -40,6 +40,7 @@ const TYPE_FILTERS = [
 export default function ClientList() {
   const dispatch = useDispatch()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { clients, loading, error } = useSelector(s => s.crm)
   const isAdmin = useIsAdmin()
   const { confirmDelete } = useConfirmDialog()
@@ -62,6 +63,26 @@ export default function ClientList() {
   }
   // Panneau détail (lecture) : devis / factures / chantiers du client cliqué.
   const [detailClient, setDetailClient] = useState(null)
+  // VX220 — lien profond ?id=<pk> (patron VX79 déjà lu par InstallationsPage.jsx/
+  // TicketsPage.jsx) : la palette de commandes (⌘K) ouvre désormais le CLIENT
+  // exact plutôt que la liste. État DÉRIVÉ (aucun effet) — un id absent des
+  // clients chargés reste simplement sans panneau (jamais une page blanche).
+  const wantedId = searchParams.get('id')
+  const deepClient = useMemo(() => {
+    if (!wantedId) return null
+    return (clients ?? []).find(c => String(c.id) === String(wantedId)) ?? null
+  }, [wantedId, clients])
+  const clearDeepLink = () => {
+    if (searchParams.has('id')) {
+      setSearchParams(prev => {
+        const next = new URLSearchParams(prev)
+        next.delete('id')
+        return next
+      }, { replace: true })
+    }
+  }
+  // Panneau ouvert : sélection manuelle OU client ciblé par le lien profond.
+  const detailItem = detailClient ?? deepClient
 
   // VX55 — annule la requête en vol au démontage : sans ça, une réponse tardive
   // (3G qui cale) peut écraser l'état d'un AUTRE écran après navigation.
@@ -81,6 +102,21 @@ export default function ClientList() {
   const openNew   = () => { setEditClient(null); setShowForm(true) }
   const openEdit  = c  => { setEditClient(c);    setShowForm(true) }
   const closeForm = () => { setShowForm(false);  setEditClient(null) }
+
+  // VX220(b) — raccourci clavier « c c » (shortcuts.js/CommandPalette) navigue
+  // vers /crm?new=1 : câblage MINIMAL du paramètre — ouvre directement le
+  // formulaire de création (périmètre réduit, @coord NTUX9/10 — cf. LeadsPage.jsx
+  // même patron). Le paramètre est retiré une fois lu.
+  useEffect(() => {
+    if (searchParams.get('new') !== '1') return
+    openNew()
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev)
+      next.delete('new')
+      return next
+    }, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
 
   const openReleve = async (c) => {
     try {
@@ -413,10 +449,10 @@ export default function ClientList() {
         </>
       )}
 
-      {detailClient && (
+      {detailItem && (
         <ClientDetailPanel
-          client={detailClient}
-          onClose={() => setDetailClient(null)}
+          client={detailItem}
+          onClose={() => { setDetailClient(null); clearDeepLink() }}
           onNewDevis={(c) => navigate(`/ventes/devis/nouveau?client=${c.id}`)}
           onChanged={() => dispatch(fetchClients())}
         />

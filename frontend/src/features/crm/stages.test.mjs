@@ -87,6 +87,30 @@ test('filterLeads : texte libre, canal, responsable, priorité, tag', () => {
   assert.equal(filterLeads(leads, EMPTY_FILTERS).length, 2)
 })
 
+test('VX224 : filterLeads — toggle « Mes leads » (mesLeads) scope à myUsername', () => {
+  const leads = [
+    { id: 1, stage: 'NEW', nom: 'Alaoui', owner_nom: 'meryem' },
+    { id: 2, stage: 'NEW', nom: 'Bennani', owner_nom: 'demo_admin' },
+  ]
+  // mesLeads ON + myUsername fourni → scope à ce seul owner_nom.
+  assert.deepEqual(
+    filterLeads(leads, { mesLeads: true }, { myUsername: 'meryem' }).map((l) => l.id),
+    [1],
+  )
+  // mesLeads ON mais SANS myUsername (repli) → aucun effet, jamais une liste
+  // vidée par accident.
+  assert.equal(filterLeads(leads, { mesLeads: true }).length, 2)
+  // mesLeads OFF (défaut EMPTY_FILTERS) → aucun effet même avec myUsername.
+  assert.equal(filterLeads(leads, EMPTY_FILTERS, { myUsername: 'meryem' }).length, 2)
+  // `owner` (filtre manager, n'importe quel responsable) reste INDÉPENDANT de
+  // mesLeads — les deux peuvent coexister sans collision.
+  assert.deepEqual(
+    filterLeads(leads, { owner: 'demo_admin', mesLeads: false }, { myUsername: 'meryem' })
+      .map((l) => l.id),
+    [2],
+  )
+})
+
 test('filterLeads : inclure / exclure / seulement les perdus', () => {
   const leads = [
     { id: 1, stage: 'NEW', nom: 'A', perdu: true },

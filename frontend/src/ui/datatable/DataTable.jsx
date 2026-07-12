@@ -12,6 +12,13 @@ import { Input } from '../Input'
 import { Checkbox } from '../Checkbox'
 import { Skeleton } from '../Skeleton'
 import { EmptyState } from '../EmptyState'
+// VX249(a) — première intégration réelle de `col.editable`/`col.onSave`
+// (documenté dans le contrat de colonne depuis H31/H32 mais jamais câblé :
+// « moteur seul, non branché aux écrans réels »). Réutilise EditableCell
+// (H32, patron double-clic/Entrée déjà démontré ailleurs) + FieldSavedPulse
+// (pulse vert sur LA cellule à la sauvegarde, jamais un toast pour ça).
+import { EditableCell } from './EditableCell'
+import { FieldSavedPulse } from '../FieldSavedPulse'
 import { Tabs, TabsList, TabsTrigger } from '../Tabs'
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
@@ -291,6 +298,11 @@ export const DataTable = forwardRef(function DataTable(
     keyOf, pageOffset,
   } = table
 
+  // VX249(a) — compteur de pulse PAR CELLULE (`${rowKey}:${colId}`),
+  // incrémenté à chaque sauvegarde `col.onSave` réussie d'une colonne
+  // `editable`. Vide et inerte pour tout écran n'utilisant pas `editable`
+  // (aucune régression sur les ~79 écrans existants).
+  const [pulseMap, setPulseMap] = useState({})
   const [expanded, setExpanded] = useState({})
   // ARC49 — état d'ouverture des panneaux dépliables NOMMÉS, indépendant par
   // ligne : { [rowKey]: { [panelId]: bool } }. Utilisé UNIQUEMENT par le mode
@@ -476,6 +488,28 @@ export const DataTable = forwardRef(function DataTable(
   /* ---- Cellule (avec surlignage + clic ligne) ---- */
   function renderCell(c, row) {
     const value = c.accessor ? c.accessor(row) : row?.[c.id]
+    // VX249(a) — `editable`/`onSave`/`validate` documentés dans le contrat de
+    // colonne (H31/H32) mais jamais consommés jusqu'ici : première
+    // intégration réelle, EditableCell + pulse à la cellule sauvegardée
+    // (jamais un toast pour ça). Prioritaire sur `c.cell` — une colonne
+    // éditable définit sa propre présentation.
+    if (c.editable) {
+      const cellKey = `${getRowId(row)}:${c.id}`
+      return (
+        <FieldSavedPulse pulseKey={pulseMap[cellKey] ?? 0}>
+          <EditableCell
+            value={value}
+            row={row}
+            format={c.cell ? (v, r) => c.cell(v, r, { query }) : undefined}
+            validate={c.validate}
+            onSave={async (draft, r) => {
+              await c.onSave?.(draft, r)
+              setPulseMap((prev) => ({ ...prev, [cellKey]: (prev[cellKey] ?? 0) + 1 }))
+            }}
+          />
+        </FieldSavedPulse>
+      )
+    }
     if (c.cell) return c.cell(value, row, { query })
     const text = value === null || value === undefined || value === '' ? '—' : String(value)
     return <Highlighted text={text} query={c.searchable === false ? '' : query} />
@@ -966,8 +1000,28 @@ export const DataTable = forwardRef(function DataTable(
                   mobileCols.find((c) => c.mobileMetric) ||
                   mobileCols.find((c, ci) => ci !== 0 && (c.numeric || c.align === 'right'))
                 const restCols = mobileCols.filter((c) => c !== titleCol && c !== metricCol)
+                // VX249(a) — même câblage `editable` que la table desktop
+                // (renderCell) : une colonne éditable doit rester éditable
+                // sur le repli carte mobile, pas seulement au-dessus de sm.
                 const cellOf = (c) => {
                   const value = c.accessor ? c.accessor(row) : row?.[c.id]
+                  if (c.editable) {
+                    const cellKey = `${rowKey}:${c.id}`
+                    return (
+                      <FieldSavedPulse pulseKey={pulseMap[cellKey] ?? 0}>
+                        <EditableCell
+                          value={value}
+                          row={row}
+                          format={c.cell ? (v, r) => c.cell(v, r, { query }) : undefined}
+                          validate={c.validate}
+                          onSave={async (draft, r) => {
+                            await c.onSave?.(draft, r)
+                            setPulseMap((prev) => ({ ...prev, [cellKey]: (prev[cellKey] ?? 0) + 1 }))
+                          }}
+                        />
+                      </FieldSavedPulse>
+                    )
+                  }
                   return c.cell ? c.cell(value, row, { query }) : <Highlighted text={String(value ?? '—')} query={query} />
                 }
                 // VX43 — swipeActions est opt-in : non fourni, SwipeableCard

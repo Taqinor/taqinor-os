@@ -11,8 +11,8 @@ import {
 import AttentionPeek from '../../features/queue/AttentionPeek'
 import {
   AlarmClock, CalendarCheck2, CalendarClock, ExternalLink, PartyPopper, Sparkles, Users,
-  PhoneCall, MessageCircle, ListChecks, Plus, AtSign, ClipboardCheck, Flame, FileWarning,
-  HardHat, Wrench, ShoppingCart, ArrowRightLeft,
+  PhoneCall, PhoneIncoming, MessageCircle, ListChecks, Plus, AtSign, ClipboardCheck, Flame,
+  FileWarning, HardHat, Wrench, ShoppingCart, ArrowRightLeft,
 } from 'lucide-react'
 import recordsApi from '../../api/recordsApi'
 import {
@@ -106,6 +106,11 @@ const MA_FILE_ICON = {
   intervention_du_jour: Wrench,
   da_approuvee_a_commander: ShoppingCart,
   ticket_transfere: ArrowRightLeft,
+  // VX223 — famille « rappel demandé » ajoutée à ma_file_commercial_items
+  // (apps/crm/selectors.py) sans icône dédiée jusqu'ici (repli AlarmClock
+  // silencieux) — distincte de `relance` (moi qui dois relancer) : ici c'est
+  // le CLIENT qui a demandé le rappel.
+  rappel: PhoneIncoming,
 }
 const URGENCY_TONE = { overdue: 'danger', today: 'warning', upcoming: 'success' }
 const URGENCY_DOT = {
@@ -382,6 +387,12 @@ export default function MesActivitesPage() {
               <input type="checkbox" checked={quickWinsFirst} onChange={toggleQuickWins} />
               Victoires rapides d'abord
             </label>
+            {/* VX249 — même pastille que la cloche/Dashboard : « Ma file » est
+                ENTIÈREMENT personnelle par construction (chaque famille est
+                déjà scopée à l'utilisateur courant côté serveur) — pastille
+                pleine, jamais la variante société ici. */}
+            <span className="vx-pastille vx-pastille-mine" aria-hidden="true"
+                  title="Vous concerne personnellement" />
             <Badge tone="primary">{maFile.total}</Badge>
           </CardHeader>
           <CardContent className="p-0 sm:p-0">

@@ -18,7 +18,8 @@ function installLocalStorage() {
 const clear = installLocalStorage()
 
 const {
-  NAV_ACTIONS, filterActions, readRecentEntities, pushRecentEntity,
+  NAV_ACTIONS, filterActions, CREATE_ACTIONS, filterCreateActions,
+  readRecentEntities, pushRecentEntity,
 } = await import('./commandActions.js')
 
 test('NAV_ACTIONS: dérivées des raccourcis, bien formées (label + route + puce)', () => {
@@ -48,6 +49,29 @@ test('filterActions: requête vide → toutes ; filtre par libellé et par puce'
   assert.deepEqual(filterActions('DEVIS'), filterActions('devis'))
   // sans correspondance → vide
   assert.equal(filterActions('zzz-introuvable').length, 0)
+})
+
+test('VX220(b) : CREATE_ACTIONS dérivées de CREATE_SHORTCUTS, bien formées', () => {
+  assert.ok(CREATE_ACTIONS.length >= 3)
+  for (const a of CREATE_ACTIONS) {
+    assert.ok(a.label && a.label.length > 0)
+    assert.ok(a.to.startsWith('/'))
+    assert.match(a.keys, /^c [a-z]$/) // puce de raccourci « c x »
+    assert.ok(a.id && a.id.length > 0)
+  }
+  // jamais mélangées à NAV_ACTIONS (section « Créer » distincte de « Actions »)
+  const navKeys = new Set(NAV_ACTIONS.map((a) => a.keys))
+  for (const a of CREATE_ACTIONS) assert.ok(!navKeys.has(a.keys))
+})
+
+test('VX220(b) : filterCreateActions — requête vide → toutes ; filtre par libellé/puce', () => {
+  assert.equal(filterCreateActions('').length, CREATE_ACTIONS.length)
+  const lead = filterCreateActions('lead')
+  assert.ok(lead.length >= 1)
+  assert.ok(lead.every((a) => a.label.toLowerCase().includes('lead')))
+  const byKey = filterCreateActions('c l')
+  assert.ok(byKey.some((a) => a.keys === 'c l'))
+  assert.equal(filterCreateActions('zzz-introuvable').length, 0)
 })
 
 test('pushRecentEntity: tête de liste, dédoublonnage type+id, troncature à 6', () => {

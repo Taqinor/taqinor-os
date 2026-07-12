@@ -290,6 +290,13 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
   const [creerUnAutre, setCreerUnAutre] = useState(() => !isEdit && lireCreerUnAutre())
   const nomRef = useRef(null)
 
+  // VX249(b) — tva : 1 des 4 champs VX93 exactement (avec owner/ville sur
+  // LeadForm.jsx et payMode sur FactureList.jsx). « Suggéré » n'a de sens
+  // qu'à la création (VX93 ne pré-remplit jamais en édition).
+  const [tvaTouched, setTvaTouched] = useState(false)
+  const [tvaFocused, setTvaFocused] = useState(false)
+  const tvaSuggested = !isEdit && !tvaTouched
+
   const [newCatName, setNewCatName] = useState('')
   const [showNewCat, setShowNewCat] = useState(false)
   const [catSaving, setCatSaving] = useState(false)
@@ -430,6 +437,9 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
         // VX93 — le formulaire vidé ré-applique la dernière TVA saisie.
         setFields({ ...initialFields, tva: lireLastTva() })
         setErrors({})
+        // VX249(b) — le produit SUIVANT reçoit un NOUVEAU défaut TVA : «
+        // suggéré » redevient vrai.
+        setTvaTouched(false)
         nomRef.current?.focus()
       } else {
         onClose()
@@ -578,9 +588,27 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
               <Input id="pf-achat" type="number" min="0" step="any" inputMode="decimal"
                      value={fields.prix_achat} onChange={e => setField('prix_achat', e.target.value)} />
             </FormField>
-            <FormField label="TVA (%)" htmlFor="pf-tva">
-              <Select value={fields.tva || '__none'} onValueChange={v => setField('tva', v === '__none' ? '' : v)}>
-                <SelectTrigger id="pf-tva"><SelectValue placeholder="— Sans TVA —" /></SelectTrigger>
+            {/* VX249(b) — tva : 1 des 4 champs VX93 exactement. Contour
+                pointillé + micro-libellé au focus tant que le dernier taux
+                mémorisé n'a pas été touché — retiré dès la première
+                modification. */}
+            <FormField
+              label="TVA (%)"
+              htmlFor="pf-tva"
+              hint={tvaSuggested && tvaFocused ? 'Suggéré — modifiable' : undefined}
+            >
+              <Select
+                value={fields.tva || '__none'}
+                onValueChange={v => { setField('tva', v === '__none' ? '' : v); setTvaTouched(true) }}
+              >
+                <SelectTrigger
+                  id="pf-tva"
+                  className={tvaSuggested ? 'vx-suggested-field' : undefined}
+                  onFocus={() => setTvaFocused(true)}
+                  onBlur={() => setTvaFocused(false)}
+                >
+                  <SelectValue placeholder="— Sans TVA —" />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__none">— Sans TVA —</SelectItem>
                   <SelectItem value="0">0%</SelectItem>
