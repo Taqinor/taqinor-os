@@ -15,7 +15,7 @@ arguments de la tâche, avant l'exécution :
 
 Contrat
 -------
-    @shared_task(name='core.relances')
+    @shared_task(name=...)          # nom de tâche réel de VOTRE app
     @idempotent_task(key_fn=lambda company_id, **k: f'relances:{company_id}',
                      ttl=3600)
     def relances(company_id):

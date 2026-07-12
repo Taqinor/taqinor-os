@@ -113,6 +113,12 @@ app.conf.beat_schedule = {
         'task': 'core.ensure_partitions',
         'schedule': crontab(hour=3, minute=0),
     },
+    # NTPLT8 — scan MENSUEL DRY-RUN d'étanchéité des données vivantes
+    # (company_id NULL/orphelin) ; le 1er du mois, ne modifie rien.
+    'core-scan-live-isolation': {
+        'task': 'core.scan_live_isolation',
+        'schedule': crontab(hour=4, minute=0, day_of_month=1),
+    },
     'automation-time-triggers-daily': {
         'task': 'automation.time_triggers_daily',
         'schedule': crontab(hour=8, minute=5),

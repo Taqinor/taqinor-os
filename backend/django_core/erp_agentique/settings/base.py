@@ -537,6 +537,9 @@ CELERY_TASK_ROUTES = {
     'reporting.controle_integrite': {'queue': 'scheduled'},
     # NTPLT6 — snapshot d'usage tenant (beat 01:45) → queue planifiée.
     'core.snapshot_tenant_usage': {'queue': 'scheduled'},
+    'core.dispatch_outbox': {'queue': 'scheduled'},
+    'core.ensure_partitions': {'queue': 'scheduled'},
+    'core.scan_live_isolation': {'queue': 'scheduled'},
     'ged.purge_corbeille_echue': {'queue': 'scheduled'},
     'ged.signature_relances_expiration': {'queue': 'scheduled'},
     'ged.verifier_integrite_archives': {'queue': 'scheduled'},
