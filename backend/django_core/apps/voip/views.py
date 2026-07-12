@@ -75,7 +75,8 @@ class AppelViewSet(viewsets.ReadOnlyModelViewSet):
             return qs
         return qs.none()
 
-    @action(detail=False, methods=['post'], url_path='sortant')
+    @action(detail=False, methods=['post'], url_path='sortant',
+            permission_classes=[IsAnyRole])
     def sortant(self, request):
         """Amorce un appel SORTANT. Corps : `{"numero": "..."}`. Renvoie 409
         si le softphone n'est pas configuré/actif pour cette société (sans
@@ -94,7 +95,8 @@ class AppelViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(
             AppelSerializer(appel).data, status=status.HTTP_201_CREATED)
 
-    @action(detail=False, methods=['post'], url_path='entrant')
+    @action(detail=False, methods=['post'], url_path='entrant',
+            permission_classes=[IsAnyRole])
     def entrant(self, request):
         """Enregistre un appel ENTRANT (simulateur/notification fournisseur
         factice — un vrai webhook fournisseur sera branché avec le connecteur
@@ -115,7 +117,8 @@ class AppelViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(
             AppelSerializer(appel).data, status=status.HTTP_201_CREATED)
 
-    @action(detail=True, methods=['post'], url_path='terminer')
+    @action(detail=True, methods=['post'], url_path='terminer',
+            permission_classes=[IsAnyRole])
     def terminer(self, request, pk=None):
         """Clôture l'appel : `{"duree_secondes": N, "issue": "..."}`. Pose la
         durée/issue et journalise le chatter de la fiche résolue."""

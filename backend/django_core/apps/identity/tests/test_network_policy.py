@@ -132,7 +132,9 @@ class NetworkPolicyCrudTests(TenantAPITestCase):
             company=self.other_company, mode=NetworkPolicy.Mode.ENFORCE)
         r = self._admin().get(self.BASE)
         self.assertEqual(r.status_code, 200)
-        self.assertEqual(len(r.json()), 0)
+        # Liste paginée (StandardPagination globale) : les résultats scopés
+        # société sont vides — la politique de l'autre société n'apparaît pas.
+        self.assertEqual(len(r.json()['results']), 0)
 
     def test_rule_rejected_for_foreign_policy(self):
         foreign = NetworkPolicy.objects.create(
