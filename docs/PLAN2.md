@@ -83,6 +83,7 @@ the journey the best in the world for the CLIENT and the COMMERCIAL user.*
 - 2026-07-12 — VX205 **(already present)** : `ErrorBoundary` déjà déployée autour de chaque `TabsContent`/onglet indépendant de `LeadForm.jsx`, `Dashboard.jsx` (+ cockpit), `CommercialDashboard.jsx` et `InterventionCapturePanels.jsx` (commentaires `VX205` déjà présents sur les 4 fichiers).
 - 2026-07-12 — VX163 : nouveau `lib/thunkHelpers.js` (`createCancellableThunk` — normalise l'annulation axios en vraie `AbortError` pour que RTK marque `meta.aborted===true` ; `dedupeInFlight` — `Map<clé,Promise>` in-vol). Appliqué aux 4 thunks visés : `fetchProduits` (stockSlice), `fetchDevis`/`fetchFactures` (ventesSlice), `fetchLeads` (crmSlice, clé incluant les params). `stockApi.getProduits`/`ventesApi.getFactures` acceptent désormais un `config` (signal).
 - 2026-07-12 — VX206 : `console.error('[ErrorBoundary]', …)` ajouté dans `ui/ErrorBoundary.jsx.componentDidCatch` ; `componentDidCatch` (absent) ajouté à `RouteErrorBoundary.jsx` avec `console.error` + `captureException` + identifiant support (`eventId` VX72 si DSN actif, sinon horodatage court `shortTimestamp()`) affiché sur l'écran de récupération ; nouveau `lib/globalErrors.js` (`installGlobalErrors` — `unhandledrejection` + `error` canalisés vers `captureException`-ou-no-op + `toastError` générique), câblé dans `main.jsx`.
+- 2026-07-12 — VX244 : nouvelle primitive `ui/ConfirmDialog.jsx` (`severity` low/medium/high, saisie tapée obligatoire en `high`, Escape annule toujours, Entrée ne confirme jamais un `high` — pas de `<form>`, bouton désactivé tant que la saisie ne correspond pas) + `ui/BulkDestructiveConfirm.jsx` (extrait du patron `ForceDeleteModal`, saisie du COMPTE). Migré (vérifié : aucune duplication de primitive existante — `ui/confirm.jsx`/`ConfirmProvider` n'ont ni sévérité ni saisie tapée) : litiges (`LitigesPage.jsx`, dossier légal), webhook/clé API (`ApiWebhooksSection.jsx` — 4 actions : révoquer/supprimer clé, régénérer/supprimer webhook), KB-avec-enfants (`KbPage.jsx`, VX241 — `high` seulement si `nbDescendants>0`), modèle de checklist chantier (`ChecklistSection.jsx`), consigne de sécurité terrain (`SecuriteTerrainSection.jsx`), et bulk leads (`BulkActionBar.jsx`, `BulkDestructiveConfirm` avec le compte tapé). Non fait : tests (aucun `vitest` disponible dans ce worktree pour les écrire/vérifier) et les ~4 sites additionnels non nommés explicitement par la tâche (~68 `window.confirm` totaux dans 44 fichiers — la tâche interdit explicitement de tous les migrer d'un coup).
 
 #### DONE LOG — Vague 2 (VX terrain/finance/CRM + QX groupe) (2026-07-12)
 
@@ -2787,7 +2788,7 @@ droite)**
   bannière AVANT le PATCH ; tests. (T2 — M, sonnet ; revue attentive de la borne de permission)
   (@lane: backend/auth — @after VX98)
 
-- [ ] VX244 — **Le poids de la confirmation devient proportionné au dégât : primitive (@lane: frontend/data — @coord VX19/VX95/VX96)
+- [x] VX244 — **Le poids de la confirmation devient proportionné au dégât : primitive (@lane: frontend/data — @coord VX19/VX95/VX96)
   `ConfirmDialog` à sévérité. @coord VX19, VX95/96.** Défaut prouvé : 68 `window.confirm` dans 44
   fichiers, UNE seule gravité — supprimer un litige client (dossier légal), un article KB avec
   sous-arbre, un secret webhook et un preset UI passent par le même dialog natif ; le repo SAIT

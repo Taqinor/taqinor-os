@@ -14,6 +14,7 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
 } from '../../../ui'
+import { BulkDestructiveConfirm } from '../../../ui/BulkDestructiveConfirm'
 
 // Radix Select interdit la valeur chaîne vide → sentinelle pour « aucun ».
 const NO_OWNER = '__none'
@@ -34,6 +35,11 @@ export default function BulkActionBar({
   // Planifier une activité en masse (records.Activity) : intitulé + échéance.
   const [actSummary, setActSummary] = useState('Appeler')
   const [actDue, setActDue] = useState('')
+  // VX244 — la suppression en masse (≥5 leads courant côté kanban/liste) passe
+  // par la confirmation TAPÉE (`BulkDestructiveConfirm`, extraite de
+  // `ForceDeleteModal`) au lieu d'un `window.confirm` générique — le nombre
+  // exact sélectionné doit être retapé pour confirmer.
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false)
 
   const toggle = (name) => setPanel((p) => (p === name ? null : name))
   const run = (action, params) => { onAction(action, params); setPanel(null) }
@@ -102,16 +108,7 @@ export default function BulkActionBar({
             {canDelete && (
               <DropdownMenuItem
                 destructive
-                onSelect={() => {
-                  // VX96 — soft-delete réversible : plus de « définitivement ».
-                  // Les leads partent à la corbeille (restaurables 30 min).
-                  if (window.confirm(
-                    `Supprimer ${count} lead(s) ? Ils iront à la corbeille `
-                    + '(restaurables 30 min). Les leads avec des devis liés '
-                    + 'seront ignorés.')) {
-                    run('delete')
-                  }
-                }}
+                onSelect={() => setConfirmBulkDelete(true)}
               >
                 Supprimer
               </DropdownMenuItem>
@@ -265,6 +262,21 @@ export default function BulkActionBar({
           </Button>
         </div>
       )}
+
+      <BulkDestructiveConfirm
+        open={confirmBulkDelete}
+        onOpenChange={setConfirmBulkDelete}
+        count={count}
+        itemLabel={count > 1 ? 'leads' : 'lead'}
+        title={`Supprimer ${count} lead${count > 1 ? 's' : ''} ?`}
+        description={
+          'Ils iront à la corbeille (restaurables 30 min). Les leads avec des '
+          + 'devis liés seront ignorés.'
+        }
+        confirmLabel="Supprimer"
+        loading={busy}
+        onConfirm={() => { setConfirmBulkDelete(false); run('delete') }}
+      />
     </div>
   )
 }
