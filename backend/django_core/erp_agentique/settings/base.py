@@ -164,6 +164,12 @@ MIDDLEWARE = [
     # RLS, défense en profondeur multi-tenant). NO-OP TOTAL sans le flag env
     # POSTGRES_RLS_ENABLED=1 (défaut OFF) : aucune requête SQL supplémentaire.
     'core.tenant_context.TenantContextMiddleware',
+    # NTPLT43/44/51 — observabilité par requête (request_id, contexte tenant,
+    # durée). Placé en DERNIER : mesure la durée au plus près de la vue. OPT-IN —
+    # sans LOG_FORMAT=json / SLOW_REQUEST_MS / scrape /metrics, il ne fait que
+    # poser un contextvar + deux lectures d'horloge (coût négligeable) et pose
+    # l'en-tête X-Request-ID sur la réponse.
+    'core.observability.RequestObservabilityMiddleware',
 ]
 
 ROOT_URLCONF = 'erp_agentique.urls'
@@ -806,3 +812,26 @@ METRICS_ALLOWED_IPS = [
     ip.strip() for ip in os.environ.get('METRICS_ALLOWED_IPS', '').split(',')
     if ip.strip()
 ]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# NTPLT43 — logs JSON structurés taggés tenant (request_id/company/user/path/
+# status/duration_ms). ACTIVABLE par LOG_FORMAT=json ; par défaut, AUCUNE config
+# LOGGING n'est posée ici → le format actuel (défaut Django, ou celui de dev.py)
+# reste strictement inchangé. En mode json, chaque ligne de log est un objet JSON
+# ingérable tel quel par Loki/CloudWatch (doc: docs/observability.md).
+LOG_FORMAT = os.environ.get('LOG_FORMAT', '').strip().lower()
+if LOG_FORMAT == 'json':
+    from core.logging_ext import build_logging_config  # noqa: E402
+    LOGGING = build_logging_config(
+        level=os.environ.get('LOG_LEVEL', 'INFO').upper())
+
+# NTPLT43 — access log structuré par requête (une ligne INFO 'core.request' par
+# requête). OFF par défaut ; automatiquement activé quand LOG_FORMAT=json.
+REQUEST_ACCESS_LOG = (
+    os.environ.get('REQUEST_ACCESS_LOG', '1' if LOG_FORMAT == 'json' else '0')
+    == '1')
+
+# NTPLT51 — trace des requêtes HTTP lentes. 0 (défaut) = désactivée. Au-delà du
+# seuil (ms), une ligne WARNING 'core.slow_request' est émise (durée/path/tenant),
+# et en DEBUG le compte SQL + les 3 requêtes les plus longues (CaptureQueries).
+SLOW_REQUEST_MS = int(os.environ.get('SLOW_REQUEST_MS', '0') or '0')
