@@ -2055,3 +2055,62 @@ class IdempotencyKey(TimestampedModel):
 
     def __str__(self):
         return self.cle
+
+
+class SequenceCounter(TenantModel):
+    """NTPLT41 — allocateur de séquence HAUT DÉBIT (opt-in).
+
+    Compteur monotone par ``(company, cle)`` alloué SOUS ``select_for_update``
+    par BLOCS de N — pour les volumes élevés (numéros de jobs internes,
+    identifiants de chatter…) où le pattern gapless ``core.numbering`` (max +1
+    par scan, réservé aux documents FISCAUX) coûterait trop cher. Ici on
+    ASSUME les trous : un bloc réservé et non entièrement consommé laisse un
+    intervalle non attribué — jamais un doublon.
+
+    ``dernier`` = dernière valeur RÉSERVÉE. ``allocate(company, cle, n)`` verrou
+    la ligne, incrémente de ``n`` en une écriture et renvoie la plage
+    ``range(debut, debut + n)`` — 1 000 allocations concurrentes ne produisent
+    ni doublon ni trou NON documenté (les trous inter-blocs sont assumés).
+    """
+
+    cle = models.CharField(
+        'Clé', max_length=100,
+        help_text="Nom logique de la séquence (ex. 'job', 'chatter').")
+    dernier = models.BigIntegerField('Dernier réservé', default=0)
+
+    class Meta:
+        verbose_name = 'Compteur de séquence'
+        verbose_name_plural = 'Compteurs de séquence'
+        ordering = ['company_id', 'cle']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'cle'],
+                name='core_sequencecounter_company_cle'),
+        ]
+
+    def __str__(self):
+        return f'{self.cle}@{self.company_id}={self.dernier}'
+
+    @classmethod
+    def allocate(cls, company, cle, n=1):
+        """Réserve un bloc de ``n`` valeurs pour ``(company, cle)``.
+
+        Atomique et race-safe : verrou la ligne (``select_for_update``),
+        avance ``dernier`` de ``n`` en une écriture, renvoie ``range(debut,
+        fin)`` (les ``n`` entiers réservés). Crée la ligne si absente. ``n``
+        doit être ≥ 1.
+        """
+        from django.db import transaction
+        n = max(1, int(n))
+        with transaction.atomic():
+            row, _ = cls.objects.select_for_update().get_or_create(
+                company=company, cle=cle, defaults={'dernier': 0})
+            debut = row.dernier + 1
+            row.dernier = row.dernier + n
+            row.save(update_fields=['dernier', 'updated_at'])
+            return range(debut, debut + n)
+
+    @classmethod
+    def next(cls, company, cle):
+        """Réserve et renvoie UNE valeur (raccourci de ``allocate(...,1)``)."""
+        return cls.allocate(company, cle, 1).start
