@@ -115,8 +115,7 @@ class DevisViewSet(IdempotentCreateMixin, CompanyScopedModelViewSet):
         return DevisSerializer
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS + ['historique', 'variante_config',
-                                           'superior_contact_status']:
+        if self.action in READ_ACTIONS + ['historique', 'variante_config', 'superior_contact_status']:  # noqa: E501
             # variante_config : la LECTURE est ouverte à tous ; l'ÉCRITURE (PUT)
             # est re-vérifiée dans l'action (Directeur / Commercial responsable).
             return [IsAnyRole()]
