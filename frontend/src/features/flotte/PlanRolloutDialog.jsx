@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-  Button, Label, MultiSelect,
+  Button, Label, MultiSelect, confirmLeaveIfDirty,
 } from '../../ui'
 import flotteApi from '../../api/flotteApi'
 
@@ -25,6 +25,9 @@ export default function PlanRolloutDialog({ plan, actifs = [], onClose, onSaved 
   )
 
   const peutEnregistrer = selection.length > 0
+  // VX168 — garde de fermeture : dialogue de création, initial = sélection vide.
+  const dirty = selection.length > 0
+  const closeIfConfirmed = () => { if (confirmLeaveIfDirty(dirty)) onClose?.() }
 
   const submit = async (e) => {
     e.preventDefault()
@@ -44,7 +47,7 @@ export default function PlanRolloutDialog({ plan, actifs = [], onClose, onSaved 
   }
 
   return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose?.() }}>
+    <Dialog open onOpenChange={(o) => { if (!o) closeIfConfirmed() }}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>Dupliquer le plan « {plan?.type_entretien || 'entretien'} »</DialogTitle>
@@ -55,6 +58,7 @@ export default function PlanRolloutDialog({ plan, actifs = [], onClose, onSaved 
             <Label htmlFor="rollout-actifs">Actifs cibles</Label>
             <MultiSelect
               id="rollout-actifs"
+              autoFocus
               options={options}
               value={selection}
               onChange={setSelection}
@@ -76,7 +80,7 @@ export default function PlanRolloutDialog({ plan, actifs = [], onClose, onSaved 
           )}
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>Fermer</Button>
+            <Button type="button" variant="outline" onClick={closeIfConfirmed}>Fermer</Button>
             <Button type="submit" disabled={!peutEnregistrer || saving}>
               {saving ? 'Duplication…' : 'Dupliquer'}
             </Button>

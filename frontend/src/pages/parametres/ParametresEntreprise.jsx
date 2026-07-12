@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useIsAdmin } from '../../hooks/useHasPermission'
+import { useNavigationGuard } from '../../hooks/useNavigationGuard'
+import { isDirty } from '../../ui/form-utils'
 import {
   fetchProfile, saveProfile,
   clearSaveSuccess,
@@ -514,10 +516,18 @@ export default function ParametresEntreprise() {
     catch (e) { toast.error(e?.response?.data?.detail ?? 'Création impossible.') }
   }
 
+  // VX169 — garde de navigation IN-APP : snapshot pris à chaque resynchro
+  // depuis `profile` (montage ET après un enregistrement réussi qui refetch
+  // le profil — la garde s'éteint alors naturellement, saisie sauvegardée).
+  const initialSnapshotRef = useRef(null)
+  const dirty = initialSnapshotRef.current != null
+    && isDirty(initialSnapshotRef.current, form)
+  useNavigationGuard(dirty)
+
   useEffect(() => {
     // Synchronisation du formulaire avec le profil chargé depuis le store
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (profile) setForm({
+    if (!profile) return
+    const next = {
       nom:               profile.nom               ?? '',
       adresse:           profile.adresse           ?? '',
       email:             profile.email             ?? '',
@@ -573,7 +583,10 @@ export default function ParametresEntreprise() {
       password_expiry_days: profile.password_expiry_days ?? 0,
       // FG26 — rétention RGPD du journal d'audit.
       audit_retention_days: profile.audit_retention_days ?? 0,
-    })
+    }
+    initialSnapshotRef.current = next
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setForm(next)
   }, [profile])
 
   useEffect(() => {

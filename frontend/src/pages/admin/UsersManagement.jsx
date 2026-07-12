@@ -393,6 +393,7 @@ export default function UsersManagement() {
                   <input
                     id="new-username"
                     required
+                    autoFocus
                     value={form.username}
                     onChange={e => setForm(f => ({ ...f, username: e.target.value }))}
                     className="flex h-[var(--control-h)] w-full rounded-md border border-input bg-card px-[var(--control-px)] text-base text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:text-sm"
@@ -556,6 +557,7 @@ export default function UsersManagement() {
                   <Input
                     id="edit-email"
                     type="email"
+                    autoFocus
                     value={editForm.email}
                     onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))}
                   />

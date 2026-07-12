@@ -34,7 +34,7 @@ import {
   Textarea,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
-  Form, FormSection, FormField, FormActions, useDirtyGuard,
+  Form, FormSection, FormField, FormActions, useDirtyGuard, confirmLeaveIfDirty,
   DataTable,
   toast,
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
@@ -227,7 +227,7 @@ export function EquipementDetail({ equipement, onClose, onSaved }) {
   }
 
   return (
-    <Sheet open onOpenChange={(o) => { if (!o) onClose() }}>
+    <Sheet open onOpenChange={(o) => { if (!o && confirmLeaveIfDirty(dirty)) onClose() }}>
       <SheetContent side="right" className="w-[min(34rem,calc(100%-2rem))] sm:max-w-lg">
         <SheetHeader>
           <SheetTitle>Équipement — {equipement.produit_nom ?? ''}</SheetTitle>

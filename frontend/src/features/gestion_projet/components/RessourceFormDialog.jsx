@@ -1,5 +1,6 @@
-import { useState } from 'react'
-import { Button, Switch, Label, toast } from '../../../ui'
+import { useRef, useState } from 'react'
+import { Button, Switch, Label, toast, confirmLeaveIfDirty } from '../../../ui'
+import { isDirty } from '../../../ui/form-utils'
 import { ResponsiveDialog } from '../../../ui/ResponsiveDialog'
 import gestionProjetApi from '../../../api/gestionProjetApi'
 import { errMessage } from '../constants'
@@ -19,6 +20,11 @@ export default function RessourceFormDialog({ ressource, onClose, onSaved }) {
   })
   const [saving, setSaving] = useState(false)
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }))
+  // VX168 — garde de fermeture (snapshot pris au montage ; couvre édition ET
+  // création puisque `form` part déjà des valeurs de `ressource` en édition).
+  const initialSnapshotRef = useRef(form)
+  const dirty = isDirty(initialSnapshotRef.current, form)
+  const closeIfConfirmed = () => { if (confirmLeaveIfDirty(dirty)) onClose?.() }
 
   const submit = async (e) => {
     e.preventDefault()
@@ -44,10 +50,10 @@ export default function RessourceFormDialog({ ressource, onClose, onSaved }) {
   }
 
   return (
-    <ResponsiveDialog open onOpenChange={(o) => { if (!o) onClose?.() }} title={isEdit ? 'Modifier la ressource' : 'Nouvelle ressource'}>
+    <ResponsiveDialog open onOpenChange={(o) => { if (!o) closeIfConfirmed() }} title={isEdit ? 'Modifier la ressource' : 'Nouvelle ressource'}>
       <form onSubmit={submit} noValidate className="flex flex-col gap-3">
         <div className="grid gap-3 sm:grid-cols-2">
-          <TextField id="nom" label="Nom" required value={form.nom} onChange={set('nom')} />
+          <TextField id="nom" label="Nom" required autoFocus value={form.nom} onChange={set('nom')} />
           <TextField id="role" label="Rôle" value={form.role} onChange={set('role')} />
         </div>
         <TextAreaField id="competences" label="Compétences" rows={2} value={form.competences} onChange={set('competences')} />
@@ -57,7 +63,7 @@ export default function RessourceFormDialog({ ressource, onClose, onSaved }) {
           <Label htmlFor="actif">Ressource active</Label>
         </div>
         <div className="mt-2 flex justify-end gap-2">
-          <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
+          <Button type="button" variant="outline" onClick={closeIfConfirmed}>Annuler</Button>
           <Button type="submit" disabled={saving}>{saving ? 'Enregistrement…' : 'Enregistrer'}</Button>
         </div>
       </form>

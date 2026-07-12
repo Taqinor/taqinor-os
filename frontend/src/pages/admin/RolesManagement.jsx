@@ -467,6 +467,7 @@ export default function RolesManagement() {
               <Label htmlFor="role-nom" required={!editing?.est_systeme}>Nom du rôle</Label>
               <Input
                 id="role-nom"
+                autoFocus
                 value={form.nom}
                 placeholder="ex: Comptable, Magasinier…"
                 disabled={!!editing?.est_systeme}

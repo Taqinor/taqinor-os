@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
   Button, Input, Label, toast,
 } from '../../../ui'
+import { useFormSafety } from '../../../ui/useFormSafety'
 
 /* ============================================================================
    Boîte de dialogue CRUD générique du module Comptabilité.
@@ -25,16 +26,22 @@ export default function CrudDialog({
 }) {
   const [values, setValues] = useState({})
   const [saving, setSaving] = useState(false)
+  // VX166/VX170 — snapshot pris à l'ouverture (pour détecter une saisie
+  // perdue à la fermeture) + garde composée par la primitive commune.
+  const initialSnapshotRef = useRef({})
 
   // Réinitialise le formulaire à l'ouverture / au changement d'enregistrement.
   useEffect(() => {
     if (!open) return
     const base = {}
     for (const f of fields) base[f.name] = initial?.[f.name] ?? ''
+    initialSnapshotRef.current = base
     // eslint-disable-next-line react-hooks/set-state-in-effect -- reset à l'ouverture
     setValues(base)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initial])
+
+  const { guardedClose } = useFormSafety(initialSnapshotRef.current, values, onClose)
 
   const set = (name, v) => setValues((prev) => ({ ...prev, [name]: v }))
 
@@ -64,18 +71,19 @@ export default function CrudDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose?.() }}>
+    <Dialog open={open} onOpenChange={(o) => { if (!o) guardedClose() }}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
         <form onSubmit={submit} noValidate className="flex flex-col gap-3">
-          {fields.map((f) => (
+          {fields.map((f, i) => (
             <div key={f.name} className="flex flex-col gap-1">
               <Label htmlFor={`cd-${f.name}`} required={f.required}>{f.label}</Label>
               {f.options ? (
                 <select
                   id={`cd-${f.name}`}
+                  autoFocus={i === 0}
                   className="h-[var(--control-h)] rounded-md border border-input bg-card px-[var(--control-px)] text-sm"
                   value={values[f.name] ?? ''}
                   onChange={(e) => set(f.name, e.target.value)}
@@ -89,6 +97,7 @@ export default function CrudDialog({
                 <Input
                   id={`cd-${f.name}`}
                   type={f.type || 'text'}
+                  autoFocus={i === 0}
                   step={f.type === 'number' ? (f.step || 'any') : undefined}
                   value={values[f.name] ?? ''}
                   onChange={(e) => set(f.name, e.target.value)}
@@ -97,7 +106,7 @@ export default function CrudDialog({
             </div>
           ))}
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
+            <Button type="button" variant="outline" onClick={guardedClose}>Annuler</Button>
             <Button type="submit" disabled={saving}>
               {saving ? 'Enregistrement…' : 'Enregistrer'}
             </Button>

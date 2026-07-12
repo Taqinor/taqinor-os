@@ -26,6 +26,7 @@ import {
   CONVERSION_STAGE, STAGE_LABELS, PRIORITE_LABELS, TYPE_INSTALLATION_LABELS,
 } from '../../features/crm/stages'
 import useCanaux from '../../features/crm/useCanaux'
+import { useServerFieldErrors } from '../../hooks/useServerFieldErrors'
 // VX24 — bandeau de faits clés (LeadSummaryBar) réutilise le même ScoreBadge.
 import ScoreBadge from '../../features/crm/ScoreBadge'
 // VX87 — journal d'appel en un geste (issue + note + prochaine relance).
@@ -367,7 +368,9 @@ export default function LeadForm({
   const [saving, setSaving] = useState(false)
   const [savedConfirm, setSavedConfirm] = useState(false)
   const savedConfirmTimer = useRef(null)
-  const [errors, setErrors] = useState({})
+  // VX171 — vérité serveur → champ ; le rouge s'efface à la frappe (clearField
+  // dans `set`), jamais seulement au prochain submit.
+  const { errors, setErrors, setFromResponse, clearField } = useServerFieldErrors()
   const [activeSec, setActiveSec] = useState('contact')
   // Doublons probables détectés EN DIRECT depuis le téléphone/email saisi
   // (avertissement NON bloquant, à la création comme à l'édition).
@@ -487,7 +490,8 @@ export default function LeadForm({
     return () => document.removeEventListener('mousedown', onDoc)
   }, [devisMenuOpen])
 
-  const set = (k, v) => setFields(f => ({ ...f, [k]: v }))
+  // VX171 — le rouge ne doit jamais mentir pendant que l'utilisateur corrige.
+  const set = (k, v) => { clearField(k); setFields(f => ({ ...f, [k]: v })) }
   const agricole = fields.type_installation === 'agricole'
 
   // Champs d'origine web (taqinor.ma) en LECTURE SEULE : capturés par le site,
@@ -713,7 +717,8 @@ export default function LeadForm({
         onClose()
       }
     } catch (err) {
-      setErrors(typeof err === 'object' ? err : { submit: String(err) })
+      // VX171 — mapping DRF générique (detail / {champ:[…]} / array).
+      setFromResponse(err)
     } finally {
       setSaving(false)
     }
