@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-  Button, Input, Label, toast,
+  Button, Input, Label, Combobox, toast,
 } from '../../../ui'
 import { useFormSafety } from '../../../ui/useFormSafety'
 
@@ -12,7 +12,15 @@ import { useFormSafety } from '../../../ui/useFormSafety'
    local, l'enregistrement (create/update) et les erreurs serveur en clair. Les
    écrans passent la liste des champs et la fonction `onSubmit(values)`.
 
-   fields : [{ name, label, type?, required?, options?:[{value,label}], step? }]
+   fields : [{ name, label, type?, required?, options?:[{value,label}], step?,
+     async?:() => Promise<{value,label}[]>, deriveFields?:(opt) => object }]
+
+   VX229 — un champ `async` rend un `Combobox` de recherche (au lieu d'un
+   `<Input>` FK « (ID) » tapé à la main) : ses options sont chargées UNE FOIS
+   à l'ouverture du dialog (par enregistrement édité) et mémoïsées en state —
+   jamais rechargées à chaque frappe/rendu. `deriveFields(opt)` pose en plus
+   des champs LECTURE SEULE calculés depuis l'option choisie (ex. `tiers_nom`
+   depuis le tiers sélectionné, `null` opt → champs dérivés effacés).
    ========================================================================== */
 
 export default function CrudDialog({
@@ -29,6 +37,9 @@ export default function CrudDialog({
   // VX166/VX170 — snapshot pris à l'ouverture (pour détecter une saisie
   // perdue à la fermeture) + garde composée par la primitive commune.
   const [initialSnapshot, setInitialSnapshot] = useState({})
+  // VX229 — options des champs `async`, chargées une fois par ouverture.
+  const [asyncOptions, setAsyncOptions] = useState({})
+  const [asyncLoading, setAsyncLoading] = useState({})
 
   // Réinitialise le formulaire à l'ouverture / au changement d'enregistrement.
   useEffect(() => {
@@ -39,6 +50,29 @@ export default function CrudDialog({
     setInitialSnapshot(base)
     setValues(base)
     /* eslint-enable react-hooks/set-state-in-effect */
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, initial])
+
+  // VX229 — charge chaque champ `async` UNE FOIS à l'ouverture (mémoïsé en
+  // state, jamais recréé pendant la frappe : le Combobox reçoit des `options`
+  // statiques, pas un `onSearch` réseau).
+  useEffect(() => {
+    if (!open) return
+    const asyncFields = fields.filter((f) => f.async)
+    if (!asyncFields.length) return
+    /* eslint-disable react-hooks/set-state-in-effect -- chargement à l'ouverture */
+    setAsyncLoading((prev) => {
+      const next = { ...prev }
+      asyncFields.forEach((f) => { next[f.name] = true })
+      return next
+    })
+    /* eslint-enable react-hooks/set-state-in-effect */
+    asyncFields.forEach((f) => {
+      f.async()
+        .then((opts) => setAsyncOptions((prev) => ({ ...prev, [f.name]: opts || [] })))
+        .catch(() => setAsyncOptions((prev) => ({ ...prev, [f.name]: [] })))
+        .finally(() => setAsyncLoading((prev) => ({ ...prev, [f.name]: false })))
+    })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initial])
 
@@ -81,7 +115,24 @@ export default function CrudDialog({
           {fields.map((f, i) => (
             <div key={f.name} className="flex flex-col gap-1">
               <Label htmlFor={`cd-${f.name}`} required={f.required}>{f.label}</Label>
-              {f.options ? (
+              {f.async ? (
+                <Combobox
+                  id={`cd-${f.name}`}
+                  options={asyncOptions[f.name] || []}
+                  value={values[f.name] || null}
+                  onChange={(v, opt) => setValues((prev) => ({
+                    ...prev,
+                    [f.name]: v ?? '',
+                    // VX229 — un champ `deriveFields(opt)` pose des champs
+                    // dérivés en LECTURE SEULE au choix (ex. `tiers_nom`
+                    // depuis le tiers sélectionné) : jamais tapés à la main,
+                    // toujours synchronisés avec le référentiel choisi.
+                    ...(f.deriveFields ? f.deriveFields(v ? opt : null) : {}),
+                  }))}
+                  disabled={asyncLoading[f.name]}
+                  placeholder={asyncLoading[f.name] ? 'Chargement…' : 'Sélectionner…'}
+                />
+              ) : f.options ? (
                 <select
                   id={`cd-${f.name}`}
                   autoFocus={i === 0}

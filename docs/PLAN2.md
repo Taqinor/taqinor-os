@@ -2516,7 +2516,7 @@ droite)**
   clôturable ; test du flux pointer→resume. (T2 — L, sonnet ; opus si scores de confiance à
   rendre) (@lane: frontend/compta)
 
-- [ ] VX229 — **`CrudDialog` apprend le Combobox : fin des champs FK « (ID) » tapés à la main.** (@lane: frontend/compta)
+- [x] VX229 — **`CrudDialog` apprend le Combobox : fin des champs FK « (ID) » tapés à la main.** (@lane: frontend/compta)
   Défaut prouvé : `CrudDialog.jsx:76-96` (la plomberie CRUD des 8 écrans compta) ne rend que
   `<Input>` ou `<select>` statique — résultat : `NotesDeFraisPage.jsx:104/110/123` (« Employé
   (ID) » ×3), `RapprochementsPage.jsx:285` (« Compte de contrepartie (ID) »), et PIRE,
@@ -3207,6 +3207,8 @@ droite)**
 ---
 
 ## DONE LOG (agent appends one plain-language line per completed task)
+
+- 2026-07-12 — **VX229 — `CrudDialog` apprend le Combobox : fin des champs FK « (ID) » tapés à la main.** Nouveau type de champ `{name, label, async: () => Promise<{value,label}[]>, deriveFields?: (opt) => object}` dans `CrudDialog.jsx` — options chargées une fois à l'ouverture, mémoïsées, rendu en `Combobox` de recherche. Migré : `NotesDeFraisPage.jsx` 3× « Employé (ID) » → Combobox « Nom Prénom » (`rhApi.getEmployes`) ; `RapprochementsPage.jsx` « Compte de contrepartie (ID) » → Combobox comptes (`comptaApi.comptes.list`) ; `EngagementsPage.jsx` retenue de garantie : `tiers_nom` texte libre → Combobox du répertoire unifié `apps/tiers` (`tiers_id`/`tiers_type` réels, `tiers_nom` dérivé lecture seule via `deriveFields`, traçable vers la fiche tiers). `marche_ref`/Cautions bancaires laissés tels quels (string-ref intentionnel, aucun modèle tiers dédié côté backend — zéro migration). Tests `crud-dialog-combobox.test.jsx` (rendu Combobox + dérivation tiers_id/tiers_type/tiers_nom à la création). Frontend pur, zéro migration.
 
 - 2026-07-12 — **VX228 — `RapprochementDetailDialog` : le contrat d'interaction complet du rapprochement bancaire.** `RapprochementsPage.jsx` gagne un dialog 2 volets (relevé | grand-livre pré-filtré montant) ouvert par clic de ligne (`bancaires`), consommant les 4 méthodes API déjà écrites (`lignesGl`/`resume`/`ajouterLigneReleve`/`pointer`) ; bandeau `resume()` en tête (solde relevé/pointé, écart) qui décroît EN DIRECT à chaque pointage, même langage visuel que le bandeau d'équilibre d'`EcrituresPage` ; « Suggestions » déplacée DANS le dialog (retirée des actions de ligne) ; « Clôturer » apparaît dans le dialog une fois l'écart à 0. Test `rapprochement-detail.test.jsx` (flux pointer→resume, écart 500→0). Frontend pur, zéro migration.
 

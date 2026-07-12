@@ -24,6 +24,13 @@ import CrudDialog from '../components/CrudDialog.jsx'
    /rapprochements-3voies/, /budgets/, /centres-cout/, /exercices/, /periodes/.
    ========================================================================== */
 
+// VX229 — options du Combobox « Compte de contrepartie », chargées une fois à
+// l'ouverture du CrudDialog (au lieu d'un champ FK « (ID) » tapé à la main).
+const comptesAsync = () => comptaApi.comptes.list().then((res) => {
+  const list = Array.isArray(res.data) ? res.data : (res.data?.results || [])
+  return list.map((c) => ({ value: c.id, label: `${c.numero} — ${c.intitule}` }))
+})
+
 const TABS = [
   { value: 'bancaires', label: 'Bancaires' },
   { value: 'modeles', label: 'Modèles' },
@@ -502,7 +509,7 @@ export default function RapprochementsPage() {
     ? [
         { name: 'libelle', label: 'Libellé', required: true },
         { name: 'priorite', label: 'Priorité', type: 'number' },
-        { name: 'compte_contrepartie', label: 'Compte de contrepartie (ID)', required: true },
+        { name: 'compte_contrepartie', label: 'Compte de contrepartie', async: comptesAsync, required: true },
       ]
     : [
         { name: 'code', label: 'Code', required: true },
