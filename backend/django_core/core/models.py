@@ -2153,3 +2153,75 @@ class TenantLimit(TenantModel):
 
     def __str__(self):
         return f'{self.cle}={self.valeur} @{self.company_id}'
+
+
+class MaintenanceMode(TimestampedModel):
+    """NTPLT55 — mode lecture seule (maintenance) activable À CHAUD.
+
+    Singleton en base (une seule ligne, ``pk=1``) mis en cache 5 s : quand
+    ``actif`` est vrai, le middleware ``core.maintenance.MaintenanceModeMiddleware``
+    répond 503 aux méthodes NON-SÛRES (POST/PUT/PATCH/DELETE) avec un message
+    français + ``Retry-After``, en laissant passer login/logout/health. Brique
+    indispensable des bascules de schéma délicates sous trafic. Transverse à
+    toutes les sociétés (pas de FK company) — piloté par l'exploitant.
+    """
+
+    CACHE_KEY = 'core:maintenance_mode'
+    CACHE_TTL = 5  # secondes — relit la DB au plus toutes les 5 s.
+
+    actif = models.BooleanField('Maintenance active', default=False)
+    message = models.CharField(
+        'Message', max_length=255,
+        default='Maintenance en cours, réessayez dans quelques instants.')
+
+    class Meta:
+        verbose_name = 'Mode maintenance'
+        verbose_name_plural = 'Mode maintenance'
+
+    def __str__(self):
+        return 'ACTIF' if self.actif else 'inactif'
+
+    @classmethod
+    def get_solo(cls):
+        """Renvoie (crée si absent) la ligne singleton (``pk=1``)."""
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+    @classmethod
+    def is_active(cls):
+        """État courant (``bool``), mis en cache ``CACHE_TTL`` secondes.
+
+        Dégrade en ``False`` (service ouvert) si le cache ET la DB échouent —
+        une panne d'infrastructure ne doit jamais fermer l'ERP par erreur.
+        """
+        from django.core.cache import cache
+        try:
+            cached = cache.get(cls.CACHE_KEY)
+            if cached is not None:
+                return bool(cached)
+        except Exception:  # noqa: BLE001 — cache KO → lit la DB
+            cached = None
+        try:
+            actif = cls.get_solo().actif
+        except Exception:  # noqa: BLE001 — DB KO → service ouvert (fail-open)
+            return False
+        try:
+            cache.set(cls.CACHE_KEY, actif, cls.CACHE_TTL)
+        except Exception:  # noqa: BLE001 — cache KO → tant pis
+            pass
+        return bool(actif)
+
+    @classmethod
+    def set_active(cls, actif, message=None):
+        """Active/désactive la maintenance + invalide le cache immédiatement."""
+        from django.core.cache import cache
+        obj = cls.get_solo()
+        obj.actif = bool(actif)
+        if message is not None:
+            obj.message = message
+        obj.save(update_fields=['actif', 'message', 'updated_at'])
+        try:
+            cache.set(cls.CACHE_KEY, obj.actif, cls.CACHE_TTL)
+        except Exception:  # noqa: BLE001 — cache KO → prochaine lecture relit DB
+            pass
+        return obj

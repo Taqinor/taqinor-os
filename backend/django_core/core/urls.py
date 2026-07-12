@@ -48,6 +48,7 @@ from .views import (
     WorkflowTemplateViewSet,
     health_live,
     health_ready,
+    maintenance_toggle,
     metrics_view,
     secrets_rotation_due,
 )
@@ -120,4 +121,6 @@ urlpatterns = router.urls + [
     path('secrets/rotation/', secrets_rotation_due, name='secrets-rotation-due'),
     # YHARD6 — métriques Prometheus (admin OU IP-allowlist, jamais public).
     path('metrics/', metrics_view, name='metrics'),
+    # NTPLT55 — bascule superuser du mode maintenance (lecture seule).
+    path('maintenance/', maintenance_toggle, name='maintenance-toggle'),
 ]

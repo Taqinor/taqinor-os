@@ -999,3 +999,27 @@ def _couts_xlsx_response(rows, periode):
                       'spreadsheetml.sheet'))
     resp['Content-Disposition'] = f'attachment; filename="{filename}"'
     return resp
+
+
+# ── NTPLT55 — Bascule superuser du mode maintenance (lecture seule) ──────────
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([_IsSuperUser])
+def maintenance_toggle(request):
+    """État / bascule du mode maintenance (SUPERUSER only).
+
+    * ``GET``  → ``{'actif', 'message'}`` courant ;
+    * ``POST {'actif': bool, 'message'?: str}`` → active/désactive à chaud.
+
+    Le middleware ``core.maintenance`` répond ensuite 503 aux écritures tant que
+    ``actif`` est vrai (login/logout/health restent ouverts)."""
+    from .models import MaintenanceMode
+
+    if request.method == 'POST':
+        actif = bool(request.data.get('actif'))
+        message = request.data.get('message')
+        obj = MaintenanceMode.set_active(actif, message=message)
+    else:
+        obj = MaintenanceMode.get_solo()
+    return Response({'actif': obj.actif, 'message': obj.message})
