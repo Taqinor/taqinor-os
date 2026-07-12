@@ -154,6 +154,19 @@ forbidden_modules =
 ignore_imports =
     apps.facturation.models -> apps.ventes.selectors
 
+[importlinter:contract:achats-models-decoupled]
+name = Achats models never import a business-core domain's models (string FKs only — ODX19)
+type = forbidden
+source_modules =
+    apps.achats.models
+forbidden_modules =
+    apps.crm.models
+    apps.ventes.models
+    apps.stock.models
+    apps.sav.models
+    apps.installations.models
+    apps.compta.models
+
 [importlinter:contract:tiers-is-a-base-layer]
 name = The tiers foundation app imports downward only (no domain-core or satellite app — locks ARC17)
 type = forbidden
