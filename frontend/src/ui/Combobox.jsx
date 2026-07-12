@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useMemo, useRef, useState } from 'react'
+import { forwardRef, useEffect, useId, useMemo, useRef, useState } from 'react'
 import * as PopoverPrimitive from '@radix-ui/react-popover'
 import { AlertCircle, Check, ChevronsUpDown, X } from 'lucide-react'
 import { cn } from '../lib/cn'
@@ -47,6 +47,8 @@ export const Combobox = forwardRef(function Combobox(
   const inputRef = useRef(null)
   const listRef = useRef(null)
   const reqIdRef = useRef(0)
+  // VX128 — id stable par option, base pour `aria-activedescendant`.
+  const listId = useId()
 
   // Recherche asynchrone (débounce léger, garde anti-réponse-périmée).
   useEffect(() => {
@@ -79,6 +81,11 @@ export const Combobox = forwardRef(function Combobox(
     () => (options.concat(asyncOpts || [])).find((o) => String(o.value) === String(value)) || null,
     [options, asyncOpts, value],
   )
+
+  // VX128 — id de l'option active suivant le curseur clavier, posé sur
+  // `aria-activedescendant` du champ de recherche : NVDA/VoiceOver annoncent
+  // enfin l'option survolée en parcourant la liste (0 occurrence avant).
+  const activeOptId = filtered[cursor] ? `${listId}-opt-${cursor}` : undefined
 
   useEffect(() => {
     if (open) requestAnimationFrame(() => inputRef.current?.focus())
@@ -153,6 +160,8 @@ export const Combobox = forwardRef(function Combobox(
               type="text"
               role="searchbox"
               aria-autocomplete="list"
+              aria-controls={listId}
+              aria-activedescendant={activeOptId}
               autoComplete="off"
               value={query}
               onChange={(e) => { setQuery(e.target.value); setCursor(0) }}
@@ -161,7 +170,7 @@ export const Combobox = forwardRef(function Combobox(
               className="h-8 w-full rounded-md bg-transparent px-2 text-base outline-none placeholder:text-muted-foreground sm:text-sm"
             />
           </div>
-          <div ref={listRef} role="listbox" className="max-h-60 overflow-y-auto p-1">
+          <div ref={listRef} id={listId} role="listbox" className="max-h-60 overflow-y-auto p-1">
             {loading && (
               <div className="flex items-center justify-center gap-2 py-6 text-sm text-muted-foreground">
                 <Spinner className="size-4" /> Chargement…
@@ -182,6 +191,7 @@ export const Combobox = forwardRef(function Combobox(
               return (
                 <button
                   key={String(opt.value)}
+                  id={`${listId}-opt-${i}`}
                   type="button"
                   role="option"
                   aria-selected={isSel}
