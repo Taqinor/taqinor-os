@@ -3976,32 +3976,13 @@ textarea.form-control {
 
 /* ===== migrated from src/pages/crm/leads/leaddevispanel.css (P67) ===== */
 /* Panneau devis inline (slide-over Odoo) au-dessus de la fiche lead. */
-.ldp-overlay {
-  position: fixed;
-  inset: 0;
-  background: color-mix(in srgb, var(--nuit, #0f172a) 55%, transparent);
-  backdrop-filter: blur(3px);
-  z-index: var(--z-modal, 1300); /* au-dessus de l en-tete collant (--z-sticky=1100) ET de la fiche lead (.modal-overlay) */
-  display: flex;
-  justify-content: flex-end;
-}
-
-.ldp-panel {
-  background: var(--background, #f8fafc);
-  color: var(--foreground, inherit);
-  width: min(1100px, 100%);
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  box-shadow: -16px 0 48px rgba(0, 0, 0, 0.25);
-  animation: ldpIn var(--motion-base) var(--ease-out);
-}
-
-@keyframes ldpIn {
-  from { transform: translateX(40px); opacity: 0.4; }
-  to { transform: translateX(0); opacity: 1; }
-}
-
+/* VX133 — `.ldp-overlay`/`.ldp-panel`/`@keyframes ldpIn` (le vrai bord-glissé
+   bespoke, dupliqué par copier-coller sur 2 usages) sont retirés : les deux
+   consommateurs (LeadDevisPanel, InstallationDetail) sont migrés sur
+   `Sheet`/`SheetContent side="right"` (mêmes keyframes `slide-in/out-right`
+   que tout le reste de l'app, design/tokens.css). Le reste des classes
+   `.ldp-*` (header/body/preview/…) reste inchangé — seul le conteneur
+   overlay+panneau est remplacé. */
 .ldp-header {
   display: flex;
   align-items: center;
@@ -4198,7 +4179,8 @@ textarea.form-control {
 }
 
 @media (max-width: 640px) {
-  .ldp-panel { width: 100%; }
+  /* VX133 — la largeur du panneau est désormais portée par la className Sheet
+     (`w-[min(1100px,100%)]`, déjà responsive) ; plus de `.ldp-panel` ici. */
 
   /* Barre d'outils empilée sur mobile : format au-dessus, actions pleine
      largeur en dessous. */

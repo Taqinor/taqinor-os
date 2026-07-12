@@ -18,7 +18,9 @@ import {
 import DevisGenerator from '../../ventes/DevisGenerator'
 import { filenameFromResponse } from '../../../utils/downloadBlob'
 import { openPdfInGesture } from '../../../utils/pdfBlob'
-import { Button, Input, Spinner, Segmented, Checkbox, EmptyState } from '../../../ui'
+import {
+  Button, Input, Spinner, Segmented, Checkbox, EmptyState, Sheet, SheetContent,
+} from '../../../ui'
 
 // Le rendu PDF.js (canvas) est chargé à la demande (gros module) : il ne pèse
 // sur le bundle que quand on ouvre réellement un aperçu.
@@ -224,8 +226,12 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
   }
 
   return (
-    <div className="ldp-overlay" onClick={onClose}>
-      <div className="ldp-panel" onClick={e => e.stopPropagation()}>
+    // VX133 — migré du `.ldp-overlay`/`.ldp-panel` bespoke (pop centré) vers
+    // Sheet side="right" : le panneau glisse depuis son bord réel au lieu de
+    // « pop » du centre de l'écran. Le bouton ✕ reste celui du header
+    // ldp-* existant (showClose désactivé pour ne pas en dupliquer un).
+    <Sheet open onOpenChange={(o) => { if (!o) onClose() }}>
+      <SheetContent side="right" showClose={false} className="w-[min(1100px,100%)] gap-0 p-0 sm:max-w-none">
         <div className="ldp-header">
           <h3 className="ldp-title">
             {TITLES[mode] || 'Devis'} — {lead.nom} {lead.prenom || ''}
@@ -404,7 +410,7 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
             </div>
           )}
         </div>
-      </div>
-    </div>
+      </SheetContent>
+    </Sheet>
   )
 }

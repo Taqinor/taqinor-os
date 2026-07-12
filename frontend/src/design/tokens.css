@@ -490,6 +490,73 @@
   to { opacity: 0; transform: translateY(4px) scale(0.97) }
 }
 
+/* VX133 — Grammaire directionnelle des surfaces : `pop-in`/`pop-out`
+   ci-dessus sont pensés pour un popover ANCRÉ (petit, centré sur son
+   déclencheur) — un panneau de bord (Sheet latéral/haut/bas) doit entrer et
+   sortir PAR SON BORD, pas depuis le centre. Un keyframe par bord, mappé
+   --motion-base/--motion-fast (donc annulé par prefers-reduced-motion comme
+   pop-in/pop-out ci-dessus). */
+@theme {
+  --animate-slide-in-right: slide-in-right var(--motion-base) var(--ease-standard) both;
+  --animate-slide-out-right: slide-out-right var(--motion-fast) var(--ease-standard) both;
+  --animate-slide-in-left: slide-in-left var(--motion-base) var(--ease-standard) both;
+  --animate-slide-out-left: slide-out-left var(--motion-fast) var(--ease-standard) both;
+  --animate-slide-in-top: slide-in-top var(--motion-base) var(--ease-standard) both;
+  --animate-slide-out-top: slide-out-top var(--motion-fast) var(--ease-standard) both;
+  --animate-slide-in-bottom: slide-in-bottom var(--motion-base) var(--ease-standard) both;
+  --animate-slide-out-bottom: slide-out-bottom var(--motion-fast) var(--ease-standard) both;
+  --animate-fade-in: fade-in var(--motion-fast) var(--ease-standard) both;
+}
+@keyframes slide-in-right {
+  from { opacity: 0; transform: translateX(100%) }
+  to { opacity: 1; transform: translateX(0) }
+}
+@keyframes slide-out-right {
+  from { opacity: 1; transform: translateX(0) }
+  to { opacity: 0; transform: translateX(100%) }
+}
+@keyframes slide-in-left {
+  from { opacity: 0; transform: translateX(-100%) }
+  to { opacity: 1; transform: translateX(0) }
+}
+@keyframes slide-out-left {
+  from { opacity: 1; transform: translateX(0) }
+  to { opacity: 0; transform: translateX(-100%) }
+}
+@keyframes slide-in-top {
+  from { opacity: 0; transform: translateY(-100%) }
+  to { opacity: 1; transform: translateY(0) }
+}
+@keyframes slide-out-top {
+  from { opacity: 1; transform: translateY(0) }
+  to { opacity: 0; transform: translateY(-100%) }
+}
+@keyframes slide-in-bottom {
+  from { opacity: 0; transform: translateY(100%) }
+  to { opacity: 1; transform: translateY(0) }
+}
+@keyframes slide-out-bottom {
+  from { opacity: 1; transform: translateY(0) }
+  to { opacity: 0; transform: translateY(100%) }
+}
+@keyframes fade-in { from { opacity: 0 } to { opacity: 1 } }
+
+/* VX133 — Accordéon : la hauteur anime via la variable CSS que Radix expose
+   (--radix-accordion-content-height), au lieu de rester figée à `overflow:
+   hidden` statique sans mouvement de hauteur. */
+@theme {
+  --animate-accordion-down: accordion-down var(--motion-base) var(--ease-standard);
+  --animate-accordion-up: accordion-up var(--motion-fast) var(--ease-standard);
+}
+@keyframes accordion-down {
+  from { height: 0 }
+  to { height: var(--radix-accordion-content-height) }
+}
+@keyframes accordion-up {
+  from { height: var(--radix-accordion-content-height) }
+  to { height: 0 }
+}
+
 /* VX129 — Progress indéterminé : une barre qui balaie la piste en boucle
    (au lieu d'une barre figée à 0 %, seul état possible jusqu'ici). Le garde
    global `@media (prefers-reduced-motion: reduce)` (index.css) neutralise

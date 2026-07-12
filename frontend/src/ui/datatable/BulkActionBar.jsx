@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react'
 import { X, MoreHorizontal, Copy } from 'lucide-react'
 import { cn } from '../../lib/cn'
 import { Button } from '../Button'
@@ -69,8 +70,30 @@ export function buildCopyTSVAction({ rows, filteredRows, columns }) {
 
 const MAX_INLINE = 3
 
+// VX133 — la garde `if (!count) return null` démonte la barre INSTANTANÉMENT
+// au premier clic sur la dernière ligne : jamais d'animation de sortie
+// malgré le commentaire H132 ci-dessous qui prétendait « glisser depuis le
+// bas ». Pattern exit-sans-lib (aucune dépendance de transition dans le
+// repo) : on reste monté un `--motion-fast` de plus après que `count`
+// retombe à 0, le temps de jouer `slide-out-bottom`, puis on démonte pour de
+// vrai sur `onAnimationEnd`.
 export function BulkActionBar({ count, actions = [], onClear, className }) {
-  if (!count) return null
+  const [mounted, setMounted] = useState(count > 0)
+  const wasOpen = useRef(count > 0)
+
+  useEffect(() => {
+    if (count > 0) {
+      setMounted(true)
+      wasOpen.current = true
+    } else if (wasOpen.current) {
+      // Reste monté le temps de l'animation de sortie ; onAnimationEnd
+      // démontera réellement une fois `slide-out-bottom` terminée.
+      wasOpen.current = false
+    }
+  }, [count])
+
+  if (!mounted) return null
+  const open = count > 0
   const inline = actions.slice(0, MAX_INLINE)
   const overflow = actions.slice(MAX_INLINE)
   return (
@@ -84,12 +107,13 @@ export function BulkActionBar({ count, actions = [], onClear, className }) {
       )}
     >
       <div
+        onAnimationEnd={() => { if (!open) setMounted(false) }}
         className={cn(
           'pointer-events-auto flex w-full max-w-2xl items-center gap-2 rounded-xl border border-border',
           'bg-popover/95 p-2 pl-3 text-popover-foreground shadow-ui-lg backdrop-blur',
-          // H132 — entrée glissée/animée depuis le bas (respecte prefers-reduced-motion
-          // via la définition de l'animation ; pop-in combine fondu + léger zoom).
-          'animate-pop-in',
+          // H132/VX133 — entrée ET sortie glissées depuis le bas (respecte
+          // prefers-reduced-motion via la définition de l'animation).
+          open ? 'animate-slide-in-bottom' : 'animate-slide-out-bottom',
         )}
       >
         <span className="flex items-center gap-2 text-sm font-medium">

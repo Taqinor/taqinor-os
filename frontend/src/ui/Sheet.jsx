@@ -16,6 +16,16 @@ const SIDE = {
   top: 'inset-x-0 top-0 max-h-[85vh] w-full rounded-b-2xl border-b',
 }
 
+// VX133 — Grammaire directionnelle : un panneau ancré à un bord glisse DEPUIS
+// ce bord (au lieu du `pop-in` centré-zoomé hérité du popover générique, qui
+// « pop » un Sheet latéral de 26rem depuis le centre de l'écran).
+const SIDE_ANIMATION = {
+  right: 'data-[state=open]:animate-slide-in-right data-[state=closed]:animate-slide-out-right',
+  left: 'data-[state=open]:animate-slide-in-left data-[state=closed]:animate-slide-out-left',
+  bottom: 'data-[state=open]:animate-slide-in-bottom data-[state=closed]:animate-slide-out-bottom',
+  top: 'data-[state=open]:animate-slide-in-top data-[state=closed]:animate-slide-out-top',
+}
+
 // VX43 — Glisser-vers-le-bas-pour-fermer, UNIQUEMENT sur les bottom-sheets
 // (`side="bottom"`) : le geste terrain attendu (sheets iOS/Android). Zéro
 // dépendance : touchstart/move/end sur le contenu, seuil de distance avant
@@ -71,8 +81,9 @@ export const SheetContent = forwardRef(function SheetContent(
         ref={ref}
         className={cn(
           'fixed z-[var(--z-modal)] flex flex-col gap-4 overflow-y-auto border-border bg-card p-5 text-card-foreground shadow-ui-lg',
-          'data-[state=open]:animate-pop-in data-[state=closed]:animate-pop-out focus:outline-none',
+          'focus:outline-none',
           SIDE[side],
+          SIDE_ANIMATION[side],
           // VX176 — un Sheet latéral (left/right) ou top est `inset-y-0
           // h-full`/proche du bord haut : son bord colle sous l'encoche en
           // PWA standalone sans l'inset. `bottom` n'a pas besoin de l'inset
