@@ -104,3 +104,43 @@ code précédent est TOUJOURS sûr vis-à-vis du schéma.
   CRLF sous Windows) reste en place inchangée.
 - Un déploiement SAIN (healthcheck `ok`/`degraded`) se comporte exactement
   comme avant cette tâche — aucune régression pour le cas nominal.
+
+## NTPLT37 — Migration d'une table existante vers le partitionnement mensuel
+
+Une table à croissance monotone (journaux d'audit, événements) peut atteindre
+100 M+ de lignes : la purge par `DELETE` devient prohibitive et les requêtes
+récentes ralentissent. La convertir en table **partitionnée par mois** rend la
+purge instantanée (`DROP TABLE <partition>` au lieu d'un `DELETE`) et garde les
+requêtes récentes rapides (partition pruning).
+
+PostgreSQL ne convertit PAS une table simple en table partitionnée en place. La
+commande `partition_table` procède par table **shadow** + **swap atomique**,
+sans jamais s'exécuter automatiquement (opération d'exploitation ponctuelle,
+hors pointe) :
+
+```
+# 1) Voir le plan SQL sans rien exécuter (DRY-RUN par défaut) :
+python manage.py partition_table audit_auditlog --key created_at --dry-run
+
+# 2) Exécuter hors pointe (crée la shadow partitionnée, copie, swap atomique) :
+python manage.py partition_table audit_auditlog --key created_at --apply
+
+# 3) En cas de problème, revert immédiat depuis <table>_old :
+python manage.py partition_table audit_auditlog --revert
+```
+
+Étapes exécutées par `--apply` :
+
+1. `CREATE TABLE <table>_part_new (LIKE <table> …) PARTITION BY RANGE (<key>)`
+   puis une partition mensuelle par mois couvrant `[MIN(key), MAX(key)]`.
+2. Copie des lignes (`INSERT INTO <shadow> SELECT * FROM <table>`) — le
+   partitionnement route chaque ligne dans sa partition mensuelle.
+3. **Swap atomique** dans UNE transaction : `<table>` → `<table>_old`, puis
+   `<table>_part_new` → `<table>`.
+4. L'ancienne table est **CONSERVÉE** en `<table>_old` : le revert est immédiat
+   (`--revert`). Ne la `DROP` qu'après validation manuelle.
+
+Garde-fous : PostgreSQL uniquement ; refus si `<table>_old` existe déjà (drill
+précédent non nettoyé) ; le swap est atomique ; jamais appelée par une tâche
+beat. Réservée à l'exploitant. Pour les tables NEUVES nées partitionnées, voir
+`core/partitioning.py` (NTPLT36).
