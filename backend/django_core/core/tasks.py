@@ -102,6 +102,21 @@ def beat_heartbeat_task():
     return {'ok': True}
 
 
+@shared_task(name='core.ensure_partitions')
+def ensure_partitions_task():
+    """NTPLT36 — maintenance des partitions mensuelles À L'AVANCE.
+
+    Crée le mois courant + M+1/M+2 de chaque table partitionnée enregistrée
+    (``core.partitioning``), pour qu'une insertion future ait toujours sa
+    partition prête. Idempotent (re-run ne recrée rien). Queue ``scheduled``."""
+    from . import ensure_partitions
+
+    results = ensure_partitions.ensure_all()
+    logger.info('core.ensure_partitions: %d table(s) maintenue(s)',
+                len(results))
+    return {t: len(p) for t, p in results.items()}
+
+
 @shared_task(name='core.snapshot_tenant_usage')
 def snapshot_tenant_usage_task():
     """NTPLT6 — instantané NOCTURNE d'usage par tenant (metering).
