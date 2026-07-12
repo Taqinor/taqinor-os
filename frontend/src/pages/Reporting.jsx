@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import {
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend,
+  AreaChart, Area, XAxis, YAxis, CartesianGrid,
 } from 'recharts'
 import { fetchDashboard } from '../features/reporting/store/reportingSlice'
 import reportingApi from '../api/reportingApi'
@@ -20,7 +21,11 @@ import {
 // Le camembert « Répartition des factures » reste en recharts natif (le kit ne
 // fournit pas de primitive Pie) ; l'aire CA et les barres top-produits passent
 // au kit.
-import { AreaSansAxe, BarArrondie } from '../ui/charts'
+import {
+  AreaSansAxe, BarArrondie, ChartTooltip,
+  CHART_TOKENS, CHART_GRID_STYLE, CHART_COMPARISON_STYLE, categoricalColor,
+  animationDuration, CHART_ANIM_EASING,
+} from '../ui/charts'
 import { PageHeader } from '../ui/PageHeader'
 import { Table } from './reporting/Table'
 
@@ -205,6 +210,8 @@ export function Component() {
   // Fenêtre d'affichage du CA mensuel (filtrage CLIENT sur les données déjà
   // chargées — aucun appel API supplémentaire, comportement inchangé).
   const [caWindowMonths, setCaWindowMonths] = useState('12')
+  // VX41 — comparaison togglable « période précédente » (off par défaut).
+  const [caCompare, setCaCompare] = useState(false)
 
   useEffect(() => {
     dispatch(fetchDashboard())
@@ -215,6 +222,19 @@ export function Component() {
     const n = caWindowMonths === 'all' ? data.ca_mensuel.length : Number(caWindowMonths)
     return data.ca_mensuel.slice(-n)
   }, [data, caWindowMonths])
+
+  // VX41 — la comparaison n'est honnête que pour la fenêtre 6 mois : le
+  // backend `_ca_mensuel` renvoie toujours exactement 12 mois calendaires
+  // (voir apps/reporting/views.py), donc les 6 mois qui précèdent la fenêtre
+  // affichée existent déjà dans `data.ca_mensuel` — zéro appel API. Pour les
+  // fenêtres 12 mois/Tout, il n'existe PAS de 12 mois précédents chargés :
+  // on masque le bascule plutôt que d'inventer une donnée (checked-facts-only).
+  const caCompareAvailable = caWindowMonths === '6' && (data?.ca_mensuel?.length ?? 0) >= 12
+  const caWindowCompare = useMemo(() => {
+    if (!caCompareAvailable) return []
+    const precedent = data.ca_mensuel.slice(0, 6)
+    return caWindow.map((m, i) => ({ ...m, caPrecedent: precedent[i]?.ca ?? 0 }))
+  }, [caWindow, caCompareAvailable, data])
 
   // Export .xlsx (KPIs + créances clients), scopé société côté serveur.
   const exportDashboard = () => api
@@ -293,16 +313,32 @@ export function Component() {
         <Card>
           <CardHeader className="flex-row items-center justify-between gap-3">
             <CardTitle>CA mensuel</CardTitle>
-            <Segmented
-              size="sm"
-              value={caWindowMonths}
-              onChange={setCaWindowMonths}
-              options={[
-                { value: '6', label: '6 mois' },
-                { value: '12', label: '12 mois' },
-                { value: 'all', label: 'Tout' },
-              ]}
-            />
+            <div className="flex items-center gap-2">
+              {/* VX41 — comparaison « période précédente », uniquement quand la
+                  fenêtre 6 mois laisse assez d'historique déjà chargé pour
+                  l'afficher honnêtement (voir caCompareAvailable). */}
+              {caCompareAvailable && (
+                <Segmented
+                  size="sm"
+                  value={caCompare ? 'compare' : 'simple'}
+                  onChange={(v) => setCaCompare(v === 'compare')}
+                  options={[
+                    { value: 'simple', label: 'CA seul' },
+                    { value: 'compare', label: 'Vs période précédente' },
+                  ]}
+                />
+              )}
+              <Segmented
+                size="sm"
+                value={caWindowMonths}
+                onChange={setCaWindowMonths}
+                options={[
+                  { value: '6', label: '6 mois' },
+                  { value: '12', label: '12 mois' },
+                  { value: 'all', label: 'Tout' },
+                ]}
+              />
+            </div>
           </CardHeader>
           <CardContent>
             {caVide ? (
@@ -312,6 +348,65 @@ export function Component() {
                 description="Aucune facture payée sur la période sélectionnée."
                 className="border-0 py-8"
               />
+            ) : caCompare && caCompareAvailable ? (
+              <>
+                <ResponsiveContainer width="100%" height={220}>
+                  <AreaChart data={caWindowCompare} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+                    <CartesianGrid {...CHART_GRID_STYLE} />
+                    <XAxis
+                      dataKey="mois"
+                      tick={{ fontSize: 11, fill: CHART_TOKENS.axis }}
+                      tickLine={false}
+                      axisLine={false}
+                    />
+                    <YAxis hide domain={[0, 'auto']} />
+                    <Tooltip
+                      cursor={{ stroke: CHART_TOKENS.grid }}
+                      content={<ChartTooltip format={(v) => dh(v)} />}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="ca"
+                      name="CA HT (période actuelle)"
+                      stroke={categoricalColor(0)}
+                      strokeWidth={2}
+                      fill={categoricalColor(0)}
+                      fillOpacity={0.12}
+                      dot={false}
+                      isAnimationActive={animationDuration() > 0}
+                      animationDuration={animationDuration()}
+                      animationEasing={CHART_ANIM_EASING}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="caPrecedent"
+                      name="CA HT (période précédente)"
+                      stroke={categoricalColor(1)}
+                      dot={false}
+                      isAnimationActive={animationDuration() > 0}
+                      animationDuration={animationDuration()}
+                      animationEasing={CHART_ANIM_EASING}
+                      {...CHART_COMPARISON_STYLE}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+                <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                  <span className="inline-flex items-center gap-1.5">
+                    <span aria-hidden="true" className="inline-block h-0.5 w-3.5 rounded-full" style={{ background: categoricalColor(0) }} />
+                    Période actuelle
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span
+                      aria-hidden="true"
+                      className="inline-block h-0.5 w-3.5"
+                      style={{
+                        backgroundImage: `repeating-linear-gradient(90deg, ${categoricalColor(1)} 0 4px, transparent 4px 7px)`,
+                      }}
+                    />
+                    Période précédente
+                  </span>
+                </div>
+              </>
             ) : (
               <AreaSansAxe
                 data={caWindow}

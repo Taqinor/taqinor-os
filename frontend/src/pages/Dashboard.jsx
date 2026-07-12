@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 
 const ActivityFeedWidget = lazy(() => import('../components/ActivityFeedWidget'))
 const MesEquipesCard = lazy(() => import('../components/MesEquipesCard'))
@@ -14,7 +14,14 @@ import {
   Package, Users, FileCheck, FileText, AlertTriangle,
   TrendingUp, Activity, ReceiptText, Clock, Wrench, CalendarClock, Phone,
 } from 'lucide-react'
-import { AreaSansAxe, BarArrondie, KpiSpark, ChartEmpty } from '../ui/charts'
+import {
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, ResponsiveContainer,
+} from 'recharts'
+import {
+  AreaSansAxe, BarArrondie, KpiSpark, ChartEmpty, ChartTooltip,
+  CHART_TOKENS, CHART_GRID_STYLE, CHART_COMPARISON_STYLE, categoricalColor,
+  animationDuration, CHART_ANIM_EASING,
+} from '../ui/charts'
 import { ModuleHero } from '../ui/module/ModuleHero.jsx'
 import { fetchProduits } from '../features/stock/store/stockSlice'
 import { fetchClients, fetchLeads } from '../features/crm/store/crmSlice'
@@ -32,7 +39,7 @@ import {
 } from '../features/installations/statuses'
 import {
   Card, CardHeader, CardTitle, CardDescription, CardContent,
-  StatusPill, Badge, Progress, EmptyState, Skeleton, SkeletonText,
+  StatusPill, Badge, Progress, EmptyState, Skeleton, SkeletonText, Segmented,
 } from '../ui'
 import { StateBlock } from '../components/StateBlock'
 import { cn } from '../lib/cn'
@@ -254,12 +261,15 @@ export function KpiCard({ kpi, navigate }) {
   )
 }
 
-function ChartCard({ title, description, children, isEmpty, emptyLabel, loading }) {
+function ChartCard({ title, description, children, isEmpty, emptyLabel, loading, actions }) {
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-        {description && <CardDescription>{description}</CardDescription>}
+      <CardHeader className={actions ? 'flex-row items-center justify-between gap-3' : undefined}>
+        <div>
+          <CardTitle>{title}</CardTitle>
+          {description && <CardDescription>{description}</CardDescription>}
+        </div>
+        {actions}
       </CardHeader>
       <CardContent>
         {loading ? (
@@ -362,6 +372,10 @@ export function Component() {
   const roleTier = useSelector((s) => s.auth.role)
   const profile = cockpitProfile({ roleNom, roleTier })
 
+  // VX41 — comparaison togglable « période précédente » sur le CA mensuel
+  // (off par défaut : comportement écran inchangé tant qu'on ne l'active pas).
+  const [caCompare, setCaCompare] = useState(false)
+
   // VX67 — extrait en fonction nommée pour être réutilisable comme `onRetry`
   // du StateBlock d'erreur ci-dessous.
   // VX27 — on ajoute les fetchs frontend qui manquaient (leads + tickets SAV) :
@@ -385,12 +399,16 @@ export function Component() {
   const facturesEnRetard = factures.filter((f) => f.statut === 'en_retard')
   const facturesEmises = factures.filter((f) => f.statut === 'emise')
 
-  // CA mensuel sur 6 mois — calculé depuis les factures payées déjà chargées.
-  const caMensuel = useMemo(() => {
+  // CA mensuel sur 12 mois — calculé depuis les factures payées déjà chargées.
+  // VX41 — la fenêtre s'étend à 12 mois (au lieu de 6) pour porter la série
+  // « période précédente » : les 6 premiers mois servent de référence décalée
+  // aux 6 mois affichés, à partir des MÊMES données déjà en store (zéro appel
+  // API supplémentaire).
+  const caMensuel12 = useMemo(() => {
     const MOIS = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc']
     const map = {}
     const today = new Date()
-    for (let i = 5; i >= 0; i--) {
+    for (let i = 11; i >= 0; i--) {
       const d = new Date(today.getFullYear(), today.getMonth() - i, 1)
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
       map[key] = { mois: `${MOIS[d.getMonth()]} ${d.getFullYear()}`, ca: 0 }
@@ -403,6 +421,20 @@ export function Component() {
       })
     return Object.values(map)
   }, [factures])
+
+  const caMensuel = useMemo(() => caMensuel12.slice(-6), [caMensuel12])
+
+  // VX41 — Série « période précédente » togglable : les 6 mois qui précèdent
+  // directement la fenêtre affichée, alignés position à position (mois N vs
+  // mois N-6). Même tableau `caMensuel12` déjà calculé, aucune donnée en plus.
+  const caMensuelCompare = useMemo(() => {
+    const precedent = caMensuel12.slice(0, 6)
+    return caMensuel.map((m, i) => ({
+      ...m,
+      caPrecedent: precedent[i]?.ca ?? 0,
+      moisPrecedent: precedent[i]?.mois,
+    }))
+  }, [caMensuel12, caMensuel])
 
   const caTotal = useMemo(() => caMensuel.reduce((s, m) => s + m.ca, 0), [caMensuel])
 
@@ -867,16 +899,95 @@ export function Component() {
               description={`Factures payées · ${formatMAD(caTotal, { decimals: 0 })} sur 6 mois`}
               isEmpty={caMensuel.every((m) => m.ca === 0)}
               emptyLabel="Aucune facture payée sur les 6 derniers mois."
+              actions={(
+                <Segmented
+                  size="sm"
+                  value={caCompare ? 'compare' : 'simple'}
+                  onChange={(v) => setCaCompare(v === 'compare')}
+                  options={[
+                    { value: 'simple', label: 'CA seul' },
+                    { value: 'compare', label: 'Vs période précédente' },
+                  ]}
+                />
+              )}
             >
-              <AreaSansAxe
-                data={caMensuel}
-                dataKey="ca"
-                xKey="mois"
-                tone="primary"
-                name="CA HT"
-                height={180}
-                tooltipFormat={(v) => formatMAD(v, { decimals: 0 })}
-              />
+              {caCompare ? (
+                <>
+                  {/* VX41 — comparaison « période précédente » : mêmes données
+                      déjà chargées, décalées de 6 mois — zéro appel API. Série
+                      courante en trait plein (palette CA), précédente en
+                      pointillé (CHART_COMPARISON_STYLE). */}
+                  <ResponsiveContainer width="100%" height={180}>
+                    <AreaChart data={caMensuelCompare} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+                      <CartesianGrid {...CHART_GRID_STYLE} />
+                      <XAxis
+                        dataKey="mois"
+                        tick={{ fontSize: 11, fill: CHART_TOKENS.axis }}
+                        tickLine={false}
+                        axisLine={false}
+                      />
+                      <YAxis hide domain={[0, 'auto']} />
+                      <RTooltip
+                        cursor={{ stroke: CHART_TOKENS.grid }}
+                        content={<ChartTooltip format={(v) => formatMAD(v, { decimals: 0 })} />}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="ca"
+                        name="CA HT (période actuelle)"
+                        stroke={categoricalColor(0)}
+                        strokeWidth={2}
+                        fill={categoricalColor(0)}
+                        fillOpacity={0.12}
+                        dot={false}
+                        isAnimationActive={animationDuration() > 0}
+                        animationDuration={animationDuration()}
+                        animationEasing={CHART_ANIM_EASING}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="caPrecedent"
+                        name="CA HT (période précédente)"
+                        stroke={categoricalColor(1)}
+                        dot={false}
+                        isAnimationActive={animationDuration() > 0}
+                        animationDuration={animationDuration()}
+                        animationEasing={CHART_ANIM_EASING}
+                        {...CHART_COMPARISON_STYLE}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                  {/* Légende claire (les couleurs recharts natives ne rendent
+                      pas le style pointillé) : trait plein = période actuelle,
+                      pointillé = période précédente. */}
+                  <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                    <span className="inline-flex items-center gap-1.5">
+                      <span aria-hidden="true" className="inline-block h-0.5 w-3.5 rounded-full" style={{ background: categoricalColor(0) }} />
+                      Période actuelle
+                    </span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <span
+                        aria-hidden="true"
+                        className="inline-block h-0.5 w-3.5"
+                        style={{
+                          backgroundImage: `repeating-linear-gradient(90deg, ${categoricalColor(1)} 0 4px, transparent 4px 7px)`,
+                        }}
+                      />
+                      Période précédente
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <AreaSansAxe
+                  data={caMensuel}
+                  dataKey="ca"
+                  xKey="mois"
+                  tone="primary"
+                  name="CA HT"
+                  height={180}
+                  tooltipFormat={(v) => formatMAD(v, { decimals: 0 })}
+                />
+              )}
             </ChartCard>
 
             <ChartCard
