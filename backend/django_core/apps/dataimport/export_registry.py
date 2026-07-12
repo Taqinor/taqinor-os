@@ -130,11 +130,13 @@ _SPECS = [
     ExportSpec('lignes_devis', 'Lignes de devis', 'ventes.LigneDevis',
                order_by='id', company_field='devis__company'),
     ExportSpec('bons_commande', 'Bons de commande', 'ventes.BonCommande'),
-    ExportSpec('factures', 'Factures', 'ventes.Facture'),
-    ExportSpec('lignes_facture', 'Lignes de facture', 'ventes.LigneFacture',
+    # ODX17 — Facture/LigneFacture/Paiement/Avoir ont déménagé de ``ventes``
+    # vers ``facturation`` (même table physique, zéro SQL).
+    ExportSpec('factures', 'Factures', 'facturation.Facture'),
+    ExportSpec('lignes_facture', 'Lignes de facture', 'facturation.LigneFacture',
                order_by='id', company_field='facture__company'),
-    ExportSpec('paiements', 'Paiements', 'ventes.Paiement'),
-    ExportSpec('avoirs', 'Avoirs', 'ventes.Avoir'),
+    ExportSpec('paiements', 'Paiements', 'facturation.Paiement'),
+    ExportSpec('avoirs', 'Avoirs', 'facturation.Avoir'),
     ExportSpec('chantiers', 'Chantiers / Installations',
                'installations.Installation'),
     ExportSpec('interventions', 'Interventions', 'installations.Intervention'),
