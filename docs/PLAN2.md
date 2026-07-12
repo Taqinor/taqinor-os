@@ -79,6 +79,7 @@ the journey the best in the world for the CLIENT and the COMMERCIAL user.*
 - 2026-07-12 — VX162 **(already present)** : `providers/session-bridge.js` a déjà `BroadcastChannel('taqinor-session')` + `broadcastLogout()`/`subscribeToSessionLogout()`, câblé depuis `authSlice.logoutUser.fulfilled` et consommé par `SessionProvider.jsx`.
 - 2026-07-12 — VX164 **(already present)** : les 3 volets sont déjà construits — (a) `messagingSlice.js` a `activeMessagesRequestId` (garde de séquence sur `fetchMessages.fulfilled`) ; (b) `crmSlice.js`/`ventesSlice.js`/`stockSlice.js` ont chacun `seqMap[id]`/`isStaleResourceUpdate` sur leurs réducteurs `update*/patch*.fulfilled` ; (c) `InlineEdit.jsx` a `committingRef` vérifié en tête de `commit()`.
 - 2026-07-12 — VX165 **(already present)** : `ventesSlice.js`/`crmSlice.js`/`stockSlice.js` ont déjà `pendingCount` incrémenté/décrémenté par `pending`/settled sur chaque fetch, `loading = pendingCount > 0`.
+- 2026-07-12 — VX203 **[BLOCKED: partiel]** : `lib/apiError.js` (b) et la délégation `toast.js→apiError.js` étaient déjà construites (vagues précédentes). Fait cette session : (c) `api/iaApi.js` aligné sur le contrat (a) d'`axios.js` — toute erreur ≠401 hors annulation/`suppressErrorToast` surface désormais un toast FR via `getApiError` (un 403 du catalogue d'actions agentiques n'est plus muet). PAS FAIT (hors budget d'une session sans `eslint`/`vitest`/`vite build` disponibles dans ce worktree) : le scan réel des pages fautives donne ~104 fichiers (catch + `toastError`/`toast.error` direct), très au-delà des « ~35 » du texte — un codemod à l'aveugle sur ce volume, sans aucun moyen de vérifier une régression de build, est un risque disproportionné ; `scripts/check_double_toast.mjs` non créé pour la même raison (il casserait frontend-lint immédiatement tant que les ~104 fichiers ne sont pas corrigés). Laissé en BLOCKED pour une session avec outillage complet (build/lint) qui peut vérifier le codemod page par page.
 
 #### DONE LOG — Vague 2 (VX terrain/finance/CRM + QX groupe) (2026-07-12)
 
@@ -2097,7 +2098,7 @@ détail en tête de document — voir **VX120**. Ne pas la reconstruire ici.*
   est throttlée ; `/ged/depot/<t>/` répond 429 sous rafale. (T2 — M, sonnet) (@lane:
   backend/auth)
 
-- [ ] VX203 — **Contrat d'erreur UNIQUE : fin du double-toast (35 pages), `getApiError` (@lane: frontend/data)
+- [BLOCKED: partiel — voir DONE LOG 2026-07-12 ; codemod ~104 fichiers + garde CI restent hors budget d'une session sans build/lint] VX203 — **Contrat d'erreur UNIQUE : fin du double-toast (35 pages), `getApiError` (@lane: frontend/data)
   canonique (259 clones), `iaApi` aligné (le 403 IA n'est plus muet).** Trois moitiés du même
   contrat, explicitement renvoyées à l'axe robustesse par la synthèse beauté : (a)
   `api/axios.js:63-70` toaste DÉJÀ toute erreur ≠401/404, mais ~35 pages re-toastent dans leur
