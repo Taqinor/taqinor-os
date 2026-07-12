@@ -15,6 +15,7 @@ import {
   DataTable, Badge, Button, Segmented,
   Skeleton, SkeletonTableRow, EmptyState,
 } from '../../ui'
+import { buildCopyTSVAction } from '../../ui/datatable/BulkActionBar'
 import { StateBlock } from '../../components/StateBlock'
 import { useConfirmDialog, toast } from '../../ui/confirm'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
@@ -390,13 +391,18 @@ export default function ClientList() {
             searchPlaceholder="Rechercher nom, email, tél, ICE, IF, RC, CIN…"
             rowActions={rowActions}
             selectable={isAdmin}
-            bulkActions={isAdmin ? (rows, _keys, clear) => [{
-              id: 'bulk-delete',
-              label: 'Supprimer (sans devis)',
-              icon: Trash2,
-              destructive: true,
-              onClick: () => bulkDelete(rows, _keys, clear),
-            }] : undefined}
+            bulkActions={isAdmin ? (rows, _keys, clear) => [
+              // VX110 — copie la sélection au presse-papiers en TSV (colle en
+              // colonnes dans Excel / lisible dans WhatsApp), sinon les lignes filtrées.
+              buildCopyTSVAction({ rows, filteredRows: rows, columns }),
+              {
+                id: 'bulk-delete',
+                label: 'Supprimer (sans devis)',
+                icon: Trash2,
+                destructive: true,
+                onClick: () => bulkDelete(rows, _keys, clear),
+              },
+            ] : undefined}
             onExport={exportRows}
             exportName="clients"
             onRowClick={(c) => setDetailClient(c)}
