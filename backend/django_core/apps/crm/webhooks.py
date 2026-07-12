@@ -84,10 +84,37 @@ def _secret_ok(request) -> bool:
 
 
 def _resolve_company():
+    """Résolution serveur du tenant pour ce webhook public (jamais reçue du
+    corps de requête). ``WEBSITE_LEADS_COMPANY_ID`` DOIT être posé en prod dès
+    qu'une 2e ``Company`` existe (QXG5, gated ops check) : sans elle, le repli
+    ci-dessous (1re Company par pk) est ARBITRAIRE et peut router
+    silencieusement un lead vers le mauvais tenant.
+
+    QXG5 (code guard) : on ne casse jamais l'endpoint (le repli reste "safe",
+    jamais bloquant — « jamais perdre un lead »), mais on lève un
+    ``logger.error`` LOUD dès que la config est ambiguë, pour qu'un défaut de
+    configuration prod soit visible (logs/alerting) plutôt que silencieux."""
     company_id = getattr(settings, 'WEBSITE_LEADS_COMPANY_ID', None)
     if company_id:
-        return Company.objects.filter(pk=company_id).first()
-    return Company.objects.order_by('pk').first()
+        company = Company.objects.filter(pk=company_id).first()
+        if company is None:
+            logger.error(
+                "_resolve_company: WEBSITE_LEADS_COMPANY_ID=%r ne correspond "
+                "à aucune Company — vérifier la configuration prod.",
+                company_id,
+            )
+        return company
+    total = Company.objects.count()
+    fallback = Company.objects.order_by('pk').first()
+    if total > 1:
+        logger.error(
+            "_resolve_company: WEBSITE_LEADS_COMPANY_ID n'est pas configuré "
+            "et %d Company existent — repli ARBITRAIRE sur la 1re (pk=%s). "
+            "Risque de routage silencieux vers le mauvais tenant : poser "
+            "WEBSITE_LEADS_COMPANY_ID en prod (QXG5).",
+            total, getattr(fallback, 'pk', None),
+        )
+    return fallback
 
 
 def _clean_roof_point(raw):

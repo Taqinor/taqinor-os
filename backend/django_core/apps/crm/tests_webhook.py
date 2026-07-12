@@ -675,3 +675,37 @@ class QX14PersistedScoreTests(TestCase):
         self.assertEqual(res.status_code, 201, res.content)
         lead = Lead.objects.get(pk=res.json()['lead_id'])
         self.assertIsNotNone(lead.mql_assigned_at)
+
+
+class ResolveCompanyGuardTests(TestCase):
+    """QXG5 — code guard : un ``WEBSITE_LEADS_COMPANY_ID`` absent/mauvais ne
+    doit jamais mésrouter en silence. La confirmation prod (la variable est
+    bien posée) reste un check ops manuel du fondateur — hors périmètre ici."""
+
+    def test_missing_env_var_with_two_companies_logs_loud_error(self):
+        from apps.crm.webhooks import _resolve_company
+        c1 = Company.objects.create(nom='Taqinor A', slug='taqinor-a')
+        Company.objects.create(nom='Taqinor B', slug='taqinor-b')
+        with override_settings(WEBSITE_LEADS_COMPANY_ID=None):
+            with self.assertLogs('apps.crm.webhooks', level='ERROR') as cm:
+                resolved = _resolve_company()
+        # Repli conservé (safe — jamais casser l'endpoint) : 1re Company par pk.
+        self.assertEqual(resolved, c1)
+        self.assertTrue(any('WEBSITE_LEADS_COMPANY_ID' in m for m in cm.output))
+
+    def test_missing_env_var_single_company_no_loud_error(self):
+        from apps.crm.webhooks import _resolve_company
+        c1 = Company.objects.create(nom='Taqinor Solo', slug='taqinor-solo')
+        with override_settings(WEBSITE_LEADS_COMPANY_ID=None):
+            # Mono-tenant : aucune ambiguïté, pas de bruit de log nécessaire.
+            resolved = _resolve_company()
+        self.assertEqual(resolved, c1)
+
+    def test_bad_env_var_value_logs_loud_error_and_returns_none(self):
+        from apps.crm.webhooks import _resolve_company
+        Company.objects.create(nom='Taqinor C', slug='taqinor-c')
+        with override_settings(WEBSITE_LEADS_COMPANY_ID=999999):
+            with self.assertLogs('apps.crm.webhooks', level='ERROR') as cm:
+                resolved = _resolve_company()
+        self.assertIsNone(resolved)
+        self.assertTrue(any('999999' in m for m in cm.output))
