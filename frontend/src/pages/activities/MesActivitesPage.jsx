@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useSelector } from 'react-redux'
 import { useIsAdmin } from '../../hooks/useHasPermission'
+// VX211 — « Ma file » par persona (ordre des `kind` selon le rôle) +
+// départage optionnel « Victoires rapides d'abord ».
+import {
+  getQuickWinsPref, setQuickWinsPref, sortMaFileItems,
+} from '../../features/queue/queueViews'
 import {
   AlarmClock, CalendarCheck2, CalendarClock, ExternalLink, PartyPopper, Sparkles, Users,
   PhoneCall, MessageCircle, ListChecks, Plus, AtSign, ClipboardCheck, Flame, FileWarning,
@@ -121,6 +127,17 @@ export default function MesActivitesPage() {
   // des activités + approbations + mentions + items commerciaux). Chargée à
   // part des buckets pour NE PAS régresser l'écran d'activités existant.
   const [maFile, setMaFile] = useState({ items: [], total: 0, resume: {} })
+  // VX211 — persona (ordre des `kind`) déduite de `state.auth.role_nom` ;
+  // départage « Victoires rapides d'abord » opt-in, persisté localStorage.
+  const roleNom = useSelector((s) => s.auth.role_nom)
+  const [quickWinsFirst, setQuickWinsFirst] = useState(getQuickWinsPref)
+  const toggleQuickWins = () => {
+    setQuickWinsFirst((v) => {
+      const next = !v
+      setQuickWinsPref(next)
+      return next
+    })
+  }
   // VX83 — quick-add « + À faire » : créer une activité personnelle assignée à
   // soi (XKB4). `todoText` vide = formulaire replié.
   const [todoText, setTodoText] = useState('')
@@ -260,6 +277,14 @@ export default function MesActivitesPage() {
   // VX83 — en-tête compté « X en retard · Y aujourd'hui · Z approbation(s) ».
   const resume = maFile.resume || {}
 
+  // VX211 — ordre par persona (rôle) + départage optionnel « Victoires
+  // rapides d'abord ». JAMAIS un filtre : tous les items de `maFile.items`
+  // restent présents, seul leur ORDRE change. Un rôle non reconnu retombe
+  // sur l'ordre global d'origine (comportement VX83 inchangé).
+  const maFileItemsSorted = useMemo(
+    () => sortMaFileItems(maFile.items, { roleNom, quickWinsFirst }),
+    [maFile.items, roleNom, quickWinsFirst])
+
   return (
     <div className="page">
       <div className="page-header">
@@ -338,6 +363,13 @@ export default function MesActivitesPage() {
           <CardHeader className="flex-row items-center gap-2">
             <ListChecks className="size-4 text-muted-foreground" aria-hidden="true" />
             <CardTitle className="flex-1">File de travail</CardTitle>
+            {/* VX211 — départage optionnel, jamais actif par défaut (le tri
+                par défaut — ordre par persona puis urgence — reste inchangé
+                tant que ce n'est pas coché). */}
+            <label className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+              <input type="checkbox" checked={quickWinsFirst} onChange={toggleQuickWins} />
+              Victoires rapides d'abord
+            </label>
             <Badge tone="primary">{maFile.total}</Badge>
           </CardHeader>
           <CardContent className="p-0 sm:p-0">
@@ -411,7 +443,7 @@ export default function MesActivitesPage() {
                   ),
                 },
               ]}
-              rows={maFile.items}
+              rows={maFileItemsSorted}
             />
           </CardContent>
         </Card>

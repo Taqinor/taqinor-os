@@ -74,6 +74,21 @@ class ChatterViewSetMixin:
                         status=status.HTTP_201_CREATED)
 
 
+# VX211 — [BACKEND léger] table STATIQUE (jamais du ML) de l'effort estimé
+# par `kind` de « Ma file » — alimente le départage optionnel « Victoires
+# rapides d'abord » côté frontend. Fermé, aligné sur les 6 `kind` actuels
+# (`activite`, `approbation`, `mention`, `relance`, `lead_chaud`,
+# `devis_expire`) ; un `kind` non listé retombe sur `'moyen'`.
+_EFFORT_ESTIME_PAR_KIND = {
+    'mention': 'faible',     # marquer lu / ouvrir — 1 clic
+    'approbation': 'faible',  # décider — déjà 1 clic via /approbations
+    'activite': 'moyen',
+    'relance': 'moyen',
+    'lead_chaud': 'eleve',    # premier contact à froid — plus long
+    'devis_expire': 'eleve',  # relance devis + suivi
+}
+
+
 def _company(request):
     return request.user.company if request.user.company_id else None
 
@@ -324,6 +339,16 @@ class ActivityViewSet(viewsets.ModelViewSet):
                 items.extend(ma_file_commercial_items(company, request.user))
             except Exception:  # pragma: no cover - défensif
                 pass
+
+        # VX211 — [BACKEND léger] `effort_estime` DÉTERMINISTE par `kind`
+        # (table statique, jamais du ML) : alimente un tri secondaire
+        # OPTIONNEL côté frontend (« Victoires rapides d'abord »,
+        # `frontend/src/features/queue/queueViews.js`) — un simple
+        # DÉPARTAGE entre items d'urgence égale, jamais un remplacement du
+        # tri d'urgence lui-même.
+        for it in items:
+            it['effort_estime'] = _EFFORT_ESTIME_PAR_KIND.get(
+                it.get('kind'), 'moyen')
 
         # Classement plus-urgent-d'abord : en retard, puis aujourd'hui, puis
         # à venir ; à urgence égale, échéance la plus proche d'abord (les items
