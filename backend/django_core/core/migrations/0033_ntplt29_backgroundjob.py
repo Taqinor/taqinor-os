@@ -38,7 +38,7 @@ class Migration(migrations.Migration):
                     blank=True, default='', verbose_name='Message d’erreur')),
                 ('company', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
-                    related_name='core_backgroundjob_set',
+                    related_name='%(app_label)s_%(class)s_set',
                     to='authentication.company', verbose_name='Société')),
                 ('user', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,

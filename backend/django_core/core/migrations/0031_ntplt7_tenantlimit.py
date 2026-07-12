@@ -34,7 +34,7 @@ class Migration(migrations.Migration):
                     verbose_name='Valeur')),
                 ('company', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
-                    related_name='core_tenantlimit_set',
+                    related_name='%(app_label)s_%(class)s_set',
                     to='authentication.company', verbose_name='Société')),
             ],
             options={

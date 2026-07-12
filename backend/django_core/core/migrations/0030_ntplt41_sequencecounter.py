@@ -31,7 +31,7 @@ class Migration(migrations.Migration):
                     default=0, verbose_name='Dernier réservé')),
                 ('company', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
-                    related_name='core_sequencecounter_set',
+                    related_name='%(app_label)s_%(class)s_set',
                     to='authentication.company', verbose_name='Société')),
             ],
             options={
