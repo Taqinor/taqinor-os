@@ -142,7 +142,7 @@ const STATUT_DISPLAY = {
 // uniquement — brouillon/envoyé/accepté puis BC/facturé/chantier. Jamais les
 // stages STAGES.py du funnel CRM (règle #2) : aucune clé de stage n'est
 // importée ici, les deux couches ne se mélangent jamais.
-const DOC_STAGE_TRACK_STAGES = [
+const DOC_STATUT_TRACK = [
   { key: 'brouillon', label: 'Brouillon' },
   { key: 'envoye', label: 'Envoyé' },
   { key: 'accepte', label: 'Accepté' },
@@ -366,7 +366,7 @@ function DevisRow({ d, ctx }) {
   // du BC / d'une facture liée / d'un chantier, jamais via `d.statut` lui-même.
   // refuse/expire = statuts terminaux NÉGATIFS : la piste s'arrête au dernier
   // jalon positif (envoyé) sans jamais franchir « Accepté ».
-  const docStageCurrent = (d.statut === 'refuse' || d.statut === 'expire' || d.is_expired)
+  const docTrackCurrent = (d.statut === 'refuse' || d.statut === 'expire' || d.is_expired)
     ? 'envoye'
     : d.statut === 'brouillon' ? 'brouillon'
       : d.statut === 'envoye' ? 'envoye'
@@ -374,7 +374,7 @@ function DevisRow({ d, ctx }) {
           : (d.factures_liees?.length > 0) ? 'facture'
             : d.bon_commande_etat?.exists ? 'bc'
               : 'accepte'
-  const docStageBlocked = d.bon_commande_etat?.mismatch ? ['bc'] : []
+  const docTrackBlocked = d.bon_commande_etat?.mismatch ? ['bc'] : []
   const isGenerating = pdfGenerating[d.id]
   // VX132 — chargement long conscient : libellés honnêtes qui tournent
   // pendant la génération du PDF premium (jamais de fausse barre de progression).
@@ -575,9 +575,9 @@ function DevisRow({ d, ctx }) {
             maintenant signalé visuellement, pas seulement en texte L563+). */}
         <DocumentStageTrack
           className="mt-1"
-          stages={DOC_STAGE_TRACK_STAGES}
-          current={docStageCurrent}
-          blocked={docStageBlocked}
+          stages={DOC_STATUT_TRACK}
+          current={docTrackCurrent}
+          blocked={docTrackBlocked}
         />
         {d.statut === 'accepte' && d.option_acceptee && (
           <div className="mt-1 text-xs text-success">
