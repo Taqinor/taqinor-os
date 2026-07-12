@@ -399,6 +399,34 @@ def csat_par_technicien(company, *, date_debut=None, date_fin=None):
     return out
 
 
+def ratio_deflection_kb(company):
+    """XSAV22 — Ratio de déflection KB sur le portail client : consultations
+    d'articles KB depuis le formulaire d'ouverture de ticket vs demandes de
+    ticket réellement créées. Point d'entrée pour le rapport service
+    (apps.reporting), même motif que ``csat_par_technicien`` ci-dessus.
+
+    Lit UNIQUEMENT via les selectors des apps cibles (jamais leurs modèles,
+    règle de modularité CLAUDE.md) : ``apps.kb.selectors`` (consultations) et
+    ``apps.portail.selectors`` (tickets créés).
+
+    Renvoie ``{'consultations_kb': int, 'tickets_crees': int, 'ratio': float}``
+    — ``ratio`` = consultations / (consultations + tickets), dans ``[0, 1]``,
+    ``0.0`` quand il n'y a ni consultation ni ticket (pas de division par
+    zéro)."""
+    from apps.kb.selectors import consultations_portail_total
+    from apps.portail.selectors import demandes_ticket_count
+
+    consultations = consultations_portail_total(company)
+    tickets = demandes_ticket_count(company)
+    total = consultations + tickets
+    ratio = round(consultations / total, 4) if total else 0.0
+    return {
+        'consultations_kb': consultations,
+        'tickets_crees': tickets,
+        'ratio': ratio,
+    }
+
+
 def taux_reouverture(company, *, group_by='technicien', date_debut=None,
                      date_fin=None):
     """XSAV11 — Taux de réouverture par technicien OU par type de panne.

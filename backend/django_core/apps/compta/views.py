@@ -6476,6 +6476,35 @@ class DemandeTicketPortailViewSet(_ComptaBaseViewSet):
             demande.save(update_fields=['statut', 'ticket_id'])
         return Response(self.get_serializer(demande).data)
 
+    # ── XSAV22 — Déflection KB sur le formulaire d'ouverture de ticket ─────
+    # Lit/écrit UNIQUEMENT via ``apps.kb.selectors``/``apps.kb.services``
+    # (jamais ``apps.kb.models``, frontière cross-app CLAUDE.md). Actions
+    # ``detail=False`` : appelables pendant la SAISIE, avant toute création
+    # de ``DemandeTicketPortail``.
+
+    @action(detail=False, methods=['get'], url_path='suggestions-kb')
+    def suggestions_kb(self, request):
+        """Articles KB (publiés + ``visible_portail``) suggérés pendant la
+        saisie du sujet, avant soumission de la demande."""
+        from apps.kb.selectors import suggestions_portail
+        texte = request.query_params.get('q', '')
+        suggestions = suggestions_portail(request.user.company, texte)
+        return Response({'suggestions': suggestions})
+
+    @action(detail=False, methods=['post'], url_path='consulter-article-kb')
+    def consulter_article_kb(self, request):
+        """Journalise la consultation d'un article suggéré (déflection) —
+        appelée quand le client ouvre/lit une suggestion depuis le
+        formulaire, avant (ou sans) soumettre sa demande."""
+        from apps.kb.services import enregistrer_consultation_portail
+        article_id = request.data.get('article_id')
+        if not article_id:
+            return Response(
+                {'detail': "article_id requis."}, status=400)
+        ok = enregistrer_consultation_portail(
+            request.user.company, article_id)
+        return Response({'enregistre': ok})
+
 
 class PartenaireViewSet(_ComptaBaseViewSet):
     """Partenaires commerciaux (apporteurs / sous-revendeurs / installateurs,
