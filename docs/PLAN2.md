@@ -733,7 +733,7 @@ force `company`).
   échec → rôle non supprimé + liste migrés/en-échec + reprise ciblée. (T1 — M/L, sonnet ; review
   opus : paie + rôles = surfaces finance/auth) (@lane: frontend/data)
 
-- [ ] VX118 — **[BUG] CANDIDAT BUILD : surfaces fantômes — deux features entières rendent sans (@lane: frontend/orphans)
+- [x] VX118 — **[BUG] CANDIDAT BUILD : surfaces fantômes — deux features entières rendent sans (@lane: frontend/orphans)
   AUCUN CSS + kiosque TV en JSON brut.** (a) le chat interne Discuss — `chat-list-*`, `chat-shell`,
   `chat-thread-*`, `chat-pinned-*`, `chat-composer-*` (11+ noms, 4 fichiers
   `features/messaging/*` : `ConversationList.jsx`, `MessageThread.jsx`, `Composer.jsx`,
@@ -3207,6 +3207,8 @@ droite)**
 ---
 
 ## DONE LOG (agent appends one plain-language line per completed task)
+
+- 2026-07-12 — **VX118 — [BUG] surfaces fantômes : Discuss + LeadExpress + kiosque TV migrées sur le kit existant, zéro CSS ajouté.** (a) Discuss (`ConversationList.jsx`, `MessageThread.jsx`, `Composer.jsx`) : les 11+ classes `chat-list-*`/`chat-thread-*`/`chat-pinned-*`/`chat-composer-*` sans AUCUNE règle CSS migrées vers `cn()`+Tailwind (bandeau épinglé désormais fond/bordure visibles, item actif/non-lu distincts) ; `ChatPage.jsx` déjà co-listait du Tailwind réel, non touché. (b) `LeadExpressModal.jsx` : les 23 références `lem-*` (0 CSS depuis sa création) remplacées par `Dialog`+`Form`/`FormField`/`FormActions` (le langage des autres dialogues CRM) ; le handler Échap manuel retiré (Radix Dialog le gère nativement). (c) `DashboardsTvPage.jsx` : `<pre>{JSON.stringify(current.layout)}</pre>` remplacé par un rendu réel avec le kit existant (`Card`+`ui/charts`) — grands chiffres `text-6xl` pour les widgets scalaires, `AreaSansAxe`/`KpiSpark` en grand pour les séries, `ChartEmpty` pour un widget sans donnée exploitable, `EmptyState` si le dashboard n'a aucun widget ; forme réelle du layout lue depuis `dashboardFilters.js` (`layout.widgets[]`, seule convention déjà établie dans le repo — aucun schéma de widget-type préexistant ailleurs). Tests : DashboardsTvPage.test.jsx (nouveau cas stats/charts + garde `<pre>`=0).
 
 - 2026-07-12 — **VX232 — Les états financiers deviennent LISIBLES : noms réels, tableaux exploitables, exports hiérarchisés et traduits.** (a) `CockpitPage.jsx` KPI n°1 : `Tiers #42` résolu en nom réel — SCOPE ADAPTÉ EN FRONTEND-ONLY (le lane build-only ne touche pas le backend) : au lieu d'enrichir `apps/compta/selectors.py`, le cockpit charge une fois le répertoire unifié `apps/tiers` (`GET /tiers/tiers/`, timeout 4 s dédié, purement décoratif) et résout `tiers_id` côté client via `resolveTiersLabel` (export nommé, testé unitairement) ; repli « Tiers #N » identique si le tiers a été supprimé/pas encore chargé. (b) `EtatsPage.jsx` `GenericTable` migré du `<table>` HTML nu vers le primitif partagé `pages/reporting/Table.jsx`, plus tri au clic d'en-tête (ascendant/descendant, icônes lucide) — une balance rendue trie désormais au clic. (c)(d) `FiscalitePage.jsx` : les 6 exports fiscaux regroupés en 2 rangées sous-titrées « Mensuel » / « Annuel — exercice requis », chaque bouton (FEC/liasse/IS compris) porte désormais une phrase d'aide grise dédiée. Tests : `resolveTiersLabel` (unitaire) + `etats-page-sort.test.jsx` (rendu `report-table` + tri au clic). Backend inchangé — `apps/compta/selectors.py` non touché (hors périmètre de ce lane).
 

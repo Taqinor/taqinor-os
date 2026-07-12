@@ -14,9 +14,13 @@
  *     répétition automatique — l'utilisateur retombe sur la saisie manuelle).
  */
 import { useState, useEffect, useId, useRef } from 'react'
+import { AlertTriangle } from 'lucide-react'
 import crmApi from '../../../api/crmApi'
 import useCanaux from '../../../features/crm/useCanaux'
-import { Button } from '../../../ui'
+import {
+  Button, Dialog, DialogContent, DialogHeader, DialogTitle,
+  Form, FormField, FormActions, Input,
+} from '../../../ui'
 
 // Dédoublonnage grossier : on retire les non-chiffres pour comparer.
 function normalizePhone(raw) {
@@ -139,156 +143,134 @@ export default function LeadExpressModal({ onClose, onSaved }) {
     }
   }
 
-  // Fermeture par Echap.
-  useEffect(() => {
-    const handler = (e) => { if (e.key === 'Escape') onClose?.() }
-    document.addEventListener('keydown', handler)
-    return () => document.removeEventListener('keydown', handler)
-  }, [onClose])
-
   return (
-    /* Overlay centré */
-    <div
-      className="lem-overlay"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby={`${formId}-title`}
-      onClick={(e) => { if (e.target === e.currentTarget) onClose?.() }}
-    >
-      <div className="lem-panel">
-        <div className="lem-header">
-          <h3 id={`${formId}-title`}>⚡ Nouveau lead express</h3>
-          <button
-            type="button"
-            className="lem-close"
-            aria-label="Fermer"
-            onClick={onClose}
-          >✕</button>
-        </div>
+    // VX118(b) — les 23 références `lem-*` n'avaient AUCUN CSS depuis la
+    // création de l'écran (HTML nu) ; migré sur Dialog+Form/FormField (le
+    // langage des autres dialogues CRM), zéro CSS ajouté. Radix Dialog gère
+    // nativement Echap/overlay-click (l'ancien handler manuel est retiré).
+    <Dialog open onOpenChange={(o) => { if (!o) onClose?.() }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle id={`${formId}-title`}>⚡ Nouveau lead express</DialogTitle>
+        </DialogHeader>
 
-        <form onSubmit={handleSubmit} noValidate className="lem-form">
+        <Form onSubmit={handleSubmit} className="gap-4">
           {/* XSAL8 — Scan de carte de visite (photo) : masqué sans clé OCR
               configurée (503 rencontrée une fois → bouton retiré). */}
           {!scanUnavailable && (
-            <div className="lem-scan-row">
+            <div className="flex flex-col gap-1.5">
               <input
                 ref={scanInputRef}
                 type="file"
                 accept="image/png,image/jpeg,image/webp"
                 capture="environment"
                 onChange={handleScanFile}
-                style={{ display: 'none' }}
+                className="sr-only"
               />
               <Button
                 type="button"
                 variant="outline"
+                className="w-fit"
                 disabled={scanState === 'scanning'}
                 onClick={() => scanInputRef.current?.click()}
               >
                 {scanState === 'scanning' ? 'Lecture…' : '📇 Scanner une carte'}
               </Button>
               {scanState && scanState.error && (
-                <p className="lem-scan-error" role="alert">{scanState.error}</p>
+                <p className="text-xs text-destructive" role="alert">{scanState.error}</p>
               )}
               {scanState && scanState.ok && scanState.warning && (
-                <p className="lem-dup-warning" role="alert" aria-live="assertive">
-                  ⚠ {scanState.warning}
+                <p className="flex items-center gap-1.5 text-xs text-warning" role="alert" aria-live="assertive">
+                  <AlertTriangle className="size-3.5 shrink-0" aria-hidden="true" /> {scanState.warning}
                 </p>
               )}
             </div>
           )}
 
-          {/* Nom */}
-          <label className="lem-label" htmlFor={`${formId}-nom`}>
-            Nom <span aria-hidden="true" className="lem-required">*</span>
-          </label>
-          <input
-            id={`${formId}-nom`}
-            ref={nomRef}
-            className="lem-input"
-            type="text"
-            placeholder="Nom du prospect"
-            value={nom}
-            onChange={(e) => setNom(e.target.value)}
-            required
-            autoComplete="off"
-          />
+          <FormField label="Nom" required htmlFor={`${formId}-nom`}>
+            <Input
+              id={`${formId}-nom`}
+              ref={nomRef}
+              type="text"
+              placeholder="Nom du prospect"
+              value={nom}
+              onChange={(e) => setNom(e.target.value)}
+              required
+              autoComplete="off"
+            />
+          </FormField>
 
-          {/* Société (pré-remplie par le scan, éditable) */}
-          <label className="lem-label" htmlFor={`${formId}-societe`}>Société</label>
-          <input
-            id={`${formId}-societe`}
-            className="lem-input"
-            type="text"
-            placeholder="Société du prospect"
-            value={societe}
-            onChange={(e) => setSociete(e.target.value)}
-            autoComplete="off"
-          />
+          <FormField label="Société" htmlFor={`${formId}-societe`}>
+            <Input
+              id={`${formId}-societe`}
+              type="text"
+              placeholder="Société du prospect"
+              value={societe}
+              onChange={(e) => setSociete(e.target.value)}
+              autoComplete="off"
+            />
+          </FormField>
 
-          {/* Téléphone */}
-          <label className="lem-label" htmlFor={`${formId}-tel`}>Téléphone</label>
-          <input
-            id={`${formId}-tel`}
-            className="lem-input"
-            type="tel"
-            placeholder="06 00 00 00 00"
-            value={telephone}
-            onChange={(e) => setTelephone(e.target.value)}
-            autoComplete="off"
-          />
-          {dupChecking && (
-            <p className="lem-dup-checking" aria-live="polite">
-              Vérification des doublons…
-            </p>
-          )}
-          {dupWarning && !dupChecking && (
-            <p className="lem-dup-warning" role="alert" aria-live="assertive">
-              ⚠ {dupWarning}
-            </p>
-          )}
-
-          {/* E-mail (pré-rempli par le scan, éditable) */}
-          <label className="lem-label" htmlFor={`${formId}-email`}>E-mail</label>
-          <input
-            id={`${formId}-email`}
-            className="lem-input"
-            type="email"
-            placeholder="contact@exemple.com"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            autoComplete="off"
-          />
-
-          {/* Canal */}
-          <label className="lem-label" htmlFor={`${formId}-canal`}>Canal</label>
-          <select
-            id={`${formId}-canal`}
-            className="lem-input"
-            value={canal}
-            onChange={(e) => setCanal(e.target.value)}
-            disabled={!canauxLoaded}
+          <FormField
+            label="Téléphone"
+            htmlFor={`${formId}-tel`}
+            hint={dupChecking ? 'Vérification des doublons…' : undefined}
           >
-            <option value="">— Choisir —</option>
-            {canauxOptions.map((opt) => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
-          </select>
+            <Input
+              id={`${formId}-tel`}
+              type="tel"
+              placeholder="06 00 00 00 00"
+              value={telephone}
+              onChange={(e) => setTelephone(e.target.value)}
+              autoComplete="off"
+            />
+          </FormField>
+          {dupWarning && !dupChecking && (
+            <p className="-mt-2 flex items-center gap-1.5 text-xs text-warning" role="alert" aria-live="assertive">
+              <AlertTriangle className="size-3.5 shrink-0" aria-hidden="true" /> {dupWarning}
+            </p>
+          )}
+
+          <FormField label="E-mail" htmlFor={`${formId}-email`}>
+            <Input
+              id={`${formId}-email`}
+              type="email"
+              placeholder="contact@exemple.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="off"
+            />
+          </FormField>
+
+          <FormField label="Canal" htmlFor={`${formId}-canal`}>
+            <select
+              id={`${formId}-canal`}
+              className="h-[var(--control-h)] rounded-md border border-input bg-card px-[var(--control-px)] text-sm"
+              value={canal}
+              onChange={(e) => setCanal(e.target.value)}
+              disabled={!canauxLoaded}
+            >
+              <option value="">— Choisir —</option>
+              {canauxOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </FormField>
 
           {error && (
-            <p className="lem-error" role="alert">{error}</p>
+            <p className="text-sm text-destructive" role="alert">{error}</p>
           )}
 
-          <div className="lem-actions">
+          <FormActions sticky={false}>
             <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
               Annuler
             </Button>
             <Button type="submit" disabled={busy || !nom.trim()}>
               {busy ? 'Création…' : 'Créer le lead'}
             </Button>
-          </div>
-        </form>
-      </div>
-    </div>
+          </FormActions>
+        </Form>
+      </DialogContent>
+    </Dialog>
   )
 }

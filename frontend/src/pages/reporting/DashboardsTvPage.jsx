@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Tv } from 'lucide-react'
+import { Tv, LayoutGrid } from 'lucide-react'
 import coreApi from '../../api/coreApi'
-import { Spinner } from '../../ui'
+import { Spinner, Card, EmptyState } from '../../ui'
+import { KpiSpark, AreaSansAxe, ChartEmpty } from '../../ui/charts'
 
 /* ============================================================================
    XPLT10 — Kiosque TV (`/dashboards-tv`) : rotation plein écran des dashboards
@@ -10,10 +11,66 @@ import { Spinner } from '../../ui'
    pensée pour un écran dédié affiché en continu. Rotation + rafraîchissement
    pilotés CÔTÉ ÉCRAN (le backend ne fournit que la liste + le layout déjà
    agrégé — jamais de prix d'achat/marge/liste nominative).
+
+   VX118(c) — `current.layout` (JSON opaque `core.Dashboard.layout`, forme
+   réelle documentée par `dashboardFilters.js` : `{widgets:[…], globalFilters}`)
+   rendait en `<pre>{JSON.stringify(...)}</pre>` — du texte développeur brut
+   sur l'écran regardé toute la journée. Rendu désormais avec le kit existant
+   (`ui/charts` + `Card`), grands chiffres lisibles à 3 mètres, sparkline en
+   grand pour les widgets porteurs d'une série, `ChartEmpty` pour un widget
+   sans données exploitables — jamais de JSON brut.
    ========================================================================== */
 
 const ROTATE_MS = 15000
 const REFRESH_MS = 60000
+
+// Normalise une série de widget (nombres bruts ou objets) en points
+// {label, value} exploitables par AreaSansAxe/BarArrondie/KpiSpark.
+function normalizeSerie(serie) {
+  if (!Array.isArray(serie) || !serie.length) return null
+  return serie.map((p, i) => (
+    typeof p === 'number' || typeof p === 'string'
+      ? { label: String(i + 1), value: Number(p) || 0 }
+      : {
+          label: p.label ?? p.libelle ?? String(i + 1),
+          value: Number(p.value ?? p.valeur) || 0,
+        }
+  ))
+}
+
+function TvWidgetCard({ widget }) {
+  const label = widget?.titre || widget?.title || widget?.label || 'Indicateur'
+  const rawValue = widget?.valeur ?? widget?.value
+  const hasValue = rawValue !== undefined && rawValue !== null && rawValue !== ''
+  const points = normalizeSerie(widget?.serie ?? widget?.data)
+
+  if (!hasValue && !points) {
+    return (
+      <Card className="flex flex-col gap-2 p-6">
+        <span className="text-lg font-medium text-muted-foreground">{label}</span>
+        <ChartEmpty description="Aucune donnée exploitable pour ce widget." />
+      </Card>
+    )
+  }
+
+  return (
+    <Card className="flex flex-1 flex-col gap-3 p-6">
+      <span className="text-lg font-medium uppercase tracking-wide text-muted-foreground">
+        {label}
+      </span>
+      {hasValue && (
+        <span className="num text-6xl font-bold leading-none tabular-nums text-foreground">
+          {rawValue}
+        </span>
+      )}
+      {points && (
+        hasValue
+          ? <KpiSpark data={points.map((p) => p.value)} height={100} tone={widget?.tone || 'primary'} />
+          : <AreaSansAxe data={points} height={240} tone={widget?.tone || 'info'} />
+      )}
+    </Card>
+  )
+}
 
 export default function DashboardsTvPage() {
   const [dashboards, setDashboards] = useState([])
@@ -45,6 +102,11 @@ export default function DashboardsTvPage() {
     [dashboards, index],
   )
 
+  const widgets = useMemo(
+    () => (Array.isArray(current?.layout?.widgets) ? current.layout.widgets : []),
+    [current],
+  )
+
   if (loading) {
     return (
       <div className="flex h-screen w-screen items-center justify-center bg-background">
@@ -72,9 +134,19 @@ export default function DashboardsTvPage() {
           </span>
         )}
       </div>
-      <pre className="flex-1 overflow-auto rounded-md border border-border bg-card p-4 text-xs">
-        {JSON.stringify(current.layout, null, 2)}
-      </pre>
+      {widgets.length === 0 ? (
+        <div className="flex flex-1 items-center justify-center">
+          <EmptyState
+            icon={LayoutGrid}
+            title="Aucun widget configuré"
+            description="Ce tableau de bord n'a pas encore de widgets à afficher en mode TV."
+          />
+        </div>
+      ) : (
+        <div className="grid flex-1 auto-rows-fr gap-4 overflow-auto sm:grid-cols-2 xl:grid-cols-3">
+          {widgets.map((w, i) => <TvWidgetCard key={w.id ?? i} widget={w} />)}
+        </div>
+      )}
     </div>
   )
 }
