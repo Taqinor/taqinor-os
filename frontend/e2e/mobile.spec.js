@@ -27,7 +27,10 @@ test('E16: the full navigation menu is reachable on mobile', async ({ page }) =>
 
   // The last items (admin-only, at the very bottom) must be reachable, i.e. the
   // menu scrolls inside the safe area instead of clipping them.
-  const settings = page.getByRole('link', { name: 'Paramètres' })
+  // « Paramètres » exists in several sections (admin, Paie, SAV « Paramètres SAV »),
+  // so a name match is ambiguous (strict-mode violation) — target the ADMIN
+  // settings link by its unique href /parametres, which sits at the very bottom.
+  const settings = page.locator('a[href="/parametres"]')
   await settings.scrollIntoViewIfNeeded()
   await expect(settings).toBeVisible()
 
