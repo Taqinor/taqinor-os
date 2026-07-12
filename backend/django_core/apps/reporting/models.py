@@ -4,6 +4,8 @@
 from django.conf import settings
 from django.db import models
 
+from core.models import TenantModel
+
 
 class SavedReport(models.Model):
     """N79 — Rapport sauvegardé + planification d'envoi par email.
@@ -386,7 +388,7 @@ class ClasseurPartageInterne(models.Model):
         return f'Classeur {self.classeur_id} → {cible} ({self.niveau})'
 
 
-class WebVitalMetric(models.Model):
+class WebVitalMetric(TenantModel):
     """VX61 — une ligne par métrique Web Vitals RÉELLE mesurée sur le
     terrain (INP/LCP/CLS/TTFB), envoyée par `frontend/src/lib/vitals.js`
     (hand-roll `PerformanceObserver` — la lib `web-vitals` de Google reste
@@ -417,7 +419,6 @@ class WebVitalMetric(models.Model):
     rating = models.CharField(
         max_length=20, choices=Rating.choices, blank=True, default='')
     navigation_id = models.CharField(max_length=64, blank=True, default='')
-    created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         verbose_name = 'Métrique Web Vitals'

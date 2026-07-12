@@ -43,8 +43,8 @@ import { formatDate } from '../../lib/format'
 
 // VX105 — clés de persistance de session (survit à un backgrounding suivi d'un
 // rechargement — appel entrant en chantier) : fiche ouverte + onglet visité.
-const SS_ACTIVE = 'taqinor.maJournee.activeId'
-const SS_TAB = 'taqinor.maJournee.tab'
+const SS_ACTIVE = 'mj.activeId'
+const SS_TAB = 'mj.tab'
 
 const TYPE_LABELS = Object.fromEntries(
   INTERVENTION_TYPES.map((t) => [t.value, t.label]))

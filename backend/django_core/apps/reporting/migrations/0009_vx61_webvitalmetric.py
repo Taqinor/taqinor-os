@@ -22,6 +22,7 @@ class Migration(migrations.Migration):
                 ('rating', models.CharField(blank=True, choices=[('good', 'Bon'), ('needs-improvement', 'À améliorer'), ('poor', 'Mauvais')], default='', max_length=20)),
                 ('navigation_id', models.CharField(blank=True, default='', max_length=64)),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
                 ('company', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='reporting_web_vitals', to='authentication.company')),
                 ('utilisateur', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='reporting_web_vitals', to=settings.AUTH_USER_MODEL)),
             ],
