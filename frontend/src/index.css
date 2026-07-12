@@ -5829,3 +5829,13 @@ textarea.form-control {
   .app-launcher-content[data-state="open"] { animation-duration: 150ms; }
 }
 .header-lang-code { font-size: 0.7rem; font-weight: 600; line-height: 1; }
+
+/* VX130 — Le toast devient un objet de marque : la durée d'entrée/sortie de
+   sonner est câblée sur `--motion-base` (le reste des primitifs animés —
+   Button, Switch, overlays — l'utilisent déjà) au lieu d'une valeur fixe
+   totalement indépendante du système de mouvement de l'app. Sous
+   `prefers-reduced-motion`, `--motion-base` retombe à 0ms (tokens.css) : les
+   toasts héritent donc automatiquement du même confort de mouvement. */
+[data-sonner-toast] {
+  transition-duration: var(--motion-base) !important;
+}
