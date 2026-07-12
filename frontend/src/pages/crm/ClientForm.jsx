@@ -8,6 +8,7 @@ import {
 } from '../../ui'
 import { Combobox } from '../../ui/Combobox'
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
+import ExternalLink from '../../ui/ExternalLink'
 import { toast } from '../../ui/confirm'
 import { canonicalPhoneMA } from '../../lib/format'
 import AttachmentsPanel from '../../components/AttachmentsPanel'
@@ -321,11 +322,11 @@ export default function ClientForm({ client = null, onClose }) {
                 {isEntreprise && fields.nom.trim() && (
                   <p className="mt-1 text-xs text-muted-foreground">
                     Vérifier :{' '}
-                    <a href={verifierIceUrl(fields.nom)} target="_blank" rel="noreferrer"
-                       className="underline hover:text-foreground">registre ICE</a>
+                    <ExternalLink href={verifierIceUrl(fields.nom)}
+                       className="underline hover:text-foreground">registre ICE</ExternalLink>
                     {' · '}
-                    <a href={verifierOmpicUrl(fields.nom)} target="_blank" rel="noreferrer"
-                       className="underline hover:text-foreground">OMPIC</a>
+                    <ExternalLink href={verifierOmpicUrl(fields.nom)}
+                       className="underline hover:text-foreground">OMPIC</ExternalLink>
                   </p>
                 )}
               </FormField>

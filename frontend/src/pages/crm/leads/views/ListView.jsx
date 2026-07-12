@@ -20,6 +20,7 @@ import {
 } from '../../../../features/crm/stages'
 import AssigneePicker from '../../../../components/AssigneePicker'
 import InlineEdit from '../../../../components/InlineEdit'
+import ExternalLink from '../../../../ui/ExternalLink'
 import LeadInsightsDialog from '../LeadInsightsDialog'
 // VX24 — ScoreBadge extrait vers features/crm (réutilisé par LeadCard/LeadSummaryBar).
 import ScoreBadge from '../../../../features/crm/ScoreBadge'
@@ -334,11 +335,11 @@ export default function ListView({
                           </a>
                         )}
                         {waHref(lead.whatsapp) && (
-                          <a href={waHref(lead.whatsapp)} target="_blank" rel="noopener noreferrer"
+                          <ExternalLink href={waHref(lead.whatsapp)}
                              title="Ouvrir WhatsApp" aria-label={`WhatsApp ${fullName(lead) || 'ce lead'}`}
                              className="text-muted-foreground hover:text-foreground">
                             <MessageCircle className="size-3.5" aria-hidden="true" />
-                          </a>
+                          </ExternalLink>
                         )}
                       </span>
                     )}

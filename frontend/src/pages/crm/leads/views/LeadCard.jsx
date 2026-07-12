@@ -15,6 +15,7 @@ import {
 } from '../../../../features/crm/stages'
 import AssigneePicker from '../../../../components/AssigneePicker'
 import { telHref, waHref } from '../../../../lib/contactLinks'
+import ExternalLink from '../../../../ui/ExternalLink'
 // VX24 — score de qualité désormais aussi visible sur la carte (ex Liste seule).
 // VX87 — nudge post-appel « Appel terminé — noter le résultat ? ».
 import ScoreBadge from '../../../../features/crm/ScoreBadge'
@@ -248,10 +249,8 @@ export default function LeadCard({
             </a>
           )}
           {wa && (
-            <a
+            <ExternalLink
               href={wa}
-              target="_blank"
-              rel="noopener noreferrer"
               aria-label="Ouvrir WhatsApp (glissement)"
               title="Ouvrir WhatsApp"
               onClick={(e) => { e.stopPropagation(); swipe.close() }}
@@ -263,7 +262,7 @@ export default function LeadCard({
               }}
             >
               💬
-            </a>
+            </ExternalLink>
           )}
         </div>
       )}
@@ -403,18 +402,16 @@ export default function LeadCard({
             </a>
           )}
           {wa && (
-            <a
+            <ExternalLink
               className="kb-card-wa"
               href={wa}
-              target="_blank"
-              rel="noopener noreferrer"
               title="Ouvrir WhatsApp"
               onClick={(e) => e.stopPropagation()}
               onPointerDown={(e) => e.stopPropagation()}
               onTouchStart={(e) => e.stopPropagation()}
             >
               WhatsApp
-            </a>
+            </ExternalLink>
           )}
         </div>
       )}

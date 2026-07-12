@@ -12,6 +12,7 @@ import {
 } from '../../ui'
 import { DatePicker } from '../../ui/DatePicker'
 import { today as todayDate } from '../../ui/date-utils'
+import ExternalLink from '../../ui/ExternalLink'
 import { Table } from '../reporting/Table'
 
 // QX25 — « Mes activités » est la liste d'appels du jour : chaque ligne doit
@@ -505,11 +506,11 @@ export default function MesActivitesPage() {
                                 </a>
                               )}
                               {wa && (
-                                <a href={wa} target="_blank" rel="noopener noreferrer" title="Ouvrir WhatsApp"
+                                <ExternalLink href={wa} title="Ouvrir WhatsApp"
                                    aria-label={`WhatsApp ${a.target_label || ''}`}
                                    className="text-muted-foreground hover:text-foreground">
                                   <MessageCircle className="size-4" aria-hidden="true" />
-                                </a>
+                                </ExternalLink>
                               )}
                             </span>
                           )
