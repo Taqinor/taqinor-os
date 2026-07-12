@@ -116,6 +116,34 @@ function ActionsCatalogue() {
   )
 }
 
+// VX153 — libellé de jour relatif pour regrouper le journal (Aujourd'hui / Hier
+// / date longue). `confirmed_at` est déjà servi par l'API ; une entrée sans date
+// tombe dans « Date inconnue » plutôt que de disparaître.
+function dayLabel(iso) {
+  if (!iso) return 'Date inconnue'
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return 'Date inconnue'
+  const startOf = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate())
+  const diffDays = Math.round((startOf(new Date()) - startOf(d)) / 86400000)
+  if (diffDays === 0) return "Aujourd'hui"
+  if (diffDays === 1) return 'Hier'
+  return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })
+}
+
+// VX153 — regroupe les logs par jour EN PRÉSERVANT l'ordre d'arrivée (l'ordre de
+// l'API est conservé au sein d'un jour et entre les jours par première
+// apparition), pour ne casser aucun consommateur qui indexe les lignes.
+function groupLogsByDay(logs) {
+  const order = []
+  const map = new Map()
+  for (const log of logs) {
+    const label = dayLabel(log.confirmed_at)
+    if (!map.has(label)) { map.set(label, []); order.push(label) }
+    map.get(label).push(log)
+  }
+  return order.map((label) => ({ label, items: map.get(label) }))
+}
+
 // YHARD2 — journal des actions IA confirmées + annulation (admin/Directeur).
 function ActionsHistorique() {
   const [logs, setLogs] = useState([])
@@ -181,37 +209,45 @@ function ActionsHistorique() {
   }
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-4">
       {undoError && <div className="form-error-box">{undoError}</div>}
-      {logs.map((log) => {
-        const risk = RISK[log.risk_level] || RISK.internal
-        return (
-          <Card key={log.id} data-testid="action-log-row">
-            <CardContent className="flex flex-wrap items-center gap-2 p-3">
-              <div className="min-w-[180px] flex-1">
-                <div className="flex items-center gap-1.5">
-                  <span className="font-medium text-sm">{log.object_repr || log.action_key}</span>
-                  <Badge tone={risk.tone}>{risk.label}</Badge>
-                  {log.undone_at && <Badge tone="neutral">Annulée</Badge>}
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  {log.user || '—'} · {log.confirmed_at ? formatDateTime(log.confirmed_at) : '—'}
-                </div>
-              </div>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                disabled={!log.is_undoable || Boolean(log.undone_at) || undoingId === log.id}
-                onClick={() => undo(log)}
-              >
-                <Undo2 className="size-4" aria-hidden="true" />
-                {log.undone_at ? 'Déjà annulée' : undoingId === log.id ? 'Annulation…' : 'Annuler'}
-              </Button>
-            </CardContent>
-          </Card>
-        )
-      })}
+      {/* VX153 — journal groupé par jour (Aujourd'hui / Hier / date). */}
+      {groupLogsByDay(logs).map((group) => (
+        <section key={group.label} className="flex flex-col gap-2">
+          <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {group.label}
+          </h3>
+          {group.items.map((log) => {
+            const risk = RISK[log.risk_level] || RISK.internal
+            return (
+              <Card key={log.id} data-testid="action-log-row">
+                <CardContent className="flex flex-wrap items-center gap-2 p-3">
+                  <div className="min-w-[180px] flex-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-medium text-sm">{log.object_repr || log.action_key}</span>
+                      <Badge tone={risk.tone}>{risk.label}</Badge>
+                      {log.undone_at && <Badge tone="neutral">Annulée</Badge>}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {log.user || '—'} · {log.confirmed_at ? formatDateTime(log.confirmed_at) : '—'}
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={!log.is_undoable || Boolean(log.undone_at) || undoingId === log.id}
+                    onClick={() => undo(log)}
+                  >
+                    <Undo2 className="size-4" aria-hidden="true" />
+                    {log.undone_at ? 'Déjà annulée' : undoingId === log.id ? 'Annulation…' : 'Annuler'}
+                  </Button>
+                </CardContent>
+              </Card>
+            )
+          })}
+        </section>
+      ))}
     </div>
   )
 }

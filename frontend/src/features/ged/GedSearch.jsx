@@ -114,7 +114,7 @@ export default function GedSearch() {
       <CardContent className="p-3">
         <form onSubmit={runSearch} className="flex flex-wrap items-end gap-2">
           <div className="min-w-[200px] flex-1">
-            <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+            <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-muted-foreground">
               Recherche plein-texte
             </label>
             <div className="relative">
@@ -125,7 +125,7 @@ export default function GedSearch() {
             </div>
           </div>
           <div className="w-[180px]">
-            <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+            <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-muted-foreground">
               Tag
             </label>
             <Select value={tagId ? String(tagId) : ''}
@@ -143,7 +143,7 @@ export default function GedSearch() {
               </SelectContent>
             </Select>
           </div>
-          <label className="flex items-center gap-1.5 pb-2 text-[13px]">
+          <label className="flex items-center gap-1.5 pb-2 text-sm">
             <input type="checkbox" checked={semantic}
               onChange={(e) => setSemantic(e.target.checked)} />
             Sémantique
@@ -159,9 +159,9 @@ export default function GedSearch() {
         </form>
 
         {error ? (
-          <p className="mt-3 text-[13px] text-destructive">{error}</p>
+          <p className="mt-3 text-sm text-destructive">{error}</p>
         ) : loading ? (
-          <div className="mt-4 flex items-center gap-2 text-[13px] text-muted-foreground">
+          <div className="mt-4 flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="size-4 animate-spin" aria-hidden="true" /> Recherche en cours…
           </div>
         ) : searched ? (
