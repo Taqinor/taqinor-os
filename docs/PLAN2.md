@@ -77,6 +77,7 @@ the journey the best in the world for the CLIENT and the COMMERCIAL user.*
 - VX125 — already present: `docs/design-density-budget.md` (plafond 3 signaux ambiants, jamais 2 redisant le même chiffre, critère de retrait `<BetaBadge>`) already existed and is already referenced from `docs/CODEMAP.md §4` and commented in `design/tokens.css:13-17` — checkbox had simply never been ticked.
 - VX151 — already present: `peConstants.js` already carries `group`/`SETTINGS_GROUPS`/`saveModelForTab`/`SAVE_MODEL_HINTS`, and `ParametresEntreprise.jsx` already renders `<SettingsSidebar groups={tabGroups}>` (2-level nav) + the per-tab save-model hint before edition — checkbox had never been ticked.
 - VX153 — already present: `features/ged/module.config.jsx` already renames "GESTION DOCUMENTAIRE" → "DOCUMENTS - AVANCE", `GedNavigator.jsx`/`GedSearch.jsx` have zero `text-[1x px]` arbitrary sizes left, and `pages/ia/AgentActions.jsx` already groups the historique tab by Aujourd'hui/Hier/date (with `AgentActions.historique.test.jsx` green) — checkbox had never been ticked.
+- VX154 — already present: `ui/TaqinorMark.jsx` + `ui/SolarLoader.jsx` already exist and are already wired into `Header.jsx` (replacing the generic `<Zap>`) and `RouteFallback.jsx`, with the `sun-rise` keyframe + its `prefers-reduced-motion` freeze rule already in `index.css` — checkbox had never been ticked.
 - VX156 — `lib/voice.js` + `<WelcomeMoment>` already existed (welcome moment wired in `main.jsx`) but the other 5 voice moments were never posed on a real screen. Wired `voice.devisSent` (DevisList email-send toast description), `voice.emptyQueue` (MesActivitesPage empty state, replacing the ad-hoc string), `voice.chantierDone` (InstallationDetail mise-en-service success toast, previously silent), `voice.networkError` (canonical `lib/apiError.js` Network-Error branch, updated its test). `voice.dealSigned` left for VX155 (SigneDialog/DealSignedCelebration territory, `@with VX40`).
 
 #### DONE LOG — Vague 2 (VX terrain/finance/CRM + QX groupe) (2026-07-12)
@@ -1371,7 +1372,7 @@ subset) pour les identifiants (`--font-mono`) — à soumettre au fondateur avan
   logs groupés par jour (`AgentActions.historique.test.jsx` vert). (T2 — S/M, haiku ; sonnet pour
   la décision de nav) (@lane: frontend/brand)
 
-- [ ] VX154 — **`TaqinorMark` + `SolarLoader` : le mot-symbole soleil-éclair porté dans l'app, (@lane: frontend/brand)
+- [x] VX154 (already present) — **`TaqinorMark` + `SolarLoader` : le mot-symbole soleil-éclair porté dans l'app, (@lane: frontend/brand)
   chaque attente signée.** Le glyphe le plus distinctif de la marque — le soleil rayonnant à
   éclair azur de `public/favicon.svg` — n'existe dans l'app React NULLE PART (grep = 0) : le header
   porte un `<Zap>` lucide générique sur carré jaune (`Header.jsx:60-62`), et chaque attente est
