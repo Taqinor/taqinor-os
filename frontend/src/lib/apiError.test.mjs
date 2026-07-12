@@ -46,8 +46,10 @@ test('getApiError: timeout (ECONNABORTED)', () => {
 })
 
 test('getApiError: Network Error', () => {
+  // VX156 — le moment « erreur réseau » porte désormais la voix Taqinor
+  // (honnête, rassurante : la saisie n'est pas perdue).
   const err = { message: 'Network Error' }
-  assert.match(getApiError(err).message, /Impossible de contacter/)
+  assert.match(getApiError(err).message, /[Cc]onnexion/)
 })
 
 test('getApiError: fallback si aucune forme reconnue', () => {

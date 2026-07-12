@@ -17,6 +17,8 @@ import { downloadBlob } from '../../utils/downloadBlob'
 import { openPdfInGesture } from '../../utils/pdfBlob'
 import { errorMessageFrom } from '../../lib/toast'
 import { toast } from '../../ui/confirm'
+// VX156 — le moment « chantier terminé » (mise en service) porte la voix Taqinor.
+import { voice } from '../../lib/voice'
 import { telHref } from '../../lib/contactLinks'
 import {
   pdfBlob, previewView, classifyFetchError, PREVIEW_VIEW,
@@ -476,6 +478,9 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
         Object.entries(mes).map(([k, v]) => [k, nullable(v)]))
       await installationsApi.miseEnService(id, data)
       setActionError(null)
+      // VX156 — moment « chantier terminé » : la voix Taqinor célèbre la mise
+      // en service (pas un toast plat de sauvegarde).
+      toast.success(voice.chantierDone)
       onSaved?.()
     } catch (err) {
       setActionError(actionMsg(err, 'Enregistrement de la mise en service impossible.'))

@@ -28,6 +28,8 @@ import {
   DropdownMenuItem, DropdownMenuLabel,
 } from '../../ui'
 import { formatMAD, formatDateTime } from '../../lib/format'
+// VX156 — le devis envoyé porte la voix Taqinor (moment « devis envoyé »).
+import { voice } from '../../lib/voice'
 import { filenameFromResponse, downloadBlobInGesture } from '../../utils/downloadBlob'
 import { openPdfBlob, openPdfInGesture } from '../../utils/pdfBlob'
 import { proposalParams, pdfBlob } from '../../features/ventes/previewPdf'
@@ -1136,7 +1138,10 @@ export default function DevisList() {
       await ventesApi.envoyerEmailDevis(emailTarget.id, payload)
       closeEmailModal()
       dispatch(fetchDevis())
-      toast.success(`Devis ${emailTarget.reference} envoyé par email.`)
+      // VX156 — moment « devis envoyé » : la voix Taqinor en description.
+      toast.success(`Devis ${emailTarget.reference} envoyé par email.`, {
+        description: voice.devisSent,
+      })
     } catch (err) {
       toast.error(frenchError(err, 'Envoi email impossible.'))
     } finally {
