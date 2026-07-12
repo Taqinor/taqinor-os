@@ -12,6 +12,7 @@ import { Button, Badge, Spinner, DataTable } from '../../ui'
 import {
   BarArrondie, ChartEmpty, ChartTooltip, resolveColor, animationDuration, CHART_ANIM_EASING,
 } from '../../ui/charts'
+import useStockFlags from '../../features/parametres/useStockFlags'
 
 /* ============================================================================
    WR3 — « Pilotage stock » : les analytics stock déjà prêtes côté backend
@@ -199,6 +200,15 @@ function RotationDonut({ data }) {
 
 export default function PilotageStock({ onBcfGenere }) {
   const navigate = useNavigate()
+  // ZSTK13 — masque la colonne « Lot » du registre de péremption quand la
+  // société a désactivé les lots/séries (True par défaut = inchangé).
+  const { stock_lots_series_actif: lotsSeriesActif } = useStockFlags()
+  const expirationsColumns = useMemo(
+    () => (lotsSeriesActif
+      ? EXPIRATIONS_COLUMNS
+      : EXPIRATIONS_COLUMNS.filter((c) => c.id !== 'lot')),
+    [lotsSeriesActif],
+  )
   const etatInitial = { loading: true, data: null, error: null }
   const [reappro, setReappro] = useState(etatInitial)
   const [previsions, setPrevisions] = useState(etatInitial)
@@ -380,7 +390,7 @@ export default function PilotageStock({ onBcfGenere }) {
       node: (
         <SectionRapport
           section={expirations}
-          columns={EXPIRATIONS_COLUMNS}
+          columns={expirationsColumns}
           getRowId={(l) => l.produit_id}
           ariaLabel="Péremptions proches"
           emptyLabel="Aucun lot n'expire dans les 90 prochains jours."
