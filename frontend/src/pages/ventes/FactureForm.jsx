@@ -501,6 +501,15 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
                             produits={produits}
                             value={l.produit ? String(l.produit) : ''}
                             onChange={v => onProduitChange(l._key, v)}
+                            // VX238(c) — choisir un produit avance directement
+                            // le focus sur la Qté de CETTE ligne (réutilise
+                            // data-line-key, VX90) au lieu de rendre le focus
+                            // au bouton déclencheur.
+                            onPicked={() => {
+                              document
+                                .querySelector(`tr[data-line-key="${l._key}"] [data-role="line-qty"]`)
+                                ?.focus()
+                            }}
                           />
                         </td>
                         <td data-label="Désignation">
@@ -509,7 +518,7 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
                                  placeholder="Désignation" />
                         </td>
                         <td data-label="Qté">
-                          <Input type="number" min="0.01" step="0.01"
+                          <Input type="number" min="0.01" step="0.01" data-role="line-qty"
                                  className="h-[var(--control-h-sm)] text-right text-xs"
                                  value={l.quantite}
                                  onChange={e => setLine(l._key, 'quantite', e.target.value)} />
