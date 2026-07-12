@@ -1,0 +1,6 @@
+# YDATA14 — reviewed Celery task signatures allowed to keep an
+# instance-like parameter name (format: 'relative/path/to/file.py:task_name').
+# Generated from the current repo state: EMPTY today — every @shared_task in
+# apps/*/tasks.py|scheduled.py|beat_tasks.py already takes ids, never a
+# hydrated model instance. A NEW task with a model-instance parameter fails
+# CI unless reviewed and added here.

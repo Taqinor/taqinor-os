@@ -179,6 +179,14 @@ jobs:
       # DateTimeField, never DateField(auto_now[_add]=True).
       - name: Check for naive datetime / DateField timestamps (YDATA10/11)
         run: python scripts/check_naive_datetime.py
+      # YDATA14 — advisory: a Celery task with external effects should take
+      # a pk, never a hydrated model instance, as a parameter.
+      - name: Check Celery task signatures (YDATA14, advisory)
+        run: python scripts/check_celery_tasks.py
+      # YDATA15 — advisory: get_or_create/update_or_create lookup keys
+      # should be backed by a UniqueConstraint; audit doc IS the baseline.
+      - name: Check get_or_create/update_or_create audit (YDATA15, advisory)
+        run: python scripts/check_get_or_create.py
 
   # WOW6 — the fast backend suite is sharded 4× across free public-repo runners
   # (matrix legs run concurrently, each on its own 4-vCPU runner + Postgres). The
