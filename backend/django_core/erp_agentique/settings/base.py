@@ -145,6 +145,11 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    # YAPIC4 — EN PREMIER : pose request.request_id (échoé/lu depuis
+    # X-Request-Id) avant tout le reste de la pile, pour que
+    # core.exceptions.taqinor_exception_handler (YAPIC3) et
+    # core.observability.RequestObservabilityMiddleware le lisent tous deux.
+    'core.middleware.RequestIdMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
