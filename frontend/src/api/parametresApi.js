@@ -13,6 +13,10 @@ const parametresApi = {
   // N55 / L765 — journal d'audit des changements de paramètres (lecture seule).
   // Filtres possibles : { section: 'profil'|'messages', user, limit }.
   getAudit: (params) => api.get('/parametres/audit/', { params }),
+  // VX233 — sections réellement présentes du journal d'audit (curées + extra en
+  // base), pour construire le filtre dynamiquement (≥ 6 sections, dont
+  // « tarification ») au lieu d'un <Select> à 2 options codées en dur.
+  getAuditSections: () => api.get('/parametres/audit/sections/'),
   // N58 — statuts métier configurables (libellé/ordre/visibilité) par domaine.
   // Couche d'AFFICHAGE : les clés canoniques et les transitions restent figées.
   getStatutsEffective: (domaine) =>

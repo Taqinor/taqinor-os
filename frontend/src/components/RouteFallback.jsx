@@ -1,4 +1,7 @@
 import { Skeleton } from '../ui/Skeleton'
+// VX154 — chaque transition de route est signée : un petit soleil Taqinor animé
+// coiffe la silhouette de page (figé sous prefers-reduced-motion).
+import SolarLoader from '../ui/SolarLoader'
 
 /* O65 — Repli de chargement « skeleton-first » pour le lazy-loading des routes.
    ----------------------------------------------------------------------------
@@ -18,6 +21,10 @@ export default function RouteFallback() {
       aria-label="Chargement de la page"
       className="flex flex-col gap-6 p-6"
     >
+      {/* VX154 — petit soleil animé qui signe l'attente (au-dessus de la
+          silhouette skeleton conservée pour la stabilité de mise en page). */}
+      <SolarLoader size={22} label="Chargement de la page…" />
+
       {/* En-tête : titre + sous-titre + action */}
       <div className="flex items-start justify-between gap-4">
         <div className="flex flex-col gap-2">

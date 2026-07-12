@@ -6,6 +6,7 @@ import {
   Badge, Button, Spinner,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '../../ui'
+import RelationCounters from '../../ui/RelationCounters'
 import { Table } from '../reporting/Table'
 import ClientRgpdActions from './ClientRgpdActions'
 import OwnerChain from '../../components/OwnerChain'
@@ -130,6 +131,19 @@ export default function ClientDetailPanel({ client, onClose, onNewDevis, onChang
                 </a>
               )}
             </div>
+          )}
+          {/* VX159 — compteurs de relations en tête de fiche, cliquables vers
+              la liste cible pré-filtrée (?client=). Lit les documents déjà
+              chargés (aucune agrégation cross-app supplémentaire). */}
+          {data && (
+            <RelationCounters
+              className="mb-4"
+              counters={[
+                { key: 'devis', label: 'devis', count: data.devis?.length ?? 0, to: `/ventes/devis?client=${client.id}` },
+                { key: 'factures', label: 'factures', count: data.factures?.length ?? 0, to: `/ventes/factures?client=${client.id}` },
+                { key: 'chantiers', label: 'chantiers', count: data.chantiers?.length ?? 0, to: `/chantiers?client=${client.id}` },
+              ]}
+            />
           )}
           {loading && (
             <p className="page-loading"><Spinner /> Chargement des documents…</p>
