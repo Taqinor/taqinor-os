@@ -58,6 +58,6 @@ test('NotificationBell : rangée « N approbations » en tête des groupes, cliq
 })
 
 test('hook partagé : total dérivé de items.length, jamais un total inventé en erreur/chargement', () => {
-  assert.match(HOOK_SRC, /approbationsEnAttente\(\)/)
-  assert.match(HOOK_SRC, /setTotal\(Array\.isArray\(items\) \? items\.length : 0\)/)
+  assert.match(HOOK_SRC, /attentionSummary\(\)/)
+  assert.match(HOOK_SRC, /setTotal\(r\.data\?\.approbations \?\? 0\)/)
 })

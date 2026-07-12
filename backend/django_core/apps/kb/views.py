@@ -200,7 +200,8 @@ class KbArticleViewSet(_KbBaseViewSet):
         """XKB8 — Arbre des articles visibles (racines → enfants imbriqués)."""
         return Response(selectors.arbre_articles(self.get_queryset()))
 
-    @action(detail=True, methods=['get'], url_path='descendants-count')
+    @action(detail=True, methods=['get'], url_path='descendants-count',
+            permission_classes=[HasPermissionOrLegacy('kb_voir')])
     def descendants_count(self, request, pk=None):
         """VX241(a) — compte RÉEL du sous-arbre qu'un DELETE cascaderait
         (``parent`` est ``on_delete=CASCADE``, ``apps/kb/models.py``) : le

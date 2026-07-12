@@ -8,18 +8,13 @@
 // réseau supplémentaire), avec un bouton « Ouvrir » qui navigue enfin.
 import { useRef, useState } from 'react'
 import { Button } from '../../ui'
+import { formatDateTime as fmtDateTime } from '../../lib/format'
 
 const LONG_PRESS_MS = 500
 
 function formatDateTime(iso) {
   if (!iso) return null
-  try {
-    return new Date(iso).toLocaleString('fr-FR', {
-      day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
-    })
-  } catch {
-    return null
-  }
+  return fmtDateTime(iso) || null
 }
 
 /**
