@@ -13,8 +13,8 @@ import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
 import { Label } from '../ui/Label'
 import api from '../api/axios'
-import { setCredentials } from '../features/auth/store/authSlice'
-import { SESSION_EXPIRED_EVENT } from './session-bridge'
+import { setCredentials, logout } from '../features/auth/store/authSlice'
+import { SESSION_EXPIRED_EVENT, subscribeToSessionLogout } from './session-bridge'
 import { isAnyFormDirty, confirmLeaveIfDirty } from '../ui/useDirtyGuard'
 
 export function SessionProvider({ children }) {
@@ -38,6 +38,16 @@ export function SessionProvider({ children }) {
     window.addEventListener(SESSION_EXPIRED_EVENT, onExpired)
     return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onExpired)
   }, [])
+
+  // VX162 — logout déclenché dans UN AUTRE onglet (poste partagé) : on se
+  // déconnecte LOCALEMENT (reducer synchrone, aucun appel réseau) puis on
+  // redirige vers /login — sans attendre le premier 401 de cet onglet.
+  useEffect(() => subscribeToSessionLogout(() => {
+    dispatch(logout())
+    if (window.location?.pathname !== '/login') {
+      window.location.href = '/login'
+    }
+  }), [dispatch])
 
   const dismiss = useCallback(() => {
     openRef.current = false
