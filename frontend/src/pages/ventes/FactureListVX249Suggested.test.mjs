@@ -1,5 +1,7 @@
 // VX249(b) — VX93 pré-remplit le mode de paiement sans dire que c'est une
-// SUPPOSITION. Verified against SOURCE (no node_modules in this worktree/lane).
+// SUPPOSITION. La modale de paiement (déclenchée depuis FactureList via
+// openPayModal) a été EXTRAITE dans PaiementDialog.jsx : le champ payMode
+// « suggéré » y vit désormais. Verified against SOURCE.
 //   node --test src/pages/ventes/FactureListVX249Suggested.test.mjs
 import test from 'node:test'
 import assert from 'node:assert/strict'
@@ -8,7 +10,7 @@ import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const SRC = readFileSync(join(HERE, 'FactureList.jsx'), 'utf8')
+const SRC = readFileSync(join(HERE, 'PaiementDialog.jsx'), 'utf8')
 
 test('payMode : état "touché" distinct (pas de notion isEdit ici — un paiement est toujours une création)', () => {
   assert.match(SRC, /const \[payModeTouched, setPayModeTouched\] = useState\(false\)/)
