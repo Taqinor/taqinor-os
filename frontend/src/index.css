@@ -5003,8 +5003,17 @@ textarea.form-control {
 .kb-drag-overlay .kb-card {
   cursor: grabbing;
   transform: rotate(2deg) scale(1.02);
+  /* VX135 — la carte sautait directement au tilt, sans transition de grab. */
+  transition: transform 120ms var(--ease-out);
   box-shadow: var(--shadow-ui-lg, 0 10px 24px rgba(15, 23, 42, 0.25));
 }
+/* VX135 — ce tilt est un transform STATIQUE (ni animation ni transition) :
+   le garde global reduced-motion (index.css, en tête de fichier) ne
+   neutralise que les animations/transitions CSS déclaratives, jamais un
+   transform posé en dur — il échappe donc structurellement à ce garde.
+   `usePrefersReducedMotion()` ajoute cette classe (3 kanbans) pour le
+   désactiver explicitement à la source. */
+.kb-drag-overlay--flat .kb-card { transform: none; }
 
 /* ---------- Cartes ---------- */
 

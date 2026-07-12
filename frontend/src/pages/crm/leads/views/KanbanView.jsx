@@ -21,8 +21,15 @@ import {
   kanbanScreenReaderInstructions,
 } from '../../../../features/kanban/kanbanA11y'
 import { useOptimisticSave } from '../../../../hooks/useOptimisticSave'
+import { usePrefersReducedMotion } from '../../../../hooks/usePrefersReducedMotion'
 import { toast } from '../../../../ui/confirm'
 import LeadCard from './LeadCard'
+
+// VX135 — dropAnimation dnd-kit par défaut désalignée des tokens de
+// mouvement de l'app ; alignée --motion-*/--ease-out (tokens.css). Sous
+// reduced-motion, quasi instantanée (dnd-kit exige une durée > 0).
+const DROP_ANIMATION = { duration: 180, easing: 'cubic-bezier(0.23, 1, 0.32, 1)' }
+const DROP_ANIMATION_REDUCED = { duration: 1, easing: 'linear' }
 
 // J140 + L151 — alternative CLAVIER au glisser-déposer : un sélecteur d'étape
 // accessible sous chaque carte. Enregistrement OPTIMISTE avec rollback via
@@ -175,6 +182,10 @@ export default function KanbanView({
   onPlanifierRelance,
   onInlineSave,
 }) {
+  // VX135 — préférence reduced-motion lue en JS : le tilt (transform statique
+  // posé par dnd-kit/CSS) et le dropAnimation (JS pur) échappent tous deux au
+  // garde global CSS.
+  const prefersReducedMotion = usePrefersReducedMotion()
   // Message éphémère « On ne recule pas une étape » lors d'un drag refusé.
   const [reculMsg, setReculMsg] = useState(false)
   // distance 6px : un clic simple ouvre la fiche, le drag exige un mouvement ;
@@ -263,9 +274,9 @@ export default function KanbanView({
           </StageColumn>
         ))}
       </div>
-      <DragOverlay>
+      <DragOverlay dropAnimation={prefersReducedMotion ? DROP_ANIMATION_REDUCED : DROP_ANIMATION}>
         {activeLead ? (
-          <div className="kb-drag-overlay">
+          <div className={prefersReducedMotion ? 'kb-drag-overlay kb-drag-overlay--flat' : 'kb-drag-overlay'}>
             <LeadCard lead={activeLead} />
           </div>
         ) : null}

@@ -98,6 +98,19 @@ retirée après coup — `applyTheme()`/`initTheme()` restent instantanés (pas 
 `setStoredTheme` + le handler système de ThemeProvider l'utilisent. Test DOM fake dans
 theme.test.mjs vérifie la classe posée puis retirée.
 
+VX135 — nouveau hook `hooks/usePrefersReducedMotion.js` (matchMedia + listener live) : le
+tilt `rotate(2deg) scale(1.02)` du kanban (transform STATIQUE, échappe structurellement au
+garde CSS global) est désactivé via une classe `kb-drag-overlay--flat` dans les 3 kanbans
+(CRM leads, installations, Tâches) ; `dropAnimation` dnd-kit alignée aux tokens
+(`{duration:180, easing:cubic-bezier(0.23,1,0.32,1)}`, `{duration:1}` sous reduced-motion)
+sur les 3. `transition: transform 120ms var(--ease-out)` ajoutée sur `.kb-drag-overlay
+.kb-card` (transition de grab). Spinner : `motion-safe:animate-spin` (repli statique
+lisible, l'anneau partiel reste immobile au lieu de figer à un angle arbitraire). DataTable :
+FLIP minimal zéro dépendance (`useRowFlip`, `getBoundingClientRect` avant/après via
+`useLayoutEffect`, plafonné à 200 lignes, désactivé sous reduced-motion, jamais en mode
+`renderRow` custom) — trier/filtrer fait glisser les lignes vers leur nouvelle position au
+lieu de téléporter.
+
 #### DONE LOG — Vague 2 (VX terrain/finance/CRM + QX groupe) (2026-07-12)
 
 Vague 2 du plan-run (23 tâches VX + tagging de tous les plans, un seul merge). Lanes drainées en parallèle : **finance/terrain** VX44 (photos chantier en rafale + partage WhatsApp), VX88 (Ma journée → tournée géo), VX94 (Enter-pour-ajouter capture), VX105 (statut technicien + persistance + toasts hors-ligne), VX106 (signature client terrain), VX107 (résumé client lecture seule), VX52 (avertissements conformité tactiles), VX63 (erreurs FR lisibles DevisList/FactureList), VX114 (déjà présent, export daté), VX116 (relance groupée + aperçu WhatsApp). **ventes** VX222 (relancer devis), VX230 (encaisser depuis Relances), VX231 (navigation finance vers la cible). **UI/data** VX41 (data-viz marque + comparaison période), VX33 (Pilotage stock tour de contrôle), VX66 (anti-double-soumission Button), VX26 (couleurs stage dérivées tokens), VX81 (exports XLSX/CSV horodatés), VX61 (Web Vitals réels + endpoint reporting), VX110 (copier TSV), VX246 (queue interop iOS), VX19 (zéro popup navigateur, +réparation FactureList post-refactor VX230). Backend DoD à suivre : VX105 (`ajouter-reserve` gated admin), VX106 (signature dans `intervention_pdf.py`). GATED (non buildé) : QXG1/QXG2/QXG4 (compte/contenu fondateur). Tagging : les 10 fichiers de plan (PLAN/PLAN2/new_tasks + 7 domaines) reçoivent un tag `@lane:`/`Files:` visible par le planner sur la 1ʳᵉ ligne (append-only vérifié).
@@ -1064,7 +1077,7 @@ grand-verdict — voir NE PAS FAIRE en fin de section pour le détail des kills/
   **@coord axe3-VX190** (refonte cloche — ce seed ne touche que l'animation du compteur, pas son
   contenu). (T2/T3 — M, sonnet) (@lane: frontend/motion)
 
-- [ ] VX135 — **Mouvement piloté par JS rendu accessible + FLIP des listes.** La garde globale (@lane: frontend/motion)
+- [x] VX135 — **Mouvement piloté par JS rendu accessible + FLIP des listes.** La garde globale (@lane: frontend/motion)
   reduced-motion (`index.css:67-77`) ne neutralise QUE les animations CSS déclaratives : les
   transforms posés en JS par dnd-kit y échappent structurellement — le tilt `rotate(2deg)
   scale(1.02)` de la carte kanban tenue reste actif pour un utilisateur vestibulaire, aucun des 3
