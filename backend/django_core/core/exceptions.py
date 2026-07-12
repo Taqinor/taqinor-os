@@ -141,15 +141,23 @@ def taqinor_exception_handler(exc, context):
         return Response(body, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     code = _code_for(exc)
-    body = {
-        'error': {
-            'code': code,
-            'message': _message_for(exc, code),
-            'fields': _fields_for(exc, code),
-            'request_id': request_id,
-        },
+    envelope = {
+        'code': code,
+        'message': _message_for(exc, code),
+        'fields': _fields_for(exc, code),
+        'request_id': request_id,
     }
-    response.data = body
+    # YAPIC3 — enveloppe ADDITIVE, jamais un remplacement de corps. On CONSERVE
+    # la forme DRF native au niveau racine (dict field-keyed pour un 400,
+    # ``{"detail": …}`` pour 401/403/404) — sinon on casse TOUT consommateur
+    # existant (frontend + ~centaines de tests) qui lit ``resp.data['<champ>']``
+    # ou ``resp.data['detail']`` — et on expose EN PLUS l'enveloppe machine
+    # stable sous la clé ``error`` (code/message/fields/request_id). Un champ de
+    # validation littéralement nommé ``error`` (rarissime) est préservé tel quel.
+    if isinstance(response.data, dict):
+        response.data.setdefault('error', envelope)
+    # Corps non-dict (rare) : laissé intact pour la rétro-compatibilité ; le
+    # request_id reste disponible via l'en-tête X-Request-Id (YAPIC4).
     for header, value in _rate_limit_headers_for(exc, context).items():
         response[header] = value
     return response
