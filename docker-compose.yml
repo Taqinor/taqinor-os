@@ -114,8 +114,12 @@ services:
     # comportement ACTUEL (pas de --concurrency posé = défaut natif Celery,
     # cpu_count() du conteneur). sh -c conditionnel : n'ajoute --concurrency=
     # QUE si la variable est non-vide (jamais un --concurrency= vide invalide).
+    # NTPLT27 — ajoute la queue `bulk` (imports/backfills/seed de masse) à ce
+    # worker : le travail de masse est consommé sans jamais partager le process
+    # de la queue `interactive` (rendus PDF), qui reste isolée dans son propre
+    # conteneur. Additif : sans tâche routée sur `bulk`, aucun changement.
     command: >
-      sh -c "celery -A erp_agentique worker -l info -Q default,scheduled
+      sh -c "celery -A erp_agentique worker -l info -Q default,scheduled,bulk
       ${CELERY_CONCURRENCY:+--concurrency=$CELERY_CONCURRENCY}"
     volumes:
       - ./backend/django_core:/app

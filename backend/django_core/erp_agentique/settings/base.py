@@ -551,13 +551,26 @@ CELERY_TASK_ROUTES = {
     'qhse.escalader_checkins_en_retard': {'queue': 'scheduled'},
     # Notifications — balayage des leads chauds.
     'notifications.sweep_hot_leads': {'queue': 'scheduled'},
+    # NTPLT27 — 4e queue `bulk` pour le travail de masse (imports dataimport,
+    # exports planifiés volumineux, backfills, seed à l'échelle). Un import de
+    # 100 000 lignes ne doit plus retarder un digest planifié ni un rendu PDF
+    # interactif : il part sur `bulk`, consommée à part. Routage par CONVENTION
+    # de nommage (fnmatch — Celery matche les clés glob de task_routes) pour
+    # couvrir les tâches de masse présentes ET futures sans les énumérer une à
+    # une : tout nom `*.import_*`, `*.export_bulk_*`, `*.backfill_*`,
+    # `*.seed_*`. Aucune tâche existante ne matche ces motifs aujourd'hui —
+    # ajout purement additif, zéro changement de routage pour l'existant.
+    '*.import_*': {'queue': 'bulk'},
+    '*.backfill_*': {'queue': 'bulk'},
+    '*.seed_*': {'queue': 'bulk'},
+    '*.export_bulk_*': {'queue': 'bulk'},
 }
 # Le worker par défaut (sans -Q) écoute la queue nommée dans
 # task_default_queue — on la garde `default` pour ne rien casser ; en
-# production, lancer le worker avec `-Q default,interactive,scheduled` pour
-# qu'un worker UNIQUE consomme bien les 3 (comportement mono-worker inchangé
-# tant que ce -Q n'est pas explicitement restreint — voir
-# docs/deploy-prod / docker-compose.prod.yml).
+# production, lancer le worker avec `-Q default,interactive,scheduled,bulk`
+# (NTPLT27 ajoute `bulk`) pour qu'un worker UNIQUE consomme bien les 4
+# (comportement mono-worker inchangé tant que ce -Q n'est pas explicitement
+# restreint — voir docs/deploy-prod / docker-compose.prod.yml).
 CELERY_TASK_DEFAULT_QUEUE = 'default'
 
 # Email — django-anymail (N87). Compte d'envoi configurable : Brevo (ex-
