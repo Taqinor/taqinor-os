@@ -34,6 +34,7 @@ import useKeyboardAwareScroll from '../../hooks/useKeyboardAwareScroll'
 import {
   Button, IconButton, Input, FormSection, FormField,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
+  ErrorBoundary,
 } from '../../ui'
 // VX89 — shell externe Escape + focus-trap + bottom-sheet mobile (comme ClientForm).
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
@@ -117,6 +118,12 @@ const NAV_ICONS = {
 // sections n'étaient distinguées que par une emoji, sans frontière). Identité
 // stable hors composant (les champs enfants ne doivent pas être démontés à
 // chaque frappe et perdre le focus).
+// VX205 — chaque section (l'équivalent local d'un `TabsContent` : toutes
+// montées simultanément, navigation en scroll-spy) est isolée dans SA PROPRE
+// `ErrorBoundary` (déjà construite, `ui/ErrorBoundary.jsx`) : un throw dans
+// UNE section (ex. Pompage, Doublons) ne fait plus disparaître le formulaire
+// entier — seule cette section affiche l'écran de récupération, les autres
+// restent utilisables.
 const Sec = ({ title, children, id }) => {
   const Icon = NAV_ICONS[id]
   return (
@@ -129,7 +136,7 @@ const Sec = ({ title, children, id }) => {
           </span>
         )}
       >
-        {children}
+        <ErrorBoundary>{children}</ErrorBoundary>
       </FormSection>
     </div>
   )

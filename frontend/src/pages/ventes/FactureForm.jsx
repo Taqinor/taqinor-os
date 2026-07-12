@@ -11,6 +11,7 @@ import {
 import crmApi from '../../api/crmApi'
 import stockApi from '../../api/stockApi'
 import ventesApi from '../../api/ventesApi'
+import { resilientMutation } from '../../lib/resilientMutation'
 import {
   Button, IconButton,
   Dialog, DialogContent, DialogHeader, DialogTitle,
@@ -51,6 +52,10 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
   const [dirty, setDirty]               = useState(false)
   const [clientQuickCreateOpen, setClientQuickCreateOpen] = useState(false)
   useDirtyGuard(dirty)
+  // VX117 — la facture créée par un submit partiellement échoué reste
+  // EXPOSÉE : un retry ne repart JAMAIS en second `createFacture` (doublon
+  // fiscal).
+  const [createdFactureId, setCreatedFactureId] = useState(null)
 
   const [fields, setFields] = useState({
     client:          facture?.client          ?? '',
@@ -230,40 +235,30 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
         note:           fields.note || null,
       }
 
-      let factureId
-      if (isEdit) {
-        const res = await dispatch(updateFacture({ id: facture.id, data: payload })).unwrap()
+      // VX117 — une facture déjà créée (id serveur ou id exposé par un
+      // submit précédent partiellement échoué) ne repart JAMAIS en second
+      // POST : la relance passe systématiquement en ÉDITION.
+      let factureId = facture?.id ?? createdFactureId
+      if (factureId) {
+        const res = await dispatch(updateFacture({ id: factureId, data: payload })).unwrap()
         factureId = res.id
       } else {
         const res = await dispatch(createFacture(payload)).unwrap()
         factureId = res.id
+        setCreatedFactureId(factureId)
       }
 
-      // Lignes supprimées
-      await Promise.all(
-        removedLineIds.map(id => dispatch(removeLigneFacture(id)).unwrap())
-      )
+      // Lignes supprimées — allSettled : une suppression en échec ne bloque
+      // pas les autres déjà supprimées, et ne les redemande pas au retry.
+      const delResult = await resilientMutation(removedLineIds, (id) =>
+        dispatch(removeLigneFacture(id)).unwrap())
+      setRemovedLineIds(delResult.failed.map(f => f.item))
+
       // Lignes existantes → update
-      await Promise.all(
-        lines.filter(l => l.id).map(l =>
-          dispatch(updateLigneFacture({
-            id: l.id,
-            data: {
-              facture:       factureId,
-              produit:       parseInt(l.produit),
-              designation:   l.designation,
-              quantite:      l.quantite,
-              prix_unitaire: l.prix_unitaire,
-              remise:        l.remise,
-              taux_tva:      l.taux_tva !== '' ? l.taux_tva : null,
-            },
-          })).unwrap()
-        )
-      )
-      // Nouvelles lignes → create
-      await Promise.all(
-        lines.filter(l => !l.id).map(l =>
-          dispatch(addLigneFacture({
+      const updResult = await resilientMutation(lines.filter(l => l.id), (l) =>
+        dispatch(updateLigneFacture({
+          id: l.id,
+          data: {
             facture:       factureId,
             produit:       parseInt(l.produit),
             designation:   l.designation,
@@ -271,15 +266,43 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
             prix_unitaire: l.prix_unitaire,
             remise:        l.remise,
             taux_tva:      l.taux_tva !== '' ? l.taux_tva : null,
-          })).unwrap()
-        )
-      )
+          },
+        })).unwrap())
+
+      // Nouvelles lignes → create — chaque ligne créée avec succès reçoit
+      // son id serveur immédiatement : un retry ne la recrée jamais (fin du
+      // doublon fiscal ligne-par-ligne).
+      const newLines = lines.filter(l => !l.id)
+      const createResult = await resilientMutation(newLines, (l) =>
+        dispatch(addLigneFacture({
+          facture:       factureId,
+          produit:       parseInt(l.produit),
+          designation:   l.designation,
+          quantite:      l.quantite,
+          prix_unitaire: l.prix_unitaire,
+          remise:        l.remise,
+          taux_tva:      l.taux_tva !== '' ? l.taux_tva : null,
+        })).unwrap())
+      if (createResult.succeeded.length > 0) {
+        setLines(ls => ls.map(l => {
+          const ok = createResult.succeeded.find(s => s.item._key === l._key)
+          return ok ? { ...l, id: ok.value.id } : l
+        }))
+      }
+
+      const lineFails = delResult.failed.length + updResult.failed.length + createResult.failed.length
+      if (lineFails > 0) {
+        setErrors(prev => ({ ...prev, submit:
+          `Facture enregistrée, mais ${lineFails} ligne(s) n'ont pas pu être enregistrée(s). `
+          + 'Corrigez et réessayez — seules les lignes en échec seront retentées, aucun doublon.' }))
+        return
+      }
 
       setDirty(false)
       onSaved?.()
       onClose()
     } catch (err) {
-      const msg = err?.detail ?? err?.non_field_errors?.[0] ?? JSON.stringify(err)
+      const msg = err?.detail ?? err?.non_field_errors?.[0] ?? 'Enregistrement impossible. Réessayez.'
       setErrors(prev => ({ ...prev, submit: msg }))
     } finally {
       setSaving(false)

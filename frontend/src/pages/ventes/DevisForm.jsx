@@ -11,6 +11,7 @@ import {
 } from '../../features/ventes/store/ventesSlice'
 import crmApi from '../../api/crmApi'
 import stockApi from '../../api/stockApi'
+import { resilientMutation } from '../../lib/resilientMutation'
 import {
   Button, IconButton,
   Dialog, DialogContent, DialogHeader, DialogTitle,
@@ -58,6 +59,9 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
   const [dirty, setDirty] = useState(false)
   const [clientQuickCreateOpen, setClientQuickCreateOpen] = useState(false)
   useDirtyGuard(dirty)
+  // VX117 — le devis créé par un submit partiellement échoué reste EXPOSÉ :
+  // un retry ne repart JAMAIS en second `createDevis` (doublon fiscal).
+  const [createdDevisId, setCreatedDevisId] = useState(null)
 
   const [fields, setFields] = useState({
     client: devis?.client ?? '',
@@ -199,23 +203,28 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
         note: fields.note || null,
       }
 
-      let devisId
-      if (isEdit) {
-        const res = await dispatch(updateDevis({ id: devis.id, data: payload })).unwrap()
+      // VX117 — un devis déjà créé (id serveur ou id exposé par un submit
+      // précédent partiellement échoué) ne repart JAMAIS en second POST : la
+      // relance passe systématiquement en ÉDITION.
+      let devisId = devis?.id ?? createdDevisId
+      if (devisId) {
+        const res = await dispatch(updateDevis({ id: devisId, data: payload })).unwrap()
         devisId = res.id
       } else {
         const res = await dispatch(createDevis(payload)).unwrap()
         devisId = res.id
+        setCreatedDevisId(devisId)
       }
 
-      // Delete removed lines
-      await Promise.all(
-        removedLineIds.map(id => dispatch(removeLigneDevis(id)).unwrap())
-      )
+      // Lignes supprimées — allSettled : une suppression en échec ne bloque
+      // pas les autres déjà supprimées, et ne les redemande pas au retry.
+      const delResult = await resilientMutation(removedLineIds, (id) =>
+        dispatch(removeLigneDevis(id)).unwrap())
+      setRemovedLineIds(delResult.failed.map(f => f.item))
 
-      // Update existing lines (those that came from server)
+      // Lignes existantes → update
       const existingLines = lines.filter(l => l.id)
-      await Promise.all(existingLines.map(l =>
+      const updResult = await resilientMutation(existingLines, (l) =>
         dispatch(updateLigneDevis({
           id: l.id,
           data: {
@@ -227,12 +236,13 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
             remise: l.remise,
             taux_tva: l.taux_tva !== '' ? l.taux_tva : null,
           },
-        })).unwrap()
-      ))
+        })).unwrap())
 
-      // Create new lines
+      // Nouvelles lignes → create — chaque ligne créée avec succès reçoit
+      // son id serveur immédiatement : un retry ne la recrée jamais (fin du
+      // doublon fiscal ligne-par-ligne).
       const newLines = lines.filter(l => !l.id)
-      await Promise.all(newLines.map(l =>
+      const createResult = await resilientMutation(newLines, (l) =>
         dispatch(addLigneDevis({
           devis: devisId,
           produit: parseInt(l.produit),
@@ -241,14 +251,27 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
           prix_unitaire: l.prix_unitaire,
           remise: l.remise,
           taux_tva: l.taux_tva !== '' ? l.taux_tva : null,
-        })).unwrap()
-      ))
+        })).unwrap())
+      if (createResult.succeeded.length > 0) {
+        setLines(ls => ls.map(l => {
+          const ok = createResult.succeeded.find(s => s.item._key === l._key)
+          return ok ? { ...l, id: ok.value.id } : l
+        }))
+      }
+
+      const lineFails = delResult.failed.length + updResult.failed.length + createResult.failed.length
+      if (lineFails > 0) {
+        setErrors(prev => ({ ...prev, submit:
+          `Devis enregistré, mais ${lineFails} ligne(s) n'ont pas pu être enregistrée(s). `
+          + 'Corrigez et réessayez — seules les lignes en échec seront retentées, aucun doublon.' }))
+        return
+      }
 
       setDirty(false)
       onSaved?.()
       onClose()
     } catch (err) {
-      const msg = err?.detail ?? err?.non_field_errors?.[0] ?? JSON.stringify(err)
+      const msg = err?.detail ?? err?.non_field_errors?.[0] ?? 'Enregistrement impossible. Réessayez.'
       setErrors(prev => ({ ...prev, submit: msg }))
     } finally {
       setSaving(false)

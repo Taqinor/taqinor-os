@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { ShieldPlus, ShieldCheck, Pencil, Trash2, Eye, ChevronDown, Lock } from 'lucide-react'
 import api from '../../api/axios'
 import rolesApi from '../../api/rolesApi'
+import { resilientMutation } from '../../lib/resilientMutation'
 import {
   Button, Spinner, Badge,
   Card, CardHeader, CardTitle,
@@ -327,21 +328,34 @@ export default function RolesManagement() {
   }
 
   // Réassigne tous les utilisateurs du rôle bloqué vers `target`, puis supprime.
+  // VX117 — allSettled + rapport nominatif : le rôle n'est JAMAIS supprimé
+  // tant qu'un utilisateur n'est pas migré, et une relance ne retente QUE les
+  // utilisateurs en échec (jamais un re-PATCH des déjà-migrés).
   const handleReassignAndDelete = async () => {
     const { role, target } = reassign
     if (!target) return
     setError(null)
+    const { succeeded, failed } = await resilientMutation(role.users || [], (u) =>
+      api.patch(`/users/${u.id}/`, { role: Number(target) }))
+    if (failed.length > 0) {
+      const noms = failed.map(f => f.item.username || `#${f.item.id}`).join(', ')
+      setReassign({
+        role: { ...role, users: failed.map(f => f.item), users_count: failed.length },
+        target,
+      })
+      setError(
+        `${succeeded.length} utilisateur(s) réassigné(s). Échec pour : ${noms}. `
+        + 'Rôle non supprimé — corrigez puis réessayez (seuls les échecs seront retentés).')
+      return
+    }
     try {
-      await Promise.all(
-        (role.users || []).map(u =>
-          api.patch(`/users/${u.id}/`, { role: Number(target) })),
-      )
       await rolesApi.deleteRole(role.id)
       setReassign(null)
+      setError(null)
       await load()
     } catch (err) {
       setError(err.response?.data?.detail
-        || 'Échec de la réassignation des utilisateurs.')
+        || 'Utilisateurs réassignés, mais suppression du rôle impossible.')
     }
   }
 
@@ -425,7 +439,10 @@ export default function RolesManagement() {
         )}
       </div>
 
-      {error && (
+      {/* VX117 — masqué pendant le dialogue de réassignation : le rapport
+          nominatif s'affiche DANS le dialogue (voir plus bas), pas derrière
+          l'overlay. */}
+      {error && !reassign && (
         <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
           {error}
         </p>
@@ -676,6 +693,13 @@ export default function RolesManagement() {
                 Utilisateurs concernés :{' '}
                 {(reassign.role.users || []).map(u => u.username).join(', ') || '—'}
               </p>
+              {/* VX117 — rapport nominatif visible DANS le dialogue (pas
+                  seulement le bandeau de page, masqué par l'overlay). */}
+              {error && (
+                <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-2 text-xs text-destructive">
+                  {error}
+                </p>
+              )}
             </div>
             <AlertDialogFooter>
               <AlertDialogCancel>Annuler</AlertDialogCancel>

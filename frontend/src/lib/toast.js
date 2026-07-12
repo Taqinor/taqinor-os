@@ -6,6 +6,11 @@
 // Code en anglais, textes utilisateur en français. Aucun import React ici :
 // ces helpers sont appelables depuis n'importe où (handlers, thunks, axios).
 import { toast } from '../ui/Toaster'
+// VX203 — l'extraction du message d'erreur est désormais PROMUE dans
+// `lib/apiError.js` (contrat d'erreur unique, `{message, fieldErrors}`) ;
+// `errorMessageFrom` ci-dessous ne fait plus que déléguer, pour ne rien
+// casser des appelants existants (signature/nom inchangés).
+import { apiErrorMessage } from './apiError'
 
 // VX196 — sonner ne rend qu'UNE région aria-live="polite" pour tous les
 // toasts : une erreur bloquante n'interrompt jamais le lecteur d'écran
@@ -108,22 +113,10 @@ export function toastWithUndo({
   return id
 }
 
-/** Petit utilitaire : extrait un message d'erreur FR lisible d'une erreur axios. */
+/** Petit utilitaire : extrait un message d'erreur FR lisible d'une erreur axios.
+ *  VX203 — délègue à `apiError.js` (couvre en plus 429/500 HTML/timeout). */
 export function errorMessageFrom(error, fallback = 'Une erreur est survenue.') {
-  const data = error?.response?.data
-  if (typeof data === 'string' && data.trim()) return data
-  if (data?.detail) return String(data.detail)
-  if (data && typeof data === 'object') {
-    // DRF renvoie souvent { champ: ["message"] } — on prend le premier message.
-    for (const v of Object.values(data)) {
-      if (Array.isArray(v) && v.length) return String(v[0])
-      if (typeof v === 'string' && v.trim()) return v
-    }
-  }
-  if (error?.message === 'Network Error') {
-    return 'Impossible de contacter le serveur. Vérifiez votre connexion.'
-  }
-  return fallback
+  return apiErrorMessage(error, fallback)
 }
 
 export { toast }

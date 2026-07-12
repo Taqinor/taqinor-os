@@ -48,8 +48,10 @@ describe('messagingSlice', () => {
 
   it('fetchMessages.fulfilled n’applique la page que pour la conversation active', () => {
     let s = reducer(init, setActiveConversation(5))
+    s = reducer(s, { type: fetchMessages.pending.type, meta: { requestId: 'r1' } })
     s = reducer(s, {
       type: fetchMessages.fulfilled.type,
+      meta: { requestId: 'r1' },
       payload: { conversationId: 5, page: { results: [{ id: 1, created_at: 'a' }] }, next: 'cursor' },
     })
     expect(s.messages).toHaveLength(1)
@@ -57,9 +59,33 @@ describe('messagingSlice', () => {
     // page d'une AUTRE conversation : ignorée
     const other = reducer(s, {
       type: fetchMessages.fulfilled.type,
+      meta: { requestId: 'r1' },
       payload: { conversationId: 99, page: { results: [{ id: 2 }] }, next: null },
     })
     expect(other.messages).toHaveLength(1)
+  })
+
+  it('fetchMessages.fulfilled ignore un tick PÉRIMÉ (VX164 — résolution inversée)', () => {
+    let s = reducer(init, setActiveConversation(5))
+    // Tick N-1 dispatché, PUIS tick N (le poll suivant, avant que N-1 réponde).
+    s = reducer(s, { type: fetchMessages.pending.type, meta: { requestId: 'tickN-1' } })
+    s = reducer(s, { type: fetchMessages.pending.type, meta: { requestId: 'tickN' } })
+    // Tick N répond D'ABORD (plus rapide) — appliqué (c'est la DERNIÈRE requête).
+    s = reducer(s, {
+      type: fetchMessages.fulfilled.type,
+      meta: { requestId: 'tickN' },
+      payload: { conversationId: 5, page: { results: [{ id: 2, created_at: 'b' }] }, next: null },
+    })
+    expect(s.messages.map((m) => m.id)).toEqual([2])
+    // Tick N-1 (lent) répond ENSUITE, en retard — ignoré : ne fait PAS
+    // régresser l'écran vers une page plus ancienne.
+    s = reducer(s, {
+      type: fetchMessages.fulfilled.type,
+      meta: { requestId: 'tickN-1' },
+      payload: { conversationId: 5, page: { results: [{ id: 1, created_at: 'a' }] }, next: 'stale-cursor' },
+    })
+    expect(s.messages.map((m) => m.id)).toEqual([2])
+    expect(s.nextOlder).toBeNull()
   })
 
   it('sendMessage.fulfilled ajoute le message au fil actif', () => {

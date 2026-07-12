@@ -14,6 +14,13 @@ export default function InlineEdit({
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState(false)
   const ref = useRef(null)
+  // VX164 — verrou de RÉ-ENTRANCE (pas seulement d'affichage — `saving` ne
+  // pilote que le rendu et n'empêche rien) : Enter appelle `commit()` PUIS
+  // sort du mode édition, ce qui démonte l'input et déclenche un `blur`
+  // NATIF (retrait d'un élément focalisé) qui rappelle CE MÊME `commit` une
+  // seconde fois avant que `saving` (état React, asynchrone) n'ait pu se
+  // propager — Enter+blur synchrone déclenchait donc deux `onSave`.
+  const committingRef = useRef(false)
 
   // On capte la valeur courante AU MOMENT d'entrer en édition (pas via un
   // effet) — évite tout rendu en cascade et garde le brouillon isolé.
@@ -28,9 +35,16 @@ export default function InlineEdit({
       : value)
 
   const commit = async () => {
+    // VX164 — verrou EN TÊTE : un second appel (blur déclenché par le
+    // démontage de l'input juste en dessous) est un no-op immédiat.
+    if (committingRef.current) return
+    committingRef.current = true
     setEditing(false)
     const next = draft === '' ? null : draft
-    if (String(next ?? '') === String(value ?? '')) return // rien changé
+    if (String(next ?? '') === String(value ?? '')) {
+      committingRef.current = false
+      return // rien changé
+    }
     setSaving(true)
     setErr(false)
     try {
@@ -44,6 +58,7 @@ export default function InlineEdit({
       setErr(true)
     } finally {
       setSaving(false)
+      committingRef.current = false
     }
   }
 

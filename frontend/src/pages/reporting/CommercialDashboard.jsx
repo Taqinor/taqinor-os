@@ -4,6 +4,7 @@ import reportingApi from '../../api/reportingApi'
 import { formatMAD, formatNumber } from '../../lib/format'
 import {
   Card, CardContent, CardTitle, Skeleton, EmptyState, Segmented, Stat, Button, Badge, toast,
+  ErrorBoundary,
 } from '../../ui'
 import { BarArrondie } from '../../ui/charts'
 import { Table } from './Table'
@@ -117,8 +118,11 @@ export default function CommercialDashboard() {
       <Segmented value={tab} onChange={setTab} options={TABS} />
 
       {/* ── Onglet Entonnoir ─────────────────────────────────────────────── */}
+      {/* VX205 — chaque onglet isolé dans SA PROPRE `ErrorBoundary` : un throw
+          n'emporte que ce panneau, le Segmented (hors boundary) reste
+          utilisable pour changer d'onglet. */}
       {tab === 'funnel' && (
-        <>
+        <ErrorBoundary>
           {loadingDash && <LoadingRows n={6} />}
           {errDash && <ErrorBanner message="Impossible de charger le tableau de bord." />}
           {!loadingDash && !errDash && dash && (
@@ -184,12 +188,12 @@ export default function CommercialDashboard() {
               </Card>
             </div>
           )}
-        </>
+        </ErrorBoundary>
       )}
 
       {/* ── Onglet Classement ─────────────────────────────────────────────── */}
       {tab === 'leaderboard' && (
-        <>
+        <ErrorBoundary>
           {loadingDash && <LoadingRows n={4} />}
           {errDash && <ErrorBanner message="Impossible de charger le classement." />}
           {!loadingDash && !errDash && dash && (
@@ -239,12 +243,12 @@ export default function CommercialDashboard() {
               </CardContent>
             </Card>
           )}
-        </>
+        </ErrorBoundary>
       )}
 
       {/* ── Onglet Gains / Pertes ─────────────────────────────────────────── */}
       {tab === 'winloss' && (
-        <>
+        <ErrorBoundary>
           {loadingWL && <LoadingRows n={5} />}
           {errWL && <ErrorBanner message="Impossible de charger les données gains/pertes." />}
           {!loadingWL && !errWL && winLoss && (
@@ -326,7 +330,7 @@ export default function CommercialDashboard() {
               </Card>
             </div>
           )}
-        </>
+        </ErrorBoundary>
       )}
     </div>
   )

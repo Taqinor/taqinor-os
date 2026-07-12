@@ -1,5 +1,7 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit'
 import api from '../../../api/axios'
+// VX162 — logout propagé à tous les onglets (poste partagé).
+import { broadcastLogout } from '../../../providers/session-bridge'
 
 // Recupere les infos utilisateur depuis l'API (cookie envoye automatiquement)
 export const fetchMe = createAsyncThunk(
@@ -24,6 +26,9 @@ export const logoutUser = createAsyncThunk(
       // Continuer meme si le serveur echoue
     }
     dispatch(authSlice.actions.logout())
+    // VX162 — publie le logout aux AUTRES onglets (poste partagé) : ils se
+    // déconnectent localement sans attendre leur premier 401.
+    broadcastLogout()
   }
 )
 
