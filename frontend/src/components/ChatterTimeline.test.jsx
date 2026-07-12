@@ -9,6 +9,12 @@ afterEach(() => { cleanup() })
 
 const NOW = new Date()
 const isoAt = (hoursAgo) => new Date(NOW.getTime() - hoursAgo * 3600000).toISOString()
+// Ancré sur le jour calendaire LOCAL à midi (12 h de marge de part et d'autre
+// de minuit) : le regroupement Aujourd'hui/Hier de dayLabel() compare des jours
+// locaux, donc « il y a 1 h » basculait sur la veille quand la suite tournait
+// juste après minuit (run CI 00:3x UTC → « Aujourd'hui » absent, faux échec).
+const localNoon = (daysAgo) =>
+  new Date(NOW.getFullYear(), NOW.getMonth(), NOW.getDate() - daysAgo, 12, 0, 0).toISOString()
 
 describe('ChatterTimeline (VX23)', () => {
   it("affiche le message vide quand il n'y a ni activité ni pièce jointe", () => {
@@ -20,8 +26,8 @@ describe('ChatterTimeline (VX23)', () => {
     render(
       <ChatterTimeline
         entries={[
-          { id: 1, kind: 'note', body: 'Note du jour', user_nom: 'Sami', created_at: isoAt(1) },
-          { id: 2, kind: 'note', body: 'Note d’hier', user_nom: 'Sami', created_at: isoAt(26) },
+          { id: 1, kind: 'note', body: 'Note du jour', user_nom: 'Sami', created_at: localNoon(0) },
+          { id: 2, kind: 'note', body: 'Note d’hier', user_nom: 'Sami', created_at: localNoon(1) },
         ]}
       />,
     )
