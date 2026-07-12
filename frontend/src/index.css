@@ -2262,6 +2262,19 @@ textarea.form-control {
   }
   .header-cluster { gap: 0.4rem; }
 
+  /* VX68/mobile-safari — sur iPhone (viewport 390 px) la grappe de droite
+     complète (lanceur d'apps + copilote + messages + notifications + langue +
+     thème segmenté 3 boutons + compte) DÉPASSE la largeur écran : `.header-right`
+     est `flex:0 0 auto` (ne rétrécit pas) donc `.header-left` (hamburger + titre)
+     est écrasé à 0 → `.header-title` « hidden » ET débordement horizontal. On
+     masque les contrôles SECONDAIRES — lanceur d'apps, langue, thème — déjà
+     atteignables via le menu utilisateur / les réglages / la barre d'onglets
+     basse ; l'essentiel (copilote, messages, notifications, compte) reste. Rend
+     au titre + hamburger la largeur nécessaire (gardé par E16/MB6). */
+  .header-cluster-search .nb-btn,
+  .header-lang-btn,
+  [role="group"][aria-label="Thème de l'interface"] { display: none; }
+
   /* ⌘K masqué sur mobile : la loupe GlobalSearch (gs-mobile-toggle)
      offre le même point d'entrée sans doubler les icônes. */
   .header-cmdk { display: none; }
