@@ -121,13 +121,22 @@ const FIELDS = {
 // moment du téléchargement par `runExport` (stampedFilename), jamais un nom nu
 // — ces CSV partent chez le comptable, deux exports le même jour ne doivent
 // plus être indistinguables derrière un (1)/(2) de navigateur.
+// VX158(b) — le jargon fiscal (FEC, liasse, IS…) se traduit : une phrase
+// grise par bouton, statique (zéro logique), visible SANS clic — jamais un
+// acronyme livré nu à quelqu'un qui ne le connaît pas déjà.
 const EXPORTS = [
-  { key: 'exportFec', label: 'FEC (DGI)', fn: comptaApi.etats.exportFec, base: 'FEC', ext: 'txt', needsExercice: true },
-  { key: 'liasseFiscale', label: 'Liasse fiscale', fn: comptaApi.etats.liasseFiscale, base: 'liasse-fiscale', ext: 'csv', needsExercice: true },
-  { key: 'exportFiduciaire', label: 'Export fiduciaire', fn: comptaApi.etats.exportFiduciaire, base: 'export-fiduciaire', ext: 'csv', needsExercice: true },
-  { key: 'releveDeductionsTva', label: 'Relevé déductions TVA', fn: comptaApi.etats.releveDeductionsTva, base: 'releve-deductions-tva', ext: 'csv' },
-  { key: 'declarationHonoraires', label: 'Déclaration honoraires', fn: comptaApi.etats.declarationHonoraires, base: 'declaration-honoraires', ext: 'csv' },
-  { key: 'aideIs', label: 'Aide au calcul IS', fn: comptaApi.etats.aideIs, base: 'aide-is', ext: 'csv', needsExercice: true },
+  { key: 'exportFec', label: 'FEC (DGI)', fn: comptaApi.etats.exportFec, base: 'FEC', ext: 'txt', needsExercice: true,
+    help: 'Fichier des écritures comptables — requis par l’administration fiscale en cas de contrôle.' },
+  { key: 'liasseFiscale', label: 'Liasse fiscale', fn: comptaApi.etats.liasseFiscale, base: 'liasse-fiscale', ext: 'csv', needsExercice: true,
+    help: 'Synthèse annuelle des comptes, transmise à votre comptable ou à l’administration.' },
+  { key: 'exportFiduciaire', label: 'Export fiduciaire', fn: comptaApi.etats.exportFiduciaire, base: 'export-fiduciaire', ext: 'csv', needsExercice: true,
+    help: 'Jeu d’écritures normalisé, prêt pour votre cabinet comptable.' },
+  { key: 'releveDeductionsTva', label: 'Relevé déductions TVA', fn: comptaApi.etats.releveDeductionsTva, base: 'releve-deductions-tva', ext: 'csv',
+    help: 'Justificatif détaillé de la TVA déductible sur vos achats.' },
+  { key: 'declarationHonoraires', label: 'Déclaration honoraires', fn: comptaApi.etats.declarationHonoraires, base: 'declaration-honoraires', ext: 'csv',
+    help: 'État annuel des sommes versées à des tiers, à joindre à votre déclaration fiscale.' },
+  { key: 'aideIs', label: 'Aide au calcul IS', fn: comptaApi.etats.aideIs, base: 'aide-is', ext: 'csv', needsExercice: true,
+    help: 'Base de calcul indicative de l’impôt sur les sociétés — ne remplace pas la déclaration officielle.' },
 ]
 
 // XACC9 — Calendrier des échéances fiscales : lecture seule + génération/rappels.
@@ -375,11 +384,15 @@ export default function FiscalitePage() {
               ))}
             </select>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-3">
             {EXPORTS.map((exp) => (
-              <Button key={exp.key} variant="outline" size="sm" onClick={() => runExport(exp)}>
-                <Download className="size-4" /> {exp.label}
-              </Button>
+              <div key={exp.key} className="flex w-full max-w-[240px] flex-col items-start gap-1">
+                <Button variant="outline" size="sm" onClick={() => runExport(exp)}>
+                  <Download className="size-4" /> {exp.label}
+                </Button>
+                {/* VX158(b) — phrase d'aide statique, sans clic ni tooltip. */}
+                <p className="text-xs leading-snug text-muted-foreground">{exp.help}</p>
+              </div>
             ))}
           </div>
         </Card>
