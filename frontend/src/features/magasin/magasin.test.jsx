@@ -53,6 +53,19 @@ vi.mock('../../api/installationsApi', () => ({
   },
 }))
 
+// ZSTK13 — `useStockFlags` (utilisé par `ColisageScreen`) lit le profil
+// entreprise ; défaut True (colisage actif) = comportement inchangé.
+vi.mock('../../api/parametresApi', async (importOriginal) => {
+  const actual = await importOriginal()
+  return {
+    ...actual,
+    default: {
+      ...actual.default,
+      getProfile: vi.fn(() => Promise.resolve({ data: {} })),
+    },
+  }
+})
+
 import installationsApi from '../../api/installationsApi'
 import MagasinCockpit from './MagasinCockpit'
 import BinTreeScreen from './BinTreeScreen'

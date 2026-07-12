@@ -558,6 +558,32 @@ class CompanyProfile(models.Model):
                   "d'une facture réglée en espèces (ex. 0,05 / 0,20 / 1,00). "
                   "0 = désactivé (comportement actuel).")
 
+    # ── ZSTK13 — Réglages société stock (barcode / lots-séries / multi-
+    # emplacements / colis) — surface de configuration unifiée. Ces capacités
+    # existent déjà (multi-emplacements FG319, lots/séries FG61/64, colisage
+    # FG322, scan FG384) et étaient TOUJOURS actives sans réglage société.
+    # Défaut True = comportement actuel byte-identique pour toute société
+    # existante ; passer un drapeau à False MASQUE l'affichage correspondant
+    # côté frontend (aucune donnée détruite, aucun endpoint retiré — réversible).
+    stock_lots_series_actif = models.BooleanField(
+        default=True,
+        verbose_name='Lots & numéros de série',
+        help_text='Affiche les champs lot/série (réception, registre '
+                  'd\'expiration, étiquettes). Désactiver masque ces champs '
+                  'sans supprimer les données existantes.')
+    stock_colisage_actif = models.BooleanField(
+        default=True,
+        verbose_name='Colisage',
+        help_text="Affiche l'écran de colisage (préparation/contrôle des "
+                  'colis avant expédition). Désactiver masque l\'écran sans '
+                  'supprimer les colis existants.')
+    stock_scan_actif = models.BooleanField(
+        default=True,
+        verbose_name='Scan code-barres',
+        help_text='Affiche les panneaux de réception/scan code-barres. '
+                  'Désactiver masque ces panneaux (la saisie manuelle reste '
+                  'disponible).')
+
     class Meta:
         verbose_name = 'Profil entreprise'
 

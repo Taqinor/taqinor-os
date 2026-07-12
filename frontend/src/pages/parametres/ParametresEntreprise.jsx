@@ -128,6 +128,10 @@ export default function ParametresEntreprise() {
     // XSAL11 — round-robin équilibré des leads entrants (OFF par défaut).
     round_robin_leads_actif: false,
     round_robin_plafond_leads_ouverts: 20,
+    // ZSTK13 — capacités stock (True = comportement actuel inchangé).
+    stock_lots_series_actif: true,
+    stock_colisage_actif: true,
+    stock_scan_actif: true,
   })
   const [saved, setSaved] = useState(false)
   const [assignables, setAssignables] = useState([])
@@ -583,6 +587,10 @@ export default function ParametresEntreprise() {
       password_expiry_days: profile.password_expiry_days ?? 0,
       // FG26 — rétention RGPD du journal d'audit.
       audit_retention_days: profile.audit_retention_days ?? 0,
+      // ZSTK13 — capacités stock (True = comportement actuel inchangé).
+      stock_lots_series_actif: profile.stock_lots_series_actif ?? true,
+      stock_colisage_actif: profile.stock_colisage_actif ?? true,
+      stock_scan_actif: profile.stock_scan_actif ?? true,
     }
     /* eslint-disable react-hooks/set-state-in-effect -- resynchro depuis `profile` */
     setInitialSnapshot(next)
@@ -699,6 +707,11 @@ export default function ParametresEntreprise() {
       round_robin_leads_actif: !!form.round_robin_leads_actif,
       round_robin_plafond_leads_ouverts: Math.max(
         1, Math.trunc(Number(form.round_robin_plafond_leads_ouverts) || 20)),
+      // ZSTK13 — capacités stock (booléens simples, jamais désactivées
+      // silencieusement).
+      stock_lots_series_actif: form.stock_lots_series_actif !== false,
+      stock_colisage_actif: form.stock_colisage_actif !== false,
+      stock_scan_actif: form.stock_scan_actif !== false,
     }
     // WR12 — réglages SENSIBLES : ne les transmettre que si l'utilisateur est
     // autorisé (admin). Un rôle non autorisé ne les voit pas et ne peut donc
