@@ -139,6 +139,9 @@ INSTALLED_APPS = [
     # NTSEC11 y livre l'allowlist IP/CIDR (NetworkPolicy + middleware inerte
     # par défaut).
     'apps.identity',
+    # XPLT21 — Softphone VoIP intégré (SIP/WebRTC, gated). Interface
+    # fournisseur SWAPPABLE (NoOp par défaut) — additif, company-scopé.
+    'apps.voip',
 ]
 
 MIDDLEWARE = [

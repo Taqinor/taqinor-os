@@ -84,6 +84,8 @@ urlpatterns = [
     path('api/django/litiges/', include('apps.litiges.urls')),
     # ARC17 — Répertoire des tiers (res.partner), couche fondation.
     path('api/django/tiers/', include('apps.tiers.urls')),
+    # XPLT21 — Softphone VoIP intégré (SIP/WebRTC, gated).
+    path('api/django/voip/', include('apps.voip.urls')),
     # XPOS1 — Vente comptoir (point of sale).
     path('api/django/pos/', include('apps.pos.urls')),
     # XPOS3 — Lien public tokenisé vers le PDF du ticket de caisse.

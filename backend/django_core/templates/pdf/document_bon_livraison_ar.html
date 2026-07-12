@@ -1,0 +1,123 @@
+<!--
+  XSTK18 — Bon de livraison en ARABE (RTL), gabarit dédié NOUVEAU.
+  Miroir du gabarit FR historique (document_bon_livraison.html, laissé
+  intact) : mêmes données (composants, date de livraison, système, client),
+  libellés fixes traduits via `L(cle)` posé par
+  `apps.documents.builders.generate_bon_livraison`. Police Noto Sans Arabic
+  embarquée (aucun appel réseau) — dégrade proprement vers une police
+  système si les fichiers woff2 sont absents.
+-->
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    {% if arabic_font_face_css %}{{ arabic_font_face_css|safe }}{% endif %}
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Noto Sans Arabic', 'Helvetica Neue', Arial, sans-serif; font-size: 12px; color: #333; direction: rtl; }
+    .page { padding: 40px; }
+    .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 32px; }
+    .header-left { display: flex; flex-direction: column; gap: 6px; }
+    .logo img { max-height: 70px; max-width: 200px; object-fit: contain; }
+    .doc-title { font-size: 24px; font-weight: bold; color: {{ couleur_principale }}; margin-top: 8px; }
+    .doc-ref { font-size: 13px; color: #666; }
+    .company-info { text-align: left; font-size: 11px; color: #555; line-height: 1.6; }
+    .company-info strong { font-size: 13px; color: #222; }
+    .parties { display: flex; justify-content: space-between; margin-bottom: 24px; gap: 16px; }
+    .partie-block { background: #f8fafc; border-radius: 6px; padding: 14px 16px; width: 48%; }
+    .partie-label { font-size: 10px; text-transform: uppercase; color: #888; margin-bottom: 6px; letter-spacing: 1px; }
+    .partie-nom { font-weight: bold; font-size: 13px; margin-bottom: 4px; color: #1e293b; }
+    .partie-detail { font-size: 11px; color: #555; line-height: 1.5; }
+    .meta-row { display: flex; gap: 10px; margin-bottom: 18px; flex-wrap: wrap; }
+    .meta-item { background: #f0fdf4; border-radius: 4px; padding: 8px 14px; min-width: 120px; }
+    .meta-item strong { display: block; color: #555; font-size: 10px; text-transform: uppercase; margin-bottom: 2px; }
+    .meta-item span { font-size: 12px; color: #1e293b; font-weight: 500; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 18px; }
+    thead tr { background: {{ couleur_principale }}; color: white; }
+    thead th { padding: 9px 12px; text-align: right; font-size: 11px; text-transform: uppercase; }
+    tbody tr:nth-child(even) { background: #f9fafb; }
+    tbody td { padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 12px; }
+    .text-left { text-align: left; }
+    .empty { font-style: italic; color: #888; padding: 12px 0; }
+    .signature-section { display: flex; justify-content: flex-start; margin-top: 40px; }
+    .signature-block { text-align: center; width: 46%; }
+    .signature-label { font-size: 11px; font-weight: bold; color: #555; margin-bottom: 6px; }
+    .signature-mention { font-size: 10px; color: #888; margin-bottom: 36px; }
+    .signature-line { border-top: 1px solid #cbd5e1; padding-top: 6px; font-size: 10px; color: #555; }
+    .footer { margin-top: 40px; border-top: 1px solid #e2e8f0; padding-top: 14px; font-size: 10px; color: #94a3b8; text-align: center; line-height: 1.7; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="header">
+    <div class="header-left">
+      {% if logo_uri %}<div class="logo"><img src="{{ logo_uri }}" alt="Logo" /></div>{% endif %}
+      <div class="doc-title">{{ L('titre') }}</div>
+      <div class="doc-ref">{{ L('chantier') }} {{ chantier.reference }}</div>
+    </div>
+    <div class="company-info">
+      <strong>{{ entreprise_nom }}</strong><br />
+      {% if entreprise_adresse %}{{ entreprise_adresse }}<br />{% endif %}
+      {% if entreprise_telephone %}{{ entreprise_telephone }}<br />{% endif %}
+      {% if entreprise_email %}{{ entreprise_email }}{% endif %}
+    </div>
+  </div>
+
+  <div class="parties">
+    <div class="partie-block">
+      <div class="partie-label">{{ L('expediteur') }}</div>
+      <div class="partie-nom">{{ entreprise_nom }}</div>
+      <div class="partie-detail">{% if entreprise_adresse %}{{ entreprise_adresse }}{% endif %}</div>
+    </div>
+    <div class="partie-block">
+      <div class="partie-label">{{ L('livre_a') }}</div>
+      <div class="partie-nom">{{ client.nom }} {{ client.prenom }}</div>
+      <div class="partie-detail">
+        {% if client.telephone %}{{ client.telephone }}<br />{% endif %}
+        {% if systeme.site_adresse %}{{ systeme.site_adresse }}{% if systeme.site_ville %}, {{ systeme.site_ville }}{% endif %}{% elif client.adresse %}{{ client.adresse }}{% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="meta-row">
+    {% if date_livraison %}
+    <div class="meta-item"><strong>{{ L('date_livraison') }}</strong><span>{{ date_livraison.strftime('%d/%m/%Y') }}</span></div>
+    {% endif %}
+    {% if systeme.puissance_kwc is not none %}
+    <div class="meta-item"><strong>{{ L('puissance') }}</strong><span>{{ systeme.puissance_kwc }} kWc</span></div>
+    {% endif %}
+  </div>
+
+  <table>
+    <thead><tr><th>#</th><th>{{ L('designation') }}</th><th class="text-left">{{ L('quantite') }}</th></tr></thead>
+    <tbody>
+      {% for c in composants %}
+      <tr>
+        <td>{{ loop.index }}</td>
+        <td>{{ c.designation }}{% if c.marque %} — {{ c.marque }}{% endif %}</td>
+        <td class="text-left">{{ c.quantite }}</td>
+      </tr>
+      {% endfor %}
+      {% if not composants %}
+      <tr><td colspan="3" class="empty">{{ L('aucun_article') }}</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+
+  <div class="signature-section">
+    <div class="signature-block">
+      <div class="signature-label">{{ L('reception_client') }}</div>
+      <div class="signature-mention">{{ L('reception_mention') }}</div>
+      <div class="signature-line">{{ client.nom }} {{ client.prenom }}</div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <strong>{{ entreprise_nom }}</strong>
+    {% if entreprise_adresse %} — {{ entreprise_adresse }}{% endif %}
+    {% if entreprise_telephone %} — {{ entreprise_telephone }}{% endif %}
+    <br />{{ L('genere_le') }} {{ now.strftime('%d/%m/%Y à %H:%M') }}
+  </div>
+</div>
+</body>
+</html>
