@@ -3,9 +3,10 @@ import { useDispatch } from 'react-redux'
 import { createClient, updateClient } from '../../features/crm/store/crmSlice'
 import {
   Form, FormSection, FormField, FormErrorSummary,
-  Input, Textarea, Segmented, Button, Switch, useDirtyGuard, confirmLeaveIfDirty,
+  Input, Textarea, Segmented, Button, Switch,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
+import { useFormSafety } from '../../ui/useFormSafety'
 import { Combobox } from '../../ui/Combobox'
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
 import { toast } from '../../ui/confirm'
@@ -134,12 +135,9 @@ export default function ClientForm({ client = null, onClose }) {
     cin: isEntreprise ? null : cinWarning(fields.cin),
   }), [isEntreprise, fields.ice, fields.if_fiscal, fields.rc, fields.cin])
 
-  // Garde « modifications non enregistrées » (sortie navigateur).
-  const dirty = useMemo(
-    () => Object.keys(initial).some((k) => fields[k] !== initial[k]),
-    [initial, fields],
-  )
-  useDirtyGuard(dirty)
+  // VX170 — garde de formulaire (tab-close + fermeture volontaire) composée
+  // par la primitive commune (remplace le snapshot + useDirtyGuard maison).
+  const { guardedClose } = useFormSafety(initial, fields, onClose)
 
   const setField = (k, v) => setFields((f) => {
     const next = { ...f, [k]: v }
@@ -272,7 +270,7 @@ export default function ClientForm({ client = null, onClose }) {
   return (
     <ResponsiveDialog
       open
-      onOpenChange={(o) => { if (!o && confirmLeaveIfDirty(dirty)) onClose() }}
+      onOpenChange={(o) => { if (!o) guardedClose() }}
       title={isEdit ? 'Éditer le client' : 'Nouveau client'}
       className="sm:max-w-lg"
     >
@@ -545,7 +543,7 @@ export default function ClientForm({ client = null, onClose }) {
               Créer un autre
             </label>
           )}
-          <Button type="button" variant="outline" onClick={onClose}>
+          <Button type="button" variant="outline" onClick={guardedClose}>
             Annuler
           </Button>
           <Button type="submit" loading={saving} disabled={saving}>
