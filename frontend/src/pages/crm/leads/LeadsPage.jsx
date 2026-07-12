@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, lazy, Suspense } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useSearchParams } from 'react-router-dom'
 // VX45 — ⚡/🔀 (emoji fonctionnels, rendu variable selon l'OS) remplacés par
@@ -29,12 +29,17 @@ import ViewSwitcher from './ViewSwitcher'
 import DoublonsPanel from './DoublonsPanel'
 import SigneDialog from './SigneDialog'
 import LeadExpressModal from './LeadExpressModal'
+// VX186 — KanbanView reste STATIQUE (vue par défaut la plus fréquente, zéro
+// flash de chargement au premier rendu). Les 4 autres vues + Prévision sont
+// désormais `lazy` : LeadsPage était le PLUS GROS chunk de route du repo
+// (CarteView embarque leaflet, ChartsView embarque recharts) alors qu'une
+// seule vue à la fois est visible.
 import KanbanView from './views/KanbanView'
-import ListView from './views/ListView'
-import CalendarView from './views/CalendarView'
-import ChartsView from './views/ChartsView'
-import CarteView from './views/CarteView'  // FG37
-import ForecastView from './views/ForecastView'  // XSAL15
+const ListView = lazy(() => import('./views/ListView'))
+const CalendarView = lazy(() => import('./views/CalendarView'))
+const ChartsView = lazy(() => import('./views/ChartsView'))
+const CarteView = lazy(() => import('./views/CarteView'))  // FG37
+const ForecastView = lazy(() => import('./views/ForecastView'))  // XSAL15
 
 const VIEW_KEY = 'taqinor.leads.view'
 const FILTERS_KEY = 'taqinor.leads.filters'
@@ -499,25 +504,29 @@ export default function LeadsPage() {
 
       <div className="lp-view-area">
         {view === 'kanban' && <KanbanView {...viewProps} />}
-        {view === 'liste' && <ListView {...viewProps} />}
-        {view === 'calendrier' && <CalendarView {...viewProps} />}
-        {view === 'graphique' && (
-          <ChartsView
-            {...viewProps}
-            totalLeads={leads.length}
-            onClearFilters={() => setFilters(EMPTY_FILTERS)}
-          />
-        )}
-        {/* FG37 — Vue carte : leads par GPS, colorés par étape */}
-        {view === 'carte' && (
-          <CarteView
-            leads={filtered}
-            onOpenLead={onOpenLead}
-          />
-        )}
-        {/* XSAL15 — Vue prévision : leads ouverts groupés par mois de clôture
-            prévue, glisser une carte replanifie le mois. */}
-        {view === 'prevision' && <ForecastView {...viewProps} />}
+        {/* VX186 — Suspense autour des vues lazy uniquement (Kanban reste
+            synchrone, jamais de flash sur le rendu par défaut). */}
+        <Suspense fallback={<div className="lp-view-loading"><Spinner /> Chargement de la vue…</div>}>
+          {view === 'liste' && <ListView {...viewProps} />}
+          {view === 'calendrier' && <CalendarView {...viewProps} />}
+          {view === 'graphique' && (
+            <ChartsView
+              {...viewProps}
+              totalLeads={leads.length}
+              onClearFilters={() => setFilters(EMPTY_FILTERS)}
+            />
+          )}
+          {/* FG37 — Vue carte : leads par GPS, colorés par étape */}
+          {view === 'carte' && (
+            <CarteView
+              leads={filtered}
+              onOpenLead={onOpenLead}
+            />
+          )}
+          {/* XSAL15 — Vue prévision : leads ouverts groupés par mois de clôture
+              prévue, glisser une carte replanifie le mois. */}
+          {view === 'prevision' && <ForecastView {...viewProps} />}
+        </Suspense>
       </div>
 
       {(showForm || deepLead) && (
