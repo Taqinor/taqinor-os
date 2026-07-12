@@ -1,4 +1,4 @@
-import { forwardRef } from 'react'
+import { forwardRef, useEffect, useRef } from 'react'
 import { Slot } from '@radix-ui/react-slot'
 import { cva } from 'class-variance-authority'
 import { cn } from '../lib/cn'
@@ -48,16 +48,49 @@ export const buttonVariants = cva(
 )
 
 export const Button = forwardRef(function Button(
-  { className, variant, size, asChild = false, loading = false, disabled, children, ...props },
+  {
+    className, variant, size, asChild = false, loading = false, disabled,
+    preventDoubleClick = true, onClick, children, ...props
+  },
   ref,
 ) {
   const Comp = asChild ? Slot : 'button'
+
+  // VX66 — filet anti-double-soumission au niveau du composant : la protection
+  // habituelle (`loading={saving}` posé écran par écran) laisse une fenêtre
+  // d'un rendu React entre le premier click et le moment où le bouton devient
+  // réellement `disabled` — deux taps rapides dans cette fenêtre peuvent
+  // déclencher `onClick` deux fois (double devis/paiement). Le verrou vit
+  // dans une ref (jamais un `useState`) pour agir IMMÉDIATEMENT au premier
+  // click, avant même le prochain rendu. Il est ré-armé après CHAQUE rendu du
+  // bouton — donc dès que `loading` redescend (le bouton redevient cliquable
+  // au rendu qui suit), et dès qu'un rendu quelconque suit un click
+  // synchrone sans `loading` — jamais un verrou permanent pour les boutons
+  // qui n'utilisent pas cette prop. `preventDoubleClick={false}` retire la
+  // garde (opt-out) pour les cas qui exigent des clics rapprochés légitimes.
+  const clickLockRef = useRef(false)
+  useEffect(() => {
+    clickLockRef.current = false
+  })
+
+  const handleClick = (event) => {
+    if (preventDoubleClick) {
+      if (clickLockRef.current) {
+        event?.preventDefault?.()
+        return
+      }
+      clickLockRef.current = true
+    }
+    onClick?.(event)
+  }
+
   return (
     <Comp
       ref={ref}
       className={cn(buttonVariants({ variant, size }), className)}
       disabled={disabled || loading}
       aria-busy={loading || undefined}
+      onClick={handleClick}
       {...props}
     >
       {asChild ? children : (
