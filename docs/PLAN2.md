@@ -76,6 +76,8 @@ the journey the best in the world for the CLIENT and the COMMERCIAL user.*
 
 VX138 (aperçu simulation → comparateur Sans/Avec 2 colonnes nommées + liseré de recommandation, tabular-nums sur `.gen-kwp`, 3 paliers visuels sur la chaîne de totaux, bandeau `.gen-actions-sticky` sticky au scroll à tous les paliers avec TTC condensé, accordéon « Plusieurs propriétés ? » replié par défaut en agricole).
 
+VX141 (nouveau `ui/DocumentStageTrack.jsx` — piste horizontale brouillon→envoyé→accepté→BC→facturé→chantier posée dans la cellule Statut de DevisList à côté du StatusPill ; BC annulé après acceptation → puce BC rouge ; couche STATUTS DOCUMENT uniquement, aucune clé STAGES.py importée).
+
 #### DONE LOG — Vague 2 (VX terrain/finance/CRM + QX groupe) (2026-07-12)
 
 Vague 2 du plan-run (23 tâches VX + tagging de tous les plans, un seul merge). Lanes drainées en parallèle : **finance/terrain** VX44 (photos chantier en rafale + partage WhatsApp), VX88 (Ma journée → tournée géo), VX94 (Enter-pour-ajouter capture), VX105 (statut technicien + persistance + toasts hors-ligne), VX106 (signature client terrain), VX107 (résumé client lecture seule), VX52 (avertissements conformité tactiles), VX63 (erreurs FR lisibles DevisList/FactureList), VX114 (déjà présent, export daté), VX116 (relance groupée + aperçu WhatsApp). **ventes** VX222 (relancer devis), VX230 (encaisser depuis Relances), VX231 (navigation finance vers la cible). **UI/data** VX41 (data-viz marque + comparaison période), VX33 (Pilotage stock tour de contrôle), VX66 (anti-double-soumission Button), VX26 (couleurs stage dérivées tokens), VX81 (exports XLSX/CSV horodatés), VX61 (Web Vitals réels + endpoint reporting), VX110 (copier TSV), VX246 (queue interop iOS), VX19 (zéro popup navigateur, +réparation FactureList post-refactor VX230). Backend DoD à suivre : VX105 (`ajouter-reserve` gated admin), VX106 (signature dans `intervention_pdf.py`). GATED (non buildé) : QXG1/QXG2/QXG4 (compte/contenu fondateur). Tagging : les 10 fichiers de plan (PLAN/PLAN2/new_tasks + 7 domaines) reçoivent un tag `@lane:`/`Files:` visible par le planner sur la 1ʳᵉ ligne (append-only vérifié).
@@ -1135,7 +1137,7 @@ grand-verdict — voir NE PAS FAIRE en fin de section pour le détail des kills/
   Éditer/Envoyer/PDF verts avec les mêmes sélecteurs `ap-*`. (T2 — M/L, sonnet) (@lane:
   frontend/ventes)
 
-- [ ] VX141 — **`DocumentStageTrack` : le statut devient un parcours.** `StatusPill` est un fait (@lane: frontend/ventes)
+- [x] VX141 — **`DocumentStageTrack` : le statut devient un parcours.** `StatusPill` est un fait (@lane: frontend/ventes)
   isolé (point + badge) ; rien dans DevisList/FactureList ne visualise la CHAÎNE
   brouillon→envoyé→accepté→BC→facturé→chantier — un devis accepté sans BC n'est signalé qu'en
   texte. Fix : petit composant `<DocumentStageTrack current stages>` — piste horizontale de 5-6
