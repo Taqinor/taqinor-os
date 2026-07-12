@@ -26,6 +26,8 @@ import { useApprobationsCount } from '../../hooks/useApprobationsCount'
 // VX56 — sondage sensible à la visibilité de l'onglet (patron partagé avec
 // `useChatPolling`) : cesse de sonder un onglet caché.
 import useVisibilityAwarePolling from '../../hooks/useVisibilityAwarePolling'
+// VX217(a) — aperçu sans naviguer (survol desktop / appui long mobile).
+import AttentionPeek from '../../features/queue/AttentionPeek'
 
 // Bip court (Web Audio) joué à l'arrivée d'une nouvelle notification quand
 // l'app est ouverte. Best-effort : échoue silencieusement si l'autoplay audio
@@ -292,6 +294,33 @@ export default function NotificationBell() {
     }).catch(() => {})
   }
 
+  // VX217(b) — « Tout marquer lu » sur un GROUPE plié (VX208 dédoublonnage
+  // par `link`, `n.ids` = les ids UNITAIRES sous-jacents). Boucle sur les
+  // mêmes mutations `markRead`/`markUnread` déjà existantes — aucune
+  // nouvelle mutation serveur — avec un `toastWithUndo` restaurant EXACTEMENT
+  // l'état d'avant (mêmes ids, jamais « tout »).
+  const markGroupRead = (n) => {
+    const idsToMark = (n.ids || [n.id]).filter((id) => {
+      const original = feed.find((f) => f.id === id)
+      return original && !original.read
+    })
+    if (idsToMark.length === 0) return
+    const prevFeed = feed
+    const prevUnread = feedUnread
+    setFeed((prev) => prev.map((f) => (
+      idsToMark.includes(f.id) ? { ...f, read: true } : f)))
+    setFeedUnread((c) => Math.max(0, c - idsToMark.length))
+    idsToMark.forEach((id) => { notificationsApi.markRead(id).catch(() => {}) })
+    toastWithUndo({
+      message: `${idsToMark.length} notification${idsToMark.length > 1 ? 's' : ''} marquée${idsToMark.length > 1 ? 's' : ''} lue${idsToMark.length > 1 ? 's' : ''}.`,
+      onUndo: () => {
+        setFeed(prevFeed)
+        setFeedUnread(prevUnread)
+        idsToMark.forEach((id) => { notificationsApi.markUnread(id).catch(() => {}) })
+      },
+    })
+  }
+
   useEffect(() => {
     const onDoc = (e) => {
       if (ref.current && !ref.current.contains(e.target)) setOpen(false)
@@ -478,7 +507,9 @@ export default function NotificationBell() {
                       )}
                     </div>
                     {otherFeed.map((n) => (
-                      <button key={`notif-${n.id}`} type="button"
+                    <AttentionPeek key={`peek-${n.id}`} item={n}
+                                   onOpen={(it) => it.link && goto(it.link)}>
+                      <button type="button"
                               className={`nb-item${n.read ? '' : ' nb-item-unread'}`}
                               style={n.severity === 'critique'
                                 ? { borderLeft: '3px solid var(--destructive, #dc2626)' }
@@ -553,6 +584,19 @@ export default function NotificationBell() {
                           </span>
                         )}
                       </button>
+                      {/* VX217(b) — actions de GROUPE : « Tout marquer lu »
+                          sur un item plié (VX208 dédoublonnage par `link`) —
+                          boucle sur les mutations UNITAIRES existantes,
+                          jamais une nouvelle mutation serveur. */}
+                      {n.count > 1 && !n.read && (
+                        <div className="nb-group-actions">
+                          <button type="button" className="nb-link-btn"
+                                  onClick={(e) => { e.stopPropagation(); markGroupRead(n) }}>
+                            <Check size={12} aria-hidden="true" /> Tout marquer lu ({n.count})
+                          </button>
+                        </div>
+                      )}
+                    </AttentionPeek>
                     ))}
                     {digestFeed.length > 0 && (
                       <details>

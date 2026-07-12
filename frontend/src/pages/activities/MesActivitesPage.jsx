@@ -7,6 +7,8 @@ import { useIsAdmin } from '../../hooks/useHasPermission'
 import {
   getQuickWinsPref, setQuickWinsPref, sortMaFileItems,
 } from '../../features/queue/queueViews'
+// VX217(a) — aperçu sans naviguer (survol desktop / appui long mobile).
+import AttentionPeek from '../../features/queue/AttentionPeek'
 import {
   AlarmClock, CalendarCheck2, CalendarClock, ExternalLink, PartyPopper, Sparkles, Users,
   PhoneCall, MessageCircle, ListChecks, Plus, AtSign, ClipboardCheck, Flame, FileWarning,
@@ -397,10 +399,14 @@ export default function MesActivitesPage() {
                   cell: (it) => {
                     const Icon = MA_FILE_ICON[it.kind] || AlarmClock
                     return (
-                      <span className="inline-flex items-center gap-2">
-                        <Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-                        <span>{it.title}</span>
-                      </span>
+                      // VX217(a) — aperçu sans naviguer (déjà les données de
+                      // l'item : client/montant/échéance quand présents).
+                      <AttentionPeek item={it} onOpen={(x) => x.link && navigate(x.link)}>
+                        <span className="inline-flex items-center gap-2">
+                          <Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                          <span>{it.title}</span>
+                        </span>
+                      </AttentionPeek>
                     )
                   },
                 },
