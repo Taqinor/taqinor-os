@@ -1,5 +1,6 @@
 # Mise à jour de la PRODUCTION (serveur Hetzner) en une commande, depuis ce PC :
 #   powershell -File scripts\deploy-prod.ps1
+#   powershell -File scripts\deploy-prod.ps1 -ZeroDowntime   # NTPLT57 (opt-in)
 #
 # Ce que ça fait, dans l'ordre, sur le serveur :
 #   1. git pull de main (la prod ne déploie QUE main, jamais dev)
@@ -15,6 +16,19 @@
 # docs/online-migrations.md. Ce script ne change PAS le mécanisme de
 # déploiement (toujours manuel, jamais auto sur merge) — il ajoute seulement
 # une garde de santé + un filet de rollback autour de l'existant.
+
+# NTPLT57 — déploiement ERP SANS coupure (opt-in, DÉFAUT OFF).
+#   -ZeroDowntime : après migrations (compatibles N-1, expand/contract, voir
+#   docs/online-migrations.md), démarre un NOUVEAU conteneur django à côté de
+#   l'ancien (compose --scale django_core=2), attend son healthcheck interne,
+#   recharge nginx, puis retire l'ancien (scale=1). Rollback = re-pointer
+#   l'ancien conteneur (le scale-down laisse l'ancien tourner jusqu'au OK).
+#   PRÉREQUIS : l'upstream nginx doit résoudre le service django par son NOM
+#   compose (round-robin sur les réplicas) — sinon la bascule n'a aucun effet.
+#   Sans le flag, le CHEMIN HISTORIQUE éprouvé est byte-identique (0 changement).
+param(
+    [switch]$ZeroDowntime
+)
 
 $ErrorActionPreference = 'Stop'
 $ServerIp = '178.105.192.116'
@@ -143,7 +157,45 @@ if [ "$HEALTH_STATUS" = "down" ]; then
   echo "seul ne downgrade jamais le schema automatiquement."
   exit 1
 fi
+
+# NTPLT57 — bascule SANS coupure (opt-in ZERO_DOWNTIME=1). Le healthcheck
+# ci-dessus a deja valide la nouvelle image ; ici on remplace l'ancien
+# conteneur django par un neuf SANS fenetre de coupure : scale a 2 (l'ancien
+# continue de servir), on attend le healthcheck du 2e, on recharge nginx
+# (round-robin sur les 2), puis on retire l'ancien (scale a 1). Rollback : si
+# le 2e conteneur ne devient pas sain, on redescend a 1 (l'ancien, toujours
+# vivant, n'a jamais cesse de servir) et on sort en echec. Sans le flag, ce
+# bloc est entierement saute (chemin historique inchange).
+if [ "$ZERO_DOWNTIME" = "1" ]; then
+  echo "NTPLT57 — bascule sans coupure : scale django_core=2"
+  docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --no-deps --no-recreate --scale django_core=2 django_core
+  echo "Attente du healthcheck du nouveau conteneur (max 90s)..."
+  ZD_OK=0
+  for i in $(seq 1 30); do
+    ZD_STATUS=$(docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T django_core python -c "import django, os; os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'erp_agentique.settings.prod'); django.setup(); from core import health; print(health.overall_status(health.check_services()))" 2>/dev/null | tail -n 1 | tr -d '\r')
+    if [ "$ZD_STATUS" != "down" ] && [ -n "$ZD_STATUS" ]; then ZD_OK=1; break; fi
+    sleep 3
+  done
+  if [ "$ZD_OK" != "1" ]; then
+    echo "NTPLT57 — nouveau conteneur NON sain -> redescente a 1 (l'ancien sert toujours), pas de coupure"
+    docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --no-deps --scale django_core=1 django_core
+    docker compose -f docker-compose.yml -f docker-compose.prod.yml restart nginx
+    echo "NTPLT57 — bascule sans coupure ANNULEE (rollback vers l'ancien conteneur)."
+    exit 1
+  fi
+  # Les deux repliques sont saines : recharge nginx (round-robin) puis retire
+  # l'ancien conteneur (retour a une seule replique neuve).
+  docker compose -f docker-compose.yml -f docker-compose.prod.yml restart nginx
+  docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --no-deps --scale django_core=1 django_core
+  docker compose -f docker-compose.yml -f docker-compose.prod.yml restart nginx
+  echo "NTPLT57 — bascule sans coupure TERMINEE (ancien conteneur retire)."
+fi
 '@ -replace "`r`n", "`n"
+
+# NTPLT57 — injecte l'etat du flag -ZeroDowntime en tete du script distant
+# (le here-string ci-dessus est LITTERAL : on prefixe l'affectation ici).
+$zdFlag = if ($ZeroDowntime) { '1' } else { '0' }
+$remote = "ZERO_DOWNTIME=$zdFlag`n" + $remote
 
 # Transport du script : FICHIER (scp) puis execution — jamais en argument ssh
 # ni via stdin. Trois gotchas que ce choix evite :

@@ -154,3 +154,37 @@ def run_job(task_name):
             f"Impossible d'envoyer la tâche {task_name!r} : {exc}"
         ) from exc
     return str(getattr(result, 'id', '') or '')
+
+
+# ── NTPLT29 — Soumission d'un job de fond avec suivi de progression ──────────
+
+
+def submit(kind, task, *, company, user, **kwargs):
+    """Crée un ``BackgroundJob`` (company/user FORCÉS server-side) et dispatche
+    la tâche Celery ``task`` en lui passant le ``job_id``.
+
+    * ``kind`` — type logique (ex. ``'export_xlsx'``, ``'import_dataimport'``) ;
+    * ``task`` — la tâche Celery (objet ``@shared_task``) ou son nom (str) ;
+    * ``company`` / ``user`` — imposés par l'appelant (jamais lus d'un body) ;
+    * ``kwargs`` — arguments métier passés à la tâche.
+
+    La tâche reçoit ``job_id=<pk>`` en kwarg et est responsable de mettre à jour
+    l'avancement (``BackgroundJob.marquer_progression/termine/echec``). Renvoie
+    l'instance ``BackgroundJob`` créée. Si le broker est injoignable, le job est
+    marqué ``failed`` et l'exception est remontée (l'appelant décide).
+    """
+    from .models import BackgroundJob
+
+    job = BackgroundJob.objects.create(company=company, user=user, kind=kind)
+    payload = dict(kwargs)
+    payload['job_id'] = job.pk
+    payload['company_id'] = getattr(company, 'id', company)
+    try:
+        if isinstance(task, str):
+            current_app.send_task(task, kwargs=payload)
+        else:
+            task.delay(**payload)
+    except Exception as exc:  # noqa: BLE001 — broker down : job en échec propre
+        job.marquer_echec(f'Envoi de la tâche impossible : {exc}')
+        raise
+    return job

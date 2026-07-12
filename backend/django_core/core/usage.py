@@ -137,6 +137,60 @@ def snapshot_company(company_id: int, jour=None):
     return snapshot
 
 
+def cout_par_tenant(periode=None):
+    """NTPLT45 — rapport de coût par tenant croisant ``TenantUsageSnapshot``.
+
+    ``periode`` : chaîne ``'AAAA-MM'`` (un mois) ou ``None`` (toute la période
+    disponible). Renvoie une liste triée par requêtes décroissantes :
+
+        [{'company_id', 'company_nom', 'requetes', 'db_time_ms', 'stockage_mo',
+          'jobs', 'jours_mesures'}, ...]
+
+    * ``requetes`` — somme des ``nb_requetes_api`` sur la période ;
+    * ``db_time_ms`` — cumul du temps DB (NTPLT43 ; 0 tant que non instrumenté) ;
+    * ``stockage_mo`` — DERNIÈRE mesure ``octets_minio`` connue (instantané, pas
+      un cumul) convertie en Mo ;
+    * ``jobs`` — somme des ``nb_taches_celery``.
+    Base factuelle de la discussion prix/plan que N100 mènera plus tard.
+    """
+    from django.db.models import Max, Sum
+    from .models import TenantUsageSnapshot
+
+    qs = TenantUsageSnapshot.objects.all()
+    if periode:
+        try:
+            year, month = (int(p) for p in str(periode).split('-')[:2])
+            qs = qs.filter(jour__year=year, jour__month=month)
+        except (TypeError, ValueError):
+            pass
+
+    agg = (qs.values('company_id')
+             .annotate(requetes=Sum('nb_requetes_api'),
+                       jobs=Sum('nb_taches_celery'),
+                       stockage_octets=Max('octets_minio'),
+                       jours=Max('jour'))
+             .order_by('-requetes'))
+
+    # Nombre de jours mesurés + libellé société (best-effort).
+    from authentication.models import Company
+    noms = dict(Company.objects.values_list('id', 'nom'))
+    rows = []
+    for item in agg:
+        cid = item['company_id']
+        jours_mesures = qs.filter(company_id=cid).count()
+        rows.append({
+            'company_id': cid,
+            'company_nom': noms.get(cid, str(cid)),
+            'requetes': int(item['requetes'] or 0),
+            'db_time_ms': 0,  # NTPLT43 — non instrumenté (le champ arrivera)
+            'stockage_mo': round((item['stockage_octets'] or 0) / (1024 * 1024),
+                                 2),
+            'jobs': int(item['jobs'] or 0),
+            'jours_mesures': jours_mesures,
+        })
+    return rows
+
+
 def snapshot_all(jour=None):
     """Crée/met à jour l'instantané de TOUTES les sociétés pour ``jour``.
 
