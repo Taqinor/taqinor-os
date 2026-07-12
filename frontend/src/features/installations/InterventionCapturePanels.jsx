@@ -273,7 +273,19 @@ export function MemosPanel({ intervention, onChanged }) {
         const file = new File([blob], 'memo.webm', { type: 'audio/webm' })
         setBusy(true)
         try { await installationsApi.ajouterMemo(id, file); await load(); onChanged?.() }
-        catch (err) { toast.error(err?.response?.data?.detail ?? 'Mémo impossible.') }
+        catch (err) {
+          // VX105 — le mémo n'est PAS filé (pas d'outbox binaire — FG386) : un
+          // échec réseau = mémo perdu. Message DISTINCT et persistant, jamais
+          // l'illusion d'un envoi.
+          const offline = navigator.onLine === false || !err?.response
+          if (offline) {
+            toast.error(
+              'Mémo NON envoyé — réseau indisponible. Ré-enregistrez-le au retour du réseau.',
+              { duration: Infinity })
+          } else {
+            toast.error(err?.response?.data?.detail ?? 'Mémo impossible.')
+          }
+        }
         finally { setBusy(false) }
       }
       recorder.current = rec

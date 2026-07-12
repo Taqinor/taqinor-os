@@ -30,6 +30,23 @@ import {
 // elle se synchronisera toute seule au retour du réseau.
 const QUEUED_MSG = 'Hors ligne — enregistré, synchro au retour du réseau.'
 
+// VX105 — un upload photo/mémo n'est PAS filé (pas d'outbox binaire — territoire
+// FG386) : un échec réseau signifie que la photo est PERDUE si le technicien ne
+// la reprend pas. Le message d'échec doit donc être DISTINCT du « mis en file »
+// de succès du panneau voisin, et persistant (jamais l'illusion d'un envoi).
+function isNetworkFailure(err) {
+  return (typeof navigator !== 'undefined' && navigator.onLine === false) || !err?.response
+}
+function photoUploadError(err) {
+  if (isNetworkFailure(err)) {
+    toast.error(
+      'Photo NON envoyée — réseau indisponible. Reprenez-la au retour du réseau.',
+      { duration: Infinity })
+    return
+  }
+  toast.error(err?.response?.data?.detail ?? 'Téléversement impossible.')
+}
+
 const PHASES = [
   ['avant', 'Avant'],
   ['pendant', 'Pendant'],
@@ -370,7 +387,7 @@ export function PhotosPanel({ intervention, onChanged }) {
       clearRafale()
       await load(); onChanged?.()
     } catch (err) {
-      toast.error(err?.response?.data?.detail ?? 'Téléversement impossible.')
+      photoUploadError(err)
     } finally { setBusy(false) }
   }
   // Flux d'upload commun (choix de fichier ET capture caméra en direct).
@@ -386,7 +403,7 @@ export function PhotosPanel({ intervention, onChanged }) {
       toast.success('Photo ajoutée.')
       await load(); onChanged?.()
     } catch (err) {
-      toast.error(err?.response?.data?.detail ?? 'Téléversement impossible.')
+      photoUploadError(err)
     } finally { setBusy(false) }
   }
   const onFile = async (e) => {
