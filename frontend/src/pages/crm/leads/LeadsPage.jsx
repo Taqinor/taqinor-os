@@ -61,6 +61,11 @@ export default function LeadsPage() {
   const dispatch = useDispatch()
   const [searchParams, setSearchParams] = useSearchParams()
   const { leads, leadsLoading, error } = useSelector(s => s.crm)
+  // VX224 — « Mes leads » par défaut : résout le toggle FilterBar.jsx contre
+  // l'utilisateur COURANT (jamais un nom codé en dur) + décide du défaut par
+  // rôle ci-dessous (normal=ON, manager=OFF, comportement historique inchangé).
+  const currentUser = useSelector(s => s.auth.user)
+  const roleTier = useSelector(s => s.auth.role)
 
   // Employés assignables (avatar + nom) pour les sélecteurs de responsable des
   // cartes kanban et de la liste. Ouvert à la Commerciale (endpoint dédié).
@@ -85,13 +90,24 @@ export default function LeadsPage() {
 
   // Filtres partagés par les quatre vues — persistés en localStorage (comme la
   // vue active) pour survivre à un rechargement de page.
-  const [filters, setFilters] = useState(loadFilters)
+  const [filters, setFilters] = useState(() => {
+    const loaded = loadFilters()
+    // VX224 — « Mes leads » ON par défaut pour le rôle `normal`, UNIQUEMENT
+    // au tout premier chargement (aucun filtre encore persisté) — un choix
+    // déjà fait par l'utilisateur (y compris désactivé) n'est JAMAIS écrasé.
+    let hasPersisted = false
+    try { hasPersisted = localStorage.getItem(FILTERS_KEY) != null } catch { /* no-op */ }
+    return (!hasPersisted && roleTier === 'normal') ? { ...loaded, mesLeads: true } : loaded
+  })
   useEffect(() => {
     try {
       localStorage.setItem(FILTERS_KEY, JSON.stringify(filters))
     } catch { /* stockage indisponible */ }
   }, [filters])
-  const filtered = useMemo(() => filterLeads(leads, filters), [leads, filters])
+  const filtered = useMemo(
+    () => filterLeads(leads, filters, { myUsername: currentUser?.username }),
+    [leads, filters, currentUser?.username],
+  )
 
   // Vues enregistrées nommées (FG11 — useSavedViews hook).
   const { savedViews, saveView, deleteView: deleteSavedView } = useSavedViews(SAVED_VIEWS_KEY)
@@ -552,6 +568,13 @@ export default function LeadsPage() {
           onOpenDuplicate={onOpenDuplicate}
           initialDevis={showForm ? formDevisIntent : null}
           focusSection={showForm ? formFocusSection : null}
+          // VX224 — session de qualification en rafale : `filtered` est déjà
+          // la liste EN MÉMOIRE (même liste que ListView/KanbanView) —
+          // aucune re-requête. `onOpenLead` fait déjà exactement ce qu'une
+          // navigation ◀▶/J-K demande (basculer `editLead` SANS fermer la
+          // fiche), réutilisé tel quel plutôt que dupliqué.
+          leadsQueue={showForm ? filtered : null}
+          onNavigateLead={showForm ? onOpenLead : null}
         />
       )}
 

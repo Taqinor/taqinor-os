@@ -32,12 +32,15 @@ import ScoreBadge from '../../features/crm/ScoreBadge'
 import CallLogPopover from '../../features/crm/CallLogPopover'
 import useKeyboardAwareScroll from '../../hooks/useKeyboardAwareScroll'
 import {
-  Button, IconButton, Input, FormSection, FormField,
+  Button, IconButton, Input, FormSection, FormField, Switch,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from '../../ui'
 // VX89 — shell externe Escape + focus-trap + bottom-sheet mobile (comme ClientForm).
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
 import { formatMAD, normalizeMaPhone } from '../../lib/format'
+// VX224 — même garde « jamais en train de saisir » que les raccourcis
+// globaux (ShortcutsProvider) pour J/K, une seule source de vérité.
+import { isTypingTarget } from '../../providers/shortcuts'
 
 // Canal posé par défaut sur un lead créé à la main (jamais null) : une visite/
 // un appel direct au showroom. Le webhook du site impose 'site_web' de son côté.
@@ -54,6 +57,19 @@ const readLastVille = () => {
 }
 const rememberVille = (v) => {
   try { if (v && v.trim()) localStorage.setItem(LAST_VILLE_KEY, v.trim()) } catch { /* best-effort */ }
+}
+
+// VX224 — « Créer un autre » (VX92 étendu à LeadForm, seul le plus gros
+// formulaire CRM ne l'avait pas) : persisté par utilisateur/poste
+// (localStorage), défaut OFF (comportement historique inchangé). Une session
+// de qualification en rafale = 20-40 leads/j ; sans ce toggle chaque création
+// coûte un cycle fermer/rouvrir.
+const CREER_UN_AUTRE_KEY = 'taqinor.leadForm.creerUnAutre'
+const lireCreerUnAutre = () => {
+  try { return localStorage.getItem(CREER_UN_AUTRE_KEY) === '1' } catch { return false }
+}
+const ecrireCreerUnAutre = (v) => {
+  try { localStorage.setItem(CREER_UN_AUTRE_KEY, v ? '1' : '0') } catch { /* best-effort */ }
 }
 
 // VX143 — STAGE_LABELS/PRIORITE_LABELS/TYPE_INSTALLATION_LABELS viennent
@@ -192,11 +208,74 @@ function LeadSummaryBar({ lead }) {
   )
 }
 
+// VX224 — extrait du corps du composant pour être réutilisable tel quel par
+// « Créer un autre » (VX92 étendu à LeadForm) : succès de création → RESET
+// complet vers les mêmes défauts qu'une ouverture fraîche (owner=moi,
+// dernière ville, canal par défaut…), jamais une réinitialisation partielle
+// qui oublierait un défaut VX93. `lead` reste `null` pour un reset (jamais
+// l'ancien lead créé), `currentUserId` reste celui de la session.
+function buildInitialFields(lead, currentUserId) {
+  const F = (k, d = '') => lead?.[k] ?? d
+  return {
+    // Contact
+    nom: F('nom'), prenom: F('prenom'), societe: F('societe'),
+    email: F('email'), telephone: F('telephone'), whatsapp: F('whatsapp'),
+    adresse: F('adresse'),
+    // VX93 — ville pré-remplie avec la dernière saisie (création seulement).
+    ville: lead ? F('ville') : (F('ville') || readLastVille()),
+    gps_lat: F('gps_lat'), gps_lng: F('gps_lng'),
+    // Pipeline
+    stage: F('stage', 'NEW'),
+    // VX93 — owner = utilisateur courant à la création (jamais en édition).
+    owner: lead ? (F('owner', '') ?? '') : (F('owner', '') || (currentUserId ? String(currentUserId) : '')),
+    // Canal prérempli à la création (jamais null) ; en édition on respecte la
+    // valeur du lead (y compris vide pour un ancien lead).
+    canal: lead ? (F('canal', '') ?? '') : DEFAULT_CANAL,
+    // QW3 — préférence de contact explicite (posée par le site/webhook),
+    // lecture seule ici : distincte du canal marketing et de whatsapp_opt_in.
+    contact_preference: F('contact_preference', '') ?? '',
+    priorite: F('priorite', 'normale'),
+    langue_preferee: F('langue_preferee', '') ?? '',
+    tags: F('tags'), motif_perte: F('motif_perte'),
+    perdu: lead?.perdu ?? false,
+    relance_date: F('relance_date'), type_installation: F('type_installation', '') ?? '',
+    // XSAL7 — pipeline pondéré pré-devis (saisie libre, jamais snap/reject).
+    montant_estime: F('montant_estime'), date_cloture_prevue: F('date_cloture_prevue'),
+    // Énergie
+    facture_hiver: F('facture_hiver'), facture_ete: F('facture_ete'),
+    ete_differente: lead?.ete_differente ?? false,
+    conso_mensuelle_kwh: F('conso_mensuelle_kwh'), tranche_onee: F('tranche_onee'),
+    raccordement: F('raccordement', '') ?? '',
+    regularisation_8221: lead?.regularisation_8221 ?? false,
+    // Pompage (requis pour le devis auto en mode agricole)
+    pompe_cv: F('pompe_cv'), pompe_hmt_m: F('pompe_hmt_m'),
+    pompe_debit_m3h: F('pompe_debit_m3h'),
+    // Toiture & site
+    type_toiture: F('type_toiture', '') ?? '', surface_toiture_m2: F('surface_toiture_m2'),
+    orientation: F('orientation', '') ?? '', inclinaison_deg: F('inclinaison_deg'),
+    ombrage: F('ombrage', '') ?? '', ombrage_notes: F('ombrage_notes'),
+    nb_etages: F('nb_etages'), structure_pref: F('structure_pref', '') ?? '',
+    taille_souhaitee_kwc: F('taille_souhaitee_kwc'),
+    batterie_souhaitee: F('batterie_souhaitee', '') ?? '',
+    // Visite
+    visite_prevue_le: F('visite_prevue_le'),
+    visite_effectuee: lead?.visite_effectuee ?? false,
+    visite_notes: F('visite_notes'),
+    note: F('note'),
+  }
+}
+
 export default function LeadForm({
   lead = null, onClose, onSaved, initialDevis = null, onOpenDuplicate = null,
   // QX25 — « Planifier une relance » (kanban) ouvre directement la fiche sur
   // la section « Suivi commercial » (relance_date) au lieu d'un texte inerte.
   focusSection = null,
+  // VX224 — session de qualification en rafale : `leadsQueue` = liste FILTRÉE
+  // déjà en mémoire côté LeadsPage.jsx (même liste que ListView/KanbanView,
+  // jamais une re-requête dédiée) ; `onNavigateLead(lead)` fait remonter la
+  // demande de bascule — LeadsPage.jsx reste seul propriétaire de `editLead`
+  // (même contrat que `onClose`/`onSaved`, LeadForm ne mute rien lui-même).
+  leadsQueue = null, onNavigateLead = null,
 }) {
   const dispatch = useDispatch()
   const navigate = useNavigate()
@@ -298,54 +377,20 @@ export default function LeadForm({
   const [billHiver, setBillHiver] = useState('')
   const [billEte, setBillEte] = useState('')
 
-  const F = (k, d = '') => lead?.[k] ?? d
-  const [fields, setFields] = useState({
-    // Contact
-    nom: F('nom'), prenom: F('prenom'), societe: F('societe'),
-    email: F('email'), telephone: F('telephone'), whatsapp: F('whatsapp'),
-    adresse: F('adresse'),
-    // VX93 — ville pré-remplie avec la dernière saisie (création seulement).
-    ville: lead ? F('ville') : (F('ville') || readLastVille()),
-    gps_lat: F('gps_lat'), gps_lng: F('gps_lng'),
-    // Pipeline
-    stage: F('stage', 'NEW'),
-    // VX93 — owner = utilisateur courant à la création (jamais en édition).
-    owner: lead ? (F('owner', '') ?? '') : (F('owner', '') || (currentUserId ? String(currentUserId) : '')),
-    // Canal prérempli à la création (jamais null) ; en édition on respecte la
-    // valeur du lead (y compris vide pour un ancien lead).
-    canal: lead ? (F('canal', '') ?? '') : DEFAULT_CANAL,
-    // QW3 — préférence de contact explicite (posée par le site/webhook),
-    // lecture seule ici : distincte du canal marketing et de whatsapp_opt_in.
-    contact_preference: F('contact_preference', '') ?? '',
-    priorite: F('priorite', 'normale'),
-    langue_preferee: F('langue_preferee', '') ?? '',
-    tags: F('tags'), motif_perte: F('motif_perte'),
-    perdu: lead?.perdu ?? false,
-    relance_date: F('relance_date'), type_installation: F('type_installation', '') ?? '',
-    // XSAL7 — pipeline pondéré pré-devis (saisie libre, jamais snap/reject).
-    montant_estime: F('montant_estime'), date_cloture_prevue: F('date_cloture_prevue'),
-    // Énergie
-    facture_hiver: F('facture_hiver'), facture_ete: F('facture_ete'),
-    ete_differente: lead?.ete_differente ?? false,
-    conso_mensuelle_kwh: F('conso_mensuelle_kwh'), tranche_onee: F('tranche_onee'),
-    raccordement: F('raccordement', '') ?? '',
-    regularisation_8221: lead?.regularisation_8221 ?? false,
-    // Pompage (requis pour le devis auto en mode agricole)
-    pompe_cv: F('pompe_cv'), pompe_hmt_m: F('pompe_hmt_m'),
-    pompe_debit_m3h: F('pompe_debit_m3h'),
-    // Toiture & site
-    type_toiture: F('type_toiture', '') ?? '', surface_toiture_m2: F('surface_toiture_m2'),
-    orientation: F('orientation', '') ?? '', inclinaison_deg: F('inclinaison_deg'),
-    ombrage: F('ombrage', '') ?? '', ombrage_notes: F('ombrage_notes'),
-    nb_etages: F('nb_etages'), structure_pref: F('structure_pref', '') ?? '',
-    taille_souhaitee_kwc: F('taille_souhaitee_kwc'),
-    batterie_souhaitee: F('batterie_souhaitee', '') ?? '',
-    // Visite
-    visite_prevue_le: F('visite_prevue_le'),
-    visite_effectuee: lead?.visite_effectuee ?? false,
-    visite_notes: F('visite_notes'),
-    note: F('note'),
-  })
+  const [fields, setFields] = useState(() => buildInitialFields(lead, currentUserId))
+  // VX224 — instantané « propre » pour la garde de saisie (◀▶/J-K) : mis à
+  // jour à chaque point où `fields` revient intentionnellement à un état non
+  // modifié (montage, changement de lead, reset « créer un autre », sauvegarde
+  // réussie en édition). Comparaison JSON simple — suffisante ici ; aucune
+  // primitive dirty commune n'existe encore (VX167, @coord VXD-B).
+  const [cleanFieldsJSON, setCleanFieldsJSON] = useState(() => JSON.stringify(fields))
+  const isDirty = JSON.stringify(fields) !== cleanFieldsJSON
+  // VX224 — « Créer un autre » : pertinent uniquement à la création (jamais en
+  // édition), persisté, défaut OFF. `nomRef` reçoit le focus au reset (même
+  // geste que VX89 `autoFocus`, mais posé manuellement puisque le champ ne se
+  // démonte pas entre deux créations).
+  const [creerUnAutre, setCreerUnAutre] = useState(() => !isEdit && lireCreerUnAutre())
+  const nomRef = useRef(null)
   const [users, setUsers] = useState([])
   const [historique, setHistorique] = useState([])
   const [noteBody, setNoteBody] = useState('')
@@ -373,6 +418,64 @@ export default function LeadForm({
   // Champs personnalisés (T11).
   const [customData, setCustomData] = useState(lead?.custom_data || {})
   const bodyRef = useRef(null)
+
+  // VX224 — session de qualification en rafale : ◀▶/J-K changent `lead` SANS
+  // démonter LeadForm (même instance, LeadsPage.jsx fait juste passer un
+  // autre objet via `onNavigateLead` → `editLead`). `fields`/`errors`/
+  // `customData` ne se resynchronisaient jusqu'ici QUE via `useState`
+  // (premier montage) — un changement de `lead.id` en cours de vie laissait
+  // les anciens champs affichés (aucun chemin ne changeait `lead` sans
+  // démonter avant cette tâche). Skip au tout premier rendu (déjà couvert par
+  // les `useState` initiaux ci-dessus).
+  const fieldsSyncedFor = useRef(lead?.id ?? null)
+  useEffect(() => {
+    if (fieldsSyncedFor.current === (lead?.id ?? null)) return
+    fieldsSyncedFor.current = lead?.id ?? null
+    const next = buildInitialFields(lead, currentUserId)
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setFields(next)
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setCleanFieldsJSON(JSON.stringify(next))
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setErrors({})
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setCustomData(lead?.custom_data || {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lead?.id])
+
+  // Index du lead courant dans la file filtrée passée par LeadsPage.jsx (même
+  // liste que la vue active) — `null`/absent hors flux de rafale (ex. ouvert
+  // depuis une notification), les boutons ◀▶ restent alors simplement absents.
+  const queueIndex = (leadsQueue && isEdit)
+    ? leadsQueue.findIndex((l) => l.id === lead.id) : -1
+  const prevInQueue = queueIndex > 0 ? leadsQueue[queueIndex - 1] : null
+  const nextInQueue = (queueIndex >= 0 && queueIndex < leadsQueue.length - 1)
+    ? leadsQueue[queueIndex + 1] : null
+
+  // Garde de saisie : une navigation qui jetterait une modification non
+  // enregistrée demande confirmation (une seule fois, jamais silencieuse).
+  const goToLead = (target) => {
+    if (!target || !onNavigateLead) return
+    if (isDirty && !window.confirm(
+      'Des modifications non enregistrées seront perdues. Continuer ?')) return
+    onNavigateLead(target)
+  }
+
+  // VX224 — touches J/K façon Gmail (suivant/précédent), actives seulement en
+  // édition avec une file fournie ; jamais volées à un champ de saisie
+  // (`isTypingTarget`, même garde que les raccourcis globaux) ni à une
+  // combinaison avec modificateur.
+  useEffect(() => {
+    if (!isEdit || !leadsQueue || !onNavigateLead) return undefined
+    const onKey = (e) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return
+      if (isTypingTarget(e.target)) return
+      if (e.key === 'j' || e.key === 'J') { e.preventDefault(); goToLead(nextInQueue) }
+      else if (e.key === 'k' || e.key === 'K') { e.preventDefault(); goToLead(prevInQueue) }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  })
 
   // Scroll-spy : la section dont le haut est le plus proche du haut du
   // panneau (avec une marge) devient active dans le rail de navigation.
@@ -703,9 +806,14 @@ export default function LeadForm({
         // En mode ÉDITION : on reste ouvert — on recharge les données en place.
         setLiveLead(updated)
         // Ré-hydrate les champs modifiés (par ex. valeurs normalisées côté serveur).
-        setFields(prev => ({ ...prev, ...Object.fromEntries(
-          Object.keys(prev).map(k => [k, updated[k] !== undefined ? (updated[k] ?? '') : prev[k]])
-        )}))
+        const merged = { ...fields, ...Object.fromEntries(
+          Object.keys(fields).map(k => [k, updated[k] !== undefined ? (updated[k] ?? '') : fields[k]])
+        )}
+        setFields(merged)
+        // VX224 — une sauvegarde réussie redevient le nouvel état « propre »
+        // (la garde de saisie ◀▶/J-K ne doit pas rester bloquée sur une
+        // modification déjà enregistrée).
+        setCleanFieldsJSON(JSON.stringify(merged))
         setCustomData(updated.custom_data || {})
         onSaved?.()  // rafraîchit la liste/kanban parent sans fermer la fiche
         // Confirmation visuelle transitoire (2 s).
@@ -716,7 +824,19 @@ export default function LeadForm({
         await dispatch(createLead(payload)).unwrap()
         rememberVille(fields.ville)  // VX93 — mémorise la ville pour le prochain lead
         onSaved?.()
-        onClose()
+        // VX224 — « Créer un autre » : on vide le formulaire (mêmes défauts
+        // VX93 qu'une ouverture fraîche — owner=moi, dernière ville, canal
+        // par défaut) et on refocalise Nom, au lieu de fermer.
+        if (creerUnAutre) {
+          const reset = buildInitialFields(null, currentUserId)
+          setFields(reset)
+          setCleanFieldsJSON(JSON.stringify(reset))
+          setErrors({})
+          setDups([])
+          nomRef.current?.focus()
+        } else {
+          onClose()
+        }
       }
     } catch (err) {
       setErrors(typeof err === 'object' ? err : { submit: String(err) })
@@ -754,6 +874,39 @@ export default function LeadForm({
             )}
           </h3>
           <div className="lead-head-actions">
+            {/* VX224 — session de qualification en rafale : ◀▶ passent au lead
+                voisin de la file filtrée courante SANS fermer la fiche (même
+                geste que J/K). Absentes hors flux de rafale (`leadsQueue`
+                non fourni — ex. ouvert depuis une notification). */}
+            {isEdit && leadsQueue && (
+              <span className="lead-nav-prevnext" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                <IconButton
+                  label="Lead précédent (touche K)"
+                  variant="ghost"
+                  size="icon"
+                  className="size-8"
+                  disabled={!prevInQueue}
+                  onClick={() => goToLead(prevInQueue)}
+                >
+                  ◀
+                </IconButton>
+                {queueIndex >= 0 && (
+                  <span className="lead-nav-position" style={{ fontSize: '12px', color: 'var(--muted-foreground)' }}>
+                    {queueIndex + 1} / {leadsQueue.length}
+                  </span>
+                )}
+                <IconButton
+                  label="Lead suivant (touche J)"
+                  variant="ghost"
+                  size="icon"
+                  className="size-8"
+                  disabled={!nextInQueue}
+                  onClick={() => goToLead(nextInQueue)}
+                >
+                  ▶
+                </IconButton>
+              </span>
+            )}
             {isEdit && (
               <span className="lead-head-owner" title="Responsable du lead">
                 <Avatar
@@ -968,7 +1121,11 @@ export default function LeadForm({
                       nulle part : autoFocus posé explicitement (indépendant du
                       focus-management par défaut de Radix Dialog/Sheet). */}
                   <FormField label="Nom" required htmlFor="lf-nom" error={errors.nom} errorKind="required">
-                    <Input id="lf-nom" autoFocus invalid={!!errors.nom}
+                    {/* VX224 — `ref` posé pour le refocus manuel après un
+                        « Créer un autre » (le champ ne se démonte pas entre
+                        deux créations, `autoFocus` seul ne suffit qu'au
+                        premier montage). */}
+                    <Input id="lf-nom" autoFocus ref={nomRef} invalid={!!errors.nom}
                            value={fields.nom} onChange={e => set('nom', e.target.value)} />
                   </FormField>
                 </div>
@@ -1559,6 +1716,18 @@ export default function LeadForm({
           </div>
 
           <div className="modal-footer">
+            {/* VX224 — « Créer un autre » (VX92 étendu) : seulement à la
+                création, comme ClientForm.jsx. */}
+            {!isEdit && (
+              <label className="mr-auto flex items-center gap-2 text-sm text-muted-foreground">
+                <Switch
+                  checked={creerUnAutre}
+                  onCheckedChange={(v) => { setCreerUnAutre(v); ecrireCreerUnAutre(v) }}
+                  aria-label="Créer un autre"
+                />
+                Créer un autre
+              </label>
+            )}
             {savedConfirm && (
               <span className="lead-saved-confirm" role="status" aria-live="polite">
                 ✓ Enregistré

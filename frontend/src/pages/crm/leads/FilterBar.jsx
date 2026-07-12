@@ -70,6 +70,13 @@ export default function FilterBar({ filters, setFilters, leads }) {
   const rappelsActifs = filters.contact_preference === 'phone_ok'
   const toggleRappels = () => setKey('contact_preference')(rappelsActifs ? '' : 'phone_ok')
 
+  // VX224 — chip « Mes leads » : défaut ON pour le rôle `normal` (posé une
+  // seule fois par LeadsPage.jsx à l'ouverture initiale, jamais ici) ; ce
+  // composant se contente d'afficher/basculer `filters.mesLeads`, comme
+  // n'importe quel autre filtre.
+  const mesLeadsActif = !!filters.mesLeads
+  const toggleMesLeads = () => setKey('mesLeads')(!mesLeadsActif)
+
   const isDirty = Object.keys(EMPTY_FILTERS).some(k => filters[k] !== EMPTY_FILTERS[k])
 
   const isMobile = useIsMobile()
@@ -92,6 +99,19 @@ export default function FilterBar({ filters, setFilters, leads }) {
           onChange={(e) => setFilters({ ...filters, q: e.target.value })}
         />
       </div>
+
+      {/* VX224 — chip « Mes leads », toujours visible (défaut ON pour le rôle
+          normal, posé par LeadsPage.jsx à l'ouverture initiale seulement). */}
+      <Button
+        type="button"
+        variant={mesLeadsActif ? 'default' : 'outline'}
+        size="sm"
+        className="fb-chip-mes-leads"
+        aria-pressed={mesLeadsActif}
+        onClick={toggleMesLeads}
+      >
+        Mes leads
+      </Button>
 
       {/* VX223 — chip « Rappels demandés », toujours visible (jamais derrière
           le repli mobile « Filtres »). */}

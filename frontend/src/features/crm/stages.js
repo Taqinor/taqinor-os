@@ -150,6 +150,11 @@ export const EMPTY_FILTERS = {
   archived: 'actifs', // 'actifs' | 'tous' | 'seuls' — dimension serveur (refetch)
   // QW3 — préférence de contact explicite ('' = toutes | 'phone_ok' | 'whatsapp_only')
   contact_preference: '',
+  // VX224 — toggle « Mes leads » (chip FilterBar.jsx) : distinct de `owner`
+  // (qui filtre par N'IMPORTE QUEL responsable, usage manager) — celui-ci
+  // épingle spécifiquement l'utilisateur COURANT, résolu par l'appelant
+  // (LeadsPage.jsx passe `myUsername`, jamais codé en dur ici).
+  mesLeads: false,
 }
 
 // 'YYYY-MM-DD' du jour, en heure LOCALE (jamais via toISOString → pas d'UTC).
@@ -177,7 +182,12 @@ export const archivedParam = (value) =>
       : {}
 
 // Filtre partagé par les quatre vues (kanban, liste, calendrier, graphique).
-export function filterLeads(leads, filters) {
+// VX224 — `myUsername` (3e argument, optionnel) résout le toggle « Mes
+// leads » (`filters.mesLeads`) sur `owner_nom` — le même champ déjà comparé
+// par `filters.owner`, jamais un second champ dupliqué. Sans `myUsername`
+// (repli), `mesLeads` n'a simplement aucun effet (jamais un filtre qui
+// viderait la liste par accident).
+export function filterLeads(leads, filters, { myUsername } = {}) {
   const f = { ...EMPTY_FILTERS, ...(filters ?? {}) }
   const q = f.q.trim().toLowerCase()
   const today = todayLocalISO()
@@ -185,6 +195,7 @@ export function filterLeads(leads, filters) {
   return (leads ?? []).filter((l) => {
     if (f.canal && l.canal !== f.canal) return false
     if (f.owner && (l.owner_nom ?? '') !== f.owner) return false
+    if (f.mesLeads && myUsername && (l.owner_nom ?? '') !== myUsername) return false
     if (f.priorite && (l.priorite ?? 'normale') !== f.priorite) return false
     if (f.tag && !tagList(l).includes(f.tag)) return false
     if (f.stage && l.stage !== f.stage) return false
