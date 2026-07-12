@@ -2053,7 +2053,7 @@ détail en tête de document — voir **VX120**. Ne pas la reconstruire ici.*
   s'affichent ; le SPA servi hors proxy garde CSP + anti-framing. (T2 — M, opus : headers
   sécurité) (@lane: backend/auth)
 
-- [ ] VX201 — **Pack durcissement client : DevTools coupé en prod, garde SVG + CI (@lane: backend/auth)
+- [x] VX201 **(already present)** — **Pack durcissement client : DevTools coupé en prod, garde SVG + CI (@lane: backend/auth)
   anti-`dangerouslySetInnerHTML`, jeton kiosque expirant, presse-papier 2FA vidé.** Quatre petites
   failles prouvées, un lot : (a) `store/index.js:46-48` — `configureStore` sans `devTools:
   import.meta.env.DEV` : en prod, l'extension Redux DevTools expose TOUT l'état (PII, matrice de
