@@ -20,7 +20,7 @@ export const AccordionTrigger = forwardRef(function AccordionTrigger({ className
         className={cn(
           'flex flex-1 items-center justify-between gap-2 py-3 text-left text-sm font-medium',
           'transition-colors hover:text-foreground',
-          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+          'focus-ring',
           '[&[data-state=open]>svg]:rotate-180',
           className,
         )}

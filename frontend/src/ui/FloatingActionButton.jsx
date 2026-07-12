@@ -23,7 +23,7 @@ export const FloatingActionButton = forwardRef(function FloatingActionButton(
         'fab-button inline-flex items-center gap-2 rounded-full',
         'bg-primary text-primary-foreground shadow-ui-md',
         'hover:bg-primary/90 active:bg-primary/80',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+        'focus-ring',
         'transition-[transform,box-shadow] duration-150 [@media(hover:hover)]:active:scale-[0.96]',
         className,
       )}

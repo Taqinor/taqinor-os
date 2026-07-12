@@ -339,6 +339,18 @@
   font-size: var(--ui-text);
 }
 
+/* VX123 — Plancher d'accessibilité visuelle : halo de focus UNIQUE consommant
+   `--focus-ring` (F122, jusqu'ici du code mort décoratif — 0 consommateur).
+   Remplace les 27 recopies Tailwind `focus-visible:outline-none
+   focus-visible:ring-2 focus-visible:ring-ring[…]` : un seul point de vérité
+   du halo, posé sur `:focus-visible` ET `:focus-within` (contrôles composites
+   type TimePicker qui ne peuvent pas eux-mêmes recevoir `:focus-visible`). */
+.focus-ring:focus-visible,
+.focus-ring:focus-within {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
 /* ── F121 — Utilitaires d'échelle typographique ──────────────────────────────
    Applique taille + interligne + tracking d'un palier en une classe. Utilisés
    par les nouveaux titres /src/ui ; n'affectent aucun écran existant. */
@@ -440,5 +452,49 @@
     --motion-fast: 0ms;
     --motion-base: 0ms;
     --motion-slow: 0ms;
+  }
+}
+
+/* VX123 — Windows contraste élevé (forced-colors: active). Cartes/tables/
+   modales/champs se définissent SEULEMENT par un box-shadow (`--elevation-
+   card`, `--shadow-*`) : en mode contraste élevé le navigateur ignore ces
+   box-shadow décoratives et la structure disparaît entièrement (0 bordure
+   visible). On pose de VRAIES bordures système + un focus-ring système
+   (`Highlight`) puisque le halo `box-shadow: var(--focus-ring)` disparaît
+   pour la même raison. */
+@media (forced-colors: active) {
+  .data-table,
+  .lines-table-wrap,
+  .modal,
+  .gen-card,
+  .form-control,
+  .form-select,
+  .btn {
+    border: 1px solid CanvasText;
+  }
+  .btn-primary {
+    border-color: ButtonBorder;
+  }
+  .focus-ring:focus-visible,
+  .focus-ring:focus-within {
+    outline: 2px solid Highlight;
+    box-shadow: none;
+  }
+}
+
+/* VX123 — prefers-contrast: more. Durcit les bordures/texte muted (sans
+   changer la structure) — ~40 % de fusion vers le foreground, encore assez
+   subtil pour rester cohérent avec la marque en clair ET en sombre. Mixe
+   depuis les valeurs LITTÉRALES d'origine (pas `var(--border)`) : un
+   `color-mix` qui se référence lui-même dans une redéclaration de la même
+   custom property est un cycle CSS (valeur invalide au calcul). */
+@media (prefers-contrast: more) {
+  :root {
+    --border: color-mix(in oklch, #dde3f0 60%, var(--foreground) 40%);
+    --muted-foreground: color-mix(in oklch, #5a6488 60%, var(--foreground) 40%);
+  }
+  .dark {
+    --border: color-mix(in oklch, oklch(33% 0.03 270) 60%, var(--foreground) 40%);
+    --muted-foreground: color-mix(in oklch, #adb5cd 60%, var(--foreground) 40%);
   }
 }

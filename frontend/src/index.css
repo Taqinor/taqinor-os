@@ -1858,7 +1858,9 @@ textarea.form-control {
   background: rgba(255, 255, 255, 0.12);
   border-color: var(--cat-gold);
   outline: none;
-  box-shadow: none;
+  /* VX123 — halo de focus réel (un simple changement de couleur de bordure de
+     1px sur fond sombre était insuffisant : plancher d'accessibilité). */
+  box-shadow: var(--focus-ring);
 }
 .cat-rail-item {
   display: flex;
@@ -3247,7 +3249,9 @@ textarea.form-control {
   font-size: 0.875rem;
   background: #f8fafc;
 }
-.gs-input:focus { outline: none; border-color: #94a3b8; background: #fff; }
+/* VX123 — halo de focus réel en plus du changement de bordure (plancher
+   d'accessibilité : un simple #e2e8f0 → #94a3b8 était trop faible seul). */
+.gs-input:focus { outline: none; border-color: #94a3b8; background: #fff; box-shadow: var(--focus-ring); }
 .gs-panel {
   position: absolute;
   top: calc(100% + 6px);

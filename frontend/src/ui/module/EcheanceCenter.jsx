@@ -89,7 +89,7 @@ export function EcheanceCenter({
                   {it.to ? (
                     <Link
                       to={it.to}
-                      className="truncate font-medium text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      className="truncate font-medium text-foreground hover:underline focus-ring"
                     >
                       {it.label}
                     </Link>

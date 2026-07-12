@@ -14,7 +14,7 @@ export const Checkbox = forwardRef(function Checkbox({ className, ...props }, re
       ref={ref}
       className={cn(
         'peer size-4.5 shrink-0 rounded border border-input bg-card shadow-ui-xs',
-        'transition-[color,background-color,border-color,box-shadow,transform] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+        'transition-[color,background-color,border-color,box-shadow,transform] focus-ring',
         pressCurve,
         'disabled:cursor-not-allowed disabled:opacity-50',
         'hover:border-primary/60',

@@ -18,7 +18,7 @@ export const RadioGroupItem = forwardRef(function RadioGroupItem({ className, ..
       ref={ref}
       className={cn(
         'aspect-square size-4.5 rounded-full border border-input bg-card text-primary shadow-ui-xs',
-        'transition-[border-color,transform] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+        'transition-[border-color,transform] focus-ring',
         pressCurve,
         'disabled:cursor-not-allowed disabled:opacity-50',
         'hover:border-primary/60 data-[state=checked]:border-primary',

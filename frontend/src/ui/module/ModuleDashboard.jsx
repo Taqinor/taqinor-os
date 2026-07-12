@@ -93,7 +93,7 @@ export function ModuleDashboard({
                 <Link
                   key={s.to + i}
                   to={s.to}
-                  className="block rounded-xl transition-shadow hover:ring-2 hover:ring-ring/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="block rounded-xl transition-shadow hover:ring-2 hover:ring-ring/40 focus-ring"
                 >
                   {stat}
                 </Link>

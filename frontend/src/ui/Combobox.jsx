@@ -13,7 +13,7 @@ import { pressItem } from './interaction'
 const triggerBase =
   'flex w-full items-center justify-between gap-2 rounded-md border border-input bg-card text-foreground shadow-ui-xs ' +
   'h-[var(--control-h)] px-[var(--control-px)] text-base sm:text-sm transition-colors ' +
-  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-ring ' +
+  'focus-ring focus-visible:border-ring ' +
   'disabled:cursor-not-allowed disabled:opacity-60 ' +
   'aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30'
 

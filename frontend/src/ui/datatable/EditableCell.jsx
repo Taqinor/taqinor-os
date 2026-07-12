@@ -71,7 +71,7 @@ export function EditableCell({
         }}
         className={cn(
           'block w-full truncate rounded px-1 py-0.5 text-left',
-          'hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+          'hover:bg-accent/60 focus-ring',
           align === 'right' && 'text-right',
           align === 'center' && 'text-center',
           className,

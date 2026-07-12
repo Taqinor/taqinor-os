@@ -10,7 +10,7 @@ import { cn } from '../lib/cn'
 const baseField =
   'flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs ' +
   'transition-colors placeholder:text-muted-foreground caret-primary ' +
-  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-ring ' +
+  'focus-ring focus-visible:border-ring ' +
   'disabled:cursor-not-allowed disabled:opacity-60 ' +
   'aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 ' +
   'text-base sm:text-sm'

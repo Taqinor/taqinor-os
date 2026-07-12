@@ -10,7 +10,7 @@ import { parseTime, formatTime, timeOptions } from './date-utils'
 const fieldBase =
   'flex w-full items-center gap-2 rounded-md border border-input bg-card text-foreground shadow-ui-xs ' +
   'h-[var(--control-h)] px-[var(--control-px)] text-base sm:text-sm transition-colors ' +
-  'focus-within:outline-none focus-within:ring-2 focus-within:ring-ring focus-within:border-ring ' +
+  'focus-ring focus-within:border-ring ' +
   'aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30'
 
 export const TimePicker = forwardRef(function TimePicker(

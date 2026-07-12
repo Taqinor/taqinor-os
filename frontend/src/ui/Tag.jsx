@@ -18,7 +18,7 @@ export function Tag({ children, onRemove, className, ...props }) {
           type="button"
           onClick={onRemove}
           aria-label="Retirer"
-          className="-mr-0.5 rounded-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="-mr-0.5 rounded-sm text-muted-foreground hover:text-foreground focus-ring"
         >
           <X className="size-3" />
         </button>

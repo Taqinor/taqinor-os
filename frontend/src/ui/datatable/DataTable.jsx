@@ -596,7 +596,7 @@ export const DataTable = forwardRef(function DataTable(
                 tabIndex={0}
                 onKeyDown={onGridKeyDown}
                 className={cn(
-                  'w-full border-collapse text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                  'w-full border-collapse text-sm focus-ring',
                   tableClassName,
                 )}
                 style={colWidths.vars}
@@ -692,7 +692,7 @@ export const DataTable = forwardRef(function DataTable(
                                     onSort(c.id, { multi: e.shiftKey })
                                   }
                                 }}
-                                className="group inline-flex items-center gap-1 rounded uppercase tracking-wide hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                className="group inline-flex items-center gap-1 rounded uppercase tracking-wide hover:text-foreground focus-ring"
                                 aria-label={`Trier par ${c.header ?? c.id}`}
                               >
                                 <span>{c.header ?? c.id}</span>
@@ -978,7 +978,7 @@ export const DataTable = forwardRef(function DataTable(
                     className={cn(
                       'rounded-xl border bg-card p-3 transition-colors',
                       isSelected ? 'border-primary bg-primary/5' : 'border-border',
-                      onRowClick && 'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                      onRowClick && 'cursor-pointer focus-ring',
                     )}
                     onClick={onRowClick ? () => onRowClick(row) : undefined}
                     onKeyDown={
@@ -1038,7 +1038,7 @@ export const DataTable = forwardRef(function DataTable(
                   value={pageSize}
                   onChange={(e) => { setPageSize(Number(e.target.value)); setPageIndex(0) }}
                   aria-label="Lignes par page"
-                  className="h-8 rounded-md border border-input bg-card px-2 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="h-8 rounded-md border border-input bg-card px-2 text-xs text-foreground focus-ring"
                 >
                   {pageSizeOptions.map((n) => (
                     <option key={n} value={n}>{n} / page</option>
@@ -1101,7 +1101,7 @@ function ColumnHeaderMenu({ column, dispatch, canMoveLeft, canMoveRight, prevId,
         <button
           type="button"
           aria-label={`Options de la colonne ${column.header ?? column.id}`}
-          className="grid size-6 place-items-center rounded opacity-0 transition-opacity hover:bg-accent focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-60 [tr:hover_&]:opacity-60"
+          className="grid size-6 place-items-center rounded opacity-0 transition-opacity hover:bg-accent focus-visible:opacity-100 focus-ring group-hover:opacity-60 [tr:hover_&]:opacity-60"
           onClick={(e) => e.stopPropagation()}
         >
           <MoreHorizontal className="size-3.5" />

@@ -15,7 +15,7 @@ const triggerBase =
   'flex w-full items-center justify-between gap-2 rounded-md border border-input bg-card text-foreground shadow-ui-xs ' +
   'h-[var(--control-h)] px-[var(--control-px)] text-base sm:text-sm transition-colors ' +
   'placeholder:text-muted-foreground data-[placeholder]:text-muted-foreground ' +
-  'focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-ring ' +
+  'focus:outline-none focus-ring focus-visible:border-ring ' +
   'disabled:cursor-not-allowed disabled:opacity-60 ' +
   'aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 ' +
   '[&>span]:line-clamp-1 [&>span]:text-left'
