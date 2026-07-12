@@ -46,6 +46,7 @@ from .views import (
     TenantUsageSnapshotViewSet,
     TrashViewSet,
     WorkflowTemplateViewSet,
+    db_stats_view,
     health_live,
     health_ready,
     metrics_view,
@@ -120,4 +121,6 @@ urlpatterns = router.urls + [
     path('secrets/rotation/', secrets_rotation_due, name='secrets-rotation-due'),
     # YHARD6 — métriques Prometheus (admin OU IP-allowlist, jamais public).
     path('metrics/', metrics_view, name='metrics'),
+    # NTPLT19 — statistiques DB d'exploitation (SUPERUSER only, lecture seule).
+    path('db-stats/', db_stats_view, name='db-stats'),
 ]

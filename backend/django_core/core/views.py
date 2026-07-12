@@ -921,6 +921,18 @@ class _IsSuperUser(BasePermission):
         return bool(user and user.is_authenticated and user.is_superuser)
 
 
+# ── NTPLT19 — Endpoint superuser des statistiques DB (introspection READ-ONLY) ─
+@api_view(['GET'])
+@permission_classes([_IsSuperUser])
+def db_stats_view(request):
+    """Top requêtes (pg_stat_statements), tailles de tables, index inutilisés.
+
+    SUPERUSER only, JAMAIS exposé aux tenants. Lecture seule. Dégrade proprement
+    si ``pg_stat_statements`` n'est pas préchargée (message par section)."""
+    from . import db_stats
+    return Response(db_stats.collect_db_stats())
+
+
 class TenantUsageSnapshotViewSet(viewsets.ReadOnlyModelViewSet):
     """NTPLT6 — instantanés d'usage par tenant (lecture seule, SUPERUSER only).
 
