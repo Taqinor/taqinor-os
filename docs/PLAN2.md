@@ -2285,7 +2285,7 @@ droite)**
   nouveau ; décider une DA → le demandeur notifié ; une DA soumise > seuil relance les
   approbateurs ; tests des transitions. (T1 — M, sonnet) (@lane: backend/notify — @after VX99)
 
-- [ ] VX214 — **[BACKEND additif] [RESHAPÉE — grand-verdict] Les kinds d'EXÉCUTION entrent dans (@lane: backend/notify — @after VX83)
+- [x] VX214 **(already present)** — **[BACKEND additif] [RESHAPÉE — grand-verdict] Les kinds d'EXÉCUTION entrent dans (@lane: backend/notify — @after VX83)
   « Ma file » (jamais une 2ᵉ boîte). @after VX83.** `MesActivitesPage` n'agrège que
   `records.Activity` et `ApprobationsPage` que les approbations — un chantier assigné, une
   intervention à faire, une DA approuvée à commander, un ticket transféré n'apparaissent dans
@@ -3207,6 +3207,8 @@ droite)**
 ---
 
 ## DONE LOG (agent appends one plain-language line per completed task)
+
+- 2026-07-12 — **VX214 (already present)** — verified: `apps/records/views.py` `ma-file/` extended with execution kinds (`chantier_assigne`/`intervention_du_jour`/`da_approuvee_a_commander`/`ticket_transfere`) via `installations.selectors.affectations_pour`/`sav.selectors.affectations_pour` (no parallel endpoint/page); `tests_vx214_kinds_execution.py`; commits `3178b30f` + CI fix `956c5b9e` on main. Ticked, no rebuild.
 
 - 2026-07-12 — **VX212 (already present)** — verified: `Notification.reason` field + `NotificationReason` choices (`models.py:240`), `resolve_recipients_reason` (`services.py:304`), reason rendered in serializer + `NotificationBell.jsx`, approval email context; `tests_vx212_pourquoi_je_recois_ca.py`; commit `69bcf900` on main. Ticked, no rebuild.
 
