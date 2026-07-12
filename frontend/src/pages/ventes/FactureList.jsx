@@ -310,6 +310,16 @@ function FactureRow({ f, ctx }) {
             Payé {formatMAD(f.montant_paye)} / Dû {formatMAD(f.montant_du)}
           </div>
         )}
+        {/* VX250(a) — PendingStepsIndicator : lecture PURE de statuts déjà
+            chargés (`isPartiallyPaid`, déjà utilisé par l'onglet « Partielle »
+            ci-dessus) — ne change JAMAIS un statut, ZÉRO appel réseau. Plus
+            visible que la ligne « Payé/Dû » neutre au-dessus : seul un acompte
+            RÉELLEMENT partiel (reste dû > 0, pas annulée) l'affiche. */}
+        {isPartiallyPaid(f) && (
+          <div role="status" className="mt-0.5 text-xs font-medium text-warning">
+            Solde restant : {formatMAD(f.montant_du)}
+          </div>
+        )}
       </td>
       <td data-label="Statut">
         <StatusPill status={statutKey} label={STATUT_DISPLAY[statutKey] ?? STATUT_DISPLAY.brouillon} />
@@ -572,7 +582,12 @@ export default function FactureList() {
   const [showForm, setShowForm]       = useState(false)
   const [editFacture, setEditFacture] = useState(null)
   const [activeTab, setActiveTab]     = useState('toutes')
-  const [search, setSearch]           = useState('')
+  // VX250 — deep-link ?q=<texte> pré-règle la recherche (référence/client) au
+  // montage — posé par LIST_ROUTE.facture (entityRoutes.js) et RelationCounters
+  // (fiches 360°) sans jamais être lu jusqu'ici. Le filtre `search` existant
+  // fait déjà exactement référence/client (ci-dessous) — aucune nouvelle
+  // logique de filtre.
+  const [search, setSearch]           = useState(() => searchParams.get('q') ?? '')
   const [typeFilter, setTypeFilter]   = useState('')
   // ZFAC9 — bascule Liste/Kanban (wiring/données only, réutilise `filtered`).
   const [viewMode, setViewMode]       = useState('liste')

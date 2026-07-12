@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import api from '../../api/axios'
-import { Badge, Button, Spinner } from '../../ui'
+import { Badge, Button, Spinner, RelationCounters } from '../../ui'
 import { Table } from '../reporting/Table'
 import ClientRgpdActions from './ClientRgpdActions'
 import OwnerChain from '../../components/OwnerChain'
@@ -80,6 +80,23 @@ export default function ClientDetailPanel({ client, onClose, onNewDevis, onChang
           <button type="button" className="modal-close" onClick={onClose}>✕</button>
         </div>
         <div className="modal-body">
+          {/* VX159/VX250 — RelationCounters : réutilise `data` déjà chargé
+              (endpoint /crm/clients/<id>/documents/ ci-dessus) — ZÉRO appel
+              réseau nouveau. Devis/factures pré-filtrent désormais la liste
+              cible par nom (DevisList.jsx/FactureList.jsx lisent ?q=, VX250) ;
+              chantiers reste un compteur statique (InstallationsPage.jsx hors
+              périmètre de cette tâche — jamais un lien qui MENT sur un
+              pré-filtre qu'il n'applique pas). */}
+          {data && (
+            <RelationCounters
+              className="mb-4"
+              counters={[
+                { label: 'devis', count: data.devis?.length ?? 0, to: `/ventes/devis?q=${encodeURIComponent(nomComplet)}` },
+                { label: 'factures', count: data.factures?.length ?? 0, to: `/ventes/factures?q=${encodeURIComponent(nomComplet)}` },
+                { label: 'chantiers', count: data.chantiers?.length ?? 0 },
+              ]}
+            />
+          )}
           {(tel || wa) && (
             <div className="mb-4 flex flex-wrap gap-3 text-sm">
               {tel && (

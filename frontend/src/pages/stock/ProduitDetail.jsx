@@ -4,7 +4,7 @@ import { History, PackageSearch } from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import { useHasPermission } from '../../hooks/useHasPermission'
 import {
-  Spinner, Badge,
+  Spinner, Badge, RelationCounters,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
   Button, Tabs, TabsList, TabsTrigger, TabsContent,
 } from '../../ui'
@@ -168,6 +168,21 @@ export function ProduitDetail({ produit, onClose }) {
             Engagements d&apos;achat et rapport prévisionnel — donnée interne, lecture seule.
           </DialogDescription>
         </DialogHeader>
+
+        {/* VX159/VX250 — RelationCounters : réutilise `produit.bcf_sources_en_commande`
+            déjà chargé (prop, ZÉRO appel réseau nouveau). Pas de filtre par
+            produit sur BonsCommandeFournisseur.jsx (hors périmètre de cette
+            tâche) : lien vers la liste NUE, jamais un pré-filtre qui MENT.
+            `prix_achat` ne transite jamais par ce composant (label/count
+            purement quantitatifs). */}
+        <RelationCounters
+          className="mb-3"
+          counters={[{
+            label: 'bons de commande en cours',
+            count: produit.bcf_sources_en_commande?.length ?? 0,
+            to: '/stock/bons-commande-fournisseur',
+          }]}
+        />
 
         <Tabs defaultValue="en-commande">
           <TabsList>

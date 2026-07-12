@@ -1009,7 +1009,13 @@ export default function DevisList() {
     const s = searchParams.get('statut')
     return s && (s === 'tous' || STATUT_DISPLAY[s]) ? s : 'tous'
   })
-  const [query, setQuery] = useState('')
+  // VX250 — deep-link ?q=<texte> pré-règle la recherche (référence/client) au
+  // montage — même convention que ?statut= ci-dessus. Jusqu'ici posé par
+  // LIST_ROUTE.devis (entityRoutes.js, « voir tout » de GlobalSearch/⌘K) et
+  // RelationCounters (fiches 360°) sans jamais être lu : le lien n'atterrissait
+  // que sur la liste NUE. Le filtre `query` existant fait déjà exactement
+  // référence/client (ligne ci-dessous) — aucune nouvelle logique de filtre.
+  const [query, setQuery] = useState(() => searchParams.get('q') ?? '')
   // QX12 — deep-link ?devis=<pk> ouvre/surligne ce devis précis au montage
   // (notifications « Devis accepté »/« Devis expiré » qui pointaient vers une
   // route inexistante /devis/{pk} — le producteur redirige maintenant ici).

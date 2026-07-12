@@ -34,6 +34,7 @@ import useKeyboardAwareScroll from '../../hooks/useKeyboardAwareScroll'
 import {
   Button, IconButton, Input, FormSection, FormField, Switch,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
+  RelationCounters,
 } from '../../ui'
 // VX89 — shell externe Escape + focus-trap + bottom-sheet mobile (comme ClientForm).
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
@@ -1046,6 +1047,21 @@ export default function LeadForm({
             estimé, prochaine activité, jours depuis dernière modification —
             les 4 faits qui comptent, visibles sans scroller. */}
         {isEdit && <LeadSummaryBar lead={liveLead} />}
+
+        {/* VX159/VX250 — RelationCounters : devis déjà chargés sur le lead
+            (`liveLead.devis`, VX24) — ZÉRO appel réseau nouveau. Clic → liste
+            devis pré-filtrée par nom (DevisList.jsx lit désormais ?q=,
+            VX250). */}
+        {isEdit && (liveLead?.devis?.length ?? 0) > 0 && (
+          <RelationCounters
+            className="mb-2"
+            counters={[{
+              label: 'devis',
+              count: liveLead.devis.length,
+              to: `/ventes/devis?q=${encodeURIComponent(`${lead.nom} ${lead.prenom || ''}`.trim())}`,
+            }]}
+          />
+        )}
 
         {/* ── Barre d'actions devis (style Odoo) — tout reste dans la fiche ── */}
         {isEdit && (
