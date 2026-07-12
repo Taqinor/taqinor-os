@@ -425,7 +425,7 @@ describe('VX131 — état vide : CTA et tone d\'erreur', () => {
   })
 
   it('une erreur de chargement rend l\'EmptyState en tone="error" (icône sur fond destructif)', () => {
-    const { container } = render(
+    render(
       <DataTable data={[]} columns={COLUMNS} error="Réseau indisponible" />,
       { wrapper },
     )

@@ -82,6 +82,12 @@ test('E16+: an edit modal fits the iPhone viewport (no off-screen crop)', async 
 
   const modal = page.locator('.modal')
   await expect(modal).toBeVisible()
+  // VX134 — la Dialog joue une anim `pop-in` (scale/translate) à l'ouverture :
+  // attendre qu'elle soit TERMINÉE avant de mesurer, sinon la boundingBox est
+  // relevée en plein transform (position/hauteur transitoires → faux positif).
+  await modal.evaluate((el) =>
+    Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished.catch(() => {}))),
+  )
 
   // Cœur du test iPhone : le modal ne déborde pas verticalement hors de l'écran.
   const box = await modal.boundingBox()
