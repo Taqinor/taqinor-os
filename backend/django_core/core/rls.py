@@ -7,7 +7,7 @@ d'isolation YRBAC12), on émet :
     ALTER TABLE <table> ENABLE ROW LEVEL SECURITY;
     ALTER TABLE <table> FORCE ROW LEVEL SECURITY;
     CREATE POLICY <name> ON <table>
-        USING (company_id = current_setting('app.current_company', true)::int);
+        USING (company_id = NULLIF(current_setting('app.current_company', true), '')::int);
 
 Le GUC ``app.current_company`` est posé par requête (NTPLT1,
 ``core.tenant_context``). Une fois RLS actif ET le rôle applicatif non-BYPASSRLS
@@ -119,8 +119,13 @@ def enable_sql(entry: RlsTable) -> list[str]:
         f"ALTER TABLE {t} ENABLE ROW LEVEL SECURITY;",
         f"ALTER TABLE {t} FORCE ROW LEVEL SECURITY;",
         f"DROP POLICY IF EXISTS {p} ON {t};",
+        # NULLIF(..., '') : le GUC « pas de tenant » est posé en CHAÎNE VIDE
+        # (core.tenant_context pose set_config(..., '', ...) au nettoyage), et
+        # ''::int lève « invalid input syntax for type integer ». NULLIF ramène
+        # la chaîne vide à NULL → « company_id = NULL » ne matche RIEN → 0 ligne
+        # (le sceau RLS attendu), au lieu d'une DataError.
         (f"CREATE POLICY {p} ON {t} USING ("
-         f"{col} = current_setting('app.current_company', true)::int);"),
+         f"{col} = NULLIF(current_setting('app.current_company', true), '')::int);"),
     ]
 
 

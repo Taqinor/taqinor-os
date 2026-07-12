@@ -38,7 +38,17 @@ const PER_CHUNK_BUDGET_KB = 350
 // fonctionnalités) fait croître le bundle de ~22 Ko gzip (croissance produit
 // légitime, pas une régression). Marge relevée d'autant ; le garde continue
 // d'attraper toute VRAIE régression au-dessus de 2240.
-const TOTAL_BUDGET_KB = 2240
+// 2026-07-12 : 2240 -> 2340 Ko. La vague wave-1 (66 tâches : LeadDetailPage,
+// onglet Délégations d'ApprobationsPage, PlanificationPage, CalendarPage sur
+// tokens, onglets NotificationBell, ChatterTimeline, journal d'appel, etc.)
+// ajoute ~9 Ko gzip — AUCUNE nouvelle dépendance npm, pages toutes lazy-loadées
+// (pas de gonflement du chunk partagé) : croissance produit organique.
+// CONVENTION (fondateur, 2026-07-12) : on relève ce TOTAL par PALIERS GÉNÉREUX
+// (~100 Ko) plutôt qu'au Ko près, pour ne PAS re-bumper à chaque vague. Le vrai
+// garde anti-gonflement reste PER_CHUNK_BUDGET_KB (350) + les budgets vendors
+// par chunk ; ce total ne sert qu'à attraper une régression MASSIVE. Ici ~91 Ko
+// de marge au-dessus du réel (2248.8) — le garde reste actif au-dessus de 2340.
+const TOTAL_BUDGET_KB = 2340
 const VENDOR_CHUNK_BUDGETS_KB = {
   recharts: 450,
   'pdfjs-dist': 450,
