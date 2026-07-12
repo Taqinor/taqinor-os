@@ -535,7 +535,7 @@ export default function FactureList() {
             taux_tva: l.taux_tva,
           }))
         if (lignes.length === 0) {
-          alert('Saisissez au moins une quantité à créditer.')
+          toast.error('Saisissez au moins une quantité à créditer.')
           setAvoirSaving(false)
           return
         }
@@ -544,9 +544,9 @@ export default function FactureList() {
       await ventesApi.creerAvoir(avoirTarget.id, payload)
       setAvoirTarget(null)
       dispatch(fetchFactures())
-      alert('Avoir créé. Retrouvez-le dans Ventes → Avoirs.')
+      toast.success('Avoir créé. Retrouvez-le dans Ventes → Avoirs.')
     } catch (err) {
-      alert(err?.response?.data?.detail ?? "Création de l'avoir impossible.")
+      toast.error(err?.response?.data?.detail ?? "Création de l'avoir impossible.")
     } finally {
       setAvoirSaving(false)
     }
@@ -660,7 +660,7 @@ export default function FactureList() {
       setEcheanceEditId(null)
       dispatch(fetchFactures())
     } catch (err) {
-      alert(err?.response?.data?.detail ?? 'Mise à jour de l’échéance impossible.')
+      toast.error(err?.response?.data?.detail ?? 'Mise à jour de l’échéance impossible.')
     } finally {
       setEcheanceSaving(false)
     }
@@ -835,7 +835,7 @@ export default function FactureList() {
     } catch (err) {
       // VX63 — plus de JSON brut à l'écran : message FR lisible extrait du
       // payload d'erreur (le sweep alert→toast reste la propriété de VX19).
-      alert(errorMessageFrom({ response: { data: err } }, 'Action impossible.'))
+      toast.error(errorMessageFrom({ response: { data: err } }, 'Action impossible.'))
     } finally {
       setActionId(null)
     }
@@ -848,7 +848,7 @@ export default function FactureList() {
       let attempts = 0
       const poll = async () => {
         if (attempts++ > 15) {
-          alert('La génération PDF prend plus de temps que prévu. Réessayez dans quelques instants.')
+          toast.error('La génération PDF prend plus de temps que prévu. Réessayez dans quelques instants.')
           return
         }
         try {
@@ -864,7 +864,7 @@ export default function FactureList() {
       }
       setTimeout(poll, 2000)
     } catch (err) {
-      alert(err?.detail ?? 'Erreur lors de la génération PDF.')
+      toast.error(err?.detail ?? 'Erreur lors de la génération PDF.')
     } finally {
       setPdfGenerating(prev => ({ ...prev, [f.id]: false }))
     }
@@ -876,7 +876,7 @@ export default function FactureList() {
       const res = await ventesApi.telechargerPdfFacture(f.id)
       openPdfBlob(res.data, `${f.reference}.pdf`)
     } catch {
-      alert('Fichier introuvable. Régénérez le PDF.')
+      toast.error('Fichier introuvable. Régénérez le PDF.')
     } finally {
       setPdfDownloading(prev => ({ ...prev, [f.id]: false }))
     }
@@ -897,7 +897,7 @@ export default function FactureList() {
         wa_url: res.data?.wa_url ?? '',
       })
     } catch (err) {
-      alert(err?.response?.data?.detail ?? 'Envoi WhatsApp impossible.')
+      toast.error(err?.response?.data?.detail ?? 'Envoi WhatsApp impossible.')
     } finally {
       setWaBusy(prev => ({ ...prev, [f.id]: false }))
     }
@@ -919,7 +919,7 @@ export default function FactureList() {
       const res = await ventesApi.telechargerUbl(f.id)
       openPdfBlob(res.data, `${f.reference}-ubl.xml`)
     } catch {
-      alert("Génération de l'aperçu UBL impossible.")
+      toast.error("Génération de l'aperçu UBL impossible.")
     }
   }
 
@@ -929,7 +929,7 @@ export default function FactureList() {
     try {
       const { data } = await ventesApi.auditNumerotation()
       if (data.conforme) {
-        alert('Numérotation conforme : aucun trou ni doublon détecté.')
+        toast.success('Numérotation conforme : aucun trou ni doublon détecté.')
       } else {
         const lignes = []
         const labels = { devis: 'Devis', facture: 'Factures',
@@ -942,12 +942,12 @@ export default function FactureList() {
             lignes.push(`${labels[cle]} ${g.radical} → ${parts.join(' ; ')}`)
           }
         }
-        alert(`Anomalies de numérotation détectées :\n\n${lignes.join('\n')}\n\n`
+        toast.error(`Anomalies de numérotation détectées :\n\n${lignes.join('\n')}\n\n`
           + `(${data.total_manquants} numéro(s) manquant(s), `
           + `${data.total_doublons} doublon(s)). Aucune renumérotation automatique.`)
       }
     } catch (err) {
-      alert(err?.response?.data?.detail ?? "Audit de numérotation impossible.")
+      toast.error(err?.response?.data?.detail ?? "Audit de numérotation impossible.")
     } finally {
       setAuditBusy(false)
     }
@@ -1009,7 +1009,7 @@ export default function FactureList() {
       if (data.conforme) {
         toast.success('Conforme DGI : aucun problème détecté.')
       } else {
-        alert(`Non conforme DGI :\n\n- ${(data.problemes || []).join('\n- ')}`)
+        toast.error(`Non conforme DGI :\n\n- ${(data.problemes || []).join('\n- ')}`)
       }
     } catch (err) {
       toast.error(err?.response?.data?.detail ?? 'Contrôle de conformité DGI impossible.')
