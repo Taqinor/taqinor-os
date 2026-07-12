@@ -13,6 +13,7 @@
 import { useEffect, useState } from 'react'
 import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import { Plus, Trash2, Download, Lock, FileCheck2 } from 'lucide-react'
+import { toast } from '../../ui/confirm'
 import coreApi from '../../api/coreApi'
 import { downloadBlob, filenameFromResponse } from '../../api/importApi'
 import {
@@ -55,7 +56,7 @@ function RegistreTraitements() {
       })
       setDraft({ code: '', finalite: '', base_legale: '' })
       load()
-    } catch (e) { alert(e?.response?.data?.detail ?? 'Ajout impossible.') }
+    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Ajout impossible.') }
     finally { setBusy(false) }
   }
 
@@ -69,7 +70,7 @@ function RegistreTraitements() {
   const delRow = async (row) => {
     if (!window.confirm(`Supprimer le traitement « ${row.code} » ?`)) return
     try { await coreApi.confidentialite.registreTraitements.remove(row.id); load() }
-    catch (e) { alert(e?.response?.data?.detail ?? 'Suppression impossible.') }
+    catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible.') }
   }
 
   const exportCsv = async () => {
@@ -184,14 +185,14 @@ function DsrRequests() {
       })
       setDraft({ subject_identifier: '', kind: 'acces' })
       load()
-    } catch (e) { alert(e?.response?.data?.detail ?? 'Soumission impossible.') }
+    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Soumission impossible.') }
     finally { setBusy(false) }
   }
 
   const traiter = async (row) => {
     setTraitingId(row.id)
     try { await coreApi.confidentialite.dsrRequests.traiter(row.id); load() }
-    catch (e) { alert(e?.response?.data?.detail ?? 'Traitement impossible.') }
+    catch (e) { toast.error(e?.response?.data?.detail ?? 'Traitement impossible.') }
     finally { setTraitingId(null) }
   }
 

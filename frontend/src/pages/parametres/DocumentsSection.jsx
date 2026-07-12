@@ -12,6 +12,7 @@ import { Save, CheckCircle2, Plus, Trash2 } from 'lucide-react'
 import parametresApi from '../../api/parametresApi'
 import { Card, CardContent, Input, Textarea, Button, IconButton, Spinner } from '../../ui'
 import { SectionTitle } from './peComponents'
+import { toast } from '../../ui/confirm'
 
 // Aperçu (placeholder) du littéral historique de chaque champ. Affiché en
 // indice quand le champ est vide : c'est EXACTEMENT le texte imprimé par défaut.
@@ -119,7 +120,7 @@ export default function DocumentsSection() {
       setSaved(true)
       setTimeout(() => setSaved(false), 2500)
     } catch (e) {
-      alert(e?.response?.data?.detail ?? 'Enregistrement impossible.')
+      toast.error(e?.response?.data?.detail ?? 'Enregistrement impossible.')
     } finally {
       setSaving(false)
     }

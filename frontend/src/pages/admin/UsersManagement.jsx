@@ -46,7 +46,7 @@ const isAdminRole = (r) => {
 export default function UsersManagement() {
   const currentUsername = useSelector(s => s.auth.user?.username)
   const navigate = useNavigate()
-  const { confirm } = useConfirmDialog()
+  const { confirm: askConfirm } = useConfirmDialog()
   const [users, setUsers] = useState([])
   const [roles, setRoles] = useState([])
   const [loading, setLoading] = useState(true)
@@ -212,7 +212,7 @@ export default function UsersManagement() {
 
   // ── Suppression d'un utilisateur (confirmation maison, jamais window.confirm) ──
   const askDelete = async (u) => {
-    const ok = await confirm({
+    const ok = await askConfirm({
       title: 'Supprimer cet utilisateur ?',
       description: `Le compte « ${u.username} » sera définitivement supprimé.`,
       confirmLabel: 'Supprimer',

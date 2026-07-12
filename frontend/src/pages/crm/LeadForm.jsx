@@ -37,6 +37,7 @@ import {
 } from '../../ui'
 // VX89 — shell externe Escape + focus-trap + bottom-sheet mobile (comme ClientForm).
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
+import { toast } from '../../ui/confirm'
 import { formatMAD, normalizeMaPhone } from '../../lib/format'
 
 // Canal posé par défaut sur un lead créé à la main (jamais null) : une visite/
@@ -258,7 +259,7 @@ export default function LeadForm({
   const envoyerWhatsApp = async () => {
     if (!leadPhoneOk) return
     if (waSelected.size === 0) {
-      alert('Sélectionnez au moins un devis.')
+      toast.error('Sélectionnez au moins un devis.')
       return
     }
     setWaBusy(true)
@@ -273,7 +274,7 @@ export default function LeadForm({
         wa_url: res.data?.wa_url ?? '',
       })
     } catch (err) {
-      alert(err?.response?.data?.detail ?? 'Envoi WhatsApp impossible.')
+      toast.error(err?.response?.data?.detail ?? 'Envoi WhatsApp impossible.')
     } finally {
       setWaBusy(false)
     }
@@ -443,7 +444,7 @@ export default function LeadForm({
       refreshLead()
       refreshHistorique()
     } catch (err) {
-      alert(err?.response?.data?.detail ?? 'La fusion a échoué — réessayez.')
+      toast.error(err?.response?.data?.detail ?? 'La fusion a échoué — réessayez.')
     }
   }
 

@@ -11,6 +11,7 @@
 // bouton « Enregistrer » global). Texte en français ; clés techniques en anglais.
 import { useEffect, useState } from 'react'
 import { Plus, Trash2, RefreshCw, Wand2, Sparkles } from 'lucide-react'
+import { toast } from '../../ui/confirm'
 import automationApi from '../../api/automationApi'
 import { formatDateTime } from '../../lib/format'
 import {
@@ -160,7 +161,7 @@ export default function AutomatisationsSection() {
     const trigCfg = safeParse(draft.trigger_config)
     const actCfg = safeParse(draft.action_config)
     if (trigCfg === null || actCfg === null) {
-      alert('Configuration JSON invalide (déclencheur ou action).')
+      toast.error('Configuration JSON invalide (déclencheur ou action).')
       return
     }
     try {
@@ -181,7 +182,7 @@ export default function AutomatisationsSection() {
         requires_approval: false, approval_threshold: '',
       })
       loadRules()
-    } catch (e) { alert(e?.response?.data?.detail ?? 'Ajout impossible.') }
+    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Ajout impossible.') }
   }
 
   const toggle = async (r) => {
@@ -190,7 +191,7 @@ export default function AutomatisationsSection() {
   const delRule = async (r) => {
     if (!window.confirm(`Supprimer la règle « ${r.nom} » ?`)) return
     try { await automationApi.deleteRule(r.id); loadRules() }
-    catch (e) { alert(e?.response?.data?.detail ?? 'Suppression impossible.') }
+    catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible.') }
   }
 
   const decide = async (a, ok) => {
@@ -198,7 +199,7 @@ export default function AutomatisationsSection() {
       if (ok) await automationApi.approve(a.id)
       else await automationApi.reject(a.id)
       loadApprovals(); loadRuns()
-    } catch (e) { alert(e?.response?.data?.detail ?? 'Décision impossible.') }
+    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Décision impossible.') }
   }
 
   if (loading) return (

@@ -15,6 +15,7 @@ import { RotateCcw, Save, CheckCircle2, Search, X } from 'lucide-react'
 import parametresApi from '../../api/parametresApi'
 import { CATALOGS, LOCALES, useI18n } from '../../i18n'
 import { Card, CardContent, Input, IconButton, Button, Spinner, Badge } from '../../ui'
+import { toast } from '../../ui/confirm'
 
 // Libellés des colonnes de langue (ordre d'affichage = ordre du cadre N93).
 const LOCALE_LABELS = { fr: 'Français', en: 'English', ar: 'العربية' }
@@ -115,7 +116,7 @@ export default function TraductionsSection() {
       setSaved(true)
       setTimeout(() => setSaved(false), 2500)
     } catch (e) {
-      alert(e?.response?.data?.detail ?? 'Enregistrement impossible.')
+      toast.error(e?.response?.data?.detail ?? 'Enregistrement impossible.')
     } finally {
       setSaving(false)
     }

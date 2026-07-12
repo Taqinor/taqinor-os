@@ -7,6 +7,7 @@
 // dupliquer l'éditeur complet) — un repère le rappelle.
 import { useEffect, useState } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
+import { toast } from '../../ui/confirm'
 import customFieldsApi from '../../api/customFieldsApi'
 import {
   Card, CardContent, Input, Button, IconButton, Badge, Switch, Checkbox,
@@ -70,7 +71,7 @@ export default function ClientsSection() {
       })
       setDraft(blankDraft())
       load()
-    } catch (e) { alert(cfErr(e, 'Ajout impossible.')) }
+    } catch (e) { toast.error(cfErr(e, 'Ajout impossible.')) }
     finally { setBusy(false) }
   }
 
@@ -78,13 +79,13 @@ export default function ClientsSection() {
     try {
       await customFieldsApi.saveDef(d.id, { actif: !d.actif })
       load()
-    } catch (e) { alert(cfErr(e, 'Modification impossible.')) }
+    } catch (e) { toast.error(cfErr(e, 'Modification impossible.')) }
   }
 
   const delCf = async (d) => {
     if (!window.confirm(`Supprimer le champ « ${d.libelle} » ?`)) return
     try { await customFieldsApi.deleteDef(d.id); load() }
-    catch (e) { alert(cfErr(e, 'Suppression impossible.')) }
+    catch (e) { toast.error(cfErr(e, 'Suppression impossible.')) }
   }
 
   return (
