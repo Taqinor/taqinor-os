@@ -148,6 +148,11 @@ jobs:
       # un nouveau check requis (protection de branche inchangée).
       - name: Platform-kernel guards (check_platform — ARC8/26/11/6)
         run: python scripts/check_platform.py
+      # YDATA22 — mono-devise MAD invariant sweep. Advisory only (per the plan
+      # task: "v1 ... pas de blocage") — prints the currency audit for
+      # visibility, never fails the build.
+      - name: Currency mono-devise sweep (check_money_fields — YDATA22, advisory)
+        run: python scripts/check_money_fields.py
 
   # WOW6 — the fast backend suite is sharded 4× across free public-repo runners
   # (matrix legs run concurrently, each on its own 4-vCPU runner + Postgres). The
