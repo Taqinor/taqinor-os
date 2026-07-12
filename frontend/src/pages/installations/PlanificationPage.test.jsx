@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 
@@ -155,7 +156,7 @@ describe('VX251 · onglet dispatch (glisser-déposer)', () => {
       </Provider>,
     )
     // Bascule sur l'onglet « Calendrier techniciens ».
-    fireEvent.click(screen.getByText('Calendrier techniciens'))
+    await userEvent.click(screen.getByText('Calendrier techniciens'))
     await waitFor(() => expect(api.getCalendrierInterventions).toHaveBeenCalled())
     await waitFor(() =>
       expect(screen.getByText(/Glissez une intervention vers un autre technicien/)).toBeInTheDocument())
