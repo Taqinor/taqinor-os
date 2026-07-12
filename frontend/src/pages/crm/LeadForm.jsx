@@ -945,14 +945,17 @@ export default function LeadForm({
               )}
               <div className="form-row">
                 <div className="form-group fg-grow">
-                  <label className="form-label" htmlFor="lf-nom">Nom <span className="req">*</span></label>
-                  {/* VX89 — le modal n°1 de l'ERP (20-40 ouvertures/jour/commercial)
-                      focusait jusqu'ici son champ requis nulle part : autoFocus
-                      posé explicitement (indépendant du focus-management par
-                      défaut de Radix Dialog/Sheet). */}
-                  <input id="lf-nom" autoFocus className={`form-control${errors.nom ? ' is-invalid' : ''}`}
-                         value={fields.nom} onChange={e => set('nom', e.target.value)} />
-                  {errors.nom && <div className="form-feedback">{errors.nom}</div>}
+                  {/* VX193 — label/champ associés via FormField (htmlFor déjà
+                      correct depuis VX143, mais aria-invalid/aria-describedby/
+                      role="alert" manquaient sur ce champ resté en balisage
+                      brut) ; VX89 — le modal n°1 de l'ERP (20-40 ouvertures/
+                      jour/commercial) focusait jusqu'ici son champ requis
+                      nulle part : autoFocus posé explicitement (indépendant du
+                      focus-management par défaut de Radix Dialog/Sheet). */}
+                  <FormField label="Nom" required htmlFor="lf-nom" error={errors.nom} errorKind="required">
+                    <Input id="lf-nom" autoFocus invalid={!!errors.nom}
+                           value={fields.nom} onChange={e => set('nom', e.target.value)} />
+                  </FormField>
                 </div>
                 <FormField label="Prénom" htmlFor="lf-prenom">
                   <Input id="lf-prenom" value={fields.prenom ?? ''} onChange={e => set('prenom', e.target.value)} />
@@ -969,12 +972,11 @@ export default function LeadForm({
                   <Input id="lf-ville" value={fields.ville ?? ''} onChange={e => set('ville', e.target.value)} />
                 </FormField>
                 <div className="form-group">
-                  <label className="form-label">Email</label>
-                  <input type="email"
-                         className={`form-control${errors.email ? ' is-invalid' : ''}`}
-                         value={fields.email ?? ''}
-                         onChange={e => set('email', e.target.value)} />
-                  {errors.email && <div className="form-feedback">{errors.email}</div>}
+                  <FormField label="Email" htmlFor="lf-email" error={errors.email}>
+                    <Input id="lf-email" type="email" invalid={!!errors.email}
+                           value={fields.email ?? ''}
+                           onChange={e => set('email', e.target.value)} />
+                  </FormField>
                 </div>
               </div>
               <div className="form-row">
@@ -1097,19 +1099,16 @@ export default function LeadForm({
                     quelle que soit l'étape. */}
                 {fields.perdu && (
                   <div className="form-group fg-grow">
-                    <label className="form-label">
-                      Motif de perte <span className="req">*</span>
-                    </label>
-                    <input className={`form-control${errors.motif_perte ? ' is-invalid' : ''}`}
-                           value={fields.motif_perte ?? ''}
-                           onChange={e => set('motif_perte', e.target.value)}
-                           list="ld-motifs" />
-                    <datalist id="ld-motifs">
-                      {motifOptions.map(m => <option key={m.id} value={m.nom} />)}
-                    </datalist>
-                    {errors.motif_perte && (
-                      <div className="form-feedback">{errors.motif_perte}</div>
-                    )}
+                    <FormField label="Motif de perte" required htmlFor="lf-motif-perte"
+                               error={errors.motif_perte} errorKind="required">
+                      <Input id="lf-motif-perte" invalid={!!errors.motif_perte}
+                             value={fields.motif_perte ?? ''}
+                             onChange={e => set('motif_perte', e.target.value)}
+                             list="ld-motifs" />
+                      <datalist id="ld-motifs">
+                        {motifOptions.map(m => <option key={m.id} value={m.nom} />)}
+                      </datalist>
+                    </FormField>
                   </div>
                 )}
               </div>
