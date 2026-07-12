@@ -1,0 +1,6 @@
+# YDATA4 — models exempt from the company-scope guard (scripts/check_company_fk.py).
+# One 'app.Model' per line. Generated from the current repo state: after the
+# TextChoices/Exception classes living in models*.py were filtered out (they
+# are not Django models at all), exactly one genuine model remains global by
+# design — reviewed, not a gap to fix here.
+notifications.VapidKeyPair
