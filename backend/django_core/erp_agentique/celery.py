@@ -101,6 +101,18 @@ app.conf.beat_schedule = {
         'task': 'notifications.reveiller_snoozes',
         'schedule': crontab(minute='*/30'),
     },
+    # NTPLT10 — filet beat de l'outbox : livre les événements pending/failed
+    # échus (en plus de l'enqueue on_commit immédiat) toutes les 5 minutes.
+    'core-dispatch-outbox': {
+        'task': 'core.dispatch_outbox',
+        'schedule': crontab(minute='*/5'),
+    },
+    # NTPLT36 — crée les partitions mensuelles à l'avance (M + M+1 + M+2,
+    # idempotent) ; une passe quotidienne suffit largement.
+    'core-ensure-partitions': {
+        'task': 'core.ensure_partitions',
+        'schedule': crontab(hour=3, minute=0),
+    },
     'automation-time-triggers-daily': {
         'task': 'automation.time_triggers_daily',
         'schedule': crontab(hour=8, minute=5),

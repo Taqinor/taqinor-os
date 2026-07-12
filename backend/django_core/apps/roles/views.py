@@ -7,7 +7,17 @@ from django.utils import timezone
 from rest_framework import viewsets
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.decorators import action
+from rest_framework.renderers import JSONRenderer
 from rest_framework.response import Response
+
+
+class _CsvOrJSONRenderer(JSONRenderer):
+    """XPLT12 — DRF négocie `?format=csv` AVANT le corps de la vue
+    (`DefaultContentNegotiation`) : sans renderer déclaré pour `csv`, l'appel
+    échoue en 404 en amont. On déclare le format sur l'action ; la vue renvoie
+    ensuite un `HttpResponse` CSV manuel (JSON reste le défaut sans `?format`)."""
+    format = 'csv'
+    media_type = 'text/csv'
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsAdminOrResponsableTier, IsAdminRole
 from apps.parametres.models import SettingsAuditLog
@@ -244,7 +254,8 @@ class RoleViewSet(TenantMixin, viewsets.ModelViewSet):
             })
         return dormant_days, rows
 
-    @action(detail=False, methods=['get'], url_path='revue-acces')
+    @action(detail=False, methods=['get'], url_path='revue-acces',
+            renderer_classes=[_CsvOrJSONRenderer])
     def revue_acces(self, request):
         """XPLT12 — Rapport de revue d'accès & comptes dormants (admin).
 
