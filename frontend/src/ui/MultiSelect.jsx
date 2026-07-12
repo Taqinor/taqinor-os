@@ -4,10 +4,16 @@ import { AlertCircle, Check, ChevronsUpDown, X } from 'lucide-react'
 import { cn } from '../lib/cn'
 import { Spinner } from './Spinner'
 import { pressItem } from './interaction'
+import { tagBase, tagRemoveBase } from './Tag'
 
 /* G23 — MultiSelect (sélection multiple, recherche async ou locale). `value`
    est un tableau de valeurs. Les choix retenus s'affichent en jetons effaçables.
-   États : défaut/hover/focus/désactivé/chargement/erreur/vide. Clavier + ARIA. */
+   États : défaut/hover/focus/désactivé/chargement/erreur/vide. Clavier + ARIA.
+   VX129 — les jetons consomment `tagBase`/`tagRemoveBase` (Tag.jsx) : même
+   rayon/hauteur que le reste de l'app, plus une 4ᵉ grammaire de chip
+   divergente. Le bouton retirer reste un `<span role="button">` (pas un
+   <Tag> tel quel) : il vit DANS le trigger `<button role="combobox">`, un
+   vrai <button> imbriqué y serait invalide en HTML. */
 
 const triggerBase =
   'flex w-full items-center justify-between gap-2 rounded-md border border-input bg-card text-foreground shadow-ui-xs ' +
@@ -147,17 +153,14 @@ export const MultiSelect = forwardRef(function MultiSelect(
           <span className="flex flex-1 flex-wrap items-center gap-1">
             {selectedOpts.length === 0 && <span className="text-muted-foreground">{placeholder}</span>}
             {shown.map((opt) => (
-              <span
-                key={String(opt.value)}
-                className="inline-flex items-center gap-1 rounded bg-secondary px-1.5 py-0.5 text-xs text-secondary-foreground"
-              >
+              <span key={String(opt.value)} className={tagBase}>
                 {opt.label}
                 <span
                   role="button"
                   tabIndex={-1}
                   aria-label={`Retirer ${opt.label}`}
                   onClick={(e) => { e.stopPropagation(); removeToken(opt.value) }}
-                  className="grid size-3.5 place-items-center rounded-full hover:bg-foreground/10"
+                  className={tagRemoveBase}
                 >
                   <X className="size-3" />
                 </span>
