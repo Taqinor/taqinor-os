@@ -54,7 +54,7 @@ class Migration(migrations.Migration):
                     "company",
                     models.ForeignKey(
                         on_delete=django.db.models.deletion.CASCADE,
-                        related_name="identity_networkpolicy_set",
+                        related_name="%(app_label)s_%(class)s_set",
                         to="authentication.company",
                         verbose_name="Société",
                     ),
@@ -100,7 +100,7 @@ class Migration(migrations.Migration):
                     "company",
                     models.ForeignKey(
                         on_delete=django.db.models.deletion.CASCADE,
-                        related_name="identity_ipallowrule_set",
+                        related_name="%(app_label)s_%(class)s_set",
                         to="authentication.company",
                         verbose_name="Société",
                     ),
