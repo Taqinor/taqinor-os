@@ -397,6 +397,12 @@ REST_FRAMEWORK = {
     # décimales). Posé explicitement pour que ce comportement soit un choix
     # documenté, testé, jamais un défaut implicite qui pourrait dériver.
     'COERCE_DECIMAL_TO_STRING': True,
+    # YAPIC3 — enveloppe d'erreur unifiée : {"error": {"code","message",
+    # "fields","request_id"}} sur TOUTE réponse d'erreur DRF (y compris les
+    # exceptions non reconnues, repliées en 500 server_error). Ne change
+    # jamais le statut HTTP ni la sémantique tenant — reformate seulement le
+    # corps de réponse.
+    'EXCEPTION_HANDLER': 'core.exceptions.taqinor_exception_handler',
 }
 
 # Simple JWT Configuration
