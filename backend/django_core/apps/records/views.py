@@ -127,7 +127,11 @@ class ActivityViewSet(viewsets.ModelViewSet):
     serializer_class = ActivitySerializer
 
     def get_permissions(self):
-        if self.action in ('list', 'retrieve', 'mine'):
+        # VX214 — `ma_file` est la file de travail PER-USER (scopée
+        # `request.user` côté serveur, comme `mine`) : tout rôle authentifié
+        # voit la SIENNE, y compris un technicien `normal` (chantiers/
+        # interventions affectés). Sans ça la file d'exécution VX214 est 403.
+        if self.action in ('list', 'retrieve', 'mine', 'ma_file'):
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]
 
