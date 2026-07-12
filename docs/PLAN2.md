@@ -2605,7 +2605,7 @@ droite)**
   net-neutre de permissions journalise les 2 codes exacts ; le sélecteur annote les rôles plus
   larges ; tests. (T2 — M, sonnet) (@lane: backend/auth)
 
-- [ ] VX235 — **[BACKEND] Gardes-fous du pouvoir admin : motif par item en bulk-refus, cycle de (@lane: backend/auth)
+- [x] VX235 **(already present)** — **[BACKEND] Gardes-fous du pouvoir admin : motif par item en bulk-refus, cycle de (@lane: backend/auth)
   hiérarchie, import-écraser confirmé, dernier admin protégé en masse. Noter AUTH au DONE LOG.**
   Quatre trous d'intégrité prouvés : (a) `ApprobationsPage.deciderEnMasse` (:106-131) applique UN
   `window.prompt` de motif à N demandes HÉTÉROGÈNES (VX19 remplacera le prompt mais pas la
