@@ -861,10 +861,16 @@ button:active, [role="button"]:active, a.btn:active,
   margin-bottom: 1.5rem;
 }
 
+/* VX122 — la voix typographique de marque enfin branchée sur le titre de
+   page legacy le plus répété (66 écrans) : échelle F121 h1 (tokens.css) +
+   police d'affichage (déjà chargée, jusqu'ici system-ui par défaut, VX3). */
 .page-header h2 {
-  font-size: 1.25rem;
+  font-family: var(--font-display);
+  font-size: var(--text-h1);
+  line-height: var(--text-h1-lh);
+  letter-spacing: var(--text-h1-ls);
   font-weight: 700;
-  color: #0f172a;
+  color: var(--foreground);
   margin: 0;
 }
 
@@ -906,23 +912,23 @@ button:active, [role="button"]:active, a.btn:active,
 }
 
 .page-loading {
-  color: #64748b;
+  color: var(--muted-foreground);
   font-size: 0.9rem;
   padding: 2rem 0;
 }
 
 .page-error {
-  color: #b91c1c;
+  color: var(--destructive);
   font-size: 0.9rem;
-  background: #fee2e2;
-  border: 1px solid #fca5a5;
+  background: color-mix(in oklch, var(--destructive) 12%, transparent);
+  border: 1px solid color-mix(in oklch, var(--destructive) 40%, transparent);
   border-radius: var(--radius-md);
   padding: 0.75rem 1rem;
 }
 
 .empty-state {
   text-align: center;
-  color: #94a3b8;
+  color: var(--muted-foreground);
   font-size: 0.9rem;
   padding: 3rem 0;
 }
@@ -1201,10 +1207,10 @@ button:active, [role="button"]:active, a.btn:active,
 
 /* Barre de défilement visible (le contenu long doit se voir) */
 .modal-body::-webkit-scrollbar { width: 10px; }
-.modal-body::-webkit-scrollbar-track { background: #f1f5f9; }
-.modal-body::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: var(--radius-md); }
+.modal-body::-webkit-scrollbar-track { background: var(--muted); }
+.modal-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: var(--radius-md); }
 @media (hover: hover) {
-  .modal-body::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+  .modal-body::-webkit-scrollbar-thumb:hover { background: var(--muted-foreground); }
 }
 
 /* ── Navigateur de sections (formulaire lead) ─────────── */
@@ -1220,8 +1226,8 @@ button:active, [role="button"]:active, a.btn:active,
   flex-direction: column;
   gap: 2px;
   padding: 14px 8px;
-  background: var(--muted, #f8fafc);
-  border-right: 1px solid var(--border, #e2e8f0);
+  background: var(--muted);
+  border-right: 1px solid var(--border);
   overflow-y: auto;
 }
 /* VX143 — rail tokenisé (thème clair/sombre) : barre d'accent à gauche +
@@ -1237,7 +1243,7 @@ button:active, [role="button"]:active, a.btn:active,
   padding: 8px 10px;
   border-radius: var(--radius-md);
   font-size: 0.8rem;
-  color: var(--muted-foreground, #475569);
+  color: var(--muted-foreground);
   cursor: pointer;
   white-space: nowrap;
 }
@@ -1246,19 +1252,19 @@ button:active, [role="button"]:active, a.btn:active,
   margin-left: auto;
   font-size: 0.68rem;
   font-weight: 700;
-  color: var(--primary, #2563eb);
-  background: color-mix(in srgb, var(--primary, #2563eb) 12%, transparent);
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
   border-radius: 999px;
   padding: 1px 6px;
   line-height: 1.4;
 }
 @media (hover: hover) {
-  .lead-nav button:hover { background: var(--accent, #eef2f7); }
+  .lead-nav button:hover { background: var(--accent); }
 }
 .lead-nav button.active {
-  border-left-color: var(--primary, #2563eb);
-  background: color-mix(in srgb, var(--primary, #2563eb) 10%, transparent);
-  color: var(--primary, #1d4ed8);
+  border-left-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  color: var(--primary);
   font-weight: 700;
 }
 .lead-nav button.active .lead-nav-icon { opacity: 1; }
@@ -1271,7 +1277,7 @@ button:active, [role="button"]:active, a.btn:active,
     overflow-y: hidden;
     padding: 8px;
     border-right: none;
-    border-bottom: 1px solid var(--border, #e2e8f0);
+    border-bottom: 1px solid var(--border);
   }
 }
 
@@ -1332,7 +1338,7 @@ button:active, [role="button"]:active, a.btn:active,
   justify-content: flex-end;
   gap: 8px;
   padding: 14px 24px;
-  border-top: 1px solid #e2e8f0;
+  border-top: 1px solid var(--border);
   flex-shrink: 0;
 }
 
@@ -1411,12 +1417,12 @@ textarea.form-control {
 }
 
 .form-error-box {
-  background: #fee2e2;
-  border: 1px solid #fca5a5;
+  background: color-mix(in oklch, var(--destructive) 12%, transparent);
+  border: 1px solid color-mix(in oklch, var(--destructive) 40%, transparent);
   border-radius: var(--radius-md);
   padding: 10px 14px;
   font-size: 0.8rem;
-  color: #b91c1c;
+  color: var(--destructive);
 }
 
 /* ── Form section (VX143 — traitement de carte) ──────────
@@ -1852,7 +1858,9 @@ textarea.form-control {
   background: rgba(255, 255, 255, 0.12);
   border-color: var(--cat-gold);
   outline: none;
-  box-shadow: none;
+  /* VX123 — halo de focus réel (un simple changement de couleur de bordure de
+     1px sur fond sombre était insuffisant : plancher d'accessibilité). */
+  box-shadow: var(--focus-ring);
 }
 .cat-rail-item {
   display: flex;
@@ -2670,347 +2678,6 @@ textarea.form-control {
 .mb-8  { margin-bottom: 8px; }
 .mt-16 { margin-top: 16px; }
 
-/* ── Agent IA Chat ────────────────────────────────────── */
-.agent-page {
-  display: flex;
-  flex-direction: column;
-  height: calc(100vh - 56px);
-  /* N64 — dvh : en paysage mobile (barres d'URL dynamiques) la hauteur réelle
-     du viewport est respectée, pas de zone coupée. Repli 100vh ci-dessus pour
-     les navigateurs sans dvh. */
-  height: calc(100dvh - 56px);
-  max-width: 860px;
-  margin: 0 auto;
-  padding: 0;
-}
-
-/* VX4 — chat agent IA tokenisé (dark mode réel : surfaces, filets, bulles et
-   champ de saisie suivent le thème ; avatars en dégradé de marque). */
-.agent-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 1.25rem 0 1rem;
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-}
-
-.agent-header-left {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-.agent-avatar-lg {
-  width: 42px;
-  height: 42px;
-  border-radius: 12px;
-  background: linear-gradient(135deg, var(--primary), var(--info));
-  color: var(--primary-foreground);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.agent-title {
-  font-size: 1.05rem;
-  font-weight: 700;
-  color: var(--foreground);
-  margin: 0 0 2px;
-}
-
-.agent-subtitle {
-  font-size: 0.75rem;
-  color: var(--muted-foreground);
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.agent-messages {
-  flex: 1;
-  overflow-y: auto;
-  padding: 1.5rem 0;
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-/* ── Empty state ── */
-.agent-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  padding: 2rem 1rem;
-  margin: auto 0;
-}
-
-.agent-empty-icon {
-  width: 72px;
-  height: 72px;
-  border-radius: 20px;
-  background: var(--muted);
-  color: var(--muted-foreground);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 1rem;
-}
-
-.agent-empty-title {
-  font-size: 1.05rem;
-  font-weight: 600;
-  color: var(--foreground);
-  margin: 0 0 0.4rem;
-}
-
-.agent-empty-desc {
-  font-size: 0.875rem;
-  color: var(--muted-foreground);
-  margin: 0 0 1.5rem;
-  max-width: 360px;
-}
-
-/* ── Suggestion chips ── */
-.agent-suggestions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  justify-content: center;
-}
-
-.agent-suggestions-inline {
-  justify-content: flex-start;
-  margin-bottom: 0.6rem;
-}
-
-.agent-suggestion-chip {
-  background: var(--muted);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 0.4rem 0.85rem;
-  font-size: 0.8rem;
-  color: var(--muted-foreground);
-  cursor: pointer;
-  font-family: inherit;
-  transition: background var(--motion-base), border-color var(--motion-base), color var(--motion-base);
-  text-align: left;
-}
-
-@media (hover: hover) {
-  .agent-suggestion-chip:hover {
-    background: color-mix(in oklch, var(--info) 12%, transparent);
-    border-color: var(--info);
-    color: var(--info);
-  }
-}
-
-.agent-suggestion-chip-sm {
-  padding: 0.3rem 0.7rem;
-  font-size: 0.75rem;
-}
-
-/* ── Messages ── */
-.agent-msg {
-  display: flex;
-  gap: 0.65rem;
-  align-items: flex-start;
-  animation: msgIn var(--motion-base) var(--ease-out);
-}
-
-@keyframes msgIn {
-  from { opacity: 0; transform: translateY(6px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
-.agent-msg-user {
-  flex-direction: row-reverse;
-}
-
-.agent-msg-avatar {
-  width: 30px;
-  height: 30px;
-  border-radius: var(--radius-md);
-  background: linear-gradient(135deg, var(--primary), var(--info));
-  color: var(--primary-foreground);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  margin-top: 2px;
-}
-
-.agent-msg-body {
-  max-width: 75%;
-}
-
-.agent-msg-user .agent-msg-body {
-  align-items: flex-end;
-}
-
-.agent-msg-text {
-  margin: 0;
-  padding: 0.65rem 0.9rem;
-  border-radius: 12px;
-  font-size: 0.9rem;
-  line-height: 1.55;
-  white-space: pre-wrap;
-}
-
-.agent-msg-agent .agent-msg-text {
-  background: var(--card);
-  border: 1px solid var(--border);
-  color: var(--foreground);
-  border-radius: 4px 12px 12px 12px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
-}
-
-.agent-msg-user .agent-msg-text {
-  background: var(--primary);
-  color: var(--primary-foreground);
-  border-radius: 12px 4px 12px 12px;
-}
-
-/* ── SQL block ── */
-.agent-sql {
-  margin-top: 0.5rem;
-}
-
-.agent-sql summary {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 0.75rem;
-  color: var(--muted-foreground);
-  cursor: pointer;
-  user-select: none;
-  padding: 0.3rem 0;
-  list-style: none;
-}
-
-.agent-sql summary::-webkit-details-marker { display: none; }
-@media (hover: hover) {
-  .agent-sql summary:hover { color: var(--primary); }
-}
-
-/* Bloc code SQL : reste un panneau sombre encre (lisible dans les deux thèmes),
-   mais via le token nuit de marque plutôt qu'un hex figé. */
-.agent-sql-code {
-  background: var(--color-nuit);
-  color: var(--color-lune);
-  border-radius: var(--radius-md);
-  padding: 0.75rem 1rem;
-  font-size: 0.78rem;
-  overflow-x: auto;
-  margin: 0.35rem 0 0;
-  font-family: 'Courier New', monospace;
-  line-height: 1.5;
-}
-
-/* ── Typing indicator ── */
-.agent-typing {
-  display: flex;
-  gap: 4px;
-  padding: 0.65rem 0.9rem;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 4px 12px 12px 12px;
-  width: fit-content;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
-}
-
-.agent-typing span {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--muted-foreground);
-  animation: typingDot 1.2s ease-in-out infinite;
-}
-
-.agent-typing span:nth-child(2) { animation-delay: 0.2s; }
-.agent-typing span:nth-child(3) { animation-delay: 0.4s; }
-
-@keyframes typingDot {
-  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
-  30%           { transform: translateY(-5px); opacity: 1; }
-}
-
-/* ── Input area ── */
-.agent-input-area {
-  padding: 0.75rem 0 1rem;
-  border-top: 1px solid var(--border);
-  flex-shrink: 0;
-}
-
-.agent-input-row {
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
-}
-
-.agent-input {
-  flex: 1;
-  height: 44px;
-  padding: 0 1rem;
-  border: 1.5px solid var(--input);
-  border-radius: 10px;
-  font-size: 0.9rem;
-  font-family: inherit;
-  color: var(--foreground);
-  background: var(--card);
-  outline: none;
-  transition: border-color var(--motion-base), box-shadow var(--motion-base);
-}
-
-.agent-input:focus {
-  border-color: var(--ring);
-  box-shadow: 0 0 0 3px color-mix(in oklch, var(--ring) 18%, transparent);
-}
-
-.agent-input:disabled {
-  background: var(--muted);
-  color: var(--muted-foreground);
-}
-
-.agent-send-btn {
-  width: 44px;
-  height: 44px;
-  border-radius: 10px;
-  background: var(--primary);
-  color: var(--primary-foreground);
-  border: none;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  transition: background var(--motion-base), transform var(--motion-fast), box-shadow var(--motion-base);
-}
-
-@media (hover: hover) {
-  .agent-send-btn:hover:not(:disabled) {
-    background: color-mix(in oklch, var(--primary) 88%, black);
-    box-shadow: var(--shadow-primary-hover);
-  }
-}
-
-.agent-send-btn:active:not(:disabled) { transform: translateY(1px); }
-
-.agent-send-btn:disabled {
-  background: var(--muted);
-  color: var(--muted-foreground);
-  cursor: not-allowed;
-}
-
-.agent-disclaimer {
-  font-size: 0.72rem;
-  color: var(--muted-foreground);
-  text-align: center;
-  margin: 0.5rem 0 0;
-}
-
 /* ── Générateur de devis solaire (/ventes/devis/nouveau) ───── */
 .gen-page { max-width: 1100px; }
 
@@ -3180,7 +2847,7 @@ textarea.form-control {
   font-weight: 600;
   color: var(--muted-foreground);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: var(--text-eyebrow-tracking);
 }
 
 /* VX5 — métrique du générateur : chiffre héros en data typography `.num`. */
@@ -3213,7 +2880,7 @@ textarea.form-control {
   font-weight: 700;
   color: #555;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: var(--text-eyebrow-tracking);
   margin-bottom: 0.5rem;
 }
 
@@ -3238,7 +2905,7 @@ textarea.form-control {
   font-weight: 600;
   color: #64748b;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: var(--text-eyebrow-tracking);
   white-space: nowrap;
 }
 
@@ -3582,7 +3249,9 @@ textarea.form-control {
   font-size: 0.875rem;
   background: #f8fafc;
 }
-.gs-input:focus { outline: none; border-color: #94a3b8; background: #fff; }
+/* VX123 — halo de focus réel en plus du changement de bordure (plancher
+   d'accessibilité : un simple #e2e8f0 → #94a3b8 était trop faible seul). */
+.gs-input:focus { outline: none; border-color: #94a3b8; background: #fff; box-shadow: var(--focus-ring); }
 .gs-panel {
   position: absolute;
   top: calc(100% + 6px);
@@ -3602,7 +3271,7 @@ textarea.form-control {
 .gs-group-title {
   font-size: 0.7rem;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: var(--text-eyebrow-tracking);
   color: #94a3b8;
   padding: 4px 10px;
 }
@@ -5923,7 +5592,7 @@ textarea.form-control {
   padding: 0.5rem 0.625rem 0.25rem;
   font-size: 0.72rem;
   font-weight: 600;
-  letter-spacing: 0.04em;
+  letter-spacing: var(--text-eyebrow-tracking);
   text-transform: uppercase;
   color: var(--muted-foreground, #94a3b8);
 }
@@ -6249,4 +5918,14 @@ textarea.form-control {
     animation: none !important;
     opacity: 1 !important;
   }
+}
+
+/* VX130 — Le toast devient un objet de marque : la durée d'entrée/sortie de
+   sonner est câblée sur `--motion-base` (le reste des primitifs animés —
+   Button, Switch, overlays — l'utilisent déjà) au lieu d'une valeur fixe
+   totalement indépendante du système de mouvement de l'app. Sous
+   `prefers-reduced-motion`, `--motion-base` retombe à 0ms (tokens.css) : les
+   toasts héritent donc automatiquement du même confort de mouvement. */
+[data-sonner-toast] {
+  transition-duration: var(--motion-base) !important;
 }

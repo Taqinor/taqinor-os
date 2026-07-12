@@ -26,7 +26,7 @@ export const Slider = forwardRef(function Slider({ className, ...props }, ref) {
           key={i}
           className={cn(
             'block size-4 rounded-full border border-primary bg-card shadow-ui-sm',
-            'transition-[colors,transform,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+            'transition-[colors,transform,box-shadow] focus-ring',
             pressCurve,
             'disabled:pointer-events-none disabled:opacity-50',
             '[@media(hover:hover)]:active:scale-110 [@media(hover:hover)]:active:ring-4 [@media(hover:hover)]:active:ring-primary/20',

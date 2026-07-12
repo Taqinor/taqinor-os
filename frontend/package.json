@@ -15,7 +15,8 @@
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "gen-pwa-icons": "python scripts/gen_pwa_icons.py",
-    "check-bundle-budget": "node scripts/check_bundle_budget.mjs"
+    "check-bundle-budget": "node scripts/check_bundle_budget.mjs",
+    "check-hex": "node scripts/check_hex.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

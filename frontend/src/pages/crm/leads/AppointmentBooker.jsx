@@ -118,7 +118,7 @@ export default function AppointmentBooker({ leadId }) {
       {/* Liste des RDV existants */}
       {!loading && upcoming.length > 0 && (
         <div style={{ marginBottom: 8 }}>
-          <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 4 }}>
+          <div style={{ fontSize: 12, color: 'var(--muted-foreground)', marginBottom: 4 }}>
             Visites planifiées
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -126,7 +126,7 @@ export default function AppointmentBooker({ leadId }) {
               <div key={a.id} style={{
                 display: 'flex', alignItems: 'center', gap: 8,
                 padding: '6px 10px',
-                background: 'var(--color-surface-2, #f8f9fa)',
+                background: 'var(--muted)',
                 borderRadius: 6, fontSize: 13,
               }}>
                 <span style={{ fontWeight: 500 }}>
@@ -139,16 +139,16 @@ export default function AppointmentBooker({ leadId }) {
                 <span style={{
                   fontSize: 11, padding: '2px 6px', borderRadius: 10,
                   background: a.statut === 'confirme'
-                    ? 'var(--color-success-light, #d1fae5)'
-                    : 'var(--color-warning-light, #fef9c3)',
+                    ? 'color-mix(in oklch, var(--success) 18%, transparent)'
+                    : 'color-mix(in oklch, var(--warning) 18%, transparent)',
                   color: a.statut === 'confirme'
-                    ? 'var(--color-success, #059669)'
-                    : 'var(--color-warning-dark, #92400e)',
+                    ? 'var(--success)'
+                    : 'var(--warning)',
                 }}>
                   {STATUS_LABELS[a.statut] ?? a.statut}
                 </span>
                 {a.notes && (
-                  <span style={{ color: 'var(--color-text-muted)', fontSize: 12, flex: 1 }}>
+                  <span style={{ color: 'var(--muted-foreground)', fontSize: 12, flex: 1 }}>
                     — {a.notes}
                   </span>
                 )}
@@ -183,7 +183,7 @@ export default function AppointmentBooker({ leadId }) {
                   type="button"
                   onClick={() => handleCancel(a.id)}
                   style={{
-                    fontSize: 11, color: 'var(--color-danger, #dc2626)',
+                    fontSize: 11, color: 'var(--destructive)',
                     background: 'none', border: 'none', cursor: 'pointer',
                     padding: '0 4px',
                   }}
@@ -250,12 +250,12 @@ export default function AppointmentBooker({ leadId }) {
       ) : (
         <form onSubmit={handleBook} style={{
           display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'flex-end',
-          padding: '10px', background: 'var(--color-surface-2, #f8f9fa)',
-          borderRadius: 8, border: '1px solid var(--color-border, #e5e7eb)',
+          padding: '10px', background: 'var(--muted)',
+          borderRadius: 8, border: '1px solid var(--border)',
         }}>
           <div className="form-group" style={{ flex: '1 1 180px', margin: 0 }}>
             <label className="form-label" style={{ fontSize: 12 }}>
-              Date et heure <span style={{ color: 'var(--color-danger)' }}>*</span>
+              Date et heure <span style={{ color: 'var(--destructive)' }}>*</span>
             </label>
             <input
               type="datetime-local"
@@ -278,7 +278,7 @@ export default function AppointmentBooker({ leadId }) {
             />
           </div>
           {error && (
-            <div style={{ width: '100%', color: 'var(--color-danger)', fontSize: 12 }}>
+            <div style={{ width: '100%', color: 'var(--destructive)', fontSize: 12 }}>
               {error}
             </div>
           )}

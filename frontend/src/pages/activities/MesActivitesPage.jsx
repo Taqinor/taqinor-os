@@ -20,6 +20,8 @@ import {
   EmptyState, Spinner, Input,
 } from '../../ui'
 import { Table } from '../reporting/Table'
+// VX132 — anti-scintillement propagé (voir InstallationsPage.jsx).
+import { useDelayedLoading } from '../../hooks/useDelayedLoading'
 
 // QX25 — « Mes activités » est la liste d'appels du jour : chaque ligne doit
 // être prête à appeler/WhatsApper en un tap, sans ouvrir la fiche. Le
@@ -116,6 +118,8 @@ export default function MesActivitesPage() {
   const [data, setData] = useState({ en_retard: [], aujourdhui: [], a_venir: [] })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
+  // VX132 — rien tant que l'attente reste imperceptible (< 300 ms).
+  const { showSpinner } = useDelayedLoading(loading)
   // Erreur d'ACTION (marquer fait / reporter) : distincte de l'échec de
   // chargement (qui, lui, remplace la liste par un état d'erreur).
   const [actionError, setActionError] = useState(null)
@@ -496,9 +500,11 @@ export default function MesActivitesPage() {
       </p>
 
       {loading ? (
-        <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
-          <Spinner /> Chargement…
-        </div>
+        showSpinner && (
+          <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
+            <Spinner /> Chargement…
+          </div>
+        )
       ) : error ? (
         <EmptyState
           icon={AlarmClock}

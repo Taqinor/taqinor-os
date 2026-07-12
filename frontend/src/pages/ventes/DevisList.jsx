@@ -33,6 +33,7 @@ import { openPdfBlob, openPdfInGesture } from '../../utils/pdfBlob'
 import { proposalParams, pdfBlob } from '../../features/ventes/previewPdf'
 import { useSavedViews } from '../../hooks/useSavedViews'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
+import { useRotatingLabel } from '../../hooks/useRotatingLabel'
 import { useHasPermission, useCanValiderVente } from '../../hooks/useHasPermission'
 import useDocumentTitle from '../../hooks/useDocumentTitle'
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
@@ -73,6 +74,18 @@ function DevisTableSkeleton() {
 }
 
 const DL_SAVED_VIEWS_KEY = 'taqinor.ventes.devis.savedViews'
+
+// VX132 — chargement long CONSCIENT : la génération du devis PDF premium est
+// la latence connue la plus longue de l'app (schémas, produits, chiffrage) ;
+// un spinner MUET pendant tout ce temps ne dit rien d'utile. Libellés
+// honnêtes qui tournent pendant l'attente — ne touche QUE ce bouton côté
+// client, jamais le moteur `apps/ventes/quote_engine/` (règle #4).
+const PDF_GENERATION_LABELS = [
+  'Génération du PDF…',
+  'Mise en page des schémas…',
+  'Calcul du système…',
+  'Finalisation du document…',
+]
 
 // VX216(a) — un chantier « en cours » a sa nomenclature (bom) GELÉE : éditer
 // le devis lié APRÈS ce point crée un écart devis↔chantier invisible côté
@@ -320,6 +333,9 @@ function DevisRow({ d, ctx }) {
   // son statut stocké ni l'étape du lead.
   const effStatut = d.is_expired ? 'expire' : d.statut
   const isGenerating = pdfGenerating[d.id]
+  // VX132 — chargement long conscient : libellés honnêtes qui tournent
+  // pendant la génération du PDF premium (jamais de fausse barre de progression).
+  const pdfLabel = useRotatingLabel(PDF_GENERATION_LABELS, { active: !!isGenerating })
   const isDownloading = pdfDownloading[d.id]
   // QX21 — passé 30 s, on n'abandonne plus le suivi : ce badge reste visible
   // tant que le polling se poursuit (aucun second job n'est jamais relancé
@@ -578,7 +594,7 @@ function DevisRow({ d, ctx }) {
             loading={isGenerating}
             title="Générer le PDF (choix du format)"
           >
-            <FileText /> PDF
+            <FileText /> {isGenerating ? pdfLabel : 'PDF'}
           </Button>
           {/* QX21 — passé 30 s, on n'abandonne plus le suivi : ce badge reste
               visible tant que le polling se poursuit (aucun second job

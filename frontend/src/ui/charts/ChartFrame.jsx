@@ -72,7 +72,7 @@ export function ChartFrame({
           <div className="mt-2 flex justify-end">
             <button
               type="button"
-              className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground focus-ring"
               aria-expanded={open}
               aria-controls={`chart-table-${tableId}`}
               onClick={() => setOpen((v) => !v)}

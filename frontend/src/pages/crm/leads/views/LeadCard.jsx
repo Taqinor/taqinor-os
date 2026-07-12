@@ -15,6 +15,8 @@ import {
 } from '../../../../features/crm/stages'
 import AssigneePicker from '../../../../components/AssigneePicker'
 import { telHref, waHref } from '../../../../lib/contactLinks'
+// VX122 — finesse française : espace fine insécable devant « : » du tooltip.
+import { nbsp } from '../../../../lib/format'
 // VX24 — score de qualité désormais aussi visible sur la carte (ex Liste seule).
 // VX87 — nudge post-appel « Appel terminé — noter le résultat ? ».
 import ScoreBadge from '../../../../features/crm/ScoreBadge'
@@ -467,7 +469,7 @@ export default function LeadCard({
         {canal && <span className="kb-canal">{canal}</span>}
         <span
           className="kb-stars"
-          title={`Priorité : ${PRIORITE_LABELS[lead.priorite] ?? PRIORITE_LABELS.normale}`}
+          title={nbsp(`Priorité : ${PRIORITE_LABELS[lead.priorite] ?? PRIORITE_LABELS.normale}`)}
         >
           {[0, 1].map((i) => (
             <span

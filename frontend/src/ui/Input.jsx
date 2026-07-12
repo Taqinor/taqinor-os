@@ -6,12 +6,18 @@ import { cn } from '../lib/cn'
    (icône, unité). Hauteur pilotée par la densité (F20).
    VX124 — `caret-color: var(--primary)` : le curseur de saisie prend la
    teinte de marque au lieu du noir système, sur le champ le plus regardé
-   de l'ERP (générateur de devis). */
+   de l'ERP (générateur de devis).
+   VX127 — `readOnly` ≠ `disabled` : jusqu'ici un champ en lecture seule
+   n'existait pas — soit éditable, soit `disabled` (opacité 60 %, texte NON
+   sélectionnable/copiable). `read-only:` (variant natif Tailwind, HTML
+   `readonly`) donne un fond distinct + curseur par défaut, texte pleine
+   opacité et TOUJOURS sélectionnable/copiable (contrairement à disabled). */
 const baseField =
   'flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs ' +
   'transition-colors placeholder:text-muted-foreground caret-primary ' +
-  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-ring ' +
+  'focus-ring focus-visible:border-ring ' +
   'disabled:cursor-not-allowed disabled:opacity-60 ' +
+  'read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 ' +
   'aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 ' +
   'text-base sm:text-sm'
 

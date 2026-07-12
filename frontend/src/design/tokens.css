@@ -183,6 +183,13 @@
   --text-small: 0.875rem;      --text-small-lh: 1.45;    --text-small-ls: 0.005em;
   --text-caption: 0.75rem;     --text-caption-lh: 1.4;   --text-caption-ls: 0.02em;
 
+  /* VX122 — tracking unique des « eyebrows » (petits labels majuscules de
+     section) : avant, plusieurs sélecteurs index.css recopiaient font-size/
+     text-transform/letter-spacing avec un tracking divergent (0.04 vs
+     0.05em). Un seul token, une seule classe utilitaire `.text-eyebrow`
+     ci-dessous. */
+  --text-eyebrow-tracking: 0.04em;
+
   /* Élévation / ombres — échelle brute (rgb teinté nuit #0c1335). */
   --shadow-xs: 0 1px 2px 0 rgb(12 19 53 / 0.06);
   --shadow-sm: 0 1px 3px 0 rgb(12 19 53 / 0.10), 0 1px 2px -1px rgb(12 19 53 / 0.08);
@@ -211,6 +218,15 @@
      35 % de brass dans la couleur d'ombre. */
   --shadow-primary-hover: 0 1px 3px 0 color-mix(in oklch, var(--primary) 35%, rgb(12 19 53 / 0.10)),
                           0 1px 2px -1px rgb(12 19 53 / 0.08);
+
+  /* VX121 — jalons ChantierTimeline : couleurs sans rôle sémantique existant
+     (violet/sky/teal), sorties des constantes JS (invisibles au grep hex) et
+     posées ici comme seule source hex tolérée (à l'intérieur de :root). */
+  --milestone-materiel: #a855f7;
+  --milestone-service: #0ea5e9;
+  --milestone-cloture: #15803d;
+  --milestone-dossier-depot: #0891b2;
+  --milestone-dossier-approbation: #15803d;
 
   /* Z-index — échelle unique */
   --z-base: 0;
@@ -366,6 +382,18 @@
   font-size: var(--ui-text);
 }
 
+/* VX123 — Plancher d'accessibilité visuelle : halo de focus UNIQUE consommant
+   `--focus-ring` (F122, jusqu'ici du code mort décoratif — 0 consommateur).
+   Remplace les 27 recopies Tailwind `focus-visible:outline-none
+   focus-visible:ring-2 focus-visible:ring-ring[…]` : un seul point de vérité
+   du halo, posé sur `:focus-visible` ET `:focus-within` (contrôles composites
+   type TimePicker qui ne peuvent pas eux-mêmes recevoir `:focus-visible`). */
+.focus-ring:focus-visible,
+.focus-ring:focus-within {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
 /* ── F121 — Utilitaires d'échelle typographique ──────────────────────────────
    Applique taille + interligne + tracking d'un palier en une classe. Utilisés
    par les nouveaux titres /src/ui ; n'affectent aucun écran existant. */
@@ -376,6 +404,16 @@
 .text-body { font-size: var(--text-body); line-height: var(--text-body-lh); letter-spacing: var(--text-body-ls); }
 .text-small { font-size: var(--text-small); line-height: var(--text-small-lh); letter-spacing: var(--text-small-ls); }
 .text-caption { font-size: var(--text-caption); line-height: var(--text-caption-lh); letter-spacing: var(--text-caption-ls); }
+/* VX122 — « eyebrow » : petit label majuscule de section, consommant
+   --text-caption + le tracking unique --text-eyebrow-tracking (remplace les
+   recopies inline divergentes 0.04/0.05em d'index.css). */
+.text-eyebrow {
+  font-size: var(--text-caption);
+  line-height: var(--text-caption-lh);
+  letter-spacing: var(--text-eyebrow-tracking);
+  text-transform: uppercase;
+  font-weight: 600;
+}
 
 /* VX124 — Craft-physics : le tracking négatif fixe des paliers display/h1
    (-0.03em / -0.025em) sur-comprime un montant à 7 chiffres tabulaire
@@ -425,6 +463,41 @@
   to { opacity: 0; transform: translateY(4px) scale(0.97) }
 }
 
+/* VX129 — Progress indéterminé : une barre qui balaie la piste en boucle
+   (au lieu d'une barre figée à 0 %, seul état possible jusqu'ici). Le garde
+   global `@media (prefers-reduced-motion: reduce)` (index.css) neutralise
+   AUTOMATIQUEMENT toute `animation-duration` sur `*` — cette règle se fige
+   donc sans code dédié. */
+@theme {
+  --animate-progress-sweep: progress-sweep 1.4s ease-in-out infinite;
+}
+@keyframes progress-sweep {
+  0% { transform: translateX(-100%) }
+  100% { transform: translateX(350%) }
+}
+
+/* VX132 — Squelette : balayage lumineux directionnel (au lieu du pulse
+   Tailwind par défaut, une simple pulsation d'opacité) — CSS pur, se fige
+   sous reduced-motion via le même garde global `*` (voir VX129 ci-dessus).
+   Classe plutôt qu'utilitaire Tailwind arbitraire : le dégradé imbriqué
+   (color-mix dans un linear-gradient) est plus lisible/maintenable en CSS
+   qu'en chaîne `bg-[linear-gradient(…)]` compressée. */
+.skeleton-shimmer {
+  background-color: var(--muted);
+  background-image: linear-gradient(
+    90deg,
+    var(--muted) 25%,
+    color-mix(in oklch, var(--muted) 55%, var(--card)) 50%,
+    var(--muted) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.6s ease-in-out infinite;
+}
+@keyframes skeleton-shimmer {
+  0% { background-position: 200% 0 }
+  100% { background-position: -200% 0 }
+}
+
 /* VX124 — Craft-physics : le chiffre KPI de <Stat> « se solidifie » au
    montage — la police variable (wght 100–900, brand.css) passe de 500 à 600
    sur --motion-slow. Sous prefers-reduced-motion, --motion-slow tombe à 0ms
@@ -457,5 +530,49 @@
     --motion-fast: 0ms;
     --motion-base: 0ms;
     --motion-slow: 0ms;
+  }
+}
+
+/* VX123 — Windows contraste élevé (forced-colors: active). Cartes/tables/
+   modales/champs se définissent SEULEMENT par un box-shadow (`--elevation-
+   card`, `--shadow-*`) : en mode contraste élevé le navigateur ignore ces
+   box-shadow décoratives et la structure disparaît entièrement (0 bordure
+   visible). On pose de VRAIES bordures système + un focus-ring système
+   (`Highlight`) puisque le halo `box-shadow: var(--focus-ring)` disparaît
+   pour la même raison. */
+@media (forced-colors: active) {
+  .data-table,
+  .lines-table-wrap,
+  .modal,
+  .gen-card,
+  .form-control,
+  .form-select,
+  .btn {
+    border: 1px solid CanvasText;
+  }
+  .btn-primary {
+    border-color: ButtonBorder;
+  }
+  .focus-ring:focus-visible,
+  .focus-ring:focus-within {
+    outline: 2px solid Highlight;
+    box-shadow: none;
+  }
+}
+
+/* VX123 — prefers-contrast: more. Durcit les bordures/texte muted (sans
+   changer la structure) — ~40 % de fusion vers le foreground, encore assez
+   subtil pour rester cohérent avec la marque en clair ET en sombre. Mixe
+   depuis les valeurs LITTÉRALES d'origine (pas `var(--border)`) : un
+   `color-mix` qui se référence lui-même dans une redéclaration de la même
+   custom property est un cycle CSS (valeur invalide au calcul). */
+@media (prefers-contrast: more) {
+  :root {
+    --border: color-mix(in oklch, #dde3f0 60%, var(--foreground) 40%);
+    --muted-foreground: color-mix(in oklch, #5a6488 60%, var(--foreground) 40%);
+  }
+  .dark {
+    --border: color-mix(in oklch, oklch(33% 0.03 270) 60%, var(--foreground) 40%);
+    --muted-foreground: color-mix(in oklch, #adb5cd 60%, var(--foreground) 40%);
   }
 }

@@ -1,3 +1,4 @@
+import { ArrowDown, ArrowUp } from 'lucide-react'
 import { cn } from '../lib/cn'
 import { Card } from './Card'
 
@@ -9,7 +10,10 @@ import { Card } from './Card'
    visuellement d'une carte KPI neutre sans être criarde.
    VX124 — `.stat-value-solidify` (voir tokens.css) : le chiffre KPI « se
    solidifie » au montage — la police variable (100–900, brand.css) passe de
-   wght 500 à 600 sur --motion-slow, un saut direct sous reduced-motion. */
+   wght 500 à 600 sur --motion-slow, un saut direct sous reduced-motion.
+   VX129 — le delta rendait `▲/▼` en glyphe TEXTE (seul endroit hors lucide de
+   tout le reste de l'app) : icônes lucide `ArrowUp`/`ArrowDown`, cohérentes
+   avec EmptyState/ErrorBoundary/toasts. */
 export function Stat({ label, value, hint, delta, icon, tone, className, children, ...props }) {
   const Icon = icon
   const deltaTone =
@@ -50,8 +54,10 @@ export function Stat({ label, value, hint, delta, icon, tone, className, childre
       {(hint || delta) && (
         <div className="mt-1.5 flex items-center gap-2 text-xs">
           {delta && (
-            <span className={cn('font-medium tabular-nums', deltaClass)}>
-              {delta.direction === 'up' ? '▲' : delta.direction === 'down' ? '▼' : ''} {delta.value}
+            <span className={cn('inline-flex items-center gap-0.5 font-medium tabular-nums', deltaClass)}>
+              {delta.direction === 'up' && <ArrowUp className="size-3" aria-hidden="true" />}
+              {delta.direction === 'down' && <ArrowDown className="size-3" aria-hidden="true" />}
+              {delta.value}
             </span>
           )}
           {hint && <span className="text-muted-foreground">{hint}</span>}

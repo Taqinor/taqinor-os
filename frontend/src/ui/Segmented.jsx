@@ -28,7 +28,7 @@ export function Segmented({ options = [], value, onChange, size = 'md', classNam
             className={cn(
               'inline-flex items-center gap-1.5 rounded-md font-medium transition-[color,background-color,box-shadow,transform]',
               pressCurve,
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+              'focus-ring',
               pad,
               press,
               active

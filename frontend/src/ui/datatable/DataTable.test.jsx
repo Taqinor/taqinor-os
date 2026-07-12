@@ -236,6 +236,22 @@ describe('H133 — performance perçue', () => {
     expect(container.querySelector('[role="status"][data-spinner]')).toBeNull()
   })
 
+  // VX132 — le squelette suit `pageSize` (borné à 12) au lieu d'un compte FIXE
+  // à 6 : évite le saut brutal vers les vraies lignes (et donc du scroll).
+  it('le nombre de lignes-squelettes suit pageSize (pageSize=5 -> 5 lignes)', () => {
+    const { container } = render(
+      <DataTable data={[]} columns={COLUMNS} loading pageSize={5} />, { wrapper },
+    )
+    expect(container.querySelectorAll('[data-skeleton-row]').length).toBe(5)
+  })
+
+  it('le nombre de lignes-squelettes reste borné à 12 même pour un pageSize=50', () => {
+    const { container } = render(
+      <DataTable data={[]} columns={COLUMNS} loading pageSize={50} />, { wrapper },
+    )
+    expect(container.querySelectorAll('[data-skeleton-row]').length).toBe(12)
+  })
+
   it('précharge les données de la ligne au survol/intention via onRowPrefetch', async () => {
     const onRowPrefetch = vi.fn()
     const { container } = render(

@@ -6,7 +6,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
   HelpTip, toast,
 } from '../../../ui'
-import { formatMAD, formatDate } from '../../../lib/format'
+import { formatMAD, formatDate, nbsp } from '../../../lib/format'
 import comptaApi from '../../../api/comptaApi'
 import { unwrap } from '../components/useComptaList.js'
 import useResource from '../../../hooks/useResource'
@@ -186,10 +186,10 @@ function EcritureDialog({ open, onClose, journaux, comptesOpts, onSaved }) {
               balanced ? 'border-success/40 bg-success/5' : 'border-destructive/40 bg-destructive/5'
             }`}
           >
-            <span className="tabular-nums">Total débit : <strong>{formatMAD(td)}</strong></span>
-            <span className="tabular-nums">Total crédit : <strong>{formatMAD(tc)}</strong></span>
+            <span className="tabular-nums">{nbsp('Total débit :')} <strong>{formatMAD(td)}</strong></span>
+            <span className="tabular-nums">{nbsp('Total crédit :')} <strong>{formatMAD(tc)}</strong></span>
             <span className={`tabular-nums font-medium ${balanced ? 'text-success' : 'text-destructive'}`}>
-              {balanced ? 'Équilibrée ✓' : `Écart : ${formatMAD(diff)}`}
+              {balanced ? 'Équilibrée ✓' : nbsp(`Écart : ${formatMAD(diff)}`)}
             </span>
           </div>
 

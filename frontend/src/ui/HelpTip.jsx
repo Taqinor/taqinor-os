@@ -27,7 +27,7 @@ export function HelpTip({ label = 'Aide', children, side = 'top', align = 'cente
             // qu'on ne survole pas — ne doit jamais peser plus qu'un mot.
             'inline-flex size-[18px] shrink-0 items-center justify-center rounded-full',
             'text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground',
-            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+            'focus-ring',
             className,
           )}
         >

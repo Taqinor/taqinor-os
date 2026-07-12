@@ -18,7 +18,7 @@ export const buttonVariants = cva(
     'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md',
     'font-medium select-none transition-[color,background-color,border-color,box-shadow,transform]',
     'duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)]',
-    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+    'focus-ring',
     'disabled:pointer-events-none disabled:opacity-50',
     '[@media(hover:hover)]:active:scale-[0.97]',
     'aria-busy:cursor-progress',

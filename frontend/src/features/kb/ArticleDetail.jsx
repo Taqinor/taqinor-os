@@ -317,9 +317,14 @@ export default function ArticleDetail({
         </nav>
       )}
 
+      {/* VX122 — max-w-prose : une ligne de lecture bornée (~65ch), le confort
+          de lecture standard pour un article long (jusqu'ici 0 max-w — le
+          texte s'étirait sur toute la largeur du panneau). */}
       <article
         dir={estRtl ? 'rtl' : 'ltr'}
-        className={estMarkdown ? 'text-sm' : 'whitespace-pre-wrap text-sm leading-relaxed'}
+        className={
+          estMarkdown ? 'max-w-prose text-sm' : 'max-w-prose whitespace-pre-wrap text-sm leading-relaxed'
+        }
       >
         {!article.corps && <span className="text-muted-foreground">(Aucun contenu)</span>}
         {article.corps && (estMarkdown

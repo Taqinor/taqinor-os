@@ -1,18 +1,24 @@
-import { forwardRef, useEffect, useMemo, useRef, useState } from 'react'
+import { forwardRef, useEffect, useId, useMemo, useRef, useState } from 'react'
 import * as PopoverPrimitive from '@radix-ui/react-popover'
 import { AlertCircle, Check, ChevronsUpDown, X } from 'lucide-react'
 import { cn } from '../lib/cn'
 import { Spinner } from './Spinner'
 import { pressItem } from './interaction'
+import { tagBase, tagRemoveBase } from './Tag'
 
 /* G23 — MultiSelect (sélection multiple, recherche async ou locale). `value`
    est un tableau de valeurs. Les choix retenus s'affichent en jetons effaçables.
-   États : défaut/hover/focus/désactivé/chargement/erreur/vide. Clavier + ARIA. */
+   États : défaut/hover/focus/désactivé/chargement/erreur/vide. Clavier + ARIA.
+   VX129 — les jetons consomment `tagBase`/`tagRemoveBase` (Tag.jsx) : même
+   rayon/hauteur que le reste de l'app, plus une 4ᵉ grammaire de chip
+   divergente. Le bouton retirer reste un `<span role="button">` (pas un
+   <Tag> tel quel) : il vit DANS le trigger `<button role="combobox">`, un
+   vrai <button> imbriqué y serait invalide en HTML. */
 
 const triggerBase =
   'flex w-full items-center justify-between gap-2 rounded-md border border-input bg-card text-foreground shadow-ui-xs ' +
   'min-h-[var(--control-h)] px-[calc(var(--control-px)-2px)] py-1 text-base sm:text-sm transition-colors ' +
-  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-ring ' +
+  'focus-ring focus-visible:border-ring ' +
   'disabled:cursor-not-allowed disabled:opacity-60 ' +
   'aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30'
 
@@ -46,6 +52,8 @@ export const MultiSelect = forwardRef(function MultiSelect(
   const inputRef = useRef(null)
   const listRef = useRef(null)
   const reqIdRef = useRef(0)
+  // VX128 — id stable par option, base pour `aria-activedescendant`.
+  const listId = useId()
 
   const valueSet = useMemo(() => new Set(value.map(String)), [value])
 
@@ -86,6 +94,9 @@ export const MultiSelect = forwardRef(function MultiSelect(
     () => value.map((v) => known.get(String(v)) || { value: v, label: String(v) }),
     [value, known],
   )
+
+  // VX128 — id de l'option active suivant le curseur clavier (voir Combobox.jsx).
+  const activeOptId = filtered[cursor] ? `${listId}-opt-${cursor}` : undefined
 
   useEffect(() => {
     if (open) requestAnimationFrame(() => inputRef.current?.focus())
@@ -142,17 +153,14 @@ export const MultiSelect = forwardRef(function MultiSelect(
           <span className="flex flex-1 flex-wrap items-center gap-1">
             {selectedOpts.length === 0 && <span className="text-muted-foreground">{placeholder}</span>}
             {shown.map((opt) => (
-              <span
-                key={String(opt.value)}
-                className="inline-flex items-center gap-1 rounded bg-secondary px-1.5 py-0.5 text-xs text-secondary-foreground"
-              >
+              <span key={String(opt.value)} className={tagBase}>
                 {opt.label}
                 <span
                   role="button"
                   tabIndex={-1}
                   aria-label={`Retirer ${opt.label}`}
                   onClick={(e) => { e.stopPropagation(); removeToken(opt.value) }}
-                  className="grid size-3.5 place-items-center rounded-full hover:bg-foreground/10"
+                  className={tagRemoveBase}
                 >
                   <X className="size-3" />
                 </span>
@@ -176,6 +184,8 @@ export const MultiSelect = forwardRef(function MultiSelect(
               type="text"
               role="searchbox"
               aria-autocomplete="list"
+              aria-controls={listId}
+              aria-activedescendant={activeOptId}
               autoComplete="off"
               value={query}
               onChange={(e) => { setQuery(e.target.value); setCursor(0) }}
@@ -184,7 +194,7 @@ export const MultiSelect = forwardRef(function MultiSelect(
               className="h-8 w-full rounded-md bg-transparent px-2 text-base outline-none placeholder:text-muted-foreground sm:text-sm"
             />
           </div>
-          <div ref={listRef} role="listbox" aria-multiselectable className="max-h-60 overflow-y-auto p-1">
+          <div ref={listRef} id={listId} role="listbox" aria-multiselectable className="max-h-60 overflow-y-auto p-1">
             {loading && (
               <div className="flex items-center justify-center gap-2 py-6 text-sm text-muted-foreground">
                 <Spinner className="size-4" /> Chargement…
@@ -205,6 +215,7 @@ export const MultiSelect = forwardRef(function MultiSelect(
               return (
                 <button
                   key={String(opt.value)}
+                  id={`${listId}-opt-${i}`}
                   type="button"
                   role="option"
                   aria-selected={isSel}

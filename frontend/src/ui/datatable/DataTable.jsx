@@ -596,7 +596,7 @@ export const DataTable = forwardRef(function DataTable(
                 tabIndex={0}
                 onKeyDown={onGridKeyDown}
                 className={cn(
-                  'w-full border-collapse text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                  'w-full border-collapse text-sm focus-ring',
                   tableClassName,
                 )}
                 style={colWidths.vars}
@@ -677,8 +677,8 @@ export const DataTable = forwardRef(function DataTable(
                             c.align === 'right' && 'text-right',
                             c.align === 'center' && 'text-center',
                             (pinnedLeft || pinnedRight) && 'sticky z-[var(--z-sticky)] bg-muted/95',
-                            pinnedLeft && scrollLeft > 0 && 'shadow-[2px_0_4px_-2px_rgba(0,0,0,0.25)]',
-                            pinnedRight && 'shadow-[-2px_0_4px_-2px_rgba(0,0,0,0.25)]',
+                            pinnedLeft && scrollLeft > 0 && 'shadow-[2px_0_4px_-2px_rgb(12_19_53/0.25)]',
+                            pinnedRight && 'shadow-[-2px_0_4px_-2px_rgb(12_19_53/0.25)]',
                           )}
                         >
                           <div className={cn('flex items-center gap-1.5', c.align === 'right' && 'justify-end', c.align === 'center' && 'justify-center')}>
@@ -692,7 +692,7 @@ export const DataTable = forwardRef(function DataTable(
                                     onSort(c.id, { multi: e.shiftKey })
                                   }
                                 }}
-                                className="group inline-flex items-center gap-1 rounded uppercase tracking-wide hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                className="group inline-flex items-center gap-1 rounded uppercase tracking-wide hover:text-foreground focus-ring"
                                 aria-label={`Trier par ${c.header ?? c.id}`}
                               >
                                 <span>{c.header ?? c.id}</span>
@@ -719,7 +719,7 @@ export const DataTable = forwardRef(function DataTable(
                         scope="col"
                         data-pinned="actions-right"
                         aria-label="Actions"
-                        className="sticky right-0 z-[var(--z-sticky)] w-12 bg-muted/95 px-3 shadow-[-2px_0_4px_-2px_rgba(0,0,0,0.25)]"
+                        className="sticky right-0 z-[var(--z-sticky)] w-12 bg-muted/95 px-3 shadow-[-2px_0_4px_-2px_rgb(12_19_53/0.25)]"
                       />
                     )}
                   </tr>
@@ -730,8 +730,12 @@ export const DataTable = forwardRef(function DataTable(
                   {loading ? (
                     /* H133 — lignes-squelettes calquées sur la VRAIE disposition
                        (une cellule par colonne, hauteur de densité). Jamais de
-                       spinner en parallèle : le squelette EST l'indicateur. */
-                    Array.from({ length: 6 }).map((unused, i) => (
+                       spinner en parallèle : le squelette EST l'indicateur.
+                       VX132 — le nombre de lignes suit `pageSize` (borné à 12
+                       pour rester léger) au lieu d'un compte FIXE à 6 : passer
+                       de 6 squelettes à 50 vraies lignes provoquait un saut
+                       brutal de la hauteur de la table (et donc du scroll). */
+                    Array.from({ length: Math.min(pageSize || 6, 12) }).map((unused, i) => (
                       <tr key={i} data-skeleton-row className="border-t border-border" style={{ height: densityRowHeight }}>
                         {expandable && <td className="px-2 py-2.5" />}
                         {selectable && <td className="px-3 py-2.5"><Skeleton className="size-4" /></td>}
@@ -854,8 +858,8 @@ export const DataTable = forwardRef(function DataTable(
                                       c.align === 'center' && 'text-center',
                                       c.numeric && 'text-right tabular-nums',
                                       (pinnedLeft || pinnedRight || (firstCol && c.frozen)) && 'sticky z-[1] bg-inherit',
-                                      pinnedLeft && scrollLeft > 0 && 'shadow-[2px_0_4px_-2px_rgba(0,0,0,0.18)]',
-                                      pinnedRight && 'shadow-[-2px_0_4px_-2px_rgba(0,0,0,0.18)]',
+                                      pinnedLeft && scrollLeft > 0 && 'shadow-[2px_0_4px_-2px_rgb(12_19_53/0.18)]',
+                                      pinnedRight && 'shadow-[-2px_0_4px_-2px_rgb(12_19_53/0.18)]',
                                       firstCol && 'font-medium text-foreground',
                                     )}
                                   >
@@ -867,7 +871,7 @@ export const DataTable = forwardRef(function DataTable(
                                 <td
                                   className={cn(
                                     'sticky right-0 z-[1] bg-inherit px-2',
-                                    'shadow-[-2px_0_4px_-2px_rgba(0,0,0,0.18)]',
+                                    'shadow-[-2px_0_4px_-2px_rgb(12_19_53/0.18)]',
                                   )}
                                   onClick={(e) => e.stopPropagation()}
                                 >
@@ -978,7 +982,7 @@ export const DataTable = forwardRef(function DataTable(
                     className={cn(
                       'rounded-xl border bg-card p-3 transition-colors',
                       isSelected ? 'border-primary bg-primary/5' : 'border-border',
-                      onRowClick && 'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                      onRowClick && 'cursor-pointer focus-ring',
                     )}
                     onClick={onRowClick ? () => onRowClick(row) : undefined}
                     onKeyDown={
@@ -1038,7 +1042,7 @@ export const DataTable = forwardRef(function DataTable(
                   value={pageSize}
                   onChange={(e) => { setPageSize(Number(e.target.value)); setPageIndex(0) }}
                   aria-label="Lignes par page"
-                  className="h-8 rounded-md border border-input bg-card px-2 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="h-8 rounded-md border border-input bg-card px-2 text-xs text-foreground focus-ring"
                 >
                   {pageSizeOptions.map((n) => (
                     <option key={n} value={n}>{n} / page</option>
@@ -1101,7 +1105,7 @@ function ColumnHeaderMenu({ column, dispatch, canMoveLeft, canMoveRight, prevId,
         <button
           type="button"
           aria-label={`Options de la colonne ${column.header ?? column.id}`}
-          className="grid size-6 place-items-center rounded opacity-0 transition-opacity hover:bg-accent focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-60 [tr:hover_&]:opacity-60"
+          className="grid size-6 place-items-center rounded opacity-0 transition-opacity hover:bg-accent focus-visible:opacity-100 focus-ring group-hover:opacity-60 [tr:hover_&]:opacity-60"
           onClick={(e) => e.stopPropagation()}
         >
           <MoreHorizontal className="size-3.5" />
