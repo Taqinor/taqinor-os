@@ -7,6 +7,7 @@ import {
 } from '../features/stock/catalogue'
 import { classifyProduct } from '../features/ventes/solar'
 import { useCanCreateProduit } from '../hooks/useHasPermission'
+import { useActiveDescendant } from '../hooks/useActiveDescendant'
 import { formatMAD } from '../lib/format'
 import ProduitQuickCreateModal from './ProduitQuickCreateModal'
 
@@ -36,6 +37,9 @@ export default function ProduitPicker({ produits, value, onChange, invalid, type
   const inputRef = useRef(null)
   const listRef = useRef(null)
   const canCreateProduit = useCanCreateProduit()
+  // VX191 — `aria-activedescendant` : flécher au clavier annonce enfin
+  // l'article visé (ProduitPicker n'avait aucun id d'option jusqu'ici).
+  const { listId, getOptionId, activeId } = useActiveDescendant(cursor)
 
   const selected = useMemo(
     () => produits.find((p) => String(p.id) === String(value)) ?? null,
@@ -128,6 +132,11 @@ export default function ProduitPicker({ produits, value, onChange, invalid, type
           <div className="flex items-center gap-1 border-b border-border p-1.5">
             <input
               ref={inputRef}
+              role="combobox"
+              aria-expanded={open}
+              aria-autocomplete="list"
+              aria-controls={listId}
+              aria-activedescendant={activeId}
               className="h-8 w-full rounded-md bg-transparent px-2 text-base outline-none placeholder:text-muted-foreground sm:text-sm"
               placeholder="Chercher un produit… (Entrée = premier résultat)"
               value={query}
@@ -145,7 +154,7 @@ export default function ProduitPicker({ produits, value, onChange, invalid, type
               </button>
             )}
           </div>
-          <div className="max-h-72 overflow-y-auto p-1" ref={listRef} role="listbox">
+          <div className="max-h-72 overflow-y-auto p-1" ref={listRef} role="listbox" id={listId}>
             {value && (
               <button
                 type="button"
@@ -177,6 +186,7 @@ export default function ProduitPicker({ produits, value, onChange, invalid, type
                 <button
                   type="button"
                   key={r.key}
+                  id={dispo ? getOptionId(index) : undefined}
                   role="option"
                   aria-selected={String(p.id) === String(value)}
                   aria-disabled={!dispo || undefined}

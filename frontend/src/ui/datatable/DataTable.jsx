@@ -609,7 +609,7 @@ export const DataTable = forwardRef(function DataTable(
           <div
             data-dt-table
             data-pin-shadow-left={scrollLeft > 0 ? 'true' : undefined}
-            className="hidden overflow-hidden rounded-xl border border-border bg-card sm:block"
+            className="hidden overflow-hidden rounded-xl border border-border bg-card dt-desktop:block"
           >
             <div
               ref={scrollRef}
@@ -660,7 +660,7 @@ export const DataTable = forwardRef(function DataTable(
                     propres <th> (mêmes libellés/classes que l'écran historique)
                     et la case « tout sélectionner ». Sans lui, en-tête intégré. */}
                 {renderHeaderRow ? (
-                  <thead className="sticky top-0 z-[var(--z-sticky)] bg-muted/95 backdrop-blur">
+                  <thead className="sticky top-0 z-[var(--z-sticky)] bg-muted">{/* VX178 — fond opaque, plus de backdrop-blur (jank WebKit du recompositing à chaque frame de scroll) */}
                     <tr>
                       {renderHeaderRow({
                         pageSelectionState,
@@ -670,7 +670,7 @@ export const DataTable = forwardRef(function DataTable(
                     </tr>
                   </thead>
                 ) : (
-                <thead className="sticky top-0 z-[var(--z-sticky)] bg-muted/95 backdrop-blur">
+                <thead className="sticky top-0 z-[var(--z-sticky)] bg-muted">{/* VX178 — fond opaque, plus de backdrop-blur (jank WebKit du recompositing à chaque frame de scroll) */}
                   <tr>
                     {expandable && <th scope="col" className="w-9 px-2" aria-label="Déplier" />}
                     {selectable && (
@@ -934,7 +934,7 @@ export const DataTable = forwardRef(function DataTable(
 
                 {/* -------- Ligne de sous-totaux -------- */}
                 {summary && summaryValues && rows.length > 0 && (
-                  <tfoot className="sticky bottom-0 z-[1] border-t-2 border-border bg-muted/90 backdrop-blur">
+                  <tfoot className="sticky bottom-0 z-[1] border-t-2 border-border bg-muted">{/* VX178 — fond opaque, blur retiré (idem thead) */}
                     <tr>
                       {expandable && <td className="px-2" />}
                       {selectable && <td className="px-3" />}
@@ -963,15 +963,17 @@ export const DataTable = forwardRef(function DataTable(
           </div>
 
           {/* -------- M154 — MOBILE : repli en cartes (< 768px) --------
-             Sous le point de rupture `sm`, chaque ligne devient une carte :
-             titre (1re colonne) en haut, métrique clé en GRAND, le reste des
-             champs en libellé/valeur, et un chevron vers le détail. L'en-tête
-             de tableau est masqué (la table desktop est en `hidden sm:block`). */}
+             Sous le point de rupture RÉEL (VX180 — `dt-desktop:` = 768px,
+             PAS l'utilitaire `sm:` par défaut = 640px), chaque ligne devient
+             une carte : titre (1re colonne) en haut, métrique clé en GRAND,
+             le reste des champs en libellé/valeur, et un chevron vers le
+             détail. L'en-tête de tableau est masqué (la table desktop est en
+             `hidden dt-desktop:block`). */}
           {/* ARC49 — le mode `renderRow` (ou `hideMobileCards`) supprime le
               repli en cartes : l'écran conserve son unique table `data-table`
               responsive (CSS) comme aujourd'hui, sans DOM carte dupliqué. */}
           {!(customRow || hideMobileCards) && (
-          <div data-dt-cards className="flex flex-col gap-2 sm:hidden">
+          <div data-dt-cards className="flex flex-col gap-2 dt-desktop:hidden">
             {loading ? (
               Array.from({ length: 4 }).map((unused, i) => (
                 <div key={i} data-skeleton-card className="rounded-xl border border-border bg-card p-3">

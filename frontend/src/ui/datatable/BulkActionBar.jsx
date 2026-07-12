@@ -86,7 +86,10 @@ export function BulkActionBar({ count, actions = [], onClear, className }) {
       <div
         className={cn(
           'pointer-events-auto flex w-full max-w-2xl items-center gap-2 rounded-xl border border-border',
-          'bg-popover/95 p-2 pl-3 text-popover-foreground shadow-ui-lg backdrop-blur',
+          // VX178 — fond opaque, blur retiré (barre fixe recomposée à chaque
+          // frame de scroll du tableau derrière elle ; le blur n'apportait
+          // rien vu qu'elle est déjà pleine).
+          'bg-popover p-2 pl-3 text-popover-foreground shadow-ui-lg',
           // H132 — entrée glissée/animée depuis le bas (respecte prefers-reduced-motion
           // via la définition de l'animation ; pop-in combine fondu + léger zoom).
           'animate-pop-in',
