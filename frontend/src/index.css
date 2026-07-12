@@ -2252,7 +2252,15 @@ textarea.form-control {
   .header-right {
     flex-shrink: 0;
     flex: 0 0 auto;
+    /* VX2-fix — sur iPhone (390 px) le regroupement en 3 grappes de VX2 avait
+       ÉLARGI l'espace inter-contrôles (0.6rem uniforme → 0.85rem entre grappes
+       + 0.5rem à l'intérieur), soit ~8 px de plus : assez pour pousser
+       .header-right au-delà du viewport et écraser .header-left/.header-title à
+       0 (Playwright le voit alors « hidden »). On resserre les grappes SUR
+       MOBILE UNIQUEMENT pour rendre à l'en-tête la marge qu'il avait avant. */
+    gap: 0.4rem;
   }
+  .header-cluster { gap: 0.4rem; }
 
   /* ⌘K masqué sur mobile : la loupe GlobalSearch (gs-mobile-toggle)
      offre le même point d'entrée sans doubler les icônes. */
