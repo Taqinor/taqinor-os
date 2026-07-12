@@ -75,6 +75,7 @@ the journey the best in the world for the CLIENT and the COMMERCIAL user.*
 #### DONE LOG — Vague 3 lane frontend/data (2026-07-12)
 
 - 2026-07-12 — VX117 **(already present)** : `lib/resilientMutation.js` déjà extrait et consommé par `DevisForm.jsx`/`FactureForm.jsx`/`PaieRunWizard.jsx`/`RolesManagement.jsx` (allSettled + rapport nominatif, allOk gate) ; `DevisGenerator.jsx` a depuis migré vers les endpoints ATOMIQUES `createDevisAtomic`/`replaceLignesDevis` (QX21), qui suppriment le pattern « parent + N lignes en Promise.all » visé par cette tâche.
+- 2026-07-12 — VX161 **(already present)** : `api/refreshCoordinator.js` déjà construit et consommé par `axios.js` ET `iaApi.js` (promesse de refresh UNIQUE partagée, reset en `finally`).
 
 #### DONE LOG — Vague 2 (VX terrain/finance/CRM + QX groupe) (2026-07-12)
 
@@ -1485,7 +1486,7 @@ pas la dupliquer ici, la numérotation continue directement à SEED-02.*
   DoD : batch mock 100 % `error` → ops gardées + message par op accessible ; badge distinct rendu ;
   non-régression `applied`/`replayed`. (T1 — M, sonnet) (@lane: frontend/data)
 
-- [ ] VX161 — **`refreshCoordinator` : un seul refresh 401 partagé entre `axios.js` et (@lane: frontend/data)
+- [x] VX161 **(already present)** — **`refreshCoordinator` : un seul refresh 401 partagé entre `axios.js` et (@lane: frontend/data)
   `iaApi.js`.** `axios.js:29-53` pose `_retry` PAR REQUÊTE : N requêtes 401 simultanées = N `POST
   /token/refresh/` parallèles (stampede) ; `iaApi.js:28-53` duplique en plus son PROPRE
   intercepteur — une page métier + le Copilote au même instant lancent deux refresh concurrents
