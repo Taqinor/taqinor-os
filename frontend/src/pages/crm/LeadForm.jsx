@@ -458,13 +458,28 @@ export default function LeadForm({
 
   // QX25 — « Planifier une relance » : fait défiler jusqu'à la section « Suivi
   // commercial » (relance_date) à l'ouverture, une seule fois.
+  // VX223 — même geste pour « → Renseigner la facture » (LeadCard.jsx), SANS
+  // prop dédiée : la carte pose une clé sessionStorage ciblant ce lead avant
+  // d'appeler `onOpen`, consommée ICI une seule fois puis retirée (jamais un
+  // focus fantôme sur un futur lead sans rapport).
   const focusSectionRan = useRef(false)
   useEffect(() => {
-    if (isEdit && focusSection && !focusSectionRan.current) {
-      focusSectionRan.current = true
-      setTimeout(() => jumpTo(focusSection), 0)
+    if (!isEdit || focusSectionRan.current) return
+    let target = focusSection
+    if (!target) {
+      try {
+        const raw = sessionStorage.getItem('taqinor.leadform.pendingFocus')
+        if (raw) {
+          const pending = JSON.parse(raw)
+          sessionStorage.removeItem('taqinor.leadform.pendingFocus')
+          if (pending && String(pending.leadId) === String(lead.id)) target = pending.section
+        }
+      } catch { /* best-effort */ }
     }
-  }, [isEdit, focusSection])
+    if (!target) return
+    focusSectionRan.current = true
+    setTimeout(() => jumpTo(target), 0)
+  }, [isEdit, focusSection, lead?.id])
 
   // Fermeture du petit menu « Devis modifiable » au clic extérieur.
   useEffect(() => {

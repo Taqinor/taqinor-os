@@ -61,6 +61,15 @@ export default function FilterBar({ filters, setFilters, leads }) {
   const setPerdus = (value) => setFilters({ ...filters, perdus: value })
   const setArchived = (value) => setFilters({ ...filters, archived: value })
 
+  // VX223 — chip « Rappels demandés » : le signal le plus chaud
+  // (`contact_preference==='phone_ok'`, badge passif sur LeadCard) n'avait
+  // jusqu'ici QUE le Select générique enfoui dans les filtres (ligne
+  // `contact_preference` ci-dessous) — jamais un accès direct. Chip 100 %
+  // CLIENT (réutilise le même champ de filtre existant, aucun état dupliqué),
+  // toujours visible (jamais replié derrière « Filtres » sur mobile).
+  const rappelsActifs = filters.contact_preference === 'phone_ok'
+  const toggleRappels = () => setKey('contact_preference')(rappelsActifs ? '' : 'phone_ok')
+
   const isDirty = Object.keys(EMPTY_FILTERS).some(k => filters[k] !== EMPTY_FILTERS[k])
 
   const isMobile = useIsMobile()
@@ -83,6 +92,19 @@ export default function FilterBar({ filters, setFilters, leads }) {
           onChange={(e) => setFilters({ ...filters, q: e.target.value })}
         />
       </div>
+
+      {/* VX223 — chip « Rappels demandés », toujours visible (jamais derrière
+          le repli mobile « Filtres »). */}
+      <Button
+        type="button"
+        variant={rappelsActifs ? 'default' : 'outline'}
+        size="sm"
+        className="fb-chip-rappels"
+        aria-pressed={rappelsActifs}
+        onClick={toggleRappels}
+      >
+        ☎ Rappels demandés
+      </Button>
 
       {isMobile && (
         <Button
