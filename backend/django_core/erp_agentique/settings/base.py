@@ -134,6 +134,11 @@ INSTALLED_APPS = [
     # ne dépend d'aucune app de domaine ; les domaines la référenceront
     # (ARC18/19). Contrat import-linter `tiers-is-a-base-layer`.
     'apps.tiers',
+    # NTSEC — Fondation Identité & accès (SSO/SCIM/politiques réseau &
+    # session). N'importe aucune app métier ; scopée société côté serveur.
+    # NTSEC11 y livre l'allowlist IP/CIDR (NetworkPolicy + middleware inerte
+    # par défaut).
+    'apps.identity',
 ]
 
 MIDDLEWARE = [
@@ -164,6 +169,10 @@ MIDDLEWARE = [
     # RLS, défense en profondeur multi-tenant). NO-OP TOTAL sans le flag env
     # POSTGRES_RLS_ENABLED=1 (défaut OFF) : aucune requête SQL supplémentaire.
     'core.tenant_context.TenantContextMiddleware',
+    # NTSEC11 — allowlist IP/CIDR par société. INERTE par défaut : ne bloque
+    # ni ne journalise rien tant qu'une société n'a pas de NetworkPolicy en
+    # mode monitor/enforce. Endpoints publics jamais soumis.
+    'apps.identity.middleware.NetworkPolicyMiddleware',
 ]
 
 ROOT_URLCONF = 'erp_agentique.urls'
