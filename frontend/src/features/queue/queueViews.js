@@ -69,8 +69,8 @@ export function personaForRoleNom(roleNom) {
   return 'default'
 }
 
-const STORAGE_KEY_PERSONA = 'taqinor.maFile.personaOverride'
-const STORAGE_KEY_QUICKWINS = 'taqinor.maFile.victoiresRapides'
+const STORAGE_KEY_PERSONA = 'mf.personaOverride'
+const STORAGE_KEY_QUICKWINS = 'mf.victoiresRapides'
 
 function safeGet(key) {
   try { return window.localStorage?.getItem(key) ?? null } catch { return null }

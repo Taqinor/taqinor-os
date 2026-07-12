@@ -57,8 +57,9 @@ export default function Kiosque() {
 
   // VX201 — timeout d'inactivité : reset au dernier moment d'interaction avec
   // le pavé PIN (ajouter/effacer/pointer) tant qu'un jeton est configuré.
-  const lastActivityRef = useRef(Date.now())
+  const lastActivityRef = useRef(0)
   const marquerActivite = useCallback(() => { lastActivityRef.current = Date.now() }, [])
+  useEffect(() => { lastActivityRef.current = Date.now() }, [])
 
   useEffect(() => {
     if (!token) return undefined

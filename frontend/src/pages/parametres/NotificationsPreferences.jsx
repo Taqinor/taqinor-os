@@ -109,6 +109,7 @@ export default function NotificationsPreferences() {
     if (!hash) return
     const el = document.getElementById(`np-row-${hash}`)
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- deep-link row highlight from hash
     setHighlighted(hash)
     const t = setTimeout(() => setHighlighted(''), 3000)
     return () => clearTimeout(t)

@@ -36,6 +36,7 @@ export default function WelcomeMoment() {
   const [open, setOpen] = useState(false)
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot welcome on first login
     if (user && !seenAlready()) setOpen(true)
   }, [user])
 

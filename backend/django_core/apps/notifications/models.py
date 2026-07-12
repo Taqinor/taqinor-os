@@ -974,7 +974,7 @@ class ApprovalReminderState(models.Model):
 # VX210(b) — snooze GÉNÉRIQUE d'un item d'approbation depuis « Ma file ».
 # =============================================================================
 
-class SnoozedItem(models.Model):
+class SnoozedItem(TenantModel):
     """VX210(b) — snooze d'un item HÉTÉROGÈNE de l'agrégateur d'approbations
     (``reporting.approbations``, 5 sources : automation/contrats/ged/
     installations/workflow) depuis « Ma file ». `records.Activity` a déjà son
@@ -997,7 +997,6 @@ class SnoozedItem(models.Model):
     source = models.CharField(max_length=20)
     object_id = models.PositiveIntegerField()
     snoozed_until = models.DateField()
-    created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         verbose_name = 'Item reporté (snooze, VX210)'
