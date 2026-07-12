@@ -12,7 +12,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   CheckCircle2, MapPin, Navigation, Truck, Camera, Trash2, AlertTriangle,
-  PackageCheck, ShoppingCart, Images,
+  PackageCheck, ShoppingCart, Images, RotateCw, Upload, X,
 } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
 import {
@@ -22,6 +22,9 @@ import { formatDateTime } from '../../lib/format'
 import { withOfflineFallback, FIELD_OPS } from './offline/fieldOutbox'
 import CameraCapture from '../pwa/CameraCapture'
 import { compressImage } from '../../ui/file-utils'
+import {
+  makeCapturedPage, rotatePageInList, removePageFromList, rotateImageBlob,
+} from '../ged/capture'
 
 // N91/F21 — message commun quand une action a été MISE EN FILE (hors-ligne) :
 // elle se synchronisera toute seule au retour du réseau.
@@ -313,9 +316,17 @@ export function PhotosPanel({ intervention, onChanged }) {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const fileRef = useRef(null)
+  const burstRef = useRef(null)
   const pendingSlot = useRef(null)
+  const burstSlotRef = useRef(null)
+  const nextPageId = useRef(1)
   // FG385 — créneau dont la caméra en direct est ouverte (null = aucune).
   const [camSlot, setCamSlot] = useState(null)
+  // VX44 — rafale : file d'attente de photos {id, file, rotation} prises « de
+  // suite » (le pattern multi-pages de NumeriserPage), revues (retirer/tourner)
+  // avant l'envoi groupé vers le MÊME créneau. `pendingSlot` = le créneau ciblé.
+  const [rafale, setRafale] = useState([]) // [{id, file, rotation}]
+  const [rafaleSlot, setRafaleSlot] = useState(null) // {cle, libelle} ciblé
 
   const load = useCallback(() => installationsApi.getPhotos(id)
     .then((r) => setData(r.data))
@@ -324,6 +335,44 @@ export function PhotosPanel({ intervention, onChanged }) {
   useEffect(() => { load() }, [load])
 
   const pick = (slot) => { pendingSlot.current = slot; fileRef.current?.click() }
+  // VX44 — ouvre le sélecteur multi-fichiers pour une prise en rafale sur un
+  // créneau : plusieurs photos s'accumulent avant l'envoi groupé.
+  const pickRafale = (slot) => {
+    burstSlotRef.current = slot
+    setRafaleSlot(slot)
+    burstRef.current?.click()
+  }
+  const onBurstFiles = (e) => {
+    const files = Array.from(e.target.files ?? [])
+    e.target.value = ''
+    if (!files.length) return
+    setRafale((prev) => [
+      ...prev,
+      ...files.map((f) => makeCapturedPage(nextPageId.current++, f)),
+    ])
+  }
+  const rotateRafale = (pid) => setRafale((prev) => rotatePageInList(prev, pid))
+  const removeRafale = (pid) => setRafale((prev) => removePageFromList(prev, pid))
+  const clearRafale = () => { setRafale([]); setRafaleSlot(null) }
+  // Envoi groupé : applique la rotation choisie (canvas), compresse, puis
+  // téléverse chaque photo vers le créneau — une seule recharge à la fin.
+  const sendRafale = async () => {
+    const slot = burstSlotRef.current
+    if (!slot || rafale.length === 0) return
+    setBusy(true)
+    try {
+      for (const p of rafale) {
+        const oriented = p.rotation === 0 ? p.file : await rotateImageBlob(p.file, p.rotation)
+        const toSend = await compressImage(oriented)
+        await installationsApi.ajouterPhoto(id, toSend, slot.cle)
+      }
+      toast.success(`${rafale.length} photo${rafale.length > 1 ? 's' : ''} ajoutée${rafale.length > 1 ? 's' : ''}.`)
+      clearRafale()
+      await load(); onChanged?.()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Téléversement impossible.')
+    } finally { setBusy(false) }
+  }
   // Flux d'upload commun (choix de fichier ET capture caméra en direct).
   const uploadPhoto = async (file, slot) => {
     if (!file) return
@@ -366,6 +415,47 @@ export function PhotosPanel({ intervention, onChanged }) {
     <div className="flex flex-col gap-4 py-2 text-sm">
       <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp"
         className="hidden" onChange={onFile} />
+      <input ref={burstRef} type="file" accept="image/png,image/jpeg,image/webp"
+        multiple capture="environment" className="hidden" onChange={onBurstFiles} />
+
+      {/* VX44 — file de rafale : plusieurs photos prises « de suite » sont
+          revues (tourner/retirer) puis envoyées d'un coup vers le créneau. */}
+      {rafale.length > 0 && (
+        <div className="flex flex-col gap-2 rounded border border-primary/40 bg-primary/5 p-2">
+          <span className="text-[12px] font-medium">
+            {rafale.length} photo{rafale.length > 1 ? 's' : ''} en attente
+            {rafaleSlot ? ` — ${rafaleSlot.libelle}` : ''}
+          </span>
+          <div className="flex flex-wrap gap-2">
+            {rafale.map((p) => (
+              <div key={p.id} className="relative">
+                <img src={URL.createObjectURL(p.file)} alt=""
+                  style={{ transform: `rotate(${p.rotation}deg)` }}
+                  className="size-20 rounded border border-border object-cover" />
+                <button type="button" disabled={busy} onClick={() => rotateRafale(p.id)}
+                  title="Pivoter"
+                  className="absolute -left-1.5 -top-1.5 rounded-full bg-black/60 p-0.5 text-white shadow disabled:opacity-50">
+                  <RotateCw className="size-3" aria-hidden="true" />
+                </button>
+                <button type="button" disabled={busy} onClick={() => removeRafale(p.id)}
+                  title="Retirer"
+                  className="absolute -right-1.5 -top-1.5 rounded-full bg-destructive p-0.5 text-white shadow disabled:opacity-50">
+                  <X className="size-3" aria-hidden="true" />
+                </button>
+              </div>
+            ))}
+          </div>
+          <div className="flex items-center gap-2">
+            <Button size="sm" onClick={sendRafale} disabled={busy}>
+              <Upload className="size-4" aria-hidden="true" />
+              Envoyer {rafale.length} photo{rafale.length > 1 ? 's' : ''}
+            </Button>
+            <Button size="sm" variant="ghost" onClick={clearRafale} disabled={busy}>
+              Tout effacer
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* VX227 — lien croisé discret vers les photos avant/pendant/après du
           chantier : les deux magasins de photos (intervention vs chantier) ne
@@ -411,6 +501,13 @@ export function PhotosPanel({ intervention, onChanged }) {
                     <Button size="sm" variant="outline" disabled={busy}
                       onClick={() => pick(slot.cle)}>
                       <Camera className="size-4" aria-hidden="true" /> Photo
+                    </Button>
+                    {/* VX44 — rafale : plusieurs photos d'affilée sans rouvrir
+                        le sélecteur, revues avant l'envoi groupé. */}
+                    <Button size="sm" variant="outline" disabled={busy}
+                      onClick={() => pickRafale(slot)}
+                      title="Prendre plusieurs photos de suite">
+                      <Images className="size-4" aria-hidden="true" /> Rafale
                     </Button>
                     <Button size="sm" variant="outline" disabled={busy}
                       onClick={() => setCamSlot((s) => (s === slot.cle ? null : slot.cle))}
