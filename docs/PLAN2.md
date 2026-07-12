@@ -2246,7 +2246,7 @@ VX83-86/99-101 (round 3, non construit) — transcrire chaque @after tel quel.**
   le tri par défaut reste inchangé sinon ; STAGES.py importé pour toute clé de stage. (T2 — M,
   sonnet) (@lane: backend/notify — @after VX83)
 
-- [ ] VX212 — **[BACKEND additif léger] Transparence « pourquoi je reçois ça » + contexte (@lane: backend/notify — @after VX99/VX100)
+- [x] VX212 **(already present)** — **[BACKEND additif léger] Transparence « pourquoi je reçois ça » + contexte (@lane: backend/notify — @after VX99/VX100)
   décisionnel dans l'email d'approbation. @after VX99/VX100.** `resolve_recipients`
   (`services.py:275`) applique des règles invisibles — des notifs « pourquoi moi ? » qu'on ne peut
   couper qu'en fouillant la grille des 42 événements ; et l'email de demande d'approbation
@@ -3207,6 +3207,8 @@ droite)**
 ---
 
 ## DONE LOG (agent appends one plain-language line per completed task)
+
+- 2026-07-12 — **VX212 (already present)** — verified: `Notification.reason` field + `NotificationReason` choices (`models.py:240`), `resolve_recipients_reason` (`services.py:304`), reason rendered in serializer + `NotificationBell.jsx`, approval email context; `tests_vx212_pourquoi_je_recois_ca.py`; commit `69bcf900` on main. Ticked, no rebuild.
 
 - 2026-07-12 — **VX211 (already present)** — verified: `frontend/src/features/queue/queueViews.js` (+ `queueViews.test.js`) provides `queueViewForRole` persona ordering, `apps/records/views.py` exposes `effort_estime` per-kind (`_EFFORT_ESTIME_PAR_KIND`) for the "victoires rapides" secondary sort; commit `782b5c92` on main. Ticked, no rebuild.
 
