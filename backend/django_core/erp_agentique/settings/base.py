@@ -404,9 +404,21 @@ CACHES = {
         ),
         "OPTIONS": {
             "CLIENT_CLASS": "django_redis.client.DefaultClient",
+            # NTPLT24 — résilience Redis : une panne du cache dégrade en
+            # cache-miss (get→None, set→no-op) AU LIEU de propager une
+            # ConnectionError qui renverrait 500 sur TOUT l'ERP (chaque vue qui
+            # lit/écrit le cache). django-redis journalise l'exception ignorée
+            # via le logger 'django_redis' (LOGGING ci-dessous) pour ne pas
+            # masquer une panne réelle. Argument SLA : une brique de cache qui
+            # tombe ne couche pas le produit.
+            "IGNORE_EXCEPTIONS": True,
         }
     }
 }
+# NTPLT24 — journaliser (WARNING) les exceptions Redis ignorées par django-redis
+# au lieu de les avaler en silence. Fusionné avec toute config LOGGING existante.
+DJANGO_REDIS_LOG_IGNORED_EXCEPTIONS = True
+DJANGO_REDIS_LOGGER = 'django_redis'
 
 # CORS Configuration
 CORS_ALLOWED_ORIGINS = [
