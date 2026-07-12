@@ -28,6 +28,7 @@ import {
   Form, FormField, FormActions,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
+  Popover, PopoverTrigger, PopoverContent,
   toast,
 } from '../../ui'
 import { formatMAD, toNumber, normalizeMaPhone, formatDateTime } from '../../lib/format'
@@ -250,15 +251,25 @@ function FactureRow({ f, ctx }) {
             </Link>
           </div>
         )}
+        {/* VX52 — la liste des mentions manquantes (Art. 145) ne vivait que
+            dans l'attribut `title` (survol souris) — illisible au tactile.
+            Elle devient un Popover tapable qui révèle la liste au clic/tap. */}
         {Array.isArray(f.mentions_manquantes) && f.mentions_manquantes.length > 0 && (
-          <Badge
-            tone="warning"
-            className="mt-1 cursor-help"
-            title={`Mentions légales manquantes (Art. 145) :\n- ${f.mentions_manquantes.join('\n- ')}`}
-          >
-            <FileWarning className="size-3" />
-            {f.mentions_manquantes.length} mention(s) manquante(s)
-          </Badge>
+          <Popover>
+            <PopoverTrigger
+              className="mt-1 inline-flex cursor-pointer items-center gap-1 rounded-md bg-warning/15 px-2 py-0.5 text-xs font-medium text-warning"
+              aria-label={`Mentions légales manquantes (Art. 145) : ${f.mentions_manquantes.join(', ')}`}
+            >
+              <FileWarning className="size-3" aria-hidden="true" />
+              {f.mentions_manquantes.length} mention(s) manquante(s)
+            </PopoverTrigger>
+            <PopoverContent className="max-w-xs text-xs">
+              <p className="mb-1 font-medium">Mentions légales manquantes (Art. 145)</p>
+              <ul className="list-disc pl-4 text-muted-foreground">
+                {f.mentions_manquantes.map((m) => <li key={m}>{m}</li>)}
+              </ul>
+            </PopoverContent>
+          </Popover>
         )}
         {/* VX97 — journal des changements (qui/quand/ancien→nouveau), repliable. */}
         <div className="mt-0.5">
@@ -284,20 +295,26 @@ function FactureRow({ f, ctx }) {
             <Button size="sm" variant="ghost" onClick={() => setEcheanceEditId(null)}>×</Button>
           </span>
         ) : (
-          <span
-            className={`${overdue ? 'font-semibold text-destructive' : ''}`
-              + (['emise', 'en_retard'].includes(f.statut) || overdue
-                ? ' cursor-pointer hover:underline' : '')}
-            title={['emise', 'en_retard'].includes(f.statut) || overdue
-              ? 'Cliquer pour modifier l’échéance' : undefined}
-            onClick={() => {
-              if (['emise', 'en_retard'].includes(f.statut) || overdue) startEditEcheance(f)
-            }}
-          >
-            {f.date_echeance
-              ? new Date(f.date_echeance).toLocaleDateString('fr-FR')
-              : '—'}
-          </span>
+          {/* VX52 — l'affordance de modification d'échéance ne vivait que dans
+              `title` (survol) : au tactile, un vrai bouton à label accessible. */}
+          {['emise', 'en_retard'].includes(f.statut) || overdue ? (
+            <button
+              type="button"
+              className={`${overdue ? 'font-semibold text-destructive' : ''} cursor-pointer text-left hover:underline`}
+              aria-label={`Modifier l’échéance de la facture ${f.reference}`}
+              onClick={() => startEditEcheance(f)}
+            >
+              {f.date_echeance
+                ? new Date(f.date_echeance).toLocaleDateString('fr-FR')
+                : 'Définir une échéance'}
+            </button>
+          ) : (
+            <span>
+              {f.date_echeance
+                ? new Date(f.date_echeance).toLocaleDateString('fr-FR')
+                : '—'}
+            </span>
+          )}
         )}
       </td>
       <td className="ta-right tabular-nums" data-label="Total TTC">
@@ -310,13 +327,15 @@ function FactureRow({ f, ctx }) {
       </td>
       <td data-label="Statut">
         <StatusPill status={statutKey} label={STATUT_DISPLAY[statutKey] ?? STATUT_DISPLAY.brouillon} />
+        {/* VX52 — le sens « télédéclaration DGI » ne vivait que dans `title`
+            (survol) : sur mobile, un préfixe explicite le rend lisible. */}
         {['emise', 'payee', 'en_retard'].includes(f.statut) && f.statut_teledeclaration && (
           <Badge
             tone={TELEDECLARATION_TONE[f.statut_teledeclaration] ?? 'neutral'}
             className="mt-1 block w-fit"
-            title="Statut de télédéclaration DGI (informatif)"
+            aria-label={`Télédéclaration DGI (informatif) : ${TELEDECLARATION_DISPLAY[f.statut_teledeclaration] ?? f.statut_teledeclaration}`}
           >
-            {TELEDECLARATION_DISPLAY[f.statut_teledeclaration] ?? f.statut_teledeclaration}
+            Télédéclaration : {TELEDECLARATION_DISPLAY[f.statut_teledeclaration] ?? f.statut_teledeclaration}
           </Badge>
         )}
         {/* WR2b — badge conformité DGI, visible seulement si l'interrupteur société est actif. */}
@@ -332,10 +351,12 @@ function FactureRow({ f, ctx }) {
         )}
       </td>
       <td>
+        {/* VX52 — « Facture échue » ne vivait que dans `title` (survol) : le
+            texte devient explicite dans la carte (lisible au tactile). */}
         {nba === 'relancer' && (
           <Badge tone="warning" className="mb-1 block w-fit"
-                 title="Facture échue — à relancer dans Relances / Impayés">
-            À relancer
+                 aria-label="Facture échue — à relancer dans Relances / Impayés">
+            Facture échue — à relancer
           </Badge>
         )}
         <div className="flex flex-wrap items-center gap-2">
