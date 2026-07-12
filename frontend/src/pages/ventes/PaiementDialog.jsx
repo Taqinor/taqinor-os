@@ -95,6 +95,7 @@ export default function PaiementDialog({ facture, onOpenChange, onSaved }) {
   // (Ré)initialise le formulaire à chaque nouvelle facture ciblée.
   useEffect(() => {
     if (!facture) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- (ré)init form on facture change
     setPayMontant(facture.montant_du ?? '')
     setPayDate(todayIso())
     setPayMode(lireDernierMode())  // VX93 — pré-remplit avec le dernier mode utilisé

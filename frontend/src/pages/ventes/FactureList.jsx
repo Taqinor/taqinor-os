@@ -261,6 +261,7 @@ function FactureRow({ f, ctx }) {
             <Button size="sm" variant="ghost" onClick={() => setEcheanceEditId(null)}>×</Button>
           </span>
         ) : (
+          <>
           {/* VX52 — l'affordance de modification d'échéance ne vivait que dans
               `title` (survol) : au tactile, un vrai bouton à label accessible. */}
           {['emise', 'en_retard'].includes(f.statut) || overdue ? (
@@ -281,6 +282,7 @@ function FactureRow({ f, ctx }) {
                 : '—'}
             </span>
           )}
+          </>
         )}
       </td>
       <td className="ta-right tabular-nums" data-label="Total TTC">
