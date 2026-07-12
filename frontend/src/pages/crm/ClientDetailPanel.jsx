@@ -1,6 +1,11 @@
 import { useEffect, useState } from 'react'
+import { MessageCircle } from 'lucide-react'
 import api from '../../api/axios'
-import { Badge, Button, Spinner } from '../../ui'
+import ventesApi from '../../api/ventesApi'
+import {
+  Badge, Button, Spinner,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from '../../ui'
 import { Table } from '../reporting/Table'
 import ClientRgpdActions from './ClientRgpdActions'
 import OwnerChain from '../../components/OwnerChain'
@@ -14,7 +19,7 @@ import { telHref, waHref } from '../../lib/contactLinks'
 
 const formatDateFR = (iso) => (iso ? new Date(iso).toLocaleDateString('fr-FR') : '—')
 
-function DocTable({ titre, rows, withTotal, withDate, emptyLabel }) {
+function DocTable({ titre, rows, withTotal, withDate, emptyLabel, renderActions }) {
   // VX152 — un seul moteur de table : la fiche client rejoint le primitif `Table`
   // partagé (reporting) au lieu d'un troisième moteur `DocTable` maison.
   const columns = [
@@ -22,6 +27,9 @@ function DocTable({ titre, rows, withTotal, withDate, emptyLabel }) {
     { key: 'statut', header: 'Statut', cell: (r) => <Badge tone="neutral">{r.statut || '—'}</Badge> },
     ...(withDate ? [{ key: 'date', header: 'Date', cell: (r) => formatDateFR(r.date) }] : []),
     ...(withTotal ? [{ key: 'total', header: 'Total TTC', align: 'right', cell: (r) => formatMAD(r.total_ttc) }] : []),
+    // VX245(c) — colonne actions OPTIONNELLE (factures uniquement, pour
+    // « Relancer par WhatsApp ») — jamais sur devis/chantiers.
+    ...(renderActions ? [{ key: 'actions', header: '', align: 'right', cell: renderActions }] : []),
   ]
   return (
     <section className="mb-4">
@@ -44,6 +52,11 @@ export default function ClientDetailPanel({ client, onClose, onNewDevis, onChang
   // XSAL9 — rollup CA groupe (société mère + filiales). Best-effort : une
   // erreur de chargement n'empêche jamais le reste de la fiche de s'afficher.
   const [consolidation, setConsolidation] = useState(null)
+  // VX245(c) — aperçu du rappel WhatsApp (facture en retard) avant ouverture
+  // de wa.me — MÊME contrat que RelancesPage/FactureList (`whatsappFacture`,
+  // jamais un 2ᵉ constructeur de message).
+  const [waPreview, setWaPreview] = useState(null)
+  const [waBusy, setWaBusy] = useState(false)
 
   useEffect(() => {
     let alive = true
@@ -71,6 +84,30 @@ export default function ClientDetailPanel({ client, onClose, onNewDevis, onChang
   // VX108 — tap-to-call : le panneau n'affichait jusqu'ici aucun téléphone.
   const tel = telHref(client.telephone)
   const wa = waHref(client.whatsapp)
+
+  // VX245(c) — construit le message « relance » côté serveur (même
+  // constructeur que RelancesPage/FactureList) puis montre un aperçu avant
+  // d'ouvrir wa.me. Jamais d'envoi automatique.
+  const relancerWhatsApp = async (facture) => {
+    setWaBusy(true)
+    try {
+      const res = await ventesApi.whatsappFacture(facture.id, { modele: 'relance', langue: 'fr' })
+      setWaPreview({
+        reference: facture.reference,
+        message: res.data?.message ?? '',
+        url: res.data?.url ?? '',
+        wa_url: res.data?.wa_url ?? '',
+      })
+    } catch (err) {
+      alert(err?.response?.data?.detail ?? 'Envoi WhatsApp impossible.')
+    } finally {
+      setWaBusy(false)
+    }
+  }
+  const ouvrirWhatsApp = () => {
+    if (waPreview?.wa_url) window.open(waPreview.wa_url, '_blank', 'noopener')
+    setWaPreview(null)
+  }
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -151,6 +188,15 @@ export default function ClientDetailPanel({ client, onClose, onNewDevis, onChang
                 withTotal
                 withDate
                 emptyLabel="Aucune facture liée."
+                renderActions={(f) => (
+                  f.statut_key === 'en_retard' ? (
+                    <Button size="sm" variant="outline" disabled={waBusy}
+                            onClick={() => relancerWhatsApp(f)}
+                            title="Relancer par WhatsApp">
+                      <MessageCircle className="size-4" /> Relancer
+                    </Button>
+                  ) : null
+                )}
               />
               <DocTable
                 titre="Chantiers"
@@ -172,6 +218,32 @@ export default function ClientDetailPanel({ client, onClose, onNewDevis, onChang
           <Button onClick={onClose}>Fermer</Button>
         </div>
       </div>
+      {/* VX245(c) — Aperçu du rappel WhatsApp avant ouverture de wa.me (même
+          patron que RelancesPage/FactureList — jamais un envoi automatique). */}
+      <Dialog open={!!waPreview} onOpenChange={(o) => { if (!o) setWaPreview(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Aperçu du rappel WhatsApp — {waPreview?.reference}</DialogTitle>
+            <DialogDescription>Vérifiez le texte et le lien, puis ouvrez WhatsApp.</DialogDescription>
+          </DialogHeader>
+          <pre className="m-0 whitespace-pre-wrap break-words rounded-lg bg-muted p-3 text-sm"
+               style={{ fontFamily: 'inherit' }}>
+            {waPreview?.message}
+          </pre>
+          {waPreview?.url && (
+            <p className="mt-2 break-words text-xs text-muted-foreground">
+              Lien public : {waPreview.url}
+            </p>
+          )}
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={() => setWaPreview(null)}>Annuler</Button>
+            <Button type="button" variant="success" disabled={!waPreview?.wa_url}
+                    onClick={ouvrirWhatsApp}>
+              <MessageCircle /> Ouvrir WhatsApp
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

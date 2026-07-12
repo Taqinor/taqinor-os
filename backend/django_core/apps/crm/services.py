@@ -2501,6 +2501,40 @@ def book_appointment(*, lead, scheduled_at, notes=None, user=None):
     return appointment
 
 
+# ── VX245(b) — confirmation WhatsApp POST-RDV (aperçu date/heure + .ics) ────
+
+def build_appointment_confirmation_whatsapp(request, appointment):
+    """VX245(b) — construit le message de CONFIRMATION WhatsApp d'un rendez-
+    vous : date/heure (Africa/Casablanca) + lien de téléchargement `.ics`
+    (VX245(a), `apps.crm.views.AppointmentViewSet.ics`). N'ENVOIE RIEN — même
+    convention que `build_devis_whatsapp`/`build_facture_whatsapp` : ouvre
+    WhatsApp avec le message pré-rempli, le commercial appuie lui-même sur
+    Envoyer. Renvoie `(message, wa_url, ics_url)` ; `wa_url` est `None` si le
+    lead n'a pas de numéro exploitable."""
+    import zoneinfo
+
+    from apps.ventes.utils.whatsapp import build_wa_url
+
+    lead = appointment.lead
+    phone = lead.whatsapp or lead.telephone
+    nom = f'{lead.prenom or ""} {lead.nom or ""}'.strip() or (lead.nom or '')
+    try:
+        local_dt = appointment.scheduled_at.astimezone(
+            zoneinfo.ZoneInfo(RAMADAN_TZ))
+        date_str = local_dt.strftime('%d/%m/%Y à %H:%M')
+    except Exception:  # pragma: no cover - défensif
+        date_str = str(appointment.scheduled_at)
+
+    ics_url = request.build_absolute_uri(
+        f'/api/django/crm/appointments/{appointment.pk}/ics/')
+    salutation = f'Bonjour {nom},' if nom else 'Bonjour,'
+    message = (
+        f'{salutation} je confirme notre rendez-vous le {date_str}.\n'
+        f'Ajouter à votre agenda : {ics_url}'
+    )
+    return message, build_wa_url(phone, message), ics_url
+
+
 # ── XSAL17 — Placeholder {lien_rdv} : lien de réservation dans les messages ──
 
 def public_booking_url(lead, *, request=None):

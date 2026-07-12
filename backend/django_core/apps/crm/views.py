@@ -201,6 +201,11 @@ class ClientViewSet(CompanyScopedModelViewSet):
                 'id': f.id,
                 'reference': f.reference,
                 'statut': _statut(f),
+                # VX245(c) — clé RAW (additive, jamais lue par les autres
+                # consommateurs de `statut`) : « Relancer par WhatsApp »
+                # n'apparaît QUE sur une facture réellement en retard, sans
+                # dépendre du libellé FR affiché (fragile/localisé).
+                'statut_key': f.statut,
                 'total_ttc': str(f.total_ttc),
                 'date': _date(f),
             }
@@ -1649,7 +1654,10 @@ class AppointmentViewSet(CompanyScopedModelViewSet):
     ordering = ['scheduled_at']
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS:
+        # VX245(a) — `ics` (téléchargement, lecture seule) rejoint les
+        # READ_ACTIONS : tout rôle peut télécharger le `.ics` d'un RDV qu'il
+        # peut déjà VOIR (queryset scopé société, jamais un nouveau droit).
+        if self.action in READ_ACTIONS or self.action == 'ics':
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]
 
@@ -1676,6 +1684,58 @@ class AppointmentViewSet(CompanyScopedModelViewSet):
         # and return the already-created appointment via the serializer for the
         # response. Patch self so the serializer picks up the instance.
         serializer.instance = appt
+
+    @action(detail=True, methods=['get'], url_path='ics')
+    def ics(self, request, pk=None):
+        """VX245(a) — `.ics` d'ÉVÉNEMENT UNIQUE pour CE rendez-vous (RFC 5545,
+        1 VEVENT horodaté) — distinct du flux d'ABONNEMENT complet de
+        `reporting.calendar.calendar_ics`. Réutilise la MÊME fonction pure
+        `build_ics` (extraite pour être réutilisable, jamais une 2ᵉ
+        implémentation ICS).
+
+        Scopé société via `get_object()` (`CompanyScopedModelViewSet` — le
+        RDV d'une autre société renvoie 404, jamais fabriqué)."""
+        appt = self.get_object()
+        from datetime import timedelta
+
+        from django.http import HttpResponse
+
+        from apps.reporting.calendar import build_ics
+
+        lead_nom = f'{appt.lead.nom} {appt.lead.prenom or ""}'.strip()
+        titre = f'RDV — {lead_nom}' if lead_nom else f'RDV #{appt.pk}'
+        events = [{
+            'uid': f'appointment-{appt.pk}',
+            'start_dt': appt.scheduled_at,
+            'end_dt': appt.scheduled_at + timedelta(hours=1),
+            'summary': titre,
+            'description': appt.notes or '',
+        }]
+        body = build_ics(request.user, events, calname=titre)
+        resp = HttpResponse(body, content_type='text/calendar; charset=utf-8')
+        resp['Content-Disposition'] = f'attachment; filename="rdv-{appt.pk}.ics"'
+        return resp
+
+    @action(detail=True, methods=['post'], url_path='confirmer-whatsapp',
+            permission_classes=[IsResponsableOrAdmin])
+    def confirmer_whatsapp(self, request, pk=None):
+        """VX245(b) — aperçu du message de CONFIRMATION WhatsApp post-RDV
+        (date/heure + lien `.ics`). N'ENVOIE RIEN : le commercial ouvre
+        WhatsApp lui-même après avoir vérifié l'aperçu (même convention que
+        `LeadViewSet.whatsapp_devis`)."""
+        appt = self.get_object()
+        from .services import build_appointment_confirmation_whatsapp
+
+        message, wa_url, ics_url = build_appointment_confirmation_whatsapp(
+            request, appt)
+        if wa_url is None:
+            return Response(
+                {'detail': 'Aucun numéro de téléphone.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response({
+            'message': message, 'wa_url': wa_url, 'ics_url': ics_url,
+        })
 
 
 # ── FG39 — ObjectifCommercial / KPI Target ────────────────────────────────────

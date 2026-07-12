@@ -420,11 +420,19 @@ function FactureRow({ f, ctx }) {
                   <DropdownMenuItem
                     disabled={isWaBusy || !waPhoneOk}
                     title={!waPhoneOk ? 'Numéro invalide' : undefined}
-                    onSelect={(e) => { e.preventDefault(); handleWhatsApp(f, 'facture') }}>
+                    onSelect={(e) => {
+                      e.preventDefault()
+                      // VX245(c) — une facture EN RETARD envoie le gabarit
+                      // « relance » (déjà supporté par `whatsappFacture`,
+                      // jamais construit ailleurs) plutôt que le gabarit
+                      // générique « facture ».
+                      handleWhatsApp(f, f.statut === 'en_retard' ? 'relance' : 'facture')
+                    }}>
                     <MessageCircle />
                     {isWaBusy ? 'Préparation…'
                       : !waPhoneOk ? 'WhatsApp (numéro invalide)'
-                        : 'WhatsApp'}
+                        : f.statut === 'en_retard' ? 'Relancer par WhatsApp'
+                          : 'WhatsApp'}
                   </DropdownMenuItem>
                 )}
                 {['emise', 'payee', 'en_retard'].includes(f.statut) && (

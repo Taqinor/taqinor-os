@@ -14,6 +14,19 @@ const STATUS_LABELS = {
   annule: 'Annulé',
 }
 
+// VX245(a)/(b) — helper de téléchargement blob (jamais un `<a href>` brut :
+// l'endpoint est authentifié JWT, il faut passer par axios).
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
 export default function AppointmentBooker({ leadId }) {
   const [open, setOpen] = useState(false)
   const [scheduledAt, setScheduledAt] = useState('')
@@ -22,6 +35,9 @@ export default function AppointmentBooker({ leadId }) {
   const [error, setError] = useState(null)
   const [appointments, setAppointments] = useState([])
   const [loading, setLoading] = useState(true)
+  // VX245(b) — aperçu du message de confirmation WhatsApp avant ouverture de
+  // wa.me : { apptId, message, wa_url } | null.
+  const [waPreview, setWaPreview] = useState(null)
 
   const load = useCallback(() => {
     if (!leadId) return
@@ -62,6 +78,37 @@ export default function AppointmentBooker({ leadId }) {
     } catch {
       // best-effort
     }
+  }
+
+  // VX245(a) — « Ajouter à mon agenda (.ics) » : télécharge un .ics
+  // d'événement UNIQUE pour ce rendez-vous (jamais le flux d'abonnement
+  // complet — distinct, réservé à Mes préférences).
+  async function handleDownloadIcs(apptId) {
+    try {
+      const res = await crmApi.getAppointmentIcs(apptId)
+      downloadBlob(res.data, `rdv-${apptId}.ics`)
+    } catch {
+      setError("Téléchargement de l'agenda impossible.")
+    }
+  }
+
+  // VX245(b) — « Confirmer par WhatsApp » : construit l'aperçu côté serveur
+  // (date/heure + lien .ics), puis n'ouvre wa.me qu'après confirmation
+  // explicite — jamais un envoi automatique.
+  async function handleConfirmWhatsapp(apptId) {
+    try {
+      const res = await crmApi.confirmerAppointmentWhatsapp(apptId)
+      setWaPreview({
+        apptId, message: res.data?.message ?? '', wa_url: res.data?.wa_url ?? '',
+      })
+    } catch (err) {
+      setError(err?.response?.data?.detail ?? 'Aperçu WhatsApp impossible.')
+    }
+  }
+
+  function openWhatsapp() {
+    if (waPreview?.wa_url) window.open(waPreview.wa_url, '_blank', 'noopener')
+    setWaPreview(null)
   }
 
   const upcoming = appointments.filter(a => a.statut !== 'annule' && a.statut !== 'effectue')
@@ -105,13 +152,40 @@ export default function AppointmentBooker({ leadId }) {
                     — {a.notes}
                   </span>
                 )}
+                {/* VX245(a) — .ics d'événement unique pour CE rendez-vous. */}
+                <button
+                  type="button"
+                  onClick={() => handleDownloadIcs(a.id)}
+                  style={{
+                    fontSize: 11, color: 'var(--color-text-muted, #475569)',
+                    background: 'none', border: 'none', cursor: 'pointer',
+                    padding: '0 4px', marginLeft: 'auto',
+                  }}
+                  title="Télécharger un fichier .ics pour cet unique rendez-vous"
+                >
+                  📅 Agenda
+                </button>
+                {/* VX245(b) — aperçu de confirmation WhatsApp (jamais un envoi
+                    automatique — le commercial ouvre wa.me lui-même). */}
+                <button
+                  type="button"
+                  onClick={() => handleConfirmWhatsapp(a.id)}
+                  style={{
+                    fontSize: 11, color: 'var(--color-success, #059669)',
+                    background: 'none', border: 'none', cursor: 'pointer',
+                    padding: '0 4px',
+                  }}
+                  title="Aperçu du message de confirmation WhatsApp"
+                >
+                  Confirmer par WhatsApp
+                </button>
                 <button
                   type="button"
                   onClick={() => handleCancel(a.id)}
                   style={{
                     fontSize: 11, color: 'var(--color-danger, #dc2626)',
                     background: 'none', border: 'none', cursor: 'pointer',
-                    padding: '0 4px', marginLeft: 'auto',
+                    padding: '0 4px',
                   }}
                   title="Annuler ce rendez-vous"
                 >
@@ -120,6 +194,46 @@ export default function AppointmentBooker({ leadId }) {
               </div>
             ))}
           </div>
+          {/* VX245(b) — aperçu inline (pas de Dialog ici — composant léger,
+              styles inline cohérents avec le reste du fichier) avant
+              ouverture de wa.me. Jamais un envoi automatique. */}
+          {waPreview && (
+            <div style={{
+              marginTop: 6, padding: '8px 10px',
+              background: 'var(--color-surface-2, #f8f9fa)',
+              border: '1px solid var(--color-border, #e5e7eb)',
+              borderRadius: 8, fontSize: 12,
+            }}>
+              <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                Aperçu du message WhatsApp
+              </div>
+              <pre style={{
+                whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: 0,
+                fontFamily: 'inherit',
+              }}>
+                {waPreview.message}
+              </pre>
+              <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  style={{ fontSize: 12, padding: '3px 10px' }}
+                  disabled={!waPreview.wa_url}
+                  onClick={openWhatsapp}
+                >
+                  Ouvrir WhatsApp
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-outline-secondary"
+                  style={{ fontSize: 12, padding: '3px 10px' }}
+                  onClick={() => setWaPreview(null)}
+                >
+                  Annuler
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
