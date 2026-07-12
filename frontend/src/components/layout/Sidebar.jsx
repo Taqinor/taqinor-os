@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useMemo } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import {
@@ -267,6 +267,27 @@ export const NAV_SECTIONS = [
   },
 ]
 
+// VX189(b) — UX1 — Les modules « coquille » s'insèrent JUSTE AVANT
+// « Administration » (qui reste la dernière section). `NAV_SECTIONS` (ci-
+// dessus) et `moduleNavSections` (import, lui-même figé au chargement du
+// module — `import.meta.glob(..., { eager: true })`) sont TOUS DEUX
+// statiques : cette fusion ne dépend d'aucun props/state et n'a donc besoin
+// d'AUCUNE mémoïsation React — la calculer une seule fois au chargement du
+// module (au lieu de la refaire à CHAQUE rendu de Sidebar) est strictement
+// équivalent et moins cher. Seul le FILTRAGE par modules désactivés (ci-
+// dessous, `useMemo`) est réellement réactif (dépend de `modulesOff`, un
+// sélecteur Redux qui peut changer).
+const ALL_NAV_SECTIONS = (() => {
+  const adminIdx = NAV_SECTIONS.findIndex((s) => s.label === 'ADMINISTRATION')
+  return adminIdx < 0
+    ? [...NAV_SECTIONS, ...moduleNavSections]
+    : [
+        ...NAV_SECTIONS.slice(0, adminIdx),
+        ...moduleNavSections,
+        ...NAV_SECTIONS.slice(adminIdx),
+      ]
+})()
+
 export default function Sidebar({ collapsed, onToggle, onNavigate }) {
   const dispatch    = useDispatch()
   const navigate    = useNavigate()
@@ -286,20 +307,14 @@ export default function Sidebar({ collapsed, onToggle, onNavigate }) {
   // libellé FR en dur comme repli (modules « coquille » sans clé → FR inchangé).
   const tr = (key, fallback) => (key ? t(key) : fallback)
 
-  // UX1 — Les modules « coquille » s'insèrent JUSTE AVANT « Administration »
-  // (qui reste la dernière section), sans que la Sidebar connaisse chaque module.
-  const sections = (() => {
-    const adminIdx = NAV_SECTIONS.findIndex((s) => s.label === 'ADMINISTRATION')
-    const all = adminIdx < 0
-      ? [...NAV_SECTIONS, ...moduleNavSections]
-      : [
-          ...NAV_SECTIONS.slice(0, adminIdx),
-          ...moduleNavSections,
-          ...NAV_SECTIONS.slice(adminIdx),
-        ]
-    // ODX6 — masque les sections des modules désactivés (liste vide ⇒ no-op).
-    return filterNavSections(all, modulesOff)
-  })()
+  // VX189(b) — ODX6 — masque les sections des modules désactivés (liste vide
+  // ⇒ no-op). `ALL_NAV_SECTIONS` (statique, module scope) recalculait cette
+  // fusion à CHAQUE rendu de Sidebar avant ce fix ; seul le filtrage reste
+  // réactif (dépend de `modulesOff`).
+  const sections = useMemo(
+    () => filterNavSections(ALL_NAV_SECTIONS, modulesOff),
+    [modulesOff],
+  )
 
   const handleLogout = async () => {
     await dispatch(logoutUser())

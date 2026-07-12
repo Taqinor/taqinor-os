@@ -1048,8 +1048,10 @@ export function Component() {
             <MesEquipesCard />
           </Suspense>
 
-          {/* FG8 — Flux d'activités planifiées (records.Activity) */}
-          <Card>
+          {/* FG8 — Flux d'activités planifiées (records.Activity).
+              VX189(c) — cv-auto : section liste/texte sous le pli, jamais un
+              graphique recharts (voir index.css). */}
+          <Card className="cv-auto">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Activity className="size-4 text-muted-foreground" aria-hidden="true" />
@@ -1064,9 +1066,9 @@ export function Component() {
             </CardContent>
           </Card>
 
-          {/* Alerte factures en retard */}
+          {/* Alerte factures en retard — VX189(c) cv-auto (liste, sous le pli). */}
           {facturesEnRetard.length > 0 && (
-            <Card className="border-destructive/30 bg-destructive/5">
+            <Card className="border-destructive/30 bg-destructive/5 cv-auto">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-destructive">
                   <Clock className="size-4" aria-hidden="true" />

@@ -668,6 +668,19 @@ button:active, [role="button"]:active, a.btn:active,
   padding-top: env(safe-area-inset-top);
 }
 
+/* VX189(c) — sections HORS-ÉCRAN de Dashboard/Rapports (listes/texte, sous
+   le pli) : `content-visibility: auto` saute le paint/layout du contenu tant
+   qu'il n'approche pas du viewport (gain mesuré sans une ligne de JS).
+   `contain-intrinsic-size` évite un saut de scrollbar au premier paint (le
+   navigateur réserve cette hauteur estimée avant d'avoir mesuré le contenu
+   réel). Réservé aux sections LISTE/TEXTE (jamais aux blocs contenant un
+   graphique recharts — un recharts monté alors que son conteneur measure
+   `display:none`-like ne peut pas lire ses dimensions et rend un SVG vide). */
+.cv-auto {
+  content-visibility: auto;
+  contain-intrinsic-size: 0 320px;
+}
+
 /* I136 — Repère de marque cliquable (pastille éclair → accueil). */
 .header-brand {
   display: inline-flex;

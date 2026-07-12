@@ -140,9 +140,11 @@ function ReportCard({ title, kind, params, children }) {
 // rapports T13/T14/T15). onExport optionnel : pas de bouton si absent.
 // VX172 — `busy` : pending visible pendant l'export (VX49 pose déjà le toast
 // d'erreur ; ceci ajoute juste l'état chargement manquant).
-function InsightCard({ title, note, onExport, busy, children }) {
+// VX189(c) — `className` passthrough (ex. `cv-auto` — content-visibility sur
+// une carte liste/texte sous le pli, jamais sur une carte à graphique).
+function InsightCard({ title, note, onExport, busy, className, children }) {
   return (
-    <Card>
+    <Card className={className}>
       <CardHeader className="flex-row items-start justify-between gap-3">
         <div className="space-y-1">
           <CardTitle>{title}</CardTitle>
@@ -868,11 +870,14 @@ export function Component() {
               ) : <p className="text-sm text-muted-foreground">Chargement…</p>}
             </InsightCard>
 
+            {/* VX189(c) — cv-auto : dernière carte de l'onglet Insights, liste/
+                texte (Table), jamais un graphique recharts. */}
             <InsightCard title="Commissions commerciales"
                          note="(interne — visible admin ; configuré dans Paramètres)"
                          onExport={commissions?.enabled
                            ? exportInsight('commissions') : undefined}
-                         busy={insightExportBusy.commissions}>
+                         busy={insightExportBusy.commissions}
+                         className="cv-auto">
               {status.commissions === 'error' && (
                 <p className="text-sm text-muted-foreground">Réservé admin.</p>
               )}

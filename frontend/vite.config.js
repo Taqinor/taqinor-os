@@ -230,6 +230,12 @@ export default defineConfig({
           if (/[\\/]node_modules[\\/](react|react-dom|react-router|react-router-dom|scheduler)[\\/]/.test(id)) {
             return 'react-vendor'
           }
+          // VX189(a) — 126 chunks JS < 1 Ko gzip (icônes lucide-react
+          // individuelles, chacune son propre chunk par défaut avec l'import
+          // nommé `import { X } from 'lucide-react'` utilisé partout dans
+          // l'app) sur 345 chunks au total : un seul chunk `icons` partagé,
+          // mis en cache une fois pour toute l'app plutôt que fragmenté.
+          if (/[\\/]node_modules[\\/]lucide-react[\\/]/.test(id)) return 'icons'
           return undefined
         },
       },

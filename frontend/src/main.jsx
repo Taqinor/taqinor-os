@@ -23,6 +23,15 @@ import './index.css'
 // pour les écrans existants (couleurs en dur, aucun `dark:` utilisé).
 initTheme()
 
+// VX189(d) — avertisseur DEV-ONLY des Long Animation Frames (jank thread
+// principal). `import()` DYNAMIQUE derrière `import.meta.env.DEV` (jamais un
+// import statique) : Vite inline la constante à `false` en build prod, ce qui
+// rend la branche entière (et l'import qu'elle contient) morte — Rollup
+// l'élimine, aucun chunk devPerfWarn.js n'existe dans le build prod.
+if (import.meta.env.DEV) {
+  import('./lib/devPerfWarn').then((m) => m.installDevPerfWarn())
+}
+
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <Provider store={store}>
