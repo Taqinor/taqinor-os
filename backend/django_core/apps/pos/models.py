@@ -82,9 +82,10 @@ class VenteComptoir(models.Model):
     )
     taux_tva = models.DecimalField(max_digits=5, decimal_places=2, default=20)
     # Facture légale créée à la validation (string FK — jamais d'import direct
-    # du modèle ventes.Facture).
+    # du modèle facturation.Facture). ODX17 — Facture a déménagé de ventes
+    # vers facturation ; même table physique (ventes_facture), FK re-pointée.
     facture = models.ForeignKey(
-        'ventes.Facture',
+        'facturation.Facture',
         on_delete=models.SET_NULL,
         null=True,
         blank=True,

@@ -64,6 +64,12 @@ INSTALLED_APPS = [
     'authentication',
     'apps.stock',
     'apps.crm',
+    # ODX17 — Facturation (Facture/LigneFacture/Paiement/Avoir/LigneAvoir/
+    # FollowupLevel/RelanceLog, équivalent Odoo Invoicing séparé de Sales).
+    # Sorti de ventes en préservant les tables physiques
+    # (SeparateDatabaseAndState). Chargé AVANT ventes : le shim de ré-export
+    # de ventes.models importe apps.facturation.models.
+    'apps.facturation',
     'apps.ventes',
     'apps.reporting',
     'apps.parametres',
