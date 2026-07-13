@@ -49,7 +49,7 @@ class DossierImport(models.Model):
         null=True, blank=True,
         related_name='installations_dossiers_import')
     bon_commande = models.ForeignKey(
-        'stock.BonCommandeFournisseur', on_delete=models.SET_NULL,
+        'achats.BonCommandeFournisseur', on_delete=models.SET_NULL,
         null=True, blank=True,
         related_name='installations_dossiers_import')
     # max_length=3 couvre tous les incoterms ('ddp', 'cif'…).

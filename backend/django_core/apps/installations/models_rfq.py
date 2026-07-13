@@ -55,7 +55,7 @@ class RFQ(models.Model):
     # retenue (adjudication). String-FK, nullable = comportement historique
     # inchangé (aucune adjudication encore faite pour cette RFQ).
     bon_commande = models.ForeignKey(
-        'stock.BonCommandeFournisseur', on_delete=models.SET_NULL,
+        'achats.BonCommandeFournisseur', on_delete=models.SET_NULL,
         null=True, blank=True, related_name='installations_rfqs')
     note = models.TextField(blank=True, null=True)
     created_by = models.ForeignKey(

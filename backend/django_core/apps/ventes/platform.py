@@ -26,8 +26,11 @@ PLATFORM = {
         'ventes.devis', 'ventes.facture', 'ventes.boncommande',
     ],
     # ARC30 — cibles chatter/records historiques (records.ALLOWED_TARGETS).
+    # ODX17 a déplacé Facture vers l'app ``facturation`` (state-only) : la cible
+    # chatter/records est résolue en ContentType, donc l'app_label DOIT suivre le
+    # modèle (``facturation.facture``), sinon la résolution est cassée.
     'record_targets': [
-        'ventes.devis', 'ventes.boncommande', 'ventes.facture',
+        'ventes.devis', 'ventes.boncommande', 'facturation.facture',
     ],
     'customfield_models': [],
     'import_specs': [],

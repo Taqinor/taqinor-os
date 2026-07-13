@@ -187,6 +187,11 @@ jobs:
       # should be backed by a UniqueConstraint; audit doc IS the baseline.
       - name: Check get_or_create/update_or_create audit (YDATA15, advisory)
         run: python scripts/check_get_or_create.py
+      # YDATA22 — mono-devise MAD invariant sweep. Advisory only (per the plan
+      # task: "v1 ... pas de blocage") — prints the currency audit for
+      # visibility, never fails the build.
+      - name: Currency mono-devise sweep (check_money_monodevise — YDATA22, advisory)
+        run: python scripts/check_money_monodevise.py
 
   # WOW6 — the fast backend suite is sharded 4× across free public-repo runners
   # (matrix legs run concurrently, each on its own 4-vCPU runner + Postgres). The

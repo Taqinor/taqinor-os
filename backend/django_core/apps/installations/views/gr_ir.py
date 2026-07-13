@@ -72,7 +72,7 @@ class ReceptionNonFactureeViewSet(CompanyScopedModelViewSet):
         facture_id = request.data.get('facture')
         if facture_id:
             from django.apps import apps as django_apps
-            facture_model = django_apps.get_model('stock', 'FactureFournisseur')
+            facture_model = django_apps.get_model('achats', 'FactureFournisseur')
             facture = facture_model.objects.filter(
                 id=facture_id, company=request.user.company).first()
             if facture is None:

@@ -401,10 +401,10 @@ class BudgetEngagement(models.Model):
     # Id de l'objet stock rattaché (BCF ou facture fournisseur), selon
     # ``source`` — string-FK volontaire (jamais d'import des modèles stock).
     bon_commande = models.ForeignKey(
-        'stock.BonCommandeFournisseur', on_delete=models.CASCADE,
+        'achats.BonCommandeFournisseur', on_delete=models.CASCADE,
         null=True, blank=True, related_name='installations_budget_engagements')
     facture = models.ForeignKey(
-        'stock.FactureFournisseur', on_delete=models.CASCADE,
+        'achats.FactureFournisseur', on_delete=models.CASCADE,
         null=True, blank=True, related_name='installations_budget_engagements')
     libelle = models.CharField(max_length=200, blank=True, null=True)
     date_creation = models.DateTimeField(auto_now_add=True)
