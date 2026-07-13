@@ -19,7 +19,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.utils.dateparse import parse_datetime
 from rest_framework import viewsets, filters
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import BasePermission
+from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.response import Response
 
 from authentication.permissions import IsAdminRole
@@ -269,6 +269,73 @@ def security_events(request):
         qs = qs.filter(action__in=[a for a in requested if a in allowed])
     else:
         qs = qs.filter(action__in=list(allowed))
+    try:
+        limit = min(int(request.query_params.get('limit', 100)), 500)
+    except (TypeError, ValueError):
+        limit = 100
+    data = AuditLogSerializer(qs[:limit], many=True).data
+    return Response({'count': len(data), 'results': data})
+
+
+# VX243(b) — lecture record-scopée du Journal (« l'historique de MON dossier »).
+# Le Journal global (stats / AuditLogViewSet) reste gaté `can_view_activity_log`
+# tout-ou-rien : un commercial ne peut pas voir qui a modifié SON propre lead
+# sans recevoir la visibilité sur TOUTE la boîte. Cet endpoint ajoute la 2e
+# borne de confiance — l'historique d'UN objet précis, autorisé au propriétaire
+# de l'objet même sans la permission Journal.
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def object_history(request, content_type, object_id):
+    """Historique (AuditLog) d'UN objet, record-scopé.
+
+    Deux bornes :
+    * un utilisateur avec ``can_view_activity_log`` voit l'historique de
+      n'importe quel objet de SA société (parité avec le Journal global) ;
+    * un utilisateur SANS cette permission ne voit que l'historique d'un objet
+      dont il est le PROPRIÉTAIRE (``owner``/``created_by``/``assigned_to``) —
+      la traçabilité de SON lead, et rien d'autre de la boîte.
+
+    L'objet cible est résolu de façon GÉNÉRIQUE via ContentType (framework
+    Django — jamais un import des ``models`` d'une app métier). Company-scopé
+    strict : un objet d'une autre société est un 404, jamais une fuite.
+    """
+    try:
+        app_label, model = content_type.split('.', 1)
+        ct = ContentType.objects.get(app_label=app_label, model=model)
+    except (ValueError, ContentType.DoesNotExist):
+        return Response({'detail': 'content_type invalide'}, status=404)
+
+    user = request.user
+    company = user.company if user.company_id else None
+    if company is None and not user.is_superuser:
+        return Response({'detail': 'Non autorisé.'}, status=404)
+
+    model_cls = ct.model_class()
+    if model_cls is None:
+        return Response({'detail': 'content_type invalide'}, status=404)
+    obj = model_cls._default_manager.filter(pk=object_id).first()
+    if obj is None:
+        return Response({'detail': 'Introuvable.'}, status=404)
+    obj_company_id = getattr(obj, 'company_id', None)
+    if company is not None and obj_company_id != company.id:
+        # Scopage société — jamais l'historique d'un objet d'une autre société.
+        return Response({'detail': 'Introuvable.'}, status=404)
+
+    # Borne de permission : sans le Journal global, il faut être propriétaire.
+    if not getattr(user, 'can_view_activity_log', False):
+        owner_ids = {
+            getattr(obj, 'owner_id', None),
+            getattr(obj, 'created_by_id', None),
+            getattr(obj, 'assigned_to_id', None),
+        }
+        if user.id not in owner_ids:
+            return Response(
+                {'detail': "Accès à l'historique de cet objet non autorisé."},
+                status=403)
+
+    qs = (_company_qs(request)
+          .filter(content_type=ct, object_id=str(object_id))
+          .order_by('-timestamp'))
     try:
         limit = min(int(request.query_params.get('limit', 100)), 500)
     except (TypeError, ValueError):

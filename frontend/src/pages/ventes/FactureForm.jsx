@@ -12,6 +12,7 @@ import crmApi from '../../api/crmApi'
 import stockApi from '../../api/stockApi'
 import ventesApi from '../../api/ventesApi'
 import { resilientMutation } from '../../lib/resilientMutation'
+import { useStaleGuard } from '../../hooks/useStaleGuard'
 import {
   Button, IconButton,
   Dialog, DialogContent, DialogHeader, DialogTitle,
@@ -45,6 +46,16 @@ const today = new Date().toISOString().slice(0, 10)
 export default function FactureForm({ facture = null, onClose, onSaved }) {
   const dispatch = useDispatch()
   const isEdit = !!facture
+
+  // VX243(c) — garde d'édition périmée : re-GET léger de `updated_at` au
+  // submit, bannière non bloquante si un autre utilisateur a sauvegardé
+  // cette facture entre-temps (2 onglets).
+  const staleGuard = useStaleGuard({
+    openedAt: facture?.updated_at,
+    fetchLatest: facture?.id
+      ? () => ventesApi.getFacture(facture.id).then(r => r.data)
+      : undefined,
+  })
 
   const [clients, setClients]           = useState([])
   const [produits, setProduits]         = useState([])
@@ -228,6 +239,12 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!validate()) return
+    // VX243(c) — garde de fraîcheur AVANT le PATCH en édition (conflit → on
+    // interrompt et on affiche la bannière, aucune mutation).
+    if (isEdit) {
+      const canProceed = await staleGuard.checkBeforeSave()
+      if (!canProceed) return
+    }
     setSaving(true)
     try {
       const payload = {
@@ -324,6 +341,28 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
         <DialogHeader>
           <DialogTitle>{isEdit ? `Éditer — ${facture.reference}` : 'Nouvelle facture'}</DialogTitle>
         </DialogHeader>
+
+        {/* VX243(c) — bannière non bloquante : un autre utilisateur a
+            sauvegardé cette facture pendant l'édition en cours. */}
+        {staleGuard.staleInfo && (
+          <div role="alert" className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
+            <span>
+              Modifié par {staleGuard.staleInfo.by || 'un autre utilisateur'}
+              {' '}pendant votre édition — vérifiez avant d'enregistrer.
+            </span>
+            <span className="flex gap-2">
+              <Button type="button" size="sm" variant="outline" onClick={staleGuard.dismiss}>
+                Revoir
+              </Button>
+              <Button
+                type="button" size="sm" variant="outline"
+                onClick={() => { staleGuard.force(); handleSubmit({ preventDefault: () => {} }) }}
+              >
+                Enregistrer quand même
+              </Button>
+            </span>
+          </div>
+        )}
 
         <Form onSubmit={handleSubmit} className="gap-5">
           {/* ── Conformité Article 145 CGI (N29) — AVERTISSEMENT, jamais bloquant ── */}

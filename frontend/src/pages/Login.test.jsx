@@ -60,4 +60,12 @@ describe('Login (SCA24 — marque produit neutre)', () => {
     expect(screen.getByText('Mot de passe')).toBeInTheDocument()
     expect(screen.getByText('Connectez-vous à votre espace de gestion')).toBeInTheDocument()
   })
+
+  // VX150 — le wordmark (repli neutre « ERP ») utilise la police de marque
+  // (var(--font-display)), pas une police héritée/hors-système type Arial Black.
+  it('le wordmark utilise la police de marque (var(--font-display))', () => {
+    renderLogin()
+    const wordmark = screen.getByText('ERP')
+    expect(wordmark.style.fontFamily).toContain('--font-display')
+  })
 })

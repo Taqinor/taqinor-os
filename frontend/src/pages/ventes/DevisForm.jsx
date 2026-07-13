@@ -11,7 +11,9 @@ import {
 } from '../../features/ventes/store/ventesSlice'
 import crmApi from '../../api/crmApi'
 import stockApi from '../../api/stockApi'
+import ventesApi from '../../api/ventesApi'
 import { resilientMutation } from '../../lib/resilientMutation'
+import { useStaleGuard } from '../../hooks/useStaleGuard'
 import {
   Button, IconButton, RelationCounters,
   Dialog, DialogContent, DialogHeader, DialogTitle,
@@ -52,6 +54,16 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
   const freshBy = devis?.updated_by_nom
   const freshAt = devis?.updated_at
   const showFreshness = !!(freshBy && freshBy !== currentUsername)
+
+  // VX243(c) — garde d'édition périmée : re-GET léger de `updated_at` au
+  // submit, comparé à la valeur d'ouverture ; bannière non bloquante si un
+  // autre utilisateur a sauvegardé entre-temps (2 onglets).
+  const staleGuard = useStaleGuard({
+    openedAt: devis?.updated_at,
+    fetchLatest: devis?.id
+      ? () => ventesApi.getDevisById(devis.id).then(r => r.data)
+      : undefined,
+  })
 
   const [clients, setClients] = useState([])
   const [produits, setProduits] = useState([])
@@ -199,6 +211,13 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!validate()) return
+    // VX243(c) — un devis déjà ouvert en édition passe par la garde de
+    // fraîcheur AVANT le PATCH ; une détection de conflit interrompt CE
+    // submit et affiche la bannière (pas de setSaving, pas de mutation).
+    if (isEdit) {
+      const canProceed = await staleGuard.checkBeforeSave()
+      if (!canProceed) return
+    }
     setSaving(true)
     try {
       const payload = {
@@ -348,6 +367,28 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
               ]}
             />
           </>
+        )}
+
+        {/* VX243(c) — bannière non bloquante : un autre utilisateur a
+            sauvegardé ce devis pendant l'édition en cours. */}
+        {staleGuard.staleInfo && (
+          <div role="alert" className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
+            <span>
+              Modifié par {staleGuard.staleInfo.by || 'un autre utilisateur'}
+              {' '}pendant votre édition — vérifiez avant d'enregistrer.
+            </span>
+            <span className="flex gap-2">
+              <Button type="button" size="sm" variant="outline" onClick={staleGuard.dismiss}>
+                Revoir
+              </Button>
+              <Button
+                type="button" size="sm" variant="outline"
+                onClick={() => { staleGuard.force(); handleSubmit({ preventDefault: () => {} }) }}
+              >
+                Enregistrer quand même
+              </Button>
+            </span>
+          </div>
         )}
 
         <Form onSubmit={handleSubmit} className="gap-5">
