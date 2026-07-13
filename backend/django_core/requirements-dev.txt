@@ -8,14 +8,14 @@
 -r requirements.txt
 
 # YTEST1 — shared test factories (testkit/factories.py)
-factory_boy==3.3.1
+factory_boy==3.3.3
 
 # YTEST15 — deterministic time/random discipline (testkit/time.py)
-freezegun==1.5.1
+freezegun==1.5.5
 
 # YTEST9 — mutation testing on high-risk modules (nightly, non-blocking —
 # see .github/workflows/mutation.yml + setup.cfg [mutmut])
-mutmut==2.4.4
+mutmut==3.6.0
 
 # YOPSB12 — N+1 query detector in dev only (guarded import in
 # erp_agentique/settings/dev.py; never installed by CI/prod requirements.txt).
@@ -24,12 +24,12 @@ nplusone==1.0.0
 # WOW1 — Django's parallel test runner (`--parallel`) pickles worker-process
 # tracebacks via tblib; without it, sub-process failures lose their traceback.
 # Dev/CI only (the merge gate runs --parallel 4), never in the prod image.
-tblib==3.0.0
+tblib==3.2.2
 
 # NTPLT48 — scénarios de charge Locust (load/locustfile.py). Dev/CI uniquement
 # (test de charge manuel + workflow load-smoke), JAMAIS dans l'image prod
 # (requirements.txt). Cf. docs/load-testing.md.
-locust==2.31.8
+locust==2.45.0
 
 # NTPLT47 — générateur de données à l'échelle (manage.py seed_scale, Faker
 # fr_FR). Dev/CI/staging uniquement (mesures de charge + démos gros volume),
