@@ -358,8 +358,15 @@ if _DB_REPLICA_HOST:
     DATABASES['replica'] = _replica
 else:
     # Aucun réplica configuré : `.using('replica')` cible physiquement `default`
-    # (même objet de config → une seule base, un seul test DB, byte-identique).
-    DATABASES['replica'] = DATABASES['default']
+    # (même HOST/NAME → une seule base, byte-identique). On donne à `replica` son
+    # PROPRE dict (copie) porteur de `TEST MIRROR default` : sinon, en test
+    # `--parallel`, Django clone la base de `default` en `test_..._N_W` mais
+    # n'associe pas l'alias `replica`, qui tente alors de se connecter à une base
+    # inexistante ("database test_..._N_W does not exist"). Le MIRROR garantit que
+    # `replica` réutilise la base (clonée) de `default` au lieu d'en exiger une 2e.
+    _replica = dict(DATABASES['default'])
+    _replica['TEST'] = {'MIRROR': 'default'}
+    DATABASES['replica'] = _replica
 
 # Routeur : interdit toute écriture / migration vers `replica` ; le routage des
 # LECTURES analytiques reste EXPLICITE (via analytics_queryset), jamais un

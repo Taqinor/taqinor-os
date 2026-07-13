@@ -178,15 +178,6 @@ const ListRow = memo(function ListRow({
           {lead.societe ? (
             <span className="lv-lead-societe">{lead.societe}</span>
           ) : null}
-          {/* VX243(a) — confiance au niveau du DOSSIER : une ligne archivée
-              montre QUI l'a archivée et QUAND (archived_by/at étaient capturés
-              serveur mais jamais rendus). Silencieux sur un lead vivant. */}
-          {lead.is_archived && (lead.archived_by_nom || lead.archived_at) && (
-            <span className="lv-lead-archived-by text-xs text-muted-foreground">
-              Archivé{lead.archived_by_nom ? ` par ${lead.archived_by_nom}` : ''}
-              {lead.archived_at ? ` le ${formatDate(lead.archived_at)}` : ''}
-            </span>
-          )}
           {/* QX25 — repli tap-to-call mobile : la colonne Téléphone
               (m-hide) disparaît sous 768px, ces icônes compactes
               restent visibles dans la cellule Lead (jamais masquée). */}
@@ -208,6 +199,15 @@ const ListRow = memo(function ListRow({
                   <MessageCircle className="size-3.5" aria-hidden="true" />
                 </ExternalLink>
               )}
+            </span>
+          )}
+          {/* VX243(a) — confiance au niveau du DOSSIER : une ligne archivée
+              montre QUI l'a archivée et QUAND (archived_by/at étaient capturés
+              serveur mais jamais rendus). Silencieux sur un lead vivant. */}
+          {lead.is_archived && (lead.archived_by_nom || lead.archived_at) && (
+            <span className="lv-lead-archived-by text-xs text-muted-foreground">
+              Archivé{lead.archived_by_nom ? ` par ${lead.archived_by_nom}` : ''}
+              {lead.archived_at ? ` le ${formatDate(lead.archived_at)}` : ''}
             </span>
           )}
         </div>
