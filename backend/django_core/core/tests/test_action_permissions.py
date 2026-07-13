@@ -17,6 +17,11 @@ from core import action_permission_scan
 # Une valeur ne doit JAMAIS être dépassée ; YRBAC3 la fait décroître app par
 # app. Une app absente d'ici doit avoir 0 @action sans garde.
 UNGUARDED_ACTION_BASELINE = {
+    # NTSEC19 — AccessReviewCampaignViewSet/SodRuleViewSet : @action attester/
+    # violations/seed_standard, gardées au niveau CLASSE par IsAdminRole
+    # (Directeur only) + company-scopées. Le scanner ne crédite que les gardes
+    # PAR action (permission_classes=/get_permissions) → dette coarse acceptée.
+    "accessreview": 3,
     "automation": 1,
     "chat": 16,
     # compta 128->212, flotte 38->39, paie 55->70, rh 84->103, +stock/ventes:
@@ -35,7 +40,9 @@ UNGUARDED_ACTION_BASELINE = {
     "notifications": 4,
     "paie": 70,
     "pos": 5,
-    "publicapi": 5,
+    # NTSEC — ServiceAccountViewSet ajoute 2 @action (rotate/… ) gardées au
+    # niveau CLASSE par _IsAdminRole (5 → 7) ; coarse-guardé, company-scopé.
+    "publicapi": 7,
     "qhse": 65,
     "rh": 103,
     # YRBAC10 a gardé la dernière @action roles non gardée (permission-catalog

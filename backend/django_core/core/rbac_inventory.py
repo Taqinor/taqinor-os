@@ -56,6 +56,11 @@ PUBLIC_ALLOWLIST_PREFIXES = (
     "api/django/gestion-projet/portail",      # portail avancement/CSAT tokenisé
     "api/django/notifications/push/vapid-public-key",  # clé VAPID (publique par nature)
     "api/django/identity/login-banner",       # NTSEC28 — bannière/mention légale pré-auth (AllowAny)
+    # NTSEC5/6 — provisioning SCIM 2.0 (Users/Groups) : endpoints machine-à-
+    # machine authentifiés par un jeton porteur ScimToken dédié (jamais le JWT
+    # humain), scopés société via le company_slug de l'URL. AllowAny au niveau
+    # DRF car l'auth Bearer SCIM + le scope tenant sont gérés dans la vue.
+    "api/django/identity/scim",
     "api/django/health",                      # sondes liveness/readiness
     # Marketing PUBLIC (compta.urls) — tokenisés/webhooks, sans login, throttlés :
     "api/django/compta/webhooks/",            # webhooks entrants Brevo/SMS-STOP

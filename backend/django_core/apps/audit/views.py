@@ -22,6 +22,8 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import BasePermission
 from rest_framework.response import Response
 
+from authentication.permissions import IsAdminRole
+
 from .models import AuditLog
 from .selectors import reconstruct_as_of
 from .serializers import AuditLogSerializer
@@ -313,8 +315,13 @@ def object_as_of(request, content_type, object_id):
 
 
 # NTSEC15 — export CSV des évènements de sécurité (Directeur only, scopé société).
+# Garde IsAdminRole (Directeur/Administrateur, y compris les comptes admin
+# hérités) plutôt que CanViewActivityLog : ce dernier exige la permission fine
+# ``journal_activite_voir`` et EXCLUT délibérément l'admin légacy sans rôle fin
+# — or l'export est explicitement réservé au Directeur (cf. NTSEC19 accessreview,
+# même palier IsAdminRole).
 @api_view(['GET'])
-@permission_classes([CanViewActivityLog])
+@permission_classes([IsAdminRole])
 def security_events_export(request):
     """Export CSV des évènements de sécurité de la société sur une période.
 

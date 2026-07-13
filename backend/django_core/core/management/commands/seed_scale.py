@@ -20,6 +20,7 @@ from datetime import timedelta
 
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
+from django.utils.text import slugify
 
 BATCH = 5000
 
@@ -119,7 +120,12 @@ class Command(BaseCommand):
         if len(companies) < want_co:
             new = []
             for i in range(len(companies), want_co):
-                c = Company(nom=f'[{tag}] {faker.company()} {i}')
+                # ``bulk_create`` court-circuite ``Company.save()`` qui génère
+                # d'ordinaire le ``slug`` (unique). Sans slug explicite, toutes
+                # les sociétés porteraient slug='' → violation d'unicité dès la
+                # 2e. On sème donc un slug déterministe et unique par index.
+                c = Company(nom=f'[{tag}] {faker.company()} {i}',
+                            slug=slugify(f'{tag}-{i}'))
                 new.append(c)
             Company.objects.bulk_create(new, batch_size=BATCH)
             companies = list(Company.objects.filter(nom__startswith=f'[{tag}]'))
