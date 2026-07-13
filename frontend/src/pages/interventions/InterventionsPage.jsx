@@ -286,6 +286,11 @@ function DetailSheet({ intervention, users, onClose, onChanged }) {
   const [hist, setHist] = useState([])
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
+  // VX225 — raison de blocage EXACTE renvoyée par le backend
+  // (`transition_block_reason`, field_services.py) sur un 400 de changement
+  // de statut ; jusqu'ici jetée à la poubelle par un `catch` muet (patron
+  // déjà correct dans ChantierGateTimeline pour les gates chantier).
+  const [statutBlockReason, setStatutBlockReason] = useState(null)
   // VX43 — bottom-sheet sous 768px (glisser-vers-le-bas-pour-fermer inclus
   // nativement par Sheet.jsx pour side="bottom") ; tiroir latéral inchangé
   // sur desktop.
@@ -305,14 +310,23 @@ function DetailSheet({ intervention, users, onClose, onChanged }) {
 
   const setStatut = async (statut) => {
     setBusy(true)
+    setStatutBlockReason(null)
     try {
       await installationsApi.updateIntervention(intervention.id, { statut })
       toast.success('Statut mis à jour.')
       hapticTap()
       await reloadHist()
       onChanged?.()
-    } catch {
-      toast.error('Impossible de changer le statut.')
+    } catch (err) {
+      // VX225 — le 400 porte {statut:[raisons]} (transition_block_reason) :
+      // rendre le message EXACT du serveur sous le sélecteur, toast générique
+      // en repli seulement si le corps ne contient pas de raisons exploitables.
+      const raisons = err?.response?.data?.statut
+      if (Array.isArray(raisons) && raisons.length > 0) {
+        setStatutBlockReason(raisons)
+      } else {
+        toast.error('Impossible de changer le statut.')
+      }
     } finally { setBusy(false) }
   }
 
@@ -460,6 +474,11 @@ function DetailSheet({ intervention, users, onClose, onChanged }) {
                 ))}
               </SelectContent>
             </Select>
+            {statutBlockReason?.length > 0 && (
+              <ul className="flex flex-col gap-0.5 text-xs text-destructive" role="alert">
+                {statutBlockReason.map((r) => <li key={r}>• {r}</li>)}
+              </ul>
+            )}
           </div>
 
           <div className="flex flex-col gap-1">

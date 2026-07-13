@@ -7,6 +7,7 @@ import { Search } from 'lucide-react'
 // VX13 — ROUTE/LIST_ROUTE + recherche débouncée mutualisés avec CommandPalette
 // (⌘K) : plus aucune table dupliquée (cf. lib/search/entityRoutes.js).
 import { ROUTE, LIST_ROUTE, TYPE_ACCENT, useEntitySearch } from '../../lib/search/entityRoutes'
+import { useActiveDescendant } from '../../hooks/useActiveDescendant'
 
 // Mémoire des recherches récentes (localStorage, effacée à la déconnexion).
 const RECENT_KEY = 'taqinor.search.recent'
@@ -40,6 +41,9 @@ export default function GlobalSearch() {
   const boxRef = useRef(null)
   const inputRef = useRef(null)
   const navigate = useNavigate()
+  // VX191 — `aria-activedescendant` : flécher au clavier annonçait déjà le
+  // style visuel (`gs-result-active`) mais rien au lecteur d'écran.
+  const { getOptionId, activeId } = useActiveDescendant(activeIndex)
 
   const term = q.trim()
   // VX13 — recherche débouncée mutualisée (cf. lib/search/entityRoutes.js) ;
@@ -214,6 +218,8 @@ export default function GlobalSearch() {
         role="combobox"
         aria-expanded={open}
         aria-controls="gs-panel"
+        aria-autocomplete="list"
+        aria-activedescendant={activeId}
         aria-label="Recherche globale"
         autoComplete="off"
       />
@@ -226,6 +232,7 @@ export default function GlobalSearch() {
               {recentRows.map(({ value, index }) => (
                 <button
                   key={`recent-${value}`}
+                  id={getOptionId(index)}
                   type="button"
                   role="option"
                   aria-selected={activeIndex === index}
@@ -255,6 +262,7 @@ export default function GlobalSearch() {
               {g.results.map((r) => (
                 <button
                   key={`${g.type}-${r.id}`}
+                  id={getOptionId(r.index)}
                   type="button"
                   role="option"
                   aria-selected={activeIndex === r.index}
@@ -277,6 +285,7 @@ export default function GlobalSearch() {
               {g.moreRow && (
                 <button
                   type="button"
+                  id={getOptionId(g.moreRow.index)}
                   role="option"
                   aria-selected={activeIndex === g.moreRow.index}
                   className={`gs-more${activeIndex === g.moreRow.index ? ' gs-result-active' : ''}`}

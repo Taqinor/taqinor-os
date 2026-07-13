@@ -5,6 +5,7 @@ import {
 import { ListShell } from '../../ui/module'
 import installationsApi from '../../api/installationsApi'
 import { formatDate, formatNumber } from '../../lib/format'
+import useStockFlags from '../parametres/useStockFlags'
 import useMagasinResource from './useMagasinResource'
 import { colisProgress } from './magasin'
 import { ColisStatutPill } from './statusPills'
@@ -152,6 +153,8 @@ function ColisDetail({ colis, onClose, onChanged }) {
 }
 
 export default function ColisageScreen() {
+  // ZSTK13 — capacité colisage : True par défaut = comportement inchangé.
+  const { stock_colisage_actif: colisageActif } = useStockFlags()
   const [statut, setStatut] = useState('')
   const [selected, setSelected] = useState(null)
 
@@ -213,6 +216,20 @@ export default function ColisageScreen() {
   const filters = (
     <Segmented options={STATUT_FILTERS} value={statut} onChange={setStatut} aria-label="Filtrer par statut" />
   )
+
+  // ZSTK13 — écran désactivé pour cette société (Paramètres → Stock) : les
+  // colis existants ne sont ni supprimés ni modifiés, seul l'affichage est
+  // masqué (réversible).
+  if (!colisageActif) {
+    return (
+      <div className="page flex flex-col gap-4">
+        <EmptyState
+          title="Colisage désactivé"
+          description="Cette capacité est désactivée pour votre société (Paramètres → Stock)."
+        />
+      </div>
+    )
+  }
 
   return (
     <div className="page flex flex-col gap-4">

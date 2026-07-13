@@ -1,7 +1,7 @@
-"""Tests YDATA22 — scripts/check_money_fields.py.
+"""Tests YDATA22 — scripts/check_money_monodevise.py.
 
 Pure stdlib (unittest + ast), no Django/DB needed. Run with:
-    python -m unittest scripts.tests.test_check_money_fields -v
+    python -m unittest scripts.tests.test_check_money_monodevise -v
 """
 import ast
 import sys
@@ -11,7 +11,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import check_money_fields as cmf  # noqa: E402
+import check_money_monodevise as cmf  # noqa: E402
 
 
 def _first_class(src: str) -> ast.ClassDef:

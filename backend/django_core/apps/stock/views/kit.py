@@ -29,6 +29,8 @@ class KitProduitViewSet(CompanyScopedModelViewSet):
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['nom', 'sku', 'description']
     ordering = ['nom']
+    # YAPIC2 — whitelist explicite (jamais '__all__').
+    ordering_fields = ['nom', 'sku']
 
     def get_serializer_context(self):
         # ZMFG9 — `?avec_disponibilite=1` sur la liste/fiche enrichit chaque

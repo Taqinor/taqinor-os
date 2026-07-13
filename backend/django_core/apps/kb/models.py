@@ -118,6 +118,18 @@ class KbArticle(models.Model):
     # alors que KbLecture est un « lu/pas lu » idempotent par utilisateur.
     # Posé côté serveur (jamais du corps de requête) via l'action de détail.
     vues = models.PositiveIntegerField(default=0, verbose_name='Vues')
+    # XSAV22 — un article publié peut être proposé sur le formulaire du
+    # portail client (déflection avant l'ouverture d'un ticket SAV). Défaut
+    # FAUX = comportement historique inchangé (aucun article n'apparaît sur
+    # le portail tant qu'il n'est pas explicitement flagué).
+    visible_portail = models.BooleanField(
+        default=False, verbose_name='Visible sur le portail client')
+    # XSAV22 — compteur DÉDIÉ : consultations de CET article déclenchées
+    # depuis le formulaire d'ouverture de ticket du portail (distinct de
+    # ``vues``, qui compte toute consultation interne). Alimente le ratio de
+    # déflection (apps.sav.selectors.ratio_deflection_kb).
+    consultations_portail_ticket = models.PositiveIntegerField(
+        default=0, verbose_name='Consultations depuis un ticket portail')
     # XKB18 — langue de CET article. Défaut ``fr`` = comportement historique
     # inchangé (tout article existant reste un article français ordinaire).
     LANGUE_CHOICES = [('fr', 'Français'), ('ar', 'العربية'), ('en', 'English')]

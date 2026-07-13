@@ -111,9 +111,14 @@ export function BulkActionBar({ count, actions = [], onClear, className }) {
         onAnimationEnd={() => { if (!open) setMounted(false) }}
         className={cn(
           'pointer-events-auto flex w-full max-w-2xl items-center gap-2 rounded-xl border border-border',
-          'bg-popover/95 p-2 pl-3 text-popover-foreground shadow-ui-lg backdrop-blur',
+          // VX178 — fond opaque, blur retiré (barre fixe recomposée à chaque
+          // frame de scroll du tableau derrière elle ; le blur n'apportait
+          // rien vu qu'elle est déjà pleine).
+          'bg-popover p-2 pl-3 text-popover-foreground shadow-ui-lg',
           // H132/VX133 — entrée ET sortie glissées depuis le bas (respecte
-          // prefers-reduced-motion via la définition de l'animation).
+          // prefers-reduced-motion via la définition de l'animation) ; la
+          // sortie déclenche onAnimationEnd → setMounted(false) (voir plus
+          // haut), donc requise pour le démontage de la barre.
           open ? 'animate-slide-in-bottom' : 'animate-slide-out-bottom',
         )}
       >

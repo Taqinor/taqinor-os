@@ -6,6 +6,7 @@ import {
   Badge, Button, Spinner, RelationCounters,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '../../ui'
+import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
 import { Table } from '../reporting/Table'
 import ClientRgpdActions from './ClientRgpdActions'
 import OwnerChain from '../../components/OwnerChain'
@@ -110,12 +111,13 @@ export default function ClientDetailPanel({ client, onClose, onNewDevis, onChang
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <h3 className="modal-title">Fiche client — {nomComplet || '—'}</h3>
-          <button type="button" className="modal-close" onClick={onClose}>✕</button>
-        </div>
+    // VX182 — shell fait-main remplacé par ResponsiveDialog (Escape + focus-
+    // trap + bottom-sheet mobile) ; en-tête/pied conservés à l'identique.
+    <ResponsiveDialog open onOpenChange={(o) => { if (!o) onClose() }} className="sm:max-w-lg" showClose={false}>
+      <div className="modal-header">
+        <h3 className="modal-title">Fiche client — {nomComplet || '—'}</h3>
+        <button type="button" className="modal-close" onClick={onClose}>✕</button>
+      </div>
         <div className="modal-body">
           {/* VX159/VX250 — RelationCounters : réutilise `data` déjà chargé
               (endpoint /crm/clients/<id>/documents/ ci-dessus) — ZÉRO appel
@@ -234,7 +236,6 @@ export default function ClientDetailPanel({ client, onClose, onNewDevis, onChang
           </Button>
           <Button onClick={onClose}>Fermer</Button>
         </div>
-      </div>
       {/* VX245(c) — Aperçu du rappel WhatsApp avant ouverture de wa.me (même
           patron que RelancesPage/FactureList — jamais un envoi automatique). */}
       <Dialog open={!!waPreview} onOpenChange={(o) => { if (!o) setWaPreview(null) }}>
@@ -261,6 +262,6 @@ export default function ClientDetailPanel({ client, onClose, onNewDevis, onChang
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </ResponsiveDialog>
   )
 }

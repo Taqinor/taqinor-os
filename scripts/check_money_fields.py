@@ -1,208 +1,245 @@
-"""YDATA22 — mono-currency (MAD) invariant sweep, DB-free AST/source scan.
+"""YDATA6 — CI guard: monetary fields are `DecimalField`, never `FloatField`.
 
-TAQINOR OS is mono-currency (MAD) today: ``Devis``/``Facture`` already carry a
-``devise``/``taux_change`` pair, but most monetary models still store a bare
-amount with no explicit currency code alongside it — the invariant "montant +
-devise voyagent ensemble" (amount and currency travel together, see
-``docs/money-convention.md``) lives only in the unstated assumption that
-everything is MAD.
+DB-free, AST-only (mirrors ``scripts/check_on_delete.py``): scans
+``apps/*/models*.py`` + ``core/models.py`` + ``authentication/models.py``
+for any field assignment whose NAME matches the money-semantic regex
+(``prix|montant|total|_ht|_ttc|tva|remise|acompte|solde|amount|price|cost|
+cout|honoraire|penalite``, case-insensitive) and flags it if declared
+``models.FloatField(...)`` (or a bare ``IntegerField`` with no "centimes"
+comment nearby). A field also matching the GPS/technical-unit allowlist
+(``lat|lng|latitude|longitude|hmt|debit|kwc|kwh|puissance|
+taux_autoconsommation``) is never flagged, regardless of the money regex —
+this is how the two legitimate ``FloatField`` GPS columns
+(``compta.models.DeplacementSAV.depart_lat/lng``,
+``site_lat``/``site_lng``) stay green.
 
-This is v1 (YDATA22): a pure ADVISORY sweep, never a hard CI gate — the plan
-task is explicit ("v1 : liste ... pas de blocage"). It:
+With ``--decimal-places`` (YDATA7), also sweeps every monetary
+``DecimalField`` and requires an explicit ``decimal_places`` (2 for plain
+amounts; 4 tolerated for a field named ``taux_*``/``*_pct``/``pourcentage``)
+and an explicit ``max_digits``; writes ``docs/money-fields-audit.md`` (every
+monetary DecimalField + its max_digits/decimal_places, so drift is
+visible) and fails only on a field with no/wrong ``decimal_places``.
 
-1. Walks every Django model class under ``backend/django_core/apps/*/models*.py``
-   (plain ``models.py``, split ``models_*.py`` files, and ``models/*.py``
-   packages).
-2. Lists every monetary field (name matches ``MONEY_FIELD_RE``) and whether the
-   model it lives on already carries an explicit ``devise``/``devise_defaut``/
-   ``currency`` field (and, informationally, an exchange-rate field).
-3. Regenerates ``docs/currency-audit.md`` (with ``--write``) — the reviewable
-   table confirming the mono-devise MAD hypothesis for everything that has no
-   explicit devise field.
-
-Scope note — this script's filename is shared with two SEPARATE, NOT YET BUILT
-sibling tasks: YDATA6 (ban bare ``FloatField`` on money fields) and YDATA7
-(require explicit ``max_digits``/``decimal_places=2`` on money
-``DecimalField``). Neither is implemented here — only the YDATA22
-currency-audit sweep is. When YDATA6/7 land, EXTEND this same module (its
-model-scanning helpers are written to be reused) rather than creating a
-second file.
-
-Run
----
-    python scripts/check_money_fields.py            # prints the audit; advisory only, exit 0
-    python scripts/check_money_fields.py --write     # also regenerates docs/currency-audit.md
+Usage:
+    python scripts/check_money_fields.py                  # YDATA6 only
+    python scripts/check_money_fields.py --decimal-places  # + YDATA7 sweep
 """
 from __future__ import annotations
 
 import ast
 import re
 import sys
-from dataclasses import dataclass, field
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 DJANGO_CORE = ROOT / "backend" / "django_core"
-APPS_DIR = DJANGO_CORE / "apps"
-AUDIT_DOC = ROOT / "docs" / "currency-audit.md"
+MONEY_AUDIT_DOC = ROOT / "docs" / "money-fields-audit.md"
 
-#: Same field-name regex as the YDATA6/7 spec (money semantics).
-MONEY_FIELD_RE = re.compile(
+MONEY_NAME_RE = re.compile(
     r"(prix|montant|total|_ht|_ttc|tva|remise|acompte|solde|amount|price|"
     r"cost|cout|honoraire|penalite)",
     re.IGNORECASE,
 )
-#: Field names that count as "this model already carries an explicit currency".
-DEVISE_FIELD_NAMES = {"devise", "devise_defaut", "currency"}
-#: Field names that count as "this model already carries an exchange rate"
-#: (informational column only — not required by the v1 advisory).
-RATE_FIELD_NAMES = {
-    "taux_change", "taux_vers_mad", "taux_origine", "taux_reglement", "taux_cloture",
+GPS_TECH_NAME_RE = re.compile(
+    r"(lat|lng|latitude|longitude|hmt|debit|kwc|kwh|puissance|"
+    r"taux_autoconsommation)",
+    re.IGNORECASE,
+)
+RATE_NAME_RE = re.compile(r"(taux_|_pct$|pourcentage)", re.IGNORECASE)
+
+# YDATA7 — reviewed exceptions: fields whose decimal_places is intentionally
+# outside {2, 4} because the unit itself is not a plain percentage/amount.
+# One entry today: gestion_projet.Projet.taux_penalite_retard is a PER-MILLE
+# (‰) rate per day (Moroccan public-works penalty convention), correctly at
+# decimal_places=3 — not a drift to fix.
+DECIMAL_PLACES_ALLOWLIST = {
+    "backend/django_core/apps/gestion_projet/models.py:103",
 }
+
+FLOAT_LIKE = {"FloatField"}
+DECIMAL_LIKE = {"DecimalField"}
 
 
 def _iter_model_files():
-    """Yield every model source file (three on-disk layouts used in the repo)."""
-    yield from APPS_DIR.glob("*/models.py")
-    yield from APPS_DIR.glob("*/models_*.py")
-    yield from APPS_DIR.glob("*/models/*.py")
+    apps_dir = DJANGO_CORE / "apps"
+    if apps_dir.is_dir():
+        for app_dir in sorted(apps_dir.iterdir()):
+            if not app_dir.is_dir():
+                continue
+            for path in sorted(app_dir.glob("models*.py")):
+                yield path
+            models_pkg = app_dir / "models"
+            if models_pkg.is_dir():
+                for path in sorted(models_pkg.glob("*.py")):
+                    if path.name != "__init__.py":
+                        yield path
+    for extra in (DJANGO_CORE / "core" / "models.py",
+                  DJANGO_CORE / "authentication" / "models.py"):
+        if extra.exists():
+            yield extra
 
 
-def _is_field_call(node: ast.AST) -> bool:
-    """True if *node* is a Call whose callable name ends in ``Field`` —
-    matches ``models.DecimalField(...)`` and a bare ``DecimalField(...)``
-    (after ``from django.db.models import DecimalField``)."""
-    if not isinstance(node, ast.Call):
-        return False
+def _rel(path: Path) -> str:
+    return str(path.relative_to(ROOT)).replace("\\", "/")
+
+
+def _call_name(node):
     func = node.func
-    name = func.attr if isinstance(func, ast.Attribute) else (
-        func.id if isinstance(func, ast.Name) else None
-    )
-    return bool(name) and name.endswith("Field")
+    if isinstance(func, ast.Name):
+        return func.id
+    if isinstance(func, ast.Attribute):
+        return func.attr
+    return None
 
 
-@dataclass
-class ModelMoneyInfo:
-    app: str
-    relpath: str
-    model: str
-    lineno: int
-    money_fields: list = field(default_factory=list)
-    has_devise: bool = False
-    has_rate: bool = False
+def _kwarg(node, name):
+    for kw in node.keywords:
+        if kw.arg == name:
+            return kw.value
+    return None
 
 
-def _scan_class(app: str, relpath: str, node: ast.ClassDef):
-    """Return a ``ModelMoneyInfo`` for *node* if it declares >=1 money field,
-    else ``None``. Pure/no I/O — reusable directly by unit tests."""
-    money_fields: list[str] = []
-    has_devise = False
-    has_rate = False
-    for stmt in node.body:
-        targets: list[str] = []
-        value = None
-        if isinstance(stmt, ast.Assign):
-            value = stmt.value
-            targets = [t.id for t in stmt.targets if isinstance(t, ast.Name)]
-        elif isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name):
-            targets = [stmt.target.id]
-            value = stmt.value
-        if not targets or value is None or not _is_field_call(value):
+def _is_money_name(name: str) -> bool:
+    if GPS_TECH_NAME_RE.search(name):
+        return False
+    return bool(MONEY_NAME_RE.search(name))
+
+
+def _iter_field_assignments(tree):
+    """Single pass: yields (model_name, field_name, call_node) for every
+    `field = models.XField(...)` assignment in any class body."""
+    for classdef in ast.walk(tree):
+        if not isinstance(classdef, ast.ClassDef):
             continue
-        for fname in targets:
-            lname = fname.lower()
-            if lname in DEVISE_FIELD_NAMES:
-                has_devise = True
-            if lname in RATE_FIELD_NAMES:
-                has_rate = True
-            if MONEY_FIELD_RE.search(lname):
-                money_fields.append(fname)
-    if not money_fields:
-        return None
-    return ModelMoneyInfo(
-        app=app, relpath=relpath, model=node.name, lineno=node.lineno,
-        money_fields=sorted(set(money_fields)), has_devise=has_devise, has_rate=has_rate,
-    )
+        for stmt in ast.walk(classdef):
+            if isinstance(stmt, ast.Assign):
+                target = stmt.targets[0] if stmt.targets else None
+                value = stmt.value
+            elif isinstance(stmt, ast.AnnAssign):
+                target = stmt.target
+                value = stmt.value
+            else:
+                continue
+            if value is None or not isinstance(value, ast.Call):
+                continue
+            if not isinstance(target, ast.Name):
+                continue
+            yield classdef.name, target.id, value
 
 
-def scan_money_models() -> list:
-    """Scan the whole repo's model files; return sorted ``ModelMoneyInfo`` list."""
-    results: list[ModelMoneyInfo] = []
-    for path in _iter_model_files():
-        if not path.exists():
-            continue
-        relpath = path.relative_to(DJANGO_CORE).as_posix()
-        app = path.relative_to(APPS_DIR).parts[0]
-        try:
-            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        except SyntaxError:
-            continue
-        for node in ast.walk(tree):
-            if isinstance(node, ast.ClassDef):
-                info = _scan_class(app, relpath, node)
-                if info is not None:
-                    results.append(info)
-    results.sort(key=lambda r: (r.app, r.relpath, r.lineno))
-    return results
-
-
-def render_audit_markdown(models: list) -> str:
-    without_devise = [m for m in models if not m.has_devise]
-    with_devise = [m for m in models if m.has_devise]
-    lines = [
-        "# Currency audit — YDATA22",
-        "",
-        "Generated by `python scripts/check_money_fields.py --write` — do not hand-edit,",
-        "re-run the script instead. Advisory sweep, not a CI gate (v1 per YDATA22: \"pas",
-        "de blocage\"). Confirms the mono-devise MAD hypothesis documented in",
-        "`docs/money-convention.md`: every model below persists money with no explicit",
-        "currency code EXCEPT the ones already carrying `devise`/`devise_defaut`",
-        "(multi-currency purchasing/quoting/FX-revaluation models).",
-        "",
-        f"- Money-bearing models scanned: **{len(models)}**",
-        f"- Already carry an explicit devise/currency field: **{len(with_devise)}**",
-        f"- Assume mono-devise MAD implicitly (no devise field): **{len(without_devise)}**",
-        "",
-        "## Models WITHOUT an explicit devise field (assume MAD)",
-        "",
-        "| App | Model | File | Money fields |",
-        "| --- | --- | --- | --- |",
-    ]
-    for m in without_devise:
-        lines.append(f"| {m.app} | {m.model} | `{m.relpath}:{m.lineno}` | {', '.join(m.money_fields)} |")
-    lines += [
-        "",
-        "## Models WITH an explicit devise/currency field",
-        "",
-        "| App | Model | File | Money fields | Has exchange rate? |",
-        "| --- | --- | --- | --- | --- |",
-    ]
-    for m in with_devise:
-        lines.append(
-            f"| {m.app} | {m.model} | `{m.relpath}:{m.lineno}` | {', '.join(m.money_fields)} | "
-            f"{'yes' if m.has_rate else 'no'} |"
-        )
-    lines.append("")
-    return "\n".join(lines)
-
-
-def main() -> int:
+def check_file(path: Path, decimal_places_mode: bool):
+    source = path.read_text(encoding="utf-8")
     try:
-        sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[attr-defined]
-    except (AttributeError, ValueError):  # pragma: no cover - non-reconfigurable stream
-        pass
-    models = scan_money_models()
-    without_devise = [m for m in models if not m.has_devise]
-    print(
-        f"check_money_fields (YDATA22): {len(models)} modeles argent scannes, "
-        f"{len(without_devise)} sans champ devise explicite (hypothese mono-MAD)."
-    )
-    if "--write" in sys.argv[1:]:
-        AUDIT_DOC.write_text(render_audit_markdown(models), encoding="utf-8")
-        print(f"  -> {AUDIT_DOC.relative_to(ROOT).as_posix()} regenere.")
-    # v1 = advisory only (YDATA22 spec: "pas de blocage") — never fails CI.
+        tree = ast.parse(source, filename=str(path))
+    except SyntaxError as exc:
+        return [], [("PARSE_ERROR", f"could not parse: {exc}")]
+
+    all_rows = []
+    findings = []
+
+    for model, field, node in _iter_field_assignments(tree):
+        field_type = _call_name(node)
+        if field_type not in FLOAT_LIKE | DECIMAL_LIKE:
+            continue
+        if not _is_money_name(field):
+            continue
+        lineno = node.lineno
+
+        if field_type in FLOAT_LIKE:
+            findings.append((
+                "MONEY_FLOAT_FIELD",
+                f"{model}.{field} at line {lineno}: FloatField() on a "
+                "money-semantic name — use DecimalField(max_digits=..., "
+                "decimal_places=2).",
+            ))
+            all_rows.append(
+                (_rel(path), lineno, model, field, "FloatField", None, None))
+            continue
+
+        # DecimalField
+        max_digits_kw = _kwarg(node, "max_digits")
+        decimal_places_kw = _kwarg(node, "decimal_places")
+        max_digits = (
+            max_digits_kw.value
+            if isinstance(max_digits_kw, ast.Constant) else None)
+        decimal_places = (
+            decimal_places_kw.value
+            if isinstance(decimal_places_kw, ast.Constant) else None)
+        all_rows.append((
+            _rel(path), lineno, model, field, "DecimalField", max_digits,
+            decimal_places))
+
+        if decimal_places_mode:
+            is_rate = bool(RATE_NAME_RE.search(field))
+            expected = {2, 4} if is_rate else {2}
+            allow_key = f"{_rel(path)}:{lineno}"
+            if (max_digits is None or decimal_places is None
+                    or decimal_places not in expected) \
+                    and allow_key not in DECIMAL_PLACES_ALLOWLIST:
+                findings.append((
+                    "MONEY_DECIMAL_PLACES",
+                    f"{model}.{field} at line {lineno}: DecimalField "
+                    f"missing max_digits/decimal_places, or decimal_places "
+                    f"not in {sorted(expected)} "
+                    f"(got max_digits={max_digits!r}, "
+                    f"decimal_places={decimal_places!r}).",
+                ))
+
+    return all_rows, findings
+
+
+def _write_audit_doc(rows):
+    decimal_rows = [r for r in rows if r[4] == "DecimalField"]
+    lines = [
+        "# Audit champs monétaires — DecimalField (YDATA7)",
+        "",
+        "Généré par `python scripts/check_money_fields.py --decimal-places`. "
+        "Tableau de tous les champs `DecimalField` à sémantique monétaire "
+        "(dérive visible : max_digits/decimal_places attendus).",
+        "",
+        "| Fichier:ligne | Modèle.champ | max_digits | decimal_places |",
+        "|---|---|---|---|",
+    ]
+    for rel, lineno, model, field, _t, max_digits, decimal_places in sorted(
+            decimal_rows):
+        lines.append(
+            f"| `{rel}:{lineno}` | {model}.{field} | {max_digits} | "
+            f"{decimal_places} |")
+    MONEY_AUDIT_DOC.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def main(argv):
+    decimal_places_mode = "--decimal-places" in argv
+    all_rows = []
+    report_lines = []
+
+    for path in _iter_model_files():
+        rows, findings = check_file(path, decimal_places_mode)
+        all_rows.extend(rows)
+        for code, message in findings:
+            report_lines.append(f"{_rel(path)}: [{code}] {message}")
+
+    print(f"check_money_fields: scanned {len(all_rows)} money-semantic "
+          "field(s).")
+    for rel, lineno, model, field, ftype, max_digits, decimal_places in all_rows:
+        extra = (f" max_digits={max_digits} decimal_places={decimal_places}"
+                 if ftype == "DecimalField" else "")
+        print(f"  {rel}:{lineno}  {model}.{field}  [{ftype}]{extra}")
+
+    if decimal_places_mode:
+        _write_audit_doc(all_rows)
+        print(f"\ncheck_money_fields --decimal-places: wrote "
+              f"{_rel(MONEY_AUDIT_DOC)}")
+
+    if report_lines:
+        print("\ncheck_money_fields: violation(s) found:")
+        for line in report_lines:
+            print(f"  - {line}")
+        return 1
+
+    print("\ncheck_money_fields: OK.")
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(sys.argv[1:]))

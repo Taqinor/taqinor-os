@@ -14,6 +14,7 @@ l'en-tête ``X-Webhook-Secret``. Principes :
    s'il arrive quand même : accepté et étiqueté, jamais rejeté.
 """
 
+import hashlib
 import hmac
 import json
 import logging
@@ -26,6 +27,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST, require_http_methods
 
 from authentication.models import Company
+from core.idempotency import dedupe_event
 
 from .models import Lead, LeadActivity, WebsiteLeadPayload
 
@@ -739,6 +741,26 @@ def website_lead_webhook(request):
                 'website_lead_webhook: engagement ping (event_type=%s) échoué', event_type)
         return JsonResponse(
             {'detail': 'Événement enregistré (sans mutation de lead).',
+             'payload_id': raw.pk}, status=200)
+
+    # YDATA12 — dédup DUR (contrainte unique DB, insérée AVANT tout effet)
+    # en plus des couches 1/2 (téléphone/email) et de la garde cache QW10
+    # ci-dessus : un event_id fourni par l'émetteur (idempotencyKey), sinon
+    # un hash déterministe du payload normalisé. Le brut (raw) est déjà
+    # stocké au-dessus, quoi qu'il arrive — seule la CRÉATION DE LEAD est
+    # court-circuitée sur un doublon détecté.
+    event_id = str(
+        data.get('idempotencyKey') or data.get('idempotency_key') or ''
+    ).strip()[:64]
+    if not event_id:
+        canonical = json.dumps(data, default=str, sort_keys=True).encode('utf-8')
+        event_id = hashlib.sha256(canonical).hexdigest()
+    if not dedupe_event(
+            company=company, source='crm.website_lead', event_id=event_id):
+        raw.processed = True
+        raw.save(update_fields=['processed'])
+        return JsonResponse(
+            {'detail': 'Événement déjà traité (dédupliqué).',
              'payload_id': raw.pk}, status=200)
 
     try:

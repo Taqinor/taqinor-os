@@ -6059,6 +6059,107 @@ def ajouter_entite_consolidation(company, *, entite, pourcentage_interet=None,
     return obj
 
 
+# ── XPLT20 — Écritures inter-sociétés miroir (vente A → achat B) ──────────
+
+def generer_facture_fournisseur_miroir_intersociete(facture, company):
+    """XPLT20 — miroir vente ``company`` (A) → achat B (``RegleInterSociete``,
+    opt-in STRICT, désactivée par défaut).
+
+    Appelé sur ``facture_emise``. NO-OP (comportement inchangé) si : aucune
+    règle ``actif=True`` pour ``company`` ; le client de la facture ne
+    correspond (ICE/IF) à aucun ``CompanyProfile`` de règle ; ``company``
+    (A) n'a pas d'ICE/IF renseigné ; ou B n'a pas déjà de fiche Fournisseur
+    pour A (JAMAIS de création silencieuse d'un tiers hors du groupe).
+    Jamais d'auto-validation : le miroir est une ``FactureFournisseur``
+    BROUILLON que B doit valider lui-même. Idempotent (contrainte unique
+    ``EcritureLiaisonInterSociete`` : une facture source ne génère jamais
+    deux miroirs).
+    """
+    from .models import EcritureLiaisonInterSociete, RegleInterSociete
+
+    client = getattr(facture, 'client', None)
+    if client is None:
+        return None
+    client_ice = (getattr(client, 'ice', '') or '').strip()
+    client_if = (getattr(client, 'if_fiscal', '') or '').strip()
+    if not client_ice and not client_if:
+        return None
+
+    from apps.parametres.models_company import CompanyProfile
+
+    profil_a = CompanyProfile.objects.filter(company=company).first()
+    a_ice = (profil_a.ice or '').strip() if profil_a else ''
+    a_if = (profil_a.identifiant_fiscal or '').strip() if profil_a else ''
+    if not a_ice and not a_if:
+        return None  # A n'a pas d'ICE/IF renseigné : rapprochement impossible.
+
+    for regle in RegleInterSociete.objects.filter(
+            societe_a=company, actif=True).select_related('societe_b'):
+        if EcritureLiaisonInterSociete.objects.filter(
+                regle=regle, facture_source_id=facture.id).exists():
+            continue  # déjà miroirée (idempotence).
+
+        societe_b = regle.societe_b
+        profil_b = CompanyProfile.objects.filter(company=societe_b).first()
+        if profil_b is None:
+            continue
+        b_ice = (profil_b.ice or '').strip()
+        b_if = (profil_b.identifiant_fiscal or '').strip()
+        if not ((client_ice and b_ice and client_ice == b_ice)
+                or (client_if and b_if and client_if == b_if)):
+            continue  # ce client de A n'est pas B — rien à miroirer.
+
+        from apps.stock import selectors as stock_selectors
+        candidats = stock_selectors.fournisseurs_pour_controle_ice(societe_b)
+        fournisseur_match = next(
+            (f for f in candidats
+             if (a_ice and f['ice'] == a_ice)
+             or (a_if and f['if_fiscal'] == a_if)),
+            None)
+        if fournisseur_match is None:
+            # B n'a pas encore de fiche fournisseur pour A : jamais de
+            # création silencieuse d'un tiers hors du groupe.
+            continue
+
+        montant_ht = facture.total_ht
+        montant_tva = facture.total_tva
+        montant_ttc = facture.total_ttc
+
+        from apps.stock import services as stock_services
+        try:
+            miroir, _doublons = (
+                stock_services.creer_facture_fournisseur_depuis_ocr(
+                    company=societe_b, user=None,
+                    fields={
+                        'ice': a_ice or None,
+                        'numero': facture.reference,
+                        'date': (facture.date_emission.isoformat()
+                                 if facture.date_emission else None),
+                        'date_echeance': (facture.date_echeance.isoformat()
+                                          if facture.date_echeance else None),
+                        'montant_ht': str(montant_ht),
+                        'montant_tva': str(montant_tva),
+                        'montant_ttc': str(montant_ttc),
+                    },
+                )
+            )
+        except ValueError:
+            # Course improbable (fournisseur introuvable au moment précis de
+            # la création) — garde défensive, jamais de crash sur l'émission
+            # de la facture source.
+            continue
+
+        EcritureLiaisonInterSociete.objects.create(
+            regle=regle,
+            facture_source_id=facture.id,
+            facture_fournisseur_miroir_id=miroir.id,
+            montant_ht=montant_ht, montant_tva=montant_tva,
+            montant_ttc=montant_ttc,
+            compte_liaison=regle.compte_liaison,
+        )
+    return None
+
+
 # ── FG201 — Envoi groupé email/SMS (Brevo, GATED, NO-OP par défaut) ─────────
 
 def brevo_actif():

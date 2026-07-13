@@ -50,6 +50,8 @@ class FournisseurViewSet(CompanyScopedModelViewSet):
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['nom', 'email', 'contact_personne']
     ordering = ['nom']
+    # YAPIC2 — whitelist explicite (jamais '__all__').
+    ordering_fields = ['nom', 'type', 'statut', 'email']
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
@@ -173,6 +175,8 @@ class ContactFournisseurViewSet(CompanyScopedModelViewSet):
     serializer_class = ContactFournisseurSerializer
     filter_backends = [filters.OrderingFilter]
     ordering = ['fournisseur_id', 'nom']
+    # YAPIC2 — whitelist explicite (jamais '__all__').
+    ordering_fields = ['fournisseur_id', 'nom', 'fonction']
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
@@ -198,6 +202,8 @@ class CategorieFournisseurViewSet(CompanyScopedModelViewSet):
     serializer_class = CategorieFournisseurSerializer
     filter_backends = [filters.OrderingFilter]
     ordering = ['nom']
+    # YAPIC2 — whitelist explicite (jamais '__all__').
+    ordering_fields = ['nom', 'archived']
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:

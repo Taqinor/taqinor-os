@@ -11,9 +11,13 @@ On configure ``ANYMAIL['SENDINBLUE_API_KEY']`` (ce que ``is_email_configured``
 regarde EN PREMIER, cf. correctif de clé QW8) pour simuler la prod, tout en
 gardant le backend ``locmem`` afin de capturer ``mail.outbox`` sans réseau.
 """
+import datetime
+from unittest import mock
+
 from django.contrib.auth import get_user_model
 from django.core import mail
 from django.test import TestCase, override_settings
+from django.utils import timezone
 
 from authentication.models import Company
 
@@ -21,6 +25,14 @@ from .models import EventType, Notification, NotificationPreference
 from .services import notify
 
 User = get_user_model()
+
+# VX209(a) — `notify()` respecte désormais les heures calmes par défaut pour
+# les événements non-critiques (`LEAD_CALLBACK_REQUESTED` en fait partie) :
+# ces tests visent le canal email lui-même (QW8), pas les heures calmes —
+# on fige l'horloge sur un mercredi en journée (jour ouvré par défaut, aucune
+# config société) pour rester déterministe quelle que soit l'heure d'exécution
+# de la CI.
+_WEEKDAY_DAYTIME = timezone.make_aware(datetime.datetime(2026, 7, 8, 14, 0))
 
 # PROD-like : clé Brevo posée (is_email_configured() la voit en premier) +
 # backend locmem pour capter mail.outbox sans appel réseau.
@@ -48,10 +60,14 @@ class Qw8CallbackEmailTests(TestCase):
             user=self.user,
             event_type=EventType.LEAD_CALLBACK_REQUESTED).exists())
 
-        notif = notify(
-            self.user, EventType.LEAD_CALLBACK_REQUESTED,
-            'Rappel demandé', body='Le prospect a demandé à être rappelé.',
-            link='/crm/leads?lead=1')
+        with mock.patch(
+                'apps.notifications.services.timezone.now',
+                return_value=_WEEKDAY_DAYTIME):
+            notif = notify(
+                self.user, EventType.LEAD_CALLBACK_REQUESTED,
+                'Rappel demandé',
+                body='Le prospect a demandé à être rappelé.',
+                link='/crm/leads?lead=1')
 
         # In-app créée ET un email sortant capté.
         self.assertIsNotNone(notif)

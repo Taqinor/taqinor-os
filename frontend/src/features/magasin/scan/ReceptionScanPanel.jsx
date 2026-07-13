@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Card, Badge, Button, Input, Label } from '../../../ui'
 import stockApi from '../../../api/stockApi'
+import useStockFlags from '../../parametres/useStockFlags'
 import ScanInputBar from './ScanInputBar'
 import { playRejectBeep } from './scanFeedback'
 import {
@@ -29,6 +30,8 @@ import {
    une nouvelle.
    ========================================================================== */
 export default function ReceptionScanPanel({ bonCommandeId }) {
+  // ZSTK13 — capacités stock : True par défaut = comportement inchangé.
+  const { stock_scan_actif: scanActif, stock_lots_series_actif: lotsSeriesActif } = useStockFlags()
   const [bcf, setBcf] = useState(null)
   const [loading, setLoading] = useState(false)
   const [mode, setMode] = useState(SCAN_MODES.PAR_UNITE)
@@ -89,6 +92,16 @@ export default function ReceptionScanPanel({ bonCommandeId }) {
     }
   }
 
+  // ZSTK13 — panneau scan désactivé pour cette société (Paramètres → Stock) :
+  // la saisie manuelle (quantités) reste disponible ailleurs sur l'écran.
+  if (!scanActif) {
+    return (
+      <Card className="p-4 text-sm text-muted-foreground">
+        Scan code-barres désactivé pour cette société (Paramètres → Stock).
+      </Card>
+    )
+  }
+
   if (!bonCommandeId) {
     return (
       <Card className="p-4 text-sm text-muted-foreground">
@@ -138,7 +151,7 @@ export default function ReceptionScanPanel({ bonCommandeId }) {
         <div className="rounded-lg border border-border bg-muted/30 p-2 text-sm">
           Dernier scan accepté : <strong>{lastAccepted.ligne.produit_nom || lastAccepted.ligne.designation}</strong>
           {' '}({lastAccepted.ligne.quantite_recue}/{lastAccepted.ligne.quantite})
-          {(capture.numeros_serie || capture.numero_lot) && (
+          {lotsSeriesActif && (capture.numeros_serie || capture.numero_lot) && (
             <div className="mt-1 text-xs text-muted-foreground">
               {capture.numeros_serie && <span>Série : {capture.numeros_serie} </span>}
               {capture.numero_lot && <span>Lot : {capture.numero_lot}</span>}

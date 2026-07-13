@@ -42,7 +42,7 @@ compta.ChargeConstateeAvance
 compta.ClotureCaisse
 compta.CodePromotion
 compta.ColonneEtatPersonnalise
-compta.CommissionPartenaire
+crm.CommissionPartenaire
 compta.CommissionPayoutLine
 compta.CommissionPayoutRun
 compta.Compensation
@@ -89,7 +89,7 @@ compta.MouvementCaisse
 compta.NoteFrais
 compta.ObligationFiscale
 compta.OffreFinancement
-compta.Partenaire
+crm.Partenaire
 compta.PaymentRun
 compta.PaymentRunLine
 compta.PeriodeComptable
@@ -112,9 +112,9 @@ compta.RetenueSource
 compta.SessionGuidedSelling
 compta.SimulationFinancement
 compta.SimulationPublique
-compta.SoumissionLeadPartenaire
+crm.SoumissionLeadPartenaire
 compta.TauxDevise
-compta.TerritoireCommercial
+crm.TerritoireCommercial
 compta.TimbreFiscal
 compta.TranchePaiement
 compta.TravauxEnCours

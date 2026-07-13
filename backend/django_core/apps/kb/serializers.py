@@ -41,13 +41,15 @@ class KbArticleSerializer(serializers.ModelSerializer):
             'statut', 'statut_display', 'auteur', 'auteur_nom', 'parent',
             'ordre', 'visibilite', 'est_gabarit', 'verifie_par',
             'verifie_par_nom', 'verifie_jusqua', 'est_verrouille', 'vues',
+            'visible_portail', 'consultations_portail_ticket',
             'langue', 'traduction_de', 'traduction_perimee',
             'emoji', 'has_couverture', 'proprietes', 'proprietes_effectives',
             'date_creation', 'date_modification',
         ]
         read_only_fields = [
             'auteur', 'verifie_par', 'verifie_jusqua', 'est_verrouille',
-            'vues', 'traduction_perimee', 'has_couverture',
+            'vues', 'consultations_portail_ticket', 'traduction_perimee',
+            'has_couverture',
             'proprietes_effectives', 'date_creation', 'date_modification']
 
     def get_has_couverture(self, obj):

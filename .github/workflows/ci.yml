@@ -148,11 +148,50 @@ jobs:
       # un nouveau check requis (protection de branche inchangée).
       - name: Platform-kernel guards (check_platform — ARC8/26/11/6)
         run: python scripts/check_platform.py
+      # YDATA1/3 — every FK/O2O declares on_delete=, every CASCADE is either
+      # inline-justified ('# on_delete: <reason>') or reviewed+allowlisted;
+      # every SET_NULL has null=True and never targets a tenant/owner field.
+      - name: Check on_delete completeness/justification (YDATA1/3)
+        run: python scripts/check_on_delete.py
+      # YDATA2 — financial-target FK (Devis/Facture/BonCommande/Paiement/
+      # Avoir/Company/Produit) sweep: fails only on a NEW un-reviewed
+      # CASCADE/SET_NULL (docs/on-delete-financial-audit.md is the baseline).
+      - name: Check financial-target on_delete sweep (YDATA2)
+        run: python scripts/check_on_delete.py --financial
+      # YDATA4 — every business-app model carries a company scope (direct
+      # FK, TenantModel base, or transitively via a FK to a scoped model).
+      - name: Check multi-tenant company-FK completeness (YDATA4)
+        run: python scripts/check_company_fk.py
+      # YDATA6/7 — money-semantic fields are DecimalField (never FloatField,
+      # GPS/rate names excepted) with explicit max_digits/decimal_places=2
+      # (4 tolerated for taux_*/*_pct/pourcentage rate fields).
+      - name: Check money fields are DecimalField (YDATA6)
+        run: python scripts/check_money_fields.py
+      - name: Check money DecimalField max_digits/decimal_places (YDATA7)
+        run: python scripts/check_money_fields.py --decimal-places
+      # YDATA8 — advisory: round() on a money-looking value in a pricing/tax
+      # module should use core.money.quantize_mad() instead (see
+      # docs/money-convention.md); baseline-allowlisted, fails only on NEW.
+      - name: Check money rounding convention (YDATA8, advisory)
+        run: python scripts/check_money_rounding.py
+      # YDATA10/11 — timezone.now() everywhere (no naive datetime.now()/
+      # utcnow()/datetime(...) ctor); timestamp columns are aware
+      # DateTimeField, never DateField(auto_now[_add]=True).
+      - name: Check for naive datetime / DateField timestamps (YDATA10/11)
+        run: python scripts/check_naive_datetime.py
+      # YDATA14 — advisory: a Celery task with external effects should take
+      # a pk, never a hydrated model instance, as a parameter.
+      - name: Check Celery task signatures (YDATA14, advisory)
+        run: python scripts/check_celery_tasks.py
+      # YDATA15 — advisory: get_or_create/update_or_create lookup keys
+      # should be backed by a UniqueConstraint; audit doc IS the baseline.
+      - name: Check get_or_create/update_or_create audit (YDATA15, advisory)
+        run: python scripts/check_get_or_create.py
       # YDATA22 — mono-devise MAD invariant sweep. Advisory only (per the plan
       # task: "v1 ... pas de blocage") — prints the currency audit for
       # visibility, never fails the build.
-      - name: Currency mono-devise sweep (check_money_fields — YDATA22, advisory)
-        run: python scripts/check_money_fields.py
+      - name: Currency mono-devise sweep (check_money_monodevise — YDATA22, advisory)
+        run: python scripts/check_money_monodevise.py
 
   # WOW6 — the fast backend suite is sharded 4× across free public-repo runners
   # (matrix legs run concurrently, each on its own 4-vCPU runner + Postgres). The

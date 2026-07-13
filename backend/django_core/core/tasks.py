@@ -162,3 +162,24 @@ def snapshot_tenant_usage_task():
     logger.info('core.snapshot_tenant_usage: %d société(s) mesurée(s)',
                 len(done))
     return {'companies': len(done)}
+
+
+@shared_task(name='core.purge_idempotency_records')
+def purge_idempotency_records_task():
+    """YAPIC10 — purge quotidienne des ``IdempotencyRecord`` (YAPIC9) plus
+    vieux que 24 h (fenêtre alignée sur la pratique Stripe pour
+    ``Idempotency-Key``, documentée dans ``docs/api-conventions.md``).
+
+    Idempotente (un re-run ne supprime rien de plus) et company-agnostique
+    (purge par ``created_at``, jamais par société — une clé d'idempotence
+    n'a plus de sens à rejouer passé la fenêtre, quel que soit le tenant).
+    Queue ``scheduled``."""
+    from django.utils import timezone
+
+    from .idempotency import IdempotencyRecord
+
+    cutoff = timezone.now() - timezone.timedelta(hours=24)
+    deleted, _ = IdempotencyRecord.objects.filter(
+        created_at__lt=cutoff).delete()
+    logger.info('core.purge_idempotency_records: supprimés=%d', deleted)
+    return {'deleted': deleted}

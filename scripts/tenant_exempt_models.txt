@@ -1,0 +1,11 @@
+# YDATA4 — models exempt from the company-scope guard (scripts/check_company_fk.py).
+# One 'app.Model' per line. Generated from the current repo state: after the
+# TextChoices/Exception classes living in models*.py were filtered out (they
+# are not Django models at all), exactly one genuine model remains global by
+# design — reviewed, not a gap to fix here.
+notifications.VapidKeyPair
+# XPLT20 inter-société group config — inherently cross-company (societe_a/
+# societe_b), ships inert/founder-gated (docs/decisions/XPLT20-inter-societes.md);
+# scope decided when the founder configures a pair. No single owning company.
+compta.RegleInterSociete
+compta.EcritureLiaisonInterSociete

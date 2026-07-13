@@ -159,6 +159,11 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    # YAPIC4 — EN PREMIER : pose request.request_id (échoé/lu depuis
+    # X-Request-Id) avant tout le reste de la pile, pour que
+    # core.exceptions.taqinor_exception_handler (YAPIC3) et
+    # core.observability.RequestObservabilityMiddleware le lisent tous deux.
+    'core.middleware.RequestIdMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
@@ -357,6 +362,20 @@ REST_FRAMEWORK = {
     # count/next/previous/results reste identique à DRF.
     'DEFAULT_PAGINATION_CLASS': 'core.pagination.StandardPagination',
     'PAGE_SIZE': 50,
+    # YAPIC2 — backends de tri/recherche par défaut. Toute vue qui déclare son
+    # PROPRE `filter_backends` (37/97 aujourd'hui) N'EST PAS affectée (un
+    # attribut de classe explicite masque toujours ce défaut) ; les ~60
+    # restantes gagnent un tri/recherche standard là où il n'y en avait
+    # AUCUN. `ordering_fields`/`search_fields` restent None par défaut sur
+    # ces vues (DRF n'active alors ni tri ni recherche réels — seule une vue
+    # qui pose explicitement `ordering_fields`/`search_fields` les active) ;
+    # `scripts`/`tests/test_api_ordering_whitelist.py` (YAPIC2) garde qu'une
+    # vue posant `OrderingFilter` (explicitement OU via ce défaut) ET
+    # `ordering_fields` NE SOIT JAMAIS `'__all__'` ou implicite.
+    'DEFAULT_FILTER_BACKENDS': (
+        'rest_framework.filters.OrderingFilter',
+        'rest_framework.filters.SearchFilter',
+    ),
     # NTPLT42 — throttle applicatif PAR TENANT posé en défaut global : protège
     # l'instance partagée du script fou d'UN client sans toucher les autres. Le
     # budget vient de DEFAULT_THROTTLE_RATES['tenant'] (env TENANT_RATE_LIMIT).
@@ -397,6 +416,12 @@ REST_FRAMEWORK = {
     # décimales). Posé explicitement pour que ce comportement soit un choix
     # documenté, testé, jamais un défaut implicite qui pourrait dériver.
     'COERCE_DECIMAL_TO_STRING': True,
+    # YAPIC3 — enveloppe d'erreur unifiée : {"error": {"code","message",
+    # "fields","request_id"}} sur TOUTE réponse d'erreur DRF (y compris les
+    # exceptions non reconnues, repliées en 500 server_error). Ne change
+    # jamais le statut HTTP ni la sémantique tenant — reformate seulement le
+    # corps de réponse.
+    'EXCEPTION_HANDLER': 'core.exceptions.taqinor_exception_handler',
     # YAPIC5 — schéma OpenAPI 3 auto-généré (drf-spectacular) : remplace le
     # AutoSchema DRF par défaut pour que /api/schema/ + Swagger/ReDoc reflètent
     # RÉELLEMENT les viewsets enregistrés (FG105 = page FR écrite à la main,
@@ -519,6 +544,15 @@ CELERY_RESULT_BACKEND = CELERY_BROKER_URL
 CELERY_TIMEZONE = 'Africa/Casablanca'
 CELERY_ENABLE_UTC = False
 
+# YDATA13 — le broker Redis doit lui aussi border le délai de re-livraison
+# d'un message NON acquitté (acks_late — voir YOPSB8 ci-dessous) : sans
+# `visibility_timeout` explicite, la valeur par défaut de kombu/redis
+# (souvent 1h) est une coïncidence, pas une garantie documentée. Fixé à
+# 3600s — largement > CELERY_TASK_TIME_LIMIT (180s) pour qu'un message ne
+# soit JAMAIS considéré "perdu" et re-livré en double pendant qu'une tâche
+# légitime est encore en cours d'exécution.
+CELERY_BROKER_TRANSPORT_OPTIONS = {'visibility_timeout': 3600}
+
 # YOPSB8 — réglages de production durcis. Sans limite de temps ni garde de
 # perte de worker, une tâche bloquée (ex. rendu PDF WeasyPrint qui hangs)
 # épingle un worker indéfiniment. Le rendu PDF mesuré est ~3-4,5s : marge
@@ -583,6 +617,7 @@ CELERY_TASK_ROUTES = {
     'notifications.weekly_digest': {'queue': 'scheduled'},
     'notifications.sweep_daily': {'queue': 'scheduled'},
     'notifications.reveiller_snoozes': {'queue': 'scheduled'},
+    'notifications.purge_notifications_anciennes': {'queue': 'scheduled'},
     'automation.time_triggers_daily': {'queue': 'scheduled'},
     'reporting.email_saved_reports': {'queue': 'scheduled'},
     'reporting.evaluate_kpi_alertes': {'queue': 'scheduled'},
@@ -612,6 +647,7 @@ CELERY_TASK_ROUTES = {
     'core.purge_backups': {'queue': 'scheduled'},
     'core.run_retention': {'queue': 'scheduled'},
     'core.beat_heartbeat': {'queue': 'scheduled'},
+    'core.purge_idempotency_records': {'queue': 'scheduled'},
     'monitoring.balayage_quotidien': {'queue': 'scheduled'},
     'stock.expiration_alerts': {'queue': 'scheduled'},
     'stock.relancer_bcf_en_retard': {'queue': 'scheduled'},
@@ -686,6 +722,13 @@ INBOUND_EMAIL_HOST = os.environ.get('INBOUND_EMAIL_HOST', '')
 # Public contact form — PARKED by default. When off, the /api/django/contact/
 # endpoint returns 404 and sends no email. Flip to '1' to re-enable (see CLAUDE.md).
 CONTACT_FORM_ENABLED = os.environ.get('CONTACT_FORM_ENABLED', '0') == '1'
+
+# VX209 — heures calmes des notifications (mise en sourdine des canaux hors-app
+# email/WhatsApp/push hors heures ouvrées), OPT-IN, OFF par défaut : sans ceci
+# activé, aucune notification n'est jamais mise en sourdine (comportement
+# historique). Un réglage par société le remplacera à terme.
+NOTIFICATIONS_QUIET_HOURS_ENABLED = (
+    os.environ.get('NOTIFICATIONS_QUIET_HOURS_ENABLED', '0') == '1')
 
 # XRH33 — public careers/recruitment page, PARKED (OFF) by default (same
 # pattern as CONTACT_FORM_ENABLED). When off, both public rh careers

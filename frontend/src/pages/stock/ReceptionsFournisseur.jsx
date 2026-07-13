@@ -3,6 +3,7 @@ import { PackageCheck, Plus, ReceiptText, Tags } from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import { formatMAD } from '../../lib/format'
 import { openPdfInGesture } from '../../utils/pdfBlob'
+import useStockFlags from '../../features/parametres/useStockFlags'
 import {
   Button, StatusPill, DataTable,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -222,6 +223,7 @@ function NouvelleReception({ bonsRecevables, onClose, onSaved }) {
 // ── Modal : consultation d'une réception + confirmation d'un brouillon ───────
 // Export nommé : testé directement (WR4 — « facturer cette réception »).
 export function ReceptionDetail({ reception, onClose, onSaved }) {
+  const { stock_lots_series_actif: lotsSeriesActif } = useStockFlags()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   const [factureInfo, setFactureInfo] = useState(null)
@@ -357,8 +359,9 @@ export function ReceptionDetail({ reception, onClose, onSaved }) {
             </Button>
           )}
           {/* ZSTK6 — étiquettes lot/série imprimables (uniquement si des
-              numéros de série/lot ont été saisis sur cette réception). */}
-          {aSerieOuLot && (
+              numéros de série/lot ont été saisis sur cette réception).
+              ZSTK13 — masquées si la société a désactivé lots/séries. */}
+          {aSerieOuLot && lotsSeriesActif && (
             <Button type="button" variant="outline" loading={labelsBusy} onClick={imprimerEtiquettes}
                     title="Imprimer les étiquettes lot/série de cette réception">
               <Tags /> Étiquettes lot/série

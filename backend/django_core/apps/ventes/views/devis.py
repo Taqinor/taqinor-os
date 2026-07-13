@@ -31,6 +31,7 @@ from authentication.permissions import (  # noqa: F401
     HasPermissionOrLegacy,
 )
 from core.viewsets import CompanyScopedModelViewSet  # noqa: F401  ARC5
+from core.idempotency import IdempotentCreateMixin  # noqa: F401  YAPIC9
 from ..utils.references import create_with_reference  # noqa: F401
 from ..utils.company_settings import create_numbered  # noqa: F401
 
@@ -54,7 +55,13 @@ def _company_qs(qs, user):
 # package __init__ ré-exporte toutes les vues publiques.
 
 
-class DevisViewSet(CompanyScopedModelViewSet):
+class DevisViewSet(IdempotentCreateMixin, CompanyScopedModelViewSet):
+    # YAPIC9 — pilote de core.idempotency.IdempotentCreateMixin : sans
+    # en-tête `Idempotency-Key`, comportement inchangé (le mixin ne fait que
+    # déléguer à super().create()). AVEC l'en-tête, un rejeu à corps
+    # identique renvoie le devis initial (pas de doublon) ; corps différent
+    # -> 409. perform_create ci-dessous reste la SEULE logique métier de
+    # création — le mixin ne touche jamais à la sémantique devis/statuts.
     # ARC5 — sweep TenantMixin : base transverse unique (CompanyScopedModelViewSet
     # = TenantMixin + ModelViewSet). get_queryset (portée de visibilité +
     # _company_qs) / perform_create / perform_update / get_permissions SURCHARGENT
@@ -108,7 +115,7 @@ class DevisViewSet(CompanyScopedModelViewSet):
         return DevisSerializer
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS + ['historique', 'variante_config']:
+        if self.action in READ_ACTIONS + ['historique', 'variante_config', 'superior_contact_status']:  # noqa: E501
             # variante_config : la LECTURE est ouverte à tous ; l'ÉCRITURE (PUT)
             # est re-vérifiée dans l'action (Directeur / Commercial responsable).
             return [IsAnyRole()]
@@ -1327,6 +1334,22 @@ class DevisViewSet(CompanyScopedModelViewSet):
             'detail': 'Votre supérieur a été notifié.',
             'recipients': [u.username for u in recipients],
         })
+
+    @action(detail=True, methods=['get'],
+            url_path='superior-contact-status',
+            permission_classes=[IsAnyRole])
+    def superior_contact_status(self, request, pk=None):
+        """VX215 — boucle de retour « pris en charge » (version lecture
+        seule) : après « Contacter mon supérieur » (ci-dessus), l'ÉMETTEUR
+        voit si sa demande a été VUE — sans jamais lire le CONTENU des
+        notifications d'autrui, seulement l'état `read`/lecteur de CETTE
+        demande précise (scopée à ce devis + cet événement). Zéro nouveau
+        modèle : relit directement les `Notification` déjà créées par
+        `contacter_superieur` (même société, même `link`)."""
+        devis = self.get_object()
+        from apps.notifications.selectors import superior_contact_status
+        link = f'/ventes/devis?devis={devis.pk}'
+        return Response(superior_contact_status(devis.company, link))
 
     @action(detail=True, methods=['post'], url_path='noter',
             permission_classes=[IsResponsableOrAdmin])
