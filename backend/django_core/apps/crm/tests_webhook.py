@@ -566,7 +566,19 @@ class QW10IndexedDedupAndConcurrencyTests(TransactionTestCase):
     setUp company lives in an uncommitted transaction the thread cannot see, so
     the thread's FK INSERT blocks on it while the main thread blocks on join()
     -> deadlock (the CI backend-tests hang). Committing per-test fixes it.
+
+    ``available_apps`` borne le flush (TRUNCATE) de TransactionTestCase aux
+    seules apps que le chemin webhook->lead->dedup->notify touche : sans lui,
+    le flux TRUNCATE de TOUTES les tables du dépôt (schéma devenu très large)
+    épuise ``max_locks_per_transaction`` de Postgres ("out of shared memory").
+    Le chemin ne référence que ces apps (fondations + crm/notifications).
     """
+
+    available_apps = [
+        'contenttypes', 'auth', 'sessions', 'authentication', 'core',
+        'roles', 'parametres', 'customfields', 'records', 'reporting',
+        'audit', 'notifications', 'identity', 'crm',
+    ]
 
     def setUp(self):
         self.company = Company.objects.create(nom='Taqinor Test QW10', slug='taqinor-test-qw10')

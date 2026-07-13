@@ -93,6 +93,11 @@ BASELINE_DRIFT: set[tuple[str, str]] = {
     # deux résolvent le MÊME modèle, la cohérence de label est un trou assumé
     # (retirer quand la clé de recherche sera relabelée aussi).
     ('facturation.facture', 'chatter_sans_recherche'),
+    # ODX17 (2026-07-13) — le REVERS de l'entrée ci-dessus : la recherche
+    # globale garde la clé opaque `ventes.facture` (apps/reporting/search.py)
+    # alors que le chatter porte désormais `facturation.facture` — les deux
+    # surfaces référencent le MÊME modèle déplacé, l'écart de label est assumé.
+    ('ventes.facture', 'recherche_sans_chatter'),
     # SCA34 (2026-07-10) — pilote 1 du kit core.documents : l'ordre de
     # sous-traitance gagne le chatter générique (périmètre du pilote =
     # socle+chatter+PDF) ; son câblage en recherche globale
