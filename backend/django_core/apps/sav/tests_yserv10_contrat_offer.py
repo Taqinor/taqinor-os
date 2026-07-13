@@ -12,7 +12,7 @@ from django.utils import timezone
 from authentication.models import Company
 from apps.crm.models import Client
 from apps.installations.models import Installation
-from apps.notifications.models import Notification
+from apps.notifications.models import EventType, Notification
 from apps.records.models import Activity
 from apps.sav.models import ContratMaintenance
 from apps.sav.selectors import client_a_contrat_actif, taux_attache
@@ -71,9 +71,13 @@ class Yserv10ContratOfferTests(TestCase):
         self.assertEqual(
             activity.due_date, timezone.localdate() + timezone.timedelta(days=14))
 
+        # YSERV10 promet UNE notification d'offre (SAV_ACTIVITE_DUE) au
+        # commercial — sans y coupler la notification distincte que reçoit
+        # aussi le créateur d'un devis passé à ACCEPTE (devis_accepted).
         self.assertEqual(
             Notification.objects.filter(
-                company=self.company, recipient=self.commercial).count(), 1)
+                company=self.company, recipient=self.commercial,
+                event_type=EventType.SAV_ACTIVITE_DUE).count(), 1)
 
     def test_without_resolvable_assignee_creates_no_orphan_activity(self):
         """Sans devis/lead lié, aucun destinataire n'est résolvable — le
