@@ -2,6 +2,8 @@
 avatars/logos (authentication/avatars.py, parametres). Aucune dépendance
 nouvelle. On accepte PDF + images courantes ; pas de traitement d'image (donc
 pas besoin d'un nouveau package) — on stocke le fichier tel quel."""
+import io
+import os
 import uuid
 
 from django.conf import settings
@@ -141,3 +143,95 @@ def delete_attachment(key):
         client.delete_object(Bucket=settings.MINIO_BUCKET_UPLOADS, Key=key)
     except Exception:
         pass
+
+
+# --- NTPLT30 — Exports lourds asynchrones (brique de stockage) --------------
+# Au-delà d'un seuil de lignes (env ``NTPLT30_EXPORT_ROW_THRESHOLD``, défaut
+# 5 000), un export doit basculer en ``BackgroundJob`` (``core.jobs.submit``,
+# NTPLT29) : réponse 202 + job id, génération en queue ``bulk``, livrable déposé
+# ICI dans MinIO, puis notification « votre export est prêt » avec une URL
+# présignée courte durée. SOUS le seuil, l'export reste synchrone (comportement
+# inchangé). Ce module fournit la DÉCISION + le STOCKAGE/PRÉSIGNÉ du livrable ;
+# le déclenchement 202 et la notification vivent côté vue/tâche qui adopte ce
+# helper (adoption incrémentale, comme les autres primitives NTPLT).
+
+DEFAULT_EXPORT_ROW_THRESHOLD = 5000
+
+
+def export_row_threshold():
+    """Seuil de lignes au-delà duquel un export bascule en asynchrone.
+
+    Piloté par ``NTPLT30_EXPORT_ROW_THRESHOLD`` (défaut 5 000). Une valeur
+    ``<= 0`` désactive le basculement (exports toujours synchrones — off-switch,
+    convention 0=off des primitives NTPLT). Une valeur illisible retombe sur le
+    défaut."""
+    raw = os.environ.get('NTPLT30_EXPORT_ROW_THRESHOLD')
+    if raw is None or raw == '':
+        return DEFAULT_EXPORT_ROW_THRESHOLD
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return DEFAULT_EXPORT_ROW_THRESHOLD
+
+
+def should_async_export(row_count, threshold=None):
+    """Vrai si l'export de ``row_count`` lignes doit basculer en asynchrone.
+
+    ``threshold`` ``None`` → ``export_row_threshold()`` ; un seuil ``<= 0``
+    signifie « jamais asynchrone » (feature off)."""
+    if threshold is None:
+        threshold = export_row_threshold()
+    try:
+        threshold = int(threshold)
+        row_count = int(row_count)
+    except (TypeError, ValueError):
+        return False
+    if threshold <= 0:
+        return False
+    return row_count > threshold
+
+
+def export_result_key(company_id, job_id, *, ext='xlsx'):
+    """Clé MinIO du livrable d'export d'un job, isolée par société.
+
+    ``exports/{company_id}/{job_id}.{ext}`` — même motif d'isolation par société
+    que ``store_attachment`` (SCA42). ``company_id`` accepte une instance
+    ``Company`` ou un entier."""
+    cid = _company_id(company_id) or 0
+    safe_ext = (ext or 'bin').lstrip('.') or 'bin'
+    return f'exports/{cid}/{job_id}.{safe_ext}'
+
+
+def store_export_result(data, *, company_id, job_id, ext='xlsx',
+                        content_type=None):
+    """Dépose les octets du livrable d'export dans MinIO et renvoie la clé.
+
+    Réutilise le bucket uploads + le client MinIO existants (aucune dépendance
+    nouvelle). ``data`` = octets (``bytes``) OU objet fichier lisible. Renvoie
+    la clé stockée (à poser dans ``BackgroundJob.result_file_key``)."""
+    key = export_result_key(company_id, job_id, ext=ext)
+    client = get_minio_client()
+    ensure_uploads_bucket()  # self-heal du bucket, comme store_attachment
+    buf = data if hasattr(data, 'read') else io.BytesIO(data)
+    extra = {'ContentType': content_type} if content_type else {}
+    client.upload_fileobj(
+        buf, settings.MINIO_BUCKET_UPLOADS, key, ExtraArgs=extra)
+    return key
+
+
+def presign_export_result(key, *, expires=900):
+    """URL présignée COURTE durée (défaut 15 min) du livrable d'export, ou None.
+
+    Le job vient de se terminer : une URL de courte durée suffit pour la
+    notification bell « votre export est prêt ». Comme ``presign_attachment``,
+    l'URL pointe l'hôte MinIO (usage serveur / notification signée)."""
+    if not key:
+        return None
+    try:
+        client = get_minio_client()
+        return client.generate_presigned_url(
+            'get_object',
+            Params={'Bucket': settings.MINIO_BUCKET_UPLOADS, 'Key': key},
+            ExpiresIn=int(expires))
+    except Exception:
+        return None
