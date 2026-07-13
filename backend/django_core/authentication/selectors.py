@@ -77,3 +77,31 @@ def revoke_user_sessions(user):
         s.save(update_fields=['revoked'])
         n += 1
     return n
+
+
+def comptes_dormants(company, seuil_jours):
+    """Comptes actifs d'une société inactifs depuis plus de ``seuil_jours``.
+
+    Inactivité = dernière ``UserSession.last_seen_at`` antérieure au seuil (ou
+    aucune session du tout). ``seuil_jours <= 0`` → aucun compte (fonction
+    inerte). Company-scopé ; exclut les super-admins (jamais désactivés
+    automatiquement). Renvoie un queryset de ``CustomUser``."""
+    if company is None or not seuil_jours or seuil_jours <= 0:
+        from authentication.models import CustomUser
+        return CustomUser.objects.none()
+    from datetime import timedelta
+
+    from django.db.models import Max, Q
+    from django.utils import timezone
+
+    from authentication.models import CustomUser
+
+    cutoff = timezone.now() - timedelta(days=seuil_jours)
+    return (
+        CustomUser.objects.filter(
+            company=company, is_active=True, is_superuser=False)
+        .annotate(derniere_activite=Max('sessions__last_seen_at'))
+        .filter(
+            Q(derniere_activite__lt=cutoff)
+            | Q(derniere_activite__isnull=True))
+    )
