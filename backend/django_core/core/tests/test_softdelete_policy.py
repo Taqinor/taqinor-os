@@ -29,7 +29,7 @@ def _make_concrete():
 
 
 class SoftDeleteManagerBehaviourTests(SimpleTestCase):
-    @isolate_apps('core')
+    @isolate_apps('core', 'authentication')
     def test_default_manager_filters_deleted(self):
         Widget = _make_concrete()
         self.assertIsInstance(Widget.objects, SoftDeleteManager)
@@ -37,7 +37,7 @@ class SoftDeleteManagerBehaviourTests(SimpleTestCase):
         sql = str(Widget.objects.all().query).lower()
         self.assertIn('is_deleted', sql)
 
-    @isolate_apps('core')
+    @isolate_apps('core', 'authentication')
     def test_all_objects_is_unfiltered_manager(self):
         Widget = _make_concrete()
         # all_objects is a plain Manager (no soft-delete filtering layer).
@@ -46,7 +46,7 @@ class SoftDeleteManagerBehaviourTests(SimpleTestCase):
 
 
 class SoftDeleteMethodBehaviourTests(SimpleTestCase):
-    @isolate_apps('core')
+    @isolate_apps('core', 'authentication')
     def test_soft_delete_sets_flag_and_timestamp(self):
         Widget = _make_concrete()
         w = Widget(name='x')
@@ -60,7 +60,7 @@ class SoftDeleteMethodBehaviourTests(SimpleTestCase):
             set(saved['update_fields']),
             {'is_deleted', 'deleted_at', 'deleted_by'})
 
-    @isolate_apps('core')
+    @isolate_apps('core', 'authentication')
     def test_soft_delete_is_idempotent(self):
         Widget = _make_concrete()
         w = Widget(name='x')
@@ -70,7 +70,7 @@ class SoftDeleteMethodBehaviourTests(SimpleTestCase):
         w.soft_delete(record=False)  # second call is a no-op
         self.assertEqual(w.deleted_at, first)
 
-    @isolate_apps('core')
+    @isolate_apps('core', 'authentication')
     def test_restore_clears_flag(self):
         Widget = _make_concrete()
         w = Widget(name='x')

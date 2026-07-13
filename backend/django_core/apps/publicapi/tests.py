@@ -494,6 +494,15 @@ class WebhookSSRFGuardTests(TestCase):
 
     def setUp(self):
         self.co = make_company('pa-ssrf', 'PA SSRF')
+        # dispatch_event passe par la tâche Celery deliver_webhook : en test
+        # (broker sans worker) on l'exécute EN LIGNE (eager) pour journaliser
+        # réellement la tentative bloquée (SSRF) dans WebhookDelivery.
+        from erp_agentique.celery import app as celery_app
+        _prev_eager = celery_app.conf.task_always_eager
+        celery_app.conf.task_always_eager = True
+        celery_app.conf.task_eager_propagates = False
+        self.addCleanup(
+            lambda: setattr(celery_app.conf, 'task_always_eager', _prev_eager))
 
     def test_delivery_blocks_internal_url_without_posting(self):
         # URL interne stockée directement (contourne la validation serializer).
@@ -626,7 +635,10 @@ class DeliveryReplayTests(TestCase):
         # httpx.post a été appelé avec le bon payload
         call_kwargs = m.call_args
         sent_body = json.loads(call_kwargs[1]['content'])
-        self.assertEqual(sent_body, {'lead_id': 42})
+        # YAPIC8 pose un event_id stable dans le payload (rejoué à l'identique) :
+        # le corps envoyé porte donc lead_id + event_id.
+        self.assertEqual(sent_body['lead_id'], 42)
+        self.assertIn('event_id', sent_body)
 
     def test_replay_cross_company_delivery_is_404(self):
         # L'admin A ne peut pas rejouer une livraison de la société B.
