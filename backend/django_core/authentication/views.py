@@ -242,6 +242,13 @@ class CustomTokenObtainPairView(TokenObtainPairView):
                        company=getattr(u, 'company', None), detail='Connexion')
             except Exception:
                 pass
+            # NTSEC12 — détection « impossible travel » (best-effort, jamais
+            # bloquant ; inerte sans base géo GeoLite2).
+            try:
+                from apps.identity.anomaly import detect_impossible_travel
+                detect_impossible_travel(u, _client_ip(request))
+            except Exception:
+                pass
         return response
 
 
