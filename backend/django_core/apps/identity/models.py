@@ -110,3 +110,64 @@ class IpAllowRule(TenantModel):
         self.cidr = (self.cidr or '').strip()
         self.full_clean(exclude=['company', 'policy'])
         super().save(*args, **kwargs)
+
+
+class IdentityProvider(TenantModel):
+    """Fournisseur d'identité (SSO SAML ou OIDC) rattaché à UNE société (NTSEC1).
+
+    Fondation SSO : ce modèle décrit COMMENT une société fédère l'authentification
+    (métadonnées, certificat, mapping d'attributs) sans référencer aucune app
+    métier. Il est INERTE par défaut (``actif=False``) : tant qu'aucun IdP actif
+    n'existe pour la société, le login local reste EXACTEMENT inchangé.
+
+    Un seul IdP ACTIF par couple (société, protocole) — garanti par une
+    contrainte d'unicité partielle. Le câblage runtime des flux SAML/OIDC est
+    livré séparément (NTSEC2/NTSEC3) ; ici on pose le modèle + le CRUD admin.
+    """
+
+    class Protocol(models.TextChoices):
+        SAML = 'saml', 'SAML 2.0'
+        OIDC = 'oidc', 'OpenID Connect'
+
+    protocol = models.CharField(
+        max_length=8,
+        choices=Protocol.choices,
+        verbose_name='Protocole',
+    )
+    nom = models.CharField(max_length=120, verbose_name='Nom')
+    actif = models.BooleanField(default=False, verbose_name='Actif')
+
+    # Métadonnées de l'IdP : soit une URL de découverte, soit le XML/JSON inline.
+    metadata_url = models.URLField(blank=True, default='', max_length=500)
+    metadata_xml = models.TextField(blank=True, default='')
+    entity_id = models.CharField(max_length=500, blank=True, default='')
+    sso_url = models.URLField(blank=True, default='', max_length=500)
+    x509_cert = models.TextField(blank=True, default='')
+
+    # Mapping d'attributs IdP → champs utilisateur (email/nom/prénom/groupes).
+    attribute_map = models.JSONField(default=dict, blank=True)
+
+    # Provisioning à la volée : créer le compte au premier login SSO réussi.
+    auto_provision = models.BooleanField(default=False)
+    # Rôle par défaut appliqué au compte auto-provisionné (string-FK roles —
+    # jamais d'import de ``roles.models`` ici, ``core`` reste fondation).
+    default_role_id = models.CharField(max_length=64, blank=True, default='')
+
+    # Une fois activé, interdit le login par mot de passe local (NTSEC4).
+    enforce_sso = models.BooleanField(default=False)
+
+    class Meta:
+        verbose_name = "Fournisseur d'identité"
+        verbose_name_plural = "Fournisseurs d'identité"
+        constraints = [
+            # Au plus UN IdP actif par (société, protocole). Les IdP inactifs
+            # ne sont pas contraints (on peut préparer plusieurs configs).
+            models.UniqueConstraint(
+                fields=['company', 'protocol'],
+                condition=models.Q(actif=True),
+                name='uniq_idp_actif_par_societe_protocole',
+            ),
+        ]
+
+    def __str__(self):
+        return f'IdentityProvider({self.company_id}, {self.protocol}, {self.nom})'
