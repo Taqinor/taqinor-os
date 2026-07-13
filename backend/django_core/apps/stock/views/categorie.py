@@ -48,6 +48,9 @@ class CategorieViewSet(CompanyScopedModelViewSet):
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['nom']
     ordering = ['nom']
+    # YAPIC2 — whitelist explicite (jamais '__all__') : tri arbitraire par
+    # colonne non indexée sinon possible.
+    ordering_fields = ['nom', 'ordre', 'type_equipement']
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:

@@ -11,6 +11,7 @@ import installationsApi from '../../api/installationsApi'
 import recordsApi from '../../api/recordsApi'
 import { Button, FileUpload, Spinner } from '../../ui'
 import { compressImage } from '../../ui/file-utils'
+import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
 import SignaturePad from './SignaturePad'
 
 export default function PodCaptureDialog({ livraison, onClose, onSaved }) {
@@ -90,12 +91,14 @@ export default function PodCaptureDialog({ livraison, onClose, onSaved }) {
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <h3 className="modal-title">Preuve de livraison — {livraison.reference}</h3>
-          <button type="button" className="modal-close" onClick={onClose}>✕</button>
-        </div>
+    // VX182 — shell fait-main remplacé par ResponsiveDialog (Escape + focus-
+    // trap + bottom-sheet mobile) ; en-tête/pied conservés à l'identique
+    // (showClose={false}, le ✕ existant reste l'unique fermeture).
+    <ResponsiveDialog open onOpenChange={(o) => { if (!o) onClose() }} className="sm:max-w-lg" showClose={false}>
+      <div className="modal-header">
+        <h3 className="modal-title">Preuve de livraison — {livraison.reference}</h3>
+        <button type="button" className="modal-close" onClick={onClose}>✕</button>
+      </div>
 
         <div className="modal-body flex flex-col gap-3">
           {loading ? (
@@ -109,6 +112,7 @@ export default function PodCaptureDialog({ livraison, onClose, onSaved }) {
                 value={signataireNom}
                 onChange={(e) => setSignataireNom(e.target.value)}
                 placeholder="ex. M. Alami"
+                autoFocus
               />
 
               <span className="form-label">Signature</span>
@@ -158,7 +162,6 @@ export default function PodCaptureDialog({ livraison, onClose, onSaved }) {
             {busy ? 'Enregistrement…' : 'Enregistrer la preuve'}
           </Button>
         </div>
-      </div>
-    </div>
+    </ResponsiveDialog>
   )
 }

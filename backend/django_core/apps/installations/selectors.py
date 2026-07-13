@@ -14,6 +14,25 @@ def installation_for_devis(devis):
     return Installation.objects.filter(devis=devis).first()
 
 
+def chantiers_receptionnes(company, *, date_debut=None, date_fin=None):
+    """YSERV10 — ``(id, client_id, date_reception)`` de chaque chantier
+    RÉCEPTIONNÉ (``date_reception`` posé, jamais approximé) de ``company``,
+    optionnellement borné à une période sur ``date_reception``. Point
+    d'entrée cross-app en LECTURE SEULE pour le KPI taux d'attache
+    (``apps.sav.selectors.taux_attache``) — jamais un import direct de
+    ``Installation`` hors de ce module."""
+    from .models import Installation
+
+    qs = Installation.objects.filter(
+        company=company, statut=Installation.Statut.RECEPTIONNE,
+        date_reception__isnull=False)
+    if date_debut is not None:
+        qs = qs.filter(date_reception__gte=date_debut)
+    if date_fin is not None:
+        qs = qs.filter(date_reception__lte=date_fin)
+    return list(qs.values_list('id', 'client_id', 'date_reception'))
+
+
 def demandes_achat_soumises_stale(company, cutoff):
     """VX213 (d) — réquisitions d'achat restées SOUMISE (jamais décidées) et
     inchangées depuis ``cutoff`` (datetime seuil). Lecture seule, exposée au
@@ -79,6 +98,18 @@ def intervention_scoped(company, pk):
     return (Intervention.objects
             .filter(company=company, id=pk)
             .select_related('installation', 'installation__client')
+            .first())
+
+
+def colis_scoped(company, pk):
+    """ZSTK5 — Colis de préparation (FG322) scopé société, par id, avec
+    chantier/client + lignes préchargés (résolution du jeton scannable
+    ``COLIS:<id>`` par ``apps.stock.views.produit``)."""
+    from .models import Colis
+    return (Colis.objects
+            .filter(company=company, id=pk)
+            .select_related('installation', 'installation__client')
+            .prefetch_related('lignes')
             .first())
 
 

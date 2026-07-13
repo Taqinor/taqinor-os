@@ -288,6 +288,58 @@ class DemandeTicketPortailTests(TestCase):
         self.assertEqual(resp.data['count'], 0)
 
 
+# ── XSAV22 — Déflection KB sur le formulaire d'ouverture de ticket ─────────
+
+class Xsav22KbDeflectionActionsTests(TestCase):
+    def setUp(self):
+        from apps.kb.models import KbArticle
+        self.co = make_company('xsav22', 'XSAV22')
+        self.user = make_user(self.co, 'xsav22-user')
+        self.article = KbArticle.objects.create(
+            company=self.co, titre='Onduleur en défaut — que faire ?',
+            corps='Vérifiez le code erreur.',
+            statut=KbArticle.Statut.PUBLIE, visible_portail=True)
+        self.hidden = KbArticle.objects.create(
+            company=self.co, titre='Onduleur — note interne',
+            statut=KbArticle.Statut.PUBLIE, visible_portail=False)
+
+    def test_suggestions_kb_returns_only_flagged_articles(self):
+        api = auth(self.user)
+        resp = api.get(
+            '/api/django/compta/demandes-ticket-portail/suggestions-kb/'
+            '?q=onduleur')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        ids = {s['id'] for s in resp.data['suggestions']}
+        self.assertEqual(ids, {self.article.id})
+
+    def test_suggestions_kb_isolated_by_company(self):
+        autre = make_company('xsav22-b', 'XSAV22B')
+        autre_user = make_user(autre, 'xsav22-b-user')
+        api = auth(autre_user)
+        resp = api.get(
+            '/api/django/compta/demandes-ticket-portail/suggestions-kb/'
+            '?q=onduleur')
+        self.assertEqual(resp.data['suggestions'], [])
+
+    def test_consulter_article_kb_increments_counter(self):
+        api = auth(self.user)
+        resp = api.post(
+            '/api/django/compta/demandes-ticket-portail/'
+            'consulter-article-kb/',
+            {'article_id': self.article.id}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertTrue(resp.data['enregistre'])
+        self.article.refresh_from_db()
+        self.assertEqual(self.article.consultations_portail_ticket, 1)
+
+    def test_consulter_article_kb_requires_article_id(self):
+        api = auth(self.user)
+        resp = api.post(
+            '/api/django/compta/demandes-ticket-portail/'
+            'consulter-article-kb/', {}, format='json')
+        self.assertEqual(resp.status_code, 400)
+
+
 # ── FG234 — Portail apporteurs / sous-revendeurs ───────────────────────────
 
 class PartenaireTests(TestCase):

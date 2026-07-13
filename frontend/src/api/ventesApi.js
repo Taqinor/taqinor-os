@@ -64,6 +64,9 @@ const ventesApi = {
   whatsappPreviewDevis: (id, payload = {}) => api.post(`/ventes/devis/${id}/whatsapp-preview/`, payload),
   // QJ28 — « Contacter mon supérieur » : notifie le supérieur du vendeur sur ce devis.
   contacterSuperieur: (id, payload = {}) => api.post(`/ventes/devis/${id}/contacter-superieur/`, payload),
+  // VX215 — boucle de retour « pris en charge » : l'émetteur voit si sa
+  // demande d'avis a été VUE par le(s) supérieur(s) notifié(s) ci-dessus.
+  superiorContactStatus: (id) => api.get(`/ventes/devis/${id}/superior-contact-status/`),
   // QJ15 — Variantes : créer 2–3 copies dimensionnées pour comparaison côte-à-côte.
   dupliquerVariante: (id, payload = {}) => api.post(`/ventes/devis/${id}/dupliquer-variante/`, payload),
   // QJ15 — Lister les variantes liées à ce devis (même version_parent).

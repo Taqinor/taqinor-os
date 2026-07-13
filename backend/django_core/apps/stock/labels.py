@@ -470,6 +470,10 @@ LOT_PREFIX = 'LOT'
 # collée sur le bac vide de CET emplacement). Scanner cette carte crée une
 # DemandeTransfert préremplie depuis le dépôt principal.
 KANBAN_PREFIX = 'KANBAN'
+# ZSTK5 — jeton « étiquette de colis » : `COLIS:<colis_id>` (2 segments, comme
+# PRODUIT:/SYSTEME:/INTERVENTION:/EQUIP: ci-dessus). Scanner un colis résout
+# vers son contenu (installations.Colis, FG322) — jamais de prix affiché.
+COLIS_PREFIX = 'COLIS'
 
 
 def produit_token(produit_id) -> str:
@@ -498,6 +502,10 @@ def lot_token(produit_id, numero_lot) -> str:
 
 def kanban_token(produit_id, emplacement_id) -> str:
     return f'{KANBAN_PREFIX}:{produit_id}:{emplacement_id}'
+
+
+def colis_token(colis_id) -> str:
+    return f'{COLIS_PREFIX}:{colis_id}'
 
 
 def showroom_url(base_url, catalogue_token, produit_id) -> str:

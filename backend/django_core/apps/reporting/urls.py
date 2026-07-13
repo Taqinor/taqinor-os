@@ -27,7 +27,7 @@ from .approbations import (
 from .kpi_alertes import KpiAlerteViewSet
 from .classeur import ClasseurViewSet
 from .integrity_views import integrite_insight
-from .sav_pivot import sav_tickets_pivot, sav_tickets_cout_moyen
+from .sav_pivot import sav_tickets_pivot, sav_tickets_cout_moyen, sav_taux_attache
 from .reports_field import field_service_report
 from .technicien_scorecard import technicien_scorecard
 from .vitals import collect_vital, vitals_p75
@@ -111,6 +111,10 @@ urlpatterns = [
          name='insights-sav-tickets-pivot'),
     path('insights/sav-tickets-cout-moyen/', sav_tickets_cout_moyen,
          name='insights-sav-tickets-cout-moyen'),
+    # YSERV10 — KPI taux d'attache (chantiers réceptionnés avec contrat
+    # d'entretien actif ≤90j).
+    path('insights/sav-taux-attache/', sav_taux_attache,
+         name='insights-sav-taux-attache'),
     # XFSM16 — analytics field service consolidés (FTF, MTTR, ponctualité,
     # récidive, trajet vs sur site, interventions par type/statut).
     path('reports/field/', field_service_report, name='report-field-service'),

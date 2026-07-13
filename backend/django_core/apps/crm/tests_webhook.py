@@ -675,3 +675,75 @@ class QX14PersistedScoreTests(TestCase):
         self.assertEqual(res.status_code, 201, res.content)
         lead = Lead.objects.get(pk=res.json()['lead_id'])
         self.assertIsNotNone(lead.mql_assigned_at)
+
+
+@override_settings(WEBSITE_LEAD_WEBHOOK_SECRET=SECRET)
+class YDATA12DedupWebhookEventTests(TestCase):
+    """YDATA12 — dédup DUR (core.idempotency.ProcessedWebhookEvent, insérée
+    AVANT tout effet) : un doublon EXACT (même idempotencyKey, OU même
+    payload sans clé) ne crée jamais un second lead — sans casser le
+    stockage brut ni la mise à jour légitime (couches 1/2, testées
+    ailleurs dans ce fichier avec un payload qui DIFFÈRE)."""
+
+    def setUp(self):
+        self.company = Company.objects.create(
+            nom='Taqinor Test YDATA12', slug='taqinor-test-ydata12')
+        self.url = reverse('website-lead-webhook')
+
+    def post(self, data, secret=SECRET):
+        headers = {'HTTP_X_WEBHOOK_SECRET': secret} if secret is not None else {}
+        return self.client.post(
+            self.url, data=json.dumps(data),
+            content_type='application/json', **headers)
+
+    def test_same_idempotency_key_replayed_creates_no_second_lead(self):
+        data = payload_site(
+            phoneE164='+212600111222', idempotencyKey='ydata12-key-1')
+        first = self.post(data)
+        self.assertEqual(first.status_code, 201, first.content)
+        second = self.post(data)
+        self.assertEqual(second.status_code, 200)
+        self.assertIn('déjà traité', second.json()['detail'])
+        self.assertEqual(
+            Lead.objects.filter(telephone='+212600111222').count(), 1)
+        # Le brut du 2e POST est quand même conservé (jamais perdre une trace).
+        self.assertEqual(WebsiteLeadPayload.objects.count(), 2)
+
+    def test_identical_payload_without_key_deduped_by_content_hash(self):
+        data = payload_site(phoneE164='+212600111333')
+        first = self.post(data)
+        self.assertEqual(first.status_code, 201, first.content)
+        second = self.post(data)  # byte-identical payload, no idempotencyKey
+        self.assertEqual(second.status_code, 200)
+        self.assertIn('déjà traité', second.json()['detail'])
+        self.assertEqual(
+            Lead.objects.filter(telephone='+212600111333').count(), 1)
+
+    def test_different_payload_same_phone_is_not_content_deduped(self):
+        """Layer 1/2 dedup (existing, tested elsewhere) still owns the
+        'same phone, different content = update' case — YDATA12's hard
+        dedup must never short-circuit a legitimate update."""
+        first = self.post(payload_site(phoneE164='+212600111444'))
+        self.assertEqual(first.status_code, 201, first.content)
+        second = self.post(payload_site(
+            phoneE164='+212600111444', city='Marrakech'))
+        self.assertEqual(second.status_code, 200)
+        self.assertNotIn('déjà traité', second.json()['detail'])
+        lead = Lead.objects.get(telephone='+212600111444')
+        self.assertEqual(lead.ville, 'Marrakech')
+
+    def test_cross_company_isolation_on_dedup(self):
+        from core.idempotency import ProcessedWebhookEvent, dedupe_event
+        other_company = Company.objects.create(
+            nom='Autre YDATA12', slug='autre-ydata12')
+        self.assertTrue(dedupe_event(
+            company=self.company, source='crm.website_lead', event_id='evt-x'))
+        # La MÊME event_id pour une AUTRE société n'est jamais bloquée —
+        # l'unicité est scopée par (company, source, event_id).
+        self.assertTrue(dedupe_event(
+            company=other_company, source='crm.website_lead', event_id='evt-x'))
+        self.assertEqual(
+            ProcessedWebhookEvent.objects.filter(event_id='evt-x').count(), 2)
+        # Un 3e appel identique (même société) est bien refusé.
+        self.assertFalse(dedupe_event(
+            company=self.company, source='crm.website_lead', event_id='evt-x'))

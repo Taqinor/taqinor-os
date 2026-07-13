@@ -21,7 +21,21 @@ vi.mock('../../api/stockApi', () => ({
   },
 }))
 
+// ZSTK13 — `useStockFlags` lit le profil entreprise ; défaut True (lots/séries
+// actives) sauf override explicite par test.
+vi.mock('../../api/parametresApi', async (importOriginal) => {
+  const actual = await importOriginal()
+  return {
+    ...actual,
+    default: {
+      ...actual.default,
+      getProfile: vi.fn(() => Promise.resolve({ data: {} })),
+    },
+  }
+})
+
 import stockApi from '../../api/stockApi'
+import parametresApi from '../../api/parametresApi'
 import PilotageStock from './PilotageStock.jsx'
 
 function wrapper({ children }) {
@@ -170,5 +184,26 @@ describe('ZPUR9/XPUR24 — rapport « analyse d\'achats » (Excel + PDF)', () =>
     fireEvent.click(btn)
     const alert = await screen.findByRole('alert')
     expect(alert.textContent).toMatch(/Accès refusé/)
+  })
+})
+
+describe('ZSTK13 — masquage lots/séries dans le registre de péremption', () => {
+  it('affiche la colonne Lot quand le drapeau est True (défaut, byte-identique)', async () => {
+    render(<PilotageStock />, { wrapper })
+    await screen.findByText('Batterie')
+    expect(screen.getByText('LOT-9')).toBeVisible()
+    expect(screen.getByText('Lot')).toBeVisible()
+  })
+
+  it('masque la colonne Lot du registre quand la société l\'a désactivée', async () => {
+    parametresApi.getProfile.mockResolvedValueOnce({
+      data: { stock_lots_series_actif: false },
+    })
+    render(<PilotageStock />, { wrapper })
+    await screen.findByText('Batterie')
+    // Les données de péremption restent intactes (rien détruit) ; seul le
+    // libellé lot/le numéro de lot disparaissent de l'affichage.
+    expect(screen.queryByText('LOT-9')).not.toBeInTheDocument()
+    expect(screen.queryByText('Lot')).not.toBeInTheDocument()
   })
 })

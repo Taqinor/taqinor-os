@@ -242,6 +242,12 @@ class Notification(models.Model):
     read = models.BooleanField(default=False)
     read_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    # VX209(c) — une notification NON LUE de plus de 60 j est archivée (jamais
+    # supprimée — l'historique reste consultable) par la purge périodique
+    # `purge_notifications_anciennes` ; les LUES de plus de 60 j sont
+    # supprimées. Exclue par défaut de `list()` (borné 90 j) — comportement
+    # historique inchangé pour tout le monde tant que rien n'a 60 j.
+    archived = models.BooleanField(default=False)
 
     class Meta:
         verbose_name = 'Notification'

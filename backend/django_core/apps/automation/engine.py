@@ -68,6 +68,47 @@ def _has_company_fk(model):
         return False
 
 
+# ── ODX23 — gating ModuleToggle des règles d'automatisation ─────────────────
+# Une action de règle qui CRÉE un enregistrement dans une AUTRE app que celle
+# du déclencheur (ex. CREATE_SAV_TICKET depuis un lead crm) vise explicitement
+# ce module-là. Whitelist FERMÉE, additive : une action non listée n'ajoute
+# aucun module candidat au-delà de celui du déclencheur.
+ACTION_MODULE_MAP = {
+    ActionType.CREATE_SAV_TICKET: 'sav',
+}
+
+
+def _rule_disabled_module(rule, instance, company):
+    """Clé de module ``ModuleToggle`` visée par ce déclenchement, si
+    DÉSACTIVÉE pour ``company`` — sinon ``None``.
+
+    Dérivé génériquement de l'``app_label`` du modèle déclencheur
+    (``instance``, quel que soit le ``trigger_type`` — aucune table de
+    correspondance à maintenir) ET, pour les actions qui écrivent dans une
+    AUTRE app (:data:`ACTION_MODULE_MAP`), du module cible de l'action.
+    Défaut = actif (policy FG391 : sans ``ModuleToggle``, aucun changement de
+    comportement) ; best-effort, ne lève jamais.
+    """
+    try:
+        from core.feature_flags import module_actif
+    except Exception:  # pragma: no cover - défensif
+        return None
+    candidats = []
+    label = _model_label(instance)
+    if label and '.' in label:
+        candidats.append(label.split('.', 1)[0])
+    action_module = ACTION_MODULE_MAP.get(rule.action_type)
+    if action_module:
+        candidats.append(action_module)
+    for module in candidats:
+        try:
+            if not module_actif(company, module):
+                return module
+        except Exception:  # pragma: no cover - défensif
+            continue
+    return None
+
+
 # ── Correspondance déclencheur ────────────────────────────────────────────
 
 def _trigger_matches(rule, instance, context):
@@ -194,6 +235,17 @@ def evaluate(trigger_type, instance, company, *, context=None, user=None):
         try:
             if not _trigger_matches(rule, instance, context):
                 continue
+            # ODX23 — un module désactivé ModuleToggle n'inscrit même pas de
+            # demande d'approbation : la règle est journalisée SKIPPED et
+            # s'arrête là (run_action referait le même contrôle de toute
+            # façon pour le chemin d'exécution immédiate ci-dessous).
+            disabled_module = _rule_disabled_module(rule, instance, company)
+            if disabled_module:
+                _log_run(
+                    rule, company, instance, AutomationRun.Status.SKIPPED,
+                    f'Module désactivé ({disabled_module}) : '
+                    f'automatisation ignorée.')
+                continue
             if _needs_approval(rule, context):
                 _create_approval(rule, company, instance, context, user)
                 _log_run(
@@ -212,7 +264,20 @@ def run_action(rule, instance, company, *, context=None, user=None):
     """Exécute l'action d'une règle et journalise le résultat.
 
     Utilisée par ``evaluate`` (immédiat) et par l'approbation (différée).
+
+    ODX23 — si le module visé (déclencheur ou action, voir
+    :func:`_rule_disabled_module`) est désactivé ``ModuleToggle`` pour
+    ``company``, l'action n'est PAS exécutée : un run ``SKIPPED`` est
+    journalisé (« module désactivé ») à la place. Couvre le chemin immédiat
+    ET l'approbation différée (``run_approved`` appelle cette même fonction),
+    y compris le cas où le module a été désactivé ENTRE la demande
+    d'approbation et sa décision.
     """
+    disabled_module = _rule_disabled_module(rule, instance, company)
+    if disabled_module:
+        message = f'Module désactivé ({disabled_module}) : automatisation ignorée.'
+        _log_run(rule, company, instance, AutomationRun.Status.SKIPPED, message)
+        return AutomationRun.Status.SKIPPED, message
     from . import actions
     # Marque la fenêtre d'exécution : tout ``instance.save()` déclenché par
     # l'action (SET_FIELD / ASSIGN_RECORD) ré-émet le post_save, mais

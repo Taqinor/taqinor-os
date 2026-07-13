@@ -111,6 +111,28 @@ def incrementer_vues(article):
     return article.vues
 
 
+# ── XSAV22 — Déflection KB sur le portail client ────────────────────────────
+
+def enregistrer_consultation_portail(company, article_id):
+    """XSAV22 — Incrémente le compteur DÉDIÉ ``consultations_portail_ticket``
+    quand un client consulte cet article depuis le formulaire d'ouverture de
+    ticket du portail (distinct de ``incrementer_vues``, qui compte toute
+    consultation interne).
+
+    Point d'ÉCRITURE cross-app (``apps.portail``/``apps.compta``, frontière
+    CLAUDE.md) : l'appelant fournit un ``article_id`` OPAQUE, jamais l'objet
+    ORM ni un import de ``apps.kb.models`` — résolu ici, scopé à ``company``
+    (aucune fuite cross-tenant possible). No-op silencieux (renvoie ``False``,
+    ne lève jamais) si l'article n'existe pas / n'appartient pas à la société
+    / n'est pas flagué ``visible_portail`` (on ne compte que ce qui est
+    effectivement montré sur le portail)."""
+    from django.db.models import F
+    updated = KbArticle.objects.filter(
+        id=article_id, company=company, visible_portail=True,
+    ).update(consultations_portail_ticket=F('consultations_portail_ticket') + 1)
+    return bool(updated)
+
+
 def journaliser_recherche_vide(company, terme, *, utilisateur=None):
     """XKB16 — Journalise une recherche ``?search=`` SANS RÉSULTAT.
 

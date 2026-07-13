@@ -11,6 +11,14 @@
    ailleurs dans le code aujourd'hui → totalement inerte pour l'existant). */
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* VX180 — variante dédiée au seuil réel du DataTable/ListShell (768px). Le
+   code ET son test prétendaient déjà « 768px » en toutes lettres, mais
+   utilisaient l'utilitaire Tailwind par défaut `sm:` = 640px (aucun override
+   `--breakpoint-sm` dans ce fichier) : entre 640 et 767px la table desktop
+   s'affichait alors que le code croyait garantir les cartes mobile. Variante
+   RÉSERVÉE à DataTable (ne touche pas le `sm:` du reste du projet). */
+@custom-variant dt-desktop (@media (min-width: 768px));
+
 /* ── Reset & base ─────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; }
 
@@ -1208,7 +1216,9 @@ button:active, [role="button"]:active, a.btn:active,
   font-size: 0.75rem;
   font-weight: 600;
   color: var(--muted-foreground);
-  letter-spacing: 0.04em;
+  /* VX122 — tracking « eyebrow » unifié sur le token unique (remplace 0.04em
+     codé en dur, divergent de .lines-table th ci-dessous avant cette tâche). */
+  letter-spacing: var(--text-eyebrow-tracking);
   text-transform: uppercase;
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
@@ -1643,7 +1653,8 @@ textarea.form-control {
   font-size: 0.72rem;
   font-weight: 600;
   color: var(--muted-foreground);
-  letter-spacing: 0.04em;
+  /* VX122 — même token que .data-table th (remplace 0.04em codé en dur). */
+  letter-spacing: var(--text-eyebrow-tracking);
   text-transform: uppercase;
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
@@ -4615,7 +4626,9 @@ textarea.form-control {
   font-size: 0.75rem;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  /* VX122 — même token « eyebrow » que .data-table/.lines-table th (remplace
+     0.04em codé en dur). */
+  letter-spacing: var(--text-eyebrow-tracking);
   text-align: center;
   padding: 8px 4px;
 }

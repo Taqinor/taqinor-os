@@ -39,6 +39,10 @@ from .services import (  # noqa: F401  (ré-export du point d'intégration)
     ecriture_pour_paiement,
     ecriture_pour_paiement_especes_via_caisse,
     ecriture_pour_paiement_fournisseur,
+    # XPLT20 — miroir inter-sociétés (vente A → achat B), opt-in strict via
+    # RegleInterSociete (désactivée par défaut) ; indépendant du toggle
+    # COMPTA_AUTO_ECRITURES (n'écrit jamais l'écriture de vente elle-même).
+    generer_facture_fournisseur_miroir_intersociete,
     # YLEDG10 — chèques clients reçus → portefeuille d'effets (3425), jamais
     # directement en banque (l'argent n'y est pas encore).
     enregistrer_effet_pour_paiement_cheque,
@@ -63,6 +67,13 @@ from .services import (  # noqa: F401  (ré-export du point d'intégration)
 @receiver(facture_emise, dispatch_uid="compta_ecriture_pour_facture_emise")
 def _ecriture_pour_facture_emise(sender, instance, company, **kwargs):
     ecriture_pour_facture(instance)
+
+
+# ── XPLT20 — miroir inter-sociétés, indépendant de COMPTA_AUTO_ECRITURES ────
+
+@receiver(facture_emise, dispatch_uid="compta_miroir_intersociete_facture_emise")
+def _miroir_intersociete_pour_facture_emise(sender, instance, company, **kwargs):
+    generer_facture_fournisseur_miroir_intersociete(instance, company)
 
 
 @receiver(paiement_enregistre, dispatch_uid="compta_ecriture_pour_paiement")

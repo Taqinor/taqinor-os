@@ -8,6 +8,18 @@ from .models import (
 from .devis_auto import champs_manquants, message_manquants
 from .scoring import compute_score, score_label, score_reasons
 
+# ODX13 — ré-export TRANSITOIRE des serializers partenaires/territoires
+# (FG234–237) qui vivent encore dans ``apps.compta.serializers``. Ce module
+# expose ``apps.crm.serializers`` pour les ViewSets ré-exportés dans
+# ``apps/crm/views.py`` et les nouvelles routes ``/api/django/crm/…`` ;
+# ODX22 re-logera leur corps ici.
+from apps.compta.serializers import (  # noqa: F401,E402
+    CommissionPartenaireSerializer,
+    PartenaireSerializer,
+    SoumissionLeadPartenaireSerializer,
+    TerritoireCommercialSerializer,
+)
+
 
 class LeadActivitySerializer(serializers.ModelSerializer):
     user_nom = serializers.SerializerMethodField()

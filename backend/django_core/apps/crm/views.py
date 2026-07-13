@@ -31,6 +31,20 @@ from authentication.permissions import (
     HasPermissionOrLegacy,
 )
 
+# ODX13 — ré-export TRANSITOIRE des ViewSets partenaires/territoires (FG234–
+# 237) qui vivent encore dans ``apps.compta.views`` (adossés à
+# ``_ComptaBaseViewSet`` = ``TenantMixin`` + ``ModelViewSet``, scoping
+# ``request.user.company`` + assignation forcée de ``company``). Ce module
+# donne aux nouvelles routes ``/api/django/crm/…`` un point d'entrée
+# ``apps.crm.views`` stable ; les anciennes routes ``/api/django/compta/…``
+# continuent de servir les MÊMES classes. ODX22 re-logera le corps ici.
+from apps.compta.views import (  # noqa: F401
+    CommissionPartenaireViewSet,
+    PartenaireViewSet,
+    SoumissionLeadPartenaireViewSet,
+    TerritoireCommercialViewSet,
+)
+
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 

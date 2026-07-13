@@ -49,6 +49,17 @@ class NotificationViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
         unread = params.get('unread')
         if unread in ('1', 'true', 'True'):
             qs = qs.filter(read=False)
+        if self.action == 'list':
+            # VX209(c) — `list()` renvoyait TOUT sans borne (croissance sans
+            # fin). Bornée à 90 j + non archivées (la purge quotidienne
+            # supprime les lues > 60 j et archive les non-lues > 60 j — cette
+            # borne est un filet de sécurité, pas le mécanisme principal).
+            # Les autres actions (detail, read/unread, read-all) restent SUR
+            # LA QUERYSET COMPLÈTE : un lien profond envoyé par email vers une
+            # notification plus ancienne doit continuer de fonctionner.
+            from datetime import timedelta as _timedelta
+            horizon = timezone.now() - _timedelta(days=90)
+            qs = qs.filter(archived=False, created_at__gte=horizon)
         return qs
 
     @action(detail=False, methods=['get'], url_path='unread-count')

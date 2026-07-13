@@ -23,6 +23,8 @@ class FicheTechniqueViewSet(CompanyScopedModelViewSet):
     serializer_class = FicheTechniqueSerializer
     filter_backends = [filters.OrderingFilter]
     ordering = ['-date_mise_a_jour']
+    # YAPIC2 — whitelist explicite (jamais '__all__').
+    ordering_fields = ['date_creation', 'date_mise_a_jour', 'pmax_wc']
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:

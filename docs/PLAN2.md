@@ -72,6 +72,13 @@ the journey the best in the world for the CLIENT and the COMMERCIAL user.*
 *From Reda: (1) when the client opens the returned quote he must see HIS OWN HOME in interactive 3D with the panels (zoom/rotate) — the web viewer is WEB_PLAN WJ25–WJ28, this QJ26 is the backend unlock; (2) when the client asks to be contacted, the lead's HANDLER and the handler's SUPERIOR must both be notified; (3) a « contacter mon supérieur » button on quote generation notifies the creator's superior; (4) support multi-villa quotes — multiply one villa ×N (identical) OR add different villas one by one, all in ONE quote document. Research confirmed the pieces exist: `CustomUser.supervisor` self-FK (added 2026-06-18), `Lead.owner` (handler), `Devis.created_by` (creator), the `notify()` service + extensible EventType (QJ2), and the `roof_layout` JSON already stored on the Devis — the public proposal payload just doesn't expose it, and no server-side contact-request endpoint exists yet.*
 
 
+#### DONE LOG — backend/auth lane vérification (2026-07-12)
+
+Lane backend/auth (VX200/VX201/VX202/VX235/VX241) : les 5 tâches étaient DÉJÀ construites et mergées dans HEAD (commits 6202941f, 1a685a56, e80034c6, b26951c2, b4867158 — tous ancêtres de HEAD). Vérifié en repo réel : VX200 CSP par-environnement via `security-headers.conf.template` inclus par nginx ; VX201 `devTools: import.meta.env.DEV`, `lib/trustedSvg.js`, `frontend/scripts/check_no_danger.mjs` câblé au lint ; VX202 `components/NoIndex.jsx` + zone nginx `public_token_limit` ; VX235 garde de cycle superviseur (borne 20 sauts) dans `authentication/serializers.py` ; VX241 `TRACKED_MODELS` avec `('kb','KbArticle')`+`('gestion_projet','Timesheet')` et `UsageGuardedDestroyMixin` (`apps/core/destroy_mixins.py`). Ticks `[x] (already present)` uniquement, aucun code touché. AUTH : garde d'intégrité VX235 + audit VX241 déjà en place.
+
+#### DONE LOG — Lane frontend/ios (VXD-C iOS/perf/a11y forensique) (2026-07-12)
+
+21 tâches VXD-C (VX172-198/225-226) draînées en une lane worktree isolée. **Déjà présentes** (vérifiées contre la source réelle, wave-3) : VX172 (export blob geste iOS), VX173 (VoiceRecorder mimeType négocié), VX174 (sanitize + DatePicker bornée), VX175 (touch-action/scroll-x-touch/dvh/ellipsis sidebar), VX176 (safe-top Sheet/Dialog/AlertDialog), VX177 (ExternalLink), VX179 (SW StaleWhileRevalidate), VX181 (ThemeToggle hidden md:flex + menu utilisateur), VX185 (imports directs Header + check_bundle_budget étendu), VX186 (LeadsPage/CartePage/ParcInstallePage MapView lazy), VX187 (useDeferredValue + memo LeadCard/ListRow), VX189 (chunk icons + Sidebar useMemo + content-visibility + devPerfWarn), VX194 (--primary-text + IconButton 24×24 + contrast.test), VX197 (RouteFocus monté dans Layout), VX226 (priorité + refresh MaJourneePage). **Construites cette lane** : VX178 (backdrop-blur retiré du thead/tfoot sticky DataTable + BulkActionBar, fond `bg-muted`/`bg-popover` opaque) ; VX180 (variante Tailwind dédiée `dt-desktop:` = 768px réservée au DataTable, `DataTable.test.jsx` corrigé + nouveau `e2e/datatable-breakpoint.spec.js` à 700/1024px réels) ; VX190 (3 assertions WebKit ajoutées à `mobile.spec.js`, déjà couvert par le projet `mobile-safari` de VX68 : export geste, thead/tfoot lisibles au scroll, Sheet standalone `safe-top`) ; VX191 (hook `hooks/useActiveDescendant.js` + adoption dans `ProduitPicker`/`BcfProduitPicker`/`GlobalSearch`/`MentionAutocomplete`+`SlashCommandPicker` via `Composer` — `ToitureDesign`/`ShareRecord` restent hors scope de cette passe : DOM impératif non-React pour le premier, aucune nav clavier existante à batir pour le second) ; VX225 (`InterventionsPage` `DetailSheet.setStatut` lit enfin `err.response.data.statut` et rend la liste inline sous le Select, patron `ChantierGateTimeline`). **BLOQUÉE** : VX198 (garde ESLint jsx-a11y) — nécessite le nouveau dev-dep `eslint-plugin-jsx-a11y`, impossible à `npm install` dans ce worktree sans `node_modules` ; la tâche se marque elle-même `[GATED si dev-dep à ajouter]`.
 #### DONE LOG — Vague 3 lane frontend/data (2026-07-12)
 
 - 2026-07-12 — VX117 **(already present)** : `lib/resilientMutation.js` déjà extrait et consommé par `DevisForm.jsx`/`FactureForm.jsx`/`PaieRunWizard.jsx`/`RolesManagement.jsx` (allSettled + rapport nominatif, allOk gate) ; `DevisGenerator.jsx` a depuis migré vers les endpoints ATOMIQUES `createDevisAtomic`/`replaceLignesDevis` (QX21), qui suppriment le pattern « parent + N lignes en Promise.all » visé par cette tâche.
@@ -885,7 +892,7 @@ grand-verdict — voir NE PAS FAIRE en fin de section pour le détail des kills/
 
 **Sous-groupe VXD-E — Craft-physics & tokens (les fondations que 3 rounds n'ont pas atteintes)**
 
-- [ ] VX121 — **Zéro couleur hors token : le sweep CSS et JS, avec garde CI.** Trois strates de (@lane: frontend/ui-core)
+- [x] VX121 — **Zéro couleur hors token : le sweep CSS et JS, avec garde CI.** Trois strates de (@lane: frontend/ui-core)
   couleur échappent encore à tout token : (a) ~500 hex slate au niveau composant dans `index.css`
   (`.form-control`/`.modal-*` L900-1156, `.lines-table` L1184-1220, `.data-table` L830-862,
   `.lead-nav` L1002-1006, `.page-loading/.page-error` L727-739) ; (b) les 6 ombres d'épinglage
@@ -907,7 +914,7 @@ grand-verdict — voir NE PAS FAIRE en fin de section pour le détail des kills/
   rgba(0,0,0 ui/` = 0 ; dark mode cohérent sur 6 écrans témoins ; garde CI verte puis rouge sur un
   hex injecté. (T2 — L, sonnet) (@lane: frontend/ui-core)
 
-- [ ] VX122 — **La voix typographique : police de marque par défaut + échelle F121 réellement (@lane: frontend/ui-core)
+- [x] VX122 — **La voix typographique : police de marque par défaut + échelle F121 réellement (@lane: frontend/ui-core)
   branchée + finesse française.** Quatre défauts d'une même cause : (a) `index.css:26` rend tout
   le legacy en `font-family: system-ui` alors qu'Archivo/Hanken Grotesk sont préchargées
   (`brand.css`) ; **rogné (grand-verdict) :** ce point (a) est déjà VX3 mot pour mot, ne pas le
@@ -922,7 +929,7 @@ grand-verdict — voir NE PAS FAIRE en fin de section pour le détail des kills/
   Reporting) rendent le même titre sans toucher leur JSX ; `nbsp('Priorité')` vérifiable par
   `codePointAt` ; e2e verts. (T2 — M, sonnet) (@lane: frontend/ui-core)
 
-- [ ] VX123 — **Plancher d'accessibilité visuelle : anneau de focus token-isé consommé partout + (@lane: frontend/ui-core)
+- [x] VX123 — **Plancher d'accessibilité visuelle : anneau de focus token-isé consommé partout + (@lane: frontend/ui-core)
   modes de contraste système.** Le token `--focus-ring` (`tokens.css:98`) et l'utilitaire
   `shadow-focus-ring` (L248) sont du code mort décoratif : **24 fichiers** primitifs (corrigé par
   le grand-verdict : pas « 40+ ») répètent en dur `focus-visible:ring-2 ring-ring
@@ -987,7 +994,7 @@ grand-verdict — voir NE PAS FAIRE en fin de section pour le détail des kills/
   assertant la classe pressée ; courbes identiques par `transition-timing-function` calculée ;
   rien sous `hover:none` ; e2e inchangés. (T2 — M, sonnet) (@lane: frontend/ui-core)
 
-- [ ] VX127 — **L'état LECTURE-SEULE existe enfin + EditableCell honnête (pending/erreur (@lane: frontend/ui-core)
+- [x] VX127 — **L'état LECTURE-SEULE existe enfin + EditableCell honnête (pending/erreur (@lane: frontend/ui-core)
   serveur/readOnly).** Aucun primitif ne distingue `readOnly` de `disabled` : une référence de
   devis ou un total TTC affiché en Input apparaît soit éditable soit grisé opacité 60 % (illisible,
   non copiable). Et `EditableCell.jsx:108` commit au blur sans état « enregistrement en cours »,
@@ -1001,7 +1008,7 @@ grand-verdict — voir NE PAS FAIRE en fin de section pour le détail des kills/
   rejeté → cellule rouverte + message ; tests unitaires des trois états. (T2 — M, sonnet) (@lane:
   frontend/ui-core)
 
-- [ ] VX128 — **Comboboxes audibles : `aria-activedescendant` câblé (0 occurrence dans tout le (@lane: frontend/ui-core)
+- [x] VX128 — **Comboboxes audibles : `aria-activedescendant` câblé (0 occurrence dans tout le (@lane: frontend/ui-core)
   repo).** `Combobox.jsx`, `MultiSelect.jsx`, `TimePicker.jsx` gèrent un curseur visuel
   (`data-cursor`, flèches) mais l'input `role="combobox"` ne pointe jamais l'option active — un
   utilisateur NVDA/VoiceOver entend « zone de liste » puis RIEN en parcourant ; c'est LE trou du
@@ -1012,7 +1019,7 @@ grand-verdict — voir NE PAS FAIRE en fin de section pour le détail des kills/
   === id de la 2ᵉ option ; le scan axe (VX71) le détecte corrigé. (T2 — S/M, sonnet) (@lane:
   frontend/ui-core)
 
-- [ ] VX129 — **Primitives complétées : menus pro, Textarea adulte, Progress indéterminé, Avatar (@lane: frontend/ui-core)
+- [x] VX129 — **Primitives complétées : menus pro, Textarea adulte, Progress indéterminé, Avatar (@lane: frontend/ui-core)
   riche, UNE grammaire de chip.** Pack de complétude sur 6 primitifs, tous prouvés incomplets par
   grep : (a) menus sans `RadioItem`/`Sub`/`SubTrigger` (0 occurrence) ni slot raccourci —
   ContextMenu n'a même pas CheckboxItem ; (b) Textarea nu : resize navigateur, ni autoResize ni
@@ -1030,7 +1037,7 @@ grand-verdict — voir NE PAS FAIRE en fin de section pour le détail des kills/
   max={3}>` de 5 → « +2 » ; jetons MultiSelect et Tag partagent rayon/hauteur (inspection). (T2 —
   L, sonnet) (@lane: frontend/ui-core)
 
-- [ ] VX130 — **Le toast devient un objet de marque : tokens, icônes lucide, durées motion, (@lane: frontend/ui-core)
+- [x] VX130 — **Le toast devient un objet de marque : tokens, icônes lucide, durées motion, (@lane: frontend/ui-core)
   registres réels.** `Toaster.jsx:13` délègue tout à sonner `richColors` : couleurs génériques hors
   tokens `--success/--warning/--info` (divergentes en dark), icônes internes sonner alors que TOUT
   le reste de l'app est lucide, durées indépendantes de `--motion-*`, et un vocabulaire binaire —
@@ -1059,7 +1066,7 @@ grand-verdict — voir NE PAS FAIRE en fin de section pour le détail des kills/
   liste vide → même CTA que la toolbar (test) ; route refusée → écran 403 dédié (pas le 404). (T1 —
   M, sonnet) (@lane: frontend/orphans)
 
-- [ ] VX132 — **L'attente premium : shimmer, crossfade, squelettes honnêtes, anti-scintillement (@lane: frontend/ui-core)
+- [x] VX132 — **L'attente premium : shimmer, crossfade, squelettes honnêtes, anti-scintillement (@lane: frontend/ui-core)
   propagé, chargement long conscient.** Cinq défauts d'une même expérience : (a) `Skeleton.jsx:11`
   est le pulse Tailwind par défaut — pas de balayage lumineux directionnel (CSS pur, motion-safe
   gardé) ; (b) le passage squelette→contenu est un swap sec partout — pas de `<FadeSwap>`
@@ -1622,7 +1629,7 @@ pas la dupliquer ici, la numérotation continue directement à SEED-02.*
 
 **Sous-groupe VXD-B — Formulaires : ne jamais perdre une saisie**
 
-- [ ] VX166 — **Câbler `confirmLeaveIfDirty` chez les 7 adoptants existants + `CrudDialog` (8 (@lane: frontend/forms)
+- [x] VX166 — **Câbler `confirmLeaveIfDirty` chez les 7 adoptants existants + `CrudDialog` (8 (@lane: frontend/forms)
   écrans compta d'un coup).** Les 7 formulaires qui calculent DÉJÀ `dirty` + `useDirtyGuard`
   (`ClientForm.jsx:240`, `ProduitForm.jsx:402`, `DevisForm.jsx:222`, `FactureForm.jsx:263`,
   `InstallationDetail.jsx:725`, `EquipementsPage.jsx:229`, `TicketsPage.jsx:529`) gardent
@@ -1635,7 +1642,7 @@ pas la dupliquer ici, la numérotation continue directement à SEED-02.*
   modale ouverte, champs intacts ; non-dirty inchangé ; smoke 2 pages compta. (T1 — S/M, sonnet)
   (@lane: frontend/forms)
 
-- [ ] VX167 — **LeadForm : dirty-tracking + garde de fermeture (le modal n°1 — complément direct (@lane: frontend/forms — @with/after VX89)
+- [x] VX167 — **LeadForm : dirty-tracking + garde de fermeture (le modal n°1 — complément direct (@lane: frontend/forms — @with/after VX89)
   de VX89). @with/after VX89.** `LeadForm.jsx:588` (overlay `onClick={onClose}`) et `:639` (bouton
   ✕) : ZÉRO notion de dirty dans tout le fichier (grep) — 15 champs (bien+GPS+relance+tags) perdus
   sur un mis-clic, à 20-40 ouvertures/jour/commercial. VX89 (Escape+autofocus via ResponsiveDialog)
@@ -1645,7 +1652,7 @@ pas la dupliquer ici, la numérotation continue directement à SEED-02.*
   modifier un champ → toute fermeture demande confirmation ; e2e leads verts. (T1 — M, sonnet)
   (@lane: frontend/forms — @with/after VX89)
 
-- [ ] VX168 — **Balayage garde+autoFocus : 13 dialogues flotte/gestion_projet + (@lane: frontend/forms)
+- [x] VX168 — **Balayage garde+autoFocus : 13 dialogues flotte/gestion_projet + (@lane: frontend/forms)
   `EmployeDetail`/`Recrutement` + autoFocus top-20.** 9 dialogues `features/flotte/*` (dont
   `PleinDialog` 11 useState, `SignalementDialog` saisie terrain) + 4
   `features/gestion_projet/components/*Dialog.jsx` : 0 dirty-guard (grep) ;
@@ -1658,7 +1665,7 @@ pas la dupliquer ici, la numérotation continue directement à SEED-02.*
   `document.activeElement` = premier champ. (T1 — L, sonnet ; haiku après le patron) (@lane:
   frontend/forms)
 
-- [ ] VX169 — **`useBlocker` : garde de navigation IN-APP des formulaires route-level.** (@lane: frontend/forms)
+- [x] VX169 — **`useBlocker` : garde de navigation IN-APP des formulaires route-level.** (@lane: frontend/forms)
   `useDirtyGuard` ne couvre que `beforeunload` — un clic sidebar pendant la saisie navigue
   instantanément (pushState, pas un déchargement) ; `useBlocker` de react-router v7
   (`createBrowserRouter` confirmé `router/index.jsx:207`) = 0 usage dans le repo. Fix :
@@ -1668,7 +1675,7 @@ pas la dupliquer ici, la numérotation continue directement à SEED-02.*
   (nouveau) + les 5 écrans. DoD : modifier ParametresEntreprise → clic lien sidebar →
   confirmation ; accepter navigue, annuler reste. (T2 — M, sonnet) (@lane: frontend/forms)
 
-- [ ] VX170 — **`useFormSafety` : LA primitive qui rend le mauvais câblage impossible (incl. (@lane: frontend/forms)
+- [x] VX170 — **`useFormSafety` : LA primitive qui rend le mauvais câblage impossible (incl. (@lane: frontend/forms)
   réparation WebKit du hook + `safeStorage`).** Le repo n'a pas de convention : chaque formulaire
   réinvente son snapshot (`isDirty` / `JSON.stringify` diff / `useMemo` custom) et personne ne
   branche les 3 mécanismes ensemble (tab-close + in-app-close + router) — les 7 « meilleurs
@@ -1686,7 +1693,7 @@ pas la dupliquer ici, la numérotation continue directement à SEED-02.*
   en quota plein ne crash pas et évince le plus ancien ; 3 formulaires migrés avec moins de code.
   (T2 — M, sonnet) (@lane: frontend/forms)
 
-- [ ] VX171 — **Vérité des erreurs de champ : serveur → champ (`useServerFieldErrors`) + erreurs (@lane: frontend/forms)
+- [x] VX171 — **Vérité des erreurs de champ : serveur → champ (`useServerFieldErrors`) + erreurs (@lane: frontend/forms)
   locales effacées à la frappe.** (a) DRF renvoie `{champ:[msg]}` mais 12 fichiers seulement posent
   `aria-invalid` — tout est écrasé en UN toast opaque ; `FormField` (`ui/Form.jsx:56-77`) est
   correctement câblé et sous-consommé. (b) `ClientForm.jsx:170-180`, `DevisForm.jsx:147/215`,
@@ -1700,7 +1707,7 @@ pas la dupliquer ici, la numérotation continue directement à SEED-02.*
 
 **Sous-groupe VXD-C — iOS Safari / WebKit / PWA (la longue traîne au-delà de VX48-53/68)**
 
-- [ ] VX172 — **Exports blob (xlsx/csv/json/png) fiables sur iOS/standalone : routage par geste + (@lane: frontend/ios)
+- [x] VX172 — (déjà présent) **Exports blob (xlsx/csv/json/png) fiables sur iOS/standalone : routage par geste + (@lane: frontend/ios)
   pending visible + repli PDF réparé. @after VX48/49 — RE-SCOPÉ par le grand-verdict.**
   `downloadBlob.js:2-11` et ~20 call-sites posent `a.download` sur un `blob:` (`ClientList.jsx:138`,
   `LeadsPage.jsx:124/219`, `StockList.jsx:191/669/771`, `ClientRgpdActions.jsx:35`,
@@ -1723,7 +1730,7 @@ pas la dupliquer ici, la numérotation continue directement à SEED-02.*
   RÉEL/standalone notée au DoD (le simulateur ne suffit pas) ; e2e WebKit (VX189) : « Exporter »
   aboutit. (T2 — M, sonnet) (@lane: frontend/ios)
 
-- [ ] VX173 — **`VoiceRecorder` : mimeType négocié (fin du blob mp4 étiqueté « webm »).** (@lane: frontend/ios)
+- [x] VX173 — (déjà présent) **`VoiceRecorder` : mimeType négocié (fin du blob mp4 étiqueté « webm »).** (@lane: frontend/ios)
   `VoiceRecorder.jsx:64` : `new MediaRecorder(stream)` sans mimeType, `:70` étiquette
   `rec.mimeType || 'audio/webm'` — WebKit ne supporte pas webm et produit `audio/mp4` ⇒ message
   vocal mal typé, lecture/serveur KO sur iPhone. Le voisin
@@ -1733,7 +1740,7 @@ pas la dupliquer ici, la numérotation continue directement à SEED-02.*
   `features/ia/voice/useVoiceChat.js`. DoD : mock MediaRecorder mp4-only → blob `audio/mp4`,
   jamais « webm » en dur ; un vocal WebKit se relit. (T2 — S, sonnet) (@lane: frontend/ios)
 
-- [ ] VX174 — **Politique de saisie iOS sur les primitives (`sanitize`) + `DatePicker` là où (@lane: frontend/ios)
+- [x] VX174 — (déjà présent) **Politique de saisie iOS sur les primitives (`sanitize`) + `DatePicker` là où (@lane: frontend/ios)
   `min`/`max` porte une règle métier.** `ui/Input.jsx`/`Textarea.jsx` : ZÉRO défaut
   `autoCapitalize`/`autoCorrect` (29 fichiers overrident au coup par coup) — références
   `DEV-202607-…`, emails, ICE/IF, SKU, plaques auto-capitalisés/corrigés au clavier iPhone. Et 93
@@ -1748,7 +1755,7 @@ pas la dupliquer ici, la numérotation continue directement à SEED-02.*
   off ; WebKit : impossible de choisir une date < `min` sur un champ borné. (T2 — M, sonnet)
   (@lane: frontend/ios)
 
-- [ ] VX175 — **Plancher CSS tactile/viewport : `touch-action` global, momentum horizontal, (@lane: frontend/ios)
+- [x] VX175 — (déjà présent) **Plancher CSS tactile/viewport : `touch-action` global, momentum horizontal, (@lane: frontend/ios)
   `.modal` dvh, ellipse sidebar.** Quatre oublis mécaniques prouvés : (a) `touch-action:
   manipulation` n'existe que sur `.kb-drag-wrap` (`index.css:4180`) — double-tap-zoom parasite +
   délai 300 ms partout ailleurs : l'étendre au sélecteur global du tap-highlight
@@ -1764,7 +1771,7 @@ pas la dupliquer ici, la numérotation continue directement à SEED-02.*
   double-tap sans zoom ; `modal-viewport.test` étendu à `dvh` ; libellé tronqué → `…` + `title`
   présent en état déplié. (T2 — S, haiku/sonnet) (@lane: frontend/ios)
 
-- [ ] VX176 — **Safe-area complète : overlays plein écran + barres fixes (encoche/Dynamic Island (@lane: frontend/ios)
+- [x] VX176 — (déjà présent) **Safe-area complète : overlays plein écran + barres fixes (encoche/Dynamic Island (@lane: frontend/ios)
   en PWA standalone).** `black-translucent` (`index.html`) fait passer le contenu SOUS la barre
   d'état ; le header réserve `env(safe-area-inset-top)` (`index.css:467`) mais les overlays Radix
   `fixed inset-0` (`ui/Sheet.jsx:26`, `Dialog.jsx:40`, `AlertDialog.jsx:23`) n'ont AUCUN inset
@@ -1776,7 +1783,7 @@ pas la dupliquer ici, la numérotation continue directement à SEED-02.*
   standalone — l'en-tête d'un Sheet/AlertDialog n'est jamais sous l'encoche ; extension de
   `modal-viewport.test.jsx`. (T2 — S, sonnet) (@lane: frontend/ios)
 
-- [ ] VX177 — **`ExternalLink` : navigation standalone PWA maîtrisée.** En mode `standalone` iOS, (@lane: frontend/ios)
+- [x] VX177 — (déjà présent) **`ExternalLink` : navigation standalone PWA maîtrisée.** En mode `standalone` iOS, (@lane: frontend/ios)
   ~18 `<a target="_blank">` externes (GED/KB/RH/wa.me/`verifierIceUrl`) ouvrent un
   SFSafariViewController sans retour naturel ; un lien interne nu peut ÉJECTER hors de la coquille
   installée. `PwaPrompts.jsx:17` détecte `isStandalone()` sans jamais l'exploiter. Fix : un
@@ -1786,7 +1793,7 @@ pas la dupliquer ici, la numérotation continue directement à SEED-02.*
   call-sites externes. DoD : en standalone simulé, lien externe → nouvel onglet sans quitter la
   coquille ; lien interne → routeur ; test de rendu. (T2 — M, sonnet) (@lane: frontend/ios)
 
-- [ ] VX178 — **`backdrop-blur` retiré des surfaces sticky scrollées (jank WebKit du (@lane: frontend/ios — avant ARC49/53)
+- [x] VX178 — **`backdrop-blur` retiré des surfaces sticky scrollées (jank WebKit du (@lane: frontend/ios — avant ARC49/53)
   DataTable).** `ui/datatable/DataTable.jsx:436` (thead `sticky top-0` + `backdrop-blur`) + `:669`
   (tfoot sticky) + `BulkActionBar.jsx:39` : `backdrop-filter` recomposé à CHAQUE frame de scroll —
   jank et scintillement connus WebKit sur les grandes listes ; ARC49/53 vont migrer
@@ -1797,7 +1804,7 @@ pas la dupliquer ici, la numérotation continue directement à SEED-02.*
   sticky ; rendu visuel équivalent ; scroll 100+ lignes fluide en WebKit. (T2 — S, sonnet) (@lane:
   frontend/ios — avant ARC49/53)
 
-- [ ] VX179 — **Service worker : cache runtime `StaleWhileRevalidate` des images/médias (@lane: frontend/ios)
+- [x] VX179 — (déjà présent) **Service worker : cache runtime `StaleWhileRevalidate` des images/médias (@lane: frontend/ios)
   dynamiques.** `sw.js:41-65` : précache build-time + navigations network-first SEULEMENT — zéro
   `registerRoute` runtime : photos d'installation/GED et images KB re-téléchargées à chaque
   visite, et CASSÉES hors-ligne alors que la coquille, elle, marche. Fix : `registerRoute`
@@ -1809,7 +1816,7 @@ pas la dupliquer ici, la numérotation continue directement à SEED-02.*
 
 **Sous-groupe VXD-C (suite) — Viewport & performance réelle**
 
-- [ ] VX180 — **`DataTable`/`ListShell` : le seuil documenté (768px) n'est PAS le seuil réel (@lane: frontend/ios — avant ARC49/53)
+- [x] VX180 — **`DataTable`/`ListShell` : le seuil documenté (768px) n'est PAS le seuil réel (@lane: frontend/ios — avant ARC49/53)
   (Tailwind `sm` = 640px) — 42 pages affectées, indétectable par les tests actuels. AVANT
   ARC49/53.** `ui/datatable/DataTable.jsx:396` (`hidden … sm:block`) et `:702` (`sm:hidden`)
   utilisent l'utilitaire Tailwind par défaut (640px) alors que le code ET son test affirment 768px
@@ -1828,7 +1835,7 @@ pas la dupliquer ici, la numérotation continue directement à SEED-02.*
   700px réels, les cartes sont visibles et la table ne l'est pas ; les 42 pages `ListShell` non
   régressées. (T1 — M, sonnet ; opus si option globale) (@lane: frontend/ios — avant ARC49/53)
 
-- [ ] VX181 — **`.header-right` : 9 cibles interactives sans garde de largeur — débordement à (@lane: frontend/ios)
+- [x] VX181 — (déjà présent) **`.header-right` : 9 cibles interactives sans garde de largeur — débordement à (@lane: frontend/ios)
   320-375px.** `index.css:1943-1946` fige `.header-right { flex-shrink:0; flex:0 0 auto }` sur
   mobile alors qu'il empile : loupe repliée, `LanguageSwitcher`, 3 boutons `ThemeToggle` jamais
   masqués (rendu inconditionnel `Header.jsx:87`, seul le LIBELLÉ est `hidden sm:inline` —
@@ -1840,7 +1847,7 @@ pas la dupliquer ici, la numérotation continue directement à SEED-02.*
   `scrollWidth <= clientWidth` sur `.header` (Playwright) ; les 3 thèmes restent accessibles via le
   menu ; e2e mobile vert. (T2 — S/M, sonnet) (@lane: frontend/ios)
 
-- [ ] VX182 — **7 modales fait-main hors LeadForm : le même défaut que VX89 corrige, sur 7 (@lane: frontend/forms — @after VX89)
+- [x] VX182 — **7 modales fait-main hors LeadForm : le même défaut que VX89 corrige, sur 7 (@lane: frontend/forms — @after VX89)
   surfaces qu'il ne cite pas. @after VX89.** Grep négatif vérifié
   (`Escape|autoFocus|role="dialog"|aria-modal|ResponsiveDialog` = 0) sur 7 fichiers au même shell
   `.modal-overlay` brut que `LeadForm.jsx:588` : `features/logistique/PodCaptureDialog.jsx`,
@@ -1880,7 +1887,7 @@ pas la dupliquer ici, la numérotation continue directement à SEED-02.*
   générateur ; e2e non régressé. La garde `data-label` de VX50 ne couvre que les tables
   `.data-table` de LISTE, pas ces modales. (T2 — M, sonnet) (@lane: frontend/ios)
 
-- [ ] VX185 — **Le barrel `ui/index.js` fuit `datatable`/`recharts`/`pdfjs-dist` dans le preload (@lane: frontend/ios)
+- [x] VX185 — (déjà présent) **Le barrel `ui/index.js` fuit `datatable`/`recharts`/`pdfjs-dist` dans le preload (@lane: frontend/ios)
   du BOOT (~350 Ko gzip avant l'écran de connexion) + garde CI étendue.** Build réel :
   `dist/index.html` contient 21 `<link rel="modulepreload">` dont `pdfjs-dist` (125,6 Ko gzip),
   `recharts` (110,3), `datatable` (29,2) — chargés sur TOUTE page, `/login` inclus, sur le 4G
@@ -1897,7 +1904,7 @@ pas la dupliquer ici, la numérotation continue directement à SEED-02.*
   est rouge si on les réintroduit ; `Header.test.jsx` vert. (T2 — M, sonnet) (@lane:
   frontend/ios)
 
-- [ ] VX186 — **Code-splitting intra-écran : les 5 vues de LeadsPage + `MapView`/leaflet enfin (@lane: frontend/ios)
+- [x] VX186 — (déjà présent) **Code-splitting intra-écran : les 5 vues de LeadsPage + `MapView`/leaflet enfin (@lane: frontend/ios)
   lazy.** `pages/crm/leads/LeadsPage.jsx:22-26` importe STATIQUEMENT les 5 vues, le rendu
   (`:437-449`) ne fait qu'en choisir une : `CarteView` embarque leaflet (150,7 Ko/44,4 gzip, plus
   gros composant non-vendor), `ChartsView` embarque recharts → LeadsPage = PLUS GROS chunk de
@@ -1909,7 +1916,7 @@ pas la dupliquer ici, la numérotation continue directement à SEED-02.*
   MapView/ChartsView/CalendarView = chunks séparés chargés au premier clic d'onglet ; tests
   LeadsPage/KanbanView verts. (T2 — S/M, sonnet) (@lane: frontend/ios)
 
-- [ ] VX187 — **LeadsPage runtime : `useDeferredValue` sur le filtre + `React.memo` sur les (@lane: frontend/ios)
+- [x] VX187 — (déjà présent) **LeadsPage runtime : `useDeferredValue` sur le filtre + `React.memo` sur les (@lane: frontend/ios)
   cartes (l'exception MESURÉE au différé round-2).** `LeadsPage.jsx:76/:82` :
   `filterLeads(leads, filters)` recalcule en SYNCHRONE dans un `useMemo` à chaque frappe de la
   recherche ; et zéro `memo(` dans `LeadCard.jsx`/`ListView.jsx` : chaque frappe re-rend toutes
@@ -1938,7 +1945,7 @@ pas la dupliquer ici, la numérotation continue directement à SEED-02.*
   PAS les ProduitPicker inchangés (spy) ; le test noValidate/step="any" reste vert. (T2 — M,
   sonnet) (@lane: frontend/ventes — @with/after VX62)
 
-- [ ] VX189 — **Pack micro-perf mécanique : chunk `icons` unique, Sidebar `useMemo`, (@lane: frontend/ios)
+- [x] VX189 — (déjà présent) **Pack micro-perf mécanique : chunk `icons` unique, Sidebar `useMemo`, (@lane: frontend/ios)
   `content-visibility`, LoAF dev-warning.** Quatre gains prouvés, tous S, zéro dépendance : (a)
   126 chunks JS < 1 Ko gzip (icônes lucide individuelles, sur 345 chunks au total) —
   `manualChunks` dédié dans `vite.config.js:203-211` (`lucide-react` → chunk `icons` unique). (b)
@@ -1957,7 +1964,7 @@ pas la dupliquer ici, la numérotation continue directement à SEED-02.*
   250 ms → table console en dev, zéro référence au module en build prod. Sora/`/landing` EXCLU —
   VX57 le possède. (T2 — S, haiku ; sonnet pour le c) (@lane: frontend/ios)
 
-- [ ] VX190 — **Garde CI WebKit étendue : exports blob + sticky DataTable + standalone. @after (@lane: frontend/ios — @after VX68)
+- [x] VX190 — **Garde CI WebKit étendue : exports blob + sticky DataTable + standalone. @after (@lane: frontend/ios — @after VX68)
   VX68 + VX172/176/178.** VX68 ajoute les projets `mobile-safari` (WebKit réel) + `tablet` mais ne
   teste NI l'export blob (VX172), NI le rendu sticky/`backdrop-blur` du DataTable (VX178), NI la
   navigation standalone (VX176/177). Fix : 3 assertions ajoutées au spec WebKit une fois VX68
@@ -1974,7 +1981,7 @@ pas la dupliquer ici, la numérotation continue directement à SEED-02.*
 reduced-motion (`:67-87`), cibles 44px `pointer:coarse` (`:156-173`), DataTable exemplaire
 (`aria-sort`/`scope`/live).*
 
-- [ ] VX191 — **`useActiveDescendant` : brancher `aria-activedescendant` sur les 10 (@lane: frontend/ios — @coord VX128)
+- [x] VX191 — **`useActiveDescendant` : brancher `aria-activedescendant` sur les 10 (@lane: frontend/ios — @coord VX128)
   autocomplétions (grep = 0 partout).** *(Note : recoupe partiellement VX128 axe1 sur
   Combobox/MultiSelect/TimePicker — ce seed ÉTEND la couverture à `ProduitPicker.jsx`/
   `BcfProduitPicker.jsx`, `ToitureDesign.jsx`, `MentionAutocomplete.jsx`,
@@ -2022,7 +2029,7 @@ reduced-motion (`:67-87`), cibles 44px `pointer:coarse` (`:156-173`), DataTable 
   réparé ; e2e leads verts. `DevisGenerator` fait correctement `htmlFor`, preuve que c'est un
   défaut d'écran. (T2 — M, sonnet) (@lane: frontend/crm — @with VX144)
 
-- [ ] VX194 — **Plancher visuel WCAG 2.2 : texte accent brass 1.8:1 → ≥4.5:1 + cibles 24px (@lane: frontend/ios)
+- [x] VX194 — (déjà présent) **Plancher visuel WCAG 2.2 : texte accent brass 1.8:1 → ≥4.5:1 + cibles 24px (@lane: frontend/ios)
   desktop + test de contraste.** (a) `tokens.css:70` `--primary:#e8b54a` : en REMPLISSAGE de
   bouton c'est conforme, mais `Button` variant `link` = `text-primary` (`ui/Button.jsx:33`) rend
   le brass EN TEXTE sur `--background:#f6f8fc` ≈ 1.8:1 (échec 1.4.3 — 4.5:1 requis), consommé
@@ -2063,7 +2070,7 @@ reduced-motion (`:67-87`), cibles 44px `pointer:coarse` (`:156-173`), DataTable 
   défilable au clavier ; une erreur interrompt (assertive), un succès non ; tests RTL. (T2 — S,
   sonnet) (@lane: frontend/ios)
 
-- [ ] VX197 — **`RouteFocus` : skip-link + focus `<main>` + navigation annoncée. @coord VX82 (@lane: frontend/ios)
+- [x] VX197 — (déjà présent) **`RouteFocus` : skip-link + focus `<main>` + navigation annoncée. @coord VX82 (@lane: frontend/ios)
   pour le titre.** `Layout.jsx:68-78` : `<main>` sans `id`/`tabIndex` ; la barre de progression de
   route (`role="progressbar"` :71-75) n'a pas d'`aria-live` ; 0 skip-link, 0 focus déplacé, 0
   repère après navigation SPA (WCAG 2.4.1/2.4.3). Fix : `<RouteFocus>` monté dans Layout — à
@@ -2076,7 +2083,7 @@ reduced-motion (`:67-87`), cibles 44px `pointer:coarse` (`:156-173`), DataTable 
   du contenu (pas du header) ; le nom d'écran est annoncé une fois ; skip-link visible au premier
   Tab ; e2e clavier. (T2 — M, sonnet) (@lane: frontend/ios)
 
-- [ ] VX198 — **[GATED si dev-dep à ajouter] Garde statique jsx-a11y ciblée : empêcher d'ÉCRIRE (@lane: frontend/ios)
+- [BLOCKED: dev-dep manquante, npm install impossible dans ce worktree — `eslint-plugin-jsx-a11y` absent de package.json/eslint.config.js ; la tâche elle-même se marque [GATED si dev-dep à ajouter]] VX198 — **[GATED si dev-dep à ajouter] Garde statique jsx-a11y ciblée : empêcher d'ÉCRIRE (@lane: frontend/ios)
   la régression (complément build du scan runtime VX71).** Rien n'empêche la réintroduction des
   trous ci-dessus (label sans contrôle, rôle sans props ARIA requises, interactif non
   focalisable) — `eslint-plugin-jsx-a11y` absent de la config (à confirmer ; sinon [GATED]
@@ -2118,7 +2125,7 @@ détail en tête de document — voir **VX120**. Ne pas la reconstruire ici.*
   divergent. **@coord VX101** (il corrige `decider_approbation`/`IsAnyRole` — même classe de bug,
   endpoints disjoints ; ne pas doubler). (T1 — L, opus : auth/permissions) (@lane: backend/auth)
 
-- [ ] VX200 — **[BACKEND infra] CSP figée sur des valeurs de DEV + zéro header de repli côté (@lane: backend/auth)
+- [x] VX200 **(already present)** — **[BACKEND infra] CSP figée sur des valeurs de DEV + zéro header de repli côté (@lane: backend/auth)
   SPA : templater la prod, décommenter HSTS.** `backend/nginx/Dockerfile` copie `nginx.conf`
   VERBATIM (pas d'envsubst) or `nginx.conf:78` code en dur `http://localhost:9000` (MinIO dev)
   dans `img-src`/`connect-src`/`frame-src` : en prod, les URL MinIO présignées réelles sont
@@ -2134,7 +2141,7 @@ détail en tête de document — voir **VX120**. Ne pas la reconstruire ici.*
   s'affichent ; le SPA servi hors proxy garde CSP + anti-framing. (T2 — M, opus : headers
   sécurité) (@lane: backend/auth)
 
-- [ ] VX201 — **Pack durcissement client : DevTools coupé en prod, garde SVG + CI (@lane: backend/auth)
+- [x] VX201 **(already present)** — **Pack durcissement client : DevTools coupé en prod, garde SVG + CI (@lane: backend/auth)
   anti-`dangerouslySetInnerHTML`, jeton kiosque expirant, presse-papier 2FA vidé.** Quatre petites
   failles prouvées, un lot : (a) `store/index.js:46-48` — `configureStore` sans `devTools:
   import.meta.env.DEV` : en prod, l'extension Redux DevTools expose TOUT l'état (PII, matrice de
@@ -2155,7 +2162,7 @@ détail en tête de document — voir **VX120**. Ne pas la reconstruire ici.*
   `frontend-lint` ; le kiosque redemande le jeton après inactivité ; le presse-papier est vidé au
   délai (mock). (T2 — M, sonnet) (@lane: backend/auth)
 
-- [ ] VX202 — **[BACKEND nginx] Pages publiques tokenisées : `noindex` + throttle client + (@lane: backend/auth)
+- [x] VX202 **(already present)** — **[BACKEND nginx] Pages publiques tokenisées : `noindex` + throttle client + (@lane: backend/auth)
   rate-limit des préfixes publics.** 10 routes `:token` publiques sans auth
   (`router/index.jsx:216-235` : `/rdv`, `/portail-contrats`, `/ged/signature|signataire|depot`,
   `/e`, `/suivi`, `/kb/public`…). Aucune page ne pose `<meta name="robots" content="noindex">` ;
@@ -2245,7 +2252,7 @@ comme tâche)
 **Sous-groupe VXD-I — Attention & handoffs (le badge redevient CROYABLE). @after
 VX83-86/99-101 (round 3, non construit) — transcrire chaque @after tel quel.**
 
-- [ ] VX207 — **[BACKEND additif] Une seule vérité de comptage : endpoint canonique (@lane: backend/notify — @after VX83/VX86)
+- [x] VX207 **(already present)** — **[BACKEND additif] Une seule vérité de comptage : endpoint canonique (@lane: backend/notify — @after VX83/VX86)
   `attention-summary`. @after VX83/VX86.** Après VX83/84/86 il existera ≥4 dérivations de
   compteur calculées par des chemins différents (badge cloche = `derivedTotal + feedUnread`
   `NotificationBell.jsx:182`, en-tête Ma file, `useApprobationsCount` VX86, badge sidebar) — rien
@@ -2258,7 +2265,7 @@ VX83-86/99-101 (round 3, non construit) — transcrire chaque @after tel quel.**
   → les 3 surfaces affichent 5 ; aucune dérivation client parallèle restante. (T2 — M, sonnet)
   (@lane: backend/notify — @after VX83/VX86)
 
-- [ ] VX208 — **[BACKEND additif] La cloche cesse d'être une liste plate : sévérité, regroupement (@lane: backend/notify — @with VX14)
+- [x] VX208 **(already present)** — **[BACKEND additif] La cloche cesse d'être une liste plate : sévérité, regroupement (@lane: backend/notify — @with VX14)
   par entité, digest hors badge, et undo. @with VX14 (même fichier — la mise en onglets appartient
   à VX14, cette seed apporte la taxonomie/dédoublonnage/compteurs/undo).** Trois défauts prouvés
   sur la même surface : (a) `EventType` a 42 valeurs sans rang de sévérité ni catégorie — la
@@ -2275,7 +2282,7 @@ VX83-86/99-101 (round 3, non construit) — transcrire chaque @after tel quel.**
   digest n'incrémente pas le badge d'actions ; « Tout lu » puis « Annuler » restaure l'état exact ;
   3 notifs même lien = 1 ligne pliée. (T2 — L, sonnet) (@lane: backend/notify — @with VX14)
 
-- [ ] VX209 — **[BACKEND] `notify()` devient humain : heures calmes, bon event de mention, (@lane: backend/notify)
+- [x] VX209 — **[BACKEND] `notify()` devient humain : heures calmes, bon event de mention, (@lane: backend/notify)
   purge, émetteurs manquants.** Quatre défauts du même moteur : (a) `est_hors_fenetre_silence()`
   (`selectors.py:23`) n'est consulté que par le marketing ET la compta (`compta/services.py:6083`),
   jamais par `notify()` lui-même — un push/email de `sweep_daily` ou d'escalade part à 23 h ou un
@@ -2295,7 +2302,7 @@ VX83-86/99-101 (round 3, non construit) — transcrire chaque @after tel quel.**
   notif lue de 61 j est purgée ; un lot proche péremption émet `STOCK_EXPIRATION_SOON` ; tests.
   (T2 — L, sonnet) (@lane: backend/notify)
 
-- [ ] VX210 — **[BACKEND additif] Le snooze devient un rappel actif, généralisé, et déclenché par (@lane: backend/notify — @after VX85)
+- [x] VX210 **(already present)** — **[BACKEND additif] Le snooze devient un rappel actif, généralisé, et déclenché par (@lane: backend/notify — @after VX85)
   l'événement métier. @after VX85.** VX85 pose `snoozed_until` + exclusion passive sur
   `records.Activity` seulement — rien ne RÉVEILLE l'item ni ne re-notifie à l'échéance. Fix : (a)
   sweep Celery `reveiller_snoozes` — à échéance, l'item revient dans la file ET émet une
@@ -2311,7 +2318,7 @@ VX83-86/99-101 (round 3, non construit) — transcrire chaque @after tel quel.**
   ramène ; tests des 2 chemins de sortie. (T2/T3 — M/L, sonnet ; opus si le générique cross-source
   dérape) (@lane: backend/notify — @after VX85)
 
-- [ ] VX211 — **« Ma file » par persona + départage « victoires rapides ». @after VX83.** VX83 (@lane: backend/notify — @after VX83)
+- [x] VX211 **(already present)** — **« Ma file » par persona + départage « victoires rapides ». @after VX83.** VX83 (@lane: backend/notify — @after VX83)
   construit UNE union triée par urgence globale, identique pour tous — or
   commercial/comptable/technicien/directeur ont des priorités radicalement différentes. Fix
   frontend : `queueViewForRole(role)` (rôle déjà dans le store, `MesActivitesPage.jsx:66`) posant
@@ -2327,7 +2334,7 @@ VX83-86/99-101 (round 3, non construit) — transcrire chaque @after tel quel.**
   le tri par défaut reste inchangé sinon ; STAGES.py importé pour toute clé de stage. (T2 — M,
   sonnet) (@lane: backend/notify — @after VX83)
 
-- [ ] VX212 — **[BACKEND additif léger] Transparence « pourquoi je reçois ça » + contexte (@lane: backend/notify — @after VX99/VX100)
+- [x] VX212 **(already present)** — **[BACKEND additif léger] Transparence « pourquoi je reçois ça » + contexte (@lane: backend/notify — @after VX99/VX100)
   décisionnel dans l'email d'approbation. @after VX99/VX100.** `resolve_recipients`
   (`services.py:275`) applique des règles invisibles — des notifs « pourquoi moi ? » qu'on ne peut
   couper qu'en fouillant la grille des 42 événements ; et l'email de demande d'approbation
@@ -2366,7 +2373,7 @@ droite)**
   nouveau ; décider une DA → le demandeur notifié ; une DA soumise > seuil relance les
   approbateurs ; tests des transitions. (T1 — M, sonnet) (@lane: backend/notify — @after VX99)
 
-- [ ] VX214 — **[BACKEND additif] [RESHAPÉE — grand-verdict] Les kinds d'EXÉCUTION entrent dans (@lane: backend/notify — @after VX83)
+- [x] VX214 **(already present)** — **[BACKEND additif] [RESHAPÉE — grand-verdict] Les kinds d'EXÉCUTION entrent dans (@lane: backend/notify — @after VX83)
   « Ma file » (jamais une 2ᵉ boîte). @after VX83.** `MesActivitesPage` n'agrège que
   `records.Activity` et `ApprobationsPage` que les approbations — un chantier assigné, une
   intervention à faire, une DA approuvée à commander, un ticket transféré n'apparaissent dans
@@ -2384,7 +2391,7 @@ droite)**
   écran parallèle créé. (T3 — L, opus : agrégateur cross-app = jugement frontières) (@lane:
   backend/notify — @after VX83)
 
-- [ ] VX215 — **Boucle de retour « pris en charge » : l'émetteur sait que le ballon est (@lane: backend/notify)
+- [x] VX215 — **Boucle de retour « pris en charge » : l'émetteur sait que le ballon est (@lane: backend/notify)
   attrapé.** Grep `accuser|prise en charge|acknowledge|seenBy` = 0 hit métier — le système est
   100 % push unidirectionnel. Fix frontend-first : version minimale = afficher l'état `read` déjà
   persisté de la notification liée là où l'action a été initiée (ex. « avis lu par le directeur »
@@ -2412,7 +2419,7 @@ droite)**
   Devis : B · Chantier : C · SAV : D » cliquable ; tests de rendu. (T2 — M, sonnet) (@lane:
   backend/notify)
 
-- [ ] VX217 — **La cloche finit le travail : aperçu sans naviguer, actions par entité, (@lane: backend/notify — @after VX208)
+- [x] VX217 **(already present)** — **La cloche finit le travail : aperçu sans naviguer, actions par entité, (@lane: backend/notify — @after VX208)
   bottom-sheet mobile. @after VX208.** Trois compléments du même organe : (a) chaque item de
   cloche/file est un cul-de-sac de navigation (`NotificationBell.jsx:272-275`, `goto(n.link)`) —
   traiter 8 relances = 8 allers-retours d'écran ; (b) les actions sont 100 % unitaires ; (c)
@@ -2533,7 +2540,7 @@ droite)**
 
 **Sous-groupe VXD-L — Le technicien terrain**
 
-- [ ] VX225 — **La raison de blocage de statut cesse d'être jetée à la poubelle (@lane: frontend/ios — @coord VX105)
+- [x] VX225 — **La raison de blocage de statut cesse d'être jetée à la poubelle (@lane: frontend/ios — @coord VX105)
   (InterventionsPage). @coord VX105.** Défaut prouvé : le backend calcule un message FR précis et
   actionnable — `transition_block_reason` (`field_services.py:405-423`, « Photos obligatoires
   manquantes avant "Terminée" : Toiture avant, Câblage. ») — mais `InterventionsPage.jsx:262-272`
@@ -2548,7 +2555,7 @@ droite)**
   d'InterventionsPage, l'autre moitié du même défaut. (T2 — S, sonnet) (@lane: frontend/ios —
   @coord VX105)
 
-- [ ] VX226 — **« Ma journée » dit l'urgence et reste fraîche.** Deux défauts du même (@lane: frontend/ios)
+- [x] VX226 — (déjà présent) **« Ma journée » dit l'urgence et reste fraîche.** Deux défauts du même (@lane: frontend/ios)
   écran-pivot : (a) `priorite` existe, est ANNOTÉ et TRIÉ serveur (`views/intervention.py:129-144`)
   mais `MaJourneePage.jsx` ne le rend JAMAIS ; (b) `load()` n'est appelé qu'au montage (`:57`) —
   aucun bouton refresh, aucun `visibilitychange`, et le pull-to-refresh natif est coupé
@@ -2686,7 +2693,7 @@ droite)**
   net-neutre de permissions journalise les 2 codes exacts ; le sélecteur annote les rôles plus
   larges ; tests. (T2 — M, sonnet) (@lane: backend/auth)
 
-- [ ] VX235 — **[BACKEND] Gardes-fous du pouvoir admin : motif par item en bulk-refus, cycle de (@lane: backend/auth)
+- [x] VX235 **(already present)** — **[BACKEND] Gardes-fous du pouvoir admin : motif par item en bulk-refus, cycle de (@lane: backend/auth)
   hiérarchie, import-écraser confirmé, dernier admin protégé en masse. Noter AUTH au DONE LOG.**
   Quatre trous d'intégrité prouvés : (a) `ApprobationsPage.deciderEnMasse` (:106-131) applique UN
   `window.prompt` de motif à N demandes HÉTÉROGÈNES (VX19 remplacera le prompt mais pas la
@@ -2797,7 +2804,7 @@ droite)**
 
 **Sous-groupe VXD-P — Forgiveness / historique / confiance**
 
-- [ ] VX241 — **[BACKEND] Le journal d'audit dit VRAI : cascade KB avouée, destroys (@lane: backend/auth)
+- [x] VX241 **(already present)** — **[BACKEND] Le journal d'audit dit VRAI : cascade KB avouée, destroys (@lane: backend/auth)
   gardés+journalisés, Timesheet tracé, diffs automatiques.** Quatre défauts prouvés du même
   système : (a) `KbArticle.parent` est `on_delete=CASCADE` (`apps/kb/models.py:87-89`) et le
   confirm (`KbPage.jsx:104-105`) ment par omission — supprimer un parent détruit tout le
@@ -2875,7 +2882,7 @@ droite)**
 
 **Sous-groupe VXD-Q — Interop & onboarding→maîtrise**
 
-- [ ] VX245 — **[BACKEND] Le cycle client sortant se boucle : `.ics` d'événement unique, (@lane: backend/notify — @coord VX116/VX46)
+- [x] VX245 **(already present)** — **[BACKEND] Le cycle client sortant se boucle : `.ics` d'événement unique, (@lane: backend/notify — @coord VX116/VX46)
   confirmation WhatsApp de RDV, relance de facture riche. @coord VX116, VX46 (re-surface
   l'ABONNEMENT — distinct).** Trois maillons du même canal : (a) `AppointmentBooker.jsx` crée un
   RDV sans JAMAIS produire de `.ics` — le seul générateur (`reporting/calendar.py:366-392`,
@@ -3289,6 +3296,39 @@ droite)**
 
 ## DONE LOG (agent appends one plain-language line per completed task)
 
+- 2026-07-12 — **VX215 — boucle de retour « pris en charge » sur « Contacter mon supérieur ».** `[BACKEND minime]` nouvelle action lecture seule `GET /api/django/ventes/devis/<id>/superior-contact-status/` (`apps/ventes/views/devis.py`, `permission_classes=[IsAnyRole]`) déléguant à un nouveau sélecteur cross-app `notifications.selectors.superior_contact_status(company, link)` — relit les `Notification` déjà créées par `contacter_superieur` (même société + même `link`) et renvoie `{requested, seen, seen_by}` SANS jamais exposer le contenu (titre/corps) des notifications d'autrui, seulement si vues et par qui. Frontend : `ventesApi.superiorContactStatus`, `DevisList.jsx` affiche « Avis demandé — en attente » puis « Pris en charge par {nom} » sur la ligne du devis dès que le supérieur ouvre sa notification (sondage léger via le hook partagé `useVisibilityAwarePolling` — VX56 —, actif UNIQUEMENT tant qu'une demande reste non vue, jamais après). Tests : `apps/ventes/tests/test_vx215_superieur_contact_status.py` (backend, 5 cas dont l'isolation multi-société et la non-fuite entre devis) + `DevisListVX215SuperieurStatus.test.mjs` (source-grep, 6 cas — pas de node_modules dans cette lane). Files : `apps/ventes/views/devis.py`, `apps/notifications/selectors.py`, `frontend/src/api/ventesApi.js`, `frontend/src/pages/ventes/DevisList.jsx`.
+
+- 2026-07-12 — **VX209 — `notify()` heures calmes + bonne @mention + purge + 2 events morts émis.** (a) `notify(respect_quiet_hours=True` par défaut) tait désormais email/WhatsApp/push (jamais l'in-app) pour un événement NON-critique quand l'instant tombe dans la fenêtre de silence de la société (`selectors.est_hors_fenetre_silence`) — un `INCIDENT_CRITICAL` part toujours. (b) `_notify_mentions` (`apps/records/views.py`) émet enfin `CHAT_MENTION` au lieu de `LEAD_ASSIGNED` — coupait silencieusement les mentions si un utilisateur désactivait `lead_assigned`, et `selectors.mentions_non_lues` (VX83 « Ma file ») filtrait déjà sur `CHAT_MENTION` sans jamais rien trouver. (c) tâche Celery `purge_notifications_anciennes` (nouvelle, planifiée dans `beat_schedule` + routée `scheduled`) : lues > 60 j supprimées, non-lues > 60 j archivées (`Notification.archived`, migration additive `0038`) ; `list()` bornée 90 j + non-archivées (les autres actions — détail/read/unread/read-all — restent sur la queryset complète). (d) `SAV_ACTIVITE_DUE` (activités `sav.TicketActiviteAFaire` échues non faites) et `STOCK_EXPIRATION_SOON` (lots `stock.LotEntrepot` proches péremption avec reliquat) sont désormais réellement émis par `sweep_daily` ; warranty/maintenance routent vers le technicien responsable du chantier quand il existe (repli managers inchangé). Corrigé 3 tests existants rendus flaky par le nouveau défaut heures-calmes (QW8/VX76/YEVNT5 — événements non-critiques testés sans horloge figée) en gelant l'horloge sur un jour ouvré en journée. Files : `apps/notifications/{models,services,sweeps,views}.py` + migration `0038_vx209_notification_archived.py`, `apps/records/views.py`, `erp_agentique/celery.py`, `erp_agentique/settings/base.py`, nouveau `apps/notifications/tests_vx209_notify_humain.py` + tests ajoutés dans `apps/records/tests.py`.
+
+- 2026-07-12 — **VX245 (already present)** — verified: `build_ics` extracted as pure function (`apps/reporting/calendar.py:366`), `GET /crm/appointments/<id>/ics/` endpoint referenced in `apps/crm/services.py:2529`, WhatsApp confirmation + invoice-reminder message service present; commit `94060cca` on main. Ticked, no rebuild.
+
+- 2026-07-12 — **VX217 (already present)** — verified: `frontend/src/features/queue/AttentionPeek.jsx` (+ test) wired into `NotificationBell.jsx` and `MesActivitesPage.jsx` (hover/tap-and-hold peek), grouped "Tout marquer lu (n)" action, `.nb-panel` mobile responsiveness; commit `a2c18fbb` on main. Ticked, no rebuild.
+
+- 2026-07-12 — **VX214 (already present)** — verified: `apps/records/views.py` `ma-file/` extended with execution kinds (`chantier_assigne`/`intervention_du_jour`/`da_approuvee_a_commander`/`ticket_transfere`) via `installations.selectors.affectations_pour`/`sav.selectors.affectations_pour` (no parallel endpoint/page); `tests_vx214_kinds_execution.py`; commits `3178b30f` + CI fix `956c5b9e` on main. Ticked, no rebuild.
+
+- 2026-07-12 — **VX212 (already present)** — verified: `Notification.reason` field + `NotificationReason` choices (`models.py:240`), `resolve_recipients_reason` (`services.py:304`), reason rendered in serializer + `NotificationBell.jsx`, approval email context; `tests_vx212_pourquoi_je_recois_ca.py`; commit `69bcf900` on main. Ticked, no rebuild.
+
+- 2026-07-12 — **VX211 (already present)** — verified: `frontend/src/features/queue/queueViews.js` (+ `queueViews.test.js`) provides `queueViewForRole` persona ordering, `apps/records/views.py` exposes `effort_estime` per-kind (`_EFFORT_ESTIME_PAR_KIND`) for the "victoires rapides" secondary sort; commit `782b5c92` on main. Ticked, no rebuild.
+
+- 2026-07-12 — **VX210 (already present)** — verified: sweep `reveiller_snoozes` (Celery task, `sweeps.py:553`) wakes both `records.Activity.snoozed_until` and the new `notifications.SnoozedItem` (approvals), `records.Activity.snooze_trigger_event` (closed choices, `records/services.py:181-313`) subscribed via events; `tests_vx210_reveil_snooze.py` covers both exit paths; commit `9eccf915` on main. Ticked, no rebuild.
+
+- 2026-07-12 — **VX208 (already present)** — verified: `apps/notifications/severity.py` (EVENT_SEVERITY/EVENT_CATEGORY dicts), serializer exposure, NotificationBell severity/category grouping + digest-excluded-from-badge + undo-via-mark_unread already shipped with `tests_vx208_severity_taxonomy.py`, commit `5b99b234` on main. Ticked, no rebuild.
+
+- 2026-07-12 — **VX207 (already present)** — verified during backend/notify lane drain: `GET /notifications/attention-summary/` (`views.py:438`, `urls.py:47`) already exists with a dedicated contract test (`tests_vx207_attention_summary.py`), commit `6e80ce75` on main. Ticked, no rebuild.
+
+- 2026-07-12 — **VX127/VX128/VX129/VX130/VX132 (already present).** Verified already built by a prior wave: VX127 `readOnly` variant on Input/Textarea/Select (distinct from `disabled`, selectable/copiable) + `EditableCell` spinner-during-save/rejected-cell-reopens-with-message/`readOnly` prop. VX128 `aria-activedescendant` wired on Combobox/MultiSelect/TimePicker following the cursor. VX129 primitives completeness pack — DropdownMenu RadioItem/Sub/SubTrigger, ContextMenu CheckboxItem, Textarea autoResize+maxLength counter, Progress `indeterminate`, Stat lucide ArrowUp/ArrowDown (no more text glyphs), Avatar presence + AvatarGroup "+N", Tag/MultiSelect chips sharing `tagBase`, Popover/HoverCard opt-in `arrow`. VX130 Toaster `richColors` removed in favor of per-type token classNames, lucide icons, `[data-sonner-toast]` duration on `--motion-base`, `toastInfo`/`toastWarning`/`toastDestructive` (≥6s registry) in `lib/toast.js` — all within the task's declared Files scope (`ui/Toaster.jsx`/`lib/toast.js`/`index.css`); expanding real-world `toast.warning` adoption across other app files was left alone as out of this task's named-files scope. VX132 `Skeleton` shimmer, `FadeSwap` (built + tested, 0 current consumers — DoD doesn't require migration), DataTable skeleton rows `Math.min(pageSize, 12)`, `useDelayedLoading` on 15 files, `useRotatingLabel` wired on DevisList/FactureList PDF generation. No code changes.
+
+- 2026-07-12 — **VX123 (already present).** Verified already built by a prior wave: `.focus-ring` utility (`design/tokens.css:418`) consumed everywhere (0 residual `focus-visible:ring-2 focus-visible:ring-ring` chains in `ui/`), the 4 remaining `outline: none` in `index.css` are all paired with their own focus indicator (not orphans), `@media (forced-colors: active)` maps card/table/modal/form/btn to real `CanvasText`/`ButtonBorder`/`Highlight` borders, `@media (prefers-contrast: more)` hardens `--border`/`--muted-foreground` via `color-mix`. No code changes.
+
+- 2026-07-12 — **VX122 — voix typographique F121 (dernier volet réel : 3 recettes eyebrow encore en dur).** `.page-header h2`/`nbsp()`/`ArticleDetail` max-w-prose étaient déjà branchés par une vague antérieure ; `.text-eyebrow`/`--text-eyebrow-tracking` (tokens.css) existaient déjà et étaient consommés par 5 sélecteurs (`.gen-metric-label`/`.gen-chart-title`/`.gen-total-label`/`.gs-group-title`/`.cmdk-group-title`) mais PAS par les 3 recettes-tableau restantes : `.data-table th`/`.lines-table th`/`.cal-weekday` gardaient encore `letter-spacing: 0.04em` codé en dur (divergence résiduelle avec les 0.05em d'autres sélecteurs) — basculées sur le token unique.
+
+- 2026-07-12 — **VX121 — zéro couleur hors token (dernier volet réel : AppointmentBooker).** Le sweep index.css (`scripts/check_hex.mjs`, 26 sélecteurs gardés, 0 hex) / DataTable `rgba(0,0,0…)` / `ChantierTimeline`/`ProductionPage` / bloc mort `.agent-*` était déjà fait par une vague antérieure — seul `AppointmentBooker.jsx` avait encore 4 fallbacks orphelins `var(--color-text-muted, #475569)` / `var(--color-success, #059669)` / `var(--color-surface-2, #f8f9fa)` / `var(--color-border, #e5e7eb)` (tokens qui n'existent nulle part dans `tokens.css` — silencieusement `unset` en dark mode). Remplacés par les vrais tokens déjà consommés plus haut dans le même fichier (`--muted-foreground`/`--success`/`--muted`/`--border`).
+
+- 2026-07-12 — **VX166/VX168/VX169/VX170/VX171 (already present).** Verified already built by a prior wave: VX166 `confirmLeaveIfDirty`/`guardedClose` wired on the 7 named adopters + `CrudDialog.jsx` (8 compta callers). VX168 dirty-guard on all 9 `features/flotte/*Dialog.jsx` + 6 `features/gestion_projet/components/*Dialog.jsx` + `EmployeDetail.jsx`/`Recrutement.jsx`, `autoFocus` present on 38 files repo-wide incl. UsersManagement/RolesManagement/KpiAlertesPage/CrudDialog. VX169 `hooks/useNavigationGuard.js` (`useBlocker`) mounted on all 5 named screens (ParametresEntreprise, EquipementSignalerPage, DashboardConfigPage, ArticleEditor, ReclamationEditor). VX170 `ui/useFormSafety.js` (dirty diff + `useDirtyGuard` + `confirmLeaveIfDirty` + optional route-level guard) + `lib/safeStorage.js` (pagehide-safe persistence) built and consumed by ClientForm/CrudDialog/flotte dialogs. VX171 `hooks/useServerFieldErrors.js` consumed by Client/Lead/Devis/Facture/Produit forms with `clearField` on every `set()`. No code changes needed.
+
+- 2026-07-12 — **VX182 — 7 modales fait-main hors LeadForm passées à ResponsiveDialog.** `PodCaptureDialog`, `TransfertsScreen` (CreateDemandeDialog), `ClientDetailPanel`, `ConvertirClientDialog`, `LeadInsightsDialog`, `PlanActiviteDialog`, `SigneDialog` : shell `.modal-overlay`/`.modal` brut remplacé par `ResponsiveDialog` (Escape + focus-trap + overlay-click + bottom-sheet mobile, `showClose={false}` — le ✕ existant reste l'unique fermeture visible), `autoFocus` posé sur le premier contrôle réel de chacun (5/7 en ont un ; les 2 panneaux lecture-seule `ClientDetailPanel`/`LeadInsightsDialog` s'appuient sur le focus-trap par défaut de Radix). `sd-modal` conservée en className sur `SigneDialog` (sélecteur CSS scopé `.sd-modal .form-label` intact).
+
+- 2026-07-12 — **VX167 — LeadForm : dirty-tracking + garde de fermeture.** `isDirty` (déjà présent, VX224) branché sur `useDirtyGuard` (filet beforeunload) + `confirmLeaveIfDirty` posé sur les 3 chemins de fermeture volontaire (`onOpenChange` du `ResponsiveDialog`, bouton ✕, bouton Annuler du footer) — parité avec les 7 adoptants VX166.
 - 2026-07-12 — **VX148 — Le kit `ui/charts` réellement adopté : fin des thèmes de tooltip recopiés et des rapports sans graphique.** NOTE : `Reporting.jsx`/`Rapports.jsx`/`Journal.jsx` étaient déjà largement migrés par une vague antérieure (VX28) — le travail restant identifié après relecture réelle du code (pas des n° de ligne du plan, obsolètes) : `Reporting.jsx` — le camembert (recharts natif, seule forme non couverte par le kit) perd son dernier dictionnaire `CHART_TOOLTIP_STYLE` local au profit de `<ChartTooltip>` (`ui/charts/ChartTooltip.jsx` gagne un repli `p.payload?.color` pour les Pie sans besoin de dupliquer un style) ; 3 `EmptyState` de cartes-graphiques → `ChartEmpty`. `Rapports.jsx` — `BarArrondie` ajouté AU-DESSUS de 3 tables comparatives (entonnoir ventes, stock par catégorie, chantiers par statut — la table garde le détail + les liens de drill-down) ; `EmptyState` du graphe Analytics → `ChartEmpty`. `Journal.jsx` — le graphe vide rendait un `<p>` nu → `ChartEmpty`. `PilotageStock.jsx` — la table « Prévisions de demande » (seule des 4 rapports encore sans graphique après VX33) gagne un `BarArrondie` « Top consommation mensuelle », même patron que top5Reappro/rotation. `ProductionPage.jsx` — l'écran le plus consulté du monitoring n'avait AUCUN graphique : courbe de tendance kWh (`AreaSansAxe`, pattern `OmAnalyticsPage.jsx`) dérivée des relevés déjà chargés, `buildProductionChartData` extraite en fonction pure testée. `CommercialDashboard.jsx` — `EmptyState` de l'entonnoir vide → `ChartEmpty` (`Dashboard.jsx`/`CohortsPage.jsx` l'avaient déjà, vérifiés sans changement). `grep "from 'recharts'"` sur les 3 fichiers cibles ne montre plus que le Pie de Reporting.jsx (forme non couverte). Tests : CommercialDashboard.test.jsx (cas ChartEmpty), ProductionPage.test.jsx (buildProductionChartData unitaire), node --test rapports-attribution (4/4 verts, non-régression).
 
 - 2026-07-12 — **VX131 — Des états qui disent vrai : `tone` sur EmptyState, CTA sur les listes principales, page 403.** (a) `EmptyState.jsx` gagne `tone` (`neutral|error|warning`, calqué sur `ErrorBoundary`) qui colore bordure ET cercle d'icône ensemble (jamais l'icône seule) ; `DataTable.jsx` (erreur) et `ModuleDashboard.jsx` (erreur) migrés sur `tone="error"` — l'icône `AlertTriangle` restait grise malgré une bordure destructive. (b) `emptyAction` (nouvelle prop, filée `ListShell`→`DataTable`, les 2 sites de rendu desktop/mobile) : CTA identique à la toolbar sur 12 listes principales (ClientList, DemandesAchatList, ContratsList, KbPage, LitigesPage, ProjetsPage, FournisseursStock, NonConformites, ModelesBcf, ReceptionsFournisseur, BonsCommandeFournisseur, FacturesFournisseur) — StockList/DevisList/FactureList déjà conformes (vérifiées, non touchées) ; les CTA respectent les gardes de permission/état existants (`canWrite`/`peutEditer`/`bonsRecevables.length`). (c) `ui/Forbidden.jsx` (nouveau, jumeau de `NotFound.jsx`, tone="warning") câblé au routeur : `roleLoader` (`router/index.jsx`) redirige désormais un refus de rôle/permission vers `/403` (écran dédié) au lieu du `/dashboard` silencieux. Tests : `EmptyState.test.jsx` (3 tons), `DataTable.test.jsx` (emptyAction + tone error), `index.vx131Forbidden.test.mjs` (node --test, 4/4 verts).

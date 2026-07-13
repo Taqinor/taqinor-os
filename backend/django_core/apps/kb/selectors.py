@@ -718,3 +718,47 @@ def article_pour_mot_cle(company, user, texte_recherche, *, limit=1):
         {'id': art.id, 'titre': art.titre, 'extrait': (art.corps or '')[:500]}
         for _score, art in scored[:max(1, int(limit))]
     ]
+
+
+# ── XSAV22 — Déflection KB sur le portail client ────────────────────────────
+
+def suggestions_portail(company, texte, *, limit=5):
+    """XSAV22 — Articles KB à suggérer sur le formulaire d'ouverture de
+    ticket du portail client, pendant la saisie du sujet.
+
+    Point d'entrée cross-app pour ``apps.portail``/``apps.compta`` (frontière
+    CLAUDE.md — jamais un import direct de ``apps.kb.models``) : le client
+    portail n'est PAS un ``user`` ERP (pas de rôle/ACL KB7), donc restreint
+    à la whitelist EXPLICITE ``visible_portail=True`` (défaut FAUX — un
+    article n'apparaît sur le portail qu'après opt-in manuel) ET publié
+    (``statut=PUBLIE``). Recherche simple ``icontains`` titre/corps (même
+    mécanique que ``KbArticleViewSet.search_fields``, KB3).
+
+    Renvoie une liste de dicts légers ``[{'id', 'titre', 'extrait'}, …]`` —
+    jamais l'objet ORM. Vide si le texte est vide (dégradation propre, pas
+    d'exception)."""
+    texte = (texte or '').strip()
+    if not texte or company is None:
+        return []
+    qs = (KbArticle.objects
+          .filter(company=company, statut=KbArticle.Statut.PUBLIE,
+                  visible_portail=True)
+          .filter(Q(titre__icontains=texte) | Q(corps__icontains=texte))
+          .order_by('-consultations_portail_ticket', '-vues', 'id'))
+    return [
+        {'id': art.id, 'titre': art.titre, 'extrait': (art.corps or '')[:500]}
+        for art in qs[:max(1, int(limit))]
+    ]
+
+
+def consultations_portail_total(company):
+    """XSAV22 — Somme des consultations d'articles KB déclenchées depuis le
+    portail, SCOPÉE à ``company`` (jamais d'agrégat cross-tenant). Point
+    d'entrée pour ``apps.sav.selectors.ratio_deflection_kb`` (ratio de
+    déflection)."""
+    if company is None:
+        return 0
+    from django.db.models import Sum
+    total = (KbArticle.objects.filter(company=company)
+             .aggregate(total=Sum('consultations_portail_ticket'))['total'])
+    return total or 0
