@@ -171,3 +171,42 @@ class IdentityProvider(TenantModel):
 
     def __str__(self):
         return f'IdentityProvider({self.company_id}, {self.protocol}, {self.nom})'
+
+
+class ScimToken(TenantModel):
+    """Jeton porteur SCIM 2.0 d'une société (NTSEC5).
+
+    Authentifie un IdP/annuaire qui provisionne des comptes via SCIM. Stocke le
+    HASH du jeton (jamais le secret en clair), à l'image de ``publicapi.ApiKey``.
+    Scopé société : un jeton n'agit QUE sur les comptes de sa propre société.
+    """
+
+    label = models.CharField(max_length=120, blank=True, default='')
+    token_hash = models.CharField(max_length=64, unique=True, db_index=True)
+    prefix = models.CharField(max_length=20, blank=True, default='')
+    actif = models.BooleanField(default=True)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Jeton SCIM'
+        verbose_name_plural = 'Jetons SCIM'
+        indexes = [models.Index(fields=['company', 'actif'])]
+
+    def __str__(self):
+        return f'ScimToken({self.company_id}, {self.prefix}…)'
+
+    @classmethod
+    def issue(cls, *, company, label=''):
+        """Crée un jeton et renvoie ``(instance, jeton_en_clair)``.
+
+        Le secret en clair n'est disponible qu'ici — jamais re-stocké.
+        Réutilise le hachage de ``publicapi`` (SHA-256), sans le dupliquer.
+        """
+        from apps.publicapi.models import (
+            VISIBLE_PREFIX_LEN, generate_raw_key, hash_key,
+        )
+        raw = generate_raw_key()
+        inst = cls.objects.create(
+            company=company, label=label,
+            token_hash=hash_key(raw), prefix=raw[:VISIBLE_PREFIX_LEN])
+        return inst, raw
