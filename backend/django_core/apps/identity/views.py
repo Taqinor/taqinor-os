@@ -148,3 +148,13 @@ class BreakGlassView(APIView):
             accorde_par=request.user)
         return Response({'id': grant.id, 'active_jusqu_a': grant.active_jusqu_a},
                         status=201)
+
+
+class SecurityPostureView(APIView):
+    """NTSEC27 — posture de sécurité consolidée de la société (Directeur only)."""
+
+    permission_classes = [IsAdminRole]
+
+    def get(self, request):
+        from .posture import security_posture
+        return Response(security_posture(request.user.company))

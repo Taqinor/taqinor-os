@@ -7,7 +7,7 @@ from .scim import (
     ScimUserDetailView,
     ScimUsersView,
 )
-from .views import BreakGlassView
+from .views import BreakGlassView, SecurityPostureView
 from .views import (
     IdentityProviderViewSet,
     IpAllowRuleViewSet,
@@ -35,5 +35,7 @@ urlpatterns = [
          ScimGroupDetailView.as_view(), name='scim-group-detail'),
     # NTSEC22 — accès break-glass (Directeur only).
     path('break-glass/', BreakGlassView.as_view(), name='break-glass'),
+    # NTSEC27 — posture de sécurité consolidée (Directeur only).
+    path('posture/', SecurityPostureView.as_view(), name='security-posture'),
     path('', include(router.urls)),
 ]
