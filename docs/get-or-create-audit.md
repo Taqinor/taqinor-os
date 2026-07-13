@@ -106,10 +106,10 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/monitoring/services.py:35` | get_or_create | MonitoringConfig.objects | installation |
 | `backend/django_core/apps/monitoring/services.py:182` | get_or_create | UnderperformanceFlag.objects | installation, is_open |
 | `backend/django_core/apps/notifications/management/commands/seed_ma_holidays.py:72` | get_or_create | Holiday.objects | company, date, nom |
-| `backend/django_core/apps/notifications/services.py:833` | get_or_create | AnnonceLecture.objects | annonce, utilisateur |
-| `backend/django_core/apps/notifications/services.py:920` | get_or_create | AnnonceRelance.objects | annonce, utilisateur |
-| `backend/django_core/apps/notifications/services.py:969` | get_or_create | ApprovalReminderState.objects | content_type, object_id |
-| `backend/django_core/apps/notifications/services.py:1093` | update_or_create | SnoozedItem.objects | object_id, source, user |
+| `backend/django_core/apps/notifications/services.py:842` | get_or_create | AnnonceLecture.objects | annonce, utilisateur |
+| `backend/django_core/apps/notifications/services.py:929` | get_or_create | AnnonceRelance.objects | annonce, utilisateur |
+| `backend/django_core/apps/notifications/services.py:978` | get_or_create | ApprovalReminderState.objects | content_type, object_id |
+| `backend/django_core/apps/notifications/services.py:1102` | update_or_create | SnoozedItem.objects | object_id, source, user |
 | `backend/django_core/apps/notifications/views.py:137` | get_or_create | NotificationPreference.objects | event_type, user |
 | `backend/django_core/apps/notifications/views.py:221` | get_or_create | WorkingHoursConfig.objects | company |
 | `backend/django_core/apps/notifications/views.py:436` | update_or_create | PushSubscription.objects | endpoint |
