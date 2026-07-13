@@ -980,7 +980,7 @@ class ShareLink(models.Model):
     # PDF montre légitimement les PRIX D'ACHAT au FOURNISSEUR — le jeton reste
     # imprévisible + expirant, et le lien n'est JAMAIS exposé dans l'UI client.
     bon_commande_fournisseur = models.ForeignKey(
-        'stock.BonCommandeFournisseur', on_delete=models.CASCADE,
+        'achats.BonCommandeFournisseur', on_delete=models.CASCADE,
         null=True, blank=True, related_name='share_links')
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField(default=_default_share_expiry)

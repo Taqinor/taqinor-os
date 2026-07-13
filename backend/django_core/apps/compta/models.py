@@ -2093,7 +2093,7 @@ class Rapprochement(models.Model):
     # Référence au bon de commande fournisseur (apps.stock) par FK chaîne —
     # jamais d'import du modèle stock. related_name préfixé par le label d'app.
     bon_commande = models.ForeignKey(
-        'stock.BonCommandeFournisseur',
+        'achats.BonCommandeFournisseur',
         on_delete=models.CASCADE,
         related_name='compta_rapprochements',
         verbose_name='Bon de commande fournisseur',

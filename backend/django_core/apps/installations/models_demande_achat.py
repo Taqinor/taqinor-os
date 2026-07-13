@@ -112,7 +112,7 @@ class DemandeAchat(DocumentMetier):
     # montre son BCF, la vue BCF peut filtrer par demande). String-FK,
     # nullable = comportement historique inchangé (aucun BCF généré encore).
     bon_commande = models.ForeignKey(
-        'stock.BonCommandeFournisseur', on_delete=models.SET_NULL,
+        'achats.BonCommandeFournisseur', on_delete=models.SET_NULL,
         null=True, blank=True,
         related_name='installations_demandes_achat')
     priorite = models.CharField(
