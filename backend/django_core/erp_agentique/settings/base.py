@@ -298,6 +298,25 @@ if _RLS_ENABLED and _DB_APP_USER and not _running_owner_command():
     DATABASES['default']['USER'] = _DB_APP_USER
     DATABASES['default']['PASSWORD'] = os.environ.get('DB_APP_PASSWORD', '')
 
+# NTPLT58 — pgbouncer OPTIONNEL (transaction pooling). Opt-in : quand
+# PGBOUNCER=1, le service RUNTIME (gunicorn/celery/fastapi) se connecte via le
+# pooler `pgbouncer` (service compose derrière le profil `scale`) au lieu de la
+# DB directe. En transaction pooling, deux réglages sont OBLIGATOIRES (SCA14) :
+# aucune connexion persistante (CONN_MAX_AGE=0) et aucun curseur serveur
+# (DISABLE_SERVER_SIDE_CURSORS) — sinon corruption inter-requêtes sur une
+# connexion serveur multiplexée. Le GUC tenant RLS (NTPLT1-4) reste compatible
+# car posé en SET LOCAL par transaction (chaque transaction repose son GUC).
+#
+# Les commandes OWNER (migrate, dumps, seed, tests…) restent TOUJOURS sur la DB
+# DIRECTE — le DDL et les curseurs serveur cassent sous le pooler — via la même
+# détection `_running_owner_command()` que le rôle RLS ci-dessus. Défaut OFF :
+# sans PGBOUNCER=1, la config est byte-identique (hôte DB direct partout).
+if os.environ.get('PGBOUNCER') == '1' and not _running_owner_command():
+    DATABASES['default']['HOST'] = os.environ.get('PGBOUNCER_HOST', 'pgbouncer')
+    DATABASES['default']['PORT'] = os.environ.get('PGBOUNCER_PORT', '6432')
+    DATABASES['default']['CONN_MAX_AGE'] = 0
+    DATABASES['default']['DISABLE_SERVER_SIDE_CURSORS'] = True
+
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},

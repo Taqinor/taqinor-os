@@ -648,12 +648,14 @@ connexion, ni le CPU applicatif, ni le CPU/IO DB en écriture.
 
 ## Implémentation pgbouncer optionnel (NTPLT58)
 
-Concrétise l'« Étape 1 » ci-dessus. pgbouncer reste **opt-in** derrière un
-profil docker `scale` — la stack par défaut n'en dépend pas.
+**LIVRÉ (NTPLT58).** Concrétise l'« Étape 1 » ci-dessus. pgbouncer reste
+**opt-in** derrière un profil docker `scale` — la stack par défaut n'en dépend
+pas. Le service compose et le bloc settings ci-dessous sont désormais dans le
+dépôt (`docker-compose.yml` + `erp_agentique/settings/base.py`).
 
 ### Service compose (profil `scale`)
 
-Ajouter à `docker-compose.yml` (le service ne démarre qu'avec
+Dans `docker-compose.yml` (le service ne démarre qu'avec
 `docker compose --profile scale up`) :
 
 ```yaml
@@ -663,8 +665,8 @@ Ajouter à `docker-compose.yml` (le service ne démarre qu'avec
     environment:
       DB_HOST: db
       DB_PORT: "5432"
-      DB_USER: ${POSTGRES_USER}
-      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
       POOL_MODE: transaction
       MAX_CLIENT_CONN: "1000"
       DEFAULT_POOL_SIZE: "25"
@@ -681,7 +683,10 @@ réglages **obligatoires** du mode transaction (déjà exigés par SCA14) :
 
 ```python
 # erp_agentique/settings/base.py — bloc gardé par PGBOUNCER
-if os.environ.get("PGBOUNCER") == "1":
+# La garde `not _running_owner_command()` (partagée avec le rôle RLS) tient les
+# migrations/dumps/seed/tests sur la DB DIRECTE même si PGBOUNCER=1 est posé
+# globalement dans l'environnement du conteneur.
+if os.environ.get("PGBOUNCER") == "1" and not _running_owner_command():
     DATABASES["default"]["HOST"] = os.environ.get("PGBOUNCER_HOST", "pgbouncer")
     DATABASES["default"]["PORT"] = os.environ.get("PGBOUNCER_PORT", "6432")
     # Transaction pooling : pas de connexions persistantes ni de curseurs

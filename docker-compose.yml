@@ -217,6 +217,29 @@ services:
       - "5433:5432"
     restart: always
 
+  # NTPLT58 — pgbouncer OPTIONNEL (transaction pooling). Opt-in derriere le
+  # profil docker `scale` : la stack par defaut ne le demarre PAS. Ne s'active
+  # qu'avec `docker compose --profile scale up`. Contrat d'activation cote
+  # applicatif : PGBOUNCER=1 bascule l'hote DB sur ce service (voir
+  # erp_agentique/settings/base.py + docs/scale-runway.md). Les migrations et
+  # dumps pointent TOUJOURS la DB directe (db:5432), jamais le pooler.
+  pgbouncer:
+    image: edoburu/pgbouncer:1.23.1
+    profiles: ["scale"]
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: "1000"
+      DEFAULT_POOL_SIZE: "25"
+    depends_on:
+      - db
+    ports:
+      - "6432:6432"
+    restart: always
+
   minio:
     image: minio/minio:RELEASE.2025-01-20T14-49-07Z
     command: server /data --console-address ":9001"
