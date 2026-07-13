@@ -213,6 +213,13 @@ jobs:
         run: python scripts/check_migration_safety.py
       - name: Test the migration-safety checker itself (YDATA20)
         run: python -m unittest scripts.tests.test_check_migration_safety -v
+      # YDATA21 — tenant isolation: every business ModelViewSet/GenericAPIView
+      # must scope by request.user.company and never accept company from the
+      # body. Fails on a NEW view not in scripts/tenant_view_allowlist.txt.
+      - name: Check multi-tenant view isolation (YDATA21)
+        run: python scripts/check_tenant_isolation.py
+      - name: Test the tenant-isolation checker itself (YDATA21)
+        run: python -m unittest scripts.tests.test_check_tenant_isolation -v
 
   # WOW6 — the fast backend suite is sharded 4× across free public-repo runners
   # (matrix legs run concurrently, each on its own 4-vCPU runner + Postgres). The
