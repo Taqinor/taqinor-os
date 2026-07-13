@@ -48,7 +48,14 @@ function ProductBrand() {
       }} aria-hidden="true">
         {PRODUCT_NAME.charAt(0).toUpperCase()}
       </span>
-      <span style={{ fontSize: 22, fontWeight: 700, color: '#0c1335', letterSpacing: '-0.01em' }}>
+      {/* VX150 — le wordmark utilise la POLICE DE MARQUE (var(--font-display),
+          Archivo — la même que les headings/logo), au lieu d'hériter la police
+          de corps ou d'un « Arial Black » hors-système. Dernier delta non
+          couvert par VX34 (la mise en page cockpit du login venait de là). */}
+      <span style={{
+        fontFamily: 'var(--font-display)',
+        fontSize: 22, fontWeight: 700, color: '#0c1335', letterSpacing: '-0.01em',
+      }}>
         {PRODUCT_NAME}
       </span>
     </div>
