@@ -1,7 +1,7 @@
 """Sérialiseurs de la gouvernance des accès (NTSEC19/20)."""
 from rest_framework import serializers
 
-from .models import AccessReviewCampaign, AccessReviewItem
+from .models import AccessReviewCampaign, AccessReviewItem, SodRule
 
 
 class AccessReviewItemSerializer(serializers.ModelSerializer):
@@ -25,3 +25,13 @@ class AccessReviewCampaignSerializer(serializers.ModelSerializer):
             'date_fin', 'statut', 'items', 'created_at', 'updated_at',
         ]
         read_only_fields = ['id', 'items', 'created_at', 'updated_at']
+
+
+class SodRuleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SodRule
+        fields = [
+            'id', 'permission_a', 'permission_b', 'severite', 'libelle',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']

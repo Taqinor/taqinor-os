@@ -33,6 +33,15 @@ def apply_role_to_user(user, role_id) -> bool:
     role = role_for_company(role_id, getattr(user, 'company_id', None))
     if role is None or user.role_id == role.id:
         return False
+    # NTSEC20 — séparation des tâches : une règle SoD CRITIQUE bloque
+    # l'attribution qui créerait le cumul interdit. Optionnel & fail-open :
+    # sans app ``accessreview`` / sans règle critique, aucune restriction.
+    try:
+        from apps.accessreview.sod import would_cumulate_critical
+        if would_cumulate_critical(user, role):
+            return False
+    except Exception:
+        pass
     user.role = role
     user.save(update_fields=['role'])
     return True

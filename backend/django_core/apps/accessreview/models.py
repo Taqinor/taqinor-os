@@ -78,3 +78,36 @@ class AccessReviewItem(TenantModel):
 
     def __str__(self):
         return f'Item({self.campagne_id}, user={self.user_id}, {self.decision})'
+
+
+class SodRule(TenantModel):
+    """Règle de séparation des tâches (SoD) — paire de permissions en conflit.
+
+    Deux permissions qu'un même utilisateur ne devrait jamais cumuler (ex.
+    « saisir facture » + « valider paiement »). ``severite=critique`` peut
+    BLOQUER l'attribution du rôle qui créerait le cumul (via
+    ``apps.roles.services``). Scopé société.
+    """
+
+    class Severite(models.TextChoices):
+        INFO = 'info', 'Information'
+        WARNING = 'warning', 'Avertissement'
+        CRITIQUE = 'critique', 'Critique'
+
+    permission_a = models.CharField(max_length=100)
+    permission_b = models.CharField(max_length=100)
+    severite = models.CharField(
+        max_length=10, choices=Severite.choices, default=Severite.WARNING)
+    libelle = models.CharField(max_length=200, blank=True, default='')
+
+    class Meta:
+        verbose_name = 'Règle SoD'
+        verbose_name_plural = 'Règles SoD'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'permission_a', 'permission_b'],
+                name='uniq_sodrule_par_societe_paire'),
+        ]
+
+    def __str__(self):
+        return f'SoD({self.permission_a} × {self.permission_b}, {self.severite})'

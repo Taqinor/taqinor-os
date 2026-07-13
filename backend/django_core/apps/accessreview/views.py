@@ -13,6 +13,7 @@ from core.viewsets import CompanyScopedModelViewSet
 from .models import AccessReviewCampaign, AccessReviewItem
 from .serializers import (
     AccessReviewCampaignSerializer, AccessReviewItemSerializer,
+    SodRuleSerializer,
 )
 from .services import attester as _attester, generate_items
 
@@ -50,3 +51,27 @@ class AccessReviewCampaignViewSet(CompanyScopedModelViewSet):
         _attester(item, decision=decision, reviewer=request.user,
                   commentaire=commentaire)
         return Response(AccessReviewItemSerializer(item).data)
+
+
+class SodRuleViewSet(CompanyScopedModelViewSet):
+    """CRUD des règles SoD + rapport de violations (Directeur only)."""
+
+    serializer_class = SodRuleSerializer
+    permission_classes = [IsAdminRole]
+
+    def get_queryset(self):
+        from .models import SodRule
+        return SodRule.objects.filter(company=self.request.user.company)
+
+    @action(detail=False, methods=['get'])
+    def violations(self, request):
+        """Rapport des cumuls SoD de la société (scopé société)."""
+        from .sod import sod_violations
+        return Response({'results': sod_violations(request.user.company)})
+
+    @action(detail=False, methods=['post'])
+    def seed_standard(self, request):
+        """Sème le jeu SoD standard finance/achats (idempotent)."""
+        from .sod import seed_standard_sod_rules
+        created = seed_standard_sod_rules(request.user.company)
+        return Response({'created': created})
