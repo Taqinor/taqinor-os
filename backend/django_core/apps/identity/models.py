@@ -127,7 +127,7 @@ class TrustedDevice(TenantModel):
 
     user = models.ForeignKey(
         'authentication.CustomUser',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: un appareil de confiance n'existe que pour son utilisateur
         related_name='trusted_devices',
         verbose_name='Utilisateur',
     )
