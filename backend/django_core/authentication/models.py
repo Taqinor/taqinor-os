@@ -513,6 +513,11 @@ class UserSession(models.Model):
     jti = models.CharField(max_length=255, db_index=True)
     user_agent = models.CharField(max_length=400, blank=True, default='')
     ip_address = models.GenericIPAddressField(null=True, blank=True)
+    # NTSEC13 — empreinte d'appareil (hash SHA-256 de user_agent + plateforme).
+    # À la première apparition d'une empreinte pour un utilisateur, une alerte
+    # « appareil inconnu » est levée. Vide pour le legacy (aucune alerte).
+    device_fingerprint = models.CharField(
+        max_length=64, blank=True, default='', db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
     last_seen_at = models.DateTimeField(auto_now=True)
     # Révocation : la session reste en base (trace) mais sort de la liste active.

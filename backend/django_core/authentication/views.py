@@ -108,13 +108,20 @@ def _record_session(user, refresh_raw, request):
         jti = _refresh_jti(refresh_raw)
         if not jti or user is None:
             return
-        UserSession.objects.create(
+        session = UserSession.objects.create(
             user=user,
             company=getattr(user, 'company', None),
             jti=jti,
             user_agent=(request.META.get('HTTP_USER_AGENT', '') or '')[:400],
             ip_address=_client_ip(request),
         )
+        # NTSEC13 — empreinte d'appareil + alerte « appareil inconnu » à la
+        # première apparition (best-effort, jamais bloquant).
+        try:
+            from .device import note_login_device
+            note_login_device(user, session, request)
+        except Exception:
+            pass
         # NTSEC10 — limite de sessions concurrentes : au-delà du plafond
         # société, évincer la (les) session(s) la (les) plus ancienne(s).
         try:
