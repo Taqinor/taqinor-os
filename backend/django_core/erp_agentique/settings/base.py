@@ -333,6 +333,39 @@ if os.environ.get('PGBOUNCER') == '1' and not _running_owner_command():
     DATABASES['default']['CONN_MAX_AGE'] = 0
     DATABASES['default']['DISABLE_SERVER_SIDE_CURSORS'] = True
 
+# YHARD9 — réplica de LECTURE analytique OPTIONNEL (key-gated). Le BI embarqué
+# (apps/reporting, apps/monitoring, core/data_explorer) agrège aujourd'hui
+# DIRECTEMENT sur la base transactionnelle `default` : un pivot/dashboard lourd
+# contend avec la charge OLTP. On expose une base `replica` séparée + un routeur
+# qui n'affecte QUE les lectures analytiques marquées via
+# `core.analytics_db.analytics_queryset(qs)`. Défaut OFF : sans DB_REPLICA_HOST,
+# `replica` est un ALIAS octet-identique de `default` (même config, un seul test
+# DB partagé) — comportement inchangé, aucune écriture jamais routée ailleurs.
+# Placé APRÈS les mutations RLS/pgbouncer ci-dessus pour hériter du `default`
+# final quand aucun réplica physique n'est fourni.
+_DB_REPLICA_HOST = os.environ.get('DB_REPLICA_HOST', '').strip()
+if _DB_REPLICA_HOST:
+    _replica = dict(DATABASES['default'])
+    _replica['HOST'] = _DB_REPLICA_HOST
+    _replica['PORT'] = os.environ.get('DB_REPLICA_PORT', DATABASES['default']['PORT'])
+    _replica['NAME'] = os.environ.get('DB_REPLICA_NAME', DATABASES['default']['NAME'])
+    _replica['USER'] = os.environ.get('DB_REPLICA_USER', DATABASES['default']['USER'])
+    _replica['PASSWORD'] = os.environ.get(
+        'DB_REPLICA_PASSWORD', DATABASES['default']['PASSWORD'])
+    # Réplica = lecture seule : jamais de DDL/migration ni de test DB propre —
+    # les tests le MIRROIRent sur `default` (base transactionnelle unique).
+    _replica['TEST'] = {'MIRROR': 'default'}
+    DATABASES['replica'] = _replica
+else:
+    # Aucun réplica configuré : `.using('replica')` cible physiquement `default`
+    # (même objet de config → une seule base, un seul test DB, byte-identique).
+    DATABASES['replica'] = DATABASES['default']
+
+# Routeur : interdit toute écriture / migration vers `replica` ; le routage des
+# LECTURES analytiques reste EXPLICITE (via analytics_queryset), jamais un
+# détournement global de tous les reads.
+DATABASE_ROUTERS = ['core.analytics_db.AnalyticsRouter']
+
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
