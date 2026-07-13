@@ -652,3 +652,31 @@ class IncomingWebhookTrigger(models.Model):
         self.token = _generate_webhook_token()
         self.save(update_fields=['token', 'date_modification'])
         return self.token
+
+
+class AutomationRunArchive(models.Model):
+    """YOPSB11 — copie FROIDE d'un ``AutomationRun`` archivé.
+
+    Le journal des exécutions (`AutomationRun`) est append-only et grossit sans
+    borne. La politique de rétention YOPSB11 déplace les exécutions anciennes
+    ici (par lots) puis les supprime de la table vive. Schéma miroir SANS index
+    chaud, FK dénormalisées en identifiants entiers (aucune cascade sur
+    l'archive)."""
+
+    original_id = models.BigIntegerField(
+        help_text="PK de l'AutomationRun d'origine (table vive).")
+    company_id = models.BigIntegerField(null=True, blank=True)
+    rule_id = models.BigIntegerField(null=True, blank=True)
+    target_model = models.CharField(max_length=120, blank=True, default='')
+    target_id = models.PositiveIntegerField(null=True, blank=True)
+    status = models.CharField(max_length=20)
+    message = models.TextField(blank=True, default='')
+    timestamp = models.DateTimeField()
+    archived_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Exécution d'automatisation (archive)"
+        verbose_name_plural = "Exécutions d'automatisation (archive)"
+
+    def __str__(self):
+        return f'archive:{self.original_id}'

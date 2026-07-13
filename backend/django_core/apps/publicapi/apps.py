@@ -21,3 +21,19 @@ class PublicApiConfig(AppConfig):
         # métier (nouveau lead, devis accepté, chantier clôturé, facture payée).
         from . import signals
         signals.connect()
+        # YOPSB11 — archivage par lots du journal WebhookDelivery (registre
+        # partagé YOPSB10). Fenêtre founder-configurable via
+        # WEBHOOK_DELIVERY_ARCHIVE_DAYS (défaut 0 = OFF, comportement inchangé).
+        from core.retention import register_retention_policy, setting_days
+        from .services import (
+            DEFAULT_WEBHOOK_DELIVERY_ARCHIVE_DAYS, archiver_anciens,
+        )
+        register_retention_policy(
+            'publicapi_webhook_delivery_archive',
+            lambda now, apply_: archiver_anciens(
+                now,
+                setting_days('WEBHOOK_DELIVERY_ARCHIVE_DAYS',
+                             DEFAULT_WEBHOOK_DELIVERY_ARCHIVE_DAYS),
+                apply_,
+            ),
+        )

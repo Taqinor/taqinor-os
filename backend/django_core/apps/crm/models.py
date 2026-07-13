@@ -902,6 +902,42 @@ class LeadActivity(models.Model):
         return f"{self.lead_id} {self.kind} {self.field or ''}".strip()
 
 
+class LeadActivityArchive(models.Model):
+    """YOPSB11 — copie FROIDE d'une ``LeadActivity`` archivée.
+
+    Table append-only à forte croissance (le chatter grossit sans borne) : la
+    politique de rétention YOPSB11 déplace les lignes anciennes ici puis les
+    supprime de la table vive. Schéma miroir SANS index chaud : les FK sont
+    DÉNORMALISÉES en identifiants entiers (``company_id``/``lead_id``/…) — une
+    archive ne doit dépendre du cycle de vie d'aucune table vive (pas de
+    cascade si le lead/l'utilisateur est supprimé plus tard). Les comptages
+    agrégés par société survivent via la colonne ``company_id`` conservée."""
+
+    original_id = models.BigIntegerField(
+        help_text="PK de la LeadActivity d'origine (table vive).")
+    company_id = models.BigIntegerField(null=True, blank=True)
+    lead_id = models.BigIntegerField(null=True, blank=True)
+    kind = models.CharField(max_length=15)
+    field = models.CharField(max_length=100, blank=True, null=True)
+    field_label = models.CharField(max_length=150, blank=True, null=True)
+    old_value = models.TextField(blank=True, null=True)
+    new_value = models.TextField(blank=True, null=True)
+    body = models.TextField(blank=True, null=True)
+    outcome = models.CharField(max_length=20, blank=True, default='')
+    attachment_id = models.BigIntegerField(null=True, blank=True)
+    bulk = models.BooleanField(default=False)
+    user_id = models.BigIntegerField(null=True, blank=True)
+    created_at = models.DateTimeField()
+    archived_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Activité lead (archive)'
+        verbose_name_plural = 'Activités lead (archive)'
+
+    def __str__(self):
+        return f'archive:{self.original_id}'
+
+
 class LeadTag(models.Model):
     """Étiquette de lead gérée (Paramètres → CRM). Le champ Lead.tags reste un
     texte libre ; cette liste sert de suggestions + couleurs. Additif."""
