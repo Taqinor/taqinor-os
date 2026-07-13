@@ -7,6 +7,7 @@ from .scim import (
     ScimUserDetailView,
     ScimUsersView,
 )
+from .views import BreakGlassView
 from .views import (
     IdentityProviderViewSet,
     IpAllowRuleViewSet,
@@ -28,5 +29,7 @@ urlpatterns = [
          ScimGroupsView.as_view(), name='scim-groups'),
     path('scim/v2/<slug:company_slug>/Groups/<int:pk>',
          ScimGroupDetailView.as_view(), name='scim-group-detail'),
+    # NTSEC22 — accès break-glass (Directeur only).
+    path('break-glass/', BreakGlassView.as_view(), name='break-glass'),
     path('', include(router.urls)),
 ]

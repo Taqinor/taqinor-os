@@ -237,3 +237,41 @@ class ScimGroupMapping(TenantModel):
 
     def __str__(self):
         return f'ScimGroupMapping({self.company_id}, {self.scim_group_name})'
+
+
+class BreakGlassGrant(TenantModel):
+    """Accès d'urgence temporaire audité (break-glass, NTSEC22).
+
+    Élève un compte au rôle Administrateur pour une durée bornée, EN
+    CONTOURNANT ``enforce_sso`` (voir ``selectors.is_break_glass_active``). Le
+    rôle antérieur est figé (``role_legacy_avant`` / ``role_id_avant``) pour être
+    RESTAURÉ à la révocation (manuelle ou automatique à l'échéance). Scopé
+    société ; chaque octroi exige un motif et est journalisé.
+    """
+
+    user = models.ForeignKey(
+        'authentication.CustomUser', on_delete=models.CASCADE,
+        related_name='break_glass_grants')
+    motif = models.TextField()
+    accorde_par = models.ForeignKey(
+        'authentication.CustomUser', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='break_glass_accordes')
+    active_jusqu_a = models.DateTimeField()
+    revoque_le = models.DateTimeField(null=True, blank=True)
+    # Instantané du rôle antérieur, pour restauration à la révocation.
+    role_legacy_avant = models.CharField(max_length=32, blank=True, default='')
+    role_id_avant = models.CharField(max_length=64, blank=True, default='')
+
+    class Meta:
+        verbose_name = "Accès break-glass"
+        verbose_name_plural = "Accès break-glass"
+        ordering = ['-created_at']
+        indexes = [models.Index(fields=['company', 'user', 'revoque_le'])]
+
+    def __str__(self):
+        return f'BreakGlass({self.company_id}, user={self.user_id})'
+
+    @property
+    def est_actif(self):
+        from django.utils import timezone
+        return self.revoque_le is None and self.active_jusqu_a > timezone.now()
