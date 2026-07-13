@@ -81,3 +81,84 @@ def reconstruct_as_of(instance_or_ct, object_id=None, dt=None, *, company=None):
         'fields': fields,
         'covered_changes': covered,
     }
+
+
+# ---------------------------------------------------------------------------
+# NTSEC15 — Journal de sécurité dédié & exportable.
+#
+# Sélecteur FONDATION lecture seule : filtre ``AuditLog`` sur les actions de
+# sécurité (connexion/déconnexion/échec/alerte — les évènements SSO/SCIM/break-
+# glass typés arriveront via NTSEC18 et sont déjà couverts tant qu'ils émettent
+# ``security_alert``). Company-scopé : jamais les évènements d'une autre société.
+# ---------------------------------------------------------------------------
+
+SECURITY_ACTION_VALUES = [
+    'login', 'logout', 'login_failed', 'security_alert',
+]
+
+
+def security_events(company, since=None, until=None):
+    """Queryset des évènements de sécurité d'une société sur une fenêtre.
+
+    ``company`` obligatoire (scope strict) ; ``since``/``until`` optionnels
+    (datetimes). Ordonné du plus récent au plus ancien."""
+    from .models import AuditLog
+    if company is None:
+        return AuditLog.objects.none()
+    qs = AuditLog.objects.filter(
+        company=company, action__in=SECURITY_ACTION_VALUES)
+    if since is not None:
+        qs = qs.filter(timestamp__gte=since)
+    if until is not None:
+        qs = qs.filter(timestamp__lte=until)
+    return qs.order_by('-timestamp')
+
+
+# ---------------------------------------------------------------------------
+# NTSEC17 — vérification du chaînage d'inviolabilité + rétention plancher.
+# ---------------------------------------------------------------------------
+
+# Plancher légal de rétention du journal d'audit (jours) : la purge n'efface
+# JAMAIS en-deçà, même si une société configure un délai plus court.
+AUDIT_RETENTION_FLOOR_DAYS = 365
+
+
+def verify_audit_chain(company_id):
+    """Recalcule et vérifie le chaînage hash d'une société.
+
+    Renvoie ``{'ok': bool, 'checked': int, 'broken_pk': pk|None}``. Ne
+    considère que les lignes chaînées (``entry_hash`` non vide) ; les lignes
+    legacy non chaînées sont ignorées. Company-scopé."""
+    from .models import AuditLog, compute_entry_hash
+    rows = list(
+        AuditLog.objects.filter(company_id=company_id, entry_hash__gt='')
+        .order_by('id'))
+    prev_hash = ''
+    checked = 0
+    for row in rows:
+        expected = compute_entry_hash(
+            prev_hash=prev_hash,
+            company_id=company_id,
+            action=row.action,
+            actor_username=row.actor_username,
+            object_id=row.object_id,
+            object_repr=row.object_repr,
+            detail=row.detail,
+            timestamp=row.timestamp,
+        )
+        if expected != row.entry_hash or row.prev_hash != prev_hash:
+            return {'ok': False, 'checked': checked, 'broken_pk': row.pk}
+        prev_hash = row.entry_hash
+        checked += 1
+    return {'ok': True, 'checked': checked, 'broken_pk': None}
+
+
+def effective_retention_days(configured_days):
+    """Rétention effective = max(config, plancher légal) ; 0 = illimité.
+
+    Une société qui n'a PAS armé de rétention (0) conserve indéfiniment ; sinon
+    la fenêtre ne descend jamais sous ``AUDIT_RETENTION_FLOOR_DAYS``."""
+    days = configured_days or 0
+    if days <= 0:
+        return 0
+    return max(days, AUDIT_RETENTION_FLOOR_DAYS)

@@ -238,3 +238,72 @@ __all__ = [
     'hash_key', 'generate_raw_key',
     'API_KEY_PREFIX', 'SCOPE_CHOICES', 'EVENT_CHOICES',
 ]
+
+
+class ServiceAccount(models.Model):
+    """Compte de service (identité machine non-humaine) — NTSEC24.
+
+    Authentifie une intégration interne / un script DISTINCT d'un ``CustomUser``
+    humain : jamais de login UI, jamais de MFA, jamais de rôle humain. Ne porte
+    que des SCOPES allowlistés (sous-ensemble de ``constants.ALL_SCOPES``, comme
+    ``ApiKey``) et un jeton porteur haché émis une seule fois. Scopé société.
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: tenant-cascade — un compte de service n'existe que pour sa société
+        related_name='service_accounts')
+    nom = models.CharField(max_length=120)
+    scopes = models.JSONField(default=list, blank=True)
+    token_hash = models.CharField(max_length=64, unique=True, db_index=True)
+    prefix = models.CharField(max_length=20, blank=True, default='')
+    actif = models.BooleanField(default=True)
+    expire_le = models.DateTimeField(null=True, blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='service_accounts_crees')
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Compte de service'
+        verbose_name_plural = 'Comptes de service'
+        ordering = ['-created_at']
+        indexes = [models.Index(fields=['company', 'actif'],
+                                name='publicapi_svc_comp_actif_idx')]
+
+    def __str__(self):
+        return f'ServiceAccount({self.company_id}, {self.nom})'
+
+    @property
+    def est_actif(self):
+        from django.utils import timezone
+        if not self.actif:
+            return False
+        return self.expire_le is None or self.expire_le > timezone.now()
+
+    def has_scope(self, scope):
+        return scope in (self.scopes or [])
+
+    @classmethod
+    def issue(cls, *, company, nom, scopes, created_by=None, expire_le=None):
+        """Crée un compte de service et renvoie ``(instance, jeton_en_clair)``.
+
+        Réutilise le hachage/allowlist de scopes de ``ApiKey`` (jamais dupliqué).
+        Le jeton en clair n'est disponible qu'ici — jamais re-stocké."""
+        from .constants import ALL_SCOPES
+        raw = generate_raw_key()
+        clean = [s for s in (scopes or []) if s in ALL_SCOPES]
+        inst = cls.objects.create(
+            company=company, nom=nom, scopes=clean,
+            token_hash=hash_key(raw), prefix=raw[:VISIBLE_PREFIX_LEN],
+            created_by=created_by, expire_le=expire_le)
+        return inst, raw
+
+    def rotate(self):
+        """Régénère le jeton (invalide l'ancien). Renvoie le nouveau clair."""
+        raw = generate_raw_key()
+        self.token_hash = hash_key(raw)
+        self.prefix = raw[:VISIBLE_PREFIX_LEN]
+        self.save(update_fields=['token_hash', 'prefix'])
+        return raw

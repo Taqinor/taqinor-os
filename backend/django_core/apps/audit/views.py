@@ -310,3 +310,44 @@ def object_as_of(request, content_type, object_id):
         'fields': result['fields'],
         'covered_changes': result['covered_changes'],
     })
+
+
+# NTSEC15 — export CSV des évènements de sécurité (Directeur only, scopé société).
+@api_view(['GET'])
+@permission_classes([CanViewActivityLog])
+def security_events_export(request):
+    """Export CSV des évènements de sécurité de la société sur une période.
+
+    Filtres : ``?from=``/``?to=`` (ISO). Company-scopé strict via le sélecteur
+    fondation ``selectors.security_events`` ; jamais d'autre société."""
+    import csv
+
+    from django.http import HttpResponse
+
+    from .selectors import security_events as _security_events
+
+    user = request.user
+    company = user.company if user.company_id else None
+    if company is None:
+        # Un superuser sans société active n'a pas de périmètre CSV défini.
+        return Response({'detail': 'Aucune société active.'}, status=400)
+
+    since = parse_datetime(request.query_params.get('from', '') or '')
+    until = parse_datetime(request.query_params.get('to', '') or '')
+    qs = _security_events(company, since=since, until=until)
+
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = (
+        'attachment; filename="security_events.csv"')
+    writer = csv.writer(response)
+    writer.writerow(['timestamp', 'action', 'utilisateur', 'ip', 'detail'])
+    for entry in qs.iterator():
+        writer.writerow([
+            entry.timestamp.isoformat(),
+            entry.action,
+            entry.actor_username or (
+                entry.user.username if entry.user_id else ''),
+            '',
+            (entry.detail or '').replace('\n', ' '),
+        ])
+    return response

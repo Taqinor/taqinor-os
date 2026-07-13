@@ -362,6 +362,16 @@ class CompanyProfile(models.Model):
         default=0,
         help_text="Rétention du journal d'audit en jours (0 = illimité).")
 
+    # ── NTSEC25 — comptes dormants : seuil de désactivation automatique ──
+    # Un compte sans session (dernier ``UserSession.last_seen_at``) au-delà de
+    # ``dormant_days`` jours est listé puis désactivé par la commande
+    # ``desactiver_comptes_dormants``. 0 = désactivé (défaut) → jamais de
+    # désactivation automatique ; réactivation manuelle toujours possible.
+    dormant_days = models.PositiveIntegerField(
+        default=0,
+        help_text="Jours d'inactivité au-delà desquels un compte est désactivé "
+                  "automatiquement (0 = jamais).")
+
     # ── XMKT21 — seuil de score MQL (Marketing Qualified Lead) ──
     # NULL/0 = désactivé (défaut) : aucune assignation automatique tant que la
     # société ne fixe pas de seuil — comportement actuel strictement inchangé.

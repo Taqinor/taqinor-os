@@ -99,6 +99,8 @@ urlpatterns = [
     path('api/django/public/stock/', include('apps.stock.public_urls')),
     # NTSEC — Fondation Identité & accès (NTSEC11 : allowlist IP/CIDR).
     path('api/django/identity/', include('apps.identity.urls')),
+    # NTSEC19/20 — Gouvernance des accès (revue d'accès + SoD).
+    path('api/django/accessreview/', include('apps.accessreview.urls')),
 ]
 
 # En production (DEBUG off + gunicorn), les statiques (admin Django) sont

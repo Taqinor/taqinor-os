@@ -169,7 +169,7 @@ def _record_session(user, refresh_raw, request):
         # la MFA vient d'être vérifiée : on horodate la session pour le step-up.
         from django.utils import timezone as _tz
         mfa_at = _tz.now() if getattr(user, 'totp_enabled', False) else None
-        UserSession.objects.create(
+        session = UserSession.objects.create(
             user=user,
             company=getattr(user, 'company', None),
             jti=jti,
@@ -177,6 +177,20 @@ def _record_session(user, refresh_raw, request):
             ip_address=_client_ip(request),
             last_mfa_at=mfa_at,
         )
+        # NTSEC13 — empreinte d'appareil + alerte « appareil inconnu » à la
+        # première apparition (best-effort, jamais bloquant).
+        try:
+            from .device import note_login_device
+            note_login_device(user, session, request)
+        except Exception:
+            pass
+        # NTSEC10 — limite de sessions concurrentes : au-delà du plafond
+        # société, évincer la (les) session(s) la (les) plus ancienne(s).
+        try:
+            from .session_policy import enforce_concurrent_limit
+            enforce_concurrent_limit(user)
+        except Exception:
+            pass
     except Exception:
         pass
 
@@ -222,6 +236,24 @@ class CustomTokenObtainPairView(TokenObtainPairView):
                            'tentatives. Réessayez plus tard.'},
                 status=status.HTTP_403_FORBIDDEN,
             )
+        # NTSEC4 — enforce-SSO : si la société de ce compte a un IdP actif avec
+        # ``enforce_sso``, le login par mot de passe local est interdit (le
+        # membre doit passer par le SSO). Fail-open (aucun IdP → inchangé) ;
+        # super-admin et comptes break-glass (NTSEC22) restent exemptés. On
+        # bloque AVANT toute tentative de mot de passe (pas de fuite d'état).
+        if locked_user is not None:
+            try:
+                from apps.identity.selectors import (
+                    local_password_login_blocked,
+                )
+                if local_password_login_blocked(locked_user):
+                    return Response(
+                        {'detail': 'Connexion via SSO obligatoire pour cette '
+                                   'société.', 'sso_required': True},
+                        status=status.HTTP_403_FORBIDDEN,
+                    )
+            except Exception:
+                pass
         # Double authentification (2FA, N96) : si le mot de passe est bon mais
         # qu'un code TOTP est requis/invalide, on renvoie une réponse 401 au
         # contour stable (`otp_required: true`) que le frontend sait gérer —
@@ -282,6 +314,13 @@ class CustomTokenObtainPairView(TokenObtainPairView):
                        company=getattr(u, 'company', None), detail='Connexion')
             except Exception:
                 pass
+            # NTSEC12 — détection « impossible travel » (best-effort, jamais
+            # bloquant ; inerte sans base géo GeoLite2).
+            try:
+                from apps.identity.anomaly import detect_impossible_travel
+                detect_impossible_travel(u, _client_ip(request))
+            except Exception:
+                pass
         return response
 
 
@@ -315,6 +354,21 @@ class CookieTokenRefreshView(APIView):
                     resp = Response(
                         {'detail': 'Ce compte société est suspendu.'},
                         status=status.HTTP_403_FORBIDDEN,
+                    )
+                    _clear_auth_cookies(resp)
+                    return resp
+            except Exception:
+                pass
+            # NTSEC10 — politique de session : refuser le refresh au-delà de la
+            # durée absolue / d'inactivité configurée par la société (inerte si
+            # non configurée). La session dépassée est révoquée côté serveur.
+            try:
+                from .session_policy import refresh_allowed
+                if not refresh_allowed(refresh_raw, u):
+                    resp = Response(
+                        {'detail': 'Session expirée par la politique de '
+                                   'sécurité. Reconnectez-vous.'},
+                        status=status.HTTP_401_UNAUTHORIZED,
                     )
                     _clear_auth_cookies(resp)
                     return resp
@@ -902,6 +956,15 @@ class TwoFactorEnableView(APIView):
         user.totp_enabled = True
         user.totp_recovery_codes = hashed
         user.save(update_fields=['totp_enabled', 'totp_recovery_codes'])
+        # NTSEC30 — notification obligatoire de changement de sécurité.
+        try:
+            from apps.notifications.services import notify_security_change
+            notify_security_change(
+                user, 'Double authentification activée',
+                'La double authentification (2FA) a été activée sur votre '
+                'compte.')
+        except Exception:
+            pass
         return Response({
             'detail': 'Double authentification activée.',
             'recovery_codes': plain,
@@ -939,6 +1002,15 @@ class TwoFactorDisableView(APIView):
         user.totp_recovery_codes = []
         user.save(update_fields=[
             'totp_enabled', 'totp_secret', 'totp_recovery_codes'])
+        # NTSEC30 — notification obligatoire de changement de sécurité.
+        try:
+            from apps.notifications.services import notify_security_change
+            notify_security_change(
+                user, 'Double authentification désactivée',
+                'La double authentification (2FA) a été désactivée sur votre '
+                'compte.')
+        except Exception:
+            pass
         return Response({'detail': 'Double authentification désactivée.'})
 
 
@@ -1059,6 +1131,16 @@ class ChangePasswordView(APIView):
         user.password_changed_at = timezone.now()
         user.save(update_fields=[
             'password', 'must_change_password', 'password_changed_at'])
+        # NTSEC30 — notification obligatoire de changement de sécurité.
+        try:
+            from apps.notifications.services import notify_security_change
+            notify_security_change(
+                user, 'Mot de passe modifié',
+                'Le mot de passe de votre compte vient d\'être modifié. Si '
+                'vous n\'êtes pas à l\'origine de ce changement, contactez '
+                'immédiatement votre administrateur.')
+        except Exception:
+            pass
         # VX242 — un changement de mot de passe doit révoquer toute AUTRE
         # session active (blackliste son jeton de rafraîchissement) : sans
         # cela, un attaquant qui a compromis le compte garde son refresh

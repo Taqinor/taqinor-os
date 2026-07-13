@@ -522,6 +522,7 @@ pos.ShareLinkTicket
 pos.VenteComptoir
 publicapi.ApiKey
 publicapi.IdempotencyRecord
+publicapi.ServiceAccount
 publicapi.Webhook
 publicapi.WebhookDelivery
 qhse.AccuseLecture

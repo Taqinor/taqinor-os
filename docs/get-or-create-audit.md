@@ -4,6 +4,7 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 
 | Fichier:ligne | Appel | Récepteur | Clés de lookup |
 |---|---|---|---|
+| `backend/django_core/apps/accessreview/sod.py:127` | get_or_create | SodRule.objects | company, permission_a, permission_b |
 | `backend/django_core/apps/automation/views.py:400` | get_or_create | IncomingWebhookTrigger.objects | rule |
 | `backend/django_core/apps/chat/services.py:152` | get_or_create | MessageMention.objects | mentioned_user, message |
 | `backend/django_core/apps/chat/services.py:258` | get_or_create | UserChatStatus.objects | user |
@@ -123,8 +124,8 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/paie/services.py:5627` | get_or_create | StructurePaie.objects | code, company |
 | `backend/django_core/apps/paie/services.py:5637` | get_or_create | StructurePaieRubrique.objects | rubrique, structure |
 | `backend/django_core/apps/paie/services.py:5663` | get_or_create | RubriqueEmploye.objects | profil, rubrique |
-| `backend/django_core/apps/parametres/models_company.py:630` | get_or_create | cls.objects | company |
-| `backend/django_core/apps/parametres/models_company.py:635` | get_or_create | cls.objects | pk |
+| `backend/django_core/apps/parametres/models_company.py:640` | get_or_create | cls.objects | company |
+| `backend/django_core/apps/parametres/models_company.py:645` | get_or_create | cls.objects | pk |
 | `backend/django_core/apps/parametres/models_documents.py:100` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/parametres/models_documents.py:102` | get_or_create | cls.objects | pk |
 | `backend/django_core/apps/parametres/models_payment_terms.py:89` | get_or_create | cls.objects | company, delai_jours, escompte_pct, fin_de_mois |
