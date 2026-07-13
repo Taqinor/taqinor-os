@@ -313,6 +313,18 @@ class CompanyProfile(models.Model):
         help_text="Nombre maximum de sessions concurrentes par utilisateur "
                   "(la plus ancienne est révoquée au-delà). 0 = illimité.")
 
+    # ── NTSEC9 — MFA « step-up » par sensibilité d'action ──────────────────
+    # Liste (JSON) des clés d'action que CETTE société considère sensibles et
+    # pour lesquelles une ré-authentification MFA récente est exigée (paie run,
+    # export SIEM, création IdP, break-glass…). VIDE par défaut = step-up
+    # inactif → comportement strictement inchangé. Le contrôle runtime vit dans
+    # `apps.identity.stepup.require_recent_mfa` (fondation réutilisable) ; ce
+    # modèle n'en porte que la configuration par société.
+    step_up_actions = models.JSONField(
+        default=list, blank=True,
+        help_text="Clés d'action exigeant une MFA récente (step-up). Liste "
+                  "vide = inactif (défaut).")
+
     # ── QG9 — pourcentage des variantes de devis (dupliquer-variante) ──
     # Pourcentage symétrique appliqué autour du devis d'origine pour produire
     # les variantes de taille : échelles [1−p, 1.0, 1+p]. Défaut 20 %

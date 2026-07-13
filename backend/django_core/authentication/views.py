@@ -108,12 +108,17 @@ def _record_session(user, refresh_raw, request):
         jti = _refresh_jti(refresh_raw)
         if not jti or user is None:
             return
+        # NTSEC9 — si la connexion a franchi un second facteur (2FA TOTP actif),
+        # la MFA vient d'être vérifiée : on horodate la session pour le step-up.
+        from django.utils import timezone as _tz
+        mfa_at = _tz.now() if getattr(user, 'totp_enabled', False) else None
         UserSession.objects.create(
             user=user,
             company=getattr(user, 'company', None),
             jti=jti,
             user_agent=(request.META.get('HTTP_USER_AGENT', '') or '')[:400],
             ip_address=_client_ip(request),
+            last_mfa_at=mfa_at,
         )
     except Exception:
         pass
