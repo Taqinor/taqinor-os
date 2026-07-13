@@ -891,6 +891,15 @@ class TwoFactorEnableView(APIView):
         user.totp_enabled = True
         user.totp_recovery_codes = hashed
         user.save(update_fields=['totp_enabled', 'totp_recovery_codes'])
+        # NTSEC30 — notification obligatoire de changement de sécurité.
+        try:
+            from apps.notifications.services import notify_security_change
+            notify_security_change(
+                user, 'Double authentification activée',
+                'La double authentification (2FA) a été activée sur votre '
+                'compte.')
+        except Exception:
+            pass
         return Response({
             'detail': 'Double authentification activée.',
             'recovery_codes': plain,
@@ -928,6 +937,15 @@ class TwoFactorDisableView(APIView):
         user.totp_recovery_codes = []
         user.save(update_fields=[
             'totp_enabled', 'totp_secret', 'totp_recovery_codes'])
+        # NTSEC30 — notification obligatoire de changement de sécurité.
+        try:
+            from apps.notifications.services import notify_security_change
+            notify_security_change(
+                user, 'Double authentification désactivée',
+                'La double authentification (2FA) a été désactivée sur votre '
+                'compte.')
+        except Exception:
+            pass
         return Response({'detail': 'Double authentification désactivée.'})
 
 
@@ -1048,6 +1066,16 @@ class ChangePasswordView(APIView):
         user.password_changed_at = timezone.now()
         user.save(update_fields=[
             'password', 'must_change_password', 'password_changed_at'])
+        # NTSEC30 — notification obligatoire de changement de sécurité.
+        try:
+            from apps.notifications.services import notify_security_change
+            notify_security_change(
+                user, 'Mot de passe modifié',
+                'Le mot de passe de votre compte vient d\'être modifié. Si '
+                'vous n\'êtes pas à l\'origine de ce changement, contactez '
+                'immédiatement votre administrateur.')
+        except Exception:
+            pass
         # VX242 — un changement de mot de passe doit révoquer toute AUTRE
         # session active (blackliste son jeton de rafraîchissement) : sans
         # cela, un attaquant qui a compromis le compte garde son refresh
