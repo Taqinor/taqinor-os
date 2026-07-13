@@ -1,7 +1,12 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
-from .scim import ScimUserDetailView, ScimUsersView
+from .scim import (
+    ScimGroupDetailView,
+    ScimGroupsView,
+    ScimUserDetailView,
+    ScimUsersView,
+)
 from .views import (
     IdentityProviderViewSet,
     IpAllowRuleViewSet,
@@ -19,5 +24,9 @@ urlpatterns = [
          ScimUsersView.as_view(), name='scim-users'),
     path('scim/v2/<slug:company_slug>/Users/<int:pk>',
          ScimUserDetailView.as_view(), name='scim-user-detail'),
+    path('scim/v2/<slug:company_slug>/Groups',
+         ScimGroupsView.as_view(), name='scim-groups'),
+    path('scim/v2/<slug:company_slug>/Groups/<int:pk>',
+         ScimGroupDetailView.as_view(), name='scim-group-detail'),
     path('', include(router.urls)),
 ]

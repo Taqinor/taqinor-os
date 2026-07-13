@@ -19,7 +19,7 @@ from rest_framework.views import APIView
 from authentication.models import CustomUser
 from authentication.selectors import revoke_user_sessions
 
-from .models import ScimToken
+from .models import ScimGroupMapping, ScimToken
 
 USER_SCHEMA = 'urn:ietf:params:scim:schemas:core:2.0:User'
 LIST_SCHEMA = 'urn:ietf:params:scim:api:messages:2.0:ListResponse'
@@ -230,4 +230,149 @@ class ScimUserDetailView(APIView):
                    detail=f'SCIM: compte {user.username} déprovisionné')
         except Exception:
             pass
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+GROUP_SCHEMA = 'urn:ietf:params:scim:schemas:core:2.0:Group'
+
+
+def scim_group_repr(mapping, request=None):
+    """Représentation SCIM d'un ``ScimGroupMapping`` (schéma core 2.0 Group).
+
+    ``members`` = comptes de la société qui portent actuellement le rôle mappé.
+    """
+    members = list(
+        CustomUser.objects.filter(
+            company=mapping.company, role_id=mapping.role_id)
+        .values_list('pk', 'username'))
+    return {
+        'schemas': [GROUP_SCHEMA],
+        'id': str(mapping.pk),
+        'displayName': mapping.scim_group_name,
+        'members': [{'value': str(pk), 'display': uname}
+                    for pk, uname in members],
+        'meta': {'resourceType': 'Group'},
+    }
+
+
+def _apply_membership(mapping, op, member_ids):
+    """Applique/retire le rôle mappé pour une liste d'ids de comptes.
+
+    ``op`` ∈ {'add', 'remove'}. Chaque compte est résolu dans la société du
+    mapping (jamais cross-tenant) ; l'écriture du rôle passe par
+    ``apps.roles.services`` (jamais d'import de ``roles.models`` ici).
+    """
+    from apps.roles.services import apply_role_to_user, remove_role_from_user
+
+    for mid in member_ids:
+        user = CustomUser.objects.filter(
+            company=mapping.company, pk=mid).first()
+        if user is None:
+            continue
+        if op == 'add':
+            apply_role_to_user(user, mapping.role_id)
+        elif op == 'remove':
+            remove_role_from_user(user, mapping.role_id)
+
+
+class ScimGroupsView(APIView):
+    """SCIM ``/Groups`` : GET (liste), POST (création d'un mapping groupe→rôle)."""
+
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def get(self, request, company_slug):
+        company, err = _authenticate(request, company_slug)
+        if err is not None:
+            return err
+        qs = ScimGroupMapping.objects.filter(company=company).order_by('id')
+        resources = [scim_group_repr(m, request) for m in qs]
+        return Response({
+            'schemas': [LIST_SCHEMA],
+            'totalResults': len(resources),
+            'startIndex': 1,
+            'itemsPerPage': len(resources),
+            'Resources': resources,
+        }, content_type='application/scim+json')
+
+    def post(self, request, company_slug):
+        company, err = _authenticate(request, company_slug)
+        if err is not None:
+            return err
+        body = request.data or {}
+        display = (body.get('displayName') or '').strip()
+        # ``roleId`` (extension) rattache le groupe SCIM à un rôle interne.
+        role_id = str(body.get('roleId') or '').strip()
+        if not display:
+            return _error('displayName requis.', status.HTTP_400_BAD_REQUEST)
+        if ScimGroupMapping.objects.filter(
+                company=company, scim_group_name=display).exists():
+            return _error('Groupe déjà existant.', status.HTTP_409_CONFLICT)
+        mapping = ScimGroupMapping.objects.create(
+            company=company, scim_group_name=display, role_id=role_id)
+        # Membres initiaux éventuels → applique le rôle mappé.
+        members = body.get('members') or []
+        ids = [m.get('value') for m in members if isinstance(m, dict)]
+        if role_id and ids:
+            _apply_membership(mapping, 'add', ids)
+        return Response(scim_group_repr(mapping, request),
+                        status=status.HTTP_201_CREATED,
+                        content_type='application/scim+json')
+
+
+class ScimGroupDetailView(APIView):
+    """SCIM ``/Groups/{id}`` : GET, PATCH (add/remove membres), DELETE."""
+
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def _get(self, company, pk):
+        return ScimGroupMapping.objects.filter(company=company, pk=pk).first()
+
+    def get(self, request, company_slug, pk):
+        company, err = _authenticate(request, company_slug)
+        if err is not None:
+            return err
+        mapping = self._get(company, pk)
+        if mapping is None:
+            return _error('Groupe introuvable.', status.HTTP_404_NOT_FOUND)
+        return Response(scim_group_repr(mapping, request),
+                        content_type='application/scim+json')
+
+    def patch(self, request, company_slug, pk):
+        company, err = _authenticate(request, company_slug)
+        if err is not None:
+            return err
+        mapping = self._get(company, pk)
+        if mapping is None:
+            return _error('Groupe introuvable.', status.HTTP_404_NOT_FOUND)
+        # SCIM PatchOp : liste d'opérations add/remove sur ``members``.
+        for opd in (request.data or {}).get('Operations', []) or []:
+            op = (opd.get('op') or '').lower()
+            path = (opd.get('path') or '').lower()
+            if path and path != 'members':
+                continue
+            value = opd.get('value') or []
+            if isinstance(value, dict):
+                value = [value]
+            ids = [v.get('value') for v in value if isinstance(v, dict)]
+            if op in ('add', 'remove'):
+                _apply_membership(mapping, op, ids)
+        return Response(scim_group_repr(mapping, request),
+                        content_type='application/scim+json')
+
+    def delete(self, request, company_slug, pk):
+        company, err = _authenticate(request, company_slug)
+        if err is not None:
+            return err
+        mapping = self._get(company, pk)
+        if mapping is None:
+            return _error('Groupe introuvable.', status.HTTP_404_NOT_FOUND)
+        # Retirer le rôle à tous les membres actuels, puis supprimer le mapping.
+        current = list(
+            CustomUser.objects.filter(
+                company=company, role_id=mapping.role_id
+            ).values_list('pk', flat=True))
+        _apply_membership(mapping, 'remove', current)
+        mapping.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)

@@ -210,3 +210,30 @@ class ScimToken(TenantModel):
             company=company, label=label,
             token_hash=hash_key(raw), prefix=raw[:VISIBLE_PREFIX_LEN])
         return inst, raw
+
+
+class ScimGroupMapping(TenantModel):
+    """Correspondance groupe SCIM → rôle interne (NTSEC6).
+
+    Un groupe SCIM (``scim_group_name``) mappe vers UN ``roles.Role`` de la
+    société (``role_id``, STRING-FK — jamais d'import de ``roles.models`` ici).
+    L'ajout/retrait d'un membre du groupe applique/retire ce rôle sur le compte,
+    via ``apps.roles.services``. Scopé société : un mapping n'attribue jamais un
+    rôle d'une autre société.
+    """
+
+    scim_group_name = models.CharField(max_length=200, verbose_name='Groupe SCIM')
+    role_id = models.CharField(max_length=64, verbose_name='Rôle (id)')
+
+    class Meta:
+        verbose_name = 'Mapping groupe SCIM'
+        verbose_name_plural = 'Mappings groupes SCIM'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'scim_group_name'],
+                name='uniq_scimgroup_par_societe',
+            ),
+        ]
+
+    def __str__(self):
+        return f'ScimGroupMapping({self.company_id}, {self.scim_group_name})'
