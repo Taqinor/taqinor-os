@@ -66,7 +66,7 @@ export function parsePastedAmount(text) {
 // parseur ne fait que DÉTECTER un nom + un téléphone plausibles ; l'appelant
 // affiche un bouton « Répartir » qui n'agit qu'après confirmation explicite.
 const CARD_PHONE_RE = /(\+?\d[\d .()-]{7,}\d)/
-const CARD_LABELS_RE = /\b(nom|name|t[ée]l(?:[ée]phone)?|whatsapp|wa|gsm)\s*[:\-]?\s*/gi
+const CARD_LABELS_RE = /\b(nom|name|t[ée]l(?:[ée]phone)?|whatsapp|wa|gsm)\s*[:-]?\s*/gi
 
 export function parsePasteCard(text) {
   if (!text) return null

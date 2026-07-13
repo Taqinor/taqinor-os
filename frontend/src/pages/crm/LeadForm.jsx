@@ -462,17 +462,9 @@ export default function LeadForm({
     const card = parsePasteCard(text)
     if (card) setCardPaste(card)
   }
-  const applyCardPaste = () => {
-    if (!cardPaste) return
-    set('nom', cardPaste.nom)
-    set('telephone', cardPaste.telephone)
-    setCardPaste(null)
-  }
-  // VX237 — collage téléphone/WhatsApp nettoyé vers la forme canonique de
-  // stockage (espaces/points/tirets tolérés), silencieux (contrairement au
-  // mode carte ci-dessus — un numéro seul ne prête pas à confusion).
-  const onTelephonePaste = usePasteClean(parsePastedPhone, (clean) => set('telephone', clean))
-  const onWhatsappPaste = usePasteClean(parsePastedPhone, (clean) => set('whatsapp', clean))
+  // `applyCardPaste` est déclaré plus bas, APRÈS `set` qu'il utilise
+  // (react-hooks/immutability : pas d'accès avant déclaration).
+  // (onTelephonePaste/onWhatsappPaste sont déclarés plus bas, après `set`.)
   // Dialogue « Signé » : passer l'étape à Signé via le select ouvre le
   // dialogue d'acceptation (devis + option) au lieu d'enregistrer SIGNED.
   const [signeOpen, setSigneOpen] = useState(false)
@@ -649,6 +641,18 @@ export default function LeadForm({
 
   // VX171 — le rouge ne doit jamais mentir pendant que l'utilisateur corrige.
   const set = (k, v) => { clearField(k); setFields(f => ({ ...f, [k]: v })) }
+  // VX237 — applique la carte de visite détectée (utilise `set` ci-dessus).
+  const applyCardPaste = () => {
+    if (!cardPaste) return
+    set('nom', cardPaste.nom)
+    set('telephone', cardPaste.telephone)
+    setCardPaste(null)
+  }
+  // VX237 — collage téléphone/WhatsApp nettoyé vers la forme canonique de
+  // stockage (espaces/points/tirets tolérés), silencieux (un numéro seul ne
+  // prête pas à confusion). Déclarés ici (après `set`) — react-hooks/immutability.
+  const onTelephonePaste = usePasteClean(parsePastedPhone, (clean) => set('telephone', clean))
+  const onWhatsappPaste = usePasteClean(parsePastedPhone, (clean) => set('whatsapp', clean))
   const agricole = fields.type_installation === 'agricole'
 
   // Champs d'origine web (taqinor.ma) en LECTURE SEULE : capturés par le site,
