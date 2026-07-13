@@ -80,12 +80,16 @@ def init_sentry():
     No-op total quand le DSN est absent ou quand ``sentry-sdk`` n'est pas
     installé. Idempotent. Renvoie ``True`` si l'init a réellement eu lieu.
     """
-    global _INITIALISE
-    if _INITIALISE:
-        return True
+    # Sans DSN, TOUJOURS un no-op — même si une init précédente a eu lieu dans
+    # le process (un environnement sans DSN est définitivement désactivé). Cet
+    # ordre (DSN avant le cache) garde aussi l'isolation entre SimpleTestCase
+    # qui partagent le global de module.
     dsn = sentry_dsn()
     if not dsn:
         return False
+    global _INITIALISE
+    if _INITIALISE:
+        return True
     try:
         import sentry_sdk  # noqa: WPS433 — import paresseux, dépendance optionnelle
     except Exception:  # noqa: BLE001 — paquet absent → no-op silencieux
