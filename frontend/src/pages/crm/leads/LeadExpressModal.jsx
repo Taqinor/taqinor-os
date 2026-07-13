@@ -17,6 +17,7 @@ import { useState, useEffect, useId, useRef } from 'react'
 import { AlertTriangle } from 'lucide-react'
 import crmApi from '../../../api/crmApi'
 import useCanaux from '../../../features/crm/useCanaux'
+import { usePasteClean, parsePastedPhone, parsePasteCard } from '../../../hooks/usePasteClean'
 import {
   Button, Dialog, DialogContent, DialogHeader, DialogTitle,
   Form, FormField, FormActions, Input,
@@ -61,6 +62,20 @@ export default function LeadExpressModal({ onClose, onSaved }) {
   // Une fois l'OCR détecté indisponible (clé absente), on masque le bouton
   // pour le reste de la session — évite de retenter un appel voué à échouer.
   const [scanUnavailable, setScanUnavailable] = useState(false)
+  // VX237 — carte de visite collée dans « Nom » : jamais répartie
+  // silencieusement, un bandeau propose « Répartir » sur confirmation.
+  const [cardPaste, setCardPaste] = useState(null)
+  const onNomPaste = (e) => {
+    const card = parsePasteCard(e.clipboardData?.getData('text'))
+    if (card) setCardPaste(card)
+  }
+  const applyCardPaste = () => {
+    if (!cardPaste) return
+    setNom(cardPaste.nom)
+    setTelephone(cardPaste.telephone)
+    setCardPaste(null)
+  }
+  const onTelephonePaste = usePasteClean(parsePastedPhone, setTelephone)
 
   const { options: canauxOptions, loaded: canauxLoaded } = useCanaux()
 
@@ -210,10 +225,25 @@ export default function LeadExpressModal({ onClose, onSaved }) {
               placeholder="Nom du prospect"
               value={nom}
               onChange={(e) => setNom(e.target.value)}
+              onPaste={onNomPaste}
               required
               autoComplete="off"
             />
           </FormField>
+          {cardPaste && (
+            <div
+              role="status"
+              className="-mt-2 flex flex-wrap items-center gap-2 rounded-md border border-info/30 bg-info/5 px-2.5 py-1.5 text-xs text-foreground"
+            >
+              <span>Carte de visite détectée — {cardPaste.nom} · {cardPaste.telephone}</span>
+              <Button type="button" variant="outline" size="sm" onClick={applyCardPaste}>
+                Répartir
+              </Button>
+              <Button type="button" variant="ghost" size="sm" onClick={() => setCardPaste(null)}>
+                Ignorer
+              </Button>
+            </div>
+          )}
 
           <FormField label="Société" htmlFor={`${formId}-societe`}>
             <Input
@@ -237,6 +267,7 @@ export default function LeadExpressModal({ onClose, onSaved }) {
               placeholder="06 00 00 00 00"
               value={telephone}
               onChange={(e) => setTelephone(e.target.value)}
+              onPaste={onTelephonePaste}
               autoComplete="off"
             />
           </FormField>

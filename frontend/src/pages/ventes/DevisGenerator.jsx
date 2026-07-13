@@ -34,6 +34,7 @@ import { useCanCreateProduit } from '../../hooks/useHasPermission'
 import useKeyboardAwareScroll from '../../hooks/useKeyboardAwareScroll'
 import { useDirtyGuard } from '../../ui/useDirtyGuard'
 import { useDraftAutosave } from '../../ui/useDraftAutosave'
+import { usePasteClean, parsePastedAmount } from '../../hooks/usePasteClean'
 import {
   MONTHS_FR, CHART_MONTHS, DEFAULT_MONTHLY_BILLS, DAY_USAGE_DEFAULTS,
   formatMoney, estimerMois, estimerPanneaux, computeROI, ttcFromHt, htFromTtc,
@@ -263,6 +264,16 @@ export default function DevisGenerator({
   const [realBillMode, setRealBillMode] = useState('mad') // 'mad' | 'kwh'
   const [realBillMad, setRealBillMad] = useState('')
   const [realBillKwh, setRealBillKwh] = useState('')
+
+  // VX237 — montant collé d'Excel/facture ("12 500,00", "3 200 DH"...) nettoyé
+  // vers une chaîne numérique simple au lieu de tomber brut dans le champ
+  // number (qui rejetterait silencieusement le format non reconnu).
+  const onHiverPaste = usePasteClean(parsePastedAmount,
+    (clean) => { setFHiver(clean); syncBillEstimator(clean, fEte) })
+  const onEtePaste = usePasteClean(parsePastedAmount,
+    (clean) => { setFEte(clean); syncBillEstimator(fHiver, clean) })
+  const onRealBillPaste = usePasteClean(parsePastedAmount,
+    (clean) => (realBillMode === 'mad' ? setRealBillMad(clean) : setRealBillKwh(clean)))
 
   // ── Paramètres techniques ──
   const [nbPanneaux, setNbPanneaux] = useState('')
@@ -1725,13 +1736,15 @@ export default function DevisGenerator({
                 <Label htmlFor="gen-hiver">Facture Hiver moy. (MAD/mois)</Label>
                 <Input id="gen-hiver" type="number" min="0" step="any"
                        placeholder="ex: 600" value={fHiver}
-                       onChange={e => { setFHiver(e.target.value); syncBillEstimator(e.target.value, fEte) }} />
+                       onChange={e => { setFHiver(e.target.value); syncBillEstimator(e.target.value, fEte) }}
+                       onPaste={onHiverPaste} />
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="gen-ete">Facture Été moy. (MAD/mois)</Label>
                 <Input id="gen-ete" type="number" min="0" step="any"
                        placeholder="ex: 400" value={fEte}
-                       onChange={e => { setFEte(e.target.value); syncBillEstimator(fHiver, e.target.value) }} />
+                       onChange={e => { setFEte(e.target.value); syncBillEstimator(fHiver, e.target.value) }}
+                       onPaste={onEtePaste} />
               </div>
               <Button type="button" variant="outline" onClick={handleEstimerMois}>
                 <BarChart3 /> Estimer 12 mois
@@ -1794,7 +1807,8 @@ export default function DevisGenerator({
                            value={realBillMode === 'mad' ? realBillMad : realBillKwh}
                            onChange={e => (realBillMode === 'mad'
                              ? setRealBillMad(e.target.value)
-                             : setRealBillKwh(e.target.value))} />
+                             : setRealBillKwh(e.target.value))}
+                           onPaste={onRealBillPaste} />
                     <Select value={realBillMode} onValueChange={setRealBillMode}>
                       <SelectTrigger className="w-24"><SelectValue /></SelectTrigger>
                       <SelectContent>

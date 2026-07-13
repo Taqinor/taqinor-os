@@ -27,6 +27,7 @@ import {
 } from '../../features/crm/stages'
 import useCanaux from '../../features/crm/useCanaux'
 import { useServerFieldErrors } from '../../hooks/useServerFieldErrors'
+import { usePasteClean, parsePastedPhone, parsePasteCard } from '../../hooks/usePasteClean'
 // VX24 — bandeau de faits clés (LeadSummaryBar) réutilise le même ScoreBadge.
 import ScoreBadge from '../../features/crm/ScoreBadge'
 // VX87 — journal d'appel en un geste (issue + note + prochaine relance).
@@ -453,6 +454,26 @@ export default function LeadForm({
   // Doublons probables détectés EN DIRECT depuis le téléphone/email saisi
   // (avertissement NON bloquant, à la création comme à l'édition).
   const [dupMatches, setDupMatches] = useState([])
+  // VX237 — carte de visite collée dans « Nom » : { nom, telephone } détectés,
+  // JAMAIS répartis silencieusement — le collage brut atterrit dans le champ
+  // comme d'habitude, un bandeau propose « Répartir » sur confirmation.
+  const [cardPaste, setCardPaste] = useState(null)
+  const onNomPaste = (e) => {
+    const text = e.clipboardData?.getData('text')
+    const card = parsePasteCard(text)
+    if (card) setCardPaste(card)
+  }
+  const applyCardPaste = () => {
+    if (!cardPaste) return
+    set('nom', cardPaste.nom)
+    set('telephone', cardPaste.telephone)
+    setCardPaste(null)
+  }
+  // VX237 — collage téléphone/WhatsApp nettoyé vers la forme canonique de
+  // stockage (espaces/points/tirets tolérés), silencieux (contrairement au
+  // mode carte ci-dessus — un numéro seul ne prête pas à confusion).
+  const onTelephonePaste = usePasteClean(parsePastedPhone, (clean) => set('telephone', clean))
+  const onWhatsappPaste = usePasteClean(parsePastedPhone, (clean) => set('whatsapp', clean))
   // Dialogue « Signé » : passer l'étape à Signé via le select ouvre le
   // dialogue d'acceptation (devis + option) au lieu d'enregistrer SIGNED.
   const [signeOpen, setSigneOpen] = useState(false)
@@ -1230,21 +1251,42 @@ export default function LeadForm({
                     {/* VX224 — `ref` posé pour le refocus manuel après un
                         « Créer un autre » (le champ ne se démonte pas entre
                         deux créations, `autoFocus` seul ne suffit qu'au
-                        premier montage). */}
+                        premier montage). VX237 — coller une carte de visite
+                        (« Nom … Tel … ») propose « Répartir » ci-dessous,
+                        jamais une répartition automatique. */}
                     <Input id="lf-nom" autoFocus ref={nomRef} invalid={!!errors.nom}
-                           value={fields.nom} onChange={e => set('nom', e.target.value)} />
+                           value={fields.nom} onChange={e => set('nom', e.target.value)}
+                           onPaste={onNomPaste} />
                   </FormField>
+                  {cardPaste && (
+                    <div
+                      role="status"
+                      className="mt-1.5 flex flex-wrap items-center gap-2 rounded-md border border-info/30 bg-info/5 px-2.5 py-1.5 text-xs text-foreground"
+                    >
+                      <span>
+                        Carte de visite détectée — {cardPaste.nom} · {cardPaste.telephone}
+                      </span>
+                      <Button type="button" variant="outline" size="sm" onClick={applyCardPaste}>
+                        Répartir
+                      </Button>
+                      <Button type="button" variant="ghost" size="sm" onClick={() => setCardPaste(null)}>
+                        Ignorer
+                      </Button>
+                    </div>
+                  )}
                 </div>
                 <FormField label="Prénom" htmlFor="lf-prenom">
                   <Input id="lf-prenom" value={fields.prenom ?? ''} onChange={e => set('prenom', e.target.value)} />
                 </FormField>
                 <FormField label="Téléphone" htmlFor="lf-telephone">
-                  <Input id="lf-telephone" value={fields.telephone ?? ''} onChange={e => set('telephone', e.target.value)} />
+                  <Input id="lf-telephone" value={fields.telephone ?? ''} onChange={e => set('telephone', e.target.value)}
+                         onPaste={onTelephonePaste} />
                 </FormField>
               </div>
               <div className="form-row">
                 <FormField label="WhatsApp" htmlFor="lf-whatsapp">
-                  <Input id="lf-whatsapp" value={fields.whatsapp ?? ''} onChange={e => set('whatsapp', e.target.value)} />
+                  <Input id="lf-whatsapp" value={fields.whatsapp ?? ''} onChange={e => set('whatsapp', e.target.value)}
+                         onPaste={onWhatsappPaste} />
                 </FormField>
                 {/* VX249(b) — 1 des 4 champs VX93 exactement : contour
                     pointillé + micro-libellé au focus tant que la ville

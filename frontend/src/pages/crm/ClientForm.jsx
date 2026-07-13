@@ -13,6 +13,7 @@ import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
 import ExternalLink from '../../ui/ExternalLink'
 import { toast } from '../../ui/confirm'
 import { canonicalPhoneMA } from '../../lib/format'
+import { usePasteClean, parsePastedPhone } from '../../hooks/usePasteClean'
 import AttachmentsPanel from '../../components/AttachmentsPanel'
 import crmApi from '../../api/crmApi'
 import ventesApi from '../../api/ventesApi'
@@ -167,6 +168,10 @@ export default function ClientForm({ client = null, onClose }) {
       return next
     })
   }
+
+  // VX237 — collage téléphone/WhatsApp nettoyé vers la forme canonique de
+  // stockage (espaces/points/tirets tolérés) au lieu de tomber brut.
+  const onTelephonePaste = usePasteClean(parsePastedPhone, (clean) => setField('telephone', clean))
 
   // QC1 — autocomplete entreprise (données propres). Avertissement de doublon
   // non bloquant quand on choisit un CLIENT existant (au lieu de recréer).
@@ -358,6 +363,7 @@ export default function ClientForm({ client = null, onClose }) {
                   type="tel"
                   value={fields.telephone}
                   onChange={e => setField('telephone', e.target.value)}
+                  onPaste={onTelephonePaste}
                   placeholder="+212 6 XX XX XX XX"
                 />
                 {/* Aperçu de la forme normalisée (stockée telle que tapée) —

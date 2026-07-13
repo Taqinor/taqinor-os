@@ -6,6 +6,7 @@ import {
 } from '../../ui'
 import { Combobox } from '../../ui/Combobox'
 import { searchCompanies, hitsToOptions } from '../../features/crm/companyLookup'
+import { usePasteClean, parsePastedPhone } from '../../hooks/usePasteClean'
 
 /* QG3 — « + Nouveau client » quick-create depuis le générateur de devis
    (chemin sans lead). Minimal : nom + téléphone/email — appelle
@@ -27,6 +28,9 @@ export default function ClientQuickCreateModal({ open, onClose, onCreated }) {
     setNom(''); setPrenom(''); setTelephone(''); setEmail(''); setError(null); setDupWarning(null)
   }
   const handleClose = () => { reset(); onClose?.() }
+  // VX237 — collage téléphone/WhatsApp nettoyé vers la forme canonique de
+  // stockage (espaces/points/tirets tolérés) au lieu de tomber brut.
+  const onTelephonePaste = usePasteClean(parsePastedPhone, setTelephone)
 
   const onSearchCompany = (query) =>
     searchCompanies(query, { searcher: crmApi.searchClients }).then(hitsToOptions)
@@ -120,6 +124,7 @@ export default function ClientQuickCreateModal({ open, onClose, onCreated }) {
             <Label htmlFor="cqc-tel">Téléphone</Label>
             <Input id="cqc-tel" type="tel" value={telephone}
                    onChange={(e) => setTelephone(e.target.value)}
+                   onPaste={onTelephonePaste}
                    placeholder="+212 6 XX XX XX XX" />
           </div>
           <div className="grid gap-1.5">
