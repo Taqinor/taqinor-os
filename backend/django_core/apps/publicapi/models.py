@@ -169,6 +169,11 @@ class WebhookDelivery(models.Model):
         related_name='deliveries',
     )
     event = models.CharField(max_length=50)
+    # YAPIC8 — identité STABLE de l'évènement (uuid4), partagée par toutes les
+    # tentatives et réutilisée à l'identique par le replay (FG102). Vide pour
+    # les livraisons historiques antérieures à YAPIC8.
+    event_id = models.CharField(max_length=36, blank=True, default='',
+                                db_index=True)
     # Charge utile envoyée (telle quelle) — pour rejouer/diagnostiquer.
     payload = models.JSONField(default=dict, blank=True)
     status = models.CharField(

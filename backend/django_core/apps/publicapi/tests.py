@@ -309,10 +309,21 @@ class WebhookDeliveryTests(TestCase):
             side_effect=lambda u: u)
         patcher.start()
         self.addCleanup(patcher.stop)
+        # YAPIC8 — l'émission passe désormais par la tâche Celery
+        # `deliver_webhook.delay`. En test (broker présent mais aucun worker),
+        # on exécute les tâches EN LIGNE (eager) pour exercer la livraison
+        # réelle dans le processus de test. Portée limitée à cette classe.
+        from erp_agentique.celery import app as celery_app
+        self._prev_eager = celery_app.conf.task_always_eager
+        celery_app.conf.task_always_eager = True
+        celery_app.conf.task_eager_propagates = False
+
+        def _restore():
+            celery_app.conf.task_always_eager = self._prev_eager
+        self.addCleanup(_restore)
 
     def test_signature_is_correct_hmac(self):
         payload = {'event': EVENT_LEAD_CREATED, 'id': 1}
-        body = json.dumps(payload, default=str, sort_keys=True).encode('utf-8')
         captured = {}
 
         def fake_post(url, content=None, headers=None, timeout=None):
@@ -323,8 +334,14 @@ class WebhookDeliveryTests(TestCase):
         with mock.patch.object(delivery.httpx, 'post', side_effect=fake_post):
             delivery.dispatch_event(self.co.id, EVENT_LEAD_CREATED, payload)
 
+        # YAPIC8 — la signature couvre `timestamp.body` (le corps réellement
+        # envoyé porte aussi l'event_id injecté par dispatch_event).
         sent_sig = captured['headers'][delivery.SIGNATURE_HEADER]
-        expected = hmac.new(b's3cr3t', body, hashlib.sha256).hexdigest()
+        ts = captured['headers'][delivery.TIMESTAMP_HEADER]
+        body = captured['content']
+        expected = hmac.new(
+            b's3cr3t', f'{ts}.'.encode('utf-8') + body,
+            hashlib.sha256).hexdigest()
         self.assertEqual(sent_sig, expected)
         self.assertEqual(WebhookDelivery.objects.filter(
             status=WebhookDelivery.Statut.SUCCESS).count(), 1)
@@ -338,11 +355,12 @@ class WebhookDeliveryTests(TestCase):
         self.assertEqual(WebhookDelivery.objects.count(), 0)
 
     def test_failed_delivery_is_logged_not_raised(self):
-        # httpx lève → la livraison ne propage jamais et journalise un échec.
+        # httpx lève → la livraison ne propage jamais et journalise un échec
+        # (best-effort). Testé via _deliver_one (chemin synchrone du replay).
         with mock.patch.object(delivery.httpx, 'post',
                                side_effect=RuntimeError('boom')):
-            delivery.dispatch_event(self.co.id, EVENT_LEAD_CREATED,
-                                    {'event': EVENT_LEAD_CREATED})
+            delivery._deliver_one(self.hook, EVENT_LEAD_CREATED,
+                                  {'event': EVENT_LEAD_CREATED})
         d = WebhookDelivery.objects.get()
         self.assertEqual(d.status, WebhookDelivery.Statut.FAILED)
         self.assertIn('boom', d.error)
