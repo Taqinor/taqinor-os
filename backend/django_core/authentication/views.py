@@ -115,6 +115,13 @@ def _record_session(user, refresh_raw, request):
             user_agent=(request.META.get('HTTP_USER_AGENT', '') or '')[:400],
             ip_address=_client_ip(request),
         )
+        # NTSEC10 — limite de sessions concurrentes : au-delà du plafond
+        # société, évincer la (les) session(s) la (les) plus ancienne(s).
+        try:
+            from .session_policy import enforce_concurrent_limit
+            enforce_concurrent_limit(user)
+        except Exception:
+            pass
     except Exception:
         pass
 
@@ -268,6 +275,21 @@ class CookieTokenRefreshView(APIView):
                     resp = Response(
                         {'detail': 'Ce compte société est suspendu.'},
                         status=status.HTTP_403_FORBIDDEN,
+                    )
+                    _clear_auth_cookies(resp)
+                    return resp
+            except Exception:
+                pass
+            # NTSEC10 — politique de session : refuser le refresh au-delà de la
+            # durée absolue / d'inactivité configurée par la société (inerte si
+            # non configurée). La session dépassée est révoquée côté serveur.
+            try:
+                from .session_policy import refresh_allowed
+                if not refresh_allowed(refresh_raw, u):
+                    resp = Response(
+                        {'detail': 'Session expirée par la politique de '
+                                   'sécurité. Reconnectez-vous.'},
+                        status=status.HTTP_401_UNAUTHORIZED,
                     )
                     _clear_auth_cookies(resp)
                     return resp
