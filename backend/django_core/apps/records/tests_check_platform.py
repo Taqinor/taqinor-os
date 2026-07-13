@@ -522,9 +522,9 @@ class TestKitBypassDocumentGuard(SimpleTestCase):
 
     def test_baseline_covers_current_tree(self):
         """Baseline datée non vide (inventaire pré-kit du 2026-07-10) et couvre
-        les deux pilotes réels connus (stock.FactureFournisseur, ventes.NoteDebit)."""
+        les deux pilotes réels connus (achats.FactureFournisseur, ventes.NoteDebit)."""
         self.assertGreater(len(BASELINE_KIT_BYPASS_DOCUMENTS), 0)
-        self.assertIn("stock.FactureFournisseur", BASELINE_KIT_BYPASS_DOCUMENTS)
+        self.assertIn("achats.FactureFournisseur", BASELINE_KIT_BYPASS_DOCUMENTS)
         self.assertIn("ventes.NoteDebit", BASELINE_KIT_BYPASS_DOCUMENTS)
         # Les 4 exclus permanents ne sont JAMAIS dans la baseline (ils vivent
         # dans KIT_PERMANENT_EXCLUSIONS, pas dans le fichier baseline).

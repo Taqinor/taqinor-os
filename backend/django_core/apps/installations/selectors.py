@@ -340,7 +340,7 @@ def _facture_fournisseur_ht(company, facture_id):
     chargement."""
     from decimal import Decimal
     from django.apps import apps as django_apps
-    model = django_apps.get_model('stock', 'FactureFournisseur')
+    model = django_apps.get_model('achats', 'FactureFournisseur')
     fac = model.objects.filter(id=facture_id, company=company).first()
     if fac is None:
         return Decimal('0')
@@ -1492,7 +1492,7 @@ def bcf_montant_achat(company, bcf_id):
     ``stock`` au chargement. Montant INTERNE."""
     from decimal import Decimal
     from django.apps import apps as django_apps
-    model = django_apps.get_model('stock', 'BonCommandeFournisseur')
+    model = django_apps.get_model('achats', 'BonCommandeFournisseur')
     bcf = model.objects.filter(id=bcf_id, company=company).first()
     if bcf is None:
         return Decimal('0')
