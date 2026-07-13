@@ -1,0 +1,30 @@
+# YDATA16 — read-modify-write allowlist (existing, human-reviewed safe sites).
+# One 'path::function' per line. A NEW unlocked numeric read-modify-write not
+# listed here fails scripts/check_read_modify_write.py. Fix new sites with F()
+# (pure increment) or select_for_update() (read-decide-write), do not append.
+# Baseline captured 2026-07-13; many of these are non-concurrent single-actor
+# writes or string/path fields caught by the coarse v1 heuristic.
+backend/django_core/apps/compta/services.py::appliquer_mouvement_fidelite
+backend/django_core/apps/compta/services.py::enregistrer_ouverture_partage
+backend/django_core/apps/compta/services.py::reprendre_provision
+backend/django_core/apps/compta/services.py::traiter_clic_lien
+backend/django_core/apps/compta/services.py::webhook_brevo_evenement
+backend/django_core/apps/contrats/services.py::rejouer_cycle
+backend/django_core/apps/contrats/services.py::renouveler_contrat
+backend/django_core/apps/crm/services.py::merge_leads
+backend/django_core/apps/ged/services.py::move_folder
+backend/django_core/apps/ged/services.py::relancer_demande_document
+backend/django_core/apps/ged/services.py::relancer_signataires_dus
+backend/django_core/apps/ged/services.py::valider_code_otp_signataire
+backend/django_core/apps/notifications/services.py::sweep_annonce_reminders
+backend/django_core/apps/paie/services.py::appliquer_regularisation_ir
+backend/django_core/apps/stock/services.py::alimenter_lot_entrepot
+backend/django_core/apps/stock/services.py::annuler_reception_confirmee
+backend/django_core/apps/stock/services.py::confirm_reception_fournisseur
+backend/django_core/apps/stock/services.py::credit_emplacement_destination
+backend/django_core/apps/stock/services.py::generer_bcf_reappro
+backend/django_core/apps/stock/services.py::imputer_avoir_fournisseur
+backend/django_core/apps/stock/services.py::remplacer_composant_masse
+backend/django_core/apps/stock/services.py::resoudre_exception_facture
+backend/django_core/apps/stock/services.py::reviser_bcf
+backend/django_core/apps/stock/services.py::sortir_lot_entrepot

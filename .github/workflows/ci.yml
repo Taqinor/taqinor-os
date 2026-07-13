@@ -192,6 +192,13 @@ jobs:
       # visibility, never fails the build.
       - name: Currency mono-devise sweep (check_money_monodevise — YDATA22, advisory)
         run: python scripts/check_money_monodevise.py
+      # YDATA16 — read-modify-write on a shared numeric field (counters/stock/
+      # balances) must hold a lock (select_for_update) or use F(); fails on a
+      # NEW unlocked site not in scripts/read_modify_write_allow.txt.
+      - name: Check read-modify-write locking on shared counters (YDATA16)
+        run: python scripts/check_read_modify_write.py
+      - name: Test the read-modify-write checker itself (YDATA16)
+        run: python -m unittest scripts.tests.test_check_read_modify_write -v
 
   # WOW6 — the fast backend suite is sharded 4× across free public-repo runners
   # (matrix legs run concurrently, each on its own 4-vCPU runner + Postgres). The
