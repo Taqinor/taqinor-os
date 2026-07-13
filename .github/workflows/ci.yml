@@ -199,6 +199,13 @@ jobs:
         run: python scripts/check_read_modify_write.py
       - name: Test the read-modify-write checker itself (YDATA16)
         run: python -m unittest scripts.tests.test_check_read_modify_write -v
+      # YDATA18 — business unique=True must be company-scoped; a unique on a
+      # soft-delete model must be a partial index. Fails on a NEW unscoped
+      # business unique not in scripts/unique_scoping_allow.txt.
+      - name: Check unique constraints are tenant-scoped (YDATA18)
+        run: python scripts/check_unique_scoping.py
+      - name: Test the unique-scoping checker itself (YDATA18)
+        run: python -m unittest scripts.tests.test_check_unique_scoping -v
 
   # WOW6 — the fast backend suite is sharded 4× across free public-repo runners
   # (matrix legs run concurrently, each on its own 4-vCPU runner + Postgres). The
