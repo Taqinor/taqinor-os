@@ -51,8 +51,10 @@ class SharingRule(models.Model):
         verbose_name = 'Règle de partage'
         verbose_name_plural = 'Règles de partage'
         indexes = [
-            models.Index(fields=['company', 'content_type', 'object_id']),
-            models.Index(fields=['principal_type', 'principal_id']),
+            models.Index(fields=['company', 'content_type', 'object_id'],
+                         name='core_sharin_company_ct_obj_idx'),
+            models.Index(fields=['principal_type', 'principal_id'],
+                         name='core_sharin_principal_idx'),
         ]
 
     def __str__(self):

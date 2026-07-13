@@ -190,7 +190,8 @@ class ScimToken(TenantModel):
     class Meta:
         verbose_name = 'Jeton SCIM'
         verbose_name_plural = 'Jetons SCIM'
-        indexes = [models.Index(fields=['company', 'actif'])]
+        indexes = [models.Index(fields=['company', 'actif'],
+                                name='identity_sc_company_actif_idx')]
 
     def __str__(self):
         return f'ScimToken({self.company_id}, {self.prefix}…)'
@@ -266,7 +267,8 @@ class BreakGlassGrant(TenantModel):
         verbose_name = "Accès break-glass"
         verbose_name_plural = "Accès break-glass"
         ordering = ['-created_at']
-        indexes = [models.Index(fields=['company', 'user', 'revoque_le'])]
+        indexes = [models.Index(fields=['company', 'user', 'revoque_le'],
+                                name='identity_bg_company_user_idx')]
 
     def __str__(self):
         return f'BreakGlass({self.company_id}, user={self.user_id})'

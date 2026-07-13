@@ -2392,3 +2392,8 @@ from core.idempotency import (  # noqa: E402,F401
 # réexporté ici en tout dernier pour que la découverte Django (app_label 'core',
 # migrations) le voie normalement.
 from core.sharing import SharingRule  # noqa: E402,F401
+
+# NTSEC23 — Permissions niveau champ : ``FieldPermissionRule`` défini dans
+# ``core/field_permissions.py`` (même pattern d'éclatement), réexporté ici en
+# tout dernier pour la découverte Django (app_label 'core', migrations).
+from core.field_permissions import FieldPermissionRule  # noqa: E402,F401
