@@ -627,6 +627,11 @@ def _section_lane(headers: dict[str, str]) -> str:
     return ""
 
 
+# An inline ``@blocked`` tag anywhere in a task body marks it blocked even while
+# the checkbox stays ``[ ]`` (see _classify_gate).
+_INLINE_BLOCKED_RE = re.compile(r"@blocked\b", re.IGNORECASE)
+
+
 def _classify_gate(label: str) -> tuple[str, list[str]]:
     """Return ('buildable', [category labels]).
 
@@ -645,6 +650,15 @@ def _classify_gate(label: str) -> tuple[str, list[str]]:
         if _TASK_ID_RE.search(dep):
             continue
         labels.append(f"DEP:{dep}")
+    # Inline ``@blocked:`` tag on an OPEN task (a founder/DB/rule gate) — exclude
+    # it from buildable so it is never handed to a build agent. plan_lanes honours
+    # a ``[BLOCKED:]`` CHECKBOX state, but a task can stay ``[ ]`` while carrying an
+    # inline ``(@blocked: reason)`` tag in its body. Measured 2026-07-13: a whole
+    # 9-task lane (ODX14/15/18/20/22, XACC12/XPOS19/YCASH5, XSAL5/14) was dispatched
+    # to a worktree agent only to be returned all-blocked. Treat inline @blocked as
+    # gated so it surfaces in the gated bucket with the rest.
+    if _INLINE_BLOCKED_RE.search(label):
+        return ("gated", labels + ["BLOCKED"])
     # GATED_KEYWORDS is intentionally empty -> never gated. Kept as a guard so a
     # future re-introduction of a gate keyword would still flow through here.
     gated = bool({t.upper() for t in _GATE_TOKEN_RE.findall(label)} & GATED_KEYWORDS)
