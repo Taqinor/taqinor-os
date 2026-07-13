@@ -13,11 +13,15 @@ from .views import (
     IpAllowRuleViewSet,
     NetworkPolicyViewSet,
 )
+from apps.publicapi.views import ServiceAccountViewSet
 
 router = DefaultRouter()
 router.register(r'network-policies', NetworkPolicyViewSet)
 router.register(r'ip-allow-rules', IpAllowRuleViewSet)
 router.register(r'providers', IdentityProviderViewSet)
+# NTSEC24 — comptes de service (modèle dans publicapi, exposé sous identity).
+router.register(r'service-accounts', ServiceAccountViewSet,
+                basename='service-account')
 
 urlpatterns = [
     # SCIM 2.0 — provisioning machine-à-machine (NTSEC5/6), auth par jeton SCIM.
