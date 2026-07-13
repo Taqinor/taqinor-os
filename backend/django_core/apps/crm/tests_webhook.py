@@ -574,10 +574,22 @@ class QW10IndexedDedupAndConcurrencyTests(TransactionTestCase):
     Le chemin ne référence que ces apps (fondations + crm/notifications).
     """
 
+    # NB : ``available_apps`` compare aux NOMS complets d'``INSTALLED_APPS``
+    # (django.apps.registry.set_available_apps), pas aux labels courts.
     available_apps = [
-        'contenttypes', 'auth', 'sessions', 'authentication', 'core',
-        'roles', 'parametres', 'customfields', 'records', 'reporting',
-        'audit', 'notifications', 'identity', 'crm',
+        'django.contrib.contenttypes',
+        'django.contrib.auth',
+        'django.contrib.sessions',
+        'core',
+        'authentication',
+        'apps.roles',
+        'apps.parametres',
+        'apps.customfields',
+        'apps.records',
+        'apps.reporting',
+        'apps.audit',
+        'apps.notifications',
+        'apps.crm',
     ]
 
     def setUp(self):
