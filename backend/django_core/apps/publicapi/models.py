@@ -212,7 +212,7 @@ class IdempotencyRecord(models.Model):
     )
     api_key = models.ForeignKey(
         ApiKey,
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: un enregistrement d'idempotence n'existe que pour sa clé API
         related_name='idempotency_records',
     )
     endpoint = models.CharField(max_length=100)

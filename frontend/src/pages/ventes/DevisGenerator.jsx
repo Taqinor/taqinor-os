@@ -265,15 +265,9 @@ export default function DevisGenerator({
   const [realBillMad, setRealBillMad] = useState('')
   const [realBillKwh, setRealBillKwh] = useState('')
 
-  // VX237 — montant collé d'Excel/facture ("12 500,00", "3 200 DH"...) nettoyé
-  // vers une chaîne numérique simple au lieu de tomber brut dans le champ
-  // number (qui rejetterait silencieusement le format non reconnu).
-  const onHiverPaste = usePasteClean(parsePastedAmount,
-    (clean) => { setFHiver(clean); syncBillEstimator(clean, fEte) })
-  const onEtePaste = usePasteClean(parsePastedAmount,
-    (clean) => { setFEte(clean); syncBillEstimator(fHiver, clean) })
-  const onRealBillPaste = usePasteClean(parsePastedAmount,
-    (clean) => (realBillMode === 'mad' ? setRealBillMad(clean) : setRealBillKwh(clean)))
+  // VX237 — les handlers de collage nettoyé (onHiverPaste/onEtePaste/
+  // onRealBillPaste) sont déclarés plus bas, APRÈS `syncBillEstimator` qu'ils
+  // appellent (règle react-hooks/immutability : pas d'accès avant déclaration).
 
   // ── Paramètres techniques ──
   const [nbPanneaux, setNbPanneaux] = useState('')
@@ -861,6 +855,17 @@ export default function DevisGenerator({
     if (suggested > 0) setNbPanneaux(String(suggested))
     setMonthly(estimerMois(hiver, ete > 0 ? ete : hiver))
   }
+
+  // VX237 — montant collé d'Excel/facture ("12 500,00", "3 200 DH"...) nettoyé
+  // vers une chaîne numérique simple au lieu de tomber brut dans le champ
+  // number (qui rejetterait silencieusement le format non reconnu). Déclarés
+  // ici (après syncBillEstimator) pour respecter react-hooks/immutability.
+  const onHiverPaste = usePasteClean(parsePastedAmount,
+    (clean) => { setFHiver(clean); syncBillEstimator(clean, fEte) })
+  const onEtePaste = usePasteClean(parsePastedAmount,
+    (clean) => { setFEte(clean); syncBillEstimator(fHiver, clean) })
+  const onRealBillPaste = usePasteClean(parsePastedAmount,
+    (clean) => (realBillMode === 'mad' ? setRealBillMad(clean) : setRealBillKwh(clean)))
 
   const handleEstimerMois = () => {
     const hiver = parseFloat(fHiver) || 0
