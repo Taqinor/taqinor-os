@@ -26,7 +26,8 @@ HISTORICAL_TARGETS = {
     ('crm', 'client'),
     ('ventes', 'devis'),
     ('ventes', 'boncommande'),
-    ('ventes', 'facture'),
+    # ODX17 — Facture déplacée vers l'app ``facturation`` (state-only).
+    ('facturation', 'facture'),
     ('installations', 'installation'),
     ('sav', 'ticket'),
     ('outillage', 'outillage'),

@@ -142,7 +142,14 @@ urlpatterns = [
     # determine_version`, testé en isolation dans test_api_versioning.py).
     # Placé en DERNIER : les routes publiques ci-dessus gardent la priorité
     # de résolution (fallthrough Django si un préfixe plus spécifique existe).
-    path('api/v1/', include(_APP_URLS)),
+    # Namespace d'instance ``v1`` : sans lui, ce second montage (défini en
+    # DERNIER) remporterait ``reverse('<nom>')`` et renverrait ``/api/v1/…``
+    # au lieu du chemin interne canonique ``/api/django/…`` (cf.
+    # core.tests.test_db_stats.test_url_registered). Le namespace isole les
+    # noms v1 (``reverse('v1:<nom>')``) ; ``/api/v1/…`` reste résoluble à
+    # l'identique pour les clients, mais ``reverse('<nom>')`` sans préfixe
+    # rend toujours le chemin historique ``api/django``.
+    path('api/v1/', include((_APP_URLS, 'v1'), namespace='v1')),
 ]
 
 # En production (DEBUG off + gunicorn), les statiques (admin Django) sont

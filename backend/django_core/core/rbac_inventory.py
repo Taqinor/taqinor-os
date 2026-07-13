@@ -161,7 +161,19 @@ def _is_allowlisted(pattern: str) -> bool:
     segments = pattern.strip("/").split("/")
     if _PUBLIC_SEGMENT in segments:
         return True
-    return any(pattern.startswith(p) for p in PUBLIC_ALLOWLIST_PREFIXES)
+    # YAPIC7 — ``api/v1/`` monte la MÊME liste ``_APP_URLS`` que le préfixe
+    # historique ``api/django/`` (mêmes vues, versioning littéral). Un endpoint
+    # public déjà allowlisté sous ``api/django/<app>/…`` l'est donc à
+    # l'identique sous son miroir ``api/v1/<app>/…`` : on normalise le préfixe
+    # de version avant de comparer à l'allowlist (documentée pour ``api/django``).
+    candidates = [pattern]
+    if pattern.startswith("api/v1/"):
+        candidates.append("api/django/" + pattern[len("api/v1/"):])
+    return any(
+        c.startswith(p)
+        for c in candidates
+        for p in PUBLIC_ALLOWLIST_PREFIXES
+    )
 
 
 def offending_allow_any(inventory=None) -> list[EndpointPermissions]:

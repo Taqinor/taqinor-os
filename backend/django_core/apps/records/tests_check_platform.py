@@ -487,8 +487,13 @@ class TestKitBypassDocumentGuard(SimpleTestCase):
 
     def test_rule4_permanent_exclusion_is_green(self):
         """Devis/Facture/BonCommande/Avoir ne sont JAMAIS des offenders, même
-        avec les trois traits réunis — exclusion permanente règle #4."""
-        for name in ("Devis", "Facture", "BonCommande", "Avoir"):
+        avec les trois traits réunis — exclusion permanente règle #4. ODX17 a
+        déplacé Facture/Avoir vers ``facturation`` (l'exclusion suit le modèle,
+        pas l'app d'origine)."""
+        for app, name in (
+            ("ventes", "Devis"), ("facturation", "Facture"),
+            ("ventes", "BonCommande"), ("facturation", "Avoir"),
+        ):
             src = (
                 f"class {name}(models.Model):\n"
                 f"    statut = models.CharField(max_length=20, choices=Statut.choices)\n"
@@ -497,7 +502,7 @@ class TestKitBypassDocumentGuard(SimpleTestCase):
                 f"class Ligne{name}(models.Model):\n"
                 f"    pass\n"
             )
-            self.assertEqual(scan_kit_bypass_documents("ventes", src), [], name)
+            self.assertEqual(scan_kit_bypass_documents(app, src), [], name)
 
     def test_permanent_exclusion_set_is_named(self):
         """L'exclusion permanente règle #4 couvre exactement les 4 documents
@@ -505,8 +510,8 @@ class TestKitBypassDocumentGuard(SimpleTestCase):
         self.assertEqual(
             KIT_PERMANENT_EXCLUSIONS,
             frozenset({
-                "ventes.Devis", "ventes.Facture",
-                "ventes.BonCommande", "ventes.Avoir",
+                "ventes.Devis", "facturation.Facture",
+                "ventes.BonCommande", "facturation.Avoir",
             }),
         )
 
