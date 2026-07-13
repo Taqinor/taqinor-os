@@ -4,9 +4,16 @@
 # LigneFactureFournisseur, PaiementFournisseur, RetourFournisseur +
 # LigneRetourFournisseur vers apps.achats (équivalent Odoo Purchase). Cette
 # migration retire les 10 modèles de l'état stock (SeparateDatabaseAndState,
-# ZÉRO SQL — les tables physiques `stock_*` restent inchangées) ; achats 0001
-# les recrée dans l'état sur les MÊMES tables juste après (dépendance
-# explicite). Toutes les FK RELATIONNELLES portées par ces 10 modèles sont
+# ZÉRO SQL — les tables physiques `stock_*` restent inchangées). Ce DeleteModel
+# est ordonné EN DERNIER (create → repoint → delete) : il dépend d'achats 0001
+# (qui a déjà recréé les modèles dans l'état achats) ET de TOUS les re-pointages
+# cross-app (compta 0111, installations 0096, ventes 0084), lesquels tirent
+# transitivement les migrations HISTORIQUES qui référencent stock.<model>
+# (compta 0009, installations 0018/0028/0030/0032/0075/0076, ventes 0047).
+# Ainsi, lors d'un rejeu propre, AUCUNE migration historique référençant un
+# modèle déplacé ne s'exécute APRÈS sa suppression de l'état (sinon
+# `Related model 'stock.boncommandefournisseur' cannot be resolved`).
+# Toutes les FK RELATIONNELLES portées par ces 10 modèles sont
 # retirées avant leur DeleteModel (même recette que ODX9/ODX11 — évite toute
 # référence pendante pendant le rejeu de l'état). Fournisseur, Produit,
 # MouvementStock, EmplacementStock RESTENT dans stock (master data) ; les 5
@@ -24,6 +31,15 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('stock', '0078_zsal9_produit_avertissement_vente'),
+        # ODX19 (correctif rejeu propre) — le DeleteModel tourne EN DERNIER :
+        # après qu'achats 0001 ait créé les modèles dans l'état achats, et après
+        # TOUS les re-pointages cross-app (qui tirent transitivement les
+        # migrations historiques référençant stock.<model>). DAG garanti :
+        # achats 0001 dépend de stock 0078 (pas de 0079) → aucun cycle.
+        ('achats', '0001_odx19_achats_split'),
+        ('compta', '0111_odx19_repoint_achats_crossapp'),
+        ('installations', '0096_odx19_repoint_achats_crossapp'),
+        ('ventes', '0084_odx19_repoint_achats_crossapp'),
     ]
 
     operations = [

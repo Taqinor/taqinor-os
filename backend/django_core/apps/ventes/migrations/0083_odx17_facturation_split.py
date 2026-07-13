@@ -11,9 +11,17 @@
 # Facture/Paiement (FactureActivity, FactureSource, AffectationPaiement,
 # NoteDebit, RetenueSubie, PromessePaiement, EmailLog, ShareLink, PaymentLink,
 # LigneRemiseEncaissement, TentativeDebitMandat) vers 'facturation.Facture' /
-# 'facturation.Paiement'. ``apps.facturation`` 0001 recrée ensuite les 7
-# modèles dans l'état sur les MÊMES tables — l'ordre garantit qu'aucun instant
-# n'a deux modèles pour la même table.
+# 'facturation.Paiement'.
+#
+# ODX17 (correctif rejeu propre) — ce DeleteModel est ordonné EN DERNIER
+# (create → repoint → delete) : il dépend de facturation 0001 (qui a déjà
+# recréé les 7 modèles dans l'état facturation, sur les tables ventes_*
+# inchangées) ET du re-pointage cross-app pos 0002 (qui tire transitivement
+# pos 0001, seule migration HISTORIQUE hors-ventes référençant ventes.facture).
+# Ainsi, lors d'un rejeu propre, aucune migration historique référençant un
+# modèle déplacé ne s'exécute APRÈS sa suppression de l'état (sinon
+# `Related model 'ventes.facture' cannot be resolved`). Les AlterField
+# ci-dessous pointent vers facturation.* qui existe déjà dans l'état à ce stade.
 
 import django.db.models.deletion
 from django.db import migrations, models
@@ -23,6 +31,14 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('ventes', '0082_vx98_updated_by'),
+        # ODX17 (correctif rejeu propre) — le DeleteModel tourne EN DERNIER :
+        # après que facturation 0001 ait créé les 7 modèles dans l'état
+        # facturation, et après le re-pointage cross-app pos 0002 (qui tire
+        # transitivement pos 0001, historique référençant ventes.facture).
+        # DAG garanti : facturation 0001 dépend de ventes 0082 (pas de 0083) et
+        # pos 0002 dépend de facturation 0001 → aucun cycle.
+        ('facturation', '0001_odx17_facturation_split'),
+        ('pos', '0002_odx17_facture_facturation_ref'),
     ]
 
     operations = [

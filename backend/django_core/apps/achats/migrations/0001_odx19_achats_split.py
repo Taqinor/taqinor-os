@@ -4,8 +4,14 @@
 # PaiementFournisseur, RetourFournisseur + LigneRetourFournisseur) recréés
 # DANS L'ÉTAT de ``apps.achats`` sur les MÊMES tables physiques existantes
 # (db_table='stock_<model>') via SeparateDatabaseAndState (state-only, aucun
-# SQL). Dépend de stock 0079 qui les retire de l'état stock AVANT : ainsi
-# aucun instant n'a deux modèles pour la même table. Aucune donnée déplacée.
+# SQL). Dépend de stock 0078 (dernière migration stock AVANT le split) et NON
+# de stock 0079 : achats 0001 CRÉE les modèles dans l'état ; c'est stock 0079
+# (DeleteModel) qui, plus tard, dépend d'achats 0001 + des re-pointages
+# cross-app et retire les versions stock EN DERNIER (create → repoint → delete),
+# afin qu'aucune migration HISTORIQUE référençant stock.<model> ne s'exécute
+# après le DeleteModel lors d'un rejeu propre. Entre create et delete, les deux
+# étiquettes (stock.* et achats.*) coexistent sur la même table côté état : sans
+# aucun effet DB (state-only). Aucune donnée déplacée.
 
 import django.db.models.deletion
 from django.conf import settings
@@ -20,12 +26,15 @@ class Migration(migrations.Migration):
         ('authentication', '0014_customuser_account_lockout'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
         ('installations', '0095_sca36_demandeachat_kit'),
-        # ODX19 — les modèles sortent de stock en STATE-ONLY : stock 0079 les
-        # retire de l'état (SeparateDatabaseAndState, zéro SQL) AVANT que
-        # achats 0001 ne les recrée dans l'état sur les MÊMES tables
-        # (db_table='stock_*'). L'ordre garantit qu'aucun instant n'a deux
-        # modèles pour la même table.
-        ('stock', '0079_odx19_achats_split'),
+        # ODX19 (correctif rejeu propre) — achats 0001 CRÉE les modèles dans
+        # l'état sur les MÊMES tables (db_table='stock_*') en dépendant de la
+        # DERNIÈRE migration stock AVANT le split (0078), PAS du DeleteModel
+        # (0079). C'est 0079 qui dépend d'achats 0001 + des re-pointages
+        # cross-app et supprime les versions stock EN DERNIER, garantissant
+        # qu'aucune migration historique référençant stock.<model> ne tourne
+        # après le DeleteModel. Entre create et delete, stock.* et achats.*
+        # coexistent sur la table côté état — sans effet DB.
+        ('stock', '0078_zsal9_produit_avertissement_vente'),
     ]
 
     operations = [
