@@ -50,11 +50,17 @@ NAIVE_DATETIME_ALLOWLIST: set[str] = set()
 # YDATA11 — DateField(auto_now[_add]=True) sites reviewed as-of 2026-07-12:
 # ventes numbering-anchor dates (date_emission/date), deliberately DATE-only
 # business fields, not timestamps — not a drift to fix here.
+# Rebased 2026-07-13 (wave-7 ODX17 fold): the state-only facturation split
+# relocated Facture/Avoir/RelanceLog ventes->facturation (and shifted
+# NoteDebit up), so the SAME 4 reviewed fields keep their old keys' meaning
+# at new file:line — Facture.date_emission ventes:722->facturation:113,
+# Avoir.date_emission ventes:1523->facturation:888, NoteDebit.date_emission
+# ventes:1649->ventes:681, RelanceLog.date ventes:1922->facturation:1072.
 DATEFIELD_AUTO_NOW_ALLOWLIST = {
-    "backend/django_core/apps/ventes/models.py:722",
-    "backend/django_core/apps/ventes/models.py:1523",
-    "backend/django_core/apps/ventes/models.py:1649",
-    "backend/django_core/apps/ventes/models.py:1922",
+    "backend/django_core/apps/ventes/models.py:681",
+    "backend/django_core/apps/facturation/models.py:113",
+    "backend/django_core/apps/facturation/models.py:888",
+    "backend/django_core/apps/facturation/models.py:1072",
 }
 TIMESTAMP_AS_DATEFIELD_ALLOWLIST = {
     # CommissionPartenaire.paye_le — date de paiement (jour, pas horodatage),
