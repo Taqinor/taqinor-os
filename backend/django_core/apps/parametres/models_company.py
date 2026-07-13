@@ -325,6 +325,15 @@ class CompanyProfile(models.Model):
         help_text="Clés d'action exigeant une MFA récente (step-up). Liste "
                   "vide = inactif (défaut).")
 
+    # ── NTSEC14 — appareils de confiance (« se souvenir de cet appareil ») ──
+    # Quand True, un utilisateur peut, à la validation MFA, faire confiance à
+    # son appareil pour sauter le second facteur jusqu'à expiration. False par
+    # défaut = fonction inactive → la MFA reste toujours exigée (inchangé).
+    allow_device_trust = models.BooleanField(
+        default=False,
+        help_text="Autoriser « se souvenir de cet appareil » pour sauter la "
+                  "MFA sur un appareil de confiance. Défaut False.")
+
     # ── QG9 — pourcentage des variantes de devis (dupliquer-variante) ──
     # Pourcentage symétrique appliqué autour du devis d'origine pour produire
     # les variantes de taille : échelles [1−p, 1.0, 1+p]. Défaut 20 %

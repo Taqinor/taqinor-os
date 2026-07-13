@@ -80,6 +80,63 @@ def _clear_auth_cookies(response):
     response.delete_cookie('refresh_token', path='/')
 
 
+# NTSEC14 — durée par défaut de confiance d'un appareil (« se souvenir 30 j »).
+_DEVICE_TRUST_DAYS = 30
+
+
+def _maybe_trust_device(user, request, response):
+    """NTSEC14 — si la connexion demande « faire confiance à cet appareil » et
+    que la société l'autorise (``CompanyProfile.allow_device_trust``), enregistre
+    un ``TrustedDevice`` (jeton opaque tiré au sort) et pose le cookie httpOnly
+    ``device_trust_id``. Best-effort : n'échoue jamais le login. Inerte tant que
+    la société n'a pas activé l'option (défaut) ou que rien n'est demandé."""
+    try:
+        if user is None:
+            return
+        data = getattr(request, 'data', {}) or {}
+        if not data.get('trust_device'):
+            return
+        company = getattr(user, 'company', None)
+        if company is None:
+            return
+        from apps.parametres.models_company import CompanyProfile
+        profile = (
+            CompanyProfile.objects
+            .filter(company=company)
+            .only('allow_device_trust')
+            .first()
+        )
+        if not (profile and profile.allow_device_trust):
+            return
+        import secrets
+        from datetime import timedelta
+        from django.utils import timezone as _tz
+        from apps.identity.models import TrustedDevice
+
+        token = secrets.token_urlsafe(48)
+        now = _tz.now()
+        max_age = _DEVICE_TRUST_DAYS * 24 * 3600
+        TrustedDevice.objects.create(
+            user=user,
+            company=company,
+            device_fingerprint=token,
+            approuve_le=now,
+            expire_le=now + timedelta(days=_DEVICE_TRUST_DAYS),
+            approuve_par=user,
+            label=(request.META.get('HTTP_USER_AGENT', '') or '')[:200],
+        )
+        response.set_cookie(
+            'device_trust_id', token,
+            max_age=max_age,
+            httponly=True,
+            secure=_COOKIE_SECURE,
+            samesite=_COOKIE_SAMESITE,
+            path='/',
+        )
+    except Exception:
+        pass
+
+
 def _client_ip(request):
     """Adresse IP du client (premier saut X-Forwarded-For, sinon REMOTE_ADDR)."""
     xff = request.META.get('HTTP_X_FORWARDED_FOR', '')
@@ -213,6 +270,9 @@ class CustomTokenObtainPairView(TokenObtainPairView):
             # Sessions actives (N96) — tracer cette connexion par le jti du
             # jeton de rafraîchissement. Best-effort, ne bloque jamais le login.
             _record_session(u, refresh, request)
+            # NTSEC14 — device trust (« se souvenir de cet appareil »), opt-in
+            # société. Best-effort ; inerte sans demande ni opt-in.
+            _maybe_trust_device(u, request, response)
             # Journal d'activité (Feature G) — connexion réussie. Best-effort.
             try:
                 from apps.audit.recorder import record

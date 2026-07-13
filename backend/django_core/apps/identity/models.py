@@ -110,3 +110,82 @@ class IpAllowRule(TenantModel):
         self.cidr = (self.cidr or '').strip()
         self.full_clean(exclude=['company', 'policy'])
         super().save(*args, **kwargs)
+
+
+class TrustedDevice(TenantModel):
+    """NTSEC14 — appareil approuvé (« se souvenir de cet appareil N jours »).
+
+    Sur un appareil de confiance NON expiré et NON révoqué, le second facteur
+    MFA est sauté à la connexion — MAIS uniquement si la société l'autorise via
+    ``CompanyProfile.allow_device_trust`` (défaut False). Sans opt-in société,
+    ce modèle est inerte : la MFA reste toujours exigée.
+
+    ``device_fingerprint`` est un jeton opaque tiré au sort côté serveur au
+    moment de l'approbation, posé en cookie httpOnly ``device_trust_id`` ; il
+    n'est jamais dérivé d'un secret et ne remplace pas le mot de passe.
+    """
+
+    user = models.ForeignKey(
+        'authentication.CustomUser',
+        on_delete=models.CASCADE,
+        related_name='trusted_devices',
+        verbose_name='Utilisateur',
+    )
+    device_fingerprint = models.CharField(
+        max_length=128,
+        db_index=True,
+        verbose_name='Empreinte appareil',
+    )
+    approuve_le = models.DateTimeField(verbose_name='Approuvé le')
+    expire_le = models.DateTimeField(verbose_name='Expire le')
+    approuve_par = models.ForeignKey(
+        'authentication.CustomUser',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='+',
+        verbose_name='Approuvé par',
+    )
+    revoque_le = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name='Révoqué le',
+    )
+    label = models.CharField(
+        max_length=200,
+        blank=True,
+        default='',
+        verbose_name='Appareil',
+    )
+
+    class Meta:
+        verbose_name = 'Appareil de confiance'
+        verbose_name_plural = 'Appareils de confiance'
+        ordering = ('-approuve_le',)
+
+    def __str__(self):
+        return f'TrustedDevice({self.user_id}, {self.device_fingerprint[:8]})'
+
+    @property
+    def is_active(self):
+        from django.utils import timezone
+        return self.revoque_le is None and self.expire_le > timezone.now()
+
+    @classmethod
+    def is_trusted(cls, user, fingerprint):
+        """Vrai si ``fingerprint`` correspond à un appareil de confiance ACTIF
+        (non expiré, non révoqué) de ``user`` dans SA société. Default-deny :
+        toute anomalie ⇒ False (la MFA sera exigée)."""
+        from django.utils import timezone
+        if user is None or not fingerprint:
+            return False
+        company = getattr(user, 'company', None)
+        if company is None:
+            return False
+        return cls.objects.filter(
+            user=user,
+            company=company,
+            device_fingerprint=fingerprint,
+            revoque_le__isnull=True,
+            expire_le__gt=timezone.now(),
+        ).exists()
