@@ -139,3 +139,50 @@ def replay(event) -> dict:
         event.save(update_fields=['statut', 'updated_at'])
     return {'event_id': str(event.event_id), 'delivered': ok,
             'at': timezone.now().isoformat()}
+
+
+class HandlerNotReplayable(Exception):
+    """Levée quand on tente de rejouer vers un handler non déclaré rejouable."""
+
+
+def replay_one_to_handler(event, handler_name: str) -> bool:
+    """NTPLT13 — re-livre UN ``OutboxEvent`` vers UN SEUL handler nommé.
+
+    Réparation support ciblée : après le bug d'un abonné, on rejoue les
+    événements déjà livrés vers CE handler uniquement (les autres handlers ne
+    sont pas retouchés). GARDE-FOU : le handler doit être enregistré pour cet
+    événement ET déclaré ``rejouable=True`` au subscribe, sinon
+    ``HandlerNotReplayable``. La ligne de dédup ``ProcessedEvent`` du couple
+    ``(event_id, handler_name)`` est supprimée AVANT l'appel pour que le
+    handler se ré-exécute réellement (le rejeu est volontaire, la dédup ne doit
+    pas le bloquer). Renvoie True si le handler a réussi.
+    """
+    from core import events
+    from .models import ProcessedEvent
+
+    match = None
+    for hname, handler, rejouable in events.durable_handlers(event.event_name):
+        if hname == handler_name:
+            match = (hname, handler, rejouable)
+            break
+    if match is None:
+        raise HandlerNotReplayable(
+            f"Handler '{handler_name}' non abonné à "
+            f"'{event.event_name}'.")
+    hname, handler, rejouable = match
+    if not rejouable:
+        raise HandlerNotReplayable(
+            f"Handler '{handler_name}' n'est pas déclaré rejouable=True — "
+            f"rejeu refusé (garde-fou NTPLT13).")
+
+    ProcessedEvent.objects.filter(
+        event_id=event.event_id, handler_name=hname).delete()
+    try:
+        handler(event)
+    except Exception:  # noqa: BLE001 — remonté au caller (la commande logge)
+        logger.exception(
+            'replay_events: handler %s a échoué sur %s',
+            hname, event.event_id)
+        return False
+    _mark_processed(event.event_id, hname)
+    return True

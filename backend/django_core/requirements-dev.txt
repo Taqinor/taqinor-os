@@ -30,3 +30,8 @@ tblib==3.0.0
 # (test de charge manuel + workflow load-smoke), JAMAIS dans l'image prod
 # (requirements.txt). Cf. docs/load-testing.md.
 locust==2.31.8
+
+# NTPLT47 — générateur de données à l'échelle (manage.py seed_scale, Faker
+# fr_FR). Dev/CI/staging uniquement (mesures de charge + démos gros volume),
+# JAMAIS dans l'image prod. NOTE : nouvelle dépendance de développement.
+Faker==40.28.1

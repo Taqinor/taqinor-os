@@ -1,0 +1,1065 @@
+{
+ "errors": [],
+ "generated_at": "2026-07-13T03:11:28Z",
+ "metrics": {
+  "_totals": {
+   "CONFIDENCE.HIGH": 314,
+   "CONFIDENCE.LOW": 6,
+   "CONFIDENCE.MEDIUM": 1900,
+   "CONFIDENCE.UNDEFINED": 0,
+   "SEVERITY.HIGH": 0,
+   "SEVERITY.LOW": 2169,
+   "SEVERITY.MEDIUM": 51,
+   "SEVERITY.UNDEFINED": 0,
+   "loc": 564878,
+   "nosec": 0,
+   "skipped_tests": 0
+  }
+ },
+ "results": [
+  {
+   "code": "6809     try:\n6810         with urllib.request.urlopen(req, timeout=15) as resp:\n6811             data = json.loads(resp.read() or b'{}')\n",
+   "col_offset": 13,
+   "end_col_offset": 52,
+   "filename": "backend/django_core\\apps\\compta\\services.py",
+   "issue_confidence": "HIGH",
+   "issue_cwe": {
+    "id": 22,
+    "link": "https://cwe.mitre.org/data/definitions/22.html"
+   },
+   "issue_severity": "MEDIUM",
+   "issue_text": "Audit url open for permitted schemes. Allowing use of file:/ or custom schemes is often unexpected.",
+   "line_number": 6810,
+   "line_range": [
+    6810
+   ],
+   "more_info": "https://bandit.readthedocs.io/en/1.9.4/blacklists/blacklist_calls.html#b310-urllib-urlopen",
+   "test_id": "B310",
+   "test_name": "blacklist"
+  },
+  {
+   "code": "7611         headers={'Content-Type': 'application/json'}, method='POST')\n7612     with urllib.request.urlopen(req, timeout=20) as resp:\n7613         return json.loads(resp.read() or b'{}')\n",
+   "col_offset": 9,
+   "end_col_offset": 48,
+   "filename": "backend/django_core\\apps\\compta\\services.py",
+   "issue_confidence": "HIGH",
+   "issue_cwe": {
+    "id": 22,
+    "link": "https://cwe.mitre.org/data/definitions/22.html"
+   },
+   "issue_severity": "MEDIUM",
+   "issue_text": "Audit url open for permitted schemes. Allowing use of file:/ or custom schemes is often unexpected.",
+   "line_number": 7612,
+   "line_range": [
+    7612
+   ],
+   "more_info": "https://bandit.readthedocs.io/en/1.9.4/blacklists/blacklist_calls.html#b310-urllib-urlopen",
+   "test_id": "B310",
+   "test_name": "blacklist"
+  },
+  {
+   "code": "7799         req = urllib.request.Request(url, method='HEAD')\n7800         with urllib.request.urlopen(req, timeout=timeout) as resp:\n7801             return resp.status >= 400\n",
+   "col_offset": 13,
+   "end_col_offset": 57,
+   "filename": "backend/django_core\\apps\\compta\\services.py",
+   "issue_confidence": "HIGH",
+   "issue_cwe": {
+    "id": 22,
+    "link": "https://cwe.mitre.org/data/definitions/22.html"
+   },
+   "issue_severity": "MEDIUM",
+   "issue_text": "Audit url open for permitted schemes. Allowing use of file:/ or custom schemes is often unexpected.",
+   "line_number": 7800,
+   "line_range": [
+    7800
+   ],
+   "more_info": "https://bandit.readthedocs.io/en/1.9.4/blacklists/blacklist_calls.html#b310-urllib-urlopen",
+   "test_id": "B310",
+   "test_name": "blacklist"
+  },
+  {
+   "code": "91         try:\n92             with _urllib_request.urlopen(req, timeout=_TIMEOUT_S) as resp:\n93                 data = _json.loads(resp.read().decode())\n",
+   "col_offset": 17,
+   "end_col_offset": 65,
+   "filename": "backend/django_core\\apps\\crm\\roof_detect.py",
+   "issue_confidence": "HIGH",
+   "issue_cwe": {
+    "id": 22,
+    "link": "https://cwe.mitre.org/data/definitions/22.html"
+   },
+   "issue_severity": "MEDIUM",
+   "issue_text": "Audit url open for permitted schemes. Allowing use of file:/ or custom schemes is often unexpected.",
+   "line_number": 92,
+   "line_range": [
+    92
+   ],
+   "more_info": "https://bandit.readthedocs.io/en/1.9.4/blacklists/blacklist_calls.html#b310-urllib-urlopen",
+   "test_id": "B310",
+   "test_name": "blacklist"
+  },
+  {
+   "code": "836            f'?access_token={access_token}')\n837     with urllib.request.urlopen(url, timeout=10) as resp:  # noqa: S310\n838         return json.loads(resp.read().decode('utf-8'))\n",
+   "col_offset": 9,
+   "end_col_offset": 48,
+   "filename": "backend/django_core\\apps\\crm\\webhooks.py",
+   "issue_confidence": "HIGH",
+   "issue_cwe": {
+    "id": 22,
+    "link": "https://cwe.mitre.org/data/definitions/22.html"
+   },
+   "issue_severity": "MEDIUM",
+   "issue_text": "Audit url open for permitted schemes. Allowing use of file:/ or custom schemes is often unexpected.",
+   "line_number": 837,
+   "line_range": [
+    837
+   ],
+   "more_info": "https://bandit.readthedocs.io/en/1.9.4/blacklists/blacklist_calls.html#b310-urllib-urlopen",
+   "test_id": "B310",
+   "test_name": "blacklist"
+  },
+  {
+   "code": "99 class SealingWithMockedPyHankoTests(XGed5Base):\n100     @override_settings(GED_PADES_CERT_PATH='/tmp/cert.pem',\n101                        GED_PADES_KEY_PATH='/tmp/key.pem')\n",
+   "col_offset": 43,
+   "end_col_offset": 58,
+   "filename": "backend/django_core\\apps\\ged\\tests\\test_xged5_scellement_pades.py",
+   "issue_confidence": "MEDIUM",
+   "issue_cwe": {
+    "id": 377,
+    "link": "https://cwe.mitre.org/data/definitions/377.html"
+   },
+   "issue_severity": "MEDIUM",
+   "issue_text": "Probable insecure usage of temp file/directory.",
+   "line_number": 100,
+   "line_range": [
+    100
+   ],
+   "more_info": "https://bandit.readthedocs.io/en/1.9.4/plugins/b108_hardcoded_tmp_directory.html",
+   "test_id": "B108",
+   "test_name": "hardcoded_tmp_directory"
+  },
+  {
+   "code": "100     @override_settings(GED_PADES_CERT_PATH='/tmp/cert.pem',\n101                        GED_PADES_KEY_PATH='/tmp/key.pem')\n102     def test_sceller_pdf_seals_when_signer_resolved(self):\n",
+   "col_offset": 42,
+   "end_col_offset": 56,
+   "filename": "backend/django_core\\apps\\ged\\tests\\test_xged5_scellement_pades.py",
+   "issue_confidence": "MEDIUM",
+   "issue_cwe": {
+    "id": 377,
+    "link": "https://cwe.mitre.org/data/definitions/377.html"
+   },
+   "issue_severity": "MEDIUM",
+   "issue_text": "Probable insecure usage of temp file/directory.",
+   "line_number": 101,
+   "line_range": [
+    101
+   ],
+   "more_info": "https://bandit.readthedocs.io/en/1.9.4/plugins/b108_hardcoded_tmp_directory.html",
+   "test_id": "B108",
+   "test_name": "hardcoded_tmp_directory"
+  },
+  {
+   "code": "37         try:\n38             with _urllib_request.urlopen(full_url, timeout=_TIMEOUT_S) as resp:\n39                 return _json.loads(resp.read().decode())\n",
+   "col_offset": 17,
+   "end_col_offset": 70,
+   "filename": "backend/django_core\\apps\\installations\\weather.py",
+   "issue_confidence": "HIGH",
+   "issue_cwe": {
+    "id": 22,
+    "link": "https://cwe.mitre.org/data/definitions/22.html"
+   },
+   "issue_severity": "MEDIUM",
+   "issue_text": "Audit url open for permitted schemes. Allowing use of file:/ or custom schemes is often unexpected.",
+   "line_number": 38,
+   "line_range": [
+    38
+   ],
+   "more_info": "https://bandit.readthedocs.io/en/1.9.4/blacklists/blacklist_calls.html#b310-urllib-urlopen",
+   "test_id": "B310",
+   "test_name": "blacklist"
+  },
+  {
+   "code": "160             import urllib.error\n161             with urllib.request.urlopen(req, timeout=10) as resp:\n162                 data = json.loads(resp.read())\n",
+   "col_offset": 17,
+   "end_col_offset": 56,
+   "filename": "backend/django_core\\apps\\notifications\\whatsapp_bsp.py",
+   "issue_confidence": "HIGH",
+   "issue_cwe": {
+    "id": 22,
+    "link": "https://cwe.mitre.org/data/definitions/22.html"
+   },
+   "issue_severity": "MEDIUM",
+   "issue_text": "Audit url open for permitted schemes. Allowing use of file:/ or custom schemes is often unexpected.",
+   "line_number": 161,
+   "line_range": [
+    161
+   ],
+   "more_info": "https://bandit.readthedocs.io/en/1.9.4/blacklists/blacklist_calls.html#b310-urllib-urlopen",
+   "test_id": "B310",
+   "test_name": "blacklist"
+  },
+  {
+   "code": "4080     try:\n4081         root = ET.fromstring(xml_str)\n4082     except ET.ParseError as exc:\n",
+   "col_offset": 15,
+   "end_col_offset": 37,
+   "filename": "backend/django_core\\apps\\paie\\services.py",
+   "issue_confidence": "HIGH",
+   "issue_cwe": {
+    "id": 20,
+    "link": "https://cwe.mitre.org/data/definitions/20.html"
+   },
+   "issue_severity": "MEDIUM",
+   "issue_text": "Using xml.etree.ElementTree.fromstring to parse untrusted XML data is known to be vulnerable to XML attacks. Replace xml.etree.ElementTree.fromstring with its defusedxml equivalent function or make sure defusedxml.defuse_stdlib() is called",
+   "line_number": 4081,
+   "line_range": [
+    4081
+   ],
+   "more_info": "https://bandit.readthedocs.io/en/1.9.4/blacklists/blacklist_calls.html#b313-b320-xml-bad-elementtree",
+   "test_id": "B314",
+   "test_name": "blacklist"
+  },
+  {
+   "code": "54         # Ne lève pas ParseError.\n55         ET.fromstring(xml)\n56 \n",
+   "col_offset": 8,
+   "end_col_offset": 26,
+   "filename": "backend/django_core\\apps\\paie\\tests\\test_xpai13_export_xml_9421.py",
+   "issue_confidence": "HIGH",
+   "issue_cwe": {
+    "id": 20,
+    "link": "https://cwe.mitre.org/data/definitions/20.html"
+   },
+   "issue_severity": "MEDIUM",
+   "issue_text": "Using xml.etree.ElementTree.fromstring to parse untrusted XML data is known to be vulnerable to XML attacks. Replace xml.etree.ElementTree.fromstring with its defusedxml equivalent function or make sure defusedxml.defuse_stdlib() is called",
+   "line_number": 55,
+   "line_range": [
+    55
+   ],
+   "more_info": "https://bandit.readthedocs.io/en/1.9.4/blacklists/blacklist_calls.html#b313-b320-xml-bad-elementtree",
+   "test_id": "B314",
+   "test_name": "blacklist"
+  },
+  {
+   "code": "59         xml = export_xml_simpl_ir_9421(self.co, 2026)\n60         root = ET.fromstring(xml)\n61         self.assertEqual(root.tag, 'Etat9421')\n",
+   "col_offset": 15,
+   "end_col_offset": 33,
+   "filename": "backend/django_core\\apps\\paie\\tests\\test_xpai13_export_xml_9421.py",
+   "issue_confidence": "HIGH",
+   "issue_cwe": {
+    "id": 20,
+    "link": "https://cwe.mitre.org/data/definitions/20.html"
+   },
+   "issue_severity": "MEDIUM",
+   "issue_text": "Using xml.etree.ElementTree.fromstring to parse untrusted XML data is known to be vulnerable to XML attacks. Replace xml.etree.ElementTree.fromstring with its defusedxml equivalent function or make sure defusedxml.defuse_stdlib() is called",
+   "line_number": 60,
+   "line_range": [
+    60
+   ],
+   "more_info": "https://bandit.readthedocs.io/en/1.9.4/blacklists/blacklist_calls.html#b313-b320-xml-bad-elementtree",
+   "test_id": "B314",
+   "test_name": "blacklist"
+  },
+  {
+   "code": "70         xml = export_xml_simpl_ir_9421(self.co, 2026)\n71         root = ET.fromstring(xml)\n72         totaux = root.find('Totaux')\n",
+   "col_offset": 15,
+   "end_col_offset": 33,
+   "filename": "backend/django_core\\apps\\paie\\tests\\test_xpai13_export_xml_9421.py",
+   "issue_confidence": "HIGH",
+   "issue_cwe": {
+    "id": 20,
+    "link": "https://cwe.mitre.org/data/definitions/20.html"
+   },
+   "issue_severity": "MEDIUM",
+   "issue_text": "Using xml.etree.ElementTree.fromstring to parse untrusted XML data is known to be vulnerable to XML attacks. Replace xml.etree.ElementTree.fromstring with its defusedxml equivalent function or make sure defusedxml.defuse_stdlib() is called",
+   "line_number": 71,
+   "line_range": [
+    71
+   ],
+   "more_info": "https://bandit.readthedocs.io/en/1.9.4/blacklists/blacklist_calls.html#b313-b320-xml-bad-elementtree",
+   "test_id": "B314",
+   "test_name": "blacklist"
+  },
+  {
+   "code": "82         xml = export_xml_simpl_ir_9421(self.co, 2026)\n83         root = ET.fromstring(xml)\n84         categories = {s.attrib['categorie'] for s in root.findall('Salarie')}\n",
+   "col_offset": 15,
+   "end_col_offset": 33,
+   "filename": "backend/django_core\\apps\\paie\\tests\\test_xpai13_export_xml_9421.py",
+   "issue_confidence": "HIGH",
+   "issue_cwe": {
+    "id": 20,
+    "link": "https://cwe.mitre.org/data/definitions/20.html"
+   },
+   "issue_severity": "MEDIUM",
+   "issue_text": "Using xml.etree.ElementTree.fromstring to parse untrusted XML data is known to be vulnerable to XML attacks. Replace xml.etree.ElementTree.fromstring with its defusedxml equivalent function or make sure defusedxml.defuse_stdlib() is called",
+   "line_number": 83,
+   "line_range": [
+    83
+   ],
+   "more_info": "https://bandit.readthedocs.io/en/1.9.4/blacklists/blacklist_calls.html#b313-b320-xml-bad-elementtree",
+   "test_id": "B314",
+   "test_name": "blacklist"
+  },
+  {
+   "code": "96         req = urllib.request.Request(url, headers={'User-Agent': 'taqinor-os'})\n97         with urllib.request.urlopen(req, timeout=PVGIS_TIMEOUT_S) as resp:\n98             payload = json.loads(resp.read().decode('utf-8'))\n",
+   "col_offset": 13,
+   "end_col_offset": 65,
+   "filename": "backend/django_core\\apps\\parametres\\pvgis.py",
+   "issue_confidence": "HIGH",
+   "issue_cwe": {
+    "id": 22,
+    "link": "https://cwe.mitre.org/data/definitions/22.html"
+   },
+   "issue_severity": "MEDIUM",
+   "issue_text": "Audit url open for permitted schemes. Allowing use of file:/ or custom schemes is often unexpected.",
+   "line_number": 97,
+   "line_range": [
+    97
+   ],
+   "more_info": "https://bandit.readthedocs.io/en/1.9.4/blacklists/blacklist_calls.html#b310-urllib-urlopen",
+   "test_id": "B310",
+   "test_name": "blacklist"
+  },
+  {
+   "code": "5778     try:\n5779         root = ET.fromstring(xml_bytes)\n5780     except ET.ParseError as exc:\n",
+   "col_offset": 15,
+   "end_col_offset": 39,
+   "filename": "backend/django_core\\apps\\stock\\services.py",
+   "issue_confidence": "HIGH",
+   "issue_cwe": {
+    "id": 20,
+    "link": "https://cwe.mitre.org/data/definitions/20.html"
+   },
+   "issue_severity": "MEDIUM",
+   "issue_text": "Using xml.etree.ElementTree.fromstring to parse untrusted XML data is known to be vulnerable to XML attacks. Replace xml.etree.ElementTree.fromstring with its defusedxml equivalent function or make sure defusedxml.defuse_stdlib() is called",
+   "line_number": 5779,
+   "line_range": [
+    5779
+   ],
+   "more_info": "https://bandit.readthedocs.io/en/1.9.4/blacklists/blacklist_calls.html#b313-b320-xml-bad-elementtree",
+   "test_id": "B314",
+   "test_name": "blacklist"
+  },
+  {
+   "code": "1224     try:\n1225         with urllib.request.urlopen(req, timeout=5) as resp:\n1226             resp_body = resp.read().decode('utf-8', errors='replace')\n",
+   "col_offset": 13,
+   "end_col_offset": 51,
+   "filename": "backend/django_core\\apps\\ventes\\services.py",
+   "issue_confidence": "HIGH",
+   "issue_cwe": {
+    "id": 22,
+    "link": "https://cwe.mitre.org/data/definitions/22.html"
+   },
+   "issue_severity": "MEDIUM",
+   "issue_text": "Audit url open for permitted schemes. Allowing use of file:/ or custom schemes is often unexpected.",
+   "line_number": 1225,
+   "line_range": [
+    1225
+   ],
+   "more_info": "https://bandit.readthedocs.io/en/1.9.4/blacklists/blacklist_calls.html#b310-urllib-urlopen",
+   "test_id": "B310",
+   "test_name": "blacklist"
+  },
+  {
+   "code": "33         try:\n34             G.generate_premium_pdf(data, '/tmp/_dc1_identity_test.pdf')\n35         finally:\n",
+   "col_offset": 41,
+   "end_col_offset": 70,
+   "filename": "backend/django_core\\apps\\ventes\\tests\\test_dc1_company_identity.py",
+   "issue_confidence": "MEDIUM",
+   "issue_cwe": {
+    "id": 377,
+    "link": "https://cwe.mitre.org/data/definitions/377.html"
+   },
+   "issue_severity": "MEDIUM",
+   "issue_text": "Probable insecure usage of temp file/directory.",
+   "line_number": 34,
+   "line_range": [
+    34
+   ],
+   "more_info": "https://bandit.readthedocs.io/en/1.9.4/plugins/b108_hardcoded_tmp_directory.html",
+   "test_id": "B108",
+   "test_name": "hardcoded_tmp_directory"
+  },
+  {
+   "code": "141         # Bien formé.\n142         root = ET.fromstring(\n143             xml.split('?>', 1)[1].split('-->', 1)[1])\n144         self.assertTrue(root.tag.endswith('Invoice'))\n",
+   "col_offset": 15,
+   "end_col_offset": 53,
+   "filename": "backend/django_core\\apps\\ventes\\tests\\test_dgi.py",
+   "issue_confidence": "HIGH",
+   "issue_cwe": {
+    "id": 20,
+    "link": "https://cwe.mitre.org/data/definitions/20.html"
+   },
+   "issue_severity": "MEDIUM",
+   "issue_text": "Using xml.etree.ElementTree.fromstring to parse untrusted XML data is known to be vulnerable to XML attacks. Replace xml.etree.ElementTree.fromstring with its defusedxml equivalent function or make sure defusedxml.defuse_stdlib() is called",
+   "line_number": 142,
+   "line_range": [
+    142,
+    143
+   ],
+   "more_info": "https://bandit.readthedocs.io/en/1.9.4/blacklists/blacklist_calls.html#b313-b320-xml-bad-elementtree",
+   "test_id": "B314",
+   "test_name": "blacklist"
+  },
+  {
+   "code": "47         try:\n48             G.generate_premium_pdf(data, '/tmp/_premium_sec_test.pdf')\n49         finally:\n",
+   "col_offset": 41,
+   "end_col_offset": 69,
+   "filename": "backend/django_core\\apps\\ventes\\tests\\test_premium_security.py",
+   "issue_confidence": "MEDIUM",
+   "issue_cwe": {
+    "id": 377,
+    "link": "https://cwe.mitre.org/data/definitions/377.html"
+   },
+   "issue_severity": "MEDIUM",
+   "issue_text": "Probable insecure usage of temp file/directory.",
+   "line_number": 48,
+   "line_range": [
+    48
+   ],
+   "more_info": "https://bandit.readthedocs.io/en/1.9.4/plugins/b108_hardcoded_tmp_directory.html",
+   "test_id": "B108",
+   "test_name": "hardcoded_tmp_directory"
+  },
+  {
+   "code": "123         try:\n124             G.generate_premium_pdf(data, '/tmp/_qf3_test.pdf')\n125         finally:\n",
+   "col_offset": 41,
+   "end_col_offset": 61,
+   "filename": "backend/django_core\\apps\\ventes\\tests\\test_qf3_method_block.py",
+   "issue_confidence": "MEDIUM",
+   "issue_cwe": {
+    "id": 377,
+    "link": "https://cwe.mitre.org/data/definitions/377.html"
+   },
+   "issue_severity": "MEDIUM",
+   "issue_text": "Probable insecure usage of temp file/directory.",
+   "line_number": 124,
+   "line_range": [
+    124
+   ],
+   "more_info": "https://bandit.readthedocs.io/en/1.9.4/plugins/b108_hardcoded_tmp_directory.html",
+   "test_id": "B108",
+   "test_name": "hardcoded_tmp_directory"
+  },
+  {
+   "code": "110         try:\n111             G.generate_premium_pdf(data, '/tmp/_qf9.pdf')\n112         finally:\n",
+   "col_offset": 41,
+   "end_col_offset": 56,
+   "filename": "backend/django_core\\apps\\ventes\\tests\\test_qf9_huawei_accessories.py",
+   "issue_confidence": "MEDIUM",
+   "issue_cwe": {
+    "id": 377,
+    "link": "https://cwe.mitre.org/data/definitions/377.html"
+   },
+   "issue_severity": "MEDIUM",
+   "issue_text": "Probable insecure usage of temp file/directory.",
+   "line_number": 111,
+   "line_range": [
+    111
+   ],
+   "more_info": "https://bandit.readthedocs.io/en/1.9.4/plugins/b108_hardcoded_tmp_directory.html",
+   "test_id": "B108",
+   "test_name": "hardcoded_tmp_directory"
+  },
+  {
+   "code": "126         try:\n127             G.generate_premium_pdf(data, '/tmp/_qg7.pdf')\n128         finally:\n",
+   "col_offset": 41,
+   "end_col_offset": 56,
+   "filename": "backend/django_core\\apps\\ventes\\tests\\test_qg7_creator_contact.py",
+   "issue_confidence": "MEDIUM",
+   "issue_cwe": {
+    "id": 377,
+    "link": "https://cwe.mitre.org/data/definitions/377.html"
+   },
+   "issue_severity": "MEDIUM",
+   "issue_text": "Probable insecure usage of temp file/directory.",
+   "line_number": 127,
+   "line_range": [
+    127
+   ],
+   "more_info": "https://bandit.readthedocs.io/en/1.9.4/plugins/b108_hardcoded_tmp_directory.html",
+   "test_id": "B108",
+   "test_name": "hardcoded_tmp_directory"
+  },
+  {
+   "code": "92         try:\n93             G.generate_premium_pdf(data, '/tmp/_qj30.pdf')\n94         finally:\n",
+   "col_offset": 41,
+   "end_col_offset": 57,
+   "filename": "backend/django_core\\apps\\ventes\\tests\\test_qj30_multivilla_render.py",
+   "issue_confidence": "MEDIUM",
+   "issue_cwe": {
+    "id": 377,
+    "link": "https://cwe.mitre.org/data/definitions/377.html"
+   },
+   "issue_severity": "MEDIUM",
+   "issue_text": "Probable insecure usage of temp file/directory.",
+   "line_number": 93,
+   "line_range": [
+    93
+   ],
+   "more_info": "https://bandit.readthedocs.io/en/1.9.4/plugins/b108_hardcoded_tmp_directory.html",
+   "test_id": "B108",
+   "test_name": "hardcoded_tmp_directory"
+  },
+  {
+   "code": "100         try:\n101             G.generate_premium_pdf(data, '/tmp/_qk3.pdf')\n102         finally:\n",
+   "col_offset": 41,
+   "end_col_offset": 56,
+   "filename": "backend/django_core\\apps\\ventes\\tests\\test_qk3_financing_render.py",
+   "issue_confidence": "MEDIUM",
+   "issue_cwe": {
+    "id": 377,
+    "link": "https://cwe.mitre.org/data/definitions/377.html"
+   },
+   "issue_severity": "MEDIUM",
+   "issue_text": "Probable insecure usage of temp file/directory.",
+   "line_number": 101,
+   "line_range": [
+    101
+   ],
+   "more_info": "https://bandit.readthedocs.io/en/1.9.4/plugins/b108_hardcoded_tmp_directory.html",
+   "test_id": "B108",
+   "test_name": "hardcoded_tmp_directory"
+  },
+  {
+   "code": "135         try:\n136             G.generate_premium_pdf(data, '/tmp/_qk4.pdf')\n137         finally:\n",
+   "col_offset": 41,
+   "end_col_offset": 56,
+   "filename": "backend/django_core\\apps\\ventes\\tests\\test_qk4_hypotheses.py",
+   "issue_confidence": "MEDIUM",
+   "issue_cwe": {
+    "id": 377,
+    "link": "https://cwe.mitre.org/data/definitions/377.html"
+   },
+   "issue_severity": "MEDIUM",
+   "issue_text": "Probable insecure usage of temp file/directory.",
+   "line_number": 136,
+   "line_range": [
+    136
+   ],
+   "more_info": "https://bandit.readthedocs.io/en/1.9.4/plugins/b108_hardcoded_tmp_directory.html",
+   "test_id": "B108",
+   "test_name": "hardcoded_tmp_directory"
+  },
+  {
+   "code": "290         try:\n291             G.generate_premium_pdf(data, '/tmp/_three_page_test.pdf')\n292         finally:\n",
+   "col_offset": 41,
+   "end_col_offset": 68,
+   "filename": "backend/django_core\\apps\\ventes\\tests\\test_quote_engine.py",
+   "issue_confidence": "MEDIUM",
+   "issue_cwe": {
+    "id": 377,
+    "link": "https://cwe.mitre.org/data/definitions/377.html"
+   },
+   "issue_severity": "MEDIUM",
+   "issue_text": "Probable insecure usage of temp file/directory.",
+   "line_number": 291,
+   "line_range": [
+    291
+   ],
+   "more_info": "https://bandit.readthedocs.io/en/1.9.4/plugins/b108_hardcoded_tmp_directory.html",
+   "test_id": "B108",
+   "test_name": "hardcoded_tmp_directory"
+  },
+  {
+   "code": "352         try:\n353             G.generate_premium_pdf(data, '/tmp/_format_test.pdf')\n354         finally:\n",
+   "col_offset": 41,
+   "end_col_offset": 64,
+   "filename": "backend/django_core\\apps\\ventes\\tests\\test_quote_engine.py",
+   "issue_confidence": "MEDIUM",
+   "issue_cwe": {
+    "id": 377,
+    "link": "https://cwe.mitre.org/data/definitions/377.html"
+   },
+   "issue_severity": "MEDIUM",
+   "issue_text": "Probable insecure usage of temp file/directory.",
+   "line_number": 353,
+   "line_range": [
+    353
+   ],
+   "more_info": "https://bandit.readthedocs.io/en/1.9.4/plugins/b108_hardcoded_tmp_directory.html",
+   "test_id": "B108",
+   "test_name": "hardcoded_tmp_directory"
+  },
+  {
+   "code": "756         try:\n757             G.generate_premium_pdf(data, '/tmp/_15l.pdf')\n758         finally:\n",
+   "col_offset": 41,
+   "end_col_offset": 56,
+   "filename": "backend/django_core\\apps\\ventes\\tests\\test_quote_engine.py",
+   "issue_confidence": "MEDIUM",
+   "issue_cwe": {
+    "id": 377,
+    "link": "https://cwe.mitre.org/data/definitions/377.html"
+   },
+   "issue_severity": "MEDIUM",
+   "issue_text": "Probable insecure usage of temp file/directory.",
+   "line_number": 757,
+   "line_range": [
+    757
+   ],
+   "more_info": "https://bandit.readthedocs.io/en/1.9.4/plugins/b108_hardcoded_tmp_directory.html",
+   "test_id": "B108",
+   "test_name": "hardcoded_tmp_directory"
+  },
+  {
+   "code": "779         try:\n780             G.generate_premium_pdf(data2, '/tmp/_6l.pdf')\n781         finally:\n",
+   "col_offset": 42,
+   "end_col_offset": 56,
+   "filename": "backend/django_core\\apps\\ventes\\tests\\test_quote_engine.py",
+   "issue_confidence": "MEDIUM",
+   "issue_cwe": {
+    "id": 377,
+    "link": "https://cwe.mitre.org/data/definitions/377.html"
+   },
+   "issue_severity": "MEDIUM",
+   "issue_text": "Probable insecure usage of temp file/directory.",
+   "line_number": 780,
+   "line_range": [
+    780
+   ],
+   "more_info": "https://bandit.readthedocs.io/en/1.9.4/plugins/b108_hardcoded_tmp_directory.html",
+   "test_id": "B108",
+   "test_name": "hardcoded_tmp_directory"
+  },
+  {
+   "code": "930         try:\n931             G.generate_premium_pdf(data, '/tmp/_doclit_test.pdf')\n932         finally:\n",
+   "col_offset": 41,
+   "end_col_offset": 64,
+   "filename": "backend/django_core\\apps\\ventes\\tests\\test_quote_engine.py",
+   "issue_confidence": "MEDIUM",
+   "issue_cwe": {
+    "id": 377,
+    "link": "https://cwe.mitre.org/data/definitions/377.html"
+   },
+   "issue_severity": "MEDIUM",
+   "issue_text": "Probable insecure usage of temp file/directory.",
+   "line_number": 931,
+   "line_range": [
+    931
+   ],
+   "more_info": "https://bandit.readthedocs.io/en/1.9.4/plugins/b108_hardcoded_tmp_directory.html",
+   "test_id": "B108",
+   "test_name": "hardcoded_tmp_directory"
+  },
+  {
+   "code": "1115         try:\n1116             G.generate_premium_pdf(data, '/tmp/_generator_flow_test.pdf')\n1117         finally:\n",
+   "col_offset": 41,
+   "end_col_offset": 72,
+   "filename": "backend/django_core\\apps\\ventes\\tests\\test_quote_engine.py",
+   "issue_confidence": "MEDIUM",
+   "issue_cwe": {
+    "id": 377,
+    "link": "https://cwe.mitre.org/data/definitions/377.html"
+   },
+   "issue_severity": "MEDIUM",
+   "issue_text": "Probable insecure usage of temp file/directory.",
+   "line_number": 1116,
+   "line_range": [
+    1116
+   ],
+   "more_info": "https://bandit.readthedocs.io/en/1.9.4/plugins/b108_hardcoded_tmp_directory.html",
+   "test_id": "B108",
+   "test_name": "hardcoded_tmp_directory"
+  },
+  {
+   "code": "1206         try:\n1207             G.generate_premium_pdf(data, '/tmp/_catalogue_quote_test.pdf')\n1208         finally:\n",
+   "col_offset": 41,
+   "end_col_offset": 73,
+   "filename": "backend/django_core\\apps\\ventes\\tests\\test_quote_engine.py",
+   "issue_confidence": "MEDIUM",
+   "issue_cwe": {
+    "id": 377,
+    "link": "https://cwe.mitre.org/data/definitions/377.html"
+   },
+   "issue_severity": "MEDIUM",
+   "issue_text": "Probable insecure usage of temp file/directory.",
+   "line_number": 1207,
+   "line_range": [
+    1207
+   ],
+   "more_info": "https://bandit.readthedocs.io/en/1.9.4/plugins/b108_hardcoded_tmp_directory.html",
+   "test_id": "B108",
+   "test_name": "hardcoded_tmp_directory"
+  },
+  {
+   "code": "1507         try:\n1508             G.generate_premium_pdf(data, '/tmp/_qx7_test.pdf')\n1509         finally:\n",
+   "col_offset": 41,
+   "end_col_offset": 61,
+   "filename": "backend/django_core\\apps\\ventes\\tests\\test_quote_engine.py",
+   "issue_confidence": "MEDIUM",
+   "issue_cwe": {
+    "id": 377,
+    "link": "https://cwe.mitre.org/data/definitions/377.html"
+   },
+   "issue_severity": "MEDIUM",
+   "issue_text": "Probable insecure usage of temp file/directory.",
+   "line_number": 1508,
+   "line_range": [
+    1508
+   ],
+   "more_info": "https://bandit.readthedocs.io/en/1.9.4/plugins/b108_hardcoded_tmp_directory.html",
+   "test_id": "B108",
+   "test_name": "hardcoded_tmp_directory"
+  },
+  {
+   "code": "1988         try:\n1989             G.generate_premium_pdf(data, '/tmp/_etude_footer_test.pdf')\n1990         finally:\n",
+   "col_offset": 41,
+   "end_col_offset": 70,
+   "filename": "backend/django_core\\apps\\ventes\\tests\\test_quote_engine.py",
+   "issue_confidence": "MEDIUM",
+   "issue_cwe": {
+    "id": 377,
+    "link": "https://cwe.mitre.org/data/definitions/377.html"
+   },
+   "issue_severity": "MEDIUM",
+   "issue_text": "Probable insecure usage of temp file/directory.",
+   "line_number": 1989,
+   "line_range": [
+    1989
+   ],
+   "more_info": "https://bandit.readthedocs.io/en/1.9.4/plugins/b108_hardcoded_tmp_directory.html",
+   "test_id": "B108",
+   "test_name": "hardcoded_tmp_directory"
+  },
+  {
+   "code": "113         req = urllib.request.Request(url, headers={'User-Agent': 'taqinor-os'})\n114         with urllib.request.urlopen(req, timeout=timeout_s) as resp:\n115             payload = json.loads(resp.read().decode('utf-8'))\n",
+   "col_offset": 13,
+   "end_col_offset": 59,
+   "filename": "backend/django_core\\apps\\ventes\\weather_feed.py",
+   "issue_confidence": "HIGH",
+   "issue_cwe": {
+    "id": 22,
+    "link": "https://cwe.mitre.org/data/definitions/22.html"
+   },
+   "issue_severity": "MEDIUM",
+   "issue_text": "Audit url open for permitted schemes. Allowing use of file:/ or custom schemes is often unexpected.",
+   "line_number": 114,
+   "line_range": [
+    114
+   ],
+   "more_info": "https://bandit.readthedocs.io/en/1.9.4/blacklists/blacklist_calls.html#b310-urllib-urlopen",
+   "test_id": "B310",
+   "test_name": "blacklist"
+  },
+  {
+   "code": "400                 cur.execute(\n401                     f'SELECT {col}, COUNT(*) FROM {table} '\n402                     f'WHERE {col} IS NOT NULL GROUP BY {col}')\n403                 for company_id, n in cur.fetchall():\n",
+   "col_offset": 22,
+   "end_col_offset": 29,
+   "filename": "backend/django_core\\core\\backup.py",
+   "issue_confidence": "MEDIUM",
+   "issue_cwe": {
+    "id": 89,
+    "link": "https://cwe.mitre.org/data/definitions/89.html"
+   },
+   "issue_severity": "MEDIUM",
+   "issue_text": "Possible SQL injection vector through string-based query construction.",
+   "line_number": 401,
+   "line_range": [
+    401,
+    402
+   ],
+   "more_info": "https://bandit.readthedocs.io/en/1.9.4/plugins/b608_hardcoded_sql_expressions.html",
+   "test_id": "B608",
+   "test_name": "hardcoded_sql_expressions"
+  },
+  {
+   "code": "435             cur.execute(\n436                 f'SELECT {col}, COUNT(*) FROM {table} '\n437                 f'WHERE {col} = ANY(%s) GROUP BY {col}', (list(company_ids),))\n438             for company_id, n in cur.fetchall():\n",
+   "col_offset": 18,
+   "end_col_offset": 25,
+   "filename": "backend/django_core\\core\\backup.py",
+   "issue_confidence": "MEDIUM",
+   "issue_cwe": {
+    "id": 89,
+    "link": "https://cwe.mitre.org/data/definitions/89.html"
+   },
+   "issue_severity": "MEDIUM",
+   "issue_text": "Possible SQL injection vector through string-based query construction.",
+   "line_number": 436,
+   "line_range": [
+    436,
+    437
+   ],
+   "more_info": "https://bandit.readthedocs.io/en/1.9.4/plugins/b608_hardcoded_sql_expressions.html",
+   "test_id": "B608",
+   "test_name": "hardcoded_sql_expressions"
+  },
+  {
+   "code": "570                         for table in RESTORE_DRILL_TABLES:\n571                             cur.execute(f'SELECT COUNT(*) FROM {table}')\n572                             comptages[table] = cur.fetchone()[0]\n",
+   "col_offset": 42,
+   "end_col_offset": 63,
+   "filename": "backend/django_core\\core\\backup.py",
+   "issue_confidence": "MEDIUM",
+   "issue_cwe": {
+    "id": 89,
+    "link": "https://cwe.mitre.org/data/definitions/89.html"
+   },
+   "issue_severity": "MEDIUM",
+   "issue_text": "Possible SQL injection vector through string-based query construction.",
+   "line_number": 571,
+   "line_range": [
+    571
+   ],
+   "more_info": "https://bandit.readthedocs.io/en/1.9.4/plugins/b608_hardcoded_sql_expressions.html",
+   "test_id": "B608",
+   "test_name": "hardcoded_sql_expressions"
+  },
+  {
+   "code": "80         try:\n81             resp = requests.get(\n82                 'https://nominatim.openstreetmap.org/search',\n83                 params={'q': address, 'format': 'json', 'limit': 1},\n84                 headers={'User-Agent': 'TaqinorOS/1.0 (geocoding)'},\n85                 timeout=float(self.config.get('timeout', 10)),\n86             )\n87             if not (200 <= resp.status_code < 300):\n",
+   "col_offset": 19,
+   "end_col_offset": 13,
+   "filename": "backend/django_core\\core\\geocoding.py",
+   "issue_confidence": "LOW",
+   "issue_cwe": {
+    "id": 400,
+    "link": "https://cwe.mitre.org/data/definitions/400.html"
+   },
+   "issue_severity": "MEDIUM",
+   "issue_text": "Call to requests without timeout",
+   "line_number": 81,
+   "line_range": [
+    81,
+    82,
+    83,
+    84,
+    85,
+    86
+   ],
+   "more_info": "https://bandit.readthedocs.io/en/1.9.4/plugins/b113_request_without_timeout.html",
+   "test_id": "B113",
+   "test_name": "request_without_timeout"
+  },
+  {
+   "code": "122         try:\n123             resp = requests.get(\n124                 self.config['base_url'],\n125                 params={'q': address, 'key': self.secret},\n126                 timeout=float(self.config.get('timeout', 10)),\n127             )\n128             if not (200 <= resp.status_code < 300):\n",
+   "col_offset": 19,
+   "end_col_offset": 13,
+   "filename": "backend/django_core\\core\\geocoding.py",
+   "issue_confidence": "LOW",
+   "issue_cwe": {
+    "id": 400,
+    "link": "https://cwe.mitre.org/data/definitions/400.html"
+   },
+   "issue_severity": "MEDIUM",
+   "issue_text": "Call to requests without timeout",
+   "line_number": 123,
+   "line_range": [
+    123,
+    124,
+    125,
+    126,
+    127
+   ],
+   "more_info": "https://bandit.readthedocs.io/en/1.9.4/plugins/b113_request_without_timeout.html",
+   "test_id": "B113",
+   "test_name": "request_without_timeout"
+  },
+  {
+   "code": "54             cur.execute(\n55                 f'SELECT MIN({key})::date, MAX({key})::date FROM {table}')\n56             lo, hi = cur.fetchone()\n",
+   "col_offset": 18,
+   "end_col_offset": 29,
+   "filename": "backend/django_core\\core\\management\\commands\\partition_table.py",
+   "issue_confidence": "MEDIUM",
+   "issue_cwe": {
+    "id": 89,
+    "link": "https://cwe.mitre.org/data/definitions/89.html"
+   },
+   "issue_severity": "MEDIUM",
+   "issue_text": "Possible SQL injection vector through string-based query construction.",
+   "line_number": 55,
+   "line_range": [
+    55
+   ],
+   "more_info": "https://bandit.readthedocs.io/en/1.9.4/plugins/b608_hardcoded_sql_expressions.html",
+   "test_id": "B608",
+   "test_name": "hardcoded_sql_expressions"
+  },
+  {
+   "code": "116             cur.execute(\n117                 f'INSERT INTO {plan.shadow} SELECT * FROM {plan.table}')\n118 \n",
+   "col_offset": 18,
+   "end_col_offset": 30,
+   "filename": "backend/django_core\\core\\management\\commands\\partition_table.py",
+   "issue_confidence": "MEDIUM",
+   "issue_cwe": {
+    "id": 89,
+    "link": "https://cwe.mitre.org/data/definitions/89.html"
+   },
+   "issue_severity": "MEDIUM",
+   "issue_text": "Possible SQL injection vector through string-based query construction.",
+   "line_number": 117,
+   "line_range": [
+    117
+   ],
+   "more_info": "https://bandit.readthedocs.io/en/1.9.4/plugins/b608_hardcoded_sql_expressions.html",
+   "test_id": "B608",
+   "test_name": "hardcoded_sql_expressions"
+  },
+  {
+   "code": "101         try:\n102             resp = requests.post(\n103                 self.config['base_url'],\n104                 json=payload,\n105                 headers={'Authorization': f'Bearer {self.secret}'},\n106                 timeout=float(self.config.get('timeout', 10)),\n107             )\n108             ok = 200 <= resp.status_code < 300\n",
+   "col_offset": 19,
+   "end_col_offset": 13,
+   "filename": "backend/django_core\\core\\sms.py",
+   "issue_confidence": "LOW",
+   "issue_cwe": {
+    "id": 400,
+    "link": "https://cwe.mitre.org/data/definitions/400.html"
+   },
+   "issue_severity": "MEDIUM",
+   "issue_text": "Call to requests without timeout",
+   "line_number": 102,
+   "line_range": [
+    102,
+    103,
+    104,
+    105,
+    106,
+    107
+   ],
+   "more_info": "https://bandit.readthedocs.io/en/1.9.4/plugins/b113_request_without_timeout.html",
+   "test_id": "B113",
+   "test_name": "request_without_timeout"
+  },
+  {
+   "code": "331                     cursor,\n332                     f'SELECT COUNT(*) FROM (SELECT 1 FROM \"{entry.table}\" '\n333                     f'WHERE \"{col}\" IS NULL LIMIT {_ANOMALY_MAX}) s', [])\n334                 orphan_count = _count_bounded(\n",
+   "col_offset": 22,
+   "end_col_offset": 59,
+   "filename": "backend/django_core\\core\\tenant_isolation_scan.py",
+   "issue_confidence": "LOW",
+   "issue_cwe": {
+    "id": 89,
+    "link": "https://cwe.mitre.org/data/definitions/89.html"
+   },
+   "issue_severity": "MEDIUM",
+   "issue_text": "Possible SQL injection vector through string-based query construction.",
+   "line_number": 332,
+   "line_range": [
+    332,
+    333
+   ],
+   "more_info": "https://bandit.readthedocs.io/en/1.9.4/plugins/b608_hardcoded_sql_expressions.html",
+   "test_id": "B608",
+   "test_name": "hardcoded_sql_expressions"
+  },
+  {
+   "code": "335                     cursor,\n336                     f'SELECT COUNT(*) FROM (SELECT 1 FROM \"{entry.table}\" t '\n337                     f'WHERE t.\"{col}\" IS NOT NULL AND NOT EXISTS ('\n338                     f'SELECT 1 FROM \"authentication_company\" c '\n339                     f'WHERE c.id = t.\"{col}\") LIMIT {_ANOMALY_MAX}) s', [])\n340             except Exception:  # noqa: BLE001 — table KO ne bloque pas le reste\n",
+   "col_offset": 22,
+   "end_col_offset": 59,
+   "filename": "backend/django_core\\core\\tenant_isolation_scan.py",
+   "issue_confidence": "LOW",
+   "issue_cwe": {
+    "id": 89,
+    "link": "https://cwe.mitre.org/data/definitions/89.html"
+   },
+   "issue_severity": "MEDIUM",
+   "issue_text": "Possible SQL injection vector through string-based query construction.",
+   "line_number": 336,
+   "line_range": [
+    336,
+    337,
+    338,
+    339
+   ],
+   "more_info": "https://bandit.readthedocs.io/en/1.9.4/plugins/b608_hardcoded_sql_expressions.html",
+   "test_id": "B608",
+   "test_name": "hardcoded_sql_expressions"
+  },
+  {
+   "code": "82             cursor.execute(\n83                 \"DO $$ BEGIN \"\n84                 \"IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname=%s) \"\n85                 \"THEN CREATE ROLE \" + _APP_ROLE + \" NOSUPERUSER NOBYPASSRLS; \"\n86                 \"END IF; END $$;\", [_APP_ROLE])\n",
+   "col_offset": 16,
+   "end_col_offset": 35,
+   "filename": "backend/django_core\\core\\tests\\test_rls.py",
+   "issue_confidence": "MEDIUM",
+   "issue_cwe": {
+    "id": 89,
+    "link": "https://cwe.mitre.org/data/definitions/89.html"
+   },
+   "issue_severity": "MEDIUM",
+   "issue_text": "Possible SQL injection vector through string-based query construction.",
+   "line_number": 83,
+   "line_range": [
+    83,
+    84,
+    85
+   ],
+   "more_info": "https://bandit.readthedocs.io/en/1.9.4/plugins/b608_hardcoded_sql_expressions.html",
+   "test_id": "B608",
+   "test_name": "hardcoded_sql_expressions"
+  },
+  {
+   "code": "108     def _count_visible(self, cursor, table):\n109         cursor.execute(f'SELECT COUNT(*) FROM \"{table}\"')\n110         return cursor.fetchone()[0]\n",
+   "col_offset": 25,
+   "end_col_offset": 47,
+   "filename": "backend/django_core\\core\\tests\\test_rls.py",
+   "issue_confidence": "MEDIUM",
+   "issue_cwe": {
+    "id": 89,
+    "link": "https://cwe.mitre.org/data/definitions/89.html"
+   },
+   "issue_severity": "MEDIUM",
+   "issue_text": "Possible SQL injection vector through string-based query construction.",
+   "line_number": 109,
+   "line_range": [
+    109
+   ],
+   "more_info": "https://bandit.readthedocs.io/en/1.9.4/plugins/b608_hardcoded_sql_expressions.html",
+   "test_id": "B608",
+   "test_name": "hardcoded_sql_expressions"
+  },
+  {
+   "code": "133                     cursor.execute(\n134                         f'SELECT COUNT(*) FROM \"{table}\" WHERE company_id=%s',\n135                         [self.company_a.pk])\n",
+   "col_offset": 26,
+   "end_col_offset": 48,
+   "filename": "backend/django_core\\core\\tests\\test_rls.py",
+   "issue_confidence": "MEDIUM",
+   "issue_cwe": {
+    "id": 89,
+    "link": "https://cwe.mitre.org/data/definitions/89.html"
+   },
+   "issue_severity": "MEDIUM",
+   "issue_text": "Possible SQL injection vector through string-based query construction.",
+   "line_number": 134,
+   "line_range": [
+    134
+   ],
+   "more_info": "https://bandit.readthedocs.io/en/1.9.4/plugins/b608_hardcoded_sql_expressions.html",
+   "test_id": "B608",
+   "test_name": "hardcoded_sql_expressions"
+  },
+  {
+   "code": "150                     cursor.execute(\n151                         f'DELETE FROM \"{table}\" WHERE company_id=%s',\n152                         [self.company_a.pk])\n",
+   "col_offset": 26,
+   "end_col_offset": 39,
+   "filename": "backend/django_core\\core\\tests\\test_rls.py",
+   "issue_confidence": "MEDIUM",
+   "issue_cwe": {
+    "id": 89,
+    "link": "https://cwe.mitre.org/data/definitions/89.html"
+   },
+   "issue_severity": "MEDIUM",
+   "issue_text": "Possible SQL injection vector through string-based query construction.",
+   "line_number": 151,
+   "line_range": [
+    151
+   ],
+   "more_info": "https://bandit.readthedocs.io/en/1.9.4/plugins/b608_hardcoded_sql_expressions.html",
+   "test_id": "B608",
+   "test_name": "hardcoded_sql_expressions"
+  },
+  {
+   "code": "49     sql = (\n50         f'SELECT COUNT(*) FROM (SELECT 1 FROM \"{table}\" '\n51         f'WHERE \"{company_column}\" = %s LIMIT {MAX_COUNT}) AS sub'\n52     )\n",
+   "col_offset": 10,
+   "end_col_offset": 47,
+   "filename": "backend/django_core\\core\\usage.py",
+   "issue_confidence": "LOW",
+   "issue_cwe": {
+    "id": 89,
+    "link": "https://cwe.mitre.org/data/definitions/89.html"
+   },
+   "issue_severity": "MEDIUM",
+   "issue_text": "Possible SQL injection vector through string-based query construction.",
+   "line_number": 50,
+   "line_range": [
+    50,
+    51
+   ],
+   "more_info": "https://bandit.readthedocs.io/en/1.9.4/plugins/b608_hardcoded_sql_expressions.html",
+   "test_id": "B608",
+   "test_name": "hardcoded_sql_expressions"
+  }
+ ]
+}
