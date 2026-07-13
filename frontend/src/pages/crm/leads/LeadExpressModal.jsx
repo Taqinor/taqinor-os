@@ -18,6 +18,7 @@ import { AlertTriangle } from 'lucide-react'
 import crmApi from '../../../api/crmApi'
 import useCanaux from '../../../features/crm/useCanaux'
 import { usePasteClean, parsePastedPhone, parsePasteCard } from '../../../hooks/usePasteClean'
+import PhoneHint from '../../../components/PhoneHint'
 import {
   Button, Dialog, DialogContent, DialogHeader, DialogTitle,
   Form, FormField, FormActions, Input,
@@ -270,6 +271,10 @@ export default function LeadExpressModal({ onClose, onSaved }) {
               onPaste={onTelephonePaste}
               autoComplete="off"
             />
+            {/* VX239 — <PhoneHint> extrait de ClientForm : aperçu de la forme
+                normalisée uniquement (le check de doublons existant de cet
+                écran, `dupState` ci-dessous, reste inchangé). */}
+            <PhoneHint value={telephone} testId="lem-tel-hint" />
           </FormField>
           {dupWarning && !dupChecking && (
             <p className="-mt-2 flex items-center gap-1.5 text-xs text-warning" role="alert" aria-live="assertive">

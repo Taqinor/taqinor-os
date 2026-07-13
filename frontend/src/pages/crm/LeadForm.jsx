@@ -28,6 +28,8 @@ import {
 import useCanaux from '../../features/crm/useCanaux'
 import { useServerFieldErrors } from '../../hooks/useServerFieldErrors'
 import { usePasteClean, parsePastedPhone, parsePasteCard } from '../../hooks/usePasteClean'
+import { useDuplicateCheck } from '../../hooks/useDuplicateCheck'
+import PhoneHint from '../../components/PhoneHint'
 // VX24 — bandeau de faits clés (LeadSummaryBar) réutilise le même ScoreBadge.
 import ScoreBadge from '../../features/crm/ScoreBadge'
 // VX87 — journal d'appel en un geste (issue + note + prochaine relance).
@@ -451,9 +453,6 @@ export default function LeadForm({
   // dans `set`), jamais seulement au prochain submit.
   const { errors, setErrors, setFromResponse, clearField } = useServerFieldErrors()
   const [activeSec, setActiveSec] = useState('contact')
-  // Doublons probables détectés EN DIRECT depuis le téléphone/email saisi
-  // (avertissement NON bloquant, à la création comme à l'édition).
-  const [dupMatches, setDupMatches] = useState([])
   // VX237 — carte de visite collée dans « Nom » : { nom, telephone } détectés,
   // JAMAIS répartis silencieusement — le collage brut atterrit dans le champ
   // comme d'habitude, un bandeau propose « Répartir » sur confirmation.
@@ -582,26 +581,11 @@ export default function LeadForm({
     }
   }, [isEdit, lead?.id])
 
-  // Avertissement doublon EN DIRECT (non bloquant) : dès qu'un téléphone ou un
-  // email est saisi, on interroge le serveur (société côté serveur). En édition
-  // on exclut le lead courant de ses propres doublons. Debounce léger.
-  const phoneKey = fields.telephone
-  const emailKey = fields.email
-  useEffect(() => {
-    const phone = (phoneKey ?? '').trim()
-    const email = (emailKey ?? '').trim()
-    const t = setTimeout(() => {
-      if (!phone && !email) { setDupMatches([]); return }
-      const params = {}
-      if (phone) params.telephone = phone
-      if (email) params.email = email
-      if (isEdit) params.exclude = lead.id
-      crmApi.checkDuplicates(params)
-        .then(r => setDupMatches(r.data || []))
-        .catch(() => setDupMatches([]))
-    }, 400)
-    return () => clearTimeout(t)
-  }, [phoneKey, emailKey, isEdit, lead?.id])
+  // VX239 — avertissement doublon EN DIRECT (non bloquant), extrait dans
+  // `useDuplicateCheck` (posé aussi sur ClientForm/ClientQuickCreateModal).
+  // En édition on exclut le lead courant de ses PROPRES doublons.
+  const dupMatches = useDuplicateCheck(
+    fields.telephone, fields.email, { exclude: isEdit ? lead.id : undefined })
 
   const doMerge = async (otherId) => {
     if (!window.confirm('Fusionner ce doublon dans la fiche courante ? '
@@ -1281,6 +1265,9 @@ export default function LeadForm({
                 <FormField label="Téléphone" htmlFor="lf-telephone">
                   <Input id="lf-telephone" value={fields.telephone ?? ''} onChange={e => set('telephone', e.target.value)}
                          onPaste={onTelephonePaste} />
+                  {/* VX239 — <PhoneHint> extrait de ClientForm (seul écran qui
+                      l'avait) : aperçu de la forme normalisée uniquement. */}
+                  <PhoneHint value={fields.telephone} testId="lf-tel-hint" />
                 </FormField>
               </div>
               <div className="form-row">
