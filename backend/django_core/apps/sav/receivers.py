@@ -211,7 +211,7 @@ def _proposer_contrat_maintenance_on_chantier_receptionne(
         from apps.notifications.services import notify
         from apps.notifications.models import EventType
 
-        notify(
+        note = notify(
             assigne, EventType.SAV_ACTIVITE_DUE,
             "Proposer un contrat d'entretien",
             body=(f'Le chantier #{installation.id} a été réceptionné sans '
@@ -219,6 +219,13 @@ def _proposer_contrat_maintenance_on_chantier_receptionne(
             link='/crm/clients',
             company=installation.company,
         )
+        if note is None:
+            logger.warning(
+                'yserv10: notify() no-op (module off ou préférence in-app '
+                'coupée) pour destinataire=%s event=%s company=%s',
+                getattr(assigne, 'username', assigne),
+                EventType.SAV_ACTIVITE_DUE, getattr(
+                    installation.company, 'pk', None))
     except Exception:  # pragma: no cover - défensif (best-effort)
         logger.warning(
             'sav: échec offre auto de contrat entretien sur chantier '
