@@ -2386,3 +2386,9 @@ class ProcessedEvent(TimestampedModel):
 from core.idempotency import (  # noqa: E402,F401
     IdempotencyRecord, ProcessedWebhookEvent,
 )
+
+# NTSEC21 — Partage niveau enregistrement : ``SharingRule`` défini dans
+# ``core/sharing.py`` (même pattern d'éclatement que ``core/idempotency.py``),
+# réexporté ici en tout dernier pour que la découverte Django (app_label 'core',
+# migrations) le voie normalement.
+from core.sharing import SharingRule  # noqa: E402,F401
