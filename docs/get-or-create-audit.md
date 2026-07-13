@@ -123,8 +123,8 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/paie/services.py:5627` | get_or_create | StructurePaie.objects | code, company |
 | `backend/django_core/apps/paie/services.py:5637` | get_or_create | StructurePaieRubrique.objects | rubrique, structure |
 | `backend/django_core/apps/paie/services.py:5663` | get_or_create | RubriqueEmploye.objects | profil, rubrique |
-| `backend/django_core/apps/parametres/models_company.py:600` | get_or_create | cls.objects | company |
-| `backend/django_core/apps/parametres/models_company.py:605` | get_or_create | cls.objects | pk |
+| `backend/django_core/apps/parametres/models_company.py:630` | get_or_create | cls.objects | company |
+| `backend/django_core/apps/parametres/models_company.py:635` | get_or_create | cls.objects | pk |
 | `backend/django_core/apps/parametres/models_documents.py:100` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/parametres/models_documents.py:102` | get_or_create | cls.objects | pk |
 | `backend/django_core/apps/parametres/models_payment_terms.py:89` | get_or_create | cls.objects | company, delai_jours, escompte_pct, fin_de_mois |

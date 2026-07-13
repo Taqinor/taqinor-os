@@ -55,6 +55,7 @@ PUBLIC_ALLOWLIST_PREFIXES = (
     "api/django/rh/promesses-embauche",       # promesse d'embauche tokenisée
     "api/django/gestion-projet/portail",      # portail avancement/CSAT tokenisé
     "api/django/notifications/push/vapid-public-key",  # clé VAPID (publique par nature)
+    "api/django/identity/login-banner",       # NTSEC28 — bannière/mention légale pré-auth (AllowAny)
     "api/django/health",                      # sondes liveness/readiness
     # Marketing PUBLIC (compta.urls) — tokenisés/webhooks, sans login, throttlés :
     "api/django/compta/webhooks/",            # webhooks entrants Brevo/SMS-STOP
