@@ -12,7 +12,9 @@ import { Combobox } from '../../ui/Combobox'
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
 import ExternalLink from '../../ui/ExternalLink'
 import { toast } from '../../ui/confirm'
-import { canonicalPhoneMA } from '../../lib/format'
+import { usePasteClean, parsePastedPhone } from '../../hooks/usePasteClean'
+import { useDuplicateCheck } from '../../hooks/useDuplicateCheck'
+import PhoneHint from '../../components/PhoneHint'
 import AttachmentsPanel from '../../components/AttachmentsPanel'
 import crmApi from '../../api/crmApi'
 import ventesApi from '../../api/ventesApi'
@@ -121,14 +123,16 @@ export default function ClientForm({ client = null, onClose }) {
     }).catch(() => {})
   }, [])
 
-  // Forme marocaine normalisée du téléphone (aperçu uniquement — on stocke
-  // toujours la valeur tapée). Masquée si elle est identique à la saisie.
-  const phoneHint = useMemo(() => {
-    const typed = fields.telephone.trim()
-    if (!typed) return ''
-    const canon = canonicalPhoneMA(typed)
-    return canon && canon !== typed ? canon : ''
-  }, [fields.telephone])
+  // VX239 — <PhoneHint> extrait (aperçu de la forme normalisée uniquement —
+  // on stocke toujours la valeur tapée).
+
+  // VX239 — avertissement doublon EN DIRECT (non bloquant), extrait de
+  // LeadForm : réutilise le même `crmApi.checkDuplicates` (recherche parmi
+  // les leads de la société — la plupart des clients en proviennent). Jamais
+  // d'`exclude` ici : l'id d'un Client n'a aucune correspondance dans la
+  // table Lead, contrairement à LeadForm qui exclut le lead en cours
+  // d'édition de ses PROPRES doublons.
+  const dupMatches = useDuplicateCheck(fields.telephone, fields.email)
 
   // Avertissements NON bloquants sur les identifiants (jamais d'erreur de
   // soumission — purement informatif).
@@ -167,6 +171,10 @@ export default function ClientForm({ client = null, onClose }) {
       return next
     })
   }
+
+  // VX237 — collage téléphone/WhatsApp nettoyé vers la forme canonique de
+  // stockage (espaces/points/tirets tolérés) au lieu de tomber brut.
+  const onTelephonePaste = usePasteClean(parsePastedPhone, (clean) => setField('telephone', clean))
 
   // QC1 — autocomplete entreprise (données propres). Avertissement de doublon
   // non bloquant quand on choisit un CLIENT existant (au lieu de recréer).
@@ -358,16 +366,29 @@ export default function ClientForm({ client = null, onClose }) {
                   type="tel"
                   value={fields.telephone}
                   onChange={e => setField('telephone', e.target.value)}
+                  onPaste={onTelephonePaste}
                   placeholder="+212 6 XX XX XX XX"
                 />
-                {/* Aperçu de la forme normalisée (stockée telle que tapée) —
-                    aide visuelle uniquement, ne modifie jamais la valeur. */}
-                {phoneHint && (
-                  <p className="form-hint" data-testid="cf-tel-hint">
-                    Forme normalisée : {phoneHint}
-                  </p>
-                )}
+                {/* VX239 — <PhoneHint> extrait (aperçu de la forme normalisée,
+                    stockée telle que tapée — aide visuelle uniquement). */}
+                <PhoneHint value={fields.telephone} testId="cf-tel-hint" />
               </FormField>
+              {/* VX239 — avertissement doublon EN DIRECT, jusqu'ici réservé à
+                  LeadForm : un contact déjà connu (comme lead) avant même de
+                  soumettre la création du client. */}
+              {dupMatches.length > 0 && (
+                <p className="-mt-2 text-xs text-warning" role="status">
+                  ⚠️ Un contact avec ce téléphone/email existe déjà
+                  {dupMatches.length > 1 ? ` (${dupMatches.length})` : ''} :{' '}
+                  {dupMatches.slice(0, 3).map((d, i) => (
+                    <span key={d.id}>
+                      {i > 0 && ', '}
+                      {`${d.nom} ${d.prenom || ''}`.trim() || `#${d.id}`}
+                    </span>
+                  ))}
+                  {dupMatches.length > 3 && '…'}
+                </p>
+              )}
             </FormSection>
 
             <FormSection title="Type & identifiants">
