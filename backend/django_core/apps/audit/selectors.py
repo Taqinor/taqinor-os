@@ -81,3 +81,34 @@ def reconstruct_as_of(instance_or_ct, object_id=None, dt=None, *, company=None):
         'fields': fields,
         'covered_changes': covered,
     }
+
+
+# ---------------------------------------------------------------------------
+# NTSEC15 — Journal de sécurité dédié & exportable.
+#
+# Sélecteur FONDATION lecture seule : filtre ``AuditLog`` sur les actions de
+# sécurité (connexion/déconnexion/échec/alerte — les évènements SSO/SCIM/break-
+# glass typés arriveront via NTSEC18 et sont déjà couverts tant qu'ils émettent
+# ``security_alert``). Company-scopé : jamais les évènements d'une autre société.
+# ---------------------------------------------------------------------------
+
+SECURITY_ACTION_VALUES = [
+    'login', 'logout', 'login_failed', 'security_alert',
+]
+
+
+def security_events(company, since=None, until=None):
+    """Queryset des évènements de sécurité d'une société sur une fenêtre.
+
+    ``company`` obligatoire (scope strict) ; ``since``/``until`` optionnels
+    (datetimes). Ordonné du plus récent au plus ancien."""
+    from .models import AuditLog
+    if company is None:
+        return AuditLog.objects.none()
+    qs = AuditLog.objects.filter(
+        company=company, action__in=SECURITY_ACTION_VALUES)
+    if since is not None:
+        qs = qs.filter(timestamp__gte=since)
+    if until is not None:
+        qs = qs.filter(timestamp__lte=until)
+    return qs.order_by('-timestamp')

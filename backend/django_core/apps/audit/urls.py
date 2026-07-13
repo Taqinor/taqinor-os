@@ -1,7 +1,10 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 
-from .views import AuditLogViewSet, stats, meta, security_events, object_as_of
+from .views import (
+    AuditLogViewSet, stats, meta, security_events, security_events_export,
+    object_as_of,
+)
 from .analytics import audit_analytics
 
 router = DefaultRouter()
@@ -12,6 +15,9 @@ urlpatterns = [
     path('meta/', meta, name='audit-meta'),
     # FG23 — onglet « Sécurité » : évènements de sécurité (connexion/échec/alerte)
     path('security/', security_events, name='audit-security'),
+    # NTSEC15 — export CSV des évènements de sécurité (Directeur only).
+    path('security/export/', security_events_export,
+         name='audit-security-export'),
     # FG97 — rollups analytiques du journal (utilisateurs, mix actions, churn)
     path('analytics/', audit_analytics, name='audit-analytics'),
     # YHARD3 — reconstruction as-of générique (content_type = "app_label.model")
