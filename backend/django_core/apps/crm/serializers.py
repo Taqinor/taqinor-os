@@ -197,6 +197,12 @@ class LeadSerializer(serializers.ModelSerializer):
     # VX98 — auteur de la dernière modification (puce de fraîcheur). Lecture seule.
     updated_by_nom = serializers.CharField(
         source='updated_by.username', read_only=True, default=None)
+    # VX243(a) — confiance au niveau du DOSSIER : « archivé par X le … ». Les
+    # champs archived_by/archived_at sont posés côté serveur (jamais rendus
+    # avant) — on expose ici le NOM de l'archiviste en lecture seule pour que
+    # la ligne archivée le montre. Silencieux si le lead n'est pas archivé.
+    archived_by_nom = serializers.CharField(
+        source='archived_by.username', read_only=True, default=None)
 
     @staticmethod
     def _canonical_phone(value):

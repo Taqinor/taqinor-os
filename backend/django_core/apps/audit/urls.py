@@ -3,7 +3,7 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     AuditLogViewSet, stats, meta, security_events, security_events_export,
-    object_as_of,
+    object_as_of, object_history,
 )
 from .analytics import audit_analytics
 
@@ -23,5 +23,8 @@ urlpatterns = [
     # YHARD3 — reconstruction as-of générique (content_type = "app_label.model")
     path('objets/<str:content_type>/<str:object_id>/as-of/',
          object_as_of, name='audit-object-as-of'),
+    # VX243(b) — historique record-scopé d'UN objet (propriétaire OU Journal).
+    path('objets/<str:content_type>/<str:object_id>/history/',
+         object_history, name='audit-object-history'),
     path('', include(router.urls)),
 ]

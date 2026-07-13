@@ -27,6 +27,7 @@ import {
 } from '../../features/crm/stages'
 import useCanaux from '../../features/crm/useCanaux'
 import { useServerFieldErrors } from '../../hooks/useServerFieldErrors'
+import { useStaleGuard } from '../../hooks/useStaleGuard'
 import { usePasteClean, parsePastedPhone, parsePasteCard } from '../../hooks/usePasteClean'
 import { useDuplicateCheck } from '../../hooks/useDuplicateCheck'
 import PhoneHint from '../../components/PhoneHint'
@@ -324,6 +325,26 @@ export default function LeadForm({
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLiveLead(lead)
   }, [lead?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // VX243(c) — garde d'édition périmée. `openedUpdatedAt` = `updated_at` connu
+  // à l'OUVERTURE de la fiche (ou après la dernière sauvegarde réussie faite
+  // ICI). Au submit, un GET léger relit `updated_at` : s'il a changé sans que
+  // ce soit nous, on affiche une bannière non bloquante (Revoir / Enregistrer
+  // quand même). Re-synchronisé quand on change DE lead.
+  // Lead porte son horodatage de fraîcheur sur `date_modification` (auto_now),
+  // pas `updated_at` (Devis/Facture) — d'où `timestampField` ci-dessous.
+  const [openedUpdatedAt, setOpenedUpdatedAt] = useState(lead?.date_modification)
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setOpenedUpdatedAt(lead?.date_modification)
+  }, [lead?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  const staleGuard = useStaleGuard({
+    openedAt: openedUpdatedAt,
+    timestampField: 'date_modification',
+    fetchLatest: lead?.id
+      ? () => crmApi.getLead(lead.id).then(r => r.data)
+      : undefined,
+  })
 
   // Panneau devis inline (mode : auto | remise | onepage | premium | edit | view).
   const [devisPanel, setDevisPanel] = useState(null)
@@ -878,6 +899,13 @@ export default function LeadForm({
       setSigneOpen(true)
       return
     }
+    // VX243(c) — garde de fraîcheur AVANT le PATCH en édition : un conflit
+    // (édition concurrente détectée) interrompt CE submit et affiche la
+    // bannière, sans muter quoi que ce soit.
+    if (isEdit) {
+      const canProceed = await staleGuard.checkBeforeSave()
+      if (!canProceed) return
+    }
     setSaving(true)
     try {
       const nullable = (v) => (v === '' || v === undefined) ? null : v
@@ -890,6 +918,10 @@ export default function LeadForm({
         const updated = await dispatch(updateLead({ id: lead.id, data: payload })).unwrap()
         // En mode ÉDITION : on reste ouvert — on recharge les données en place.
         setLiveLead(updated)
+        // VX243(c) — notre propre sauvegarde devient le nouveau point de
+        // référence de fraîcheur (sinon la garde crierait « périmé » sur le
+        // prochain submit à cause de notre PROPRE écriture).
+        if (updated?.date_modification) setOpenedUpdatedAt(updated.date_modification)
         // Ré-hydrate les champs modifiés (par ex. valeurs normalisées côté serveur).
         const merged = { ...fields, ...Object.fromEntries(
           Object.keys(fields).map(k => [k, updated[k] !== undefined ? (updated[k] ?? '') : fields[k]])
@@ -1208,6 +1240,32 @@ export default function LeadForm({
                 scroll native, `scroll(nearest)` suit `.modal-body` (le
                 conteneur qui défile réellement, pas la fenêtre). */}
             <ScrollProgress />
+            {/* VX243(c) — bannière non bloquante : un autre utilisateur a
+                sauvegardé ce lead pendant l'édition en cours. */}
+            {staleGuard.staleInfo && (
+              <div role="alert" className="lead-stale-warning" style={{
+                display: 'flex', flexWrap: 'wrap', alignItems: 'center',
+                justifyContent: 'space-between', gap: 8, margin: '0 0 12px',
+                padding: 12, borderRadius: 8,
+                border: '1px solid var(--warning)', background: 'var(--warning-bg, rgba(234,179,8,0.1))',
+              }}>
+                <span>
+                  Modifié par {staleGuard.staleInfo.by || 'un autre utilisateur'}
+                  {' '}pendant votre édition — vérifiez avant d'enregistrer.
+                </span>
+                <span style={{ display: 'flex', gap: 8 }}>
+                  <Button type="button" size="sm" variant="outline" onClick={staleGuard.dismiss}>
+                    Revoir
+                  </Button>
+                  <Button
+                    type="button" size="sm" variant="outline"
+                    onClick={() => { staleGuard.force(); handleSubmit({ preventDefault: () => {} }) }}
+                  >
+                    Enregistrer quand même
+                  </Button>
+                </span>
+              </div>
+            )}
             <Sec id="contact" title="Contact">
               {dupMatches.length > 0 && (
                 <div className="lead-dup-warning" role="status">
