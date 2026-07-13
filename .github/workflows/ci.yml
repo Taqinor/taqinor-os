@@ -206,6 +206,13 @@ jobs:
         run: python scripts/check_unique_scoping.py
       - name: Test the unique-scoping checker itself (YDATA18)
         run: python -m unittest scripts.tests.test_check_unique_scoping -v
+      # YDATA20 — constraint-on-populated-table (AddField unique/not-null in one
+      # step) + index/constraint name drift vs models.py. Fails on a NEW
+      # migration not in scripts/migration_safety_allow.txt.
+      - name: Check migration safety — 3-step constraints + name drift (YDATA20)
+        run: python scripts/check_migration_safety.py
+      - name: Test the migration-safety checker itself (YDATA20)
+        run: python -m unittest scripts.tests.test_check_migration_safety -v
 
   # WOW6 — the fast backend suite is sharded 4× across free public-repo runners
   # (matrix legs run concurrently, each on its own 4-vCPU runner + Postgres). The
