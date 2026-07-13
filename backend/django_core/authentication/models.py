@@ -517,6 +517,12 @@ class UserSession(models.Model):
     last_seen_at = models.DateTimeField(auto_now=True)
     # Révocation : la session reste en base (trace) mais sort de la liste active.
     revoked = models.BooleanField(default=False)
+    # NTSEC9 — horodatage de la dernière ré-authentification MFA (TOTP/passkey)
+    # rattachée à CETTE session. Posé à la connexion quand un second facteur a
+    # été vérifié ; lu par `apps.identity.stepup.require_recent_mfa` pour exiger
+    # une MFA récente sur les actions sensibles. NULL = jamais de MFA récente
+    # sur cette session (additif : les sessions existantes restent NULL).
+    last_mfa_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         verbose_name = "Session utilisateur"

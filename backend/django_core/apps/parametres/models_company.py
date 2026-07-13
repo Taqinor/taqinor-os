@@ -313,6 +313,36 @@ class CompanyProfile(models.Model):
         help_text="Nombre maximum de sessions concurrentes par utilisateur "
                   "(la plus ancienne est révoquée au-delà). 0 = illimité.")
 
+    # ── NTSEC9 — MFA « step-up » par sensibilité d'action ──────────────────
+    # Liste (JSON) des clés d'action que CETTE société considère sensibles et
+    # pour lesquelles une ré-authentification MFA récente est exigée (paie run,
+    # export SIEM, création IdP, break-glass…). VIDE par défaut = step-up
+    # inactif → comportement strictement inchangé. Le contrôle runtime vit dans
+    # `apps.identity.stepup.require_recent_mfa` (fondation réutilisable) ; ce
+    # modèle n'en porte que la configuration par société.
+    step_up_actions = models.JSONField(
+        default=list, blank=True,
+        help_text="Clés d'action exigeant une MFA récente (step-up). Liste "
+                  "vide = inactif (défaut).")
+
+    # ── NTSEC14 — appareils de confiance (« se souvenir de cet appareil ») ──
+    # Quand True, un utilisateur peut, à la validation MFA, faire confiance à
+    # son appareil pour sauter le second facteur jusqu'à expiration. False par
+    # défaut = fonction inactive → la MFA reste toujours exigée (inchangé).
+    allow_device_trust = models.BooleanField(
+        default=False,
+        help_text="Autoriser « se souvenir de cet appareil » pour sauter la "
+                  "MFA sur un appareil de confiance. Défaut False.")
+
+    # ── NTSEC28 — bannière / mention légale sur l'écran de connexion ────────
+    # Texte affiché sur l'écran de login (SSO et local) exigeant un accusé avant
+    # authentification (« accès autorisé uniquement… »). VIDE par défaut =
+    # écran de login inchangé. L'accusé est journalisé best-effort (IP/UA).
+    login_banner_text = models.TextField(
+        blank=True, default='',
+        help_text="Mention légale affichée avant authentification (accès "
+                  "autorisé uniquement…). Vide = aucun bandeau (défaut).")
+
     # ── QG9 — pourcentage des variantes de devis (dupliquer-variante) ──
     # Pourcentage symétrique appliqué autour du devis d'origine pour produire
     # les variantes de taille : échelles [1−p, 1.0, 1+p]. Défaut 20 %
