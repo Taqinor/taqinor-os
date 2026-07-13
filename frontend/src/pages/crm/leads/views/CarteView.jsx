@@ -11,8 +11,10 @@
  * Leaflet de façon impérative, sans react-leaflet.
  */
 import { useMemo, useState } from 'react'
+import { Map } from 'lucide-react'
 import MapView, { escapeHtml } from '../../../../components/MapView'
 import { STAGE_COLORS, STAGE_LABELS } from '../../../../features/crm/stages'
+import { EmptyState } from '../../../../ui'
 
 // Couleur de l'épingle selon l'étape (fallback gris).
 function pinColor(stage) {
@@ -62,6 +64,20 @@ export default function CarteView({ leads = [], onOpenLead }) {
 
   const handleMarkerClick = (marker) => {
     if (onOpenLead) onOpenLead(marker._lead)
+  }
+
+  // VX147 — « 0 lead » unifié sur `EmptyState` (calqué sur ChartsView) au lieu
+  // de la légende + bandeau « sans GPS » qui n'a pas de sens quand il n'y a
+  // aucun lead du tout (distinct du cas « des leads existent mais sans GPS »
+  // ci-dessous, conservé tel quel).
+  if (!leads || leads.length === 0) {
+    return (
+      <EmptyState
+        icon={Map}
+        title="Aucun lead"
+        description="Aucun lead ne correspond à ces filtres."
+      />
+    )
   }
 
   return (

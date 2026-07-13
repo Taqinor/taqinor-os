@@ -8,6 +8,7 @@ import { useSearchParams } from 'react-router-dom'
 // LeadForm.jsx, features/crm/stages : un seul vocabulaire visuel).
 import { Upload, Download, X, Plus, MoreHorizontal, Zap, GitMerge } from 'lucide-react'
 import { useIsAdmin } from '../../../hooks/useHasPermission'
+import StateBlock from '../../../components/StateBlock'
 import { fetchLeads, updateLead, leadStagePatched } from '../../../features/crm/store/crmSlice'
 import crmApi from '../../../api/crmApi'
 import { downloadBlobInGesture } from '../../../utils/downloadBlob'
@@ -435,18 +436,18 @@ export default function LeadsPage() {
   // Only blank the page on the FIRST load. A background refetch (after saving a
   // bill, generating a devis, changing a stage…) must NOT unmount the page —
   // doing so tore down any open lead modal / inline devis preview mid-action.
+  // VX147 — chargement/erreur unifiés sur `StateBlock` (rôle status/alert)
+  // au lieu de `<p className="page-loading/page-error">` en hex bruts.
   if (leadsLoading && leads.length === 0) {
-    return (
-      <p className="page-loading"><Spinner /> Chargement des leads…</p>
-    )
+    return <StateBlock loading loadingText="Chargement des leads…" />
   }
   // ERR61 — message FR lisible plutôt qu'un objet d'erreur brut sérialisé. Le
   // slice stocke déjà `err.response.data ?? err.message` ; on reconstruit la
   // forme attendue par `errorMessageFrom` (qui lit `error.response.data`).
   if (error) return (
-    <p className="page-error">
-      Erreur : {errorMessageFrom({ response: { data: error } }, 'Impossible de charger les leads.')}
-    </p>
+    <StateBlock
+      error={`Erreur : ${errorMessageFrom({ response: { data: error } }, 'Impossible de charger les leads.')}`}
+    />
   )
 
   const viewProps = {

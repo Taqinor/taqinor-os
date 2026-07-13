@@ -132,7 +132,31 @@ function assertNoHorizontalOverflow(page, path) {
 async function assertNotObscured(page, locator, label) {
   await locator.scrollIntoViewIfNeeded()
   await expect(locator, `${label} is visible`).toBeVisible()
-  const box = await locator.boundingBox()
+  let box = await locator.boundingBox()
+  // MB6 robustesse — un pied de page COLLANT (position:sticky bottom:0, ex.
+  // .gen-actions-sticky du générateur de devis) peut, sur WebKit, rapporter sa
+  // boîte en FLUX (hors viewport, ex. y≈5282) après scrollIntoViewIfNeeded au
+  // lieu de sa position collée. On force alors le(s) conteneur(s) de défilement
+  // tout en bas pour que l'élément collant se pose au bas du viewport, puis on
+  // re-mesure — sinon elementFromPoint vise hors écran et renvoie null.
+  const vh = (page.viewportSize() || { height: 900 }).height
+  if (box && (box.y < 0 || box.y + box.height > vh)) {
+    await page.evaluate(() => {
+      window.scrollTo(0, document.body.scrollHeight)
+      document.querySelectorAll('.layout-content, main, [data-scroll]')
+        .forEach((el) => { el.scrollTop = el.scrollHeight })
+    })
+    // Attendre (condition EXPLICITE, pas de sleep fixe — check_test_determinism)
+    // que l'élément collant se pose DANS le viewport après le défilement en bas.
+    await expect
+      .poll(async () => {
+        const b = await locator.boundingBox()
+        return !!(b && b.y >= -4 && b.y + b.height <= vh + 4)
+      }, { timeout: 3000 })
+      .toBeTruthy()
+      .catch(() => {})
+    box = await locator.boundingBox()
+  }
   expect(box, `${label} has a bounding box`).toBeTruthy()
   const handle = await locator.elementHandle()
   const inset = 2

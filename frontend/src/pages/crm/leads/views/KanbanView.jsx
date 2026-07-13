@@ -2,6 +2,7 @@
 // miroir de STAGES.py — jamais de liste d'étapes en dur ici), glisser-déposer
 // via @dnd-kit/core. Le parent gère l'optimistic update : on ne mute rien.
 import { useMemo, useState } from 'react'
+import { LayoutGrid } from 'lucide-react'
 import {
   DndContext,
   DragOverlay,
@@ -23,6 +24,7 @@ import {
 import { useOptimisticSave } from '../../../../hooks/useOptimisticSave'
 import { usePrefersReducedMotion } from '../../../../hooks/usePrefersReducedMotion'
 import { toast } from '../../../../ui/confirm'
+import { EmptyState } from '../../../../ui'
 import LeadCard from './LeadCard'
 
 // VX135 — dropAnimation dnd-kit par défaut désalignée des tokens de
@@ -233,6 +235,18 @@ export default function KanbanView({
   }
 
   const handleDragCancel = () => setActiveLead(null)
+
+  // VX147 — « 0 lead » unifié sur `EmptyState` (calqué sur ChartsView, la
+  // seule vue déjà correcte) au lieu de 6 colonnes vides en texte brut.
+  if (!leads || leads.length === 0) {
+    return (
+      <EmptyState
+        icon={LayoutGrid}
+        title="Aucun lead"
+        description="Aucun lead ne correspond à ces filtres."
+      />
+    )
+  }
 
   return (
     <DndContext

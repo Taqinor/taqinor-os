@@ -192,6 +192,34 @@ jobs:
       # visibility, never fails the build.
       - name: Currency mono-devise sweep (check_money_monodevise — YDATA22, advisory)
         run: python scripts/check_money_monodevise.py
+      # YDATA16 — read-modify-write on a shared numeric field (counters/stock/
+      # balances) must hold a lock (select_for_update) or use F(); fails on a
+      # NEW unlocked site not in scripts/read_modify_write_allow.txt.
+      - name: Check read-modify-write locking on shared counters (YDATA16)
+        run: python scripts/check_read_modify_write.py
+      - name: Test the read-modify-write checker itself (YDATA16)
+        run: python -m unittest scripts.tests.test_check_read_modify_write -v
+      # YDATA18 — business unique=True must be company-scoped; a unique on a
+      # soft-delete model must be a partial index. Fails on a NEW unscoped
+      # business unique not in scripts/unique_scoping_allow.txt.
+      - name: Check unique constraints are tenant-scoped (YDATA18)
+        run: python scripts/check_unique_scoping.py
+      - name: Test the unique-scoping checker itself (YDATA18)
+        run: python -m unittest scripts.tests.test_check_unique_scoping -v
+      # YDATA20 — constraint-on-populated-table (AddField unique/not-null in one
+      # step) + index/constraint name drift vs models.py. Fails on a NEW
+      # migration not in scripts/migration_safety_allow.txt.
+      - name: Check migration safety — 3-step constraints + name drift (YDATA20)
+        run: python scripts/check_migration_safety.py
+      - name: Test the migration-safety checker itself (YDATA20)
+        run: python -m unittest scripts.tests.test_check_migration_safety -v
+      # YDATA21 — tenant isolation: every business ModelViewSet/GenericAPIView
+      # must scope by request.user.company and never accept company from the
+      # body. Fails on a NEW view not in scripts/tenant_view_allowlist.txt.
+      - name: Check multi-tenant view isolation (YDATA21)
+        run: python scripts/check_tenant_isolation.py
+      - name: Test the tenant-isolation checker itself (YDATA21)
+        run: python -m unittest scripts.tests.test_check_tenant_isolation -v
 
   # WOW6 — the fast backend suite is sharded 4× across free public-repo runners
   # (matrix legs run concurrently, each on its own 4-vCPU runner + Postgres). The

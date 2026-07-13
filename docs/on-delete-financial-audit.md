@@ -593,8 +593,8 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/apps/publicapi/models.py:54` | ApiKey.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/publicapi/models.py:114` | Webhook.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/publicapi/models.py:161` | WebhookDelivery.company | authentication.Company | CASCADE |
-| `backend/django_core/apps/publicapi/models.py:203` | IdempotencyRecord.company | authentication.Company | CASCADE |
-| `backend/django_core/apps/publicapi/models.py:252` | ServiceAccount.company | authentication.Company | CASCADE |
+| `backend/django_core/apps/publicapi/models.py:208` | IdempotencyRecord.company | authentication.Company | CASCADE |
+| `backend/django_core/apps/publicapi/models.py:257` | ServiceAccount.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/qhse/models.py:52` | NonConformite.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/qhse/models.py:195` | ActionCorrectivePreventive.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/qhse/models.py:279` | Derogation.company | authentication.Company | CASCADE |

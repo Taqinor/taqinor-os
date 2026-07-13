@@ -24,6 +24,7 @@ import ClientQuickCreateModal from './ClientQuickCreateModal'
 import AttachmentsPanel from '../../components/AttachmentsPanel'
 import { formatMAD } from '../../lib/format'
 import { useServerFieldErrors } from '../../hooks/useServerFieldErrors'
+import { parsePastedAmount } from '../../hooks/usePasteClean'
 
 let _keyCounter = 0
 const newKey = () => ++_keyCounter
@@ -530,7 +531,16 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
                           <Input type="number" min="0" step="0.01"
                                  className="h-[var(--control-h-sm)] text-right text-xs"
                                  value={l.prix_unitaire}
-                                 onChange={e => setLine(l._key, 'prix_unitaire', e.target.value)} />
+                                 onChange={e => setLine(l._key, 'prix_unitaire', e.target.value)}
+                                 // VX237 — montant collé d'Excel ("12 500,00",
+                                 // "3 200 DH"...) nettoyé au lieu de tomber
+                                 // brut dans le champ number.
+                                 onPaste={e => {
+                                   const clean = parsePastedAmount(e.clipboardData?.getData('text'))
+                                   if (clean == null) return
+                                   e.preventDefault()
+                                   setLine(l._key, 'prix_unitaire', clean)
+                                 }} />
                         </td>
                         <td data-label="Rem. %">
                           <Input type="number" min="0" max="100" step="0.01"

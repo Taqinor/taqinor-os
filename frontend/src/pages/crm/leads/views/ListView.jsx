@@ -2,8 +2,9 @@
 // Les étapes viennent EXCLUSIVEMENT de features/crm/stages (miroir de
 // STAGES.py) : aucune liste d'étapes n'est déclarée ici.
 import { Fragment, useEffect, useMemo, useState, memo } from 'react'
-import { MoreHorizontal, PhoneCall, MessageCircle } from 'lucide-react'
+import { MoreHorizontal, PhoneCall, MessageCircle, List } from 'lucide-react'
 import { useDispatch } from 'react-redux'
+import { EmptyState } from '../../../../ui'
 import { useIsAdmin } from '../../../../hooks/useHasPermission'
 import { archiveLead, restoreLead, deleteLead, updateLead } from '../../../../features/crm/store/crmSlice'
 import crmApi from '../../../../api/crmApi'
@@ -697,7 +698,13 @@ export default function ListView({
           {!sorted.length && (
             <tr>
               <td colSpan={onToggleSelect ? 13 : 12} className="lv-empty">
-                Aucun lead à afficher avec ces filtres.
+                {/* VX147 — « 0 lead » unifié sur `EmptyState` (calqué sur
+                    ChartsView) au lieu du texte brut précédent. */}
+                <EmptyState
+                  icon={List}
+                  title="Aucun lead"
+                  description="Aucun lead ne correspond à ces filtres."
+                />
               </td>
             </tr>
           )}

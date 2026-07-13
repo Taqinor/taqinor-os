@@ -1,0 +1,9 @@
+# YDATA21 — tenant-isolation allowlist (reviewed foundation/public/specially-
+# scoped views). One 'path::ClassName' per line. check_tenant_isolation.py
+# fails on any NEW business view finding not listed here.
+#
+# UserChatStatusViewSet: a GenericViewSet with NO list surface — every @action
+# scopes strictly to the calling user (services.get_or_create_status(request
+# .user, company)); it never exposes a company-wide queryset, so the static
+# get_queryset company filter does not apply. Reviewed safe 2026-07-13.
+backend/django_core/apps/chat/views.py::UserChatStatusViewSet
