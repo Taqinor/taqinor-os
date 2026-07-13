@@ -160,6 +160,24 @@ class CustomTokenObtainPairView(TokenObtainPairView):
                            'tentatives. Réessayez plus tard.'},
                 status=status.HTTP_403_FORBIDDEN,
             )
+        # NTSEC4 — enforce-SSO : si la société de ce compte a un IdP actif avec
+        # ``enforce_sso``, le login par mot de passe local est interdit (le
+        # membre doit passer par le SSO). Fail-open (aucun IdP → inchangé) ;
+        # super-admin et comptes break-glass (NTSEC22) restent exemptés. On
+        # bloque AVANT toute tentative de mot de passe (pas de fuite d'état).
+        if locked_user is not None:
+            try:
+                from apps.identity.selectors import (
+                    local_password_login_blocked,
+                )
+                if local_password_login_blocked(locked_user):
+                    return Response(
+                        {'detail': 'Connexion via SSO obligatoire pour cette '
+                                   'société.', 'sso_required': True},
+                        status=status.HTTP_403_FORBIDDEN,
+                    )
+            except Exception:
+                pass
         # Double authentification (2FA, N96) : si le mot de passe est bon mais
         # qu'un code TOTP est requis/invalide, on renvoie une réponse 401 au
         # contour stable (`otp_required: true`) que le frontend sait gérer —
