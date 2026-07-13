@@ -146,8 +146,15 @@ async function assertNotObscured(page, locator, label) {
       document.querySelectorAll('.layout-content, main, [data-scroll]')
         .forEach((el) => { el.scrollTop = el.scrollHeight })
     })
-    await page.waitForTimeout(200)
-    await locator.scrollIntoViewIfNeeded().catch(() => {})
+    // Attendre (condition EXPLICITE, pas de sleep fixe — check_test_determinism)
+    // que l'élément collant se pose DANS le viewport après le défilement en bas.
+    await expect
+      .poll(async () => {
+        const b = await locator.boundingBox()
+        return !!(b && b.y >= -4 && b.y + b.height <= vh + 4)
+      }, { timeout: 3000 })
+      .toBeTruthy()
+      .catch(() => {})
     box = await locator.boundingBox()
   }
   expect(box, `${label} has a bounding box`).toBeTruthy()
