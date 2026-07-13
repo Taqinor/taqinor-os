@@ -312,3 +312,33 @@ class ServiceAccount(models.Model):
         self.prefix = raw[:VISIBLE_PREFIX_LEN]
         self.save(update_fields=['token_hash', 'prefix'])
         return raw
+
+
+class WebhookDeliveryArchive(models.Model):
+    """YOPSB11 — copie FROIDE d'une ``WebhookDelivery`` archivée.
+
+    Le journal des livraisons (`WebhookDelivery`) est append-only et grossit
+    sans borne (une ligne par tentative). La politique de rétention YOPSB11
+    déplace les livraisons anciennes ici (par lots) puis les supprime de la
+    table vive. Schéma miroir SANS index chaud, FK dénormalisées en
+    identifiants entiers (aucune cascade sur l'archive)."""
+
+    original_id = models.BigIntegerField(
+        help_text="PK de la WebhookDelivery d'origine (table vive).")
+    company_id = models.BigIntegerField(null=True, blank=True)
+    webhook_id = models.BigIntegerField(null=True, blank=True)
+    event = models.CharField(max_length=50)
+    event_id = models.CharField(max_length=36, blank=True, default='')
+    payload = models.JSONField(default=dict, blank=True)
+    status = models.CharField(max_length=10)
+    response_status = models.IntegerField(null=True, blank=True)
+    error = models.TextField(blank=True, default='')
+    created_at = models.DateTimeField()
+    archived_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Livraison webhook (archive)'
+        verbose_name_plural = 'Livraisons webhook (archive)'
+
+    def __str__(self):
+        return f'archive:{self.original_id}'

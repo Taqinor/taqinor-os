@@ -180,3 +180,81 @@ def register_partition_retention(name: str, table: str, keep_months: int):
             table, keep_months, now=now, apply_=apply_)
 
     register_retention_policy(name, sweep)
+
+
+# ---------------------------------------------------------------------------
+# YOPSB11 — Archivage par LOTS des tables append-only à forte croissance.
+#
+# Les tables de journal (chatter, runs d'automatisation, livraisons webhook)
+# grossissent sans borne et alourdissent le chemin chaud. Plutôt que de purger
+# (perte de données), on DÉPLACE les lignes anciennes vers une table d'archive
+# FROIDE (même schéma, sans index chaud) puis on les supprime de la table vive.
+# L'opération se fait par LOTS (défaut 5 000), CHAQUE lot dans SA propre
+# transaction — jamais une transaction géante qui verrouille la table vive ou
+# explose le WAL. ``core`` reste FONDATION : ce helper ne connaît que les
+# CLASSES de modèles qu'on lui passe (jamais un import d'app domaine) ; chaque
+# app appelle ce helper depuis SA ``services.py`` avec SES propres modèles.
+# ---------------------------------------------------------------------------
+
+ARCHIVE_BATCH_SIZE = 5000
+
+
+def setting_days(name, default=0):
+    """Lit une fenêtre de rétention (en jours) depuis les réglages Django.
+
+    Défaut 0 = OFF (aucun archivage — comportement inchangé). Une valeur non
+    numérique retombe sur ``default``. Foundation-safe : simple ``getattr`` sur
+    ``settings`` (aucun import d'app domaine)."""
+    from django.conf import settings
+
+    value = getattr(settings, name, None)
+    if value is None:
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def archive_old_rows(model, archive_model, row_to_archive, cutoff_field,
+                     now, jours, apply_=True, batch_size=ARCHIVE_BATCH_SIZE):
+    """Déplace par LOTS les lignes de ``model`` plus vieilles que ``jours``
+    vers ``archive_model`` puis les supprime de la table vive.
+
+    * ``row_to_archive(row)`` — callable fourni par l'app : renvoie le ``dict``
+      de champs à passer au constructeur d'``archive_model`` pour UNE ligne
+      vive (dénormalisation des FK en identifiants entiers → l'archive est
+      indépendante du cycle de vie des tables vives, aucune cascade).
+    * ``cutoff_field`` — champ horodaté servant de seuil (ex. ``created_at``).
+    * ``jours <= 0`` (défaut OFF) → 0, rien n'est déplacé.
+    * ``apply_=False`` (dry-run du registre) → renvoie le compte qui SERAIT
+      archivé, sans rien déplacer.
+    * Sinon : boucle de lots de ``batch_size``, CHAQUE lot dans sa propre
+      ``transaction.atomic`` (commit entre lots — pas de transaction géante).
+
+    Renvoie le nombre total de lignes archivées (ou le compte dry-run)."""
+    from django.db import transaction
+
+    if not jours or jours <= 0:
+        return 0
+    cutoff = now - timezone.timedelta(days=jours)
+    base_qs = model.objects.filter(**{f'{cutoff_field}__lt': cutoff})
+    if not apply_:
+        return base_qs.count()
+
+    total = 0
+    while True:
+        with transaction.atomic():
+            pks = list(
+                base_qs.order_by('pk').values_list('pk', flat=True)[:batch_size]
+            )
+            if not pks:
+                break
+            rows = model.objects.filter(pk__in=pks)
+            archive_model.objects.bulk_create(
+                [archive_model(**row_to_archive(r)) for r in rows],
+                batch_size=batch_size,
+            )
+            model.objects.filter(pk__in=pks).delete()
+            total += len(pks)
+    return total

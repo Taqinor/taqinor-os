@@ -3199,3 +3199,54 @@ def purge_stale_chat_sessions(now, apply_) -> int:
     if apply_ and count:
         qs.delete()
     return count
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# YOPSB11 — Archivage par lots de `LeadActivity` (chatter à forte croissance)
+#
+# Le chatter (`LeadActivity`) est append-only et grossit sans borne, alourdissant
+# le chemin chaud. `archiver_anciens(now, jours)` DÉPLACE les entrées plus
+# vieilles que `jours` vers la table froide `LeadActivityArchive` (par lots de
+# 5 000, un commit par lot — jamais de transaction géante) puis les supprime de
+# la table vive. Fenêtre par défaut 0 = OFF (aucun archivage, comportement
+# inchangé) ; réglage via `CRM_LEADACTIVITY_ARCHIVE_DAYS`. La politique est
+# enregistrée dans le registre partagé YOPSB10 depuis `CrmConfig.ready()`.
+
+DEFAULT_LEADACTIVITY_ARCHIVE_DAYS = 0
+
+
+def _leadactivity_to_archive(row):
+    """Mappe une `LeadActivity` vive vers les champs de `LeadActivityArchive`
+    (FK dénormalisées en identifiants entiers — archive froide indépendante)."""
+    return {
+        'original_id': row.pk,
+        'company_id': row.company_id,
+        'lead_id': row.lead_id,
+        'kind': row.kind,
+        'field': row.field,
+        'field_label': row.field_label,
+        'old_value': row.old_value,
+        'new_value': row.new_value,
+        'body': row.body,
+        'outcome': row.outcome,
+        'attachment_id': row.attachment_id,
+        'bulk': row.bulk,
+        'user_id': row.user_id,
+        'created_at': row.created_at,
+    }
+
+
+def archiver_anciens(now, jours, apply_=True):
+    """YOPSB11 — archive les `LeadActivity` plus vieilles que `jours`.
+
+    Déplacement par lots de 5 000 (un commit par lot) vers `LeadActivityArchive`
+    puis suppression de la table vive. `jours <= 0` (défaut OFF) → 0, rien ne
+    bouge. `apply_=False` (dry-run du registre) → compte sans déplacer. Renvoie
+    le nombre d'entrées archivées."""
+    from core.retention import archive_old_rows
+    from .models import LeadActivity, LeadActivityArchive
+
+    return archive_old_rows(
+        LeadActivity, LeadActivityArchive, _leadactivity_to_archive,
+        cutoff_field='created_at', now=now, jours=jours, apply_=apply_,
+    )
