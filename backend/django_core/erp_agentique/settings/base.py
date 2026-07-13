@@ -55,6 +55,9 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
     'corsheaders',
+    # YAPIC5 — génération de schéma OpenAPI 3 (management command `spectacular`
+    # + templates Swagger/ReDoc). Requis par DEFAULT_SCHEMA_CLASS ci-dessous.
+    'drf_spectacular',
     # Local apps
     # App de fondation : modèles abstraits, mixins, bus d'événements
     # (core.events), portée des enregistrements (core.scoping) et fondation IA
@@ -62,8 +65,19 @@ INSTALLED_APPS = [
     # concret → aucune migration. N'importe que vers le bas (import-linter).
     'core',
     'authentication',
+    # ODX19 — Achats (bons de commande/réceptions/factures/paiements/retours
+    # fournisseur, équivalent Odoo Purchase). Sorti de stock en préservant
+    # les tables physiques (SeparateDatabaseAndState). Chargé AVANT stock :
+    # le shim de ré-export de stock.models importe apps.achats.models.
+    'apps.achats',
     'apps.stock',
     'apps.crm',
+    # ODX17 — Facturation (Facture/LigneFacture/Paiement/Avoir/LigneAvoir/
+    # FollowupLevel/RelanceLog, équivalent Odoo Invoicing séparé de Sales).
+    # Sorti de ventes en préservant les tables physiques
+    # (SeparateDatabaseAndState). Chargé AVANT ventes : le shim de ré-export
+    # de ventes.models importe apps.facturation.models.
+    'apps.facturation',
     'apps.ventes',
     'apps.reporting',
     'apps.parametres',
@@ -408,6 +422,44 @@ REST_FRAMEWORK = {
     # jamais le statut HTTP ni la sémantique tenant — reformate seulement le
     # corps de réponse.
     'EXCEPTION_HANDLER': 'core.exceptions.taqinor_exception_handler',
+    # YAPIC5 — schéma OpenAPI 3 auto-généré (drf-spectacular) : remplace le
+    # AutoSchema DRF par défaut pour que /api/schema/ + Swagger/ReDoc reflètent
+    # RÉELLEMENT les viewsets enregistrés (FG105 = page FR écrite à la main,
+    # ne bouge pas, reste la doc de référence de l'API PUBLIQUE api/public/).
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+    # YAPIC7 — stratégie de versionnement UNIQUE et documentée
+    # (docs/api-conventions.md). URLPathVersioning : `request.version` vaut
+    # 'v1' sur TOUTE vue, ancienne ('api/django/...') ou nouvelle
+    # ('api/v1/...') — AUCUNE route ne capture de segment `<version>` dans
+    # l'URL (préfixes littéraux dans erp_agentique/urls.py, délibérément :
+    # une capture injecterait un kwarg `version` dans chaque vue), donc
+    # `URLPathVersioning.determine_version` retombe systématiquement sur
+    # DEFAULT_VERSION. Le comportement de rejet d'une version hors
+    # ALLOWED_VERSIONS (propre, via `exceptions.NotFound`, jamais une 404
+    # Django brute) est prouvé en isolation par
+    # tests/test_api_versioning.py — pas par une route réelle.
+    'DEFAULT_VERSIONING_CLASS': 'rest_framework.versioning.URLPathVersioning',
+    'DEFAULT_VERSION': 'v1',
+    'ALLOWED_VERSIONS': ('v1',),
+}
+
+# YAPIC5 — réglages drf-spectacular. COMPONENT_SPLIT_REQUEST distingue les
+# schémas Request/Response (champs read_only exclus du corps de requête dans
+# le schéma généré). SERVE_PERMISSIONS gate /api/schema/, /api/docs/ et
+# /api/redoc/ derrière IsAuthenticated (pas d'exposition anonyme du contrat
+# d'API complet). SORT_OPERATIONS désactivé pour préserver l'ordre naturel de
+# `erp_agentique/urls.py` (plus lisible par app).
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'TAQINOR OS — API',
+    'DESCRIPTION': (
+        "Schéma OpenAPI 3 auto-généré des ViewSets DRF de l'ERP interne "
+        "(api/django/...). L'API publique par clé (api/public/...) garde sa "
+        "propre page de référence FR écrite à la main (apps/publicapi/docs.py)."
+    ),
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
+    'COMPONENT_SPLIT_REQUEST': True,
+    'SERVE_PERMISSIONS': ['rest_framework.permissions.IsAuthenticated'],
 }
 
 # Simple JWT Configuration

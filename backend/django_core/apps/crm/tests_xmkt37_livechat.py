@@ -187,3 +187,37 @@ class MultiTenantChatTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         session_a.refresh_from_db()
         self.assertEqual(session_a.company_id, co_a.id)
+
+
+class ResolveCompanyGuardTests(TestCase):
+    """QXG5 — code guard : un ``WEBSITE_LEADS_COMPANY_ID`` absent/mauvais ne
+    doit jamais mésrouter une session livechat en silence. La confirmation
+    prod (variable bien posée) reste un check ops manuel du fondateur — hors
+    périmètre ici."""
+
+    def test_missing_env_var_with_two_companies_logs_loud_error(self):
+        from apps.crm.public_chat_views import _resolve_company
+        c1 = Company.objects.create(nom='Livechat A', slug='livechat-a')
+        Company.objects.create(nom='Livechat B', slug='livechat-b')
+        with override_settings(WEBSITE_LEADS_COMPANY_ID=None):
+            with self.assertLogs('apps.crm.public_chat_views', level='ERROR') as cm:
+                resolved = _resolve_company()
+        # Repli conservé (safe — jamais casser l'endpoint) : 1re Company par pk.
+        self.assertEqual(resolved, c1)
+        self.assertTrue(any('WEBSITE_LEADS_COMPANY_ID' in m for m in cm.output))
+
+    def test_missing_env_var_single_company_no_loud_error(self):
+        from apps.crm.public_chat_views import _resolve_company
+        c1 = Company.objects.create(nom='Livechat Solo', slug='livechat-solo')
+        with override_settings(WEBSITE_LEADS_COMPANY_ID=None):
+            resolved = _resolve_company()
+        self.assertEqual(resolved, c1)
+
+    def test_bad_env_var_value_logs_loud_error_and_returns_none(self):
+        from apps.crm.public_chat_views import _resolve_company
+        Company.objects.create(nom='Livechat C', slug='livechat-c')
+        with override_settings(WEBSITE_LEADS_COMPANY_ID=999999):
+            with self.assertLogs('apps.crm.public_chat_views', level='ERROR') as cm:
+                resolved = _resolve_company()
+        self.assertIsNone(resolved)
+        self.assertTrue(any('999999' in m for m in cm.output))

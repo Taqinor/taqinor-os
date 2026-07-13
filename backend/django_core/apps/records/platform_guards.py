@@ -589,16 +589,18 @@ def branding_error_line(relpath: str) -> str:
 #
 # EXCLUSION PERMANENTE (règle #4, CLAUDE.md) — nommée et ABSOLUE, jamais un
 # rétrofit exigé, jamais retirable par un nettoyage de baseline : Devis /
-# Facture / BonCommande / Avoir (``ventes``) restent sur leurs chaînes de
-# statuts propres à jamais, séparées de ce kit et de la couche funnel
-# ``STAGES.py`` (règle #2). Un futur champ ``montant_ttc`` ajouté à l'un de ces
-# quatre modèles ne doit JAMAIS faire rougir ce garde : l'exclusion est
-# vérifiée AVANT la baseline, par nom qualifié, en dur dans ce module.
+# Facture / BonCommande / Avoir restent sur leurs chaînes de statuts propres à
+# jamais, séparées de ce kit et de la couche funnel ``STAGES.py`` (règle #2).
+# ODX17 a sorti Facture/Avoir de ``ventes`` vers ``apps.facturation`` (même
+# table physique, state-only) — l'exclusion suit le MODÈLE, pas son app
+# d'origine. Un futur champ ``montant_ttc`` ajouté à l'un de ces quatre
+# modèles ne doit JAMAIS faire rougir ce garde : l'exclusion est vérifiée
+# AVANT la baseline, par nom qualifié, en dur dans ce module.
 KIT_PERMANENT_EXCLUSIONS = frozenset({
     "ventes.Devis",
-    "ventes.Facture",
+    "facturation.Facture",
     "ventes.BonCommande",
-    "ventes.Avoir",
+    "facturation.Avoir",
 })
 
 # ``statut`` (ou tout champ ``statut...``) déclaré avec des ``choices`` — motif

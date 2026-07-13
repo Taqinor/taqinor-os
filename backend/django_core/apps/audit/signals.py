@@ -19,12 +19,14 @@ TRACKED_MODELS = [
     ('crm', 'Lead'),
     ('crm', 'Client'),
     ('ventes', 'Devis'),
-    ('ventes', 'Facture'),
-    ('ventes', 'Avoir'),
-    ('ventes', 'RelanceLog'),
+    # ODX17 — Facture/Avoir/Paiement déplacés vers l'app ``facturation``
+    # (state-only) : l'app_label suit le modèle pour que get_model résolve.
+    ('facturation', 'Facture'),
+    ('facturation', 'Avoir'),
+    ('facturation', 'RelanceLog'),
     # FG15 — écritures « argent » : bon de commande client + encaissements.
     ('ventes', 'BonCommande'),
-    ('ventes', 'Paiement'),
+    ('facturation', 'Paiement'),
     ('installations', 'Installation'),
     ('installations', 'Intervention'),
     ('sav', 'Ticket'),
@@ -34,11 +36,11 @@ TRACKED_MODELS = [
     ('stock', 'Produit'),
     ('stock', 'MouvementStock'),
     # FG15 — chaîne achats fournisseur (argent sortant : commande → réception
-    # → facture → paiement).
-    ('stock', 'BonCommandeFournisseur'),
-    ('stock', 'ReceptionFournisseur'),
-    ('stock', 'FactureFournisseur'),
-    ('stock', 'PaiementFournisseur'),
+    # → facture → paiement). ODX19 — déplacés de ``stock`` vers ``achats``.
+    ('achats', 'BonCommandeFournisseur'),
+    ('achats', 'ReceptionFournisseur'),
+    ('achats', 'FactureFournisseur'),
+    ('achats', 'PaiementFournisseur'),
     ('parametres', 'CompanyProfile'),
     ('authentication', 'CustomUser'),
     ('roles', 'Role'),

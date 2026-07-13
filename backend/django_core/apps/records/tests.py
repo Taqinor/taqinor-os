@@ -624,8 +624,8 @@ class TestResolveTargetErrors(TestCase):
 
 
 class TestVentesAttachmentTargets(TestCase):
-    """ventes.devis et ventes.facture sont des cibles de pièce jointe valides :
-    on peut RÉELLEMENT y joindre un fichier (persiste + listable)."""
+    """ventes.devis et facturation.facture sont des cibles de pièce jointe
+    valides : on peut RÉELLEMENT y joindre un fichier (persiste + listable)."""
 
     @classmethod
     def setUpTestData(cls):
@@ -675,10 +675,10 @@ class TestVentesAttachmentTargets(TestCase):
         self.assertEqual(len(data), 1)
 
     def test_attach_to_facture(self):
-        from apps.ventes.models import Facture
+        from apps.facturation.models import Facture
         facture = Facture.objects.create(
             company=self.company, reference='FAC-VA-1', client=self._client())
-        resp = self._upload('ventes.facture', facture.id)
+        resp = self._upload('facturation.facture', facture.id)
         self.assertEqual(resp.status_code, 201, resp.data)
         self.assertEqual(
             Attachment.objects.filter(object_id=str(facture.id)).count(), 1)

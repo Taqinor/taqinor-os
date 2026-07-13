@@ -340,7 +340,7 @@ def _facture_fournisseur_ht(company, facture_id):
     chargement."""
     from decimal import Decimal
     from django.apps import apps as django_apps
-    model = django_apps.get_model('stock', 'FactureFournisseur')
+    model = django_apps.get_model('achats', 'FactureFournisseur')
     fac = model.objects.filter(id=facture_id, company=company).first()
     if fac is None:
         return Decimal('0')
@@ -451,16 +451,18 @@ def budget_projet_synthese(budget):
 
 def _factures_revenu_programme(projet, company):
     """(Σ revenu HT, Σ revenu TTC) des factures CLIENT émises sur les devis du
-    programme. Lu via ``apps.get_model('ventes', 'Facture')`` — aucune arête
-    d'import vers ``ventes`` au chargement. Les factures ANNULÉES sont exclues
-    (elles ne sont pas un revenu). Une facture introuvable / illisible dégrade
-    à 0. Le revenu est scopé société (jamais la facture d'une autre société)."""
+    programme. Lu via ``apps.get_model('facturation', 'Facture')`` — aucune
+    arête d'import vers ``facturation`` au chargement (ODX17 — Facture a
+    déménagé de ``ventes`` vers ``facturation``, même table physique). Les
+    factures ANNULÉES sont exclues (elles ne sont pas un revenu). Une facture
+    introuvable / illisible dégrade à 0. Le revenu est scopé société (jamais
+    la facture d'une autre société)."""
     from decimal import Decimal
     from django.apps import apps as django_apps
     devis_ids = list(projet.devis.values_list('devis_id', flat=True))
     if not devis_ids:
         return Decimal('0'), Decimal('0')
-    facture_model = django_apps.get_model('ventes', 'Facture')
+    facture_model = django_apps.get_model('facturation', 'Facture')
     revenu_ht = Decimal('0')
     revenu_ttc = Decimal('0')
     factures = (facture_model.objects
@@ -1490,7 +1492,7 @@ def bcf_montant_achat(company, bcf_id):
     ``stock`` au chargement. Montant INTERNE."""
     from decimal import Decimal
     from django.apps import apps as django_apps
-    model = django_apps.get_model('stock', 'BonCommandeFournisseur')
+    model = django_apps.get_model('achats', 'BonCommandeFournisseur')
     bcf = model.objects.filter(id=bcf_id, company=company).first()
     if bcf is None:
         return Decimal('0')

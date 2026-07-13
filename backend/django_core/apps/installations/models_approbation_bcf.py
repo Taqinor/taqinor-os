@@ -82,7 +82,7 @@ class ApprobationBCF(models.Model):
         related_name='installations_approbations_bcf')
     # Bon de commande fournisseur approuvé (string-FK vers stock).
     bcf = models.ForeignKey(
-        'stock.BonCommandeFournisseur', on_delete=models.CASCADE,
+        'achats.BonCommandeFournisseur', on_delete=models.CASCADE,
         related_name='installations_approbations')
     # Palier appliqué (PROPRE à ce workflow). max_length=20 couvre 'responsable'.
     palier = models.CharField(max_length=20, choices=PALIER_CHOICES)

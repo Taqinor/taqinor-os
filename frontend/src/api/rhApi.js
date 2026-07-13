@@ -12,12 +12,21 @@ import { makeResourceFactory } from './resource'
    résout le dossier lié au compte appelant).
    ========================================================================== */
 
+/**
+ * ARC50 — pilote de typage : le schéma OpenAPI généré (YAPIC5 +
+ * `npm run gen:api-types`) documente la forme réelle de `Employe`. Ceci ne
+ * change AUCUN comportement runtime (JSDoc pur, ce repo n'exécute pas tsc) —
+ * uniquement de la documentation typée pour l'éditeur.
+ * @typedef {import('./types/schema').components['schemas']['Employe']} Employe
+ */
+
 // ARC44 — Fabrique partagée (`api/resource.js`) : réservée aux DEUX groupes de
 // ce module dont le quintet complet (list/get/create/update/remove) tombe sur
 // un seul chemin REST plat. Le reste de rhApi garde des fonctions nommées à
 // plat (contrat historique, souvent des @actions sans CRUD complet) — migrer
 // ces dernières changerait l'API exportée pour aucun gain réel.
 const resource = makeResourceFactory(api, '/rh')
+// ARC50 — ressource `employes` typée `Employe` (voir le typedef ci-dessus).
 const employesResource = resource('employes')
 const quizFormationResource = resource('quiz-formation')
 

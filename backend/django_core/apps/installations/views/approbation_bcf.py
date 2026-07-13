@@ -75,7 +75,7 @@ class ApprobationBCFViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
 
         # Le BCF doit appartenir à la société (lu via sélecteur, string-FK).
         from django.apps import apps as django_apps
-        bcf_model = django_apps.get_model('stock', 'BonCommandeFournisseur')
+        bcf_model = django_apps.get_model('achats', 'BonCommandeFournisseur')
         bcf = bcf_model.objects.filter(id=bcf_id, company=company).first()
         if bcf is None:
             return Response(
