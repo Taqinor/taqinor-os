@@ -72,6 +72,10 @@ the journey the best in the world for the CLIENT and the COMMERCIAL user.*
 *From Reda: (1) when the client opens the returned quote he must see HIS OWN HOME in interactive 3D with the panels (zoom/rotate) — the web viewer is WEB_PLAN WJ25–WJ28, this QJ26 is the backend unlock; (2) when the client asks to be contacted, the lead's HANDLER and the handler's SUPERIOR must both be notified; (3) a « contacter mon supérieur » button on quote generation notifies the creator's superior; (4) support multi-villa quotes — multiply one villa ×N (identical) OR add different villas one by one, all in ONE quote document. Research confirmed the pieces exist: `CustomUser.supervisor` self-FK (added 2026-06-18), `Lead.owner` (handler), `Devis.created_by` (creator), the `notify()` service + extensible EventType (QJ2), and the `roof_layout` JSON already stored on the Devis — the public proposal payload just doesn't expose it, and no server-side contact-request endpoint exists yet.*
 
 
+#### DONE LOG — PLAN2 VX vérification + 2 build (2026-07-13)
+
+Drain PLAN2 (lanes frontend/crm, frontend/brand, backend/auth). Vérifié en repo réel (pas la case) : **déjà présents** (commits déjà sur origin/main, cases périmées) → `[x]` : VX193, VX219, VX220, VX223, VX224, VX248, VX249, VX250 (lane crm-a) ; VX146, VX147, VX237, VX239 (lane crm-b) ; XPLT21 (voip, dans PLAN.md). **Construits cette passe** : VX150 (login re-signé — le wordmark passe à la police de marque `var(--font-display)`, delta sur VX34 déjà mergé ; `96b14a46`) ; VX243 (confiance au niveau du DOSSIER — `archived_by_nom` rendu dans ListView, endpoint historique record-scopé `objets/<ct>/<id>/history/` visible par le propriétaire via ContentType générique sans import de modèle métier, hook `useStaleGuard` sur LeadForm/DevisForm/FactureForm ; tests `apps/audit/tests_vx243_record_history.py` + `useStaleGuard.test.jsx` ; `d4c5a99c`). Les tâches @blocked du groupe compta/argent (XACC12/XPOS19/YCASH5 money-GL + décision fondateur, XSAL5/XSAL14 quote_engine RÈGLE #4, ODX14/15/18/20/22 app-split state-only à valider en DB, ODX15 doublon NoteFrais/NoteDeFrais à trancher) restent `[ ]` — respect des tags @blocked. QXG1-5 restent GATED (compte/données/contenu/ops fondateur).
+
 #### DONE LOG — backend/auth lane vérification (2026-07-12)
 
 Lane backend/auth (VX200/VX201/VX202/VX235/VX241) : les 5 tâches étaient DÉJÀ construites et mergées dans HEAD (commits 6202941f, 1a685a56, e80034c6, b26951c2, b4867158 — tous ancêtres de HEAD). Vérifié en repo réel : VX200 CSP par-environnement via `security-headers.conf.template` inclus par nginx ; VX201 `devTools: import.meta.env.DEV`, `lib/trustedSvg.js`, `frontend/scripts/check_no_danger.mjs` câblé au lint ; VX202 `components/NoIndex.jsx` + zone nginx `public_token_limit` ; VX235 garde de cycle superviseur (borne 20 sauts) dans `authentication/serializers.py` ; VX241 `TRACKED_MODELS` avec `('kb','KbArticle')`+`('gestion_projet','Timesheet')` et `UsageGuardedDestroyMixin` (`apps/core/destroy_mixins.py`). Ticks `[x] (already present)` uniquement, aucun code touché. AUTH : garde d'intégrité VX235 + audit VX241 déjà en place.
@@ -1325,7 +1329,7 @@ subset) pour les identifiants (`--font-mono`) — à soumettre au fondateur avan
   source `node --test` — pas de RTL installé dans ce lane, cf. convention `MesEquipesCard.test.mjs`) ;
   0 rangée dédiée quand `savedViews.length === 0`. (T2 — M, sonnet) (@lane: frontend/crm — @after VX89)
 
-- [ ] VX146 — **`/calendrier` rejoint le design system : un seul calendrier mensuel dans l'app.** (@lane: frontend/crm)
+- [x] VX146 — **`/calendrier` rejoint le design system : un seul calendrier mensuel dans l'app.** (@lane: frontend/crm)
   `pages/CalendarPage.jsx` (292 l., l'agenda global qui agrège poses/interventions/maintenance/
   activités) est construit à 100 % en `style={{}}` avec hex bruts (`#0d1b3e`, `#e2e8f0`,
   `#dc2626`…) et n'importe AUCUN composant `ui/` — alors qu'une grille mensuelle tokenisée existe
@@ -1338,7 +1342,7 @@ subset) pour les identifiants (`--font-mono`) — à soumettre au fondateur avan
   visuel équivalent (preview_screenshot avant/après) ; dark mode correct. (T2 — M, sonnet) (@lane:
   frontend/crm)
 
-- [ ] VX147 — **LeadsPage et ses 4 vues parlent enfin le même langage d'état.** L'écran le plus (@lane: frontend/crm)
+- [x] VX147 — **LeadsPage et ses 4 vues parlent enfin le même langage d'état.** L'écran le plus (@lane: frontend/crm)
   fréquenté du CRM rend son chargement/erreur en `<p className="page-loading/page-error">` brut,
   stylé en hex codés en dur (`index.css:727-739`) — hors de tout le système d'états ; et ses 4 vues
   traitent « 0 lead » de 4 façons (Kanban/List/Carte en texte brut, ChartsView seule en
@@ -1395,7 +1399,7 @@ subset) pour les identifiants (`--font-mono`) — à soumettre au fondateur avan
 
 **Sous-groupe VXD-J — Fondation & âme de marque**
 
-- [ ] VX150 — **Le login re-signé : la première impression cesse de contredire le système.** (@lane: frontend/brand — delta sur VX34)
+- [x] VX150 — **Le login re-signé : la première impression cesse de contredire le système.** (@lane: frontend/brand — delta sur VX34)
   `Login.jsx` est une île : 100 % `style={{}}` inline avec les hex d'une ANCIENNE marque
   (`#1863DC`/`#F5C100`), fond animé « TAQINOR » en `Arial Black` (L46) au lieu de la police de
   marque, œil mot-de-passe et alerte en émojis bruts `👁️/🙈/⚠️` (L240, L292), et un
@@ -2012,7 +2016,7 @@ reduced-motion (`:67-87`), cibles 44px `pointer:coarse` (`:156-173`), DataTable 
   annoncée en FR ; plus aucun `window.alert` (assert). (T2 — M, sonnet ; opus si l'entonnoir+clavier
   se complique) (@lane: frontend/ios)
 
-- [ ] VX193 — **LeadForm : labels associés + validation client annoncée ; AppointmentBooker : (@lane: frontend/crm — @with VX144)
+- [x] VX193 — **LeadForm : labels associés + validation client annoncée ; AppointmentBooker : (@lane: frontend/crm — @with VX144)
   disclosure + tokens morts. @with VX144 + `ma-file` (même passe fichier).** Le plus gros
   formulaire CRM rend tous ses labels SANS `htmlFor` et ses inputs SANS `id` (helpers `Txt`/`Sel`
   `LeadForm.jsx:101-118` ; champs `:763-987`) ; les erreurs `form-feedback` (`:766,780`) n'ont ni
@@ -2454,7 +2458,7 @@ droite)**
 
 **Sous-groupe VXD-K — Le commercial : chaque job compté en clics**
 
-- [ ] VX219 — **« Mes chiffres » : le vendeur `normal` voit ENFIN sa propre performance. @coord (@lane: frontend/crm — @coord VX27)
+- [x] VX219 — **« Mes chiffres » : le vendeur `normal` voit ENFIN sa propre performance. @coord (@lane: frontend/crm — @coord VX27)
   VX27.** Défaut prouvé : `/reporting` ET `/reporting/commercial` sont gatés
   `roleLoader(['responsable','admin'])` (`router/index.jsx:319,322`) ; `Dashboard.jsx` est
   company-wide ; le seul KPI perso (FG39, `CrmInsightsPanel`) n'est rendu QUE dans
@@ -2469,7 +2473,7 @@ droite)**
   métriques (test : la carte n'agrège que `owner==user`) ; le gate manager inchangé. (T2 — M,
   sonnet) (@lane: frontend/crm — @coord VX27)
 
-- [ ] VX220 — **⌘K atterrit sur le RECORD (pas la liste) + créations au clavier. @after VX79, (@lane: frontend/crm — @after VX79)
+- [x] VX220 — **⌘K atterrit sur le RECORD (pas la liste) + créations au clavier. @after VX79, (@lane: frontend/crm — @after VX79)
   @coord NTUX9/10.** Défaut prouvé : `CommandPalette.jsx:24-33` route
   `devis/client/facture/chantier/equipement/ticket` vers leur LISTE — seul `lead` ouvre la fiche.
   Et `shortcuts.js` = 8 `g x` de nav, 0 action « créer » (`commandActions.js:13`). Fix : (a)
@@ -2506,7 +2510,7 @@ droite)**
   DoD : un devis envoyé propose « Relancer » → même modale en mode relance + entrée chatter ;
   l'action n'apparaît que sur `envoye` ; test. (T2 — S/M, sonnet) (@lane: frontend/ventes)
 
-- [ ] VX223 — **[BACKEND léger] Actions de carte en 2 clics : « ✗ Perdu (motif) », file (@lane: frontend/crm — @after VX83)
+- [x] VX223 — **[BACKEND léger] Actions de carte en 2 clics : « ✗ Perdu (motif) », file (@lane: frontend/crm — @after VX83)
   « Rappels demandés », « ⚡ indisponible » cliquable. @after VX83.** Trois gestes quotidiens
   enfermés dans la fiche : (a) marquer perdu = ouvrir la fiche → scroller → cocher « Perdu ? » +
   motif — ~5 interactions ; (b) `contact_preference==='phone_ok'` rend un badge passif « ☎ Rappel
@@ -2523,7 +2527,7 @@ droite)**
   cliquer « devis auto indisponible » ouvre la section énergie en édition ; tests. (T2 — M,
   sonnet) (@lane: frontend/crm — @after VX83)
 
-- [ ] VX224 — **La session de qualification en rafale : ◀▶ prev/next, « créer un autre », (@lane: frontend/crm — @after VX89/VX92/VX93)
+- [x] VX224 — **La session de qualification en rafale : ◀▶ prev/next, « créer un autre », (@lane: frontend/crm — @after VX89/VX92/VX93)
   « Mes leads » par défaut. @after VX89 (même fichier — rebase), VX92, VX93.** Trois
   multiplicateurs de la même session (20-40 leads/j) : (a) `LeadForm` reçoit UN lead — passer au
   suivant = fermer, re-viser la ligne, recliquer ; (b) VX92 câble « Créer un autre » sur
@@ -2736,7 +2740,7 @@ droite)**
 
 **Sous-groupe VXD-O — La vélocité de saisie**
 
-- [ ] VX237 — **Collage intelligent : le presse-papiers du monde réel entre proprement.** Défaut (@lane: frontend/crm)
+- [x] VX237 — **Collage intelligent : le presse-papiers du monde réel entre proprement.** Défaut (@lane: frontend/crm)
   prouvé : 0 `onPaste` dans tout le frontend — un numéro WhatsApp collé, un montant Excel, une
   carte de visite texte tombent bruts dans l'`<input>`. Le « paste-grid Excel » multi-cellules
   reste DIFFÉRÉ (dedup-map) — ceci est le collage UNITAIRE, jamais proposé ni rejeté. Fix : hook
@@ -2766,7 +2770,7 @@ droite)**
   ligne ; tests `document.activeElement`. (T2 — M, sonnet) (@lane: frontend/ventes — @after
   VX90/VX91)
 
-- [ ] VX239 — **Doublons : prévenir à la création CLIENT + le geste de FUSION. @coord F-E5.** (@lane: frontend/crm)
+- [x] VX239 — **Doublons : prévenir à la création CLIENT + le geste de FUSION. @coord F-E5.** (@lane: frontend/crm)
   Deux moitiés manquantes du même système : (a) `crmApi.checkDuplicates` n'est câblé que sur
   `LeadForm.jsx:330-346` — `ClientForm`/`ClientQuickCreateModal` n'ont que l'autocomplete NOM ;
   et le formatage téléphone (`canonicalPhoneMA`) n'est consommé que par UN champ ; (b) la
@@ -2844,7 +2848,7 @@ droite)**
   leurs refresh (test à 2 logins). (T1 — S/M, sonnet — noter AUTH au DONE LOG) (@lane:
   backend/auth)
 
-- [ ] VX243 — **[BACKEND] La confiance au niveau du DOSSIER : « archivé par X », historique de (@lane: backend/auth — @after VX98)
+- [x] VX243 — **[BACKEND] La confiance au niveau du DOSSIER : « archivé par X », historique de (@lane: backend/auth — @after VX98)
   MON enregistrement, garde d'édition périmée. @after VX98 (réutilise `updated_by`/`updated_at` —
   ne jamais dupliquer le champ).** Trois lectures de confiance au grain du record : (a)
   `Lead.archived_by`/`archived_at` sont capturés serveur (`crm/models.py:602-608`) et JAMAIS
@@ -2946,7 +2950,7 @@ droite)**
 
 **Sous-groupe VXD-R — L'âme au quotidien**
 
-- [ ] VX248 — **Raccourcis d'ACTION à une touche sur le record focalisé + cheatsheet filtrée par (@lane: frontend/crm — @coord NTUX9/18)
+- [x] VX248 — **Raccourcis d'ACTION à une touche sur le record focalisé + cheatsheet filtrée par (@lane: frontend/crm — @coord NTUX9/18)
   rôle. @coord NTUX9/18 (palette = chercher-puis-exécuter ; cheatsheet-recherche = trouver un
   raccourci CONNU — mécanismes disjoints, vérifier avant build).** La vélocité perçue vient des
   raccourcis d'ACTION sur l'objet affiché, pas de la navigation — `shortcuts.js` ne connaît que
@@ -2965,7 +2969,7 @@ droite)**
   actif ; tests `isTypingTarget` + rendu par rôle. (T3 — M, sonnet) (@lane: frontend/crm — @coord
   NTUX9/18)
 
-- [ ] VX249 — **Le langage des micro-états : pulse de champ sauvé, valeur « suggérée », pastille (@lane: frontend/crm — @after/with VX93)
+- [x] VX249 — **Le langage des micro-états : pulse de champ sauvé, valeur « suggérée », pastille (@lane: frontend/crm — @after/with VX93)
   « pour moi » vs « société ». @after/with VX93, @coord VX83/84/86 + VX208.** Trois micro-signaux
   systémiques qu'aucune tâche par-écran ne peut poser : (a) aucun micro-accusé au grain du champ
   pour les sauvegardes silencieuses (édition inline DataTable, statut, note chatter) → primitive
@@ -2983,7 +2987,7 @@ droite)**
   société n'emprunte jamais le style « pour moi » (test des 3 surfaces) ; reduced-motion dégrade.
   (T3 — M, sonnet) (@lane: frontend/crm — @after/with VX93)
 
-- [ ] VX250 — **La fiche annonce son état et ses relations : « en attente de… » + compteurs (@lane: frontend/crm — @coord VX159/ARC46)
+- [x] VX250 — **La fiche annonce son état et ses relations : « en attente de… » + compteurs (@lane: frontend/crm — @coord VX159/ARC46)
   cliquables. @coord ARC46 (`RecordShell` — construire indépendant, migrer dedans plus tard).**
   Deux lectures ambiantes au niveau du record : (a) rien ne montre, DANS le document ouvert, ce
   qui reste à faire ailleurs → `<PendingStepsIndicator>` sur le détail Devis/Facture, dérivé des
