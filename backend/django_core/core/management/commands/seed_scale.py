@@ -136,6 +136,25 @@ class Command(BaseCommand):
 
         pools: dict[str, list] = {'authentication.company': company_ids}
 
+        from django.db import IntegrityError, transaction
+
+        def _bulk(model, buffer, label):
+            """bulk_create best-effort : sur collision d'unicité (modèle de
+            référence à contraintes complexes déjà seedé), réutilise les lignes
+            existantes au lieu d'avorter TOUT le seeding — outil de dev, jamais
+            la prod."""
+            if not buffer:
+                return []
+            try:
+                with transaction.atomic():
+                    objs = model.objects.bulk_create(buffer, batch_size=BATCH)
+                return [o.pk for o in objs if o.pk]
+            except IntegrityError:
+                self.stdout.write(self.style.WARNING(
+                    f'{label}: collision d\'unicité — réutilisation existant'))
+                return list(model._default_manager.values_list(
+                    'pk', flat=True)[:len(buffer)])
+
         def seed(label, count, *, extra=None, seeding=None):
             """Crée ``count`` lignes du modèle ``label`` en lots, FK résolues
             depuis ``pools`` (parents pré-remplis à la demande). Renvoie les pk
@@ -158,6 +177,14 @@ class Command(BaseCommand):
                     continue
                 if tlabel in seeding:
                     continue  # cycle : on laissera le repli
+                # Réutilise les lignes de référence DÉJÀ présentes (contrats/rh
+                # /... seedées par l'init, à contraintes d'unicité) plutôt que
+                # d'en recréer qui entreraient en collision.
+                existing = list(
+                    tgt._default_manager.values_list('pk', flat=True)[:200])
+                if existing:
+                    pools[tlabel] = existing
+                    continue
                 seed(tlabel, min(count, 200),
                      seeding=seeding | {label})
 
@@ -189,12 +216,10 @@ class Command(BaseCommand):
                     extra(inst, seq)
                 buf.append(inst)
                 if len(buf) >= BATCH:
-                    objs = model.objects.bulk_create(buf, batch_size=BATCH)
-                    created_pks.extend(o.pk for o in objs if o.pk)
+                    created_pks.extend(_bulk(model, buf, label))
                     buf = []
             if buf:
-                objs = model.objects.bulk_create(buf, batch_size=BATCH)
-                created_pks.extend(o.pk for o in objs if o.pk)
+                created_pks.extend(_bulk(model, buf, label))
             pools.setdefault(label, []).extend(created_pks)
             self.stdout.write(f'{label}: +{len(created_pks)}')
             return pools[label]
