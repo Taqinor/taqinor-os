@@ -334,6 +334,15 @@ class CompanyProfile(models.Model):
         help_text="Autoriser « se souvenir de cet appareil » pour sauter la "
                   "MFA sur un appareil de confiance. Défaut False.")
 
+    # ── NTSEC28 — bannière / mention légale sur l'écran de connexion ────────
+    # Texte affiché sur l'écran de login (SSO et local) exigeant un accusé avant
+    # authentification (« accès autorisé uniquement… »). VIDE par défaut =
+    # écran de login inchangé. L'accusé est journalisé best-effort (IP/UA).
+    login_banner_text = models.TextField(
+        blank=True, default='',
+        help_text="Mention légale affichée avant authentification (accès "
+                  "autorisé uniquement…). Vide = aucun bandeau (défaut).")
+
     # ── QG9 — pourcentage des variantes de devis (dupliquer-variante) ──
     # Pourcentage symétrique appliqué autour du devis d'origine pour produire
     # les variantes de taille : échelles [1−p, 1.0, 1+p]. Défaut 20 %
