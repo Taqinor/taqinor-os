@@ -1111,3 +1111,34 @@ def unsnooze_approbation_item(user, source, object_id):
     from .models import SnoozedItem
     SnoozedItem.objects.filter(
         user=user, source=source, object_id=object_id).delete()
+
+
+def notify_security_change(user, title, body='', *, link=None, company=None):
+    """NTSEC30 — notification OBLIGATOIRE de changement de sécurité.
+
+    Au changement d'un facteur de sécurité (mot de passe, MFA activée/désactivée,
+    passkey ajouté/retiré, nouvelle session inconnue), l'utilisateur concerné est
+    TOUJOURS averti : la ligne in-app ET l'email sont émis en CONTOURNANT les
+    préférences de notification (exigence de sécurité — non désactivable). Best-
+    effort et jamais bloquant : toute erreur est avalée. Scopé société.
+    """
+    if user is None or not getattr(user, 'pk', None):
+        return None
+    company = company if company is not None else getattr(user, 'company', None)
+    event_type = EventType.SECURITY_CHANGE
+    created = None
+    try:
+        created = Notification.objects.create(
+            company=company, recipient=user, event_type=event_type,
+            title=str(title)[:255], body=str(body or '')[:MAX_BODY_LEN],
+            link=str(link or '')[:512])
+        _audit_notify(user, company, event_type, channel='in_app', ok=True,
+                      instance=created)
+    except Exception as exc:  # pragma: no cover - défensif
+        logger.warning('Notification sécurité in-app échouée : %s', exc)
+    # Email TOUJOURS tenté (best-effort), indépendamment des préférences.
+    try:
+        _dispatch_email(user, str(title), str(body or ''))
+    except Exception as exc:  # pragma: no cover - défensif
+        logger.warning('Email notification sécurité échoué : %s', exc)
+    return created

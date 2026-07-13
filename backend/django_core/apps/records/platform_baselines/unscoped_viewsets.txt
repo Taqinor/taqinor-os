@@ -83,6 +83,7 @@ pos.ConfigMaterielPOSViewSet
 pos.SessionCaisseViewSet
 pos.VenteComptoirViewSet
 publicapi.ApiKeyViewSet
+publicapi.ServiceAccountViewSet
 publicapi.WebhookViewSet
 qhse._QhseBaseViewSet
 records.ActivityTypeViewSet

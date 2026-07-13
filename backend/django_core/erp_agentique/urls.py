@@ -129,6 +129,10 @@ urlpatterns = [
          include('apps.installations.public_urls')),
     # XPUR22 — Portail fournisseur en lecture seule (sans login).
     path('api/django/public/stock/', include('apps.stock.public_urls')),
+    # NTSEC — Fondation Identité & accès (NTSEC11 : allowlist IP/CIDR).
+    path('api/django/identity/', include('apps.identity.urls')),
+    # NTSEC19/20 — Gouvernance des accès (revue d'accès + SoD).
+    path('api/django/accessreview/', include('apps.accessreview.urls')),
     # YAPIC7 — namespace de version explicite (URLPathVersioning,
     # DEFAULT_VERSION='v1', ALLOWED_VERSIONS=('v1',) dans REST_FRAMEWORK).
     # Mêmes vues que 'api/django/' ci-dessus (même liste _APP_URLS), sous

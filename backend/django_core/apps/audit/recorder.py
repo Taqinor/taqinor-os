@@ -117,7 +117,7 @@ def record(action, *, instance=None, content_type=None, object_id=None,
         if actor_username is None:
             actor_username = getattr(user, 'username', '') or ''
 
-        AuditLog.objects.create(
+        entry = AuditLog.objects.create(
             company=company,
             user=user if (user and getattr(user, 'is_authenticated', False))
             else None,
@@ -129,8 +129,39 @@ def record(action, *, instance=None, content_type=None, object_id=None,
             detail=detail or '',
             changes=changes,
         )
+        _chain_entry(entry, company)
     except Exception:  # noqa: BLE001 — best-effort, ne jamais bloquer la requête
         logger.debug('audit record failed', exc_info=True)
+
+
+def _chain_entry(entry, company):
+    """NTSEC17 — pose le chaînage d'inviolabilité sur ``entry`` (best-effort).
+
+    ``prev_hash`` = ``entry_hash`` de la dernière ligne chaînée de la même
+    société ; ``entry_hash`` = hash canonique de cette ligne. Ne chaîne que les
+    lignes portant une société (le chaînage est par société)."""
+    try:
+        from .models import AuditLog, compute_entry_hash
+        if company is None:
+            return
+        prev = AuditLog.objects.filter(
+            company=company, entry_hash__gt='',
+        ).exclude(pk=entry.pk).order_by('-id').first()
+        prev_hash = prev.entry_hash if prev is not None else ''
+        entry_hash = compute_entry_hash(
+            prev_hash=prev_hash,
+            company_id=getattr(company, 'pk', company),
+            action=entry.action,
+            actor_username=entry.actor_username,
+            object_id=entry.object_id,
+            object_repr=entry.object_repr,
+            detail=entry.detail,
+            timestamp=entry.timestamp,
+        )
+        AuditLog.objects.filter(pk=entry.pk).update(
+            prev_hash=prev_hash, entry_hash=entry_hash)
+    except Exception:
+        logger.debug('audit chain failed', exc_info=True)
 
 
 def record_field_change(instance, field, old, new, *, user=_UNSET,

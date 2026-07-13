@@ -1,0 +1,101 @@
+name: dependency audit (CVE, advisory)
+
+# NTPLT54 — audit CVE HEBDOMADAIRE des dépendances, ADVISORY (non-required, ne
+# bloque aucune merge). `pip-audit` sur requirements.txt + `npm audit` sur le
+# frontend (prod only). Une issue GitHub récapitulative n'est OUVERTE que si une
+# vulnérabilité HIGH/CRITICAL est présente — pas de bruit quand tout est propre.
+# La protection de branche reste intacte (ce job n'est jamais requis).
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: '0 6 * * 1'   # lundi 06:00 UTC, hebdomadaire
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install pip-audit
+        run: pip install pip-audit
+
+      # pip-audit : n'échoue pas le job (advisory) ; on capture le rapport.
+      - name: pip-audit (backend)
+        id: pip
+        continue-on-error: true
+        run: |
+          pip-audit -r backend/django_core/requirements.txt \
+            --desc --format markdown --output pip-audit.md || true
+          # Compte les lignes signalant une sévérité HIGH/CRITICAL.
+          HIGH=$(grep -ciE 'high|critical' pip-audit.md 2>/dev/null || echo 0)
+          echo "high=$HIGH" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # npm audit --omit dev en JSON ; on n'échoue jamais le job.
+      - name: npm audit (frontend, prod deps)
+        id: npm
+        continue-on-error: true
+        working-directory: frontend
+        run: |
+          npm audit --omit dev --json > ../npm-audit.json || true
+          HIGH=$(node -e "try{const a=require('../npm-audit.json').metadata.vulnerabilities;console.log((a.high||0)+(a.critical||0))}catch(e){console.log(0)}")
+          echo "high=$HIGH" >> "$GITHUB_OUTPUT"
+
+      - name: Assemble report
+        id: report
+        run: |
+          {
+            echo "## Audit CVE hebdomadaire (NTPLT54)";
+            echo "";
+            echo "### Backend (pip-audit)";
+            cat pip-audit.md 2>/dev/null || echo "(aucun rapport)";
+            echo "";
+            echo "### Frontend (npm audit --omit dev)";
+            echo '```json'; cat npm-audit.json 2>/dev/null | head -c 4000 || echo '{}'; echo '```';
+          } > audit-report.md
+          TOTAL=$(( ${{ steps.pip.outputs.high || 0 }} + ${{ steps.npm.outputs.high || 0 }} ))
+          echo "total_high=$TOTAL" >> "$GITHUB_OUTPUT"
+
+      - name: Upload audit report
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-audit-report
+          path: audit-report.md
+
+      # Ouvre une issue SEULEMENT si au moins une HIGH/CRITICAL est présente.
+      - name: Open issue on new HIGH/CRITICAL
+        if: steps.report.outputs.total_high != '0'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('audit-report.md', 'utf8');
+            const title = `[dependency-audit] ${{ steps.report.outputs.total_high }} vulnérabilité(s) HIGH/CRITICAL`;
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner, repo: context.repo.repo,
+              state: 'open', labels: 'dependency-audit',
+            });
+            const dup = existing.data.find(i => i.title.startsWith('[dependency-audit]'));
+            if (dup) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: dup.number, body,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner, repo: context.repo.repo,
+                title, body, labels: ['dependency-audit'],
+              });
+            }

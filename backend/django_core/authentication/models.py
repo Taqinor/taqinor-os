@@ -513,10 +513,21 @@ class UserSession(models.Model):
     jti = models.CharField(max_length=255, db_index=True)
     user_agent = models.CharField(max_length=400, blank=True, default='')
     ip_address = models.GenericIPAddressField(null=True, blank=True)
+    # NTSEC13 — empreinte d'appareil (hash SHA-256 de user_agent + plateforme).
+    # À la première apparition d'une empreinte pour un utilisateur, une alerte
+    # « appareil inconnu » est levée. Vide pour le legacy (aucune alerte).
+    device_fingerprint = models.CharField(
+        max_length=64, blank=True, default='', db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
     last_seen_at = models.DateTimeField(auto_now=True)
     # Révocation : la session reste en base (trace) mais sort de la liste active.
     revoked = models.BooleanField(default=False)
+    # NTSEC9 — horodatage de la dernière ré-authentification MFA (TOTP/passkey)
+    # rattachée à CETTE session. Posé à la connexion quand un second facteur a
+    # été vérifié ; lu par `apps.identity.stepup.require_recent_mfa` pour exiger
+    # une MFA récente sur les actions sensibles. NULL = jamais de MFA récente
+    # sur cette session (additif : les sessions existantes restent NULL).
+    last_mfa_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         verbose_name = "Session utilisateur"

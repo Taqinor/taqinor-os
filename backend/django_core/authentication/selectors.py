@@ -47,3 +47,61 @@ def active_companies():
 def active_company_ids():
     """Ids des sociétés opérationnelles (variante légère sans charger les objets)."""
     return list(active_companies().values_list('id', flat=True))
+
+
+def revoke_user_sessions(user):
+    """Révoque TOUTES les sessions actives d'un utilisateur (NTSEC5/10/25).
+
+    Marque chaque ``UserSession`` non révoquée ``revoked=True`` ET blackliste
+    son jeton de rafraîchissement (best-effort) pour qu'il ne puisse plus
+    rafraîchir d'accès. Fondation partagée : révocation de sessions lors d'un
+    déprovisioning SCIM, d'une éviction de session concurrente ou d'une
+    désactivation de compte dormant. Renvoie le nombre de sessions révoquées.
+    """
+    if user is None or not getattr(user, 'pk', None):
+        return 0
+    from authentication.models import UserSession
+    sessions = list(UserSession.objects.filter(user=user, revoked=False))
+    n = 0
+    for s in sessions:
+        try:
+            from rest_framework_simplejwt.token_blacklist.models import (
+                BlacklistedToken, OutstandingToken,
+            )
+            outstanding = OutstandingToken.objects.filter(jti=s.jti).first()
+            if outstanding is not None:
+                BlacklistedToken.objects.get_or_create(token=outstanding)
+        except Exception:
+            pass
+        s.revoked = True
+        s.save(update_fields=['revoked'])
+        n += 1
+    return n
+
+
+def comptes_dormants(company, seuil_jours):
+    """Comptes actifs d'une société inactifs depuis plus de ``seuil_jours``.
+
+    Inactivité = dernière ``UserSession.last_seen_at`` antérieure au seuil (ou
+    aucune session du tout). ``seuil_jours <= 0`` → aucun compte (fonction
+    inerte). Company-scopé ; exclut les super-admins (jamais désactivés
+    automatiquement). Renvoie un queryset de ``CustomUser``."""
+    if company is None or not seuil_jours or seuil_jours <= 0:
+        from authentication.models import CustomUser
+        return CustomUser.objects.none()
+    from datetime import timedelta
+
+    from django.db.models import Max, Q
+    from django.utils import timezone
+
+    from authentication.models import CustomUser
+
+    cutoff = timezone.now() - timedelta(days=seuil_jours)
+    return (
+        CustomUser.objects.filter(
+            company=company, is_active=True, is_superuser=False)
+        .annotate(derniere_activite=Max('sessions__last_seen_at'))
+        .filter(
+            Q(derniere_activite__lt=cutoff)
+            | Q(derniere_activite__isnull=True))
+    )

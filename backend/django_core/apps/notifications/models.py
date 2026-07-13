@@ -191,6 +191,12 @@ class EventType(models.TextChoices):
     # VX210(b) via ``SnoozedItem``) revient dans la file : notification
     # LÉGÈRE au propriétaire, jamais une nouvelle demande d'action.
     SNOOZE_REVEIL = 'snooze_reveil', '⏰ De retour'
+    # NTSEC12/13/30 — sécurité. ``SECURITY_ALERT`` : anomalie de connexion
+    # (voyage impossible, appareil inconnu) notifiée au Directeur.
+    # ``SECURITY_CHANGE`` : changement d'un facteur de sécurité (mot de passe,
+    # MFA, passkey…) notifié à l'utilisateur concerné — non désactivable.
+    SECURITY_ALERT = 'security_alert', 'Alerte de sécurité'
+    SECURITY_CHANGE = 'security_change', 'Changement de sécurité'
 
 
 class Channel(models.TextChoices):

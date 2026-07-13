@@ -8,8 +8,30 @@ statut). La capture est best-effort et ne bloque JAMAIS la requête (voir
 permis ici (jamais sur un document client). Tous les horodatages sont en UTC en
 base ; le bucketing se fait en Africa/Casablanca à la lecture (voir ``views``).
 """
+import hashlib
+
 from django.conf import settings
 from django.db import models
+
+
+def compute_entry_hash(*, prev_hash, company_id, action, actor_username,
+                       object_id, object_repr, detail, timestamp):
+    """Hash SHA-256 d'inviolabilité d'une ligne d'audit (NTSEC17).
+
+    Chaîne le hash de la ligne précédente (``prev_hash``) avec le contenu
+    canonique de la ligne. Toute altération d'un champ chaîné change le hash
+    et casse la vérification de chaîne en aval."""
+    canonical = '|'.join([
+        prev_hash or '',
+        str(company_id or ''),
+        str(action or ''),
+        str(actor_username or ''),
+        str(object_id or ''),
+        str(object_repr or ''),
+        str(detail or ''),
+        timestamp.isoformat() if timestamp else '',
+    ])
+    return hashlib.sha256(canonical.encode('utf-8')).hexdigest()
 
 
 class AuditLog(models.Model):
@@ -72,6 +94,13 @@ class AuditLog(models.Model):
     # de ``detail``). Rempli best-effort par ``recorder.record`` ; ne bloque
     # jamais la requête.
     changes = models.JSONField('Diff structuré', null=True, blank=True)
+    # NTSEC17 — chaînage d'inviolabilité (hash-chaining) par société. Chaque
+    # ligne porte le hash de la précédente (``prev_hash``) et son propre hash
+    # (``entry_hash``), calculés best-effort au ``record()``. Vides pour le
+    # legacy : la vérification de chaîne démarre à la première ligne chaînée.
+    prev_hash = models.CharField(max_length=64, blank=True, default='')
+    entry_hash = models.CharField(
+        max_length=64, blank=True, default='', db_index=True)
     timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
 
     class Meta:

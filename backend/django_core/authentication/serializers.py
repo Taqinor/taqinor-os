@@ -43,7 +43,8 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
                                "l'administrateur."},
                     code='tenant_suspendu',
                 )
-        if user is not None and getattr(user, 'totp_enabled', False):
+        if user is not None and getattr(user, 'totp_enabled', False) \
+                and not self._device_is_trusted(user):
             if not otp:
                 # Signal clair que le 2FA est requis : le frontend déclenche la
                 # saisie du code à 6 chiffres et resoumet.
@@ -59,6 +60,34 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
                     code='otp_invalid',
                 )
         return data
+
+    def _device_is_trusted(self, user):
+        """NTSEC14 — vrai si la requête présente un appareil de confiance ACTIF
+        et que la société a activé ``allow_device_trust``. Best-effort et
+        default-deny : toute anomalie ⇒ False (la MFA reste exigée)."""
+        try:
+            request = self.context.get('request')
+            if request is None:
+                return False
+            company = getattr(user, 'company', None)
+            if company is None:
+                return False
+            from apps.parametres.models_company import CompanyProfile
+            profile = (
+                CompanyProfile.objects
+                .filter(company=company)
+                .only('allow_device_trust')
+                .first()
+            )
+            if not (profile and profile.allow_device_trust):
+                return False
+            token = request.COOKIES.get('device_trust_id')
+            if not token:
+                return False
+            from apps.identity.models import TrustedDevice
+            return TrustedDevice.is_trusted(user, token)
+        except Exception:
+            return False
 
     @classmethod
     def get_token(cls, user):

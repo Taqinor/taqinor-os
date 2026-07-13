@@ -82,7 +82,10 @@ def compute_list_etag(model_label: str, company_id, query_params) -> str:
     except AttributeError:
         items = sorted(query_params.items())
     raw = f'{model_label}|{company_id or 0}|{version}|{items}'
-    digest = hashlib.sha1(raw.encode('utf-8')).hexdigest()[:20]
+    # SHA1 ici n'est PAS un usage sécurité : simple empreinte d'ETag faible
+    # (usedforsecurity=False lève l'alerte bandit B324 — NTPLT52).
+    digest = hashlib.sha1(
+        raw.encode('utf-8'), usedforsecurity=False).hexdigest()[:20]
     return f'W/"{digest}"'
 
 
