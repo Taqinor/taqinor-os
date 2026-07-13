@@ -29,6 +29,10 @@ def _concrete_required_fields(model):
     """Champs concrets à VALORISER : not-null, sans défaut, non auto, non pk."""
     out = []
     for f in model._meta.get_fields():
+        # M2M : jamais valorisé à la création (assignation directe interdite —
+        # se peuple via .set() après save ; un outil de scale l'ignore).
+        if getattr(f, 'many_to_many', False):
+            continue
         if not getattr(f, 'concrete', False):
             continue
         if getattr(f, 'primary_key', False):
