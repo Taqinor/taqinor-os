@@ -1,0 +1,44 @@
+name: security-sast (bandit, advisory)
+
+# NTPLT52 — SAST Python par Bandit, ADVISORY (non-required, ne bloque aucune
+# merge — protection de branche intacte). `bandit -r backend/django_core -ll`
+# avec une baseline committée (.bandit.baseline) : seuls les NOUVEAUX findings
+# (au-delà de la baseline) sont signalés. Les 2 findings HIGH initiaux (SHA1
+# ETag, autoescape Jinja2) ont été corrigés dans la même tâche → la baseline
+# ne contient plus aucune HIGH.
+
+on:
+  workflow_dispatch: {}
+  pull_request:
+    paths:
+      - 'backend/django_core/**'
+  push:
+    branches: [main]
+    paths:
+      - 'backend/django_core/**'
+
+permissions:
+  contents: read
+
+jobs:
+  bandit:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install bandit
+        run: pip install bandit
+      - name: Bandit (nouveaux findings vs baseline)
+        run: |
+          bandit -r backend/django_core -ll -b .bandit.baseline \
+            -f screen -o bandit-report.txt || true
+          cat bandit-report.txt
+      - name: Upload bandit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bandit-report
+          path: bandit-report.txt
