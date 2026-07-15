@@ -56,3 +56,43 @@ def notify_livraison_livree(
         'installation_id': installation_id,
         'numero_suivi': numero_suivi,
     })
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# YOPSB11 — Archivage par lots de `WebhookDelivery` (journal à forte croissance)
+#
+# Le journal des livraisons est append-only et grossit sans borne (une ligne par
+# tentative). La politique YOPSB11 (registre partagé YOPSB10) déplace les
+# livraisons plus vieilles que `jours` vers `WebhookDeliveryArchive` (par lots,
+# un commit par lot) puis les supprime de la table vive. Fenêtre par défaut
+# 0 = OFF (comportement inchangé) ; réglage via `WEBHOOK_DELIVERY_ARCHIVE_DAYS`.
+
+DEFAULT_WEBHOOK_DELIVERY_ARCHIVE_DAYS = 0
+
+
+def _webhook_delivery_to_archive(row):
+    return {
+        'original_id': row.pk,
+        'company_id': row.company_id,
+        'webhook_id': row.webhook_id,
+        'event': row.event,
+        'event_id': row.event_id,
+        'payload': row.payload,
+        'status': row.status,
+        'response_status': row.response_status,
+        'error': row.error,
+        'created_at': row.created_at,
+    }
+
+
+def archiver_anciens(now, jours, apply_=True):
+    """YOPSB11 — archive les `WebhookDelivery` plus vieilles que `jours` (par
+    lots de 5 000, un commit par lot). `jours <= 0` (défaut OFF) → 0 ;
+    `apply_=False` (dry-run) compte sans déplacer. Renvoie le nombre archivé."""
+    from core.retention import archive_old_rows
+    from .models import WebhookDelivery, WebhookDeliveryArchive
+
+    return archive_old_rows(
+        WebhookDelivery, WebhookDeliveryArchive, _webhook_delivery_to_archive,
+        cutoff_field='created_at', now=now, jours=jours, apply_=apply_,
+    )

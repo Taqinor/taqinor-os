@@ -9,3 +9,10 @@ notifications.VapidKeyPair
 # scope decided when the founder configures a pair. No single owning company.
 compta.RegleInterSociete
 compta.EcritureLiaisonInterSociete
+# YOPSB11 — cold-storage archive tables (append-only chatter/runs/webhooks). By
+# design they DENORMALISE their FKs to plain integer ids (company_id/lead_id/…) so
+# an archive never couples to the live table's lifecycle; company_id is retained so
+# per-company aggregate counts survive, but there is no company FK / TenantModel base.
+automation.AutomationRunArchive
+crm.LeadActivityArchive
+publicapi.WebhookDeliveryArchive

@@ -71,6 +71,12 @@ gunicorn==22.0.0
 # setuptools à jour avant l'install). Toujours importé paresseusement côté code :
 # sans clés VAPID, le push reste un NO-OP.
 pywebpush==2.0.3
+# YHARD1 — chiffrement au repos des champs sensibles (core/crypto_fields.py,
+# Fernet). `cryptography` était déjà tiré TRANSITIVEMENT (via pywebpush) ; on le
+# rend EXPLICITE puisque core en dépend directement désormais. Plage permissive
+# pour ne pas sur-contraindre le résolveur vs la version tirée par pywebpush.
+# Key-gated : sans FIELD_ENCRYPTION_KEY, le module est chargé mais inerte.
+cryptography>=42,<47
 # TOTP two-factor auth (2FA opt-in, N96)
 pyotp==2.10.0
 # Architectural import contracts (M3) — enforces the import rules in

@@ -19,6 +19,7 @@ import {
   tagList,
   tagColor,
 } from '../../../../features/crm/stages'
+import { formatDate } from '../../../../lib/format'
 import AssigneePicker from '../../../../components/AssigneePicker'
 import InlineEdit from '../../../../components/InlineEdit'
 import ExternalLink from '../../../../ui/ExternalLink'
@@ -198,6 +199,15 @@ const ListRow = memo(function ListRow({
                   <MessageCircle className="size-3.5" aria-hidden="true" />
                 </ExternalLink>
               )}
+            </span>
+          )}
+          {/* VX243(a) — confiance au niveau du DOSSIER : une ligne archivée
+              montre QUI l'a archivée et QUAND (archived_by/at étaient capturés
+              serveur mais jamais rendus). Silencieux sur un lead vivant. */}
+          {lead.is_archived && (lead.archived_by_nom || lead.archived_at) && (
+            <span className="lv-lead-archived-by text-xs text-muted-foreground">
+              Archivé{lead.archived_by_nom ? ` par ${lead.archived_by_nom}` : ''}
+              {lead.archived_at ? ` le ${formatDate(lead.archived_at)}` : ''}
             </span>
           )}
         </div>

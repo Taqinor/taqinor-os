@@ -374,3 +374,41 @@ def decider_approval(approval, *, approve, user):
     if approve:
         engine.run_approved(approval, user=user)
     return approval
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# YOPSB11 — Archivage par lots de `AutomationRun` (journal à forte croissance)
+#
+# Le journal des exécutions est append-only et grossit sans borne. La politique
+# YOPSB11 (registre partagé YOPSB10) déplace les exécutions plus vieilles que
+# `jours` vers `AutomationRunArchive` (par lots, un commit par lot) puis les
+# supprime de la table vive. Fenêtre par défaut 0 = OFF (comportement inchangé) ;
+# réglage via `AUTOMATION_RUN_ARCHIVE_DAYS`.
+
+DEFAULT_AUTOMATION_RUN_ARCHIVE_DAYS = 0
+
+
+def _automation_run_to_archive(row):
+    return {
+        'original_id': row.pk,
+        'company_id': row.company_id,
+        'rule_id': row.rule_id,
+        'target_model': row.target_model,
+        'target_id': row.target_id,
+        'status': row.status,
+        'message': row.message,
+        'timestamp': row.timestamp,
+    }
+
+
+def archiver_anciens(now, jours, apply_=True):
+    """YOPSB11 — archive les `AutomationRun` plus vieux que `jours` (par lots de
+    5 000, un commit par lot). `jours <= 0` (défaut OFF) → 0 ; `apply_=False`
+    (dry-run) compte sans déplacer. Renvoie le nombre archivé."""
+    from core.retention import archive_old_rows
+    from .models import AutomationRun, AutomationRunArchive
+
+    return archive_old_rows(
+        AutomationRun, AutomationRunArchive, _automation_run_to_archive,
+        cutoff_field='timestamp', now=now, jours=jours, apply_=apply_,
+    )
