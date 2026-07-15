@@ -2,7 +2,7 @@
    Fichier de configuration de module (données + pages lazy), pas un module de
    composants : le fast-refresh ne s'y applique pas (cf. router/moduleRoutes). */
 import { lazy } from 'react'
-import { Package, Boxes, Truck, ArrowLeftRight } from 'lucide-react'
+import { Package, Boxes, Truck, ArrowLeftRight, ClipboardList, PackageCheck, Receipt, Undo2, ScanLine } from 'lucide-react'
 
 /* ============================================================================
    ARC48 — Migration des routes legacy Stock vers le registre de modules.
@@ -34,9 +34,12 @@ const StockList = lazy(() => import('../../pages/stock/StockList'))
 const MouvementsPage = lazy(() => import('../../pages/stock/MouvementsPage'))
 const CategoriesStock = lazy(() => import('../../pages/stock/CategoriesStock'))
 const FournisseursStock = lazy(() => import('../../pages/stock/FournisseursStock'))
-// ODX20 — Commandes/Réceptions/Factures/Retours fournisseur + Import OCR
-// déplacés dans le module « Achats » (features/achats/module.config.jsx).
-// Mêmes routes (/stock/…), mêmes pages. Fournisseurs reste master data ici.
+const BonsCommandeFournisseur = lazy(() => import('../../pages/stock/BonsCommandeFournisseur'))
+const ModelesBcf = lazy(() => import('../../pages/stock/ModelesBcf'))
+const ReceptionsFournisseur = lazy(() => import('../../pages/stock/ReceptionsFournisseur'))
+const FacturesFournisseur = lazy(() => import('../../pages/stock/FacturesFournisseur'))
+const RetoursFournisseur = lazy(() => import('../../pages/stock/RetoursFournisseur'))
+const OcrStockImport = lazy(() => import('../../pages/stock/OcrStockImport'))
 
 const config = {
   key: 'stock',
@@ -49,6 +52,12 @@ const config = {
       { to: '/stock/categories',     label: 'Catégories & marques', k: 'nav.categories', icon: navIcon(Boxes), roles: ['responsable','admin'] },
       { to: '/stock/fournisseurs',   label: 'Fournisseurs',     k: 'nav.fournisseurs', icon: navIcon(Truck), roles: ['responsable','admin'] },
       { to: '/stock/mouvements',     label: 'Mouvements',       k: 'nav.mouvements', icon: navIcon(ArrowLeftRight),   roles: ['normal','responsable','admin'] },
+      { to: '/stock/bons-commande-fournisseur', label: 'Commandes fournisseur', k: 'nav.commandes_fournisseur', icon: navIcon(ClipboardList), roles: ['responsable','admin'] },
+      { to: '/stock/modeles-bcf',    label: 'Modèles de commande', k: 'nav.modeles_bcf', icon: navIcon(ClipboardList),    roles: ['responsable','admin'] },
+      { to: '/stock/receptions-fournisseur', label: 'Réceptions fournisseur', k: 'nav.receptions_fournisseur', icon: navIcon(PackageCheck), roles: ['responsable','admin'] },
+      { to: '/stock/factures-fournisseur', label: 'Factures fournisseur', k: 'nav.factures_fournisseur', icon: navIcon(Receipt), roles: ['responsable','admin'] },
+      { to: '/stock/retours-fournisseur', label: 'Retours fournisseur', k: 'nav.retours_fournisseur', icon: navIcon(Undo2), roles: ['responsable','admin'] },
+      { to: '/stock/ocr-import',     label: 'Import OCR',       k: 'nav.import_ocr', icon: navIcon(ScanLine),   roles: ['responsable','admin'] },
     ],
   },
   routes: [
@@ -56,6 +65,12 @@ const config = {
     { path: '/stock/mouvements', component: MouvementsPage },
     { path: '/stock/categories', component: CategoriesStock },
     { path: '/stock/fournisseurs', component: FournisseursStock },
+    { path: '/stock/bons-commande-fournisseur', component: BonsCommandeFournisseur },
+    { path: '/stock/modeles-bcf', component: ModelesBcf },
+    { path: '/stock/receptions-fournisseur', component: ReceptionsFournisseur },
+    { path: '/stock/factures-fournisseur', component: FacturesFournisseur },
+    { path: '/stock/retours-fournisseur', component: RetoursFournisseur },
+    { path: '/stock/ocr-import', component: OcrStockImport },
   ],
 }
 
