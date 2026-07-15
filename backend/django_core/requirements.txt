@@ -52,7 +52,7 @@ openpyxl==3.1.5
 langchain-text-splitters==0.3.2
 
 # Image handling
-Pillow==10.4.0
+Pillow==12.2.0
 
 # QR codes for the quote PDF (premium scan-to-sign: rounded navy + centre logo).
 # Pure Python (Pillow already pinned above); imported defensively, so a missing
