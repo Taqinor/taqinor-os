@@ -343,6 +343,40 @@ if os.environ.get('PGBOUNCER') == '1' and not _running_owner_command():
     DATABASES['default']['CONN_MAX_AGE'] = 0
     DATABASES['default']['DISABLE_SERVER_SIDE_CURSORS'] = True
 
+# YHARD9 — réplica de LECTURE analytique OPTIONNEL (key-gated). Le BI embarqué
+# (apps/reporting, apps/monitoring, core/data_explorer) agrège aujourd'hui
+# DIRECTEMENT sur la base transactionnelle `default` : un pivot/dashboard lourd
+# contend avec la charge OLTP. On expose une base `replica` séparée + un routeur
+# (`core.analytics_db.AnalyticsRouter`) qui n'affecte QUE les lectures marquées
+# via `core.analytics_db.analytics_queryset(qs)`.
+#
+# DÉFAUT OFF, STRICT : sans DB_REPLICA_HOST on n'ajoute AUCUN alias `replica`.
+# `DATABASES` ne contient donc que `default` — les tests (qui ne configurent
+# jamais de réplica) ont exactement une base, et `analytics_queryset` est un
+# no-op qui n'ouvre JAMAIS de connexion `replica`. Byte-identique à l'existant.
+#
+# Placé APRÈS les mutations RLS/pgbouncer ci-dessus pour hériter du `default`
+# final (rôle applicatif, hôte) quand un réplica physique est fourni.
+_DB_REPLICA_HOST = os.environ.get('DB_REPLICA_HOST', '').strip()
+if _DB_REPLICA_HOST:
+    _replica = dict(DATABASES['default'])
+    _replica['HOST'] = _DB_REPLICA_HOST
+    _replica['PORT'] = os.environ.get('DB_REPLICA_PORT', DATABASES['default']['PORT'])
+    _replica['NAME'] = os.environ.get('DB_REPLICA_NAME', DATABASES['default']['NAME'])
+    _replica['USER'] = os.environ.get('DB_REPLICA_USER', DATABASES['default']['USER'])
+    _replica['PASSWORD'] = os.environ.get(
+        'DB_REPLICA_PASSWORD', DATABASES['default']['PASSWORD'])
+    # Réplica = lecture seule : jamais de test DB propre ni de DDL — sous `test`
+    # il MIROIRe `default` (base transactionnelle unique). Ce chemin ne s'active
+    # QUE si DB_REPLICA_HOST est explicitement fourni pour un run de test dédié.
+    _replica['TEST'] = {'MIRROR': 'default'}
+    DATABASES['replica'] = _replica
+
+# Routeur : interdit toute écriture / migration vers `replica` ; le routage des
+# LECTURES analytiques reste EXPLICITE (via analytics_queryset), jamais un
+# détournement global de tous les reads. Inoffensif avec une seule base.
+DATABASE_ROUTERS = ['core.analytics_db.AnalyticsRouter']
+
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
