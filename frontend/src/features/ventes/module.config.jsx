@@ -2,7 +2,7 @@
    Fichier de configuration de module (données + pages lazy), pas un module de
    composants : le fast-refresh ne s'y applique pas (cf. router/moduleRoutes). */
 import { lazy } from 'react'
-import { FileText, ShoppingCart, Receipt, FileMinus, Wallet, CalendarClock } from 'lucide-react'
+import { FileText, ShoppingCart } from 'lucide-react'
 
 /* ============================================================================
    ARC54 — Migration des routes legacy Ventes vers le registre (phase 2, après
@@ -36,10 +36,8 @@ const DevisList = lazy(() => import('../../pages/ventes/DevisList'))
 const DevisActionBoardPage = lazy(() => import('../../pages/ventes/DevisActionBoardPage'))
 const DevisGenerator = lazy(() => import('../../pages/ventes/DevisGenerator'))
 const VentesKanban = lazy(() => import('../../pages/ventes/VentesKanban'))
-const FactureList = lazy(() => import('../../pages/ventes/FactureList'))
-const AvoirsPage = lazy(() => import('../../pages/ventes/AvoirsPage'))
-const RelancesPage = lazy(() => import('../../pages/ventes/RelancesPage'))
-const PaiementsPage = lazy(() => import('../../pages/ventes/PaiementsPage'))
+// ODX18 — Factures, Avoirs, Encaissements, Relances déplacés dans le module
+// « Facturation » (features/facturation/module.config.jsx). Mêmes routes/pages.
 // XSAL1-2 — administration des listes de prix clients (écriture Responsable/Admin, gardée serveur).
 const ListesPrixPage = lazy(() => import('../../pages/ventes/ListesPrixPage'))
 
@@ -52,10 +50,6 @@ const config = {
     items: [
       { to: '/ventes/devis',         label: 'Devis',            k: 'nav.devis',      icon: navIcon(FileText),        roles: ['normal','responsable','admin'] },
       { to: '/ventes/bons-commande', label: 'Bons de commande', k: 'nav.bons_commande', icon: navIcon(ShoppingCart),  roles: ['normal','responsable','admin'] },
-      { to: '/ventes/factures',      label: 'Factures',         k: 'nav.factures',   icon: navIcon(Receipt),     roles: ['normal','responsable','admin'] },
-      { to: '/ventes/avoirs',        label: 'Avoirs',           k: 'nav.avoirs',     icon: navIcon(FileMinus),        roles: ['normal','responsable','admin'] },
-      { to: '/ventes/paiements',     label: 'Encaissements',    k: 'nav.encaissements', icon: navIcon(Wallet),    roles: ['normal','responsable','admin'] },
-      { to: '/ventes/relances',      label: 'Relances / Impayés', k: 'nav.relances', icon: navIcon(CalendarClock),      roles: ['responsable','admin'] },
     ],
   },
   routes: [
@@ -64,10 +58,6 @@ const config = {
     { path: '/ventes/devis/action-requise', component: DevisActionBoardPage },
     { path: '/ventes/devis/nouveau', component: DevisGenerator },
     { path: '/ventes/bons-commande', component: VentesKanban },
-    { path: '/ventes/factures', component: FactureList },
-    { path: '/ventes/avoirs', component: AvoirsPage },
-    { path: '/ventes/relances', component: RelancesPage },
-    { path: '/ventes/paiements', component: PaiementsPage },
     { path: '/ventes/listes-prix', component: ListesPrixPage },
   ],
 }
