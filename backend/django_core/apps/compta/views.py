@@ -26,7 +26,7 @@ from rest_framework.views import APIView
 from django.utils import timezone
 
 from authentication.mixins import TenantMixin
-from authentication.permissions import IsResponsableOrAdmin
+from authentication.permissions import HasPermissionOrLegacy, IsResponsableOrAdmin
 
 from . import selectors, services
 from .models import (
@@ -296,6 +296,12 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
     """États de synthèse en LECTURE SEULE (FG110-114) : grand livre, balance,
     CPC, bilan. Admin/Responsable uniquement, scopés société côté selector."""
     permission_classes = [IsResponsableOrAdmin]
+
+    def get_permissions(self):
+        # YRBAC13 — toutes les actions de ce viewset sont des rapports en
+        # LECTURE SEULE (GET) ; garde explicite par action pour le scanner
+        # YRBAC4, comportement STRICTEMENT inchangé (IsResponsableOrAdmin).
+        return [IsResponsableOrAdmin()]
 
     def _periode(self, request):
         params = request.query_params
@@ -2000,6 +2006,22 @@ class RapprochementBancaireViewSet(_ComptaBaseViewSet):
         serializer.save(
             company=self.request.user.company, created_by=self.request.user)
 
+    def get_permissions(self):
+        # YRBAC13 — fine-grain les @action au-delà du grossier
+        # IsResponsableOrAdmin de base : lecture (rapports/synthèse) reste
+        # ouverte à Admin/Responsable ; saisie (import/ligne de relevé) exige
+        # ``compta_saisir`` ; validation (pointage/acceptation/clôture) exige
+        # ``compta_valider`` — les deux sont déjà octroyés par défaut au
+        # Responsable (COMPTA40), donc AUCUNE régression pour les rôles par
+        # défaut ; seul un rôle fin explicitement privé du code est affecté.
+        if self.action in ('lignes_gl', 'resume', 'suggestions'):
+            return [IsResponsableOrAdmin()]
+        if self.action in ('ligne_releve', 'ocr_import'):
+            return [HasPermissionOrLegacy('compta_saisir')()]
+        if self.action in ('pointer', 'accepter_suggestions', 'cloturer'):
+            return [HasPermissionOrLegacy('compta_valider')()]
+        return super().get_permissions()
+
     @action(detail=True, methods=['get'], url_path='lignes-gl')
     def lignes_gl(self, request, pk=None):
         """Lignes du grand livre pointables sur la période (FG123)."""
@@ -2384,6 +2406,17 @@ class EffetViewSet(_ComptaBaseViewSet):
     def perform_create(self, serializer):
         serializer.save(
             company=self.request.user.company, created_by=self.request.user)
+
+    def get_permissions(self):
+        # YRBAC13 — toutes les actions font évoluer le statut d'un effet ET
+        # passent une écriture au grand livre (docstring de la classe) : ce
+        # sont des saisies comptables, gardées par ``compta_saisir`` (déjà
+        # octroyé au Responsable par défaut — comportement inchangé pour les
+        # rôles existants, resserré pour un rôle fin qui en serait privé).
+        if self.action in ('encaisser', 'payer', 'rejeter', 'escompter',
+                           'apurer_escompte', 'endosser'):
+            return [HasPermissionOrLegacy('compta_saisir')()]
+        return super().get_permissions()
 
     @action(detail=True, methods=['post'])
     def encaisser(self, request, pk=None):
@@ -2840,6 +2873,21 @@ class NoteFraisViewSet(_ComptaBaseViewSet):
         data = self.get_serializer(note).data
         data['doublon_possible'] = doublon
         return Response(data, status=status.HTTP_201_CREATED)
+
+    def get_permissions(self):
+        # YRBAC13 — cycle de validation décrit par la docstring de la classe :
+        # ``soumettre``/``refacturer``/``ocr`` sont des saisies
+        # (``compta_saisir``) ; ``valider``/``rejeter``/``rembourser`` postent
+        # une écriture (charge ou paiement) et exigent ``compta_valider`` — le
+        # même palier que le reste du cycle de validation comptable (COMPTA40).
+        # Lecture (rapports/reçu/analyse) reste IsResponsableOrAdmin, inchangée.
+        if self.action in ('refacturables', 'recu_pdf', 'analyse'):
+            return [IsResponsableOrAdmin()]
+        if self.action in ('soumettre', 'refacturer', 'ocr'):
+            return [HasPermissionOrLegacy('compta_saisir')()]
+        if self.action in ('valider', 'rejeter', 'rembourser'):
+            return [HasPermissionOrLegacy('compta_valider')()]
+        return super().get_permissions()
 
     @action(detail=False, methods=['get'], url_path='refacturables')
     def refacturables(self, request):
@@ -3438,6 +3486,21 @@ class DeclarationTVAViewSet(_ComptaBaseViewSet):
             self.get_serializer(declaration).data,
             status=status.HTTP_201_CREATED)
 
+    def get_permissions(self):
+        # YRBAC13 — ``preparer`` calcule/fige un snapshot depuis le GL (une
+        # saisie, ``compta_saisir``) ; ``deposer`` est le dépôt OFFICIEL de la
+        # déclaration (action irréversible côté administration fiscale),
+        # gardée par ``compta_valider`` (même palier que le reste du cycle de
+        # validation, COMPTA40). Lecture (export/comparatif/bordereau) reste
+        # IsResponsableOrAdmin, inchangée.
+        if self.action in ('export', 'comparatif', 'bordereau_pdf'):
+            return [IsResponsableOrAdmin()]
+        if self.action == 'preparer':
+            return [HasPermissionOrLegacy('compta_saisir')()]
+        if self.action == 'deposer':
+            return [HasPermissionOrLegacy('compta_valider')()]
+        return super().get_permissions()
+
     @action(detail=False, methods=['post'])
     def preparer(self, request):
         """Prépare et fige une déclaration de TVA sur une période (FG137).
@@ -3619,6 +3682,19 @@ class RetenueSourceViewSet(_ComptaBaseViewSet):
                 status=status.HTTP_400_BAD_REQUEST)
         return Response(
             self.get_serializer(ras).data, status=status.HTTP_201_CREATED)
+
+    def get_permissions(self):
+        # YRBAC13 — ``verser`` marque un versement RÉEL au Trésor (paiement),
+        # gardée par ``compta_valider`` (même palier que les autres actions de
+        # paiement/validation du cycle comptable, COMPTA40). Les rapports en
+        # lecture (bordereau/export/attestations) restent IsResponsableOrAdmin,
+        # inchangés.
+        if self.action in ('bordereau', 'export', 'attestation',
+                           'attestation_annuelle'):
+            return [IsResponsableOrAdmin()]
+        if self.action == 'verser':
+            return [HasPermissionOrLegacy('compta_valider')()]
+        return super().get_permissions()
 
     @action(detail=True, methods=['post'])
     def verser(self, request, pk=None):
@@ -4628,6 +4704,28 @@ class CampagneViewSet(_ComptaBaseViewSet):
             qs = qs.order_by(groupby, '-date_creation')
         return qs
 
+    def get_permissions(self):
+        # YRBAC13 — marketing-en-compta (ré-exportée par apps/marketing/
+        # views.py, ODX10) : lecture (aperçus/KPI/reporting/kanban/modèles)
+        # reste IsResponsableOrAdmin, inchangée. ``envoyer``/``envoyer-test``
+        # déclenchent un envoi RÉEL (même sous garde d'approbation XMKT23) →
+        # ``compta_valider``. Les actions de gestion courante du cycle de vie
+        # (dupliquer/annuler/renvoyer les échecs/rattacher/cloner un modèle)
+        # restent ``compta_saisir`` — les deux déjà octroyés au Responsable
+        # par défaut (COMPTA40), donc aucune régression pour les rôles par
+        # défaut.
+        if self.action in (
+                'apercu_fusion', 'precheck', 'cout_sms', 'clics_par_lien',
+                'roi', 'roi_leads_sources', 'kpi_mere', 'kanban', 'reporting',
+                'reporting_export', 'modeles', 'rendu_lead'):
+            return [IsResponsableOrAdmin()]
+        if self.action in ('envoyer', 'envoyer_test'):
+            return [HasPermissionOrLegacy('compta_valider')()]
+        if self.action in ('creer_depuis_modele', 'dupliquer', 'annuler',
+                           'renvoyer_echecs', 'rattacher'):
+            return [HasPermissionOrLegacy('compta_saisir')()]
+        return super().get_permissions()
+
     @action(detail=True, methods=['post'])
     def envoyer(self, request, pk=None):
         campagne = self.get_object()
@@ -5063,6 +5161,20 @@ class EnqueteViewSet(_ComptaBaseViewSet):
         serializer.save(
             company=self.request.user.company, token=uuid.uuid4().hex)
 
+    def get_permissions(self):
+        # YRBAC13 — marketing-en-compta (ré-exportée par apps/marketing/
+        # views.py). Lecture (résultats/aperçu/QR/participations/export)
+        # reste IsResponsableOrAdmin, inchangée. ``emettre_jeton_invite``/
+        # ``inviter`` déclenchent un envoi RÉEL vers des destinataires
+        # (segment/liste) → ``compta_valider`` (déjà octroyé au Responsable
+        # par défaut — comportement inchangé pour les rôles par défaut).
+        if self.action in ('resultats', 'tester', 'qr', 'participations',
+                           'resultats_export'):
+            return [IsResponsableOrAdmin()]
+        if self.action in ('emettre_jeton_invite', 'inviter'):
+            return [HasPermissionOrLegacy('compta_valider')()]
+        return super().get_permissions()
+
     @action(detail=True, methods=['get'])
     def resultats(self, request, pk=None):
         """XMKT27 — analytics agrégées par question + taux de complétion."""
@@ -5151,6 +5263,23 @@ class EvenementMarketingViewSet(_ComptaBaseViewSet):
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['nom']
     ordering_fields = ['date_debut', 'date_creation']
+
+    def get_permissions(self):
+        # YRBAC13 — marketing-en-compta (ré-exportée par apps/marketing/
+        # views.py). Lecture (borne/badges/reporting/kanban) reste
+        # IsResponsableOrAdmin, inchangée. ``cloturer_presences`` fige les
+        # présences de l'événement (action de clôture) → ``compta_valider`` ;
+        # ``avancer_etape`` est une saisie courante du cycle de vie →
+        # ``compta_saisir`` — les deux déjà octroyés au Responsable par
+        # défaut (COMPTA40), aucune régression pour les rôles par défaut.
+        if self.action in ('borne', 'badges', 'reporting', 'reporting_export',
+                           'kanban'):
+            return [IsResponsableOrAdmin()]
+        if self.action == 'cloturer_presences':
+            return [HasPermissionOrLegacy('compta_valider')()]
+        if self.action == 'avancer_etape':
+            return [HasPermissionOrLegacy('compta_saisir')()]
+        return super().get_permissions()
 
     @action(detail=True, methods=['post'], url_path='cloturer-presences')
     def cloturer_presences(self, request, pk=None):
@@ -6778,6 +6907,21 @@ class AbonnementMonitoringViewSet(_ComptaBaseViewSet):
     def perform_create(self, serializer):
         abonnement = serializer.save(company=self.request.user.company)
         services.renouveler_abonnement_monitoring(abonnement)
+
+    def get_permissions(self):
+        # YRBAC13 — ``facturer`` émet une facture réelle (impact GL) et
+        # ``suspendre``/``resilier`` sont des transitions gardées service
+        # (irréversibles côté abonnement) → ``compta_valider``. ``renouveler``
+        # avance seulement l'échéance (routine, découplée de la facturation,
+        # YSUBS3) → ``compta_saisir``. ``a_echeance`` (liste) reste
+        # IsResponsableOrAdmin, inchangée.
+        if self.action == 'a_echeance':
+            return [IsResponsableOrAdmin()]
+        if self.action == 'renouveler':
+            return [HasPermissionOrLegacy('compta_saisir')()]
+        if self.action in ('facturer', 'suspendre', 'resilier'):
+            return [HasPermissionOrLegacy('compta_valider')()]
+        return super().get_permissions()
 
     @action(detail=True, methods=['post'])
     def renouveler(self, request, pk=None):

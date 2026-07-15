@@ -28,9 +28,18 @@ UNGUARDED_ACTION_BASELINE = {
     # re-stamped to CURRENT debt after the batch-4 feature drain (the 37
     # XMKT/ZMKT marketing tasks added coarse-guarded @actions to compta's mega-
     # viewsets — company-scoped + zero cross-tenant leaks per the YRBAC12 sweep,
-    # just not FINE-permission-guarded). Follow-up (queued): extend YRBAC3 to
-    # compta/marketing to fine-guard these and DROP this baseline back down.
-    "compta": 212,
+    # just not FINE-permission-guarded).
+    # YRBAC13 — 212->115 : fine-guarded the 10 heaviest offending viewsets
+    # (EtatsComptablesViewSet, RapprochementBancaireViewSet, EffetViewSet,
+    # NoteFraisViewSet, DeclarationTVAViewSet, RetenueSourceViewSet, and the
+    # marketing-in-compta CampagneViewSet/EnqueteViewSet/EvenementMarketing
+    # ViewSet/AbonnementMonitoringViewSet — all re-exported unchanged by
+    # apps/marketing/views.py, ODX10) with per-class get_permissions() reusing
+    # the existing COMPTA40 codes (compta_saisir/compta_valider), purely
+    # additive tightening — zero behaviour change for default roles (Directeur/
+    # Administrateur/Responsable already hold both codes). Remaining 115 =
+    # dette restante, follow-up possible.
+    "compta": 115,
     "contrats": 56,
     "flotte": 39,
     "gestion_projet": 70,
