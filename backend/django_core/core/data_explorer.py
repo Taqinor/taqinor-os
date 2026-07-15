@@ -26,8 +26,6 @@ from __future__ import annotations
 
 from django.db.models import Avg, Count, Max, Min, Sum
 
-from core.analytics_db import analytics_queryset
-
 # Registre en mémoire : { dataset_name: {label, fields, provider} }.
 _DATASETS: dict[str, dict] = {}
 
@@ -162,10 +160,7 @@ def run_query(name, company, user, spec):
     """
     dataset = get_dataset(name)
     allowed = dataset['fields']
-    # YHARD9 — le query-builder est un chemin BI en LECTURE pure : router ses
-    # agrégats vers le réplica analytique (no-op sans réplica configuré). Le
-    # scoping société reste porté par le provider (déjà filtré par `company`).
-    qs = analytics_queryset(dataset['provider'](company, user))
+    qs = dataset['provider'](company, user)
 
     spec = spec or {}
     select = list(spec.get('select') or [])
