@@ -56,6 +56,40 @@ function DevisLineRowImpl({
     if (t !== expected) tvaWarning = `${expected} % attendu`
   }
 
+  // XSAL14 — ligne de SECTION (intertitre) ou de NOTE (texte sans prix) : une
+  // seule cellule pleine largeur, exclue de tous les totaux. Pas de produit, de
+  // quantité ni de prix. Le contenu s'étend sur toutes les colonnes chiffrées.
+  const isStructure = l.typeLigne === 'section' || l.typeLigne === 'note'
+  if (isStructure) {
+    const isSection = l.typeLigne === 'section'
+    const contentCols = multiMode === 'villas' ? 7 : 6
+    return (
+      <tr key={l._key} data-line-key={l._key} data-line-type={l.typeLigne}>
+        <td colSpan={contentCols} data-label={isSection ? 'Section' : 'Note'}>
+          <div className="flex items-center gap-2">
+            <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              {isSection ? 'Section' : 'Note'}
+            </span>
+            <Input
+              className={`h-[var(--control-h-sm)] ${isSection ? 'font-semibold' : 'italic'}`}
+              value={l.designation}
+              onChange={e => onSetField(l._key, 'designation', e.target.value)}
+              placeholder={isSection ? 'Titre de section (ex. « Champ PV »)' : 'Note (texte affiché, sans prix)'} />
+          </div>
+        </td>
+        {/* cellule Option (vide — sans objet pour une section/note) */}
+        <td aria-hidden="true"></td>
+        <td>
+          <IconButton type="button" label="Supprimer la ligne" size="sm"
+                      className="text-destructive hover:bg-destructive/10"
+                      onClick={() => onRemove(l._key)}>
+            <Trash2 />
+          </IconButton>
+        </td>
+      </tr>
+    )
+  }
+
   return (
     <tr key={l._key} data-line-key={l._key}>
       <td data-label="Désignation">

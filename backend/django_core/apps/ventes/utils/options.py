@@ -72,7 +72,12 @@ def option_lines(devis, option=None):
     """
     if option is None:
         option = getattr(devis, 'option_acceptee', '') or ''
-    lignes = list(devis.lignes.select_related('produit').all())
+    # XSAL5/XSAL14 — la nomenclature aval ne contient QUE des lignes produit
+    # effectives : on exclut les lignes de section/note (sans produit) et les
+    # options non activées (``compte_dans_totaux``). Une option activée
+    # (optionnelle=False) est une ligne produit normale → incluse.
+    lignes = [li for li in devis.lignes.select_related('produit').all()
+              if li.compte_dans_totaux]
     if not option or not has_two_options(devis):
         return lignes
     return filter_lines_for_option(lignes, option)

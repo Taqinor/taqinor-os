@@ -2151,6 +2151,10 @@ def reserver_stock_devis_facture(*, devis, user, company):
 
     moved = False
     for ligne in devis.lignes.select_related('produit'):
+        # XSAL5/XSAL14 — ne réserve QUE les lignes produit effectives : pas les
+        # options non activées ni les lignes de section/note (sans produit).
+        if not ligne.compte_dans_totaux:
+            continue
         produit = ligne.produit
         if produit is None:
             continue

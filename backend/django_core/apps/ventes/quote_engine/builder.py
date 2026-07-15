@@ -172,6 +172,9 @@ def _line_to_item(ligne, taux_tva: Decimal) -> dict:
         "prix_unit_ht": float(round(pu_ht, 2)),
         "prix_unit_ttc": float(round(pu_ttc, 2)),
         "taux_tva": float(ligne_taux),
+        # XSAL14 — position d'affichage (0 par défaut) : sert à intercaler les
+        # intertitres de section/notes au bon endroit dans la liste une-page.
+        "ordre": getattr(ligne, "ordre", 0) or 0,
         "_produit_nom": produit_nom,
     }
 
@@ -393,6 +396,17 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     client = devis.client
     taux_tva = devis.taux_tva or Decimal(20)
     lignes = list(devis.lignes.select_related("produit").all())
+
+    # ── XSAL14 — Lignes de section/note : rendues HORS totaux, à part ─────────
+    # Une ligne de section (intertitre) ou de note (texte sans prix) ne porte NI
+    # produit NI prix : on la retire de ``lignes`` (elle ne peut pas devenir un
+    # ``item`` — pas de prix) et on la surface ordonnée dans ``lignes_structure``.
+    structure_lignes = [
+        li for li in lignes
+        if getattr(li, "type_ligne", "produit") != "produit"]
+    lignes = [
+        li for li in lignes
+        if getattr(li, "type_ligne", "produit") == "produit"]
 
     # ── XSAL5 — Lignes optionnelles : rendues HORS totaux ────────────────────
     # Une ligne ``optionnelle`` (add-on non activé) n'entre NI dans le découpage
@@ -1331,6 +1345,25 @@ def build_quote_data(devis, pdf_options=None) -> dict:
                 "total_ttc": round(it["prix_unit_ttc"] * qte, 2),
             })
         data["options_proposees"] = _opts
+
+    # ── XSAL14 — Lignes de structure (sections/notes) ────────────────────────
+    # Additif : la clé n'est posée QUE lorsqu'il existe au moins une ligne de
+    # section/note → un devis sans structure reste octet-identique. Ordonnées par
+    # ``ordre`` puis ``id`` (comme le queryset). Rendues comme intertitres/notes
+    # sur l'écran ET le PDF premium ; jamais de prix (elles n'en portent pas).
+    if structure_lignes:
+        _struct = sorted(
+            structure_lignes,
+            key=lambda li: (getattr(li, "ordre", 0) or 0, li.id))
+        data["lignes_structure"] = [
+            {
+                "id": li.id,
+                "type": getattr(li, "type_ligne", "section"),
+                "ordre": getattr(li, "ordre", 0) or 0,
+                "texte": li.designation,
+            }
+            for li in _struct
+        ]
 
     return data
 

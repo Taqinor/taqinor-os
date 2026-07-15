@@ -311,22 +311,48 @@ class Devis(models.Model):
 
 
 class LigneDevis(models.Model):
+    # ── XSAL14 — Type de ligne : produit (défaut) / section / note ────────────
+    class TypeLigne(models.TextChoices):
+        PRODUIT = 'produit', 'Produit'
+        SECTION = 'section', 'Section'
+        NOTE = 'note', 'Note'
+
     devis = models.ForeignKey(
         Devis, on_delete=models.CASCADE, related_name='lignes'
     )
+    # XSAL14 — nullable : une ligne de section/note ne porte NI produit NI prix
+    # NI quantité. Les lignes produit historiques restent renseignées (additif,
+    # aucune donnée existante modifiée → rendu octet-identique).
     produit = models.ForeignKey(
         'stock.Produit',
         on_delete=models.PROTECT,
         related_name='lignes_devis',
+        null=True, blank=True,
     )
     designation = models.CharField(max_length=255)
-    quantite = models.DecimalField(max_digits=10, decimal_places=2)
+    quantite = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True)
     prix_unitaire = models.DecimalField(
-        max_digits=10, decimal_places=2
+        max_digits=10, decimal_places=2, null=True, blank=True
     )
     remise = models.DecimalField(
         max_digits=5, decimal_places=2, default=0
     )
+    # ── XSAL14 — Lignes de section (intertitre) et de note (texte sans prix) ───
+    # ``type_ligne`` défaut 'produit' ⇒ toute ligne existante reste une ligne
+    # produit (rendu/totaux inchangés). Section/note : rendues comme
+    # intertitres/notes structurés à l'écran ET sur le PDF premium, ordonnées
+    # par ``ordre``, et JAMAIS comptées dans les totaux (elles ne portent pas de
+    # prix). ``ordre`` (défaut 0) : position d'affichage ; toutes les lignes
+    # existantes valent 0 → ordre = ordre d'insertion (id) préservé.
+    type_ligne = models.CharField(
+        max_length=10, choices=TypeLigne.choices, default=TypeLigne.PRODUIT,
+        help_text="Type de ligne : produit (défaut), section (intertitre) ou "
+                  "note (texte sans prix).")
+    ordre = models.PositiveIntegerField(
+        default=0,
+        help_text="Position d'affichage de la ligne (sections/notes incluses). "
+                  '0 par défaut = ordre historique (par id).')
     # TVA par ligne (réforme marocaine 2024–2026 : 10 % panneaux PV, 20 %
     # le reste). NULL = ligne historique → le taux du devis s'applique,
     # rendu strictement inchangé pour les anciens devis.
@@ -362,18 +388,34 @@ class LigneDevis(models.Model):
     class Meta:
         verbose_name = 'Ligne de Devis'
         verbose_name_plural = 'Lignes de Devis'
+        # XSAL14 — ordre d'affichage déterministe (sections/notes intercalées).
+        # Toutes les lignes existantes ont ordre=0 → tri par id = ordre
+        # d'insertion historique (rendu octet-identique quand rien n'est réordonné).
+        ordering = ['ordre', 'id']
+
+    @property
+    def est_ligne_produit(self):
+        """XSAL14 — True pour une ligne produit (les seules qui portent un
+        prix). Une ligne de section/note ne compte jamais dans les totaux."""
+        return self.type_ligne == self.TypeLigne.PRODUIT
 
     @property
     def compte_dans_totaux(self):
-        """XSAL5 — la ligne est-elle comptée dans les totaux du devis ?
+        """XSAL5/XSAL14 — la ligne est-elle comptée dans les totaux du devis ?
 
-        Une ligne optionnelle NON activée est exclue de tous les totaux
-        (HT/TVA/TTC). Toute autre ligne compte normalement. (XSAL14 étendra ce
-        prédicat aux lignes de section/note, sans prix.)"""
-        return not self.optionnelle
+        Est comptée UNIQUEMENT une ligne PRODUIT non optionnelle. Sont exclues :
+        les lignes optionnelles non activées (XSAL5) et les lignes de
+        section/note sans prix (XSAL14)."""
+        return self.est_ligne_produit and not self.optionnelle
 
     @property
     def total_ht(self):
+        # XSAL14 — une ligne de section/note (ou une ligne sans prix/quantité)
+        # ne porte aucun montant : total nul, jamais d'erreur sur None.
+        if not self.est_ligne_produit \
+                or self.quantite is None or self.prix_unitaire is None:
+            from decimal import Decimal
+            return Decimal('0')
         return (
             self.quantite * self.prix_unitaire * (1 - self.remise / 100)
         )

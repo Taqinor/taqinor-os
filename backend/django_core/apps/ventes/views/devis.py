@@ -424,14 +424,40 @@ class DevisViewSet(IdempotentCreateMixin, CompanyScopedModelViewSet):
     def _replace_lines_atomic(self, devis, lignes_in, company):
         """QX21be — supprime puis recrée les lignes du devis (appelé SOUS une
         transaction par l'appelant). Produits bornés société ; jamais de
-        ``prix_achat`` accepté du corps."""
+        ``prix_achat`` accepté du corps.
+
+        XSAL5 — ``optionnelle`` (add-on hors total) est persistée.
+        XSAL14 — ``type_ligne`` (produit [défaut] / section / note) + ``ordre`` :
+        une ligne section/note ne porte NI produit NI prix (jamais comptée dans
+        les totaux). ``ordre`` par défaut = position dans la liste envoyée."""
         from decimal import Decimal, InvalidOperation
         from ..models import LigneDevis
         from apps.stock.models import Produit
+        _VALID_TYPES = {c.value for c in LigneDevis.TypeLigne}
         devis.lignes.all().delete()
-        for li in lignes_in:
+        for idx, li in enumerate(lignes_in):
             if not isinstance(li, dict):
                 continue
+            type_ligne = str(li.get('type_ligne') or 'produit')
+            if type_ligne not in _VALID_TYPES:
+                type_ligne = 'produit'
+            try:
+                ordre = int(li.get('ordre', idx))
+            except (TypeError, ValueError):
+                ordre = idx
+            # XSAL14 — ligne de SECTION/NOTE : intertitre/texte sans prix.
+            if type_ligne in ('section', 'note'):
+                designation = (li.get('designation') or '').strip()
+                if not designation:
+                    raise ValueError(
+                        'Une ligne de section/note doit porter un intitulé.')
+                LigneDevis.objects.create(
+                    devis=devis, produit=None,
+                    designation=designation[:255],
+                    quantite=None, prix_unitaire=None, remise=Decimal('0'),
+                    taux_tva=None, type_ligne=type_ligne, ordre=ordre)
+                continue
+            # Ligne PRODUIT (chemin historique + XSAL5 optionnelle + ordre).
             try:
                 produit_id = int(li.get('produit'))
             except (TypeError, ValueError):
@@ -451,7 +477,9 @@ class DevisViewSet(IdempotentCreateMixin, CompanyScopedModelViewSet):
                 devis=devis, produit=produit,
                 designation=(li.get('designation') or produit.nom)[:255],
                 quantite=qte, prix_unitaire=pu, remise=remise,
-                taux_tva=Decimal(str(taux)) if taux is not None else None)
+                taux_tva=Decimal(str(taux)) if taux is not None else None,
+                optionnelle=bool(li.get('optionnelle', False)),
+                type_ligne='produit', ordre=ordre)
 
     @action(detail=False, methods=['post'], url_path='auto',
             permission_classes=[IsResponsableOrAdmin])

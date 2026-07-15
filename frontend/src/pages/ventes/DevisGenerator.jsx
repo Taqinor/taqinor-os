@@ -87,6 +87,8 @@ const withKeys = (rows) => rows.map(r => ({
   groupeLabel: r.groupeLabel ?? '',
   // XSAL5 — ligne optionnelle (add-on hors total). Défaut False = ligne normale.
   optionnelle: !!r.optionnelle,
+  // XSAL14 — type de ligne : 'produit' (défaut) / 'section' / 'note'.
+  typeLigne: r.typeLigne ?? 'produit',
 }))
 
 // Nouvelle ligne vide — quantité 0 comme addProductLine() du simulateur
@@ -106,6 +108,25 @@ const emptyLine = () => ({
   groupeLabel: '',
   // XSAL5 — ligne optionnelle (add-on hors total). Défaut False.
   optionnelle: false,
+  // XSAL14 — type de ligne : 'produit' (défaut) / 'section' / 'note'.
+  typeLigne: 'produit',
+})
+
+// XSAL14 — ligne de SECTION (intertitre) ou de NOTE (texte sans prix). Ne porte
+// ni produit ni prix ni quantité : exclue de tous les totaux, rendue comme
+// intertitre/note à l'écran et sur le PDF premium.
+const structureLine = (typeLigne) => ({
+  _key: newKey(),
+  produit: '',
+  designation: '',
+  quantite: '0',
+  prix_unit_ttc: '0',
+  taux_tva: '20',
+  _tvaSuggested: false,
+  groupeIndex: null,
+  groupeLabel: '',
+  optionnelle: false,
+  typeLigne,
 })
 
 const fmtNum = (v) => (v !== null && v !== undefined) ? formatNumber(v) : 'N/A'
@@ -736,15 +757,22 @@ export default function DevisGenerator({
       setTauxTva(String(d.taux_tva ?? '20.00'))
       if (d.date_validite) setDateValidite(d.date_validite)
       if (d.note) setNote(d.note)
-      const rows = (d.lignes ?? []).map(l => ({
-        produit: String(l.produit ?? ''),
-        designation: l.designation,
-        quantite: String(parseFloat(l.quantite)),
-        prix_unit_ttc: String(ttcFromHt(l.prix_unitaire, l.taux_tva ?? d.taux_tva)),
-        taux_tva: String(parseFloat(l.taux_tva ?? d.taux_tva) || 20),
-        // XSAL5 — préserve le drapeau « option » au rechargement d'un brouillon.
-        optionnelle: !!l.optionnelle,
-      }))
+      const rows = (d.lignes ?? [])
+        .slice()
+        // XSAL14 — respecte l'ordre serveur (ordre, id) pour intercaler les
+        // sections/notes au bon endroit à la réouverture d'un brouillon.
+        .sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0) || (a.id ?? 0) - (b.id ?? 0))
+        .map(l => ({
+          produit: String(l.produit ?? ''),
+          designation: l.designation,
+          quantite: String(parseFloat(l.quantite) || 0),
+          prix_unit_ttc: String(ttcFromHt(l.prix_unitaire || 0, l.taux_tva ?? d.taux_tva)),
+          taux_tva: String(parseFloat(l.taux_tva ?? d.taux_tva) || 20),
+          // XSAL5 — préserve le drapeau « option » au rechargement d'un brouillon.
+          optionnelle: !!l.optionnelle,
+          // XSAL14 — préserve le type de ligne (produit / section / note).
+          typeLigne: l.type_ligne ?? 'produit',
+        }))
       setLines(withKeys(rows))
       linesInitialized.current = true
       const panneaux = rows
@@ -1026,6 +1054,13 @@ export default function DevisGenerator({
     setPendingFocusKey(line._key) // VX90 — focus la nouvelle ligne après rendu.
     return [...ls, line]
   })
+  // XSAL14 — ajoute une ligne de SECTION (intertitre) ou de NOTE (texte sans
+  // prix). Exclue de tous les totaux ; rendue comme intertitre/note.
+  const addStructureLine = (typeLigne) => setLines(ls => {
+    const line = structureLine(typeLigne)
+    setPendingFocusKey(line._key)
+    return [...ls, line]
+  })
   const removeLine = useCallback((key) =>
     setLines(ls => ls.filter(l => l._key !== key)), [])
   // VX188 — identité stable pour ProduitPicker.onProduitCreated (passé à
@@ -1305,18 +1340,38 @@ export default function DevisGenerator({
       }
       // QX21 — lignes construites UNE fois (mêmes champs qu'avant : HT dérivé du
       // TTC saisi au taux DE LA LIGNE, groupe villa en mode « villas »).
-      const lignesPayload = usableLines().map(l => ({
-        produit: parseInt(l.produit),
-        designation: l.designation,
-        quantite: l.quantite,
-        prix_unitaire: htFromTtc(l.prix_unit_ttc, l.taux_tva ?? 20),
-        remise: '0',
-        taux_tva: String(l.taux_tva ?? 20),
-        groupe_index: multiMode === 'villas' ? l.groupeIndex : null,
-        groupe_label: multiMode === 'villas' ? (l.groupeLabel || '') : '',
-        // XSAL5 — ligne optionnelle (add-on hors total). Défaut False.
-        optionnelle: !!l.optionnelle,
-      }))
+      // XSAL14 — lignes retenues : produits utilisables + lignes de section/note
+      // (intitulé non vide). L'ordre visuel est conservé (ordre = index) pour
+      // intercaler les intertitres au bon endroit. Une ligne section/note ne
+      // porte ni produit ni prix.
+      const isStructure = (l) => l.typeLigne === 'section' || l.typeLigne === 'note'
+      const keptLines = lines.filter(l => isStructure(l)
+        ? !!(l.designation || '').trim()
+        : (l.produit && parseFloat(l.quantite) > 0))
+      const lignesPayload = keptLines.map((l, idx) => {
+        if (isStructure(l)) {
+          return {
+            type_ligne: l.typeLigne,
+            ordre: idx,
+            designation: l.designation,
+          }
+        }
+        return {
+          produit: parseInt(l.produit),
+          designation: l.designation,
+          quantite: l.quantite,
+          prix_unitaire: htFromTtc(l.prix_unit_ttc, l.taux_tva ?? 20),
+          remise: '0',
+          taux_tva: String(l.taux_tva ?? 20),
+          groupe_index: multiMode === 'villas' ? l.groupeIndex : null,
+          groupe_label: multiMode === 'villas' ? (l.groupeLabel || '') : '',
+          // XSAL5 — ligne optionnelle (add-on hors total). Défaut False.
+          optionnelle: !!l.optionnelle,
+          // XSAL14 — type produit (défaut) + position d'affichage.
+          type_ligne: 'produit',
+          ordre: idx,
+        }
+      })
 
       let devisId
       if (editDevis) {
@@ -2290,6 +2345,18 @@ export default function DevisGenerator({
         {/* ── Lignes de produits ── */}
         <Card>
           <GenCardHeader icon={ShoppingCart} title="Lignes de Produits">
+            {/* XSAL14 — section (intertitre) / note (texte) : structurent le
+                devis sans prix, exclues de tous les totaux. */}
+            <Button type="button" size="sm" variant="ghost"
+                    onClick={() => addStructureLine('section')}
+                    title="Ajouter un intertitre de section (sans prix)">
+              + Section
+            </Button>
+            <Button type="button" size="sm" variant="ghost"
+                    onClick={() => addStructureLine('note')}
+                    title="Ajouter une note (texte sans prix)">
+              + Note
+            </Button>
             <Button type="button" size="sm" variant="outline" onClick={addLine}>
               <Plus /> Ajouter ligne
             </Button>

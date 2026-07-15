@@ -565,6 +565,9 @@ def proposal_data(request, token):
             # Absent quand le devis n'a aucune option → rendu inchangé. Jamais de
             # prix d'achat/marge (RULE #4 — item client-facing uniquement).
             'options_proposees': data.get('options_proposees'),
+            # XSAL14 — lignes de structure (sections/notes) ordonnées, rendues
+            # comme intertitres/notes. Absent quand le devis n'a aucune section.
+            'lignes_structure': data.get('lignes_structure'),
         }
     except Exception:  # noqa: BLE001
         return _noindex(Response(
