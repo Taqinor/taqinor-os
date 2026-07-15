@@ -16,6 +16,8 @@ import secrets
 from django.conf import settings
 from django.db import models
 
+from core.crypto_fields import EncryptedCharField
+
 from .constants import SCOPE_CHOICES, EVENT_CHOICES
 
 
@@ -120,7 +122,7 @@ class Webhook(models.Model):
     target_url = models.URLField(max_length=500)
     # Secret partagé : sert à signer le corps en HMAC-SHA256. Généré côté
     # serveur ; renvoyé une fois à la création/rotation.
-    secret = models.CharField(max_length=128)
+    secret = EncryptedCharField(max_length=128)
     # Évènements auxquels ce webhook est abonné (sous-ensemble de ALL_EVENTS).
     events = models.JSONField(default=list, blank=True)
     enabled = models.BooleanField(default=True)

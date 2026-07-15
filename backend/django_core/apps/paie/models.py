@@ -18,6 +18,8 @@ from decimal import Decimal
 
 from django.db import models
 
+from core.crypto_fields import EncryptedCharField
+
 
 # ── PAIE2 — Paramètres sociaux versionnés ──────────────────────────────────
 
@@ -442,11 +444,11 @@ class ProfilPaie(models.Model):
     taux_cimr_salarial = models.DecimalField(
         max_digits=6, decimal_places=3, default=Decimal('0'),
         verbose_name='Taux CIMR salarial')
-    numero_cnss = models.CharField(
+    numero_cnss = EncryptedCharField(
         max_length=20, blank=True, default='', verbose_name='N° CNSS')
-    numero_amo = models.CharField(
+    numero_amo = EncryptedCharField(
         max_length=20, blank=True, default='', verbose_name='N° AMO')
-    numero_cimr = models.CharField(
+    numero_cimr = EncryptedCharField(
         max_length=20, blank=True, default='', verbose_name='N° CIMR')
     # PAIE13 — Normes de travail du profil, utilisées pour la proration.
     # Pour le type JOURNALIER : salaire_base est le taux journalier ; le brut
@@ -463,7 +465,7 @@ class ProfilPaie(models.Model):
         default=26, verbose_name='Jours de travail par mois (norme)')
     heures_travail_mensuel = models.PositiveSmallIntegerField(
         default=191, verbose_name='Heures de travail par mois (norme)')
-    rib = models.CharField(
+    rib = EncryptedCharField(
         max_length=40, blank=True, default='', verbose_name='RIB')
     banque = models.CharField(
         max_length=120, blank=True, default='', verbose_name='Banque')
