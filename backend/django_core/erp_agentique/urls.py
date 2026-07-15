@@ -59,6 +59,11 @@ _APP_URLS = [
     # anciennes routes /ventes/factures|paiements|avoirs|relances|balance-agee|
     # niveaux-relance/… restent servies à l'identique (mêmes ViewSets/vues).
     path('facturation/', include('apps.facturation.urls')),
+    # ODX20 — Achats (Purchase). Nouveau préfixe ; les anciennes routes
+    # /stock/bons-commande-fournisseur|receptions-fournisseur|
+    # factures-fournisseur|retours-fournisseur|prix-fournisseurs/… restent
+    # servies à l'identique (mêmes ViewSets). Mouvements stock via stock.services.
+    path('achats/', include('apps.achats.urls')),
     # FLOTTE1 — Gestion de flotte (véhicules + engins roulants, interne).
     path('flotte/', include('apps.flotte.urls')),
     # AG1 — Catalogue d'actions agentiques (métadonnées, filtré par caller).
