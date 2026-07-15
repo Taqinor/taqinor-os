@@ -19,6 +19,8 @@
   "nav.section.stock": "المخزون",
   "nav.section.crm": "العملاء",
   "nav.section.ventes": "المبيعات",
+  "nav.section.facturation": "الفوترة",
+  "nav.section.achats": "المشتريات",
   "nav.section.chantiers": "الأوراش",
   "nav.section.apres_vente": "خدمة ما بعد البيع",
   "nav.section.documents": "الوثائق",
