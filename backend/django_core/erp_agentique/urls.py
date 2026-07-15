@@ -55,10 +55,6 @@ _APP_URLS = [
     # ODX12 — Portail self-service client. Nouveau préfixe ; les anciennes
     # routes /compta/… restent servies à l'identique (mêmes ViewSets/vues).
     path('portail/', include('apps.portail.urls')),
-    # ODX18 — Facturation (Invoicing, séparé de Sales). Nouveau préfixe ; les
-    # anciennes routes /ventes/factures|paiements|avoirs|relances|balance-agee|
-    # niveaux-relance/… restent servies à l'identique (mêmes ViewSets/vues).
-    path('facturation/', include('apps.facturation.urls')),
     # FLOTTE1 — Gestion de flotte (véhicules + engins roulants, interne).
     path('flotte/', include('apps.flotte.urls')),
     # AG1 — Catalogue d'actions agentiques (métadonnées, filtré par caller).
