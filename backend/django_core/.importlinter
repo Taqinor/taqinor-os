@@ -167,6 +167,43 @@ forbidden_modules =
     apps.installations.models
     apps.compta.models
 
+# ODX22 (PARTIAL) — ajout des contrats d'indépendance de MODÈLES pour les apps
+# sorties de compta (ao, portail) + confirmés pour facturation/achats/marketing
+# ci-dessus. Le contrat « les apps satellites n'importent pas les views d'une
+# autre app » n'est PAS ajouté : les shims de ré-export TRANSITOIRES (ODX18/20
+# `apps.facturation.views -> apps.ventes.views`, `apps.achats.views ->
+# apps.stock.views`, et ODX11/12 `apps.ao.views -> apps.compta.views`,
+# `apps.portail.views -> apps.compta.views`) importent volontairement les views
+# de l'app source tant que le corps n'y est pas relogé — un tel contrat serait
+# rouge aujourd'hui. À ajouter quand ces corps auront migré. Aucun shim de
+# ré-export (compta/ventes/stock `.models`) n'a zéro référent (serializers/views/
+# services/admin les importent encore) : tous conservés, aucun retiré.
+[importlinter:contract:ao-models-decoupled]
+name = AO models never import a business-core domain's models (string FKs only — ODX11/ODX22)
+type = forbidden
+source_modules =
+    apps.ao.models
+forbidden_modules =
+    apps.crm.models
+    apps.ventes.models
+    apps.stock.models
+    apps.sav.models
+    apps.installations.models
+    apps.compta.models
+
+[importlinter:contract:portail-models-decoupled]
+name = Portail models never import a business-core domain's models (string FKs only — ODX12/ODX22)
+type = forbidden
+source_modules =
+    apps.portail.models
+forbidden_modules =
+    apps.crm.models
+    apps.ventes.models
+    apps.stock.models
+    apps.sav.models
+    apps.installations.models
+    apps.compta.models
+
 [importlinter:contract:tiers-is-a-base-layer]
 name = The tiers foundation app imports downward only (no domain-core or satellite app — locks ARC17)
 type = forbidden
