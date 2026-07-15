@@ -52,6 +52,7 @@ from .public_views import (
     proposal_contact_request, proposal_request_otp,
     proposal_engagement,  # XSAL16
     proposal_virement_declare,  # QX33be
+    proposal_activate_option,  # XSAL5
     suivi_public,  # QX34
 )
 from .dashboard_view import dashboard_quote_to_cash
@@ -154,6 +155,9 @@ urlpatterns = [
     # QX33be — déclaration de virement d'acompte (client).
     path('proposal/<str:token>/virement/', proposal_virement_declare,
          name='proposal-virement-ventes'),
+    # XSAL5 — activation self-service d'une ligne optionnelle (avant signature).
+    path('proposal/<str:token>/activer-option/', proposal_activate_option,
+         name='proposal-activate-option-ventes'),
     # QX34 — suivi post-signature public en lecture seule (timeline jalons).
     path('suivi/<str:token>/', suivi_public, name='suivi-public'),
     # Export comptable : journal des ventes + résumé TVA (.xlsx).

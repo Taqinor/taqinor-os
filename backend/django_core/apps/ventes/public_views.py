@@ -560,6 +560,11 @@ def proposal_data(request, token):
             # QJ15 — variantes côte-à-côte (même version_parent, toutes actives).
             # [] quand le devis est isolé — le client voit seulement sa proposition.
             'variants': _variant_summaries(devis),
+            # XSAL5 — options proposées (add-ons hors total) que le client peut
+            # activer AVANT signature (POST proposal/<token>/activer-option/).
+            # Absent quand le devis n'a aucune option → rendu inchangé. Jamais de
+            # prix d'achat/marge (RULE #4 — item client-facing uniquement).
+            'options_proposees': data.get('options_proposees'),
         }
     except Exception:  # noqa: BLE001
         return _noindex(Response(
@@ -878,6 +883,47 @@ def proposal_accept(request, token):
         'statut': devis.statut,
         'accepte_par_nom': devis.accepte_par_nom,
         'paiement': _deposit_success_payload(devis, token),
+    }))
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+@throttle_classes([PublicLinkRateThrottle])
+def proposal_activate_option(request, token):
+    """XSAL5 — le client active une LIGNE OPTIONNELLE de sa proposition.
+
+    Endpoint PUBLIC tokenisé (même jeton ShareLink que la proposition — long,
+    imprévisible, expirant ; il BORNE le devis à une seule société, donc
+    company-scopé par construction). Corps : ``{"ligne_id": <int>}``. Bascule la
+    ligne d'``optionnelle`` à effective (elle entre dans les totaux/documents
+    avals) via le service unique ``activate_optional_line`` — idempotent, ne
+    crée/duplique jamais de ligne. Ne touche AUCUN statut de devis (règle #4) :
+    seule l'acceptation (``proposal_accept``) fige le document. Jeton
+    invalide/expiré → 404 amical ; devis figé → 409."""
+    link = _resolve_proposal_link(token)
+    if link is None:
+        return _not_found()
+    try:
+        ligne_id = int(request.data.get('ligne_id'))
+    except (TypeError, ValueError):
+        return _noindex(Response(
+            {'detail': 'Option invalide.'},
+            status=status.HTTP_400_BAD_REQUEST))
+    from .services import activate_optional_line, AcceptError
+    try:
+        ligne = activate_optional_line(
+            devis=link.devis, ligne_id=ligne_id, user=None)
+    except AcceptError as exc:
+        return _noindex(Response(
+            {'detail': exc.message},
+            status=(status.HTTP_409_CONFLICT if exc.conflict
+                    else status.HTTP_400_BAD_REQUEST)))
+    if ligne is None:
+        return _not_found()
+    return _noindex(Response({
+        'detail': 'Option activée. Elle est désormais incluse dans votre total.',
+        'ligne_id': ligne.id,
+        'designation': ligne.designation,
     }))
 
 

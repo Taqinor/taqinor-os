@@ -627,6 +627,64 @@ class AcceptError(Exception):
         self.conflict = conflict  # True → 409, False → 400
 
 
+def activate_optional_line(*, devis, ligne_id, user=None):
+    """XSAL5 — active une ligne OPTIONNELLE d'un devis (self-service client sur
+    la proposition, ou vendeur en interne).
+
+    Bascule ``optionnelle=False`` sur la ligne existante : elle devient une
+    ligne normale et entre alors dans les totaux (HT/TVA/TTC) et les documents
+    avals. Ne CRÉE ni ne DUPLIQUE jamais de ligne. Company-scopé : la ligne doit
+    appartenir au ``devis`` fourni (déjà borné à sa société par l'appelant / le
+    jeton public). Idempotent : ré-activer une ligne déjà active est un no-op
+    silencieux (aucun second chatter). Verrou anti-course (select_for_update).
+
+    Seul un devis encore vivant (brouillon / envoyé) peut voir ses options
+    activées — après acceptation, le contenu est figé (règle #4, chaîne de
+    statuts préservée). Consigne le chatter du devis.
+
+    Renvoie la ``LigneDevis`` mise à jour, ou lève ``AcceptError`` (statut
+    figé) / renvoie None si la ligne est introuvable ou n'est pas optionnelle.
+    """
+    from django.db import transaction
+    from apps.ventes.models import Devis, LigneDevis
+    from apps.ventes import activity
+
+    with transaction.atomic():
+        try:
+            ligne = (LigneDevis.objects
+                     .select_for_update()
+                     .select_related('devis')
+                     .get(pk=ligne_id, devis=devis))
+        except LigneDevis.DoesNotExist:
+            return None
+
+        # Devis figé (accepté/refusé/expiré) : les options ne sont plus
+        # activables (le contenu est verrouillé — règle #4).
+        if ligne.devis.statut not in (
+                Devis.Statut.BROUILLON, Devis.Statut.ENVOYE):
+            raise AcceptError(
+                'Ce devis est figé — ses options ne sont plus modifiables.',
+                conflict=True)
+
+        # Idempotent : ligne non optionnelle (jamais optionnelle, ou déjà
+        # activée) → no-op silencieux, aucun second chatter.
+        if not ligne.optionnelle:
+            return ligne
+
+        ligne.optionnelle = False
+        ligne.save(update_fields=['optionnelle'])
+
+    # Chatter (hors transaction — miroir de accept_devis).
+    try:
+        activity.log_devis_note(
+            devis, user,
+            f'Option activée par le client : « {ligne.designation} » '
+            '— désormais incluse dans le total.')
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        pass
+    return ligne
+
+
 # ── QJ11 — OTP e-signature (toggle) ─────────────────────────────────────────
 # Activé par la variable d'environnement ESIGN_OTP_ENABLED=1.
 # Quand OFF (défaut) : comportement byte-identique à avant QJ11 — aucun OTP,

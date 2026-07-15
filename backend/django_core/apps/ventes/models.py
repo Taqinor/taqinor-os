@@ -275,7 +275,10 @@ class Devis(models.Model):
 
     @property
     def total_ht(self):
-        return sum(ligne.total_ht for ligne in self.lignes.all())
+        # XSAL5/XSAL14 — les lignes optionnelles non activées et les lignes de
+        # section/note (sans prix) sont exclues du total (``compte_dans_totaux``).
+        return sum(ligne.total_ht for ligne in self.lignes.all()
+                   if ligne.compte_dans_totaux)
 
     @property
     def total_tva(self):
@@ -345,9 +348,29 @@ class LigneDevis(models.Model):
         help_text='Libellé de la villa/du groupe (ex. « Villa A »). '
                   'Vide = pas de groupe.')
 
+    # ── XSAL5 — Lignes optionnelles (add-ons proposés) — additif, défaut False ─
+    # Une ligne optionnelle (garantie étendue, monitoring, batterie supplémentaire)
+    # est présentée au client HORS TOTAUX ; elle n'entre dans le HT/TVA/TTC du
+    # devis (et des documents avals) qu'une fois ACTIVÉE (``optionnelle`` remis à
+    # False via le service ``activate_optional_line`` — self-service proposition).
+    # Défaut False ⇒ un devis sans option est octet-identique à aujourd'hui.
+    optionnelle = models.BooleanField(
+        default=False,
+        help_text='Ligne optionnelle (add-on) : proposée au client hors total '
+                  "tant qu'elle n'est pas activée. Défaut False = ligne normale.")
+
     class Meta:
         verbose_name = 'Ligne de Devis'
         verbose_name_plural = 'Lignes de Devis'
+
+    @property
+    def compte_dans_totaux(self):
+        """XSAL5 — la ligne est-elle comptée dans les totaux du devis ?
+
+        Une ligne optionnelle NON activée est exclue de tous les totaux
+        (HT/TVA/TTC). Toute autre ligne compte normalement. (XSAL14 étendra ce
+        prédicat aux lignes de section/note, sans prix.)"""
+        return not self.optionnelle
 
     @property
     def total_ht(self):

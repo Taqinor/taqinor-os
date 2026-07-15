@@ -394,6 +394,15 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     taux_tva = devis.taux_tva or Decimal(20)
     lignes = list(devis.lignes.select_related("produit").all())
 
+    # ── XSAL5 — Lignes optionnelles : rendues HORS totaux ────────────────────
+    # Une ligne ``optionnelle`` (add-on non activé) n'entre NI dans le découpage
+    # d'options NI dans les totaux : on la retire de ``lignes`` (donc de
+    # ``items``) et on la surface à part dans ``options_proposees`` (bloc opt-in
+    # client, jamais de prix d'achat/marge). Une ligne activée (optionnelle=False)
+    # est déjà une ligne normale → chemin inchangé. Zéro option ⇒ octet-identique.
+    option_lignes = [li for li in lignes if getattr(li, "optionnelle", False)]
+    lignes = [li for li in lignes if not getattr(li, "optionnelle", False)]
+
     items = [_line_to_item(li, taux_tva) for li in lignes]
     # Mode « réforme » dès qu'une ligne porte son propre taux ; un devis
     # historique (toutes lignes NULL) reste rendu strictement comme avant.
@@ -1296,6 +1305,32 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     except Exception:  # noqa: BLE001 — un PDF/une liste ne casse jamais ici
         logger.exception("QJ29 multi-propriétés: ignoré (devis %s)",
                          getattr(devis, "reference", "?"))
+
+    # ── XSAL5 — Bloc « Options proposées » (opt-in, HORS totaux) ─────────────
+    # Rendu SEUL, additif : la clé n'est posée QUE lorsqu'il existe au moins une
+    # ligne optionnelle → un devis sans option reste octet-identique. Chaque
+    # entrée est client-facing (P.U. HT/TTC, total), JAMAIS de prix d'achat/marge
+    # (``_line_to_item`` ne les porte pas). Le client active une option via le
+    # service ``activate_optional_line`` (self-service proposition) : la ligne
+    # devient alors normale et entre dans les totaux/documents avals.
+    if option_lignes:
+        _opts = []
+        for li in option_lignes:
+            it = _line_to_item(li, taux_tva)
+            it.pop("_produit_nom", None)
+            qte = float(li.quantite or 0)
+            _opts.append({
+                "id": li.id,
+                "designation": it["designation"],
+                "marque": it["marque"] or _parse_marque(it["designation"]),
+                "quantite": qte,
+                "taux_tva": it["taux_tva"],
+                "prix_unit_ht": it["prix_unit_ht"],
+                "prix_unit_ttc": it["prix_unit_ttc"],
+                "total_ht": round(it["prix_unit_ht"] * qte, 2),
+                "total_ttc": round(it["prix_unit_ttc"] * qte, 2),
+            })
+        data["options_proposees"] = _opts
 
     return data
 

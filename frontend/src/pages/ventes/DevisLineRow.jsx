@@ -146,6 +146,14 @@ function DevisLineRowImpl({
         {tvaWarning && <div className="mt-0.5 text-xs text-warning">{tvaWarning}</div>}
       </td>
       <td className="line-total" data-label="Total TTC">{formatMoney(lineTtc)}</td>
+      {/* XSAL5 — case « option » : coché = ligne optionnelle (add-on) exclue du
+          total tant qu'elle n'est pas activée par le client sur la proposition. */}
+      <td data-label="Option" className="ta-center">
+        <input type="checkbox" checked={!!l.optionnelle}
+               aria-label="Ligne optionnelle (add-on hors total)"
+               title="Add-on proposé au client hors total (activable avant signature)"
+               onChange={e => onSetField(l._key, 'optionnelle', e.target.checked)} />
+      </td>
       <td>
         <IconButton type="button" label="Supprimer la ligne" size="sm"
                     className="text-destructive hover:bg-destructive/10"

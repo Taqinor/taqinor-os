@@ -5,6 +5,7 @@ from .public_views import (
     proposal_contact_request, proposal_request_otp,
     proposal_engagement,  # XSAL16
     proposal_virement_declare,  # QX33be
+    proposal_activate_option,  # XSAL5
     suivi_public,  # QX34
     ecatalogue_public, ecatalogue_demander_devis,
 )
@@ -27,6 +28,9 @@ urlpatterns = [
     # QX33be — le client déclare avoir effectué le virement de l'acompte.
     path('proposal/<str:token>/virement/', proposal_virement_declare,
          name='public-proposal-virement'),
+    # XSAL5 — activation self-service d'une ligne optionnelle (avant signature).
+    path('proposal/<str:token>/activer-option/', proposal_activate_option,
+         name='public-proposal-activate-option'),
     # QX34 — suivi post-signature public en lecture seule (timeline jalons).
     path('suivi/<str:token>/', suivi_public, name='public-suivi'),
     # XSAL16 — beacon léger d'engagement par section (aucune donnée

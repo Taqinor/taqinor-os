@@ -85,6 +85,8 @@ const withKeys = (rows) => rows.map(r => ({
   // comportement historique inchangé). 0 = équipement commun, 1..N = villa N.
   groupeIndex: r.groupeIndex ?? null,
   groupeLabel: r.groupeLabel ?? '',
+  // XSAL5 — ligne optionnelle (add-on hors total). Défaut False = ligne normale.
+  optionnelle: !!r.optionnelle,
 }))
 
 // Nouvelle ligne vide — quantité 0 comme addProductLine() du simulateur
@@ -102,6 +104,8 @@ const emptyLine = () => ({
   _tvaSuggested: true,
   groupeIndex: null,
   groupeLabel: '',
+  // XSAL5 — ligne optionnelle (add-on hors total). Défaut False.
+  optionnelle: false,
 })
 
 const fmtNum = (v) => (v !== null && v !== undefined) ? formatNumber(v) : 'N/A'
@@ -738,6 +742,8 @@ export default function DevisGenerator({
         quantite: String(parseFloat(l.quantite)),
         prix_unit_ttc: String(ttcFromHt(l.prix_unitaire, l.taux_tva ?? d.taux_tva)),
         taux_tva: String(parseFloat(l.taux_tva ?? d.taux_tva) || 20),
+        // XSAL5 — préserve le drapeau « option » au rechargement d'un brouillon.
+        optionnelle: !!l.optionnelle,
       }))
       setLines(withKeys(rows))
       linesInitialized.current = true
@@ -1308,6 +1314,8 @@ export default function DevisGenerator({
         taux_tva: String(l.taux_tva ?? 20),
         groupe_index: multiMode === 'villas' ? l.groupeIndex : null,
         groupe_label: multiMode === 'villas' ? (l.groupeLabel || '') : '',
+        // XSAL5 — ligne optionnelle (add-on hors total). Défaut False.
+        optionnelle: !!l.optionnelle,
       }))
 
       let devisId
@@ -2395,6 +2403,9 @@ export default function DevisGenerator({
                     <th className="col-num">Prix Unit. TTC</th>
                     <th className="col-num" style={{ width: 64 }} title="Taux TVA de la ligne (réforme : 10 % panneaux PV, 20 % le reste)">TVA %</th>
                     <th className="col-num">Total TTC</th>
+                    {/* XSAL5 — case « option » : la ligne est un add-on proposé
+                        hors total (activable par le client sur la proposition). */}
+                    <th style={{ width: 56 }} title="Ligne optionnelle (add-on) : proposée au client hors total">Option</th>
                     <th className="col-del"></th>
                   </tr>
                 </thead>
