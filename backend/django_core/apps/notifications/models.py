@@ -19,6 +19,7 @@ import logging
 from django.conf import settings
 from django.db import models, transaction
 
+from core.crypto_fields import EncryptedTextField
 from core.models import TenantModel
 
 logger = logging.getLogger(__name__)
@@ -414,7 +415,7 @@ class VapidKeyPair(models.Model):
     accepté tel quel par `pywebpush.webpush(vapid_private_key=...)`."""
 
     public_key = models.TextField(default='')
-    private_key = models.TextField(default='')
+    private_key = EncryptedTextField(default='')
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
