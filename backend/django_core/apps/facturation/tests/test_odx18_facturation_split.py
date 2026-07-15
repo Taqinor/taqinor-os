@@ -33,7 +33,7 @@ def make_user(company, username, role='responsable'):
 
 
 def make_client(company, email='odx18@example.com'):
-    from crm.models import Client
+    from apps.crm.models import Client
     return Client.objects.create(
         company=company, nom='ODX18', prenom='Client', email=email,
         telephone='+212600000018', adresse='Casablanca')
