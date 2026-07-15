@@ -19,6 +19,8 @@ from decimal import Decimal
 from django.conf import settings
 from django.db import models
 
+from core.crypto_fields import EncryptedCharField
+
 
 class Departement(models.Model):
     """Département d'une société (regroupe des ``DossierEmploye``).
@@ -234,15 +236,15 @@ class DossierEmploye(models.Model):
     matricule = models.CharField(max_length=30, verbose_name='Matricule')
     nom = models.CharField(max_length=120, verbose_name='Nom')
     prenom = models.CharField(max_length=120, verbose_name='Prénom')
-    cin = models.CharField(
+    cin = EncryptedCharField(
         max_length=20, blank=True, default='', verbose_name='CIN')
     # Numéros légaux paie (Maroc) — facultatifs ; pas d'unicité ici (à étudier
     # en suivi : unicité par société sans piège AddField(unique, default)).
-    cnss = models.CharField(
+    cnss = EncryptedCharField(
         max_length=20, blank=True, default='', verbose_name='N° CNSS')
-    cimr = models.CharField(
+    cimr = EncryptedCharField(
         max_length=20, blank=True, default='', verbose_name='N° CIMR')
-    amo = models.CharField(
+    amo = EncryptedCharField(
         max_length=20, blank=True, default='', verbose_name='N° AMO')
     situation_familiale = models.CharField(
         max_length=12, choices=SituationFamiliale.choices,
@@ -326,7 +328,7 @@ class DossierEmploye(models.Model):
     cout_horaire = models.DecimalField(
         max_digits=14, decimal_places=2, default=Decimal('0'),
         verbose_name='Coût horaire')
-    rib = models.CharField(
+    rib = EncryptedCharField(
         max_length=40, blank=True, default='', verbose_name='RIB')
     # XRH1 — période d'essai (Code du travail marocain : 3 mois cadres / 1,5
     # mois employés, renouvelable UNE fois). ``essai_date_fin`` borne la

@@ -2,6 +2,8 @@ from django.contrib.auth.models import AbstractUser, Group, Permission
 from django.db import models
 from django.utils.text import slugify
 
+from core.crypto_fields import EncryptedCharField
+
 
 class Company(models.Model):
     # SCA18 — cycle de vie du tenant. ``actif`` (bool historique) est CONSERVÉ
@@ -206,7 +208,7 @@ class CustomUser(AbstractUser):
     # vérification d'un premier code). Nullable/vide par défaut : tout compte
     # existant a donc le 2FA DÉSACTIVÉ et se connecte exactement comme avant —
     # aucun verrouillage possible.
-    totp_secret = models.CharField(max_length=64, blank=True, null=True)
+    totp_secret = EncryptedCharField(max_length=64, blank=True, null=True)
     # Drapeau d'activation. Défaut False : 2FA inactif tant que l'utilisateur
     # ne l'a pas explicitement activé et vérifié lui-même.
     totp_enabled = models.BooleanField(default=False)

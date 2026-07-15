@@ -42,6 +42,16 @@ CSRF_TRUSTED_ORIGINS = [
     if o.strip()
 ]
 
+# YHARD1 — chiffrement au repos des champs sensibles (key-gated).
+# Clé(s) Fernet (base64url 32 octets) pour ``core.crypto_fields``. Plusieurs
+# clés séparées par des virgules → rotation (MultiFernet : la 1re chiffre,
+# toutes déchiffrent). VIDE par défaut : les EncryptedCharField/TextField se
+# comportent alors EXACTEMENT comme leurs équivalents en clair (aucun
+# chiffrement, aucun crash) — comportement octet-identique à l'existant.
+# Générer une clé : python -c "from cryptography.fernet import Fernet;
+# print(Fernet.generate_key().decode())"
+FIELD_ENCRYPTION_KEY = os.environ.get('FIELD_ENCRYPTION_KEY', '')
+
 # Application definition
 INSTALLED_APPS = [
     'django.contrib.admin',
