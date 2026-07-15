@@ -26,6 +26,8 @@ from __future__ import annotations
 
 from django.db.models import Avg, Count, Max, Min, Sum
 
+from core.analytics_db import analytics_queryset
+
 # Registre en mémoire : { dataset_name: {label, fields, provider} }.
 _DATASETS: dict[str, dict] = {}
 
@@ -160,7 +162,10 @@ def run_query(name, company, user, spec):
     """
     dataset = get_dataset(name)
     allowed = dataset['fields']
-    qs = dataset['provider'](company, user)
+    # YHARD9 — lecture BI lourde : route vers le réplica analytique si configuré
+    # (no-op strict sinon). Le queryset provider est DÉJÀ scopé société ; changer
+    # la base de lecture ne touche pas le filtre `company`. Chemin 100 % lecture.
+    qs = analytics_queryset(dataset['provider'](company, user))
 
     spec = spec or {}
     select = list(spec.get('select') or [])
