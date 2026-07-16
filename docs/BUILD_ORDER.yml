@@ -370,6 +370,7 @@ unmapped_ok:
   - XMKT
   - XPLT
   - XPOS
+  - ADSENGINT  # front<->back console integration follow-ups (ADSENGINT1-3, discovered at ENG/ADSENG fold)
   - XSAL
   - XSAV
   - XSTK

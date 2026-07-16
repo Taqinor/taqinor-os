@@ -339,7 +339,7 @@ class CustomUser(AbstractUser):
         d'écriture/gestion (toute permission qui n'est ni une lecture
         ``*_voir`` ni un marqueur de portée ``records_scope_*``)."""
         for perm in permissions:
-            if perm.endswith('_voir'):
+            if perm.endswith('_voir') or perm.endswith('_view'):  # _voir FR + _view EN = lecture
                 continue
             if perm.startswith('records_scope'):
                 continue

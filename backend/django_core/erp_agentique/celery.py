@@ -394,6 +394,38 @@ app.conf.beat_schedule = {
         'task': 'notifications.sweep_hot_leads',
         'schedule': crontab(minute='*/15'),
     },
+    # ENG6 — synchro quotidienne des insights publicitaires (miroirs +
+    # snapshots). NO-OP propre tant qu'aucune MetaConnection n'est activée.
+    'adsengine-sync-insights-daily': {
+        'task': 'adsengine.sync_insights_daily',
+        'schedule': crontab(hour=6, minute=45),
+    },
+    # ENG11 — brief hebdomadaire déterministe (lundi, heure creuse). Ne génère
+    # un brief que pour les sociétés ayant des campagnes ; idempotent.
+    'adsengine-generate-weekly-brief': {
+        'task': 'adsengine.generate_weekly_brief',
+        'schedule': crontab(hour=6, minute=50, day_of_week=1),
+    },
+    # ADSENG15 — boucle CRITIQUE du Gardien (toutes les 6 h) : garde-fous
+    # sécurité (zéro-diffusion, ad refusée, pic/chute de dépense). JAMAIS
+    # sub-horaire (rate limits Meta scalés au spend, dd-guardian §A9).
+    'adsengine-evaluate-guardrails': {
+        'task': 'adsengine.evaluate_guardrails',
+        'schedule': crontab(minute=15, hour='*/6'),
+    },
+    # ADSENG15 — boucle d'OPTIMISATION du Gardien (quotidienne, après la synchro
+    # ENG6 de 06:45) : fatigue créative, bande CPL, backlog bas.
+    'adsengine-evaluate-optimization-rules': {
+        'task': 'adsengine.evaluate_optimization_rules',
+        'schedule': crontab(hour=6, minute=55),
+    },
+    # ADSENG35 — boucle du FlightRunner (quotidienne, après le gardien de 06:55).
+    # NO-OP par défaut : ne tourne que pour les sociétés ayant ACTIVÉ le mode
+    # autonome (préflight ADSENG38 vert) et sans interrupteur global engagé.
+    'adsengine-run-active-flightplans': {
+        'task': 'adsengine.run_active_flightplans',
+        'schedule': crontab(hour=7, minute=5),
+    },
 }
 
 # YHARD6 — compteurs Celery succès/échec (process-local, best-effort) pour

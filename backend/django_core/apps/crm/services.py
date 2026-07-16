@@ -1348,7 +1348,7 @@ _META_LEAD_ADS_SYSTEM = 'meta_lead_ads'
 
 def create_lead_from_meta_lead_ads(
         *, company, leadgen_id, field_data,
-        campaign_name='', adset_name='') -> Lead:
+        ad_id='', adgroup_id='', form_id='', access_token='') -> Lead:
     """XMKT32 — Crée (ou dédupe sur) un lead depuis un formulaire Meta Lead Ads.
 
     Point d'entrée cross-app sanctionné (services.py), appelé par
@@ -1365,9 +1365,16 @@ def create_lead_from_meta_lead_ads(
          en base, ex. venu par un autre canal) → absorbe la nouvelle touche
          dans le lead existant (complète sans écraser), comme le webhook site.
 
-    Attribution : ``canal=META_ADS``, ``utm_source='facebook'``,
-    ``utm_campaign``/``utm_content`` portent le nom de campagne/adset quand
-    fournis par l'appelant.
+    Attribution (ADSENG1) : ``canal=META_ADS``, ``utm_source='facebook'``.
+    Meta ne pousse JAMAIS campaign_name/adset_name dans le webhook leadgen ; il
+    pousse ``ad_id``/``adgroup_id``/``form_id`` — capturés ici en clés de
+    jointure stables (``meta_ad_id``/``meta_adset_id``/``meta_campaign_id``/
+    ``meta_form_id``). Les NOMS lisibles sont résolus via les miroirs adsengine
+    (``adsengine.selectors.resolve_meta_ad_names`` — jamais un import des modèles
+    adsengine), avec repli paresseux via l'API si ``access_token`` est fourni.
+    ``utm_campaign`` porte le nom de campagne résolu ; ``utm_content`` suit la
+    convention ``ad-<ad_id>`` (formalisée en ADSENG23) — jamais l'adset_name,
+    toujours vide en prod.
 
     Best-effort côté séquence de bienvenue : XMKT1 (moteur d'exécution des
     séquences) n'est pas encore construit — aucune inscription automatique
@@ -1409,9 +1416,23 @@ def create_lead_from_meta_lead_ads(
             absorbed = sorted(
                 dupes, key=lambda d: d.date_creation, reverse=True)[0]
 
+    # ADSENG1 — identifiants Meta natifs (clés de jointure stables) + noms
+    # résolus via les miroirs adsengine (jamais un import des modèles adsengine).
+    ad_id = str(ad_id or '')
+    adgroup_id = str(adgroup_id or '')
+    form_id = str(form_id or '')
+    from apps.adsengine.selectors import resolve_meta_ad_names
+    names = resolve_meta_ad_names(
+        company, ad_id=ad_id, adgroup_id=adgroup_id, access_token=access_token)
+
     utm_source = 'facebook'
-    utm_campaign = (campaign_name or '')[:300] or None
-    utm_content = (adset_name or '')[:300] or None
+    utm_campaign = (names.get('campaign_name') or '')[:300] or None
+    # Convention ADSENG23 : utm_content = ad-<ad_id> (jamais l'adset_name).
+    utm_content = f'ad-{ad_id}'[:300] if ad_id else None
+    meta_ad_id = ad_id[:64] or None
+    meta_adset_id = adgroup_id[:64] or None
+    meta_campaign_id = (names.get('campaign_id') or '')[:64] or None
+    meta_form_id = form_id[:64] or None
 
     if absorbed is not None:
         lead = absorbed
@@ -1428,6 +1449,15 @@ def create_lead_from_meta_lead_ads(
             lead.utm_campaign = utm_campaign
         if not lead.utm_content:
             lead.utm_content = utm_content
+        # Identifiants Meta natifs : posés seulement si absents (first-touch).
+        if not lead.meta_ad_id:
+            lead.meta_ad_id = meta_ad_id
+        if not lead.meta_adset_id:
+            lead.meta_adset_id = meta_adset_id
+        if not lead.meta_campaign_id:
+            lead.meta_campaign_id = meta_campaign_id
+        if not lead.meta_form_id:
+            lead.meta_form_id = meta_form_id
         if not lead.external_system:
             lead.external_system = _META_LEAD_ADS_SYSTEM
             lead.external_id = str(leadgen_id)
@@ -1453,6 +1483,10 @@ def create_lead_from_meta_lead_ads(
             utm_source=utm_source,
             utm_campaign=utm_campaign,
             utm_content=utm_content,
+            meta_ad_id=meta_ad_id,
+            meta_adset_id=meta_adset_id,
+            meta_campaign_id=meta_campaign_id,
+            meta_form_id=meta_form_id,
             external_system=_META_LEAD_ADS_SYSTEM,
             external_id=str(leadgen_id),
             **extra,
@@ -1469,6 +1503,103 @@ def create_lead_from_meta_lead_ads(
 
     recompute_lead_score(lead)
     return lead
+
+
+def fetch_meta_lead_node(leadgen_id, access_token):  # pragma: no cover - réseau
+    """ADSENG1 — Récupère les identifiants natifs (ad_id/adgroup_id/form_id) du
+    nœud lead Meta via le Graph API officiel, pour le backfill.
+
+    Isolé en fonction module (jamais dans ``webhooks.py`` — inchangé hors
+    mapping) pour rester simulable en test (monkeypatch). Utilise la version
+    courante de l'API (v25 — jamais la v19 expirée). Renvoie le dict brut ou
+    lève sur échec (capté par l'appelant, best-effort par lead).
+    """
+    import json
+    import urllib.parse
+    import urllib.request
+
+    qs = urllib.parse.urlencode({
+        'fields': 'ad_id,adgroup_id,form_id',
+        'access_token': access_token,
+    })
+    url = f'https://graph.facebook.com/v25.0/{leadgen_id}?{qs}'
+    with urllib.request.urlopen(url, timeout=10) as resp:  # noqa: S310
+        return json.loads(resp.read().decode('utf-8'))
+
+
+def backfill_meta_lead_attribution(
+        *, company=None, access_token='', fetch_fn=None, limit=None):
+    """ADSENG1 — Rétro-remplit l'attribution par variante des leads Lead Ads
+    EXISTANTS (créés avant qu'on capture ad_id/adgroup_id/form_id).
+
+    Pour chaque ``Lead`` de source ``meta_lead_ads`` dont ``meta_ad_id`` est
+    encore vide, récupère ses identifiants natifs (ad_id/adgroup_id/form_id)
+    depuis le nœud lead Meta via ``fetch_fn(leadgen_id, access_token)`` (défaut :
+    ``webhooks.fetch_meta_lead_node`` — injectable/simulable en test), les
+    stocke, résout les noms via les miroirs adsengine, et remplit ``utm_content``
+    = ``ad-<ad_id>`` + ``utm_campaign`` = nom de campagne résolu.
+
+    IDEMPOTENT : un lead déjà backfillé (``meta_ad_id`` non vide) est sauté ; une
+    seconde exécution ne change rien. Best-effort par lead : un échec réseau sur
+    un lead n'interrompt jamais le lot (loggé, sauté). Scopé société si
+    ``company`` fourni. Renvoie ``{'scanned', 'updated', 'skipped', 'failed'}``.
+    """
+    import logging
+    from django.db.models import Q
+    from apps.adsengine.selectors import resolve_meta_ad_names
+
+    if fetch_fn is None:
+        fetch_fn = fetch_meta_lead_node
+    _log = logging.getLogger(__name__)
+
+    qs = Lead.objects.filter(
+        external_system=_META_LEAD_ADS_SYSTEM,
+        external_id__isnull=False,
+    ).filter(
+        Q(meta_ad_id__isnull=True) | Q(meta_ad_id=''),
+    )
+    if company is not None:
+        qs = qs.filter(company=company)
+    qs = qs.order_by('id')
+    if limit:
+        qs = qs[:limit]
+
+    stats = {'scanned': 0, 'updated': 0, 'skipped': 0, 'failed': 0}
+    for lead in qs:
+        stats['scanned'] += 1
+        try:
+            node = fetch_fn(lead.external_id, access_token) or {}
+        except Exception as exc:  # noqa: BLE001 — un lead ne bloque pas le lot
+            stats['failed'] += 1
+            _log.warning(
+                'backfill_meta_lead_attribution: fetch échoué (lead #%s) : %s',
+                lead.pk, exc)
+            continue
+        ad_id = str(node.get('ad_id') or '')
+        adgroup_id = str(node.get('adgroup_id') or node.get('adset_id') or '')
+        form_id = str(node.get('form_id') or '')
+        if not ad_id:
+            stats['skipped'] += 1
+            continue
+        names = resolve_meta_ad_names(
+            lead.company, ad_id=ad_id, adgroup_id=adgroup_id,
+            access_token=access_token)
+        lead.meta_ad_id = ad_id[:64]
+        lead.meta_adset_id = adgroup_id[:64] or lead.meta_adset_id
+        lead.meta_form_id = form_id[:64] or lead.meta_form_id
+        campaign_id = (names.get('campaign_id') or '')[:64]
+        if campaign_id and not lead.meta_campaign_id:
+            lead.meta_campaign_id = campaign_id
+        # utm_content = ad-<ad_id> (convention ADSENG23) ; remplit sans écraser
+        # une valeur déjà posée par un autre canal (first-touch préservée).
+        if not lead.utm_content:
+            lead.utm_content = f'ad-{ad_id}'[:300]
+        campaign_name = (names.get('campaign_name') or '')[:300]
+        if campaign_name and not lead.utm_campaign:
+            lead.utm_campaign = campaign_name
+        lead.save()
+        stats['updated'] += 1
+    return stats
 
 
 # ── XMKT37 — Livechat / assistant IA de qualification (ERP-side) ─────────────

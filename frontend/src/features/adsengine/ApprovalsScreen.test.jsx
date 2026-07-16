@@ -1,0 +1,103 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
+
+/* ENG25 — la boîte d'approbation (écran-vaisseau-amiral) : cartes EngineAction
+   avec artefact réel (préview créatif, diff budget avant→après) + reason_fr,
+   approuver/rejeter en contrôles STRUCTURÉS (jamais du chat), batch avec toggle
+   par item (partiel possible), une action appliquée quitte la boîte. */
+
+const mocks = vi.hoisted(() => ({
+  pending: vi.fn(),
+  approve: vi.fn(),
+  reject: vi.fn(),
+}))
+
+vi.mock('./adsengineApi', () => ({
+  default: {
+    actions: { pending: mocks.pending, approve: mocks.approve, reject: mocks.reject },
+  },
+}))
+
+import ApprovalsScreen from './ApprovalsScreen'
+
+const renderScreen = () => render(
+  <MemoryRouter><ApprovalsScreen /></MemoryRouter>)
+
+const ACTIONS = [
+  { id: 11, type: 'adjust_budget', reason_fr: 'CPL en baisse — augmenter la portée.',
+    budget_avant: 80, budget_apres: 120 },
+  { id: 12, type: 'swap_creative', reason_fr: 'Créatif fatigué (fréquence 3,2).',
+    creative: { designation: 'Reel toiture v2', type: 'reel', preview_url: 'https://cdn/x.jpg' } },
+  { id: 13, type: 'create_campaign', reason_fr: 'Nouvelle ville : Marrakech.' },
+]
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  mocks.pending.mockResolvedValue({ data: ACTIONS })
+  mocks.approve.mockResolvedValue({ data: {} })
+  mocks.reject.mockResolvedValue({ data: {} })
+})
+
+describe('ApprovalsScreen (ENG25)', () => {
+  it('montre les cartes avec reason_fr et l\'artefact réel (diff budget + créatif)', async () => {
+    renderScreen()
+    await waitFor(() => expect(mocks.pending).toHaveBeenCalled())
+    expect(screen.getAllByTestId('ae-action-card')).toHaveLength(3)
+    // reason_fr rendu.
+    expect(screen.getByText('CPL en baisse — augmenter la portée.')).toBeInTheDocument()
+    // Diff budget avant→après (artefact réel).
+    const budget = screen.getByTestId('ae-artifact-budget')
+    expect(budget).toHaveTextContent('80 MAD')
+    expect(budget).toHaveTextContent('120 MAD')
+    // Préview créatif (artefact réel) avec alt accessible.
+    expect(screen.getByAltText('Reel toiture v2')).toBeInTheDocument()
+  })
+
+  it('approuver appelle l\'API et l\'action QUITTE la boîte', async () => {
+    renderScreen()
+    await waitFor(() => expect(mocks.pending).toHaveBeenCalled())
+    fireEvent.click(screen.getByTestId('ae-approve-11'))
+    await waitFor(() => expect(mocks.approve).toHaveBeenCalledWith(11))
+    await waitFor(() => expect(screen.getAllByTestId('ae-action-card')).toHaveLength(2))
+    expect(screen.queryByTestId('ae-approve-11')).toBeNull()
+  })
+
+  it('rejeter est STRUCTURÉ (motif via select, jamais de chat) et retire l\'action', async () => {
+    renderScreen()
+    await waitFor(() => expect(mocks.pending).toHaveBeenCalled())
+    // Aucune zone de texte libre (chat) sur l'écran.
+    expect(screen.queryByRole('textbox')).toBeNull()
+    fireEvent.click(screen.getByTestId('ae-reject-12'))
+    const reason = await screen.findByTestId('ae-reject-reason-12')
+    // Le motif est un select (contrôle structuré), pas un textarea.
+    expect(reason.tagName).toBe('SELECT')
+    fireEvent.change(reason, { target: { value: 'creatif_non_conforme' } })
+    fireEvent.click(screen.getByTestId('ae-reject-confirm-12'))
+    await waitFor(() => expect(mocks.reject).toHaveBeenCalledWith(12, { reason: 'creatif_non_conforme' }))
+    await waitFor(() => expect(screen.queryByTestId('ae-reject-12')).toBeNull())
+  })
+
+  it('batch PARTIEL : n\'approuve que les cases cochées', async () => {
+    renderScreen()
+    await waitFor(() => expect(mocks.pending).toHaveBeenCalled())
+    // Coche 2 des 3 actions.
+    fireEvent.click(screen.getByTestId('ae-batch-toggle-11'))
+    fireEvent.click(screen.getByTestId('ae-batch-toggle-13'))
+    expect(screen.getByTestId('ae-batch-count')).toHaveTextContent('2')
+    fireEvent.click(screen.getByTestId('ae-batch-approve'))
+    await waitFor(() => expect(mocks.approve).toHaveBeenCalledTimes(2))
+    expect(mocks.approve).toHaveBeenCalledWith(11)
+    expect(mocks.approve).toHaveBeenCalledWith(13)
+    expect(mocks.approve).not.toHaveBeenCalledWith(12)
+    // Seule l'action non cochée (12) reste dans la boîte.
+    await waitFor(() => expect(screen.getAllByTestId('ae-action-card')).toHaveLength(1))
+    expect(within(screen.getByTestId('ae-action-card')).getByTestId('ae-approve-12')).toBeInTheDocument()
+  })
+
+  it('boîte vide → message dédié', async () => {
+    mocks.pending.mockResolvedValue({ data: [] })
+    renderScreen()
+    expect(await screen.findByTestId('ae-approvals-empty')).toBeInTheDocument()
+  })
+})

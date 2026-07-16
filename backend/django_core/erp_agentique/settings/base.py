@@ -168,6 +168,10 @@ INSTALLED_APPS = [
     # XPLT21 — Softphone VoIP intégré (SIP/WebRTC, gated). Interface
     # fournisseur SWAPPABLE (NoOp par défaut) — additif, company-scopé.
     'apps.voip',
+    # Groupe ENG — Moteur publicitaire Meta Ads dans l'ERP (miroirs,
+    # propose→approuve→applique, création TOUJOURS PAUSED). App satellite
+    # multi-société ; tout no-ope sans token/clé configuré.
+    'apps.adsengine',
 ]
 
 MIDDLEWARE = [
@@ -738,6 +742,15 @@ CELERY_TASK_ROUTES = {
     'qhse.escalader_checkins_en_retard': {'queue': 'scheduled'},
     # Notifications — balayage des leads chauds.
     'notifications.sweep_hot_leads': {'queue': 'scheduled'},
+    # ENG6 — synchro quotidienne des insights publicitaires.
+    'adsengine.sync_insights_daily': {'queue': 'scheduled'},
+    # ENG11 — brief hebdomadaire déterministe.
+    'adsengine.generate_weekly_brief': {'queue': 'scheduled'},
+    # ADSENG15 — boucles du Gardien (critique 6 h + optimisation quotidienne).
+    'adsengine.evaluate_guardrails': {'queue': 'scheduled'},
+    'adsengine.evaluate_optimization_rules': {'queue': 'scheduled'},
+    # ADSENG35 — boucle du FlightRunner (quotidienne, autonomie gated).
+    'adsengine.run_active_flightplans': {'queue': 'scheduled'},
     # NTPLT27 — 4e queue `bulk` pour le travail de masse (imports dataimport,
     # exports planifiés volumineux, backfills, seed à l'échelle). Un import de
     # 100 000 lignes ne doit plus retarder un digest planifié ni un rendu PDF

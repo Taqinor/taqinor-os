@@ -910,8 +910,12 @@ def meta_lead_ads_webhook(request):
                 leadgen_id = value.get('leadgen_id')
                 if not leadgen_id:
                     continue
-                campaign_name = value.get('campaign_name', '') or ''
-                adset_name = value.get('adset_name', '') or ''
+                # ADSENG1 — Meta pousse ad_id/adgroup_id/form_id (JAMAIS
+                # campaign_name/adset_name) : on capture ces clés de jointure
+                # stables ; la résolution des noms se fait côté service.
+                ad_id = value.get('ad_id', '') or ''
+                adgroup_id = value.get('adgroup_id', '') or ''
+                form_id = value.get('form_id', '') or ''
                 try:
                     lead_data = fetch_meta_lead_data(leadgen_id, access_token)
                 except Exception as exc:  # noqa: BLE001 — un lead en échec
@@ -924,8 +928,9 @@ def meta_lead_ads_webhook(request):
                 from .services import create_lead_from_meta_lead_ads
                 lead = create_lead_from_meta_lead_ads(
                     company=company, leadgen_id=leadgen_id,
-                    field_data=field_data, campaign_name=campaign_name,
-                    adset_name=adset_name)
+                    field_data=field_data, ad_id=ad_id,
+                    adgroup_id=adgroup_id, form_id=form_id,
+                    access_token=access_token)
                 created_leads.append(lead.pk)
         return JsonResponse({'detail': 'Traité.', 'lead_ids': created_leads},
                             status=200)
