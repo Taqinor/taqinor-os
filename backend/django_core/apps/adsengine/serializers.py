@@ -2,9 +2,11 @@
 from rest_framework import serializers
 
 from .models import (
-    AnomalyEvent, ArmDailyStat, CreativeAsset, CreativePolicy, DecisionLog,
-    EngineAction, EngineAlert, Experiment, ExperimentArm, GuardrailConfig,
-    MetaConnection, PacingState, RulePolicy,
+    AnomalyEvent, ArmDailyStat, CreativeAsset, CreativeBacklogItem,
+    CreativeGenerationBatch, CreativePolicy, DecisionLog, EngineAction,
+    EngineAlert, Experiment, ExperimentArm, FlightPhase, FlightPlan,
+    GuardrailConfig, MetaConnection, PacingState, ReconciliationSnapshot,
+    RulePolicy,
 )
 
 
@@ -146,6 +148,8 @@ class CreativeAssetSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'asset_type', 'file_key', 'source_lane', 'cost_cents',
             'policy_stamp', 'is_policy_passed', 'perf', 'parent',
+            # ADSENG5 — composants (accroche / texte / visuel / CTA).
+            'hook_id', 'hook_text', 'primary_text', 'visual_asset_key', 'cta',
             'created_at', 'updated_at',
         ]
         # NB : ``is_policy_passed`` est déjà read-only (champ déclaré) — ne PAS
@@ -299,4 +303,100 @@ class PacingStateSerializer(serializers.ModelSerializer):
             'id', 'period_start', 'monthly_budget_ceiling_mad',
             'spend_to_date', 'expected_spend_to_date', 'forecast_spend',
             'pacing_ratio', 'state', 'created_at', 'updated_at',
+        ]
+
+
+class CreativeGenerationBatchSerializer(serializers.ModelSerializer):
+    """ADSENG5 — Lot de génération créative. ``company`` posée côté serveur ;
+    l'approbation (statut/approved_by/at) passe par les actions dédiées."""
+
+    class Meta:
+        model = CreativeGenerationBatch
+        fields = [
+            'id', 'source_hook_asset', 'visual_ids', 'status', 'approved_by',
+            'approved_at', 'note', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'status', 'approved_by', 'approved_at', 'created_at', 'updated_at',
+        ]
+
+    def validate_source_hook_asset(self, value):
+        return _same_company(self, value)
+
+
+class CreativeBacklogItemSerializer(serializers.ModelSerializer):
+    """ADSENG5 — Item de backlog créatif. FK validées dans la même société."""
+
+    class Meta:
+        model = CreativeBacklogItem
+        fields = [
+            'id', 'asset', 'batch', 'target_campaign', 'source',
+            'earliest_date', 'seasonal_tag', 'status',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+    def validate_asset(self, value):
+        return _same_company(self, value)
+
+    def validate_batch(self, value):
+        return _same_company(self, value)
+
+    def validate_target_campaign(self, value):
+        return _same_company(self, value)
+
+
+class FlightPlanSerializer(serializers.ModelSerializer):
+    """ADSENG5 — Plan de vol. ``company`` posée côté serveur."""
+
+    class Meta:
+        model = FlightPlan
+        fields = [
+            'id', 'name', 'objective', 'status', 'start_date', 'end_date',
+            'notes', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+
+class FlightPhaseSerializer(serializers.ModelSerializer):
+    """ADSENG5 — Phase de vol. Bornes de base : 2-4 bras, 1-8 semaines."""
+
+    class Meta:
+        model = FlightPhase
+        fields = [
+            'id', 'plan', 'order', 'name', 'tested_variable',
+            'launch_template', 'budget_mad', 'start_date', 'end_date',
+            'num_arms', 'week_span', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+    def validate_plan(self, value):
+        return _same_company(self, value)
+
+    def validate_num_arms(self, value):
+        if not (2 <= value <= 4):
+            raise serializers.ValidationError(
+                "Une phase teste entre 2 et 4 bras.")
+        return value
+
+    def validate_week_span(self, value):
+        if not (1 <= value <= 8):
+            raise serializers.ValidationError(
+                "La durée d'une phase est de 1 à 8 semaines.")
+        return value
+
+
+class ReconciliationSnapshotSerializer(serializers.ModelSerializer):
+    """ADSENG5 — Instantané de réconciliation (lecture seule : calculé par le
+    moteur ; les deux chiffres Meta/ERP sont montrés côte à côte)."""
+
+    class Meta:
+        model = ReconciliationSnapshot
+        fields = [
+            'id', 'date', 'campaign', 'meta_leads', 'erp_leads', 'meta_spend',
+            'delta_leads', 'status', 'detail', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'date', 'campaign', 'meta_leads', 'erp_leads', 'meta_spend',
+            'delta_leads', 'status', 'detail', 'created_at', 'updated_at',
         ]

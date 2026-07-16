@@ -10,10 +10,13 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     AnomalyEventViewSet, ArmDailyStatViewSet, CostPerSignatureView,
-    CreativeAssetViewSet, CreativePolicyViewSet, DecisionLogViewSet,
+    CreativeAssetViewSet, CreativeBacklogItemViewSet,
+    CreativeGenerationBatchViewSet, CreativePolicyViewSet, DecisionLogViewSet,
     EngineActionViewSet, EngineAlertViewSet, ExperimentArmViewSet,
-    ExperimentViewSet, GuardrailConfigViewSet, MetaConnectionViewSet,
-    PacingStateViewSet, RulePolicyViewSet, StatusView, WiringHealthView,
+    ExperimentViewSet, FlightPhaseViewSet, FlightPlanViewSet,
+    GuardrailConfigViewSet, MetaConnectionViewSet, PacingStateViewSet,
+    ReconciliationSnapshotViewSet, RulePolicyViewSet, StatusView,
+    WiringHealthView,
 )
 
 router = DefaultRouter()
@@ -33,6 +36,15 @@ router.register(r'decisions', DecisionLogViewSet, basename='decision-log')
 router.register(r'regles', RulePolicyViewSet, basename='rule-policy')
 router.register(r'anomalies', AnomalyEventViewSet, basename='anomaly-event')
 router.register(r'pacing', PacingStateViewSet, basename='pacing-state')
+# ADSENG5 — créa + vol
+router.register(r'lots-creatifs', CreativeGenerationBatchViewSet,
+                basename='creative-batch')
+router.register(r'backlog-creatif', CreativeBacklogItemViewSet,
+                basename='creative-backlog')
+router.register(r'plans-vol', FlightPlanViewSet, basename='flight-plan')
+router.register(r'phases-vol', FlightPhaseViewSet, basename='flight-phase')
+router.register(r'reconciliations', ReconciliationSnapshotViewSet,
+                basename='reconciliation')
 
 urlpatterns = [
     path('status/', StatusView.as_view(), name='adsengine-status'),

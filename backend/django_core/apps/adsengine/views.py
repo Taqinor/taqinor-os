@@ -16,16 +16,20 @@ from core.permissions import _user_has_or_legacy
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
-    AnomalyEvent, ArmDailyStat, CreativeAsset, CreativePolicy, DecisionLog,
-    EngineAction, EngineAlert, Experiment, ExperimentArm, GuardrailConfig,
-    MetaConnection, PacingState, RulePolicy,
+    AnomalyEvent, ArmDailyStat, CreativeAsset, CreativeBacklogItem,
+    CreativeGenerationBatch, CreativePolicy, DecisionLog, EngineAction,
+    EngineAlert, Experiment, ExperimentArm, FlightPhase, FlightPlan,
+    GuardrailConfig, MetaConnection, PacingState, ReconciliationSnapshot,
+    RulePolicy,
 )
 from .serializers import (
     AnomalyEventSerializer, ArmDailyStatSerializer, CreativeAssetSerializer,
+    CreativeBacklogItemSerializer, CreativeGenerationBatchSerializer,
     CreativePolicySerializer, DecisionLogSerializer, EngineActionSerializer,
     EngineAlertSerializer, ExperimentArmSerializer, ExperimentSerializer,
-    GuardrailConfigSerializer, MetaConnectionSerializer, PacingStateSerializer,
-    RulePolicySerializer,
+    FlightPhaseSerializer, FlightPlanSerializer, GuardrailConfigSerializer,
+    MetaConnectionSerializer, PacingStateSerializer,
+    ReconciliationSnapshotSerializer, RulePolicySerializer,
 )
 
 
@@ -310,6 +314,67 @@ class PacingStateViewSet(AdsengineViewSet):
 
     queryset = PacingState.objects.all()
     serializer_class = PacingStateSerializer
+    http_method_names = ['get', 'head', 'options']
+
+
+class CreativeGenerationBatchViewSet(AdsengineViewSet):
+    """ADSENG5 — CRUD des lots de génération créative + approbation par LOT.
+
+    L'approbation est BATCH-level (jamais par variante) : une seule action
+    approuve/rejette le lot entier. ``adsengine_manage`` gate l'écriture."""
+
+    queryset = CreativeGenerationBatch.objects.all()
+    serializer_class = CreativeGenerationBatchSerializer
+
+    @action(detail=True, methods=['post'])
+    def approve(self, request, pk=None):
+        """Approuve le LOT ENTIER (acteur + horodatage posés côté serveur)."""
+        from django.utils import timezone
+        batch = self.get_object()
+        batch.status = CreativeGenerationBatch.Statut.APPROUVEE
+        batch.approved_by = request.user
+        batch.approved_at = timezone.now()
+        batch.save(update_fields=['status', 'approved_by', 'approved_at'])
+        return Response(self.get_serializer(batch).data)
+
+    @action(detail=True, methods=['post'])
+    def reject(self, request, pk=None):
+        """Rejette le LOT ENTIER."""
+        from django.utils import timezone
+        batch = self.get_object()
+        batch.status = CreativeGenerationBatch.Statut.REJETEE
+        batch.approved_by = request.user
+        batch.approved_at = timezone.now()
+        batch.save(update_fields=['status', 'approved_by', 'approved_at'])
+        return Response(self.get_serializer(batch).data)
+
+
+class CreativeBacklogItemViewSet(AdsengineViewSet):
+    """ADSENG5 — CRUD des items de backlog créatif (file de publication)."""
+
+    queryset = CreativeBacklogItem.objects.all()
+    serializer_class = CreativeBacklogItemSerializer
+
+
+class FlightPlanViewSet(AdsengineViewSet):
+    """ADSENG5 — CRUD des plans de vol (feuille de route 3-6 mois comme data)."""
+
+    queryset = FlightPlan.objects.all()
+    serializer_class = FlightPlanSerializer
+
+
+class FlightPhaseViewSet(AdsengineViewSet):
+    """ADSENG5 — CRUD des phases de vol (2-4 bras, 1-8 semaines)."""
+
+    queryset = FlightPhase.objects.all()
+    serializer_class = FlightPhaseSerializer
+
+
+class ReconciliationSnapshotViewSet(AdsengineViewSet):
+    """ADSENG5 — Liste (lecture seule) des instantanés de réconciliation."""
+
+    queryset = ReconciliationSnapshot.objects.all()
+    serializer_class = ReconciliationSnapshotSerializer
     http_method_names = ['get', 'head', 'options']
 
 

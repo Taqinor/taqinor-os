@@ -531,6 +531,24 @@ class CreativeAsset(TenantModel):
         null=True, blank=True, related_name='variants',
         verbose_name='Asset parent (variante)')
 
+    # ── ADSENG5 — Décomposition en COMPOSANTS (dd-creative-sci) ──
+    # ``hook_id`` groupe tous les assets partageant la même accroche (à travers
+    # les visuels) ; ``visual_asset_key`` la clé MinIO du visuel réutilisable.
+    # Le texte (accroche/corps) + le CTA permettent la recombinaison
+    # déterministe « hook gagnant × autres visuels » (jamais du contenu inventé).
+    hook_id = models.CharField(
+        max_length=64, blank=True, default='', verbose_name='ID accroche')
+    hook_text = models.TextField(
+        blank=True, default='', verbose_name='Texte accroche')
+    primary_text = models.TextField(
+        blank=True, default='', verbose_name='Texte principal')
+    visual_asset_key = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Clé MinIO du visuel')
+    cta = models.CharField(
+        max_length=40, blank=True, default='',
+        verbose_name="Appel à l'action (CTA)")
+
     class Meta:
         verbose_name = 'Asset créatif'
         verbose_name_plural = 'Assets créatifs'
@@ -950,3 +968,224 @@ class PacingState(TenantModel):
         écrasement, jamais de doublon). Renvoie ``(state, created)``."""
         return cls.objects.update_or_create(
             company=company, period_start=period_start, defaults=fields)
+
+
+class CreativeGenerationBatch(TenantModel):
+    """ADSENG5 — LOT de génération créative (approbation par LOT, jamais par
+    variante).
+
+    Une passe de recombinaison « hook gagnant × visuels candidats » produit un
+    lot d'assets (cap ~2). Le fondateur approuve/rejette le LOT ENTIER en un
+    clic (dd-creative-sci part b) — jamais variante par variante. Tant que le lot
+    n'est pas approuvé, ses assets n'entrent pas dans le backlog.
+    """
+
+    class Statut(models.TextChoices):
+        EN_ATTENTE = 'en_attente', 'En attente'
+        APPROUVEE = 'approuvee', 'Approuvé'
+        REJETEE = 'rejetee', 'Rejeté'
+
+    source_hook_asset = models.ForeignKey(
+        'adsengine.CreativeAsset', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='generation_batches',
+        verbose_name='Asset accroche source')
+    visual_ids = models.JSONField(
+        default=list, blank=True, verbose_name='IDs visuels candidats')
+    status = models.CharField(
+        max_length=12, choices=Statut.choices, default=Statut.EN_ATTENTE,
+        verbose_name='Statut')
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='adsengine_batches_approuves',
+        verbose_name='Décidé par')
+    approved_at = models.DateTimeField(
+        null=True, blank=True, verbose_name='Décidé le')
+    note = models.TextField(blank=True, default='', verbose_name='Note')
+
+    class Meta:
+        verbose_name = 'Lot de génération créative'
+        verbose_name_plural = 'Lots de génération créative'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['company', 'status'],
+                         name='adseng_batch_co_st_idx'),
+        ]
+
+    def __str__(self):
+        return f'Lot #{self.pk} ({self.get_status_display()})'
+
+
+class CreativeBacklogItem(TenantModel):
+    """ADSENG5 — Item de BACKLOG créatif : un asset approuvé en file de
+    publication.
+
+    Porte l'asset, sa provenance (``batch`` — le lot qui l'a produit, ou upload
+    manuel), la campagne cible, la date-au-plus-tôt et un tag saisonnier, plus le
+    statut de file (dd-creative-sci part c — le stock 3-6 mois comme DONNÉES).
+    """
+
+    class Source(models.TextChoices):
+        MANUEL = 'manuel', 'Upload manuel'
+        RECOMBINAISON = 'recombinaison', 'Recombinaison'
+
+    class Statut(models.TextChoices):
+        EN_FILE = 'en_file', 'En file'
+        PROGRAMME = 'programme', 'Programmé'
+        PUBLIE = 'publie', 'Publié'
+        RETIRE = 'retire', 'Retiré'
+
+    asset = models.ForeignKey(
+        'adsengine.CreativeAsset', on_delete=models.CASCADE,
+        related_name='backlog_items', verbose_name='Asset')
+    batch = models.ForeignKey(
+        'adsengine.CreativeGenerationBatch', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='backlog_items',
+        verbose_name='Lot source')
+    target_campaign = models.ForeignKey(
+        'adsengine.AdCampaignMirror', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='backlog_items',
+        verbose_name='Campagne cible')
+    source = models.CharField(
+        max_length=16, choices=Source.choices, default=Source.MANUEL,
+        verbose_name='Provenance')
+    earliest_date = models.DateField(
+        null=True, blank=True, verbose_name='Date au plus tôt')
+    seasonal_tag = models.CharField(
+        max_length=40, blank=True, default='', verbose_name='Tag saisonnier')
+    status = models.CharField(
+        max_length=12, choices=Statut.choices, default=Statut.EN_FILE,
+        verbose_name='Statut file')
+
+    class Meta:
+        verbose_name = 'Item de backlog créatif'
+        verbose_name_plural = 'Items de backlog créatif'
+        ordering = ['earliest_date', 'id']
+        indexes = [
+            models.Index(fields=['company', 'status'],
+                         name='adseng_backlog_co_st_idx'),
+        ]
+
+    def __str__(self):
+        return f'Backlog #{self.pk} (asset {self.asset_id})'
+
+
+class FlightPlan(TenantModel):
+    """ADSENG5 — Plan de VOL : la feuille de route 3-6 mois comme DONNÉES.
+
+    Un plan regroupe des phases ordonnées (``FlightPhase``), chacune testant une
+    variable sur 2-3 bras pendant 3-4 semaines. Le plan lui-même ne LANCE rien :
+    c'est une donnée que le moteur consomme pour proposer des campagnes (nées
+    PAUSED, règle #3).
+    """
+
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        ACTIF = 'actif', 'Actif'
+        TERMINE = 'termine', 'Terminé'
+
+    name = models.CharField(max_length=160, verbose_name='Nom')
+    objective = models.CharField(
+        max_length=64, blank=True, default='', verbose_name='Objectif')
+    status = models.CharField(
+        max_length=12, choices=Statut.choices, default=Statut.BROUILLON,
+        verbose_name='Statut')
+    start_date = models.DateField(null=True, blank=True, verbose_name='Début')
+    end_date = models.DateField(null=True, blank=True, verbose_name='Fin')
+    notes = models.TextField(blank=True, default='', verbose_name='Notes')
+
+    class Meta:
+        verbose_name = 'Plan de vol'
+        verbose_name_plural = 'Plans de vol'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['company', 'status'],
+                         name='adseng_flight_co_st_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.name} ({self.get_status_display()})'
+
+
+class FlightPhase(TenantModel):
+    """ADSENG5 — Une PHASE ordonnée d'un ``FlightPlan`` (2-3 bras, 3-4 semaines).
+
+    Décrit la variable testée, le template de lancement, le budget et la fenêtre.
+    ``num_arms`` (2-4) et ``week_span`` (3-4) bornent la phase (validation de
+    base côté serializer).
+    """
+
+    plan = models.ForeignKey(
+        'adsengine.FlightPlan', on_delete=models.CASCADE,
+        related_name='phases', verbose_name='Plan')
+    order = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    name = models.CharField(max_length=120, verbose_name='Nom')
+    tested_variable = models.CharField(
+        max_length=12, blank=True, default='', verbose_name='Variable testée')
+    launch_template = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name='Template de lancement')
+    budget_mad = models.PositiveIntegerField(
+        default=0, verbose_name='Budget (MAD)')
+    start_date = models.DateField(null=True, blank=True, verbose_name='Début')
+    end_date = models.DateField(null=True, blank=True, verbose_name='Fin')
+    num_arms = models.PositiveSmallIntegerField(
+        default=2, verbose_name='Nombre de bras')
+    week_span = models.PositiveSmallIntegerField(
+        default=3, verbose_name='Durée (semaines)')
+
+    class Meta:
+        verbose_name = 'Phase de vol'
+        verbose_name_plural = 'Phases de vol'
+        ordering = ['plan', 'order', 'id']
+        indexes = [
+            models.Index(fields=['plan', 'order'],
+                         name='adseng_phase_plan_ord_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.name} (plan {self.plan_id})'
+
+
+class ReconciliationSnapshot(TenantModel):
+    """ADSENG5 — Instantané de RÉCONCILIATION Meta-vs-ERP (dd-attribution part b).
+
+    Un instantané daté par campagne : le nombre de leads / la dépense rapportés
+    par Meta vs comptés côté ERP, l'écart, et un statut. Ne fusionne JAMAIS les
+    deux chiffres (les deux sont montrés côte à côte) — la source de la confiance.
+    """
+
+    class Statut(models.TextChoices):
+        OK = 'ok', 'Cohérent'
+        ECART = 'ecart', 'Écart'
+        A_VERIFIER = 'a_verifier', 'À vérifier'
+
+    date = models.DateField(verbose_name='Date')
+    campaign = models.ForeignKey(
+        'adsengine.AdCampaignMirror', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='reconciliations',
+        verbose_name='Campagne')
+    meta_leads = models.PositiveIntegerField(
+        default=0, verbose_name='Leads (côté Meta)')
+    erp_leads = models.PositiveIntegerField(
+        default=0, verbose_name='Leads (côté ERP)')
+    meta_spend = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0,
+        verbose_name='Dépense (côté Meta)')
+    delta_leads = models.IntegerField(
+        default=0, verbose_name='Écart de leads (Meta − ERP)')
+    status = models.CharField(
+        max_length=12, choices=Statut.choices, default=Statut.OK,
+        verbose_name='Statut')
+    detail = models.JSONField(default=dict, blank=True, verbose_name='Détail')
+
+    class Meta:
+        verbose_name = 'Instantané de réconciliation'
+        verbose_name_plural = 'Instantanés de réconciliation'
+        ordering = ['-date', '-created_at']
+        indexes = [
+            models.Index(fields=['company', 'date'],
+                         name='adseng_recon_co_dt_idx'),
+        ]
+
+    def __str__(self):
+        return f'Réconciliation {self.date} (écart {self.delta_leads})'
