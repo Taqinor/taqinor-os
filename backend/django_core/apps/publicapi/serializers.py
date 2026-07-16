@@ -6,6 +6,8 @@ création, par les vues dédiées.
 """
 from rest_framework import serializers
 
+from core.models import ApiUsagePlan
+
 from .constants import ALL_SCOPES, ALL_EVENTS, SCOPE_CHOICES, EVENT_CHOICES
 from .models import ApiKey, ServiceAccount, Webhook, WebhookDelivery
 from .validators import UnsafeWebhookURL, validate_webhook_target_url
@@ -86,6 +88,22 @@ class WebhookDeliverySerializer(serializers.ModelSerializer):
             'error', 'created_at',
         ]
         read_only_fields = fields
+
+
+class ApiUsagePlanSerializer(serializers.ModelSerializer):
+    """NTAPI7 — plan d'API nommé de la société (gratuit/pro/entreprise).
+
+    ``company`` n'est JAMAIS acceptée en écriture : la vue la force depuis
+    ``request.user.company`` (jamais du corps de requête)."""
+
+    class Meta:
+        model = ApiUsagePlan
+        fields = [
+            'id', 'code', 'quota_par_minute', 'quota_par_jour',
+            'quota_par_mois', 'quota_burst', 'retention_livraisons_jours',
+            'nb_webhooks_max', 'actif', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
 
 
 class ServiceAccountSerializer(serializers.ModelSerializer):

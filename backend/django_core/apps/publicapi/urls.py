@@ -8,6 +8,7 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     ApiKeyViewSet, WebhookViewSet, CatalogueView, DocsView, OcrToCrmView,
+    ApiUsagePlanView,
 )
 
 router = DefaultRouter()
@@ -20,5 +21,7 @@ urlpatterns = [
     path('docs/', DocsView.as_view(), name='publicapi-docs'),
     # FG106 — passerelle OCR → lead/devis brouillon (écriture via services cibles).
     path('ocr-to-crm/', OcrToCrmView.as_view(), name='publicapi-ocr-to-crm'),
+    # NTAPI7 — plan d'API nommé (gratuit/pro/entreprise) de la société.
+    path('plan/', ApiUsagePlanView.as_view(), name='publicapi-plan'),
     path('', include(router.urls)),
 ]

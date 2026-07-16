@@ -1585,21 +1585,30 @@ class BackupRun(TimestampedModel):
 
 
 class ApiUsagePlan(TimestampedModel):
-    """Plan de tarif/quota API d'une société (FG398).
+    """Plan de tarif/quota API d'une société (FG398 ; nommage + quotas NTAPI7).
 
-    GÉNÉRIQUE : porte des limites de débit (par minute) et de volume (par jour/
-    mois) appliquées aux clés d'API de la société. Multi-tenant : ``company``
-    obligatoire (OneToOne), imposée côté serveur. ``code`` nomme le palier
-    (libre, ex. « gratuit », « pro »).
+    GÉNÉRIQUE : porte des limites de débit (par minute, avec marge de rafale)
+    et de volume (par jour/mois) appliquées aux clés d'API de la société, plus
+    des plafonds de rétention/webhooks propres au palier. Multi-tenant :
+    ``company`` obligatoire (OneToOne), imposée côté serveur. ``code`` nomme le
+    palier commercial (gratuit/pro/entreprise) — la source de vérité des
+    LIMITES appliquées au throttle (NTAPI6, pas encore câblé) reste ce modèle,
+    jamais une valeur codée en dur ailleurs.
     """
+
+    class Palier(models.TextChoices):
+        GRATUIT = 'gratuit', 'Gratuit'
+        PRO = 'pro', 'Pro'
+        ENTREPRISE = 'entreprise', 'Entreprise'
 
     company = models.OneToOneField(
         'authentication.Company', on_delete=models.CASCADE,
         related_name='api_usage_plan', verbose_name='Société')
 
     code = models.CharField(
-        'Palier', max_length=40, blank=True, default='gratuit',
-        help_text='Nom du palier (libre, ex. « gratuit », « pro »).')
+        'Palier', max_length=40, choices=Palier.choices,
+        default=Palier.GRATUIT,
+        help_text='Nom lisible du palier (gratuit / pro / entreprise).')
     quota_par_minute = models.PositiveIntegerField(
         'Quota / minute', default=60,
         help_text='Requêtes max par minute et par clé (0 = illimité).')
@@ -1609,6 +1618,23 @@ class ApiUsagePlan(TimestampedModel):
     quota_par_mois = models.PositiveIntegerField(
         'Quota / mois', default=300000,
         help_text='Requêtes max par mois et par société (0 = illimité).')
+    # NTAPI7 — marge de rafale au-delà du quota/minute (0 = pas de marge).
+    quota_burst = models.PositiveIntegerField(
+        'Marge de rafale', default=0,
+        help_text=(
+            'Requêtes en rafale tolérées au-delà du quota/minute '
+            '(0 = pas de marge supplémentaire).'))
+    # NTAPI7 — rétention des WebhookDelivery de la société avant purge/archivage
+    # (YOPSB11 lit ce plafond, une fois câblé).
+    retention_livraisons_jours = models.PositiveIntegerField(
+        'Rétention livraisons (jours)', default=30,
+        help_text=(
+            'Durée de rétention des livraisons webhook (jours) avant '
+            'purge/archivage.'))
+    # NTAPI7 — nombre maximum de Webhook actifs pour la société.
+    nb_webhooks_max = models.PositiveIntegerField(
+        'Webhooks max', default=5,
+        help_text='Nombre maximum de webhooks actifs pour cette société.')
     actif = models.BooleanField('Actif', default=True)
 
     class Meta:
