@@ -70,6 +70,22 @@ BASELINE_ALLOWLIST = {
     "backend/django_core/apps/ventes/quote_engine/builder.py:620",
     "backend/django_core/apps/ventes/quote_engine/builder.py:764",
     "backend/django_core/apps/ventes/quote_engine/builder.py:777",
+    # QX ROUND 7 (2026-07-16) — QX43/QX50 builder.py edits shifted existing
+    # display-round sites again; re-based 1:1 (premium engine, sanctioned
+    # whole-MAD display rounding — rule #4 vendored engine, not new logic).
+    "backend/django_core/apps/ventes/quote_engine/builder.py:175",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:176",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:508",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:603",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:605",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:630",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:632",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:776",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:789",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1301",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1307",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1360",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1361",
 }
 
 TARGET_FILES = [
