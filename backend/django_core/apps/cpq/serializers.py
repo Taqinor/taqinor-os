@@ -10,6 +10,7 @@ from core.rules import validate_condition_group
 from .models import (
     OptionProduit, ContrainteCompatibilite, RegleProduitCPQ,
     OffreGroupee, LigneOffreGroupee, PrixContractuel,
+    QuestionConfigurateur,
 )
 
 
@@ -95,3 +96,11 @@ class PrixContractuelSerializer(serializers.ModelSerializer):
                   'date_fin', 'motif', 'created_by', 'date_creation',
                   'est_actif']
         read_only_fields = ['created_by', 'date_creation']
+
+
+class QuestionConfigurateurSerializer(serializers.ModelSerializer):
+    champ = serializers.CharField(read_only=True)
+
+    class Meta:
+        model = QuestionConfigurateur
+        fields = ['id', 'ordre', 'texte', 'type', 'options', 'actif', 'champ']

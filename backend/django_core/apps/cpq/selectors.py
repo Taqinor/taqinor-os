@@ -11,6 +11,24 @@ from .models import (
 )
 
 
+def contexte_session_configurateur(session):
+    """NTCPQ9 — Contexte plat {champ: valeur} construit depuis les réponses
+    d'une session de configurateur (pour l'évaluation des règles NTCPQ2)."""
+    context = {}
+    for rep in session.reponses.select_related('question').all():
+        context[rep.question.champ] = rep.valeur
+    return context
+
+
+def resoudre_configurateur(session):
+    """NTCPQ9 — Résout les produits/bundles d'une session via les règles
+    produit NTCPQ2. Renvoie ``{context, actions_declenchees}``."""
+    context = contexte_session_configurateur(session)
+    actions = evaluer_regles_produit(
+        company=session.company, context=context)
+    return {'context': context, 'actions_declenchees': actions}
+
+
 def premiere_etape_en_attente(devis):
     """NTCPQ7 — Première étape d'approbation de remise encore ``en_attente``
     pour un devis (ordre ``niveau``), ou ``None`` si aucune. Sert au blocage

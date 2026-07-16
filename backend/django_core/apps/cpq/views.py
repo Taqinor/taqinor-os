@@ -14,12 +14,13 @@ from authentication.permissions import IsResponsableOrAdmin, IsAnyRole
 
 from .models import (
     OptionProduit, ContrainteCompatibilite, RegleProduitCPQ, OffreGroupee,
-    PrixContractuel,
+    PrixContractuel, QuestionConfigurateur, SessionConfigurateur,
+    ReponseConfigurateur,
 )
 from .serializers import (
     OptionProduitSerializer, ContrainteCompatibiliteSerializer,
     RegleProduitCPQSerializer, OffreGroupeeSerializer,
-    PrixContractuelSerializer,
+    PrixContractuelSerializer, QuestionConfigurateurSerializer,
 )
 from . import selectors, services
 
@@ -120,6 +121,81 @@ class PrixContractuelViewSet(CompanyScopedModelViewSet):
         if produit is not None and produit.company_id != company.id:
             raise ValidationError({'produit': 'Produit inconnu.'})
         serializer.save(company=company, created_by=self.request.user)
+
+
+class QuestionConfigurateurViewSet(CompanyScopedModelViewSet):
+    queryset = QuestionConfigurateur.objects.all()
+    serializer_class = QuestionConfigurateurSerializer
+
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve'):
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+
+class ConfigurateurDemarrerView(APIView):
+    """NTCPQ9 — POST cpq/configurateur/demarrer/. Crée une session et renvoie
+    le token + les questions actives de la société."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        company = request.user.company
+        session = SessionConfigurateur.objects.create(company=company)
+        questions = QuestionConfigurateur.objects.filter(
+            company=company, actif=True).order_by('ordre', 'id')
+        return Response({
+            'session': str(session.token),
+            'questions': QuestionConfigurateurSerializer(
+                questions, many=True).data,
+        }, status=status.HTTP_201_CREATED)
+
+
+def _get_session(request, token):
+    return SessionConfigurateur.objects.filter(
+        token=token, company=request.user.company).first()
+
+
+class ConfigurateurRepondreView(APIView):
+    """NTCPQ9 — POST cpq/configurateur/{session}/repondre/. Enregistre une ou
+    plusieurs réponses (upsert par question)."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, token):
+        session = _get_session(request, token)
+        if session is None:
+            return Response({'detail': 'Session introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        reponses = request.data.get('reponses')
+        if reponses is None:
+            reponses = [{
+                'question': request.data.get('question')
+                or request.data.get('question_id'),
+                'valeur': request.data.get('valeur'),
+            }]
+        for r in reponses:
+            qid = r.get('question')
+            question = QuestionConfigurateur.objects.filter(
+                id=qid, company=session.company).first()
+            if question is None:
+                continue
+            ReponseConfigurateur.objects.update_or_create(
+                session=session, question=question,
+                defaults={'valeur': r.get('valeur')})
+        session.save(update_fields=['updated_at'])
+        return Response({'detail': 'Réponses enregistrées.'})
+
+
+class ConfigurateurResultatView(APIView):
+    """NTCPQ9 — GET cpq/configurateur/{session}/resultat/. Résout les produits/
+    bundles correspondant aux réponses via le moteur de règles NTCPQ2."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, token):
+        session = _get_session(request, token)
+        if session is None:
+            return Response({'detail': 'Session introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        return Response(selectors.resoudre_configurateur(session))
 
 
 class ValiderCompatibiliteView(APIView):

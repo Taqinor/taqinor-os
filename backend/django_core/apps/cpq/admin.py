@@ -4,6 +4,7 @@ from .models import (
     OptionProduit, ContrainteCompatibilite, RegleProduitCPQ,
     OffreGroupee, LigneOffreGroupee, PrixContractuel, SeuilMargeFamille,
     RegleApprobationRemise, EtapeApprobationDevis,
+    QuestionConfigurateur, SessionConfigurateur, ReponseConfigurateur,
 )
 
 
@@ -62,3 +63,20 @@ class EtapeApprobationDevisAdmin(admin.ModelAdmin):
     list_display = ('id', 'company', 'devis', 'niveau', 'statut',
                     'approbateur')
     list_filter = ('company', 'statut')
+
+
+@admin.register(QuestionConfigurateur)
+class QuestionConfigurateurAdmin(admin.ModelAdmin):
+    list_display = ('id', 'company', 'ordre', 'texte', 'type', 'actif')
+    list_filter = ('company', 'actif', 'type')
+
+
+@admin.register(SessionConfigurateur)
+class SessionConfigurateurAdmin(admin.ModelAdmin):
+    list_display = ('id', 'company', 'token', 'devis', 'created_at')
+    list_filter = ('company',)
+
+
+@admin.register(ReponseConfigurateur)
+class ReponseConfigurateurAdmin(admin.ModelAdmin):
+    list_display = ('id', 'session', 'question', 'valeur')

@@ -4,6 +4,8 @@ Toutes les liaisons vers les autres apps DOMAINE (``stock``, ``ventes``,
 ``crm``) sont des string-FK (M3 : aucun import de leurs ``models``). Chaque
 modèle porte un FK ``company`` (multi-tenant) posé côté serveur.
 """
+import uuid
+
 from django.conf import settings
 from django.db import models
 
@@ -376,3 +378,98 @@ class EtapeApprobationDevis(models.Model):
 
     def __str__(self):
         return f'Devis {self.devis_id} · étape {self.niveau} · {self.statut}'
+
+
+class QuestionConfigurateur(models.Model):
+    """NTCPQ9 — Question du configurateur guidé (backend pour FG211).
+
+    ``options`` (JSON) porte les choix proposés et, par convention, une clé
+    ``champ`` : le nom du champ de contexte utilisé pour évaluer les règles
+    produit (NTCPQ2). Ex. ``{"champ": "kwc", "choices": [...]}``. Sans ``champ``,
+    la clé de contexte est ``q<id>``."""
+    class TypeQuestion(models.TextChoices):
+        CHOIX_UNIQUE = 'CHOIX_UNIQUE', 'Choix unique'
+        CHOIX_MULTIPLE = 'CHOIX_MULTIPLE', 'Choix multiple'
+        NUMERIQUE = 'NUMERIQUE', 'Numérique'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='cpq_questions_configurateur')
+    ordre = models.PositiveIntegerField(default=0)
+    texte = models.CharField(max_length=255)
+    type = models.CharField(
+        max_length=20, choices=TypeQuestion.choices,
+        default=TypeQuestion.CHOIX_UNIQUE)
+    options = models.JSONField(default=dict, blank=True)
+    actif = models.BooleanField(default=True)
+
+    class Meta:
+        verbose_name = 'Question configurateur'
+        verbose_name_plural = 'Questions configurateur'
+        ordering = ['ordre', 'id']
+        indexes = [
+            models.Index(fields=['company', 'actif'],
+                         name='cpq_question_co_act'),
+        ]
+
+    def __str__(self):
+        return self.texte
+
+    @property
+    def champ(self):
+        """Clé de contexte pour l'évaluation des règles (défaut ``q<id>``)."""
+        opts = self.options if isinstance(self.options, dict) else {}
+        return opts.get('champ') or f'q{self.pk}'
+
+
+class SessionConfigurateur(models.Model):
+    """NTCPQ9 — Session du configurateur (anonyme ou liée à un devis brouillon).
+
+    ``token`` identifie la session côté API. ``devis`` (string-FK) est renseigné
+    quand la session a généré un devis (NTCPQ10) — sert aussi à la purge
+    NTCPQ34 (une session sans devis inactive > 30 j est purgeable)."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='cpq_sessions_configurateur')
+    token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    devis = models.ForeignKey(
+        'ventes.Devis', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='cpq_sessions_configurateur')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Session configurateur'
+        verbose_name_plural = 'Sessions configurateur'
+        ordering = ['-created_at', 'id']
+        indexes = [
+            models.Index(fields=['company', 'updated_at'],
+                         name='cpq_session_co_upd'),
+        ]
+
+    def __str__(self):
+        return str(self.token)
+
+
+class ReponseConfigurateur(models.Model):
+    """NTCPQ9 — Réponse à une question dans une session de configurateur."""
+    session = models.ForeignKey(
+        SessionConfigurateur, on_delete=models.CASCADE,
+        related_name='reponses')
+    question = models.ForeignKey(
+        QuestionConfigurateur, on_delete=models.CASCADE,
+        related_name='reponses')
+    valeur = models.JSONField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Réponse configurateur'
+        verbose_name_plural = 'Réponses configurateur'
+        ordering = ['session_id', 'question_id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['session', 'question'],
+                name='cpq_reponse_unique_sess_q'),
+        ]
+
+    def __str__(self):
+        return f'{self.session_id}/{self.question_id}={self.valeur}'
