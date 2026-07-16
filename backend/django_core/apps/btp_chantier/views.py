@@ -9,9 +9,10 @@ from authentication.mixins import TenantMixin
 from core.permissions import WriteScopedPermissionMixin
 
 from . import selectors, services
-from .models import RFI, ReserveChantier
+from .models import RFI, ReserveChantier, VisaDocument
 from .serializers import (
     ReserveChantierSerializer, RFISerializer, SignatureBtpSerializer,
+    VisaDocumentSerializer,
 )
 
 
@@ -184,3 +185,80 @@ class RFIViewSet(WriteScopedPermissionMixin, TenantMixin, viewsets.ModelViewSet)
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         rfi.refresh_from_db()
         return Response(RFISerializer(rfi).data)
+
+
+class VisaDocumentViewSet(
+        WriteScopedPermissionMixin, TenantMixin, viewsets.ModelViewSet):
+    """Visas de documents techniques — NTCON5 (soumission→observations→
+    approbation, state machine stricte)."""
+    queryset = VisaDocument.objects.select_related(
+        'chantier', 'soumis_par', 'revu_par').all()
+    serializer_class = VisaDocumentSerializer
+    read_permission = 'btp_voir'
+    write_permission = 'btp_gerer'
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        p = self.request.query_params
+        chantier_id = p.get('chantier')
+        statut = p.get('statut')
+        if chantier_id not in (None, ''):
+            qs = qs.filter(chantier_id=chantier_id)
+        if statut not in (None, ''):
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def perform_create(self, serializer):
+        visa = services.soumettre_visa(
+            company=self.request.user.company,
+            chantier=serializer.validated_data['chantier'],
+            document_ged_id=serializer.validated_data['document_ged_id'],
+            soumis_par=self.request.user,
+            type_visa=serializer.validated_data.get(
+                'type_visa', VisaDocument.TypeVisa.AUTRE),
+            delai_revue_jours=serializer.validated_data.get(
+                'delai_revue_jours', 10),
+        )
+        serializer.instance = visa
+
+    @action(detail=True, methods=['post'], url_path='soumettre-observations')
+    def soumettre_observations(self, request, pk=None):
+        visa = self.get_object()
+        observations = (request.data.get('observations') or '').strip()
+        try:
+            services.soumettre_observations_visa(
+                visa, user=request.user, observations=observations)
+        except services.TransitionInvalide as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        visa.refresh_from_db()
+        return Response(VisaDocumentSerializer(visa).data)
+
+    @action(detail=True, methods=['post'])
+    def approuver(self, request, pk=None):
+        visa = self.get_object()
+        avec_observations = bool(request.data.get('avec_observations'))
+        observations = (request.data.get('observations') or '').strip()
+        try:
+            services.approuver_visa(
+                visa, user=request.user,
+                avec_observations=avec_observations,
+                observations=observations)
+        except services.TransitionInvalide as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        visa.refresh_from_db()
+        return Response(VisaDocumentSerializer(visa).data)
+
+    @action(detail=True, methods=['post'])
+    def refuser(self, request, pk=None):
+        visa = self.get_object()
+        observations = (request.data.get('observations') or '').strip()
+        try:
+            services.refuser_visa(
+                visa, user=request.user, observations=observations)
+        except services.TransitionInvalide as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        visa.refresh_from_db()
+        return Response(VisaDocumentSerializer(visa).data)

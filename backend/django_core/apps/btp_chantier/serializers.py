@@ -4,7 +4,7 @@ from rest_framework import serializers
 
 from .models import (
     RFI, RFIReponse, ReserveChantier, ReserveChantierHistorique,
-    SignatureBtp,
+    SignatureBtp, VisaDocument,
 )
 
 
@@ -123,3 +123,24 @@ class RFISerializer(serializers.ModelSerializer):
 
     def validate_destinataire_user(self, value):
         return _meme_societe(self, value, 'Destinataire')
+
+
+# ── NTCON5 — Visas de documents techniques ──────────────────────────────────
+
+class VisaDocumentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = VisaDocument
+        fields = [
+            'id', 'chantier', 'document_ged_id', 'reference', 'type_visa',
+            'statut', 'soumis_par', 'date_soumission', 'revu_par',
+            'date_revue', 'observations', 'delai_revue_jours', 'date_limite',
+            'nb_resoumissions', 'created_at',
+        ]
+        read_only_fields = [
+            'id', 'reference', 'statut', 'soumis_par', 'date_soumission',
+            'revu_par', 'date_revue', 'observations', 'date_limite',
+            'nb_resoumissions', 'created_at',
+        ]
+
+    def validate_chantier(self, value):
+        return _meme_societe(self, value, 'Chantier')

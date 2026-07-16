@@ -273,3 +273,95 @@ class RFIReponse(models.Model):
 
     def __str__(self):
         return f'Réponse à RFI #{self.rfi_id}'
+
+
+# ── NTCON5 — Visas de documents techniques ──────────────────────────────────
+
+class VisaDocument(models.Model):
+    """Cycle soumission → observations → approbation d'un document technique
+    (plan d'exécution, note de calcul, fiche technique, méthode…) — NTCON5.
+
+    ``reference`` est posée via ``core.numbering`` (race-safe par société+
+    période, préfixe ``VIS``). Le document GED est référencé LÂCHEMENT
+    (``document_ged_id``, aucun FK dur) : une nouvelle ``ged.DocumentVersion``
+    sur ce document RÉ-OUVRE automatiquement le visa (statut → ``soumis``,
+    ``nb_resoumissions`` incrémenté) via ``receivers.py`` (signal ``post_save``
+    connecté PARESSEUSEMENT — aucun import statique de ``ged.models``).
+    """
+
+    class TypeVisa(models.TextChoices):
+        PLAN_EXECUTION = 'plan_execution', "Plan d'exécution"
+        NOTE_CALCUL = 'note_calcul', 'Note de calcul'
+        FICHE_TECHNIQUE = 'fiche_technique', 'Fiche technique'
+        METHODE = 'methode', 'Méthode'
+        AUTRE = 'autre', 'Autre'
+
+    class Statut(models.TextChoices):
+        SOUMIS = 'soumis', 'Soumis'
+        EN_REVUE = 'en_revue', 'En revue'
+        APPROUVE_SANS_RESERVE = (
+            'approuve_sans_reserve', 'Approuvé sans réserve')
+        APPROUVE_AVEC_OBSERVATIONS = (
+            'approuve_avec_observations', 'Approuvé avec observations')
+        REFUSE = 'refuse', 'Refusé'
+
+    # Statuts « décidés » — une nouvelle version GED en repart toujours.
+    STATUTS_DECIDES = (
+        Statut.APPROUVE_SANS_RESERVE, Statut.APPROUVE_AVEC_OBSERVATIONS,
+        Statut.REFUSE,
+    )
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='btp_visas', verbose_name='Société')
+    chantier = models.ForeignKey(
+        'installations.Installation', on_delete=models.CASCADE,
+        related_name='btp_visas', verbose_name='Chantier')
+    document_ged_id = models.PositiveIntegerField(
+        verbose_name='ID du document GED')
+    reference = models.CharField(max_length=50, verbose_name='Référence')
+    type_visa = models.CharField(
+        max_length=20, choices=TypeVisa.choices,
+        default=TypeVisa.AUTRE, verbose_name='Type de visa')
+    statut = models.CharField(
+        max_length=30, choices=Statut.choices, default=Statut.SOUMIS,
+        verbose_name='Statut')
+    soumis_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='btp_visas_soumis',
+        verbose_name='Soumis par')
+    date_soumission = models.DateTimeField(
+        null=True, blank=True, verbose_name='Date de soumission')
+    revu_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='btp_visas_revus',
+        verbose_name='Revu par')
+    date_revue = models.DateTimeField(
+        null=True, blank=True, verbose_name='Date de revue')
+    observations = models.TextField(
+        blank=True, default='', verbose_name='Observations')
+    delai_revue_jours = models.PositiveIntegerField(
+        default=10, verbose_name='Délai de revue (jours ouvrés)')
+    date_limite = models.DateField(
+        null=True, blank=True, verbose_name='Date limite de revue')
+    nb_resoumissions = models.PositiveIntegerField(
+        default=0, verbose_name='Nombre de resoumissions')
+    created_at = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Visa de document'
+        verbose_name_plural = 'Visas de document'
+        ordering = ['date_limite', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'reference'],
+                name='btp_visa_company_reference_uniq'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'chantier', 'statut']),
+            models.Index(fields=['company', 'document_ged_id']),
+        ]
+
+    def __str__(self):
+        return f'Visa {self.reference} ({self.get_statut_display()})'

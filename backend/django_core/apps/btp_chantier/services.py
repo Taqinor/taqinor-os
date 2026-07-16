@@ -203,3 +203,125 @@ def clore_rfi(rfi, *, user):
     rfi.statut = RFI.Statut.CLOS
     rfi.save(update_fields=['statut'])
     return rfi
+
+
+# ── NTCON5 — Visas de documents techniques ──────────────────────────────────
+
+def _date_limite_visa(company, delai_jours):
+    from apps.notifications.calendar_utils import ajouter_jours_ouvres
+    return ajouter_jours_ouvres(timezone.localdate(), delai_jours, company)
+
+
+def soumettre_visa(
+        *, company, chantier, document_ged_id, soumis_par,
+        type_visa, delai_revue_jours=10):
+    """NTCON5 — soumet un nouveau visa (référence race-safe ``core.
+    numbering``, préfixe ``VIS``)."""
+    from core.numbering import create_with_reference
+
+    from .models import VisaDocument
+
+    def _create(reference):
+        return VisaDocument.objects.create(
+            company=company, chantier=chantier,
+            document_ged_id=document_ged_id, reference=reference,
+            type_visa=type_visa, soumis_par=soumis_par,
+            date_soumission=timezone.now(),
+            delai_revue_jours=delai_revue_jours,
+            date_limite=_date_limite_visa(company, delai_revue_jours))
+
+    return create_with_reference(VisaDocument, 'VIS', company, _create)
+
+
+def soumettre_observations_visa(visa, *, user, observations):
+    """NTCON5 — passe le visa en revue avec observations (sans décider)."""
+    from .models import VisaDocument
+
+    if visa.statut in VisaDocument.STATUTS_DECIDES:
+        raise TransitionInvalide(
+            f'Visa {visa.reference} : déjà décidé ({visa.statut}).')
+    visa.statut = VisaDocument.Statut.EN_REVUE
+    visa.observations = observations
+    visa.revu_par = user
+    visa.date_revue = timezone.now()
+    visa.save(update_fields=[
+        'statut', 'observations', 'revu_par', 'date_revue'])
+    if visa.soumis_par_id:
+        _notifier_btp(
+            visa.soumis_par, 'APPROVAL_REMINDER',
+            f'Observations sur le visa {visa.reference}', observations[:200],
+            company=visa.company, link=f'/btp/visas/{visa.id}')
+    return visa
+
+
+def _decider_visa(visa, *, user, nouveau_statut, observations=''):
+    from .models import VisaDocument
+
+    if visa.statut in VisaDocument.STATUTS_DECIDES:
+        raise TransitionInvalide(
+            f'Visa {visa.reference} : déjà décidé ({visa.statut}).')
+    visa.statut = nouveau_statut
+    if observations:
+        visa.observations = observations
+    visa.revu_par = user
+    visa.date_revue = timezone.now()
+    visa.save(update_fields=[
+        'statut', 'observations', 'revu_par', 'date_revue'])
+    if visa.soumis_par_id:
+        _notifier_btp(
+            visa.soumis_par, 'APPROVAL_DECIDED',
+            f'Visa {visa.reference} : {visa.get_statut_display()}',
+            observations[:200], company=visa.company,
+            link=f'/btp/visas/{visa.id}')
+    return visa
+
+
+def approuver_visa(visa, *, user, avec_observations=False, observations=''):
+    """NTCON5 — approuve (sans réserve ou avec observations)."""
+    from .models import VisaDocument
+
+    statut = (
+        VisaDocument.Statut.APPROUVE_AVEC_OBSERVATIONS if avec_observations
+        else VisaDocument.Statut.APPROUVE_SANS_RESERVE)
+    return _decider_visa(
+        visa, user=user, nouveau_statut=statut, observations=observations)
+
+
+def refuser_visa(visa, *, user, observations=''):
+    """NTCON5 — refuse le visa."""
+    from .models import VisaDocument
+    return _decider_visa(
+        visa, user=user, nouveau_statut=VisaDocument.Statut.REFUSE,
+        observations=observations)
+
+
+def resoumettre_visas_pour_document(document_ged_id, *, company=None):
+    """NTCON5 — ré-ouvre (statut → soumis) tous les visas d'un document GED
+    quand une nouvelle ``ged.DocumentVersion`` y est déposée.
+
+    Appelé depuis ``receivers.py`` (signal ``post_save`` sur ``ged.
+    DocumentVersion``, connexion paresseuse via ``apps.get_model``). Ré-ouvre
+    TOUT visa portant sur ce document (quel que soit son statut courant — une
+    nouvelle version invalide aussi une revue en cours), incrémente
+    ``nb_resoumissions`` (ré-ouverture tracée) et recalcule l'échéance.
+    """
+    from .models import VisaDocument
+
+    qs = VisaDocument.objects.filter(document_ged_id=document_ged_id)
+    if company is not None:
+        qs = qs.filter(company=company)
+    resoumis = []
+    for visa in qs:
+        visa.statut = VisaDocument.Statut.SOUMIS
+        visa.nb_resoumissions += 1
+        visa.date_soumission = timezone.now()
+        visa.observations = ''
+        visa.revu_par = None
+        visa.date_revue = None
+        visa.date_limite = _date_limite_visa(
+            visa.company, visa.delai_revue_jours)
+        visa.save(update_fields=[
+            'statut', 'nb_resoumissions', 'date_soumission', 'observations',
+            'revu_par', 'date_revue', 'date_limite'])
+        resoumis.append(visa)
+    return resoumis
