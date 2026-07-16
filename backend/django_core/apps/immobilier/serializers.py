@@ -7,8 +7,8 @@ multi-tenant).
 from rest_framework import serializers
 
 from .models import (
-    Bail, Batiment, EcheanceLoyer, Local, Locataire, Niveau, RevisionLoyer,
-    Site,
+    Bail, Batiment, EcheanceLoyer, Local, Locataire, Niveau, RelanceLoyer,
+    RevisionLoyer, Site,
 )
 
 
@@ -145,3 +145,16 @@ class EcheanceLoyerSerializer(serializers.ModelSerializer):
             'statut', 'facture_ventes_id', 'date_emission_quittance',
             'date_creation', 'company',
         ]
+
+
+class RelanceLoyerSerializer(serializers.ModelSerializer):
+    canal_display = serializers.CharField(
+        source='get_canal_display', read_only=True)
+
+    class Meta:
+        model = RelanceLoyer
+        fields = [
+            'id', 'echeance_loyer', 'niveau', 'date_envoi', 'canal',
+            'canal_display', 'template_utilise', 'company',
+        ]
+        read_only_fields = ['id', 'niveau', 'date_envoi', 'company']

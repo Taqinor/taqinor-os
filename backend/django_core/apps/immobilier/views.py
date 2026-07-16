@@ -10,11 +10,14 @@ from rest_framework.response import Response
 
 from core.mixins import TenantMixin
 
-from .models import Bail, Batiment, EcheanceLoyer, Local, Locataire, Niveau, Site
+from .models import (
+    Bail, Batiment, EcheanceLoyer, Local, Locataire, Niveau, RelanceLoyer,
+    Site,
+)
 from .serializers import (
     BailSerializer, BatimentSerializer, EcheanceLoyerSerializer,
     LocalSerializer, LocataireSerializer, NiveauSerializer,
-    RevisionLoyerSerializer, SiteSerializer,
+    RelanceLoyerSerializer, RevisionLoyerSerializer, SiteSerializer,
 )
 
 
@@ -263,3 +266,43 @@ class EcheanceLoyerViewSet(_ImmobilierBaseViewSet):
         response['Content-Disposition'] = (
             f'inline; filename="quittance-{echeance.id}.pdf"')
         return response
+
+    @action(detail=False, methods=['get'])
+    def impayees(self, request):
+        """NTPRO8 — Tableau des échéances impayées (locataire, montant, jours
+        de retard), lu via ``apps.ventes.selectors`` (jamais un modèle
+        Paiement dupliqué ici)."""
+        from . import selectors
+
+        data = selectors.echeances_impayees(request.user.company)
+        return Response(data)
+
+    @action(detail=True, methods=['post'])
+    def relancer(self, request, pk=None):
+        """NTPRO8 — Enregistre une relance d'impayé (incrémente le niveau)."""
+        from . import services
+
+        echeance = self.get_object()
+        relance = services.relancer_echeance(
+            echeance, canal=request.data.get('canal'),
+            template_utilise=request.data.get('template_utilise', ''))
+        return Response(
+            RelanceLoyerSerializer(relance).data,
+            status=status.HTTP_201_CREATED)
+
+
+class RelanceLoyerViewSet(_ImmobilierBaseViewSet):
+    """NTPRO8 — Relances d'impayé sur échéances de loyer (lecture seule côté
+    API : une relance naît TOUJOURS de ``echeances-loyer/{id}/relancer/``)."""
+    queryset = RelanceLoyer.objects.select_related('echeance_loyer').all()
+    serializer_class = RelanceLoyerSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_envoi']
+    http_method_names = ['get', 'head', 'options']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        echeance_id = self.request.query_params.get('echeance_loyer')
+        if echeance_id:
+            qs = qs.filter(echeance_loyer_id=echeance_id)
+        return qs

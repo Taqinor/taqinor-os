@@ -34,7 +34,11 @@ const immobilierApi = {
     emettreQuittance: (id) =>
       api.post(`/immobilier/echeances-loyer/${id}/emettre-quittance/`),
     quittancePdfUrl: (id) => `/immobilier/echeances-loyer/${id}/quittance-pdf/`,
+    impayees: () => api.get('/immobilier/echeances-loyer/impayees/'),
+    relancer: (id, data) =>
+      api.post(`/immobilier/echeances-loyer/${id}/relancer/`, data),
   },
+  relancesLoyer: crud('relances-loyer'),
 }
 
 export default immobilierApi

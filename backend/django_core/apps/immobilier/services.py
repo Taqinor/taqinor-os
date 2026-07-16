@@ -284,3 +284,31 @@ def emettre_quittance(echeance):
     echeance.date_emission_quittance = timezone.now()
 
     return facture.id
+
+
+def relancer_echeance(echeance, *, canal=None, template_utilise=''):
+    """NTPRO8 — Enregistre une relance d'impayé sur ``echeance`` et incrémente
+    le niveau (1 → 2 → 3, plafonné à 3 : une relance déjà au niveau 3 reste au
+    niveau 3, on n'en invente pas un 4ᵉ). Passe le statut de l'échéance à
+    ``relancee``. Renvoie la ``RelanceLoyer`` créée."""
+    from .models import EcheanceLoyer, RelanceLoyer
+
+    canal = canal or RelanceLoyer.Canal.WHATSAPP
+    derniere = (
+        RelanceLoyer.objects
+        .filter(echeance_loyer=echeance)
+        .order_by('-niveau', '-id')
+        .first()
+    )
+    niveau = min((derniere.niveau + 1) if derniere else 1, 3)
+
+    relance = RelanceLoyer.objects.create(
+        company=echeance.company, echeance_loyer=echeance, niveau=niveau,
+        canal=canal, template_utilise=template_utilise,
+    )
+
+    EcheanceLoyer.objects.filter(pk=echeance.pk).update(
+        statut=EcheanceLoyer.Statut.RELANCEE)
+    echeance.statut = EcheanceLoyer.Statut.RELANCEE
+
+    return relance
