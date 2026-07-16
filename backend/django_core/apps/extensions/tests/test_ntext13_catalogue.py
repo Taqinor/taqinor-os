@@ -27,7 +27,7 @@ class NTEXT13Base(TestCase):
 
 class TestSeedMigrationCreatesExamplePackage(TestCase):
     def test_sav_avance_seeded_globally(self):
-        pkg = ExtensionPackage.objects.get(company=None, code='sav_avance')
+        pkg = ExtensionPackage.objects.get(code='sav_avance')
         self.assertEqual(pkg.nom, 'Suivi SAV avancé')
         self.assertIn('custom_object_defs', pkg.manifest)
 
@@ -49,15 +49,6 @@ class TestCatalogueEndpoint(NTEXT13Base):
         self.assertEqual(
             pkg['manifest']['custom_object_defs'][0]['code'],
             'intervention_sav')
-
-    def test_company_scoped_package_excluded_from_global_catalogue(self):
-        ExtensionPackage.objects.create(
-            company=self.company, code='prive_test', nom='Package privé test',
-            manifest={})
-        resp = self.api.get('/api/django/extensions/catalogue/')
-        codes = [r['code'] for r in (
-            resp.data['results'] if isinstance(resp.data, dict) else resp.data)]
-        self.assertNotIn('prive_test', codes)
 
     def test_catalogue_is_read_only_no_create_endpoint(self):
         resp = self.api.post('/api/django/extensions/catalogue/', {

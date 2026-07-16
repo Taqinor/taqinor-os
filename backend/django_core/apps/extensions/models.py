@@ -7,21 +7,18 @@ ici : la MATÉRIALISATION réelle (créer les objets dans une société donnée)
 l'installation/désinstallation par tenant sont une brique séparée (NTEXT14,
 non construite dans ce lot).
 
-Un package du CATALOGUE (``company=None``) est READ-ONLY et jamais lié à une
-société — c'est le gabarit partagé que tout tenant peut parcourir avant de
-l'installer. ``company`` reste néanmoins un FK nullable (et non un simple
-booléen « global ») pour rester cohérent avec le reste de la plateforme et
-laisser la porte ouverte à un futur package privé propre à un tenant, sans
-migration supplémentaire.
+Le CATALOGUE est un registre GLOBAL, partagé, en lecture seule — le gabarit
+que tout tenant peut parcourir avant de l'installer. Ce n'est PAS de la donnée
+métier scopée société (comme une table de référence système), donc il ne porte
+volontairement aucune FK ``company`` : l'installation/matérialisation PAR tenant
+(qui, elle, sera scopée société) est une brique séparée (NTEXT14, non construite
+ici).
 """
 from django.db import models
 
 
 class ExtensionPackage(models.Model):
-    company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
-        null=True, blank=True, related_name='extension_packages')
-    code = models.SlugField(max_length=60)
+    code = models.SlugField(max_length=60, unique=True)
     nom = models.CharField(max_length=150)
     version = models.CharField(max_length=20, default='1.0.0')
     description = models.TextField(blank=True, default='')
@@ -36,7 +33,6 @@ class ExtensionPackage(models.Model):
 
     class Meta:
         ordering = ['nom']
-        unique_together = [('company', 'code')]
         verbose_name = "Package d'extension"
         verbose_name_plural = "Packages d'extension"
 

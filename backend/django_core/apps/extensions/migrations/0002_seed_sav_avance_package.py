@@ -1,6 +1,6 @@
-"""NTEXT13 — seed d'un package d'exemple au catalogue global (company=None).
+"""NTEXT13 — seed d'un package d'exemple au catalogue global.
 
-Idempotent (get_or_create par code, company=None). Réversible (no-op au
+Idempotent (get_or_create par code). Réversible (no-op au
 retour — supprimer le package d'exemple n'est pas destructif pour un tenant
 puisque le catalogue ne fait que documenter un manifest, jamais matérialisé
 tant qu'aucune installation (NTEXT14) n'existe)."""
@@ -38,7 +38,7 @@ MANIFEST = {
 def seed(apps, schema_editor):
     ExtensionPackage = apps.get_model('extensions', 'ExtensionPackage')
     ExtensionPackage.objects.get_or_create(
-        company=None, code='sav_avance',
+        code='sav_avance',
         defaults={
             'nom': 'Suivi SAV avancé',
             'version': '1.0.0',
