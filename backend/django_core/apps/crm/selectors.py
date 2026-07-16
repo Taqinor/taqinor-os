@@ -1659,3 +1659,52 @@ def meta_lead_match_coverage(company):
         'with_phone': with_phone,
         'strong_match': strong,
     }
+
+
+# ── ADSENG33 — Drill-down reporting : lignes de lead (entonnoir + cohortes) ────
+
+def reporting_lead_rows(company, *, date_start=None, date_end=None):
+    """ADSENG33 — Lignes de lead pour les drill-downs de reporting (entonnoir par
+    campagne + cohortes de signature). Point d'entrée cross-app SANCTIONNÉ pour
+    ``apps.adsengine`` (le CRM est lu UNIQUEMENT via ce sélecteur, jamais un
+    import de ``apps.crm.models``).
+
+    Chaque ligne porte l'étape courante (clé STAGES.py), le drapeau ``perdu``, la
+    clé de campagne (``meta_campaign_id``/``utm_campaign``), la date de création,
+    et — pour le lag de signature (dd-attribution §5.3) — la DATE de signature :
+    la plus ANCIENNE ``date_acceptation`` parmi les devis ACCEPTÉS du lead (lus
+    via la relation ``lead.devis`` déjà dans le domaine crm, JAMAIS un import de
+    ``apps.ventes.models`` — même patron que ``attribution_leads``). None si le
+    lead n'a pas de devis accepté (un lead au stade SIGNÉ sans devis n'a pas
+    d'horodatage de signature → lag indéterminé, jamais fabriqué).
+
+    Lecture seule, scopée société ; jamais un lead archivé. ``date_start``/
+    ``date_end`` (date, inclus) bornent ``date_creation``. Renvoie une LISTE de
+    dicts (données pures)."""
+    from .models import Lead
+
+    qs = Lead.objects.filter(company=company, is_archived=False)
+    if date_start is not None:
+        qs = qs.filter(date_creation__date__gte=date_start)
+    if date_end is not None:
+        qs = qs.filter(date_creation__date__lte=date_end)
+
+    meta_canaux = {Lead.Canal.META_ADS, Lead.Canal.WHATSAPP_CTWA}
+    rows = []
+    for lead in qs.prefetch_related('devis'):
+        accept_dates = [
+            d.date_acceptation for d in lead.devis.all()
+            if getattr(d, 'statut', None) == 'accepte' and d.date_acceptation]
+        signature_date = min(accept_dates) if accept_dates else None
+        rows.append({
+            'id': lead.id,
+            'utm_campaign': lead.utm_campaign or '',
+            'meta_campaign_id': lead.meta_campaign_id or '',
+            'stage': lead.stage,
+            'perdu': bool(lead.perdu),
+            'is_meta_channel': lead.canal in meta_canaux,
+            'created_date': (lead.date_creation.date()
+                             if lead.date_creation else None),
+            'signature_date': signature_date,
+        })
+    return rows

@@ -9,13 +9,14 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
-    AnomalyEventViewSet, ArmDailyStatViewSet, CostPerSignatureView,
-    CreativeAssetViewSet, CreativeBacklogItemViewSet,
-    CreativeGenerationBatchViewSet, CreativePolicyViewSet, DecisionLogViewSet,
-    EngineActionViewSet, EngineAlertViewSet, ExperimentArmViewSet,
-    ExperimentViewSet, FlightPhaseViewSet, FlightPlanViewSet,
-    GuardrailConfigViewSet, MetaConnectionViewSet, PacingStateViewSet,
-    ReconciliationSnapshotViewSet, RulePolicyViewSet, StatusView,
+    AnomalyEventViewSet, ArmDailyStatViewSet, CampaignFunnelView,
+    CohortReportView, CostPerSignatureView, CreativeAssetViewSet,
+    CreativeBacklogItemViewSet, CreativeGenerationBatchViewSet,
+    CreativePolicyViewSet, DecisionLogViewSet, EngineActionViewSet,
+    EngineAlertViewSet, ExperimentArmViewSet, ExperimentViewSet,
+    FlightPhaseViewSet, FlightPlanViewSet, GuardrailConfigViewSet,
+    MetaConnectionViewSet, PacingStateViewSet, ReconciliationSnapshotViewSet,
+    ReportExportView, RulePolicyViewSet, StatusView, VariantReportView,
     WiringHealthView,
 )
 
@@ -52,5 +53,15 @@ urlpatterns = [
          name='adsengine-cout-par-signature'),
     path('wiring-health/', WiringHealthView.as_view(),
          name='adsengine-wiring-health'),
+    # ADSENG33 — drill-downs de reporting (table variante / entonnoir / cohortes
+    # / export CSV).
+    path('reporting/variantes/', VariantReportView.as_view(),
+         name='adsengine-reporting-variantes'),
+    path('reporting/entonnoir/', CampaignFunnelView.as_view(),
+         name='adsengine-reporting-entonnoir'),
+    path('reporting/cohortes/', CohortReportView.as_view(),
+         name='adsengine-reporting-cohortes'),
+    path('reporting/export/', ReportExportView.as_view(),
+         name='adsengine-reporting-export'),
     path('', include(router.urls)),
 ]
