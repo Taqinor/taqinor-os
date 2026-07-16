@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   get: vi.fn(),
   syncNow: vi.fn(),
   ranking: vi.fn(),
+  connGet: vi.fn(),
 }))
 
 vi.mock('./adsengineApi', () => ({
@@ -19,6 +20,7 @@ vi.mock('./adsengineApi', () => ({
       list: mocks.list, get: mocks.get,
       syncNow: mocks.syncNow, creativeRanking: mocks.ranking,
     },
+    connection: { get: mocks.connGet },
   },
 }))
 
@@ -37,6 +39,7 @@ beforeEach(() => {
     id: 1, nom: 'Solaire résidentiel Casa', statut_display: 'Actif',
     objectif: 'Messages', budget_quotidien_mad: 80, nb_leads: 12 } })
   mocks.syncNow.mockResolvedValue({ data: {} })
+  mocks.connGet.mockResolvedValue({ data: { currency: 'MAD' } })
   mocks.ranking.mockResolvedValue({ data: [
     { id: 'a', nom: 'Reel toiture', reponses_whatsapp: 4, cout_mad: 400 },   // 100/rép
     { id: 'b', nom: 'Statique prix', reponses_whatsapp: 10, cout_mad: 500 },  // 50/rép (meilleur)
@@ -94,5 +97,17 @@ describe('CampaignsScreen (ENG24)', () => {
     expect(rows[0]).toHaveTextContent('50 MAD') // coût/réponse
     // Le créatif sans réponse WhatsApp est relégué en dernier avec « — ».
     expect(rows[2]).toHaveTextContent('Explainer')
+  })
+
+  it('étiquette les montants dans la devise du COMPTE Meta (ex. USD)', async () => {
+    // Régression : Meta rapporte en devise du compte (souvent USD) — les
+    // montants ne doivent plus être étiquetés « MAD » en dur.
+    mocks.connGet.mockResolvedValue({ data: { currency: 'USD' } })
+    renderScreen()
+    await waitFor(() => {
+      const rows = screen.getAllByTestId('ae-camp-row')
+      expect(rows[0]).toHaveTextContent('620 USD') // dépense
+      expect(rows[0]).toHaveTextContent('80 USD') // budget/jour
+    })
   })
 })

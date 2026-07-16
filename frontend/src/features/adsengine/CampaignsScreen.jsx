@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { RefreshCw } from 'lucide-react'
 import adsengineApi from './adsengineApi'
-import { formatMAD, formatNumber, rankCreatives } from './adsengine'
+import { formatMoney, formatNumber, rankCreatives } from './adsengine'
 
 /* ============================================================================
    ENG24 — Écran « Campagnes » (miroirs Meta) du moteur publicitaire.
@@ -21,6 +21,9 @@ export default function CampaignsScreen() {
   const [ranking, setRanking] = useState([])
   const [syncing, setSyncing] = useState(false)
   const [msg, setMsg] = useState('')
+  // Devise du compte Meta (les budgets/dépenses sont dans CETTE devise, souvent
+  // USD — jamais forcés en MAD). 'MAD' en repli tant qu'elle n'est pas connue.
+  const [currency, setCurrency] = useState('MAD')
 
   const load = useCallback(() => {
     setLoading(true)
@@ -31,6 +34,12 @@ export default function CampaignsScreen() {
     adsengineApi.campaigns.creativeRanking()
       .then(r => setRanking(rankCreatives(Array.isArray(r.data) ? r.data : (r.data?.results || []))))
       .catch(() => setRanking([]))
+    const connGet = adsengineApi.connection?.get
+    if (connGet) {
+      connGet()
+        .then(r => setCurrency(r?.data?.currency || 'MAD'))
+        .catch(() => {})
+    }
   }, [])
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
@@ -83,8 +92,8 @@ export default function CampaignsScreen() {
                 <tr key={c.id} data-testid="ae-camp-row">
                   <td>{c.nom || c.name}</td>
                   <td>{c.statut_display || c.statut || '—'}</td>
-                  <td>{formatMAD(c.budget_quotidien_mad ?? c.daily_budget_mad)}</td>
-                  <td>{formatMAD(c.depense_mad ?? c.spend_mad)}</td>
+                  <td>{formatMoney(c.budget_quotidien_mad ?? c.daily_budget_mad, currency)}</td>
+                  <td>{formatMoney(c.depense_mad ?? c.spend_mad, currency)}</td>
                   <td>
                     <button type="button" className="btn btn-light" data-testid="ae-camp-open"
                       onClick={() => openDetail(c)}>Détail</button>
@@ -113,7 +122,7 @@ export default function CampaignsScreen() {
             <dt style={{ color: '#64748b' }}>Objectif</dt>
             <dd style={{ margin: 0 }}>{selected.objectif || selected.objective || '—'}</dd>
             <dt style={{ color: '#64748b' }}>Budget/jour</dt>
-            <dd style={{ margin: 0 }}>{formatMAD(selected.budget_quotidien_mad ?? selected.daily_budget_mad)}</dd>
+            <dd style={{ margin: 0 }}>{formatMoney(selected.budget_quotidien_mad ?? selected.daily_budget_mad, currency)}</dd>
             <dt style={{ color: '#64748b' }}>Leads</dt>
             <dd style={{ margin: 0 }}>{formatNumber(selected.nb_leads ?? selected.leads)}</dd>
           </dl>
@@ -137,8 +146,8 @@ export default function CampaignsScreen() {
                     <td>{i + 1}</td>
                     <td>{c.nom || c.name || c.designation || '—'}</td>
                     <td>{formatNumber(c._reponses)}</td>
-                    <td>{formatMAD(c._cout)}</td>
-                    <td>{c._coutParReponse == null ? '—' : formatMAD(c._coutParReponse)}</td>
+                    <td>{formatMoney(c._cout, currency)}</td>
+                    <td>{c._coutParReponse == null ? '—' : formatMoney(c._coutParReponse, currency)}</td>
                   </tr>
                 ))}
               </tbody>

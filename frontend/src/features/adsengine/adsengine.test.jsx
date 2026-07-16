@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { formatNumber, formatMAD, formatRatio } from './adsengine'
+import { formatNumber, formatMAD, formatMoney, formatRatio } from './adsengine'
 
 /* ENG21 — le module « Publicité » s'auto-enregistre via son module.config.jsx
    (pattern UX1, collecté par le glob de router/moduleRoutes.jsx) et est gaté
@@ -27,6 +27,14 @@ describe('adsengine — helpers de formatage (montants MAD, jamais de valeur inv
     expect(formatMAD(1250)).toBe('1 250 MAD')
     expect(formatMAD(42.5, 2)).toBe('42,50 MAD')
     expect(formatMAD(null)).toBe('—')
+  })
+
+  it('formatMoney étiquette la devise du COMPTE (jamais MAD en dur)', () => {
+    // Meta rapporte dans la devise du compte publicitaire (souvent USD).
+    expect(formatMoney(1250, 'USD')).toBe('1 250 USD')
+    expect(formatMoney(42.5, 'EUR', 2)).toBe('42,50 EUR')
+    expect(formatMoney(1250)).toBe('1 250 MAD') // repli devise inconnue
+    expect(formatMoney(null, 'USD')).toBe('—')
   })
 
   it('formatRatio rend une décimale par défaut', () => {

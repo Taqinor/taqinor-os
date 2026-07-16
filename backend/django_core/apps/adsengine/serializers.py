@@ -41,12 +41,15 @@ class MetaConnectionSerializer(serializers.ModelSerializer):
         model = MetaConnection
         fields = [
             'id', 'enabled', 'ad_account_id', 'page_id', 'pixel_id',
-            'credentials', 'has_credentials', 'created_at', 'updated_at',
+            'currency', 'credentials', 'has_credentials',
+            'created_at', 'updated_at',
         ]
         extra_kwargs = {
             'credentials': {'write_only': True, 'required': False},
         }
-        read_only_fields = ['created_at', 'updated_at']
+        # ``currency`` : renseignée par la synchro (nœud de compte Meta), jamais
+        # par le client.
+        read_only_fields = ['currency', 'created_at', 'updated_at']
 
     def get_has_credentials(self, obj):
         return bool(obj.credentials)

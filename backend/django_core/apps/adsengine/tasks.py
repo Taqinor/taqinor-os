@@ -44,6 +44,18 @@ def _sync_company(conn):
     company = conn.company
     client = MetaClient.from_connection(conn)
 
+    # Devise du compte (USD, MAD…) — Meta rapporte TOUS les montants dans la
+    # devise du COMPTE publicitaire : on la mémorise pour étiqueter correctement
+    # les chiffres côté ERP. Best-effort, jamais bloquant pour la synchro.
+    try:
+        currency = (client.get_account(fields=('currency',))
+                    or {}).get('currency') or ''
+        if currency and currency != conn.currency:
+            conn.currency = currency
+            conn.save(update_fields=['currency'])
+    except Exception:  # noqa: BLE001 — la devise n'empêche jamais la synchro
+        pass
+
     sync.sync_campaigns(company, client.get_campaigns())
     sync.sync_adsets(company, client.get_adsets())
     sync.sync_ads(company, client.get_ads())
