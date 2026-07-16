@@ -47,15 +47,17 @@ git reset --hard origin/main
 # la recreation ("Conflict. The container name is already in use") et, sous
 # `set -e`, le script SORTAIT ICI -> migrate/init_roles/nginx SKIP -> 502 +
 # migrations non appliquees (arrive sur les 2 deploiements du 2026-07-07).
-# NETTOYAGE PRE-BUILD (incident 2026-07-10 : « no space left on device » en
-# plein build apres plusieurs deploiements — chaque rebuild orphelinise les
-# couches precedentes et le cache de build s'accumule sans borne). Dangling
-# images + cache de build UNIQUEMENT : jamais les conteneurs qui tournent,
-# jamais les volumes de donnees, jamais les images utilisees.
-echo "Espace disque avant nettoyage :"; df -h / | tail -1
+# NETTOYAGE (incident 2026-07-10 : « no space left on device » en plein build —
+# le cache s'accumulait sans borne). L'ANCIEN remede (`docker builder prune -f`
+# AVANT le build) effacait TOUT le cache a chaque deploiement -> rebuild a froid
+# integral (apt Pango/WeasyPrint + pip Django & FastAPI + npm ci + vite), soit
+# 15-25 min par deploiement. NOUVELLE politique (2026-07-16) : cache BORNE, pas
+# efface — le prune passe APRES le build (fin de script, chemin succes) avec
+# --keep-storage : les couches encore utiles survivent, le vieux cache part, le
+# disque reste borne et un deploiement code-seul redevient chaud (~2-4 min).
+# Ici, avant build : seulement les images dangling (sans effet sur le cache).
+echo "Espace disque avant build :"; df -h / | tail -1
 docker image prune -f || true
-docker builder prune -f || true
-echo "Espace disque apres nettoyage :"; df -h / | tail -1
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build --remove-orphans
 # GARDE DB (incident 2026-07-10) : un changement du CONTENU d'un fichier
 # bind-monte (ex. backend/db/postgresql.conf) ne change PAS le hash de config
@@ -190,6 +192,16 @@ if [ "$ZERO_DOWNTIME" = "1" ]; then
   docker compose -f docker-compose.yml -f docker-compose.prod.yml restart nginx
   echo "NTPLT57 — bascule sans coupure TERMINEE (ancien conteneur retire)."
 fi
+
+# NETTOYAGE POST-BUILD (chemin succes uniquement — un rollback sort avant et
+# garde donc son cache chaud pour re-builder vite). Les images des anciens
+# conteneurs viennent d'etre orphelinisees par la recreation -> prune ; le
+# cache de build est BORNE a 8 Go (les couches du build qu'on vient de faire
+# sont les plus recentes, elles survivent ; l'ancien cache part). C'est la
+# borne anti « no space left » du 2026-07-10, sans le rebuild a froid.
+docker image prune -f || true
+docker builder prune -f --keep-storage=8g || true
+echo "Espace disque apres nettoyage post-build :"; df -h / | tail -1
 '@ -replace "`r`n", "`n"
 
 # NTPLT57 — injecte l'etat du flag -ZeroDowntime en tete du script distant
