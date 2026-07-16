@@ -132,6 +132,8 @@ const marketingApi = {
   supportsOffline: {
     ...resource('supports-offline'),
     qrUrl: (id) => `/api/django/marketing/supports-offline/${id}/qr/`,
+    qr: (id) => api.get(`/marketing/supports-offline/${id}/qr/`,
+      { responseType: 'blob' }),
     scansParSupport: () =>
       api.get('/marketing/supports-offline/scans-par-support/'),
   },
