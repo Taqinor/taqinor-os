@@ -168,6 +168,10 @@ INSTALLED_APPS = [
     # XPLT21 — Softphone VoIP intégré (SIP/WebRTC, gated). Interface
     # fournisseur SWAPPABLE (NoOp par défaut) — additif, company-scopé.
     'apps.voip',
+    # Groupe ENG — Moteur publicitaire Meta Ads dans l'ERP (miroirs,
+    # propose→approuve→applique, création TOUJOURS PAUSED). App satellite
+    # multi-société ; tout no-ope sans token/clé configuré.
+    'apps.adsengine',
 ]
 
 MIDDLEWARE = [
