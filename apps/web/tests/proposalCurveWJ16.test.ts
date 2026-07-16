@@ -29,6 +29,21 @@ describe('WJ16 — profils horaires normalisés', () => {
     // pic de soirée > creux de l'après-midi
     expect(consumptionProfile(20)).toBeGreaterThan(consumptionProfile(15));
   });
+
+  // WJ119 — la double-gaussienne générique a été remplacée par BASELINE_SHAPE
+  // (applianceConsumption.ts, silhouette marocaine soirée-dominante, pic
+  // 19h-21h ≈26 % de l'énergie) : on épingle deux valeurs précises qui n'ont de
+  // sens QUE pour cette forme (repli residentiel/normal, rétro-compatible sans
+  // options), pour qu'une régression vers l'ancienne courbe soit détectée.
+  it('consumptionProfile — repli résidentiel/normal porte BASELINE_SHAPE (WJ119)', () => {
+    // 20h est le maximum de BASELINE_SHAPE (2.4) → normalisé à 1 exactement.
+    expect(consumptionProfile(20)).toBeCloseTo(1, 9);
+    // 13h (poids 1.0) / 20h (poids 2.4) = 0.41666… — signature de la forme portée,
+    // très différente du plateau ~1.0 (clampé) que rendait l'ancienne gaussienne.
+    expect(consumptionProfile(13)).toBeCloseTo(1 / 2.4, 6);
+    // Appel sans options === repli explicite { mode: 'residentiel', variant: 'normal' }.
+    expect(consumptionProfile(20)).toBe(consumptionProfile(20, { mode: 'residentiel', variant: 'normal' }));
+  });
 });
 
 describe('WJ16 — rendu SVG', () => {
