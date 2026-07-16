@@ -948,6 +948,8 @@ class MetaConnectionStatusView(APIView):
             'connected': bool(conn and conn.has_token),
             'ad_account_id_masque': _mask_account_id(
                 conn.ad_account_id if conn else ''),
+            # Devise du compte publicitaire (lue par la synchro) — 'MAD' en repli.
+            'currency': (conn.currency if conn else '') or 'MAD',
         })
 
     def post(self, request):
@@ -1113,10 +1115,16 @@ class MetricsDashboardView(APIView):
         spend = agg['spend'] or Decimal('0')
         results = agg['results'] or 0
         cpl = (spend / results) if results else None
+        # Devise du compte Meta (les montants dépense/CPL/coût-par-signature sont
+        # dans CETTE devise, pas forcément en MAD). 'MAD' en repli tant que la
+        # synchro ne l'a pas lue.
+        conn = MetaConnection.objects.filter(company=company).first()
+        currency = (conn.currency if conn else '') or 'MAD'
         return Response({
             'cost_per_signature': cps,
             'signatures': signatures,
             'signatures_source': signatures_source,
+            'currency': currency,
             'spend': str(spend),
             'cpl': (str(cpl) if cpl is not None else None),
             'frequency': (str(agg['freq']) if agg['freq'] is not None else None),
@@ -1157,6 +1165,33 @@ class MetricsLeadsView(APIView):
                 'etape': card['subtitle'],
                 'url': card['url'],
             })
+        # ADSENG-ODOO — le drill « signature » liste AUSSI les deals signés Odoo
+        # (là où vivent les vraies signatures du fondateur) : sans cela, le héro
+        # affiche un chiffre Odoo mais « Voir les leads » restait vide (CRM ERP
+        # vide). ``id: None`` : un deal Odoo n'a pas de fiche CRM ERP à ouvrir.
+        # Montants Odoo en MAD (jamais la devise Meta). Best-effort (#417 :
+        # jamais un 500) ; les autres métriques (spend/lead/frequency) gardent
+        # la liste CRM historique inchangée.
+        metric = (request.query_params.get('metric') or '').strip()
+        if metric in ('', 'signature', 'cost_per_signature'):
+            try:
+                from .odoo_client import is_configured as _odoo_ok
+                if _odoo_ok():
+                    from .odoo_selectors import signed_deals
+                    origin_fr = {'sale_order': 'Commande confirmée (Odoo)',
+                                 'won_lead': 'Lead gagné (Odoo)'}
+                    for deal in signed_deals():
+                        leads.append({
+                            'id': None,
+                            'nom': (deal.get('source_name')
+                                    or deal.get('phone_norm') or 'Deal Odoo'),
+                            'etape': origin_fr.get(
+                                deal.get('origin'), 'Signé (Odoo)'),
+                            'montant': float(deal.get('amount_mad') or 0),
+                            'source': 'odoo',
+                        })
+            except Exception:  # noqa: BLE001 — le drill ne casse jamais sur Odoo
+                pass
         return Response(leads)
 
 

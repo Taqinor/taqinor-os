@@ -3,8 +3,9 @@ import { Link } from 'react-router-dom'
 import { Bell, ExternalLink } from 'lucide-react'
 import adsengineApi from './adsengineApi'
 import {
-  formatMAD, formatRatio, formatPercent, normalizeAlerts, alertTone,
-  normalizePacing, pacingStateTone, normalizeReconciliation, reconStatusTone,
+  formatMAD, formatMoney, formatRatio, formatPercent, normalizeAlerts,
+  alertTone, normalizePacing, pacingStateTone, normalizeReconciliation,
+  reconStatusTone,
 } from './adsengine'
 
 /* ============================================================================
@@ -39,8 +40,10 @@ const NUMBERS = [
   { key: 'frequency', metric: 'frequency', label: 'Fréquence', fmt: 'ratio' },
 ]
 
-function fmtValue(fmt, value) {
-  return fmt === 'ratio' ? formatRatio(value) : formatMAD(value)
+// Les montants Meta (dépense, CPL, coût/signature) sont dans la devise du
+// COMPTE publicitaire (`metrics.currency`, souvent USD) — jamais forcés en MAD.
+function fmtValue(fmt, value, currency) {
+  return fmt === 'ratio' ? formatRatio(value) : formatMoney(value, currency)
 }
 
 const TABS = [
@@ -164,7 +167,7 @@ export default function DashboardScreen() {
                 <div style={{ color: '#64748b', fontSize: '0.85rem' }}>{num.label}</div>
                 <div data-testid={`ae-value-${num.key}`}
                   style={{ fontSize: num.hero ? '2.4rem' : '1.5rem', fontWeight: 700 }}>
-                  {fmtValue(num.fmt, metrics?.[num.key])}
+                  {fmtValue(num.fmt, metrics?.[num.key], metrics?.currency)}
                 </div>
                 <div style={{ color: '#2563eb', fontSize: '0.8rem', marginTop: '0.3rem' }}>
                   Voir les leads →
