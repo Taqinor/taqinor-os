@@ -172,6 +172,10 @@ INSTALLED_APPS = [
     # propose→approuve→applique, création TOUJOURS PAUSED). App satellite
     # multi-société ; tout no-ope sans token/clé configuré.
     'apps.adsengine',
+    # Groupe NTCON — Vertical BTP/EPC vendable : réserves géo-localisées sur
+    # plan, RFI, visas de documents techniques, journal de chantier,
+    # avenants, DGD. Nouvelle app greenfield, additive.
+    'apps.btp_chantier',
 ]
 
 MIDDLEWARE = [

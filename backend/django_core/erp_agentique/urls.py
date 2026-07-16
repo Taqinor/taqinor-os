@@ -88,6 +88,8 @@ _APP_URLS = [
     path('identity/', include('apps.identity.urls')),
     # Groupe ENG — Moteur publicitaire Meta Ads dans l'ERP.
     path('adsengine/', include('apps.adsengine.urls')),
+    # Groupe NTCON — Vertical BTP/EPC (réserves, RFI, visas, journal, DGD…).
+    path('btp-chantier/', include('apps.btp_chantier.urls')),
 ]
 
 urlpatterns = [
