@@ -119,3 +119,61 @@ export function rankCreatives(list) {
       return a._coutParReponse - b._coutParReponse
     })
 }
+
+// ── ENG25 — Boîte d'approbation (EngineAction) ──
+// Libellés FR déterministes des types d'action (jamais un type brut à l'écran).
+export const ACTION_TYPE_LABELS = {
+  create_campaign: 'Création de campagne',
+  update_campaign: 'Modification de campagne',
+  pause_campaign: 'Mise en pause de campagne',
+  adjust_budget: 'Ajustement de budget',
+  create_ad: "Création d'annonce",
+  create_creative: 'Nouveau créatif',
+  swap_creative: 'Rotation de créatif',
+  enable_cbo: 'Activation du budget de campagne (CBO)',
+  pause_for_month: "Mise en pause jusqu'à la fin du mois",
+}
+export function actionTypeLabel(type) {
+  return ACTION_TYPE_LABELS[type] || type || 'Action'
+}
+
+function numOrNull(v) {
+  const n = typeof v === 'string' ? Number(v) : v
+  return Number.isFinite(n) ? n : null
+}
+
+// Diff budget avant→après d'une EngineAction (depuis les champs plats ou le
+// payload). Retourne null s'il n'y a pas de diff budgétaire à montrer.
+export function budgetDiff(action) {
+  if (!action) return null
+  const p = action.payload || {}
+  const avant = numOrNull(action.budget_avant ?? p.budget_avant ?? p.budget_mad_avant)
+  const apres = numOrNull(action.budget_apres ?? p.budget_apres ?? p.budget_mad_apres)
+  if (avant == null && apres == null) return null
+  const delta = (apres ?? 0) - (avant ?? 0)
+  return {
+    avant, apres, delta,
+    direction: delta > 0 ? 'up' : delta < 0 ? 'down' : 'flat',
+  }
+}
+
+// Motifs de rejet STRUCTURÉS (jamais du chat libre) — proposés dans un select.
+export const REJECTION_REASONS = [
+  { value: 'hors_budget', label: 'Hors budget' },
+  { value: 'mauvais_ciblage', label: 'Ciblage inadapté' },
+  { value: 'creatif_non_conforme', label: 'Créatif non conforme (règle de marque)' },
+  { value: 'mauvais_moment', label: 'Mauvais moment' },
+  { value: 'autre', label: 'Autre' },
+]
+
+// Artefact réel porté par l'action (créatif à prévisualiser), ou null.
+export function actionCreative(action) {
+  if (!action) return null
+  const c = action.creative || action.creatif || (action.payload && action.payload.creative)
+  if (!c) return null
+  return {
+    url: c.preview_url || c.file_url || c.url || '',
+    designation: c.designation || c.nom || c.name || 'Créatif',
+    type: c.type || '',
+  }
+}
