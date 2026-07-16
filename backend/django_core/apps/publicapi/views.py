@@ -10,11 +10,12 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from authentication.permissions import IsAdminOrResponsableTier
+from core.api_usage import plan_pour_societe
 
 from .models import ApiKey, Webhook, WebhookDelivery
 from .serializers import (
     ApiKeySerializer, ApiKeyCreateSerializer, WebhookSerializer,
-    WebhookDeliverySerializer, scope_catalogue,
+    WebhookDeliverySerializer, ApiUsagePlanSerializer, scope_catalogue,
 )
 from . import delivery as delivery_service
 
@@ -102,6 +103,29 @@ class OcrToCrmView(APIView):
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
         return Response(payload, status=status.HTTP_201_CREATED)
+
+
+class ApiUsagePlanView(APIView):
+    """NTAPI7 — plan d'API nommé (gratuit/pro/entreprise) de la société.
+
+    ``GET`` renvoie (en le créant avec les défauts du palier gratuit s'il
+    n'existe pas encore) le plan de LA société de l'utilisateur connecté.
+    ``PATCH`` met à jour ses quotas/palier — la société est TOUJOURS forcée
+    depuis ``request.user.company``, jamais lue du corps de requête (aucune
+    fuite/écriture inter-société possible)."""
+    permission_classes = [IsAdminOrResponsableTier]
+
+    def get(self, request):
+        plan = plan_pour_societe(request.user.company)
+        return Response(ApiUsagePlanSerializer(plan).data)
+
+    def patch(self, request):
+        plan = plan_pour_societe(request.user.company)
+        serializer = ApiUsagePlanSerializer(
+            plan, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()  # `company` déjà posée sur `plan` — jamais du corps.
+        return Response(serializer.data)
 
 
 class ApiKeyViewSet(_CompanyScopedMixin, viewsets.ModelViewSet):
