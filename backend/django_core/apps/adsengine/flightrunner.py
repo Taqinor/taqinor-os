@@ -110,9 +110,12 @@ class FlightRunner:
       * ``COMPLETED``  — dernière phase franchie → plan terminé + rapport ;
       * ``KILLED``     — interrupteur global engagé (tout est en pause).
 
-    ``client`` : le ``meta_client`` (ou un faux injecté pour les tests / le
-    simulateur ADSENG36). ``clock`` : callable ``() -> date`` injectable (horloge
-    accélérée du simulateur) ; défaut = ``datetime.date.today``.
+    ``client`` : une **``platforms.AdsPlatform``** (ADSENG48) — le runner ne parle
+    qu'au CONTRAT abstrait (``get_*``/``create_*`` PAUSED/``update_status_paused``),
+    jamais à un client concret ; ``MetaPlatform`` en est l'implémentation, un faux
+    injecté (tests / simulateur ADSENG36) suffit tant qu'il respecte le contrat.
+    ``clock`` : callable ``() -> date`` injectable (horloge accélérée du
+    simulateur) ; défaut = ``datetime.date.today``.
     """
 
     STATE_DRAFT = 'draft'
