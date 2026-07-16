@@ -98,9 +98,17 @@ def signed_deals(since=None, client=None):
          'lead_id': int|None}    # id crm.lead d'origine si connu
 
     Le MONTANT vient de préférence du ``sale.order`` confirmé ; un lead gagné SANS
-    commande confirmée est ajouté en repli (montant = ``expected_revenue``). Dédup
-    : un lead gagné déjà représenté par une commande confirmée (via
-    ``opportunity_id`` OU même ``partner_id``) n'est pas recompté.
+    commande confirmée est ajouté en repli (montant = ``expected_revenue``).
+
+    UNE SIGNATURE = UN CLIENT (dédoublonnage, calibré sur les données réelles du
+    fondateur — 9 « deals » bruts pour 6 clients signés réels) :
+      1. commandes DUPLIQUÉES (même partner + même numéro, ex. S00158 saisi deux
+         fois) → une seule, la plus récente ;
+      2. commande NON attribuable (aucun lead lié, aucun téléphone résolvable)
+         alors que des leads gagnés existent → facturation d'un client déjà
+         compté côté leads, pas une signature de plus ;
+      3. un lead gagné déjà représenté (``opportunity_id``, même ``partner_id``
+         OU même téléphone normalisé) n'est pas recompté.
 
     ``since`` (date/datetime/str) borne la lecture. Sans config Odoo → ``[]``.
     """
@@ -117,6 +125,19 @@ def signed_deals(since=None, client=None):
 
     orders = client.read_sale_orders(since)
     confirmed = [o for o in orders if o.get('state') in SIGNED_ORDER_STATES]
+    # DÉDOUBLONNAGE 1 — enregistrements de commande DUPLIQUÉS : même
+    # ``(partner, name)`` = le même document saisi deux fois (observé en réel :
+    # S00158 en double chez le fondateur → 2 « signatures » pour 1 client). On
+    # garde la plus récente (``date_order``).
+    uniq = {}
+    for order in confirmed:
+        key = (_m2o_id(order.get('partner_id')),
+               (order.get('name') or '').strip())
+        prev = uniq.get(key)
+        if prev is None or ((order.get('date_order') or '')
+                            > (prev.get('date_order') or '')):
+            uniq[key] = order
+    confirmed = sorted(uniq.values(), key=lambda o: o.get('id') or 0)
     order_partner_ids = {_m2o_id(o.get('partner_id')) for o in confirmed}
     order_partner_ids.discard(None)
 
@@ -135,6 +156,7 @@ def signed_deals(since=None, client=None):
 
     deals = []
     covered_lead_ids = set()
+    seen_phones = set()
 
     for order in confirmed:
         opp = _m2o_id(order.get('opportunity_id'))
@@ -153,8 +175,19 @@ def signed_deals(since=None, client=None):
             phone_raw = partner.get('phone') or partner.get('mobile') or ''
             if not source_name:
                 source_name = _m2o_label(order.get('partner_id'))
+        phone_norm = normalize_phone_key(phone_raw)
+        # DÉDOUBLONNAGE 2 — commande NON attribuable (aucun lead lié, aucun
+        # téléphone résolvable) alors que des leads gagnés existent : vérifié en
+        # réel chez le fondateur, c'est la facturation d'un client DÉJÀ compté
+        # côté leads gagnés (partner sans téléphone, ``opportunity_id`` vide).
+        # La compter en plus DOUBLE le client. Sans aucun lead gagné, elle reste
+        # comptée (rien contre quoi dédoublonner).
+        if lead is None and not phone_norm and won_lead_ids:
+            continue
+        if phone_norm:
+            seen_phones.add(phone_norm)
         deals.append({
-            'phone_norm': normalize_phone_key(phone_raw),
+            'phone_norm': phone_norm,
             'amount_mad': _amount(order.get('amount_total')),
             'date': order.get('date_order') or order.get('create_date') or None,
             'source_name': source_name,
@@ -164,6 +197,9 @@ def signed_deals(since=None, client=None):
 
     # Repli : leads GAGNÉS sans commande confirmée (ni via opportunity_id ni via
     # le même client) → montant = expected_revenue, téléphone du lead.
+    # DÉDOUBLONNAGE 3 — un même TÉLÉPHONE = un même client : un lead gagné dont
+    # le téléphone est déjà porté par un deal (commande ou autre lead gagné)
+    # n'est pas recompté.
     for lid in sorted(won_lead_ids):
         if lid in covered_lead_ids:
             continue
@@ -171,8 +207,13 @@ def signed_deals(since=None, client=None):
         if _m2o_id(lead.get('partner_id')) in order_partner_ids:
             continue  # même client déjà couvert par une commande confirmée
         phone_raw = lead.get('phone') or lead.get('mobile') or ''
+        phone_norm = normalize_phone_key(phone_raw)
+        if phone_norm and phone_norm in seen_phones:
+            continue  # même téléphone = même client, déjà compté
+        if phone_norm:
+            seen_phones.add(phone_norm)
         deals.append({
-            'phone_norm': normalize_phone_key(phone_raw),
+            'phone_norm': phone_norm,
             'amount_mad': _amount(lead.get('expected_revenue')),
             'date': lead.get('date_closed') or lead.get('create_date') or None,
             'source_name': lead.get('name') or '',
