@@ -98,9 +98,18 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         # Palier de menu faisant autorité, dérivé du NOUVEAU rôle.
         token['menu_tier'] = user.menu_tier
         token['role_nom'] = user.role.nom if user.role else None
-        token['permissions'] = (
-            list(user.role.permissions) if user.role else []
-        )
+        # NOTE — la liste COMPLÈTE des permissions du rôle N'EST PLUS embarquée
+        # dans le jeton. Elle est SEULE source de taille non bornée du cookie
+        # d'auth (≈1,4 ko pour un rôle admin de 64 permissions, ×2 cookies
+        # access+refresh) et grossit à chaque module ajouté : au-delà du buffer
+        # d'en-tête nginx par défaut (4 ko), un login RÉUSSI d'admin renvoyait
+        # un 502 « upstream sent too big header » (incident 2026-07-16, élargi
+        # par les permissions adsengine). Ce claim était par ailleurs MORT :
+        # le frontend lit les permissions via ``/auth/me/`` (UserSerializer,
+        # source DB) et jamais en décodant le jeton ; le backend autorise sur
+        # ``request.user.role`` (DB, cookie_auth.py) et ne lit du jeton que le
+        # claim société active. Retirer ce claim borne le jeton (≈452 o) sans
+        # changer aucune permission effective.
         token['is_superuser'] = user.is_superuser
         token['company_id'] = user.company_id
         token['company_nom'] = (
