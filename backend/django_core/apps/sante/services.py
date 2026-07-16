@@ -98,3 +98,27 @@ def verifier_chevauchement_rdv(
                 return "Cette salle est déjà réservée sur ce créneau."
 
     return None
+
+
+def cloturer_admission(admission, *, date_sortie=None):
+    """NTSAN6 — clôture une admission (``en_cours`` → ``cloturee``).
+
+    Garde (critère d'acceptation NTSAN6) : une admission ne peut être
+    clôturée que si tous ses actes réalisés rattachés sont facturés ou
+    explicitement marqués non-facturables. ``ActeRealise`` n'existe pas
+    encore à ce stade du lot (posé par NTSAN10) : cette fonction est
+    COMPLÉTÉE — pas réécrite — dans la même passe que NTSAN10 pour vérifier
+    réellement les actes rattachés (``admission.actes_realises``). En
+    attendant, seule la transition de statut est appliquée.
+    """
+    from django.utils import timezone
+
+    from .models import Admission
+
+    if admission.statut == Admission.Statut.CLOTUREE:
+        raise ValueError('Cette admission est déjà clôturée.')
+
+    admission.statut = Admission.Statut.CLOTUREE
+    admission.date_sortie = date_sortie or timezone.now()
+    admission.save(update_fields=['statut', 'date_sortie'])
+    return admission

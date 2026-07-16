@@ -186,3 +186,49 @@ class RendezVous(TenantModel):
 
     def __str__(self):
         return f'{self.patient_id} @ {self.date_heure_debut}'
+
+
+class Admission(TenantModel):
+    """NTSAN6 — parcours administratif patient (admission → actes → sortie).
+
+    La clôture n'est autorisée que si tous les ``ActeRealise`` rattachés sont
+    facturés ou explicitement marqués non-facturables — la garde vit dans
+    ``services.cloturer_admission`` et n'est COMPLÈTE qu'une fois
+    ``ActeRealise`` posé (NTSAN10) ; avant cela, une admission sans acte se
+    clôture toujours (garde vacuously vraie)."""
+
+    class Type(models.TextChoices):
+        CONSULTATION = 'consultation', 'Consultation'
+        HOSPITALISATION = 'hospitalisation', 'Hospitalisation'
+        ACTE_TECHNIQUE = 'acte_technique', 'Acte technique'
+
+    class Statut(models.TextChoices):
+        EN_COURS = 'en_cours', 'En cours'
+        CLOTUREE = 'cloturee', 'Clôturée'
+
+    patient = models.ForeignKey(
+        Patient, on_delete=models.CASCADE, related_name='admissions',
+        verbose_name='Patient')
+    rdv = models.ForeignKey(
+        RendezVous, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='admissions', verbose_name='Rendez-vous')
+    praticien = models.ForeignKey(
+        Praticien, on_delete=models.CASCADE, related_name='admissions',
+        verbose_name='Praticien')
+    date_admission = models.DateTimeField(verbose_name="Date d'admission")
+    date_sortie = models.DateTimeField(
+        null=True, blank=True, verbose_name='Date de sortie')
+    type = models.CharField(
+        max_length=20, choices=Type.choices, default=Type.CONSULTATION,
+        verbose_name='Type')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.EN_COURS,
+        verbose_name='Statut')
+
+    class Meta:
+        verbose_name = 'Admission'
+        verbose_name_plural = 'Admissions'
+        ordering = ['-date_admission']
+
+    def __str__(self):
+        return f'Admission {self.patient_id} ({self.date_admission:%Y-%m-%d})'

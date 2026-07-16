@@ -7,14 +7,16 @@ rôles ``secretaire_medicale``/``praticien``/``caissier_sante``) est posé par
 NTSAN17 — en attendant, le défaut « authentifié suffit » de
 ``CompanyScopedModelViewSet`` s'applique.
 """
+from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
+from rest_framework.response import Response
 
 from core.viewsets import CompanyScopedModelViewSet
 
-from .models import Patient, Praticien, RendezVous, Salle
+from .models import Admission, Patient, Praticien, RendezVous, Salle
 from .serializers import (
-    PatientSerializer, PraticienSerializer, RendezVousSerializer,
-    SalleSerializer)
+    AdmissionSerializer, PatientSerializer, PraticienSerializer,
+    RendezVousSerializer, SalleSerializer)
 
 
 class PraticienViewSet(CompanyScopedModelViewSet):
@@ -99,3 +101,21 @@ class RendezVousViewSet(CompanyScopedModelViewSet):
             duree_min=data.get('duree_min', instance.duree_min),
             exclude_id=instance.id)
         super().perform_update(serializer)
+
+
+class AdmissionViewSet(CompanyScopedModelViewSet):
+    """NTSAN6 — parcours administratif patient (admission → actes → sortie)."""
+
+    queryset = Admission.objects.select_related('patient', 'praticien', 'rdv').all()
+    serializer_class = AdmissionSerializer
+
+    @action(detail=True, methods=['post'], url_path='cloturer')
+    def cloturer(self, request, pk=None):
+        from .services import cloturer_admission
+
+        admission = self.get_object()
+        try:
+            cloturer_admission(admission)
+        except ValueError as exc:
+            raise ValidationError({'detail': str(exc)})
+        return Response(AdmissionSerializer(admission).data)
