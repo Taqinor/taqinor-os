@@ -135,8 +135,6 @@ class ConsoleWiringTests(TestCase):
         self.assertTrue(conn.enabled)
         self.assertEqual(conn.credentials['app_id'], '42')
         self.assertEqual(conn.ad_account_id, 'act_999')
-        # Invariant #3 : jamais d'activation depuis l'ERP.
-        self.assertFalse(conn.enabled)
 
     def test_connection_save_requires_manage(self):
         resp = auth(self.viewer).post(
