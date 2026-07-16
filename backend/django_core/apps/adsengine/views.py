@@ -1086,6 +1086,25 @@ class MetricsDashboardView(APIView):
         from .models import InsightSnapshot as Snap
 
         summary = cost_per_signature_summary(company)
+        cps = summary['cost_per_signature']
+        signatures = summary.get('total_signed') or 0
+        signatures_source = 'crm'
+        # ADSENG-ODOO — quand le connecteur Odoo est configuré, les signatures
+        # RÉELLES vivent dans Odoo (le CRM ERP peut être vide). Le héro-chiffre
+        # reflète alors le coût-par-signature adossé à Odoo. Best-effort et
+        # jamais bloquant : Odoo indispo / 0 signature -> on garde le CRM (la vue
+        # ``odoo_cost_per_signature`` ne lève jamais, cf. #417).
+        try:
+            from .odoo_client import is_configured as _odoo_configured
+            if _odoo_configured():
+                from .odoo_metrics import odoo_cost_per_signature
+                odoo = odoo_cost_per_signature(company)
+                if odoo.get('signatures'):
+                    cps = odoo['cost_per_signature']
+                    signatures = odoo['signatures']
+                    signatures_source = 'odoo'
+        except Exception:  # noqa: BLE001 — le dashboard ne casse jamais sur Odoo
+            pass
         ct = ContentType.objects.get_for_model(AdCampaignMirror)
         agg = (Snap.objects
                .filter(company=company, content_type=ct)
@@ -1095,7 +1114,9 @@ class MetricsDashboardView(APIView):
         results = agg['results'] or 0
         cpl = (spend / results) if results else None
         return Response({
-            'cost_per_signature': summary['cost_per_signature'],
+            'cost_per_signature': cps,
+            'signatures': signatures,
+            'signatures_source': signatures_source,
             'spend': str(spend),
             'cpl': (str(cpl) if cpl is not None else None),
             'frequency': (str(agg['freq']) if agg['freq'] is not None else None),
