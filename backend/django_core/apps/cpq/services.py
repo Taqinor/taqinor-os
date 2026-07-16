@@ -198,3 +198,68 @@ def rejeter_etape_devis(devis, *, user, motif=''):
         + (f" : {motif}" if motif else "")
         + " — devis renvoyé en brouillon.")
     return etape
+
+
+def _ligne_depuis_action(action, devis, company):
+    """NTCPQ10 — Traduit une action de règle résolue en LigneDevis (ou
+    application de bundle). Ignore les actions purement consultatives."""
+    from apps.ventes.models import LigneDevis
+    if not isinstance(action, dict):
+        return
+    produit_id = action.get('produit_id')
+    offre_id = action.get('offre_id')
+    if produit_id:
+        from apps.stock.models import Produit
+        produit = Produit.objects.filter(
+            id=produit_id, company=company).first()
+        if produit is None:
+            return
+        qte = Decimal(str(action.get('quantite', 1) or 1))
+        LigneDevis.objects.create(
+            devis=devis, produit=produit, designation=produit.nom,
+            quantite=qte, prix_unitaire=produit.prix_vente,
+            remise=Decimal('0'))
+    elif offre_id:
+        from .models import OffreGroupee
+        offre = OffreGroupee.objects.filter(
+            id=offre_id, company=company).first()
+        if offre is not None:
+            appliquer_offre_groupee(offre=offre, devis=devis)
+
+
+def generer_devis_depuis_configurateur(session, *, user=None, lead=None,
+                                       client=None):
+    """NTCPQ10 — Transforme le résultat résolu d'une session configurateur en
+    Devis BROUILLON éditable (lignes pré-remplies). Ne génère JAMAIS le PDF.
+
+    Le client est résolu depuis le lead via ``crm.services.resolve_client_for_lead``
+    (réutilise le lien/le match existant, jamais de doublon) quand seul le lead
+    est fourni. Renvoie le Devis créé."""
+    from rest_framework.exceptions import ValidationError
+    from apps.ventes.models import Devis
+    from apps.ventes.utils.company_settings import create_numbered
+    from .selectors import resoudre_configurateur
+
+    company = session.company
+    if client is None and lead is not None:
+        from apps.crm.services import resolve_client_for_lead
+        client = resolve_client_for_lead(lead)
+    if client is None:
+        raise ValidationError(
+            {'client': 'Un client ou un lead est requis.'})
+
+    def _save(ref):
+        return Devis.objects.create(
+            reference=ref, company=company, client=client, lead=lead,
+            statut=Devis.Statut.BROUILLON, created_by=user)
+
+    devis = create_numbered(Devis, company, 'devis', _save)
+
+    result = resoudre_configurateur(session)
+    for regle in result['actions_declenchees']:
+        for action in regle.get('actions', []):
+            _ligne_depuis_action(action, devis, company)
+
+    session.devis = devis
+    session.save(update_fields=['devis', 'updated_at'])
+    return devis

@@ -198,6 +198,45 @@ class ConfigurateurResultatView(APIView):
         return Response(selectors.resoudre_configurateur(session))
 
 
+class ConfigurateurGenererDevisView(APIView):
+    """NTCPQ10 — POST cpq/configurateur/{session}/generer-devis/.
+
+    Transforme le résultat résolu en Devis brouillon (lignes + lead/client si
+    fournis). Ne génère jamais le PDF. Corps : ``{lead?, client?}``."""
+    permission_classes = [IsResponsableOrAdmin]
+
+    def post(self, request, token):
+        session = SessionConfigurateur.objects.filter(
+            token=token, company=request.user.company).first()
+        if session is None:
+            return Response({'detail': 'Session introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        company = request.user.company
+        lead = None
+        client = None
+        lead_id = request.data.get('lead')
+        client_id = request.data.get('client')
+        if lead_id:
+            from apps.crm.selectors import get_company_lead
+            lead = get_company_lead(company, lead_id)
+            if lead is None:
+                return Response({'detail': 'Lead introuvable.'},
+                                status=status.HTTP_404_NOT_FOUND)
+        if client_id:
+            from apps.crm.selectors import get_company_client
+            client = get_company_client(company, client_id)
+            if client is None:
+                return Response({'detail': 'Client introuvable.'},
+                                status=status.HTTP_404_NOT_FOUND)
+        devis = services.generer_devis_depuis_configurateur(
+            session, user=request.user, lead=lead, client=client)
+        return Response({
+            'detail': 'Devis brouillon créé.',
+            'devis_id': devis.id,
+            'reference': devis.reference,
+        }, status=status.HTTP_201_CREATED)
+
+
 class ValiderCompatibiliteView(APIView):
     """NTCPQ1 — POST cpq/valider-compatibilite/.
 

@@ -6,7 +6,7 @@ from .views import (
     RegleProduitCPQViewSet, OffreGroupeeViewSet, PrixContractuelViewSet,
     QuestionConfigurateurViewSet, ConfigurateurDemarrerView,
     ConfigurateurRepondreView, ConfigurateurResultatView,
-    ValiderCompatibiliteView,
+    ConfigurateurGenererDevisView, ValiderCompatibiliteView,
 )
 
 router = DefaultRouter()
@@ -28,5 +28,8 @@ urlpatterns = [
     path('configurateur/<uuid:token>/resultat/',
          ConfigurateurResultatView.as_view(),
          name='cpq-configurateur-resultat'),
+    path('configurateur/<uuid:token>/generer-devis/',
+         ConfigurateurGenererDevisView.as_view(),
+         name='cpq-configurateur-generer-devis'),
     path('', include(router.urls)),
 ]
