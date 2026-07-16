@@ -2,9 +2,22 @@
 from rest_framework import serializers
 
 from .models import (
-    CreativeAsset, CreativePolicy, EngineAction, EngineAlert, GuardrailConfig,
-    MetaConnection,
+    ArmDailyStat, CreativeAsset, CreativePolicy, DecisionLog, EngineAction,
+    EngineAlert, Experiment, ExperimentArm, GuardrailConfig, MetaConnection,
 )
+
+
+def _same_company(serializer, value):
+    """ADSENG3 — Refuse une FK vers un objet d'une AUTRE société (isolation
+    multi-tenant côté serializer, en plus du scoping du viewset). ``value`` est
+    l'instance liée ; None passe (champ optionnel absent)."""
+    if value is None:
+        return value
+    request = serializer.context.get('request')
+    company = getattr(getattr(request, 'user', None), 'company', None)
+    if company is not None and value.company_id != company.id:
+        raise serializers.ValidationError("Référence d'une autre société.")
+    return value
 
 
 class MetaConnectionSerializer(serializers.ModelSerializer):
@@ -144,3 +157,73 @@ class CreativePolicySerializer(serializers.ModelSerializer):
             'created_at', 'updated_at',
         ]
         read_only_fields = ['created_at', 'updated_at']
+
+
+class ExperimentSerializer(serializers.ModelSerializer):
+    """ADSENG3 — Expérience (test A/B/n). ``company`` posée côté serveur ;
+    campagne/ad set cibles validés dans la même société."""
+
+    class Meta:
+        model = Experiment
+        fields = [
+            'id', 'name', 'tested_variable', 'status', 'campaign', 'adset',
+            'start_date', 'end_date', 'notes', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+    def validate_campaign(self, value):
+        return _same_company(self, value)
+
+    def validate_adset(self, value):
+        return _same_company(self, value)
+
+
+class ExperimentArmSerializer(serializers.ModelSerializer):
+    """ADSENG3 — Bras d'expérience. ``company`` posée côté serveur ;
+    expérience/asset validés dans la même société."""
+
+    class Meta:
+        model = ExperimentArm
+        fields = [
+            'id', 'experiment', 'creative_asset', 'label', 'ad_id',
+            'hook_id', 'visual_id', 'is_active', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+    def validate_experiment(self, value):
+        return _same_company(self, value)
+
+    def validate_creative_asset(self, value):
+        return _same_company(self, value)
+
+
+class ArmDailyStatSerializer(serializers.ModelSerializer):
+    """ADSENG3 — Stat quotidienne d'un bras. ``company`` posée côté serveur ;
+    bras validé dans la même société."""
+
+    class Meta:
+        model = ArmDailyStat
+        fields = [
+            'id', 'arm', 'date', 'impressions', 'clicks', 'conversations',
+            'spend', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+    def validate_arm(self, value):
+        return _same_company(self, value)
+
+
+class DecisionLogSerializer(serializers.ModelSerializer):
+    """ADSENG3 — Journal de décision (lecture seule côté API : écrit par la
+    science P1, jamais par un client)."""
+
+    class Meta:
+        model = DecisionLog
+        fields = [
+            'id', 'experiment', 'inputs', 'posteriors', 'allocations',
+            'summary_fr', 'action', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'experiment', 'inputs', 'posteriors', 'allocations',
+            'summary_fr', 'action', 'created_at', 'updated_at',
+        ]

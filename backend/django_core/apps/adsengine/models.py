@@ -509,3 +509,198 @@ class CreativePolicy(TenantModel):
 
     def __str__(self):
         return f'Policy créative société {self.company_id}'
+
+
+class Experiment(TenantModel):
+    """ADSENG3 — Une EXPÉRIENCE (test A/B/n) sur une campagne / un ad set.
+
+    Teste UNE variable (le hook, le visuel, l'audience…) entre 2-4 bras
+    (``ExperimentArm``). L'expérience ne CHANGE jamais Meta elle-même : elle sert
+    de contenant déterministe pour la science (bandit P1) et le journal de
+    décision (``DecisionLog``). Cible optionnelle (campagne/ad set miroir) — FK
+    MÊME APP (adsengine), donc autorisée.
+    """
+
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        EN_COURS = 'en_cours', 'En cours'
+        EN_PAUSE = 'en_pause', 'En pause'
+        TERMINEE = 'terminee', 'Terminée'
+
+    class Variable(models.TextChoices):
+        HOOK = 'hook', 'Accroche (hook)'
+        VISUEL = 'visuel', 'Visuel'
+        AUDIENCE = 'audience', 'Audience'
+        PLACEMENT = 'placement', 'Placement'
+        CTA = 'cta', "Appel à l'action (CTA)"
+        AUTRE = 'autre', 'Autre'
+
+    name = models.CharField(max_length=160, verbose_name='Nom')
+    tested_variable = models.CharField(
+        max_length=12, choices=Variable.choices, default=Variable.HOOK,
+        verbose_name='Variable testée')
+    status = models.CharField(
+        max_length=12, choices=Statut.choices, default=Statut.BROUILLON,
+        verbose_name='Statut')
+    # Cibles miroir (même app) — nullable : une expérience peut être planifiée
+    # avant que ses campagnes/ad sets miroir existent.
+    campaign = models.ForeignKey(
+        'adsengine.AdCampaignMirror', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='experiments',
+        verbose_name='Campagne cible')
+    adset = models.ForeignKey(
+        'adsengine.AdSetMirror', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='experiments',
+        verbose_name='Ad set cible')
+    start_date = models.DateField(
+        null=True, blank=True, verbose_name='Début')
+    end_date = models.DateField(
+        null=True, blank=True, verbose_name='Fin')
+    notes = models.TextField(blank=True, default='', verbose_name='Notes')
+
+    class Meta:
+        verbose_name = 'Expérience publicitaire'
+        verbose_name_plural = 'Expériences publicitaires'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['company', 'status'],
+                         name='adseng_exp_co_status_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.name} ({self.get_status_display()})'
+
+
+class ExperimentArm(TenantModel):
+    """ADSENG3 — Un BRAS d'une expérience : un créatif candidat.
+
+    Porte le ``creative_asset`` testé (FK même app), l'``ad_id`` du miroir Meta
+    correspondant (clé de jointure vers ``AdMirror``/``InsightSnapshot``) et la
+    LIGNÉE composants (``hook_id``/``visual_id``) — pour tracer d'où vient chaque
+    variante (dd-creative-sci). Un bras peut être désactivé (``is_active=False``)
+    quand il est « tué » par la science, sans le supprimer (trace).
+    """
+
+    experiment = models.ForeignKey(
+        'adsengine.Experiment', on_delete=models.CASCADE,
+        related_name='arms', verbose_name='Expérience')
+    creative_asset = models.ForeignKey(
+        'adsengine.CreativeAsset', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='experiment_arms',
+        verbose_name='Asset créatif')
+    label = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Libellé')
+    # ID de l'ad miroir Meta (jointure vers AdMirror.meta_id / InsightSnapshot).
+    ad_id = models.CharField(
+        max_length=64, blank=True, default='', verbose_name='ID ad (Meta)')
+    # Lignée composants (dd-creative-sci) — d'où vient la variante.
+    hook_id = models.CharField(
+        max_length=64, blank=True, default='', verbose_name='ID accroche')
+    visual_id = models.CharField(
+        max_length=64, blank=True, default='', verbose_name='ID visuel')
+    is_active = models.BooleanField(default=True, verbose_name='Actif')
+
+    class Meta:
+        verbose_name = "Bras d'expérience"
+        verbose_name_plural = "Bras d'expérience"
+        ordering = ['experiment', 'id']
+        indexes = [
+            models.Index(fields=['company', 'ad_id'],
+                         name='adseng_arm_co_ad_idx'),
+        ]
+
+    def __str__(self):
+        return self.label or f'Bras #{self.pk}'
+
+
+class ArmDailyStat(TenantModel):
+    """ADSENG3 — Statistiques QUOTIDIENNES d'un bras (alimentées par la sync).
+
+    Une ligne par ``(bras, jour)`` — impressions, clics, conversations, dépense.
+    Ce sont les DONNÉES du bandit (P1) : trials = impressions, successes =
+    conversations. Upsert idempotent par ``(company, arm, date)`` via
+    :meth:`upsert` (une re-synchro du même jour écrase, jamais de doublon).
+    """
+
+    arm = models.ForeignKey(
+        'adsengine.ExperimentArm', on_delete=models.CASCADE,
+        related_name='daily_stats', verbose_name='Bras')
+    date = models.DateField(verbose_name='Date')
+    impressions = models.PositiveIntegerField(
+        default=0, verbose_name='Impressions')
+    clicks = models.PositiveIntegerField(default=0, verbose_name='Clics')
+    conversations = models.PositiveIntegerField(
+        default=0, verbose_name='Conversations')
+    spend = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0,
+        verbose_name='Dépense')
+
+    class Meta:
+        verbose_name = 'Stat quotidienne de bras'
+        verbose_name_plural = 'Stats quotidiennes de bras'
+        ordering = ['-date', 'arm']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'arm', 'date'],
+                name='uniq_adseng_arm_daily'),
+        ]
+        indexes = [
+            models.Index(fields=['arm', 'date'],
+                         name='adseng_armstat_arm_dt_idx'),
+        ]
+
+    def __str__(self):
+        return f'Stat bras {self.arm_id} @ {self.date}'
+
+    @classmethod
+    def upsert(cls, *, arm, date, impressions=0, clicks=0,
+               conversations=0, spend=0):
+        """Upsert idempotent d'une ligne quotidienne (la synchro est la source
+        de vérité : les valeurs Meta ÉCRASENT, jamais d'accumulation). Company
+        toujours dérivée du bras (jamais reçue de l'extérieur). Renvoie
+        ``(stat, created)``."""
+        return cls.objects.update_or_create(
+            company=arm.company, arm=arm, date=date,
+            defaults={
+                'impressions': impressions, 'clicks': clicks,
+                'conversations': conversations, 'spend': spend,
+            })
+
+
+class DecisionLog(TenantModel):
+    """ADSENG3 — Journal d'une DÉCISION de la science (auditabilité totale).
+
+    Chaque cycle du moteur de décision (bandit + garde-fous, P1) écrit ici un
+    instantané REJOUABLE : les ``inputs`` (stats des bras au moment T), les
+    ``posteriors`` calculés, l'``allocations`` produite, et l'``action`` proposée
+    (FK ``EngineAction`` nullable — même app). Jamais d'auto-apply implicite : la
+    décision est tracée, l'application reste la boucle propose→approuve (ENG7).
+    """
+
+    experiment = models.ForeignKey(
+        'adsengine.Experiment', on_delete=models.CASCADE,
+        related_name='decisions', verbose_name='Expérience')
+    inputs = models.JSONField(
+        default=dict, blank=True, verbose_name='Entrées (instantané)')
+    posteriors = models.JSONField(
+        default=dict, blank=True, verbose_name='Postérieurs')
+    allocations = models.JSONField(
+        default=dict, blank=True, verbose_name='Allocations produites')
+    summary_fr = models.TextField(
+        blank=True, default='', verbose_name='Résumé (FR)')
+    action = models.ForeignKey(
+        'adsengine.EngineAction', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='decision_logs',
+        verbose_name='Action produite')
+
+    class Meta:
+        verbose_name = 'Journal de décision'
+        verbose_name_plural = 'Journaux de décision'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['company', 'experiment'],
+                         name='adseng_declog_co_exp_idx'),
+        ]
+
+    def __str__(self):
+        return f'Décision exp {self.experiment_id} @ {self.created_at:%Y-%m-%d}'

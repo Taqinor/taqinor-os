@@ -9,9 +9,10 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
-    CostPerSignatureView, CreativeAssetViewSet, CreativePolicyViewSet,
-    EngineActionViewSet, EngineAlertViewSet, GuardrailConfigViewSet,
-    MetaConnectionViewSet, StatusView, WiringHealthView,
+    ArmDailyStatViewSet, CostPerSignatureView, CreativeAssetViewSet,
+    CreativePolicyViewSet, DecisionLogViewSet, EngineActionViewSet,
+    EngineAlertViewSet, ExperimentArmViewSet, ExperimentViewSet,
+    GuardrailConfigViewSet, MetaConnectionViewSet, StatusView, WiringHealthView,
 )
 
 router = DefaultRouter()
@@ -22,6 +23,11 @@ router.register(r'alertes', EngineAlertViewSet, basename='engine-alert')
 router.register(r'creatifs', CreativeAssetViewSet, basename='creative-asset')
 router.register(r'policy-creative', CreativePolicyViewSet,
                 basename='creative-policy')
+# ADSENG3 — expérimentation
+router.register(r'experiences', ExperimentViewSet, basename='experiment')
+router.register(r'bras', ExperimentArmViewSet, basename='experiment-arm')
+router.register(r'stats-bras', ArmDailyStatViewSet, basename='arm-daily-stat')
+router.register(r'decisions', DecisionLogViewSet, basename='decision-log')
 
 urlpatterns = [
     path('status/', StatusView.as_view(), name='adsengine-status'),

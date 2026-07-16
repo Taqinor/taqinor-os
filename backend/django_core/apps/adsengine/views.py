@@ -16,12 +16,14 @@ from core.permissions import _user_has_or_legacy
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
-    CreativeAsset, CreativePolicy, EngineAction, EngineAlert, GuardrailConfig,
-    MetaConnection,
+    ArmDailyStat, CreativeAsset, CreativePolicy, DecisionLog, EngineAction,
+    EngineAlert, Experiment, ExperimentArm, GuardrailConfig, MetaConnection,
 )
 from .serializers import (
-    CreativeAssetSerializer, CreativePolicySerializer, EngineActionSerializer,
-    EngineAlertSerializer, GuardrailConfigSerializer, MetaConnectionSerializer,
+    ArmDailyStatSerializer, CreativeAssetSerializer, CreativePolicySerializer,
+    DecisionLogSerializer, EngineActionSerializer, EngineAlertSerializer,
+    ExperimentArmSerializer, ExperimentSerializer, GuardrailConfigSerializer,
+    MetaConnectionSerializer,
 )
 
 
@@ -236,6 +238,43 @@ class CreativePolicyViewSet(AdsengineViewSet):
 
     queryset = CreativePolicy.objects.all()
     serializer_class = CreativePolicySerializer
+
+
+class ExperimentViewSet(AdsengineViewSet):
+    """ADSENG3 — CRUD des expériences (tests A/B/n). Company-scopé (hérité) ;
+    lecture ``adsengine_view`` / écriture ``adsengine_manage``."""
+
+    queryset = Experiment.objects.all()
+    serializer_class = ExperimentSerializer
+
+
+class ExperimentArmViewSet(AdsengineViewSet):
+    """ADSENG3 — CRUD des bras d'expérience (créatifs candidats)."""
+
+    queryset = ExperimentArm.objects.all()
+    serializer_class = ExperimentArmSerializer
+
+
+class ArmDailyStatViewSet(AdsengineViewSet):
+    """ADSENG3 — CRUD des stats quotidiennes de bras (données du bandit).
+
+    Alimentées surtout par la sync (ENG6 étendue) via
+    ``ArmDailyStat.upsert`` — l'API reste disponible pour lecture/saisie
+    manuelle, company-scopée."""
+
+    queryset = ArmDailyStat.objects.all()
+    serializer_class = ArmDailyStatSerializer
+
+
+class DecisionLogViewSet(AdsengineViewSet):
+    """ADSENG3 — Liste (lecture seule) des journaux de décision de la science.
+
+    Company-scopé (hérité) + gaté ``adsengine_view``. Restreint à GET : les
+    décisions sont écrites par le moteur (P1), jamais par un client API."""
+
+    queryset = DecisionLog.objects.all()
+    serializer_class = DecisionLogSerializer
+    http_method_names = ['get', 'head', 'options']
 
 
 class HasAdsengineApprove(BasePermission):
