@@ -20,6 +20,7 @@ migrations.
 """
 from django.db import connection, models
 from django.test import TestCase
+from django.test.utils import isolate_apps
 
 from authentication.models import Company
 from core import events
@@ -32,26 +33,38 @@ from core.models import TenantModel
 
 
 # ── Modèle document JETABLE (app_label='core', table créée à la main) ─────────
-class DocDeTest(DocumentMetier):
-    """Document concret jetable — mêmes statuts qu'un flux simple à 4 états."""
+# Défini sous ``isolate_apps('core')`` : enregistré dans un registre d'apps
+# TEMPORAIRE, jamais dans le registre global — sinon tout autre test du même
+# shard qui supprime une ``Company`` voit le collecteur de suppression suivre la
+# FK inverse et interroger ``core_docdetest``, table qui n'existe qu'entre
+# setUpClass/tearDownClass d'ici (« UndefinedTable » en CI selon le sharding).
+# La FK ``company`` est REDÉCLARÉE avec la CLASSE ``Company`` (la référence
+# paresseuse 'authentication.Company' ne se résout pas dans un registre isolé)
+# et ``related_name='+'`` (aucun accesseur inverse posé sur le vrai Company).
+with isolate_apps('core'):
+    class DocDeTest(DocumentMetier):
+        """Document concret jetable — mêmes statuts qu'un flux simple à 4 états."""
 
-    class Statut(models.TextChoices):
-        BROUILLON = "brouillon", "Brouillon"
-        EMIS = "emis", "Émis"
-        CLOTURE = "cloture", "Clôturé"
-        ANNULE = "annule", "Annulé"
+        class Statut(models.TextChoices):
+            BROUILLON = "brouillon", "Brouillon"
+            EMIS = "emis", "Émis"
+            CLOTURE = "cloture", "Clôturé"
+            ANNULE = "annule", "Annulé"
 
-    TRANSITIONS = {
-        "brouillon": {"emis", "annule"},
-        "emis": {"cloture", "annule"},
-        "cloture": set(),   # terminal
-        "annule": set(),    # terminal
-    }
+        TRANSITIONS = {
+            "brouillon": {"emis", "annule"},
+            "emis": {"cloture", "annule"},
+            "cloture": set(),   # terminal
+            "annule": set(),    # terminal
+        }
 
-    reference = models.CharField(max_length=64, blank=True, default="")
+        company = models.ForeignKey(
+            Company, on_delete=models.CASCADE, related_name='+',
+            verbose_name='Société')
+        reference = models.CharField(max_length=64, blank=True, default="")
 
-    class Meta:
-        app_label = "core"
+        class Meta:
+            app_label = "core"
 
 
 class _CreateDocTableMixin:
@@ -190,35 +203,50 @@ class ChangerStatutTests(_CreateDocTableMixin, TestCase):
 # l'abstrait) : le dernier document défini gagnait, écrasant les choices/default
 # vus par ses frères ET par la base. On teste ici les MÉTADONNÉES de champ
 # (``_meta.get_field('statut')``) — aucune table requise (pas de DB).
-class KitDocA(DocumentMetier):
-    """Kit doc A — 2 statuts (a1/a2)."""
+# Mêmes raisons d'isolation que ``DocDeTest`` ci-dessus : jetables, jamais dans
+# le registre global (ils n'ont d'ailleurs JAMAIS de table — tests de
+# métadonnées uniquement).
+with isolate_apps('core'):
+    class KitDocA(DocumentMetier):
+        """Kit doc A — 2 statuts (a1/a2)."""
 
-    class Statut(models.TextChoices):
-        A1 = "a1", "A1"
-        A2 = "a2", "A2"
+        class Statut(models.TextChoices):
+            A1 = "a1", "A1"
+            A2 = "a2", "A2"
 
-    class Meta:
-        app_label = "core"
+        company = models.ForeignKey(
+            Company, on_delete=models.CASCADE, related_name='+',
+            verbose_name='Société')
 
+        class Meta:
+            app_label = "core"
 
-class KitDocB(DocumentMetier):
-    """Kit doc B — 3 statuts DIFFÉRENTS (b1/b2/b3)."""
+    class KitDocB(DocumentMetier):
+        """Kit doc B — 3 statuts DIFFÉRENTS (b1/b2/b3)."""
 
-    class Statut(models.TextChoices):
-        B1 = "b1", "B1"
-        B2 = "b2", "B2"
-        B3 = "b3", "B3"
+        class Statut(models.TextChoices):
+            B1 = "b1", "B1"
+            B2 = "b2", "B2"
+            B3 = "b3", "B3"
 
-    class Meta:
-        app_label = "core"
+        company = models.ForeignKey(
+            Company, on_delete=models.CASCADE, related_name='+',
+            verbose_name='Société')
 
+        class Meta:
+            app_label = "core"
 
-class KitDocSansStatut(DocumentMetier):
-    """Kit doc SANS ``Statut`` propre — voie documentée « sans effet » : garde le
-    champ hérité de l'abstrait (défaut blanc), jamais les valeurs d'un frère."""
+    class KitDocSansStatut(DocumentMetier):
+        """Kit doc SANS ``Statut`` propre — voie documentée « sans effet » : garde
+        le champ hérité de l'abstrait (défaut blanc), jamais les valeurs d'un
+        frère."""
 
-    class Meta:
-        app_label = "core"
+        company = models.ForeignKey(
+            Company, on_delete=models.CASCADE, related_name='+',
+            verbose_name='Société')
+
+        class Meta:
+            app_label = "core"
 
 
 def _choices(model):
