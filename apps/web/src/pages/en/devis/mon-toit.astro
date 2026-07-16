@@ -2281,10 +2281,10 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   // buttons): without an imagery key those controls are dead UI next to the
   // honest address-only fallback (mirrors the FR fix).
   function showFallback() {
+    clearMapSkeleton();
     if (fallback) fallback.hidden = false;
     const stage = $('mt-stage');
     if (stage) stage.hidden = true;
-    clearMapSkeleton();
   }
 
   // WJ60 — on slow 3G, a fetch with no timeout could hang indefinitely (the UI

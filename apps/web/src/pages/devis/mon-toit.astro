@@ -2406,10 +2406,10 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
   // canevas, boutons de tracé) : sans clé imagerie, ces contrôles sont morts —
   // deux champs d'adresse visibles dont un inerte, c'était de l'UI mensongère.
   function showFallback() {
+    clearMapSkeleton();
     if (fallback) fallback.hidden = false;
     const stage = $('mt-stage');
     if (stage) stage.hidden = true;
-    clearMapSkeleton();
   }
 
   // WJ60 — sur 3G lente, un fetch sans délai peut rester en attente indéfiniment
