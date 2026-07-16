@@ -1477,3 +1477,65 @@ def lead_chatter_envelope(lead):
         'created_at': a.created_at,
         'source': 'crm.leadactivity',
     } for a in rows]
+
+
+# ── ADSENG31 — Réconciliation Meta-vs-ERP : lignes de lead par mécanisme ──────
+
+def reconciliation_lead_rows(company, *, date_start=None, date_end=None):
+    """ADSENG31 — Lignes d'un lead pour la RÉCONCILIATION Meta-vs-ERP (dd-
+    attribution part b). Point d'entrée cross-app SANCTIONNÉ pour
+    ``apps.adsengine`` (le CRM est lu UNIQUEMENT via ce sélecteur, jamais un
+    import de ``apps.crm.models``).
+
+    Chaque ligne porte de quoi classer le lead par MÉCANISME DE CAPTURE (les deux
+    dénominateurs que la réconciliation ne fusionne jamais) et de quoi le
+    rapprocher d'une campagne + le dédupliquer :
+
+      * ``is_meta_form``      — formulaire Meta Lead Ads (``source=meta_lead_ads``,
+        appariable 1:1 via leadgen_id) ;
+      * ``is_site``           — lead du site (``source=site_web``) — Meta-attribué
+        seulement si son canal/utm indique Meta (l'appelant tranche) ;
+      * ``is_ctwa``           — canal WhatsApp/CTWA (auto-déclaré, JAMAIS confirmé
+        côté Meta — montré à part) ;
+      * ``is_meta_ads_canal`` — canal « Publicité Meta » ;
+      * ``phone_key``/``email_key`` — clés NORMALISÉES QW10 (réutilise
+        ``services.normalize_phone``/``normalize_email``) pour dédupliquer sans
+        recompter un payload webhook brut (dd-attribution §3.3) ;
+      * ``utm_campaign``/``meta_campaign_id`` — clés de rapprochement de campagne.
+
+    Lecture seule, scopée société ; ne compte jamais un lead archivé.
+    ``date_start``/``date_end`` (date, inclus) bornent ``date_creation`` ;
+    ``None`` = pas de borne. Renvoie une LISTE de dicts (données pures)."""
+    from . import services as crm_services
+    from .models import Lead
+
+    qs = Lead.objects.filter(company=company, is_archived=False)
+    if date_start is not None:
+        qs = qs.filter(date_creation__date__gte=date_start)
+    if date_end is not None:
+        qs = qs.filter(date_creation__date__lte=date_end)
+
+    meta_form = Lead.Source.META_LEAD_ADS
+    site_source = Lead.Source.SITE_WEB
+    ctwa_canal = Lead.Canal.WHATSAPP_CTWA
+    meta_canal = Lead.Canal.META_ADS
+
+    rows = []
+    for lead in qs.only(
+            'id', 'utm_campaign', 'utm_source', 'meta_campaign_id',
+            'source', 'canal', 'telephone', 'email', 'date_creation'):
+        rows.append({
+            'id': lead.id,
+            'utm_campaign': lead.utm_campaign or '',
+            'utm_source': (lead.utm_source or '').strip().lower(),
+            'meta_campaign_id': lead.meta_campaign_id or '',
+            'source': lead.source or '',
+            'is_meta_form': lead.source == meta_form,
+            'is_site': lead.source == site_source,
+            'is_ctwa': lead.canal == ctwa_canal,
+            'is_meta_ads_canal': lead.canal == meta_canal,
+            'phone_key': crm_services.normalize_phone(lead.telephone),
+            'email_key': crm_services.normalize_email(lead.email),
+            'date': lead.date_creation.date() if lead.date_creation else None,
+        })
+    return rows
