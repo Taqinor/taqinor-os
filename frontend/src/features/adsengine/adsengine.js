@@ -574,3 +574,51 @@ export function verdictTone(verdict) {
   }
   return { bg: '#f1f5f9', color: '#475569' }
 }
+
+// ── ENG33/ENG45 — Reporting (drill-downs) ──
+// Normalise les variantes (table de reporting) — chiffres bruts de l'API.
+export function normalizeVariants(raw) {
+  const list = Array.isArray(raw) ? raw : (raw?.results || raw?.variantes || [])
+  return (list || []).filter(Boolean).map((v, i) => ({
+    id: v.id ?? i,
+    nom: v.nom || v.name || v.designation || `Variante ${i + 1}`,
+    impressions: numOrNull(v.impressions),
+    reponses_whatsapp: numOrNull(v.reponses_whatsapp ?? v.whatsapp_replies),
+    cout_mad: numOrNull(v.cout_mad ?? v.cost_mad),
+    cout_par_reponse: numOrNull(v.cout_par_reponse ?? v.cost_per_reply),
+  }))
+}
+
+// Normalise l'entonnoir campagne : étapes ordonnées avec leur valeur.
+export function normalizeFunnel(raw) {
+  const f = raw && typeof raw === 'object' ? raw : {}
+  const etapes = (Array.isArray(f.etapes) ? f.etapes : (Array.isArray(f.steps) ? f.steps : (Array.isArray(raw) ? raw : [])))
+  return (etapes || []).filter(Boolean).map((e, i) => ({
+    key: e.key ?? String(i),
+    label: e.label || e.nom || e.key || `Étape ${i + 1}`,
+    valeur: numOrNull(e.valeur ?? e.value ?? e.count),
+  }))
+}
+
+// Normalise les cohortes (avec lag jusqu'à la signature).
+export function normalizeCohorts(raw) {
+  const list = Array.isArray(raw) ? raw : (raw?.results || raw?.cohortes || [])
+  return (list || []).filter(Boolean).map((c, i) => ({
+    id: c.id ?? i,
+    cohorte: c.cohorte || c.cohort || c.label || `Cohorte ${i + 1}`,
+    taille: numOrNull(c.taille ?? c.size),
+    lag_jours_median: numOrNull(c.lag_jours_median ?? c.median_lag_days ?? c.lag),
+    signatures: numOrNull(c.signatures),
+  }))
+}
+
+// Construit un CSV depuis des en-têtes + lignes (échappement RFC-4180 simple).
+export function toCsv(headers, rows) {
+  const esc = (v) => {
+    const s = v == null ? '' : String(v)
+    return /[",\n;]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+  }
+  const lines = [(headers || []).map(esc).join(',')]
+  for (const r of (rows || [])) lines.push((r || []).map(esc).join(','))
+  return lines.join('\n')
+}

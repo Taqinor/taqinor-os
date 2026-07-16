@@ -136,6 +136,13 @@ const adsengineApi = {
     get: (id) => api.get(`/adsengine/simulations/${id}/`),
   },
 
+  // ── ENG33/ENG45 — Reporting (drill-downs : variantes, entonnoir, cohortes) ──
+  reports: {
+    variants: (params) => api.get('/adsengine/reports/variants/', { params }),
+    funnel: (params) => api.get('/adsengine/reports/funnel/', { params }),
+    cohorts: (params) => api.get('/adsengine/reports/cohorts/', { params }),
+  },
+
   // ── ENG27/ENG41 — Backlog par campagne (CreativeGenerationBatch) ──
   backlog: {
     // File par campagne : runway, diversité de hooks, lots de recombinaisons.

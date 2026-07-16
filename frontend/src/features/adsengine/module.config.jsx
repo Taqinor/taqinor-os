@@ -6,7 +6,7 @@ import { lazy } from 'react'
 import {
   LayoutDashboard, PlugZap, Megaphone, ClipboardCheck,
   FileText, Images, History, FlaskConical, Route, Layers,
-  SlidersHorizontal, MonitorPlay,
+  SlidersHorizontal, MonitorPlay, BarChart3,
 } from 'lucide-react'
 
 /* ============================================================================
@@ -35,6 +35,7 @@ const FlightPlanScreen = lazy(() => import('./FlightPlanScreen'))
 const BacklogScreen = lazy(() => import('./BacklogScreen'))
 const RulesScreen = lazy(() => import('./RulesScreen'))
 const SimulationScreen = lazy(() => import('./SimulationScreen'))
+const ReportsScreen = lazy(() => import('./ReportsScreen'))
 
 const ROLES = ['responsable', 'admin']
 
@@ -54,6 +55,7 @@ const config = {
       { to: '/publicite/backlog', label: 'Backlog créatif', icon: <Layers size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/publicite/regles', label: 'Règles & anomalies', icon: <SlidersHorizontal size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/publicite/simulation', label: 'Simulation', icon: <MonitorPlay size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
+      { to: '/publicite/reporting', label: 'Reporting', icon: <BarChart3 size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/publicite/brief', label: 'Brief hebdomadaire', icon: <FileText size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/publicite/journal', label: "Journal d'actions", icon: <History size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/publicite/connexion', label: 'Connexion & garde-fous', icon: <PlugZap size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
@@ -70,6 +72,7 @@ const config = {
     ['/publicite/backlog', 'Publicité — Backlog créatif'],
     ['/publicite/regles', 'Publicité — Règles & anomalies'],
     ['/publicite/simulation', 'Publicité — Simulation'],
+    ['/publicite/reporting', 'Publicité — Reporting'],
     ['/publicite/brief', 'Publicité — Brief hebdomadaire'],
     ['/publicite/journal', "Publicité — Journal d'actions"],
     ['/publicite/connexion', 'Publicité — Connexion & garde-fous'],
@@ -85,6 +88,7 @@ const config = {
     { path: '/publicite/backlog', component: BacklogScreen, roles: ROLES },
     { path: '/publicite/regles', component: RulesScreen, roles: ROLES },
     { path: '/publicite/simulation', component: SimulationScreen, roles: ROLES },
+    { path: '/publicite/reporting', component: ReportsScreen, roles: ROLES },
     { path: '/publicite/brief', component: BriefScreen, roles: ROLES },
     { path: '/publicite/journal', component: ActionsLogScreen, roles: ROLES },
     { path: '/publicite/connexion', component: ConnectionScreen, roles: ROLES },

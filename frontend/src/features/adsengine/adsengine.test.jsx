@@ -40,11 +40,11 @@ describe('adsengine — module.config (auto-enregistrement ENG21)', () => {
     const { default: config } = await import('./module.config.jsx')
     expect(config.key).toBe('adsengine')
     // Écrans : dashboard, approbations, campagnes, créatifs, expérimentations,
-    // plan de vol, backlog, règles, simulation, brief, journal, connexion
-    // (+ écrans P7 ajoutés au fil des tâches ADSENG39+).
-    expect(config.routes).toHaveLength(12)
-    expect(config.nav.items).toHaveLength(12)
-    expect(config.titles).toHaveLength(12)
+    // plan de vol, backlog, règles, simulation, reporting, brief, journal,
+    // connexion (+ écrans P7 ajoutés au fil des tâches ADSENG39+).
+    expect(config.routes).toHaveLength(13)
+    expect(config.nav.items).toHaveLength(13)
+    expect(config.titles).toHaveLength(13)
 
     const routePaths = config.routes.map(r => r.path).sort()
     const navTargets = config.nav.items.map(i => i.to).sort()
