@@ -426,9 +426,8 @@ class RulePolicyViewSet(AdsengineViewSet):
         if company is None:
             return Response({'detail': 'Aucune société.'}, status=400)
         template_key = request.data.get('template') or ''
-        try:
-            tpl = rt.get_template(template_key)
-        except (ValueError, KeyError):
+        tpl = rt.get_template(template_key)
+        if tpl is None:  # get_template renvoie None (ne lève pas) pour une clé inconnue
             return Response(
                 {'detail': f"Gabarit inconnu : {template_key!r}."}, status=400)
 
@@ -938,7 +937,7 @@ class MetaConnectionStatusView(APIView):
 
     def get_permissions(self):
         _w = self.request.method in ('POST', 'PATCH', 'PUT', 'DELETE')
-        return [HasPermissionOrLegacy('adsengine_manage' if _w else 'adsengine_view')]
+        return [HasPermissionOrLegacy('adsengine_manage' if _w else 'adsengine_view')()]
 
     def get(self, request):
         company, err = _adseng_company_gate(request, 'adsengine_view')
@@ -1017,7 +1016,7 @@ class GuardrailSingletonView(APIView):
 
     def get_permissions(self):
         _w = self.request.method in ('POST', 'PATCH', 'PUT', 'DELETE')
-        return [HasPermissionOrLegacy('adsengine_manage' if _w else 'adsengine_view')]
+        return [HasPermissionOrLegacy('adsengine_manage' if _w else 'adsengine_view')()]
 
     @staticmethod
     def _payload(cfg):
