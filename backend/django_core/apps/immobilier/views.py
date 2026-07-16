@@ -5,12 +5,15 @@ Aucune permission fine dédiée (comme ``apps.flotte``) : ``IsAuthenticated``
 ajoutée plus tard sans changer la forme des endpoints.
 """
 from rest_framework import filters, viewsets
+from rest_framework.decorators import action
+from rest_framework.response import Response
 
 from core.mixins import TenantMixin
 
-from .models import Batiment, Local, Niveau, Site
+from .models import Batiment, Local, Locataire, Niveau, Site
 from .serializers import (
-    BatimentSerializer, LocalSerializer, NiveauSerializer, SiteSerializer,
+    BatimentSerializer, LocalSerializer, LocataireSerializer, NiveauSerializer,
+    SiteSerializer,
 )
 
 
@@ -78,3 +81,32 @@ class LocalViewSet(_ImmobilierBaseViewSet):
         if statut:
             qs = qs.filter(statut=statut)
         return qs
+
+
+class LocataireViewSet(_ImmobilierBaseViewSet):
+    """NTPRO2 — Locataires (personnes/sociétés), distincts du CRM."""
+    queryset = Locataire.objects.all()
+    serializer_class = LocataireSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom', 'cin', 'ice']
+    ordering_fields = ['nom', 'date_creation']
+
+    def perform_create(self, serializer):
+        from . import services
+        locataire = serializer.save(company=self.request.user.company)
+        # Best-effort : relie à un crm.Client existant sans jamais en créer un
+        # nouveau (NTPRO2). Un échec de résolution ne bloque jamais la création
+        # du locataire.
+        try:
+            services.resolve_client_ventes_for_locataire(locataire)
+        except Exception:
+            pass
+        return locataire
+
+    @action(detail=True, methods=['post'], url_path='resolve-client')
+    def resolve_client(self, request, pk=None):
+        """Relance la résolution vers un ``crm.Client`` existant (idempotent)."""
+        from . import services
+        locataire = self.get_object()
+        client_id = services.resolve_client_ventes_for_locataire(locataire)
+        return Response({'client_ventes_id': client_id})

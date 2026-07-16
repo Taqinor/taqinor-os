@@ -6,7 +6,7 @@ multi-tenant).
 """
 from rest_framework import serializers
 
-from .models import Batiment, Local, Niveau, Site
+from .models import Batiment, Local, Locataire, Niveau, Site
 
 
 class SiteSerializer(serializers.ModelSerializer):
@@ -58,3 +58,17 @@ class LocalSerializer(serializers.ModelSerializer):
             'statut_display', 'company',
         ]
         read_only_fields = ['id', 'company']
+
+
+class LocataireSerializer(serializers.ModelSerializer):
+    type_locataire_display = serializers.CharField(
+        source='get_type_locataire_display', read_only=True)
+
+    class Meta:
+        model = Locataire
+        fields = [
+            'id', 'type_locataire', 'type_locataire_display', 'nom', 'cin',
+            'ice', 'telephone', 'email', 'adresse', 'client_ventes_id',
+            'date_creation', 'company',
+        ]
+        read_only_fields = ['id', 'client_ventes_id', 'date_creation', 'company']

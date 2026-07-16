@@ -15,6 +15,10 @@ const immobilierApi = {
   batiments: crud('batiments'),
   niveaux: crud('niveaux'),
   locaux: crud('locaux'),
+  locataires: {
+    ...crud('locataires'),
+    resolveClient: (id) => api.post(`/immobilier/locataires/${id}/resolve-client/`),
+  },
 }
 
 export default immobilierApi
