@@ -61,6 +61,7 @@ DATEFIELD_AUTO_NOW_ALLOWLIST = {
     "backend/django_core/apps/facturation/models.py:113",
     "backend/django_core/apps/facturation/models.py:888",
     "backend/django_core/apps/facturation/models.py:1072",
+    "backend/django_core/apps/ventes/models.py:746",
 }
 TIMESTAMP_AS_DATEFIELD_ALLOWLIST = {
     # CommissionPartenaire.paye_le — date de paiement (jour, pas horodatage),

@@ -18,6 +18,7 @@ sont testées sans routage d'URL). Modèle + serializer JETABLES (``app_label=
 """
 from django.db import connection, models
 from django.test import TestCase
+from django.test.utils import isolate_apps
 from rest_framework import serializers
 from rest_framework.test import APIRequestFactory, force_authenticate
 
@@ -26,24 +27,36 @@ from authentication.models import Company, CustomUser
 from core.documents import DocumentMetier, document_viewset
 
 
-# ── Document + serializer JETABLES ────────────────────────────────────────────
-class DocKit(DocumentMetier):
-    class Statut(models.TextChoices):
-        BROUILLON = "brouillon", "Brouillon"
-        EMIS = "emis", "Émis"
+# ── Document + serializer JETABLES — registre d'apps ISOLÉ ────────────────────
+# Défini sous ``isolate_apps('core')`` : enregistré dans un registre TEMPORAIRE,
+# jamais dans le registre global — sinon tout autre test du même shard qui
+# supprime une ``Company`` voit le collecteur de suppression suivre la FK
+# inverse et toucher ``core_dockit``, table qui n'existe qu'entre
+# setUpClass/tearDownClass d'ici (« UndefinedTable » en CI selon le sharding).
+# La FK ``company`` est REDÉCLARÉE avec la CLASSE ``Company`` (la référence
+# paresseuse 'authentication.Company' ne se résout pas dans un registre isolé)
+# et ``related_name='+'`` (aucun accesseur inverse posé sur le vrai Company).
+with isolate_apps('core'):
+    class DocKit(DocumentMetier):
+        class Statut(models.TextChoices):
+            BROUILLON = "brouillon", "Brouillon"
+            EMIS = "emis", "Émis"
 
-    TRANSITIONS = {"brouillon": {"emis"}, "emis": set()}
+        TRANSITIONS = {"brouillon": {"emis"}, "emis": set()}
 
-    reference = models.CharField(max_length=64, blank=True, default="")
-    titre = models.CharField(max_length=120, blank=True, default="")
+        company = models.ForeignKey(
+            Company, on_delete=models.CASCADE, related_name='+',
+            verbose_name='Société')
+        reference = models.CharField(max_length=64, blank=True, default="")
+        titre = models.CharField(max_length=120, blank=True, default="")
 
-    class Meta:
-        app_label = "core"
-        constraints = [
-            models.UniqueConstraint(
-                fields=["company", "reference"],
-                name="uniq_dockit_company_reference"),
-        ]
+        class Meta:
+            app_label = "core"
+            constraints = [
+                models.UniqueConstraint(
+                    fields=["company", "reference"],
+                    name="uniq_dockit_company_reference"),
+            ]
 
 
 class _DocKitSerializer(serializers.ModelSerializer):

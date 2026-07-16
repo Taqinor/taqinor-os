@@ -9,6 +9,7 @@ manuel, la découverte le prend en charge dès qu'il hérite de la base.
 """
 from django.db import connection, models
 from django.test import SimpleTestCase, TestCase
+from django.test.utils import isolate_apps
 from rest_framework import serializers
 from rest_framework.test import APIRequestFactory, force_authenticate
 
@@ -117,13 +118,25 @@ class DefaultScopedPermissionARC55Tests(SimpleTestCase):
 #
 # Modèle + serializer + viewset JETABLES (``app_label='core'``, table créée via
 # ``schema_editor``) — même patron que test_documents_viewset.py.
-class ScopedThing(TenantModel):
-    """Modèle scopé jetable avec ``company`` NULLABLE (démo du détachement)."""
+# Défini sous ``isolate_apps('core')`` : enregistré dans un registre d'apps
+# TEMPORAIRE, jamais dans le registre global — sinon tout autre test du même
+# shard qui supprime une ``Company`` voit le collecteur de suppression suivre la
+# FK inverse et toucher ``core_scopedthing``, table qui n'existe qu'entre
+# setUpClass/tearDownClass d'ici (« UndefinedTable » en CI selon le sharding).
+# La FK ``company`` est REDÉCLARÉE avec la CLASSE ``Company`` (la référence
+# paresseuse 'authentication.Company' ne se résout pas dans un registre isolé)
+# et ``related_name='+'`` (aucun accesseur inverse posé sur le vrai Company).
+with isolate_apps('core'):
+    class ScopedThing(TenantModel):
+        """Modèle scopé jetable avec ``company`` NULLABLE (démo du détachement)."""
 
-    nom = models.CharField(max_length=120, blank=True, default="")
+        company = models.ForeignKey(
+            Company, on_delete=models.CASCADE, related_name='+',
+            verbose_name='Société')
+        nom = models.CharField(max_length=120, blank=True, default="")
 
-    class Meta:
-        app_label = "core"
+        class Meta:
+            app_label = "core"
 
 
 class _ScopedThingSerializer(serializers.ModelSerializer):

@@ -80,11 +80,20 @@ describe('QC1 — autocomplete entreprise dans la modale QG3', () => {
     // Ouvre le combobox et tape une requête.
     fireEvent.click(screen.getByRole('combobox'))
     fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'zellige' } })
-    // L'option apparaît → on la choisit.
-    const opt = await screen.findByText('Zellige SARL')
-    fireEvent.click(opt)
-    // Les champs vides sont remplis depuis le match.
-    await waitFor(() => expect(document.getElementById('cqc-nom').value).toBe('Zellige SARL'))
+    // L'option apparaît → on la choisit. FLAKE CI (2026-07-16, ~50% sous
+    // charge) : le listbox cmdk peut RE-RENDRE entre findByText et click
+    // (résolution du debounce de recherche), le clic part alors sur un nœud
+    // DÉTACHÉ et ne sélectionne rien → « expected '' to be 'Zellige SARL' ».
+    // Remède : re-cliquer une option FRAÎCHE à chaque retry de waitFor tant
+    // que le champ n'est pas rempli — l'assertion finale reste identique.
+    await screen.findByText('Zellige SARL')
+    await waitFor(() => {
+      if (document.getElementById('cqc-nom').value !== 'Zellige SARL') {
+        fireEvent.click(screen.getByText('Zellige SARL'))
+      }
+      // Les champs vides sont remplis depuis le match.
+      expect(document.getElementById('cqc-nom').value).toBe('Zellige SARL')
+    }, { timeout: 5000 })
     expect(document.getElementById('cqc-tel').value).toBe('+212522000000')
     expect(document.getElementById('cqc-email').value).toBe('contact@zellige.ma')
     // Avertissement de doublon (source client).

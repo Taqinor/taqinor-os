@@ -55,7 +55,44 @@ class LigneDevisSerializer(serializers.ModelSerializer):
         model = LigneDevis
         fields = '__all__'
 
+    def validate(self, attrs):
+        """XSAL14 — cohérence produit vs section/note.
+
+        • Ligne PRODUIT (défaut) : un produit est requis (comportement
+          historique — une LigneDevis produit référence un Produit du stock).
+        • Ligne SECTION/NOTE : intertitre/texte sans prix — on NEUTRALISE tout
+          produit/prix/quantité éventuellement fournis (jamais comptée dans les
+          totaux). Une désignation (le libellé de la section / le texte de la
+          note) reste requise."""
+        instance = getattr(self, 'instance', None)
+        type_ligne = attrs.get(
+            'type_ligne',
+            getattr(instance, 'type_ligne', LigneDevis.TypeLigne.PRODUIT))
+        if type_ligne in (LigneDevis.TypeLigne.SECTION,
+                          LigneDevis.TypeLigne.NOTE):
+            attrs['produit'] = None
+            attrs['quantite'] = None
+            attrs['prix_unitaire'] = None
+            attrs['taux_tva'] = None
+            if not (attrs.get('designation')
+                    or getattr(instance, 'designation', '')):
+                raise serializers.ValidationError({
+                    'designation': 'Un intitulé est requis pour une ligne de '
+                                   'section ou de note.'})
+        else:
+            if attrs.get('produit') is None \
+                    and getattr(instance, 'produit_id', None) is None:
+                raise serializers.ValidationError({
+                    'produit': 'Une ligne produit doit référencer un produit.'})
+        return attrs
+
     def create(self, validated_data):
+        # XSAL14 — une ligne section/note n'a pas de produit : pas de copie de
+        # taux (le champ est neutralisé par validate). On saute alors la logique
+        # de repli TVA (réservée aux lignes produit).
+        if validated_data.get('type_ligne', LigneDevis.TypeLigne.PRODUIT) \
+                != LigneDevis.TypeLigne.PRODUIT:
+            return super(LigneDevisSerializer, self).create(validated_data)
         # Réforme TVA 2024–2026 : toute NOUVELLE ligne porte son propre taux,
         # copié du produit (10 % panneaux PV, 20 % le reste) quand il n'est pas
         # fourni. Repli sur le taux STANDARD éditable de la société (défaut 20 %

@@ -21,6 +21,7 @@ from decimal import Decimal
 
 from django.db import connection, models
 from django.test import TestCase
+from django.test.utils import isolate_apps
 
 from authentication.models import Company
 from core.documents import (
@@ -30,29 +31,43 @@ from core.documents import (
 )
 
 
-# ── Document + ligne JETABLES ─────────────────────────────────────────────────
-class DocTotaux(TotauxDocumentMixin, DocumentMetier):
-    class Statut(models.TextChoices):
-        BROUILLON = "brouillon", "Brouillon"
+# ── Document + ligne JETABLES — registre d'apps ISOLÉ ─────────────────────────
+# Définis sous ``isolate_apps('core')`` : les classes s'enregistrent dans un
+# registre TEMPORAIRE, jamais dans le registre global. Sinon, tout autre test du
+# même shard qui supprime une ``Company`` voit le collecteur de suppression
+# suivre la FK inverse de ces modèles et interroger leurs tables — qui
+# n'existent qu'entre setUpClass/tearDownClass d'ici (« UndefinedTable:
+# core_doctotaux » en CI dès que le sharding réunit les deux modules).
+# La FK ``company`` est REDÉCLARÉE avec la CLASSE ``Company`` (la référence
+# paresseuse 'authentication.Company' de ``TenantModel`` ne peut pas se
+# résoudre dans un registre isolé) et ``related_name='+'`` (aucun accesseur
+# inverse posé sur le vrai ``Company``).
+with isolate_apps('core'):
+    class DocTotaux(TotauxDocumentMixin, DocumentMetier):
+        class Statut(models.TextChoices):
+            BROUILLON = "brouillon", "Brouillon"
 
-    TRANSITIONS = {"brouillon": set()}
-    LIGNES_ATTR = "lignes"
+        TRANSITIONS = {"brouillon": set()}
+        LIGNES_ATTR = "lignes"
 
-    reference = models.CharField(max_length=64, blank=True, default="")
-    # Taux du document (repli du taux de ligne), comme Devis.taux_tva.
-    taux_tva = models.DecimalField(max_digits=5, decimal_places=2, default=20)
+        company = models.ForeignKey(
+            Company, on_delete=models.CASCADE, related_name='+',
+            verbose_name='Société')
+        reference = models.CharField(max_length=64, blank=True, default="")
+        # Taux du document (repli du taux de ligne), comme Devis.taux_tva.
+        taux_tva = models.DecimalField(
+            max_digits=5, decimal_places=2, default=20)
 
-    class Meta:
-        app_label = "core"
+        class Meta:
+            app_label = "core"
 
+    class LigneTotaux(LigneDocumentMetier):
+        PARENT_FIELD = "document"
+        document = models.ForeignKey(
+            DocTotaux, on_delete=models.CASCADE, related_name="lignes")
 
-class LigneTotaux(LigneDocumentMetier):
-    PARENT_FIELD = "document"
-    document = models.ForeignKey(
-        DocTotaux, on_delete=models.CASCADE, related_name="lignes")
-
-    class Meta:
-        app_label = "core"
+        class Meta:
+            app_label = "core"
 
 
 class _KitTablesMixin:

@@ -292,6 +292,10 @@ ROI_A        = QUOTE_INPUT["roi_a"]
 INST_TYPE    = QUOTE_INPUT["inst_type"]
 SANS_ITEMS   = _Q["sans_items"]
 AVEC_ITEMS   = _Q["avec_items"]
+# XSAL14/XSAL5 \u2014 lignes de structure (sections/notes) + options propos\u00e9es.
+# D\u00e9faut vide \u2192 un devis sans structure/option est rendu strictement comme avant.
+LIGNES_STRUCTURE = []
+OPTIONS_PROPOSEES = []
 
 MONTHS  = ["Jan","F\u00e9v","Mar","Avr","Mai","Jun",
            "Jul","Ao\u00fb","Sep","Oct","Nov","D\u00e9c"]
@@ -2112,7 +2116,14 @@ def page_onepage(items):
     #   9–12 lignes → descriptions courtes (2 lignes) + garantie
     #   > 12 lignes → table compacte (désignation + marque seulement)
     visible = [it for it in items if float(it.get("quantite", 0)) > 0]
-    n_items = len(visible)
+    # XSAL14 — intercale les lignes de section/note (rendu seul, hors totaux)
+    # dans la liste, ordonnées par ``ordre`` (stable) puis par l'ordre d'origine.
+    # Absentes → séquence STRICTEMENT identique à avant (byte-identique).
+    _seq = [("item", it, it.get("ordre", 0) or 0) for it in visible]
+    for _s in (LIGNES_STRUCTURE or []):
+        _seq.append(("struct", _s, _s.get("ordre", 0) or 0))
+    _seq.sort(key=lambda t: t[2])  # tri STABLE : conserve l'ordre d'origine
+    n_items = len(visible) + len(LIGNES_STRUCTURE or [])
     if n_items <= 8:
         max_desc, desc_pt, pad_px, show_gar = 4, 6.5, 6, True
     elif n_items <= 12:
@@ -2122,7 +2133,23 @@ def page_onepage(items):
 
     rows_html = ""
     row_idx = 0
-    for it in visible:
+    for _kind, _obj, _ in _seq:
+        if _kind == "struct":
+            # XSAL14 — ligne de SECTION (intertitre) ou de NOTE (texte), sur
+            # toute la largeur, sans prix (jamais comptée dans les totaux).
+            _txt = _obj.get("texte", "") or ""
+            if _obj.get("type") == "note":
+                rows_html += (
+                    f'<tr><td colspan="6" style="padding:{pad_px}px 10px;'
+                    f'font-style:italic;font-size:7.5pt;color:{CG4};">{_txt}</td></tr>')
+            else:
+                rows_html += (
+                    f'<tr><td colspan="6" style="padding:{pad_px + 1}px 10px;'
+                    f'background:{CG1};font-weight:800;font-size:8pt;color:{CN};'
+                    f'text-transform:uppercase;letter-spacing:.6px;'
+                    f'border-top:1px solid {CA};">{_txt}</td></tr>')
+            continue
+        it = _obj
         qty = float(it.get("quantite", 0))
         bg = "white" if row_idx % 2 == 0 else CG1
         pu_ht = _item_pu_ht(it)
@@ -2185,6 +2212,36 @@ def page_onepage(items):
         totals_html += _tot_line(f"TVA ({_tva_pct}&#8201;%)", _fmt2(tva_amt) + "&nbsp;MAD")
     totals_html += _tot_line("Total TTC", fmt(total), navy=True)
 
+    # ── XSAL5 — Bloc « Options proposées » (opt-in, HORS total) ──────────────
+    # Rendu SEUL : n'affiche que les add-ons proposés (P.U. + total TTC), jamais
+    # ajoutés au total ci-dessus. Absent → byte-identique (aucun bloc).
+    options_html = ""
+    if OPTIONS_PROPOSEES:
+        _opt_rows = ""
+        for _o in OPTIONS_PROPOSEES:
+            _oq = float(_o.get("quantite", 0) or 0)
+            _ottc = float(_o.get("prix_unit_ttc", 0) or 0) * _oq
+            _oq_s = str(int(_oq)) if _oq == int(_oq) else fnum(_oq)
+            _obadge = badge(_o.get("marque", "")) if _o.get("marque") else ""
+            _opt_rows += (
+                f'<tr>'
+                f'<td style="padding:4px 10px;color:{CN};font-weight:600;">'
+                f'{_o.get("designation", "")} {_obadge}</td>'
+                f'<td style="padding:4px 10px;text-align:center;color:{CG7};">{_oq_s}</td>'
+                f'<td style="padding:4px 10px;text-align:right;color:{CN};font-weight:600;">'
+                f'{fmt(round(_ottc))}</td>'
+                f'</tr>')
+        options_html = (
+            f'<div style="padding:8px 24px 0;">'
+            f'<div style="font-size:7pt;font-weight:800;color:{CA};'
+            f'text-transform:uppercase;letter-spacing:.8px;margin-bottom:3px;">'
+            f'Options propos&#233;es (non incluses dans le total)</div>'
+            f'<table style="width:100%;border-collapse:collapse;font-size:8pt;'
+            f'border:1px dashed {CA};">{_opt_rows}</table>'
+            f'<div style="font-size:6.5pt;color:{CG4};font-style:italic;'
+            f'margin-top:2px;">Activez une option avant signature pour l&#8217;'
+            f'inclure &#224; votre devis.</div></div>')
+
     return f"""
 <div class="page" style="position:relative;display:block;">
 
@@ -2244,6 +2301,9 @@ def page_onepage(items):
   <div style="background:{CAL};border-top:2px solid {CA};padding:10px 14px;margin:12px 24px 0;text-align:right;">
     {totals_html}
   </div>
+
+  <!-- XSAL5 — Options proposées (opt-in, hors total ; absent = byte-identique) -->
+  {options_html}
 
   <!-- QJ30 — ×N propriétés identiques (ligne compacte ; une page préservée) -->
   <div style="padding:6px 24px 0;">{_multi_proprietes_line_html()}</div>
@@ -2437,6 +2497,16 @@ def _render_premium_pdf(data: dict, out_path) -> str:
     PAY_M = int(_terms.get("materiel", 60))
     PAY_S = int(_terms.get("solde", 10))
     ONEPAGE_NOTE_BATTERIE = bool(data.get("onepage_note_batterie", False))
+    # XSAL14/XSAL5 — structure (sections/notes) + options proposées (rendu seul,
+    # hors totaux). Absents → byte-identique. Escapés à l'ingestion (ERR37).
+    global LIGNES_STRUCTURE, OPTIONS_PROPOSEES
+    LIGNES_STRUCTURE = [
+        {"type": str(s.get("type") or "section"),
+         "ordre": s.get("ordre") or 0,
+         "texte": _esc(str(s.get("texte") or ""))}
+        for s in (data.get("lignes_structure") or [])
+        if isinstance(s, dict)]
+    OPTIONS_PROPOSEES = _esc_items(data.get("options_proposees") or [])
     SANS_BULLETS = data.get("sans_bullets") or []
     AVEC_BULLETS = data.get("avec_bullets") or []
     # D2/N60/N67/N59 — textes éditables du devis : fusion défaut + surcharges

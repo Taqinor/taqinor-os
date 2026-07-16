@@ -172,6 +172,9 @@ def _line_to_item(ligne, taux_tva: Decimal) -> dict:
         "prix_unit_ht": float(round(pu_ht, 2)),
         "prix_unit_ttc": float(round(pu_ttc, 2)),
         "taux_tva": float(ligne_taux),
+        # XSAL14 — position d'affichage (0 par défaut) : sert à intercaler les
+        # intertitres de section/notes au bon endroit dans la liste une-page.
+        "ordre": getattr(ligne, "ordre", 0) or 0,
         "_produit_nom": produit_nom,
     }
 
@@ -393,6 +396,26 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     client = devis.client
     taux_tva = devis.taux_tva or Decimal(20)
     lignes = list(devis.lignes.select_related("produit").all())
+
+    # ── XSAL14 — Lignes de section/note : rendues HORS totaux, à part ─────────
+    # Une ligne de section (intertitre) ou de note (texte sans prix) ne porte NI
+    # produit NI prix : on la retire de ``lignes`` (elle ne peut pas devenir un
+    # ``item`` — pas de prix) et on la surface ordonnée dans ``lignes_structure``.
+    structure_lignes = [
+        li for li in lignes
+        if getattr(li, "type_ligne", "produit") != "produit"]
+    lignes = [
+        li for li in lignes
+        if getattr(li, "type_ligne", "produit") == "produit"]
+
+    # ── XSAL5 — Lignes optionnelles : rendues HORS totaux ────────────────────
+    # Une ligne ``optionnelle`` (add-on non activé) n'entre NI dans le découpage
+    # d'options NI dans les totaux : on la retire de ``lignes`` (donc de
+    # ``items``) et on la surface à part dans ``options_proposees`` (bloc opt-in
+    # client, jamais de prix d'achat/marge). Une ligne activée (optionnelle=False)
+    # est déjà une ligne normale → chemin inchangé. Zéro option ⇒ octet-identique.
+    option_lignes = [li for li in lignes if getattr(li, "optionnelle", False)]
+    lignes = [li for li in lignes if not getattr(li, "optionnelle", False)]
 
     items = [_line_to_item(li, taux_tva) for li in lignes]
     # Mode « réforme » dès qu'une ligne porte son propre taux ; un devis
@@ -1296,6 +1319,51 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     except Exception:  # noqa: BLE001 — un PDF/une liste ne casse jamais ici
         logger.exception("QJ29 multi-propriétés: ignoré (devis %s)",
                          getattr(devis, "reference", "?"))
+
+    # ── XSAL5 — Bloc « Options proposées » (opt-in, HORS totaux) ─────────────
+    # Rendu SEUL, additif : la clé n'est posée QUE lorsqu'il existe au moins une
+    # ligne optionnelle → un devis sans option reste octet-identique. Chaque
+    # entrée est client-facing (P.U. HT/TTC, total), JAMAIS de prix d'achat/marge
+    # (``_line_to_item`` ne les porte pas). Le client active une option via le
+    # service ``activate_optional_line`` (self-service proposition) : la ligne
+    # devient alors normale et entre dans les totaux/documents avals.
+    if option_lignes:
+        _opts = []
+        for li in option_lignes:
+            it = _line_to_item(li, taux_tva)
+            it.pop("_produit_nom", None)
+            qte = float(li.quantite or 0)
+            _opts.append({
+                "id": li.id,
+                "designation": it["designation"],
+                "marque": it["marque"] or _parse_marque(it["designation"]),
+                "quantite": qte,
+                "taux_tva": it["taux_tva"],
+                "prix_unit_ht": it["prix_unit_ht"],
+                "prix_unit_ttc": it["prix_unit_ttc"],
+                "total_ht": round(it["prix_unit_ht"] * qte, 2),
+                "total_ttc": round(it["prix_unit_ttc"] * qte, 2),
+            })
+        data["options_proposees"] = _opts
+
+    # ── XSAL14 — Lignes de structure (sections/notes) ────────────────────────
+    # Additif : la clé n'est posée QUE lorsqu'il existe au moins une ligne de
+    # section/note → un devis sans structure reste octet-identique. Ordonnées par
+    # ``ordre`` puis ``id`` (comme le queryset). Rendues comme intertitres/notes
+    # sur l'écran ET le PDF premium ; jamais de prix (elles n'en portent pas).
+    if structure_lignes:
+        _struct = sorted(
+            structure_lignes,
+            key=lambda li: (getattr(li, "ordre", 0) or 0, li.id))
+        data["lignes_structure"] = [
+            {
+                "id": li.id,
+                "type": getattr(li, "type_ligne", "section"),
+                "ordre": getattr(li, "ordre", 0) or 0,
+                "texte": li.designation,
+            }
+            for li in _struct
+        ]
 
     return data
 

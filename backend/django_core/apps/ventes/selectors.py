@@ -294,6 +294,20 @@ TAUX_TVA_REFERENTIEL = {
 }
 
 
+def ligne_compte_dans_totaux(li):
+    """XSAL5/XSAL14 — une ligne entre-t-elle dans les totaux d'un devis ?
+
+    Est comptée UNIQUEMENT une ligne PRODUIT non optionnelle. Sont exclues des
+    totaux (HT/TVA/TTC) : les lignes optionnelles non activées (XSAL5) et les
+    lignes de section/note sans prix (XSAL14). Robuste par ``getattr`` : une
+    ligne d'un autre modèle (LigneFacture/LigneAvoir, dépourvue de ces
+    attributs) est TOUJOURS comptée → factures/avoirs strictement inchangés.
+    """
+    if getattr(li, 'optionnelle', False):
+        return False
+    return getattr(li, 'type_ligne', 'produit') == 'produit'
+
+
 def tva_buckets(lignes, *, fallback_taux, frozen=None):
     """Ventilation TVA canonique (DC23). UNE seule implémentation partagée.
 
@@ -314,7 +328,8 @@ def tva_buckets(lignes, *, fallback_taux, frozen=None):
         taux, base_ht, montant = frozen
         return [{'taux': taux, 'base_ht': base_ht, 'montant': montant}]
 
-    lignes = list(lignes)
+    # XSAL5/XSAL14 — exclut les lignes optionnelles non activées et section/note.
+    lignes = [li for li in lignes if ligne_compte_dans_totaux(li)]
     buckets = {}
     for ligne in lignes:
         rate = Decimal(str(ligne.taux_tva_effectif))
@@ -353,7 +368,8 @@ def _canonical_totaux(lignes, *, remise_globale_pct, fallback_taux):
     panier de taux (comme le builder), réconcilié au centime.
     """
     from decimal import Decimal as D, ROUND_HALF_UP as RH
-    lignes = list(lignes)
+    # XSAL5/XSAL14 — exclut les lignes optionnelles non activées et section/note.
+    lignes = [li for li in lignes if ligne_compte_dans_totaux(li)]
     disc = D(str(remise_globale_pct or 0))
 
     def q(x):

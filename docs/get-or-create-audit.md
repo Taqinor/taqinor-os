@@ -192,8 +192,8 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/stock/services.py:5090` | get_or_create | PrixFournisseur.objects | fournisseur, produit |
 | `backend/django_core/apps/stock/services.py:5103` | update_or_create | PalierPrixFournisseur.objects | prix_fournisseur, qte_min |
 | `backend/django_core/apps/stock/views/marque.py:57` | get_or_create | Marque.objects | company, nom |
-| `backend/django_core/apps/ventes/services.py:2374` | get_or_create | Produit.objects | company, nom |
-| `backend/django_core/apps/ventes/services.py:3708` | get_or_create | Produit.objects | company, sku |
+| `backend/django_core/apps/ventes/services.py:2436` | get_or_create | Produit.objects | company, nom |
+| `backend/django_core/apps/ventes/services.py:3770` | get_or_create | Produit.objects | company, sku |
 | `backend/django_core/apps/ventes/views/liste_prix.py:72` | update_or_create | LignePrixListe.objects | liste, produit_id |
 | `backend/django_core/apps/ventes/views/remise_encaissement.py:81` | get_or_create | LigneRemiseEncaissement.objects | paiement, remise |
 | `backend/django_core/apps/voip/services.py:26` | get_or_create | VoipParametres.objects | company |
