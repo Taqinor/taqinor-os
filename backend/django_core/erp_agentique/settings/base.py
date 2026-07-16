@@ -746,6 +746,9 @@ CELERY_TASK_ROUTES = {
     'adsengine.sync_insights_daily': {'queue': 'scheduled'},
     # ENG11 — brief hebdomadaire déterministe.
     'adsengine.generate_weekly_brief': {'queue': 'scheduled'},
+    # ADSENG15 — boucles du Gardien (critique 6 h + optimisation quotidienne).
+    'adsengine.evaluate_guardrails': {'queue': 'scheduled'},
+    'adsengine.evaluate_optimization_rules': {'queue': 'scheduled'},
     # NTPLT27 — 4e queue `bulk` pour le travail de masse (imports dataimport,
     # exports planifiés volumineux, backfills, seed à l'échelle). Un import de
     # 100 000 lignes ne doit plus retarder un digest planifié ni un rendu PDF

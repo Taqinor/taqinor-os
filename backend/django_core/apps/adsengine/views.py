@@ -99,6 +99,10 @@ class WiringHealthView(APIView):
                      .values_list('updated_at', flat=True)
                      .first())
 
+        # ADSENG17 — santé du Gardien : heartbeat de l'évaluateur de règles
+        # (le watchdog détecte un beat/worker Celery arrêté). Aucun secret.
+        from .watchdog import health as guardian_health
+
         return Response({
             'keys': keys,
             'connection': connection,
@@ -108,6 +112,7 @@ class WiringHealthView(APIView):
             # disponibles : rapportés None honnêtement, jamais fabriqués.
             'last_lead_ads_webhook': None,
             'last_capi_event': None,
+            'guardian': guardian_health(company),
         })
 
 
@@ -299,6 +304,48 @@ class RulePolicyViewSet(AdsengineViewSet):
         if serializer.instance.created_by_id is None:
             serializer.instance.created_by = self.request.user
             serializer.instance.save(update_fields=['created_by'])
+
+    # ADSENG14 — catalogue FIXE (lecture) : le front rend la liste des templates
+    # (style STAGES.py) sans que le fondateur puisse en inventer un (pas de
+    # builder libre). GET → permission de LECTURE (adsengine_view) héritée.
+    @action(detail=False, methods=['get'])
+    def catalogue(self, request):
+        """Liste des templates du catalogue fixe (clé, libellé, sévérité,
+        cadence, action par défaut, params éditables + défauts). Aucune donnée
+        société — c'est de la métadonnée statique."""
+        from . import rule_templates as rt
+        items = [
+            {
+                'template_key': key,
+                'label_fr': tpl['label_fr'],
+                'severity': tpl['severity'],
+                'cadence': tpl['cadence'],
+                'scope': tpl['scope'],
+                'actionable': rt.is_actionable(key),
+                'action_kind': rt.action_kind(key),
+                'editable_params': tpl['editable_params'],
+                'default_params': tpl['default_params'],
+            }
+            for key, tpl in rt.RULE_TEMPLATES.items()
+        ]
+        return Response({'templates': items})
+
+    # ADSENG14 — seed du catalogue fixe pour la société (idempotent). Chaque
+    # règle naît OFF + dry-run (défaut sûr). POST → permission d'ÉCRITURE
+    # (adsengine_manage) héritée du mapping méthode→permission.
+    @action(detail=False, methods=['post'])
+    def seed(self, request):
+        """Seed idempotent des ``RulePolicy`` du catalogue pour la société de
+        l'appelant — jamais un doublon (get_or_create sur (company, template)).
+        Renvoie le nombre créé + le total présent."""
+        from . import rule_templates as rt
+        company = getattr(request.user, 'company', None)
+        if company is None:
+            return Response({'detail': 'Aucune société.'}, status=400)
+        created = rt.seed_default_policies(company, created_by=request.user)
+        total = RulePolicy.objects.filter(company=company).count()
+        return Response(
+            {'created': len(created), 'total': total}, status=200)
 
 
 class AnomalyEventViewSet(AdsengineViewSet):

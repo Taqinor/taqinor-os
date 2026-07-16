@@ -406,6 +406,19 @@ app.conf.beat_schedule = {
         'task': 'adsengine.generate_weekly_brief',
         'schedule': crontab(hour=6, minute=50, day_of_week=1),
     },
+    # ADSENG15 — boucle CRITIQUE du Gardien (toutes les 6 h) : garde-fous
+    # sécurité (zéro-diffusion, ad refusée, pic/chute de dépense). JAMAIS
+    # sub-horaire (rate limits Meta scalés au spend, dd-guardian §A9).
+    'adsengine-evaluate-guardrails': {
+        'task': 'adsengine.evaluate_guardrails',
+        'schedule': crontab(minute=15, hour='*/6'),
+    },
+    # ADSENG15 — boucle d'OPTIMISATION du Gardien (quotidienne, après la synchro
+    # ENG6 de 06:45) : fatigue créative, bande CPL, backlog bas.
+    'adsengine-evaluate-optimization-rules': {
+        'task': 'adsengine.evaluate_optimization_rules',
+        'schedule': crontab(hour=6, minute=55),
+    },
 }
 
 # YHARD6 — compteurs Celery succès/échec (process-local, best-effort) pour
