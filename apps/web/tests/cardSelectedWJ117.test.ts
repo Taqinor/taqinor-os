@@ -44,8 +44,11 @@ describe('WJ117 — règle CSS .cine-card[aria-pressed="true"] dans global.css',
 
   it('global.css ne contient AUCUN bloc @layer — la règle est donc non-layered et bat les utilitaires Tailwind v4 (le point du fix)', () => {
     // Tout le fichier est hors layer ; si quelqu'un enveloppe un jour ces
-    // règles dans @layer, l'état sélectionné redevient invisible.
-    expect(css).not.toContain('@layer');
+    // règles dans @layer, l'état sélectionné redevient invisible. On retire
+    // les commentaires d'abord (le mot @layer apparaît dans le commentaire
+    // explicatif de la règle WJ117 elle-même).
+    const sansCommentaires = css.replace(/\/\*[\s\S]*?\*\//g, '');
+    expect(sansCommentaires).not.toContain('@layer');
   });
 
   it('bordure brass : border-color brass-400 + ring inset 1px = 2px visibles sans décalage de layout', () => {
