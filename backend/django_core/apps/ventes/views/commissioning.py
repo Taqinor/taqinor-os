@@ -6,10 +6,10 @@ DÉRIVÉS côté serveur des essais/mesures (jamais lus du corps). Multi-tenancy
 société de l'utilisateur). Querysets scopés. Aucun prix ; ne change aucun statut
 de devis (RULE #4).
 """
-from rest_framework import viewsets
 from rest_framework.exceptions import ValidationError
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.viewsets import CompanyScopedModelViewSet  # ARC5
 from ..models import (
     CommissioningTest, IVCurveCapture, AsBuiltPack, AttestationConformite,
     TestPerformanceReception, AttestationRE)
@@ -40,8 +40,14 @@ def _refresh_recette_result(recette):
     recette.save(update_fields=['resultat', 'updated_at'])
 
 
-class CommissioningTestViewSet(viewsets.ModelViewSet):
-    """FG274 — CRUD fiche de recette ; résultat dérivé serveur."""
+class CommissioningTestViewSet(CompanyScopedModelViewSet):
+    """FG274 — CRUD fiche de recette ; résultat dérivé serveur.
+
+    ARC5 — sweep TenantMixin : base transverse unique (idem pour les 6 viewsets
+    de ce module). get_queryset / perform_create / perform_update /
+    get_permissions SURCHARGENT la base (scoping direct sur `company`) : scoping
+    et matrice 401/403/404 INCHANGÉS (règle #4 : aucun prix, aucun statut de
+    devis touché)."""
 
     queryset = CommissioningTest.objects.select_related(
         'chantier', 'devis', 'created_by').prefetch_related(
@@ -109,7 +115,7 @@ class CommissioningTestViewSet(viewsets.ModelViewSet):
         _refresh_recette_result(instance)
 
 
-class IVCurveCaptureViewSet(viewsets.ModelViewSet):
+class IVCurveCaptureViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-dessus)
     """FG275 — CRUD courbes I-V ; écart & défaut dérivés serveur."""
 
     queryset = IVCurveCapture.objects.select_related('recette').all()
@@ -197,7 +203,7 @@ def _resolve_company_from_links(user, *objects):
     raise ValidationError({'company': 'Aucune société : opération impossible.'})
 
 
-class AsBuiltPackViewSet(viewsets.ModelViewSet):
+class AsBuiltPackViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-dessus)
     """FG276 — CRUD pack documentaire as-built ; ``company`` forcée serveur."""
 
     queryset = AsBuiltPack.objects.select_related(
@@ -239,7 +245,7 @@ class AsBuiltPackViewSet(viewsets.ModelViewSet):
         serializer.save(company=company)
 
 
-class AttestationConformiteViewSet(viewsets.ModelViewSet):
+class AttestationConformiteViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-dessus)
     """FG277 — CRUD attestation de conformité électrique."""
 
     queryset = AttestationConformite.objects.select_related(
@@ -283,7 +289,7 @@ class AttestationConformiteViewSet(viewsets.ModelViewSet):
         serializer.save(company=company)
 
 
-class TestPerformanceReceptionViewSet(viewsets.ModelViewSet):
+class TestPerformanceReceptionViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-dessus)
     """FG278 — CRUD test PR de réception ; pr/ecart/verdict dérivés serveur."""
 
     queryset = TestPerformanceReception.objects.select_related(
@@ -345,7 +351,7 @@ class TestPerformanceReceptionViewSet(viewsets.ModelViewSet):
                         ecart_pct=ecart, verdict=verdict)
 
 
-class AttestationREViewSet(viewsets.ModelViewSet):
+class AttestationREViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-dessus)
     """FG287 — CRUD attestation d'énergie renouvelable ; CO₂ dérivé serveur."""
 
     queryset = AttestationRE.objects.select_related(

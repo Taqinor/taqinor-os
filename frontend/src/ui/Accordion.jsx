@@ -20,7 +20,7 @@ export const AccordionTrigger = forwardRef(function AccordionTrigger({ className
         className={cn(
           'flex flex-1 items-center justify-between gap-2 py-3 text-left text-sm font-medium',
           'transition-colors hover:text-foreground',
-          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+          'focus-ring',
           '[&[data-state=open]>svg]:rotate-180',
           className,
         )}
@@ -37,7 +37,9 @@ export const AccordionContent = forwardRef(function AccordionContent({ className
   return (
     <AccordionPrimitive.Content
       ref={ref}
-      className="overflow-hidden text-sm text-muted-foreground"
+      // VX133 — la hauteur anime réellement (variable CSS exposée par Radix)
+      // au lieu de rester figée à `overflow-hidden` sans mouvement.
+      className="overflow-hidden text-sm text-muted-foreground data-[state=open]:animate-accordion-down data-[state=closed]:animate-accordion-up"
       {...props}
     >
       <div className={cn('pb-3 pt-0', className)}>{children}</div>

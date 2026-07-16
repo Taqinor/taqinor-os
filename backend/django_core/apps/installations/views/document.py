@@ -8,11 +8,10 @@
     serveur.
 
 Toutes les vues sont multi-tenant via ``TenantMixin``."""
-from rest_framework import viewsets
 from rest_framework.exceptions import ValidationError
 
-from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.viewsets import CompanyScopedModelViewSet
 
 from ..models import DocumentProjet, RevisionDocument
 from ..serializers import DocumentProjetSerializer, RevisionDocumentSerializer
@@ -36,7 +35,7 @@ def _check_document_tenant(serializer, company):
         raise ValidationError({'document': 'Document inconnu.'})
 
 
-class DocumentProjetViewSet(TenantMixin, viewsets.ModelViewSet):
+class DocumentProjetViewSet(CompanyScopedModelViewSet):
     """FG297 — registre des documents techniques d'un chantier. Lecture tout
     rôle, écriture responsable/admin. Filtrable par ``installation`` et
     ``type_doc``. Société posée côté serveur, jamais lue du corps."""
@@ -68,7 +67,7 @@ class DocumentProjetViewSet(TenantMixin, viewsets.ModelViewSet):
         serializer.save(company=self.request.user.company)
 
 
-class RevisionDocumentViewSet(TenantMixin, viewsets.ModelViewSet):
+class RevisionDocumentViewSet(CompanyScopedModelViewSet):
     """FG297 — révisions d'un document de projet (indice, date, auteur,
     fichier). Lecture tout rôle, écriture responsable/admin. Filtrable par
     ``document``. Auteur + société posés côté serveur, jamais lus du corps."""

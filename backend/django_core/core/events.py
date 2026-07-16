@@ -129,9 +129,15 @@ importe ``apps.audit``.
       externe) ;
     * ``company`` — la société (posée côté serveur).
 
-    Aucun abonné obligatoire dans ce lot (pose du seam) — destiné à
-    découpler la facturation récurrente (CONTRAT31/FG40), une notification
-    client, un dépôt GED (CONTRAT-*), ou une vérification d'entitlement SAV.
+    Abonnés dans ce repo (ARC35) : ``contrats`` lui-même
+    (``apps/contrats/receivers.py`` — note chatter ARC8 via
+    ``records.services.log_note`` + dépôt GED du contrat signé via
+    ``deposer_contrat_signe_en_ged``, sur le patron émetteur=abonné de
+    ``qhse.receivers``) et ``notifications``
+    (``apps/notifications/signals.py`` — notifie l'utilisateur signataire,
+    repli managers, ``EventType.CONTRAT_SIGNE``). Reste ouvert à un futur
+    abonné pour la facturation récurrente (CONTRAT31/FG40) ou une
+    vérification d'entitlement SAV.
 
 ``contrat_actif``
     Émis EXACTEMENT une fois quand un ``contrats.Contrat`` bascule vers
@@ -142,6 +148,10 @@ importe ``apps.audit``.
     n'est jamais modifié par ce module lui-même (préservation des statuts,
     CONTRAT12) : le bus ne fait qu'observer la bascule déjà actée par la
     machine d'états gardée.
+
+    Abonné dans ce repo (ARC35) : ``contrats`` lui-même
+    (``apps/contrats/receivers.py`` — note chatter ARC8 ; pas de second dépôt
+    GED, déjà couvert par ``contrat_signe`` juste avant dans le même appel).
 
 ``contrat_resilie``
     Émis à la FIN de ``contrats.services.resilier_contrat`` (CONTRAT25) —
@@ -171,13 +181,21 @@ importe ``apps.audit``.
     (``record_payment_from_link``) ou un passage manuel « marquer payée ».
     Émis par ``apps/ventes/views/facture.py`` et ``apps/ventes/services.py``
     UNIQUEMENT au moment où le résiduel atteint zéro (un paiement partiel
-    n'émet rien) ; jamais posé deux fois pour le même règlement. Contrat :
-    émetteur ``ventes``, abonnés futurs ``compta`` (XACC1 transfert TVA à
-    l'encaissement) / ``notifications``. Arguments du signal :
+    n'émet rien) ; jamais posé deux fois pour le même règlement. Arguments du
+    signal :
 
     * ``facture`` — l'instance ``ventes.Facture`` désormais soldée ;
     * ``montant`` — montant du DERNIER paiement qui a soldé la facture ;
     * ``company`` — la société (posée côté serveur).
+
+    **DÉPRÉCIÉ POUR L'ABONNEMENT (ARC36).** ``facture_payee`` (YEVNT6,
+    ci-dessous) porte le MÊME fait métier, émis aux MÊMES sites au même
+    résiduel→0 — deux signaux pour un seul fait = dérive garantie. Les
+    abonnés consomment ``facture_payee`` (contrat ``instance, company``) ;
+    ne JAMAIS s'abonner aussi à ``facture_paid`` (réaction double au même
+    règlement). ``facture_paid`` reste ÉMIS tel quel (compat émetteur — il
+    porte ``montant``, absent du frère) et catalogué en seam
+    ``ALLOWED_UNCONSUMED`` ; à retirer quand plus aucun site ne l'émettra.
 
 ``paiement_rejete``
     Émis quand un ``ventes.Paiement`` encaissé est REJETÉ (chèque revenu
@@ -203,11 +221,21 @@ importe ``apps.audit``.
     ``facture_annulee`` ; ``convertir_en_bc`` pour ``bon_commande_cree`` ;
     ``facture_payee`` accompagne ``facture_paid`` — YDOCF4 — au même
     résiduel→0). Préserve STRICTEMENT les statuts document (règle #4) :
-    l'émission n'en change AUCUN. Aucun abonné obligatoire dans ce lot (pose
-    du seam pour ``compta``/``notifications``/audit/KPI). Arguments communs :
+    l'émission n'en change AUCUN. Arguments communs :
 
     * ``instance`` — l'objet ``Facture`` ou ``BonCommande`` concerné ;
     * ``company`` — la société (posée côté serveur).
+
+    Abonnés dans ce repo (ARC36) : ``facture_payee`` → ``compta``
+    (``apps/compta/receivers.py``, lettrage du solde — idempotent avec le
+    chemin YLEDG6 sur ``paiement_enregistre``) + ``notifications``
+    (``apps/notifications/signals.py``, notifie le vendeur) ;
+    ``bon_commande_cree`` → ``notifications`` (magasinier/managers via
+    ``resolve_recipients``, routable par ``NotificationRoutingRule``).
+    ``facture_emise``/``facture_annulee`` avaient déjà leur abonné compta
+    (YLEDG1/YLEDG4). C'est ``facture_payee`` — PAS ``facture_paid`` — qui
+    est le signal à consommer pour « facture soldée » (cf. dépréciation
+    ci-dessus).
 
 ``paiement_enregistre`` / ``avoir_cree``
     Complètent ``facture_emise`` côté YLEDG1 : événements documentaires pour
@@ -263,6 +291,125 @@ importe ``apps.audit``.
       du ``dossier_cible`` (ex. ``{"annee": 2026}``) ;
     * ``uploaded_by`` — utilisateur à l'origine du fichier (peut être
       ``None``).
+
+``chantier_receptionne``
+    Émis quand une ``installations.Installation`` atteint le statut canonique
+    RECEPTIONNE (YSERV4) — aux DEUX sites où ce jalon peut être atteint :
+    ``InstallationViewSet.perform_update`` et l'action ``mise-en-service``
+    (celle-ci se rabat sur RECEPTIONNE, même patron que ``_apply_reception_
+    handover``). Émis SYNCHRONE, best-effort, uniquement sur le FRANCHISSEMENT
+    (``ancien_statut`` canonique différent de RECEPTIONNE) — un re-passage ne
+    réémet rien. Ne change AUCUN statut (l'émission suit la bascule déjà
+    actée). Abonné dans ce repo : ``compta`` (``apps/compta/receivers.py``) —
+    crée idempotemment une ``EnqueteNPS`` pour le client du chantier (une
+    enquête par chantier, jamais de doublon même en cas de ré-émission) et
+    appelle ``envoyer_enquete_nps`` (no-op sans clé Brevo, comportement FG238
+    inchangé). ``installations`` n'importe jamais ``apps.compta`` — même
+    patron que ``devis_accepted`` → ``crm``. Arguments du signal :
+
+    * ``installation`` — l'instance ``installations.Installation`` désormais
+      RECEPTIONNE ;
+    * ``user`` — l'utilisateur qui a déclenché la transition (peut être
+      ``None``) ;
+    * ``ancien_statut`` — le statut BRUT (non canonicalisé) avant la
+      transition.
+
+``ticket_resolu``
+    Émis quand un ``sav.Ticket`` bascule vers RESOLU (ARC37) — aux DEUX sites
+    où cette bascule peut être atteinte : l'action gardée ``resoudre``
+    (``apps/sav/views.py``, via ``sav.services.emettre_ticket_resolu``) et
+    l'avancement automatique sur intervention terminée
+    (``apps/sav/receivers.py``, YSERV2). Émis SYNCHRONE, best-effort,
+    uniquement sur le FRANCHISSEMENT (un ticket déjà RESOLU/CLOTURE ne réémet
+    rien — même garde que les autres transitions SAV). Ne change AUCUN statut
+    lui-même (l'émission suit la bascule déjà actée). Arguments du signal :
+
+    * ``ticket`` — l'instance ``sav.Ticket`` désormais RESOLU ;
+    * ``company`` — la société (posée côté serveur) ;
+    * ``user`` — l'utilisateur qui a déclenché la transition (peut être
+      ``None`` pour une résolution automatique) ;
+    * ``ancien_statut`` — le statut avant la transition.
+
+    Abonnés dans ce repo (ARC37) : ``notifications``
+    (``apps/notifications/signals.py`` — notifie le technicien assigné, repli
+    managers, ``EventType.SAV_TICKET_RESOLU``) et ``crm``
+    (``apps/crm/receivers.py`` — note chatter ARC8 sur le ``crm.Client`` du
+    ticket, sans jamais importer ``apps.sav``).
+
+``equipement_remplace``
+    Émis quand un ``sav.Equipement`` est marqué REMPLACE suite au retrait
+    d'une pièce (ARC37, ``sav.services.retirer_piece``). Émis SYNCHRONE,
+    best-effort, à l'unique site de la bascule. Ne change AUCUN statut
+    lui-même. Arguments du signal :
+
+    * ``equipement`` — l'instance ``sav.Equipement`` désormais REMPLACE ;
+    * ``ticket`` — le ``sav.Ticket`` dont le retrait de pièce a déclenché le
+      remplacement ;
+    * ``company`` — la société (posée côté serveur) ;
+    * ``user`` — l'utilisateur qui a retiré la pièce (peut être ``None``).
+
+    Abonné dans ce repo (ARC37) : ``notifications``
+    (``apps/notifications/signals.py`` — notifie les managers,
+    ``EventType.SAV_EQUIPEMENT_REMPLACE``).
+
+``projet_status_change``
+    Émis quand un ``gestion_projet.Projet`` change de statut (ARC37) — posé
+    dans ``gestion_projet.services.notifier_transition_projet`` (même site
+    que l'émission EXISTANTE vers le moteur ``automation`` N72/N73, qui reste
+    inchangée : les DEUX chemins cohabitent, ``automation`` en direct ET ce
+    signal sur le bus, pour ouvrir un abonné DÉCOUPLÉ sans importer
+    ``apps.automation``). Émis SYNCHRONE, best-effort. Arguments du signal :
+
+    * ``projet`` — l'instance ``gestion_projet.Projet`` concernée ;
+    * ``company`` — la société (posée côté serveur) ;
+    * ``user`` — l'utilisateur qui a déclenché la transition (peut être
+      ``None``) ;
+    * ``ancien_statut`` / ``nouveau_statut`` — l'instantané avant/après.
+
+    Abonné dans ce repo (ARC37) : ``notifications``
+    (``apps/notifications/signals.py`` — notifie le responsable du projet,
+    ``EventType.PROJET_STATUT_CHANGE``).
+
+``incident_declared``
+    Émis quand un ``qhse.Incident`` (QHSE29) est déclaré/créé via le chemin
+    canonique de création (``IncidentViewSet.perform_create``) — ARC38,
+    RAPATRIEMENT sur le bus d'un signal jusque-là LOCAL à l'app ``qhse``
+    (``apps/qhse/receivers.py``, posé par QHSE32 car à l'époque émetteur ET
+    abonné étaient la même app, donc invisible à tout abonné cross-app).
+    PÉRIODE DE DOUBLE ÉMISSION assumée et documentée : le site d'émission
+    (``IncidentViewSet.perform_create``) envoie D'ABORD le signal LOCAL
+    ``qhse.receivers.incident_declared`` (comportement QHSE32 inchangé —
+    l'escalade chatter/notification/audit interne à ``qhse`` continue de
+    fonctionner à l'identique) PUIS ce signal BUS (``core.events.
+    incident_declared``) pour toute réaction cross-app future. Le retrait du
+    signal local est un pas ULTÉRIEUR distinct (non fait ici — double émission
+    délibérément conservée le temps que d'éventuels abonnés externes migrent).
+    Arguments du signal (identiques au signal local) :
+
+    * ``incident`` — l'instance ``qhse.Incident`` créée ;
+    * ``company`` — la société (posée côté serveur) ;
+    * ``user`` — l'utilisateur qui déclare (peut être ``None``) ;
+    * ``gravite`` — la gravité de l'incident (``mineure`` / ``majeure`` /
+      ``critique``).
+
+    Abonné dans ce repo (ARC38) : ``qhse`` lui-même se réabonne à SON PROPRE
+    signal bus (``apps/qhse/receivers.py``, même patron émetteur=abonné que
+    ``contrats``/``contrat_signe``) pour prouver la visibilité cross-app avec
+    un abonné réel plutôt qu'un simple seam — journalise une entrée d'audit
+    dédiée (``apps.audit.recorder``) distincte de celle déjà posée par le
+    récepteur du signal local (YEVNT12), preuve qu'un abonné EXTERNE
+    hypothétique recevrait bien l'événement sans importer ``apps.qhse``.
+
+    ``publicapi`` — DÉCISION (ARC38) : ``apps/publicapi/signals.py`` reste
+    volontairement LOCAL et NE SOUSCRIT PAS à ``incident_declared``. Ce module
+    diffuse des WEBHOOKS SORTANTS vers des intégrations CLIENT externes
+    (``lead.*``/``devis.*``/``facture.*``/``ticket.*`` — catalogue fermé,
+    ``apps/publicapi/constants.py``) : un incident QHSE est une donnée
+    INTERNE de sécurité de site, jamais un événement métier CLIENT-FACING.
+    Aucun abonné cross-app légitime n'existe aujourd'hui pour ce cas —
+    documenté ici plutôt que migré, conformément à la consigne ARC38
+    (« vérifier puis migrer si valeur cross-app, sinon documenter le choix
+    local »).
 """
 import django.dispatch
 
@@ -321,13 +468,13 @@ employe_sorti = django.dispatch.Signal()
 conge_approuve = django.dispatch.Signal()
 
 # Émis à la bascule d'un contrat vers « signe » (CONTRAT16) — YDOCF5.
-# Arguments : contrat, user, company. Aucun abonné obligatoire dans ce lot
-# (pose du seam) — voir docstring du module ci-dessus.
+# Arguments : contrat, user, company. Abonnés (ARC35) : contrats lui-même
+# (chatter ARC8 + dépôt GED) et notifications — voir docstring du module.
 contrat_signe = django.dispatch.Signal()
 
 # Émis à la bascule d'un contrat vers « actif » (CONTRAT17) — YDOCF5.
-# Arguments : contrat, user, company. Aucun abonné obligatoire dans ce lot
-# (pose du seam) — voir docstring du module ci-dessus.
+# Arguments : contrat, user, company. Abonné (ARC35) : contrats lui-même
+# (chatter ARC8) — voir docstring du module ci-dessus.
 contrat_actif = django.dispatch.Signal()
 
 # Émis à la résiliation d'un contrat (CONTRAT25) — YSUBS5.
@@ -413,8 +560,167 @@ effet_rejete = django.dispatch.Signal()
 
 # YSUBS4 — un ``compta.AbonnementMonitoring`` est résilié
 # (``services.resilier_abonnement_monitoring``). Arguments : abonnement
-# (compta.AbonnementMonitoring), motif (str), company. Effet aval : arrêter
-# la supervision monitoring liée (``installation_id``) — aucun abonné dans
-# ce repo pour l'instant (monitoring reste satellite ; câblage futur via son
-# propre ``receivers.py``/``ready()`` sans jamais importer ``apps.compta``).
+# (compta.AbonnementMonitoring), motif (str), company. Abonné dans ce repo
+# (ARC36) : ``monitoring`` (``apps/monitoring/receivers.py``) — coupe la
+# supervision automatique liée (``MonitoringConfig.enabled=False`` pour
+# ``installation_id``), sans jamais importer ``apps.compta`` (abonnement par
+# NOM de signal : l'émetteur bougera avec ODX16/17-20 sans casser l'abonné).
 abonnement_monitoring_resilie = django.dispatch.Signal()
+
+# Émis quand une Installation atteint le statut canonique RECEPTIONNE
+# (YSERV4). Arguments : installation, user (peut être None), ancien_statut.
+# Abonné dans ce repo : compta (crée l'EnqueteNPS + envoyer_enquete_nps,
+# idempotent) — voir docstring du module ci-dessus.
+chantier_receptionne = django.dispatch.Signal()
+
+# Émis quand un Ticket SAV bascule vers RESOLU (ARC37). Arguments : ticket,
+# company, user (peut être None), ancien_statut. Abonnés dans ce repo :
+# notifications (EventType.SAV_TICKET_RESOLU) et crm (chatter ARC8 sur le
+# Client lié) — voir docstring du module ci-dessus.
+ticket_resolu = django.dispatch.Signal()
+
+# Émis quand un Equipement SAV est marqué REMPLACE suite au retrait d'une
+# pièce (ARC37). Arguments : equipement, ticket, company, user (peut être
+# None). Abonné dans ce repo : notifications (EventType.
+# SAV_EQUIPEMENT_REMPLACE) — voir docstring du module ci-dessus.
+equipement_remplace = django.dispatch.Signal()
+
+# Émis quand un Projet (gestion_projet) change de statut (ARC37). Arguments :
+# projet, company, user (peut être None), ancien_statut, nouveau_statut. Le
+# chemin EXISTANT vers le moteur automation (N72/N73) reste inchangé et
+# cohabite avec ce signal (double émission assumée, transition documentée).
+# Abonné dans ce repo : notifications (EventType.PROJET_STATUT_CHANGE) — voir
+# docstring du module ci-dessus.
+projet_status_change = django.dispatch.Signal()
+
+# Émis quand un Incident QHSE (QHSE29) est déclaré (ARC38 — rapatrié du signal
+# LOCAL qhse.receivers.incident_declared, conservé en DOUBLE ÉMISSION pendant
+# la transition). Arguments : incident, company, user (peut être None),
+# gravite. Abonné dans ce repo : qhse lui-même (audit dédié) — voir docstring
+# du module ci-dessus. Décision publicapi (pas d'abonné) documentée aussi
+# ci-dessus.
+incident_declared = django.dispatch.Signal()
+
+# Émis par le kit DocumentMetier (SCA30, ``core.documents``) quand un document
+# métier change de statut via ``changer_statut()`` gardé côté service. GÉNÉRIQUE
+# (un seul signal pour tout document composant le kit) — le cycle de vie PROPRE
+# du document, DISTINCT du cycle d'APPROBATION qui reste ARC10/WorkflowDefinition.
+# EXCLUSION PERMANENTE (règle #4) : Devis/Facture/BonCommande/Avoir ne sont
+# JAMAIS rétrofittés sur le kit ; ce signal ne les concerne donc jamais.
+# Arguments : instance (le document), ancien_statut, nouveau_statut,
+# user (peut être None), company. Aucun abonné obligatoire (pose du seam pour
+# audit/notifications/KPI d'un futur type de document construit sur le kit).
+document_statut_change = django.dispatch.Signal()
+
+
+# ===========================================================================
+# NTPLT9/10 — Outbox transactionnel FIABLE (façade au-dessus des signaux M6).
+#
+# ``emit_reliable(event, **kwargs)`` écrit une ligne ``core.OutboxEvent`` DANS la
+# transaction appelante puis, via ``transaction.on_commit``, émet l'événement
+# synchrone M6 EXISTANT inchangé (les abonnés actuels ne voient aucune
+# différence). Un worker (``core.dispatch_outbox``) livre ensuite la ligne aux
+# handlers DURABLES enregistrés par ``subscribe_durable`` — « aucun événement
+# perdu, même sur crash ». ``core`` reste fondation : aucun import d'app métier.
+# ===========================================================================
+
+# Registre {event_name: [(handler_name, handler, rejouable)]}. Peuplé par les
+# apps dans leur ``ready()`` via ``subscribe_durable``.
+_DURABLE_HANDLERS: dict = {}
+
+
+def subscribe_durable(name, handler, *, rejouable=False, handler_name=None):
+    """Abonne un handler DURABLE à l'événement ``name`` (livré par l'outbox).
+
+    ``handler(outbox_event)`` reçoit l'instance ``OutboxEvent`` livrée. Doit
+    être IDEMPOTENT (la livraison est at-least-once ; la dédup par
+    ``(event_id, handler_name)`` garantit l'effet exactement-une-fois).
+    ``rejouable=True`` autorise le rejeu ciblé support (NTPLT13). Ré-abonner le
+    même ``handler_name`` remplace (idempotent au rechargement d'app)."""
+    hname = handler_name or getattr(handler, '__name__', repr(handler))
+    entries = _DURABLE_HANDLERS.setdefault(name, [])
+    entries[:] = [e for e in entries if e[0] != hname]
+    entries.append((hname, handler, bool(rejouable)))
+
+
+def durable_handlers(name):
+    """Handlers durables (liste de tuples) enregistrés pour ``name``."""
+    return list(_DURABLE_HANDLERS.get(name, []))
+
+
+def clear_durable_handlers():
+    """Vide le registre des handlers durables (test uniquement)."""
+    _DURABLE_HANDLERS.clear()
+
+
+def _jsonify(value):
+    """Rend une valeur JSON-sérialisable pour le payload d'outbox.
+
+    Une instance de modèle → ``{'_model': 'app.Model', 'pk': ...}`` ; un
+    datetime → ISO ; les primitives telles quelles ; sinon ``str(value)``.
+    """
+    from datetime import date, datetime
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    if isinstance(value, (list, tuple)):
+        return [_jsonify(v) for v in value]
+    if isinstance(value, dict):
+        return {str(k): _jsonify(v) for k, v in value.items()}
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    meta = getattr(value, '_meta', None)
+    pk = getattr(value, 'pk', None)
+    if meta is not None and pk is not None:
+        return {'_model': f'{meta.app_label}.{meta.model_name}', 'pk': pk}
+    return str(value)
+
+
+def _resolve_company(company, kwargs):
+    """Déduit la société : arg explicite, sinon kwargs, sinon objet portant
+    ``company``. Renvoie l'instance/None (jamais une exception)."""
+    if company is not None:
+        return company
+    if 'company' in kwargs and kwargs['company'] is not None:
+        return kwargs['company']
+    for value in kwargs.values():
+        c = getattr(value, 'company', None)
+        if c is not None:
+            return c
+    return None
+
+
+def emit_reliable(event, *, sender=None, company=None, emitted_by=None,
+                  **kwargs):
+    """Émet un événement de façon FIABLE : outbox + signal M6 synchrone.
+
+    Écrit une ligne ``OutboxEvent`` dans la transaction courante (payload
+    JSON-sérialisé, enveloppe versionnée NTPLT12) puis, sur commit, envoie le
+    signal M6 existant ``events.<event>`` avec les kwargs d'origine — les
+    abonnés synchrones actuels sont préservés à l'identique. Renvoie
+    l'``OutboxEvent`` créé (ou ``None`` si l'événement est inconnu du bus).
+    """
+    from django.db import transaction
+
+    from .models import OutboxEvent
+
+    signal = globals().get(event)
+    if not isinstance(signal, django.dispatch.Signal):
+        # Événement inconnu du bus : on n'écrit rien (contrat catalogue NTPLT12
+        # le fera échouer en test) et on ne casse pas l'appelant.
+        return None
+
+    resolved_company = _resolve_company(company, kwargs)
+    payload = {k: _jsonify(v) for k, v in kwargs.items()}
+    row = OutboxEvent.objects.create(
+        company=resolved_company,
+        event_name=event,
+        payload=payload,
+    )
+
+    send_kwargs = dict(kwargs)
+
+    def _send_sync():
+        signal.send(sender=sender or 'core.emit_reliable', **send_kwargs)
+
+    transaction.on_commit(_send_sync)
+    return row

@@ -5,11 +5,10 @@ tout rôle. Multi-tenant via ``TenantMixin`` : queryset filtré sur la société
 l'utilisateur, société + ``created_by`` posés côté serveur. Le technicien
 assigné doit appartenir à la société de l'utilisateur."""
 from django.core.exceptions import ValidationError as DjangoValidationError
-from rest_framework import viewsets
 from rest_framework.exceptions import ValidationError
 
-from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.viewsets import CompanyScopedModelViewSet
 
 from ..models import Astreinte
 from ..serializers import AstreinteSerializer
@@ -24,7 +23,7 @@ def _check_target_tenant(serializer, company):
         raise ValidationError({'technicien': 'Technicien inconnu.'})
 
 
-class AstreinteViewSet(TenantMixin, viewsets.ModelViewSet):
+class AstreinteViewSet(CompanyScopedModelViewSet):
     """XFSM10 — roster d'astreinte (nuits/week-ends). Lecture tout rôle,
     écriture responsable/admin. Société + `created_by` posés côté serveur ;
     une seule astreinte active par période/société (garde `clean()` du

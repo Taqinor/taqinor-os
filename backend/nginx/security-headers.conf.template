@@ -1,0 +1,22 @@
+# VX200 — Fragment GENERE par docker-entrypoint.sh a partir de ce template
+# (envsubst au demarrage du conteneur) puis inclus par nginx.conf via
+# `include /etc/nginx/generated/security-headers.conf;`. NE PAS EDITER LE
+# FICHIER GENERE A LA MAIN — editer CE template.
+#
+# Avant VX200 : nginx.conf codait en dur `http://localhost:9000` (MinIO dev)
+# dans img-src/connect-src/frame-src/object-src, et HSTS restait commente.
+# Desormais MINIO_PUBLIC_ORIGIN (docker-compose.prod.yml, defaut dev
+# http://localhost:9000) porte la vraie origine MinIO par environnement.
+add_header X-Frame-Options "SAMEORIGIN" always;
+add_header X-Content-Type-Options "nosniff" always;
+add_header X-XSS-Protection "1; mode=block" always;
+add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+add_header Permissions-Policy "geolocation=(), microphone=(), camera=()" always;
+# Carte toiture 3D (page ERP /devis-design) : maplibre charge les tuiles
+# satellite Mapbox/MapTiler + le géocodage MapTiler, et tourne dans un
+# web worker (blob:). Sans ces sources, la carte reste vide dans l'ERP.
+add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob: ${MINIO_PUBLIC_ORIGIN} https://api.mapbox.com https://api.maptiler.com; connect-src 'self' ${MINIO_PUBLIC_ORIGIN} https://api.mapbox.com https://events.mapbox.com https://api.maptiler.com; frame-src 'self' ${MINIO_PUBLIC_ORIGIN}; object-src 'self' ${MINIO_PUBLIC_ORIGIN}; frame-ancestors 'self';" always;
+# HSTS : Caddy termine deja le TLS public en prod (backend/caddy/Caddyfile) ;
+# un navigateur ignore ce header sur une reponse HTTP simple (dev, nginx:80
+# direct), donc l'emettre toujours est sans danger dans les deux environnements.
+add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;

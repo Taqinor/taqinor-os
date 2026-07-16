@@ -1,16 +1,18 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { LogOut, FileDown, CheckCircle2 } from 'lucide-react'
-import { DetailShell } from '../../ui/module'
+import { LogOut, FileDown, CheckCircle2, Printer } from 'lucide-react'
+import { RecordShell } from '../../ui/module'
 import {
   DefinitionList, EmptyState, Skeleton, Badge, toast,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-  Button, Label, Input, Textarea,
+  Button, Label, Input, Textarea, confirmLeaveIfDirty,
 } from '../../ui'
-import { formatMAD, formatDate, formatPhoneMA } from '../../lib/format'
+import { formatMAD, formatDate, formatPhoneMA, formatPercent } from '../../lib/format'
 import { useSelector } from 'react-redux'
 import rhApi from '../../api/rhApi'
+import { openPdfInGesture } from '../../utils/pdfBlob'
 import { peutVoirSalaires } from './permissions.js'
+import ExternalLink from '../../ui/ExternalLink'
 import { StatutEmploye, TYPE_CONTRAT_LABELS } from './constants.jsx'
 
 /* ============================================================================
@@ -119,12 +121,16 @@ export default function EmployeDetail() {
 
   const recharger = () => setReloadTick((t) => t + 1)
 
+  // VX48 — onglet pré-ouvert SYNCHRONE avant l'await (Safari iOS bloque
+  // silencieusement un window.open() post-await).
   const telechargerCertificat = async () => {
+    const pending = openPdfInGesture()
     try {
       const res = await rhApi.getCertificatTravail(id)
-      const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }))
-      window.open(url, '_blank', 'noopener')
-      setTimeout(() => URL.revokeObjectURL(url), 60000)
+      const blob = new Blob([res.data], { type: 'application/pdf' })
+      if (!pending.deliver(blob, `certificat-travail-${id}.pdf`)) {
+        toast.error('Ouverture bloquée par le navigateur.')
+      }
     } catch (err) {
       if (err?.response?.status === 404) {
         toast.error('Certificat indisponible : l’employé n’est pas sorti.')
@@ -240,9 +246,9 @@ export default function EmployeDetail() {
             </p>
           </div>
           {d.url && (
-            <a className="link-blue text-xs" href={d.url} target="_blank" rel="noreferrer">
+            <ExternalLink className="link-blue text-xs" href={d.url}>
               Ouvrir
-            </a>
+            </ExternalLink>
           )}
         </div>
       )}
@@ -342,7 +348,7 @@ export default function EmployeDetail() {
       {/* XRH16 — compa-ratio (salaire vs bande du poste), donnée paie gatée. */}
       {compaRatio && (
         <div className="rounded-lg border border-border bg-card px-3 py-2 text-sm">
-          <p className="font-medium">Compa-ratio : {compaRatio.compa_ratio != null ? `${(compaRatio.compa_ratio * 100).toFixed(0)}%` : '—'}</p>
+          <p className="font-medium">Compa-ratio : {compaRatio.compa_ratio != null ? formatPercent(compaRatio.compa_ratio * 100, { decimals: 0 }) : '—'}</p>
           <p className="text-xs text-muted-foreground">
             Salaire {compaRatio.salaire != null ? formatMAD(compaRatio.salaire) : '—'}
             {' · '}bande {compaRatio.mediane != null ? formatMAD(compaRatio.mediane) : '—'} (médiane)
@@ -385,6 +391,12 @@ export default function EmployeDetail() {
 
   const headerActions = (
     <>
+      {/* VX246(b) — impression navigateur (feuille print.css : chrome masqué,
+          noir-sur-blanc). Distinct du PDF WeasyPrint du contrat. */}
+      <Button variant="outline" size="sm" onClick={() => window.print()}>
+        <Printer size={15} strokeWidth={1.75} aria-hidden="true" />
+        Imprimer
+      </Button>
       {estSorti ? (
         <Button variant="outline" size="sm" onClick={telechargerCertificat}>
           <FileDown size={15} strokeWidth={1.75} aria-hidden="true" />
@@ -401,7 +413,10 @@ export default function EmployeDetail() {
 
   return (
     <div className="page">
-      <DetailShell
+      {/* ARC46 — RecordShell (pendant détail de ListShell) ; drop-in de
+          DetailShell : mêmes props, aucune refonte visuelle, save-bar non
+          activée (édition via dialogue). */}
+      <RecordShell
         title={nomComplet || 'Employé'}
         subtitle={emp.matricule ? `Matricule ${emp.matricule}` : undefined}
         status={emp.statut}
@@ -441,6 +456,10 @@ function SortieDialog({ employe, onClose, onSaved }) {
     { value: 'autre', label: 'Autre' },
   ]
 
+  // VX168 — garde de fermeture : dialogue de création, initial = tout vide.
+  const dirty = Boolean(dateSortie || motif || notes)
+  const closeIfConfirmed = () => { if (confirmLeaveIfDirty(dirty)) onClose?.() }
+
   const submit = async (e) => {
     e.preventDefault()
     if (!dateSortie || !motif) return
@@ -464,7 +483,7 @@ function SortieDialog({ employe, onClose, onSaved }) {
   }
 
   return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose?.() }}>
+    <Dialog open onOpenChange={(o) => { if (!o) closeIfConfirmed() }}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>Sortie de {employe.nom} {employe.prenom}</DialogTitle>
@@ -473,7 +492,7 @@ function SortieDialog({ employe, onClose, onSaved }) {
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="so-date">Date de sortie</Label>
-              <Input id="so-date" type="date" value={dateSortie} onChange={(e) => setDateSortie(e.target.value)} />
+              <Input id="so-date" type="date" autoFocus value={dateSortie} onChange={(e) => setDateSortie(e.target.value)} />
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="so-motif">Motif</Label>
@@ -499,7 +518,7 @@ function SortieDialog({ employe, onClose, onSaved }) {
           </div>
           {serverError && <p className="text-sm text-destructive" role="alert">{serverError}</p>}
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
+            <Button type="button" variant="outline" onClick={closeIfConfirmed}>Annuler</Button>
             <Button type="submit" disabled={!dateSortie || !motif || saving}>
               {saving ? 'Enregistrement…' : 'Enregistrer la sortie'}
             </Button>

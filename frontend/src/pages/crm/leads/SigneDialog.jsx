@@ -11,6 +11,13 @@ import { Eye, FileWarning } from 'lucide-react'
 import ventesApi from '../../../api/ventesApi'
 import { proposalParams, pdfBlob } from '../../../features/ventes/previewPdf'
 import { Button, Spinner } from '../../../ui'
+// VX182 — le shell fait-main de SigneDialog est passé à ResponsiveDialog.
+import { ResponsiveDialog } from '../../../ui/ResponsiveDialog'
+// VX155 — la carte de victoire (enrichit le Done= de VX40) remplace le
+// toast plat + celebrateDealSigned() appelés directement d'ici ; le burst
+// CSS-only reste posé, mais DEPUIS <DealSignedCelebration> lui-même.
+import DealSignedCelebration from '../../../ui/DealSignedCelebration'
+import { formatMAD } from '../../../lib/format'
 
 // Rendu PDF.js (canvas) chargé à la demande — même composant inblocable que le
 // panneau devis de la fiche lead. Réutilisé tel quel, jamais dupliqué.
@@ -96,9 +103,7 @@ function preselectDevis(list) {
 }
 
 function fmtMAD(value) {
-  const n = parseFloat(value)
-  return Number.isFinite(n)
-    ? `${Math.round(n).toLocaleString('fr-MA')} MAD` : '—'
+  return formatMAD(value, { decimals: 0 })
 }
 
 export default function SigneDialog({ lead, onClose, onConfirmed }) {
@@ -122,6 +127,9 @@ export default function SigneDialog({ lead, onClose, onConfirmed }) {
   const [previewBlob, setPreviewBlob] = useState(null)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewError, setPreviewError] = useState(null)
+  // VX155 — carte de victoire affichée après acceptation (null = pas encore
+  // signé) ; { reference, montantTtc, kwc } réels, jamais un chiffre inventé.
+  const [celebration, setCelebration] = useState(null)
 
   // Le dialogue est monté à neuf par lead (clé signeLead) → un seul fetch.
   useEffect(() => {
@@ -159,11 +167,12 @@ export default function SigneDialog({ lead, onClose, onConfirmed }) {
   }
   const twoOptions = selected?.nb_options === 2
   const option = optionChoice || selected?.option_acceptee || ''
-  // Détail par option (kWc / total TTC) — seulement utile quand 2 options.
-  const optDetail = useMemo(
-    () => (twoOptions ? optionsDetail(selected) : null),
-    [twoOptions, selected],
-  )
+  // Détail par option (kWc / total TTC) — calculé pour TOUT devis sélectionné
+  // (pas seulement à 2 options) : la carte de victoire (VX155) en a besoin
+  // même pour un devis à une seule option.
+  const detailAll = useMemo(() => optionsDetail(selected), [selected])
+  // Rendu du choix d'option — seulement utile quand 2 options.
+  const optDetail = twoOptions ? detailAll : null
 
   // Aperçu inline : récupère le PDF /proposal (chemin canonique) en blob, puis
   // le dessine sur canvas. Toggle : recliquer ferme l'aperçu.
@@ -204,7 +213,19 @@ export default function SigneDialog({ lead, onClose, onConfirmed }) {
     setError(null)
     try {
       await ventesApi.accepterDevis(selected.id, { nom, date, option })
-      onConfirmed?.()
+      // VX40/VX155 — le SEUL moment célébré de toute l'app : devis envoyé→
+      // accepté (rare, lié au revenu). La carte de victoire (montant + kWc
+      // réels, CO₂ dérivé) remplace le toast plat ; onConfirmed() n'est
+      // appelé qu'à la fermeture de la carte (voir le rendu ci-dessous).
+      const chosenKey = twoOptions ? option : 'avec_batterie'
+      const chosenDetail = detailAll?.[chosenKey]
+      const montantTtc = chosenDetail?.ttc
+        ?? (parseFloat(selected.total_affiche ?? selected.total_ttc) || 0)
+      setCelebration({
+        reference: selected.reference,
+        montantTtc,
+        kwc: chosenDetail?.kwc ?? null,
+      })
     } catch (err) {
       setError(err?.response?.data?.detail
         ?? "L'acceptation n'a pas pu être enregistrée — réessayez.")
@@ -214,13 +235,30 @@ export default function SigneDialog({ lead, onClose, onConfirmed }) {
 
   const leadNom = `${lead.nom ?? ''} ${lead.prenom ?? ''}`.trim() || 'ce lead'
 
+  // VX155 — après acceptation, la carte de victoire remplace le dialogue ;
+  // onConfirmed() (qui ferme SigneDialog côté appelant) n'est appelé qu'à la
+  // fermeture de la carte — jamais avant que le vendeur l'ait vue.
+  if (celebration) {
+    return (
+      <DealSignedCelebration
+        open
+        reference={celebration.reference}
+        montantTtc={celebration.montantTtc}
+        kwc={celebration.kwc}
+        onClose={() => { setCelebration(null); onConfirmed?.() }}
+      />
+    )
+  }
+
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal sd-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <h3 className="modal-title">Passer en « Signé »</h3>
-          <button type="button" className="modal-close" onClick={onClose}>✕</button>
-        </div>
+    // VX182 — shell fait-main remplacé par ResponsiveDialog (Escape + focus-
+    // trap + bottom-sheet mobile) ; `sd-modal` conservée pour le sélecteur CSS
+    // scopé `.sd-modal .form-label` ; en-tête/pied inchangés.
+    <ResponsiveDialog open onOpenChange={(o) => { if (!o) onClose() }} className="sd-modal sm:max-w-lg" showClose={false}>
+      <div className="modal-header">
+        <h3 className="modal-title">Passer en « Signé »</h3>
+        <button type="button" className="modal-close" onClick={onClose}>✕</button>
+      </div>
 
         <div className="modal-body">
           {loading && (
@@ -269,6 +307,7 @@ export default function SigneDialog({ lead, onClose, onConfirmed }) {
                   className="form-control min-w-0 flex-1"
                   value={devisId}
                   onChange={(e) => onDevisChange(e.target.value)}
+                  autoFocus
                 >
                   {devisList.map((d) => (
                     <option key={d.id} value={d.id}>
@@ -379,7 +418,6 @@ export default function SigneDialog({ lead, onClose, onConfirmed }) {
             </Button>
           )}
         </div>
-      </div>
-    </div>
+    </ResponsiveDialog>
   )
 }

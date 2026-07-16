@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
+import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import {
   FileText, Inbox, AlertCircle, Check, Copy, RefreshCw, Save, Trash2, ChevronDown,
   UserPlus, FilePlus, Receipt,
@@ -16,9 +17,13 @@ import {
   TabsList,
   TabsTrigger,
   TabsContent,
+  Input,
+  KeyValueTable,
+  toast,
 } from '../../ui'
 import { FileUpload } from '../../ui/FileUpload'
 import { cn } from '../../lib/cn'
+import { formatDateTime } from '../../lib/format'
 import publicapiApi from '../../api/publicapiApi'
 import stockApi from '../../api/stockApi'
 import {
@@ -54,6 +59,17 @@ const FIELD_LABELS = {
   iban: 'IBAN',
 }
 
+// VX152 — point de rendu UNIQUE de FIELD_LABELS : transforme un objet de données
+// OCR en lignes « libellé → valeur » (clés présentes uniquement). Les deux onglets
+// (Analyser éditable, Documents lecture seule) le réutilisent au lieu de réitérer
+// FIELD_LABELS chacun de son côté — fin des deux tables clé/valeur parallèles.
+function ocrFieldRows(source) {
+  const data = source ?? {}
+  return Object.entries(FIELD_LABELS)
+    .filter(([key]) => data[key] != null)
+    .map(([key, label]) => ({ key, label }))
+}
+
 function ConfidenceBadge({ value }) {
   const pct = Math.round(value * 100)
   const tone = pct >= 80 ? 'success' : pct >= 50 ? 'warning' : 'danger'
@@ -73,6 +89,14 @@ function AnalyseTab({ canSave }) {
 
   const [currentFile, setCurrentFile] = useState(null)
   const [copied, setCopied] = useState(false)
+  // VX39 — boucle vérifier-puis-corriger : valeurs éditées localement avant
+  // enregistrement (initialisées depuis les champs extraits à chaque nouveau
+  // résultat OCR, jamais renvoyées au serveur tant que l'utilisateur n'a pas
+  // cliqué « Valider et enregistrer »).
+  const [editedFields, setEditedFields] = useState({})
+  // Aperçu du document source (créé une seule fois par fichier ; libéré au
+  // changement de fichier / démontage pour ne pas fuiter des Blob URLs).
+  const [previewUrl, setPreviewUrl] = useState(null)
   // FG106 — création d'un lead / brouillon de devis depuis le document OCR.
   const [crmLoading, setCrmLoading] = useState(false)
   const [crmDone, setCrmDone] = useState(null) // { mode, devisReference? }
@@ -85,6 +109,11 @@ function AnalyseTab({ canSave }) {
   const processFile = useCallback((file) => {
     if (!file) return
     setCurrentFile(file)
+    // VX39 — aperçu du document source affiché à gauche pendant l'analyse.
+    setPreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev)
+      return URL.createObjectURL(file)
+    })
     dispatch(processOcrDocument(file))
   }, [dispatch])
 
@@ -95,6 +124,31 @@ function AnalyseTab({ canSave }) {
     setCrmDone(null)
     setFactureDone(null)
     setFactureError(null)
+    setEditedFields({})
+    setPreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev)
+      return null
+    })
+  }
+
+  // Libère le Blob URL au démontage du composant.
+  useEffect(() => () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // VX39 — réinitialise les valeurs éditées depuis le nouveau résultat OCR
+  // (une seule fois par résultat — l'édition locale suivante ne se réécrase
+  // pas tant que le résultat ne change pas). Patron React « ajuster l'état
+  // pendant le rendu quand une donnée change » (pas d'effet-setState).
+  const [prevOcrResult, setPrevOcrResult] = useState(null)
+  if (ocrResult !== prevOcrResult) {
+    setPrevOcrResult(ocrResult)
+    if (ocrResult) setEditedFields({ ...(ocrResult.donnees_structurees ?? {}) })
+  }
+
+  const handleFieldChange = (key, value) => {
+    setEditedFields((prev) => ({ ...prev, [key]: value }))
   }
 
   // XACC36 — POSTe les champs extraits + le scan d'origine vers le SINK
@@ -140,7 +194,7 @@ function AnalyseTab({ canSave }) {
         devisReference: r.data.devis_reference,
       })
     } catch (e) {
-      alert(e?.response?.data?.detail ?? 'Création impossible depuis ce document.')
+      toast.error(e?.response?.data?.detail ?? 'Création impossible depuis ce document.')
     } finally {
       setCrmLoading(false)
     }
@@ -150,24 +204,35 @@ function AnalyseTab({ canSave }) {
     if (ocrResult?.texte_brut) {
       navigator.clipboard.writeText(ocrResult.texte_brut).then(() => {
         setCopied(true)
+        toast.success('Texte copié.')
         setTimeout(() => setCopied(false), 2000)
+      }).catch(() => {
+        toast.error('Copie impossible — copiez le texte manuellement.')
       })
     }
   }
 
   const handleSave = () => {
     if (!ocrResult || !currentFile) return
+    // VX39 — envoie les valeurs CORRIGÉES (édition inline), pas les valeurs
+    // brutes de l'extraction : boucle vérifier-puis-corriger.
     dispatch(saveOcrDocument({
       filename: currentFile.name,
       texte_brut: ocrResult.texte_brut,
       type_document: ocrResult.type_document ?? 'autre',
       confiance: ocrResult.confiance ?? 0,
-      donnees_structurees: ocrResult.donnees_structurees ?? {},
+      donnees_structurees: editedFields,
     }))
   }
 
-  const donnees = ocrResult?.donnees_structurees ?? {}
-  const lignes = donnees.lignes ?? []
+  // VX39 — la table éditable lit/écrit `editedFields` (valeurs corrigibles),
+  // `lignes` (non éditées ici) reste dérivé du résultat OCR brut.
+  const donnees = editedFields
+  const lignes = ocrResult?.donnees_structurees?.lignes ?? []
+  // Champs affichés = ceux présents à l'origine (non nuls) — restent visibles
+  // même si l'utilisateur efface une valeur en la corrigeant.
+  const rawDonnees = ocrResult?.donnees_structurees ?? {}
+  const champsExtraits = ocrFieldRows(rawDonnees)
 
   return (
     <div className="space-y-4">
@@ -212,29 +277,59 @@ function AnalyseTab({ canSave }) {
             )}
           </div>
 
-          {/* Données structurées */}
-          {Object.keys(donnees).some(k => k !== 'lignes' && donnees[k] != null) && (
-            <Card>
-              <CardContent className="p-0">
-                <p className="border-b border-border px-4 py-2.5 text-sm font-semibold text-foreground">
-                  Données extraites
-                </p>
-                <table className="w-full text-sm">
-                  <tbody>
-                    {Object.entries(FIELD_LABELS).map(([key, label]) => {
-                      const val = donnees[key]
-                      if (val == null) return null
-                      return (
-                        <tr key={key} className="border-b border-border last:border-0">
-                          <td className="w-44 bg-muted/50 px-4 py-2 font-medium text-muted-foreground">{label}</td>
-                          <td className="px-4 py-2 text-foreground">{String(val)}</td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </CardContent>
-            </Card>
+          {/* VX39 — source et extraction côte à côte : aperçu du document à
+              gauche, table de champs extraits ÉDITABLE à droite (boucle
+              vérifier-puis-corriger avant enregistrement). */}
+          {champsExtraits.length > 0 && (
+            <div className="grid gap-4 lg:grid-cols-2">
+              <Card>
+                <CardContent className="p-0">
+                  <p className="border-b border-border px-4 py-2.5 text-sm font-semibold text-foreground">
+                    Document source
+                  </p>
+                  <div className="flex max-h-96 items-start justify-center overflow-auto bg-muted/30 p-2">
+                    {previewUrl && currentFile?.type?.startsWith('image/') ? (
+                      <img
+                        src={previewUrl}
+                        alt="Aperçu du document source"
+                        data-testid="ocr-source-preview"
+                        className="max-w-full rounded"
+                      />
+                    ) : previewUrl ? (
+                      <iframe
+                        src={previewUrl}
+                        title="Aperçu du document source"
+                        data-testid="ocr-source-preview"
+                        className="h-96 w-full rounded border-0"
+                      />
+                    ) : (
+                      <p className="p-4 text-xs text-muted-foreground">Aperçu indisponible.</p>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardContent className="p-0">
+                  <p className="border-b border-border px-4 py-2.5 text-sm font-semibold text-foreground">
+                    Données extraites — corrigez si besoin
+                  </p>
+                  {/* VX152 — primitif partagé KeyValueTable (variante éditable). */}
+                  <KeyValueTable
+                    aria-label="Champs extraits"
+                    items={champsExtraits}
+                    renderValue={(it) => (
+                      <Input
+                        value={donnees[it.key] ?? ''}
+                        onChange={(e) => handleFieldChange(it.key, e.target.value)}
+                        aria-label={it.label}
+                        data-testid={`ocr-field-${it.key}`}
+                      />
+                    )}
+                  />
+                </CardContent>
+              </Card>
+            </div>
           )}
 
           {/* Lignes */}
@@ -418,6 +513,7 @@ function DocumentsTab({ canDelete }) {
       {documents.map((doc) => {
         const isOpen = expanded === doc.id
         const d = doc.donnees_structurees ?? {}
+        const champsOcr = ocrFieldRows(d)
         return (
           <Card key={doc.id} className="overflow-hidden">
             {/* Ligne principale */}
@@ -433,7 +529,7 @@ function DocumentsTab({ canDelete }) {
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium text-foreground">{doc.filename}</p>
                 <p className="text-xs text-muted-foreground">
-                  {new Date(doc.created_at).toLocaleString('fr-FR')} — {doc.username}
+                  {formatDateTime(doc.created_at)} — {doc.username}
                 </p>
               </div>
               <div className="hidden shrink-0 items-center gap-2 sm:flex">
@@ -467,21 +563,14 @@ function DocumentsTab({ canDelete }) {
                   <TypeBadge type={doc.type_document} />
                   <ConfidenceBadge value={doc.confiance} />
                 </div>
-                {Object.keys(d).some(k => k !== 'lignes' && d[k] != null) && (
-                  <table className="w-full text-xs">
-                    <tbody>
-                      {Object.entries(FIELD_LABELS).map(([key, label]) => {
-                        const val = d[key]
-                        if (val == null) return null
-                        return (
-                          <tr key={key} className="border-b border-border last:border-0">
-                            <td className="w-36 py-1 font-medium text-muted-foreground">{label}</td>
-                            <td className="py-1 text-foreground">{String(val)}</td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
+                {champsOcr.length > 0 && (
+                  // VX152 — même primitif partagé KeyValueTable (variante lecture seule).
+                  <KeyValueTable
+                    dense
+                    aria-label="Champs extraits"
+                    items={champsOcr}
+                    renderValue={(it) => String(d[it.key])}
+                  />
                 )}
                 {(d.lignes ?? []).length > 0 && (
                   <p className="text-xs text-muted-foreground">{d.lignes.length} ligne(s) de détail</p>
@@ -498,8 +587,7 @@ function DocumentsTab({ canDelete }) {
 // ── Page principale ───────────────────────────────────────────────────────────
 export default function OcrUpload() {
   const [tab, setTab] = useState('analyse')
-  const role = useSelector((s) => s.auth.role)
-  const canSave = role === 'responsable' || role === 'admin'
+  const canSave = useIsAdminOrResponsable()
 
   return (
     <div className="ui-root space-y-4">

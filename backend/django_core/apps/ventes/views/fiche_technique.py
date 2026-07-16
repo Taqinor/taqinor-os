@@ -21,18 +21,23 @@ Multi-tenancy : ``company`` TOUJOURS forcée côté serveur depuis le produit li
 filtrés par ``request.user.company``. Couche additive séparée du PDF premium et
 de `/proposal` ; ne change aucun statut de devis (RULE #4).
 """
-from rest_framework import viewsets
 from rest_framework.exceptions import ValidationError
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.viewsets import CompanyScopedModelViewSet  # ARC5
 from ..models import FicheTechnique
 from ..serializers import FicheTechniqueSerializer
 
 READ_ACTIONS = ['list', 'retrieve']
 
 
-class FicheTechniqueViewSet(viewsets.ModelViewSet):
-    """FG254 — CRUD fiches techniques normalisées, scopé société."""
+class FicheTechniqueViewSet(CompanyScopedModelViewSet):
+    """FG254 — CRUD fiches techniques normalisées, scopé société.
+
+    ARC5 — sweep TenantMixin : base transverse unique. get_queryset /
+    perform_create / perform_update / get_permissions SURCHARGENT la base
+    (scoping direct sur `company`) : scoping et matrice 401/403/404 INCHANGÉS
+    (règle #4 : couche additive, aucun statut de devis touché)."""
 
     queryset = FicheTechnique.objects.select_related(
         'produit', 'created_by').all()

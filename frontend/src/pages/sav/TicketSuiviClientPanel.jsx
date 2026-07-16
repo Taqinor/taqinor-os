@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Timer, Link2, Copy, Check } from 'lucide-react'
 import savApi from '../../api/savApi'
 import { Badge, Button, Input, toast } from '../../ui'
+import { formatDateTime } from '../../lib/format'
 
 // WR11 — suivi SLA & transparence client d'un ticket SAV :
 //  - FG81 : enregistrement de la première réponse (horloge SLA, idempotent
@@ -9,11 +10,7 @@ import { Badge, Button, Input, toast } from '../../ui'
 //  - FG86 : lien de suivi public tokenisé, copiable (aucun prix ni chatter
 //    n'y est exposé — garanti côté serveur).
 
-const fmtDateTime = (iso) => {
-  if (!iso) return '—'
-  const d = new Date(iso)
-  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleString('fr-FR')
-}
+const fmtDateTime = (iso) => formatDateTime(iso)
 
 export default function TicketSuiviClientPanel({ ticket, onUpdated }) {
   const [busy, setBusy] = useState(false)

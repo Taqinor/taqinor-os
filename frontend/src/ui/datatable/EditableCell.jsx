@@ -2,14 +2,19 @@ import { useEffect, useRef, useState } from 'react'
 import { Check, X } from 'lucide-react'
 import { cn } from '../../lib/cn'
 import { Input } from '../Input'
+import { Spinner } from '../Spinner'
 
 /* ============================================================================
    H32 — Édition de cellule en place avec validation + sauvegarde + annulation.
    - Double-clic (ou Entrée sur cellule focus) → mode édition.
    - `validate(value, row) -> string|null` : message d'erreur ou null si valide.
-   - `onSave(value, row)` est appelé à la validation ; le parent gère le toast
-     succès + le bouton « Annuler » (undo) via sonner.
+   - `onSave(value, row)` est appelé à la validation, ATTENDU (`await`) — s'il
+     retourne une promesse qui REJETTE (ex. PATCH serveur refusé), la cellule
+     RESTE ouverte avec le message d'erreur au lieu de se refermer en silence.
    - Échap annule, Entrée valide. Erreur affichée sous le champ (aria-invalid).
+   - `readOnly` (VX127) : double-clic/Entrée/F2 sans effet, aucun mode édition
+     — distinct d'un simple manque de `onSave` (le style reste « lecture
+     seule », pas grisé comme un `disabled`).
    Contrôlé côté affichage par `value` ; ce composant ne mute que son brouillon.
    ========================================================================== */
 export function EditableCell({
@@ -21,10 +26,12 @@ export function EditableCell({
   align = 'left',
   inputType = 'text',
   className,
+  readOnly = false,
 }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
   const [error, setError] = useState(null)
+  const [saving, setSaving] = useState(false)
   const inputRef = useRef(null)
 
   useEffect(() => {
@@ -37,20 +44,38 @@ export function EditableCell({
   const display = format ? format(value, row) : value ?? '—'
 
   function begin() {
+    if (readOnly) return
     setDraft(value ?? '')
     setError(null)
     setEditing(true)
   }
 
-  function commit() {
+  async function commit() {
+    // Garde anti-double-commit : `disabled={saving}` sur l'input peut lui
+    // faire perdre le focus (→ un second onBlur/commit) pendant l'attente.
+    if (saving) return
     const err = validate ? validate(draft, row) : null
     if (err) {
       setError(err)
       return
     }
-    setEditing(false)
+    if (String(draft) === String(value ?? '')) {
+      setEditing(false)
+      setError(null)
+      return
+    }
+    setSaving(true)
     setError(null)
-    if (String(draft) !== String(value ?? '')) onSave?.(draft, row)
+    try {
+      await onSave?.(draft, row)
+      setEditing(false)
+    } catch (e) {
+      // Rejet serveur : la cellule RESTE ouverte (rouverte), message affiché
+      // au lieu de se refermer en silence sur un échec.
+      setError(e?.response?.data?.detail || e?.message || 'Échec de l’enregistrement — réessayez.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   function cancel() {
@@ -64,6 +89,7 @@ export function EditableCell({
         type="button"
         onDoubleClick={begin}
         onKeyDown={(e) => {
+          if (readOnly) return
           if (e.key === 'Enter' || e.key === 'F2') {
             e.preventDefault()
             begin()
@@ -71,13 +97,14 @@ export function EditableCell({
         }}
         className={cn(
           'block w-full truncate rounded px-1 py-0.5 text-left',
-          'hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+          readOnly ? 'cursor-default' : 'hover:bg-accent/60 focus-ring',
           align === 'right' && 'text-right',
           align === 'center' && 'text-center',
           className,
         )}
-        title="Double-cliquez pour modifier"
-        aria-label={`Modifier — valeur actuelle ${String(display)}`}
+        title={readOnly ? undefined : 'Double-cliquez pour modifier'}
+        aria-readonly={readOnly || undefined}
+        aria-label={readOnly ? undefined : `Modifier — valeur actuelle ${String(display)}`}
       >
         {display}
       </button>
@@ -92,6 +119,7 @@ export function EditableCell({
           type={inputType}
           value={draft}
           invalid={!!error}
+          disabled={saving}
           onChange={(e) => {
             setDraft(e.target.value)
             if (error) setError(null)
@@ -109,24 +137,40 @@ export function EditableCell({
           className="h-7 px-2 text-sm"
           aria-describedby={error ? 'cell-edit-error' : undefined}
         />
-        <button
-          type="button"
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={commit}
-          aria-label="Valider"
-          className="flex size-6 shrink-0 items-center justify-center rounded text-success hover:bg-success/10"
-        >
-          <Check className="size-4" />
-        </button>
-        <button
-          type="button"
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={cancel}
-          aria-label="Annuler"
-          className="flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted"
-        >
-          <X className="size-4" />
-        </button>
+        {saving ? (
+          // VX127 — état « enregistrement en cours » discret : jusqu'ici
+          // `onSave` était fire-and-forget, aucun retour visuel entre le
+          // commit et la fermeture de la cellule.
+          <span
+            className="flex size-6 shrink-0 items-center justify-center text-muted-foreground"
+            role="status"
+            aria-live="polite"
+          >
+            <Spinner className="size-4" aria-hidden="true" />
+            <span className="sr-only">Enregistrement…</span>
+          </span>
+        ) : (
+          <>
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={commit}
+              aria-label="Valider"
+              className="flex size-6 shrink-0 items-center justify-center rounded text-success hover:bg-success/10"
+            >
+              <Check className="size-4" />
+            </button>
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={cancel}
+              aria-label="Annuler"
+              className="flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted"
+            >
+              <X className="size-4" />
+            </button>
+          </>
+        )}
       </div>
       {error && (
         <p id="cell-edit-error" className="text-xs text-destructive">

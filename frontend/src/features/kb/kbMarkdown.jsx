@@ -15,6 +15,8 @@
    connaissances (SOP/FAQ), pas pour du CommonMark complet.
    ========================================================================== */
 
+import ExternalLink from '../../ui/ExternalLink'
+
 const ATX_RE = /^(#{1,6})\s+(.+)$/
 
 // Réutilise le même tokenizer inline que le chat (gras *x*/italique _x_/
@@ -114,9 +116,9 @@ function renderTokens(tokens, keyPrefix) {
       case 'code': return <code key={key} className="kb-inline-code">{tok.value}</code>
       case 'link':
         return (
-          <a key={key} href={tok.value} target="_blank" rel="noreferrer noopener">
+          <ExternalLink key={key} href={tok.value}>
             {tok.value}
-          </a>
+          </ExternalLink>
         )
       default: return tok.value
     }

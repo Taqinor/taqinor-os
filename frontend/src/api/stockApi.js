@@ -2,7 +2,8 @@ import api from './axios'
 
 const stockApi = {
   // Produits
-  getProduits: (params) => api.get('/stock/produits/', { params }),
+  // VX163 — `config` (ex. `{signal}`) transmis pour l'annulation en vol.
+  getProduits: (params, config) => api.get('/stock/produits/', { params, ...config }),
   getProduit: (id) => api.get(`/stock/produits/${id}/`),
   createProduit: (data) => api.post('/stock/produits/', data),
   updateProduit: (id, data) => api.patch(`/stock/produits/${id}/`, data),
@@ -304,6 +305,12 @@ const stockApi = {
   exploserKit: (id, quantite) =>
     api.get(`/stock/kits/${id}/exploser/`,
       { params: quantite ? { quantite } : {} }),
+  // XMFG19 — remplacement de masse d'un composant (préview dry_run → confirmer).
+  remplacerComposantKits: (data) =>
+    api.post('/stock/kits/remplacer-composant/', data),
+  // ZMFG9 — disponibilité multi-niveaux du kit (kits assemblables + goulots).
+  getKitDisponibilite: (id) =>
+    api.get(`/stock/kits/${id}/disponibilite/`),
 
   // DC35 / FG254 — fiches techniques (datasheets) rattachées aux produits.
   getFichesTechniques: (produitId) =>

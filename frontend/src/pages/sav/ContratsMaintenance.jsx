@@ -10,6 +10,7 @@ import {
   Check, X,
 } from 'lucide-react'
 import savApi from '../../api/savApi'
+import { formatMAD } from '../../lib/format'
 import crmApi from '../../api/crmApi'
 import installationsApi from '../../api/installationsApi'
 import { openPdfBlob } from '../../utils/pdfBlob'
@@ -47,7 +48,7 @@ const formatDateFR = (iso) => {
   const d = new Date(`${String(iso).slice(0, 10)}T00:00:00`)
   return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString('fr-FR')
 }
-const fmtDH = (n) => `${Number(n).toLocaleString('fr-FR', { maximumFractionDigits: 0 })} DH`
+const fmtDH = (n) => `${formatMAD(n, { decimals: 0, withSymbol: false })} DH`
 
 // L323 — revenu récurrent équivalent mensuel d'un contrat (même maths que
 // l'insight recurring_revenue : prix × visites/an ÷ 12).

@@ -16,6 +16,7 @@ from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.viewsets import CompanyScopedModelViewSet
 
 from apps.ventes.utils.references import create_with_reference
 
@@ -27,7 +28,7 @@ from ..serializers import (
 READ_ACTIONS = ['list', 'retrieve']
 
 
-class RFQViewSet(TenantMixin, viewsets.ModelViewSet):
+class RFQViewSet(CompanyScopedModelViewSet):
     """FG311 — RFQ. Lecture tout rôle, écriture responsable/admin. Référence
     anti-collision + société + `created_by` posés serveur ; `demande` validée
     tenant. Filtrable par `statut`, `demande`. Cycle de vie + `retenir`."""
@@ -264,7 +265,7 @@ class RFQConsultationViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
         return qs
 
 
-class RFQOffreViewSet(TenantMixin, viewsets.ModelViewSet):
+class RFQOffreViewSet(CompanyScopedModelViewSet):
     """FG311 — réponses fournisseur à une RFQ. La RFQ parente est validée tenant.
     Filtrable par `rfq`. Lecture tout rôle, écriture responsable/admin."""
     queryset = RFQOffre.objects.select_related('rfq', 'fournisseur').all()

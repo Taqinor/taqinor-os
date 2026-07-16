@@ -5,8 +5,8 @@ import {
   RefreshCw, Wallet, Clock, Users, Package, BarChart3, AlertTriangle, Download,
 } from 'lucide-react'
 import {
-  AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
-  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
+  PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend,
+  AreaChart, Area, XAxis, YAxis, CartesianGrid,
 } from 'recharts'
 import { fetchDashboard } from '../features/reporting/store/reportingSlice'
 import reportingApi from '../api/reportingApi'
@@ -17,6 +17,16 @@ import {
   Button, Card, CardHeader, CardTitle, CardContent, CardDescription,
   Stat, Badge, StatusPill, Segmented, Skeleton, EmptyState, Progress,
 } from '../ui'
+// VX28 — un seul langage de graphique (kit ui/charts) + un seul PageHeader.
+// Le camembert « Répartition des factures » reste en recharts natif (le kit ne
+// fournit pas de primitive Pie) ; l'aire CA et les barres top-produits passent
+// au kit.
+import {
+  AreaSansAxe, BarArrondie, ChartTooltip, ChartEmpty,
+  CHART_TOKENS, CHART_GRID_STYLE, CHART_COMPARISON_STYLE, categoricalColor,
+  animationDuration, CHART_ANIM_EASING,
+} from '../ui/charts'
+import { PageHeader } from '../ui/PageHeader'
 import { Table } from './reporting/Table'
 
 // ── Formatage monétaire (DH, sans décimales — comme l'écran historique) ──────
@@ -33,34 +43,6 @@ const dhCompact = (v) => {
     maximumFractionDigits: 1,
   }).format(n)
   return `${body} DH`
-}
-
-// Couleurs de séries pour recharts, tirées des tokens sémantiques (clair/sombre).
-const CHART_INFO = 'var(--color-info)'
-const CHART_PRIMARY = 'var(--color-primary)'
-const CHART_GRID = 'var(--color-border)'
-const CHART_AXIS = 'var(--color-muted-foreground)'
-const CHART_TOOLTIP_STYLE = {
-  borderRadius: 8,
-  fontSize: 12,
-  background: 'var(--color-popover)',
-  border: '1px solid var(--color-border)',
-  color: 'var(--color-popover-foreground)',
-}
-
-// ── Tooltip recharts thémé via tokens ───────────────────────────────────────
-function TooltipDH({ active, payload, label }) {
-  if (!active || !payload?.length) return null
-  return (
-    <div className="rounded-md border border-border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-ui-md">
-      <div className="mb-1 font-semibold">{label}</div>
-      {payload.map((p, i) => (
-        <div key={i} className="tabular-nums" style={{ color: p.color ?? CHART_INFO }}>
-          {p.name ?? 'CA'} : {dh(p.value)}
-        </div>
-      ))}
-    </div>
-  )
 }
 
 // ── Barre de conversion (J146 — composant Progress partagé) ──────────────────
@@ -218,6 +200,8 @@ export function Component() {
   // Fenêtre d'affichage du CA mensuel (filtrage CLIENT sur les données déjà
   // chargées — aucun appel API supplémentaire, comportement inchangé).
   const [caWindowMonths, setCaWindowMonths] = useState('12')
+  // VX41 — comparaison togglable « période précédente » (off par défaut).
+  const [caCompare, setCaCompare] = useState(false)
 
   useEffect(() => {
     dispatch(fetchDashboard())
@@ -229,6 +213,19 @@ export function Component() {
     return data.ca_mensuel.slice(-n)
   }, [data, caWindowMonths])
 
+  // VX41 — la comparaison n'est honnête que pour la fenêtre 6 mois : le
+  // backend `_ca_mensuel` renvoie toujours exactement 12 mois calendaires
+  // (voir apps/reporting/views.py), donc les 6 mois qui précèdent la fenêtre
+  // affichée existent déjà dans `data.ca_mensuel` — zéro appel API. Pour les
+  // fenêtres 12 mois/Tout, il n'existe PAS de 12 mois précédents chargés :
+  // on masque le bascule plutôt que d'inventer une donnée (checked-facts-only).
+  const caCompareAvailable = caWindowMonths === '6' && (data?.ca_mensuel?.length ?? 0) >= 12
+  const caWindowCompare = useMemo(() => {
+    if (!caCompareAvailable) return []
+    const precedent = data.ca_mensuel.slice(0, 6)
+    return caWindow.map((m, i) => ({ ...m, caPrecedent: precedent[i]?.ca ?? 0 }))
+  }, [caWindow, caCompareAvailable, data])
+
   // Export .xlsx (KPIs + créances clients), scopé société côté serveur.
   const exportDashboard = () => api
     .get('/reporting/dashboard/', { params: { export: 'xlsx' }, responseType: 'blob' })
@@ -238,9 +235,8 @@ export function Component() {
   if (loading) {
     return (
       <div className="ui-root page" style={{ maxWidth: 1200 }}>
-        <div className="page-header" style={{ marginBottom: '1.5rem' }}>
-          <h2>Reporting &amp; Analytics</h2>
-        </div>
+        {/* VX28 — PageHeader unifié. */}
+        <PageHeader title="Reporting & Analytics" icon={BarChart3} />
         <LoadingState />
       </div>
     )
@@ -249,9 +245,8 @@ export function Component() {
   if (error) {
     return (
       <div className="ui-root page" style={{ maxWidth: 1200 }}>
-        <div className="page-header" style={{ marginBottom: '1.5rem' }}>
-          <h2>Reporting &amp; Analytics</h2>
-        </div>
+        {/* VX28 — PageHeader unifié. */}
+        <PageHeader title="Reporting & Analytics" icon={BarChart3} />
         <EmptyState
           icon={AlertTriangle}
           title="Données indisponibles"
@@ -276,17 +271,21 @@ export function Component() {
 
   return (
     <div className="ui-root page" style={{ maxWidth: 1200 }}>
-      <div className="page-header" style={{ marginBottom: '1.5rem' }}>
-        <h2>Reporting &amp; Analytics</h2>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" size="sm" onClick={exportDashboard}>
-            <Download /> Exporter Excel
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => dispatch(fetchDashboard())}>
-            <RefreshCw /> Actualiser
-          </Button>
-        </div>
-      </div>
+      {/* VX28 — PageHeader unifié : titre + actions (export/actualiser). */}
+      <PageHeader
+        title="Reporting & Analytics"
+        icon={BarChart3}
+        actions={(
+          <>
+            <Button variant="outline" size="sm" onClick={exportDashboard}>
+              <Download /> Exporter Excel
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => dispatch(fetchDashboard())}>
+              <RefreshCw /> Actualiser
+            </Button>
+          </>
+        )}
+      />
 
       <PipelineSection />
 
@@ -304,49 +303,109 @@ export function Component() {
         <Card>
           <CardHeader className="flex-row items-center justify-between gap-3">
             <CardTitle>CA mensuel</CardTitle>
-            <Segmented
-              size="sm"
-              value={caWindowMonths}
-              onChange={setCaWindowMonths}
-              options={[
-                { value: '6', label: '6 mois' },
-                { value: '12', label: '12 mois' },
-                { value: 'all', label: 'Tout' },
-              ]}
-            />
+            <div className="flex items-center gap-2">
+              {/* VX41 — comparaison « période précédente », uniquement quand la
+                  fenêtre 6 mois laisse assez d'historique déjà chargé pour
+                  l'afficher honnêtement (voir caCompareAvailable). */}
+              {caCompareAvailable && (
+                <Segmented
+                  size="sm"
+                  value={caCompare ? 'compare' : 'simple'}
+                  onChange={(v) => setCaCompare(v === 'compare')}
+                  options={[
+                    { value: 'simple', label: 'CA seul' },
+                    { value: 'compare', label: 'Vs période précédente' },
+                  ]}
+                />
+              )}
+              <Segmented
+                size="sm"
+                value={caWindowMonths}
+                onChange={setCaWindowMonths}
+                options={[
+                  { value: '6', label: '6 mois' },
+                  { value: '12', label: '12 mois' },
+                  { value: 'all', label: 'Tout' },
+                ]}
+              />
+            </div>
           </CardHeader>
           <CardContent>
             {caVide ? (
-              <EmptyState
+              <ChartEmpty
                 icon={BarChart3}
                 title="Aucune facture payée"
                 description="Aucune facture payée sur la période sélectionnée."
-                className="border-0 py-8"
               />
+            ) : caCompare && caCompareAvailable ? (
+              <>
+                <ResponsiveContainer width="100%" height={220}>
+                  <AreaChart data={caWindowCompare} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+                    <CartesianGrid {...CHART_GRID_STYLE} />
+                    <XAxis
+                      dataKey="mois"
+                      tick={{ fontSize: 11, fill: CHART_TOKENS.axis }}
+                      tickLine={false}
+                      axisLine={false}
+                    />
+                    <YAxis hide domain={[0, 'auto']} />
+                    <Tooltip
+                      cursor={{ stroke: CHART_TOKENS.grid }}
+                      content={<ChartTooltip format={(v) => dh(v)} />}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="ca"
+                      name="CA HT (période actuelle)"
+                      stroke={categoricalColor(0)}
+                      strokeWidth={2}
+                      fill={categoricalColor(0)}
+                      fillOpacity={0.12}
+                      dot={false}
+                      isAnimationActive={animationDuration() > 0}
+                      animationDuration={animationDuration()}
+                      animationEasing={CHART_ANIM_EASING}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="caPrecedent"
+                      name="CA HT (période précédente)"
+                      stroke={categoricalColor(1)}
+                      dot={false}
+                      isAnimationActive={animationDuration() > 0}
+                      animationDuration={animationDuration()}
+                      animationEasing={CHART_ANIM_EASING}
+                      {...CHART_COMPARISON_STYLE}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+                <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                  <span className="inline-flex items-center gap-1.5">
+                    <span aria-hidden="true" className="inline-block h-0.5 w-3.5 rounded-full" style={{ background: categoricalColor(0) }} />
+                    Période actuelle
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span
+                      aria-hidden="true"
+                      className="inline-block h-0.5 w-3.5"
+                      style={{
+                        backgroundImage: `repeating-linear-gradient(90deg, ${categoricalColor(1)} 0 4px, transparent 4px 7px)`,
+                      }}
+                    />
+                    Période précédente
+                  </span>
+                </div>
+              </>
             ) : (
-              <ResponsiveContainer width="100%" height={220}>
-                <AreaChart data={caWindow} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
-                  <defs>
-                    <linearGradient id="caGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor={CHART_INFO} stopOpacity={0.2} />
-                      <stop offset="95%" stopColor={CHART_INFO} stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
-                  <XAxis dataKey="mois" tick={{ fontSize: 11, fill: CHART_AXIS }} stroke={CHART_GRID} />
-                  <YAxis
-                    tick={{ fontSize: 11, fill: CHART_AXIS }}
-                    stroke={CHART_GRID}
-                    tickFormatter={(v) => (v >= 1000 ? Math.round(v / 1000) + 'k' : v)}
-                  />
-                  <Tooltip content={<TooltipDH />} />
-                  <Area
-                    type="monotone" dataKey="ca" name="CA HT"
-                    stroke={CHART_INFO} strokeWidth={2.5}
-                    fill="url(#caGradient)" dot={false}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
+              <AreaSansAxe
+                data={caWindow}
+                dataKey="ca"
+                xKey="mois"
+                tone="info"
+                name="CA HT"
+                height={220}
+                tooltipFormat={(v) => dh(v)}
+              />
             )}
           </CardContent>
         </Card>
@@ -356,34 +415,23 @@ export function Component() {
           <CardHeader><CardTitle>Top 5 produits vendus (quantité)</CardTitle></CardHeader>
           <CardContent>
             {top_produits.length === 0 ? (
-              <EmptyState
+              <ChartEmpty
                 icon={Package}
                 title="Aucune vente"
                 description="Aucune vente enregistrée."
-                className="border-0 py-8"
               />
             ) : (
-              <ResponsiveContainer width="100%" height={220}>
-                <BarChart
-                  data={top_produits}
-                  layout="vertical"
-                  margin={{ top: 4, right: 20, bottom: 0, left: 0 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} horizontal={false} />
-                  <XAxis type="number" tick={{ fontSize: 11, fill: CHART_AXIS }} stroke={CHART_GRID} />
-                  <YAxis
-                    dataKey="nom" type="category"
-                    tick={{ fontSize: 11, fill: CHART_AXIS }}
-                    stroke={CHART_GRID}
-                    width={100}
-                  />
-                  <Tooltip
-                    formatter={(v) => [formatNumber(v) + ' unités', 'Qté vendue']}
-                    contentStyle={CHART_TOOLTIP_STYLE}
-                  />
-                  <Bar dataKey="qte" fill={CHART_PRIMARY} radius={[0, 6, 6, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+              <BarArrondie
+                data={top_produits}
+                dataKey="qte"
+                categoryKey="nom"
+                layout="vertical"
+                tone="primary"
+                name="Qté vendue"
+                height={220}
+                categoryWidth={100}
+                tooltipFormat={(v) => `${formatNumber(v)} unités`}
+              />
             )}
           </CardContent>
         </Card>
@@ -396,7 +444,7 @@ export function Component() {
           <CardHeader><CardTitle>Répartition des factures</CardTitle></CardHeader>
           <CardContent>
             {statuts_factures.length === 0 ? (
-              <EmptyState icon={BarChart3} title="Aucune facture" className="border-0 py-8" />
+              <ChartEmpty icon={BarChart3} title="Aucune facture" />
             ) : (
               <ResponsiveContainer width="100%" height={200}>
                 <PieChart>
@@ -411,10 +459,7 @@ export function Component() {
                       <Cell key={i} fill={entry.color} />
                     ))}
                   </Pie>
-                  <Tooltip
-                    formatter={(v, n) => [formatNumber(v), n]}
-                    contentStyle={CHART_TOOLTIP_STYLE}
-                  />
+                  <Tooltip content={<ChartTooltip format={(v) => formatNumber(v)} />} />
                   <Legend iconType="circle" iconSize={10} wrapperStyle={{ fontSize: 12 }} />
                 </PieChart>
               </ResponsiveContainer>

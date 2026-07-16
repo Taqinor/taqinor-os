@@ -465,6 +465,15 @@ EQUIP_PREFIX = 'EQUIP'
 # deux produits différents peuvent partager un n° de série/lot).
 SERIE_PREFIX = 'SERIE'
 LOT_PREFIX = 'LOT'
+# XSTK20 — jeton « carte kanban » deux-bacs : `KANBAN:<produit_id>:
+# <emplacement_id>` (l'emplacement est celui qui se recomplète — la carte est
+# collée sur le bac vide de CET emplacement). Scanner cette carte crée une
+# DemandeTransfert préremplie depuis le dépôt principal.
+KANBAN_PREFIX = 'KANBAN'
+# ZSTK5 — jeton « étiquette de colis » : `COLIS:<colis_id>` (2 segments, comme
+# PRODUIT:/SYSTEME:/INTERVENTION:/EQUIP: ci-dessus). Scanner un colis résout
+# vers son contenu (installations.Colis, FG322) — jamais de prix affiché.
+COLIS_PREFIX = 'COLIS'
 
 
 def produit_token(produit_id) -> str:
@@ -489,6 +498,25 @@ def serie_token(produit_id, numero_serie) -> str:
 
 def lot_token(produit_id, numero_lot) -> str:
     return f'{LOT_PREFIX}:{produit_id}:{numero_lot}'
+
+
+def kanban_token(produit_id, emplacement_id) -> str:
+    return f'{KANBAN_PREFIX}:{produit_id}:{emplacement_id}'
+
+
+def colis_token(colis_id) -> str:
+    return f'{COLIS_PREFIX}:{colis_id}'
+
+
+def showroom_url(base_url, catalogue_token, produit_id) -> str:
+    """XPOS17 — URL publique encodée par le QR d'une étiquette « showroom » :
+    la fiche produit PUBLIQUE de l'e-catalogue tokenisé (FG214). Le client
+    scanne en magasin et atterrit sur la fiche (specs, prix TTC, garantie,
+    disponibilité indicative — JAMAIS de prix d'achat) avec les CTA
+    « Demander un devis » (XPOS14) et « Être rappelé » (QJ27)."""
+    base = (base_url or '').rstrip('/')
+    return (f'{base}/api/django/public/stock/showroom/'
+            f'{catalogue_token}/produit/{produit_id}/')
 
 
 def _esc(value) -> str:

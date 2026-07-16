@@ -51,6 +51,10 @@ vi.mock('../../api/parametresApi', async (importOriginal) => {
 import FactureList from './FactureList'
 import ventesApi from '../../api/ventesApi'
 import parametresApi from '../../api/parametresApi'
+// ARC53 — FactureList rend son tableau via le moteur `ui/datatable` (useDensity),
+// qui EXIGE un <ThemeProvider> dans l'arbre (présent en prod via <Layout>). Ajout
+// de wrapper de HARNAIS uniquement — aucune assertion n'est modifiée.
+import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
 function makeStore({ factures = [], loading = false, error = null, role = 'admin' } = {}) {
   return configureStore({
@@ -66,7 +70,9 @@ function renderList(opts) {
   return render(
     <Provider store={store}>
       <MemoryRouter initialEntries={['/ventes/factures']}>
-        <FactureList />
+        <ThemeProvider>
+          <FactureList />
+        </ThemeProvider>
       </MemoryRouter>
     </Provider>,
   )
@@ -206,5 +212,73 @@ describe('FactureList — ZFAC9 : bascule Liste/Kanban', () => {
     await user.click(screen.getByRole('button', { name: /Kanban/ }))
     await user.click(screen.getByRole('button', { name: /^Liste/ }))
     expect(screen.getByRole('table')).toBeInTheDocument()
+  })
+})
+
+describe('FactureList — VX142(a) : toolbar « Exporter » unique, plus de window.prompt', () => {
+  it('le menu « Exporter » regroupe Exporter Excel / Journal comptable / Export comptable / Audit numérotation', async () => {
+    const user = userEvent.setup()
+    const promptSpy = vi.spyOn(window, 'prompt')
+    renderList({ factures: [{ ...baseFacture }] })
+    await user.click(screen.getByRole('button', { name: /^Exporter$/ }))
+    expect(screen.getByRole('menuitem', { name: /Exporter Excel/ })).toBeVisible()
+    expect(screen.getByRole('menuitem', { name: /Journal comptable/ })).toBeVisible()
+    expect(screen.getByRole('menuitem', { name: /Export comptable/ })).toBeVisible()
+    expect(screen.getByRole('menuitem', { name: /Audit numérotation/ })).toBeVisible()
+    expect(promptSpy).not.toHaveBeenCalled()
+  })
+
+  it('« Journal comptable… » ouvre un Dialog mois/trimestre, jamais window.prompt', async () => {
+    const user = userEvent.setup()
+    const promptSpy = vi.spyOn(window, 'prompt')
+    renderList({ factures: [{ ...baseFacture }] })
+    await user.click(screen.getByRole('button', { name: /^Exporter$/ }))
+    await user.click(screen.getByRole('menuitem', { name: /Journal comptable/ }))
+    expect(screen.getByRole('heading', { name: 'Journal comptable' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Mois' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Trimestre' })).toBeVisible()
+    expect(promptSpy).not.toHaveBeenCalled()
+  })
+
+  it('« Export comptable… » ouvre un Dialog à deux champs date, jamais window.prompt', async () => {
+    const user = userEvent.setup()
+    const promptSpy = vi.spyOn(window, 'prompt')
+    renderList({ factures: [{ ...baseFacture }] })
+    await user.click(screen.getByRole('button', { name: /^Exporter$/ }))
+    await user.click(screen.getByRole('menuitem', { name: /Export comptable/ }))
+    expect(screen.getByRole('heading', { name: 'Export comptable' })).toBeVisible()
+    expect(screen.getByLabelText('Date de début')).toBeVisible()
+    expect(screen.getByLabelText('Date de fin')).toBeVisible()
+    expect(promptSpy).not.toHaveBeenCalled()
+  })
+})
+
+describe('FactureList — VX142(b) : nextBestAction en position 1, style distinct', () => {
+  it('une facture brouillon montre « Émettre » recommandé en PREMIER bouton de la rangée', () => {
+    renderList({
+      factures: [{ ...baseFacture, id: 2, reference: 'FAC-NBA-1', statut: 'brouillon', montant_du: 0 }],
+    })
+    const row = screen.getByText('FAC-NBA-1').closest('tr')
+    const actionsCell = row.cells[row.cells.length - 1]
+    const buttons = within(actionsCell).getAllByRole('button')
+    expect(buttons[0]).toHaveAccessibleName(/Émettre/)
+    expect(buttons[0]).toHaveAttribute('title', 'Action recommandée')
+    // Une seule occurrence du bouton Émettre (pas de doublon plus loin dans la rangée).
+    expect(within(actionsCell).getAllByRole('button', { name: /Émettre/ })).toHaveLength(1)
+  })
+
+  it('une facture émise partiellement payée montre « Encaisser » recommandé en PREMIER, sans doublon', () => {
+    renderList({
+      factures: [{
+        ...baseFacture, id: 3, reference: 'FAC-NBA-2', statut: 'emise',
+        date_echeance: '2099-01-01', montant_paye: 1000, montant_du: 4000,
+      }],
+    })
+    const row = screen.getByText('FAC-NBA-2').closest('tr')
+    const actionsCell = row.cells[row.cells.length - 1]
+    const buttons = within(actionsCell).getAllByRole('button')
+    expect(buttons[0]).toHaveAccessibleName(/Encaisser/)
+    // « Enregistrer paiement » (position historique) ne réapparaît pas à côté.
+    expect(within(actionsCell).queryByRole('button', { name: /Enregistrer paiement/ })).toBeNull()
   })
 })

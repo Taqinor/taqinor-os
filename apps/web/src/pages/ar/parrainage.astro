@@ -10,6 +10,14 @@
  * Same referral mechanic as FR/EN: personal link rides the EXISTING
  * utm_campaign passthrough (zero backend change). WG14 (reward amount +
  * trigger milestone) stays gated — no invented figure.
+ *
+ * WJ116 — رمز الإحالة <code> ليس أمراً يخترعه المُحيل (اسمه الأول، رقم
+ * ملفه...): الواجهة الخلفية QX35 (LIVE) تُنشئ سجل `Parrainage` تلقائياً فقط
+ * عندما يطابق <code> رمز `Client.code_parrainage` قائماً فعلاً، وهو رمز
+ * محدَّد سلفاً تُسنِده Taqinor لكل زبون (على شكل `TQ-<id>`، مثل `TQ-482`) —
+ * رمز مُخترَع لا يطابق أي زبون، وبالتالي لا يُكافأ المُحيل أبداً. هذه
+ * الصفحة تُبلّغ الآن بالرمز الحقيقي (عبر المستشار أو فضاء العميل)، لا
+ * برمز يختاره المستخدم بنفسه.
  */
 import Layout from '../../layouts/Layout.astro';
 import V2Enhance from '../../components/V2Enhance.astro';
@@ -118,10 +126,12 @@ const jsonLd = {
         <Callout type="info" title="رابطك الشخصي">
           <p>
             لا حساب لإنشائه، ولا تطبيق لتثبيته: رابطك الشخصي هو ببساطة مسار التشخيص المعتاد لدينا،
-            مع رمز تختاره بنفسك حتى نعرف أنه أتى منك — مثلاً اسمك الأول أو رقم ملفك كزبون:
+            مُرفَقاً برمز الإحالة الخاص بك. هذا الرمز ليس عليك اختراعه: تُسنِده لك Taqinor، على شكل
+            <strong class="text-brass-300" dir="ltr">TQ-</strong> يتبعه رقم — يزوّدك به مستشارك،
+            أو تجده في فضاء العميل الخاص بك.
           </p>
           <p class="mt-3 break-all rounded-none border border-white/15 bg-black/20 px-4 py-3 font-mono text-xs text-lune" dir="ltr">
-            taqinor.ma/devis/mon-toit?utm_source=parrainage&utm_campaign=<strong class="text-brass-300">your-code</strong>
+            taqinor.ma/devis/mon-toit?utm_source=parrainage&utm_campaign=<strong class="text-brass-300">TQ-482</strong>
           </p>
           <p class="mt-3">
             أرسله عبر واتساب أو رسالة نصية أو أي قناة أخرى — هذا كل ما عليك فعله من جانبك.

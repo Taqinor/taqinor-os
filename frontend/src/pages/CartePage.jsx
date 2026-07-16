@@ -1,18 +1,30 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, lazy, Suspense } from 'react'
 import { useNavigate } from 'react-router-dom'
 import reportingApi from '../api/reportingApi'
-import MapView, { escapeHtml } from '../components/MapView'
+// VX186 — `MapView` (leaflet, 150,7 Ko/44,4 gzip) en `lazy` : `escapeHtml`
+// (fonction pure, utilisée dans le `useMemo` des marqueurs) reste un import
+// statique — seul le COMPOSANT porte le poids de leaflet.
+import { escapeHtml } from '../components/MapView'
+import { Badge } from '../ui/Badge'
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../ui/Select'
+import { EmptyState } from '../ui/EmptyState'
+import { Spinner } from '../ui/Spinner'
+
+const MapView = lazy(() => import('../components/MapView'))
 
 // N85 — Vue carte : leads, chantiers, systèmes installés et visites prévues sur
 // une carte (Leaflet / OpenStreetMap), filtrables par type ET par statut.
 // Cliquer un marqueur ouvre la fiche correspondante. Toutes les données sont
 // bornées à la société de l'utilisateur (filtrage serveur).
 
+// VX32 — chaque type porte un `tone` Badge (composants du design system) et
+// un `color` en variable CSS de thème (jamais de hex figé) pour l'épingle
+// Leaflet — s'adapte donc automatiquement en mode sombre.
 const TYPES = [
-  { key: 'lead', label: 'Leads', color: '#2563eb' },
-  { key: 'chantier', label: 'Chantiers', color: '#ea580c' },
-  { key: 'installe', label: 'Systèmes installés', color: '#16a34a' },
-  { key: 'visite', label: 'Visites prévues', color: '#7c3aed' },
+  { key: 'lead', label: 'Leads', tone: 'info', color: 'var(--info)' },
+  { key: 'chantier', label: 'Chantiers', tone: 'warning', color: 'var(--warning)' },
+  { key: 'installe', label: 'Systèmes installés', tone: 'success', color: 'var(--success)' },
+  { key: 'visite', label: 'Visites prévues', tone: 'primary', color: 'var(--primary)' },
 ]
 const COLOR = Object.fromEntries(TYPES.map((t) => [t.key, t.color]))
 
@@ -71,7 +83,10 @@ export default function CartePage() {
       color: COLOR[p.type] || '#64748b',
       detail_path: p.detail_path,
       // ERR26 — échapper chaque valeur serveur avant de l'injecter dans le HTML.
-      popupHtml: `<div style="margin-top:4px;color:#475569;font-size:0.8rem">`
+      // Classes Tailwind (tokens) plutôt qu'un style inline en hex : le popup
+      // Leaflet est du HTML brut hors de l'arbre React, mais partage la même
+      // feuille de styles applicative.
+      popupHtml: `<div class="mt-1 text-xs text-muted-foreground">`
         + `${escapeHtml(p.type_label)}${p.statut_label ? ' · ' + escapeHtml(p.statut_label) : ''}`
         + (p.date ? ` · ${escapeHtml(p.date)}` : '')
         + `</div>`,
@@ -81,63 +96,63 @@ export default function CartePage() {
 
   return (
     <div className="page">
-      <div className="page-header" style={{ flexWrap: 'wrap', gap: '0.75rem' }}>
+      <div className="page-header flex-wrap gap-3">
         <h2>Carte</h2>
-        <span style={{ color: '#64748b', fontSize: '0.85rem' }}>
-          {counts.total ? `${counts.total} point(s) géolocalisé(s)` : ''}
-        </span>
+        {counts.total ? (
+          <Badge tone="neutral">{counts.total} point(s) géolocalisé(s)</Badge>
+        ) : null}
       </div>
 
       {/* Filtres par type (légende cliquable) + filtre par statut. */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem',
-        alignItems: 'center', marginBottom: '0.75rem' }}>
+      <div className="mb-3 flex flex-wrap items-center gap-2">
         {TYPES.map((t) => {
           const off = hidden.has(t.key)
           const n = counts[t.key] || 0
           return (
-            <button key={t.key} type="button" onClick={() => toggleType(t.key)}
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => toggleType(t.key)}
               title={off ? 'Afficher' : 'Masquer'}
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: 6,
-                padding: '3px 10px', borderRadius: 999, cursor: 'pointer',
-                border: `1px solid ${t.color}`, fontSize: '0.8rem',
-                background: off ? 'transparent' : t.color,
-                color: off ? t.color : '#fff',
-              }}>
-              <span style={{ width: 8, height: 8, borderRadius: 999,
-                background: off ? t.color : '#fff' }} />
-              {t.label}{n ? ` (${n})` : ''}
+              aria-pressed={!off}
+              className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <Badge tone={off ? 'outline' : t.tone}>
+                {t.label}{n ? ` (${n})` : ''}
+              </Badge>
             </button>
           )
         })}
 
-        <select
-          value={statut}
-          onChange={(e) => setStatut(e.target.value)}
-          aria-label="Filtrer par statut"
-          style={{
-            marginLeft: 'auto', padding: '4px 10px', borderRadius: 8,
-            border: '1px solid #cbd5e1', fontSize: '0.8rem',
-            background: '#fff', color: '#334155',
-          }}>
-          <option value="">Tous les statuts</option>
-          {statutOptions.map((s) => (
-            <option key={s.value} value={s.value}>{s.label}</option>
-          ))}
-        </select>
+        <Select value={statut || '_all'} onValueChange={(v) => setStatut(v === '_all' ? '' : v)}>
+          <SelectTrigger aria-label="Filtrer par statut" className="ml-auto w-auto min-w-40">
+            <SelectValue placeholder="Tous les statuts" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="_all">Tous les statuts</SelectItem>
+            {statutOptions.map((s) => (
+              <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
-      {err && <p style={{ color: '#dc2626' }}>{err}</p>}
+      {err && <p className="text-destructive">{err}</p>}
       {loading && <p className="page-loading">Chargement…</p>}
 
       {!loading && !err && markers.length === 0 && (
-        <p style={{ color: '#94a3b8', padding: '1rem 0' }}>
-          Aucun enregistrement géolocalisé. Ajoutez les coordonnées GPS sur les
-          leads et les chantiers pour les voir ici.
-        </p>
+        // VX40 — pictogramme solaire illustré (l'un des 4-5 écrans les plus vus).
+        <EmptyState
+          illustrated
+          title="Aucun enregistrement géolocalisé"
+          description="Ajoutez les coordonnées GPS sur les leads et les chantiers pour les voir ici."
+          className="my-4"
+        />
       )}
 
-      <MapView markers={markers} onMarkerClick={openRecord} />
+      <Suspense fallback={<p className="page-loading"><Spinner /> Chargement de la carte…</p>}>
+        <MapView markers={markers} onMarkerClick={openRecord} />
+      </Suspense>
     </div>
   )
 }

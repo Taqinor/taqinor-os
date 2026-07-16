@@ -1,0 +1,97 @@
+/* VX80 — Feuille de style d'impression globale du SPA.
+   Avant : aucun `@media print` dans tout le front → Ctrl+P imprimait la sidebar,
+   le dark mode qui boit l'encre, des tables tronquées. Ce bloc UNIQUE corrige
+   les trois : chrome masqué, noir-sur-blanc, tables complètes.
+
+   NB (règle #4) : ceci est de l'impression navigateur (window.print) — TOTALEMENT
+   distinct des PDF WeasyPrint client (devis/factures), jamais touchés ici. */
+
+@media print {
+  /* Fond clair, encre noire — neutralise le thème sombre à l'impression. */
+  html,
+  html.dark,
+  body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  /* ── Masquer tout le chrome applicatif ──────────────────────────────── */
+  .sidebar,
+  .drawer-overlay,
+  .header,
+  .bottom-tabbar,
+  .route-progress,
+  .sidebar-impact,
+  .offline-banner,
+  /* Tiroirs / modales / overlays Radix portés dans <body> (Copilote, dialogues,
+     bottom-sheets…) et toasts sonner : hors sujet à l'impression. */
+  [data-sonner-toaster],
+  [role="dialog"] [data-radix-dialog-overlay],
+  [data-radix-popper-content-wrapper] {
+    display: none !important;
+  }
+
+  /* Boutons d'action (dont « Imprimer » lui-même) : jamais sur le papier. */
+  button,
+  .no-print {
+    display: none !important;
+  }
+
+  /* ── Zone de contenu : occuper toute la page, sans marge de coquille ── */
+  .layout,
+  .layout-main,
+  .layout-content,
+  main.layout-content {
+    display: block !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: auto !important;
+    max-width: none !important;
+    overflow: visible !important;
+  }
+
+  /* ── Tables : jamais tronquées, jamais coupées au milieu d'une ligne ── */
+  table,
+  .overflow-x-auto,
+  [class*="overflow-"] {
+    overflow: visible !important;
+    width: auto !important;
+    max-width: none !important;
+  }
+
+  table {
+    border-collapse: collapse !important;
+  }
+
+  tr,
+  img,
+  .page-break-inside-avoid {
+    page-break-inside: avoid;
+  }
+
+  thead {
+    display: table-header-group; /* répéter l'en-tête sur chaque page */
+  }
+
+  /* La checklist chantier vit dans un Sheet (Radix Dialog, position: fixed,
+     largeur limitée) : à l'impression on le rend statique et pleine page pour
+     ne rien tronquer. L'overlay assombrissant est masqué plus haut. */
+  [role="dialog"] {
+    position: static !important;
+    width: auto !important;
+    max-width: none !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+    border: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+    color: #000 !important;
+    animation: none !important;
+  }
+
+  @page {
+    margin: 2cm;
+  }
+}

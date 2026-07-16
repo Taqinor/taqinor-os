@@ -115,7 +115,7 @@ class ContratSerializer(serializers.ModelSerializer):
             'montant', 'devise', 'plan_recurrent',
             'confidentialite', 'confidentialite_display',
             'responsable', 'responsable_nom',
-            'created_by', 'date_creation',
+            'created_by', 'date_creation', 'custom_data',
         ]
         read_only_fields = [
             'created_by', 'date_creation',
@@ -123,6 +123,21 @@ class ContratSerializer(serializers.ModelSerializer):
         ]
 
     responsable_nom = serializers.SerializerMethodField()
+
+    def validate(self, attrs):
+        # ARC14 — champs personnalisés (pilote) : valider/nettoyer
+        # custom_data contre les définitions du module « contrat », même
+        # chemin que Lead/Client/Produit. Création → toujours validé (champs
+        # obligatoires) ; mise à jour → uniquement si custom_data est fourni.
+        is_create = self.instance is None
+        if is_create or 'custom_data' in attrs:
+            from apps.customfields.serializers import validate_custom_data
+            request = self.context.get('request')
+            company = getattr(getattr(request, 'user', None), 'company', None)
+            if company is not None:
+                attrs['custom_data'] = validate_custom_data(
+                    'contrat', company, attrs.get('custom_data'))
+        return attrs
 
     def get_responsable_nom(self, obj):
         return getattr(obj.responsable, 'username', None)

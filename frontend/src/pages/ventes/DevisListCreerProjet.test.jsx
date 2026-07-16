@@ -29,6 +29,10 @@ vi.mock('react-router-dom', async (importOriginal) => {
 
 import DevisList from './DevisList'
 import gestionProjetApi from '../../api/gestionProjetApi'
+// ARC49 — le tableau DevisList passe par le moteur `ui/datatable` (useDensity),
+// qui EXIGE un <ThemeProvider> (présent en prod via <Layout>). Wrapper de
+// harnais uniquement — aucune assertion modifiée.
+import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
 function makeStore(devis) {
   return configureStore({
@@ -44,7 +48,9 @@ function renderList(devis) {
   return render(
     <Provider store={store}>
       <MemoryRouter initialEntries={['/ventes/devis']}>
-        <DevisList />
+        <ThemeProvider>
+          <DevisList />
+        </ThemeProvider>
       </MemoryRouter>
     </Provider>,
   )
@@ -59,15 +65,20 @@ const devisAccepte = [{
 }]
 
 describe('DevisList — XPRJ21 Créer projet depuis devis', () => {
-  it('affiche le bouton « Créer projet » uniquement sur un devis accepté', () => {
+  // VX20 — « Créer projet » vit désormais dans le menu « Plus d'actions »
+  // (regroupement des actions secondaires, plus de bouton direct).
+  it('affiche l\'action « Créer projet » dans le menu « Plus » uniquement sur un devis accepté', async () => {
+    const user = userEvent.setup()
     renderList(devisAccepte)
-    expect(screen.getByRole('button', { name: /Créer projet/ })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /Plus d'actions/ }))
+    expect(await screen.findByRole('menuitem', { name: /Créer projet/ })).toBeInTheDocument()
   })
 
   it('appelle creerProjetDepuisDevis puis navigue vers la fiche projet créée', async () => {
     const user = userEvent.setup()
     renderList(devisAccepte)
-    await user.click(screen.getByRole('button', { name: /Créer projet/ }))
+    await user.click(screen.getByRole('button', { name: /Plus d'actions/ }))
+    await user.click(await screen.findByRole('menuitem', { name: /Créer projet/ }))
     await waitFor(() => expect(gestionProjetApi.creerProjetDepuisDevis).toHaveBeenCalledWith(7))
     await waitFor(() => expect(navigateMock).toHaveBeenCalledWith('/projets/42'))
   })

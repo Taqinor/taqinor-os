@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { ReceiptText, Plus, FileText, Building2 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import comptaApi from '../../api/comptaApi'
+import { formatMAD } from '../../lib/format'
 import {
   Button, StatusPill, DataTable, toast,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -44,10 +45,7 @@ function frError(err, fallback = 'Une erreur est survenue. Réessayez.') {
   return fallback
 }
 
-const fmtMad = (v) => {
-  const n = Number(v) || 0
-  return `${n.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MAD`
-}
+const fmtMad = (v) => formatMAD(v)
 const fmtDateFR = (iso) => {
   if (!iso) return '—'
   const d = new Date(iso.length <= 10 ? `${iso}T00:00:00` : iso)
@@ -502,6 +500,7 @@ export default function FacturesFournisseur() {
         onRowClick={openFacture}
         emptyTitle={aPayerSeul ? 'Aucune facture à payer' : 'Aucune facture fournisseur'}
         emptyDescription="Enregistrez une facture reçue d'un fournisseur avec « Nouvelle facture »."
+        emptyAction={<Button size="sm" onClick={() => setCreating(true)}><Plus className="size-4" /> Nouvelle facture</Button>}
         aria-label="Factures fournisseur"
       />
 

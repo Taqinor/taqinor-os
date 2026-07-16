@@ -1,5 +1,5 @@
-from rest_framework import viewsets, filters
-from authentication.mixins import TenantMixin
+from rest_framework import filters
+from core.viewsets import CompanyScopedModelViewSet
 from ..models import FicheTechnique
 from ..serializers import FicheTechniqueSerializer
 from authentication.permissions import (
@@ -12,7 +12,7 @@ READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
 
-class FicheTechniqueViewSet(TenantMixin, viewsets.ModelViewSet):
+class FicheTechniqueViewSet(CompanyScopedModelViewSet):
     """DC35 / FG254 — fiches techniques (datasheets) rattachées aux produits.
 
     Multi-tenant : le queryset est filtré sur la société du demandeur
@@ -23,6 +23,8 @@ class FicheTechniqueViewSet(TenantMixin, viewsets.ModelViewSet):
     serializer_class = FicheTechniqueSerializer
     filter_backends = [filters.OrderingFilter]
     ordering = ['-date_mise_a_jour']
+    # YAPIC2 — whitelist explicite (jamais '__all__').
+    ordering_fields = ['date_creation', 'date_mise_a_jour', 'pmax_wc']
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:

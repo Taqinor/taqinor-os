@@ -6,6 +6,7 @@
 import { useEffect, useState } from 'react'
 import crmApi from '../../../api/crmApi'
 import { Button, Spinner } from '../../../ui'
+import { ResponsiveDialog } from '../../../ui/ResponsiveDialog'
 
 export default function PlanActiviteDialog({ lead, onClose, onApplied }) {
   const [loading, setLoading] = useState(true)
@@ -52,12 +53,13 @@ export default function PlanActiviteDialog({ lead, onClose, onApplied }) {
   const leadNom = `${lead.nom ?? ''} ${lead.prenom ?? ''}`.trim() || 'ce lead'
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <h3 className="modal-title">Appliquer un plan d'activité</h3>
-          <button type="button" className="modal-close" onClick={onClose}>✕</button>
-        </div>
+    // VX182 — shell fait-main remplacé par ResponsiveDialog (Escape + focus-
+    // trap + bottom-sheet mobile) ; en-tête/pied conservés à l'identique.
+    <ResponsiveDialog open onOpenChange={(o) => { if (!o) onClose() }} className="sm:max-w-lg" showClose={false}>
+      <div className="modal-header">
+        <h3 className="modal-title">Appliquer un plan d'activité</h3>
+        <button type="button" className="modal-close" onClick={onClose}>✕</button>
+      </div>
 
         <div className="modal-body">
           {loading && (
@@ -81,6 +83,7 @@ export default function PlanActiviteDialog({ lead, onClose, onApplied }) {
                 className="form-control"
                 value={planId}
                 onChange={(e) => setPlanId(e.target.value)}
+                autoFocus
               >
                 {plans.map((p) => (
                   <option key={p.id} value={p.id}>
@@ -126,7 +129,6 @@ export default function PlanActiviteDialog({ lead, onClose, onApplied }) {
             <Button type="button" onClick={onClose}>Fermer</Button>
           )}
         </div>
-      </div>
-    </div>
+    </ResponsiveDialog>
   )
 }

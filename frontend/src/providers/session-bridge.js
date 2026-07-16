@@ -13,3 +13,33 @@ export function emitSessionExpired() {
   if (window.location?.pathname === '/login') return
   window.dispatchEvent(new CustomEvent(SESSION_EXPIRED_EVENT))
 }
+
+// VX162 — canal de diffusion CROSS-ONGLETS pour le logout. Avant : seul
+// l'onglet où l'utilisateur clique « Déconnexion » se déconnecte ; sur un
+// poste partagé (accueil/atelier), un onglet B continue de MUTER des données
+// au nom d'un utilisateur délibérément déconnecté jusqu'à son PREMIER 401
+// tardif. Fix : `logoutUser.fulfilled` publie sur ce canal, chaque onglet
+// s'abonne (SessionProvider) et se déconnecte localement SANS attendre un
+// échec réseau. Feature-detect : `BroadcastChannel` absent (vieux Safari) →
+// no-op silencieux, comportement inchangé (repli sur le 401).
+const SESSION_CHANNEL_NAME = 'taqinor-session'
+const hasBroadcastChannel = typeof BroadcastChannel !== 'undefined'
+const sessionChannel = hasBroadcastChannel ? new BroadcastChannel(SESSION_CHANNEL_NAME) : null
+
+/** Publie un logout vers tous les AUTRES onglets (appelé par `logoutUser`
+ *  une fois le logout local dispatché). */
+export function broadcastLogout() {
+  sessionChannel?.postMessage({ type: 'logout' })
+}
+
+/** S'abonne aux logouts publiés par d'autres onglets. Retourne une fonction
+ *  de désabonnement (compatible cleanup d'effet React). No-op si
+ *  `BroadcastChannel` est indisponible. */
+export function subscribeToSessionLogout(onLogout) {
+  if (!sessionChannel) return () => {}
+  const handler = (event) => {
+    if (event?.data?.type === 'logout') onLogout()
+  }
+  sessionChannel.addEventListener('message', handler)
+  return () => sessionChannel.removeEventListener('message', handler)
+}

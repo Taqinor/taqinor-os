@@ -21,11 +21,16 @@ class CustomFieldDefSerializer(serializers.ModelSerializer):
 
     def validate_module(self, value):
         from .models import CustomFieldDef as _CFD
+        from . import registry
         if value.startswith('custom:'):
             return value
-        if value not in _CFD.Module.values:
-            raise serializers.ValidationError('Module inconnu.')
-        return value
+        # ARC14 — un module est valide s'il fait partie de la liste NATIVE
+        # historique (Module.values, catalogue informatif du modèle) OU s'il
+        # a été enregistré dynamiquement par une app pilote via
+        # ``registry.register`` (ex. contrats.contrat, flotte.vehicule).
+        if value in _CFD.Module.values or registry.is_registered(value):
+            return value
+        raise serializers.ValidationError('Module inconnu.')
 
     def validate_options(self, value):
         # Normalise les options en liste de chaînes non vides (tolère un dict
@@ -140,38 +145,17 @@ def _code_has_data(instance):
 
 
 def _module_model(module):
-    """Modèle Django porteur du custom_data pour un module donné."""
-    if module == 'lead':
-        from apps.crm.models import Lead
-        return Lead
-    if module == 'client':
-        from apps.crm.models import Client
-        return Client
-    if module == 'produit':
-        from apps.stock.models import Produit
-        return Produit
-    # FG100 — modules opérationnels (custom_data ajouté par migration additive).
-    if module == 'devis':
-        from apps.ventes.models import Devis
-        return Devis
-    if module == 'installation':
-        from apps.installations.models import Installation
-        return Installation
-    if module == 'ticket':
-        from apps.sav.models import Ticket
-        return Ticket
-    # GED10 — métadonnées typées configurables sur les documents GED.
-    if module == 'document':
-        from apps.ged.models import Document
-        return Document
-    # XPLT14 — couverture des modules récents.
-    if module == 'fournisseur':
-        from apps.stock.models import Fournisseur
-        return Fournisseur
-    if module == 'employe':
-        from apps.rh.models import DossierEmploye
-        return DossierEmploye
-    return None
+    """Modèle Django porteur du custom_data pour un module donné.
+
+    ARC14 — résout désormais via ``registry.get_model`` (registre
+    data-driven : app_label/model_name déclarés par ``registry.register``,
+    soit les 8 clés natives pré-enregistrées dans ``registry.py`` lui-même,
+    soit une app pilote qui s'enregistre depuis son ``AppConfig.ready()``,
+    ex. ``contrats.contrat``/``flotte.vehicule``). Renvoie ``None`` pour tout
+    module inconnu — comportement inchangé pour les appelants existants.
+    """
+    from . import registry
+    return registry.get_model(module)
 
 
 def validate_custom_data(module, company, data):

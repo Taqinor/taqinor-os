@@ -225,7 +225,7 @@ class TestProposalAcceptOtp(TestCase):
         with patch.dict('os.environ', {'ESIGN_OTP_ENABLED': '0'}):
             resp = self.api.post(
                 f'/api/django/public/proposal/{link.token}/accept/',
-                {'nom': 'M. Test'}, format='json')
+                {'nom': 'M. Test', 'consent_esign': True}, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         devis.refresh_from_db()
         self.assertEqual(devis.statut, 'accepte')
@@ -249,7 +249,8 @@ class TestProposalAcceptOtp(TestCase):
         with patch.dict('os.environ', {'ESIGN_OTP_ENABLED': '1'}):
             resp = self.api.post(
                 f'/api/django/public/proposal/{link.token}/accept/',
-                {'nom': 'M. Test', 'otp_code': '777777'}, format='json')
+                {'nom': 'M. Test', 'otp_code': '777777',
+                 'consent_esign': True}, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         devis.refresh_from_db()
         self.assertEqual(devis.statut, 'accepte')

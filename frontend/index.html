@@ -2,6 +2,16 @@
 <html lang="fr">
   <head>
     <meta charset="UTF-8" />
+    <!-- VX200 — Defense en profondeur : repli de base si le SPA est jamais
+         servi hors du proxy nginx principal (qui pose deja la vraie CSP par
+         environnement, voir backend/nginx/nginx.conf). Volontairement PERMISSIF
+         sur les origines (http:/https:) pour ne jamais retrecir la CSP reelle
+         par intersection (deux CSP simultanees = la plus stricte des deux sur
+         chaque directive) ; ne bloque que l'essentiel (scripts hors origine).
+         `frame-ancestors` est IGNORE dans une balise meta (spec CSP) — l'anti-
+         framing reste porte par le header X-Frame-Options (frontend/nginx.conf
+         + backend/nginx/nginx.conf). -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob: http: https:; connect-src 'self' http: https:; frame-src 'self' http: https:; object-src 'self'; base-uri 'self';" />
     <!-- Favicon = même glyphe « O » soleil-éclair que l'icône PWA. .ico pour
          Windows/onglet hérité, .svg pour les navigateurs modernes, PNG 16/32
          en repli. -->
@@ -11,14 +21,24 @@
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>TAQINOR — ERP Agentique</title>
-    <link rel="stylesheet" href="/fonts/sora.css" />
+    <!-- Sora (police Landing uniquement) N'EST PLUS chargée ici (VX57) : elle
+         bloquait le rendu de CHAQUE écran (dont /login) pour une police
+         utilisée seulement par /landing. Importée depuis Landing.jsx à la
+         place — Vite la rattache au chunk lazy de la page. -->
     <!-- Polices de marque de la refonte UI (F16) : Archivo (titres) + Hanken
          Grotesk (corps). Préchargées pour éviter le flash de texte sans style. -->
     <link rel="preload" href="/fonts/hanken-latin.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="/fonts/archivo-latin.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="stylesheet" href="/fonts/brand.css" />
 
-    <!-- PWA : couleur de barre + installation « app » plein écran -->
+    <!-- PWA : couleur de barre + installation « app » plein écran.
+         VX82 — deux balises `media`-ciblées (le chrome OS restait navy autour
+         d'une app CLAIRE sans ça) : sombre par défaut/mode sombre, claire en
+         `prefers-color-scheme: light` — la première balise `media`
+         correspondante l'emporte, celle sans `media` sert de repli pour les
+         navigateurs qui ignorent `prefers-color-scheme` sur `theme-color`. -->
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0f172a" media="(prefers-color-scheme: dark)" />
     <meta name="theme-color" content="#0f172a" />
     <meta name="description" content="L’ERP solaire de Taqinor : devis, CRM, stock et facturation." />
     <!-- iOS ignore une partie du manifeste : balises dédiées ci-dessous -->

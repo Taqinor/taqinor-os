@@ -24,9 +24,20 @@ const ventesApi = {
     api.post(`/ventes/listes-prix/${listeId}/regles/`, data),
 
   // Devis
-  getDevis: (params) => api.get('/ventes/devis/', { params }),
+  // VX55 — `config` optionnel (ex. { signal }) pour l'annulation
+  // AbortController câblée depuis fetchDevis (createAsyncThunk {signal}).
+  getDevis: (params, config) => api.get('/ventes/devis/', { params, ...config }),
   getDevisById: (id) => api.get(`/ventes/devis/${id}/`),
   createDevis: (data) => api.post('/ventes/devis/', data),
+  // QX21 — création ATOMIQUE (devis + lignes en un seul commit serveur) : plus
+  // de brouillons orphelins/partiels si la connexion est coupée en cours de
+  // sauvegarde. `data` porte le devis + une clé `lignes: [...]`.
+  createDevisAtomic: (data) => api.post('/ventes/devis/atomic/', data),
+  // QX21 — remplacement ATOMIQUE des lignes d'un devis (édition) : les
+  // anciennes lignes sont remplacées par les nouvelles en une transaction ; un
+  // échec préserve les lignes existantes (jamais un devis à zéro ligne).
+  replaceLignesDevis: (id, lignes) =>
+    api.post(`/ventes/devis/${id}/replace-lines/`, { lignes }),
   updateDevis: (id, data) => api.put(`/ventes/devis/${id}/`, data),
   patchDevis: (id, data) => api.patch(`/ventes/devis/${id}/`, data),
   deleteDevis: (id) => api.delete(`/ventes/devis/${id}/`),
@@ -47,8 +58,15 @@ const ventesApi = {
   envoyerEmailDevis: (id, payload = {}) => api.post(`/ventes/devis/${id}/envoyer-email/`, payload),
   // QG8 — « Envoyer » = flux WhatsApp : lien wa.me + lien tokenisé, marque envoyé.
   whatsappDevis: (id, payload = {}) => api.post(`/ventes/devis/${id}/whatsapp/`, payload),
+  // QX22 — aperçu LECTURE SEULE du message WhatsApp (aucune mutation de statut) :
+  // peuple la modale d'aperçu ; seul le clic-through sur wa.me (whatsappDevis
+  // ci-dessus) marque réellement le devis « Envoyé ».
+  whatsappPreviewDevis: (id, payload = {}) => api.post(`/ventes/devis/${id}/whatsapp-preview/`, payload),
   // QJ28 — « Contacter mon supérieur » : notifie le supérieur du vendeur sur ce devis.
   contacterSuperieur: (id, payload = {}) => api.post(`/ventes/devis/${id}/contacter-superieur/`, payload),
+  // VX215 — boucle de retour « pris en charge » : l'émetteur voit si sa
+  // demande d'avis a été VUE par le(s) supérieur(s) notifié(s) ci-dessus.
+  superiorContactStatus: (id) => api.get(`/ventes/devis/${id}/superior-contact-status/`),
   // QJ15 — Variantes : créer 2–3 copies dimensionnées pour comparaison côte-à-côte.
   dupliquerVariante: (id, payload = {}) => api.post(`/ventes/devis/${id}/dupliquer-variante/`, payload),
   // QJ15 — Lister les variantes liées à ce devis (même version_parent).
@@ -71,6 +89,11 @@ const ventesApi = {
     api.get('/ventes/journal-ventes/', { params, responseType: 'blob' }),
   // Échéancier devis → factures : génère la prochaine tranche (acompte → solde).
   genererFacture: (id) => api.post(`/ventes/devis/${id}/generer-facture/`),
+  // QX29 — « Relances du jour » : devis nécessitant une action (envoyés sans
+  // réponse par palier de cadence, acceptés non facturés — réutilise le
+  // sélecteur ZFAC12, refusés sans motif, expirant bientôt). Miroir de
+  // savApi.getSavFileAction() (ZSAV6) — buckets { count, ids }.
+  getDevisActionBoard: () => api.get('/ventes/devis/action-requise/'),
 
   // Lignes de devis
   getLignesDevis: (params) => api.get('/ventes/devis-lignes/', { params }),
@@ -94,7 +117,8 @@ const ventesApi = {
   getBonCommandePdf: (id) => api.get(`/ventes/bons-commande/${id}/pdf/`, { responseType: 'blob' }),
 
   // Factures
-  getFactures: (params) => api.get('/ventes/factures/', { params }),
+  // VX163 — `config` (ex. `{signal}`) transmis pour l'annulation en vol.
+  getFactures: (params, config) => api.get('/ventes/factures/', { params, ...config }),
   getFacture: (id) => api.get(`/ventes/factures/${id}/`),
   createFacture: (data) => api.post('/ventes/factures/', data),
   updateFacture: (id, data) => api.put(`/ventes/factures/${id}/`, data),
@@ -114,6 +138,10 @@ const ventesApi = {
   // Paiements : enregistrement manuel + liste par facture.
   enregistrerPaiement: (id, data) => api.post(`/ventes/factures/${id}/enregistrer-paiement/`, data),
   getPaiementsFacture: (id) => api.get(`/ventes/factures/${id}/paiements/`),
+  // ZFAC11 — reste à payer arrondi au pas de caisse société pour un règlement
+  // espèces (applicable=false + montant_du inchangé si arrondi désactivé).
+  arrondiCaisseFacture: (id, mode = 'especes') =>
+    api.get(`/ventes/factures/${id}/arrondi-caisse/`, { params: { mode } }),
   // FG53/WR2 — lien « Payer en ligne » (fournisseur NoOp par défaut, gated).
   lienPaiementFacture: (id, payload = {}) => api.post(`/ventes/factures/${id}/lien-paiement/`, payload),
   // N105/WR2 — export + contrôle de conformité DGI (404 tant que le flag

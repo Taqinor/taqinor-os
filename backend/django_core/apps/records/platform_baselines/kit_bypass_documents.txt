@@ -1,0 +1,14 @@
+# SCA37 — baseline GELÉE des modèles « document métier » hand-rollés (pré-kit,
+# SCA30/31). Inventaire du 2026-07-10 : tout modèle déclarant à la fois un
+# champ ``statut`` à choices, un modèle ``Ligne<MêmeNom>`` frère dans la même
+# app ET un champ ``montant_ttc`` (sur lui-même ou sur sa ligne), sans hériter
+# de ``core.documents.DocumentMetier``. Devis/Facture/BonCommande/Avoir NE sont
+# PAS ici : ils sont dans l'exclusion PERMANENTE nommée en code
+# (KIT_PERMANENT_EXCLUSIONS, règle #4 CLAUDE.md) — jamais un rétrofit exigé, et
+# jamais retirables de cette liste par un simple nettoyage de baseline. Un
+# modèle de CETTE baseline qui migre sur le kit (hérite DocumentMetier)
+# DISPARAÎT du scan — la liste ne peut que DÉCROÎTRE. Ne JAMAIS ajouter un
+# nouveau modèle ici pour contourner le garde : héritez de
+# core.documents.DocumentMetier. Format : une entrée app.NomClasse par ligne.
+achats.FactureFournisseur
+ventes.NoteDebit

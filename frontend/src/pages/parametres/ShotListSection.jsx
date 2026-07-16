@@ -14,6 +14,7 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 import { SectionTitle } from './peComponents'
+import { toast } from '../../ui/confirm'
 
 const PHASES = [
   ['avant', 'Avant'],
@@ -51,7 +52,7 @@ export default function ShotListSection() {
         libelle, phase: newPhase, ordre: slots.length,
       })
       setNewLibelle(''); setNewPhase('avant'); load()
-    } catch (e) { alert(e?.response?.data?.detail ?? 'Ajout impossible.') }
+    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Ajout impossible.') }
   }
   const rename = async (s, libelle) => {
     if (!libelle.trim() || libelle === s.libelle) return
@@ -83,7 +84,7 @@ export default function ShotListSection() {
   const del = async (s) => {
     if (!window.confirm(`Supprimer le créneau « ${s.libelle} » ?`)) return
     try { await installationsApi.deleteShotlistSlot(s.id); load() }
-    catch (e) { alert(e?.response?.data?.detail ?? 'Suppression impossible (créneau protégé ?).') }
+    catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible (créneau protégé ?).') }
   }
 
   if (loading) return (

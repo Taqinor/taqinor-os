@@ -23,6 +23,7 @@ import BulkProductBar from './BulkProductBar'
 import ExcelImport from '../../components/ExcelImport'
 import stockApi from '../../api/stockApi'
 import api from '../../api/axios'
+import { formatNumber, formatMAD } from '../../lib/format'
 import { toggleId, pruneSelection, bulkResultMessage } from '../../features/crm/bulk'
 import {
   groupCatalogue, searchCatalogue, sansPrix,
@@ -30,14 +31,16 @@ import {
 import { validateTransfert, totalVentile, quantiteEmplacement, produitDansEmplacement } from '../../features/stock/emplacements'
 import { normalizeCode, isValidCode, resolveTarget } from '../../features/stock/labels'
 import BarcodeScanner from '../../features/pwa/BarcodeScanner'
-import { toastError, toastSuccess } from '../../lib/toast'
-import { useCanCreateProduit } from '../../hooks/useHasPermission'
+import { toastError, toastSuccess, toastWithUndo } from '../../lib/toast'
+import { openPdfInGesture } from '../../utils/pdfBlob'
+import { downloadBlobInGesture } from '../../utils/downloadBlob'
+import { useCanCreateProduit, useHasPermission, useIsAdmin, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import {
   Button, IconButton, Badge, Checkbox, Input, Spinner, Skeleton,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription,
   AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
-  EmptyState, DataTable,
+  EmptyState, DataTable, Progress,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
 } from '../../ui'
@@ -46,7 +49,7 @@ import { useSavedViews } from '../../hooks/useSavedViews'
 
 const SL_SAVED_VIEWS_KEY = 'taqinor.stock.produits.savedViews'
 
-const fmtNum2 = (n) => Number(n || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const fmtNum2 = (n) => formatNumber(n, { decimals: 2 })
 
 // Suggestion de quantité à commander pour un produit en stock bas :
 // vise un réassort à 2× le seuil d'alerte, jamais négative.
@@ -183,14 +186,11 @@ function ValorisationModal({ onClose }) {
   const sourceLabel = (s) => (s === 'achats' ? 'Achats reçus' : s === 'catalogue' ? 'Prix catalogue' : '—')
   // Export Excel (admin/INTERNE — coûts jamais client-facing).
   const exportXlsx = async () => {
+    const pending = downloadBlobInGesture()
     setExporting(true)
     try {
       const res = await api.get('/stock/valorisation-xlsx/', { responseType: 'blob' })
-      const url = URL.createObjectURL(new Blob([res.data]))
-      const a = document.createElement('a')
-      a.href = url; a.download = 'valorisation.xlsx'
-      document.body.appendChild(a); a.click(); a.remove()
-      setTimeout(() => URL.revokeObjectURL(url), 1000)
+      pending.deliver(new Blob([res.data]), 'valorisation.xlsx')
     } catch { setError('Export indisponible.') } finally { setExporting(false) }
   }
   return (
@@ -568,14 +568,17 @@ export default function StockList() {
   const dispatch = useDispatch()
   const navigate = useNavigate()
   const { produits, produitsArchived, categories, loading, error } = useSelector(s => s.stock)
-  const role = useSelector(s => s.auth.role)
-  const permissions = useSelector(s => s.auth.permissions)
-  // Rôle fin (ex. « Commerciale » lecture seule) : les permissions priment ;
-  // comptes hérités sans rôle fin : comportement historique par rôle.
-  const canWrite = permissions.length
-    ? permissions.includes('stock_modifier')
-    : (role === 'responsable' || role === 'admin')
-  const canDelete = role === 'admin'
+  // ARC47 — gating via le hook partagé (plus de lecture directe de state.auth
+  // pour un droit). Rôle fin (ex. « Commerciale » lecture seule) : les
+  // permissions priment ; comptes hérités sans rôle fin : repli par palier.
+  // Les deux hooks sont appelés inconditionnellement (règle des hooks) ;
+  // `hasFinePermissions` (présence de codes ERP, PAS un droit) choisit ensuite
+  // la branche — sémantique identique à l'ancien ternaire.
+  const hasFinePermissions = useSelector(s => (s.auth.permissions || []).length > 0)
+  const canWriteViaPerm = useHasPermission('stock_modifier')
+  const canWriteViaRole = useIsAdminOrResponsable()
+  const canWrite = hasFinePermissions ? canWriteViaPerm : canWriteViaRole
+  const canDelete = useIsAdmin()
   // QG5 — la CRÉATION de produit est restreinte à Directeur + Commercial
   // responsable (UX miroir de la garde backend QG4) ; canWrite reste pour la
   // modification/l'import, séparés de la création.
@@ -623,8 +626,9 @@ export default function StockList() {
   const [invMsg, setInvMsg] = useState(null)
   const [showTransfert, setShowTransfert] = useState(false)
   const [showValorisation, setShowValorisation] = useState(false)
-  // WR3 — panneau « Pilotage stock » (analytics + auto-BCF), replié par défaut.
-  const [showPilotage, setShowPilotage] = useState(false)
+  // VX33 — panneau « Pilotage stock » (analytics + auto-BCF) : la tour de
+  // contrôle du stock, ouverte PAR DÉFAUT (le bouton reste pour la masquer).
+  const [showPilotage, setShowPilotage] = useState(true)
   // N20 — étiquettes QR/code-barres + champ de scan (résolution serveur).
   const [labelsBusy, setLabelsBusy]   = useState(false)
   const [scanOpen, setScanOpen]       = useState(false)
@@ -661,26 +665,27 @@ export default function StockList() {
   }
   const exportSelection = async () => {
     if (!visibleSelected.size) return
+    const pending = downloadBlobInGesture()
     setBulkBusy(true)
     try {
       const res = await stockApi.exportProduitsXlsx([...visibleSelected])
-      const url = URL.createObjectURL(new Blob([res.data]))
-      const a = document.createElement('a')
-      a.href = url; a.download = 'produits.xlsx'
-      document.body.appendChild(a); a.click(); a.remove()
-      setTimeout(() => URL.revokeObjectURL(url), 1000)
+      pending.deliver(new Blob([res.data]), 'produits.xlsx')
     } catch { setBulkMsg('Export indisponible.') } finally { setBulkBusy(false) }
   }
   // N20 — Imprime des étiquettes QR pour la sélection (PDF ; jamais de prix
   // d'achat — l'étiquette ne porte que nom + SKU + jeton PRODUIT:<id>).
+  // VX48 — onglet pré-ouvert SYNCHRONE avant l'await (Safari iOS bloque
+  // silencieusement un window.open() post-await).
   const printLabels = async () => {
     if (!visibleSelected.size) return
+    const pending = openPdfInGesture()
     setLabelsBusy(true)
     try {
       const res = await stockApi.etiquettesProduits([...visibleSelected])
-      const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }))
-      window.open(url, '_blank', 'noopener')
-      setTimeout(() => URL.revokeObjectURL(url), 60000)
+      const blob = new Blob([res.data], { type: 'application/pdf' })
+      if (!pending.deliver(blob, 'etiquettes.pdf')) {
+        toastError('Ouverture bloquée par le navigateur.')
+      }
     } catch { toastError('Génération des étiquettes indisponible.') }
     finally { setLabelsBusy(false) }
   }
@@ -755,6 +760,17 @@ export default function StockList() {
   // Compteurs des filtres rail (sur le catalogue actif complet).
   const noPriceCount = useMemo(() => actifs.filter(p => sansPrix(p)).length, [actifs])
   const noSkuCount = useMemo(() => actifs.filter(p => !(p.sku ?? '').trim()).length, [actifs])
+  // VX33 — jauge « santé catalogue » : % de produits actifs avec prix / SKU
+  // renseignés (dérivé des mêmes compteurs, aucun nouvel appel réseau).
+  const pctAvecPrix = useMemo(
+    () => (actifs.length ? Math.round(((actifs.length - noPriceCount) / actifs.length) * 100) : 100),
+    [actifs.length, noPriceCount],
+  )
+  const pctAvecSku = useMemo(
+    () => (actifs.length ? Math.round(((actifs.length - noSkuCount) / actifs.length) * 100) : 100),
+    [actifs.length, noSkuCount],
+  )
+  const toneSante = (pct) => (pct >= 90 ? 'success' : pct >= 60 ? 'warning' : 'danger')
   // Liste des marques présentes (pour le filtre par marque).
   const marquesPresentes = useMemo(() => {
     const set = new Set(actifs.map(p => (p.marque || '').trim() || 'Génériques'))
@@ -764,13 +780,10 @@ export default function StockList() {
   const exportFiltered = async () => {
     const ids = filtered.map(p => p.id)
     if (!ids.length) return
+    const pending = downloadBlobInGesture()
     try {
       const res = await stockApi.exportProduitsXlsx(ids)
-      const url = URL.createObjectURL(new Blob([res.data]))
-      const a = document.createElement('a')
-      a.href = url; a.download = 'produits.xlsx'
-      document.body.appendChild(a); a.click(); a.remove()
-      setTimeout(() => URL.revokeObjectURL(url), 1000)
+      pending.deliver(new Blob([res.data]), 'produits.xlsx')
     } catch { /* ignore */ }
   }
   // Rail de catégories (catalogue actif complet) — pilote le filtre `activeCat`.
@@ -796,9 +809,21 @@ export default function StockList() {
       if (result.archived) {
         setArchiveNotif(result.detail)
         setTimeout(() => setArchiveNotif(null), 6000)
+        // VX95 — archivage (produit avec mouvements) déjà commis serveur :
+        // « Annuler » relance l'action inverse (unarchiveProduit). Un vrai
+        // delete (204, non archivé) n'est pas réversible ici — pas de toast.
+        toastWithUndo({
+          message: 'Produit archivé.',
+          onUndo: async () => {
+            try {
+              await dispatch(unarchiveProduit(p.id)).unwrap()
+              dispatch(fetchProduitsArchived())
+            } catch { toastError('Désarchivage impossible.') }
+          },
+        })
       }
     } catch (err) {
-      alert(err?.detail ?? 'Erreur lors de la suppression.')
+      toastError(err?.detail ?? 'Erreur lors de la suppression.')
     }
   }
 
@@ -807,8 +832,17 @@ export default function StockList() {
     try {
       await dispatch(unarchiveProduit(p.id)).unwrap()
       dispatch(fetchProduitsArchived())
+      toastWithUndo({
+        message: 'Produit désarchivé.',
+        onUndo: async () => {
+          try {
+            await dispatch(deleteProduit(p.id)).unwrap()
+            dispatch(fetchProduitsArchived())
+          } catch { toastError('Archivage impossible.') }
+        },
+      })
     } catch (err) {
-      alert(err?.detail ?? 'Erreur lors du désarchivage.')
+      toastError(err?.detail ?? 'Erreur lors du désarchivage.')
     }
   }
 
@@ -818,7 +852,7 @@ export default function StockList() {
       await dispatch(forceDeleteArchivedProduit(p.id)).unwrap()
       setConfirmDelete(null)
     } catch (err) {
-      alert(err?.detail ?? 'Erreur lors de la suppression définitive.')
+      toastError(err?.detail ?? 'Erreur lors de la suppression définitive.')
     } finally {
       setDeleting(false)
     }
@@ -845,7 +879,7 @@ export default function StockList() {
         : '—') },
     { id: 'prix_vente', header: 'Prix vente HT', align: 'right', width: 120, searchable: false,
       accessor: (p) => p.prix_vente,
-      cell: (v) => `${parseFloat(v).toFixed(2)} DH` },
+      cell: (v) => `${formatMAD(v, { withSymbol: false })} DH` },
   ], [])
 
   const archivedRowActions = (p) => [
@@ -909,19 +943,19 @@ export default function StockList() {
                     title="Pilotage stock : réapprovisionnement, prévisions, rotation, péremptions">
               <LineChart /> Pilotage
             </Button>
-            {role === 'admin' && (
+            {canDelete && (
               <Button variant={showArchived ? 'secondary' : 'outline'} size="sm"
                       onClick={() => setShowArchived(v => !v)}>
                 <Archive /> {showArchived ? 'Masquer archivés' : `Archivés${produitsArchived.length > 0 ? ` (${produitsArchived.length})` : ''}`}
               </Button>
             )}
-            {role === 'admin' && (
+            {canDelete && (
               <Button variant="outline" size="sm" onClick={() => setShowInventaire(true)}
                       title="Inventaire physique : saisir un comptage et ajuster le stock">
                 <Calculator /> Inventaire
               </Button>
             )}
-            {role === 'admin' && (
+            {canDelete && (
               <Button variant="outline" size="sm" onClick={() => setShowValorisation(true)}
                       title="Valorisation du stock par emplacement (coût moyen, interne)">
                 <Wallet /> Valorisation
@@ -959,17 +993,17 @@ export default function StockList() {
                 <DropdownMenuItem onSelect={() => setShowPilotage(v => !v)}>
                   <LineChart /> Pilotage
                 </DropdownMenuItem>
-                {role === 'admin' && (
+                {canDelete && (
                   <DropdownMenuItem onSelect={() => setShowArchived(v => !v)}>
                     <Archive /> {showArchived ? 'Masquer archivés' : 'Archivés'}
                   </DropdownMenuItem>
                 )}
-                {role === 'admin' && (
+                {canDelete && (
                   <DropdownMenuItem onSelect={() => setShowInventaire(true)}>
                     <Calculator /> Inventaire
                   </DropdownMenuItem>
                 )}
-                {role === 'admin' && (
+                {canDelete && (
                   <DropdownMenuItem onSelect={() => setShowValorisation(true)}>
                     <Wallet /> Valorisation
                   </DropdownMenuItem>
@@ -1063,7 +1097,7 @@ export default function StockList() {
       )}
 
       {showTransfert && (
-        <TransfertModal produits={produits} isAdmin={role === 'admin'}
+        <TransfertModal produits={produits} isAdmin={canDelete}
                         onClose={() => setShowTransfert(false)}
                         onDone={() => dispatch(fetchProduits())} />
       )}
@@ -1135,6 +1169,31 @@ export default function StockList() {
               </span>
             ))}
           </div>
+
+          {/* VX33 — mini-jauge « santé catalogue », au-dessus du rail de
+              catégories : % de produits actifs avec prix / SKU renseignés. */}
+          {actifs.length > 0 && (
+            <div className="mt-1 flex flex-col gap-2 rounded-md border border-border p-2.5">
+              <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Santé catalogue
+              </span>
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>Prix renseigné</span>
+                  <span className="font-medium tabular-nums text-foreground">{pctAvecPrix}%</span>
+                </div>
+                <Progress value={pctAvecPrix} tone={toneSante(pctAvecPrix)} aria-label="Part du catalogue avec un prix renseigné" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>SKU renseigné</span>
+                  <span className="font-medium tabular-nums text-foreground">{pctAvecSku}%</span>
+                </div>
+                <Progress value={pctAvecSku} tone={toneSante(pctAvecSku)} aria-label="Part du catalogue avec un SKU renseigné" />
+              </div>
+            </div>
+          )}
+
           <button type="button"
                   className={`mt-1 flex items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors ${!activeCat && !searching ? 'bg-primary/10 font-medium text-foreground' : 'text-muted-foreground hover:bg-muted/60'}`}
                   onClick={() => { setActiveCat(''); setSearch('') }}>

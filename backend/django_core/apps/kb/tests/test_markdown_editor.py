@@ -113,7 +113,7 @@ class KbAttachmentWhitelistTests(TestCase):
     def test_upload_image_to_article_roundtrip(self):
         png = (b'\x89PNG\r\n\x1a\n' + b'\x00' * 64)
 
-        def fake_store(file):
+        def fake_store(file, **kwargs):  # accepte company= (SCA42)
             return ({'file_key': 'attachments/kb-test.png',
                      'filename': 'kb-test.png', 'size': len(png),
                      'mime': 'image/png'}, None)

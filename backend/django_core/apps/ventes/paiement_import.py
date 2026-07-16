@@ -10,13 +10,16 @@ Flux en deux temps (dry-run + commit) :
 Colonnes reconnues (insensible à la casse, accent-tolérant) :
   date, reference / ref / ref_virement, montant / amount, mode
 
-L'utilisation d'openpyxl est cohérente avec dataimport (déjà installé).
+ARC13 — la lecture bas niveau (CSV/XLSX, encodage, séparateur, en-têtes) est
+déléguée à ``apps.dataimport.parsing`` (parseur générique partagé) au lieu
+d'un ``csv.DictReader``/``openpyxl`` local ; comportement inchangé. Seule la
+logique MÉTIER (mapping colonnes → champs paiement, matching facture, écriture
+``Paiement``) reste ici, propre à ``ventes``.
 """
-import csv
-import io
 import logging
-import unicodedata
 from decimal import Decimal, InvalidOperation
+
+from apps.dataimport.parsing import iter_rows, normalize_header
 
 logger = logging.getLogger(__name__)
 
@@ -40,34 +43,19 @@ MAX_BYTES = 5 * 1024 * 1024  # 5 Mo
 
 
 def _norm(s):
-    """Normalise un en-tête : minuscules, sans accents, espaces/tirets → _."""
-    s = (s or '').strip().lower()
-    s = ''.join(c for c in unicodedata.normalize('NFD', s)
-                if unicodedata.category(c) != 'Mn')
-    return s.replace(' ', '_').replace('-', '_')
+    """Normalise un en-tête : minuscules, sans accents, espaces/tirets → _.
+
+    ARC13 — délègue à ``apps.dataimport.parsing.normalize_header`` (logique
+    partagée) ; comportement inchangé."""
+    return normalize_header(s)
 
 
 def _parse_rows(file_bytes, filename):
-    """Renvoie (headers, rows) depuis un CSV ou XLSX."""
-    name = (filename or '').lower()
-    if name.endswith('.xlsx'):
-        from openpyxl import load_workbook
-        wb = load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
-        ws = wb.active
-        it = ws.iter_rows(values_only=True)
-        raw_headers = [str(h) if h is not None else '' for h in next(it, [])]
-        rows = []
-        for r in it:
-            rows.append({raw_headers[i]: (r[i] if i < len(r) else None)
-                         for i in range(len(raw_headers))})
-        return raw_headers, rows
-    # CSV (utf-8, séparateur , ou ;)
-    text = file_bytes.decode('utf-8-sig', errors='replace')
-    sample = text[:2000]
-    delim = ';' if sample.count(';') > sample.count(',') else ','
-    reader = csv.DictReader(io.StringIO(text), delimiter=delim)
-    raw_headers = reader.fieldnames or []
-    return raw_headers, list(reader)
+    """Renvoie (headers, rows) depuis un CSV ou XLSX.
+
+    ARC13 — délègue à ``apps.dataimport.parsing.iter_rows`` (parseur
+    générique partagé) ; comportement inchangé."""
+    return iter_rows(file_bytes, filename)
 
 
 def _map_row(raw_row, col_to_field):

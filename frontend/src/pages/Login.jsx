@@ -1,112 +1,64 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState } from 'react'
 import { useDispatch } from 'react-redux'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate, useSearchParams, Link } from 'react-router-dom'
+import { Eye, EyeOff, AlertCircle } from 'lucide-react'
 import { setCredentials } from '../features/auth/store/authSlice'
 import api from '../api/axios'
+// VX46 — module d'atterrissage au login (« Mes préférences »), résolu depuis
+// `moduleConfigs` (UX1) + le dernier module visité (VX11) ; repli `/dashboard`
+// inchangé quand aucune préférence n'est choisie.
+import { moduleConfigs } from '../router/moduleRoutes'
+import { resolveLandingPath, getLastModuleSegment } from './preferences/prefs'
 
-// ── Logo officiel Taqinor (mot-symbole des devis, source de vérité de la marque).
-//    Asset généré par scripts/gen_brand_assets.py depuis quote_engine/logo.png.
-function TaqinorLogo({ height = 52 }) {
+// VX34 — Login = premier pixel de la marque. On garde EXACTEMENT les teintes de
+// marque (#1863DC azur, #F5C100 laiton, #050e1f nuit) mais on les fait entrer
+// dans le système : chaque hex est ré-exprimé en OKLCH (round-trip sRGB à
+// ΔE ≈ 0, même méthode que design/tokens.css) et exposé en variable CSS locale,
+// consommée partout via var(). Aucune couleur ne change à l'écran ; elles sont
+// désormais tokenisées. (Pré-auth : pas de token tenant runtime ici, donc ces
+// jetons restent locaux à l'écran de login.)
+const BRAND_TOKENS = `
+  .login-root {
+    --login-azur: oklch(53.1% 0.1985 260.25);      /* #1863DC */
+    --login-azur-bright: oklch(58.3% 0.2259 264.10);/* #326CFE */
+    --login-brass: oklch(83.4% 0.1704 88.96);       /* #F5C100 */
+    --login-nuit: oklch(16.5% 0.0389 260.32);       /* #050e1f */
+    --login-nuit-mid: oklch(26.1% 0.0924 263.49);   /* #0b2050 */
+  }
+`
+
+// SCA24 — Login est PRÉ-AUTH : on ne connaît pas encore la société de
+// l'utilisateur (donc pas son TenantTheme), donc pas de logo/couleur dynamique
+// ici. Marque produit NEUTRE fixée au build (env), plus de logo/texte
+// "Taqinor" en dur — la première chose qu'un tenant #2 doit voir n'est pas la
+// marque d'un autre client. Défaut sobre si la variable n'est pas fournie.
+const PRODUCT_NAME = import.meta.env.VITE_PRODUCT_NAME || 'ERP'
+
+function ProductBrand() {
   return (
-    <img
-      src="/taqinor-logo.png"
-      alt="Taqinor"
-      style={{ height, width: 'auto', maxWidth: '100%', display: 'block' }}
-    />
-  )
-}
-
-// ── Bouncing TAQINOR background ───────────────────────────────────────────────
-const BLOBS = [
-  { size: 150, speed: 0.55, opacity: 0.07, color: '#ffffff', angle: 0.7  },
-  { size: 95,  speed: 0.85, opacity: 0.06, color: '#F5C100', angle: 2.1  },
-  { size: 190, speed: 0.38, opacity: 0.05, color: '#ffffff', angle: 4.3  },
-  { size: 115, speed: 0.70, opacity: 0.08, color: '#F5C100', angle: 1.5  },
-  { size: 80,  speed: 1.05, opacity: 0.05, color: '#ffffff', angle: 3.8  },
-]
-
-function BouncingBackground() {
-  const containerRef = useRef(null)
-  const animRef      = useRef(null)
-  const stateRef     = useRef([])
-
-  useEffect(() => {
-    const container = containerRef.current
-    if (!container) return
-
-    const W = window.innerWidth
-    const H = window.innerHeight
-
-    stateRef.current = BLOBS.map((cfg) => {
-      const el = document.createElement('div')
-      el.textContent = 'TAQINOR'
-      Object.assign(el.style, {
-        position: 'absolute', top: '0', left: '0',
-        fontFamily: "'Arial Black', Impact, sans-serif",
-        fontWeight: '900',
-        fontSize: `${cfg.size}px`,
-        color: cfg.color,
-        opacity: String(cfg.opacity),
-        filter: 'blur(10px)',
-        userSelect: 'none', pointerEvents: 'none',
-        whiteSpace: 'nowrap', letterSpacing: '0.05em',
-        willChange: 'transform',
-      })
-      container.appendChild(el)
-
-      // Mesure réelle après ajout au DOM
-      const rect = el.getBoundingClientRect()
-      const w = rect.width  || cfg.size * 5.8
-      const h = rect.height || cfg.size * 1.2
-
-      return {
-        el, w, h,
-        x: Math.random() * Math.max(1, W - w),
-        y: Math.random() * Math.max(1, H - h),
-        vx: Math.cos(cfg.angle) * cfg.speed,
-        vy: Math.sin(cfg.angle) * cfg.speed,
-      }
-    })
-
-    const tick = () => {
-      const W = window.innerWidth
-      const H = window.innerHeight
-      stateRef.current.forEach((b) => {
-        b.x += b.vx
-        b.y += b.vy
-        if (b.x <= 0)        { b.x = 0;        b.vx =  Math.abs(b.vx) }
-        if (b.x + b.w >= W)  { b.x = W - b.w;  b.vx = -Math.abs(b.vx) }
-        if (b.y <= 0)        { b.y = 0;        b.vy =  Math.abs(b.vy) }
-        if (b.y + b.h >= H)  { b.y = H - b.h;  b.vy = -Math.abs(b.vy) }
-        b.el.style.transform = `translate(${b.x}px,${b.y}px)`
-      })
-      animRef.current = requestAnimationFrame(tick)
-    }
-    animRef.current = requestAnimationFrame(tick)
-
-    // Re-clamp les blobs dans le viewport courant au redimensionnement/rotation —
-    // sinon ils dérivent hors écran jusqu'au rechargement.
-    const onResize = () => {
-      const W2 = window.innerWidth
-      const H2 = window.innerHeight
-      stateRef.current.forEach((b) => {
-        b.x = Math.min(Math.max(0, b.x), Math.max(0, W2 - b.w))
-        b.y = Math.min(Math.max(0, b.y), Math.max(0, H2 - b.h))
-      })
-    }
-    window.addEventListener('resize', onResize)
-
-    return () => {
-      cancelAnimationFrame(animRef.current)
-      window.removeEventListener('resize', onResize)
-      stateRef.current.forEach((b) => b.el.remove())
-    }
-  }, [])
-
-  return (
-    <div ref={containerRef}
-      style={{ position: 'fixed', inset: 0, overflow: 'hidden', pointerEvents: 'none', zIndex: 0 }}
-    />
+    <div style={{
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      gap: 10, height: 52,
+    }}>
+      <span style={{
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        width: 40, height: 40, borderRadius: 10,
+        background: 'linear-gradient(135deg, var(--login-azur) 0%, var(--login-azur-bright) 100%)',
+        color: '#fff', fontWeight: 800, fontSize: 18,
+      }} aria-hidden="true">
+        {PRODUCT_NAME.charAt(0).toUpperCase()}
+      </span>
+      {/* VX150 — le wordmark utilise la POLICE DE MARQUE (var(--font-display),
+          Archivo — la même que les headings/logo), au lieu d'hériter la police
+          de corps ou d'un « Arial Black » hors-système. Dernier delta non
+          couvert par VX34 (la mise en page cockpit du login venait de là). */}
+      <span style={{
+        fontFamily: 'var(--font-display)',
+        fontSize: 22, fontWeight: 700, color: '#0c1335', letterSpacing: '-0.01em',
+      }}>
+        {PRODUCT_NAME}
+      </span>
+    </div>
   )
 }
 
@@ -119,7 +71,7 @@ const baseInput = {
   fontFamily: 'inherit',
 }
 const onFocus = (e) => {
-  e.target.style.borderColor = '#1863DC'
+  e.target.style.borderColor = 'var(--login-azur)'
   e.target.style.boxShadow   = '0 0 0 3px rgba(24,99,220,0.12)'
   e.target.style.background  = '#ffffff'
 }
@@ -129,10 +81,19 @@ const onBlur = (e) => {
   e.target.style.background  = '#f9fafb'
 }
 
+// VX65 — Garde anti-open-redirect pour `?next=` : on ne suit la destination
+// d'origine que si c'est un chemin interne (`/...`), jamais un `//host` ou une
+// URL absolue (protocole-relative), qui redirigerait vers un domaine externe.
+const safeNextPath = (next) => {
+  if (!next || !next.startsWith('/') || next.startsWith('//')) return null
+  return next
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 export default function Login() {
   const dispatch = useDispatch()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
 
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -162,7 +123,10 @@ export default function Login() {
         role_nom: res.data.role_nom || null,
         permissions: res.data.permissions || [],
       }))
-      navigate('/dashboard')
+      // VX65 : un lien profond `?next=` interne est prioritaire ; sinon VX46
+      // route vers le module d'atterrissage préféré (repli /dashboard inchangé).
+      const next = safeNextPath(searchParams.get('next'))
+      navigate(next || resolveLandingPath(moduleConfigs, getLastModuleSegment()))
     } catch (err) {
       const data = err.response?.data || {}
       // 2FA requise : on déverrouille le champ code et on demande le code.
@@ -186,14 +150,12 @@ export default function Login() {
   }
 
   return (
-    <div style={{
+    <div className="login-root" style={{
       position: 'fixed', inset: 0,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      background: 'linear-gradient(135deg, #050e1f 0%, #0b2050 50%, #050e1f 100%)',
+      background: 'linear-gradient(135deg, var(--login-nuit) 0%, var(--login-nuit-mid) 50%, var(--login-nuit) 100%)',
       overflow: 'hidden',
     }}>
-      <BouncingBackground />
-
       {/* Halo lumineux central */}
       <div style={{
         position: 'fixed', inset: 0, zIndex: 1, pointerEvents: 'none',
@@ -201,24 +163,23 @@ export default function Login() {
       }} />
 
       {/* Card */}
-      <div style={{
+      <div className="login-card" style={{
         position: 'relative', zIndex: 10,
         width: '100%', maxWidth: 420, margin: '0 16px',
         background: '#ffffff', borderRadius: 22,
         padding: '44px 40px 38px',
         boxShadow: '0 32px 80px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.06)',
-        animation: 'loginIn 0.55s cubic-bezier(0.16, 1, 0.3, 1) both',
       }}>
 
-        {/* Logo centré */}
+        {/* Marque produit centrée */}
         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 6 }}>
-          <TaqinorLogo height={52} />
+          <ProductBrand />
         </div>
 
         {/* Ligne décorative */}
         <div style={{
           width: 40, height: 3, borderRadius: 2,
-          background: 'linear-gradient(90deg, #1863DC, #F5C100)',
+          background: 'linear-gradient(90deg, var(--login-azur), var(--login-brass))',
           margin: '14px auto 0',
         }} />
 
@@ -237,7 +198,7 @@ export default function Login() {
             color: '#b91c1c', fontSize: 13,
             display: 'flex', alignItems: 'flex-start', gap: 8,
           }}>
-            <span style={{ flexShrink: 0, marginTop: 1 }}>⚠️</span>
+            <AlertCircle size={15} style={{ flexShrink: 0, marginTop: 1 }} aria-hidden="true" />
             <span>{error}</span>
           </div>
         )}
@@ -284,12 +245,13 @@ export default function Login() {
                   position: 'absolute', right: 13, top: '50%',
                   transform: 'translateY(-50%)',
                   background: 'none', border: 'none', cursor: 'pointer',
-                  color: '#9ca3af', fontSize: 17, padding: 0, lineHeight: 1,
+                  color: '#9ca3af', padding: 0, lineHeight: 1,
+                  display: 'inline-flex', alignItems: 'center',
                 }}
                 tabIndex={-1}
                 aria-label={showPwd ? 'Masquer' : 'Afficher'}
               >
-                {showPwd ? '🙈' : '👁️'}
+                {showPwd ? <EyeOff size={18} aria-hidden="true" /> : <Eye size={18} aria-hidden="true" />}
               </button>
             </div>
           </div>
@@ -329,7 +291,7 @@ export default function Login() {
               borderRadius: 12, border: 'none',
               background: loading
                 ? '#93c5fd'
-                : 'linear-gradient(135deg, #1863DC 0%, #326CFE 100%)',
+                : 'linear-gradient(135deg, var(--login-azur) 0%, var(--login-azur-bright) 100%)',
               color: '#fff', fontWeight: 700, fontSize: 15,
               cursor: loading ? 'not-allowed' : 'pointer',
               letterSpacing: '0.03em',
@@ -348,16 +310,21 @@ export default function Login() {
 
         {/* Retour accueil */}
         <p style={{ textAlign: 'center', marginTop: 26, fontSize: 13, color: '#9ca3af' }}>
-          <Link to="/landing" style={{ color: '#1863DC', textDecoration: 'none', fontWeight: 500 }}>
+          <Link to="/landing" style={{ color: 'var(--login-azur)', textDecoration: 'none', fontWeight: 500 }}>
             ← Retour à l'accueil
           </Link>
         </p>
       </div>
 
       <style>{`
+        ${BRAND_TOKENS}
         @keyframes loginIn {
           from { opacity: 0; transform: translateY(28px) scale(0.96); }
           to   { opacity: 1; transform: translateY(0)    scale(1);    }
+        }
+        .login-card { animation: loginIn 0.55s cubic-bezier(0.16, 1, 0.3, 1) both; }
+        @media (prefers-reduced-motion: reduce) {
+          .login-card { animation: none; }
         }
       `}</style>
     </div>

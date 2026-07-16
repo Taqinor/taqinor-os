@@ -7,7 +7,7 @@ from .models import (
     ReceptionFournisseur, LigneReceptionFournisseur,
     FactureFournisseur, LigneFactureFournisseur, PaiementFournisseur,
     InventaireSession, LigneInventaire,
-    KitProduit, KitComposant,
+    KitProduit, KitComposant, RevisionKit,
     FicheTechnique,
     DocumentConformiteFournisseur, AchatsParametres,
     CategorieFournisseur, ContactFournisseur,
@@ -204,6 +204,11 @@ class ProduitSerializer(serializers.ModelSerializer):
     nb_mouvements = serializers.SerializerMethodField()
     premiere_date_mouvement = serializers.SerializerMethodField()
     derniere_date_mouvement = serializers.SerializerMethodField()
+    # ARC27 — libellé de l'unité issu du référentiel Paramètres (UniteMesure)
+    # quand une unité active correspond au ``unite_stock`` du produit ; sinon le
+    # code brut (comportement historique). Lecture seule, additif ; le générateur
+    # de devis (écran) consomme ce champ pour afficher le libellé du référentiel.
+    unite_stock_display = serializers.SerializerMethodField()
     # N15 — ventilation du stock par emplacement dans la liste catalogue
     # (lecture seule) pour afficher dépôt/camionnette sans ouvrir le modal
     # Transfert. Map calculée UNE fois par sérialisation (pas de N+1).
@@ -282,13 +287,17 @@ class ProduitSerializer(serializers.ModelSerializer):
             'code_barres',
             # XSTK19 — code SH (HS) + pays d'origine (dossier d'import ADII)
             'code_sh', 'pays_origine',
-            # XSTK15 — unité de mesure du stock
-            'unite_stock',
+            # XSTK15 — unité de mesure du stock ; ARC27 — FK miroir référentiel
+            # + libellé affiché (référentiel si présent, sinon code brut).
+            'unite_stock', 'unite', 'unite_stock_display',
             # Prix (prix_achat gardé par permission, cf. get_fields)
             'prix_achat', 'prix_vente', 'tva',
             # ZPUR1 — politique de facturation d'achat (sur_reception/
             # sur_commande) — INTERNE, jamais client-facing (achat).
             'politique_facturation_achat',
+            # ZSAL9 — avertissement de vente (« sale warnings ») : message +
+            # drapeau bloquant. Non sensible (jamais de prix), affiché au devis.
+            'avertissement_vente', 'avertissement_bloquant',
             # Stock
             'quantite_stock', 'seuil_alerte', 'is_archived',
             # Relations (lecture imbriquée + écriture par *_id)
@@ -314,7 +323,10 @@ class ProduitSerializer(serializers.ModelSerializer):
             'quantite_en_commande', 'bcf_sources_en_commande',
         ]
         # company est posé côté serveur (TenantMixin) — jamais accepté du corps.
-        read_only_fields = ['company', 'date_creation', 'date_mise_a_jour']
+        # ARC27 — ``unite`` est un MIROIR (posé par le backfill), lecture seule :
+        # jamais accepté du corps (évite tout choix d'unité d'une autre société).
+        read_only_fields = ['company', 'date_creation', 'date_mise_a_jour',
+                            'unite']
         # XSTK3 — l'optionalité de `code_barres` (que DRF forcerait à tort à
         # `required=True` via l'UniqueTogetherValidator dérivé de la contrainte
         # partielle) est restaurée par la déclaration EXPLICITE du champ
@@ -456,6 +468,22 @@ class ProduitSerializer(serializers.ModelSerializer):
     def get_derniere_date_mouvement(self, obj):
         val = getattr(obj, 'derniere_date_mouvement', None)
         return val.isoformat() if val else None
+
+    def get_unite_stock_display(self, obj):
+        # ARC27 — libellé du référentiel Paramètres (UniteMesure) si l'unité
+        # miroir est reliée ou si une unité active correspond au code
+        # ``unite_stock`` ; sinon le code brut (comportement historique).
+        unite = getattr(obj, 'unite', None)
+        if unite is not None and getattr(unite, 'actif', False):
+            return unite.libelle
+        code = obj.unite_stock or ''
+        try:
+            from apps.parametres.models import UniteMesure
+            libelle = UniteMesure.libelle_pour_code(
+                getattr(obj, 'company', None), code)
+        except Exception:
+            libelle = None
+        return libelle or code
 
 
 class EmplacementStockSerializer(serializers.ModelSerializer):
@@ -881,7 +909,16 @@ class ReceptionFournisseurSerializer(serializers.ModelSerializer):
                     {'lignes': 'Ligne de commande hors de ce bon de commande.'})
             LigneReceptionFournisseur.objects.create(
                 reception=reception, ligne_commande=ligne_cmd,
-                produit=ligne_cmd.produit, quantite=ligne['quantite'])
+                produit=ligne_cmd.produit, quantite=ligne['quantite'],
+                # YTEST6 — les champs de traçabilité déclarés par le
+                # serializer de ligne (FG61 séries / FG64 lot+péremption)
+                # étaient silencieusement PERDUS à la création imbriquée :
+                # ils alimentent SerieEntrepot (YSTCK7) et LotEntrepot
+                # (XSTK6) à la confirmation. Absents du corps → None
+                # (comportement historique inchangé).
+                numeros_serie=ligne.get('numeros_serie'),
+                numero_lot=ligne.get('numero_lot'),
+                date_peremption=ligne.get('date_peremption'))
         return reception
 
 
@@ -1184,40 +1221,83 @@ class InventaireSessionSerializer(serializers.ModelSerializer):
 # ── FG66 / DC36 — Kit / nomenclature (BOM) ────────────────────────────────────
 
 class KitComposantSerializer(serializers.ModelSerializer):
-    produit_nom = serializers.CharField(source='produit.nom', read_only=True)
-    produit_sku = serializers.CharField(source='produit.sku', read_only=True)
+    produit_nom = serializers.CharField(
+        source='produit.nom', read_only=True, default=None)
+    produit_sku = serializers.CharField(
+        source='produit.sku', read_only=True, default=None)
     # DC36 — prix de vente catalogue affiché en LECTURE SEULE (jamais stocké sur
     # le kit) ; aucun prix d'achat ici (interne).
     prix_vente = serializers.DecimalField(
         source='produit.prix_vente', max_digits=10, decimal_places=2,
-        read_only=True)
+        read_only=True, default=None)
+    # XMFG17 — nom du sous-kit (lecture seule, quand `composant_kit` est posé).
+    composant_kit_nom = serializers.CharField(
+        source='composant_kit.nom', read_only=True, default=None)
 
     class Meta:
         model = KitComposant
         fields = ['id', 'produit', 'produit_nom', 'produit_sku', 'prix_vente',
-                  'quantite']
+                  'composant_kit', 'composant_kit_nom', 'quantite']
 
     def validate_quantite(self, value):
         if value is None or value <= 0:
             raise serializers.ValidationError('La quantité doit être positive.')
         return value
 
+    def validate(self, attrs):
+        # XMFG17 — XOR produit/composant_kit posé côté serveur (même règle
+        # que la CheckConstraint DB — message clair AVANT le round-trip DB).
+        produit = attrs.get('produit')
+        composant_kit = attrs.get('composant_kit')
+        if bool(produit) == bool(composant_kit):
+            raise serializers.ValidationError(
+                'Un composant est soit un produit, soit un sous-kit '
+                '(jamais les deux, jamais aucun).')
+        return attrs
+
 
 class KitProduitSerializer(serializers.ModelSerializer):
     composants = KitComposantSerializer(many=True)
     nb_composants = serializers.SerializerMethodField()
+    # ZMFG9 — disponibilité multi-niveaux (kits assemblables + goulots),
+    # OPT-IN via `?avec_disponibilite=1` (contexte posé par la vue) : la
+    # liste/fiche l'affiche sans alourdir le comportement par défaut.
+    disponibilite_potentielle = serializers.SerializerMethodField()
 
     class Meta:
         model = KitProduit
         # DC36 — un kit ne porte AUCUN champ prix / marque / TVA : tout vient
         # des composants à l'explosion.
         fields = ['id', 'nom', 'sku', 'description', 'is_archived',
-                  'composants', 'nb_composants', 'date_creation',
-                  'date_mise_a_jour']
+                  'composants', 'nb_composants', 'disponibilite_potentielle',
+                  'date_creation', 'date_mise_a_jour']
         read_only_fields = ['date_creation', 'date_mise_a_jour']
 
     def get_nb_composants(self, obj):
         return obj.composants.count()
+
+    def get_disponibilite_potentielle(self, obj):
+        if not self.context.get('avec_disponibilite'):
+            return None
+        from .selectors import disponibilite_potentielle_recursive
+        from .services import KitCycleError
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if company is None:
+            return None
+        try:
+            data = disponibilite_potentielle_recursive(obj, company)
+        except (KitCycleError, ValueError):
+            # Une nomenclature cyclique ne casse JAMAIS la liste entière :
+            # la fiche dédiée (`disponibilite/`) porte le message d'erreur.
+            return None
+        return {
+            'kits_assemblables': data['kits_assemblables'],
+            'goulots': [
+                {'designation': g['designation'], 'sku': g['sku']}
+                for g in data['goulots']
+            ],
+        }
 
     def _validate_company(self, composants_data):
         request = self.context.get('request')
@@ -1225,22 +1305,53 @@ class KitProduitSerializer(serializers.ModelSerializer):
         if company is None:
             return
         for c in composants_data:
-            if c['produit'].company_id != company.id:
+            if c.get('produit') is not None \
+                    and c['produit'].company_id != company.id:
                 raise serializers.ValidationError(
                     {'composants': 'Produit hors de votre entreprise.'})
+            if c.get('composant_kit') is not None \
+                    and c['composant_kit'].company_id != company.id:
+                raise serializers.ValidationError(
+                    {'composants': 'Sous-kit hors de votre entreprise.'})
+
+    def _validate_no_direct_self_reference(self, kit_id, composants_data):
+        # XMFG17 — un kit ne peut pas se déclarer lui-même comme sous-kit
+        # (garde immédiate ; les cycles indirects plus profonds sont
+        # détectés par `exploser_kit`/`structure_kit` à l'explosion).
+        if kit_id is None:
+            return
+        for c in composants_data:
+            sk = c.get('composant_kit')
+            if sk is not None and sk.id == kit_id:
+                raise serializers.ValidationError(
+                    {'composants': 'Un kit ne peut pas se contenir '
+                                   'lui-même.'})
+
+    def _snapshot(self, kit):
+        # XMFG18 — snapshot auto de la composition à chaque modification des
+        # composants (idempotent : composition identique → pas de doublon).
+        from .services import snapshot_revision_kit
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        snapshot_revision_kit(
+            kit, user=user if getattr(user, 'pk', None) else None)
 
     def create(self, validated_data):
         composants_data = validated_data.pop('composants', [])
         self._validate_company(composants_data)
         kit = KitProduit.objects.create(**validated_data)
+        self._validate_no_direct_self_reference(kit.id, composants_data)
         for c in composants_data:
             KitComposant.objects.create(kit=kit, **c)
+        self._snapshot(kit)
         return kit
 
     def update(self, instance, validated_data):
         composants_data = validated_data.pop('composants', None)
         if composants_data is not None:
             self._validate_company(composants_data)
+            self._validate_no_direct_self_reference(
+                instance.id, composants_data)
         for attr, val in validated_data.items():
             setattr(instance, attr, val)
         instance.save()
@@ -1248,7 +1359,26 @@ class KitProduitSerializer(serializers.ModelSerializer):
             instance.composants.all().delete()
             for c in composants_data:
                 KitComposant.objects.create(kit=instance, **c)
+            self._snapshot(instance)
         return instance
+
+
+class RevisionKitSerializer(serializers.ModelSerializer):
+    """XMFG18 — révision (snapshot) de la nomenclature d'un kit. Lecture
+    seule : les révisions sont créées automatiquement côté serveur."""
+    user_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = RevisionKit
+        fields = ['id', 'kit', 'numero', 'composition', 'user', 'user_nom',
+                  'date_creation']
+        read_only_fields = fields
+
+    def get_user_nom(self, obj):
+        u = obj.user
+        if u is None:
+            return None
+        return (f'{u.first_name} {u.last_name}'.strip() or u.username)
 
 
 class FicheTechniqueSerializer(serializers.ModelSerializer):

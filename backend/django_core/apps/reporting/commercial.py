@@ -218,7 +218,11 @@ def commercial_dashboard(request):
             'nb_devis': 0,
             'kwc': Decimal('0'),
         })
-        slot['ca_ht'] += Decimal(d.total_ht)
+        # QX2 — CA sur le HT REMISÉ de l'option acceptée (chaîne canonique
+        # QX1), jamais le HT brut : le classement/CA reflète le vrai revenu
+        # signé, pas un montant gonflé par les remises ignorées.
+        from apps.ventes.utils.options import option_totaux
+        slot['ca_ht'] += Decimal(str(option_totaux(d)['ht']))
         slot['nb_devis'] += 1
         slot['kwc'] += kwc_by_devis.get(d.id, Decimal('0'))
 
@@ -244,15 +248,72 @@ def commercial_dashboard(request):
 
     leaderboard.sort(key=lambda r: float(r['ca_ht']), reverse=True)
 
+    # ── QX31be — délai jusqu'au PREMIER contact (speed-to-lead) ──────────────
+    # De la création du lead à la première activité SORTANTE (appel/e-mail),
+    # par commercial. MIT/Oldroyd : contacter < 5 min = 21× de qualification.
+    ttft = _time_to_first_touch(co, leads, start, end, LeadActivity)
+
     return Response({
         'funnel': funnel,
         'win_rate_pct': win_rate_pct,
         'time_in_stage': time_in_stage,
         'sales_velocity': sales_velocity,
         'leaderboard': leaderboard,
+        'time_to_first_touch': ttft,
         'total_leads': len(leads),
         'total_signes': nb_signes,
     })
+
+
+def _time_to_first_touch(co, leads, start, end, LeadActivity):
+    """QX31be — minutes moyennes lead→1er contact sortant, global + par
+    commercial. Le premier contact = 1ʳᵉ ``LeadActivity`` de type appel/e-mail
+    sur le lead. Best-effort : jamais d'exception (renvoie des valeurs vides)."""
+    try:
+        lead_ids = [le.id for le in leads]
+        created = {le.id: le.date_creation for le in leads}
+        # Propriétaire du lead (fallback créateur du lead).
+        owner_of = {}
+        for le in leads:
+            owner_of[le.id] = getattr(le, 'owner_id', None) or 0
+        acts = (LeadActivity.objects
+                .filter(lead_id__in=lead_ids,
+                        kind__in=[LeadActivity.Kind.APPEL,
+                                  LeadActivity.Kind.EMAIL])
+                .order_by('lead_id', 'created_at')
+                .values('lead_id', 'created_at', 'user_id'))
+        first_touch = {}
+        for a in acts:
+            if a['lead_id'] not in first_touch:
+                first_touch[a['lead_id']] = a
+        per_owner = {}
+        global_minutes = []
+        for lid, a in first_touch.items():
+            c = created.get(lid)
+            if not c:
+                continue
+            delta = (a['created_at'] - c).total_seconds() / 60.0
+            if delta < 0 or delta > 60 * 24 * 30:  # borne défensive
+                continue
+            global_minutes.append(delta)
+            uid = a.get('user_id') or owner_of.get(lid) or 0
+            per_owner.setdefault(uid, []).append(delta)
+    except Exception:  # noqa: BLE001 — métrique best-effort
+        return {'avg_minutes': None, 'sample_count': 0, 'by_seller': []}
+
+    def _avg(vals):
+        return round(sum(vals) / len(vals), 1) if vals else None
+
+    by_seller = [
+        {'seller_id': uid, 'avg_minutes': _avg(vals), 'sample_count': len(vals)}
+        for uid, vals in per_owner.items()
+    ]
+    by_seller.sort(key=lambda r: (r['avg_minutes'] is None, r['avg_minutes']))
+    return {
+        'avg_minutes': _avg(global_minutes),
+        'sample_count': len(global_minutes),
+        'by_seller': by_seller,
+    }
 
 
 # ── QJ19 — Win/loss par source et motifs de perte ────────────────────────────

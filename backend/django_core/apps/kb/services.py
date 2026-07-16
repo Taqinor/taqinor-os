@@ -9,6 +9,8 @@ import logging
 
 from django.db import transaction
 
+from core.pdf import render_pdf
+
 from .models import (
     KbArticle,
     KbArticleChunk,
@@ -107,6 +109,28 @@ def incrementer_vues(article):
     KbArticle.objects.filter(id=article.id).update(vues=F('vues') + 1)
     article.refresh_from_db(fields=['vues'])
     return article.vues
+
+
+# ── XSAV22 — Déflection KB sur le portail client ────────────────────────────
+
+def enregistrer_consultation_portail(company, article_id):
+    """XSAV22 — Incrémente le compteur DÉDIÉ ``consultations_portail_ticket``
+    quand un client consulte cet article depuis le formulaire d'ouverture de
+    ticket du portail (distinct de ``incrementer_vues``, qui compte toute
+    consultation interne).
+
+    Point d'ÉCRITURE cross-app (``apps.portail``/``apps.compta``, frontière
+    CLAUDE.md) : l'appelant fournit un ``article_id`` OPAQUE, jamais l'objet
+    ORM ni un import de ``apps.kb.models`` — résolu ici, scopé à ``company``
+    (aucune fuite cross-tenant possible). No-op silencieux (renvoie ``False``,
+    ne lève jamais) si l'article n'existe pas / n'appartient pas à la société
+    / n'est pas flagué ``visible_portail`` (on ne compte que ce qui est
+    effectivement montré sur le portail)."""
+    from django.db.models import F
+    updated = KbArticle.objects.filter(
+        id=article_id, company=company, visible_portail=True,
+    ).update(consultations_portail_ticket=F('consultations_portail_ticket') + 1)
+    return bool(updated)
 
 
 def journaliser_recherche_vide(company, terme, *, utilisateur=None):
@@ -226,17 +250,12 @@ def article_to_markdown(article):
 def article_to_pdf(article):
     """XKB17 — Rend un article en PDF (mise en page d'impression propre).
 
-    Utilise EXCLUSIVEMENT le WeasyPrint existant (JAMAIS le moteur devis
-    premium — rule #4 : `/proposal` reste l'unique chemin des PDF de devis
-    client, sans rapport avec cet export documentaire interne). Aucun statut
-    n'est modifié par cet export (lecture seule). Renvoie les octets PDF.
+    Utilise EXCLUSIVEMENT le service partagé ``core.pdf.render_pdf`` (ARC12 —
+    plomberie WeasyPrint centralisée ; JAMAIS le moteur devis premium — rule
+    #4 : `/proposal` reste l'unique chemin des PDF de devis client, sans
+    rapport avec cet export documentaire interne). Aucun statut n'est modifié
+    par cet export (lecture seule). Renvoie les octets PDF.
     """
-    try:
-        import weasyprint  # import local : lib lourde, chargée à la demande.
-    except Exception as exc:  # pragma: no cover - WeasyPrint est installé.
-        raise RuntimeError(
-            "WeasyPrint est requis pour exporter un article en PDF "
-            f"mais n'a pas pu être chargé : {exc}")
     titre = (article.titre or 'Article').replace('<', '&lt;').replace('>', '&gt;')
     corps_html = (article.corps or '').replace('\n', '<br>')
     html_str = (
@@ -252,7 +271,7 @@ def article_to_pdf(article):
         f"<div class='corps'>{corps_html}</div>"
         "</body></html>"
     )
-    return weasyprint.HTML(string=html_str).write_pdf()
+    return render_pdf(html=html_str)
 
 
 def importer_markdown(contenu, *, company, auteur=None):

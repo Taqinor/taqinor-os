@@ -253,6 +253,9 @@ def lead_bills_for_devis(devis):
         'facture_ete': (float(lead.facture_ete)
                         if lead.facture_ete not in (None, '') else None),
         'ete_differente': bool(lead.ete_differente),
+        # QX7d — distributeur (onee/lydec/redal) pour convertir MAD→kWh par le
+        # barème progressif (mêmes tranches que le chemin ROI), pas un prix plat.
+        'distributeur': (lead.distributeur or None),
     }
 
 
@@ -872,7 +875,15 @@ def leads_callback_sla_depasse(company, now=None, seuil_heures=None):
     déterministes) ; ``seuil_heures=0`` (SLA désactivé) renvoie un queryset
     vide. N'exige PAS ``stage=NEW`` : un rappel peut être demandé à n'importe
     quelle étape (rule #2 — la préférence de contact n'est pas liée au
-    funnel)."""
+    funnel).
+
+    QX15 — l'horloge SLA mesure depuis ``contact_preference_set_at`` (quand
+    la préférence a été POSÉE), avec repli sur ``date_creation`` pour les
+    leads dont la préférence a été posée avant l'ajout de ce champ (NULL).
+    Sans ce correctif, un VIEUX lead dont le rappel est demandé MAINTENANT
+    apparaissait instantanément « SLA rompu » (mesuré depuis sa création)."""
+    from django.db.models.functions import Coalesce
+    from django.db.models import F
     from django.utils import timezone as _timezone
     import datetime as _dt
 
@@ -891,7 +902,10 @@ def leads_callback_sla_depasse(company, now=None, seuil_heures=None):
         is_archived=False,
         contact_preference=Lead.ContactPreference.PHONE_OK,
         first_contacted_at__isnull=True,
-        date_creation__lte=cutoff,
+    ).annotate(
+        _sla_clock=Coalesce(F('contact_preference_set_at'), F('date_creation')),
+    ).filter(
+        _sla_clock__lte=cutoff,
     ).order_by('date_creation')
 
 
@@ -1004,6 +1018,38 @@ def lead_merge_fields(company, lead_id):
         'societe': lead.societe or '',
         'proprietaire_lead': proprietaire,
     }
+
+
+# ── XMKT36 — Identifiants de contact pour l'export d'audience Meta ─────────
+
+def lead_contact_identifiers(company, lead_ids):
+    """XMKT36 — email/téléphone LECTURE SEULE des leads d'un segment, pour le
+    hash SHA-256 côté serveur (``apps.compta``, jamais d'import direct de
+    ``apps.crm.models``). Scopé société : un id hors société est ignoré.
+    Ne renvoie JAMAIS aucune donnée interne (prix_achat/marge inexistants
+    ici) — uniquement les identifiants de contact déjà publics de la fiche."""
+    from .models import Lead
+    if not lead_ids:
+        return []
+    rows = Lead.objects.filter(
+        company=company, id__in=list(lead_ids),
+    ).values('email', 'telephone', 'whatsapp')
+    return [
+        {'email': r['email'] or '', 'telephone': r['telephone'] or r['whatsapp'] or ''}
+        for r in rows
+    ]
+
+
+def clients_contact_identifiers(company):
+    """XMKT36 — email/téléphone des CLIENTS signés de la société (liste
+    d'exclusion publicitaire : on n'achète pas d'impression pour un client
+    déjà converti). Même contrat lecture seule que ``lead_contact_identifiers``."""
+    from .models import Client
+    rows = Client.objects.filter(company=company).values('email', 'telephone')
+    return [
+        {'email': r['email'] or '', 'telephone': r['telephone'] or ''}
+        for r in rows
+    ]
 
 
 # ── XMKT17 — Coût & ROI MAD par campagne (compta.Campagne) ─────────────────
@@ -1126,3 +1172,218 @@ def consolidation_client(client):
         'nb_factures_total': nb_factures_total,
         'par_client': par_client,
     }
+
+
+# ── VX83 — « Ma file » : items commerciaux pour la file de travail unique ────
+
+def relances_du_jour(company, user, scope='today', today=None):
+    """VX83 — File de relance d'un utilisateur, EXTRAITE de
+    ``LeadViewSet.relances`` (FG31, ``apps/crm/views.py``) pour être consommée
+    par la « Ma file » cross-module (``records`` ne fabrique jamais sa propre
+    union — convention selectors, jamais forker/appeler une vue).
+
+    Mêmes règles que l'action d'origine : leads non archivés portant une
+    ``relance_date``, filtrés par ``scope`` (``overdue`` / ``today`` / ``week``),
+    ordonnés par échéance puis nom. La PORTÉE DE VISIBILITÉ de l'utilisateur est
+    respectée à l'identique (``scope_queryset(..., ['owner'])`` — Feature F : un
+    rôle restreint ne voit que ses leads). Lecture seule, scopée société.
+    """
+    import datetime
+    from django.utils import timezone
+    from authentication.scoping import scope_queryset
+    from .models import Lead
+
+    today = today or timezone.localdate()
+    qs = Lead.objects.filter(
+        company=company, is_archived=False, relance_date__isnull=False)
+    qs = scope_queryset(qs, user, ['owner'])
+    if scope == 'overdue':
+        qs = qs.filter(relance_date__lt=today)
+    elif scope == 'week':
+        week_end = today + datetime.timedelta(days=6)
+        qs = qs.filter(relance_date__lte=week_end)
+    else:  # today
+        qs = qs.filter(relance_date=today)
+    return qs.order_by('relance_date', 'nom')
+
+
+def leads_chauds_non_contactes(company, user, seuil_score=None):
+    """VX83 — Leads « chauds » (score élevé) JAMAIS contactés, pour la file de
+    travail. Un lead à fort potentiel dont ``first_contacted_at`` est NULL est
+    une opportunité qui dort. Portée de visibilité de l'utilisateur respectée
+    (``scope_queryset(..., ['owner'])``). Lecture seule, scopée société.
+
+    ``seuil_score`` par défaut = 60 (« chaud » sur l'échelle 0-100 de QJ6). Un
+    lead archivé/perdu/déjà signé est exclu (funnel via STAGES.py — règle #2).
+    """
+    from authentication.scoping import scope_queryset
+    from . import stages as stage_mod
+    from .models import Lead
+
+    seuil = 60 if seuil_score is None else seuil_score
+    qs = Lead.objects.filter(
+        company=company, is_archived=False, perdu=False,
+        first_contacted_at__isnull=True, score__gte=seuil,
+    ).exclude(stage__in=(stage_mod.SIGNED, stage_mod.COLD))
+    qs = scope_queryset(qs, user, ['owner'])
+    return qs.order_by('-score', 'date_creation')
+
+
+def devis_expirant_bientot(company, user, dans_jours=7, today=None):
+    """VX83 — Devis au statut ``envoye`` dont la validité expire dans les
+    ``dans_jours`` prochains jours (ou déjà expirés mais encore ``envoye``),
+    pour la file de travail. Lu via la relation ``lead.devis`` déjà dans le
+    domaine crm (JAMAIS un import de ``apps.ventes.models`` — même patron que
+    ``attribution_leads``/``revenu_attribue_campagne``). Portée de visibilité
+    respectée (le devis suit le ``owner`` de son lead). Lecture seule.
+
+    Renvoie une liste de dicts ``{devis_id, reference, lead_id, lead_nom,
+    date_expiration, total_ttc}``.
+    """
+    import datetime
+    from django.utils import timezone
+    from authentication.scoping import scope_queryset
+    from .models import Lead
+
+    today = today or timezone.localdate()
+    limite = today + datetime.timedelta(days=dans_jours)
+    leads = scope_queryset(
+        Lead.objects.filter(company=company, is_archived=False),
+        user, ['owner']).prefetch_related('devis')
+
+    out = []
+    for lead in leads:
+        for devis in lead.devis.all():
+            if getattr(devis, 'statut', None) != 'envoye':
+                continue
+            exp = getattr(devis, 'date_expiration', None) or getattr(
+                devis, 'date_validite', None)
+            if exp is None or exp > limite:
+                continue
+            out.append({
+                'devis_id': devis.id,
+                'reference': getattr(devis, 'reference', '') or f'#{devis.id}',
+                'lead_id': lead.id,
+                'lead_nom': f'{lead.nom} {lead.prenom or ""}'.strip(),
+                'date_expiration': exp,
+                'total_ttc': str(getattr(devis, 'total_ttc', None) or ''),
+            })
+    out.sort(key=lambda d: (d['date_expiration'], d['reference']))
+    return out
+
+
+def leads_rappel_demande(company, user):
+    """VX223 — Leads ayant demandé un RAPPEL téléphonique
+    (``contact_preference=='phone_ok'``), le signal le plus chaud du pipeline
+    jusqu'ici réduit à un badge PASSIF sur ``LeadCard`` (aucune file ne
+    l'alimentait). Exclut perdu/archivé (funnel via STAGES.py — règle #2).
+    Portée de visibilité de l'utilisateur respectée (``scope_queryset(...,
+    ['owner'])``, même convention que ``relances_du_jour``/
+    ``leads_chauds_non_contactes``). Lecture seule, scopée société.
+    """
+    from authentication.scoping import scope_queryset
+    from .models import Lead
+
+    qs = Lead.objects.filter(
+        company=company, is_archived=False, perdu=False,
+        contact_preference='phone_ok',
+    )
+    qs = scope_queryset(qs, user, ['owner'])
+    return qs.order_by('-date_creation')
+
+
+def ma_file_commercial_items(company, user, today=None):
+    """VX83 — Items COMMERCIAUX normalisés de la « Ma file » d'un utilisateur,
+    prêts pour l'union cross-module de ``records`` (aucun agrégateur dupliqué
+    côté records : il consomme CE point d'entrée). Chaque item est un dict
+    ``{kind, title, due, link, urgency, montant?}`` — contrat commun à toutes
+    les familles de la file. Lecture seule, scopée société + visibilité.
+
+    Quatre familles réunies :
+      * relances dues (FG31, ``relances_du_jour`` scope ``overdue`` — en retard
+        seulement, l'urgence de la file) ;
+      * leads chauds jamais contactés (``leads_chauds_non_contactes``) ;
+      * devis ``envoye`` proches d'expiration (``devis_expirant_bientot``) ;
+      * VX223 — rappels demandés (``leads_rappel_demande``), famille que VX83
+        n'énumérait pas : ``kind='rappel'``, ``urgency='high'`` (ni
+        ``overdue`` ni ``today`` — un rappel demandé n'a pas d'échéance
+        propre ; le tri de ``records.views.ActivityViewSet.ma_file`` retombe
+        sur son rang par défaut pour toute urgence inconnue — hors périmètre
+        de cette tâche, cf. ``FilterBar.jsx`` qui expose le même signal en
+        chip dédiée, cliquable indépendamment de « Ma file »).
+    """
+    from django.utils import timezone
+    today = today or timezone.localdate()
+    items = []
+
+    for lead in relances_du_jour(company, user, scope='overdue', today=today):
+        nom = f'{lead.nom} {lead.prenom or ""}'.strip() or f'Lead #{lead.id}'
+        items.append({
+            'kind': 'relance',
+            'title': f'Relancer {nom}',
+            'due': lead.relance_date,
+            'link': f'/crm/leads?lead={lead.id}',
+            'urgency': 'overdue',
+        })
+
+    for lead in leads_chauds_non_contactes(company, user):
+        nom = f'{lead.nom} {lead.prenom or ""}'.strip() or f'Lead #{lead.id}'
+        items.append({
+            'kind': 'lead_chaud',
+            'title': f'Contacter {nom} (chaud, jamais contacté)',
+            'due': None,
+            'link': f'/crm/leads?lead={lead.id}',
+            'urgency': 'today',
+        })
+
+    for d in devis_expirant_bientot(company, user, today=today):
+        expire = d['date_expiration'] < today
+        items.append({
+            'kind': 'devis_expire',
+            'title': f'Devis {d["reference"]} — {d["lead_nom"]} '
+                     f'{"expiré" if expire else "expire bientôt"}',
+            'due': d['date_expiration'],
+            'link': f'/crm/leads?lead={d["lead_id"]}',
+            'urgency': 'overdue' if expire else 'today',
+            'montant': d['total_ttc'] or None,
+        })
+
+    # VX223 — rappels demandés : signal le plus chaud du pipeline (un client a
+    # explicitement demandé un rappel), jusqu'ici un badge passif jamais
+    # remonté dans aucune file.
+    for lead in leads_rappel_demande(company, user):
+        nom = f'{lead.nom} {lead.prenom or ""}'.strip() or f'Lead #{lead.id}'
+        items.append({
+            'kind': 'rappel',
+            'title': f'Rappeler {nom} (rappel demandé)',
+            'due': None,
+            'link': f'/crm/leads?lead={lead.id}',
+            'urgency': 'high',
+        })
+
+    return items
+
+
+def lead_chatter_envelope(lead):
+    """ARC9 — timeline chatter du lead dans l'ENVELOPPE UNIFORME.
+
+    Étape 1 (additive) de la convergence des chatters historiques : projette
+    ``crm.LeadActivity`` vers le format commun consommé par
+    ``records.serializers.UniformChatterSerializer`` (un seul contrat de
+    lecture pour le frontend, quel que soit le modèle source). Lecture seule —
+    AUCUNE table modifiée. Le queryset est déjà borné par le lead (lui-même
+    borné société par l'appelant).
+    """
+    rows = lead.activites.select_related('user').all()
+    return [{
+        'id': a.id,
+        'kind': a.kind,
+        'field': a.field or '',
+        'field_label': a.field_label or '',
+        'old_value': a.old_value or '',
+        'new_value': a.new_value or '',
+        'body': a.body or '',
+        'user_username': a.user.username if a.user_id else None,
+        'created_at': a.created_at,
+        'source': 'crm.leadactivity',
+    } for a in rows]

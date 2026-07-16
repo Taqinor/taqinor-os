@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { Download, ChevronLeft, ChevronRight } from 'lucide-react'
+import { useSearchParams } from 'react-router-dom'
+import { Download, ChevronLeft, ChevronRight, Link2 } from 'lucide-react'
 import { fetchInstallations, updateInstallation } from '../../features/installations/store/installationsSlice'
 import {
   EMPTY_FILTERS,
@@ -10,8 +11,10 @@ import {
   upcomingPoses,
   funnelSummary,
   installerLoad,
+  isNewlyAssigned,
 } from '../../features/installations/statuses'
-import importApi, { downloadXlsx } from '../../api/importApi'
+import importApi from '../../api/importApi'
+import { downloadBlobInGesture } from '../../utils/downloadBlob'
 import crmApi from '../../api/crmApi'
 import {
   Button,
@@ -20,6 +23,7 @@ import {
   Spinner,
   EmptyState,
   Card,
+  StatusAccentCard,
   toast,
 } from '../../ui'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
@@ -31,6 +35,36 @@ import InstallationDetail from './InstallationDetail'
 
 const VIEW_KEY = 'taqinor.chantiers.view'
 const VALID_VIEWS = ['liste', 'kanban', 'calendrier']
+
+// VX218 — horodatage de la dernière visite de l'écran (localStorage), pour
+// distinguer un chantier NOUVELLEMENT confié d'un ancien (badge « Nouveau »).
+// Accès défensif : un environnement sans localStorage (SSR, navigation privée
+// bloquée) ne casse jamais l'écran, il désactive juste le badge.
+const LAST_SEEN_KEY = 'taqinor.chantiers.lastSeen'
+
+function safeStorage() {
+  try {
+    return typeof window !== 'undefined' && window.localStorage
+      ? window.localStorage
+      : null
+  } catch {
+    return null
+  }
+}
+
+function readLastSeen() {
+  try {
+    return safeStorage()?.getItem(LAST_SEEN_KEY) ?? null
+  } catch {
+    return null
+  }
+}
+
+function writeLastSeen(iso) {
+  try {
+    safeStorage()?.setItem(LAST_SEEN_KEY, iso)
+  } catch { /* stockage indisponible */ }
+}
 
 // Paramètres SERVEUR dérivés des filtres « annulés » et « Mes chantiers ».
 const serverParams = (filters) => {
@@ -55,11 +89,18 @@ function poseKey(it) {
   return localKey(y, m, d)
 }
 
+// VX149 — même mécanisme d'accent que le kanban interventions
+// (`ui/StatusAccentCard`, `--kb-accent`) au lieu d'un `style={{background}}`
+// posé à la main sur le point : le point lit désormais l'accent via CSS
+// (`.cal-chip-dot` → `background: var(--kb-accent)`).
 function Chip({ item, onOpen, onDragStart }) {
   const dot = item.annule ? '#dc2626' : statusColor(item.statut)
   const name = item.reference || item.client_nom || '(Sans réf.)'
   return (
-    <button
+    <StatusAccentCard
+      as="button"
+      variant="bare"
+      accent={dot}
       type="button"
       draggable={!item.annule}
       onDragStart={(e) => onDragStart?.(e, item)}
@@ -67,9 +108,9 @@ function Chip({ item, onOpen, onDragStart }) {
       title={`${name} — ${statusLabel(item.statut)}`}
       onClick={() => onOpen(item)}
     >
-      <span className="cal-chip-dot" style={{ background: dot }} />
+      <span className="cal-chip-dot" />
       <span className="cal-chip-name">{name}</span>
-    </button>
+    </StatusAccentCard>
   )
 }
 
@@ -219,6 +260,7 @@ function CalendarView({ items, onOpen, onReschedule }) {
 export default function InstallationsPage() {
   const dispatch = useDispatch()
   const { items, loading, error } = useSelector(s => s.installations)
+  const currentUser = useSelector(s => s.auth?.user)
 
   const [view, setView] = useState(() => {
     try {
@@ -233,7 +275,25 @@ export default function InstallationsPage() {
   }, [view])
 
   const [filters, setFilters] = useState(EMPTY_FILTERS)
-  const filtered = useMemo(() => filterInstallations(items, filters), [items, filters])
+
+  // VX218 — badge « Nouveau » : chantiers assignés à moi depuis ma dernière
+  // visite (lue UNE fois au montage — figée pour la session, sinon le badge
+  // s'effacerait tout seul dès le premier rendu). Ouvrir l'écran efface le
+  // marqueur pour la PROCHAINE visite (jamais la visite en cours).
+  const [lastSeen] = useState(() => readLastSeen())
+  useEffect(() => {
+    writeLastSeen(new Date().toISOString())
+  }, [])
+  const nouveaux = useMemo(
+    () => (items ?? []).filter((it) => isNewlyAssigned(it, currentUser?.id, lastSeen)),
+    [items, currentUser, lastSeen],
+  )
+  const nouveauxIds = useMemo(() => new Set(nouveaux.map((it) => it.id)), [nouveaux])
+
+  const filtered = useMemo(() => {
+    const base = filterInstallations(items, filters)
+    return filters.nouveaux ? base.filter((it) => nouveauxIds.has(it.id)) : base
+  }, [items, filters, nouveauxIds])
 
   // N13/N14 — synthèses calculées à la lecture (aucun appel serveur en plus) :
   // poses à venir (≤ 7 j) et répartition funnel + nombre en retard.
@@ -242,6 +302,10 @@ export default function InstallationsPage() {
   const charge = useMemo(() => installerLoad(filtered, 14), [filtered])
 
   const [selected, setSelected] = useState(null)
+  const [searchParams, setSearchParams] = useSearchParams()
+  // VX172 — pending visible sur « Exporter Excel » (VX49 pose déjà le toast
+  // d'erreur ; ceci ajoute juste l'état chargement manquant).
+  const [xlsxBusy, setXlsxBusy] = useState(false)
   const [users, setUsers] = useState([])
   useEffect(() => {
     crmApi.getAssignableUsers().then(r => setUsers(r.data?.results ?? r.data ?? [])).catch(() => {})
@@ -272,9 +336,42 @@ export default function InstallationsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dispatch, filters.annule, filters.mine])
 
+  // VX79 — lien interne partageable : /chantiers?id=<pk> ouvre le panneau du
+  // chantier ciblé (patron ?lead= de LeadsPage — état DÉRIVÉ, aucun effet).
+  // Fermer retire le paramètre pour ne pas ré-ouvrir la fiche. Un id absent des
+  // chantiers chargés est signalé par un EmptyState inline (jamais page blanche).
+  const wantedId = searchParams.get('id')
+  const deepItem = useMemo(() => {
+    if (!wantedId) return null
+    return (items ?? []).find((it) => String(it.id) === String(wantedId)) ?? null
+  }, [wantedId, items])
+  // VX79 — id demandé mais introuvable (une fois le chargement terminé) : on
+  // affiche un EmptyState inline plutôt qu'un panneau vide ou une page blanche.
+  const deepMissing = !!wantedId && !loading && !deepItem
+
+  const clearDeepLink = () => {
+    if (searchParams.has('id')) {
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev)
+        next.delete('id')
+        return next
+      }, { replace: true })
+    }
+  }
   const onOpen = (it) => setSelected(it)
-  const onClose = () => setSelected(null)
-  const onSaved = () => { refetch(); setSelected(null) }
+  const onClose = () => { setSelected(null); clearDeepLink() }
+  const onSaved = () => { refetch(); setSelected(null); clearDeepLink() }
+
+  // VX79 — « Copier le lien » : URL INTERNE de l'ERP (jamais un lien public) que
+  // l'on peut envoyer à un collègue — /chantiers?id=<pk> rouvre le même chantier.
+  const copierLien = async (it) => {
+    const url = `${window.location.origin}/chantiers?id=${it.id}`
+    try { await navigator.clipboard?.writeText(url) } catch { /* presse-papier indispo */ }
+    toast.success('Lien du chantier copié.')
+  }
+
+  // Panneau ouvert : sélection manuelle OU chantier ciblé par le lien profond.
+  const detailItem = selected ?? deepItem
 
   // J143 — chargement différé anti-scintillement (foundation useDelayedLoading) :
   // rien sous 300 ms, spinner discret jusqu'à 500 ms, puis squelette calqué sur
@@ -343,16 +440,49 @@ export default function InstallationsPage() {
               {aVenir.length} pose(s) à venir (≤ 7 j)
             </button>
           )}
+          {/* VX218 — raccourci « Mes nouveaux chantiers » : chantiers qui
+              m'ont été assignés depuis ma dernière visite. */}
+          {nouveaux.length > 0 && (
+            <button
+              type="button"
+              className="inline-flex items-center gap-1 rounded-full bg-success/10 px-2 py-0.5 text-xs font-semibold text-success"
+              onClick={() => setFilters((f) => ({ ...f, mine: 'only', nouveaux: true }))}
+              title="Filtrer mes chantiers nouvellement assignés"
+              data-testid="chantiers-nouveaux-shortcut"
+            >
+              {nouveaux.length} nouveau(x) chantier(s)
+            </button>
+          )}
         </h2>
         <div className="page-header-actions lp-header-actions flex flex-wrap items-center gap-2">
+          {/* VX79 — « Copier le lien » du chantier ouvert : URL INTERNE
+              partageable (/chantiers?id=<pk>), pour l'envoyer à un collègue. */}
+          {detailItem && (
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() => copierLien(detailItem)}
+              title="Copier le lien interne de ce chantier (à envoyer à un collègue)"
+            >
+              <Link2 /> Copier le lien
+            </Button>
+          )}
           <Button
             type="button"
             size="sm"
             variant="outline"
-            onClick={() => importApi.exportList('chantiers', filtered.map(i => i.id))
-              .then(r => downloadXlsx(r.data, 'chantiers.xlsx')).catch(() => {})}
+            disabled={xlsxBusy}
+            onClick={() => {
+              const pending = downloadBlobInGesture()
+              setXlsxBusy(true)
+              importApi.exportList('chantiers', filtered.map(i => i.id))
+                .then(r => pending.deliver(r.data, 'chantiers.xlsx'))
+                .catch(() => {})
+                .finally(() => setXlsxBusy(false))
+            }}
           >
-            <Download /> Exporter Excel
+            {xlsxBusy ? <Spinner /> : <Download />} Exporter Excel
           </Button>
           <Segmented
             size="sm"
@@ -369,6 +499,17 @@ export default function InstallationsPage() {
       </div>
 
       <FilterBar filters={filters} setFilters={setFilters} items={items} />
+
+      {/* VX79 — lien profond ?id=<pk> pointant vers un chantier introuvable :
+          EmptyState inline (jamais une page blanche). */}
+      {deepMissing && (
+        <EmptyState
+          title="Chantier introuvable"
+          description="Le chantier de ce lien n'existe plus ou n'est pas accessible."
+          action={<Button size="sm" variant="outline" onClick={clearDeepLink}>Fermer</Button>}
+          className="my-2 border-warning/40"
+        />
+      )}
 
       {/* N14 — synthèse funnel : compte par statut + nb en retard. */}
       <div className="flex flex-wrap items-center gap-2 py-1 text-xs">
@@ -417,11 +558,12 @@ export default function InstallationsPage() {
         )}
         {!showSkeleton && view === 'liste' && (
           <ListView items={filtered} onOpen={onOpen} users={users}
-                    onChangeStatus={onChangeStatus} onReassign={onReassign} />
+                    onChangeStatus={onChangeStatus} onReassign={onReassign}
+                    nouveauxIds={nouveauxIds} />
         )}
         {!showSkeleton && view === 'kanban' && (
           <KanbanView items={filtered} onOpen={onOpen} onChangeStatus={onChangeStatus}
-                      users={users} onReassign={onReassign} />
+                      users={users} onReassign={onReassign} nouveauxIds={nouveauxIds} />
         )}
         {!showSkeleton && view === 'calendrier' && (
           filtered.length === 0 ? (
@@ -438,8 +580,8 @@ export default function InstallationsPage() {
         )}
       </div>
 
-      {selected && (
-        <InstallationDetail installation={selected} onClose={onClose} onSaved={onSaved} />
+      {detailItem && (
+        <InstallationDetail installation={detailItem} onClose={onClose} onSaved={onSaved} />
       )}
     </div>
   )

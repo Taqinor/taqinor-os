@@ -491,6 +491,15 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
             <input id="mt-roof-age" name="roofAgeYears" type="number" step="1" min="0" inputmode="numeric"
               placeholder="Ex. 10" class={`${inputClass} mt-1`} />
           </label>
+          <!-- WJ112 — honnêteté : l'âge du toit sert la VISITE TECHNIQUE (état de la
+               charpente/étanchéité), pas le calcul de kWc/production affiché ici — on
+               le dit plutôt que de laisser croire à un effet sur le chiffre. -->
+          <p class="mt-1 text-xs text-lune-faint" data-i18n
+            data-fr="Sert à préparer votre visite technique (état de la toiture) — ne change pas le calcul ci-dessus."
+            data-ar="يُستخدم لتحضير الزيارة التقنية (حالة السطح) — لا يغيّر الحساب أعلاه.">
+            Sert à préparer votre visite technique (état de la toiture) — ne change pas le
+            calcul ci-dessus.
+          </p>
 
           <!-- Photo compteur/facture — capturée EN LOCAL, jamais uploadée (pas d'endpoint aujourd'hui). -->
           <div class="mt-4">
@@ -530,6 +539,16 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
             <input id="mt-battery-interest" name="batteryInterest" type="checkbox" class="mt-1 h-5 w-5 flex-none accent-brass-400" />
             <span data-i18n data-fr="Intéressé(e) par une batterie de stockage" data-ar="مهتم بتخزين البطارية">Intéressé(e) par une batterie de stockage</span>
           </label>
+          <!-- WJ112 — honnêteté : ce choix + les charges futures ci-dessus sont
+               transmis au conseiller (chiffrage batterie/charge future après visite),
+               mais ne changent PAS le kWc/économies affichés dans cette estimation
+               instantanée — on le dit plutôt que de laisser croire à un effet caché. -->
+          <p class="mt-1 text-xs text-lune-faint" data-i18n
+            data-fr="Transmis à votre conseiller pour le chiffrage détaillé — ne change pas l'estimation instantanée ci-dessus."
+            data-ar="يُنقل إلى مستشاركم للتقدير المفصّل — لا يغيّر التقدير الفوري أعلاه.">
+            Transmis à votre conseiller pour le chiffrage détaillé — ne change pas
+            l'estimation instantanée ci-dessus.
+          </p>
         </details>
 
         <!-- Groupe 3/3 — pour le financement (3 champs). -->
@@ -727,6 +746,20 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
           <p id="mt-estimate-toolarge" hidden class="mt-4 text-sm text-alert-300" data-i18n
             data-fr="Estimation indisponible — vérifiez le montant saisi." data-ar="التقدير غير متاح — تحقّقوا من المبلغ المُدخل.">
             Estimation indisponible — vérifiez le montant saisi.
+          </p>
+
+          <!-- WJ111 — mode AGRICOLE : `estimateFromBill` est aveugle au mode (il ne lit
+               que facture/repère/ville), donc une ferme qui pompe verrait un kWc/économies
+               de résidentiel calculé sur sa facture — un chiffre FAUX qui ignore le vrai
+               dimensionnement (HMT + débit souhaité). On affiche donc une carte QUALITATIVE
+               dédiée (même famille visuelle que mt-estimate-unavailable) au lieu du chiffre
+               numérique — jamais un chiffre fabriqué. La capture reste 100 % fonctionnelle :
+               les champs pompe/mode continuent de partir dans le lead exactement comme avant. -->
+          <p id="mt-estimate-agricole" hidden class="mt-4 text-sm text-alert-300" data-i18n
+            data-fr="Le pompage se dimensionne sur votre HMT et votre débit, pas sur une facture — un conseiller vous rappelle avec un calcul adapté à votre forage."
+            data-ar="يُحدَّد حجم الضخ حسب الارتفاع المانومتري الكلي (HMT) والتدفق، وليس حسب الفاتورة — يتصل بكم مستشار بحساب مناسب لبئركم.">
+            Le pompage se dimensionne sur votre HMT et votre débit, pas sur une facture — un
+            conseiller vous rappelle avec un calcul adapté à votre forage.
           </p>
 
           <!-- ===== WJ2 — « voir les panneaux sur votre toit » (facultatif, lazy) =====
@@ -1366,6 +1399,10 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
       syncProFieldsVisibility();
       markDataEntered();
       saveWizardState();
+      // WJ111 — si l'estimation (étape 3) a déjà été calculée, basculer de/vers
+      // agricole doit mettre à jour la carte IMMÉDIATEMENT (numérique <-> carte
+      // qualitative) sans attendre un nouveau clic sur « Voir mon estimation ».
+      if (!$('mt-estimate-body')?.hidden || !$('mt-estimate-agricole')?.hidden) computeEstimate();
     });
   });
   // état initial : marquer le mode sélectionné (réhydraté ou résidentiel par défaut).
@@ -1407,6 +1444,9 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
   syncRoofCards(); // état initial (réhydraté ou vide).
 
   // ——— WJ31 : puce à bascule unique (ombrage) — un seul choix actif à la fois ———
+  // WJ112 — l'ombrage n'est plus décoratif : il dérate désormais RÉELLEMENT la
+  // production/kWc (billEstimate.ts OMBRAGE_DERATE) ; on recalcule donc en
+  // direct au clic, exactement comme le mode ou la facture.
   let ombrage = savedWizard?.ombrage || '';
   document.querySelectorAll<HTMLButtonElement>('.mt-ombrage').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -1420,6 +1460,7 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
       });
       markDataEntered();
       saveWizardState();
+      computeEstimate();
     });
   });
   if (ombrage) {
@@ -1790,6 +1831,35 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     const cowEl = $('mt-cost-of-waiting');
     const climateBandEl = $('mt-climate-band');
     const saveBtn = $('mt-save-estimate');
+    const agricoleEl = $('mt-estimate-agricole');
+    // WJ111 — mode AGRICOLE : `estimateFromBill` est aveugle au mode (facture
+    // seule), donc afficher son kWc/économies résidentiels ici serait un chiffre
+    // FAUX pour un pompage (le vrai driver est HMT + débit, pas une facture
+    // d'électricité). On affiche la carte qualitative dédiée à la place et on
+    // s'arrête là — la capture (lead + champs pompe) continue de fonctionner
+    // normalement via le formulaire, elle n'est pas touchée ici.
+    if (mode === 'agricole') {
+      if (card) card.hidden = true;
+      if (note) note.hidden = true;
+      if (unavail) unavail.hidden = true;
+      if (toolarge) toolarge.hidden = true;
+      if (agricoleEl) agricoleEl.hidden = false;
+      setFieldError('mt-facture-hiver', 'mt-facture-hiver-err', null);
+      lastKwcLabel = '';
+      lastSavingsLabel = '';
+      lastKwc = null;
+      lastEstFull = null;
+      if (cowEl) cowEl.hidden = true;
+      if (climateBandEl) climateBandEl.hidden = true;
+      { const nearestElAg = $('mt-nearest-install'); if (nearestElAg) nearestElAg.hidden = true; }
+      if (saveBtn) saveBtn.hidden = true;
+      updatePanels3dVisibility();
+      announceEstimate(currentLang === 'ar'
+        ? 'يُحدَّد حجم الضخ حسب الارتفاع المانومتري الكلي والتدفق — يتصل بكم مستشار بحساب مناسب.'
+        : 'Le pompage se dimensionne sur votre HMT et votre débit — un conseiller vous rappelle avec un calcul adapté.');
+      return true;
+    }
+    if (agricoleEl) agricoleEl.hidden = true;
     // WJ65 — montant exact au-delà du plafond : message honnête dédié (jamais un
     // chiffre confiant sur une saisie probablement erronée) + erreur inline sur
     // le champ concerné, sans jamais BLOQUER l'étape (le visiteur peut corriger
@@ -1816,7 +1886,12 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     if (toolarge) toolarge.hidden = true;
     const lat = capturePin?.lat;
     const city = (val('mt-city') || addressEl?.value || '').trim() || undefined;
-    const est = bill != null ? estimateFromBill(bill, { lat, city }) : null;
+    // WJ112 — l'accordéon "Pour affiner la taille" alimente désormais RÉELLEMENT
+    // le calcul : la conso exacte déclarée (mt-bill-kwh) prime sur la facture MAD
+    // quand elle est saisie, et l'ombrage choisi dérate honnêtement la production
+    // (cf. billEstimate.ts OMBRAGE_DERATE — documenté, jamais un chiffre inventé).
+    const exactKwhMonthly = num('mt-bill-kwh') ?? undefined;
+    const est = bill != null ? estimateFromBill(bill, { lat, city, exactKwhMonthly, ombrage: ombrage || undefined }) : null;
     if (!est) {
       if (card) card.hidden = true;
       if (note) note.hidden = true;
@@ -1935,14 +2010,15 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     const payEl = $('mt-est-payback');
     if (payEl) payEl.innerHTML = '<span class="mt-est-skeleton mt-skeleton-shimmer"></span>';
   }
-  // WJ48 — anticipation BRANDÉE (1.5–2.5 s, tirage aléatoire dans cette
-  // fenêtre à chaque calcul) : le calcul réel (billEstimate) est synchrone et
-  // instantané — sans ce délai perçu, l'utilisateur ne « voit » jamais de
-  // calcul se produire (Enpal/EnergySage : le motif d'anticipation le plus
-  // testé du secteur). reduced-motion → INSTANTANÉ (aucun délai artificiel,
-  // aucune roue de chargement à observer).
-  const THINKING_MIN_MS = 1500;
-  const THINKING_MAX_MS = 2500;
+  // WJ48/WJ112 — anticipation BRANDÉE, RÉDUITE à ≤500 ms (250–450 ms, tirage
+  // aléatoire) : le calcul réel (billEstimate) est synchrone et instantané —
+  // un délai perçu très court laisse encore « voir » un calcul se produire
+  // (Enpal/EnergySage) sans pénaliser la promesse WJ112 d'un premier chiffre en
+  // ≤0.5 s, y compris pour les recalculs en direct (ombrage/kWh exact/mode).
+  // reduced-motion → INSTANTANÉ (aucun délai artificiel, aucune roue de
+  // chargement à observer) — inchangé.
+  const THINKING_MIN_MS = 250;
+  const THINKING_MAX_MS = 450;
   function thinkingDelayMs(): number {
     if (reducedMotion) return 0;
     return THINKING_MIN_MS + Math.random() * (THINKING_MAX_MS - THINKING_MIN_MS);
@@ -1972,6 +2048,9 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
   // redéclenche PAS l'offre WhatsApp : showWhatsappOffer n'est ici jamais appelée).
   $('mt-facture-hiver')?.addEventListener('input', computeEstimate);
   $('mt-bill')?.addEventListener('change', computeEstimate);
+  // WJ112 — la conso exacte (kWh/mois) EST maintenant utilisée par le calcul
+  // (estimateFromBill), donc elle doit recalculer en direct comme la facture.
+  $('mt-bill-kwh')?.addEventListener('input', computeEstimate);
 
   // ——— WJ2 : « voir les panneaux sur votre toit » — facultatif, lazy, dégrade
   // proprement (pas de WebGL / pas de contour tracé → le bloc reste masqué). ———
@@ -2145,6 +2224,25 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     return clientRef;
   }
 
+  // WJ116 — reprise fbclid + UTM depuis sessionStorage (capture first-touch du
+  // Layout, apps/web/src/layouts/Layout.astro ~l.206) : sans ceci, AUCUNE
+  // attribution UTM (parrainage compris — /parrainage) ne partait jamais sur ce
+  // funnel PRINCIPAL alors que le webhook / validateLead les acceptent déjà.
+  // Miroir exact de DiagnosticForm.astro ~l.279. Seules les clés PRÉSENTES sont
+  // jointes (convention WJ30/WJ31 « absent plutôt que vide ») : un visiteur sans
+  // paramètre de tracking envoie un corps byte-identique à avant.
+  const TRACK_KEYS = ['fbclid', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'] as const;
+  function readTrackingParams(): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const k of TRACK_KEYS) {
+      try {
+        const v = sessionStorage.getItem('tq_' + k);
+        if (v) out[k] = v;
+      } catch {}
+    }
+    return out;
+  }
+
   /** Construit le corps de lead + renvoie les erreurs client (miroir validateLead). */
   function buildBody(): { body: Record<string, unknown>; errors: Record<string, string> } {
     const eteDifferente = eteToggle?.checked === true;
@@ -2205,6 +2303,8 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
       // écran, jamais rempli sciemment) ; rejeté côté serveur si non vide.
       website_url: val('mt-hp'),
     };
+    // WJ116 — fbclid/UTM (parrainage inclus) : joints seulement s'ils existent.
+    Object.assign(body, readTrackingParams());
     // WJ4 — repère FACULTATIF : on le joint s'il existe, on ne BLOQUE jamais sans lui.
     if (capturePin) {
       body.roofPoint = capturePin;

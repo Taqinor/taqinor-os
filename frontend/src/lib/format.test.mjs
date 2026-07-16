@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {
   toNumber, formatMAD, formatNumber, formatPercent,
   formatDate, formatDateTime, formatPhoneMA, canonicalPhoneMA, normalizeMaPhone,
+  timeAgo, nbsp,
 } from './format.js'
 
 // Intl fr-FR utilise des espaces insécables variables (U+00A0 / U+202F) comme
@@ -59,6 +60,30 @@ test('formatDate / formatDateTime jj/mm/aaaa', () => {
   assert.equal(formatDate('pas une date'), '—')
 })
 
+// VX75 — variante longue de formatDateTime (« 18 juin 2026, 14:05 »), ajoutée
+// pour éliminer le dernier toLocaleString natif ad hoc (AppointmentBooker.jsx).
+test('formatDateTime: variante long= « 18 juin 2026, 14:05 »', () => {
+  const iso = '2026-06-18T14:05:00Z'
+  assert.match(formatDateTime(iso, { long: true }), /juin 2026/)
+  assert.match(formatDateTime(iso, { long: true }), /14:05|15:05/)
+  assert.equal(formatDateTime(null, { long: true }), '—')
+})
+
+// VX30 — timeAgo() extrait de TicketsPage.jsx en util partagé (bandeau de
+// fraîcheur du mur de flotte + chatter tickets).
+test('timeAgo: instant / minutes / heures / repli date', () => {
+  const now = Date.now()
+  assert.equal(timeAgo(new Date(now - 10 * 1000)), "à l'instant")
+  assert.equal(timeAgo(new Date(now - 5 * 60 * 1000)), 'il y a 5 min')
+  assert.equal(timeAgo(new Date(now - 3 * 3600 * 1000)), 'il y a 3 h')
+  // Au-delà de 24 h : repli sur formatDate (jj/mm/aaaa), jamais un
+  // toLocaleDateString brut.
+  const huit_jours = new Date(now - 8 * 24 * 3600 * 1000)
+  assert.equal(timeAgo(huit_jours), formatDate(huit_jours))
+  assert.equal(timeAgo(null), '—')
+  assert.equal(timeAgo('pas une date'), '—')
+})
+
 test('formatPhoneMA: local + international', () => {
   assert.equal(formatPhoneMA('0612345678'), '06 12 34 56 78')
   assert.equal(formatPhoneMA('06 12-34 56 78'), '06 12 34 56 78')
@@ -91,4 +116,19 @@ test('normalizeMaPhone: format wa.me 212XXXXXXXXX ou null', () => {
   assert.equal(normalizeMaPhone(null), null)
   assert.equal(normalizeMaPhone('   '), null)
   assert.equal(normalizeMaPhone('abc'), null)
+})
+
+// VX122 — finesse française : espace fine insécable (U+202F) devant : ; ! ?
+test('nbsp: espace fine insécable devant la ponctuation double', () => {
+  assert.equal(nbsp('Priorité :'), 'Priorité :')
+  assert.equal(nbsp('Priorité :').codePointAt(8), 0x202f)
+  assert.equal(nbsp('Attention !'), 'Attention !')
+  assert.equal(nbsp('Vraiment ?'), 'Vraiment ?')
+  assert.equal(nbsp('a; b'), 'a ; b')
+  // idempotent : n'accumule pas une seconde espace fine
+  assert.equal(nbsp(nbsp('Priorité :')), 'Priorité :')
+  // remplace une espace normale/insécable existante, ne l'ajoute pas en plus
+  assert.equal(nbsp('Titre :'), 'Titre :')
+  assert.equal(nbsp(''), '')
+  assert.equal(nbsp(null), null)
 })

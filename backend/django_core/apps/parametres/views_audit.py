@@ -47,6 +47,7 @@ KNOWN_AUDIT_SECTIONS = [
     {'value': 'roles', 'label': 'Rôles & permissions'},
     {'value': 'utilisateurs', 'label': 'Utilisateurs'},
     {'value': 'automatisations', 'label': 'Automatisations'},
+    {'value': 'tarification', 'label': 'Tarification & ROI'},
 ]
 
 

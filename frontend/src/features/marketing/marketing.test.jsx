@@ -74,9 +74,22 @@ describe('groupByDay / filterEvents (agrégation des 4 sources + filtre canal)',
     expect(filtered[0].source).toBe('campagne')
   })
 
-  it('SOURCE_KEYS couvre exactement les 4 sources agrégées', () => {
+  it('SOURCE_KEYS couvre exactement les 5 sources agrégées (XMKT35 : + posts sociaux)', () => {
     expect(SOURCE_KEYS.sort()).toEqual(
-      ['campagne', 'etape_sequence', 'evenement', 'relance'].sort())
+      ['campagne', 'etape_sequence', 'evenement', 'relance',
+        'post_social'].sort())
+  })
+
+  it('un post_social planifié est affiché et non déplaçable (XMKT35)', () => {
+    const post = {
+      id: 'ps1', obj_id: 9, source: 'post_social', date: '2026-07-20',
+      title: 'Facebook — Nouveau chantier livré', channel: '',
+      editable: false, link_type: 'post_social',
+    }
+    const byDay = groupByDay([post], {})
+    expect(byDay['2026-07-20']).toHaveLength(1)
+    expect(isDraggable(post)).toBe(false)
+    expect(routeForEvent(post)).toBe('/marketing/calendrier')
   })
 })
 

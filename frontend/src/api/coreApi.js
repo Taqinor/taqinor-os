@@ -18,6 +18,35 @@ import api from './axios'
    ========================================================================== */
 
 const coreApi = {
+  // SCA24 — thème white-label de la société courante (FG392, singleton). GET
+  // est ouvert à tout utilisateur authentifié ; le shell l'utilise en lecture
+  // seule (aucun écran d'édition ici). Renvoie des défauts vides (jamais 404)
+  // quand aucun thème n'a été configuré — repli neutre côté frontend.
+  theme: {
+    getCourant: () => api.get('/core/theme/courant/'),
+  },
+
+  // ODX5 — catalogue de modules (ODX3 : manifests fusionnés à l'état
+  // ModuleToggle de la société) + activer/désactiver avec fermeture de
+  // dépendances. Lecture ouverte à tout utilisateur authentifié (le shell en
+  // a besoin, ODX6) ; écriture réservée admin/responsable côté serveur.
+  modules: {
+    catalogue: () => api.get('/core/modules/'),
+    activer: (key) => api.post(`/core/modules/${key}/activer/`),
+    // `cascade` en query string (le backend lit `request.query_params`, pas
+    // le corps) : désactive aussi les dépendants actifs au lieu de refuser
+    // en 400.
+    desactiver: (key, { cascade = false } = {}) =>
+      api.post(`/core/modules/${key}/desactiver/${cascade ? '?cascade=1' : ''}`),
+    // FG391 — lignes ModuleToggle brutes (dont `raison`, non exposée par le
+    // catalogue) : sert uniquement à afficher le motif d'une désactivation
+    // existante, jamais à activer/désactiver (le catalogue fait déjà la
+    // fermeture de dépendances, cette route ne l'appliquerait pas).
+    toggles: {
+      list: () => api.get('/core/module-toggles/'),
+    },
+  },
+
   // FG368 — jobs planifiés (Celery Beat), lecture + exécution manuelle admin.
   jobs: {
     list: () => api.get('/core/jobs/'),

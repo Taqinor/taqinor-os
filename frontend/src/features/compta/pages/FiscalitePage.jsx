@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Plus, Pencil, Download, FileText, Send, Bell } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Plus, Pencil, Download, FileText, Send, Bell, GitCompare } from 'lucide-react'
 import { ListShell, statusPill } from '../../../ui/module'
-import { Button, Segmented, Card, Input, Label, EmptyState, toast } from '../../../ui'
+import { Button, Segmented, Card, Label, EmptyState, toast } from '../../../ui'
 import { formatMAD, formatDate } from '../../../lib/format'
+import { stampedFilename } from '../../../utils/downloadBlob'
+import { store } from '../../../store'
 import comptaApi from '../../../api/comptaApi'
 import useComptaList, { unwrap } from '../components/useComptaList.js'
+import useTabParam from '../components/useTabParam'
 import CrudDialog from '../components/CrudDialog.jsx'
 
 /* ============================================================================
@@ -113,13 +117,25 @@ const FIELDS = {
 }
 
 // Exports fichiers (blob). Ceux exigeant un exercice sont marqués `needsExercice`.
+// VX81 — `base`/`ext` (plutôt qu'un `file` figé) : le nom réel est horodaté au
+// moment du téléchargement par `runExport` (stampedFilename), jamais un nom nu
+// — ces CSV partent chez le comptable, deux exports le même jour ne doivent
+// plus être indistinguables derrière un (1)/(2) de navigateur.
+// VX232 — un mot d'aide (`hint`) par export : « FEC »/« liasse »/« IS » ne
+// disaient rien à qui ne les connaît pas déjà.
 const EXPORTS = [
-  { key: 'exportFec', label: 'FEC (DGI)', fn: comptaApi.etats.exportFec, file: 'FEC.txt', needsExercice: true },
-  { key: 'liasseFiscale', label: 'Liasse fiscale', fn: comptaApi.etats.liasseFiscale, file: 'liasse-fiscale.csv', needsExercice: true },
-  { key: 'exportFiduciaire', label: 'Export fiduciaire', fn: comptaApi.etats.exportFiduciaire, file: 'export-fiduciaire.csv', needsExercice: true },
-  { key: 'releveDeductionsTva', label: 'Relevé déductions TVA', fn: comptaApi.etats.releveDeductionsTva, file: 'releve-deductions-tva.csv' },
-  { key: 'declarationHonoraires', label: 'Déclaration honoraires', fn: comptaApi.etats.declarationHonoraires, file: 'declaration-honoraires.csv' },
-  { key: 'aideIs', label: 'Aide au calcul IS', fn: comptaApi.etats.aideIs, file: 'aide-is.csv', needsExercice: true },
+  { key: 'exportFec', label: 'FEC (DGI)', fn: comptaApi.etats.exportFec, base: 'FEC', ext: 'txt', needsExercice: true,
+    hint: 'Format DGI officiel du Fichier des Écritures Comptables, à fournir en cas de contrôle fiscal.' },
+  { key: 'liasseFiscale', label: 'Liasse fiscale', fn: comptaApi.etats.liasseFiscale, base: 'liasse-fiscale', ext: 'csv', needsExercice: true,
+    hint: 'Bilan, CPC, ESG et ETIC de l’exercice, prêts à transmettre au comptable ou à la DGI.' },
+  { key: 'exportFiduciaire', label: 'Export fiduciaire', fn: comptaApi.etats.exportFiduciaire, base: 'export-fiduciaire', ext: 'csv', needsExercice: true,
+    hint: 'Export consolidé de l’exercice, au format attendu par le cabinet fiduciaire externe.' },
+  { key: 'releveDeductionsTva', label: 'Relevé déductions TVA', fn: comptaApi.etats.releveDeductionsTva, base: 'releve-deductions-tva', ext: 'csv',
+    hint: 'Détail des lignes de TVA déductible de la période, à joindre à la déclaration TVA.' },
+  { key: 'declarationHonoraires', label: 'Déclaration honoraires', fn: comptaApi.etats.declarationHonoraires, base: 'declaration-honoraires', ext: 'csv',
+    hint: 'Récapitulatif des honoraires versés à des tiers non-salariés sur la période.' },
+  { key: 'aideIs', label: 'Aide au calcul IS', fn: comptaApi.etats.aideIs, base: 'aide-is', ext: 'csv', needsExercice: true,
+    hint: 'Base de calcul de l’Impôt sur les Sociétés (IS) à partir du résultat fiscal de l’exercice.' },
 ]
 
 // XACC9 — Calendrier des échéances fiscales : lecture seule + génération/rappels.
@@ -207,13 +223,19 @@ function EcheancesPanel() {
 }
 
 export default function FiscalitePage() {
-  const [tab, setTab] = useState('declarationsTva')
+  const navigate = useNavigate()
+  const [tab, setTab] = useTabParam('declarationsTva')  // VX231(c) — onglet persisté (?onglet=)
   const [dialog, setDialog] = useState(null)
   const [exercice, setExercice] = useState('')
+  const [exercices, setExercices] = useState([])
 
   const isEcheances = tab === 'echeances'
   const list = useComptaList(
     isEcheances ? comptaApi.exercices.list : RESOURCE[tab].list, undefined)
+
+  useEffect(() => {
+    comptaApi.exercices.list().then((res) => setExercices(unwrap(res))).catch(() => {})
+  }, [])
 
   const download = async (fn, filename, okMsg) => {
     try {
@@ -248,6 +270,15 @@ export default function FiscalitePage() {
           onClick: () => download(
             () => comptaApi.declarationsTva.export(row.id),
             `declaration_tva_${row.reference || row.id}.csv`) },
+        // VX231(d) — vérifier une déclaration TVA contre le Grand-livre sans
+        // renoter deux chiffres à la main : ouvre le GL pré-filtré sur la MÊME
+        // période (date_debut/date_fin de la déclaration).
+        ...(row.date_debut && row.date_fin ? [{
+          id: 'comparer-gl', label: 'Comparer au Grand-livre', icon: GitCompare,
+          onClick: () => navigate(
+            `/comptabilite/etats?etat=grand-livre`
+            + `&date_debut=${row.date_debut}&date_fin=${row.date_fin}`),
+        }] : []),
         ...(row.statut !== 'deposee' ? [{
           id: 'deposer', label: 'Déposer', icon: Send,
           onClick: () => act(() => comptaApi.declarationsTva.deposer(row.id), 'Déclaration déposée.'),
@@ -288,7 +319,8 @@ export default function FiscalitePage() {
       const params = exp.needsExercice ? { exercice } : {}
       const res = await exp.fn(params)
       const blob = res.data instanceof Blob ? res.data : new Blob([res.data])
-      comptaApi.downloadBlob(blob, exp.file)
+      const societe = store.getState().parametres?.profile?.nom
+      comptaApi.downloadBlob(blob, stampedFilename(exp.base, exp.ext, societe))
       toast.success('Export téléchargé.')
     } catch {
       toast.error('Export indisponible — vérifiez les paramètres.')
@@ -339,16 +371,49 @@ export default function FiscalitePage() {
         <Card className="mt-4 p-4 sm:p-5">
           <h3 className="mb-3 font-display text-base font-semibold">Exports & télédéclarations</h3>
           <div className="mb-3 flex flex-col gap-1 sm:max-w-xs">
-            <Label htmlFor="fx-exercice">Exercice (ID) — requis pour FEC / liasse / IS</Label>
-            <Input id="fx-exercice" value={exercice} onChange={(e) => setExercice(e.target.value)}
-                   placeholder="ex. 3" inputMode="numeric" />
+            <Label htmlFor="fx-exercice">Exercice — requis pour FEC / liasse / IS</Label>
+            <select
+              id="fx-exercice"
+              className="h-[var(--control-h)] rounded-md border border-input bg-card px-[var(--control-px)] text-sm"
+              value={exercice} onChange={(e) => setExercice(e.target.value)}
+            >
+              <option value="">—</option>
+              {exercices.map((ex) => (
+                <option key={ex.id} value={ex.id}>{ex.libelle}</option>
+              ))}
+            </select>
           </div>
-          <div className="flex flex-wrap gap-2">
-            {EXPORTS.map((exp) => (
-              <Button key={exp.key} variant="outline" size="sm" onClick={() => runExport(exp)}>
-                <Download className="size-4" /> {exp.label}
-              </Button>
-            ))}
+          {/* VX232 — 2 rangées sous-titrées : la routine mensuelle ne se mélange
+              plus avec l'annuel (exercice requis), chaque export porte sa phrase. */}
+          <div className="flex flex-col gap-4">
+            <div>
+              <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Mensuel</h4>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {EXPORTS.filter((exp) => !exp.needsExercice).map((exp) => (
+                  <div key={exp.key} className="flex flex-col gap-1 rounded-lg border border-border p-3">
+                    <Button variant="outline" size="sm" className="w-fit" onClick={() => runExport(exp)}>
+                      <Download className="size-4" /> {exp.label}
+                    </Button>
+                    <p className="text-xs text-muted-foreground">{exp.hint}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div>
+              <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Annuel — exercice requis
+              </h4>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {EXPORTS.filter((exp) => exp.needsExercice).map((exp) => (
+                  <div key={exp.key} className="flex flex-col gap-1 rounded-lg border border-border p-3">
+                    <Button variant="outline" size="sm" className="w-fit" onClick={() => runExport(exp)}>
+                      <Download className="size-4" /> {exp.label}
+                    </Button>
+                    <p className="text-xs text-muted-foreground">{exp.hint}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </Card>
       )}

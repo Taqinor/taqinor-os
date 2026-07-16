@@ -1,6 +1,10 @@
 # Dev/test-only dependencies — NEVER installed in the production image
 # (ci.yml + the Dockerfile install only requirements.txt).
 # Install locally with: pip install -r requirements.txt -r requirements-dev.txt
+# In CI these are installed by the shared `.github/actions/backend-env`
+# composite action (WOW7), which also brings up WeasyPrint + MinIO and, for
+# jobs that opt in, restores the cached pre-migrated test DB (WOW8) so the
+# ~850-migration replay is paid once per migration change, not per job.
 -r requirements.txt
 
 # YTEST1 — shared test factories (testkit/factories.py)
@@ -16,3 +20,18 @@ mutmut==2.4.4
 # YOPSB12 — N+1 query detector in dev only (guarded import in
 # erp_agentique/settings/dev.py; never installed by CI/prod requirements.txt).
 nplusone==1.0.0
+
+# WOW1 — Django's parallel test runner (`--parallel`) pickles worker-process
+# tracebacks via tblib; without it, sub-process failures lose their traceback.
+# Dev/CI only (the merge gate runs --parallel 4), never in the prod image.
+tblib==3.0.0
+
+# NTPLT48 — scénarios de charge Locust (load/locustfile.py). Dev/CI uniquement
+# (test de charge manuel + workflow load-smoke), JAMAIS dans l'image prod
+# (requirements.txt). Cf. docs/load-testing.md.
+locust==2.31.8
+
+# NTPLT47 — générateur de données à l'échelle (manage.py seed_scale, Faker
+# fr_FR). Dev/CI/staging uniquement (mesures de charge + démos gros volume),
+# JAMAIS dans l'image prod. NOTE : nouvelle dépendance de développement.
+Faker==40.28.1

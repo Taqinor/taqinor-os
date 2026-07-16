@@ -32,11 +32,13 @@ User = get_user_model()
 class CatalogueShapeTests(TestCase):
     """Le catalogue est des données pures, bien formées et alignées FG366."""
 
-    def test_catalogue_has_the_three_prebuilt_models(self):
+    def test_catalogue_has_the_prebuilt_models(self):
         codes = {t['code'] for t in workflow_templates.WORKFLOW_TEMPLATES}
+        # ARC10 a ajouté le pilote domaine « cloture_ncr » (clôture NCR qhse).
         self.assertEqual(
             codes,
-            {'relance_devis', 'onboarding_chantier', 'rappel_garantie'},
+            {'relance_devis', 'onboarding_chantier', 'rappel_garantie',
+             'cloture_ncr'},
         )
 
     def test_codes_are_unique(self):
@@ -66,7 +68,7 @@ class CatalogueShapeTests(TestCase):
 
     def test_liste_returns_copy_with_nb_etapes(self):
         listing = workflow_templates.liste_modeles_workflow()
-        self.assertEqual(len(listing), 3)
+        self.assertEqual(len(listing), len(workflow_templates.WORKFLOW_TEMPLATES))
         relance = next(
             m for m in listing if m['code'] == 'relance_devis')
         self.assertEqual(relance['nb_etapes'], len(relance['steps']))
@@ -187,7 +189,10 @@ class WorkflowTemplateEndpointTests(TestCase):
     def test_list_ok_for_authenticated_user(self):
         resp = self._list(self.limited)
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(resp.data), 3)
+        # Dérivé du catalogue (4 depuis ARC10 : relance_devis, relance_facture,
+        # approbation_bc, cloture_ncr) — ne plus casser à chaque ajout.
+        from core.workflow_templates import WORKFLOW_TEMPLATES
+        self.assertEqual(len(resp.data), len(WORKFLOW_TEMPLATES))
         self.assertEqual(
             set(resp.data[0].keys()),
             {'code', 'nom', 'description', 'nb_etapes', 'steps'},

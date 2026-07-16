@@ -27,6 +27,30 @@ test('L423 : détail par option (kWc / total TTC) affiché à côté des radios'
   assert.match(SRC, /fmtMAD\(det\.ttc\)/)
 })
 
+// VX40/VX155 — le passage envoyé→accepté est le SEUL moment célébré de
+// l'app : la carte de victoire <DealSignedCelebration> (montant + kWc réels)
+// remplace le toast plat, câblée juste après le POST accepterDevis ;
+// onConfirmed() n'est appelé qu'à la fermeture de la carte (jamais avant que
+// le vendeur l'ait vue).
+test('VX40/VX155 : acceptation confirmée déclenche la carte de victoire', () => {
+  assert.match(SRC, /from '\.\.\/\.\.\/\.\.\/ui\/DealSignedCelebration'/)
+  assert.match(SRC, /await ventesApi\.accepterDevis\(selected\.id, \{ nom, date, option \}\)/)
+  assert.match(SRC, /setCelebration\(\{/)
+  assert.match(SRC, /<DealSignedCelebration/)
+  assert.match(SRC, /onClose=\{\(\) => \{ setCelebration\(null\); onConfirmed\?\.\(\) \}\}/)
+})
+
+// La carte elle-même reste responsable du burst CSS-only VX40 (posé une
+// seule fois, jamais dupliqué dans SigneDialog).
+test('DealSignedCelebration : réutilise celebrateDealSigned (VX40), montant + kWc réels', () => {
+  const CELEB_SRC = readFileSync(
+    join(HERE, '..', '..', '..', 'ui', 'DealSignedCelebration.jsx'), 'utf8')
+  assert.match(CELEB_SRC, /from '\.\/celebrate'/)
+  assert.match(CELEB_SRC, /celebrateDealSigned\(\)/)
+  assert.match(CELEB_SRC, /formatMAD\(montantTtc\)/)
+  assert.match(CELEB_SRC, /kwc/)
+})
+
 // ── Logique pure de optionsDetail, ré-implémentée à l'identique pour la tester
 //    sans parseur JSX (le code source ci-dessus en garantit la présence). ──
 const isBatteryLine = (d) =>

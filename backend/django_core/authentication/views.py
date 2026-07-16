@@ -80,6 +80,63 @@ def _clear_auth_cookies(response):
     response.delete_cookie('refresh_token', path='/')
 
 
+# NTSEC14 — durée par défaut de confiance d'un appareil (« se souvenir 30 j »).
+_DEVICE_TRUST_DAYS = 30
+
+
+def _maybe_trust_device(user, request, response):
+    """NTSEC14 — si la connexion demande « faire confiance à cet appareil » et
+    que la société l'autorise (``CompanyProfile.allow_device_trust``), enregistre
+    un ``TrustedDevice`` (jeton opaque tiré au sort) et pose le cookie httpOnly
+    ``device_trust_id``. Best-effort : n'échoue jamais le login. Inerte tant que
+    la société n'a pas activé l'option (défaut) ou que rien n'est demandé."""
+    try:
+        if user is None:
+            return
+        data = getattr(request, 'data', {}) or {}
+        if not data.get('trust_device'):
+            return
+        company = getattr(user, 'company', None)
+        if company is None:
+            return
+        from apps.parametres.models_company import CompanyProfile
+        profile = (
+            CompanyProfile.objects
+            .filter(company=company)
+            .only('allow_device_trust')
+            .first()
+        )
+        if not (profile and profile.allow_device_trust):
+            return
+        import secrets
+        from datetime import timedelta
+        from django.utils import timezone as _tz
+        from apps.identity.models import TrustedDevice
+
+        token = secrets.token_urlsafe(48)
+        now = _tz.now()
+        max_age = _DEVICE_TRUST_DAYS * 24 * 3600
+        TrustedDevice.objects.create(
+            user=user,
+            company=company,
+            device_fingerprint=token,
+            approuve_le=now,
+            expire_le=now + timedelta(days=_DEVICE_TRUST_DAYS),
+            approuve_par=user,
+            label=(request.META.get('HTTP_USER_AGENT', '') or '')[:200],
+        )
+        response.set_cookie(
+            'device_trust_id', token,
+            max_age=max_age,
+            httponly=True,
+            secure=_COOKIE_SECURE,
+            samesite=_COOKIE_SAMESITE,
+            path='/',
+        )
+    except Exception:
+        pass
+
+
 def _client_ip(request):
     """Adresse IP du client (premier saut X-Forwarded-For, sinon REMOTE_ADDR)."""
     xff = request.META.get('HTTP_X_FORWARDED_FOR', '')
@@ -108,13 +165,32 @@ def _record_session(user, refresh_raw, request):
         jti = _refresh_jti(refresh_raw)
         if not jti or user is None:
             return
-        UserSession.objects.create(
+        # NTSEC9 — si la connexion a franchi un second facteur (2FA TOTP actif),
+        # la MFA vient d'être vérifiée : on horodate la session pour le step-up.
+        from django.utils import timezone as _tz
+        mfa_at = _tz.now() if getattr(user, 'totp_enabled', False) else None
+        session = UserSession.objects.create(
             user=user,
             company=getattr(user, 'company', None),
             jti=jti,
             user_agent=(request.META.get('HTTP_USER_AGENT', '') or '')[:400],
             ip_address=_client_ip(request),
+            last_mfa_at=mfa_at,
         )
+        # NTSEC13 — empreinte d'appareil + alerte « appareil inconnu » à la
+        # première apparition (best-effort, jamais bloquant).
+        try:
+            from .device import note_login_device
+            note_login_device(user, session, request)
+        except Exception:
+            pass
+        # NTSEC10 — limite de sessions concurrentes : au-delà du plafond
+        # société, évincer la (les) session(s) la (les) plus ancienne(s).
+        try:
+            from .session_policy import enforce_concurrent_limit
+            enforce_concurrent_limit(user)
+        except Exception:
+            pass
     except Exception:
         pass
 
@@ -160,6 +236,24 @@ class CustomTokenObtainPairView(TokenObtainPairView):
                            'tentatives. Réessayez plus tard.'},
                 status=status.HTTP_403_FORBIDDEN,
             )
+        # NTSEC4 — enforce-SSO : si la société de ce compte a un IdP actif avec
+        # ``enforce_sso``, le login par mot de passe local est interdit (le
+        # membre doit passer par le SSO). Fail-open (aucun IdP → inchangé) ;
+        # super-admin et comptes break-glass (NTSEC22) restent exemptés. On
+        # bloque AVANT toute tentative de mot de passe (pas de fuite d'état).
+        if locked_user is not None:
+            try:
+                from apps.identity.selectors import (
+                    local_password_login_blocked,
+                )
+                if local_password_login_blocked(locked_user):
+                    return Response(
+                        {'detail': 'Connexion via SSO obligatoire pour cette '
+                                   'société.', 'sso_required': True},
+                        status=status.HTTP_403_FORBIDDEN,
+                    )
+            except Exception:
+                pass
         # Double authentification (2FA, N96) : si le mot de passe est bon mais
         # qu'un code TOTP est requis/invalide, on renvoie une réponse 401 au
         # contour stable (`otp_required: true`) que le frontend sait gérer —
@@ -208,6 +302,9 @@ class CustomTokenObtainPairView(TokenObtainPairView):
             # Sessions actives (N96) — tracer cette connexion par le jti du
             # jeton de rafraîchissement. Best-effort, ne bloque jamais le login.
             _record_session(u, refresh, request)
+            # NTSEC14 — device trust (« se souvenir de cet appareil »), opt-in
+            # société. Best-effort ; inerte sans demande ni opt-in.
+            _maybe_trust_device(u, request, response)
             # Journal d'activité (Feature G) — connexion réussie. Best-effort.
             try:
                 from apps.audit.recorder import record
@@ -215,6 +312,13 @@ class CustomTokenObtainPairView(TokenObtainPairView):
                 actor = u.username if u is not None else raw_uname
                 record(AuditLog.Action.LOGIN, user=u, actor_username=actor,
                        company=getattr(u, 'company', None), detail='Connexion')
+            except Exception:
+                pass
+            # NTSEC12 — détection « impossible travel » (best-effort, jamais
+            # bloquant ; inerte sans base géo GeoLite2).
+            try:
+                from apps.identity.anomaly import detect_impossible_travel
+                detect_impossible_travel(u, _client_ip(request))
             except Exception:
                 pass
         return response
@@ -237,7 +341,50 @@ class CookieTokenRefreshView(APIView):
             )
         try:
             token = RefreshToken(refresh_raw)
-            access = str(token.access_token)
+            # SCA18 — un tenant suspendu/en fermeture ne peut plus rafraîchir un
+            # jeton émis avant sa suspension : on rejette au refresh (message FR).
+            # Superuser (support) exempté. Tenant actif inchangé.
+            try:
+                uid = token.get('user_id')
+                u = CustomUser.objects.select_related('company').filter(
+                    pk=uid).first() if uid else None
+                if (u is not None and not u.is_superuser
+                        and u.company is not None
+                        and not u.company.est_operationnel):
+                    resp = Response(
+                        {'detail': 'Ce compte société est suspendu.'},
+                        status=status.HTTP_403_FORBIDDEN,
+                    )
+                    _clear_auth_cookies(resp)
+                    return resp
+            except Exception:
+                pass
+            # NTSEC10 — politique de session : refuser le refresh au-delà de la
+            # durée absolue / d'inactivité configurée par la société (inerte si
+            # non configurée). La session dépassée est révoquée côté serveur.
+            try:
+                from .session_policy import refresh_allowed
+                if not refresh_allowed(refresh_raw, u):
+                    resp = Response(
+                        {'detail': 'Session expirée par la politique de '
+                                   'sécurité. Reconnectez-vous.'},
+                        status=status.HTTP_401_UNAUTHORIZED,
+                    )
+                    _clear_auth_cookies(resp)
+                    return resp
+            except Exception:
+                pass
+            access_token = token.access_token
+            # XPLT19 — le claim ``active_company_id`` du refresh n'est PAS recopié
+            # d'office sur l'access dérivé (simplejwt ne propage que les claims
+            # enregistrés). On le reporte explicitement pour que la société active
+            # choisie survive au rafraîchissement transparent (sinon elle
+            # retomberait sur la société d'attache toutes les 30 min).
+            from authentication.active_company import ACTIVE_COMPANY_CLAIM
+            active = token.get(ACTIVE_COMPANY_CLAIM)
+            if active is not None:
+                access_token[ACTIVE_COMPANY_CLAIM] = active
+            access = str(access_token)
             new_refresh = str(token) if settings.SIMPLE_JWT.get(
                 'ROTATE_REFRESH_TOKENS', False
             ) else None
@@ -251,6 +398,78 @@ class CookieTokenRefreshView(APIView):
             )
             _clear_auth_cookies(resp)
             return resp
+
+
+# ── XPLT19 — Bascule de société active (accès multi-sociétés) ──────
+class SwitchCompanyView(APIView):
+    """POST /api/django/auth/switch-company/ — change la société ACTIVE.
+
+    Corps : ``{"company_id": <id>}``. Autorisé UNIQUEMENT si l'utilisateur est
+    membre de la société cible (société d'attache OU ``societes_autorisees``).
+    Un compte mono-société ne peut donc PAS switcher (403). Sur succès, on
+    réémet des jetons (access + refresh) portant le claim ``active_company_id``
+    de la société choisie, et on journalise la bascule dans l'audit. Toutes les
+    requêtes ultérieures sont alors bornées à la nouvelle société active."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+        company_id = request.data.get('company_id')
+        if company_id in (None, ''):
+            return Response(
+                {'detail': 'Le champ « company_id » est requis.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            company_id = int(company_id)
+        except (TypeError, ValueError):
+            return Response(
+                {'detail': 'Identifiant de société invalide.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        # Garde d'appartenance STRICTE : jamais de switch vers une société non
+        # autorisée (défense contre l'escalade cross-tenant).
+        if not user.peut_operer_societe(company_id):
+            return Response(
+                {'detail': "Vous n'êtes pas membre de cette société."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        cible = Company.objects.filter(pk=company_id).first()
+        if cible is None:
+            return Response(
+                {'detail': 'Société introuvable.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        # Réémet des jetons portant le claim de société active choisie. On passe
+        # par le même ``get_token`` que le login (mêmes claims), puis on écrase
+        # le claim de société active sur le refresh ET l'access (l'access dérivé
+        # ne recopie pas les claims personnalisés tout seul).
+        from authentication.active_company import ACTIVE_COMPANY_CLAIM
+        refresh = CustomTokenObtainPairSerializer.get_token(user)
+        refresh[ACTIVE_COMPANY_CLAIM] = company_id
+        access = refresh.access_token
+        access[ACTIVE_COMPANY_CLAIM] = company_id
+        response = Response({
+            'detail': 'Société active changée.',
+            'company_id': company_id,
+            'company_nom': cible.nom,
+        })
+        _set_auth_cookies(response, str(access), str(refresh))
+        # Sessions actives (N96) — le nouveau refresh est tracé/révocable comme
+        # une connexion. Best-effort, ne bloque jamais le switch.
+        _record_session(user, str(refresh), request)
+        # Journal d'activité — bascule de société active (best-effort).
+        try:
+            from apps.audit.recorder import record
+            from apps.audit.models import AuditLog
+            record(
+                AuditLog.Action.SWITCH_COMPANY, user=user,
+                company=cible,
+                detail=f'Société active → {cible.nom} (#{company_id}).',
+            )
+        except Exception:
+            pass
+        return response
 
 
 # ── Inscription d'un utilisateur dans une entreprise existante ─
@@ -356,34 +575,6 @@ class RegisterCompanyView(generics.GenericAPIView):
         # total + Journal d'activité), pour qu'il y ait au moins un Directeur.
         admin_role = roles['Directeur']
 
-        # Types d'activité par défaut (style Odoo) pour la nouvelle société.
-        try:
-            from apps.records.models import ActivityType
-            for nom, icone, ordre, delai in [
-                ('Appel', '📞', 10, 0), ('Email', '✉️', 20, 0),
-                ('Réunion', '👥', 30, 0), ('Relance', '📅', 40, 3),
-                ('À faire', '✔️', 50, 0),
-            ]:
-                ActivityType.objects.get_or_create(
-                    company=company, nom=nom,
-                    defaults={'icone': icone, 'ordre': ordre,
-                              'delai_defaut_jours': delai, 'est_systeme': True})
-        except Exception:
-            pass
-
-        # Niveaux de relance par défaut (J+7 / J+15 / J+30).
-        try:
-            from apps.ventes.models import FollowupLevel
-            for ordre, nom, delai in [
-                (1, 'Rappel courtois', 7), (2, 'Relance', 15),
-                (3, 'Relance ferme', 30),
-            ]:
-                FollowupLevel.objects.get_or_create(
-                    company=company, ordre=ordre,
-                    defaults={'nom': nom, 'delai_jours': delai})
-        except Exception:
-            pass
-
         user = CustomUser.objects.create_user(
             username=username,
             email=email,
@@ -392,6 +583,17 @@ class RegisterCompanyView(generics.GenericAPIView):
             role=admin_role,
             company=company,
         )
+        # XPLT19 — la société d'attache est aussi la première société autorisée
+        # (membre). Un compte mono-société démarre donc avec {sa société}.
+        user.societes_autorisees.add(company)
+
+        # SCA20 — seeds « à la création d'une société » migrés en HOOKS
+        # idempotents (types d'activité + niveaux de relance historiques, PLUS
+        # le catalogue produit désormais seedé). Chaque app enregistre son hook
+        # dans son apps.py ready() ; la vue ne les connaît pas. Best-effort : un
+        # hook KO n'empêche jamais la création de la société.
+        from core.signup_hooks import run_signup_hooks
+        run_signup_hooks(company, user=user)
 
         return Response({
             'detail': 'Entreprise creee avec succes.',
@@ -547,7 +749,9 @@ class UserViewSet(viewsets.ModelViewSet):
         if not file:
             return Response({'detail': 'Aucun fichier fourni.'},
                             status=status.HTTP_400_BAD_REQUEST)
-        key, err = store_avatar(file, target.avatar_key)
+        # SCA42 — clé préfixée par société pour le NOUVEL objet
+        # (avatars/{company_id}/…). L'ancienne clé (supprimée) garde sa forme.
+        key, err = store_avatar(file, target.avatar_key, company=target.company)
         if err:
             return Response({'detail': err},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -689,6 +893,13 @@ class TwoFactorSetupView(APIView):
 
     def post(self, request):
         import pyotp
+        # VX120 — le QR est rendu ICI, côté serveur (SVG inline, réutilise le
+        # générateur QR maison déjà vendored pour les étiquettes stock), au lieu
+        # d'envoyer l'URI otpauth:// (qui CONTIENT la graine TOTP en clair) à un
+        # service tiers non contrôlé (api.qrserver.com). `otpauth_uri` reste dans
+        # la réponse pour compat (saisie manuelle/anciens clients) mais n'est
+        # plus utilisé pour le QR par le frontend.
+        from apps.stock.labels import qr_svg
         user = request.user
         if user.totp_enabled:
             return Response(
@@ -706,6 +917,7 @@ class TwoFactorSetupView(APIView):
         return Response({
             'secret': secret,
             'otpauth_uri': uri,
+            'qr_svg': qr_svg(uri),
             'issuer': _TOTP_ISSUER,
             'label': label,
         })
@@ -744,6 +956,15 @@ class TwoFactorEnableView(APIView):
         user.totp_enabled = True
         user.totp_recovery_codes = hashed
         user.save(update_fields=['totp_enabled', 'totp_recovery_codes'])
+        # NTSEC30 — notification obligatoire de changement de sécurité.
+        try:
+            from apps.notifications.services import notify_security_change
+            notify_security_change(
+                user, 'Double authentification activée',
+                'La double authentification (2FA) a été activée sur votre '
+                'compte.')
+        except Exception:
+            pass
         return Response({
             'detail': 'Double authentification activée.',
             'recovery_codes': plain,
@@ -781,6 +1002,15 @@ class TwoFactorDisableView(APIView):
         user.totp_recovery_codes = []
         user.save(update_fields=[
             'totp_enabled', 'totp_secret', 'totp_recovery_codes'])
+        # NTSEC30 — notification obligatoire de changement de sécurité.
+        try:
+            from apps.notifications.services import notify_security_change
+            notify_security_change(
+                user, 'Double authentification désactivée',
+                'La double authentification (2FA) a été désactivée sur votre '
+                'compte.')
+        except Exception:
+            pass
         return Response({'detail': 'Double authentification désactivée.'})
 
 
@@ -901,4 +1131,42 @@ class ChangePasswordView(APIView):
         user.password_changed_at = timezone.now()
         user.save(update_fields=[
             'password', 'must_change_password', 'password_changed_at'])
-        return Response({'detail': 'Mot de passe mis à jour.'})
+        # NTSEC30 — notification obligatoire de changement de sécurité.
+        try:
+            from apps.notifications.services import notify_security_change
+            notify_security_change(
+                user, 'Mot de passe modifié',
+                'Le mot de passe de votre compte vient d\'être modifié. Si '
+                'vous n\'êtes pas à l\'origine de ce changement, contactez '
+                'immédiatement votre administrateur.')
+        except Exception:
+            pass
+        # VX242 — un changement de mot de passe doit révoquer toute AUTRE
+        # session active (blackliste son jeton de rafraîchissement) : sans
+        # cela, un attaquant qui a compromis le compte garde son refresh
+        # jusqu'à expiration (jusqu'à 7 j) alors que la machinerie de
+        # révocation existe déjà (SessionRevokeView / _blacklist_refresh_jti),
+        # simplement jamais invoquée depuis ce chemin. La session COURANTE
+        # (celle qui vient de changer le mot de passe) reste active.
+        current_jti = _refresh_jti(request.COOKIES.get('refresh_token'))
+        other_sessions = UserSession.objects.filter(user=user, revoked=False)
+        if current_jti:
+            other_sessions = other_sessions.exclude(jti=current_jti)
+        sessions_revoked = 0
+        for session in other_sessions:
+            _blacklist_refresh_jti(session.jti)
+            session.revoked = True
+            session.save(update_fields=['revoked'])
+            sessions_revoked += 1
+        detail = 'Mot de passe mis à jour.'
+        if sessions_revoked:
+            detail += (
+                f' {sessions_revoked} autre'
+                f'{"s" if sessions_revoked > 1 else ""} session'
+                f'{"s" if sessions_revoked > 1 else ""} déconnectée'
+                f'{"s" if sessions_revoked > 1 else ""}.'
+            )
+        return Response({
+            'detail': detail,
+            'sessions_revoked': sessions_revoked,
+        })

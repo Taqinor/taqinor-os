@@ -6,15 +6,15 @@ from django.db import transaction, IntegrityError
 from django.db.models import Q
 from django.http import HttpResponse
 from django.utils import timezone
-from rest_framework import viewsets, filters, status
+from rest_framework import filters, status
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from authentication.mixins import TenantMixin
 from authentication.permissions import (
     HasPermissionOrLegacy, IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
 )
+from core.viewsets import CompanyScopedModelViewSet
 from apps.ventes.utils.references import create_with_reference
 
 from . import activity
@@ -55,7 +55,7 @@ READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
 
-class EquipementViewSet(TenantMixin, viewsets.ModelViewSet):
+class EquipementViewSet(CompanyScopedModelViewSet):
     """Parc d'équipements (n° de série + horloges de garantie). Tout est scopé
     à la société ; les dates de fin de garantie sont CALCULÉES côté serveur."""
     queryset = Equipement.objects.select_related(
@@ -494,7 +494,7 @@ class EquipementViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(payload, status=201)
 
 
-class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
+class TicketViewSet(CompanyScopedModelViewSet):
     """Tickets SAV + historique « chatter ». Cycle de vie propre (liste fermée
     en ordre d'entonnoir), indépendant des étapes lead / statuts de document.
     Tout est scopé à la société ; acteur et société posés côté serveur."""
@@ -821,6 +821,19 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
                 ticket.canal_resolution = old.canal_resolution_propose()
             update_fields.append('canal_resolution')
         ticket.save(update_fields=update_fields)
+        # ARC37 — sav devient émetteur du bus (core.events.ticket_resolu) sur
+        # le FRANCHISSEMENT gardé par la condition ci-dessus. No-op si la
+        # transition n'atteint pas RESOLU (garde interne au service).
+        from . import services as sav_services
+        sav_services.emettre_ticket_resolu(
+            ticket, company=ticket.company, user=self.request.user,
+            ancien_statut=old.statut)
+        # ARC34 — déclencheur automation générique RECORD_STATE_CHANGE sur
+        # TOUTE transition de statut réussie (whitelist registre plateforme ;
+        # no-op sans règle). Émission via le service (frontière respectée).
+        sav_services.emettre_changement_statut_ticket(
+            ticket, company=ticket.company, user=self.request.user,
+            ancien_statut=old.statut)
         # FG81 — recalcule sla_breach après toute mise à jour de statut.
         ticket.recompute_sla_breach()
         save_fields = ['sla_breach']
@@ -1968,7 +1981,7 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
 
 # ── FG81 — Réglages SLA ────────────────────────────────────────────────────────
 
-class SavSlaSettingsViewSet(TenantMixin, viewsets.ModelViewSet):
+class SavSlaSettingsViewSet(CompanyScopedModelViewSet):
     """Réglages SLA SAV par société (FG81). Singleton : list renvoie l'unique
     enregistrement ; écriture responsable/admin."""
     queryset = SavSlaSettings.objects.all()
@@ -1998,7 +2011,7 @@ class SavSlaSettingsViewSet(TenantMixin, viewsets.ModelViewSet):
 
 # ── FG82 — Checklist templates ────────────────────────────────────────────────
 
-class MaintenanceChecklistTemplateViewSet(TenantMixin, viewsets.ModelViewSet):
+class MaintenanceChecklistTemplateViewSet(CompanyScopedModelViewSet):
     """Templates de checklist de maintenance (FG82). Lecture tout rôle."""
     queryset = MaintenanceChecklistTemplate.objects.prefetch_related('items').all()
     serializer_class = MaintenanceChecklistTemplateSerializer
@@ -2023,7 +2036,7 @@ class MaintenanceChecklistTemplateViewSet(TenantMixin, viewsets.ModelViewSet):
 
 # ── FG83 — Réclamation garantie fournisseur ───────────────────────────────────
 
-class WarrantyClaimViewSet(TenantMixin, viewsets.ModelViewSet):
+class WarrantyClaimViewSet(CompanyScopedModelViewSet):
     """Réclamations garantie fournisseur / flux RMA (FG83).
     Lecture tout rôle ; écriture responsable/admin."""
     queryset = WarrantyClaim.objects.select_related(
@@ -2089,7 +2102,7 @@ class WarrantyClaimViewSet(TenantMixin, viewsets.ModelViewSet):
 
 # ── FG87 — Base de connaissances SAV ─────────────────────────────────────────
 
-class KbArticleViewSet(TenantMixin, viewsets.ModelViewSet):
+class KbArticleViewSet(CompanyScopedModelViewSet):
     """Articles de la base de connaissances SAV (FG87).
     Cherchables par texte libre + filtrables par produit/catégorie."""
     queryset = KbArticle.objects.select_related('produit').all()
@@ -2122,7 +2135,7 @@ class KbArticleViewSet(TenantMixin, viewsets.ModelViewSet):
 
 # ── FG280 — Alarmes / défauts onduleur ────────────────────────────────────────
 
-class AlarmeOnduleurViewSet(TenantMixin, viewsets.ModelViewSet):
+class AlarmeOnduleurViewSet(CompanyScopedModelViewSet):
     """Alarmes / défauts onduleur (FG280) — DISTINCTES du ticket SAV.
 
     Cycle de vie propre (active → acquittée → escaladée/résolue) avec
@@ -2255,9 +2268,13 @@ class AlarmeOnduleurViewSet(TenantMixin, viewsets.ModelViewSet):
 
 # ── XSAV14 — Taxonomie panne / cause / remède ─────────────────────────────────
 
-class CauseDefaillanceViewSet(TenantMixin, viewsets.ModelViewSet):
+class CauseDefaillanceViewSet(CompanyScopedModelViewSet):
     """Référentiel des causes de panne (XSAV14). Lecture tout rôle, écriture
-    responsable/admin (édité dans Paramètres)."""
+    responsable/admin (édité dans Paramètres).
+
+    ARC2 — pilote : base transverse unique (TenantMixin + ModelViewSet). Le
+    get_queryset (filtre archived) et perform_create (company forcée serveur)
+    SURCHARGENT la base : réponses inchangées."""
     queryset = CauseDefaillance.objects.all()
     serializer_class = CauseDefaillanceSerializer
 
@@ -2277,7 +2294,7 @@ class CauseDefaillanceViewSet(TenantMixin, viewsets.ModelViewSet):
         serializer.save(company=self.request.user.company)
 
 
-class RemedeDefaillanceViewSet(TenantMixin, viewsets.ModelViewSet):
+class RemedeDefaillanceViewSet(CompanyScopedModelViewSet):
     """Référentiel des remèdes de panne (XSAV14). Lecture tout rôle, écriture
     responsable/admin (édité dans Paramètres)."""
     queryset = RemedeDefaillance.objects.all()
@@ -2299,7 +2316,7 @@ class RemedeDefaillanceViewSet(TenantMixin, viewsets.ModelViewSet):
         serializer.save(company=self.request.user.company)
 
 
-class CategorieTicketViewSet(TenantMixin, viewsets.ModelViewSet):
+class CategorieTicketViewSet(CompanyScopedModelViewSet):
     """ZSAV2 — Référentiel de catégorie de ticket (au-delà de correctif/
     préventif). Lecture tout rôle, écriture responsable/admin (édité dans
     Paramètres). Même patron que CauseDefaillance/RemedeDefaillance."""
@@ -2326,7 +2343,7 @@ class CategorieTicketViewSet(TenantMixin, viewsets.ModelViewSet):
 
 # ── ZMFG1 — Équipes de maintenance ────────────────────────────────────────────
 
-class EquipeMaintenanceViewSet(TenantMixin, viewsets.ModelViewSet):
+class EquipeMaintenanceViewSet(CompanyScopedModelViewSet):
     """ZMFG1 — CRUD équipe de maintenance, company-scopé. Lecture tout rôle,
     écriture responsable/admin (édité dans Paramètres SAV)."""
     queryset = EquipeMaintenance.objects.prefetch_related('membres').all()
@@ -2352,7 +2369,7 @@ class EquipeMaintenanceViewSet(TenantMixin, viewsets.ModelViewSet):
 
 # ── ZMFG2 — Catégories d'équipement ───────────────────────────────────────────
 
-class CategorieEquipementViewSet(TenantMixin, viewsets.ModelViewSet):
+class CategorieEquipementViewSet(CompanyScopedModelViewSet):
     """ZMFG2 — CRUD catégorie d'équipement, company-scopé. Lecture tout rôle,
     écriture responsable/admin (édité dans Paramètres SAV)."""
     queryset = CategorieEquipement.objects.all()
@@ -2369,7 +2386,7 @@ class CategorieEquipementViewSet(TenantMixin, viewsets.ModelViewSet):
 
 # ── ZMFG6 — Feuilles de maintenance (worksheets) ──────────────────────────────
 
-class WorksheetMaintenanceModeleViewSet(TenantMixin, viewsets.ModelViewSet):
+class WorksheetMaintenanceModeleViewSet(CompanyScopedModelViewSet):
     """ZMFG6 — CRUD modèle de feuille de maintenance, company-scopé (édité
     dans Paramètres SAV). Lecture tout rôle, écriture responsable/admin."""
     queryset = WorksheetMaintenanceModele.objects.all()
@@ -2386,7 +2403,7 @@ class WorksheetMaintenanceModeleViewSet(TenantMixin, viewsets.ModelViewSet):
 
 # ── XSAV23 — Réponses types (macros) SAV ──────────────────────────────────────
 
-class ReponseTypeViewSet(TenantMixin, viewsets.ModelViewSet):
+class ReponseTypeViewSet(CompanyScopedModelViewSet):
     """CRUD des réponses types (macros) SAV, company-scoped (Paramètres)."""
     queryset = ReponseType.objects.all()
     serializer_class = ReponseTypeSerializer
@@ -2409,7 +2426,7 @@ class ReponseTypeViewSet(TenantMixin, viewsets.ModelViewSet):
 
 # ── XSAV25 — Compatibilité pièces ─────────────────────────────────────────────
 
-class CompatibilitePieceViewSet(TenantMixin, viewsets.ModelViewSet):
+class CompatibilitePieceViewSet(CompanyScopedModelViewSet):
     """CRUD du mapping pièce compatible <-> modèle d'équipement (XSAV25)."""
     queryset = CompatibilitePiece.objects.select_related(
         'produit_equipement', 'piece', 'remplace_par').all()

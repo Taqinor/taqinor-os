@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import * as PopoverPrimitive from '@radix-ui/react-popover'
 import { cn } from '../../lib/cn'
+import { useActiveDescendant } from '../../hooks/useActiveDescendant'
+import { formatMAD } from '../../lib/format'
 import {
   groupCatalogue, searchCatalogue, keySpec, prixTtc, sansPrix,
 } from '../../features/stock/catalogue'
@@ -18,6 +20,8 @@ export default function BcfProduitPicker({ produits, value, onChange, invalid })
   const [cursor, setCursor] = useState(0)
   const inputRef = useRef(null)
   const listRef = useRef(null)
+  // VX191 — `aria-activedescendant` : même contrat que ProduitPicker (VX191).
+  const { listId, getOptionId, activeId } = useActiveDescendant(cursor)
 
   const selected = useMemo(
     () => produits.find((p) => String(p.id) === String(value)) ?? null,
@@ -103,6 +107,11 @@ export default function BcfProduitPicker({ produits, value, onChange, invalid })
           <div className="border-b border-border p-1.5">
             <input
               ref={inputRef}
+              role="combobox"
+              aria-expanded={open}
+              aria-autocomplete="list"
+              aria-controls={listId}
+              aria-activedescendant={activeId}
               className="h-8 w-full rounded-md bg-transparent px-2 text-base outline-none placeholder:text-muted-foreground sm:text-sm"
               placeholder="Chercher un produit à commander… (Entrée = premier résultat)"
               value={query}
@@ -110,7 +119,7 @@ export default function BcfProduitPicker({ produits, value, onChange, invalid })
               onKeyDown={onKeyDown}
             />
           </div>
-          <div className="max-h-72 overflow-y-auto p-1" ref={listRef} role="listbox">
+          <div className="max-h-72 overflow-y-auto p-1" ref={listRef} role="listbox" id={listId}>
             {value && (
               <button
                 type="button"
@@ -143,6 +152,7 @@ export default function BcfProduitPicker({ produits, value, onChange, invalid })
                 <button
                   type="button"
                   key={r.key}
+                  id={getOptionId(index)}
                   role="option"
                   aria-selected={String(p.id) === String(value)}
                   data-cursor={isCur ? 'true' : undefined}
@@ -156,7 +166,7 @@ export default function BcfProduitPicker({ produits, value, onChange, invalid })
                   <span className="flex-1 truncate">{p.nom}</span>
                   {spec && <span className="shrink-0 text-xs text-muted-foreground">{spec}</span>}
                   <span className={cn('shrink-0 text-xs tabular-nums', noPrix ? 'italic text-muted-foreground' : 'font-medium text-foreground')}>
-                    {noPrix ? 'sans prix de vente' : `${prixTtc(p).toLocaleString('fr-MA')} DH`}
+                    {noPrix ? 'sans prix de vente' : `${formatMAD(prixTtc(p), { withSymbol: false })} DH`}
                   </span>
                 </button>
               )

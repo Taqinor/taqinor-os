@@ -236,6 +236,22 @@ describe('H133 — performance perçue', () => {
     expect(container.querySelector('[role="status"][data-spinner]')).toBeNull()
   })
 
+  // VX132 — le squelette suit `pageSize` (borné à 12) au lieu d'un compte FIXE
+  // à 6 : évite le saut brutal vers les vraies lignes (et donc du scroll).
+  it('le nombre de lignes-squelettes suit pageSize (pageSize=5 -> 5 lignes)', () => {
+    const { container } = render(
+      <DataTable data={[]} columns={COLUMNS} loading pageSize={5} />, { wrapper },
+    )
+    expect(container.querySelectorAll('[data-skeleton-row]').length).toBe(5)
+  })
+
+  it('le nombre de lignes-squelettes reste borné à 12 même pour un pageSize=50', () => {
+    const { container } = render(
+      <DataTable data={[]} columns={COLUMNS} loading pageSize={50} />, { wrapper },
+    )
+    expect(container.querySelectorAll('[data-skeleton-row]').length).toBe(12)
+  })
+
   it('précharge les données de la ligne au survol/intention via onRowPrefetch', async () => {
     const onRowPrefetch = vi.fn()
     const { container } = render(
@@ -251,23 +267,29 @@ describe('H133 — performance perçue', () => {
 /* ============================== M154 — REPLI CARTES MOBILE ============================== */
 
 describe('M154 — repli tableau → cartes sur mobile', () => {
-  it('rend une vue cartes masquée en dessous de 768px (sm:hidden) avec chevron de détail', () => {
+  it('rend une vue cartes masquée en dessous de 768px (dt-desktop:hidden — VX180, PAS sm: = 640px) avec chevron de détail', () => {
     const { container } = render(
       <DataTable data={DATA} columns={COLUMNS} onRowClick={() => {}} />,
       { wrapper },
     )
     const cardsWrap = container.querySelector('[data-dt-cards]')
     expect(cardsWrap).toBeTruthy()
-    expect(cardsWrap.className).toContain('sm:hidden')
+    // VX180 — jsdom n'applique aucune media query : cette assertion ne peut
+    // structurellement PROUVER le seuil réel (voir e2e/datatable-breakpoint.spec.js
+    // pour la preuve à 700px réels) ; elle vérifie seulement que le composant
+    // utilise la variante DÉDIÉE `dt-desktop:` et non plus `sm:` (640px).
+    expect(cardsWrap.className).toContain('dt-desktop:hidden')
+    expect(cardsWrap.className).not.toContain('sm:hidden')
     // Métrique clé en grand + chevron vers le détail.
     expect(cardsWrap.querySelector('[data-card-chevron]')).toBeTruthy()
   })
 
-  it('masque l\'en-tête de tableau sur mobile (table dans un conteneur sm:block)', () => {
+  it('masque l\'en-tête de tableau sur mobile (table dans un conteneur dt-desktop:block — VX180, 768px)', () => {
     const { container } = render(<DataTable data={DATA} columns={COLUMNS} />, { wrapper })
     const tableWrap = container.querySelector('[data-dt-table]')
     expect(tableWrap.className).toContain('hidden')
-    expect(tableWrap.className).toContain('sm:block')
+    expect(tableWrap.className).toContain('dt-desktop:block')
+    expect(tableWrap.className).not.toContain('sm:block')
   })
 })
 
@@ -385,5 +407,196 @@ describe('O166 — largeurs de colonnes mémoïsées (variables CSS)', () => {
     const { container } = render(<DataTable data={DATA} columns={cols} />, { wrapper })
     const styled = container.querySelector('[style*="--dt-col-"]')
     expect(styled).toBeTruthy()
+  })
+})
+
+/* ============================== VX131 — ÉTATS VIDES : TONE + CTA ============================== */
+
+describe('VX131 — état vide : CTA et tone d\'erreur', () => {
+  it('emptyAction rend le même CTA que la toolbar (liste vide)', () => {
+    render(
+      <DataTable
+        data={[]}
+        columns={COLUMNS}
+        emptyTitle="Aucun client"
+        emptyAction={<button type="button">Nouveau client</button>}
+      />,
+      { wrapper },
+    )
+    // M154 replie aussi en cartes mobiles (CSS non appliquée sous jsdom) : le
+    // repli desktop ET le repli carte rendent chacun le même EmptyState — on
+    // vérifie qu'AU MOINS une occurrence porte le titre et le CTA.
+    expect(screen.getAllByText('Aucun client').length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('button', { name: 'Nouveau client' }).length).toBeGreaterThan(0)
+  })
+
+  it('une erreur de chargement rend l\'EmptyState en tone="error" (icône sur fond destructif)', () => {
+    render(
+      <DataTable data={[]} columns={COLUMNS} error="Réseau indisponible" />,
+      { wrapper },
+    )
+    expect(screen.getByText('Erreur de chargement')).toBeInTheDocument()
+    // Scoper à l'EmptyState (son titre) — sinon querySelector('svg') attrape
+    // l'icône de la barre de recherche du DataTable, pas l'icône d'erreur.
+    const iconWrap = screen.getByText('Erreur de chargement').parentElement.querySelector('span')
+    expect(iconWrap.className).toContain('bg-destructive/12')
+    expect(iconWrap.className).toContain('text-destructive')
+  })
+})
+
+/* ============================== ARC49/ARC53 — ÉCHAPPATOIRES ADDITIVES ============================== */
+
+describe('ARC49/ARC53 — extensions opt-in (chemin de l\'argent)', () => {
+  it('tableClassName ajoute une classe à la <table> sans retirer les classes du moteur', () => {
+    const { container } = renderTable({ tableClassName: 'data-table' })
+    const table = container.querySelector('[data-dt-table] table')
+    expect(table.className).toContain('data-table')
+    // Les classes historiques du moteur restent présentes.
+    expect(table.className).toContain('border-collapse')
+  })
+
+  it('tableRole="table" remplace le rôle grid par défaut (getByRole table)', () => {
+    const { container } = renderTable({ tableRole: 'table' })
+    expect(container.querySelector('[data-dt-table] table[role="table"]')).toBeTruthy()
+    expect(container.querySelector('[data-dt-table] table[role="grid"]')).toBeNull()
+  })
+
+  it('sans tableRole, le rôle grid par défaut est INCHANGÉ', () => {
+    const { container } = renderTable()
+    expect(container.querySelector('[data-dt-table] table[role="grid"]')).toBeTruthy()
+  })
+
+  it('renderHeaderRow remplace l\'en-tête intégré par des <th> personnalisés', () => {
+    const { container } = renderTable({
+      renderHeaderRow: () => (
+        <>
+          <th className="w-8">Sel</th>
+          <th>Réf perso</th>
+        </>
+      ),
+    })
+    const ths = container.querySelectorAll('[data-dt-table] thead th')
+    expect(ths.length).toBe(2)
+    expect(ths[1].textContent).toBe('Réf perso')
+    // L'en-tête de tri intégré n'est pas rendu (aucun bouton « Trier par »).
+    expect(container.querySelector('thead button[aria-label^="Trier par"]')).toBeNull()
+  })
+
+  it('renderRow rend une ligne ENTIÈRE custom et n\'ajoute aucune cellule technique', () => {
+    const { container } = render(
+      <DataTable
+        data={DATA}
+        columns={COLUMNS}
+        selectable
+        tableClassName="data-table"
+        tableRole="table"
+        renderRow={(row, api) => (
+          <tr data-custom-row data-key={api.rowKey}>
+            <td>{row.nom}</td>
+            <td>{row.ville}</td>
+          </tr>
+        )}
+      />,
+      { wrapper },
+    )
+    const rows = container.querySelectorAll('tbody tr[data-custom-row]')
+    expect(rows.length).toBe(DATA.length)
+    // Chaque ligne custom n'a QUE ses 2 cellules (pas de case/actions injectées).
+    expect(rows[0].querySelectorAll('td').length).toBe(2)
+    // Pas de vue cartes mobile dupliquée (une seule table data-table).
+    expect(container.querySelector('[data-dt-cards]')).toBeNull()
+    // Aucun <colgroup> technique injecté en mode ligne custom.
+    expect(container.querySelector('[data-dt-table] colgroup')).toBeNull()
+  })
+
+  it('renderRow + renderHeaderRow : le moteur n\'ajoute AUCUNE colonne technique', () => {
+    const { container } = render(
+      <DataTable
+        data={DATA}
+        columns={COLUMNS}
+        selectable
+        renderHeaderRow={() => <th>Réf</th>}
+        renderRow={(row) => (
+          <tr data-custom-row>
+            <td>{row.nom}</td>
+          </tr>
+        )}
+      />,
+      { wrapper },
+    )
+    // L'en-tête ne contient QUE le <th> fourni (pas de case « tout sélectionner »).
+    const ths = container.querySelectorAll('[data-dt-table] thead th')
+    expect(ths.length).toBe(1)
+    expect(ths[0].textContent).toBe('Réf')
+  })
+
+  it('renderRow expose une API de sélection reliée à l\'état du moteur', async () => {
+    const user = userEvent.setup()
+    const { container } = render(
+      <DataTable
+        data={DATA}
+        columns={COLUMNS}
+        selectable
+        bulkActions={() => [{ id: 'x', label: 'Agir' }]}
+        renderRow={(row, api) => (
+          <tr data-custom-row>
+            <td>
+              <button type="button" onClick={api.toggleSelect}>
+                {api.isSelected ? 'Sélectionné' : `Sélectionner ${row.nom}`}
+              </button>
+            </td>
+          </tr>
+        )}
+      />,
+      { wrapper },
+    )
+    // Aucune barre de masse tant que rien n'est sélectionné.
+    expect(screen.queryByRole('region', { name: /sélectionnée/i })).not.toBeInTheDocument()
+    await user.click(screen.getByText('Sélectionner Kasri'))
+    // La sélection du moteur reflète le clic → la barre de masse apparaît.
+    expect(screen.getByRole('region', { name: /sélectionnée/i })).toBeInTheDocument()
+    expect(container.querySelector('tbody')).toBeTruthy()
+  })
+
+  it('renderRow : panneaux dépliables nommés à état indépendant par ligne', async () => {
+    const user = userEvent.setup()
+    render(
+      <DataTable
+        data={DATA}
+        columns={COLUMNS}
+        expandedPanels={['A', 'B']}
+        renderRow={(row, api) => (
+          <>
+            <tr data-custom-row>
+              <td>
+                <button type="button" onClick={() => api.togglePanel('A')}>{`A-${row.id}`}</button>
+                <button type="button" onClick={() => api.togglePanel('B')}>{`B-${row.id}`}</button>
+              </td>
+            </tr>
+            {api.isPanelOpen('A') && <tr data-panel-a><td>{`panneau A de ${row.id}`}</td></tr>}
+            {api.isPanelOpen('B') && <tr data-panel-b><td>{`panneau B de ${row.id}`}</td></tr>}
+          </>
+        )}
+      />,
+      { wrapper },
+    )
+    // Ouvre le panneau A de la ligne 1 : seul lui apparaît (B fermé, autres lignes fermées).
+    await user.click(screen.getByText('A-1'))
+    expect(screen.getByText('panneau A de 1')).toBeInTheDocument()
+    expect(screen.queryByText('panneau B de 1')).not.toBeInTheDocument()
+    expect(screen.queryByText('panneau A de 2')).not.toBeInTheDocument()
+    // Ouvre B de la même ligne : A ET B ouverts simultanément (indépendants).
+    await user.click(screen.getByText('B-1'))
+    expect(screen.getByText('panneau A de 1')).toBeInTheDocument()
+    expect(screen.getByText('panneau B de 1')).toBeInTheDocument()
+  })
+
+  it('hideToolbar supprime la barre d\'outils intégrée (recherche/export)', () => {
+    // Par défaut la barre existe (champ de recherche globale).
+    const { container: withBar } = renderTable()
+    expect(withBar.querySelector('input[aria-label="Recherche globale"]')).toBeTruthy()
+    // Avec hideToolbar, la barre disparaît.
+    const { container: noBar } = renderTable({ hideToolbar: true })
+    expect(noBar.querySelector('input[aria-label="Recherche globale"]')).toBeNull()
   })
 })

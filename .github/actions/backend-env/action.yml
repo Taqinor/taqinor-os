@@ -1,0 +1,173 @@
+name: backend-env
+description: >-
+  WOW7 — shared backend CI environment: WeasyPrint system libraries, the Python
+  dependencies, and a MinIO server with the erp-pdf / erp-uploads buckets. Dedupes
+  the WeasyPrint + pip + MinIO block that was copy-pasted across backend-tests-shard,
+  e2e (ci.yml) and release-verify.yml. Callers set up Python (and Node) themselves
+  first; this action only prepares the shared backend runtime env.
+inputs:
+  requirements:
+    description: >-
+      Requirements file to install, relative to backend/django_core. The per-merge
+      gate installs the dev/test deps; release-verify runs on the prod deps.
+    required: false
+    default: requirements-dev.txt
+  testdb-cache-into:
+    description: >-
+      WOW8 — when set to a database name (e.g. `test_erp_db` for the sharded test
+      jobs, `erp_db` for e2e), restore a cached PRE-MIGRATED database dump into it
+      instead of paying the ~850-migration replay (~35 min, measured as 97% of a
+      shard's wall-clock). Cache key = hash of every migration file + the prod
+      requirements. WOW8-INCR: a `restore-keys` fallback means an exact-key miss
+      (any migration added/changed — i.e. EVERY plan-build PR) restores the newest
+      previous dump and applies ONLY the new migrations on top (delta, a few min),
+      instead of the full cold build; the updated dump is re-saved under the new
+      key so the cache advances. A total miss still does the one cold build. Full
+      dump — never --schema-only — so RunPython-seeded rows (content types,
+      permissions, seed data) are preserved. Empty (the default) disables it.
+    required: false
+    default: ''
+runs:
+  using: composite
+  steps:
+    - name: Install WeasyPrint system dependencies
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends \
+          libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b fonts-dejavu-core
+    - name: Install Python dependencies
+      shell: bash
+      working-directory: backend/django_core
+      run: pip install -r ${{ inputs.requirements }}
+    - name: Start MinIO + create buckets
+      shell: bash
+      run: |
+        docker run -d --name minio -p 9000:9000 \
+          -e MINIO_ROOT_USER=erp_admin \
+          -e MINIO_ROOT_PASSWORD=erp_minio_password \
+          minio/minio:latest server /data
+        # Wait for MinIO's health endpoint before creating buckets.
+        for i in $(seq 1 30); do
+          if curl -sf http://localhost:9000/minio/health/live; then
+            echo "MinIO ready"; break
+          fi
+          echo "Waiting for MinIO ($i)..."; sleep 2
+          if [ "$i" = "30" ]; then echo "MinIO unavailable"; exit 1; fi
+        done
+        # Pre-create the buckets (erp-pdf is also self-healed by the app). The
+        # minio/mc entrypoint is `mc`, so force `sh` to chain the commands.
+        docker run --rm --network host --entrypoint sh minio/mc:latest -c "
+          mc alias set local http://localhost:9000 erp_admin erp_minio_password &&
+          mc mb -p local/erp-pdf local/erp-uploads"
+    - name: Restore cached pre-migrated DB dump (WOW8)
+      id: testdb-cache
+      if: ${{ inputs.testdb-cache-into != '' }}
+      uses: actions/cache@v4
+      with:
+        # The dump AND a manifest of the migration-file hashes that produced it —
+        # the manifest lets the build step below prove "only new migrations added"
+        # (safe to delta-migrate) vs "an existing migration was edited/removed"
+        # (NOT safe — must rebuild clean, else a stale schema false-greens tests).
+        path: |
+          /tmp/testdb.dump
+          /tmp/testdb.manifest
+        key: testdb-v1-${{ hashFiles('backend/django_core/**/migrations/*.py', 'backend/django_core/requirements.txt') }}
+        # WOW8-INCR — on an EXACT-key miss (any migration added/changed — i.e.
+        # every plan-build PR), fall back to the newest previous dump instead of
+        # restoring nothing. The build step below then applies ONLY the new
+        # migrations on top (delta) rather than the ~35-min cold replay of all
+        # ~850. This is the CI twin of the local harness's -RestoreDb.
+        restore-keys: |
+          testdb-v1-
+    - name: Build or restore the pre-migrated database (WOW8 + WOW8-INCR)
+      if: ${{ inputs.testdb-cache-into != '' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        TARGET='${{ inputs.testdb-cache-into }}'
+        # 'true' ONLY on an exact-key hit; empty on a restore-keys fallback or a
+        # total miss. Drives whether we must re-dump (migration set changed).
+        EXACT='${{ steps.testdb-cache.outputs.cache-hit }}'
+        export PGPASSWORD="${DB_PASSWORD:-ci_password}"
+        PGHOST="${DB_HOST:-localhost}"; PGUSER="${DB_USER:-erp_user}"
+        # Run the postgres client tools from the SAME image as the DB service so
+        # client/server versions can never mismatch (pg_dump refuses to run
+        # against a newer server; ubuntu runners ship whatever apt has).
+        PGIMG=pgvector/pgvector:pg16
+        pgtool() { docker run --rm --network host -v /tmp:/tmp -e PGPASSWORD "$PGIMG" "$@"; }
+        migrate() { (cd backend/django_core && DB_NAME="$TARGET" python manage.py migrate --noinput); }
+        # Deterministic "<sha256>  <path>" line per migration file. Recorded next
+        # to each dump so a later run can tell whether the restored dump's exact
+        # migration set is a PREFIX of the current one.
+        manifest() { (cd backend/django_core && find . -path '*/migrations/*.py' -type f | LC_ALL=C sort | xargs sha256sum); }
+        # e2e's target (erp_db) already exists (service POSTGRES_DB); the shards'
+        # target (test_erp_db) doesn't — create it if missing.
+        pgtool createdb -h "$PGHOST" -U "$PGUSER" "$TARGET" 2>/dev/null || true
+
+        # Decide whether the restored DB can be trusted to a fast DELTA migrate, or
+        # must be rebuilt clean. THE CORRECTNESS CRUX: `migrate` chooses what to run
+        # from the recorded migration NAMES in django_migrations, never from schema
+        # CONTENT. So if an EXISTING migration was EDITED in place, the restored
+        # dump already records it applied -> migrate skips it -> stale schema, yet
+        # migrate returns 0 (false green) and we'd re-dump the poison into the
+        # cache. Guard: delta-migrate ONLY when every migration file recorded in the
+        # restored dump still exists byte-identical now (pure additions). Any
+        # edit/removal -> rebuild clean.
+        REBUILD=no
+        if [ -f /tmp/testdb.dump ]; then
+          echo "Cache present (exact=${EXACT:-false}) — restoring dump into $TARGET"
+          pgtool pg_restore -h "$PGHOST" -U "$PGUSER" -d "$TARGET" --no-owner /tmp/testdb.dump
+          if [ "$EXACT" = 'true' ]; then
+            echo "Exact hit — dump already matches the current migration set."
+          elif [ -f /tmp/testdb.manifest ]; then
+            manifest | LC_ALL=C sort > /tmp/cur.manifest
+            LC_ALL=C sort /tmp/testdb.manifest > /tmp/old.manifest
+            # comm -23 = lines in the OLD (restored) manifest absent from the
+            # CURRENT one -> some recorded migration was edited/removed -> unsafe.
+            if [ -n "$(comm -23 /tmp/old.manifest /tmp/cur.manifest)" ]; then
+              echo "An existing migration changed/removed since the cached dump — rebuilding CLEAN (no false-green delta)."
+              REBUILD=yes
+            else
+              echo "Only new migrations added since the cached dump — safe to apply the delta."
+            fi
+          else
+            echo "Restored dump predates WOW8-INCR (no manifest) — rebuilding CLEAN to be safe."
+            REBUILD=yes
+          fi
+        else
+          echo "No cache at all — cold build of $TARGET"
+        fi
+
+        # If we restored a dump we cannot trust, discard it and start clean.
+        # dropdb --force (pg13+) terminates any open backend first, so this is safe
+        # even for e2e's live target (erp_db) regardless of step ordering.
+        if [ "$REBUILD" = 'yes' ] && [ -f /tmp/testdb.dump ]; then
+          pgtool dropdb --force -h "$PGHOST" -U "$PGUSER" "$TARGET"
+          pgtool createdb -h "$PGHOST" -U "$PGUSER" "$TARGET"
+        fi
+
+        # Apply migrations: exact hit -> no-op; safe delta -> only the new ones;
+        # rebuild/cold -> full build. Belt-and-suspenders: if migrate still fails
+        # (a delta we thought safe couldn't apply), drop and rebuild clean.
+        if ! migrate; then
+          echo "migrate failed on the restored DB — dropping and rebuilding $TARGET clean"
+          pgtool dropdb --force -h "$PGHOST" -U "$PGUSER" "$TARGET"
+          pgtool createdb -h "$PGHOST" -U "$PGUSER" "$TARGET"
+          migrate
+        fi
+
+        # Re-dump + refresh the manifest whenever the migration set changed (not an
+        # exact hit) so the cache ADVANCES to the new key with a matching manifest.
+        # All 4 shards + e2e race this save under the same key; actions/cache is
+        # first-write-wins (a harmless "cache already exists" warning on the rest).
+        # FULL dump (never --schema-only): RunPython data migrations seed rows
+        # (content types, permissions, seed data) that tests depend on.
+        if [ "$EXACT" != 'true' ]; then
+          rm -f /tmp/testdb.dump
+          pgtool pg_dump -h "$PGHOST" -U "$PGUSER" -Fc -f /tmp/testdb.dump "$TARGET"
+          manifest > /tmp/testdb.manifest
+          echo "Re-dumped + manifest under the new key — actions/cache saves at job end (first save wins)."
+        else
+          echo "Exact hit — DB already current, no re-dump needed."
+        fi

@@ -26,6 +26,7 @@ const config = {
   order: 51,
   nav: {
     label: 'LOGISTIQUE',
+    accent: 'success', // VX8 — terrain/opérations = accent success (dérivé)
     items: [
       { to: '/logistique', label: 'Cockpit', icon: <Truck size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/logistique/livraisons', label: 'Livraisons', icon: <Truck size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },

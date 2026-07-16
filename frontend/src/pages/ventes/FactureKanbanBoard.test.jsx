@@ -46,4 +46,24 @@ describe('FactureKanbanBoard (ZFAC9)', () => {
     expect(screen.getByTestId('facture-kanban-board')).toBeInTheDocument()
     render(wrap(<FactureKanbanBoard today={TODAY} />))
   })
+
+  it('VX142(d) — carte sans StatusPill redondant : montre l\'échéance quand connue', () => {
+    const factures = [
+      { id: 2, reference: 'FAC-002', statut: 'emise', date_echeance: '2020-01-01', total_ttc: 2000, client_nom: 'Client B' },
+    ]
+    render(wrap(<FactureKanbanBoard factures={factures} today={TODAY} />))
+    // La rangée référence+info de la carte ne contient plus le point coloré
+    // du StatusPill (aria-hidden) ; la date d'échéance apparaît à la place.
+    const refRow = screen.getByText('FAC-002').closest('div')
+    expect(refRow.querySelector('.rounded-full.size-1\\.5, [class*="size-1.5"]')).toBeNull()
+    expect(screen.getByText('01/01/2020')).toBeInTheDocument()
+  })
+
+  it('VX142(d) — carte sans échéance montre le montant dû à la place', () => {
+    const factures = [
+      { id: 4, reference: 'FAC-004', statut: 'emise', montant_du: 750, total_ttc: 750, client_nom: 'Client D' },
+    ]
+    render(wrap(<FactureKanbanBoard factures={factures} today={TODAY} />))
+    expect(screen.getByText(/Dû/)).toBeInTheDocument()
+  })
 })

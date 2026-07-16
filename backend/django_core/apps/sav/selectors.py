@@ -225,6 +225,57 @@ def warranty_registry(equipements_qs, *, expiring_soon_days=60, today=None):
     }
 
 
+def client_a_contrat_actif(client, company):
+    """YSERV10 — ``True`` si ``client`` a AU MOINS UN ``ContratMaintenance``
+    ``actif=True`` dans ``company``. Lecture cross-app en SEUL BOOLÉEN
+    (aucun objet exposé) — le point d'entrée que ``apps.sav.receivers``
+    utilise pour décider de proposer (ou non) un contrat d'entretien à la
+    réception d'un chantier."""
+    from .models import ContratMaintenance
+
+    if client is None:
+        return False
+    return ContratMaintenance.objects.filter(
+        client=client, company=company, actif=True).exists()
+
+
+def taux_attache(company, *, date_debut=None, date_fin=None):
+    """YSERV10 — KPI taux d'attache : part des chantiers réceptionnés de la
+    période qui ont un ``ContratMaintenance`` ``actif`` créé (``date_debut``)
+    dans les 90 jours suivant la réception (``Installation.date_reception``
+    — posé exactement à la transition RECEPTIONNE, jamais approximé par
+    ``updated_at``).
+
+    Renvoie ``{'total': int, 'avec_contrat': int, 'taux_pct': float}``
+    (``taux_pct`` à 0.0 si ``total`` est nul — jamais une division par zéro).
+    Frontière cross-app : les chantiers sont lus via
+    ``apps.installations.selectors.chantiers_receptionnes`` — jamais un
+    import du modèle ``Installation``."""
+    from datetime import timedelta
+
+    from apps.installations.selectors import chantiers_receptionnes
+
+    from .models import ContratMaintenance
+
+    chantiers = chantiers_receptionnes(
+        company, date_debut=date_debut, date_fin=date_fin)
+
+    total = 0
+    avec_contrat = 0
+    for _id, client_id, date_reception in chantiers:
+        total += 1
+        horizon = date_reception + timedelta(days=90)
+        has_contrat = ContratMaintenance.objects.filter(
+            company=company, client_id=client_id, actif=True,
+            date_debut__gte=date_reception, date_debut__lte=horizon,
+        ).exists()
+        if has_contrat:
+            avec_contrat += 1
+
+    taux_pct = round((avec_contrat / total) * 100, 1) if total else 0.0
+    return {'total': total, 'avec_contrat': avec_contrat, 'taux_pct': taux_pct}
+
+
 def contrat_maintenance_existe(pk, company):
     """``True`` si un ``ContratMaintenance`` existe pour ``pk`` DANS ``company`` — XCTR13.
 
@@ -397,6 +448,34 @@ def csat_par_technicien(company, *, date_debut=None, date_fin=None):
             if row['note_moyenne'] is not None else None,
         })
     return out
+
+
+def ratio_deflection_kb(company):
+    """XSAV22 — Ratio de déflection KB sur le portail client : consultations
+    d'articles KB depuis le formulaire d'ouverture de ticket vs demandes de
+    ticket réellement créées. Point d'entrée pour le rapport service
+    (apps.reporting), même motif que ``csat_par_technicien`` ci-dessus.
+
+    Lit UNIQUEMENT via les selectors des apps cibles (jamais leurs modèles,
+    règle de modularité CLAUDE.md) : ``apps.kb.selectors`` (consultations) et
+    ``apps.portail.selectors`` (tickets créés).
+
+    Renvoie ``{'consultations_kb': int, 'tickets_crees': int, 'ratio': float}``
+    — ``ratio`` = consultations / (consultations + tickets), dans ``[0, 1]``,
+    ``0.0`` quand il n'y a ni consultation ni ticket (pas de division par
+    zéro)."""
+    from apps.kb.selectors import consultations_portail_total
+    from apps.portail.selectors import demandes_ticket_count
+
+    consultations = consultations_portail_total(company)
+    tickets = demandes_ticket_count(company)
+    total = consultations + tickets
+    ratio = round(consultations / total, 4) if total else 0.0
+    return {
+        'consultations_kb': consultations,
+        'tickets_crees': tickets,
+        'ratio': ratio,
+    }
 
 
 def taux_reouverture(company, *, group_by='technicien', date_debut=None,
@@ -1188,3 +1267,76 @@ def estimations_maintenance(equipement):
         'prochaine_defaillance_estimee': prochaine_defaillance_estimee,
         'prochain_entretien_du': prochain_entretien_du,
     }
+
+
+def ticket_chatter_envelope(ticket):
+    """ARC9 — timeline chatter du ticket dans l'ENVELOPPE UNIFORME.
+
+    Projette ``sav.TicketActivity`` vers le format commun consommé par
+    ``records.serializers.UniformChatterSerializer`` — même contrat de lecture
+    que ``crm.selectors.lead_chatter_envelope`` et
+    ``contrats.selectors.contrat_chatter_envelope``. Lecture seule, aucune
+    table modifiée. Le ticket est déjà borné société par l'appelant.
+    """
+    rows = ticket.activites.select_related('user').all()
+    return [{
+        'id': a.id,
+        'kind': a.kind,
+        'field': a.field or '',
+        'field_label': a.field_label or '',
+        'old_value': a.old_value or '',
+        'new_value': a.new_value or '',
+        'body': a.body or '',
+        'user_username': a.user.username if a.user_id else None,
+        'created_at': a.created_at,
+        'source': 'sav.ticketactivity',
+    } for a in rows]
+
+
+# ── VX214 — kinds d'EXÉCUTION pour « Ma file » (jamais une 2ᵉ boîte) ────────
+
+def affectations_pour(user):
+    """VX214 — tickets SAV ouverts affectés à `user` (technicien responsable),
+    prêts pour l'union « Ma file » (``apps.records.views.ma_file``) — contrat
+    commun ``{kind, title, due, link, urgency}``, MÊME forme que ``crm.
+    selectors.ma_file_commercial_items`` (VX83). Lecture seule, scopée
+    société + utilisateur ; jamais un import de ``notifications``/``records``.
+
+    Un ticket « transféré » à ce technicien reste simplement un ticket OUVERT
+    (``OPEN_STATUTS``) dont il est le ``technicien_responsable`` — aucun champ
+    dédié d'horodatage de transfert n'existe aujourd'hui ; le champ qui
+    compte pour la file est « qui doit agir maintenant », pas « depuis
+    quand » (VX218 couvre déjà le badge « Nouveau » côté chantiers)."""
+    if user is None or not getattr(user, 'company_id', None):
+        return []
+    from django.utils import timezone
+
+    from .models import Ticket
+
+    company = user.company
+    today = timezone.localdate()
+    items = []
+
+    tickets = (Ticket.objects
+               .filter(company=company, technicien_responsable=user,
+                       statut__in=Ticket.OPEN_STATUTS)
+               .select_related('client')
+               .order_by('date_ouverture'))
+    for t in tickets:
+        due = t.date_ouverture
+        if due is None:
+            urgency = 'today'
+        elif due < today:
+            urgency = 'overdue'
+        else:
+            urgency = 'today'
+        client_nom = getattr(t.client, 'nom', '') or ''
+        items.append({
+            'kind': 'ticket_transfere',
+            'title': f'Ticket {t.reference} — {client_nom or "client"} '
+                     f'({t.get_statut_display()})',
+            'due': due,
+            'link': '/sav',
+            'urgency': urgency,
+        })
+    return items

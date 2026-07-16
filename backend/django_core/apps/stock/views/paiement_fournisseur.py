@@ -4,7 +4,7 @@ from django.http import HttpResponse  # noqa: F401
 from rest_framework import viewsets, filters, status  # noqa: F401
 from rest_framework.decorators import action  # noqa: F401
 from rest_framework.response import Response  # noqa: F401
-from authentication.mixins import TenantMixin  # noqa: F401
+from core.viewsets import CompanyScopedModelViewSet
 from apps.ventes.utils.references import create_with_reference  # noqa: F401
 from ..models import (  # noqa: F401
     Produit, Categorie, Fournisseur, MouvementStock, Marque,
@@ -42,7 +42,7 @@ WRITE_ACTIONS = ['create', 'update', 'partial_update']
 # package __init__ ré-exporte toutes les vues publiques.
 
 
-class PaiementFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
+class PaiementFournisseurViewSet(CompanyScopedModelViewSet):
     """G5 — Paiements fournisseur (règlements). Lecture + création/suppression ;
     chaque écriture recalcule le statut de la facture. company posée serveur."""
     queryset = PaiementFournisseur.objects.select_related(

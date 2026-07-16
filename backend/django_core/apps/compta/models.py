@@ -2093,7 +2093,7 @@ class Rapprochement(models.Model):
     # Référence au bon de commande fournisseur (apps.stock) par FK chaîne —
     # jamais d'import du modèle stock. related_name préfixé par le label d'app.
     bon_commande = models.ForeignKey(
-        'stock.BonCommandeFournisseur',
+        'achats.BonCommandeFournisseur',
         on_delete=models.CASCADE,
         related_name='compta_rapprochements',
         verbose_name='Bon de commande fournisseur',
@@ -4497,6 +4497,111 @@ class EntiteConsolidation(models.Model):
                 "Le pourcentage d'intérêt doit être entre 0 et 100 %.")
 
 
+# ── XPLT20 — Écritures inter-sociétés miroir (vente A → achat B) ──────────
+# FG153 (ci-dessus) livre l'élimination + états consolidés ; XPLT20 évite la
+# DOUBLE SAISIE MANUELLE d'une vente inter-groupe (ex. SARL → EI) en générant
+# côté B un BROUILLON de facture fournisseur (jamais auto-validé). Opt-in
+# STRICT par paire de sociétés : sans règle ``actif=True``, comportement
+# inchangé. SCHEMA+DECISION — voir docs/decisions/XPLT20-inter-societes.md :
+# le mécanisme est livré mais AUCUNE règle réelle n'est créée ici ; le
+# fondateur confirme le flux EI↔SARL et le(s) compte(s) de liaison avant
+# d'activer une paire.
+
+class RegleInterSociete(models.Model):
+    """Règle opt-in : une facture de ``societe_a`` désignant ``societe_b``
+    comme client (rapprochement ICE/IF de ``parametres.CompanyProfile``)
+    génère chez B une facture fournisseur miroir en BROUILLON. Désactivée
+    par défaut (``actif=False``). ``compte_liaison`` (CGNC) sert aux
+    écritures de liaison lettrables des deux côtés — laissé vide tant que le
+    fondateur ne l'a pas confirmé pour la paire réelle.
+    """
+    societe_a = models.ForeignKey(
+        'authentication.Company',
+        # on_delete: config de groupe inter-sociétés (XPLT20) — une règle n'a
+        # de sens que tant que ses DEUX sociétés existent ; supprimer une
+        # société retire ses règles (jamais de trace comptable réelle ici).
+        on_delete=models.CASCADE,
+        related_name='regles_intersociete_source',
+        verbose_name='Société A (vendeuse)',
+    )
+    societe_b = models.ForeignKey(
+        'authentication.Company',
+        # on_delete: idem societe_a — la règle disparaît avec l'une ou l'autre
+        # société de la paire (config de groupe, pas d'écriture).
+        on_delete=models.CASCADE,
+        related_name='regles_intersociete_cible',
+        verbose_name='Société B (acheteuse)',
+    )
+    actif = models.BooleanField(default=False, verbose_name='Actif')
+    compte_liaison = models.CharField(
+        max_length=20, blank=True, default='',
+        verbose_name='Compte de liaison (CGNC)')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+
+    class Meta:
+        verbose_name = 'Règle inter-sociétés'
+        verbose_name_plural = 'Règles inter-sociétés'
+        ordering = ['-date_creation']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['societe_a', 'societe_b'],
+                name='uniq_regle_intersociete_paire',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.societe_a_id} → {self.societe_b_id}'
+
+
+class EcritureLiaisonInterSociete(models.Model):
+    """Trace lettrable d'un miroir XPLT20 généré : une ligne par facture
+    source déjà miroirée (garde d'idempotence — une facture ne génère jamais
+    deux miroirs) + piste d'audit (montants, compte de liaison figé au
+    moment de la génération). Les factures source/miroir sont référencées
+    par id opaque (cross-app — jamais d'import de ``apps.ventes``/
+    ``apps.stock`` models ici).
+    """
+    regle = models.ForeignKey(
+        RegleInterSociete,
+        # on_delete: la trace de liaison (garde d'idempotence XPLT20) n'existe
+        # que pour sa règle ; retirer la règle retire ses traces inertes.
+        on_delete=models.CASCADE,
+        related_name='ecritures_liaison',
+        verbose_name='Règle',
+    )
+    facture_source_id = models.PositiveIntegerField(
+        verbose_name='Id de la facture (société A)')
+    facture_fournisseur_miroir_id = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='Id de la facture fournisseur miroir (société B)')
+    montant_ht = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0, verbose_name='Montant HT')
+    montant_tva = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0, verbose_name='Montant TVA')
+    montant_ttc = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0, verbose_name='Montant TTC')
+    compte_liaison = models.CharField(
+        max_length=20, blank=True, default='',
+        verbose_name='Compte de liaison (CGNC)')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+
+    class Meta:
+        verbose_name = 'Écriture de liaison inter-sociétés'
+        verbose_name_plural = 'Écritures de liaison inter-sociétés'
+        ordering = ['-date_creation']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['regle', 'facture_source_id'],
+                name='uniq_ecriture_liaison_regle_facture',
+            ),
+        ]
+
+    def __str__(self):
+        return f'Liaison facture#{self.facture_source_id} ({self.regle_id})'
+
+
 # ── FG209 — Promotions & campagnes de remise (codes datés) ─────────────────
 
 class CodePromotion(models.Model):
@@ -5126,229 +5231,24 @@ from apps.portail.models import (  # noqa: E402,F401
 )
 
 
-# ── FG234 — Portail apporteurs / sous-revendeurs ───────────────────────────
-
-class Partenaire(models.Model):
-    """Partenaire commercial : apporteur d'affaires ou sous-revendeur (FG234).
-
-    Fiche minimale ici (compte + accès tokenisé + taux de commission). FG237
-    enrichit la fiche (statut d'agrément, zone, onboarding). Un partenaire
-    soumet des leads via le portail (``SoumissionLeadPartenaire``) et suit leur
-    statut. Scopé société ; le token d'accès est posé côté serveur.
-    """
-    class Type(models.TextChoices):
-        APPORTEUR = 'apporteur', "Apporteur d'affaires"
-        SOUS_REVENDEUR = 'sous_revendeur', 'Sous-revendeur'
-        INSTALLATEUR = 'installateur', 'Installateur'
-
-    company = models.ForeignKey(
-        'authentication.Company',
-        on_delete=models.CASCADE,
-        related_name='partenaires',
-        verbose_name='Société',
-    )
-    nom = models.CharField(max_length=200, verbose_name='Nom / raison sociale')
-    type_partenaire = models.CharField(
-        max_length=16, choices=Type.choices, default=Type.APPORTEUR,
-        verbose_name='Type de partenaire')
-    email = models.EmailField(blank=True, default='', verbose_name='Email')
-    telephone = models.CharField(
-        max_length=30, blank=True, default='', verbose_name='Téléphone')
-    taux_commission = models.DecimalField(
-        max_digits=5, decimal_places=2, default=0,
-        verbose_name='Taux de commission (%)')
-    token_acces = models.CharField(
-        max_length=64, unique=True, db_index=True,
-        verbose_name="Token d'accès")
-    actif = models.BooleanField(default=True, verbose_name='Actif')
-    # FG237 — Annuaire & onboarding installateurs partenaires.
-    statut_onboarding = models.CharField(
-        max_length=12,
-        choices=[
-            ('prospect', 'Prospect'),
-            ('en_cours', "En cours d'agrément"),
-            ('agree', 'Agréé (activé)'),
-            ('suspendu', 'Suspendu'),
-        ],
-        default='prospect',
-        verbose_name="Statut d'onboarding")
-    numero_agrement = models.CharField(
-        max_length=60, blank=True, default='',
-        verbose_name="Numéro d'agrément")
-    zone = models.CharField(
-        max_length=120, blank=True, default='',
-        verbose_name='Zone géographique')
-    date_activation = models.DateField(
-        null=True, blank=True, verbose_name="Date d'activation")
-    date_creation = models.DateTimeField(
-        auto_now_add=True, verbose_name='Créé le')
-
-    class Meta:
-        verbose_name = 'Partenaire commercial'
-        verbose_name_plural = 'Partenaires commerciaux'
-        ordering = ['nom']
-
-    def __str__(self):
-        return f'{self.nom} ({self.get_type_partenaire_display()})'
-
-
-class SoumissionLeadPartenaire(models.Model):
-    """Lead soumis par un partenaire via le portail (FG234).
-
-    Le partenaire renseigne les coordonnées d'un prospect ; on enregistre la
-    soumission scopée société. Après qualification, le lead réel est créé dans
-    ``crm`` (via son service, jamais importé ici) et référencé par ``lead_id``.
-    Le partenaire suit le statut de sa soumission.
-    """
-    class Statut(models.TextChoices):
-        SOUMIS = 'soumis', 'Soumis'
-        QUALIFIE = 'qualifie', 'Qualifié'
-        CONVERTI = 'converti', 'Converti'
-        REJETE = 'rejete', 'Rejeté'
-
-    company = models.ForeignKey(
-        'authentication.Company',
-        on_delete=models.CASCADE,
-        related_name='soumissions_lead_partenaire',
-        verbose_name='Société',
-    )
-    partenaire = models.ForeignKey(
-        Partenaire,
-        on_delete=models.CASCADE,
-        related_name='soumissions',
-        verbose_name='Partenaire',
-    )
-    nom_prospect = models.CharField(
-        max_length=200, verbose_name='Nom du prospect')
-    telephone_prospect = models.CharField(
-        max_length=30, blank=True, default='',
-        verbose_name='Téléphone du prospect')
-    email_prospect = models.EmailField(
-        blank=True, default='', verbose_name='Email du prospect')
-    ville = models.CharField(
-        max_length=120, blank=True, default='', verbose_name='Ville')
-    note = models.TextField(blank=True, default='', verbose_name='Note')
-    statut = models.CharField(
-        max_length=10, choices=Statut.choices, default=Statut.SOUMIS,
-        verbose_name='Statut')
-    lead_id = models.PositiveIntegerField(
-        null=True, blank=True, verbose_name='Id du lead créé')
-    date_soumission = models.DateTimeField(
-        auto_now_add=True, verbose_name='Soumis le')
-
-    class Meta:
-        verbose_name = 'Soumission de lead (partenaire)'
-        verbose_name_plural = 'Soumissions de lead (partenaire)'
-        ordering = ['-date_soumission']
-
-    def __str__(self):
-        return f'{self.nom_prospect} — {self.partenaire.nom}'
-
-
-# ── FG235 — Suivi des commissions partenaires ──────────────────────────────
-
-class CommissionPartenaire(models.Model):
-    """Commission due à un partenaire sur un devis signé/lead converti (FG235).
-
-    Calculée sur une base HT × taux (%). Le devis est référencé par id
-    (cross-app — jamais d'import ventes). Statut de règlement (due → payée). Le
-    relevé par partenaire s'obtient en agrégeant ces lignes (action ``releve``).
-    Scopée société.
-    """
-    class Statut(models.TextChoices):
-        DUE = 'due', 'Due'
-        PAYEE = 'payee', 'Payée'
-        ANNULEE = 'annulee', 'Annulée'
-
-    company = models.ForeignKey(
-        'authentication.Company',
-        on_delete=models.CASCADE,
-        related_name='commissions_partenaire',
-        verbose_name='Société',
-    )
-    partenaire = models.ForeignKey(
-        Partenaire,
-        on_delete=models.CASCADE,
-        related_name='commissions',
-        verbose_name='Partenaire',
-    )
-    devis_id = models.PositiveIntegerField(
-        null=True, blank=True, verbose_name='Id du devis signé')
-    lead_id = models.PositiveIntegerField(
-        null=True, blank=True, verbose_name='Id du lead')
-    base_ht = models.DecimalField(
-        max_digits=14, decimal_places=2, default=0,
-        verbose_name='Base HT (MAD)')
-    taux = models.DecimalField(
-        max_digits=5, decimal_places=2, default=0,
-        verbose_name='Taux de commission (%)')
-    montant = models.DecimalField(
-        max_digits=14, decimal_places=2, default=0,
-        verbose_name='Montant de commission (MAD)')
-    statut = models.CharField(
-        max_length=8, choices=Statut.choices, default=Statut.DUE,
-        verbose_name='Statut')
-    paye_le = models.DateField(
-        null=True, blank=True, verbose_name='Payée le')
-    date_creation = models.DateTimeField(
-        auto_now_add=True, verbose_name='Créée le')
-
-    class Meta:
-        verbose_name = 'Commission partenaire'
-        verbose_name_plural = 'Commissions partenaire'
-        ordering = ['-date_creation']
-
-    def __str__(self):
-        return f'Commission {self.montant} — {self.partenaire.nom}'
-
-
-# ── FG236 — Gestion des territoires / zones commerciales ───────────────────
-
-class TerritoireCommercial(models.Model):
-    """Zone commerciale : découpage géographique + affectation auto (FG236).
-
-    Un territoire regroupe des villes/régions (liste de mots-clés en minuscules)
-    et un commercial responsable (par id — ``owner_user_id``, jamais un import
-    hors foundation). Le service ``affecter_territoire`` associe un lead à la
-    zone qui matche sa ville, en respectant la priorité (plus haute d'abord).
-    Scopé société.
-    """
-    company = models.ForeignKey(
-        'authentication.Company',
-        on_delete=models.CASCADE,
-        related_name='territoires_commerciaux',
-        verbose_name='Société',
-    )
-    nom = models.CharField(max_length=120, verbose_name='Nom du territoire')
-    villes = models.JSONField(
-        default=list, blank=True,
-        verbose_name='Villes / régions (liste)')
-    owner_user_id = models.PositiveIntegerField(
-        null=True, blank=True, verbose_name='Commercial responsable (id)')
-    priorite = models.IntegerField(
-        default=0, verbose_name='Priorité (haute = prioritaire)')
-    actif = models.BooleanField(default=True, verbose_name='Actif')
-    date_creation = models.DateTimeField(
-        auto_now_add=True, verbose_name='Créé le')
-
-    class Meta:
-        verbose_name = 'Territoire commercial'
-        verbose_name_plural = 'Territoires commerciaux'
-        ordering = ['-priorite', 'nom']
-
-    def __str__(self):
-        return self.nom
-
-    def matche_ville(self, ville):
-        """True si ``ville`` correspond à l'une des villes/régions du zonage."""
-        if not ville:
-            return False
-        cible = str(ville).strip().lower()
-        for v in (self.villes or []):
-            mot = str(v).strip().lower()
-            if mot and (mot == cible or mot in cible or cible in mot):
-                return True
-        return False
+# ── FG234–237 — PARTENAIRES & TERRITOIRES COMMERCIAUX — SORTIS (ODX13) ─────
+# Ces modèles (Partenaire, SoumissionLeadPartenaire, CommissionPartenaire,
+# TerritoireCommercial) vivent désormais dans ``apps.crm`` (leur foyer Odoo
+# naturel : CRM/resellers). ODX13 les a sortis de compta en préservant à
+# l'IDENTIQUE leurs tables (``db_table = 'compta_<model>'``) via des
+# migrations ``SeparateDatabaseAndState`` (state-only, zéro SQL) — le pont
+# ARC19 (``apps/compta/tiers_bridge.py``) et le backfill (``apps.tiers``)
+# ont été re-pointés sur le nouveau libellé d'app ``crm.Partenaire``. Ce
+# ré-export garde le code/services/migrations historiques (viewsets,
+# serializers, ``services.enregistrer_commission``/``affecter_territoire``)
+# fonctionnels ; à retirer en ODX22 une fois tous les appelants re-pointés sur
+# ``apps.crm``.
+from apps.crm.models import (  # noqa: E402,F401
+    CommissionPartenaire,
+    Partenaire,
+    SoumissionLeadPartenaire,
+    TerritoireCommercial,
+)
 
 
 # ── FG244 — Abonnements de monitoring (revenu récurrent) — RELOGÉ (ODX16) ──
@@ -6782,6 +6682,7 @@ from apps.marketing.models import (  # noqa: E402,F401
     MessageWhatsAppEntrant,
     MouvementFidelite,
     OuverturePartage,
+    PostSocial,
     QuestionEvenement,
     RebondSoft,
     RegleUpsell,

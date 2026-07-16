@@ -1,12 +1,44 @@
 import { useCallback, useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import {
   Wallet, TrendingUp, Landmark, Clock, Percent, Users,
+  FolderOpen, ReceiptText, FileBarChart2, Scale,
 } from 'lucide-react'
 import { ModuleDashboard } from '../../../ui/module'
 import { BarArrondie } from '../../../ui/charts'
-import { toast } from '../../../ui'
+import { toast, Card, CardHeader, CardTitle, CardDescription, CardContent } from '../../../ui'
 import { formatMAD, formatNumber, formatPercent } from '../../../lib/format'
 import comptaApi from '../../../api/comptaApi'
+import api from '../../../api/axios'
+
+// VX115 — les 4 destinations où le comptable externe va chercher son export
+// mensuel (index de navigation pur : ZÉRO logique d'export dupliquée ici).
+const EXPORT_DESTINATIONS = [
+  {
+    to: '/ventes/factures',
+    label: 'Factures — Export comptable',
+    hint: 'Export DGI (Excel + CSV) d’une plage de factures validées',
+    icon: ReceiptText,
+  },
+  {
+    to: '/comptabilite/fiscalite',
+    label: 'Fiscalité',
+    hint: 'Échéances et déclarations fiscales',
+    icon: Scale,
+  },
+  {
+    to: '/comptabilite/etats',
+    label: 'États CGNC',
+    hint: 'Résultat, bilan et journaux comptables',
+    icon: FileBarChart2,
+  },
+  {
+    to: '/reporting/balance-agee',
+    label: 'Balance âgée',
+    hint: 'Créances clients par ancienneté',
+    icon: FolderOpen,
+  },
+]
 
 /* ============================================================================
    UX2 — Cockpit financier (GET /compta/pilotage/cockpit/).
@@ -18,10 +50,39 @@ import comptaApi from '../../../api/comptaApi'
    encours clients, avec liens de drill-down vers les états.)
    ========================================================================== */
 
+// VX232(a) — résolution pure `tiers_id` → nom (extraite pour un test unitaire
+// direct, sans dépendre du rendu recharts) ; repli « Tiers #N » si la fiche a
+// été supprimée entre-temps ou n'a pas encore été chargée.
+// eslint-disable-next-line react-refresh/only-export-components -- helper pur co-localisé, testé isolément
+export function resolveTiersLabel(tiersId, tiersById) {
+  if (!tiersId) return 'Non affecté'
+  return tiersById[tiersId] || `Tiers #${tiersId}`
+}
+
 export default function CockpitPage() {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  // VX232(a) — résout `tiers_id` en nom réel côté FRONTEND (répertoire unifié
+  // `apps/tiers`), chargé une fois : le KPI n°1 affichait « Tiers #42 » brut ;
+  // repli « Tiers #N » conservé si la fiche a été supprimée entre-temps.
+  const [tiersById, setTiersById] = useState({})
+
+  useEffect(() => {
+    // Timeout court et dédié : purement décoratif (repli « Tiers #N » déjà
+    // correct), jamais bloquant pour le reste du cockpit.
+    api.get('/tiers/tiers/', { params: { page_size: 500 }, timeout: 4000 })
+      .then((res) => {
+        const list = Array.isArray(res.data) ? res.data : (res.data?.results || [])
+        const map = {}
+        list.forEach((t) => {
+          map[t.id] = (t.type_tiers === 'entreprise' && t.raison_sociale)
+            || `${t.prenom || ''} ${t.nom || ''}`.trim() || t.nom
+        })
+        setTiersById(map)
+      })
+      .catch(() => {}) // silencieux : le repli « Tiers #N » suffit.
+  }, [])
 
   const load = useCallback(() => {
     let alive = true
@@ -74,7 +135,7 @@ export default function CockpitPage() {
       value: `${formatNumber(d.dso)} j`,
       hint: `Encours clients : ${formatMAD(d.encours_clients)}`,
       icon: Clock,
-      to: '/comptabilite/etats',
+      to: '/ventes/relances',
     },
     {
       label: 'DPO (paiement fournisseur)',
@@ -87,7 +148,7 @@ export default function CockpitPage() {
       value: formatMAD(d.encours_clients),
       hint: 'Encours non lettré (compte 3421)',
       icon: Users,
-      to: '/comptabilite/etats',
+      to: '/reporting/balance-agee',
     },
     {
       label: 'Dettes fournisseurs',
@@ -99,7 +160,7 @@ export default function CockpitPage() {
 
   // Top des encours clients (bar horizontal) — drill-down implicite vers états.
   const topEncours = (d.top_encours_clients || []).map((row) => ({
-    label: row.tiers_id ? `Tiers #${row.tiers_id}` : 'Non affecté',
+    label: resolveTiersLabel(row.tiers_id, tiersById),
     value: Number(row.encours) || 0,
   }))
 
@@ -130,6 +191,36 @@ export default function CockpitPage() {
         loading={loading}
         error={error}
       />
+      {/* VX115 — index de navigation vers les 4 écrans où le comptable externe
+          va chercher son export mensuel (aucune logique d'export dupliquée). */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Où trouver mes exports</CardTitle>
+          <CardDescription>
+            Le handoff mensuel au comptable externe est réparti sur ces écrans.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {EXPORT_DESTINATIONS.map((dest) => {
+              const Icon = dest.icon
+              return (
+                <Link
+                  key={dest.to}
+                  to={dest.to}
+                  className="flex items-start gap-3 rounded-lg border border-border p-3 transition-shadow hover:ring-2 hover:ring-ring/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <Icon className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" />
+                  <span className="flex flex-col">
+                    <span className="font-medium">{dest.label}</span>
+                    <span className="text-sm text-muted-foreground">{dest.hint}</span>
+                  </span>
+                </Link>
+              )
+            })}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }

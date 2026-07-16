@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react'
 import recordsApi from '../api/recordsApi'
 import AssigneePicker from './AssigneePicker'
+import { DatePicker } from '../ui/DatePicker'
+import { today as todayDate } from '../ui/date-utils'
 
 const STATE_DOT = {
   overdue: { c: '#dc2626', t: 'En retard' },
@@ -17,6 +19,38 @@ const todayStr = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
+const isoOf = (d) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+
+// VX210 — options du picker « ⏰ Plus tard » (vocabulaire convergent
+// Outlook/Superhuman/Linear, VX85). `snoozed_until` est une DateField
+// (granularité jour) : « demain » est la plus proche option représentable
+// (un snooze same-day serait immédiatement visible — la file ne masque que
+// tant que `snoozed_until` est STRICTEMENT dans le futur).
+function snoozePresets() {
+  const now = new Date()
+  const demain = new Date(now); demain.setDate(demain.getDate() + 1)
+  const lundi = new Date(now)
+  const delta = (8 - lundi.getDay()) % 7 || 7
+  lundi.setDate(lundi.getDate() + delta)
+  const semaine = new Date(now); semaine.setDate(semaine.getDate() + 7)
+  return [
+    { label: 'Demain', value: isoOf(demain) },
+    { label: 'Lundi', value: isoOf(lundi) },
+    { label: '+1 semaine', value: isoOf(semaine) },
+  ]
+}
+
+// VX174 — la roue native iOS (`<input type="date">`) IGNORE `min` : un
+// technicien pouvait choisir une échéance dans le passé sur iPhone malgré la
+// contrainte métier "pas d'échéance passée". `ui/DatePicker` est borné en JS
+// (isDateDisabled), donc infranchissable sur toute plateforme. Conversion
+// Date <-> "aaaa-mm-jj" (format déjà utilisé par le state/l'API).
+const dateFromYmd = (ymd) => (ymd ? new Date(`${ymd}T00:00:00`) : null)
+const ymdFromDate = (d) => (d
+  ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  : '')
+
 export default function ActivitiesPanel({ model, id, users = [], onChange }) {
   const [types, setTypes] = useState([])
   const [activities, setActivities] = useState([])
@@ -28,10 +62,18 @@ export default function ActivitiesPanel({ model, id, users = [], onChange }) {
   // nouvelle échéance saisie. '' = aucune reprogrammation ouverte.
   const [reschedId, setReschedId] = useState(null)
   const [reschedDate, setReschedDate] = useState('')
+  // VX210 — « ⏰ Plus tard » (snooze actif, distinct de « Reporter » qui
+  // change `due_date`) : id de l'activité dont le picker est ouvert + date
+  // personnalisée saisie.
+  const [snoozeId, setSnoozeId] = useState(null)
+  const [snoozeCustomDate, setSnoozeCustomDate] = useState('')
 
+  // VX204 — un échec de chargement était INDISCERNABLE de « aucune relance
+  // due » (l'état `error` existait déjà mais n'était jamais alimenté ici).
   const load = () => {
     recordsApi.getActivities(model, id)
-      .then(r => setActivities(r.data.results ?? r.data)).catch(() => {})
+      .then(r => { setActivities(r.data.results ?? r.data); setError(null) })
+      .catch(() => setError('Impossible de charger les activités.'))
   }
   useEffect(() => {
     recordsApi.getActivityTypes()
@@ -81,6 +123,31 @@ export default function ActivitiesPanel({ model, id, users = [], onChange }) {
     setError(null)
   }
   const cancelResched = () => { setReschedId(null); setReschedDate('') }
+
+  // VX210 — « ⏰ Plus tard » : pose `snoozed_until` (+ `snooze_trigger_event`
+  // optionnel) SANS jamais toucher `due_date` (distinct de « Reporter »).
+  const openSnooze = (act) => { setSnoozeId(act.id); setSnoozeCustomDate(''); setError(null) }
+  const cancelSnooze = () => { setSnoozeId(null); setSnoozeCustomDate('') }
+  const applySnooze = async (act, date, triggerEvent = '') => {
+    if (!date) return
+    setBusy(true)
+    setError(null)
+    try {
+      await recordsApi.snoozeActivity(act.id, date, triggerEvent)
+      cancelSnooze()
+      load(); onChange?.()
+    } catch {
+      setError('Action impossible — réessayez.')
+    } finally { setBusy(false) }
+  }
+  // VX210(c) — option contextuelle : un lead reçoit « jusqu'à réponse
+  // client » (réveil dès la prochaine LeadActivity entrante, sweep
+  // `reveiller_snoozes`), avec une échéance de secours à +30 j (l'horloge
+  // reprend la main si le client ne répond jamais).
+  const clientReplySnooze = (act) => {
+    const d = new Date(); d.setDate(d.getDate() + 30)
+    applySnooze(act, isoOf(d), `client_reply:${id}`)
+  }
   const saveResched = async (act) => {
     if (!reschedDate) return
     if (reschedDate < todayStr()) {
@@ -122,8 +189,8 @@ export default function ActivitiesPanel({ model, id, users = [], onChange }) {
             </div>
             <div className="form-group">
               <label className="form-label">Échéance</label>
-              <input type="date" className="form-control" min={todayStr()} value={form.due_date}
-                     onChange={e => setForm(f => ({ ...f, due_date: e.target.value }))} />
+              <DatePicker value={dateFromYmd(form.due_date)} min={todayDate()}
+                          onChange={(d) => setForm(f => ({ ...f, due_date: ymdFromDate(d) }))} />
             </div>
             <div className="form-group">
               <label className="form-label">Assigné à</label>
@@ -144,10 +211,15 @@ export default function ActivitiesPanel({ model, id, users = [], onChange }) {
         </div>
       )}
 
-      {error && <p className="form-error" role="alert">{error}</p>}
+      {error && (
+        <p className="form-error" role="alert">
+          {error}{' '}
+          <button type="button" className="chatter-retry" onClick={load}>Réessayer</button>
+        </p>
+      )}
 
       <div className="act-list">
-        {open.length === 0 && done.length === 0 && (
+        {!error && open.length === 0 && done.length === 0 && (
           <p className="gen-hint">Aucune activité planifiée.</p>
         )}
         {open.map(a => {
@@ -166,16 +238,40 @@ export default function ActivitiesPanel({ model, id, users = [], onChange }) {
               <span className="act-actions">
                 {reschedId === a.id ? (
                   <>
-                    <input type="date" className="form-control form-control-sm" min={todayStr()}
-                           value={reschedDate} onChange={e => setReschedDate(e.target.value)} />
+                    <DatePicker value={dateFromYmd(reschedDate)} min={todayDate()}
+                                onChange={(d) => setReschedDate(ymdFromDate(d))} />
                     <button type="button" className="btn btn-sm btn-primary" disabled={busy}
                             onClick={() => saveResched(a)}>{busy ? '…' : 'OK'}</button>
                     <button type="button" className="btn btn-sm btn-outline" onClick={cancelResched}>Annuler</button>
+                  </>
+                ) : snoozeId === a.id ? (
+                  // VX210 — picker « ⏰ Plus tard » : presets + option
+                  // contextuelle « jusqu'à réponse client » sur un lead.
+                  <>
+                    {snoozePresets().map(p => (
+                      <button key={p.value} type="button" className="btn btn-sm btn-outline"
+                              disabled={busy} onClick={() => applySnooze(a, p.value)}>
+                        {p.label}
+                      </button>
+                    ))}
+                    {model === 'crm.lead' && (
+                      <button type="button" className="btn btn-sm btn-outline" disabled={busy}
+                              onClick={() => clientReplySnooze(a)}
+                              title="Revient dès que le client répond, sinon dans 30 j">
+                        Jusqu'à réponse client
+                      </button>
+                    )}
+                    <input type="date" className="form-control form-control-sm" min={todayStr()}
+                           value={snoozeCustomDate} onChange={e => setSnoozeCustomDate(e.target.value)} />
+                    <button type="button" className="btn btn-sm btn-primary" disabled={busy || !snoozeCustomDate}
+                            onClick={() => applySnooze(a, snoozeCustomDate)}>{busy ? '…' : 'OK'}</button>
+                    <button type="button" className="btn btn-sm btn-outline" onClick={cancelSnooze}>Annuler</button>
                   </>
                 ) : (
                   <>
                     <button type="button" className="btn btn-sm btn-outline" onClick={() => markDone(a)}>✓ Fait</button>
                     <button type="button" className="btn btn-sm btn-outline" onClick={() => openResched(a)}>Reporter</button>
+                    <button type="button" className="btn btn-sm btn-outline" onClick={() => openSnooze(a)}>⏰ Plus tard</button>
                     <button type="button" className="btn-icon-danger" title="Supprimer" onClick={() => remove(a)}>✕</button>
                   </>
                 )}

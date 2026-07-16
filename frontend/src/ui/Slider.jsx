@@ -1,8 +1,11 @@
 import { forwardRef } from 'react'
 import * as SliderPrimitive from '@radix-ui/react-slider'
 import { cn } from '../lib/cn'
+import { pressCurve } from './interaction'
 
-/* G25 — Curseur (mono ou multi-poignées), clavier géré par Radix. */
+/* G25 — Curseur (mono ou multi-poignées), clavier géré par Radix.
+   VX126 — le thumb gagne un halo (ring) + léger scale-up au grab (`active:`,
+   réservé au pointeur fin), courbe alignée sur Button via `pressCurve`. */
 export const Slider = forwardRef(function Slider({ className, ...props }, ref) {
   const count = Array.isArray(props.value)
     ? props.value.length
@@ -23,8 +26,10 @@ export const Slider = forwardRef(function Slider({ className, ...props }, ref) {
           key={i}
           className={cn(
             'block size-4 rounded-full border border-primary bg-card shadow-ui-sm',
-            'transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+            'transition-[colors,transform,box-shadow] focus-ring',
+            pressCurve,
             'disabled:pointer-events-none disabled:opacity-50',
+            '[@media(hover:hover)]:active:scale-110 [@media(hover:hover)]:active:ring-4 [@media(hover:hover)]:active:ring-primary/20',
           )}
         />
       ))}

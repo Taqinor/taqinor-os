@@ -4,7 +4,7 @@
 // gate qualité (checklist QC), gamme d'exécution, chatter et bon d'assemblage
 // PDF (worksheet atelier). Aucun coût d'achat / marge n'est affiché ici.
 import { useEffect, useMemo, useState } from 'react'
-import { useSelector } from 'react-redux'
+import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import {
   Plus, Play, CheckCircle2, XCircle, FileText, Printer, RefreshCw, Wrench,
 } from 'lucide-react'
@@ -17,6 +17,9 @@ import {
   DialogFooter, Label, toast,
 } from '../../ui'
 import { formatDate } from '../../lib/format'
+// VX132 — anti-scintillement propagé : Spinner + Skeleton s'affichaient
+// SIMULTANÉMENT (voir InstallationsPage.jsx, déjà migrée).
+import { useDelayedLoading } from '../../hooks/useDelayedLoading'
 
 // Statuts de l'ordre d'assemblage (models_kitting OrdreAssemblage.Statut).
 const STATUT_TONE = {
@@ -602,14 +605,16 @@ function DemontageDetail({ ordre, canWrite, onClose, onChanged }) {
 
 // ── Page ────────────────────────────────────────────────────────────────────
 export default function AteliersPage() {
-  const role = useSelector((s) => s.auth.role)
-  const canWrite = role === 'responsable' || role === 'admin'
+  const canWrite = useIsAdminOrResponsable()
 
   const [mode, setMode] = useState('assemblage')
   const [assemblages, setAssemblages] = useState([])
   const [demontages, setDemontages] = useState([])
   const [kits, setKits] = useState([])
   const [loading, setLoading] = useState(true)
+  // VX132 — rien tant que l'attente reste imperceptible (< 300 ms), puis
+  // spinner discret OU squelette, jamais les deux ensemble.
+  const { showSpinner, showSkeleton } = useDelayedLoading(loading)
   const [error, setError] = useState(null)
   const [statutFilter, setStatutFilter] = useState('')
   const [selected, setSelected] = useState(null)
@@ -723,10 +728,12 @@ export default function AteliersPage() {
         />
       ) : loading ? (
         <div className="flex flex-col gap-2">
-          <p className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Spinner /> Chargement…
-          </p>
-          {Array.from({ length: 5 }).map((unused, i) => (
+          {showSpinner && (
+            <p className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Spinner /> Chargement…
+            </p>
+          )}
+          {showSkeleton && Array.from({ length: 5 }).map((unused, i) => (
             <Skeleton key={i} className="h-10 w-full rounded-lg" />
           ))}
         </div>

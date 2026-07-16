@@ -44,11 +44,30 @@ class TriggerType(models.TextChoices):
         'projet_status_change', 'Changement de statut de projet')
     PROJET_PHASE_CHANGE = (
         'projet_phase_change', 'Changement de phase de projet')
+    # ARC34 — déclencheur GÉNÉRIQUE de changement d'état : « le champ statut de
+    # tel modèle vient de changer ». Les couples (model, field) AUTORISÉS
+    # viennent du REGISTRE plateforme (surface ``automation_state_fields`` des
+    # manifestes ``apps/<x>/platform.py`` — voir
+    # ``record_state_change_targets()`` ci-dessous), validés à la CRÉATION de
+    # la règle (serializer). Ouvre contrats/rh/sav/qhse… à l'automatisation
+    # no-code SANS nouvelle migration du framework par app. Émis DEPUIS les
+    # services des apps propriétaires (jamais leurs modèles) — pilotes ARC34 :
+    # ``apps.contrats.services`` (statut Contrat) et ``apps.sav.services``
+    # (statut Ticket). Les conditions optionnelles du ``trigger_config``
+    # réutilisent l'évaluateur d'arbre FG367 (``core.rules``) — jamais un
+    # nouvel évaluateur. Le catalogue FERMÉ ci-dessus reste INTOUCHÉ, et le
+    # chemin parallèle ``gestion_projet`` (appel direct ``engine.evaluate()``,
+    # XPRJ23 ci-dessus) est CONSERVÉ tel quel.
+    RECORD_STATE_CHANGE = (
+        'record_state_change', "Changement d'état d'un enregistrement")
 
 
 # XPLT3 — whitelist FERMÉE (app_label, model) -> {champ date autorisé: label}
 # pour le déclencheur DATE_ECHEANCE_CHAMP. On ne laisse jamais une règle
 # pointer un modèle/champ arbitraire : seuls ces couples sont évaluables.
+# ARC34 ne la touche PAS : le déclencheur temporel XPLT3 garde son littéral
+# fermé ; seule la whitelist du NOUVEAU déclencheur RECORD_STATE_CHANGE est
+# pilotée par le registre (fonction ci-dessous).
 DATE_TRIGGER_TARGETS = {
     ('ventes', 'devis'): {
         'date_validite': 'Date de validité du devis',
@@ -57,6 +76,36 @@ DATE_TRIGGER_TARGETS = {
         'relance_date': 'Date de relance du lead',
     },
 }
+
+
+def record_state_change_targets(company=None):
+    """ARC34 — whitelist des couples (modèle, champ d'état) automatisables via
+    ``TriggerType.RECORD_STATE_CHANGE``, PILOTÉE PAR LE REGISTRE plateforme.
+
+    Contrairement à ``DATE_TRIGGER_TARGETS`` (littéral fermé ci-dessus,
+    conservé tel quel pour le déclencheur temporel XPLT3), cette whitelist est
+    DÉCLARÉE par les apps propriétaires dans leurs manifestes
+    ``apps/<x>/platform.py`` (surface ``automation_state_fields`` — voir
+    ``core.platform``) : ajouter un couple automatisable = une ligne dans le
+    manifeste de l'app, jamais une migration du framework automation.
+
+    Renvoie ``{'app.model': {champ, ...}}`` (clés minuscules). Résolution à
+    l'APPEL (jamais à l'import de ce module — le registre applicatif n'est pas
+    garanti prêt au chargement) ; gatée ``ModuleToggle`` quand ``company`` est
+    fourni ; robuste au registre indisponible (dict vide, jamais d'exception).
+    """
+    try:
+        from core import platform
+        entries = platform.automation_state_fields(company=company)
+    except Exception:  # pragma: no cover - registre indisponible
+        return {}
+    out = {}
+    for entry in entries:
+        model = (entry.get('model') or '').strip().lower()
+        field = (entry.get('field') or '').strip()
+        if model and field:
+            out.setdefault(model, set()).add(field)
+    return out
 
 
 class ActionType(models.TextChoices):
@@ -603,3 +652,31 @@ class IncomingWebhookTrigger(models.Model):
         self.token = _generate_webhook_token()
         self.save(update_fields=['token', 'date_modification'])
         return self.token
+
+
+class AutomationRunArchive(models.Model):
+    """YOPSB11 — copie FROIDE d'un ``AutomationRun`` archivé.
+
+    Le journal des exécutions (`AutomationRun`) est append-only et grossit sans
+    borne. La politique de rétention YOPSB11 déplace les exécutions anciennes
+    ici (par lots) puis les supprime de la table vive. Schéma miroir SANS index
+    chaud, FK dénormalisées en identifiants entiers (aucune cascade sur
+    l'archive)."""
+
+    original_id = models.BigIntegerField(
+        help_text="PK de l'AutomationRun d'origine (table vive).")
+    company_id = models.BigIntegerField(null=True, blank=True)
+    rule_id = models.BigIntegerField(null=True, blank=True)
+    target_model = models.CharField(max_length=120, blank=True, default='')
+    target_id = models.PositiveIntegerField(null=True, blank=True)
+    status = models.CharField(max_length=20)
+    message = models.TextField(blank=True, default='')
+    timestamp = models.DateTimeField()
+    archived_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Exécution d'automatisation (archive)"
+        verbose_name_plural = "Exécutions d'automatisation (archive)"
+
+    def __str__(self):
+        return f'archive:{self.original_id}'

@@ -30,16 +30,16 @@ class ReceptionNonFacturee(models.Model):
         related_name='installations_receptions_non_facturees')
     # Réception et/ou BCF d'origine (string-FK vers stock, optionnels).
     reception = models.ForeignKey(
-        'stock.ReceptionFournisseur', on_delete=models.SET_NULL,
+        'achats.ReceptionFournisseur', on_delete=models.SET_NULL,
         null=True, blank=True,
         related_name='installations_gr_ir')
     bon_commande = models.ForeignKey(
-        'stock.BonCommandeFournisseur', on_delete=models.SET_NULL,
+        'achats.BonCommandeFournisseur', on_delete=models.SET_NULL,
         null=True, blank=True,
         related_name='installations_gr_ir')
     # Facture fournisseur de lettrage (string-FK), posée à la levée.
     facture = models.ForeignKey(
-        'stock.FactureFournisseur', on_delete=models.SET_NULL,
+        'achats.FactureFournisseur', on_delete=models.SET_NULL,
         null=True, blank=True,
         related_name='installations_gr_ir')
     libelle = models.CharField(max_length=200, blank=True, null=True)

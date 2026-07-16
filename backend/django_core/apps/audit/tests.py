@@ -285,12 +285,15 @@ class TestTrackedModelsCoverage(TestCase):
         from apps.audit.signals import TRACKED_MODELS
         attendus = {
             ('ventes', 'BonCommande'),
-            ('ventes', 'Paiement'),
+            # ODX17 — Paiement déplacé vers ``facturation`` (state-only).
+            ('facturation', 'Paiement'),
             ('sav', 'ContratMaintenance'),
-            ('stock', 'BonCommandeFournisseur'),
-            ('stock', 'ReceptionFournisseur'),
-            ('stock', 'FactureFournisseur'),
-            ('stock', 'PaiementFournisseur'),
+            # ODX19 — chaîne achats fournisseur déplacée de ``stock`` vers
+            # ``achats``.
+            ('achats', 'BonCommandeFournisseur'),
+            ('achats', 'ReceptionFournisseur'),
+            ('achats', 'FactureFournisseur'),
+            ('achats', 'PaiementFournisseur'),
             ('publicapi', 'ApiKey'),
             ('publicapi', 'Webhook'),
         }

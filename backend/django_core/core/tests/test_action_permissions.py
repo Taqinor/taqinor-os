@@ -17,15 +17,29 @@ from core import action_permission_scan
 # Une valeur ne doit JAMAIS être dépassée ; YRBAC3 la fait décroître app par
 # app. Une app absente d'ici doit avoir 0 @action sans garde.
 UNGUARDED_ACTION_BASELINE = {
+    # NTSEC19 — AccessReviewCampaignViewSet/SodRuleViewSet : @action attester/
+    # violations/seed_standard, gardées au niveau CLASSE par IsAdminRole
+    # (Directeur only) + company-scopées. Le scanner ne crédite que les gardes
+    # PAR action (permission_classes=/get_permissions) → dette coarse acceptée.
+    "accessreview": 3,
     "automation": 1,
     "chat": 16,
     # compta 128->212, flotte 38->39, paie 55->70, rh 84->103, +stock/ventes:
     # re-stamped to CURRENT debt after the batch-4 feature drain (the 37
     # XMKT/ZMKT marketing tasks added coarse-guarded @actions to compta's mega-
     # viewsets — company-scoped + zero cross-tenant leaks per the YRBAC12 sweep,
-    # just not FINE-permission-guarded). Follow-up (queued): extend YRBAC3 to
-    # compta/marketing to fine-guard these and DROP this baseline back down.
-    "compta": 212,
+    # just not FINE-permission-guarded).
+    # YRBAC13 — 212->115 : fine-guarded the 10 heaviest offending viewsets
+    # (EtatsComptablesViewSet, RapprochementBancaireViewSet, EffetViewSet,
+    # NoteFraisViewSet, DeclarationTVAViewSet, RetenueSourceViewSet, and the
+    # marketing-in-compta CampagneViewSet/EnqueteViewSet/EvenementMarketing
+    # ViewSet/AbonnementMonitoringViewSet — all re-exported unchanged by
+    # apps/marketing/views.py, ODX10) with per-class get_permissions() reusing
+    # the existing COMPTA40 codes (compta_saisir/compta_valider), purely
+    # additive tightening — zero behaviour change for default roles (Directeur/
+    # Administrateur/Responsable already hold both codes). Remaining 115 =
+    # dette restante, follow-up possible.
+    "compta": 115,
     "contrats": 56,
     "flotte": 39,
     "gestion_projet": 70,
@@ -35,10 +49,15 @@ UNGUARDED_ACTION_BASELINE = {
     "notifications": 4,
     "paie": 70,
     "pos": 5,
-    "publicapi": 5,
+    # NTSEC — ServiceAccountViewSet ajoute 2 @action (rotate/… ) gardées au
+    # niveau CLASSE par _IsAdminRole (5 → 7) ; coarse-guardé, company-scopé.
+    "publicapi": 7,
     "qhse": 65,
     "rh": 103,
-    "roles": 1,
+    # YRBAC10 a gardé la dernière @action roles non gardée (permission-catalog
+    # est admin-only) → dette tombée à 0 ; on resserre le baseline (le cliquet
+    # ne fait que DÉCROÎTRE).
+    "roles": 0,
     "stock": 3,
     "ventes": 1,
 }

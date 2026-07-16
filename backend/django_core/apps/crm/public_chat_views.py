@@ -14,6 +14,8 @@ construction : ce module n'importe aucun modèle produit/prix). Sans clé LLM,
 mode dégradé « capture seule » : message d'absence configurable + le visiteur
 laisse ses coordonnées pour un rappel — jamais d'exception.
 """
+import logging
+
 from django.conf import settings
 from django.utils import timezone
 from rest_framework import status
@@ -27,6 +29,8 @@ from rest_framework.throttling import SimpleRateThrottle
 from authentication.models import Company
 
 from .models import ChatSessionPublique
+
+logger = logging.getLogger(__name__)
 
 #: Message d'absence par défaut affiché en mode dégradé (sans clé LLM).
 DEFAULT_AWAY_MESSAGE = (
@@ -57,11 +61,36 @@ class PublicChatRateThrottle(SimpleRateThrottle):
 
 def _resolve_company():
     """Même résolution serveur que le webhook site (WEBSITE_LEADS_COMPANY_ID,
-    sinon la première Company) — jamais un id venu du corps de requête."""
+    sinon la première Company) — jamais un id venu du corps de requête.
+
+    QXG5 (code guard) : ``WEBSITE_LEADS_COMPANY_ID`` DOIT être posé en prod dès
+    qu'une 2e ``Company`` existe (founder ops check, gated) ; sans elle le
+    repli sur la 1re Company par pk est ARBITRAIRE et peut router
+    silencieusement une session livechat vers le mauvais tenant. On ne casse
+    jamais l'endpoint public (le repli reste "safe"), mais on lève un
+    ``logger.error`` LOUD dès que la config est ambiguë, pour rendre un défaut
+    de configuration prod visible plutôt que silencieux."""
     company_id = getattr(settings, 'WEBSITE_LEADS_COMPANY_ID', None)
     if company_id:
-        return Company.objects.filter(pk=company_id).first()
-    return Company.objects.order_by('pk').first()
+        company = Company.objects.filter(pk=company_id).first()
+        if company is None:
+            logger.error(
+                "_resolve_company: WEBSITE_LEADS_COMPANY_ID=%r ne correspond "
+                "à aucune Company — vérifier la configuration prod.",
+                company_id,
+            )
+        return company
+    total = Company.objects.count()
+    fallback = Company.objects.order_by('pk').first()
+    if total > 1:
+        logger.error(
+            "_resolve_company: WEBSITE_LEADS_COMPANY_ID n'est pas configuré "
+            "et %d Company existent — repli ARBITRAIRE sur la 1re (pk=%s). "
+            "Risque de routage silencieux vers le mauvais tenant : poser "
+            "WEBSITE_LEADS_COMPANY_ID en prod (QXG5).",
+            total, getattr(fallback, 'pk', None),
+        )
+    return fallback
 
 
 def _append_transcript(session, auteur, texte):

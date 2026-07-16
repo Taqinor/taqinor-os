@@ -13,3 +13,8 @@ class MonitoringConfig(AppConfig):
         'description': 'Supervision de la production installée.',
         'categorie': 'Services',
     }
+
+    def ready(self):
+        # ARC36 — abonne l'arrêt de supervision automatique à l'événement
+        # abonnement_monitoring_resilie (core.events, M6).
+        from . import receivers  # noqa: F401

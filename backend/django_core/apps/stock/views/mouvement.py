@@ -1,10 +1,10 @@
 from django.db import transaction  # noqa: F401
 from django.db.models import ProtectedError, Count, Min, Max  # noqa: F401
 from django.http import HttpResponse  # noqa: F401
-from rest_framework import viewsets, filters, status  # noqa: F401
+from rest_framework import filters, status  # noqa: F401
 from rest_framework.decorators import action  # noqa: F401
 from rest_framework.response import Response  # noqa: F401
-from authentication.mixins import TenantMixin  # noqa: F401
+from core.viewsets import CompanyScopedModelViewSet  # noqa: F401
 from apps.ventes.utils.references import create_with_reference  # noqa: F401
 from ..models import (  # noqa: F401
     Produit, Categorie, Fournisseur, MouvementStock, Marque,
@@ -42,7 +42,12 @@ WRITE_ACTIONS = ['create', 'update', 'partial_update']
 # package __init__ ré-exporte toutes les vues publiques.
 
 
-class MouvementStockViewSet(viewsets.ModelViewSet):
+class MouvementStockViewSet(CompanyScopedModelViewSet):
+    # ARC4 — sweep : base transverse unique (TenantMixin + ModelViewSet, via
+    # CompanyScopedModelViewSet). get_queryset AJOUTE le garde-fou
+    # produit__company (belt-and-braces contre une référence produit
+    # inter-société) par-dessus le scoping société de la base — comportement
+    # inchangé.
     queryset = MouvementStock.objects.select_related(
         'produit', 'created_by'
     ).all()
@@ -64,13 +69,10 @@ class MouvementStockViewSet(viewsets.ModelViewSet):
         qs = super().get_queryset()
         user = self.request.user
         if user.company_id:
-            # Direct company filter + produit__company belt-and-braces guard
-            # against cross-tenant produit references slipping in.
-            qs = qs.filter(company=user.company, produit__company=user.company)
-        elif user.is_superuser:
-            pass
-        else:
-            return qs.none()
+            # produit__company belt-and-braces guard against cross-tenant
+            # produit references slipping in (company= is already applied by
+            # the base — this narrows further, never re-widens).
+            qs = qs.filter(produit__company=user.company)
         # FG60 — Filtres supplémentaires
         params = self.request.query_params
         type_mv = params.get('type_mouvement')

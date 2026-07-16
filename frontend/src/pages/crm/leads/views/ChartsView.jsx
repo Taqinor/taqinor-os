@@ -21,8 +21,10 @@ import {
   Card, CardHeader, CardTitle, CardDescription, CardContent, EmptyState, Button,
 } from '../../../../ui'
 
-const NAVY = '#0b1f3a'
-const GOLD = '#f5a623'
+// VX26 — navy/or dérivés des tokens de marque unifiés (VX1, tokens.css)
+// plutôt que du hex local recharts.
+const NAVY = 'var(--cat-navy)'
+const GOLD = 'var(--cat-gold)'
 const MOBILE_QUERY = '(max-width: 768px)'
 
 // Vrai sous 768px — pour incliner les libellés d'axe sur mobile.
@@ -106,9 +108,12 @@ export default function ChartsView({
     // Distingue « aucun lead du tout » de « aucun résultat pour ces filtres ».
     const aucunDuTout = totalLeads != null && totalLeads === 0
     if (aucunDuTout) {
+      // VX40 — pictogramme solaire illustré (l'un des 4-5 écrans les plus
+      // vus) : réservé au vrai « aucun lead du tout », jamais au cas
+      // « filtres sans résultat » ci-dessous (routine, pas de délice).
       return (
         <EmptyState
-          icon={BarChart3}
+          illustrated
           title="Aucune donnée à représenter"
           description="Aucun lead — créez votre premier lead"
         />
@@ -138,7 +143,7 @@ export default function ChartsView({
   return (
     <>
     <div className="ch-grid">
-      <Card className="ch-card">
+      <Card className="ch-card ch-card-wide">
         <CardHeader>
           <CardTitle>Leads par étape</CardTitle>
           {totalDevis > 0 && (

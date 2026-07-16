@@ -28,6 +28,7 @@ const config = {
   order: 51,
   nav: {
     label: 'MAGASIN',
+    accent: 'success', // VX8 — terrain/opérations = accent success (dérivé)
     items: [
       { to: '/magasin', label: 'Cockpit', icon: <Warehouse size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/magasin/casiers', label: 'Casiers', icon: <MapPin size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },

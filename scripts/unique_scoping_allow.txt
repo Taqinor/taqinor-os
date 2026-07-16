@@ -1,0 +1,13 @@
+# YDATA18 — unique-scoping allowlist (existing, human-reviewed sites).
+# One key per line. check_unique_scoping.py fails on any NEW finding not here.
+#
+# (a) business unique=True fields judged legitimately global for now:
+backend/django_core/apps/compta/models.py::Immobilisation.piece_origine_ligne_facture_fournisseur_id
+backend/django_core/apps/crm/models.py::Client.code_parrainage
+#
+# (b) KNOWN GAP to fix in a targeted crm task (out of this DB-free core lane):
+#     crm.Lead inherits SoftDeleteModel but its (company, external_system,
+#     external_id) UniqueConstraint has no condition=Q(is_deleted=False) — a
+#     re-imported lead whose predecessor was soft-deleted will collide. The
+#     fix is a crm model + partial-index migration (needs DB verification).
+backend/django_core/apps/crm/models.py::Lead(company,external_system,external_id)

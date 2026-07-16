@@ -6,6 +6,7 @@ from authentication.mixins import TenantMixin  # noqa: F401
 from authentication.permissions import (  # noqa: F401
     IsAnyRole, IsResponsableOrAdmin, IsAdminRole,
 )
+from core.viewsets import CompanyScopedModelViewSet
 from django.utils import timezone  # noqa: F401
 
 from .. import activity  # noqa: F401
@@ -107,7 +108,7 @@ def seed_types_intervention(company):
 # package __init__ ré-exporte toutes les vues publiques.
 
 
-class TypeInterventionViewSet(TenantMixin, viewsets.ModelViewSet):
+class TypeInterventionViewSet(CompanyScopedModelViewSet):
     """Types d'intervention gérés (Paramètres → Chantiers). Lecture tout rôle,
     écriture admin. Un type protégé ou utilisé ne peut pas être supprimé."""
     queryset = TypeIntervention.objects.all()

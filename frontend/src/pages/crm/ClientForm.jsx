@@ -1,15 +1,20 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch } from 'react-redux'
 import { createClient, updateClient } from '../../features/crm/store/crmSlice'
 import {
   Form, FormSection, FormField, FormErrorSummary,
-  Input, Textarea, Segmented, Button, useDirtyGuard,
+  Input, Textarea, Segmented, Button, Switch,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
+import { useFormSafety } from '../../ui/useFormSafety'
+import { useServerFieldErrors } from '../../hooks/useServerFieldErrors'
 import { Combobox } from '../../ui/Combobox'
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
+import ExternalLink from '../../ui/ExternalLink'
 import { toast } from '../../ui/confirm'
-import { canonicalPhoneMA } from '../../lib/format'
+import { usePasteClean, parsePastedPhone } from '../../hooks/usePasteClean'
+import { useDuplicateCheck } from '../../hooks/useDuplicateCheck'
+import PhoneHint from '../../components/PhoneHint'
 import AttachmentsPanel from '../../components/AttachmentsPanel'
 import crmApi from '../../api/crmApi'
 import ventesApi from '../../api/ventesApi'
@@ -50,13 +55,40 @@ function cinWarning(value) {
     : 'Le format CIN paraît inhabituel — vérifiez la saisie.'
 }
 
+// VX92 — « Créer un autre » : persisté par utilisateur/poste (localStorage),
+// défaut OFF (comportement historique inchangé). Un salon = 10 leads/clients
+// créés d'affilée ; sans ce toggle chaque création coûte un cycle
+// fermer/rouvrir (~10-30 s).
+const CREER_UN_AUTRE_KEY = 'taqinor.clientForm.creerUnAutre'
+function lireCreerUnAutre() {
+  try {
+    return window.localStorage.getItem(CREER_UN_AUTRE_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+function ecrireCreerUnAutre(v) {
+  try {
+    window.localStorage.setItem(CREER_UN_AUTRE_KEY, v ? '1' : '0')
+  } catch {
+    // localStorage indisponible (navigation privée, quota) : no-op silencieux.
+  }
+}
+
 export default function ClientForm({ client = null, onClose }) {
   const dispatch = useDispatch()
   const t = useT()
   const isEdit = !!client
 
   const [saving, setSaving] = useState(false)
-  const [errors, setErrors] = useState({})
+  // VX171 — vérité serveur → champ ; le rouge s'efface à la frappe (clearField
+  // dans setField), jamais seulement au prochain submit.
+  const { errors, setErrors, setFromResponse, clearField } = useServerFieldErrors()
+
+  // VX92 — « Créer un autre » : uniquement pertinent à la création (jamais en
+  // édition), persisté (localStorage), défaut OFF.
+  const [creerUnAutre, setCreerUnAutre] = useState(() => !isEdit && lireCreerUnAutre())
+  const nomRef = useRef(null)
 
   const initial = useMemo(() => ({
     nom:         client?.nom         ?? '',
@@ -91,14 +123,16 @@ export default function ClientForm({ client = null, onClose }) {
     }).catch(() => {})
   }, [])
 
-  // Forme marocaine normalisée du téléphone (aperçu uniquement — on stocke
-  // toujours la valeur tapée). Masquée si elle est identique à la saisie.
-  const phoneHint = useMemo(() => {
-    const typed = fields.telephone.trim()
-    if (!typed) return ''
-    const canon = canonicalPhoneMA(typed)
-    return canon && canon !== typed ? canon : ''
-  }, [fields.telephone])
+  // VX239 — <PhoneHint> extrait (aperçu de la forme normalisée uniquement —
+  // on stocke toujours la valeur tapée).
+
+  // VX239 — avertissement doublon EN DIRECT (non bloquant), extrait de
+  // LeadForm : réutilise le même `crmApi.checkDuplicates` (recherche parmi
+  // les leads de la société — la plupart des clients en proviennent). Jamais
+  // d'`exclude` ici : l'id d'un Client n'a aucune correspondance dans la
+  // table Lead, contrairement à LeadForm qui exclut le lead en cours
+  // d'édition de ses PROPRES doublons.
+  const dupMatches = useDuplicateCheck(fields.telephone, fields.email)
 
   // Avertissements NON bloquants sur les identifiants (jamais d'erreur de
   // soumission — purement informatif).
@@ -109,31 +143,38 @@ export default function ClientForm({ client = null, onClose }) {
     cin: isEntreprise ? null : cinWarning(fields.cin),
   }), [isEntreprise, fields.ice, fields.if_fiscal, fields.rc, fields.cin])
 
-  // Garde « modifications non enregistrées » (sortie navigateur).
-  const dirty = useMemo(
-    () => Object.keys(initial).some((k) => fields[k] !== initial[k]),
-    [initial, fields],
-  )
-  useDirtyGuard(dirty)
+  // VX170 — garde de formulaire (tab-close + fermeture volontaire) composée
+  // par la primitive commune (remplace le snapshot + useDirtyGuard maison).
+  const { guardedClose } = useFormSafety(initial, fields, onClose)
 
-  const setField = (k, v) => setFields((f) => {
-    const next = { ...f, [k]: v }
-    // À la CRÉATION uniquement : la première fois qu'un identifiant entreprise
-    // (ICE / IF / RC) est renseigné, basculer le type vers « Entreprise » —
-    // parité avec le défaut en édition. On NE force jamais si un choix manuel
-    // a déjà été fait (type déjà « entreprise » → no-op ; un retour manuel à
-    // « particulier » est respecté car ce bloc ne se déclenche que sur la
-    // saisie d'un identifiant, pas sur le changement de type).
-    if (
-      !isEdit
-      && (k === 'ice' || k === 'if_fiscal' || k === 'rc')
-      && String(v ?? '').trim() !== ''
-      && f.type_client !== 'entreprise'
-    ) {
-      next.type_client = 'entreprise'
-    }
-    return next
-  })
+  // VX171 — le rouge ne doit jamais mentir pendant que l'utilisateur corrige :
+  // nettoyé AVANT le prochain submit, dès la frappe (hors du setState de
+  // `fields`, jamais d'effet de bord dans un updater React).
+  const setField = (k, v) => {
+    clearField(k)
+    setFields((f) => {
+      const next = { ...f, [k]: v }
+      // À la CRÉATION uniquement : la première fois qu'un identifiant entreprise
+      // (ICE / IF / RC) est renseigné, basculer le type vers « Entreprise » —
+      // parité avec le défaut en édition. On NE force jamais si un choix manuel
+      // a déjà été fait (type déjà « entreprise » → no-op ; un retour manuel à
+      // « particulier » est respecté car ce bloc ne se déclenche que sur la
+      // saisie d'un identifiant, pas sur le changement de type).
+      if (
+        !isEdit
+        && (k === 'ice' || k === 'if_fiscal' || k === 'rc')
+        && String(v ?? '').trim() !== ''
+        && f.type_client !== 'entreprise'
+      ) {
+        next.type_client = 'entreprise'
+      }
+      return next
+    })
+  }
+
+  // VX237 — collage téléphone/WhatsApp nettoyé vers la forme canonique de
+  // stockage (espaces/points/tirets tolérés) au lieu de tomber brut.
+  const onTelephonePaste = usePasteClean(parsePastedPhone, (clean) => setField('telephone', clean))
 
   // QC1 — autocomplete entreprise (données propres). Avertissement de doublon
   // non bloquant quand on choisit un CLIENT existant (au lieu de recréer).
@@ -208,20 +249,24 @@ export default function ClientForm({ client = null, onClose }) {
       if (isEdit) {
         await dispatch(updateClient({ id: client.id, data: payload })).unwrap()
         toast.success('Client mis à jour.')
+        onClose()
       } else {
         await dispatch(createClient(payload)).unwrap()
         toast.success('Client créé.')
+        // VX92 — « Créer un autre » : on vide le formulaire et on refocalise
+        // le champ 1 au lieu de fermer le dialog.
+        if (creerUnAutre) {
+          setFields(initial)
+          setErrors({})
+          setDupWarning(null)
+          nomRef.current?.focus()
+        } else {
+          onClose()
+        }
       }
-      onClose()
     } catch (err) {
-      // Map DRF field errors back to form fields
-      const e = {}
-      if (err?.email)  e.email  = Array.isArray(err.email)  ? err.email[0]  : err.email
-      if (err?.nom)    e.nom    = Array.isArray(err.nom)    ? err.nom[0]    : err.nom
-      if (!e.email && !e.nom) {
-        e.submit = err?.detail ?? JSON.stringify(err)
-      }
-      setErrors(e)
+      // VX171 — mapping DRF générique (detail / {champ:[…]} / array).
+      setFromResponse(err)
     } finally {
       setSaving(false)
     }
@@ -237,7 +282,7 @@ export default function ClientForm({ client = null, onClose }) {
   return (
     <ResponsiveDialog
       open
-      onOpenChange={(o) => { if (!o) onClose() }}
+      onOpenChange={(o) => { if (!o) guardedClose() }}
       title={isEdit ? 'Éditer le client' : 'Nouveau client'}
       className="sm:max-w-lg"
     >
@@ -274,6 +319,7 @@ export default function ClientForm({ client = null, onClose }) {
               <FormField label="Nom" required htmlFor="cf-nom" error={errors.nom}>
                 <Input
                   id="cf-nom"
+                  ref={nomRef}
                   value={fields.nom}
                   invalid={!!errors.nom}
                   onChange={e => setField('nom', e.target.value)}
@@ -285,11 +331,11 @@ export default function ClientForm({ client = null, onClose }) {
                 {isEntreprise && fields.nom.trim() && (
                   <p className="mt-1 text-xs text-muted-foreground">
                     Vérifier :{' '}
-                    <a href={verifierIceUrl(fields.nom)} target="_blank" rel="noreferrer"
-                       className="underline hover:text-foreground">registre ICE</a>
+                    <ExternalLink href={verifierIceUrl(fields.nom)}
+                       className="underline hover:text-foreground">registre ICE</ExternalLink>
                     {' · '}
-                    <a href={verifierOmpicUrl(fields.nom)} target="_blank" rel="noreferrer"
-                       className="underline hover:text-foreground">OMPIC</a>
+                    <ExternalLink href={verifierOmpicUrl(fields.nom)}
+                       className="underline hover:text-foreground">OMPIC</ExternalLink>
                   </p>
                 )}
               </FormField>
@@ -320,16 +366,29 @@ export default function ClientForm({ client = null, onClose }) {
                   type="tel"
                   value={fields.telephone}
                   onChange={e => setField('telephone', e.target.value)}
+                  onPaste={onTelephonePaste}
                   placeholder="+212 6 XX XX XX XX"
                 />
-                {/* Aperçu de la forme normalisée (stockée telle que tapée) —
-                    aide visuelle uniquement, ne modifie jamais la valeur. */}
-                {phoneHint && (
-                  <p className="form-hint" data-testid="cf-tel-hint">
-                    Forme normalisée : {phoneHint}
-                  </p>
-                )}
+                {/* VX239 — <PhoneHint> extrait (aperçu de la forme normalisée,
+                    stockée telle que tapée — aide visuelle uniquement). */}
+                <PhoneHint value={fields.telephone} testId="cf-tel-hint" />
               </FormField>
+              {/* VX239 — avertissement doublon EN DIRECT, jusqu'ici réservé à
+                  LeadForm : un contact déjà connu (comme lead) avant même de
+                  soumettre la création du client. */}
+              {dupMatches.length > 0 && (
+                <p className="-mt-2 text-xs text-warning" role="status">
+                  ⚠️ Un contact avec ce téléphone/email existe déjà
+                  {dupMatches.length > 1 ? ` (${dupMatches.length})` : ''} :{' '}
+                  {dupMatches.slice(0, 3).map((d, i) => (
+                    <span key={d.id}>
+                      {i > 0 && ', '}
+                      {`${d.nom} ${d.prenom || ''}`.trim() || `#${d.id}`}
+                    </span>
+                  ))}
+                  {dupMatches.length > 3 && '…'}
+                </p>
+              )}
             </FormSection>
 
             <FormSection title="Type & identifiants">
@@ -498,7 +557,18 @@ export default function ClientForm({ client = null, onClose }) {
         </div>
 
         <div className="modal-footer">
-          <Button type="button" variant="outline" onClick={onClose}>
+          {/* VX92 — « Créer un autre » : seulement à la création. */}
+          {!isEdit && (
+            <label className="mr-auto flex items-center gap-2 text-sm text-muted-foreground">
+              <Switch
+                checked={creerUnAutre}
+                onCheckedChange={(v) => { setCreerUnAutre(v); ecrireCreerUnAutre(v) }}
+                aria-label="Créer un autre"
+              />
+              Créer un autre
+            </label>
+          )}
+          <Button type="button" variant="outline" onClick={guardedClose}>
             Annuler
           </Button>
           <Button type="submit" loading={saving} disabled={saving}>

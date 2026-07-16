@@ -14,6 +14,7 @@ l'en-tête ``X-Webhook-Secret``. Principes :
    s'il arrive quand même : accepté et étiqueté, jamais rejeté.
 """
 
+import hashlib
 import hmac
 import json
 import logging
@@ -26,6 +27,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST, require_http_methods
 
 from authentication.models import Company
+from core.idempotency import dedupe_event
 
 from .models import Lead, LeadActivity, WebsiteLeadPayload
 
@@ -84,10 +86,37 @@ def _secret_ok(request) -> bool:
 
 
 def _resolve_company():
+    """Résolution serveur du tenant pour ce webhook public (jamais reçue du
+    corps de requête). ``WEBSITE_LEADS_COMPANY_ID`` DOIT être posé en prod dès
+    qu'une 2e ``Company`` existe (QXG5, gated ops check) : sans elle, le repli
+    ci-dessous (1re Company par pk) est ARBITRAIRE et peut router
+    silencieusement un lead vers le mauvais tenant.
+
+    QXG5 (code guard) : on ne casse jamais l'endpoint (le repli reste "safe",
+    jamais bloquant — « jamais perdre un lead »), mais on lève un
+    ``logger.error`` LOUD dès que la config est ambiguë, pour qu'un défaut de
+    configuration prod soit visible (logs/alerting) plutôt que silencieux."""
     company_id = getattr(settings, 'WEBSITE_LEADS_COMPANY_ID', None)
     if company_id:
-        return Company.objects.filter(pk=company_id).first()
-    return Company.objects.order_by('pk').first()
+        company = Company.objects.filter(pk=company_id).first()
+        if company is None:
+            logger.error(
+                "_resolve_company: WEBSITE_LEADS_COMPANY_ID=%r ne correspond "
+                "à aucune Company — vérifier la configuration prod.",
+                company_id,
+            )
+        return company
+    total = Company.objects.count()
+    fallback = Company.objects.order_by('pk').first()
+    if total > 1:
+        logger.error(
+            "_resolve_company: WEBSITE_LEADS_COMPANY_ID n'est pas configuré "
+            "et %d Company existent — repli ARBITRAIRE sur la 1re (pk=%s). "
+            "Risque de routage silencieux vers le mauvais tenant : poser "
+            "WEBSITE_LEADS_COMPANY_ID en prod (QXG5).",
+            total, getattr(fallback, 'pk', None),
+        )
+    return fallback
 
 
 def _clean_roof_point(raw):
@@ -433,6 +462,10 @@ def _map_payload_to_fields(data: dict) -> dict:
         Lead.ContactPreference.values)
     if contact_preference is not None:
         fields['contact_preference'] = contact_preference
+        # QX15 — horodate la POSE de la préférence (distinct de
+        # date_creation) : le SLA rappel doit mesurer depuis ce moment, pas
+        # depuis la création du lead (couche 2 dédup — visiteur revenant).
+        fields['contact_preference_set_at'] = timezone.now()
 
     if fields['whatsapp_opt_in'] and fields['telephone']:
         fields['whatsapp'] = fields['telephone']
@@ -440,6 +473,205 @@ def _map_payload_to_fields(data: dict) -> dict:
     if data.get('qualified') is False:
         fields['tags'] = 'Sous le seuil 1 000 MAD'
     return fields
+
+
+def _map_and_link_lead(raw, data, company):
+    """QX16 — Cœur du mapping payload → Lead (création/mise à jour, dédup,
+    tous les effets de bord best-effort), factorisé hors de la vue pour être
+    réutilisable par le REJEU (``replay_website_lead_payload``) sans dupliquer
+    la logique. Persiste ``raw.lead``/``raw.processed`` et renvoie
+    ``(lead, created, detail)``. Laisse toute exception se propager — les
+    appelants (vue webhook, action replay) décident comment la consigner sur
+    ``raw.error``."""
+    fields = _map_payload_to_fields(data)
+    telephone = fields.get('telephone') or ''
+    email = fields.get('email') or ''
+
+    # QW10 — Garde CONCURRENTE via `idempotencyKey` (lib/lead.ts — jeton
+    # généré côté navigateur à l'ouverture de la session de saisie).
+    # `cache.add` est atomique : deux POSTs simultanés avec la MÊME clé ne
+    # peuvent jamais tous les deux se croire « premiers » — la requête
+    # PERDANTE attend brièvement que la gagnante commite son lead, puis
+    # rejoint la dédup téléphone/email normale ci-dessous (jamais de
+    # logique de fusion dupliquée). Best-effort : sans clé (anciens
+    # workers) ou cache indisponible, comportement inchangé (couches 1/2
+    # restent la seule protection).
+    idempotency_key = str(
+        data.get('idempotencyKey') or data.get('idempotency_key') or ''
+    ).strip()[:64]
+    if idempotency_key:
+        try:
+            import time as _time
+
+            from django.core.cache import cache
+            cache_key = f'qw10-idem:{company.pk}:{idempotency_key}'
+            won = cache.add(cache_key, True, DEDUP_WINDOW_SECONDS)
+            if not won:
+                # Perdant de la course : laisse une chance à la requête
+                # gagnante de commiter avant la recherche de doublon
+                # ci-dessous (best-effort, jamais un blocage long).
+                _time.sleep(0.15)
+        except Exception:  # noqa: BLE001 — cache indisponible : no-op
+            pass
+
+    existing = None
+    is_window_dedup = False
+    # ── Couche 1 : dédup < 60 s (double-clic / relance réseau) ────────────
+    if telephone:
+        window_start = timezone.now() - timezone.timedelta(seconds=DEDUP_WINDOW_SECONDS)
+        existing = (
+            Lead.objects
+            .filter(company=company, telephone=telephone,
+                    source=Lead.Source.SITE_WEB,
+                    date_creation__gte=window_start)
+            .order_by('-date_creation')
+            .first()
+        )
+        if existing is not None:
+            is_window_dedup = True
+
+    # ── Couche 2 (QJ8) : dédup visiteur revenant — téléphone OU email ─────
+    # Si la fenêtre courte n'a rien trouvé, on cherche un lead existant dans
+    # la MÊME société par téléphone ou email normalisé (sans limite de temps).
+    # Préserve l'attribution first-touch (UTM/fbclid) : jamais écrasée.
+    # Périmètre : uniquement `company` — jamais de fusion cross-company.
+    # Les leads sans téléphone dédupliquent par email.
+    if existing is None:
+        from .services import find_duplicates_by_contact
+        dupes = find_duplicates_by_contact(
+            company, phone=telephone or None, email=email or None)
+        # Prend le lead le plus récent (find_duplicates_by_contact retourne
+        # une liste non ordonnée — on trie par date_creation desc).
+        if dupes:
+            dupes_sorted = sorted(
+                dupes, key=lambda lead_: lead_.date_creation, reverse=True)
+            existing = dupes_sorted[0]
+
+    if existing:
+        # Re-POST ou visiteur revenant : on COMPLÈTE sans jamais écraser une
+        # donnée déjà captée. Un second payload plus pauvre (champ absent →
+        # None/'') ne doit pas annuler ce que le premier a rempli. On
+        # n'écrit donc que les valeurs réellement renseignées.
+        # Attribution first-touch (UTM/fbclid) : préservée sur visiteur revenant.
+        for key, value in fields.items():
+            if value is None or value == '':
+                continue
+            # Sur un visiteur revenant (couche 2), l'attribution first-touch
+            # du lead existant prime sur celle du nouveau payload.
+            if (not is_window_dedup
+                    and key in _FIRST_TOUCH_FIELDS
+                    and getattr(existing, key, None)):
+                continue
+            setattr(existing, key, value)
+        existing.save()
+        lead, created = existing, False
+        # Trace la mise à jour dans le chatter.
+        if is_window_dedup:
+            chatter_body = 'Mis à jour via le site web (doublon < 1 min)'
+        else:
+            chatter_body = 'Visiteur revenant : lead existant mis à jour via le site web'
+        LeadActivity.objects.create(
+            company=lead.company, lead=lead, user=None,
+            kind=LeadActivity.Kind.NOTE,
+            body=chatter_body,
+        )
+        # YLEAD11 — une nouvelle touche sur un lead PERDU/COLD le
+        # réactive (lève perdu, repositionne NEW/CONTACTED avance-seul).
+        try:
+            from .services import reactivate_lead_on_new_touch
+            reactivate_lead_on_new_touch(lead, source='site web')
+        except Exception as _exc:  # noqa: BLE001 — best-effort
+            logger.warning(
+                'website_lead_webhook: réactivation échouée (lead #%s) : %s',
+                lead.pk, _exc)
+        # QX14 — TOUS les autres chemins de création/mise à jour de lead
+        # persistent le score via recompute_lead_score (views.py 561/574,
+        # services.py 1088/1366/1429/2782) SAUF ce webhook — le score
+        # jamais persisté casse silencieusement `?ordering=-score` et
+        # `maybe_assign_mql` (XMKT21) pour la source #1 (site web).
+        # Best-effort, même patron que les blocs ci-dessus.
+        try:
+            from .services import recompute_lead_score
+            recompute_lead_score(lead)
+        except Exception as _exc:  # noqa: BLE001 — best-effort
+            logger.warning(
+                'website_lead_webhook: recompute_lead_score échoué '
+                '(lead #%s) : %s', lead.pk, _exc)
+    else:
+        # Responsable par défaut de la société (Paramètres) si configuré.
+        from .services import default_responsable_for
+        fields.setdefault('owner', default_responsable_for(company))
+        lead = Lead.objects.create(company=company, **fields)
+        created = True
+        LeadActivity.objects.create(
+            company=lead.company, lead=lead, user=None,
+            kind=LeadActivity.Kind.CREATION,
+            body='Lead créé via le site web',
+        )
+        # QJ2 (a) — speed-to-lead : notifie le owner dès la création.
+        try:
+            from .services import notify_new_lead
+            notify_new_lead(lead)
+        except Exception as _exc:  # noqa: BLE001 — best-effort, jamais bloquant
+            logger.warning(
+                'website_lead_webhook: notify_new_lead échoué (lead #%s) : %s',
+                lead.pk, _exc)
+        # QX14 — même correctif côté création (voir commentaire ci-dessus,
+        # branche mise à jour) : persiste le score dès la première visite.
+        try:
+            from .services import recompute_lead_score
+            recompute_lead_score(lead)
+        except Exception as _exc:  # noqa: BLE001 — best-effort
+            logger.warning(
+                'website_lead_webhook: recompute_lead_score échoué '
+                '(lead #%s) : %s', lead.pk, _exc)
+
+    # QK6 — photo de facture/compteur/toiture jointe à la capture :
+    # attachée au lead (+ OCR si configuré), best-effort — une photo
+    # invalide ou un stockage en panne ne remet JAMAIS le lead en cause.
+    try:
+        from .intake_photo import attach_capture_photo
+        attach_capture_photo(lead, data)
+    except Exception as _exc:  # noqa: BLE001 — le lead prime sur la photo
+        logger.warning(
+            'website_lead_webhook: photo non jointe (lead #%s) : %s',
+            lead.pk, _exc)
+
+    # QW4 — rappel demandé (contact_preference=phone_ok) : notification
+    # DISTINCTE et plus urgente qu'un lead générique, sur création ET
+    # mise à jour (un visiteur revenant peut poser sa préférence après
+    # coup). Idempotent (marqueur chatter) — jamais best-effort bloquant.
+    try:
+        from .services import notify_lead_callback_requested
+        notify_lead_callback_requested(lead)
+    except Exception as _exc:  # noqa: BLE001 — best-effort
+        logger.warning(
+            'website_lead_webhook: notify_lead_callback_requested échoué '
+            '(lead #%s) : %s', lead.pk, _exc)
+
+    # QX35 — lien de parrainage (`utm_source=parrainage`, le code du
+    # parrain porté par `utm_campaign` — voir parrainage.astro) : crée
+    # un Parrainage `en_attente` rattaché au filleul + notifie les
+    # managers. Idempotent (un seul Parrainage par filleul_lead) —
+    # best-effort, jamais bloquant pour la capture du lead.
+    try:
+        from .services import handle_parrainage_signup
+        handle_parrainage_signup(lead)
+    except Exception as _exc:  # noqa: BLE001 — best-effort
+        logger.warning(
+            'website_lead_webhook: handle_parrainage_signup échoué '
+            '(lead #%s) : %s', lead.pk, _exc)
+
+    raw.lead = lead
+    raw.processed = True
+    raw.save(update_fields=['lead', 'processed'])
+    if created:
+        detail = 'Lead créé.'
+    elif is_window_dedup:
+        detail = 'Lead mis à jour (doublon < 1 min).'
+    else:
+        detail = 'Lead existant mis à jour (visiteur revenant).'
+    return lead, created, detail
 
 
 @csrf_exempt
@@ -511,160 +743,28 @@ def website_lead_webhook(request):
             {'detail': 'Événement enregistré (sans mutation de lead).',
              'payload_id': raw.pk}, status=200)
 
-    try:
-        fields = _map_payload_to_fields(data)
-        telephone = fields.get('telephone') or ''
-        email = fields.get('email') or ''
-
-        # QW10 — Garde CONCURRENTE via `idempotencyKey` (lib/lead.ts — jeton
-        # généré côté navigateur à l'ouverture de la session de saisie).
-        # `cache.add` est atomique : deux POSTs simultanés avec la MÊME clé ne
-        # peuvent jamais tous les deux se croire « premiers » — la requête
-        # PERDANTE attend brièvement que la gagnante commite son lead, puis
-        # rejoint la dédup téléphone/email normale ci-dessous (jamais de
-        # logique de fusion dupliquée). Best-effort : sans clé (anciens
-        # workers) ou cache indisponible, comportement inchangé (couches 1/2
-        # restent la seule protection).
-        idempotency_key = str(
-            data.get('idempotencyKey') or data.get('idempotency_key') or ''
-        ).strip()[:64]
-        if idempotency_key:
-            try:
-                import time as _time
-
-                from django.core.cache import cache
-                cache_key = f'qw10-idem:{company.pk}:{idempotency_key}'
-                won = cache.add(cache_key, True, DEDUP_WINDOW_SECONDS)
-                if not won:
-                    # Perdant de la course : laisse une chance à la requête
-                    # gagnante de commiter avant la recherche de doublon
-                    # ci-dessous (best-effort, jamais un blocage long).
-                    _time.sleep(0.15)
-            except Exception:  # noqa: BLE001 — cache indisponible : no-op
-                pass
-
-        existing = None
-        is_window_dedup = False
-        # ── Couche 1 : dédup < 60 s (double-clic / relance réseau) ────────────
-        if telephone:
-            window_start = timezone.now() - timezone.timedelta(seconds=DEDUP_WINDOW_SECONDS)
-            existing = (
-                Lead.objects
-                .filter(company=company, telephone=telephone,
-                        source=Lead.Source.SITE_WEB,
-                        date_creation__gte=window_start)
-                .order_by('-date_creation')
-                .first()
-            )
-            if existing is not None:
-                is_window_dedup = True
-
-        # ── Couche 2 (QJ8) : dédup visiteur revenant — téléphone OU email ─────
-        # Si la fenêtre courte n'a rien trouvé, on cherche un lead existant dans
-        # la MÊME société par téléphone ou email normalisé (sans limite de temps).
-        # Préserve l'attribution first-touch (UTM/fbclid) : jamais écrasée.
-        # Périmètre : uniquement `company` — jamais de fusion cross-company.
-        # Les leads sans téléphone dédupliquent par email.
-        if existing is None:
-            from .services import find_duplicates_by_contact
-            dupes = find_duplicates_by_contact(
-                company, phone=telephone or None, email=email or None)
-            # Prend le lead le plus récent (find_duplicates_by_contact retourne
-            # une liste non ordonnée — on trie par date_creation desc).
-            if dupes:
-                dupes_sorted = sorted(
-                    dupes, key=lambda lead_: lead_.date_creation, reverse=True)
-                existing = dupes_sorted[0]
-
-        if existing:
-            # Re-POST ou visiteur revenant : on COMPLÈTE sans jamais écraser une
-            # donnée déjà captée. Un second payload plus pauvre (champ absent →
-            # None/'') ne doit pas annuler ce que le premier a rempli. On
-            # n'écrit donc que les valeurs réellement renseignées.
-            # Attribution first-touch (UTM/fbclid) : préservée sur visiteur revenant.
-            for key, value in fields.items():
-                if value is None or value == '':
-                    continue
-                # Sur un visiteur revenant (couche 2), l'attribution first-touch
-                # du lead existant prime sur celle du nouveau payload.
-                if (not is_window_dedup
-                        and key in _FIRST_TOUCH_FIELDS
-                        and getattr(existing, key, None)):
-                    continue
-                setattr(existing, key, value)
-            existing.save()
-            lead, created = existing, False
-            # Trace la mise à jour dans le chatter.
-            if is_window_dedup:
-                chatter_body = 'Mis à jour via le site web (doublon < 1 min)'
-            else:
-                chatter_body = 'Visiteur revenant : lead existant mis à jour via le site web'
-            LeadActivity.objects.create(
-                company=lead.company, lead=lead, user=None,
-                kind=LeadActivity.Kind.NOTE,
-                body=chatter_body,
-            )
-            # YLEAD11 — une nouvelle touche sur un lead PERDU/COLD le
-            # réactive (lève perdu, repositionne NEW/CONTACTED avance-seul).
-            try:
-                from .services import reactivate_lead_on_new_touch
-                reactivate_lead_on_new_touch(lead, source='site web')
-            except Exception as _exc:  # noqa: BLE001 — best-effort
-                logger.warning(
-                    'website_lead_webhook: réactivation échouée (lead #%s) : %s',
-                    lead.pk, _exc)
-        else:
-            # Responsable par défaut de la société (Paramètres) si configuré.
-            from .services import default_responsable_for
-            fields.setdefault('owner', default_responsable_for(company))
-            lead = Lead.objects.create(company=company, **fields)
-            created = True
-            LeadActivity.objects.create(
-                company=lead.company, lead=lead, user=None,
-                kind=LeadActivity.Kind.CREATION,
-                body='Lead créé via le site web',
-            )
-            # QJ2 (a) — speed-to-lead : notifie le owner dès la création.
-            try:
-                from .services import notify_new_lead
-                notify_new_lead(lead)
-            except Exception as _exc:  # noqa: BLE001 — best-effort, jamais bloquant
-                logger.warning(
-                    'website_lead_webhook: notify_new_lead échoué (lead #%s) : %s',
-                    lead.pk, _exc)
-
-        # QK6 — photo de facture/compteur/toiture jointe à la capture :
-        # attachée au lead (+ OCR si configuré), best-effort — une photo
-        # invalide ou un stockage en panne ne remet JAMAIS le lead en cause.
-        try:
-            from .intake_photo import attach_capture_photo
-            attach_capture_photo(lead, data)
-        except Exception as _exc:  # noqa: BLE001 — le lead prime sur la photo
-            logger.warning(
-                'website_lead_webhook: photo non jointe (lead #%s) : %s',
-                lead.pk, _exc)
-
-        # QW4 — rappel demandé (contact_preference=phone_ok) : notification
-        # DISTINCTE et plus urgente qu'un lead générique, sur création ET
-        # mise à jour (un visiteur revenant peut poser sa préférence après
-        # coup). Idempotent (marqueur chatter) — jamais best-effort bloquant.
-        try:
-            from .services import notify_lead_callback_requested
-            notify_lead_callback_requested(lead)
-        except Exception as _exc:  # noqa: BLE001 — best-effort
-            logger.warning(
-                'website_lead_webhook: notify_lead_callback_requested échoué '
-                '(lead #%s) : %s', lead.pk, _exc)
-
-        raw.lead = lead
+    # YDATA12 — dédup DUR (contrainte unique DB, insérée AVANT tout effet)
+    # en plus des couches 1/2 (téléphone/email) et de la garde cache QW10
+    # ci-dessus : un event_id fourni par l'émetteur (idempotencyKey), sinon
+    # un hash déterministe du payload normalisé. Le brut (raw) est déjà
+    # stocké au-dessus, quoi qu'il arrive — seule la CRÉATION DE LEAD est
+    # court-circuitée sur un doublon détecté.
+    event_id = str(
+        data.get('idempotencyKey') or data.get('idempotency_key') or ''
+    ).strip()[:64]
+    if not event_id:
+        canonical = json.dumps(data, default=str, sort_keys=True).encode('utf-8')
+        event_id = hashlib.sha256(canonical).hexdigest()
+    if not dedupe_event(
+            company=company, source='crm.website_lead', event_id=event_id):
         raw.processed = True
-        raw.save(update_fields=['lead', 'processed'])
-        if created:
-            detail = 'Lead créé.'
-        elif is_window_dedup:
-            detail = 'Lead mis à jour (doublon < 1 min).'
-        else:
-            detail = 'Lead existant mis à jour (visiteur revenant).'
+        raw.save(update_fields=['processed'])
+        return JsonResponse(
+            {'detail': 'Événement déjà traité (dédupliqué).',
+             'payload_id': raw.pk}, status=200)
+
+    try:
+        lead, created, detail = _map_and_link_lead(raw, data, company)
         return JsonResponse(
             {'detail': detail, 'lead_id': lead.pk, 'payload_id': raw.pk},
             status=201 if created else 200,
@@ -673,10 +773,60 @@ def website_lead_webhook(request):
         raw.error = f'{type(exc).__name__}: {exc}'
         raw.save(update_fields=['error'])
         logger.exception('website_lead_webhook: mapping échoué (payload #%s)', raw.pk)
+        # QX16 — « jamais perdre un lead » (module docstring) ne veut rien
+        # dire si personne n'est prévenu : notifie les managers de la société
+        # (repli founder) dès qu'un mapping échoue, avec un lien direct vers
+        # la surface de rejeu. Best-effort — jamais bloquant pour la réponse
+        # HTTP déjà décidée (202, payload conservé).
+        try:
+            from .services import _company_fallback_managers
+            from apps.notifications.services import notify_many
+            managers = _company_fallback_managers(company)
+            if managers:
+                notify_many(
+                    managers, 'lead_new',
+                    '⚠ Lead site web non mappé — action requise',
+                    body=(f'Un payload du site web (#{raw.pk}) n\'a pas pu être '
+                          f'converti en lead ({type(exc).__name__}). '
+                          'Rejouable depuis Payloads leads site web.'),
+                    link='/crm/payloads-site-web',
+                    company=company,
+                )
+        except Exception:  # noqa: BLE001 — best-effort
+            logger.warning(
+                'website_lead_webhook: notification founder échouée (payload #%s)',
+                raw.pk)
         return JsonResponse(
             {'detail': 'Stocké, mapping échoué — payload rejouable.', 'payload_id': raw.pk},
             status=202,
         )
+
+
+def replay_website_lead_payload(raw):
+    """QX16 — Rejoue un ``WebsiteLeadPayload`` non traité/en erreur à travers
+    EXACTEMENT le même mapping que le webhook (``_map_and_link_lead``, source
+    unique de vérité — jamais une seconde implémentation qui pourrait
+    diverger). Résout la société DEPUIS le payload déjà stocké (jamais du
+    payload brut re-résolu — ``raw.company`` a été posée côté serveur à la
+    réception initiale ; si elle manquait, on retombe sur ``_resolve_company``
+    comme le ferait un nouveau POST).
+
+    Renvoie ``(ok: bool, detail: str, lead)``. Ne lève jamais — capte toute
+    exception et la consigne sur ``raw.error`` comme le fait la vue webhook,
+    pour que le rejeu reste rejouable indéfiniment (jamais une exception
+    remontée casse l'appelant HTTP)."""
+    company = raw.company or _resolve_company()
+    if company is None:
+        return False, 'Aucune Company résolue — rejeu impossible.', None
+    try:
+        lead, created, detail = _map_and_link_lead(raw, raw.payload, company)
+        return True, detail, lead
+    except Exception as exc:  # noqa: BLE001 — même contrat que la vue webhook
+        raw.error = f'{type(exc).__name__}: {exc}'
+        raw.save(update_fields=['error'])
+        logger.exception(
+            'replay_website_lead_payload: mapping échoué (payload #%s)', raw.pk)
+        return False, f'Rejeu échoué : {exc}', None
 
 
 # ── XMKT32 — Sync Meta Lead Ads → leads CRM (gated, API officielle) ──────────

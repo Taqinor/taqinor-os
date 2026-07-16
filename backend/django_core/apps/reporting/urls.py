@@ -3,7 +3,9 @@ from rest_framework.routers import DefaultRouter
 from .views import dashboard
 from .search import global_search, notifications
 from .pipeline import pipeline, funnel_velocity
-from .reports import sales_report, stock_report, service_report
+from .reports import (
+    kpi_federes, sales_report, stock_report, service_report,
+)
 from .insights import (
     recurring_revenue, audit_log, job_costing, analytics, commissions,
     sales_leaderboard, cf_group_by, cohorts, profitability,
@@ -25,9 +27,10 @@ from .approbations import (
 from .kpi_alertes import KpiAlerteViewSet
 from .classeur import ClasseurViewSet
 from .integrity_views import integrite_insight
-from .sav_pivot import sav_tickets_pivot, sav_tickets_cout_moyen
+from .sav_pivot import sav_tickets_pivot, sav_tickets_cout_moyen, sav_taux_attache
 from .reports_field import field_service_report
 from .technicien_scorecard import technicien_scorecard
+from .vitals import collect_vital, vitals_p75
 
 # N79 — CRUD des rapports sauvegardés (router DRF, ajouté en additif).
 # FG96 — CRUD + effective/ pour la config tableau de bord.
@@ -59,6 +62,8 @@ urlpatterns = [
     path('reports/sales/', sales_report, name='report-sales'),
     path('reports/stock/', stock_report, name='report-stock'),
     path('reports/service/', service_report, name='report-service'),
+    # ARC40 — KPI fédérés pilotés par le registre plateforme (kpi_providers).
+    path('reports/kpi-federes/', kpi_federes, name='report-kpi-federes'),
     path('insights/recurring-revenue/', recurring_revenue,
          name='insights-recurring-revenue'),
     path('insights/audit-log/', audit_log, name='insights-audit-log'),
@@ -106,10 +111,17 @@ urlpatterns = [
          name='insights-sav-tickets-pivot'),
     path('insights/sav-tickets-cout-moyen/', sav_tickets_cout_moyen,
          name='insights-sav-tickets-cout-moyen'),
+    # YSERV10 — KPI taux d'attache (chantiers réceptionnés avec contrat
+    # d'entretien actif ≤90j).
+    path('insights/sav-taux-attache/', sav_taux_attache,
+         name='insights-sav-taux-attache'),
     # XFSM16 — analytics field service consolidés (FTF, MTTR, ponctualité,
     # récidive, trajet vs sur site, interventions par type/statut).
     path('reports/field/', field_service_report, name='report-field-service'),
     # XFSM17 — scorecard coaching par technicien vs moyenne équipe.
     path('insights/technicien-scorecard/', technicien_scorecard,
          name='insights-technicien-scorecard'),
+    # VX61 — beacon Web Vitals RÉELS (POST, une ligne/métrique) + agrégat p75.
+    path('vitals/', collect_vital, name='reporting-vitals'),
+    path('vitals/p75/', vitals_p75, name='reporting-vitals-p75'),
 ]

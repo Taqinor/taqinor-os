@@ -1,0 +1,65 @@
+# SCA29 — baseline GELÉE (datée 2026-07-10) des fichiers user-facing
+# contenant DÉJÀ un motif de marque (TAQINOR / taqinor.ma / contact@taqinor)
+# hors commentaire. Surfaces : littéraux py des apps + frontend/src. Un fichier
+# nettoye (SCA24-27…) SORT du scan et son entree ici devient inerte — la liste
+# ne peut que DECROITRE. Ne JAMAIS ajouter un fichier ici pour contourner le
+# garde : le branding client vient de TenantTheme/CompanyProfile. Format : un
+# chemin POSIX par ligne (backend relatif a backend/django_core, ou frontend/src/...).
+apps/automation/actions.py
+apps/contact/views.py
+apps/crm/management/commands/import_odoo_leads.py
+apps/crm/migrations/0003_lead.py
+apps/crm/migrations/0006_lead_bill_range_bucket_lead_consent_timestamp_and_more.py
+apps/crm/migrations/0036_xmkt32_lead_source_meta_lead_ads.py
+apps/crm/models.py
+apps/crm/public_chat_views.py
+apps/crm/webhooks.py
+apps/dataimport/exporters.py
+apps/dataimport/models.py
+apps/ged/services.py
+apps/gestion_projet/management/commands/ingest_emails_projets.py
+apps/installations/energy_report.py
+apps/notifications/services.py
+apps/parametres/models_email.py
+apps/tiers/models.py
+apps/ventes/email_service.py
+apps/ventes/public_views.py
+apps/ventes/quote_engine/agricole/__init__.py
+apps/ventes/quote_engine/agricole/cover.py
+apps/ventes/quote_engine/agricole/economics_page.py
+apps/ventes/quote_engine/agricole/renderer.py
+apps/ventes/quote_engine/agricole/sample_data.py
+apps/ventes/quote_engine/agricole/theme.py
+apps/ventes/quote_engine/agricole/trust.py
+apps/ventes/quote_engine/agricole/yield_page.py
+apps/ventes/quote_engine/constants.py
+apps/ventes/quote_engine/extra_docs.py
+apps/ventes/quote_engine/generate_devis_premium.py
+apps/ventes/quote_engine/residential/cover.py
+apps/ventes/quote_engine/residential/options.py
+apps/ventes/quote_engine/residential/renderer.py
+apps/ventes/quote_engine/residential/theme.py
+apps/ventes/quote_engine/residential/trust.py
+apps/ventes/services.py
+apps/ventes/utils/filenames.py
+apps/ventes/views/roof_config.py
+frontend/src/components/layout/Sidebar.jsx
+frontend/src/components/layout/Sidebar.test.jsx
+frontend/src/features/gestion_projet/pages/RisquesPage.jsx
+frontend/src/features/kb/ArticleEditor.test.jsx
+frontend/src/features/kb/kbMarkdown.test.jsx
+frontend/src/features/messaging/richText.test.jsx
+frontend/src/features/onboarding/OnboardingCoachmarks.jsx
+frontend/src/pages/Landing.jsx
+frontend/src/pages/Login.jsx
+frontend/src/pages/admin/UsersManagement.test.jsx
+frontend/src/pages/crm/LeadForm.jsx
+frontend/src/pages/parametres/EmailSection.test.jsx
+frontend/src/pages/parametres/KpiAlertesPage.test.jsx
+frontend/src/pages/parametres/MessagesSection.jsx
+frontend/src/pages/parametres/SocieteSection.jsx
+frontend/src/pages/reporting/DashboardConfigPage.test.jsx
+frontend/src/pages/sav/TicketSuiviClientPanel.test.jsx
+frontend/src/pages/ventes/DevisList.jsx
+frontend/src/pages/ventes/ToitureDesign.jsx
+frontend/src/test/a11y.test.jsx

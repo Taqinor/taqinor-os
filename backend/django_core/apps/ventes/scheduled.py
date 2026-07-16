@@ -518,3 +518,117 @@ def devis_a_facturer_reminder(jours=7):
 
     logger.info('devis_a_facturer_reminder: %s rappel(s) posé(s)', total)
     return total
+
+
+@shared_task(name='ventes.poll_inbound_mailboxes')
+def poll_inbound_mailboxes():
+    """QX36 — interroge la boîte email entrante de chaque société et dispatche
+    aux handlers du bus ``core.email_intake`` (SAV email→ticket, ventes
+    réponse→devis). Sans boîte configurée par société, ``poll_mailbox`` est un
+    no-op propre (aucune connexion réseau) — donc cette tâche est sûre à
+    planifier même quand aucune boîte n'est câblée.
+
+    Multi-tenant : la société est imposée société par société (jamais du corps
+    d'une requête). Best-effort par société : un échec n'arrête pas les autres.
+    Renvoie le total {fetched, handled}."""
+    from core.email_intake import poll_mailbox
+    from authentication.models import Company
+
+    fetched = handled = 0
+    for company in Company.objects.all():
+        try:
+            res = poll_mailbox(company)
+            fetched += int(res.get('fetched', 0) or 0)
+            handled += int(res.get('handled', 0) or 0)
+        except Exception:  # noqa: BLE001 — best-effort par société
+            logger.warning('ventes.poll_inbound_mailboxes: échec société %s',
+                           getattr(company, 'pk', '?'), exc_info=True)
+    logger.info('ventes.poll_inbound_mailboxes: %d relevé(s), %d dispatché(s)',
+                fetched, handled)
+    return {'fetched': fetched, 'handled': handled}
+
+
+@shared_task(name='ventes.engagement_followup_engine')
+def engagement_followup_engine():
+    """QX30be — relance déclenchée par le COMPORTEMENT (pas le calendrier).
+
+    Trois déclencheurs, dérivés des données déjà enregistrées (ShareLink
+    first_viewed_at/view_count + proposition ENVOYÉE) :
+      * ``not_opened_24h`` — devis envoyé, lien JAMAIS ouvert depuis > 24 h ;
+      * ``opened_not_signed_48h`` — ouvert mais non signé depuis > 48 h de la
+        1ʳᵉ ouverture (46 % des signataires signent < 48 h de l'ouverture) ;
+      * ``reopened_3x`` — rouvert ≥ 3 fois (les propositions perdantes sont
+        vues 3,5× — « hésite, appelez maintenant »).
+
+    Chaque déclencheur pose une Notification au vendeur, UNE SEULE FOIS par lien
+    (idempotence via ``ShareLink.engagement_triggers_fired``). RULE #4 : ne
+    touche jamais au statut. Renvoie le nombre de notifications posées."""
+    from django.utils import timezone
+    from apps.ventes.models import Devis, ShareLink
+
+    now = timezone.now()
+    posted = 0
+
+    links = (ShareLink.objects
+             .filter(devis__isnull=False,
+                     devis__statut=Devis.Statut.ENVOYE,
+                     expires_at__gt=now)
+             .select_related('devis', 'devis__created_by', 'company'))
+
+    for link in links:
+        devis = link.devis
+        vendeur = getattr(devis, 'created_by', None)
+        if vendeur is None:
+            continue
+        fired = set(link.engagement_triggers_fired or [])
+        to_fire = []
+
+        sent_at = getattr(devis, 'date_envoi', None)
+        if (link.view_count == 0 and 'not_opened_24h' not in fired
+                and sent_at is not None
+                and (now - sent_at).total_seconds() >= 24 * 3600):
+            to_fire.append(('not_opened_24h',
+                            'Proposition non ouverte depuis 24 h'))
+        if (link.first_viewed_at is not None
+                and 'opened_not_signed_48h' not in fired
+                and (now - link.first_viewed_at).total_seconds() >= 48 * 3600):
+            to_fire.append(('opened_not_signed_48h',
+                            'Ouverte mais non signée depuis 48 h — appelez'))
+        if (link.view_count >= 3 and 'reopened_3x' not in fired):
+            to_fire.append(('reopened_3x',
+                            'Rouverte 3 fois — le client hésite, appelez'))
+
+        for key, label in to_fire:
+            _post_engagement_notification(devis, vendeur, key, label)
+            fired.add(key)
+            posted += 1
+        if to_fire:
+            link.engagement_triggers_fired = sorted(fired)
+            link.save(update_fields=['engagement_triggers_fired'])
+
+    logger.info('ventes.engagement_followup_engine: %d notification(s)', posted)
+    return posted
+
+
+def _post_engagement_notification(devis, vendeur, key, label):
+    """QX30be — pose une Notification d'engagement (best-effort, in-lane)."""
+    try:
+        from apps.notifications.services import notify
+        from apps.notifications.models import EventType
+        from apps.ventes.utils.client_links import proposition_url
+        from apps.ventes.models import ShareLink
+        try:
+            token = ShareLink.for_devis(devis).token
+            url = proposition_url(token)
+        except Exception:  # noqa: BLE001
+            url = ''
+        notify(
+            vendeur, EventType.DEVIS_NUDGE_DUE,
+            title=f'{label} — devis {devis.reference}',
+            body=(f'Déclencheur d\'engagement : {key}. '
+                  f'Proposition : {url or "—"}'),
+            link=f'/ventes/devis?devis={devis.id}',
+            company=devis.company)
+    except Exception as exc:  # noqa: BLE001 — best-effort
+        logger.warning('QX30: notification engagement échec devis %s : %s',
+                       getattr(devis, 'reference', '?'), exc)

@@ -1,14 +1,15 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Plus, Check, Undo2, Trash2 } from 'lucide-react'
 import { ListShell, statusPill } from '../../../ui/module'
 import {
   Button, Segmented, Input, Label, Combobox,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-  toast,
+  HelpTip, toast,
 } from '../../../ui'
-import { formatMAD, formatDate } from '../../../lib/format'
+import { formatMAD, formatDate, nbsp } from '../../../lib/format'
 import comptaApi from '../../../api/comptaApi'
-import useComptaList, { unwrap } from '../components/useComptaList.js'
+import { unwrap } from '../components/useComptaList.js'
+import useResource from '../../../hooks/useResource'
 import { totalDebit, totalCredit, ecart, estEquilibree } from '../ecritureBalance.js'
 
 /* ============================================================================
@@ -118,7 +119,19 @@ function EcritureDialog({ open, onClose, journaux, comptesOpts, onSaved }) {
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose?.() }}>
       <DialogContent className="max-w-3xl">
         <DialogHeader>
-          <DialogTitle>Nouvelle écriture</DialogTitle>
+          <DialogTitle className="flex items-center gap-1.5">
+            Nouvelle écriture
+            {/* VX47 — aide contextuelle : la partie double n'est pas intuitive
+                pour un nouvel employé. */}
+            <HelpTip label="Aide — écriture comptable">
+              Une écriture comptable est <strong>toujours équilibrée</strong> :
+              le total des lignes au <strong>débit</strong> doit être strictement
+              égal au total au <strong>crédit</strong>. Chaque ligne représente
+              un mouvement sur un compte — un compte est débité, un autre est
+              crédité pour le même montant. Le bouton « Enregistrer » reste
+              bloqué tant que l'écart affiché ci-dessous n'est pas à zéro.
+            </HelpTip>
+          </DialogTitle>
         </DialogHeader>
         <form onSubmit={submit} noValidate className="flex flex-col gap-3">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -173,10 +186,10 @@ function EcritureDialog({ open, onClose, journaux, comptesOpts, onSaved }) {
               balanced ? 'border-success/40 bg-success/5' : 'border-destructive/40 bg-destructive/5'
             }`}
           >
-            <span className="tabular-nums">Total débit : <strong>{formatMAD(td)}</strong></span>
-            <span className="tabular-nums">Total crédit : <strong>{formatMAD(tc)}</strong></span>
+            <span className="tabular-nums">{nbsp('Total débit :')} <strong>{formatMAD(td)}</strong></span>
+            <span className="tabular-nums">{nbsp('Total crédit :')} <strong>{formatMAD(tc)}</strong></span>
             <span className={`tabular-nums font-medium ${balanced ? 'text-success' : 'text-destructive'}`}>
-              {balanced ? 'Équilibrée ✓' : `Écart : ${formatMAD(diff)}`}
+              {balanced ? 'Équilibrée ✓' : nbsp(`Écart : ${formatMAD(diff)}`)}
             </span>
           </div>
 
@@ -195,22 +208,35 @@ function EcritureDialog({ open, onClose, journaux, comptesOpts, onSaved }) {
 export default function EcrituresPage() {
   const [journalFilter, setJournalFilter] = useState('')
   const [showDialog, setShowDialog] = useState(false)
-  const [journaux, setJournaux] = useState([])
-  const [comptesOpts, setComptesOpts] = useState([])
 
-  // Charge les listes de référence (journaux + comptes) une fois pour l'éditeur.
-  useEffect(() => {
-    comptaApi.journaux.list().then((res) => setJournaux(unwrap(res))).catch(() => {})
-    comptaApi.comptes.list().then((res) => {
-      setComptesOpts(unwrap(res).map((c) => ({
-        value: c.id, label: `${c.numero} — ${c.intitule}`,
-      })))
-    }).catch(() => {})
-  }, [])
+  // ARC45 — listes de référence (journaux + comptes), chargées une fois pour
+  // l'éditeur ; erreurs silencieuses (comme avant), abort au démontage.
+  const { data: journaux } = useResource(() => comptaApi.journaux.list(), undefined, {
+    initialData: [], select: (res) => unwrap(res), errorMessage: () => '',
+  })
+  const { data: comptesOpts } = useResource(() => comptaApi.comptes.list(), undefined, {
+    initialData: [],
+    select: (res) => unwrap(res).map((c) => ({
+      value: c.id, label: `${c.numero} — ${c.intitule}`,
+    })),
+    errorMessage: () => '',
+  })
 
   const params = useMemo(
     () => (journalFilter ? { journal: journalFilter } : undefined), [journalFilter])
-  const { rows, loading, error, reload } = useComptaList(comptaApi.ecritures.list, params)
+  // ARC45 — liste principale via useResource (remplace useComptaList) : même
+  // comportement (unwrap DRF, toast d'erreur FR, refetch réactif au filtre).
+  const { data: rows, loading, error, refetch: reload } = useResource(
+    () => comptaApi.ecritures.list(params), params,
+    {
+      initialData: [],
+      select: (res) => unwrap(res),
+      errorMessage: () => {
+        toast.error('Chargement impossible — réessayez.')
+        return 'Chargement impossible.'
+      },
+    },
+  )
 
   const valider = async (row) => {
     try {

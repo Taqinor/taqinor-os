@@ -19,8 +19,15 @@ Le texte des deux langues est un dictionnaire de libellés fixe (pas de
 traduction dynamique) : on ne traduit QUE la coquille du document (titres de
 colonnes, en-têtes) — les données saisies (thème, noms, mesures de
 prévention…) restent telles que saisies par l'utilisateur.
+
+ARC11 — la plomberie WeasyPrint (``HTML(string=...).write_pdf()`` + import
+paresseux) est déléguée au service partagé ``core.pdf.render_pdf`` ; les
+GABARITS HTML/CSS bilingues ci-dessous restent STRICTEMENT identiques (aucune
+option de branding activée), donc le rendu est inchangé à l'octet près.
 """
 import html as _html
+
+from core.pdf import render_pdf
 
 
 def _esc(value):
@@ -131,11 +138,10 @@ def _html_shell(lang, title, body):
 
 
 def _render_pdf(html_str):
-    """Rend le PDF (bytes) via WeasyPrint, import FONCTION-LOCAL (lib lourde,
-    chargée à la demande — même patron que ``services.rendre_analyse_ncr_pdf``)."""
-    import weasyprint  # import local : lib lourde, chargée à la demande
-
-    return weasyprint.HTML(string=html_str).write_pdf()
+    """Rend le PDF (bytes) via le service partagé ``core.pdf.render_pdf``
+    (ARC11) — la plomberie WeasyPrint (import paresseux + write_pdf) y est
+    centralisée ; le gabarit reste inchangé."""
+    return render_pdf(html=html_str)
 
 
 # ── Permis de travail ───────────────────────────────────────────────────────

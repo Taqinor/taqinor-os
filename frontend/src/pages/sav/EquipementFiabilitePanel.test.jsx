@@ -64,7 +64,8 @@ describe('EquipementFiabilitePanel — XSAV15 MTBF/MTTR', () => {
 
     renderPanel(['prix_achat_voir'])
     expect(await screen.findByText(/Coût cumulé/)).toBeInTheDocument()
-    expect(screen.getByText('2500.00 DH')).toBeInTheDocument()
+    // VX75 — formatMAD : « 2 500,00 DH » (séparateur milliers + virgule décimale).
+    expect(screen.getByText(/2\s?500,00 DH/)).toBeInTheDocument()
     expect(screen.getByText('À remplacer')).toBeInTheDocument()
   })
 })
@@ -93,7 +94,8 @@ describe('EquipementFiabilitePanel — XSAV16 disponibilité + immobilisation', 
     savApi.ouvrirEquipementDowntime.mockResolvedValue({ data: {} })
 
     renderPanel()
-    expect(await screen.findByText('97.3 %')).toBeInTheDocument()
+    // VX75 — formatPercent fr-MA : « 97,3 % » (virgule décimale).
+    expect(await screen.findByText(/97,3\s?%/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /Ouvrir une immobilisation/ }))
     await waitFor(() => expect(savApi.ouvrirEquipementDowntime).toHaveBeenCalledWith(1, {}))
   })

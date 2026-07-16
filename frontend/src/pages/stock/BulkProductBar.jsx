@@ -4,9 +4,23 @@
 import { useState } from 'react'
 import { Download, QrCode, X } from 'lucide-react'
 import {
-  Button, Input,
+  Button, Input, Segmented,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
+
+// VX149 — panneaux de la barre en masse : au lieu d'un bouton-onglet
+// réinventé à la main (`tabBtn` — bordure blanche translucide, aria-pressed
+// codé en dur), le contrôle segmenté partagé (`ui/Segmented`, même primitif
+// que les bascules de vue Liste/Kanban/Calendrier). Le panneau reste
+// « ouvrable/fermable » (reclique = referme) : Segmented lui-même est un
+// choix unique toujours actif, donc la fermeture est gérée ici, un cran
+// au-dessus de son onChange.
+const PANELS = [
+  { value: 'price', label: 'Prix' },
+  { value: 'warranty', label: 'Garantie' },
+  { value: 'cat', label: 'Catégorie' },
+  { value: 'brand', label: 'Marque' },
+]
 
 export default function BulkProductBar({
   count, categories = [], marques = [], busy, labelsBusy,
@@ -23,19 +37,6 @@ export default function BulkProductBar({
   const toggle = (n) => setPanel((p) => (p === n ? null : n))
   const run = (action, params) => { onAction(action, params); setPanel(null) }
 
-  // Bouton onglet de panneau (style cohérent avec la barre sombre).
-  const tabBtn = (key, label) => (
-    <button
-      type="button"
-      disabled={busy}
-      onClick={() => toggle(key)}
-      aria-pressed={panel === key}
-      className="rounded-md border border-white/20 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-white/10 disabled:opacity-50 aria-pressed:bg-white/15"
-    >
-      {label}
-    </button>
-  )
-
   return (
     <div
       role="region"
@@ -46,10 +47,14 @@ export default function BulkProductBar({
         <strong className="tabular-nums">{count}</strong> produit{count > 1 ? 's' : ''} sélectionné{count > 1 ? 's' : ''}
       </div>
       <div className="flex flex-wrap items-center gap-1.5">
-        {tabBtn('price', 'Prix')}
-        {tabBtn('warranty', 'Garantie')}
-        {tabBtn('cat', 'Catégorie')}
-        {tabBtn('brand', 'Marque')}
+        <Segmented
+          size="sm"
+          value={panel}
+          onChange={busy ? undefined : toggle}
+          aria-label="Panneau d'action en masse"
+          className="border-white/20 bg-white/10"
+          options={PANELS}
+        />
         <button
           type="button" disabled={busy} onClick={onExport}
           className="inline-flex items-center gap-1.5 rounded-md border border-white/20 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-white/10 disabled:opacity-50"

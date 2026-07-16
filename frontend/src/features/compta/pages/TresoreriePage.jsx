@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useTabParam } from '../components/useTabParam'
 import { Plus, Pencil, RefreshCw, BookOpen, Send } from 'lucide-react'
 import { ListShell } from '../../../ui/module'
 import {
@@ -333,7 +334,7 @@ function CaisseJournalDialog({ caisse, onClose }) {
 }
 
 export default function TresoreriePage() {
-  const [tab, setTab] = useState('tresorerie')
+  const [tab, setTab] = useTabParam('tresorerie')  // VX231(c) — onglet persisté (?onglet=)
   const [dialog, setDialog] = useState(null)
   const [caisseJournal, setCaisseJournal] = useState(null)
 

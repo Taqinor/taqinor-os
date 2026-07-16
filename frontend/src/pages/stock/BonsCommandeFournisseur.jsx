@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import {
   Plus, FileText, Undo2, Package, Trash2, Copy, RotateCcw, Receipt, LayoutTemplate,
 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import messagesApi from '../../api/messagesApi'
+import { formatMAD } from '../../lib/format'
 import BcfProduitPicker from './BcfProduitPicker'
 import ProduitQuickCreateModal from '../../components/ProduitQuickCreateModal'
 import { useCanCreateProduit } from '../../hooks/useHasPermission'
@@ -16,6 +17,7 @@ import {
   Input, Textarea,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
+import { buildCopyTSVAction } from '../../ui/datatable/BulkActionBar'
 import {
   BCF_STATUTS,
   bcfStatutLabel,
@@ -30,6 +32,12 @@ import {
 
 // Page de gestion des bons de commande FOURNISSEUR (achats — N11).
 // Le prix d'ACHAT est INTERNE : cette page n'est jamais un document client.
+
+// VX240(g) — clé client stable pour les lignes NOUVELLEMENT ajoutées (les
+// lignes déjà enregistrées ont `l.id` côté serveur) : réplique le patron
+// data-line-key/pendingFocusKey de VX90 côté achats.
+let _bcfLineKeyCounter = 0
+const newBcfLineKey = () => `bcf-new-${++_bcfLineKeyCounter}`
 
 // Traduit une erreur serveur DRF en phrase FR lisible (jamais de JSON brut).
 function frBcfError(err, fallback = 'Une erreur est survenue. Réessayez.') {
@@ -46,10 +54,7 @@ function frBcfError(err, fallback = 'Une erreur est survenue. Réessayez.') {
 }
 
 
-const fmtMad = (v) => {
-  const n = Number(v) || 0
-  return `${n.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MAD`
-}
+const fmtMad = (v) => formatMAD(v)
 const fmtDateFR = (iso) => {
   if (!iso) return '—'
   const d = new Date(`${iso}T00:00:00`)
@@ -232,6 +237,9 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
   const [showRetour, setShowRetour] = useState(false)
   const [showAnnuler, setShowAnnuler] = useState(false)
   const [info, setInfo] = useState(null)
+  // VX240(g) — focus la ligne fraîchement ajoutée (réplique le patron VX90).
+  const linesTableRef = useRef(null)
+  const [pendingFocusKey, setPendingFocusKey] = useState(null)
 
   // ZPUR8 — liste des membres de la société pour le sélecteur « acheteur ».
   useEffect(() => {
@@ -257,16 +265,27 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
 
   const setLigne = (idx, patch) =>
     setLignes((ls) => ls.map((l, i) => (i === idx ? { ...l, ...patch } : l)))
+  // VX240(g) — « Ajouter ligne » n'avançait jamais le focus : la nouvelle
+  // ligne reçoit une clé client stable, posée en `pendingFocusKey` (même
+  // patron que VX90 côté devis/facture).
   const addLigne = () =>
-    setLignes((ls) => [...ls, { produit: '', quantite: 1, prix_achat_unitaire: '' }])
+    setLignes((ls) => {
+      const _key = newBcfLineKey()
+      setPendingFocusKey(_key)
+      return [...ls, { produit: '', quantite: 1, prix_achat_unitaire: '', _key }]
+    })
   // XPUR16 — ligne libre/service (transport, prestation, frais) : pas de
   // produit catalogue, désignation libre. Compte dans le total/l'approbation/
   // la facturation mais ne génère jamais de mouvement de stock à la réception.
   const addLigneLibre = () =>
-    setLignes((ls) => [
-      ...ls,
-      { produit: '', designation: '', quantite: 1, prix_achat_unitaire: '', sans_stock: true },
-    ])
+    setLignes((ls) => {
+      const _key = newBcfLineKey()
+      setPendingFocusKey(_key)
+      return [
+        ...ls,
+        { produit: '', designation: '', quantite: 1, prix_achat_unitaire: '', sans_stock: true, _key },
+      ]
+    })
   const removeLigne = (idx) =>
     setLignes((ls) => ls.filter((_, i) => i !== idx))
 
@@ -307,6 +326,24 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
     }
     setQuickCreateIdx(null)
   }
+
+  // VX240(g) — après « Ajouter une ligne »/« Ligne libre », focaliser la
+  // nouvelle ligne (son picker produit, ou la désignation libre) et la faire
+  // défiler dans la vue — même patron que VX90 (data-line-key + ref-walk DOM).
+  useEffect(() => {
+    if (pendingFocusKey == null) return
+    const row = linesTableRef.current
+      ?.querySelector(`[data-line-key="${pendingFocusKey}"]`)
+    if (row) {
+      // Ligne libre : pas de bouton picker, on cible directement l'input
+      // désignation ; ligne catalogue : le bouton déclencheur du picker.
+      const target = row.querySelector('input, button[type="button"]')
+      target?.focus()
+      row.scrollIntoView({ block: 'nearest' })
+    }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset one-shot du focus (VX240(g), même patron VX90)
+    setPendingFocusKey(null)
+  }, [pendingFocusKey, lignes])
 
   const buildPayload = () => ({
     fournisseur: fournisseur || null,
@@ -629,7 +666,7 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
             </div>
           </div>
           <div className="overflow-x-auto rounded-lg border border-border">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm" ref={linesTableRef}>
               <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
                   <th className="px-3 py-2 text-left font-semibold" style={{ minWidth: 220 }}>Article</th>
@@ -649,7 +686,8 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
                   const lineTotal = (Number(l.quantite) || 0) * (Number(l.prix_achat_unitaire) || 0)
                   const restante = quantiteRestante(l)
                   return (
-                    <tr key={l.id ?? `new-${idx}`} className="border-t border-border">
+                    <tr key={l.id ?? l._key ?? `new-${idx}`} data-line-key={l._key ?? l.id ?? `new-${idx}`}
+                        className="border-t border-border">
                       <td className="px-3 py-2">
                         {editableLignes ? (
                           (l.sans_stock || (!l.produit && l.designation != null)) ? (
@@ -1023,22 +1061,25 @@ export default function BonsCommandeFournisseur() {
         globalColumns={['reference', 'fournisseur_nom']}
         onRowClick={openBcf}
         selectable
-        bulkActions={(selRows, selKeys, clear) => (
-          // ZPUR6 — n'affiche l'action que si la sélection est éligible
+        bulkActions={(selRows, selKeys, clear) => [
+          // VX246(c) — « Copier » la sélection en TSV (colle en colonnes dans Excel).
+          buildCopyTSVAction({ rows: selRows, filteredRows: selRows, columns }),
+          // ZPUR6 — n'affiche l'action de fusion que si la sélection est éligible
           // (≥2 BCF BROUILLON du même fournisseur) — le backend re-vérifie
           // de toute façon, mais autant ne pas proposer une action vouée à
           // échouer.
-          selRows.length >= 2
+          ...(selRows.length >= 2
           && selRows.every((b) => b.statut === 'brouillon')
           && new Set(selRows.map((b) => b.fournisseur)).size === 1
             ? [{
                 id: 'fusionner', label: 'Fusionner en un seul BCF',
                 onClick: () => fusionner(selRows, selKeys, clear),
               }]
-            : []
-        )}
+            : []),
+        ]}
         emptyTitle="Aucun bon de commande fournisseur"
         emptyDescription="Créez-en un avec « Nouveau bon de commande » ou depuis le besoin matériel d'un chantier."
+        emptyAction={<Button size="sm" onClick={() => setSelected({})}><Plus className="size-4" /> Nouveau bon de commande</Button>}
         aria-label="Bons de commande fournisseur"
       />
 

@@ -19,8 +19,10 @@ from django.contrib.contenttypes.models import ContentType
 from django.utils.dateparse import parse_datetime
 from rest_framework import viewsets, filters
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import BasePermission
+from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.response import Response
+
+from authentication.permissions import IsAdminRole
 
 from .models import AuditLog
 from .selectors import reconstruct_as_of
@@ -65,6 +67,11 @@ def _apply_filters(qs, params):
     model = params.get('model')
     if model:
         qs = qs.filter(content_type__model=model)
+    # VX98 — deep-link « Historique » depuis une fiche : pré-filtre sur CET
+    # objet (index (content_type, object_id)). object_id est un CharField.
+    object_id = params.get('object_id')
+    if object_id:
+        qs = qs.filter(object_id=str(object_id))
     date_from = _parse_date(params.get('from'))
     date_to = _parse_date(params.get('to'))
     if date_from:
@@ -174,6 +181,10 @@ def _apply_filters_no_range(qs, params):
     model = params.get('model')
     if model:
         qs = qs.filter(content_type__model=model)
+    # VX98 — deep-link « Historique » depuis une fiche : pré-filtre sur CET objet.
+    object_id = params.get('object_id')
+    if object_id:
+        qs = qs.filter(object_id=str(object_id))
     search = (params.get('search') or '').strip()
     if search:
         from django.db.models import Q
@@ -266,6 +277,73 @@ def security_events(request):
     return Response({'count': len(data), 'results': data})
 
 
+# VX243(b) — lecture record-scopée du Journal (« l'historique de MON dossier »).
+# Le Journal global (stats / AuditLogViewSet) reste gaté `can_view_activity_log`
+# tout-ou-rien : un commercial ne peut pas voir qui a modifié SON propre lead
+# sans recevoir la visibilité sur TOUTE la boîte. Cet endpoint ajoute la 2e
+# borne de confiance — l'historique d'UN objet précis, autorisé au propriétaire
+# de l'objet même sans la permission Journal.
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def object_history(request, content_type, object_id):
+    """Historique (AuditLog) d'UN objet, record-scopé.
+
+    Deux bornes :
+    * un utilisateur avec ``can_view_activity_log`` voit l'historique de
+      n'importe quel objet de SA société (parité avec le Journal global) ;
+    * un utilisateur SANS cette permission ne voit que l'historique d'un objet
+      dont il est le PROPRIÉTAIRE (``owner``/``created_by``/``assigned_to``) —
+      la traçabilité de SON lead, et rien d'autre de la boîte.
+
+    L'objet cible est résolu de façon GÉNÉRIQUE via ContentType (framework
+    Django — jamais un import des ``models`` d'une app métier). Company-scopé
+    strict : un objet d'une autre société est un 404, jamais une fuite.
+    """
+    try:
+        app_label, model = content_type.split('.', 1)
+        ct = ContentType.objects.get(app_label=app_label, model=model)
+    except (ValueError, ContentType.DoesNotExist):
+        return Response({'detail': 'content_type invalide'}, status=404)
+
+    user = request.user
+    company = user.company if user.company_id else None
+    if company is None and not user.is_superuser:
+        return Response({'detail': 'Non autorisé.'}, status=404)
+
+    model_cls = ct.model_class()
+    if model_cls is None:
+        return Response({'detail': 'content_type invalide'}, status=404)
+    obj = model_cls._default_manager.filter(pk=object_id).first()
+    if obj is None:
+        return Response({'detail': 'Introuvable.'}, status=404)
+    obj_company_id = getattr(obj, 'company_id', None)
+    if company is not None and obj_company_id != company.id:
+        # Scopage société — jamais l'historique d'un objet d'une autre société.
+        return Response({'detail': 'Introuvable.'}, status=404)
+
+    # Borne de permission : sans le Journal global, il faut être propriétaire.
+    if not getattr(user, 'can_view_activity_log', False):
+        owner_ids = {
+            getattr(obj, 'owner_id', None),
+            getattr(obj, 'created_by_id', None),
+            getattr(obj, 'assigned_to_id', None),
+        }
+        if user.id not in owner_ids:
+            return Response(
+                {'detail': "Accès à l'historique de cet objet non autorisé."},
+                status=403)
+
+    qs = (_company_qs(request)
+          .filter(content_type=ct, object_id=str(object_id))
+          .order_by('-timestamp'))
+    try:
+        limit = min(int(request.query_params.get('limit', 100)), 500)
+    except (TypeError, ValueError):
+        limit = 100
+    data = AuditLogSerializer(qs[:limit], many=True).data
+    return Response({'count': len(data), 'results': data})
+
+
 # YHARD3 — reconstruction as-of générique, lecture seule, admin/Directeur.
 # ``objets/<app_label>.<model>/<id>/as-of/?date=`` (content type désigné par
 # ``app_label.model`` dans l'URL, ex. ``crm.client``). Company-scopée : sans
@@ -301,3 +379,49 @@ def object_as_of(request, content_type, object_id):
         'fields': result['fields'],
         'covered_changes': result['covered_changes'],
     })
+
+
+# NTSEC15 — export CSV des évènements de sécurité (Directeur only, scopé société).
+# Garde IsAdminRole (Directeur/Administrateur, y compris les comptes admin
+# hérités) plutôt que CanViewActivityLog : ce dernier exige la permission fine
+# ``journal_activite_voir`` et EXCLUT délibérément l'admin légacy sans rôle fin
+# — or l'export est explicitement réservé au Directeur (cf. NTSEC19 accessreview,
+# même palier IsAdminRole).
+@api_view(['GET'])
+@permission_classes([IsAdminRole])
+def security_events_export(request):
+    """Export CSV des évènements de sécurité de la société sur une période.
+
+    Filtres : ``?from=``/``?to=`` (ISO). Company-scopé strict via le sélecteur
+    fondation ``selectors.security_events`` ; jamais d'autre société."""
+    import csv
+
+    from django.http import HttpResponse
+
+    from .selectors import security_events as _security_events
+
+    user = request.user
+    company = user.company if user.company_id else None
+    if company is None:
+        # Un superuser sans société active n'a pas de périmètre CSV défini.
+        return Response({'detail': 'Aucune société active.'}, status=400)
+
+    since = parse_datetime(request.query_params.get('from', '') or '')
+    until = parse_datetime(request.query_params.get('to', '') or '')
+    qs = _security_events(company, since=since, until=until)
+
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = (
+        'attachment; filename="security_events.csv"')
+    writer = csv.writer(response)
+    writer.writerow(['timestamp', 'action', 'utilisateur', 'ip', 'detail'])
+    for entry in qs.iterator():
+        writer.writerow([
+            entry.timestamp.isoformat(),
+            entry.action,
+            entry.actor_username or (
+                entry.user.username if entry.user_id else ''),
+            '',
+            (entry.detail or '').replace('\n', ' '),
+        ])
+    return response

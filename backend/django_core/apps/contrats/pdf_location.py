@@ -15,8 +15,14 @@ Cross-app : le nom du client est lu via ``apps.crm.selectors.client_label``
 (lecture seule, jamais un import de ``crm.models``) ; la fiche société via
 ``apps.parametres.models_company.CompanyProfile`` (app foundation, exempte de
 la frontière cross-app — CLAUDE.md).
+
+ARC12 — la plomberie WeasyPrint (import paresseux + ``write_pdf()``) est
+déléguée au service partagé ``core.pdf.render_pdf`` ; les gabarits Django
+restent STRICTEMENT identiques, donc le rendu est inchangé à l'octet près.
 """
 from django.template.loader import get_template
+
+from core.pdf import render_pdf
 
 
 def _company_context(company):
@@ -44,9 +50,7 @@ def _client_nom(ordre):
 
 
 def _html_to_pdf(html_string):
-    import weasyprint  # import local : lib lourde, chargée à la demande
-
-    return weasyprint.HTML(string=html_string).write_pdf()
+    return render_pdf(html=html_string)
 
 
 def _base_context(ordre):

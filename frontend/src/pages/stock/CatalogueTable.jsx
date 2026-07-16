@@ -7,6 +7,7 @@ import {
 } from '../../ui'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
 import { keySpec, prixTtc, sansPrix } from '../../features/stock/catalogue'
+import { formatMAD } from '../../lib/format'
 
 /* ============================================================================
    J142 — Stock refonte : le catalogue produits passe au moteur DataTable
@@ -26,7 +27,7 @@ import { keySpec, prixTtc, sansPrix } from '../../features/stock/catalogue'
    historique.
    ========================================================================== */
 
-const fmtNum2 = (n) => Number(n || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const fmtNum2 = (n) => formatMAD(n, { withSymbol: false })
 
 // Valeur de vente HT du catalogue affiché (somme prix_vente × quantité) — sert
 // à la ligne de sous-totaux du moteur.
@@ -139,7 +140,7 @@ export function CatalogueTable({
       accessor: (p) => p.prix_vente,
       cell: (value, p) => {
         if (sansPrix(p) && !editable) return <Badge tone="warning">prix à renseigner</Badge>
-        const display = `${parseFloat(value || 0).toFixed(2)} HT`
+        const display = `${formatMAD(value, { withSymbol: false })} HT`
         if (!editable) return <span className="tabular-nums">{display}</span>
         return (
           <EditableCell
@@ -147,7 +148,7 @@ export function CatalogueTable({
             row={p}
             align="right"
             inputType="number"
-            format={(v) => `${parseFloat(v || 0).toFixed(2)} HT`}
+            format={(v) => `${formatMAD(v, { withSymbol: false })} HT`}
             validate={validatePositif}
             onSave={(v, r) => onInlineSave(r, 'prix_vente', v)}
           />
@@ -173,7 +174,7 @@ export function CatalogueTable({
           ? <span className="text-muted-foreground">—</span>
           : (
             <span className="font-semibold tabular-nums">
-              {Number(v).toLocaleString('fr-MA')} DH{' '}
+              {formatMAD(v, { withSymbol: false })} DH{' '}
               <span className="text-xs font-normal text-muted-foreground">TTC · TVA {parseFloat(p.tva ?? 20)}%</span>
             </span>
           )
@@ -291,6 +292,9 @@ export function CatalogueTable({
       summaryLabel="Valeur vente du catalogue affiché"
       emptyTitle={(produits?.length ?? 0) === 0 ? 'Aucun produit' : 'Aucun résultat'}
       emptyDescription="Aucun produit ne correspond au catalogue affiché."
+      // VX40 — pictogramme solaire illustré réservé au vrai catalogue vide
+      // (jamais au cas « filtres sans résultat », routine et non « rare »).
+      emptyIllustrated={(produits?.length ?? 0) === 0}
       aria-label="Catalogue produits en stock"
       className="min-w-0"
     />

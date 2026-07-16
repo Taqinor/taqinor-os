@@ -5,14 +5,16 @@
 // onExport. Les règles du funnel sont appliquées SERVEUR — ici, on ne fait que
 // présenter les actions.
 import { useState } from 'react'
-import { Download, X } from 'lucide-react'
+import { Download, X, MoreHorizontal } from 'lucide-react'
 import {
   PIPELINE_STAGES, STAGE_LABELS, CANAL_LABELS, PRIORITE_LABELS,
 } from '../../../features/crm/stages'
 import {
   Button, Input,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
 } from '../../../ui'
+import { BulkDestructiveConfirm } from '../../../ui/BulkDestructiveConfirm'
 
 // Radix Select interdit la valeur chaîne vide → sentinelle pour « aucun ».
 const NO_OWNER = '__none'
@@ -33,6 +35,11 @@ export default function BulkActionBar({
   // Planifier une activité en masse (records.Activity) : intitulé + échéance.
   const [actSummary, setActSummary] = useState('Appeler')
   const [actDue, setActDue] = useState('')
+  // VX244 — la suppression en masse (≥5 leads courant côté kanban/liste) passe
+  // par la confirmation TAPÉE (`BulkDestructiveConfirm`, extraite de
+  // `ForceDeleteModal`) au lieu d'un `window.confirm` générique — le nombre
+  // exact sélectionné doit être retapé pour confirmer.
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false)
 
   const toggle = (name) => setPanel((p) => (p === name ? null : name))
   const run = (action, params) => { onAction(action, params); setPanel(null) }
@@ -43,6 +50,10 @@ export default function BulkActionBar({
         <strong>{count}</strong> sélectionné{count > 1 ? 's' : ''}
       </div>
 
+      {/* VX20 — « soupe d'actions » réduite : Responsable/Étape/Archiver/
+          Export restent des boutons directs (les plus fréquents) ; le reste
+          (Canal, Priorité, Tag, Relance, Planifier activité, Perdu,
+          Restaurer, Supprimer) vit dans un seul menu « Plus ». */}
       <div className="bulk-bar-actions">
         <Button type="button" size="sm" variant="outline"
                 onClick={() => toggle('reassign')} disabled={busy}>
@@ -53,56 +64,57 @@ export default function BulkActionBar({
           Étape
         </Button>
         <Button type="button" size="sm" variant="outline"
-                onClick={() => toggle('canal')} disabled={busy}>
-          Canal
-        </Button>
-        <Button type="button" size="sm" variant="outline"
-                onClick={() => toggle('priorite')} disabled={busy}>
-          Priorité
-        </Button>
-        <Button type="button" size="sm" variant="outline"
-                onClick={() => toggle('tag')} disabled={busy}>
-          Tag
-        </Button>
-        <Button type="button" size="sm" variant="outline"
-                onClick={() => toggle('relance')} disabled={busy}>
-          Relance
-        </Button>
-        <Button type="button" size="sm" variant="outline"
-                onClick={() => toggle('activity')} disabled={busy}>
-          Planifier activité
-        </Button>
-        <Button type="button" size="sm" variant="outline"
-                onClick={() => toggle('perdu')} disabled={busy}>
-          Perdu
-        </Button>
-        <Button type="button" size="sm" variant="outline"
                 onClick={() => run('archive')} disabled={busy}>
           Archiver
-        </Button>
-        <Button type="button" size="sm" variant="outline"
-                onClick={() => run('unarchive')}
-                disabled={busy || !hasArchivedSelected}
-                title={hasArchivedSelected
-                  ? undefined : 'Aucun lead archivé sélectionné'}>
-          Restaurer
         </Button>
         <Button type="button" size="sm" variant="outline"
                 onClick={onExport} disabled={busy}>
           <Download /> Exporter Excel
         </Button>
-        {canDelete && (
-          <Button type="button" size="sm" variant="destructive"
-                  onClick={() => {
-                    if (window.confirm(
-                      `Supprimer définitivement ${count} lead(s) ? `
-                      + 'Les leads avec des devis liés seront ignorés.')) {
-                      run('delete')
-                    }
-                  }} disabled={busy}>
-            Supprimer
-          </Button>
-        )}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button type="button" size="sm" variant="outline" disabled={busy}
+                    aria-label="Plus d'actions en masse">
+              <MoreHorizontal className="size-4" aria-hidden="true" />
+              Plus
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            <DropdownMenuItem onSelect={() => toggle('canal')}>
+              Canal
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => toggle('priorite')}>
+              Priorité
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => toggle('tag')}>
+              Tag
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => toggle('relance')}>
+              Relance
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => toggle('activity')}>
+              Planifier activité
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => toggle('perdu')}>
+              Perdu
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={!hasArchivedSelected}
+              title={hasArchivedSelected ? undefined : 'Aucun lead archivé sélectionné'}
+              onSelect={() => run('unarchive')}
+            >
+              Restaurer
+            </DropdownMenuItem>
+            {canDelete && (
+              <DropdownMenuItem
+                destructive
+                onSelect={() => setConfirmBulkDelete(true)}
+              >
+                Supprimer
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
         <Button type="button" size="sm" variant="ghost" className="bulk-bar-clear"
                 onClick={onClear} disabled={busy}>
           <X /> Désélectionner
@@ -250,6 +262,21 @@ export default function BulkActionBar({
           </Button>
         </div>
       )}
+
+      <BulkDestructiveConfirm
+        open={confirmBulkDelete}
+        onOpenChange={setConfirmBulkDelete}
+        count={count}
+        itemLabel={count > 1 ? 'leads' : 'lead'}
+        title={`Supprimer ${count} lead${count > 1 ? 's' : ''} ?`}
+        description={
+          'Ils iront à la corbeille (restaurables 30 min). Les leads avec des '
+          + 'devis liés seront ignorés.'
+        }
+        confirmLabel="Supprimer"
+        loading={busy}
+        onConfirm={() => { setConfirmBulkDelete(false); run('delete') }}
+      />
     </div>
   )
 }

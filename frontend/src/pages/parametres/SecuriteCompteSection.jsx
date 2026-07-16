@@ -9,6 +9,8 @@
 import { useEffect, useState } from 'react'
 import { ShieldCheck, ShieldAlert, KeyRound, Copy, CheckCircle2, Monitor, LogOut, Lock } from 'lucide-react'
 import api from '../../api/axios'
+import { formatDateTime } from '../../lib/format'
+import { renderTrustedSvg } from '../../lib/trustedSvg'
 import { Card, CardContent, Button, Input, Spinner } from '../../ui'
 import { SectionTitle } from './peComponents'
 
@@ -42,10 +44,7 @@ function SessionsActives() {
     } finally { setRevoking(null) }
   }
 
-  const fmt = (iso) => {
-    if (!iso) return '—'
-    try { return new Date(iso).toLocaleString('fr-FR') } catch { return iso }
-  }
+  const fmt = (iso) => formatDateTime(iso)
 
   return (
     <Card>
@@ -267,12 +266,21 @@ export default function SecuriteCompteSection() {
     } finally { setBusy(false) }
   }
 
+  // VX201 — les codes de secours 2FA copiés restaient en clair sur le
+  // presse-papiers indéfiniment (souvent synchronisé cloud sur certains OS) :
+  // vidage best-effort ~60 s après la copie (on écrase par une chaîne vide ;
+  // best-effort car on ne peut pas vérifier que l'utilisateur n'a rien copié
+  // d'autre entre-temps — micro-avertissement affiché pour que ce ne soit
+  // jamais une surprise).
   const copyRecovery = () => {
     if (!recovery) return
     try {
       navigator.clipboard?.writeText(recovery.join('\n'))
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
+      setTimeout(() => {
+        try { navigator.clipboard?.writeText('') } catch { /* ignore */ }
+      }, 60000)
     } catch { /* clipboard indisponible : l'utilisateur recopie à la main */ }
   }
 
@@ -339,6 +347,11 @@ export default function SecuriteCompteSection() {
                 ? <><CheckCircle2 className="size-4" /> Copié</>
                 : <><Copy className="size-4" /> Copier</>}
             </Button>
+            {copied && (
+              <p className="mt-1.5 text-[10.5px] text-amber-700">
+                Le presse-papiers sera vidé automatiquement dans ~60 s.
+              </p>
+            )}
           </div>
         )}
 
@@ -357,11 +370,21 @@ export default function SecuriteCompteSection() {
               ou saisissez la clé manuellement.
             </p>
             <div className="mb-3 flex flex-col items-start gap-3 sm:flex-row sm:items-center">
-              <img
-                alt="QR code de configuration 2FA"
-                className="size-40 rounded border border-border bg-white p-1"
-                src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(setup.otpauth_uri)}`}
-              />
+              {/* VX120 — SVG rendu CÔTÉ SERVEUR (`qr_svg` dans la réponse de
+                  `/auth/2fa/setup/`), plus aucun appel à un service tiers : la
+                  graine TOTP ne quitte jamais notre origine. */}
+              {renderTrustedSvg(setup.qr_svg) ? (
+                <div
+                  role="img"
+                  aria-label="QR code de configuration 2FA"
+                  className="size-40 shrink-0 overflow-hidden rounded border border-border bg-white p-1 [&>svg]:size-full"
+                  dangerouslySetInnerHTML={renderTrustedSvg(setup.qr_svg)}
+                />
+              ) : (
+                <div className="flex size-40 shrink-0 items-center justify-center rounded border border-border bg-muted p-2 text-center text-[11px] text-muted-foreground">
+                  QR indisponible — utilisez la clé manuelle ci-contre.
+                </div>
+              )}
               <div className="text-[11.5px]">
                 <div className="mb-1 text-muted-foreground">Clé manuelle :</div>
                 <code className="break-all rounded bg-muted px-2 py-1 font-mono text-sm">{setup.secret}</code>

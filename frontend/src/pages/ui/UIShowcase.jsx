@@ -111,10 +111,10 @@ function DoneItem({ children }) {
 
 /* ── P170 · Démo : confirmation + toasts (ui/confirm) ──────────────────────── */
 function ConfirmToastDemo() {
-  const { confirm, confirmDelete } = useConfirmDialog()
+  const { confirm: askConfirm, confirmDelete } = useConfirmDialog()
 
   async function onConfirm() {
-    const ok = await confirm({
+    const ok = await askConfirm({
       title: 'Marquer comme contacté ?',
       description: 'Le lead passera à l’étape suivante du pipeline.',
       confirmLabel: 'Marquer',
@@ -934,6 +934,57 @@ export function UIShowcase() {
                   { id: 'd', label: 'Entretien flotte — Dacia', meta: 'AB-1234-56', daysLeft: 62 },
                 ]}
               />
+            </div>
+          </section>
+
+          {/* ── VX45 — Voix & microcopie ──────────────────────────────────────── */}
+          <section id="voix" className="scroll-mt-6">
+            <h2 className="font-display text-lg font-semibold tracking-tight">
+              Voix &amp; microcopie
+            </h2>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              Deux règles pour tout texte visible (toasts, dialogues, états vides,
+              chargements) au registre Doctolib — la chaleur par la CLARTÉ, jamais
+              l&apos;emphase.
+            </p>
+            <Separator className="my-3" />
+            <ul className="mb-4 grid gap-2 text-sm sm:grid-cols-2">
+              <DoneItem>
+                <strong className="text-foreground">Confirmations</strong> — fait +
+                objet, jamais un point d&apos;exclamation :{' '}
+                <Code>Devis enregistré.</Code> plutôt que{' '}
+                <Code>Opération réussie !</Code>
+              </DoneItem>
+              <DoneItem>
+                <strong className="text-foreground">Erreurs</strong> — quoi + la
+                prochaine étape, jamais un message technique brut :{' '}
+                <Code>Envoi impossible — vérifiez votre connexion et réessayez.</Code>
+              </DoneItem>
+              <DoneItem>
+                <strong className="text-foreground">Chargements</strong> — nommés,
+                jamais un spinner muet : <Code>Génération du PDF…</Code> plutôt
+                que <Code>Chargement…</Code> seul quand l&apos;action est connue.
+              </DoneItem>
+              <DoneItem>
+                <strong className="text-foreground">Icônes fonctionnelles</strong> —
+                toujours un composant lucide (<Code>Zap</Code>, <Code>Home</Code>,
+                <Code>FileText</Code>…), jamais un emoji brut : le rendu emoji
+                varie par OS et casse le système d&apos;icônes (VX45).
+              </DoneItem>
+            </ul>
+            <div className="flex flex-wrap items-start gap-3">
+              <div className="flex w-56 flex-col gap-1 rounded-lg border border-success/30 bg-success/10 p-3">
+                <span className="text-xs font-medium text-success">Confirmation</span>
+                <span className="text-sm text-foreground">Devis enregistré.</span>
+              </div>
+              <div className="flex w-56 flex-col gap-1 rounded-lg border border-destructive/30 bg-destructive/10 p-3">
+                <span className="text-xs font-medium text-destructive">Erreur</span>
+                <span className="text-sm text-foreground">Envoi impossible — vérifiez votre connexion et réessayez.</span>
+              </div>
+              <div className="flex w-56 flex-col gap-1 rounded-lg border border-info/30 bg-info/10 p-3">
+                <span className="text-xs font-medium text-info">Chargement nommé</span>
+                <span className="text-sm text-foreground">Génération du PDF…</span>
+              </div>
             </div>
           </section>
         </div>

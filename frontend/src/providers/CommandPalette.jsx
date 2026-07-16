@@ -16,47 +16,31 @@ import { Search } from 'lucide-react'
 import {
   Dialog, DialogContent, DialogTitle, DialogDescription,
 } from '../ui/Dialog'
-import reportingApi from '../api/reportingApi'
-import { filterActions, readRecentEntities, pushRecentEntity } from './commandActions'
-
-// Route d'ouverture par type d'entité (aligné sur router/index.jsx). `produit`
-// est inclus pour le jour où le back le renvoie ; il pointe vers le stock.
-const ROUTE = {
-  lead: (id) => `/crm/leads?lead=${id}`,
-  client: () => '/crm',
-  devis: () => '/ventes/devis',
-  facture: () => '/ventes/factures',
-  chantier: () => '/chantiers',
-  equipement: () => '/equipements',
-  ticket: () => '/sav',
-  produit: () => '/stock',
-}
-
-// Libellé de groupe par type d'entité — sert d'étiquette discrète aux récents.
-const TYPE_LABEL = {
-  lead: 'Lead',
-  client: 'Client',
-  devis: 'Devis',
-  facture: 'Facture',
-  chantier: 'Chantier',
-  equipement: 'Équipement',
-  ticket: 'SAV',
-  produit: 'Produit',
-}
+import {
+  filterActions, filterCreateActions, readRecentEntities, pushRecentEntity,
+} from './commandActions'
+// VX13 — ROUTE/TYPE_LABEL + recherche débouncée mutualisés avec GlobalSearch
+// (barre du haut) : plus aucune table dupliquée (cf. lib/search/entityRoutes.js).
+import { ROUTE, TYPE_LABEL, TYPE_ACCENT, useEntitySearch } from '../lib/search/entityRoutes'
 
 export function CommandPalette() {
   const [open, setOpen] = useState(false)
   const [q, setQ] = useState('')
-  const [groups, setGroups] = useState([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(false)
   const [active, setActive] = useState(0)
   const inputRef = useRef(null)
   const listRef = useRef(null)
   const navigate = useNavigate()
 
   const term = q.trim()
+  // VX13 — recherche débouncée mutualisée (cf. lib/search/entityRoutes.js) ;
+  // `enabled: open` préserve le comportement d'origine (aucune requête tant
+  // que la palette est fermée). `failed` renommé `error` au point d'usage pour
+  // ne rien changer au reste du composant.
+  const { groups, loading, failed: error } = useEntitySearch(term, { enabled: open })
   const actions = useMemo(() => filterActions(term), [term])
+  // VX220(b) — actions de CRÉATION, section dédiée « Créer » (jamais mélangée
+  // à la navigation « Actions » ci-dessus).
+  const createActions = useMemo(() => filterCreateActions(term), [term])
   // Récents (entités ouvertes via la palette) relus à chaque ouverture — DÉRIVÉS
   // via useMemo, donc aucun setState synchrone dans un effet (règle lint).
   const recent = useMemo(() => (open ? readRecentEntities() : []), [open])
@@ -74,6 +58,15 @@ export function CommandPalette() {
         return { ...a, index }
       })
       secs.push({ key: 'actions', title: 'Actions', kind: 'action', rows })
+    }
+    // VX220(b) — « Créer » — section dédiée, jamais mélangée à « Actions ».
+    if (createActions.length) {
+      const rows = createActions.map((a) => {
+        const index = f.length
+        f.push({ kind: 'create', action: a })
+        return { ...a, index }
+      })
+      secs.push({ key: 'create', title: 'Créer', kind: 'create', rows })
     }
     if (term.length < 2) {
       // « Récents » (entités) à vide.
@@ -97,13 +90,11 @@ export function CommandPalette() {
       }
     }
     return { sections: secs, flat: f }
-  }, [actions, recent, groups, term])
+  }, [actions, createActions, recent, groups, term])
 
   const close = useCallback(() => {
     setOpen(false)
     setQ('')
-    setGroups([])
-    setError(false)
     setActive(0)
   }, [])
 
@@ -133,24 +124,18 @@ export function CommandPalette() {
     return () => clearTimeout(t)
   }, [open])
 
-  // ── Recherche débouncée (~250 ms) ───────────────────────────────────────────
-  // Tous les setState vivent DANS le callback différé (asynchrone) — aucun
-  // setState synchrone dans le corps de l'effet (motif GlobalSearch).
-  useEffect(() => {
-    if (!open) return undefined
-    const t = setTimeout(() => {
-      if (term.length < 2) {
-        setGroups([]); setLoading(false); setError(false); setActive(0)
-        return
-      }
-      setLoading(true)
-      reportingApi.search(term)
-        .then((r) => { setGroups(r.data?.groups ?? []); setError(false) })
-        .catch(() => { setGroups([]); setError(true) })
-        .finally(() => { setLoading(false); setActive(0) })
-    }, term.length < 2 ? 0 : 250)
-    return () => clearTimeout(t)
-  }, [q, open]) // eslint-disable-line react-hooks/exhaustive-deps
+  // VX13 — la recherche elle-même vit dans useEntitySearch (débounce ~250 ms,
+  // cf. lib/search/entityRoutes.js) ; on garde ici SEULEMENT la remise à zéro
+  // de la sélection clavier à chaque nouvelle requête (comportement
+  // byte-identique à l'ancien effet local, qui remettait `active` à 0 au
+  // lancement ET à l'arrivée de la réponse).
+  // Remise à zéro de la sélection clavier quand la requête change — en phase
+  // de rendu (patron React), pas dans un effet-setState.
+  const [prevTerm, setPrevTerm] = useState(term)
+  if (term !== prevTerm) {
+    setPrevTerm(term)
+    setActive(0)
+  }
 
   // L'index actif peut dépasser la liste après un changement de résultats : on le
   // borne au point d'usage (rendu + Entrée) plutôt que via un setState en effet.
@@ -159,7 +144,7 @@ export function CommandPalette() {
   // Ouvre une cible quelconque de la liste aplatie.
   const activate = useCallback((entry) => {
     if (!entry) return
-    if (entry.kind === 'action') {
+    if (entry.kind === 'action' || entry.kind === 'create') {
       navigate(entry.action.to)
     } else if (entry.kind === 'recent') {
       const make = ROUTE[entry.entity.type]
@@ -201,6 +186,7 @@ export function CommandPalette() {
     <Dialog open={open} onOpenChange={(v) => (v ? setOpen(true) : close())}>
       <DialogContent
         className="cmdk-content"
+        variant="command"
         showClose={false}
         onKeyDown={onKeyDown}
         aria-label="Palette de commandes"
@@ -243,15 +229,15 @@ export function CommandPalette() {
               <div className="cmdk-group-title">{sec.title}</div>
               {sec.rows.map((r) => {
                 const i = r.index
-                if (sec.kind === 'action') {
+                if (sec.kind === 'action' || sec.kind === 'create') {
                   return (
                     <button
-                      key={`action-${r.id}`}
+                      key={`${sec.kind}-${r.id}`}
                       type="button"
                       className="cmdk-item"
                       data-active={i === activeClamped ? 'true' : 'false'}
                       onMouseMove={() => setActive(i)}
-                      onClick={() => activate({ kind: 'action', action: r })}
+                      onClick={() => activate({ kind: sec.kind, action: r })}
                     >
                       <span className="cmdk-item-label">{r.label}</span>
                       {r.keys && <span className="cmdk-kbd cmdk-item-kbd">{r.keys}</span>}
@@ -268,6 +254,14 @@ export function CommandPalette() {
                       onMouseMove={() => setActive(i)}
                       onClick={() => activate({ kind: 'recent', entity: r })}
                     >
+                      {/* VX13 — pastille d'accent du module d'origine (VX8). */}
+                      {TYPE_ACCENT[r.type] && (
+                        <span
+                          className="cmdk-item-accent"
+                          style={{ '--module-accent': `var(--module-accent-${TYPE_ACCENT[r.type]})` }}
+                          aria-hidden="true"
+                        />
+                      )}
                       <span className="cmdk-item-label">{r.label || TYPE_LABEL[r.type] || r.type}</span>
                       {TYPE_LABEL[r.type] && <span className="cmdk-item-sub">{TYPE_LABEL[r.type]}</span>}
                     </button>
@@ -283,6 +277,14 @@ export function CommandPalette() {
                     onMouseMove={() => setActive(i)}
                     onClick={() => activate({ kind: 'result', type: sec.type, item: r })}
                   >
+                    {/* VX13 — pastille d'accent du module d'origine (VX8). */}
+                    {TYPE_ACCENT[sec.type] && (
+                      <span
+                        className="cmdk-item-accent"
+                        style={{ '--module-accent': `var(--module-accent-${TYPE_ACCENT[sec.type]})` }}
+                        aria-hidden="true"
+                      />
+                    )}
                     <span className="cmdk-item-label">{r.label}</span>
                     {r.sublabel && <span className="cmdk-item-sub">{r.sublabel}</span>}
                   </button>

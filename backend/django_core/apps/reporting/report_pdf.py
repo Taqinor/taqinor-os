@@ -7,14 +7,20 @@ n'apparaissent JAMAIS dans la sortie cliente.  Le logo vient du CompanyProfile
 Usage interne :
     from apps.reporting.report_pdf import pdf_response
     return pdf_response(request, title='Rapport Ventes', sections=...)
+
+ARC12 — la plomberie WeasyPrint (``HTML(string=...).write_pdf()``) est
+déléguée au service partagé ``core.pdf.render_pdf`` ; le GABARIT Jinja2
+ci-dessus reste STRICTEMENT identique, donc le rendu est inchangé à l'octet
+près.
 """
 import base64
 import logging
 from datetime import date
 
-import weasyprint
 from django.http import HttpResponse
 from jinja2 import Environment
+
+from core.pdf import render_pdf
 
 logger = logging.getLogger(__name__)
 
@@ -162,8 +168,7 @@ def render_report_pdf(
         sections=sections,
     )
 
-    pdf_bytes = weasyprint.HTML(string=html_str).write_pdf()
-    return pdf_bytes
+    return render_pdf(html=html_str)
 
 
 def pdf_response(pdf_bytes: bytes, filename: str = 'rapport.pdf') -> HttpResponse:

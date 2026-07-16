@@ -19,8 +19,6 @@ factures existantes ; on ne réimplémente aucun calcul d'argent à la main.
 """
 from __future__ import annotations
 
-from decimal import Decimal
-
 # Prédicats de classification — partagés avec le moteur de devis. Purs (chaînes).
 from apps.ventes.quote_engine.builder import (
     _is_battery, _is_hybrid_inverter, _is_reseau_inverter,
@@ -83,22 +81,31 @@ def option_lines(devis, option=None):
 def option_totaux(devis, option=None) -> dict:
     """Totaux HT / TVA / TTC (Decimals, centime) pour l'option retenue.
 
-    Calculés par la même formule que ``Devis.total_ht/total_tva`` mais sur le
-    sous-ensemble de lignes de l'option. Sans vraie deuxième option, renvoie les
-    totaux complets du devis → identiques au comportement historique au centime.
+    QX1 — SOURCE UNIQUE DE LA MONNAIE : les totaux passent désormais par la
+    chaîne canonique ``selectors._canonical_totaux`` (HT brut → **remise
+    globale** → TVA par taux → TTC), EXACTEMENT comme le PDF client
+    (``quote_engine/builder``). La ``remise_globale`` du devis est donc honorée
+    de bout en bout : échéancier, solde et bon de commande héritent
+    automatiquement de la remise (avant QX1 elle était perdue → sur-facturation).
+
+    ``ht`` / ``tva`` / ``ttc`` sont les valeurs **NETTES** (après remise). Le
+    détail brut/remise est aussi exposé (``ht_brut``, ``remise``) pour les
+    documents qui affichent la ligne « Remise globale » (BC). Sans option double
+    et sans remise, les valeurs restent identiques au comportement historique.
     """
+    from apps.ventes.selectors import _canonical_totaux
     if option is None:
         option = getattr(devis, 'option_acceptee', '') or ''
     if not option or not has_two_options(devis):
-        ht = Decimal(str(devis.total_ht))
-        tva = Decimal(str(devis.total_tva))
-        return {'ht': ht, 'tva': tva, 'ttc': ht + tva}
-    lignes = filter_lines_for_option(
-        list(devis.lignes.select_related('produit').all()), option)
-    ht = sum((Decimal(str(li.total_ht)) for li in lignes), Decimal('0'))
-    tva = sum(
-        (Decimal(str(li.total_ht)) * (Decimal(str(li.taux_tva_effectif))
-                                      / Decimal('100'))
-         for li in lignes),
-        Decimal('0'))
-    return {'ht': ht, 'tva': tva, 'ttc': ht + tva}
+        lignes = list(devis.lignes.select_related('produit').all())
+    else:
+        lignes = filter_lines_for_option(
+            list(devis.lignes.select_related('produit').all()), option)
+    can = _canonical_totaux(
+        lignes,
+        remise_globale_pct=getattr(devis, 'remise_globale', 0) or 0,
+        fallback_taux=devis.taux_tva)
+    return {
+        'ht': can['ht_net'], 'tva': can['tva'], 'ttc': can['ttc'],
+        'ht_brut': can['ht_brut'], 'remise': can['remise'],
+    }

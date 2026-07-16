@@ -31,6 +31,34 @@ API publique
 * ``etapes_sla_depassees(company, now)`` (sélecteur) liste les étapes en attente
   dont l'échéance SLA est passée — base des escalades.
 * ``escalader_etape(step, now=None)`` marque une étape ``escalade``.
+
+RÈGLE D'ARCHITECTURE (ARC10) — ce moteur EST LE moteur d'approbation
+--------------------------------------------------------------------
+
+**Toute NOUVELLE approbation multi-étapes passe par ce moteur
+``core.WorkflowDefinition``/``WorkflowInstance``** — plus jamais un cinquième
+mécanisme d'approbation ad hoc. Historiquement cinq mécanismes coexistaient
+(``automation.AutomationApproval``, ``contrats.RegleApprobation``/
+``EtapeApprobation``, ``ged.DemandeApprobation``, ``installations.DemandeAchat``,
+et ce moteur BPM) ; l'agrégateur ``apps/reporting/approbations.py`` les remonte
+déjà tous dans une boîte unique (source 5 = ce moteur, via
+``pending_steps_for_company`` / ``decide_step``). Les nouveaux besoins
+n'ajoutent pas de sixième chemin : ils installent un modèle FG369
+(``core.workflow_templates``) et attachent une ``WorkflowInstance`` à leur
+cible métier par ``contenttypes`` — sans que ``core`` n'importe l'app.
+
+Pilote domaine vivant : la **clôture de non-conformité qhse** (hors règle #4,
+volontairement) tourne sur ce moteur via le modèle FG369 ``cloture_ncr`` et les
+services ``apps/qhse/services.py`` (``demarrer_workflow_cloture_ncr`` /
+``approuver_etape_cloture_ncr`` / ``rejeter_etape_cloture_ncr`` /
+``escalader_workflow_cloture_ncr``). Créée → approuvée → rejetée → escaladée,
+couvertes en tests.
+
+Successeur pour la **configurabilité UI** : ``parametres.ApprovalPolicy``
+(FG25) porte les politiques déclaratives (type d'action + seuil + palier
+d'approbateur) éditables par l'admin ; c'est la couche de configuration qui
+alimentera à terme la sélection/instanciation de ces définitions de workflow —
+ce moteur reste l'EXÉCUTION, FG25 la CONFIGURATION.
 """
 import datetime
 
@@ -52,6 +80,7 @@ __all__ = [
     'etape_courante_de',
     'etapes_sla_depassees',
     'flag_overdue_steps',
+    'instance_en_cours_pour',
 ]
 
 
@@ -117,6 +146,28 @@ def demarrer_workflow(definition, target, company, user=None, now=None):
     # Franchit immédiatement les étapes 'auto' en tête de file.
     avancer(instance, now=started, _from_start=True)
     return instance
+
+
+def instance_en_cours_pour(target, company, definition_code=None):
+    """Sélecteur : la ``WorkflowInstance`` EN COURS attachée à ``target``.
+
+    Résout la cible générique (``content_type`` + ``object_id``) sans que
+    ``core`` ait à connaître le modèle métier — n'importe quelle app peut
+    demander « quel workflow tourne actuellement sur cet objet ? ». Bornée à la
+    société (multi-tenant, jamais de fuite) et, optionnellement, à un
+    ``definition_code`` (utile quand plusieurs types de workflow peuvent viser
+    le même objet). Retourne la plus récente ou ``None``.
+    """
+    ct = ContentType.objects.get_for_model(target.__class__)
+    qs = WorkflowInstance.objects.filter(
+        company=company,
+        content_type=ct,
+        object_id=target.pk,
+        statut=WorkflowInstance.STATUT_EN_COURS,
+    )
+    if definition_code is not None:
+        qs = qs.filter(definition__code=definition_code)
+    return qs.order_by('-id').first()
 
 
 def etape_courante_de(instance):

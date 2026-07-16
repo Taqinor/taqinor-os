@@ -21,9 +21,12 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
+from rest_framework.views import APIView
+
+from django.utils import timezone
 
 from authentication.mixins import TenantMixin
-from authentication.permissions import IsResponsableOrAdmin
+from authentication.permissions import HasPermissionOrLegacy, IsResponsableOrAdmin
 
 from . import selectors, services
 from .models import (
@@ -39,7 +42,7 @@ from .models import (
     ExerciceComptable, FormulaireIntake, Immobilisation, IndemniteChantier,
     Journal,
     LignePrevisionnelTresorerie, LigneReleve, MessageWhatsAppEntrant,
-    ModeleDevis, MouvementCaisse, NoteFrais, OuverturePartage,
+    ModeleDevis, MouvementCaisse, NoteFrais, OuverturePartage, PostSocial,
     PaymentRun, PeriodeComptable, PlafondNoteFrais, PlanComptable, Provision,
     ProvisionCreance, RapportNoteFrais,
     Rapprochement, RapprochementBancaire, RelanceDevisAbandonne,
@@ -87,6 +90,7 @@ from .serializers import (
     BilletEvenementSerializer,
     QuestionEvenementSerializer,
     CommunicationEvenementSerializer,
+    PostSocialSerializer,
     CommissionPayoutRunSerializer, CompteComptableSerializer,
     CompteTresorerieSerializer, ContratAvancementSerializer,
     DeclarationTVASerializer, DemandeApprobationConfigSerializer,
@@ -292,6 +296,12 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
     """États de synthèse en LECTURE SEULE (FG110-114) : grand livre, balance,
     CPC, bilan. Admin/Responsable uniquement, scopés société côté selector."""
     permission_classes = [IsResponsableOrAdmin]
+
+    def get_permissions(self):
+        # YRBAC13 — toutes les actions de ce viewset sont des rapports en
+        # LECTURE SEULE (GET) ; garde explicite par action pour le scanner
+        # YRBAC4, comportement STRICTEMENT inchangé (IsResponsableOrAdmin).
+        return [IsResponsableOrAdmin()]
 
     def _periode(self, request):
         params = request.query_params
@@ -1996,6 +2006,22 @@ class RapprochementBancaireViewSet(_ComptaBaseViewSet):
         serializer.save(
             company=self.request.user.company, created_by=self.request.user)
 
+    def get_permissions(self):
+        # YRBAC13 — fine-grain les @action au-delà du grossier
+        # IsResponsableOrAdmin de base : lecture (rapports/synthèse) reste
+        # ouverte à Admin/Responsable ; saisie (import/ligne de relevé) exige
+        # ``compta_saisir`` ; validation (pointage/acceptation/clôture) exige
+        # ``compta_valider`` — les deux sont déjà octroyés par défaut au
+        # Responsable (COMPTA40), donc AUCUNE régression pour les rôles par
+        # défaut ; seul un rôle fin explicitement privé du code est affecté.
+        if self.action in ('lignes_gl', 'resume', 'suggestions'):
+            return [IsResponsableOrAdmin()]
+        if self.action in ('ligne_releve', 'ocr_import'):
+            return [HasPermissionOrLegacy('compta_saisir')()]
+        if self.action in ('pointer', 'accepter_suggestions', 'cloturer'):
+            return [HasPermissionOrLegacy('compta_valider')()]
+        return super().get_permissions()
+
     @action(detail=True, methods=['get'], url_path='lignes-gl')
     def lignes_gl(self, request, pk=None):
         """Lignes du grand livre pointables sur la période (FG123)."""
@@ -2380,6 +2406,17 @@ class EffetViewSet(_ComptaBaseViewSet):
     def perform_create(self, serializer):
         serializer.save(
             company=self.request.user.company, created_by=self.request.user)
+
+    def get_permissions(self):
+        # YRBAC13 — toutes les actions font évoluer le statut d'un effet ET
+        # passent une écriture au grand livre (docstring de la classe) : ce
+        # sont des saisies comptables, gardées par ``compta_saisir`` (déjà
+        # octroyé au Responsable par défaut — comportement inchangé pour les
+        # rôles existants, resserré pour un rôle fin qui en serait privé).
+        if self.action in ('encaisser', 'payer', 'rejeter', 'escompter',
+                           'apurer_escompte', 'endosser'):
+            return [HasPermissionOrLegacy('compta_saisir')()]
+        return super().get_permissions()
 
     @action(detail=True, methods=['post'])
     def encaisser(self, request, pk=None):
@@ -2836,6 +2873,21 @@ class NoteFraisViewSet(_ComptaBaseViewSet):
         data = self.get_serializer(note).data
         data['doublon_possible'] = doublon
         return Response(data, status=status.HTTP_201_CREATED)
+
+    def get_permissions(self):
+        # YRBAC13 — cycle de validation décrit par la docstring de la classe :
+        # ``soumettre``/``refacturer``/``ocr`` sont des saisies
+        # (``compta_saisir``) ; ``valider``/``rejeter``/``rembourser`` postent
+        # une écriture (charge ou paiement) et exigent ``compta_valider`` — le
+        # même palier que le reste du cycle de validation comptable (COMPTA40).
+        # Lecture (rapports/reçu/analyse) reste IsResponsableOrAdmin, inchangée.
+        if self.action in ('refacturables', 'recu_pdf', 'analyse'):
+            return [IsResponsableOrAdmin()]
+        if self.action in ('soumettre', 'refacturer', 'ocr'):
+            return [HasPermissionOrLegacy('compta_saisir')()]
+        if self.action in ('valider', 'rejeter', 'rembourser'):
+            return [HasPermissionOrLegacy('compta_valider')()]
+        return super().get_permissions()
 
     @action(detail=False, methods=['get'], url_path='refacturables')
     def refacturables(self, request):
@@ -3434,6 +3486,21 @@ class DeclarationTVAViewSet(_ComptaBaseViewSet):
             self.get_serializer(declaration).data,
             status=status.HTTP_201_CREATED)
 
+    def get_permissions(self):
+        # YRBAC13 — ``preparer`` calcule/fige un snapshot depuis le GL (une
+        # saisie, ``compta_saisir``) ; ``deposer`` est le dépôt OFFICIEL de la
+        # déclaration (action irréversible côté administration fiscale),
+        # gardée par ``compta_valider`` (même palier que le reste du cycle de
+        # validation, COMPTA40). Lecture (export/comparatif/bordereau) reste
+        # IsResponsableOrAdmin, inchangée.
+        if self.action in ('export', 'comparatif', 'bordereau_pdf'):
+            return [IsResponsableOrAdmin()]
+        if self.action == 'preparer':
+            return [HasPermissionOrLegacy('compta_saisir')()]
+        if self.action == 'deposer':
+            return [HasPermissionOrLegacy('compta_valider')()]
+        return super().get_permissions()
+
     @action(detail=False, methods=['post'])
     def preparer(self, request):
         """Prépare et fige une déclaration de TVA sur une période (FG137).
@@ -3615,6 +3682,19 @@ class RetenueSourceViewSet(_ComptaBaseViewSet):
                 status=status.HTTP_400_BAD_REQUEST)
         return Response(
             self.get_serializer(ras).data, status=status.HTTP_201_CREATED)
+
+    def get_permissions(self):
+        # YRBAC13 — ``verser`` marque un versement RÉEL au Trésor (paiement),
+        # gardée par ``compta_valider`` (même palier que les autres actions de
+        # paiement/validation du cycle comptable, COMPTA40). Les rapports en
+        # lecture (bordereau/export/attestations) restent IsResponsableOrAdmin,
+        # inchangés.
+        if self.action in ('bordereau', 'export', 'attestation',
+                           'attestation_annuelle'):
+            return [IsResponsableOrAdmin()]
+        if self.action == 'verser':
+            return [HasPermissionOrLegacy('compta_valider')()]
+        return super().get_permissions()
 
     @action(detail=True, methods=['post'])
     def verser(self, request, pk=None):
@@ -4624,6 +4704,28 @@ class CampagneViewSet(_ComptaBaseViewSet):
             qs = qs.order_by(groupby, '-date_creation')
         return qs
 
+    def get_permissions(self):
+        # YRBAC13 — marketing-en-compta (ré-exportée par apps/marketing/
+        # views.py, ODX10) : lecture (aperçus/KPI/reporting/kanban/modèles)
+        # reste IsResponsableOrAdmin, inchangée. ``envoyer``/``envoyer-test``
+        # déclenchent un envoi RÉEL (même sous garde d'approbation XMKT23) →
+        # ``compta_valider``. Les actions de gestion courante du cycle de vie
+        # (dupliquer/annuler/renvoyer les échecs/rattacher/cloner un modèle)
+        # restent ``compta_saisir`` — les deux déjà octroyés au Responsable
+        # par défaut (COMPTA40), donc aucune régression pour les rôles par
+        # défaut.
+        if self.action in (
+                'apercu_fusion', 'precheck', 'cout_sms', 'clics_par_lien',
+                'roi', 'roi_leads_sources', 'kpi_mere', 'kanban', 'reporting',
+                'reporting_export', 'modeles', 'rendu_lead'):
+            return [IsResponsableOrAdmin()]
+        if self.action in ('envoyer', 'envoyer_test'):
+            return [HasPermissionOrLegacy('compta_valider')()]
+        if self.action in ('creer_depuis_modele', 'dupliquer', 'annuler',
+                           'renvoyer_echecs', 'rattacher'):
+            return [HasPermissionOrLegacy('compta_saisir')()]
+        return super().get_permissions()
+
     @action(detail=True, methods=['post'])
     def envoyer(self, request, pk=None):
         campagne = self.get_object()
@@ -4686,6 +4788,46 @@ class CampagneViewSet(_ComptaBaseViewSet):
         estimation = services.estimer_cout_sms(
             campagne.corps, nb_destinataires=nb_destinataires, **kwargs)
         return Response(estimation)
+
+    @action(detail=False, methods=['get'], url_path='generer-ia-disponible',
+            permission_classes=[IsResponsableOrAdmin])
+    def generer_ia_disponible(self, request):
+        """XMKT34 — probe UI : la génération IA est-elle configurée ?
+
+        Ne déclenche JAMAIS d'appel LLM (lit seulement le registre
+        ``core.ai``) — le frontend s'en sert pour masquer complètement le
+        bouton « Générer avec l'IA » sans clé (aucune trace UI)."""
+        from core.ai.registry import is_capability_configured
+        return Response({'configured': is_capability_configured('llm')})
+
+    @action(detail=False, methods=['post'], url_path='generer-ia',
+            permission_classes=[IsResponsableOrAdmin])
+    def generer_ia(self, request):
+        """XMKT34 — Génère (suggestion éditable) un objet + corps de campagne.
+
+        NO-OP-safe : sans clé LLM configurée (Groq/Zhipu via
+        ``settings.AI_PROVIDERS``), renvoie ``configured: false`` (le
+        frontend masque le bouton). Le contenu généré n'est JAMAIS
+        auto-appliqué à la campagne — l'utilisateur relit/édite avant de
+        sauvegarder. Ne reçoit que du texte libre (segment/offre/consigne) :
+        aucun champ interne (prix_achat/marge) n'est jamais envoyé."""
+        from core.ai.services import draft_campaign_content
+        data = request.data
+        draft = draft_campaign_content(
+            segment_label=str(data.get('segment_label') or '')[:500],
+            offre=str(data.get('offre') or '')[:1000],
+            instruction=str(data.get('instruction') or '')[:500],
+            langue=str(data.get('langue') or 'fr')[:5],
+            longueur=str(data.get('longueur') or '')[:100],
+        )
+        return Response({
+            'configured': draft.configured,
+            'ok': draft.ok,
+            'objet': draft.objet,
+            'corps': draft.corps,
+            'langue': draft.langue,
+            'source': draft.source,
+        })
 
     @action(detail=True, methods=['get'], url_path='clics-par-lien')
     def clics_par_lien(self, request, pk=None):
@@ -4827,6 +4969,129 @@ class CampagneViewSet(_ComptaBaseViewSet):
         return Response(rendu)
 
 
+# ── XMKT35 — Posts réseaux sociaux (calendrier de contenu, gated) ───────────
+
+class PostSocialViewSet(_ComptaBaseViewSet):
+    """Posts réseaux sociaux planifiés (XMKT35). La publication réelle Meta
+    Graph est gated (défaut OFF) : sans jeton, le post dû devient un rappel
+    manuel notifié (texte prêt à coller) — voir services.traiter_posts_
+    sociaux_dus. L'action ``planifier`` pose la date + le statut planifié."""
+    queryset = PostSocial.objects.all()
+    serializer_class = PostSocialSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['texte']
+    ordering_fields = ['date_planifiee', 'date_creation', 'statut']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company,
+                        created_by=self.request.user)
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[IsResponsableOrAdmin])
+    def planifier(self, request, pk=None):
+        """Planifie le post à ``date_planifiee`` (brouillon → planifié)."""
+        post = self.get_object()
+        date_planifiee = request.data.get('date_planifiee')
+        if not date_planifiee:
+            return Response({'detail': 'date_planifiee requise.'}, status=400)
+        from django.utils.dateparse import parse_datetime
+        quand = parse_datetime(str(date_planifiee))
+        if quand is None:
+            return Response(
+                {'detail': 'date_planifiee invalide (ISO attendu).'},
+                status=400)
+        if timezone.is_naive(quand):
+            quand = timezone.make_aware(quand)
+        services.planifier_post_social(post, date_planifiee=quand)
+        return Response(PostSocialSerializer(post).data)
+
+
+# ── XMKT30 (partiel) — Calendrier marketing unifié ──────────────────────────
+# Endpoint agrégé consommé par features/marketing/MarketingCalendarScreen.jsx.
+# Sources servies AUJOURD'HUI : campagnes (planifiee_le, XMKT7) et posts
+# sociaux (date_planifiee, XMKT35). Les sources étapes-de-séquence/relances/
+# événements restent à brancher par la tâche XMKT30 backend (même contrat de
+# réponse {events: [...]}) — additif, aucun contrat cassé.
+
+class CalendrierMarketingView(APIView):
+    permission_classes = [IsResponsableOrAdmin]
+
+    def get(self, request):
+        company = request.user.company
+        date_from = request.query_params.get('from') or ''
+        date_to = request.query_params.get('to') or ''
+        events = []
+        campagnes = Campagne.objects.filter(
+            company=company, planifiee_le__isnull=False)
+        if date_from:
+            campagnes = campagnes.filter(planifiee_le__date__gte=date_from)
+        if date_to:
+            campagnes = campagnes.filter(planifiee_le__date__lte=date_to)
+        for c in campagnes:
+            events.append({
+                'id': f'campagne-{c.id}', 'obj_id': c.id,
+                'source': 'campagne', 'link_type': 'campagne',
+                'date': c.planifiee_le.date().isoformat(),
+                'title': c.nom, 'channel': c.canal,
+                'editable': c.statut in (
+                    Campagne.Statut.BROUILLON, Campagne.Statut.EN_FILE),
+            })
+        posts = PostSocial.objects.filter(
+            company=company, date_planifiee__isnull=False)
+        if date_from:
+            posts = posts.filter(date_planifiee__date__gte=date_from)
+        if date_to:
+            posts = posts.filter(date_planifiee__date__lte=date_to)
+        for p in posts:
+            events.append({
+                'id': f'post_social-{p.id}', 'obj_id': p.id,
+                'source': 'post_social', 'link_type': 'post_social',
+                'date': p.date_planifiee.date().isoformat(),
+                'title': f'{p.get_reseau_display()} — {(p.texte or "")[:60]}',
+                'channel': '', 'editable': False,
+            })
+        return Response({'events': events})
+
+
+class CalendrierMarketingRescheduleView(APIView):
+    permission_classes = [IsResponsableOrAdmin]
+
+    def post(self, request):
+        """Replanifie une CAMPAGNE non partie par glisser-déposer (XMKT30).
+        Seule source déplaçable aujourd'hui (contrat frontend isDraggable)."""
+        company = request.user.company
+        source = request.data.get('source')
+        obj_id = request.data.get('id')
+        date_str = str(request.data.get('date') or '')
+        if source != 'campagne':
+            return Response({'detail': 'Source non replanifiable.'}, status=400)
+        from django.utils.dateparse import parse_date
+        cible = parse_date(date_str)
+        if cible is None:
+            return Response({'detail': 'date invalide.'}, status=400)
+        campagne = Campagne.objects.filter(
+            company=company, id=obj_id).first()
+        if campagne is None:
+            return Response({'detail': 'Campagne inconnue.'}, status=404)
+        if campagne.statut not in (
+                Campagne.Statut.BROUILLON, Campagne.Statut.EN_FILE):
+            return Response(
+                {'detail': 'Campagne déjà partie — non replanifiable.'},
+                status=400)
+        ancienne = campagne.planifiee_le or timezone.now()
+        campagne.planifiee_le = ancienne.replace(
+            year=cible.year, month=cible.month, day=cible.day)
+        campagne.save(update_fields=['planifiee_le'])
+        return Response({'ok': True})
+
+
 # ── XMKT2 — Journal d'envoi par destinataire (drill-down) ───────────────────
 
 class EnvoiCampagneViewSet(_ComptaBaseViewSet):
@@ -4895,6 +5160,20 @@ class EnqueteViewSet(_ComptaBaseViewSet):
         import uuid
         serializer.save(
             company=self.request.user.company, token=uuid.uuid4().hex)
+
+    def get_permissions(self):
+        # YRBAC13 — marketing-en-compta (ré-exportée par apps/marketing/
+        # views.py). Lecture (résultats/aperçu/QR/participations/export)
+        # reste IsResponsableOrAdmin, inchangée. ``emettre_jeton_invite``/
+        # ``inviter`` déclenchent un envoi RÉEL vers des destinataires
+        # (segment/liste) → ``compta_valider`` (déjà octroyé au Responsable
+        # par défaut — comportement inchangé pour les rôles par défaut).
+        if self.action in ('resultats', 'tester', 'qr', 'participations',
+                           'resultats_export'):
+            return [IsResponsableOrAdmin()]
+        if self.action in ('emettre_jeton_invite', 'inviter'):
+            return [HasPermissionOrLegacy('compta_valider')()]
+        return super().get_permissions()
 
     @action(detail=True, methods=['get'])
     def resultats(self, request, pk=None):
@@ -4984,6 +5263,23 @@ class EvenementMarketingViewSet(_ComptaBaseViewSet):
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['nom']
     ordering_fields = ['date_debut', 'date_creation']
+
+    def get_permissions(self):
+        # YRBAC13 — marketing-en-compta (ré-exportée par apps/marketing/
+        # views.py). Lecture (borne/badges/reporting/kanban) reste
+        # IsResponsableOrAdmin, inchangée. ``cloturer_presences`` fige les
+        # présences de l'événement (action de clôture) → ``compta_valider`` ;
+        # ``avancer_etape`` est une saisie courante du cycle de vie →
+        # ``compta_saisir`` — les deux déjà octroyés au Responsable par
+        # défaut (COMPTA40), aucune régression pour les rôles par défaut.
+        if self.action in ('borne', 'badges', 'reporting', 'reporting_export',
+                           'kanban'):
+            return [IsResponsableOrAdmin()]
+        if self.action == 'cloturer_presences':
+            return [HasPermissionOrLegacy('compta_valider')()]
+        if self.action == 'avancer_etape':
+            return [HasPermissionOrLegacy('compta_saisir')()]
+        return super().get_permissions()
 
     @action(detail=True, methods=['post'], url_path='cloturer-presences')
     def cloturer_presences(self, request, pk=None):
@@ -5307,6 +5603,23 @@ class SegmentMarketingViewSet(_ComptaBaseViewSet):
         except ValueError as exc:
             return Response({'detail': str(exc)}, status=400)
         return Response(data)
+
+    @action(detail=True, methods=['post'], url_path='exporter-audience-meta',
+            permission_classes=[IsResponsableOrAdmin])
+    def exporter_audience_meta(self, request, pk=None):
+        """XMKT36 — [DECISION] Synchronise le segment comme audience Meta.
+
+        Identifiants hashés SHA-256 côté serveur, consentement XMKT4 exigé,
+        clients signés en liste d'exclusion. GATED : sans jeton
+        (``META_ADS_ENABLED``/``META_ADS_TOKEN``/``META_AD_ACCOUNT_ID``),
+        aucun appel réseau — le résumé (compteurs, configured=false) est
+        renvoyé pour l'UI. AUCUNE campagne publicitaire créée (règle n°3)."""
+        segment = self.get_object()
+        try:
+            resume = services.exporter_segment_audience_meta(segment)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        return Response(resume)
 
 
 # ── FG202 — Séquences de relance automatisées ──────────────────────────────
@@ -6292,6 +6605,37 @@ class DemandeTicketPortailViewSet(_ComptaBaseViewSet):
             demande.save(update_fields=['statut', 'ticket_id'])
         return Response(self.get_serializer(demande).data)
 
+    # ── XSAV22 — Déflection KB sur le formulaire d'ouverture de ticket ─────
+    # Lit/écrit UNIQUEMENT via ``apps.kb.selectors``/``apps.kb.services``
+    # (jamais ``apps.kb.models``, frontière cross-app CLAUDE.md). Actions
+    # ``detail=False`` : appelables pendant la SAISIE, avant toute création
+    # de ``DemandeTicketPortail``.
+
+    @action(detail=False, methods=['get'], url_path='suggestions-kb',
+            permission_classes=[IsResponsableOrAdmin])
+    def suggestions_kb(self, request):
+        """Articles KB (publiés + ``visible_portail``) suggérés pendant la
+        saisie du sujet, avant soumission de la demande."""
+        from apps.kb.selectors import suggestions_portail
+        texte = request.query_params.get('q', '')
+        suggestions = suggestions_portail(request.user.company, texte)
+        return Response({'suggestions': suggestions})
+
+    @action(detail=False, methods=['post'], url_path='consulter-article-kb',
+            permission_classes=[IsResponsableOrAdmin])
+    def consulter_article_kb(self, request):
+        """Journalise la consultation d'un article suggéré (déflection) —
+        appelée quand le client ouvre/lit une suggestion depuis le
+        formulaire, avant (ou sans) soumettre sa demande."""
+        from apps.kb.services import enregistrer_consultation_portail
+        article_id = request.data.get('article_id')
+        if not article_id:
+            return Response(
+                {'detail': "article_id requis."}, status=400)
+        ok = enregistrer_consultation_portail(
+            request.user.company, article_id)
+        return Response({'enregistre': ok})
+
 
 class PartenaireViewSet(_ComptaBaseViewSet):
     """Partenaires commerciaux (apporteurs / sous-revendeurs / installateurs,
@@ -6563,6 +6907,21 @@ class AbonnementMonitoringViewSet(_ComptaBaseViewSet):
     def perform_create(self, serializer):
         abonnement = serializer.save(company=self.request.user.company)
         services.renouveler_abonnement_monitoring(abonnement)
+
+    def get_permissions(self):
+        # YRBAC13 — ``facturer`` émet une facture réelle (impact GL) et
+        # ``suspendre``/``resilier`` sont des transitions gardées service
+        # (irréversibles côté abonnement) → ``compta_valider``. ``renouveler``
+        # avance seulement l'échéance (routine, découplée de la facturation,
+        # YSUBS3) → ``compta_saisir``. ``a_echeance`` (liste) reste
+        # IsResponsableOrAdmin, inchangée.
+        if self.action == 'a_echeance':
+            return [IsResponsableOrAdmin()]
+        if self.action == 'renouveler':
+            return [HasPermissionOrLegacy('compta_saisir')()]
+        if self.action in ('facturer', 'suspendre', 'resilier'):
+            return [HasPermissionOrLegacy('compta_valider')()]
+        return super().get_permissions()
 
     @action(detail=True, methods=['post'])
     def renouveler(self, request, pk=None):
@@ -6876,16 +7235,16 @@ class BalanceOuvertureViewSet(viewsets.ViewSet):
             return Response(
                 {'detail': 'Exercice introuvable pour cette société.'},
                 status=status.HTTP_404_NOT_FOUND)
+        # ARC13 — lecture déléguée à ``apps.dataimport.parsing.iter_rows``
+        # (parseur générique partagé) au lieu d'un ``csv.DictReader`` local ;
+        # comportement inchangé (mêmes en-têtes, mêmes clés de lignes).
+        from apps.dataimport.parsing import iter_rows
         try:
-            text = f.read().decode('utf-8-sig', errors='replace')
+            _headers, rows = iter_rows(f.read(), f.name)
         except Exception:
             return Response(
                 {'detail': 'Fichier illisible (encodage invalide).'},
                 status=status.HTTP_400_BAD_REQUEST)
-        sample = text[:2000]
-        delim = ';' if sample.count(';') > sample.count(',') else ','
-        reader = csv.DictReader(io.StringIO(text), delimiter=delim)
-        rows = list(reader)
         result = services.importer_balance_ouverture(
             company, rows, exercice=exercice, user=request.user)
         if not result['ok']:

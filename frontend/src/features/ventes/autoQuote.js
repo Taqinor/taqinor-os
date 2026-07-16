@@ -8,10 +8,15 @@
 import { createDevis, addLigneDevis } from './store/ventesSlice'
 import {
   estimerPanneaux, estimerMois, htFromTtc, ttcFromHt, optionTotalsTTC,
-  autoFillLines, computeEtudeIndustrielle,
+  autoFillLines, computeEtudeIndustrielle, panneauxPourKwc,
   autoFillPompage, pompageSelection, HEURES_POMPAGE_DEFAUT,
   KWH_PRICE, EFFICIENCY, DAY_USAGE_DEFAULTS,
 } from './solar'
+
+// QX19 — préférence de structure du lead (acier/aluminium) → structureType
+// d'autoFillLines/autoFillPompage. Défaut historique 'acier' quand non renseigné.
+const structFromLead = (lead) =>
+  (lead && lead.structure_pref === 'aluminium') ? 'aluminium' : 'acier'
 
 // ERR107 — Cohérence d'arrondi écran : une ligne est ENREGISTRÉE en HT 2 déc.
 // (htFromTtc), donc le TTC RÉAFFICHÉ d'une ligne est ttcFromHt(htFromTtc(ttc)),
@@ -78,7 +83,8 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch,
     const opts = {
       cv: lead.pompe_cv != null ? String(lead.pompe_cv) : '',
       alim: 'tri', typePompe: 'immergee', distance: '20',
-      structureType: 'acier',
+      // QX19 — respecte la préférence de structure du lead (défaut acier).
+      structureType: structFromLead(lead),
       hmt: lead.pompe_hmt_m != null ? String(lead.pompe_hmt_m) : '',
       debit: lead.pompe_debit_m3h != null ? String(lead.pompe_debit_m3h) : '',
       heures: String(heuresPompage),
@@ -95,11 +101,29 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch,
       pompageSelection(produits, opts), { ...opts, profondeur: '' })
   } else {
     const hiver = parseFloat(lead.facture_hiver) || 0
-    const panels = estimerPanneaux(hiver, perTranche) || 8
+    // QX19 — priorité à la taille souhaitée par le lead (kWc) quand elle est
+    // renseignée ; sinon dérivation historique depuis la facture d'hiver.
+    const tailleKwc = parseFloat(lead.taille_souhaitee_kwc) || 0
+    const panels = tailleKwc > 0
+      ? panneauxPourKwc(tailleKwc, 710)
+      : (estimerPanneaux(hiver, perTranche) || 8)
     const kwpAuto = panels * 710 / 1000
     rows = autoFillLines(produits, {
-      kwp: kwpAuto, panelW: 710, structureType: 'acier',
+      kwp: kwpAuto, panelW: 710, nbPanneaux: panels,
+      // QX19 — respecte la préférence de structure du lead (défaut acier).
+      structureType: structFromLead(lead),
     })
+    // QX19 — scénario batterie SEMÉ depuis batterie_souhaitee du lead : porté
+    // dans etude_params pour que le PDF (builder QF6) restreigne le document au
+    // choix du client (« sans »/« avec »/« les deux »). Défaut « les deux »
+    // (comportement historique) quand non renseigné.
+    const _bat = lead.batterie_souhaitee
+    extra.etude_params = {
+      ...(extra.etude_params || {}),
+      scenario: _bat === 'sans' ? 'Sans batterie'
+        : _bat === 'avec' ? 'Avec batterie'
+          : 'Les deux (Sans + Avec)',
+    }
     if (mode === 'industriel') {
       const ete = (lead.ete_differente && lead.facture_ete)
         ? parseFloat(lead.facture_ete) : hiver
@@ -109,7 +133,8 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch,
       const conso = (parseFloat(lead.conso_mensuelle_kwh) || 0)
         || (avgAuto > 0 ? Math.round(avgAuto / kwhPrice) : 0)
       extra.mode_installation = 'industriel'
-      extra.etude_params = (kwpAuto > 0 && conso > 0)
+      const _scenarioPrev = extra.etude_params?.scenario
+      const _etudeInd = (kwpAuto > 0 && conso > 0)
         ? computeEtudeIndustrielle({
             kwp: kwpAuto, consoMensuelleKwh: conso,
             dayUsagePct: DAY_USAGE_DEFAULTS['Industrielle'],
@@ -117,6 +142,12 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch,
             kwhPrice, efficiency,
           })
         : null
+      // QX19 — préserve le scénario batterie semé du lead (défaut industriel :
+      // sans batterie, réseau) même quand l'étude industrielle est calculée.
+      extra.etude_params = {
+        ...(_etudeInd || {}),
+        scenario: lead.batterie_souhaitee ? _scenarioPrev : 'Sans batterie',
+      }
       // Surface les chiffres clés (taux d'autoconsommation, économies, payback)
       // AVANT enregistrement, pour que l'appelant puisse les afficher.
       if (extra.etude_params && typeof onEtude === 'function') {

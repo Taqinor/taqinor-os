@@ -1,8 +1,10 @@
 import { forwardRef } from 'react'
 import * as TabsPrimitive from '@radix-ui/react-tabs'
 import { cn } from '../lib/cn'
+import { press, pressCurve } from './interaction'
 
-/* G29 — Onglets (clavier flèches géré par Radix). */
+/* G29 — Onglets (clavier flèches géré par Radix).
+   VX126 — press partagé sur le trigger (courbe alignée sur Button). */
 export const Tabs = TabsPrimitive.Root
 
 export const TabsList = forwardRef(function TabsList({ className, ...props }, ref) {
@@ -24,10 +26,12 @@ export const TabsTrigger = forwardRef(function TabsTrigger({ className, ...props
       ref={ref}
       className={cn(
         'inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium',
-        'text-muted-foreground transition-colors',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+        'text-muted-foreground transition-[color,background-color,box-shadow,transform]',
+        pressCurve,
+        'focus-ring',
         'disabled:pointer-events-none disabled:opacity-50',
         'data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-ui-xs',
+        press,
         className,
       )}
       {...props}
@@ -39,7 +43,14 @@ export const TabsContent = forwardRef(function TabsContent({ className, ...props
   return (
     <TabsPrimitive.Content
       ref={ref}
-      className={cn('mt-3 focus-visible:outline-none', className)}
+      className={cn(
+        'mt-3 focus-visible:outline-none',
+        // VX133 — Radix démonte le panel inactif par défaut (pas de
+        // crossfade possible sans forceMount des deux) : un fondu court à
+        // l'affichage du panel actif remplace le swap sec.
+        'data-[state=active]:animate-fade-in',
+        className,
+      )}
       {...props}
     />
   )

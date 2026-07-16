@@ -194,11 +194,25 @@ def dashboard_quote_to_cash(request):
     cycle_moyen = round(sum(cycle_list) / len(cycle_list), 1) if cycle_list else None
 
     # ── Par commercial ────────────────────────────────────────────────────────
+    # SCA40 — UNE seule requête groupée (values().annotate()) au lieu d'un
+    # aggregate() LigneDevis par commercial dans une boucle Python (N+1 non
+    # borné, croissait avec l'équipe). Le décompte de devis (`devis_actifs`)
+    # DOIT rester distinct : joindre `lignes` fan-out une ligne par ligne de
+    # devis, donc Count('id', distinct=True) préserve le décompte d'origine
+    # (un devis sans ligne compte toujours pour 1, sa somme de lignes valant 0
+    # via le LEFT JOIN). La somme HT ligne réutilise l'expression EXACTE du
+    # bloc pipeline global ci-dessus. Sortie JSON strictement identique.
     par_commercial_raw = (
         Devis.objects.filter(company=company, statut='envoye')
         .values('created_by__username', 'created_by__first_name',
                 'created_by__last_name')
-        .annotate(devis_actifs=Count('id'))
+        .annotate(
+            devis_actifs=Count('id', distinct=True),
+            pipeline_ht=Sum(ExpressionWrapper(
+                F('lignes__quantite') * F('lignes__prix_unitaire')
+                * (1 - F('lignes__remise') / 100),
+                output_field=FloatField())),
+        )
     )
     par_commercial = []
     for row in par_commercial_raw:
@@ -206,16 +220,7 @@ def dashboard_quote_to_cash(request):
         fname = (row['created_by__first_name'] or '').strip()
         lname = (row['created_by__last_name'] or '').strip()
         display = f'{fname} {lname}'.strip() or uname
-        # Valeur pipeline de ce commercial.
-        p_ht = LigneDevis.objects.filter(
-            devis__company=company,
-            devis__statut='envoye',
-            devis__created_by__username=uname,
-        ).annotate(
-            ht_ligne=ExpressionWrapper(
-                F('quantite') * F('prix_unitaire') * (1 - F('remise') / 100),
-                output_field=FloatField())
-        ).aggregate(s=Sum('ht_ligne'))['s'] or 0
+        p_ht = row['pipeline_ht'] or 0
         par_commercial.append({
             'commercial': display,
             'devis_actifs': row['devis_actifs'],

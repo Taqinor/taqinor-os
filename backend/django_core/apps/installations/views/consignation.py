@@ -8,13 +8,12 @@ Multi-tenant via ``TenantMixin`` ; fournisseur validé tenant. Cross-app :
 """
 from django.utils import timezone
 
-from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.viewsets import CompanyScopedModelViewSet
 
 from ..models import MaterielConsigne
 from ..serializers import MaterielConsigneSerializer
@@ -22,7 +21,7 @@ from ..serializers import MaterielConsigneSerializer
 READ_ACTIONS = ['list', 'retrieve']
 
 
-class MaterielConsigneViewSet(TenantMixin, viewsets.ModelViewSet):
+class MaterielConsigneViewSet(CompanyScopedModelViewSet):
     """FG327 — matériel consigné. Lecture tout rôle, écriture responsable/admin.
     Filtrable par `statut`, `type_materiel`, `fournisseur`."""
     queryset = MaterielConsigne.objects.select_related(

@@ -4,6 +4,7 @@ import {
 } from 'lucide-react'
 import api from '../../api/axios'
 import reportingApi from '../../api/reportingApi'
+import { downloadBlobInGesture } from '../../utils/downloadBlob'
 import { Button, Card, CardHeader, CardTitle, CardContent, Badge, Skeleton, EmptyState } from '../../ui'
 import { Table } from './Table'
 import { typeLabel, sortDocsDesc } from './archiveDocs'
@@ -29,7 +30,7 @@ export default function DocumentsArchive({ kind, id }) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
-  // L860 — erreur par ligne (clé = index) au lieu d'un alert() bloquant.
+  // L860 — erreur par ligne (clé = index) au lieu d'un pop-up bloquant.
   const [rowError, setRowError] = useState({})
   const [exporting, setExporting] = useState(false)
   // L865 — aperçu PDF inline : { reference, blob } | { reference, failed }.
@@ -83,19 +84,13 @@ export default function DocumentsArchive({ kind, id }) {
   // Repli téléchargement depuis l'aperçu (ou si le canvas échoue à rendre).
   const downloadPreview = () => {
     if (!preview?.blob) return
-    const objectUrl = URL.createObjectURL(preview.blob)
-    const a = document.createElement('a')
-    a.href = objectUrl
-    a.download = `${preview.reference || 'document'}.pdf`
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    setTimeout(() => URL.revokeObjectURL(objectUrl), 60000)
+    downloadBlobInGesture().deliver(preview.blob, `${preview.reference || 'document'}.pdf`)
   }
 
   // L864 — « Tout exporter (.xlsx) » : la liste filtrée (type/référence/date),
   // scopée société côté serveur, jamais de prix d'achat.
   const exportXlsx = async () => {
+    const pending = downloadBlobInGesture()
     setExporting(true)
     setError(null)
     try {
@@ -105,14 +100,7 @@ export default function DocumentsArchive({ kind, id }) {
       const r = await api.get(path, {
         params: { export: 'xlsx' }, responseType: 'blob',
       })
-      const objectUrl = URL.createObjectURL(r.data)
-      const a = document.createElement('a')
-      a.href = objectUrl
-      a.download = `archive-${kind}-${id}.xlsx`
-      document.body.appendChild(a)
-      a.click()
-      a.remove()
-      setTimeout(() => URL.revokeObjectURL(objectUrl), 60000)
+      pending.deliver(r.data, `archive-${kind}-${id}.xlsx`)
     } catch {
       setError("L’export n’a pas pu être généré.")
     } finally {

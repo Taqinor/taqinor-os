@@ -4,6 +4,8 @@ from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
+from core.models import SoftDeleteModel
+
 from .stages import STAGE_CHOICES, NEW
 
 
@@ -142,6 +144,51 @@ class Client(models.Model):
         help_text="Rattache ce client à une société mère (consolidation "
                   "CA groupe). Même société uniquement ; jamais de cycle.")
 
+    # ── QX35 — Code de parrainage DÉTERMINISTE (additif) ──
+    # Dérivé du pk (ex. « TQ-1042 ») dès la première sauvegarde — jamais un
+    # UUID aléatoire : un code stable, lisible, copiable dans un lien
+    # `?utm_source=parrainage&utm_campaign=<code>` (parrainage.astro). Unique
+    # par construction (dérivé du pk) ; nullable pour les lignes existantes
+    # tant qu'elles ne sont pas resauvegardées (comportement inchangé).
+    code_parrainage = models.CharField(
+        max_length=20, blank=True, null=True, unique=True,
+        verbose_name='Code de parrainage',
+        help_text="Code stable partagé par ce client pour parrainer un "
+                  "prospect (lien /devis/mon-toit?utm_source=parrainage&"
+                  "utm_campaign=<code>).",
+    )
+    # ── ARC18 — Pont additif vers le répertoire unifié Tiers ──
+    # FK nullable (string-FK — jamais d'import de apps.tiers.models ici, crm
+    # reste découplé de la couche fondation par référence string). L'identité
+    # reste MAÎTRE ici ; ``tiers`` n'en est qu'un MIROIR one-way, réversible,
+    # posé par le hook de sauvegarde (voir apps/crm/tiers_bridge.py) et
+    # backfillé par la commande ``backfill_tiers``. Vide = pas encore relié
+    # (comportement API historique strictement inchangé).
+    tiers = models.ForeignKey(
+        'tiers.Tiers',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='clients',
+        verbose_name='Tiers (répertoire unifié)',
+        help_text="Fiche du répertoire unifié des parties prenantes reflétant "
+                  "ce client. Renseignée automatiquement (miroir).")
+    # ── ZSAL9 — Avertissement de vente (« sale warnings » façon Odoo) ──
+    # Message optionnel affiché quand ce client est sélectionné dans le
+    # générateur de devis (ex. « client à traiter au comptant »). Si
+    # ``avertissement_bloquant`` est True, une garde serveur refuse
+    # l'acceptation / la génération de facture d'un devis pour ce client SAUF
+    # override responsable/admin journalisé (patron XFAC28). Vide (défaut) =
+    # comportement historique strictement inchangé. Jamais de prix d'achat ici.
+    avertissement_vente = models.TextField(
+        blank=True, default='',
+        verbose_name='Avertissement de vente',
+        help_text="Message affiché au devis quand ce client est sélectionné.")
+    avertissement_bloquant = models.BooleanField(
+        default=False,
+        verbose_name='Avertissement bloquant',
+        help_text="Si activé, empêche l'acceptation/facturation sans override "
+                  "responsable/admin.")
+
     class Meta:
         verbose_name = "Client"
         verbose_name_plural = "Clients"
@@ -149,6 +196,23 @@ class Client(models.Model):
 
     def __str__(self):
         return f"{self.nom} {self.prenom if self.prenom else ''}"
+
+    def save(self, *args, **kwargs):
+        # QX35 — génère le code de parrainage APRÈS la première sauvegarde
+        # (a besoin du pk pour rester déterministe et unique sans collision) —
+        # patron standard Django « dérivé du pk », deuxième save() ciblé sur
+        # le seul champ concerné (jamais de boucle : ne s'exécute qu'une
+        # fois, quand code_parrainage est encore vide).
+        is_new = self.pk is None
+        super().save(*args, **kwargs)
+        if is_new and not self.code_parrainage:
+            self.code_parrainage = f'TQ-{self.pk}'
+            # QX35 — écrire via QuerySet.update() plutôt qu'un 2ᵉ save() : un
+            # second save() re-déclenche le post_save (le miroir tiers ARC18
+            # créerait alors un DOUBLON pour un client sans clé). .update() pose
+            # le champ en base sans signal ; l'instance le porte déjà.
+            type(self).objects.filter(pk=self.pk).update(
+                code_parrainage=self.code_parrainage)
 
     def clean(self):
         super().clean()
@@ -178,12 +242,20 @@ class Client(models.Model):
             depth += 1
 
 
-class Lead(models.Model):
+class Lead(SoftDeleteModel):
     """A sales lead / opportunity — distinct from a Client (customer) record.
 
     Leads carry a pipeline stage (canonical from STAGES.py) and a source/origin
     so imported test leads are distinguishable from leads created natively in the
     OS. Pipeline stage lives HERE, never on the Client/contact table.
+
+    VX96 — ``Lead`` est le PREMIER adoptant du soft-delete partagé
+    (``core.SoftDeleteModel``, FG388). La suppression n'est plus définitive :
+    ``LeadViewSet.destroy()`` appelle ``lead.soft_delete(user)``, qui masque le
+    lead des querysets par défaut (``Lead.objects`` = vivants) et journalise une
+    entrée de corbeille (``DeletionRecord``) restaurable pendant 30 min via le
+    ``TrashViewSet`` (``/core/corbeille/``). ``Lead.all_objects`` atteint aussi
+    les supprimés. (On ne construit AUCUN écran corbeille ici — NTUX7.)
     """
 
     class Source(models.TextChoices):
@@ -363,6 +435,23 @@ class Lead(models.Model):
         related_name='leads',
     )
 
+    # ── ARC56 — Pont additif vers le répertoire unifié Tiers (stade amont) ──
+    # FK nullable (string-FK ``'tiers.Tiers'``) : le lead porte l'identité
+    # PRÉ-CONVERSION (avant qu'un Client structuré existe), donc le recoupement
+    # « qui est ce tiers ? » (ARC20) doit aussi couvrir ce stade. Rattaché au
+    # MÊME Tiers que le Client résolu (via resolve_client_for_lead + le miroir
+    # crm.Client → Tiers d'ARC18) ; jamais un 2ᵉ Tiers pour le même acteur.
+    # ATTENTION QW7 : ce pont ne touche AUCUN champ de nom du lead.
+    tiers = models.ForeignKey(
+        'tiers.Tiers',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='leads',
+        verbose_name='Tiers (répertoire unifié)',
+        help_text="Fiche du répertoire unifié reflétant ce prospect "
+                  "(stade amont). Renseignée automatiquement (miroir).")
+
     # Facture électrique du lead (MAD/mois). Si l'été ne diffère pas de
     # l'hiver, facture_hiver vaut pour les deux (ete_differente = False).
     facture_hiver = models.DecimalField(
@@ -512,6 +601,14 @@ class Lead(models.Model):
     contact_preference = models.CharField(
         max_length=16, choices=ContactPreference.choices, blank=True, null=True,
         verbose_name='Préférence de contact')
+    # QX15 — horodatage de la POSE de `contact_preference` (distinct de
+    # `date_creation` du lead). Le SLA rappel doit mesurer depuis QUAND le
+    # rappel a été demandé, pas depuis quand le lead a été créé — un vieux
+    # lead dont la préférence est posée MAINTENANT ne doit pas apparaître
+    # instantanément « SLA rompu ». NULL = jamais posé (ou posé avant ce
+    # champ) ; le sélecteur retombe sur `date_creation` dans ce cas
+    # (comportement historique inchangé pour les leads déjà en base).
+    contact_preference_set_at = models.DateTimeField(null=True, blank=True)
     consent_timestamp = models.DateTimeField(null=True, blank=True)
     # Attribution publicitaire (capture first-touch du site)
     fbclid = models.CharField(max_length=500, blank=True, null=True)
@@ -606,6 +703,18 @@ class Lead(models.Model):
         related_name='leads_archives',
     )
     archived_at = models.DateTimeField(null=True, blank=True)
+
+    # VX98 — dernier auteur d'une modification (posé server-side dans
+    # perform_update, jamais accepté du corps de requête). Alimente la puce de
+    # fraîcheur « modifié par X il y a N min » (silencieuse si NULL ou si c'est
+    # l'utilisateur courant). Pattern identique à archived_by ; date_modification
+    # (auto_now) porte l'horodatage.
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='leads_modifies',
+    )
 
     date_creation = models.DateTimeField(auto_now_add=True)
     date_modification = models.DateTimeField(auto_now=True)
@@ -765,6 +874,16 @@ class LeadActivity(models.Model):
     old_value = models.TextField(blank=True, null=True)
     new_value = models.TextField(blank=True, null=True)
     body = models.TextField(blank=True, null=True)
+    # VX111 — pièce jointe optionnelle sur une note manuelle (kind='note'),
+    # ex. photo prise depuis mobile pendant une visite. RÉUTILISE le magasin
+    # `records.Attachment` existant (déjà whitelisté ('crm','lead')) — jamais
+    # un second magasin de fichiers. SET_NULL : la note reste lisible même si
+    # la pièce jointe est supprimée indépendamment (ex. depuis AttachmentsPanel).
+    attachment = models.ForeignKey(
+        'records.Attachment', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='lead_notes',
+        verbose_name='Pièce jointe',
+    )
     # Marque une entrée issue d'une action « en masse » (édition groupée de
     # plusieurs leads) — l'Historique l'affiche avec un badge « en masse ».
     bulk = models.BooleanField(default=False)
@@ -1636,3 +1755,291 @@ class BookingLink(models.Model):
     @property
     def is_used(self):
         return self.used_at is not None
+
+
+# ── FG234–237 — Partenaires & territoires commerciaux (ODX13, rapatriés de
+# compta : leur foyer Odoo naturel CRM/resellers) ──────────────────────────
+# ``db_table`` figé sur le nom historique (``compta_<model>``) — SORTIE
+# state-only de compta (migration ``crm.0059_odx13_partenaires_split`` +
+# ``compta.0109_odx13_partenaires_split``), aucune donnée déplacée. Les
+# anciennes routes ``/api/django/compta/…`` restent servies à l'identique
+# (les ViewSets/serializers restent physiquement dans l'app compta — voir
+# ``apps/crm/views.py``/``apps/crm/serializers.py`` pour le ré-export
+# transitoire des nouvelles routes ``/api/django/crm/…``).
+
+class Partenaire(models.Model):
+    """Partenaire commercial : apporteur d'affaires ou sous-revendeur (FG234).
+
+    Fiche minimale ici (compte + accès tokenisé + taux de commission). FG237
+    enrichit la fiche (statut d'agrément, zone, onboarding). Un partenaire
+    soumet des leads via le portail (``SoumissionLeadPartenaire``) et suit leur
+    statut. Scopé société ; le token d'accès est posé côté serveur.
+    """
+    class Type(models.TextChoices):
+        APPORTEUR = 'apporteur', "Apporteur d'affaires"
+        SOUS_REVENDEUR = 'sous_revendeur', 'Sous-revendeur'
+        INSTALLATEUR = 'installateur', 'Installateur'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='partenaires',
+        verbose_name='Société',
+    )
+    nom = models.CharField(max_length=200, verbose_name='Nom / raison sociale')
+    type_partenaire = models.CharField(
+        max_length=16, choices=Type.choices, default=Type.APPORTEUR,
+        verbose_name='Type de partenaire')
+    email = models.EmailField(blank=True, default='', verbose_name='Email')
+    telephone = models.CharField(
+        max_length=30, blank=True, default='', verbose_name='Téléphone')
+    taux_commission = models.DecimalField(
+        max_digits=5, decimal_places=2, default=0,
+        verbose_name='Taux de commission (%)')
+    token_acces = models.CharField(
+        max_length=64, unique=True, db_index=True,
+        verbose_name="Token d'accès")
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    # FG237 — Annuaire & onboarding installateurs partenaires.
+    statut_onboarding = models.CharField(
+        max_length=12,
+        choices=[
+            ('prospect', 'Prospect'),
+            ('en_cours', "En cours d'agrément"),
+            ('agree', 'Agréé (activé)'),
+            ('suspendu', 'Suspendu'),
+        ],
+        default='prospect',
+        verbose_name="Statut d'onboarding")
+    numero_agrement = models.CharField(
+        max_length=60, blank=True, default='',
+        verbose_name="Numéro d'agrément")
+    zone = models.CharField(
+        max_length=120, blank=True, default='',
+        verbose_name='Zone géographique')
+    date_activation = models.DateField(
+        null=True, blank=True, verbose_name="Date d'activation")
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    # ── ARC19 — Pont additif vers le répertoire unifié Tiers ──
+    # FK nullable (string-FK ``'tiers.Tiers'`` — jamais d'import de
+    # apps.tiers.models ici). L'identité reste MAÎTRE côté Partenaire ; ``tiers``
+    # n'en est qu'un MIROIR one-way réversible, posé par le hook de sauvegarde
+    # (apps/compta/tiers_bridge.py, sender re-pointé sur ``crm.Partenaire`` par
+    # ODX13) et backfillé par ``backfill_tiers`` (source re-pointée pareil).
+    tiers = models.ForeignKey(
+        'tiers.Tiers',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='partenaires',
+        verbose_name='Tiers (répertoire unifié)',
+        help_text="Fiche du répertoire unifié des parties prenantes reflétant "
+                  "ce partenaire. Renseignée automatiquement (miroir).")
+
+    class Meta:
+        verbose_name = 'Partenaire commercial'
+        verbose_name_plural = 'Partenaires commerciaux'
+        db_table = 'compta_partenaire'
+        ordering = ['nom']
+
+    def __str__(self):
+        return f'{self.nom} ({self.get_type_partenaire_display()})'
+
+
+class SoumissionLeadPartenaire(models.Model):
+    """Lead soumis par un partenaire via le portail (FG234).
+
+    Le partenaire renseigne les coordonnées d'un prospect ; on enregistre la
+    soumission scopée société. Après qualification, le lead réel est créé dans
+    ``crm`` (via son service, jamais importé ici) et référencé par ``lead_id``.
+    Le partenaire suit le statut de sa soumission.
+    """
+    class Statut(models.TextChoices):
+        SOUMIS = 'soumis', 'Soumis'
+        QUALIFIE = 'qualifie', 'Qualifié'
+        CONVERTI = 'converti', 'Converti'
+        REJETE = 'rejete', 'Rejeté'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='soumissions_lead_partenaire',
+        verbose_name='Société',
+    )
+    partenaire = models.ForeignKey(
+        Partenaire,
+        on_delete=models.CASCADE,
+        related_name='soumissions',
+        verbose_name='Partenaire',
+    )
+    nom_prospect = models.CharField(
+        max_length=200, verbose_name='Nom du prospect')
+    telephone_prospect = models.CharField(
+        max_length=30, blank=True, default='',
+        verbose_name='Téléphone du prospect')
+    email_prospect = models.EmailField(
+        blank=True, default='', verbose_name='Email du prospect')
+    ville = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Ville')
+    note = models.TextField(blank=True, default='', verbose_name='Note')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.SOUMIS,
+        verbose_name='Statut')
+    lead_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Id du lead créé')
+    date_soumission = models.DateTimeField(
+        auto_now_add=True, verbose_name='Soumis le')
+
+    class Meta:
+        verbose_name = 'Soumission de lead (partenaire)'
+        verbose_name_plural = 'Soumissions de lead (partenaire)'
+        db_table = 'compta_soumissionleadpartenaire'
+        ordering = ['-date_soumission']
+
+    def __str__(self):
+        return f'{self.nom_prospect} — {self.partenaire.nom}'
+
+
+# ── FG235 — Suivi des commissions partenaires ──────────────────────────────
+
+class CommissionPartenaire(models.Model):
+    """Commission due à un partenaire sur un devis signé/lead converti (FG235).
+
+    Calculée sur une base HT × taux (%). Le devis est référencé par id
+    (cross-app — jamais d'import ventes). Statut de règlement (due → payée). Le
+    relevé par partenaire s'obtient en agrégeant ces lignes (action ``releve``).
+    Scopée société.
+    """
+    class Statut(models.TextChoices):
+        DUE = 'due', 'Due'
+        PAYEE = 'payee', 'Payée'
+        ANNULEE = 'annulee', 'Annulée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='commissions_partenaire',
+        verbose_name='Société',
+    )
+    partenaire = models.ForeignKey(
+        Partenaire,
+        on_delete=models.CASCADE,
+        related_name='commissions',
+        verbose_name='Partenaire',
+    )
+    devis_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Id du devis signé')
+    lead_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Id du lead')
+    base_ht = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0,
+        verbose_name='Base HT (MAD)')
+    taux = models.DecimalField(
+        max_digits=5, decimal_places=2, default=0,
+        verbose_name='Taux de commission (%)')
+    montant = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0,
+        verbose_name='Montant de commission (MAD)')
+    statut = models.CharField(
+        max_length=8, choices=Statut.choices, default=Statut.DUE,
+        verbose_name='Statut')
+    paye_le = models.DateField(
+        null=True, blank=True, verbose_name='Payée le')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+
+    class Meta:
+        verbose_name = 'Commission partenaire'
+        verbose_name_plural = 'Commissions partenaire'
+        db_table = 'compta_commissionpartenaire'
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return f'Commission {self.montant} — {self.partenaire.nom}'
+
+
+# ── FG236 — Gestion des territoires / zones commerciales ───────────────────
+
+class TerritoireCommercial(models.Model):
+    """Zone commerciale : découpage géographique + affectation auto (FG236).
+
+    Un territoire regroupe des villes/régions (liste de mots-clés en minuscules)
+    et un commercial responsable (par id — ``owner_user_id``, jamais un import
+    hors foundation). Le service ``affecter_territoire`` associe un lead à la
+    zone qui matche sa ville, en respectant la priorité (plus haute d'abord).
+    Scopé société.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='territoires_commerciaux',
+        verbose_name='Société',
+    )
+    nom = models.CharField(max_length=120, verbose_name='Nom du territoire')
+    villes = models.JSONField(
+        default=list, blank=True,
+        verbose_name='Villes / régions (liste)')
+    owner_user_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Commercial responsable (id)')
+    priorite = models.IntegerField(
+        default=0, verbose_name='Priorité (haute = prioritaire)')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Territoire commercial'
+        verbose_name_plural = 'Territoires commerciaux'
+        db_table = 'compta_territoirecommercial'
+        ordering = ['-priorite', 'nom']
+
+    def __str__(self):
+        return self.nom
+
+    def matche_ville(self, ville):
+        """True si ``ville`` correspond à l'une des villes/régions du zonage."""
+        if not ville:
+            return False
+        cible = str(ville).strip().lower()
+        for v in (self.villes or []):
+            mot = str(v).strip().lower()
+            if mot and (mot == cible or mot in cible or cible in mot):
+                return True
+        return False
+
+
+class LeadActivityArchive(models.Model):
+    """YOPSB11 — copie FROIDE d'une ``LeadActivity`` archivée.
+
+    Table append-only à forte croissance (le chatter grossit sans borne) : la
+    politique de rétention YOPSB11 déplace les lignes anciennes ici puis les
+    supprime de la table vive. Schéma miroir SANS index chaud : les FK sont
+    DÉNORMALISÉES en identifiants entiers (``company_id``/``lead_id``/…) — une
+    archive ne doit dépendre du cycle de vie d'aucune table vive (pas de
+    cascade si le lead/l'utilisateur est supprimé plus tard). Les comptages
+    agrégés par société survivent via la colonne ``company_id`` conservée."""
+
+    original_id = models.BigIntegerField(
+        help_text="PK de la LeadActivity d'origine (table vive).")
+    company_id = models.BigIntegerField(null=True, blank=True)
+    lead_id = models.BigIntegerField(null=True, blank=True)
+    kind = models.CharField(max_length=15)
+    field = models.CharField(max_length=100, blank=True, null=True)
+    field_label = models.CharField(max_length=150, blank=True, null=True)
+    old_value = models.TextField(blank=True, null=True)
+    new_value = models.TextField(blank=True, null=True)
+    body = models.TextField(blank=True, null=True)
+    outcome = models.CharField(max_length=20, blank=True, default='')
+    attachment_id = models.BigIntegerField(null=True, blank=True)
+    bulk = models.BooleanField(default=False)
+    user_id = models.BigIntegerField(null=True, blank=True)
+    created_at = models.DateTimeField()
+    archived_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Activité lead (archive)'
+        verbose_name_plural = 'Activités lead (archive)'
+
+    def __str__(self):
+        return f'archive:{self.original_id}'

@@ -27,6 +27,7 @@ const config = {
   order: 60,
   nav: {
     label: 'QHSE',
+    accent: 'destructive', // VX8 — sécurité/risque = accent destructive (dérivé)
     items: [
       { to: '/qhse', label: 'Cockpit QHSE', icon: <ShieldCheck size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/qhse/non-conformites', label: 'Non-conformités', icon: <AlertOctagon size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },

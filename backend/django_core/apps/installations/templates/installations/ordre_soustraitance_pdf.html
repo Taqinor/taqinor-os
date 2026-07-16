@@ -1,0 +1,51 @@
+<!-- SCA34 — gabarit PDF minimal de l'ordre de sous-traitance (FG305), rendu via
+     le hook du kit (core.documents.render_document_pdf → core.pdf.render_pdf,
+     ARC11). Branding en-tête/pied géré par render_pdf (header=footer=True) —
+     ce gabarit ne porte que le corps du document. -->
+<div class="document-ordre-soustraitance">
+  <h1>Ordre de sous-traitance {{ document.reference }}</h1>
+  <p class="statut">Statut : {{ document.get_statut_display }}</p>
+
+  <table class="infos">
+    <tr>
+      <th>Sous-traitant</th>
+      <td>{{ document.sous_traitant.nom }}</td>
+    </tr>
+    {% if document.chantier %}
+    <tr>
+      <th>Chantier</th>
+      <td>{{ document.chantier.reference }}</td>
+    </tr>
+    {% endif %}
+    <tr>
+      <th>Prestation</th>
+      <td>{{ document.prestation }}</td>
+    </tr>
+    <tr>
+      <th>Montant engagé</th>
+      <td>{{ document.montant }} MAD</td>
+    </tr>
+    {% if document.montant_realise %}
+    <tr>
+      <th>Montant réalisé</th>
+      <td>{{ document.montant_realise }} MAD</td>
+    </tr>
+    {% endif %}
+    {% if document.date_emission %}
+    <tr>
+      <th>Date d'émission</th>
+      <td>{{ document.date_emission }}</td>
+    </tr>
+    {% endif %}
+    {% if document.date_echeance %}
+    <tr>
+      <th>Échéance</th>
+      <td>{{ document.date_echeance }}</td>
+    </tr>
+    {% endif %}
+  </table>
+
+  {% if document.note %}
+  <p class="note">{{ document.note }}</p>
+  {% endif %}
+</div>

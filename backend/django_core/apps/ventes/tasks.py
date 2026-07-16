@@ -160,3 +160,67 @@ def task_generate_facture_pdf(self, facture_id):
     except Exception as exc:
         logger.error('task_generate_facture_pdf failed facture_id=%s: %s', facture_id, exc)
         raise self.retry(exc=exc, countdown=2 ** self.request.retries * 30)
+
+
+# ── SCA41 — export xlsx asynchrone (pilote de NTPLT29/30) ───────────────────
+# Cache : durée de vie d'un job d'export (état + clé MinIO + société), sous une
+# clé opaque (id de tâche). Le endpoint de statut vérifie la société stockée
+# AVANT de renvoyer quoi que ce soit (jamais d'accès inter-tenant).
+EXPORT_JOB_CACHE_PREFIX = 'ventes:export_job:'
+EXPORT_JOB_CACHE_TTL = 24 * 3600  # 24 h
+
+
+def export_job_cache_key(token):
+    return f'{EXPORT_JOB_CACHE_PREFIX}{token}'
+
+
+@shared_task(
+    bind=True,
+    name='ventes.build_async_export',
+    max_retries=3,
+    default_retry_delay=30,
+    acks_late=True,
+)
+def task_build_async_export(self, company_id, layout, debut_iso, fin_iso, token):
+    """SCA41 — construit un export xlsx volumineux HORS requête et le stocke
+    dans MinIO sous une clé préfixée société (motif ERR75). Met à jour l'état
+    du job en cache (``pending`` → ``ready``/``error``). Réutilise le builder
+    synchrone → octets STRICTEMENT identiques à l'export in-request.
+
+    Le futur ``BackgroundJob`` générique (NTPLT29/30) remplacera cette tâche en
+    conservant la même signature de sortie (clé MinIO + nom de fichier)."""
+    from datetime import date
+    from django.core.cache import cache
+    from django.conf import settings
+    from .exports import build_export_xlsx_bytes, export_object_key
+    from .utils.minio_client import get_minio_client
+
+    ckey = export_job_cache_key(token)
+    try:
+        debut = date.fromisoformat(debut_iso)
+        fin = date.fromisoformat(fin_iso)
+        content, filename = build_export_xlsx_bytes(
+            company_id, layout, debut, fin)
+        key = export_object_key(company_id, layout, debut, fin, token)
+        client = get_minio_client()
+        client.put_object(
+            Bucket=settings.MINIO_BUCKET_PDF,
+            Key=key,
+            Body=content,
+            ContentType=('application/vnd.openxmlformats-officedocument'
+                         '.spreadsheetml.sheet'),
+        )
+        job = cache.get(ckey) or {}
+        job.update({'company_id': company_id, 'layout': layout,
+                    'status': 'ready', 'key': key, 'filename': filename})
+        cache.set(ckey, job, EXPORT_JOB_CACHE_TTL)
+        logger.info('task_build_async_export OK: %s', key)
+        return key
+    except Exception as exc:  # noqa: BLE001
+        job = cache.get(ckey) or {}
+        job.update({'company_id': company_id, 'layout': layout,
+                    'status': 'error', 'error': str(exc)})
+        cache.set(ckey, job, EXPORT_JOB_CACHE_TTL)
+        logger.error('task_build_async_export failed company=%s layout=%s: %s',
+                     company_id, layout, exc)
+        raise self.retry(exc=exc, countdown=2 ** self.request.retries * 30)

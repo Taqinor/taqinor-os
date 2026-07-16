@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react'
-import { useDispatch } from 'react-redux'
-import { Plus, Trash2 } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { useDispatch, useSelector } from 'react-redux'
+import { Link } from 'react-router-dom'
+import { History, Plus, Trash2 } from 'lucide-react'
 import {
   createDevis,
   updateDevis,
@@ -10,15 +11,23 @@ import {
 } from '../../features/ventes/store/ventesSlice'
 import crmApi from '../../api/crmApi'
 import stockApi from '../../api/stockApi'
+import ventesApi from '../../api/ventesApi'
+import { resilientMutation } from '../../lib/resilientMutation'
+import { useStaleGuard } from '../../hooks/useStaleGuard'
 import {
-  Button, IconButton,
+  Button, IconButton, RelationCounters,
   Dialog, DialogContent, DialogHeader, DialogTitle,
-  Form, FormField, FormActions, useDirtyGuard,
+  Form, FormField, FormActions, useDirtyGuard, confirmLeaveIfDirty,
   Input, Textarea, Label,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 import ProduitPicker from '../../components/ProduitPicker'
+import ClientQuickCreateModal from './ClientQuickCreateModal'
 import AttachmentsPanel from '../../components/AttachmentsPanel'
+import { useHasPermission } from '../../hooks/useHasPermission'
+import { useServerFieldErrors } from '../../hooks/useServerFieldErrors'
+import { formatMAD, timeAgo } from '../../lib/format'
+import QuoteTotalsSummary from '../../features/ventes/QuoteTotalsSummary'
 
 let _keyCounter = 0
 const newKey = () => ++_keyCounter
@@ -38,13 +47,35 @@ const emptyLine = () => ({
 export default function DevisForm({ devis = null, onClose, onSaved }) {
   const dispatch = useDispatch()
   const isEdit = !!devis
+  // VX98 — puce de fraîcheur + lien Journal. Le chip reste SILENCIEUX si le
+  // dernier auteur est l'utilisateur courant (« mon propre edit ») ou si null.
+  const currentUsername = useSelector((s) => s.auth?.user?.username)
+  const canViewJournal = useHasPermission('journal_activite_voir')
+  const freshBy = devis?.updated_by_nom
+  const freshAt = devis?.updated_at
+  const showFreshness = !!(freshBy && freshBy !== currentUsername)
+
+  // VX243(c) — garde d'édition périmée : re-GET léger de `updated_at` au
+  // submit, comparé à la valeur d'ouverture ; bannière non bloquante si un
+  // autre utilisateur a sauvegardé entre-temps (2 onglets).
+  const staleGuard = useStaleGuard({
+    openedAt: devis?.updated_at,
+    fetchLatest: devis?.id
+      ? () => ventesApi.getDevisById(devis.id).then(r => r.data)
+      : undefined,
+  })
 
   const [clients, setClients] = useState([])
   const [produits, setProduits] = useState([])
   const [saving, setSaving] = useState(false)
-  const [errors, setErrors] = useState({})
+  // VX171 — vérité serveur → champ ; le rouge s'efface à la frappe.
+  const { errors, setErrors, setFromResponse, clearField } = useServerFieldErrors()
   const [dirty, setDirty] = useState(false)
+  const [clientQuickCreateOpen, setClientQuickCreateOpen] = useState(false)
   useDirtyGuard(dirty)
+  // VX117 — le devis créé par un submit partiellement échoué reste EXPOSÉ :
+  // un retry ne repart JAMAIS en second `createDevis` (doublon fiscal).
+  const [createdDevisId, setCreatedDevisId] = useState(null)
 
   const [fields, setFields] = useState({
     client: devis?.client ?? '',
@@ -71,11 +102,28 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
   )
 
   const [removedLineIds, setRemovedLineIds] = useState([])
+  // VX90 — focus la nouvelle ligne (ProduitPicker) après « Ajouter ligne ».
+  const linesTableRef = useRef(null)
+  const [pendingFocusKey, setPendingFocusKey] = useState(null)
 
   useEffect(() => {
     crmApi.getClients().then(r => setClients(r.data.results ?? r.data)).catch(() => {})
     stockApi.getProduits().then(r => setProduits(r.data.results ?? r.data)).catch(() => {})
   }, [])
+
+  // VX90 — après ajout d'une ligne, focaliser son sélecteur produit + la faire
+  // défiler dans la vue (ref-walk DOM par data-line-key).
+  useEffect(() => {
+    if (pendingFocusKey == null) return
+    const row = linesTableRef.current
+      ?.querySelector(`[data-line-key="${pendingFocusKey}"]`)
+    if (row) {
+      row.querySelector('button[type="button"]')?.focus()
+      row.scrollIntoView({ block: 'nearest' })
+    }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset one-shot du focus (VX90)
+    setPendingFocusKey(null)
+  }, [pendingFocusKey, lines])
 
   // Live totals
   const remGlobal = parseFloat(fields.remise_globale) || 0
@@ -103,15 +151,18 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
   }, 0)
   const totalTTC = totalHT + totalTVA
 
-  const setField = (k, v) => { setDirty(true); setFields(f => ({ ...f, [k]: v })) }
+  // VX171 — le rouge ne doit jamais mentir pendant que l'utilisateur corrige.
+  const setField = (k, v) => { setDirty(true); clearField(k); setFields(f => ({ ...f, [k]: v })) }
 
   const setLine = (key, k, v) => {
     setDirty(true)
+    clearField('lines')
     setLines(ls => ls.map(l => l._key === key ? { ...l, [k]: v } : l))
   }
 
   const onProduitChange = (key, produitId) => {
     setDirty(true)
+    clearField('lines')
     const p = produits.find(p => String(p.id) === String(produitId))
     setLines(ls => ls.map(l =>
       l._key === key
@@ -125,10 +176,19 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
     ))
   }
 
-  const addLine = () => { setDirty(true); setLines(ls => [...ls, emptyLine()]) }
+  const addLine = () => {
+    setDirty(true)
+    clearField('lines')
+    setLines(ls => {
+      const line = emptyLine()
+      setPendingFocusKey(line._key) // VX90
+      return [...ls, line]
+    })
+  }
 
   const removeLine = key => {
     setDirty(true)
+    clearField('lines')
     const line = lines.find(l => l._key === key)
     if (line?.id) setRemovedLineIds(ids => [...ids, line.id])
     setLines(ls => ls.filter(l => l._key !== key))
@@ -151,6 +211,13 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!validate()) return
+    // VX243(c) — un devis déjà ouvert en édition passe par la garde de
+    // fraîcheur AVANT le PATCH ; une détection de conflit interrompt CE
+    // submit et affiche la bannière (pas de setSaving, pas de mutation).
+    if (isEdit) {
+      const canProceed = await staleGuard.checkBeforeSave()
+      if (!canProceed) return
+    }
     setSaving(true)
     try {
       const payload = {
@@ -162,23 +229,28 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
         note: fields.note || null,
       }
 
-      let devisId
-      if (isEdit) {
-        const res = await dispatch(updateDevis({ id: devis.id, data: payload })).unwrap()
+      // VX117 — un devis déjà créé (id serveur ou id exposé par un submit
+      // précédent partiellement échoué) ne repart JAMAIS en second POST : la
+      // relance passe systématiquement en ÉDITION.
+      let devisId = devis?.id ?? createdDevisId
+      if (devisId) {
+        const res = await dispatch(updateDevis({ id: devisId, data: payload })).unwrap()
         devisId = res.id
       } else {
         const res = await dispatch(createDevis(payload)).unwrap()
         devisId = res.id
+        setCreatedDevisId(devisId)
       }
 
-      // Delete removed lines
-      await Promise.all(
-        removedLineIds.map(id => dispatch(removeLigneDevis(id)).unwrap())
-      )
+      // Lignes supprimées — allSettled : une suppression en échec ne bloque
+      // pas les autres déjà supprimées, et ne les redemande pas au retry.
+      const delResult = await resilientMutation(removedLineIds, (id) =>
+        dispatch(removeLigneDevis(id)).unwrap())
+      setRemovedLineIds(delResult.failed.map(f => f.item))
 
-      // Update existing lines (those that came from server)
+      // Lignes existantes → update
       const existingLines = lines.filter(l => l.id)
-      await Promise.all(existingLines.map(l =>
+      const updResult = await resilientMutation(existingLines, (l) =>
         dispatch(updateLigneDevis({
           id: l.id,
           data: {
@@ -190,12 +262,13 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
             remise: l.remise,
             taux_tva: l.taux_tva !== '' ? l.taux_tva : null,
           },
-        })).unwrap()
-      ))
+        })).unwrap())
 
-      // Create new lines
+      // Nouvelles lignes → create — chaque ligne créée avec succès reçoit
+      // son id serveur immédiatement : un retry ne la recrée jamais (fin du
+      // doublon fiscal ligne-par-ligne).
       const newLines = lines.filter(l => !l.id)
-      await Promise.all(newLines.map(l =>
+      const createResult = await resilientMutation(newLines, (l) =>
         dispatch(addLigneDevis({
           devis: devisId,
           produit: parseInt(l.produit),
@@ -204,44 +277,148 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
           prix_unitaire: l.prix_unitaire,
           remise: l.remise,
           taux_tva: l.taux_tva !== '' ? l.taux_tva : null,
-        })).unwrap()
-      ))
+        })).unwrap())
+      if (createResult.succeeded.length > 0) {
+        setLines(ls => ls.map(l => {
+          const ok = createResult.succeeded.find(s => s.item._key === l._key)
+          return ok ? { ...l, id: ok.value.id } : l
+        }))
+      }
+
+      const lineFails = delResult.failed.length + updResult.failed.length + createResult.failed.length
+      if (lineFails > 0) {
+        setErrors(prev => ({ ...prev, submit:
+          `Devis enregistré, mais ${lineFails} ligne(s) n'ont pas pu être enregistrée(s). `
+          + 'Corrigez et réessayez — seules les lignes en échec seront retentées, aucun doublon.' }))
+        return
+      }
 
       setDirty(false)
       onSaved?.()
       onClose()
     } catch (err) {
-      const msg = err?.detail ?? err?.non_field_errors?.[0] ?? JSON.stringify(err)
-      setErrors(prev => ({ ...prev, submit: msg }))
+      // VX171 — mapping DRF générique (detail / {champ:[…]} / array) : chaque
+      // champ en erreur vire rouge, plus un toast anonyme.
+      setFromResponse(err)
     } finally {
       setSaving(false)
     }
   }
 
   return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+    <Dialog open onOpenChange={(o) => { if (!o && confirmLeaveIfDirty(dirty)) onClose() }}>
       <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{isEdit ? `Éditer — ${devis.reference}` : 'Nouveau devis'}</DialogTitle>
+          {isEdit && (showFreshness || canViewJournal) && (
+            <div className="mt-1 flex flex-wrap items-center gap-3 text-xs">
+              {/* VX98 — puce de fraîcheur : silencieuse sur mon propre edit / si null. */}
+              {showFreshness && (
+                <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/40 px-2 py-0.5 text-muted-foreground">
+                  <History className="size-3" aria-hidden="true" />
+                  modifié par {freshBy}{freshAt ? ` ${timeAgo(freshAt)}` : ''}
+                </span>
+              )}
+              {/* VX98 — 1 clic → Journal pré-filtré sur CE devis (permission requise). */}
+              {canViewJournal && (
+                <Link
+                  to={`/journal?model=devis&object_id=${devis.id}`}
+                  className="inline-flex items-center gap-1 text-primary hover:underline"
+                >
+                  <History className="size-3" aria-hidden="true" /> Historique
+                </Link>
+              )}
+            </div>
+          )}
         </DialogHeader>
+
+        {isEdit && (
+          <>
+            {/* VX250(a) — <PendingStepsIndicator> : lecture PURE du statut déjà
+                chargé (`devis.statut`) — ne change JAMAIS un statut (chaîne
+                Devis/BonCommande/Facture préservée 1:1, règle #4). Disparaît
+                dès que le devis n'est plus « envoyé » (signé/refusé/expiré) —
+                ZÉRO appel réseau. */}
+            {devis.statut === 'envoye' && (
+              <p
+                role="status"
+                className="mt-2 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning"
+              >
+                En attente de signature client
+              </p>
+            )}
+            {/* VX159/VX250 — RelationCounters : réutilise devis.factures_liees/
+                bon_commande_etat/chantier déjà chargés (DevisSerializer,
+                U5/U8) — ZÉRO appel réseau nouveau. */}
+            <RelationCounters
+              className="mt-2"
+              counters={[
+                {
+                  label: 'factures liées',
+                  count: devis.factures_liees?.length ?? 0,
+                  to: `/ventes/factures?q=${encodeURIComponent(devis.client_nom ?? '')}`,
+                },
+                { label: 'bon de commande', count: devis.bon_commande_etat ? 1 : 0 },
+                {
+                  label: 'chantier',
+                  count: devis.chantier ? 1 : 0,
+                  to: devis.chantier ? `/chantiers?id=${devis.chantier.id}` : undefined,
+                },
+              ]}
+            />
+          </>
+        )}
+
+        {/* VX243(c) — bannière non bloquante : un autre utilisateur a
+            sauvegardé ce devis pendant l'édition en cours. */}
+        {staleGuard.staleInfo && (
+          <div role="alert" className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
+            <span>
+              Modifié par {staleGuard.staleInfo.by || 'un autre utilisateur'}
+              {' '}pendant votre édition — vérifiez avant d'enregistrer.
+            </span>
+            <span className="flex gap-2">
+              <Button type="button" size="sm" variant="outline" onClick={staleGuard.dismiss}>
+                Revoir
+              </Button>
+              <Button
+                type="button" size="sm" variant="outline"
+                onClick={() => { staleGuard.force(); handleSubmit({ preventDefault: () => {} }) }}
+              >
+                Enregistrer quand même
+              </Button>
+            </span>
+          </div>
+        )}
 
         <Form onSubmit={handleSubmit} className="gap-5">
           {/* ── Infos générales ── */}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <FormField label="Client" required htmlFor="dv-client" error={errors.client}>
-              <Select value={fields.client ? String(fields.client) : undefined}
-                      onValueChange={v => setField('client', v)}>
-                <SelectTrigger id="dv-client" invalid={!!errors.client}>
-                  <SelectValue placeholder="— Sélectionner un client —" />
-                </SelectTrigger>
-                <SelectContent>
-                  {clients.map(c => (
-                    <SelectItem key={c.id} value={String(c.id)}>
-                      {c.nom}{c.prenom ? ` ${c.prenom}` : ''}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <Select value={fields.client ? String(fields.client) : undefined}
+                          onValueChange={v => setField('client', v)}>
+                    {/* VX240(a) — la modale s'ouvrait SANS aucun autofocus (le
+                        vendeur devait cliquer avant de pouvoir taper/choisir) ;
+                        premier champ utile focalisé à l'ouverture. */}
+                    <SelectTrigger id="dv-client" invalid={!!errors.client} autoFocus>
+                      <SelectValue placeholder="— Sélectionner un client —" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {clients.map(c => (
+                        <SelectItem key={c.id} value={String(c.id)}>
+                          {c.nom}{c.prenom ? ` ${c.prenom}` : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {/* VX91 — création rapide client (QG3), sans quitter le devis */}
+                <Button type="button" variant="outline" onClick={() => setClientQuickCreateOpen(true)}>
+                  <Plus /> Nouveau client
+                </Button>
+              </div>
             </FormField>
 
             <FormField label="Date de validité" htmlFor="dv-validite">
@@ -288,18 +465,21 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
               <p role="alert" className="text-xs text-destructive">{errors.lines}</p>
             )}
 
-            <div className="overflow-x-auto rounded-lg border border-border">
-              <table className="w-full border-collapse text-sm">
-                <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
+            {/* VX184 — même comportement mobile que le générateur : `.lines-table`
+                bascule en cartes empilées sous 768px via `data-label`
+                (index.css ~2264-2296), au lieu du scroll horizontal permanent. */}
+            <div className="lines-table-wrap">
+              <table className="lines-table" ref={linesTableRef}>
+                <thead>
                   <tr>
-                    <th className="px-2 py-2 text-left" style={{ minWidth: 160 }}>Produit</th>
-                    <th className="px-2 py-2 text-left">Désignation</th>
-                    <th className="px-2 py-2 text-right">Qté</th>
-                    <th className="px-2 py-2 text-right">Prix HT (DH)</th>
-                    <th className="px-2 py-2 text-right">Rem. %</th>
-                    <th className="px-2 py-2 text-right" title="Taux TVA de la ligne (vide = taux du devis)">TVA %</th>
-                    <th className="px-2 py-2 text-right">Total HT</th>
-                    <th className="w-10 px-2 py-2" />
+                    <th style={{ minWidth: 160 }}>Produit</th>
+                    <th>Désignation</th>
+                    <th className="col-num">Qté</th>
+                    <th className="col-num">Prix HT</th>
+                    <th className="col-num">Rem. %</th>
+                    <th className="col-num" title="Taux TVA de la ligne (vide = taux du devis)">TVA %</th>
+                    <th className="col-num">Total HT</th>
+                    <th className="col-del" />
                   </tr>
                 </thead>
                 <tbody>
@@ -309,8 +489,8 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
                       (parseFloat(l.prix_unitaire) || 0) *
                       (1 - (parseFloat(l.remise) || 0) / 100)
                     return (
-                      <tr key={l._key} className="border-t border-border align-top">
-                        <td className="px-2 py-1.5">
+                      <tr key={l._key} data-line-key={l._key}>
+                        <td data-label="Produit">
                           {/* Picker partagé (recherche + prix) — même composant
                               que le générateur, fin de la divergence des deux
                               éditeurs sur la sélection produit. */}
@@ -318,40 +498,49 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
                             produits={produits}
                             value={l.produit ? String(l.produit) : ''}
                             onChange={v => onProduitChange(l._key, v)}
+                            // VX238(c) — choisir un produit avance directement
+                            // le focus sur la Qté de CETTE ligne (réutilise
+                            // data-line-key, VX90) au lieu de rendre le focus
+                            // au bouton déclencheur.
+                            onPicked={() => {
+                              document
+                                .querySelector(`tr[data-line-key="${l._key}"] [data-role="line-qty"]`)
+                                ?.focus()
+                            }}
                           />
                         </td>
-                        <td className="px-2 py-1.5">
+                        <td data-label="Désignation">
                           <Input className="h-[var(--control-h-sm)] text-xs" value={l.designation}
                                  onChange={e => setLine(l._key, 'designation', e.target.value)}
                                  placeholder="Désignation" />
                         </td>
-                        <td className="px-2 py-1.5">
-                          <Input type="number" min="0.01" step="0.01"
+                        <td data-label="Qté">
+                          <Input type="number" min="0.01" step="0.01" data-role="line-qty"
                                  className="h-[var(--control-h-sm)] text-right text-xs"
                                  value={l.quantite}
                                  onChange={e => setLine(l._key, 'quantite', e.target.value)} />
                         </td>
-                        <td className="px-2 py-1.5">
+                        <td data-label="Prix HT">
                           <Input type="number" min="0" step="0.01"
                                  className="h-[var(--control-h-sm)] text-right text-xs"
                                  value={l.prix_unitaire}
                                  onChange={e => setLine(l._key, 'prix_unitaire', e.target.value)} />
                         </td>
-                        <td className="px-2 py-1.5">
+                        <td data-label="Rem. %">
                           <Input type="number" min="0" max="100" step="0.01"
                                  className="h-[var(--control-h-sm)] text-right text-xs"
                                  value={l.remise}
                                  onChange={e => setLine(l._key, 'remise', e.target.value)} />
                         </td>
-                        <td className="px-2 py-1.5">
+                        <td data-label="TVA %">
                           <Input type="number" min="0" max="100" step="0.01"
                                  className="h-[var(--control-h-sm)] text-right text-xs"
                                  placeholder={String(tva)}
                                  value={l.taux_tva}
                                  onChange={e => setLine(l._key, 'taux_tva', e.target.value)} />
                         </td>
-                        <td className="px-2 py-1.5 text-right font-medium tabular-nums">{lineTotal.toFixed(2)} DH</td>
-                        <td className="px-2 py-1.5 text-center">
+                        <td className="line-total" data-label="Total HT">{formatMAD(lineTotal)}</td>
+                        <td>
                           {lines.length > 1 && (
                             <IconButton type="button" label="Supprimer la ligne" size="sm"
                                         className="text-destructive hover:bg-destructive/10"
@@ -368,31 +557,16 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
             </div>
           </section>
 
-          {/* ── Totaux ── */}
-          <div className="ml-auto w-full max-w-xs rounded-lg border border-border bg-muted/30 p-3 text-sm">
-            <div className="flex justify-between py-0.5">
-              <span className="text-muted-foreground">Sous-total HT</span>
-              <span className="tabular-nums">{subtotalHT.toFixed(2)} DH</span>
-            </div>
-            {remGlobal > 0 && (
-              <div className="flex justify-between py-0.5 text-warning">
-                <span>Remise globale ({remGlobal}%)</span>
-                <span className="tabular-nums">−{(subtotalHT * remGlobal / 100).toFixed(2)} DH</span>
-              </div>
-            )}
-            <div className="flex justify-between py-0.5">
-              <span className="text-muted-foreground">Total HT</span>
-              <strong className="tabular-nums">{totalHT.toFixed(2)} DH</strong>
-            </div>
-            <div className="flex justify-between py-0.5">
-              <span className="text-muted-foreground">TVA ({tva}%)</span>
-              <span className="tabular-nums">{totalTVA.toFixed(2)} DH</span>
-            </div>
-            <div className="mt-1 flex justify-between border-t border-border pt-1.5 text-base">
-              <span className="font-semibold">Total TTC</span>
-              <strong className="tabular-nums text-primary">{totalTTC.toFixed(2)} DH</strong>
-            </div>
-          </div>
+          {/* ── Totaux (VX139 — bloc partagé avec le générateur, une seule devise) ── */}
+          <QuoteTotalsSummary
+            subtotalHT={subtotalHT}
+            remiseLabel={`Remise globale (${remGlobal}%)`}
+            remiseMontant={remGlobal > 0 ? subtotalHT * remGlobal / 100 : 0}
+            totalHT={totalHT}
+            tauxTva={tva}
+            totalTVA={totalTVA}
+            totalTTC={totalTTC}
+          />
 
           {/* ── Note ── */}
           <div className="grid gap-1.5">
@@ -422,6 +596,17 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
             </Button>
           </FormActions>
         </Form>
+
+        {/* VX91 — création rapide client (QG3) ; sélectionne le nouveau client */}
+        <ClientQuickCreateModal
+          open={clientQuickCreateOpen}
+          onClose={() => setClientQuickCreateOpen(false)}
+          onCreated={(c) => {
+            setClients(cs => [...cs, c])
+            setField('client', String(c.id))
+            setClientQuickCreateOpen(false)
+          }}
+        />
       </DialogContent>
     </Dialog>
   )

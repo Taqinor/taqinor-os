@@ -171,6 +171,136 @@ def _check_queue():
     return {'name': 'queue', 'status': STATUS_OK, 'detail': f'{length} tâche(s) en attente.'}
 
 
+REDIS_MEMORY_DEGRADED_RATIO = 0.8
+
+# SCA9 — les 3 queues Celery isolées au niveau compose (default/interactive/
+# scheduled, voir YOPSB9 dans settings/base.py et docker-compose.yml). Seuil
+# de profondeur PAR QUEUE, surchargeable par variable d'env dédiée
+# (QUEUE_DEPTH_DEGRADED_<QUEUE EN MAJUSCULES>) — défaut 500 par queue, valeur
+# de bon sens NON mesurée sur un volume réel de production (à recalibrer une
+# fois un volume de tâches réel observé, voir docs/scale-runway.md).
+QUEUE_DEPTH_DEGRADED_DEFAULT = 500
+MONITORED_QUEUES = ['default', 'interactive', 'scheduled']
+
+
+def _redis_urls_to_check():
+    """URLs des instances Redis à sonder pour la mémoire (SCA10 : broker +
+    cache, potentiellement deux instances distinctes désormais). Renvoie une
+    liste de ``(label, url)`` — jamais vide même sans configuration
+    spécifique (retombe sur les mêmes défauts que ``settings/base.py``)."""
+    import os
+
+    from django.conf import settings
+
+    broker_url = getattr(settings, 'CELERY_BROKER_URL', '') or ''
+    cache_host = os.environ.get(
+        'REDIS_CACHE_HOST', os.environ.get('REDIS_HOST', 'redis'))
+    cache_port = os.environ.get(
+        'REDIS_CACHE_PORT', os.environ.get('REDIS_PORT', '6379'))
+    cache_url = f'redis://{cache_host}:{cache_port}/1'
+    return [('broker', broker_url), ('cache', cache_url)]
+
+
+def _redis_memory_ratio(url):
+    """``(used_memory, maxmemory, ratio)`` pour l'instance Redis à ``url``.
+    ``None`` si non-Redis, injoignable, ou ``maxmemory`` non posé (0 — pas de
+    limite, un ratio ne peut pas être calculé, jamais une fausse alerte)."""
+    if not url.startswith('redis'):
+        return None
+    import redis as redis_lib
+    client = redis_lib.Redis.from_url(url, socket_timeout=0.5)
+    info = client.info('memory')
+    used = info.get('used_memory', 0)
+    maxmem = info.get('maxmemory', 0)
+    if not maxmem:
+        return None
+    return used, maxmem, used / maxmem
+
+
+def _check_redis_memory():
+    """SCA15 — ``used_memory`` vs ``maxmemory`` sur CHAQUE instance Redis
+    configurée (broker + cache, SCA10). ``degraded`` si l'une des deux
+    dépasse ``REDIS_MEMORY_DEGRADED_RATIO`` (défaut 80 % — même convention
+    que ``CONN_SATURATION_DEGRADED_RATIO``). Best-effort : une sonde
+    injoignable ne fait jamais planter les autres."""
+    import os
+
+    seuil = float(os.environ.get(
+        'REDIS_MEMORY_DEGRADED_RATIO', str(REDIS_MEMORY_DEGRADED_RATIO)))
+    details = []
+    degraded = False
+    any_reached = False
+    for label, url in _redis_urls_to_check():
+        try:
+            result = _redis_memory_ratio(url)
+        except Exception as exc:  # noqa: BLE001 — best-effort
+            details.append(f'{label}: injoignable ({exc})')
+            continue
+        if result is None:
+            details.append(f'{label}: maxmemory non posé (ratio indisponible).')
+            continue
+        any_reached = True
+        used, maxmem, ratio = result
+        details.append(f'{label}: {ratio:.0%} ({used}/{maxmem} octets)')
+        if ratio >= seuil:
+            degraded = True
+
+    if not any_reached:
+        return {
+            'name': 'redis_memory', 'status': STATUS_UNKNOWN,
+            'detail': 'Aucune instance Redis avec maxmemory joignable.',
+        }
+    return {
+        'name': 'redis_memory',
+        'status': STATUS_DEGRADED if degraded else STATUS_OK,
+        'detail': '; '.join(details),
+    }
+
+
+def _queue_depth_threshold(queue_name):
+    import os
+
+    env_key = f'QUEUE_DEPTH_DEGRADED_{queue_name.upper()}'
+    return int(os.environ.get(env_key, str(QUEUE_DEPTH_DEGRADED_DEFAULT)))
+
+
+def _check_queue_depth():
+    """SCA15 — ``LLEN`` par queue Celery nommée (SCA9 : default/interactive/
+    scheduled). ``degraded`` si l'une des queues dépasse son seuil
+    (``QUEUE_DEPTH_DEGRADED_<QUEUE>``, défaut 500). ``unknown`` si le broker
+    n'est pas Redis ou injoignable (même best-effort que ``_check_queue``)."""
+    from . import metrics as metrics_infra
+
+    details = []
+    degraded = False
+    any_reached = False
+    for queue_name in MONITORED_QUEUES:
+        try:
+            length = metrics_infra.redis_queue_length(queue_name)
+        except Exception as exc:  # noqa: BLE001 — best-effort
+            details.append(f'{queue_name}: injoignable ({exc})')
+            continue
+        if length is None:
+            details.append(f'{queue_name}: broker non-Redis ou injoignable.')
+            continue
+        any_reached = True
+        seuil = _queue_depth_threshold(queue_name)
+        details.append(f'{queue_name}: {length} (seuil {seuil})')
+        if length >= seuil:
+            degraded = True
+
+    if not any_reached:
+        return {
+            'name': 'queue_depth', 'status': STATUS_UNKNOWN,
+            'detail': 'Broker non-Redis ou injoignable.',
+        }
+    return {
+        'name': 'queue_depth',
+        'status': STATUS_DEGRADED if degraded else STATUS_OK,
+        'detail': '; '.join(details),
+    }
+
+
 def check_services():
     """Liste normalisée de l'état de chaque service d'infrastructure."""
     return [
@@ -181,6 +311,8 @@ def check_services():
         _check_monitoring(),
         _check_beat(),
         _check_queue(),
+        _check_redis_memory(),
+        _check_queue_depth(),
     ]
 
 

@@ -11,32 +11,37 @@ un devis ni un PDF client-facing de vente).
 Chaque fonction ``render_*_pdf`` prend le dict DÉJÀ calculé par le sélecteur
 correspondant (aucun recalcul) + le ``CompanyProfile`` (entête : raison
 sociale, ICE/IF/RC) et l'exercice/période, et renvoie des octets PDF.
-WeasyPrint est optionnel à l'import : sans la lib, ``RuntimeError``
-explicite (jamais un crash à l'import du module).
+
+ARC12 — la plomberie WeasyPrint (``HTML(string=...).write_pdf()`` + import
+paresseux) est déléguée au service partagé ``core.pdf.render_pdf`` ; les
+GABARITS HTML ci-dessous restent STRICTEMENT identiques (aucune option de
+branding de ``render_pdf`` activée), donc le rendu est inchangé à l'octet
+près.
 """
 from datetime import date
 from decimal import Decimal
 from html import escape
-from io import BytesIO
+
+from core.pdf import render_pdf
+
+
+def _html_to_pdf(html_string):
+    """ARC12 — shim de compat : délègue au service PDF partagé
+    (``core.pdf.render_pdf``). Trois appelants dans ``apps/compta/views.py``
+    (ZACC3 tableau_flux, ZACC12 tableau_immobilisations, ZACC10 bordereau_pdf)
+    construisent leur fragment HTML directement dans la vue et importent ce
+    helper — le refactor ARC12 avait recâblé les 6 renderers ``render_*_pdf``
+    de CE module vers ``render_pdf`` mais supprimé ce seam sans le réexporter,
+    d'où un ``ImportError`` (NON attrapé par ``_pdf_or_503`` qui ne gère que
+    ``RuntimeError``). ``render_pdf`` conserve le contrat ``RuntimeError`` si
+    WeasyPrint est absent, donc la dégradation gracieuse 503 refonctionne."""
+    return render_pdf(html=html_string)
+
 
 MOIS_FR = [
     '', 'janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet',
     'août', 'septembre', 'octobre', 'novembre', 'décembre',
 ]
-
-
-def _html_to_pdf(html_string):
-    """HTML → octets PDF (WeasyPrint). Import paresseux de weasyprint."""
-    try:
-        import weasyprint
-    except ImportError as exc:  # pragma: no cover - dépend de l'environnement
-        raise RuntimeError(
-            "WeasyPrint n'est pas installé : génération PDF indisponible."
-        ) from exc
-    buf = BytesIO()
-    weasyprint.HTML(string=html_string).write_pdf(buf)
-    buf.seek(0)
-    return buf.read()
 
 
 def _fmt(montant):
@@ -157,8 +162,9 @@ def render_bilan_html(data, company_profile=None, *, date_fin=None,
 
 
 def render_bilan_pdf(data, company_profile=None, *, date_fin=None, today=None):
-    return _html_to_pdf(
-        render_bilan_html(data, company_profile, date_fin=date_fin, today=today))
+    return render_pdf(
+        html=render_bilan_html(
+            data, company_profile, date_fin=date_fin, today=today))
 
 
 def render_cpc_html(data, company_profile=None, *, date_debut=None,
@@ -190,9 +196,10 @@ def render_cpc_html(data, company_profile=None, *, date_debut=None,
 
 def render_cpc_pdf(data, company_profile=None, *, date_debut=None,
                    date_fin=None, today=None):
-    return _html_to_pdf(
-        render_cpc_html(data, company_profile, date_debut=date_debut,
-                        date_fin=date_fin, today=today))
+    return render_pdf(
+        html=render_cpc_html(
+            data, company_profile, date_debut=date_debut,
+            date_fin=date_fin, today=today))
 
 
 def render_balance_html(data, company_profile=None, *, date_debut=None,
@@ -229,9 +236,10 @@ def render_balance_html(data, company_profile=None, *, date_debut=None,
 
 def render_balance_pdf(data, company_profile=None, *, date_debut=None,
                        date_fin=None, today=None):
-    return _html_to_pdf(
-        render_balance_html(data, company_profile, date_debut=date_debut,
-                            date_fin=date_fin, today=today))
+    return render_pdf(
+        html=render_balance_html(
+            data, company_profile, date_debut=date_debut,
+            date_fin=date_fin, today=today))
 
 
 def render_grand_livre_html(data, company_profile=None, *, date_debut=None,
@@ -268,9 +276,10 @@ def render_grand_livre_html(data, company_profile=None, *, date_debut=None,
 
 def render_grand_livre_pdf(data, company_profile=None, *, date_debut=None,
                            date_fin=None, today=None):
-    return _html_to_pdf(
-        render_grand_livre_html(data, company_profile, date_debut=date_debut,
-                                date_fin=date_fin, today=today))
+    return render_pdf(
+        html=render_grand_livre_html(
+            data, company_profile, date_debut=date_debut,
+            date_fin=date_fin, today=today))
 
 
 def render_liasse_html(data, company_profile=None, *, exercice=None,
@@ -298,9 +307,9 @@ def render_liasse_html(data, company_profile=None, *, exercice=None,
 
 def render_liasse_pdf(data, company_profile=None, *, exercice=None,
                       today=None):
-    return _html_to_pdf(
-        render_liasse_html(data, company_profile, exercice=exercice,
-                           today=today))
+    return render_pdf(
+        html=render_liasse_html(
+            data, company_profile, exercice=exercice, today=today))
 
 
 def render_balance_agee_html(data, company_profile=None, *,
@@ -342,7 +351,7 @@ def render_balance_agee_html(data, company_profile=None, *,
 
 def render_balance_agee_pdf(data, company_profile=None, *,
                             date_reference=None, today=None, titre=None):
-    return _html_to_pdf(
-        render_balance_agee_html(data, company_profile,
-                                 date_reference=date_reference, today=today,
-                                 titre=titre))
+    return render_pdf(
+        html=render_balance_agee_html(
+            data, company_profile, date_reference=date_reference,
+            today=today, titre=titre))

@@ -12,6 +12,8 @@ import {
   KWH_PRICE, FALLBACK_KWH_PRICE, kwhFromBill, twoBillsSavings, monthlyBillFromKwh,
   ONEE_TRANCHES, AUTOCONSO_SANS, AUTOCONSO_AVEC, buildEtudeParamsChoice,
   multiPropertyPreviewTTC,
+  productibleForCity, PRODUCTIBLE_PAR_VILLE, DEFAULT_PRODUCTIBLE,
+  computeCashflowPayback,
 } from './solar.js'
 
 // Reflet du catalogue seedé (prix HT = TTC simulateur / 1.2, 2 décimales)
@@ -310,6 +312,33 @@ test('auto-fill petit système 5 panneaux : onduleur 5 kW Monophasé préféré'
   assert.equal(by('Deyness 10').quantite, 0)
 })
 
+// ── QX19 — autoFillLines surface le wattage RÉEL + nb panneaux (anti-mismatch)
+test('QX19 — autoFillLines expose actualPanelW / nbPanneaux / kwcReel', () => {
+  const kwp = 14 * 710 / 1000
+  const rows = autoFillLines(SEEDED, { kwp, panelW: 710, structureType: 'acier' })
+  assert.equal(rows.actualPanelW, 710)     // catalogue a le 710 W demandé
+  assert.equal(rows.nbPanneaux, 14)
+  assert.equal(rows.kwcReel, Math.round(14 * 710 / 10) / 100)
+})
+
+test('QX19 — nbPanneaux override (taille souhaitée kWc) pilote le nb de panneaux', () => {
+  // taille souhaitée 7.1 kWc → panneauxPourKwc(7.1,710) = 10 panneaux
+  const rows = autoFillLines(SEEDED, { kwp: 7.1, panelW: 710, structureType: 'acier', nbPanneaux: 10 })
+  assert.equal(rows.nbPanneaux, 10)
+  // la ligne panneau (nom catalogue contient « Panneau ») porte la qté override
+  const panelRow = rows.find(r => /panneau/i.test(r.designation))
+  assert.equal(panelRow.quantite, 10)
+})
+
+test('QX19 — substitution de wattage : actualPanelW reflète le panneau retenu', () => {
+  // catalogue SANS panneau 710 W → substitution vers le plus proche (550 W)
+  const CAT550 = SEEDED.filter(p => !/710/.test(p.nom))
+    .concat([{ id: 9001, nom: 'Panneau mono 550W', prix_vente: ht(1400) }])
+  const rows = autoFillLines(CAT550, { kwp: 7.1, panelW: 710, structureType: 'acier' })
+  assert.equal(rows.actualPanelW, 550)     // wattage RÉEL du panneau substitué
+  assert.notEqual(rows.actualPanelW, 710)  // divergence détectable côté écran
+})
+
 // ── QF8 — Smart Meter + Clé Wifi UNIQUEMENT sur onduleur Huawei ─────────────
 test('QF8 — catalogue 100% Deye (réseau + hybride) : Smart Meter et Wifi Dongle qté 0', () => {
   const DEYE_ONLY = [
@@ -447,7 +476,16 @@ test('pompage : 5.5 CV tri → variateur 5.5 tri + champ ≈1.4× pompe, sans ba
 import {
   debitAtHmt, selectPompeByCurve, selectVariateurVeichi,
   findAfficheurVariateur, pompageSelection, HEURES_POMPAGE_DEFAUT,
+  tensionOf, tensionForAlim, isPompe,
 } from './solar.js'
+
+test('QX20 — isPompe classe une pompe, pas un panneau/onduleur', () => {
+  assert.equal(isPompe('Pompe immergée OSP 30/8'), true)
+  assert.equal(isPompe('Pompe de surface'), true)
+  assert.equal(isPompe('Panneau Canadien Solar 710W'), false)
+  assert.equal(isPompe('Onduleur réseau Huawei 10kW'), false)
+  assert.equal(isPompe(''), false)
+})
 
 const OSP_CURVE_30_8 = { debits_m3h: [0, 12, 24, 30, 36, 39], hmt_m: [91, 85, 70, 60, 43, 34] }
 const OSP_CURVE_30_13 = { debits_m3h: [0, 12, 24, 30, 36, 39], hmt_m: [148, 138, 114, 98, 70, 55] }
@@ -624,13 +662,15 @@ test('QF5 — tarif de repli unifié : KWH_PRICE (CompanyProfile) vs FALLBACK_KW
 })
 
 test('QF4 — monthlyBillFromKwh : barème ONEE par tranche (300 kWh/mois)', () => {
-  // Référence : pricing.py _monthly_bill_from_kwh(300, ONEE_TRANCHES) = 344.135
-  assert.ok(Math.abs(monthlyBillFromKwh(300, ONEE_TRANCHES) - 344.135) < 1e-9)
+  // QX38 — barème ONEE aligné (plafonds 100/250/400/∞) : 300 kWh/mois tombe
+  // dans la bande 251-400. Référence pricing.py _monthly_bill_from_kwh(300).
+  assert.ok(Math.abs(monthlyBillFromKwh(300, ONEE_TRANCHES) - 306.545) < 1e-9)
 })
 
-test('QF4 — kwhFromBill : inverse du barème ONEE (850 MAD → 660.9 kWh/mois)', () => {
+test('QF4 — kwhFromBill : inverse du barème ONEE (850 MAD → 698.4 kWh/mois)', () => {
+  // QX38 — barème ONEE aligné (plafonds 100/250/400/∞). Parité pricing.py.
   const r = kwhFromBill(850, 'onee')
-  assert.equal(r.kwhMensuel, 660.9)
+  assert.equal(r.kwhMensuel, 698.4)
   assert.equal(r.approximatif, false)
   assert.equal(r.estimation, false)
 })
@@ -654,18 +694,20 @@ test('QF4 — kwhFromBill : facture vide → 0 kWh, estimation', () => {
 })
 
 test('QF2/QF5 — twoBillsSavings : économie réelle par tranche (ratio 0.60, sans batterie)', () => {
-  // Référence : pricing.py two_bills_savings(6000, 7200, 0.6, utility='onee')
+  // QX38 — barème ONEE aligné (plafonds 100/250/400/∞). Référence :
+  // pricing.py two_bills_savings(6000, 7200, 0.6, utility='onee').
   const r = twoBillsSavings(6000, 7200, 0.6, 'onee')
   assert.deepEqual(r, {
-    factureSans: 9176, factureAvec: 4130, economie: 5046, autoconsoKwh: 3600,
+    factureSans: 8544, factureAvec: 3679, economie: 4865, autoconsoKwh: 3600,
   })
 })
 
 test('QF2/QF5 — twoBillsSavings : économie réelle par tranche (ratio 0.85, avec batterie)', () => {
-  // Référence : pricing.py two_bills_savings(6000, 7200, 0.85, utility='onee')
+  // QX38 — barème ONEE aligné (plafonds 100/250/400/∞). Référence :
+  // pricing.py two_bills_savings(6000, 7200, 0.85, utility='onee').
   const r = twoBillsSavings(6000, 7200, 0.85, 'onee')
   assert.deepEqual(r, {
-    factureSans: 9176, factureAvec: 2072, economie: 7104, autoconsoKwh: 5100,
+    factureSans: 8544, factureAvec: 2004, economie: 6540, autoconsoKwh: 5100,
   })
 })
 
@@ -674,6 +716,113 @@ test('twoBillsSavings : dégrade en null sans donnée réelle (jamais un chiffre
   assert.equal(twoBillsSavings(6000, 0, 0.6, 'onee'), null) // pas de conso
   assert.equal(twoBillsSavings(6000, 7200, 0, 'onee'), null) // pas de ratio
   assert.equal(twoBillsSavings(6000, 7200, 0.6, 'inconnu'), null) // pas de barème
+})
+
+// ── QX38 — productible canonique PVGIS par ville (miroir backend) ────────────
+test('QX38 — productibleForCity : PVGIS par ville, repli central, override société', () => {
+  assert.equal(productibleForCity('Agadir'), 1687)
+  assert.equal(productibleForCity('agadir'), 1687)
+  assert.equal(productibleForCity('Casablanca'), PRODUCTIBLE_PAR_VILLE.casablanca)
+  // ville inconnue → repli central (jamais un chiffre inventé)
+  assert.equal(productibleForCity('Oujda'), DEFAULT_PRODUCTIBLE)
+  // alias secondaire → ville de référence
+  assert.equal(productibleForCity('Kenitra'), PRODUCTIBLE_PAR_VILLE.rabat)
+  // override = défaut historique 1600 → on lit le PVGIS de la ville
+  assert.equal(productibleForCity('Agadir', 1600), 1687)
+  // override société explicite (≠ 1600) → il prime
+  assert.equal(productibleForCity('Agadir', 1750), 1750)
+})
+
+test('QX38 — computeROI : production = productible × kwp (parité PDF/web)', () => {
+  const kwp = 7.1
+  const roi = computeROI({
+    kwp, factures: Array(12).fill(500), dayUsagePct: 60,
+    totalSans: 80000, totalAvec: 100000, batteryKwh: 0,
+    productible: productibleForCity('Agadir'),
+  })
+  // production annuelle = 1687 × 7.1 (répartie par forme GHI, somme = total)
+  assert.equal(Math.round(roi.production_annuelle_kwh), Math.round(1687 * kwp))
+})
+
+// ── QX39 — cashflow 25 ans honnête (miroir backend pricing.py) ──────────────
+test('QX39 — computeCashflowPayback : croisement du cumul à zéro (parité backend)', () => {
+  const cf = computeCashflowPayback(50000, 10000)
+  assert.equal(cf.cumulative.length, 25)
+  assert.ok(cf.paybackYears > 0 && cf.paybackYears < 25)
+  assert.ok(cf.cumulative[0] < 0)                 // année 1 encore négatif
+  assert.ok(cf.cumulative[cf.cumulative.length - 1] > 0) // rentabilisé à 25 ans
+  assert.ok(cf.netGain > 0)
+})
+
+test('QX39 — computeCashflowPayback : dégénéré → payback null', () => {
+  assert.equal(computeCashflowPayback(0, 10000).paybackYears, null)
+  assert.equal(computeCashflowPayback(50000, 0).paybackYears, null)
+})
+
+test('QX39 — batterie (rendement aller-retour) allonge le payback', () => {
+  const no = computeCashflowPayback(50000, 10000)
+  const bat = computeCashflowPayback(50000, 10000, { battery: true })
+  assert.ok(bat.paybackYears >= no.paybackYears)
+})
+
+// ── QX40 — pompage : compatibilité phase/tension pompe ↔ variateur ──────────
+const _curvePump = (nom, kw, tension, prix, courbe) => ({
+  id: ++_id, nom, pompe_kw: kw, tension_v: tension, prix_vente: prix,
+  courbe_pompe: courbe,
+})
+// courbe simple : à HMT 60 m délivre 40 m³/h (≥ le débit demandé de 30)
+const _COURBE = { debits_m3h: [0, 40, 60], hmt_m: [90, 60, 30] }
+
+test('QX40 — tensionOf / tensionForAlim', () => {
+  assert.equal(tensionForAlim('mono'), 220)
+  assert.equal(tensionForAlim('tri'), 380)
+  assert.equal(tensionOf({ tension_v: 380 }), 380)
+  assert.equal(tensionOf({ nom: 'Pompe immergée 220V' }), 220)
+  assert.equal(tensionOf({ nom: 'Pompe sans tension' }), null)
+})
+
+test('QX40 — une demande mono/220V ne renvoie JAMAIS une pompe 380V', () => {
+  const produits = [
+    _curvePump('Pompe immergée OSP 380V', 7.5, 380, '12000', _COURBE),
+  ]
+  const sel = selectPompeByCurve(produits, { hmt: 60, debit: 30, typePompe: 'immergee', alim: 'mono' })
+  // la seule pompe à courbe pricée est 380V → incompatible mono → pas de pompe
+  assert.equal(sel.pump, null)
+  assert.equal(sel.phaseMismatch, true)
+})
+
+test('QX40 — une pompe compatible 220V est bien sélectionnée en mono', () => {
+  const produits = [
+    _curvePump('Pompe immergée OSP 380V', 7.5, 380, '12000', _COURBE),
+    _curvePump('Pompe immergée OSP 220V', 7.5, 220, '11000', _COURBE),
+  ]
+  const sel = selectPompeByCurve(produits, { hmt: 60, debit: 30, typePompe: 'immergee', alim: 'mono' })
+  assert.ok(sel.pump)
+  assert.equal(tensionOf(sel.pump), 220)
+})
+
+test('QX40 — mismatch de phase dégrade vers le chemin CV avec avertissement', () => {
+  const produits = [
+    _curvePump('Pompe immergée OSP 380V', 7.5, 380, '12000', _COURBE),
+  ]
+  const sel = pompageSelection(produits, {
+    cv: '10', typePompe: 'immergee', hmt: 60, debit: 30, heures: 7, alim: 'mono' })
+  assert.equal(sel.mode, 'cv')
+  assert.ok(sel.warning && sel.warning.includes('monophasée'))
+})
+
+test('QX40 — compose : jamais un couple pompe/variateur de tensions différentes', () => {
+  const produits = [
+    _curvePump('Pompe immergée OSP 380V', 7.5, 380, '12000', _COURBE),
+    // un variateur 220V pricé (mono)
+    { id: ++_id, nom: 'VARIATEUR VEICHI SI23 7.5KW 220V', pompe_kw: 7.5, tension_v: 220, prix_vente: '3000' },
+  ]
+  const lignes = autoFillPompage(produits, {
+    cv: '10', alim: 'mono', typePompe: 'immergee', distance: 0,
+    structureType: 'acier', hmt: 60, debit: 30, heures: 7 })
+  // aucune ligne « Pompe … 380V » ne doit être chiffrée avec un variateur 220V
+  const pompe380 = lignes.find(l => /380\s*v/i.test(l.designation || '') && /pompe/i.test(l.designation || ''))
+  assert.equal(pompe380, undefined)
 })
 
 // ── QF5 — computeROI bascule sur le modèle « deux factures » (parité écran/PDF) ─

@@ -38,6 +38,39 @@ def get_or_create_config(installation):
     return obj
 
 
+def seed_expected_annual_kwh(installation):
+    """YSERV8 — sème ``expected_annual_kwh`` du config depuis l'étude/la recette.
+
+    À la mise en service d'un chantier, raccorde la production attendue déjà
+    calculée en amont : priorité au test de performance de réception FG278 (PR
+    initial mesuré), sinon à la production annuelle de l'``etude_params`` du
+    devis lié. Lectures cross-app via ``apps.ventes.selectors`` uniquement
+    (jamais un import de ``ventes.models``).
+
+    NE JAMAIS écraser une valeur déjà présente : on ne sème que si
+    ``expected_annual_kwh`` est NULL (valeur manuelle ou déjà semée préservée).
+    Renvoie le config (mis à jour ou inchangé). No-op si aucune source.
+    """
+    from apps.ventes import selectors as ventes_selectors
+
+    config = get_or_create_config(installation)
+    # Valeur déjà renseignée (manuelle ou semée) : on n'écrase jamais.
+    if config.expected_annual_kwh is not None:
+        return config
+
+    expected = ventes_selectors.pr_initial_pour_chantier(installation.id)
+    if expected is None:
+        devis_id = getattr(installation, 'devis_id', None)
+        if devis_id is not None:
+            expected = ventes_selectors.production_attendue_pour_devis(devis_id)
+    if expected is None:
+        return config
+
+    config.expected_annual_kwh = expected
+    config.save(update_fields=['expected_annual_kwh'])
+    return config
+
+
 def sync_system(installation, *, user=None):
     """Synchronise les relevés d'un système via son fournisseur configuré.
 

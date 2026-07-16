@@ -9,15 +9,22 @@ import {
 } from 'lucide-react'
 import publicapiApi from '../../api/publicapiApi'
 import {
-  Card, CardContent, Button, Input, Spinner, Badge, Switch, Checkbox,
+  Card, CardContent, Button, Input, Spinner, Badge, Switch, Checkbox, toast,
 } from '../../ui'
+import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { SectionTitle } from './peComponents'
 
 // Bloc « copier une fois » : affiche un secret généré avec un bouton copier.
 function RevealOnce({ label, value, onDismiss }) {
   const [copied, setCopied] = useState(false)
   const copy = async () => {
-    try { await navigator.clipboard.writeText(value); setCopied(true) } catch { /* */ }
+    try {
+      await navigator.clipboard.writeText(value)
+      setCopied(true)
+      toast.success('Copié.')
+    } catch {
+      toast.error('Copie impossible — copiez la valeur manuellement.')
+    }
     setTimeout(() => setCopied(false), 1800)
   }
   return (
@@ -171,6 +178,25 @@ export default function ApiWebhooksSection() {
   const [newHookEvents, setNewHookEvents] = useState([])
   const [revealedSecret, setRevealedSecret] = useState(null)
 
+  // VX244 — un secret webhook / une clé d'API a le plus fort blast-radius du
+  // module (intégrations tierces cassées, secret régénéré = tout client déjà
+  // branché doit être mis à jour) : confirmation à SÉVÉRITÉ au lieu d'un
+  // `window.confirm` unique pour tout. `pendingAction` pilote UN dialog
+  // partagé pour les 4 actions destructives de cet écran.
+  const [pendingAction, setPendingAction] = useState(null)
+  const [actionLoading, setActionLoading] = useState(false)
+
+  const runPendingAction = async () => {
+    if (!pendingAction) return
+    setActionLoading(true)
+    try {
+      await pendingAction.run()
+    } finally {
+      setActionLoading(false)
+      setPendingAction(null)
+    }
+  }
+
   const loadAll = () => {
     Promise.all([
       publicapiApi.getKeys().then(r => setKeys(r.data.results ?? r.data)).catch(() => {}),
@@ -196,16 +222,23 @@ export default function ApiWebhooksSection() {
       setRevealedKey(r.data.key)
       setNewKeyLabel(''); setNewKeyScopes([])
       loadAll()
-    } catch (e) { alert(e?.response?.data?.detail ?? 'Création impossible.') }
+    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Création impossible.') }
   }
-  const revokeKey = async (k) => {
-    if (!window.confirm(`Désactiver la clé « ${k.label} » ?`)) return
-    try { await publicapiApi.revokeKey(k.id); loadAll() } catch { /* */ }
-  }
-  const deleteKey = async (k) => {
-    if (!window.confirm(`Supprimer définitivement la clé « ${k.label} » ?`)) return
-    try { await publicapiApi.deleteKey(k.id); loadAll() } catch { /* */ }
-  }
+  const revokeKey = (k) => setPendingAction({
+    severity: 'medium',
+    title: `Désactiver la clé « ${k.label} » ?`,
+    description: 'La clé cessera immédiatement de fonctionner pour tout système externe qui l’utilise. Réversible (réactivable ensuite).',
+    confirmLabel: 'Désactiver',
+    run: async () => { try { await publicapiApi.revokeKey(k.id); loadAll() } catch { /* */ } },
+  })
+  const deleteKey = (k) => setPendingAction({
+    severity: 'high',
+    title: 'Suppression définitive de la clé',
+    description: `La clé « ${k.label} » sera supprimée définitivement. Tout système externe qui l’utilise cessera de fonctionner.`,
+    confirmText: k.label,
+    confirmLabel: 'Supprimer définitivement',
+    run: async () => { try { await publicapiApi.deleteKey(k.id); loadAll() } catch { /* */ } },
+  })
 
   const createWebhook = async () => {
     if (!newHookUrl.trim()) return
@@ -216,21 +249,31 @@ export default function ApiWebhooksSection() {
       setRevealedSecret(r.data.secret)
       setNewHookUrl(''); setNewHookLabel(''); setNewHookEvents([])
       loadAll()
-    } catch (e) { alert(e?.response?.data?.detail ?? 'Création impossible.') }
+    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Création impossible.') }
   }
   const toggleWebhook = async (h) => {
     try { await publicapiApi.updateWebhook(h.id, { enabled: !h.enabled }); loadAll() }
     catch { /* */ }
   }
-  const rotateSecret = async (h) => {
-    if (!window.confirm('Régénérer le secret ? Les intégrations existantes devront le mettre à jour.')) return
-    try { const r = await publicapiApi.rotateWebhookSecret(h.id); setRevealedSecret(r.data.secret) }
-    catch { /* */ }
-  }
-  const deleteWebhook = async (h) => {
-    if (!window.confirm('Supprimer ce webhook ?')) return
-    try { await publicapiApi.deleteWebhook(h.id); loadAll() } catch { /* */ }
-  }
+  const rotateSecret = (h) => setPendingAction({
+    severity: 'high',
+    title: 'Régénérer le secret webhook',
+    description: `Toute intégration déjà branchée sur « ${h.label || h.target_url} » cessera de valider les signatures tant qu'elle n'aura pas repris le nouveau secret.`,
+    confirmText: 'REGENERER',
+    confirmLabel: 'Régénérer le secret',
+    run: async () => {
+      try { const r = await publicapiApi.rotateWebhookSecret(h.id); setRevealedSecret(r.data.secret) }
+      catch { /* */ }
+    },
+  })
+  const deleteWebhook = (h) => setPendingAction({
+    severity: 'high',
+    title: 'Supprimer ce webhook',
+    description: `« ${h.label || h.target_url} » sera définitivement supprimé — les notifications sortantes vers cette URL cesseront.`,
+    confirmText: 'SUPPRIMER',
+    confirmLabel: 'Supprimer',
+    run: async () => { try { await publicapiApi.deleteWebhook(h.id); loadAll() } catch { /* */ } },
+  })
 
   if (loading) {
     return (
@@ -385,6 +428,18 @@ export default function ApiWebhooksSection() {
 
       {/* ── Référence de l'API (FG105) ── */}
       <DocsReference />
+
+      <ConfirmDialog
+        open={!!pendingAction}
+        onOpenChange={(o) => { if (!o) setPendingAction(null) }}
+        severity={pendingAction?.severity || 'medium'}
+        title={pendingAction?.title || ''}
+        description={pendingAction?.description}
+        confirmText={pendingAction?.confirmText}
+        confirmLabel={pendingAction?.confirmLabel}
+        loading={actionLoading}
+        onConfirm={runPendingAction}
+      />
     </>
   )
 }

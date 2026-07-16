@@ -35,6 +35,7 @@ export function ListShell({
   urlKey,
   emptyTitle,
   emptyDescription,
+  emptyAction,
   summary,
   pageSize,
   children,
@@ -68,6 +69,7 @@ export function ListShell({
           urlKey={urlKey}
           emptyTitle={emptyTitle}
           emptyDescription={emptyDescription}
+          emptyAction={emptyAction}
           summary={summary}
           pageSize={pageSize}
         />

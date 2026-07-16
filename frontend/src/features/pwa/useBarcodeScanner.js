@@ -10,6 +10,7 @@
 //     useBarcodeScanner({ onDetected: (value) => …, formats })
 //   <video ref={videoRef} playsInline muted />
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { hapticTap } from '../../lib/haptics'
 
 // Vrai si les deux briques natives requises existent dans ce navigateur.
 export function barcodeScanSupported() {
@@ -102,6 +103,7 @@ export function useBarcodeScanner({ onDetected, formats } = {}) {
             const value = (codes[0].rawValue || '').trim()
             if (value && value !== lastValueRef.current) {
               lastValueRef.current = value
+              hapticTap()
               onDetectedRef.current?.(value)
             }
           }

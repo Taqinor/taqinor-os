@@ -19,6 +19,7 @@ const config = {
   order: 90,
   nav: {
     label: 'LITIGES',
+    accent: 'destructive', // VX8 — risque/conflit = accent destructive (dérivé)
     items: [
       {
         to: '/litiges',

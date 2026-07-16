@@ -9,13 +9,13 @@ le ``sous_traitant`` ciblé est validé tenant.
 """
 from datetime import date
 
-from rest_framework import viewsets, status
+from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.viewsets import CompanyScopedModelViewSet
 
 from apps.stock import selectors as stock_selectors
 
@@ -26,7 +26,7 @@ from .. import selectors
 READ_ACTIONS = ['list', 'retrieve', 'affectabilite']
 
 
-class AttestationSousTraitantViewSet(TenantMixin, viewsets.ModelViewSet):
+class AttestationSousTraitantViewSet(CompanyScopedModelViewSet):
     """FG307 — attestations sous-traitant. Lecture tout rôle, écriture
     responsable/admin. Société + `created_by` posés serveur ; `sous_traitant`
     validé tenant. Filtrable par `sous_traitant` et `type_piece`."""

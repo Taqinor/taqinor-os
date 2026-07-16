@@ -268,6 +268,68 @@ class TestLettreRelanceEscaladeNiveau(_Base):
         self.assertNotIn('Un corps de niveau entierement', default_html)
 
 
+class TestLogoBlockNeutralFallback(TestCase):
+    """SCA26 — sans logo société, l'en-tête ne retombe PLUS sur le logo premium
+    TAQINOR (fuite de marque cross-tenant) mais sur un bloc NEUTRE (nom stylé) ou
+    rien. Fonction pure sur un dict ctx : aucun rendu PDF, aucune DB."""
+
+    def test_uploaded_logo_uri_renders_img(self):
+        from apps.ventes.quote_engine.extra_docs import _logo_block
+        out = _logo_block({'logo_uri': 'data:image/png;base64,AAAA',
+                           'entreprise_nom': 'Autre Tenant'})
+        self.assertIn('<img', out)
+        self.assertIn('data:image/png;base64,AAAA', out)
+        # Le nom stylé n'est PAS utilisé quand un logo existe.
+        self.assertNotIn('font-weight:800', out)
+
+    def test_no_logo_uses_neutral_company_name_not_taqinor(self):
+        from apps.ventes.quote_engine.extra_docs import _logo_block
+        out = _logo_block({'logo_uri': None, 'entreprise_nom': 'Autre Tenant'})
+        # Bloc neutre = nom société stylé, JAMAIS le logo premium TAQINOR.
+        self.assertIn('Autre Tenant', out)
+        self.assertNotIn('alt="TAQINOR"', out)
+        self.assertNotIn('TAQIN', out)
+        self.assertNotIn('<img', out)
+
+    def test_no_logo_no_name_renders_nothing(self):
+        from apps.ventes.quote_engine.extra_docs import _logo_block
+        self.assertEqual(_logo_block({'logo_uri': None}), '')
+        self.assertEqual(_logo_block({'logo_uri': None,
+                                      'entreprise_nom': '   '}), '')
+
+    def test_company_name_is_html_escaped(self):
+        from apps.ventes.quote_engine.extra_docs import _logo_block
+        out = _logo_block({'entreprise_nom': 'A & B <Solar>'})
+        self.assertIn('A &amp; B &lt;Solar&gt;', out)
+        self.assertNotIn('<Solar>', out)
+
+    def test_neutral_block_never_emits_premium_taqinor_logo(self):
+        """Un tenant sans logo n'obtient jamais l'``alt="TAQINOR"`` du moteur."""
+        from apps.ventes.quote_engine.extra_docs import _logo_block
+        for nom in ('Helios Énergie', 'ACME', ''):
+            out = _logo_block({'logo_uri': None, 'entreprise_nom': nom})
+            self.assertNotIn('TAQINOR', out)
+
+
+@tag('pdf')
+class TestLogoNeutralFallbackRendered(_Base):
+    """SCA26 (harnais rendu) — une lettre de relance d'un tenant SANS logo
+    société rend son nom neutre et n'imprime jamais le logo premium TAQINOR."""
+
+    def test_lettre_relance_html_neutral_header_for_logoless_tenant(self):
+        from apps.ventes.quote_engine.extra_docs import (
+            _facture_resume, build_lettre_relance_html)
+        facture = self._facture()
+        # ctx d'un tenant sans logo (logo_uri absent) mais avec son nom.
+        ctx = {'entreprise_nom': 'Helios Énergie'}
+        client = {'nom': 'Bennani', 'prenom': 'Sara'}
+        resume = _facture_resume(facture)
+        html = build_lettre_relance_html(ctx, client, resume, 1)
+        self.assertIn('Helios', html)
+        # Aucun logo premium TAQINOR dans l'en-tête.
+        self.assertNotIn('alt="TAQINOR"', html)
+
+
 class TestFicheRemisePremium(_Base):
     def test_renders_single_page_pdf(self):
         from weasyprint import HTML

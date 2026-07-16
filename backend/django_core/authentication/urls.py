@@ -15,6 +15,12 @@ from .views import (
     SessionListView,
     SessionRevokeView,
     ChangePasswordView,
+    SwitchCompanyView,
+)
+from .views_console import (
+    TenantConsoleListView,
+    TenantConsoleStatutView,
+    TenantConsoleNoteView,
 )
 
 router = DefaultRouter()
@@ -29,6 +35,9 @@ urlpatterns = [
         name='auth_register_company',
     ),
     path('auth/me/', MeView.as_view(), name='auth_me'),
+    # XPLT19 — bascule de société active (utilisateur multi-sociétés).
+    path('auth/switch-company/', SwitchCompanyView.as_view(),
+         name='auth_switch_company'),
     path('auth/logout/', LogoutView.as_view(), name='auth_logout'),
     path('auth/token/refresh/', CookieTokenRefreshView.as_view(), name='auth_token_refresh'),
     # Double authentification (2FA TOTP) — opt-in par utilisateur (N96).
@@ -42,5 +51,12 @@ urlpatterns = [
          name='auth_session_revoke'),
     path('auth/change-password/', ChangePasswordView.as_view(),
          name='auth_change_password'),
+    # SCA22 — console fondateur des tenants (staff-only, sans billing).
+    path('auth/console/tenants/', TenantConsoleListView.as_view(),
+         name='auth_console_tenants'),
+    path('auth/console/tenants/<int:pk>/statut/',
+         TenantConsoleStatutView.as_view(), name='auth_console_tenant_statut'),
+    path('auth/console/tenants/<int:pk>/note/',
+         TenantConsoleNoteView.as_view(), name='auth_console_tenant_note'),
     path('', include(router.urls)),
 ]

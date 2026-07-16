@@ -13,7 +13,7 @@ Couvre :
 from decimal import Decimal
 from unittest import skipUnless
 
-from django.test import TestCase
+from django.test import TestCase, tag
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
@@ -118,6 +118,7 @@ class BulletinsPeriodePdfSelectionTests(TestCase):
             doc.close()
 
 
+@tag('pdf')  # WOW5 — rendu WeasyPrint réel → hors gate rapide (tourne dans release-verify)
 @skipUnless(_PDF_LIBS_DISPONIBLES, "WeasyPrint/PyMuPDF indisponibles ici")
 class BulletinsPeriodePdfRealTests(TestCase):
     def setUp(self):

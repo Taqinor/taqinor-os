@@ -1452,12 +1452,20 @@ class IncidentViewSet(_QhseBaseViewSet):
                 declare_par=self.request.user,
                 reference=reference),
         )
-        # QHSE32 — émet l'événement métier incident_declared sur le bus de
-        # signaux (même patron que ventes→crm) pour que QHSE escalade les
+        # QHSE32 — émet l'événement métier incident_declared sur le signal
+        # LOCAL qhse (même patron que ventes→crm) pour que QHSE escalade les
         # incidents critiques. Émission SYNCHRONE ; best-effort côté abonné, donc
         # ne casse jamais la création.
         from .receivers import incident_declared
         incident_declared.send(
+            sender=Incident, incident=incident, company=company,
+            user=self.request.user, gravite=incident.gravite)
+        # ARC38 — RAPATRIE le signal sur le bus core.events (visible cross-app,
+        # contrairement au signal local ci-dessus). DOUBLE ÉMISSION assumée
+        # pendant la transition (voir docstring core/events.py) : le retrait
+        # du signal local est un pas ultérieur distinct.
+        from core.events import incident_declared as incident_declared_bus
+        incident_declared_bus.send(
             sender=Incident, incident=incident, company=company,
             user=self.request.user, gravite=incident.gravite)
         return incident

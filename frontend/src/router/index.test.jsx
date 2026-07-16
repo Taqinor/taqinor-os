@@ -19,6 +19,19 @@ import { dirname, join } from 'node:path'
  * Tout sert de garde anti-régression : si une route future est ajoutée en
  * import statique (donc dans le bundle initial) ou en oubliant son <Suspense>,
  * ces assertions échouent.
+ *
+ * ARC48/ARC54 — Depuis la migration des routes legacy (stock/sav/crm/ventes/
+ * installations/reporting/admin/parametres) vers `features/<module>/
+ * module.config.jsx` (cf. router/moduleRoutes.jsx), la MAJORITÉ des imports
+ * lazy de pages vit désormais dans les configs de module, pas ici — le compte
+ * dans `index.jsx` seul n'est donc plus un indicateur fiable de densité de
+ * code-splitting (chaque config de module porte sa propre garde implicite via
+ * `buildModuleRoutes`, qui enveloppe systématiquement dans `WithLayout`/
+ * `<Suspense>`). Le seuil ci-dessous garde seulement l'invariant réel : au
+ * moins un import lazy subsiste dans index.jsx (routes non-modulaires : auth/
+ * erreurs/publiques + les quelques routes à `errorElement` dédié non
+ * exprimables par le registre) — la garde forte contre un import STATIQUE de
+ * page reste la deuxième assertion ci-dessous, inchangée.
  */
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -26,9 +39,12 @@ const source = readFileSync(join(here, 'index.jsx'), 'utf8')
 
 describe('router code-splitting contract (O165)', () => {
   it('charge tous les composants de page via React.lazy(() => import(...))', () => {
-    // Au moins un import dynamique lazy (en pratique des dizaines).
+    // Au moins un import dynamique lazy. Depuis ARC48/ARC54, la plupart des
+    // pages sont enregistrées via features/<module>/module.config.jsx (cf.
+    // commentaire de tête) — le vrai garde-fou anti-régression est la seconde
+    // assertion ci-dessous (aucun import STATIQUE de page dans index.jsx).
     const lazyImports = source.match(/lazy\(\s*\(\)\s*=>\s*import\(/g) || []
-    expect(lazyImports.length).toBeGreaterThan(20)
+    expect(lazyImports.length).toBeGreaterThan(0)
 
     // Aucun import statique d'une page : tout le dossier ../pages doit passer
     // par un import() dynamique pour rester découpé par route.
@@ -51,7 +67,10 @@ describe('router code-splitting contract (O165)', () => {
     expect(skeletonFallbacks.length).toBe(suspenseOpens.length)
 
     // WithLayout (chokepoint des écrans authentifiés) monte un Suspense.
-    expect(source).toMatch(/<Suspense fallback=\{<Fallback \/>\}>\{children\}<\/Suspense>/)
+    // VX134(c) — le contenu de route est enveloppé d'un `.route-fade` (fondu au
+    // changement de route) À L'INTÉRIEUR du Suspense ; l'invariant reste : la
+    // frontière Suspense à repli squelette enveloppe le contenu de route.
+    expect(source).toMatch(/<Suspense fallback=\{<Fallback \/>\}>[\s\S]*?<div key=\{pathname\} className="route-fade">\{children\}<\/div>[\s\S]*?<\/Suspense>/)
   })
 
   it('ne tire aucune lib lourde dans le bundle initial du routeur', () => {

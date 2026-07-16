@@ -23,16 +23,19 @@ def auth(user):
 
 
 class TestActivities(TestCase):
-    def setUp(self):
-        self.company = Company.objects.create(nom='Act Co', slug='act-co')
+    @classmethod
+    def setUpTestData(cls):
+        cls.company = Company.objects.create(nom='Act Co', slug='act-co')
         # Seed migration ne s'exécute pas sur la base de test fraîche par
         # société créée ici → on crée les types nous-mêmes.
-        self.type_appel = ActivityType.objects.create(
-            company=self.company, nom='Appel', ordre=10)
-        self.user = User.objects.create_user(
+        cls.type_appel = ActivityType.objects.create(
+            company=cls.company, nom='Appel', ordre=10)
+        cls.user = User.objects.create_user(
             username='act_resp', password='x', role_legacy='responsable',
-            company=self.company)
-        self.lead = Lead.objects.create(company=self.company, nom='Prospect')
+            company=cls.company)
+        cls.lead = Lead.objects.create(company=cls.company, nom='Prospect')
+
+    def setUp(self):
         self.api = auth(self.user)
 
     def test_plan_then_list_for_record(self):
@@ -107,28 +110,104 @@ class TestActivities(TestCase):
         }, format='json')
         self.assertEqual(resp.status_code, 400)
 
+    def test_snooze_is_non_destructive_and_excludes_from_mine(self):
+        # VX85(a) — « ⏰ Plus tard » pose `snoozed_until` SANS toucher
+        # `due_date`. Tant que non échu, l'item est exclu de `mine`.
+        original_due = date.today() - timedelta(days=1)
+        act = Activity.objects.create(
+            company=self.company, content_type=_ct_lead(),
+            object_id=self.lead.id, activity_type=self.type_appel,
+            due_date=original_due, assigned_to=self.user)
+        resp = self.api.post(
+            f'/api/django/records/activities/{act.id}/snooze/',
+            {'snoozed_until': str(date.today() + timedelta(days=1))},
+            format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        act.refresh_from_db()
+        # due_date d'origine INTACTE.
+        self.assertEqual(act.due_date, original_due)
+        self.assertIsNotNone(act.snoozed_until)
+        # Exclue de `mine` tant que le snooze n'est pas échu.
+        mine = self.api.get('/api/django/records/activities/mine/')
+        ids = [a['id'] for bucket in mine.data.values() for a in bucket]
+        self.assertNotIn(act.id, ids)
+
+    def test_snooze_expired_reappears_with_original_due_date(self):
+        original_due = date.today() - timedelta(days=5)
+        act = Activity.objects.create(
+            company=self.company, content_type=_ct_lead(),
+            object_id=self.lead.id, activity_type=self.type_appel,
+            due_date=original_due, assigned_to=self.user,
+            snoozed_until=date.today() - timedelta(days=1))
+        mine = self.api.get('/api/django/records/activities/mine/')
+        ids = [a['id'] for bucket in mine.data.values() for a in bucket]
+        self.assertIn(act.id, ids)
+        act.refresh_from_db()
+        self.assertEqual(act.due_date, original_due)
+
+    def test_reassignment_notifies_new_owner_with_link(self):
+        # VX85(c) — changer `assigned_to` notifie le NOUVEAU propriétaire
+        # avec un lien profond ; l'ancien ne reçoit rien.
+        from apps.notifications.models import EventType, Notification
+        colleague = User.objects.create_user(
+            username='act_colleague', password='x', role_legacy='commercial',
+            company=self.company)
+        act = Activity.objects.create(
+            company=self.company, content_type=_ct_lead(),
+            object_id=self.lead.id, activity_type=self.type_appel,
+            due_date=date.today(), assigned_to=self.user)
+        resp = self.api.patch(
+            f'/api/django/records/activities/{act.id}/',
+            {'assigned_to': colleague.id}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        notifs = Notification.objects.filter(
+            recipient=colleague, event_type=EventType.LEAD_ASSIGNED)
+        self.assertEqual(notifs.count(), 1)
+        self.assertEqual(notifs.first().link, f'/crm/leads?lead={self.lead.id}')
+        self.assertFalse(
+            Notification.objects.filter(
+                recipient=self.user, event_type=EventType.LEAD_ASSIGNED
+            ).exists())
+
+    def test_reassignment_to_same_user_does_not_notify(self):
+        from apps.notifications.models import EventType, Notification
+        act = Activity.objects.create(
+            company=self.company, content_type=_ct_lead(),
+            object_id=self.lead.id, activity_type=self.type_appel,
+            due_date=date.today(), assigned_to=self.user)
+        resp = self.api.patch(
+            f'/api/django/records/activities/{act.id}/',
+            {'summary': 'Sans changement d\'assigné'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertFalse(
+            Notification.objects.filter(
+                recipient=self.user, event_type=EventType.LEAD_ASSIGNED).exists())
+
 
 class TestAttachments(TestCase):
-    def setUp(self):
-        self.company = Company.objects.create(nom='Att Co', slug='att-co')
-        self.user = User.objects.create_user(
+    @classmethod
+    def setUpTestData(cls):
+        cls.company = Company.objects.create(nom='Att Co', slug='att-co')
+        cls.user = User.objects.create_user(
             username='att_resp', password='x', role_legacy='responsable',
-            company=self.company)
+            company=cls.company)
         from apps.roles.models import Role, ALL_PERMISSIONS
         admin_role = Role.objects.create(
-            company=self.company, nom='Administrateur',
+            company=cls.company, nom='Administrateur',
             permissions=ALL_PERMISSIONS, est_systeme=True)
-        self.admin = User.objects.create_user(
+        cls.admin = User.objects.create_user(
             username='att_admin', password='x', role=admin_role,
-            role_legacy='admin', company=self.company)
-        self.lead = Lead.objects.create(company=self.company, nom='Doc Lead')
+            role_legacy='admin', company=cls.company)
+        cls.lead = Lead.objects.create(company=cls.company, nom='Doc Lead')
+
+    def setUp(self):
         self.api = auth(self.user)
 
     def test_upload_roundtrip_and_delete(self):
         from io import BytesIO
         png = (b'\x89PNG\r\n\x1a\n' + b'\x00' * 64)
 
-        def fake_store(file):
+        def fake_store(file, **kwargs):  # accepte company= (SCA42)
             return ({'file_key': 'attachments/test.png',
                      'filename': 'test.png', 'size': len(png),
                      'mime': 'image/png'}, None)
@@ -217,7 +296,7 @@ class TestAttachments(TestCase):
         from io import BytesIO
         pdf = b'%PDF-1.4\n%%EOF\n'
 
-        def fake_store(file):
+        def fake_store(file, **kwargs):  # accepte company= (SCA42)
             return ({'file_key': 'attachments/rt.pdf', 'filename': 'rt.pdf',
                      'size': len(pdf), 'mime': 'application/pdf'}, None)
 
@@ -359,23 +438,150 @@ class TestAttachments(TestCase):
         # …puis le fichier a bien été téléversé.
         self.assertTrue(fake_client.upload_fileobj.called)
 
+    def test_sca42_new_attachment_key_is_company_prefixed(self):
+        """SCA42 — un upload via l'endpoint records (store_attachment RÉEL, seul
+        MinIO est mocké) produit une clé préfixée société
+        (``attachments/{company_id}/{uuid}.ext``). Isole le stockage par tenant."""
+        from io import BytesIO
+        png = b'\x89PNG\r\n\x1a\n' + b'\x00' * 64
+
+        fake_client = mock.MagicMock()
+        with mock.patch('apps.records.storage.get_minio_client',
+                        return_value=fake_client), \
+                mock.patch('apps.ventes.utils.minio_client.get_minio_client',
+                           return_value=fake_client):
+            up = BytesIO(png)
+            up.name = 'cover.png'
+            resp = self.api.post('/api/django/records/attachments/', {
+                'model': 'crm.lead', 'id': self.lead.id, 'file': up,
+            }, format='multipart')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        att = Attachment.objects.get(id=resp.data['id'])
+        self.assertTrue(
+            att.file_key.startswith(f'attachments/{self.company.id}/'),
+            f'clé non préfixée société : {att.file_key}')
+
+    def test_sca42_store_attachment_without_company_is_flat(self):
+        """SCA42 — appel historique SANS company : clé plate rétro-compatible
+        (``attachments/{uuid}.ext``), aucune régression pour les appelants non
+        encore migrés."""
+        from io import BytesIO
+        from apps.records.storage import store_attachment
+        pdf = BytesIO(b'%PDF-1.4 test')
+        pdf.name = 'x.pdf'
+        pdf.size = 12
+        fake_client = mock.MagicMock()
+        with mock.patch('apps.records.storage.get_minio_client',
+                        return_value=fake_client), \
+                mock.patch('apps.ventes.utils.minio_client.get_minio_client',
+                           return_value=fake_client):
+            meta, err = store_attachment(pdf)
+        self.assertIsNone(err)
+        self.assertTrue(meta['file_key'].startswith('attachments/'))
+        # Pas de segment société inséré (forme plate historique).
+        self.assertNotIn(f'attachments/{self.company.id}/', meta['file_key'])
+
 
 def _ct_lead():
     from django.contrib.contenttypes.models import ContentType
     return ContentType.objects.get_for_model(Lead)
 
 
+class TestMaFile(TestCase):
+    """VX83 — « Ma file » : la file de travail unique cross-module agrège les
+    activités de l'utilisateur, les mentions non lues et les items commerciaux
+    (relances/leads chauds/devis) en UNE liste classée + un total unique, et le
+    quick-add « + À faire » crée bien une activité personnelle assignée à soi."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.company = Company.objects.create(nom='File Co', slug='file-co')
+        cls.other = Company.objects.create(nom='Autre Co', slug='autre-co')
+        cls.type_appel = ActivityType.objects.create(
+            company=cls.company, nom='Appel', ordre=10)
+        cls.user = User.objects.create_user(
+            username='file_resp', password='x', role_legacy='responsable',
+            company=cls.company)
+
+    def setUp(self):
+        self.api = auth(self.user)
+
+    def test_ma_file_aggregates_activities_relances_and_total(self):
+        # Activité en retard assignée à l'utilisateur.
+        lead = Lead.objects.create(company=self.company, nom='Retard')
+        Activity.objects.create(
+            company=self.company, content_type=_ct_lead(), object_id=lead.id,
+            activity_type=self.type_appel, summary='À rappeler',
+            due_date=date.today() - timedelta(days=2),
+            assigned_to=self.user, created_by=self.user)
+        # Lead avec relance en retard (family relance) — possédé par l'user.
+        Lead.objects.create(
+            company=self.company, nom='Relance', owner=self.user,
+            relance_date=date.today() - timedelta(days=1))
+        # Lead chaud jamais contacté.
+        Lead.objects.create(
+            company=self.company, nom='Chaud', owner=self.user, score=80)
+
+        resp = self.api.get('/api/django/records/activities/ma-file/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        kinds = {it['kind'] for it in resp.data['items']}
+        self.assertIn('activite', kinds)
+        self.assertIn('relance', kinds)
+        self.assertIn('lead_chaud', kinds)
+        self.assertEqual(resp.data['total'], len(resp.data['items']))
+        # En-tête compté : 1 activité en retard.
+        self.assertGreaterEqual(resp.data['resume']['en_retard'], 1)
+        # Classement plus-urgent-d'abord : le 1er item est en retard.
+        self.assertEqual(resp.data['items'][0]['urgency'], 'overdue')
+
+    def test_ma_file_mentions_unread_only_and_company_scoped(self):
+        from apps.notifications.models import EventType, Notification
+        # Mention non lue de l'utilisateur → présente avec son lien.
+        Notification.objects.create(
+            company=self.company, recipient=self.user,
+            event_type=EventType.CHAT_MENTION,
+            title='Sami vous a mentionné', link='/messages?thread=9',
+            read=False)
+        # Mention DÉJÀ lue → exclue.
+        Notification.objects.create(
+            company=self.company, recipient=self.user,
+            event_type=EventType.CHAT_MENTION, title='Vieux', read=True)
+
+        resp = self.api.get('/api/django/records/activities/ma-file/')
+        mentions = [it for it in resp.data['items'] if it['kind'] == 'mention']
+        self.assertEqual(len(mentions), 1)
+        self.assertEqual(mentions[0]['link'], '/messages?thread=9')
+
+    def test_quick_add_todo_creates_personal_activity_for_self(self):
+        resp = self.api.post('/api/django/records/activities/', {
+            'summary': 'Ma tâche perso',
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        act = Activity.objects.get(summary='Ma tâche perso')
+        self.assertTrue(act.personnelle)
+        self.assertEqual(act.assigned_to_id, self.user.id)
+        self.assertEqual(act.company_id, self.company.id)
+        # Elle apparaît dans Ma file (bucket activité, sans lien profond).
+        resp2 = self.api.get('/api/django/records/activities/ma-file/')
+        titres = [it['title'] for it in resp2.data['items']
+                  if it['kind'] == 'activite']
+        self.assertIn('Ma tâche perso', titres)
+
+
 class TestResolveTargetErrors(TestCase):
     """ERR56 — un `model` valide + `id` inexistant ou de mauvais type doit
     produire une 400/200-vide propre (jamais un 500 non rattrapé)."""
 
-    def setUp(self):
-        self.company = Company.objects.create(nom='Res Co', slug='res-co')
-        self.type_appel = ActivityType.objects.create(
-            company=self.company, nom='Appel', ordre=10)
-        self.user = User.objects.create_user(
+    @classmethod
+    def setUpTestData(cls):
+        cls.company = Company.objects.create(nom='Res Co', slug='res-co')
+        cls.type_appel = ActivityType.objects.create(
+            company=cls.company, nom='Appel', ordre=10)
+        cls.user = User.objects.create_user(
             username='res_resp', password='x', role_legacy='responsable',
-            company=self.company)
+            company=cls.company)
+
+    def setUp(self):
         self.api = auth(self.user)
 
     def test_resolve_target_nonexistent_pk_raises_valueerror(self):
@@ -418,17 +624,20 @@ class TestResolveTargetErrors(TestCase):
 
 
 class TestVentesAttachmentTargets(TestCase):
-    """ventes.devis et ventes.facture sont des cibles de pièce jointe valides :
-    on peut RÉELLEMENT y joindre un fichier (persiste + listable)."""
+    """ventes.devis et facturation.facture sont des cibles de pièce jointe
+    valides : on peut RÉELLEMENT y joindre un fichier (persiste + listable)."""
 
-    def setUp(self):
-        self.company = Company.objects.create(nom='Vts Att', slug='vts-att')
+    @classmethod
+    def setUpTestData(cls):
+        cls.company = Company.objects.create(nom='Vts Att', slug='vts-att')
         from apps.roles.models import Role, COMMERCIAL_PERMISSIONS
         role = Role.objects.create(
-            company=self.company, nom='Commercial',
+            company=cls.company, nom='Commercial',
             permissions=COMMERCIAL_PERMISSIONS, est_systeme=True)
-        self.user = User.objects.create_user(
-            username='vts_com', password='x', role=role, company=self.company)
+        cls.user = User.objects.create_user(
+            username='vts_com', password='x', role=role, company=cls.company)
+
+    def setUp(self):
         self.api = auth(self.user)
 
     def _client(self):
@@ -439,7 +648,7 @@ class TestVentesAttachmentTargets(TestCase):
         from io import BytesIO
         pdf = b'%PDF-1.4\n%%EOF\n'
 
-        def fake_store(file):
+        def fake_store(file, **kwargs):  # accepte company= (SCA42)
             return ({'file_key': f'attachments/{model}.pdf',
                      'filename': 'piece.pdf', 'size': len(pdf),
                      'mime': 'application/pdf'}, None)
@@ -466,10 +675,10 @@ class TestVentesAttachmentTargets(TestCase):
         self.assertEqual(len(data), 1)
 
     def test_attach_to_facture(self):
-        from apps.ventes.models import Facture
+        from apps.facturation.models import Facture
         facture = Facture.objects.create(
             company=self.company, reference='FAC-VA-1', client=self._client())
-        resp = self._upload('ventes.facture', facture.id)
+        resp = self._upload('facturation.facture', facture.id)
         self.assertEqual(resp.status_code, 201, resp.data)
         self.assertEqual(
             Attachment.objects.filter(object_id=str(facture.id)).count(), 1)
@@ -478,19 +687,22 @@ class TestVentesAttachmentTargets(TestCase):
 class TestComments(TestCase):
     """FG7 — Commentaires génériques + @mentions."""
 
-    def setUp(self):
-        self.company = Company.objects.create(nom='Cmt Co', slug='cmt-co')
-        self.resp = User.objects.create_user(
+    @classmethod
+    def setUpTestData(cls):
+        cls.company = Company.objects.create(nom='Cmt Co', slug='cmt-co')
+        cls.resp = User.objects.create_user(
             username='cmt_resp', password='x', role_legacy='responsable',
-            company=self.company)
+            company=cls.company)
         from apps.roles.models import Role, ALL_PERMISSIONS
         admin_role = Role.objects.create(
-            company=self.company, nom='Administrateur',
+            company=cls.company, nom='Administrateur',
             permissions=ALL_PERMISSIONS, est_systeme=True)
-        self.admin = User.objects.create_user(
+        cls.admin = User.objects.create_user(
             username='cmt_admin', password='x', role=admin_role,
-            role_legacy='admin', company=self.company)
-        self.lead = Lead.objects.create(company=self.company, nom='Lead Cmt')
+            role_legacy='admin', company=cls.company)
+        cls.lead = Lead.objects.create(company=cls.company, nom='Lead Cmt')
+
+    def setUp(self):
         self.api = auth(self.resp)
 
     def test_create_and_list_comment(self):
@@ -521,6 +733,36 @@ class TestComments(TestCase):
         self.assertGreater(notifs.count(), 0)
         notif = notifs.first()
         self.assertIn('cmt_resp', notif.title)
+
+    def test_mention_notification_has_deep_link(self):
+        # VX85(b) — avant ce fix, `_notify_mentions` notifiait SANS `link` :
+        # la mention n'était cliquable nulle part. Elle doit désormais porter
+        # le même lien que « Ma file » (crm.lead → /crm/leads?lead=<id>).
+        from apps.notifications.models import Notification
+        res = self.api.post('/api/django/records/comments/', {
+            'model': 'crm.lead', 'id': self.lead.id,
+            'body': 'Regarde ça @cmt_admin',
+        }, format='json')
+        self.assertEqual(res.status_code, 201, res.data)
+        notif = Notification.objects.filter(recipient=self.admin).first()
+        self.assertIsNotNone(notif)
+        self.assertEqual(notif.link, f'/crm/leads?lead={self.lead.id}')
+
+    def test_mention_emits_chat_mention_event_type(self):
+        """VX209(b) — une @mention émet `CHAT_MENTION` (pas `LEAD_ASSIGNED`) :
+        couper la préférence d'assignation de lead ne doit plus couper
+        silencieusement les mentions, et `notifications.selectors.
+        mentions_non_lues` (VX83, « Ma file ») filtre justement sur
+        `CHAT_MENTION`."""
+        from apps.notifications.models import EventType, Notification
+        res = self.api.post('/api/django/records/comments/', {
+            'model': 'crm.lead', 'id': self.lead.id,
+            'body': 'Regarde ça @cmt_admin',
+        }, format='json')
+        self.assertEqual(res.status_code, 201, res.data)
+        notif = Notification.objects.filter(recipient=self.admin).first()
+        self.assertIsNotNone(notif)
+        self.assertEqual(notif.event_type, EventType.CHAT_MENTION)
 
     def test_mention_own_name_no_self_notification(self):
         """@auto-mention → pas de notification envoyée à soi-même."""
@@ -581,19 +823,22 @@ class TestComments(TestCase):
 class TestTags(TestCase):
     """FG9 — Vocabulaire de tags partagés + TaggedItems."""
 
-    def setUp(self):
-        self.company = Company.objects.create(nom='Tag Co', slug='tag-co')
-        self.resp = User.objects.create_user(
+    @classmethod
+    def setUpTestData(cls):
+        cls.company = Company.objects.create(nom='Tag Co', slug='tag-co')
+        cls.resp = User.objects.create_user(
             username='tag_resp', password='x', role_legacy='responsable',
-            company=self.company)
+            company=cls.company)
         from apps.roles.models import Role, ALL_PERMISSIONS
         admin_role = Role.objects.create(
-            company=self.company, nom='Administrateur',
+            company=cls.company, nom='Administrateur',
             permissions=ALL_PERMISSIONS, est_systeme=True)
-        self.admin = User.objects.create_user(
+        cls.admin = User.objects.create_user(
             username='tag_admin', password='x', role=admin_role,
-            role_legacy='admin', company=self.company)
-        self.lead = Lead.objects.create(company=self.company, nom='Lead Tag')
+            role_legacy='admin', company=cls.company)
+        cls.lead = Lead.objects.create(company=cls.company, nom='Lead Tag')
+
+    def setUp(self):
         self.api = auth(self.resp)
 
     def test_create_and_list_tags(self):
@@ -689,12 +934,15 @@ class TestTags(TestCase):
 class TestAttachmentsAll(TestCase):
     """FG10 — Centre de pièces jointes de la société (GET records/attachments/all/)."""
 
-    def setUp(self):
-        self.company = Company.objects.create(nom='AttAll Co', slug='attall-co')
-        self.user = User.objects.create_user(
+    @classmethod
+    def setUpTestData(cls):
+        cls.company = Company.objects.create(nom='AttAll Co', slug='attall-co')
+        cls.user = User.objects.create_user(
             username='attall_user', password='x', role_legacy='responsable',
-            company=self.company)
-        self.lead = Lead.objects.create(company=self.company, nom='Lead AttAll')
+            company=cls.company)
+        cls.lead = Lead.objects.create(company=cls.company, nom='Lead AttAll')
+
+    def setUp(self):
         self.api = auth(self.user)
 
     def _make_att(self, filename, mime='application/pdf', phase=''):
@@ -778,16 +1026,19 @@ class TestAttachmentsAll(TestCase):
 
 # ── XKB4 — à-faire personnel (sans cible métier) + conversion en tâche ──────
 class TestActivitesPersonnelles(TestCase):
-    def setUp(self):
-        self.company = Company.objects.create(nom='XKB4 Co', slug='xkb4-co')
-        self.type_todo = ActivityType.objects.create(
-            company=self.company, nom='À faire', ordre=5)
-        self.user = User.objects.create_user(
+    @classmethod
+    def setUpTestData(cls):
+        cls.company = Company.objects.create(nom='XKB4 Co', slug='xkb4-co')
+        cls.type_todo = ActivityType.objects.create(
+            company=cls.company, nom='À faire', ordre=5)
+        cls.user = User.objects.create_user(
             username='xkb4_u', password='x', role_legacy='responsable',
-            company=self.company)
-        self.collegue = User.objects.create_user(
+            company=cls.company)
+        cls.collegue = User.objects.create_user(
             username='xkb4_collegue', password='x', role_legacy='responsable',
-            company=self.company)
+            company=cls.company)
+
+    def setUp(self):
         self.api = auth(self.user)
 
     def test_create_personal_todo_without_target(self):
@@ -851,12 +1102,15 @@ class TestActivitesPersonnelles(TestCase):
 
 # ── ZSAL1 — Enchaînement d'activités sur les types d'activité ───────────────
 class TestEnchainementActivites(TestCase):
-    def setUp(self):
-        self.company = Company.objects.create(nom='ZSAL1 Co', slug='zsal1-co')
-        self.user = User.objects.create_user(
+    @classmethod
+    def setUpTestData(cls):
+        cls.company = Company.objects.create(nom='ZSAL1 Co', slug='zsal1-co')
+        cls.user = User.objects.create_user(
             username='zsal1_u', password='x', role_legacy='responsable',
-            company=self.company)
-        self.lead = Lead.objects.create(company=self.company, nom='ZSAL1 lead')
+            company=cls.company)
+        cls.lead = Lead.objects.create(company=cls.company, nom='ZSAL1 lead')
+
+    def setUp(self):
         self.api = auth(self.user)
 
     def test_declencher_creates_exactly_one_followup(self):
@@ -940,18 +1194,21 @@ class TestEnchainementActivites(TestCase):
 
 # ── XKB34 — S'abonner aux enregistrements (followers) ───────────────────────
 class TestFollowers(TestCase):
-    def setUp(self):
-        self.company = Company.objects.create(nom='XKB34 Co', slug='xkb34-co')
-        self.owner = User.objects.create_user(
+    @classmethod
+    def setUpTestData(cls):
+        cls.company = Company.objects.create(nom='XKB34 Co', slug='xkb34-co')
+        cls.owner = User.objects.create_user(
             username='xkb34_owner', password='x', role_legacy='responsable',
-            company=self.company)
-        self.follower_user = User.objects.create_user(
+            company=cls.company)
+        cls.follower_user = User.objects.create_user(
             username='xkb34_follower', password='x', role_legacy='responsable',
-            company=self.company)
-        self.other = User.objects.create_user(
+            company=cls.company)
+        cls.other = User.objects.create_user(
             username='xkb34_other', password='x', role_legacy='responsable',
-            company=self.company)
-        self.lead = Lead.objects.create(company=self.company, nom='Follow Me')
+            company=cls.company)
+        cls.lead = Lead.objects.create(company=cls.company, nom='Follow Me')
+
+    def setUp(self):
         self.api_follower = auth(self.follower_user)
         self.api_owner = auth(self.owner)
 
@@ -973,6 +1230,11 @@ class TestFollowers(TestCase):
         # Le commentateur ne se notifie jamais lui-même.
         self.assertFalse(
             Notification.objects.filter(recipient=self.owner).exists())
+        # VX85(b) — la notification followers porte désormais un lien profond
+        # (même mapping que les mentions / « Ma file »).
+        follower_notif = Notification.objects.filter(
+            recipient=self.follower_user).first()
+        self.assertEqual(follower_notif.link, f'/crm/leads?lead={self.lead.id}')
 
         # Se désabonner arrête les notifications futures.
         del_resp = self.api_follower.delete(

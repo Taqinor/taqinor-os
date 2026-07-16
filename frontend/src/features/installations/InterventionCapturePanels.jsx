@@ -17,16 +17,30 @@ import {
 } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
 import {
-  Button, Badge, Spinner, Checkbox, Input, Textarea, toast,
+  Button, Badge, Spinner, Checkbox, Input, Textarea, toast, ErrorBoundary,
 } from '../../ui'
 import { formatDateTime } from '../../lib/format'
 import { withOfflineFallback, FIELD_OPS } from './offline/fieldOutbox'
+import { compressImage } from '../../ui/file-utils'
+import { renderTrustedSvg } from '../../lib/trustedSvg'
 
 // N91/F21 — message commun quand une action a été MISE EN FILE (hors-ligne).
 const QUEUED_MSG = 'Hors ligne — enregistré, synchro au retour du réseau.'
 
+// VX205 — chaque panneau (monté comme un `TabsContent` indépendant du volet
+// détail intervention) enveloppe SA PROPRE `ErrorBoundary` (déjà construite,
+// `ui/ErrorBoundary.jsx`) : un throw dans UN panneau (ex. Mémos vocaux) ne
+// fait plus disparaître tout le volet — les autres onglets (Réserves,
+// Sécurité…) restent utilisables, quel que soit l'appelant.
+
 // ── F9 — N° de série par composant ───────────────────────────────────────────
-export function SerialsPanel({ intervention, onChanged }) {
+// VX227 — le garde-doublon des n° de série voit désormais l'UNION des deux
+// sources du même chantier : les relevés déjà capturés côté intervention (F9)
+// ET les séries connues du chantier (`knownSeries` — parc + saisies de la
+// checklist N9). Une série saisie côté F9 est détectée en doublon côté N9 et
+// réciproquement. Les deux magasins ne sont jamais fusionnés — seul le
+// contrôle de doublon est unifié.
+export function SerialsPanel({ intervention, onChanged, knownSeries = [] }) {
   const id = intervention.id
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
@@ -34,6 +48,10 @@ export function SerialsPanel({ intervention, onChanged }) {
   const [designation, setDesignation] = useState('')
   const [numero, setNumero] = useState('')
   const fileRef = useRef(null)
+  // VX94 — refocus sur le premier champ après un ajout réussi (recette
+  // `newCatRef` prouvée dans ProduitForm) : la saisie sérialisée au pouce
+  // enchaîne sans viser « Ajouter » puis re-viser le champ.
+  const firstFieldRef = useRef(null)
 
   const load = useCallback(() => installationsApi.getSerials(id)
     .then((r) => setRows(r.data || []))
@@ -41,14 +59,30 @@ export function SerialsPanel({ intervention, onChanged }) {
     .finally(() => setLoading(false)), [id])
   useEffect(() => { load() }, [load])
 
+  // Union des séries connues : relevés F9 déjà enregistrés + séries du chantier
+  // (parc/checklist). La comparaison est insensible à la casse et aux espaces.
+  const knownSerieSet = new Set([
+    ...rows.map((s) => s.numero_serie),
+    ...knownSeries,
+  ].map((s) => String(s || '').trim().toLowerCase()).filter(Boolean))
+  const isDoublon = (v) => {
+    const t = (v || '').trim().toLowerCase()
+    return !!t && knownSerieSet.has(t)
+  }
+
   const add = async () => {
     setBusy(true)
     try {
+      // VX77 — compresse la photo de plaque AVANT envoi (bord long ≤1600px,
+      // JPEG q0.75) : évite les minutes/timeout sur la 3G rurale.
+      const rawFile = fileRef.current?.files?.[0]
+      const file = rawFile ? await compressImage(rawFile) : rawFile
       await installationsApi.ajouterSerial(id, {
-        designation, numero_serie: numero, file: fileRef.current?.files?.[0] })
+        designation, numero_serie: numero, file })
       setDesignation(''); setNumero('')
       if (fileRef.current) fileRef.current.value = ''
       toast.success('N° de série enregistré.')
+      firstFieldRef.current?.focus()
       await load(); onChanged?.()
     } catch (err) {
       toast.error(err?.response?.data?.detail ?? 'Enregistrement impossible.')
@@ -62,16 +96,24 @@ export function SerialsPanel({ intervention, onChanged }) {
 
   if (loading) return <PanelLoading label="numéros de série" />
   return (
+    <ErrorBoundary>
     <div className="flex flex-col gap-3 py-2 text-sm">
       <p className="text-[12px] text-muted-foreground">
         Photographiez la plaque signalétique et saisissez le numéro de série. Le
         numéro peut rester vide — il ne bloque jamais la suite.
       </p>
       <div className="flex flex-col gap-2 rounded border border-border p-2">
-        <Input placeholder="Composant (onduleur, panneau…)"
-          value={designation} onChange={(e) => setDesignation(e.target.value)} />
+        <Input ref={firstFieldRef} placeholder="Composant (onduleur, panneau…)"
+          value={designation} onChange={(e) => setDesignation(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (!busy) add() } }} />
         <Input placeholder="N° de série (optionnel)"
-          value={numero} onChange={(e) => setNumero(e.target.value)} />
+          value={numero} onChange={(e) => setNumero(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (!busy) add() } }} />
+        {isDoublon(numero) && (
+          <span className="text-[12px] text-destructive">
+            Ce numéro de série existe déjà sur ce chantier (parc ou checklist).
+          </span>
+        )}
         <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp"
           className="text-[12px]" />
         <Button size="sm" disabled={busy} onClick={add}>
@@ -101,6 +143,7 @@ export function SerialsPanel({ intervention, onChanged }) {
           </div>
         ))}
     </div>
+    </ErrorBoundary>
   )
 }
 
@@ -111,6 +154,8 @@ export function ConsommationPanel({ intervention, onChanged }) {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [extra, setExtra] = useState({ designation: '', quantite_utilisee: '' })
+  // VX94 — refocus sur le premier champ « hors devis » après un ajout réussi.
+  const extraFirstRef = useRef(null)
 
   const load = useCallback(() => installationsApi.getConsommation(id)
     .then((r) => setData(r.data))
@@ -129,6 +174,7 @@ export function ConsommationPanel({ intervention, onChanged }) {
     try {
       await installationsApi.ajouterLigneConsommation(id, extra)
       setExtra({ designation: '', quantite_utilisee: '' })
+      extraFirstRef.current?.focus()
       await load()
     } catch { toast.error('Ajout impossible.') } finally { setBusy(false) }
   }
@@ -147,6 +193,7 @@ export function ConsommationPanel({ intervention, onChanged }) {
   if (!data) return <PanelUnavailable label="Réconciliation indisponible." />
 
   return (
+    <ErrorBoundary>
     <div className="flex flex-col gap-3 py-2 text-sm">
       {data.valide && <Badge tone="success">Validée — stock mis à jour</Badge>}
       {(data.lignes || []).map((li) => (
@@ -177,11 +224,13 @@ export function ConsommationPanel({ intervention, onChanged }) {
       {!data.valide && (
         <div className="flex flex-col gap-2 rounded border border-dashed border-border p-2">
           <span className="text-[12px] font-medium text-muted-foreground">Ligne hors devis (câble, vis, MC4…)</span>
-          <Input placeholder="Désignation" value={extra.designation}
-            onChange={(e) => setExtra({ ...extra, designation: e.target.value })} />
+          <Input ref={extraFirstRef} placeholder="Désignation" value={extra.designation}
+            onChange={(e) => setExtra({ ...extra, designation: e.target.value })}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (!busy) addExtra() } }} />
           <Input type="number" step="any" placeholder="Quantité utilisée"
             value={extra.quantite_utilisee}
-            onChange={(e) => setExtra({ ...extra, quantite_utilisee: e.target.value })} />
+            onChange={(e) => setExtra({ ...extra, quantite_utilisee: e.target.value })}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (!busy) addExtra() } }} />
           <Button size="sm" variant="outline" disabled={busy} onClick={addExtra}>Ajouter la ligne</Button>
         </div>
       )}
@@ -192,6 +241,7 @@ export function ConsommationPanel({ intervention, onChanged }) {
         </Button>
       )}
     </div>
+    </ErrorBoundary>
   )
 }
 
@@ -234,7 +284,19 @@ export function MemosPanel({ intervention, onChanged }) {
         const file = new File([blob], 'memo.webm', { type: 'audio/webm' })
         setBusy(true)
         try { await installationsApi.ajouterMemo(id, file); await load(); onChanged?.() }
-        catch (err) { toast.error(err?.response?.data?.detail ?? 'Mémo impossible.') }
+        catch (err) {
+          // VX105 — le mémo n'est PAS filé (pas d'outbox binaire — FG386) : un
+          // échec réseau = mémo perdu. Message DISTINCT et persistant, jamais
+          // l'illusion d'un envoi.
+          const offline = navigator.onLine === false || !err?.response
+          if (offline) {
+            toast.error(
+              'Mémo NON envoyé — réseau indisponible. Ré-enregistrez-le au retour du réseau.',
+              { duration: Infinity })
+          } else {
+            toast.error(err?.response?.data?.detail ?? 'Mémo impossible.')
+          }
+        }
         finally { setBusy(false) }
       }
       recorder.current = rec
@@ -254,6 +316,7 @@ export function MemosPanel({ intervention, onChanged }) {
 
   if (loading) return <PanelLoading label="mémos vocaux" />
   return (
+    <ErrorBoundary>
     <div className="flex flex-col gap-3 py-2 text-sm">
       {recording
         ? <Button size="sm" variant="destructive" onClick={stop}>
@@ -280,6 +343,7 @@ export function MemosPanel({ intervention, onChanged }) {
           </div>
         ))}
     </div>
+    </ErrorBoundary>
   )
 }
 
@@ -320,6 +384,7 @@ export function ReservesPanel({ intervention, onChanged }) {
 
   if (loading) return <PanelLoading label="réserves" />
   return (
+    <ErrorBoundary>
     <div className="flex flex-col gap-3 py-2 text-sm">
       <div className="flex flex-col gap-2 rounded border border-border p-2">
         <Textarea rows={2} placeholder="Réserve à reprendre (câble manquant, réglage onduleur…)"
@@ -350,6 +415,7 @@ export function ReservesPanel({ intervention, onChanged }) {
           </div>
         ))}
     </div>
+    </ErrorBoundary>
   )
 }
 
@@ -385,6 +451,7 @@ export function ToolReturnPanel({ intervention, onChanged }) {
   if (loading) return <PanelLoading label="retour d'outillage" />
   if (rows.length === 0) return <PanelUnavailable label="Aucun outil dans le kit de préparation." />
   return (
+    <ErrorBoundary>
     <div className="flex flex-col gap-2 py-2 text-sm">
       {rows.map((tr) => (
         <label key={tr.id} className="flex items-center gap-2 rounded border border-border p-2">
@@ -397,6 +464,7 @@ export function ToolReturnPanel({ intervention, onChanged }) {
       ))}
       <Button size="sm" disabled={busy} onClick={confirm}>Confirmer le retour</Button>
     </div>
+    </ErrorBoundary>
   )
 }
 
@@ -432,6 +500,7 @@ export function SafetyPanel({ intervention, onChanged }) {
   if (loading) return <PanelLoading label="consignes de sécurité" />
   if (!data) return <PanelUnavailable label="Consignes indisponibles." />
   return (
+    <ErrorBoundary>
     <div className="flex flex-col gap-2 py-2 text-sm">
       {(data.items || []).map((it) => (
         <label key={it.cle} className="flex items-center gap-2 rounded border border-border p-2">
@@ -445,6 +514,7 @@ export function SafetyPanel({ intervention, onChanged }) {
         ? <Badge tone="success">Signé par {data.signe_par_nom} le {formatDateTime(data.signe_le)}</Badge>
         : <Button size="sm" disabled={busy} onClick={sign}>Signer les consignes</Button>}
     </div>
+    </ErrorBoundary>
   )
 }
 
@@ -468,12 +538,17 @@ export function CodePanel({ intervention }) {
     installationsApi.getCode(id).then((r) => setData(r.data)).catch(() => setData(null))
   }, [id])
   if (!data) return null
+  // VX201 — le SVG est sûr aujourd'hui (généré côté serveur), mais sans garde
+  // contre une régression future de la source : renderTrustedSvg refuse tout
+  // balisage suspect (<script>, on*=, javascript:) et rend `null` (aucun HTML
+  // injecté) plutôt que d'afficher un SVG non fiable.
+  const svgProps = renderTrustedSvg(data.qr_svg)
   return (
     <div className="flex flex-col items-center gap-1 py-2 text-sm">
       <span className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
         <QrCode className="size-4" aria-hidden="true" /> Code de l'intervention
       </span>
-      <div className="w-32" dangerouslySetInnerHTML={{ __html: data.qr_svg }} />
+      {svgProps && <div className="w-32" dangerouslySetInnerHTML={svgProps} />}
       <code className="text-[11px] text-muted-foreground">{data.token}</code>
     </div>
   )

@@ -566,7 +566,31 @@ class QW10IndexedDedupAndConcurrencyTests(TransactionTestCase):
     setUp company lives in an uncommitted transaction the thread cannot see, so
     the thread's FK INSERT blocks on it while the main thread blocks on join()
     -> deadlock (the CI backend-tests hang). Committing per-test fixes it.
+
+    ``available_apps`` borne le flush (TRUNCATE) de TransactionTestCase aux
+    seules apps que le chemin webhook->lead->dedup->notify touche : sans lui,
+    le flux TRUNCATE de TOUTES les tables du dépôt (schéma devenu très large)
+    épuise ``max_locks_per_transaction`` de Postgres ("out of shared memory").
+    Le chemin ne référence que ces apps (fondations + crm/notifications).
     """
+
+    # NB : ``available_apps`` compare aux NOMS complets d'``INSTALLED_APPS``
+    # (django.apps.registry.set_available_apps), pas aux labels courts.
+    available_apps = [
+        'django.contrib.contenttypes',
+        'django.contrib.auth',
+        'django.contrib.sessions',
+        'core',
+        'authentication',
+        'apps.roles',
+        'apps.parametres',
+        'apps.customfields',
+        'apps.records',
+        'apps.reporting',
+        'apps.audit',
+        'apps.notifications',
+        'apps.crm',
+    ]
 
     def setUp(self):
         self.company = Company.objects.create(nom='Taqinor Test QW10', slug='taqinor-test-qw10')
@@ -624,3 +648,160 @@ class QW10IndexedDedupAndConcurrencyTests(TransactionTestCase):
             company=other_company, nom='Autre société', telephone='0600000099')
         dupes = find_duplicates_by_contact(self.company, phone='0600000099')
         self.assertEqual(dupes, [])
+
+
+@override_settings(WEBSITE_LEAD_WEBHOOK_SECRET=SECRET)
+class QX14PersistedScoreTests(TestCase):
+    """QX14 — le score est persisté sur les leads webhook (création ET mise à
+    jour) comme sur TOUS les autres chemins de création de lead
+    (views.py/services.py) — la source #1 (site web) ne doit plus être la
+    seule à laisser `Lead.score` à zéro et `maybe_assign_mql` mort."""
+
+    def setUp(self):
+        self.company = Company.objects.create(nom='Taqinor Test QX14', slug='taqinor-test-qx14')
+        self.url = reverse('website-lead-webhook')
+
+    def post(self, data, secret=SECRET):
+        headers = {'HTTP_X_WEBHOOK_SECRET': secret} if secret is not None else {}
+        return self.client.post(
+            self.url, data=json.dumps(data),
+            content_type='application/json', **headers)
+
+    def test_create_branch_persists_score(self):
+        res = self.post(payload_site(whatsappOptIn=True, gpsLat='33.5', gpsLng='-7.6'))
+        self.assertEqual(res.status_code, 201, res.content)
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertGreater(lead.score, 0)
+
+    def test_update_branch_recomputes_score(self):
+        first = self.post(payload_site(phoneE164='+212611223344'))
+        self.assertEqual(first.status_code, 201, first.content)
+        lead = Lead.objects.get(pk=first.json()['lead_id'])
+        lead.score = 0
+        lead.save(update_fields=['score'])
+        # Re-post au-delà de la fenêtre de dédup < 60 s simule un visiteur
+        # revenant (couche 2) — on force directement le chemin de mise à jour
+        # en appelant find_duplicates_by_contact plutôt que d'attendre 60 s :
+        # ici on vérifie simplement que le double-clic (couche 1, < 60 s)
+        # recalcule aussi le score sur le lead existant mis à jour.
+        retry = self.post(payload_site(
+            phoneE164='+212611223344', gpsLat='33.5', gpsLng='-7.6',
+            whatsappOptIn=True))
+        self.assertEqual(retry.status_code, 200, retry.content)
+        lead.refresh_from_db()
+        self.assertGreater(lead.score, 0)
+
+    def test_mql_auto_assign_fires_for_website_lead(self):
+        from apps.parametres.models import CompanyProfile
+        CompanyProfile.objects.create(company=self.company, seuil_mql=1)
+        res = self.post(payload_site(
+            whatsappOptIn=True, gpsLat='33.5', gpsLng='-7.6'))
+        self.assertEqual(res.status_code, 201, res.content)
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertIsNotNone(lead.mql_assigned_at)
+
+
+class ResolveCompanyGuardTests(TestCase):
+    """QXG5 — code guard : un ``WEBSITE_LEADS_COMPANY_ID`` absent/mauvais ne
+    doit jamais mésrouter en silence. La confirmation prod (la variable est
+    bien posée) reste un check ops manuel du fondateur — hors périmètre ici."""
+
+    def test_missing_env_var_with_two_companies_logs_loud_error(self):
+        from apps.crm.webhooks import _resolve_company
+        c1 = Company.objects.create(nom='Taqinor A', slug='taqinor-a')
+        Company.objects.create(nom='Taqinor B', slug='taqinor-b')
+        with override_settings(WEBSITE_LEADS_COMPANY_ID=None):
+            with self.assertLogs('apps.crm.webhooks', level='ERROR') as cm:
+                resolved = _resolve_company()
+        # Repli conservé (safe — jamais casser l'endpoint) : 1re Company par pk.
+        self.assertEqual(resolved, c1)
+        self.assertTrue(any('WEBSITE_LEADS_COMPANY_ID' in m for m in cm.output))
+
+    def test_missing_env_var_single_company_no_loud_error(self):
+        from apps.crm.webhooks import _resolve_company
+        c1 = Company.objects.create(nom='Taqinor Solo', slug='taqinor-solo')
+        with override_settings(WEBSITE_LEADS_COMPANY_ID=None):
+            # Mono-tenant : aucune ambiguïté, pas de bruit de log nécessaire.
+            resolved = _resolve_company()
+        self.assertEqual(resolved, c1)
+
+    def test_bad_env_var_value_logs_loud_error_and_returns_none(self):
+        from apps.crm.webhooks import _resolve_company
+        Company.objects.create(nom='Taqinor C', slug='taqinor-c')
+        with override_settings(WEBSITE_LEADS_COMPANY_ID=999999):
+            with self.assertLogs('apps.crm.webhooks', level='ERROR') as cm:
+                resolved = _resolve_company()
+        self.assertIsNone(resolved)
+        self.assertTrue(any('999999' in m for m in cm.output))
+
+
+@override_settings(WEBSITE_LEAD_WEBHOOK_SECRET=SECRET)
+class YDATA12DedupWebhookEventTests(TestCase):
+    """YDATA12 — dédup DUR (core.idempotency.ProcessedWebhookEvent, insérée
+    AVANT tout effet) : un doublon EXACT (même idempotencyKey, OU même
+    payload sans clé) ne crée jamais un second lead — sans casser le
+    stockage brut ni la mise à jour légitime (couches 1/2, testées
+    ailleurs dans ce fichier avec un payload qui DIFFÈRE)."""
+
+    def setUp(self):
+        self.company = Company.objects.create(
+            nom='Taqinor Test YDATA12', slug='taqinor-test-ydata12')
+        self.url = reverse('website-lead-webhook')
+
+    def post(self, data, secret=SECRET):
+        headers = {'HTTP_X_WEBHOOK_SECRET': secret} if secret is not None else {}
+        return self.client.post(
+            self.url, data=json.dumps(data),
+            content_type='application/json', **headers)
+
+    def test_same_idempotency_key_replayed_creates_no_second_lead(self):
+        data = payload_site(
+            phoneE164='+212600111222', idempotencyKey='ydata12-key-1')
+        first = self.post(data)
+        self.assertEqual(first.status_code, 201, first.content)
+        second = self.post(data)
+        self.assertEqual(second.status_code, 200)
+        self.assertIn('déjà traité', second.json()['detail'])
+        self.assertEqual(
+            Lead.objects.filter(telephone='+212600111222').count(), 1)
+        # Le brut du 2e POST est quand même conservé (jamais perdre une trace).
+        self.assertEqual(WebsiteLeadPayload.objects.count(), 2)
+
+    def test_identical_payload_without_key_deduped_by_content_hash(self):
+        data = payload_site(phoneE164='+212600111333')
+        first = self.post(data)
+        self.assertEqual(first.status_code, 201, first.content)
+        second = self.post(data)  # byte-identical payload, no idempotencyKey
+        self.assertEqual(second.status_code, 200)
+        self.assertIn('déjà traité', second.json()['detail'])
+        self.assertEqual(
+            Lead.objects.filter(telephone='+212600111333').count(), 1)
+
+    def test_different_payload_same_phone_is_not_content_deduped(self):
+        """Layer 1/2 dedup (existing, tested elsewhere) still owns the
+        'same phone, different content = update' case — YDATA12's hard
+        dedup must never short-circuit a legitimate update."""
+        first = self.post(payload_site(phoneE164='+212600111444'))
+        self.assertEqual(first.status_code, 201, first.content)
+        second = self.post(payload_site(
+            phoneE164='+212600111444', city='Marrakech'))
+        self.assertEqual(second.status_code, 200)
+        self.assertNotIn('déjà traité', second.json()['detail'])
+        lead = Lead.objects.get(telephone='+212600111444')
+        self.assertEqual(lead.ville, 'Marrakech')
+
+    def test_cross_company_isolation_on_dedup(self):
+        from core.idempotency import ProcessedWebhookEvent, dedupe_event
+        other_company = Company.objects.create(
+            nom='Autre YDATA12', slug='autre-ydata12')
+        self.assertTrue(dedupe_event(
+            company=self.company, source='crm.website_lead', event_id='evt-x'))
+        # La MÊME event_id pour une AUTRE société n'est jamais bloquée —
+        # l'unicité est scopée par (company, source, event_id).
+        self.assertTrue(dedupe_event(
+            company=other_company, source='crm.website_lead', event_id='evt-x'))
+        self.assertEqual(
+            ProcessedWebhookEvent.objects.filter(event_id='evt-x').count(), 2)
+        # Un 3e appel identique (même société) est bien refusé.
+        self.assertFalse(dedupe_event(
+            company=self.company, source='crm.website_lead', event_id='evt-x'))

@@ -9,6 +9,7 @@ from apps.ventes.models import Facture, LigneFacture, Devis
 from apps.stock.models import Produit
 from apps.crm.models import Client
 from authentication.permissions import IsResponsableOrAdmin
+from core.analytics_db import analytics_queryset
 
 
 def _co(user):
@@ -115,8 +116,10 @@ def dashboard(request):
     )
 
     # ── Top 5 produits vendus ─────────────────────────────────────────────────
+    # YHARD9 — agrégats BI (lecture seule) : route vers le réplica analytique si
+    # configuré, no-op strict sinon. Scoping société inchangé (filtres préservés).
     top_produits = (
-        LigneFacture.objects
+        analytics_queryset(LigneFacture.objects)
         .filter(facture__in=factures_qs.filter(statut=Facture.Statut.PAYEE))
         .values('produit__nom')
         .annotate(qte=Sum('quantite'))
@@ -125,7 +128,7 @@ def dashboard(request):
 
     # ── Statuts des factures ──────────────────────────────────────────────────
     statuts_factures = (
-        factures_qs
+        analytics_queryset(factures_qs)
         .values('statut')
         .annotate(nb=Count('id'))
         .order_by('statut')

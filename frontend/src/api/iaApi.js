@@ -7,6 +7,17 @@ import { originFrom } from './origin'
 // on émet l'événement « session expirée » plutôt que de recharger durement la
 // page, ce qui préserve l'état des formulaires OCR/agent en cours.
 import { emitSessionExpired } from '../providers/session-bridge'
+// VX161 — refresh 401 partagé avec axios.js (une seule promesse en vol,
+// jamais un POST /token/refresh/ par requête en échec).
+import { refreshSession } from './refreshCoordinator'
+// VX203 — même contrat d'erreur UNIQUE que `axios.js` : jusqu'ici cette
+// instance ne toastait RIEN hors 401 (un 403 du catalogue d'actions
+// agentiques ou un 500 FastAPI était INVISIBLE). `getApiError` couvre déjà
+// toutes les formes DRF/FastAPI ; `suppressErrorToast` reste l'opt-out pour
+// les dégradations volontaires (ex. `{available:false}` — le catalogue de
+// transcription vocale gère déjà son cas localement).
+import { getApiError } from '../lib/apiError'
+import { toastError } from '../lib/toast'
 
 const ORIGIN = originFrom(import.meta.env.VITE_IA_API_URL)
 
@@ -34,11 +45,9 @@ iaApi_instance.interceptors.response.use(
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true
       try {
-        await axios.post(
-          `${ORIGIN}/api/django/auth/token/refresh/`,
-          {},
-          { withCredentials: true }
-        )
+        // VX161 — promesse de refresh PARTAGÉE (avec axios.js) : N 401
+        // simultanés (mix des deux instances) n'émettent qu'UN SEUL POST refresh.
+        await refreshSession(ORIGIN)
         return iaApi_instance(originalRequest)
       } catch {
         // Refresh echoue : la session est reellement expiree.
@@ -47,6 +56,19 @@ iaApi_instance.interceptors.response.use(
       // identique au client principal : le SessionProvider affiche un modal de
       // reconnexion et les formulaires OCR/agent ouverts sont préservés.
       emitSessionExpired()
+      return Promise.reject(error)
+    }
+
+    // VX203 — aligné sur le contrat (a) d'`axios.js` : toute erreur ≠401
+    // surface un toast FR par défaut, sauf annulation ou opt-out explicite
+    // (`suppressErrorToast` — préserve les dégradations volontaires du genre
+    // `{available:false}` gérées localement par l'appelant).
+    if (
+      error.response?.status !== 401 &&
+      !originalRequest.suppressErrorToast &&
+      !axios.isCancel?.(error)
+    ) {
+      toastError(getApiError(error).message)
     }
     return Promise.reject(error)
   }

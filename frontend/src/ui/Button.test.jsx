@@ -43,8 +43,8 @@ describe('Button (primitif UI)', () => {
       // hover et active sont distincts (default ≠ hover ≠ active)
       expect(cls).toMatch(/hover:bg-primary\/90/)
       expect(cls).toMatch(/active:bg-primary\/80/)
-      // focus-visible piloté par le token --ring
-      expect(cls).toMatch(/focus-visible:ring-ring/)
+      // focus-visible piloté par la classe .focus-ring (VX123)
+      expect(cls).toMatch(/focus-ring/)
       // disabled atténué et non cliquable
       expect(cls).toMatch(/disabled:opacity-50/)
       expect(cls).toMatch(/disabled:pointer-events-none/)

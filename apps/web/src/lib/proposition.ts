@@ -152,6 +152,21 @@ export interface ProposalResponse {
    * (aucun frère/sœur actif) — la strip « autres tailles » se masque alors.
    */
   variants?: ProposalVariantSummary[];
+  /**
+   * WJ114 — bloc vendeur OPTIONNEL (note personnelle + identité), pas encore
+   * exposé par le backend aujourd'hui : lu défensivement (`sellerNote` ci-
+   * dessous) pour qu'il s'allume dès que l'ERP le fournira, sans crash ni
+   * placeholder en attendant. Aucun de ces trois champs n'est requis
+   * ensemble — `sellerNote` ne renvoie que ceux réellement fournis.
+   */
+  seller?: {
+    /** Courte note personnalisée rédigée par le vendeur pour ce client. */
+    note?: string | null;
+    /** Nom du vendeur/conseiller. */
+    name?: string | null;
+    /** URL de la photo du vendeur. */
+    photo_url?: string | null;
+  } | null;
 }
 
 /** WJ32 — bloc `financing` backend (QJ12), structure de `compute_financing_block`. */
@@ -1765,6 +1780,32 @@ export function backendFinancing(p: Pick<ProposalResponse, 'financing'>): Propos
 /** WJ32 — Variantes actives « autres tailles » (tableau vide si le devis est isolé). */
 export function proposalVariants(p: Pick<ProposalResponse, 'variants'>): ProposalVariantSummary[] {
   return Array.isArray(p.variants) ? p.variants : [];
+}
+
+/** WJ114 — note personnelle du vendeur, lue défensivement. */
+export interface SellerNote {
+  note: string | null;
+  name: string | null;
+  photoUrl: string | null;
+}
+
+/**
+ * WJ114 — « décider en 10 secondes » (Storydoc) : la personnalisation
+ * (note + identité du vendeur) augmente l'engagement, mais le backend
+ * n'expose PAS ENCORE ce bloc aujourd'hui (aucune intégration ERP livrée) —
+ * lecture défensive (optional chaining) pour s'allumer sans changement de
+ * code le jour où l'ERP le fournira. Renvoie `null` si les TROIS champs sont
+ * absents/vides (rien à rendre) ; sinon un objet avec les seuls champs
+ * réellement fournis (jamais de valeur fabriquée pour compléter).
+ */
+export function sellerNote(p: Pick<ProposalResponse, 'seller'>): SellerNote | null {
+  const s = p?.seller;
+  if (!s || typeof s !== 'object') return null;
+  const note = typeof s.note === 'string' && s.note.trim() ? s.note.trim() : null;
+  const name = typeof s.name === 'string' && s.name.trim() ? s.name.trim() : null;
+  const photoUrl = typeof s.photo_url === 'string' && s.photo_url.trim() ? s.photo_url.trim() : null;
+  if (!note && !name && !photoUrl) return null;
+  return { note, name, photoUrl };
 }
 
 // ── WJ32 · « Et après ? » — timeline des prochaines étapes ───────────────────

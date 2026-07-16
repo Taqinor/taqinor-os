@@ -85,14 +85,41 @@ export function formatDate(value, { long = false } = {}) {
   }).format(d)
 }
 
-/** Date + heure : « 18/06/2026 14:05 ». */
-export function formatDateTime(value) {
+/**
+ * Date + heure : « 18/06/2026 14:05 » (défaut), ou « 18 juin 2026, 14:05 »
+ * si `long=true` (VX75 — variante lisible utilisée pour les rendez-vous/
+ * horodatages destinés à un titre/tooltip plutôt qu'une colonne de tableau).
+ */
+export function formatDateTime(value, { long = false } = {}) {
   const d = asDate(value)
   if (!d) return '—'
+  if (long) {
+    return new Intl.DateTimeFormat(LOCALE, {
+      day: 'numeric', month: 'long', year: 'numeric',
+      hour: '2-digit', minute: '2-digit',
+    }).format(d)
+  }
   return new Intl.DateTimeFormat(LOCALE, {
     day: '2-digit', month: '2-digit', year: 'numeric',
     hour: '2-digit', minute: '2-digit',
   }).format(d)
+}
+
+/**
+ * VX30 — « il y a X min/h » relatif, extrait de TicketsPage.jsx en util
+ * partagé (bandeau de fraîcheur du mur de flotte + chatter tickets). Sous 1
+ * min « à l'instant », sous 60 min en minutes, sous 24 h en heures arrondies,
+ * au-delà la date jj/mm/aaaa (`formatDate`, jamais un `toLocaleDateString` brut).
+ */
+export function timeAgo(value) {
+  const d = asDate(value)
+  if (!d) return '—'
+  const mins = Math.round((Date.now() - d.getTime()) / 60000)
+  if (mins < 1) return "à l'instant"
+  if (mins < 60) return `il y a ${mins} min`
+  const h = Math.round(mins / 60)
+  if (h < 24) return `il y a ${h} h`
+  return formatDate(d)
 }
 
 /**
@@ -165,7 +192,19 @@ export function normalizeMaPhone(value) {
   return '212' + local
 }
 
+/**
+ * VX122 — Finesse française : pose une espace fine insécable (U+202F) devant
+ * `: ; ! ?`, au lieu de l'espace normale (ou de rien) que 116 libellés FR
+ * laissent aujourd'hui. Idempotent : une espace normale/insécable/déjà-fine
+ * existante devant la ponctuation est remplacée, jamais cumulée.
+ * `nbsp('Priorité :').codePointAt(8) === 0x202f`.
+ */
+export function nbsp(str) {
+  if (!str) return str
+  return String(str).replace(/[ \t\u00A0\u202F]*([:;!?])/g, '\u202F$1')
+}
+
 export default {
   toNumber, formatMAD, formatNumber, formatPercent,
-  formatDate, formatDateTime, formatPhoneMA, canonicalPhoneMA, normalizeMaPhone,
+  formatDate, formatDateTime, formatPhoneMA, canonicalPhoneMA, normalizeMaPhone, nbsp,
 }

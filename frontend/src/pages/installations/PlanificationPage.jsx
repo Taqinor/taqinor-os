@@ -11,10 +11,14 @@
 // possède la refonte du statut/stepper) : ce module est une surface neuve,
 // autonome, réutilisant le kit ui/ existant (Card, Tabs, DataTable, Select…).
 import { useEffect, useMemo, useState } from 'react'
-import { useSelector } from 'react-redux'
+import {
+  DndContext, DragOverlay, PointerSensor, TouchSensor,
+  useDraggable, useDroppable, useSensor, useSensors,
+} from '@dnd-kit/core'
+import { useIsAdmin } from '../../hooks/useHasPermission'
 import {
   CalendarRange, Navigation, Users, AlertTriangle, Scale, Truck,
-  Wrench, Gauge, ExternalLink,
+  Wrench, Gauge, ExternalLink, GripVertical,
 } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
 import {
@@ -23,6 +27,7 @@ import {
   SelectContent, SelectItem, Tabs, TabsList, TabsTrigger, TabsContent,
   Input, Button, toast,
 } from '../../ui'
+import { toastWithUndo } from '../../lib/toast'
 import { timelineBounds, barGeometry, markerGeometry } from '../../features/gestion_projet/gantt'
 import { formatDate } from '../../lib/format'
 
@@ -140,12 +145,91 @@ function GanttTab() {
   )
 }
 
-// ── FG68 — Calendrier dispatch techniciens ───────────────────────────────────
+// ── FG68 / VX251 — Calendrier dispatch techniciens (glisser-déposer) ──────────
+// VX251 — glisser une carte intervention d'une colonne-technicien à une autre
+// réaffecte réellement (PATCH `technicien` EXISTANT) avec un toastWithUndo 6 s
+// (VX95, jamais un 2ᵉ primitif undo) : « Annuler » restaure l'affectation.
+// Le geste réplique le pattern drag+recul-guard prouvé par KanbanView.jsx
+// (CRM). Le Gantt (FG74) reste lecture seule — ce module n'y touche pas.
+const NON_ASSIGNE = '__non_assigne__'
+
+// Clé droppable stable d'une colonne technicien (id numérique ou sentinelle).
+const colKey = (grp) => String(grp?.technicien?.id ?? NON_ASSIGNE)
+
+// VX251 — déplacement PUR (testable) d'une intervention entre colonnes
+// technicien de l'état du calendrier. Renvoie un nouvel état (jamais de
+// mutation) ; renvoie l'entrée inchangée si l'intervention est introuvable
+// dans la colonne source.
+// eslint-disable-next-line react-refresh/only-export-components -- helper co-localisé
+export function moveInterventionLocal(list, ivId, fromKey, toKey) {
+  let moved = null
+  const stripped = (list ?? []).map((grp) => {
+    if (colKey(grp) !== String(fromKey)) return grp
+    const kept = grp.interventions.filter((x) => {
+      if (String(x.id) === String(ivId)) { moved = x; return false }
+      return true
+    })
+    return { ...grp, interventions: kept }
+  })
+  if (!moved) return list
+  return stripped.map((grp) => (colKey(grp) === String(toKey)
+    ? { ...grp, interventions: [...grp.interventions, moved] }
+    : grp))
+}
+
+// Carte intervention draggable — l'original reste en place (fantôme) pendant
+// que le DragOverlay suit le pointeur.
+function DispatchCard({ iv, technicienId }) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `iv-${iv.id}`,
+    data: { iv, fromTechnicien: technicienId },
+  })
+  return (
+    <div ref={setNodeRef}
+      className={`flex items-center gap-2 rounded border border-border px-2 py-1.5 text-sm${isDragging ? ' opacity-40' : ''}`}>
+      <button type="button" {...listeners} {...attributes}
+        className="shrink-0 cursor-grab touch-none text-muted-foreground active:cursor-grabbing"
+        aria-label={`Déplacer l'intervention ${iv.installation_reference ?? `#${iv.id}`}`}>
+        <GripVertical className="size-4" aria-hidden="true" />
+      </button>
+      <span className="min-w-0 flex-1 truncate">
+        {iv.installation_reference ?? `#${iv.id}`} — {iv.client_nom ?? '—'}
+      </span>
+      <span className="shrink-0 text-xs text-muted-foreground">{formatDate(iv.date_prevue)}</span>
+    </div>
+  )
+}
+
+// Colonne-technicien droppable. Le ref droppable est posé sur un div wrapper
+// (Card est un composant sans forwardRef).
+function TechnicienColumn({ grp, children }) {
+  const { setNodeRef, isOver } = useDroppable({ id: colKey(grp) })
+  return (
+    <div ref={setNodeRef} data-testid={`col-${colKey(grp)}`}>
+      <Card className={isOver ? 'ring-2 ring-primary' : undefined}>
+        <CardHeader className="pb-2">
+          <CardTitle className="flex items-center gap-2 text-sm">
+            <Users className="size-4 text-muted-foreground" aria-hidden="true" />
+            {grp.technicien.nom}
+            <Badge tone="primary">{grp.interventions.length}</Badge>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-1.5 pt-0">
+          {grp.interventions.length === 0
+            ? <span className="text-xs text-muted-foreground">Déposez une intervention ici.</span>
+            : children}
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
 function CalendrierTab() {
   const [range, setRange] = useState(defaultWeek)
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [activeIv, setActiveIv] = useState(null)
 
   useEffect(() => {
     let alive = true
@@ -155,6 +239,53 @@ function CalendrierTab() {
       .finally(() => { if (alive) setLoading(false) })
     return () => { alive = false }
   }, [range.debut, range.fin])
+
+  // distance 6px : un clic simple n'entraîne pas de drag ; sur mobile appui
+  // long 150 ms pour glisser, le scroll reste naturel. Même réglage que le
+  // Kanban CRM.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 8 } }),
+  )
+
+  const handleDragStart = ({ active }) => {
+    setActiveIv(active.data.current?.iv ?? null)
+  }
+
+  const handleDragEnd = ({ active, over }) => {
+    setActiveIv(null)
+    const iv = active.data.current?.iv
+    const fromKey = String(active.data.current?.fromTechnicien ?? NON_ASSIGNE)
+    if (!iv || !over) return
+    const toKey = String(over.id)
+    if (toKey === fromKey) return // déposé dans la même colonne : aucun effet
+
+    // Réaffectation OPTIMISTE : on déplace la carte tout de suite…
+    setData((prev) => moveInterventionLocal(prev, iv.id, fromKey, toKey))
+    const nouveauTechnicien = toKey === NON_ASSIGNE ? null : Number(toKey)
+
+    // …on PATCH le serveur (endpoint EXISTANT — zéro backend nouveau ; la notif
+    // au nouveau technicien part côté serveur)…
+    installationsApi.updateIntervention(iv.id, { technicien: nouveauTechnicien })
+      .catch(() => {
+        // Échec serveur : on remet la carte dans sa colonne d'origine.
+        setData((prev) => moveInterventionLocal(prev, iv.id, toKey, fromKey))
+        toast.error('Réaffectation impossible — réessayez.')
+      })
+
+    // …et on offre « Annuler » 6 s : restaure l'affectation d'origine (UI +
+    // serveur). onUndo seul — l'effet a déjà eu lieu (VX95, jamais 2ᵉ primitif).
+    const ancienTechnicien = fromKey === NON_ASSIGNE ? null : Number(fromKey)
+    const cibleNom = data?.find((g) => colKey(g) === toKey)?.technicien?.nom ?? 'non assigné'
+    toastWithUndo({
+      message: `Intervention réaffectée à ${cibleNom}.`,
+      onUndo: () => {
+        setData((prev) => moveInterventionLocal(prev, iv.id, toKey, fromKey))
+        installationsApi.updateIntervention(iv.id, { technicien: ancienTechnicien })
+          .catch(() => toast.error('Annulation impossible — réessayez.'))
+      },
+    })
+  }
 
   return (
     <div className="flex flex-col gap-3" data-testid="calendrier-techniciens">
@@ -172,29 +303,28 @@ function CalendrierTab() {
       ) : (data ?? []).length === 0 ? (
         <EmptyState icon={CalendarRange} title="Aucune intervention sur la période" />
       ) : (
-        <div className="flex flex-col gap-3">
-          {data.map((grp) => (
-            <Card key={grp.technicien.id ?? 'non_assigne'}>
-              <CardHeader className="pb-2">
-                <CardTitle className="flex items-center gap-2 text-sm">
-                  <Users className="size-4 text-muted-foreground" aria-hidden="true" />
-                  {grp.technicien.nom}
-                  <Badge tone="primary">{grp.interventions.length}</Badge>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="flex flex-col gap-1.5 pt-0">
+        <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}
+          onDragCancel={() => setActiveIv(null)}>
+          <p className="text-xs text-muted-foreground">
+            Glissez une intervention vers un autre technicien pour la réaffecter.
+          </p>
+          <div className="flex flex-col gap-3">
+            {data.map((grp) => (
+              <TechnicienColumn key={colKey(grp)} grp={grp}>
                 {grp.interventions.map((iv) => (
-                  <div key={iv.id} className="flex items-center justify-between rounded border border-border px-2 py-1.5 text-sm">
-                    <span className="truncate">
-                      {iv.installation_reference ?? `#${iv.id}`} — {iv.client_nom ?? '—'}
-                    </span>
-                    <span className="shrink-0 text-xs text-muted-foreground">{formatDate(iv.date_prevue)}</span>
-                  </div>
+                  <DispatchCard key={iv.id} iv={iv} technicienId={colKey(grp)} />
                 ))}
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+              </TechnicienColumn>
+            ))}
+          </div>
+          <DragOverlay>
+            {activeIv ? (
+              <div className="rounded border border-primary bg-background px-2 py-1.5 text-sm shadow-lg">
+                {activeIv.installation_reference ?? `#${activeIv.id}`} — {activeIv.client_nom ?? '—'}
+              </div>
+            ) : null}
+          </DragOverlay>
+        </DndContext>
       )}
     </div>
   )
@@ -469,7 +599,7 @@ function CamionnettesTab() {
 // ── Outils par chantier — N43 (régime 82-21) + FG79 (interventions standard) +
 // FG71 (coût/marge, admin-only) ──────────────────────────────────────────────
 export function OutilsChantierTab() {
-  const isAdmin = useSelector((s) => s.auth.role) === 'admin'
+  const isAdmin = useIsAdmin()
   const [chantiers, setChantiers] = useState([])
   const [chantierId, setChantierId] = useState('')
   const [kwc, setKwc] = useState('')

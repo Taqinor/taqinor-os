@@ -1,5 +1,4 @@
-from rest_framework import viewsets
-from authentication.mixins import TenantMixin
+from core.viewsets import CompanyScopedModelViewSet
 from ..models import ConditionnementProduit
 from ..serializers import ConditionnementProduitSerializer
 from authentication.permissions import IsAnyRole, HasPermissionOrLegacy
@@ -11,7 +10,7 @@ from authentication.permissions import IsAnyRole, HasPermissionOrLegacy
 READ_ACTIONS = ['list', 'retrieve']
 
 
-class ConditionnementProduitViewSet(TenantMixin, viewsets.ModelViewSet):
+class ConditionnementProduitViewSet(CompanyScopedModelViewSet):
     """XSTK15 — conditionnements d'achat (touret/carton…) d'un produit,
     convertis vers `Produit.unite_stock` à la réception."""
     queryset = ConditionnementProduit.objects.select_related('produit').all()

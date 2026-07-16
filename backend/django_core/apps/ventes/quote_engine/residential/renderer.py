@@ -10,11 +10,41 @@ serves industriel / agricole / one-page / étude). One engine, one data builder.
 Renders only — never changes a devis status (CLAUDE.md rule #4).
 """
 from __future__ import annotations
+
+import hashlib
+import json
+from collections import OrderedDict
 from pathlib import Path
 
 
 class Unsupported(Exception):
     """The devis/options are outside the residential renderer's scope."""
+
+
+# ── QX8 — cache LRU des octets PDF rendus, clé = empreinte du dict de données ──
+# Un second rendu du MÊME devis inchangé (rafale de clients ouvrant le même
+# lien) réutilise les octets déjà rendus au lieu de refaire polices/logo/4
+# graphiques + WeasyPrint. Bornée (petite) pour ne pas gonfler la mémoire ;
+# l'empreinte couvre tout ce qui influe sur le rendu, donc toute édition du
+# devis change la clé et force un vrai re-rendu (jamais un PDF périmé). Sortie
+# byte-identique au chemin sans cache. Complète (sans dupliquer) la persistance
+# /proposal (ERR74) : ici on ne touche AUCUN modèle, on mémorise juste les octets.
+_PDF_CACHE: "OrderedDict[str, bytes]" = OrderedDict()
+_PDF_CACHE_MAX = 32
+
+
+def _fingerprint(data: dict) -> str | None:
+    """Empreinte stable et déterministe du dict de données de rendu.
+
+    Le dict est JSON-sérialisable (il est aussi renvoyé par l'endpoint public
+    proposal-data). Sur toute donnée non sérialisable, renvoie None → le cache
+    est simplement contourné (le rendu se fait normalement)."""
+    try:
+        blob = json.dumps(data, sort_keys=True, default=str,
+                          ensure_ascii=False)
+    except (TypeError, ValueError):
+        return None
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
 
 def is_residential(devis, options=None) -> bool:
@@ -53,38 +83,96 @@ def _augment(data: dict) -> dict:
     annual_before, annual_after = sum(before), sum(after)
     if annual_before <= 0:
         raise Unsupported("no bill baseline")
-    conso = max(1, round(annual_before / 1.3))
-    coverage = max(40, min(99, round(data["prod_kwh"] / conso * 100)))
+
+    # ── QX7a — couverture solaire HONNÊTE (plus de diviseur /1.3 fabriqué) ────
+    # Priorité 1 : consommation annuelle RÉELLE (kWh) fournie par le builder
+    # (étude / vraie facture). Priorité 2 : dérivée de la facture annuelle au
+    # tarif kWh RÉEL (roi.tarif_kwh) — pas d'un 1.3 inventé. Le résultat n'est
+    # PLUS planché à 40 % : une petite installation affiche sa vraie couverture.
+    # Quand la conso n'est qu'une estimation (dérivée d'une facture), on pose un
+    # drapeau pour l'étiqueter « estimation » sur la donut.
+    conso_kwh = data.get("conso_annuelle_kwh")
+    coverage_estimated = False
+    if conso_kwh and conso_kwh > 0:
+        conso = conso_kwh
+    else:
+        tarif = data.get("tarif_kwh") or 0
+        if tarif and tarif > 0:
+            conso = max(1, round(annual_before / float(tarif)))
+        else:
+            conso = max(1, round(annual_before))  # dernier repli (1 MAD/kWh)
+        coverage_estimated = True
+    coverage = min(100, max(1, round(data["prod_kwh"] / conso * 100)))
 
     d = dict(data)
     d.setdefault("client_full", d.get("client_name") or "Client")
-    d.update({
-        "bills_before": before, "bills_after": after,
-        "annual_before": annual_before, "annual_after": annual_after,
-        "coverage_pct": coverage,
-        "validity_days": d.get("validity_days", 30),
-        "site_url": d.get("site_url", "taqinor.ma"),
+
+    # QX4 — site public piloté par l'identité société (multi-tenant). Le
+    # ``site_url`` du profil (parametres) prime ; repli sur le littéral
+    # historique « taqinor.ma » quand aucun profil enrichi n'existe (sortie
+    # byte-identique pour Taqinor). QX6 : les liens produits/réalisations/
+    # garanties dérivent de ce site ; le lien de signature réel est déjà posé
+    # par le builder (data['links']['signer']) — sinon repli historique.
+    ent = d.get("entreprise") or {}
+    ent_site = (ent.get("site_url") or "").strip().rstrip("/")
+    site_url = ent_site or d.get("site_url") or "taqinor.ma"
+    _existing_links = dict(d.get("links") or {})
+    _default_links = {
         # QK5 — « avis » pointe vers /realisations (page réelle : nos
         # réalisations clients). Le chemin /avis n'existe pas sur taqinor.ma ;
         # un lien 404 sur un PDF client est corrigé ici. On ne fabrique jamais
         # d'avis : on renvoie vers les réalisations vérifiables.
-        "links": d.get("links") or {
-            "realisations": "taqinor.ma/realisations",
-            "avis": "taqinor.ma/realisations",
-            "produits": "taqinor.ma/produits",
-            "garanties": "taqinor.ma/garanties",
-            "signer": f"taqinor.ma/signer/{d.get('ref', '')}",
-        },
+        "realisations": f"{site_url}/realisations",
+        "avis": f"{site_url}/realisations",
+        "produits": f"{site_url}/produits",
+        "garanties": f"{site_url}/garanties",
+        "signer": f"{site_url}/signer/{d.get('ref', '')}",
+    }
+    # Les liens explicitement posés par le builder (ex. QX6 signer tokenisé)
+    # priment ; les manquants dérivent du site public de la société.
+    links = {**_default_links, **{k: v for k, v in _existing_links.items() if v}}
+
+    d.update({
+        "bills_before": before, "bills_after": after,
+        "annual_before": annual_before, "annual_after": annual_after,
+        "coverage_pct": coverage,
+        # QX7a — la couverture est une estimation quand la conso réelle est
+        # inconnue (dérivée d'une facture) → la donut l'étiquette honnêtement.
+        "coverage_estimated": coverage_estimated,
+        "validity_days": d.get("validity_days", 30),
+        "site_url": site_url,
+        "links": links,
     })
     return d
 
 
 def render_pdf_bytes(data: dict) -> bytes:
     """Render the redesigned residential proposal to PDF bytes, or raise
-    Unsupported when the quote data isn't the residential two-option shape."""
+    Unsupported when the quote data isn't the residential two-option shape.
+
+    QX8 — un second rendu du MÊME devis inchangé réutilise les octets déjà
+    rendus (cache LRU par empreinte de données), sans refaire polices/logo/
+    graphiques/WeasyPrint. Toute édition change l'empreinte → vrai re-rendu.
+    """
     from weasyprint import HTML
     from . import render as residential_render
+
+    # _augment peut lever Unsupported : on le laisse remonter AVANT tout cache.
     d = _augment(data)
+    key = _fingerprint(d)
+    if key is not None:
+        hit = _PDF_CACHE.get(key)
+        if hit is not None:
+            _PDF_CACHE.move_to_end(key)  # LRU : marque comme récemment utilisé
+            return hit
+
     html = residential_render.build_html(d)
     base = str(Path(residential_render.__file__).resolve().parent)
-    return HTML(string=html, base_url=f"file://{base}/").write_pdf()
+    pdf_bytes = HTML(string=html, base_url=f"file://{base}/").write_pdf()
+
+    if key is not None:
+        _PDF_CACHE[key] = pdf_bytes
+        _PDF_CACHE.move_to_end(key)
+        while len(_PDF_CACHE) > _PDF_CACHE_MAX:
+            _PDF_CACHE.popitem(last=False)  # évince le plus ancien
+    return pdf_bytes

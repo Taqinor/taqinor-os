@@ -8,12 +8,21 @@ import { originFrom } from './origin'
 // volontairement sans React : ils émettent un toast / un événement window.
 import { errorMessageFrom, toastError } from '../lib/toast'
 import { emitSessionExpired } from '../providers/session-bridge'
+// VX161 — refresh 401 partagé avec iaApi.js (une seule promesse en vol,
+// jamais un POST /token/refresh/ par requête en échec).
+import { refreshSession } from './refreshCoordinator'
 
 const ORIGIN = originFrom(import.meta.env.VITE_API_URL)
+
+// VX55 — aucun timeout n'existait sur l'instance axios : sur une 3G qui cale,
+// un écran gelait indéfiniment (aucune requête n'échouait jamais). 20 s laisse
+// de la marge aux endpoints lents (export, PDF) tout en bornant l'attente.
+const REQUEST_TIMEOUT_MS = 20000
 
 const api = axios.create({
   baseURL: ORIGIN,
   withCredentials: true, // envoie les cookies httpOnly automatiquement
+  timeout: REQUEST_TIMEOUT_MS,
 })
 
 // ── Requete : prefixe /api/django uniquement ──────────────────
@@ -38,12 +47,10 @@ api.interceptors.response.use(
     ) {
       originalRequest._retry = true
       try {
-        // Le cookie refresh_token est envoye automatiquement par le navigateur
-        await axios.post(
-          `${ORIGIN}/api/django/auth/token/refresh/`,
-          {},
-          { withCredentials: true }
-        )
+        // Le cookie refresh_token est envoye automatiquement par le navigateur.
+        // VX161 — promesse de refresh PARTAGÉE (avec iaApi.js) : N 401
+        // simultanés n'émettent qu'UN SEUL POST refresh.
+        await refreshSession(ORIGIN)
         // Rejoue la requete originale — le nouveau cookie access_token est pris
         return api(originalRequest)
       } catch {
@@ -61,6 +68,14 @@ api.interceptors.response.use(
     // sauf si l'appelant a explicitement opté pour la gestion locale
     // (`config.suppressErrorToast = true`) ou s'il s'agit d'une annulation.
     if (!originalRequest.suppressErrorToast && !axios.isCancel?.(error)) {
+      // VX55 — un timeout (ECONNABORTED, `timeout: 20000` ci-dessus) est
+      // distinct d'une annulation volontaire (AbortController, cf. thunks
+      // {signal}) : celle-ci ne doit PAS toaster (l'écran a changé/démonté),
+      // celui-là DOIT — l'utilisateur doit savoir que le réseau a calé.
+      if (error.code === 'ECONNABORTED') {
+        toastError('La connexion a expiré. Vérifiez votre connexion et réessayez.')
+        return Promise.reject(error)
+      }
       const status = error.response?.status
       // On NE toaste PAS les 401 (gérés ci-dessus) ni les 404 (souvent attendus,
       // ex. recherche/feature parquée) — ils restent gérés localement.

@@ -1,4 +1,5 @@
 import secrets
+import uuid
 
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
@@ -20,6 +21,69 @@ class TimestampedModel(models.Model):
 
 
 # ---------------------------------------------------------------------------
+# ARC1 — Socle multi-tenant : ``TenantModel`` (FK company + timestamps).
+#
+# Constat (audit noyau) : la paire « FK ``company`` posée à la main + horodatage
+# ``created_at``/``updated_at`` » est réécrite dans des dizaines de fichiers
+# alors qu'aucune classe abstraite ne la regroupait. ``TenantModel`` factorise
+# EXACTEMENT ce socle :
+#   * hérite de ``TimestampedModel`` (``created_at`` / ``updated_at``) ;
+#   * ajoute une FK ``company`` vers ``authentication.Company`` (app de
+#     FONDATION — ``core`` reste une couche de base, contrat import-linter
+#     ``core-foundation-is-a-base-layer`` ; aucun import d'app métier).
+#
+# RÈGLE PLAYBOOK (à respecter pour tout NOUVEAU modèle) :
+#   Tout NOUVEAU modèle métier multi-société hérite de ``core.models.TenantModel``
+#   plutôt que de redéclarer à la main la FK ``company`` + les timestamps. Il
+#   suffit alors de définir ses propres champs (et un ``related_name`` explicite
+#   si l'accesseur inverse par défaut ne convient pas — voir ci-dessous).
+#
+# ACCESSEUR INVERSE (``related_name``) — NE JAMAIS renommer un accesseur existant.
+#   Le ``related_name`` par défaut ``'%(app_label)s_%(class)s_set'`` garantit
+#   que deux modèles concrets distincts n'entrent jamais en collision sur
+#   ``company.<...>`` (chaque sous-classe reçoit un accesseur unique). Un modèle
+#   CONVERTI depuis une FK ``company`` écrite à la main DOIT conserver son
+#   ``related_name`` EXACT : pour cela il REDÉCLARE simplement le champ
+#   ``company`` dans son propre corps (Django autorise une sous-classe concrète à
+#   redéfinir un champ hérité d'une base abstraite) tout en gagnant les
+#   timestamps de la base — jamais un renommage d'accesseur (qui casserait le
+#   code appelant ``company.<ancien_related_name>``).
+#
+# Le garde-fou de complétude de la conversion de masse reste YDATA2 (nommé, non
+# dupliqué ici) : ARC1 ne fait que poser la classe + convertir des pilotes dont
+# la migration générée est vide/state-only.
+# ---------------------------------------------------------------------------
+
+
+class TenantModel(TimestampedModel):
+    """Socle abstrait multi-tenant : FK ``company`` + horodatage (ARC1).
+
+    Hériter de ce mixin donne, en une ligne, la paire multi-société standard :
+      * ``company`` — FK obligatoire vers ``authentication.Company`` ;
+      * ``created_at`` / ``updated_at`` — hérités de ``TimestampedModel``.
+
+    GÉNÉRIQUE : ne référence AUCUNE app métier (seulement ``authentication``,
+    une app de fondation) — ``core`` reste une couche de base.
+
+    ``related_name`` par défaut ``'%(app_label)s_%(class)s_set'`` : chaque
+    sous-classe concrète reçoit un accesseur inverse unique. Un modèle converti
+    qui doit garder un ``related_name`` historique redéclare le champ ``company``
+    dans son propre corps (voir la note PLAYBOOK ci-dessus) — jamais de
+    renommage d'accesseur.
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='%(app_label)s_%(class)s_set',
+        verbose_name='Société',
+    )
+
+    class Meta:
+        abstract = True
+
+
+# ---------------------------------------------------------------------------
 # FG388 — Corbeille / restauration (soft-delete + undo), standard partagé.
 #
 # Fondation GÉNÉRIQUE : ``SoftDeleteModel`` est un mixin ABSTRAIT que n'importe
@@ -29,6 +93,25 @@ class TimestampedModel(models.Model):
 # app métier (le ``deleted_by`` pointe ``authentication.CustomUser``, une app de
 # fondation). Le journal concret de corbeille/undo est ``DeletionRecord``
 # (plus bas), keyé via ``contenttypes`` — toujours sans import métier.
+#
+# ── ARC15 — Inventaire d'adoption (recensement du 2026-07-10) ──────────────
+# Adoption réelle du mixin ``SoftDeleteModel`` par les modèles métier :
+#   NOMBRE DE MODÈLES QUI EN HÉRITENT : 0 (aucune app, sur les 35+ recensées).
+# Les seules références dans le dépôt sont l'INFRASTRUCTURE, pas de l'adoption :
+#   * ``core/models.py`` — définition du mixin + ``DeletionRecord`` (ce fichier) ;
+#   * ``core/trash.py``  — service corbeille/undo qui consomme l'interface
+#     DYNAMIQUEMENT (``obj.restore()`` / ``hasattr``), sans importer d'app ;
+#   * ``core/tests/test_trash.py`` — teste la STRUCTURE du mixin lui-même ;
+#   * un commentaire dans ``core/models.py`` (YOPSB3, ~l.1574) et la migration
+#     ``core/migrations/0021_...`` qui notent EXPLICITEMENT un soft-delete
+#     « léger » distinct (champ direct, PAS ce mixin).
+# Le socle est donc construit + testé + prêt, mais VOLONTAIREMENT non encore
+# adopté par le domaine.
+#
+# DÉCISION ARC15 : la vague d'adoption du soft-delete (YDATA17) s'implémente sur
+# CE mixin ``core.SoftDeleteModel`` (ne JAMAIS en créer un nouveau). Les modèles
+# pilotes d'adoption appartiennent à YDATA17, pas à ARC1/ARC15 : ici on se
+# contente d'acter le socle + de recenser l'adoption (nulle à ce jour).
 # ---------------------------------------------------------------------------
 
 
@@ -717,58 +800,13 @@ class CalendarSyncMapping(TimestampedModel):
 # ---------------------------------------------------------------------------
 # FG376 — Connecteur Zapier / Make : abonnements webhook (REST hooks) sortants.
 #
-# Modèle de FONDATION GÉNÉRIQUE : un outil no-code (Zapier/Make) s'abonne à un
-# nom d'événement (chaîne libre, ex. « devis_accepted ») en enregistrant une URL
-# cible. Quand l'événement se produit, ``core.webhooks.dispatch_event`` POSTe le
-# payload à chaque URL abonnée. AUCUN import d'app métier (contrat import-linter
-# ``core-foundation-is-a-base-layer``) : les apps émettrices passent un dict.
+# QX37 (2026-07-10) — SUPPRIMÉ. Ce ``core.WebhookSubscription`` /
+# ``core.webhooks.dispatch_event`` était un DOUBLON MORT de la couche webhook
+# vivante ``apps.publicapi`` (``publicapi.Webhook`` + ``publicapi.delivery``) :
+# aucun câblage ne le déclenchait, ses abonnements ne partaient jamais. On garde
+# UNE seule surface d'abonnement (publicapi). Le modèle est retiré par la
+# migration ``0027`` (destructive mais réversible). Voir PLAN2 QX37.
 # ---------------------------------------------------------------------------
-
-
-class WebhookSubscription(TimestampedModel):
-    """Abonnement webhook sortant (REST hook) pour Zapier/Make (FG376).
-
-    GÉNÉRIQUE : ``event`` est un nom d'événement en texte libre ; ``target_url``
-    reçoit le payload en POST. ``secret`` (optionnel) sert à signer le payload
-    (HMAC) pour que l'abonné vérifie l'authenticité. Multi-tenant : ``company``
-    obligatoire. Unique par ``(company, event, target_url)``.
-    """
-
-    company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
-        related_name='webhook_subscriptions', verbose_name='Société')
-
-    event = models.CharField(
-        'Événement', max_length=80,
-        help_text='Nom d\'événement, ex. « devis_accepted ».')
-    target_url = models.URLField('URL cible', max_length=500)
-    secret = models.CharField(
-        'Secret de signature', max_length=120, blank=True, default='',
-        help_text='Optionnel : clé HMAC pour signer le payload (en-tête '
-                  'X-Taqinor-Signature).')
-    actif = models.BooleanField('Actif', default=True)
-
-    last_delivery_le = models.DateTimeField(
-        'Dernière livraison', null=True, blank=True)
-    last_status = models.IntegerField(
-        'Dernier statut HTTP', null=True, blank=True)
-
-    class Meta:
-        verbose_name = 'Abonnement webhook'
-        verbose_name_plural = 'Abonnements webhook'
-        ordering = ['event', 'id']
-        constraints = [
-            models.UniqueConstraint(
-                fields=['company', 'event', 'target_url'],
-                name='core_webhook_co_evt_url'),
-        ]
-        indexes = [
-            models.Index(fields=['company', 'event', 'actif'],
-                         name='core_webhook_co_evt_idx'),
-        ]
-
-    def __str__(self):
-        return f'{self.event} → {self.target_url}'
 
 
 # ---------------------------------------------------------------------------
@@ -1935,3 +1973,427 @@ class ContentTranslation(TimestampedModel):
 
     def __str__(self):
         return f'{self.content_type}#{self.object_id} [{self.locale}] {self.field}'
+
+
+# ---------------------------------------------------------------------------
+# NTPLT6 — Compteurs d'usage par tenant (metering).
+#
+# Photographie NOCTURNE, par société et par jour, de la consommation :
+# nombre de lignes par grosse table, octets MinIO du préfixe société, nombre
+# de requêtes API du jour, nombre de tâches Celery. FONDATION technique que
+# N100 (plans/billing, volontairement différé) consommera plus tard sans
+# re-travail. ``core`` reste FONDATION : aucune app métier n'est importée — les
+# comptages passent par le registre Django (get_models) et des string-FK.
+# ---------------------------------------------------------------------------
+
+
+class TenantUsageSnapshot(TimestampedModel):
+    """Instantané quotidien d'usage d'une société (metering, NTPLT6).
+
+    Une ligne par ``(company, jour)`` (idempotente : ré-exécuter le snapshot du
+    jour met à jour la même ligne). Les comptages sont BORNÉS (COUNT plafonné,
+    jamais un scan illimité) et l'ensemble par table vit dans un JSON pour
+    rester agnostique du schéma (aucune FK vers une app domaine).
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='usage_snapshots', verbose_name='Société')
+    jour = models.DateField(
+        'Jour', help_text="Jour de l'instantané (UTC).")
+
+    lignes_par_table = models.JSONField(
+        'Lignes par table', default=dict, blank=True,
+        help_text="{ 'app_label.Model': nombre_de_lignes } pour les grosses "
+                  "tables company-scopées (comptage borné).")
+    octets_minio = models.BigIntegerField(
+        'Octets MinIO', default=0,
+        help_text="Total d'octets stockés sous le préfixe société dans MinIO "
+                  "(0 si le stockage est indisponible).")
+    nb_requetes_api = models.PositiveIntegerField(
+        'Requêtes API du jour', default=0,
+        help_text="Somme des requêtes API (ApiUsageRecord) de la société ce "
+                  "jour-là.")
+    nb_taches_celery = models.PositiveIntegerField(
+        'Tâches Celery', default=0,
+        help_text="Nombre de tâches Celery attribuables à la société ce jour "
+                  "(0 si non instrumenté).")
+
+    class Meta:
+        verbose_name = "Instantané d'usage"
+        verbose_name_plural = "Instantanés d'usage"
+        ordering = ['-jour', 'company_id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'jour'],
+                name='core_tenantusage_company_jour'),
+        ]
+        indexes = [
+            models.Index(fields=['company', '-jour'],
+                         name='core_tenantusage_co_jour_idx'),
+        ]
+
+    def __str__(self):
+        return f'Usage {self.company_id} le {self.jour}'
+
+
+class IdempotencyKey(TimestampedModel):
+    """NTPLT28 — clé d'idempotence (repli DB du décorateur ``idempotent_task``).
+
+    Utilisée UNIQUEMENT quand Redis est indisponible : la contrainte unique sur
+    ``cle`` garantit qu'une exécution logique (identifiée par ``cle``) n'a lieu
+    qu'une fois. Aucune FK ``company`` : la clé encode elle-même son périmètre
+    (souvent l'``id`` société + le nom de la tâche + la fenêtre). ``created_at``
+    (hérité) sert de base au calcul d'expiration (``ttl``).
+    """
+
+    cle = models.CharField('Clé', max_length=255, unique=True)
+
+    class Meta:
+        verbose_name = "Clé d'idempotence"
+        verbose_name_plural = "Clés d'idempotence"
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return self.cle
+
+
+class SequenceCounter(TenantModel):
+    """NTPLT41 — allocateur de séquence HAUT DÉBIT (opt-in).
+
+    Compteur monotone par ``(company, cle)`` alloué SOUS ``select_for_update``
+    par BLOCS de N — pour les volumes élevés (numéros de jobs internes,
+    identifiants de chatter…) où le pattern gapless ``core.numbering`` (max +1
+    par scan, réservé aux documents FISCAUX) coûterait trop cher. Ici on
+    ASSUME les trous : un bloc réservé et non entièrement consommé laisse un
+    intervalle non attribué — jamais un doublon.
+
+    ``dernier`` = dernière valeur RÉSERVÉE. ``allocate(company, cle, n)`` verrou
+    la ligne, incrémente de ``n`` en une écriture et renvoie la plage
+    ``range(debut, debut + n)`` — 1 000 allocations concurrentes ne produisent
+    ni doublon ni trou NON documenté (les trous inter-blocs sont assumés).
+    """
+
+    cle = models.CharField(
+        'Clé', max_length=100,
+        help_text="Nom logique de la séquence (ex. 'job', 'chatter').")
+    dernier = models.BigIntegerField('Dernier réservé', default=0)
+
+    class Meta:
+        verbose_name = 'Compteur de séquence'
+        verbose_name_plural = 'Compteurs de séquence'
+        ordering = ['company_id', 'cle']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'cle'],
+                name='core_sequencecounter_company_cle'),
+        ]
+
+    def __str__(self):
+        return f'{self.cle}@{self.company_id}={self.dernier}'
+
+    @classmethod
+    def allocate(cls, company, cle, n=1):
+        """Réserve un bloc de ``n`` valeurs pour ``(company, cle)``.
+
+        Atomique et race-safe : verrou la ligne (``select_for_update``),
+        avance ``dernier`` de ``n`` en une écriture, renvoie ``range(debut,
+        fin)`` (les ``n`` entiers réservés). Crée la ligne si absente. ``n``
+        doit être ≥ 1.
+        """
+        from django.db import transaction
+        n = max(1, int(n))
+        with transaction.atomic():
+            row, _ = cls.objects.select_for_update().get_or_create(
+                company=company, cle=cle, defaults={'dernier': 0})
+            debut = row.dernier + 1
+            row.dernier = row.dernier + n
+            row.save(update_fields=['dernier', 'updated_at'])
+            return range(debut, debut + n)
+
+    @classmethod
+    def next(cls, company, cle):
+        """Réserve et renvoie UNE valeur (raccourci de ``allocate(...,1)``)."""
+        return cls.allocate(company, cle, 1).start
+
+
+class TenantLimit(TenantModel):
+    """NTPLT7 — limite douce de consommation par société (enforcement DOUX).
+
+    Une clé parmi ``max_lignes_table`` / ``max_stockage_mo`` /
+    ``max_exports_jour`` porte une ``valeur`` (``0`` = illimité). Consultée par
+    dataimport / exports / upload via ``core.limits.verifier`` : un dépassement
+    NOTIFIE les admins et pose un en-tête ``X-Quota-Warning`` — JAMAIS un blocage
+    dur. Vente : les groupes multi-filiales exigent des garde-fous de
+    consommation par entité, sans jamais couper le service.
+    """
+
+    CLE_MAX_LIGNES = 'max_lignes_table'
+    CLE_MAX_STOCKAGE_MO = 'max_stockage_mo'
+    CLE_MAX_EXPORTS_JOUR = 'max_exports_jour'
+    CLE_CHOICES = [
+        (CLE_MAX_LIGNES, 'Lignes maximum par table'),
+        (CLE_MAX_STOCKAGE_MO, 'Stockage maximum (Mo)'),
+        (CLE_MAX_EXPORTS_JOUR, 'Exports maximum par jour'),
+    ]
+
+    cle = models.CharField('Clé', max_length=32, choices=CLE_CHOICES)
+    valeur = models.BigIntegerField(
+        'Valeur', default=0,
+        help_text='Plafond (0 = illimité).')
+
+    class Meta:
+        verbose_name = 'Limite tenant'
+        verbose_name_plural = 'Limites tenant'
+        ordering = ['company_id', 'cle']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'cle'],
+                name='core_tenantlimit_company_cle'),
+        ]
+
+    def __str__(self):
+        return f'{self.cle}={self.valeur} @{self.company_id}'
+
+
+class MaintenanceMode(TimestampedModel):
+    """NTPLT55 — mode lecture seule (maintenance) activable À CHAUD.
+
+    Singleton en base (une seule ligne, ``pk=1``) mis en cache 5 s : quand
+    ``actif`` est vrai, le middleware ``core.maintenance.MaintenanceModeMiddleware``
+    répond 503 aux méthodes NON-SÛRES (POST/PUT/PATCH/DELETE) avec un message
+    français + ``Retry-After``, en laissant passer login/logout/health. Brique
+    indispensable des bascules de schéma délicates sous trafic. Transverse à
+    toutes les sociétés (pas de FK company) — piloté par l'exploitant.
+    """
+
+    CACHE_KEY = 'core:maintenance_mode'
+    CACHE_TTL = 5  # secondes — relit la DB au plus toutes les 5 s.
+
+    actif = models.BooleanField('Maintenance active', default=False)
+    message = models.CharField(
+        'Message', max_length=255,
+        default='Maintenance en cours, réessayez dans quelques instants.')
+
+    class Meta:
+        verbose_name = 'Mode maintenance'
+        verbose_name_plural = 'Mode maintenance'
+
+    def __str__(self):
+        return 'ACTIF' if self.actif else 'inactif'
+
+    @classmethod
+    def get_solo(cls):
+        """Renvoie (crée si absent) la ligne singleton (``pk=1``)."""
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+    @classmethod
+    def is_active(cls):
+        """État courant (``bool``), mis en cache ``CACHE_TTL`` secondes.
+
+        Dégrade en ``False`` (service ouvert) si le cache ET la DB échouent —
+        une panne d'infrastructure ne doit jamais fermer l'ERP par erreur.
+        """
+        from django.core.cache import cache
+        try:
+            cached = cache.get(cls.CACHE_KEY)
+            if cached is not None:
+                return bool(cached)
+        except Exception:  # noqa: BLE001 — cache KO → lit la DB
+            cached = None
+        try:
+            actif = cls.get_solo().actif
+        except Exception:  # noqa: BLE001 — DB KO → service ouvert (fail-open)
+            return False
+        try:
+            cache.set(cls.CACHE_KEY, actif, cls.CACHE_TTL)
+        except Exception:  # noqa: BLE001 — cache KO → tant pis
+            pass
+        return bool(actif)
+
+    @classmethod
+    def set_active(cls, actif, message=None):
+        """Active/désactive la maintenance + invalide le cache immédiatement."""
+        from django.core.cache import cache
+        obj = cls.get_solo()
+        obj.actif = bool(actif)
+        if message is not None:
+            obj.message = message
+        obj.save(update_fields=['actif', 'message', 'updated_at'])
+        try:
+            cache.set(cls.CACHE_KEY, obj.actif, cls.CACHE_TTL)
+        except Exception:  # noqa: BLE001 — cache KO → prochaine lecture relit DB
+            pass
+        return obj
+
+
+class BackgroundJob(TenantModel):
+    """NTPLT29 — job de fond avec progression (exports lourds, imports longs).
+
+    Trace un travail asynchrone lancé pour un utilisateur : ``kind`` (type
+    logique), ``statut`` (queued→running→done/failed), ``progress_pct``,
+    ``result_file_key`` (clé MinIO du livrable), ``message_erreur``. Company et
+    user sont TOUJOURS posés server-side (jamais depuis le corps de requête).
+    Socle de NTPLT30 (exports lourds asynchrones) et du commit dataimport long.
+    """
+
+    STATUT_QUEUED = 'queued'
+    STATUT_RUNNING = 'running'
+    STATUT_DONE = 'done'
+    STATUT_FAILED = 'failed'
+    STATUT_CHOICES = [
+        (STATUT_QUEUED, 'En file'),
+        (STATUT_RUNNING, 'En cours'),
+        (STATUT_DONE, 'Terminé'),
+        (STATUT_FAILED, 'Échoué'),
+    ]
+
+    user = models.ForeignKey(
+        'authentication.CustomUser', on_delete=models.CASCADE,
+        related_name='background_jobs', verbose_name='Utilisateur')
+    kind = models.CharField('Type', max_length=64)
+    statut = models.CharField(
+        'Statut', max_length=16, choices=STATUT_CHOICES,
+        default=STATUT_QUEUED)
+    progress_pct = models.PositiveSmallIntegerField('Progression (%)',
+                                                    default=0)
+    result_file_key = models.CharField(
+        'Clé fichier résultat', max_length=512, blank=True, default='')
+    message_erreur = models.TextField('Message d’erreur', blank=True,
+                                      default='')
+
+    class Meta:
+        verbose_name = 'Job de fond'
+        verbose_name_plural = 'Jobs de fond'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['company', 'user', '-created_at'],
+                         name='core_bgjob_co_user_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.kind}:{self.statut} ({self.progress_pct}%)'
+
+    def marquer_progression(self, pct):
+        """Met à jour la progression (borne 0-100) + passe en ``running``."""
+        self.progress_pct = max(0, min(100, int(pct)))
+        if self.statut == self.STATUT_QUEUED:
+            self.statut = self.STATUT_RUNNING
+        self.save(update_fields=['progress_pct', 'statut', 'updated_at'])
+
+    def marquer_termine(self, result_file_key=''):
+        """Passe le job en ``done`` (100 %) avec la clé du livrable."""
+        self.statut = self.STATUT_DONE
+        self.progress_pct = 100
+        self.result_file_key = result_file_key or ''
+        self.save(update_fields=['statut', 'progress_pct',
+                                 'result_file_key', 'updated_at'])
+
+    def marquer_echec(self, message=''):
+        """Passe le job en ``failed`` avec un message d'erreur."""
+        self.statut = self.STATUT_FAILED
+        self.message_erreur = (message or '')[:5000]
+        self.save(update_fields=['statut', 'message_erreur', 'updated_at'])
+
+
+class OutboxEvent(TimestampedModel):
+    """NTPLT9 — événement métier en OUTBOX transactionnel.
+
+    Écrit DANS la transaction de l'appelant (``emit_reliable``) puis livré par un
+    worker (NTPLT10) aux handlers DURABLES — « aucun événement métier perdu,
+    même sur crash ». ``company`` est nullable (événements système transverses).
+    L'événement synchrone M6 existant est émis inchangé via
+    ``transaction.on_commit`` (façade préservée : zéro breaking change pour les
+    abonnés actuels).
+    """
+
+    STATUT_PENDING = 'pending'
+    STATUT_DELIVERED = 'delivered'
+    STATUT_FAILED = 'failed'
+    STATUT_DEAD = 'dead'
+    STATUT_CHOICES = [
+        (STATUT_PENDING, 'En attente'),
+        (STATUT_DELIVERED, 'Livré'),
+        (STATUT_FAILED, 'En échec (à réessayer)'),
+        (STATUT_DEAD, 'Abandonné (dead-letter)'),
+    ]
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='outbox_events', null=True, blank=True,
+        verbose_name='Société')
+    event_name = models.CharField('Événement', max_length=100)
+    payload = models.JSONField('Payload', default=dict, blank=True)
+    event_id = models.UUIDField(
+        'Event ID', default=uuid.uuid4, unique=True, editable=False)
+    occurred_at = models.DateTimeField('Survenu le', default=timezone.now)
+    statut = models.CharField(
+        'Statut', max_length=12, choices=STATUT_CHOICES,
+        default=STATUT_PENDING, db_index=True)
+    tentatives = models.PositiveIntegerField('Tentatives', default=0)
+    prochaine_tentative = models.DateTimeField(
+        'Prochaine tentative', null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Événement outbox'
+        verbose_name_plural = 'Événements outbox'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['statut', 'prochaine_tentative'],
+                         name='core_outbox_statut_next_idx'),
+            models.Index(fields=['event_name', '-created_at'],
+                         name='core_outbox_name_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.event_name}:{self.statut} ({self.event_id})'
+
+
+class ProcessedEvent(TimestampedModel):
+    """NTPLT10 (étend YDATA12) — déduplication CONSOMMATEUR par (event_id,
+    handler).
+
+    Une ligne = « ce handler a déjà traité cet événement ». La contrainte
+    unique ``(event_id, handler_name)`` garantit qu'un crash/rejeu ne
+    double-livre jamais un événement à un handler donné (livraison
+    at-least-once + dédup = effet exactement-une-fois côté consommateur).
+    """
+
+    event_id = models.UUIDField('Event ID')
+    handler_name = models.CharField('Handler', max_length=200)
+
+    class Meta:
+        verbose_name = 'Événement traité'
+        verbose_name_plural = 'Événements traités'
+        ordering = ['-created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['event_id', 'handler_name'],
+                name='core_processedevent_evt_handler'),
+        ]
+
+    def __str__(self):
+        return f'{self.event_id}->{self.handler_name}'
+
+
+# YDATA12/YAPIC9 — ProcessedWebhookEvent + IdempotencyRecord sont déclarés
+# dans core/idempotency.py (pour éviter l'import circulaire : ce module
+# aurait dû importer TenantModel depuis ICI). Réexportés en TOUT dernier
+# (même pattern que apps/installations/models.py avec ses fichiers
+# models_*.py éclatés) pour que la découverte Django (app_label,
+# migrations) les voie normalement.
+from core.idempotency import (  # noqa: E402,F401
+    IdempotencyRecord, ProcessedWebhookEvent,
+)
+
+# NTSEC21 — Partage niveau enregistrement : ``SharingRule`` défini dans
+# ``core/sharing.py`` (même pattern d'éclatement que ``core/idempotency.py``),
+# réexporté ici en tout dernier pour que la découverte Django (app_label 'core',
+# migrations) le voie normalement.
+from core.sharing import SharingRule  # noqa: E402,F401
+
+# NTSEC23 — Permissions niveau champ : ``FieldPermissionRule`` défini dans
+# ``core/field_permissions.py`` (même pattern d'éclatement), réexporté ici en
+# tout dernier pour la découverte Django (app_label 'core', migrations).
+from core.field_permissions import FieldPermissionRule  # noqa: E402,F401

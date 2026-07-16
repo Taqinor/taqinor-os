@@ -4,10 +4,16 @@ Le PDF liste UNIQUEMENT produits/quantités/date limite de réponse — JAMAIS u
 prix interne (achat ou vente) : c'est un document CONSULTATIF envoyé à
 l'extérieur. Rendu en Python string + WeasyPrint (même patron léger que
 ``apps.qhse.services.rendre_analyse_ncr_pdf`` — pas de nouveau fichier
-template Django enregistré)."""
+template Django enregistré).
+
+ARC12 — la plomberie WeasyPrint (``HTML(string=...).write_pdf()``) est
+déléguée au service partagé ``core.pdf.render_pdf`` ; le GABARIT HTML
+ci-dessous reste STRICTEMENT identique, donc le rendu est inchangé à l'octet
+près."""
 from django.utils.html import escape
 
 from apps.ventes.utils.pdf import _company_context
+from core.pdf import render_pdf
 
 
 def _lignes_html(rfq):
@@ -32,8 +38,6 @@ def _lignes_html(rfq):
 
 def rfq_pdf_bytes(rfq):
     """XPUR20 — PDF RFQ (produits/quantités/date limite), AUCUN prix interne."""
-    import weasyprint  # import local : lib lourde, chargée à la demande
-
     ctx = _company_context(rfq.company)
     date_limite = (rfq.date_limite_reponse.strftime('%d/%m/%Y')
                    if rfq.date_limite_reponse else 'Non précisée')
@@ -54,4 +58,4 @@ def rfq_pdf_bytes(rfq):
       offre (montant HT, délai, validité) avant la date limite ci-dessus.</p>
     </body></html>
     """
-    return weasyprint.HTML(string=html).write_pdf()
+    return render_pdf(html=html)

@@ -2,7 +2,7 @@ from django.db import transaction  # noqa: F401
 from rest_framework import viewsets, filters, status  # noqa: F401
 from rest_framework.decorators import action  # noqa: F401
 from rest_framework.response import Response  # noqa: F401
-from authentication.mixins import TenantMixin  # noqa: F401
+from core.viewsets import CompanyScopedModelViewSet
 from ..models import AcompteFournisseur
 from ..serializers import AcompteFournisseurSerializer
 from authentication.permissions import (  # noqa: F401
@@ -16,7 +16,7 @@ READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
 
-class AcompteFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
+class AcompteFournisseurViewSet(CompanyScopedModelViewSet):
     """XPUR8 — acomptes/avances fournisseur sur BCF. Imputés automatiquement
     (idempotent) sur la première facture du BCF via
     `services.facturer_reception` → `imputer_acomptes_bcf`. Lecture tout

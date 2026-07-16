@@ -58,8 +58,16 @@ class PublicLinkRateThrottle(SimpleRateThrottle):
     rate = '30/minute'
 
     def get_rate(self):
-        # Taux fixé inline : pas besoin d'entrée DEFAULT_THROTTLE_RATES.
-        return self.rate
+        # QX41 — source de vérité UNIQUE : le taux vient de
+        # DEFAULT_THROTTLE_RATES['public_sharelink'] (settings), repli sur le
+        # défaut inline si absent (rétro-compatible).
+        try:
+            from django.conf import settings
+            rates = (settings.REST_FRAMEWORK or {}).get(
+                'DEFAULT_THROTTLE_RATES', {})
+            return rates.get(self.scope) or self.rate
+        except Exception:  # noqa: BLE001
+            return self.rate
 
     def get_cache_key(self, request, view):
         token = (view.kwargs or {}).get('token', '') if view else ''
@@ -81,6 +89,27 @@ def _not_found():
         {'detail': LINK_EXPIRED_MESSAGE},
         status=status.HTTP_404_NOT_FOUND,
     ))
+
+
+_CONFIDENTIAL_KEY_MARKERS = ('prix_achat', 'achat', 'marge', 'revendeur')
+
+
+def _strip_confidential_deep(obj):
+    """RÈGLE #4 — retire RÉCURSIVEMENT toute clé de dict contenant un marqueur
+    d'achat/marge (prix_achat, achat, marge, revendeur) à N'IMPORTE QUELLE
+    profondeur, avant toute exposition client. Un layout 3D brut imbriqué
+    (Devis.roof_layout, un panneau portant ``prix_achat``/``marge``) ne peut
+    plus fuiter le prix d'achat que le filtre de premier niveau manquait. Listes
+    parcourues élément par élément ; scalaires renvoyés inchangés."""
+    if isinstance(obj, dict):
+        return {
+            k: _strip_confidential_deep(v)
+            for k, v in obj.items()
+            if not any(m in str(k) for m in _CONFIDENTIAL_KEY_MARKERS)
+        }
+    if isinstance(obj, (list, tuple)):
+        return [_strip_confidential_deep(v) for v in obj]
+    return obj
 
 
 def _stamp_view(link):
@@ -241,6 +270,20 @@ def _client_ip(request):
     return (fwd.split(',')[0].strip() or request.META.get('REMOTE_ADDR') or '')
 
 
+def _parse_client_ts(value):
+    """QX9 — parse l'horodatage client ISO 8601 (best-effort → None si invalide).
+
+    Utilisé pour ``DevisSignature.signed_at_client`` : jamais bloquant, un
+    format inattendu tombe simplement à None (l'horodatage serveur fait foi)."""
+    if not value:
+        return None
+    try:
+        from django.utils.dateparse import parse_datetime
+        return parse_datetime(str(value))
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def _resolve_proposal_link(token):
     """Return a valid devis-bearing ShareLink for this token, or None."""
     link = (
@@ -275,22 +318,33 @@ def _monthly_consumption(devis) -> list:
     """T4 — consommation mensuelle (kWh/mois) depuis les factures RÉELLES.
 
     Lit les factures du lead du devis via le sélecteur CRM (cross-app lecture
-    seule, jamais d'import direct de ``apps.crm.models``). Convertit MAD→kWh
-    avec le tarif INTERNE existant du projet (quote_engine.constants.KWH_PRICE),
-    jamais un nouveau tarif codé en dur. Facture d'hiver toute l'année, ou
-    hiver+été quand ``ete_differente`` (été = mois ~Mai→Oct). Sans facture → []
-    (la page masque alors le graphe)."""
+    seule, jamais d'import direct de ``apps.crm.models``). QX7d — convertit
+    MAD→kWh par le MÊME barème progressif que le chemin ROI
+    (``quote_engine.pricing.kwh_from_bill`` : tranches ONEE/Lydec/Redal du
+    distributeur, repli plat étiqueté sinon), au lieu de l'ancien prix plat
+    figé 1,75 MAD/kWh qui contredisait le tarif ROI (~1,20) sur la même
+    proposition. Facture d'hiver toute l'année, ou hiver+été quand
+    ``ete_differente`` (été = mois ~Mai→Oct). Sans facture → [] (la page masque
+    alors le graphe)."""
     from apps.crm.selectors import lead_bills_for_devis
     bills = lead_bills_for_devis(devis)
     if not bills:
         return []
-    from .quote_engine.constants import KWH_PRICE
-    if not KWH_PRICE:
-        return []
+    from .quote_engine.pricing import kwh_from_bill
+    utility = bills.get('distributeur')
     hiver_mad = bills['facture_hiver']
     ete_mad = bills['facture_ete']
     # Mois « été » (index 0=Jan) : Mai→Octobre. Le reste = hiver.
     ete_months = {4, 5, 6, 7, 8, 9}
+    # Barème stable par facture → on mémoïse la conversion (2 valeurs max).
+    _cache = {}
+
+    def _kwh(mad):
+        if mad not in _cache:
+            _cache[mad] = round(
+                kwh_from_bill(mad, utility=utility).get('kwh_mensuel') or 0)
+        return _cache[mad]
+
     out = []
     for m in range(12):
         if (bills['ete_differente'] and ete_mad is not None
@@ -298,7 +352,7 @@ def _monthly_consumption(devis) -> list:
             mad = ete_mad
         else:
             mad = hiver_mad
-        out.append(round(mad / KWH_PRICE))
+        out.append(_kwh(mad))
     return out
 
 
@@ -437,10 +491,12 @@ def proposal_data(request, token):
         devis = link.devis
         data = build_quote_data(devis, {'pdf_mode': 'full'})
         # Rule #4 — jamais de prix d'achat / marge côté client, même si le
-        # builder en plaçait par mégarde dans la donnée du devis (défense en
-        # profondeur : retirer toute clé d'achat/marge avant l'exposition).
-        data = {k: v for k, v in data.items()
-                if not any(s in k for s in ('prix_achat', 'achat', 'marge', 'revendeur'))}
+        # builder en plaçait par mégarde dans la donnée du devis. Défense en
+        # profondeur RÉCURSIVE : un layout 3D brut (Devis.roof_layout) peut être
+        # imbriqué dans ``data`` avec des clés « prix_achat »/« marge » sur
+        # chaque panneau — un filtre de premier niveau les manquait. On retire
+        # donc toute clé confidentielle à N'IMPORTE QUELLE profondeur.
+        data = _strip_confidential_deep(data)
         roof_url = None
         if data.get('roof_image_key'):
             try:
@@ -707,21 +763,32 @@ def proposal_engagement(request, token):
         # proposition côté client, mais on n'enregistre rien d'invalide.
         return _noindex(Response(status=status.HTTP_204_NO_CONTENT))
 
-    engagement = dict(link.engagement or {})
-    slot = dict(engagement.get(section) or {'seconds': 0, 'hits': 0})
-    slot['seconds'] = int(slot.get('seconds', 0)) + seconds
-    slot['hits'] = int(slot.get('hits', 0)) + 1
-    engagement[section] = slot
-    link.engagement = engagement
+    # QX30be — CORRECTIF perte de mise à jour : le read-modify-write du JSON
+    # d'engagement était NON atomique (deux beacons de sections concurrents se
+    # écrasaient — last-write-win). On relit le lien VERROUILLÉ dans une
+    # transaction (select_for_update) et on fusionne sur l'état frais.
+    from django.db import transaction
+    with transaction.atomic():
+        locked = (ShareLink.objects.select_for_update()
+                  .get(pk=link.pk))
+        engagement = dict(locked.engagement or {})
+        slot = dict(engagement.get(section) or {'seconds': 0, 'hits': 0})
+        slot['seconds'] = int(slot.get('seconds', 0)) + seconds
+        slot['hits'] = int(slot.get('hits', 0)) + 1
+        engagement[section] = slot
+        locked.engagement = engagement
 
-    total_seconds = sum(int(v.get('seconds', 0)) for v in engagement.values())
-    newly_deep = (
-        link.deep_engagement_logged_at is None
-        and total_seconds >= _DEEP_ENGAGEMENT_THRESHOLD_SECONDS
-    )
-    if newly_deep:
-        link.deep_engagement_logged_at = timezone.now()
-    link.save(update_fields=['engagement', 'deep_engagement_logged_at'])
+        total_seconds = sum(
+            int(v.get('seconds', 0)) for v in engagement.values())
+        newly_deep = (
+            locked.deep_engagement_logged_at is None
+            and total_seconds >= _DEEP_ENGAGEMENT_THRESHOLD_SECONDS
+        )
+        if newly_deep:
+            locked.deep_engagement_logged_at = timezone.now()
+        locked.save(
+            update_fields=['engagement', 'deep_engagement_logged_at'])
+    link = locked
 
     if newly_deep and link.devis_id:
         try:
@@ -758,8 +825,25 @@ def proposal_accept(request, token):
             {'detail': 'Votre nom est requis pour signer la proposition.'},
             status=status.HTTP_400_BAD_REQUEST))
     option = (request.data.get('option') or '').strip()
-    # QJ10 — consentement explicite requis pour la validité loi 53-05.
-    consentement = bool(request.data.get('consentement', True))
+    # QX9 — consentement explicite requis (loi 43-20). Le front envoie
+    # ``consent_esign`` (booléen) ; on accepte aussi l'ancien ``consentement``
+    # en repli. Le consentement ne défaute PLUS silencieusement à True : une
+    # acceptation sans consentement explicite est refusée (400).
+    consent_raw = request.data.get('consent_esign')
+    if consent_raw is None:
+        consent_raw = request.data.get('consentement')
+    consentement = consent_raw in (True, 'true', 'True', '1', 1, 'on')
+    if not consentement:
+        return _noindex(Response(
+            {'detail': 'Votre consentement explicite à la signature '
+                       'électronique est requis pour accepter la '
+                       'proposition.'},
+            status=status.HTTP_400_BAD_REQUEST))
+    # QX9 — preuve de signature réelle envoyée par le front.
+    signature_image = (request.data.get('signature_data_url') or '')
+    signed_at_client = _parse_client_ts(
+        request.data.get('signed_at_client'))
+    on_behalf_of = (request.data.get('on_behalf_of') or '').strip()[:150]
     # QJ11 — code OTP si le toggle est actif (service gère la validation).
     otp_code = (request.data.get('otp_code') or '').strip()
     from .services import accept_devis, AcceptError, validate_esign_otp
@@ -775,17 +859,144 @@ def proposal_accept(request, token):
             ip=_client_ip(request),
             user_agent=request.META.get('HTTP_USER_AGENT', '')[:512],
             consentement=consentement,
+            signature_image=signature_image,
+            signed_at_client=signed_at_client,
+            on_behalf_of=on_behalf_of,
         )
     except AcceptError as exc:
         return _noindex(Response(
             {'detail': exc.message},
             status=(status.HTTP_409_CONFLICT if exc.conflict
                     else status.HTTP_400_BAD_REQUEST)))
+    # QX33be — état de succès post-signature : acompte (tranche 1 sur le TTC
+    # REMISÉ per QX1) + instructions de virement (RIB) + slot lien carte si un
+    # PSP est configuré. Aucun changement de comportement si rien n'est
+    # configuré (RIB vide, pas de PSP) — l'objet ``paiement`` est alors minimal.
     return _noindex(Response({
         'detail': 'Proposition acceptée. Merci !',
         'reference': devis.reference,
         'statut': devis.statut,
         'accepte_par_nom': devis.accepte_par_nom,
+        'paiement': _deposit_success_payload(devis, token),
+    }))
+
+
+def _company_rib():
+    """QX33be — coordonnées de virement (RIB/IBAN) depuis settings/env.
+
+    Non stocké sur un modèle aujourd'hui : lu depuis ``settings.COMPANY_RIB``
+    (ou l'env). Vide → aucune instruction de virement affichée (dégradation
+    propre, aucun changement de comportement)."""
+    from django.conf import settings
+    return (getattr(settings, 'COMPANY_RIB', '') or '').strip()
+
+
+def _deposit_success_payload(devis, token):
+    """QX33be — payload d'acompte pour l'écran/email de succès post-signature.
+
+    Montant = 1ʳᵉ tranche de l'échéancier (acompte) calculée sur le TTC REMISÉ
+    (chaîne canonique QX1). RIB si configuré. ``card_payment_url`` non nul
+    UNIQUEMENT si un vrai PSP est configuré (QXG2) — sinon None. Best-effort :
+    jamais d'exception (renvoie un payload minimal)."""
+    from decimal import Decimal
+    payload = {
+        'acompte_ttc': None,
+        'pourcentage': None,
+        'rib': _company_rib(),
+        'message': '',
+        'declare_url': f'/api/django/public/proposal/{token}/virement/',
+        'card_payment_url': None,
+    }
+    try:
+        from .utils.echeancier import next_tranche
+        from .deposit import deposit_protection_message
+        tr = next_tranche(devis)
+        if tr is not None:
+            acompte = Decimal(str(tr['ttc']))
+            payload['acompte_ttc'] = str(acompte)
+            payload['pourcentage'] = str(tr.get('pourcentage'))
+            payload['message'] = deposit_protection_message(
+                acompte, reference=devis.reference)
+    except Exception:  # noqa: BLE001 — best-effort
+        pass
+    # QX33be — slot lien carte : actif seulement si un PSP réel est configuré.
+    try:
+        from django.conf import settings
+        provider = (getattr(settings, 'PAYMENT_PROVIDER', '') or '').strip()
+        if provider and provider != 'noop':
+            payload['card_payment_url'] = (
+                f'/api/django/public/proposal/{token}/pay-card/')
+    except Exception:  # noqa: BLE001
+        pass
+    return payload
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+@throttle_classes([PublicLinkRateThrottle])
+def suivi_public(request, token):
+    """QX34 — suivi post-signature public en LECTURE SEULE, tokenisé.
+
+    Renvoie la timeline de jalons (accepté → acompte reçu → matériel commandé →
+    installation → facturé) dérivée des lignes EXISTANTES (aucun statut/PDF
+    touché — règle #4). Même discipline de jeton que ShareLink. 404 si le jeton
+    est invalide/expiré. Jamais de prix d'achat/marge."""
+    from .selectors import devis_milestones
+    data = devis_milestones(token)
+    if data is None:
+        return _not_found()
+    return _noindex(Response(data))
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+@throttle_classes([PublicLinkRateThrottle])
+def proposal_virement_declare(request, token):
+    """QX33be — le client déclare « j'ai effectué le virement ».
+
+    Notifie le vendeur (Notification + chatter) et pose un horodatage sur le
+    devis via une note chatter — NE change JAMAIS le statut du devis ni ne crée
+    de Paiement (l'encaissement réel reste manuel/vérifié, règle #4). Idempotent
+    par lien (cache.add). Best-effort : jamais d'exception 500."""
+    link = _resolve_proposal_link(token)
+    if link is None:
+        return _not_found()
+    devis = link.devis
+    # Idempotence : une déclaration par lien et par heure.
+    try:
+        from django.core.cache import cache
+        if not cache.add(f'qx33-virement:{link.pk}', True, 3600):
+            return _noindex(Response({
+                'detail': 'Votre déclaration a bien été prise en compte.',
+                'already': True,
+            }))
+    except Exception:  # noqa: BLE001
+        pass
+    # Chatter + notification vendeur (best-effort).
+    try:
+        from . import activity
+        activity.log_devis_note(
+            devis, None,
+            'Le client déclare avoir effectué le virement de l\'acompte.')
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        from apps.notifications.services import notify
+        from apps.notifications.models import EventType
+        vendeur = getattr(devis, 'created_by', None)
+        if vendeur is not None:
+            notify(
+                vendeur, EventType.CLIENT_CONTACT_REQUEST,
+                title=f'Virement déclaré — devis {devis.reference}',
+                body='Le client indique avoir effectué le virement de '
+                     'l\'acompte. À vérifier sur le compte bancaire.',
+                link=f'/ventes/devis?devis={devis.id}',
+                company=devis.company)
+    except Exception:  # noqa: BLE001
+        pass
+    return _noindex(Response({
+        'detail': 'Merci ! Votre déclaration a été transmise à votre '
+                  'conseiller.',
     }))
 
 
@@ -962,6 +1173,32 @@ def ecatalogue_demander_devis(request, token):
             status=status.HTTP_400_BAD_REQUEST))
 
     company = cat.company
+
+    # QX41 — verrou d'idempotence (cache.add atomique, miroir de
+    # proposal_contact_request) : un double-clic « demander un devis » ne crée
+    # plus deux brouillons + deux notifications. Clé = jeton catalogue + hash
+    # des coordonnées ET du panier — un vrai DEUXIÈME panier différent (même
+    # personne) passe tout de suite ; seul un rejeu STRICTEMENT identique
+    # (double-clic) est absorbé. Fenêtre courte (5 min). Un cache indisponible
+    # ne bloque jamais la demande.
+    try:
+        import hashlib
+        from django.core.cache import cache
+        panier_sig = '|'.join(
+            f'{c["produit"].id}:{c["quantite"]}' for c in clean_lignes)
+        req_hash = hashlib.sha256(
+            f'{telephone}|{email}|{nom}|{panier_sig}'.encode('utf-8')
+        ).hexdigest()[:24]
+        idem_key = f'qx41-ecat:{token}:{req_hash}'
+        if not cache.add(idem_key, True, 300):
+            return _noindex(Response({
+                'detail': ('Votre demande a déjà été transmise. '
+                           'Nous vous recontactons très vite.'),
+                'already_sent': True,
+            }, status=status.HTTP_201_CREATED))
+    except Exception:  # noqa: BLE001 — cache indisponible → on ne bloque pas
+        pass
+
     noms_produits = ', '.join(
         f'{c["produit"].nom} x{c["quantite"]}' for c in clean_lignes)
     transcript = f'Demande de devis depuis l\'e-catalogue « {cat.titre} » : {noms_produits}'

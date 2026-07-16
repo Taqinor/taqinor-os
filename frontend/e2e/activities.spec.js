@@ -7,7 +7,7 @@ test('E9: log an activity and see it in the cockpit', async ({ page }) => {
   await gotoLeads(page)
   const name = await createLead(page, { nom: uniq('Activity') })
   await openLead(page, name)
-  const modal = page.locator('.modal.modal-xl')
+  const modal = page.locator('[role="dialog"]').filter({ has: page.locator('.modal-title') })
 
   await modal.getByRole('button', { name: /Planifier une activité/ }).click()
   const summary = uniq('Appel')

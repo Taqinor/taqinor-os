@@ -3,6 +3,7 @@ import * as SelectPrimitive from '@radix-ui/react-select'
 import { Check, ChevronDown, ChevronUp } from 'lucide-react'
 import { cn } from '../lib/cn'
 import { Spinner } from './Spinner'
+import { pressItem } from './interaction'
 
 /* G23 — Select natif accessible (clavier + type-ahead gérés par Radix).
    Pour une liste fixe et courte. Combobox/MultiSelect couvrent la recherche. */
@@ -14,20 +15,42 @@ const triggerBase =
   'flex w-full items-center justify-between gap-2 rounded-md border border-input bg-card text-foreground shadow-ui-xs ' +
   'h-[var(--control-h)] px-[var(--control-px)] text-base sm:text-sm transition-colors ' +
   'placeholder:text-muted-foreground data-[placeholder]:text-muted-foreground ' +
-  'focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-ring ' +
+  'focus:outline-none focus-ring focus-visible:border-ring ' +
   'disabled:cursor-not-allowed disabled:opacity-60 ' +
   'aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 ' +
   '[&>span]:line-clamp-1 [&>span]:text-left'
 
+/* VX127 — `readOnly` ≠ `disabled`. Radix Select n'a pas de notion native
+   `readonly` (son trigger est un bouton, pas un champ) : on la simule —
+   focusable/lisible au clavier (contrairement à `disabled` qui retire le
+   trigger du tab order), mais l'ouverture est bloquée (pointer + clavier) et
+   le style reprend le même traitement que Input/Textarea readOnly (fond
+   distinct, curseur par défaut) plutôt que l'opacité 60 % de disabled. */
 export const SelectTrigger = forwardRef(function SelectTrigger(
-  { className, children, invalid, ...props },
+  { className, children, invalid, readOnly, onPointerDown, onKeyDown, ...props },
   ref,
 ) {
   return (
     <SelectPrimitive.Trigger
       ref={ref}
       aria-invalid={invalid || undefined}
-      className={cn(triggerBase, className)}
+      aria-readonly={readOnly || undefined}
+      onPointerDown={(e) => {
+        if (readOnly) { e.preventDefault(); return }
+        onPointerDown?.(e)
+      }}
+      onKeyDown={(e) => {
+        if (readOnly && ['Enter', ' ', 'ArrowDown', 'ArrowUp'].includes(e.key)) {
+          e.preventDefault()
+          return
+        }
+        onKeyDown?.(e)
+      }}
+      className={cn(
+        triggerBase,
+        readOnly && 'cursor-default bg-muted/40 [&>svg]:opacity-0',
+        className,
+      )}
       {...props}
     >
       {children}
@@ -114,6 +137,7 @@ export const SelectItem = forwardRef(function SelectItem({ className, children, 
       className={cn(
         'relative flex w-full cursor-pointer select-none items-center rounded-md py-1.5 pl-7 pr-2 text-sm outline-none',
         'focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+        pressItem,
         className,
       )}
       {...props}

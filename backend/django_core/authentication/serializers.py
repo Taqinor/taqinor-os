@@ -6,7 +6,11 @@ from .models import CustomUser, Company, UserSession
 class CompanySerializer(serializers.ModelSerializer):
     class Meta:
         model = Company
-        fields = ('id', 'nom', 'slug', 'actif', 'date_creation')
+        # SCA46 — expose le consentement benchmarking (Boolean, défaut False,
+        # opt-in strict). Aucune agrégation construite : le CONSENTEMENT est la
+        # donnée (voir NTDATA46 — toute future agrégation pointe ce champ).
+        fields = ('id', 'nom', 'slug', 'actif', 'benchmarking_opt_in',
+                  'date_creation')
         read_only_fields = ('id', 'slug', 'date_creation')
 
 
@@ -26,7 +30,21 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         otp = (self.initial_data.get('otp') or '').strip()
         data = super().validate(attrs)
         user = self.user
-        if user is not None and getattr(user, 'totp_enabled', False):
+        # SCA18 — refuse d'émettre un JWT pour un tenant NON actif (suspendu ou
+        # en fermeture). Vérifié APRÈS l'authentification (mot de passe prouvé),
+        # message français. Un superuser (support/console) reste exempté pour
+        # pouvoir intervenir. Un tenant actif est inchangé.
+        if user is not None and not getattr(user, 'is_superuser', False):
+            company = getattr(user, 'company', None)
+            if company is not None and not getattr(
+                    company, 'est_operationnel', True):
+                raise serializers.ValidationError(
+                    {'detail': "Ce compte société est suspendu. Contactez "
+                               "l'administrateur."},
+                    code='tenant_suspendu',
+                )
+        if user is not None and getattr(user, 'totp_enabled', False) \
+                and not self._device_is_trusted(user):
             if not otp:
                 # Signal clair que le 2FA est requis : le frontend déclenche la
                 # saisie du code à 6 chiffres et resoumet.
@@ -42,6 +60,34 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
                     code='otp_invalid',
                 )
         return data
+
+    def _device_is_trusted(self, user):
+        """NTSEC14 — vrai si la requête présente un appareil de confiance ACTIF
+        et que la société a activé ``allow_device_trust``. Best-effort et
+        default-deny : toute anomalie ⇒ False (la MFA reste exigée)."""
+        try:
+            request = self.context.get('request')
+            if request is None:
+                return False
+            company = getattr(user, 'company', None)
+            if company is None:
+                return False
+            from apps.parametres.models_company import CompanyProfile
+            profile = (
+                CompanyProfile.objects
+                .filter(company=company)
+                .only('allow_device_trust')
+                .first()
+            )
+            if not (profile and profile.allow_device_trust):
+                return False
+            token = request.COOKIES.get('device_trust_id')
+            if not token:
+                return False
+            from apps.identity.models import TrustedDevice
+            return TrustedDevice.is_trusted(user, token)
+        except Exception:
+            return False
 
     @classmethod
     def get_token(cls, user):
@@ -60,6 +106,13 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         token['company_nom'] = (
             user.company.nom if user.company else None
         )
+        # XPLT19 — société ACTIVE. À la connexion elle vaut la société d'attache
+        # (``company_id``) : comportement byte-identique pour un mono-société.
+        # Un switch (``/auth/switch-company/``) réémet des jetons portant l'id de
+        # la société choisie (membre uniquement). ``CookieJWTAuthentication``
+        # lit ce claim à chaque requête et borne ``request.user.company``.
+        from authentication.active_company import ACTIVE_COMPANY_CLAIM
+        token[ACTIVE_COMPANY_CLAIM] = user.company_id
         return token
 
 
@@ -130,6 +183,11 @@ class UserSerializer(serializers.ModelSerializer):
     # Palier de menu faisant autorité, dérivé du NOUVEAU rôle (jamais du legacy).
     menu_tier = serializers.ReadOnlyField()
     permissions = serializers.SerializerMethodField()
+    # ODX6 — clés des modules explicitement DÉSACTIVÉS pour la société de
+    # l'utilisateur (lecture seule), servies au bootstrap pour que la nav
+    # frontend masque ces modules et que le routeur bloque leurs routes. Défaut
+    # (aucun toggle) = liste vide ⇒ nav strictement identique à aujourd'hui.
+    modules_desactives = serializers.SerializerMethodField()
     avatar_url = serializers.SerializerMethodField()
     # Superviseur direct (Feature E) — assignable par un Directeur/Admin dans
     # Paramètres → Équipe. Nom en lecture seule pour l'affichage.
@@ -144,15 +202,22 @@ class UserSerializer(serializers.ModelSerializer):
     poste_ref_intitule = serializers.CharField(
         source='poste_ref.intitule', read_only=True, default=None
     )
+    # XPLT19 — accès multi-sociétés : liste des sociétés opérables (home + M2M)
+    # + société ACTIVE courante. Lecture seule ; sert au sélecteur d'entête. Un
+    # compte mono-société renvoie une liste à un élément (pas de sélecteur).
+    societes_operables = serializers.SerializerMethodField()
+    active_company_id = serializers.SerializerMethodField()
 
     class Meta:
         model = CustomUser
         fields = (
             'id', 'username', 'email', 'first_name', 'last_name',
             'role', 'role_nom', 'role_legacy', 'menu_tier', 'permissions',
+            'modules_desactives',
             'poste', 'poste_ref', 'poste_ref_intitule',
             'avatar_key', 'avatar_url',
             'supervisor', 'supervisor_nom',
+            'societes_operables', 'active_company_id',
             'is_active', 'is_superuser', 'is_protected',
             # Rotation forcée des identifiants (N96). ``must_change_password`` est
             # piloté par un admin (UserViewSet) pour forcer un changement à la
@@ -166,8 +231,10 @@ class UserSerializer(serializers.ModelSerializer):
         read_only_fields = (
             'id', 'date_joined', 'last_login',
             'company_id', 'company_nom',
+            'societes_operables', 'active_company_id',
             'password_changed_at',
             'role_nom', 'role_legacy', 'menu_tier', 'permissions',
+            'modules_desactives',
             # DC17 — le référentiel poste ne se pose PAS par un PATCH direct du
             # corps utilisateur (multi-tenant : jamais de Poste cross-société lu
             # de la requête). Il est rattaché par la migration de dédup puis géré
@@ -187,6 +254,36 @@ class UserSerializer(serializers.ModelSerializer):
         if obj.role:
             return obj.role.permissions or []
         return []
+
+    def get_modules_desactives(self, obj):
+        """ODX6 — clés des modules désactivés pour la société de l'utilisateur.
+
+        Source unique : ``core.feature_flags.modules_desactives`` (état
+        ``ModuleToggle`` — ODX3). ``core`` est une app de fondation, sa lecture
+        depuis ``authentication`` est autorisée. Aucune société / absence de
+        toggle ⇒ liste vide (comportement par défaut inchangé). Best-effort :
+        jamais bloquant pour ``/auth/me/``."""
+        try:
+            from core.feature_flags import modules_desactives
+            return sorted(modules_desactives(getattr(obj, 'company', None)))
+        except Exception:
+            return []
+
+    def get_societes_operables(self, obj):
+        """Sociétés que ce compte peut opérer (home + M2M), dédupliquées."""
+        try:
+            return [
+                {'id': c.id, 'nom': c.nom, 'slug': c.slug}
+                for c in obj.societes_operables()
+            ]
+        except Exception:
+            return []
+
+    def get_active_company_id(self, obj):
+        """Société ACTIVE de la requête courante — c'est ``obj.company`` qui a
+        déjà été bornée par ``ActiveCompanyMiddleware``/``CookieJWTAuthentication``
+        (elle vaut la société d'attache sans switch actif)."""
+        return getattr(obj, 'company_id', None)
 
     def validate_role(self, value):
         """Le rôle assigné doit appartenir à l'entreprise de l'assignateur, et
@@ -215,7 +312,8 @@ class UserSerializer(serializers.ModelSerializer):
         return value
 
     def validate_supervisor(self, value):
-        """Le superviseur doit être dans la même entreprise et jamais soi-même."""
+        """Le superviseur doit être dans la même entreprise, jamais soi-même,
+        et ne jamais engendrer de cycle dans la chaîne de supervision."""
         if value is None:
             return value
         request = self.context.get('request')
@@ -226,6 +324,22 @@ class UserSerializer(serializers.ModelSerializer):
         if self.instance is not None and value.id == self.instance.id:
             raise serializers.ValidationError(
                 "Un utilisateur ne peut pas être son propre superviseur.")
+        # VX235(b) — avant ce garde, seule l'auto-supervision directe était
+        # bloquée : un cycle A→B→C→A (poser le superviseur de A sur C, qui
+        # remonte déjà à B puis A) corrompait silencieusement
+        # `records_scope_sous_arbre` (parcours d'arbre supposé acyclique).
+        # Remonte la chaîne de superviseurs de `value` (borne 20 sauts) et
+        # rejette si `self.instance` y apparaît déjà.
+        if self.instance is not None:
+            seen = value.supervisor
+            for _ in range(20):
+                if seen is None:
+                    break
+                if seen.id == self.instance.id:
+                    raise serializers.ValidationError(
+                        'Ce superviseur créerait un cycle dans la chaîne '
+                        'de supervision.')
+                seen = seen.supervisor
         return value
 
     def get_avatar_url(self, obj):

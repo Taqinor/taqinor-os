@@ -16,11 +16,20 @@ from decimal import Decimal
 
 def _profile(company):
     """Profil société (ou pk=1 par défaut). Repli None si la table n'existe pas."""
-    try:
-        from apps.parametres.models import CompanyProfile
-        return CompanyProfile.get(company=company)
-    except Exception:  # noqa: BLE001 — un PDF/simulateur ne casse jamais ici
-        return None
+    def _load():
+        try:
+            from apps.parametres.models import CompanyProfile
+            return CompanyProfile.get(company=company)
+        except Exception:  # noqa: BLE001 — un PDF/simulateur ne casse jamais ici
+            return None
+
+    # SCA43 / NTPLT16 — mémo PAR REQUÊTE (contextvar), MÊME clé que
+    # ``ventes.utils.company_settings._profile`` : les deux accesseurs lisent le
+    # MÊME ``CompanyProfile`` de la société, donc ils partagent un seul objet
+    # mémorisé le temps d'une requête. Hors requête → cache inactif (inchangé).
+    from core import request_cache
+    return request_cache.memoize(
+        ("parametres.company_profile", getattr(company, "id", None)), _load)
 
 
 def company_identity(company) -> dict:
@@ -38,6 +47,7 @@ def company_identity(company) -> dict:
             "nom": "", "adresse": "", "email": "", "telephone": "",
             "ice": "", "identifiant_fiscal": "", "rc": "", "patente": "",
             "cnss": "", "rib": "", "banque": "", "couleur_principale": "",
+            "site_web": "",
         }
     return {
         "nom": p.nom or "",
@@ -52,6 +62,9 @@ def company_identity(company) -> dict:
         "rib": p.rib or "",
         "banque": p.banque or "",
         "couleur_principale": p.couleur_principale or "",
+        # SCA27 — site web (pilote la ligne site + la base des liens fiches du
+        # PDF résidentiel). Vide → littéraux historiques (taqinor.ma).
+        "site_web": getattr(p, "site_web", "") or "",
     }
 
 

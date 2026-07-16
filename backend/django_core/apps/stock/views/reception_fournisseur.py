@@ -4,7 +4,7 @@ from django.http import HttpResponse  # noqa: F401
 from rest_framework import viewsets, filters, status  # noqa: F401
 from rest_framework.decorators import action  # noqa: F401
 from rest_framework.response import Response  # noqa: F401
-from authentication.mixins import TenantMixin  # noqa: F401
+from core.viewsets import CompanyScopedModelViewSet
 from apps.ventes.utils.references import create_with_reference  # noqa: F401
 from ..models import (  # noqa: F401
     Produit, Categorie, Fournisseur, MouvementStock, Marque,
@@ -42,7 +42,7 @@ WRITE_ACTIONS = ['create', 'update', 'partial_update']
 # package __init__ ré-exporte toutes les vues publiques.
 
 
-class ReceptionFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
+class ReceptionFournisseurViewSet(CompanyScopedModelViewSet):
     """G5 — Réceptions fournisseur (goods-in / entrée de marchandises).
 
     Numérotation sans trou (préfixe REC). La confirmation incrémente le stock
@@ -64,7 +64,10 @@ class ReceptionFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS + ['scan_gs1', 'etiquettes']:
             return [IsAnyRole()]
-        elif self.action in WRITE_ACTIONS + ['confirmer', 'annuler']:
+        elif self.action in WRITE_ACTIONS + ['confirmer', 'annuler', 'facturer']:
+            # « facturer » déclarait IsResponsableOrAdmin sur son décorateur
+            # mais ce get_permissions l'écrasait vers IsAdminRole (le repli
+            # par défaut) — bug préexistant attrapé par le test P2P YTEST6.
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
             return [IsAdminRole()]

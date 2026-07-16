@@ -9,18 +9,23 @@ Endpoints :
   POST   /ventes/mandats-paiement/{id}/revoquer/ révoque le mandat
 """
 from django.utils import timezone
-from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from authentication.permissions import IsResponsableOrAdmin
+from core.viewsets import CompanyScopedModelViewSet  # ARC5
 from ..models import MandatPaiement
 from ..serializers import MandatPaiementSerializer
 
 READ_ACTIONS = ['list', 'retrieve']
 
 
-class MandatPaiementViewSet(viewsets.ModelViewSet):
+class MandatPaiementViewSet(CompanyScopedModelViewSet):
+    # ARC5 — sweep TenantMixin : base transverse unique. get_queryset et
+    # perform_create SURCHARGENT la base (scoping direct sur `company` + filtre
+    # ?client). Le `permission_classes = [IsResponsableOrAdmin]` posé ici prime
+    # sur le défaut ScopedPermission de la base (attribut de classe DRF) : la
+    # matrice 401/403/404 est INCHANGÉE (règle #4 : rien touché côté statut).
     queryset = MandatPaiement.objects.select_related('client').all()
     serializer_class = MandatPaiementSerializer
     permission_classes = [IsResponsableOrAdmin]

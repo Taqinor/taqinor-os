@@ -58,6 +58,7 @@ import { MemoryRouter } from 'react-router-dom'
 import UsersManagement from './UsersManagement'
 import { ConfirmProvider } from '../../providers/ConfirmProvider'
 import { ThemeProvider } from '../../design/ThemeProvider'
+import { toast } from '../../ui/confirm'
 
 const ROLES = [
   { id: 1, nom: 'Administrateur', est_systeme: true, permissions: ['roles_gerer'] },
@@ -173,6 +174,57 @@ describe('UsersManagement — DataTable (J145)', () => {
       email: 'nouveau@taqinor.ma',
       password: 'Az9ployxQ!',
     })))
+  })
+
+  // VX104 — le superviseur se règle dès la création (mêmes options que
+  // EquipeSection.jsx) ; sans lien, la hiérarchie était oubliée en silence.
+  it('VX104 — règle le superviseur dès la création (POST /users/ avec supervisor)', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    await screen.findAllByText('sami')
+
+    await user.click(screen.getByRole('button', { name: '+ Nouvel utilisateur' }))
+    const createBtn = screen.getByRole('button', { name: 'Créer' })
+    const form = createBtn.closest('form')
+
+    fireEvent.change(form.querySelector('input:not([type])'), { target: { value: 'stagiaire' } })
+    fireEvent.change(form.querySelector('input[type="password"]'), { target: { value: 'Az9ployxQ!' } })
+
+    // Sélectionne « sami » comme superviseur direct.
+    await user.click(within(form).getByRole('combobox', { name: /Superviseur direct/i }))
+    await user.click(await screen.findByRole('option', { name: 'sami' }))
+
+    await user.click(createBtn)
+
+    await waitFor(() => expect(apiMock.post).toHaveBeenCalledWith('/users/', expect.objectContaining({
+      username: 'stagiaire', supervisor: 11,
+    })))
+  })
+
+  it('VX104 — création SANS superviseur affiche un toast de rappel avec lien', async () => {
+    const messageSpy = vi.spyOn(toast, 'message')
+    const user = userEvent.setup()
+    renderPage()
+    await screen.findAllByText('sami')
+
+    await user.click(screen.getByRole('button', { name: '+ Nouvel utilisateur' }))
+    const createBtn = screen.getByRole('button', { name: 'Créer' })
+    const form = createBtn.closest('form')
+
+    fireEvent.change(form.querySelector('input:not([type])'), { target: { value: 'sans-sup' } })
+    fireEvent.change(form.querySelector('input[type="password"]'), { target: { value: 'Az9ployxQ!' } })
+    await user.click(createBtn)
+
+    await waitFor(() => expect(apiMock.post).toHaveBeenCalledWith('/users/', expect.objectContaining({
+      username: 'sans-sup', supervisor: null,
+    })))
+    // Toast de rappel (pas un succès plat) : description explicite + action
+    // de lien vers Paramètres → Équipe, où la hiérarchie reste réglable.
+    await waitFor(() => expect(messageSpy).toHaveBeenCalledWith('Utilisateur créé.', expect.objectContaining({
+      description: 'Pensez à définir son responsable direct.',
+      action: expect.objectContaining({ label: 'Paramètres → Équipe' }),
+    })))
+    messageSpy.mockRestore()
   })
 
   it('ouvre l\'édition dans une modale .modal « Employé — … » avec « Nouveau mot de passe »', async () => {

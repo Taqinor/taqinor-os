@@ -392,3 +392,63 @@ def service_report(request):
         # YSERV12 — KPI d'évitement de déplacement.
         'resolution_a_distance': resolution_a_distance,
     })
+
+
+# ── ARC40 — KPI fédérés pilotés par le registre plateforme ───────────────────
+
+@api_view(['GET'])
+@permission_classes([IsResponsableOrAdmin])
+def kpi_federes(request):
+    """ARC40 — endpoint KPI fédéré : agrège les tuiles des providers déclarés.
+
+    Avant ARC40, ce hub n'agrégeait que 3 rapports (ventes/stock/service) —
+    rh/paie/contrats/compta/gestion_projet/qhse avaient une empreinte
+    reporting NULLE. Cet endpoint itère la surface ``kpi_providers`` du
+    registre plateforme (``core.platform.kpi_providers(company)`` — gatée
+    ``ModuleToggle`` : un module OFF disparaît avec ses tuiles) : chaque
+    provider est un CALLABLE DOTTED (ex.
+    ``apps.rh.selectors.kpi_effectifs_absences``) résolu à l'exécution,
+    appelé ``provider(company)``, qui renvoie des tuiles normalisées
+    ``{id, label, valeur, unite?}``. Le reporting n'importe AUCUN modèle des
+    apps fournisseuses — la frontière inter-app passe par leurs selectors.
+
+    Un provider déclaré apparaît donc SANS toucher ce fichier ; une clé
+    non-dotted (héritage informatif, ex. ``crm_sales_report``) ou un dotted
+    introuvable est ignoré silencieusement (jamais un 500 pour une
+    déclaration cassée). Company-scopé : un superuser sans société reçoit une
+    liste vide (mêmes conventions que les autres rapports).
+    """
+    import importlib
+
+    from core import platform as core_platform
+
+    company = request.user.company
+    if company is None:
+        return Response({'count': 0, 'tuiles': []})
+
+    tuiles = []
+    for dotted in sorted(core_platform.kpi_providers(company)):
+        if '.' not in dotted:
+            # Clé libre héritée (informative), pas un provider résoluble.
+            continue
+        module_path, func_name = dotted.rsplit('.', 1)
+        try:
+            provider = getattr(importlib.import_module(module_path), func_name)
+        except (ImportError, AttributeError):
+            # Provider déclaré mais introuvable : ignoré, jamais un 500.
+            continue
+        for tuile in (provider(company) or []):
+            if (not isinstance(tuile, dict) or 'id' not in tuile
+                    or 'label' not in tuile or 'valeur' not in tuile):
+                continue  # tuile non conforme à la forme normalisée : ignorée
+            normalisee = {
+                'id': tuile['id'],
+                'label': tuile['label'],
+                'valeur': tuile['valeur'],
+                'provider': dotted,
+            }
+            if tuile.get('unite'):
+                normalisee['unite'] = tuile['unite']
+            tuiles.append(normalisee)
+
+    return Response({'count': len(tuiles), 'tuiles': tuiles})

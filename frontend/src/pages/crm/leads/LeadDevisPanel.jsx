@@ -17,7 +17,10 @@ import {
 } from '../../../features/ventes/previewPdf'
 import DevisGenerator from '../../ventes/DevisGenerator'
 import { filenameFromResponse } from '../../../utils/downloadBlob'
-import { Button, Input, Spinner, Segmented, Checkbox, EmptyState } from '../../../ui'
+import { openPdfInGesture } from '../../../utils/pdfBlob'
+import {
+  Button, Input, Spinner, Segmented, Checkbox, EmptyState, Sheet, SheetContent,
+} from '../../../ui'
 
 // Le rendu PDF.js (canvas) est chargé à la demande (gros module) : il ne pèse
 // sur le bundle que quand on ouvre réellement un aperçu.
@@ -202,8 +205,11 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
   // « Ouvrir dans un nouvel onglet » : on ouvre le MÊME PDF authentifié via une
   // URL blob (donc indépendante d'un bloqueur sur l'embed inline). On réutilise
   // le blob déjà récupéré ; sinon on le récupère d'abord.
+  // VX48 — onglet pré-ouvert SYNCHRONE dans le geste de tap, avant tout await
+  // (Safari iOS bloque silencieusement un window.open() post-await).
   const handleOpenNewTab = async () => {
     if (!devisId) return
+    const pending = openPdfInGesture()
     try {
       let blob = previewBlob
       if (!blob) {
@@ -211,17 +217,21 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
           devisId, proposalParams(pdfMode, includeEtude))
         blob = pdfBlob(res.data)
       }
-      const url = URL.createObjectURL(blob)
-      window.open(url, '_blank', 'noopener')
-      setTimeout(() => URL.revokeObjectURL(url), 60000)
+      if (!pending.deliver(blob, `${devisRef || 'Devis'}.pdf`)) {
+        setErrorMsg('Ouverture bloquée par le navigateur. Téléchargez le PDF.')
+      }
     } catch {
       setErrorMsg('Ouverture impossible. Réessayez ou téléchargez le PDF.')
     }
   }
 
   return (
-    <div className="ldp-overlay" onClick={onClose}>
-      <div className="ldp-panel" onClick={e => e.stopPropagation()}>
+    // VX133 — migré du `.ldp-overlay`/`.ldp-panel` bespoke (pop centré) vers
+    // Sheet side="right" : le panneau glisse depuis son bord réel au lieu de
+    // « pop » du centre de l'écran. Le bouton ✕ reste celui du header
+    // ldp-* existant (showClose désactivé pour ne pas en dupliquer un).
+    <Sheet open onOpenChange={(o) => { if (!o) onClose() }}>
+      <SheetContent side="right" showClose={false} className="w-[min(1100px,100%)] gap-0 p-0 sm:max-w-none">
         <div className="ldp-header">
           <h3 className="ldp-title">
             {TITLES[mode] || 'Devis'} — {lead.nom} {lead.prenom || ''}
@@ -400,7 +410,7 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
             </div>
           )}
         </div>
-      </div>
-    </div>
+      </SheetContent>
+    </Sheet>
   )
 }

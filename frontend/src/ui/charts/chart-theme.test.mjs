@@ -4,6 +4,8 @@ import assert from 'node:assert/strict'
 import {
   CHART_TOKENS, resolveColor, prefersReducedMotion, animationDuration,
   CHART_ANIM_DURATION, BAR_RADIUS, BAR_RADIUS_H,
+  CHART_CATEGORICAL, categoricalColor, CHART_GRID_STYLE,
+  CHART_COMPARISON_STYLE, CHART_REFERENCE_LINE_STYLE,
 } from './chart-theme.js'
 
 test('resolveColor : nom de ton → var() token', () => {
@@ -41,4 +43,35 @@ test('animationDuration : durée marque par défaut quand pas de réduction', ()
 test('BAR_RADIUS : coins hauts arrondis (vertical) et droite (horizontal)', () => {
   assert.deepEqual(BAR_RADIUS, [4, 4, 0, 0])
   assert.deepEqual(BAR_RADIUS_H, [0, 4, 4, 0])
+})
+
+// VX41 — Palette catégorielle de marque (séries multiples).
+test('CHART_CATEGORICAL : toutes les couleurs sont des tokens var() (jamais en dur)', () => {
+  assert.ok(CHART_CATEGORICAL.length >= 4)
+  for (const v of CHART_CATEGORICAL) {
+    assert.match(v, /^var\(--/, `couleur non tokenisée: ${v}`)
+  }
+})
+
+test('categoricalColor : boucle sur la palette (index >= length)', () => {
+  const n = CHART_CATEGORICAL.length
+  assert.equal(categoricalColor(0), CHART_CATEGORICAL[0])
+  assert.equal(categoricalColor(n), CHART_CATEGORICAL[0])
+  assert.equal(categoricalColor(n + 2), CHART_CATEGORICAL[2])
+})
+
+test('CHART_GRID_STYLE : grille signature — horizontal seul, jamais vertical', () => {
+  assert.equal(CHART_GRID_STYLE.horizontal, true)
+  assert.equal(CHART_GRID_STYLE.vertical, false)
+  assert.match(CHART_GRID_STYLE.strokeDasharray, /\d+ \d+/)
+})
+
+test('CHART_COMPARISON_STYLE : série « période précédente » en pointillé non remplie', () => {
+  assert.match(CHART_COMPARISON_STYLE.strokeDasharray, /\d+ \d+/)
+  assert.equal(CHART_COMPARISON_STYLE.fillOpacity, 0)
+})
+
+test('CHART_REFERENCE_LINE_STYLE : annotation d\'événement en pointillé tokenisé', () => {
+  assert.match(CHART_REFERENCE_LINE_STYLE.stroke, /^var\(--/)
+  assert.match(CHART_REFERENCE_LINE_STYLE.strokeDasharray, /\d+ \d+/)
 })

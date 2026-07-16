@@ -17,6 +17,11 @@ import {
 } from '@dnd-kit/core'
 import installationsApi from '../../api/installationsApi'
 import crmApi from '../../api/crmApi'
+import { hapticTap } from '../../lib/haptics'
+// VX132 — anti-scintillement propagé : un Spinner nu clignotait sur tout
+// chargement (même sous 300 ms). useDelayedLoading (déjà sur InstallationsPage)
+// n'affiche rien tant que l'attente reste imperceptible.
+import { useDelayedLoading } from '../../hooks/useDelayedLoading'
 import {
   INTERVENTION_STATUSES,
   INTERVENTION_STATUS_LABELS,
@@ -32,6 +37,7 @@ import {
   EmptyState,
   Card,
   StatusPill,
+  StatusAccentCard,
   Select,
   SelectTrigger,
   SelectValue,
@@ -48,6 +54,8 @@ import {
   Textarea,
   toast,
 } from '../../ui'
+import { useIsMobile } from '../../ui/ResponsiveDialog'
+import { usePullToRefresh } from '../../ui/usePullToRefresh'
 import {
   PreparationPanel, TrajetPanel, PhotosPanel,
 } from '../../features/installations/InterventionFieldExecution'
@@ -55,8 +63,17 @@ import {
   SerialsPanel, ConsommationPanel, MemosPanel, ReservesPanel,
   ToolReturnPanel, SafetyPanel, CompteRenduButton, CodePanel,
 } from '../../features/installations/InterventionCapturePanels'
+import { SignatureClientPanel } from '../../features/installations/SignatureClientPanel'
 import OfflineSyncIndicator from '../../features/installations/offline/OfflineSyncIndicator'
 import { formatDate, formatDateTime } from '../../lib/format'
+
+// VX43 — repli « changer le statut au menu » sans drag, sous 768px : le
+// glisser-déposer @dnd-kit (TouchSensor delay 150ms) reste utilisable au
+// pouce, mais un menu <select> natif est une alternative sans ambigüité de
+// geste sur les petits écrans (même besoin que StageMover côté leads).
+function useIsMobileViewport() {
+  return useIsMobile('(max-width: 767px)')
+}
 
 const TYPE_LABELS = Object.fromEntries(
   INTERVENTION_TYPES.map((t) => [t.value, t.label]))
@@ -65,11 +82,10 @@ const typeLabel = (k) => TYPE_LABELS[k] ?? k ?? '—'
 // Sentinelle « aucun technicien » (le Select du design system n'accepte pas '').
 const NO_TECH = '__none__'
 
-function InterventionCard({ it, users, onReassign }) {
+function InterventionCard({ it, users, onReassign, onChangeStatus }) {
   const techValue = it.technicien ? String(it.technicien) : NO_TECH
   return (
-    <div className="kb-card kc-card"
-         style={{ '--kb-accent': INTERVENTION_STATUS_COLORS[it.statut] }}>
+    <StatusAccentCard accent={INTERVENTION_STATUS_COLORS[it.statut]}>
       <div className="kc-card-top">
         <span className="kc-card-ref">{it.installation_reference ?? `#${it.id}`}</span>
         <StatusPill status={it.statut} label={interventionStatusLabel(it.statut)} dot={false} />
@@ -87,6 +103,30 @@ function InterventionCard({ it, users, onReassign }) {
           <span className="kc-chip"><Users className="kc-chip-icon" aria-hidden="true" />{it.equipe_noms.join(', ')}</span>
         )}
       </div>
+      {/* VX43 — repli SANS glisser sous 768px : le glisser-déposer @dnd-kit
+          reste actif (delay tactile 150ms), mais un <select> natif offre une
+          alternative univoque au pouce, masqué en desktop (`sm:hidden`, comme
+          le reste du repli mobile du DataTable). */}
+      {onChangeStatus && (
+        <div className="kc-status-mover sm:hidden"
+             onPointerDown={(e) => e.stopPropagation()}
+             onTouchStart={(e) => e.stopPropagation()}
+             onClick={(e) => e.stopPropagation()}>
+          <label className="sr-only" htmlFor={`kc-status-${it.id}`}>
+            Changer le statut de {it.client_nom || it.installation_reference || `l'intervention #${it.id}`}
+          </label>
+          <select
+            id={`kc-status-${it.id}`}
+            className="form-control h-8 w-full rounded-md border border-input bg-card px-2 text-xs"
+            value={it.statut}
+            onChange={(e) => onChangeStatus(it, e.target.value)}
+          >
+            {INTERVENTION_STATUSES.map((s) => (
+              <option key={s} value={s}>{INTERVENTION_STATUS_LABELS[s]}</option>
+            ))}
+          </select>
+        </div>
+      )}
       {onReassign && (
         <div className="kc-reassign"
              onPointerDown={(e) => e.stopPropagation()}
@@ -107,11 +147,11 @@ function InterventionCard({ it, users, onReassign }) {
           </Select>
         </div>
       )}
-    </div>
+    </StatusAccentCard>
   )
 }
 
-function DraggableCard({ it, users, onReassign }) {
+function DraggableCard({ it, users, onReassign, onChangeStatus }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: it.id, data: { it },
   })
@@ -119,7 +159,7 @@ function DraggableCard({ it, users, onReassign }) {
     <div ref={setNodeRef}
          className={isDragging ? 'kb-drag-wrap kb-drag-source' : 'kb-drag-wrap'}
          {...listeners} {...attributes}>
-      <InterventionCard it={it} users={users} onReassign={onReassign} />
+      <InterventionCard it={it} users={users} onReassign={onReassign} onChangeStatus={onChangeStatus} />
     </div>
   )
 }
@@ -181,7 +221,7 @@ function KanbanView({ items, onOpen, onChangeStatus, users, onReassign }) {
           <StatusColumn key={col.key} col={col}>
             {col.items.map((it) => (
               <div key={it.id} onClick={() => onOpen?.(it)}>
-                <DraggableCard it={it} users={users} onReassign={onReassign} />
+                <DraggableCard it={it} users={users} onReassign={onReassign} onChangeStatus={onChangeStatus} />
               </div>
             ))}
           </StatusColumn>
@@ -246,6 +286,15 @@ function DetailSheet({ intervention, users, onClose, onChanged }) {
   const [hist, setHist] = useState([])
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
+  // VX225 — raison de blocage EXACTE renvoyée par le backend
+  // (`transition_block_reason`, field_services.py) sur un 400 de changement
+  // de statut ; jusqu'ici jetée à la poubelle par un `catch` muet (patron
+  // déjà correct dans ChantierGateTimeline pour les gates chantier).
+  const [statutBlockReason, setStatutBlockReason] = useState(null)
+  // VX43 — bottom-sheet sous 768px (glisser-vers-le-bas-pour-fermer inclus
+  // nativement par Sheet.jsx pour side="bottom") ; tiroir latéral inchangé
+  // sur desktop.
+  const isMobile = useIsMobileViewport()
 
   useEffect(() => {
     let alive = true
@@ -261,13 +310,23 @@ function DetailSheet({ intervention, users, onClose, onChanged }) {
 
   const setStatut = async (statut) => {
     setBusy(true)
+    setStatutBlockReason(null)
     try {
       await installationsApi.updateIntervention(intervention.id, { statut })
       toast.success('Statut mis à jour.')
+      hapticTap()
       await reloadHist()
       onChanged?.()
-    } catch {
-      toast.error('Impossible de changer le statut.')
+    } catch (err) {
+      // VX225 — le 400 porte {statut:[raisons]} (transition_block_reason) :
+      // rendre le message EXACT du serveur sous le sélecteur, toast générique
+      // en repli seulement si le corps ne contient pas de raisons exploitables.
+      const raisons = err?.response?.data?.statut
+      if (Array.isArray(raisons) && raisons.length > 0) {
+        setStatutBlockReason(raisons)
+      } else {
+        toast.error('Impossible de changer le statut.')
+      }
     } finally { setBusy(false) }
   }
 
@@ -306,7 +365,10 @@ function DetailSheet({ intervention, users, onClose, onChanged }) {
 
   return (
     <Sheet open onOpenChange={(o) => { if (!o) onClose() }}>
-      <SheetContent className="w-full sm:max-w-md overflow-y-auto">
+      <SheetContent
+        side={isMobile ? 'bottom' : 'right'}
+        className={isMobile ? 'max-h-[85vh] w-full overflow-y-auto' : 'w-full sm:max-w-md overflow-y-auto'}
+      >
         <SheetHeader>
           <SheetTitle>
             {typeLabel(intervention.type_intervention)} — {intervention.installation_reference ?? `#${intervention.id}`}
@@ -338,6 +400,7 @@ function DetailSheet({ intervention, users, onClose, onChanged }) {
             <TabsTrigger value="conso" className="shrink-0">Consommé</TabsTrigger>
             <TabsTrigger value="memos" className="shrink-0">Mémos</TabsTrigger>
             <TabsTrigger value="reserves" className="shrink-0">Réserves</TabsTrigger>
+            <TabsTrigger value="signature" className="shrink-0">Signature</TabsTrigger>
             <TabsTrigger value="outils" className="shrink-0">Outils</TabsTrigger>
           </TabsList>
 
@@ -364,6 +427,9 @@ function DetailSheet({ intervention, users, onClose, onChanged }) {
           </TabsContent>
           <TabsContent value="reserves">
             <ReservesPanel intervention={intervention} onChanged={onChanged} />
+          </TabsContent>
+          <TabsContent value="signature">
+            <SignatureClientPanel intervention={intervention} onChanged={onChanged} />
           </TabsContent>
           <TabsContent value="outils">
             <div className="flex flex-col gap-3 py-2">
@@ -408,6 +474,11 @@ function DetailSheet({ intervention, users, onClose, onChanged }) {
                 ))}
               </SelectContent>
             </Select>
+            {statutBlockReason?.length > 0 && (
+              <ul className="flex flex-col gap-0.5 text-xs text-destructive" role="alert">
+                {statutBlockReason.map((r) => <li key={r}>• {r}</li>)}
+              </ul>
+            )}
           </div>
 
           <div className="flex flex-col gap-1">
@@ -519,12 +590,24 @@ export default function InterventionsPage() {
       .catch(() => { toast.error('Réassignation impossible.'); fetchData() })
   }
 
+  // VX43 — pull-to-refresh maison : `overscroll-behavior: contain` a coupé le
+  // rubber-band natif sans rien remettre à sa place. Relance `fetchData` (pas
+  // `reload` — un rafraîchissement de fond ne doit pas faire clignoter la vue).
+  // Appelé AVANT tout early-return : les hooks doivent s'exécuter dans le même
+  // ordre à chaque rendu (rules-of-hooks).
+  const { containerProps, pullDistance, refreshing } = usePullToRefresh(fetchData)
+  // VX132 — anti-scintillement : rien tant que l'attente reste imperceptible
+  // (< 300 ms), un spinner discret seulement si elle se prolonge vraiment.
+  const { showSpinner } = useDelayedLoading(loading)
+
   if (loading) {
     return (
       <div className="page lp-page">
-        <div className="flex items-center gap-2 py-16 text-sm text-muted-foreground">
-          <Spinner /> Chargement des interventions…
-        </div>
+        {showSpinner && (
+          <div className="flex items-center gap-2 py-16 text-sm text-muted-foreground">
+            <Spinner /> Chargement des interventions…
+          </div>
+        )}
       </div>
     )
   }
@@ -542,7 +625,17 @@ export default function InterventionsPage() {
   }
 
   return (
-    <div className="page lp-page">
+    <div className="page lp-page overflow-y-auto" {...containerProps}>
+      {(pullDistance > 0 || refreshing) && (
+        <div
+          className="flex items-center justify-center gap-2 text-xs text-muted-foreground"
+          style={{ height: `${Math.max(pullDistance, refreshing ? 32 : 0)}px`, overflow: 'hidden', transition: refreshing ? 'height 150ms ease' : 'none' }}
+          role="status"
+        >
+          {refreshing ? <Spinner className="size-4" /> : null}
+          {refreshing ? 'Actualisation…' : 'Tirer pour actualiser'}
+        </div>
+      )}
       <div className="page-header lp-header">
         <h2 className="flex items-center gap-2">
           Interventions

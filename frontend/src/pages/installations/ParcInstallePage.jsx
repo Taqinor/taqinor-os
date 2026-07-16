@@ -4,12 +4,15 @@
 // liens GPS. La carte à tuiles interactive est différée (leaflet).
 // N10 — un clic ouvre la fiche système (InstallationDetail), le hub par actif.
 // J43 — portée sur le système de design (DataTable, Select, Input, Button).
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, lazy, Suspense } from 'react'
 import { Download, Search, FileBarChart } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
 import importApi, { downloadXlsx } from '../../api/importApi'
 import { downloadBlob } from '../../utils/downloadBlob'
-import MapView, { escapeHtml } from '../../components/MapView'
+// VX186 — `MapView` (leaflet) en `lazy` : `escapeHtml` (fonction pure) reste
+// statique, seul le COMPOSANT porte le poids de leaflet — la vue « carte »
+// n'est qu'une bascule parmi d'autres, souvent jamais ouverte.
+import { escapeHtml } from '../../components/MapView'
 import {
   TYPE_LABELS,
   REGIME_8221_LABELS,
@@ -28,6 +31,8 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
   DialogFooter, Label,
 } from '../../ui'
+
+const MapView = lazy(() => import('../../components/MapView'))
 
 // N15 — système sans nomenclature gelée (chantier créé sans devis).
 const bomVide = (it) => Array.isArray(it.bom) && it.bom.length === 0
@@ -464,13 +469,15 @@ export default function ParcInstallePage() {
           {located.length === 0 ? (
             <EmptyState title="Aucun système géolocalisé" description="Renseignez les coordonnées GPS d'un chantier pour le voir ici." />
           ) : (
-            <MapView
-              markers={markers}
-              onMarkerClick={(m) => {
-                const it = located.find((r) => r.id === m.id)
-                if (it) setSelected(it)
-              }}
-            />
+            <Suspense fallback={<p className="page-loading"><Spinner /> Chargement de la carte…</p>}>
+              <MapView
+                markers={markers}
+                onMarkerClick={(m) => {
+                  const it = located.find((r) => r.id === m.id)
+                  if (it) setSelected(it)
+                }}
+              />
+            </Suspense>
           )}
         </div>
       )}

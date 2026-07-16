@@ -1,17 +1,18 @@
 // Onglet « Avancé » de la page Paramètres (hypothèses ROI, logique de devis,
 // types d'intervention, checklist d'exécution, champs personnalisés). Restylé
 // sur le système de design (@/ui) ; champs, libellés et comportement identiques.
-import { useEffect, useState } from 'react'
 import {
   Plus, Trash2, Pencil, Check, X, ChevronUp, ChevronDown,
 } from 'lucide-react'
-import parametresApi from '../../api/parametresApi'
+import { formatMAD } from '../../lib/format'
 import {
   Card, CardContent, Input, Button, IconButton, Badge,
-  Checkbox, Switch, EmptyState, Spinner,
+  Checkbox, Switch, EmptyState,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 import { SectionTitle, Field } from './peComponents'
+// VX233 — feed d'audit extrait, paramétrable par section (filtre dynamique ici).
+import SettingsAuditFeed from './SettingsAuditFeed'
 
 export default function AvanceSection({
   form, set,
@@ -29,27 +30,7 @@ export default function AvanceSection({
     (Number(form.productible_kwh_kwc) || 0)
     * (Number(form.rendement_global) || 0)
     * (Number(form.onee_tarif_kwh) || 0))
-  const fmtMad = (n) => n.toLocaleString('fr-FR')
-
-  // L765 — journal d'audit des changements de paramètres (lecture seule).
-  const [audit, setAudit] = useState(null) // null = pas encore chargé
-  const [auditLoading, setAuditLoading] = useState(false)
-  const [auditSection, setAuditSection] = useState('__all__')
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setAuditLoading(true)
-    const params = { limit: 50 }
-    if (auditSection !== '__all__') params.section = auditSection
-    parametresApi.getAudit(params)
-      .then(r => setAudit(r.data.results ?? r.data))
-      .catch(() => setAudit([]))
-      .finally(() => setAuditLoading(false))
-  }, [auditSection])
-  const fmtVal = (v) => (v === null || v === undefined || v === '' ? '—'
-    : (typeof v === 'object' ? JSON.stringify(v) : String(v)))
-  const fmtDate = (s) => {
-    try { return new Date(s).toLocaleString('fr-FR') } catch { return s }
-  }
+  const fmtMad = (n) => formatMAD(n, { decimals: 0, withSymbol: false })
 
   return (
     <>
@@ -297,45 +278,8 @@ export default function AvanceSection({
             Derniers changements de paramètres : qui a modifié quoi et quand.
             Lecture seule.
           </p>
-          <div className="mb-3 w-[200px]">
-            <Select value={auditSection} onValueChange={setAuditSection}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all__">Toutes les sections</SelectItem>
-                <SelectItem value="profil">Profil entreprise</SelectItem>
-                <SelectItem value="messages">Messages</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          {auditLoading ? (
-            <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground">
-              <Spinner className="size-4 text-primary" /> Chargement…
-            </div>
-          ) : (audit && audit.length === 0) ? (
-            <EmptyState title="Aucune modification"
-              description="Les changements de paramètres apparaîtront ici." className="py-6" />
-          ) : (
-            <div className="flex flex-col gap-1.5">
-              {(audit ?? []).map(row => (
-                <div key={row.id} className="rounded-md border border-border px-3 py-2 text-[12px]">
-                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                    <span className="font-medium text-foreground">
-                      {row.field_label || row.field}
-                    </span>
-                    <Badge tone="neutral">{row.section}</Badge>
-                    <span className="ml-auto text-[11px] text-muted-foreground">
-                      {row.user_nom || '—'} · {fmtDate(row.timestamp)}
-                    </span>
-                  </div>
-                  <div className="mt-0.5 text-[11.5px] text-muted-foreground">
-                    <span className="line-through">{fmtVal(row.old_value)}</span>
-                    {' → '}
-                    <span className="text-foreground">{fmtVal(row.new_value)}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+          {/* VX233 — feed extrait, filtre dynamique (≥ 6 sections réelles). */}
+          <SettingsAuditFeed />
         </CardContent>
       </Card>
 

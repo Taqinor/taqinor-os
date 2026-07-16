@@ -11,15 +11,24 @@ import { configureStore } from '@reduxjs/toolkit'
 import React from 'react'
 
 import authReducer from '../features/auth/store/authSlice'
-import { useHasPermission, useCanCreateProduit, PRODUIT_CREATE_ROLES } from './useHasPermission'
+import {
+  useHasPermission,
+  useHasRole,
+  useIsAdmin,
+  useIsAdminOrResponsable,
+  useCanCreateProduit,
+  useCanValiderVente,
+  PRODUIT_CREATE_ROLES,
+  VENTES_VALIDER_PERMISSION,
+} from './useHasPermission'
 
-function renderWithAuth({ role_nom = null, permissions = [] } = {}) {
+function renderWithAuth({ role = 'normal', role_nom = null, permissions = [] } = {}) {
   const store = configureStore({
     reducer: { auth: authReducer },
     preloadedState: {
       auth: {
         user: { id: 1 },
-        role: 'normal',
+        role,
         role_nom,
         permissions,
         isAuthenticated: true,
@@ -76,5 +85,69 @@ describe('useHasPermission (QG5)', () => {
     expect(renderHook(() => useCanCreateProduit(), { wrapper: magasinier }).result.current).toBe(false)
 
     expect(PRODUIT_CREATE_ROLES).toEqual(['Directeur', 'Commercial responsable'])
+  })
+})
+
+// VX199 — test d'ALIGNEMENT front↔back : la garde des actions ventes sensibles
+// (accepter/refuser un devis, émettre une facture) est le code ERP fin
+// `ventes_valider` côté backend (HasPermissionOrLegacy). Le front DOIT cacher
+// l'affordance avec exactement ce code. Ce test échoue si la constante front
+// diverge du code backend attendu.
+describe('useCanValiderVente (VX199)', () => {
+  it('la constante front est exactement le code backend ventes_valider', () => {
+    expect(VENTES_VALIDER_PERMISSION).toBe('ventes_valider')
+  })
+
+  it('un rôle « lecture + une écriture » (sans ventes_valider) ne peut PAS valider', () => {
+    // Exactement le compte que la garde grossière laissait passer par erreur :
+    // il détient une écriture (crm_creer, ventes_creer) mais pas ventes_valider.
+    const commercial = renderWithAuth({
+      role_nom: 'Commercial',
+      permissions: ['crm_voir', 'crm_creer', 'ventes_voir', 'ventes_creer'],
+    })
+    expect(renderHook(() => useCanValiderVente(), { wrapper: commercial }).result.current).toBe(false)
+  })
+
+  it('un rôle porteur de ventes_valider peut valider', () => {
+    const valideur = renderWithAuth({
+      role_nom: 'Valideur',
+      permissions: ['ventes_voir', 'ventes_valider'],
+    })
+    expect(renderHook(() => useCanValiderVente(), { wrapper: valideur }).result.current).toBe(true)
+  })
+})
+
+// ARC47 — le gating par palier machine (state.auth.role) passe désormais par
+// useHasRole ; on vérifie la parité stricte avec l'ancien `role === X`.
+describe('useHasRole (ARC47)', () => {
+  it('autorise quand le palier courant est dans la liste blanche', () => {
+    const wrapper = renderWithAuth({ role: 'admin' })
+    expect(renderHook(() => useHasRole(['admin']), { wrapper }).result.current).toBe(true)
+  })
+
+  it('refuse quand le palier courant est hors liste', () => {
+    const wrapper = renderWithAuth({ role: 'normal' })
+    expect(renderHook(() => useHasRole(['admin']), { wrapper }).result.current).toBe(false)
+  })
+
+  it('gère une liste multi-palier (responsable OU admin)', () => {
+    const resp = renderWithAuth({ role: 'responsable' })
+    expect(renderHook(() => useHasRole(['responsable', 'admin']), { wrapper: resp }).result.current).toBe(true)
+    const norm = renderWithAuth({ role: 'normal' })
+    expect(renderHook(() => useHasRole(['responsable', 'admin']), { wrapper: norm }).result.current).toBe(false)
+  })
+
+  it('useIsAdmin / useIsAdminOrResponsable reflètent les paliers', () => {
+    const admin = renderWithAuth({ role: 'admin' })
+    expect(renderHook(() => useIsAdmin(), { wrapper: admin }).result.current).toBe(true)
+    expect(renderHook(() => useIsAdminOrResponsable(), { wrapper: admin }).result.current).toBe(true)
+
+    const resp = renderWithAuth({ role: 'responsable' })
+    expect(renderHook(() => useIsAdmin(), { wrapper: resp }).result.current).toBe(false)
+    expect(renderHook(() => useIsAdminOrResponsable(), { wrapper: resp }).result.current).toBe(true)
+
+    const norm = renderWithAuth({ role: 'normal' })
+    expect(renderHook(() => useIsAdmin(), { wrapper: norm }).result.current).toBe(false)
+    expect(renderHook(() => useIsAdminOrResponsable(), { wrapper: norm }).result.current).toBe(false)
   })
 })

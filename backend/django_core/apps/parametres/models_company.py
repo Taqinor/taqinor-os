@@ -48,6 +48,16 @@ class CompanyProfile(models.Model):
         help_text='Numéro d\'affiliation CNSS.')
     rib = models.CharField(max_length=50, blank=True, default='')
     banque = models.CharField(max_length=100, blank=True, default='')
+    # ── SCA27 — site web de la société (identité/coordonnées) ──
+    # Additif, VIDE par défaut. Pilote la ligne « site » du pied de page du PDF
+    # résidentiel et la base des liens fiches produits : quand il est renseigné,
+    # le moteur affiche CE site (et omet les fiches taqinor.ma du fondateur) ;
+    # vide → le moteur garde ses littéraux historiques (taqinor.ma), donc un
+    # devis sans profil enrichi reste rendu strictement à l'identique.
+    site_web = models.CharField(
+        max_length=255, blank=True, default='',
+        help_text='Site web de la société (ex. helios.ma), affiché sur le PDF '
+                  'du devis. Vide = défaut historique.')
     # ── Bloc paiement & conditions sur la FACTURE (Feature B, 2026-06) ──
     # Trois réglages texte libre, additifs et VIDES par défaut : tant qu'ils ne
     # sont pas renseignés, le PDF facture est strictement identique (les blocs ne
@@ -277,6 +287,62 @@ class CompanyProfile(models.Model):
         default=0,
         help_text="Expiration du mot de passe en jours (0 = jamais).")
 
+    # ── NTSEC10 — Politique de session par société ──────────────────────────
+    # Tous ADDITIFS et INERTES par défaut (0) → la durée de session/JWT actuelle
+    # et le nombre de sessions concurrentes restent strictement inchangés tant
+    # que la société ne fixe rien. Le câblage réel (refus de refresh JWT au-delà
+    # de la durée absolue/inactivité, éviction de la session la plus ancienne à
+    # la Nième) vit dans `apps/authentication` (couche cross-app) qui LIT ces
+    # champs ; ce modèle n'en porte que la configuration.
+    # Durée de vie absolue d'une session (heures) depuis sa création. 0 = durée
+    # JWT actuelle (défaut) → aucun plafond absolu appliqué.
+    session_absolute_hours = models.PositiveIntegerField(
+        default=0,
+        help_text="Durée de vie absolue d'une session (heures) depuis sa "
+                  "création. 0 = durée JWT actuelle (défaut).")
+    # Délai d'inactivité (minutes) au-delà duquel une session dormante ne peut
+    # plus rafraîchir son jeton. 0 = désactivé (défaut).
+    session_idle_minutes = models.PositiveIntegerField(
+        default=0,
+        help_text="Délai d'inactivité (minutes) au-delà duquel une session "
+                  "ne peut plus rafraîchir. 0 = désactivé (défaut).")
+    # Nombre maximum de sessions actives simultanées par utilisateur. À la
+    # Nième session, la plus ancienne est révoquée. 0 = illimité (défaut).
+    max_concurrent_sessions = models.PositiveIntegerField(
+        default=0,
+        help_text="Nombre maximum de sessions concurrentes par utilisateur "
+                  "(la plus ancienne est révoquée au-delà). 0 = illimité.")
+
+    # ── NTSEC9 — MFA « step-up » par sensibilité d'action ──────────────────
+    # Liste (JSON) des clés d'action que CETTE société considère sensibles et
+    # pour lesquelles une ré-authentification MFA récente est exigée (paie run,
+    # export SIEM, création IdP, break-glass…). VIDE par défaut = step-up
+    # inactif → comportement strictement inchangé. Le contrôle runtime vit dans
+    # `apps.identity.stepup.require_recent_mfa` (fondation réutilisable) ; ce
+    # modèle n'en porte que la configuration par société.
+    step_up_actions = models.JSONField(
+        default=list, blank=True,
+        help_text="Clés d'action exigeant une MFA récente (step-up). Liste "
+                  "vide = inactif (défaut).")
+
+    # ── NTSEC14 — appareils de confiance (« se souvenir de cet appareil ») ──
+    # Quand True, un utilisateur peut, à la validation MFA, faire confiance à
+    # son appareil pour sauter le second facteur jusqu'à expiration. False par
+    # défaut = fonction inactive → la MFA reste toujours exigée (inchangé).
+    allow_device_trust = models.BooleanField(
+        default=False,
+        help_text="Autoriser « se souvenir de cet appareil » pour sauter la "
+                  "MFA sur un appareil de confiance. Défaut False.")
+
+    # ── NTSEC28 — bannière / mention légale sur l'écran de connexion ────────
+    # Texte affiché sur l'écran de login (SSO et local) exigeant un accusé avant
+    # authentification (« accès autorisé uniquement… »). VIDE par défaut =
+    # écran de login inchangé. L'accusé est journalisé best-effort (IP/UA).
+    login_banner_text = models.TextField(
+        blank=True, default='',
+        help_text="Mention légale affichée avant authentification (accès "
+                  "autorisé uniquement…). Vide = aucun bandeau (défaut).")
+
     # ── QG9 — pourcentage des variantes de devis (dupliquer-variante) ──
     # Pourcentage symétrique appliqué autour du devis d'origine pour produire
     # les variantes de taille : échelles [1−p, 1.0, 1+p]. Défaut 20 %
@@ -295,6 +361,16 @@ class CompanyProfile(models.Model):
     audit_retention_days = models.PositiveIntegerField(
         default=0,
         help_text="Rétention du journal d'audit en jours (0 = illimité).")
+
+    # ── NTSEC25 — comptes dormants : seuil de désactivation automatique ──
+    # Un compte sans session (dernier ``UserSession.last_seen_at``) au-delà de
+    # ``dormant_days`` jours est listé puis désactivé par la commande
+    # ``desactiver_comptes_dormants``. 0 = désactivé (défaut) → jamais de
+    # désactivation automatique ; réactivation manuelle toujours possible.
+    dormant_days = models.PositiveIntegerField(
+        default=0,
+        help_text="Jours d'inactivité au-delà desquels un compte est désactivé "
+                  "automatiquement (0 = jamais).")
 
     # ── XMKT21 — seuil de score MQL (Marketing Qualified Lead) ──
     # NULL/0 = désactivé (défaut) : aucune assignation automatique tant que la
@@ -503,6 +579,50 @@ class CompanyProfile(models.Model):
         default=100,
         help_text="Au-delà de ce nombre de destinataires, l'envoi d'une "
                   "campagne exige l'approbation d'un Responsable/Directeur.")
+
+    # ── ZFAC11 — arrondi de caisse sur règlements en ESPÈCES ────────────────
+    # Le plus petit pas d'arrondi appliqué au reste à payer d'une facture
+    # réglée EN ESPÈCES (0,05 / 0,20 / 1,00 MAD sont les pas typiques marocains ;
+    # champ libre pour rester configurable). Défaut 0 = arrondi DÉSACTIVÉ →
+    # comportement actuel strictement inchangé (aucun arrondi, aucun écart).
+    # DÉCISION fondateur : pas d'arrondi configurable (défaut OFF) ; l'écart
+    # d'arrondi est tracé comme un abandon de résiduel « Arrondi espèces »
+    # (motif ZFAC11) — jamais silencieux — et suit l'écriture d'abandon de
+    # créance existante (compte d'écart = 6585, celui de l'abandon FG135/XFAC13).
+    # Ne s'applique QU'aux règlements en espèces ; virement/chèque/carte
+    # l'ignorent totalement.
+    arrondi_caisse = models.DecimalField(
+        max_digits=6, decimal_places=2, default=Decimal('0'),
+        verbose_name='Arrondi de caisse (espèces)',
+        help_text="Plus petit pas d'arrondi (MAD) appliqué au reste à payer "
+                  "d'une facture réglée en espèces (ex. 0,05 / 0,20 / 1,00). "
+                  "0 = désactivé (comportement actuel).")
+
+    # ── ZSTK13 — Réglages société stock (barcode / lots-séries / multi-
+    # emplacements / colis) — surface de configuration unifiée. Ces capacités
+    # existent déjà (multi-emplacements FG319, lots/séries FG61/64, colisage
+    # FG322, scan FG384) et étaient TOUJOURS actives sans réglage société.
+    # Défaut True = comportement actuel byte-identique pour toute société
+    # existante ; passer un drapeau à False MASQUE l'affichage correspondant
+    # côté frontend (aucune donnée détruite, aucun endpoint retiré — réversible).
+    stock_lots_series_actif = models.BooleanField(
+        default=True,
+        verbose_name='Lots & numéros de série',
+        help_text='Affiche les champs lot/série (réception, registre '
+                  'd\'expiration, étiquettes). Désactiver masque ces champs '
+                  'sans supprimer les données existantes.')
+    stock_colisage_actif = models.BooleanField(
+        default=True,
+        verbose_name='Colisage',
+        help_text="Affiche l'écran de colisage (préparation/contrôle des "
+                  'colis avant expédition). Désactiver masque l\'écran sans '
+                  'supprimer les colis existants.')
+    stock_scan_actif = models.BooleanField(
+        default=True,
+        verbose_name='Scan code-barres',
+        help_text='Affiche les panneaux de réception/scan code-barres. '
+                  'Désactiver masque ces panneaux (la saisie manuelle reste '
+                  'disponible).')
 
     class Meta:
         verbose_name = 'Profil entreprise'

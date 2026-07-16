@@ -220,6 +220,10 @@ const installationsApi = {
     api.post(`/installations/interventions/${id}/cocher-safety/`, { cle, coche }),
   signerSafety: (id) =>
     api.post(`/installations/interventions/${id}/signer-safety/`, {}),
+  // ── FG69 — signature client sur le compte-rendu d'intervention ──
+  signerClient: (id, { signature_client, signataire_nom }) =>
+    api.post(`/installations/interventions/${id}/signer-client/`,
+      { signature_client, signataire_nom }),
   getConsignesSecurite: () => api.get('/installations/consignes-securite/'),
   saveConsigneSecurite: (id, data) => id
     ? api.patch(`/installations/consignes-securite/${id}/`, data)
@@ -398,6 +402,28 @@ const installationsApi = {
       motifRefus ? { motif_refus: motifRefus } : {}),
   executerDemandeTransfert: (id) =>
     api.post(`/installations/demandes-transfert/${id}/executer/`, {}),
+
+  // FG310 — demandes d'achat (réquisitions chantier) → approbation. Cycle :
+  // brouillon → soumise (`soumettre`) → approuvée (`approuver`) / refusée
+  // (`refuser`) → commandée (`marquer-commandee` / `generer-bcf`). Les lignes
+  // ont leur propre endpoint (la réponse demande expose `lignes` en lecture
+  // seule) ; référence/société/created_by sont posées côté serveur.
+  getDemandesAchat: (params) => api.get('/installations/demandes-achat/', { params }),
+  getDemandeAchat: (id) => api.get(`/installations/demandes-achat/${id}/`),
+  createDemandeAchat: (data) => api.post('/installations/demandes-achat/', data),
+  updateDemandeAchat: (id, data) => api.patch(`/installations/demandes-achat/${id}/`, data),
+  deleteDemandeAchat: (id) => api.delete(`/installations/demandes-achat/${id}/`),
+  soumettreDemandeAchat: (id) =>
+    api.post(`/installations/demandes-achat/${id}/soumettre/`, {}),
+  approuverDemandeAchat: (id) =>
+    api.post(`/installations/demandes-achat/${id}/approuver/`, {}),
+  refuserDemandeAchat: (id, motifRefus) =>
+    api.post(`/installations/demandes-achat/${id}/refuser/`,
+      motifRefus ? { motif_refus: motifRefus } : {}),
+  createDemandeAchatLigne: (data) =>
+    api.post('/installations/demandes-achat-lignes/', data),
+  deleteDemandeAchatLigne: (id) =>
+    api.delete(`/installations/demandes-achat-lignes/${id}/`),
 
   // ── XMFG1-16 — Atelier MRP-lite : ordres d'assemblage / démontage (kitting) ──
 

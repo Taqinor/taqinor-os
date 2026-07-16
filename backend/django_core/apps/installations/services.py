@@ -10,6 +10,7 @@ from apps.ventes.utils.references import create_with_reference
 from .models import (
     Installation, ChecklistTemplate, ChecklistEtapeModele,
     ChantierChecklistItem, StageModele, StockReservation,
+    DemandeTransfert,
 )
 
 
@@ -284,7 +285,34 @@ def create_installation_from_devis(devis, user, company):
     # (`reserver-stock`) appelle le MÊME service, aucune logique dupliquée.
     if methode_reservation_stock(company) != METHODE_RESERVATION_MANUELLE:
         seed_reservations(inst)
+    # VX213 (a) — handoff AVAL : le plus gros transfert de l'entreprise
+    # (chantier assigné à un technicien) n'est plus silencieux. Notify UNIQUEMENT
+    # à la création (created=True) ; ré-accepter le devis retourne le chantier
+    # existant (created=False) plus haut sans repasser ici — pas de doublon.
+    _notifier_chantier_assigne(inst, inst.technicien_responsable)
     return inst, True
+
+
+def _notifier_chantier_assigne(inst, technicien):
+    """VX213 (a)/(b) — notifie (best-effort, ne lève jamais) le technicien
+    assigné à un chantier (création depuis devis, ou réassignation). No-op si
+    aucun technicien. La société est celle du chantier (jamais d'une requête)."""
+    if technicien is None or not getattr(technicien, 'pk', None):
+        return
+    try:
+        from apps.notifications.services import notify
+        from apps.notifications.models import EventType
+        client_nom = getattr(getattr(inst, 'client', None), 'nom', '') or ''
+        titre = f"Nouveau chantier assigné — {inst.reference}"
+        corps = (f"Le chantier « {inst.reference} »"
+                 + (f" (client : {client_nom})" if client_nom else '')
+                 + " vous est assigné.")
+        notify(
+            technicien, EventType.CHANTIER_ASSIGNE, titre,
+            body=corps, link=f'/installations?installation={inst.pk}',
+            company=inst.company)
+    except Exception:  # pragma: no cover - défensif
+        pass
 
 
 # ── N14 — Réservation de stock sur chantier → consommation à « Installé » ─────
@@ -3262,3 +3290,198 @@ def generer_interventions_recurrentes(company, *, aujourd_hui=None):
                 rec.save(update_fields=[
                     'nb_generees', 'prochaine_echeance', 'actif'])
     return crees
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# XSTK20 — Réappro kanban deux-bacs par scan de carte.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def demande_transfert_depuis_kanban(
+        *, company, user, produit_id, emplacement_destination_id,
+        quantite=None):
+    """XSTK20 — Le scan d'une carte kanban (bac vide côté `emplacement_
+    destination_id`) crée une DemandeTransfert préremplie depuis le DÉPÔT
+    PRINCIPAL avec la quantité de recomplètement configurée sur la carte.
+
+    IDEMPOTENT : si une demande NON TERMINALE (demandé/approuvé) existe déjà
+    pour le même couple (produit, destination), elle est renvoyée SANS
+    doublon (`created=False`). `quantite` : si non fournie, reprend le
+    `StockEmplacement.seuil_max` (FG62) de cet emplacement pour ce produit ;
+    à défaut, 1 (repli sûr — mieux qu'une demande à 0).
+
+    Cross-app : `stock.EmplacementStock` / `stock.Produit` /
+    `stock.StockEmplacement` lus via `apps.stock.selectors` uniquement —
+    jamais leurs models importés ici."""
+    from apps.stock.selectors import (
+        emplacement_principal_scoped, get_emplacement_scoped,
+        get_produit_scoped, seuil_max_emplacement,
+    )
+
+    produit = get_produit_scoped(company, produit_id)
+    if produit is None:
+        raise ValueError('Produit introuvable pour cette société.')
+    destination = get_emplacement_scoped(company, emplacement_destination_id)
+    if destination is None:
+        raise ValueError('Emplacement introuvable pour cette société.')
+    if destination.is_principal:
+        raise ValueError(
+            'Le dépôt principal ne peut pas être la destination d’un '
+            'réappro kanban.')
+    source = emplacement_principal_scoped(company)
+    if source is None:
+        raise ValueError(
+            'Aucun dépôt principal configuré pour cette société.')
+
+    existante = DemandeTransfert.objects.filter(
+        company=company, produit_id=produit.id, source_id=source.id,
+        destination_id=destination.id,
+        statut__in=[DemandeTransfert.Statut.DEMANDE,
+                    DemandeTransfert.Statut.APPROUVE],
+    ).order_by('-date_creation').first()
+    if existante is not None:
+        return existante, False
+
+    if quantite is None:
+        quantite = seuil_max_emplacement(company, produit.id, destination.id)
+    if not quantite or quantite <= 0:
+        quantite = 1
+
+    def _save(reference):
+        return DemandeTransfert.objects.create(
+            company=company, reference=reference, produit=produit,
+            source=source, destination=destination, quantite=quantite,
+            motif='Carte kanban scannée (bac vide) — réappro deux-bacs.',
+            created_by=user)
+
+    demande = create_with_reference(DemandeTransfert, 'DTR', company, _save)
+    return demande, True
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# XMFG18 — Révisions de nomenclature + duplication (kits de pré-assemblage).
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _composition_snapshot_kit(kit):
+    """XMFG18 — sérialise la composition courante d'un kit de pré-assemblage
+    en liste JSON-compatible. Aucun prix dans le snapshot."""
+    out = []
+    for c in kit.composants.select_related('produit').order_by('id'):
+        out.append({
+            'produit_id': c.produit_id,
+            'designation': c.designation or (
+                c.produit.nom if c.produit_id else ''),
+            'quantite': c.quantite,
+            'taux_perte_pct': str(c.taux_perte_pct),
+        })
+    return out
+
+
+def snapshot_revision_kit(kit, user=None):
+    """XMFG18 — crée une révision (snapshot JSON) de la composition COURANTE
+    du kit de pré-assemblage si elle diffère de la dernière révision.
+    Renvoie (revision, created). Idempotent — pas de doublon si la
+    composition n'a pas changé."""
+    from .models import RevisionKit
+    composition = _composition_snapshot_kit(kit)
+    derniere = kit.revisions.order_by('-numero').first()
+    if derniere is not None and derniere.composition == composition:
+        return derniere, False
+    numero = (derniere.numero + 1) if derniere is not None else 1
+    revision = RevisionKit.objects.create(
+        company=kit.company, kit=kit, numero=numero,
+        composition=composition, user=user)
+    return revision, True
+
+
+def composition_kit_au(kit, date_limite):
+    """XMFG18 — « composition au JJ/MM/AAAA » : la dernière révision créée à
+    la date donnée incluse. None si aucune révision à cette date."""
+    return (kit.revisions
+            .filter(date_creation__date__lte=date_limite)
+            .order_by('-numero')
+            .first())
+
+
+def dupliquer_kit(kit, user=None, facteur_echelle=None):
+    """XMFG18 — duplique un kit de pré-assemblage : en-tête copié
+    (« <nom> (copie) », référence interne vidée), composants copiés avec
+    facteur d'échelle optionnel sur les quantités (entier — arrondi propre
+    ROUND_HALF_UP, jamais 0 pour un composant non nul). La copie reçoit sa
+    révision n°1."""
+    from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+    from .models import Kit, KitComposant
+
+    facteur = None
+    if facteur_echelle is not None:
+        try:
+            facteur = Decimal(str(facteur_echelle))
+        except (InvalidOperation, TypeError, ValueError):
+            raise ValueError("Facteur d'échelle invalide.")
+        if facteur <= 0:
+            raise ValueError("Le facteur d'échelle doit être positif.")
+
+    copie = Kit.objects.create(
+        company=kit.company,
+        nom=f'{kit.nom} (copie)',
+        reference_interne=None,
+        produit_compose=kit.produit_compose,
+        active=kit.active,
+        note=kit.note,
+        created_by=user)
+    for c in kit.composants.all():
+        quantite = c.quantite or 0
+        if facteur is not None and quantite:
+            quantite = int(
+                (Decimal(quantite) * facteur).to_integral_value(
+                    rounding=ROUND_HALF_UP))
+            quantite = max(quantite, 1)
+        KitComposant.objects.create(
+            kit=copie, produit_id=c.produit_id, designation=c.designation,
+            quantite=quantite, taux_perte_pct=c.taux_perte_pct)
+    snapshot_revision_kit(copie, user=user)
+    return copie
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# XMFG19 — Remplacement de masse d'un composant (kits de pré-assemblage).
+# ─────────────────────────────────────────────────────────────────────────────
+
+def remplacer_composant_kits(company, *, produit_ancien_id, produit_nouveau_id,
+                             ratio=None, user=None):
+    """XMFG19 — remplace `produit_ancien` par `produit_nouveau` dans TOUTES
+    les nomenclatures de kits de pré-assemblage de la société, avec ratio de
+    quantité optionnel (arrondi entier ROUND_HALF_UP, jamais 0 pour une ligne
+    non nulle). Chaque kit modifié reçoit sa révision XMFG18. Renvoie la
+    liste des kits modifiés [{kit_id, kit_nom, quantite_avant,
+    quantite_apres}]. L'appelant (stock) enveloppe le tout dans UNE
+    transaction atomique — pas de transaction ici."""
+    from decimal import Decimal, ROUND_HALF_UP
+    from .models import KitComposant
+
+    modifies = []
+    kits_touches = {}
+    lignes = (KitComposant.objects
+              .filter(kit__company=company, produit_id=produit_ancien_id)
+              .select_related('kit')
+              .order_by('kit__nom', 'id'))
+    for c in lignes:
+        quantite_avant = c.quantite
+        quantite = c.quantite or 0
+        if ratio is not None and quantite:
+            quantite = int(
+                (Decimal(quantite) * Decimal(str(ratio))).to_integral_value(
+                    rounding=ROUND_HALF_UP))
+            quantite = max(quantite, 1)
+        c.produit_id = produit_nouveau_id
+        c.quantite = quantite
+        c.save(update_fields=['produit', 'quantite'])
+        kits_touches[c.kit_id] = c.kit
+        modifies.append({
+            'kit_id': c.kit_id,
+            'kit_nom': c.kit.nom,
+            'quantite_avant': quantite_avant,
+            'quantite_apres': quantite,
+        })
+    for kit in kits_touches.values():
+        snapshot_revision_kit(kit, user=user)
+    return modifies

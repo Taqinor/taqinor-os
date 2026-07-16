@@ -24,7 +24,7 @@ from rest_framework.decorators import (
     permission_classes,
     action,
 )
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.permissions import AllowAny, BasePermission, IsAuthenticated
 from rest_framework.response import Response
 
 from authentication.permissions import (
@@ -61,6 +61,7 @@ from .models import (
 )
 from .serializers import (
     ApiUsagePlanSerializer,
+    BackgroundJobSerializer,
     BackupRunSerializer,
     BrandedTemplateSerializer,
     ChangelogEntrySerializer,
@@ -69,12 +70,14 @@ from .serializers import (
     DataSubjectRequestSerializer,
     DeletionRecordSerializer,
     ModuleToggleSerializer,
+    OutboxEventSerializer,
     PaymentTransactionSerializer,
     RegistreTraitementSerializer,
     SavedQuerySerializer,
     ScheduledExportSerializer,
     ScheduledJobSerializer,
     TenantThemeSerializer,
+    TenantUsageSnapshotSerializer,
     WorkflowTemplateSerializer,
 )
 
@@ -907,3 +910,190 @@ def metrics_view(request):
 
     body = metrics_infra.render_prometheus_text()
     return HttpResponse(body, content_type='text/plain; version=0.0.4')
+
+
+# ── NTPLT6 — Endpoint superuser des compteurs d'usage par tenant (metering) ──
+
+
+class _IsSuperUser(BasePermission):
+    """Permission stricte : superuser Django uniquement (jamais un tenant)."""
+
+    def has_permission(self, request, view):
+        user = getattr(request, 'user', None)
+        return bool(user and user.is_authenticated and user.is_superuser)
+
+
+# ── NTPLT19 — Endpoint superuser des statistiques DB (introspection READ-ONLY) ─
+@api_view(['GET'])
+@permission_classes([_IsSuperUser])
+def db_stats_view(request):
+    """Top requêtes (pg_stat_statements), tailles de tables, index inutilisés.
+
+    SUPERUSER only, JAMAIS exposé aux tenants. Lecture seule. Dégrade proprement
+    si ``pg_stat_statements`` n'est pas préchargée (message par section)."""
+    from . import db_stats
+    return Response(db_stats.collect_db_stats())
+
+
+class TenantUsageSnapshotViewSet(viewsets.ReadOnlyModelViewSet):
+    """NTPLT6 — instantanés d'usage par tenant (lecture seule, SUPERUSER only).
+
+    Fondation technique de N100 (plans/billing, différé). JAMAIS exposé à un
+    tenant : c'est une vue transverse à toutes les sociétés, réservée à
+    l'exploitant de l'instance. Filtrable par ``?company=<id>`` et
+    ``?jour=AAAA-MM-JJ``. Une action ``snapshot`` déclenche un calcul immédiat
+    (utile hors du beat nocturne).
+
+      * ``GET  usage/``           — liste des instantanés (toutes sociétés)
+      * ``GET  usage/{id}/``      — un instantané
+      * ``POST usage/snapshot/``  — calcule/rafraîchit l'instantané du jour
+    """
+    serializer_class = TenantUsageSnapshotSerializer
+    permission_classes = [_IsSuperUser]
+
+    def get_queryset(self):
+        from .models import TenantUsageSnapshot
+        qs = TenantUsageSnapshot.objects.select_related('company').all()
+        company = self.request.query_params.get('company')
+        if company:
+            qs = qs.filter(company_id=company)
+        jour = self.request.query_params.get('jour')
+        if jour:
+            qs = qs.filter(jour=jour)
+        return qs
+
+    @action(detail=False, methods=['post'])
+    def snapshot(self, request):
+        """Calcule/rafraîchit l'instantané du jour pour toutes les sociétés."""
+        from . import usage
+        done = usage.snapshot_all()
+        return Response({'companies': len(done)}, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['get'])
+    def couts(self, request):
+        """NTPLT45 — rapport de coût par tenant (SUPERUSER only).
+
+        ``GET usage/couts/?periode=AAAA-MM`` → JSON par société (requêtes,
+        db_time, stockage, jobs). ``?format=xlsx`` → export tableur. Base
+        factuelle de la discussion prix/plan (N100).
+        """
+        from . import usage
+        periode = request.query_params.get('periode')
+        rows = usage.cout_par_tenant(periode=periode)
+        if request.query_params.get('format') == 'xlsx':
+            return _couts_xlsx_response(rows, periode)
+        return Response({'periode': periode, 'tenants': rows})
+
+
+def _couts_xlsx_response(rows, periode):
+    """Construit une réponse .xlsx du rapport de coût par tenant (NTPLT45)."""
+    import io
+
+    from django.http import HttpResponse
+    from openpyxl import Workbook
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Couts par tenant'
+    headers = ['Société', 'Requêtes', 'DB time (ms)', 'Stockage (Mo)',
+               'Jobs', 'Jours mesurés']
+    ws.append(headers)
+    for r in rows:
+        ws.append([
+            r['company_nom'], r['requetes'], r['db_time_ms'],
+            r['stockage_mo'], r['jobs'], r['jours_mesures'],
+        ])
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    filename = f"couts-tenant-{periode or 'total'}.xlsx"
+    resp = HttpResponse(
+        buffer.getvalue(),
+        content_type=('application/vnd.openxmlformats-officedocument.'
+                      'spreadsheetml.sheet'))
+    resp['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return resp
+
+
+# ── NTPLT10 — Supervision de l'outbox (superuser : liste, filtre, rejeu) ─────
+
+
+class OutboxEventViewSet(viewsets.ReadOnlyModelViewSet):
+    """NTPLT10 — supervision de l'outbox transactionnel (SUPERUSER only).
+
+      * ``GET  core/outbox/``               — liste (filtre ``?statut=`` /
+        ``?event=``)
+      * ``GET  core/outbox/{id}/``          — un événement
+      * ``POST core/outbox/{id}/rejouer/``  — re-livre l'événement aux handlers
+
+    Vue transverse à toutes les sociétés, réservée à l'exploitant."""
+
+    serializer_class = OutboxEventSerializer
+    permission_classes = [_IsSuperUser]
+
+    def get_queryset(self):
+        from .models import OutboxEvent
+        qs = OutboxEvent.objects.all()
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        event = self.request.query_params.get('event')
+        if event:
+            qs = qs.filter(event_name=event)
+        return qs
+
+    @action(detail=True, methods=['post'])
+    def rejouer(self, request, pk=None):
+        """Re-livre l'événement aux handlers durables (dédup préservée)."""
+        from . import dispatch_outbox
+        event = self.get_object()
+        result = dispatch_outbox.replay(event)
+        return Response(result, status=status.HTTP_200_OK)
+
+
+# ── NTPLT29 — Jobs de fond avec progression (mes jobs) ──────────────────────
+
+
+class BackgroundJobViewSet(viewsets.ReadOnlyModelViewSet):
+    """NTPLT29 — suivi de MES jobs de fond (lecture seule, scopé user+société).
+
+      * ``GET core/jobs-status/``       — mes jobs (société + user courant)
+      * ``GET core/jobs-status/{id}/``  — un de mes jobs
+
+    Le queryset est DOUBLEMENT scopé : société de l'utilisateur ET utilisateur
+    lui-même — un utilisateur ne voit jamais les jobs d'un collègue. Les jobs
+    sont créés par ``core.jobs.submit`` (company/user forcés server-side), pas
+    par cette API (lecture seule)."""
+
+    serializer_class = BackgroundJobSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        from .models import BackgroundJob
+        user = self.request.user
+        return BackgroundJob.objects.filter(
+            company=user.company, user=user)
+
+
+# ── NTPLT55 — Bascule superuser du mode maintenance (lecture seule) ──────────
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([_IsSuperUser])
+def maintenance_toggle(request):
+    """État / bascule du mode maintenance (SUPERUSER only).
+
+    * ``GET``  → ``{'actif', 'message'}`` courant ;
+    * ``POST {'actif': bool, 'message'?: str}`` → active/désactive à chaud.
+
+    Le middleware ``core.maintenance`` répond ensuite 503 aux écritures tant que
+    ``actif`` est vrai (login/logout/health restent ouverts)."""
+    from .models import MaintenanceMode
+
+    if request.method == 'POST':
+        actif = bool(request.data.get('actif'))
+        message = request.data.get('message')
+        obj = MaintenanceMode.set_active(actif, message=message)
+    else:
+        obj = MaintenanceMode.get_solo()
+    return Response({'actif': obj.actif, 'message': obj.message})

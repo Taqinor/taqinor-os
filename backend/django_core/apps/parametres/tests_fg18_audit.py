@@ -96,9 +96,11 @@ class FG18UserAuditTest(TestCase):
         r = self.api.get('/api/django/parametres/audit/sections/')
         self.assertEqual(r.status_code, 200)
         values = {s['value'] for s in r.data['sections']}
+        # VX233 — 'tarification' rejoint les sections connues (≥ 6 au total).
         for s in ('profil', 'roles', 'utilisateurs', 'automatisations',
-                  'messages'):
+                  'messages', 'tarification'):
             self.assertIn(s, values)
+        self.assertGreaterEqual(len(values), 6)
 
     def test_sections_endpoint_admin_only(self):
         viewer = User.objects.create_user(

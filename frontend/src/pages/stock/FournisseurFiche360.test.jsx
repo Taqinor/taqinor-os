@@ -94,7 +94,11 @@ describe('XPUR25 — panneau résumé (agrégat vue-360, BLOCKED côté serveur)
 
     renderPage()
 
-    expect(await screen.findByText('3')).toBeInTheDocument()
+    // VX159 — « 3 » (BCF ouverts) apparaît maintenant DEUX fois : dans le Stat
+    // ET dans le compteur de relations cliquable en tête → on assert la présence
+    // via findAllByText, et un indicateur unique (score) pour prouver le panneau.
+    expect((await screen.findAllByText('3')).length).toBeGreaterThan(0)
+    expect(screen.getByText('87')).toBeInTheDocument()
     expect(screen.getByText('1 234,50 MAD')).toBeInTheDocument()
   })
 })

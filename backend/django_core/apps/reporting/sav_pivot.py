@@ -95,3 +95,23 @@ def sav_tickets_cout_moyen(request):
             ],
         })
     return Response({'rows': rows})
+
+
+@api_view(['GET'])
+@permission_classes([IsResponsableOrAdmin])
+def sav_taux_attache(request):
+    """YSERV10 — ``GET reporting/insights/sav-taux-attache/`` : part des
+    chantiers réceptionnés de la période (``?date_debut=``/``?date_fin=``,
+    ISO ``YYYY-MM-DD``) qui ont un contrat de maintenance actif ≤90 j après
+    réception. Lu via ``apps.sav.selectors.taux_attache`` (frontière
+    cross-app — jamais un import de ``apps.sav.models``)."""
+    company = _co(request.user)
+    if company is None:
+        return Response({'detail': 'Accès refusé.'}, status=403)
+
+    from apps.sav.selectors import taux_attache
+
+    date_debut = request.query_params.get('date_debut') or None
+    date_fin = request.query_params.get('date_fin') or None
+    result = taux_attache(company, date_debut=date_debut, date_fin=date_fin)
+    return Response(result)

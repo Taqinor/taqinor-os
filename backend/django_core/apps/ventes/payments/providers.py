@@ -24,14 +24,19 @@ Chaque fournisseur expose :
                                       'montant': Decimal|None}
         Valide une notification entrante et dit si le paiement est confirmé.
 
-Le DÉFAUT NoOp confirme le paiement sur simple appel webhook (mode manuel /
-hors-ligne) — utile pour le scaffold et les tests ; une passerelle réelle
-remplacerait verify_webhook par une vérification de signature.
+QX3 (2026-07-10) — SÉCURITÉ FAIL-CLOSED : le webhook public de paiement est
+monté sans authentification (``/api/django/public/pay/<token>/webhook/``).
+Auparavant ``NoOpProvider.verify_webhook`` renvoyait ``paid: True`` pour
+N'IMPORTE quel payload — un simple ``POST {}`` fabriquait un ``Paiement`` et
+faisait passer la facture à PAYEE. Le défaut NoOp REFUSE désormais toute
+confirmation (``paid: False``), exactement comme la branche « sans identifiants »
+de ``HostedGatewayProvider`` : sans passerelle réelle vérifiant une signature,
+aucun paiement n'est jamais confirmé. Un encaissement manuel passe par le
+chemin ERP authentifié, jamais par ce webhook public.
 """
 from __future__ import annotations
 
 import logging
-from decimal import Decimal
 
 logger = logging.getLogger(__name__)
 
@@ -74,9 +79,10 @@ class NoOpProvider(PaymentProvider):
     """Fournisseur par défaut : page de paiement INTERNE, aucun coût/dépendance.
 
     La page publique « Payer en ligne » (servie par l'ERP) joue le rôle de page
-    de paiement. Le webhook NoOp confirme le paiement sur appel (mode manuel) —
-    une passerelle réelle remplacera ``verify_webhook`` par une vérification de
-    signature. Aucune passerelle live n'est câblée ici."""
+    de paiement. QX3 — SÉCURITÉ : le webhook NoOp ne confirme JAMAIS un paiement
+    (``paid: False``). Sans passerelle réelle qui vérifie une signature, un POST
+    non authentifié ne peut pas fabriquer d'encaissement. Aucune passerelle live
+    n'est câblée ici."""
 
     key = 'noop'
     label = 'Paiement manuel (aucune passerelle)'
@@ -89,20 +95,12 @@ class NoOpProvider(PaymentProvider):
         }
 
     def verify_webhook(self, link, payload):
-        payload = payload or {}
-        # Mode manuel : un webhook reçu vaut confirmation. Le montant par défaut
-        # est le montant figé du lien ; un payload peut le surcharger.
-        montant = payload.get('montant')
-        if montant is not None:
-            try:
-                montant = Decimal(str(montant))
-            except Exception:  # noqa: BLE001
-                montant = None
-        return {
-            'paid': True,
-            'provider_ref': str(payload.get('provider_ref') or '') or '',
-            'montant': montant,
-        }
+        # QX3 — FAIL-CLOSED : ce webhook public n'est pas authentifié. Sans
+        # vérification de signature d'une vraie passerelle, on ne confirme
+        # JAMAIS un paiement. Le montant ne provient jamais du payload : il est
+        # toujours figé côté serveur (``link.montant``) en aval. Miroir exact de
+        # la branche « sans identifiants » de ``HostedGatewayProvider``.
+        return {'paid': False, 'provider_ref': '', 'montant': None}
 
     def tokenize(self, *, client, return_url=None):
         # Aucune tokenisation réelle : jamais de PAN ni de token opaque

@@ -7,13 +7,13 @@ triée par casier. Action ``cocher-ligne`` : coche une ligne, propage à la
 pick-list source. Action ``cloturer`` : clôture le lot si toutes les
 pick-lists sont soldées. Lecture tout rôle, écriture responsable/admin.
 Multi-tenant via ``TenantMixin``."""
-from rest_framework import viewsets, status
+from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.viewsets import CompanyScopedModelViewSet
 
 from ..models import LotPrelevement
 from ..serializers import LotPrelevementSerializer
@@ -22,7 +22,7 @@ from .. import services
 READ_ACTIONS = ['list', 'retrieve']
 
 
-class LotPrelevementViewSet(TenantMixin, viewsets.ModelViewSet):
+class LotPrelevementViewSet(CompanyScopedModelViewSet):
     """ZSTK10 — lots de prélèvement. Lecture tout rôle, écriture
     responsable/admin. Société/`created_by`/référence posés serveur ; les
     pick-lists sont fournies via `pick_list_ids` dans le corps à la

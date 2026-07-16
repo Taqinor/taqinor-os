@@ -95,6 +95,36 @@ app.conf.beat_schedule = {
         'task': 'notifications.sweep_daily',
         'schedule': crontab(hour=8, minute=0),
     },
+    # VX210 — réveille les items snoozés (activités + approbations) dont
+    # l'échéance de snooze est passée ; toutes les 30 min pour un réveil prompt.
+    'notifications-reveiller-snoozes': {
+        'task': 'notifications.reveiller_snoozes',
+        'schedule': crontab(minute='*/30'),
+    },
+    # VX209(c) — purge/archive quotidienne des notifications anciennes (lues
+    # > 60 j supprimées, non-lues > 60 j archivées) ; heure creuse.
+    'notifications-purge-anciennes': {
+        'task': 'notifications.purge_notifications_anciennes',
+        'schedule': crontab(hour=2, minute=45),
+    },
+    # NTPLT10 — filet beat de l'outbox : livre les événements pending/failed
+    # échus (en plus de l'enqueue on_commit immédiat) toutes les 5 minutes.
+    'core-dispatch-outbox': {
+        'task': 'core.dispatch_outbox',
+        'schedule': crontab(minute='*/5'),
+    },
+    # NTPLT36 — crée les partitions mensuelles à l'avance (M + M+1 + M+2,
+    # idempotent) ; une passe quotidienne suffit largement.
+    'core-ensure-partitions': {
+        'task': 'core.ensure_partitions',
+        'schedule': crontab(hour=3, minute=0),
+    },
+    # NTPLT8 — scan MENSUEL DRY-RUN d'étanchéité des données vivantes
+    # (company_id NULL/orphelin) ; le 1er du mois, ne modifie rien.
+    'core-scan-live-isolation': {
+        'task': 'core.scan_live_isolation',
+        'schedule': crontab(hour=4, minute=0, day_of_month=1),
+    },
     'automation-time-triggers-daily': {
         'task': 'automation.time_triggers_daily',
         'schedule': crontab(hour=8, minute=5),
@@ -264,11 +294,105 @@ app.conf.beat_schedule = {
         'task': 'core.beat_heartbeat',
         'schedule': crontab(minute='*/5'),
     },
+    # NTPLT6 — metering d'usage par tenant, instantané nocturne (idempotent,
+    # comptages bornés) ; fondation de N100 (plans/billing, différé).
+    'core-snapshot-tenant-usage': {
+        'task': 'core.snapshot_tenant_usage',
+        'schedule': crontab(hour=1, minute=45),
+    },
+    # YAPIC10 — purge quotidienne des IdempotencyRecord (YAPIC9) plus vieux
+    # que 24 h, heure creuse.
+    'core-purge-idempotency-records': {
+        'task': 'core.purge_idempotency_records',
+        'schedule': crontab(hour=3, minute=15),
+    },
     # YSERV3 — balayage monitoring quotidien (synchro fournisseur + évaluation
     # de sous-performance), heure creuse matinale.
     'monitoring-balayage-quotidien': {
         'task': 'monitoring.balayage_quotidien',
         'schedule': crontab(hour=7, minute=35),
+    },
+    # ── QX11 — jobs périodiques BÂTIS mais JAMAIS planifiés (bug dominant :
+    # une tâche testée mais absente du beat ne tourne jamais). Ajoutés à des
+    # créneaux heures creuses ; un test de garde (test_qx11_beat_reachability)
+    # échoue désormais si un nouveau @shared_task périodique reste hors beat.
+    # XFAC7 — rappels J-N avant échéance de tranche (devis accepté).
+    'ventes-pre-echeance-reminders': {
+        'task': 'ventes.pre_echeance_reminders',
+        'schedule': crontab(hour=7, minute=20),
+    },
+    # ZFAC12 — « accepté mais jamais facturé » : nudge le facturier.
+    'ventes-devis-a-facturer-reminder': {
+        'task': 'ventes.devis_a_facturer_reminder',
+        'schedule': crontab(hour=7, minute=25),
+    },
+    # XMKT1 — exécute les étapes de séquences de relance marketing dues.
+    'compta-executer-sequences-relance': {
+        'task': 'compta.executer_sequences_relance',
+        'schedule': crontab(hour=8, minute=10),
+    },
+    # XMKT7 — envoie les campagnes marketing planifiées dues.
+    'compta-envoyer-campagnes-planifiees': {
+        'task': 'compta.envoyer_campagnes_planifiees',
+        'schedule': crontab(minute='*/15'),
+    },
+    # XMKT — communications d'événement dues (anniversaires/jalons).
+    'compta-envoyer-communications-evenement': {
+        'task': 'compta.envoyer_communications_evenement',
+        'schedule': crontab(hour=8, minute=20),
+    },
+    # XMKT — recalcule les contacts marketing dormants, quotidien.
+    'compta-recalculer-dormants-marketing': {
+        'task': 'compta.recalculer_dormants_marketing',
+        'schedule': crontab(hour=3, minute=40),
+    },
+    # XMKT — publie les posts sociaux programmés dus.
+    'compta-traiter-posts-sociaux': {
+        'task': 'compta.traiter_posts_sociaux',
+        'schedule': crontab(minute='*/15'),
+    },
+    # XMKT — décide les gagnants des tests A/B arrivés à terme.
+    'compta-decider-gagnants-ab': {
+        'task': 'compta.decider_gagnants_ab',
+        'schedule': crontab(hour=8, minute=25),
+    },
+    # XKB7 — relance quotidienne des non-lecteurs de lecture obligatoire.
+    'kb-sweep-lectures-obligatoires': {
+        'task': 'kb.sweep_lectures_obligatoires',
+        'schedule': crontab(hour=8, minute=30),
+    },
+    # XKB14 — relance de re-revue des articles KB périmés, quotidien.
+    'kb-sweep-articles-perimes': {
+        'task': 'kb.sweep_articles_perimes',
+        'schedule': crontab(hour=8, minute=35),
+    },
+    # XFSM24 — escalade des check-ins QHSE en retard.
+    'qhse-escalader-checkins-en-retard': {
+        'task': 'qhse.escalader_checkins_en_retard',
+        'schedule': crontab(minute='*/30'),
+    },
+    # QX36 — relève des boîtes email entrantes (dispatch bus core.email_intake :
+    # SAV email→ticket, ventes réponse→devis). No-op sans boîte configurée.
+    'ventes-poll-inbound-mailboxes': {
+        'task': 'ventes.poll_inbound_mailboxes',
+        'schedule': crontab(minute='*/10'),
+    },
+    # QX36 — FG373 relève GED (import documentaire par email), toutes les 10 min.
+    'ged-poll-mail-intake': {
+        'task': 'ged.poll_mail_intake',
+        'schedule': crontab(minute='*/10'),
+    },
+    # QX30be — moteur de relance déclenchée par le comportement (non-ouverture
+    # 24 h / ouvert-non-signé 48 h / rouvert 3×). Toutes les 3 h.
+    'ventes-engagement-followup-engine': {
+        'task': 'ventes.engagement_followup_engine',
+        'schedule': crontab(minute=5, hour='*/3'),
+    },
+    # QX31be — escalade speed-to-lead : lead chaud dont la notif d'arrivée
+    # reste non lue au-delà du seuil minutes. Cadence rapide (toutes les 15 min).
+    'notifications-sweep-hot-leads': {
+        'task': 'notifications.sweep_hot_leads',
+        'schedule': crontab(minute='*/15'),
     },
 }
 
@@ -278,19 +402,30 @@ app.conf.beat_schedule = {
 from celery.signals import task_success, task_failure  # noqa: E402
 
 
+def _queue_of(sender):
+    """NTPLT44 — nom de queue best-effort d'une tâche (routing_key), 'default'."""
+    try:
+        info = getattr(getattr(sender, 'request', None), 'delivery_info', None)
+        return (info or {}).get('routing_key') or 'default'
+    except Exception:  # noqa: BLE001 — best-effort
+        return 'default'
+
+
 @task_success.connect
-def _yhard6_on_task_success(**kwargs):
+def _yhard6_on_task_success(sender=None, **kwargs):
     try:
         from core import metrics
         metrics.record_task_success()
+        metrics.record_task_queue(_queue_of(sender), ok=True)  # NTPLT44
     except Exception:  # noqa: BLE001 — best-effort, ne doit jamais casser Celery
         pass
 
 
 @task_failure.connect
-def _yhard6_on_task_failure(**kwargs):
+def _yhard6_on_task_failure(sender=None, **kwargs):
     try:
         from core import metrics
         metrics.record_task_failure()
+        metrics.record_task_queue(_queue_of(sender), ok=False)  # NTPLT44
     except Exception:  # noqa: BLE001 — best-effort, ne doit jamais casser Celery
         pass

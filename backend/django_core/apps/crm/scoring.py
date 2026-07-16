@@ -255,6 +255,49 @@ def compute_score(lead) -> int:
 compute_lead_score = compute_score
 
 
+# ── Décomposition (VX221) ─────────────────────────────────────────────────────
+# Libellés FR courts des facteurs, pour le tooltip « pourquoi ce score ».
+_FACTEUR_LABELS = {
+    'completude': 'Profil complété',
+    'facture': 'Facture élevée',
+    'canal': 'Canal',
+    'type': "Type d'installation",
+    'recency': 'Lead récent',
+    'solar': 'Signaux solaires',
+    'readiness': "Maturité d'achat",
+}
+
+
+def score_reasons(lead) -> list[dict]:
+    """VX221 — décompose le score en ses composantes NON NULLES, triées par
+    points décroissants. PURE exposition des mêmes calculs que ``compute_score``
+    (aucun recalcul de pondération différent) : le front affiche « pourquoi »
+    sans dupliquer la logique. Chaque entrée = ``{'facteur', 'label', 'points'}``.
+
+    Le total des ``points`` peut dépasser 100 (bonus QK2) ; le score exposé reste
+    borné par ``compute_score``. On n'expose que les facteurs qui rapportent des
+    points (> 0) pour rester lisible."""
+    parts = [
+        ('completude', _completeness_score(lead)),
+        ('facture', _bill_score(lead.facture_hiver)),
+        ('canal', _CANAL_SCORES.get(lead.canal or '', 0)),
+        ('type', _TYPE_SCORES.get(lead.type_installation or '', 0)),
+        ('recency', _recency_score(lead)),
+        ('solar', _solar_signals_score(lead)),
+        ('readiness', _readiness_score(lead)),
+    ]
+    reasons = [
+        {
+            'facteur': key,
+            'label': _FACTEUR_LABELS[key],
+            'points': pts,
+        }
+        for key, pts in parts if pts > 0
+    ]
+    reasons.sort(key=lambda r: r['points'], reverse=True)
+    return reasons
+
+
 def score_label(score: int) -> str:
     """Libellé FR court du score (pour badge kanban)."""
     if score >= 70:

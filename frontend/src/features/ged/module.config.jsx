@@ -11,9 +11,12 @@ import { FileSignature, ShieldCheck, Tags, ScanLine, Trash2 } from 'lucide-react
    S'auto-enregistre via le glob des module.config du dossier features - SANS
    toucher au routeur, a la Sidebar ni a routes.meta. Le navigateur de base
    (/ged, DocumentsPage) reste intact : ce module N'AJOUTE que les ecrans
-   avances sous une section GESTION DOCUMENTAIRE distincte de la section
-   DOCUMENTS existante. On NE pose PAS de sectionLabels (le 1er segment "ged"
-   est deja pris). Tout est gate responsable/admin.
+   avances. VX153 - ces ecrans avances et la section DOCUMENTS de base (/ged)
+   forment UN seul espace conceptuel : la nav du module porte desormais le
+   libelle "DOCUMENTS - AVANCE" (au lieu de "GESTION DOCUMENTAIRE") pour se lire
+   comme la continuite de DOCUMENTS, sans toucher au routing /ged/*. On NE pose
+   toujours PAS de sectionLabels (le 1er segment "ged" est deja pris). Tout est
+   gate responsable/admin.
 
    XGED12 - Ecran "Numeriser" (capture mobile photo -> PDF multi-pages classe
    en GED, cf. frontend/src/features/ged/NumeriserPage.jsx). Meme gating
@@ -33,7 +36,8 @@ export default {
   key: 'ged_advanced',
   order: 80,
   nav: {
-    label: 'GESTION DOCUMENTAIRE',
+    label: 'DOCUMENTS · AVANCÉ', // VX153 — continuité de la section DOCUMENTS (un seul espace)
+    accent: 'lune', // VX8 — documentaire = accent lune (dérivé)
     items: [
       { to: '/ged/numeriser', label: 'Numériser', icon: <ScanLine size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/ged/approbation', label: 'Approbation & signature', icon: <FileSignature size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },

@@ -66,6 +66,55 @@ export const TOOLTIP_STYLE = {
   boxShadow: 'var(--shadow-md)',
 }
 
+// VX41 — Échelle catégorielle de marque pour les séries multiples (elles
+// retombaient jusqu'ici sur un seul ton). Dérivée des accents de module (VX8)
+// + tons sémantiques existants : déjà thémée clair/sombre, zéro teinte
+// inventée. Ordre pensé pour un contraste maximal entre séries adjacentes.
+export const CHART_CATEGORICAL = [
+  'var(--module-accent-brass)',
+  'var(--module-accent-azur)',
+  'var(--color-encre-soft)',
+  'var(--module-accent-lune)',
+  'var(--success)',
+  'var(--warning)',
+]
+
+/** Couleur catégorielle n° `index` (boucle si la série dépasse la palette). */
+export function categoricalColor(index) {
+  const n = CHART_CATEGORICAL.length
+  return CHART_CATEGORICAL[((index % n) + n) % n]
+}
+
+// VX41 — Grille signature (data-ink minimal, façon Tufte) : pointillés très
+// légers, lignes HORIZONTALES seules (jamais de verticales ni de ligne
+// d'axe pleine). À passer directement aux props `<CartesianGrid {...}>`.
+export const CHART_GRID_STYLE = {
+  stroke: CHART_TOKENS.grid,
+  strokeDasharray: '2 4',
+  strokeOpacity: 0.6,
+  horizontal: true,
+  vertical: false,
+}
+
+// VX41 — Style de la série « période précédente » : même ton que la série
+// courante mais en pointillé, plus fine, non remplie — pour une comparaison
+// togglable superposée sans doubler le nombre de graphiques.
+export const CHART_COMPARISON_STYLE = {
+  strokeDasharray: '4 3',
+  strokeWidth: 1.5,
+  fillOpacity: 0,
+}
+
+// VX41 — Style d'annotation `ReferenceLine` pour les événements ponctuels
+// (ex. marqueur de maintenance sur une courbe de production) : trait fin
+// pointillé + étiquette discrète, ton sémantique par défaut = warning.
+export const CHART_REFERENCE_LINE_STYLE = {
+  stroke: CHART_TOKENS.warning,
+  strokeDasharray: '3 3',
+  strokeWidth: 1,
+  labelStyle: { fontSize: 10, fill: CHART_TOKENS.muted },
+}
+
 export default {
   CHART_TOKENS,
   resolveColor,
@@ -76,4 +125,9 @@ export default {
   BAR_RADIUS,
   BAR_RADIUS_H,
   TOOLTIP_STYLE,
+  CHART_CATEGORICAL,
+  categoricalColor,
+  CHART_GRID_STYLE,
+  CHART_COMPARISON_STYLE,
+  CHART_REFERENCE_LINE_STYLE,
 }

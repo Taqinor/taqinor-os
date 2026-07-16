@@ -19,6 +19,16 @@ class CompanyProfileSerializer(serializers.ModelSerializer):
     default_installer_nom = serializers.CharField(
         source='default_installer.username', read_only=True
     )
+    # SCA46 — consentement au benchmarking anonymisé agrégé. Le champ VIT sur
+    # ``authentication.Company`` (le consentement est une donnée du tenant, pas
+    # du profil d'affichage) ; exposé ici en LECTURE pour l'écran Paramètres.
+    # L'écriture passe par ``views_profile.update_profile`` (posée côté serveur
+    # sur la société de l'appelant, auditée) — jamais par un setattr nested.
+    benchmarking_opt_in = serializers.SerializerMethodField()
+
+    def get_benchmarking_opt_in(self, obj):
+        company = getattr(obj, 'company', None)
+        return bool(getattr(company, 'benchmarking_opt_in', False))
 
     class Meta:
         model = CompanyProfile

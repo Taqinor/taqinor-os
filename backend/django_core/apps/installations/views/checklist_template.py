@@ -6,6 +6,8 @@ from authentication.mixins import TenantMixin  # noqa: F401
 from authentication.permissions import (  # noqa: F401
     IsAnyRole, IsResponsableOrAdmin, IsAdminRole,
 )
+from core.viewsets import CompanyScopedModelViewSet
+from apps.core.destroy_mixins import UsageGuardedDestroyMixin
 from django.utils import timezone  # noqa: F401
 
 from .. import activity  # noqa: F401
@@ -107,12 +109,15 @@ def seed_types_intervention(company):
 # package __init__ ré-exporte toutes les vues publiques.
 
 
-class ChecklistTemplateViewSet(TenantMixin, viewsets.ModelViewSet):
+class ChecklistTemplateViewSet(UsageGuardedDestroyMixin, CompanyScopedModelViewSet):
     """N74 — modèles NOMMÉS de checklist (Paramètres → Chantiers). Lecture tout
     rôle, écriture admin. Chaque modèle peut viser un `type_installation` qui
     l'auto-sélectionne à la création d'un chantier ; le modèle « Défaut » (type
     vide, protégé) est le repli. Tout est scopé à la société ; la société est
-    posée côté serveur, jamais lue du corps."""
+    posée côté serveur, jamais lue du corps.
+    VX241(b) — la suppression effective écrit désormais une ligne AuditLog
+    (UsageGuardedDestroyMixin) : ChecklistTemplate n'est pas dans
+    TRACKED_MODELS."""
     queryset = ChecklistTemplate.objects.prefetch_related('etapes').all()
     serializer_class = ChecklistTemplateSerializer
 
@@ -126,11 +131,7 @@ class ChecklistTemplateViewSet(TenantMixin, viewsets.ModelViewSet):
             ensure_default_template(request.user.company)
         return super().list(request, *args, **kwargs)
 
-    def destroy(self, request, *args, **kwargs):
-        template = self.get_object()
+    def destroy_guard_message(self, template):
         if template.protege:
-            return Response(
-                {'detail': "Le modèle « Défaut » est protégé — "
-                           "désactivez-le plutôt."},
-                status=status.HTTP_409_CONFLICT)
-        return super().destroy(request, *args, **kwargs)
+            return "Le modèle « Défaut » est protégé — désactivez-le plutôt."
+        return None

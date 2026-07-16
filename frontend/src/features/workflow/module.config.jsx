@@ -33,6 +33,7 @@ const config = {
   order: 55,
   nav: {
     label: 'WORKFLOW',
+    accent: 'warning', // VX8 — pilotage/process = accent warning (dérivé)
     items: [
       {
         to: '/workflow/taches-planifiees',

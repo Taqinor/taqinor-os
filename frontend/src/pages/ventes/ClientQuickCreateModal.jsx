@@ -6,6 +6,9 @@ import {
 } from '../../ui'
 import { Combobox } from '../../ui/Combobox'
 import { searchCompanies, hitsToOptions } from '../../features/crm/companyLookup'
+import { usePasteClean, parsePastedPhone } from '../../hooks/usePasteClean'
+import { useDuplicateCheck } from '../../hooks/useDuplicateCheck'
+import PhoneHint from '../../components/PhoneHint'
 
 /* QG3 — « + Nouveau client » quick-create depuis le générateur de devis
    (chemin sans lead). Minimal : nom + téléphone/email — appelle
@@ -27,6 +30,13 @@ export default function ClientQuickCreateModal({ open, onClose, onCreated }) {
     setNom(''); setPrenom(''); setTelephone(''); setEmail(''); setError(null); setDupWarning(null)
   }
   const handleClose = () => { reset(); onClose?.() }
+  // VX237 — collage téléphone/WhatsApp nettoyé vers la forme canonique de
+  // stockage (espaces/points/tirets tolérés) au lieu de tomber brut.
+  const onTelephonePaste = usePasteClean(parsePastedPhone, setTelephone)
+  // VX239 — avertissement doublon EN DIRECT (jusqu'ici limité à
+  // l'autocomplete NOM ci-dessus) : réutilise `useDuplicateCheck` (extrait de
+  // LeadForm) dès que le téléphone/email tapé correspond à un contact connu.
+  const dupMatches = useDuplicateCheck(telephone, email)
 
   const onSearchCompany = (query) =>
     searchCompanies(query, { searcher: crmApi.searchClients }).then(hitsToOptions)
@@ -120,7 +130,22 @@ export default function ClientQuickCreateModal({ open, onClose, onCreated }) {
             <Label htmlFor="cqc-tel">Téléphone</Label>
             <Input id="cqc-tel" type="tel" value={telephone}
                    onChange={(e) => setTelephone(e.target.value)}
+                   onPaste={onTelephonePaste}
                    placeholder="+212 6 XX XX XX XX" />
+            {/* VX239 — <PhoneHint> extrait de ClientForm. */}
+            <PhoneHint value={telephone} testId="cqc-tel-hint" />
+            {dupMatches.length > 0 && (
+              <p className="text-xs text-warning" role="status" data-testid="cqc-dup-live-warning">
+                ⚠️ Un contact avec ce téléphone/email existe déjà :{' '}
+                {dupMatches.slice(0, 3).map((d, i) => (
+                  <span key={d.id}>
+                    {i > 0 && ', '}
+                    {`${d.nom} ${d.prenom || ''}`.trim() || `#${d.id}`}
+                  </span>
+                ))}
+                {dupMatches.length > 3 && '…'}
+              </p>
+            )}
           </div>
           <div className="grid gap-1.5">
             <Label htmlFor="cqc-email">Email</Label>

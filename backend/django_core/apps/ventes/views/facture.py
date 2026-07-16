@@ -32,7 +32,9 @@ from authentication.permissions import (  # noqa: F401
     IsAnyRole,
     IsResponsableOrAdmin,
     IsAdminRole,
+    HasPermissionOrLegacy,
 )
+from core.viewsets import CompanyScopedModelViewSet  # noqa: F401  ARC5
 from ..utils.references import create_with_reference  # noqa: F401
 from ..utils.company_settings import create_numbered  # noqa: F401
 
@@ -48,6 +50,63 @@ FACTURE_CHAMPS_FINANCIERS = frozenset([
     'taux_tva', 'escompte_pct', 'escompte_jours', 'pourcentage',
     'type_facture',
 ])
+
+
+def arrondir_au_pas(montant, pas):
+    """ZFAC11 — arrondit ``montant`` au multiple le plus proche de ``pas``.
+
+    Pur (aucune I/O). ``pas <= 0`` (arrondi désactivé) renvoie ``montant``
+    inchangé — comportement actuel strictement préservé. Arrondi « half-up »
+    (0,025 monte à 0,05 pour un pas de 0,05). Renvoie un ``Decimal`` quantifié
+    à 2 décimales.
+    """
+    from decimal import Decimal, ROUND_HALF_UP
+    montant = Decimal(str(montant))
+    pas = Decimal(str(pas or 0))
+    if pas <= 0:
+        return montant.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    nb_pas = (montant / pas).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+    return (nb_pas * pas).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
+
+def proposer_arrondi_caisse(facture, mode, reste=None):
+    """ZFAC11 — propose le reste à payer ARRONDI au pas de caisse société.
+
+    Ne s'applique QU'aux règlements en espèces et seulement si la société a
+    configuré un pas (> 0). Renvoie un dict
+    ``{montant_arrondi, ecart, pas, applicable}`` où ``ecart`` = résiduel non
+    perçu (montant_du − montant_arrondi, jamais négatif) qui sera tracé comme
+    un abandon « Arrondi espèces ». Hors espèces ou pas nul → ``applicable`` est
+    ``False`` et ``montant_arrondi`` = reste à payer (aucun arrondi).
+
+    ``reste`` : résiduel de référence explicite. Indispensable au moment de
+    l'encaissement, où ``facture.montant_du`` (propriété vivante) inclut DÉJÀ
+    le paiement tout juste enregistré — la proposition doit se calculer sur le
+    reste AVANT paiement, sinon elle ne correspond jamais au montant réglé.
+    """
+    from decimal import Decimal
+    from apps.parametres.models import CompanyProfile
+    reste = facture.montant_du if reste is None else reste
+    profile = CompanyProfile.get(company=facture.company)
+    pas = getattr(profile, 'arrondi_caisse', None) or Decimal('0')
+    if mode != Paiement.Mode.ESPECES or pas <= 0 or reste <= 0:
+        return {
+            'montant_arrondi': reste, 'ecart': Decimal('0'),
+            'pas': pas, 'applicable': False,
+        }
+    montant_arrondi = arrondir_au_pas(reste, pas)
+    # On ne perçoit jamais plus que le dû : si l'arrondi monte au-dessus du
+    # reste, on redescend au pas inférieur (l'écart reste ≥ 0, jamais un
+    # trop-perçu à gérer).
+    if montant_arrondi > reste:
+        montant_arrondi = montant_arrondi - pas
+    if montant_arrondi < 0:
+        montant_arrondi = Decimal('0')
+    ecart = reste - montant_arrondi
+    return {
+        'montant_arrondi': montant_arrondi, 'ecart': ecart,
+        'pas': pas, 'applicable': ecart > 0,
+    }
 
 
 from authentication.scoping import scope_queryset  # noqa: E402,F401
@@ -76,7 +135,12 @@ class _DatedDocument:
 # package __init__ ré-exporte toutes les vues publiques.
 
 
-class FactureViewSet(viewsets.ModelViewSet):
+class FactureViewSet(CompanyScopedModelViewSet):
+    # ARC5 — sweep TenantMixin : base transverse unique (CompanyScopedModelViewSet
+    # = TenantMixin + ModelViewSet). get_queryset/perform_create/perform_update/
+    # get_permissions SURCHARGENT la base : scoping société et matrice 401/403/404
+    # IDENTIQUES (règle #4 : aucun statut/sérialisation Facture touché ; la facture
+    # garde son PDF légacy séparé, hors périmètre du moteur devis).
     queryset = Facture.objects.select_related(
         'client', 'created_by', 'bon_commande'
     ).prefetch_related('lignes').all()
@@ -100,7 +164,9 @@ class FactureViewSet(viewsets.ModelViewSet):
         return FactureSerializer
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS + ['paiements', 'relances', 'emails']:
+        if self.action in READ_ACTIONS + [
+            'paiements', 'relances', 'emails', 'arrondi_caisse',
+        ]:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
             'emettre', 'marquer_payee', 'enregistrer_paiement',
@@ -227,10 +293,11 @@ class FactureViewSet(viewsets.ModelViewSet):
                         ),
                         'champs_refuses': sorted(champs_touches),
                     })
-        serializer.save()
+        # VX98 — dernier auteur de modification (server-side, jamais du corps) :
+        # alimente la puce de fraîcheur. Pattern created_by.
+        serializer.save(updated_by=self.request.user)
 
-    @action(detail=True, methods=['post'], url_path='emettre',
-            permission_classes=[IsResponsableOrAdmin])
+    @action(detail=True, methods=['post'], url_path='emettre')
     def emettre(self, request, pk=None):
         facture = self.get_object()
         if facture.statut != Facture.Statut.BROUILLON:
@@ -567,6 +634,29 @@ class FactureViewSet(viewsets.ModelViewSet):
             ).data
         )
 
+    @action(detail=True, methods=['get'], url_path='arrondi-caisse',
+            permission_classes=[IsAnyRole])
+    def arrondi_caisse(self, request, pk=None):
+        """ZFAC11 — propose le reste à payer ARRONDI au pas de caisse société
+        pour un règlement EN ESPÈCES (``?mode=especes``, défaut espèces).
+
+        Renvoie ``{applicable, montant_du, montant_arrondi, ecart, pas}`` :
+        l'écran d'encaissement pré-remplit ``montant_arrondi`` pour un paiement
+        espèces et affiche l'écart qui sera tracé. Hors espèces ou pas société
+        nul → ``applicable=false`` et ``montant_arrondi`` = reste à payer (aucun
+        arrondi, comportement inchangé)."""
+        from decimal import Decimal
+        facture = self.get_object()
+        mode = request.query_params.get('mode', Paiement.Mode.ESPECES)
+        prop = proposer_arrondi_caisse(facture, mode)
+        return Response({
+            'applicable': prop['applicable'],
+            'montant_du': str(facture.montant_du),
+            'montant_arrondi': str(prop['montant_arrondi']),
+            'ecart': str(prop['ecart']),
+            'pas': str(prop['pas'] or Decimal('0')),
+        })
+
     @action(detail=True, methods=['post'], url_path='enregistrer-paiement',
             permission_classes=[IsResponsableOrAdmin])
     def enregistrer_paiement(self, request, pk=None):
@@ -673,21 +763,41 @@ class FactureViewSet(viewsets.ModelViewSet):
                 facture_payee.send(
                     sender=Facture, instance=locked, company=locked.company)
             elif locked.statut != Facture.Statut.ANNULEE:
-                # XFAC13 — tolérance société : un résiduel sous le seuil
-                # (défaut 0 = désactivé, comportement inchangé) est abandonné
-                # automatiquement à l'encaissement plutôt que de laisser la
-                # facture « en retard » pour quelques centimes.
-                from apps.parametres.models import CompanyProfile
-                profile = CompanyProfile.get(company=locked.company)
-                tolerance = getattr(
-                    profile, 'tolerance_ecart_reglement', None) or Decimal('0')
-                if tolerance > 0 and locked.montant_du <= tolerance:
+                # ZFAC11 — arrondi de caisse : un règlement EN ESPÈCES égal au
+                # reste à payer arrondi au pas société (défaut 0 = désactivé,
+                # comportement inchangé) solde la facture, l'écart d'arrondi
+                # étant tracé comme un abandon « Arrondi espèces » (jamais
+                # silencieux). Ne s'applique qu'aux espèces ; virement/chèque
+                # l'ignorent. Passe AVANT la tolérance XFAC13 (motif dédié).
+                mode = serializer.validated_data.get('mode', Paiement.Mode.VIREMENT)
+                # ``reste`` = résiduel AVANT ce paiement (capturé plus haut) —
+                # montant_du est déjà retombé après serializer.save().
+                prop = proposer_arrondi_caisse(locked, mode, reste=reste)
+                if (prop['applicable']
+                        and abs(montant - prop['montant_arrondi']) <= Decimal('0.01')
+                        and Decimal('0') < locked.montant_du <= prop['pas']):
                     from ..services import abandonner_solde_facture
                     abandonner_solde_facture(
-                        locked, motif=Facture.MotifAbandon.ECART_REGLEMENT,
+                        locked, motif=Facture.MotifAbandon.ARRONDI_CAISSE,
                         user=request.user, auto=True,
                     )
                     locked.refresh_from_db()
+                else:
+                    # XFAC13 — tolérance société : un résiduel sous le seuil
+                    # (défaut 0 = désactivé, comportement inchangé) est abandonné
+                    # automatiquement à l'encaissement plutôt que de laisser la
+                    # facture « en retard » pour quelques centimes.
+                    from apps.parametres.models import CompanyProfile
+                    profile = CompanyProfile.get(company=locked.company)
+                    tolerance = getattr(
+                        profile, 'tolerance_ecart_reglement', None) or Decimal('0')
+                    if tolerance > 0 and locked.montant_du <= tolerance:
+                        from ..services import abandonner_solde_facture
+                        abandonner_solde_facture(
+                            locked, motif=Facture.MotifAbandon.ECART_REGLEMENT,
+                            user=request.user, auto=True,
+                        )
+                        locked.refresh_from_db()
             facture = locked
         return Response(
             FactureSerializer(facture).data, status=status.HTTP_201_CREATED,

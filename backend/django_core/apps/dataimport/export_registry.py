@@ -130,11 +130,13 @@ _SPECS = [
     ExportSpec('lignes_devis', 'Lignes de devis', 'ventes.LigneDevis',
                order_by='id', company_field='devis__company'),
     ExportSpec('bons_commande', 'Bons de commande', 'ventes.BonCommande'),
-    ExportSpec('factures', 'Factures', 'ventes.Facture'),
-    ExportSpec('lignes_facture', 'Lignes de facture', 'ventes.LigneFacture',
+    # ODX17 — Facture/LigneFacture/Paiement/Avoir ont déménagé de ``ventes``
+    # vers ``facturation`` (même table physique, zéro SQL).
+    ExportSpec('factures', 'Factures', 'facturation.Facture'),
+    ExportSpec('lignes_facture', 'Lignes de facture', 'facturation.LigneFacture',
                order_by='id', company_field='facture__company'),
-    ExportSpec('paiements', 'Paiements', 'ventes.Paiement'),
-    ExportSpec('avoirs', 'Avoirs', 'ventes.Avoir'),
+    ExportSpec('paiements', 'Paiements', 'facturation.Paiement'),
+    ExportSpec('avoirs', 'Avoirs', 'facturation.Avoir'),
     ExportSpec('chantiers', 'Chantiers / Installations',
                'installations.Installation'),
     ExportSpec('interventions', 'Interventions', 'installations.Intervention'),
@@ -152,3 +154,26 @@ def available_objects():
 
 # Sélection par défaut d'une « sauvegarde complète » : tous les objets.
 DEFAULT_OBJECTS = list(REGISTRY.keys())
+
+
+def declared_import_specs(company=None):
+    """ARC32 — cibles d'IMPORT déclarées par les manifestes plateforme.
+
+    Pont vers le registre (``core.platform.import_specs``) : chaque app
+    propriétaire déclare ses cibles importables dans son ``apps/<x>/platform.py``
+    (surface ``import_specs``) — la même source de vérité que
+    ``dataimport.services.TARGETS`` unionne. Renvoie l'ensemble des clés
+    déclarées (gaté société quand ``company`` est fourni : un module désactivé
+    disparaît de la liste, comme les autres surfaces ARC29-34).
+
+    Distinct de ``REGISTRY`` (le catalogue d'EXPORT, 17 objets richement typés
+    avec chemin de modèle + champ société pour la sérialisation) : cet export
+    reste piloté par ``REGISTRY``. Cette fonction expose la face IMPORT du même
+    registre plateforme, sans dupliquer les mappings d'en-têtes (qui restent
+    dans ``dataimport.services.FIELD_MAPS``). Robuste au registre indisponible
+    (renvoie alors un ensemble vide, jamais d'exception)."""
+    try:
+        from core import platform
+        return set(platform.import_specs(company=company))
+    except Exception:  # pragma: no cover - registre indisponible
+        return set()

@@ -137,9 +137,6 @@ def _install_default_masks():
     register_mask('notifications.VapidKeyPair', {
         'private_key': scrub_null,
     })
-    register_mask('core.WebhookSubscription', {
-        'secret': scrub_null,
-    })
     register_mask('publicapi.Webhook', {
         'secret': scrub_null,
     })

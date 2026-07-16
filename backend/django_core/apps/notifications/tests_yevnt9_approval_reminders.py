@@ -104,6 +104,24 @@ class AutomationApprovalReminderTests(TestCase):
         count = sweep_approval_reminders(self.company)
         self.assertEqual(count, 0)  # 5 jours < seuil configuré (10)
 
+    def test_selector_escalade_state_pour_reflects_palier(self):
+        """VX218 — `selectors.escalade_state_pour` (lecture cross-app pour
+        `reporting/approbations.py`) reflète le palier YEVNT9 sans jamais
+        rien fabriquer pour une approbation jamais balayée."""
+        from .selectors import escalade_state_pour
+        from .services import sweep_approval_reminders
+
+        approval = self._make_pending_approval(days_old=0)
+        label, when = escalade_state_pour(approval)
+        self.assertIsNone(label)
+        self.assertIsNone(when)
+
+        approval2 = self._make_pending_approval(days_old=5)
+        sweep_approval_reminders(self.company)
+        label2, when2 = escalade_state_pour(approval2)
+        self.assertEqual(label2, 'relance')
+        self.assertIsNotNone(when2)
+
 
 class ComptaDemandeReminderTests(TestCase):
 

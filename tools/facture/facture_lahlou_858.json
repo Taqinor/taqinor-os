@@ -1,0 +1,78 @@
+{
+  "numero": "FAC-202607-0002",
+  "date_emission": "09/07/2026",
+  "devis_ref": "858",
+  "devis_date": "24/06/2026",
+  "client": {
+    "nom": "M. Mehdi Lahlou",
+    "adresse": "Casablanca",
+    "tel": "+212 6 61 09 49 07"
+  },
+  "installation": {
+    "titre": "Installation solaire photovoltaïque 11,44 kWc",
+    "detail": "16 panneaux × 715 Wc · onduleur hybride 10 kW · 2 batteries 5 kWh",
+    "site_line": "Site : Casablanca · Installation réalisée par TAQINOR"
+  },
+  "lignes": [
+    {
+      "designation": "Onduleur hybride 10 kW monophasé",
+      "marque": "Deye",
+      "qte": 1,
+      "pu_ttc": 26000,
+      "tva_pct": 20
+    },
+    {
+      "designation": "Panneaux photovoltaïques 715 Wc",
+      "marque": "Canadian Solar",
+      "qte": 16,
+      "pu_ttc": 1250,
+      "tva_pct": 10
+    },
+    {
+      "designation": "Batterie de stockage 5 kWh",
+      "marque": "Deyness",
+      "qte": 2,
+      "pu_ttc": 14000,
+      "tva_pct": 20
+    },
+    {
+      "designation": "Structure de montage sur acier étanche SunRak",
+      "note": "Toiture panneaux sandwich du garage — avec SunRak Maroc",
+      "marque": "SunRak",
+      "qte": 16,
+      "pu_ttc": 640,
+      "tva_pct": 20
+    },
+    {
+      "designation": "Accessoires",
+      "qte": 1,
+      "pu_ttc": 2000,
+      "tva_pct": 20
+    },
+    {
+      "designation": "Tableau de protection AC/DC",
+      "qte": 1,
+      "pu_ttc": 3000,
+      "tva_pct": 20
+    },
+    {
+      "designation": "Installation",
+      "qte": 1,
+      "pu_ttc": 7200,
+      "tva_pct": 20
+    },
+    {
+      "designation": "Transport",
+      "qte": 1,
+      "pu_ttc": 1200,
+      "tva_pct": 20
+    }
+  ],
+  "acompte_regle": 56000,
+  "mode_paiement": "Virement bancaire",
+  "entreprise": {
+    "if_fiscal": "",
+    "taxe_professionnelle": "",
+    "cnss": ""
+  }
+}

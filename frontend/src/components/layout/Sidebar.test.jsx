@@ -63,4 +63,21 @@ describe('Sidebar — I135 « calme » + P168 icônes', () => {
     const h = svg.getAttribute('height')
     expect(w).toBe(h)
   })
+
+  it('VX8 — chaque section de nav porte un accent de module perceptible et distinct', () => {
+    const { container } = renderSidebar({ path: '/dashboard' })
+    const sections = Array.from(container.querySelectorAll('.sidebar-section'))
+    expect(sections.length).toBeGreaterThan(1)
+    // La section STOCK (2e, sans label sur la 1re) déclare bien --module-accent.
+    const stockSection = sections.find((s) => s.textContent.includes('STOCK'))
+    expect(stockSection.style.getPropertyValue('--module-accent')).toBe('var(--module-accent-lune)')
+    // VENTES garde le brass historique (règle explicite de la tâche).
+    const ventesSection = sections.find((s) => s.textContent.includes('VENTES'))
+    expect(ventesSection.style.getPropertyValue('--module-accent')).toBe('var(--module-accent-brass)')
+    // Deux sections différentes déclarent des clés d'accent différentes.
+    const crmSection = sections.find((s) => s.textContent.includes('CRM'))
+    expect(crmSection.style.getPropertyValue('--module-accent')).not.toBe(
+      stockSection.style.getPropertyValue('--module-accent'),
+    )
+  })
 })

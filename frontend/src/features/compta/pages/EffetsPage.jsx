@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useTabParam } from '../components/useTabParam'
 import {
   Plus, CheckCircle2, XCircle, Send, TrendingDown, Landmark, Download,
 } from 'lucide-react'
@@ -41,7 +42,7 @@ const StatutEffet = statusPill({
 const money = (v) => formatMAD(v)
 
 export default function EffetsPage() {
-  const [tab, setTab] = useState('effets')
+  const [tab, setTab] = useTabParam('effets')  // VX231(c) — onglet persisté (?onglet=)
   const [dialog, setDialog] = useState(null)
 
   const fetcher = useMemo(() => ({

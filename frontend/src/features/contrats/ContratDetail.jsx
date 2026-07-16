@@ -1,16 +1,18 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
+import { Printer } from 'lucide-react'
 import contratsApi from '../../api/contratsApi'
 import {
   Button, Card, EmptyState, Skeleton, Badge, toast,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
   Label, Input, Textarea,
 } from '../../ui'
-import { DetailShell } from '../../ui/module'
+import { RecordShell } from '../../ui/module'
 import { formatMAD, formatDate, formatDateTime } from '../../lib/format'
 import { StatutContrat, StatutResiliation, CONTRAT_STATUS } from './status'
 import StateMachine from './StateMachine'
 import SimpleTable from './SimpleTable'
+import { openPdfInGesture } from '../../utils/pdfBlob'
 
 /* ============================================================================
    UX34 (détail) — Fiche cycle de vie d'un contrat + actions du cycle de vie.
@@ -79,12 +81,16 @@ export default function ContratDetail() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- refetch only when id changes
   }, [id])
 
+  // VX48 — onglet pré-ouvert SYNCHRONE avant l'await (Safari iOS bloque
+  // silencieusement un window.open() post-await).
   const genererPdf = async () => {
+    const pending = openPdfInGesture()
     try {
       const res = await contratsApi.getPdf(id)
-      const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }))
-      window.open(url, '_blank', 'noopener')
-      setTimeout(() => URL.revokeObjectURL(url), 60000)
+      const blob = new Blob([res.data], { type: 'application/pdf' })
+      if (!pending.deliver(blob, `contrat-${id}.pdf`)) {
+        toast.error('Ouverture bloquée par le navigateur.')
+      }
     } catch { toast.error('PDF indisponible.') }
   }
 
@@ -369,13 +375,21 @@ export default function ContratDetail() {
         </Button>
       ))}
       <Button size="sm" variant="outline" onClick={() => setDialog('renouveler')}>Renouveler</Button>
+      {/* VX246(b) — impression navigateur (print.css). Distincte du « PDF interne »
+          WeasyPrint ci-dessous, qu'elle ne remplace pas. */}
+      <Button size="sm" variant="outline" onClick={() => window.print()}>
+        <Printer size={15} strokeWidth={1.75} aria-hidden="true" /> Imprimer
+      </Button>
       <Button variant="outline" onClick={genererPdf}>PDF interne</Button>
     </>
   )
 
   return (
     <>
-      <DetailShell
+      {/* ARC46 — RecordShell (pendant détail de ListShell) ; drop-in de
+          DetailShell : mêmes props (dont le slot chatter via `activity`),
+          aucune refonte visuelle. */}
+      <RecordShell
         title={contrat.reference || `Contrat #${contrat.id}`}
         subtitle={contrat.objet}
         status={contrat.statut}

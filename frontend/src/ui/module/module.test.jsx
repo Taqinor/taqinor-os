@@ -1,9 +1,22 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeAll } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
+
+// La sparkline VX15 mesure sa taille : jsdom n'a pas ResizeObserver.
+beforeAll(() => {
+  if (typeof globalThis.ResizeObserver === 'undefined') {
+    globalThis.ResizeObserver = class {
+      observe() {}
+
+      unobserve() {}
+
+      disconnect() {}
+    }
+  }
+})
 import {
-  ModuleDashboard, ListShell, EcheanceCenter, statusPill,
+  ModuleDashboard, ModuleHero, ListShell, EcheanceCenter, statusPill,
 } from './index.js'
 
 /* Tests de RENDU (smoke) du kit module ERP (UX1). On vérifie le comportement
@@ -31,6 +44,50 @@ describe('ModuleDashboard', () => {
     )
     expect(screen.getByText('Contrats actifs')).toBeInTheDocument()
     expect(screen.getByText('À renouveler')).toBeInTheDocument()
+  })
+
+  it('VX15 — rend une sparkline quand `trend` est fourni, rien sinon', () => {
+    const { container } = withRouter(
+      <ModuleDashboard
+        stats={[
+          { label: 'Production kWc', value: '120', trend: [1, 2, 3, 4] },
+          { label: 'Sans tendance', value: '5' },
+        ]}
+      />,
+    )
+    // KpiSpark rend un conteneur ResponsiveContainer (recharts) — un seul
+    // KPI porte `trend`, donc un seul graphique doit apparaître.
+    expect(container.querySelectorAll('.recharts-responsive-container').length).toBe(1)
+  })
+
+  it('VX15 — `accent` pose une pastille de couleur, rien sans accent', () => {
+    withRouter(
+      <ModuleDashboard
+        stats={[{ label: 'Casiers actifs', value: '10' }]}
+        accent="var(--info)"
+      />,
+    )
+    expect(screen.getByText('Casiers actifs')).toBeInTheDocument()
+  })
+})
+
+describe('ModuleHero', () => {
+  it('rend le titre en heading + sous-titre', () => {
+    withRouter(<ModuleHero title="Tableau de bord" subtitle="Vue d'ensemble" />)
+    expect(screen.getByRole('heading', { name: 'Tableau de bord' })).toBeInTheDocument()
+    expect(screen.getByText("Vue d'ensemble")).toBeInTheDocument()
+  })
+
+  it('headingAs="h2" rend un <h2> (contrat e2e Dashboard préservé)', () => {
+    withRouter(<ModuleHero title="Tableau de bord" headingAs="h2" />)
+    const heading = screen.getByRole('heading', { name: 'Tableau de bord' })
+    expect(heading.tagName).toBe('H2')
+  })
+
+  it('sans headingAs, rend un <h1> par défaut', () => {
+    withRouter(<ModuleHero title="Contrats" />)
+    const heading = screen.getByRole('heading', { name: 'Contrats' })
+    expect(heading.tagName).toBe('H1')
   })
 })
 

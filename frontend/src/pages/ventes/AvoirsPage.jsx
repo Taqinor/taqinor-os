@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
+import { useIsAdmin } from '../../hooks/useHasPermission'
 import { FileX2, FileText, Search } from 'lucide-react'
 import ventesApi from '../../api/ventesApi'
 import { openPdfBlob } from '../../utils/pdfBlob'
@@ -21,8 +21,7 @@ const STATUT_TABS = [
 ]
 
 export default function AvoirsPage() {
-  const role = useSelector(s => s.auth.role)
-  const isAdmin = role === 'admin'
+  const isAdmin = useIsAdmin()
   const navigate = useNavigate()
   const [avoirs, setAvoirs] = useState([])
   const [loading, setLoading] = useState(true)

@@ -50,13 +50,14 @@ def rows(resp):
 
 
 class GedBase(TestCase):
-    def setUp(self):
-        self.co_a = make_company('ged-a', 'Ged A')
-        self.co_b = make_company('ged-b', 'Ged B')
-        self.admin_a = make_user(self.co_a, 'ged-admin-a', 'admin')
-        self.admin_b = make_user(self.co_b, 'ged-admin-b', 'admin')
-        self.cab_a = Cabinet.objects.create(company=self.co_a, nom='Administratif')
-        self.cab_b = Cabinet.objects.create(company=self.co_b, nom='Administratif')
+    @classmethod
+    def setUpTestData(cls):
+        cls.co_a = make_company('ged-a', 'Ged A')
+        cls.co_b = make_company('ged-b', 'Ged B')
+        cls.admin_a = make_user(cls.co_a, 'ged-admin-a', 'admin')
+        cls.admin_b = make_user(cls.co_b, 'ged-admin-b', 'admin')
+        cls.cab_a = Cabinet.objects.create(company=cls.co_a, nom='Administratif')
+        cls.cab_b = Cabinet.objects.create(company=cls.co_b, nom='Administratif')
 
 
 # ── GED1 — squelette + scoping société ──────────────────────────────
@@ -417,12 +418,13 @@ class GedMoveEndpointTests(GedBase):
 
 # ── GED3 — Document + DocumentVersion (numérotation, checksum/dedup) ──
 class DocumentVersionTests(GedBase):
-    def setUp(self):
-        super().setUp()
-        self.folder_a = Folder.objects.create(
-            company=self.co_a, cabinet=self.cab_a, nom='Docs A')
-        self.doc_a = Document.objects.create(
-            company=self.co_a, folder=self.folder_a, nom='Facture CIN')
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.folder_a = Folder.objects.create(
+            company=cls.co_a, cabinet=cls.cab_a, nom='Docs A')
+        cls.doc_a = Document.objects.create(
+            company=cls.co_a, folder=cls.folder_a, nom='Facture CIN')
 
     def test_create_document_force_company_and_creator(self):
         api = auth(self.admin_a)
@@ -527,13 +529,14 @@ class DocumentLienTests(GedBase):
     autorisé / cible hors société.
     """
 
-    def setUp(self):
-        super().setUp()
-        self.folder_a = Folder.objects.create(
-            company=self.co_a, cabinet=self.cab_a, nom='Docs A')
-        self.doc_a = Document.objects.create(
-            company=self.co_a, folder=self.folder_a, nom='Contrat')
-        self.client_a = Client.objects.create(company=self.co_a, nom='Client A')
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.folder_a = Folder.objects.create(
+            company=cls.co_a, cabinet=cls.cab_a, nom='Docs A')
+        cls.doc_a = Document.objects.create(
+            company=cls.co_a, folder=cls.folder_a, nom='Contrat')
+        cls.client_a = Client.objects.create(company=cls.co_a, nom='Client A')
 
     def test_link_document_to_allowed_target(self):
         api = auth(self.admin_a)
@@ -688,23 +691,24 @@ class MigrateAttachmentsToGedTests(GedBase):
     cabinet/dossier d'atterrissage par défaut, et le mode --dry-run.
     """
 
-    def setUp(self):
-        super().setUp()
-        self.client_a = Client.objects.create(company=self.co_a, nom='Client A')
-        self.client_b = Client.objects.create(company=self.co_b, nom='Client B')
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.client_a = Client.objects.create(company=cls.co_a, nom='Client A')
+        cls.client_b = Client.objects.create(company=cls.co_b, nom='Client B')
         ct_client = ContentType.objects.get_for_model(Client)
         # Pièce jointe de A ciblant un client autorisé (→ doit donner un lien).
-        self.att_a = Attachment.objects.create(
-            company=self.co_a, content_type=ct_client,
-            object_id=self.client_a.id, file_key='co_a/keyA.pdf',
+        cls.att_a = Attachment.objects.create(
+            company=cls.co_a, content_type=ct_client,
+            object_id=cls.client_a.id, file_key='co_a/keyA.pdf',
             filename='contrat-a.pdf', size=1234, mime='application/pdf',
-            uploaded_by=self.admin_a)
+            uploaded_by=cls.admin_a)
         # Pièce jointe de B (autre société) ciblant son propre client.
-        self.att_b = Attachment.objects.create(
-            company=self.co_b, content_type=ct_client,
-            object_id=self.client_b.id, file_key='co_b/keyB.pdf',
+        cls.att_b = Attachment.objects.create(
+            company=cls.co_b, content_type=ct_client,
+            object_id=cls.client_b.id, file_key='co_b/keyB.pdf',
             filename='contrat-b.pdf', size=99, mime='application/pdf',
-            uploaded_by=self.admin_b)
+            uploaded_by=cls.admin_b)
 
     def _run(self, **kwargs):
         from django.core.management import call_command
@@ -821,25 +825,26 @@ class CoffreAclTests(GedBase):
     admin voit tous ceux de sa société, et un document placé dans un coffre est
     invisible des autres. Société toujours posée côté serveur."""
 
-    def setUp(self):
-        super().setUp()
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
         # Deux employés non-admin de la société A + un client.
-        self.emp1 = make_user(self.co_a, 'ged-emp1', 'normal')
-        self.emp2 = make_user(self.co_a, 'ged-emp2', 'normal')
-        self.client_a = Client.objects.create(
-            company=self.co_a, nom='Client A', email='ca@example.com')
-        self.folder_a = Folder.objects.create(
-            company=self.co_a, cabinet=self.cab_a, nom='Racine')
+        cls.emp1 = make_user(cls.co_a, 'ged-emp1', 'normal')
+        cls.emp2 = make_user(cls.co_a, 'ged-emp2', 'normal')
+        cls.client_a = Client.objects.create(
+            company=cls.co_a, nom='Client A', email='ca@example.com')
+        cls.folder_a = Folder.objects.create(
+            company=cls.co_a, cabinet=cls.cab_a, nom='Racine')
         # Coffre de emp1.
-        self.coffre1 = Coffre.objects.create(
-            company=self.co_a, nom='Coffre emp1', proprietaire=self.emp1)
+        cls.coffre1 = Coffre.objects.create(
+            company=cls.co_a, nom='Coffre emp1', proprietaire=cls.emp1)
         # Document dans le coffre de emp1.
-        self.doc_secret = Document.objects.create(
-            company=self.co_a, folder=self.folder_a, coffre=self.coffre1,
+        cls.doc_secret = Document.objects.create(
+            company=cls.co_a, folder=cls.folder_a, coffre=cls.coffre1,
             nom='Bulletin de paie emp1')
         # Document hors coffre (visible de tous).
-        self.doc_public = Document.objects.create(
-            company=self.co_a, folder=self.folder_a, nom='Note de service')
+        cls.doc_public = Document.objects.create(
+            company=cls.co_a, folder=cls.folder_a, nom='Note de service')
 
     def test_owner_sees_own_coffre(self):
         api = auth(self.emp1)
@@ -934,12 +939,13 @@ class DocumentTagTaxonomyTests(GedBase):
     parent même-société, garde anti-cycle, application/retrait sur un document,
     chemin lisible et filtre par tag (+ descendants)."""
 
-    def setUp(self):
-        super().setUp()
-        self.folder_a = Folder.objects.create(
-            company=self.co_a, cabinet=self.cab_a, nom='Racine')
-        self.doc = Document.objects.create(
-            company=self.co_a, folder=self.folder_a, nom='Contrat X')
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.folder_a = Folder.objects.create(
+            company=cls.co_a, cabinet=cls.cab_a, nom='Racine')
+        cls.doc = Document.objects.create(
+            company=cls.co_a, folder=cls.folder_a, nom='Contrat X')
 
     def test_create_tag_forces_company(self):
         api = auth(self.admin_a)
@@ -1056,18 +1062,19 @@ class DocumentCustomDataTests(GedBase):
     les définitions `customfields` du module « document » : champ obligatoire,
     type cohérent, choix borné, clés inconnues écartées, et isolation société."""
 
-    def setUp(self):
-        super().setUp()
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
         from apps.customfields.models import CustomFieldDef
-        self.CFD = CustomFieldDef
-        self.folder_a = Folder.objects.create(
-            company=self.co_a, cabinet=self.cab_a, nom='Racine')
+        cls.CFD = CustomFieldDef
+        cls.folder_a = Folder.objects.create(
+            company=cls.co_a, cabinet=cls.cab_a, nom='Racine')
         # Une définition obligatoire (texte) + une de choix sur le module doc.
-        self.CFD.objects.create(
-            company=self.co_a, module='document', code='reference',
+        cls.CFD.objects.create(
+            company=cls.co_a, module='document', code='reference',
             libelle='Référence', type='text', obligatoire=True)
-        self.CFD.objects.create(
-            company=self.co_a, module='document', code='confidentialite',
+        cls.CFD.objects.create(
+            company=cls.co_a, module='document', code='confidentialite',
             libelle='Confidentialité', type='choice',
             options=['public', 'interne', 'secret'])
 
@@ -1127,10 +1134,11 @@ class DocumentFullTextSearchTests(GedBase):
     création/màj, l'endpoint /recherche matche nom/description/OCR, classe par
     pertinence, respecte l'ACL coffre-fort et l'isolation société."""
 
-    def setUp(self):
-        super().setUp()
-        self.folder_a = Folder.objects.create(
-            company=self.co_a, cabinet=self.cab_a, nom='Racine')
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.folder_a = Folder.objects.create(
+            company=cls.co_a, cabinet=cls.cab_a, nom='Racine')
 
     def test_search_matches_name(self):
         api = auth(self.admin_a)
@@ -1217,10 +1225,11 @@ class DocumentSemanticSearchTests(GedBase):
     recherche sémantique dégrade proprement sur le plein-texte GED11. Avec un
     provider simulé, l'embedding est posé et la recherche cosinus s'active."""
 
-    def setUp(self):
-        super().setUp()
-        self.folder_a = Folder.objects.create(
-            company=self.co_a, cabinet=self.cab_a, nom='Racine')
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.folder_a = Folder.objects.create(
+            company=cls.co_a, cabinet=cls.cab_a, nom='Racine')
 
     def test_embedding_disabled_by_default(self):
         self.assertFalse(services.embedding_enabled())
@@ -1309,10 +1318,11 @@ class DocQaRagTests(GedBase):
     vide ; avec un provider simulé, les fragments sont embeddés et la
     récupération top-k cosinus s'active et reste bornée par société + ACL."""
 
-    def setUp(self):
-        super().setUp()
-        self.folder_a = Folder.objects.create(
-            company=self.co_a, cabinet=self.cab_a, nom='Manuels')
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.folder_a = Folder.objects.create(
+            company=cls.co_a, cabinet=cls.cab_a, nom='Manuels')
 
     # — Découpage —
     def test_chunk_text_empty_returns_empty(self):
@@ -1439,10 +1449,11 @@ class DocumentUploadTests(GedBase):
     (mocké ici pour ne pas toucher MinIO). Company/créateur/uploader posés
     côté serveur ; dossier cible borné à la société (isolation préservée).
     """
-    def setUp(self):
-        super().setUp()
-        self.folder_a = Folder.objects.create(
-            company=self.co_a, cabinet=self.cab_a, nom='Docs A')
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.folder_a = Folder.objects.create(
+            company=cls.co_a, cabinet=cls.cab_a, nom='Docs A')
 
     def _file(self, name='contrat.pdf'):
         from django.core.files.uploadedfile import SimpleUploadedFile
@@ -1560,16 +1571,17 @@ class DocumentVersionAperuTests(GedBase):
     - authentification requise
     """
 
-    def setUp(self):
-        super().setUp()
-        self.folder_a = Folder.objects.create(
-            company=self.co_a, cabinet=self.cab_a, nom='Docs A')
-        self.doc_a = Document.objects.create(
-            company=self.co_a, folder=self.folder_a, nom='Contrat')
-        self.version_a = services.add_version(
-            self.doc_a, file_key='attachments/contrat.pdf',
-            company=self.co_a, filename='contrat.pdf', size=100,
-            mime='application/pdf', uploaded_by=self.admin_a)
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.folder_a = Folder.objects.create(
+            company=cls.co_a, cabinet=cls.cab_a, nom='Docs A')
+        cls.doc_a = Document.objects.create(
+            company=cls.co_a, folder=cls.folder_a, nom='Contrat')
+        cls.version_a = services.add_version(
+            cls.doc_a, file_key='attachments/contrat.pdf',
+            company=cls.co_a, filename='contrat.pdf', size=100,
+            mime='application/pdf', uploaded_by=cls.admin_a)
 
     def _url(self, version_id):
         return f'/api/django/ged/versions/{version_id}/apercu/'
@@ -1710,21 +1722,22 @@ class DocumentVersionHistoryRestoreTests(GedBase):
     - Isolation société : l'historique et la restauration sont bornés à la société.
     """
 
-    def setUp(self):
-        super().setUp()
-        self.folder_a = Folder.objects.create(
-            company=self.co_a, cabinet=self.cab_a, nom='Docs A')
-        self.doc_a = Document.objects.create(
-            company=self.co_a, folder=self.folder_a, nom='Contrat')
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.folder_a = Folder.objects.create(
+            company=cls.co_a, cabinet=cls.cab_a, nom='Docs A')
+        cls.doc_a = Document.objects.create(
+            company=cls.co_a, folder=cls.folder_a, nom='Contrat')
         # Crée deux versions initiales.
-        self.v1 = services.add_version(
-            self.doc_a, file_key='docs/v1.pdf', company=self.co_a,
+        cls.v1 = services.add_version(
+            cls.doc_a, file_key='docs/v1.pdf', company=cls.co_a,
             filename='v1.pdf', size=100, mime='application/pdf',
-            checksum='aaa', uploaded_by=self.admin_a)
-        self.v2 = services.add_version(
-            self.doc_a, file_key='docs/v2.pdf', company=self.co_a,
+            checksum='aaa', uploaded_by=cls.admin_a)
+        cls.v2 = services.add_version(
+            cls.doc_a, file_key='docs/v2.pdf', company=cls.co_a,
             filename='v2.pdf', size=200, mime='application/pdf',
-            checksum='bbb', uploaded_by=self.admin_a)
+            checksum='bbb', uploaded_by=cls.admin_a)
 
     # ── historique ──────────────────────────────────────────────────
 
@@ -1942,14 +1955,15 @@ class CheckoutCheckinTests(GedBase):
       * cross-société rejetée.
     """
 
-    def setUp(self):
-        super().setUp()
-        self.folder_a = Folder.objects.create(
-            company=self.co_a, cabinet=self.cab_a, nom="GED16-docs")
-        self.doc_a = Document.objects.create(
-            company=self.co_a, folder=self.folder_a, nom="Doc verrouillable")
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.folder_a = Folder.objects.create(
+            company=cls.co_a, cabinet=cls.cab_a, nom="GED16-docs")
+        cls.doc_a = Document.objects.create(
+            company=cls.co_a, folder=cls.folder_a, nom="Doc verrouillable")
         # Deuxième utilisateur dans la société A (non-admin).
-        self.user_a2 = make_user(self.co_a, 'ged16-user2', 'responsable')
+        cls.user_a2 = make_user(cls.co_a, 'ged16-user2', 'responsable')
 
     # ── service : checkout ────────────────────────────────────────────
 
@@ -2184,12 +2198,13 @@ class CycleDeVieTests(GedBase):
     Statuts LOCAUX à la GED — jamais le funnel STAGES.py.
     """
 
-    def setUp(self):
-        super().setUp()
-        self.folder_a = Folder.objects.create(
-            company=self.co_a, cabinet=self.cab_a, nom="GED17-docs")
-        self.doc_a = Document.objects.create(
-            company=self.co_a, folder=self.folder_a, nom="Doc cycle de vie")
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.folder_a = Folder.objects.create(
+            company=cls.co_a, cabinet=cls.cab_a, nom="GED17-docs")
+        cls.doc_a = Document.objects.create(
+            company=cls.co_a, folder=cls.folder_a, nom="Doc cycle de vie")
 
     # ── modèle / valeur par défaut ─────────────────────────────────────
 
@@ -2350,16 +2365,17 @@ class DemandeApprobationTests(GedBase):
     Statuts LOCAUX à la GED — jamais le funnel STAGES.py.
     """
 
-    def setUp(self):
-        super().setUp()
-        self.folder_a = Folder.objects.create(
-            company=self.co_a, cabinet=self.cab_a, nom="GED18-docs")
-        self.doc_a = Document.objects.create(
-            company=self.co_a, folder=self.folder_a, nom="Doc à valider")
-        self.folder_b = Folder.objects.create(
-            company=self.co_b, cabinet=self.cab_b, nom="GED18-docs-B")
-        self.doc_b = Document.objects.create(
-            company=self.co_b, folder=self.folder_b, nom="Doc B")
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.folder_a = Folder.objects.create(
+            company=cls.co_a, cabinet=cls.cab_a, nom="GED18-docs")
+        cls.doc_a = Document.objects.create(
+            company=cls.co_a, folder=cls.folder_a, nom="Doc à valider")
+        cls.folder_b = Folder.objects.create(
+            company=cls.co_b, cabinet=cls.cab_b, nom="GED18-docs-B")
+        cls.doc_b = Document.objects.create(
+            company=cls.co_b, folder=cls.folder_b, nom="Doc B")
 
     # ── service : lancer une revue ─────────────────────────────────────
 
@@ -2570,19 +2586,20 @@ class AclGedTests(GedBase):
     resolution en remontant le chemin, backward-compat sans ACL, scoping
     societe, refuse vs autorise."""
 
-    def setUp(self):
-        super().setUp()
-        self.user_a = make_user(self.co_a, 'ged-user-a', 'normal')
-        self.user_a2 = make_user(self.co_a, 'ged-user-a2', 'normal')
-        self.user_b = make_user(self.co_b, 'ged-user-b', 'normal')
-        self.root = Folder.objects.create(
-            company=self.co_a, cabinet=self.cab_a, nom='Racine')
-        self.sub = Folder.objects.create(
-            company=self.co_a, cabinet=self.cab_a, parent=self.root, nom='Sous')
-        self.root.refresh_from_db()
-        self.sub.refresh_from_db()
-        self.doc = Document.objects.create(
-            company=self.co_a, folder=self.sub, nom='Contrat')
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.user_a = make_user(cls.co_a, 'ged-user-a', 'normal')
+        cls.user_a2 = make_user(cls.co_a, 'ged-user-a2', 'normal')
+        cls.user_b = make_user(cls.co_b, 'ged-user-b', 'normal')
+        cls.root = Folder.objects.create(
+            company=cls.co_a, cabinet=cls.cab_a, nom='Racine')
+        cls.sub = Folder.objects.create(
+            company=cls.co_a, cabinet=cls.cab_a, parent=cls.root, nom='Sous')
+        cls.root.refresh_from_db()
+        cls.sub.refresh_from_db()
+        cls.doc = Document.objects.create(
+            company=cls.co_a, folder=cls.sub, nom='Contrat')
 
     def test_inherited_from_folder(self):
         AclGed.objects.create(
@@ -2726,16 +2743,17 @@ class PartageGedTests(GedBase):
     - jeton long et imprévisible (token_urlsafe).
     """
 
-    def setUp(self):
-        super().setUp()
-        self.folder_a = Folder.objects.create(
-            company=self.co_a, cabinet=self.cab_a, nom='Docs A')
-        self.doc_a = Document.objects.create(
-            company=self.co_a, folder=self.folder_a, nom='Contrat A')
-        self.version_a = services.add_version(
-            self.doc_a, file_key='attachments/contrat-a.pdf',
-            company=self.co_a, filename='contrat-a.pdf', size=120,
-            mime='application/pdf', uploaded_by=self.admin_a)
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.folder_a = Folder.objects.create(
+            company=cls.co_a, cabinet=cls.cab_a, nom='Docs A')
+        cls.doc_a = Document.objects.create(
+            company=cls.co_a, folder=cls.folder_a, nom='Contrat A')
+        cls.version_a = services.add_version(
+            cls.doc_a, file_key='attachments/contrat-a.pdf',
+            company=cls.co_a, filename='contrat-a.pdf', size=120,
+            mime='application/pdf', uploaded_by=cls.admin_a)
 
     def _public_url(self, token):
         return f'/api/django/ged/public/{token}/'
@@ -3088,16 +3106,17 @@ class WatermarkApercuTests(GedBase):
     - une image filigranée est réémise en image/png.
     """
 
-    def setUp(self):
-        super().setUp()
-        self.folder_a = Folder.objects.create(
-            company=self.co_a, cabinet=self.cab_a, nom='Docs A')
-        self.doc_a = Document.objects.create(
-            company=self.co_a, folder=self.folder_a, nom='Contrat')
-        self.version_a = services.add_version(
-            self.doc_a, file_key='attachments/contrat.pdf',
-            company=self.co_a, filename='contrat.pdf', size=100,
-            mime='application/pdf', uploaded_by=self.admin_a)
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.folder_a = Folder.objects.create(
+            company=cls.co_a, cabinet=cls.cab_a, nom='Docs A')
+        cls.doc_a = Document.objects.create(
+            company=cls.co_a, folder=cls.folder_a, nom='Contrat')
+        cls.version_a = services.add_version(
+            cls.doc_a, file_key='attachments/contrat.pdf',
+            company=cls.co_a, filename='contrat.pdf', size=100,
+            mime='application/pdf', uploaded_by=cls.admin_a)
 
     def _url(self, version_id):
         return f'/api/django/ged/versions/{version_id}/apercu/'
@@ -3183,16 +3202,17 @@ class WatermarkPublicPartageTests(GedBase):
     - la société du filigrane vient du DOCUMENT, jamais de la requête publique.
     """
 
-    def setUp(self):
-        super().setUp()
-        self.folder_a = Folder.objects.create(
-            company=self.co_a, cabinet=self.cab_a, nom='Docs A')
-        self.doc_a = Document.objects.create(
-            company=self.co_a, folder=self.folder_a, nom='Contrat A')
-        self.version_a = services.add_version(
-            self.doc_a, file_key='attachments/contrat-a.pdf',
-            company=self.co_a, filename='contrat-a.pdf', size=120,
-            mime='application/pdf', uploaded_by=self.admin_a)
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.folder_a = Folder.objects.create(
+            company=cls.co_a, cabinet=cls.cab_a, nom='Docs A')
+        cls.doc_a = Document.objects.create(
+            company=cls.co_a, folder=cls.folder_a, nom='Contrat A')
+        cls.version_a = services.add_version(
+            cls.doc_a, file_key='attachments/contrat-a.pdf',
+            company=cls.co_a, filename='contrat-a.pdf', size=120,
+            mime='application/pdf', uploaded_by=cls.admin_a)
 
     def _public_url(self, token):
         return f'/api/django/ged/public/{token}/'
@@ -3287,12 +3307,13 @@ class RetentionBase(GedBase):
     date de création explicitement via un UPDATE en base (qui ne ré-applique pas
     `auto_now_add`)."""
 
-    def setUp(self):
-        super().setUp()
-        self.folder_a = Folder.objects.create(
-            company=self.co_a, cabinet=self.cab_a, nom='Dossier A')
-        self.sub_a = Folder.objects.create(
-            company=self.co_a, cabinet=self.cab_a, parent=self.folder_a,
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.folder_a = Folder.objects.create(
+            company=cls.co_a, cabinet=cls.cab_a, nom='Dossier A')
+        cls.sub_a = Folder.objects.create(
+            company=cls.co_a, cabinet=cls.cab_a, parent=cls.folder_a,
             nom='Sous A')
 
     def make_doc(self, *, folder=None, nom='Doc', age_jours=0,
@@ -3543,16 +3564,17 @@ class ArchivageLegalBase(GedBase):
     du recalcul). On force `fetch_attachment` à échouer partout ici pour rester
     déterministe et hermétique au stockage."""
 
-    def setUp(self):
-        super().setUp()
-        self.folder_a = Folder.objects.create(
-            company=self.co_a, cabinet=self.cab_a, nom='Dossier A')
-        self.doc_a = Document.objects.create(
-            company=self.co_a, folder=self.folder_a, nom='Contrat')
-        self.cs = services.compute_checksum(b'contenu probant')
-        self.version_a = services.add_version(
-            self.doc_a, file_key='attachments/contrat.pdf', company=self.co_a,
-            checksum=self.cs, uploaded_by=self.admin_a)
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.folder_a = Folder.objects.create(
+            company=cls.co_a, cabinet=cls.cab_a, nom='Dossier A')
+        cls.doc_a = Document.objects.create(
+            company=cls.co_a, folder=cls.folder_a, nom='Contrat')
+        cls.cs = services.compute_checksum(b'contenu probant')
+        cls.version_a = services.add_version(
+            cls.doc_a, file_key='attachments/contrat.pdf', company=cls.co_a,
+            checksum=cls.cs, uploaded_by=cls.admin_a)
 
 
 def _no_storage(*a, **k):

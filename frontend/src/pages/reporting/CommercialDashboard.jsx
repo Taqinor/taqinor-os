@@ -1,27 +1,33 @@
-import { useEffect, useState } from 'react'
-import { TrendingUp, Award, Target, Clock, BarChart3, AlertCircle } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { TrendingUp, Award, Target, Clock, AlertCircle, Download } from 'lucide-react'
 import reportingApi from '../../api/reportingApi'
-import { Card, CardContent, Skeleton, EmptyState, Segmented } from '../../ui'
+import { formatMAD, formatNumber } from '../../lib/format'
+import {
+  Card, CardContent, CardTitle, Skeleton, EmptyState, Segmented, Stat, Button, Badge, toast,
+  ErrorBoundary,
+} from '../../ui'
+// VX148 — `ChartEmpty` sur la carte de graphe vide (entonnoir) : 0 site
+// d'appel dans `pages/**` malgré un kit déjà testé/thémé.
+import { BarArrondie, ChartEmpty } from '../../ui/charts'
+import { Table } from './Table'
+import { rowsToCSV, exportFileName } from '../../ui/datatable/csv'
 
 // ── Utilitaires d'affichage ────────────────────────────────────────────────
 const pct = (v) => (v == null ? '—' : `${v} %`)
 const jours = (v) => (v == null ? '—' : `${v} j`)
-const mad = (v) => {
-  const n = parseFloat(v || 0)
-  return n.toLocaleString('fr-MA', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + ' MAD'
-}
+const mad = (v) => formatMAD(v, { decimals: 0 })
 
-// Couleur de barre d'entonnoir selon le taux de conversion.
-const barColor = (pctVal) => {
-  if (pctVal >= 60) return 'var(--color-success, #22c55e)'
-  if (pctVal >= 30) return 'var(--color-warning, #f59e0b)'
-  return 'var(--color-info, #3b82f6)'
+// Ton de barre d'entonnoir selon le taux de conversion (tokens du kit charts).
+const barTone = (pctVal) => {
+  if (pctVal >= 60) return 'success'
+  if (pctVal >= 30) return 'warning'
+  return 'info'
 }
 
 const TABS = [
-  { value: 'funnel',    label: 'Entonnoir & vélocité' },
+  { value: 'funnel', label: 'Entonnoir & vélocité' },
   { value: 'leaderboard', label: 'Classement' },
-  { value: 'winloss',  label: 'Gains / Pertes' },
+  { value: 'winloss', label: 'Gains / Pertes' },
 ]
 
 export default function CommercialDashboard() {
@@ -47,122 +53,135 @@ export default function CommercialDashboard() {
       .finally(() => setLoadingWL(false))
   }, [])
 
+  // Données d'entonnoir prêtes pour BarArrondie (barres horizontales, ton dérivé).
+  const funnelBars = useMemo(
+    () => (dash?.funnel || []).map(f => ({
+      label: f.label,
+      value: f.conversion_pct ?? 0,
+      count: f.count,
+      color: barTone(f.conversion_pct ?? 0),
+    })),
+    [dash],
+  )
+
+  // VX29 — Export du classement (frontend-only : pas d'endpoint xlsx pour ce
+  // tableau de bord ; le kit CSV est ouvert nativement par Excel via le BOM
+  // UTF-8, sans dépendance ni changement backend). `prix_achat` jamais exposé.
+  const exportLeaderboard = () => {
+    const rows = dash?.leaderboard || []
+    if (rows.length === 0) {
+      toast.error('Aucun commercial à exporter.')
+      return
+    }
+    const columns = [
+      { id: 'rang', header: 'Rang', exportValue: (_r, i) => i + 1 },
+      { id: 'commercial', header: 'Commercial' },
+      { id: 'ca_ht', header: 'CA HT signé' },
+      { id: 'nb_devis_signes', header: 'Devis signés' },
+      { id: 'avg_deal_ht', header: 'Deal moyen HT' },
+      { id: 'win_rate_pct', header: 'Taux victoire (%)' },
+      { id: 'kwc', header: 'kWc' },
+    ]
+    const csv = rowsToCSV(rows.map((r, i) => ({ ...r, rang: i + 1 })), columns)
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = exportFileName('classement-commercial', { ext: 'csv' })
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+    toast.success('Classement exporté.')
+  }
+
   return (
-    <div className="ui-root page">
+    <div className="ui-root page flex flex-col gap-6">
       {/* En-tête */}
-      <div className="page-header" style={{ marginBottom: '1.25rem' }}>
-        <h2>Tableau commercial</h2>
+      <div className="page-header">
+        <h2 className="font-display text-2xl font-semibold tracking-tight">Tableau commercial</h2>
       </div>
 
       {/* KPIs rapides */}
       {loadingDash ? (
-        <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem' }}>
-          {[1, 2, 3, 4].map(i => <Skeleton key={i} style={{ flex: 1, height: '80px', borderRadius: '8px' }} />)}
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-20 rounded-xl" />)}
         </div>
       ) : errDash ? null : dash && (
-        <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
-          <KpiCard
-            icon={<Target size={20} />}
-            label="Total leads"
-            value={dash.total_leads}
-          />
-          <KpiCard
-            icon={<Award size={20} />}
-            label="Leads signés"
-            value={dash.total_signes}
-          />
-          <KpiCard
-            icon={<TrendingUp size={20} />}
-            label="Taux de victoire"
-            value={pct(dash.win_rate_pct)}
-            highlight
-          />
-          <KpiCard
-            icon={<Clock size={20} />}
-            label="Vélocité moyenne"
-            value={jours(dash.sales_velocity?.avg_days)}
-          />
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <Stat icon={Target} label="Total leads" value={dash.total_leads} />
+          <Stat icon={Award} label="Leads signés" value={dash.total_signes} />
+          <Stat icon={TrendingUp} label="Taux de victoire" value={pct(dash.win_rate_pct)} tone="impact" />
+          <Stat icon={Clock} label="Vélocité moyenne" value={jours(dash.sales_velocity?.avg_days)} />
         </div>
       )}
 
       {/* Onglets */}
-      <Segmented
-        value={tab}
-        onChange={setTab}
-        options={TABS}
-        style={{ marginBottom: '1.25rem' }}
-      />
+      <Segmented value={tab} onChange={setTab} options={TABS} />
 
       {/* ── Onglet Entonnoir ─────────────────────────────────────────────── */}
+      {/* VX205 — chaque onglet isolé dans SA PROPRE `ErrorBoundary` : un throw
+          n'emporte que ce panneau, le Segmented (hors boundary) reste
+          utilisable pour changer d'onglet. */}
       {tab === 'funnel' && (
-        <>
+        <ErrorBoundary>
           {loadingDash && <LoadingRows n={6} />}
           {errDash && <ErrorBanner message="Impossible de charger le tableau de bord." />}
           {!loadingDash && !errDash && dash && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <div className="flex flex-col gap-4">
               <Card>
-                <CardContent style={{ paddingTop: '1rem' }}>
-                  <h3 style={{ marginBottom: '1rem', fontSize: '0.875rem', fontWeight: 600, opacity: 0.7, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                <CardContent className="pt-4">
+                  <CardTitle className="mb-4 text-sm uppercase tracking-wide text-muted-foreground">
                     Entonnoir de conversion
-                  </h3>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                    {dash.funnel.map(f => (
-                      <div key={f.stage}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem', fontSize: '0.875rem' }}>
-                          <span>{f.label}</span>
-                          <span style={{ opacity: 0.65 }}>{f.count} leads · {pct(f.conversion_pct)}</span>
-                        </div>
-                        <div style={{ height: '6px', background: 'var(--color-muted, #e2e8f0)', borderRadius: '3px', overflow: 'hidden' }}>
-                          <div style={{
-                            height: '100%',
-                            width: `${f.conversion_pct}%`,
-                            background: barColor(f.conversion_pct),
-                            borderRadius: '3px',
-                            transition: 'width 0.4s ease',
-                          }} />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                  </CardTitle>
+                  {funnelBars.length === 0 ? (
+                    <ChartEmpty
+                      icon={Target}
+                      title="Aucune donnée d'entonnoir"
+                      description="Aucun lead n'a encore progressé dans le pipeline sur cette période."
+                    />
+                  ) : (
+                    <BarArrondie
+                      data={funnelBars}
+                      layout="vertical"
+                      height={Math.max(160, funnelBars.length * 42)}
+                      categoryWidth={130}
+                      tooltipFormat={(value, _name, entry) =>
+                        `${entry?.payload?.count ?? 0} leads · ${pct(value)}`}
+                    />
+                  )}
                 </CardContent>
               </Card>
 
               <Card>
-                <CardContent style={{ paddingTop: '1rem' }}>
-                  <h3 style={{ marginBottom: '1rem', fontSize: '0.875rem', fontWeight: 600, opacity: 0.7, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                <CardContent className="pt-4">
+                  <CardTitle className="mb-4 text-sm uppercase tracking-wide text-muted-foreground">
                     Temps moyen par étape (goulots d'étranglement)
-                  </h3>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
-                    <thead>
-                      <tr style={{ textAlign: 'left', opacity: 0.6, fontSize: '0.75rem', textTransform: 'uppercase' }}>
-                        <th style={{ paddingBottom: '0.5rem' }}>Étape</th>
-                        <th style={{ paddingBottom: '0.5rem', textAlign: 'right' }}>Durée moy.</th>
-                        <th style={{ paddingBottom: '0.5rem', textAlign: 'right' }}>Échantillon</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {dash.time_in_stage.map(t => (
-                        <tr key={t.stage} style={{ borderTop: '1px solid var(--color-border, #e2e8f0)' }}>
-                          <td style={{ padding: '0.5rem 0' }}>{t.label}</td>
-                          <td style={{ textAlign: 'right', padding: '0.5rem 0' }}>{jours(t.avg_days)}</td>
-                          <td style={{ textAlign: 'right', padding: '0.5rem 0', opacity: 0.5 }}>{t.sample_count}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  </CardTitle>
+                  <Table
+                    aria-label="Temps moyen par étape"
+                    columns={[
+                      { key: 'label', header: 'Étape' },
+                      { key: 'avg_days', header: 'Durée moy.', align: 'right', cell: (r) => jours(r.avg_days) },
+                      { key: 'sample_count', header: 'Échantillon', align: 'right' },
+                    ]}
+                    rows={dash.time_in_stage}
+                    getRowKey={(r) => r.stage}
+                    empty={<EmptyState icon={Clock} title="Aucune mesure" description="Pas encore de transitions d'étape mesurées." />}
+                  />
                 </CardContent>
               </Card>
 
               <Card>
-                <CardContent style={{ paddingTop: '1rem' }}>
-                  <h3 style={{ marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 600, opacity: 0.7, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                <CardContent className="pt-4">
+                  <CardTitle className="mb-2 text-sm uppercase tracking-wide text-muted-foreground">
                     Vélocité de vente
-                  </h3>
-                  <p style={{ fontSize: '0.875rem', opacity: 0.8 }}>
+                  </CardTitle>
+                  <p className="text-sm text-muted-foreground">
                     Délai moyen lead → devis accepté :
-                    <strong style={{ marginLeft: '0.4rem' }}>{jours(dash.sales_velocity?.avg_days)}</strong>
+                    <strong className="ml-1.5 text-foreground">{jours(dash.sales_velocity?.avg_days)}</strong>
                     {dash.sales_velocity?.sample_count > 0 && (
-                      <span style={{ opacity: 0.5, marginLeft: '0.5rem' }}>
+                      <span className="ml-2 text-muted-foreground">
                         ({dash.sales_velocity.sample_count} devis)
                       </span>
                     )}
@@ -171,123 +190,119 @@ export default function CommercialDashboard() {
               </Card>
             </div>
           )}
-        </>
+        </ErrorBoundary>
       )}
 
       {/* ── Onglet Classement ─────────────────────────────────────────────── */}
       {tab === 'leaderboard' && (
-        <>
+        <ErrorBoundary>
           {loadingDash && <LoadingRows n={4} />}
           {errDash && <ErrorBanner message="Impossible de charger le classement." />}
           {!loadingDash && !errDash && dash && (
             <Card>
-              <CardContent style={{ paddingTop: '1rem' }}>
-                <h3 style={{ marginBottom: '1rem', fontSize: '0.875rem', fontWeight: 600, opacity: 0.7, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  Classement commerciaux
-                </h3>
+              <CardContent className="pt-4">
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <CardTitle className="text-sm uppercase tracking-wide text-muted-foreground">
+                    Classement commerciaux
+                  </CardTitle>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={exportLeaderboard}
+                    disabled={(dash.leaderboard || []).length === 0}
+                  >
+                    <Download className="size-3.5" />
+                    Exporter
+                  </Button>
+                </div>
                 {dash.leaderboard.length === 0 ? (
-                  <EmptyState message="Aucun devis signé sur cette période." />
+                  <EmptyState
+                    icon={Award}
+                    title="Aucun devis signé"
+                    description="Aucun devis signé sur cette période."
+                  />
                 ) : (
-                  <div style={{ overflowX: 'auto' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
-                      <thead>
-                        <tr style={{ textAlign: 'left', opacity: 0.6, fontSize: '0.75rem', textTransform: 'uppercase' }}>
-                          <th style={{ paddingBottom: '0.5rem' }}>#</th>
-                          <th style={{ paddingBottom: '0.5rem' }}>Commercial</th>
-                          <th style={{ paddingBottom: '0.5rem', textAlign: 'right' }}>CA HT signé</th>
-                          <th style={{ paddingBottom: '0.5rem', textAlign: 'right' }}>Devis signés</th>
-                          <th style={{ paddingBottom: '0.5rem', textAlign: 'right' }}>Deal moyen HT</th>
-                          <th style={{ paddingBottom: '0.5rem', textAlign: 'right' }}>Taux victoire</th>
-                          <th style={{ paddingBottom: '0.5rem', textAlign: 'right' }}>kWc</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {dash.leaderboard.map((r, i) => (
-                          <tr key={r.commercial} style={{ borderTop: '1px solid var(--color-border, #e2e8f0)' }}>
-                            <td style={{ padding: '0.5rem 0', opacity: 0.5 }}>{i + 1}</td>
-                            <td style={{ padding: '0.5rem 0.5rem 0.5rem 0', fontWeight: 500 }}>{r.commercial}</td>
-                            <td style={{ textAlign: 'right', padding: '0.5rem 0' }}>{mad(r.ca_ht)}</td>
-                            <td style={{ textAlign: 'right', padding: '0.5rem 0' }}>{r.nb_devis_signes}</td>
-                            <td style={{ textAlign: 'right', padding: '0.5rem 0' }}>{mad(r.avg_deal_ht)}</td>
-                            <td style={{ textAlign: 'right', padding: '0.5rem 0' }}>{pct(r.win_rate_pct)}</td>
-                            <td style={{ textAlign: 'right', padding: '0.5rem 0', opacity: 0.7 }}>
-                              {parseFloat(r.kwc || 0) > 0 ? `${parseFloat(r.kwc).toFixed(1)} kWc` : '—'}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                  <Table
+                    aria-label="Classement commerciaux"
+                    columns={[
+                      { key: 'rang', header: '#', cell: (_r, i) => <span className="text-muted-foreground">{i + 1}</span> },
+                      { key: 'commercial', header: 'Commercial', cell: (r) => <span className="font-medium">{r.commercial}</span> },
+                      { key: 'ca_ht', header: 'CA HT signé', align: 'right', cell: (r) => mad(r.ca_ht) },
+                      { key: 'nb_devis_signes', header: 'Devis signés', align: 'right' },
+                      { key: 'avg_deal_ht', header: 'Deal moyen HT', align: 'right', cell: (r) => mad(r.avg_deal_ht) },
+                      { key: 'win_rate_pct', header: 'Taux victoire', align: 'right', cell: (r) => pct(r.win_rate_pct) },
+                      {
+                        key: 'kwc',
+                        header: 'kWc',
+                        align: 'right',
+                        cell: (r) => (parseFloat(r.kwc || 0) > 0 ? `${formatNumber(r.kwc, { decimals: 1 })} kWc` : '—'),
+                      },
+                    ]}
+                    rows={dash.leaderboard}
+                    getRowKey={(r) => r.commercial}
+                  />
                 )}
               </CardContent>
             </Card>
           )}
-        </>
+        </ErrorBoundary>
       )}
 
       {/* ── Onglet Gains / Pertes ─────────────────────────────────────────── */}
       {tab === 'winloss' && (
-        <>
+        <ErrorBoundary>
           {loadingWL && <LoadingRows n={5} />}
           {errWL && <ErrorBanner message="Impossible de charger les données gains/pertes." />}
           {!loadingWL && !errWL && winLoss && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <div className="flex flex-col gap-4">
               {/* Récapitulatif */}
-              <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-                <KpiCard label="Total leads" value={winLoss.summary.nb_total} />
-                <KpiCard label="Gagnés (Signés)" value={winLoss.summary.nb_won} highlight />
-                <KpiCard label="Perdus" value={winLoss.summary.nb_lost} />
-                <KpiCard label="Taux de clôture global" value={pct(winLoss.summary.overall_close_rate_pct)} highlight />
+              <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+                <Stat label="Total leads" value={winLoss.summary.nb_total} />
+                <Stat label="Gagnés (Signés)" value={winLoss.summary.nb_won} tone="impact" />
+                <Stat label="Perdus" value={winLoss.summary.nb_lost} />
+                <Stat label="Taux de clôture global" value={pct(winLoss.summary.overall_close_rate_pct)} tone="impact" />
               </div>
 
               {/* Taux par canal marketing */}
               <Card>
-                <CardContent style={{ paddingTop: '1rem' }}>
-                  <h3 style={{ marginBottom: '1rem', fontSize: '0.875rem', fontWeight: 600, opacity: 0.7, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                <CardContent className="pt-4">
+                  <CardTitle className="mb-4 text-sm uppercase tracking-wide text-muted-foreground">
                     Taux de clôture par canal
-                  </h3>
-                  {winLoss.by_canal.length === 0 ? (
-                    <EmptyState message="Aucune donnée." />
-                  ) : (
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
-                      <thead>
-                        <tr style={{ textAlign: 'left', opacity: 0.6, fontSize: '0.75rem', textTransform: 'uppercase' }}>
-                          <th style={{ paddingBottom: '0.5rem' }}>Canal</th>
-                          <th style={{ paddingBottom: '0.5rem', textAlign: 'right' }}>Total</th>
-                          <th style={{ paddingBottom: '0.5rem', textAlign: 'right' }}>Gagnés</th>
-                          <th style={{ paddingBottom: '0.5rem', textAlign: 'right' }}>Taux</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {winLoss.by_canal.map(r => (
-                          <tr key={r.canal} style={{ borderTop: '1px solid var(--color-border, #e2e8f0)' }}>
-                            <td style={{ padding: '0.5rem 0' }}>{r.label}</td>
-                            <td style={{ textAlign: 'right', padding: '0.5rem 0' }}>{r.total}</td>
-                            <td style={{ textAlign: 'right', padding: '0.5rem 0' }}>{r.won}</td>
-                            <td style={{ textAlign: 'right', padding: '0.5rem 0', fontWeight: 500 }}>{pct(r.close_rate_pct)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
+                  </CardTitle>
+                  <Table
+                    aria-label="Taux de clôture par canal"
+                    columns={[
+                      { key: 'label', header: 'Canal' },
+                      { key: 'total', header: 'Total', align: 'right' },
+                      { key: 'won', header: 'Gagnés', align: 'right' },
+                      { key: 'close_rate_pct', header: 'Taux', align: 'right', cell: (r) => <span className="font-medium">{pct(r.close_rate_pct)}</span> },
+                    ]}
+                    rows={winLoss.by_canal}
+                    getRowKey={(r) => r.canal}
+                    empty={<EmptyState icon={AlertCircle} title="Aucune donnée" description="Pas encore de leads rattachés à un canal." />}
+                  />
                 </CardContent>
               </Card>
 
               {/* Top motifs de perte */}
               <Card>
-                <CardContent style={{ paddingTop: '1rem' }}>
-                  <h3 style={{ marginBottom: '1rem', fontSize: '0.875rem', fontWeight: 600, opacity: 0.7, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                <CardContent className="pt-4">
+                  <CardTitle className="mb-4 text-sm uppercase tracking-wide text-muted-foreground">
                     Top motifs de perte
-                  </h3>
+                  </CardTitle>
                   {winLoss.top_loss_reasons.length === 0 ? (
-                    <EmptyState message="Aucun lead perdu sur cette période." />
+                    <EmptyState
+                      icon={Award}
+                      title="Aucune perte"
+                      description="Aucun lead perdu sur cette période."
+                    />
                   ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    <div className="flex flex-col gap-2">
                       {winLoss.top_loss_reasons.map((r, i) => (
-                        <div key={r.motif} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                          <span style={{ opacity: 0.4, width: '1.5rem', textAlign: 'right', fontSize: '0.75rem' }}>{i + 1}</span>
-                          <span style={{ flex: 1, fontSize: '0.875rem' }}>{r.motif}</span>
-                          <span style={{ fontSize: '0.875rem', fontWeight: 600 }}>{r.count}</span>
+                        <div key={r.motif} className="flex items-center gap-3">
+                          <span className="w-6 text-right text-xs text-muted-foreground">{i + 1}</span>
+                          <span className="flex-1 text-sm">{r.motif}</span>
+                          <Badge tone="danger">{r.count}</Badge>
                         </div>
                       ))}
                     </div>
@@ -297,35 +312,27 @@ export default function CommercialDashboard() {
 
               {/* Par source technique */}
               <Card>
-                <CardContent style={{ paddingTop: '1rem' }}>
-                  <h3 style={{ marginBottom: '1rem', fontSize: '0.875rem', fontWeight: 600, opacity: 0.7, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                <CardContent className="pt-4">
+                  <CardTitle className="mb-4 text-sm uppercase tracking-wide text-muted-foreground">
                     Taux par source technique
-                  </h3>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
-                    <thead>
-                      <tr style={{ textAlign: 'left', opacity: 0.6, fontSize: '0.75rem', textTransform: 'uppercase' }}>
-                        <th style={{ paddingBottom: '0.5rem' }}>Source</th>
-                        <th style={{ paddingBottom: '0.5rem', textAlign: 'right' }}>Total</th>
-                        <th style={{ paddingBottom: '0.5rem', textAlign: 'right' }}>Gagnés</th>
-                        <th style={{ paddingBottom: '0.5rem', textAlign: 'right' }}>Taux</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {winLoss.by_source_technique.map(r => (
-                        <tr key={r.source} style={{ borderTop: '1px solid var(--color-border, #e2e8f0)' }}>
-                          <td style={{ padding: '0.5rem 0' }}>{r.label}</td>
-                          <td style={{ textAlign: 'right', padding: '0.5rem 0' }}>{r.total}</td>
-                          <td style={{ textAlign: 'right', padding: '0.5rem 0' }}>{r.won}</td>
-                          <td style={{ textAlign: 'right', padding: '0.5rem 0', fontWeight: 500 }}>{pct(r.close_rate_pct)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  </CardTitle>
+                  <Table
+                    aria-label="Taux par source technique"
+                    columns={[
+                      { key: 'label', header: 'Source' },
+                      { key: 'total', header: 'Total', align: 'right' },
+                      { key: 'won', header: 'Gagnés', align: 'right' },
+                      { key: 'close_rate_pct', header: 'Taux', align: 'right', cell: (r) => <span className="font-medium">{pct(r.close_rate_pct)}</span> },
+                    ]}
+                    rows={winLoss.by_source_technique}
+                    getRowKey={(r) => r.source}
+                    empty={<EmptyState icon={AlertCircle} title="Aucune donnée" description="Pas encore de source technique renseignée." />}
+                  />
                 </CardContent>
               </Card>
             </div>
           )}
-        </>
+        </ErrorBoundary>
       )}
     </div>
   )
@@ -333,34 +340,11 @@ export default function CommercialDashboard() {
 
 // ── Sous-composants locaux ─────────────────────────────────────────────────
 
-function KpiCard({ icon, label, value, highlight }) {
-  return (
-    <div style={{
-      flex: '1 1 160px',
-      background: 'var(--color-surface, #fff)',
-      border: '1px solid var(--color-border, #e2e8f0)',
-      borderRadius: '8px',
-      padding: '1rem',
-      display: 'flex',
-      flexDirection: 'column',
-      gap: '0.25rem',
-    }}>
-      {icon && <span style={{ opacity: 0.5, marginBottom: '0.25rem' }}>{icon}</span>}
-      <span style={{ fontSize: '0.75rem', opacity: 0.6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</span>
-      <span style={{
-        fontSize: '1.375rem',
-        fontWeight: 700,
-        color: highlight ? 'var(--color-primary, #4a56d4)' : 'inherit',
-      }}>{value}</span>
-    </div>
-  )
-}
-
 function LoadingRows({ n }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+    <div className="flex flex-col gap-3">
       {Array.from({ length: n }).map((_, i) => (
-        <Skeleton key={i} style={{ height: '40px', borderRadius: '6px' }} />
+        <Skeleton key={i} className="h-10 rounded-md" />
       ))}
     </div>
   )
@@ -368,14 +352,8 @@ function LoadingRows({ n }) {
 
 function ErrorBanner({ message }) {
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: '0.5rem',
-      padding: '0.875rem 1rem', borderRadius: '8px',
-      background: 'var(--color-error-bg, #fee2e2)',
-      color: 'var(--color-error, #ef4444)',
-      fontSize: '0.875rem',
-    }}>
-      <AlertCircle size={16} />
+    <div className="flex items-center gap-2 rounded-lg bg-destructive/12 px-4 py-3.5 text-sm text-destructive">
+      <AlertCircle className="size-4" />
       {message}
     </div>
   )

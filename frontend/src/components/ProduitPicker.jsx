@@ -7,6 +7,8 @@ import {
 } from '../features/stock/catalogue'
 import { classifyProduct } from '../features/ventes/solar'
 import { useCanCreateProduit } from '../hooks/useHasPermission'
+import { useActiveDescendant } from '../hooks/useActiveDescendant'
+import { formatMAD } from '../lib/format'
 import ProduitQuickCreateModal from './ProduitQuickCreateModal'
 
 /* G23 — Picker produit groupé CATÉGORIE → MARQUE → ARTICLE, search-first.
@@ -26,8 +28,14 @@ import ProduitQuickCreateModal from './ProduitQuickCreateModal'
    QG6 — « + Nouveau produit » : visible uniquement pour Directeur + Commercial
    responsable (hook QG5, backend QG4 est la garde qui compte). `onProduitCreated`
    (optionnel) est appelé avec le produit créé EN PLUS de la sélection auto sur
-   cette ligne — utile pour rafraîchir la liste des produits de l'appelant. */
-export default function ProduitPicker({ produits, value, onChange, invalid, typeFilter, onProduitCreated }) {
+   cette ligne — utile pour rafraîchir la liste des produits de l'appelant.
+
+   VX238(b/c) — `Tab` (sans shift) sélectionne l'option sous le curseur SANS
+   bloquer la tabulation (mains rapides : plus besoin d'Entrée avant Tab).
+   `onPicked` (optionnel) est appelé APRÈS une sélection réussie (clic/Entrée/
+   Tab) — l'appelant y avance le focus (ex. Qté de la même ligne) au lieu de
+   subir le retour par défaut au bouton déclencheur. */
+export default function ProduitPicker({ produits, value, onChange, invalid, typeFilter, onProduitCreated, onPicked }) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [cursor, setCursor] = useState(0)
@@ -35,6 +43,9 @@ export default function ProduitPicker({ produits, value, onChange, invalid, type
   const inputRef = useRef(null)
   const listRef = useRef(null)
   const canCreateProduit = useCanCreateProduit()
+  // VX191 — `aria-activedescendant` : flécher au clavier annonce enfin
+  // l'article visé (ProduitPicker n'avait aucun id d'option jusqu'ici).
+  const { listId, getOptionId, activeId } = useActiveDescendant(cursor)
 
   const selected = useMemo(
     () => produits.find((p) => String(p.id) === String(value)) ?? null,
@@ -84,6 +95,10 @@ export default function ProduitPicker({ produits, value, onChange, invalid, type
   const pick = (p) => {
     onChange(p ? String(p.id) : '')
     setOpen(false)
+    // VX238(c) — n'avance le focus qu'après une VRAIE sélection (jamais sur
+    // « Aucun produit », p == null), sinon on court-circuiterait un simple
+    // effacement en un saut de focus surprenant.
+    if (p) onPicked?.(p)
   }
 
   const onKeyDown = (e) => {
@@ -96,6 +111,11 @@ export default function ProduitPicker({ produits, value, onChange, invalid, type
       setCursor((c) => Math.max(c - 1, 0))
     } else if (e.key === 'Enter') {
       e.preventDefault()
+      if (selectables[cursor]) pick(selectables[cursor])
+    } else if (e.key === 'Tab' && !e.shiftKey) {
+      // VX238(b) — Tab sélectionne l'article sous le curseur SANS
+      // preventDefault : la tabulation continue naturellement vers le champ
+      // suivant (Qté, via onPicked) au lieu de blur à vide.
       if (selectables[cursor]) pick(selectables[cursor])
     }
   }
@@ -122,11 +142,20 @@ export default function ProduitPicker({ produits, value, onChange, invalid, type
           align="start"
           sideOffset={4}
           onOpenAutoFocus={(e) => e.preventDefault()}
+          // VX238(c) — quand `onPicked` gère la suite du focus (Qté de la
+          // ligne), on empêche Radix de reprendre la main en refocalisant le
+          // bouton déclencheur à la fermeture (comportement par défaut).
+          onCloseAutoFocus={(e) => { if (onPicked) e.preventDefault() }}
           className="z-[var(--z-popover)] w-[max(var(--radix-popover-trigger-width),18rem)] overflow-hidden rounded-lg border border-border bg-popover p-0 text-popover-foreground shadow-ui-lg data-[state=open]:animate-pop-in data-[state=closed]:animate-pop-out focus:outline-none"
         >
           <div className="flex items-center gap-1 border-b border-border p-1.5">
             <input
               ref={inputRef}
+              role="combobox"
+              aria-expanded={open}
+              aria-autocomplete="list"
+              aria-controls={listId}
+              aria-activedescendant={activeId}
               className="h-8 w-full rounded-md bg-transparent px-2 text-base outline-none placeholder:text-muted-foreground sm:text-sm"
               placeholder="Chercher un produit… (Entrée = premier résultat)"
               value={query}
@@ -144,7 +173,7 @@ export default function ProduitPicker({ produits, value, onChange, invalid, type
               </button>
             )}
           </div>
-          <div className="max-h-72 overflow-y-auto p-1" ref={listRef} role="listbox">
+          <div className="max-h-72 overflow-y-auto p-1" ref={listRef} role="listbox" id={listId}>
             {value && (
               <button
                 type="button"
@@ -176,6 +205,7 @@ export default function ProduitPicker({ produits, value, onChange, invalid, type
                 <button
                   type="button"
                   key={r.key}
+                  id={dispo ? getOptionId(index) : undefined}
                   role="option"
                   aria-selected={String(p.id) === String(value)}
                   aria-disabled={!dispo || undefined}
@@ -192,7 +222,7 @@ export default function ProduitPicker({ produits, value, onChange, invalid, type
                   <span className="flex-1 truncate">{p.nom}</span>
                   {spec && <span className="shrink-0 text-xs text-muted-foreground">{spec}</span>}
                   <span className={cn('shrink-0 text-xs tabular-nums', dispo ? 'font-medium text-foreground' : 'italic text-muted-foreground')}>
-                    {dispo ? `${prixTtc(p).toLocaleString('fr-MA')} DH` : 'prix à renseigner'}
+                    {dispo ? `${formatMAD(prixTtc(p), { withSymbol: false })} DH` : 'prix à renseigner'}
                   </span>
                 </button>
               )

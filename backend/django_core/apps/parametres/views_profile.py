@@ -103,4 +103,22 @@ def update_profile(request):
     serializer.is_valid(raise_exception=True)
     updated = serializer.save()
     _audit_profile_changes(request, updated, before)
+    # SCA46 — consentement au benchmarking anonymisé : le champ vit sur
+    # ``authentication.Company`` (donnée du tenant). Posé côté serveur sur la
+    # société de l'APPELANT uniquement (jamais un id de société du corps),
+    # audité comme les autres champs. Absent du corps = inchangé.
+    if 'benchmarking_opt_in' in request.data:
+        company = getattr(request.user, 'company', None)
+        if company is not None:
+            nouveau = bool(request.data.get('benchmarking_opt_in'))
+            ancien = bool(company.benchmarking_opt_in)
+            if nouveau != ancien:
+                company.benchmarking_opt_in = nouveau
+                company.save(update_fields=['benchmarking_opt_in'])
+                SettingsAuditLog.log_change(
+                    company=company, user=request.user, section='profil',
+                    field='benchmarking_opt_in',
+                    field_label='Consentement benchmarking anonymisé',
+                    old=ancien, new=nouveau,
+                )
     return Response(CompanyProfileSerializer(updated).data)

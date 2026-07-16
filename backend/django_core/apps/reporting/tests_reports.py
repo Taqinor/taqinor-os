@@ -209,8 +209,12 @@ class TestPDFExport(ReportsBase):
             def __init__(self, string=None, **kw):
                 captured_html['html'] = string
 
-            def write_pdf(self):
-                return b'%PDF-1.4 fake'
+            def write_pdf(self, target=None):
+                data = b'%PDF-1.4 fake'
+                if target is not None:
+                    target.write(data)
+                    return None
+                return data
 
         with mock.patch('weasyprint.HTML', FakeHTML):
             resp = self.api.get('/api/django/reporting/reports/stock/?export=pdf')

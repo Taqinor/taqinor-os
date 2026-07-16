@@ -10,6 +10,7 @@
 //     « … » dont l'info-bulle (title) liste les libellés masqués ;
 //   • chaque libellé porte son `title` (info-bulle plein libellé) et est tronqué
 //     visuellement en CSS si trop large.
+import { useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { ChevronRight } from 'lucide-react'
 import { breadcrumbsFor } from './routes.meta'
@@ -17,6 +18,19 @@ import { breadcrumbsFor } from './routes.meta'
 // Au-delà de ce nombre de segments, on tronque au milieu. On conserve toujours
 // le premier segment + les deux derniers (avant-dernier + page courante).
 const MAX_VISIBLE = 3
+
+// VX11 — mémoire du dernier module visité (survit au refresh), lue par VX46
+// (« Mes préférences » → module d'atterrissage au login). Accès défensif,
+// jamais d'exception si le stockage est indisponible (patron COLLAPSE_KEY,
+// Layout.jsx:16).
+const LAST_MODULE_KEY = 'taqinor.lastModule'
+
+function persistLastModule(pathname) {
+  try {
+    const seg = (pathname || '').split('/').filter(Boolean)[0]
+    if (seg) window.localStorage.setItem(LAST_MODULE_KEY, seg)
+  } catch { /* stockage indisponible : on ignore, aucun impact sur la nav */ }
+}
 
 function Crumb({ c, withSep }) {
   return (
@@ -41,6 +55,14 @@ function Crumb({ c, withSep }) {
 
 export default function Breadcrumbs({ pathname, crumbs: crumbsProp }) {
   const crumbs = crumbsProp ?? breadcrumbsFor(pathname || '/')
+
+  // VX11 — persiste le dernier module à CHAQUE navigation (effet, jamais un
+  // setState synchrone en phase de rendu) ; avant tout early return, comme
+  // toujours pour les hooks React.
+  useEffect(() => {
+    persistLastModule(pathname)
+  }, [pathname])
+
   if (crumbs.length === 0) return null
 
   // I137 — Troncature au milieu pour les chemins longs.

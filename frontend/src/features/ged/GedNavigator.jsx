@@ -26,6 +26,22 @@ import {
 } from '../../ui'
 import { buildFolderTree, flattenVisible, countFolders } from './tree.js'
 import GedSearch from './GedSearch.jsx'
+import { DataTable } from '../../ui/datatable'
+import ExternalLink from '../../ui/ExternalLink'
+
+// VX152 — colonnes structurelles seules : le rendu réel de l'en-tête et des
+// lignes passe par renderHeaderRow/renderRow (échappatoire ARC49 du moteur), ce
+// qui permet à la liste des documents de rejoindre DataTable sans perdre son DOM
+// (cases nommées « Sélectionner … », actions par ligne, badges de verrou). Ces
+// colonnes ne servent qu'à la largeur/au colSpan interne du moteur.
+const GED_DOC_COLUMNS = [
+  { id: 'select', header: '', sortable: false, hideable: false, reorderable: false },
+  { id: 'nom', header: 'Document', sortable: false, hideable: false, reorderable: false },
+  { id: 'versions', header: 'Versions', sortable: false, hideable: false, reorderable: false },
+  { id: 'created_by', header: 'Créé par', sortable: false, hideable: false, reorderable: false },
+  { id: 'updated', header: 'Mis à jour', sortable: false, hideable: false, reorderable: false },
+  { id: 'actions', header: '', sortable: false, hideable: false, reorderable: false },
+]
 
 // Le backend pagine certains endpoints (DRF) : on accepte `results` OU le
 // tableau brut, comme partout dans le frontend.
@@ -277,7 +293,7 @@ export default function GedNavigator() {
           <Card>
             <CardContent className="p-2">
               <div className="mb-2 flex items-center gap-1 px-1">
-                <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                   {total} dossier{total > 1 ? 's' : ''}
                 </span>
                 <Button size="sm" variant="ghost" className="ml-auto"
@@ -289,7 +305,7 @@ export default function GedNavigator() {
               {visible.length === 0 ? (
                 // U14 — état vide de l'arbre : CTA pour créer le premier dossier.
                 <div className="px-2 py-4 text-center">
-                  <p className="text-[13px] text-muted-foreground">
+                  <p className="text-sm text-muted-foreground">
                     Aucun dossier dans cette armoire.
                   </p>
                   <Button size="sm" variant="secondary" className="mt-2"
@@ -307,7 +323,7 @@ export default function GedNavigator() {
                         aria-expanded={node.hasChildren ? isOpen : undefined}
                         aria-selected={isSel}>
                         <button type="button"
-                          className={`flex w-full items-center gap-1.5 rounded px-1.5 py-1.5 text-left text-[13px] hover:bg-muted${isSel ? ' bg-muted font-medium' : ''}`}
+                          className={`flex w-full items-center gap-1.5 rounded px-1.5 py-1.5 text-left text-sm hover:bg-muted${isSel ? ' bg-muted font-medium' : ''}`}
                           style={{ paddingLeft: `${node.depth * 16 + 6}px` }}
                           onClick={() => selectFolder(node)}>
                           <span className="flex size-4 shrink-0 items-center justify-center text-muted-foreground">
@@ -341,7 +357,7 @@ export default function GedNavigator() {
                 <>
                   <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2.5">
                     <FolderOpen className="size-4 text-primary" aria-hidden="true" />
-                    <span className="text-[13px] font-medium">{selected.nom}</span>
+                    <span className="text-sm font-medium">{selected.nom}</span>
                     <div className="ml-auto flex items-center gap-1">
                       <Button size="sm" variant="ghost"
                         onClick={() => setFolderDlg({ mode: 'rename', folder: selected })}>
@@ -360,7 +376,7 @@ export default function GedNavigator() {
                   {/* XGED14 — barre d'actions par lot (visible dès qu'une case est cochée). */}
                   {selectedIds.size > 0 && (
                     <div className="flex flex-wrap items-center gap-2 border-b border-border bg-muted/40 px-4 py-2">
-                      <span className="text-[13px] font-medium">
+                      <span className="text-sm font-medium">
                         {selectedIds.size} sélectionné{selectedIds.size > 1 ? 's' : ''}
                       </span>
                       <div className="ml-auto flex items-center gap-1">
@@ -376,7 +392,7 @@ export default function GedNavigator() {
                     </div>
                   )}
                   {loadingDocs ? (
-                    <div className="flex items-center gap-2 p-6 text-[13px] text-muted-foreground">
+                    <div className="flex items-center gap-2 p-6 text-sm text-muted-foreground">
                       <Loader2 className="size-4 animate-spin" aria-hidden="true" /> Chargement des documents…
                     </div>
                   ) : documents.length === 0 ? (
@@ -388,86 +404,98 @@ export default function GedNavigator() {
                         <Upload className="size-4" aria-hidden="true" /> Téléverser un document
                       </Button>} />
                   ) : (
-                    <table className="data-table">
-                      <thead>
-                        <tr>
-                          <th className="w-8">
+                    <DataTable
+                      data={documents}
+                      columns={GED_DOC_COLUMNS}
+                      getRowId={(d) => d.id}
+                      manualSorting
+                      manualFiltering
+                      manualPagination
+                      rowCount={documents.length}
+                      pageSize={documents.length}
+                      pageSizeOptions={[documents.length]}
+                      searchable={false}
+                      hideToolbar
+                      hidePagination
+                      tableRole="table"
+                      aria-label="Documents du dossier"
+                      renderHeaderRow={() => (
+                        <>
+                          <th scope="col" className="w-8">
                             {/* XGED14 — tout sélectionner. */}
                             <input type="checkbox"
                               aria-label="Tout sélectionner"
                               checked={selectedIds.size === documents.length && documents.length > 0}
                               onChange={toggleSelectAll} />
                           </th>
-                          <th>Document</th>
-                          <th className="m-hide">Versions</th>
-                          <th className="m-hide">Créé par</th>
-                          <th>Mis à jour</th>
-                          <th aria-label="Actions" />
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {documents.map((d) => (
-                          <tr key={d.id}>
-                            <td data-label="" className="w-8">
-                              <input type="checkbox"
-                                aria-label={`Sélectionner ${d.nom}`}
-                                checked={selectedIds.has(d.id)}
-                                onChange={() => toggleSelect(d.id)} />
-                            </td>
-                            <td data-label="Document" className="font-medium">
-                              {/* GED14 — clic sur le nom → aperçu du document. */}
-                              <button type="button"
-                                className="flex items-center gap-1.5 text-left hover:underline"
+                          <th scope="col">Document</th>
+                          <th scope="col" className="m-hide">Versions</th>
+                          <th scope="col" className="m-hide">Créé par</th>
+                          <th scope="col">Mis à jour</th>
+                          <th scope="col" aria-label="Actions" />
+                        </>
+                      )}
+                      renderRow={(d) => (
+                        <tr key={d.id}>
+                          <td data-label="" className="w-8">
+                            <input type="checkbox"
+                              aria-label={`Sélectionner ${d.nom}`}
+                              checked={selectedIds.has(d.id)}
+                              onChange={() => toggleSelect(d.id)} />
+                          </td>
+                          <td data-label="Document" className="font-medium">
+                            {/* GED14 — clic sur le nom → aperçu du document. */}
+                            <button type="button"
+                              className="flex items-center gap-1.5 text-left hover:underline"
+                              onClick={() => setPreviewDoc(d)}>
+                              <FileText className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                              {d.nom}
+                            </button>
+                          </td>
+                          <td data-label="Versions" className="m-hide">
+                            {d.version_count ?? 0}
+                            {d.derniere_version ? ` (v${d.derniere_version})` : ''}
+                          </td>
+                          <td data-label="Créé par" className="m-hide">
+                            {d.created_by_nom || '—'}
+                            {d.is_locked && (
+                              <Badge tone="warning" className="ml-1.5 inline-flex items-center gap-0.5">
+                                <Lock className="size-3" aria-hidden="true" />
+                                {d.locked_by_nom ? d.locked_by_nom : 'extrait'}
+                              </Badge>
+                            )}
+                          </td>
+                          <td data-label="Mis à jour">{formatDate(d.updated_at)}</td>
+                          <td data-label="Actions" className="text-right">
+                            <div className="flex items-center justify-end gap-0.5">
+                              <Button size="sm" variant="ghost"
+                                aria-label={`Aperçu de ${d.nom}`}
                                 onClick={() => setPreviewDoc(d)}>
-                                <FileText className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-                                {d.nom}
-                              </button>
-                            </td>
-                            <td data-label="Versions" className="m-hide">
-                              {d.version_count ?? 0}
-                              {d.derniere_version ? ` (v${d.derniere_version})` : ''}
-                            </td>
-                            <td data-label="Créé par" className="m-hide">
-                              {d.created_by_nom || '—'}
-                              {d.is_locked && (
-                                <Badge tone="warning" className="ml-1.5 inline-flex items-center gap-0.5">
-                                  <Lock className="size-3" aria-hidden="true" />
-                                  {d.locked_by_nom ? d.locked_by_nom : 'extrait'}
-                                </Badge>
+                                <Eye className="size-4" aria-hidden="true" /> Aperçu
+                              </Button>
+                              {d.is_locked ? (
+                                <Button size="sm" variant="ghost"
+                                  aria-label={`Archiver ${d.nom}`}
+                                  onClick={() => checkIn(d)}>
+                                  <LockOpen className="size-4" aria-hidden="true" /> Archiver
+                                </Button>
+                              ) : (
+                                <Button size="sm" variant="ghost"
+                                  aria-label={`Extraire ${d.nom}`}
+                                  onClick={() => checkOut(d)}>
+                                  <Lock className="size-4" aria-hidden="true" /> Extraire
+                                </Button>
                               )}
-                            </td>
-                            <td data-label="Mis à jour">{formatDate(d.updated_at)}</td>
-                            <td data-label="Actions" className="text-right">
-                              <div className="flex items-center justify-end gap-0.5">
-                                <Button size="sm" variant="ghost"
-                                  aria-label={`Aperçu de ${d.nom}`}
-                                  onClick={() => setPreviewDoc(d)}>
-                                  <Eye className="size-4" aria-hidden="true" /> Aperçu
-                                </Button>
-                                {d.is_locked ? (
-                                  <Button size="sm" variant="ghost"
-                                    aria-label={`Archiver ${d.nom}`}
-                                    onClick={() => checkIn(d)}>
-                                    <LockOpen className="size-4" aria-hidden="true" /> Archiver
-                                  </Button>
-                                ) : (
-                                  <Button size="sm" variant="ghost"
-                                    aria-label={`Extraire ${d.nom}`}
-                                    onClick={() => checkOut(d)}>
-                                    <Lock className="size-4" aria-hidden="true" /> Extraire
-                                  </Button>
-                                )}
-                                <Button size="sm" variant="ghost"
-                                  aria-label={`Mettre ${d.nom} en corbeille`}
-                                  onClick={() => mettreEnCorbeille(d)}>
-                                  <Trash2 className="size-4" aria-hidden="true" />
-                                </Button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                              <Button size="sm" variant="ghost"
+                                aria-label={`Mettre ${d.nom} en corbeille`}
+                                onClick={() => mettreEnCorbeille(d)}>
+                                <Trash2 className="size-4" aria-hidden="true" />
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    />
                   )}
                 </>
               )}
@@ -527,11 +555,11 @@ function DocumentPreviewDialog({ document: doc, onClose }) {
           <DialogTitle className="truncate">{doc?.nom || 'Aperçu'}</DialogTitle>
         </DialogHeader>
         {loading ? (
-          <div className="flex items-center gap-2 p-6 text-[13px] text-muted-foreground">
+          <div className="flex items-center gap-2 p-6 text-sm text-muted-foreground">
             <Loader2 className="size-4 animate-spin" aria-hidden="true" /> Chargement de l'aperçu…
           </div>
         ) : failed || !src ? (
-          <p className="p-4 text-[13px] text-muted-foreground">
+          <p className="p-4 text-sm text-muted-foreground">
             L'aperçu de ce document n'est pas disponible.
           </p>
         ) : isImage ? (
@@ -543,9 +571,9 @@ function DocumentPreviewDialog({ document: doc, onClose }) {
         )}
         <DialogFooter>
           {src && (
-            <a href={src} target="_blank" rel="noreferrer">
+            <ExternalLink href={src}>
               <Button variant="outline">Ouvrir dans un onglet</Button>
-            </a>
+            </ExternalLink>
           )}
           <DialogClose asChild>
             <Button variant="ghost">Fermer</Button>
@@ -688,7 +716,7 @@ function FolderDialog({ state, onClose, cabinetId, folders, onChanged }) {
               value={nom} onChange={(e) => setNom(e.target.value)} autoFocus />
           )}
           {(mode === 'create' || mode === 'move') && (
-            <label className="grid gap-1 text-[13px]">
+            <label className="grid gap-1 text-sm">
               <span className="text-muted-foreground">Dossier parent (optionnel)</span>
               <Select value={parentId} onValueChange={(v) => setParentId(v === '__root__' ? '' : v)}>
                 <SelectTrigger aria-label="Dossier parent">
@@ -764,7 +792,7 @@ function UploadDialog({ open, onOpenChange, folder, onUploaded }) {
             onFiles={(files) => { setFile(files[0]); if (!nom) setNom(files[0]?.name || '') }}
             onReject={(rej) => toast.error(rej[0]?.error || 'Fichier refusé.')} />
           {file && (
-            <p className="text-[13px] text-muted-foreground">
+            <p className="text-sm text-muted-foreground">
               Fichier sélectionné : <span className="font-medium text-foreground">{file.name}</span>
             </p>
           )}

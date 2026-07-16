@@ -9,7 +9,80 @@ et séparés des écritures de ``services.py``.
 """
 from decimal import Decimal
 
-from .models import AvanceSalarie, BulletinPaie, LigneBulletin
+from .models import AvanceSalarie, BulletinPaie, LigneBulletin, ProfilPaie
+
+
+def _rib_normalise(rib):
+    """Normalisation MINIMALE d'un RIB pour comparaison (ARC25).
+
+    Uniquement le retrait des espaces (un RIB saisi « 011 780 … » et
+    « 011780… » sont le même compte). Robuste au formatage mais SANS aller
+    au-delà : ni casse, ni ponctuation, ni troncature — deux chiffres réellement
+    différents doivent rester différents.
+    """
+    return ''.join((rib or '').split())
+
+
+def divergences_rib_periode(periode):
+    """Divergences RIB paie ↔ RH pour un run de virement (ARC25, lecture seule).
+
+    CONTRÔLE croisé (jamais une fusion) : pour chaque ``ProfilPaie`` de la
+    société PAYÉ PAR VIREMENT et rattaché à un dossier RH, compare le
+    ``ProfilPaie.rib`` (source de la ligne de virement, PAIE30) au ``rib`` de
+    référence de la fiche RH (``rh.DossierEmploye.rib``, lu via
+    ``apps.rh.selectors.ribs_par_employe`` — jamais un import de ``rh.models``).
+
+    Les copies figées ``LigneVirement.rib`` sont des snapshots INTENTIONNELS
+    (jamais comparés ici). Aucune écriture, aucune unification : ce sélecteur
+    ne fait que SIGNALER un écart pour qu'un humain tranche.
+
+    Sémantique des côtés manquants (documentée, pour éviter les faux positifs) :
+    un écart n'est retenu QUE si les DEUX RIB sont non vides ET diffèrent après
+    retrait des espaces. Un RIB paie vide (déjà couvert par l'avertissement
+    bloquant ``rib_manquant_virement`` de ZPAI2) ou un RIB RH vide (référence
+    non renseignée) N'est PAS une divergence — on ne compare pas à du vide.
+
+    Toujours scopé société (``periode.company``). Renvoie une liste de dicts
+    triée par ``employe_id`` :
+
+    ``{'profil_id', 'employe_id', 'rib_paie', 'rib_rh'}`` (RIB bruts, tels que
+    saisis). Liste vide si la période/société manque ou si tout concorde.
+    """
+    company = getattr(periode, 'company', None)
+    if company is None:
+        return []
+
+    profils = list(
+        ProfilPaie.objects
+        .filter(company=company,
+                mode_paiement=ProfilPaie.MODE_PAIEMENT_VIREMENT,
+                employe__isnull=False)
+        .only('id', 'employe_id', 'rib')
+    )
+    if not profils:
+        return []
+
+    from apps.rh import selectors as rh_selectors
+
+    employe_ids = {p.employe_id for p in profils}
+    ribs_rh = rh_selectors.ribs_par_employe(company, employe_ids)
+
+    divergences = []
+    for profil in profils:
+        rib_paie = profil.rib or ''
+        rib_rh = ribs_rh.get(profil.employe_id, '') or ''
+        # Un côté vide n'est pas une divergence (voir docstring).
+        if not rib_paie.strip() or not rib_rh.strip():
+            continue
+        if _rib_normalise(rib_paie) != _rib_normalise(rib_rh):
+            divergences.append({
+                'profil_id': profil.id,
+                'employe_id': profil.employe_id,
+                'rib_paie': rib_paie,
+                'rib_rh': rib_rh,
+            })
+    divergences.sort(key=lambda d: d['employe_id'])
+    return divergences
 
 
 def mes_bulletins_valides(user):

@@ -8,7 +8,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '../../ui'
 import { ModuleDashboard } from '../../ui/module'
-import { formatMAD, formatNumber } from '../../lib/format'
+import { formatMAD, formatNumber, formatPercent } from '../../lib/format'
 import SimpleTable from './SimpleTable'
 
 /* ============================================================================
@@ -182,7 +182,7 @@ function CohortesHeatmap({ cohortes }) {
                   <td key={c} className="px-1 py-1 text-center">
                     {v ? (
                       <span className={`inline-block w-12 rounded px-1 py-0.5 tabular-nums ${cell(v.logo_pct)}`}>
-                        {Number(v.logo_pct ?? 0).toFixed(0)}%
+                        {formatPercent(v.logo_pct ?? 0, { decimals: 0 })}
                       </span>
                     ) : <span className="text-muted-foreground/40">—</span>}
                   </td>

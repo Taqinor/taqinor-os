@@ -22,32 +22,76 @@ export const DEFAULT_NUMBERING = {
 export const DOC_TYPES = [['devis', 'Devis'], ['facture', 'Facture'], ['avoir', 'Avoir'], ['bon_commande', 'Bon de commande']]
 export const MODE_LABELS = { residentiel: 'Résidentiel', agricole: 'Agricole', industriel: 'Industriel / Commercial' }
 
-// ── Onglets de la page Paramètres (D1) ─────────────────────────────────────────
-// Chaque réglage existant reste présent, simplement regroupé par domaine.
-export const TABS = [
-  { key: 'onboarding', label: 'Prise en main' },
-  { key: 'societe',    label: 'Société & identité' },
-  { key: 'leads',      label: 'Leads' },
-  { key: 'clients',    label: 'Clients' },
-  { key: 'devis',      label: 'Devis & Factures' },
-  { key: 'documents',  label: 'Modèles de documents' },
-  { key: 'tarification', label: 'Tarification & ROI' },
-  { key: 'stock',      label: 'Stock' },
-  { key: 'donnees',    label: 'Données' },
-  { key: 'statuts',    label: 'Statuts' },
-  { key: 'monitoring', label: 'Supervision' },
-  { key: 'checklists', label: 'Checklists' },
-  { key: 'etapes_chantier', label: 'Étapes chantier' },
-  { key: 'kits',       label: "Kits d'outillage" },
-  { key: 'shotlist',   label: 'Documentation terrain' },
-  { key: 'automatisations', label: 'Automatisations' },
-  { key: 'securite',   label: 'Sécurité & terrain' },
-  { key: 'equipe',     label: 'Équipe & rôles' },
-  { key: 'messages',   label: 'Messages & relances' },
-  { key: 'email',      label: 'Email' },
-  { key: 'api',        label: 'API & Webhooks' },
-  { key: 'avance',     label: 'Avancé' },
+// ── Familles d'onglets (VX35) ──────────────────────────────────────────────────
+// Architecture d'information ≤ 2 niveaux (façon Stripe/Linear) : la sidebar
+// verticale regroupe les onglets par domaine via le champ `group` ci-dessous.
+// L'ORDRE de cette liste = l'ordre des sections dans la sidebar. Aucun réglage
+// courant n'est caché derrière un mode avancé (erreur Odoo n°3) : « Avancé » ne
+// contient que des réglages réellement techniques/rares.
+export const SETTINGS_GROUPS = [
+  { key: 'general',        label: 'Général' },
+  { key: 'ventes',         label: 'Ventes & Devis' },
+  { key: 'terrain',        label: 'Terrain & Stock' },
+  { key: 'equipe',         label: 'Équipe & Sécurité' },
+  { key: 'automatisation', label: 'Automatisation' },
+  { key: 'avance',         label: 'Avancé' },
 ]
+
+// ── Onglets de la page Paramètres (D1) ─────────────────────────────────────────
+// Chaque réglage existant reste présent, simplement regroupé par domaine. Les
+// clés (`key`) sont INCHANGÉES (VX35 : aucune renommée) ; seul le champ `group`
+// est ajouté pour ranger chaque onglet dans une famille de `SETTINGS_GROUPS`.
+export const TABS = [
+  { key: 'onboarding', label: 'Prise en main',            group: 'general' },
+  { key: 'societe',    label: 'Société & identité',       group: 'general' },
+  { key: 'leads',      label: 'Leads',                    group: 'ventes' },
+  { key: 'clients',    label: 'Clients',                  group: 'ventes' },
+  { key: 'devis',      label: 'Devis & Factures',         group: 'ventes' },
+  { key: 'documents',  label: 'Modèles de documents',     group: 'ventes' },
+  { key: 'tarification', label: 'Tarification & ROI',     group: 'ventes' },
+  { key: 'stock',      label: 'Stock',                    group: 'terrain' },
+  { key: 'donnees',    label: 'Données',                  group: 'avance' },
+  { key: 'statuts',    label: 'Statuts',                  group: 'automatisation' },
+  { key: 'monitoring', label: 'Supervision',              group: 'terrain' },
+  { key: 'checklists', label: 'Checklists',               group: 'terrain' },
+  { key: 'etapes_chantier', label: 'Étapes chantier',     group: 'terrain' },
+  { key: 'kits',       label: "Kits d'outillage",         group: 'terrain' },
+  { key: 'shotlist',   label: 'Documentation terrain',    group: 'terrain' },
+  { key: 'automatisations', label: 'Automatisations',     group: 'automatisation' },
+  { key: 'securite',   label: 'Sécurité & terrain',       group: 'equipe' },
+  { key: 'equipe',     label: 'Équipe & rôles',           group: 'equipe' },
+  { key: 'messages',   label: 'Messages & relances',      group: 'ventes' },
+  { key: 'email',      label: 'Email',                    group: 'automatisation' },
+  { key: 'api',        label: 'API & Webhooks',           group: 'avance' },
+  { key: 'avance',     label: 'Avancé',                   group: 'avance' },
+]
+
+// ── Modèle de sauvegarde par onglet (VX151) ────────────────────────────────────
+// Le bouton « Enregistrer » partagé n'existe que sur 4/24 onglets (ceux qui
+// portent des champs du profil) ; les autres onglets sont des sections
+// autonomes qui gèrent leur propre persistance. Sans repère préalable,
+// l'utilisateur cherche un bouton de sauvegarde qui n'est pas là. Ce map
+// annonce, AVANT toute édition, la convention de chaque onglet.
+//   'form'    → bouton « Enregistrer » partagé, en bas de page.
+//   'section' → la section porte ses propres boutons d'enregistrement.
+//   'guide'   → onglet d'assistance, rien à enregistrer.
+// Un onglet absent de ce map est traité comme 'section' (défaut sûr : on
+// n'affirme jamais un bouton partagé qui n'existe pas).
+export const SAVE_MODEL_BY_TAB = {
+  onboarding: 'guide',
+  societe: 'form',
+  leads: 'form',
+  devis: 'form',
+  avance: 'form',
+}
+export const SAVE_MODEL_HINTS = {
+  form:    'Cet onglet s’enregistre avec le bouton « Enregistrer » en bas de page.',
+  section: 'Cet onglet dispose de ses propres boutons d’enregistrement dans la section.',
+  guide:   'Onglet d’assistance — aucun réglage à enregistrer ici.',
+}
+export function saveModelForTab(tab) {
+  return SAVE_MODEL_BY_TAB[tab] || 'section'
+}
 
 // L790 — index de recherche : { tab, libellés/mots-clés }. Une saisie qui
 // correspond à un mot-clé propose de sauter à l'onglet concerné. Liste
@@ -74,6 +118,21 @@ export const SETTINGS_SEARCH_INDEX = [
   { tab: 'api', terms: ['api', 'webhooks', "clés d'api"] },
   { tab: 'avance', terms: ['avancé', 'hypothèses roi', 'tarif onee', 'rendement', 'logique de devis', 'prix cible', 'remise', "types d'intervention", "checklist d'exécution", 'champs personnalisés', "journal des modifications", "journal d'audit", 'seuil régime', '82-21'] },
 ]
+
+// VX35 — regroupe une liste d'onglets par famille, dans l'ordre de
+// SETTINGS_GROUPS. Un onglet sans `group` (ou avec un group inconnu) tombe dans
+// « Avancé » — ainsi aucun onglet ne disparaît jamais de la sidebar. Renvoie
+// uniquement les familles non vides, chacune avec ses onglets.
+export function groupTabs(tabs) {
+  const fallback = 'avance'
+  const known = new Set(SETTINGS_GROUPS.map(g => g.key))
+  return SETTINGS_GROUPS
+    .map(g => ({
+      ...g,
+      tabs: tabs.filter(t => (known.has(t.group) ? t.group : fallback) === g.key),
+    }))
+    .filter(g => g.tabs.length > 0)
+}
 
 // Cherche les onglets dont au moins un mot-clé contient la requête (≥ 2 car).
 export function searchSettings(query) {

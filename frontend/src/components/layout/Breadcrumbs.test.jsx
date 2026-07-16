@@ -63,3 +63,31 @@ describe('Breadcrumbs — I137 accessible + tronqué', () => {
     expect(screen.getByText(longLabel)).toHaveAttribute('title', longLabel)
   })
 })
+
+describe('VX11 — 1er segment cliquable vers le cockpit du module', () => {
+  it('« RH » (module coquille, repli to:null) reste un texte non cliquable', () => {
+    renderCrumbs({ pathname: '/rh/employes/42' })
+    const rh = screen.getByText('RH')
+    expect(rh.tagName.toLowerCase()).not.toBe('a')
+  })
+
+  it('« Stock » (cockpit connu) est un lien cliquable vers /stock quand on est sur une sous-page', () => {
+    renderCrumbs({ pathname: '/stock/mouvements' })
+    const stock = screen.getByText('Stock')
+    expect(stock.tagName.toLowerCase()).toBe('a')
+    expect(stock).toHaveAttribute('href', '/stock')
+  })
+
+  it('sur le cockpit lui-même, le 1er segment n’est PAS un lien vers soi-même', () => {
+    renderCrumbs({ pathname: '/stock' })
+    // Une seule miette : le titre courant seul (label section == label page).
+    const current = screen.getByText('Stock')
+    expect(current).toHaveAttribute('aria-current', 'page')
+  })
+
+  it('persiste taqinor.lastModule à chaque navigation', () => {
+    window.localStorage.removeItem('taqinor.lastModule')
+    renderCrumbs({ pathname: '/rh/employes/42' })
+    expect(window.localStorage.getItem('taqinor.lastModule')).toBe('rh')
+  })
+})

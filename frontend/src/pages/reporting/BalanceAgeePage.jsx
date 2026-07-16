@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
-import { FileText, CheckCircle2, Download, AlertCircle } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { FileText, Send, CheckCircle2, Download } from 'lucide-react'
 import ventesApi from '../../api/ventesApi'
 import reportingApi from '../../api/reportingApi'
 import { downloadXlsx } from '../../api/importApi'
 import { openPdfBlob } from '../../utils/pdfBlob'
 import { formatMAD } from '../../lib/format'
 import { Button, Card, CardContent, Segmented, Skeleton, EmptyState } from '../../ui'
+import { toast } from '../../ui/confirm'
 import { Table } from './Table'
+import { StateBlock } from '../../components/StateBlock'
 
 const dh = (v) => formatMAD(v, { decimals: 2 })
 
@@ -41,7 +44,7 @@ export default function BalanceAgeePage() {
     try {
       const res = await ventesApi.getClientRelevePdf(r.client_id)
       openPdfBlob(res.data, `Releve_${r.client_nom}.pdf`)
-    } catch { alert('Relevé indisponible.') }
+    } catch { toast.error('Relevé indisponible.') }
   }
 
   // Export .xlsx (une ligne par client, buckets + total) — borné société.
@@ -97,14 +100,13 @@ export default function BalanceAgeePage() {
           </CardContent>
         </Card>
       ) : loadError ? (
+        // VX67 — StateBlock unifie l'état d'erreur avec un bouton « Réessayer »
+        // (relance le même `load` qu'au montage).
         <Card>
-          <CardContent className="pt-5">
-            <EmptyState
-              icon={AlertCircle}
-              title="Chargement impossible"
-              description="La balance âgée n'a pas pu être chargée (serveur indisponible ?)."
-              action={<Button size="sm" variant="outline" onClick={load}>Réessayer</Button>}
-              className="py-6"
+          <CardContent className="py-6">
+            <StateBlock
+              error="La balance âgée n'a pas pu être chargée (serveur indisponible ?)."
+              onRetry={load}
             />
           </CardContent>
         </Card>
@@ -127,9 +129,20 @@ export default function BalanceAgeePage() {
                   header: '',
                   align: 'right',
                   cell: (r) => (
-                    <Button variant="outline" size="sm" onClick={() => releve(r)}>
-                      <FileText /> Relevé
-                    </Button>
+                    <div className="flex justify-end gap-2">
+                      {/* VX112 — drill-down vers les relances filtrées sur ce
+                          client (mirroir du pré-filtre ?produit= de
+                          MouvementsPage) : la balance âgée n'est plus un
+                          cul-de-sac, elle mène à l'action de recouvrement. */}
+                      <Button variant="outline" size="sm" asChild>
+                        <Link to={`/ventes/relances?client=${r.client_id}`}>
+                          <Send /> Relancer
+                        </Link>
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => releve(r)}>
+                        <FileText /> Relevé
+                      </Button>
+                    </div>
                   ),
                 },
               ]}

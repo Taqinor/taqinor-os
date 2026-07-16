@@ -2,7 +2,7 @@ from django.db import transaction  # noqa: F401
 from rest_framework import viewsets, filters, status  # noqa: F401
 from rest_framework.decorators import action  # noqa: F401
 from rest_framework.response import Response  # noqa: F401
-from authentication.mixins import TenantMixin  # noqa: F401
+from core.viewsets import CompanyScopedModelViewSet
 from ..models import DocumentConformiteFournisseur, AchatsParametres
 from ..serializers import (
     DocumentConformiteFournisseurSerializer, AchatsParametresSerializer,
@@ -18,7 +18,7 @@ READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
 
-class DocumentConformiteFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
+class DocumentConformiteFournisseurViewSet(CompanyScopedModelViewSet):
     """XPUR1 — documents de conformité fournisseur (ARF/CNSS/RC/assurance).
 
     Lecture tout rôle authentifié ; écriture réservée à ``stock_modifier``

@@ -24,6 +24,7 @@ const config = {
   order: 85,
   nav: {
     label: 'BASE DE CONNAISSANCES',
+    accent: 'lune', // VX8 — documentaire = accent lune (dérivé)
     items: [
       {
         to: '/kb',

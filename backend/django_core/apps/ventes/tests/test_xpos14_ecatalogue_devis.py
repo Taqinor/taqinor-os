@@ -96,20 +96,28 @@ class TestDemanderDevis(Xpos14TestBase):
         self.assertEqual(produits_lignes[self.onduleur.id], Decimal('1'))
 
     def test_dedup_meme_telephone_reutilise_le_lead(self):
-        payload = {
+        # QX41 — le verrou d'idempotence absorbe un rejeu STRICTEMENT identique
+        # (double-clic : mêmes coordonnées ET même panier). Ici on modélise
+        # DEUX demandes DISTINCTES de la même personne (paniers différents) :
+        # le lead est réutilisé (même téléphone) mais chaque demande produit
+        # bien son propre devis.
+        r1 = self.api.post(self._url('demander-devis/'), {
             'nom': 'Sara Idrissi',
             'telephone': '+212677889900',
             'lignes': [{'produit': self.panneau.id, 'quantite': '2'}],
-        }
-        r1 = self.api.post(self._url('demander-devis/'), payload, format='json')
+        }, format='json')
         self.assertEqual(r1.status_code, 201, r1.data)
-        r2 = self.api.post(self._url('demander-devis/'), payload, format='json')
+        r2 = self.api.post(self._url('demander-devis/'), {
+            'nom': 'Sara Idrissi',
+            'telephone': '+212677889900',
+            'lignes': [{'produit': self.panneau.id, 'quantite': '5'}],
+        }, format='json')
         self.assertEqual(r2.status_code, 201, r2.data)
 
         leads = Lead.objects.filter(
             company=self.company, telephone='+212677889900')
         self.assertEqual(leads.count(), 1)
-        # Deux devis (un par soumission) mais un seul lead.
+        # Deux devis (un par soumission distincte) mais un seul lead.
         self.assertEqual(Devis.objects.filter(lead=leads.first()).count(), 2)
 
     def test_honeypot_rempli_ne_cree_rien(self):

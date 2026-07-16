@@ -34,6 +34,11 @@ class Campagne(models.Model):
     class Canal(models.TextChoices):
         EMAIL = 'email', 'Email'
         SMS = 'sms', 'SMS'
+        # XMKT10 — envoi groupé WhatsApp (opt-in XMKT4 uniquement). Réel via
+        # BSP quand ``notifications.whatsapp_bsp.get_whatsapp_provider()``
+        # renvoie ``BspProvider`` actif (jeton présent) ; sinon repli EXACT
+        # sur une file de liens wa.me ordonnée (comportement manuel actuel).
+        WHATSAPP = 'whatsapp', 'WhatsApp'
 
     class Statut(models.TextChoices):
         BROUILLON = 'brouillon', 'Brouillon'
@@ -68,6 +73,16 @@ class Campagne(models.Model):
     sms_sender_id = models.CharField(
         max_length=11, blank=True, default='',
         verbose_name="Sender-ID SMS déclaré (XMKT15)")
+    # XMKT10 — gabarit BSP approuvé (nom+langue) pour le canal whatsapp.
+    # NULL = comportement historique (corps libre, canal email/sms) ou envoi
+    # WhatsApp en repli manuel (file wa.me construite depuis ``corps``).
+    whatsapp_template = models.ForeignKey(
+        'notifications.WhatsAppTemplate',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='campagnes_marketing',
+        verbose_name='Gabarit WhatsApp (BSP)',
+    )
     statut = models.CharField(
         max_length=15, choices=Statut.choices, default=Statut.BROUILLON,
         verbose_name='Statut')
@@ -1864,3 +1879,77 @@ class DomaineEnvoi(models.Model):
     @property
     def authentifie(self):
         return self.spf_verifie and self.dkim_verifie and self.dmarc_verifie
+
+
+# ── XMKT35 — Planification de posts réseaux sociaux (publication gated) ─────
+
+class PostSocial(models.Model):
+    """Post réseau social planifié (XMKT35) — calendrier de contenu XMKT30.
+
+    La PUBLICATION réelle via l'API Meta Graph est gated (défaut OFF,
+    ``compta.services.meta_graph_actif``) : sans jeton, le post devient à
+    l'échéance un RAPPEL manuel notifié à son auteur avec le texte prêt à
+    coller (aucun appel réseau, aucun statut ``publie`` posé tout seul).
+    ``media_key`` = clé d'objet MinIO opaque (bucket uploads existant, posée
+    par le flux d'upload standard) — jamais un chemin local. Multi-société.
+    """
+    class Reseau(models.TextChoices):
+        FACEBOOK = 'facebook', 'Facebook'
+        INSTAGRAM = 'instagram', 'Instagram'
+        LINKEDIN = 'linkedin', 'LinkedIn'
+        AUTRE = 'autre', 'Autre'
+
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        PLANIFIE = 'planifie', 'Planifié'
+        PUBLIE = 'publie', 'Publié'
+        ECHEC = 'echec', 'Échec'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='posts_sociaux',
+        verbose_name='Société',
+    )
+    reseau = models.CharField(
+        max_length=12, choices=Reseau.choices, default=Reseau.FACEBOOK,
+        verbose_name='Réseau')
+    texte = models.TextField(blank=True, default='', verbose_name='Texte du post')
+    # Clé d'objet MinIO du média joint (image/vidéo) — opaque, optionnelle.
+    media_key = models.CharField(
+        max_length=512, blank=True, default='', verbose_name='Média (clé MinIO)')
+    date_planifiee = models.DateTimeField(
+        null=True, blank=True, verbose_name='Publication planifiée le')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.BROUILLON,
+        verbose_name='Statut')
+    # Rappel manuel (chemin sans jeton) : envoyé UNE fois à l'échéance.
+    rappel_envoye = models.BooleanField(
+        default=False, verbose_name='Rappel manuel envoyé')
+    publie_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Publié le')
+    # ID du post renvoyé par l'API Meta Graph (chemin gated uniquement).
+    external_id = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='ID externe Meta')
+    erreur = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Erreur (échec)')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+',
+        verbose_name='Créé par')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Post réseau social'
+        verbose_name_plural = 'Posts réseaux sociaux'
+        ordering = ['-date_planifiee', '-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'statut', 'date_planifiee'],
+                name='mkt_postsocial_co_st_date_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.get_reseau_display()} — {self.texte[:40]} ({self.statut})'

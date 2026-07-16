@@ -11,8 +11,8 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework import status
 
-from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.viewsets import CompanyScopedModelViewSet
 
 from ..models import RetourMateriel, RetourMaterielLigne
 from ..serializers import (
@@ -23,7 +23,7 @@ from ..services import valider_retour_materiel
 READ_ACTIONS = ['list', 'retrieve']
 
 
-class RetourMaterielViewSet(TenantMixin, viewsets.ModelViewSet):
+class RetourMaterielViewSet(CompanyScopedModelViewSet):
     """YSTCK4 — retours de matériel non posé, d'un chantier vers le dépôt.
     Lecture tout rôle, écriture responsable/admin. Filtrable par
     `installation`, `statut`."""

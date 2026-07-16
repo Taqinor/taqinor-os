@@ -1,12 +1,18 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useSelector } from 'react-redux'
+import { useHasPermission, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import {
   BarChart3, FileWarning, PackageCheck, Receipt, Wallet,
   Undo2, ShieldCheck, Tags,
 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
-import { Spinner, Tabs, TabsList, TabsTrigger, TabsContent } from '../../ui'
+import { formatMAD } from '../../lib/format'
+import { telHref } from '../../lib/contactLinks'
+import {
+  Spinner, Tabs, TabsList, TabsTrigger, TabsContent,
+  Card, CardHeader, CardTitle, CardContent, Stat, RelationCounters,
+} from '../../ui'
 
 // XPUR25 — Fiche fournisseur 360 : une page à onglets qui rassemble les
 // briques déjà existantes (performance FG59, factures/solde AP, retours/avoirs,
@@ -23,9 +29,7 @@ import { Spinner, Tabs, TabsList, TabsTrigger, TabsContent } from '../../ui'
 // message technique) tant que l'agrégat 404, et les onglets détaillés
 // continuent à fonctionner via les vrais endpoints existants.
 
-const fmtMad = (v) => `${(Number(v) || 0).toLocaleString('fr-FR', {
-  minimumFractionDigits: 2, maximumFractionDigits: 2,
-})} MAD`
+const fmtMad = (v) => formatMAD(v)
 
 const fmtDate = (v) => {
   if (!v) return '—'
@@ -40,27 +44,6 @@ function frErr(err, fallback = 'Une erreur est survenue.') {
   return fallback
 }
 
-function Card({ title, icon: Icon, children }) {
-  return (
-    <div className="rounded-lg border border-border bg-card p-4">
-      <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-foreground">
-        {Icon && <Icon className="size-4 text-muted-foreground" aria-hidden="true" />}
-        {title}
-      </h3>
-      {children}
-    </div>
-  )
-}
-
-function Stat({ label, value }) {
-  return (
-    <div className="rounded-md border border-border bg-muted/30 p-3">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="mt-1 text-lg font-semibold tabular-nums">{value}</p>
-    </div>
-  )
-}
-
 function Indisponible({ message }) {
   return (
     <p data-testid="f360-indisponible" className="text-sm text-muted-foreground">
@@ -70,20 +53,11 @@ function Indisponible({ message }) {
 }
 
 // ── Panneau résumé — consomme l'agrégat vue-360 (BLOCKED côté backend) ──────
-function ResumePanel({ fournisseurId }) {
-  const [data, setData] = useState(null)
-  const [unavailable, setUnavailable] = useState(false)
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    let active = true
-    stockApi.getFournisseur360(fournisseurId)
-      .then((r) => { if (active) setData(r.data ?? null) })
-      .catch(() => { if (active) setUnavailable(true) })
-      .finally(() => { if (active) setLoading(false) })
-    return () => { active = false }
-  }, [fournisseurId])
-
+// VX159/VX250 — la requête (`stockApi.getFournisseur360`) est REMONTÉE au
+// parent (`FournisseurFiche360`) : RelationCounters (tête de page) et ce
+// panneau consomment désormais le MÊME appel réseau — jamais un second fetch
+// dupliqué du même endpoint.
+function ResumePanel({ data, unavailable, loading }) {
   if (loading) {
     return (
       <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
@@ -98,7 +72,8 @@ function ResumePanel({ fournisseurId }) {
   }
 
   return (
-    <div className="grid gap-3 sm:grid-cols-4">
+    <div className="flex flex-col gap-3">
+      <div className="grid gap-3 sm:grid-cols-4">
       <Stat label="BCF ouverts" value={String(data.bcf_ouverts ?? 0)} />
       <Stat label="BCF en retard" value={String(data.bcf_en_retard ?? 0)} />
       <Stat label="Réceptions attendues" value={String(data.receptions_attendues ?? 0)} />
@@ -107,6 +82,7 @@ function ResumePanel({ fournisseurId }) {
       <Stat label="Score performance" value={data.score_performance != null ? String(data.score_performance) : '—'} />
       <Stat label="Retours/avoirs" value={String(data.nb_retours_avoirs ?? 0)} />
       <Stat label="Accords de prix actifs" value={String(data.accords_prix_actifs ?? 0)} />
+      </div>
     </div>
   )
 }
@@ -323,16 +299,37 @@ function OngletAccordsPrix({ fournisseurId }) {
   )
 }
 
-export default function FournisseurFiche360({ fournisseurId: fournisseurIdProp, fournisseurNom } = {}) {
+export default function FournisseurFiche360({
+  fournisseurId: fournisseurIdProp, fournisseurNom, fournisseurTelephone,
+} = {}) {
   const params = useParams()
   const fournisseurId = fournisseurIdProp ?? params.id
-  const role = useSelector((s) => s.auth.role)
-  const permissions = useSelector((s) => s.auth.permissions) || []
-  // Donnée d'achat INTERNE (prix/solde/performance) : même garde que le reste
-  // de l'écran fournisseur — responsable/admin ou droit explicite stock_voir.
-  const canView = permissions.length
-    ? permissions.includes('stock_voir')
-    : (role === 'responsable' || role === 'admin')
+  // ARC47 — gating via le hook partagé. Donnée d'achat INTERNE
+  // (prix/solde/performance) : même garde que le reste de l'écran fournisseur —
+  // responsable/admin ou droit explicite stock_voir. `hasFinePermissions`
+  // (présence de codes ERP, PAS un droit) choisit la branche ; hooks
+  // inconditionnels ; sémantique identique à l'origine.
+  const hasFinePermissions = useSelector((s) => (s.auth.permissions || []).length > 0)
+  const canViewViaPerm = useHasPermission('stock_voir')
+  const canViewViaRole = useIsAdminOrResponsable()
+  const canView = hasFinePermissions ? canViewViaPerm : canViewViaRole
+  // VX108 — tap-to-call : la fiche n'affichait aucun téléphone.
+  const tel = telHref(fournisseurTelephone)
+
+  // VX159/VX250 — remonté depuis ResumePanel : RelationCounters (tête de
+  // page) ET le panneau résumé consomment le MÊME fetch, jamais un doublon.
+  const [resumeData, setResumeData] = useState(null)
+  const [resumeUnavailable, setResumeUnavailable] = useState(false)
+  const [resumeLoading, setResumeLoading] = useState(true)
+  useEffect(() => {
+    if (!fournisseurId || !canView) return undefined
+    let active = true
+    stockApi.getFournisseur360(fournisseurId)
+      .then((r) => { if (active) setResumeData(r.data ?? null) })
+      .catch(() => { if (active) setResumeUnavailable(true) })
+      .finally(() => { if (active) setResumeLoading(false) })
+    return () => { active = false }
+  }, [fournisseurId, canView])
 
   const tabs = useMemo(() => ([
     { value: 'performance', label: 'Performance', icon: BarChart3, Comp: OngletPerformance },
@@ -372,10 +369,38 @@ export default function FournisseurFiche360({ fournisseurId: fournisseurIdProp, 
           <Wallet className="mr-1 inline size-3.5" aria-hidden="true" />
           Vue d&apos;ensemble achats — donnée interne, jamais client-facing.
         </p>
+        {tel && (
+          <p className="text-sm">
+            <a href={tel} className="link-blue" title="Appeler">☎ {fournisseurTelephone}</a>
+          </p>
+        )}
+        {/* VX159/VX250 — RelationCounters : réutilise `resumeData` (même fetch
+            que ResumePanel ci-dessous, jamais un doublon). L'agrégat 360 est
+            BLOCKED côté backend (voir note en tête de fichier) : ces
+            compteurs restent simplement absents tant qu'il 404 (jamais un
+            zéro trompeur). Pas de `to` : BonsCommandeFournisseur.jsx/
+            FacturesFournisseur.jsx n'ont pas de filtre par fournisseur (hors
+            périmètre de cette tâche) — jamais un lien qui MENT sur un
+            pré-filtre qu'il n'applique pas. */}
+        {resumeData && (
+          <RelationCounters
+            className="mt-2"
+            counters={[
+              { label: 'bons de commande ouverts', count: resumeData.bcf_ouverts ?? 0 },
+              { label: 'factures ouvertes', count: resumeData.factures_ouvertes ?? 0 },
+              { label: 'retours/avoirs', count: resumeData.nb_retours_avoirs ?? 0 },
+            ]}
+          />
+        )}
       </header>
 
-      <Card title="Vue d'ensemble">
-        <ResumePanel fournisseurId={fournisseurId} />
+      <Card>
+        <CardHeader>
+          <CardTitle>Vue d&apos;ensemble</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ResumePanel data={resumeData} unavailable={resumeUnavailable} loading={resumeLoading} />
+        </CardContent>
       </Card>
 
       <Tabs defaultValue="performance">

@@ -8,15 +8,26 @@
 .chatter-author { font-weight: 600; color: #475569; }
 .chatter-date { flex: 1; }
 .chatter-delete { background: none; border: none; cursor: pointer; color: #e2e8f0; padding: 0; display: flex; transition: color 0.15s; }
-.chatter-delete:hover { color: #ef4444; }
+@media (hover: hover) {
+  .chatter-delete:hover { color: #ef4444; }
+}
 .chatter-body { line-height: 1.45; white-space: pre-wrap; word-break: break-word; }
 .chatter-body .mention { color: #3b82f6; font-weight: 600; }
 .chatter-form { display: flex; gap: 6px; align-items: flex-end; }
 .chatter-textarea { flex: 1; border: 1px solid #e2e8f0; border-radius: 8px; padding: 7px 10px; font-size: 0.85rem; resize: vertical; font-family: inherit; line-height: 1.45; background: #fff; }
 .chatter-textarea:focus { outline: none; border-color: #3b82f6; }
 .chatter-submit { background: #3b82f6; color: #fff; border: none; border-radius: 8px; width: 36px; height: 36px; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: background 0.15s; }
-.chatter-submit:hover:not(:disabled) { background: #2563eb; }
+@media (hover: hover) {
+  .chatter-submit:hover:not(:disabled) { background: #2563eb; }
+}
 .chatter-submit:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* VX204 — état d'erreur du chatter (chargement en échec + retry) */
+.chatter-error { color: #dc2626; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.chatter-retry { background: none; border: 1px solid #dc2626; color: #dc2626; border-radius: 6px; padding: 2px 10px; font-size: 0.78rem; cursor: pointer; }
+@media (hover: hover) {
+  .chatter-retry:hover { background: #fef2f2; }
+}
 
 /* FG9 — TagChipInput */
 .tag-chip-input { display: flex; flex-direction: column; gap: 6px; }
@@ -24,13 +35,17 @@
 .tag-chip-area { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
 .tag-chip { display: inline-flex; align-items: center; gap: 4px; border: 1px solid; border-radius: 999px; padding: 2px 8px; font-size: 0.75rem; font-weight: 500; white-space: nowrap; }
 .tag-chip-remove { background: none; border: none; cursor: pointer; display: flex; align-items: center; padding: 0; opacity: 0.5; transition: opacity 0.15s; }
-.tag-chip-remove:hover { opacity: 1; }
+@media (hover: hover) {
+  .tag-chip-remove:hover { opacity: 1; }
+}
 .tag-chip-input-wrap { position: relative; }
 .tag-chip-search { border: 1px solid #e2e8f0; border-radius: 6px; padding: 3px 8px; font-size: 0.82rem; width: 120px; background: #fff; font-family: inherit; }
 .tag-chip-search:focus { outline: none; border-color: #3b82f6; }
 .tag-chip-dropdown { position: absolute; top: calc(100% + 3px); left: 0; min-width: 160px; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.08); z-index: 50; padding: 4px; }
 .tag-chip-option { display: flex; align-items: center; gap: 6px; width: 100%; text-align: left; background: none; border: none; cursor: pointer; padding: 6px 8px; border-radius: 5px; font-size: 0.82rem; color: #1e293b; }
-.tag-chip-option:hover { background: #f1f5f9; }
+@media (hover: hover) {
+  .tag-chip-option:hover { background: #f1f5f9; }
+}
 .tag-chip-create { color: #3b82f6; font-style: italic; }
 .tag-chip-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .tag-chip-empty { padding: 6px 8px; font-size: 0.78rem; color: #94a3b8; }
@@ -74,7 +89,9 @@
 .act-done-sep { font-size: 0.72rem; text-transform: uppercase; color: #94a3b8; margin: 8px 0 2px; letter-spacing: 0.5px; }
 
 .att-name { flex: 1; color: #1d4ed8; text-decoration: none; font-weight: 600; }
-.att-name:hover { text-decoration: underline; }
+@media (hover: hover) {
+  .att-name:hover { text-decoration: underline; }
+}
 
 /* Pastille horloge d'activité sur les cartes kanban. */
 .kb-act-clock { display: inline-flex; align-items: center; font-size: 0.72rem; gap: 3px; }

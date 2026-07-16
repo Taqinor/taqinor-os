@@ -56,6 +56,7 @@ from .models import (
     MaterielConsigne,
     Kit,
     KitComposant,
+    RevisionKit,
     OrdreAssemblage,
     OrdreAssemblageActivity,
     OrdreAssemblageLigne,
@@ -2298,6 +2299,24 @@ class KitSerializer(serializers.ModelSerializer):
         return value
 
 
+class RevisionKitSerializer(serializers.ModelSerializer):
+    """XMFG18 - revision (snapshot) de la nomenclature d'un kit de
+    pre-assemblage. Lecture seule : creees automatiquement cote serveur."""
+    user_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = RevisionKit
+        fields = ['id', 'kit', 'numero', 'composition', 'user', 'user_nom',
+                  'date_creation']
+        read_only_fields = fields
+
+    def get_user_nom(self, obj):
+        u = obj.user
+        if u is None:
+            return None
+        return (f'{u.first_name} {u.last_name}'.strip() or u.username)
+
+
 class OrdreAssemblageLigneSerializer(serializers.ModelSerializer):
     """XMFG6 - ligne de composant PERSONNALISABLE d'un ordre. `origine` posee
     cote serveur (kit vs ajout) ; l'editabilite (planifie uniquement) est
@@ -2351,11 +2370,14 @@ class OrdreAssemblageSerializer(serializers.ModelSerializer):
             'temps_prevu_min', 'temps_reel_min',
             # XMFG16 — assemblage sous-traité (façon).
             'sous_traitant', 'ordre_sous_traitance',
+            # XMFG18 — révision de nomenclature figée à la création.
+            'revision_kit_numero',
             'created_by', 'date_creation', 'date_modification',
         ]
         read_only_fields = [
             'reference', 'statut', 'date_terminaison', 'created_by',
             'stock_mouvemente', 'motif_annulation',
+            'revision_kit_numero',
             'date_creation', 'date_modification',
         ]
 

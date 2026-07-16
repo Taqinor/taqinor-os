@@ -125,9 +125,21 @@ def build(ctx) -> str:
     charts = ctx["charts"]
     links = d.get("links", {})
 
-    shared, delta_sans, delta_avec = _split_items(
-        d["sans_items"], d["avec_items"]
-    )
+    # QX5 — deux options seulement quand le devis en porte réellement deux.
+    # Mono-option : la page 2 abandonne le découpage delta et renomme l'en-tête
+    # « commun aux deux options ». Repli sûr : sans drapeau, deux-options.
+    deux_options = bool(d.get("deux_options", True))
+    avec_ok = bool(d.get("avec_ok", True))
+
+    if deux_options:
+        shared, delta_sans, delta_avec = _split_items(
+            d["sans_items"], d["avec_items"]
+        )
+    else:
+        # Une seule option : toutes ses lignes forment le tableau d'équipement
+        # (aucun delta à comparer).
+        shared = d["avec_items"] if avec_ok else d["sans_items"]
+        delta_sans, delta_avec = [], []
 
     # ── Top spec list ────────────────────────────────────────────────────────
     specs = [
@@ -147,13 +159,38 @@ def build(ctx) -> str:
     delta_sans_html = _delta_lines(delta_sans, fmt, produits_link)
     delta_avec_html = _delta_lines(delta_avec, fmt, produits_link)
 
-    totals_sans = _totals_chain(
-        "Option 1 — Sans batterie", C["navy"], d["totaux_sans"], fmt, C
-    )
-    totals_avec = _totals_chain(
-        "Option 2 — Avec batterie", C["gold"], d["totaux_avec"], fmt, C,
-        recommended=True,
-    )
+    # QX5 — le bloc « ce que chaque option ajoute » n'existe QUE pour un vrai
+    # devis à deux options ; mono-option → aucun découpage delta.
+    if deux_options:
+        deltas_html = (
+            '<div class="p2-deltas">'
+            '<div class="p2-dcard">'
+            f'<div class="p2-dhead" style="background:{C["navy"]}">'
+            'Option 1 — Sans batterie <small>ajoute</small></div>'
+            f'<div class="p2-dbody"><ul>{delta_sans_html}</ul></div></div>'
+            '<div class="p2-dcard">'
+            f'<div class="p2-dhead" style="background:{C["gold"]}">'
+            'Option 2 — Avec batterie <small>ajoute</small></div>'
+            f'<div class="p2-dbody"><ul>{delta_avec_html}</ul></div></div>'
+            '</div>')
+    else:
+        deltas_html = ""
+
+    if deux_options:
+        totals_html = (
+            _totals_chain("Option 1 — Sans batterie", C["navy"],
+                          d["totaux_sans"], fmt, C)
+            + _totals_chain("Option 2 — Avec batterie", C["gold"],
+                            d["totaux_avec"], fmt, C, recommended=True))
+        equipement_lbl = "Équipement commun aux deux options"
+    else:
+        # QX5 — une seule carte de totaux pour l'unique option réelle.
+        _tot = d["totaux_avec"] if avec_ok else d["totaux_sans"]
+        _lbl = ("Total — Avec batterie" if avec_ok
+                else "Total — Sans batterie")
+        _acc = C["gold"] if avec_ok else C["navy"]
+        totals_html = _totals_chain(_lbl, _acc, _tot, fmt, C)
+        equipement_lbl = "Votre équipement"
 
     tva_note = d.get("tva_note", "")
 
@@ -197,14 +234,23 @@ def build(ctx) -> str:
     def _yrs(v):
         return f"{v:g}".replace(".", ",") if v else "—"
     roi_s, roi_a = d.get("roi_s"), d.get("roi_a")
-    if roi_s and roi_a:
+    # QX5 — deux options → fourchette de ROI ; mono-option → le ROI de l'option
+    # réelle seul (jamais une fourchette entre une option et un fantôme).
+    if deux_options and roi_s and roi_a:
         lo, hi = sorted((roi_s, roi_a))
         roi_range = f"{_yrs(lo)} – {_yrs(hi)} ans"
     else:
-        roi_range = "—"
-    # Net cumulative gain over 25 yrs for the recommended (battery) option,
-    # rounded to a clean headline figure.
-    gain25 = max(0, round(d.get("eco_a_ann", 0) * 25 - d.get("total_avec", 0)))
+        _roi_one = (roi_a if avec_ok else roi_s)
+        roi_range = f"{_yrs(_roi_one)} ans" if _roi_one else "—"
+    # QX5 — gain net 25 ans + libellé calés sur l'option réellement présente
+    # (jamais « option avec batterie » sur un devis sans batterie).
+    if deux_options or avec_ok:
+        _eco_ref, _tot_ref = d.get("eco_a_ann", 0), d.get("total_avec", 0)
+        gain25_label = "option avec batterie" if deux_options else "avec batterie"
+    else:
+        _eco_ref, _tot_ref = d.get("eco_s_ann", 0), d.get("total_sans", 0)
+        gain25_label = "sans batterie"
+    gain25 = max(0, round(_eco_ref * 25 - _tot_ref))
     gain25 = round(gain25 / 1000) * 1000
 
     style = f"""
@@ -361,7 +407,7 @@ def build(ctx) -> str:
     <div class="p2-specs">{spec_html}</div>
   </div>
 
-  <div class="p2-lbl">Équipement commun aux deux options</div>
+  <div class="p2-lbl">{equipement_lbl}</div>
   <table class="p2-tbl">
     <thead>
       <tr>
@@ -375,28 +421,14 @@ def build(ctx) -> str:
     <tbody>{rows_html}</tbody>
   </table>
 
-  <div class="p2-deltas">
-    <div class="p2-dcard">
-      <div class="p2-dhead" style="background:{C['navy']}">
-        Option 1 — Sans batterie <small>ajoute</small>
-      </div>
-      <div class="p2-dbody"><ul>{delta_sans_html}</ul></div>
-    </div>
-    <div class="p2-dcard">
-      <div class="p2-dhead" style="background:{C['gold']}">
-        Option 2 — Avec batterie <small>ajoute</small>
-      </div>
-      <div class="p2-dbody"><ul>{delta_avec_html}</ul></div>
-    </div>
-  </div>
+  {deltas_html}
 
   <div class="p2-fiche">Chaque équipement renvoie à sa fiche technique complète —
     bibliothèque&nbsp;: <a class="p2-fiche-btn"
     href="{_produits_href(produits_link)}">{produits_link}<span class="p2-fiche-i"> &rsaquo;</span></a></div>
 
   <div class="p2-totals">
-    {totals_sans}
-    {totals_avec}
+    {totals_html}
   </div>
   <div class="p2-tva-note">{tva_note}</div>
   {multi_html}
@@ -420,7 +452,7 @@ def build(ctx) -> str:
         <div class="p2-side-stat">
           <span class="p2-stat-k">Gain net sur 25 ans</span>
           <span class="p2-stat-v">≈ {fmt(gain25)} <small>MAD</small></span>
-          <span class="p2-stat-s">option avec batterie</span>
+          <span class="p2-stat-s">{gain25_label}</span>
         </div>
         <div class="p2-side-stat">
           <span class="p2-stat-k">Production garantie</span>

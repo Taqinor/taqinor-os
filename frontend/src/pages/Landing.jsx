@@ -4,6 +4,13 @@ import { useInView, useCounter } from '../hooks/useInView'
 import './landing.css'
 import axios from 'axios'
 
+// VX57 — Sora n'est utilisée que par cette page. Le <link> historique dans
+// index.html bloquait le rendu de CHAQUE écran (dont /login) pour une police
+// dont seul /landing a besoin. On l'injecte ici, au montage du composant lazy
+// (`fonts/sora.css` reste servi tel quel depuis `public/` — un <link> POSÉ
+// depuis le chunk lazy plutôt qu'un <link> statique dans le HTML racine).
+const SORA_HREF = '/fonts/sora.css'
+
 // Public contact form is PARKED by default. Set VITE_CONTACT_FORM_ENABLED=1 at
 // build time (see CLAUDE.md) to show it again. While off, the CTA buttons send
 // visitors to the app login instead of opening the (disabled) contact modal.
@@ -401,6 +408,18 @@ function StatItem({ stat, active, delay }) {
 // ── Main component ───────────────────────────────────────────────────────────
 export default function Landing() {
   const [modalOpen, setModalOpen] = useState(false)
+
+  // VX57 — Sora n'est chargée que lorsque /landing est réellement monté
+  // (voir la constante SORA_HREF ci-dessus). Idempotent : si un <link> avec
+  // ce href existe déjà (retour sur /landing sans full reload), on ne le
+  // duplique pas.
+  useEffect(() => {
+    if (document.querySelector(`link[href="${SORA_HREF}"]`)) return
+    const link = document.createElement('link')
+    link.rel = 'stylesheet'
+    link.href = SORA_HREF
+    document.head.appendChild(link)
+  }, [])
 
   // CTA: open the contact modal when the form is enabled; otherwise (parked)
   // send the visitor to the app login so the button still does something useful.

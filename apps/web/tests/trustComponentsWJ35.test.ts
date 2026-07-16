@@ -150,10 +150,15 @@ describe('WJ35 — câblage : les deux pages du parcours montent les composants 
 
   it('[token].astro applique le grade v3 UNIQUEMENT à une photo non-LCP (jamais au héros eager)', () => {
     // Le héros (loading="eager", ligne ~244) ne doit JAMAIS porter v3-grade —
-    // seule la photo secondaire du bloc 3D (loading="lazy") le porte.
+    // seule la photo secondaire du bloc 3D (loading="lazy", dans #roof3d) le
+    // porte. WJ114 a ajouté une AUTRE image lazy plus haut dans le document
+    // (photo du vendeur, hors bloc 3D, sans grade v3) : on scope donc la
+    // recherche à PARTIR du bloc #roof3d pour cibler la bonne image, plutôt
+    // que la première occurrence globale de loading="lazy".
     const heroImgBlock = PROPOSITION.slice(PROPOSITION.indexOf('loading="eager"') - 400, PROPOSITION.indexOf('loading="eager"') + 50);
     expect(heroImgBlock).not.toContain('v3-grade');
-    const lazyImgBlock = PROPOSITION.slice(PROPOSITION.indexOf('loading="lazy"') - 400, PROPOSITION.indexOf('loading="lazy"') + 50);
+    const roof3dSection = PROPOSITION.slice(PROPOSITION.indexOf('id="roof3d"'));
+    const lazyImgBlock = roof3dSection.slice(roof3dSection.indexOf('loading="lazy"') - 400, roof3dSection.indexOf('loading="lazy"') + 50);
     expect(lazyImgBlock).toContain('v3-grade');
   });
 

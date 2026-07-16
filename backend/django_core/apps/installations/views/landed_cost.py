@@ -8,11 +8,10 @@ responsable/admin. Multi-tenant via ``TenantMixin`` : société + ``created_by``
 posés côté serveur ; le dossier et le produit sont validés tenant. Cross-app :
 ``stock.Produit`` en string-FK. Montants INTERNES.
 """
-from rest_framework import viewsets
 from rest_framework.exceptions import ValidationError
 
-from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.viewsets import CompanyScopedModelViewSet
 
 from ..models import FraisImport, LandedCostLigne
 from ..serializers import FraisImportSerializer, LandedCostLigneSerializer
@@ -28,7 +27,7 @@ def _check_dossier(serializer, company):
             {'dossier': "Dossier d'import inconnu pour cette société."})
 
 
-class FraisImportViewSet(TenantMixin, viewsets.ModelViewSet):
+class FraisImportViewSet(CompanyScopedModelViewSet):
     """FG316 — frais d'import. Lecture tout rôle, écriture responsable/admin.
     Société + `created_by` posés serveur ; dossier validé tenant. Filtrable par
     `dossier`, `categorie`."""
@@ -63,7 +62,7 @@ class FraisImportViewSet(TenantMixin, viewsets.ModelViewSet):
         serializer.save(company=company)
 
 
-class LandedCostLigneViewSet(TenantMixin, viewsets.ModelViewSet):
+class LandedCostLigneViewSet(CompanyScopedModelViewSet):
     """FG316 — lignes de coût débarqué par SKU. Lecture tout rôle, écriture
     responsable/admin. Société posée serveur ; dossier/produit validés tenant.
     Filtrable par `dossier`."""

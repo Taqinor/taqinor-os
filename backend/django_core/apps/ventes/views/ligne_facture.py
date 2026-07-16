@@ -29,6 +29,7 @@ from authentication.permissions import (  # noqa: F401
     IsResponsableOrAdmin,
     IsAdminRole,
 )
+from core.viewsets import CompanyScopedModelViewSet  # noqa: F401  ARC5
 from ..utils.references import create_with_reference  # noqa: F401
 from ..utils.company_settings import create_numbered  # noqa: F401
 
@@ -52,14 +53,26 @@ def _company_qs(qs, user):
 # package __init__ ré-exporte toutes les vues publiques.
 
 
-class LigneFactureViewSet(viewsets.ModelViewSet):
+class LigneFactureViewSet(CompanyScopedModelViewSet):
+    # ARC5 — sweep TenantMixin : base transverse unique. LigneFacture N'A PAS de
+    # champ `company` (elle est scopée via son parent `facture__company`), donc la
+    # base TenantMixin ne convient PAS telle quelle : son get_queryset
+    # (`qs.filter(company=…)`) lèverait un FieldError, et son perform_create
+    # (`save(company=…)`) écrirait un champ inexistant. On SURCHARGE donc
+    # INTÉGRALEMENT get_queryset (scoping via facture__company, en partant du
+    # queryset ModelViewSet non filtré — PAS de super() TenantMixin) ainsi que
+    # perform_create/perform_update. Comportement et matrice 401/403/404 (404
+    # cross-tenant) STRICTEMENT inchangés (règle #4 : aucun statut/sérialisation
+    # Facture touché).
     queryset = LigneFacture.objects.select_related(
         'facture', 'produit'
     ).all()
     serializer_class = LigneFactureSerializer
 
     def get_queryset(self):
-        qs = super().get_queryset()
+        # NE PAS passer par super() (TenantMixin filtrerait sur un champ
+        # `company` absent de LigneFacture) : on part du queryset ModelViewSet brut.
+        qs = viewsets.ModelViewSet.get_queryset(self)
         user = self.request.user
         if user.company_id:
             return qs.filter(facture__company=user.company)

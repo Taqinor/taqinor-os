@@ -1,7 +1,8 @@
 // Étapes canoniques du pipeline CRM — MIROIR STRICT de STAGES.py (racine du
 // repo). La CI (scripts/check_stages.py) échoue à la moindre divergence.
 // Ne JAMAIS déclarer une autre liste d'étapes ailleurs : tout importe d'ici.
-// Module volontairement pur (aucun import) : testable avec node --test.
+// Testable avec node --test (import limité au formateur monnaie partagé).
+import { formatMAD as sharedFormatMAD } from '../../lib/format.js'
 
 export const PIPELINE_STAGES = [
   'NEW',
@@ -27,13 +28,16 @@ export const STAGE_LABELS = {
 }
 
 // Accent visuel par étape (entonnoir froid → chaud → signé, froid en gris).
+// VX26 — couleurs dérivées des tokens de marque (frontend/src/design/tokens.css)
+// plutôt que du hex local : les 6 CLÉS restent le miroir strict de STAGES.py,
+// seule la source de couleur a changé.
 export const STAGE_COLORS = {
-  NEW: '#3b82f6',
-  CONTACTED: '#8b5cf6',
-  QUOTE_SENT: '#f5a623',
-  FOLLOW_UP: '#f97316',
-  SIGNED: '#16a34a',
-  COLD: '#64748b',
+  NEW: 'var(--stage-new)',
+  CONTACTED: 'var(--stage-contacted)',
+  QUOTE_SENT: 'var(--stage-quote-sent)',
+  FOLLOW_UP: 'var(--stage-follow-up)',
+  SIGNED: 'var(--stage-signed)',
+  COLD: 'var(--stage-cold)',
 }
 
 // Libellés des choix du modèle Lead (apps/crm/models.py) — affichage seulement.
@@ -109,8 +113,7 @@ export const latestDevisTotal = (lead) => {
   return Number.isFinite(n) ? n : 0
 }
 
-export const formatMAD = (n) =>
-  `${Math.round(n).toLocaleString('fr-FR')} MAD`
+export const formatMAD = (n) => sharedFormatMAD(n, { decimals: 0 })
 
 // Tri dans une colonne : priorité haute d'abord, puis le plus récent.
 const PRIO_ORDER = { haute: 0, normale: 1, basse: 2 }
@@ -150,6 +153,11 @@ export const EMPTY_FILTERS = {
   archived: 'actifs', // 'actifs' | 'tous' | 'seuls' — dimension serveur (refetch)
   // QW3 — préférence de contact explicite ('' = toutes | 'phone_ok' | 'whatsapp_only')
   contact_preference: '',
+  // VX224 — toggle « Mes leads » (chip FilterBar.jsx) : distinct de `owner`
+  // (qui filtre par N'IMPORTE QUEL responsable, usage manager) — celui-ci
+  // épingle spécifiquement l'utilisateur COURANT, résolu par l'appelant
+  // (LeadsPage.jsx passe `myUsername`, jamais codé en dur ici).
+  mesLeads: false,
 }
 
 // 'YYYY-MM-DD' du jour, en heure LOCALE (jamais via toISOString → pas d'UTC).
@@ -177,7 +185,12 @@ export const archivedParam = (value) =>
       : {}
 
 // Filtre partagé par les quatre vues (kanban, liste, calendrier, graphique).
-export function filterLeads(leads, filters) {
+// VX224 — `myUsername` (3e argument, optionnel) résout le toggle « Mes
+// leads » (`filters.mesLeads`) sur `owner_nom` — le même champ déjà comparé
+// par `filters.owner`, jamais un second champ dupliqué. Sans `myUsername`
+// (repli), `mesLeads` n'a simplement aucun effet (jamais un filtre qui
+// viderait la liste par accident).
+export function filterLeads(leads, filters, { myUsername } = {}) {
   const f = { ...EMPTY_FILTERS, ...(filters ?? {}) }
   const q = f.q.trim().toLowerCase()
   const today = todayLocalISO()
@@ -185,6 +198,7 @@ export function filterLeads(leads, filters) {
   return (leads ?? []).filter((l) => {
     if (f.canal && l.canal !== f.canal) return false
     if (f.owner && (l.owner_nom ?? '') !== f.owner) return false
+    if (f.mesLeads && myUsername && (l.owner_nom ?? '') !== myUsername) return false
     if (f.priorite && (l.priorite ?? 'normale') !== f.priorite) return false
     if (f.tag && !tagList(l).includes(f.tag)) return false
     if (f.stage && l.stage !== f.stage) return false

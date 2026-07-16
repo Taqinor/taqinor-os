@@ -95,6 +95,46 @@ describe('CockpitPage — rendu smoke (UX2)', () => {
   }, 30000)
 })
 
+describe('CockpitPage — VX115 : KPI vers l’écran d’action + index des exports', () => {
+  it('« Créances clients » pointe vers la balance âgée et « DSO » vers les relances', async () => {
+    const { default: CockpitPage } = await import('./pages/CockpitPage.jsx')
+    mount(<CockpitPage />)
+    const creances = await screen.findByText('Créances clients')
+    expect(creances.closest('a')).toHaveAttribute('href', '/reporting/balance-agee')
+    const dso = screen.getByText('DSO (encaissement client)')
+    expect(dso.closest('a')).toHaveAttribute('href', '/ventes/relances')
+    // Résultat/Trésorerie restent sur les états — c'est juste là.
+    const resultat = screen.getByText('Résultat de la période')
+    expect(resultat.closest('a')).toHaveAttribute('href', '/comptabilite/etats')
+    const tresorerie = screen.getByText('Trésorerie nette')
+    expect(tresorerie.closest('a')).toHaveAttribute('href', '/comptabilite/tresorerie')
+  }, 30000)
+
+  it('affiche la carte « Où trouver mes exports » avec les 4 destinations', async () => {
+    const { default: CockpitPage } = await import('./pages/CockpitPage.jsx')
+    mount(<CockpitPage />)
+    expect(await screen.findByText('Où trouver mes exports')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Factures — Export comptable/ }))
+      .toHaveAttribute('href', '/ventes/factures')
+    expect(screen.getByRole('link', { name: /Fiscalité/ })).toHaveAttribute('href', '/comptabilite/fiscalite')
+    expect(screen.getByRole('link', { name: /États CGNC/ })).toHaveAttribute('href', '/comptabilite/etats')
+    expect(screen.getByRole('link', { name: /Balance âgée/ })).toHaveAttribute('href', '/reporting/balance-agee')
+  }, 30000)
+})
+
+describe('resolveTiersLabel — VX232(a) : le KPI n°1 ne montre plus « Tiers #42 » brut', () => {
+  it('résout un tiers connu vers son nom réel', async () => {
+    const { resolveTiersLabel } = await import('./pages/CockpitPage.jsx')
+    expect(resolveTiersLabel(3, { 3: 'SOMACHOR SA' })).toBe('SOMACHOR SA')
+  })
+
+  it('replie sur « Tiers #N » quand le répertoire ne contient pas ce tiers, et « Non affecté » sans tiers_id', async () => {
+    const { resolveTiersLabel } = await import('./pages/CockpitPage.jsx')
+    expect(resolveTiersLabel(42, {})).toBe('Tiers #42')
+    expect(resolveTiersLabel(null, {})).toBe('Non affecté')
+  })
+})
+
 describe('PlanComptablePage — rendu smoke (UX3)', () => {
   it('rend le titre et le sélecteur de vue', async () => {
     const { default: PlanComptablePage } = await import('./pages/PlanComptablePage.jsx')

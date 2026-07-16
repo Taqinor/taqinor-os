@@ -169,6 +169,67 @@ class TestForcedRotation(TestCase):
         self.user.refresh_from_db()
         self.assertTrue(self.user.check_password('ancienMotDePasse1'))
 
+    # ── VX242 : le changement de mot de passe révoque les AUTRES sessions ──
+    def test_change_password_revokes_other_sessions_but_not_current(self):
+        """2 connexions actives ; on change le mot de passe depuis la 1re
+        (cookies encore posés par ce client) : la 2e session doit être
+        blacklistée/révoquée, la session courante doit rester active."""
+        self._login()
+        current_session = UserSession.objects.get(user=self.user)
+        # Simule une 2e session active (autre appareil) sans passer par ce
+        # client (qui écraserait les cookies de la session courante).
+        other_session = UserSession.objects.create(
+            user=self.user, company=self.company, jti='other-device-jti')
+
+        resp = self.api.post('/api/django/auth/change-password/', {
+            'current_password': 'ancienMotDePasse1',
+            'new_password': 'nouveauMotDePasse2',
+        }, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data.get('sessions_revoked'), 1)
+
+        other_session.refresh_from_db()
+        self.assertTrue(other_session.revoked)
+        current_session.refresh_from_db()
+        self.assertFalse(current_session.revoked)
+
+    def test_change_password_blacklists_other_session_refresh_token(self):
+        """La révocation blackliste aussi le jeton de rafraîchissement (pas
+        seulement le flag `revoked`) : réutiliser ROTATE_REFRESH_TOKENS doit
+        être bloqué. On vérifie via BlacklistedToken sur un OutstandingToken
+        réel émis pour ce jti."""
+        from django.utils import timezone
+        from rest_framework_simplejwt.token_blacklist.models import (
+            OutstandingToken, BlacklistedToken,
+        )
+        self._login()
+        outstanding = OutstandingToken.objects.create(
+            user=self.user, jti='blacklist-me-jti',
+            token='fake-token-value',
+            created_at=timezone.now(), expires_at=timezone.now(),
+        )
+        UserSession.objects.create(
+            user=self.user, company=self.company, jti='blacklist-me-jti')
+
+        resp = self.api.post('/api/django/auth/change-password/', {
+            'current_password': 'ancienMotDePasse1',
+            'new_password': 'nouveauMotDePasse2',
+        }, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertTrue(
+            BlacklistedToken.objects.filter(token=outstanding).exists())
+
+    def test_change_password_no_other_sessions_reports_zero(self):
+        """Une seule session active (la courante) : sessions_revoked=0, aucun
+        message additionnel n'est nécessaire."""
+        self._login()
+        resp = self.api.post('/api/django/auth/change-password/', {
+            'current_password': 'ancienMotDePasse1',
+            'new_password': 'nouveauMotDePasse2',
+        }, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data.get('sessions_revoked'), 0)
+
     def test_admin_can_force_rotation_via_user_endpoint(self):
         """Un admin peut poser must_change_password sur un compte de sa société."""
         from apps.roles.models import Role

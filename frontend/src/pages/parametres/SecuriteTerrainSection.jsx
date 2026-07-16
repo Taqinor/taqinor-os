@@ -13,6 +13,7 @@ import {
   Card, CardContent, Input, Button, IconButton, Badge, Spinner, EmptyState,
   toast,
 } from '../../ui'
+import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { SectionTitle } from './peComponents'
 
 const slugify = (s) => s.trim().toLowerCase()
@@ -27,6 +28,11 @@ export default function SecuriteTerrainSection() {
   const [loadError, setLoadError] = useState(false)
   const [newLibelle, setNewLibelle] = useState('')
   const [profile, setProfile] = useState(null)
+  // VX244 — une consigne de sécurité (EPI, consignation électrique…) est
+  // signée par le technicien à CHAQUE intervention : suppression à
+  // confirmation tapée (severity="high"), plus jamais un `window.confirm`.
+  const [pendingDelete, setPendingDelete] = useState(null)
+  const [deleting, setDeleting] = useState(false)
 
   const load = () => Promise.all([
     installationsApi.getConsignesSecurite(),
@@ -68,10 +74,20 @@ export default function SecuriteTerrainSection() {
       load()
     } catch { /* */ }
   }
-  const del = async (s) => {
-    if (!window.confirm(`Supprimer la consigne « ${s.libelle} » ?`)) return
-    try { await installationsApi.deleteConsigneSecurite(s.id); load() }
-    catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible (protégée ?).') }
+  const del = (s) => setPendingDelete(s)
+
+  const confirmDelete = async () => {
+    if (!pendingDelete) return
+    setDeleting(true)
+    try {
+      await installationsApi.deleteConsigneSecurite(pendingDelete.id)
+      setPendingDelete(null)
+      load()
+    } catch (e) {
+      toast.error(e?.response?.data?.detail ?? 'Suppression impossible (protégée ?).')
+    } finally {
+      setDeleting(false)
+    }
   }
   const saveProfile = async (patch) => {
     try {
@@ -208,6 +224,21 @@ export default function SecuriteTerrainSection() {
           </div>
         </CardContent>
       </Card>
+
+      <ConfirmDialog
+        open={!!pendingDelete}
+        onOpenChange={(o) => { if (!o) setPendingDelete(null) }}
+        severity="high"
+        title="Supprimer cette consigne de sécurité"
+        description={
+          `« ${pendingDelete?.libelle ?? ''} » sera supprimée définitivement — `
+          + 'elle ne sera plus proposée à la signature sur les interventions futures.'
+        }
+        confirmText={pendingDelete?.libelle}
+        confirmLabel="Supprimer définitivement"
+        loading={deleting}
+        onConfirm={confirmDelete}
+      />
     </div>
   )
 }

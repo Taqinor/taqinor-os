@@ -43,22 +43,25 @@ ALLOWED_UNCONSUMED = {
     # Destiné à l'app comptable (matérialiser un Paiement / rapprocher la
     # facture) ; core n'importe jamais l'app comptable — abonné à venir.
     "payment_captured",
-    # Pose de seam (CONTRAT16/17, YDOCF5) : aucun abonné obligatoire dans ce
-    # lot (facturation récurrente / notification / dépôt GED à brancher).
-    "contrat_signe",
-    "contrat_actif",
-    # YEVNT6 — événements documentaires ventes en aval du devis : émis
-    # SYNCHRONE best-effort mais SANS abonné obligatoire dans ce repo (pose du
-    # seam pour compta/notifications/audit/KPI). ``facture_emise`` et
-    # ``facture_annulee`` ont déjà un abonné compta ; ``facture_paid`` /
-    # ``facture_payee`` / ``bon_commande_cree`` restent purement observables.
+    # ARC36 — ``facture_payee``/``bon_commande_cree`` (YEVNT6) et
+    # ``abonnement_monitoring_resilie`` (YSUBS4) ont désormais des abonnés
+    # métier (compta lettrage + notifications vendeur/magasinier ;
+    # apps/monitoring/receivers.py) : RETIRÉS de cette liste. ``facture_paid``
+    # (YDOCF4) reste ici : signal FRÈRE de ``facture_payee`` (même fait,
+    # résiduel→0) — DÉPRÉCIÉ pour l'abonnement (voir docstring du bus) afin
+    # de ne jamais réagir deux fois au même règlement ; ne PAS s'y abonner.
     "facture_paid",
-    "facture_payee",
-    "bon_commande_cree",
-    # YSUBS4 — résiliation d'un AbonnementMonitoring : effet aval (couper la
-    # supervision monitoring liée) volontairement NON câblé dans ce repo —
-    # monitoring reste satellite, câblage futur via son propre receivers.py.
-    "abonnement_monitoring_resilie",
+    # ARC35 — ``contrat_signe``/``contrat_actif`` (CONTRAT16/17, YDOCF5) ont
+    # désormais un abonné réel (``apps/contrats/receivers.py`` : chatter ARC8
+    # + dépôt GED du contrat signé ; ``apps/notifications/signals.py`` pour
+    # ``contrat_signe``) : RETIRÉS de cette liste.
+    # SCA30 — ``document_statut_change`` : seam GÉNÉRIQUE émis par le kit
+    # ``core.documents`` au changement de statut d'un document métier (voir la
+    # docstring du signal dans ``core.events`` : « aucun abonné obligatoire —
+    # pose du seam pour audit/notifications/KPI d'un futur type de document »).
+    # Volontairement sans abonné aujourd'hui (aucun consommateur métier requis),
+    # donc réservé ici plutôt que d'être un orphelin — comme les seams ci-dessus.
+    "document_statut_change",
 }
 
 # Membres ``EventType`` déclarés mais sans producteur ``notify()`` encore câblé
@@ -180,12 +183,17 @@ def _referenced_signal_names() -> set[str]:
             tree = ast.parse(path.read_text(encoding="utf-8"))
         except (OSError, SyntaxError, UnicodeDecodeError):
             continue
-        # Noms importés directement depuis core.events (from core.events import X)
-        imported_from_events: set[str] = set()
+        # Noms importés depuis core.events (from core.events import X [as Y]) :
+        # on mappe le nom LOCAL (l'alias Y, ou X sans alias) vers le nom RÉEL de
+        # l'attribut dans core.events (X) — un import aliasé
+        # (``import incident_declared as incident_declared_bus``) pointe bien un
+        # signal existant : c'est le nom D'ORIGINE qu'il faut vérifier, pas
+        # l'alias local (sinon le scan crée un faux « signal inexistant »).
+        imported_from_events: dict[str, str] = {}
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom) and node.module == "core.events":
                 for alias in node.names:
-                    imported_from_events.add(alias.asname or alias.name)
+                    imported_from_events[alias.asname or alias.name] = alias.name
         for node in ast.walk(tree):
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
@@ -203,7 +211,7 @@ def _referenced_signal_names() -> set[str]:
                     names.add(first.attr)
                 elif (isinstance(first, ast.Name)
                         and first.id in imported_from_events):
-                    names.add(first.id)
+                    names.add(imported_from_events[first.id])
     return names
 
 
@@ -231,3 +239,26 @@ def dangling_receiver_signals() -> set[str]:
     """Signaux référencés par un @receiver mais absents de core.events."""
     declared = set(declared_signals())
     return {n for n in _referenced_signal_names() if n not in declared}
+
+
+# --- NTPLT12 — couverture du CATALOGUE d'événements -------------------------
+
+
+def uncatalogued_events() -> set[str]:
+    """Signaux déclarés dans ``core.events`` mais ABSENTS de
+    ``core.event_catalog.CATALOG``.
+
+    Un ensemble non vide fait échouer le test de couverture NTPLT12 : tout
+    nouvel événement émis DOIT être documenté au catalogue (contrat
+    d'intégration stable pour les équipes IT du client)."""
+    from core import event_catalog
+    return set(declared_signals()) - event_catalog.catalog_names()
+
+
+def catalogued_but_undeclared() -> set[str]:
+    """Entrées du catalogue qui ne correspondent à AUCUN signal déclaré.
+
+    Détecte un catalogue qui référence un événement supprimé/renommé du bus —
+    l'autre sens de la dérive."""
+    from core import event_catalog
+    return event_catalog.catalog_names() - set(declared_signals())

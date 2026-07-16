@@ -1,4 +1,6 @@
-import { forwardRef, useCallback, useEffect, useMemo, useRef, useState, Fragment } from 'react'
+import {
+  forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, Fragment,
+} from 'react'
 import {
   ArrowUp, ArrowDown, ChevronsUpDown, Search, MoreHorizontal, MoreVertical,
   ChevronRight, Pin, PinOff, EyeOff, Download, ChevronLeft, Inbox, AlertTriangle,
@@ -12,6 +14,13 @@ import { Input } from '../Input'
 import { Checkbox } from '../Checkbox'
 import { Skeleton } from '../Skeleton'
 import { EmptyState } from '../EmptyState'
+// VX249(a) — première intégration réelle de `col.editable`/`col.onSave`
+// (documenté dans le contrat de colonne depuis H31/H32 mais jamais câblé :
+// « moteur seul, non branché aux écrans réels »). Réutilise EditableCell
+// (H32, patron double-clic/Entrée déjà démontré ailleurs) + FieldSavedPulse
+// (pulse vert sur LA cellule à la sauvegarde, jamais un toast pour ça).
+import { EditableCell } from './EditableCell'
+import { FieldSavedPulse } from '../FieldSavedPulse'
 import { Tabs, TabsList, TabsTrigger } from '../Tabs'
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
@@ -23,6 +32,67 @@ import { rowsToCSV, exportFileName } from './csv.js'
 import { useDataTable } from './useDataTable.js'
 import { ColumnManager } from './ColumnManager.jsx'
 import { BulkActionBar } from './BulkActionBar.jsx'
+import { usePrefersReducedMotion } from '../../hooks/usePrefersReducedMotion'
+
+// VX135 — AUCUNE liste de l'app n'animait tri/filtre/ajout (téléportation des
+// lignes) : FLIP minimal (First-Last-Invert-Play), zéro dépendance. Mesure
+// `getBoundingClientRect` AVANT/APRÈS via un effet de LAYOUT (avant peinture) :
+// quand l'ORDRE des clés change (tri, filtre), chaque ligne encore présente
+// est réinjectée à son ANCIENNE position (transform, transition coupée) puis
+// relâchée vers sa position finale avec une transition — elle glisse au lieu
+// de téléporter. Plafonné (coût de mesure) et désactivé par le hook
+// reduced-motion (le garde CSS global ne peut pas neutraliser un transform
+// posé impérativement en JS).
+const ROW_FLIP_MAX_ROWS = 200
+
+function useRowFlip(rowKeys, disabled) {
+  const nodeMap = useRef(new Map())
+  const prevTops = useRef(new Map())
+  const prevOrderKey = useRef(null)
+
+  const registerRow = useCallback((key) => (el) => {
+    if (el) nodeMap.current.set(key, el)
+    else nodeMap.current.delete(key)
+  }, [])
+
+  useLayoutEffect(() => {
+    if (disabled || rowKeys.length === 0 || rowKeys.length > ROW_FLIP_MAX_ROWS) {
+      prevTops.current = new Map()
+      prevOrderKey.current = null
+      return
+    }
+    const orderKey = rowKeys.join(String.fromCharCode(31))
+    const nextTops = new Map()
+    for (const key of rowKeys) {
+      const el = nodeMap.current.get(key)
+      if (el) nextTops.set(key, el.getBoundingClientRect().top)
+    }
+    if (prevOrderKey.current !== null && prevOrderKey.current !== orderKey) {
+      for (const [key, prevTop] of prevTops.current) {
+        const nextTop = nextTops.get(key)
+        if (nextTop == null) continue
+        const delta = prevTop - nextTop
+        if (Math.abs(delta) < 1) continue
+        const el = nodeMap.current.get(key)
+        if (!el) continue
+        // Invert : replace la ligne à son ancienne position, sans transition.
+        el.style.transition = 'none'
+        el.style.transform = `translateY(${delta}px)`
+        // Force un reflow pour que le navigateur applique l'état de départ
+        // avant qu'on n'engage la transition vers l'état final (sinon les
+        // deux changements de style sont regroupés en une seule frame).
+        el.offsetHeight
+        // Play : relâche vers la position finale, transitionnée.
+        el.style.transition = 'transform var(--motion-base) var(--ease-standard)'
+        el.style.transform = ''
+      }
+    }
+    prevTops.current = nextTops
+    prevOrderKey.current = orderKey
+  }, [rowKeys, disabled])
+
+  return registerRow
+}
 
 /* ============================================================================
    H31/H32/H33 — Moteur de tableau réutilisable (la grille derrière toutes les
@@ -59,6 +129,116 @@ function SortIcon({ dir }) {
   return <ChevronsUpDown className="size-3.5 opacity-40 group-hover:opacity-70" aria-hidden="true" />
 }
 
+/* VX43 — Swipe-to-action horizontal maison sur les cartes mobiles
+   (`data-dt-cards`), même geste/maths que LeadCard.jsx (touchstart/move/end,
+   seuil de distance anti-scroll, zéro dépendance). 100 % opt-in via la prop
+   `swipeActions` : non fournie, le rendu carte reste identique à avant. */
+const SWIPE_REVEAL_PX = 96
+function shouldArmSwipe(deltaX, deltaY) {
+  if (Math.abs(deltaX) < 5) return false
+  return Math.abs(deltaX) > Math.abs(deltaY)
+}
+function clampSwipeOffset(deltaX, maxReveal = SWIPE_REVEAL_PX) {
+  return Math.max(-maxReveal, Math.min(0, deltaX))
+}
+function resolveSwipeSnap(offset, maxReveal = SWIPE_REVEAL_PX) {
+  return Math.abs(offset) >= maxReveal / 2 ? -maxReveal : 0
+}
+
+function useSwipeReveal(enabled) {
+  const [offset, setOffset] = useState(0)
+  const start = useRef(null)
+  const armed = useRef(false)
+
+  const onTouchStart = (e) => {
+    if (!enabled) return
+    const t = e.touches?.[0]
+    if (!t) return
+    start.current = { x: t.clientX, y: t.clientY }
+    armed.current = false
+  }
+  const onTouchMove = (e) => {
+    if (!enabled || !start.current) return
+    const t = e.touches?.[0]
+    if (!t) return
+    const deltaX = t.clientX - start.current.x
+    const deltaY = t.clientY - start.current.y
+    if (!armed.current) {
+      if (!shouldArmSwipe(deltaX, deltaY)) return
+      armed.current = true
+    }
+    setOffset(clampSwipeOffset(deltaX))
+  }
+  const onTouchEnd = () => {
+    if (!enabled) return
+    start.current = null
+    if (armed.current) {
+      armed.current = false
+      setOffset((prev) => resolveSwipeSnap(prev))
+    }
+  }
+  const close = () => setOffset(0)
+
+  return {
+    offset,
+    close,
+    handlers: { onTouchStart, onTouchMove, onTouchEnd, onTouchCancel: onTouchEnd },
+  }
+}
+
+/** Carte mobile swipeable : enveloppe une carte `data-dt-cards` existante avec
+    le panneau d'actions révélé derrière elle. Rendu neutre (juste `children`)
+    quand aucune action n'est fournie pour cette ligne. */
+function SwipeableCard({ actions, children }) {
+  const list = (actions ?? []).slice(0, 2)
+  const swipe = useSwipeReveal(list.length > 0)
+  if (!list.length) return children
+  return (
+    <div style={{ position: 'relative' }}>
+      <div
+        aria-hidden={swipe.offset === 0}
+        style={{
+          position: 'absolute', inset: 0, display: 'flex',
+          justifyContent: 'flex-end', alignItems: 'stretch',
+          overflow: 'hidden', borderRadius: '0.75rem',
+        }}
+      >
+        {list.map((a) => {
+          const Icon = a.icon
+          return (
+            <button
+              key={a.id}
+              type="button"
+              title={a.label}
+              aria-label={a.label}
+              onClick={(e) => { e.stopPropagation(); swipe.close(); a.onClick?.() }}
+              style={{
+                display: 'flex', flexDirection: 'column', alignItems: 'center',
+                justifyContent: 'center', gap: '2px', border: 'none',
+                width: `${SWIPE_REVEAL_PX / list.length}px`, minHeight: '44px',
+                background: a.background ?? (a.destructive ? 'var(--color-destructive, #dc2626)' : 'var(--color-primary, #2563eb)'),
+                color: '#fff', fontSize: '11px',
+              }}
+            >
+              {Icon && <Icon className="size-4" aria-hidden="true" />}
+            </button>
+          )
+        })}
+      </div>
+      <div
+        {...swipe.handlers}
+        style={{
+          transform: swipe.offset ? `translateX(${swipe.offset}px)` : undefined,
+          transition: 'transform 150ms ease',
+          position: 'relative',
+        }}
+      >
+        {children}
+      </div>
+    </div>
+  )
+}
+
 export const DataTable = forwardRef(function DataTable(
   {
     data = [],
@@ -75,9 +255,52 @@ export const DataTable = forwardRef(function DataTable(
     selectable = false,
     bulkActions, // (selectedRows, selectedKeys, clear) => [{ id,label,icon,onClick,... }]
     rowActions, // (row) => [{ id, label, icon, onClick, destructive }] (max 3 + overflow)
+    // VX43 — swipe-to-action sur les cartes mobiles (data-dt-cards) : maison,
+    // touchstart/move/end, zéro dépendance. 100 % opt-in / rétrocompatible :
+    // non fourni, le rendu des cartes reste STRICTEMENT identique à avant.
+    // (row) => [{ id, label, icon, onClick, destructive, background? }]
+    // (max 2 actions révélées, comme rowActions révèle ses 2 actions rapides).
+    swipeActions,
     onRowClick,
     onRowPrefetch, // (row) => void — H133 : préchargement au survol/intention
     renderExpanded, // (row) => ReactNode → ligne dépliable
+    /* ---- ARC49/ARC53 — Échappatoires ADDITIVES (100 % opt-in) ------------
+       Le moteur est consommé par ~79 écrans ; TOUTES les propriétés ci-dessous
+       sont opt-in et, non fournies, laissent le rendu STRICTEMENT identique à
+       avant. Elles permettent de porter les écrans « chemin de l'argent »
+       (DevisList/FactureList) — dont chaque ligne est un <tr> riche avec
+       boutons à état de chargement, AlertDialog, deux panneaux dépliables
+       indépendants — sur le frame du moteur sans casser leur contrat de test.
+
+       - renderRow(row, api) : rend une LIGNE ENTIÈRE personnalisée (remplace le
+         pipeline de cellules + RowActions intégrés). `api` = { rowKey, index,
+         isSelected, toggleSelect, isPanelOpen(id), togglePanel(id),
+         setPanel(id, open), query }. Quand fourni, le moteur n'émet ni la
+         cellule sélection, ni la cellule actions, ni le chevron `renderExpanded`
+         intégrés — la ligne custom en a la pleine maîtrise (panneaux multiples
+         inclus, cf. `expandedPanels`).
+       - renderHeaderRow(api) : rend le CONTENU de la rangée d'en-tête (<th>…</th>)
+         à la place de l'en-tête intégré. `api` = { pageSelectionState,
+         onToggleAllPage, allSelected }.
+       - tableClassName : classes ajoutées à la <table> desktop (ex. 'data-table').
+       - tableRole : rôle ARIA de la <table> (défaut 'grid' — inchangé ; passer
+         'table' pour les écrans testés via getByRole('table')).
+       - hideToolbar / hideMobileCards / hidePagination : masquent les chromes
+         intégrés quand l'écran fournit les siens (opt-in, défaut = comportement
+         historique inchangé). `renderRow` implique hideMobileCards par défaut
+         (une ligne custom ne se replie pas automatiquement en carte).
+       - expandedPanels : liste d'identifiants de panneaux dépliables nommés dont
+         l'état d'ouverture est suivi indépendamment PAR LIGNE (ex. ['versions',
+         'roof']). Déclaratif/documentaire : `renderRow` lit/écrit via l'`api`. */
+    renderRow,
+    renderHeaderRow,
+    tableClassName,
+    tableRole,
+    hideToolbar = false,
+    hideMobileCards = false,
+    hidePagination = false,
+    // eslint-disable-next-line no-unused-vars
+    expandedPanels,
     // pagination
     pageSize: initialPageSize = 25,
     pageSizeOptions = [10, 25, 50, 100],
@@ -103,6 +326,13 @@ export const DataTable = forwardRef(function DataTable(
     className,
     emptyTitle = 'Aucune donnée',
     emptyDescription = 'La liste est vide pour le moment.',
+    // VX40 — pictogramme solaire illustré au lieu de l'icône Inbox générique,
+    // réservé aux écrans les plus vus (opt-in, jamais par défaut).
+    emptyIllustrated = false,
+    // VX131(b) — CTA optionnel sur l'état vide (ex. le même bouton « Nouveau »
+    // que la toolbar) : ~207/267 poses d'EmptyState n'en avaient AUCUN, y
+    // compris des listes qui EN ONT un dans leur toolbar.
+    emptyAction = null,
     'aria-label': ariaLabel = 'Tableau de données',
   },
   ref,
@@ -135,7 +365,30 @@ export const DataTable = forwardRef(function DataTable(
     keyOf, pageOffset,
   } = table
 
+  // VX249(a) — compteur de pulse PAR CELLULE (`${rowKey}:${colId}`),
+  // incrémenté à chaque sauvegarde `col.onSave` réussie d'une colonne
+  // `editable`. Vide et inerte pour tout écran n'utilisant pas `editable`
+  // (aucune régression sur les ~79 écrans existants).
+  const [pulseMap, setPulseMap] = useState({})
   const [expanded, setExpanded] = useState({})
+  // ARC49 — état d'ouverture des panneaux dépliables NOMMÉS, indépendant par
+  // ligne : { [rowKey]: { [panelId]: bool } }. Utilisé UNIQUEMENT par le mode
+  // `renderRow` (via l'`api`) ; sans lui, cet état reste vide et inerte, donc
+  // les consommateurs historiques ne voient aucune différence.
+  const [panelState, setPanelState] = useState({})
+  const isPanelOpen = useCallback(
+    (rowKey, panelId) => !!panelState[rowKey]?.[panelId],
+    [panelState],
+  )
+  const setPanel = useCallback((rowKey, panelId, open) => {
+    setPanelState((p) => ({ ...p, [rowKey]: { ...p[rowKey], [panelId]: open } }))
+  }, [])
+  const togglePanel = useCallback((rowKey, panelId) => {
+    setPanelState((p) => ({
+      ...p,
+      [rowKey]: { ...p[rowKey], [panelId]: !p[rowKey]?.[panelId] },
+    }))
+  }, [])
   const dragId = useRef(null)
   const scrollRef = useRef(null)
   const [scrollTop, setScrollTop] = useState(0)
@@ -286,8 +539,29 @@ export const DataTable = forwardRef(function DataTable(
     : { startIndex: 0, endIndex: rows.length, paddingTop: 0, paddingBottom: 0 }
   const visibleRows = effectiveVirtualize ? rows.slice(win.startIndex, win.endIndex) : rows
 
-  const colSpan = resolvedColumns.length + (selectable ? 1 : 0) + (rowActions ? 1 : 0) + (renderExpanded ? 1 : 0)
-  const expandable = typeof renderExpanded === 'function'
+  // VX135 — FLIP minimal des lignes (tri/filtre) : plafonné, désactivé sous
+  // reduced-motion, jamais en mode `renderRow` custom (l'écran maîtrise sa
+  // propre structure de ligne — cf. commentaire ARC49 ci-dessous).
+  const prefersReducedMotion = usePrefersReducedMotion()
+  const rowFlipKeys = useMemo(() => (
+    typeof renderRow === 'function'
+      ? []
+      : visibleRows.map((row, vi) => {
+        const i = (effectiveVirtualize ? win.startIndex : 0) + vi
+        return keyOf(row, pageOffset + i)
+      })
+  ), [visibleRows, effectiveVirtualize, win.startIndex, pageOffset, keyOf, renderRow])
+  const registerRowFlip = useRowFlip(rowFlipKeys, prefersReducedMotion)
+
+  // ARC49 — en mode `renderRow`, la ligne custom possède TOUTE sa structure de
+  // cellules (sélection/actions/panneaux inclus) : le moteur n'ajoute aucune
+  // colonne technique, et les cellules pleine largeur (vide/erreur) couvrent
+  // simplement le nombre de colonnes métier.
+  const customRow = typeof renderRow === 'function'
+  const colSpan = customRow
+    ? resolvedColumns.length
+    : resolvedColumns.length + (selectable ? 1 : 0) + (rowActions ? 1 : 0) + (renderExpanded ? 1 : 0)
+  const expandable = !customRow && typeof renderExpanded === 'function'
 
   const cellPadY = compact ? 'py-1.5' : 'py-2.5'
   const cellPadX = 'px-3'
@@ -295,6 +569,28 @@ export const DataTable = forwardRef(function DataTable(
   /* ---- Cellule (avec surlignage + clic ligne) ---- */
   function renderCell(c, row) {
     const value = c.accessor ? c.accessor(row) : row?.[c.id]
+    // VX249(a) — `editable`/`onSave`/`validate` documentés dans le contrat de
+    // colonne (H31/H32) mais jamais consommés jusqu'ici : première
+    // intégration réelle, EditableCell + pulse à la cellule sauvegardée
+    // (jamais un toast pour ça). Prioritaire sur `c.cell` — une colonne
+    // éditable définit sa propre présentation.
+    if (c.editable) {
+      const cellKey = `${getRowId(row)}:${c.id}`
+      return (
+        <FieldSavedPulse pulseKey={pulseMap[cellKey] ?? 0}>
+          <EditableCell
+            value={value}
+            row={row}
+            format={c.cell ? (v, r) => c.cell(v, r, { query }) : undefined}
+            validate={c.validate}
+            onSave={async (draft, r) => {
+              await c.onSave?.(draft, r)
+              setPulseMap((prev) => ({ ...prev, [cellKey]: (prev[cellKey] ?? 0) + 1 }))
+            }}
+          />
+        </FieldSavedPulse>
+      )
+    }
     if (c.cell) return c.cell(value, row, { query })
     const text = value === null || value === undefined || value === '' ? '—' : String(value)
     return <Highlighted text={text} query={c.searchable === false ? '' : query} />
@@ -333,7 +629,8 @@ export const DataTable = forwardRef(function DataTable(
     [rows, activeRow, onRowClick],
   )
 
-  const hasToolbar = searchable || savedViews || columns.some((c) => c.hideable !== false) || onExport !== undefined
+  const hasToolbar = !hideToolbar
+    && (searchable || savedViews || columns.some((c) => c.hideable !== false) || onExport !== undefined)
 
   return (
     <div ref={ref} className={cn('flex flex-col gap-3', className)}>
@@ -383,9 +680,9 @@ export const DataTable = forwardRef(function DataTable(
       {error ? (
         <EmptyState
           icon={AlertTriangle}
+          tone="error"
           title="Erreur de chargement"
           description={typeof error === 'string' ? error : 'Impossible de charger les données.'}
-          className="border-destructive/40"
         />
       ) : (
         <>
@@ -393,7 +690,7 @@ export const DataTable = forwardRef(function DataTable(
           <div
             data-dt-table
             data-pin-shadow-left={scrollLeft > 0 ? 'true' : undefined}
-            className="hidden overflow-hidden rounded-xl border border-border bg-card sm:block"
+            className="hidden overflow-hidden rounded-xl border border-border bg-card dt-desktop:block"
           >
             <div
               ref={scrollRef}
@@ -408,17 +705,23 @@ export const DataTable = forwardRef(function DataTable(
               style={effectiveVirtualize ? { maxHeight: maxBodyHeight } : undefined}
             >
               <table
-                role="grid"
+                role={tableRole ?? 'grid'}
                 aria-label={ariaLabel}
                 aria-rowcount={totalCount}
                 tabIndex={0}
                 onKeyDown={onGridKeyDown}
-                className="w-full border-collapse text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className={cn(
+                  'w-full border-collapse text-sm focus-ring',
+                  tableClassName,
+                )}
                 style={colWidths.vars}
               >
                 {/* O166 — <colgroup> dimensionne les colonnes UNE SEULE FOIS par rendu
                     (largeur résolue depuis la variable CSS du conteneur), au lieu de
-                    recalculer/poser la largeur sur CHAQUE cellule à chaque rendu. */}
+                    recalculer/poser la largeur sur CHAQUE cellule à chaque rendu.
+                    ARC49 — en mode `renderRow`, la ligne custom gère elle-même sa
+                    structure : pas de <colgroup> technique injecté. */}
+                {!customRow && (
                 <colgroup>
                   {expandable && <col style={{ width: 36 }} />}
                   {selectable && <col style={{ width: leadOffset }} />}
@@ -433,7 +736,22 @@ export const DataTable = forwardRef(function DataTable(
                   ))}
                   {rowActions && <col style={{ width: actionsWidth }} />}
                 </colgroup>
-                <thead className="sticky top-0 z-[var(--z-sticky)] bg-muted/95 backdrop-blur">
+                )}
+                {/* ARC49 — en-tête personnalisé (opt-in) : l'écran fournit ses
+                    propres <th> (mêmes libellés/classes que l'écran historique)
+                    et la case « tout sélectionner ». Sans lui, en-tête intégré. */}
+                {renderHeaderRow ? (
+                  <thead className="sticky top-0 z-[var(--z-sticky)] bg-muted">{/* VX178 — fond opaque, plus de backdrop-blur (jank WebKit du recompositing à chaque frame de scroll) */}
+                    <tr>
+                      {renderHeaderRow({
+                        pageSelectionState,
+                        onToggleAllPage,
+                        allSelected: pageSelectionState === 'all',
+                      })}
+                    </tr>
+                  </thead>
+                ) : (
+                <thead className="sticky top-0 z-[var(--z-sticky)] bg-muted">{/* VX178 — fond opaque, plus de backdrop-blur (jank WebKit du recompositing à chaque frame de scroll) */}
                   <tr>
                     {expandable && <th scope="col" className="w-9 px-2" aria-label="Déplier" />}
                     {selectable && (
@@ -474,8 +792,8 @@ export const DataTable = forwardRef(function DataTable(
                             c.align === 'right' && 'text-right',
                             c.align === 'center' && 'text-center',
                             (pinnedLeft || pinnedRight) && 'sticky z-[var(--z-sticky)] bg-muted/95',
-                            pinnedLeft && scrollLeft > 0 && 'shadow-[2px_0_4px_-2px_rgba(0,0,0,0.25)]',
-                            pinnedRight && 'shadow-[-2px_0_4px_-2px_rgba(0,0,0,0.25)]',
+                            pinnedLeft && scrollLeft > 0 && 'shadow-[2px_0_4px_-2px_rgb(12_19_53/0.25)]',
+                            pinnedRight && 'shadow-[-2px_0_4px_-2px_rgb(12_19_53/0.25)]',
                           )}
                         >
                           <div className={cn('flex items-center gap-1.5', c.align === 'right' && 'justify-end', c.align === 'center' && 'justify-center')}>
@@ -489,7 +807,7 @@ export const DataTable = forwardRef(function DataTable(
                                     onSort(c.id, { multi: e.shiftKey })
                                   }
                                 }}
-                                className="group inline-flex items-center gap-1 rounded uppercase tracking-wide hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                className="group inline-flex items-center gap-1 rounded uppercase tracking-wide hover:text-foreground focus-ring"
                                 aria-label={`Trier par ${c.header ?? c.id}`}
                               >
                                 <span>{c.header ?? c.id}</span>
@@ -516,18 +834,23 @@ export const DataTable = forwardRef(function DataTable(
                         scope="col"
                         data-pinned="actions-right"
                         aria-label="Actions"
-                        className="sticky right-0 z-[var(--z-sticky)] w-12 bg-muted/95 px-3 shadow-[-2px_0_4px_-2px_rgba(0,0,0,0.25)]"
+                        className="sticky right-0 z-[var(--z-sticky)] w-12 bg-muted/95 px-3 shadow-[-2px_0_4px_-2px_rgb(12_19_53/0.25)]"
                       />
                     )}
                   </tr>
                 </thead>
+                )}
 
                 <tbody>
                   {loading ? (
                     /* H133 — lignes-squelettes calquées sur la VRAIE disposition
                        (une cellule par colonne, hauteur de densité). Jamais de
-                       spinner en parallèle : le squelette EST l'indicateur. */
-                    Array.from({ length: 6 }).map((unused, i) => (
+                       spinner en parallèle : le squelette EST l'indicateur.
+                       VX132 — le nombre de lignes suit `pageSize` (borné à 12
+                       pour rester léger) au lieu d'un compte FIXE à 6 : passer
+                       de 6 squelettes à 50 vraies lignes provoquait un saut
+                       brutal de la hauteur de la table (et donc du scroll). */
+                    Array.from({ length: Math.min(pageSize || 6, 12) }).map((unused, i) => (
                       <tr key={i} data-skeleton-row className="border-t border-border" style={{ height: densityRowHeight }}>
                         {expandable && <td className="px-2 py-2.5" />}
                         {selectable && <td className="px-3 py-2.5"><Skeleton className="size-4" /></td>}
@@ -542,7 +865,14 @@ export const DataTable = forwardRef(function DataTable(
                   ) : rows.length === 0 ? (
                     <tr>
                       <td colSpan={colSpan} className="p-0">
-                        <EmptyState icon={Inbox} title={emptyTitle} description={emptyDescription} className="m-3 border-0" />
+                        <EmptyState
+                          icon={emptyIllustrated ? undefined : Inbox}
+                          illustrated={emptyIllustrated}
+                          title={emptyTitle}
+                          description={emptyDescription}
+                          action={emptyAction}
+                          className="m-3 border-0"
+                        />
                       </td>
                     </tr>
                   ) : (
@@ -559,9 +889,30 @@ export const DataTable = forwardRef(function DataTable(
                         const isExpanded = !!expanded[rowKey]
                         const isActive = i === activeRow
                         const actions = rowActions ? rowActions(row) : []
+                        // ARC49 — mode ligne personnalisée : l'écran rend TOUTE la
+                        // ligne (et ses panneaux dépliables) via `renderRow`. Le
+                        // moteur ne fournit que l'identité + l'API de sélection /
+                        // panneaux ; il n'ajoute aucune cellule technique.
+                        if (customRow) {
+                          return (
+                            <Fragment key={rowKey}>
+                              {renderRow(row, {
+                                rowKey,
+                                index: i,
+                                isSelected,
+                                toggleSelect: () => onToggleRow(rowKey),
+                                isPanelOpen: (panelId) => isPanelOpen(rowKey, panelId),
+                                togglePanel: (panelId) => togglePanel(rowKey, panelId),
+                                setPanel: (panelId, open) => setPanel(rowKey, panelId, open),
+                                query,
+                              })}
+                            </Fragment>
+                          )
+                        }
                         return (
                           <Fragment key={rowKey}>
                             <tr
+                              ref={registerRowFlip(rowKey)}
                               role="row"
                               aria-rowindex={pageOffset + i + 1}
                               className={cn(
@@ -624,8 +975,8 @@ export const DataTable = forwardRef(function DataTable(
                                       c.align === 'center' && 'text-center',
                                       c.numeric && 'text-right tabular-nums',
                                       (pinnedLeft || pinnedRight || (firstCol && c.frozen)) && 'sticky z-[1] bg-inherit',
-                                      pinnedLeft && scrollLeft > 0 && 'shadow-[2px_0_4px_-2px_rgba(0,0,0,0.18)]',
-                                      pinnedRight && 'shadow-[-2px_0_4px_-2px_rgba(0,0,0,0.18)]',
+                                      pinnedLeft && scrollLeft > 0 && 'shadow-[2px_0_4px_-2px_rgb(12_19_53/0.18)]',
+                                      pinnedRight && 'shadow-[-2px_0_4px_-2px_rgb(12_19_53/0.18)]',
                                       firstCol && 'font-medium text-foreground',
                                     )}
                                   >
@@ -637,7 +988,7 @@ export const DataTable = forwardRef(function DataTable(
                                 <td
                                   className={cn(
                                     'sticky right-0 z-[1] bg-inherit px-2',
-                                    'shadow-[-2px_0_4px_-2px_rgba(0,0,0,0.18)]',
+                                    'shadow-[-2px_0_4px_-2px_rgb(12_19_53/0.18)]',
                                   )}
                                   onClick={(e) => e.stopPropagation()}
                                 >
@@ -666,7 +1017,7 @@ export const DataTable = forwardRef(function DataTable(
 
                 {/* -------- Ligne de sous-totaux -------- */}
                 {summary && summaryValues && rows.length > 0 && (
-                  <tfoot className="sticky bottom-0 z-[1] border-t-2 border-border bg-muted/90 backdrop-blur">
+                  <tfoot className="sticky bottom-0 z-[1] border-t-2 border-border bg-muted">{/* VX178 — fond opaque, blur retiré (idem thead) */}
                     <tr>
                       {expandable && <td className="px-2" />}
                       {selectable && <td className="px-3" />}
@@ -695,11 +1046,17 @@ export const DataTable = forwardRef(function DataTable(
           </div>
 
           {/* -------- M154 — MOBILE : repli en cartes (< 768px) --------
-             Sous le point de rupture `sm`, chaque ligne devient une carte :
-             titre (1re colonne) en haut, métrique clé en GRAND, le reste des
-             champs en libellé/valeur, et un chevron vers le détail. L'en-tête
-             de tableau est masqué (la table desktop est en `hidden sm:block`). */}
-          <div data-dt-cards className="flex flex-col gap-2 sm:hidden">
+             Sous le point de rupture RÉEL (VX180 — `dt-desktop:` = 768px,
+             PAS l'utilitaire `sm:` par défaut = 640px), chaque ligne devient
+             une carte : titre (1re colonne) en haut, métrique clé en GRAND,
+             le reste des champs en libellé/valeur, et un chevron vers le
+             détail. L'en-tête de tableau est masqué (la table desktop est en
+             `hidden dt-desktop:block`). */}
+          {/* ARC49 — le mode `renderRow` (ou `hideMobileCards`) supprime le
+              repli en cartes : l'écran conserve son unique table `data-table`
+              responsive (CSS) comme aujourd'hui, sans DOM carte dupliqué. */}
+          {!(customRow || hideMobileCards) && (
+          <div data-dt-cards className="flex flex-col gap-2 dt-desktop:hidden">
             {loading ? (
               Array.from({ length: 4 }).map((unused, i) => (
                 <div key={i} data-skeleton-card className="rounded-xl border border-border bg-card p-3">
@@ -709,7 +1066,13 @@ export const DataTable = forwardRef(function DataTable(
                 </div>
               ))
             ) : rows.length === 0 ? (
-              <EmptyState icon={Inbox} title={emptyTitle} description={emptyDescription} />
+              <EmptyState
+                icon={emptyIllustrated ? undefined : Inbox}
+                illustrated={emptyIllustrated}
+                title={emptyTitle}
+                description={emptyDescription}
+                action={emptyAction}
+              />
             ) : (
               rows.map((row, i) => {
                 const rowKey = keyOf(row, pageOffset + i)
@@ -723,20 +1086,43 @@ export const DataTable = forwardRef(function DataTable(
                   mobileCols.find((c) => c.mobileMetric) ||
                   mobileCols.find((c, ci) => ci !== 0 && (c.numeric || c.align === 'right'))
                 const restCols = mobileCols.filter((c) => c !== titleCol && c !== metricCol)
+                // VX249(a) — même câblage `editable` que la table desktop
+                // (renderCell) : une colonne éditable doit rester éditable
+                // sur le repli carte mobile, pas seulement au-dessus de sm.
                 const cellOf = (c) => {
                   const value = c.accessor ? c.accessor(row) : row?.[c.id]
+                  if (c.editable) {
+                    const cellKey = `${rowKey}:${c.id}`
+                    return (
+                      <FieldSavedPulse pulseKey={pulseMap[cellKey] ?? 0}>
+                        <EditableCell
+                          value={value}
+                          row={row}
+                          format={c.cell ? (v, r) => c.cell(v, r, { query }) : undefined}
+                          validate={c.validate}
+                          onSave={async (draft, r) => {
+                            await c.onSave?.(draft, r)
+                            setPulseMap((prev) => ({ ...prev, [cellKey]: (prev[cellKey] ?? 0) + 1 }))
+                          }}
+                        />
+                      </FieldSavedPulse>
+                    )
+                  }
                   return c.cell ? c.cell(value, row, { query }) : <Highlighted text={String(value ?? '—')} query={query} />
                 }
+                // VX43 — swipeActions est opt-in : non fourni, SwipeableCard
+                // rend `children` tel quel (aucune différence de DOM/comportement).
+                const rowSwipeActions = swipeActions ? swipeActions(row) : []
                 return (
+                  <SwipeableCard key={rowKey} actions={rowSwipeActions}>
                   <div
-                    key={rowKey}
                     role={onRowClick ? 'button' : undefined}
                     tabIndex={onRowClick ? 0 : undefined}
                     aria-pressed={onRowClick && selectable ? isSelected : undefined}
                     className={cn(
                       'rounded-xl border bg-card p-3 transition-colors',
                       isSelected ? 'border-primary bg-primary/5' : 'border-border',
-                      onRowClick && 'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                      onRowClick && 'cursor-pointer focus-ring',
                     )}
                     onClick={onRowClick ? () => onRowClick(row) : undefined}
                     onKeyDown={
@@ -780,13 +1166,15 @@ export const DataTable = forwardRef(function DataTable(
                       </div>
                     </div>
                   </div>
+                  </SwipeableCard>
                 )
               })
             )}
           </div>
+          )}
 
           {/* -------- Pagination -------- */}
-          {!loading && rows.length > 0 && (
+          {!hidePagination && !customRow && !loading && rows.length > 0 && (
             <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
               <div className="flex items-center gap-2 text-muted-foreground">
                 <span aria-live="polite">{range.from === 0 ? '0 sur 0' : `${range.from}–${range.to} sur ${range.total}`}</span>
@@ -794,7 +1182,7 @@ export const DataTable = forwardRef(function DataTable(
                   value={pageSize}
                   onChange={(e) => { setPageSize(Number(e.target.value)); setPageIndex(0) }}
                   aria-label="Lignes par page"
-                  className="h-8 rounded-md border border-input bg-card px-2 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="h-8 rounded-md border border-input bg-card px-2 text-xs text-foreground focus-ring"
                 >
                   {pageSizeOptions.map((n) => (
                     <option key={n} value={n}>{n} / page</option>
@@ -857,7 +1245,7 @@ function ColumnHeaderMenu({ column, dispatch, canMoveLeft, canMoveRight, prevId,
         <button
           type="button"
           aria-label={`Options de la colonne ${column.header ?? column.id}`}
-          className="grid size-6 place-items-center rounded opacity-0 transition-opacity hover:bg-accent focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-60 [tr:hover_&]:opacity-60"
+          className="grid size-6 place-items-center rounded opacity-0 transition-opacity hover:bg-accent focus-visible:opacity-100 focus-ring group-hover:opacity-60 [tr:hover_&]:opacity-60"
           onClick={(e) => e.stopPropagation()}
         >
           <MoreHorizontal className="size-3.5" />

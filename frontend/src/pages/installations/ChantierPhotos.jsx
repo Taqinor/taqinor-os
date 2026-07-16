@@ -3,14 +3,17 @@
 // (apps.records, cible installations.installation).
 // J43 — porté sur le système de design (Button, IconButton, AlertDialog).
 import { useEffect, useRef, useState } from 'react'
-import { useSelector } from 'react-redux'
+import { useNavigate } from 'react-router-dom'
+import { useIsAdmin } from '../../hooks/useHasPermission'
 import {
-  Plus, X, FileText, ChevronLeft, ChevronRight,
+  Plus, X, FileText, ChevronLeft, ChevronRight, Images,
 } from 'lucide-react'
 import recordsApi from '../../api/recordsApi'
+import { compressImage } from '../../ui/file-utils'
 import {
   Button,
   IconButton,
+  Segmented,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   AlertDialog,
   AlertDialogContent,
@@ -21,6 +24,14 @@ import {
   AlertDialogCancel,
   AlertDialogAction,
 } from '../../ui'
+
+// VX149 — densité des vignettes (bascule compact/confortable) : au-delà
+// d'une quarantaine de photos par chantier les vignettes fixes size-16
+// (64px) devenaient difficiles à parcourir sur un grand chantier ; la
+// densité confortable agrandit la vignette, la densité compacte (défaut)
+// garde le format actuel.
+const DENSITY_KEY = 'taqinor.chantierPhotos.density'
+const THUMB_SIZE = { compact: 'size-16', confortable: 'size-24' }
 
 const PHASES = [
   { key: 'avant', label: 'Avant' },
@@ -35,13 +46,28 @@ const MAX_SIZE = 20 * 1024 * 1024
 const ACCEPTED = ['application/pdf', 'image/png', 'image/jpeg', 'image/webp']
 
 export default function ChantierPhotos({ installationId }) {
-  const isAdmin = useSelector((s) => s.auth.role) === 'admin'
+  const isAdmin = useIsAdmin()
+  const navigate = useNavigate()
   const [items, setItems] = useState([])
   const [busyPhase, setBusyPhase] = useState(null)
   const [toDelete, setToDelete] = useState(null)
   const [uploadError, setUploadError] = useState(null)
   // Lightbox in-app : { phase, index } de l'image affichée (null = fermé).
   const [viewer, setViewer] = useState(null)
+  // VX149 — densité des vignettes, persistée (même patron que VIEW_KEY des
+  // autres écrans : localStorage, repli propre si indisponible/invalide).
+  const [density, setDensity] = useState(() => {
+    try {
+      const saved = localStorage.getItem(DENSITY_KEY)
+      return saved === 'confortable' ? 'confortable' : 'compact'
+    } catch {
+      return 'compact'
+    }
+  })
+  useEffect(() => {
+    try { localStorage.setItem(DENSITY_KEY, density) } catch { /* stockage indisponible */ }
+  }, [density])
+  const thumbSize = THUMB_SIZE[density]
   const fileRefs = { avant: useRef(null), pendant: useRef(null), apres: useRef(null) }
 
   const load = () => {
@@ -64,7 +90,11 @@ export default function ChantierPhotos({ installationId }) {
     setUploadError(null)
     setBusyPhase(phase)
     try {
-      await recordsApi.uploadAttachment('installations.installation', installationId, file, phase)
+      // VX77 — compresse AVANT envoi (bord long ≤1600px, JPEG q0.75) : la
+      // photo brute d'un appareil moderne (4-8 Mo) fait caler/timeout la
+      // 3G rurale. Les PDF passent intouchés (compressImage() no-op).
+      const toSend = await compressImage(file)
+      await recordsApi.uploadAttachment('installations.installation', installationId, toSend, phase)
       load()
     } catch {
       setUploadError("Échec de l'envoi. Réessayez.")
@@ -93,6 +123,12 @@ export default function ChantierPhotos({ installationId }) {
   // Les pièces sans phase (anciennes / génériques) tombent dans « avant » par défaut.
   const byPhase = (key) => items.filter((a) => (a.phase || 'avant') === key)
 
+  // VX44 — compteur de complétion : total de fichiers + nombre de phases
+  // couvertes (avant/pendant/après), pour voir d'un coup d'œil ce qu'il reste
+  // à documenter sans quitter l'écran.
+  const totalFiles = items.length
+  const phasesCouvertes = PHASES.filter((p) => byPhase(p.key).length > 0).length
+
   // N4 — visionneuse : images seules de la phase, navigation préc/suiv.
   const phaseImages = (key) => byPhase(key).filter(isImage)
   const openViewer = (phaseKey, att) => {
@@ -120,13 +156,54 @@ export default function ChantierPhotos({ installationId }) {
           </Button>
         </div>
       )}
+      {/* VX227 — lien croisé discret vers les photos terrain des interventions
+          de ce chantier (magasins jamais fusionnés, mais navigables). */}
+      <div className="flex items-center justify-between gap-2">
+        <button type="button"
+          onClick={() => navigate(`/interventions?installation=${installationId}`)}
+          className="flex items-center gap-1.5 text-[12px] text-muted-foreground underline decoration-dotted underline-offset-2 hover:text-foreground">
+          <Images className="size-3.5" aria-hidden="true" />
+          Voir aussi les photos de l'intervention
+        </button>
+      </div>
+      {/* VX44 — compteur de complétion des photos du chantier. */}
+      <div className="flex items-center gap-2 text-[12px] text-muted-foreground">
+        <Images className="size-3.5" aria-hidden="true" />
+        <span>
+          {totalFiles} photo{totalFiles > 1 ? 's' : ''} · {phasesCouvertes}/{PHASES.length} phase
+          {phasesCouvertes > 1 ? 's' : ''} couverte{phasesCouvertes > 1 ? 's' : ''}
+        </span>
+      </div>
+      {/* VX149 — densité des vignettes : utile dès qu'un chantier accumule
+          40+ photos, où le format compact fixe devient difficile à parcourir. */}
+      <div className="flex items-center justify-end">
+        <Segmented
+          size="sm"
+          value={density}
+          onChange={setDensity}
+          aria-label="Densité des vignettes"
+          options={[
+            { value: 'compact', label: 'Compact' },
+            { value: 'confortable', label: 'Confortable' },
+          ]}
+        />
+      </div>
       <div className="flex flex-wrap gap-4">
         {PHASES.map((p) => {
           const atts = byPhase(p.key)
           return (
             <div key={p.key} className="min-w-[220px] flex-1">
               <div className="mb-1.5 flex items-center justify-between">
-                <strong className="text-sm text-foreground">{p.label} ({atts.length})</strong>
+                <strong className="flex items-center gap-1.5 text-sm text-foreground">
+                  {p.label} ({atts.length})
+                  {/* VX44 — badge sur une phase vide : signale ce qu'il reste
+                      à documenter. */}
+                  {atts.length === 0 && (
+                    <span className="rounded-full bg-warning/15 px-1.5 py-0.5 text-[10px] font-medium text-warning">
+                      À compléter
+                    </span>
+                  )}
+                </strong>
                 <input ref={fileRefs[p.key]} type="file" className="sr-only"
                        accept="application/pdf,image/png,image/jpeg,image/webp"
                        capture="environment"
@@ -148,12 +225,12 @@ export default function ChantierPhotos({ installationId }) {
                       {isImage(a) ? (
                         <button type="button" title={a.filename}
                                 onClick={() => openViewer(p.key, a)}>
-                          <img src={a.url} alt={a.filename}
-                               className="size-16 rounded-md border border-border object-cover" />
+                          <img src={a.url} alt={a.filename} loading="lazy"
+                               className={`${thumbSize} rounded-md border border-border object-cover`} />
                         </button>
                       ) : (
                         <a href={a.url} target="_blank" rel="noopener noreferrer" title={a.filename}>
-                          <span className="flex size-16 items-center justify-center rounded-md border border-border bg-muted text-muted-foreground">
+                          <span className={`flex ${thumbSize} items-center justify-center rounded-md border border-border bg-muted text-muted-foreground`}>
                             <FileText className="size-6" aria-hidden="true" />
                           </span>
                         </a>

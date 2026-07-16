@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
-import { Target, TrendingUp, AlarmClock } from 'lucide-react'
+import { Target, TrendingUp, AlarmClock, Gauge, Flame } from 'lucide-react'
 import crmApi from '../../../api/crmApi'
 import {
   Card, CardHeader, CardTitle, CardDescription, CardContent, Badge, Spinner,
 } from '../../../ui'
+import { formatMAD, formatNumber, formatPercent } from '../../../lib/format'
+import ScoreBadge from '../../../features/crm/ScoreBadge'
 
 // WR9 — surfaces consultatives du pipeline (lecture seule) :
 //  - FG39 : atteinte des objectifs commerciaux (réalisé vs cible) ;
@@ -11,10 +13,7 @@ import {
 //  - FG28 : leads NEW non contactés au-delà du SLA société.
 // Les règles vivent côté serveur ; ce panneau ne fait qu'afficher.
 
-const fmtMAD = (v) => {
-  const n = Number(v ?? 0)
-  return Number.isFinite(n) ? `${n.toLocaleString('fr-MA')} MAD` : '—'
-}
+const fmtMAD = (v) => formatMAD(v)
 
 const periodLabel = (o) => {
   if (o.period_type === 'month' && o.period_month) {
@@ -43,6 +42,119 @@ function SectionState({ loading, error, empty, emptyLabel, children }) {
   }
   if (empty) return <p className="text-sm text-muted-foreground">{emptyLabel}</p>
   return children
+}
+
+// ── VX219 — « Mes chiffres » : le vendeur `normal` voit ENFIN sa propre
+// performance, en tête du Dashboard (tous rôles, aucun gate). Les compteurs
+// devis/CA/leads chauds sont dérivés des slices REDUX déjà chargées par
+// Dashboard.jsx (filtrées `created_by===moi` / `owner===moi` côté APPELANT —
+// cette carte reste purement présentationnelle pour ces props, aucun appel
+// réseau) ; seule l'atteinte d'objectif (FG39) refait un appel, scopé
+// `?owner=` pour ne JAMAIS agréger l'équipe. `/reporting/commercial` reste le
+// seul outil manager (gate `roleLoader` inchangé) — cette carte n'en est ni
+// un remplacement ni une porte dérobée.
+export function MesChiffresCard({
+  envoyes = 0, acceptes = 0, tauxSignature = 0, caSigne = 0,
+  leadsChauds = [], userId, navigate,
+}) {
+  const [attainment, setAttainment] = useState(null)
+  const [attainmentError, setAttainmentError] = useState(false)
+
+  useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect -- load-on-mount/re-fetch state */
+    if (!userId) { setAttainment([]); return undefined }
+    let alive = true
+    setAttainment(null)
+    setAttainmentError(false)
+    /* eslint-enable react-hooks/set-state-in-effect */
+    crmApi.getObjectifsAttainment({ owner: userId })
+      .then((r) => { if (alive) setAttainment(r.data ?? []) })
+      .catch(() => { if (alive) { setAttainment([]); setAttainmentError(true) } })
+    return () => { alive = false }
+  }, [userId])
+
+  return (
+    <Card className="mb-4 sm:mb-5" data-testid="mes-chiffres-card">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Gauge className="size-4 text-muted-foreground" aria-hidden="true" />
+          Mes chiffres
+        </CardTitle>
+        <CardDescription>Votre performance personnelle du mois</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div>
+            <span className="block text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Devis envoyés
+            </span>
+            <span className="font-display text-xl font-semibold tabular-nums">{formatNumber(envoyes)}</span>
+          </div>
+          <div>
+            <span className="block text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Devis acceptés
+            </span>
+            <span className="font-display text-xl font-semibold tabular-nums">{formatNumber(acceptes)}</span>
+          </div>
+          <div>
+            <span className="block text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Taux de signature
+            </span>
+            <span className="font-display text-xl font-semibold tabular-nums">{formatPercent(tauxSignature)}</span>
+          </div>
+          <div>
+            <span className="block text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              CA signé
+            </span>
+            <span className="font-display text-xl font-semibold tabular-nums">
+              {formatMAD(caSigne, { decimals: 0 })}
+            </span>
+          </div>
+        </div>
+
+        {attainment != null && attainment.length > 0 && (
+          <ul className="mt-3 flex flex-col gap-1.5 border-t border-border pt-3" data-testid="mes-chiffres-objectifs">
+            {attainment.map((o) => (
+              <li key={o.id} className="flex items-center justify-between gap-2 text-sm">
+                <span className="font-medium">{o.metric_display}</span>
+                <Badge tone={o.taux >= 100 ? 'success' : o.taux >= 60 ? 'warning' : 'neutral'}>
+                  {Math.round(o.taux)} %
+                </Badge>
+              </li>
+            ))}
+          </ul>
+        )}
+        {attainmentError && (
+          <p className="mt-2 text-xs text-muted-foreground">Objectifs indisponibles — réessayez.</p>
+        )}
+
+        {leadsChauds.length > 0 && (
+          <div className="mt-3 border-t border-border pt-3">
+            <span className="mb-1.5 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              <Flame className="size-3.5" aria-hidden="true" />
+              Leads chauds à traiter
+            </span>
+            <ul className="flex flex-col gap-1">
+              {leadsChauds.map((l) => (
+                <li key={l.id}>
+                  <button
+                    type="button"
+                    onClick={() => navigate?.(`/crm/leads?lead=${l.id}`)}
+                    className="flex w-full items-center justify-between gap-2 rounded px-1 py-1 text-left text-sm hover:bg-muted"
+                  >
+                    <span className="truncate font-medium text-foreground">
+                      {`${l.nom ?? ''} ${l.prenom ?? ''}`.trim() || 'Lead'}
+                    </span>
+                    <ScoreBadge lead={l} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
 }
 
 export default function CrmInsightsPanel() {
@@ -94,8 +206,8 @@ export default function CrmInsightsPanel() {
                     </Badge>
                   </div>
                   <p className="mt-0.5 text-xs text-muted-foreground">
-                    {periodLabel(o)} · réalisé {Number(o.realise).toLocaleString('fr-MA')}
-                    {' '}/ cible {Number(o.cible).toLocaleString('fr-MA')}
+                    {periodLabel(o)} · réalisé {formatNumber(o.realise)}
+                    {' '}/ cible {formatNumber(o.cible)}
                   </p>
                 </li>
               ))}

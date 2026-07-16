@@ -1,22 +1,19 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit'
 import installationsApi from '../../../api/installationsApi'
+import { fetchAllPages } from '../../../utils/fetchAllPages'
 
 // Récupère TOUTES les pages (DRF pagine à 100), comme le slice CRM.
+// VX54 — était un `while` SÉRIEL (un aller-retour réseau par page ; gèle les
+// écrans TERRAIN plusieurs secondes à 250-500 ms de RTT) ; désormais
+// parallèle borné.
 export const fetchInstallations = createAsyncThunk(
   'installations/fetchAll',
   async (params, { rejectWithValue }) => {
     try {
-      const first = await installationsApi.getInstallations(params)
-      let data = first.data
-      if (!data || !Array.isArray(data.results)) return data
-      const all = [...data.results]
-      let page = 2
-      while (data.next && page <= 50) {
-        const res = await installationsApi.getInstallations({ ...(params ?? {}), page })
-        data = res.data
-        all.push(...(data.results ?? []))
-        page += 1
-      }
+      const all = await fetchAllPages(
+        (page) => installationsApi.getInstallations({ ...(params ?? {}), page }).then((r) => r.data),
+        { concurrency: 20 },
+      )
       return all
     } catch (err) {
       return rejectWithValue(err.response?.data ?? err.message)

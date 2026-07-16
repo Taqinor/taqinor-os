@@ -243,16 +243,120 @@ def dump_database(run: BackupRun) -> BackupRun:
             run.save(update_fields=['statut', 'detail', 'updated_at'])
             return run
 
+        # SCA13 — copie hors-boîte, best-effort, APRÈS le succès du backup
+        # local (MinIO reste la source de vérité du statut du run). Le
+        # fichier local (dump_path) existe encore ICI, dans le `with`
+        # TemporaryDirectory — appelé avant sa suppression automatique.
+        offsite_detail = _push_offsite(dump_path, object_key)
+
     run.object_key = object_key
     run.bytes_taille = taille
     run.artifact_ref = f'minio://{BACKUP_BUCKET}/{object_key}'
     run.statut = BackupRun.STATUT_TERMINE
     run.termine_le = timezone.now()
     run.detail = {'message': 'pg_dump réussi et déposé dans MinIO.',
-                  'bytes': taille}
+                  'bytes': taille, 'offsite': offsite_detail}
     run.save(update_fields=['object_key', 'bytes_taille', 'artifact_ref',
                             'statut', 'termine_le', 'detail', 'updated_at'])
     return run
+
+
+# ---------------------------------------------------------------------------
+# SCA13 — Copie de sauvegarde hors-boîte (key-gated OFF par défaut).
+#
+# ``restore_drill`` (YOPSB2, ci-dessus) prouve la restaurabilité d'un dump
+# SUR LA MÊME instance Postgres/MinIO — un sinistre boîte entière (disque
+# mort, corruption du volume Docker, incident datacenter) n'est pas couvert
+# par une copie qui reste sur la même boîte. ``_push_offsite`` pousse le
+# dump vers une cible S3-compatible EXTERNE si les 4 variables
+# ``BACKUP_OFFSITE_*`` sont TOUTES posées — OFF par défaut (aucune des 4
+# posée → no-op silencieux, zéro appel réseau supplémentaire, comportement
+# byte-identique à avant SCA13). Réutilise le client boto3 déjà en
+# dépendance (``requirements.txt`` — déjà utilisé par ``_minio_client()``) :
+# AUCUNE nouvelle dépendance.
+#
+# Un échec de la copie offsite NE FAIT JAMAIS échouer le ``BackupRun``
+# (``run.statut`` reste piloté par le backup local MinIO) — la couche
+# offsite est une résilience additionnelle best-effort, jamais un nouveau
+# point de défaillance pour le backup principal.
+# ---------------------------------------------------------------------------
+
+def _offsite_settings():
+    """Configuration hors-boîte lue depuis l'environnement. Toutes les clés
+    valent chaîne vide si non posées — ``_offsite_configured`` en dérive le
+    statut ON/OFF."""
+    import os
+
+    return {
+        'endpoint': os.environ.get('BACKUP_OFFSITE_ENDPOINT', ''),
+        'bucket': os.environ.get('BACKUP_OFFSITE_BUCKET', ''),
+        'access_key': os.environ.get('BACKUP_OFFSITE_ACCESS_KEY', ''),
+        'secret_key': os.environ.get('BACKUP_OFFSITE_SECRET_KEY', ''),
+        'retain_last': int(os.environ.get('BACKUP_OFFSITE_RETAIN_LAST', '7')),
+    }
+
+
+def _offsite_configured(cfg=None):
+    """OFF par défaut : ON seulement si les 4 variables requises sont TOUTES
+    posées (endpoint/bucket/clés) — jamais un sous-ensemble partiel actif."""
+    cfg = cfg or _offsite_settings()
+    return bool(cfg['endpoint'] and cfg['bucket']
+                and cfg['access_key'] and cfg['secret_key'])
+
+
+def _offsite_client(cfg):
+    """Client boto3/S3 vers la cible hors-boîte (même bibliothèque que
+    ``_minio_client`` — un second client, endpoint/clés différents)."""
+    import boto3
+    return boto3.client(
+        's3',
+        endpoint_url=cfg['endpoint'],
+        aws_access_key_id=cfg['access_key'],
+        aws_secret_access_key=cfg['secret_key'],
+        region_name='us-east-1',
+    )
+
+
+def _push_offsite(dump_path: Path, object_key: str) -> dict:
+    """Pousse ``dump_path`` vers la cible hors-boîte si configurée, puis
+    applique une rétention simple (garde les N derniers objets sous
+    ``pg_dumps/``). Renvoie un dict de détail (jamais lève — best-effort) :
+    ``{'configured': bool, 'status': 'ok'|'echec'|'off', 'message': str}``."""
+    cfg = _offsite_settings()
+    if not _offsite_configured(cfg):
+        return {'configured': False, 'status': 'off',
+                'message': 'BACKUP_OFFSITE_* non configuré — hors-boîte désactivé.'}
+
+    try:
+        client = _offsite_client(cfg)
+        client.upload_file(str(dump_path), cfg['bucket'], object_key)
+    except Exception as exc:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning('SCA13: échec upload hors-boîte %s: %s', object_key, exc)
+        return {'configured': True, 'status': 'echec', 'message': str(exc)}
+
+    purge_detail = _purge_offsite_retention(client, cfg)
+    return {'configured': True, 'status': 'ok',
+            'message': f"Copié vers {cfg['bucket']}/{object_key}.",
+            'retention': purge_detail}
+
+
+def _purge_offsite_retention(client, cfg) -> dict:
+    """Rétention simple hors-boîte : garde les N derniers dumps
+    (``pg_dumps/``), supprime le reste. Best-effort — une erreur de listing/
+    suppression ne fait jamais échouer le push principal (déjà réussi à ce
+    stade)."""
+    try:
+        resp = client.list_objects_v2(Bucket=cfg['bucket'], Prefix='pg_dumps/')
+        objets = sorted(
+            (obj['Key'] for obj in resp.get('Contents', [])), reverse=True)
+        a_purger = objets[cfg['retain_last']:]
+        for key in a_purger:
+            client.delete_object(Bucket=cfg['bucket'], Key=key)
+        return {'conserves': min(len(objets), cfg['retain_last']),
+                'supprimes': len(a_purger)}
+    except Exception as exc:  # noqa: BLE001 — best-effort
+        logger.warning('SCA13: échec rétention hors-boîte: %s', exc)
+        return {'erreur': str(exc)}
 
 
 # ---------------------------------------------------------------------------
@@ -269,6 +373,73 @@ RESTORE_DRILL_TABLES = [
     'ventes_devis',
     'crm_lead',
 ]
+
+# NTPLT62 — tables (avec colonne company) sur lesquelles le drill vérifie les
+# comptages PAR SOCIÉTÉ (top 5 par volume), pas seulement globaux. Prouve que la
+# restauration ramène bien les données de CHAQUE gros tenant, pas juste un total
+# global qui masquerait la perte d'une société entière.
+RESTORE_DRILL_TENANT_TABLES = [
+    ('ventes_devis', 'company_id'),
+    ('crm_lead', 'company_id'),
+]
+RESTORE_DRILL_TOP_TENANTS = 5
+
+
+def _top_tenants_live(limit=RESTORE_DRILL_TOP_TENANTS):
+    """IDs des sociétés les plus volumineuses dans la base LIVE (best-effort).
+
+    Somme des lignes des tables tenant ci-dessus, groupée par company_id. Renvoie
+    ``{company_id: total_live}``. Best-effort : une table absente est ignorée."""
+    from django.db import connection as _live
+    totals: dict = {}
+    if _live.vendor != 'postgresql':
+        return totals
+    with _live.cursor() as cur:
+        for table, col in RESTORE_DRILL_TENANT_TABLES:
+            try:
+                cur.execute(
+                    f'SELECT {col}, COUNT(*) FROM {table} '
+                    f'WHERE {col} IS NOT NULL GROUP BY {col}')
+                for company_id, n in cur.fetchall():
+                    totals[company_id] = totals.get(company_id, 0) + n
+            except Exception:  # noqa: BLE001 — table absente → ignorée
+                continue
+    top = sorted(totals.items(), key=lambda kv: kv[1], reverse=True)[:limit]
+    return dict(top)
+
+
+def detecter_ecarts_tenant(top_live, restored):
+    """Croise comptages live vs restaurés par société (NTPLT62).
+
+    Renvoie ``(comptages_par_societe, ecarts)`` où ``comptages_par_societe`` est
+    ``{company_id: {'live': n, 'restore': m}}`` et ``ecarts`` la liste des
+    sociétés avec ``live > 0`` mais ``restore == 0`` (perte totale d'un tenant)."""
+    comptages_par_societe = {}
+    ecarts = []
+    for company_id, live_n in top_live.items():
+        restore_n = int(restored.get(company_id, 0) or 0)
+        comptages_par_societe[str(company_id)] = {
+            'live': int(live_n), 'restore': restore_n}
+        if live_n > 0 and restore_n == 0:
+            ecarts.append(company_id)
+    return comptages_par_societe, ecarts
+
+
+def _tenant_counts_in_restored(cur, company_ids):
+    """Comptages par société DANS la base restaurée (cursor psycopg2 ouvert)."""
+    counts: dict = {cid: 0 for cid in company_ids}
+    if not company_ids:
+        return counts
+    for table, col in RESTORE_DRILL_TENANT_TABLES:
+        try:
+            cur.execute(
+                f'SELECT {col}, COUNT(*) FROM {table} '
+                f'WHERE {col} = ANY(%s) GROUP BY {col}', (list(company_ids),))
+            for company_id, n in cur.fetchall():
+                counts[company_id] = counts.get(company_id, 0) + n
+        except Exception:  # noqa: BLE001 — dégrade proprement
+            continue
+    return counts
 
 
 class RestoreDrillGuardError(Exception):
@@ -399,6 +570,10 @@ def restore_drill(run: BackupRun) -> BackupRun:
                         for table in RESTORE_DRILL_TABLES:
                             cur.execute(f'SELECT COUNT(*) FROM {table}')
                             comptages[table] = cur.fetchone()[0]
+                        # NTPLT62 — comptages PAR SOCIÉTÉ (top 5 par volume).
+                        top_live = _top_tenants_live()
+                        restored = _tenant_counts_in_restored(
+                            cur, list(top_live.keys()))
                 finally:
                     conn.close()
             except Exception as exc:  # noqa: BLE001
@@ -406,6 +581,17 @@ def restore_drill(run: BackupRun) -> BackupRun:
                 run.detail = {'message': f'Échec des comptages: {exc}'}
                 run.save(update_fields=['statut', 'detail', 'updated_at'])
                 return run
+
+            # NTPLT62 — écart si un gros tenant live n'a AUCUNE ligne restaurée
+            # (la restauration a perdu une société entière). Un restauré < live
+            # est normal (le dump est plus ancien) ; restauré == 0 alors que
+            # live > 0 est une ALERTE.
+            comptages_par_societe, ecarts = detecter_ecarts_tenant(
+                top_live, restored)
+            if ecarts:
+                logger.warning(
+                    'NTPLT62 — drill: %d société(s) sans données restaurées: %s',
+                    len(ecarts), ecarts)
         finally:
             # Toujours DROP la base scratch, succès ou échec (jamais laisser
             # traîner une base jetable en dehors du drill).
@@ -420,6 +606,9 @@ def restore_drill(run: BackupRun) -> BackupRun:
         'source_run_id': source.pk,
         'source_object_key': source.object_key,
         'comptages': comptages,
+        # NTPLT62 — comptages par société (top 5) + écarts (perte de tenant).
+        'comptages_par_societe': comptages_par_societe,
+        'ecarts_tenant': [str(c) for c in ecarts],
     }
     run.save(update_fields=['statut', 'termine_le', 'detail', 'updated_at'])
     return run

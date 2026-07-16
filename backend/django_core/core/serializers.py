@@ -7,6 +7,7 @@ from rest_framework import serializers
 
 from .models import (
     ApiUsagePlan,
+    BackgroundJob,
     BackupRun,
     BrandedTemplate,
     ChangelogEntry,
@@ -15,11 +16,13 @@ from .models import (
     DataSubjectRequest,
     DeletionRecord,
     ModuleToggle,
+    OutboxEvent,
     PaymentTransaction,
     RegistreTraitement,
     SavedQuery,
     ScheduledExport,
     TenantTheme,
+    TenantUsageSnapshot,
 )
 
 
@@ -297,3 +300,44 @@ class ChangelogEntrySerializer(serializers.ModelSerializer):
         if lus is None:
             return False
         return obj.pk in lus
+
+
+class TenantUsageSnapshotSerializer(serializers.ModelSerializer):
+    """NTPLT6 — sortie lecture seule d'un instantané d'usage par tenant."""
+
+    company_nom = serializers.CharField(
+        source='company.nom', read_only=True, default=None)
+
+    class Meta:
+        model = TenantUsageSnapshot
+        fields = [
+            'id', 'company', 'company_nom', 'jour', 'lignes_par_table',
+            'octets_minio', 'nb_requetes_api', 'nb_taches_celery',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = fields
+
+
+class BackgroundJobSerializer(serializers.ModelSerializer):
+    """NTPLT29 — sortie lecture seule d'un job de fond avec progression."""
+
+    class Meta:
+        model = BackgroundJob
+        fields = [
+            'id', 'kind', 'statut', 'progress_pct', 'result_file_key',
+            'message_erreur', 'created_at', 'updated_at',
+        ]
+        read_only_fields = fields
+
+
+class OutboxEventSerializer(serializers.ModelSerializer):
+    """NTPLT9/10 — sortie lecture seule d'un événement outbox (superviseur)."""
+
+    class Meta:
+        model = OutboxEvent
+        fields = [
+            'id', 'company', 'event_name', 'event_id', 'payload', 'statut',
+            'tentatives', 'prochaine_tentative', 'occurred_at',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = fields

@@ -142,29 +142,50 @@ const TITLE_KEYS = {
   '/parametres': 'title.parametres',
 }
 
-// Libellé de la section parente (premier segment) pour le fil d'Ariane.
+// VX11 — Libellé de la section parente (premier segment) pour le fil d'Ariane,
+// désormais `{ label, to }` : `to` pointe vers le cockpit du module quand il en
+// a un (rend le 1er segment du breadcrumb CLIQUABLE, cf. Breadcrumbs.jsx qui
+// sait déjà rendre un lien quand `to` est renseigné) ; `to: null` = repli
+// inchangé (texte, non cliquable) pour les sections sans cockpit unique.
+const BASE_SECTION_LABELS = {
+  stock: { label: 'Stock', to: '/stock' },
+  crm: { label: 'CRM', to: '/crm' },
+  ventes: { label: 'Ventes', to: '/ventes/devis' },
+  chantiers: { label: 'Chantiers', to: '/chantiers' },
+  parc: { label: 'Chantiers', to: '/chantiers' },
+  production: { label: 'Chantiers', to: '/chantiers' },
+  equipements: { label: 'Après-vente', to: '/sav' },
+  sav: { label: 'Après-vente', to: '/sav' },
+  ia: { label: 'Intelligence', to: null },
+  reporting: { label: 'Analyse', to: '/reporting' },
+  rapports: { label: 'Analyse', to: '/reporting' },
+  approbations: { label: 'Analyse', to: '/reporting' },
+  'dashboards-tv': { label: 'Analyse', to: '/reporting' },
+  admin: { label: 'Administration', to: '/parametres' },
+  parametres: { label: 'Administration', to: '/parametres' },
+  activites: { label: 'CRM', to: '/crm' },
+  calendrier: { label: 'CRM', to: '/crm' },
+  dashboard: { label: 'Tableau de bord', to: null },
+}
+
+// UX1 — libellés de section des modules « coquille » : chaque
+// `module.config.jsx` déclare `sectionLabels: { <segment>: 'Libellé' }` (une
+// CHAÎNE, pas encore `{label, to}` — on ne retouche pas ces 15+ fichiers pour
+// cette tâche). Normalisé ici en `{ label, to: null }` : repli EXACT au
+// comportement d'avant (texte de section, non cliquable) tant qu'un module ne
+// migre pas vers la forme enrichie.
+const NORMALIZED_MODULE_SECTION_LABELS = Object.fromEntries(
+  Object.entries(moduleSectionLabels).map(([seg, value]) => [
+    seg,
+    typeof value === 'string' ? { label: value, to: null } : value,
+  ]),
+)
+
+// Fusion : chaque segment est distinct (garanti par convention UX1), jamais de
+// conflit entre base et modules.
 export const SECTION_LABELS = {
-  stock: 'Stock',
-  crm: 'CRM',
-  ventes: 'Ventes',
-  chantiers: 'Chantiers',
-  parc: 'Chantiers',
-  production: 'Chantiers',
-  equipements: 'Après-vente',
-  sav: 'Après-vente',
-  ia: 'Intelligence',
-  reporting: 'Analyse',
-  rapports: 'Analyse',
-  approbations: 'Analyse',
-  'dashboards-tv': 'Analyse',
-  admin: 'Administration',
-  parametres: 'Administration',
-  activites: 'CRM',
-  calendrier: 'CRM',
-  dashboard: 'Tableau de bord',
-  // UX1 — libellés de section des modules « coquille » (fusionnés, jamais en
-  // conflit : chaque module a un premier segment distinct).
-  ...moduleSectionLabels,
+  ...BASE_SECTION_LABELS,
+  ...NORMALIZED_MODULE_SECTION_LABELS,
 }
 
 // Titre de page : première entrée dont le pathname commence par la clé.
@@ -187,9 +208,11 @@ export function titleFor(pathname, t) {
 }
 
 // Fil d'Ariane dérivé du chemin : [{ label, to }] du plus général au courant.
-// On ne navigue jamais vers un segment intermédiaire inexistant : seul le
-// dernier élément (la page courante) porte le titre complet ; les parents
-// servent de contexte (libellé de section), sans lien si la route n'existe pas.
+// VX11 — le premier segment est CLIQUABLE quand `SECTION_LABELS[seg].to` est
+// renseigné (cockpit du module) ; `to: null` reste le repli inchangé (texte de
+// contexte, non cliquable) pour les sections sans cockpit unique. On ne navigue
+// jamais vers un segment intermédiaire inexistant : seul le dernier élément (la
+// page courante) porte le titre complet et n'est jamais un lien (`current`).
 export function breadcrumbsFor(pathname) {
   const title = titleFor(pathname)
   const seg = pathname.split('/').filter(Boolean)[0]
@@ -197,7 +220,13 @@ export function breadcrumbsFor(pathname) {
   const crumbs = []
   // La section n'est affichée que si elle diffère du titre de la page (évite
   // « Tableau de bord › Tableau de bord »).
-  if (section && section !== title) crumbs.push({ label: section, to: null })
+  if (section && section.label !== title) {
+    // Ne jamais poser `to` == pathname courant (éviterait un lien vers soi-même
+    // quand on est DÉJÀ sur le cockpit — cas déjà couvert par le test d'égalité
+    // ci-dessus dans la pratique, ceinture-bretelles ici).
+    const to = section.to && section.to !== pathname ? section.to : null
+    crumbs.push({ label: section.label, to })
+  }
   crumbs.push({ label: title, to: pathname, current: true })
   return crumbs
 }

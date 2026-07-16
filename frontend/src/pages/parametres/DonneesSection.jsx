@@ -13,6 +13,7 @@ import {
   ClipboardCheck, FileText, Archive, Plus, Trash2, ExternalLink,
 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
+import { formatMAD } from '../../lib/format'
 import {
   Card, CardContent, Button, IconButton, Badge, Spinner, EmptyState,
   Input,
@@ -168,6 +169,8 @@ function KitExplosion() {
   const [kitId, setKitId] = useState('')
   const [quantite, setQuantite] = useState('1')
   const [result, setResult] = useState(null)
+  // ZMFG9 — disponibilité multi-niveaux (kits assemblables + goulots).
+  const [dispo, setDispo] = useState(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
 
@@ -179,11 +182,17 @@ function KitExplosion() {
 
   const exploser = async () => {
     if (!kitId) { setError('Choisissez un kit.'); return }
-    setBusy(true); setError(null)
+    setBusy(true); setError(null); setDispo(null)
     try {
       const q = Number(quantite) > 0 ? Number(quantite) : 1
       const r = await stockApi.exploserKit(kitId, q)
       setResult(r.data)
+      // ZMFG9 — best-effort : la disponibilité récursive accompagne
+      // l'explosion (jamais bloquante pour l'affichage des lignes).
+      try {
+        const d = await stockApi.getKitDisponibilite(kitId)
+        setDispo(d.data)
+      } catch { /* fiche sans disponibilité si le calcul échoue */ }
     } catch (e) {
       setError(frErr(e, "L'explosion du kit a échoué."))
     } finally { setBusy(false) }
@@ -227,6 +236,20 @@ function KitExplosion() {
           <div role="alert" className="mt-2 rounded-lg border border-destructive/30 bg-destructive/10 p-2 text-sm text-destructive">{error}</div>
         )}
 
+        {dispo && (
+          <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/40 p-2 text-sm">
+            <Badge tone={dispo.kits_assemblables > 0 ? 'success' : 'warning'}>
+              {dispo.kits_assemblables} kit{dispo.kits_assemblables > 1 ? 's' : ''} assemblable{dispo.kits_assemblables > 1 ? 's' : ''}
+            </Badge>
+            {(dispo.goulots ?? []).length > 0 && (
+              <span className="text-muted-foreground">
+                Goulot{dispo.goulots.length > 1 ? 's' : ''} :{' '}
+                {dispo.goulots.map((g) => g.designation).join(', ')}
+              </span>
+            )}
+          </div>
+        )}
+
         {result && (
           lignes.length === 0 ? (
             <p className="mt-3 text-sm text-muted-foreground">Ce kit n&apos;a aucun composant.</p>
@@ -248,7 +271,7 @@ function KitExplosion() {
                       <td className="px-3 py-2">{l.designation}</td>
                       <td className="px-3 py-2 font-mono text-xs">{l.sku || '—'}</td>
                       <td className="px-3 py-2 text-right tabular-nums">{l.quantite}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{Number(l.prix_vente_unitaire).toFixed(2)} DH</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{formatMAD(l.prix_vente_unitaire, { withSymbol: false })} DH</td>
                       <td className="px-3 py-2 text-right tabular-nums">{l.disponible}</td>
                     </tr>
                   ))}
@@ -410,12 +433,163 @@ function FichesTechniques() {
   )
 }
 
+// ── Remplacement de masse d'un composant (XMFG19) ────────────────────────────
+// Dialogue préview (dry_run) → confirmer : remplace un produit par un autre
+// dans TOUTES les nomenclatures (kits stock + kits de pré-assemblage), avec
+// ratio de quantité optionnel. L'application est atomique côté serveur et
+// chaque kit modifié crée sa révision (XMFG18).
+function RemplacementComposant() {
+  const [produits, setProduits] = useState([])
+  const [ancien, setAncien] = useState('')
+  const [nouveau, setNouveau] = useState('')
+  const [ratio, setRatio] = useState('')
+  const [preview, setPreview] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
+  const [done, setDone] = useState(null)
+
+  useEffect(() => {
+    stockApi.getProduits({ page_size: 1000 })
+      .then((r) => setProduits(r.data?.results ?? r.data ?? []))
+      .catch(() => {})
+  }, [])
+
+  const payload = () => ({
+    produit_ancien: ancien,
+    produit_nouveau: nouveau,
+    ...(ratio ? { ratio_quantite: ratio } : {}),
+  })
+
+  const previsualiser = async () => {
+    if (!ancien || !nouveau) { setError('Choisissez les deux produits.'); return }
+    setBusy(true); setError(null); setDone(null)
+    try {
+      const r = await stockApi.remplacerComposantKits({ ...payload(), dry_run: true })
+      setPreview(r.data)
+    } catch (e) { setError(frErr(e, 'La préview a échoué.')); setPreview(null) }
+    finally { setBusy(false) }
+  }
+
+  const confirmer = async () => {
+    setBusy(true); setError(null)
+    try {
+      const r = await stockApi.remplacerComposantKits({ ...payload(), dry_run: false })
+      setDone(r.data); setPreview(null)
+    } catch (e) { setError(frErr(e, 'Le remplacement a échoué.')) }
+    finally { setBusy(false) }
+  }
+
+  const lignes = (res) => [
+    ...(res?.kits_stock ?? []).map((k) => ({ ...k, module: 'Kit stock' })),
+    ...(res?.kits_installations ?? []).map((k) => ({ ...k, module: 'Pré-assemblage' })),
+  ]
+
+  return (
+    <Card>
+      <CardContent className="pt-4 sm:pt-5">
+        <SectionTitle label="Remplacement de composant (nomenclatures)"
+          icon={<><path d="M16 3h5v5" /><path d="M8 3H3v5" /><path d="M21 3l-7 7" /><path d="M3 3l7 7" /><path d="M16 21h5v-5" /><path d="M8 21H3v-5" /><path d="M21 21l-7-7" /><path d="M3 21l7-7" /></>} />
+        <p className="mb-3.5 text-[11.5px] text-muted-foreground">
+          Remplace un produit par un autre dans toutes les nomenclatures
+          (kits stock et kits de pré-assemblage). Prévisualisez d&apos;abord les
+          kits impactés, puis confirmez : l&apos;application est atomique et
+          chaque kit modifié garde une révision de sa composition.
+        </p>
+
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="min-w-48 flex-1">
+            <Select value={ancien || '__none'} onValueChange={(v) => { setAncien(v === '__none' ? '' : v); setPreview(null) }}>
+              <SelectTrigger><SelectValue placeholder="— Produit remplacé —" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none">— Produit remplacé —</SelectItem>
+                {produits.map((p) => (
+                  <SelectItem key={p.id} value={String(p.id)}>{p.nom}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="min-w-48 flex-1">
+            <Select value={nouveau || '__none'} onValueChange={(v) => { setNouveau(v === '__none' ? '' : v); setPreview(null) }}>
+              <SelectTrigger><SelectValue placeholder="— Produit de remplacement —" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none">— Produit de remplacement —</SelectItem>
+                {produits.filter((p) => String(p.id) !== ancien).map((p) => (
+                  <SelectItem key={p.id} value={String(p.id)}>{p.nom}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="w-32">
+            <Input type="number" step="any" inputMode="decimal" min="0"
+                   placeholder="Ratio qté (opt.)" value={ratio}
+                   onChange={(e) => { setRatio(e.target.value); setPreview(null) }} />
+          </div>
+          <Button type="button" loading={busy} variant="outline" onClick={previsualiser}>
+            Prévisualiser
+          </Button>
+        </div>
+
+        {error && (
+          <div role="alert" className="mt-2 rounded-lg border border-destructive/30 bg-destructive/10 p-2 text-sm text-destructive">{error}</div>
+        )}
+
+        {preview && (
+          lignes(preview).length === 0 ? (
+            <p className="mt-3 text-sm text-muted-foreground">
+              Aucune nomenclature n&apos;utilise ce produit.
+            </p>
+          ) : (
+            <div className="mt-3">
+              <div className="overflow-x-auto rounded-lg border border-border">
+                <table className="w-full min-w-[28rem] text-sm">
+                  <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
+                    <tr>
+                      <th className="px-3 py-2 text-left font-semibold">Kit impacté</th>
+                      <th className="px-3 py-2 text-left font-semibold">Module</th>
+                      <th className="px-3 py-2 text-right font-semibold">Qté avant</th>
+                      <th className="px-3 py-2 text-right font-semibold">Qté après</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {lignes(preview).map((k) => (
+                      <tr key={`${k.module}-${k.kit_id}`} className="border-t border-border">
+                        <td className="px-3 py-2">{k.kit_nom}</td>
+                        <td className="px-3 py-2 text-xs">{k.module}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{k.quantite_avant}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{k.quantite_apres}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="mt-2 flex items-center gap-2">
+                <Button type="button" loading={busy} onClick={confirmer}>
+                  Confirmer le remplacement ({preview.nb_total} kit{preview.nb_total > 1 ? 's' : ''})
+                </Button>
+                <Button type="button" variant="outline" onClick={() => setPreview(null)}>Annuler</Button>
+              </div>
+            </div>
+          )
+        )}
+
+        {done && (
+          <div className="mt-3 rounded-lg border border-border bg-muted/40 p-2 text-sm">
+            Remplacement appliqué à {done.nb_total} nomenclature{done.nb_total > 1 ? 's' : ''}
+            {' '}(« {done.produit_ancien} » → « {done.produit_nouveau} »).
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 export default function DonneesSection() {
   const navigate = useNavigate()
   return (
     <div className="flex flex-col gap-4">
       <InventaireSessions />
       <KitExplosion />
+      <RemplacementComposant />
       <FichesTechniques />
 
       {/* Export / sauvegarde : surface existante (page dédiée). */}

@@ -3,16 +3,23 @@
 
 export * from './Button'
 export * from './IconButton'
+// VX249(a) — micro-accusé de sauvegarde au grain du champ (pulse vert).
+export * from './FieldSavedPulse'
+// VX159/VX250 — compteurs de relations cliquables, communs aux fiches 360°.
+export * from './RelationCounters'
 export * from './Spinner'
 export * from './Badge'
 export * from './StatusPill'
 export * from './Card'
 export * from './Stat'
+export * from './StatusAccentCard'
 export * from './Separator'
 export * from './Skeleton'
+export * from './FadeSwap'
 export * from './EmptyState'
 export * from './ErrorBoundary'
 export * from './NotFound'
+export * from './Forbidden'
 export * from './OfflineState'
 
 // Formulaire / contrôles
@@ -43,6 +50,7 @@ export * from './Tooltip'
 export * from './DropdownMenu'
 export * from './HoverCard'
 export * from './ContextMenu'
+export * from './HelpTip'
 
 // Affichage / feedback
 export * from './Toaster'
@@ -52,6 +60,10 @@ export * from './DefinitionList'
 export * from './Tabs'
 export * from './Accordion'
 export * from './Progress'
+export * from './FloatingActionButton'
+export * from './ScrollProgress'
 
 // Données / listes (Groupe H — moteur DataTable réutilisable)
 export { DataTable, useDataTable, EditableCell, BulkActionBar, ColumnManager } from './datatable'
+// VX152 — primitif « libellé → valeur » partagé (fin des tables clé/valeur maison).
+export * from './KeyValueTable'

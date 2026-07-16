@@ -11,6 +11,7 @@ import {
 import { formatMAD, formatNumber, formatDate } from '../../lib/format'
 import rhApi from '../../api/rhApi'
 import { StatutConge, StatutNoteFrais, StatutMission } from './constants.jsx'
+import ExternalLink from '../../ui/ExternalLink'
 
 /* ============================================================================
    UX28 — Portail self-service (tous rôles).
@@ -203,7 +204,7 @@ export default function Portail() {
               title={`Bulletin ${String(b.mois).padStart(2, '0')}/${b.annee}`}
               meta={b.filename || '—'}
               right={b.url
-                ? <a className="link-blue text-xs" href={b.url} target="_blank" rel="noreferrer">Ouvrir</a>
+                ? <ExternalLink className="link-blue text-xs" href={b.url}>Ouvrir</ExternalLink>
                 : <Badge tone="neutral">Indisponible</Badge>}
             />
           )}
@@ -225,7 +226,7 @@ export default function Portail() {
                 meta={d.date_creation ? formatDate(d.date_creation) : ''}
                 icon={FileText}
                 right={d.attachment
-                  ? <a className="link-blue text-xs" href={`/api/django${rhApi.telechargerDemandeUrl(d.id)}`} target="_blank" rel="noreferrer">Télécharger</a>
+                  ? <ExternalLink className="link-blue text-xs" href={`/api/django${rhApi.telechargerDemandeUrl(d.id)}`}>Télécharger</ExternalLink>
                   : <Badge tone={d.statut === 'traitee' ? 'success' : 'info'}>{d.statut_display || d.statut || 'En cours'}</Badge>}
               />
             )}
@@ -289,7 +290,7 @@ export default function Portail() {
                   title={t.quiz_intitule || `Quiz ${t.quiz}`}
                   meta={`${t.score != null ? `Score ${t.score}` : ''}${t.date_creation ? ` · ${formatDate(t.date_creation)}` : ''}`}
                   right={t.reussi
-                    ? <a className="link-blue text-xs" href={`/api/django${rhApi.attestationQuizUrl(t.id)}`} target="_blank" rel="noreferrer">Attestation</a>
+                    ? <ExternalLink className="link-blue text-xs" href={`/api/django${rhApi.attestationQuizUrl(t.id)}`}>Attestation</ExternalLink>
                     : <Badge tone="danger">Échoué</Badge>}
                 />
               )}

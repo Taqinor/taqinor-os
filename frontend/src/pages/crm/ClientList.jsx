@@ -1,22 +1,28 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Pencil, FileText, Trash2, Upload, Plus, FilePlus } from 'lucide-react'
+import { useIsAdmin } from '../../hooks/useHasPermission'
 import { fetchClients, deleteClient, updateClient } from '../../features/crm/store/crmSlice'
 import ventesApi from '../../api/ventesApi'
 import crmApi from '../../api/crmApi'
 import { openPdfBlob } from '../../utils/pdfBlob'
+import { downloadBlobInGesture } from '../../utils/downloadBlob'
 import ClientForm from './ClientForm'
 import ClientDetailPanel from './ClientDetailPanel'
 import ExcelImport from '../../components/ExcelImport'
+import SavedViewsBar, { SaveViewButton } from '../../components/SavedViewsBar'
 import {
   DataTable, Badge, Button, Segmented,
   Skeleton, SkeletonTableRow, EmptyState,
 } from '../../ui'
+import { buildCopyTSVAction } from '../../ui/datatable/BulkActionBar'
+import { StateBlock } from '../../components/StateBlock'
 import { useConfirmDialog, toast } from '../../ui/confirm'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
 import ClientTypeToggle from './ClientTypeToggle'
 import { useSavedViews } from '../../hooks/useSavedViews'
+import { formatMAD } from '../../lib/format'
 
 const CL_SAVED_VIEWS_KEY = 'taqinor.crm.clients.savedViews'
 
@@ -35,8 +41,9 @@ const TYPE_FILTERS = [
 export default function ClientList() {
   const dispatch = useDispatch()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { clients, loading, error } = useSelector(s => s.crm)
-  const role = useSelector(s => s.auth.role)
+  const isAdmin = useIsAdmin()
   const { confirmDelete } = useConfirmDialog()
   // Squelette différé : on n'affiche le chargement que s'il dure (anti-flash).
   const { showSkeleton } = useDelayedLoading(loading)
@@ -57,8 +64,33 @@ export default function ClientList() {
   }
   // Panneau détail (lecture) : devis / factures / chantiers du client cliqué.
   const [detailClient, setDetailClient] = useState(null)
+  // VX220 — lien profond ?id=<pk> (patron VX79 déjà lu par InstallationsPage.jsx/
+  // TicketsPage.jsx) : la palette de commandes (⌘K) ouvre désormais le CLIENT
+  // exact plutôt que la liste. État DÉRIVÉ (aucun effet) — un id absent des
+  // clients chargés reste simplement sans panneau (jamais une page blanche).
+  const wantedId = searchParams.get('id')
+  const deepClient = useMemo(() => {
+    if (!wantedId) return null
+    return (clients ?? []).find(c => String(c.id) === String(wantedId)) ?? null
+  }, [wantedId, clients])
+  const clearDeepLink = () => {
+    if (searchParams.has('id')) {
+      setSearchParams(prev => {
+        const next = new URLSearchParams(prev)
+        next.delete('id')
+        return next
+      }, { replace: true })
+    }
+  }
+  // Panneau ouvert : sélection manuelle OU client ciblé par le lien profond.
+  const detailItem = detailClient ?? deepClient
 
-  useEffect(() => { dispatch(fetchClients()) }, [dispatch])
+  // VX55 — annule la requête en vol au démontage : sans ça, une réponse tardive
+  // (3G qui cale) peut écraser l'état d'un AUTRE écran après navigation.
+  useEffect(() => {
+    const thunk = dispatch(fetchClients())
+    return () => thunk?.abort?.()
+  }, [dispatch])
 
   // Filtre segmenté par type (Particulier / Entreprise), appliqué avant le
   // DataTable (qui garde sa propre recherche/tri/export sur le sous-ensemble).
@@ -71,6 +103,22 @@ export default function ClientList() {
   const openNew   = () => { setEditClient(null); setShowForm(true) }
   const openEdit  = c  => { setEditClient(c);    setShowForm(true) }
   const closeForm = () => { setShowForm(false);  setEditClient(null) }
+
+  // VX220(b) — raccourci clavier « c c » (shortcuts.js/CommandPalette) navigue
+  // vers /crm?new=1 : câblage MINIMAL du paramètre — ouvre directement le
+  // formulaire de création (périmètre réduit, @coord NTUX9/10 — cf. LeadsPage.jsx
+  // même patron). Le paramètre est retiré une fois lu.
+  useEffect(() => {
+    if (searchParams.get('new') !== '1') return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- ouverture one-shot pilotée par ?new=1
+    openNew()
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev)
+      next.delete('new')
+      return next
+    }, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
 
   const openReleve = async (c) => {
     try {
@@ -128,16 +176,16 @@ export default function ClientList() {
   }
 
   // Export Excel : DataTable nous passe le jeu courant (filtré par sa recherche).
+  // VX172 — `downloadBlobInGesture()` DOIT s'appeler avant le premier `await`
+  // (encore dans le geste de tap) : sur iOS/standalone il pré-ouvre un onglet
+  // vide immédiatement ; ailleurs c'est un no-op qui garde `a.download`.
   const exportRows = async (rows) => {
     const ids = rows.map(c => c.id)
     if (!ids.length) return
+    const pending = downloadBlobInGesture()
     try {
       const res = await crmApi.exportClientsXlsx(ids)
-      const url = URL.createObjectURL(new Blob([res.data]))
-      const a = document.createElement('a')
-      a.href = url; a.download = 'clients.xlsx'
-      document.body.appendChild(a); a.click(); a.remove()
-      setTimeout(() => URL.revokeObjectURL(url), 1000)
+      pending.deliver(new Blob([res.data]), 'clients.xlsx')
     } catch { toast.error('Export indisponible — réessayez.') }
   }
 
@@ -154,11 +202,16 @@ export default function ClientList() {
       width: 200,
       hideable: false,
       accessor: (c) => [c.nom, c.prenom].filter(Boolean).join(' '),
+      // VX144(c) — empilement 2 lignes déterministe à 200px : nom+pastille
+      // toujours ensemble sur la 1re ligne, badge ICE toujours en dessous
+      // (jamais avant le nom, quel que soit l'ordre de wrap du flex).
       cell: (value, c) => (
-        <span className="flex flex-wrap items-center gap-1.5">
-          <span className="font-medium">{value || '—'}</span>
-          {/* L151 — type éditable en place avec enregistrement optimiste. */}
-          <ClientTypeToggle client={c} onSave={(next) => saveType(c, next)} />
+        <span className="flex flex-col gap-0.5">
+          <span className="flex flex-wrap items-center gap-1.5">
+            <span className="font-medium">{value || '—'}</span>
+            {/* L151 — type éditable en place avec enregistrement optimiste. */}
+            <ClientTypeToggle client={c} onSave={(next) => saveType(c, next)} />
+          </span>
           {isEntreprise(c) && !c.ice && (
             <Badge tone="warning" title="Identifiant ICE manquant sur un client B2B">
               ICE manquant
@@ -221,9 +274,9 @@ export default function ClientList() {
         if (!facture && !paye) return <span className="text-muted-foreground">—</span>
         return (
           <span className="flex flex-col items-end leading-tight">
-            <span className="font-medium">{facture.toLocaleString('fr-MA')} MAD</span>
+            <span className="font-medium">{formatMAD(facture)}</span>
             <span className="text-xs text-muted-foreground">
-              Payé : {paye.toLocaleString('fr-MA')} MAD
+              Payé : {formatMAD(paye)}
             </span>
           </span>
         )
@@ -279,7 +332,7 @@ export default function ClientList() {
       },
       { id: 'releve', label: 'Relevé', icon: FileText, onClick: () => openReleve(c) },
     ]
-    if (role === 'admin') {
+    if (isAdmin) {
       actions.push({
         id: 'delete',
         label: deletingId === c.id ? 'Suppression…' : 'Supprimer',
@@ -322,15 +375,12 @@ export default function ClientList() {
       )}
 
       {error ? (
-        // État erreur explicite + réessai (jamais d'objet brut ni de page blanche).
-        <EmptyState
-          title="Impossible de charger les clients"
-          description="Vérifiez votre connexion puis réessayez."
-          action={(
-            <Button variant="outline" onClick={() => dispatch(fetchClients())}>
-              Réessayer
-            </Button>
-          )}
+        // VX67 — StateBlock unifie l'état d'erreur avec un bouton « Réessayer »
+        // câblé sur le même thunk que le montage initial (jamais d'objet brut
+        // ni de page blanche).
+        <StateBlock
+          error="Impossible de charger les clients. Vérifiez votre connexion puis réessayez."
+          onRetry={() => dispatch(fetchClients())}
         />
       ) : loading && clients.length === 0 ? (
         // Chargement : squelette de table différé (anti-flash via useDelayedLoading).
@@ -363,24 +413,12 @@ export default function ClientList() {
               onChange={setTypeFilter}
               aria-label="Filtrer par type de client"
             />
-            <div className="lp-saved-views">
-              <Button type="button" variant="link" size="sm" onClick={saveCurrentView}>
-                ⭐ Enregistrer cette vue
-              </Button>
-              {savedViews.map((v) => (
-                <span key={v.name} className="lp-saved-view-chip">
-                  <button type="button" className="lp-saved-view-apply"
-                          onClick={() => applyView(v)} title="Appliquer cette vue">
-                    {v.name}
-                  </button>
-                  <button type="button" className="lp-saved-view-del"
-                          onClick={() => deleteView(v.name)}
-                          aria-label={`Supprimer la vue ${v.name}`}>
-                    ✕
-                  </button>
-                </span>
-              ))}
-            </div>
+            <SaveViewButton onSave={saveCurrentView} />
+            <SavedViewsBar
+              savedViews={savedViews}
+              onApply={applyView}
+              onDelete={deleteView}
+            />
           </div>
 
           <DataTable
@@ -390,28 +428,34 @@ export default function ClientList() {
             searchable
             searchPlaceholder="Rechercher nom, email, tél, ICE, IF, RC, CIN…"
             rowActions={rowActions}
-            selectable={role === 'admin'}
-            bulkActions={role === 'admin' ? (rows, _keys, clear) => [{
-              id: 'bulk-delete',
-              label: 'Supprimer (sans devis)',
-              icon: Trash2,
-              destructive: true,
-              onClick: () => bulkDelete(rows, _keys, clear),
-            }] : undefined}
+            selectable={isAdmin}
+            bulkActions={isAdmin ? (rows, _keys, clear) => [
+              // VX110 — copie la sélection au presse-papiers en TSV (colle en
+              // colonnes dans Excel / lisible dans WhatsApp), sinon les lignes filtrées.
+              buildCopyTSVAction({ rows, filteredRows: rows, columns }),
+              {
+                id: 'bulk-delete',
+                label: 'Supprimer (sans devis)',
+                icon: Trash2,
+                destructive: true,
+                onClick: () => bulkDelete(rows, _keys, clear),
+              },
+            ] : undefined}
             onExport={exportRows}
             exportName="clients"
             onRowClick={(c) => setDetailClient(c)}
             emptyTitle="Aucun résultat"
             emptyDescription="Aucun client ne correspond à ces filtres."
+            emptyAction={<Button size="sm" onClick={openNew}><Plus className="size-4" /> Nouveau client</Button>}
             aria-label="Liste des clients"
           />
         </>
       )}
 
-      {detailClient && (
+      {detailItem && (
         <ClientDetailPanel
-          client={detailClient}
-          onClose={() => setDetailClient(null)}
+          client={detailItem}
+          onClose={() => { setDetailClient(null); clearDeepLink() }}
           onNewDevis={(c) => navigate(`/ventes/devis/nouveau?client=${c.id}`)}
           onChanged={() => dispatch(fetchClients())}
         />

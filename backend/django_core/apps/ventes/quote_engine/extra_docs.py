@@ -28,7 +28,7 @@ from pathlib import Path
 from .generate_devis_premium import (
     CA, CAL, CG1, CG2, CG4, CG7, CGR, CN,
     _DMSANS400, _DMSANS500, _DMSANS700, _DS400,
-    _font_face, fmt, logo_p1_dark,
+    _font_face, fmt,
 )
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -103,14 +103,25 @@ body{{font-family:'DM Sans',sans-serif;font-size:10pt;color:{CG7};
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 def _logo_block(ctx):
-    """Logo de l'en-tête : logo SOCIÉTÉ (CompanyProfile) si fourni, sinon le
-    logo premium TAQINOR (réutilisé du moteur, jamais redessiné)."""
+    """Logo de l'en-tête : logo SOCIÉTÉ (CompanyProfile) si fourni.
+
+    SCA26 (fix règle-#4) — À DÉFAUT de logo société, on ne retombe PLUS sur le
+    logo premium TAQINOR (qui affichait la marque du fondateur sur les documents
+    d'un AUTRE locataire) : on rend un bloc NEUTRE (nom de la société stylé en
+    blanc sur l'en-tête navy), ou rien si aucun nom n'est renseigné. Le fondateur
+    conserve son rendu en téléversant son propre logo (CompanyProfile.logo_key).
+    """
     uri = ctx.get("logo_uri")
     if uri:
         return (f'<img src="{escape(uri, quote=True)}" alt="logo" '
                 f'style="height:42px;width:auto;object-fit:contain;'
                 f'display:block;">')
-    return logo_p1_dark()
+    nom = escape(str(ctx.get("entreprise_nom") or "").strip())
+    if not nom:
+        return ""
+    return (f'<div style="font-family:\'DM Sans\',sans-serif;font-size:15pt;'
+            f'font-weight:800;color:#FFFFFF;letter-spacing:.5px;'
+            f'line-height:1.1;">{nom}</div>')
 
 
 def _fr_date(value):

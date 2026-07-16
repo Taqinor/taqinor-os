@@ -141,6 +141,13 @@ const initialState = {
   pinned: [],
   unreadTotal: 0,
   error: null,
+  // VX164 — id (RTK `meta.requestId`) de la DERNIÈRE requête `fetchMessages`
+  // dispatchée : le poll actif (~3 s, `useChatPolling`) n'annule pas le tick
+  // précédent — un tick N-1 lent peut résoudre APRÈS le tick N et écraser la
+  // page plus fraîche avec des données périmées (un message reçu entre-temps
+  // DISPARAÎT jusqu'au tick suivant). `.fulfilled` ignore toute réponse dont
+  // le `requestId` n'est plus la DERNIÈRE demandée.
+  activeMessagesRequestId: null,
 }
 
 const slice = createSlice({
@@ -194,12 +201,19 @@ const slice = createSlice({
         state.unreadTotal = action.payload
       })
 
-      .addCase(fetchMessages.pending, (state) => {
+      .addCase(fetchMessages.pending, (state, action) => {
         state.loadingMessages = true
+        // VX164 — cette requête devient la DERNIÈRE demandée : un fulfilled
+        // plus ancien (tick N-1 résolu en retard) sera ignoré ci-dessous.
+        state.activeMessagesRequestId = action.meta?.requestId
       })
       .addCase(fetchMessages.fulfilled, (state, action) => {
         state.loadingMessages = false
         if (action.payload.conversationId !== state.activeId) return
+        // VX164 — no-op si une requête PLUS RÉCENTE a déjà été dispatchée
+        // (le tick suivant est parti avant que celui-ci ne réponde) : le
+        // payload le plus récemment DEMANDÉ gagne toujours.
+        if (state.activeMessagesRequestId != null && action.meta?.requestId !== state.activeMessagesRequestId) return
         state.messages = toAsc(action.payload.page)
         state.nextOlder = action.payload.next
       })

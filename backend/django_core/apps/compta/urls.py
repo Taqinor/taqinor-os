@@ -13,6 +13,8 @@ from .views import (
     BilletEvenementViewSet,
     QuestionEvenementViewSet,
     CommunicationEvenementViewSet,
+    PostSocialViewSet,
+    CalendrierMarketingView, CalendrierMarketingRescheduleView,
     webhook_brevo_campagne, webhook_sms_stop,
     portail_mon_releve, portail_mon_releve_pdf, portail_contester_facture,
     AppelTelephoniqueViewSet,
@@ -119,6 +121,8 @@ router.register(r'obligations-fiscales', ObligationFiscaleViewSet)
 router.register(r'familles-tva-non-deductibles', FamilleTvaNonDeductibleViewSet)
 # ── Croissance commerciale / marketing / CPQ (FG201–FG214) ──────────────────
 router.register(r'campagnes', CampagneViewSet)
+# XMKT35 — posts réseaux sociaux (calendrier de contenu, publication gated).
+router.register(r'posts-sociaux', PostSocialViewSet)
 router.register(r'envois-campagne', EnvoiCampagneViewSet)
 router.register(r'approbations-envoi-campagne', ApprobationEnvoiCampagneViewSet)
 router.register(r'listes-diffusion', ListeDiffusionViewSet)
@@ -198,6 +202,13 @@ router.register(r'supports-offline', SupportOfflineViewSet)
 router.register(r'domaines-envoi', DomaineEnvoiViewSet)
 
 urlpatterns = [
+    # XMKT30 (partiel) — calendrier marketing agrégé (campagnes + posts
+    # sociaux XMKT35 aujourd'hui ; autres sources à brancher, même contrat).
+    path('calendrier-marketing/', CalendrierMarketingView.as_view(),
+         name='calendrier-marketing'),
+    path('calendrier-marketing/reschedule/',
+         CalendrierMarketingRescheduleView.as_view(),
+         name='calendrier-marketing-reschedule'),
     path('webhooks/brevo/', webhook_brevo_campagne, name='webhook-brevo-campagne'),
     path('webhooks/sms-stop/', webhook_sms_stop, name='webhook-sms-stop'),
     path('desinscription/<str:token>/', desinscription_publique,

@@ -86,23 +86,52 @@ def _is_email_configured():
         return False
 
 
+def _branded_html(company, sujet, corps):
+    """VX76 — wrapper HTML de marque (logo + en-tête navy + pied) autour du
+    corps texte existant. Best-effort : jamais d'exception, jamais de
+    changement du corps texte brut conservé en repli MIME."""
+    try:
+        from apps.parametres.selectors import company_identity
+        from core.selectors import wrap_email_html
+        identite = company_identity(company) if company is not None else {}
+        return wrap_email_html(
+            sujet, corps,
+            company_nom=identite.get('nom', ''),
+            company_adresse=identite.get('adresse', ''),
+            company_telephone=identite.get('telephone', ''),
+            company_email=identite.get('email', ''),
+            couleur_principale=identite.get('couleur_principale', ''),
+        )
+    except Exception:  # noqa: BLE001 — un email ne casse jamais sur ce point
+        return ''
+
+
 def _dispatch_email(user, title, body):
     """Diffuse une notification par email via le backend Django configuré.
 
     NO-OP silencieux si l'email n'est pas configuré ou si l'utilisateur n'a pas
-    d'adresse. Best-effort : jamais d'exception remontée."""
+    d'adresse. Best-effort : jamais d'exception remontée.
+
+    VX76 — le corps texte reste le corps MIME principal (repli ``text/plain``
+    inchangé) ; une alternative ``text/html`` brandée (wrapper logo/en-tête
+    navy/pied) est ajoutée quand le rendu réussit — additif, jamais cassant."""
     dest = (getattr(user, 'email', '') or '').strip()
     if not dest or not _is_email_configured():
         return False
     try:
         from django.conf import settings
-        from django.core.mail import EmailMessage, get_connection
+        from django.core.mail import EmailMultiAlternatives, get_connection
         from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', '') or 'noreply@erp.local'
         connection = get_connection(fail_silently=True)
-        EmailMessage(
-            subject=title[:300], body=body or title,
+        corps = body or title
+        msg = EmailMultiAlternatives(
+            subject=title[:300], body=corps,
             from_email=from_email, to=[dest], connection=connection,
-        ).send(fail_silently=True)
+        )
+        html = _branded_html(getattr(user, 'company', None), title, corps)
+        if html:
+            msg.attach_alternative(html, 'text/html')
+        msg.send(fail_silently=True)
         return True
     except Exception as exc:  # pragma: no cover - dépend du backend réel
         logger.warning('Notification email échouée vers %s : %s', dest, exc)
@@ -272,6 +301,22 @@ def _dispatch_webpush(user, title, body, link=None):
     return sent
 
 
+def resolve_recipients_reason(company, event_type):
+    """VX212(a) — la raison (`models.NotificationReason`) qu'appliquera
+    `resolve_recipients` pour cet événement+société : `'regle_de_routage'`
+    si une `NotificationRoutingRule` active existe, sinon `'manager'` (repli
+    historique — managers actifs). Best-effort : toute erreur renvoie ''
+    (raison non classée) plutôt qu'une exception."""
+    try:
+        from .models import NotificationReason
+        exists = NotificationRoutingRule.objects.filter(
+            company=company, event_type=event_type, enabled=True).exists()
+        return (NotificationReason.ROUTING_RULE if exists
+                else NotificationReason.MANAGER)
+    except Exception:  # pragma: no cover - défensif
+        return ''
+
+
 def resolve_recipients(company, event_type):
     """FG4 — Résout la liste des destinataires pour un événement et une société.
 
@@ -321,15 +366,18 @@ def resolve_recipients(company, event_type):
         return get_user_model().objects.none()
 
 
-def notify_many(recipients, event_type, title, body='', link=None, company=None):
+def notify_many(recipients, event_type, title, body='', link=None, company=None,
+                reason=''):
     """Émet une notification vers une liste de destinataires.
 
     Appelle `notify()` pour chaque utilisateur. Best-effort par destinataire :
-    une erreur sur l'un n'interrompt pas les suivants."""
+    une erreur sur l'un n'interrompt pas les suivants. `reason` (VX212(a)) —
+    transmise telle quelle à chaque `notify()`."""
     created = []
     for user in recipients:
         try:
-            n = notify(user, event_type, title, body=body, link=link, company=company)
+            n = notify(user, event_type, title, body=body, link=link,
+                       company=company, reason=reason)
             if n is not None:
                 created.append(n)
         except Exception as exc:  # pragma: no cover - défensif
@@ -337,12 +385,44 @@ def notify_many(recipients, event_type, title, body='', link=None, company=None)
     return created
 
 
+def _in_quiet_hours_non_critique(event_type, company, respect_quiet_hours):
+    """VX209(a) — True si les canaux HORS-APP de `event_type` doivent être
+    tus MAINTENANT pour `company` : le flag est actif, l'événement n'est PAS
+    critique (`severity.severity_of`), et l'instant présent tombe dans la
+    fenêtre de silence (nuit ou jour férié/non-ouvré,
+    `selectors.est_hors_fenetre_silence`). L'in-app n'est JAMAIS concerné —
+    seul l'appelant de `notify()` décide d'en tenir compte pour email/
+    WhatsApp/push. Best-effort : toute erreur retombe sur `False` (ne JAMAIS
+    faire échouer une notification pour une histoire d'heures calmes)."""
+    from django.conf import settings
+    # VX209 — les heures calmes sont OPT-IN (le docstring parle d'un « flag
+    # actif ») : sans activation explicite au niveau du déploiement, AUCUNE
+    # notification n'est mise en sourdine — sinon on suppprimerait en silence
+    # tous les email/WhatsApp/push hors-heures-ouvrées de TOUTES les sociétés
+    # qui n'ont jamais rien configuré (régression). Défaut False = comportement
+    # historique (toujours notifier). Un vrai réglage par société remplacera ce
+    # drapeau global plus tard.
+    if not respect_quiet_hours or not getattr(
+            settings, 'NOTIFICATIONS_QUIET_HOURS_ENABLED', False):
+        return False
+    try:
+        from . import severity as severity_module
+        if severity_module.severity_of(event_type) == severity_module.CRITIQUE:
+            return False
+        from . import selectors as notifications_selectors
+        return notifications_selectors.est_hors_fenetre_silence(
+            timezone.now(), company)
+    except Exception:  # pragma: no cover - défensif
+        return False
+
+
 def notify(user, event_type, title, body='', link=None, company=None,
-           skip_email=False):
+           skip_email=False, reason='', respect_quiet_hours=True):
     """Émet une notification pour `user` en respectant ses préférences.
 
-    - Crée la ligne in-app si le canal in-app est activé (défaut : oui).
-    - Diffuse vers email/WhatsApp si le canal est activé ET configuré
+    - Crée la ligne in-app si le canal in-app est activé (défaut : oui) —
+      TOUJOURS immédiate, jamais différée par les heures calmes.
+    - Diffuse vers email/WhatsApp/push si le canal est activé ET configuré
       (best-effort, jamais d'exception remontée).
 
     `event_type` doit appartenir à `EventType`. La société est déduite de
@@ -353,6 +433,21 @@ def notify(user, event_type, title, body='', link=None, company=None,
     diffusion email pour ce même événement (ex. le fan-out canal-aliasé
     e-mail du chat) d'éviter un double envoi — in-app/WhatsApp/push
     restent inchangés.
+
+    `reason` (VX212(a)) : raison COURTE optionnelle (`models.
+    NotificationReason`) — « pourquoi je reçois ça », posée par l'appelant
+    QUAND il la connaît (ex. `_managers(company)` → `'manager'`). Une valeur
+    hors énumération est silencieusement ignorée (jamais une exception) ;
+    vide = raison non classée, comportement historique inchangé.
+
+    `respect_quiet_hours` (VX209(a), défaut `True`) : quand l'événement n'est
+    PAS classé `'critique'` (`severity.EVENT_SEVERITY`) et que l'instant
+    présent tombe dans la fenêtre de silence de `company` (nuit stricte ou
+    jour férié/non-ouvré — `selectors.est_hors_fenetre_silence`), les canaux
+    HORS-APP (email/WhatsApp/push) sont SKIPPÉS pour cet appel — la ligne
+    in-app reste créée normalement. Un événement `'critique'` part toujours,
+    à toute heure. Passer `False` préserve le comportement historique (envoi
+    à toute heure) pour un appelant qui gère déjà sa propre fenêtre.
     """
     if user is None or not getattr(user, 'pk', None):
         return None
@@ -361,7 +456,20 @@ def notify(user, event_type, title, body='', link=None, company=None,
         return None
 
     company = company if company is not None else getattr(user, 'company', None)
+
+    # ODX23 — un événement d'un module ModuleToggle-OFF pour la société ne
+    # notifie plus personne (no-op best-effort, même politique que
+    # l'enforcement API ODX4). Whitelist fermée et partielle : voir
+    # apps.notifications.module_gating.EVENT_MODULE.
+    from .module_gating import event_module_disabled
+    if event_module_disabled(event_type, company):
+        return None
+
     prefs = resolve_prefs(user, event_type)
+    from .models import NotificationReason
+    reason = reason if reason in NotificationReason.values else ''
+    quiet_now = _in_quiet_hours_non_critique(
+        event_type, company, respect_quiet_hours)
 
     created = None
     if prefs.get('in_app'):
@@ -369,7 +477,7 @@ def notify(user, event_type, title, body='', link=None, company=None,
             created = Notification.objects.create(
                 company=company, recipient=user, event_type=event_type,
                 title=str(title)[:255], body=str(body or '')[:MAX_BODY_LEN],
-                link=str(link or '')[:512])
+                link=str(link or '')[:512], reason=reason)
         except Exception as exc:  # pragma: no cover - défensif
             logger.warning('Création notification in-app échouée : %s', exc)
             created = None
@@ -377,6 +485,12 @@ def notify(user, event_type, title, body='', link=None, company=None,
             _audit_notify(
                 user, company, event_type, channel='in_app', ok=True,
                 instance=created)
+
+    if quiet_now:
+        # VX209(a) — heures calmes : in-app livré ci-dessus, canaux hors-app
+        # tus pour ce cycle (jamais de file d'attente/retry dans ce moteur —
+        # comportement identique à un opt-out ponctuel du canal).
+        return created
 
     # Diffusions hors-app : best-effort, chacune isolée.
     if prefs.get('email') and not skip_email:
@@ -564,6 +678,78 @@ def set_template_approval_status(template, statut, *, motif_rejet=''):
         motif_rejet or '') if statut == WhatsAppTemplate.StatutApprobation.REJETE else ''
     template.save(update_fields=['statut_approbation', 'motif_rejet', 'updated_at'])
     return template
+
+
+# =============================================================================
+# XMKT10 — Canal WhatsApp dans les campagnes (opt-in, gated).
+# =============================================================================
+
+def render_whatsapp_template(template, *, prenom='', ville=''):
+    """Substitue ``{prenom}``/``{ville}`` dans l'aide-mémoire du gabarit BSP
+    (même convention que ``crm.MessageTemplate.render``). ``template`` peut
+    être ``None`` (renvoie une chaîne vide) — l'appelant retombe alors sur le
+    corps libre de la campagne."""
+    if template is None:
+        return ''
+    return (template.body_fr or '').replace(
+        '{prenom}', prenom or '').replace('{ville}', ville or '')
+
+
+def send_whatsapp_campaign_message(company, *, recipient, body, campagne_id=None,
+                                   template=None):
+    """XMKT10 — envoie (ou prépare) UN message WhatsApp de campagne et le
+    journalise TOUJOURS dans ``WhatsAppMessageLog``, lié à la campagne par
+    ``campagne_id`` (référence opaque — ``notifications`` n'importe jamais
+    ``apps.marketing``).
+
+    Réutilise ``notifications.whatsapp_bsp.get_whatsapp_provider()`` (QJ23/
+    FG33) : sans jeton BSP configuré, ``ManualWaMeProvider`` construit un lien
+    wa.me — AUCUN appel réseau, comportement manuel actuel préservé à 100 %.
+    Avec ``WHATSAPP_BSP_ENABLED=1`` + credentials complets, ``BspProvider``
+    est utilisé (scaffold : retombe encore sur le lien manuel tant que
+    ``_send_via_api`` n'est pas branché par le fondateur — voir whatsapp_bsp.py).
+
+    Renvoie un dict ``{'log': WhatsAppMessageLog, 'url': str|None,
+    'provider': 'manual'|'bsp'}``. Ne lève jamais d'exception (best-effort,
+    comme ``notify()``). Ne journalise jamais ``prix_achat``/marge (appelant
+    responsable du corps du message)."""
+    from .models import WhatsAppMessageLog
+    from .whatsapp_bsp import get_whatsapp_provider
+
+    recipient = (recipient or '').strip()
+    result = {'log': None, 'url': None, 'provider': 'manual'}
+    if not recipient:
+        return result
+    try:
+        provider = get_whatsapp_provider()
+        wa_result = provider.get_wa_url(recipient, body or '')
+    except Exception as exc:  # pragma: no cover - défensif
+        logger.warning('send_whatsapp_campaign_message: provider échoué : %s', exc)
+        wa_result = {'url': None, 'provider': 'manual'}
+    provider_name = wa_result.get('provider') or 'manual'
+    url = wa_result.get('url')
+    is_bsp = provider_name == 'bsp'
+    if is_bsp:
+        status = WhatsAppMessageLog.Status.SENT
+        provider_choice = WhatsAppMessageLog.Provider.BSP
+    else:
+        status = WhatsAppMessageLog.Status.MANUAL
+        provider_choice = WhatsAppMessageLog.Provider.MANUAL
+    try:
+        log = WhatsAppMessageLog.objects.create(
+            company=company, recipient=recipient, body=body or '',
+            template=template,
+            status=status,
+            provider=provider_choice,
+            campagne_id=campagne_id,
+        )
+    except Exception as exc:  # pragma: no cover - défensif
+        logger.warning('send_whatsapp_campaign_message: log échoué : %s', exc)
+        log = None
+    result['log'] = log
+    result['url'] = url
+    result['provider'] = provider_name
+    return result
 
 
 # =============================================================================
@@ -900,3 +1086,59 @@ def sweep_approval_reminders(company, *, today=None):
         logger.warning('sweep_approval_reminders: compta échoué : %s', exc)
 
     return count
+
+
+# =============================================================================
+# VX210(b) — snooze GÉNÉRIQUE d'un item d'approbation (SnoozedItem).
+# Écriture EXCLUSIVEMENT via ces deux fonctions — jamais un import direct de
+# `SnoozedItem` par un appelant cross-app (ex. `apps.records.views`).
+# =============================================================================
+
+def snooze_approbation_item(company, user, source, object_id, snoozed_until):
+    """Snooze/upsert un item d'approbation hétérogène (5 sources de
+    ``reporting.approbations``) jusqu'à ``snoozed_until`` pour ``user``.
+    Idempotent (une ligne existante est mise à jour, pas dupliquée)."""
+    from .models import SnoozedItem
+    obj, _created = SnoozedItem.objects.update_or_create(
+        user=user, source=source, object_id=object_id,
+        defaults={'company': company, 'snoozed_until': snoozed_until})
+    return obj
+
+
+def unsnooze_approbation_item(user, source, object_id):
+    """Annule le snooze d'un item d'approbation (redevient visible dans « Ma
+    file » immédiatement). No-op silencieux si rien n'était snoozé."""
+    from .models import SnoozedItem
+    SnoozedItem.objects.filter(
+        user=user, source=source, object_id=object_id).delete()
+
+
+def notify_security_change(user, title, body='', *, link=None, company=None):
+    """NTSEC30 — notification OBLIGATOIRE de changement de sécurité.
+
+    Au changement d'un facteur de sécurité (mot de passe, MFA activée/désactivée,
+    passkey ajouté/retiré, nouvelle session inconnue), l'utilisateur concerné est
+    TOUJOURS averti : la ligne in-app ET l'email sont émis en CONTOURNANT les
+    préférences de notification (exigence de sécurité — non désactivable). Best-
+    effort et jamais bloquant : toute erreur est avalée. Scopé société.
+    """
+    if user is None or not getattr(user, 'pk', None):
+        return None
+    company = company if company is not None else getattr(user, 'company', None)
+    event_type = EventType.SECURITY_CHANGE
+    created = None
+    try:
+        created = Notification.objects.create(
+            company=company, recipient=user, event_type=event_type,
+            title=str(title)[:255], body=str(body or '')[:MAX_BODY_LEN],
+            link=str(link or '')[:512])
+        _audit_notify(user, company, event_type, channel='in_app', ok=True,
+                      instance=created)
+    except Exception as exc:  # pragma: no cover - défensif
+        logger.warning('Notification sécurité in-app échouée : %s', exc)
+    # Email TOUJOURS tenté (best-effort), indépendamment des préférences.
+    try:
+        _dispatch_email(user, str(title), str(body or ''))
+    except Exception as exc:  # pragma: no cover - défensif
+        logger.warning('Email notification sécurité échoué : %s', exc)
+    return created

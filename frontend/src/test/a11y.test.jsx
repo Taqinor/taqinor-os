@@ -19,6 +19,16 @@ vi.mock('../components/layout/NotificationBell', () => ({ default: () => null })
 vi.mock('../components/layout/ChatBell', () => ({ default: () => null }))
 vi.mock('../components/layout/GlobalSearch', () => ({ default: () => null }))
 vi.mock('../design/ThemeToggle', () => ({ ThemeToggle: () => null }))
+// VX46 — PreferencesPanel dépend lui aussi d'un ThemeProvider (useDensity),
+// hors périmètre de ce test (comme ThemeToggle ci-dessus).
+vi.mock('../pages/preferences/PreferencesPanel', () => ({ default: () => null }))
+// VX181 — Header appelle désormais useTheme() directement (3 options thème du
+// menu utilisateur, seul accès sous md où ThemeToggle est masqué) : même
+// hors-périmètre ThemeProvider que ci-dessus, on fournit un repli minimal
+// (convention identique à components/layout/Header.test.jsx).
+vi.mock('../design/theme-context', () => ({
+  useTheme: () => ({ theme: 'system', setTheme: vi.fn() }),
+}))
 
 import Breadcrumbs from '../components/layout/Breadcrumbs'
 import BottomTabBar from '../components/layout/BottomTabBar'
@@ -65,10 +75,14 @@ describe('a11y (N163) — coquille', () => {
   })
 
   it('BottomTabBar n’a aucune violation axe', async () => {
+    // VX12 — le tiroir « Plus » lit role/permissions via useSelector (mêmes
+    // règles de gating que la Sidebar) : un Provider est désormais nécessaire.
     const { container } = render(
-      <MemoryRouter initialEntries={['/dashboard']}>
-        <BottomTabBar onMore={() => {}} />
-      </MemoryRouter>,
+      <Provider store={authStore()}>
+        <MemoryRouter initialEntries={['/dashboard']}>
+          <BottomTabBar />
+        </MemoryRouter>
+      </Provider>,
     )
     const results = await axe(container)
     expect(results).toHaveNoViolations()

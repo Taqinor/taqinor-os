@@ -1,0 +1,433 @@
+# ---------------------------------------------------------------------------
+# BUILD_ORDER.yml — machine-readable wave DAG for plan-run lane ordering.
+# ---------------------------------------------------------------------------
+# SCA1 (docs/PLAN.md, Groupe SCA §A). Pure data — zero business logic. Read by:
+#   - scripts/plan_lanes.py   (SCA3 — refuses a lane whose prerequisite group
+#     is under its threshold; --force-wave overrides, logged)
+#   - scripts/check_build_order.py (SCA5 — CI validation: acyclic, thresholds
+#     parseable, every plan prefix mapped or listed unmapped_ok)
+#   - scripts/plan_progress.py (SCA2 — supplies the done/total/pct per prefix
+#     that a threshold check reads)
+#
+# Thesis (accepted charter, docs/PLAN.md Groupe SCA intro): noyau ARC -> NTPLT
+# + NTSEC -> reste du Tier-1 (NTAPI/NTOBS/NTGRC/NTADM/NTMAR) -> floods
+# features/verticaux. Enforced by machinery (this file + the two scripts
+# above), not by wishes.
+#
+# ---------------------------------------------------------------------------
+# FORMAT (deliberately a minimal, hand-parseable YAML subset — see
+# scripts/check_build_order.py::_MiniYamlParser for the exact grammar
+# supported: 2-space indents, `key: value` mappings, nested mappings, flow
+# lists `[a, b, c]`, `#` line comments, no anchors/tags/multiline scalars.
+# The stage-names CI job (scripts/check_build_order.py) has no PyYAML
+# install step today, so this file is parsed with a stdlib-only subset
+# parser, not a real YAML library — keep new entries inside the subset).
+#
+# waves:
+#   <WAVE_LETTER>:
+#     order: <int>                  # ascending build order, 1 = earliest
+#     description: "<prose>"
+#     groups: [PREFIX, PREFIX, ...] # task-id prefixes that belong to this wave
+#
+# edges: a list of prerequisite rules. Each entry:
+#   group: <prefix-or-alias>        # the group this edge constrains
+#   wave: <WAVE_LETTER>             # the wave it targets (informational,
+#                                    # must match the group's wave assignment)
+#   after:                          # mapping of prerequisite-group -> pct threshold
+#     <prefix-or-alias>: <0-100>
+#
+# aliases: named groups of prefixes used as a single prerequisite target in
+# `after:` (e.g. ARC-noyau = the 11 kernel ARC tasks, distinct from the ARC
+# sweep tasks that consume them).
+#
+# unmapped_ok: prefixes intentionally NOT assigned to a wave (single-off IDs,
+# nearly-drained legacy groups, or non-plan-queue letters) — plan_lanes.py /
+# check_build_order.py treat these as pass-through (no ordering constraint,
+# never flagged as orphaned).
+# ---------------------------------------------------------------------------
+
+waves:
+  A:
+    order: 1
+    description: >-
+      Noyau ARC (kernel primitives every later layer composes on) + every
+      SCA section that has no prerequisite (gouvernance/capacite/lifecycle/
+      white-label/perf/revenus/moat) — all buildable in parallel, no gating.
+    groups: [ARC-noyau, SCA-gov, SCA-capacity, SCA-lifecycle, SCA-whitelabel, SCA-perf, SCA-revenue, SCA-moat]
+  A2:
+    order: 2
+    description: >-
+      ARC sweeps that consume the noyau primitives, and the SCA kit
+      DocumentMetier (SCA30-38) which composes ARC1/2/6/8/10/11 into one
+      abstraction — both gated on ARC-noyau reaching its threshold.
+    groups: [ARC-sweep, SCA-kit-document]
+  B:
+    order: 3
+    description: >-
+      Platform + security backbone: NTPLT (multi-tenant scaling primitives:
+      RLS, outbox, keyset pagination, tenant cache, partitioning, purge,
+      Celery fairness, load harness, pgbouncer, tenant export/clone/restore)
+      and NTSEC (SSO/SCIM/identity) — gated on the ARC kernel being mostly
+      landed.
+    groups: [NTPLT, NTSEC]
+  C:
+    order: 4
+    description: >-
+      Rest of Tier-1 platform surface: public API quotas/limits (NTAPI),
+      observability/status/SLA (NTOBS), governance/legal-hold/compliance
+      (NTGRC), admin/licensing/sandboxing (NTADM), and marketplace/partner
+      surface (NTMAR) — gated on NTPLT+NTSEC being mostly landed.
+    groups: [NTAPI, NTOBS, NTGRC, NTADM, NTMAR]
+  D:
+    order: 5
+    description: >-
+      Floods: feature/vertical groups (finance through agriculture and every
+      other NT* vertical/domain group not already placed in B or C) — gated
+      on the Tier-1 wave (C) being mostly landed. NTFIN is the named example
+      in the SCA1 task text (after ARC-noyau:80, NTPLT:60); the same rule
+      extends to every group in this wave's list.
+    groups: [NTFIN, NTAGR, NTAI, NTASS, NTCOL, NTCON, NTCPQ, NTCRD, NTCRM, NTDATA, NTDMO, NTDOC, NTDST, NTEDU, NTESG, NTEXT, NTFPA, NTFSM, NTHCM, NTHOT, NTIDE, NTJUR, NTLOG, NTMFG, NTMIG, NTMKT, NTMOB, NTNRG, NTPAY, NTPRJ, NTPRO, NTPRT, NTRET, NTSAN, NTSCM, NTSRV, NTSUB, NTSVC, NTTRE, NTUX, NTWFL, NTWMS]
+
+# Aliases resolve a prerequisite name in `after:` to one-or-more real wave
+# groups. ARC-noyau / ARC-sweep are themselves aliases for explicit ARC
+# task-number subsets (task numbers, not separate task-id prefixes — both
+# alias entries share the literal prefix "ARC" but constrain a numbered
+# subset via `members`).
+aliases:
+  ARC-noyau:
+    prefix: ARC
+    members: [1, 2, 6, 8, 10, 11, 14, 17, 28, 42, 52]
+  ARC-sweep:
+    prefix: ARC
+    members: [3, 4, 5, 7, 12]
+  SCA-gov:
+    prefix: SCA
+    members: [1, 2, 3, 4, 5, 6]
+  SCA-capacity:
+    prefix: SCA
+    members: [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]
+  SCA-lifecycle:
+    prefix: SCA
+    members: [18, 19, 20, 21, 22, 23]
+  SCA-whitelabel:
+    prefix: SCA
+    members: [24, 25, 26, 27, 28, 29]
+  SCA-kit-document:
+    prefix: SCA
+    members: [30, 31, 32, 33, 34, 35, 36, 37, 38]
+  SCA-perf:
+    prefix: SCA
+    members: [39, 40, 41, 42, 43]
+  SCA-revenue:
+    prefix: SCA
+    members: [44, 45]
+  SCA-moat:
+    prefix: SCA
+    members: [46, 47, 48, 49]
+
+# Prerequisite edges. `after:` thresholds are percent-complete (0-100) of the
+# named prerequisite group/alias, as measured by scripts/plan_progress.py.
+edges:
+  - group: ARC-sweep
+    wave: A2
+    after:
+      ARC-noyau: 80
+  - group: SCA-kit-document
+    wave: A2
+    after:
+      ARC-noyau: 80
+  - group: NTPLT
+    wave: B
+    after:
+      ARC-noyau: 80
+  - group: NTSEC
+    wave: B
+    after:
+      ARC-noyau: 80
+  - group: NTAPI
+    wave: C
+    after:
+      NTPLT: 60
+      NTSEC: 60
+  - group: NTOBS
+    wave: C
+    after:
+      NTPLT: 60
+      NTSEC: 60
+  - group: NTGRC
+    wave: C
+    after:
+      NTPLT: 60
+      NTSEC: 60
+  - group: NTADM
+    wave: C
+    after:
+      NTPLT: 60
+      NTSEC: 60
+  - group: NTMAR
+    wave: C
+    after:
+      NTPLT: 60
+      NTSEC: 60
+  - group: NTFIN
+    wave: D
+    after:
+      ARC-noyau: 80
+      NTPLT: 60
+  - group: NTAGR
+    wave: D
+    after:
+      ARC-noyau: 80
+      NTPLT: 60
+  - group: NTAI
+    wave: D
+    after:
+      NTPLT: 60
+  - group: NTASS
+    wave: D
+    after:
+      NTPLT: 60
+  - group: NTCOL
+    wave: D
+    after:
+      NTPLT: 60
+  - group: NTCON
+    wave: D
+    after:
+      NTPLT: 60
+  - group: NTCPQ
+    wave: D
+    after:
+      NTPLT: 60
+  - group: NTCRD
+    wave: D
+    after:
+      NTPLT: 60
+  - group: NTCRM
+    wave: D
+    after:
+      NTPLT: 60
+  - group: NTDATA
+    wave: D
+    after:
+      NTPLT: 60
+  - group: NTDMO
+    wave: D
+    after:
+      NTPLT: 60
+  - group: NTDOC
+    wave: D
+    after:
+      NTPLT: 60
+  - group: NTDST
+    wave: D
+    after:
+      NTPLT: 60
+  - group: NTEDU
+    wave: D
+    after:
+      NTPLT: 60
+  - group: NTESG
+    wave: D
+    after:
+      NTPLT: 60
+  - group: NTEXT
+    wave: D
+    after:
+      NTPLT: 60
+  - group: NTFPA
+    wave: D
+    after:
+      NTPLT: 60
+  - group: NTFSM
+    wave: D
+    after:
+      NTPLT: 60
+  - group: NTHCM
+    wave: D
+    after:
+      NTPLT: 60
+  - group: NTHOT
+    wave: D
+    after:
+      NTPLT: 60
+  - group: NTIDE
+    wave: D
+    after:
+      NTPLT: 60
+  - group: NTJUR
+    wave: D
+    after:
+      NTPLT: 60
+  - group: NTLOG
+    wave: D
+    after:
+      NTPLT: 60
+  - group: NTMFG
+    wave: D
+    after:
+      NTPLT: 60
+  - group: NTMIG
+    wave: D
+    after:
+      NTPLT: 60
+  - group: NTMKT
+    wave: D
+    after:
+      NTPLT: 60
+  - group: NTMOB
+    wave: D
+    after:
+      NTPLT: 60
+  - group: NTNRG
+    wave: D
+    after:
+      NTPLT: 60
+  - group: NTPAY
+    wave: D
+    after:
+      NTPLT: 60
+  - group: NTPRJ
+    wave: D
+    after:
+      NTPLT: 60
+  - group: NTPRO
+    wave: D
+    after:
+      NTPLT: 60
+  - group: NTPRT
+    wave: D
+    after:
+      NTPLT: 60
+  - group: NTRET
+    wave: D
+    after:
+      NTPLT: 60
+  - group: NTSAN
+    wave: D
+    after:
+      NTPLT: 60
+  - group: NTSCM
+    wave: D
+    after:
+      NTPLT: 60
+  - group: NTSRV
+    wave: D
+    after:
+      NTPLT: 60
+  - group: NTSUB
+    wave: D
+    after:
+      NTPLT: 60
+  - group: NTSVC
+    wave: D
+    after:
+      NTPLT: 60
+  - group: NTTRE
+    wave: D
+    after:
+      NTPLT: 60
+  - group: NTUX
+    wave: D
+    after:
+      NTPLT: 60
+  - group: NTWFL
+    wave: D
+    after:
+      NTPLT: 60
+  - group: NTWMS
+    wave: D
+    after:
+      NTPLT: 60
+
+# Prefixes intentionally left OUT of the wave DAG — no ordering constraint,
+# never flagged orphaned by check_build_order.py. Inventoried by grep across
+# docs/PLAN.md, docs/PLAN2.md, docs/new_tasks_plan.md, docs/FRONTEND_GAP_PLAN.md
+# on 2026-07-09/10 (SCA1 build).
+unmapped_ok:
+  # docs/PLAN.md — legacy/near-drained single-off groups predating the ARC/NT
+  # wave thesis; a handful of open tasks remain but the groups themselves are
+  # not part of the noyau -> NTPLT+NTSEC -> Tier-1 -> floods ordering.
+  - DC      # data-consolidation follow-ups (DC34 open; DECISION founder-gated)
+  - FG      # legacy "feature gap" numbering predating ARC/NT (FG386 open)
+  - N       # N100/N101/N102 SaaS-console envelopes, deferred by annotation
+  - ODX     # Odoo-parity split remnants
+  - QPERF   # single perf task, landed by SCA43 (annotated, not re-run here)
+  - XACC
+  - XKB
+  - XMFG
+  - XMKT
+  - XPLT
+  - XPOS
+  - XSAL
+  - XSAV
+  - XSTK
+  - YAPIC
+  - YCASH
+  - YDATA
+  - YHARD
+  - YOPSB
+  - YRBAC
+  - YSERV
+  - YTEST
+  - ZFAC
+  - ZMFG
+  - ZSAL
+  - ZSTK
+  # docs/PLAN2.md — small remnants / not NT/ARC/SCA-scoped.
+  - QC
+  - QW
+  - QX      # UI round-6 backlog (PR #350, landed after the SCA1 inventory) —
+  - QXG     # pure frontend waves outside the noyau->floods ordering.
+  - S
+  - VX      # frontend UI-redesign wave (PLAN2), drains before PLAN.md by
+            # standing rule but is not part of the backend ARC/NT wave DAG.
+  # docs/new_tasks_plan.md — "P" is NOT a real task-id prefix: it is the
+  # phase-numbering label ("#### P1 — ...", "#### P2 — ...") reused inside
+  # EVERY NT group's own section headers (verified: zero "- [ ] P<n> —" task
+  # lines exist repo-wide, only "#### P<n> —" sub-section headers). Listed
+  # here defensively so a future literal "P<n>" task id is never silently
+  # treated as orphaned before a human re-examines it.
+  - P
+  # docs/FRONTEND_GAP_PLAN.md — frontend wiring tasks use a compound
+  # "FE-<domain>" id (e.g. FE-XFLT4, FE-COMPTA2), not a bare prefix; wiring
+  # tasks follow whichever backend the domain already shipped, not the
+  # ARC/NT backend wave DAG. Listed as every compound "FE-XXXX" prefix
+  # actually found (verified via scripts/plan_progress.py --compact output
+  # cross-checked against grep, 2026-07-10). No bare "FG"/"GED" task lines
+  # exist in this file (every apparent hit is really FE-FG.../FE-GED...).
+  - FE-COMPTA
+  - FE-CONTRAT
+  - FE-FG
+  - FE-GED
+  - FE-LITIGE
+  - FE-PROJ
+  - FE-SCA
+  - FE-XACC
+  - FE-XCTR
+  - FE-XFAC
+  - FE-XFLT
+  - FE-XGED
+  - FE-XKB
+  - FE-XMFG
+  - FE-XPAI
+  - FE-XPLT
+  - FE-XPOS
+  - FE-XPRJ
+  - FE-XPUR
+  - FE-XQHS
+  - FE-XRH
+  - FE-XSAL
+  - FE-XSAV
+  - FE-YHARD
+  - FE-YHIRE
+  - FE-ZACC
+  - FE-ZGED
+  - FE-ZMFG
+  - FE-ZPAI
+  - FE-ZPRJ
+  - FE-ZPUR
+  - FE-ZRH
+  - FE-ZSAL
+  - FE-ZSAV
+  - FE-ZSTK

@@ -6,22 +6,24 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Download, BarChart3, BookmarkPlus, Trash2, Pin, PinOff, Mail } from 'lucide-react'
-import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
-} from 'recharts'
 import api from '../api/axios'
 import reportingApi from '../api/reportingApi'
 import crmApi from '../api/crmApi'
 import { downloadXlsx } from '../api/importApi'
+import { downloadBlobInGesture } from '../utils/downloadBlob'
 import { formatNumber } from '../lib/format'
 import {
   Button, Card, CardHeader, CardTitle, CardDescription, CardContent,
-  Tabs, TabsList, TabsTrigger, TabsContent, Skeleton, EmptyState, Input,
+  Tabs, TabsList, TabsTrigger, TabsContent, Skeleton, EmptyState, Input, Spinner,
 } from '../ui'
-
-const CHART_PRIMARY = 'var(--color-info)'
-const CHART_GRID = 'var(--color-border)'
-const CHART_AXIS = 'var(--color-muted-foreground)'
+// VX28/VX148 — un seul langage de graphique (kit ui/charts), un seul
+// PageHeader, un seul moteur de table de reporting (Table partagé). VX148 —
+// un `BarArrondie` au-dessus des tables comparatives les plus consultées (la
+// table garde le détail chiffré) + `ChartEmpty` pour un graphe sans donnée.
+import { BarArrondie, ChartEmpty } from '../ui/charts'
+import { PageHeader } from '../ui/PageHeader'
+import { Table as SharedTable } from './reporting/Table'
+import { StateBlock } from '../components/StateBlock'
 
 // L9 — types filtrables du Journal d'activité (clés acceptées par ?type=).
 const AUDIT_TYPES = [
@@ -55,39 +57,40 @@ function auditRef(it) {
   return it.object_ref
 }
 
-// Tableau de données restylé (conserve la classe sémantique .data-table).
-// Enveloppé dans un conteneur scrollable horizontalement pour les tables
-// multi-colonnes sur petits écrans.
+// VX28 — un seul moteur de table de reporting : cet adaptateur mince délègue au
+// `Table` PARTAGÉ (pages/reporting/Table.jsx, tokenisé, scrollable PWA) tout en
+// gardant l'API historique de ce hub (`headers` + `rows` de tableaux + `footer`
+// de tableau) — donc AUCUN site d'appel n'a besoin de changer.
 //
 // L882 — `footer` (optionnel) : un tableau de cellules de pied « Total » rendu
 // dans un <tfoot>, calculé depuis les MÊMES données que les lignes. Masqué
 // quand il n'y a aucune ligne.
 function Table({ headers, rows, footer }) {
+  const columns = headers.map((h, j) => ({
+    key: String(j),
+    header: h,
+    // Les lignes de ce hub sont des TABLEAUX (une cellule par colonne) : on lit
+    // la cellule d'indice colonne.
+    cell: (row) => row[j],
+  }))
   return (
-    <div className="overflow-x-auto">
-      <table className="data-table mb-2">
-        <thead><tr>{headers.map(h => <th key={h}>{h}</th>)}</tr></thead>
-        <tbody>
-          {rows.map((r, i) => (
-            <tr key={i}>{r.map((c, j) => <td key={j} data-label={headers[j]}>{c}</td>)}</tr>
+    <SharedTable
+      className="mb-2"
+      columns={columns}
+      rows={rows}
+      empty={<span className="text-muted-foreground">Aucune donnée.</span>}
+      footer={footer && rows.length > 0 ? (
+        <tr className="border-t border-border font-semibold">
+          {footer.map((c, j) => (
+            <td key={j}
+                data-label={typeof headers[j] === 'string' ? headers[j] : undefined}
+                className="px-3 py-2 text-foreground">
+              {c}
+            </td>
           ))}
-          {!rows.length && (
-            <tr>
-              <td colSpan={headers.length} className="text-muted-foreground">Aucune donnée.</td>
-            </tr>
-          )}
-        </tbody>
-        {footer && rows.length > 0 && (
-          <tfoot>
-            <tr className="font-semibold">
-              {footer.map((c, j) => (
-                <td key={j} data-label={headers[j]}>{c}</td>
-              ))}
-            </tr>
-          </tfoot>
-        )}
-      </table>
-    </div>
+        </tr>
+      ) : null}
+    />
   )
 }
 
@@ -137,17 +140,21 @@ function ReportCard({ title, kind, params, children }) {
 
 // Carte « insight » avec un bouton d'export personnalisé (chemin différent des
 // rapports T13/T14/T15). onExport optionnel : pas de bouton si absent.
-function InsightCard({ title, note, onExport, children }) {
+// VX172 — `busy` : pending visible pendant l'export (VX49 pose déjà le toast
+// d'erreur ; ceci ajoute juste l'état chargement manquant).
+// VX189(c) — `className` passthrough (ex. `cv-auto` — content-visibility sur
+// une carte liste/texte sous le pli, jamais sur une carte à graphique).
+function InsightCard({ title, note, onExport, busy, className, children }) {
   return (
-    <Card>
+    <Card className={className}>
       <CardHeader className="flex-row items-start justify-between gap-3">
         <div className="space-y-1">
           <CardTitle>{title}</CardTitle>
           {note && <CardDescription>{note}</CardDescription>}
         </div>
         {onExport && (
-          <Button variant="outline" size="sm" onClick={onExport}>
-            <Download /> Exporter Excel
+          <Button variant="outline" size="sm" onClick={onExport} disabled={!!busy}>
+            {busy ? <Spinner /> : <Download />} Exporter Excel
           </Button>
         )}
       </CardHeader>
@@ -392,25 +399,28 @@ function MesRapports() {
   )
 }
 
-// Carte d'erreur FR quand un rapport échoue (réseau / serveur).
-function ErrorCard({ title, message }) {
+// VX67 — Carte d'erreur FR quand un rapport échoue (réseau / serveur),
+// StateBlock apporte un bouton « Réessayer » câblé sur le reload de CETTE
+// carte (onRetry), là où l'ancienne carte n'offrait aucun moyen de réessayer
+// sans recharger toute la page.
+function ErrorCard({ title, message, onRetry }) {
   return (
     <Card>
       <CardHeader><CardTitle>{title}</CardTitle></CardHeader>
       <CardContent>
-        <p className="text-sm text-destructive">{message || 'Rapport indisponible'}</p>
+        <StateBlock error={message || 'Rapport indisponible'} onRetry={onRetry} />
       </CardContent>
     </Card>
   )
 }
 
-// Carte « chargement » explicite (libellé FR + squelette).
+// Carte « chargement » explicite (libellé FR + squelette) via StateBlock.
 function LoadingCard({ title }) {
   return (
     <Card>
       <CardHeader><CardTitle>{title}</CardTitle></CardHeader>
       <CardContent>
-        <p className="text-sm text-muted-foreground">Chargement…</p>
+        <StateBlock loading loadingText="Chargement…" />
         <Skeleton className="mt-2 h-24 w-full" />
       </CardContent>
     </Card>
@@ -519,12 +529,59 @@ export function Component() {
     resetAuditCard(); setAuditUser(''); setAuditType(''); setAuditSince('')
   }
 
-  const exportInsight = (slug, params) => () => reportingApi.insightXlsx(slug, params)
-    .then(r => downloadXlsx(r.data, `${slug}.xlsx`)).catch(() => {})
+  // VX172 — geste ouvert AVANT le premier `await` + pending visible par carte
+  // (clé = slug) sur les boutons « Exporter Excel » des Insights.
+  const [insightExportBusy, setInsightExportBusy] = useState({})
+  const exportInsight = (slug, params) => () => {
+    const pending = downloadBlobInGesture()
+    setInsightExportBusy((b) => ({ ...b, [slug]: true }))
+    reportingApi.insightXlsx(slug, params)
+      .then(r => pending.deliver(r.data, `${slug}.xlsx`))
+      .catch(() => {})
+      .finally(() => setInsightExportBusy((b) => ({ ...b, [slug]: false })))
+  }
 
   const periodParams = {}
   if (from) periodParams.from = from
   if (to) periodParams.to = to
+
+  // VX67 — recharge UNE SEULE carte par sa clé (utilisé par le bouton
+  // « Réessayer » de StateBlock/ErrorCard). Reprend exactement les mêmes
+  // requêtes/params que les effets ci-dessus, sans jamais recharger la page.
+  const reloadCard = (key) => {
+    setCardStatus(key, undefined)
+    if (key === 'sales') {
+      const params = {}
+      if (from) params.from = from
+      if (to) params.to = to
+      load('sales', api.get('/reporting/reports/sales/', { params }), setSales)
+    } else if (key === 'stock') {
+      const params = {}
+      if (from) params.from = from
+      if (to) params.to = to
+      load('stock', api.get('/reporting/reports/stock/', { params }), setStock)
+    } else if (key === 'service') {
+      const params = {}
+      if (from) params.from = from
+      if (to) params.to = to
+      load('service', api.get('/reporting/reports/service/', { params }), setService)
+    } else if (key === 'attribution') {
+      const attrParams = {}
+      if (from) attrParams.debut = from
+      if (to) attrParams.fin = to
+      load('attribution', crmApi.getAttributionLeads(attrParams), setAttribution)
+    } else if (key === 'recurring') {
+      load('recurring', reportingApi.recurringRevenue(), setRecurring)
+    } else if (key === 'jobCosting') {
+      load('jobCosting', reportingApi.jobCosting(), setJobCosting)
+    } else if (key === 'analytics') {
+      load('analytics', reportingApi.analytics(), setAnalytics)
+    } else if (key === 'commissions') {
+      load('commissions', reportingApi.commissions(), setCommissions)
+    } else if (key === 'audit') {
+      load('audit', reportingApi.auditLog(auditParams), setAudit)
+    }
+  }
 
   // Rendu d'une carte period-aware selon son état de chargement.
   const renderReportCard = (key, title, render) => {
@@ -532,16 +589,15 @@ export function Component() {
       return <LoadingCard title={title} />
     }
     if (status[key] === 'error') {
-      return <ErrorCard title={title} message="Rapport indisponible" />
+      return <ErrorCard title={title} message="Rapport indisponible" onRetry={() => reloadCard(key)} />
     }
     return render()
   }
 
   return (
     <div className="ui-root page" style={{ maxWidth: 1100 }}>
-      <div className="page-header" style={{ marginBottom: '1.5rem' }}>
-        <h2>Rapports</h2>
-      </div>
+      {/* VX28 — PageHeader unifié (remplace le `.page-header` + `<h2>` nu). */}
+      <PageHeader title="Rapports" icon={BarChart3} />
 
       <Tabs defaultValue="ventes">
         <TabsList className="flex-wrap">
@@ -573,6 +629,21 @@ export function Component() {
         <TabsContent value="ventes">
           {renderReportCard('sales', 'Ventes & pipeline', () => (
             <ReportCard title="Ventes & pipeline" kind="sales" params={periodParams}>
+              {/* VX148 — entonnoir en graphe AU-DESSUS de la table (qui garde
+                  le détail chiffré + les liens de drill-down). */}
+              {sales.funnel.length > 0 ? (
+                <BarArrondie
+                  data={sales.funnel.map((f) => ({ label: f.label, value: f.count }))}
+                  layout="vertical"
+                  tone="info"
+                  name="Leads"
+                  height={Math.max(140, sales.funnel.length * 34)}
+                  categoryWidth={110}
+                  tooltipFormat={(v) => `${fmt(v)} leads`}
+                />
+              ) : (
+                <ChartEmpty title="Aucun lead" />
+              )}
               {/* FG101 — funnel : clic sur étape → liste leads filtrée par stage */}
               <Table headers={['Étape', 'Leads']}
                      rows={sales.funnel.map(f => [
@@ -661,6 +732,21 @@ export function Component() {
                 {' · '}achat (interne) : <span className="tabular-nums">{fmt(stock.valorisation_achat)} DH</span>
               </p>
               <Subhead>Par catégorie</Subhead>
+              {/* VX148 — valeur vente HT par catégorie, en graphe (la table
+                  garde le détail nb articles + total). */}
+              {stock.par_categorie.length > 0 ? (
+                <BarArrondie
+                  data={stock.par_categorie.map((c) => ({ label: c.categorie__nom || '—', value: Number(c.valeur_vente) || 0 }))}
+                  layout="vertical"
+                  tone="primary"
+                  name="Valeur vente HT"
+                  height={Math.max(140, stock.par_categorie.length * 34)}
+                  categoryWidth={110}
+                  tooltipFormat={(v) => `${fmt(v)} DH`}
+                />
+              ) : (
+                <ChartEmpty title="Aucune catégorie" />
+              )}
               <Table headers={['Catégorie', 'Articles', 'Valeur vente HT']}
                      rows={stock.par_categorie.map(c => [c.categorie__nom || '—', fmt(c.nb), fmt(c.valeur_vente)])}
                      footer={['Total', fmt(sumBy(stock.par_categorie, 'nb')), fmt(sumBy(stock.par_categorie, 'valeur_vente'))]} />
@@ -687,6 +773,21 @@ export function Component() {
                 {' · '}garanties expirant ≤90 j : <span className="tabular-nums">{fmt(service.garanties_expirantes_90j)}</span>
               </p>
               <Subhead>Chantiers par statut</Subhead>
+              {/* VX148 — répartition en graphe AU-DESSUS de la table (qui
+                  garde le lien de drill-down par statut). */}
+              {service.chantiers_par_statut.length > 0 ? (
+                <BarArrondie
+                  data={service.chantiers_par_statut.map((c) => ({ label: c.statut, value: c.count }))}
+                  layout="vertical"
+                  tone="info"
+                  name="Chantiers"
+                  height={Math.max(140, service.chantiers_par_statut.length * 34)}
+                  categoryWidth={110}
+                  tooltipFormat={(v) => `${fmt(v)} chantier(s)`}
+                />
+              ) : (
+                <ChartEmpty title="Aucun chantier" />
+              )}
               {/* FG101 — clic sur statut → liste chantiers filtrée */}
               <Table headers={['Statut', 'Nombre']}
                      rows={service.chantiers_par_statut.map(c => [
@@ -706,9 +807,10 @@ export function Component() {
         <TabsContent value="insights">
           <div className="space-y-6">
             <InsightCard title="Revenu récurrent (contrats de maintenance)"
-                         onExport={exportInsight('recurring-revenue')}>
+                         onExport={exportInsight('recurring-revenue')}
+                         busy={insightExportBusy['recurring-revenue']}>
               {status.recurring === 'error' ? (
-                <p className="text-sm text-destructive">Rapport indisponible</p>
+                <StateBlock error="Rapport indisponible" onRetry={() => reloadCard('recurring')} />
               ) : recurring ? (
                 <>
                   <p className="text-sm">
@@ -726,7 +828,8 @@ export function Component() {
             </InsightCard>
 
             <InsightCard title="Journal d'activité (qui a fait quoi)"
-                         onExport={exportInsight('audit-log', auditParams)}>
+                         onExport={exportInsight('audit-log', auditParams)}
+                         busy={insightExportBusy['audit-log']}>
               {/* L9 — filtres user / type / depuis pilotant l'endpoint et l'export. */}
               <div className="mb-3 flex flex-wrap items-end gap-2">
                 <Input value={auditUser} onChange={onAuditUser}
@@ -749,7 +852,7 @@ export function Component() {
                 )}
               </div>
               {status.audit === 'error' ? (
-                <p className="text-sm text-destructive">Rapport indisponible</p>
+                <StateBlock error="Rapport indisponible" onRetry={() => reloadCard('audit')} />
               ) : audit ? (
                 <Table headers={['Date', 'Utilisateur', 'Type', 'Référence', 'Action']}
                        rows={audit.items.map(it => [
@@ -761,7 +864,8 @@ export function Component() {
 
             <InsightCard title="Coût de revient par chantier"
                          note="(interne — visible owner/responsable)"
-                         onExport={jobCosting ? exportInsight('job-costing') : undefined}>
+                         onExport={jobCosting ? exportInsight('job-costing') : undefined}
+                         busy={insightExportBusy['job-costing']}>
               {status.jobCosting === 'error' ? (
                 <p className="text-sm text-muted-foreground">Réservé admin / responsable.</p>
               ) : jobCosting ? (
@@ -785,9 +889,10 @@ export function Component() {
             </InsightCard>
 
             <InsightCard title="Analytics (délais & kWc installés)"
-                         onExport={exportInsight('analytics')}>
+                         onExport={exportInsight('analytics')}
+                         busy={insightExportBusy['analytics']}>
               {status.analytics === 'error' ? (
-                <p className="text-sm text-destructive">Rapport indisponible</p>
+                <StateBlock error="Rapport indisponible" onRetry={() => reloadCard('analytics')} />
               ) : analytics ? (
                 <>
                   <p className="text-sm">
@@ -796,33 +901,30 @@ export function Component() {
                   </p>
                   <Subhead>kWc installés par mois</Subhead>
                   {analytics.kwc_by_month.length > 0 ? (
-                    <ResponsiveContainer width="100%" height={220}>
-                      <BarChart data={analytics.kwc_by_month.map(m => ({ mois: m.mois, kwc: Number(m.kwc) }))}>
-                        <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
-                        <XAxis dataKey="mois" tick={{ fontSize: 11, fill: CHART_AXIS }} stroke={CHART_GRID} />
-                        <YAxis tick={{ fontSize: 11, fill: CHART_AXIS }} stroke={CHART_GRID} />
-                        <Tooltip
-                          contentStyle={{
-                            borderRadius: 8, fontSize: 12,
-                            background: 'var(--color-popover)',
-                            border: '1px solid var(--color-border)',
-                            color: 'var(--color-popover-foreground)',
-                          }}
-                        />
-                        <Bar dataKey="kwc" name="kWc" fill={CHART_PRIMARY} radius={[4, 4, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
+                    <BarArrondie
+                      data={analytics.kwc_by_month.map(m => ({ mois: m.mois, kwc: Number(m.kwc) }))}
+                      dataKey="kwc"
+                      categoryKey="mois"
+                      tone="info"
+                      name="kWc"
+                      height={220}
+                      tooltipFormat={(v) => formatNumber(v)}
+                    />
                   ) : (
-                    <EmptyState icon={BarChart3} title="Aucune donnée" className="border-0 py-6" />
+                    <ChartEmpty title="Aucune donnée" />
                   )}
                 </>
               ) : <p className="text-sm text-muted-foreground">Chargement…</p>}
             </InsightCard>
 
+            {/* VX189(c) — cv-auto : dernière carte de l'onglet Insights, liste/
+                texte (Table), jamais un graphique recharts. */}
             <InsightCard title="Commissions commerciales"
                          note="(interne — visible admin ; configuré dans Paramètres)"
                          onExport={commissions?.enabled
-                           ? exportInsight('commissions') : undefined}>
+                           ? exportInsight('commissions') : undefined}
+                         busy={insightExportBusy.commissions}
+                         className="cv-auto">
               {status.commissions === 'error' && (
                 <p className="text-sm text-muted-foreground">Réservé admin.</p>
               )}

@@ -39,7 +39,7 @@ def balayage_quotidien():
     Provider NoOp (ou config désactivée) → ``sync_system`` importe 0 relevé,
     aucun crash, comportement inchangé.
     """
-    from authentication.models import Company
+    from authentication.selectors import active_companies
 
     from .models import MonitoringConfig
     from .services import evaluate_underperformance, sync_system
@@ -48,7 +48,8 @@ def balayage_quotidien():
     total_importes = 0
     total_sous_performants = 0
 
-    for company in Company.objects.filter(actif=True):
+    # SCA19 — source unique : un tenant suspendu n'est plus balayé.
+    for company in active_companies():
         configs = (MonitoringConfig.objects
                    .filter(company=company)
                    .select_related('installation'))

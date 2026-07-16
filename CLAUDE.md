@@ -46,8 +46,10 @@ repo yet, the rule still applies to any future integration.
 - Backend: Django at `backend/django_core` (apps: authentication, stock, crm, ventes,
   reporting, parametres, roles, contact) + FastAPI AI service at `backend/fastapi_ia`
   (OCR via Zhipu AI, natural-language SQL agent via LangChain). Frontend: React/Vite
-  at `frontend`. Run backend tests: `python manage.py test apps` (inside the
-  django_core container or with env pointing at a local Postgres). Full stack:
+  at `frontend`. Run backend tests locally via the canonical harness
+  `powershell -File scripts/test-backend.ps1 [-Modules "apps authentication core"]`
+  (docker `--keepdb --parallel`, single-writer guard so parallel lanes never
+  corrupt the shared `test_erp_db`; see WOW9). Full stack:
   `docker compose up` (nginx :80, Postgres+pgvector, Redis, MinIO, Celery, Django,
   FastAPI, frontend) — copy `.env.example` to `.env` first.
 - **Multi-tenant.** All business data is scoped by `authentication.Company`. New
@@ -163,28 +165,83 @@ task at a time, NEVER a merge per wave or per batch. This is the ONLY run model 
 any older "waves"/"one merge per wave"/"one task per session"/"stop after one task" wording
 anywhere, including in the plan files.
 
-**THE COST MODEL (why this is the fast shape — internalize it).** The single dominant cost of a
-run is the GitHub CI `backend-tests` gate: **~40 minutes, serialized, per merge**. So run speed
-= how many times you pay that 40 minutes. Pay it **ONCE per run**. Merging "a batch of 5" then
-waiting for its CI before the next 5 pays 40 min × N — the slowest shape (the trap). Two levers:
-(a) **lane-draining** — one agent drains a WHOLE app lane (8-10 tasks), collapsing ~9 single-task
-waves into ~1; (b) **one merge per run** — accumulate every lane onto one branch and pay CI once.
-**MERGE FLOOR (founder rule): never merge to `main` with fewer than ~200 completed tasks on the
-branch.** Keep draining more app lanes in parallel onto the one branch until ≥200 done, THEN the
-single CI+merge+deploy. Merging a small handful (5, 13, 80…) is forbidden. The ONLY time you
-merge under 200 is when the buildable queue is genuinely exhausted (every remaining task
-blocked/gated/deferred or in a concurrent session's dirty apps). Reaching ≥200 means MANY lanes
-(often 8 at the cap, refilled as they finish) across many apps in one run, AND second-round
-same-app lanes that first `git merge` the integration branch to inherit the round-1 migration
-chain (so migrations chain instead of colliding) — expected and correct, and one run legitimately
-spans many wakeups. If a mid-run merge is ever unavoidable (a same-app lane needs a prior task on
-`origin/main` to chain migrations), pipeline the next lanes on DISJOINT apps while that ONE CI
-runs (never idle on it) and reuse ONE persistent `--keepdb` test DB across folds (a fresh full
-test DB is a ~13-min rebuild; reuse makes each fold ~2 min).
+**THE COST MODEL (measured 2026-07-09 — internalize the NEW numbers).** The dominant cost of a
+run is the GitHub CI `backend-tests` gate. Its measured arc: **2h15** (serial + coverage, pre-WOW)
+→ **45.5 min** (WOW1 `--parallel 4`) → **41 min** (WOW6 4× shard — small gain because the
+~850-migration test-DB build was **97% of each shard**; the tests themselves ran in 62s) →
+**WOW8** cache-restores that pre-migrated DB (key = migrations hash, rebuilt once per migration
+change), targeting **~6-10 min** on the hit path; **WOW8-INCR** (2026-07-11) adds a `restore-keys`
+fallback so the exact-key MISS that EVERY migration-adding plan build hits restores the newest
+prior dump and applies ONLY the new migrations (delta, a few min) instead of the ~40-min cold
+replay — the CI twin of the local harness's `-RestoreDb`; e2e restores from the same cache (its
+migrate+seed was 94% of its 32 min — the specs run in 36s). Docs-only merges skip the heavy jobs
+entirely and cost **~2 min** (measured) — the floor below NEVER applies to them.
+**MERGE FLOOR (founder rule — CONDITION FIRED 2026-07-09).** The old ~200-task floor was the
+correct adaptation to the 2h15 gate, but the 5-day evidence shows what it cost: giant PRs sat open
+a median 3.16h/mean ~10h (one 202-task PR abandoned outright; #329 open 39h through 4 red cycles),
+and 11 red heavy-gate cycles burned ~20-40h of CI wall-clock. The gate is now MEASURED ≤45 min on
+two full runs (#335 45.5 min, #342 41 min), so the WOW22 recalibration is ACTIVE. THE FLOOR NOW:
+land ONE drained lane-GROUP (≈40-80 tasks) or one full work-day of folded lanes, whichever comes
+first; never carry more than ~100 unmerged tasks; once the WOW8 hit-path is confirmed ≤15 min,
+a single full app lane (8-15 tasks) is a legitimate merge. **If a batch's CI is red, FIX it within
+that batch before building the next on top — NEVER stack a second unvalidated batch on a red one**
+(batch-4, merged unvalidated, cost 13 CI-red bugs and 4 red cycles). KEEP unchanged: lane-draining
+as the unit of work, one sync-safe self-merge per batch, 0 approvals, `main` always revertable via
+`git revert`, and the local combined docker test BEFORE every merge (it has caught ~96 real bugs
+pre-merge, 67 in one run — it is the cheap gate; CI is the expensive confirmation). Second-round
+same-app lanes still `git merge` the integration branch to inherit the round-1 migration chain.
+While ONE batch's CI runs, pipeline the next lanes on DISJOINT apps (never idle on it) and reuse
+ONE persistent `--keepdb` test DB across folds (a fresh full test DB build is ~35-38 min measured
+— the same migration replay WOW8 caches in CI). **WOW8-local brings that cache to the harness:**
+seed the DB once, `test-backend.ps1 -Snapshot` freezes it as a Postgres TEMPLATE, and every later
+gate uses `-RestoreDb` (TEMPLATE clone ~seconds + `--keepdb` for only the new migrations) instead
+of a cold rebuild — a real ARC+SCA run burned ~3.5 h purely on local test-DB churn without it.
+
+**WOW23 — PIPELINED 80-TASK WAVES (founder, 2026-07-11 — supersedes the sizing/testing specifics
+above where they conflict; the mechanics are CODED into `plan_lanes.py`, read them off its output).**
+- **A wave = ~80 tasks = 8 file-disjoint lanes of ~5-15 tasks each = ONE merge.** Never a merge per
+  agent-round: a "wave of agents" is not a merge unit (a run once shipped 5 PRs for 20 tasks — the
+  exact ceremony this forbids). `plan_lanes.py --workers 8 --wave-size 80` emits the whole thing:
+  lanes FORCED file-disjoint (lanes sharing a substantive declared `Files:` are auto-unioned;
+  append-only surfaces like index.css exempt), LPT time-balanced so the 8 agents finish together,
+  and a SEQUENCE of mutually-disjoint waves.
+- **Pipeline the waves:** while wave K runs its single CI, wave K+1 is being BUILT (disjointness
+  guarantees no collision). Don't wait for a whole wave: an agent that finishes early immediately
+  work-steals the heaviest not-yet-started lane of wave K+1. **Disjointness outranks the
+  PLAN2→PLAN→NT file order** — pool the plan files (`plan_lanes.py f1 f2 f3`) and pick disjoint
+  work over strict order.
+- **TEST ECONOMICS (supersedes "local combined docker test before every merge"):** a local gate is
+  worth running ONLY if its FULL relevant set is faster than the CI job that catches the same
+  thing. With CI at ~6-10 min: the ONLY routine local gate is `eslint` on changed files (seconds —
+  catches what no-node_modules worktree agents can't see). NO local vitest subsets (false-green:
+  you still pay the CI round), NO local docker test-DB gate (contended, OOM-prone, slower than CI).
+  Exceptions: the ONE test you're actively fixing; `vite build` (~8 s) after any MANUAL conflict
+  resolution. Local docker remains a debugging tool for reproducing a specific red, never a gate.
+- **Merge the INSTANT CI is green** (a green run sat on for an hour went BEHIND main → integrate +
+  full CI again + a woken flaky test). During an active CI wait, check every ~5 min. Skip
+  preflight.ps1 on the cache-hit path (it doubles wall-clock for nothing).
+- **At every merge, report:** tasks done this batch (one line each: what it was for) + remaining
+  open counts per plan file.
+- **Agent hygiene:** commit-per-task (a process crash killed 7 live agents; only COMMITTED work
+  survived — ~16 tasks recovered), push the accumulating batch branch to origin as backup after
+  each fold, kill stale 6-8h+ agent processes at run START (never mid-run, never broadly), and on
+  a heavy fold conflict DROP & REQUEUE the task on the merged base — never hand-merge 100+-line
+  collisions (both build-breakers of the 2026-07-11 batch were manual resolutions).
 
 1. **Plan the lanes once.** Run `python scripts/plan_lanes.py <planfile>` for the file-ownership
    + dependency graph. A **lane** = tasks sharing a file/migration that must run in sequence;
    independent lanes run concurrently. (Drain `docs/PLAN2.md` before `docs/PLAN.md`.)
+   **Build-order gate (SCA6).** `plan_lanes.py` automatically consults `docs/BUILD_ORDER.yml`
+   (SCA1, the machine-readable wave DAG) before emitting a lane: noyau ARC → NTPLT+NTSEC →
+   reste du Tier-1 (NTAPI/NTOBS/NTGRC/NTADM/NTMAR) → floods features/verticaux is a RUN RULE,
+   not a suggestion — a task whose prerequisite group is under its `BUILD_ORDER.yml` threshold
+   is refused with a French reason (see the "Refusé — ordre de vague" section of the plan-lanes
+   output) instead of silently scheduled out of order. This is a pure machinery gate: no
+   BUILD_ORDER.yml (or a prefix absent from it / listed `unmapped_ok`) means gating is a no-op,
+   byte-identical to pre-SCA3 behaviour — never a reason to skip running `plan_lanes.py` first.
+   `--force-wave` bypasses the gate entirely and is **reserved for the founder** (every use is
+   logged to stderr) — an agent hitting a refused lane fixes the real prerequisite gap or moves
+   to a different lane, it does not reach for `--force-wave` on its own judgment.
 2. **Lane-draining is the unit of work: one agent OWNS one app and drains its WHOLE lane.**
    Dispatch up to ~8 worktree subagents (`isolation: worktree`) in parallel; each owns one
    `apps/<x>` and drains its ENTIRE pending queue in sequence — per task: verify-not-built →
@@ -198,13 +255,27 @@ test DB is a ~13-min rebuild; reuse makes each fold ~2 min).
    When a same-app lane tail needs a just-built prior task, that prior must be on `origin/main`
    first (worktree agents branch from `origin/main`) — so build a lane's available head tasks,
    land them, then the tail; or split the lane across runs.
-3. **Orchestrator reviews each lane + runs ONE combined local test after folding.** As each lane
-   returns, adversarially review its commits vs the safety rules + acceptance criteria. Fold all
-   file-disjoint lanes onto the one branch, then run a SINGLE combined test in the local prod
-   docker image over all new test modules (reuse ONE persistent `--keepdb` DB). This is the real
-   pre-merge feedback — it has caught a real bug in most runs (missing import, `clean()`-vs-`save()`,
-   name clash, hard-vs-soft-delete, a silently-swallowed effect). Fix, re-run only the affected
-   module, then the single gate. It is NOT the GitHub CI (which runs once at the very end).
+3. **Orchestrator reviews each lane + runs the combined local test — CACHED, not rebuilt (WOW8-local,
+   2026-07-10).** As each lane returns, adversarially review its commits vs the safety rules +
+   acceptance criteria, then — AT FOLD TIME, per lane — run THAT lane's new/changed test modules via
+   `powershell -File scripts/test-backend.ps1 -RestoreDb -Modules "<lane's test modules>"` (WOW11 —
+   the harness's single-writer guard means only one run touches the shared `--keepdb` DB at a time,
+   so parallel lanes never corrupt it). A lane whose modules are red is NOT fold-eligible: fix first.
+   Then, once all file-disjoint lanes are in, run the SINGLE combined test over all new modules.
+   **THE COST DISCIPLINE — a real ARC+SCA run's whole lost afternoon (~3.5 h) was LOCAL test-DB
+   churn, not CI (it never reached CI): the test DB is CACHED locally exactly like WOW8 caches it in
+   CI.** Seed it once, then `test-backend.ps1 -Snapshot` freezes the migrated DB as a Postgres
+   TEMPLATE (`test_erp_db_base`); every gate after uses `-RestoreDb` — a TEMPLATE clone (~seconds) +
+   `--keepdb` applying only the NEW migrations. **NEVER `-RebuildDb`** (the ~35-min cold "heures"
+   rebuild) except once to seed; a migration collision or stale `--keepdb` DB is recovered with
+   `-RestoreDb`, not a rebuild. Run the FULL combined gate ONCE per merge-batch, **not once per fold**
+   (that run did ~6 gates = ~6 rebuilds — the whole afternoon); never fold while a gate runs (the
+   harness live-mounts the worktree → code shifts under the tests) and cap concurrent heavy lanes at
+   2-3 (more OOM-kills the gate → forces a rebuild). This per-fold gate is exactly what batch-4
+   SKIPPED when it shipped 113 unvalidated failures; the combined test is the real pre-merge feedback
+   — it has caught a real bug in most runs (missing import, `clean()`-vs-`save()`, name clash,
+   hard-vs-soft-delete, a silently-swallowed effect). Fix, re-run only the affected module, then the
+   single gate. NOT the GitHub CI (once at the end).
 4. **Fold continuously into ONE `dev` branch + advance LOCAL `main`.** As each reviewed+tested
    task passes: fold its branch into the accumulating `dev`, tick it `[x]`, add one dated DONE LOG
    line, and **fast-forward LOCAL `main` to the `dev` tip — locally only: never push, never PR,
@@ -213,8 +284,22 @@ test DB is a ~13-min rebuild; reuse makes each fold ~2 min).
 5. **ONE gate at the very end.** When the queue drains (or a cap is hit): refresh `docs/CODEMAP.md`
    if structure/plan changed (then `codemap_fingerprint.py --write`), integrate the latest
    `origin/main` into `dev` (sync-safe — merge it in, recompute the structure fingerprint if the
-   structural surface moved, NEVER force-push), push `dev`, run the four required checks **once**
-   over the whole batch, self-merge `dev` → `main` **exactly once**, then **deploy once**
+   structural surface moved, NEVER force-push). **Then decide whether to run `powershell -File
+   scripts/preflight.ps1` BEFORE pushing — WOW (2026-07-11): gate it on the CI path, do NOT run it
+   reflexively.** Preflight runs EVERY fast gate (backend-lint's compileall-3.11 / flake8 / lint-imports,
+   the model↔migration drift check, and all 10 `stage-names` sub-checks) locally in the prod 3.11 image
+   in one pass (~7 min) and reports ALL failures at once — a run that skipped it once burned FOUR CI
+   round-trips discovering stage-names reds one at a time. Its ONLY value is catching a fast-gate red
+   BEFORE a SLOW CI cycle, so gate it on the WOW8-INCR cache path: **run full preflight when the push
+   will be a cold cache-MISS (new/changed migrations → ~40-min CI) or touches a high-risk fast-gate
+   surface (migrations, imports, stage-names/CODEMAP).** But on the cache-HIT path the CI gate is now
+   ~6-7 min (measured 2026-07-11) — a ~7-min preflight in front of a ~7-min CI just DOUBLES the
+   wall-clock for zero saving, so there SKIP full preflight and run only the cheap host-only checks on
+   the changed files (`flake8` + `py_compile`), letting the fast CI be the gate. Fix everything red,
+   THEN push `dev` and run the four required checks **once** over the whole batch. To WAIT on that CI, use `powershell -File scripts/watch-ci.ps1` (or
+   `-Pr <n>`) — it wraps `gh run watch --exit-status` and prints a per-job PASS/FAIL summary, so no
+   session re-invents a waiter/monitor or hand-rolls a `2>&1 | tail` status check that masks the exit
+   code. Self-merge `dev` → `main` **exactly once**, then **deploy once**
    (`scripts/deploy-prod.ps1` for the ERP; the website auto-deploys via Cloudflare). When branch
    protection requires it, ONE batch PR used purely as the CI-gated merge vehicle counts as that
    single self-merge. If the push is rejected because `main` advanced, repeat the sync-safe
@@ -243,17 +328,40 @@ the merge+deploy gate). Every SUBAGENT is dispatched via `Agent` `model:` / `Wor
     flows) AND judgment work (adversarial verification, cross-domain dedupe, completeness
     synthesis, the merge/report gate). Escalate any lane a cheaper agent returns
     `[BLOCKED]`/uncertain one tier up.
-  - **fable** — RESERVED for the 1-3 passes per run where frontier reasoning materially changes the
-    outcome (a final completeness critic, a decisive synthesis, adjudicating a contradiction) AND
-    only when Reda asked for a "full checkup / go deep". NEVER the default for a fleet of
-    scouts/verifiers, and NEVER for BUILD subagents. Fable is the MOST capable AND MOST EXPENSIVE
-    model ($10/$50 per 1M — 2× Opus, 10× Haiku); a scalpel, not the house model.
+  - **fable** — the 1-3 passes per run where frontier reasoning materially changes the outcome.
+    **AUTO-AUTHORIZED (2026-07-10, founder) when a pass is objectively WORTH IT — no longer only
+    on request.** Worth it means one of exactly these (each backed by a real catch in this repo's
+    history: the QW7 live data-corruption bug, two ARC security catches, the VX false-premise
+    fixes were ALL single Fable critic passes): (a) ONE final adversarial/completeness critic
+    over a large or high-risk batch BEFORE its single merge (≥~40 folded tasks, or any batch
+    touching rule-#4/auth/architecture); (b) adjudicating a contradiction two Opus passes could
+    not resolve, or a lane that failed twice at the opus tier; (c) ONE decisive synthesis whose
+    verdict shapes many downstream tasks. HARD LIMITS: cap 1-3 Fable calls per run; NEVER for
+    build lanes, scouts, or verifier fleets; each Fable call gets a one-line DONE-LOG note
+    (what it was for + what it caught) so the founder sees whether it earned its cost. Fable is
+    the MOST capable AND MOST EXPENSIVE model ($10/$50 per 1M — 2× Opus, 10× Haiku); a scalpel,
+    not the house model. A small batch (<~40 routine tasks, no high-risk surface) does NOT get
+    a Fable pass — Opus review is enough there.
   The orchestrator still adversarially reviews + locally tests EVERY lane regardless of which model
   built it, so a cheaper builder never lowers the merge bar. Config backstop (`.claude/settings.json`):
   `"model": "opus"` runs the orchestrator on Opus, and `env.CLAUDE_CODE_SUBAGENT_MODEL=sonnet` floors
   EVERY untagged subagent at Sonnet — a forgotten tag can never inherit Fable. Per-call `model:`
   overrides the floor (haiku down / opus-fable up). For a deliberate Fable deep-dive, `/model fable`
-  at session start.
+  at session start. **AUTOMATIC ROUTING (2026-07-10): `python scripts/plan_lanes.py <planfile>`
+  prints the model tier per task AND per lane** (a lane's model = its highest-risk task; an explicit
+  `@model:haiku|sonnet|opus` tag on a task line overrides the classifier) — a plan run reads each
+  lane's `model=` off the lane plan and passes it to the Agent call; no judgment call needed for
+  the routine tiers. `fable` is deliberately not routable — it stays a session-level scalpel.
+  **EVERY-PROMPT RULE (2026-07-10, founder): this routing applies to ALL of Reda's prompts, not
+  only plan runs.** On ANY substantive request — bug fix, audit, research, a facture, an
+  investigation — the session model acts as the ORCHESTRATOR ONLY: it thinks, decomposes, reviews
+  and reports, and DELEGATES the heavy mechanical volume (bulk edits, sweeps, log-reading, broad
+  greps, transcript/file mining, standard build work) to subagents tagged per the tiers above
+  (haiku scout / sonnet worker / opus judgment). Answer directly WITHOUT delegation only when the
+  work is genuinely small (a question, a one-file fix, pure judgment) — spawning an agent for a
+  two-minute task wastes more than it saves. The session model itself is never downgraded; the
+  savings come from where the VOLUME runs, and the orchestrator's adversarial review keeps the
+  quality bar identical regardless of which tier produced the work.
 
 **Token discipline — read the MAP before grepping the territory (founder rule).** `docs/CODEMAP.md`
 is the curated, always-current map (§3 repository map + §4 app-by-app: every app's
@@ -292,15 +400,86 @@ fails CI.
 **Report once**, in plain language: how many tasks shipped (and what), what was skipped/blocked and
 why, and the single merge + deploy.
 
+**RETRO — every plan run learns from itself (MANDATORY, ≤5 min, BOUNDED so memory improves
+instead of bloating).** After the report, run a short self-retrospective over what THIS run got
+wrong and fixed, and bank it in the ONE right place:
+1. **New CI/test bug class** a subagent shipped → ONE numbered 2-4-line entry in the memory file
+   `plan_drain_ci_bug_classes` (the proven pattern: that catalog grew 8→19 entries across runs and
+   each entry saved later runs a red cycle). **Dedupe first**: if the class exists, sharpen the
+   existing entry — never add a near-duplicate.
+2. **Routing misjudgment** (a sonnet lane returned `[BLOCKED]` and opus fixed it, or an opus lane
+   proved trivially mechanical) → fix it in CODE, not notes: add `@model:` tags to the similar
+   remaining plan tasks or refine `scripts/plan_lanes.py`'s classifier regexes in the same run.
+   The router IS the memory for routing lessons.
+3. **New infra/concurrency hazard** → the matching memory file (`local_ci_via_docker` for
+   docker/test-harness, `worktree_drain_mechanics` for worktree/git, `plan_run_addenda` for
+   run-economics), 1-3 lines, evidence-counted where possible.
+4. **ANTI-BLOAT RULES (absolute):** only bank a lesson that would CHANGE a future run's behavior —
+   run history belongs in the DONE LOG, never in memory; update-in-place beats appending; NEVER
+   create a new memory file for a lesson that fits an existing one; if a touched file exceeds its
+   budget (gotcha files ~40 lines, mechanics files ~180, the bug catalog ~4 lines/entry), fold its
+   weakest/stalest entries into `done_history_archive` IN THE SAME edit — memory must come out of
+   every run at the same size or smaller, just sharper. A run with nothing genuinely new banks
+   NOTHING (most runs — that is success, not failure).
+
+### "work on the plan <domain>" — PARALLEL domain sessions (founder, 2026-07-10)
+The 2,084-task NT backlog is SPLIT into 7 domain files under `docs/plans/` — **PLAN_CRM_VENTES,
+PLAN_FINANCE, PLAN_SUPPLY, PLAN_SERVICE, PLAN_RH_PAIE, PLAN_DOCS_JURIDIQUE, PLAN_VERTICALS**
+(`scripts/split_plan.py` did the move; `docs/new_tasks_plan.md` keeps the PLATFORM tier,
+single-session). Each file opens with an **APP-OWNERSHIP CONTRACT** — the guarantee that parallel
+sessions never conflict, exactly like the web/ERP split. A domain run is identical to **"How a
+plan run works"** EXCEPT:
+- It drains ONLY its own file and touches ONLY the apps/dirs its contract owns; anything outside →
+  `[BLOCKED: hors périmètre]` + keep going (it returns to the platform run). Foreign apps are read
+  via `selectors.py`/string-FK only — NEVER their models/migrations (this keeps every app's
+  migration chain single-writer). **COMPOSITION GUARD: a task that depends on a platform/NT
+  primitive not yet on `main` (chatter, numbering, job queue, registry…) → `[BLOCKED: attend
+  <ID>]` — NEVER hand-roll a local substitute for a platform primitive** (the #1 measured debt
+  source: 13 hand-rolled chatters). Cross-queue ORDER is enforced by machinery, not memory:
+  `BUILD_ORDER.yml` + `plan_lanes.py` refuse any task whose prerequisite group is under its
+  completion threshold, so sessions can be started in ANY order and still compose — the planner
+  simply won't hand out work whose foundations are missing.
+- Local tests use `DB_NAME=erp_<domain>` (never the shared test DB); at most 2-3 sessions run
+  heavy local docker on this box concurrently — further sessions run in the cloud and lean on the
+  ~6-min CI gate instead.
+- It merges its own `dev-<domain>` branch to `main` independently (update-branch → ~6-min CI →
+  auto-merge). If `docs/CODEMAP.md` conflicts at update time (two sessions both moved the
+  STRUCTURE fingerprint), take the merged tree and re-run `codemap_fingerprint.py --write` —
+  30 seconds, mechanical. Shared frontend files (router/nav/api): append-only additions; a
+  conflict there = keep BOTH sides' additions.
+- Domain files are NOT in the plan-fingerprint surface (like WEB_PLAN.md): tick `[x]` + DONE LOG
+  inside the domain file itself; never touch CODEMAP §10 for them.
+- **ONE session per domain file** (the per-file version of the old single-session rule). Any set
+  of DIFFERENT domains runs in parallel. The classic platform run (below) also joins, but
+  CRM_VENTES should be idle while it drains PLAN2's QX/VX (they touch ventes/crm/frontend-shell).
+- **Respect `docs/BUILD_ORDER.yml` (SCA3):** `plan_lanes.py <domain file>` says what is buildable
+  NOW vs wave-gated behind platform prerequisites; `--force-wave` is the founder-consigned
+  override when Reda wants a domain to start early. Deploy once at the end of a parallel batch
+  (any session may run `deploy-prod.ps1`; it is idempotent).
+
 ### "work on the plan"
-Drain `docs/PLAN2.md` (priority queue, first) then `docs/PLAN.md` using **"How a plan run works"**
-above. Anything typed after the command is extra detail.
-- Active files: `docs/PLAN2.md` then `docs/PLAN.md`. No lock — only ever one session at a time. Read
-  them fully and verify real repo state before building.
+Drain in STANDING PRIORITY ORDER (founder, 2026-07-10): **1) `docs/PLAN2.md` → 2) `docs/PLAN.md`
+→ 3) `docs/new_tasks_plan.md` (the NT platform tier)** using **"How a plan run works"** above.
+Anything typed after the command is extra detail. This is the PLATFORM/cross-cutting run
+(ARC, SCA, ODX, YAPIC, VX shell, QX journey, then the NT platform groups — the work that touches
+many apps and therefore stays single-session).
+- **The priority order is STANDING and re-checked at every lane refill:** when a higher-priority
+  file gains new `[ ]` tasks mid-run (an "add to plan:" landed, a task got unblocked), the next
+  free lane pulls from the highest-priority non-empty queue FIRST — new PLAN2/PLAN tasks always
+  jump ahead of the NT tier, today and after any future additions. A run only descends to
+  `new_tasks_plan.md` when PLAN2 + PLAN.md hold zero buildable `[ ]` tasks (blocked/gated ones
+  don't hold it back).
+- NT-tier bookkeeping follows its file's own rules (NOT in the plan-fingerprint surface: tick +
+  DONE LOG in-file, never CODEMAP §10; respect `BUILD_ORDER.yml` wave-gating within it; the NT
+  header's built-digest regeneration step applies). The `docs/plans/PLAN_*` domain files are NEVER
+  part of this run — they belong to their own parallel `work on the plan <domain>` sessions.
+- One session at a time ON THESE THREE FILES (domain sessions on `docs/plans/*` run in parallel
+  with it, per the section above). Read them fully and verify real repo state before building.
 - Process EVERY unchecked `[ ]` task; verify each isn't already built (if it is, mark
   `[x] (already present)`), then tick `[x]` + add a dated DONE LOG line as it lands.
-- Lane-draining, ≥200 tasks per merge, one sync-safe self-merge, one deploy (per the COST MODEL +
-  MERGE FLOOR above). The rich self-contained lanes to drain first:
+- Lane-draining, batches sized by the RECALIBRATED MERGE FLOOR above (≈40-80 task lane-groups now
+  that the gate is measured ≤45 min — not the old ≥200), each batch locally tested then one
+  sync-safe self-merge, one deploy at the end of the run. The rich self-contained lanes to drain first:
   rh/flotte/qhse/contrats/ged/paie, then parametres/publicapi/kb/core/stock/sav/litiges/crm, then
   the rest. Report once with the lane plan (how many ran in parallel + what each shipped) and what
   was skipped/blocked.

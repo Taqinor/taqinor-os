@@ -74,6 +74,7 @@ import {
   proposalAssumptions,
   monitoringPoints,
   objectionFaq,
+  sellerNote,
 } from '../../lib/proposition';
 import { renderYearCurve } from '../../lib/proposalCurve';
 import { renderProposalChart, resolveSeries } from '../../lib/proposalChart';
@@ -168,6 +169,13 @@ const preselect: OptionKey | null = ok ? defaultSelectedOption(data!) : null;
 // WJ83 — le CTA collant montre le prix de l'option phare (reco/sans_batterie) :
 // même garde-fou zéro-total que les cartes d'options plus bas.
 const heroHasRealPrice = ok ? hasRealPrice(data!, reco ?? 'sans_batterie') : false;
+// WJ114 — TTC « phare » du héros pour le bloc « décider en 10 secondes »
+// (Storydoc : 31 % rebondissent en 10 s). Même chiffre/garde-fou que le CTA
+// collant ci-dessus — jamais recalculé, jamais affiché à 0 MAD.
+const heroTtc = ok && heroHasRealPrice ? optionTtc(data!, reco ?? 'sans_batterie') : null;
+// WJ114 — note personnelle du vendeur (lecture défensive, backend pas encore
+// livré aujourd'hui) : n'affiche RIEN tant que l'ERP ne fournit pas ce bloc.
+const seller = ok ? sellerNote(data!) : null;
 
 // ── WJ82 — État explicite de l'offre (live/accepted/refused/expired/withdrawn).
 // Calculé UNE fois côté serveur à partir du même statut backend + de la même
@@ -530,6 +538,102 @@ const signConfig = ok
             Voici votre proposition solaire personnalisée. Tout est détaillé ci-dessous —
             vous pouvez la signer en ligne en bas de page.
           </p>
+
+          <!-- ── WJ114 · « DÉCIDER EN 10 SECONDES » ───────────────────────────
+               Storydoc (1,3 M sessions) : 31 % rebondissent en 10 s ; 82 % de
+               ceux qui atteignent la section 4 vont au bout ; le prix est la
+               section la plus regardée ; la personnalisation complète relève
+               l'engagement de +47 %. Mobile-first, ZÉRO scroll requis : nom du
+               client (déjà affiché ci-dessus), les 4 chiffres phares CANONIQUES
+               (mêmes valeurs que le CTA collant / les cartes plus bas — jamais
+               recalculées) + UN CTA principal. Note personnelle du vendeur
+               rendue UNIQUEMENT si le backend la fournit (WJ114 — lecture
+               défensive, `sellerNote`) : rien n'est affiché en son absence. -->
+          <div id="prop-fold-figures" class="cine-in cine-in-3 mt-6 grid grid-cols-2 gap-3 sm:mt-7 sm:grid-cols-4 sm:gap-4">
+            {puissance ? (
+              <div class="cine-card rounded-xl p-3 sm:p-4">
+                <p class="tech-label text-lune-faint" data-i18n data-fr="Puissance" data-en="Power" data-ar="القدرة">Puissance</p>
+                <p class="fig mt-1 text-xl text-lune sm:text-2xl" dir="ltr">{formatNumber(puissance, 2)} <span class="text-sm text-lune-soft">kWc</span></p>
+              </div>
+            ) : null}
+            {prodKwh ? (
+              <div class="cine-card rounded-xl p-3 sm:p-4">
+                <p class="tech-label text-lune-faint" data-i18n data-fr="Production / an" data-en="Production / year" data-ar="الإنتاج / سنة">Production / an</p>
+                <p class="fig mt-1 text-xl text-lune sm:text-2xl" dir="ltr">{formatNumber(prodKwh)} <span class="text-sm text-lune-soft">kWh</span></p>
+              </div>
+            ) : null}
+            {heroTtc !== null ? (
+              <div class="cine-card rounded-xl p-3 sm:p-4">
+                <p class="tech-label text-lune-faint" data-i18n data-fr="Total TTC" data-en="Total (incl. tax)" data-ar="المجموع شامل الضريبة">Total TTC</p>
+                <p class="fig lum mt-1 text-xl sm:text-2xl" dir="ltr">{formatMAD(heroTtc)}</p>
+              </div>
+            ) : null}
+            {(ecoHero || paybackHero) ? (
+              <div class="cine-card rounded-xl p-3 sm:p-4">
+                <p class="tech-label text-lune-faint" data-i18n data-fr="Économie / an" data-en="Savings / year" data-ar="التوفير / سنة">Économie / an</p>
+                <p class="fig mt-1 text-xl text-lune sm:text-2xl" dir="ltr">
+                  {ecoHero ? formatMAD(ecoHero) : paybackHero}
+                </p>
+                {ecoHero && paybackHero ? (
+                  <p class="mt-0.5 text-xs text-lune-faint" data-i18n
+                    data-fr={`Rentabilisé en ${paybackHero}`} data-en={`Paid back in ${paybackHero}`} data-ar={`يُسترد خلال ${paybackHero}`}>
+                    Rentabilisé en {paybackHero}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+
+          <!-- WJ114 — UN CTA principal au-dessus du pli (même destination que le
+               CTA collant : #signer si un prix réel existe, sinon le conseiller
+               WhatsApp — jamais un devis à 0 MAD). -->
+          <div class="cine-in cine-in-3 mt-5">
+            {heroHasRealPrice ? (
+              <a
+                id="prop-fold-cta"
+                href="#signer"
+                class="btn-pill inline-flex w-full items-center justify-center sm:w-auto"
+                style="background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)"
+                data-i18n data-fr="Signer en ligne" data-en="Sign online" data-ar="التوقيع إلكترونياً"
+              >
+                Signer en ligne
+              </a>
+            ) : (
+              <a
+                id="prop-fold-cta"
+                href={waLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                class="btn-pill inline-flex w-full items-center justify-center sm:w-auto"
+                style="background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)"
+                data-i18n data-fr="Contacter mon conseiller" data-en="Contact my advisor" data-ar="التواصل مع مستشاري"
+              >
+                Contacter mon conseiller
+              </a>
+            )}
+          </div>
+
+          <!-- WJ114 — note personnelle du vendeur : dégrade à RIEN si absente. -->
+          {seller ? (
+            <div id="prop-seller-note" class="cine-in cine-in-3 mt-5 flex items-start gap-3 rounded-xl border border-white/10 bg-white/5 p-3.5 sm:p-4">
+              {seller.photoUrl ? (
+                <img
+                  src={seller.photoUrl}
+                  alt={seller.name ?? ''}
+                  width="40"
+                  height="40"
+                  loading="lazy"
+                  decoding="async"
+                  class="h-10 w-10 flex-none rounded-full object-cover"
+                />
+              ) : null}
+              <div class="min-w-0">
+                {seller.note ? <p class="v2-body text-sm text-lune italic">“{seller.note}”</p> : null}
+                {seller.name ? <p class="mt-1 text-xs text-lune-faint">— {seller.name}</p> : null}
+              </div>
+            </div>
+          ) : null}
+
           <dl class="cine-in cine-in-3 mt-7 flex flex-wrap gap-x-8 gap-y-3 text-sm">
             {reference && (
               <div>

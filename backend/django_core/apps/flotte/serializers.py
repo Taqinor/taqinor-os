@@ -67,11 +67,27 @@ class VehiculeSerializer(serializers.ModelSerializer):
             'carte_mobilite', 'valeur_residuelle',
             'pct_charges_non_deductibles',
             'date_cession', 'prix_cession', 'acheteur', 'date_creation',
+            'custom_data',
         ]
         # XFLT16 — la cession passe UNIQUEMENT par l'action ``ceder/`` (calcule
         # le gain/perte, délègue à compta si immobilisé) — jamais un PATCH direct.
         read_only_fields = [
             'date_creation', 'date_cession', 'prix_cession', 'acheteur']
+
+    def validate(self, attrs):
+        # ARC14 — champs personnalisés (pilote) : valider/nettoyer
+        # custom_data contre les définitions du module « vehicule », même
+        # chemin que Lead/Client/Produit. Création → toujours validé (champs
+        # obligatoires) ; mise à jour → uniquement si custom_data est fourni.
+        is_create = self.instance is None
+        if is_create or 'custom_data' in attrs:
+            from apps.customfields.serializers import validate_custom_data
+            request = self.context.get('request')
+            company = getattr(getattr(request, 'user', None), 'company', None)
+            if company is not None:
+                attrs['custom_data'] = validate_custom_data(
+                    'vehicule', company, attrs.get('custom_data'))
+        return attrs
 
     def get_modele_ref_label(self, obj):
         return str(obj.modele_ref) if obj.modele_ref_id else None

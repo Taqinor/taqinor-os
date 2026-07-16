@@ -8,14 +8,31 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Plus, RefreshCw, Search, CheckCircle2, AlertTriangle } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
 import monitoringApi from '../../api/monitoringApi'
+import { formatNumber } from '../../lib/format'
 import {
   Button, Badge, Spinner, EmptyState, Input,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   Card, CardContent, DataTable, Switch, Label,
 } from '../../ui'
+import { ModuleDashboard } from '../../ui/module'
+// VX148 — courbe de tendance kWh (pattern OmAnalyticsPage.jsx) : l'écran le
+// plus consulté du dossier monitoring n'avait AUCUN graphique quand ses 4
+// voisins directs (PR mensuel, CO2, flotte…) en ont un.
+import { AreaSansAxe, ChartEmpty } from '../../ui/charts'
 import MonitoringNav from './MonitoringNav'
 
 const todayISO = () => new Date().toISOString().slice(0, 10)
+
+// VX148 — dérive la tendance kWh (chronologique) des relevés bruts. Extrait
+// en fonction pure (nommée, exportée) pour un test unitaire direct, sans
+// dépendre du rendu Radix Select/ResizeObserver.
+// eslint-disable-next-line react-refresh/only-export-components -- helper pur co-localisé, testé isolément
+export function buildProductionChartData(readings) {
+  return [...(readings || [])]
+    .filter((r) => r.date)
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map((r) => ({ label: r.date, value: Number(r.energy_kwh) || 0 }))
+}
 
 export default function ProductionPage() {
   const [systems, setSystems] = useState([])
@@ -157,6 +174,10 @@ export default function ProductionPage() {
       .finally(() => setSyncing(false))
   }
 
+  // VX148 — tendance kWh (chronologique) dérivée des mêmes relevés que la
+  // table ci-dessous, zéro appel réseau supplémentaire.
+  const chartData = useMemo(() => buildProductionChartData(readings), [readings])
+
   const columns = useMemo(() => [
     { id: 'date', header: 'Date', width: 130, accessor: (r) => r.date },
     {
@@ -225,7 +246,7 @@ export default function ProductionPage() {
       ) : (
         <div className="flex flex-col gap-4">
           {msg && (
-            <div className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${msg.ok ? 'border-emerald-300 text-emerald-700' : 'border-red-300 text-red-700'}`}>
+            <div className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${msg.ok ? 'border-success/40 text-success' : 'border-destructive/40 text-destructive'}`}>
               {msg.ok ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />} {msg.text}
             </div>
           )}
@@ -291,6 +312,27 @@ export default function ProductionPage() {
               </form>
             </CardContent>
           </Card>
+
+          {/* Tendance de production (VX148) */}
+          {!loadingReadings && readings.length > 0 && (
+            <ModuleDashboard
+              charts={[{
+                title: 'Production (kWh)',
+                span: 'full',
+                node: chartData.length > 0
+                  ? (
+                    <AreaSansAxe
+                      data={chartData}
+                      height={220}
+                      name="Énergie"
+                      tone="primary"
+                      tooltipFormat={(v) => `${formatNumber(v)} kWh`}
+                    />
+                  )
+                  : <ChartEmpty />,
+              }]}
+            />
+          )}
 
           {/* Relevés récents */}
           {loadingReadings ? (

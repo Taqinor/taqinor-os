@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, within, act, fireEvent, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { Provider } from 'react-redux'
 import { MemoryRouter } from 'react-router-dom'
 import { configureStore } from '@reduxjs/toolkit'
@@ -27,6 +28,7 @@ vi.mock('../../features/ventes/store/ventesSlice', async (importOriginal) => {
 // QG1 — espionne getDevisById (polling) + telechargerPdfDevis (ouverture auto).
 // QG10 — getVarianteConfig (pré-remplit le %) + dupliquerVariante (création).
 // WR2 — shareLinkDevis (« Copier le lien proposition »).
+// QX22 — whatsappPreviewDevis (aperçu lecture seule) + whatsappDevis (envoi réel).
 vi.mock('../../api/ventesApi', async (importOriginal) => {
   const actual = await importOriginal()
   return {
@@ -42,12 +44,38 @@ vi.mock('../../api/ventesApi', async (importOriginal) => {
       getVarianteConfig: vi.fn(() => Promise.resolve({ data: { variante_pct: '25.00' } })),
       dupliquerVariante: vi.fn(() => Promise.resolve({ data: [] })),
       shareLinkDevis: vi.fn(() => Promise.resolve({ data: { token: 'tok123', path: '/proposition/tok123' } })),
+      whatsappPreviewDevis: vi.fn(() => Promise.resolve({ data: { wa_url: 'https://wa.me/212600000000', message: 'Bonjour' } })),
+      whatsappDevis: vi.fn(() => Promise.resolve({ data: { statut: 'envoye' } })),
+      // VX216(a) — « Réviser (nouvelle version) », mocké pour ne jamais
+      // toucher le réseau réel dans le test du toast.warning associé.
+      reviserDevis: vi.fn(() => Promise.resolve({ data: {} })),
+    },
+  }
+})
+
+// QX26 — motifs de perte (taxonomie CRM, endpoint company-scoped existant).
+vi.mock('../../api/crmApi', async (importOriginal) => {
+  const actual = await importOriginal()
+  return {
+    ...actual,
+    default: {
+      ...actual.default,
+      getMotifsPerte: vi.fn(() => Promise.resolve({
+        data: [{ id: 5, nom: 'Trop cher' }, { id: 6, nom: 'Choisi un concurrent' }],
+      })),
     },
   }
 })
 
 import DevisList from './DevisList'
 import ventesApi from '../../api/ventesApi'
+import crmApi from '../../api/crmApi'
+import { toast } from '../../ui'
+// ARC49 — DevisList rend désormais son tableau via le moteur `ui/datatable`, qui
+// lit la densité via useDensity() et EXIGE donc un <ThemeProvider> dans l'arbre
+// (comme en production, où <Layout> l'enveloppe). Ajout de wrapper de HARNAIS
+// uniquement — aucune assertion n'est modifiée.
+import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
 // Réducteurs minimaux : seules les tranches lues par l'écran (ventes + auth).
 // QG10 — l'écran lit aussi auth.role_nom + auth.permissions (useHasPermission).
@@ -68,7 +96,9 @@ function renderList(opts, initialEntries = ['/ventes/devis']) {
   return render(
     <Provider store={store}>
       <MemoryRouter initialEntries={initialEntries}>
-        <DevisList />
+        <ThemeProvider>
+          <DevisList />
+        </ThemeProvider>
       </MemoryRouter>
     </Provider>,
   )
@@ -91,7 +121,8 @@ describe('DevisList — états de chargement (J141)', () => {
     const table = document.querySelector('table.data-table')
     expect(table).not.toBeNull()
     // Des cellules squelette sont rendues (placeholders animés), aucune vraie référence.
-    expect(table.querySelector('.animate-pulse, [class*="animate-pulse"]')).not.toBeNull()
+    // VX132 — le pulse Tailwind a été remplacé par le balayage CSS `.skeleton-shimmer`.
+    expect(table.querySelector('.skeleton-shimmer, [class*="skeleton-shimmer"]')).not.toBeNull()
   })
 })
 
@@ -182,12 +213,11 @@ describe('DevisList — U7 : révisions remplacées masquées par défaut', () =
   })
 })
 
-describe('DevisList — WR1 : refus passe par l\'action dédiée refuser()', () => {
-  it('appelle ventesApi.refuserDevis (jamais un PATCH statut direct)', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
-    vi.spyOn(window, 'prompt').mockReturnValue('Trop cher')
+describe('DevisList — WR1/QX26 : refus passe par l\'action dédiée refuser() avec motif obligatoire', () => {
+  it('ouvre une modale de motif obligatoire (jamais un window.prompt optionnel)', async () => {
     renderList({
       loading: false,
+      permissions: ['ventes_valider'],
       devis: [{
         id: 42, reference: 'DEV-REFUS', client_nom: 'ACME', statut: 'envoye',
         date_creation: '2026-07-01', total_ttc: 5000, nb_options: 1, version: 1,
@@ -196,10 +226,32 @@ describe('DevisList — WR1 : refus passe par l\'action dédiée refuser()', () 
     const row = screen.getByText('DEV-REFUS').closest('tr')
     fireEvent.click(within(row).getByRole('button', { name: /Refuser/ }))
     await waitFor(() => {
-      expect(ventesApi.refuserDevis).toHaveBeenCalledWith(42, { motif: 'Trop cher' })
+      expect(screen.getByText(/Refuser le devis — DEV-REFUS/)).toBeVisible()
     })
-    window.confirm.mockRestore()
-    window.prompt.mockRestore()
+    // Le bouton de confirmation reste désactivé sans motif choisi.
+    expect(screen.getByRole('button', { name: /Confirmer le refus/ })).toBeDisabled()
+  })
+
+  it('appelle ventesApi.refuserDevis avec le motif choisi (jamais un PATCH statut direct)', async () => {
+    const user = userEvent.setup()
+    renderList({
+      loading: false,
+      permissions: ['ventes_valider'],
+      devis: [{
+        id: 42, reference: 'DEV-REFUS', client_nom: 'ACME', statut: 'envoye',
+        date_creation: '2026-07-01', total_ttc: 5000, nb_options: 1, version: 1,
+      }],
+    })
+    const row = screen.getByText('DEV-REFUS').closest('tr')
+    fireEvent.click(within(row).getByRole('button', { name: /Refuser/ }))
+    await waitFor(() => expect(crmApi.getMotifsPerte).toHaveBeenCalled())
+    await user.click(screen.getByRole('combobox'))
+    await waitFor(() => expect(screen.getByText('Trop cher')).toBeVisible())
+    await user.click(screen.getByText('Trop cher'))
+    await user.click(screen.getByRole('button', { name: /Confirmer le refus/ }))
+    await waitFor(() => {
+      expect(ventesApi.refuserDevis).toHaveBeenCalledWith(42, { motif_perte: '5', motif: undefined })
+    })
   })
 })
 
@@ -288,9 +340,12 @@ describe('DevisList — QG10 : modale « Variante » (% + navigation comparaison
   }])
 
   it('ouvre une modale pré-remplie depuis la config société (variante_pct)', async () => {
+    const user = userEvent.setup()
     renderList({ loading: false, devis: draft(), role_nom: 'Directeur' })
     const row = screen.getByText('DEV-VAR').closest('tr')
-    fireEvent.click(within(row).getByRole('button', { name: /Variante/ }))
+    // VX20 — « Variante » vit désormais dans le menu « Plus d'actions ».
+    await user.click(within(row).getByRole('button', { name: /Plus d'actions/ }))
+    await user.click(await screen.findByRole('menuitem', { name: /Variante/ }))
     // La config est lue (GET variante-config) et le % pré-rempli à 25.
     await waitFor(() => {
       expect(ventesApi.getVarianteConfig).toHaveBeenCalled()
@@ -302,9 +357,11 @@ describe('DevisList — QG10 : modale « Variante » (% + navigation comparaison
   })
 
   it('crée les variantes avec le % puis ouvre la comparaison (panneau versions)', async () => {
+    const user = userEvent.setup()
     renderList({ loading: false, devis: draft(), role_nom: 'Commercial responsable' })
     const row = screen.getByText('DEV-VAR').closest('tr')
-    fireEvent.click(within(row).getByRole('button', { name: /Variante/ }))
+    await user.click(within(row).getByRole('button', { name: /Plus d'actions/ }))
+    await user.click(await screen.findByRole('menuitem', { name: /Variante/ }))
     await screen.findByLabelText(/Pourcentage de variation/)
     fireEvent.click(screen.getByRole('button', { name: /Créer les variantes/ }))
     await waitFor(() => {
@@ -318,9 +375,11 @@ describe('DevisList — QG10 : modale « Variante » (% + navigation comparaison
   })
 
   it('rend le champ % en lecture seule pour un rôle non autorisé', async () => {
+    const user = userEvent.setup()
     renderList({ loading: false, devis: draft(), role: 'commercial', role_nom: 'Commercial' })
     const row = screen.getByText('DEV-VAR').closest('tr')
-    fireEvent.click(within(row).getByRole('button', { name: /Variante/ }))
+    await user.click(within(row).getByRole('button', { name: /Plus d'actions/ }))
+    await user.click(await screen.findByRole('menuitem', { name: /Variante/ }))
     const input = await screen.findByLabelText(/Pourcentage de variation/)
     expect(input).toHaveAttribute('readonly')
   })
@@ -340,16 +399,20 @@ describe('DevisList — QG11/QG12 : design 3D (roof_layout) lecture seule', () =
     },
   }])
 
-  it('affiche le bouton « Design 3D » et ouvre le panneau en lecture seule', () => {
+  it('affiche l\'action « Design 3D » dans le menu « Plus » et ouvre le panneau en lecture seule', async () => {
+    const user = userEvent.setup()
     renderList({ loading: false, devis: withRoof() })
     const row = screen.getByText('DEV-ROOF').closest('tr')
-    fireEvent.click(within(row).getByRole('button', { name: /Design 3D/ }))
+    // VX20 — « Design 3D » vit désormais dans le menu « Plus d'actions ».
+    await user.click(within(row).getByRole('button', { name: /Plus d'actions/ }))
+    await user.click(await screen.findByRole('menuitem', { name: /^Design 3D$/ }))
     // Le plan SVG (RoofViewer) apparaît dans le détail.
     expect(screen.getByTestId('roofviewer-svg')).toBeTruthy()
     expect(screen.getByText(/Design 3D de la toiture — DEV-ROOF/)).toBeTruthy()
   })
 
-  it('n\'affiche AUCUN bouton design 3D quand le devis n\'a pas de roof_layout', () => {
+  it('n\'affiche AUCUNE action design 3D quand le devis n\'a pas de roof_layout', async () => {
+    const user = userEvent.setup()
     renderList({
       loading: false,
       devis: [{
@@ -358,14 +421,20 @@ describe('DevisList — QG11/QG12 : design 3D (roof_layout) lecture seule', () =
       }],
     })
     const row = screen.getByText('DEV-NOROOF').closest('tr')
-    expect(within(row).queryByRole('button', { name: /Design 3D/ })).toBeNull()
+    await user.click(within(row).getByRole('button', { name: /Plus d'actions/ }))
+    expect(await screen.findByRole('menu')).toBeTruthy()
+    expect(screen.queryByRole('menuitem', { name: /Design 3D/ })).toBeNull()
   })
 
-  it('ouvre la fenêtre plein écran (/ventes/devis/:id/3d) via l\'affordance', () => {
+  it('ouvre la fenêtre plein écran (/ventes/devis/:id/3d) via l\'affordance', async () => {
+    const user = userEvent.setup()
     const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null)
     renderList({ loading: false, devis: withRoof() })
     const row = screen.getByText('DEV-ROOF').closest('tr')
-    fireEvent.click(within(row).getByRole('button', { name: /Ouvrir le design 3D de DEV-ROOF dans une fenêtre/ }))
+    await user.click(within(row).getByRole('button', { name: /Plus d'actions/ }))
+    await user.click(await screen.findByRole(
+      'menuitem', { name: /Ouvrir le design 3D de DEV-ROOF dans une fenêtre/ },
+    ))
     expect(openSpy).toHaveBeenCalledWith('/ventes/devis/30/3d', '_blank', 'noopener')
     openSpy.mockRestore()
   })
@@ -373,8 +442,13 @@ describe('DevisList — QG11/QG12 : design 3D (roof_layout) lecture seule', () =
 
 describe('DevisList — WR2 : copier le lien de proposition (share_link)', () => {
   it('appelle shareLinkDevis et copie l\'URL publique au presse-papier', async () => {
+    const user = userEvent.setup()
     const writeText = vi.fn(() => Promise.resolve())
-    Object.assign(navigator, { clipboard: { writeText } })
+    // navigator.clipboard peut être un getter en lecture seule selon la version
+    // de jsdom → defineProperty (configurable) au lieu d'Object.assign qui jette.
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText }, configurable: true, writable: true,
+    })
     renderList({
       loading: false,
       devis: [{
@@ -383,7 +457,10 @@ describe('DevisList — WR2 : copier le lien de proposition (share_link)', () =>
       }],
     })
     const row = screen.getByText('DEV-SHARE').closest('tr')
-    fireEvent.click(within(row).getByRole('button', { name: /Copier le lien/ }))
+    // VX20 — « Copier le lien de la proposition » vit désormais dans le menu
+    // « Plus d'actions ».
+    await user.click(within(row).getByRole('button', { name: /Plus d'actions/ }))
+    await user.click(await screen.findByRole('menuitem', { name: /Copier le lien de la proposition/ }))
     await waitFor(() => {
       expect(ventesApi.shareLinkDevis).toHaveBeenCalledWith(40)
     })
@@ -421,5 +498,131 @@ describe('DevisList — XSAL16 : résumé d\'engagement par section', () => {
     })
     const row = screen.getByText('DEV-NOENGAGE').closest('tr')
     expect(within(row).queryByText(/sur prix|sur étude/)).toBeNull()
+  })
+})
+
+describe('DevisList — VX216(a) : seam devis↔chantier visible côté vendeur', () => {
+  it('badge « Chantier en cours (compo gelée) » quand le chantier lié n\'est ni réceptionné ni clôturé', () => {
+    renderList({
+      loading: false,
+      devis: [{
+        id: 70, reference: 'DEV-VX216-A', client_nom: 'ACME', statut: 'accepte',
+        date_creation: '2026-07-01', total_ttc: 20000, nb_options: 1, version: 1,
+        chantier: { id: 5, reference: 'CH-2026-07-0005', statut: 'en_cours' },
+      }],
+    })
+    const row = screen.getByText('DEV-VX216-A').closest('tr')
+    expect(within(row).getByText('Chantier en cours (compo gelée)')).toBeVisible()
+  })
+
+  it('aucun badge quand le chantier est réceptionné/clôturé (composition plus « engagée »)', () => {
+    renderList({
+      loading: false,
+      devis: [{
+        id: 71, reference: 'DEV-VX216-B', client_nom: 'ACME', statut: 'accepte',
+        date_creation: '2026-07-01', total_ttc: 20000, nb_options: 1, version: 1,
+        chantier: { id: 6, reference: 'CH-2026-07-0006', statut: 'cloture' },
+      }],
+    })
+    const row = screen.getByText('DEV-VX216-B').closest('tr')
+    expect(within(row).queryByText('Chantier en cours (compo gelée)')).toBeNull()
+  })
+
+  it('« Réviser (nouvelle version) » avertit (toast.warning) quand un chantier en cours est lié', async () => {
+    const user = userEvent.setup()
+    const warnSpy = vi.spyOn(toast, 'warning')
+    renderList({
+      loading: false,
+      devis: [{
+        id: 72, reference: 'DEV-VX216-C', client_nom: 'ACME', statut: 'envoye',
+        date_creation: '2026-07-01', total_ttc: 20000, nb_options: 1, version: 1,
+        is_active: true,
+        chantier: { id: 7, reference: 'CH-2026-07-0007', statut: 'planifie' },
+      }],
+    })
+    const row = screen.getByText('DEV-VX216-C').closest('tr')
+    await user.click(within(row).getByRole('button', { name: /Plus d'actions/ }))
+    await user.click(screen.getByRole('menuitem', { name: /Réviser/ }))
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('CH-2026-07-0007'))
+  })
+})
+
+describe('DevisList — VX140 : ≤5 boutons d\'action visibles + menu, cellule Référence à 2 niveaux', () => {
+  it('un devis brouillon montre au plus 5 boutons visibles + le menu « Plus d\'actions »', () => {
+    renderList({
+      loading: false,
+      devis: [{
+        id: 60, reference: 'DEV-VX140-A', client_nom: 'ACME', statut: 'brouillon',
+        date_creation: '2026-07-01', total_ttc: 5000, nb_options: 1, version: 1,
+      }],
+    })
+    const row = screen.getByText('DEV-VX140-A').closest('tr')
+    const actionsCell = row.cells[row.cells.length - 1]
+    const buttons = within(actionsCell).getAllByRole('button')
+    // PDF, Envoyer, Générer facture (désactivé), Plus d'actions = 4 boutons visibles.
+    expect(buttons.length).toBeLessThanOrEqual(5)
+    expect(within(actionsCell).getByRole('button', { name: /Plus d'actions/ })).toBeVisible()
+  })
+
+  it('un devis envoyé montre au plus 5 boutons visibles + le menu « Plus d\'actions »', () => {
+    renderList({
+      loading: false,
+      devis: [{
+        id: 61, reference: 'DEV-VX140-B', client_nom: 'ACME', statut: 'envoye',
+        date_creation: '2026-07-01', total_ttc: 5000, nb_options: 1, version: 1,
+      }],
+    })
+    const row = screen.getByText('DEV-VX140-B').closest('tr')
+    const actionsCell = row.cells[row.cells.length - 1]
+    const buttons = within(actionsCell).getAllByRole('button')
+    // PDF, Accepter, Refuser, Générer facture (désactivé), Plus d'actions = 5 boutons visibles.
+    expect(buttons.length).toBeLessThanOrEqual(5)
+  })
+
+  it('la cellule Référence rend la référence + badges en ligne 1, métadonnées compactes en ligne 2', () => {
+    renderList({
+      loading: false,
+      devis: [{
+        id: 62, reference: 'DEV-VX140-C', client_nom: 'ACME', statut: 'envoye',
+        date_creation: '2026-07-01', total_ttc: 5000, nb_options: 1, version: 2,
+        version_parent_ref: 'DEV-VX140-B0', deja_consulte: true, nombre_vues: 3,
+      }],
+    })
+    const refCell = screen.getByTestId('ref-cell-62')
+    // Ligne 1 : référence + badge de version, en gras.
+    const line1 = refCell.firstElementChild
+    expect(line1.className).toMatch(/font-semibold/)
+    expect(within(line1).getByText('DEV-VX140-C')).toBeVisible()
+    expect(within(line1).getByText('v2')).toBeVisible()
+    // Ligne 2 : métadonnées muted, text-xs, séparées par « · ».
+    const line2 = line1.nextElementSibling
+    expect(line2.className).toMatch(/text-xs/)
+    expect(line2.className).toMatch(/text-muted-foreground/)
+    expect(within(line2).getByText(/Voir les versions/)).toBeVisible()
+    expect(within(line2).getByText(/Consulté ×3/)).toBeVisible()
+  })
+
+  it('la cellule Référence ne rend pas de ligne 2 quand il n\'y a aucune métadonnée', () => {
+    renderList({
+      loading: false,
+      devis: [{
+        id: 63, reference: 'DEV-VX140-D', client_nom: 'ACME', statut: 'brouillon',
+        date_creation: '2026-07-01', total_ttc: 5000, nb_options: 1, version: 1,
+      }],
+    })
+    const refCell = screen.getByTestId('ref-cell-63')
+    // Seule la ligne 1 (référence) est présente — pas de deuxième div de métadonnées.
+    expect(refCell.children.length).toBe(1)
+  })
+})
+
+describe('DevisList — VX82 : titre d’onglet dédié', () => {
+  const originalTitle = document.title
+  afterEach(() => { document.title = originalTitle })
+
+  it('monter DevisList met à jour document.title', () => {
+    document.title = 'TAQINOR'
+    renderList({ loading: false, devis: [] })
+    expect(document.title).toBe('Devis')
   })
 })

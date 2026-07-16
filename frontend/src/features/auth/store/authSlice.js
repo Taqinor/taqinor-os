@@ -1,5 +1,7 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit'
 import api from '../../../api/axios'
+// VX162 — logout propagé à tous les onglets (poste partagé).
+import { broadcastLogout } from '../../../providers/session-bridge'
 
 // Recupere les infos utilisateur depuis l'API (cookie envoye automatiquement)
 export const fetchMe = createAsyncThunk(
@@ -24,6 +26,9 @@ export const logoutUser = createAsyncThunk(
       // Continuer meme si le serveur echoue
     }
     dispatch(authSlice.actions.logout())
+    // VX162 — publie le logout aux AUTRES onglets (poste partagé) : ils se
+    // déconnectent localement sans attendre leur premier 401.
+    broadcastLogout()
   }
 )
 
@@ -34,6 +39,10 @@ const authSlice = createSlice({
     role: null,
     role_nom: null,
     permissions: [],
+    // ODX6 — clés des modules DÉSACTIVÉS pour la société de l'utilisateur,
+    // servies par /auth/me/. Défaut = [] ⇒ nav strictement identique à
+    // aujourd'hui (aucun module masqué tant qu'aucun toggle n'existe).
+    modulesDesactives: [],
     isAuthenticated: false,
     loading: true, // true au demarrage : on verifie la session
   },
@@ -44,6 +53,7 @@ const authSlice = createSlice({
       state.role = action.payload.menu_tier || action.payload.role || 'normal'
       state.role_nom = action.payload.role_nom || null
       state.permissions = action.payload.permissions || []
+      state.modulesDesactives = action.payload.modules_desactives || []
       state.isAuthenticated = true
       state.loading = false
     },
@@ -52,6 +62,7 @@ const authSlice = createSlice({
       state.role = null
       state.role_nom = null
       state.permissions = []
+      state.modulesDesactives = []
       state.isAuthenticated = false
       state.loading = false
     },
@@ -71,6 +82,7 @@ const authSlice = createSlice({
         state.role = action.payload.menu_tier || action.payload.role_legacy || action.payload.role || 'normal'
         state.role_nom = action.payload.role_nom || null
         state.permissions = action.payload.permissions || []
+        state.modulesDesactives = action.payload.modules_desactives || []
         state.isAuthenticated = true
         state.loading = false
       })

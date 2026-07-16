@@ -6,13 +6,13 @@ renvoie la moyenne cumulée par axe. Lecture tout rôle, écriture responsable/a
 Multi-tenant via ``TenantMixin`` : société + ``evalue_par`` posés côté serveur ;
 ``sous_traitant`` / ``ordre`` / ``chantier`` validés tenant.
 """
-from rest_framework import viewsets, status
+from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.viewsets import CompanyScopedModelViewSet
 
 from apps.stock import selectors as stock_selectors
 
@@ -36,7 +36,7 @@ def _check_tenant(serializer, company, field):
                     'service).'})
 
 
-class EvaluationSousTraitantViewSet(TenantMixin, viewsets.ModelViewSet):
+class EvaluationSousTraitantViewSet(CompanyScopedModelViewSet):
     """FG308 — évaluations de performance sous-traitant. Lecture tout rôle,
     écriture responsable/admin. Société + `evalue_par` posés serveur ; FK liées
     validées tenant. Filtrable par `sous_traitant`, `ordre`, `chantier`."""

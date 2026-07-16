@@ -3,6 +3,7 @@
   "lang.en": "English",
   "lang.ar": "العربية",
   "lang.switcher": "Language",
+  "lang.partial_notice": "Only the menus are translated — page content stays in French.",
 
   "common.save": "Save",
   "common.cancel": "Cancel",

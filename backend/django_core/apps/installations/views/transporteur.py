@@ -5,10 +5,8 @@ serveur. Le coût de course se porte sur la livraison (FG329, champ
 `cout_transport`). Lecture tout rôle, écriture responsable/admin. Multi-tenant
 via ``TenantMixin``.
 """
-from rest_framework import viewsets
-
-from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.viewsets import CompanyScopedModelViewSet
 
 from ..models import Transporteur
 from ..serializers import TransporteurSerializer
@@ -16,9 +14,13 @@ from ..serializers import TransporteurSerializer
 READ_ACTIONS = ['list', 'retrieve']
 
 
-class TransporteurViewSet(TenantMixin, viewsets.ModelViewSet):
+class TransporteurViewSet(CompanyScopedModelViewSet):
     """FG331 — transporteurs. Lecture tout rôle, écriture responsable/admin.
-    Filtrable par `type_transporteur`, `active`."""
+    Filtrable par `type_transporteur`, `active`.
+
+    ARC2 — pilote : base transverse unique (TenantMixin + ModelViewSet). Le
+    get_queryset (filtres de requête) et perform_create/perform_update (company
+    + created_by forcés serveur) SURCHARGENT la base : réponses inchangées."""
     queryset = Transporteur.objects.select_related('created_by').all()
     serializer_class = TransporteurSerializer
 

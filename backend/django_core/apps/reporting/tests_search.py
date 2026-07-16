@@ -124,6 +124,29 @@ class TestNotifications(TestCase):
         # Le compteur total inclut bien ces nouveaux signaux.
         self.assertGreaterEqual(resp.data['total'], 2)
 
+    def test_overdue_activity_scoped_to_assigned_user(self):
+        # VX84 — la cloche ne doit PAS compter les activités en retard d'un
+        # COLLÈGUE : avant le fix ce groupe était company-wide (**co sans
+        # assigned_to), contredisant « Ma file » qui filtre déjà par
+        # assigned_to=request.user.
+        from apps.records.models import Activity
+        colleague = User.objects.create_user(
+            username='notif_colleague', password='x', role_legacy='commercial',
+            company=self.company)
+        # Activité en retard assignée à MOI → doit apparaître.
+        Activity.objects.create(
+            company=self.company, assigned_to=self.user, done=False,
+            due_date=date.today() - timedelta(days=3), summary='Ma tâche')
+        # Activité en retard assignée à un COLLÈGUE → doit être exclue.
+        Activity.objects.create(
+            company=self.company, assigned_to=colleague, done=False,
+            due_date=date.today() - timedelta(days=5), summary='Tâche collègue')
+        resp = self.api.get('/api/django/reporting/notifications/')
+        self.assertEqual(resp.status_code, 200)
+        activites = resp.data['activites_en_retard']
+        self.assertEqual(len(activites), 1)
+        self.assertEqual(activites[0]['label'], 'Ma tâche')
+
     def test_inactive_contract_not_signalled(self):
         from apps.sav.models import ContratMaintenance
         client = Client.objects.create(company=self.company, nom='Inactif')

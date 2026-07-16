@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Camera, CameraOff, RefreshCw, Check, X } from 'lucide-react'
 import { Button } from '../../ui'
+import { hapticTap } from '../../lib/haptics'
 
 function cameraCaptureSupported() {
   return (
@@ -103,6 +104,7 @@ export default function CameraCapture({
     if (!blob) return
     const file = new File([blob], filename, { type: 'image/jpeg' })
     onCapture?.(file)
+    hapticTap()
     setPreview(null); blobRef.current = null
     onClose?.()
   }, [filename, onCapture, onClose])

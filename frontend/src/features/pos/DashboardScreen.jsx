@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react'
 import posApi from '../../api/posApi'
 import api from '../../api/axios'
 import { Button, Input, Label, EmptyState, toast } from '../../ui'
+import { formatMAD } from '../../lib/format'
 
 /* XPOS11 — Tableau de bord des ventes comptoir (route /pos/dashboard).
    6 axes (jour / session / caissier / mode / produit / catégorie) + KPIs
    (nb ventes, total TTC, panier moyen, taux de retour) + export xlsx. */
-const fmt = (v) => Number(v || 0).toLocaleString('fr-MA')
+const fmt = (v) => formatMAD(v, { withSymbol: false })
 
 function Breakdown({ titre, rows, valeur }) {
   const entries = Object.entries(rows || {})

@@ -3111,3 +3111,30 @@ def matrice_risques(projet):
         'total_ouverts_surveilles': len(risques_actifs),
         'top_risques': top_risques,
     }
+
+
+# ── ARC40 — provider KPI pour le reporting fédéré ────────────────────────────
+
+def kpi_projets_par_statut(company):
+    """ARC40 — tuiles KPI « projets par statut » pour le reporting fédéré.
+
+    Déclaré dans ``apps/gestion_projet/platform.py`` (surface
+    ``kpi_providers``) et résolu par ``apps/reporting/reports.py::kpi_federes``
+    — le reporting n'importe JAMAIS les modèles projet, il appelle ce
+    sélecteur (frontière inter-app). Une tuile par statut EFFECTIVEMENT
+    présent (aucune tuile à zéro inventée). Forme normalisée
+    ``{id, label, valeur, unite?}``. Lecture seule, scopé société.
+    """
+    from django.db.models import Count
+
+    from .models import Projet
+
+    labels = dict(Projet.Statut.choices)
+    rows = (Projet.objects.filter(company=company)
+            .values('statut').annotate(n=Count('id')).order_by('statut'))
+    return [
+        {'id': f"projets_{row['statut']}",
+         'label': f"Projets — {labels.get(row['statut'], row['statut'])}",
+         'valeur': row['n'], 'unite': 'projets'}
+        for row in rows
+    ]

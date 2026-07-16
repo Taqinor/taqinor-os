@@ -6,6 +6,7 @@ from .views import (
     LeadTagViewSet, MotifPerteViewSet, CanalViewSet, ParrainageViewSet,
     MessageTemplateViewSet, ObjectifCommercialViewSet, PlanActiviteViewSet,
     PointContactViewSet, SiteProfileViewSet, EquipeCommercialeViewSet,
+    WebsiteLeadPayloadViewSet,
 )
 from .webhooks import website_lead_webhook, meta_lead_ads_webhook
 from .roof_views import lead_roof_footprint
@@ -13,6 +14,13 @@ from .public_chat_views import (
     open_chat_session, post_chat_message, get_chat_session,
 )
 from .public_booking_views import public_booking_status, public_booking_reserve
+# ODX13 — mêmes ViewSets que ``apps.compta.urls`` (basenames explicitement
+# préfixés ``crm-…`` pour NE PAS entrer en collision avec les noms d'URL du
+# routeur compta, qui reverse ``partenaire-list`` etc.).
+from .views import (
+    CommissionPartenaireViewSet, PartenaireViewSet,
+    SoumissionLeadPartenaireViewSet, TerritoireCommercialViewSet,
+)
 
 router = DefaultRouter()
 router.register(r'clients', ClientViewSet)
@@ -29,6 +37,16 @@ router.register(r'points-contact', PointContactViewSet)  # FG204
 router.register(r'site-profiles', SiteProfileViewSet)  # DC12
 router.register(r'plans-activite', PlanActiviteViewSet)  # ZSAL2
 router.register(r'equipes', EquipeCommercialeViewSet)  # ZSAL3 (admin CRUD)
+router.register(r'website-lead-payloads', WebsiteLeadPayloadViewSet)  # QX16
+# ODX13 — nouvelles routes /api/django/crm/… (anciennes /api/django/compta/…
+# conservées à l'identique, voir apps/compta/urls.py).
+router.register(r'partenaires', PartenaireViewSet, basename='crm-partenaire')
+router.register(r'soumissions-lead-partenaire', SoumissionLeadPartenaireViewSet,
+                basename='crm-soumission-lead-partenaire')
+router.register(r'commissions-partenaire', CommissionPartenaireViewSet,
+                basename='crm-commission-partenaire')
+router.register(r'territoires-commerciaux', TerritoireCommercialViewSet,
+                basename='crm-territoire-commercial')
 
 urlpatterns = [
     # Récepteur des leads du site public (secret statique, voir webhooks.py)

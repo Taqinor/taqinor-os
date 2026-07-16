@@ -519,6 +519,8 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
         return devis
 
     devis = create_with_reference(Devis, 'DEV', company, _create)
+    # QX23be — fige la marge interne dès la création (manager-only).
+    refresh_marge_snapshot(devis)
     logger.info(
         'Q3/QJ21: devis %s built from layout (%d lignes, %.2f kWc, %d pans, company %s)',
         devis.reference, len(line_specs), kwc,
@@ -670,6 +672,8 @@ def request_esign_otp(link):
     code = _generate_otp()
     cache_key = _otp_cache_key(link.token)
     cache.set(cache_key, code, timeout=OTP_CACHE_TTL)
+    # QX10 — un nouveau code réinitialise le compteur de tentatives (brute-force).
+    cache.delete(_otp_attempts_key(link.token))
 
     devis = link.devis
     client = getattr(devis, 'client', None)
@@ -677,10 +681,14 @@ def request_esign_otp(link):
     email = (getattr(client, 'email', '') or '').strip()
 
     sent = False
-    # Préférer WhatsApp / SMS (wa.me), puis email.
+    # Préférer WhatsApp / SMS (wa.me), puis email. QX10 — le repli email est
+    # TOUJOURS tenté quand WhatsApp échoue, même si le client n'a pas d'email
+    # renseigné : sinon un client téléphone-seul (stub WhatsApp figé à False)
+    # ne recevrait JAMAIS son code, verrouillé hors de la signature. Un email
+    # vide/absent échoue simplement (best-effort, cf. _send_otp_email).
     if phone:
         sent = _send_otp_whatsapp(phone=phone, code=code, devis_ref=devis.reference)
-    if not sent and email:
+    if not sent:
         sent = _send_otp_email(email=email, code=code, devis_ref=devis.reference)
 
     if not sent:
@@ -692,6 +700,15 @@ def request_esign_otp(link):
     return None
 
 
+#: QX10 — nombre de tentatives OTP erronées avant verrouillage temporaire.
+OTP_MAX_ATTEMPTS = 5
+
+
+def _otp_attempts_key(link_token):
+    """QX10 — clé de cache du compteur de tentatives OTP erronées par jeton."""
+    return f'esign_otp_attempts:{link_token}'
+
+
 def validate_esign_otp(link, otp_code):
     """QJ11 — Valide l'OTP soumis contre le cache.
 
@@ -700,6 +717,11 @@ def validate_esign_otp(link, otp_code):
       - otp_code absent / vide → message d'erreur (OTP requis)
       - otp_code incorrect ou expiré → message d'erreur
       - otp_code correct → None (la validation réussit), le code est consommé.
+
+    QX10 — protection brute-force : un compteur par jeton (cache) verrouille
+    la validation après ``OTP_MAX_ATTEMPTS`` échecs (l'espace 6 chiffres est
+    trivial à balayer sans limite). Une validation réussie remet le compteur
+    à zéro ; un nouveau code doit être redemandé après verrouillage.
     """
     if not _esign_otp_enabled():
         return None
@@ -708,33 +730,46 @@ def validate_esign_otp(link, otp_code):
         return 'Un code de confirmation est requis. Demandez-le via le bouton « Envoyer le code ».'
 
     from django.core.cache import cache
+    attempts_key = _otp_attempts_key(link.token)
+    attempts = cache.get(attempts_key, 0)
+    if attempts >= OTP_MAX_ATTEMPTS:
+        return ('Trop de tentatives incorrectes. Redemandez un nouveau code '
+                'de confirmation et réessayez.')
+
     cache_key = _otp_cache_key(link.token)
     stored = cache.get(cache_key)
     if stored is None:
         return 'Le code de confirmation a expiré ou n\'a pas été demandé. Redemandez un nouveau code.'
     if stored != otp_code.strip():
+        # QX10 — incrémente le compteur d'échecs (TTL = fenêtre du code).
+        cache.set(attempts_key, attempts + 1, timeout=OTP_CACHE_TTL)
+        restantes = max(0, OTP_MAX_ATTEMPTS - (attempts + 1))
+        if restantes == 0:
+            return ('Trop de tentatives incorrectes. Redemandez un nouveau '
+                    'code de confirmation et réessayez.')
         return 'Code de confirmation incorrect. Vérifiez le code reçu et réessayez.'
 
-    # Code valide : on le consomme (one-time use).
+    # Code valide : on le consomme (one-time use) et on réinitialise le compteur.
     cache.delete(cache_key)
+    cache.delete(attempts_key)
     return None
 
 
 def _send_otp_whatsapp(phone, code, devis_ref):
-    """Envoie le code OTP via un lien wa.me (draft WhatsApp). Best-effort → bool."""
-    try:
-        # On journalise un message pré-formaté — pas d'API WhatsApp live
-        # (aucune dépendance gated). En production, intégrer ici WhatsApp BSP
-        # (notifications.whatsapp_bsp) quand disponible.
-        msg = (
-            f'Votre code de confirmation pour le devis {devis_ref} est : '
-            f'{code}. Valable 10 minutes.'
-        )
-        logger.info('QJ11 OTP wa.me [%s]: %s → %s', devis_ref, phone, msg)
-        return True
-    except Exception as exc:  # noqa: BLE001
-        logger.warning('QJ11: wa.me OTP échec : %s', exc)
-        return False
+    """Envoie le code OTP via WhatsApp. Best-effort → bool.
+
+    QX10 — CORRECTIF : ce canal est un STUB (aucune API WhatsApp live n'est
+    câblée — GATÉ derrière QXG1/le BSP). Il renvoie désormais ``False`` au lieu
+    de ``True`` : sinon un client SANS email (téléphone seul) ne recevait
+    JAMAIS son code (le stub prétendait l'avoir envoyé et coupait le repli
+    email), le verrouillant hors de la signature quand ``ESIGN_OTP_ENABLED``
+    est actif. En renvoyant False, ``request_esign_otp`` retombe sur l'email.
+    Quand le BSP WhatsApp sera disponible, envoyer réellement ici et renvoyer
+    True."""
+    logger.info(
+        'QJ11 OTP WhatsApp NON envoyé (stub, aucun BSP câblé) pour devis %s '
+        '— repli email', devis_ref)
+    return False
 
 
 def _send_otp_email(email, code, devis_ref):
@@ -758,12 +793,18 @@ def _send_otp_email(email, code, devis_ref):
         return False
 
 
-def _create_esign_record(*, devis, nom, ip, user_agent='', consentement=True):
+def _create_esign_record(*, devis, nom, ip, user_agent='', consentement=True,
+                         signature_image='', signed_at_client=None,
+                         on_behalf_of=''):
     """QJ10 — Crée le DevisSignature IMMUABLE si aucun n'existe encore.
 
     Idempotent : un enregistrement existant n'est jamais écrasé (la première
     signature fait foi). Best-effort : une exception ne remonte jamais —
     l'acceptation (statut + chatter) est déjà écrite avant cet appel.
+
+    QX9 — persiste désormais la vraie preuve de signature (image manuscrite,
+    consentement e-signature explicite, horodatage client, « au nom de ») que
+    le front envoie et qui était auparavant jetée.
     """
     try:
         from django.utils import timezone
@@ -771,6 +812,11 @@ def _create_esign_record(*, devis, nom, ip, user_agent='', consentement=True):
         if DevisSignature.objects.filter(devis=devis).exists():
             return
         content_hash = DevisSignature.compute_content_hash(devis)
+        # ``signature_image`` peut être une data-URL volumineuse — on la borne
+        # raisonnablement (les payloads canvas font ~quelques Ko).
+        img = (signature_image or '')
+        if len(img) > 200000:
+            img = img[:200000]
         DevisSignature.objects.create(
             company=devis.company,
             devis=devis,
@@ -780,6 +826,10 @@ def _create_esign_record(*, devis, nom, ip, user_agent='', consentement=True):
             user_agent=(user_agent or '')[:512],
             content_hash=content_hash,
             signed_at=timezone.now(),
+            signature_image=img,
+            consent_esign=bool(consentement),
+            signed_at_client=signed_at_client or None,
+            on_behalf_of=(on_behalf_of or '')[:150],
         )
         logger.info(
             'QJ10: DevisSignature créée pour devis %s (hash=%s…)',
@@ -820,6 +870,37 @@ def _store_signed_pdf(*, devis):
             getattr(devis, 'reference', '?'), exc)
 
 
+def _acceptance_deposit_block(devis):
+    """QX33be — bloc texte « acompte + RIB » pour l'email de confirmation.
+
+    Acompte = 1ʳᵉ tranche de l'échéancier (sur le TTC REMISÉ, chaîne QX1). RIB
+    depuis ``settings.COMPANY_RIB`` si configuré. Chaîne VIDE quand rien n'est
+    configurable (pas de tranche, pas de RIB) → email inchangé. Best-effort."""
+    from decimal import Decimal
+    try:
+        from .utils.echeancier import next_tranche
+        tr = next_tranche(devis)
+        if tr is None:
+            return ''
+        acompte = Decimal(str(tr['ttc']))
+        montant_str = f'{acompte:,.2f}'.replace(',', ' ') + ' MAD'
+        from django.conf import settings
+        rib = (getattr(settings, 'COMPANY_RIB', '') or '').strip()
+        lignes = [
+            f"Pour démarrer votre installation, un acompte de {montant_str} "
+            f"est à régler.",
+        ]
+        if rib:
+            lignes.append(
+                f"Vous pouvez l'effectuer par virement sur : {rib}")
+            lignes.append(
+                "Une fois le virement effectué, signalez-le depuis votre "
+                "espace proposition pour informer votre conseiller.")
+        return '\n'.join(lignes) + '\n\n'
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        return ''
+
+
 def _send_acceptance_emails(*, devis, user):
     """QJ10 — Envoie un email de confirmation de signature au client + au vendeur.
 
@@ -838,13 +919,18 @@ def _send_acceptance_emails(*, devis, user):
                 f"{client.nom} {getattr(client, 'prenom', '') or ''}".strip()
             )
         salut = f'Bonjour {nom_client},' if nom_client else 'Bonjour,'
+        # QX33be — bloc acompte (tranche 1 sur le TTC REMISÉ per QX1) + RIB si
+        # configuré. Vide (aucune ligne) quand rien n'est configurable → texte
+        # de confirmation inchangé.
+        acompte_bloc = _acceptance_deposit_block(devis)
         corps = (
             f"{salut}\n\n"
             f"Nous avons bien reçu votre acceptation du devis "
             f"{devis.reference}.\n\n"
             f"Votre signature électronique a été enregistrée conformément "
-            f"à la loi 53-05 relative à l'échange électronique de données "
+            f"à la loi 43-20 relative à l'échange électronique de données "
             f"juridiques.\n\n"
+            f"{acompte_bloc}"
             f"Vous trouverez ci-joint votre exemplaire signé pour vos archives.\n\n"
             f"Merci pour votre confiance.\n\n"
             f"Cordialement,\nL'équipe TAQINOR"
@@ -1077,11 +1163,17 @@ def _fire_capi_signed_quote(*, devis):
     phone_digits = ''.join(c for c in (phone_raw or '') if c.isdigit())
     phone_hash = _sha256(phone_digits) if phone_digits else ''
 
-    # Valeur de conversion : total TTC du devis (sans prix d'achat — règle #4).
+    # Valeur de conversion : TTC REMISÉ de l'option acceptée (QX2 — chaîne
+    # canonique QX1), jamais le TTC brut du devis (mal calibré sur un devis à
+    # 2 options ou avec remise globale). Sans prix d'achat (règle #4).
     try:
-        value = float(getattr(devis, 'total_ttc', None) or 0)
-    except (TypeError, ValueError):
-        value = 0.0
+        from apps.ventes.utils.options import option_totaux
+        value = float(option_totaux(devis)['ttc'])
+    except Exception:  # noqa: BLE001 — CAPI ne casse jamais l'acceptation
+        try:
+            value = float(getattr(devis, 'total_ttc', None) or 0)
+        except (TypeError, ValueError):
+            value = 0.0
 
     user_data = {}
     if email_hash:
@@ -1142,6 +1234,7 @@ def _fire_capi_signed_quote(*, devis):
 
 def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
                  ip=None, user_agent='', consentement=True,
+                 signature_image='', signed_at_client=None, on_behalf_of='',
                  idempotent_reaccept=True):
     """Q7 — flip a Devis to « accepté » through the ONE acceptance path.
 
@@ -1161,57 +1254,72 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
 
     Raises ``AcceptError`` on a non-acceptable status or an invalid option.
     """
+    from django.db import transaction
     from django.utils import timezone
     from apps.ventes.models import Devis
     from apps.ventes import activity
     from core.events import devis_accepted
 
-    # Re-submit on an already-accepted devis: a no-op for the tokenized web
-    # proposal, but rejected (409) for the in-app action (ERR33 guard).
-    if devis.statut == Devis.Statut.ACCEPTE:
-        if idempotent_reaccept:
-            return devis
-        raise AcceptError('Ce devis est déjà accepté.', conflict=True)
-
-    # ERR33 — only a live devis (brouillon / envoyé) can be accepted.
-    if devis.statut not in (Devis.Statut.BROUILLON, Devis.Statut.ENVOYE):
-        raise AcceptError(
-            'Seul un devis en cours (brouillon ou envoyé) peut être accepté ; '
-            f'statut actuel : « {devis.get_statut_display()} ».',
-            conflict=True)
-
+    # QX41 — verrou anti-course sur le chemin public d'acceptation : deux POST
+    # concurrents (double-clic / rejeu) pouvaient tous deux passer le contrôle
+    # de statut et double-émettre ``devis_accepted`` (effets aval doublés). On
+    # relit le devis VERROUILLÉ (select_for_update) et on recontrôle son statut
+    # SOUS le verrou : le second appel voit ACCEPTE et devient un no-op.
     valid = {c.value for c in Devis.OptionAcceptee}
     option = (option or '').strip()
     if option and option not in valid:
         raise AcceptError(
             'Option invalide (attendu « sans_batterie » ou « avec_batterie »).')
 
-    # Resolve the option exactly like the viewset (two-option devis require an
-    # explicit choice; single-option devis deduce it from the scenario).
-    try:
-        from apps.ventes.quote_engine.builder import build_quote_data
-        qd = build_quote_data(devis, {'pdf_mode': 'onepage'})
-        nb_options = qd.get('nb_options', 1)
-        scenario = qd.get('scenario', '')
-    except Exception:  # noqa: BLE001 — l'acceptation ne doit jamais casser
-        nb_options, scenario = 1, ''
-    if nb_options == 2 and not option:
-        raise AcceptError(
-            'Ce devis comporte deux options — précisez celle choisie par le '
-            'client (« sans_batterie » ou « avec_batterie »).')
-    if not option:
-        option = (Devis.OptionAcceptee.AVEC_BATTERIE
-                  if scenario == 'Avec batterie'
-                  else Devis.OptionAcceptee.SANS_BATTERIE)
-
+    # QX41 — TOUT le contrôle-puis-bascule de statut se fait SOUS le même verrou
+    # (select_for_update) : deux acceptations concurrentes ne peuvent plus
+    # toutes deux voir « envoyé » et double-basculer/double-émettre l'événement.
     date_acc = date_acceptation or timezone.now().date()
-    ancien = devis.statut
-    devis.statut = Devis.Statut.ACCEPTE
-    devis.date_acceptation = date_acc
-    devis.accepte_par_nom = (nom or '')[:150]
-    devis.option_acceptee = option
-    devis.save(update_fields=[
-        'statut', 'date_acceptation', 'accepte_par_nom', 'option_acceptee'])
+    with transaction.atomic():
+        try:
+            devis = Devis.objects.select_for_update().get(pk=devis.pk)
+        except Devis.DoesNotExist:
+            raise AcceptError('Devis introuvable.', conflict=True)
+
+        # Re-submit on an already-accepted devis: a no-op for the tokenized
+        # web proposal, but rejected (409) for the in-app action (ERR33 guard).
+        if devis.statut == Devis.Statut.ACCEPTE:
+            if idempotent_reaccept:
+                return devis
+            raise AcceptError('Ce devis est déjà accepté.', conflict=True)
+
+        # ERR33 — only a live devis (brouillon / envoyé) can be accepted.
+        if devis.statut not in (Devis.Statut.BROUILLON, Devis.Statut.ENVOYE):
+            raise AcceptError(
+                'Seul un devis en cours (brouillon ou envoyé) peut être '
+                f'accepté ; statut actuel : « {devis.get_statut_display()} ».',
+                conflict=True)
+
+        # Resolve the option exactly like the viewset (two-option devis require
+        # an explicit choice; single-option devis deduce it from the scenario).
+        try:
+            from apps.ventes.quote_engine.builder import build_quote_data
+            qd = build_quote_data(devis, {'pdf_mode': 'onepage'})
+            nb_options = qd.get('nb_options', 1)
+            scenario = qd.get('scenario', '')
+        except Exception:  # noqa: BLE001 — l'acceptation ne doit jamais casser
+            nb_options, scenario = 1, ''
+        if nb_options == 2 and not option:
+            raise AcceptError(
+                'Ce devis comporte deux options — précisez celle choisie par '
+                'le client (« sans_batterie » ou « avec_batterie »).')
+        if not option:
+            option = (Devis.OptionAcceptee.AVEC_BATTERIE
+                      if scenario == 'Avec batterie'
+                      else Devis.OptionAcceptee.SANS_BATTERIE)
+
+        ancien = devis.statut
+        devis.statut = Devis.Statut.ACCEPTE
+        devis.date_acceptation = date_acc
+        devis.accepte_par_nom = (nom or '')[:150]
+        devis.option_acceptee = option
+        devis.save(update_fields=[
+            'statut', 'date_acceptation', 'accepte_par_nom', 'option_acceptee'])
     activity.log_devis_acceptance(devis, user, nom, date_acc, option)
     if ip:
         # Trace the e-signature origin IP in the chatter (Q7) without a new
@@ -1225,6 +1333,8 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
     _create_esign_record(
         devis=devis, nom=nom, ip=ip,
         user_agent=user_agent, consentement=consentement,
+        signature_image=signature_image, signed_at_client=signed_at_client,
+        on_behalf_of=on_behalf_of,
     )
     # QJ9 — Attribution first-touch : copie UTM/fbclid du lead vers etude_params
     # du devis pour que l'attribution reste lossless même si le lead est fusionné.
@@ -1236,6 +1346,14 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
     # QJ22 — Stockage de l'artefact PDF signé (proposition verrouillée).
     # Appelé APRÈS _create_esign_record pour que le DevisSignature existe déjà.
     _store_signed_pdf(devis=devis)
+    # QX9 — le PDF signé est persisté sur une AUTRE instance (via le moteur) ;
+    # on rafraîchit ``fichier_pdf`` sur l'instance courante pour que la pièce
+    # jointe de l'email ne parte pas sur un état périmé (bug de l'exemplaire
+    # signé manquant).
+    try:
+        devis.refresh_from_db(fields=['fichier_pdf'])
+    except Exception:  # noqa: BLE001 — best-effort
+        pass
     # QJ10 — Email de confirmation PDF verrouillé au client + au vendeur.
     try:
         _send_acceptance_emails(devis=devis, user=user)
@@ -1341,6 +1459,100 @@ def log_supplier_email(
     return ok, log
 
 
+def refresh_etude_consistency(devis):
+    """QX24 — garde ``etude_params`` cohérent quand les lignes/remise changent.
+
+    Problème : ``production_annuelle``/``economies_annuelles`` sont figés à la
+    création tandis que le TOTAL du devis flotte avec les éditions de lignes/la
+    remise globale — le payback (= total ÷ économies) devient alors incohérent.
+
+    Correctif (option b) : on RECALCULE et REPERSISTE le payback dérivé à
+    partir du TTC canonique COURANT (chaîne QX1) et des économies annuelles
+    stockées, à chaque changement de ligne/remise. On garde tel quel toute
+    valeur explicitement saisie par le vendeur (préfixe ``*_override`` ou clé
+    ``etude_overrides``), qui reste autoritative.
+
+    Best-effort : jamais d'exception remontée. No-op si aucune économie connue
+    (rien à dériver) — comportement historique inchangé pour ces devis.
+    """
+    from decimal import Decimal
+    try:
+        params = dict(devis.etude_params or {})
+        eco = params.get('economies_annuelles')
+        if not eco:
+            return
+        eco = Decimal(str(eco))
+        if eco <= 0:
+            return
+        # Le vendeur a figé un payback à la main → on ne l'écrase jamais.
+        overrides = set(params.get('etude_overrides') or [])
+        if 'payback_annees' in overrides or 'payback_override' in params:
+            return
+        from apps.ventes.utils.options import option_totaux
+        ttc = Decimal(str(option_totaux(devis)['ttc']))
+        if ttc <= 0:
+            return
+        payback = (ttc / eco).quantize(Decimal('0.1'))
+        if params.get('payback_annees') != float(payback):
+            params['payback_annees'] = float(payback)
+            devis.etude_params = params
+            devis.save(update_fields=['etude_params'])
+    except Exception as exc:  # noqa: BLE001 — jamais bloquant
+        logger.warning('QX24: refresh étude échoué pour devis %s : %s',
+                       getattr(devis, 'reference', '?'), exc)
+
+
+def compute_marge_snapshot(devis):
+    """QX23be — marge HT interne figée d'un devis (usage MANAGER UNIQUEMENT).
+
+    marge = Σ(HT ligne, option acceptée si applicable) − Σ(qté × prix_achat).
+    Renvoie un Decimal, ou None si AUCUN produit lié ne porte de prix_achat
+    exploitable (on ne veut pas figer une fausse marge = 100 % du CA). Best-
+    effort : jamais d'exception remontée.
+
+    RÈGLE #4 : ``prix_achat`` ne quitte JAMAIS cette fonction interne — le
+    résultat (une marge) n'est exposé qu'au responsable dans la vue liste,
+    jamais dans un PDF/une sortie client.
+    """
+    from decimal import Decimal
+    try:
+        from apps.ventes.utils.options import option_lines
+        lignes = option_lines(devis)
+    except Exception:  # noqa: BLE001
+        try:
+            lignes = list(devis.lignes.select_related('produit').all())
+        except Exception:  # noqa: BLE001
+            return None
+    ht = Decimal('0')
+    cout = Decimal('0')
+    a_un_cout = False
+    for li in lignes:
+        try:
+            ht += Decimal(str(li.total_ht))
+        except Exception:  # noqa: BLE001
+            continue
+        produit = getattr(li, 'produit', None)
+        prix_achat = getattr(produit, 'prix_achat', None) if produit else None
+        if prix_achat is not None and Decimal(str(prix_achat)) > 0:
+            a_un_cout = True
+            cout += Decimal(str(li.quantite)) * Decimal(str(prix_achat))
+    if not a_un_cout:
+        return None
+    return (ht - cout).quantize(Decimal('0.01'))
+
+
+def refresh_marge_snapshot(devis):
+    """QX23be — recalcule et persiste ``marge_snapshot`` (best-effort)."""
+    try:
+        marge = compute_marge_snapshot(devis)
+        if devis.marge_snapshot != marge:
+            devis.marge_snapshot = marge
+            devis.save(update_fields=['marge_snapshot'])
+    except Exception as exc:  # noqa: BLE001 — jamais bloquant
+        logger.warning('QX23: marge_snapshot échoué pour devis %s : %s',
+                       getattr(devis, 'reference', '?'), exc)
+
+
 def mark_devis_sent(*, devis, user=None):
     """U4 — flip a Devis to « envoyé » through the ONE status-change path.
 
@@ -1379,6 +1591,8 @@ def mark_devis_sent(*, devis, user=None):
     devis.statut = Devis.Statut.ENVOYE
     devis.date_envoi = timezone.now()
     devis.save(update_fields=['statut', 'date_envoi'])
+    # QX23be — fige la marge interne au moment de l'envoi (manager-only).
+    refresh_marge_snapshot(devis)
     activity.log_devis_sent(devis, user)
     devis_sent.send(
         sender=Devis, devis=devis, user=user, ancien_statut=ancien)
@@ -1651,6 +1865,61 @@ def verifier_credit_hold(client, *, override=False, user=None,
         from . import activity
         activity.log_devis_credit_hold_override(
             chatter_target, user, result['motif'])
+
+
+class SaleWarningError(Exception):
+    """ZSAL9 — levée quand un devis porte un avertissement de vente BLOQUANT
+    (produit et/ou client) sans override responsable/admin.
+
+    Porte le message concaténé (``motif``) pour un 403 explicite."""
+
+    def __init__(self, motif):
+        super().__init__(motif)
+        self.motif = motif
+
+
+def verifier_sale_warnings(devis, *, override=False, user=None,
+                           chatter_target=None):
+    """ZSAL9 — vérifie les avertissements de vente (« sale warnings ») avant une
+    action sensible (accepter un devis, générer une facture).
+
+    Collecte les messages BLOQUANTS du client du devis et des produits de ses
+    lignes (lus via ``stock.selectors`` — jamais d'import de ``stock.models``).
+    Sans message bloquant → no-op. Avec au moins un message bloquant : lève
+    ``SaleWarningError`` SAUF si ``override=True`` (responsable/admin explicite),
+    auquel cas l'override est journalisé (chatter du devis si fourni). Les
+    avertissements NON bloquants n'empêchent jamais l'action (ils ne sont
+    qu'affichés côté écran). Ne renvoie rien ; lève ou passe silencieusement."""
+    motifs = []
+
+    client = getattr(devis, 'client', None)
+    if client is not None and getattr(client, 'avertissement_bloquant', False) \
+            and (getattr(client, 'avertissement_vente', '') or '').strip():
+        motifs.append(f'Client — {client.avertissement_vente.strip()}')
+
+    from apps.stock import selectors as stock_selectors
+    produit_ids = list(
+        devis.lignes.exclude(produit__isnull=True)
+        .values_list('produit_id', flat=True)
+    )
+    for row in stock_selectors.produits_avertissements(devis.company, produit_ids):
+        if row.get('avertissement_bloquant') \
+                and (row.get('avertissement_vente') or '').strip():
+            motifs.append(
+                f"Produit « {row.get('nom', '')} » — "
+                f"{row['avertissement_vente'].strip()}")
+
+    if not motifs:
+        return
+
+    motif = ' ; '.join(motifs)
+    if not override:
+        raise SaleWarningError(motif)
+
+    # Override responsable/admin : journalise au chatter du devis.
+    if chatter_target is not None:
+        from . import activity
+        activity.log_devis_sale_warning_override(chatter_target, user, motif)
 
 
 def _s2(x):
@@ -2690,6 +2959,59 @@ def _get_nudge_days():
     return getattr(settings, 'DEVIS_NUDGE_DAYS', DEVIS_NUDGE_DEFAULT_DAYS)
 
 
+def _nudge_suppressed(devis, today, engagement_days=3):
+    """QX13 — une relance de devis doit-elle être différée/sautée ?
+
+    Trois signaux de réalité (la cadence était aveugle à l'activité) :
+      * ``lead.relance_date`` est dans le FUTUR (le vendeur a déjà planifié un
+        contact) → on ne double pas ;
+      * une activité de contact MANUELLE existe récemment sur le lead (via un
+        sélecteur crm optionnel, jamais un import de modèle crm) ;
+      * un engagement proposition récent (< engagement_days) sur le ShareLink
+        (le client vient de regarder → laisser respirer).
+
+    Retourne True pour SUPPRIMER/différer, False pour laisser passer. Best-
+    effort : toute erreur → False (on ne bloque jamais une relance par bug)."""
+    from datetime import timedelta
+    try:
+        lead_id = getattr(devis, 'lead_id', None)
+        if lead_id:
+            from apps.crm import selectors as crm_selectors
+            lead = crm_selectors.get_company_lead(devis.company, lead_id)
+            if lead is not None:
+                relance = getattr(lead, 'relance_date', None)
+                if relance and relance > today:
+                    return True
+                # Activité de contact manuelle récente — via sélecteur crm si
+                # disponible (jamais un import de modèle crm). Coordination :
+                # une fonction dédiée ``lead_recent_manual_contact`` pourra être
+                # ajoutée côté crm ; en son absence, ce signal est ignoré.
+                fn = getattr(crm_selectors, 'lead_recent_manual_contact', None)
+                if callable(fn):
+                    try:
+                        if fn(devis.company, lead_id):
+                            return True
+                    except Exception:  # noqa: BLE001
+                        pass
+    except Exception:  # noqa: BLE001
+        pass
+    # Engagement proposition récent (ShareLink — in-lane).
+    try:
+        from apps.ventes.models import ShareLink
+        link = (ShareLink.objects
+                .filter(devis=devis)
+                .order_by('-created_at')
+                .first())
+        seen = getattr(link, 'last_viewed_at', None) if link else None
+        if seen is not None:
+            seen_date = seen.date() if hasattr(seen, 'date') else seen
+            if seen_date >= today - timedelta(days=engagement_days):
+                return True
+    except Exception:  # noqa: BLE001
+        pass
+    return False
+
+
 def send_devis_followup_nudges():
     """QJ4 — Déclenche les relances cadencées pour les devis « envoyés ».
 
@@ -2757,6 +3079,11 @@ def send_devis_followup_nudges():
         client_nom = (getattr(client, 'nom', '') or '') if client else ''
         vendeur = getattr(devis, 'created_by', None)
 
+        # QX13 — respecte la réalité : relance planifiée, contact manuel
+        # récent, ou engagement proposition récent → on diffère ce tour.
+        if _nudge_suppressed(devis, today):
+            continue
+
         for idx, jours in enumerate(nudge_days):
             if idx in fired:
                 continue  # already sent for this level — idempotent
@@ -2765,11 +3092,12 @@ def send_devis_followup_nudges():
                 continue  # not due yet
 
             # Build the public share link for the seller to use.
+            # QX13 — via le builder UNIQUE client_links (chemin /proposition/,
+            # jamais /proposal/ qui 404 sur le site).
             try:
                 share_link = ShareLink.for_devis(devis)
-                from django.conf import settings
-                site = getattr(settings, 'SITE_URL', 'https://taqinor.ma')
-                proposal_url = f'{site}/proposal/{share_link.token}'
+                from apps.ventes.utils.client_links import proposition_url
+                proposal_url = proposition_url(share_link.token)
             except Exception:
                 proposal_url = ''
 
@@ -2801,16 +3129,37 @@ def send_devis_followup_nudges():
                 )
                 canal = DevisNudgeLog.Canal.EMAIL
             else:
-                # Surface wa.me draft — log so the seller sees it.
-                vendeur_phone = (
-                    getattr(vendeur, 'phone_number', '') or ''
-                    if vendeur else ''
-                )
-                wa_url = _build_wa_draft_url(vendeur_phone, msg_fr) or proposal_url
+                # QX13 — brouillon wa.me vers le CLIENT (le lien proposition à
+                # partager), et non le téléphone du vendeur.
+                client_phone = (getattr(client, 'telephone', '') or ''
+                                if client else '')
+                wa_url = (_build_wa_draft_url(client_phone, msg_fr)
+                          or proposal_url)
                 logger.info(
                     'QJ4 nudge wa_draft devis=%s niveau=%d j+%d vendeur=%s url=%s',
                     devis.reference, idx, jours,
                     getattr(vendeur, 'username', '?'), wa_url)
+                # QX13 — le brouillon wa.me ne partait qu'en LOG (invisible) :
+                # crée une vraie Notification in-app au vendeur, avec le lien
+                # proposition + le brouillon wa.me prêts et un deep-link devis.
+                if vendeur is not None:
+                    try:
+                        from apps.notifications.services import notify
+                        from apps.notifications.models import EventType
+                        notify(
+                            vendeur, EventType.DEVIS_NUDGE_DUE,
+                            title=(f'Relance à faire — devis {devis.reference} '
+                                   f'(niveau {idx + 1})'),
+                            body=(f'Aucune réponse depuis {jours} j. '
+                                  f'Proposition : {proposal_url or "—"}'
+                                  + (f'\nBrouillon WhatsApp : {wa_url}'
+                                     if wa_url else '')),
+                            link=f'/ventes/devis?devis={devis.id}',
+                            company=devis.company)
+                    except Exception as exc:  # noqa: BLE001 — best-effort
+                        logger.warning(
+                            'QX13: notification relance échec devis %s : %s',
+                            devis.reference, exc)
 
             # Record the fired level — unique_together prevents duplicates.
             try:
@@ -2873,11 +3222,13 @@ def expire_stale_devis():
 
     Renvoie un dict ``{expired, funnel_followup, funnel_cold}`` pour les tests.
     """
-    from datetime import date
-
     from .models import Devis
 
-    today = date.today()
+    # QX11 — date Casablanca-aware (comme ses tâches sœurs), plus
+    # ``date.today()`` (fuseau serveur) qui pouvait décaler l'expiration d'un
+    # jour selon l'UTC.
+    from .scheduled import casablanca_today
+    today = casablanca_today()
     expired = 0
     funnel_followup = 0
     funnel_cold = 0

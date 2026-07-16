@@ -12,8 +12,8 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.viewsets import CompanyScopedModelViewSet
 
 from apps.ventes.utils.references import create_with_reference
 
@@ -24,7 +24,7 @@ from .. import services
 READ_ACTIONS = ['list', 'retrieve']
 
 
-class PickListViewSet(TenantMixin, viewsets.ModelViewSet):
+class PickListViewSet(CompanyScopedModelViewSet):
     """FG321 — bons de prélèvement. Lecture tout rôle, écriture
     responsable/admin. Référence/société/`created_by` posés serveur ; les
     lignes sont générées serveur depuis les réservations. Filtrable par

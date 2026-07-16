@@ -7,7 +7,7 @@ création, par les vues dédiées.
 from rest_framework import serializers
 
 from .constants import ALL_SCOPES, ALL_EVENTS, SCOPE_CHOICES, EVENT_CHOICES
-from .models import ApiKey, Webhook, WebhookDelivery
+from .models import ApiKey, ServiceAccount, Webhook, WebhookDelivery
 from .validators import UnsafeWebhookURL, validate_webhook_target_url
 
 
@@ -86,3 +86,16 @@ class WebhookDeliverySerializer(serializers.ModelSerializer):
             'error', 'created_at',
         ]
         read_only_fields = fields
+
+
+class ServiceAccountSerializer(serializers.ModelSerializer):
+    """NTSEC24 — compte de service (jeton renvoyé UNE fois à la création)."""
+
+    class Meta:
+        model = ServiceAccount
+        fields = [
+            'id', 'nom', 'scopes', 'prefix', 'actif', 'expire_le',
+            'last_used_at', 'created_at',
+        ]
+        read_only_fields = [
+            'id', 'prefix', 'last_used_at', 'created_at']

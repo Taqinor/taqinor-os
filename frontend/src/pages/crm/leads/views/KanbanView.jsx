@@ -2,9 +2,11 @@
 // miroir de STAGES.py — jamais de liste d'étapes en dur ici), glisser-déposer
 // via @dnd-kit/core. Le parent gère l'optimistic update : on ne mute rien.
 import { useMemo, useState } from 'react'
+import { LayoutGrid } from 'lucide-react'
 import {
   DndContext,
   DragOverlay,
+  KeyboardSensor,
   PointerSensor,
   TouchSensor,
   useDraggable,
@@ -15,9 +17,21 @@ import {
 import {
   formatMAD, groupLeadsByStage, PIPELINE_STAGES, STAGE_LABELS,
 } from '../../../../features/crm/stages'
+import {
+  buildKanbanAnnouncements,
+  kanbanScreenReaderInstructions,
+} from '../../../../features/kanban/kanbanA11y'
 import { useOptimisticSave } from '../../../../hooks/useOptimisticSave'
+import { usePrefersReducedMotion } from '../../../../hooks/usePrefersReducedMotion'
 import { toast } from '../../../../ui/confirm'
+import { EmptyState } from '../../../../ui'
 import LeadCard from './LeadCard'
+
+// VX135 — dropAnimation dnd-kit par défaut désalignée des tokens de
+// mouvement de l'app ; alignée --motion-*/--ease-out (tokens.css). Sous
+// reduced-motion, quasi instantanée (dnd-kit exige une durée > 0).
+const DROP_ANIMATION = { duration: 180, easing: 'cubic-bezier(0.23, 1, 0.32, 1)' }
+const DROP_ANIMATION_REDUCED = { duration: 1, easing: 'linear' }
 
 // J140 + L151 — alternative CLAVIER au glisser-déposer : un sélecteur d'étape
 // accessible sous chaque carte. Enregistrement OPTIMISTE avec rollback via
@@ -73,7 +87,11 @@ export function StageMover({ lead, onInlineSave }) {
 
 // Probabilité de conversion par étape (entonnoir) — UI seulement, sert au
 // prévisionnel pondéré (proba × total devis). Les leads perdus comptent 0.
-const STAGE_PROBABILITY = {
+// XSAL15 — exportée pour être réutilisée telle quelle par la vue « Prévision »
+// (regroupement par mois plutôt que par étape, MÊME calcul de pondération —
+// jamais une seconde table de probabilités déclarée ailleurs).
+// eslint-disable-next-line react-refresh/only-export-components -- STAGE_PROBABILITY co-localisé
+export const STAGE_PROBABILITY = {
   NEW: 0.1,
   CONTACTED: 0.25,
   QUOTE_SENT: 0.5,
@@ -166,6 +184,10 @@ export default function KanbanView({
   onPlanifierRelance,
   onInlineSave,
 }) {
+  // VX135 — préférence reduced-motion lue en JS : le tilt (transform statique
+  // posé par dnd-kit/CSS) et le dropAnimation (JS pur) échappent tous deux au
+  // garde global CSS.
+  const prefersReducedMotion = usePrefersReducedMotion()
   // Message éphémère « On ne recule pas une étape » lors d'un drag refusé.
   const [reculMsg, setReculMsg] = useState(false)
   // distance 6px : un clic simple ouvre la fiche, le drag exige un mouvement ;
@@ -175,9 +197,22 @@ export default function KanbanView({
     useSensor(TouchSensor, {
       activationConstraint: { delay: 150, tolerance: 8 },
     }),
+    // VX192 — sensor clavier natif (@dnd-kit/core), 0 dépendance.
+    useSensor(KeyboardSensor),
   )
   const columns = useMemo(() => groupLeadsByStage(leads), [leads])
   const [activeLead, setActiveLead] = useState(null)
+
+  // VX192 — annonces FR : id de lead → nom, id de colonne → libellé d'étape.
+  const announcements = useMemo(() => {
+    const byId = new Map((leads ?? []).map((l) => [l.id, l]))
+    const labelFor = (id) => {
+      if (STAGE_LABELS[id]) return STAGE_LABELS[id]
+      const l = byId.get(id)
+      return l?.nom || `#${id}`
+    }
+    return buildKanbanAnnouncements(labelFor)
+  }, [leads])
 
   const handleDragStart = ({ active }) => {
     setActiveLead(active.data.current?.lead ?? null)
@@ -201,9 +236,25 @@ export default function KanbanView({
 
   const handleDragCancel = () => setActiveLead(null)
 
+  // VX147 — « 0 lead » unifié sur `EmptyState` (calqué sur ChartsView, la
+  // seule vue déjà correcte) au lieu de 6 colonnes vides en texte brut.
+  if (!leads || leads.length === 0) {
+    return (
+      <EmptyState
+        icon={LayoutGrid}
+        title="Aucun lead"
+        description="Aucun lead ne correspond à ces filtres."
+      />
+    )
+  }
+
   return (
     <DndContext
       sensors={sensors}
+      accessibility={{
+        announcements,
+        screenReaderInstructions: kanbanScreenReaderInstructions,
+      }}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
@@ -237,9 +288,9 @@ export default function KanbanView({
           </StageColumn>
         ))}
       </div>
-      <DragOverlay>
+      <DragOverlay dropAnimation={prefersReducedMotion ? DROP_ANIMATION_REDUCED : DROP_ANIMATION}>
         {activeLead ? (
-          <div className="kb-drag-overlay">
+          <div className={prefersReducedMotion ? 'kb-drag-overlay kb-drag-overlay--flat' : 'kb-drag-overlay'}>
             <LeadCard lead={activeLead} />
           </div>
         ) : null}

@@ -15,8 +15,8 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.viewsets import CompanyScopedModelViewSet
 
 from apps.ventes.utils.references import create_with_reference
 
@@ -29,7 +29,7 @@ from .. import selectors
 READ_ACTIONS = ['list', 'retrieve', 'prix_convenu']
 
 
-class ContratPrixFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
+class ContratPrixFournisseurViewSet(CompanyScopedModelViewSet):
     """FG318 — contrats de prix fournisseur. Lecture tout rôle, écriture
     responsable/admin. Référence anti-collision + société + `created_by` posés
     serveur ; `fournisseur` validé tenant. Filtrable par `fournisseur`,

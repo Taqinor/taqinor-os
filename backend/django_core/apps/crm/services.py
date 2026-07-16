@@ -872,18 +872,106 @@ def maybe_assign_mql(lead) -> bool:
         return False
 
 
+def ecrire_identite_client(client) -> bool:
+    """ARC21 (founder-gated, OFF par défaut) — quand la bascule write-path est
+    ACTIVE (``TIERS_SOURCE_ECRITURE`` ON), pousse l'identité du client vers son
+    ``Tiers`` (source d'écriture unique), puis le client relira le miroir.
+
+    Flag OFF (défaut) : NO-OP strict — renvoie ``False`` sans rien écrire (le
+    client reste l'unique chemin d'écriture, comportement byte-identique à
+    aujourd'hui). Best-effort ; ne fait jamais échouer l'appelant.
+
+    Voir docs/decisions/ARC21-tiers-source-ecriture.md.
+    """
+    try:
+        from apps.tiers import services as tiers_services
+        if not tiers_services.identite_source_est_tiers():
+            return False  # flag OFF — rien ne change.
+        if client is None or client.tiers_id is None:
+            return False
+        return tiers_services.ecrire_identite(
+            company=client.company, tiers=client.tiers,
+            champs={
+                'nom': client.nom or '',
+                'prenom': client.prenom or '',
+                'email': client.email or '',
+                'telephone': client.telephone or '',
+                'adresse': client.adresse or '',
+                'ice': client.ice or '',
+                'rc': client.rc or '',
+                'identifiant_fiscal': client.if_fiscal or '',
+                'cin': client.cin or '',
+            })
+    except Exception:
+        return False
+
+
+def attacher_tiers_au_lead(lead: Lead, client: Client) -> None:
+    """ARC56 — Rattache le lead au MÊME ``tiers.Tiers`` que le Client résolu.
+
+    Le pont crm.Client → Tiers (ARC18) a déjà créé/lié le Tiers du client à la
+    sauvegarde ; ce hook ne fait que RECOPIER ce lien sur le lead pour que le
+    recoupement « qui est ce tiers ? » (ARC20) couvre aussi le stade amont du
+    funnel. Ne CRÉE jamais un 2ᵉ Tiers, n'écrit ni ne lit AUCUN champ de nom du
+    lead (QW7), et n'écrit que si le lien change. Best-effort : ne fait jamais
+    échouer la résolution du client.
+
+    Hook APPELÉ APRÈS ``resolve_client_for_lead`` (jamais dans sa logique de
+    résolution) — le Tiers vient toujours du client, jamais recalculé ici.
+    """
+    try:
+        if lead is None or client is None:
+            return
+        tiers_id = getattr(client, 'tiers_id', None)
+        if tiers_id is None:
+            # Le client n'a pas encore de Tiers (miroir best-effort échoué à la
+            # création) : on relit une fois après un refresh, sinon on abandonne
+            # proprement (le prochain save du client re-tentera le miroir).
+            client.refresh_from_db(fields=['tiers'])
+            tiers_id = getattr(client, 'tiers_id', None)
+        if tiers_id is None:
+            return
+        if lead.tiers_id != tiers_id:
+            # Écriture CIBLÉE (update_fields=['tiers']) — aucun champ de nom
+            # n'est touché, aucun autre effet de bord (QW7).
+            Lead.objects.filter(pk=lead.pk).update(tiers_id=tiers_id)
+            lead.tiers_id = tiers_id
+    except Exception:
+        pass
+
+
 def resolve_client_for_lead(lead: Lead) -> Client:
     from django.db import IntegrityError, transaction
 
     if lead.client_id:
+        # Rattache le Tiers du client déjà lié (stade amont ARC56), sans
+        # jamais modifier la résolution existante ni un champ de nom.
+        attacher_tiers_au_lead(lead, lead.client)
         return lead.client
 
     def _find_existing():
-        if not lead.email:
+        if lead.email:
+            match = Client.objects.filter(
+                company=lead.company, email__iexact=lead.email,
+            ).first()
+            if match is not None:
+                return match
+        # QX17 — repli téléphone : un client marocain récurrent n'a pas
+        # toujours le MÊME email (ou aucun) d'un dossier à l'autre — le
+        # téléphone est l'identité de facto. Comparaison Python-side (pas de
+        # colonne normalisée indexée sur Client, à la différence de
+        # Lead.phone_normalise) : borne de perf documentée — un scan de TOUS
+        # les clients de la société, acceptable au volume actuel (PME
+        # marocaines, quelques centaines à quelques milliers de clients par
+        # société) ; à indexer (colonne normalisée + index, comme QW10 sur
+        # Lead) si ce volume devient un goulot mesuré.
+        lead_phone = normalize_phone(lead.telephone)
+        if not lead_phone:
             return None
-        return Client.objects.filter(
-            company=lead.company, email__iexact=lead.email,
-        ).first()
+        for candidate in Client.objects.filter(company=lead.company):
+            if normalize_phone(candidate.telephone) == lead_phone:
+                return candidate
+        return None
 
     client = _find_existing()
 
@@ -893,6 +981,17 @@ def resolve_client_for_lead(lead: Lead) -> Client:
         adresse = lead.adresse or ''
         if lead.ville:
             adresse = ', '.join(p for p in (adresse, lead.ville) if p)
+        # QX18 — l'arabophone ne doit pas disparaître à la couche document :
+        # un lead qui préfère la darija (message WhatsApp) obtenait quand
+        # même un PDF FLAGSHIP en français par défaut. Seed
+        # `langue_document='ar'` UNIQUEMENT à la création (jamais écrasé sur
+        # un client déjà existant réutilisé ci-dessus — sa préférence
+        # documentaire, si posée manuellement, prime toujours).
+        langue_document = (
+            Client.LangueDocument.AR
+            if lead.langue_preferee == Lead.LanguePreferee.DARIJA
+            else Client.LangueDocument.FR
+        )
         try:
             # Savepoint : si une création concurrente partageant le même email
             # a gagné la course, l'unique_together (company, email) lève une
@@ -906,6 +1005,7 @@ def resolve_client_for_lead(lead: Lead) -> Client:
                     email=lead.email,
                     telephone=(lead.telephone or '')[:20] or None,
                     adresse=adresse or None,
+                    langue_document=langue_document,
                 )
         except IntegrityError:
             client = _find_existing()
@@ -922,6 +1022,10 @@ def resolve_client_for_lead(lead: Lead) -> Client:
         company=lead.company, lead=lead, user=None,
         kind=LeadActivity.Kind.NOTE,
         body=f"Client lié : {nom_client}")
+    # ARC56 — rattache le lead au MÊME Tiers que le client fraîchement résolu
+    # (le pont ARC18 a déjà posé client.tiers à sa sauvegarde). Aucun champ de
+    # nom du lead n'est touché (QW7).
+    attacher_tiers_au_lead(lead, client)
     return client
 
 
@@ -1739,7 +1843,13 @@ def notify_client_contact_request(devis_reference: str, lead,
         # absente et route vers la notification distincte + SLA rappel.
         if canal_key == 'rappel' and getattr(lead, 'contact_preference', None) != Lead.ContactPreference.PHONE_OK:
             lead.contact_preference = Lead.ContactPreference.PHONE_OK
-            lead.save(update_fields=['contact_preference'])
+            # QX15 — même horodatage dédié que le webhook : le SLA rappel
+            # mesure depuis la POSE de la préférence, pas depuis la création
+            # du lead (un vieux lead qui demande un rappel MAINTENANT ne doit
+            # pas être instantanément « SLA rompu »).
+            lead.contact_preference_set_at = timezone.now()
+            lead.save(update_fields=[
+                'contact_preference', 'contact_preference_set_at'])
         if canal_key == 'rappel':
             notify_lead_callback_requested(lead)
 
@@ -1822,6 +1932,81 @@ def notify_lead_callback_requested(lead) -> None:
         import logging
         logging.getLogger(__name__).warning(
             'QW4: notify_lead_callback_requested échoué pour lead #%s : %s',
+            getattr(lead, 'pk', '?'), exc)
+
+
+PARRAINAGE_SIGNUP_MARKER = 'auto — filleul détecté (utm_source=parrainage)'
+
+
+def handle_parrainage_signup(lead) -> None:
+    """QX35 — Wire la promesse de la page /parrainage : un lead capté avec
+    ``utm_source=parrainage`` crée automatiquement un ``Parrainage`` en
+    attente, rattaché au CLIENT parrain identifié par son code (porté par
+    ``utm_campaign`` — voir ``apps/web/src/pages/parrainage.astro``, le lien
+    personnel est `?utm_source=parrainage&utm_campaign=<code>`).
+
+    Idempotent (un seul ``Parrainage`` par ``filleul_lead``) ; no-op si
+    ``utm_source`` n'est pas ``'parrainage'``, si le code de parrain est
+    absent/inconnu, ou en cas d'auto-parrainage (le filleul est déjà le même
+    téléphone/email que le parrain — anti-abus minimal). Notifie les managers
+    de la société (repli ``_company_fallback_managers``, pas de owner dédié à
+    ce stade). Best-effort — jamais d'exception propagée."""
+    try:
+        if (getattr(lead, 'utm_source', None) or '').strip().lower() != 'parrainage':
+            return
+        from .models import Parrainage
+
+        if Parrainage.objects.filter(filleul_lead=lead).exists():
+            return  # déjà traité (idempotent — visiteur revenant, replay).
+
+        code = (getattr(lead, 'utm_campaign', None) or '').strip()
+        if not code:
+            return
+        parrain = Client.objects.filter(
+            company=lead.company, code_parrainage=code).first()
+        if parrain is None:
+            return  # code inconnu/périmé — jamais bloquant, jamais d'erreur.
+
+        # Anti auto-parrainage minimal : même téléphone/email normalisé que
+        # le parrain → on ne crée rien (le parrain ne peut pas se parrainer
+        # lui-même, ni un dossier déjà connu sous une autre forme — promesse
+        # affichée sur /parrainage).
+        lead_phone = normalize_phone(getattr(lead, 'telephone', None))
+        lead_email = normalize_email(getattr(lead, 'email', None))
+        parrain_phone = normalize_phone(getattr(parrain, 'telephone', None))
+        parrain_email = normalize_email(getattr(parrain, 'email', None))
+        if ((lead_phone and lead_phone == parrain_phone)
+                or (lead_email and lead_email == parrain_email)):
+            return
+
+        Parrainage.objects.create(
+            company=lead.company, parrain=parrain,
+            filleul_lead=lead, filleul_nom=lead.nom or '',
+            statut=Parrainage.Statut.EN_ATTENTE,
+        )
+        LeadActivity.objects.create(
+            company=lead.company, lead=lead, user=None,
+            kind=LeadActivity.Kind.NOTE,
+            body=f'{PARRAINAGE_SIGNUP_MARKER} — parrain : {parrain.nom}.',
+        )
+
+        managers = _company_fallback_managers(lead.company)
+        if managers:
+            from apps.notifications.services import notify_many
+            nom = (lead.nom or '').strip() or 'Un prospect'
+            notify_many(
+                managers,
+                'lead_new',
+                f'🤝 Parrainage : {parrain.nom} recommande {nom}',
+                body=(f'{nom} est arrivé via le lien de parrainage de '
+                      f'{parrain.nom} (code {code}).'),
+                link=f'/crm/parrainage?parrain={parrain.pk}',
+                company=lead.company,
+            )
+    except Exception as exc:  # noqa: BLE001 — best-effort
+        import logging
+        logging.getLogger(__name__).warning(
+            'QX35: handle_parrainage_signup échoué pour lead #%s : %s',
             getattr(lead, 'pk', '?'), exc)
 
 
@@ -2155,11 +2340,13 @@ def apply_bulk_action(*, company, user, lead_ids, op, params):
                 if lead.devis.exists():
                     skip(lead, "devis liés — archivez-le plutôt")
                     continue
+                # VX96 — soft-delete réversible (corbeille 30 min), cohérent avec
+                # la suppression unitaire : plus de destruction définitive ici.
                 import logging
                 logging.getLogger('crm.audit').warning(
-                    'BULK HARD DELETE lead id=%s "%s" par user=%s (company=%s)',
+                    'BULK SOFT DELETE lead id=%s "%s" par user=%s (company=%s)',
                     lead.id, lead, getattr(user, 'username', '?'), company.id)
-                lead.delete()
+                lead.soft_delete(user)
                 updated += 1
 
             # FG33 — Préparer la file WhatsApp en masse (pas d'envoi auto)
@@ -2312,6 +2499,40 @@ def book_appointment(*, lead, scheduled_at, notes=None, user=None):
         'QJ20: RDV #%d créé pour lead %s le %s (company %s)',
         appointment.pk, lead.pk, scheduled_at, getattr(company, 'id', '?'))
     return appointment
+
+
+# ── VX245(b) — confirmation WhatsApp POST-RDV (aperçu date/heure + .ics) ────
+
+def build_appointment_confirmation_whatsapp(request, appointment):
+    """VX245(b) — construit le message de CONFIRMATION WhatsApp d'un rendez-
+    vous : date/heure (Africa/Casablanca) + lien de téléchargement `.ics`
+    (VX245(a), `apps.crm.views.AppointmentViewSet.ics`). N'ENVOIE RIEN — même
+    convention que `build_devis_whatsapp`/`build_facture_whatsapp` : ouvre
+    WhatsApp avec le message pré-rempli, le commercial appuie lui-même sur
+    Envoyer. Renvoie `(message, wa_url, ics_url)` ; `wa_url` est `None` si le
+    lead n'a pas de numéro exploitable."""
+    import zoneinfo
+
+    from apps.ventes.utils.whatsapp import build_wa_url
+
+    lead = appointment.lead
+    phone = lead.whatsapp or lead.telephone
+    nom = f'{lead.prenom or ""} {lead.nom or ""}'.strip() or (lead.nom or '')
+    try:
+        local_dt = appointment.scheduled_at.astimezone(
+            zoneinfo.ZoneInfo(RAMADAN_TZ))
+        date_str = local_dt.strftime('%d/%m/%Y à %H:%M')
+    except Exception:  # pragma: no cover - défensif
+        date_str = str(appointment.scheduled_at)
+
+    ics_url = request.build_absolute_uri(
+        f'/api/django/crm/appointments/{appointment.pk}/ics/')
+    salutation = f'Bonjour {nom},' if nom else 'Bonjour,'
+    message = (
+        f'{salutation} je confirme notre rendez-vous le {date_str}.\n'
+        f'Ajouter à votre agenda : {ics_url}'
+    )
+    return message, build_wa_url(phone, message), ics_url
 
 
 # ── XSAL17 — Placeholder {lien_rdv} : lien de réservation dans les messages ──
@@ -2858,3 +3079,174 @@ def create_activity_from_public_api(*, company, lead_id, body):
     if not body:
         raise ValueError("Le champ « body » est obligatoire.")
     return activity.log_note(lead, None, body)
+
+
+# ── YSERV11 — Gabarit de message « parrainage » (FR + darija, éditable) ─────
+
+# Corps par défaut — ÉDITABLES ensuite par l'admin comme tout MessageTemplate.
+_PARRAINAGE_TEMPLATE_DEFAULTS = {
+    'fr': (
+        'parrainage',
+        "Bonjour {prenom}, merci pour votre confiance ! Si un proche "
+        "souhaite passer au solaire, recommandez-nous : notre programme de "
+        "parrainage vous récompense. Parlez-en à votre conseiller ou "
+        "répondez à ce message.",
+    ),
+    'darija': (
+        'parrainage_darija',
+        "Salam {prenom}, choukran 3la ti9a dyalek ! Ila kan chi wahed 9rib "
+        "lik bagh idir solaire, 3eyet lina — barnamaj l'parrainage dyalna "
+        "kay3tik mokafaa. Hder m3a lmostachar dyalek wla jaweb 3la had "
+        "l'message.",
+    ),
+}
+
+
+def get_or_create_parrainage_template(company, langue='fr'):
+    """YSERV11 — renvoie (crée au premier usage) le ``MessageTemplate``
+    « parrainage » de la société pour ``langue`` ('fr'|'darija').
+
+    Point d'entrée cross-app THIN (appelé par ``apps.compta`` au moment de
+    l'enchantement NPS) : la clé template est posée additivement, idempotente
+    par (company, nom), le corps reste éditable par l'admin — jamais écrasé.
+    Langue inconnue → repli FR."""
+    from .models import MessageTemplate
+    cle = 'darija' if (langue or '').strip().lower() == 'darija' else 'fr'
+    nom, corps_defaut = _PARRAINAGE_TEMPLATE_DEFAULTS[cle]
+    template, _ = MessageTemplate.objects.get_or_create(
+        company=company, nom=nom,
+        defaults={
+            'langue': (MessageTemplate.Langue.DARIJA if cle == 'darija'
+                       else MessageTemplate.Langue.FR),
+            'corps': corps_defaut,
+        })
+    return template
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# QX42 — Rétention PII des copies brutes d'intake (registre YOPSB10, core.retention)
+#
+# `WebsiteLeadPayload` (PII brute + IP, SET_NULL depuis Lead → l'effacement
+# RGPD d'un lead n'atteint JAMAIS ce payload brut) et `ChatSessionPublique`
+# s'accumulent INDÉFINIMENT. Le framework générique existe (`core.retention`)
+# mais son registre est VIDE — aucune app n'y enregistre de politique. Ceci
+# enregistre la politique CRM (voir `CrmConfig.ready()`), fenêtre par défaut
+# 180 jours, override founder via `WEBSITE_LEAD_PAYLOAD_RETENTION_DAYS` /
+# `CHAT_SESSION_RETENTION_DAYS` (settings/.env — même patron que les autres
+# constantes founder-configurables de ce module, ex.
+# `WEBSITE_LEAD_WEBHOOK_SECRET`). 0/négatif désactive la purge (conservation
+# illimitée, comportement actuel inchangé).
+
+DEFAULT_WEBSITE_LEAD_PAYLOAD_RETENTION_DAYS = 180
+DEFAULT_CHAT_SESSION_RETENTION_DAYS = 180
+
+
+def _retention_days(setting_name, default_days):
+    from django.conf import settings
+    value = getattr(settings, setting_name, None)
+    if value is None:
+        return default_days
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default_days
+
+
+def purge_website_lead_payloads(now, apply_) -> int:
+    """QX42 — purge les ``WebsiteLeadPayload`` PROCESSED au-delà de la
+    fenêtre de rétention. Les payloads NON traités ou en ERREUR (``error``
+    non vide) sont EXEMPTÉS — ils doivent d'abord vieillir via la surface de
+    rejeu QX16 (un payload en erreur reste la seule trace récupérable d'un
+    lead potentiellement perdu ; on ne purge jamais une piste encore
+    actionnable). Contrat ``core.retention`` : ``apply_=False`` (dry-run) ne
+    supprime rien, renvoie le compte qui SERAIT supprimé."""
+    from django.db.models import Q
+
+    from .models import WebsiteLeadPayload
+
+    days = _retention_days(
+        'WEBSITE_LEAD_PAYLOAD_RETENTION_DAYS',
+        DEFAULT_WEBSITE_LEAD_PAYLOAD_RETENTION_DAYS)
+    if days <= 0:
+        return 0
+    cutoff = now - timezone.timedelta(days=days)
+    qs = WebsiteLeadPayload.objects.filter(
+        processed=True, received_at__lt=cutoff,
+    ).filter(Q(error__isnull=True) | Q(error=''))
+    count = qs.count()
+    if apply_ and count:
+        qs.delete()
+    return count
+
+
+def purge_stale_chat_sessions(now, apply_) -> int:
+    """QX42 — purge les ``ChatSessionPublique`` (transcript PII d'un visiteur
+    anonyme) inactives au-delà de la fenêtre de rétention (mesurée sur
+    ``last_message_at`` — une session encore active récemment n'est jamais
+    purgée même si ``created_at`` est ancien). Une session déjà liée à un
+    Lead réel (``lead_id`` renseigné) garde son transcript — la conversation
+    fait partie de l'historique du lead, pas une trace anonyme jetable."""
+    from .models import ChatSessionPublique
+
+    days = _retention_days(
+        'CHAT_SESSION_RETENTION_DAYS', DEFAULT_CHAT_SESSION_RETENTION_DAYS)
+    if days <= 0:
+        return 0
+    cutoff = now - timezone.timedelta(days=days)
+    qs = ChatSessionPublique.objects.filter(
+        last_message_at__lt=cutoff, lead__isnull=True)
+    count = qs.count()
+    if apply_ and count:
+        qs.delete()
+    return count
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# YOPSB11 — Archivage par lots de `LeadActivity` (chatter à forte croissance)
+#
+# Le chatter (`LeadActivity`) est append-only et grossit sans borne, alourdissant
+# le chemin chaud. `archiver_anciens(now, jours)` DÉPLACE les entrées plus
+# vieilles que `jours` vers la table froide `LeadActivityArchive` (par lots de
+# 5 000, un commit par lot — jamais de transaction géante) puis les supprime de
+# la table vive. Fenêtre par défaut 0 = OFF (aucun archivage, comportement
+# inchangé) ; réglage via `CRM_LEADACTIVITY_ARCHIVE_DAYS`. La politique est
+# enregistrée dans le registre partagé YOPSB10 depuis `CrmConfig.ready()`.
+
+DEFAULT_LEADACTIVITY_ARCHIVE_DAYS = 0
+
+
+def _leadactivity_to_archive(row):
+    """Mappe une `LeadActivity` vive vers les champs de `LeadActivityArchive`
+    (FK dénormalisées en identifiants entiers — archive froide indépendante)."""
+    return {
+        'original_id': row.pk,
+        'company_id': row.company_id,
+        'lead_id': row.lead_id,
+        'kind': row.kind,
+        'field': row.field,
+        'field_label': row.field_label,
+        'old_value': row.old_value,
+        'new_value': row.new_value,
+        'body': row.body,
+        'outcome': row.outcome,
+        'attachment_id': row.attachment_id,
+        'bulk': row.bulk,
+        'user_id': row.user_id,
+        'created_at': row.created_at,
+    }
+
+
+def archiver_anciens(now, jours, apply_=True):
+    """YOPSB11 — archive les `LeadActivity` plus vieilles que `jours`.
+
+    Déplacement par lots de 5 000 (un commit par lot) vers `LeadActivityArchive`
+    puis suppression de la table vive. `jours <= 0` (défaut OFF) → 0, rien ne
+    bouge. `apply_=False` (dry-run du registre) → compte sans déplacer. Renvoie
+    le nombre d'entrées archivées."""
+    from core.retention import archive_old_rows
+    from .models import LeadActivity, LeadActivityArchive
+
+    return archive_old_rows(
+        LeadActivity, LeadActivityArchive, _leadactivity_to_archive,
+        cutoff_field='created_at', now=now, jours=jours, apply_=apply_,
+    )

@@ -26,10 +26,72 @@ from .models import (
 )
 from .serializers import (
     ActivitySerializer, ActivityTypeSerializer, AttachmentSerializer,
-    CommentSerializer, FollowerSerializer, TaggedItemSerializer,
-    TagSerializer, resolve_target,
+    ChatterActivitySerializer, CommentSerializer, FollowerSerializer,
+    TaggedItemSerializer, TagSerializer, resolve_target,
 )
 from .storage import delete_attachment, fetch_attachment, store_attachment
+
+
+# ── ARC8 — Chatter générique réutilisable (le « mail.thread » maison) ─────────
+class ChatterViewSetMixin:
+    """Donne à N'IMPORTE quel ``ModelViewSet`` un chatter générique adossé à
+    ``records.Activity`` — deux actions ``chatter/historique`` (GET) et
+    ``chatter/noter`` (POST), sur le patron de ``crm.LeadActivity``.
+
+    - ``GET  <detail>/chatter/historique/`` : timeline (plus récent d'abord) des
+      entrées de chatter générique de l'objet.
+    - ``POST <detail>/chatter/noter/`` : ajoute une note manuelle (corps :
+      ``body`` non vide). L'auteur ET la société sont TOUJOURS posés côté
+      serveur (``request.user`` / société de l'objet) — jamais lus du corps.
+
+    L'objet est borné à la société par le ``get_object()`` de la vue hôte (dont
+    le queryset est déjà scopé société). Ces actions sont ADDITIVES : elles
+    coexistent avec le journal maison éventuel de la vue (ex. l'action
+    ``historique`` de ``ContratViewSet``), sur des URL distinctes."""
+
+    @action(detail=True, methods=['get'], url_path='chatter/historique',
+            permission_classes=[IsAnyRole])
+    def chatter_historique(self, request, pk=None):
+        from .services import chatter_qs
+        target = self.get_object()
+        qs = chatter_qs(target, company=_company(request))
+        return Response(ChatterActivitySerializer(qs, many=True).data)
+
+    @action(detail=True, methods=['post'], url_path='chatter/noter',
+            permission_classes=[IsResponsableOrAdmin])
+    def chatter_noter(self, request, pk=None):
+        from .models import Activity
+        from .services import log_activity
+        target = self.get_object()
+        body = (request.data.get('body') or '').strip()
+        if not body:
+            return Response({'body': 'Note vide.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        act = log_activity(
+            target, Activity.Kind.NOTE, user=request.user, body=body,
+            company=_company(request))
+        return Response(ChatterActivitySerializer(act).data,
+                        status=status.HTTP_201_CREATED)
+
+
+# VX211 — [BACKEND léger] table STATIQUE (jamais du ML) de l'effort estimé
+# par `kind` de « Ma file » — alimente le départage optionnel « Victoires
+# rapides d'abord » côté frontend. Fermé, aligné sur les 6 `kind` actuels
+# (`activite`, `approbation`, `mention`, `relance`, `lead_chaud`,
+# `devis_expire`) ; un `kind` non listé retombe sur `'moyen'`.
+_EFFORT_ESTIME_PAR_KIND = {
+    'mention': 'faible',     # marquer lu / ouvrir — 1 clic
+    'approbation': 'faible',  # décider — déjà 1 clic via /approbations
+    'activite': 'moyen',
+    'relance': 'moyen',
+    'lead_chaud': 'eleve',    # premier contact à froid — plus long
+    'devis_expire': 'eleve',  # relance devis + suivi
+    # VX214 — kinds d'EXÉCUTION.
+    'chantier_assigne': 'eleve',          # prise en main d'un chantier entier
+    'intervention_du_jour': 'moyen',
+    'da_approuvee_a_commander': 'faible',  # passer la commande — rapide
+    'ticket_transfere': 'moyen',
+}
 
 
 def _company(request):
@@ -65,7 +127,11 @@ class ActivityViewSet(viewsets.ModelViewSet):
     serializer_class = ActivitySerializer
 
     def get_permissions(self):
-        if self.action in ('list', 'retrieve', 'mine'):
+        # VX214 — `ma_file` est la file de travail PER-USER (scopée
+        # `request.user` côté serveur, comme `mine`) : tout rôle authentifié
+        # voit la SIENNE, y compris un technicien `normal` (chantiers/
+        # interventions affectés). Sans ça la file d'exécution VX214 est 403.
+        if self.action in ('list', 'retrieve', 'mine', 'ma_file'):
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]
 
@@ -159,9 +225,16 @@ class ActivityViewSet(viewsets.ModelViewSet):
         qs = _scoped(Activity.objects.select_related(
             'activity_type', 'content_type'), request.user).filter(
             assigned_to=request.user, done=False)
+        # VX85(a) — un item snoozé (`snoozed_until` dans le futur) est exclu
+        # tant que non échu ; il revient de lui-même à l'heure dite, avec sa
+        # `due_date` d'origine intacte (le snooze n'y touche jamais).
+        qs = qs.filter(
+            models.Q(snoozed_until__isnull=True)
+            | models.Q(snoozed_until__lte=timezone.now().date()))
         buckets = {'en_retard': [], 'aujourdhui': [], 'a_venir': []}
         for act in qs:
-            data = ActivitySerializer(act).data
+            # QX25be — passe le contexte requête pour résoudre target_phone.
+            data = ActivitySerializer(act, context={'request': request}).data
             st = activity_state(act.due_date, act.done)
             if st == 'overdue':
                 buckets['en_retard'].append(data)
@@ -170,6 +243,167 @@ class ActivityViewSet(viewsets.ModelViewSet):
             else:
                 buckets['a_venir'].append(data)
         return Response(buckets)
+
+    @action(detail=False, methods=['get'], url_path='ma-file')
+    def ma_file(self, request):
+        """VX83 — « Ma file » : LA file de travail unique, cross-module.
+
+        Une seule liste unifiée de tout ce qui attend l'utilisateur, agrégée à
+        partir des sources DÉJÀ existantes (jamais un nouvel agrégateur, jamais
+        une nouvelle app inbox — décision d'architecture VX83) :
+
+          * les 3 buckets d'activités (``mine`` — en retard / aujourd'hui /
+            à venir), y compris les à-faire personnels (XKB4) ;
+          * les approbations décidables par l'utilisateur — via l'agrégateur
+            existant ``reporting.approbations`` (jamais forké) ;
+          * les mentions non lues (notifications ``chat_mention``) avec leur
+            ``link`` — via ``notifications.selectors`` (jamais un import de ses
+            models) ;
+          * pour le rôle commercial : relances dues / leads chauds jamais
+            contactés / devis proches d'expiration — via ``crm.selectors``.
+
+        Chaque item porte ``{kind, title, due, link, urgency, montant?}`` ; la
+        liste est renvoyée classée plus-urgent-d'abord, avec un total unique et
+        un en-tête compté. Tout est scopé société + visibilité côté serveur.
+        """
+        from .serializers import activity_state
+        company = _company(request)
+
+        items = []
+
+        # ── 1) Activités de l'utilisateur (les 3 buckets) ──────────────────
+        acts = _scoped(Activity.objects.select_related(
+            'activity_type', 'content_type'), request.user).filter(
+            assigned_to=request.user, done=False)
+        # VX85(a) — même exclusion snooze que `mine` : une file cohérente.
+        acts = acts.filter(
+            models.Q(snoozed_until__isnull=True)
+            | models.Q(snoozed_until__lte=timezone.now().date()))
+        nb_retard = nb_aujourdhui = 0
+        for act in acts:
+            data = ActivitySerializer(act, context={'request': request}).data
+            st = activity_state(act.due_date, act.done)
+            if st == 'overdue':
+                urgency = 'overdue'
+                nb_retard += 1
+            elif st == 'today':
+                urgency = 'today'
+                nb_aujourdhui += 1
+            else:
+                urgency = 'upcoming'
+            items.append({
+                'kind': 'activite',
+                'title': data.get('summary') or data.get('activity_type_nom')
+                or 'Activité',
+                'due': act.due_date,
+                'link': _ma_file_activity_link(data),
+                'urgency': urgency,
+                'activity_id': act.id,
+            })
+
+        # ── 2) Approbations décidables par l'utilisateur ───────────────────
+        nb_approbations = 0
+        if company is not None:
+            try:
+                from apps.reporting import approbations as appro
+                appro_items = []
+                for source in appro._SOURCE_LOADERS:
+                    appro_items.extend(appro._SOURCE_LOADERS[source](company))
+                appro._enrichir_urgence(appro_items, company)
+                # VX210(b) — masque les items SNOOZÉS depuis « Ma file »
+                # (`SnoozedItem`, jamais retiré de l'inbox dédiée
+                # `/approbations` elle-même — seule la FILE respecte le
+                # snooze). Best-effort : une erreur ne masque rien.
+                try:
+                    from apps.notifications import selectors as notif_selectors
+                    snoozed = notif_selectors.approbations_snoozees_actives(
+                        request.user, company)
+                except Exception:  # pragma: no cover - défensif
+                    snoozed = set()
+                for it in appro_items:
+                    key = (it.get('source'), str(it.get('id')))
+                    if key in snoozed:
+                        continue
+                    nb_approbations += 1
+                    items.append({
+                        'kind': 'approbation',
+                        'title': it.get('libelle') or 'Approbation',
+                        'due': it.get('cree_le'),
+                        'link': '/approbations',
+                        'urgency': 'overdue' if it.get('en_retard') else 'today',
+                        'source': it.get('source'),
+                        'source_id': it.get('id'),
+                    })
+            except Exception:  # pragma: no cover - défensif, jamais de 500
+                pass
+
+        # ── 3) Mentions non lues (notifications chat_mention) ──────────────
+        for it in _ma_file_mentions(request.user, company):
+            items.append(it)
+
+        # ── 4) File commerciale (relances / leads chauds / devis) ──────────
+        if company is not None:
+            try:
+                from apps.crm.selectors import ma_file_commercial_items
+                items.extend(ma_file_commercial_items(company, request.user))
+            except Exception:  # pragma: no cover - défensif
+                pass
+
+        # ── 5) VX214 — kinds d'EXÉCUTION (jamais une 2ᵉ boîte) ──────────────
+        # Un chantier assigné, une intervention du jour, une DA approuvée à
+        # commander, un ticket transféré n'apparaissaient dans AUCUNE boîte.
+        # Reshape imposé (grand-verdict) : PAS de nouvel endpoint/écran — ces
+        # kinds rejoignent le MÊME `ma-file/`, via une fonction lecture-seule
+        # `selectors.affectations_pour(user)` par app cible (MÊME contrat
+        # `{kind, title, due, link, urgency}` que le bloc 4 ci-dessus).
+        if company is not None:
+            try:
+                from apps.installations.selectors import (
+                    affectations_pour as installations_affectations_pour,
+                )
+                items.extend(installations_affectations_pour(request.user))
+            except Exception:  # pragma: no cover - défensif
+                pass
+            try:
+                from apps.sav.selectors import (
+                    affectations_pour as sav_affectations_pour,
+                )
+                items.extend(sav_affectations_pour(request.user))
+            except Exception:  # pragma: no cover - défensif
+                pass
+
+        # VX211 — [BACKEND léger] `effort_estime` DÉTERMINISTE par `kind`
+        # (table statique, jamais du ML) : alimente un tri secondaire
+        # OPTIONNEL côté frontend (« Victoires rapides d'abord »,
+        # `frontend/src/features/queue/queueViews.js`) — un simple
+        # DÉPARTAGE entre items d'urgence égale, jamais un remplacement du
+        # tri d'urgence lui-même.
+        for it in items:
+            it['effort_estime'] = _EFFORT_ESTIME_PAR_KIND.get(
+                it.get('kind'), 'moyen')
+
+        # Classement plus-urgent-d'abord : en retard, puis aujourd'hui, puis
+        # à venir ; à urgence égale, échéance la plus proche d'abord (les items
+        # sans échéance en dernier de leur groupe). Tri stable.
+        rang = {'overdue': 0, 'today': 1, 'upcoming': 2}
+
+        def _due_key(due):
+            if due is None:
+                return (1, '')
+            return (0, str(due))
+
+        items.sort(key=lambda it: (
+            rang.get(it.get('urgency'), 3), _due_key(it.get('due'))))
+
+        return Response({
+            'items': items,
+            'total': len(items),
+            'resume': {
+                'en_retard': nb_retard,
+                'aujourdhui': nb_aujourdhui,
+                'approbations': nb_approbations,
+            },
+        })
 
     @action(detail=True, methods=['post'], url_path='done',
             permission_classes=[IsResponsableOrAdmin])
@@ -211,8 +445,184 @@ class ActivityViewSet(viewsets.ModelViewSet):
             'suggestion': suggestion,
         })
 
+    @action(detail=True, methods=['post'], url_path='snooze',
+            permission_classes=[IsResponsableOrAdmin])
+    def snooze(self, request, pk=None):
+        """VX85(a) — « ⏰ Plus tard » : reporte NON DESTRUCTIVEMENT.
+
+        Pose `snoozed_until` (l'activité disparaît de `mine`/`ma-file` jusqu'à
+        cette date) sans jamais toucher `due_date` — le vrai changement
+        d'échéance reste la mise à jour normale de `due_date` (bouton
+        « Reporter »). Corps : `{"snoozed_until": "YYYY-MM-DD",
+        "snooze_trigger_event": "client_reply:42"}` ; `snoozed_until`
+        `null`/absent annule le snooze (l'item redevient visible
+        immédiatement, y compris le déclencheur).
+
+        VX210(c) — `snooze_trigger_event` optionnel (choix fermé, voir
+        `services.valid_snooze_trigger_event`) : réveille l'item dès que cet
+        événement métier survient, MÊME avant `snoozed_until` (le premier des
+        deux gagne — cf. `services.reveiller_snoozes`)."""
+        from .services import snooze_activity, valid_snooze_trigger_event
+        act = self.get_object()
+        raw = request.data.get('snoozed_until')
+        trigger = (request.data.get('snooze_trigger_event') or '').strip()
+        if not valid_snooze_trigger_event(trigger):
+            return Response({'snooze_trigger_event': 'Déclencheur invalide.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        d = None
+        if raw:
+            from django.utils.dateparse import parse_date
+            d = parse_date(str(raw))
+            if d is None:
+                return Response({'snoozed_until': 'Date invalide.'},
+                                status=status.HTTP_400_BAD_REQUEST)
+        snooze_activity(act, d, trigger)
+        return Response(ActivitySerializer(act).data)
+
+    @action(detail=False, methods=['post'], url_path='snooze-approbation',
+            permission_classes=[IsResponsableOrAdmin])
+    def snooze_approbation(self, request):
+        """VX210(b) — snooze/réaffiche un item HÉTÉROGÈNE d'approbation
+        (5 sources de `reporting.approbations`) depuis « Ma file », via la
+        table générique `SnoozedItem` (patron `ApprovalReminderState` — jamais
+        un import direct des modèles des 5 sources).
+
+        Corps : `{"source": "installations", "id": 5,
+        "snoozed_until": "YYYY-MM-DD"}` ; `snoozed_until` `null`/absent annule
+        le snooze. Vérifie que l'item existe RÉELLEMENT parmi les items en
+        attente de la société (jamais un `source`/`id` arbitraire)."""
+        company = _company(request)
+        if company is None:
+            return Response({'detail': 'Accès refusé.'},
+                            status=status.HTTP_403_FORBIDDEN)
+        from apps.reporting import approbations as appro
+        source = request.data.get('source')
+        obj_id = request.data.get('id')
+        if source not in appro._SOURCE_LOADERS or not obj_id:
+            return Response({'detail': 'Source ou id invalide.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        matches = [
+            it for it in appro._SOURCE_LOADERS[source](company)
+            if str(it.get('id')) == str(obj_id)]
+        if not matches:
+            return Response({'detail': 'Introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+
+        # VX210(b) — écriture EXCLUSIVEMENT via `notifications.services`
+        # (jamais un import direct de `SnoozedItem` ici, même convention que
+        # `notify()` déjà utilisé ailleurs dans ce fichier).
+        from apps.notifications.services import (
+            snooze_approbation_item, unsnooze_approbation_item,
+        )
+        raw = request.data.get('snoozed_until')
+        if raw:
+            from django.utils.dateparse import parse_date
+            d = parse_date(str(raw))
+            if d is None:
+                return Response({'snoozed_until': 'Date invalide.'},
+                                status=status.HTTP_400_BAD_REQUEST)
+            snooze_approbation_item(company, request.user, source, obj_id, d)
+        else:
+            unsnooze_approbation_item(request.user, source, obj_id)
+        return Response({'ok': True})
+
     def perform_update(self, serializer):
-        serializer.save()
+        # VX85(c) — détecte un changement d'`assigned_to` AVANT de sauver (le
+        # travail ne doit jamais tomber entre deux personnes en silence) :
+        # notifie le NOUVEAU propriétaire avec un `link` profond, une fois la
+        # sauvegarde confirmée. Best-effort — n'échoue jamais la requête.
+        instance = serializer.instance
+        old_assigned_id = instance.assigned_to_id if instance else None
+        act = serializer.save()
+        new_assigned_id = act.assigned_to_id
+        if new_assigned_id and new_assigned_id != old_assigned_id:
+            _notify_reassignment(act, self.request.user)
+
+
+def _notify_reassignment(act, actor):
+    """VX85(c) — notifie le nouveau `assigned_to` d'une activité réaffectée.
+
+    Best-effort (jamais d'exception remontée) : company/link/notify passent
+    tous par leurs conventions habituelles (jamais un import de modèle
+    étranger, `link` dérivé de la MÊME table que `_ma_file_activity_link`)."""
+    try:
+        user = act.assigned_to
+        if user is None or (actor is not None and user.id == actor.id):
+            return
+        from apps.notifications.models import EventType as ET
+        from apps.notifications.services import notify
+        link = _deep_link(act.content_type, act.object_id)
+        actor_label = getattr(actor, 'username', '') or 'Quelqu\'un'
+        notify(
+            user, ET.LEAD_ASSIGNED,
+            f'{actor_label} vous a assigné une activité',
+            body=act.summary or '', link=link, company=act.company)
+    except Exception:  # pragma: no cover - défensif, jamais de 500
+        pass
+
+
+def _deep_link(content_type, object_id):
+    """Lien profond vers l'enregistrement parent, à partir de son
+    ``ContentType``/``object_id`` bruts — MÊME mapping que
+    ``_ma_file_activity_link``/``targetLink`` (MesActivitesPage.jsx), pour que
+    mentions/followers/réaffectation naviguent exactement comme « Ma file »."""
+    if content_type is None or object_id is None:
+        return None
+    label = f'{content_type.app_label}.{content_type.model}'
+    if label == 'crm.lead':
+        return f'/crm/leads?lead={object_id}'
+    if label == 'crm.client':
+        return '/crm'
+    if label == 'installations.installation':
+        return '/chantiers'
+    if label == 'sav.ticket':
+        return '/sav'
+    return None
+
+
+def _ma_file_activity_link(data):
+    """VX83 — lien profond vers l'enregistrement parent d'une activité, dérivé
+    du ``target_model``/``object_id`` du serializer (miroir serveur du
+    ``targetLink`` frontend). None pour un à-faire personnel (sans cible)."""
+    model = data.get('target_model')
+    oid = data.get('object_id')
+    if model == 'crm.lead' and oid:
+        return f'/crm/leads?lead={oid}'
+    if model == 'crm.client':
+        return '/crm'
+    if model == 'installations.installation':
+        return '/chantiers'
+    if model == 'sav.ticket':
+        return '/sav'
+    return None
+
+
+def _ma_file_mentions(user, company):
+    """VX83 — mentions non lues de l'utilisateur (notifications
+    ``chat_mention``), au format d'item de « Ma file » avec leur ``link``.
+
+    Lecture cross-app EXCLUSIVEMENT via ``notifications.selectors`` (jamais un
+    import de ``apps.notifications.models`` — convention selectors). Best-effort :
+    aucune mention / app absente ⇒ liste vide, jamais une erreur qui casse la
+    file."""
+    if company is None:
+        return []
+    try:
+        from apps.notifications import selectors as notif_selectors
+        rows = notif_selectors.mentions_non_lues(user, company)
+    except Exception:  # pragma: no cover - défensif
+        return []
+    out = []
+    for n in rows:
+        out.append({
+            'kind': 'mention',
+            'title': getattr(n, 'title', None) or 'Vous avez été mentionné',
+            'due': getattr(n, 'created_at', None),
+            'link': getattr(n, 'link', '') or None,
+            'urgency': 'today',
+            'notification_id': getattr(n, 'id', None),
+        })
+    return out
 
 
 def _log_done_to_chatter(activity, user):
@@ -297,8 +707,20 @@ def _parse_mentions(body):
     return list(set(_MENTION_RE.findall(body or '')))
 
 
-def _notify_mentions(body, author, company):
-    """Notifie les utilisateurs mentionnés via @username (best-effort)."""
+def _notify_mentions(body, author, company, content_type=None, object_id=None):
+    """Notifie les utilisateurs mentionnés via @username (best-effort).
+
+    VX85(b) — passe désormais `link` (même mapping que
+    `_ma_file_activity_link`/`targetLink`) : avant ce fix la mention n'était
+    cliquable nulle part (absente de toute file), `content_type`/`object_id`
+    sont optionnels pour ne rien casser des appelants sans cible connue.
+
+    VX209(b) — émet `ET.CHAT_MENTION` (et non plus `LEAD_ASSIGNED`, qui
+    faisait mentir le libellé ET couplait silencieusement la préférence
+    « lead_assigned » : un utilisateur coupant les notifs d'assignation de
+    lead perdait aussi ses mentions sans le savoir). `notifications.
+    selectors.mentions_non_lues` (VX83, « Ma file ») filtre déjà sur
+    `CHAT_MENTION` — cette émission était le chaînon manquant."""
     mentions = _parse_mentions(body)
     if not mentions:
         return
@@ -307,15 +729,17 @@ def _notify_mentions(body, author, company):
         from apps.notifications.models import EventType as ET
         from apps.notifications.services import notify
         User = get_user_model()
+        link = _deep_link(content_type, object_id)
         for username in mentions:
             try:
                 user = User.objects.get(username=username, company=company)
                 if user == author:
                     continue  # pas d'auto-notification
                 notify(
-                    user, ET.LEAD_ASSIGNED,  # réutilise l'event le plus proche
+                    user, ET.CHAT_MENTION,
                     f'{author.username} vous a mentionné',
                     body=body[:200],
+                    link=link,
                     company=company)
             except User.DoesNotExist:
                 pass
@@ -372,14 +796,19 @@ class CommentViewSet(viewsets.ModelViewSet):
             object_id=request.data.get('id'),
             author=request.user)
         # Notifie les @mentions (best-effort, jamais d'erreur remontée).
-        _notify_mentions(comment.body, request.user, company)
+        # VX85(b) — content_type/object_id passés pour un lien cliquable.
+        _notify_mentions(
+            comment.body, request.user, company,
+            content_type=ct, object_id=comment.object_id)
         # XKB34 — notifie les followers de la cible sur une nouvelle note de
-        # chatter (best-effort, jamais l'auteur lui-même).
+        # chatter (best-effort, jamais l'auteur lui-même). VX85(b) — `link`
+        # même mapping, la notification followers devient cliquable aussi.
         from .services import notify_followers
         notify_followers(
             content_type=ct, object_id=comment.object_id,
             title=f'{request.user.username} a ajouté une note',
-            body=comment.body[:200], exclude_user=request.user)
+            body=comment.body[:200], exclude_user=request.user,
+            link=_deep_link(ct, comment.object_id))
         return Response(CommentSerializer(comment).data,
                         status=status.HTTP_201_CREATED)
 
@@ -425,7 +854,9 @@ class AttachmentViewSet(viewsets.ModelViewSet):
         if not file:
             return Response({'detail': 'Aucun fichier fourni.'},
                             status=status.HTTP_400_BAD_REQUEST)
-        meta, err = store_attachment(file)
+        # SCA42 — clé préfixée par société pour les NOUVEAUX uploads
+        # (attachments/{company_id}/…). Les anciens objets gardent leur clé.
+        meta, err = store_attachment(file, company=company)
         if err:
             return Response({'detail': err},
                             status=status.HTTP_400_BAD_REQUEST)

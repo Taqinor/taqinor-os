@@ -1,0 +1,356 @@
+---
+/**
+ * /suivi/<token> — SUIVI DE PROJET POST-SIGNATURE (WJ115, web half of QX34).
+ *
+ * Page SSR (prerender=false) qui lit l'état de chantier d'un devis SIGNÉ auprès
+ * de l'endpoint backend public/token QX34 (`GET /api/django/ventes/suivi/<token>/`)
+ * et affiche une timeline verticale honnête (accepté → acompte → matériel →
+ * installation → facturé). Même discipline que /proposition/[token] : lien
+ * tokenisé PRIVÉ (noindex), zéro donnée fabriquée — une étape sans date connue
+ * (ou dont la `date` transporte un statut chantier, pas une date — voir la clé
+ * `installation`) n'affiche jamais rien plutôt qu'un chiffre inventé.
+ *
+ * Design : langage v2 (« cinéma du chantier »). Bleu Majorelle dominant, laiton
+ * (.lum) réservé à la référence + au CTA principal, zéro CLS, prefers-reduced-
+ * motion respecté (`.cine-in` est déjà gated globalement, voir styles/global.css).
+ */
+export const prerender = false;
+
+import Layout from '../../layouts/Layout.astro';
+import {
+  type SuiviResponse,
+  suiviEndpoint,
+  buildTimeline,
+  formatSuiviDate,
+} from '../../lib/suivi';
+import { whatsappLink } from '../../lib/proposition';
+import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
+
+const API_BASE = (import.meta.env.PUBLIC_API_BASE as string | undefined) ?? 'https://api.taqinor.ma';
+const { token } = Astro.params as { token: string };
+
+// ── Lecture serveur du suivi ─────────────────────────────────────────────────
+// Même discipline que /proposition/[token] (WJ81) : un backend lent/en panne ne
+// doit jamais laisser cette page blanche. AbortController borne l'attente ;
+// timeout / 404 / panne réseau / rate-limit ont chacun leur message honnête FR
+// + AR, avec un « Réessayer » (lien pur, recharge la même URL) quand c'est
+// retryable.
+const SSR_FETCH_TIMEOUT_MS = 8000;
+let data: SuiviResponse | null = null;
+let errorDetail: { fr: string; ar: string } | null = null;
+let httpStatus = 200;
+let isTimeout = false;
+
+// Rate-limit du SSR : un token de suivi est un identifiant devinable (chaîne
+// opaque mais finie) — même bucket généreux que proposition-view (W316).
+const rl = rateLimit(`suivi-view:${clientIpFromRequest(Astro.request)}`, { limit: 60, windowMs: 60_000 });
+if (!rl.allowed) {
+  httpStatus = 429;
+  errorDetail = {
+    fr: 'Trop de tentatives depuis cette connexion — réessayez dans un instant.',
+    ar: 'عدد كبير جدًا من المحاولات من هذا الاتصال — أعيدوا المحاولة بعد قليل.',
+  };
+} else if (!token || !token.trim()) {
+  httpStatus = 404;
+  errorDetail = {
+    fr: 'Ce lien de suivi est introuvable ou a expiré.',
+    ar: 'رابط المتابعة هذا غير موجود أو انتهت صلاحيته.',
+  };
+} else {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), SSR_FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(suiviEndpoint(API_BASE, token), {
+      headers: { accept: 'application/json' },
+      signal: controller.signal,
+    });
+    httpStatus = res.status;
+    if (res.ok) {
+      data = (await res.json()) as SuiviResponse;
+    } else {
+      errorDetail =
+        res.status === 404
+          ? {
+              fr: 'Ce lien de suivi est introuvable ou a expiré.',
+              ar: 'رابط المتابعة هذا غير موجود أو انتهت صلاحيته.',
+            }
+          : {
+              fr: 'Ce suivi n’est pas accessible pour le moment.',
+              ar: 'تعذّر الوصول إلى هذه المتابعة حاليًا.',
+            };
+    }
+  } catch (err) {
+    httpStatus = 502;
+    isTimeout = err instanceof Error && err.name === 'AbortError';
+    errorDetail = isTimeout
+      ? {
+          fr: 'La connexion est lente — ce suivi met plus de temps que prévu à charger. Réessayez, ou contactez votre conseiller sur WhatsApp.',
+          ar: 'الاتصال بطيء — تستغرق هذه المتابعة وقتًا أطول من المعتاد. أعيدوا المحاولة، أو تواصلوا مع مستشاركم عبر واتساب.',
+        }
+      : {
+          fr: 'Suivi momentanément indisponible. Veuillez réessayer dans un instant.',
+          ar: 'المتابعة غير متوفرة حاليًا. يُرجى إعادة المحاولة بعد قليل.',
+        };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// 404 propre pour bots comme humains (Layout est de toute façon noindex).
+if (!data && (httpStatus === 404 || httpStatus === 200)) {
+  Astro.response.status = httpStatus === 200 ? 404 : httpStatus;
+} else if (!data) {
+  Astro.response.status = httpStatus;
+}
+
+const ok = !!data;
+const reference = data?.reference ?? '';
+const stepsFr = ok ? buildTimeline(data!, 'fr') : [];
+const stepsAr = ok ? buildTimeline(data!, 'ar') : [];
+const generatedLabel = formatSuiviDate(data?.generated_at ?? null);
+
+// Lien de partage WhatsApp : compositeur générique (wa.me sans numéro — le
+// client choisit le destinataire) partageant l'URL COURANTE, donc CETTE page
+// de suivi. Message dédié au SUIVI (jamais « proposition » : après signature
+// ce lien montre l'avancement du chantier, pas une offre). Repli contact
+// direct pour l'état d'erreur (même convention que waLinkFallback, WJ81).
+const waShareMsg = reference
+  ? `Voici le suivi de mon projet solaire Taqinor (réf. ${reference}) : ${Astro.url.href}`
+  : `Voici le suivi de mon projet solaire Taqinor : ${Astro.url.href}`;
+const waShareLink = `https://wa.me/?text=${encodeURIComponent(waShareMsg)}`;
+const waFallbackLink = whatsappLink(reference || '');
+
+const pageTitle = ok ? `Suivi ${reference} | Taqinor` : 'Suivi de projet | Taqinor';
+// WJ76 — même discipline de confidentialité que /proposition : ce lien tokenisé
+// est transféré par le client lui-même ; le titre de PARTAGE (og:title) reste
+// neutre, jamais la référence — la page reste noindex de toute façon.
+const ogTitle = 'Suivi de votre projet solaire | Taqinor';
+---
+
+<Layout
+  title={pageTitle}
+  description="Suivez l'avancement de votre projet solaire Taqinor."
+  noindex={true}
+  ogTitle={ogTitle}
+  ogImageAlt="Taqinor — suivi de votre projet solaire"
+>
+  {!ok ? (
+    <!-- ── État « lien expiré / indisponible » (FR + AR, jamais une page blanche) ── -->
+    <section class="mx-auto flex min-h-[60dvh] max-w-2xl flex-col items-center justify-center px-5 py-24 text-center">
+      <div class="rule-brass mx-auto text-brass-300" aria-hidden="true"></div>
+      <div data-lang="fr">
+        <h1 class="display mt-6 text-3xl text-lune sm:text-4xl">Suivi indisponible</h1>
+        <p class="v2-body mt-4 max-w-md">{errorDetail?.fr}</p>
+      </div>
+      <div data-lang="ar" dir="rtl" hidden>
+        <h1 class="display mt-6 text-3xl text-lune sm:text-4xl">تعذّرت المتابعة</h1>
+        <p class="v2-body mt-4 max-w-md">{errorDetail?.ar}</p>
+      </div>
+      {(isTimeout || httpStatus === 429) ? (
+        <>
+          <div class="mt-8 flex flex-col gap-3 sm:flex-row">
+            <a href={Astro.url.href} class="btn-pill" style="background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)">
+              <span data-lang="fr">Réessayer</span>
+              <span data-lang="ar" dir="rtl" hidden>إعادة المحاولة</span>
+            </a>
+            <a href={waFallbackLink} target="_blank" rel="noopener noreferrer" class="btn-pill">
+              <span data-lang="fr">Contacter sur WhatsApp</span>
+              <span data-lang="ar" dir="rtl" hidden>التواصل عبر واتساب</span>
+            </a>
+          </div>
+          <a href="/" class="mt-4 text-sm text-lune-faint underline-offset-2 hover:underline">
+            <span data-lang="fr">Retour à l’accueil</span>
+            <span data-lang="ar" dir="rtl" hidden>العودة إلى الصفحة الرئيسية</span>
+          </a>
+        </>
+      ) : (
+        <>
+          <p class="mt-8 text-sm text-lune-faint">
+            <span data-lang="fr">Besoin d’un nouveau lien ? Contactez votre conseiller Taqinor.</span>
+            <span data-lang="ar" dir="rtl" hidden>هل تحتاجون رابطًا جديدًا؟ تواصلوا مع مستشاركم في Taqinor.</span>
+          </p>
+          <a href="/" class="btn-pill mt-8">
+            <span data-lang="fr">Retour à l’accueil</span>
+            <span data-lang="ar" dir="rtl" hidden>العودة إلى الصفحة الرئيسية</span>
+          </a>
+        </>
+      )}
+    </section>
+  ) : (
+    <div class="suivi pb-24">
+      <!-- ── Bascule de langue FR/عربي — mécanisme MINIMAL (toggle `hidden` sur
+           les paires `[data-lang]`), volontairement plus léger que le tri-node
+           de /proposition (page bien plus courte) : voir le <script> de fin de
+           page. Contenu FR toujours lisible sans JS (rendu serveur). -->
+      <div class="suivi-lang-switch fixed right-3 z-50 flex gap-1 rounded-sm border border-white/15 bg-nuit/80 p-0.5 backdrop-blur" style="top: calc(0.75rem + env(safe-area-inset-top));" role="group" aria-label="Langue / اللغة">
+        <button type="button" id="suivi-lang-fr" aria-pressed="true"
+          class="min-h-11 px-2.5 py-2.5 text-xs font-semibold text-azur-950 bg-brass-400 transition-colors">FR</button>
+        <button type="button" id="suivi-lang-ar" aria-pressed="false"
+          class="min-h-11 px-2.5 py-2.5 text-xs font-semibold text-lune-soft transition-colors hover:text-white">عربي</button>
+      </div>
+
+      <section class="relative overflow-hidden bg-azur-950 pb-4 pt-24 sm:pt-32">
+        <div class="hero-scrim absolute inset-0" aria-hidden="true"></div>
+        <div class="cine-in relative mx-auto max-w-2xl px-5 text-center sm:px-8">
+          <p class="tech-label rule-brass mx-auto text-brass-300" data-lang="fr">Suivi de projet</p>
+          <p class="tech-label rule-brass mx-auto text-brass-300" data-lang="ar" dir="rtl" hidden>متابعة المشروع</p>
+          <h1 class="display mt-4 text-3xl text-blanc sm:text-4xl">
+            <span data-lang="fr">Bonjour, voici l’avancement de votre projet.</span>
+            <span data-lang="ar" dir="rtl" hidden>مرحبًا، إليكم تقدّم مشروعكم.</span>
+          </h1>
+          <p class="fig lum mt-4 text-2xl sm:text-3xl" dir="ltr">{reference}</p>
+          {generatedLabel ? (
+            <p class="mt-2 text-sm text-lune-faint">
+              <span data-lang="fr">Mis à jour le <span dir="ltr">{generatedLabel}</span></span>
+              <span data-lang="ar" dir="rtl" hidden>آخر تحديث بتاريخ <span dir="ltr">{generatedLabel}</span></span>
+            </p>
+          ) : null}
+        </div>
+      </section>
+
+      <section class="mx-auto mt-10 max-w-2xl px-5 sm:px-8">
+        {stepsFr.length === 0 ? (
+          <>
+            <p class="v2-body cine-in text-center text-lune-faint" data-lang="fr">
+              Aucune étape n’est disponible pour le moment. Contactez votre conseiller pour plus de détails.
+            </p>
+            <p class="v2-body cine-in text-center text-lune-faint" data-lang="ar" dir="rtl" hidden>
+              لا توجد أي مرحلة متاحة حاليًا. تواصلوا مع مستشاركم لمزيد من التفاصيل.
+            </p>
+          </>
+        ) : (
+          <>
+            <ol class="suivi-timeline cine-in" data-lang="fr">
+              {stepsFr.map((step) => (
+                <li class="suivi-step" data-done={String(step.done)} data-current={String(step.current)}>
+                  <p class={`tech-label ${step.done ? 'text-brass-300' : step.current ? 'text-lune' : 'text-lune-faint'}`}>
+                    {step.done ? 'Fait' : step.current ? 'En cours' : 'À venir'}
+                  </p>
+                  <p class={`v2-body mt-1 ${step.current || step.done ? 'text-lune' : 'text-lune-faint'}`}>{step.label}</p>
+                  {step.dateLabel ? <p class="fig fig-md mt-1 text-sm text-lune-soft" dir="ltr">{step.dateLabel}</p> : null}
+                </li>
+              ))}
+            </ol>
+            <ol class="suivi-timeline cine-in" data-lang="ar" dir="rtl" hidden>
+              {stepsAr.map((step) => (
+                <li class="suivi-step" data-done={String(step.done)} data-current={String(step.current)}>
+                  <p class={`tech-label ${step.done ? 'text-brass-300' : step.current ? 'text-lune' : 'text-lune-faint'}`}>
+                    {step.done ? 'تم' : step.current ? 'قيد التنفيذ' : 'قادم'}
+                  </p>
+                  <p class={`v2-body mt-1 ${step.current || step.done ? 'text-lune' : 'text-lune-faint'}`}>{step.label}</p>
+                  {step.dateLabel ? <p class="fig fig-md mt-1 text-sm text-lune-soft" dir="ltr">{step.dateLabel}</p> : null}
+                </li>
+              ))}
+            </ol>
+          </>
+        )}
+      </section>
+
+      <!-- ── Partager avec un proche (WhatsApp) — CTA principal, laiton (.lum). -->
+      <section class="cine-in mx-auto mt-12 max-w-2xl px-5 text-center sm:px-8">
+        <a href={waShareLink} target="_blank" rel="noopener noreferrer" class="btn-pill lum" style="background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)">
+          <span data-lang="fr">Partager ce suivi sur WhatsApp</span>
+          <span data-lang="ar" dir="rtl" hidden>مشاركة هذه المتابعة عبر واتساب</span>
+        </a>
+        <p class="mt-3 text-xs text-lune-faint">
+          <span data-lang="fr">Une question ? Contactez votre conseiller Taqinor.</span>
+          <span data-lang="ar" dir="rtl" hidden>لديكم سؤال؟ تواصلوا مع مستشاركم في Taqinor.</span>
+        </p>
+      </section>
+    </div>
+  )}
+</Layout>
+
+<style>
+  /* ── Timeline verticale — zéro CLS (mise en page fixe, pas d'insertion tardive). */
+  .suivi-timeline {
+    position: relative;
+    list-style: none;
+    margin: 0;
+    padding-left: 1.75rem;
+  }
+  [dir='rtl'] .suivi-timeline {
+    padding-left: 0;
+    padding-right: 1.75rem;
+  }
+  .suivi-step {
+    position: relative;
+    padding-bottom: 1.75rem;
+  }
+  .suivi-step:last-child {
+    padding-bottom: 0;
+  }
+  .suivi-step::before {
+    content: '';
+    position: absolute;
+    left: -1.75rem;
+    top: 0.3rem;
+    width: 0.8rem;
+    height: 0.8rem;
+    border-radius: 999px;
+    border: 2px solid var(--color-lune-faint, #8a94ad);
+    background: var(--color-nuit, #0b1220);
+  }
+  [dir='rtl'] .suivi-step::before {
+    left: auto;
+    right: -1.75rem;
+  }
+  .suivi-step::after {
+    content: '';
+    position: absolute;
+    left: -1.375rem;
+    top: 1.1rem;
+    bottom: -0.25rem;
+    width: 2px;
+    background: rgb(255 255 255 / 0.15);
+  }
+  [dir='rtl'] .suivi-step::after {
+    left: auto;
+    right: -1.375rem;
+  }
+  .suivi-step:last-child::after {
+    display: none;
+  }
+  .suivi-step[data-done='true']::before {
+    border-color: var(--color-brass-400, #e8b54a);
+    background: var(--color-brass-400, #e8b54a);
+  }
+  .suivi-step[data-current='true']::before {
+    border-color: var(--color-brass-400, #e8b54a);
+    box-shadow: 0 0 0 4px rgb(232 181 74 / 0.25);
+  }
+
+  @media print {
+    .suivi-lang-switch {
+      display: none;
+    }
+  }
+</style>
+
+<script>
+  // WJ115 — bascule FR/عربي minimale : toggle `hidden` sur chaque paire
+  // `[data-lang]` + `dir`/`lang` document — pas de tri-node dual-node (page
+  // courte, un mécanisme plus lourd n'apporterait rien ici).
+  type SuiviLang = 'fr' | 'ar';
+
+  function setLang(lang: SuiviLang): void {
+    document.querySelectorAll<HTMLElement>('[data-lang]').forEach((el) => {
+      el.hidden = el.dataset.lang !== lang;
+    });
+    document.documentElement.lang = lang;
+    document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
+    const frBtn = document.getElementById('suivi-lang-fr');
+    const arBtn = document.getElementById('suivi-lang-ar');
+    frBtn?.setAttribute('aria-pressed', String(lang === 'fr'));
+    arBtn?.setAttribute('aria-pressed', String(lang === 'ar'));
+    for (const [btn, on] of [[frBtn, lang === 'fr'], [arBtn, lang === 'ar']] as const) {
+      if (!btn) continue;
+      btn.className = on
+        ? 'min-h-11 px-2.5 py-2.5 text-xs font-semibold text-azur-950 bg-brass-400 transition-colors'
+        : 'min-h-11 px-2.5 py-2.5 text-xs font-semibold text-lune-soft transition-colors hover:text-white';
+    }
+  }
+
+  document.getElementById('suivi-lang-fr')?.addEventListener('click', () => setLang('fr'));
+  document.getElementById('suivi-lang-ar')?.addEventListener('click', () => setLang('ar'));
+</script>

@@ -482,3 +482,84 @@ def export_grand_livre_csv(company, debut, fin):
         f'attachment; filename="grand-livre-ventes-{debut.isoformat()}'
         f'_{fin.isoformat()}.csv"')
     return resp
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SCA41 — exports xlsx asynchrones au-delà d'un seuil (pilote de NTPLT29/30).
+#
+# En dessous du seuil (défaut 2 000 lignes, surchargeable par env), le chemin
+# synchrone actuel reste STRICTEMENT inchangé (même octets, UI inchangée).
+# Au-delà, l'endpoint bascule sur une tâche Celery (queue `interactive`) qui
+# construit le MÊME classeur, l'upload dans MinIO sous une clé préfixée société
+# (motif ERR75), et répond 202 + endpoint de statut/téléchargement pré-signé.
+#
+# Conçu comme le PILOTE ventes que NTPLT29/30 (BackgroundJob générique + heavy
+# async exports, nommés) généraliseront — même signature de sortie (bytes +
+# filename), pour qu'un futur refactor pointe simplement le task générique sur
+# ces builders sans changer la forme de sortie.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Layouts d'export xlsx supportés par la voie asynchrone. `journal` et les deux
+# variantes comptables partagent le même driver de lignes (les factures émises
+# de la période), donc un seul compteur suffit.
+XLSX_LAYOUTS = ('journal', 'comptable', 'grand-livre')
+
+# Mapping layout → (fonction builder synchrone, préfixe de nom de fichier).
+_XLSX_BUILDERS = {
+    'journal': (export_journal_ventes, 'journal-ventes'),
+    'comptable': (export_comptable_xlsx, 'export-comptable'),
+    'grand-livre': (export_grand_livre_xlsx, 'grand-livre-ventes'),
+}
+
+
+def export_async_row_threshold():
+    """Seuil (nombre de factures de la période) au-delà duquel un export xlsx
+    part en tâche Celery plutôt qu'en synchrone. Surcharge via l'env
+    ``VENTES_EXPORT_ASYNC_ROW_THRESHOLD`` ; défaut 2 000."""
+    from django.conf import settings
+    try:
+        return int(getattr(
+            settings, 'VENTES_EXPORT_ASYNC_ROW_THRESHOLD', 2000) or 2000)
+    except (TypeError, ValueError):
+        return 2000
+
+
+def count_export_rows(company, debut, fin):
+    """Nombre de factures émises de la période — le driver commun aux trois
+    exports xlsx (journal / comptable / grand-livre). Requête COUNT bornée
+    société, sans construire le classeur."""
+    from apps.ventes.models import Facture
+    return (Facture.objects
+            .filter(company=company, statut__in=ISSUED_STATUTS,
+                    date_emission__gte=debut, date_emission__lt=fin)
+            .count())
+
+
+def build_export_xlsx_bytes(company_id, layout, debut, fin):
+    """Construit le classeur xlsx via le MÊME builder synchrone et renvoie
+    ``(bytes, filename)``. Réutiliser le builder existant garantit des octets
+    STRICTEMENT identiques entre la voie synchrone et la voie asynchrone.
+
+    ``debut``/``fin`` sont des ``datetime.date``. ``layout`` ∈ XLSX_LAYOUTS.
+    Résolution société INTERNE (jamais depuis le corps de requête)."""
+    from authentication.models import Company
+    if layout not in _XLSX_BUILDERS:
+        raise ValueError(f'layout xlsx inconnu : {layout!r}')
+    company = Company.objects.get(pk=company_id)
+    builder, prefix = _XLSX_BUILDERS[layout]
+    resp = builder(company, debut, fin)
+    # Le nom de fichier reproduit exactement celui posé par le builder
+    # synchrone (Content-Disposition), pour un téléchargement identique.
+    if layout == 'journal':
+        filename = f'{prefix}-{debut.isoformat()}.xlsx'
+    else:
+        filename = f'{prefix}-{debut.isoformat()}_{fin.isoformat()}.xlsx'
+    return bytes(resp.content), filename
+
+
+def export_object_key(company_id, layout, debut, fin, token):
+    """Clé MinIO préfixée société (motif ERR75) pour un export asynchrone. Le
+    ``token`` (id de tâche) rend la clé unique par job et empêche toute
+    collision inter-tenant même à période/layout identiques."""
+    return (f'exports/{company_id}/{layout}/'
+            f'{debut.isoformat()}_{fin.isoformat()}_{token}.xlsx')

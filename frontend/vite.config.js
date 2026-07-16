@@ -36,14 +36,26 @@ const WEB_SRC = resolvePath(__dir, '../apps/web/src')
 // Vite peut varier selon la plateforme.
 const WEB_TS_RE = /[\\/]apps[\\/]web[\\/]src[\\/].*\.(m?ts|tsx)(\?.*)?$/
 
-// Préfixe d'ID VIRTUEL pour les modules TS du builder. La VRAIE chemin du fichier
-// est encodée dans l'id et l'id NE finit PAS par `.ts`/`.tsx` → le transform TS
+// Préfixe d'ID VIRTUEL pour les modules TS du builder. Le CHEMIN du fichier est
+// encodé dans l'id et l'id NE finit PAS par `.ts`/`.tsx` → le transform TS
 // natif de Vite (dont le filtre `include` est `/\.(m?ts|[jt]sx)$/`) ne le traite
 // PAS, donc ne déclenche jamais la découverte du tsconfig astro. C'est NOTRE
 // plugin qui charge + transpile ces fichiers (sans découverte de tsconfig).
+//
+// VX59 — l'id encode un chemin RELATIF à `WEB_SRC` (jamais le chemin ABSOLU du
+// disque) : sans ça, le nom de chunk émis par Rollup dérive de cet id et publie
+// la structure du disque local dans un asset (non portable entre
+// machines/CI — `manualChunks` ci-dessous re-nomme quand même explicitement ce
+// chunk en `roof-tool`, mais gardons l'id lui-même propre en profondeur, au cas
+// où un id de secours/sourcemap venait à être dérivé de lui).
 const RB_PREFIX = '\0rb:'
-const encodeRb = (abs) => `${RB_PREFIX}${encodeURIComponent(abs.replace(/\\/g, '/'))}`
-const decodeRb = (id) => decodeURIComponent(id.slice(RB_PREFIX.length))
+const toWebSrcRelative = (abs) => {
+  const rel = abs.replace(/\\/g, '/').replace(WEB_SRC.replace(/\\/g, '/') + '/', '')
+  return rel
+}
+const fromWebSrcRelative = (rel) => resolvePath(WEB_SRC, rel)
+const encodeRb = (abs) => `${RB_PREFIX}${encodeURIComponent(toWebSrcRelative(abs))}`
+const decodeRb = (id) => fromWebSrcRelative(decodeURIComponent(id.slice(RB_PREFIX.length)))
 
 function roofBuilderTsPlugin() {
   return {
@@ -201,13 +213,43 @@ export default defineConfig({
         // code applicatif). Un module hors de ces groupes suit le découpage par
         // route (React.lazy) — comportement par défaut de Rollup conservé.
         manualChunks(id) {
+          // VX59 — Le builder roof-tool est chargé par `roofBuilderTsPlugin`
+          // (ci-dessus) sous un id VIRTUEL `\0rb:<chemin-relatif-à-WEB_SRC>`.
+          // Sans règle dédiée ici, Rollup dérive le nom de chunk directement de
+          // cet id — même un chemin relatif publierait la structure interne du
+          // dépôt dans le nom d'asset, et resterait sensible au séparateur de
+          // chemin de la plateforme. On regroupe donc TOUJOURS ces modules sous
+          // le même nom FIXE `roof-tool`, indépendant de la machine — c'est
+          // aussi le nom que `check_bundle_budget.mjs` cherche (VENDOR_CHUNK_
+          // BUDGETS_KB['roof-tool']) pour lui donner son budget dédié.
+          if (id.startsWith(RB_PREFIX)) return 'roof-tool'
           if (!id.includes('node_modules')) return undefined
-          if (/[\\/]node_modules[\\/]recharts[\\/]/.test(id)) return 'recharts'
-          if (/[\\/]node_modules[\\/]pdfjs-dist[\\/]/.test(id)) return 'pdfjs-dist'
+          // wave-3 CI fix (frontend-perf) — `recharts`/`pdfjs-dist` used to get a
+          // FORCED single named chunk here (like `radix-ui`/`react-vendor` below),
+          // but Rolldown's cross-chunk module dedup then attached a real symbol
+          // from deep inside that forced chunk to the BOOT entry chunk itself
+          // (verified via `--sourcemap`: `index-*.js` statically imported a symbol
+          // whose sourcemap resolved INTO `node_modules/recharts`/`pdfjs-dist`,
+          // even though no boot-graph source file imports either package or the
+          // `ui` barrel) — `<link rel="modulepreload">` on every page, `/login`
+          // included (`scripts/check_bundle_budget.mjs` HEAVY_VENDOR_CHUNK_NAMES).
+          // Leaving these two names OUT of `manualChunks` lets Rolldown's default
+          // per-route code-splitting handle them: verified this removes the boot
+          // leak entirely (0 modulepreload violations) while total gzip stays
+          // comfortably under budget — a real product/perf trade-off (loses the
+          // dedicated always-cached vendor chunk for these two), not a hash-based
+          // allowlist. `radix-ui`/`react-vendor` don't hit this — no boot-path
+          // code deduplicates against them — so they keep their forced chunk.
           if (/[\\/]node_modules[\\/]@radix-ui[\\/]/.test(id)) return 'radix-ui'
           if (/[\\/]node_modules[\\/](react|react-dom|react-router|react-router-dom|scheduler)[\\/]/.test(id)) {
             return 'react-vendor'
           }
+          // VX189(a) — 126 chunks JS < 1 Ko gzip (icônes lucide-react
+          // individuelles, chacune son propre chunk par défaut avec l'import
+          // nommé `import { X } from 'lucide-react'` utilisé partout dans
+          // l'app) sur 345 chunks au total : un seul chunk `icons` partagé,
+          // mis en cache une fois pour toute l'app plutôt que fragmenté.
+          if (/[\\/]node_modules[\\/]lucide-react[\\/]/.test(id)) return 'icons'
           return undefined
         },
       },

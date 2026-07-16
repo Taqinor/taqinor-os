@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch } from 'react-redux'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
@@ -9,15 +9,18 @@ import {
   ArrowLeft, Target, ClipboardList, User, Zap, Sprout, BarChart3,
   ShoppingCart, StickyNote, FileText, RotateCcw, Sun, Plus, Trash2,
 } from 'lucide-react'
-import { createDevis, addLigneDevis } from '../../features/ventes/store/ventesSlice'
+// QX21 — la sauvegarde passe désormais par les endpoints ATOMIQUES de ventesApi
+// (createDevisAtomic / replaceLignesDevis) ; createDevis/addLigneDevis (1+N
+// round-trips non gardés) ne sont plus utilisés ici.
 import { createAutoQuote, buildEtudePompage, LEAD_TYPE_TO_MODE } from '../../features/ventes/autoQuote'
 import { waterDemandFromFarm } from '../../features/ventes/agronomy'
 import crmApi from '../../api/crmApi'
 import stockApi from '../../api/stockApi'
 import ventesApi from '../../api/ventesApi'
 import parametresApi from '../../api/parametresApi'
-import ProduitPicker from '../../components/ProduitPicker'
 import ClientQuickCreateModal from './ClientQuickCreateModal'
+import DevisPresetPanel from './DevisPresetPanel'
+import DevisLineRow from './DevisLineRow'
 import { Combobox } from '../../ui/Combobox'
 import { searchCompanies } from '../../features/crm/companyLookup'
 import {
@@ -25,8 +28,13 @@ import {
   Input, Textarea, Label, Segmented,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+  HelpTip, ScrollProgress,
 } from '../../ui'
 import { useCanCreateProduit } from '../../hooks/useHasPermission'
+import useKeyboardAwareScroll from '../../hooks/useKeyboardAwareScroll'
+import { useDirtyGuard } from '../../ui/useDirtyGuard'
+import { useDraftAutosave } from '../../ui/useDraftAutosave'
+import { usePasteClean, parsePastedAmount } from '../../hooks/usePasteClean'
 import {
   MONTHS_FR, CHART_MONTHS, DEFAULT_MONTHLY_BILLS, DAY_USAGE_DEFAULTS,
   formatMoney, estimerMois, estimerPanneaux, computeROI, ttcFromHt, htFromTtc,
@@ -34,13 +42,15 @@ import {
   batteryKwhFromLines, optionTotalsTTC, autoFillLines, defaultProductLines,
   computeEtudeIndustrielle,
   autoFillPompage, pompageSelection, HEURES_POMPAGE_DEFAUT,
-  isBattery, isHybridInverter, prixParKwc, discountForTarget,
+  isBattery, isHybridInverter, isReseauInverter, isPanel, isPompe,
+  prixParKwc, discountForTarget,
   computeBuyCost, avecBatterieAvailability, KWH_PRICE, EFFICIENCY,
-  panneauxPourKwc, expectedTvaForDesignation,
+  panneauxPourKwc,
   TVA_STANDARD_DEFAUT, TVA_PANNEAUX_DEFAUT,
-  classifyProduct,
   kwhFromBill, buildEtudeParamsChoice, multiPropertyPreviewTTC,
+  productibleForCity,
 } from '../../features/ventes/solar'
+import { formatNumber, formatMAD, formatDateTime } from '../../lib/format'
 
 const MODE_OPTIONS = [
   { value: 'residentiel', label: '🏠 Résidentiel' },
@@ -50,6 +60,19 @@ const MODE_OPTIONS = [
 
 let _keyCounter = 0
 const newKey = () => ++_keyCounter
+
+// VX93 — défaut intelligent : dernier taux TVA saisi sur une ligne ajoutée à la
+// main (localStorage). Repli sur le taux standard (20 %) si absent. Toujours
+// modifiable ligne par ligne ; jamais bloquant.
+const LAST_TVA_KEY = 'taqinor.devisGenerator.lastTva'
+const lireLastTva = () => {
+  try { return window.localStorage.getItem(LAST_TVA_KEY) || String(TVA_STANDARD_DEFAUT) }
+  catch { return String(TVA_STANDARD_DEFAUT) }
+}
+const ecrireLastTva = (v) => {
+  try { if (v !== '' && v != null) window.localStorage.setItem(LAST_TVA_KEY, String(v)) }
+  catch { /* no-op silencieux */ }
+}
 
 const withKeys = (rows) => rows.map(r => ({
   _key: newKey(),
@@ -71,12 +94,17 @@ const emptyLine = () => ({
   designation: '',
   quantite: '0',
   prix_unit_ttc: '0',
-  taux_tva: '20',
+  taux_tva: lireLastTva(),  // VX93 — dernière TVA saisie (défaut 20 %)
+  // VX249(b) — 1 des 4 champs VX93 exactement (avec owner/ville sur
+  // LeadForm.jsx et payMode sur FactureList.jsx) : reste « suggéré » (style
+  // discret dans DevisLineRow.jsx) tant que l'utilisateur n'a pas changé
+  // LUI-MÊME le taux de CETTE ligne — retiré via `setLine` ci-dessous.
+  _tvaSuggested: true,
   groupeIndex: null,
   groupeLabel: '',
 })
 
-const fmtNum = (v) => (v !== null && v !== undefined) ? v.toLocaleString('fr-MA') : 'N/A'
+const fmtNum = (v) => (v !== null && v !== undefined) ? formatNumber(v) : 'N/A'
 
 // En-tête de carte du générateur (style design system, repose sur Card).
 function GenCardHeader({ icon: Icon, title, children }) {
@@ -132,6 +160,8 @@ export default function DevisGenerator({
   // pour tout autre rôle la désignation est en lecture seule (verrouillée au
   // nom du produit lié). Le backend reste la seule garde qui compte.
   const canRenameLine = useCanCreateProduit()
+  // VX51 — un champ bas de page ne doit plus rester caché sous le clavier iOS.
+  useKeyboardAwareScroll()
   // Dialogue « renommer ici seulement » vs « créer un nouveau produit ».
   // { key, ancienNom, nouveauNom, produitId } quand ouvert, sinon null.
   const [renameDialog, setRenameDialog] = useState(null)
@@ -235,6 +265,10 @@ export default function DevisGenerator({
   const [realBillMad, setRealBillMad] = useState('')
   const [realBillKwh, setRealBillKwh] = useState('')
 
+  // VX237 — les handlers de collage nettoyé (onHiverPaste/onEtePaste/
+  // onRealBillPaste) sont déclarés plus bas, APRÈS `syncBillEstimator` qu'ils
+  // appellent (règle react-hooks/immutability : pas d'accès avant déclaration).
+
   // ── Paramètres techniques ──
   const [nbPanneaux, setNbPanneaux] = useState('')
   const [panelW, setPanelW] = useState('710')
@@ -250,6 +284,10 @@ export default function DevisGenerator({
   const [tauxTva, setTauxTva] = useState('20.00')
   const [discountPct, setDiscountPct] = useState('0')
   const linesInitialized = useRef(false)
+  // VX90 — après « Ajouter ligne », déplacer le focus sur le sélecteur produit
+  // de la NOUVELLE ligne (ref-walk DOM via data-line-key ; pas de useFieldArray).
+  const linesTableRef = useRef(null)
+  const [pendingFocusKey, setPendingFocusKey] = useState(null)
 
   // ── QJ31 — Multi-propriétés (un seul devis, jamais scindé) ──
   // 'none' = mono-système (défaut, comportement historique inchangé) ;
@@ -265,6 +303,15 @@ export default function DevisGenerator({
 
   // ── Multi-marchés ──
   const [modeInstallation, setModeInstallation] = useState('residentiel')
+  // VX138(e) — le bloc « Plusieurs propriétés ? » est un accordéon replié PAR
+  // DÉFAUT en agricole (carte non pertinente pour ce mode, jamais masquée) ;
+  // état local pour que l'utilisateur puisse toujours le rouvrir librement —
+  // seul un CHANGEMENT de mode réinitialise le défaut, pas les re-rendus.
+  const [multiAccordionOpen, setMultiAccordionOpen] = useState(() => modeInstallation !== 'agricole')
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- réinitialise le défaut d'accordéon à chaque changement de mode
+    setMultiAccordionOpen(modeInstallation !== 'agricole')
+  }, [modeInstallation])
   const [consoMensuelle, setConsoMensuelle] = useState('')
   const [prixCible, setPrixCible] = useState('')
   // ── Logique de devis éditable (D5 ; Paramètres → Avancé). Défauts = constantes
@@ -276,8 +323,16 @@ export default function DevisGenerator({
     // DC4/DC6 — repères TVA société (défauts réforme 20/10) : pilotent les
     // repli de taux et l'avertissement de divergence, jamais un recalage forcé.
     tvaStandard: TVA_STANDARD_DEFAUT, tvaPanneaux: TVA_PANNEAUX_DEFAUT,
+    // QX38 — override productible société (CompanyProfile.productible_kwh_kwc).
+    // Défaut historique 1600 → productibleForCity lit alors le PVGIS par ville
+    // (source unique alignée écran/PDF/web) ; une valeur société ≠ 1600 prime.
+    productible: null,
   })
   const [remiseMax, setRemiseMax] = useState('')
+  // QX20 — échappatoire documentée à la garde d'équipement : un avenant ou un
+  // devis d'accessoires/main-d'œuvre seuls (SAV, extension câblage…) n'a pas à
+  // contenir panneau+onduleur/pompe. OFF par défaut (garde active).
+  const [accessoiresOnly, setAccessoiresOnly] = useState(false)
   // Pompage (agricole)
   const [pompeCv, setPompeCv] = useState('5.5')
   const [pompeType, setPompeType] = useState('immergee')
@@ -301,6 +356,104 @@ export default function DevisGenerator({
   const [farmFuelPeriod, setFarmFuelPeriod] = useState('mois') // 'mois' | 'an'
   const [farmHmtStatic, setFarmHmtStatic] = useState('')
   const [farmHmtDrawdown, setFarmHmtDrawdown] = useState('')
+
+  // ── VX62 — Brouillon auto + garde de sortie ──
+  // Le formulaire (2 300+ lignes, ~20 min de saisie) n'avait NI brouillon NI
+  // garde : un onglet fermé/un swipe retour = tout perdu. On sauvegarde un
+  // snapshot débouncé dans localStorage (clé scopée lead/client/édition), on
+  // propose « Reprendre le brouillon » au montage, on purge au succès, et on
+  // pose useDirtyGuard pour la fermeture d'onglet.
+  const draftKey = editId
+    ? `devis:edit:${editId}`
+    : (leadId ? `devis:lead:${leadId}` : (clientId ? `devis:client:${clientId}` : 'devis:new'))
+  // Snapshot des champs éditables saillants (les référentiels leads/clients/
+  // produits ne sont jamais persistés — seulement la saisie de l'utilisateur).
+  const draftSnapshot = useMemo(() => ({
+    leadId, clientId, dateValidite, instType, scenario, recommendedChoice, note,
+    fHiver, fEte, monthly, distributeur, realBillMode, realBillMad, realBillKwh,
+    nbPanneaux, panelW, structureType, dayUsage, lines, tauxTva, discountPct,
+    multiMode, nombreProprietes, villaGroups, modeInstallation, consoMensuelle,
+    prixCible, remiseMax, accessoiresOnly,
+    pompeCv, pompeType, pompeAlim, pompeHmt, pompeDebit, pompeProfondeur,
+    pompeDistance, pompeHeures, farmRegion, farmCrop, farmSurfaceHa,
+    farmIrrigation, farmFuel, farmFuelSpend, farmFuelPeriod, farmHmtStatic,
+    farmHmtDrawdown,
+     
+  }), [
+    leadId, clientId, dateValidite, instType, scenario, recommendedChoice, note,
+    fHiver, fEte, monthly, distributeur, realBillMode, realBillMad, realBillKwh,
+    nbPanneaux, panelW, structureType, dayUsage, lines, tauxTva, discountPct,
+    multiMode, nombreProprietes, villaGroups, modeInstallation, consoMensuelle,
+    prixCible, remiseMax, accessoiresOnly,
+    pompeCv, pompeType, pompeAlim, pompeHmt, pompeDebit, pompeProfondeur,
+    pompeDistance, pompeHeures, farmRegion, farmCrop, farmSurfaceHa,
+    farmIrrigation, farmFuel, farmFuelSpend, farmFuelPeriod, farmHmtStatic,
+    farmHmtDrawdown,
+  ])
+  // « Dirty » = l'utilisateur a réellement saisi quelque chose de significatif
+  // (au moins un identifiant de cible OU une note OU des factures OU des
+  // paramètres techniques). Tant que le formulaire est vierge, ni brouillon ni
+  // garde ne s'activent (évite un bandeau/blocage sur un simple montage).
+  const dirty = Boolean(
+    leadId || clientId || note || fHiver || fEte || nbPanneaux
+    || consoMensuelle || prixCible || pompeHmt || pompeDebit || farmSurfaceHa,
+  )
+  const { restored, restore, discard, clear } = useDraftAutosave(draftKey, draftSnapshot, {
+    enabled: dirty,
+  })
+  useDirtyGuard(dirty)
+
+  // Restauration : réinjecte le snapshot sauvegardé dans tous les setters.
+  const handleRestoreDraft = () => {
+    const d = restore()
+    if (!d) return
+    if (d.leadId != null) setLeadId(d.leadId)
+    if (d.clientId != null) setClientId(d.clientId)
+    if (d.dateValidite != null) setDateValidite(d.dateValidite)
+    if (d.instType != null) setInstType(d.instType)
+    if (d.scenario != null) setScenario(d.scenario)
+    if (d.recommendedChoice != null) setRecommendedChoice(d.recommendedChoice)
+    if (d.note != null) setNote(d.note)
+    if (d.fHiver != null) setFHiver(d.fHiver)
+    if (d.fEte != null) setFEte(d.fEte)
+    if (d.monthly != null) setMonthly(d.monthly)
+    if (d.distributeur != null) setDistributeur(d.distributeur)
+    if (d.realBillMode != null) setRealBillMode(d.realBillMode)
+    if (d.realBillMad != null) setRealBillMad(d.realBillMad)
+    if (d.realBillKwh != null) setRealBillKwh(d.realBillKwh)
+    if (d.nbPanneaux != null) setNbPanneaux(d.nbPanneaux)
+    if (d.panelW != null) setPanelW(d.panelW)
+    if (d.structureType != null) setStructureType(d.structureType)
+    if (d.dayUsage != null) setDayUsage(d.dayUsage)
+    if (Array.isArray(d.lines)) { setLines(withKeys(d.lines)); linesInitialized.current = true }
+    if (d.tauxTva != null) setTauxTva(d.tauxTva)
+    if (d.discountPct != null) setDiscountPct(d.discountPct)
+    if (d.multiMode != null) setMultiMode(d.multiMode)
+    if (d.nombreProprietes != null) setNombreProprietes(d.nombreProprietes)
+    if (Array.isArray(d.villaGroups)) setVillaGroups(d.villaGroups)
+    if (d.modeInstallation != null) setModeInstallation(d.modeInstallation)
+    if (d.consoMensuelle != null) setConsoMensuelle(d.consoMensuelle)
+    if (d.prixCible != null) setPrixCible(d.prixCible)
+    if (d.remiseMax != null) setRemiseMax(d.remiseMax)
+    if (d.accessoiresOnly != null) setAccessoiresOnly(d.accessoiresOnly)
+    if (d.pompeCv != null) setPompeCv(d.pompeCv)
+    if (d.pompeType != null) setPompeType(d.pompeType)
+    if (d.pompeAlim != null) setPompeAlim(d.pompeAlim)
+    if (d.pompeHmt != null) setPompeHmt(d.pompeHmt)
+    if (d.pompeDebit != null) setPompeDebit(d.pompeDebit)
+    if (d.pompeProfondeur != null) setPompeProfondeur(d.pompeProfondeur)
+    if (d.pompeDistance != null) setPompeDistance(d.pompeDistance)
+    if (d.pompeHeures != null) setPompeHeures(d.pompeHeures)
+    if (d.farmRegion != null) setFarmRegion(d.farmRegion)
+    if (d.farmCrop != null) setFarmCrop(d.farmCrop)
+    if (d.farmSurfaceHa != null) setFarmSurfaceHa(d.farmSurfaceHa)
+    if (d.farmIrrigation != null) setFarmIrrigation(d.farmIrrigation)
+    if (d.farmFuel != null) setFarmFuel(d.farmFuel)
+    if (d.farmFuelSpend != null) setFarmFuelSpend(d.farmFuelSpend)
+    if (d.farmFuelPeriod != null) setFarmFuelPeriod(d.farmFuelPeriod)
+    if (d.farmHmtStatic != null) setFarmHmtStatic(d.farmHmtStatic)
+    if (d.farmHmtDrawdown != null) setFarmHmtDrawdown(d.farmHmtDrawdown)
+  }
 
   useEffect(() => {
     // Les trois échecs réseau sont SURFACÉS (bannière) au lieu d'avaler l'erreur :
@@ -372,6 +525,10 @@ export default function DevisGenerator({
     return kwhMensuel > 0 ? Math.round(kwhMensuel * 12) : null
   })()
 
+  // Lead prioritaire résolu tôt : le calcul ROI ci-dessous lit sa ville
+  // (productible par ville) — doit être déclaré avant le useMemo (pas de TDZ).
+  const selectedLead = leads.find(l => String(l.id) === String(leadId))
+
   const roi = useMemo(() => {
     if (dKwp <= 0 || !dMonthly.some(v => v > 0)) return null
     return computeROI({
@@ -387,8 +544,13 @@ export default function DevisGenerator({
       // PDF) dès qu'une consommation réelle + un distributeur sont connus.
       consoAnnuelleKwh: consoAnnuelleReelle,
       utility: distributeur,
+      // QX38 — productible CANONIQUE PVGIS par ville (source unique alignée
+      // avec le PDF/web) ; override société si renseigné ≠ 1600.
+      productible: productibleForCity(
+        selectedLead?.ville || '', quoteLogic.productible),
     })
-  }, [dKwp, dMonthly, dDayUsage, dTotals, dLines, quoteLogic, consoAnnuelleReelle, distributeur])
+  }, [dKwp, dMonthly, dDayUsage, dTotals, dLines, quoteLogic,
+    consoAnnuelleReelle, distributeur, selectedLead])
 
   const chartData = useMemo(() => {
     if (!roi) return []
@@ -408,6 +570,19 @@ export default function DevisGenerator({
 
   // ── Mode d'installation (Résidentiel / Industriel-Commercial / Agricole) ──
   const onModeChange = (m) => {
+    if (m === modeInstallation) return
+    // QX23 — changer de mode marché après saisie écrase l'étude/ROI et les
+    // lignes auto-remplies : on confirme AVANT (jamais de rejet silencieux de
+    // l'étude). Ne demande la confirmation que s'il y a réellement quelque
+    // chose à perdre (au moins une ligne avec produit, ou une étude calculée).
+    const hasWork = lines.some(l => l.produit && parseFloat(l.quantite) > 0)
+      || !!etudeIndustrielle || pompageAutoFilled
+    if (hasWork) {
+      const ok = window.confirm(
+        'Changer de marché va réinitialiser l\'étude et les lignes déjà '
+        + 'remplies pour ce devis. Continuer ?')
+      if (!ok) return
+    }
     setModeInstallation(m)
     if (m === 'industriel') {
       onInstTypeChange('Industrielle')
@@ -430,8 +605,7 @@ export default function DevisGenerator({
   }
 
   // ── Lead prioritaire : factures remplies + client résolu depuis le lead ──
-  const selectedLead = leads.find(l => String(l.id) === String(leadId))
-
+  // (selectedLead est déclaré plus haut, avant le calcul ROI.)
   const resolvedClientLabel = useMemo(() => {
     if (!selectedLead) return null
     // B2B : si le client résolu porte un ICE, on l'affiche (devis professionnel).
@@ -682,6 +856,17 @@ export default function DevisGenerator({
     setMonthly(estimerMois(hiver, ete > 0 ? ete : hiver))
   }
 
+  // VX237 — montant collé d'Excel/facture ("12 500,00", "3 200 DH"...) nettoyé
+  // vers une chaîne numérique simple au lieu de tomber brut dans le champ
+  // number (qui rejetterait silencieusement le format non reconnu). Déclarés
+  // ici (après syncBillEstimator) pour respecter react-hooks/immutability.
+  const onHiverPaste = usePasteClean(parsePastedAmount,
+    (clean) => { setFHiver(clean); syncBillEstimator(clean, fEte) })
+  const onEtePaste = usePasteClean(parsePastedAmount,
+    (clean) => { setFEte(clean); syncBillEstimator(fHiver, clean) })
+  const onRealBillPaste = usePasteClean(parsePastedAmount,
+    (clean) => (realBillMode === 'mad' ? setRealBillMad(clean) : setRealBillKwh(clean)))
+
   const handleEstimerMois = () => {
     const hiver = parseFloat(fHiver) || 0
     const ete = parseFloat(fEte) || 0
@@ -697,8 +882,19 @@ export default function DevisGenerator({
     setMonthly(m => m.map((old, idx) => (idx === i ? v : old)))
 
   // ── Lignes ──
-  const setLine = (key, k, v) =>
-    setLines(ls => ls.map(l => (l._key === key ? { ...l, [k]: v } : l)))
+  // VX188 — callback stabilisé (identité stable via useCallback, clé de ligne
+  // en ARGUMENT) pour que `React.memo(DevisLineRow)` saute le re-rendu d'une
+  // ligne inchangée. VX93 — mémorise le dernier taux TVA saisi à la main pour
+  // pré-remplir la prochaine ligne ajoutée (ecrireLastTva est un writer stable).
+  const setLine = useCallback((key, k, v) => {
+    if (k === 'taux_tva') ecrireLastTva(v)
+    setLines(ls => ls.map(l => (l._key === key
+      // VX249(b) — une modification MANUELLE du taux retire le style
+      // « suggéré » de CETTE ligne (jamais les autres) ; tout autre champ
+      // laisse `_tvaSuggested` inchangé.
+      ? { ...l, [k]: v, ...(k === 'taux_tva' ? { _tvaSuggested: false } : {}) }
+      : l)))
+  }, [])
 
   // XSAL3 — badge « Tarif : <liste> » par ligne, quand le prix résolu vient
   // d'une liste de prix client (source !== 'standard'). Purement informatif +
@@ -732,7 +928,7 @@ export default function DevisGenerator({
     }
   }
 
-  const onProduitChange = (key, produitId) => {
+  const onProduitChange = useCallback((key, produitId) => {
     const p = produits.find(p => String(p.id) === String(produitId))
     setLines(ls => ls.map(l =>
       l._key === key
@@ -749,16 +945,18 @@ export default function DevisGenerator({
       const l = lines.find(x => x._key === key)
       refreshTarif(key, produitId, l?.quantite)
     }
-  }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [produits, lines])
 
   // Ré-interroge le tarif applicable quand la quantité change sur une ligne
   // déjà liée à un produit (paliers XSAL2), ou quand le client change (liste
   // XSAL1 assignée) — pour toutes les lignes liées à un produit.
-  const onQuantiteChange = (key, quantite) => {
+  const onQuantiteChange = useCallback((key, quantite) => {
     setLine(key, 'quantite', quantite)
     const l = lines.find(x => x._key === key)
     if (l?.produit) refreshTarif(key, l.produit, quantite)
-  }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lines, setLine])
 
   useEffect(() => {
     lines.forEach(l => { if (l.produit) refreshTarif(l._key, l.produit, l.quantite) })
@@ -770,7 +968,7 @@ export default function DevisGenerator({
   // (on garde le texte divergent, rien d'autre) ou « créer un nouveau produit
   // dans le stock » (clone serveur via /dupliquer/, puis on relie la ligne au
   // clone). Non bloquant : ne s'ouvre que sur une vraie divergence.
-  const onDesignationBlur = (key) => {
+  const onDesignationBlur = useCallback((key) => {
     if (!canRenameLine) return
     const l = lines.find(x => x._key === key)
     if (!l || !l.produit) return
@@ -780,7 +978,7 @@ export default function DevisGenerator({
     if (!nouveauNom || nouveauNom === (prod.nom || '').trim()) return
     setRenameError(null)
     setRenameDialog({ key, ancienNom: prod.nom, nouveauNom, produitId: l.produit })
-  }
+  }, [canRenameLine, lines, produits])
 
   // Option (a) — « Renommer sur ce devis seulement » : on garde la désignation
   // divergente telle quelle, aucun produit créé. Juste fermer le dialogue.
@@ -817,8 +1015,33 @@ export default function DevisGenerator({
     }
   }
 
-  const addLine = () => setLines(ls => [...ls, emptyLine()])
-  const removeLine = (key) => setLines(ls => ls.filter(l => l._key !== key))
+  const addLine = () => setLines(ls => {
+    const line = emptyLine()
+    setPendingFocusKey(line._key) // VX90 — focus la nouvelle ligne après rendu.
+    return [...ls, line]
+  })
+  const removeLine = useCallback((key) =>
+    setLines(ls => ls.filter(l => l._key !== key)), [])
+  // VX188 — identité stable pour ProduitPicker.onProduitCreated (passé à
+  // chaque DevisLineRow) : setProduits est déjà un setState fonctionnel,
+  // aucune dépendance réelle.
+  const onProduitCreated = useCallback((p) => setProduits(ps => [...ps, p]), [])
+
+  // VX90 — quand une ligne vient d'être ajoutée, focaliser son ProduitPicker et
+  // la faire défiler dans la vue. On cible la ligne par son data-line-key, puis
+  // le premier bouton (le déclencheur du ProduitPicker) de cette ligne.
+  useEffect(() => {
+    if (pendingFocusKey == null) return
+    const row = linesTableRef.current
+      ?.querySelector(`[data-line-key="${pendingFocusKey}"]`)
+    if (row) {
+      const picker = row.querySelector('button[type="button"]')
+      picker?.focus()
+      row.scrollIntoView({ block: 'nearest' })
+    }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset one-shot du focus (VX90)
+    setPendingFocusKey(null)
+  }, [pendingFocusKey, lines])
 
   // ── QJ31 — Multi-propriétés ──────────────────────────────────────────────
   // Bascule de mode. En passant en « villas », chaque ligne sans groupe est
@@ -835,11 +1058,11 @@ export default function DevisGenerator({
   }
 
   // Assigne une ligne à un groupe villa (met à jour l'index + le libellé).
-  const setLineGroupe = (key, idx) => {
+  const setLineGroupe = useCallback((key, idx) => {
     const grp = villaGroups.find(g => g.index === idx)
     setLines(ls => ls.map(l =>
       l._key === key ? { ...l, groupeIndex: idx, groupeLabel: grp?.label ?? '' } : l))
-  }
+  }, [villaGroups])
 
   const addVillaGroup = () => {
     setVillaGroups(gs => {
@@ -860,6 +1083,27 @@ export default function DevisGenerator({
     // Les lignes du groupe supprimé retombent sur l'équipement commun.
     setLines(ls => ls.map(l =>
       l.groupeIndex === idx ? { ...l, groupeIndex: 0, groupeLabel: 'Équipement commun' } : l))
+  }
+
+  // VX18 — un modèle appliqué remplace les lignes du formulaire. La réponse
+  // apply-preset porte les lignes du devis (modèle HT) ; on les reconvertit en
+  // lignes d'écran (TTC) et on remplace via setLines(withKeys(...)). Repli sûr
+  // si la forme diffère (aucun crash, on ignore).
+  const handlePresetApplied = (data) => {
+    const lignes = Array.isArray(data) ? data
+      : (data?.lignes || data?.results || [])
+    if (!Array.isArray(lignes) || !lignes.length) return
+    const rows = lignes.map(l => ({
+      produit: l.produit ?? l.produit_id ?? '',
+      designation: l.designation ?? '',
+      quantite: l.quantite ?? 1,
+      // le modèle stocke le HT ; l'écran travaille en TTC (au taux de la ligne).
+      prix_unit_ttc: ttcFromHt(l.prix_unitaire ?? l.prix_unit_ht ?? 0, l.taux_tva ?? 20),
+      taux_tva: l.taux_tva ?? 20,
+      groupeIndex: l.groupe_index ?? null,
+      groupeLabel: l.groupe_label ?? '',
+    }))
+    setLines(withKeys(rows))
   }
 
   const handleAutoFill = () => {
@@ -904,12 +1148,27 @@ export default function DevisGenerator({
     const manquants = generated
       .filter(r => !r.produit && parseFloat(r.quantite) > 0)
       .map(r => r.designation || 'ligne sans produit')
+    // QX19 — divergence de wattage : le catalogue a substitué un panneau d'une
+    // AUTRE puissance que celle saisie (ex. 550 W pour 710 W). Le kWc affiché
+    // (issu du wattage saisi) ne correspond alors plus aux lignes réelles. On
+    // le signale visiblement plutôt que d'expédier un système mal étiqueté.
+    const askedW = parseFloat(panelW) || 710
+    const realW = generated.actualPanelW
+    let mismatch = null
+    if (realW && Math.abs(realW - askedW) > 1) {
+      const kwcReel = generated.kwcReel
+      mismatch = `Attention : le stock ne propose pas de panneau ${askedW} W ; `
+        + `un panneau ${realW} W a été retenu. La puissance réelle du système est `
+        + `${kwcReel} kWc (et non ${kwp} kWc). Ajustez le nombre de panneaux ou le `
+        + 'wattage pour la cible voulue.'
+    }
     setErrors(e => ({
       ...e,
       autofill: manquants.length
         ? `Aucun produit du stock ne correspond à : ${[...new Set(manquants)].join(', ')}. `
           + 'Complétez le catalogue ou choisissez ces produits à la main dans les lignes.'
         : null,
+      autofillKwc: mismatch,
     }))
     setLines(withKeys(generated))
   }
@@ -934,6 +1193,33 @@ export default function DevisGenerator({
       e.lines = `Sélectionnez un produit du stock pour la ligne « ${orphan.designation || '—'} »`
     } else if (!usableLines().length) {
       e.lines = 'Au moins une ligne avec un produit et une quantité > 0'
+    } else if (!accessoiresOnly) {
+      // QX20 — un devis solaire DOIT contenir de l'équipement solaire cohérent
+      // avec le marché. Résidentiel/industriel : ≥ 1 panneau ET ≥ 1 onduleur ;
+      // agricole : ≥ 1 pompe. Échappatoire DOCUMENTÉE : cocher « avenant /
+      // accessoires seuls » (accessoiresOnly) désactive la garde pour un devis
+      // d'accessoires/main-d'œuvre légitime (SAV, extension câblage…).
+      const usable = usableLines()
+      const has = (pred) => usable.some(l => pred(l.designation))
+      if (modeInstallation === 'agricole') {
+        if (!has(isPompe)) {
+          e.lines = 'Un devis de pompage doit contenir au moins une pompe. '
+            + 'Utilisez « Auto-remplir » ou ajoutez une pompe, ou cochez '
+            + '« avenant / accessoires seuls ».'
+        }
+      } else {
+        const hasPanel = has(isPanel)
+        const hasInverter = has(d => isReseauInverter(d) || isHybridInverter(d))
+        if (!hasPanel || !hasInverter) {
+          const manque = [
+            !hasPanel ? 'un panneau' : null,
+            !hasInverter ? 'un onduleur' : null,
+          ].filter(Boolean).join(' et ')
+          e.lines = `Un devis solaire doit contenir au moins ${manque}. `
+            + 'Utilisez « Auto-remplir » ou ajoutez ces lignes, ou cochez '
+            + '« avenant / accessoires seuls ».'
+        }
+      }
     }
     // Avertissement NON bloquant : le lead choisi est perdu et/ou archivé.
     // On le signale avant l'enregistrement sans jamais l'empêcher.
@@ -1011,41 +1297,40 @@ export default function DevisGenerator({
         etude_params: etudeParams,
         prix_cible_kwc: prixCible !== '' ? prixCible : null,
       }
+      // QX21 — lignes construites UNE fois (mêmes champs qu'avant : HT dérivé du
+      // TTC saisi au taux DE LA LIGNE, groupe villa en mode « villas »).
+      const lignesPayload = usableLines().map(l => ({
+        produit: parseInt(l.produit),
+        designation: l.designation,
+        quantite: l.quantite,
+        prix_unitaire: htFromTtc(l.prix_unit_ttc, l.taux_tva ?? 20),
+        remise: '0',
+        taux_tva: String(l.taux_tva ?? 20),
+        groupe_index: multiMode === 'villas' ? l.groupeIndex : null,
+        groupe_label: multiMode === 'villas' ? (l.groupeLabel || '') : '',
+      }))
+
       let devisId
       if (editDevis) {
-        // ÉDITION EN PLACE : mêmes référence et statut ; les anciennes lignes
-        // sont remplacées par celles du formulaire.
+        // QX21 — ÉDITION ATOMIQUE : le patch du devis PUIS le remplacement des
+        // lignes en une transaction serveur. Un échec préserve les lignes
+        // existantes (jamais un devis à zéro ligne, plus de delete-puis-recrée).
         await ventesApi.patchDevis(editDevis.id, payload)
-        await Promise.all(editDevis.lineIds.map(id =>
-          ventesApi.deleteLigneDevis(id).catch(() => {})))
+        await ventesApi.replaceLignesDevis(editDevis.id, lignesPayload)
         devisId = editDevis.id
       } else {
-        // Lead prioritaire : le client est résolu côté serveur depuis le lead.
+        // QX21 — CRÉATION ATOMIQUE : devis + lignes en UN commit serveur → plus
+        // de brouillon orphelin/partiel si la connexion est coupée en cours de
+        // sauvegarde. Lead prioritaire : le client est résolu côté serveur.
         if (leadId) payload.lead = parseInt(leadId)
         else payload.client = parseInt(clientId)
-        const devis = await dispatch(createDevis(payload)).unwrap()
-        devisId = devis.id
+        const { data } = await ventesApi.createDevisAtomic({
+          ...payload, lignes: lignesPayload,
+        })
+        devisId = data.id
       }
 
-      await Promise.all(usableLines().map(l =>
-        dispatch(addLigneDevis({
-          devis: devisId,
-          produit: parseInt(l.produit),
-          designation: l.designation,
-          quantite: l.quantite,
-          // le modèle stocke des prix HT ; l'écran travaille en TTC comme le
-          // simulateur. Réforme TVA : le HT est dérivé au taux DE LA LIGNE
-          // (10 % panneaux / 20 % le reste) pour que le TTC tapé soit exact.
-          prix_unitaire: htFromTtc(l.prix_unit_ttc, l.taux_tva ?? 20),
-          remise: '0',
-          taux_tva: String(l.taux_tva ?? 20),
-          // QJ31 (mode B) — groupe villa par ligne (QJ29). Envoyé UNIQUEMENT en
-          // mode « villas » ; sinon null/'' → chemin mono-système inchangé.
-          groupe_index: multiMode === 'villas' ? l.groupeIndex : null,
-          groupe_label: multiMode === 'villas' ? (l.groupeLabel || '') : '',
-        })).unwrap()
-      ))
-
+      clear() // VX62 — succès : purge le brouillon local.
       finish(devisId)
     } catch (err) {
       // Message HUMAIN, jamais de JSON brut — et le formulaire reste vivant.
@@ -1073,6 +1358,37 @@ export default function DevisGenerator({
   }
 
   const selectedClient = clients.find(c => String(c.id) === String(clientId))
+
+  // ZSAL9 — avertissements de vente (« sale warnings ») : message du client
+  // sélectionné + des produits présents dans les lignes. Purement informatif à
+  // l'écran (une bannière non intrusive) ; le blocage éventuel est appliqué
+  // côté serveur à l'acceptation/facturation (garde XFAC28-like).
+  const saleWarnings = useMemo(() => {
+    const out = []
+    if (selectedClient?.avertissement_vente) {
+      out.push({
+        key: `client-${selectedClient.id}`,
+        cible: selectedClient.nom || 'Client',
+        message: selectedClient.avertissement_vente,
+        bloquant: !!selectedClient.avertissement_bloquant,
+      })
+    }
+    const seen = new Set()
+    for (const l of lines) {
+      if (!l.produit || seen.has(l.produit)) continue
+      seen.add(l.produit)
+      const p = produits.find(x => String(x.id) === String(l.produit))
+      if (p?.avertissement_vente) {
+        out.push({
+          key: `produit-${p.id}`,
+          cible: p.nom || 'Produit',
+          message: p.avertissement_vente,
+          bloquant: !!p.avertissement_bloquant,
+        })
+      }
+    }
+    return out
+  }, [selectedClient, lines, produits])
 
   // QC1 — recherche client sur les données propres (endpoint /search/). On ne
   // retient QUE les correspondances de source « client » : le devis a besoin
@@ -1163,6 +1479,11 @@ export default function DevisGenerator({
 
   return (
     <div className={embedded ? 'gen-embedded' : 'page gen-page'}>
+      {/* VX136 — formulaire-fleuve (2319+ l.) : barre de progression de
+          scroll native, `scroll(nearest)` suit le conteneur qui défile
+          réellement (`.layout-content` en page pleine, le Sheet englobant
+          quand `embedded` dans LeadDevisPanel). */}
+      <ScrollProgress />
       {!embedded && (
         <div className="page-header">
           <h2>Générateur de Devis Solaire</h2>
@@ -1172,9 +1493,36 @@ export default function DevisGenerator({
         </div>
       )}
 
+      {/* VX16 — mise en page à deux colonnes sur lg+ : le formulaire à gauche,
+          un rail récapitulatif STICKY à droite. Sur mobile/tablette, layout
+          inchangé (le rail est masqué, les actions restent dans le formulaire). */}
+      <div className="lg:flex lg:items-start lg:gap-6">
       {/* noValidate : aucune contrainte navigateur — toute valeur saisie est
           acceptée telle quelle (les steps ne servent qu'aux flèches). */}
-      <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
+      <form id="gen-form" onSubmit={handleSubmit} noValidate className="flex flex-col gap-4 lg:flex-1 lg:min-w-0">
+        {restored && (
+          <div
+            data-testid="draft-restore-banner"
+            className="flex flex-col gap-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning sm:flex-row sm:items-center sm:justify-between"
+          >
+            <span>
+              Un brouillon non enregistré du{' '}
+              {(() => {
+                try { return formatDateTime(restored.savedAt) }
+                catch { return 'précédent' }
+              })()}{' '}
+              a été retrouvé.
+            </span>
+            <div className="flex gap-2">
+              <Button type="button" size="sm" variant="outline" onClick={handleRestoreDraft}>
+                Reprendre le brouillon
+              </Button>
+              <Button type="button" size="sm" variant="ghost" onClick={discard}>
+                Ignorer
+              </Button>
+            </div>
+          </div>
+        )}
         {refsLoading && (
           <div className="rounded-lg border border-info/30 bg-info/10 p-3 text-sm text-info">
             Chargement des données (leads, clients, produits)…
@@ -1183,6 +1531,26 @@ export default function DevisGenerator({
         {loadFailed.length > 0 && (
           <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
             Échec du chargement : {loadFailed.join(', ')}. Vérifiez votre connexion puis rechargez la page.
+          </div>
+        )}
+        {/* ZSAL9 — avertissements de vente (client/produits) : bannière non
+            intrusive ; un avertissement bloquant est signalé mais n'empêche pas
+            la saisie (le blocage réel est côté serveur à l'acceptation). */}
+        {saleWarnings.length > 0 && (
+          <div
+            data-testid="sale-warnings"
+            className="flex flex-col gap-1 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning"
+          >
+            {saleWarnings.map(w => (
+              <div key={w.key}>
+                <span className="font-medium">{w.cible} :</span> {w.message}
+                {w.bloquant && (
+                  <span className="ml-1 font-medium">
+                    (bloquant — un responsable devra passer outre)
+                  </span>
+                )}
+              </div>
+            ))}
           </div>
         )}
         {/* ── Mode d'installation (marché) ── */}
@@ -1197,7 +1565,7 @@ export default function DevisGenerator({
             />
             {modeInstallation === 'residentiel' && kwp > 36 && (
               <div className="mt-3 rounded-lg border border-info/30 bg-info/10 p-3 text-sm text-info">
-                Ce système fait {kwp.toFixed(2)} kWc — au-delà de l'échelle résidentielle.
+                Ce système fait {formatNumber(kwp, { decimals: 2 })} kWc — au-delà de l'échelle résidentielle.
                 Le mode Industriel / Commercial produira un document plus adapté
                 (étude d'autoconsommation, option unique). Vous pouvez ignorer cette suggestion.
               </div>
@@ -1307,6 +1675,19 @@ export default function DevisGenerator({
               </div>
             )}
 
+            {/* QX28 — le lead porte un repère toit (GPS) : raccourci vers la
+                conception 3D qui EXPLOITE ces données, plutôt qu'un devis à plat
+                qui les ignore. Visible seulement quand roof_point est présent. */}
+            {selectedLead?.roof_point && (
+              <div className="mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-brass-400/40 bg-brass-400/10 p-3 text-sm">
+                <span>🛰️ Repère toit disponible sur ce lead (GPS).</span>
+                <Button type="button" variant="outline" size="sm"
+                        onClick={() => navigate(`/devis-design/${selectedLead.id}`)}>
+                  Concevoir en 3D
+                </Button>
+              </div>
+            )}
+
             {!leadId && (
               <div className="mt-3 grid gap-4 sm:grid-cols-2">
                 <div className="grid gap-1.5">
@@ -1360,13 +1741,15 @@ export default function DevisGenerator({
                 <Label htmlFor="gen-hiver">Facture Hiver moy. (MAD/mois)</Label>
                 <Input id="gen-hiver" type="number" min="0" step="any"
                        placeholder="ex: 600" value={fHiver}
-                       onChange={e => { setFHiver(e.target.value); syncBillEstimator(e.target.value, fEte) }} />
+                       onChange={e => { setFHiver(e.target.value); syncBillEstimator(e.target.value, fEte) }}
+                       onPaste={onHiverPaste} />
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="gen-ete">Facture Été moy. (MAD/mois)</Label>
                 <Input id="gen-ete" type="number" min="0" step="any"
                        placeholder="ex: 400" value={fEte}
-                       onChange={e => { setFEte(e.target.value); syncBillEstimator(fHiver, e.target.value) }} />
+                       onChange={e => { setFEte(e.target.value); syncBillEstimator(fHiver, e.target.value) }}
+                       onPaste={onEtePaste} />
               </div>
               <Button type="button" variant="outline" onClick={handleEstimerMois}>
                 <BarChart3 /> Estimer 12 mois
@@ -1393,6 +1776,16 @@ export default function DevisGenerator({
                 <span className="font-display text-sm font-semibold tracking-tight">
                   Facture réelle du client (recommandé)
                 </span>
+                {/* VX47 — aide contextuelle : le calcul « par tranche » selon
+                    le distributeur n'est pas intuitif pour un nouvel employé. */}
+                <HelpTip label="Aide — distributeur et tranches">
+                  Chaque distributeur (ONEE, Lydec, Redal) facture l'électricité
+                  par <strong>tranches</strong> : plus la consommation est
+                  élevée, plus le prix du kWh grimpe. En renseignant la facture
+                  ou consommation réelle du client, l'économie solaire est
+                  calculée avec le vrai barème du distributeur choisi — sans
+                  ces champs, une estimation par défaut est utilisée.
+                </HelpTip>
                 <span className="text-xs text-muted-foreground">
                   affine les économies avec le barème par tranche du distributeur
                 </span>
@@ -1419,7 +1812,8 @@ export default function DevisGenerator({
                            value={realBillMode === 'mad' ? realBillMad : realBillKwh}
                            onChange={e => (realBillMode === 'mad'
                              ? setRealBillMad(e.target.value)
-                             : setRealBillKwh(e.target.value))} />
+                             : setRealBillKwh(e.target.value))}
+                           onPaste={onRealBillPaste} />
                     <Select value={realBillMode} onValueChange={setRealBillMode}>
                       <SelectTrigger className="w-24"><SelectValue /></SelectTrigger>
                       <SelectContent>
@@ -1711,7 +2105,7 @@ export default function DevisGenerator({
               </div>
               <div className="grid gap-1.5">
                 <Label>Puissance PV (kWp) — calculée</Label>
-                <div className="gen-kwp">{kwp > 0 ? kwp.toFixed(2) + ' kWp' : '—'}</div>
+                <div className="gen-kwp">{kwp > 0 ? formatNumber(kwp, { decimals: 2 }) + ' kWp' : '—'}</div>
               </div>
               <div className="grid gap-1.5">
                 <Label>Type de Structure</Label>
@@ -1733,6 +2127,7 @@ export default function DevisGenerator({
             </div>
             <div className="mt-3 flex flex-wrap items-center justify-end gap-3">
               {errors.autofill && <span className="text-xs text-destructive">{errors.autofill}</span>}
+              {errors.autofillKwc && <span className="text-xs text-warning">{errors.autofillKwc}</span>}
               <Button type="button" className="bg-brass-400 text-nuit hover:bg-brass-500" onClick={handleAutoFill}>
                 <Zap /> Auto-remplir depuis le stock
               </Button>
@@ -1811,35 +2206,45 @@ export default function DevisGenerator({
                   <MetricCard label="Production annuelle"
                               value={fmtNum(Math.round(roi.production_annuelle_kwh))}
                               unit="kWh / an" accent />
+                </div>
+                {/* VX138 — comparateur Sans/Avec : 2 colonnes NOMMÉES au lieu
+                    d'une grille homogène de jusqu'à 6 cartes reliées par la
+                    seule étoile — la recommandation devient un liseré porté
+                    par TOUTE la colonne. */}
+                <div className="gen-compare-grid">
                   {showSans && (
-                    <MetricCard label="Éco. Option 1 – Sans batterie"
-                                value={fmtNum(Math.round(roi.eco_annuelle_sans))}
-                                unit="MAD / an" recommended={sansRec} />
+                    <div className={`gen-compare-col${sansRec ? ' gen-compare-col-rec' : ''}`}>
+                      <div className="gen-compare-col-title">
+                        Sans batterie
+                        {sansRec && <span className="gen-rec-badge">★ Recommandé</span>}
+                      </div>
+                      <MetricCard label="Économies"
+                                  value={fmtNum(Math.round(roi.eco_annuelle_sans))}
+                                  unit="MAD / an" />
+                      <MetricCard label="ROI"
+                                  value={roi.payback_sans !== null ? roi.payback_sans + ' ans' : 'N/A'}
+                                  unit="retour sur invest." accent />
+                      <MetricCard label="Coût"
+                                  value={fmtNum(Math.round(totals.totalSans))}
+                                  unit="MAD TTC" />
+                    </div>
                   )}
                   {showAvec && (
-                    <MetricCard label="Éco. Option 2 – Avec batterie"
-                                value={fmtNum(Math.round(roi.eco_annuelle_avec))}
-                                unit="MAD / an" recommended={avecRec} />
-                  )}
-                  {showSans && (
-                    <MetricCard label="ROI Sans batterie"
-                                value={roi.payback_sans !== null ? roi.payback_sans + ' ans' : 'N/A'}
-                                unit="retour sur invest." recommended={sansRec} accent />
-                  )}
-                  {showAvec && (
-                    <MetricCard label="ROI Avec batterie"
-                                value={roi.payback_avec !== null ? roi.payback_avec + ' ans' : 'N/A'}
-                                unit="retour sur invest." recommended={avecRec} accent />
-                  )}
-                  {showSans && (
-                    <MetricCard label="Coût Option 1 – Sans"
-                                value={fmtNum(Math.round(totals.totalSans))}
-                                unit="MAD TTC" recommended={sansRec} />
-                  )}
-                  {showAvec && (
-                    <MetricCard label="Coût Option 2 – Avec"
-                                value={fmtNum(Math.round(totals.totalAvec))}
-                                unit="MAD TTC" recommended={avecRec} />
+                    <div className={`gen-compare-col${avecRec ? ' gen-compare-col-rec' : ''}`}>
+                      <div className="gen-compare-col-title">
+                        Avec batterie
+                        {avecRec && <span className="gen-rec-badge">★ Recommandé</span>}
+                      </div>
+                      <MetricCard label="Économies"
+                                  value={fmtNum(Math.round(roi.eco_annuelle_avec))}
+                                  unit="MAD / an" />
+                      <MetricCard label="ROI"
+                                  value={roi.payback_avec !== null ? roi.payback_avec + ' ans' : 'N/A'}
+                                  unit="retour sur invest." accent />
+                      <MetricCard label="Coût"
+                                  value={fmtNum(Math.round(totals.totalAvec))}
+                                  unit="MAD TTC" />
+                    </div>
                   )}
                 </div>
                 <div className="gen-chart-title">Économies mensuelles estimées (MAD / mois)</div>
@@ -1849,21 +2254,21 @@ export default function DevisGenerator({
                     <XAxis dataKey="month" tick={{ fontSize: 11 }} />
                     <YAxis tick={{ fontSize: 11 }}
                            label={{ value: 'MAD / mois', angle: -90, position: 'insideLeft', fontSize: 11 }}
-                           tickFormatter={(v) => v.toLocaleString('fr-MA')} />
-                    <Tooltip formatter={(v, name) => [`${Math.round(v).toLocaleString('fr-MA')} MAD`, name]} />
+                           tickFormatter={(v) => formatNumber(v)} />
+                    <Tooltip formatter={(v, name) => [`${formatMAD(v, { decimals: 0 })}`, name]} />
                     <Legend wrapperStyle={{ fontSize: 12 }} />
                     <Bar dataKey="facture" name="Facture ONEE (MAD)"
                          fill="rgba(181,192,206,0.55)" stroke="rgba(181,192,206,0.8)" radius={[3, 3, 0, 0]} />
                     {showSans && (
                       <Line type="monotone" dataKey="ecoSans"
                             name={'Option 1 – Sans batterie' + (sansRec ? ' ⭐' : '')}
-                            stroke="#1A2B4A" strokeWidth={sansRec ? 3.5 : 2.2}
+                            stroke="var(--gen-chart-sans)" strokeWidth={sansRec ? 3.5 : 2.2}
                             dot={{ r: sansRec ? 5 : 4 }} />
                     )}
                     {showAvec && (
                       <Line type="monotone" dataKey="ecoAvec"
                             name={'Option 2 – Avec batterie' + (avecRec ? ' ⭐' : '')}
-                            stroke="#F5A623" strokeWidth={avecRec ? 3.5 : 2.2}
+                            stroke="var(--gen-chart-avec)" strokeWidth={avecRec ? 3.5 : 2.2}
                             dot={{ r: avecRec ? 5 : 4 }} />
                     )}
                   </ComposedChart>
@@ -1882,12 +2287,23 @@ export default function DevisGenerator({
             </Button>
           </GenCardHeader>
           <CardContent className="px-0 pt-0">
-            {/* ── QJ31 — Multi-propriétés (un seul devis) ── */}
-            <div className="mx-4 mt-4 rounded-lg border border-border bg-muted/30 p-3 sm:mx-5 sm:p-4">
+            {/* ── QJ31 — Multi-propriétés (un seul devis) ──
+                VX138(e) — accordéon : repliée PAR DÉFAUT en agricole (non
+                pertinent pour ce mode) mais jamais masquée ; l'utilisateur
+                peut toujours la rouvrir librement. */}
+            <details className="mx-4 mt-4 rounded-lg border border-border bg-muted/30 sm:mx-5"
+                      open={multiAccordionOpen}
+                      onToggle={e => setMultiAccordionOpen(e.currentTarget.open)}>
+              <summary className="cursor-pointer select-none px-3 py-3 font-display text-sm font-semibold tracking-tight sm:px-4">
+                Plusieurs propriétés ?
+                {multiMode !== 'none' && (
+                  <span className="ml-2 text-xs font-normal text-muted-foreground">
+                    ({multiMode === 'multiplier' ? '× N identiques' : '+ Villas différentes'})
+                  </span>
+                )}
+              </summary>
+              <div className="border-t border-border p-3 sm:p-4">
               <div className="flex flex-wrap items-center gap-3">
-                <span className="font-display text-sm font-semibold tracking-tight">
-                  Plusieurs propriétés ?
-                </span>
                 <Segmented
                   className="flex-wrap"
                   options={[
@@ -1958,11 +2374,18 @@ export default function DevisGenerator({
                   )}
                 </div>
               )}
-            </div>
+              </div>
+            </details>
 
             {errors.lines && <div className="px-4 py-2 text-xs text-destructive">{errors.lines}</div>}
+            {/* QX20 — échappatoire documentée à la garde d'équipement solaire */}
+            <label className="px-4 pb-1 flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+              <input type="checkbox" checked={accessoiresOnly}
+                     onChange={e => setAccessoiresOnly(e.target.checked)} />
+              Avenant / accessoires ou main-d'œuvre seuls (désactive la vérification équipement)
+            </label>
             <div className="lines-table-wrap">
-              <table className="lines-table">
+              <table className="lines-table" ref={linesTableRef}>
                 <thead>
                   <tr>
                     <th style={{ minWidth: 160 }}>Désignation</th>
@@ -1976,121 +2399,38 @@ export default function DevisGenerator({
                   </tr>
                 </thead>
                 <tbody>
-                  {lines.map(l => {
-                    const lineTtc =
-                      (parseFloat(l.quantite) || 0) * (parseFloat(l.prix_unit_ttc) || 0)
-                    // Indice non bloquant : la désignation a été éditée et ne
-                    // correspond plus au nom du produit choisi — la classification
-                    // (réseau/hybride/batterie/panneau) pourrait changer la
-                    // répartition d'options du PDF. On n'altère jamais la saisie.
-                    const prodLie = l.produit
-                      ? produits.find(p => String(p.id) === String(l.produit))
-                      : null
-                    const designationDivergente = !!prodLie
-                      && (l.designation || '').trim() !== (prodLie.nom || '').trim()
-                    return (
-                      <tr key={l._key}>
-                        <td data-label="Désignation">
-                          {/* QP2 — désignation en LECTURE SEULE sauf pour
-                              Directeur + Commercial responsable. Un rôle non
-                              autorisé ne peut pas renommer une ligne (verrouillée
-                              au nom du produit) ; un rôle autorisé qui diverge du
-                              nom du produit reçoit au blur le choix « renommer
-                              ici » vs « créer un nouveau produit ». */}
-                          <input className="form-control form-control-sm" value={l.designation}
-                                 readOnly={!canRenameLine}
-                                 disabled={!canRenameLine}
-                                 title={!canRenameLine
-                                   ? 'Renommer une ligne est réservé au Directeur et au Commercial responsable'
-                                   : undefined}
-                                 onChange={e => setLine(l._key, 'designation', e.target.value)}
-                                 onBlur={() => onDesignationBlur(l._key)}
-                                 placeholder="Désignation" />
-                          {designationDivergente && (
-                            <div className="mt-0.5 text-xs text-warning"
-                                 title="La désignation diffère du nom du produit — vérifiez la classification PDF">
-                              Désignation modifiée (produit : {prodLie.nom})
-                            </div>
-                          )}
-                        </td>
-                        <td data-label="Produit (stock)">
-                          <ProduitPicker
-                            produits={produits}
-                            value={l.produit}
-                            onChange={id => onProduitChange(l._key, id)}
-                            typeFilter={classifyProduct(l.designation) || undefined}
-                            onProduitCreated={(p) => setProduits(ps => [...ps, p])}
-                          />
-                          {tarifBadges[l._key] && (
-                            <span className="mt-0.5 inline-block rounded bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary">
-                              Tarif : {tarifBadges[l._key]}
-                            </span>
-                          )}
-                        </td>
-                        {multiMode === 'villas' && (
-                          <td data-label="Villa">
-                            <Select
-                              value={l.groupeIndex != null ? String(l.groupeIndex) : '0'}
-                              onValueChange={(v) => setLineGroupe(l._key, parseInt(v, 10))}>
-                              <SelectTrigger className="h-[var(--control-h-sm)]"><SelectValue /></SelectTrigger>
-                              <SelectContent>
-                                {villaGroups.map(g => (
-                                  <SelectItem key={g.index} value={String(g.index)}>{g.label}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </td>
-                        )}
-                        <td data-label="Qté">
-                          <input type="number" min="0" step="any"
-                                 className="form-control form-control-sm ta-right" value={l.quantite}
-                                 onChange={e => onQuantiteChange(l._key, e.target.value)} />
-                        </td>
-                        <td data-label="Prix unit. TTC">
-                          <input type="number" min="0" step="any"
-                                 className="form-control form-control-sm ta-right" value={l.prix_unit_ttc}
-                                 onChange={e => setLine(l._key, 'prix_unit_ttc', e.target.value)} />
-                        </td>
-                        <td data-label="TVA %">
-                          <input type="number" min="0" step="any"
-                                 className="form-control form-control-sm ta-right"
-                                 style={{ width: 56, fontSize: '0.75rem', color: '#64748b' }}
-                                 value={l.taux_tva ?? '20'}
-                                 onChange={e => setLine(l._key, 'taux_tva', e.target.value)} />
-                          {(() => {
-                            // DC7 — AVERTISSEMENT de divergence uniquement : le
-                            // taux attendu suit la désignation + les repères TVA
-                            // société (expectedTvaForDesignation), et `Produit.tva`
-                            // reste la source autoritaire par ligne. On n'altère
-                            // JAMAIS la valeur saisie (frappe souveraine).
-                            const t = parseFloat(l.taux_tva)
-                            if (!Number.isFinite(t) || !(l.designation || '').trim()) return null
-                            const expected = expectedTvaForDesignation(l.designation, {
-                              tvaPanneaux: quoteLogic.tvaPanneaux,
-                              tvaStandard: quoteLogic.tvaStandard,
-                            })
-                            if (t !== expected) {
-                              return <div className="mt-0.5 text-xs text-warning">{`${expected} % attendu`}</div>
-                            }
-                            return null
-                          })()}
-                        </td>
-                        <td className="line-total" data-label="Total TTC">{formatMoney(lineTtc)}</td>
-                        <td>
-                          <IconButton type="button" label="Supprimer la ligne" size="sm"
-                                      className="text-destructive hover:bg-destructive/10"
-                                      onClick={() => removeLine(l._key)}>
-                            <Trash2 />
-                          </IconButton>
-                        </td>
-                      </tr>
-                    )
-                  })}
+                  {/* VX188 — ligne extraite en <DevisLineRow> mémoïsé : taper
+                      dans Note/farmSurfaceHa/n'importe lequel des autres
+                      useState ne re-rend plus les lignes inchangées (callbacks
+                      stabilisés ci-dessus, clé en argument). */}
+                  {lines.map(l => (
+                    <DevisLineRow
+                      key={l._key}
+                      line={l}
+                      produits={produits}
+                      multiMode={multiMode}
+                      villaGroups={villaGroups}
+                      canRenameLine={canRenameLine}
+                      tarifBadge={tarifBadges[l._key]}
+                      tvaPanneaux={quoteLogic.tvaPanneaux}
+                      tvaStandard={quoteLogic.tvaStandard}
+                      onSetField={setLine}
+                      onDesignationBlur={onDesignationBlur}
+                      onProduitChange={onProduitChange}
+                      onProduitCreated={onProduitCreated}
+                      onQuantiteChange={onQuantiteChange}
+                      onSetGroupe={setLineGroupe}
+                      onRemove={removeLine}
+                    />
+                  ))}
                 </tbody>
               </table>
             </div>
 
-            <div className="gen-totals-row">
+            {/* VX138 — chaîne de totaux hiérarchisée (paliers F121 existants) :
+                brut (tier-1) → remise/TVA (tier-2) → total final (tier-3, le
+                TTC retenu devient le point focal). */}
+            <div className="gen-totals-row gen-tier-1">
               {showSans && (
                 <div className="gen-total-item">
                   <span className="gen-total-label">Total SANS batterie{sansRec ? ' ⭐' : ''}</span>
@@ -2105,31 +2445,32 @@ export default function DevisGenerator({
               )}
             </div>
             <div className="gen-totals-row gen-discount-row">
-              <div className="gen-total-item gen-total-inline">
+              <div className="gen-total-item gen-total-inline gen-tier-2">
                 <span className="gen-total-label">Réduction</span>
                 <input type="number" min="0" max="100" step="any" className="gen-discount-input"
                        value={discountPct} onChange={e => setDiscountPct(e.target.value)} />
                 <span style={{ fontWeight: 700 }}>%</span>
                 {remiseMax !== '' && parseFloat(discountPct) > parseFloat(remiseMax) && (
-                  <span style={{ fontSize: 11, color: '#b45309', marginLeft: 6 }}>
+                  /* VX17 — couleur d'avertissement via token de thème. */
+                  <span className="text-warning ml-1.5" style={{ fontSize: 11 }}>
                     ⚠ au-delà de la limite conseillée ({remiseMax} %)
                   </span>
                 )}
               </div>
-              <div className="gen-total-item gen-total-inline">
+              <div className="gen-total-item gen-total-inline gen-tier-2">
                 <span className="gen-total-label">TVA</span>
                 <input type="number" min="0" max="100" step="any" className="gen-discount-input"
                        value={tauxTva} onChange={e => setTauxTva(e.target.value)} />
                 <span style={{ fontWeight: 700 }}>%</span>
               </div>
               {parseFloat(discountPct) > 0 && showSans && (
-                <div className="gen-total-item">
+                <div className="gen-total-item gen-tier-3">
                   <span className="gen-total-label green">Total final SANS batterie</span>
                   <span className="gen-total-value green">{formatMoney(totals.totalSans)}</span>
                 </div>
               )}
               {parseFloat(discountPct) > 0 && showAvec && (
-                <div className="gen-total-item">
+                <div className="gen-total-item gen-tier-3">
                   <span className="gen-total-label green">Total final AVEC batterie</span>
                   <span className="gen-total-value green">{formatMoney(totals.totalAvec)}</span>
                 </div>
@@ -2143,16 +2484,17 @@ export default function DevisGenerator({
                 const cibleNum = parseFloat(prixCible)
                 const hasCible = Number.isFinite(cibleNum) && cibleNum > 0
                 const sousCible = hasCible ? pkwc <= cibleNum : null
-                const couleur = sousCible == null ? undefined
-                  : (sousCible ? '#16a34a' : '#b91c1c')
+                // VX17 — couleur via tokens de thème (success/destructive).
+                const couleurCls = sousCible == null ? ''
+                  : (sousCible ? 'text-success' : 'text-destructive')
                 return (
                   <div className="gen-total-item">
                     <span className="gen-total-label">Prix / kWc</span>
-                    <span className="gen-total-value" style={{ color: couleur }}>
+                    <span className={`gen-total-value ${couleurCls}`}>
                       {formatMoney(pkwc)}/kWc
                     </span>
                     {hasCible && (
-                      <span className="gen-total-hint" style={{ color: couleur, fontSize: 12 }}>
+                      <span className={`gen-total-hint ${couleurCls}`} style={{ fontSize: 12 }}>
                         {sousCible
                           ? `≤ cible (${formatMoney(cibleNum)}/kWc)`
                           : `au-dessus de la cible (${formatMoney(cibleNum)}/kWc)`}
@@ -2174,12 +2516,12 @@ export default function DevisGenerator({
               </div>
               {marge != null && (
                 <div className="gen-total-item">
-                  <span className={`gen-total-label${marge < 0 ? '' : ' green'}`}
-                        style={marge < 0 ? { color: '#b91c1c' } : undefined}>
+                  {/* VX17 — couleurs via tokens de thème (text-success/destructive)
+                      plutôt qu'un hex codé en dur. */}
+                  <span className={`gen-total-label ${marge < 0 ? 'text-destructive' : 'text-success'}`}>
                     Marge indicative (interne)
                   </span>
-                  <span className="gen-total-value"
-                        style={{ color: marge < 0 ? '#b91c1c' : '#16a34a' }}>
+                  <span className={`gen-total-value ${marge < 0 ? 'text-destructive' : 'text-success'}`}>
                     {formatMoney(marge)}
                     {kpiTotal > 0 ? ` (${Math.round(marge / kpiTotal * 100)} %)` : ''}
                   </span>
@@ -2194,6 +2536,12 @@ export default function DevisGenerator({
             )}
           </CardContent>
         </Card>
+
+        {/* VX18 — modèles de devis : appliquer un modèle remplace les lignes.
+            Disponible en édition (le panneau exige un devisId serveur). */}
+        {editDevis && (
+          <DevisPresetPanel devisId={editDevis.id} onApplied={handlePresetApplied} />
+        )}
 
         {/* ── Notes ── */}
         <Card>
@@ -2249,6 +2597,16 @@ export default function DevisGenerator({
               </div>
             )}
             <div className="gen-actions-sticky mt-3 flex flex-wrap items-center justify-end gap-3">
+              {/* VX138(d) — bandeau sticky au scroll (plus seulement mobile) :
+                  TTC courant condensé, dérivé de `totals`/`kpiTotal` déjà en
+                  mémoire (même valeur que le rail latéral VX16) ; masqué en
+                  lg+ où le rail latéral l'affiche déjà. */}
+              <div className="mr-auto flex items-baseline gap-1.5 text-sm lg:hidden">
+                <span className="text-muted-foreground">Total TTC</span>
+                <strong className="tabular-nums text-base font-semibold text-foreground">
+                  {formatMoney(kpiTotal)}
+                </strong>
+              </div>
               {/* QJ28 — notification manuelle au supérieur (devis déjà enregistré) */}
               {editDevis && (
                 <Button type="button" variant="outline" loading={superieurBusy}
@@ -2274,6 +2632,52 @@ export default function DevisGenerator({
           </CardContent>
         </Card>
       </form>
+
+      {/* VX16 — rail récapitulatif STICKY (lg+ uniquement, jamais sur mobile).
+          Total TTC de l'option retenue + marge indicative (INTERNE, jamais dans
+          le PDF/client) + résumé système (kWc/panneaux) + Annuler/Créer câblés
+          sur le même formulaire (form="gen-form"). */}
+      <aside className="gen-summary-rail hidden lg:block lg:w-72 lg:shrink-0 lg:sticky"
+             style={{ top: 'var(--header-h, 64px)' }}>
+        <Card>
+          <CardContent className="pt-4 flex flex-col gap-3">
+            <div>
+              <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                Total {scenario === 'Avec batterie' ? 'avec batterie'
+                  : scenario === 'Sans batterie' ? 'sans batterie'
+                    : (avecRec ? 'avec batterie' : 'sans batterie')} · TTC
+              </div>
+              <div className="text-2xl font-bold text-foreground">{formatMoney(kpiTotal)}</div>
+            </div>
+            {marge != null && (
+              <div>
+                <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                  Marge indicative (interne)
+                </div>
+                <div className={`text-sm font-semibold ${marge < 0 ? 'text-destructive' : 'text-success'}`}>
+                  {formatMoney(marge)}
+                  {kpiTotal > 0 ? ` (${Math.round(marge / kpiTotal * 100)} %)` : ''}
+                </div>
+              </div>
+            )}
+            <div className="border-t border-border pt-3">
+              <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Système</div>
+              <div className="text-sm text-foreground">
+                {kwp > 0 ? `${formatNumber(kwp, { decimals: 2 })} kWc` : '— kWc'}
+                {parseInt(nbPanneaux) > 0 ? ` · ${parseInt(nbPanneaux)} panneaux` : ''}
+              </div>
+            </div>
+            <div className="flex flex-col gap-2 pt-1">
+              <Button type="submit" form="gen-form" loading={saving}>
+                {saving ? 'Enregistrement...'
+                  : (editDevis ? <><Sun /> Enregistrer</> : <><Sun /> Créer le devis</>)}
+              </Button>
+              <Button type="button" variant="ghost" onClick={cancel}>Annuler</Button>
+            </div>
+          </CardContent>
+        </Card>
+      </aside>
+      </div>
       <ClientQuickCreateModal
         open={clientQuickCreateOpen}
         onClose={() => setClientQuickCreateOpen(false)}

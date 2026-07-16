@@ -14,12 +14,12 @@ devis de tous les vendeurs) ; lecture ouverte à tout rôle authentifié de la
 société. `prix_achat` n'est JAMAIS lu ni exposé ici."""
 from decimal import Decimal, InvalidOperation
 
-from rest_framework import viewsets
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.exceptions import ValidationError, NotFound, PermissionDenied
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.viewsets import CompanyScopedModelViewSet  # ARC5
 from ..models import ListePrix, LignePrixListe
 from ..serializers import (
     ListePrixSerializer, LignePrixListeSerializer, RegleListePrixSerializer,
@@ -28,7 +28,12 @@ from ..serializers import (
 READ_ACTIONS = ['list', 'retrieve']
 
 
-class ListePrixViewSet(viewsets.ModelViewSet):
+class ListePrixViewSet(CompanyScopedModelViewSet):
+    # ARC5 — sweep TenantMixin : base transverse unique. get_queryset /
+    # perform_create / get_permissions SURCHARGENT la base (scoping direct sur
+    # `company`) : scoping et matrice 401/403/404 INCHANGÉS. `prix_achat` jamais
+    # lu ni exposé ici (règle produit). L'@api_view `prix_applicable_view` reste
+    # une fonction hors socle (non-ViewSet, hors baseline).
     queryset = ListePrix.objects.prefetch_related('lignes', 'regles').all()
     serializer_class = ListePrixSerializer
 

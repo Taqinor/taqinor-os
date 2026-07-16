@@ -1,5 +1,11 @@
 name: erp-agentique
 
+# SCA8 — ce compose de BASE (dev + superposé par docker-compose.prod.yml en
+# prod) reste SANS mem_limit/cpus : les limites de ressources conservatrices
+# vivent uniquement dans docker-compose.prod.yml (dev garde le comportement
+# actuel, non borné, pour ne pas gêner le développement local). Voir
+# docs/scale-runway.md section « SCA8 — Limites de ressources conteneurs »
+# pour le détail et la justification par service.
 services:
   nginx:
     build: ./backend/nginx
@@ -19,7 +25,12 @@ services:
 
   django_core:
     build: ./backend/django_core
-    command: gunicorn erp_agentique.wsgi:application --bind 0.0.0.0:8000 --workers 4 --timeout 120 --worker-class sync
+    # SCA16 — GUNICORN_WORKERS/GUNICORN_THREADS surchargeables via .env sans
+    # éditer ce compose. Défauts = comportement ACTUEL (4 workers, pas de
+    # --threads posé en dev — --worker-class sync reste sync même avec
+    # GUNICORN_THREADS>1, cohérent avec avant SCA16). Formule de
+    # dimensionnement : docs/scale-runway.md section SCA16.
+    command: gunicorn erp_agentique.wsgi:application --bind 0.0.0.0:8000 --workers ${GUNICORN_WORKERS:-4} --timeout 120 --worker-class sync
     volumes:
       - ./backend/django_core:/app
       # Canonical pipeline stages — single source of truth (CLAUDE.md rule #2).
@@ -27,9 +38,29 @@ services:
       - ./STAGES.py:/opt/STAGES.py:ro
     env_file:
       - ./.env
+    # SCA10 — cible le cache Django sur l'instance Redis dédiée par défaut
+    # (settings/base.py retombe sur REDIS_HOST si REDIS_CACHE_HOST est vide,
+    # donc surchageable/annulable via .env sans casser la rétro-compatibilité).
+    #
+    # NTPLT3 — défense en profondeur RLS. Quand POSTGRES_RLS_ENABLED=1 ET
+    # DB_APP_USER/DB_APP_PASSWORD sont définis dans .env, ce service RUNTIME
+    # (gunicorn) se connecte avec le rôle applicatif NON-BYPASSRLS `app_rls`
+    # (cf. backend/db/rls_roles.sql) : il est physiquement soumis aux policies
+    # RLS (`manage.py rls --apply`), le GUC app.current_company (NTPLT1) décide
+    # des lignes visibles. migrate/seed/dump restent sur le rôle OWNER
+    # (settings détecte la commande manage.py). Défaut OFF : sans le flag,
+    # l'owner (${DB_USER}) est utilisé partout — comportement inchangé.
+    # Provisionner le rôle UNE fois : psql < backend/db/rls_roles.sql (mot de
+    # passe à choisir, jamais committé).
+    environment:
+      REDIS_CACHE_HOST: ${REDIS_CACHE_HOST:-redis_cache}
+      POSTGRES_RLS_ENABLED: ${POSTGRES_RLS_ENABLED:-0}
+      DB_APP_USER: ${DB_APP_USER:-}
+      DB_APP_PASSWORD: ${DB_APP_PASSWORD:-}
     depends_on:
       - db
       - redis
+      - redis_cache
     expose:
       - "8000"
     restart: always
@@ -71,21 +102,62 @@ services:
     # Le dossier backend/celery_worker/ contient des tâches Celery additionnelles
     # à intégrer dans django_core/erp_agentique/celery.py si nécessaire.
     build: ./backend/django_core
-    # YOPSB9 — le worker unique consomme les 3 queues (default/interactive/
-    # scheduled — cf. CELERY_TASK_ROUTES dans settings/base.py) : sans -Q
-    # explicite, un worker Celery n'écoute QUE `default` et les tâches
-    # routées vers interactive/scheduled ne seraient jamais consommées.
-    # Comportement inchangé (toujours un seul worker, toutes les tâches
-    # traitées) ; poser un worker DÉDIÉ `interactive` en prod si besoin de
-    # séparation réelle (`celery -A erp_agentique worker -Q interactive`).
-    command: celery -A erp_agentique worker -l info -Q default,interactive,scheduled
+    # YOPSB9/SCA9 — ce worker consomme désormais SEULEMENT `default,scheduled`
+    # (cf. CELERY_TASK_ROUTES dans settings/base.py) : la queue `interactive`
+    # (rendus PDF déclenchés par un clic commercial, transcription vocale) est
+    # isolée dans le conteneur DÉDIÉ `celery_worker_interactive` ci-dessous —
+    # un backlog `scheduled` (dumps DB, digests, sweeps planifiés) ne peut
+    # plus retarder un rendu PDF interactif : deux process Celery distincts,
+    # queues disjointes, aucun overlap possible par construction (`-Q`
+    # restreint strictement les queues qu'un worker consomme).
+    # SCA16 — CELERY_CONCURRENCY (env, .env) surchargeable ; VIDE par défaut =
+    # comportement ACTUEL (pas de --concurrency posé = défaut natif Celery,
+    # cpu_count() du conteneur). sh -c conditionnel : n'ajoute --concurrency=
+    # QUE si la variable est non-vide (jamais un --concurrency= vide invalide).
+    # NTPLT27 — ajoute la queue `bulk` (imports/backfills/seed de masse) à ce
+    # worker : le travail de masse est consommé sans jamais partager le process
+    # de la queue `interactive` (rendus PDF), qui reste isolée dans son propre
+    # conteneur. Additif : sans tâche routée sur `bulk`, aucun changement.
+    command: >
+      sh -c "celery -A erp_agentique worker -l info -Q default,scheduled,bulk
+      ${CELERY_CONCURRENCY:+--concurrency=$CELERY_CONCURRENCY}"
     volumes:
       - ./backend/django_core:/app
       - ./STAGES.py:/opt/STAGES.py:ro
     env_file:
       - ./.env
+    # SCA10 — même cible cache que django_core (voir commentaire ci-dessus).
+    environment:
+      REDIS_CACHE_HOST: ${REDIS_CACHE_HOST:-redis_cache}
     depends_on:
       - redis
+      - redis_cache
+      - django_core
+    restart: always
+
+  celery_worker_interactive:
+    # SCA9 — worker DÉDIÉ à la queue `interactive` (rendus PDF synchrones
+    # ventes.generate_devis_pdf/generate_facture_pdf + chat.transcribe_voice_
+    # attachment — cf. CELERY_TASK_ROUTES dans settings/base.py:376-419,
+    # INCHANGÉ par cette tâche). Isolé du worker `default,scheduled` :
+    # un batch planifié de nuit ne peut plus affamer un rendu PDF attendu en
+    # direct par un commercial. Concurrency explicite (pas le défaut
+    # cpu_count()) car ce worker n'a besoin que d'absorber quelques rendus
+    # PDF simultanés, pas de saturer la boîte.
+    build: ./backend/django_core
+    command: celery -A erp_agentique worker -l info -Q interactive
+             --concurrency=${CELERY_INTERACTIVE_CONCURRENCY:-2}
+    volumes:
+      - ./backend/django_core:/app
+      - ./STAGES.py:/opt/STAGES.py:ro
+    env_file:
+      - ./.env
+    # SCA10 — même cible cache que django_core (voir commentaire ci-dessus).
+    environment:
+      REDIS_CACHE_HOST: ${REDIS_CACHE_HOST:-redis_cache}
+    depends_on:
+      - redis
+      - redis_cache
       - django_core
     restart: always
 
@@ -129,11 +201,43 @@ services:
       POSTGRES_DB: ${DB_NAME}
       POSTGRES_USER: ${DB_USER}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
+    # SCA11 — postgresql.conf tune monte en lecture seule + demarre Postgres
+    # avec -c config_file= pointant dessus (mecanisme standard de l'image
+    # postgres officielle, dont pgvector/pgvector derive : le fichier stock
+    # dans /var/lib/postgresql/data n'est PAS ecrase par ce montage, on
+    # demande juste au serveur de charger notre conf a la place). Voir
+    # backend/db/postgresql.conf et docs/scale-runway.md pour le detail des
+    # valeurs.
+    command: postgres -c config_file=/etc/postgresql/postgresql.conf
     volumes:
       - pg_data:/var/lib/postgresql/data
+      - ./backend/db/postgresql.conf:/etc/postgresql/postgresql.conf:ro
     # DEV UNIQUEMENT — supprimer ces ports en production
     ports:
       - "5433:5432"
+    restart: always
+
+  # NTPLT58 — pgbouncer OPTIONNEL (transaction pooling). Opt-in derriere le
+  # profil docker `scale` : la stack par defaut ne le demarre PAS. Ne s'active
+  # qu'avec `docker compose --profile scale up`. Contrat d'activation cote
+  # applicatif : PGBOUNCER=1 bascule l'hote DB sur ce service (voir
+  # erp_agentique/settings/base.py + docs/scale-runway.md). Les migrations et
+  # dumps pointent TOUJOURS la DB directe (db:5432), jamais le pooler.
+  pgbouncer:
+    image: edoburu/pgbouncer:1.23.1
+    profiles: ["scale"]
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: "1000"
+      DEFAULT_POOL_SIZE: "25"
+    depends_on:
+      - db
+    ports:
+      - "6432:6432"
     restart: always
 
   minio:
@@ -152,12 +256,37 @@ services:
 
   redis:
     image: redis:7.4-alpine
+    # SCA10 — broker Celery UNIQUEMENT (db0, CELERY_BROKER_URL). `noeviction`
+    # (explicite désormais, c'était déjà le défaut Redis implicite) : un
+    # broker ne doit JAMAIS évincer des tâches en attente sous pression
+    # mémoire — il doit plutôt refuser l'écriture (comportement noeviction)
+    # pour que l'appelant sache que l'enqueue a échoué. `maxmemory 256mb`
+    # dimensionné sous la limite conteneur SCA8 (1g en prod) — une file de
+    # tâches ne devrait jamais approcher cette taille en usage normal.
+    # `appendonly yes` (persistance AOF) : un restart Redis ne perd plus les
+    # tâches en file d'attente (avant SCA10, un restart perdait tout — db0
+    # et db1 étaient en mémoire pure, sans persistance).
+    command: redis-server --maxmemory 256mb --maxmemory-policy noeviction --appendonly yes
     # DEV UNIQUEMENT — supprimer ce port en production
     ports:
       - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: always
+
+  redis_cache:
+    # SCA10 — cache applicatif Django (CACHES['default'], db1 auparavant sur
+    # la MÊME instance que le broker). Instance SÉPARÉE : `allkeys-lru`
+    # (éviction des clés les moins récemment utilisées sous pression — le
+    # comportement CORRECT pour un cache, jamais pour un broker) + AUCUNE
+    # persistance (`--save ""` : un cache est par nature jetable, pas besoin
+    # de survivre à un restart, et évite l'overhead disque inutile).
+    image: redis:7.4-alpine
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru --save ""
     restart: always
 
 volumes:
   pg_data:
   minio_data:
   hf_cache:
+  redis_data:

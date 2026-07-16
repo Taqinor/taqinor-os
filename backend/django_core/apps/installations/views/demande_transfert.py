@@ -8,13 +8,13 @@ produit/source/destination validés tenant. Cross-app : ``stock`` en string-FK.
 """
 from django.utils import timezone
 
-from rest_framework import viewsets, status
+from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.viewsets import CompanyScopedModelViewSet
 
 from apps.ventes.utils.references import create_with_reference
 
@@ -24,7 +24,7 @@ from ..serializers import DemandeTransfertSerializer
 READ_ACTIONS = ['list', 'retrieve']
 
 
-class DemandeTransfertViewSet(TenantMixin, viewsets.ModelViewSet):
+class DemandeTransfertViewSet(CompanyScopedModelViewSet):
     """FG325 — demandes de transfert. Lecture tout rôle, écriture
     responsable/admin. Filtrable par `statut`, `produit`, `source`,
     `destination`."""

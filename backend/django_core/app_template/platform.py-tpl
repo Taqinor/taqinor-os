@@ -1,0 +1,30 @@
+"""ARC28 — Manifeste plateforme du module « {{ app_label }} » (« déclarer une fois »).
+
+Déclare ce que cette app expose aux 7 surfaces transverses (recherche globale,
+chatter/records, champs personnalisés, import/export, actions agentiques,
+automatisations temporelles, KPI). ``core.platform.collect_platform_manifests``
+le collecte GÉNÉRIQUEMENT (aucun import de ``core`` vers l'app) ; un module
+désactivé pour une société disparaît alors de TOUTES les surfaces d'un coup.
+
+RÈGLE D'HONNÊTETÉ : ne déclarer une surface QUE si elle est réellement câblée.
+Un identifiant listé ici sans le câblage réel de la surface est un « mensonge »
+que la matrice de couverture (``core.platform_coverage``) détecte à l'envers.
+Les surfaces se remplissent au fur et à mesure — elles restent vides à la
+génération.
+"""
+from __future__ import annotations
+
+PLATFORM = {
+    # Clé ``ModuleToggle`` (par défaut = ``app_label`` ; garder alignée avec
+    # ``{{ camel_case_app_name }}Config.module_manifest['key']``).
+    'module': '{{ app_label }}',
+
+    # Les 7 surfaces — vides à la génération, remplies quand elles sont câblées.
+    'searchable_models': [],       # 'app.model' cherchables (reporting/search)
+    'record_targets': [],          # 'app.model' chatter/records (ALLOWED_TARGETS)
+    'customfield_models': [],      # 'model' à champs perso (customfields)
+    'import_specs': [],            # entités import/export (dataimport)
+    'agent_actions_module': '',    # 'apps.{{ app_label }}.agent_actions'
+    'automation_state_fields': [],  # [{'model': 'app.model', 'field': 'statut'}]
+    'kpi_providers': [],           # fournisseurs de KPI/agrégats (reporting)
+}

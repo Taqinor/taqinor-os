@@ -46,6 +46,20 @@ def log_devis_credit_hold_override(devis, user, motif):
     )
 
 
+def log_devis_sale_warning_override(devis, user, motif):
+    """ZSAL9 — chatter du devis : un responsable/admin a passé outre un
+    avertissement de vente BLOQUANT (produit/client) pour laisser passer cette
+    action (accepter/facturer)."""
+    qui = getattr(user, 'username', '?') if user else '?'
+    return DevisActivity.objects.create(
+        company=devis.company, devis=devis, user=user,
+        kind=DevisActivity.Kind.MODIFICATION,
+        field='avertissement_vente', field_label='Avertissement de vente',
+        new_value='override',
+        body=f'Avertissement de vente bloquant passé outre par {qui} — {motif}.',
+    )
+
+
 def log_devis_acceptance(devis, user, nom, date_acceptation, option=''):
     """Consigne l'acceptation du devis (qui + quand + option) dans son chatter.
 

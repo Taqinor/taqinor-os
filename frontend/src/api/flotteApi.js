@@ -1,4 +1,5 @@
 import api from './axios'
+import { makeResourceFactory } from './resource'
 
 /* ============================================================================
    FLOTTE (UX15–UX20) — client API du module Flotte (parc de véhicules & engins).
@@ -10,19 +11,22 @@ import api from './axios'
    demandée ni rendue côté client.
    ========================================================================== */
 
-// Fabrique CRUD standard pour un ViewSet DRF simple (list/get/create/update/del).
-function crud(prefix) {
-  return {
-    list: (params) => api.get(`/flotte/${prefix}/`, { params }),
-    get: (id) => api.get(`/flotte/${prefix}/${id}/`),
-    create: (data) => api.post(`/flotte/${prefix}/`, data),
-    update: (id, data) => api.patch(`/flotte/${prefix}/${id}/`, data),
-    remove: (id) => api.delete(`/flotte/${prefix}/${id}/`),
-  }
-}
+/**
+ * ARC50 — pilote de typage : le schéma OpenAPI généré (YAPIC5 +
+ * `npm run gen:api-types`) documente la forme réelle de `Vehicule`. Ceci ne
+ * change AUCUN comportement runtime (JSDoc pur, ce repo n'exécute pas tsc) —
+ * uniquement de la documentation typée pour l'éditeur.
+ * @typedef {import('./types/schema').components['schemas']['Vehicule']} Vehicule
+ */
+
+// ARC44 — Fabrique CRUD standard (factory partagée `api/resource.js`), URLs
+// et forme des réponses inchangées.
+const crud = makeResourceFactory(api, '/flotte')
 
 const flotteApi = {
   // ── Parc : véhicules, engins, référentiels, actifs unifiés ──
+  // ARC50 — `crud('vehicules')` renvoie {list,get,create,update,remove} sur
+  // des `Vehicule` (voir le typedef ci-dessus, généré depuis l'OpenAPI).
   vehicules: crud('vehicules'),
   modelesVehicule: crud('modeles-vehicule'),
   engins: crud('engins'),

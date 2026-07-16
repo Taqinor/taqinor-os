@@ -65,6 +65,28 @@ def _parse_watt(*texts) -> int | None:
     return None
 
 
+def _normalize_site_host(site: str) -> str:
+    """SCA27 — forme d'AFFICHAGE d'un site tenant (comme le littéral fondateur
+    ``exemple.ma``) : sans schéma, sans ``www.``, sans chemin ni slash final.
+
+    ``https://www.helios.ma/`` → ``helios.ma``. Chaîne vide/None → '' (le moteur
+    garde alors ses littéraux historiques). N'invente jamais de domaine.
+    """
+    s = (site or "").strip()
+    if not s:
+        return ""
+    # Retire le schéma (http/https/…) puis un éventuel www.
+    if "://" in s:
+        s = s.split("://", 1)[1]
+    if s.lower().startswith("www."):
+        s = s[4:]
+    # Garde uniquement l'hôte (coupe au premier / ? #).
+    for sep in ("/", "?", "#"):
+        if sep in s:
+            s = s.split(sep, 1)[0]
+    return s.strip().rstrip("/")
+
+
 def _is_battery(designation: str) -> bool:
     return "batterie" in (designation or "").lower()
 
@@ -666,13 +688,36 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # productible pilote la production annuelle et donc le ROI, même à l'écran ;
     # le tarif ONEE ne s'applique qu'en dernier repli (aucune donnée de conso),
     # de sorte que le simulateur et le PDF ne divergent plus.
+    # QX7c/QX38 — ville du client depuis le lead lié (lead.ville). Accès attribut
+    # sur l'instance liée (aucun import crm.models) ; vide si pas de lead/ville.
+    # Sert au productible PVGIS par ville (QX38) ET à la ligne meta du PDF (QX7c).
+    _client_city = ""
+    try:
+        _lead = getattr(devis, "lead", None)
+        if _lead is not None:
+            _client_city = (getattr(_lead, "ville", "") or "").strip()
+    except Exception:  # noqa: BLE001 — un PDF ne casse jamais là-dessus
+        _client_city = ""
+
     _tariff = {}
     try:
         from apps.parametres.selectors import tariff_for
         _tariff = tariff_for(getattr(devis, "company", None))
     except Exception:  # noqa: BLE001 — un PDF/une liste ne casse jamais ici
         _tariff = {}
-    _productible = _tariff.get("productible_kwh_kwc") or None
+    # ── QX38 — productible CANONIQUE (source unique PVGIS par ville) ──────────
+    # CompanyProfile.productible_kwh_kwc devient un OVERRIDE éditable, pas un
+    # modèle physique concurrent : quand il vaut le défaut historique 1600, on
+    # lit le productible PVGIS de la ville du lead/devis (aligné écran/PDF/web).
+    # Une valeur société ≠ 1600 (réglage explicite) prime. Repli sûr : sur toute
+    # erreur, on garde l'ancien productible du tarif (comportement inchangé).
+    _co_productible = _tariff.get("productible_kwh_kwc") or None
+    try:
+        from .productible import productible_for_city
+        _productible = productible_for_city(
+            _client_city, override=_co_productible)
+    except Exception:  # noqa: BLE001 — un PDF ne casse jamais là-dessus
+        _productible = _co_productible
     _onee_tarif = _tariff.get("onee_tarif_kwh") or None
     roi_kwargs = dict(
         conso_annuelle_kwh=float(_conso_annuelle) if _conso_annuelle else None,
@@ -815,6 +860,14 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             f"Production estimée : ≈ {int(round(_prod_factor))} kWh par kWc et "
             "par an (irradiation moyenne au Maroc), performance panneaux "
             "garantie sur 25 ans.")
+    # QX39 — hypothèses du cashflow 25 ans (dégradation/escalade/batterie),
+    # documentées et rendues sur le PDF/la proposition. Le payback vient
+    # désormais du croisement du cumul à zéro, pas d'un ratio année-1.
+    _cf_assum = roi.get("cashflow_assumptions") or {}
+    for _n in (_cf_assum.get("notes") or []):
+        _n = str(_n).strip()
+        if _n and _n not in hypotheses:
+            hypotheses.append(_n)
     hypotheses.append(
         "Estimations non contractuelles ; toute hausse future du tarif "
         "électrique améliore votre rentabilité.")
@@ -911,13 +964,25 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # /BPA/tampon). SURCHARGES non vides seulement ; toute clé absente → le moteur
     # applique son littéral historique, donc le PDF reste byte-identique tant que
     # rien n'est édité. Repli silencieux sur {} si la table n'existe pas encore.
-    doc_texts = {}
-    try:
-        from apps.parametres.models_documents import DocumentTemplates
-        doc_texts = DocumentTemplates.get(
-            company=getattr(devis, "company", None)).as_doc_texts()
-    except Exception:  # noqa: BLE001 — un PDF ne doit jamais casser là-dessus
-        doc_texts = {}
+    #
+    # SCA43 / NTPLT16 — la LECTURE de config est mémorisée PAR REQUÊTE (contextvar,
+    # en amont du moteur) : le dict de surcharges est constant par société le temps
+    # d'une requête, donc la liste des devis ne relit plus DocumentTemplates une
+    # fois par devis (dé-N+1). Hors requête (Celery/PDF) le mémo est inactif → même
+    # lecture qu'avant. Le RENDU ne change pas : ``doc_texts`` est bit-identique.
+    _company = getattr(devis, "company", None)
+
+    def _load_doc_texts():
+        try:
+            from apps.parametres.models_documents import DocumentTemplates
+            return DocumentTemplates.get(company=_company).as_doc_texts()
+        except Exception:  # noqa: BLE001 — un PDF ne doit jamais casser là-dessus
+            return {}
+
+    from core import request_cache
+    doc_texts = request_cache.memoize(
+        ("ventes.devis_doc_texts", getattr(_company, "id", None)),
+        _load_doc_texts)
 
     # DC1 — identité société (multi-tenant) : nom/RC/ICE/RIB/banque/adresse/tel/
     # couleur lus depuis CompanyProfile via le sélecteur parametres. Le moteur
@@ -930,6 +995,46 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         entreprise = company_identity(getattr(devis, "company", None))
     except Exception:  # noqa: BLE001 — un PDF ne doit jamais casser là-dessus
         entreprise = {}
+
+    # ── SCA27 (complément) — site du tenant câblé au moteur résidentiel ───────
+    # ``build_quote_data`` peuplait ``entreprise`` (identité) mais laissait le
+    # renderer retomber sur ``taqinor.ma`` pour la ligne « site » du pied de page
+    # ET la base des fiches produits, faisant fuiter le site du fondateur sur le
+    # PDF d'un autre tenant. On passe désormais SON site quand il est renseigné :
+    #   • ``site_url`` = forme d'affichage de son site (helios.ma) ;
+    #   • ``links["produits"]`` = son site + '/produits' → ``theme.fiche_href``
+    #     omet naturellement les fiches taqinor.ma (base non-taqinor) ; les autres
+    #     liens pointent sur son site (aucun 404 vers le fondateur).
+    # Site ABSENT → aucune clé posée : le renderer garde ses littéraux historiques
+    # (taqinor.ma) et le rendu fondateur/sans-profil reste byte-identique (DC1).
+    _tenant_site = _normalize_site_host(entreprise.get("site_web") or "")
+
+    # ── QX6 — CTA de signature : lien tokenisé VERS LA VRAIE proposition ──────
+    # L'ancien « taqinor.ma/signer/<ref> » (404) est remplacé par un ShareLink
+    # tokenisé vers la page proposition publique (<base>/proposition/<token>).
+    # RÈGLE #4 (fusion SCA27) : la BASE du lien est le site DU TENANT quand il
+    # est renseigné (helios.ma) — jamais le domaine fondateur — de sorte qu'aucun
+    # « taqinor.ma » ne fuit dans le PDF d'un autre tenant. Sans site tenant, on
+    # retombe sur ``SITE_URL`` (taqinor.ma) : rendu fondateur inchangé. Mint/
+    # réutilise un ShareLink (lecture seule, expirant) — cela NE CHANGE AUCUN
+    # statut. Repli silencieux : sur toute erreur, le renderer garde son lien
+    # historique (aucun PDF ne casse ici).
+    links = {}
+    try:
+        from django.conf import settings
+        from apps.ventes.models import ShareLink
+        _pk = getattr(devis, "pk", None)
+        if _pk is not None:
+            _share = ShareLink.for_devis(devis)
+            if _tenant_site:
+                _signer_base = "https://" + _tenant_site
+            else:
+                # Repli plateforme : settings.SITE_URL (SCA29 — jamais de marque
+                # en dur ici ; le défaut vit dans settings.base, configurable).
+                _signer_base = (getattr(settings, "SITE_URL", "") or "").rstrip("/")
+            links["signer"] = f"{_signer_base}/proposition/{_share.token}"
+    except Exception:  # noqa: BLE001 — un PDF ne doit jamais casser là-dessus
+        links = {}
 
     # ── QG7 — contact du CRÉATEUR du devis (nom + téléphone) ─────────────────
     # Le bloc contact du PDF affichait uniquement la société (donc toujours le
@@ -967,6 +1072,11 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "client_addr": client.adresse or "",
         "client_phone": client.telephone or "",
         "client_ice": (getattr(client, "ice", "") or ""),
+        # QX7c — ville du client : résolue depuis le lead lié (lead.ville) quand
+        # il existe, sinon vide (le champ était lu mais jamais alimenté). Accès
+        # attribut sur l'instance liée — aucun import de crm.models. Vide → la
+        # ligne meta ne montre pas de ville fantôme (join_meta l'omet).
+        "client_city": _client_city,
         "inst_type": inst_type,
         "puissance_kwc": puissance_kwc,
         "nb_panneaux": nb_panneaux,
@@ -989,9 +1099,21 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "roi_a": roi["roi_a"],
         "eco_s_monthly": roi["eco_s_monthly"],
         "eco_a_monthly": roi["eco_a_monthly"],
+        # QX39 — cumul du cashflow 25 ans (dégradation/escalade/batterie/onduleur)
+        # : pilote la courbe de rentabilité (plus de droite linéaire « plate »).
+        "cashflow_sans": roi.get("cashflow_sans"),
+        "cashflow_avec": roi.get("cashflow_avec"),
+        "net_gain_sans": roi.get("net_gain_sans"),
+        "net_gain_avec": roi.get("net_gain_avec"),
         # QJ13 — honest-number guard: True when savings are an estimate (no tariff data)
         "savings_estimated": roi.get("savings_estimated", False),
         "tarif_kwh": roi.get("tarif_kwh"),
+        # QX7a — consommation annuelle RÉELLE (kWh) quand elle est connue
+        # (étude industrielle ou dérivée d'une vraie facture via le tarif kWh) ;
+        # None sinon. Le renderer calcule alors une couverture honnête à partir
+        # de cette conso au lieu de fabriquer un diviseur /1.3. Jamais inventée.
+        "conso_annuelle_kwh": (
+            int(_conso_annuelle) if _conso_annuelle else None),
         # QF2 — modèle « deux factures » : les deux factures annuelles et le
         # modèle d'économie réellement utilisé ('factures'/'etude'/'estimation').
         # Les factures sont None hors modèle 'factures' — jamais inventées.
@@ -1018,6 +1140,13 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "avec_bullets": _bullets(avec_items),
         "scenario": scenario,
         "recommended": recommended,
+        # QX5 — drapeaux d'option RÉELS (après repli/QF6) : le rendu résidentiel
+        # gate les deux cartes dessus. `deux_options` True = document à deux
+        # options (rendu inchangé) ; mono-option → une seule carte, la page 2
+        # abandonne le découpage delta et renomme l'en-tête « commun ».
+        "sans_ok": bool(sans_ok),
+        "avec_ok": bool(avec_ok),
+        "deux_options": bool(deux_options),
         "all_items": all_items,
         "onepage_note_batterie": onepage_note_batterie,
         "display_total": display_total,
@@ -1048,6 +1177,14 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # DC1 — identité société (multi-tenant). Champs vides → le moteur premium
         # applique ses littéraux historiques (aucune fuite d'un autre tenant).
         "entreprise": entreprise,
+        # QX6 — liens tokenisés/site (signer réel posé ici ; produits/réalisations
+        # /avis/garanties dérivés du site public par le renderer). Vide → le
+        # renderer applique ses littéraux historiques.
+        "links": links,
+        # QX6/SCA27 — site public de la société (pilote les liens du renderer),
+        # normalisé depuis le champ CANONIQUE ``site_web`` (SCA27). Vide → repli
+        # historique « taqinor.ma ».
+        "site_url": _tenant_site,
         # QG7 — contact du créateur du devis (nom + tél ; repli société).
         # Vide → le moteur retombe sur le contact société (byte-identique).
         "seller": seller,
@@ -1081,6 +1218,23 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     )
     if financing is not None:
         data["financing"] = financing
+
+    # ── SCA27 (complément) — site du tenant : ligne site + base fiches ────────
+    # Posé UNIQUEMENT quand le profil porte un site : le renderer résidentiel lit
+    # alors ``data["site_url"]``/``data["links"]`` (au lieu de ``taqinor.ma``),
+    # et ``theme.fiche_href`` omet les fiches taqinor.ma (base non-taqinor). Site
+    # absent → aucune clé → littéraux moteur historiques (byte-identique DC1).
+    # QX6 : on PRÉSERVE le lien signer tokenisé (ShareLink) déjà minté ci-dessus —
+    # il pointe sur la VRAIE proposition publique (jamais un « /signer/<ref> » 404).
+    if _tenant_site:
+        data["site_url"] = _tenant_site
+        data["links"] = {
+            "realisations": f"{_tenant_site}/realisations",
+            "avis": f"{_tenant_site}/realisations",
+            "produits": f"{_tenant_site}/produits",
+            "garanties": f"{_tenant_site}/garanties",
+            "signer": links.get("signer") or f"{_tenant_site}/signer/{devis.reference}",
+        }
 
     # ── QJ29 — Multi-propriétés (additif, tout optionnel) ────────────────────
     # (A) ×N villas identiques : multiplicateur whole-quote (défaut 1) qui met à

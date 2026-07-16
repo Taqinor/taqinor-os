@@ -71,6 +71,12 @@ gunicorn==22.0.0
 # setuptools à jour avant l'install). Toujours importé paresseusement côté code :
 # sans clés VAPID, le push reste un NO-OP.
 pywebpush==2.0.3
+# YHARD1 — chiffrement au repos des champs sensibles (core/crypto_fields.py,
+# Fernet). `cryptography` était déjà tiré TRANSITIVEMENT (via pywebpush) ; on le
+# rend EXPLICITE puisque core en dépend directement désormais. Plage permissive
+# pour ne pas sur-contraindre le résolveur vs la version tirée par pywebpush.
+# Key-gated : sans FIELD_ENCRYPTION_KEY, le module est chargé mais inerte.
+cryptography>=42,<47
 # TOTP two-factor auth (2FA opt-in, N96)
 pyotp==2.10.0
 # Architectural import contracts (M3) — enforces the import rules in
@@ -92,3 +98,16 @@ pyHanko==0.28.0
 # provides standard Django HTTP/DB instrumentation (not wired by default —
 # add its middleware in settings if that richer surface is wanted later).
 django-prometheus==2.3.1
+
+# YAPIC5 — schéma OpenAPI 3 auto-généré + docs interactives Swagger/ReDoc
+# (NOUVELLE DÉPENDANCE, libre/MIT). Remplace le AutoSchema DRF nu : ~97
+# viewsets étaient documentés nulle part de façon machine-lisible ; FG105
+# (apps/publicapi/docs.py) reste une page FR statique pour l'API PUBLIQUE
+# uniquement et n'est pas remplacée.
+drf-spectacular==0.28.0
+
+# NTPLT46 — Sentry (supervision d'erreurs), dépendance OPTIONNELLE gated-founder.
+# core/monitoring.py importe sentry-sdk PARESSEUSEMENT et UNIQUEMENT si SENTRY_DSN
+# est configuré : sans DSN, ce paquet n'est jamais chargé (aucun coût, aucun appel
+# réseau). Décommenter + poser SENTRY_DSN pour activer (service payant à volume).
+# sentry-sdk==2.20.0

@@ -2,16 +2,22 @@ import { useEffect, useMemo, useState } from 'react'
 import { ShieldPlus, ShieldCheck, Pencil, Trash2, Eye, ChevronDown, Lock } from 'lucide-react'
 import api from '../../api/axios'
 import rolesApi from '../../api/rolesApi'
+import { resilientMutation } from '../../lib/resilientMutation'
 import {
   Button, Spinner, Badge,
   Card, CardHeader, CardTitle,
   EmptyState, Skeleton,
-  AlertDialog, AlertDialogTrigger, AlertDialogContent, AlertDialogHeader,
+  AlertDialog, AlertDialogContent, AlertDialogHeader,
   AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
   Form, FormActions,
   Label, Input, Checkbox,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
+import { DataTable } from '../../ui/datatable'
+// VX132 — anti-scintillement propagé : ce Spinner + Skeleton s'affichaient
+// SIMULTANÉMENT (l'anti-pattern que useDelayedLoading existe pour éviter —
+// voir InstallationsPage.jsx, déjà migrée).
+import { useDelayedLoading } from '../../hooks/useDelayedLoading'
 
 // Grille module × action (Feature D/RBAC). La SOURCE des codes est l'endpoint
 // /roles/permissions-disponibles (models.ALL_PERMISSIONS) ; cette table ne sert
@@ -154,6 +160,9 @@ function buildGroups(availableCodes) {
 export default function RolesManagement() {
   const [roles, setRoles] = useState([])
   const [loading, setLoading] = useState(true)
+  // VX132 — rien tant que l'attente reste imperceptible (< 300 ms), puis
+  // spinner discret OU squelette, jamais les deux ensemble.
+  const { showSpinner, showSkeleton } = useDelayedLoading(loading)
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState(EMPTY_FORM)
@@ -166,6 +175,10 @@ export default function RolesManagement() {
   const [expandedUsers, setExpandedUsers] = useState(null)
   // Dialogue de réassignation après une suppression bloquée.
   const [reassign, setReassign] = useState(null) // { role, target }
+  // VX152 — dialogue de confirmation de suppression : contrôlé par état
+  // (déclenché depuis rowActions du DataTable) au lieu d'un AlertDialogTrigger
+  // par ligne (même AlertDialog, même comportement — VX234 le teste).
+  const [pendingDelete, setPendingDelete] = useState(null) // role | null
 
   const groups = useMemo(() => buildGroups(availableCodes), [availableCodes])
   const viewCodes = useMemo(
@@ -304,6 +317,7 @@ export default function RolesManagement() {
   const handleDelete = async (role) => {
     try {
       await rolesApi.deleteRole(role.id)
+      setPendingDelete(null)
       await load()
     } catch (err) {
       // Suppression bloquée car des utilisateurs y sont assignés → proposer la
@@ -311,6 +325,7 @@ export default function RolesManagement() {
       // ERR101 — On se base sur users_count seul : le sérialiseur de liste peut
       // omettre le tableau `users` imbriqué, mais le dialogue doit quand même
       // s'ouvrir dès qu'il y a au moins un utilisateur.
+      setPendingDelete(null)
       if (role.users_count > 0) {
         setReassign({ role, target: '' })
       } else {
@@ -320,25 +335,99 @@ export default function RolesManagement() {
   }
 
   // Réassigne tous les utilisateurs du rôle bloqué vers `target`, puis supprime.
+  // VX117 — allSettled + rapport nominatif : le rôle n'est JAMAIS supprimé
+  // tant qu'un utilisateur n'est pas migré, et une relance ne retente QUE les
+  // utilisateurs en échec (jamais un re-PATCH des déjà-migrés).
   const handleReassignAndDelete = async () => {
     const { role, target } = reassign
     if (!target) return
     setError(null)
+    const { succeeded, failed } = await resilientMutation(role.users || [], (u) =>
+      api.patch(`/users/${u.id}/`, { role: Number(target) }))
+    if (failed.length > 0) {
+      const noms = failed.map(f => f.item.username || `#${f.item.id}`).join(', ')
+      setReassign({
+        role: { ...role, users: failed.map(f => f.item), users_count: failed.length },
+        target,
+      })
+      setError(
+        `${succeeded.length} utilisateur(s) réassigné(s). Échec pour : ${noms}. `
+        + 'Rôle non supprimé — corrigez puis réessayez (seuls les échecs seront retentés).')
+      return
+    }
     try {
-      await Promise.all(
-        (role.users || []).map(u =>
-          api.patch(`/users/${u.id}/`, { role: Number(target) })),
-      )
       await rolesApi.deleteRole(role.id)
       setReassign(null)
+      setError(null)
       await load()
     } catch (err) {
       setError(err.response?.data?.detail
-        || 'Échec de la réassignation des utilisateurs.')
+        || 'Utilisateurs réassignés, mais suppression du rôle impossible.')
     }
   }
 
-  const th = 'px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground'
+  // VX152 — la liste des rôles rejoint le moteur DataTable déjà utilisé par
+  // UsersManagement (même dossier admin) : recherche/tri/export gratuits, la
+  // grille de permissions de l'éditeur au-dessus reste inchangée. La ligne
+  // « Utilisateurs » dépliable devient `renderExpanded` (moteur natif).
+  const columns = useMemo(() => [
+    {
+      id: 'nom',
+      header: 'Nom',
+      accessor: (r) => r.nom,
+      cell: (value) => <span className="font-medium text-foreground">{value}</span>,
+    },
+    {
+      id: 'type',
+      header: 'Type',
+      width: 140,
+      accessor: (r) => (r.est_systeme ? 'Système' : 'Personnalisé'),
+      cell: (value, r) => (
+        <Badge tone={r.est_systeme ? 'info' : 'success'}>{value}</Badge>
+      ),
+    },
+    {
+      id: 'permissions',
+      header: 'Permissions',
+      width: 150,
+      accessor: (r) => r.permissions.length,
+      cell: (value) => `${value} permission${value !== 1 ? 's' : ''}`,
+    },
+    {
+      id: 'users_count',
+      header: 'Utilisateurs',
+      width: 160,
+      accessor: (r) => r.users_count,
+      cell: (value, r) => (value > 0 ? (
+        <Button
+          size="sm"
+          variant="link"
+          className="h-auto p-0 text-xs"
+          onClick={() => setExpandedUsers(expandedUsers === r.id ? null : r.id)}
+        >
+          {value} utilisateur{value !== 1 ? 's' : ''}
+          <ChevronDown
+            className={expandedUsers === r.id ? 'rotate-180 transition' : 'transition'}
+          />
+        </Button>
+      ) : (
+        <span className="text-muted-foreground">0</span>
+      )),
+    },
+  ], [expandedUsers])
+
+  const rowActions = (r) => {
+    const actions = [
+      { id: 'edit', label: 'Modifier', icon: Pencil, onClick: () => openEdit(r) },
+    ]
+    if (!r.est_systeme) {
+      actions.push({
+        id: 'delete', label: 'Supprimer', icon: Trash2, destructive: true,
+        separatorBefore: true, onClick: () => setPendingDelete(r),
+      })
+    }
+    return actions
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -357,7 +446,10 @@ export default function RolesManagement() {
         )}
       </div>
 
-      {error && (
+      {/* VX117 — masqué pendant le dialogue de réassignation : le rapport
+          nominatif s'affiche DANS le dialogue (voir plus bas), pas derrière
+          l'overlay. */}
+      {error && !reassign && (
         <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
           {error}
         </p>
@@ -382,6 +474,7 @@ export default function RolesManagement() {
               <Label htmlFor="role-nom" required={!editing?.est_systeme}>Nom du rôle</Label>
               <Input
                 id="role-nom"
+                autoFocus
                 value={form.nom}
                 placeholder="ex: Comptable, Magasinier…"
                 disabled={!!editing?.est_systeme}
@@ -459,16 +552,24 @@ export default function RolesManagement() {
 
       {/* ── Liste ── */}
       {loading ? (
-        <Card className="p-5">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Spinner /> Chargement…
-          </div>
-          <div className="mt-4 space-y-3">
-            <Skeleton className="h-9 w-full" />
-            <Skeleton className="h-9 w-full" />
-            <Skeleton className="h-9 w-full" />
-          </div>
-        </Card>
+        <>
+          {showSpinner && (
+            <Card className="p-5">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Spinner /> Chargement…
+              </div>
+            </Card>
+          )}
+          {showSkeleton && (
+            <Card className="p-5">
+              <div className="space-y-3">
+                <Skeleton className="h-9 w-full" />
+                <Skeleton className="h-9 w-full" />
+                <Skeleton className="h-9 w-full" />
+              </div>
+            </Card>
+          )}
+        </>
       ) : error ? (
         <EmptyState
           icon={ShieldCheck}
@@ -484,101 +585,75 @@ export default function RolesManagement() {
           action={<Button size="sm" onClick={openCreate}><ShieldPlus /> Nouveau rôle</Button>}
         />
       ) : (
-        <Card className="overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[560px] border-collapse text-sm">
-              <thead>
-                <tr className="border-b border-border bg-muted/40">
-                  <th className={th}>Nom</th>
-                  <th className={th}>Type</th>
-                  <th className={th}>Permissions</th>
-                  <th className={th}>Utilisateurs</th>
-                  <th className={`${th} text-right`}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {roles.map((r) => [
-                  <tr key={r.id} className="border-b border-border/60 last:border-b-0 hover:bg-accent/40">
-                    <td className="px-4 py-2.5 font-medium text-foreground">{r.nom}</td>
-                    <td className="px-4 py-2.5">
-                      <Badge tone={r.est_systeme ? 'info' : 'success'}>
-                        {r.est_systeme ? 'Système' : 'Personnalisé'}
-                      </Badge>
-                    </td>
-                    <td className="px-4 py-2.5 text-muted-foreground">
-                      {r.permissions.length} permission{r.permissions.length !== 1 ? 's' : ''}
-                    </td>
-                    <td className="px-4 py-2.5">
-                      {r.users_count > 0 ? (
-                        <Button
-                          size="sm"
-                          variant="link"
-                          className="h-auto p-0 text-xs"
-                          onClick={() => setExpandedUsers(expandedUsers === r.id ? null : r.id)}
-                        >
-                          {r.users_count} utilisateur{r.users_count !== 1 ? 's' : ''}
-                          <ChevronDown
-                            className={expandedUsers === r.id ? 'rotate-180 transition' : 'transition'}
-                          />
-                        </Button>
-                      ) : (
-                        <span className="text-muted-foreground">0</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <div className="flex items-center justify-end gap-2">
-                        <Button size="sm" variant="outline" onClick={() => openEdit(r)}>
-                          <Pencil /> Modifier
-                        </Button>
-                        {!r.est_systeme && (
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                              <Button size="sm" variant="ghost" className="text-destructive hover:bg-destructive/10">
-                                <Trash2 /> Supprimer
-                              </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>Supprimer ce rôle ?</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  {r.users_count > 0
-                                    ? `Le rôle « ${r.nom} » est porté par ${r.users_count} utilisateur(s). `
-                                      + 'Vous devrez les réassigner avant la suppression.'
-                                    : `Le rôle « ${r.nom} » sera définitivement supprimé.`}
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel>Annuler</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => handleDelete(r)}>
-                                  Supprimer
-                                </AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
-                        )}
-                      </div>
-                    </td>
-                  </tr>,
-                  expandedUsers === r.id ? (
-                    <tr key={`${r.id}-users`} className="border-b border-border/60 bg-muted/20">
-                      <td colSpan={5} className="px-4 py-2.5">
-                        <div className="flex flex-wrap gap-1.5">
-                          {(r.users || []).map(u => (
-                            <Badge key={u.id} tone="neutral">{u.username}</Badge>
-                          ))}
-                          {(r.users?.length ?? 0) === 0 && (
-                            <span className="text-xs text-muted-foreground">Aucun détail disponible.</span>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ) : null,
-                ])}
-              </tbody>
-            </table>
-          </div>
-        </Card>
+        <>
+          <DataTable
+            data={roles}
+            columns={columns}
+            getRowId={(r) => r.id}
+            rowActions={rowActions}
+            searchable
+            searchPlaceholder="Rechercher un rôle…"
+            exportName="roles"
+            emptyTitle="Aucun rôle défini"
+            emptyDescription="Aucun rôle ne correspond à cette recherche."
+            aria-label="Liste des rôles"
+            /* VX152 — liste d'administration courte : table unique (recherche/tri
+               conservés), sans repli en cartes ni pagination, donc toutes les lignes
+               visibles et un seul rendu du DOM (pas de doublon desktop/mobile ni de
+               <select> « lignes par page » parasite). */
+            pageSize={roles.length}
+            hidePagination
+            hideMobileCards
+          />
+          {/* Panneau « Utilisateurs » du rôle déplié (bouton dans la colonne
+              Utilisateurs) — reste hors du moteur DataTable : seuls les rôles
+              PORTANT des utilisateurs affichent un déclencheur (contrairement
+              au chevron toujours-visible du mécanisme natif renderExpanded). */}
+          {expandedUsers != null && (() => {
+            const r = roles.find(x => x.id === expandedUsers)
+            if (!r) return null
+            return (
+              <Card className="p-4">
+                <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Utilisateurs — {r.nom}
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {(r.users || []).map(u => (
+                    <Badge key={u.id} tone="neutral">{u.username}</Badge>
+                  ))}
+                  {(r.users?.length ?? 0) === 0 && (
+                    <span className="text-xs text-muted-foreground">Aucun détail disponible.</span>
+                  )}
+                </div>
+              </Card>
+            )
+          })()}
+        </>
       )}
+
+      {/* ── Dialogue de suppression (contrôlé par état — VX152, déclenché
+          depuis rowActions du DataTable) ── */}
+      <AlertDialog open={!!pendingDelete} onOpenChange={(o) => { if (!o) setPendingDelete(null) }}>
+        {pendingDelete && (
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Supprimer ce rôle ?</AlertDialogTitle>
+              <AlertDialogDescription>
+                {pendingDelete.users_count > 0
+                  ? `Le rôle « ${pendingDelete.nom} » est porté par ${pendingDelete.users_count} utilisateur(s). `
+                    + 'Vous devrez les réassigner avant la suppression.'
+                  : `Le rôle « ${pendingDelete.nom} » sera définitivement supprimé.`}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Annuler</AlertDialogCancel>
+              <AlertDialogAction onClick={() => handleDelete(pendingDelete)}>
+                Supprimer
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        )}
+      </AlertDialog>
 
       {/* ── Dialogue de réassignation (suppression bloquée) ── */}
       <AlertDialog open={!!reassign} onOpenChange={(o) => { if (!o) setReassign(null) }}>
@@ -603,17 +678,44 @@ export default function RolesManagement() {
                   <SelectValue placeholder="Choisir un rôle…" />
                 </SelectTrigger>
                 <SelectContent>
-                  {roles.filter(r => r.id !== reassign.role.id).map(r => (
-                    <SelectItem key={r.id} value={String(r.id)}>
-                      {r.nom} {r.est_systeme ? '(Système)' : '(Personnalisé)'}
-                    </SelectItem>
-                  ))}
+                  {/* VX234 — trié par nombre de permissions CROISSANT : un clic
+                      hâtif tombe d'abord sur les rôles les moins larges plutôt
+                      que sur « Administrateur » en tête de liste alphabétique. */}
+                  {roles
+                    .filter(r => r.id !== reassign.role.id)
+                    .slice()
+                    .sort((a, b) => (a.permissions?.length ?? 0) - (b.permissions?.length ?? 0))
+                    .map(r => {
+                      const wider = (r.permissions?.length ?? 0) > (reassign.role.permissions?.length ?? 0)
+                      return (
+                        <SelectItem key={r.id} value={String(r.id)}>
+                          {r.nom} {r.est_systeme ? '(Système)' : '(Personnalisé)'}
+                          {' '}({r.permissions?.length ?? 0} permission{(r.permissions?.length ?? 0) !== 1 ? 's' : ''})
+                          {wider ? ' ⚠ plus large' : ''}
+                        </SelectItem>
+                      )
+                    })}
                 </SelectContent>
               </Select>
+              {reassign.target && (() => {
+                const targetRole = roles.find(r => r.id === reassign.target)
+                const wider = targetRole
+                  && (targetRole.permissions?.length ?? 0) > (reassign.role.permissions?.length ?? 0)
+                return wider ? (
+                  <Badge tone="warning">⚠ plus large que « {reassign.role.nom} »</Badge>
+                ) : null
+              })()}
               <p className="text-xs text-muted-foreground">
                 Utilisateurs concernés :{' '}
                 {(reassign.role.users || []).map(u => u.username).join(', ') || '—'}
               </p>
+              {/* VX117 — rapport nominatif visible DANS le dialogue (pas
+                  seulement le bandeau de page, masqué par l'overlay). */}
+              {error && (
+                <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-2 text-xs text-destructive">
+                  {error}
+                </p>
+              )}
             </div>
             <AlertDialogFooter>
               <AlertDialogCancel>Annuler</AlertDialogCancel>

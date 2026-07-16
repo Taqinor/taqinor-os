@@ -243,3 +243,60 @@ class WebhookViewSet(_CompanyScopedMixin, viewsets.ModelViewSet):
             WebhookDeliverySerializer(new_delivery).data,
             status=status.HTTP_201_CREATED,
         )
+
+
+class ServiceAccountViewSet(viewsets.ModelViewSet):
+    """NTSEC24 — comptes de service (identités machine), Directeur only.
+
+    Le jeton en clair n'est renvoyé QU'À la création et à la rotation. La
+    société est forcée côté serveur. Révocation = ``actif=False`` (ou DELETE)."""
+
+    from authentication.permissions import IsAdminRole as _IsAdminRole
+    permission_classes = [_IsAdminRole]
+
+    def get_serializer_class(self):
+        from .serializers import ServiceAccountSerializer
+        return ServiceAccountSerializer
+
+    def get_queryset(self):
+        from .models import ServiceAccount
+        user = self.request.user
+        qs = ServiceAccount.objects.all()
+        if getattr(user, 'company_id', None):
+            return qs.filter(company=user.company)
+        return qs.none()
+
+    def create(self, request, *args, **kwargs):
+        from .models import ServiceAccount
+        nom = (request.data.get('nom') or '').strip()
+        if not nom:
+            return Response(
+                {'nom': ['Ce champ est requis.']},
+                status=status.HTTP_400_BAD_REQUEST)
+        scopes = request.data.get('scopes') or []
+        expire_le = request.data.get('expire_le') or None
+        instance, raw = ServiceAccount.issue(
+            company=request.user.company, nom=nom, scopes=scopes,
+            created_by=request.user, expire_le=expire_le)
+        data = self.get_serializer(instance).data
+        data['token'] = raw  # une seule fois, jamais re-stocké
+        return _no_store(Response(data, status=status.HTTP_201_CREATED))
+
+    def perform_update(self, serializer):
+        # La société n'est jamais lue du corps ; on la force à l'existante.
+        serializer.save(company=self.request.user.company)
+
+    @action(detail=True, methods=['post'])
+    def rotate(self, request, pk=None):
+        """Rotation du jeton : invalide l'ancien, renvoie le nouveau (1 fois)."""
+        instance = self.get_object()
+        raw = instance.rotate()
+        return _no_store(Response({'token': raw}))
+
+    @action(detail=True, methods=['post'])
+    def revoke(self, request, pk=None):
+        """Révoque le compte de service (``actif=False``)."""
+        instance = self.get_object()
+        instance.actif = False
+        instance.save(update_fields=['actif'])
+        return Response({'actif': False})

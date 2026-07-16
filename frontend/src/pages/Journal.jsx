@@ -1,17 +1,18 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useSelector } from 'react-redux'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
+import { useHasPermission } from '../hooks/useHasPermission'
 import { History } from 'lucide-react'
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-} from 'recharts'
 import auditApi from '../api/auditApi'
 import {
   Card, CardHeader, CardTitle, CardContent, Segmented, MultiSelect,
   Button, Badge, Skeleton, EmptyState, IconButton,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose,
 } from '../ui'
-import { formatNumber } from '../lib/format'
+// VX28/VX148 — un seul langage de graphique (kit ui/charts) + un seul
+// PageHeader ; `ChartEmpty` pour le graphe sans donnée (au lieu d'un <p> nu).
+import { BarArrondie, ChartEmpty } from '../ui/charts'
+import { PageHeader } from '../ui/PageHeader'
+import { formatDateTime, formatNumber } from '../lib/format'
 
 /* Journal d'activité (Feature G) — réservé au Directeur par défaut
    (permission « journal_activite_voir », octroyable dans Paramètres → Rôles).
@@ -24,43 +25,32 @@ import { formatNumber } from '../lib/format'
    champ de l'objet à une date choisie (rejoue les diffs structurés côté
    serveur). Même permission que le reste du Journal (Directeur/admin). */
 
-const TOKEN = {
-  primary: 'var(--primary)',
-  muted: 'var(--muted-foreground)',
-  grid: 'var(--border)',
-  surface: 'var(--popover)',
-}
-
-const tooltipStyle = {
-  borderRadius: 10,
-  fontSize: 12,
-  border: `1px solid ${TOKEN.grid}`,
-  background: TOKEN.surface,
-  color: 'var(--popover-foreground)',
-  boxShadow: 'var(--shadow-md)',
-}
-
 const PERIODS = [
   { value: 'jour', label: 'Jour' },
   { value: 'semaine', label: 'Semaine' },
   { value: 'mois', label: 'Mois' },
 ]
 
-// Modèle → route de liste (lien retour « au mieux »).
+// VX236 — Journal menait vers des LISTES NUES (le lien ne portait que la
+// route de base, jamais l'objet précis) : chaque entrée devient une FONCTION
+// `(objectId) => path`, réutilisant les deep-links déjà posés par VX79/VX22
+// (`?lead=`/`?devis=`/`?id=`) — jamais une route inventée. Les modèles sans
+// deep-link confirmé (avoir/équipement/produit/admin) retombent sur leur
+// route de liste inchangée (comportement identique à avant).
 const MODEL_ROUTES = {
-  lead: '/crm/leads',
-  client: '/crm',
-  devis: '/ventes/devis',
-  facture: '/ventes/factures',
-  avoir: '/ventes/avoirs',
-  installation: '/chantiers',
-  intervention: '/chantiers',
-  ticket: '/sav',
-  equipement: '/equipements',
-  produit: '/stock',
-  customuser: '/admin/users',
-  role: '/admin/roles',
-  companyprofile: '/parametres',
+  lead: (id) => `/crm/leads?lead=${id}`,
+  client: (id) => `/crm?id=${id}`,
+  devis: (id) => `/ventes/devis?devis=${id}`,
+  facture: (id) => `/ventes/factures?id=${id}`,
+  avoir: () => '/ventes/avoirs',
+  installation: (id) => `/chantiers?id=${id}`,
+  intervention: (id) => `/chantiers?id=${id}`,
+  ticket: (id) => `/sav?id=${id}`,
+  equipement: () => '/equipements',
+  produit: () => '/stock',
+  customuser: () => '/admin/users',
+  role: () => '/admin/roles',
+  companyprofile: () => '/parametres',
 }
 
 const todayISO = () => {
@@ -199,8 +189,19 @@ function AsOfTrigger({ contentType, objectId, label }) {
 }
 
 export default function Journal() {
-  const permissions = useSelector((s) => s.auth.permissions) || []
-  const allowed = permissions.includes('journal_activite_voir')
+  const allowed = useHasPermission('journal_activite_voir')
+
+  // VX98 — deep-link « Historique » depuis une fiche : ?model=devis&object_id=42
+  // pré-filtre le journal sur CET objet (le backend filtre content_type__model +
+  // object_id). Un bouton « Voir tout le journal » retire le filtre.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const modelParam = searchParams.get('model') || ''
+  const objectIdParam = searchParams.get('object_id') || ''
+  const clearObjectFilter = () => {
+    const next = new URLSearchParams(searchParams)
+    next.delete('model'); next.delete('object_id')
+    setSearchParams(next, { replace: true })
+  }
 
   const [period, setPeriod] = useState('jour')
   const [date, setDate] = useState(todayISO())
@@ -216,6 +217,9 @@ export default function Journal() {
   const [count, setCount] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  // VX204 — un échec de `getMeta()` rendait des menus de filtre vides sans le
+  // dire (indiscernable de « aucune valeur possible »).
+  const [metaError, setMetaError] = useState(false)
 
   const range = useMemo(() => periodRange(period, date), [period, date])
 
@@ -226,13 +230,21 @@ export default function Journal() {
     if (action) p.action = action
     if (moduleF) p.module = moduleF
     if (search.trim()) p.search = search.trim()
+    // VX98 — pré-filtre deep-link (fiche → journal sur cet objet).
+    if (modelParam) p.model = modelParam
+    if (objectIdParam) p.object_id = objectIdParam
     return p
-  }, [users, action, moduleF, search])
+  }, [users, action, moduleF, search, modelParam, objectIdParam])
 
   // Métadonnées (une fois).
+  const loadMeta = () => {
+    auditApi.getMeta()
+      .then((r) => { setMeta(r.data); setMetaError(false) })
+      .catch(() => setMetaError(true))
+  }
   useEffect(() => {
     if (!allowed) return
-    auditApi.getMeta().then((r) => setMeta(r.data)).catch(() => {})
+    loadMeta()
   }, [allowed])
 
   // Graphe + table : période + date + filtres + page. Le setState vit dans une
@@ -304,14 +316,25 @@ export default function Journal() {
 
   return (
     <div className="ui-root min-h-full p-4 sm:p-6">
-      <header className="mb-5">
-        <h2 className="font-display text-xl font-bold tracking-tight text-foreground">
-          Journal d'activité
-        </h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Qui a fait quoi, et quand — heures en Africa/Casablanca.
-        </p>
-      </header>
+      {/* VX28 — PageHeader unifié (remplace le <h2> nu + sous-titre). */}
+      <PageHeader
+        title="Journal d'activité"
+        subtitle="Qui a fait quoi, et quand — heures en Africa/Casablanca."
+      />
+
+      {/* VX98 — bandeau « filtré sur cet objet » quand on arrive via le bouton
+          « Historique » d'une fiche (?model=&object_id=). */}
+      {(modelParam || objectIdParam) && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-sm">
+          <span className="text-foreground">
+            Journal filtré sur {modelParam || 'objet'}
+            {objectIdParam ? ` #${objectIdParam}` : ''}
+          </span>
+          <Button size="sm" variant="outline" onClick={clearObjectFilter}>
+            Voir tout le journal
+          </Button>
+        </div>
+      )}
 
       {/* Switcher période + date */}
       <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -324,6 +347,13 @@ export default function Journal() {
           className="h-[var(--control-h)] rounded-md border border-input bg-card px-[var(--control-px)] text-sm text-foreground shadow-ui-xs focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
       </div>
+
+      {metaError && (
+        <p className="form-error mb-2" role="alert">
+          Filtres indisponibles (utilisateurs/actions/modules).{' '}
+          <button type="button" className="chatter-retry" onClick={loadMeta}>Réessayer</button>
+        </p>
+      )}
 
       {/* Barre de filtres */}
       <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -381,19 +411,18 @@ export default function Journal() {
               {loading && !stats ? (
                 <Skeleton className="h-48 w-full" />
               ) : !hasChartData ? (
-                <p className="py-8 text-center text-sm text-muted-foreground">
-                  Aucune activité sur cette période.
-                </p>
+                <ChartEmpty title="Aucune activité" description="Aucune activité sur cette période." />
               ) : (
-                <ResponsiveContainer width="100%" height={220}>
-                  <BarChart data={chartData} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={TOKEN.grid} vertical={false} />
-                    <XAxis dataKey="label" tick={{ fontSize: 11, fill: TOKEN.muted }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
-                    <YAxis allowDecimals={false} width={32} tick={{ fontSize: 11, fill: TOKEN.muted }} tickLine={false} axisLine={false} />
-                    <Tooltip cursor={{ fill: 'var(--muted)' }} contentStyle={tooltipStyle} formatter={(v) => [formatNumber(v), 'Évènements']} />
-                    <Bar dataKey="count" radius={[4, 4, 0, 0]} fill={TOKEN.primary} barSize={period === 'jour' ? 10 : 18} />
-                  </BarChart>
-                </ResponsiveContainer>
+                <BarArrondie
+                  data={chartData}
+                  dataKey="count"
+                  categoryKey="label"
+                  tone="primary"
+                  name="Évènements"
+                  height={220}
+                  barSize={period === 'jour' ? 10 : 18}
+                  tooltipFormat={(v) => formatNumber(v)}
+                />
               )}
             </CardContent>
           </Card>
@@ -423,20 +452,24 @@ export default function Journal() {
                     <tr><td colSpan={6} className="px-4 py-10 text-center text-sm text-muted-foreground">Aucune entrée pour ces filtres.</td></tr>
                   ) : (
                     entries.map((e) => {
-                      const route = MODEL_ROUTES[e.model]
+                      // VX236 — MODEL_ROUTES est désormais `(objectId) => path` :
+                      // le lien pointe sur CET enregistrement précis quand un
+                      // deep-link existe, jamais seulement la liste nue.
+                      const routeFn = MODEL_ROUTES[e.model]
+                      const route = routeFn && e.object_id ? routeFn(e.object_id) : null
                       // YHARD3 — content_type "app_label.model" (`module` sert
                       // en fait l'app_label côté serializer, cf. auditApi).
                       const contentType = e.module && e.model ? `${e.module}.${e.model}` : null
                       return (
                         <tr key={e.id} className="border-b border-border/60 last:border-b-0 hover:bg-accent/40">
                           <td className="px-4 py-2.5 whitespace-nowrap text-muted-foreground">
-                            {e.timestamp_local ? new Date(e.timestamp_local).toLocaleString('fr-FR') : '—'}
+                            {e.timestamp_local ? formatDateTime(e.timestamp_local) : '—'}
                           </td>
                           <td className="px-4 py-2.5 text-foreground">{e.utilisateur}</td>
                           <td className="px-4 py-2.5"><Badge tone="info">{e.action_label}</Badge></td>
                           <td className="px-4 py-2.5">
                             {e.object_repr
-                              ? (route && e.object_id
+                              ? (route
                                   ? <Link to={route} className="text-primary hover:underline">{e.object_repr}</Link>
                                   : <span className="text-foreground">{e.object_repr}</span>)
                               : <span className="text-muted-foreground">—</span>}

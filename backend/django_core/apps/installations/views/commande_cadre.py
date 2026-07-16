@@ -16,8 +16,8 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.viewsets import CompanyScopedModelViewSet
 
 from apps.ventes.utils.references import create_with_reference
 
@@ -30,7 +30,7 @@ from ..serializers import (
 READ_ACTIONS = ['list', 'retrieve']
 
 
-class CommandeCadreViewSet(TenantMixin, viewsets.ModelViewSet):
+class CommandeCadreViewSet(CompanyScopedModelViewSet):
     """FG314 — contrats-cadres. Lecture tout rôle, écriture responsable/admin.
     Référence anti-collision + société + `created_by` posés serveur ;
     `fournisseur` validé tenant. Filtrable par `statut`, `fournisseur`. Cycle de
@@ -143,7 +143,7 @@ class CommandeCadreLigneViewSet(viewsets.ModelViewSet):
         serializer.save()
 
 
-class AppelCommandeViewSet(TenantMixin, viewsets.ModelViewSet):
+class AppelCommandeViewSet(CompanyScopedModelViewSet):
     """FG314 — commandes d'appel sur une ligne de contrat-cadre. Garde : la
     quantité appelée ne peut pas dépasser le volume engagé restant. Société +
     `created_by` posés serveur ; ligne/chantier validés tenant. Filtrable par

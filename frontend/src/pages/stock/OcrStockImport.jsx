@@ -6,6 +6,7 @@ import {
   ChevronLeft, ChevronRight, RefreshCw, Building2, Repeat, Upload, ArrowDownUp,
 } from 'lucide-react'
 import { FileUpload } from '../../ui/FileUpload'
+import { formatMAD } from '../../lib/format'
 import {
   Button, Badge, Spinner, Card, EmptyState,
   Input, Segmented, Checkbox,
@@ -26,7 +27,7 @@ import {
   fetchMouvements,
 } from '../../features/stock/store/stockSlice'
 import stockApi from '../../api/stockApi'
-import { useCanCreateProduit } from '../../hooks/useHasPermission'
+import { useCanCreateProduit, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 
 const DOC_LABELS = {
   bon_livraison: 'Bon de livraison',
@@ -120,7 +121,8 @@ export default function OcrStockImport() {
   // d'un réessai ciblé des échecs pour ne pas le recréer en double (750).
   const resolvedFournisseurRef = useRef(null)
 
-  const role = useSelector((s) => s.auth.role)
+  // ARC47 — accès à l'écran gaté via le hook partagé (responsable/admin).
+  const canAccess = useIsAdminOrResponsable()
   // QG5 — la création de produit (ligne « Créer ») est réservée à Directeur +
   // Commercial responsable (miroir UX de la garde backend QG4) ; les autres
   // rôles autorisés à voir cet écran (responsable/admin) ne peuvent que
@@ -524,7 +526,7 @@ const cp = produitsRef.current
     }
   }
 
-  if (role !== 'responsable' && role !== 'admin') {
+  if (!canAccess) {
     return (
       <div className="ui-root px-6 py-12">
         <EmptyState icon={AlertTriangle} title="Accès restreint"
@@ -933,7 +935,7 @@ function LigneCard({ ligne, produits, categories, onChange, docType, canCreatePr
               Prix achat HT détecté : {ligne.prix_unitaire} DH
               {ligne.tva != null && (
                 <span className="ml-1.5 text-info">
-                  · TVA {ligne.tva}% · TTC {(parseFloat(ligne.prix_unitaire) * (1 + ligne.tva / 100)).toFixed(2)} DH
+                  · TVA {ligne.tva}% · TTC {formatMAD(parseFloat(ligne.prix_unitaire) * (1 + ligne.tva / 100), { withSymbol: false })} DH
                 </span>
               )}
             </p>
@@ -1060,7 +1062,7 @@ function LigneCard({ ligne, produits, categories, onChange, docType, canCreatePr
                 <span className="ml-1.5 font-normal text-muted-foreground">
                   · TVA {ligne.tva}%
                   {parseFloat(ligne.nouveau_prix_achat) > 0 && (
-                    <span className="text-info"> → TTC {(parseFloat(ligne.nouveau_prix_achat) * (1 + ligne.tva / 100)).toFixed(2)} DH</span>
+                    <span className="text-info"> → TTC {formatMAD(parseFloat(ligne.nouveau_prix_achat) * (1 + ligne.tva / 100), { withSymbol: false })} DH</span>
                   )}
                 </span>
               )}
@@ -1074,7 +1076,7 @@ function LigneCard({ ligne, produits, categories, onChange, docType, canCreatePr
                 <AlertCircle className="size-3.5" />
                 Prix de vente à définir plus tard selon votre marge
                 {parseFloat(ligne.nouveau_prix_achat) > 0 && (
-                  <span className="text-muted-foreground">(achat HT : {parseFloat(ligne.nouveau_prix_achat).toFixed(2)} DH)</span>
+                  <span className="text-muted-foreground">(achat HT : {formatMAD(ligne.nouveau_prix_achat, { withSymbol: false })} DH)</span>
                 )}
               </div>
             </div>

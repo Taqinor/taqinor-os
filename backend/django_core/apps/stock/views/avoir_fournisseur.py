@@ -2,7 +2,7 @@ from django.db import transaction  # noqa: F401
 from rest_framework import viewsets, filters, status  # noqa: F401
 from rest_framework.decorators import action  # noqa: F401
 from rest_framework.response import Response  # noqa: F401
-from authentication.mixins import TenantMixin  # noqa: F401
+from core.viewsets import CompanyScopedModelViewSet
 from apps.ventes.utils.references import create_with_reference  # noqa: F401
 from ..models import AvoirFournisseur, FactureFournisseur
 from ..serializers import AvoirFournisseurSerializer
@@ -17,7 +17,7 @@ READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
 
-class AvoirFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
+class AvoirFournisseurViewSet(CompanyScopedModelViewSet):
     """XPUR9 — avoirs fournisseur (notes de crédit AP). Numérotation sans
     trou (préfixe AVF). `valider` passe brouillon → validé ; `imputer`
     réduit le solde dû d'une facture du même fournisseur. INTERNE."""

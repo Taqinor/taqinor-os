@@ -43,12 +43,22 @@ const MapIcon = () => (
   </svg>
 )
 
+// XSAL15 — Icône prévision (calendrier + tendance), la forecast view d'Odoo.
+const ForecastIcon = () => (
+  <svg {...ICON}>
+    <rect x="3" y="4" width="18" height="17" rx="2" />
+    <line x1="3" y1="9" x2="21" y2="9" />
+    <path d="M7 17l3-4 3 2 4-6" />
+  </svg>
+)
+
 const VIEWS = [
   { key: 'kanban', label: 'Vue kanban', Icon: KanbanIcon },
   { key: 'liste', label: 'Vue liste', Icon: ListIcon },
   { key: 'calendrier', label: 'Vue calendrier', Icon: CalendarIcon },
   { key: 'graphique', label: 'Vue graphique', Icon: ChartIcon },
   { key: 'carte', label: 'Vue carte', Icon: MapIcon },  // FG37
+  { key: 'prevision', label: 'Vue prévision', Icon: ForecastIcon },  // XSAL15
 ]
 
 export default function ViewSwitcher({ view, setView }) {

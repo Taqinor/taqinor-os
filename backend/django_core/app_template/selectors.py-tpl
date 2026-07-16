@@ -1,0 +1,16 @@
+"""Sélecteurs (lectures) du module « {{ app_label }} » (généré par startapp_erp).
+
+FRONTIÈRE INTER-APPS (import-linter) — un AUTRE app qui a besoin de LIRE des
+données de ce module passe par une fonction de CE fichier (jamais en important
+``apps.{{ app_label }}.models`` / ``.views`` directement). Ajouter ici une fonction
+fine et l'exposer ; garder les imports paresseux (fonction-locaux) là où ils
+évitent les cycles au chargement des apps.
+"""
+from __future__ import annotations
+
+# Exemple :
+#
+# def exemples_de_societe(company):
+#     """Exemples visibles pour ``company`` (lecture cross-app sûre)."""
+#     from .models import Exemple
+#     return Exemple.objects.filter(company=company)

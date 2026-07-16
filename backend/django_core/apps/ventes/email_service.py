@@ -18,15 +18,41 @@ Stack d'envoi :
 Chaque envoi est consigné dans `EmailLog` (fil du client + document) ET, pour un
 devis, une note est ajoutée au chatter `DevisActivity` — on réutilise le patron
 d'activité existant, on n'invente pas de nouveau mécanisme de log.
+
+ARC39 — ce module envoie des emails CLIENTS (documents/relances), PAS des
+notifications internes : exception documentée à la règle « plus d'email brut
+interne » (cf. `apps/notifications/`), au même titre que
+`installations/rfq_service.py` et le rapport O&M client de
+`monitoring/report.py`.
 """
 import logging
 
 from django.conf import settings
-from django.core.mail import EmailMessage, get_connection
+from django.core.mail import EmailMultiAlternatives, get_connection
 
 from .models import EmailLog
 
 logger = logging.getLogger(__name__)
+
+
+def _branded_html(company, sujet, corps):
+    """VX76 — wrapper HTML de marque (logo + en-tête navy + pied) autour du
+    corps texte existant. Best-effort : jamais d'exception, jamais de
+    changement du corps texte brut conservé en repli MIME."""
+    try:
+        from apps.parametres.selectors import company_identity
+        from core.selectors import wrap_email_html
+        identite = company_identity(company) if company is not None else {}
+        return wrap_email_html(
+            sujet, corps,
+            company_nom=identite.get('nom', ''),
+            company_adresse=identite.get('adresse', ''),
+            company_telephone=identite.get('telephone', ''),
+            company_email=identite.get('email', ''),
+            couleur_principale=identite.get('couleur_principale', ''),
+        )
+    except Exception:  # noqa: BLE001 — un email ne casse jamais sur ce point
+        return ''
 
 
 def is_email_configured():
@@ -65,17 +91,63 @@ def _from_email():
     return getattr(settings, 'DEFAULT_FROM_EMAIL', '') or 'noreply@erp.local'
 
 
-def _send(to_email, sujet, corps, attachment=None, attachment_name=None):
+def _reply_to_address():
+    """QX36 — adresse Reply-To des emails sortants (devis/facture).
+
+    Pointe vers la boîte entrante relevée par ``core.email_intake`` /
+    ``ventes.inbound_email`` pour qu'une réponse client revienne s'attacher au
+    devis. Précédence : ``INBOUND_REPLY_EMAIL`` (settings/env) → adresse
+    d'expédition par défaut. Vide → pas de Reply-To (comportement inchangé)."""
+    return (getattr(settings, 'INBOUND_REPLY_EMAIL', '') or '').strip()
+
+
+def _signature(company, **context):
+    """SCA25 — signature d'email de la société (BrandedTemplate ou repli neutre).
+
+    Résout le nom de la société via ``parametres.company_identity``
+    (``CompanyProfile``) puis délègue à ``core.selectors.resolve_email_signature``
+    qui applique le ``BrandedTemplate`` de la société s'il existe, sinon
+    « L'équipe {nom} ». Plus jamais « TAQINOR » codé en dur : le fondateur ne
+    voit son nom que parce que SON profil le porte. Ne casse jamais l'envoi."""
+    nom = ''
+    try:
+        from apps.parametres.selectors import company_identity
+        nom = (company_identity(company).get('nom') or '').strip()
+    except Exception:  # noqa: BLE001 — un email ne casse jamais sur ce point
+        nom = ''
+    try:
+        from core.selectors import resolve_email_signature
+        return resolve_email_signature(company, nom, **context)
+    except Exception:  # noqa: BLE001 — repli ultime, jamais d'échec d'envoi
+        return f"L'équipe {nom}" if nom else "L'équipe"
+
+
+def _send(to_email, sujet, corps, attachment=None, attachment_name=None,
+          company=None):
     """Envoie via le backend Django configuré. Retourne (ok, erreur).
 
     Sans clé configurée → backend console → l'email est « envoyé » sans appel
     réseau ni exception (NO-OP). Toute exception réelle est capturée et
-    renvoyée comme erreur, jamais propagée à l'appelant."""
+    renvoyée comme erreur, jamais propagée à l'appelant.
+
+    QX36 — pose un ``Reply-To`` vers la boîte entrante (si configurée) pour
+    qu'une réponse client atterrisse sur le fil du devis (voir
+    ``ventes.inbound_email``).
+
+    VX76 — le corps texte existant reste le corps MIME principal (repli
+    ``text/plain`` inchangé) ; une alternative ``text/html`` brandée
+    (wrapper logo/en-tête navy/pied) est ajoutée quand le rendu réussit —
+    additif, jamais cassant."""
     try:
         connection = get_connection(fail_silently=False)
-        msg = EmailMessage(
+        reply_to = _reply_to_address()
+        msg = EmailMultiAlternatives(
             subject=sujet, body=corps, from_email=_from_email(),
-            to=[to_email], connection=connection)
+            to=[to_email], connection=connection,
+            reply_to=[reply_to] if reply_to else None)
+        html = _branded_html(company, sujet, corps)
+        if html:
+            msg.attach_alternative(html, 'text/html')
         if attachment and attachment_name:
             msg.attach(attachment_name, attachment, 'application/pdf')
         msg.send(fail_silently=False)
@@ -89,17 +161,37 @@ def _document_pdf(document):
     """Récupère les octets du PDF stocké d'un document (best-effort).
 
     Renvoie (bytes, nom_fichier) ou (None, None). Jamais d'exception remontée :
-    un PDF indisponible n'empêche pas l'envoi du corps de l'email."""
+    un PDF indisponible n'empêche pas l'envoi du corps de l'email.
+
+    QX9 — pour un devis signé, PRÉFÈRE la clé du PDF SIGNÉ persistée sur le
+    ``DevisSignature`` (``signed_pdf_key``) : c'est l'exemplaire promis
+    « ci-joint votre exemplaire signé ». À défaut, on retombe sur
+    ``document.fichier_pdf``. La branche « aucune pièce jointe » est désormais
+    journalisée (elle était silencieuse — un email promettant un PDF partait
+    sans PDF sans trace)."""
     key = getattr(document, 'fichier_pdf', None)
-    if not key:
+    # QX9 — préfère l'exemplaire signé s'il existe (devis accepté).
+    signed_key = None
+    try:
+        sig = getattr(document, 'signature', None)
+        if sig is not None:
+            signed_key = getattr(sig, 'signed_pdf_key', None) or None
+    except Exception:  # noqa: BLE001 — pas de signature liée → ignore
+        signed_key = None
+    chosen = signed_key or key
+    ref = getattr(document, 'reference', 'document')
+    if not chosen:
+        logger.warning(
+            'QX9: aucun PDF disponible en pièce jointe pour %s '
+            '(ni signed_pdf_key ni fichier_pdf) — email envoyé sans exemplaire',
+            ref)
         return None, None
     try:
         from .utils.pdf import download_pdf
-        data = download_pdf(key)
-        ref = getattr(document, 'reference', 'document')
+        data = download_pdf(chosen)
         return data, f'{ref}.pdf'
     except Exception as exc:
-        logger.warning('PDF indisponible pour pièce jointe : %s', exc)
+        logger.warning('PDF indisponible pour pièce jointe (%s) : %s', ref, exc)
         return None, None
 
 
@@ -138,12 +230,14 @@ def send_document_email(document, *, to_email=None, sujet=None, corps=None,
         if client is not None:
             nom_client = f"{client.nom} {getattr(client, 'prenom', '') or ''}".strip()
         salut = f'Bonjour {nom_client},' if nom_client else 'Bonjour,'
+        signature = _signature(
+            getattr(document, 'company', None), reference=reference)
         corps = (
             f"{salut}\n\n"
             f"Veuillez trouver ci-joint votre {type_doc} "
             f"{reference}.\n\n"
             f"Nous restons à votre disposition pour toute question.\n\n"
-            f"Cordialement,\nL'équipe TAQINOR"
+            f"Cordialement,\n{signature}"
         )
 
     attachment = attachment_name = None
@@ -170,7 +264,9 @@ def send_document_email(document, *, to_email=None, sujet=None, corps=None,
         log.save()
         return log
 
-    ok, err = _send(dest, sujet, corps, attachment, attachment_name)
+    ok, err = _send(
+        dest, sujet, corps, attachment, attachment_name,
+        company=getattr(document, 'company', None))
     log.statut = EmailLog.Statut.ENVOYE if ok else EmailLog.Statut.ECHEC
     log.erreur = err
     log.save()
@@ -203,9 +299,11 @@ def send_relance_email(facture, *, niveau_nom='', message='', user=None,
     corps_msg = message.strip() if message else (
         f"Sauf erreur de notre part, la facture {reference} reste impayée. "
         f"Nous vous remercions de bien vouloir procéder à son règlement.")
+    signature = _signature(
+        getattr(facture, 'company', None), reference=reference)
     corps = (
         f"{salut}\n\n{corps_msg}\n\n"
-        f"Cordialement,\nL'équipe TAQINOR"
+        f"Cordialement,\n{signature}"
     )
 
     attachment = attachment_name = None
@@ -228,7 +326,9 @@ def send_relance_email(facture, *, niveau_nom='', message='', user=None,
         log.save()
         return log
 
-    ok, err = _send(dest, sujet, corps, attachment, attachment_name)
+    ok, err = _send(
+        dest, sujet, corps, attachment, attachment_name,
+        company=getattr(facture, 'company', None))
     log.statut = EmailLog.Statut.ENVOYE if ok else EmailLog.Statut.ECHEC
     log.erreur = err
     log.save()
@@ -266,9 +366,11 @@ def send_pre_echeance_email(facture, *, user=None):
         getattr(facture, 'company', None), 'pre_echeance',
         civilite=civilite, nom=nom_client, reference=reference, lien=lien)
     sujet = rendered['sujet'] or f'Rappel amical — échéance {reference}'
+    signature = _signature(
+        getattr(facture, 'company', None), reference=reference)
     corps = rendered['corps'] or (
         f"Bonjour {nom_client},\n\nVotre facture {reference} arrive "
-        f"prochainement à échéance.\n\nCordialement,\nL'équipe TAQINOR")
+        f"prochainement à échéance.\n\nCordialement,\n{signature}")
 
     log = EmailLog(
         company=getattr(facture, 'company', None),
@@ -285,7 +387,7 @@ def send_pre_echeance_email(facture, *, user=None):
         log.save()
         return log
 
-    ok, err = _send(dest, sujet, corps)
+    ok, err = _send(dest, sujet, corps, company=getattr(facture, 'company', None))
     log.statut = EmailLog.Statut.ENVOYE if ok else EmailLog.Statut.ECHEC
     log.erreur = err
     log.save()
@@ -308,10 +410,12 @@ def send_recu_email(paiement, *, user=None, to_email=None):
         nom_client = f"{client.nom} {getattr(client, 'prenom', '') or ''}".strip()
     salut = f'Bonjour {nom_client},' if nom_client else 'Bonjour,'
     sujet = f'Quittance de paiement — {reference}'
+    signature = _signature(
+        getattr(paiement, 'company', None), reference=reference)
     corps = (
         f"{salut}\n\nVeuillez trouver ci-joint votre quittance pour le "
         f"règlement de {paiement.montant} MAD.\n\n"
-        f"Cordialement,\nL'équipe TAQINOR"
+        f"Cordialement,\n{signature}"
     )
 
     log = EmailLog(
@@ -337,7 +441,8 @@ def send_recu_email(paiement, *, user=None, to_email=None):
 
     ok, err = _send(
         dest, sujet, corps, pdf_bytes,
-        f'Quittance_{reference}.pdf' if pdf_bytes else None)
+        f'Quittance_{reference}.pdf' if pdf_bytes else None,
+        company=getattr(paiement, 'company', None))
     log.statut = EmailLog.Statut.ENVOYE if ok else EmailLog.Statut.ECHEC
     log.erreur = err
     log.save()
@@ -361,9 +466,10 @@ def send_releve_email(client, releve_data, *, user=None):
 
     nom_client = f"{client.nom} {getattr(client, 'prenom', '') or ''}".strip()
     sujet = f'Relevé de compte — {nom_client}'
+    signature = _signature(getattr(client, 'company', None))
     corps = (
         f"Bonjour {nom_client},\n\nVeuillez trouver ci-joint votre relevé "
-        f"de compte mensuel.\n\nCordialement,\nL'équipe TAQINOR"
+        f"de compte mensuel.\n\nCordialement,\n{signature}"
     )
 
     log = EmailLog(
@@ -382,7 +488,8 @@ def send_releve_email(client, releve_data, *, user=None):
 
     ok, err = _send(
         dest, sujet, corps, pdf_bytes,
-        f'Releve_{client.nom}.pdf' if pdf_bytes else None)
+        f'Releve_{client.nom}.pdf' if pdf_bytes else None,
+        company=getattr(client, 'company', None))
     log.statut = EmailLog.Statut.ENVOYE if ok else EmailLog.Statut.ECHEC
     log.erreur = err
     log.save()

@@ -1,8 +1,9 @@
-import { forwardRef, useEffect, useMemo, useRef, useState } from 'react'
+import { forwardRef, useEffect, useId, useMemo, useRef, useState } from 'react'
 import * as PopoverPrimitive from '@radix-ui/react-popover'
 import { AlertCircle, Check, ChevronsUpDown, X } from 'lucide-react'
 import { cn } from '../lib/cn'
 import { Spinner } from './Spinner'
+import { pressItem } from './interaction'
 
 /* G23 — Combobox/autocomplete (sélection simple, recherche). Données soit
    statiques (`options`), soit asynchrones via `onSearch(query) => Promise<opts>`.
@@ -12,7 +13,7 @@ import { Spinner } from './Spinner'
 const triggerBase =
   'flex w-full items-center justify-between gap-2 rounded-md border border-input bg-card text-foreground shadow-ui-xs ' +
   'h-[var(--control-h)] px-[var(--control-px)] text-base sm:text-sm transition-colors ' +
-  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-ring ' +
+  'focus-ring focus-visible:border-ring ' +
   'disabled:cursor-not-allowed disabled:opacity-60 ' +
   'aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30'
 
@@ -46,6 +47,8 @@ export const Combobox = forwardRef(function Combobox(
   const inputRef = useRef(null)
   const listRef = useRef(null)
   const reqIdRef = useRef(0)
+  // VX128 — id stable par option, base pour `aria-activedescendant`.
+  const listId = useId()
 
   // Recherche asynchrone (débounce léger, garde anti-réponse-périmée).
   useEffect(() => {
@@ -79,6 +82,11 @@ export const Combobox = forwardRef(function Combobox(
     [options, asyncOpts, value],
   )
 
+  // VX128 — id de l'option active suivant le curseur clavier, posé sur
+  // `aria-activedescendant` du champ de recherche : NVDA/VoiceOver annoncent
+  // enfin l'option survolée en parcourant la liste (0 occurrence avant).
+  const activeOptId = filtered[cursor] ? `${listId}-opt-${cursor}` : undefined
+
   useEffect(() => {
     if (open) requestAnimationFrame(() => inputRef.current?.focus())
     else { setQuery(''); setCursor(0) }
@@ -106,6 +114,12 @@ export const Combobox = forwardRef(function Combobox(
       pick(filtered[cursor])
     } else if (e.key === 'Escape') {
       setOpen(false)
+    } else if (e.key === 'Tab' && !e.shiftKey) {
+      // VX238(b) — Tab sélectionne l'option courante SANS bloquer la
+      // tabulation (pas de preventDefault) : le focus continue naturellement
+      // vers le champ suivant au lieu de blur à vide en perdant la recherche.
+      const opt = filtered[cursor]
+      if (opt && !opt.disabled) pick(opt)
     }
   }
 
@@ -152,6 +166,8 @@ export const Combobox = forwardRef(function Combobox(
               type="text"
               role="searchbox"
               aria-autocomplete="list"
+              aria-controls={listId}
+              aria-activedescendant={activeOptId}
               autoComplete="off"
               value={query}
               onChange={(e) => { setQuery(e.target.value); setCursor(0) }}
@@ -160,7 +176,7 @@ export const Combobox = forwardRef(function Combobox(
               className="h-8 w-full rounded-md bg-transparent px-2 text-base outline-none placeholder:text-muted-foreground sm:text-sm"
             />
           </div>
-          <div ref={listRef} role="listbox" className="max-h-60 overflow-y-auto p-1">
+          <div ref={listRef} id={listId} role="listbox" className="max-h-60 overflow-y-auto p-1">
             {loading && (
               <div className="flex items-center justify-center gap-2 py-6 text-sm text-muted-foreground">
                 <Spinner className="size-4" /> Chargement…
@@ -181,6 +197,7 @@ export const Combobox = forwardRef(function Combobox(
               return (
                 <button
                   key={String(opt.value)}
+                  id={`${listId}-opt-${i}`}
                   type="button"
                   role="option"
                   aria-selected={isSel}
@@ -192,6 +209,7 @@ export const Combobox = forwardRef(function Combobox(
                     'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm outline-none',
                     isCur && 'bg-accent text-accent-foreground',
                     opt.disabled && 'cursor-not-allowed opacity-50',
+                    pressItem,
                   )}
                 >
                   <Check className={cn('size-4 shrink-0', isSel ? 'opacity-100' : 'opacity-0')} />

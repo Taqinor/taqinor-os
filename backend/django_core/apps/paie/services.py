@@ -412,7 +412,39 @@ def changer_statut(periode, nouveau_statut):
     if nouveau_statut == PeriodePaie.STATUT_CLOTUREE:
         periode.date_cloture = timezone.now()
     periode.save(update_fields=['statut', 'date_cloture'])
+    if nouveau_statut == PeriodePaie.STATUT_VALIDEE:
+        # ARC39 — le run devient PRÊT (tous les bulletins validés) : notifie
+        # les gestionnaires paie. Best-effort, jamais bloquant pour la
+        # transition elle-même (déjà persistée ci-dessus).
+        try:
+            notifier_run_pret(periode)
+        except Exception:  # pragma: no cover - défensif, best-effort
+            pass
     return periode
+
+
+def notifier_run_pret(periode):
+    """Notifie (best-effort) les gestionnaires paie qu'un run est PRÊT (ARC39).
+
+    Déclenché quand une ``PeriodePaie`` atteint le statut ``validee`` (tous
+    ses bulletins sont validés — le run peut passer à la génération de
+    l'ordre de virement / la clôture). Résout les destinataires via
+    ``apps.notifications.resolve_recipients`` (repli Responsable/Admin),
+    comme les autres notifications paie (ARC25, XPAI6, ZPAI12). Jamais
+    bloquant : toute erreur est avalée par l'appelant (``changer_statut``).
+    """
+    from apps.notifications import services as notif_services
+
+    company = periode.company
+    recipients = notif_services.resolve_recipients(company, 'paie_run_pret')
+    titre = f'Run de paie prêt ({periode.mois:02d}/{periode.annee})'
+    corps = (
+        f'La période {periode.mois:02d}/{periode.annee} est validée '
+        '(tous les bulletins sont validés) — prête pour l\'ordre de '
+        'virement / la clôture.')
+    notif_services.notify_many(
+        recipients, 'paie_run_pret', title=titre, body=corps,
+        company=company)
 
 
 # ── PAIE11 — Import des éléments variables depuis RH ───────────────────────
@@ -2859,6 +2891,59 @@ FICHIER_VIREMENT_PAIE_HEADERS = [
 ]
 
 
+def controler_coherence_rib(periode):
+    """Contrôle croisé RIB paie ↔ RH d'un run de virement (ARC25, lecture seule).
+
+    Lit les divergences via ``apps.paie.selectors.divergences_rib_periode``
+    (``ProfilPaie.rib`` vs ``rh.DossierEmploye.rib`` — CONTRÔLE, jamais fusion)
+    et, s'il y en a, émet UNE notification interne vers les responsables paie
+    (``apps.notifications.resolve_recipients`` → repli Responsable/Admin) pour
+    qu'un humain tranche AVANT de figer le virement. AUCUNE divergence → SILENCE
+    (aucune notification).
+
+    ARC39 — l'événement ``'paie_rib_divergence'`` est désormais un
+    ``EventType`` ENREGISTRÉ (``PAIE_RIB_DIVERGENCE``) : la ligne in-app est
+    donc réellement persistée (avant, ``notify()`` journalisait un
+    avertissement et renvoyait ``None`` silencieusement).
+
+    Best-effort et STRICTEMENT non bloquant : toute erreur (lecture ou
+    notification) est avalée — un échec de contrôle ne doit JAMAIS empêcher la
+    génération de l'ordre de virement. Renvoie la liste des divergences
+    détectées (vide si tout concorde ou en cas d'erreur).
+    """
+    from . import selectors as paie_selectors
+
+    company = getattr(periode, 'company', None)
+    if company is None:
+        return []
+    try:
+        divergences = paie_selectors.divergences_rib_periode(periode)
+    except Exception:  # pragma: no cover - défensif, best-effort
+        return []
+    if not divergences:
+        return []
+
+    try:
+        from apps.notifications import services as notif_services
+
+        recipients = notif_services.resolve_recipients(
+            company, 'paie_rib_divergence')
+        nb = len(divergences)
+        titre = (
+            'Divergence RIB paie ↔ RH avant virement '
+            f'({periode.mois:02d}/{periode.annee})')
+        corps = (
+            f'{nb} salarié(s) payé(s) par virement ont un RIB de paie '
+            'différent du RIB de leur fiche RH. À vérifier avant d\'émettre '
+            'l\'ordre de virement (aucune modification automatique).')
+        notif_services.notify_many(
+            recipients, 'paie_rib_divergence',
+            title=titre, body=corps, company=company)
+    except Exception:  # pragma: no cover - défensif, best-effort
+        pass
+    return divergences
+
+
 def generer_ordre_virement(periode, *, date_execution=None, rib_emetteur='',
                            compte_emetteur=None):
     """Génère (ou régénère) l'ordre de virement d'une période (PAIE30).
@@ -2964,7 +3049,16 @@ def generer_ordre_virement(periode, *, date_execution=None, rib_emetteur='',
         ordre.save(update_fields=['total', 'nombre_lignes', 'libelle',
                                   'date_execution', 'rib_emetteur',
                                   'compte_emetteur', 'devise'])
-        return ordre
+
+    # ARC25 — contrôle croisé RIB paie ↔ RH APRÈS la transaction : divergence →
+    # notification interne, concordance → silence. Strictement best-effort :
+    # jamais dans l'atomic (une I/O de notification ne doit pas participer à la
+    # transaction) et jamais bloquant pour la génération de l'ordre.
+    try:
+        controler_coherence_rib(periode)
+    except Exception:  # pragma: no cover - défensif, best-effort
+        pass
+    return ordre
 
 
 def _resoudre_compte_emetteur(company, compte_emetteur):

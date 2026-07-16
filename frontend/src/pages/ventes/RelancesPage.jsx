@@ -1,14 +1,21 @@
 import { useEffect, useMemo, useState } from 'react'
-import { PartyPopper, FileText, MessageCircle, Mail, History, ReceiptText } from 'lucide-react'
+import { Link, useSearchParams } from 'react-router-dom'
+import {
+  PartyPopper, FileText, MessageCircle, Mail, History, ReceiptText, MoreHorizontal,
+} from 'lucide-react'
 import ventesApi from '../../api/ventesApi'
+import PaiementDialog from './PaiementDialog'
 import { openPdfBlob } from '../../utils/pdfBlob'
 import {
   Button, Badge, Card, EmptyState, Spinner, Checkbox, Input,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
   Label, Textarea,
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
+  DropdownMenuLabel,
+  Select, SelectTrigger, SelectContent, SelectItem, SelectValue,
 } from '../../ui'
-import { formatMAD, toNumber, normalizeMaPhone } from '../../lib/format'
+import { formatMAD, formatDateTime, toNumber, normalizeMaPhone } from '../../lib/format'
+import { toast } from '../../ui/confirm'
 
 // Ajoute n jours à aujourd'hui (date ISO AAAA-MM-JJ).
 function todayPlus(days) {
@@ -32,10 +39,18 @@ export default function RelancesPage() {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [target, setTarget] = useState(null)  // facture being relancée
+  // VX230 — encaisser LÀ où on chasse l'impayé : la facture ciblée par la modale
+  // de paiement PARTAGÉE (PaiementDialog), sans quitter la vue de recouvrement.
+  const [payTarget, setPayTarget] = useState(null)
   const [note, setNote] = useState('')
   const [prochaine, setProchaine] = useState('')  // date de prochaine relance
   const [busy, setBusy] = useState(false)
   const [niveauFilter, setNiveauFilter] = useState('')  // '' = tous
+  // VX112 — pré-filtre client depuis le drill-down de la balance âgée
+  // (?client=<id> ; miroir du ?produit= de MouvementsPage), filtrage
+  // d'affichage sur les lignes déjà chargées, aucun endpoint dédié.
+  const [searchParams] = useSearchParams()
+  const clientFilter = searchParams.get('client')
   const [sortByDu, setSortByDu] = useState(false)  // tri par montant dû décroissant
   const [selected, setSelected] = useState({})  // {id: true} pour la relance en lot
   const [bulkBusy, setBulkBusy] = useState(false)
@@ -78,17 +93,76 @@ export default function RelancesPage() {
 
   // Relance en lot : consigne une relance pour chaque facture cochée, au niveau
   // courant de chacune (sans note ni envoi forcé — comportement par défaut).
+  const doConsigner = async (ids) => {
+    for (const id of ids) {
+      const r = rows.find(x => String(x.id) === String(id))
+      await ventesApi.relancerFacture(id, { niveau: r?.niveau?.ordre })
+    }
+  }
+  // « Consigner uniquement » — comportement historique, byte-identique.
   const relancerSelection = async () => {
     const ids = Object.keys(selected).filter(id => selected[id])
     if (ids.length === 0) return
     if (!window.confirm(`Consigner une relance pour ${ids.length} facture(s) ?`)) return
     setBulkBusy(true)
     try {
-      for (const id of ids) {
-        const r = rows.find(x => String(x.id) === String(id))
-        await ventesApi.relancerFacture(id, { niveau: r?.niveau?.ordre })
-      }
+      await doConsigner(ids)
       setSelected({}); load()
+    } catch { /* */ } finally { setBulkBusy(false) }
+  }
+
+  // VX116 — file d'aperçus WhatsApp SÉQUENTIELS après consignation en lot.
+  // JAMAIS d'envoi wa.me sans clic explicite (règle manuel-wa.me du fondateur) :
+  // on montre le MÊME aperçu-puis-confirmer par client, l'un après l'autre.
+  const [waQueue, setWaQueue] = useState([]) // factures restant à prévisualiser
+  const [waQueueIdx, setWaQueueIdx] = useState(0)
+  const inWaQueue = waQueue.length > 0
+
+  const loadWaPreviewFor = async (r) => {
+    if (!r) return
+    try {
+      const res = await ventesApi.whatsappFacture(r.id, {
+        modele: 'relance', langue: waLangue,
+      })
+      setWaPreview({
+        reference: r.reference,
+        message: res.data?.message ?? '',
+        url: res.data?.url ?? '',
+        wa_url: res.data?.wa_url ?? '',
+      })
+    } catch {
+      // Un aperçu indisponible ne bloque pas la file : on l'affiche vide (sans
+      // wa_url, donc « Ouvrir WhatsApp » reste désactivé) et l'utilisateur passe.
+      setWaPreview({ reference: r.reference, message: 'Aperçu indisponible pour cette facture.', url: '', wa_url: '' })
+    }
+  }
+
+  const endWaQueue = () => { setWaQueue([]); setWaQueueIdx(0); setWaPreview(null); load() }
+
+  const advanceWaQueue = async () => {
+    const nextIdx = waQueueIdx + 1
+    if (nextIdx >= waQueue.length) { endWaQueue(); return }
+    setWaQueueIdx(nextIdx)
+    await loadWaPreviewFor(waQueue[nextIdx])
+  }
+
+  // « Consigner + aperçu WhatsApp pour chacun » : consigne d'abord (comme
+  // ci-dessus), puis démarre la séquence d'aperçus par client.
+  const relancerSelectionAvecWhatsapp = async () => {
+    const ids = Object.keys(selected).filter(id => selected[id])
+    if (ids.length === 0) return
+    if (!window.confirm(
+      `Consigner une relance pour ${ids.length} facture(s), puis prévisualiser un message WhatsApp pour chacune ?`)) return
+    const facturesSel = ids
+      .map(id => rows.find(x => String(x.id) === String(id)))
+      .filter(Boolean)
+    setBulkBusy(true)
+    try {
+      await doConsigner(ids)
+      setSelected({})
+      setWaQueue(facturesSel)
+      setWaQueueIdx(0)
+      await loadWaPreviewFor(facturesSel[0])
     } catch { /* */ } finally { setBulkBusy(false) }
   }
 
@@ -103,11 +177,11 @@ export default function RelancesPage() {
 
   // Relevé de compte client (PDF) — en plus de la balance âgée.
   const releve = async (r) => {
-    if (!r.client_id) { alert('Client introuvable pour cette facture.'); return }
+    if (!r.client_id) { toast.error('Client introuvable pour cette facture.'); return }
     try {
       const res = await ventesApi.getClientRelevePdf(r.client_id)
       openPdfBlob(res.data, `Releve_${r.client_nom || r.client_id}.pdf`)
-    } catch { alert('Relevé indisponible.') }
+    } catch { toast.error('Relevé indisponible.') }
   }
 
   const toggleSel = (id) => setSelected(s => ({ ...s, [id]: !s[id] }))
@@ -119,14 +193,14 @@ export default function RelancesPage() {
     try {
       const res = await ventesApi.getLettreRelancePdf(r.id)
       openPdfBlob(res.data, `Relance_${r.reference}.pdf`)
-    } catch { alert('PDF indisponible.') }
+    } catch { toast.error('PDF indisponible.') }
   }
   // Lettre de relance premium (langage visuel du devis) — niveau 1/2/3.
   const lettrePremium = async (r, niveau) => {
     try {
       const res = await ventesApi.getLettreRelancePremiumPdf(r.id, niveau)
       openPdfBlob(res.data, `Relance_${r.reference}_N${niveau}.pdf`)
-    } catch { alert('PDF indisponible.') }
+    } catch { toast.error('PDF indisponible.') }
   }
   // Rappel de paiement par WhatsApp : construit le message « relance » côté
   // serveur (FR/Darija) puis montre un aperçu (message + lien public) avant
@@ -144,16 +218,17 @@ export default function RelancesPage() {
         wa_url: res.data?.wa_url ?? '',
       })
     } catch (err) {
-      alert(err?.response?.data?.detail ?? 'Envoi WhatsApp impossible.')
+      toast.error(err?.response?.data?.detail ?? 'Envoi WhatsApp impossible.')
     } finally {
       setWaBusy(prev => ({ ...prev, [r.id]: false }))
     }
   }
 
-  // Ouvre wa.me après confirmation de l'aperçu.
+  // Ouvre wa.me après confirmation de l'aperçu. En file (VX116), avance vers le
+  // client suivant ; sinon ferme simplement l'aperçu.
   const ouvrirWhatsApp = () => {
     if (waPreview?.wa_url) window.open(waPreview.wa_url, '_blank', 'noopener')
-    setWaPreview(null)
+    if (inWaQueue) { advanceWaQueue() } else { setWaPreview(null) }
   }
 
   // Niveaux distincts présents (pour le filtre).
@@ -163,9 +238,13 @@ export default function RelancesPage() {
     return [...map.entries()].sort((a, b) => a[0] - b[0])
   }, [rows])
 
-  // Lignes affichées : filtre par niveau courant + tri optionnel par dû.
+  // Lignes affichées : pré-filtre client (URL) + filtre par niveau courant +
+  // tri optionnel par dû.
   const displayed = useMemo(() => {
     let list = rows
+    if (clientFilter) {
+      list = list.filter(r => String(r.client_id) === String(clientFilter))
+    }
     if (niveauFilter === 'none') list = list.filter(r => !r.niveau)
     else if (niveauFilter !== '') {
       list = list.filter(r => r.niveau && String(r.niveau.ordre) === niveauFilter)
@@ -175,7 +254,7 @@ export default function RelancesPage() {
         (a, b) => (toNumber(b.montant_du) || 0) - (toNumber(a.montant_du) || 0))
     }
     return list
-  }, [rows, niveauFilter, sortByDu])
+  }, [rows, clientFilter, niveauFilter, sortByDu])
 
   // Encours total à recouvrer (somme des montants dus affichés).
   const totalDu = useMemo(
@@ -205,6 +284,15 @@ export default function RelancesPage() {
         automatique (email/SMS) n'est effectué.
       </p>
 
+      {clientFilter && (
+        <div className="mb-3">
+          <Badge tone="info" className="align-middle">
+            Filtré sur un client{' '}
+            <Link to="/ventes/relances" className="ml-1 underline">(effacer)</Link>
+          </Badge>
+        </div>
+      )}
+
       {!loading && rows.length > 0 && (
         <div className="mb-3 flex flex-wrap items-center gap-3">
           <Card className="px-4 py-2 text-sm">
@@ -212,24 +300,46 @@ export default function RelancesPage() {
             <strong className="tabular-nums">{formatMAD(totalDu)}</strong>
             <span className="text-muted-foreground"> sur {displayed.length} facture{displayed.length > 1 ? 's' : ''}</span>
           </Card>
+          {/* VX142(c) — seul <select> HTML natif de pages/ventes/ : remplacé par
+              le composant Select tokenisé (Radix). Valeur vide « Tous » mappée
+              sur 'all' (Select n'accepte pas de valeur vide). */}
           <label className="flex items-center gap-1.5 text-sm">
             Niveau&nbsp;:
-            <select
-              className="rounded border px-2 py-1"
-              value={niveauFilter}
-              onChange={e => setNiveauFilter(e.target.value)}
+            <Select
+              value={niveauFilter === '' ? 'all' : niveauFilter}
+              onValueChange={v => setNiveauFilter(v === 'all' ? '' : v)}
             >
-              <option value="">Tous</option>
-              <option value="none">Sans niveau</option>
-              {niveaux.map(([ordre, nom]) => (
-                <option key={ordre} value={String(ordre)}>{nom}</option>
-              ))}
-            </select>
+              <SelectTrigger className="w-40" aria-label="Filtrer par niveau de relance">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Tous</SelectItem>
+                <SelectItem value="none">Sans niveau</SelectItem>
+                {niveaux.map(([ordre, nom]) => (
+                  <SelectItem key={ordre} value={String(ordre)}>{nom}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </label>
+          {/* VX116 — la relance en lot propose « Consigner uniquement »
+              (inchangé) ou « Consigner + aperçu WhatsApp pour chacun » (aperçu
+              séquentiel par client, jamais d'auto-envoi). */}
           {selCount > 0 && (
-            <Button size="sm" loading={bulkBusy} onClick={relancerSelection}>
-              Consigner pour la sélection ({selCount})
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="sm" loading={bulkBusy}>
+                  Relancer la sélection ({selCount})
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                <DropdownMenuItem onSelect={relancerSelection}>
+                  Consigner uniquement
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={relancerSelectionAvecWhatsapp}>
+                  Consigner + aperçu WhatsApp pour chacun
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
           {/* L851 — langue des rappels WhatsApp (FR par défaut). */}
           <div role="group" aria-label="Langue des rappels WhatsApp"
@@ -290,27 +400,39 @@ export default function RelancesPage() {
                                 aria-label={`Sélectionner ${r.reference}`} />
                     </td>
                     <td><strong>{r.reference}</strong></td>
-                    <td>{r.client_nom}</td>
-                    <td className={r.jours_retard > 0 ? 'font-semibold text-destructive' : undefined}>
+                    <td data-label="Client">{r.client_nom}</td>
+                    <td data-label="Échéance"
+                        className={r.jours_retard > 0 ? 'font-semibold text-destructive' : undefined}>
                       {r.date_echeance || '—'}
                     </td>
-                    <td className="ta-right tabular-nums">{formatMAD(r.montant_du)}</td>
-                    <td className={r.jours_retard > 0 ? 'text-destructive' : undefined}>
+                    <td className="ta-right tabular-nums" data-label="Dû">{formatMAD(r.montant_du)}</td>
+                    <td data-label="Retard"
+                        className={r.jours_retard > 0 ? 'text-destructive' : undefined}>
                       {r.jours_retard > 0
                         ? `${r.jours_retard} j`
                         : <span className="text-muted-foreground">À échoir</span>}
                     </td>
-                    <td>{ageBucket(r.jours_retard)
+                    <td className="m-hide">{ageBucket(r.jours_retard)
                       ? <Badge tone="warning">{ageBucket(r.jours_retard)}</Badge>
                       : '—'}</td>
-                    <td>{r.niveau ? <Badge tone="warning">{r.niveau.nom}</Badge> : '—'}</td>
-                    <td>{r.nb_relances}</td>
+                    <td data-label="Niveau">{r.niveau ? <Badge tone="warning">{r.niveau.nom}</Badge> : '—'}</td>
+                    <td className="m-hide">{r.nb_relances}</td>
                     <td className="ta-right">
+                      {/* VX20 — « soupe d'actions » réduite : Relancer (action
+                          principale) + WhatsApp (canal de communication le
+                          plus fréquent) restent des boutons directs ; le
+                          reste (Historique, Lettre, Relevé, Relance premium,
+                          Exclure) vit dans un seul menu « Plus ». */}
                       <div className="flex flex-wrap items-center justify-end gap-2">
                         <Button size="sm" onClick={() => openRelancer(r)}>Relancer</Button>
-                        <Button size="sm" variant="outline" onClick={() => openHistorique(r)}
-                                title="Historique des relances consignées">
-                          <History /> Historique
+                        {/* VX230 — « Encaisser » : ouvre la MÊME modale de
+                            paiement que FactureList, sur place. Le chèque
+                            décroché après la relance s'enregistre sans quitter
+                            la vue de recouvrement. */}
+                        <Button size="sm" variant="outline"
+                                onClick={() => setPayTarget(r)}
+                                title="Enregistrer un paiement sur cette facture">
+                          <ReceiptText /> Encaisser
                         </Button>
                         <Button size="sm" variant="outline"
                                 loading={!!waBusy[r.id]}
@@ -321,32 +443,44 @@ export default function RelancesPage() {
                                   : 'Rappel de paiement par WhatsApp'}>
                           <MessageCircle /> {waBusy[r.id] ? 'Préparation…' : 'WhatsApp'}
                         </Button>
-                        <Button size="sm" variant="outline" onClick={() => lettre(r)}>
-                          <FileText /> Lettre
-                        </Button>
-                        <Button size="sm" variant="outline" onClick={() => releve(r)}
-                                title="Relevé de compte client (PDF)">
-                          <ReceiptText /> Relevé
-                        </Button>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button size="sm" variant="outline" title="Lettre de relance premium">
-                              <Mail /> Relance premium
+                            <Button size="sm" variant="ghost" aria-label={`Plus d'actions — ${r.reference}`}>
+                              <MoreHorizontal className="size-4" aria-hidden="true" />
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => lettrePremium(r, 1)}>
+                            <DropdownMenuLabel>Plus d'actions</DropdownMenuLabel>
+                            <DropdownMenuItem onSelect={() => openHistorique(r)}>
+                              <History className="size-3.5" aria-hidden="true" />
+                              Historique
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onSelect={() => lettre(r)}>
+                              <FileText className="size-3.5" aria-hidden="true" />
+                              Lettre
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onSelect={() => releve(r)}>
+                              <ReceiptText className="size-3.5" aria-hidden="true" />
+                              Relevé de compte client (PDF)
+                            </DropdownMenuItem>
+                            <DropdownMenuLabel>Relance premium</DropdownMenuLabel>
+                            <DropdownMenuItem onSelect={() => lettrePremium(r, 1)}>
+                              <Mail className="size-3.5" aria-hidden="true" />
                               Niveau 1 — courtois
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => lettrePremium(r, 2)}>
+                            <DropdownMenuItem onSelect={() => lettrePremium(r, 2)}>
+                              <Mail className="size-3.5" aria-hidden="true" />
                               Niveau 2 — ferme
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => lettrePremium(r, 3)}>
+                            <DropdownMenuItem onSelect={() => lettrePremium(r, 3)}>
+                              <Mail className="size-3.5" aria-hidden="true" />
                               Niveau 3 — mise en demeure
+                            </DropdownMenuItem>
+                            <DropdownMenuItem destructive onSelect={() => exclure(r)}>
+                              Exclure
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
-                        <Button size="sm" variant="outline" onClick={() => exclure(r)}>Exclure</Button>
                       </div>
                     </td>
                   </tr>
@@ -357,11 +491,17 @@ export default function RelancesPage() {
         </Card>
       )}
 
-      {/* ── L852 — Aperçu du rappel WhatsApp avant ouverture de wa.me ── */}
-      <Dialog open={!!waPreview} onOpenChange={(o) => { if (!o) setWaPreview(null) }}>
+      {/* ── L852 — Aperçu du rappel WhatsApp avant ouverture de wa.me ──
+          VX116 — en file (relance en lot + WhatsApp), le titre montre la
+          progression et « Annuler » clôt toute la séquence. */}
+      <Dialog open={!!waPreview}
+              onOpenChange={(o) => { if (!o) { if (inWaQueue) endWaQueue(); else setWaPreview(null) } }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Aperçu du rappel WhatsApp — {waPreview?.reference}</DialogTitle>
+            <DialogTitle>
+              Aperçu du rappel WhatsApp — {waPreview?.reference}
+              {inWaQueue ? ` (${waQueueIdx + 1}/${waQueue.length})` : ''}
+            </DialogTitle>
             <DialogDescription>
               {waLangue === 'darija' ? 'Variante Darija' : 'Variante Français'}
               {' '}— vérifiez le texte et le lien, puis ouvrez WhatsApp.
@@ -377,7 +517,15 @@ export default function RelancesPage() {
             </p>
           )}
           <DialogFooter>
-            <Button type="button" variant="ghost" onClick={() => setWaPreview(null)}>Annuler</Button>
+            <Button type="button" variant="ghost"
+                    onClick={() => { if (inWaQueue) endWaQueue(); else setWaPreview(null) }}>
+              {inWaQueue ? 'Arrêter' : 'Annuler'}
+            </Button>
+            {inWaQueue && (
+              <Button type="button" variant="outline" onClick={advanceWaQueue}>
+                Passer
+              </Button>
+            )}
             <Button type="button" variant="success" disabled={!waPreview?.wa_url}
                     onClick={ouvrirWhatsApp}>
               <MessageCircle /> Ouvrir WhatsApp
@@ -439,7 +587,7 @@ export default function RelancesPage() {
                 <li key={h.id} className="border-b pb-2 last:border-b-0">
                   <div className="flex justify-between gap-3">
                     <span className="font-medium">
-                      {h.date ? new Date(h.date).toLocaleString('fr-FR') : '—'}
+                      {h.date ? formatDateTime(h.date) : '—'}
                       {h.niveau_nom ? ` · ${h.niveau_nom}` : ''}
                     </span>
                     <span className="text-muted-foreground">{h.created_by_nom || '—'}</span>
@@ -454,6 +602,15 @@ export default function RelancesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* VX230 — modale de paiement PARTAGÉE (extraite de FactureList). Sur
+          « onSaved », on recharge la liste des impayés : une facture soldée en
+          disparaît. */}
+      <PaiementDialog
+        facture={payTarget}
+        onOpenChange={(o) => { if (!o) setPayTarget(null) }}
+        onSaved={load}
+      />
     </div>
   )
 }

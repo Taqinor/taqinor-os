@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react'
 import { ThemeContext } from './theme-context'
 import {
   getStoredTheme, getStoredDensity, setStoredTheme, setStoredDensity,
-  resolveTheme, applyTheme, subscribeSystemTheme, initTheme,
+  resolveTheme, applyThemeWithTransition, subscribeSystemTheme, initTheme,
 } from './theme'
 
 /**
@@ -26,7 +26,9 @@ export function ThemeProvider({ children }) {
     () =>
       subscribeSystemTheme(() => {
         if (getStoredTheme() === 'system') {
-          applyTheme('system')
+          // VX134(e) — bascule OS clair/sombre pendant que l'app tourne :
+          // transition douce, comme un toggle explicite.
+          applyThemeWithTransition('system')
           setResolved(resolveTheme('system'))
         }
       }),

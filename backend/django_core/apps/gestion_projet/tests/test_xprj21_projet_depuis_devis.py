@@ -111,6 +111,62 @@ class CreerProjetDepuisDevisServiceTests(TestCase):
         with self.assertRaises(DevisVersProjetError):
             creer_projet_depuis_devis(devis_data, company=self.co)
 
+    def test_code_reprend_le_plus_haut_suffixe_apres_suppression(self):
+        """ARC7 — continuité de numérotation : un ``Projet`` supprimé ne doit
+        JAMAIS faire régresser le prochain code (jamais ``count()+1``, qui
+        collisionnerait après une suppression). Crée 3 projets, supprime celui
+        du MILIEU (le compte redescend à 2 mais le plus haut suffixe utilisé
+        reste 3), puis vérifie que le 4e projet reprend bien à suffixe 4 (pas
+        3, qui collisionnerait avec le projet #3 encore existant)."""
+        from apps.gestion_projet.models import Projet
+
+        devis_ids = []
+        for i in range(3):
+            client_obj = Client.objects.create(
+                company=self.co, nom='Client', prenom=f'C{i}',
+                email=f'cont{i}@example.com', telephone=f'+21260000003{i}')
+            devis = Devis.objects.create(
+                company=self.co, reference=f'DEV-{MONTH}-010{i}',
+                client=client_obj, statut=Devis.Statut.ACCEPTE,
+                taux_tva=Decimal('20'))
+            devis_ids.append(devis.id)
+
+        codes = []
+        for devis_id in devis_ids:
+            devis_data = devis_pour_projet(devis_id, self.co)
+            resultat = creer_projet_depuis_devis(devis_data, company=self.co)
+            codes.append(resultat['projet'].code)
+
+        # Les 3 codes sont des suffixes consécutifs croissants (PRJ-<année>-NNNN).
+        suffixes = [int(c.rsplit('-', 1)[1]) for c in codes]
+        self.assertEqual(suffixes, sorted(suffixes))
+        self.assertEqual(suffixes[-1] - suffixes[0], 2)
+
+        # Supprime le projet du MILIEU : le compte baisse mais le plus haut
+        # suffixe utilisé (celui du 3e projet) reste en base.
+        milieu_code = codes[1]
+        Projet.objects.filter(company=self.co, code=milieu_code).delete()
+
+        client_obj_4 = Client.objects.create(
+            company=self.co, nom='Client', prenom='C4',
+            email='cont4@example.com', telephone='+212600000034')
+        devis_4 = Devis.objects.create(
+            company=self.co, reference=f'DEV-{MONTH}-0104',
+            client=client_obj_4, statut=Devis.Statut.ACCEPTE,
+            taux_tva=Decimal('20'))
+        devis_data_4 = devis_pour_projet(devis_4.id, self.co)
+        resultat_4 = creer_projet_depuis_devis(devis_data_4, company=self.co)
+
+        suffixe_4 = int(resultat_4['projet'].code.rsplit('-', 1)[1])
+        # Reprend au suffixe suivant le plus haut RÉELLEMENT utilisé (suffixes[-1] + 1),
+        # jamais au suffixe libéré par la suppression (qui collisionnerait si
+        # un autre projet gardait une référence à l'ancien trou).
+        self.assertEqual(suffixe_4, suffixes[-1] + 1)
+        # Le code n'est jamais réutilisé (unique_together company+code tiendrait
+        # de toute façon, mais on vérifie l'algorithme, pas seulement la
+        # contrainte DB).
+        self.assertNotEqual(resultat_4['projet'].code, milieu_code)
+
 
 class DepuisDevisEndpointTests(TestCase):
     def setUp(self):

@@ -2889,3 +2889,56 @@ def causerie_securite_for_id(company, causerie_id):
         .prefetch_related('participants__participant')
         .first()
     )
+
+
+def ribs_par_employe(company, employe_ids):
+    """Mappe ``employe_id -> rib`` du dossier RH (ARC25, cross-app, lecture seule).
+
+    Sélecteur cross-app : la paie lit le ``rib`` de RÉFÉRENCE porté par la fiche
+    RH maître (``DossierEmploye.rib``) pour un groupe d'employés, SANS jamais
+    importer ``rh.models`` — afin de CONTRÔLER (jamais fusionner) la cohérence
+    avec le ``ProfilPaie.rib`` de paie au moment d'un run de virement. Le RIB est
+    renvoyé BRUT (tel que saisi) ; la normalisation de comparaison (espaces)
+    reste à la charge de l'appelant.
+
+    Toujours scopé société. Un ``employe_id`` inconnu / hors société / hors
+    ``employe_ids`` est absent du dict renvoyé (l'appelant traite ça comme « pas
+    de RIB RH de référence »). Renvoie ``{}`` si la société ou la liste manque.
+    """
+    if company is None or not employe_ids:
+        return {}
+    qs = (
+        DossierEmploye.objects
+        .filter(company=company, id__in=list(employe_ids))
+        .only('id', 'rib')
+    )
+    return {d.id: (d.rib or '') for d in qs}
+
+
+# ── ARC40 — provider KPI pour le reporting fédéré ────────────────────────────
+
+def kpi_effectifs_absences(company):
+    """ARC40 — tuiles KPI RH normalisées pour l'endpoint reporting fédéré.
+
+    Déclaré dans ``apps/rh/platform.py`` (surface ``kpi_providers``) et résolu
+    par ``apps/reporting/reports.py::kpi_federes`` — le reporting n'importe
+    JAMAIS les modèles RH, il appelle ce sélecteur (frontière inter-app).
+    Chaque tuile suit la forme normalisée ``{id, label, valeur, unite?}``.
+    Lecture seule, scopé société.
+    """
+    from datetime import date
+
+    from .models import DemandeConge, DossierEmploye
+
+    today = date.today()
+    effectif_actif = DossierEmploye.objects.filter(
+        company=company, statut=DossierEmploye.Statut.ACTIF).count()
+    absences_en_cours = DemandeConge.objects.filter(
+        company=company, statut=DemandeConge.Statut.VALIDEE,
+        date_debut__lte=today, date_fin__gte=today).count()
+    return [
+        {'id': 'rh_effectif_actif', 'label': 'Effectif actif',
+         'valeur': effectif_actif, 'unite': 'employés'},
+        {'id': 'rh_absences_en_cours', 'label': 'Absences en cours (validées)',
+         'valeur': absences_en_cours, 'unite': 'employés'},
+    ]

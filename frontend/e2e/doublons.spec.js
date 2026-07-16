@@ -12,11 +12,11 @@ test('E11: doublons view renders and merging a cluster completes', async ({ page
   // Two identical leads → one duplicate cluster (matched on phone + name).
   for (let i = 0; i < 2; i += 1) {
     await page.getByRole('button', { name: '+ Nouveau lead' }).click()
-    const modal = page.locator('.modal.modal-xl')
-    await modal.locator('input.form-control').first().fill(name)
+    const modal = page.locator('[role="dialog"]').filter({ has: page.locator('.modal-title') })
+    await modal.locator('#lf-nom').fill(name)
     await modal.locator('.form-group', { hasText: 'Téléphone' }).locator('input').fill(phone)
     await modal.getByRole('button', { name: 'Créer le lead' }).click()
-    await expect(page.locator('.modal.modal-xl')).toHaveCount(0)
+    await expect(page.locator('[role="dialog"]').filter({ has: page.locator('.modal-title') })).toHaveCount(0)
   }
 
   await page.getByRole('button', { name: '🔀 Doublons' }).click()

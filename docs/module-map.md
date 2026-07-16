@@ -95,6 +95,7 @@ untouched by any of these moves.
 | `apps/agent` | Agentic action catalogue (Group R) |
 | `apps/chat` | Internal team messaging ("Discuss" equivalent) |
 | `apps/pos` | Point of sale surface |
+| `apps/tiers` | `res.partner`-style third-party consolidation (Client/Fournisseur/Partenaire unification + doublons cross-referencing, ARC18-21). Foundation layer — string-FK targets only; no ODX move. |
 
 ## Odoo modules with a TAQINOR home already, no move needed
 

@@ -9,6 +9,12 @@
    existants gardent exactement leur apparence ; les nouveaux primitifs /src/ui
    consomment ces tokens. L'adoption écran par écran viendra avec les groupes
    J/P. Palette extraite de la marque réelle (apps/web : brass/nuit/azur/lune).
+
+   VX125 — BUDGET DE DENSITÉ DE SIGNAUX (contrainte transversale). Ces tokens de
+   couleur/accent servent les signaux ambiants (badges, pastilles, accents de
+   module). Plafond : max 3 signaux ambiants simultanés par écran de liste,
+   jamais deux redisant le même chiffre. Règle complète et badge de maturité de
+   module : voir docs/design-density-budget.md.
    ========================================================================== */
 
 @theme {
@@ -69,6 +75,14 @@
   /* Primary = or laiton (accent énergie) ; texte foncé pour contraste AA */
   --primary: #e8b54a;
   --primary-foreground: #1a1505;
+  /* VX194(a) — `--primary` EN REMPLISSAGE de bouton est conforme (texte foncé
+     dessus), mais le variant `link` (Button.jsx) pose le brass EN TEXTE sur
+     `--background` : #e8b54a sur #f6f8fc ≈ 1.8:1 (échec WCAG 1.4.3, 4.5:1
+     requis). `--primary-text` = brass-600 (assombri, déjà dans la rampe
+     ci-dessous) ≈ 4.7:1 — réservé aux UTILITAIRES DE TEXTE accent (jamais un
+     remplissage). Thème sombre : `--primary` (clair sur fond sombre) est déjà
+     largement conforme (~12,7:1) — voir bloc `.dark` plus bas. */
+  --primary-text: var(--color-brass-600);
 
   --secondary: #eef2fb;
   --secondary-foreground: #0f1c54;
@@ -83,8 +97,74 @@
   --success-foreground: #ffffff;
   --warning: #c8870f;
   --warning-foreground: #1a1505;
+  /* VX194(a) — même défaut que --primary-text ci-dessus : #c8870f en texte
+     sur #f6f8fc ≈ 2,9:1. Assombri à ≈ 4,7:1 (facteur ~0,75, même teinte). */
+  --warning-text: #96650b;
   --info: #2342b5;
   --info-foreground: #ffffff;
+
+  /* VX8 — Accents de module (un par section de nav), DÉRIVÉS des rampes/
+     couleurs sémantiques existantes ci-dessus — aucune teinte inventée. Chaque
+     `module.config.jsx` (ou section codée en dur de Sidebar.jsx) choisit UNE
+     de ces 7 clés pour `nav.accent`, posée en `--module-accent` sur sa
+     `.sidebar-section`. Contraste vérifié ≥ AA sur fond clair ET sombre (liseré
+     + icône active, jamais du texte de paragraphe). VENTES garde le brass
+     (accent historique déjà utilisé pour l'item actif générique). */
+  --module-accent-brass: var(--color-brass-600);   /* Ventes — #8f6a0e, historique */
+  --module-accent-azur: var(--info);               /* CRM — #2342b5 */
+  --module-accent-nuit: var(--color-encre-soft);   /* Administration — #3f4a6e */
+  --module-accent-success: var(--success);         /* Chantiers/terrain — #2f7a3f */
+  --module-accent-destructive: var(--destructive); /* Après-vente/SAV — #b3402a */
+  --module-accent-warning: var(--warning);         /* Analyse/reporting — #c8870f */
+  --module-accent-lune: var(--color-lune-faint);   /* Documents/Intelligence — #8d96b4 */
+
+  /* VX1 — un seul or, un seul navy : les jetons « catalogue/générateur » du
+     langage navy/or (devis premium) pointent désormais sur la signature de
+     marque, plus aucune quatrième couleur locale. `--cat-gold` = la primary
+     brass, `--cat-navy` = la nuit de marque ; les variantes -soft dérivées. */
+  --cat-navy: var(--color-nuit);
+  --cat-navy-soft: var(--color-nuit-700);
+  --cat-gold: var(--primary);
+  --cat-gold-soft: var(--color-brass-50);
+  --gen-chart-sans: var(--color-nuit-700);
+  --gen-chart-avec: var(--primary);
+
+  /* VX26 — Couleurs de STAGE du pipeline CRM, dérivées de la palette de
+     marque (règle #2 : les 6 CLÉS restent importées de STAGES.py via
+     features/crm/stages.js — seule la SOURCE de couleur change ici, jamais
+     la liste). Un changement de --primary/--info/--success cascade ici. */
+  --stage-new: var(--info);            /* Nouveau — azur, entrée d'entonnoir */
+  --stage-contacted: color-mix(in oklch, var(--info) 55%, var(--color-nuit) 45%);
+  --stage-quote-sent: var(--primary);  /* Devis envoyé — brass, écho devis */
+  --stage-follow-up: color-mix(in oklch, var(--primary) 55%, var(--destructive) 45%);
+  --stage-signed: var(--success);      /* Signé — conversion */
+  --stage-cold: var(--muted-foreground); /* Froid — gris discret */
+
+  /* VX26 — Badge de score de lead (Chaud/Tiède/Froid, scoring.py backend),
+     même patron bg/texte/bordure que les autres pastilles sémantiques. */
+  --score-chaud-bg: color-mix(in oklch, var(--warning) 22%, var(--card) 78%);
+  --score-chaud-fg: color-mix(in oklch, var(--warning) 65%, var(--foreground) 35%);
+  --score-chaud-border: color-mix(in oklch, var(--warning) 45%, var(--card) 55%);
+  --score-tiede-bg: color-mix(in oklch, var(--info) 15%, var(--card) 85%);
+  --score-tiede-fg: color-mix(in oklch, var(--info) 70%, var(--foreground) 30%);
+  --score-tiede-border: color-mix(in oklch, var(--info) 35%, var(--card) 65%);
+  --score-froid-bg: var(--muted);
+  --score-froid-fg: var(--muted-foreground);
+  --score-froid-border: var(--border);
+
+  /* VX26 — Palette déterministe par responsable (CalendarView, hachage de
+     nom → couleur) : dérivée de la marque + accents sémantiques pour rester
+     distincte sur 10 valeurs, jamais un hex local. */
+  --owner-color-1: var(--info);
+  --owner-color-2: var(--success);
+  --owner-color-3: var(--primary);
+  --owner-color-4: color-mix(in oklch, var(--destructive) 55%, var(--color-encre-soft) 45%);
+  --owner-color-5: var(--destructive);
+  --owner-color-6: color-mix(in oklch, var(--info) 55%, var(--success) 45%);
+  --owner-color-7: color-mix(in oklch, var(--color-nuit-700) 45%, var(--info) 55%);
+  --owner-color-8: color-mix(in oklch, var(--warning) 70%, var(--color-nuit) 30%);
+  --owner-color-9: color-mix(in oklch, var(--destructive) 50%, var(--primary) 50%);
+  --owner-color-10: color-mix(in oklch, var(--success) 55%, var(--color-nuit) 45%);
 
   --border: #dde3f0;
   --input: #d2d9ea;
@@ -114,6 +194,13 @@
   --text-small: 0.875rem;      --text-small-lh: 1.45;    --text-small-ls: 0.005em;
   --text-caption: 0.75rem;     --text-caption-lh: 1.4;   --text-caption-ls: 0.02em;
 
+  /* VX122 — tracking unique des « eyebrows » (petits labels majuscules de
+     section) : avant, plusieurs sélecteurs index.css recopiaient font-size/
+     text-transform/letter-spacing avec un tracking divergent (0.04 vs
+     0.05em). Un seul token, une seule classe utilitaire `.text-eyebrow`
+     ci-dessous. */
+  --text-eyebrow-tracking: 0.04em;
+
   /* Élévation / ombres — échelle brute (rgb teinté nuit #0c1335). */
   --shadow-xs: 0 1px 2px 0 rgb(12 19 53 / 0.06);
   --shadow-sm: 0 1px 3px 0 rgb(12 19 53 / 0.10), 0 1px 2px -1px rgb(12 19 53 / 0.08);
@@ -136,6 +223,22 @@
   --elevation-modal: var(--shadow-lg);
   --elevation-toast: var(--shadow-lg);
 
+  /* VX124 — Craft-physics : ombre TEINTÉE brass au survol du CTA primaire
+     (jusqu'ici toutes les ombres étaient gris-nuit neutre, même sur le
+     bouton `default`). color-mix garde la forme du shadow-sm mais injecte
+     35 % de brass dans la couleur d'ombre. */
+  --shadow-primary-hover: 0 1px 3px 0 color-mix(in oklch, var(--primary) 35%, rgb(12 19 53 / 0.10)),
+                          0 1px 2px -1px rgb(12 19 53 / 0.08);
+
+  /* VX121 — jalons ChantierTimeline : couleurs sans rôle sémantique existant
+     (violet/sky/teal), sorties des constantes JS (invisibles au grep hex) et
+     posées ici comme seule source hex tolérée (à l'intérieur de :root). */
+  --milestone-materiel: #a855f7;
+  --milestone-service: #0ea5e9;
+  --milestone-cloture: #15803d;
+  --milestone-dossier-depot: #0891b2;
+  --milestone-dossier-approbation: #15803d;
+
   /* Z-index — échelle unique */
   --z-base: 0;
   --z-dropdown: 1000;
@@ -149,6 +252,11 @@
   --motion-fast: 120ms;
   --motion-base: 180ms;
   --motion-slow: 260ms;
+  /* VX249 — durée dédiée du pulse de champ sauvé (ui/FieldSavedPulse.jsx),
+     300-400 ms (DoD) — distincte de --motion-fast/base/slow (aucune ne tombe
+     dans cette fourchette). Zérée sous prefers-reduced-motion, même règle que
+     les 3 autres ci-dessous. */
+  --motion-pulse: 350ms;
   --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -172,6 +280,10 @@
 
   --primary: oklch(85.9% 0.0961 89);      /* brass-300 désaturé ~25 % */
   --primary-foreground: #1a1505;
+  /* VX194(a) — thème sombre : `--primary` (clair sur fond navy) est DÉJÀ
+     ≥ AA en texte (≈ 12:1, cf. note F123 ci-dessus) — `--primary-text`
+     pointe simplement dessus, aucun assombrissement nécessaire ici. */
+  --primary-text: var(--primary);
 
   --secondary: oklch(24% 0.03 269);
   --secondary-foreground: #d6dbe9;
@@ -186,8 +298,21 @@
   --success-foreground: #07140a;
   --warning: oklch(85.9% 0.0961 89);
   --warning-foreground: #1a1505;
+  /* VX194(a) — même raison que --primary-text ci-dessus (clair sur navy,
+     déjà ≥ AA). */
+  --warning-text: var(--warning);
   --info: #7fa0ef;
   --info-foreground: #0a1238;
+
+  /* VX8 — mêmes 7 clés d'accent de module, redérivées pour rester AA sur le
+     fond navy sombre (variantes déjà utilisées ailleurs dans ce même bloc). */
+  --module-accent-brass: var(--color-brass-400);   /* Ventes — #e8b54a désaturable */
+  --module-accent-azur: var(--info);               /* CRM — #7fa0ef */
+  --module-accent-nuit: var(--color-lune-soft);    /* Administration — #adb5cd */
+  --module-accent-success: var(--success);         /* Chantiers/terrain — #4caf6a */
+  --module-accent-destructive: var(--destructive); /* Après-vente/SAV — #e06a52 */
+  --module-accent-warning: var(--warning);         /* Analyse/reporting — brass-300 */
+  --module-accent-lune: var(--color-lune-faint);   /* Documents/Intelligence — #8d96b4 */
 
   --border: oklch(33% 0.03 270);          /* bordures relevées (≈ +3,6 L) */
   --input: oklch(37% 0.03 270);
@@ -211,6 +336,9 @@
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  /* VX194(a) — utilitaires text-primary-text/text-warning-text : brass/warning
+     ASSOMBRIS pour le texte accent (≥4.5:1), jamais un remplissage. */
+  --color-primary-text: var(--primary-text);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
@@ -223,6 +351,7 @@
   --color-success-foreground: var(--success-foreground);
   --color-warning: var(--warning);
   --color-warning-foreground: var(--warning-foreground);
+  --color-warning-text: var(--warning-text);
   --color-info: var(--info);
   --color-info-foreground: var(--info-foreground);
   --color-border: var(--border);
@@ -238,6 +367,7 @@
   --shadow-ui-sm: var(--shadow-sm);
   --shadow-ui-md: var(--shadow-md);
   --shadow-ui-lg: var(--shadow-lg);
+  --shadow-ui-primary-hover: var(--shadow-primary-hover);
 
   /* F122 — élévations nommées exposées en utilitaires shadow-* */
   --shadow-card: var(--elevation-card);
@@ -269,13 +399,26 @@
   --ui-text: 0.875rem;        /* 14px */
 }
 
-/* ── Racine de l'interface refonte (appliquée par les nouveaux écrans/showcase ;
-      n'affecte PAS les écrans existants tant qu'ils ne portent pas .ui-root) ── */
+/* ── Racine de l'interface refonte ────────────────────────────────────────
+   VX3 — la police de marque, le fond tokenisé et la couleur de texte sont
+   désormais portés directement par <body> (index.css), donc hérités partout.
+   `.ui-root` devient un no-op quasi total (rétro-compatible) : il ne reste que
+   `font-size: var(--ui-text)` pour les écrans refonte qui veulent la taille de
+   base de densité ; font-family/background/color sont hérités du <body>. */
 .ui-root {
-  font-family: var(--font-brand);
-  background: var(--background);
-  color: var(--foreground);
   font-size: var(--ui-text);
+}
+
+/* VX123 — Plancher d'accessibilité visuelle : halo de focus UNIQUE consommant
+   `--focus-ring` (F122, jusqu'ici du code mort décoratif — 0 consommateur).
+   Remplace les 27 recopies Tailwind `focus-visible:outline-none
+   focus-visible:ring-2 focus-visible:ring-ring[…]` : un seul point de vérité
+   du halo, posé sur `:focus-visible` ET `:focus-within` (contrôles composites
+   type TimePicker qui ne peuvent pas eux-mêmes recevoir `:focus-visible`). */
+.focus-ring:focus-visible,
+.focus-ring:focus-within {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 /* ── F121 — Utilitaires d'échelle typographique ──────────────────────────────
@@ -288,6 +431,24 @@
 .text-body { font-size: var(--text-body); line-height: var(--text-body-lh); letter-spacing: var(--text-body-ls); }
 .text-small { font-size: var(--text-small); line-height: var(--text-small-lh); letter-spacing: var(--text-small-ls); }
 .text-caption { font-size: var(--text-caption); line-height: var(--text-caption-lh); letter-spacing: var(--text-caption-ls); }
+/* VX122 — « eyebrow » : petit label majuscule de section, consommant
+   --text-caption + le tracking unique --text-eyebrow-tracking (remplace les
+   recopies inline divergentes 0.04/0.05em d'index.css). */
+.text-eyebrow {
+  font-size: var(--text-caption);
+  line-height: var(--text-caption-lh);
+  letter-spacing: var(--text-eyebrow-tracking);
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+/* VX124 — Craft-physics : le tracking négatif fixe des paliers display/h1
+   (-0.03em / -0.025em) sur-comprime un montant à 7 chiffres tabulaire
+   (ex. 1 234 567 MAD). Quand les chiffres sont tabulaires ET en grande
+   taille, on desserre le tracking à -0.01em — les titres textuels normaux
+   gardent leur tracking d'origine. */
+.tabular-nums.text-display,
+.tabular-nums.text-h1 { letter-spacing: -0.01em; }
 
 /* ── F121 — Chiffres tabulaires + zéro barré pour tout montant / quantité /
    référence (F16). `tabular-nums` aligne les colonnes de chiffres ; `slashed
@@ -296,6 +457,19 @@
 .tabular-nums {
   font-variant-numeric: tabular-nums slashed-zero;
   font-feature-settings: 'tnum' 1, 'zero' 1;
+}
+
+/* VX5 — utilitaire `.num` : « les chiffres deviennent les héros » (numeric
+   story Stripe/Mercury). Police d'affichage de marque + chiffres tabulaires à
+   zéro barré + tracking resserré : tout montant MAD / kWc / production /
+   référence / total aligne ses colonnes à graisse et chasse identiques. Le
+   FORMATAGE fr/MAD reste l'unique responsabilité de lib/format.js — `.num` ne
+   fait que la présentation typographique. */
+.num {
+  font-family: var(--font-display);
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-feature-settings: 'tnum' 1, 'zero' 1;
+  letter-spacing: -0.01em;
 }
 
 /* ── Animations d'overlay (Dialog/Popover/Dropdown/Tooltip…) ─────────────── */
@@ -316,11 +490,267 @@
   to { opacity: 0; transform: translateY(4px) scale(0.97) }
 }
 
+/* VX133 — Grammaire directionnelle des surfaces : `pop-in`/`pop-out`
+   ci-dessus sont pensés pour un popover ANCRÉ (petit, centré sur son
+   déclencheur) — un panneau de bord (Sheet latéral/haut/bas) doit entrer et
+   sortir PAR SON BORD, pas depuis le centre. Un keyframe par bord, mappé
+   --motion-base/--motion-fast (donc annulé par prefers-reduced-motion comme
+   pop-in/pop-out ci-dessus). */
+@theme {
+  --animate-slide-in-right: slide-in-right var(--motion-base) var(--ease-standard) both;
+  --animate-slide-out-right: slide-out-right var(--motion-fast) var(--ease-standard) both;
+  --animate-slide-in-left: slide-in-left var(--motion-base) var(--ease-standard) both;
+  --animate-slide-out-left: slide-out-left var(--motion-fast) var(--ease-standard) both;
+  --animate-slide-in-top: slide-in-top var(--motion-base) var(--ease-standard) both;
+  --animate-slide-out-top: slide-out-top var(--motion-fast) var(--ease-standard) both;
+  --animate-slide-in-bottom: slide-in-bottom var(--motion-base) var(--ease-standard) both;
+  --animate-slide-out-bottom: slide-out-bottom var(--motion-fast) var(--ease-standard) both;
+  --animate-fade-in: fade-in var(--motion-fast) var(--ease-standard) both;
+}
+@keyframes slide-in-right {
+  from { opacity: 0; transform: translateX(100%) }
+  to { opacity: 1; transform: translateX(0) }
+}
+@keyframes slide-out-right {
+  from { opacity: 1; transform: translateX(0) }
+  to { opacity: 0; transform: translateX(100%) }
+}
+@keyframes slide-in-left {
+  from { opacity: 0; transform: translateX(-100%) }
+  to { opacity: 1; transform: translateX(0) }
+}
+@keyframes slide-out-left {
+  from { opacity: 1; transform: translateX(0) }
+  to { opacity: 0; transform: translateX(-100%) }
+}
+@keyframes slide-in-top {
+  from { opacity: 0; transform: translateY(-100%) }
+  to { opacity: 1; transform: translateY(0) }
+}
+@keyframes slide-out-top {
+  from { opacity: 1; transform: translateY(0) }
+  to { opacity: 0; transform: translateY(-100%) }
+}
+@keyframes slide-in-bottom {
+  from { opacity: 0; transform: translateY(100%) }
+  to { opacity: 1; transform: translateY(0) }
+}
+@keyframes slide-out-bottom {
+  from { opacity: 1; transform: translateY(0) }
+  to { opacity: 0; transform: translateY(100%) }
+}
+@keyframes fade-in { from { opacity: 0 } to { opacity: 1 } }
+
+/* VX133 — Accordéon : la hauteur anime via la variable CSS que Radix expose
+   (--radix-accordion-content-height), au lieu de rester figée à `overflow:
+   hidden` statique sans mouvement de hauteur. */
+@theme {
+  --animate-accordion-down: accordion-down var(--motion-base) var(--ease-standard);
+  --animate-accordion-up: accordion-up var(--motion-fast) var(--ease-standard);
+}
+@keyframes accordion-down {
+  from { height: 0 }
+  to { height: var(--radix-accordion-content-height) }
+}
+@keyframes accordion-up {
+  from { height: var(--radix-accordion-content-height) }
+  to { height: 0 }
+}
+
+/* VX134(a) — Palette ⌘K : réutilisait le `pop-in`/`pop-out` centré-zoomé du
+   Dialog générique — pensé pour un dialogue de confirmation, incompatible
+   avec une palette ANCRÉE EN HAUT (son `to { transform: none }` écrasait le
+   recentrage horizontal que `.cmdk-content` tentait d'imposer en CSS
+   statique, un `transform` animé gagnant toujours sur une déclaration
+   normale pour la même propriété). Keyframe dédié dont l'état final INCLUT
+   le recentrage (`translate(-50%, 0)`) ; --motion-fast (plus rapide qu'un
+   modal centré, cf. DoD). */
+@theme {
+  --animate-command-in: command-in var(--motion-fast) var(--ease-standard) both;
+  --animate-command-out: command-out var(--motion-fast) var(--ease-standard) both;
+}
+@keyframes command-in {
+  from { opacity: 0; transform: translate(-50%, -8px) }
+  to { opacity: 1; transform: translate(-50%, 0) }
+}
+@keyframes command-out {
+  from { opacity: 1; transform: translate(-50%, 0) }
+  to { opacity: 0; transform: translate(-50%, -8px) }
+}
+
+/* VX134(d) — Badge non-lus de ChatBell : pulse UNIQUEMENT quand le total
+   AUGMENTE (jamais à chaque poll de 30 s qui ne change rien). */
+@theme {
+  --animate-badge-pulse: badge-pulse var(--motion-slow) var(--ease-standard);
+}
+@keyframes badge-pulse {
+  0% { transform: scale(1) }
+  50% { transform: scale(1.25) }
+  100% { transform: scale(1) }
+}
+
+/* VX129 — Progress indéterminé : une barre qui balaie la piste en boucle
+   (au lieu d'une barre figée à 0 %, seul état possible jusqu'ici). Le garde
+   global `@media (prefers-reduced-motion: reduce)` (index.css) neutralise
+   AUTOMATIQUEMENT toute `animation-duration` sur `*` — cette règle se fige
+   donc sans code dédié. */
+@theme {
+  --animate-progress-sweep: progress-sweep 1.4s ease-in-out infinite;
+}
+@keyframes progress-sweep {
+  0% { transform: translateX(-100%) }
+  100% { transform: translateX(350%) }
+}
+
+/* VX132 — Squelette : balayage lumineux directionnel (au lieu du pulse
+   Tailwind par défaut, une simple pulsation d'opacité) — CSS pur, se fige
+   sous reduced-motion via le même garde global `*` (voir VX129 ci-dessus).
+   Classe plutôt qu'utilitaire Tailwind arbitraire : le dégradé imbriqué
+   (color-mix dans un linear-gradient) est plus lisible/maintenable en CSS
+   qu'en chaîne `bg-[linear-gradient(…)]` compressée. */
+.skeleton-shimmer {
+  background-color: var(--muted);
+  background-image: linear-gradient(
+    90deg,
+    var(--muted) 25%,
+    color-mix(in oklch, var(--muted) 55%, var(--card)) 50%,
+    var(--muted) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.6s ease-in-out infinite;
+}
+@keyframes skeleton-shimmer {
+  0% { background-position: 200% 0 }
+  100% { background-position: -200% 0 }
+}
+
+/* VX124 — Craft-physics : le chiffre KPI de <Stat> « se solidifie » au
+   montage — la police variable (wght 100–900, brand.css) passe de 500 à 600
+   sur --motion-slow. Sous prefers-reduced-motion, --motion-slow tombe à 0ms
+   (règle ci-dessous) : la transition devient un saut direct au poids final,
+   jamais un mouvement perçu. */
+.stat-value-solidify {
+  font-variation-settings: 'wght' 600;
+  animation: stat-solidify var(--motion-slow) var(--ease-standard) both;
+}
+@keyframes stat-solidify {
+  from { font-variation-settings: 'wght' 500 }
+  to { font-variation-settings: 'wght' 600 }
+}
+
+/* VX249(a) — ui/FieldSavedPulse.jsx : micro-accusé au GRAIN DU CHAMP pour une
+   sauvegarde silencieuse (édition inline DataTable, statut, note chatter) —
+   jamais un toast pour ça. Pulse vert bref sur LA cellule elle-même. Sous
+   prefers-reduced-motion, --motion-pulse tombe à 0 ms (règle plus bas) : la
+   transition devient un changement STATIQUE (couleur posée puis retirée),
+   jamais un mouvement perçu — même patron que --motion-slow/stat-solidify
+   ci-dessus. */
+.field-saved-pulse {
+  animation: field-saved-pulse var(--motion-pulse) var(--ease-standard) both;
+}
+@keyframes field-saved-pulse {
+  0% { background-color: color-mix(in oklab, var(--success) 35%, transparent) }
+  100% { background-color: transparent }
+}
+
+/* VX249(c) — pastille « pour moi / action » (pleine) vs « information
+   société » (contour) : UN seul token visuel, consommé À L'IDENTIQUE par la
+   cloche de notifications (NotificationBell.jsx), Ma file
+   (MesActivitesPage.jsx) et le Dashboard (Dashboard.jsx) — VX83/84/86
+   avaient chacun posé cette distinction sans jamais partager de convention
+   visuelle commune. Filtre purement visuel : ne change jamais quelles
+   données sont chargées/affichées. */
+.vx-pastille {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 9999px;
+  flex-shrink: 0;
+}
+.vx-pastille-mine {
+  background: var(--primary);
+}
+.vx-pastille-company {
+  background: transparent;
+  border: 1.5px solid var(--border);
+}
+
+/* VX249(b) — VX93 pré-remplit owner/ville/TVA/payMode sans dire que c'est une
+   SUPPOSITION : contour pointillé discret tant que la valeur n'a pas été
+   touchée (retiré au premier changement — jamais un système de confidence
+   générique, seulement les 4 champs VX93 nommés). Le micro-libellé
+   d'accompagnement (« Suggéré — modifiable ») est du JSX conditionnel côté
+   composant (:focus), pas du contenu CSS. */
+.vx-suggested-field {
+  outline: 1.5px dashed var(--warning);
+  outline-offset: 1px;
+}
+
+/* VX40 — Le délice mesuré : burst CSS-only posé par ui/celebrate.js autour du
+   toast sonner « devis signé » (rare, significatif, jamais gamifié). Chaque
+   span anime sa propre paire angle/distance via les variables inline
+   --vx40-angle/--vx40-distance posées en JS. `celebrate.js` ne pose même pas
+   ces spans sous reduced-motion (garde JS en amont) ; la règle globale
+   `@media (prefers-reduced-motion: reduce)` d'index.css neutraliserait de
+   toute façon la translation si jamais posée. */
+@keyframes vx40-burst {
+  from { opacity: 1; transform: rotate(var(--vx40-angle)) translateX(0) scale(1) }
+  to { opacity: 0; transform: rotate(var(--vx40-angle)) translateX(var(--vx40-distance)) scale(0.4) }
+}
+
 /* Respect de prefers-reduced-motion (F/M : confort de mouvement) */
 @media (prefers-reduced-motion: reduce) {
   :root {
     --motion-fast: 0ms;
     --motion-base: 0ms;
     --motion-slow: 0ms;
+    /* VX249 — le pulse de champ sauvé dégrade en changement STATIQUE (0 ms) :
+       la couleur de fond change instantanément puis revient, jamais un
+       mouvement perçu. */
+    --motion-pulse: 0ms;
+  }
+}
+
+/* VX123 — Windows contraste élevé (forced-colors: active). Cartes/tables/
+   modales/champs se définissent SEULEMENT par un box-shadow (`--elevation-
+   card`, `--shadow-*`) : en mode contraste élevé le navigateur ignore ces
+   box-shadow décoratives et la structure disparaît entièrement (0 bordure
+   visible). On pose de VRAIES bordures système + un focus-ring système
+   (`Highlight`) puisque le halo `box-shadow: var(--focus-ring)` disparaît
+   pour la même raison. */
+@media (forced-colors: active) {
+  .data-table,
+  .lines-table-wrap,
+  .modal,
+  .gen-card,
+  .form-control,
+  .form-select,
+  .btn {
+    border: 1px solid CanvasText;
+  }
+  .btn-primary {
+    border-color: ButtonBorder;
+  }
+  .focus-ring:focus-visible,
+  .focus-ring:focus-within {
+    outline: 2px solid Highlight;
+    box-shadow: none;
+  }
+}
+
+/* VX123 — prefers-contrast: more. Durcit les bordures/texte muted (sans
+   changer la structure) — ~40 % de fusion vers le foreground, encore assez
+   subtil pour rester cohérent avec la marque en clair ET en sombre. Mixe
+   depuis les valeurs LITTÉRALES d'origine (pas `var(--border)`) : un
+   `color-mix` qui se référence lui-même dans une redéclaration de la même
+   custom property est un cycle CSS (valeur invalide au calcul). */
+@media (prefers-contrast: more) {
+  :root {
+    --border: color-mix(in oklch, #dde3f0 60%, var(--foreground) 40%);
+    --muted-foreground: color-mix(in oklch, #5a6488 60%, var(--foreground) 40%);
+  }
+  .dark {
+    --border: color-mix(in oklch, oklch(33% 0.03 270) 60%, var(--foreground) 40%);
+    --muted-foreground: color-mix(in oklch, #adb5cd 60%, var(--foreground) 40%);
   }
 }

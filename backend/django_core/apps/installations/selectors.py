@@ -14,6 +14,41 @@ def installation_for_devis(devis):
     return Installation.objects.filter(devis=devis).first()
 
 
+def chantiers_receptionnes(company, *, date_debut=None, date_fin=None):
+    """YSERV10 — ``(id, client_id, date_reception)`` de chaque chantier
+    RÉCEPTIONNÉ (``date_reception`` posé, jamais approximé) de ``company``,
+    optionnellement borné à une période sur ``date_reception``. Point
+    d'entrée cross-app en LECTURE SEULE pour le KPI taux d'attache
+    (``apps.sav.selectors.taux_attache``) — jamais un import direct de
+    ``Installation`` hors de ce module."""
+    from .models import Installation
+
+    qs = Installation.objects.filter(
+        company=company, statut=Installation.Statut.RECEPTIONNE,
+        date_reception__isnull=False)
+    if date_debut is not None:
+        qs = qs.filter(date_reception__gte=date_debut)
+    if date_fin is not None:
+        qs = qs.filter(date_reception__lte=date_fin)
+    return list(qs.values_list('id', 'client_id', 'date_reception'))
+
+
+def demandes_achat_soumises_stale(company, cutoff):
+    """VX213 (d) — réquisitions d'achat restées SOUMISE (jamais décidées) et
+    inchangées depuis ``cutoff`` (datetime seuil). Lecture seule, exposée au
+    balayage SLA de ``notifications`` (miroir de ``_sweep_sav_breaching``).
+
+    ``date_modification`` (auto_now) reflète la dernière touche : une DA soumise
+    non décidée n'est plus modifiée, donc c'est le proxy de « soumise depuis ».
+    Scopée company ; le sweep en dérive les approbateurs (managers)."""
+    from .models import DemandeAchat
+    return (DemandeAchat.objects
+            .filter(company=company,
+                    statut=DemandeAchat.Statut.SOUMISE,
+                    date_modification__lte=cutoff)
+            .select_related('chantier'))
+
+
 def installation_summaries_for_devis(devis_qs):
     """Map {devis_id: {id, reference, statut}} des chantiers liés à un lot de
     devis — une seule requête (évite un N+1 sur la fiche lead)."""
@@ -63,6 +98,18 @@ def intervention_scoped(company, pk):
     return (Intervention.objects
             .filter(company=company, id=pk)
             .select_related('installation', 'installation__client')
+            .first())
+
+
+def colis_scoped(company, pk):
+    """ZSTK5 — Colis de préparation (FG322) scopé société, par id, avec
+    chantier/client + lignes préchargés (résolution du jeton scannable
+    ``COLIS:<id>`` par ``apps.stock.views.produit``)."""
+    from .models import Colis
+    return (Colis.objects
+            .filter(company=company, id=pk)
+            .select_related('installation', 'installation__client')
+            .prefetch_related('lignes')
             .first())
 
 
@@ -293,7 +340,7 @@ def _facture_fournisseur_ht(company, facture_id):
     chargement."""
     from decimal import Decimal
     from django.apps import apps as django_apps
-    model = django_apps.get_model('stock', 'FactureFournisseur')
+    model = django_apps.get_model('achats', 'FactureFournisseur')
     fac = model.objects.filter(id=facture_id, company=company).first()
     if fac is None:
         return Decimal('0')
@@ -404,16 +451,18 @@ def budget_projet_synthese(budget):
 
 def _factures_revenu_programme(projet, company):
     """(Σ revenu HT, Σ revenu TTC) des factures CLIENT émises sur les devis du
-    programme. Lu via ``apps.get_model('ventes', 'Facture')`` — aucune arête
-    d'import vers ``ventes`` au chargement. Les factures ANNULÉES sont exclues
-    (elles ne sont pas un revenu). Une facture introuvable / illisible dégrade
-    à 0. Le revenu est scopé société (jamais la facture d'une autre société)."""
+    programme. Lu via ``apps.get_model('facturation', 'Facture')`` — aucune
+    arête d'import vers ``facturation`` au chargement (ODX17 — Facture a
+    déménagé de ``ventes`` vers ``facturation``, même table physique). Les
+    factures ANNULÉES sont exclues (elles ne sont pas un revenu). Une facture
+    introuvable / illisible dégrade à 0. Le revenu est scopé société (jamais
+    la facture d'une autre société)."""
     from decimal import Decimal
     from django.apps import apps as django_apps
     devis_ids = list(projet.devis.values_list('devis_id', flat=True))
     if not devis_ids:
         return Decimal('0'), Decimal('0')
-    facture_model = django_apps.get_model('ventes', 'Facture')
+    facture_model = django_apps.get_model('facturation', 'Facture')
     revenu_ht = Decimal('0')
     revenu_ttc = Decimal('0')
     factures = (facture_model.objects
@@ -1443,7 +1492,7 @@ def bcf_montant_achat(company, bcf_id):
     ``stock`` au chargement. Montant INTERNE."""
     from decimal import Decimal
     from django.apps import apps as django_apps
-    model = django_apps.get_model('stock', 'BonCommandeFournisseur')
+    model = django_apps.get_model('achats', 'BonCommandeFournisseur')
     bcf = model.objects.filter(id=bcf_id, company=company).first()
     if bcf is None:
         return Decimal('0')
@@ -2488,3 +2537,138 @@ def intervention_export_row(interv):
         equipe_noms,
         duree if duree is not None else '',
     ]
+
+
+# ── XMFG19 — Remplacement de masse d'un composant ───────────────────────────
+
+def kits_utilisant_produit(company, produit_id):
+    """XMFG19 — kits de pré-assemblage (FG328) de cette société utilisant ce
+    produit dans leur nomenclature. Lecture seule, exposée à `stock` pour la
+    préview du remplacement de masse. Renvoie une liste de dicts plats
+    {kit_id, kit_nom, composant_id, quantite} — jamais d'instance exposée."""
+    from .models import KitComposant
+    out = []
+    for c in (KitComposant.objects
+              .filter(kit__company=company, produit_id=produit_id)
+              .select_related('kit')
+              .order_by('kit__nom', 'id')):
+        out.append({
+            'kit_id': c.kit_id,
+            'kit_nom': c.kit.nom,
+            'composant_id': c.id,
+            'quantite': c.quantite,
+        })
+    return out
+
+
+# ── VX214 — kinds d'EXÉCUTION pour « Ma file » (jamais une 2ᵉ boîte) ────────
+
+def affectations_pour(user):
+    """VX214 — items d'EXÉCUTION (installations) affectés à `user`, prêts pour
+    l'union « Ma file » (``apps.records.views.ma_file``) — contrat commun
+    ``{kind, title, due, link, urgency}``, MÊME forme que ``crm.selectors.
+    ma_file_commercial_items`` (VX83). Lecture seule, scopée société +
+    utilisateur ; jamais un import de ``notifications``/``records``.
+
+    Trois familles :
+      * chantiers ASSIGNÉS à ce technicien, encore actifs (statut canonique
+        AVANT réception — ``RECEPTIONNE``/``CLOTURE`` exclus) — kind
+        ``chantier_assigne`` ;
+      * interventions DU JOUR (ou en retard) de ce technicien, pas encore
+        terminées — kind ``intervention_du_jour`` ;
+      * DA APPROUVÉES dont ce user est le demandeur, pas encore commandées
+        (transition suivante = ``marquer_commandee``) — kind
+        ``da_approuvee_a_commander``.
+    """
+    if user is None or not getattr(user, 'company_id', None):
+        return []
+    from .models import DemandeAchat, Installation, Intervention
+
+    company = user.company
+    today = None
+    items = []
+
+    actifs = [
+        s for s in Installation.STATUT_ORDER
+        if s not in (Installation.Statut.RECEPTIONNE, Installation.Statut.CLOTURE)
+    ]
+    chantiers = (Installation.objects
+                 .filter(company=company, technicien_responsable=user,
+                         statut__in=actifs)
+                 .select_related('client')
+                 .order_by('date_pose_prevue'))
+    for inst in chantiers:
+        if today is None:
+            from django.utils import timezone
+            today = timezone.localdate()
+        due = inst.date_pose_prevue
+        if due is None:
+            urgency = 'today'
+        elif due < today:
+            urgency = 'overdue'
+        elif due == today:
+            urgency = 'today'
+        else:
+            urgency = 'upcoming'
+        client_nom = getattr(inst.client, 'nom', '') or ''
+        items.append({
+            'kind': 'chantier_assigne',
+            'title': f'Chantier {client_nom or ("#" + str(inst.id))} — '
+                     f'{inst.get_statut_display()}',
+            'due': due,
+            'link': f'/chantiers?id={inst.id}',
+            'urgency': urgency,
+        })
+
+    non_terminees = [
+        s for s in Intervention.STATUT_ORDER
+        if s not in (Intervention.Statut.TERMINEE, Intervention.Statut.VALIDEE)
+    ]
+    interventions = (Intervention.objects
+                     .filter(company=company, technicien=user,
+                             statut__in=non_terminees)
+                     .select_related('installation', 'installation__client')
+                     .order_by('date_prevue'))
+    for interv in interventions:
+        if today is None:
+            from django.utils import timezone
+            today = timezone.localdate()
+        due = interv.date_prevue
+        if due is None:
+            urgency = 'today'
+        elif due < today:
+            urgency = 'overdue'
+        elif due == today:
+            urgency = 'today'
+        else:
+            urgency = 'upcoming'
+        # Ne remonte QUE le jour même/en retard dans « Ma file » (une
+        # intervention de la semaine prochaine n'a pas sa place dans la file
+        # d'aujourd'hui — « Ma journée » F22 reste l'écran de planning complet).
+        if urgency == 'upcoming':
+            continue
+        client_nom = getattr(getattr(interv, 'installation', None), 'client', None)
+        client_nom = getattr(client_nom, 'nom', '') or ''
+        items.append({
+            'kind': 'intervention_du_jour',
+            'title': f'Intervention {interv.get_type_intervention_display()} — '
+                     f'{client_nom or ("chantier #" + str(interv.installation_id))}',
+            'due': due,
+            'link': f'/chantiers?id={interv.installation_id}' if interv.installation_id else None,
+            'urgency': urgency,
+        })
+
+    das = (DemandeAchat.objects
+           .filter(company=company, statut=DemandeAchat.Statut.APPROUVEE,
+                   created_by=user)
+           .order_by('date_decision'))
+    for da in das:
+        items.append({
+            'kind': 'da_approuvee_a_commander',
+            'title': f'Réquisition {da.reference} approuvée — à commander',
+            'due': None,
+            'link': f'/chantiers?id={da.chantier_id}' if da.chantier_id else None,
+            'urgency': 'today',
+        })
+
+    return items

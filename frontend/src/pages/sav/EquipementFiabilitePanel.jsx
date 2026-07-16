@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { AlarmClock, Gauge, ShieldAlert, Timer, Plus } from 'lucide-react'
 import savApi from '../../api/savApi'
 import { useHasPermission } from '../../hooks/useHasPermission'
+import { formatMAD, formatPercent, formatDateTime } from '../../lib/format'
 import {
   Badge, Button, Input, Select, SelectTrigger, SelectValue, SelectContent,
   SelectItem, toast,
@@ -12,11 +13,7 @@ const fmtDate = (iso) => {
   const d = new Date(`${String(iso).slice(0, 10)}T00:00:00`)
   return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString('fr-FR')
 }
-const fmtDateTime = (iso) => {
-  if (!iso) return '—'
-  const d = new Date(iso)
-  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleString('fr-FR')
-}
+const fmtDateTime = (iso) => formatDateTime(iso)
 
 /**
  * XSAV15/XSAV16/XSAV17 — Fiabilité (MTBF/MTTR/coût cumulé), disponibilité %,
@@ -119,7 +116,7 @@ export default function EquipementFiabilitePanel({ equipementId }) {
         {canSeeCouts && fiabilite?.cout_cumule != null && (
           <div className="flex items-center gap-2 text-sm sm:col-span-2">
             <span className="font-medium">Coût cumulé (interne) :</span>
-            <span>{fiabilite.cout_cumule.toFixed(2)} DH</span>
+            <span>{formatMAD(fiabilite.cout_cumule, { withSymbol: false })} DH</span>
             {fiabilite.reparer_vs_remplacer && (
               <Badge tone={fiabilite.reparer_vs_remplacer === 'remplacer' ? 'warning' : 'neutral'}>
                 {fiabilite.reparer_vs_remplacer === 'remplacer' ? 'À remplacer' : 'Réparable'}
@@ -146,7 +143,7 @@ export default function EquipementFiabilitePanel({ equipementId }) {
       <div className="flex items-center gap-2 text-sm">
         <Gauge className="size-4 text-muted-foreground" aria-hidden="true" />
         <span className="font-medium">Disponibilité (30 j) :</span>
-        <span>{dispo?.disponibilite_pct != null ? `${dispo.disponibilite_pct.toFixed(1)} %` : '—'}</span>
+        <span>{dispo?.disponibilite_pct != null ? formatPercent(dispo.disponibilite_pct, { decimals: 1 }) : '—'}</span>
       </div>
 
       {/* XSAV16 — Immobilisation en cours / historique */}

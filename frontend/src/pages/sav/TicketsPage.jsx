@@ -3,24 +3,29 @@ import { useDispatch, useSelector } from 'react-redux'
 import {
   Download, Ticket as TicketIcon, AlertTriangle, RotateCcw, Save, FileText,
   Plus, Trash2, StickyNote, Sparkles, Pencil, Wrench, History, Clock,
-  ShieldCheck, ExternalLink, Zap, ChevronRight, ChevronLeft,
+  ShieldCheck, ExternalLink, Zap, ChevronRight, ChevronLeft, Link2,
 } from 'lucide-react'
 import {
   DndContext, PointerSensor, TouchSensor, useDraggable, useDroppable,
   useSensor, useSensors,
 } from '@dnd-kit/core'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { fetchTickets, updateTicket } from '../../features/sav/store/ticketsSlice'
 import savApi from '../../api/savApi'
 import api from '../../api/axios'
 import { downloadBlob } from '../../utils/downloadBlob'
-import importApi, { downloadXlsx } from '../../api/importApi'
+import { timeAgo } from '../../lib/format'
+import importApi from '../../api/importApi'
+import { downloadBlobInGesture } from '../../utils/downloadBlob'
 import installationsApi from '../../api/installationsApi'
 import AttachmentsPanel from '../../components/AttachmentsPanel'
 import TicketSuiviClientPanel from './TicketSuiviClientPanel'
 import TicketChecklistPanel from './TicketChecklistPanel'
 import TicketAdvancedPanel from './TicketAdvancedPanel'
 import { groupTicketsByDate } from './ticketCalendarUtils'
+import { buildCopyTSVAction } from '../../ui/datatable/BulkActionBar'
+import { telHref } from '../../lib/contactLinks'
+import { useIsMobile } from '../../ui/ResponsiveDialog'
 import { INTERVENTION_TYPES } from '../../features/installations/statuses'
 import {
   EMPTY_TICKET_FILTERS,
@@ -48,6 +53,7 @@ import {
   Card,
   EmptyState,
   Skeleton,
+  Spinner,
   Input,
   Textarea,
   Checkbox,
@@ -56,22 +62,15 @@ import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
   AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
-  Form, FormSection, FormField, FormActions, useDirtyGuard,
+  Form, FormSection, FormField, FormActions, useDirtyGuard, confirmLeaveIfDirty,
   DataTable,
   toast,
 } from '../../ui'
 import { useSavedViews } from '../../hooks/useSavedViews'
+import useDocumentTitle from '../../hooks/useDocumentTitle'
 
 const TP_SAVED_VIEWS_KEY = 'taqinor.sav.tickets.savedViews'
 
-function timeAgo(iso) {
-  const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000)
-  if (mins < 1) return "à l'instant"
-  if (mins < 60) return `il y a ${mins} min`
-  const h = Math.round(mins / 60)
-  if (h < 24) return `il y a ${h} h`
-  return new Date(iso).toLocaleDateString('fr-FR')
-}
 const formatDateFR = (iso) => {
   if (!iso) return '—'
   const d = new Date(`${iso}T00:00:00`)
@@ -109,6 +108,17 @@ function frError(err, fallback = 'Action impossible.') {
 
 // L298 — niveau SLA → présentation (badge ton + libellé « ouvert depuis X j »).
 const SLA_TONES = { ok: 'neutral', warn: 'warning', late: 'danger' }
+
+// VX31 — boîte de réception SAV : sur grand viewport (≥1280px, xl Tailwind),
+// le détail du ticket vit dans un panneau latéral PERSISTANT à côté de la liste
+// (pattern inbox Linear/Plain) au lieu du tiroir `Sheet` plein-tiroir. Sous ce
+// seuil (tablette/mobile), le `Sheet` reste le fallback inchangé. On réutilise
+// le hook media-query de `ResponsiveDialog` (M158) avec une requête inversée —
+// « pas mobile » devient ici « assez large pour le split-view ».
+const DESKTOP_SPLIT_QUERY = '(min-width: 1280px)'
+function useIsDesktopSplit() {
+  return useIsMobile(DESKTOP_SPLIT_QUERY)
+}
 
 // L313 — section repliable (usage terrain/mobile). Utilise <details> natif :
 // ouverte par défaut, le résumé fait office d'en-tête d'accordéon cliquable.
@@ -174,6 +184,18 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
   const id = ticket.id
   const [current, setCurrent] = useState(ticket)
   const F = (k, d = '') => current?.[k] ?? d
+
+  // VX216(b) — l'intervention qui a RÉSOLU ce ticket : la plus récemment
+  // réalisée parmi `current.interventions` (TicketInterventionSerializer,
+  // déjà exposé par l'API — aucun champ backend manquant). N'affiche rien
+  // pour un ticket jamais résolu par une intervention (résolution à distance,
+  // manuelle...).
+  const resolvingIntervention = useMemo(() => {
+    const list = (current.interventions ?? []).filter((iv) => iv.date_realisee)
+    if (list.length === 0) return null
+    return list.reduce((latest, iv) =>
+      (!latest || iv.date_realisee > latest.date_realisee ? iv : latest), null)
+  }, [current.interventions])
 
   const initialFields = useMemo(() => ({
     statut: current.statut ?? 'nouveau',
@@ -525,34 +547,37 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
     return new Date() < fin ? 'oui' : 'non'
   }, [fields.equipement, linkedEquip])
 
-  return (
-    <Sheet open onOpenChange={(o) => { if (!o) onClose() }}>
-      <SheetContent side="right" className="w-[min(46rem,calc(100%-1.5rem))] sm:max-w-3xl">
-        <SheetHeader>
-          <SheetTitle className="flex flex-wrap items-center gap-2">
-            Ticket SAV — {current.reference ?? ''}
-            <StatutPill statut={current.statut} />
-            {current.annule && <Badge tone="danger">Annulé</Badge>}
-            <TicketSlaBadge ticket={current} />
-          </SheetTitle>
-          <SheetDescription>
-            Suivi, équipement, interventions, pièces et historique du ticket.
-          </SheetDescription>
-          {/* L299/L1 — compte-à-rebours de garantie de l'équipement lié. */}
-          {current.equipement_fin_garantie && (
-            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <ShieldCheck className="size-3.5" aria-hidden="true" />
-              {(() => {
-                const fin = new Date(`${current.equipement_fin_garantie}T00:00:00`)
-                const jours = Math.round((fin - new Date()) / 86400000)
-                return jours >= 0
-                  ? `Garantie jusqu'au ${formatDateFR(current.equipement_fin_garantie)} (${jours} j restant${jours > 1 ? 's' : ''})`
-                  : `Garantie expirée le ${formatDateFR(current.equipement_fin_garantie)} (${-jours} j)`
-              })()}
-            </span>
-          )}
-        </SheetHeader>
+  // VX31 — sur grand viewport, le panneau est un aside PERSISTANT à côté de la
+  // liste (jamais un tiroir plein-tiroir qui masque la DataTable) ; sous le
+  // seuil desktop, le `Sheet` plein-tiroir reste le fallback mobile/tablette
+  // inchangé (mêmes CollapsibleSection, même contenu — seule l'enveloppe change).
+  const isDesktopSplit = useIsDesktopSplit()
 
+  const titleContent = (
+    <>
+      Ticket SAV — {current.reference ?? ''}
+      <StatutPill statut={current.statut} />
+      {current.annule && <Badge tone="danger">Annulé</Badge>}
+      <TicketSlaBadge ticket={current} />
+    </>
+  )
+
+  // L299/L1 — compte-à-rebours de garantie de l'équipement lié.
+  const headerContent = current.equipement_fin_garantie ? (
+    <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+      <ShieldCheck className="size-3.5" aria-hidden="true" />
+      {(() => {
+        const fin = new Date(`${current.equipement_fin_garantie}T00:00:00`)
+        const jours = Math.round((fin - new Date()) / 86400000)
+        return jours >= 0
+          ? `Garantie jusqu'au ${formatDateFR(current.equipement_fin_garantie)} (${jours} j restant${jours > 1 ? 's' : ''})`
+          : `Garantie expirée le ${formatDateFR(current.equipement_fin_garantie)} (${-jours} j)`
+      })()}
+    </span>
+  ) : null
+
+  const bodyContent = (
+    <>
         {current.annule && (
           <div role="alert"
                className="flex flex-wrap items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
@@ -568,19 +593,52 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
           {/* ── Infos ── */}
           <FormSection title="Ticket">
             <FormField label="Client">
-              <Input value={current.client_nom ?? '—'} readOnly />
+              <div className="flex items-center gap-2">
+                <Input value={current.client_nom ?? '—'} readOnly />
+                {telHref(current.client_telephone) && (
+                  <a href={telHref(current.client_telephone)} title="Appeler"
+                     className="link-blue whitespace-nowrap">☎ {current.client_telephone}</a>
+                )}
+              </div>
             </FormField>
             <FormField label="Chantier">
               <div className="flex items-center gap-2">
                 <Input value={current.installation_reference ?? '—'} readOnly />
                 {current.installation && (
-                  // L312 — lien vers la page des chantiers.
-                  <Button asChild variant="ghost" size="sm" title="Ouvrir les chantiers">
-                    <Link to="/chantiers"><ExternalLink /></Link>
+                  // VX216(b) — L312 pointait vers la page générique des
+                  // chantiers ; deep-link réel vers CE chantier (même patron
+                  // `?id=` que VX79/InstallationsPage.jsx).
+                  <Button asChild variant="ghost" size="sm" title="Ouvrir ce chantier">
+                    <Link to={`/chantiers?id=${current.installation}`}><ExternalLink /></Link>
                   </Button>
                 )}
               </div>
             </FormField>
+            {/* VX216(b) — YSERV2 avance automatiquement un ticket vers RESOLU
+                quand son intervention liée se termine, mais jusqu'ici le
+                ticket ne montrait jamais QUELLE intervention l'a résolu.
+                `current.interventions` (TicketInterventionSerializer) porte
+                déjà date_realisee/technicien_nom — la plus récente réalisée
+                est la résolvante. */}
+            {resolvingIntervention && (
+              <FormField label="Résolu par">
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={
+                      `Intervention #${resolvingIntervention.id} du `
+                      + `${formatDateFR(resolvingIntervention.date_realisee)} par `
+                      + `${resolvingIntervention.technicien_nom ?? '—'}`
+                    }
+                    readOnly
+                  />
+                  {current.installation && (
+                    <Button asChild variant="ghost" size="sm" title="Ouvrir le chantier de cette intervention">
+                      <Link to={`/chantiers?id=${current.installation}`}><ExternalLink /></Link>
+                    </Button>
+                  )}
+                </div>
+              </FormField>
+            )}
             <FormField label="Ouvert le">
               <Input value={formatDateFR(current.date_ouverture)} readOnly />
             </FormField>
@@ -962,6 +1020,44 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+    </>
+  )
+
+  // ── Desktop (≥1280px) : panneau latéral persistant à côté de la liste. ──
+  if (isDesktopSplit) {
+    return (
+      <aside
+        aria-label={`Détail du ticket ${current.reference ?? ''}`}
+        className="flex w-[26rem] shrink-0 flex-col gap-4 overflow-y-auto rounded-xl border border-border bg-card p-4 xl:sticky xl:top-1"
+      >
+        <div className="flex flex-col gap-1.5 border-b border-border pb-3">
+          <div className="flex flex-wrap items-center gap-2 font-display text-lg font-semibold">
+            {titleContent}
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Suivi, équipement, interventions, pièces et historique du ticket.
+          </p>
+          {headerContent}
+        </div>
+        {bodyContent}
+      </aside>
+    )
+  }
+
+  // ── Mobile/tablette (<1280px) : tiroir Sheet plein-tiroir (fallback inchangé). ──
+  return (
+    <Sheet open onOpenChange={(o) => { if (!o && confirmLeaveIfDirty(dirty)) onClose() }}>
+      <SheetContent side="right" className="w-[min(46rem,calc(100%-1.5rem))] sm:max-w-3xl">
+        <SheetHeader>
+          <SheetTitle className="flex flex-wrap items-center gap-2">
+            {titleContent}
+          </SheetTitle>
+          <SheetDescription>
+            Suivi, équipement, interventions, pièces et historique du ticket.
+          </SheetDescription>
+          {headerContent}
+        </SheetHeader>
+        {bodyContent}
       </SheetContent>
     </Sheet>
   )
@@ -1089,9 +1185,22 @@ function CalendarDayCell({ date: cellDate, inMonth, isToday, tickets, onSelect, 
 // createTicket avec juste la date_tournee proposée en info (posée ensuite par
 // le glisser-déposer si l'utilisateur veut affiner) — garde le composant
 // simple : ouvre la fiche standard n'est pas nécessaire, un POST minimal suffit.
+// VX240(d) — dernier type de ticket utilisé (localStorage, modifiable),
+// même patron que VX93 (lireLastTva/lireDernierMode) : le type ne reset plus
+// silencieusement à « correctif » à chaque ouverture.
+const TICKET_QC_TYPE_KEY = 'taqinor.tickets.quickCreate.lastType'
+const lireLastTicketType = () => {
+  try { return window.localStorage.getItem(TICKET_QC_TYPE_KEY) || 'correctif' }
+  catch { return 'correctif' }
+}
+const ecrireLastTicketType = (v) => {
+  try { if (v) window.localStorage.setItem(TICKET_QC_TYPE_KEY, v) }
+  catch { /* localStorage indisponible (navigation privée, quota) : no-op */ }
+}
+
 function CalendarQuickCreateDialog({ date: openDate, onClose, onCreated }) {
   const [description, setDescription] = useState('')
-  const [type, setType] = useState('correctif')
+  const [type, setType] = useState(lireLastTicketType)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState(null)
 
@@ -1102,6 +1211,7 @@ function CalendarQuickCreateDialog({ date: openDate, onClose, onCreated }) {
       const r = await savApi.createTicket({ type, description: description || undefined })
       // Pose la date planifiée sur le ticket fraîchement créé.
       await savApi.replanifierTicket(r.data.id, openDate)
+      ecrireLastTicketType(type)  // VX240(d) — mémorise le type pour la prochaine création
       onCreated?.()
       onClose()
     } catch (e) {
@@ -1122,8 +1232,9 @@ function CalendarQuickCreateDialog({ date: openDate, onClose, onCreated }) {
         </AlertDialogHeader>
         <div className="grid gap-3">
           <FormField label="Type">
+            {/* VX240(d) — la modale s'ouvrait sans aucun autofocus. */}
             <Select value={type} onValueChange={setType}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectTrigger autoFocus><SelectValue /></SelectTrigger>
               <SelectContent>
                 {TICKET_TYPES.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
               </SelectContent>
@@ -1245,11 +1356,17 @@ export function TicketCalendarView({ tickets, onSelect, onReload }) {
 }
 
 export default function TicketsPage() {
+  // VX82 — titre d'onglet dédié (chrome navigateur vivant).
+  useDocumentTitle('Tickets SAV')
   const dispatch = useDispatch()
   const { items, loading, error } = useSelector((s) => s.tickets)
   const [filters, setFilters] = useState(EMPTY_TICKET_FILTERS)
   const [selected, setSelected] = useState(null)
+  const [searchParams, setSearchParams] = useSearchParams()
   const [view, setView] = useState('table') // L295/ZMFG3 — 'table' | 'kanban' | 'calendrier'
+  // VX172 — pending visible sur « Exporter Excel » (VX49 pose déjà le toast
+  // d'erreur ; ceci ajoute juste l'état chargement manquant).
+  const [xlsxBusy, setXlsxBusy] = useState(false)
   // Vues enregistrées (FG11).
   const { savedViews: ticketSavedViews, saveView: saveTicketView, deleteView: deleteTicketView } = useSavedViews(TP_SAVED_VIEWS_KEY)
   const saveCurrentTicketView = () => {
@@ -1262,6 +1379,38 @@ export default function TicketsPage() {
 
   const reload = () => dispatch(fetchTickets())
   useEffect(() => { reload() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // VX79 — lien interne partageable : /sav?id=<pk> ouvre la fiche du ticket
+  // ciblé (patron ?lead= de LeadsPage — état DÉRIVÉ, aucun effet). Fermer retire
+  // le paramètre pour ne pas ré-ouvrir la fiche. Un id absent des tickets
+  // chargés est signalé par un EmptyState inline (jamais une page blanche).
+  const wantedId = searchParams.get('id')
+  const deepTicket = useMemo(() => {
+    if (!wantedId) return null
+    return (items ?? []).find((t) => String(t.id) === String(wantedId)) ?? null
+  }, [wantedId, items])
+  const deepMissing = !!wantedId && !loading && !error && !deepTicket
+
+  const clearDeepLink = () => {
+    if (searchParams.has('id')) {
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev)
+        next.delete('id')
+        return next
+      }, { replace: true })
+    }
+  }
+  // Panneau ouvert : sélection manuelle OU ticket ciblé par le lien profond.
+  const detailTicket = selected ?? deepTicket
+  const closeDetail = () => { setSelected(null); clearDeepLink() }
+
+  // VX79 — « Copier le lien » : URL INTERNE de l'ERP (jamais un lien public) que
+  // l'on peut envoyer à un collègue — /sav?id=<pk> rouvre le même ticket.
+  const copierLien = async (t) => {
+    const url = `${window.location.origin}/sav?id=${t.id}`
+    try { await navigator.clipboard?.writeText(url) } catch { /* presse-papier indispo */ }
+    toast.success('Lien du ticket copié.')
+  }
 
   const setF = (k, v) => setFilters((f) => ({ ...f, [k]: v }))
 
@@ -1391,10 +1540,25 @@ export default function TicketsPage() {
                 { value: 'calendrier', label: 'Calendrier' },
               ]}
             />
-            <Button variant="outline" size="sm"
-                    onClick={() => importApi.exportList('tickets', rows.map((r) => r.id))
-                      .then((r) => downloadXlsx(r.data, 'tickets.xlsx')).catch(() => {})}>
-              <Download /> Exporter Excel
+            {/* VX79 — « Copier le lien » du ticket ouvert : URL INTERNE
+                partageable (/sav?id=<pk>), pour l'envoyer à un collègue. */}
+            {detailTicket && (
+              <Button variant="ghost" size="sm"
+                      onClick={() => copierLien(detailTicket)}
+                      title="Copier le lien interne de ce ticket (à envoyer à un collègue)">
+                <Link2 /> Copier le lien
+              </Button>
+            )}
+            <Button variant="outline" size="sm" disabled={xlsxBusy}
+                    onClick={() => {
+                      const pending = downloadBlobInGesture()
+                      setXlsxBusy(true)
+                      importApi.exportList('tickets', rows.map((r) => r.id))
+                        .then((r) => pending.deliver(r.data, 'tickets.xlsx'))
+                        .catch(() => {})
+                        .finally(() => setXlsxBusy(false))
+                    }}>
+              {xlsxBusy ? <Spinner /> : <Download />} Exporter Excel
             </Button>
           </div>
         </header>
@@ -1413,6 +1577,17 @@ export default function TicketsPage() {
               </button>
             ))}
           </div>
+        )}
+
+        {/* VX79 — lien profond ?id=<pk> pointant vers un ticket introuvable :
+            EmptyState inline (jamais une page blanche). */}
+        {deepMissing && (
+          <EmptyState
+            icon={AlertTriangle}
+            title="Ticket introuvable"
+            description="Le ticket de ce lien n'existe plus ou n'est pas accessible."
+            action={<Button size="sm" variant="outline" onClick={clearDeepLink}>Fermer</Button>}
+          />
         )}
 
         {/* ── Filtres ── */}
@@ -1505,87 +1680,98 @@ export default function TicketsPage() {
           </div>
         </div>
 
-        {loading ? (
-          <Card className="space-y-2 p-4">
-            {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-9 w-full" />)}
-          </Card>
-        ) : error ? (
-          <EmptyState
-            icon={AlertTriangle}
-            title="Chargement impossible"
-            description="Les tickets n'ont pas pu être chargés. Réessayez."
-            action={<Button size="sm" variant="outline" onClick={reload}><RotateCcw /> Réessayer</Button>}
-          />
-        ) : rows.length === 0 ? (
-          // L315 — distinguer « aucun ticket ouvert » de « aucun match ».
-          <EmptyState
-            icon={TicketIcon}
-            title={hasFilters ? 'Aucun résultat' : 'Aucun ticket ouvert'}
-            description={hasFilters
-              ? 'Aucun ticket ne correspond aux filtres.'
-              : "Aucun ticket ouvert pour le moment. Ouvrez-en un depuis la fiche d'un chantier."}
-            action={hasFilters
-              ? <Button size="sm" variant="outline" onClick={() => setFilters(EMPTY_TICKET_FILTERS)}><RotateCcw /> Réinitialiser</Button>
-              : undefined}
-          />
-        ) : view === 'kanban' ? (
-          // L295 — vue Kanban : colonnes Nouveau → Clôturé via TICKET_STATUSES.
-          <div className="flex gap-3 overflow-x-auto pb-2">
-            {TICKET_STATUSES.map((k) => (
-              <KanbanColumn key={k} statut={k}
-                            tickets={rows.filter((r) => r.statut === k)}
-                            onSelect={setSelected} />
-            ))}
+        {/* VX31 — boîte de réception SAV : à partir de 1280px (xl), la liste et
+            le panneau de détail vivent CÔTE À CÔTE (pattern inbox Linear/Plain) —
+            la liste ne disparaît jamais derrière un tiroir. Sous ce seuil,
+            `TicketDetail` retombe seul sur son `Sheet` plein-tiroir (fallback
+            mobile/tablette inchangé), donc pas de wrapper flex nécessaire ici. */}
+        <div className="flex flex-col gap-5 xl:flex-row xl:items-start">
+          <div className="min-w-0 flex-1">
+            {loading ? (
+              <Card className="space-y-2 p-4">
+                {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-9 w-full" />)}
+              </Card>
+            ) : error ? (
+              <EmptyState
+                icon={AlertTriangle}
+                title="Chargement impossible"
+                description="Les tickets n'ont pas pu être chargés. Réessayez."
+                action={<Button size="sm" variant="outline" onClick={reload}><RotateCcw /> Réessayer</Button>}
+              />
+            ) : rows.length === 0 ? (
+              // L315 — distinguer « aucun ticket ouvert » de « aucun match ».
+              <EmptyState
+                icon={TicketIcon}
+                title={hasFilters ? 'Aucun résultat' : 'Aucun ticket ouvert'}
+                description={hasFilters
+                  ? 'Aucun ticket ne correspond aux filtres.'
+                  : "Aucun ticket ouvert pour le moment. Ouvrez-en un depuis la fiche d'un chantier."}
+                action={hasFilters
+                  ? <Button size="sm" variant="outline" onClick={() => setFilters(EMPTY_TICKET_FILTERS)}><RotateCcw /> Réinitialiser</Button>
+                  : undefined}
+              />
+            ) : view === 'kanban' ? (
+              // L295 — vue Kanban : colonnes Nouveau → Clôturé via TICKET_STATUSES.
+              <div className="flex gap-3 overflow-x-auto pb-2">
+                {TICKET_STATUSES.map((k) => (
+                  <KanbanColumn key={k} statut={k}
+                                tickets={rows.filter((r) => r.statut === k)}
+                                onSelect={setSelected} />
+                ))}
+              </div>
+            ) : view === 'calendrier' ? (
+              // ZMFG3 — vue calendrier : tickets datés (date_tournee) par jour,
+              // glisser-déposer pour replanifier, création rapide depuis un créneau.
+              <TicketCalendarView tickets={rows} onSelect={setSelected} onReload={reload} />
+            ) : (
+              <DataTable
+                data={rows}
+                columns={columns}
+                getRowId={(row) => row.id}
+                searchable={false}
+                selectable
+                onRowClick={(row) => setSelected(row)}
+                exportName="tickets"
+                emptyTitle="Aucun ticket"
+                emptyDescription="Aucun ticket ne correspond à votre recherche."
+                bulkActions={(selRows, selKeys, clear) => [
+                  // VX246(c) — « Copier » la sélection en TSV (colle en colonnes dans Excel).
+                  buildCopyTSVAction({ rows: selRows, filteredRows: selRows, columns }),
+                  // L317 — assignation technicien en lot.
+                  ...[...technicienById.entries()].map(([tid, nom]) => ({
+                    id: `tech-${tid}`,
+                    label: `Assigner à ${nom}`,
+                    icon: Wrench,
+                    onClick: () => bulkAction(selKeys, 'technicien', { technicien: tid }, clear),
+                  })),
+                  // YDOCF1/ZSAV10 — changement de statut en lot, désormais via
+                  // l'action groupée gardée (respecte la machine d'états).
+                  ...TICKET_STATUSES.map((k) => ({
+                    id: `statut-${k}`,
+                    label: `Statut → ${TICKET_STATUS_LABELS[k]}`,
+                    onClick: () => bulkAction(selKeys, 'statut', { statut: k }, clear),
+                  })),
+                  // ZSAV10 — priorité en lot (nouveau, n'existait pas avant).
+                  ...TICKET_PRIORITES.map((p) => ({
+                    id: `priorite-${p}`,
+                    label: `Priorité → ${TICKET_PRIORITE_LABELS[p]}`,
+                    onClick: () => bulkAction(selKeys, 'priorite', { priorite: p }, clear),
+                  })),
+                  // ZSAV10 — annulation en lot (nouveau, n'existait pas avant).
+                  {
+                    id: 'annuler',
+                    label: 'Annuler',
+                    onClick: () => bulkAction(selKeys, 'annuler', {}, clear),
+                  },
+                ]}
+              />
+            )}
           </div>
-        ) : view === 'calendrier' ? (
-          // ZMFG3 — vue calendrier : tickets datés (date_tournee) par jour,
-          // glisser-déposer pour replanifier, création rapide depuis un créneau.
-          <TicketCalendarView tickets={rows} onSelect={setSelected} onReload={reload} />
-        ) : (
-          <DataTable
-            data={rows}
-            columns={columns}
-            getRowId={(row) => row.id}
-            searchable={false}
-            selectable
-            onRowClick={(row) => setSelected(row)}
-            exportName="tickets"
-            emptyTitle="Aucun ticket"
-            emptyDescription="Aucun ticket ne correspond à votre recherche."
-            bulkActions={(selRows, selKeys, clear) => [
-              // L317 — assignation technicien en lot.
-              ...[...technicienById.entries()].map(([tid, nom]) => ({
-                id: `tech-${tid}`,
-                label: `Assigner à ${nom}`,
-                icon: Wrench,
-                onClick: () => bulkAction(selKeys, 'technicien', { technicien: tid }, clear),
-              })),
-              // YDOCF1/ZSAV10 — changement de statut en lot, désormais via
-              // l'action groupée gardée (respecte la machine d'états).
-              ...TICKET_STATUSES.map((k) => ({
-                id: `statut-${k}`,
-                label: `Statut → ${TICKET_STATUS_LABELS[k]}`,
-                onClick: () => bulkAction(selKeys, 'statut', { statut: k }, clear),
-              })),
-              // ZSAV10 — priorité en lot (nouveau, n'existait pas avant).
-              ...TICKET_PRIORITES.map((p) => ({
-                id: `priorite-${p}`,
-                label: `Priorité → ${TICKET_PRIORITE_LABELS[p]}`,
-                onClick: () => bulkAction(selKeys, 'priorite', { priorite: p }, clear),
-              })),
-              // ZSAV10 — annulation en lot (nouveau, n'existait pas avant).
-              {
-                id: 'annuler',
-                label: 'Annuler',
-                onClick: () => bulkAction(selKeys, 'annuler', {}, clear),
-              },
-            ]}
-          />
-        )}
 
-        {selected && (
-          <TicketDetail ticket={selected} onClose={() => setSelected(null)} onSaved={reload} />
-        )}
+          {detailTicket && (
+            <TicketDetail ticket={detailTicket} onClose={closeDetail} onSaved={reload} />
+          )}
+        </div>
       </div>
     </TooltipProvider>
   )

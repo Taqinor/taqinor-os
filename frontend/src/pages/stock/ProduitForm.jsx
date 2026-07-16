@@ -9,33 +9,65 @@ import {
   createCategorie,
   createFournisseur,
 } from '../../features/stock/store/stockSlice'
+import { useIsAdmin } from '../../hooks/useHasPermission'
 import stockApi from '../../api/stockApi'
+import { formatMAD, formatPercent } from '../../lib/format'
 import {
-  Button, Badge,
+  Button, Badge, Switch,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
-  Form, FormSection, FormField, useDirtyGuard,
+  Form, FormSection, FormField, useDirtyGuard, confirmLeaveIfDirty,
   Input, Textarea,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+  toast,
 } from '../../ui'
 import { isDirty } from '../../ui/form-utils'
+import { useServerFieldErrors } from '../../hooks/useServerFieldErrors'
 
-// Traduit une erreur serveur DRF en phrase française lisible (jamais de JSON brut).
-function frSubmitError(err) {
-  if (!err) return 'Une erreur est survenue. Réessayez.'
-  if (typeof err === 'string') return err
-  if (err.detail) return err.detail
-  if (err.non_field_errors?.[0]) return err.non_field_errors[0]
-  if (err.sku?.[0]) {
-    return /unique|already exists|existe/i.test(err.sku[0])
-      ? 'Ce SKU est déjà utilisé par un autre produit.'
-      : `SKU : ${err.sku[0]}`
+// VX92 — « Créer un autre » : persisté par utilisateur/poste (localStorage),
+// défaut OFF (comportement historique inchangé). Un salon = 10 leads/produits
+// créés d'affilée ; sans ce toggle chaque création coûte un cycle
+// fermer/rouvrir (~10-30 s).
+const CREER_UN_AUTRE_KEY = 'taqinor.produitForm.creerUnAutre'
+function lireCreerUnAutre() {
+  try {
+    return window.localStorage.getItem(CREER_UN_AUTRE_KEY) === '1'
+  } catch {
+    return false
   }
-  // Premier message de champ disponible, sinon repli générique (jamais de JSON).
-  for (const v of Object.values(err)) {
-    const m = Array.isArray(v) ? v[0] : v
-    if (typeof m === 'string') return m
+}
+function ecrireCreerUnAutre(v) {
+  try {
+    window.localStorage.setItem(CREER_UN_AUTRE_KEY, v ? '1' : '0')
+  } catch {
+    // localStorage indisponible (navigation privée, quota) : no-op silencieux.
   }
-  return "L'enregistrement a échoué. Vérifiez les champs et réessayez."
+}
+
+// VX93 — défaut intelligent : dernier taux de TVA saisi (création seulement),
+// mémorisé par localStorage. Repli sur '20' (cas le plus courant) si absent.
+const LAST_TVA_KEY = 'taqinor.produitForm.lastTva'
+function lireLastTva() {
+  try {
+    return window.localStorage.getItem(LAST_TVA_KEY) || '20'
+  } catch {
+    return '20'
+  }
+}
+function ecrireLastTva(v) {
+  try {
+    if (v !== '' && v != null) window.localStorage.setItem(LAST_TVA_KEY, String(v))
+  } catch {
+    // no-op silencieux.
+  }
+}
+
+// VX171 — traduit le message SKU (contrainte d'unicité serveur) en phrase
+// française lisible AVANT de le confier à useServerFieldErrors — les autres
+// champs (nom, prix_vente…) sont mappés génériquement par le hook.
+function frSkuMessage(msg) {
+  return /unique|already exists|existe/i.test(msg)
+    ? 'Ce SKU est déjà utilisé par un autre produit.'
+    : msg
 }
 
 // N17 — listes de prix multi-fournisseurs par SKU. Le prix d'achat est INTERNE
@@ -146,9 +178,9 @@ function PrixFournisseursSection({ produitId, fournisseurs, isAdmin = false }) {
                                value={editPrix} onChange={(e) => setEditPrix(e.target.value)} />
                       ) : (
                         <span className="inline-flex items-center gap-1.5">
-                          {Number(r.prix_achat).toFixed(2)} DH
+                          {formatMAD(r.prix_achat, { withSymbol: false })} DH
                           {ecart != null && ecart > 0 && (
-                            <span className="text-xs text-warning">+{ecart.toFixed(0)} % vs le moins cher</span>
+                            <span className="text-xs text-warning">+{formatPercent(ecart, { decimals: 0 })} vs le moins cher</span>
                           )}
                         </span>
                       )}
@@ -221,7 +253,7 @@ function PrixFournisseursSection({ produitId, fournisseurs, isAdmin = false }) {
                       {i === 0 ? <Star className="size-3.5 fill-warning text-warning" aria-label="Le moins cher" /> : i + 1}
                     </td>
                     <td className="px-3 py-2">{c.fournisseur_nom}</td>
-                    <td className="px-3 py-2 tabular-nums">{Number(c.prix_achat).toFixed(2)} DH</td>
+                    <td className="px-3 py-2 tabular-nums">{formatMAD(c.prix_achat, { withSymbol: false })} DH</td>
                     <td className="px-3 py-2 text-muted-foreground">
                       {c.date_dernier_achat
                         ? new Date(c.date_dernier_achat).toLocaleDateString('fr-FR')
@@ -246,11 +278,24 @@ function PrixFournisseursSection({ produitId, fournisseurs, isAdmin = false }) {
 export default function ProduitForm({ produit = null, onClose, onSaved }) {
   const dispatch = useDispatch()
   const { categories, fournisseurs, produits } = useSelector(s => s.stock)
-  const isAdmin = useSelector(s => s.auth.role) === 'admin'
+  const isAdmin = useIsAdmin()
   const isEdit = !!produit
 
   const [saving, setSaving] = useState(false)
-  const [errors, setErrors] = useState({})
+  // VX171 — vérité serveur → champ ; le rouge s'efface à la frappe.
+  const { errors, setErrors, setFromResponse, clearField } = useServerFieldErrors()
+
+  // VX92 — « Créer un autre » : uniquement pertinent à la création (jamais en
+  // édition), persisté (localStorage), défaut OFF.
+  const [creerUnAutre, setCreerUnAutre] = useState(() => !isEdit && lireCreerUnAutre())
+  const nomRef = useRef(null)
+
+  // VX249(b) — tva : 1 des 4 champs VX93 exactement (avec owner/ville sur
+  // LeadForm.jsx et payMode sur FactureList.jsx). « Suggéré » n'a de sens
+  // qu'à la création (VX93 ne pré-remplit jamais en édition).
+  const [tvaTouched, setTvaTouched] = useState(false)
+  const [tvaFocused, setTvaFocused] = useState(false)
+  const tvaSuggested = !isEdit && !tvaTouched
 
   const [newCatName, setNewCatName] = useState('')
   const [showNewCat, setShowNewCat] = useState(false)
@@ -270,9 +315,9 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
     description:    produit?.description    ?? '',
     prix_vente:     String(produit?.prix_vente  ?? ''),
     prix_achat:     String(produit?.prix_achat  ?? '0'),
-    // Nouveau produit : TVA 20 % par défaut (cas le plus courant) ;
+    // VX93 — nouveau produit : dernier taux TVA saisi (localStorage, défaut 20 %) ;
     // l'édition conserve la valeur existante (y compris « Sans TVA »).
-    tva:            produit?.tva != null ? String(produit.tva) : (isEdit ? '' : '20'),
+    tva:            produit?.tva != null ? String(produit.tva) : (isEdit ? '' : lireLastTva()),
     quantite_stock: String(produit?.quantite_stock ?? '0'),
     seuil_alerte:   String(produit?.seuil_alerte  ?? '0'),
     categorie_id:   produit?.categorie?.id  ? String(produit.categorie.id) : '',
@@ -333,7 +378,8 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
     }
   }
 
-  const setField = (k, v) => setFields(f => ({ ...f, [k]: v }))
+  // VX171 — le rouge ne doit jamais mentir pendant que l'utilisateur corrige.
+  const setField = (k, v) => { clearField(k); setFields(f => ({ ...f, [k]: v })) }
 
   // Doublon de SKU détecté localement (unicité ('company','sku') côté serveur).
   // Le serveur reste l'autorité ; ceci évite un aller-retour pour un cas courant.
@@ -381,11 +427,32 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
         await dispatch(updateProduit({ id: produit.id, data: payload })).unwrap()
       } else {
         await dispatch(createProduit(payload)).unwrap()
+        ecrireLastTva(fields.tva)  // VX93 — mémorise la TVA pour le prochain produit
       }
       onSaved?.()
-      onClose()
+      // VX92 — « Créer un autre » (uniquement à la création) : on vide le
+      // formulaire et on refocalise le champ 1 au lieu de fermer le dialog.
+      if (!isEdit && creerUnAutre) {
+        toast.success('Produit créé.')
+        // VX93 — le formulaire vidé ré-applique la dernière TVA saisie.
+        setFields({ ...initialFields, tva: lireLastTva() })
+        setErrors({})
+        // VX249(b) — le produit SUIVANT reçoit un NOUVEAU défaut TVA : «
+        // suggéré » redevient vrai.
+        setTvaTouched(false)
+        nomRef.current?.focus()
+      } else {
+        onClose()
+      }
     } catch (err) {
-      setErrors(prev => ({ ...prev, submit: frSubmitError(err) }))
+      // VX171 — mapping DRF générique (detail / {champ:[…]} / array) ; le
+      // message SKU (contrainte d'unicité) reste traduit en français lisible.
+      const skuMsg = err && typeof err === 'object'
+        ? (Array.isArray(err.sku) ? err.sku[0] : err.sku)
+        : null
+      setFromResponse(
+        typeof skuMsg === 'string' ? { ...err, sku: frSkuMessage(skuMsg) } : err,
+      )
     } finally {
       setSaving(false)
     }
@@ -399,7 +466,7 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
   const margeNegative = venteN > 0 && achatN > 0 && venteN < achatN
 
   return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+    <Dialog open onOpenChange={(o) => { if (!o && confirmLeaveIfDirty(dirty)) onClose() }}>
       <DialogContent className="max-h-[92vh] max-w-3xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{isEdit ? `Éditer — ${produit.nom}` : 'Nouveau produit'}</DialogTitle>
@@ -411,7 +478,9 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
         <Form onSubmit={handleSubmit} className="gap-6">
           <FormSection>
             <FormField label="Nom" required htmlFor="pf-nom" error={errors.nom}>
-              <Input id="pf-nom" invalid={!!errors.nom} value={fields.nom}
+              {/* VX240(b) — sans autofocus, la modale s'ouvrait sans qu'aucun
+                  champ ne soit prêt à recevoir la frappe. */}
+              <Input id="pf-nom" ref={nomRef} autoFocus invalid={!!errors.nom} value={fields.nom}
                      onChange={e => setField('nom', e.target.value)} placeholder="Nom du produit" />
             </FormField>
             <FormField label="SKU / Référence" htmlFor="pf-sku" error={errors.sku}>
@@ -521,9 +590,27 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
               <Input id="pf-achat" type="number" min="0" step="any" inputMode="decimal"
                      value={fields.prix_achat} onChange={e => setField('prix_achat', e.target.value)} />
             </FormField>
-            <FormField label="TVA (%)" htmlFor="pf-tva">
-              <Select value={fields.tva || '__none'} onValueChange={v => setField('tva', v === '__none' ? '' : v)}>
-                <SelectTrigger id="pf-tva"><SelectValue placeholder="— Sans TVA —" /></SelectTrigger>
+            {/* VX249(b) — tva : 1 des 4 champs VX93 exactement. Contour
+                pointillé + micro-libellé au focus tant que le dernier taux
+                mémorisé n'a pas été touché — retiré dès la première
+                modification. */}
+            <FormField
+              label="TVA (%)"
+              htmlFor="pf-tva"
+              hint={tvaSuggested && tvaFocused ? 'Suggéré — modifiable' : undefined}
+            >
+              <Select
+                value={fields.tva || '__none'}
+                onValueChange={v => { setField('tva', v === '__none' ? '' : v); setTvaTouched(true) }}
+              >
+                <SelectTrigger
+                  id="pf-tva"
+                  className={tvaSuggested ? 'vx-suggested-field' : undefined}
+                  onFocus={() => setTvaFocused(true)}
+                  onBlur={() => setTvaFocused(false)}
+                >
+                  <SelectValue placeholder="— Sans TVA —" />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__none">— Sans TVA —</SelectItem>
                   <SelectItem value="0">0%</SelectItem>
@@ -540,13 +627,13 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
               <div className="sm:col-span-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                 {tvaN !== null && venteN > 0 && (
                   <span>
-                    Vente TTC : <strong className="text-foreground">{(venteN * (1 + tvaN / 100)).toFixed(2)} DH</strong>
-                    {achatN > 0 && <> · Achat TTC : {(achatN * (1 + tvaN / 100)).toFixed(2)} DH</>}
+                    Vente TTC : <strong className="text-foreground">{formatMAD(venteN * (1 + tvaN / 100), { withSymbol: false })} DH</strong>
+                    {achatN > 0 && <> · Achat TTC : {formatMAD(achatN * (1 + tvaN / 100), { withSymbol: false })} DH</>}
                   </span>
                 )}
                 {marge !== null && (
                   <Badge tone={marge >= 0 ? 'success' : 'danger'}>
-                    Marge {(venteN - achatN).toFixed(2)} DH · {marge.toFixed(1)} % (interne)
+                    Marge {formatMAD(venteN - achatN, { withSymbol: false })} DH · {formatPercent(marge, { decimals: 1 })} (interne)
                   </Badge>
                 )}
               </div>
@@ -602,7 +689,20 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
           )}
 
           <DialogFooter>
-            {dirty && <span className="mr-auto text-xs text-warning">Modifications non enregistrées</span>}
+            <div className="mr-auto flex flex-col gap-1">
+              {dirty && <span className="text-xs text-warning">Modifications non enregistrées</span>}
+              {/* VX92 — « Créer un autre » : seulement à la création. */}
+              {!isEdit && (
+                <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Switch
+                    checked={creerUnAutre}
+                    onCheckedChange={(v) => { setCreerUnAutre(v); ecrireCreerUnAutre(v) }}
+                    aria-label="Créer un autre"
+                  />
+                  Créer un autre
+                </label>
+              )}
+            </div>
             <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>
             <Button type="submit" loading={saving}>
               {saving ? 'Enregistrement…' : (isEdit ? 'Mettre à jour' : 'Créer le produit')}

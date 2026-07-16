@@ -193,6 +193,11 @@ class Contrat(models.Model):
     )
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
+    # ARC14 — champs personnalisés (additif, jamais destructif). Les
+    # définitions viennent de apps.customfields (module='contrat', pilote
+    # enregistré via customfields.registry par apps/contrats/apps.py.ready()).
+    custom_data = models.JSONField(
+        null=True, blank=True, verbose_name='Champs personnalisés')
 
     class Meta:
         verbose_name = 'Contrat'
@@ -274,6 +279,52 @@ class Contrat(models.Model):
             raise ValidationError(
                 'Un contrat doit comporter au moins deux parties.')
         return True
+
+    # ── SCA35 — adoption du kit ``core.documents`` (lecture du graphe) ──────
+    #
+    # ``Contrat`` N'HÉRITE PAS de ``core.documents.DocumentMetier`` : le socle
+    # du kit adosse ``TenantModel`` (related_name générique + nouvelles colonnes
+    # ``created_at``/``updated_at``), alors que ``Contrat`` porte déjà sa propre
+    # FK ``company`` (related_name historique ``'contrats'``) et son propre
+    # horodatage (``date_creation``) — remplacer l'un ou l'autre exigerait soit
+    # une migration additive non nécessaire, soit casser l'accesseur inverse
+    # historique, pour ZÉRO gain fonctionnel. Le contrat de transitions du kit
+    # (``TRANSITIONS`` : ``{source: {cible, ...}}`` + ``transitions_permises``/
+    # ``transition_permise``) est en revanche adopté À L'IDENTIQUE : cette
+    # propriété EXPOSE, en lecture seule, le graphe de la machine d'états
+    # EXISTANTE (``machine_etats._transitions()``, CONTRAT12) sous la forme que
+    # le kit attend — elle ne le duplique pas, ne le recalcule pas, ne mute
+    # jamais le statut. Le SEUL point d'écriture reste ``services.changer_statut``
+    # (alias de ``machine_etats.changer_statut``), qui applique EN PLUS la garde
+    # « au moins deux parties » (``valider_parties``) sur la finalisation/
+    # signature — une règle métier que le socle générique du kit ne connaît pas
+    # et qui doit rester dans la machine d'états, pas migrée vers une table
+    # statique. Un test de non-régression (``test_sca35_kit_transitions.py``)
+    # prouve que ``Contrat.TRANSITIONS`` == le graphe de ``machine_etats`` pour
+    # CHAQUE statut, statut par statut.
+    @property
+    def TRANSITIONS(self):  # noqa: N802 — nom du contrat kit (majuscules voulues)
+        """Graphe de transitions au format du kit (``core.documents``).
+
+        Miroir en LECTURE SEULE de ``machine_etats._transitions()`` — la machine
+        d'états CONTRAT12 reste l'unique source de vérité et l'unique éditeur du
+        statut (via ``services.changer_statut``)."""
+        from . import machine_etats
+
+        return machine_etats._transitions()
+
+    def transitions_permises(self) -> set:
+        """Ensemble des statuts atteignables depuis le statut courant.
+
+        Même contrat que ``core.documents.DocumentMetier.transitions_permises``
+        — lit le graphe de ``machine_etats`` (jamais une transition hardcodée)."""
+        return set(self.TRANSITIONS.get(self.statut, ()) or ())
+
+    def transition_permise(self, cible) -> bool:
+        """``True`` si ``statut courant → cible`` est autorisé par le graphe.
+
+        Même contrat que ``core.documents.DocumentMetier.transition_permise``."""
+        return cible in self.transitions_permises()
 
 
 class PartieContrat(models.Model):

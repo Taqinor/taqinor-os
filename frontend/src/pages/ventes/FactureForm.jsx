@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useDispatch } from 'react-redux'
 import { Plus, Trash2, AlertTriangle } from 'lucide-react'
 import {
@@ -11,14 +11,21 @@ import {
 import crmApi from '../../api/crmApi'
 import stockApi from '../../api/stockApi'
 import ventesApi from '../../api/ventesApi'
+import { resilientMutation } from '../../lib/resilientMutation'
+import { useStaleGuard } from '../../hooks/useStaleGuard'
 import {
   Button, IconButton,
   Dialog, DialogContent, DialogHeader, DialogTitle,
-  Form, FormField, FormActions, useDirtyGuard,
+  Form, FormField, FormActions, useDirtyGuard, confirmLeaveIfDirty,
   Input, Textarea, Label,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
+import ProduitPicker from '../../components/ProduitPicker'
+import ClientQuickCreateModal from './ClientQuickCreateModal'
 import AttachmentsPanel from '../../components/AttachmentsPanel'
+import { formatMAD } from '../../lib/format'
+import { useServerFieldErrors } from '../../hooks/useServerFieldErrors'
+import { parsePastedAmount } from '../../hooks/usePasteClean'
 
 let _keyCounter = 0
 const newKey = () => ++_keyCounter
@@ -40,13 +47,29 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
   const dispatch = useDispatch()
   const isEdit = !!facture
 
+  // VX243(c) — garde d'édition périmée : re-GET léger de `updated_at` au
+  // submit, bannière non bloquante si un autre utilisateur a sauvegardé
+  // cette facture entre-temps (2 onglets).
+  const staleGuard = useStaleGuard({
+    openedAt: facture?.updated_at,
+    fetchLatest: facture?.id
+      ? () => ventesApi.getFacture(facture.id).then(r => r.data)
+      : undefined,
+  })
+
   const [clients, setClients]           = useState([])
   const [produits, setProduits]         = useState([])
   const [bonsCommande, setBonsCommande] = useState([])
   const [saving, setSaving]             = useState(false)
-  const [errors, setErrors]             = useState({})
+  // VX171 — vérité serveur → champ ; le rouge s'efface à la frappe.
+  const { errors, setErrors, setFromResponse, clearField } = useServerFieldErrors()
   const [dirty, setDirty]               = useState(false)
+  const [clientQuickCreateOpen, setClientQuickCreateOpen] = useState(false)
   useDirtyGuard(dirty)
+  // VX117 — la facture créée par un submit partiellement échoué reste
+  // EXPOSÉE : un retry ne repart JAMAIS en second `createFacture` (doublon
+  // fiscal).
+  const [createdFactureId, setCreatedFactureId] = useState(null)
 
   const [fields, setFields] = useState({
     client:          facture?.client          ?? '',
@@ -77,12 +100,28 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
   )
 
   const [removedLineIds, setRemovedLineIds] = useState([])
+  // VX90 — focus la nouvelle ligne (sélecteur produit) après « Ajouter ligne ».
+  const linesTableRef = useRef(null)
+  const [pendingFocusKey, setPendingFocusKey] = useState(null)
 
   useEffect(() => {
     crmApi.getClients().then(r => setClients(r.data.results ?? r.data)).catch(() => {})
     stockApi.getProduits().then(r => setProduits(r.data.results ?? r.data)).catch(() => {})
     ventesApi.getBonsCommande().then(r => setBonsCommande(r.data.results ?? r.data)).catch(() => {})
   }, [])
+
+  // VX90 — après ajout d'une ligne, focaliser son sélecteur produit + défiler.
+  useEffect(() => {
+    if (pendingFocusKey == null) return
+    const row = linesTableRef.current
+      ?.querySelector(`[data-line-key="${pendingFocusKey}"]`)
+    if (row) {
+      row.querySelector('button[type="button"]')?.focus()
+      row.scrollIntoView({ block: 'nearest' })
+    }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset one-shot du focus (VX90)
+    setPendingFocusKey(null)
+  }, [pendingFocusKey, lines])
 
   // Live totals
   const remGlobal   = parseFloat(fields.remise_globale) || 0
@@ -115,7 +154,8 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
   const totalTTC = totalHT + totalTVA
   const tauxDistincts = Object.keys(tvaParTaux).filter(t => Number(t) > 0)
 
-  const setField = (k, v) => { setDirty(true); setFields(f => ({ ...f, [k]: v })) }
+  // VX171 — le rouge ne doit jamais mentir pendant que l'utilisateur corrige.
+  const setField = (k, v) => { setDirty(true); clearField(k); setFields(f => ({ ...f, [k]: v })) }
 
   const onBcChange = async (bcId) => {
     setField('bon_commande', bcId)
@@ -148,11 +188,13 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
 
   const setLine = (key, k, v) => {
     setDirty(true)
+    clearField('lines')
     setLines(ls => ls.map(l => l._key === key ? { ...l, [k]: v } : l))
   }
 
   const onProduitChange = (key, produitId) => {
     setDirty(true)
+    clearField('lines')
     const p = produits.find(p => String(p.id) === String(produitId))
     setLines(ls => ls.map(l =>
       l._key === key
@@ -167,9 +209,18 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
     ))
   }
 
-  const addLine    = () => { setDirty(true); setLines(ls => [...ls, emptyLine()]) }
+  const addLine    = () => {
+    setDirty(true)
+    clearField('lines')
+    setLines(ls => {
+      const line = emptyLine()
+      setPendingFocusKey(line._key) // VX90
+      return [...ls, line]
+    })
+  }
   const removeLine = key => {
     setDirty(true)
+    clearField('lines')
     const line = lines.find(l => l._key === key)
     if (line?.id) setRemovedLineIds(ids => [...ids, line.id])
     setLines(ls => ls.filter(l => l._key !== key))
@@ -188,6 +239,12 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!validate()) return
+    // VX243(c) — garde de fraîcheur AVANT le PATCH en édition (conflit → on
+    // interrompt et on affiche la bannière, aucune mutation).
+    if (isEdit) {
+      const canProceed = await staleGuard.checkBeforeSave()
+      if (!canProceed) return
+    }
     setSaving(true)
     try {
       const payload = {
@@ -203,40 +260,30 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
         note:           fields.note || null,
       }
 
-      let factureId
-      if (isEdit) {
-        const res = await dispatch(updateFacture({ id: facture.id, data: payload })).unwrap()
+      // VX117 — une facture déjà créée (id serveur ou id exposé par un
+      // submit précédent partiellement échoué) ne repart JAMAIS en second
+      // POST : la relance passe systématiquement en ÉDITION.
+      let factureId = facture?.id ?? createdFactureId
+      if (factureId) {
+        const res = await dispatch(updateFacture({ id: factureId, data: payload })).unwrap()
         factureId = res.id
       } else {
         const res = await dispatch(createFacture(payload)).unwrap()
         factureId = res.id
+        setCreatedFactureId(factureId)
       }
 
-      // Lignes supprimées
-      await Promise.all(
-        removedLineIds.map(id => dispatch(removeLigneFacture(id)).unwrap())
-      )
+      // Lignes supprimées — allSettled : une suppression en échec ne bloque
+      // pas les autres déjà supprimées, et ne les redemande pas au retry.
+      const delResult = await resilientMutation(removedLineIds, (id) =>
+        dispatch(removeLigneFacture(id)).unwrap())
+      setRemovedLineIds(delResult.failed.map(f => f.item))
+
       // Lignes existantes → update
-      await Promise.all(
-        lines.filter(l => l.id).map(l =>
-          dispatch(updateLigneFacture({
-            id: l.id,
-            data: {
-              facture:       factureId,
-              produit:       parseInt(l.produit),
-              designation:   l.designation,
-              quantite:      l.quantite,
-              prix_unitaire: l.prix_unitaire,
-              remise:        l.remise,
-              taux_tva:      l.taux_tva !== '' ? l.taux_tva : null,
-            },
-          })).unwrap()
-        )
-      )
-      // Nouvelles lignes → create
-      await Promise.all(
-        lines.filter(l => !l.id).map(l =>
-          dispatch(addLigneFacture({
+      const updResult = await resilientMutation(lines.filter(l => l.id), (l) =>
+        dispatch(updateLigneFacture({
+          id: l.id,
+          data: {
             facture:       factureId,
             produit:       parseInt(l.produit),
             designation:   l.designation,
@@ -244,27 +291,78 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
             prix_unitaire: l.prix_unitaire,
             remise:        l.remise,
             taux_tva:      l.taux_tva !== '' ? l.taux_tva : null,
-          })).unwrap()
-        )
-      )
+          },
+        })).unwrap())
+
+      // Nouvelles lignes → create — chaque ligne créée avec succès reçoit
+      // son id serveur immédiatement : un retry ne la recrée jamais (fin du
+      // doublon fiscal ligne-par-ligne).
+      const newLines = lines.filter(l => !l.id)
+      const createResult = await resilientMutation(newLines, (l) =>
+        dispatch(addLigneFacture({
+          facture:       factureId,
+          produit:       parseInt(l.produit),
+          designation:   l.designation,
+          quantite:      l.quantite,
+          prix_unitaire: l.prix_unitaire,
+          remise:        l.remise,
+          taux_tva:      l.taux_tva !== '' ? l.taux_tva : null,
+        })).unwrap())
+      if (createResult.succeeded.length > 0) {
+        setLines(ls => ls.map(l => {
+          const ok = createResult.succeeded.find(s => s.item._key === l._key)
+          return ok ? { ...l, id: ok.value.id } : l
+        }))
+      }
+
+      const lineFails = delResult.failed.length + updResult.failed.length + createResult.failed.length
+      if (lineFails > 0) {
+        setErrors(prev => ({ ...prev, submit:
+          `Facture enregistrée, mais ${lineFails} ligne(s) n'ont pas pu être enregistrée(s). `
+          + 'Corrigez et réessayez — seules les lignes en échec seront retentées, aucun doublon.' }))
+        return
+      }
 
       setDirty(false)
       onSaved?.()
       onClose()
     } catch (err) {
-      const msg = err?.detail ?? err?.non_field_errors?.[0] ?? JSON.stringify(err)
-      setErrors(prev => ({ ...prev, submit: msg }))
+      // VX171 — mapping DRF générique (detail / {champ:[…]} / array) : chaque
+      // champ en erreur vire rouge, plus un toast anonyme.
+      setFromResponse(err)
     } finally {
       setSaving(false)
     }
   }
 
   return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+    <Dialog open onOpenChange={(o) => { if (!o && confirmLeaveIfDirty(dirty)) onClose() }}>
       <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{isEdit ? `Éditer — ${facture.reference}` : 'Nouvelle facture'}</DialogTitle>
         </DialogHeader>
+
+        {/* VX243(c) — bannière non bloquante : un autre utilisateur a
+            sauvegardé cette facture pendant l'édition en cours. */}
+        {staleGuard.staleInfo && (
+          <div role="alert" className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
+            <span>
+              Modifié par {staleGuard.staleInfo.by || 'un autre utilisateur'}
+              {' '}pendant votre édition — vérifiez avant d'enregistrer.
+            </span>
+            <span className="flex gap-2">
+              <Button type="button" size="sm" variant="outline" onClick={staleGuard.dismiss}>
+                Revoir
+              </Button>
+              <Button
+                type="button" size="sm" variant="outline"
+                onClick={() => { staleGuard.force(); handleSubmit({ preventDefault: () => {} }) }}
+              >
+                Enregistrer quand même
+              </Button>
+            </span>
+          </div>
+        )}
 
         <Form onSubmit={handleSubmit} className="gap-5">
           {/* ── Conformité Article 145 CGI (N29) — AVERTISSEMENT, jamais bloquant ── */}
@@ -291,19 +389,30 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
           {/* ── Infos générales ── */}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <FormField label="Client" required htmlFor="fc-client" error={errors.client}>
-              <Select value={fields.client ? String(fields.client) : undefined}
-                      onValueChange={v => setField('client', v)}>
-                <SelectTrigger id="fc-client" invalid={!!errors.client}>
-                  <SelectValue placeholder="— Sélectionner un client —" />
-                </SelectTrigger>
-                <SelectContent>
-                  {clients.map(c => (
-                    <SelectItem key={c.id} value={String(c.id)}>
-                      {c.nom}{c.prenom ? ` ${c.prenom}` : ''}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <Select value={fields.client ? String(fields.client) : undefined}
+                          onValueChange={v => setField('client', v)}>
+                    {/* VX240(a) — la modale s'ouvrait SANS aucun autofocus (le
+                        vendeur devait cliquer avant de pouvoir taper/choisir) ;
+                        premier champ utile focalisé à l'ouverture. */}
+                    <SelectTrigger id="fc-client" invalid={!!errors.client} autoFocus>
+                      <SelectValue placeholder="— Sélectionner un client —" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {clients.map(c => (
+                        <SelectItem key={c.id} value={String(c.id)}>
+                          {c.nom}{c.prenom ? ` ${c.prenom}` : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {/* VX91 — création rapide client (QG3), sans quitter la facture */}
+                <Button type="button" variant="outline" onClick={() => setClientQuickCreateOpen(true)}>
+                  <Plus /> Nouveau client
+                </Button>
+              </div>
             </FormField>
 
             <FormField label="Bon de commande (optionnel)" htmlFor="fc-bc">
@@ -402,20 +511,21 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
               <p role="alert" className="text-xs text-destructive">{errors.lines}</p>
             )}
 
-            {/* Sur écran étroit le tableau garde une largeur minimale et défile
-                horizontalement (les colonnes ne s'écrasent pas). */}
-            <div className="-mx-1 overflow-x-auto rounded-lg border border-border px-1">
-              <table className="w-full min-w-[640px] border-collapse text-sm">
-                <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
+            {/* VX184 — même comportement mobile que le générateur : `.lines-table`
+                bascule en cartes empilées sous 768px via `data-label`
+                (index.css ~2264-2296), au lieu du scroll horizontal permanent. */}
+            <div className="lines-table-wrap">
+              <table className="lines-table" ref={linesTableRef}>
+                <thead>
                   <tr>
-                    <th className="px-2 py-2 text-left" style={{ minWidth: 160 }}>Produit</th>
-                    <th className="px-2 py-2 text-left">Désignation</th>
-                    <th className="px-2 py-2 text-right">Qté</th>
-                    <th className="px-2 py-2 text-right">Prix HT (DH)</th>
-                    <th className="px-2 py-2 text-right">Rem. %</th>
-                    <th className="px-2 py-2 text-right">TVA %</th>
-                    <th className="px-2 py-2 text-right">Total HT</th>
-                    <th className="w-10 px-2 py-2" />
+                    <th style={{ minWidth: 160 }}>Produit</th>
+                    <th>Désignation</th>
+                    <th className="col-num">Qté</th>
+                    <th className="col-num">Prix HT (DH)</th>
+                    <th className="col-num">Rem. %</th>
+                    <th className="col-num">TVA %</th>
+                    <th className="col-num">Total HT</th>
+                    <th className="col-del" />
                   </tr>
                 </thead>
                 <tbody>
@@ -425,44 +535,59 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
                       (parseFloat(l.prix_unitaire) || 0) *
                       (1 - (parseFloat(l.remise)   || 0) / 100)
                     return (
-                      <tr key={l._key} className="border-t border-border align-top">
-                        <td className="px-2 py-1.5">
-                          <Select value={l.produit ? String(l.produit) : undefined}
-                                  onValueChange={v => onProduitChange(l._key, v)}>
-                            <SelectTrigger className="h-[var(--control-h-sm)] text-xs">
-                              <SelectValue placeholder="— Produit —" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {produits.map(p => (
-                                <SelectItem key={p.id} value={String(p.id)}>{p.nom}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                      <tr key={l._key} data-line-key={l._key}>
+                        <td data-label="Produit">
+                          {/* VX91 — picker partagé (recherche + prix), même
+                              composant que DevisForm/DevisGenerator : fin du
+                              <Select> natif non filtrable sur 50+ SKU. */}
+                          <ProduitPicker
+                            produits={produits}
+                            value={l.produit ? String(l.produit) : ''}
+                            onChange={v => onProduitChange(l._key, v)}
+                            // VX238(c) — choisir un produit avance directement
+                            // le focus sur la Qté de CETTE ligne (réutilise
+                            // data-line-key, VX90) au lieu de rendre le focus
+                            // au bouton déclencheur.
+                            onPicked={() => {
+                              document
+                                .querySelector(`tr[data-line-key="${l._key}"] [data-role="line-qty"]`)
+                                ?.focus()
+                            }}
+                          />
                         </td>
-                        <td className="px-2 py-1.5">
+                        <td data-label="Désignation">
                           <Input className="h-[var(--control-h-sm)] text-xs" value={l.designation}
                                  onChange={e => setLine(l._key, 'designation', e.target.value)}
                                  placeholder="Désignation" />
                         </td>
-                        <td className="px-2 py-1.5">
-                          <Input type="number" min="0.01" step="0.01"
+                        <td data-label="Qté">
+                          <Input type="number" min="0.01" step="0.01" data-role="line-qty"
                                  className="h-[var(--control-h-sm)] text-right text-xs"
                                  value={l.quantite}
                                  onChange={e => setLine(l._key, 'quantite', e.target.value)} />
                         </td>
-                        <td className="px-2 py-1.5">
+                        <td data-label="Prix HT (DH)">
                           <Input type="number" min="0" step="0.01"
                                  className="h-[var(--control-h-sm)] text-right text-xs"
                                  value={l.prix_unitaire}
-                                 onChange={e => setLine(l._key, 'prix_unitaire', e.target.value)} />
+                                 onChange={e => setLine(l._key, 'prix_unitaire', e.target.value)}
+                                 // VX237 — montant collé d'Excel ("12 500,00",
+                                 // "3 200 DH"...) nettoyé au lieu de tomber
+                                 // brut dans le champ number.
+                                 onPaste={e => {
+                                   const clean = parsePastedAmount(e.clipboardData?.getData('text'))
+                                   if (clean == null) return
+                                   e.preventDefault()
+                                   setLine(l._key, 'prix_unitaire', clean)
+                                 }} />
                         </td>
-                        <td className="px-2 py-1.5">
+                        <td data-label="Rem. %">
                           <Input type="number" min="0" max="100" step="0.01"
                                  className="h-[var(--control-h-sm)] text-right text-xs"
                                  value={l.remise}
                                  onChange={e => setLine(l._key, 'remise', e.target.value)} />
                         </td>
-                        <td className="px-2 py-1.5">
+                        <td data-label="TVA %">
                           <Input type="number" min="0" max="100" step="0.01"
                                  className="h-[var(--control-h-sm)] text-right text-xs"
                                  value={l.taux_tva}
@@ -470,8 +595,8 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
                                  title="Vide = taux global de la facture"
                                  onChange={e => setLine(l._key, 'taux_tva', e.target.value)} />
                         </td>
-                        <td className="px-2 py-1.5 text-right font-medium tabular-nums">{lineTotal.toFixed(2)} DH</td>
-                        <td className="px-2 py-1.5 text-center">
+                        <td className="line-total" data-label="Total HT">{formatMAD(lineTotal, { withSymbol: false })} DH</td>
+                        <td>
                           {lines.length > 1 && (
                             <IconButton type="button" label="Supprimer la ligne" size="sm"
                                         className="text-destructive hover:bg-destructive/10"
@@ -492,17 +617,17 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
           <div className="ml-auto w-full max-w-xs rounded-lg border border-border bg-muted/30 p-3 text-sm">
             <div className="flex justify-between py-0.5">
               <span className="text-muted-foreground">Sous-total HT</span>
-              <span className="tabular-nums">{subtotalHT.toFixed(2)} DH</span>
+              <span className="tabular-nums">{formatMAD(subtotalHT, { withSymbol: false })} DH</span>
             </div>
             {remGlobal > 0 && (
               <div className="flex justify-between py-0.5 text-warning">
                 <span>Remise globale ({remGlobal}%)</span>
-                <span className="tabular-nums">−{(subtotalHT * remGlobal / 100).toFixed(2)} DH</span>
+                <span className="tabular-nums">−{formatMAD(subtotalHT * remGlobal / 100, { withSymbol: false })} DH</span>
               </div>
             )}
             <div className="flex justify-between py-0.5">
               <span className="text-muted-foreground">Total HT</span>
-              <strong className="tabular-nums">{totalHT.toFixed(2)} DH</strong>
+              <strong className="tabular-nums">{formatMAD(totalHT, { withSymbol: false })} DH</strong>
             </div>
             {tauxDistincts.length > 1 ? (
               <>
@@ -514,24 +639,24 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
                         TVA {Number(taux)} %
                       </span>
                       <span className="tabular-nums">
-                        {(tvaParTaux[taux] * Number(taux) / 100).toFixed(2)} DH
+                        {formatMAD(tvaParTaux[taux] * Number(taux) / 100, { withSymbol: false })} DH
                       </span>
                     </div>
                   ))}
                 <div className="flex justify-between py-0.5">
                   <span className="text-muted-foreground">TVA totale</span>
-                  <span className="tabular-nums">{totalTVA.toFixed(2)} DH</span>
+                  <span className="tabular-nums">{formatMAD(totalTVA, { withSymbol: false })} DH</span>
                 </div>
               </>
             ) : (
               <div className="flex justify-between py-0.5">
                 <span className="text-muted-foreground">TVA ({tva}%)</span>
-                <span className="tabular-nums">{totalTVA.toFixed(2)} DH</span>
+                <span className="tabular-nums">{formatMAD(totalTVA, { withSymbol: false })} DH</span>
               </div>
             )}
             <div className="mt-1 flex justify-between border-t border-border pt-1.5 text-base">
               <span className="font-semibold">Total TTC</span>
-              <strong className="tabular-nums text-primary">{totalTTC.toFixed(2)} DH</strong>
+              <strong className="tabular-nums text-primary">{formatMAD(totalTTC, { withSymbol: false })} DH</strong>
             </div>
           </div>
 
@@ -571,6 +696,17 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
             </Button>
           </FormActions>
         </Form>
+
+        {/* VX91 — création rapide client (QG3) ; sélectionne le nouveau client */}
+        <ClientQuickCreateModal
+          open={clientQuickCreateOpen}
+          onClose={() => setClientQuickCreateOpen(false)}
+          onCreated={(c) => {
+            setClients(cs => [...cs, c])
+            setField('client', String(c.id))
+            setClientQuickCreateOpen(false)
+          }}
+        />
       </DialogContent>
     </Dialog>
   )

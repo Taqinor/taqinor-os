@@ -7,14 +7,14 @@ responsable/admin (montants INTERNES). Multi-tenant via ``TenantMixin`` : socié
 + ``created_by`` posés côté serveur ; les FK liées sont validées tenant.
 Cross-app : ``stock`` en string-FK.
 """
-from rest_framework import viewsets, status
+from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from django.utils import timezone
 
-from authentication.mixins import TenantMixin
 from authentication.permissions import IsResponsableOrAdmin
+from core.viewsets import CompanyScopedModelViewSet
 
 from ..models import ReceptionNonFacturee
 from ..serializers import ReceptionNonFactureeSerializer
@@ -27,7 +27,7 @@ def _check_tenant(serializer, company, field):
         raise ValidationError({field: 'Objet inconnu pour cette société.'})
 
 
-class ReceptionNonFactureeViewSet(TenantMixin, viewsets.ModelViewSet):
+class ReceptionNonFactureeViewSet(CompanyScopedModelViewSet):
     """FG317 — provisions GR/IR. Lecture & écriture responsable/admin (montants
     INTERNES). Société + `created_by` posés serveur ; reception/bon_commande
     validés tenant. Filtrable par `lettre`, `bon_commande`. Lettrage via
@@ -72,7 +72,7 @@ class ReceptionNonFactureeViewSet(TenantMixin, viewsets.ModelViewSet):
         facture_id = request.data.get('facture')
         if facture_id:
             from django.apps import apps as django_apps
-            facture_model = django_apps.get_model('stock', 'FactureFournisseur')
+            facture_model = django_apps.get_model('achats', 'FactureFournisseur')
             facture = facture_model.objects.filter(
                 id=facture_id, company=request.user.company).first()
             if facture is None:

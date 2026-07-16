@@ -33,6 +33,7 @@ const config = {
   order: 50,
   nav: {
     label: 'FLOTTE',
+    accent: 'success', // VX8 — terrain/opérations = accent success (dérivé)
     items: [
       { to: '/flotte', label: 'Cockpit', icon: <Truck size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/flotte/vehicules', label: 'Véhicules & engins', icon: <Truck size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },

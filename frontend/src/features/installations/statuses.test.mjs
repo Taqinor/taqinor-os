@@ -24,6 +24,7 @@ import {
   CAPACITY_BANDS,
   PARC_GARANTIE_LABELS,
   DOSSIER_STATUT_LABELS,
+  isNewlyAssigned,
 } from './statuses.js'
 
 test('les 7 statuts chantier canoniques, dans l\'ordre d\'entonnoir', () => {
@@ -248,4 +249,33 @@ test('libellés de garantie/dossier du parc présents', () => {
   for (const k of ['non_concerne', 'a_deposer', 'depose', 'approuve', 'compteur_pose']) {
     assert.ok(DOSSIER_STATUT_LABELS[k], `libellé dossier manquant : ${k}`)
   }
+})
+
+// VX218 — badge « Nouveau » : un chantier assigné à moi depuis ma dernière
+// visite. Jamais fabriqué : pas d'utilisateur / pas assigné à moi / pas de
+// date_creation → jamais « nouveau ».
+test('isNewlyAssigned : true si assigné à moi et créé après lastSeen', () => {
+  const item = { technicien_responsable: 7, date_creation: '2026-07-10T12:00:00Z' }
+  assert.equal(isNewlyAssigned(item, 7, '2026-07-09T00:00:00Z'), true)
+})
+
+test('isNewlyAssigned : false si créé avant lastSeen', () => {
+  const item = { technicien_responsable: 7, date_creation: '2026-07-01T12:00:00Z' }
+  assert.equal(isNewlyAssigned(item, 7, '2026-07-09T00:00:00Z'), false)
+})
+
+test('isNewlyAssigned : false si assigné à un autre utilisateur', () => {
+  const item = { technicien_responsable: 99, date_creation: '2026-07-10T12:00:00Z' }
+  assert.equal(isNewlyAssigned(item, 7, '2026-07-09T00:00:00Z'), false)
+})
+
+test('isNewlyAssigned : sans lastSeen (première visite), tout ce qui est assigné à moi est nouveau', () => {
+  const item = { technicien_responsable: 7, date_creation: '2020-01-01T00:00:00Z' }
+  assert.equal(isNewlyAssigned(item, 7, null), true)
+})
+
+test('isNewlyAssigned : jamais fabriqué sans userId ni sans date_creation', () => {
+  assert.equal(isNewlyAssigned({ technicien_responsable: 7, date_creation: '2026-07-10T12:00:00Z' }, null, null), false)
+  assert.equal(isNewlyAssigned({ technicien_responsable: 7 }, 7, null), false)
+  assert.equal(isNewlyAssigned(null, 7, null), false)
 })

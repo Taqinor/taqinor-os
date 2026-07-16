@@ -9,6 +9,11 @@ const rolesApi = {
   deleteRole: (id) => api.delete(`/roles/${id}/`),
   getPermissionsDisponibles: () =>
     api.get('/roles/permissions-disponibles/'),
+  // YRBAC10 — catalogue unique (admin) : ALL_PERMISSIONS + carte route→rôles
+  // enforced (dérivée de la matrice canonique YRBAC2). Source du gating
+  // front↔back ; consommé par l'écran Rôles et le test de dérive.
+  getPermissionCatalog: () =>
+    api.get('/roles/permission-catalog/'),
 }
 
 export default rolesApi

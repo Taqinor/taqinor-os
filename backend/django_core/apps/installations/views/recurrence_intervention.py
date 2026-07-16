@@ -3,11 +3,10 @@
 NOTE: ce module fait partie du découpage de l'ancien views.py monolithe
 (un module par ressource). Comportement et symboles inchangés : le package
 __init__ ré-exporte toutes les vues publiques."""
-from rest_framework import viewsets
 from rest_framework.exceptions import ValidationError
 
-from authentication.mixins import TenantMixin
 from authentication.permissions import IsResponsableOrAdmin
+from core.viewsets import CompanyScopedModelViewSet
 
 from ..models import RecurrenceIntervention
 from ..serializers import RecurrenceInterventionSerializer
@@ -15,7 +14,7 @@ from ..serializers import RecurrenceInterventionSerializer
 READ_ACTIONS = ['list', 'retrieve']
 
 
-class RecurrenceInterventionViewSet(TenantMixin, viewsets.ModelViewSet):
+class RecurrenceInterventionViewSet(CompanyScopedModelViewSet):
     """ZFSM3 — CRUD des récurrences d'intervention (Chantiers → onglet
     Récurrences). Lecture/écriture réservées responsable/admin (planification
     terrain). Tout est scopé à la société ; la société est posée côté

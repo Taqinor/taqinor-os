@@ -7,19 +7,19 @@ Multi-tenant via ``TenantMixin`` : société + ``created_by`` posés côté serv
 l'``ordre`` ciblé est validé tenant.
 """
 from django.utils import timezone
-from rest_framework import viewsets, status
+from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from authentication.mixins import TenantMixin
 from authentication.permissions import IsResponsableOrAdmin
+from core.viewsets import CompanyScopedModelViewSet
 
 from ..models import RetenueGarantieSousTraitant
 from ..serializers import RetenueGarantieSousTraitantSerializer
 
 
-class RetenueGarantieSousTraitantViewSet(TenantMixin, viewsets.ModelViewSet):
+class RetenueGarantieSousTraitantViewSet(CompanyScopedModelViewSet):
     """FG309 — retenues de garantie sous-traitant. Lecture & écriture
     responsable/admin (montants INTERNES). Société + `created_by` posés serveur ;
     `ordre` validé tenant. Filtrable par `ordre` et `levee`. Libération via

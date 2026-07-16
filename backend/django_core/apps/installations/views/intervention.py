@@ -6,6 +6,7 @@ from authentication.mixins import TenantMixin  # noqa: F401
 from authentication.permissions import (  # noqa: F401
     IsAnyRole, IsResponsableOrAdmin, IsAdminRole,
 )
+from core.viewsets import CompanyScopedModelViewSet
 from django.utils import timezone  # noqa: F401
 
 from .. import activity  # noqa: F401
@@ -110,7 +111,7 @@ def seed_types_intervention(company):
 # package __init__ ré-exporte toutes les vues publiques.
 
 
-class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
+class InterventionViewSet(CompanyScopedModelViewSet):
     """Interventions (sorties chantier) rattachées à un chantier (F3). Chacune
     porte son propre statut (machine à états distincte du chantier et de
     STAGES.py), une équipe, une camionnette, et son propre chatter. Scopées à

@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { PackageCheck, Plus, ReceiptText, Tags } from 'lucide-react'
 import stockApi from '../../api/stockApi'
+import { formatMAD } from '../../lib/format'
+import { openPdfInGesture } from '../../utils/pdfBlob'
+import useStockFlags from '../../features/parametres/useStockFlags'
 import {
   Button, StatusPill, DataTable,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -220,6 +223,7 @@ function NouvelleReception({ bonsRecevables, onClose, onSaved }) {
 // ── Modal : consultation d'une réception + confirmation d'un brouillon ───────
 // Export nommé : testé directement (WR4 — « facturer cette réception »).
 export function ReceptionDetail({ reception, onClose, onSaved }) {
+  const { stock_lots_series_actif: lotsSeriesActif } = useStockFlags()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   const [factureInfo, setFactureInfo] = useState(null)
@@ -259,9 +263,7 @@ export function ReceptionDetail({ reception, onClose, onSaved }) {
       const r = await stockApi.facturerReception(reception.id)
       const ff = r.data ?? {}
       setFactureInfo(`Facture fournisseur ${ff.reference ?? ''} créée (${
-        Number(ff.montant_ttc ?? 0).toLocaleString('fr-FR', {
-          minimumFractionDigits: 2, maximumFractionDigits: 2,
-        })} MAD TTC).`)
+        formatMAD(ff.montant_ttc ?? 0)} TTC).`)
       onSaved?.()
     } catch (err) {
       setError(frError(err, 'La facturation de la réception a échoué.'))
@@ -272,13 +274,17 @@ export function ReceptionDetail({ reception, onClose, onSaved }) {
   // numéro de série reçu + une par lot renseigné sur cette réception.
   const aSerieOuLot = lignes.some(
     (l) => (l.numeros_serie ?? []).length > 0 || l.numero_lot)
+  // VX48 — onglet pré-ouvert SYNCHRONE avant l'await (Safari iOS bloque
+  // silencieusement un window.open() post-await).
   const imprimerEtiquettes = async () => {
+    const pending = openPdfInGesture()
     setLabelsBusy(true); setError(null)
     try {
       const res = await stockApi.receptionEtiquettes(reception.id)
-      const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }))
-      window.open(url, '_blank', 'noopener')
-      setTimeout(() => URL.revokeObjectURL(url), 60000)
+      const blob = new Blob([res.data], { type: 'application/pdf' })
+      if (!pending.deliver(blob, `etiquettes-reception-${reception.id}.pdf`)) {
+        setError('Ouverture bloquée par le navigateur.')
+      }
     } catch (err) {
       setError(frError(err, "L'impression des étiquettes a échoué."))
     } finally { setLabelsBusy(false) }
@@ -353,8 +359,9 @@ export function ReceptionDetail({ reception, onClose, onSaved }) {
             </Button>
           )}
           {/* ZSTK6 — étiquettes lot/série imprimables (uniquement si des
-              numéros de série/lot ont été saisis sur cette réception). */}
-          {aSerieOuLot && (
+              numéros de série/lot ont été saisis sur cette réception).
+              ZSTK13 — masquées si la société a désactivé lots/séries. */}
+          {aSerieOuLot && lotsSeriesActif && (
             <Button type="button" variant="outline" loading={labelsBusy} onClick={imprimerEtiquettes}
                     title="Imprimer les étiquettes lot/série de cette réception">
               <Tags /> Étiquettes lot/série
@@ -467,6 +474,9 @@ export default function ReceptionsFournisseur() {
         onRowClick={openReception}
         emptyTitle="Aucune réception fournisseur"
         emptyDescription="Créez-en une depuis un bon de commande fournisseur envoyé."
+        emptyAction={bonsRecevables.length > 0
+          ? <Button size="sm" onClick={() => setCreating(true)}><Plus className="size-4" /> Nouvelle réception</Button>
+          : undefined}
         aria-label="Réceptions fournisseur"
       />
 

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { ArrowLeftRight, PlusCircle } from 'lucide-react'
 import PageHeader from '../../components/layout/PageHeader'
 import { Button, Badge, Spinner, EmptyState } from '../../ui'
+import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
 import installationsApi from '../../api/installationsApi'
 import stockApi from '../../api/stockApi'
 import { DEMANDE_TRANSFERT_STATUTS, actionsDisponiblesTransfert } from './logistique'
@@ -180,15 +181,16 @@ function CreateDemandeDialog({ onClose, onCreated }) {
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <h3 className="modal-title">Nouvelle demande de transfert</h3>
-          <button type="button" className="modal-close" onClick={onClose}>✕</button>
-        </div>
+    // VX182 — shell fait-main remplacé par ResponsiveDialog (Escape + focus-
+    // trap + bottom-sheet mobile) ; en-tête/pied conservés à l'identique.
+    <ResponsiveDialog open onOpenChange={(o) => { if (!o) onClose() }} className="sm:max-w-lg" showClose={false}>
+      <div className="modal-header">
+        <h3 className="modal-title">Nouvelle demande de transfert</h3>
+        <button type="button" className="modal-close" onClick={onClose}>✕</button>
+      </div>
         <div className="modal-body flex flex-col gap-3">
           <label className="form-label" htmlFor="tr-produit">Produit</label>
-          <select id="tr-produit" className="form-control" value={produit} onChange={(e) => setProduit(e.target.value)}>
+          <select id="tr-produit" className="form-control" value={produit} onChange={(e) => setProduit(e.target.value)} autoFocus>
             <option value="">— Choisir —</option>
             {produits.map((p) => <option key={p.id} value={p.id}>{p.nom || p.sku}</option>)}
           </select>
@@ -233,7 +235,6 @@ function CreateDemandeDialog({ onClose, onCreated }) {
             {busy ? 'Création…' : 'Créer la demande'}
           </Button>
         </div>
-      </div>
-    </div>
+    </ResponsiveDialog>
   )
 }

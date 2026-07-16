@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Button, Label, toast } from '../../../ui'
+import { Button, Label, toast, confirmLeaveIfDirty } from '../../../ui'
+import { isDirty } from '../../../ui/form-utils'
 import { ResponsiveDialog } from '../../../ui/ResponsiveDialog'
 import gestionProjetApi from '../../../api/gestionProjetApi'
 import { errMessage } from '../constants'
@@ -13,15 +14,24 @@ export default function ReglagesTempsDialog({ onClose, onSaved }) {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState(null)
+  // VX168 — garde de fermeture : snapshot pris au premier chargement réussi.
+  const [initialSnapshot, setInitialSnapshot] = useState(null)
 
   useEffect(() => {
     let alive = true
     gestionProjetApi.getReglageTemps()
-      .then((res) => { if (alive) setForm(res.data) })
+      .then((res) => {
+        if (!alive) return
+        setInitialSnapshot(res.data)
+        setForm(res.data)
+      })
       .catch((err) => { if (alive) toast.error(errMessage(err, 'Chargement des réglages impossible.')) })
       .finally(() => { if (alive) setLoading(false) })
     return () => { alive = false }
   }, [])
+
+  const dirty = Boolean(form) && isDirty(initialSnapshot || {}, form)
+  const closeIfConfirmed = () => { if (confirmLeaveIfDirty(dirty)) onClose?.() }
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }))
 
@@ -46,14 +56,14 @@ export default function ReglagesTempsDialog({ onClose, onSaved }) {
   return (
     <ResponsiveDialog
       open
-      onOpenChange={(o) => { if (!o) onClose?.() }}
+      onOpenChange={(o) => { if (!o) closeIfConfirmed() }}
       title="Réglages temps de la société"
     >
       {loading || !form ? (
         <p className="text-sm text-muted-foreground">Chargement…</p>
       ) : (
         <form onSubmit={submit} noValidate className="flex flex-col gap-3">
-          <TextField id="rt-arrondi" label="Pas d'arrondi (minutes)" type="number" min="1" value={form.arrondi_minutes ?? ''} onChange={set('arrondi_minutes')} />
+          <TextField id="rt-arrondi" label="Pas d'arrondi (minutes)" type="number" min="1" autoFocus value={form.arrondi_minutes ?? ''} onChange={set('arrondi_minutes')} />
           <div className="flex flex-col gap-1">
             <Label htmlFor="rt-mode">Mode d'arrondi</Label>
             <select id="rt-mode" className="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-sm" value={form.mode_arrondi ?? 'superieur'} onChange={set('mode_arrondi')}>
@@ -71,7 +81,7 @@ export default function ReglagesTempsDialog({ onClose, onSaved }) {
           </div>
           <TextField id="rt-heures-jour" label="Heures par jour" type="number" min="0" step="any" value={form.heures_par_jour ?? ''} onChange={set('heures_par_jour')} />
           <div className="mt-2 flex justify-end gap-2">
-            <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
+            <Button type="button" variant="outline" onClick={closeIfConfirmed}>Annuler</Button>
             <Button type="submit" disabled={saving}>{saving ? 'Enregistrement…' : 'Enregistrer'}</Button>
           </div>
         </form>

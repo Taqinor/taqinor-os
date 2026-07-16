@@ -55,6 +55,12 @@ PUBLIC_ALLOWLIST_PREFIXES = (
     "api/django/rh/promesses-embauche",       # promesse d'embauche tokenisée
     "api/django/gestion-projet/portail",      # portail avancement/CSAT tokenisé
     "api/django/notifications/push/vapid-public-key",  # clé VAPID (publique par nature)
+    "api/django/identity/login-banner",       # NTSEC28 — bannière/mention légale pré-auth (AllowAny)
+    # NTSEC5/6 — provisioning SCIM 2.0 (Users/Groups) : endpoints machine-à-
+    # machine authentifiés par un jeton porteur ScimToken dédié (jamais le JWT
+    # humain), scopés société via le company_slug de l'URL. AllowAny au niveau
+    # DRF car l'auth Bearer SCIM + le scope tenant sont gérés dans la vue.
+    "api/django/identity/scim",
     "api/django/health",                      # sondes liveness/readiness
     # Marketing PUBLIC (compta.urls) — tokenisés/webhooks, sans login, throttlés :
     "api/django/compta/webhooks/",            # webhooks entrants Brevo/SMS-STOP
@@ -79,6 +85,9 @@ PUBLIC_ALLOWLIST_PREFIXES = (
     "api/django/ged/signature",
     # Proposition de devis tokenisée (client, sans login — cf. RÈGLE #4 /proposal) :
     "api/django/ventes/proposal",
+    # QX34 — suivi post-signature public en lecture seule, tokenisé (ShareLink),
+    # alias sous le mount ventes/ (la même vue vit aussi sous public/). Sans login.
+    "api/django/ventes/suivi",
     # Marketing PUBLIC (ODX10 — nouveau préfixe /marketing/, miroir de /compta/) :
     "api/django/marketing/webhooks/",         # webhooks entrants Brevo/SMS-STOP
     "api/django/marketing/desinscription/",   # désinscription tokenisée (opt-out)
@@ -158,7 +167,19 @@ def _is_allowlisted(pattern: str) -> bool:
     segments = pattern.strip("/").split("/")
     if _PUBLIC_SEGMENT in segments:
         return True
-    return any(pattern.startswith(p) for p in PUBLIC_ALLOWLIST_PREFIXES)
+    # YAPIC7 — ``api/v1/`` monte la MÊME liste ``_APP_URLS`` que le préfixe
+    # historique ``api/django/`` (mêmes vues, versioning littéral). Un endpoint
+    # public déjà allowlisté sous ``api/django/<app>/…`` l'est donc à
+    # l'identique sous son miroir ``api/v1/<app>/…`` : on normalise le préfixe
+    # de version avant de comparer à l'allowlist (documentée pour ``api/django``).
+    candidates = [pattern]
+    if pattern.startswith("api/v1/"):
+        candidates.append("api/django/" + pattern[len("api/v1/"):])
+    return any(
+        c.startswith(p)
+        for c in candidates
+        for p in PUBLIC_ALLOWLIST_PREFIXES
+    )
 
 
 def offending_allow_any(inventory=None) -> list[EndpointPermissions]:

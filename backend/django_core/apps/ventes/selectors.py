@@ -7,6 +7,21 @@ inline d'origine.
 """
 
 
+def compter_devis(company):
+    """SCA22 — nombre de devis d'une société (console fondateur). Point d'entrée
+    cross-app en LECTURE : ``authentication`` lit ce compteur sans importer
+    ``apps.ventes.models``."""
+    from .models import Devis
+    return Devis.objects.filter(company=company).count()
+
+
+def compter_factures(company):
+    """SCA22 — nombre de factures d'une société (console fondateur). Lecture
+    seule cross-app (jamais un import direct des modèles ventes)."""
+    from .models import Facture
+    return Facture.objects.filter(company=company).count()
+
+
 def factures_echues(company, *, today=None):
     """YEVNT3 — Factures en retard d'une société : échéance dépassée, non
     payées, non annulées. Point d'entrée cross-app sanctionné pour
@@ -105,6 +120,60 @@ def is_devis_accepte(devis):
     """Vrai si le devis est au statut « Accepté » (sans exposer l'enum)."""
     from .models import Devis
     return devis.statut == Devis.Statut.ACCEPTE
+
+
+def production_attendue_pour_devis(devis_id):
+    """YSERV8 — production annuelle attendue (kWh) calculée au devis.
+
+    Point d'entrée cross-app en LECTURE SEULE pour ``apps.monitoring`` (jamais
+    un import direct de ``ventes.models``) : lit la production annuelle stockée
+    dans ``Devis.etude_params['production_annuelle']`` (semée par le moteur
+    solaire à la création). Renvoie un ``Decimal`` positif, ou ``None`` si le
+    devis n'existe pas, n'a pas d'étude, ou porte une valeur non exploitable.
+    """
+    from decimal import Decimal, InvalidOperation
+
+    from .models import Devis
+    devis = Devis.objects.filter(pk=devis_id).only('etude_params').first()
+    if devis is None:
+        return None
+    params = devis.etude_params or {}
+    raw = params.get('production_annuelle')
+    if raw is None:
+        return None
+    try:
+        val = Decimal(str(raw))
+    except (InvalidOperation, ValueError, TypeError):
+        return None
+    return val if val > 0 else None
+
+
+def pr_initial_pour_chantier(installation_id):
+    """YSERV8 — énergie annuelle attendue (kWh) du test de performance FG278.
+
+    Point d'entrée cross-app en LECTURE SEULE pour ``apps.monitoring`` : renvoie
+    l'``energie_attendue_kwh`` du dernier ``TestPerformanceReception`` (PR
+    initial de recette, FG278) lié au chantier donné, ou ``None`` s'il n'y en a
+    pas de valeur exploitable. Le PR de recette prime sur l'étude du devis quand
+    il existe (mesure terrain > prévision).
+    """
+    from decimal import Decimal, InvalidOperation
+
+    from .models import TestPerformanceReception
+    raw = (TestPerformanceReception.objects
+           .filter(chantier_id=installation_id,
+                   energie_attendue_kwh__isnull=False,
+                   energie_attendue_kwh__gt=0)
+           .order_by('-date_mesure', '-created_at')
+           .values_list('energie_attendue_kwh', flat=True)
+           .first())
+    if raw is None:
+        return None
+    try:
+        val = Decimal(str(raw))
+    except (InvalidOperation, ValueError, TypeError):
+        return None
+    return val if val > 0 else None
 
 
 # ── XPRJ21 — devis accepté → projet (gestion_projet) ─────────────────────────
@@ -300,17 +369,23 @@ def _canonical_totaux(lignes, *, remise_globale_pct, fallback_taux):
                      if li.taux_tva_effectif is not None else fallback_taux))
         buckets[rate] = buckets.get(rate, D('0')) + D(str(li.total_ht))
 
+    # Chaque panier expose ``ht_net`` ET ``base_ht`` (alias) : ``base_ht`` est la
+    # clé qu'attendent les consommateurs de ``tva_buckets`` (UBL, PDF facture),
+    # ``ht_net`` reste pour les appelants historiques — les deux valent la base
+    # HT nette (après remise) du panier, pour un drop-in compatible (QX1/QX2).
     if len(buckets) <= 1:
         rate = next(iter(buckets), D(str(fallback_taux)))
         tva_amt = q(ht_net * rate / D('100'))
-        tva_par_taux = [{'taux': rate, 'montant': tva_amt, 'ht_net': ht_net}]
+        tva_par_taux = [{'taux': rate, 'montant': tva_amt,
+                         'ht_net': ht_net, 'base_ht': ht_net}]
     else:
         rates = sorted(buckets)
         nets = {r: q(buckets[r] * (D('1') - disc / D('100'))) for r in rates}
         residu = q(ht_net - sum(nets.values(), D('0')))
         nets[rates[-1]] = q(nets[rates[-1]] + residu)
         tva_par_taux = [
-            {'taux': r, 'montant': q(nets[r] * r / D('100')), 'ht_net': nets[r]}
+            {'taux': r, 'montant': q(nets[r] * r / D('100')),
+             'ht_net': nets[r], 'base_ht': nets[r]}
             for r in rates
         ]
         tva_amt = q(sum((b['montant'] for b in tva_par_taux), D('0')))
@@ -832,3 +907,158 @@ def resoudre_plan_commission(company, owner):
         if plan is not None:
             return plan
     return qs.filter(owner__isnull=True).first()
+
+
+def devis_milestones(token):
+    """QX34 — jalons post-signature d'un devis, résolus depuis un jeton
+    ShareLink (lecture seule, public, tokenisé). Rien n'est muté.
+
+    Dérive la timeline à partir des LIGNES EXISTANTES (aucun nouveau statut) :
+    accepté → acompte reçu (Paiement) → matériel commandé (BonCommande) →
+    installation (chantier via le sélecteur installations) → facturé.
+
+    Renvoie ``None`` si le jeton est invalide/expiré/sans devis, sinon un dict
+    ``{reference, milestones: [{key, label, done, date}]}``. Multi-tenant :
+    le jeton borne un unique devis d'une seule société (aucune fuite d'une
+    autre société), et jamais de prix d'achat/marge.
+    """
+    from django.utils import timezone
+    from .models import ShareLink
+
+    link = (ShareLink.objects
+            .select_related('devis', 'devis__company')
+            .filter(token=token).first())
+    if link is None or not link.is_valid or not link.devis_id:
+        return None
+    devis = link.devis
+
+    def _iso(d):
+        return d.isoformat() if d is not None else None
+
+    # 1) Accepté.
+    accepte = devis.statut in ('accepte',) or devis.date_acceptation is not None
+    date_accepte = getattr(devis, 'date_acceptation', None)
+
+    # 2) Acompte reçu — un Paiement existe sur une facture liée au devis.
+    from .models import Paiement
+    paiement = (Paiement.objects
+                .filter(facture__devis=devis)
+                .order_by('date_paiement')
+                .first())
+    if paiement is None:
+        # Chaîne BC → facture.
+        paiement = (Paiement.objects
+                    .filter(facture__bon_commande__devis=devis)
+                    .order_by('date_paiement')
+                    .first())
+    acompte_recu = paiement is not None
+
+    # 3) Matériel commandé — un BonCommande existe.
+    bc = getattr(devis, 'bon_commande', None)
+    materiel_commande = bc is not None
+    date_bc = getattr(bc, 'date_creation', None) if bc else None
+
+    # 4) Installation — chantier lié (via sélecteur installations, jamais
+    #    d'import de son modèle).
+    chantier = None
+    try:
+        from apps.installations.selectors import installation_for_devis
+        chantier = installation_for_devis(devis)
+    except Exception:  # noqa: BLE001 — best-effort
+        chantier = None
+    installation_faite = chantier is not None
+
+    # 5) Facturé — au moins une facture liée.
+    facture_emise = devis.factures.exists() or (
+        bc is not None and bc.factures.exists() if bc else False)
+
+    milestones = [
+        {'key': 'accepte', 'label': 'Proposition acceptée',
+         'done': bool(accepte), 'date': _iso(date_accepte)},
+        {'key': 'acompte', 'label': 'Acompte reçu',
+         'done': bool(acompte_recu),
+         'date': _iso(getattr(paiement, 'date_paiement', None))},
+        {'key': 'materiel', 'label': 'Matériel commandé',
+         'done': bool(materiel_commande),
+         'date': (date_bc.date().isoformat()
+                  if hasattr(date_bc, 'date') else _iso(date_bc))},
+        {'key': 'installation', 'label': 'Installation',
+         'done': bool(installation_faite),
+         'date': (getattr(chantier, 'statut', None)
+                  if chantier is not None else None)},
+        {'key': 'facture', 'label': 'Facturé',
+         'done': bool(facture_emise), 'date': None},
+    ]
+    return {
+        'reference': devis.reference,
+        'generated_at': timezone.now().isoformat(),
+        'milestones': milestones,
+    }
+
+
+def devis_events_for_lead(lead_id, company):
+    """QX32be — événements de cycle de vie des devis d'un LEAD (lecture seule).
+
+    Point d'entrée cross-app UNIQUE pour que ``crm`` fusionne les jalons devis
+    (envoyé/ouvert/signé/refusé) + un résumé d'engagement dans son historique
+    lead, SANS importer ``apps.ventes.models``. Multi-tenant : borné à la
+    société fournie (jamais de fuite d'une autre société). Jamais de
+    ``prix_achat``/marge.
+
+    Renvoie une liste d'événements triés (plus récents d'abord) :
+    ``[{devis_id, reference, kind, label, at, engagement}]`` où ``kind`` ∈
+    {sent, opened, signed, refused}. ``engagement`` (résumé par section) n'est
+    posé que sur l'événement ``opened``.
+    """
+    from .models import Devis, ShareLink
+
+    if not lead_id:
+        return []
+    devis_qs = (Devis.objects
+                .filter(lead_id=lead_id, company=company)
+                .order_by('-date_creation'))
+
+    # Résumé d'engagement par devis (dernier ShareLink vu).
+    links = (ShareLink.objects
+             .filter(devis__lead_id=lead_id, devis__company=company)
+             .order_by('devis_id', '-created_at'))
+    eng_by_devis = {}
+    first_view_by_devis = {}
+    for lk in links:
+        if lk.devis_id not in eng_by_devis:
+            eng_by_devis[lk.devis_id] = lk.engagement_summary
+            first_view_by_devis[lk.devis_id] = lk.first_viewed_at
+
+    def _iso(d):
+        return d.isoformat() if d is not None else None
+
+    events = []
+    for devis in devis_qs:
+        ref = devis.reference
+        if devis.date_envoi is not None:
+            events.append({
+                'devis_id': devis.id, 'reference': ref, 'kind': 'sent',
+                'label': 'Devis envoyé', 'at': _iso(devis.date_envoi),
+                'engagement': None,
+            })
+        fv = first_view_by_devis.get(devis.id)
+        if fv is not None:
+            events.append({
+                'devis_id': devis.id, 'reference': ref, 'kind': 'opened',
+                'label': 'Proposition ouverte', 'at': _iso(fv),
+                'engagement': eng_by_devis.get(devis.id) or {},
+            })
+        if devis.statut == 'accepte' and devis.date_acceptation is not None:
+            events.append({
+                'devis_id': devis.id, 'reference': ref, 'kind': 'signed',
+                'label': 'Devis signé', 'at': _iso(devis.date_acceptation),
+                'engagement': None,
+            })
+        if devis.statut == 'refuse' and devis.date_refus is not None:
+            events.append({
+                'devis_id': devis.id, 'reference': ref, 'kind': 'refused',
+                'label': 'Devis refusé', 'at': _iso(devis.date_refus),
+                'engagement': None,
+            })
+    events.sort(key=lambda e: (e['at'] or ''), reverse=True)
+    return events

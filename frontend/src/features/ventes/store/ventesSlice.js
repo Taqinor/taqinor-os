@@ -1,15 +1,42 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit'
 import ventesApi from '../../../api/ventesApi'
+import { fetchAllPages } from '../../../utils/fetchAllPages'
+import { createCancellableThunk, dedupeInFlight } from '../../../lib/thunkHelpers'
+
+// VX164 — garde anti-course PAR RESSOURCE sur les `update*/patch*.fulfilled` :
+// deux PATCH rapides du MÊME devis/BC/facture, résolus dans l'ordre INVERSE
+// (le second dispatché répond avant le premier), ne doivent plus faire
+// régresser l'écran vers le payload le plus ANCIEN. `seqMap[id]` retient le
+// `requestId` (RTK) de la DERNIÈRE requête DISPATCHÉE pour cet id ; un
+// `.fulfilled` dont le `requestId` ne correspond plus est un no-op silencieux
+// — le payload le plus récemment DEMANDÉ gagne toujours, quel que soit
+// l'ordre de résolution réseau.
+function isStaleResourceUpdate(seqMap, id, requestId) {
+  return seqMap[id] != null && seqMap[id] !== requestId
+}
 
 // ── Devis ──────────────────────────────────────────────
-export const fetchDevis = createAsyncThunk('ventes/fetchDevis', async (_, { rejectWithValue }) => {
-  try {
-    const res = await ventesApi.getDevis()
-    return res.data
-  } catch (err) {
-    return rejectWithValue(err.response?.data ?? err.message)
-  }
-})
+// VX54 — la page 1 DRF (PAGE_SIZE=100) ne renvoyait que les 100 premiers
+// devis : DevisList et les KPI du Dashboard étaient FAUX dès 101 devis. On lit
+// désormais TOUTES les pages, en parallèle mais borné à ~3-5 MAX (au lieu du
+// ~20 par défaut) tant que QPERF1 (N+1 backend : ~38-109 requêtes SQL PAR
+// page de devis) n'est pas corrigé — sinon ~20 pages parallèles = ~2 000
+// requêtes SQL quasi simultanées auto-infligées au Postgres à chaque montage
+// de DevisList. Relever cette borne quand QPERF1 atterrit (@coord QPERF1).
+const DEVIS_PAGE_CONCURRENCY = 5
+
+// VX55 — `signal` natif de createAsyncThunk câblé jusqu'à l'appel axios :
+// `thunk.abort()` (cleanup d'effet au démontage de DevisList) annule les pages
+// en vol au lieu de laisser une réponse tardive écraser l'état après navigation.
+// VX163 — enrobé par `createCancellableThunk` (annulation → `meta.aborted ===
+// true`, propre plutôt qu'un `rejectWithValue`) + dé-duplication en vol (deux
+// montages simultanés de DevisList ne déclenchent qu'UNE seule pagination).
+export const fetchDevis = createCancellableThunk('ventes/fetchDevis', (_, { signal }) =>
+  dedupeInFlight('ventes/fetchDevis', () =>
+    fetchAllPages((page) => ventesApi.getDevis({ page }, { signal }).then((r) => r.data), { concurrency: DEVIS_PAGE_CONCURRENCY })
+      .then((results) => ({ results })),
+  ),
+)
 
 export const createDevis = createAsyncThunk('ventes/createDevis', async (data, { rejectWithValue }) => {
   try {
@@ -162,14 +189,16 @@ export const creerFactureFromBC = createAsyncThunk('ventes/creerFactureFromBC', 
 })
 
 // ── Factures ───────────────────────────────────────────
-export const fetchFactures = createAsyncThunk('ventes/fetchFactures', async (_, { rejectWithValue }) => {
-  try {
-    const res = await ventesApi.getFactures()
-    return res.data
-  } catch (err) {
-    return rejectWithValue(err.response?.data ?? err.message)
-  }
-})
+// VX54 — même bug de troncature silencieuse que fetchDevis : toutes les
+// pages désormais lues, en parallèle borné (les factures n'ont pas le N+1
+// QPERF1 des devis, donc la borne par défaut ~20 s'applique).
+// VX163 — `{signal}` câblé + dé-duplication en vol (même patron que fetchDevis).
+export const fetchFactures = createCancellableThunk('ventes/fetchFactures', (_, { signal }) =>
+  dedupeInFlight('ventes/fetchFactures', () =>
+    fetchAllPages((page) => ventesApi.getFactures({ page }, { signal }).then((r) => r.data), { concurrency: 20 })
+      .then((results) => ({ results })),
+  ),
+)
 
 export const createFacture = createAsyncThunk('ventes/createFacture', async (data, { rejectWithValue }) => {
   try {
@@ -278,30 +307,63 @@ const ventesSlice = createSlice({
     bonsCommande: [],
     factures: [],
     loading: false,
+    // VX165 — compteur de sondages EN VOL partagés par `fetchDevis`/
+    // `fetchBonsCommande`/`fetchFactures` : `loading` reste dérivé de ce
+    // compteur (rétrocompatible avec les sélecteurs existants), mais
+    // n'éteint plus tant qu'une requête sœur charge encore.
+    pendingCount: 0,
     error: null,
     pdfLoading: false,
+    // VX164 — requestId (RTK) de la DERNIÈRE update/patch dispatchée, par id
+    // — une map par ressource (devis/BC/factures sont des tables distinctes).
+    devisUpdateSeq: {},
+    bonCommandeUpdateSeq: {},
+    factureUpdateSeq: {},
   },
   reducers: {
     clearError(state) { state.error = null },
   },
   extraReducers: (builder) => {
-    const pending = (state) => { state.loading = true; state.error = null }
-    const rejected = (state, action) => { state.loading = false; state.error = action.payload }
+    // VX165 — `pending` incrémente le compteur PARTAGÉ ; `settleLoading`
+    // (appelé par CHAQUE fulfilled/rejected sœur) le décrémente et redérive
+    // `loading` — le premier résolu n'éteint plus le spinner pendant que
+    // `fetchDevis`/`fetchBonsCommande`/`fetchFactures` sœurs chargent encore.
+    const pending = (state) => {
+      state.pendingCount = (state.pendingCount || 0) + 1
+      state.loading = true
+      state.error = null
+    }
+    const settleLoading = (state) => {
+      state.pendingCount = Math.max(0, (state.pendingCount || 0) - 1)
+      state.loading = state.pendingCount > 0
+    }
+    const rejected = (state, action) => {
+      settleLoading(state)
+      state.error = action.payload
+    }
 
     builder
       // Devis
       .addCase(fetchDevis.pending, pending)
       .addCase(fetchDevis.fulfilled, (state, action) => {
-        state.loading = false
+        settleLoading(state)
         state.devis = action.payload.results ?? action.payload
       })
       .addCase(fetchDevis.rejected, rejected)
       .addCase(createDevis.fulfilled, (state, action) => { state.devis.push(action.payload) })
+      .addCase(updateDevis.pending, (state, action) => {
+        state.devisUpdateSeq[action.meta.arg.id] = action.meta.requestId
+      })
       .addCase(updateDevis.fulfilled, (state, action) => {
+        if (isStaleResourceUpdate(state.devisUpdateSeq, action.payload.id, action.meta.requestId)) return
         const idx = state.devis.findIndex(d => d.id === action.payload.id)
         if (idx !== -1) state.devis[idx] = action.payload
       })
+      .addCase(patchDevis.pending, (state, action) => {
+        state.devisUpdateSeq[action.meta.arg.id] = action.meta.requestId
+      })
       .addCase(patchDevis.fulfilled, (state, action) => {
+        if (isStaleResourceUpdate(state.devisUpdateSeq, action.payload.id, action.meta.requestId)) return
         const idx = state.devis.findIndex(d => d.id === action.payload.id)
         if (idx !== -1) state.devis[idx] = action.payload
       })
@@ -315,14 +377,18 @@ const ventesSlice = createSlice({
       // Bons de commande
       .addCase(fetchBonsCommande.pending, pending)
       .addCase(fetchBonsCommande.fulfilled, (state, action) => {
-        state.loading = false
+        settleLoading(state)
         state.bonsCommande = action.payload.results ?? action.payload
       })
       .addCase(fetchBonsCommande.rejected, rejected)
       .addCase(createBonCommande.fulfilled, (state, action) => {
         state.bonsCommande.push(action.payload)
       })
+      .addCase(updateBonCommande.pending, (state, action) => {
+        state.bonCommandeUpdateSeq[action.meta.arg.id] = action.meta.requestId
+      })
       .addCase(updateBonCommande.fulfilled, (state, action) => {
+        if (isStaleResourceUpdate(state.bonCommandeUpdateSeq, action.payload.id, action.meta.requestId)) return
         const idx = state.bonsCommande.findIndex(b => b.id === action.payload.id)
         if (idx !== -1) state.bonsCommande[idx] = action.payload
       })
@@ -352,16 +418,24 @@ const ventesSlice = createSlice({
       // Factures
       .addCase(fetchFactures.pending, pending)
       .addCase(fetchFactures.fulfilled, (state, action) => {
-        state.loading = false
+        settleLoading(state)
         state.factures = action.payload.results ?? action.payload
       })
       .addCase(fetchFactures.rejected, rejected)
       .addCase(createFacture.fulfilled, (state, action) => { state.factures.push(action.payload) })
+      .addCase(updateFacture.pending, (state, action) => {
+        state.factureUpdateSeq[action.meta.arg.id] = action.meta.requestId
+      })
       .addCase(updateFacture.fulfilled, (state, action) => {
+        if (isStaleResourceUpdate(state.factureUpdateSeq, action.payload.id, action.meta.requestId)) return
         const idx = state.factures.findIndex(f => f.id === action.payload.id)
         if (idx !== -1) state.factures[idx] = action.payload
       })
+      .addCase(patchFacture.pending, (state, action) => {
+        state.factureUpdateSeq[action.meta.arg.id] = action.meta.requestId
+      })
       .addCase(patchFacture.fulfilled, (state, action) => {
+        if (isStaleResourceUpdate(state.factureUpdateSeq, action.payload.id, action.meta.requestId)) return
         const idx = state.factures.findIndex(f => f.id === action.payload.id)
         if (idx !== -1) state.factures[idx] = action.payload
       })

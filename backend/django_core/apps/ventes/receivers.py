@@ -4,9 +4,61 @@ Abonne ``ventes`` aux événements du bus ``core.events`` exposés par d'autres
 apps/la fondation, pour réagir à un changement d'état sans import direct.
 Câblé au démarrage par ``VentesConfig.ready()``.
 """
+from django.db.models.signals import post_delete, post_save
 from django.dispatch import receiver
 
 from core.events import payment_captured, chantier_annule, effet_rejete
+
+
+# ── QX24 — cohérence de l'étude quand les lignes changent ────────────────────
+def _qx24_refresh_etude_on_ligne_change(sender, instance, **kwargs):
+    """QX24 — à chaque save/delete d'une ``LigneDevis``, recalcule le payback
+    dérivé de l'étude pour qu'il reste cohérent avec le total courant.
+
+    Best-effort ; ne bloque jamais une écriture de ligne. No-op si le devis lié
+    n'a pas d'économies stockées (rien à dériver)."""
+    devis = getattr(instance, 'devis', None)
+    if devis is None:
+        return
+    try:
+        from . import services as ventes_services
+        ventes_services.refresh_etude_consistency(devis)
+    except Exception:  # noqa: BLE001 — jamais bloquant
+        pass
+
+
+def _qx24_refresh_etude_on_devis_change(sender, instance, created, update_fields,
+                                        **kwargs):
+    """QX24 — recalcule le payback quand la REMISE GLOBALE d'un devis change.
+
+    Anti-récursion : ``refresh_etude_consistency`` sauvegarde le devis avec
+    ``update_fields=['etude_params']`` — on ignore donc tout save dont les
+    champs mis à jour ne contiennent PAS ``remise_globale`` (le save interne du
+    correctif n'y touche jamais), ce qui coupe la boucle."""
+    if created:
+        return
+    # Ne réagit qu'à un changement EXPLICITE de remise_globale (jamais au save
+    # interne du correctif qui n'écrit que etude_params → pas de récursion).
+    if update_fields is None or 'remise_globale' not in set(update_fields):
+        return
+    try:
+        from . import services as ventes_services
+        ventes_services.refresh_etude_consistency(instance)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _register_qx24_signals():
+    from .models import Devis, LigneDevis
+    post_save.connect(
+        _qx24_refresh_etude_on_ligne_change, sender=LigneDevis,
+        dispatch_uid='ventes_qx24_ligne_saved')
+    post_delete.connect(
+        _qx24_refresh_etude_on_ligne_change, sender=LigneDevis,
+        dispatch_uid='ventes_qx24_ligne_deleted')
+    post_save.connect(
+        _qx24_refresh_etude_on_devis_change, sender=Devis,
+        dispatch_uid='ventes_qx24_devis_saved')
 
 
 @receiver(chantier_annule, dispatch_uid="ventes_alert_on_chantier_annule")

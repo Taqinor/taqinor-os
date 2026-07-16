@@ -13,3 +13,14 @@ class AgentConfig(AppConfig):
         'description': "Catalogue d'actions agentiques.",
         'categorie': 'Technique',
     }
+
+    def ready(self):
+        # ARC33 — auto-découverte des actions agent : importe chaque module
+        # ``agent_actions_module`` déclaré par un manifeste plateforme
+        # (apps/<x>/platform.py, ARC28) et appelle sa ``register_actions()``
+        # (convention idempotente). Déclarer le module dans le manifeste
+        # SUFFIT désormais à brancher une app sur l'agent — plus besoin d'un
+        # appel explicite dans son AppConfig.ready(). Import différé (aucun
+        # effet de bord à l'import du module apps).
+        from .registry import autodiscover_from_platform_manifests
+        autodiscover_from_platform_manifests()

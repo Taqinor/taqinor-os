@@ -7,7 +7,7 @@ import { useEffect, useState } from 'react'
 import { CheckCircle2, Circle, Lock, ClipboardCheck, PackageCheck } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
 import {
-  Button, Badge, Spinner,
+  Button, Badge, HelpTip, Spinner,
 } from '../../ui'
 
 function StageIcon({ satisfait, courante, bloquant }) {
@@ -34,7 +34,6 @@ function StageRow({ etape, isLast }) {
       data-cle={etape.cle}
       data-courante={courante ? 'true' : 'false'}
       className={`relative flex gap-3 pb-4 ${isLast ? '' : 'border-l border-border ml-2.5 pl-4'}`}
-      style={isLast ? undefined : { marginLeft: '10px', paddingLeft: '16px' }}
     >
       <span className="absolute -left-[10.5px] top-0 flex size-5 items-center justify-center rounded-full bg-background">
         <StageIcon satisfait={satisfait} courante={courante} bloquant={bloquant} />
@@ -166,6 +165,20 @@ export default function ChantierGateTimeline({ installationId, onAdvanced }) {
 
   return (
     <div className="flex flex-col gap-4" data-testid="ch6-gate-timeline">
+      {/* VX47 — aide contextuelle : la distinction bloquant/consultatif n'est
+          pas évidente pour un nouvel employé (un cadenas rouge n'est pas
+          auto-explicatif). Une seule pose pour toute la liste, pas de
+          re-layout. */}
+      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <span>Gates de chantier</span>
+        <HelpTip label="Aide — gates de chantier">
+          Un <strong>gate bloquant</strong> (cadenas) empêche de passer à
+          l'étape suivante tant qu'il n'est pas satisfait — les raisons du
+          blocage s'affichent en rouge sous l'étape. Un gate
+          <strong> consultatif</strong> est informatif : il n'empêche pas
+          d'avancer, il signale seulement un point à vérifier.
+        </HelpTip>
+      </div>
       <ol className="flex flex-col" data-testid="ch6-stage-list">
         {stages.map((s, i) => (
           <StageRow key={s.cle} etape={s} isLast={i === stages.length - 1} />

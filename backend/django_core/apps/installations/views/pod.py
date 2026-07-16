@@ -8,11 +8,10 @@ la livraison référencée est validée tenant. Cross-app : ``records.Attachment
 """
 from django.utils import timezone
 
-from rest_framework import viewsets
 from rest_framework.exceptions import ValidationError
 
-from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.viewsets import CompanyScopedModelViewSet
 
 from ..models import PreuveLivraison
 from ..serializers import PreuveLivraisonSerializer
@@ -20,7 +19,7 @@ from ..serializers import PreuveLivraisonSerializer
 READ_ACTIONS = ['list', 'retrieve']
 
 
-class PreuveLivraisonViewSet(TenantMixin, viewsets.ModelViewSet):
+class PreuveLivraisonViewSet(CompanyScopedModelViewSet):
     """FG330 — preuves de livraison. Lecture tout rôle, écriture
     responsable/admin. Filtrable par `livraison`."""
     queryset = PreuveLivraison.objects.select_related(

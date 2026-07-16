@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from rest_framework.validators import UniqueTogetherValidator
 from .models import (
     Devis, LigneDevis, BonCommande, Facture, LigneFacture, Paiement,
     Avoir, LigneAvoir, DevisActivity, DevisPreset, RoofLayout,
@@ -8,20 +9,43 @@ from .models import (
 
 
 def _fallback_taux_tva(company, designation):
-    """DC4 — taux de TVA de repli d'une ligne sans taux ni produit taxé.
+    """DC4 / ARC23 — taux de TVA de repli d'une ligne sans taux ni produit taxé.
 
     Une ligne PANNEAU retombe sur le défaut société panneaux
-    (CompanyProfile.tva_panneaux, 10 %) ; toute autre ligne sur le taux standard
-    (20 %). `Produit.tva` reste prioritaire côté appelant (DC7) : ce repli ne
-    s'applique QUE lorsqu'il n'existe ni taux explicite ni produit portant un
-    taux, donc le comportement reste identique tant que les produits portent
-    leur taux (cas nominal après seed_catalogue).
+    (CompanyProfile.tva_panneaux, 10 %) ; toute autre ligne sur le taux standard.
+    `Produit.tva` reste prioritaire côté appelant (DC7) : ce repli ne s'applique
+    QUE lorsqu'il n'existe ni taux explicite ni produit portant un taux, donc le
+    comportement reste identique tant que les produits portent leur taux (cas
+    nominal après seed_catalogue).
+
+    ARC23 — pour une ligne STANDARD, le knob éditable en Paramètres
+    (`CompanyProfile.tva_standard`, réglé par l'utilisateur) est PRIORITAIRE :
+    on le lit d'abord. Le référentiel `parametres.TauxTVA` (sans UI, seedé à
+    20 % pour chaque nouveau tenant par `signup_hooks.seed_taux_tva_hook`) ne
+    sert plus que de repli quand ce knob ne donne pas de taux, puis la constante
+    historique (20). Ainsi un tenant qui met « TVA standard » à 14 % voit 14 %
+    sur ses lignes de repli — le référentiel seedé ne le réprime plus. Un tenant
+    qui n'a jamais touché le champ garde sa valeur par défaut (20 %), inchangée.
+    Un taux déjà figé sur un document existant n'est JAMAIS réécrit (règle #4).
     """
     from apps.ventes.utils.company_settings import tva_standard, tva_panneaux
     d = (designation or '').lower()
     if 'panneau' in d:
         return tva_panneaux(company)
-    return tva_standard(company)
+    # Knob éditable (Paramètres) d'abord — l'édition de l'utilisateur prime.
+    standard = tva_standard(company)
+    if standard is not None:
+        return standard
+    # Repli : référentiel TauxTVA (sans UI), puis constante historique.
+    try:
+        from apps.parametres.models_taxes import TauxTVA
+        referentiel = TauxTVA.default_taux(company)
+    except Exception:
+        referentiel = None
+    if referentiel is not None:
+        return referentiel
+    from decimal import Decimal
+    return Decimal('20')
 
 
 class LigneDevisSerializer(serializers.ModelSerializer):
@@ -59,6 +83,9 @@ class DevisSerializer(serializers.ModelSerializer):
     nb_options = serializers.SerializerMethodField()
     client_nom = serializers.CharField(source='client.nom', read_only=True)
     lead_nom = serializers.SerializerMethodField()
+    # VX98 — auteur de la dernière modification (puce de fraîcheur). Lecture seule.
+    updated_by_nom = serializers.CharField(
+        source='updated_by.username', read_only=True, default=None)
     # Contexte « quote-aware » du lead lié (profil énergétique) — lecture seule,
     # pour un aperçu au survol dans la liste des devis. None si pas de lead.
     lead_facture_hiver = serializers.SerializerMethodField()
@@ -336,10 +363,45 @@ class DevisSerializer(serializers.ModelSerializer):
         link = self._active_share_link(obj)
         return link.engagement_summary if link else {}
 
+    # QX23be — marge interne figée, exposée UNIQUEMENT au responsable/admin
+    # (jamais dans un PDF ni une sortie client — prix_achat rule). Un
+    # commercial/lecteur reçoit toujours None ; ``fields='__all__'`` inclut le
+    # champ modèle, cette méthode le NEUTRALISE pour les non-managers.
+    marge_snapshot = serializers.SerializerMethodField()
+
+    def get_marge_snapshot(self, obj):
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        if user is not None and getattr(user, 'is_responsable', False):
+            val = obj.marge_snapshot
+            return str(val) if val is not None else None
+        return None
+
+    def to_representation(self, instance):
+        """QX23be / RULE #4 — the ``marge_snapshot`` KEY itself must never reach
+        a client-facing / context-less path (a structural prix_achat/marge
+        guard flags the mere presence of the key, not just its value). We keep
+        the key ONLY when the serializer runs for an AUTHENTICATED internal
+        user (commercial → None, responsable → valeur) ; any anonymous /
+        context-less / public-token rendering drops the key entirely."""
+        data = super().to_representation(instance)
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        is_auth = bool(user is not None and getattr(user, 'is_authenticated', False))
+        if not is_auth:
+            data.pop('marge_snapshot', None)
+        return data
+
     class Meta:
         model = Devis
         fields = '__all__'
-        read_only_fields = ['reference', 'created_by', 'fichier_pdf', 'date_creation']
+        # SCA47 — prix_par_kwc est DÉRIVÉ et gelé côté serveur (write-once au
+        # save) : lecture seule sur l'API interne générateur/BI, JAMAIS accepté
+        # du corps de requête (même régime interne que prix_achat, qui n'est
+        # jamais exposé côté client/PDF).
+        read_only_fields = ['reference', 'created_by', 'fichier_pdf',
+                            'date_creation', 'prix_par_kwc',
+                            'updated_at', 'updated_by']  # VX98 — server-side only
 
 
 class DevisWriteSerializer(serializers.ModelSerializer):
@@ -354,7 +416,10 @@ class DevisWriteSerializer(serializers.ModelSerializer):
         model = Devis
         exclude = ['reference', 'fichier_pdf']
         # company is force-assigned in perform_create — never accept it from the body.
-        read_only_fields = ['created_by', 'date_creation', 'company']
+        # SCA47 — prix_par_kwc est dérivé/gelé côté serveur (write-once), jamais
+        # accepté du corps de requête.
+        read_only_fields = ['created_by', 'date_creation', 'company',
+                            'prix_par_kwc']
         extra_kwargs = {'client': {'required': False}}
 
 
@@ -434,6 +499,31 @@ class PaiementSerializer(serializers.ModelSerializer):
     statut_affectation_display = serializers.CharField(
         source='get_statut_affectation_display', read_only=True)
 
+    # SCA45 — ``idempotency_key`` est OPTIONNEL : un encaissement MANUEL n'en a
+    # pas (seuls les appels idempotents webhook/API en fournissent une). Il DOIT
+    # être déclaré EXPLICITEMENT ``required=False`` : la contrainte d'unicité
+    # (company, idempotency_key) — CONDITIONNELLE côté DB (WHERE clé non nulle) —
+    # fait générer par DRF un validateur unique-together AUTO qui, en ignorant la
+    # condition, marque le champ ``required=True`` au MOMENT de la construction du
+    # champ (dans ``super().__init__``). Retirer seulement le validateur ensuite
+    # (ci-dessous) NE réinitialise PAS ``field.required`` déjà calculé → 400 « Ce
+    # champ est obligatoire » sur chaque encaissement manuel. La déclaration
+    # explicite court-circuite cette logique auto ; la contrainte DB reste
+    # l'arbitre de l'unicité pour les vrais appels idempotents.
+    idempotency_key = serializers.CharField(
+        required=False, allow_null=True, allow_blank=True)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Retire AUSSI le validateur unique-together AUTO (en plus de la
+        # déclaration explicite ci-dessus) pour qu'il ne tente pas la vérif
+        # d'unicité sur la clé nulle d'un paiement manuel ; la contrainte DB
+        # conditionnelle reste l'arbitre.
+        self.validators = [
+            v for v in self.validators
+            if not (isinstance(v, UniqueTogetherValidator)
+                    and 'idempotency_key' in getattr(v, 'fields', ()))]
+
     def get_client_nom(self, obj):
         c = obj.facture.client if obj.facture_id else obj.client
         if c is None:
@@ -495,6 +585,9 @@ class FactureSerializer(serializers.ModelSerializer):
     statut_display = serializers.CharField(source='get_statut_display', read_only=True)
     type_facture_display = serializers.CharField(source='get_type_facture_display', read_only=True)
     devis_reference = serializers.CharField(source='devis.reference', read_only=True, default=None)
+    # VX98 — auteur de la dernière modification (puce de fraîcheur). Lecture seule.
+    updated_by_nom = serializers.CharField(
+        source='updated_by.username', read_only=True, default=None)
     # Ventilation TVA par taux (10 %/20 %), réconciliée au centime.
     tva_par_taux = serializers.SerializerMethodField()
     is_overdue = serializers.SerializerMethodField()
@@ -521,7 +614,8 @@ class FactureSerializer(serializers.ModelSerializer):
     class Meta:
         model = Facture
         fields = '__all__'
-        read_only_fields = ['reference', 'created_by', 'fichier_pdf', 'date_emission']
+        read_only_fields = ['reference', 'created_by', 'fichier_pdf', 'date_emission',
+                            'updated_at', 'updated_by']  # VX98 — server-side only
 
     def get_is_overdue(self, obj):
         # S'appuie sur jours_retard du modèle (échéance dépassée + reste dû,

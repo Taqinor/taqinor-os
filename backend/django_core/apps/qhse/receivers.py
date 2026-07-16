@@ -44,6 +44,18 @@ imports FONCTION-LOCAUX des seuls points d'entrée publics de ces deux apps
 indépendant — une notif ou un audit qui échoue ne casse ni la création de
 l'incident ni la note chatter existante ; les incidents mineurs/majeurs restent
 inchangés (aucun appel).
+
+ARC38 — RAPATRIEMENT sur le bus
+--------------------------------
+
+Le signal ``incident_declared`` défini ci-dessous reste LOCAL (émetteur ET
+abonné = ``qhse``, invisible à un abonné cross-app). ``IncidentViewSet.
+perform_create`` émet désormais AUSSI ``core.events.incident_declared`` (même
+arguments) juste après — DOUBLE ÉMISSION assumée pendant la transition (voir
+docstring ``core/events.py``). Ce module se réabonne à SON PROPRE signal bus
+ci-dessous (``_audit_bus_on_incident_declared``) pour prouver la visibilité
+cross-app avec un abonné réel — distinct de l'audit YEVNT12 ci-dessus (qui
+reste câblé sur le signal LOCAL et continue de fonctionner à l'identique).
 """
 import logging
 
@@ -155,3 +167,49 @@ def _ouvrir_controles_reception(sender, reception, company, user, **kwargs):
         logger.warning(
             'XQHS3 : ouverture du contrôle réception échouée pour '
             'réception#%s : %s', getattr(reception, 'pk', '?'), exc)
+
+
+# ── ARC38 — incident_declared RAPATRIÉ sur le bus core.events ───────────────
+#
+# Signal BUS distinct du signal LOCAL ``incident_declared`` défini plus haut
+# dans ce module (double émission assumée — voir docstring de ce module et de
+# ``core/events.py``). qhse se réabonne à SON PROPRE signal bus pour prouver
+# qu'un abonné cross-app recevrait bien l'événement sans importer
+# ``apps.qhse`` — garde YEVNT7/ARC41 (aucun signal sans abonné réel).
+from core.events import incident_declared as incident_declared_bus  # noqa: E402
+
+
+@receiver(
+    incident_declared_bus,
+    dispatch_uid="qhse_audit_bus_on_incident_declared")
+def _audit_bus_on_incident_declared(sender, incident, company, user, gravite,
+                                    **kwargs):
+    """ARC38 — journalise une entrée d'audit DÉDIÉE (distincte de celle du
+    récepteur du signal LOCAL, YEVNT12 ci-dessus) à chaque incident déclaré,
+    quelle que soit sa gravité — preuve que le signal BUS est bien reçu par
+    un abonné indépendant du signal local historique.
+
+    Best-effort : une erreur ici ne doit jamais remonter (la création de
+    l'incident, côté ``qhse``, est déjà actée par le signal local ci-dessus).
+    """
+    try:
+        from apps.audit import recorder as audit_recorder
+
+        ref = getattr(incident, 'reference', '') or 'INC'
+        # Action ``create`` (déclaration d'incident observée sur le bus), PAS
+        # ``notify`` : aucune notification n'est envoyée ici (contrairement à
+        # l'audit YEVNT12 du signal LOCAL, réservé aux incidents CRITIQUES qui
+        # notifient réellement). Réutiliser ``notify`` polluait le flux d'audit
+        # ``notify`` et cassait le comptage YEVNT12 (1 pour critique, 0 sinon).
+        audit_recorder.record(
+            'create',
+            instance=incident,
+            company=company,
+            user=user,
+            detail='ARC38 — incident QHSE %s (gravité %s) visible sur le bus '
+                   'core.events (abonné cross-app).' % (ref, gravite),
+        )
+    except Exception as exc:  # noqa: BLE001 — best-effort, ne casse jamais
+        logger.warning(
+            'ARC38 : audit bus incident_declared échoué pour %s : %s',
+            getattr(incident, 'pk', '?'), exc)

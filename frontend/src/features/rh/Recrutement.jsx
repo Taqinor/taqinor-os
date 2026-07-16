@@ -6,10 +6,10 @@ import { ListShell } from '../../ui/module'
 import {
   Segmented, Badge, toast, Card, Stat,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-  Button, Label, Input, Textarea,
+  Button, Label, Input, Textarea, confirmLeaveIfDirty,
 } from '../../ui'
 import { useConfirmDialog } from '../../ui/confirm'
-import { formatDate } from '../../lib/format'
+import { formatDate, formatNumber } from '../../lib/format'
 import rhApi from '../../api/rhApi'
 import {
   EtapeCandidature, StatutPoste, StatutSanction, StatutEvaluation,
@@ -412,6 +412,9 @@ function PromesseDialog({ candidature, onClose, onSaved }) {
   const [dateDebut, setDateDebut] = useState('')
   const [saving, setSaving] = useState(false)
   const [serverError, setServerError] = useState(null)
+  // VX168 — garde de fermeture : dialogue de création, initial = tout vide.
+  const dirty = Boolean(poste || salaire || dateDebut)
+  const closeIfConfirmed = () => { if (confirmLeaveIfDirty(dirty)) onClose?.() }
 
   const submit = async (e) => {
     e.preventDefault()
@@ -435,7 +438,7 @@ function PromesseDialog({ candidature, onClose, onSaved }) {
   }
 
   return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose?.() }}>
+    <Dialog open onOpenChange={(o) => { if (!o) closeIfConfirmed() }}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>Promesse d’embauche — {candidature.nom}</DialogTitle>
@@ -443,7 +446,7 @@ function PromesseDialog({ candidature, onClose, onSaved }) {
         <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="pr-poste">Poste proposé</Label>
-            <Input id="pr-poste" value={poste} onChange={(e) => setPoste(e.target.value)} placeholder="Ex. Technicien photovoltaïque" />
+            <Input id="pr-poste" autoFocus value={poste} onChange={(e) => setPoste(e.target.value)} placeholder="Ex. Technicien photovoltaïque" />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">
@@ -457,7 +460,7 @@ function PromesseDialog({ candidature, onClose, onSaved }) {
           </div>
           {serverError && <p className="text-sm text-destructive" role="alert">{serverError}</p>}
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
+            <Button type="button" variant="outline" onClick={closeIfConfirmed}>Annuler</Button>
             <Button type="submit" disabled={saving}>{saving ? 'Création…' : 'Créer la promesse'}</Button>
           </DialogFooter>
         </form>
@@ -473,6 +476,9 @@ function EntretienDialog({ candidature, onClose, onSaved }) {
   const [lieu, setLieu] = useState('')
   const [saving, setSaving] = useState(false)
   const [serverError, setServerError] = useState(null)
+  // VX168 — garde de fermeture : dialogue de création, initial = tout vide.
+  const dirty = Boolean(dateHeure || type || lieu)
+  const closeIfConfirmed = () => { if (confirmLeaveIfDirty(dirty)) onClose?.() }
 
   const submit = async (e) => {
     e.preventDefault()
@@ -497,7 +503,7 @@ function EntretienDialog({ candidature, onClose, onSaved }) {
   }
 
   return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose?.() }}>
+    <Dialog open onOpenChange={(o) => { if (!o) closeIfConfirmed() }}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>Planifier un entretien — {candidature.nom}</DialogTitle>
@@ -505,7 +511,7 @@ function EntretienDialog({ candidature, onClose, onSaved }) {
         <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="en-dt">Date & heure</Label>
-            <Input id="en-dt" type="datetime-local" value={dateHeure} onChange={(e) => setDateHeure(e.target.value)} />
+            <Input id="en-dt" type="datetime-local" autoFocus value={dateHeure} onChange={(e) => setDateHeure(e.target.value)} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">
@@ -519,7 +525,7 @@ function EntretienDialog({ candidature, onClose, onSaved }) {
           </div>
           {serverError && <p className="text-sm text-destructive" role="alert">{serverError}</p>}
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
+            <Button type="button" variant="outline" onClick={closeIfConfirmed}>Annuler</Button>
             <Button type="submit" disabled={!dateHeure || saving}>{saving ? 'Planification…' : 'Planifier'}</Button>
           </DialogFooter>
         </form>
@@ -559,7 +565,7 @@ function ComparatifDialog({ candidature, onClose }) {
                 {rows.map((r, i) => (
                   <li key={r.id ?? i} className="flex items-center justify-between rounded-lg border border-border bg-card px-3 py-2 text-sm">
                     <span className="font-medium">{r.nom || `Candidat ${r.id}`}</span>
-                    <Badge tone="info">{r.note_moyenne != null ? Number(r.note_moyenne).toFixed(1) : '—'}</Badge>
+                    <Badge tone="info">{r.note_moyenne != null ? formatNumber(r.note_moyenne, { decimals: 1 }) : '—'}</Badge>
                   </li>
                 ))}
               </ul>

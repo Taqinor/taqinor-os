@@ -723,6 +723,57 @@ def _references_forbidden_column(sql: str) -> bool:
     return bool(_FORBIDDEN_RE.search(sql or ""))
 
 
+# ── NTPLT4 — GUC tenant sur la connexion du SQL-agent (defense en profondeur) ─
+
+
+def _rls_enabled() -> bool:
+    """True si POSTGRES_RLS_ENABLED=1 (defaut OFF)."""
+    import os
+    return os.environ.get("POSTGRES_RLS_ENABLED", "0") == "1"
+
+
+def _apply_tenant_guc(db, company_id: int) -> None:
+    """NTPLT4 — pose app.current_company sur les connexions du moteur du SQL-agent.
+
+    Meme une requete SQL ECRITE PAR LE LLM ne peut alors PHYSIQUEMENT pas lire
+    un autre tenant : les policies RLS Postgres (NTPLT2) filtrent sur ce GUC.
+    C'est une defense en profondeur qui s'AJOUTE a l'injection company_id
+    applicative existante (_inject_company_filter), jamais un remplacement.
+
+    Sur : le moteur ``SQLDatabase.from_uri`` est CREE A CHAQUE requete de
+    l'agent et n'est scope qu'a UNE seule societe (company_id). On enregistre
+    donc un listener ``connect`` qui pose le GUC des l'ouverture de chaque
+    connexion physique de CE moteur — jamais partage entre societes. Le SQL-agent
+    est en LECTURE SEULE (role dedie ERR3), donc un SET de session est acceptable
+    ici (moteur mono-societe, ephemere) ; on reste conservateur en repoussant
+    le GUC a chaque connexion neuve.
+
+    No-op total quand RLS est desactive (defaut) OU sans company_id : aucun SET
+    n'est emis, comportement byte-identique a aujourd'hui.
+    """
+    if not _rls_enabled() or not company_id:
+        return
+    engine = getattr(db, "_engine", None)
+    if engine is None:
+        return
+    from sqlalchemy import event
+
+    cid = int(company_id)
+
+    @event.listens_for(engine, "connect")
+    def _set_current_company(dbapi_connection, connection_record):  # noqa: ANN001
+        # set_config(..., false) == SET de session sur CETTE connexion physique ;
+        # le moteur etant mono-societe et ephemere, aucune fuite inter-tenant.
+        cursor = dbapi_connection.cursor()
+        try:
+            cursor.execute(
+                "SELECT set_config('app.current_company', %s, false)",
+                (str(cid),),
+            )
+        finally:
+            cursor.close()
+
+
 # ── Outil SQL securise ────────────────────────────────────────────────────────
 
 
@@ -1000,6 +1051,11 @@ class SQLAgentService:
             include_tables=relevant_tables,
             sample_rows_in_table_info=0,
         )
+        # NTPLT4 — defense en profondeur : pose app.current_company sur les
+        # connexions de CE moteur (mono-societe, ephemere) quand RLS est actif,
+        # de sorte que meme une requete ecrite par le LLM ne puisse pas lire un
+        # autre tenant. No-op sans POSTGRES_RLS_ENABLED (defaut).
+        _apply_tenant_guc(db, company_id)
 
         # 3. LLM
         llm = self._build_llm()

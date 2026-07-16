@@ -40,14 +40,21 @@ def generer_factures_recurrentes_dues():
         ``facture_id`` non NULL et n'est plus sélectionnée) ;
     (b) sélectionne les ``sav.ContratMaintenance`` dus
         (``sav.services.contrats_maintenance_dus_facturation``) et appelle
-        ``sav.services.facturer_contrat_maintenance_beat``.
+        ``sav.services.facturer_contrat_maintenance_beat`` ;
+    (c) SCA44 — sélectionne les ``monitoring.AbonnementMonitoring`` dus
+        (``compta.selectors.abonnements_monitoring_dus_facturation``) et
+        appelle ``compta.services.facturer_abonnement_monitoring_beat``
+        (3e flux de facturation récurrente automatique — jusqu'ici l'unique
+        flux encore manuel, un clic humain par période via l'action
+        ``facturer`` du ViewSet, qui reste disponible).
 
-    Chaque exception est isolée : une ligne/contrat en échec n'empêche
-    JAMAIS les suivants (capturée, journalisée, comptée). Renvoie un dict de
-    synthèse ``{'echeances_facturees', 'echeances_echecs',
-    'maintenances_facturees', 'maintenances_echecs'}``.
+    Chaque exception est isolée : une ligne/contrat/abonnement en échec
+    n'empêche JAMAIS les suivants (capturée, journalisée, comptée). Renvoie
+    un dict de synthèse ``{'echeances_facturees', 'echeances_echecs',
+    'maintenances_facturees', 'maintenances_echecs',
+    'abonnements_factures', 'abonnements_echecs'}``.
     """
-    from authentication.models import Company
+    from authentication.selectors import active_companies
 
     from . import services
     from .models import EcheancierContrat, LigneEcheance
@@ -56,9 +63,12 @@ def generer_factures_recurrentes_dues():
     total = {
         'echeances_facturees': 0, 'echeances_echecs': 0,
         'maintenances_facturees': 0, 'maintenances_echecs': 0,
+        'abonnements_factures': 0, 'abonnements_echecs': 0,
     }
 
-    for company in Company.objects.filter(actif=True):
+    # SCA19 — source UNIQUE des sociétés balayables : un tenant suspendu/en
+    # fermeture (actif=False via le pont SCA18) n'est plus jamais facturé.
+    for company in active_companies():
         # (a) Échéancier de contrats — CONTRAT31.
         lignes_dues = (
             LigneEcheance.objects
@@ -92,26 +102,55 @@ def generer_factures_recurrentes_dues():
                 facturer_contrat_maintenance_beat,
             )
         except Exception:  # pragma: no cover - app sav absente
-            continue
+            contrats_maintenance_dus_facturation = None
 
-        for contrat_maintenance in contrats_maintenance_dus_facturation(
-                company, today=today):
-            try:
-                facturer_contrat_maintenance_beat(contrat_maintenance)
-                total['maintenances_facturees'] += 1
-            except Exception:  # pragma: no cover - défensif, isolation
-                total['maintenances_echecs'] += 1
-                logger.warning(
-                    'contrats.generer_factures_recurrentes_dues: échec '
-                    'maintenance #%s (société %s)',
-                    contrat_maintenance.pk, company.pk, exc_info=True)
+        if contrats_maintenance_dus_facturation is not None:
+            for contrat_maintenance in contrats_maintenance_dus_facturation(
+                    company, today=today):
+                try:
+                    facturer_contrat_maintenance_beat(contrat_maintenance)
+                    total['maintenances_facturees'] += 1
+                except Exception:  # pragma: no cover - défensif, isolation
+                    total['maintenances_echecs'] += 1
+                    logger.warning(
+                        'contrats.generer_factures_recurrentes_dues: échec '
+                        'maintenance #%s (société %s)',
+                        contrat_maintenance.pk, company.pk, exc_info=True)
+
+        # (c) SCA44 — Abonnements de monitoring (revenu récurrent). Frontière
+        # cross-app : sélecteur + service dédiés de ``compta`` (jamais un
+        # import de ``apps.monitoring.models`` ici).
+        try:
+            from apps.compta.selectors import (
+                abonnements_monitoring_dus_facturation,
+            )
+            from apps.compta.services import (
+                facturer_abonnement_monitoring_beat,
+            )
+        except Exception:  # pragma: no cover - app compta absente
+            abonnements_monitoring_dus_facturation = None
+
+        if abonnements_monitoring_dus_facturation is not None:
+            for abonnement in abonnements_monitoring_dus_facturation(
+                    company, today=today):
+                try:
+                    facturer_abonnement_monitoring_beat(abonnement)
+                    total['abonnements_factures'] += 1
+                except Exception:  # pragma: no cover - défensif, isolation
+                    total['abonnements_echecs'] += 1
+                    logger.warning(
+                        'contrats.generer_factures_recurrentes_dues: échec '
+                        'abonnement monitoring #%s (société %s)',
+                        abonnement.pk, company.pk, exc_info=True)
 
     logger.info(
         'contrats.generer_factures_recurrentes_dues: %s échéance(s) '
         'facturée(s) (%s échec(s)), %s maintenance(s) facturée(s) '
+        '(%s échec(s)), %s abonnement(s) monitoring facturé(s) '
         '(%s échec(s))',
         total['echeances_facturees'], total['echeances_echecs'],
-        total['maintenances_facturees'], total['maintenances_echecs'])
+        total['maintenances_facturees'], total['maintenances_echecs'],
+        total['abonnements_factures'], total['abonnements_echecs'])
     return total
 
 
@@ -144,7 +183,7 @@ def reconductions_et_alertes_daily():
     suivantes). Renvoie un dict de synthèse agrégé ``{'alertes_semees',
     'alertes_envoyees', 'contrats_reconduits'}``.
     """
-    from authentication.models import Company
+    from authentication.selectors import active_companies
 
     from . import services
 
@@ -152,7 +191,8 @@ def reconductions_et_alertes_daily():
         'alertes_semees': 0, 'alertes_envoyees': 0, 'contrats_reconduits': 0,
     }
 
-    for company in Company.objects.filter(actif=True):
+    # SCA19 — un tenant non actif n'est plus relancé/reconduit automatiquement.
+    for company in active_companies():
         try:
             semis = services.semer_alertes_echeances(company)
             total['alertes_semees'] += semis['nb_creees']

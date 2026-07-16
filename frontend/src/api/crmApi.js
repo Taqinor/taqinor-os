@@ -1,7 +1,9 @@
 import api from './axios'
 
 const crmApi = {
-  getClients: (params) => api.get('/crm/clients/', { params }),
+  // VX55 — `config` optionnel (ex. { signal }) pour l'annulation
+  // AbortController câblée depuis les thunks (createAsyncThunk {signal}).
+  getClients: (params, config) => api.get('/crm/clients/', { params, ...config }),
   getClient: (id) => api.get(`/crm/clients/${id}/`),
   // QC1 — autocomplete entreprise sur les données PROPRES de la société
   // (clients + fournisseurs + leads, recherche floue nom/ICE, scopée société).
@@ -20,17 +22,22 @@ const crmApi = {
   getClientConsolidation: (id) => api.get(`/crm/clients/${id}/consolidation/`),
 
   // Leads / opportunities
-  getLeads: (params) => api.get('/crm/leads/', { params }),
+  // VX55 — même `config` optionnel (signal d'annulation) que getClients.
+  getLeads: (params, config) => api.get('/crm/leads/', { params, ...config }),
   getLead: (id) => api.get(`/crm/leads/${id}/`),
   createLead: (data) => api.post('/crm/leads/', data),
   updateLead: (id, data) => api.patch(`/crm/leads/${id}/`, data),
   // Garde serveur du « Devis auto » : 200 {ok:true} si le lead est prêt,
   // 400 {detail:'Manque : …'} sinon — la règle vit côté backend.
   checkDevisAuto: (id) => api.post(`/crm/leads/${id}/devis-auto/`),
-  // Archivage réversible (Commerciale) + suppression définitive (admin).
+  // Archivage réversible (Commerciale) + suppression RÉVERSIBLE (admin, VX96 :
+  // soft-delete + corbeille 30 min). `deleteLead` renvoie { corbeille_id } ;
+  // `restaurerCorbeille` annule la suppression via le TrashViewSet partagé.
   archiverLead: (id) => api.post(`/crm/leads/${id}/archiver/`),
   restaurerLead: (id) => api.post(`/crm/leads/${id}/restaurer/`),
   deleteLead: (id) => api.delete(`/crm/leads/${id}/`),
+  restaurerCorbeille: (corbeilleId) =>
+    api.post(`/core/corbeille/${corbeilleId}/restaurer/`),
   getHistoriqueLead: (id) => api.get(`/crm/leads/${id}/historique/`),
   // Employés assignables (id, username, poste, avatar_url) — ouvert à la
   // Commerciale (le sélecteur de responsable doit marcher pour elle aussi).
@@ -114,6 +121,15 @@ const crmApi = {
   createAppointment: (data) => api.post('/crm/appointments/', data),
   updateAppointment: (id, data) => api.patch(`/crm/appointments/${id}/`, data),
   deleteAppointment: (id) => api.delete(`/crm/appointments/${id}/`),
+  // VX245(a) — `.ics` d'événement unique pour CE rendez-vous (blob : le
+  // téléchargement authentifié passe par axios, jamais un `<a href>` brut
+  // qui n'enverrait pas le jeton Bearer).
+  getAppointmentIcs: (id) =>
+    api.get(`/crm/appointments/${id}/ics/`, { responseType: 'blob' }),
+  // VX245(b) — aperçu du message de confirmation WhatsApp (date/heure +
+  // lien .ics) ; n'envoie RIEN, ouvre wa.me seulement après confirmation.
+  confirmerAppointmentWhatsapp: (id) =>
+    api.post(`/crm/appointments/${id}/confirmer-whatsapp/`),
 
   // ZSAL2 — Plans d'activité (checklists commerciales applicables en un clic).
   getPlansActivite: () => api.get('/crm/plans-activite/'),
@@ -135,6 +151,13 @@ const crmApi = {
   // ZSAL6 — Rapport d'attribution des leads (par commercial + par source).
   getAttributionLeads: (params) =>
     api.get('/crm/rapports/attribution/', { params }),
+
+  // QX16 — Payloads leads site web (« jamais perdre un lead ») : rejeu des
+  // captures dont le mapping a échoué ou qui n'ont jamais été rattachées.
+  getWebsiteLeadPayloads: (params) =>
+    api.get('/crm/website-lead-payloads/', { params }),
+  replayWebsiteLeadPayload: (id) =>
+    api.post(`/crm/website-lead-payloads/${id}/replay/`),
 }
 
 export default crmApi

@@ -35,6 +35,19 @@ vi.mock('../../../api/stockApi', () => ({
   },
 }))
 
+// ZSTK13 — `useStockFlags` lit le profil entreprise ; défaut True (scan +
+// lots/séries actifs) = comportement inchangé.
+vi.mock('../../../api/parametresApi', async (importOriginal) => {
+  const actual = await importOriginal()
+  return {
+    ...actual,
+    default: {
+      ...actual.default,
+      getProfile: vi.fn(() => Promise.resolve({ data: {} })),
+    },
+  }
+})
+
 import stockApi from '../../../api/stockApi'
 import ReceptionScanPanel from './ReceptionScanPanel'
 

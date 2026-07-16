@@ -7,51 +7,72 @@ Tout est company-stampé côté serveur et filtré par société, comme le reste
 ALLOWED_TARGETS borne explicitement les modèles que l'on peut cibler : on ne
 laisse jamais le navigateur attacher une activité/un fichier à un modèle
 arbitraire.
+
+ARC30 — PILOTÉE PAR LE REGISTRE (``core.platform``). Avant ARC30, les 19
+cibles historiques étaient un ``set`` littéral figé ici : une nouvelle cible
+exigeait de modifier CE fichier (l'anti-leçon Odoo). Elles sont désormais
+DÉCLARÉES par leurs apps propriétaires dans les manifestes
+``apps/<x>/platform.py`` (surface ``record_targets``, format ``'app.model'``).
+``ALLOWED_TARGETS`` est désormais un OBJET PARESSEUX
+(:class:`_LazyAllowedTargets`) qui se comporte comme un ``set`` immuable en
+lecture (``in``, itération, ``len``) mais calcule son contenu à la PREMIÈRE
+UTILISATION en unionnant ``core.platform.record_targets(company=None)`` (tous
+les manifestes, gatage société non pertinent ici — ``ALLOWED_TARGETS`` borne
+la forme des URLs/modèles acceptés, pas leur visibilité par société) sur
+TOUTES les apps installées. Résolution PARESSEUSE À DESSEIN : au moment où ce
+module est importé (chargement des apps Django), le registre applicatif n'est
+pas garanti prêt — le calcul n'a lieu qu'au premier ``in``/itération, bien
+après le démarrage. Chaque app propriétaire déclare désormais sa/ses cible(s)
+dans son propre ``platform.py`` (``record_targets``) — ajouter une cible = une
+ligne dans le manifeste de l'app, jamais plus une modification de ce fichier.
 """
 from django.conf import settings
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from django.db import models
 
+
+class _LazyAllowedTargets:
+    """Vue ``frozenset``-like sur ``core.platform.record_targets()``, calculée
+    au premier accès (jamais à l'import de ce module — ``core`` /
+    ``django.apps`` peuvent ne pas être prêts à ce moment).
+
+    Se comporte comme l'ancien ``set`` littéral pour tous les usages existants
+    du dépôt (``in``, itération, ``len``) — DROP-IN replacement, non-régression
+    garantie par test (le set résolu == les 19 couples historiques).
+    """
+
+    def _resolve(self):
+        from core import platform
+        return {
+            tuple(cle.split('.', 1))
+            for cle in platform.record_targets(company=None)
+        }
+
+    def __contains__(self, item):
+        return item in self._resolve()
+
+    def __iter__(self):
+        return iter(self._resolve())
+
+    def __len__(self):
+        return len(self._resolve())
+
+    def __repr__(self):
+        return f'_LazyAllowedTargets({sorted(self._resolve())!r})'
+
+    def __eq__(self, other):
+        if isinstance(other, _LazyAllowedTargets):
+            return self._resolve() == other._resolve()
+        return self._resolve() == other
+
+
 # (app_label, model) autorisés comme cibles d'activité / pièce jointe / lien GED.
 # Registre unique partagé : Activity, Comment, TaggedItem, Attachment (records)
-# ET DocumentLien (GED). GED6 ajoute le bon de commande (`ventes.boncommande`)
-# pour pouvoir rattacher un document GED à toute la chaîne devis→commande→facture.
-ALLOWED_TARGETS = {
-    ('crm', 'lead'),
-    ('crm', 'client'),
-    ('ventes', 'devis'),
-    ('ventes', 'boncommande'),
-    ('ventes', 'facture'),
-    ('installations', 'installation'),
-    ('sav', 'ticket'),
-    ('outillage', 'outillage'),
-    # DC27 — taxonomie de tags transversale : le produit catalogue devient
-    # une cible taggable (clients/devis/factures/chantiers/tickets l'étaient
-    # déjà), pour adosser tout le vocabulaire au registre `records.Tag`.
-    ('stock', 'produit'),
-    # DC33 — GED : liens polymorphes (DocumentLien) vers le fournisseur et la
-    # fiche employé, en plus des cibles Lead/Client/Devis/Facture/Chantier déjà
-    # présentes — l'identité n'est jamais recopiée sur le document, on ne fait
-    # que pointer via ContentType. (Active aussi tags/PJ sur ces objets.)
-    ('stock', 'fournisseur'),
-    ('rh', 'dossieremploye'),
-    # QHSE8 — photos de contrôle (avant/pendant/après) rattachées à un relevé
-    # de contrôle ITP, et pièces jointes d'une non-conformité (NCR).
-    ('qhse', 'relevecontrole'),
-    ('qhse', 'nonconformite'),
-    # XKB10 — pièces jointes/images d'un article de la base de connaissances
-    # (éditeur Markdown : insertion d'image dans le corps). XKB13 réutilise la
-    # MÊME entrée pour les commentaires génériques (records.Comment) sur les
-    # articles KB.
-    ('kb', 'kbarticle'),
-    # XGED15 — chatter documentaire : réutilise le chatter générique @mentions
-    # (FG7, `records.Comment`) sur un document GED au lieu d'un système de
-    # mentions parallèle. N'active QUE notes+@mentions ; le journal automatique
-    # des événements majeurs (nouvelle version, statut, partage, signature) vit
-    # à part dans `ged.DocumentActivity` (couche séparée, complète GED35).
-    ('ged', 'document'),
-}
+# ET DocumentLien (GED). Source de vérité désormais RÉPARTIE : chaque app
+# déclare ses cibles dans son ``platform.py`` (surface ``record_targets``,
+# voir ``core.platform``) — cette variable en reste l'UNION paresseuse.
+ALLOWED_TARGETS = _LazyAllowedTargets()
 
 
 class ActivityType(models.Model):
@@ -96,7 +117,24 @@ class ActivityType(models.Model):
 
 
 class Activity(models.Model):
-    """Activité planifiée rattachée à un enregistrement (générique)."""
+    """Activité planifiée rattachée à un enregistrement (générique).
+
+    ARC8 — sert AUSSI d'entrée de chatter unifiée (le « mail.thread » maison).
+    Les 13 modèles ``*Activity`` maison (crm.LeadActivity, sav.TicketActivity,
+    contrats.ContratActivity…) partagent tous la même forme
+    ``kind/field/old/new/body/user/timestamp`` ; les champs additifs ci-dessous
+    (tous nullable/vides par défaut) permettent à ``records.Activity`` de porter
+    une entrée de chatter — note manuelle (``kind=note``) ou journal de
+    changement (``kind=modification``) — sans dépendre d'un ``ActivityType``.
+    """
+
+    # ARC8 — familles d'entrées du chatter générique (alignées sur les 13
+    # modèles maison qu'il vise à remplacer à terme).
+    class Kind(models.TextChoices):
+        CREATION = 'creation', 'Création'
+        MODIFICATION = 'modification', 'Modification'
+        NOTE = 'note', 'Note'
+
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True, related_name='activities')
@@ -112,11 +150,53 @@ class Activity(models.Model):
     personnelle = models.BooleanField(
         default=False, verbose_name='À-faire personnel')
 
+    # ARC8 — ``activity_type`` devient nullable : une entrée de CHATTER (note ou
+    # journal de changement) n'est pas une activité planifiée et n'a donc pas de
+    # type. Additif et rétro-compatible : toute activité PLANIFIÉE existante
+    # garde son type (non nul), le contrat 1:1 est préservé.
     activity_type = models.ForeignKey(
-        ActivityType, on_delete=models.PROTECT, related_name='activities')
+        ActivityType, on_delete=models.PROTECT, related_name='activities',
+        null=True, blank=True)
+    # ARC8 — champs de chatter (nullable/vides par défaut) : une activité
+    # planifiée « classique » les laisse à leur défaut et se comporte comme
+    # avant. ``kind`` vide = activité planifiée ; ``kind`` renseigné = entrée
+    # de chatter.
+    kind = models.CharField(
+        max_length=15, choices=Kind.choices, blank=True, default='',
+        verbose_name='Type de chatter')
+    field = models.CharField(max_length=100, blank=True, null=True)
+    field_label = models.CharField(max_length=150, blank=True, null=True)
+    old_value = models.TextField(blank=True, null=True)
+    new_value = models.TextField(blank=True, null=True)
+    body = models.TextField(blank=True, null=True)
     summary = models.CharField(max_length=255, blank=True, default='')
     note = models.TextField(blank=True, default='')
     due_date = models.DateField(null=True, blank=True)
+    # VX85(a) — « Reporter » (picker ⏰ Plus tard : ce soir/demain/lundi/+1
+    # semaine/perso) est NON DESTRUCTIF : il pose `snoozed_until` sans toucher
+    # `due_date`. Tant que `snoozed_until` est dans le futur, l'activité est
+    # exclue de `mine`/`ma-file` ; une fois échu elle réapparaît avec sa
+    # `due_date` d'ORIGINE intacte. `due_date` reste réservée aux vrais
+    # changements d'échéance (bouton « Reporter » distinct, inchangé).
+    snoozed_until = models.DateField(
+        null=True, blank=True,
+        verbose_name='Reportée (snooze) jusqu\'au')
+    # VX210(a) — horodatage de la POSE du snooze (distinct de `snoozed_until`,
+    # l'échéance de réveil) : sert de borne « depuis » pour évaluer un
+    # `snooze_trigger_event` (VX210(c) — un événement survenu AVANT le snooze
+    # ne doit jamais le réveiller rétroactivement). Nul tant qu'aucun snooze
+    # n'a jamais été posé.
+    snoozed_at = models.DateTimeField(null=True, blank=True)
+    # VX210(c) — déclencheur de réveil optionnel, format fermé `<clé>:<id>`
+    # (``client_reply:<lead_id>`` / ``devis_signed:<devis_id>`` /
+    # ``stock_arrive:<produit_id>`` — voir ``services.SNOOZE_TRIGGER_PREFIXES``).
+    # Le sweep `reveiller_snoozes` réveille l'item dès que L'UN des deux
+    # (l'échéance `snoozed_until` OU cet événement) survient en premier —
+    # jamais les deux nécessaires. Vide = comportement VX85 inchangé (horloge
+    # seule).
+    snooze_trigger_event = models.CharField(
+        max_length=100, blank=True, default='',
+        verbose_name='Déclencheur de réveil (VX210)')
     assigned_to = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='activities_assignees')
@@ -145,7 +225,10 @@ class Activity(models.Model):
         verbose_name = 'Activité'
 
     def __str__(self):
-        return f'{self.activity_type} — {self.summary or self.due_date}'
+        # ARC8 — une entrée de chatter n'a pas d'activity_type : on retombe
+        # proprement sur le type de chatter (kind) puis le résumé/échéance.
+        head = self.activity_type or self.get_kind_display() or 'Activité'
+        return f'{head} — {self.summary or self.body or self.due_date or ""}'.strip()
 
 
 class Tag(models.Model):

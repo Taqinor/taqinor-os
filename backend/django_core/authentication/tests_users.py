@@ -190,6 +190,35 @@ class TestEmployeeAdmin(TestCase):
         self.assertTrue(img['Content-Type'].startswith('image/'), img)
         self.assertEqual(img.content, _PNG_BYTES)
 
+    def test_sca42_new_avatar_key_is_company_prefixed(self):
+        """SCA42 — la clé du NOUVEL upload est préfixée par la société
+        (``avatars/{company_id}/{uuid}.ext``), pas plate. Isole le stockage
+        objet par tenant (motif ERR75)."""
+        store = {}
+        resp = self._upload_png(store)
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.employee.refresh_from_db()
+        key = self.employee.avatar_key
+        self.assertTrue(
+            key.startswith(f'avatars/{self.company.id}/'),
+            f'clé non préfixée société : {key}')
+
+    def test_sca42_old_flat_avatar_key_still_served(self):
+        """SCA42 — un objet DÉJÀ stocké sous une clé PLATE (ancien format
+        ``avatars/{uuid}.png``) reste servi : la lecture utilise la clé
+        STOCKÉE, aucune migration de données n'est requise."""
+        old_key = 'avatars/legacyflatkey.png'
+        store = {('erp-uploads', old_key): _PNG_BYTES}
+        self.employee.avatar_key = old_key
+        self.employee.save(update_fields=['avatar_key'])
+        url = f'/api/django/users/avatar-image/?key={quote(old_key, safe="")}'
+        fake = _FakeMinio(store)
+        with mock.patch('authentication.avatars.get_minio_client',
+                        return_value=fake):
+            img = self.api.get(url)
+        self.assertEqual(img.status_code, 200)
+        self.assertEqual(img.content, _PNG_BYTES)
+
     def test_avatar_image_requires_authentication(self):
         store = {}
         self._upload_png(store)

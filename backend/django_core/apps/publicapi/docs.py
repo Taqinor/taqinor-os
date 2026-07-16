@@ -12,18 +12,24 @@ La source de vérité des scopes/évènements reste `constants.py` : on lit
 """
 from .constants import SCOPE_CHOICES, EVENT_CHOICES
 from .auth import AUTH_KEYWORD
-from .delivery import SIGNATURE_HEADER, EVENT_HEADER
+from .delivery import SIGNATURE_HEADER, EVENT_HEADER, TIMESTAMP_HEADER
 
 # Recette de vérification de la signature HMAC, identique à `delivery.sign_payload`
-# (HMAC-SHA256 du corps JSON canonique : json.dumps(payload, default=str,
-# sort_keys=True), hexdigest).
+# (YAPIC8 : HMAC-SHA256 de `f"{timestamp}.".encode() + body`, où body est le
+# corps HTTP brut reçu et timestamp l'en-tête X-Taqinor-Timestamp). Rejeter un
+# horodatage hors tolérance protège du rejeu.
 _HMAC_RECIPE_PYTHON = (
-    "import hmac, hashlib\n"
+    "import hmac, hashlib, time\n"
     "# `secret` = secret du webhook (affiché une seule fois à la création).\n"
     "# `body` = corps HTTP brut reçu (bytes), tel quel.\n"
-    "expected = hmac.new(secret.encode('utf-8'), body, hashlib.sha256).hexdigest()\n"
+    f"timestamp = request.headers['{TIMESTAMP_HEADER}']\n"
+    "# Rejette un horodatage hors tolérance (anti-rejeu), ex. 5 minutes :\n"
+    "assert abs(time.time() - int(timestamp)) <= 300\n"
+    "signe = f'{timestamp}.'.encode('utf-8') + body\n"
+    "expected = hmac.new(secret.encode('utf-8'), signe, hashlib.sha256).hexdigest()\n"
     f"recu = request.headers['{SIGNATURE_HEADER}']\n"
-    "valide = hmac.compare_digest(expected, recu)"
+    "valide = hmac.compare_digest(expected, recu)\n"
+    "# `event_id` (dans le corps JSON) est stable : dédupliquez dessus."
 )
 
 
@@ -166,6 +172,7 @@ def public_api_reference():
             ),
             'entetes': {
                 'signature': SIGNATURE_HEADER,
+                'horodatage': TIMESTAMP_HEADER,
                 'evenement': EVENT_HEADER,
             },
             'evenements': [
@@ -174,12 +181,20 @@ def public_api_reference():
             ],
             'verification_signature': {
                 'algorithme': (
-                    "HMAC-SHA256 du corps HTTP brut reçu, avec le secret du "
-                    "webhook ; comparez le résultat hexadécimal à l'en-tête "
-                    f"{SIGNATURE_HEADER} (comparaison à temps constant)."
+                    "HMAC-SHA256 de `f\"{timestamp}.\".encode() + body` (corps "
+                    "HTTP brut reçu préfixé de l'en-tête "
+                    f"{TIMESTAMP_HEADER}), avec le secret du webhook ; comparez "
+                    f"le résultat hexadécimal à l'en-tête {SIGNATURE_HEADER} "
+                    "(comparaison à temps constant), et rejetez un horodatage "
+                    "hors tolérance (anti-rejeu)."
                 ),
                 'exemple_python': _HMAC_RECIPE_PYTHON,
             },
+            'livraison': (
+                "Chaque évènement porte un `event_id` stable (uuid4) dans le "
+                "corps, identique sur toutes les tentatives (backoff "
+                "exponentiel, jusqu'à 8 reprises) — dédupliquez dessus."
+            ),
             'securite': (
                 "Le secret n'est affiché qu'à la création (ou rotation). Les "
                 "cibles internes/loopback et le schéma http sont refusées."

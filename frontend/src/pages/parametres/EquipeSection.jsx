@@ -50,6 +50,34 @@ function buildOrgTree(users) {
   return roots
 }
 
+// VX235(b) — défense en profondeur côté UI : ne même pas PROPOSER dans le
+// `<select>` un superviseur qui créerait un cycle (le backend le refuse déjà,
+// `authentication/serializers.py::validate_supervisor`) — calcule tous les
+// descendants de `rootId` (son sous-arbre entier via le champ `supervisor`),
+// robuste aux cycles éventuels déjà présents en base (un id n'est jamais
+// empilé deux fois).
+function descendantIds(users, rootId) {
+  const children = new Map()
+  for (const u of users) {
+    if (u.supervisor != null) {
+      if (!children.has(u.supervisor)) children.set(u.supervisor, [])
+      children.get(u.supervisor).push(u.id)
+    }
+  }
+  const seen = new Set()
+  const stack = [rootId]
+  while (stack.length > 0) {
+    const id = stack.pop()
+    for (const childId of children.get(id) || []) {
+      if (!seen.has(childId)) {
+        seen.add(childId)
+        stack.push(childId)
+      }
+    }
+  }
+  return seen
+}
+
 function OrgNode({ node, depth }) {
   return (
     <li>
@@ -190,28 +218,33 @@ export default function EquipeSection() {
                   </tr>
                 </thead>
                 <tbody>
-                  {users.map((u) => (
-                    <tr key={u.id} className="border-b border-border/60 last:border-b-0">
-                      <td className="px-4 py-2.5 font-medium text-foreground">{u.username}</td>
-                      <td className="px-4 py-2.5 text-muted-foreground">{u.role_nom || '—'}</td>
-                      <td className="px-4 py-2.5">
-                        <select
-                          className={selectCls}
-                          aria-label={`Superviseur de ${u.username}`}
-                          disabled={savingId === u.id}
-                          value={u.supervisor ?? ''}
-                          onChange={(e) => setSupervisor(u.id, e.target.value)}
-                        >
-                          <option value="">— Aucun —</option>
-                          {users
-                            .filter((o) => o.id !== u.id)
-                            .map((o) => (
-                              <option key={o.id} value={o.id}>{o.username}</option>
-                            ))}
-                        </select>
-                      </td>
-                    </tr>
-                  ))}
+                  {users.map((u) => {
+                    // VX235(b) — exclut soi-même ET tout son sous-arbre (un
+                    // descendant deviendrait sinon un cycle A→B→C→A).
+                    const excluded = descendantIds(users, u.id)
+                    return (
+                      <tr key={u.id} className="border-b border-border/60 last:border-b-0">
+                        <td className="px-4 py-2.5 font-medium text-foreground">{u.username}</td>
+                        <td className="px-4 py-2.5 text-muted-foreground">{u.role_nom || '—'}</td>
+                        <td className="px-4 py-2.5">
+                          <select
+                            className={selectCls}
+                            aria-label={`Superviseur de ${u.username}`}
+                            disabled={savingId === u.id}
+                            value={u.supervisor ?? ''}
+                            onChange={(e) => setSupervisor(u.id, e.target.value)}
+                          >
+                            <option value="">— Aucun —</option>
+                            {users
+                              .filter((o) => o.id !== u.id && !excluded.has(o.id))
+                              .map((o) => (
+                                <option key={o.id} value={o.id}>{o.username}</option>
+                              ))}
+                          </select>
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>

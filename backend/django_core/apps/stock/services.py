@@ -1289,14 +1289,37 @@ def recompute_facture_fournisseur_statut(facture):
 # en important apps.stock.models directement. La société est TOUJOURS posée côté
 # serveur (jamais lue du corps) et le profil hérite de la société du fournisseur.
 
+def map_specialite_to_metier(specialite):
+    """DC34/ARC22 — fait correspondre un texte libre de spécialité (ex. carnet
+    projet ``gestion_projet.SousTraitant``) à un code ``SousTraitantProfile.
+    Metier`` (enum fermé), insensible à la casse, repli ``AUTRE`` si aucun
+    métier ne correspond (comportement jamais bloquant). Cette fonction est le
+    SEUL endroit qui connaît le mapping specialite→metier — les autres apps
+    passent ``specialite`` à ``create_sous_traitant`` plutôt que de dupliquer
+    cette logique en important ``apps.stock.models`` elles-mêmes."""
+    from .models import SousTraitantProfile
+    if specialite:
+        for code, _label in SousTraitantProfile.Metier.choices:
+            if code.replace('_', ' ') == specialite.strip().lower():
+                return code
+    return SousTraitantProfile.Metier.AUTRE
+
+
 def create_sous_traitant(*, company, user=None, nom, metier='autre',
-                         contact_personne=None, email=None, telephone=None,
-                         adresse=None, ice=None, identifiant_fiscal=None,
-                         rc=None, rib=None, actif=True, note=None):
+                         specialite=None, contact_personne=None, email=None,
+                         telephone=None, adresse=None, ice=None,
+                         identifiant_fiscal=None, rc=None, rib=None,
+                         actif=True, note=None):
     """DC34 — crée un sous-traitant = Fournisseur(type='service') + son
     SousTraitantProfile. Société posée serveur (fournisseur ET profil).
-    Renvoie le Fournisseur créé."""
+    ``specialite`` (texte libre, optionnel) est mappé vers ``metier`` via
+    ``map_specialite_to_metier`` quand fourni — permet aux appelants
+    cross-app (ex. ``gestion_projet``) de passer du texte libre sans importer
+    ``apps.stock.models`` eux-mêmes ; ``metier`` explicite reste prioritaire
+    si fourni. Renvoie le Fournisseur créé."""
     from .models import Fournisseur, SousTraitantProfile
+    if specialite is not None:
+        metier = map_specialite_to_metier(specialite)
     fournisseur = Fournisseur.objects.create(
         company=company, nom=nom, type=Fournisseur.Type.SERVICE,
         contact_personne=contact_personne, email=email or None,
@@ -2398,6 +2421,7 @@ def facturer_reception(company, user, reception):
     created = {}
 
     def _save(ref):
+        from django.utils import timezone
         ff = FactureFournisseur.objects.create(
             company=company, reference=ref,
             fournisseur=reception.bon_commande.fournisseur,
@@ -2405,6 +2429,9 @@ def facturer_reception(company, user, reception):
             montant_ht=montant_ht, montant_tva=montant_tva,
             montant_ttc=montant_ttc,
             statut=FactureFournisseur.Statut.A_PAYER,
+            # Sans date, l'écriture comptable auto (61xx/3455 -> 4411) crashait
+            # NOT NULL en silence (bug préexistant attrapé par le test P2P).
+            date_facture=timezone.now().date(),
             note=f'Facture réception {reception.reference}',
             created_by=user)
         for designation, qte, pu, taux_ligne in lignes_data:
@@ -3051,42 +3078,95 @@ def previsions_reappro(company, nb_mois=6):
 # attributs sur le Produit composant au moment de l'insertion. Point d'entrée
 # cross-app : `ventes` insère un kit dans un devis en appelant CE service (puis
 # crée ses propres lignes de devis), jamais en important le modèle stock.
+#
+# XMFG17 — nomenclature multi-niveaux : un composant peut être un SOUS-KIT
+# (`composant_kit`, XOR avec `produit`). L'explosion devient RÉCURSIVE :
+# un sous-kit s'explose à son tour, ses lignes produit remontent (aplaties)
+# dans le résultat du kit parent, quantités multipliées à chaque niveau.
+# Garde anti-cycle (un kit ne peut jamais se contenir lui-même, directement
+# ou via une chaîne de sous-kits) + profondeur raisonnable (10 niveaux).
 
-def exploser_kit(kit, quantite_kit=1):
-    """Explose un kit en ses lignes composant pour ``quantite_kit`` unités.
+MAX_PROFONDEUR_KIT = 10
+
+
+class KitCycleError(ValueError):
+    """XMFG17 — un kit se contient lui-même (directement ou via un sous-kit).
+    Message clair pour le front (409/400 côté vue)."""
+
+
+def exploser_kit(kit, quantite_kit=1, *, _chemin=None, _profondeur=0):
+    """Explose un kit en ses lignes composant PRODUIT (récursif à travers les
+    sous-kits XMFG17) pour ``quantite_kit`` unités.
 
     Renvoie une liste de dicts triés par désignation :
       {produit_id, sku, designation, quantite, prix_vente_unitaire, tva,
        marque, disponible}
-    où ``quantite`` = quantité du composant × ``quantite_kit``. Le PRIX, la TVA
-    et la MARQUE proviennent du ``Produit`` (DC36 — jamais stockés sur le kit).
+    où ``quantite`` = quantité du composant × ``quantite_kit`` × le produit des
+    facteurs d'échelle de chaque niveau parent. Le PRIX, la TVA et la MARQUE
+    proviennent du ``Produit`` (DC36 — jamais stockés sur le kit). Un même
+    produit utilisé à plusieurs niveaux (ou dans plusieurs sous-kits) apparaît
+    en PLUSIEURS lignes agrégées par produit (quantités cumulées).
     ``prix_vente_unitaire`` est le prix de vente catalogue (client-facing OK).
     Le prix d'ACHAT n'est jamais exposé ici. INTERNE/écran ; côté ventes c'est
-    cette liste qui devient des lignes de devis."""
+    cette liste qui devient des lignes de devis.
+
+    Lève ``KitCycleError`` si ``kit`` se retrouve dans sa propre chaîne de
+    sous-kits (cycle) ; ``ValueError`` si la profondeur dépasse
+    ``MAX_PROFONDEUR_KIT`` (nomenclature anormalement profonde — probable
+    erreur de saisie)."""
     from decimal import Decimal, InvalidOperation
     try:
         facteur = Decimal(str(quantite_kit))
     except (InvalidOperation, TypeError, ValueError):
         facteur = Decimal('1')
-    out = []
+
+    chemin = _chemin if _chemin is not None else set()
+    if kit.id in chemin:
+        raise KitCycleError(
+            f'Nomenclature cyclique détectée : le kit "{kit.nom}" se '
+            'contient lui-même (directement ou via un sous-kit).')
+    if _profondeur > MAX_PROFONDEUR_KIT:
+        raise ValueError(
+            f'Nomenclature trop profonde (> {MAX_PROFONDEUR_KIT} niveaux) '
+            f'pour le kit "{kit.nom}" — vérifiez la composition.')
+    chemin = chemin | {kit.id}
+
+    par_produit = {}
     composants = (kit.composants
-                  .select_related('produit')
-                  .order_by('produit__nom'))
+                  .select_related('produit', 'composant_kit')
+                  .order_by('id'))
     for c in composants:
-        p = c.produit
         qte = (c.quantite or Decimal('0')) * facteur
-        out.append({
-            'produit_id': p.id,
-            'sku': p.sku or '',
-            'designation': p.nom,
-            'quantite': qte,
-            # DC36 — prix / TVA / marque lus sur le composant, jamais sur le kit.
-            'prix_vente_unitaire': p.prix_vente,
-            'tva': p.tva,
-            'marque': p.marque,
-            'disponible': p.quantite_stock,
-        })
-    return out
+        if c.produit_id:
+            p = c.produit
+            existant = par_produit.get(p.id)
+            if existant is not None:
+                existant['quantite'] += qte
+                continue
+            par_produit[p.id] = {
+                'produit_id': p.id,
+                'sku': p.sku or '',
+                'designation': p.nom,
+                'quantite': qte,
+                # DC36 — prix / TVA / marque lus sur le composant, jamais le kit.
+                'prix_vente_unitaire': p.prix_vente,
+                'tva': p.tva,
+                'marque': p.marque,
+                'disponible': p.quantite_stock,
+            }
+        else:
+            # XMFG17 — sous-kit : explosion récursive, lignes produit
+            # remontées (aplaties) et agrégées avec celles du niveau courant.
+            sous_lignes = exploser_kit(
+                c.composant_kit, qte, _chemin=chemin,
+                _profondeur=_profondeur + 1)
+            for ligne in sous_lignes:
+                existant = par_produit.get(ligne['produit_id'])
+                if existant is not None:
+                    existant['quantite'] += ligne['quantite']
+                else:
+                    par_produit[ligne['produit_id']] = dict(ligne)
+    return sorted(par_produit.values(), key=lambda x: x['designation'])
 
 
 def exploser_kit_par_id(company, kit_id, quantite_kit=1):
@@ -3100,50 +3180,344 @@ def exploser_kit_par_id(company, kit_id, quantite_kit=1):
     return exploser_kit(kit, quantite_kit)
 
 
+# ── XMFG18 — Révisions de nomenclature + duplication de kit ────────────────
+# Chaque modification des composants d'un kit crée un SNAPSHOT JSON numéroté
+# (pattern RevisionDocument FG297). La révision la plus récente est la
+# composition courante ; « composition au JJ/MM/AAAA » = la dernière révision
+# à cette date. Jamais de prix d'achat dans le snapshot.
+
+def _composition_snapshot(kit):
+    """Sérialise la composition courante du kit en liste JSON-compatible
+    (produit_id / composant_kit_id, désignation, quantité, taux de perte).
+    AUCUN prix (ni achat ni vente) dans le snapshot — la valorisation est
+    toujours dérivée du catalogue au moment voulu (DC36)."""
+    out = []
+    for c in (kit.composants
+              .select_related('produit', 'composant_kit')
+              .order_by('id')):
+        out.append({
+            'produit_id': c.produit_id,
+            'composant_kit_id': c.composant_kit_id,
+            'designation': (
+                c.produit.nom if c.produit_id else c.composant_kit.nom),
+            'sku': (
+                (c.produit.sku if c.produit_id else c.composant_kit.sku)
+                or ''),
+            'quantite': str(c.quantite),
+            'taux_perte_pct': str(c.taux_perte_pct),
+        })
+    return out
+
+
+def snapshot_revision_kit(kit, user=None):
+    """XMFG18 — crée une révision (snapshot JSON) de la composition COURANTE
+    du kit si elle diffère de la dernière révision. Renvoie (revision,
+    created). Idempotent : re-sauver un kit sans changer sa composition ne
+    crée PAS de révision dupliquée."""
+    from .models import RevisionKit
+    composition = _composition_snapshot(kit)
+    derniere = kit.revisions.order_by('-numero').first()
+    if derniere is not None and derniere.composition == composition:
+        return derniere, False
+    numero = (derniere.numero + 1) if derniere is not None else 1
+    revision = RevisionKit.objects.create(
+        company=kit.company, kit=kit, numero=numero,
+        composition=composition, user=user)
+    return revision, True
+
+
+def composition_kit_au(kit, date_limite):
+    """XMFG18 — « composition au JJ/MM/AAAA » : la dernière révision créée à
+    la date donnée incluse (datetime.date). None si aucune révision
+    n'existait encore à cette date."""
+    return (kit.revisions
+            .filter(date_creation__date__lte=date_limite)
+            .order_by('-numero')
+            .first())
+
+
+def dupliquer_kit(kit, user=None, facteur_echelle=None):
+    """XMFG18 — duplique un kit stock : en-tête copié (« <nom> (copie) »,
+    sku vidé pour éviter la collision d'unicité) + composants copiés, avec
+    facteur d'échelle optionnel appliqué aux quantités (arrondi propre à 2
+    décimales, ROUND_HALF_UP — ex. 3 × 1.67 = 5.01 → 5.01). La copie reçoit
+    sa révision n°1 immédiatement."""
+    from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+    from .models import KitProduit, KitComposant
+
+    facteur = None
+    if facteur_echelle is not None:
+        try:
+            facteur = Decimal(str(facteur_echelle))
+        except (InvalidOperation, TypeError, ValueError):
+            raise ValueError("Facteur d'échelle invalide.")
+        if facteur <= 0:
+            raise ValueError("Le facteur d'échelle doit être positif.")
+
+    copie = KitProduit.objects.create(
+        company=kit.company,
+        nom=f'{kit.nom} (copie)',
+        sku=None,
+        description=kit.description,
+    )
+    for c in kit.composants.all():
+        quantite = c.quantite or Decimal('0')
+        if facteur is not None:
+            quantite = (quantite * facteur).quantize(
+                Decimal('0.01'), rounding=ROUND_HALF_UP)
+        KitComposant.objects.create(
+            kit=copie, produit_id=c.produit_id,
+            composant_kit_id=c.composant_kit_id,
+            quantite=quantite, taux_perte_pct=c.taux_perte_pct)
+    snapshot_revision_kit(copie, user=user)
+    return copie
+
+
+# ── XMFG19 — Remplacement de masse d'un composant dans les nomenclatures ───
+
+def remplacer_composant_masse(company, *, produit_ancien_id,
+                              produit_nouveau_id, ratio_quantite=None,
+                              dry_run=True, user=None):
+    """XMFG19 — remplace `produit_ancien` par `produit_nouveau` dans TOUTES
+    les nomenclatures de la société : kits stock (KitProduit) ET kits de
+    pré-assemblage (installations.Kit, via ses selectors/services — jamais
+    ses models importés ici).
+
+    `dry_run=True` (défaut) : PRÉVIEW seule — liste les kits impactés des
+    deux modules sans rien modifier. `dry_run=False` : application ATOMIQUE
+    (une seule transaction pour les deux modules), chaque kit modifié créant
+    sa révision XMFG18, plus UNE ligne d'audit récapitulative. Un kit dont
+    la nomenclature contient DÉJÀ le produit nouveau voit les deux lignes
+    fusionnées (quantités additionnées) — jamais de doublon (kit, produit).
+
+    Renvoie {'dry_run', 'kits_stock': [...], 'kits_installations': [...],
+    'nb_total'}. Lève ValueError sur produit inconnu / identique."""
+    from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+    from django.db import transaction
+    from .models import Produit, KitComposant
+
+    if str(produit_ancien_id) == str(produit_nouveau_id):
+        raise ValueError(
+            'Le produit de remplacement doit être différent du produit '
+            'remplacé.')
+    ancien = Produit.objects.filter(
+        company=company, id=produit_ancien_id).first()
+    nouveau = Produit.objects.filter(
+        company=company, id=produit_nouveau_id).first()
+    if ancien is None or nouveau is None:
+        raise ValueError('Produit introuvable pour cette société.')
+
+    ratio = None
+    if ratio_quantite is not None:
+        try:
+            ratio = Decimal(str(ratio_quantite))
+        except (InvalidOperation, TypeError, ValueError):
+            raise ValueError('Ratio de quantité invalide.')
+        if ratio <= 0:
+            raise ValueError('Le ratio de quantité doit être positif.')
+
+    def _nouvelle_quantite(quantite):
+        quantite = quantite or Decimal('0')
+        if ratio is not None:
+            quantite = (quantite * ratio).quantize(
+                Decimal('0.01'), rounding=ROUND_HALF_UP)
+        return quantite
+
+    # ── Préview stock ──
+    lignes_stock = (KitComposant.objects
+                    .filter(kit__company=company, produit_id=ancien.id)
+                    .select_related('kit')
+                    .order_by('kit__nom', 'id'))
+    kits_stock = [{
+        'kit_id': c.kit_id,
+        'kit_nom': c.kit.nom,
+        'quantite_avant': str(c.quantite),
+        'quantite_apres': str(_nouvelle_quantite(c.quantite)),
+    } for c in lignes_stock]
+
+    # ── Préview installations (lecture via selectors — cross-app propre) ──
+    from apps.installations.selectors import kits_utilisant_produit
+    kits_inst_preview = kits_utilisant_produit(company, ancien.id)
+    kits_installations = [{
+        'kit_id': k['kit_id'],
+        'kit_nom': k['kit_nom'],
+        'quantite_avant': str(k['quantite']),
+        'quantite_apres': str(
+            int((Decimal(k['quantite'] or 0) * ratio).to_integral_value(
+                rounding=ROUND_HALF_UP)) or 1
+            if ratio is not None and k['quantite'] else k['quantite']),
+    } for k in kits_inst_preview]
+
+    resultat = {
+        'dry_run': bool(dry_run),
+        'produit_ancien': ancien.nom,
+        'produit_nouveau': nouveau.nom,
+        'kits_stock': kits_stock,
+        'kits_installations': kits_installations,
+        'nb_total': len(kits_stock) + len(kits_installations),
+    }
+    if dry_run:
+        return resultat
+
+    # ── Application ATOMIQUE (stock + installations, une transaction) ──
+    with transaction.atomic():
+        kits_touches = {}
+        for c in lignes_stock:
+            existant = (KitComposant.objects
+                        .filter(kit_id=c.kit_id, produit_id=nouveau.id)
+                        .exclude(id=c.id)
+                        .first())
+            nouvelle_qte = _nouvelle_quantite(c.quantite)
+            if existant is not None:
+                # Fusion : le kit contient déjà le produit nouveau.
+                existant.quantite = (
+                    (existant.quantite or Decimal('0')) + nouvelle_qte)
+                existant.save(update_fields=['quantite'])
+                c.delete()
+            else:
+                c.produit_id = nouveau.id
+                c.quantite = nouvelle_qte
+                c.save(update_fields=['produit', 'quantite'])
+            kits_touches[c.kit_id] = c.kit
+        for kit in kits_touches.values():
+            snapshot_revision_kit(kit, user=user)
+
+        # Écriture installations via SON service (jamais ses models ici).
+        from apps.installations.services import remplacer_composant_kits
+        appliques_inst = remplacer_composant_kits(
+            company, produit_ancien_id=ancien.id,
+            produit_nouveau_id=nouveau.id, ratio=ratio, user=user)
+        resultat['kits_installations'] = [{
+            'kit_id': k['kit_id'],
+            'kit_nom': k['kit_nom'],
+            'quantite_avant': str(k['quantite_avant']),
+            'quantite_apres': str(k['quantite_apres']),
+        } for k in appliques_inst]
+        resultat['nb_total'] = (
+            len(resultat['kits_stock'])
+            + len(resultat['kits_installations']))
+
+        # Ligne d'audit récapitulative (best-effort, jamais bloquante).
+        from apps.audit.recorder import record
+        from apps.audit.models import AuditLog
+        record(
+            AuditLog.Action.UPDATE,
+            instance=nouveau,
+            company=company, user=user,
+            detail=(
+                f'Remplacement de masse : « {ancien.nom} » → '
+                f'« {nouveau.nom} » dans {resultat["nb_total"]} '
+                f'nomenclature(s)'
+                + (f' (ratio quantité ×{ratio})' if ratio is not None
+                   else '') + '.'))
+    return resultat
+
+
 # ── XMFG5 — Coût de revient du kit : roll-up + structure + stock potentiel ──
 # INTERNE — le coût/marge n'est visible qu'aux rôles responsable/admin
 # (gardé côté vue) ; le prix d'achat/coût n'apparaît JAMAIS sur un document
 # client ni dans un PDF.
 
-def structure_kit(kit):
-    """XMFG5 — nomenclature indentée d'un kit : par composant, quantité,
-    disponibilité (`quantite_disponible` = stock − réservé), coût unitaire
-    (DC28 `cout_achat_courant`) et coût total roll-up. Renvoie
-    {kit_id, kit_nom, composants:[{produit_id, sku, designation, quantite,
-    quantite_disponible, cout_unitaire, cout_total, prix_vente}],
-    cout_total_roll_up, marge, disponibilite_potentielle} où
-    `disponibilite_potentielle` = min(dispo composant ÷ quantité) (combien de
-    kits sont assemblables avec le stock actuel, 0 si un composant manque).
-    INTERNE (coût/marge) — jamais client-facing."""
+def _structure_kit_lignes(kit, reserves, *, niveau=0, _chemin=None,
+                          _profondeur=0):
+    """XMFG17 — collecte RÉCURSIVE des lignes indentées (niveau 0 = racine)
+    + roll-up (coût/prix-vente/dispo potentielle) traversant les sous-kits.
+    Sous-fonction interne de `structure_kit` ; garde anti-cycle/profondeur
+    identique à `exploser_kit`."""
     from decimal import Decimal
-    reserves = reserved_quantities(kit.company)
-    composants = kit.composants.select_related('produit').order_by(
-        'produit__nom')
+
+    chemin = _chemin if _chemin is not None else set()
+    if kit.id in chemin:
+        raise KitCycleError(
+            f'Nomenclature cyclique détectée : le kit "{kit.nom}" se '
+            'contient lui-même (directement ou via un sous-kit).')
+    if _profondeur > MAX_PROFONDEUR_KIT:
+        raise ValueError(
+            f'Nomenclature trop profonde (> {MAX_PROFONDEUR_KIT} niveaux) '
+            f'pour le kit "{kit.nom}" — vérifiez la composition.')
+    chemin = chemin | {kit.id}
+
     lignes = []
     cout_total = Decimal('0')
     prix_vente_total = Decimal('0')
     disponibilite_potentielle = None
+    composants = (kit.composants
+                  .select_related('produit', 'composant_kit')
+                  .order_by('id'))
     for c in composants:
-        p = c.produit
         quantite = c.quantite or Decimal('0')
-        dispo = Decimal(str(p.quantite_stock)) - Decimal(
-            str(reserves.get(p.id, 0)))
-        cout_unitaire = cout_achat_courant(p)
-        cout_ligne = (cout_unitaire * quantite).quantize(Decimal('0.01'))
-        cout_total += cout_ligne
-        prix_vente_total += (p.prix_vente or Decimal('0')) * quantite
-        if quantite > 0:
-            kits_possibles = int((dispo / quantite).to_integral_value(
-                rounding='ROUND_FLOOR')) if dispo > 0 else 0
-            disponibilite_potentielle = kits_possibles if (
-                disponibilite_potentielle is None
-            ) else min(disponibilite_potentielle, kits_possibles)
-        lignes.append({
-            'produit_id': p.id, 'sku': p.sku or '', 'designation': p.nom,
-            'quantite': quantite, 'quantite_disponible': dispo,
-            'cout_unitaire': cout_unitaire, 'cout_total': cout_ligne,
-            'prix_vente': p.prix_vente,
-        })
+        if c.produit_id:
+            p = c.produit
+            dispo = Decimal(str(p.quantite_stock)) - Decimal(
+                str(reserves.get(p.id, 0)))
+            cout_unitaire = cout_achat_courant(p)
+            cout_ligne = (cout_unitaire * quantite).quantize(Decimal('0.01'))
+            cout_total += cout_ligne
+            prix_vente_total += (p.prix_vente or Decimal('0')) * quantite
+            if quantite > 0:
+                kits_possibles = int((dispo / quantite).to_integral_value(
+                    rounding='ROUND_FLOOR')) if dispo > 0 else 0
+                disponibilite_potentielle = kits_possibles if (
+                    disponibilite_potentielle is None
+                ) else min(disponibilite_potentielle, kits_possibles)
+            lignes.append({
+                'niveau': niveau, 'type': 'produit',
+                'produit_id': p.id, 'sku': p.sku or '', 'designation': p.nom,
+                'quantite': quantite, 'quantite_disponible': dispo,
+                'cout_unitaire': cout_unitaire, 'cout_total': cout_ligne,
+                'prix_vente': p.prix_vente,
+            })
+        else:
+            sk = c.composant_kit
+            (sous_lignes, sous_cout, sous_prix_vente,
+             sous_dispo_potentielle) = _structure_kit_lignes(
+                sk, reserves, niveau=niveau + 1, _chemin=chemin,
+                _profondeur=_profondeur + 1)
+            # Ligne d'en-tête du sous-kit (indentée), suivie de ses composants.
+            lignes.append({
+                'niveau': niveau, 'type': 'sous_kit',
+                'composant_kit_id': sk.id, 'sku': sk.sku or '',
+                'designation': sk.nom, 'quantite': quantite,
+                'quantite_disponible': sous_dispo_potentielle,
+                'cout_unitaire': (sous_cout * quantite).quantize(
+                    Decimal('0.01')) if quantite else Decimal('0.00'),
+                'cout_total': (sous_cout * quantite).quantize(
+                    Decimal('0.01')),
+                'prix_vente': None,
+            })
+            lignes.extend(sous_lignes)
+            cout_total += (sous_cout * quantite).quantize(Decimal('0.01'))
+            prix_vente_total += sous_prix_vente * quantite
+            if quantite > 0 and sous_dispo_potentielle is not None:
+                kits_possibles = int(
+                    (Decimal(sous_dispo_potentielle) / quantite)
+                    .to_integral_value(rounding='ROUND_FLOOR'))
+                disponibilite_potentielle = kits_possibles if (
+                    disponibilite_potentielle is None
+                ) else min(disponibilite_potentielle, kits_possibles)
+    return lignes, cout_total, prix_vente_total, disponibilite_potentielle
+
+
+def structure_kit(kit):
+    """XMFG5 — nomenclature indentée d'un kit : par composant, quantité,
+    disponibilité (`quantite_disponible` = stock − réservé), coût unitaire
+    (DC28 `cout_achat_courant`) et coût total roll-up. XMFG17 — traverse
+    récursivement les SOUS-KITS (chaque ligne porte `niveau` pour un
+    affichage indenté ; une ligne sous-kit a `type: 'sous_kit'`, une ligne
+    produit `type: 'produit'`). Renvoie
+    {kit_id, kit_nom, composants:[{niveau, type, produit_id?,
+    composant_kit_id?, sku, designation, quantite, quantite_disponible,
+    cout_unitaire, cout_total, prix_vente}], cout_total_roll_up, marge,
+    disponibilite_potentielle} où `disponibilite_potentielle` = min(dispo
+    composant ÷ quantité) TOUS NIVEAUX CONFONDUS (combien de kits sont
+    assemblables avec le stock actuel, 0 si un composant manque, à
+    n'importe quel niveau). INTERNE (coût/marge) — jamais client-facing.
+
+    Lève ``KitCycleError``/``ValueError`` — mêmes gardes que `exploser_kit`."""
+    from decimal import Decimal
+    reserves = reserved_quantities(kit.company)
+    lignes, cout_total, prix_vente_total, disponibilite_potentielle = (
+        _structure_kit_lignes(kit, reserves))
     marge = (prix_vente_total - cout_total).quantize(Decimal('0.01'))
     return {
         'kit_id': kit.id, 'kit_nom': kit.nom, 'composants': lignes,
@@ -5665,3 +6039,39 @@ def decouper_produit(*, company, produit_source, quantite_consommee,
         'cout_unitaire': cout_unitaire, 'produit_source': produit_source,
         'produit_cible': cible, 'numero_lot': numero_lot,
     }
+
+
+# ── ARC21 — Bascule write-path identité (founder-gated, OFF par défaut) ──────
+
+def ecrire_identite_fournisseur(fournisseur) -> bool:
+    """ARC21 (founder-gated, OFF par défaut) — quand la bascule write-path est
+    ACTIVE (``TIERS_SOURCE_ECRITURE`` ON), pousse l'identité du fournisseur vers
+    son ``Tiers`` (source d'écriture unique) ; le fournisseur relira le miroir.
+
+    Flag OFF (défaut) : NO-OP strict — renvoie ``False`` sans rien écrire (le
+    fournisseur reste l'unique chemin d'écriture, comportement byte-identique à
+    aujourd'hui). Best-effort ; ne fait jamais échouer l'appelant. Le prix
+    d'achat n'est JAMAIS concerné (identité seulement).
+
+    Voir docs/decisions/ARC21-tiers-source-ecriture.md.
+    """
+    try:
+        from apps.tiers import services as tiers_services
+        if not tiers_services.identite_source_est_tiers():
+            return False  # flag OFF — rien ne change.
+        if fournisseur is None or fournisseur.tiers_id is None:
+            return False
+        return tiers_services.ecrire_identite(
+            company=fournisseur.company, tiers=fournisseur.tiers,
+            champs={
+                'nom': fournisseur.nom or '',
+                'email': fournisseur.email or '',
+                'telephone': fournisseur.telephone or '',
+                'adresse': fournisseur.adresse or '',
+                'ice': fournisseur.ice or '',
+                'rc': fournisseur.rc or '',
+                'identifiant_fiscal': fournisseur.identifiant_fiscal or '',
+                'rib': fournisseur.rib or '',
+            })
+    except Exception:
+        return False

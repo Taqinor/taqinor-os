@@ -36,6 +36,7 @@ export default {
   order: 40,
   nav: {
     label: 'RH',
+    accent: 'azur', // VX8 — RH/paie = accent azur (dérivé)
     items: [
       { to: '/rh', label: 'Cockpit RH', icon: <LayoutDashboard size={17} strokeWidth={1.75} aria-hidden="true" />, roles: RH },
       { to: '/rh/employes', label: 'Employés', icon: <Users size={17} strokeWidth={1.75} aria-hidden="true" />, roles: RH },

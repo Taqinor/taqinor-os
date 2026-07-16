@@ -1,5 +1,6 @@
 import { useId, useState } from 'react'
 import { Table as TableIcon } from 'lucide-react'
+import { CHART_REFERENCE_LINE_STYLE, resolveColor } from './chart-theme.js'
 
 /* N161 — Accessibilité des graphiques.
    Enveloppe un graphique du kit avec :
@@ -20,6 +21,12 @@ import { Table as TableIcon } from 'lucide-react'
      caption    : légende de la table (défaut = label)
      tableToggleLabel : libellé du bouton (défaut « Voir le tableau »)
      children   : le graphique (AreaSansAxe / BarArrondie / …)
+     annotations : VX41 — événements ponctuels à faire correspondre à un
+       `ReferenceLine` recharts posé par l'appelant (ex. maintenance sur une
+       courbe de production) : `[{ label, tone? }]`. `ChartFrame` ne connaît
+       pas l'échelle du graphique — il rend la légende texte accessible de
+       ces marqueurs ; l'appelant reste responsable du `<ReferenceLine>` lui
+       -même (style commun : `CHART_REFERENCE_LINE_STYLE`).
 */
 export function ChartFrame({
   label,
@@ -28,6 +35,7 @@ export function ChartFrame({
   getRowKey = (row, i) => i,
   caption,
   tableToggleLabel = 'Voir le tableau',
+  annotations = [],
   children,
 }) {
   const [open, setOpen] = useState(false)
@@ -41,12 +49,30 @@ export function ChartFrame({
         <div aria-hidden="true">{children}</div>
       </div>
 
+      {/* VX41 — Légende texte des annotations `ReferenceLine` (le trait vit
+          dans le graphique recharts de l'appelant ; ceci le rend lisible par
+          un lecteur d'écran et sur les supports sans SVG). */}
+      {annotations.length > 0 && (
+        <ul className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+          {annotations.map((a, i) => (
+            <li key={a.label ?? i} className="inline-flex items-center gap-1.5">
+              <span
+                aria-hidden="true"
+                className="inline-block size-1.5 rounded-full"
+                style={{ background: resolveColor(a.tone) ?? CHART_REFERENCE_LINE_STYLE.stroke }}
+              />
+              {a.label}
+            </li>
+          ))}
+        </ul>
+      )}
+
       {hasTable && (
         <>
           <div className="mt-2 flex justify-end">
             <button
               type="button"
-              className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground focus-ring"
               aria-expanded={open}
               aria-controls={`chart-table-${tableId}`}
               onClick={() => setOpen((v) => !v)}

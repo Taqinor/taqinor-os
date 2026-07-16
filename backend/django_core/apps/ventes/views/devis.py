@@ -28,7 +28,10 @@ from authentication.permissions import (  # noqa: F401
     IsAnyRole,
     IsResponsableOrAdmin,
     IsAdminRole,
+    HasPermissionOrLegacy,
 )
+from core.viewsets import CompanyScopedModelViewSet  # noqa: F401  ARC5
+from core.idempotency import IdempotentCreateMixin  # noqa: F401  YAPIC9
 from ..utils.references import create_with_reference  # noqa: F401
 from ..utils.company_settings import create_numbered  # noqa: F401
 
@@ -52,7 +55,24 @@ def _company_qs(qs, user):
 # package __init__ ré-exporte toutes les vues publiques.
 
 
-class DevisViewSet(viewsets.ModelViewSet):
+class DevisViewSet(IdempotentCreateMixin, CompanyScopedModelViewSet):
+    # YAPIC9 — pilote de core.idempotency.IdempotentCreateMixin : sans
+    # en-tête `Idempotency-Key`, comportement inchangé (le mixin ne fait que
+    # déléguer à super().create()). AVEC l'en-tête, un rejeu à corps
+    # identique renvoie le devis initial (pas de doublon) ; corps différent
+    # -> 409. perform_create ci-dessous reste la SEULE logique métier de
+    # création — le mixin ne touche jamais à la sémantique devis/statuts.
+    # ARC5 — sweep TenantMixin : base transverse unique (CompanyScopedModelViewSet
+    # = TenantMixin + ModelViewSet). get_queryset (portée de visibilité +
+    # _company_qs) / perform_create / perform_update / get_permissions SURCHARGENT
+    # la base : scoping société et matrice 401/403/404 INCHANGÉS.
+    #   Règle #4 : ce sweep ne touche NI le statut NI la sérialisation Devis. Le
+    #   moteur ne change jamais les statuts. L'@action `proposal` (chemin canonique
+    #   du PDF client, IsResponsableOrAdmin) reste une LECTURE AUTHENTIFIÉE scopée
+    #   société : `self.get_object()` passe par get_queryset (devis d'une autre
+    #   société → 404). Elle N'EST PAS un endpoint public — l'accès CLIENT au PDF
+    #   passe par les vues tokenisées ShareLink de `public_views.py`
+    #   (AllowAny, hors périmètre de ce sweep), qui restent inchangées.
     queryset = Devis.objects.select_related(
         'client', 'created_by', 'lead', 'bon_commande', 'signature',
         'superseded_by', 'version_parent',
@@ -60,7 +80,14 @@ class DevisViewSet(viewsets.ModelViewSet):
         # YOPSB13 — paiements/avoirs imbriqués préchargés : DevisSerializer.
         # get_solde (via solde_devis) itère f.paiements/f.avoirs PAR facture ;
         # sans ces prefetch c'était un N+1 imbriqué sur la liste.
-        'lignes', 'factures', 'factures__paiements', 'factures__avoirs',
+        # SCA43 — `lignes__produit` (pas seulement `lignes`) : DevisSerializer.
+        # _display appelle build_quote_data PAR DEVIS pour le total d'affichage,
+        # et `_line_to_item` y lit `ligne.produit` (marque/description/garantie)
+        # PAR LIGNE. Sans ce prefetch c'était un produit-par-ligne → N+1 qui
+        # grandit avec le nombre de devis (même prefetch que
+        # generate_premium_devis_pdf). Rend le total de liste O(1).
+        'lignes', 'lignes__produit',
+        'factures', 'factures__paiements', 'factures__avoirs',
         'share_links',
         # YOPSB13 — évite le N+1 de DevisSerializer.get_chantier (avant :
         # une requête Installation par devis via le sélecteur
@@ -88,17 +115,28 @@ class DevisViewSet(viewsets.ModelViewSet):
         return DevisSerializer
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS + ['historique', 'variante_config']:
+        if self.action in READ_ACTIONS + ['historique', 'variante_config', 'superior_contact_status']:  # noqa: E501
             # variante_config : la LECTURE est ouverte à tous ; l'ÉCRITURE (PUT)
             # est re-vérifiée dans l'action (Directeur / Commercial responsable).
             return [IsAnyRole()]
+        elif self.action in ('accepter', 'refuser'):
+            # VX199 — validation/refus de devis : permission ERP FINE
+            # (ventes_valider), pas le grossier IsResponsableOrAdmin (qui passe
+            # pour tout rôle portant une écriture). get_permissions PRIME sur le
+            # permission_classes de l'@action, donc la garde fine doit être ICI.
+            return [HasPermissionOrLegacy('ventes_valider')()]
         elif self.action in WRITE_ACTIONS + [
             'generer_pdf', 'telecharger_pdf', 'convertir_en_bc', 'proposal',
-            'generer_facture', 'reviser', 'accepter', 'refuser', 'noter',
+            'generer_facture', 'reviser', 'noter',
             'layout', 'roof_image', 'from_layout', 'auto', 'share_link',
             'envoyer_email', 'dupliquer_variante', 'variantes',
             'save_preset', 'apply_preset', 'contacter_superieur',
             'whatsapp', 'proforma_pdf',
+            # QX21be — atomic create + replace-lines (self.action is the
+            # Python method name, not url_path: 'replace-lines' → 'replace_lines').
+            'atomic', 'replace_lines',
+            # QX22be — WhatsApp preview (read-only, no status change).
+            'whatsapp_preview',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
@@ -289,6 +327,131 @@ class DevisViewSet(viewsets.ModelViewSet):
                 'proposal_path': f'/proposition/{link.token}',
             },
             status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['post'], url_path='atomic',
+            permission_classes=[IsResponsableOrAdmin])
+    def atomic(self, request):
+        """QX21be — création TRANSACTIONNELLE d'un devis + ses lignes en UN
+        SEUL commit. Remplace les 1+N allers-retours non gardés du générateur
+        (qui laissaient des brouillons orphelins/partiels qu'un vendeur pouvait
+        ensuite envoyer). Couper la connexion en cours de route laisse soit
+        RIEN, soit un devis complet.
+
+        Corps : les champs de devis (statut/taux_tva/remise_globale/lead/
+        client/mode_installation/etude_params…) + ``lignes`` : liste de
+        ``{produit, designation, quantite, prix_unitaire, remise?, taux_tva?}``.
+        La société est TOUJOURS forcée côté serveur. Aucun ``prix_achat``.
+        """
+        from django.db import transaction
+        from rest_framework.exceptions import ValidationError
+        from apps.crm.services import resolve_client_for_lead
+
+        company = request.user.company
+        if company is None:
+            return Response({'detail': 'Utilisateur sans société.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        lignes_in = request.data.get('lignes')
+        if not isinstance(lignes_in, list) or not lignes_in:
+            return Response({'detail': 'Au moins une ligne est requise.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        head = {k: v for k, v in request.data.items() if k != 'lignes'}
+        head.pop('company', None)  # jamais accepté du corps
+        serializer = DevisWriteSerializer(data=head)
+        serializer.is_valid(raise_exception=True)
+
+        lead = serializer.validated_data.get('lead')
+        client = serializer.validated_data.get('client')
+        if lead is not None and lead.company_id != company.id:
+            raise ValidationError({'lead': 'Lead inconnu.'})
+        if client is not None and client.company_id != company.id:
+            raise ValidationError({'client': 'Client inconnu.'})
+        if client is None:
+            if lead is None:
+                raise ValidationError(
+                    {'client': 'Un client ou un lead est requis.'})
+            client = resolve_client_for_lead(lead)
+
+        try:
+            with transaction.atomic():
+                def _save(ref):
+                    devis = serializer.save(
+                        reference=ref, client=client,
+                        created_by=request.user, company=company)
+                    self._replace_lines_atomic(devis, lignes_in, company)
+                    return devis
+                create_numbered(Devis, company, 'devis', _save)
+        except ValidationError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            return Response({'detail': f'Enregistrement échoué : {exc}'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        devis = serializer.instance
+        # QX23be — fige la marge interne à la création (manager-only).
+        try:
+            from ..services import refresh_marge_snapshot
+            refresh_marge_snapshot(devis)
+        except Exception:  # noqa: BLE001
+            pass
+        return Response(DevisSerializer(
+            devis, context={'request': request}).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='replace-lines',
+            permission_classes=[IsResponsableOrAdmin])
+    def replace_lines(self, request, pk=None):
+        """QX21be — remplace ATOMIQUEMENT toutes les lignes d'un devis en un
+        seul commit (édition). Remplace le delete-all-puis-recréer à erreurs
+        avalées du générateur, qui pouvait laisser un devis avec moins/aucune
+        ligne. Un échec préserve les lignes d'origine (rollback complet)."""
+        from django.db import transaction
+        devis = self.get_object()  # borné société par get_queryset
+        lignes_in = request.data.get('lignes')
+        if not isinstance(lignes_in, list):
+            return Response({'detail': 'Champ « lignes » requis (liste).'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            with transaction.atomic():
+                self._replace_lines_atomic(devis, lignes_in, devis.company)
+        except Exception as exc:  # noqa: BLE001 — rollback : lignes d'origine
+            return Response({'detail': f'Remplacement échoué : {exc}'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(DevisSerializer(
+            devis, context={'request': request}).data)
+
+    def _replace_lines_atomic(self, devis, lignes_in, company):
+        """QX21be — supprime puis recrée les lignes du devis (appelé SOUS une
+        transaction par l'appelant). Produits bornés société ; jamais de
+        ``prix_achat`` accepté du corps."""
+        from decimal import Decimal, InvalidOperation
+        from ..models import LigneDevis
+        from apps.stock.models import Produit
+        devis.lignes.all().delete()
+        for li in lignes_in:
+            if not isinstance(li, dict):
+                continue
+            try:
+                produit_id = int(li.get('produit'))
+            except (TypeError, ValueError):
+                raise ValueError('Ligne sans produit valide.')
+            produit = Produit.objects.filter(
+                id=produit_id, company=company).first()
+            if produit is None:
+                raise ValueError(f'Produit {produit_id} inconnu.')
+            try:
+                qte = Decimal(str(li.get('quantite', 1)))
+                pu = Decimal(str(li.get('prix_unitaire', produit.prix_vente)))
+                remise = Decimal(str(li.get('remise', 0)))
+            except (InvalidOperation, TypeError, ValueError):
+                raise ValueError('Quantité/prix/remise invalide.')
+            taux = li.get('taux_tva')
+            LigneDevis.objects.create(
+                devis=devis, produit=produit,
+                designation=(li.get('designation') or produit.nom)[:255],
+                quantite=qte, prix_unitaire=pu, remise=remise,
+                taux_tva=Decimal(str(taux)) if taux is not None else None)
 
     @action(detail=False, methods=['post'], url_path='auto',
             permission_classes=[IsResponsableOrAdmin])
@@ -853,7 +1016,7 @@ class DevisViewSet(viewsets.ModelViewSet):
             status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['post'], url_path='accepter',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[HasPermissionOrLegacy('ventes_valider')])
     def accepter(self, request, pk=None):
         """N25 — marque le devis « accepté » à une date choisie, en capturant le
         nom de la personne qui accepte ; l'acceptation est consignée dans le
@@ -862,6 +1025,7 @@ class DevisViewSet(viewsets.ModelViewSet):
         from datetime import date as _date
         from ..services import (
             accept_devis, AcceptError, verifier_credit_hold, CreditHoldError,
+            verifier_sale_warnings, SaleWarningError,
         )
         devis = self.get_object()
         nom = (request.data.get('nom') or '').strip()
@@ -890,6 +1054,20 @@ class DevisViewSet(viewsets.ModelViewSet):
                         'outre avec `override_credit: true`.'),
                      'credit_hold': True},
                     status=status.HTTP_403_FORBIDDEN)
+        # ZSAL9 — avertissement de vente BLOQUANT (produit/client). Vide (défaut)
+        # → no-op. Bloquant → 403, sauf override responsable/admin journalisé.
+        try:
+            verifier_sale_warnings(
+                devis, override=bool(request.data.get('override_avertissement')),
+                user=request.user, chatter_target=devis)
+        except SaleWarningError as exc:
+            return Response(
+                {'detail': (
+                    f'Avertissement de vente bloquant : {exc.motif}. '
+                    'Un responsable/admin peut passer outre avec '
+                    '`override_avertissement: true`.'),
+                 'sale_warning': True},
+                status=status.HTTP_403_FORBIDDEN)
         # A1 — option retenue (« Sans batterie » / « Avec batterie »). La
         # résolution (deux options → choix explicite obligatoire ; mono-option
         # → déduit du scénario) et le tampon d'acceptation passent désormais
@@ -941,7 +1119,7 @@ class DevisViewSet(viewsets.ModelViewSet):
         return option, None
 
     @action(detail=True, methods=['post'], url_path='refuser',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[HasPermissionOrLegacy('ventes_valider')])
     def refuser(self, request, pk=None):
         """FG44 — marque le devis « refusé » avec date + motif + chatter.
 
@@ -1002,6 +1180,43 @@ class DevisViewSet(viewsets.ModelViewSet):
         devis = self.get_object()
         return Response(
             DevisActivitySerializer(devis.activites.all(), many=True).data)
+
+    @action(detail=True, methods=['post'], url_path='whatsapp-preview',
+            permission_classes=[IsResponsableOrAdmin])
+    def whatsapp_preview(self, request, pk=None):
+        """QX22be — PRÉVISUALISATION WhatsApp (lecture seule) : construit le lien
+        wa.me + le message SANS marquer le devis « envoyé ».
+
+        Le vendeur ouvre la modale d'envoi (aperçu) puis clique le lien wa.me
+        pour VRAIMENT envoyer (l'action ``whatsapp`` marque alors « envoyé »).
+        Ouvrir puis fermer la modale ne doit JAMAIS créer un devis fantôme
+        « envoyé » dont l'horloge de validité a démarré. Aucune transition de
+        statut, aucune écriture (hormis le ShareLink réutilisé, idempotent)."""
+        from ..utils.phone import normalize_ma_phone
+        from ..utils.whatsapp import (
+            build_single_devis_whatsapp, build_wa_url, devis_recipient_phone,
+        )
+
+        devis = self.get_object()
+        phone = devis_recipient_phone(devis)
+        if not normalize_ma_phone(phone):
+            return Response(
+                {'detail': 'Aucun numéro de téléphone.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        langue = request.data.get('langue')
+        if langue is None:
+            lead = getattr(devis, 'lead', None)
+            langue = (getattr(lead, 'langue_preferee', None) or 'fr'
+                      if lead is not None else 'fr')
+        message, link = build_single_devis_whatsapp(request, devis, langue)
+        # PAS de mark_devis_sent, PAS de chatter : simple aperçu.
+        return Response({
+            'wa_url': build_wa_url(phone, message),
+            'phone': phone, 'message': message, 'url': link['url'],
+            'devis_statut': devis.statut,  # inchangé
+            'preview': True,
+        })
 
     @action(detail=True, methods=['post'], url_path='whatsapp',
             permission_classes=[IsResponsableOrAdmin])
@@ -1120,6 +1335,22 @@ class DevisViewSet(viewsets.ModelViewSet):
             'recipients': [u.username for u in recipients],
         })
 
+    @action(detail=True, methods=['get'],
+            url_path='superior-contact-status',
+            permission_classes=[IsAnyRole])
+    def superior_contact_status(self, request, pk=None):
+        """VX215 — boucle de retour « pris en charge » (version lecture
+        seule) : après « Contacter mon supérieur » (ci-dessus), l'ÉMETTEUR
+        voit si sa demande a été VUE — sans jamais lire le CONTENU des
+        notifications d'autrui, seulement l'état `read`/lecteur de CETTE
+        demande précise (scopée à ce devis + cet événement). Zéro nouveau
+        modèle : relit directement les `Notification` déjà créées par
+        `contacter_superieur` (même société, même `link`)."""
+        devis = self.get_object()
+        from apps.notifications.selectors import superior_contact_status
+        link = f'/ventes/devis?devis={devis.pk}'
+        return Response(superior_contact_status(devis.company, link))
+
     @action(detail=True, methods=['post'], url_path='noter',
             permission_classes=[IsResponsableOrAdmin])
     def noter(self, request, pk=None):
@@ -1197,6 +1428,10 @@ class DevisViewSet(viewsets.ModelViewSet):
         self._guard_discount_approval(
             serializer.instance, ancien_statut, nouveau_statut, remise)
         super().perform_update(serializer)
+        # VX98 — dernier auteur de modification (server-side, jamais du corps) :
+        # alimente la puce de fraîcheur. Pattern archived_by.
+        serializer.instance.updated_by = self.request.user
+        serializer.instance.save(update_fields=['updated_by'])
         from apps.crm.services import avancer_stage_pour_devis
         avancer_stage_pour_devis(
             serializer.instance, ancien_statut,
@@ -1448,6 +1683,7 @@ class DevisViewSet(viewsets.ModelViewSet):
         from ..services import (
             reserver_stock_devis_facture, StockInsuffisantError,
             verifier_credit_hold, CreditHoldError,
+            verifier_sale_warnings, SaleWarningError,
         )
         company = request.user.company
         # XFAC28 — blocage crédit dur (étend FG41). Flag OFF (défaut) → no-op.
@@ -1465,6 +1701,19 @@ class DevisViewSet(viewsets.ModelViewSet):
                         'outre avec `override_credit: true`.'),
                      'credit_hold': True},
                     status=status.HTTP_403_FORBIDDEN)
+        # ZSAL9 — avertissement de vente BLOQUANT (produit/client). Vide → no-op.
+        try:
+            verifier_sale_warnings(
+                devis, override=bool(request.data.get('override_avertissement')),
+                user=request.user, chatter_target=devis)
+        except SaleWarningError as exc:
+            return Response(
+                {'detail': (
+                    f'Avertissement de vente bloquant : {exc.motif}. '
+                    'Un responsable/admin peut passer outre avec '
+                    '`override_avertissement: true`.'),
+                 'sale_warning': True},
+                status=status.HTTP_403_FORBIDDEN)
         try:
             # U9 — la facturation directe par échéancier court-circuite le bon
             # de commande : on réserve/consomme ici le stock matériel du devis,

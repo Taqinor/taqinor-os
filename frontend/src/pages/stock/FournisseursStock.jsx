@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSelector } from 'react-redux'
-import { Plus, Pencil, Trash2, Package, ShoppingCart, BarChart3 } from 'lucide-react'
+import { useHasPermission, useIsAdmin, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
+import { Plus, Pencil, Trash2, Package, ShoppingCart, BarChart3, Upload } from 'lucide-react'
 import stockApi from '../../api/stockApi'
+import { formatMAD } from '../../lib/format'
+import ExcelImport from '../../components/ExcelImport'
 import {
   Button, IconButton, DataTable, Spinner,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -144,9 +147,7 @@ function FournisseurForm({ fournisseur, onClose, onSaved }) {
 // ── WR4 / FG59 — Scorecard performance fournisseur (admin, INTERNE) ──────────
 // Délai moyen de livraison, taux de remplissage, taux de retour, dépenses
 // totales (prix d'achat) — jamais client-facing.
-const fmtMad = (v) => `${(Number(v) || 0).toLocaleString('fr-FR', {
-  minimumFractionDigits: 2, maximumFractionDigits: 2,
-})} MAD`
+const fmtMad = (v) => formatMAD(v)
 
 function ScorecardModal({ fournisseur, onClose }) {
   const [data, setData] = useState(null)
@@ -222,19 +223,22 @@ function ScorecardModal({ fournisseur, onClose }) {
 }
 
 export default function FournisseursStock() {
-  const role = useSelector((s) => s.auth.role)
-  const permissions = useSelector((s) => s.auth.permissions) || []
-  const canWrite = permissions.length
-    ? permissions.includes('stock_modifier')
-    : (role === 'responsable' || role === 'admin')
-  const canDelete = role === 'admin'
+  // ARC47 — gating via le hook partagé. `hasFinePermissions` (présence de
+  // codes ERP, PAS un droit) choisit la branche ; hooks appelés
+  // inconditionnellement. Sémantique identique à l'origine.
+  const hasFinePermissions = useSelector((s) => (s.auth.permissions || []).length > 0)
+  const canWriteViaPerm = useHasPermission('stock_modifier')
+  const canWriteViaRole = useIsAdminOrResponsable()
+  const canWrite = hasFinePermissions ? canWriteViaPerm : canWriteViaRole
+  const canDelete = useIsAdmin()
 
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [selected, setSelected] = useState(null) // objet fournisseur ou {} (nouveau)
   const [scorecard, setScorecard] = useState(null) // WR4 — perf fournisseur (admin)
-  const isAdmin = role === 'admin'
+  const [showImport, setShowImport] = useState(false) // VX109 — import Excel/CSV
+  const isAdmin = canDelete
 
   // setState n'arrive que dans les callbacks asynchrones (jamais synchrone dans
   // l'effet) : l'état initial loading=true couvre le premier chargement.
@@ -307,11 +311,21 @@ export default function FournisseursStock() {
           <p className="text-sm text-muted-foreground">{items.length} fournisseur(s)</p>
         </div>
         {canWrite && (
-          <Button onClick={() => setSelected({})}>
-            <Plus /> Nouveau fournisseur
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => setShowImport(true)}>
+              <Upload /> Importer
+            </Button>
+            <Button onClick={() => setSelected({})}>
+              <Plus /> Nouveau fournisseur
+            </Button>
+          </div>
         )}
       </header>
+
+      {showImport && (
+        <ExcelImport target="fournisseurs" onClose={() => setShowImport(false)}
+                     onDone={reload} />
+      )}
 
       {error && (
         <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
@@ -329,6 +343,9 @@ export default function FournisseursStock() {
         onRowClick={(f) => setSelected(f)}
         emptyTitle="Aucun fournisseur"
         emptyDescription="Créez-en un avec « Nouveau fournisseur »."
+        emptyAction={canWrite
+          ? <Button size="sm" onClick={() => setSelected({})}><Plus className="size-4" /> Nouveau fournisseur</Button>
+          : undefined}
         aria-label="Fournisseurs"
       />
 

@@ -76,6 +76,11 @@ def build(ctx) -> str:
 
     d = ctx["d"]
     C = ctx["C"]
+    # QX4 — identité société (multi-tenant) : marque, bande légale et bloc
+    # signature dérivent de l'identité résolue ; repli sur les littéraux
+    # Taqinor historiques (byte-identique sans profil enrichi).
+    ident = ctx.get("ident") or theme.company_identity(d)
+    brand = ident.get("brand_name") or "TAQINOR"
 
     client_full = (theme.titlecase_name(
         d.get("client_full") or d.get("client_name")) or "Le client")
@@ -100,12 +105,31 @@ def build(ctx) -> str:
     l_gar = links.get("garanties", site_url + "/garanties")
     l_sign = links.get("signer", site_url + "/signer")
 
-    # ── Value points (no invented numbers) ──────────────────────────────────
+    # ── QX7e — puces de valeur : les marques d'équipement viennent des VRAIES
+    # lignes du devis (item['marque']), jamais d'une liste boilerplate. Repli
+    # « équipements certifiés IEC » quand aucune marque n'est portée par les
+    # lignes. Les figures marketing (« Pourquoi … ») sont un texte éditable par
+    # la société via doc_texts.trust_values (repli sur les puces par défaut).
+    _seen, _brands = set(), []
+    for _it in (d.get("avec_items") or []) + (d.get("sans_items") or []):
+        _m = (_it.get("marque") or "").strip()
+        if _m and _m.lower() not in _seen:
+            _seen.add(_m.lower())
+            _brands.append(_m)
+    _brand_line = (
+        "Équipements premium certifiés — " + " · ".join(_brands[:4])
+        if _brands else "Équipements premium certifiés IEC")
     values = [
         "Ingénieurs spécialisés en énergie solaire",
-        "Équipements premium certifiés — Canadian Solar · Huawei · Deye",
+        _brand_line,
         "Suivi de production en temps réel 24/7",
     ]
+    # Texte éditable par la société (doc_texts.trust_values) : liste de puces qui
+    # remplace la valeur par défaut ci-dessus quand elle est renseignée.
+    _doc_texts = d.get("doc_texts") or {}
+    _tv = _doc_texts.get("trust_values")
+    if isinstance(_tv, (list, tuple)) and any(str(x).strip() for x in _tv):
+        values = [str(x).strip() for x in _tv if str(x).strip()]
     values_html = "".join(
         f'<div class="p3-val"><span class="p3-dot"></span>'
         f'<span class="p3-val-t">{v}</span></div>'
@@ -215,6 +239,18 @@ def build(ctx) -> str:
         for n, t, s in steps
     )
 
+    # QX5 — « Option choisie » : deux cases seulement pour un vrai devis à deux
+    # options ; mono-option → on nomme l'unique option (aucune case fantôme).
+    _deux = bool(d.get("deux_options", True))
+    _avec_ok = bool(d.get("avec_ok", True))
+    if _deux:
+        accord_opt_html = (
+            'Option choisie :'
+            '<span class="p3-box"></span> Sans batterie'
+            '<span class="p3-box"></span> Avec batterie')
+    else:
+        accord_opt_html = ("Avec batterie" if _avec_ok else "Sans batterie")
+
     # Scan-to-sign QR (degrades to the text link if qrcode is unavailable).
     qr_uri = _qr_data_uri(l_sign, C["navy"])
     qr_html = (
@@ -224,13 +260,36 @@ def build(ctx) -> str:
         if qr_uri else "")
 
     # Legal identifier band — real company data (RC/ICE/capital from taqinor.ma).
-    legal = (
-        '<b>TAQINOR Solutions SARLAU</b> au capital de 100 000,00 MAD'
-        ' &middot; RC 691213 — Tribunal de Commerce de Casablanca'
-        ' &middot; ICE 003799642000067 &middot; Gérant : M. Reda Kasri'
-        ' &middot; contact@taqinor.com &middot; +212 6 61 85 04 10'
-        ' &middot; taqinor.ma'
-    )
+    # SCA27 (fix règle-#4-permis) — pour un TENANT (profil au nom non-TAQINOR),
+    # la bande se compose de SES identifiants (nom/RC/ICE/email/téléphone/site,
+    # champs absents omis — capital et gérant n'ont pas de champ profil). Le
+    # littéral fondateur reste le repli byte-identique (profil vide OU marque
+    # TAQINOR — même sémantique par-la-donnée que _footer_brand/DC1).
+    from html import escape as _esc
+    ent = d.get("entreprise") or {}
+    ent_nom = (ent.get("nom") or "").strip()
+    if ent_nom and "TAQINOR" not in ent_nom.upper():
+        parts = [f"<b>{_esc(ent_nom)}</b>"]
+        if (ent.get("rc") or "").strip():
+            parts.append("RC " + _esc(ent["rc"].strip()))
+        if (ent.get("ice") or "").strip():
+            parts.append("ICE " + _esc(ent["ice"].strip()))
+        if (ent.get("email") or "").strip():
+            parts.append(_esc(ent["email"].strip()))
+        if (ent.get("telephone") or "").strip():
+            parts.append(_esc(ent["telephone"].strip()))
+        _site_tenant = (d.get("site_url") or "").strip()
+        if _site_tenant and "taqinor" not in _site_tenant.lower():
+            parts.append(_esc(_site_tenant))
+        legal = " &middot; ".join(parts)
+    else:
+        legal = (
+            '<b>TAQINOR Solutions SARLAU</b> au capital de 100 000,00 MAD'
+            ' &middot; RC 691213 — Tribunal de Commerce de Casablanca'
+            ' &middot; ICE 003799642000067 &middot; Gérant : M. Reda Kasri'
+            ' &middot; contact@taqinor.com &middot; +212 6 61 85 04 10'
+            ' &middot; taqinor.ma'
+        )
 
     return f"""
 <style>
@@ -360,7 +419,7 @@ def build(ctx) -> str:
 
 <div class="p3-wrap">
   <div class="p3-kicker">Confiance &amp; Engagement</div>
-  <div class="p3-title">Pourquoi TAQINOR</div>
+  <div class="p3-title">Pourquoi {brand}</div>
 
   <div class="p3-values">{values_html}</div>
 
@@ -388,9 +447,7 @@ def build(ctx) -> str:
   <div class="p3-accord">
     <div class="p3-accord-hd">
       <div class="p3-accord-ttl">Bon pour accord</div>
-      <div class="p3-accord-opt">Option choisie :
-        <span class="p3-box"></span> Sans batterie
-        <span class="p3-box"></span> Avec batterie</div>
+      <div class="p3-accord-opt">{accord_opt_html}</div>
     </div>
     <div class="p3-accord-bd">
       <div class="p3-sig">
@@ -400,7 +457,7 @@ def build(ctx) -> str:
         <div class="p3-sig-line"></div>
       </div>
       <div class="p3-sig">
-        <div class="p3-sig-who">TAQINOR</div>
+        <div class="p3-sig-who">{brand}</div>
         <div class="p3-sig-name">Cachet &amp; signature</div>
         <div class="p3-sig-hint">Le devis fait foi dès réception de l'acompte</div>
         <div class="p3-sig-line"></div>

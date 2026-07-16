@@ -49,13 +49,13 @@ def signature_relances_expiration():
     """XGED2 — Balayage quotidien : relances de signataires dus + expiration
     des demandes échues (une société à la fois, jamais destructif : n'annule
     QUE des demandes déjà `en_attente` avec `expires_at` dépassée)."""
-    from authentication.models import Company
+    from authentication.selectors import active_companies
 
     from . import services
 
     total_relances = 0
     total_expirees = 0
-    for company in Company.objects.filter(actif=True):
+    for company in active_companies():  # SCA19 — exclut les tenants suspendus
         try:
             total_relances += len(services.relancer_signataires_dus(company))
             total_expirees += services.expirer_demandes_echues(company)
@@ -75,12 +75,12 @@ def verifier_integrite_archives_task():
     """XGED6 — Contrôle périodique d'intégrité des archives légales (GED23),
     une société à la fois. Journalise chaque contrôle et notifie les admins
     (best-effort) en cas d'altération détectée — jamais destructif."""
-    from authentication.models import Company
+    from authentication.selectors import active_companies
 
     from . import services
 
     total = {'total': 0, 'ok': 0, 'altere': 0, 'indisponible': 0}
-    for company in Company.objects.filter(actif=True):
+    for company in active_companies():  # SCA19 — exclut les tenants suspendus
         try:
             res = services.verifier_integrite_archives(company)
             for key in total:
@@ -104,12 +104,12 @@ def notifier_emetteurs_expiration_signature():
     fois, jamais destructif — complète XGED2 qui ne couvre que le SIGNATAIRE).
     Best-effort par société : une société KO n'interrompt jamais les
     suivantes."""
-    from authentication.models import Company
+    from authentication.selectors import active_companies
 
     from . import services
 
     total = 0
-    for company in Company.objects.filter(actif=True):
+    for company in active_companies():  # SCA19 — exclut les tenants suspendus
         try:
             total += services.notifier_emetteur_expiration_proche(company)
         except Exception:  # pragma: no cover - défensif, une société KO
@@ -129,14 +129,14 @@ def poll_mail_intake_task():
 
     KEY-GATED : `services.mail_intake_enabled()` no-op propre sans le flag.
     Une société KO n'interrompt jamais les suivantes."""
-    from authentication.models import Company
+    from authentication.selectors import active_companies
 
     from . import services
 
     if not services.mail_intake_enabled():
         return {'fetched': 0, 'imported': 0}
     total = {'fetched': 0, 'imported': 0}
-    for company in Company.objects.filter(actif=True):
+    for company in active_companies():  # SCA19 — exclut les tenants suspendus
         try:
             res = services.poll_mail_intake(company)
             total['fetched'] += res['fetched']

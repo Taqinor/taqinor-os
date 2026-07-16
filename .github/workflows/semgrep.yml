@@ -1,0 +1,42 @@
+name: semgrep (advisory)
+
+# NTPLT53 — SAST par PATTERNS de code : le pack Django public + 4 règles MAISON
+# (.semgrep/taqinor.yml) encodant les invariants du repo (pas de SQL formaté /
+# objects.raw, pas de `company` lu du body, pas de count()+1 pour une
+# référence, pas de nouveau chemin PDF devis hors /proposal — RÈGLE #4).
+# ADVISORY : non-required, ne bloque aucune merge (protection de branche
+# intacte). Complémentaire des gardes AST YDATA (structure des modèles).
+
+on:
+  workflow_dispatch: {}
+  pull_request:
+    paths:
+      - 'backend/**'
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+
+permissions:
+  contents: read
+
+jobs:
+  semgrep:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    container:
+      image: semgrep/semgrep
+    steps:
+      - uses: actions/checkout@v4
+      - name: Semgrep (pack Django + règles maison)
+        run: |
+          semgrep --config p/django --config .semgrep/ \
+            --error --sarif --output semgrep.sarif backend/django_core || true
+          # Affichage lisible non bloquant.
+          semgrep --config p/django --config .semgrep/ backend/django_core || true
+      - name: Upload SARIF
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: semgrep-sarif
+          path: semgrep.sarif

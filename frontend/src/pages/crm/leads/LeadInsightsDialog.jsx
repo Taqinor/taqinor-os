@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import crmApi from '../../../api/crmApi'
 import { Badge, Button, Spinner } from '../../../ui'
+import { ResponsiveDialog } from '../../../ui/ResponsiveDialog'
+import { formatDateTime, formatMAD } from '../../../lib/format'
 
 // WR9 — fiche « Parcours » d'un lead (lecture seule) :
 //  - FG204 : timeline multi-touch (points de contact + attribution
@@ -8,16 +10,9 @@ import { Badge, Button, Spinner } from '../../../ui'
 //  - FG38  : correspondance avec un Client existant (retour client).
 // Les données viennent des endpoints scopés société — aucun calcul local.
 
-const fmtDateTime = (iso) => {
-  if (!iso) return '—'
-  const d = new Date(iso)
-  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleString('fr-FR')
-}
+const fmtDateTime = (iso) => formatDateTime(iso)
 
-const fmtMAD = (v) => {
-  const n = Number(v ?? 0)
-  return Number.isFinite(n) ? `${n.toLocaleString('fr-MA')} MAD` : '—'
-}
+const fmtMAD = (v) => formatMAD(v)
 
 export default function LeadInsightsDialog({ lead, onClose }) {
   const [touches, setTouches] = useState(null)
@@ -42,12 +37,13 @@ export default function LeadInsightsDialog({ lead, onClose }) {
   const loading = !error && (touches == null || matches == null)
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <h3 className="modal-title">Parcours du lead — {lead.nom ?? '—'}</h3>
-          <button type="button" className="modal-close" onClick={onClose}>✕</button>
-        </div>
+    // VX182 — shell fait-main remplacé par ResponsiveDialog (Escape + focus-
+    // trap + bottom-sheet mobile) ; en-tête/pied conservés à l'identique.
+    <ResponsiveDialog open onOpenChange={(o) => { if (!o) onClose() }} className="sm:max-w-lg" showClose={false}>
+      <div className="modal-header">
+        <h3 className="modal-title">Parcours du lead — {lead.nom ?? '—'}</h3>
+        <button type="button" className="modal-close" onClick={onClose}>✕</button>
+      </div>
         <div className="modal-body">
           {loading && (
             <p className="page-loading"><Spinner /> Chargement du parcours…</p>
@@ -126,7 +122,6 @@ export default function LeadInsightsDialog({ lead, onClose }) {
         <div className="modal-footer">
           <Button onClick={onClose}>Fermer</Button>
         </div>
-      </div>
-    </div>
+    </ResponsiveDialog>
   )
 }

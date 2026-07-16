@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
+import { useIsAdmin } from '../../hooks/useHasPermission'
+import { useNavigationGuard } from '../../hooks/useNavigationGuard'
+import { isDirty } from '../../ui/form-utils'
 import {
   fetchProfile, saveProfile,
   clearSaveSuccess,
@@ -14,14 +17,16 @@ import parametresApi from '../../api/parametresApi'
 import installationsApi from '../../api/installationsApi'
 import stockApi from '../../api/stockApi'
 import customFieldsApi from '../../api/customFieldsApi'
-import { CheckCircle2, AlertCircle, Save, Search, X } from 'lucide-react'
+import { CheckCircle2, AlertCircle, Save, Search, X, Info } from 'lucide-react'
 import {
-  Button, Spinner, Tabs, TabsList, TabsTrigger, TooltipProvider, Input,
+  Button, Spinner, TooltipProvider, Input,
 } from '../../ui'
+import { toast } from '../../ui/confirm'
 import {
   TABS, DEFAULT_PAYMENT_TERMS, DEFAULT_PREFIXES, DEFAULT_NUMBERING,
-  searchSettings,
+  searchSettings, groupTabs, saveModelForTab, SAVE_MODEL_HINTS,
 } from './peConstants'
+import SettingsSidebar from './SettingsSidebar'
 import OnboardingSection from './OnboardingSection'
 import SocieteSection from './SocieteSection'
 import LeadsSection from './LeadsSection'
@@ -47,17 +52,21 @@ import AvanceSection from './AvanceSection'
 import SecuriteCompteSection from './SecuriteCompteSection'
 import TraductionsSection from './TraductionsSection'
 import ConfidentialiteSection from './ConfidentialiteSection'
+import ApplicationsSection from './ApplicationsSection'
 
 // N96 — onglet « Sécurité du compte » (double authentification 2FA, opt-in).
 // Ajouté localement (sans modifier la liste partagée peConstants.TABS) pour
 // rester dans le périmètre de ce fichier.
-const SECURITE_COMPTE_TAB = { key: 'securite_compte', label: 'Sécurité du compte' }
+const SECURITE_COMPTE_TAB = { key: 'securite_compte', label: 'Sécurité du compte', group: 'equipe' }
 // N94 — onglet « Traductions » (surcharges d'interface par langue, sans code).
 // Ajouté localement, même logique que l'onglet N96 (hors peConstants.TABS).
-const TRADUCTIONS_TAB = { key: 'traductions', label: 'Traductions' }
+const TRADUCTIONS_TAB = { key: 'traductions', label: 'Traductions', group: 'avance' }
 // XPLT23 — onglet « Confidentialité » (registre CNDP + demandes de personnes
 // concernées). Ajouté localement, même logique que N96/N94.
-const CONFIDENTIALITE_TAB = { key: 'confidentialite', label: 'Confidentialité' }
+const CONFIDENTIALITE_TAB = { key: 'confidentialite', label: 'Confidentialité', group: 'equipe' }
+// ODX5 — onglet « Applications » (catalogue de modules ODX3, admin-gated).
+// Ajouté localement, même logique que N96/N94/XPLT23.
+const APPLICATIONS_TAB = { key: 'applications', label: 'Applications', group: 'avance' }
 
 // ── Conteneur de la page Paramètres (D1) ───────────────────────────────────────
 // Toute la logique (état du formulaire, chargements, handlers) vit ici, dans un
@@ -73,8 +82,7 @@ export default function ParametresEntreprise() {
   // éditables que par un directeur/admin. Le backend gate déjà l'écriture
   // (IsAdminOrResponsableTier) ; ce contrôle UI empêche un rôle non autorisé
   // de voir/modifier les champs sensibles.
-  const role = useSelector(s => s.auth.role)
-  const canManageSensitive = role === 'admin'
+  const canManageSensitive = useIsAdmin()
 
   // Onglet actif (D1). Société & identité par défaut.
   const [tab, setTab] = useState('societe')
@@ -82,8 +90,11 @@ export default function ParametresEntreprise() {
   const [search, setSearch] = useState('')
   const searchResults = searchSettings(search)
   // Liste d'onglets affichée = onglets partagés + N96 (2FA) + N94 (traductions)
-  // + XPLT23 (confidentialité).
-  const allTabs = [...TABS, SECURITE_COMPTE_TAB, TRADUCTIONS_TAB, CONFIDENTIALITE_TAB]
+  // + XPLT23 (confidentialité) + ODX5 (applications).
+  const allTabs = [...TABS, SECURITE_COMPTE_TAB, TRADUCTIONS_TAB, CONFIDENTIALITE_TAB, APPLICATIONS_TAB]
+  // VX35 — onglets rangés en familles pour la sidebar verticale (ordre =
+  // SETTINGS_GROUPS). groupTabs garantit qu'aucun onglet ne disparaît.
+  const tabGroups = groupTabs(allTabs)
   const tabLabel = (key) => (allTabs.find(t => t.key === key)?.label ?? key)
   const jumpToTab = (key) => { setTab(key); setSearch('') }
 
@@ -121,6 +132,10 @@ export default function ParametresEntreprise() {
     // XSAL11 — round-robin équilibré des leads entrants (OFF par défaut).
     round_robin_leads_actif: false,
     round_robin_plafond_leads_ouverts: 20,
+    // ZSTK13 — capacités stock (True = comportement actuel inchangé).
+    stock_lots_series_actif: true,
+    stock_colisage_actif: true,
+    stock_scan_actif: true,
   })
   const [saved, setSaved] = useState(false)
   const [assignables, setAssignables] = useState([])
@@ -202,7 +217,7 @@ export default function ParametresEntreprise() {
         visible_liste: false,
       })
       loadCfDefs(cfModule)
-    } catch (e) { alert(cfErr(e, 'Ajout impossible.')) }
+    } catch (e) { toast.error(cfErr(e, 'Ajout impossible.')) }
   }
   // L809/L811/L812 — ouvre/ferme l'éditeur inline d'un champ existant.
   const openCfEdit = (d) => {
@@ -227,14 +242,14 @@ export default function ParametresEntreprise() {
       })
       cancelCfEdit()
       loadCfDefs(cfModule)
-    } catch (e) { alert(cfErr(e, 'Modification impossible.')) }
+    } catch (e) { toast.error(cfErr(e, 'Modification impossible.')) }
   }
   // L810 — bascule actif/inactif sans perdre custom_data.
   const toggleCfActif = async (d) => {
     try {
       await customFieldsApi.saveDef(d.id, { actif: !d.actif })
       loadCfDefs(cfModule)
-    } catch (e) { alert(cfErr(e, 'Modification impossible.')) }
+    } catch (e) { toast.error(cfErr(e, 'Modification impossible.')) }
   }
   // L813 — réordonne le champ d'un cran (haut/bas) et persiste l'ordre.
   const moveCf = async (d, dir) => {
@@ -247,7 +262,7 @@ export default function ParametresEntreprise() {
     try {
       await customFieldsApi.reorder(ordered.map(x => x.id))
       loadCfDefs(cfModule)
-    } catch (e) { alert(cfErr(e, 'Réordonnancement impossible.')) }
+    } catch (e) { toast.error(cfErr(e, 'Réordonnancement impossible.')) }
   }
   const delCf = async (d) => {
     if (!window.confirm(`Supprimer le champ « ${d.libelle} » ?`)) return
@@ -298,7 +313,7 @@ export default function ParametresEntreprise() {
       await installationsApi.saveChecklistEtape(null, {
         cle: slugify(libelle), libelle, ordre: checklistEtapes.length })
       setNewEtape(''); loadChecklistEtapes()
-    } catch (e) { alert(e?.response?.data?.detail ?? 'Ajout impossible.') }
+    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Ajout impossible.') }
   }
   const renameEtape = async (et, libelle) => {
     // ERR102 — recharger pour refléter une normalisation serveur du libellé.
@@ -332,7 +347,7 @@ export default function ParametresEntreprise() {
   const delEtape = async (et) => {
     if (!window.confirm(`Supprimer l'étape « ${et.libelle} » ?`)) return
     try { await installationsApi.deleteChecklistEtape(et.id); loadChecklistEtapes() }
-    catch (e) { alert(e?.response?.data?.detail ?? 'Suppression impossible (étape protégée ?).') }
+    catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible (étape protégée ?).') }
   }
 
   const addCanal = async () => {
@@ -341,7 +356,7 @@ export default function ParametresEntreprise() {
     try {
       await crmApi.saveCanal(null, { cle: slugify(libelle), libelle })
       setNewCanal(''); loadCanaux()
-    } catch (e) { alert(e?.response?.data?.detail ?? 'Ajout impossible.') }
+    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Ajout impossible.') }
   }
   const renameCanal = async (c, libelle) => {
     // ERR102 — recharger pour refléter une normalisation serveur du libellé.
@@ -350,12 +365,12 @@ export default function ParametresEntreprise() {
   const delCanal = async (c) => {
     if (!window.confirm(`Supprimer le canal « ${c.libelle} » ?`)) return
     try { await crmApi.deleteCanal(c.id); loadCanaux() }
-    catch (e) { alert(e?.response?.data?.detail ?? 'Suppression impossible.') }
+    catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible.') }
   }
   // L778 — archiver/réactiver un canal (préserve l'historique des leads).
   const archiveCanal = async (c) => {
     try { await crmApi.saveCanal(c.id, { archived: !c.archived }); loadCanaux() }
-    catch (e) { alert(e?.response?.data?.detail ?? 'Action impossible.') }
+    catch (e) { toast.error(e?.response?.data?.detail ?? 'Action impossible.') }
   }
   const addType = async () => {
     const libelle = newType.trim()
@@ -363,7 +378,7 @@ export default function ParametresEntreprise() {
     try {
       await installationsApi.saveTypeIntervention(null, { cle: slugify(libelle), libelle })
       setNewType(''); loadTypesItv()
-    } catch (e) { alert(e?.response?.data?.detail ?? 'Ajout impossible.') }
+    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Ajout impossible.') }
   }
   const renameType = async (t, libelle) => {
     // ERR102 — recharger pour refléter une normalisation serveur du libellé.
@@ -372,18 +387,18 @@ export default function ParametresEntreprise() {
   const delType = async (t) => {
     if (!window.confirm(`Supprimer le type « ${t.libelle} » ?`)) return
     try { await installationsApi.deleteTypeIntervention(t.id); loadTypesItv() }
-    catch (e) { alert(e?.response?.data?.detail ?? 'Suppression impossible.') }
+    catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible.') }
   }
   const addMarque = async () => {
     const nom = newMarque.trim()
     if (!nom) return
     try { await stockApi.saveMarque(null, { nom }); setNewMarque(''); loadMarques() }
-    catch (e) { alert(e?.response?.data?.detail ?? 'Ajout impossible.') }
+    catch (e) { toast.error(e?.response?.data?.detail ?? 'Ajout impossible.') }
   }
   const delMarque = async (m) => {
     if (!window.confirm(`Supprimer la marque « ${m.nom} » ?`)) return
     try { await stockApi.deleteMarque(m.id); loadMarques() }
-    catch (e) { alert(e?.response?.data?.detail ?? 'Suppression impossible.') }
+    catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible.') }
   }
 
   const setMsgField = (cle, key, val) =>
@@ -396,7 +411,7 @@ export default function ParametresEntreprise() {
       setMsgSavedCle(m.cle)
       setTimeout(() => setMsgSavedCle(null), 2500)
     } catch (e) {
-      alert(e?.response?.data?.detail ?? 'Enregistrement impossible.')
+      toast.error(e?.response?.data?.detail ?? 'Enregistrement impossible.')
     }
   }
   // L776 — réinitialiser un modèle WhatsApp au texte par défaut (endpoint reset).
@@ -409,7 +424,7 @@ export default function ParametresEntreprise() {
       setMsgSavedCle(m.cle)
       setTimeout(() => setMsgSavedCle(null), 2500)
     } catch (e) {
-      alert(e?.response?.data?.detail ?? 'Réinitialisation impossible.')
+      toast.error(e?.response?.data?.detail ?? 'Réinitialisation impossible.')
     }
   }
 
@@ -432,12 +447,12 @@ export default function ParametresEntreprise() {
     // L780 — la suppression est bloquée (409) si l'étiquette est utilisée :
     // on remonte le message serveur (qui propose l'archivage).
     try { await crmApi.deleteTag(t.id); loadTags() }
-    catch (e) { alert(e?.response?.data?.detail ?? 'Suppression impossible.') }
+    catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible.') }
   }
   // L778 — archiver/réactiver une étiquette.
   const archiveTag = async (t) => {
     try { await crmApi.saveTag(t.id, { archived: !t.archived }); loadTags() }
-    catch (e) { alert(e?.response?.data?.detail ?? 'Action impossible.') }
+    catch (e) { toast.error(e?.response?.data?.detail ?? 'Action impossible.') }
   }
   const addMotif = async () => {
     const nom = newMotif.trim()
@@ -453,13 +468,13 @@ export default function ParametresEntreprise() {
     // L779 — bloqué (409) si le motif est utilisé : on remonte le message
     // serveur (qui propose l'archivage).
     try { await crmApi.deleteMotifPerte(m.id); loadMotifs() }
-    catch (e) { alert(e?.response?.data?.detail ?? 'Suppression impossible.') }
+    catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible.') }
   }
   // L778 — archiver/réactiver un motif de perte.
   const archiveMotif = async (m) => {
     try {
       await crmApi.saveMotifPerte(m.id, { archived: !m.archived }); loadMotifs()
-    } catch (e) { alert(e?.response?.data?.detail ?? 'Action impossible.') }
+    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Action impossible.') }
   }
 
   const setNiveau = (id, key, val) =>
@@ -496,23 +511,31 @@ export default function ParametresEntreprise() {
         nom: `Niveau ${ordre + 1}`, delai_jours: 7, ordre, message: '',
       })
       loadNiveaux()
-    } catch (e) { alert(e?.response?.data?.detail ?? 'Ajout impossible.') }
+    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Ajout impossible.') }
   }
   const delNiveau = async (n) => {
     if (!window.confirm(`Supprimer le niveau « ${n.nom} » ?`)) return
     try { await ventesApi.deleteNiveauRelance(n.id); loadNiveaux() }
-    catch (e) { alert(e?.response?.data?.detail ?? 'Suppression impossible.') }
+    catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible.') }
   }
   // L768 — crée les niveaux par défaut (J+7 / J+15 / J+30) quand il n'y en a pas.
   const seedNiveaux = async () => {
     try { await ventesApi.seedNiveauxRelance(); loadNiveaux() }
-    catch (e) { alert(e?.response?.data?.detail ?? 'Création impossible.') }
+    catch (e) { toast.error(e?.response?.data?.detail ?? 'Création impossible.') }
   }
+
+  // VX169 — garde de navigation IN-APP : snapshot pris à chaque resynchro
+  // depuis `profile` (montage ET après un enregistrement réussi qui refetch
+  // le profil — la garde s'éteint alors naturellement, saisie sauvegardée).
+  const [initialSnapshot, setInitialSnapshot] = useState(null)
+  const dirty = initialSnapshot != null
+    && isDirty(initialSnapshot, form)
+  useNavigationGuard(dirty)
 
   useEffect(() => {
     // Synchronisation du formulaire avec le profil chargé depuis le store
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (profile) setForm({
+    if (!profile) return
+    const next = {
       nom:               profile.nom               ?? '',
       adresse:           profile.adresse           ?? '',
       email:             profile.email             ?? '',
@@ -568,7 +591,15 @@ export default function ParametresEntreprise() {
       password_expiry_days: profile.password_expiry_days ?? 0,
       // FG26 — rétention RGPD du journal d'audit.
       audit_retention_days: profile.audit_retention_days ?? 0,
-    })
+      // ZSTK13 — capacités stock (True = comportement actuel inchangé).
+      stock_lots_series_actif: profile.stock_lots_series_actif ?? true,
+      stock_colisage_actif: profile.stock_colisage_actif ?? true,
+      stock_scan_actif: profile.stock_scan_actif ?? true,
+    }
+    /* eslint-disable react-hooks/set-state-in-effect -- resynchro depuis `profile` */
+    setInitialSnapshot(next)
+    setForm(next)
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [profile])
 
   useEffect(() => {
@@ -680,6 +711,11 @@ export default function ParametresEntreprise() {
       round_robin_leads_actif: !!form.round_robin_leads_actif,
       round_robin_plafond_leads_ouverts: Math.max(
         1, Math.trunc(Number(form.round_robin_plafond_leads_ouverts) || 20)),
+      // ZSTK13 — capacités stock (booléens simples, jamais désactivées
+      // silencieusement).
+      stock_lots_series_actif: form.stock_lots_series_actif !== false,
+      stock_colisage_actif: form.stock_colisage_actif !== false,
+      stock_scan_actif: form.stock_scan_actif !== false,
     }
     // WR12 — réglages SENSIBLES : ne les transmettre que si l'utilisateur est
     // autorisé (admin). Un rôle non autorisé ne les voit pas et ne peut donc
@@ -749,6 +785,43 @@ export default function ParametresEntreprise() {
     setPT, setPrefix, setNumbering, numberingPreview,
   }
 
+  // ── L790 — recherche de réglage (saute à l'onglet correspondant). Rendue en
+  //    tête de la sidebar (VX35) ; sa logique — searchSettings, jumpToTab — est
+  //    inchangée. ──
+  const searchBlock = (
+    <div className="relative">
+      <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+      <Input
+        type="search" value={search} onChange={e => setSearch(e.target.value)}
+        placeholder="Rechercher un réglage (ex. « TVA », « ICE », « relance »)…"
+        aria-label="Rechercher un réglage"
+        className="pl-9 pr-9"
+      />
+      {search && (
+        <button type="button" onClick={() => setSearch('')}
+                aria-label="Effacer la recherche"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+          <X className="size-4" aria-hidden="true" />
+        </button>
+      )}
+      {search.trim().length >= 2 && (
+        <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-lg border border-border bg-popover shadow-ui-md">
+          {searchResults.length === 0 ? (
+            <p className="px-3 py-2.5 text-xs text-muted-foreground">Aucun réglage correspondant.</p>
+          ) : (
+            searchResults.slice(0, 8).map(({ tab: rt, hits }) => (
+              <button key={rt} type="button" onClick={() => jumpToTab(rt)}
+                      className="flex w-full flex-col items-start gap-0.5 border-b border-border px-3 py-2 text-left last:border-0 hover:bg-accent">
+                <span className="text-sm font-medium text-foreground">{tabLabel(rt)}</span>
+                <span className="text-[11px] text-muted-foreground">{hits.slice(0, 4).join(' · ')}</span>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  )
+
   return (
     <TooltipProvider delayDuration={200}>
       <div className="mx-auto max-w-[1100px] p-6">
@@ -763,49 +836,17 @@ export default function ParametresEntreprise() {
           </p>
         </div>
 
-        {/* ── L790 — recherche de réglage (saute à l'onglet correspondant) ── */}
-        <div className="relative mb-3">
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-          <Input
-            type="search" value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Rechercher un réglage (ex. « TVA », « ICE », « relance »)…"
-            aria-label="Rechercher un réglage"
-            className="pl-9 pr-9"
-          />
-          {search && (
-            <button type="button" onClick={() => setSearch('')}
-                    aria-label="Effacer la recherche"
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-              <X className="size-4" aria-hidden="true" />
-            </button>
-          )}
-          {search.trim().length >= 2 && (
-            <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-lg border border-border bg-popover shadow-ui-md">
-              {searchResults.length === 0 ? (
-                <p className="px-3 py-2.5 text-xs text-muted-foreground">Aucun réglage correspondant.</p>
-              ) : (
-                searchResults.slice(0, 8).map(({ tab: rt, hits }) => (
-                  <button key={rt} type="button" onClick={() => jumpToTab(rt)}
-                          className="flex w-full flex-col items-start gap-0.5 border-b border-border px-3 py-2 text-left last:border-0 hover:bg-accent">
-                    <span className="text-sm font-medium text-foreground">{tabLabel(rt)}</span>
-                    <span className="text-[11px] text-muted-foreground">{hits.slice(0, 4).join(' · ')}</span>
-                  </button>
-                ))
-              )}
-            </div>
-          )}
-        </div>
+        {/* ── VX35 — sidebar verticale groupée + colonne de contenu ── */}
+        <div className="flex flex-col gap-6 md:flex-row md:items-start">
 
-        {/* ── Onglets (primitif Tabs, défilable sur mobile) ── */}
-        <Tabs value={tab} onValueChange={setTab} className="mb-5">
-          <TabsList className="pe-tabs-scroll flex w-full justify-start overflow-x-auto">
-            {allTabs.map(t => (
-              <TabsTrigger key={t.key} value={t.key} className="shrink-0">
-                {t.label}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
+          <SettingsSidebar
+            groups={tabGroups}
+            activeTab={tab}
+            onSelect={setTab}
+            searchSlot={searchBlock}
+          />
+
+          <div className="min-w-0 flex-1">
 
         {/* ── Bandeaux de feedback ── */}
         {saved && (
@@ -820,6 +861,18 @@ export default function ParametresEntreprise() {
             <span className="text-sm text-destructive">{typeof error === 'string' ? error : JSON.stringify(error)}</span>
           </div>
         )}
+
+        {/* ── VX151 — modèle de sauvegarde annoncé AVANT édition : chaque onglet
+              dit s'il s'enregistre via le bouton partagé du bas, via ses
+              propres boutons de section, ou s'il n'a rien à enregistrer. ── */}
+        <p
+          className="mb-4 flex items-center gap-2 text-[13px] text-muted-foreground"
+          data-testid="settings-save-hint"
+          data-save-model={saveModelForTab(tab)}
+        >
+          <Info className="size-3.5 shrink-0" aria-hidden="true" />
+          {SAVE_MODEL_HINTS[saveModelForTab(tab)]}
+        </p>
 
         {/* ── Formulaire (un seul <form> couvre tous les onglets ; les champs
               masqués restent dans l'état React, donc Enregistrer sauve tout).
@@ -869,10 +922,15 @@ export default function ParametresEntreprise() {
           {tab === 'traductions' && <TraductionsSection />}
           {/* XPLT23 — registre CNDP + demandes de personnes concernées (autonome). */}
           {tab === 'confidentialite' && <ConfidentialiteSection />}
+          {/* ODX5 — catalogue de modules (admin-gated, autonome). */}
+          {tab === 'applications' && <ApplicationsSection />}
 
           {/* Bouton d'enregistrement du profil (onglets porteurs de champs) */}
           {showSave && saveButton}
         </form>
+
+          </div>
+        </div>
       </div>
     </TooltipProvider>
   )

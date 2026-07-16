@@ -3,23 +3,56 @@ from .models import (
     Appointment, Client, ConcurrentPerte, EquipeCommerciale,
     EtapePlanActivite, Lead, LeadActivity, MessageTemplate,
     ObjectifCommercial, Parrainage, PlanActivite, PointContact, SiteProfile,
+    WebsiteLeadPayload,
 )
 from .devis_auto import champs_manquants, message_manquants
-from .scoring import compute_score, score_label
+from .scoring import compute_score, score_label, score_reasons
+
+# ODX13 — ré-export TRANSITOIRE des serializers partenaires/territoires
+# (FG234–237) qui vivent encore dans ``apps.compta.serializers``. Ce module
+# expose ``apps.crm.serializers`` pour les ViewSets ré-exportés dans
+# ``apps/crm/views.py`` et les nouvelles routes ``/api/django/crm/…`` ;
+# ODX22 re-logera leur corps ici.
+from apps.compta.serializers import (  # noqa: F401,E402
+    CommissionPartenaireSerializer,
+    PartenaireSerializer,
+    SoumissionLeadPartenaireSerializer,
+    TerritoireCommercialSerializer,
+)
 
 
 class LeadActivitySerializer(serializers.ModelSerializer):
     user_nom = serializers.SerializerMethodField()
+    # VX111 — pièce jointe optionnelle sur une note (photo prise depuis
+    # mobile). Même forme d'URL que AttachmentSerializer.get_url (proxy
+    # Django même origine, jamais MinIO direct) — pas de sérialiseur imbriqué
+    # pour rester compatible avec la structure plate consommée par
+    # ChatterTimeline côté frontend.
+    attachment_url = serializers.SerializerMethodField()
+    attachment_filename = serializers.SerializerMethodField()
+    attachment_mime = serializers.SerializerMethodField()
 
     class Meta:
         model = LeadActivity
         fields = [
             'id', 'kind', 'field', 'field_label', 'old_value', 'new_value',
             'body', 'outcome', 'bulk', 'user_nom', 'created_at',
+            'attachment_url', 'attachment_filename', 'attachment_mime',
         ]
 
     def get_user_nom(self, obj):
         return getattr(obj.user, 'username', None)
+
+    def get_attachment_url(self, obj):
+        if not obj.attachment_id:
+            return None
+        return f'/api/django/records/attachments/{obj.attachment_id}/download/'
+
+    def get_attachment_filename(self, obj):
+        return getattr(obj.attachment, 'filename', None)
+
+    def get_attachment_mime(self, obj):
+        return getattr(obj.attachment, 'mime', None)
 
 
 class _CurrentCompanyDefault:
@@ -156,8 +189,20 @@ class LeadSerializer(serializers.ModelSerializer):
     # FG27 — Score de qualité du lead (lecture seule, calculé à la volée).
     score = serializers.SerializerMethodField()
     score_label = serializers.SerializerMethodField()
+    # VX221 — décomposition « pourquoi ce score » (facteurs + points), pour le
+    # tooltip du badge. Pure exposition des composantes déjà calculées.
+    score_reasons = serializers.SerializerMethodField()
     # FG29 — Âge dans l'étape courante (jours depuis le dernier changement d'étape).
     stage_since_days = serializers.SerializerMethodField()
+    # VX98 — auteur de la dernière modification (puce de fraîcheur). Lecture seule.
+    updated_by_nom = serializers.CharField(
+        source='updated_by.username', read_only=True, default=None)
+    # VX243(a) — confiance au niveau du DOSSIER : « archivé par X le … ». Les
+    # champs archived_by/archived_at sont posés côté serveur (jamais rendus
+    # avant) — on expose ici le NOM de l'archiviste en lecture seule pour que
+    # la ligne archivée le montre. Silencieux si le lead n'est pas archivé.
+    archived_by_nom = serializers.CharField(
+        source='archived_by.username', read_only=True, default=None)
 
     @staticmethod
     def _canonical_phone(value):
@@ -239,6 +284,10 @@ class LeadSerializer(serializers.ModelSerializer):
 
     def get_score_label(self, obj):
         return score_label(compute_score(obj))
+
+    def get_score_reasons(self, obj):
+        # VX221 — liste [{facteur, label, points}] triée par points décroissants.
+        return score_reasons(obj)
 
     # FG29 — Âge dans l'étape courante
     def get_stage_since_days(self, obj):
@@ -344,6 +393,7 @@ class LeadSerializer(serializers.ModelSerializer):
             'company', 'external_system', 'external_id', 'client',
             'is_archived', 'archived_by', 'archived_at',
             'first_contacted_at',  # FG28 — posé server-side uniquement
+            'updated_by',  # VX98 — posé server-side (perform_update) uniquement
             # B3 — toiture 3D : pin/contour bruts + conso saisis par le client
             # (webhook site, posés server-side). Exposés en LECTURE SEULE sur la
             # fiche lead pour que la page de conception authentifiée réhydrate la
@@ -500,6 +550,23 @@ class CanalSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "La clé d'un canal protégé ne peut pas être modifiée.")
         return value
+
+
+class WebsiteLeadPayloadSerializer(serializers.ModelSerializer):
+    """QX16 — surface LECTURE SEULE des payloads bruts du site web, pour que
+    « jamais perdre un lead » (webhooks.py) soit vérifiable/actionnable, pas
+    juste une promesse en commentaire. Le rejeu s'effectue via l'action
+    ``replay`` du viewset (jamais depuis ce sérialiseur, jamais un champ
+    modifiable ici)."""
+    lead_nom = serializers.CharField(source='lead.nom', read_only=True, default=None)
+
+    class Meta:
+        model = WebsiteLeadPayload
+        fields = [
+            'id', 'company', 'payload', 'remote_addr', 'received_at',
+            'processed', 'error', 'lead', 'lead_nom',
+        ]
+        read_only_fields = fields
 
 
 class ParrainageSerializer(serializers.ModelSerializer):

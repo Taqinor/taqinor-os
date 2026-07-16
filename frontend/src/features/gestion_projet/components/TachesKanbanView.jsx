@@ -1,12 +1,23 @@
 import { useMemo, useState } from 'react'
 import {
-  DndContext, DragOverlay, PointerSensor, TouchSensor, useDraggable,
-  useDroppable, useSensor, useSensors,
+  DndContext, DragOverlay, KeyboardSensor, PointerSensor, TouchSensor,
+  useDraggable, useDroppable, useSensor, useSensors,
 } from '@dnd-kit/core'
 import { Badge } from '../../../ui'
+import {
+  buildKanbanAnnouncements,
+  kanbanScreenReaderInstructions,
+} from '../../kanban/kanbanA11y'
+import { usePrefersReducedMotion } from '../../../hooks/usePrefersReducedMotion'
 import { StatutTache } from '../constants'
 import ChronoButton from './ChronoWidget'
 import TacheChecklist from './TacheChecklist'
+
+// VX135 — dropAnimation dnd-kit par défaut désalignée des tokens de
+// mouvement de l'app ; alignée --motion-*/--ease-out (tokens.css). Sous
+// reduced-motion, quasi instantanée (dnd-kit exige une durée > 0).
+const DROP_ANIMATION = { duration: 180, easing: 'cubic-bezier(0.23, 1, 0.32, 1)' }
+const DROP_ANIMATION_REDUCED = { duration: 1, easing: 'linear' }
 
 /* XPRJ11 — Vue kanban des Tache par colonne de statut (a_faire/en_cours/
    bloque/termine — statuts PROPRES au module, jamais STAGES.py). Glisser-
@@ -119,9 +130,25 @@ export default function TachesKanbanView({ taches, onChangeStatut, busyTacheId }
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 8 } }),
+    // VX192 — sensor clavier natif (@dnd-kit/core), 0 dépendance.
+    useSensor(KeyboardSensor),
   )
   const columns = useMemo(() => groupTachesByStatut(taches), [taches])
   const [activeTache, setActiveTache] = useState(null)
+  // VX135 — dropAnimation (JS pur) échappe au garde global CSS reduced-motion.
+  const prefersReducedMotion = usePrefersReducedMotion()
+
+  // VX192 — annonces FR : id de tâche → libellé, id de colonne → nom de statut.
+  const announcements = useMemo(() => {
+    const colLabel = Object.fromEntries(COLONNES.map((c) => [c.key, c.label]))
+    const byId = new Map((taches ?? []).map((t) => [t.id, t]))
+    const labelFor = (id) => {
+      if (colLabel[id]) return colLabel[id]
+      const t = byId.get(id)
+      return t?.libelle ?? String(id)
+    }
+    return buildKanbanAnnouncements(labelFor)
+  }, [taches])
 
   const handleDragStart = ({ active }) => setActiveTache(active.data.current?.tache ?? null)
 
@@ -137,6 +164,10 @@ export default function TachesKanbanView({ taches, onChangeStatut, busyTacheId }
   return (
     <DndContext
       sensors={sensors}
+      accessibility={{
+        announcements,
+        screenReaderInstructions: kanbanScreenReaderInstructions,
+      }}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
@@ -155,7 +186,7 @@ export default function TachesKanbanView({ taches, onChangeStatut, busyTacheId }
           </StatutColumn>
         ))}
       </div>
-      <DragOverlay>
+      <DragOverlay dropAnimation={prefersReducedMotion ? DROP_ANIMATION_REDUCED : DROP_ANIMATION}>
         {activeTache ? <TacheCard tache={activeTache} /> : null}
       </DragOverlay>
     </DndContext>

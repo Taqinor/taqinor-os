@@ -19,6 +19,9 @@ import logging
 from django.conf import settings
 from django.db import models, transaction
 
+from core.crypto_fields import EncryptedTextField
+from core.models import TenantModel
+
 logger = logging.getLogger(__name__)
 
 
@@ -30,6 +33,16 @@ class EventType(models.TextChoices):
     DEVIS_ACCEPTED = 'devis_accepted', 'Devis accepté'
     # QJ2 — première ouverture du lien de proposition par le client.
     DEVIS_OPENED = 'devis_opened', 'Proposition ouverte par le client'
+    # QX36 — le client RÉPOND par email à une proposition/facture (réponse
+    # rattachée au devis via sa référence) : le vendeur est notifié.
+    DEVIS_REPLY = 'devis_reply', 'Réponse email du client sur un devis'
+    # QX13 — une relance de devis (cadence j+2/j+5/j+10) est DUE : notification
+    # in-app au vendeur avec brouillon wa.me + lien proposition prêts.
+    DEVIS_NUDGE_DUE = 'devis_nudge_due', 'Relance de devis à faire'
+    # QX31be — un lead CHAUD (score élevé) dont la notif d'arrivée reste NON LUE
+    # après N minutes : escalade speed-to-lead (21× de qualification si contact
+    # < 5 min). Notifie les managers en plus du destinataire initial.
+    HOT_LEAD_UNREAD = 'hot_lead_unread', 'Lead chaud non contacté (escalade)'
     # QJ27 — le client demande à être contacté (depuis la proposition publique).
     CLIENT_CONTACT_REQUEST = (
         'client_contact_request', 'Client souhaite être contacté')
@@ -116,6 +129,75 @@ class EventType(models.TextChoices):
     # YEVNT12 — un incident QHSE CRITIQUE est déclaré (au-delà de la note
     # chatter existante QHSE32) : notifie les responsables QHSE.
     INCIDENT_CRITICAL = 'incident_critical', 'Incident QHSE critique'
+    # XMKT35 — un post réseau social planifié arrive à échéance SANS jeton
+    # Meta Graph configuré : rappel manuel (texte prêt à coller) à l'auteur.
+    POST_SOCIAL_RAPPEL = 'post_social_rappel', 'Post social à publier (rappel)'
+    # YSERV11 — réponse NPS promoteur (9-10) : proposer le parrainage au
+    # moment de l'enchantement (notification au commercial du client).
+    NPS_PROMOTEUR = 'nps_promoteur', 'Client promoteur — proposer le parrainage'
+    # ARC36 — une facture est intégralement réglée (résiduel→0, bus
+    # ``facture_payee``) : notifie le vendeur (créateur de la facture).
+    FACTURE_PAYEE = 'facture_payee', 'Facture intégralement réglée'
+    # ARC36 — un bon de commande est créé depuis un devis accepté (bus
+    # ``bon_commande_cree``) : notifie le magasinier/managers (routable par
+    # ``NotificationRoutingRule`` vers l'utilisateur entrepôt).
+    BON_COMMANDE_CREE = 'bon_commande_cree', 'Bon de commande créé'
+    # ARC35 — consomme le seam ``contrat_signe`` (bus ``core.events``) :
+    # notifie le créateur du contrat (repli managers) qu'un contrat vient
+    # d'être intégralement signé.
+    CONTRAT_SIGNE = 'contrat_signe', 'Contrat signé'
+    # ARC37 — sav devient émetteur du bus (``core.events.ticket_resolu``) :
+    # notifie le technicien assigné (repli managers) qu'un ticket est résolu.
+    SAV_TICKET_RESOLU = 'sav_ticket_resolu', 'Ticket SAV résolu'
+    # ARC37 — sav devient émetteur du bus
+    # (``core.events.equipement_remplace``) : notifie les managers qu'un
+    # équipement du parc a été remplacé suite à un retrait de pièce.
+    SAV_EQUIPEMENT_REMPLACE = (
+        'sav_equipement_remplace', 'Équipement SAV remplacé')
+    # ARC37 — gestion_projet devient émetteur du bus
+    # (``core.events.projet_status_change``) : notifie le responsable du
+    # projet d'un changement de statut.
+    PROJET_STATUT_CHANGE = 'projet_statut_change', 'Statut de projet modifié'
+    # ARC39 — couverture notifications : le rapport O&M périodique
+    # (``monitoring/report.py``) est un envoi CLIENT (PDF joint, reste un
+    # ``EmailMessage`` direct — exception documentée comme
+    # ``ventes/email_service.py``/``installations/rfq_service.py``) ; cet
+    # événement notifie EN INTERNE les responsables qu'un rapport vient
+    # d'être envoyé, pour que l'équipe O&M ait enfin une trace côté
+    # notifications (jusqu'ici totalement invisible en interne).
+    MONITORING_RAPPORT = 'monitoring_rapport', 'Rapport O&M envoyé au client'
+    # ARC39 — ARC25 émettait déjà ``notify_many(..., 'paie_rib_divergence',
+    # ...)`` sans que ce type soit enregistré (avertissement + notification
+    # in-app jamais persistée). Enregistrement de l'événement existant, aucun
+    # changement de comportement de l'appelant.
+    PAIE_RIB_DIVERGENCE = (
+        'paie_rib_divergence', 'Divergence RIB paie ↔ RH')
+    # ARC39 — un run de paie (``PeriodePaie``) devient PRÊT (statut
+    # ``validee`` : tous ses bulletins sont validés) : notifie les
+    # gestionnaires paie que le run peut passer à la génération de l'ordre de
+    # virement / la clôture.
+    PAIE_RUN_PRET = 'paie_run_pret', 'Run de paie prêt (validé)'
+    # VX213 — handoffs AVAL (exécution) longtemps muets. (a) un chantier est
+    # créé depuis un devis accepté et assigné à un technicien ; (b) un chantier
+    # est réassigné à un NOUVEAU technicien : dans les deux cas l'installateur
+    # est notifié (le plus gros transfert de l'entreprise n'est plus silencieux).
+    CHANTIER_ASSIGNE = 'chantier_assigne', 'Nouveau chantier assigné'
+    # VX213 — le bord RETOUR d'une demande d'achat : à l'approbation OU au refus,
+    # le DEMANDEUR (created_by) est notifié de la décision (motif si refus).
+    DA_DECIDEE = 'da_decidee', "Demande d'achat décidée"
+    # VX213 — SLA : une demande d'achat reste SOUMISE au-delà du seuil sans
+    # décision → relance des approbateurs (miroir de sav_ticket_breaching).
+    DA_SOUMISE_STALE = 'da_soumise_stale', "Demande d'achat en attente (SLA)"
+    # VX210(a) — un item snoozé (``records.Activity`` VX85, ou une approbation
+    # VX210(b) via ``SnoozedItem``) revient dans la file : notification
+    # LÉGÈRE au propriétaire, jamais une nouvelle demande d'action.
+    SNOOZE_REVEIL = 'snooze_reveil', '⏰ De retour'
+    # NTSEC12/13/30 — sécurité. ``SECURITY_ALERT`` : anomalie de connexion
+    # (voyage impossible, appareil inconnu) notifiée au Directeur.
+    # ``SECURITY_CHANGE`` : changement d'un facteur de sécurité (mot de passe,
+    # MFA, passkey…) notifié à l'utilisateur concerné — non désactivable.
+    SECURITY_ALERT = 'security_alert', 'Alerte de sécurité'
+    SECURITY_CHANGE = 'security_change', 'Changement de sécurité'
 
 
 class Channel(models.TextChoices):
@@ -125,6 +207,20 @@ class Channel(models.TextChoices):
     WHATSAPP = 'whatsapp', 'WhatsApp'
     EMAIL = 'email', 'Email'
     SMS = 'sms', 'SMS'
+
+
+class NotificationReason(models.TextChoices):
+    """VX212(a) — raison COURTE, fermée, de « pourquoi je reçois ça ».
+
+    `resolve_recipients` (services.py) applique des règles invisibles — des
+    notifs « pourquoi moi ? » qu'on ne pouvait couper qu'en fouillant la
+    grille des 42 événements. Un sous-ensemble REPRÉSENTATIF des sites
+    d'émission pose désormais cette raison (jamais une exception si non
+    posée — vide = comportement historique, raison inconnue/non classée)."""
+    ASSIGNE = 'assigne_a_vous', 'Assigné à vous'
+    MANAGER = 'manager', 'Vous êtes manager/responsable'
+    ROUTING_RULE = 'regle_de_routage', 'Règle de routage configurée'
+    FOLLOWING = 'vous_suivez', 'Vous suivez cet enregistrement'
 
 
 class Notification(models.Model):
@@ -146,9 +242,19 @@ class Notification(models.Model):
     body = models.TextField(blank=True, default='')
     # Lien interne (route front) vers l'enregistrement lié — ex. /crm/leads?lead=4.
     link = models.CharField(max_length=512, blank=True, default='')
+    # VX212(a) — « pourquoi je reçois ça » : posé au site d'émission (best-
+    # effort, optionnel). Vide = raison non classée (comportement historique).
+    reason = models.CharField(
+        max_length=20, choices=NotificationReason.choices, blank=True, default='')
     read = models.BooleanField(default=False)
     read_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    # VX209(c) — une notification NON LUE de plus de 60 j est archivée (jamais
+    # supprimée — l'historique reste consultable) par la purge périodique
+    # `purge_notifications_anciennes` ; les LUES de plus de 60 j sont
+    # supprimées. Exclue par défaut de `list()` (borné 90 j) — comportement
+    # historique inchangé pour tout le monde tant que rien n'a 60 j.
+    archived = models.BooleanField(default=False)
 
     class Meta:
         verbose_name = 'Notification'
@@ -309,7 +415,7 @@ class VapidKeyPair(models.Model):
     accepté tel quel par `pywebpush.webpush(vapid_private_key=...)`."""
 
     public_key = models.TextField(default='')
-    private_key = models.TextField(default='')
+    private_key = EncryptedTextField(default='')
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -468,7 +574,7 @@ class Holiday(models.Model):
 # QJ23 — WhatsApp BSP scaffold (flag-gated, défaut manuel wa.me)
 # =============================================================================
 
-class WhatsAppTemplate(models.Model):
+class WhatsAppTemplate(TenantModel):
     """Registre des gabarits BSP WhatsApp approuvés par Meta, par entreprise.
 
     ADDITIF : sans aucune ligne, le comportement actuel (wa.me manuel) est
@@ -478,8 +584,15 @@ class WhatsAppTemplate(models.Model):
 
     MULTI-TENANT : `company` est forcé côté serveur, jamais accepté du corps.
     Ne jamais exposer prix_achat / marge dans un message.
+
+    ARC1 — pilote de conversion vers ``core.models.TenantModel`` : la FK
+    ``company`` + les timestamps ``created_at``/``updated_at`` viennent désormais
+    du socle. Le champ ``company`` est REDÉCLARÉ ci-dessous à l'IDENTIQUE pour
+    préserver l'accesseur inverse historique (``company.whatsapp_bsp_templates``)
+    — jamais un renommage. Migration générée vide (champs résolus inchangés).
     """
 
+    # Redéclaré à l'identique (ARC1) : conserve le related_name historique.
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
         related_name='whatsapp_bsp_templates')
@@ -518,8 +631,7 @@ class WhatsAppTemplate(models.Model):
     # (comportement actuel préservé).
     groupe = models.CharField(
         max_length=100, blank=True, default='', verbose_name='Groupe de variantes')
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    # ARC1 — created_at / updated_at hérités de TenantModel (à l'identique).
 
     class Meta:
         verbose_name = 'Gabarit WhatsApp BSP'
@@ -546,7 +658,7 @@ class WhatsAppTemplate(models.Model):
         return self.statut_approbation == self.StatutApprobation.APPROUVE
 
 
-class WhatsAppMessageLog(models.Model):
+class WhatsAppMessageLog(TenantModel):
     """Journal des messages WhatsApp (envois BSP + liens manuels wa.me).
 
     Chaque tentative d'envoi ou de construction de lien wa.me peut laisser
@@ -555,6 +667,11 @@ class WhatsAppMessageLog(models.Model):
 
     MULTI-TENANT : `company` forcé côté serveur.
     Ne jamais stocker prix_achat / marge dans `body`.
+
+    ARC1 — pilote de conversion vers ``core.models.TenantModel`` : FK ``company``
+    + ``created_at``/``updated_at`` fournis par le socle. ``company`` REDÉCLARÉ à
+    l'identique pour préserver l'accesseur ``company.whatsapp_message_logs``.
+    Migration générée vide (champs résolus inchangés).
     """
 
     class Status(models.TextChoices):
@@ -591,8 +708,14 @@ class WhatsAppMessageLog(models.Model):
     external_id = models.CharField(
         max_length=255, blank=True, default='', db_index=True,
         verbose_name='ID externe Meta')
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    # XMKT10 — id opaque de la ``marketing.Campagne`` d'origine (jamais un FK
+    # direct : ``notifications`` est un satellite, il n'importe pas
+    # ``apps.marketing``). NULL = message hors campagne (comportement
+    # historique : notifications transactionnelles / liens manuels).
+    campagne_id = models.PositiveIntegerField(
+        null=True, blank=True, db_index=True,
+        verbose_name='Id de la campagne (opaque)')
+    # ARC1 — created_at / updated_at hérités de TenantModel (à l'identique).
 
     class Meta:
         verbose_name = 'Journal WhatsApp'
@@ -607,6 +730,10 @@ class WhatsAppMessageLog(models.Model):
                 fields=['company', 'created_at'],
                 name='nwa_log_company_created_idx',
             ),
+            models.Index(
+                fields=['company', 'campagne_id'],
+                name='nwa_log_company_campagne_idx',
+            ),
         ]
 
     def __str__(self):
@@ -617,7 +744,7 @@ class WhatsAppMessageLog(models.Model):
 # XKB5 — Annonces internes ciblées et programmées.
 # =============================================================================
 
-class Annonce(models.Model):
+class Annonce(TenantModel):
     """Annonce interne, publiée à l'heure dite, ciblée département/rôle/tous.
 
     ADDITIF : nouvelle app, nouveau modèle. Une annonce non publiée n'a AUCUN
@@ -628,6 +755,11 @@ class Annonce(models.Model):
     aucun job de suppression n'est nécessaire.
 
     MULTI-TENANT : `company` posée côté serveur, jamais depuis le corps.
+
+    ARC1 — pilote de conversion vers ``core.models.TenantModel`` : FK ``company``
+    + ``created_at``/``updated_at`` fournis par le socle. ``company`` REDÉCLARÉ à
+    l'identique pour préserver l'accesseur ``company.annonces``. Migration
+    générée vide (champs résolus inchangés).
     """
 
     class Cible(models.TextChoices):
@@ -675,8 +807,7 @@ class Annonce(models.Model):
     lecture_obligatoire = models.BooleanField(
         default=False, verbose_name='Lecture obligatoire')
 
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    # ARC1 — created_at / updated_at hérités de TenantModel (à l'identique).
 
     class Meta:
         verbose_name = 'Annonce'
@@ -850,3 +981,52 @@ class ApprovalReminderState(models.Model):
 
     def __str__(self):
         return f'relance approbation {self.content_type_id}:{self.object_id} (palier {self.palier})'
+
+
+# =============================================================================
+# VX210(b) — snooze GÉNÉRIQUE d'un item d'approbation depuis « Ma file ».
+# =============================================================================
+
+class SnoozedItem(TenantModel):
+    """VX210(b) — snooze d'un item HÉTÉROGÈNE de l'agrégateur d'approbations
+    (``reporting.approbations``, 5 sources : automation/contrats/ged/
+    installations/workflow) depuis « Ma file ». `records.Activity` a déjà son
+    propre ``snoozed_until`` (VX85) — cette table couvre tout le RESTE (une
+    approbation/facture n'a pas de ligne ``Activity`` à elle).
+
+    Clé ``(source, object_id)`` — la MÊME convention textuelle déjà utilisée
+    par tout l'agrégateur (``{source, id}``, ``_decider_approbation_core``),
+    plutôt qu'un ``ContentType`` Django : évite d'importer les modèles des 5
+    sources ici (frontière cross-app, CLAUDE.md). Une ligne = masqué pour CE
+    ``user`` jusqu'à ``snoozed_until`` (jour inclus) ; supprimée au réveil
+    (sweep ``reveiller_snoozes``), jamais accumulée."""
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='snoozed_items')
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='snoozed_items')
+    source = models.CharField(max_length=20)
+    object_id = models.PositiveIntegerField()
+    snoozed_until = models.DateField()
+
+    class Meta:
+        verbose_name = 'Item reporté (snooze, VX210)'
+        verbose_name_plural = 'Items reportés (snooze, VX210)'
+        ordering = ['-created_at']
+        # PAS d'index secondaire explicite ici (table petite — une ligne par
+        # snooze actif — et les noms d'index Django hashés ne peuvent pas
+        # être reproduits à la main sans `makemigrations` ; voir la note
+        # « migration_index_name_divergence » : mieux vaut aucun index que
+        # divergence nom-hasard/migration). La contrainte d'unicité suffit
+        # comme index de recherche `(user, source, object_id)`.
+        constraints = [
+            models.UniqueConstraint(
+                fields=['user', 'source', 'object_id'],
+                name='notif_snoozed_item_user_source_obj_uniq',
+            ),
+        ]
+
+    def __str__(self):
+        return f'snooze {self.source}:{self.object_id} → {self.user_id}'

@@ -11,6 +11,8 @@ import { useParams } from 'react-router-dom'
 import { Star } from 'lucide-react'
 import api from '../../api/axios'
 import { Button, Textarea } from '../../ui'
+import { formatDateTime } from '../../lib/format'
+import NoIndex from '../../components/NoIndex'
 
 const RESOLU_STATUTS = ['resolu', 'cloture']
 
@@ -63,6 +65,7 @@ export default function TicketSuiviPage() {
 
   return (
     <div className="ui-root page" style={{ maxWidth: 480, margin: '40px auto' }}>
+      <NoIndex />
       <h2>Suivi de votre ticket</h2>
 
       {status === 'loading' && <p>Chargement…</p>}
@@ -77,7 +80,7 @@ export default function TicketSuiviPage() {
           {ticket.date_modification && (
             <p className="text-sm text-muted-foreground">
               Dernière mise à jour :{' '}
-              {new Date(ticket.date_modification).toLocaleString('fr-FR')}
+              {formatDateTime(ticket.date_modification)}
             </p>
           )}
 

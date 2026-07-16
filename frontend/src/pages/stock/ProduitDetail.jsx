@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
-import { PackageSearch } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { History, PackageSearch } from 'lucide-react'
 import stockApi from '../../api/stockApi'
+import { useHasPermission } from '../../hooks/useHasPermission'
 import {
-  Spinner, Badge,
+  Spinner, Badge, RelationCounters,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
   Button, Tabs, TabsList, TabsTrigger, TabsContent,
 } from '../../ui'
@@ -150,6 +152,10 @@ function OngletPrevisionnel({ produitId }) {
 
 // Export nommé : testé directement.
 export function ProduitDetail({ produit, onClose }) {
+  // VX98 — bouton « Historique » → Journal pré-filtré sur CE produit, visible
+  // uniquement avec la permission journal_activite_voir (AuditLog couvre tous
+  // les modèles ; le backend re-vérifie la permission).
+  const canViewJournal = useHasPermission('journal_activite_voir')
   return (
     <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
       <DialogContent className="max-h-[92vh] max-w-3xl overflow-y-auto">
@@ -162,6 +168,21 @@ export function ProduitDetail({ produit, onClose }) {
             Engagements d&apos;achat et rapport prévisionnel — donnée interne, lecture seule.
           </DialogDescription>
         </DialogHeader>
+
+        {/* VX159/VX250 — RelationCounters : réutilise `produit.bcf_sources_en_commande`
+            déjà chargé (prop, ZÉRO appel réseau nouveau). Pas de filtre par
+            produit sur BonsCommandeFournisseur.jsx (hors périmètre de cette
+            tâche) : lien vers la liste NUE, jamais un pré-filtre qui MENT.
+            `prix_achat` ne transite jamais par ce composant (label/count
+            purement quantitatifs). */}
+        <RelationCounters
+          className="mb-3"
+          counters={[{
+            label: 'bons de commande en cours',
+            count: produit.bcf_sources_en_commande?.length ?? 0,
+            to: '/stock/bons-commande-fournisseur',
+          }]}
+        />
 
         <Tabs defaultValue="en-commande">
           <TabsList>
@@ -177,6 +198,13 @@ export function ProduitDetail({ produit, onClose }) {
         </Tabs>
 
         <DialogFooter>
+          {canViewJournal && (
+            <Button asChild type="button" variant="outline">
+              <Link to={`/journal?model=produit&object_id=${produit.id}`}>
+                <History className="size-4" aria-hidden="true" /> Historique
+              </Link>
+            </Button>
+          )}
           <Button type="button" variant="ghost" onClick={onClose}>Fermer</Button>
         </DialogFooter>
       </DialogContent>

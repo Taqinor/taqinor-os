@@ -8,6 +8,18 @@
 #     de l'.env du serveur, jamais de ce fichier.
 #   - PUBLIC_HOSTNAME (.env serveur) = l'hôte public ; pour migrer vers
 #     api.taqinor.ma plus tard : changer cette seule variable et relancer.
+# SCA8 — limites de ressources conteneurs (mem_limit/cpus), ABSENTES avant
+# cette tâche (grep vérifié : zéro ligne mem_limit/cpus dans les deux
+# compose). Sans elles, un rendu WeasyPrint fou ou une requête non bornée
+# pouvait affamer Postgres/Redis sur la même boîte. Valeurs CONSERVATRICES,
+# posées sur une HYPOTHÈSE RAM TOTALE de 16 Go pour une boîte Hetzner
+# CX-line typique de ce profil de charge (ERP multi-tenant petite/moyenne
+# échelle) — NON MESURÉE (aucun accès SSH à la boîte réelle dans cette
+# tâche). Détail du calcul et justification par service : voir
+# docs/scale-runway.md section « SCA8 — Limites de ressources conteneurs ».
+# RECALIBRER après SCA7 (mesure live RAM réelle via `free -h` sur la boîte).
+# Purement réversible : suppression de ces clés = retour au comportement
+# actuel (aucune limite), zéro changement de code applicatif.
 services:
   caddy:
     image: caddy:2
@@ -26,28 +38,100 @@ services:
       - caddy_config:/config
     depends_on:
       - nginx
+    mem_limit: 256m
+    cpus: 0.5
 
   nginx:
     ports: !reset []
+    environment:
+      # VX200 — CSP par environnement : origine MinIO PUBLIQUE reelle (a poser
+      # dans le .env serveur des qu'un domaine/proxy MinIO existe) ; sans elle,
+      # repli sur le defaut dev http://localhost:9000 (comportement identique
+      # a avant VX200 : ni pire, juste une regle CSP inerte tant que MinIO
+      # n'est pas expose publiquement — voir docker-compose.prod.yml minio
+      # ports: !reset []).
+      MINIO_PUBLIC_ORIGIN: ${MINIO_PUBLIC_ORIGIN:-http://localhost:9000}
+    mem_limit: 256m
+    cpus: 0.5
 
   django_core:
     # --threads : les requêtes légères (listes, clics) ne font plus la queue
     #   derrière un rendu PDF WeasyPrint (3-4,5 s mesurés) qui occupe un worker.
     # --preload : imports lourds (matplotlib, WeasyPrint) chargés UNE fois
     #   dans le maître avant le fork — démarrage et mémoire partagés.
+    # SCA16 — GUNICORN_WORKERS/GUNICORN_THREADS (env, .env serveur)
+    # surchargeables sans éditer ce compose. Défauts = valeurs ACTUELLES
+    # (3/4) : comportement byte-identique sans .env posé. Formule de
+    # dimensionnement : docs/scale-runway.md section SCA16.
     command: >
       sh -c "python manage.py collectstatic --noinput
       && gunicorn erp_agentique.wsgi:application
-      --bind 0.0.0.0:8000 --workers 3 --threads 4 --preload --timeout 120"
+      --bind 0.0.0.0:8000 --workers ${GUNICORN_WORKERS:-3}
+      --threads ${GUNICORN_THREADS:-4} --preload --timeout 120"
+    # SCA8 — 3 workers × 4 threads = 12 connexions/requêtes concurrentes ;
+    # WeasyPrint + matplotlib chargés au --preload (mémoire partagée entre
+    # workers forkés, pas de fuite connue). Recalibrer si les valeurs sont
+    # surchargées à la hausse (SCA16 les rend surchargeables via env).
+    mem_limit: 3g
+    cpus: 2.0
+
+  fastapi_ia:
+    # SCA8 — 2 workers uvicorn + modèles OCR/LangChain en mémoire (cache
+    # HuggingFace monté en volume séparé, hors de cette limite).
+    mem_limit: 2g
+    cpus: 1.5
+
+  celery_worker:
+    # SCA8/SCA9 — queues default+scheduled (interactive isolée ci-dessous).
+    mem_limit: 2g
+    cpus: 1.5
+
+  celery_worker_interactive:
+    # SCA8/SCA9 — queue interactive isolée, charge plus légère et bornée
+    # (rendu PDF synchrone déclenché par un clic, jamais un batch).
+    mem_limit: 1g
+    cpus: 1.0
+
+  celery_beat:
+    # SCA8 — scheduler seul, aucun traitement de tâche : empreinte minimale.
+    mem_limit: 256m
+    cpus: 0.25
+
+  frontend:
+    # SCA8 — sert des fichiers statiques (nginx interne à l'image), aucune
+    # charge dynamique.
+    mem_limit: 256m
+    cpus: 0.25
 
   db:
     ports: !reset []
+    # SCA8 — PROTÉGÉ EN PRIORITÉ : Postgres ne doit jamais être OOM-killed
+    # par un voisin bruyant. shared_buffers (SCA11) vise ~25 % de cette
+    # limite conteneur (pas de la RAM machine totale).
+    mem_limit: 4g
+    cpus: 2.0
 
   minio:
     ports: !reset []
+    # SCA8 — charge dominée par l'I/O disque, pas le CPU/RAM.
+    mem_limit: 1g
+    cpus: 0.5
 
   redis:
     ports: !reset []
+    # SCA8 — PROTÉGÉ EN PRIORITÉ (broker Celery) : une éviction de tâches
+    # en attente est un incident. maxmemory Redis (SCA10) sera posé SOUS
+    # cette limite conteneur pour laisser de la marge overhead process.
+    mem_limit: 1g
+    cpus: 1.0
+
+  redis_cache:
+    # SCA10 — cache applicatif, séparé du broker. Pas de ports à reset (le
+    # compose de base ne l'expose déjà pas). Limite plus modeste que le
+    # broker : un cache est jetable, sa perte dégrade la latence, jamais la
+    # fiabilité des tâches en file.
+    mem_limit: 512m
+    cpus: 0.5
 
 volumes:
   caddy_data:

@@ -6,7 +6,7 @@ import { Wand2 } from 'lucide-react'
    index actif, clic/clavier remonte la sélection). Une commande
    `available: false` (action absente du registre de l'utilisateur) reste
    visible mais désactivée — jamais silencieusement masquée. */
-export default function SlashCommandPicker({ items, activeIndex, onPick, onClose }) {
+export default function SlashCommandPicker({ items, activeIndex, onPick, onClose, listId, getOptionId }) {
   useEffect(() => {
     const onDoc = (e) => {
       if (!e.target.closest?.('.chat-slash-pop')) onClose?.()
@@ -18,9 +18,9 @@ export default function SlashCommandPicker({ items, activeIndex, onPick, onClose
   if (!items?.length) return null
 
   return (
-    <ul className="chat-slash-pop chat-mention-pop" role="listbox" aria-label="Commandes">
+    <ul className="chat-slash-pop chat-mention-pop" role="listbox" aria-label="Commandes" id={listId}>
       {items.map((c, i) => (
-        <li key={c.cmd} role="option" aria-selected={i === activeIndex}>
+        <li key={c.cmd} id={getOptionId?.(i)} role="option" aria-selected={i === activeIndex}>
           <button
             type="button"
             className={`chat-mention-item${i === activeIndex ? ' active' : ''}`}

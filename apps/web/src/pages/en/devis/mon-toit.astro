@@ -440,6 +440,12 @@ const noscriptTelHref = `tel:${NAP.phone}`;
             <input id="mt-roof-age" name="roofAgeYears" type="number" step="1" min="0" inputmode="numeric"
               placeholder="e.g. 10" class={`${inputClass} mt-1`} />
           </label>
+          <!-- WJ112 — honesty: roof age informs the TECHNICAL SITE VISIT (roof/
+               framing condition), not the kWc/production figure shown here. -->
+          <p class="mt-1 text-xs text-lune-faint">
+            Used to prepare your technical site visit (roof condition) — does not change the
+            calculation above.
+          </p>
 
           <!-- Meter/bill photo — captured LOCALLY, never uploaded (no endpoint today). -->
           <div class="mt-4">
@@ -474,6 +480,12 @@ const noscriptTelHref = `tel:${NAP.phone}`;
             <input id="mt-battery-interest" name="batteryInterest" type="checkbox" class="mt-1 h-5 w-5 flex-none accent-brass-400" />
             <span>Interested in a storage battery</span>
           </label>
+          <!-- WJ112 — honesty: forwarded to your advisor for detailed pricing, does
+               NOT change the instant estimate above. -->
+          <p class="mt-1 text-xs text-lune-faint">
+            Forwarded to your advisor for detailed pricing — does not change the instant
+            estimate above.
+          </p>
         </details>
 
         <!-- Group 3/3 — for financing (3 fields). -->
@@ -642,6 +654,19 @@ const noscriptTelHref = `tel:${NAP.phone}`;
                extra zero) should never produce a confidently computed figure. -->
           <p id="mt-estimate-toolarge" hidden class="mt-4 text-sm text-alert-300">
             Estimate unavailable — please check the amount entered.
+          </p>
+
+          <!-- WJ111 — AGRICULTURAL mode: `estimateFromBill` is mode-blind (bill/pin/
+               city only), so a pumping farm would otherwise see a residential
+               kWc/savings figure computed from its bill -- a FALSE number that
+               ignores the real sizing driver (HMT + desired flow rate). Show a
+               dedicated QUALITATIVE card instead (same visual family as
+               mt-estimate-unavailable) rather than a fabricated number. Capture stays
+               fully functional -- the pump/mode fields still flow through the lead
+               exactly as before. -->
+          <p id="mt-estimate-agricole" hidden class="mt-4 text-sm text-alert-300">
+            Pumping is sized on your head (HMT) and flow rate, not on a bill — an advisor
+            will call you back with a calculation adapted to your borehole.
           </p>
 
           <!-- ===== WJ2 — "see the panels on your roof" (optional, lazy) =====
@@ -1206,6 +1231,10 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       syncProFieldsVisibility();
       markDataEntered();
       saveWizardState();
+      // WJ111 — if the estimate (step 3) was already computed, switching to/from
+      // agricultural must update the card IMMEDIATELY (numeric <-> qualitative
+      // card) without waiting for a fresh click on "See my estimate".
+      if (!$('mt-estimate-body')?.hidden || !$('mt-estimate-agricole')?.hidden) computeEstimate();
     });
   });
   // état initial : marquer le mode sélectionné (réhydraté ou résidentiel par défaut).
@@ -1245,6 +1274,9 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   syncRoofCards(); // initial state (rehydrated or empty).
 
   // ——— WJ31 : puce à bascule unique (ombrage) — un seul choix actif à la fois ———
+  // WJ112 — shading is no longer decorative: it now REALLY derates production/
+  // kWc (billEstimate.ts OMBRAGE_DERATE), so recompute live on click, exactly
+  // like mode or the bill.
   let ombrage = savedWizard?.ombrage || '';
   document.querySelectorAll<HTMLButtonElement>('.mt-ombrage').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -1258,6 +1290,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       });
       markDataEntered();
       saveWizardState();
+      computeEstimate();
     });
   });
   if (ombrage) {
@@ -1585,6 +1618,32 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     const cowEl = $('mt-cost-of-waiting');
     const climateBandEl = $('mt-climate-band');
     const saveBtn = $('mt-save-estimate');
+    const agricoleEl = $('mt-estimate-agricole');
+    // WJ111 — AGRICULTURAL mode: `estimateFromBill` is mode-blind (bill only),
+    // so showing its residential kWc/savings here would be a FALSE number for
+    // a pumping project (the real driver is HMT + flow rate, not a bill). Show
+    // the dedicated qualitative card instead and stop -- capture (lead + pump
+    // fields) keeps working normally through the form, untouched here.
+    if (mode === 'agricole') {
+      if (card) card.hidden = true;
+      if (note) note.hidden = true;
+      if (unavail) unavail.hidden = true;
+      if (toolarge) toolarge.hidden = true;
+      if (agricoleEl) agricoleEl.hidden = false;
+      setFieldError('mt-facture-hiver', 'mt-facture-hiver-err', null);
+      lastKwcLabel = '';
+      lastSavingsLabel = '';
+      lastKwc = null;
+      lastEstFull = null;
+      if (cowEl) cowEl.hidden = true;
+      if (climateBandEl) climateBandEl.hidden = true;
+      { const nearestElAg = $('mt-nearest-install'); if (nearestElAg) nearestElAg.hidden = true; }
+      if (saveBtn) saveBtn.hidden = true;
+      updatePanels3dVisibility();
+      announceEstimate('Pumping is sized on your head (HMT) and flow rate — an advisor will call you back with an adapted calculation.');
+      return;
+    }
+    if (agricoleEl) agricoleEl.hidden = true;
     // WJ65 — exact amount beyond the cap: dedicated honest message (never a
     // confidently computed figure on a likely-mistaken entry) + inline error
     // on the field itself, without ever BLOCKING the step (the visitor can
@@ -1611,7 +1670,12 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     if (toolarge) toolarge.hidden = true;
     const lat = capturePin?.lat;
     const city = (val('mt-city') || addressEl?.value || '').trim() || undefined;
-    const est = bill != null ? estimateFromBill(bill, { lat, city }) : null;
+    // WJ112 — the "refine my sizing" accordion now actually feeds the
+    // calculation: declared exact kWh overrides the MAD bill when present, and
+    // the chosen shading honestly derates production (see billEstimate.ts
+    // OMBRAGE_DERATE — documented, never a fabricated number).
+    const exactKwhMonthly = num('mt-bill-kwh') ?? undefined;
+    const est = bill != null ? estimateFromBill(bill, { lat, city, exactKwhMonthly, ombrage: ombrage || undefined }) : null;
     if (!est) {
       if (card) card.hidden = true;
       if (note) note.hidden = true;
@@ -1712,13 +1776,14 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     const payEl = $('mt-est-payback');
     if (payEl) payEl.innerHTML = '<span class="mt-est-skeleton mt-skeleton-shimmer"></span>';
   }
-  // WJ48 — branded anticipation (1.5-2.5 s, randomised within this window on
-  // each calculation): the real calculation (billEstimate) is synchronous and
-  // instant -- without this perceived delay the visitor never "sees" a
-  // calculation happen (Enpal/EnergySage's most-tested anticipation pattern).
-  // reduced-motion -> INSTANT (no artificial delay, no spinner to watch).
-  const THINKING_MIN_MS = 1500;
-  const THINKING_MAX_MS = 2500;
+  // WJ48/WJ112 — branded anticipation, CUT to <=500 ms (250-450 ms, randomised):
+  // the real calculation (billEstimate) is synchronous and instant -- a very
+  // short perceived delay still lets the visitor "see" a calculation happen
+  // (Enpal/EnergySage's pattern) without breaking WJ112's <=0.5 s first-number
+  // promise, including live recalcs (shading/exact kWh/mode).
+  // reduced-motion -> INSTANT (no artificial delay, no spinner to watch) -- unchanged.
+  const THINKING_MIN_MS = 250;
+  const THINKING_MAX_MS = 450;
   function thinkingDelayMs(): number {
     if (reducedMotion) return 0;
     return THINKING_MIN_MS + Math.random() * (THINKING_MAX_MS - THINKING_MIN_MS);
@@ -1738,6 +1803,8 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   // recalcule à la volée si l'utilisateur revient corriger sa facture
   $('mt-facture-hiver')?.addEventListener('input', computeEstimate);
   $('mt-bill')?.addEventListener('change', computeEstimate);
+  // WJ112 — exact kWh now feeds the calculation, so it must recompute live too.
+  $('mt-bill-kwh')?.addEventListener('input', computeEstimate);
 
   // ——— WJ2 : « voir les panneaux sur votre toit » — facultatif, lazy, dégrade
   // proprement (pas de WebGL / pas de contour tracé → le bloc reste masqué). ———
@@ -1899,6 +1966,25 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     return clientRef;
   }
 
+  // WJ116 — reprise fbclid + UTM depuis sessionStorage (capture first-touch du
+  // Layout, apps/web/src/layouts/Layout.astro ~l.206) : sans ceci, AUCUNE
+  // attribution UTM (parrainage compris — /parrainage) ne partait jamais sur ce
+  // funnel PRINCIPAL alors que le webhook / validateLead les acceptent déjà.
+  // Miroir exact de DiagnosticForm.astro ~l.279. Seules les clés PRÉSENTES sont
+  // jointes (convention WJ30/WJ31 « absent plutôt que vide ») : un visiteur sans
+  // paramètre de tracking envoie un corps byte-identique à avant.
+  const TRACK_KEYS = ['fbclid', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'] as const;
+  function readTrackingParams(): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const k of TRACK_KEYS) {
+      try {
+        const v = sessionStorage.getItem('tq_' + k);
+        if (v) out[k] = v;
+      } catch {}
+    }
+    return out;
+  }
+
   /** Construit le corps de lead + renvoie les erreurs client (miroir validateLead). */
   function buildBody(): { body: Record<string, unknown>; errors: Record<string, string> } {
     const eteDifferente = eteToggle?.checked === true;
@@ -1956,6 +2042,8 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       // field, never knowingly filled); rejected server-side if not empty.
       website_url: val('mt-hp'),
     };
+    // WJ116 — fbclid/UTM (parrainage inclus) : joints seulement s'ils existent.
+    Object.assign(body, readTrackingParams());
     // WJ4 — repère FACULTATIF : on le joint s'il existe, on ne BLOQUE jamais sans lui.
     if (capturePin) {
       body.roofPoint = capturePin;

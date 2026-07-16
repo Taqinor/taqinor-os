@@ -104,3 +104,92 @@ export function clampProgress(value) {
   if (!Number.isFinite(n)) return 0
   return Math.max(0, Math.min(100, n))
 }
+
+// ── VX77 — Compression photo côté client AVANT upload (capture terrain) ─────
+// `ChantierPhotos.jsx`, `InterventionFieldExecution.jsx` (PhotosPanel) et
+// `InterventionCapturePanels.jsx` (SerialsPanel) envoyaient la photo BRUTE
+// (4-8 Mo routiniers sur un appareil photo moderne) — minutes ou timeout sur
+// la 3G rurale. Helper pur `<canvas>` + `toBlob`, ZÉRO dépendance : borne le
+// bord long à `MAX_DIMENSION`, réencode en JPEG à `JPEG_QUALITY`. Seuls les
+// `image/*` sont compressés — un PDF (fiche produit, bon signé...) passe
+// intouché. Garde serveur 20 Mo conservée (ce helper est un confort réseau,
+// pas une garde de sécurité).
+export const MAX_DIMENSION = 1600
+export const JPEG_QUALITY = 0.75
+
+/**
+ * Compresse un fichier image côté client avant upload (bord long borné,
+ * réencodage JPEG). Passthrough silencieux (renvoie `file` inchangé) pour :
+ * un fichier non-image (PDF...), une image déjà plus petite que `file` après
+ * compression (rare mais possible sur un PNG déjà optimisé), ou tout
+ * environnement sans `document`/`Image`/canvas `toBlob` (SSR, vieux
+ * navigateur, jsdom en test) — ne DOIT jamais faire échouer un upload.
+ */
+export async function compressImage(file, {
+  maxDimension = MAX_DIMENSION, quality = JPEG_QUALITY,
+} = {}) {
+  if (!file || !String(file.type ?? '').startsWith('image/')) return file
+  // SVG n'a pas de dimensions bitmap fiables via <img> pour ce cas d'usage
+  // (et n'a pas besoin de compression) — passthrough.
+  if (file.type === 'image/svg+xml') return file
+  if (typeof document === 'undefined' || typeof Image === 'undefined') return file
+
+  try {
+    const bitmap = await loadImage(file)
+    const { width, height } = scaledSize(bitmap.width, bitmap.height, maxDimension)
+    if (!width || !height) return file
+
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return file
+    ctx.drawImage(bitmap, 0, 0, width, height)
+
+    const blob = await canvasToBlob(canvas, 'image/jpeg', quality)
+    if (!blob || blob.size <= 0) return file
+    // N'utilise le résultat compressé QUE s'il est réellement plus petit —
+    // évite de gonfler un petit fichier déjà optimisé.
+    if (blob.size >= file.size) return file
+
+    const newName = renameToJpeg(file.name)
+    return new File([blob], newName, { type: 'image/jpeg', lastModified: Date.now() })
+  } catch {
+    // Défensif : une compression en échec ne doit JAMAIS bloquer l'upload —
+    // on retombe sur le fichier d'origine.
+    return file
+  }
+}
+
+function loadImage(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file)
+    const img = new Image()
+    img.onload = () => { URL.revokeObjectURL(url); resolve(img) }
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('image illisible')) }
+    img.src = url
+  })
+}
+
+function canvasToBlob(canvas, type, quality) {
+  return new Promise((resolve, reject) => {
+    if (typeof canvas.toBlob !== 'function') { reject(new Error('toBlob indisponible')); return }
+    canvas.toBlob((blob) => resolve(blob), type, quality)
+  })
+}
+
+/** Bord long borné à `maxDimension`, ratio préservé. No-op si déjà plus petit. */
+export function scaledSize(width, height, maxDimension) {
+  const w = Number(width) || 0
+  const h = Number(height) || 0
+  if (w <= 0 || h <= 0) return { width: 0, height: 0 }
+  const longest = Math.max(w, h)
+  if (longest <= maxDimension) return { width: Math.round(w), height: Math.round(h) }
+  const scale = maxDimension / longest
+  return { width: Math.round(w * scale), height: Math.round(h * scale) }
+}
+
+function renameToJpeg(name) {
+  const base = String(name ?? 'photo').replace(/\.[^./\\]+$/, '')
+  return `${base || 'photo'}.jpg`
+}

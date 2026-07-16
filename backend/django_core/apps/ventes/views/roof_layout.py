@@ -22,12 +22,13 @@ ou l'utilisateur) ; jamais acceptée du corps. Querysets filtrés par
 Couche additive et séparée : ne touche ni le PDF premium (`quote_engine/`) ni
 `/proposal`, et ne change aucun statut de devis (RULE #4).
 """
-from rest_framework import viewsets, status
+from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.viewsets import CompanyScopedModelViewSet  # ARC5
 from ..models import RoofLayout
 from ..serializers import RoofLayoutSerializer
 
@@ -35,8 +36,13 @@ READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update', 'recompute']
 
 
-class RoofLayoutViewSet(viewsets.ModelViewSet):
-    """FG245 — CRUD calepinage toiture, compte de panneaux calculé serveur."""
+class RoofLayoutViewSet(CompanyScopedModelViewSet):
+    """FG245 — CRUD calepinage toiture, compte de panneaux calculé serveur.
+
+    ARC5 — sweep TenantMixin : base transverse unique. get_queryset /
+    perform_create / perform_update / get_permissions SURCHARGENT la base
+    (scoping direct sur `company`) : scoping et matrice 401/403/404 INCHANGÉS
+    (règle #4 : couche additive, aucun statut de devis touché)."""
 
     queryset = RoofLayout.objects.select_related(
         'devis', 'created_by').all()

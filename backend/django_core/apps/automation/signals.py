@@ -166,7 +166,7 @@ def connect():
         post_save.connect(_installation_saved, sender=Installation,
                           dispatch_uid='automation_post_installation')
 
-    Facture = model('ventes', 'Facture')
+    Facture = model('facturation', 'Facture')  # ODX17 — déplacé de ventes
     if Facture is not None:
         pre_save.connect(_cache_old('statut'), sender=Facture,
                          dispatch_uid='automation_pre_facture')

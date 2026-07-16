@@ -18,7 +18,10 @@ import { toastError } from '../../lib/toast'
 /* S15 — Pane de droite : fil de messages. Bulles own/others, slots pièce-
    jointe/vocal/carte, scroll infini INVERSÉ (charge les plus anciens en haut),
    auto-scroll au plus récent à l'envoi/arrivée, barre des messages épinglés,
-   état de lecture. `onEditMessage` remonte au Composer (S16). */
+   état de lecture. `onEditMessage` remonte au Composer (S16).
+   VX118(a) — les classes `chat-thread-*`/`chat-pinned-*` n'avaient AUCUNE
+   règle CSS (bandeau épinglé sans fond/bordure) ; migré sur Tailwind, zéro
+   CSS ajouté. */
 
 const NEAR_TOP = 40 // px : seuil de déclenchement du chargement des anciens
 const NEAR_BOTTOM = 80 // px : on n'auto-scrolle que si l'utilisateur est en bas
@@ -86,37 +89,57 @@ export default function MessageThread({ currentUserId, onEditMessage, onDeleteMe
   }
 
   return (
-    <div className="chat-thread flex min-h-0 flex-1 flex-col" data-testid="message-thread">
+    <div className="flex min-h-0 flex-1 flex-col" data-testid="message-thread">
       {pinned.length > 0 && (
-        <div className="chat-pinned-bar" role="region" aria-label="Messages épinglés">
-          <Pin size={14} aria-hidden="true" />
-          <ul className="chat-pinned-list">
+        <div
+          className="flex items-start gap-2 border-b border-border bg-accent/30 px-3 py-2 text-sm"
+          role="region"
+          aria-label="Messages épinglés"
+        >
+          <Pin size={14} className="mt-0.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <ul className="flex min-w-0 flex-1 flex-wrap gap-x-4 gap-y-1">
             {pinned.map((p) => (
-              <li key={p.id} className="chat-pinned-item" title={p.body}>
-                <span>{p.body || 'Pièce jointe'}</span>
-                <span className="chat-pinned-time">{bubbleTime(p.created_at)}</span>
+              <li key={p.id} className="flex min-w-0 items-center gap-1.5 truncate" title={p.body}>
+                <span className="truncate">{p.body || 'Pièce jointe'}</span>
+                <span className="shrink-0 text-xs text-muted-foreground">{bubbleTime(p.created_at)}</span>
               </li>
             ))}
           </ul>
         </div>
       )}
 
-      <div className="chat-thread-scroll flex-1 overflow-y-auto px-3 py-2" ref={scrollRef} onScroll={onScroll}>
+      <div
+        className="flex-1 overflow-y-auto px-3 py-2"
+        ref={scrollRef}
+        onScroll={onScroll}
+        role="log"
+        tabIndex={0}
+        aria-live="polite"
+        aria-relevant="additions"
+      >
         {nextOlder && (
-          <div className="chat-thread-older">
+          <div className="flex justify-center py-2">
             {loadingOlder ? <Spinner size="sm" /> : (
-              <button type="button" onClick={loadOlder}>Charger les anciens messages</button>
+              <button
+                type="button"
+                onClick={loadOlder}
+                className="text-xs font-medium text-muted-foreground hover:text-foreground"
+              >
+                Charger les anciens messages
+              </button>
             )}
           </div>
         )}
         {messages.length === 0 ? (
-          <div className="chat-thread-empty">Aucun message pour l’instant.</div>
+          <div className="py-8 text-center text-sm text-muted-foreground">Aucun message pour l’instant.</div>
         ) : (
           messages.map((m, i) => {
             const prev = messages[i - 1]
             const own = m.sender?.id === currentUserId
             // Regroupe les messages consécutifs du même auteur (en-tête masqué).
             const showHeader = !prev || prev.sender?.id !== m.sender?.id
+            // aria-relevant="additions" (ci-dessus) n'annonce QUE le dernier
+            // message poussé dans le log — pas tout l'historique déjà rendu.
             return (
               <MessageBubble
                 key={m.id}

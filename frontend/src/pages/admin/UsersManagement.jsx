@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSelector } from 'react-redux'
+import { useNavigate } from 'react-router-dom'
 import { UserPlus, Users, Pencil, Trash2, ShieldCheck, UserCheck, UserX } from 'lucide-react'
 import api from '../../api/axios'
 import rolesApi from '../../api/rolesApi'
@@ -44,13 +45,17 @@ const isAdminRole = (r) => {
 
 export default function UsersManagement() {
   const currentUsername = useSelector(s => s.auth.user?.username)
-  const { confirm } = useConfirmDialog()
+  const navigate = useNavigate()
+  const { confirm: askConfirm } = useConfirmDialog()
   const [users, setUsers] = useState([])
   const [roles, setRoles] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ username: '', email: '', password: '', role: '', must_change_password: false })
+  // VX104 — `supervisor` réglable dès la création (auparavant seul
+  // EquipeSection.jsx le permettait, après coup — hiérarchie oubliée en
+  // silence). '' = aucun superviseur choisi.
+  const [form, setForm] = useState({ username: '', email: '', password: '', role: '', supervisor: '', must_change_password: false })
   const [saving, setSaving] = useState(false)
   const [createError, setCreateError] = useState(null)
 
@@ -157,10 +162,29 @@ export default function UsersManagement() {
     setSaving(true)
     setCreateError(null)
     try {
-      await api.post('/users/', form)
-      setForm({ username: '', email: '', password: '', role: roles.find(r => r.nom === 'Utilisateur')?.id || roles[0]?.id || '', must_change_password: false })
+      // VX104 — `supervisor` n'est envoyé QUE s'il est choisi (le champ FK
+      // n'accepte pas une chaîne vide) ; sinon toast de rappel avec lien vers
+      // Paramètres → Équipe, où la hiérarchie reste réglable après coup.
+      const payload = { ...form, supervisor: form.supervisor ? Number(form.supervisor) : null }
+      await api.post('/users/', payload)
+      const hadSupervisor = !!form.supervisor
+      setForm({
+        username: '', email: '', password: '',
+        role: roles.find(r => r.nom === 'Utilisateur')?.id || roles[0]?.id || '',
+        supervisor: '', must_change_password: false,
+      })
       setShowForm(false)
-      toast.success('Utilisateur créé.')
+      if (hadSupervisor) {
+        toast.success('Utilisateur créé.')
+      } else {
+        toast.message('Utilisateur créé.', {
+          description: 'Pensez à définir son responsable direct.',
+          action: {
+            label: 'Paramètres → Équipe',
+            onClick: () => navigate('/parametres'),
+          },
+        })
+      }
       await load()
     } catch (err) {
       setCreateError('Erreur : ' + (err.response?.data?.username?.[0] ?? err.message))
@@ -188,7 +212,7 @@ export default function UsersManagement() {
 
   // ── Suppression d'un utilisateur (confirmation maison, jamais window.confirm) ──
   const askDelete = async (u) => {
-    const ok = await confirm({
+    const ok = await askConfirm({
       title: 'Supprimer cet utilisateur ?',
       description: `Le compte « ${u.username} » sera définitivement supprimé.`,
       confirmLabel: 'Supprimer',
@@ -311,10 +335,29 @@ export default function UsersManagement() {
       label: 'Désactiver',
       icon: UserX,
       onClick: async () => {
+        // VX235(d) — `bulkActions` ne vérifiait jamais `isLastAdmin` : une
+        // désactivation groupée pouvait vider TOUS les admins actifs d'un
+        // coup (contrairement à la ligne unique, qui n'a jamais ce garde non
+        // plus mais n'agit que sur UN compte à la fois). Ici : compte les
+        // admins ACTIFS de toute la société (pas seulement la sélection) et
+        // exclut de la désactivation groupée le(s) compte(s) nécessaire(s)
+        // pour qu'il en reste au moins un.
+        const activeAdmins = users.filter((u) => isAdminUser(u) && u.is_active).length
+        let remainingActiveAdmins = activeAdmins
+        const skipped = []
         for (const u of rows) {
-          if (u.is_active && u.username !== currentUsername && !u.is_protected) {
-            await setActive(u, false)
+          if (!u.is_active || u.username === currentUsername || u.is_protected) continue
+          if (isAdminUser(u) && remainingActiveAdmins <= 1) {
+            skipped.push(u.username)
+            continue
           }
+          if (isAdminUser(u)) remainingActiveAdmins -= 1
+          await setActive(u, false)
+        }
+        if (skipped.length > 0) {
+          toast.info(
+            `${skipped.length} compte(s) laissé(s) actif(s) — au moins un `
+            + `administrateur doit rester actif : ${skipped.join(', ')}.`)
         }
         clear?.()
       },
@@ -350,6 +393,7 @@ export default function UsersManagement() {
                   <input
                     id="new-username"
                     required
+                    autoFocus
                     value={form.username}
                     onChange={e => setForm(f => ({ ...f, username: e.target.value }))}
                     className="flex h-[var(--control-h)] w-full rounded-md border border-input bg-card px-[var(--control-px)] text-base text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:text-sm"
@@ -384,6 +428,27 @@ export default function UsersManagement() {
                     <SelectContent>
                       {roles.map(r => (
                         <SelectItem key={r.id} value={String(r.id)}>{roleOptionLabel(r)}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </FormField>
+                {/* VX104 — superviseur réglable dès la création (mêmes options
+                    que EquipeSection.jsx) : sans lien, la hiérarchie est
+                    oubliée en silence (visibilité des dossiers cassée sans
+                    erreur). Optionnel — le toast post-création rappelle de le
+                    définir si laissé vide. */}
+                <FormField label="Superviseur direct (optionnel)" htmlFor="new-supervisor">
+                  <Select
+                    value={form.supervisor ? String(form.supervisor) : '__none__'}
+                    onValueChange={v => setForm(f => ({ ...f, supervisor: v === '__none__' ? '' : v }))}
+                  >
+                    <SelectTrigger id="new-supervisor">
+                      <SelectValue placeholder="— Aucun —" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">— Aucun —</SelectItem>
+                      {users.map(u => (
+                        <SelectItem key={u.id} value={String(u.id)}>{u.username}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -492,6 +557,7 @@ export default function UsersManagement() {
                   <Input
                     id="edit-email"
                     type="email"
+                    autoFocus
                     value={editForm.email}
                     onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))}
                   />

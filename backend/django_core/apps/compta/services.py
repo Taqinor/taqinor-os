@@ -951,7 +951,10 @@ def ecriture_pour_facture_fournisseur(facture, *, force=False, user=None,
     ttc = Decimal(getattr(facture, 'montant_ttc', 0) or 0)
     fournisseur_id = getattr(facture, 'fournisseur_id', None)
     reference = getattr(facture, 'reference', '') or ''
-    date_facture = getattr(facture, 'date_facture', None)
+    # Une facture fournisseur sans date (ex. créée par facturer_reception
+    # avant le fix, ou import partiel) ne doit pas faire crasher l'écriture
+    # (NOT NULL date_ecriture) — repli : date du jour.
+    date_facture = getattr(facture, 'date_facture', None) or timezone.now().date()
     # DC22 : famille de charge → compte 6x (défaut 6111 si non mappé).
     compte_charge = compte_pour_clef(
         company, MappingCompte.TypeClef.FAMILLE, famille_charge,
@@ -6056,6 +6059,107 @@ def ajouter_entite_consolidation(company, *, entite, pourcentage_interet=None,
     return obj
 
 
+# ── XPLT20 — Écritures inter-sociétés miroir (vente A → achat B) ──────────
+
+def generer_facture_fournisseur_miroir_intersociete(facture, company):
+    """XPLT20 — miroir vente ``company`` (A) → achat B (``RegleInterSociete``,
+    opt-in STRICT, désactivée par défaut).
+
+    Appelé sur ``facture_emise``. NO-OP (comportement inchangé) si : aucune
+    règle ``actif=True`` pour ``company`` ; le client de la facture ne
+    correspond (ICE/IF) à aucun ``CompanyProfile`` de règle ; ``company``
+    (A) n'a pas d'ICE/IF renseigné ; ou B n'a pas déjà de fiche Fournisseur
+    pour A (JAMAIS de création silencieuse d'un tiers hors du groupe).
+    Jamais d'auto-validation : le miroir est une ``FactureFournisseur``
+    BROUILLON que B doit valider lui-même. Idempotent (contrainte unique
+    ``EcritureLiaisonInterSociete`` : une facture source ne génère jamais
+    deux miroirs).
+    """
+    from .models import EcritureLiaisonInterSociete, RegleInterSociete
+
+    client = getattr(facture, 'client', None)
+    if client is None:
+        return None
+    client_ice = (getattr(client, 'ice', '') or '').strip()
+    client_if = (getattr(client, 'if_fiscal', '') or '').strip()
+    if not client_ice and not client_if:
+        return None
+
+    from apps.parametres.models_company import CompanyProfile
+
+    profil_a = CompanyProfile.objects.filter(company=company).first()
+    a_ice = (profil_a.ice or '').strip() if profil_a else ''
+    a_if = (profil_a.identifiant_fiscal or '').strip() if profil_a else ''
+    if not a_ice and not a_if:
+        return None  # A n'a pas d'ICE/IF renseigné : rapprochement impossible.
+
+    for regle in RegleInterSociete.objects.filter(
+            societe_a=company, actif=True).select_related('societe_b'):
+        if EcritureLiaisonInterSociete.objects.filter(
+                regle=regle, facture_source_id=facture.id).exists():
+            continue  # déjà miroirée (idempotence).
+
+        societe_b = regle.societe_b
+        profil_b = CompanyProfile.objects.filter(company=societe_b).first()
+        if profil_b is None:
+            continue
+        b_ice = (profil_b.ice or '').strip()
+        b_if = (profil_b.identifiant_fiscal or '').strip()
+        if not ((client_ice and b_ice and client_ice == b_ice)
+                or (client_if and b_if and client_if == b_if)):
+            continue  # ce client de A n'est pas B — rien à miroirer.
+
+        from apps.stock import selectors as stock_selectors
+        candidats = stock_selectors.fournisseurs_pour_controle_ice(societe_b)
+        fournisseur_match = next(
+            (f for f in candidats
+             if (a_ice and f['ice'] == a_ice)
+             or (a_if and f['if_fiscal'] == a_if)),
+            None)
+        if fournisseur_match is None:
+            # B n'a pas encore de fiche fournisseur pour A : jamais de
+            # création silencieuse d'un tiers hors du groupe.
+            continue
+
+        montant_ht = facture.total_ht
+        montant_tva = facture.total_tva
+        montant_ttc = facture.total_ttc
+
+        from apps.stock import services as stock_services
+        try:
+            miroir, _doublons = (
+                stock_services.creer_facture_fournisseur_depuis_ocr(
+                    company=societe_b, user=None,
+                    fields={
+                        'ice': a_ice or None,
+                        'numero': facture.reference,
+                        'date': (facture.date_emission.isoformat()
+                                 if facture.date_emission else None),
+                        'date_echeance': (facture.date_echeance.isoformat()
+                                          if facture.date_echeance else None),
+                        'montant_ht': str(montant_ht),
+                        'montant_tva': str(montant_tva),
+                        'montant_ttc': str(montant_ttc),
+                    },
+                )
+            )
+        except ValueError:
+            # Course improbable (fournisseur introuvable au moment précis de
+            # la création) — garde défensive, jamais de crash sur l'émission
+            # de la facture source.
+            continue
+
+        EcritureLiaisonInterSociete.objects.create(
+            regle=regle,
+            facture_source_id=facture.id,
+            facture_fournisseur_miroir_id=miroir.id,
+            montant_ht=montant_ht, montant_tva=montant_tva,
+            montant_ttc=montant_ttc,
+            compte_liaison=regle.compte_liaison,
+        )
+    return None
+
+
 # ── FG201 — Envoi groupé email/SMS (Brevo, GATED, NO-OP par défaut) ─────────
 
 def brevo_actif():
@@ -6531,7 +6635,14 @@ def envoyer_campagne(campagne, *, destinataires=None):
                 raison_smtp='contact_dormant_sunset',
             )
     campagne.nb_destinataires = len(cibles)
-    if brevo_actif() and cibles:
+    if campagne.canal == Campagne.Canal.WHATSAPP and cibles:
+        # XMKT10 — le canal whatsapp ne dépend jamais de Brevo (email/SMS
+        # uniquement) : chaque destinataire obtient TOUJOURS un message —
+        # via BSP (jeton présent) ou repli manuel (lien wa.me), jamais aucun
+        # des deux (comportement du provider QJ23/FG33). On compte l'envoi
+        # comme « traité » indépendamment de brevo_actif().
+        campagne.nb_envois = len(cibles)
+    elif brevo_actif() and cibles:
         # Intégration réelle (future) — jamais appelée tant que le flag est OFF.
         # On laisse le compteur d'envois aligné sur les destinataires ; les
         # ouvertures/clics seront remontés par les webhooks Brevo.
@@ -6578,6 +6689,19 @@ def envoyer_campagne(campagne, *, destinataires=None):
             envoye_le=maintenant,
             variante_ab=variante_ab,
         )
+        # XMKT10 — canal whatsapp : envoi réel (BSP, jeton présent) ou repli
+        # sur une file wa.me (aucune clé) — chaque tentative est journalisée
+        # dans notifications.WhatsAppMessageLog, liée à cette campagne.
+        if campagne.canal == Campagne.Canal.WHATSAPP:
+            from apps.notifications.services import (
+                render_whatsapp_template, send_whatsapp_campaign_message,
+            )
+            corps_whatsapp = (
+                render_whatsapp_template(campagne.whatsapp_template)
+                or campagne.corps)
+            send_whatsapp_campaign_message(
+                campagne.company, recipient=destinataire, body=corps_whatsapp,
+                campagne_id=campagne.id, template=campagne.whatsapp_template)
         # XMKT16 — une ligne de chatter par lead ciblé, jamais par batch.
         noter_touche_marketing_pour_lead(
             campagne.company, contact_ref,
@@ -6625,6 +6749,112 @@ def decider_gagnant_ab(campagne, *, maintenant=None):
         statut=EnvoiCampagne.Statut.ENVOYE, envoye_le=maintenant,
         variante_ab=gagnant)
     return gagnant
+
+
+# ── XMKT35 — Posts réseaux sociaux (publication Meta Graph gated) ───────────
+# La publication réelle est OFF par défaut : sans jeton, un post dû devient un
+# RAPPEL manuel notifié à son auteur (texte prêt à coller) — aucun appel
+# réseau, aucun statut « publié » posé tout seul. AUCUNE création de campagne
+# publicitaire ici (règle n°3 — ce module publie du CONTENU de page, jamais
+# une campagne Ads ; si un jour l'Ads s'ajoute : toujours --status PAUSED).
+
+def meta_graph_actif():
+    """Toggle maître de la publication Meta Graph (XMKT35). OFF par défaut.
+
+    Actif uniquement avec ``META_GRAPH_ENABLED=1`` ET un jeton ET un id de
+    page (env). Sans ça : aucun appel réseau, chemin rappel manuel."""
+    import os
+    return (os.getenv('META_GRAPH_ENABLED', '0') == '1'
+            and bool(os.getenv('META_GRAPH_TOKEN', '').strip())
+            and bool(os.getenv('META_GRAPH_PAGE_ID', '').strip()))
+
+
+def planifier_post_social(post, *, date_planifiee):
+    """Planifie un post social : brouillon → planifié (XMKT35). Idempotent —
+    un post déjà publié/en échec n'est jamais replanifié par cette fonction."""
+    from .models import PostSocial
+    if post.statut not in (PostSocial.Statut.BROUILLON,
+                           PostSocial.Statut.PLANIFIE):
+        return post
+    post.date_planifiee = date_planifiee
+    post.statut = PostSocial.Statut.PLANIFIE
+    post.save(update_fields=['date_planifiee', 'statut'])
+    return post
+
+
+def publier_post_social(post):
+    """Publie RÉELLEMENT un post via l'API Meta Graph — GATED (XMKT35).
+
+    Sans jeton (``meta_graph_actif()`` faux) : NO-OP strict (le sweep pose le
+    rappel manuel à la place). Avec jeton : POST ``/{page_id}/feed`` (contenu
+    de page uniquement — jamais de campagne publicitaire, règle n°3) ;
+    succès → statut ``publie`` + ``external_id``, échec → ``echec`` +
+    ``erreur``. Ne relance jamais un post déjà publié."""
+    from .models import PostSocial
+    import json
+    import os
+    import urllib.parse
+    if post.statut != PostSocial.Statut.PLANIFIE:
+        return post
+    if not meta_graph_actif():
+        return post
+    token = os.getenv('META_GRAPH_TOKEN', '').strip()
+    page_id = os.getenv('META_GRAPH_PAGE_ID', '').strip()
+    base = (os.getenv('META_GRAPH_BASE_URL', '')
+            or 'https://graph.facebook.com/v19.0').rstrip('/')
+    payload = urllib.parse.urlencode({
+        'message': post.texte or '', 'access_token': token}).encode()
+    req = urllib.request.Request(
+        f'{base}/{page_id}/feed', data=payload, method='POST')
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read() or b'{}')
+        post.external_id = str(data.get('id') or '')
+        post.statut = PostSocial.Statut.PUBLIE
+        post.publie_le = timezone.now()
+        post.erreur = ''
+        post.save(update_fields=[
+            'external_id', 'statut', 'publie_le', 'erreur'])
+    except Exception as exc:
+        post.statut = PostSocial.Statut.ECHEC
+        post.erreur = str(exc)[:255]
+        post.save(update_fields=['statut', 'erreur'])
+    return post
+
+
+def traiter_posts_sociaux_dus(company, *, maintenant=None):
+    """Sweep beat XMKT35 : traite chaque post planifié arrivé à échéance.
+
+    Jeton Meta Graph présent → publication réelle (``publier_post_social``).
+    Sans jeton → RAPPEL manuel notifié UNE fois à l'auteur du post
+    (``notifications.notify``, texte prêt à coller) ; le post reste
+    ``planifie`` (l'utilisateur publie à la main puis met à jour le statut).
+    Idempotent : ``rappel_envoye`` garantit zéro double rappel."""
+    from .models import PostSocial
+    maintenant = maintenant or timezone.now()
+    dus = PostSocial.objects.filter(
+        company=company, statut=PostSocial.Statut.PLANIFIE,
+        date_planifiee__isnull=False, date_planifiee__lte=maintenant)
+    traites = []
+    actif = meta_graph_actif()
+    for post in dus:
+        if actif:
+            traites.append(publier_post_social(post))
+            continue
+        if post.rappel_envoye:
+            continue
+        from apps.notifications.models import EventType
+        from apps.notifications.services import notify
+        if post.created_by is not None:
+            notify(
+                post.created_by, EventType.POST_SOCIAL_RAPPEL,
+                f'Post {post.get_reseau_display()} à publier maintenant',
+                body=(post.texte or '')[:2000],
+                link='/marketing/calendrier', company=company)
+        post.rappel_envoye = True
+        post.save(update_fields=['rappel_envoye'])
+        traites.append(post)
+    return traites
 
 
 def webhook_brevo_evenement(company, *, campagne_id, destinataire, evenement,
@@ -7278,6 +7508,179 @@ def previsualiser_segment(segment, *, taille_echantillon=10):
         'count': len(lead_ids),
         'echantillon': lead_ids[:taille_echantillon],
     }
+
+
+# ── XMKT36 — [DECISION] Export de segments vers audiences Meta (gated) ──────
+# AUCUNE création de campagne publicitaire ici (règle n°3 — si un jour elle
+# s'ajoute : toujours --status PAUSED). Uniquement la synchronisation d'une
+# audience personnalisée : identifiants hashés SHA-256 CÔTÉ SERVEUR (norme
+# Meta), consentement XMKT4 exigé, clients signés en liste d'exclusion.
+# DÉFAUT OFF : sans jeton, aucune donnée ne quitte jamais le serveur.
+
+def meta_audiences_actif():
+    """Toggle maître de l'export d'audiences Meta (XMKT36). OFF par défaut.
+
+    Actif uniquement avec ``META_ADS_ENABLED=1`` ET un jeton ET un id de
+    compte publicitaire (env). DECISION founder requise avant de poser un
+    vrai jeton (loi 09-08 : envoi de données hashées à Meta)."""
+    import os
+    return (os.getenv('META_ADS_ENABLED', '0') == '1'
+            and bool(os.getenv('META_ADS_TOKEN', '').strip())
+            and bool(os.getenv('META_AD_ACCOUNT_ID', '').strip()))
+
+
+def _normaliser_email_meta(email):
+    """Norme Meta : trim + minuscules. Chaîne vide si absent."""
+    return (email or '').strip().lower()
+
+
+def _normaliser_telephone_meta(telephone):
+    """Norme Meta : chiffres uniquement, AVEC indicatif pays (212…).
+
+    Réutilise la normalisation marocaine existante quand elle matche ;
+    sinon repli chiffres-bruts (0X… → 212X…)."""
+    brut = (telephone or '').strip()
+    if not brut:
+        return ''
+    try:
+        from apps.ventes.utils.phone import normalize_ma_phone
+        norme = normalize_ma_phone(brut)
+        if norme:
+            return norme
+    except Exception:  # pragma: no cover - défensif
+        pass
+    chiffres = re.sub(r'\D', '', brut)
+    if chiffres.startswith('0') and len(chiffres) == 10:
+        chiffres = '212' + chiffres[1:]
+    return chiffres
+
+
+def hash_identifiant_meta(valeur, *, genre='email'):
+    """SHA-256 hex d'un identifiant NORMALISÉ (norme Meta customaudiences).
+
+    ``genre`` ∈ ('email', 'telephone'). Chaîne vide → '' (jamais hashée)."""
+    if genre == 'telephone':
+        norme = _normaliser_telephone_meta(valeur)
+    else:
+        norme = _normaliser_email_meta(valeur)
+    if not norme:
+        return ''
+    return hashlib.sha256(norme.encode('utf-8')).hexdigest()
+
+
+def _contacts_hashes_meta(company, contacts):
+    """Hash SHA-256 les contacts CONSENTIS (XMKT4) — jamais les autres.
+
+    ``contacts`` : liste de dicts ``{'email':…, 'telephone':…}`` (selectors
+    crm). Un contact sans AUCUN consentement marketing valide est exclu. Un
+    contact supprimé (XMKT3) est exclu. Renvoie des lignes
+    ``{'email_sha256':…, 'telephone_sha256':…}`` (champs vides omis → '')."""
+    lignes = []
+    for c in contacts or []:
+        email = (c.get('email') or '').strip()
+        telephone = (c.get('telephone') or '').strip()
+        identifiant = email or telephone
+        if not identifiant:
+            continue
+        if est_supprime(company, identifiant):
+            continue
+        if not consentement_accorde(company, identifiant, canal='marketing'):
+            continue
+        lignes.append({
+            'email_sha256': hash_identifiant_meta(email, genre='email'),
+            'telephone_sha256': hash_identifiant_meta(
+                telephone, genre='telephone'),
+        })
+    return lignes
+
+
+def _meta_ads_post(path, payload):
+    """POST JSON vers l'API Meta Graph (audiences) — chemin GATED uniquement.
+
+    Jamais appelée sans jeton (l'appelant vérifie ``meta_audiences_actif``).
+    Renvoie le dict de réponse, ou lève (l'appelant capture)."""
+    import json
+    import os
+    base = (os.getenv('META_GRAPH_BASE_URL', '')
+            or 'https://graph.facebook.com/v19.0').rstrip('/')
+    token = os.getenv('META_ADS_TOKEN', '').strip()
+    body = dict(payload)
+    body['access_token'] = token
+    req = urllib.request.Request(
+        f'{base}/{path}', data=json.dumps(body).encode(),
+        headers={'Content-Type': 'application/json'}, method='POST')
+    with urllib.request.urlopen(req, timeout=20) as resp:
+        return json.loads(resp.read() or b'{}')
+
+
+def exporter_segment_audience_meta(segment, *, inclure_exclusions=True):
+    """XMKT36 — Synchronise un ``SegmentMarketing`` comme audience Meta.
+
+    Émet UNIQUEMENT des identifiants hashés SHA-256 côté serveur (jamais de
+    PII en clair), pour les seuls contacts au consentement XMKT4 valide ;
+    les CLIENTS SIGNÉS partent en liste d'exclusion séparée. GATED : sans
+    jeton (``meta_audiences_actif()`` faux), NO-OP réseau strict — renvoie
+    quand même le résumé (compteurs) pour l'UI. AUCUNE campagne publicitaire
+    n'est créée ici (règle n°3)."""
+    import os
+    from apps.crm.selectors import (
+        clients_contact_identifiers, lead_contact_identifiers,
+    )
+    company = segment.company
+    lead_ids = evaluer_segment(segment)
+    inclus = _contacts_hashes_meta(
+        company, lead_contact_identifiers(company, lead_ids))
+    exclus = []
+    if inclure_exclusions:
+        exclus = _contacts_hashes_meta(
+            company, clients_contact_identifiers(company))
+    resume = {
+        'configured': meta_audiences_actif(),
+        'segment': segment.nom,
+        'inclus': len(inclus),
+        'exclus': len(exclus),
+        'audience_id': '',
+        'exclusion_audience_id': '',
+    }
+    if not resume['configured']:
+        return resume
+    ad_account = os.getenv('META_AD_ACCOUNT_ID', '').strip()
+    schema = ['EMAIL_SHA256', 'PHONE_SHA256']
+
+    def _payload_users(lignes):
+        return {
+            'schema': schema,
+            'data': [
+                [ligne['email_sha256'], ligne['telephone_sha256']]
+                for ligne in lignes
+            ],
+        }
+
+    try:
+        audience = _meta_ads_post(
+            f'act_{ad_account}/customaudiences',
+            {'name': f'Segment — {segment.nom}',
+             'subtype': 'CUSTOM', 'customer_file_source':
+                 'USER_PROVIDED_ONLY'})
+        resume['audience_id'] = str(audience.get('id') or '')
+        if resume['audience_id'] and inclus:
+            _meta_ads_post(
+                f"{resume['audience_id']}/users",
+                {'payload': _payload_users(inclus)})
+        if exclus:
+            exclusion = _meta_ads_post(
+                f'act_{ad_account}/customaudiences',
+                {'name': f'Exclusion clients — {segment.nom}',
+                 'subtype': 'CUSTOM', 'customer_file_source':
+                     'USER_PROVIDED_ONLY'})
+            resume['exclusion_audience_id'] = str(exclusion.get('id') or '')
+            if resume['exclusion_audience_id']:
+                _meta_ads_post(
+                    f"{resume['exclusion_audience_id']}/users",
+                    {'payload': _payload_users(exclus)})
+    except Exception as exc:
+        resume['erreur'] = str(exc)[:255]
+    return resume
 
 
 # ── XMKT8 — Variables de fusion dans les campagnes avec fallback ───────────
@@ -8570,6 +8973,14 @@ def repondre_enquete_nps(enquete, *, score, commentaire=None):
 
     ``score`` est borné 0–10. Passe l'enquête à « répondue » et horodate.
     Renvoie l'enquête. Une enquête déjà répondue n'est pas ré-écrite.
+
+    YSERV11 — au moment de l'enchantement : un PROMOTEUR (9-10) déclenche,
+    si ``CompanyProfile.referral_enabled``, une notification au commercial du
+    client avec un brouillon WhatsApp wa.me « parrainage » (MessageTemplate
+    FR/darija, éditable) + lien vers la création de Parrainage (parrain
+    pré-rempli) ; un DÉTRACTEUR (0-6) ouvre une activité de rappel assignée
+    au responsable. Idempotent par enquête : la garde « déjà répondue »
+    ci-dessus ne laisse ce déclencheur s'exécuter qu'UNE fois.
     """
     from .models import EnqueteNPS
     if enquete.statut == EnqueteNPS.Statut.REPONDUE:
@@ -8582,7 +8993,111 @@ def repondre_enquete_nps(enquete, *, score, commentaire=None):
     enquete.repondue_le = timezone.now()
     enquete.save(update_fields=[
         'score', 'commentaire', 'statut', 'repondue_le'])
+    try:
+        _declencher_suivi_nps(enquete)
+    except Exception:  # pragma: no cover - défensif, jamais bloquant
+        pass
     return enquete
+
+
+def _referral_actif(company):
+    """YSERV11 — toggle ``CompanyProfile.referral_enabled`` (N98). OFF → rien."""
+    try:
+        from apps.parametres.models_company import CompanyProfile
+        profil = CompanyProfile.objects.filter(company=company).first()
+    except Exception:  # pragma: no cover - défensif
+        profil = None
+    return bool(getattr(profil, 'referral_enabled', False))
+
+
+def _commercial_pour_client(company, client_id):
+    """YSERV11 — le commercial du client : owner du lead le plus récent lié,
+    sinon le créateur de la fiche client. Peut renvoyer ``None``."""
+    from apps.crm.selectors import get_company_client, get_latest_lead_for_client
+    lead = get_latest_lead_for_client(company, client_id)
+    if lead is not None and lead.owner_id:
+        return lead.owner
+    client = get_company_client(company, client_id)
+    return getattr(client, 'created_by', None)
+
+
+def _declencher_suivi_nps(enquete):
+    """YSERV11 — suivi post-réponse NPS (promoteur → parrainage, détracteur →
+    rappel). Gated ``referral_enabled`` (OFF par défaut → no-op strict).
+    Appelé UNE seule fois par enquête (garde « déjà répondue » de l'appelant).
+    """
+    company = enquete.company
+    score = enquete.score
+    if score is None or not _referral_actif(company):
+        return
+    if 7 <= score <= 8:  # passif : aucun suivi automatique
+        return
+    from apps.crm.selectors import get_company_client, get_latest_lead_for_client
+    client = get_company_client(company, enquete.client_id)
+    if client is None:
+        return
+    commercial = _commercial_pour_client(company, enquete.client_id)
+
+    if score >= 9:
+        # ── Promoteur : notification + brouillon WhatsApp wa.me parrainage ──
+        from apps.crm.services import get_or_create_parrainage_template
+        from apps.notifications.models import EventType
+        from apps.notifications.services import notify
+        from apps.notifications.whatsapp_bsp import get_whatsapp_provider
+        if commercial is None:
+            return
+        lead = get_latest_lead_for_client(company, enquete.client_id)
+        langue = getattr(lead, 'langue_preferee', None) or 'fr'
+        template = get_or_create_parrainage_template(company, langue=langue)
+        message = template.render(
+            prenom=client.prenom or client.nom or '')
+        wa_url = None
+        telephone = client.telephone or ''
+        if telephone:
+            try:
+                wa_result = get_whatsapp_provider().get_wa_url(
+                    telephone, message)
+                wa_url = wa_result.get('url')
+            except Exception:  # pragma: no cover - défensif
+                wa_url = None
+        corps = f'Brouillon : {message}'
+        if wa_url:
+            corps += f'\nEnvoyer : {wa_url}'
+        notify(
+            commercial, EventType.NPS_PROMOTEUR,
+            'Client promoteur — proposer le parrainage',
+            body=corps[:2000],
+            link=f'/crm/parrainage?parrain={client.id}',
+            company=company)
+        return
+
+    # ── Détracteur (0-6) : activité de rappel assignée au responsable ──────
+    from django.contrib.contenttypes.models import ContentType
+    from apps.records.models import Activity, ActivityType
+    assigne = commercial
+    if assigne is None:
+        return
+    atype = ActivityType.objects.filter(company=company, nom='Appel').first()
+    if atype is None:
+        atype = ActivityType.objects.create(
+            company=company, nom='Appel', ordre=10)
+    ct = ContentType.objects.get_for_model(type(client))
+    marque = f'[nps:{enquete.id}]'
+    deja = Activity.objects.filter(
+        company=company, content_type=ct, object_id=client.id,
+        note__contains=marque).exists()
+    if deja:
+        return
+    Activity.objects.create(
+        company=company, content_type=ct, object_id=client.id,
+        activity_type=atype,
+        summary='Client détracteur — rappeler'[:255],
+        due_date=timezone.localdate(),
+        assigned_to=assigne,
+        note=f'{marque} Score NPS : {score}/10. '
+             f'{(enquete.commentaire or "")[:500]}'.strip(),
+        created_by=None,
+    )
 
 
 def score_nps(company):
@@ -8810,6 +9325,28 @@ def facturer_abonnement_monitoring(abonnement, *, user=None):
     return facture
 
 
+def facturer_abonnement_monitoring_beat(abonnement, *, user=None):
+    """SCA44 — Facture UN ``AbonnementMonitoring`` dû, pour le beat
+    quotidien de ``apps.contrats.scheduled`` (3e flux de facturation
+    récurrente automatique, après les échéanciers contrats et les contrats
+    de maintenance SAV).
+
+    Même effet que l'action ``facturer`` de ``AbonnementMonitoringViewSet``
+    (``apps.compta.views``) : émet la Facture standard via
+    ``facturer_abonnement_monitoring`` (garde d'idempotence déjà posée sur
+    ``derniere_facturation`` — un second appel pour la même période refuse),
+    PUIS avance l'échéance via ``renouveler_abonnement_monitoring`` pour que
+    l'abonnement ne soit plus jamais re-sélectionné par
+    ``apps.compta.selectors.abonnements_monitoring_dus_facturation`` tant
+    que sa prochaine période n'est pas atteinte. Renvoie la Facture créée ;
+    lève ``AbonnementMonitoringError`` si la facturation échoue — l'appelant
+    (le beat) capture l'exception PAR abonnement pour ne jamais bloquer les
+    suivants."""
+    facture = facturer_abonnement_monitoring(abonnement, user=user)
+    renouveler_abonnement_monitoring(abonnement)
+    return facture
+
+
 def suspendre_abonnement_monitoring(abonnement):
     """YSUBS4 — Suspend un abonnement ACTIF (transition gardée, service —
     plus une écriture directe du viewset). Bloque la facturation récurrente
@@ -8830,8 +9367,9 @@ def resilier_abonnement_monitoring(abonnement, *, motif, user=None):
     — capturé sur ``motif_resiliation``, jamais perdu comme avec l'ancien
     PATCH direct du viewset). Bloque définitivement la facturation
     récurrente. Émet ``abonnement_monitoring_resilie`` (core.events) pour
-    les effets aval (arrêt de la supervision monitoring — satellite, aucun
-    abonné dans ce repo pour l'instant). Idempotent (déjà résilié → no-op,
+    les effets aval — abonné dans ce repo (ARC36) :
+    ``apps/monitoring/receivers.py`` coupe la supervision automatique liée
+    (``MonitoringConfig.enabled=False``). Idempotent (déjà résilié → no-op,
     aucune ré-émission de l'événement). Renvoie l'abonnement."""
     from core.events import abonnement_monitoring_resilie
     from .models import AbonnementMonitoring

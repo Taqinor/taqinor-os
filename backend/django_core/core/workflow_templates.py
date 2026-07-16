@@ -173,6 +173,37 @@ WORKFLOW_TEMPLATES = [
             },
         ],
     },
+    {
+        # ARC10 — pilote domaine du moteur core.WorkflowDefinition : la clôture
+        # d'une non-conformité (qhse) passe par ce cycle d'approbation générique.
+        # Aucune référence métier ici (données pures) — c'est ``apps.qhse`` qui
+        # attache une WorkflowInstance de ce modèle à sa NCR via contenttypes.
+        'code': 'cloture_ncr',
+        'nom': 'Clôture de non-conformité (validation QHSE)',
+        'description': (
+            "Validation en deux temps de la clôture d'une non-conformité : "
+            "vérification par l'agent QHSE puis approbation finale du "
+            "responsable QHSE avant fermeture définitive."
+        ),
+        'steps': [
+            {
+                'ordre': 1,
+                'nom': 'Vérification agent QHSE',
+                'type_approbation': _MANUELLE,
+                'sla_heures': 48,
+                'role_requis': 'Agent QHSE',
+                'escalade_vers': 'Responsable QHSE',
+            },
+            {
+                'ordre': 2,
+                'nom': 'Approbation responsable QHSE',
+                'type_approbation': _ROLE,
+                'sla_heures': 72,
+                'role_requis': 'Responsable QHSE',
+                'escalade_vers': 'Administrateur',
+            },
+        ],
+    },
 ]
 
 

@@ -19,6 +19,7 @@ from authentication.mixins import TenantMixin
 from authentication.permissions import (
     IsAnyRole, IsResponsableOrAdmin, IsAdminRole,
 )
+from core.viewsets import CompanyScopedModelViewSet
 
 from ..models import SeuilApprobationBCF, ApprobationBCF
 from ..models_approbation_bcf import PALIER_ADMIN, PALIER_RESPONSABLE
@@ -30,7 +31,7 @@ from .. import selectors
 READ_ACTIONS = ['list', 'retrieve']
 
 
-class SeuilApprobationBCFViewSet(TenantMixin, viewsets.ModelViewSet):
+class SeuilApprobationBCFViewSet(CompanyScopedModelViewSet):
     """FG312 — seuil d'approbation BCF par société. Lecture responsable/admin,
     écriture Administrateur seulement (règle de gouvernance). Société posée
     serveur."""
@@ -74,7 +75,7 @@ class ApprobationBCFViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
 
         # Le BCF doit appartenir à la société (lu via sélecteur, string-FK).
         from django.apps import apps as django_apps
-        bcf_model = django_apps.get_model('stock', 'BonCommandeFournisseur')
+        bcf_model = django_apps.get_model('achats', 'BonCommandeFournisseur')
         bcf = bcf_model.objects.filter(id=bcf_id, company=company).first()
         if bcf is None:
             return Response(

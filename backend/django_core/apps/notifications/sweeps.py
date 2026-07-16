@@ -27,6 +27,9 @@ logger = logging.getLogger(__name__)
 WARRANTY_HORIZON_DAYS = 90   # garantie expirant dans les 90 prochains jours
 BREACH_OPEN_DAYS = 7         # ticket ouvert depuis ≥ 7 jours sans résolution
 CHANTIER_DUE_DAYS = 14      # chantier dont date_pose_prevue arrive dans 14 j
+DA_STALE_DAYS = 3            # VX213 — DA soumise sans décision depuis ≥ 3 jours
+STOCK_EXPIRATION_HORIZON_DAYS = 30  # VX209(d) — lot expirant dans 30 jours
+NOTIFICATION_RETENTION_DAYS = 60    # VX209(c) — purge lues / archive non-lues
 
 
 def _companies():
@@ -70,10 +73,21 @@ def _notify_user_or_managers(user, company, event_type, title, body, link=''):
 
 # ── WARRANTY_EXPIRING sweep ───────────────────────────────────────────────────
 
+def _owner_of_equipement(eq):
+    """VX209(d) — le technicien responsable du chantier de l'équipement,
+    s'il en a un (`Installation.technicien_responsable`) ; `None` sinon (les
+    équipements vendus au comptoir — `client_vente` — n'ont pas de chantier)."""
+    installation = getattr(eq, 'installation', None)
+    return getattr(installation, 'technicien_responsable', None) \
+        if installation is not None else None
+
+
 def _sweep_warranty_expiring(company):
     """Équipements EN SERVICE dont la garantie expire dans WARRANTY_HORIZON_DAYS.
 
-    Notifie les managers (les équipements n'ont pas d'owner dédié)."""
+    VX209(d) — notifie le technicien responsable du chantier quand il existe
+    (`_owner_of_equipement`), sinon les managers de la société (comportement
+    historique préservé pour les équipements sans chantier)."""
     try:
         from apps.sav.models import Equipement
         today = date.today()
@@ -101,9 +115,14 @@ def _sweep_warranty_expiring(company):
                     f"({eq.date_fin_garantie})."
                 )
                 link = f'/sav/equipements/{eq.pk}'
-                for mgr in _managers(company):
-                    notify(mgr, EventType.WARRANTY_EXPIRING, title,
+                owner = _owner_of_equipement(eq)
+                if owner is not None:
+                    notify(owner, EventType.WARRANTY_EXPIRING, title,
                            body=body, link=link, company=company)
+                else:
+                    for mgr in _managers(company):
+                        notify(mgr, EventType.WARRANTY_EXPIRING, title,
+                               body=body, link=link, company=company)
                 count += 1
             except Exception:  # pragma: no cover
                 logger.warning('sweeps: warranty eq %s échoué', eq.pk,
@@ -121,11 +140,14 @@ def _sweep_maintenance_due(company):
     """Contrats de maintenance actifs dont une visite est due aujourd'hui.
 
     Réutilise ContratMaintenance.is_due() (même oracle que le digest).
-    Notifie les managers (les contrats n'ont pas d'owner dédié)."""
+    VX209(d) — notifie le technicien responsable du chantier rattaché quand
+    il existe, sinon les managers (comportement historique préservé pour les
+    contrats sans chantier)."""
     try:
         from apps.sav.models import ContratMaintenance
         qs = ContratMaintenance.objects.filter(
-            company=company, actif=True).select_related('client')
+            company=company, actif=True
+        ).select_related('client', 'installation')
         count = 0
         for contrat in qs:
             try:
@@ -142,9 +164,16 @@ def _sweep_maintenance_due(company):
                     f"a une visite due aujourd'hui."
                 )
                 link = f'/sav/maintenances/{contrat.pk}'
-                for mgr in _managers(company):
-                    notify(mgr, EventType.MAINTENANCE_DUE, title,
+                owner = getattr(
+                    getattr(contrat, 'installation', None),
+                    'technicien_responsable', None)
+                if owner is not None:
+                    notify(owner, EventType.MAINTENANCE_DUE, title,
                            body=body, link=link, company=company)
+                else:
+                    for mgr in _managers(company):
+                        notify(mgr, EventType.MAINTENANCE_DUE, title,
+                               body=body, link=link, company=company)
                 count += 1
             except Exception:  # pragma: no cover
                 logger.warning('sweeps: maintenance contrat %s échoué',
@@ -319,6 +348,183 @@ def _sweep_facture_overdue(company):
         return 0
 
 
+# ── DA_SOUMISE_STALE sweep (VX213) ────────────────────────────────────────────
+
+def _sweep_da_soumise_stale(company):
+    """VX213 (d) — réquisitions d'achat (``installations.DemandeAchat``) restées
+    SOUMISE au-delà de ``DA_STALE_DAYS`` sans décision → relance les
+    approbateurs (managers de la société).
+
+    Miroir de ``_sweep_sav_breaching`` : cross-app lecture seule via le
+    sélecteur ``installations.selectors.demandes_achat_soumises_stale`` (jamais
+    un import du modèle installations). Idempotence stricte : une relance par DA
+    par jour (dédup par ``link`` via ``_already_notified_today``)."""
+    try:
+        from django.utils import timezone as tz
+        from apps.installations.selectors import demandes_achat_soumises_stale
+    except Exception:  # pragma: no cover — installations indisponible
+        return 0
+    try:
+        cutoff = tz.now() - timedelta(days=DA_STALE_DAYS)
+        qs = demandes_achat_soumises_stale(company, cutoff)
+        today = date.today()
+        count = 0
+        for da in qs:
+            try:
+                link = f'/installations/demandes-achat?demande={da.pk}'
+                if _already_notified_today(
+                        company, EventType.DA_SOUMISE_STALE, link):
+                    continue
+                # Ancienneté depuis la dernière touche (soumission).
+                dm = da.date_modification
+                if dm is not None:
+                    anciennete = (today - tz.localdate(dm)).days
+                else:  # pragma: no cover - défensif
+                    anciennete = DA_STALE_DAYS
+                title = "Demande d'achat en attente d'approbation"
+                body = (
+                    f"La demande d'achat « {da.reference} » ({da.objet}) est "
+                    f"soumise depuis {anciennete} jour(s) sans décision."
+                )
+                for mgr in _managers(company):
+                    notify(mgr, EventType.DA_SOUMISE_STALE, title,
+                           body=body, link=link, company=company)
+                count += 1
+            except Exception:  # pragma: no cover
+                logger.warning('sweeps: da_soumise_stale %s échouée',
+                               da.pk, exc_info=True)
+        return count
+    except Exception:  # pragma: no cover
+        logger.warning('sweeps: da_soumise_stale société %s échouée',
+                       getattr(company, 'pk', None), exc_info=True)
+        return 0
+
+
+# ── SAV_ACTIVITE_DUE sweep (VX209(d) — ZSAV3 déclarée, jamais émise) ─────────
+
+def _sweep_sav_activite_due(company):
+    """Activités planifiées (``sav.TicketActiviteAFaire``) dont l'échéance est
+    atteinte ou dépassée et qui ne sont pas encore ``fait`` → notifie l'
+    utilisateur ``assigne``, sinon les managers de la société (même politique
+    « owner d'abord » que les autres sweeps de ce fichier)."""
+    try:
+        from apps.sav.models import TicketActiviteAFaire
+        today = date.today()
+        qs = TicketActiviteAFaire.objects.filter(
+            company=company, fait=False, echeance__lte=today,
+        ).select_related('ticket', 'assigne')
+        count = 0
+        for taf in qs:
+            try:
+                ticket_ref = getattr(taf.ticket, 'reference', '') or str(
+                    taf.ticket_id)
+                title = 'Activité SAV à échéance'
+                body = (
+                    f"{taf.get_type_display()} « {taf.titre} » sur le ticket "
+                    f"« {ticket_ref} » était due le {taf.echeance}."
+                )
+                link = f'/sav/tickets/{taf.ticket_id}'
+                _notify_user_or_managers(
+                    taf.assigne, company, EventType.SAV_ACTIVITE_DUE,
+                    title, body, link)
+                count += 1
+            except Exception:  # pragma: no cover
+                logger.warning('sweeps: sav_activite_due %s échouée',
+                               taf.pk, exc_info=True)
+        return count
+    except Exception:  # pragma: no cover
+        logger.warning('sweeps: sav_activite_due société %s échouée',
+                       getattr(company, 'pk', None), exc_info=True)
+        return 0
+
+
+# ── STOCK_EXPIRATION_SOON sweep (VX209(d) — ZSTK2 déclarée, jamais émise) ────
+
+def _sweep_stock_expiration_soon(company):
+    """Lots en entrepôt (``stock.LotEntrepot``) avec un reliquat non nul dont
+    la péremption arrive dans ``STOCK_EXPIRATION_HORIZON_DAYS`` jours → notifie
+    les managers (un lot n'a pas d'owner dédié, même politique que
+    ``STOCK_LOW``)."""
+    try:
+        from apps.stock.models import LotEntrepot
+        today = date.today()
+        horizon = today + timedelta(days=STOCK_EXPIRATION_HORIZON_DAYS)
+        qs = LotEntrepot.objects.filter(
+            company=company,
+            quantite_restante__gt=0,
+            date_peremption__isnull=False,
+            date_peremption__gte=today,
+            date_peremption__lte=horizon,
+        ).select_related('produit')
+        count = 0
+        for lot in qs:
+            try:
+                produit_nom = getattr(lot.produit, 'nom', '') or str(
+                    lot.produit_id)
+                delta = (lot.date_peremption - today).days
+                title = 'Lot bientôt périmé'
+                body = (
+                    f"Le lot « {lot.numero_lot} » de « {produit_nom} » "
+                    f"({lot.quantite_restante} restant(s)) expire dans "
+                    f"{delta} jours ({lot.date_peremption})."
+                )
+                for mgr in _managers(company):
+                    notify(mgr, EventType.STOCK_EXPIRATION_SOON, title,
+                           body=body, link='/stock', company=company)
+                count += 1
+            except Exception:  # pragma: no cover
+                logger.warning('sweeps: stock_expiration_soon lot %s échoué',
+                               lot.pk, exc_info=True)
+        return count
+    except Exception:  # pragma: no cover
+        logger.warning('sweeps: stock_expiration_soon société %s échouée',
+                       getattr(company, 'pk', None), exc_info=True)
+        return 0
+
+
+# ── Purge périodique (VX209(c)) ──────────────────────────────────────────────
+
+def _sweep_purge_notifications(company):
+    """Table ``Notification`` bornée dans le temps par société : les LUES de
+    plus de ``NOTIFICATION_RETENTION_DAYS`` jours sont supprimées (historique
+    non requis une fois traitées) ; les NON-LUES du même âge sont ARCHIVÉES
+    (jamais supprimées — ``archived=True`` les retire de ``list()`` sans
+    perdre la trace). Renvoie le nombre de lignes affectées (supprimées +
+    archivées)."""
+    try:
+        from django.utils import timezone as tz
+        from .models import Notification
+        cutoff = tz.now() - timedelta(days=NOTIFICATION_RETENTION_DAYS)
+        deleted, _ = Notification.objects.filter(
+            company=company, read=True, created_at__lt=cutoff,
+        ).delete()
+        archived = Notification.objects.filter(
+            company=company, read=False, archived=False,
+            created_at__lt=cutoff,
+        ).update(archived=True)
+        return deleted + archived
+    except Exception:  # pragma: no cover
+        logger.warning('sweeps: purge_notifications société %s échouée',
+                       getattr(company, 'pk', None), exc_info=True)
+        return 0
+
+
+@shared_task(name='notifications.purge_notifications_anciennes')
+def purge_notifications_anciennes():
+    """VX209(c) — tâche Celery périodique : purge la table ``Notification``
+    par société (lues > 60 j supprimées, non-lues > 60 j archivées). Idempotent
+    et best-effort par société."""
+    total = 0
+    for company in _companies():
+        try:
+            total += _sweep_purge_notifications(company)
+        except Exception:  # pragma: no cover
+            logger.warning('sweeps: purge_notifications_anciennes société %s échouée',
+                           getattr(company, 'pk', None), exc_info=True)
+    logger.info('purge_notifications_anciennes: %s ligne(s) affectée(s)', total)
+    return total
+
+
 # ── Annonce sweep (XKB5) ──────────────────────────────────────────────────────
 
 def _sweep_annonces_due(company):
@@ -376,6 +582,160 @@ def _sweep_approval_reminders(company):
         return 0
 
 
+# ── QX31be — escalade speed-to-lead des leads chauds non contactés ───────────
+# Seuils défensifs (surchargables via settings).
+HOT_LEAD_SCORE_THRESHOLD = 70   # score ≥ ce seuil = lead « chaud »
+HOT_LEAD_UNREAD_MINUTES = 30    # notif d'arrivée non lue depuis ≥ N minutes
+
+
+def _lead_id_from_link(link):
+    """Extrait ``lead`` d'un deep-link « /crm/leads?lead=42 » (ou None)."""
+    if not link:
+        return None
+    import re
+    m = re.search(r'[?&]lead=(\d+)', link)
+    return int(m.group(1)) if m else None
+
+
+def _sweep_hot_leads(company):
+    """QX31be — escalade les leads CHAUDS dont la notif d'arrivée
+    (``LEAD_NEW``/``LEAD_ASSIGNED``) reste NON LUE au-delà du seuil minutes.
+
+    In-lane : lit les ``Notification`` (cette app) ; le score du lead est lu via
+    le sélecteur crm ``get_company_lead`` (jamais un import de modèle crm).
+    Idempotent : une escalade par notif d'origine (déduplication par link).
+    Best-effort par société."""
+    from django.conf import settings
+    from django.utils import timezone as tz
+    from .models import Notification
+
+    score_min = getattr(
+        settings, 'HOT_LEAD_SCORE_THRESHOLD', HOT_LEAD_SCORE_THRESHOLD)
+    minutes = getattr(
+        settings, 'HOT_LEAD_UNREAD_MINUTES', HOT_LEAD_UNREAD_MINUTES)
+    cutoff = tz.now() - timedelta(minutes=minutes)
+    posted = 0
+    try:
+        from apps.crm.selectors import get_company_lead
+    except Exception:  # pragma: no cover — crm indisponible
+        return 0
+
+    unread = Notification.objects.filter(
+        company=company, read=False,
+        event_type__in=[EventType.LEAD_NEW, EventType.LEAD_ASSIGNED],
+        created_at__lte=cutoff,
+    ).select_related('recipient')[:500]
+
+    for notif in unread:
+        lead_id = _lead_id_from_link(notif.link)
+        if not lead_id:
+            continue
+        lead = get_company_lead(company, lead_id)
+        score = getattr(lead, 'score', None) if lead is not None else None
+        if score is None or score < score_min:
+            continue
+        esc_link = notif.link or f'/crm/leads?lead={lead_id}'
+        # Idempotence : une escalade par lead (dédup par link du jour).
+        if _already_notified_today(
+                company, EventType.HOT_LEAD_UNREAD, esc_link):
+            continue
+        title = 'Lead chaud non contacté'
+        body = (f'Un lead à fort potentiel (score {score}) attend un premier '
+                f'contact depuis plus de {minutes} min. Contactez-le vite '
+                '(21× de chances de qualifier si < 5 min).')
+        # Escalade aux managers EN PLUS du destinataire initial.
+        for mgr in _managers(company):
+            notify(mgr, EventType.HOT_LEAD_UNREAD, title, body,
+                   link=esc_link, company=company)
+            posted += 1
+        if notif.recipient_id:
+            notify(notif.recipient, EventType.HOT_LEAD_UNREAD, title, body,
+                   link=esc_link, company=company)
+            posted += 1
+    return posted
+
+
+# ── VX210 — réveil actif des items snoozés (activités VX85 + approbations
+# VX210(b)), déclenché par l'échéance OU par un événement métier (VX210(c)).
+
+def _sweep_reveiller_snoozes_activites(company):
+    """VX210(a)/(c) — réveille les `records.Activity` snoozées de `company`.
+
+    `records` est une app de FONDATION : ce sweep VIT côté `notifications`
+    (satellite) et appelle `records.services.reveiller_snoozes` — jamais
+    l'inverse (records n'importe jamais `apps.notifications` pour SA propre
+    tâche planifiée)."""
+    try:
+        from apps.records import services as records_services
+        return records_services.reveiller_snoozes(company)
+    except Exception:  # pragma: no cover - défensif
+        logger.warning('sweeps: reveiller_snoozes (activités) société %s échouée',
+                       getattr(company, 'pk', None), exc_info=True)
+        return 0
+
+
+def _sweep_reveiller_snoozes_approbations(company):
+    """VX210(b) — réveille les `SnoozedItem` (approbations snoozées depuis
+    « Ma file ») échus : supprime la ligne (redevient visible immédiatement)
+    et notifie légèrement le propriétaire. Idempotent (une ligne supprimée ne
+    peut plus matcher au prochain passage)."""
+    try:
+        from django.utils import timezone
+
+        from .models import SnoozedItem
+        today = timezone.now().date()
+        rows = list(SnoozedItem.objects.filter(
+            company=company, snoozed_until__lte=today).select_related('user'))
+        for item in rows:
+            try:
+                notify(
+                    item.user, EventType.SNOOZE_REVEIL,
+                    '⏰ De retour : approbation en attente',
+                    link='/approbations', company=company)
+            except Exception:  # pragma: no cover - défensif
+                pass
+        if rows:
+            SnoozedItem.objects.filter(id__in=[r.id for r in rows]).delete()
+        return len(rows)
+    except Exception:  # pragma: no cover - défensif
+        logger.warning('sweeps: reveiller_snoozes (approbations) société %s échouée',
+                       getattr(company, 'pk', None), exc_info=True)
+        return 0
+
+
+@shared_task(name='notifications.reveiller_snoozes')
+def reveiller_snoozes():
+    """VX210 — sweep dédié (cadence propre, comme `sweep_hot_leads`) : réveille
+    les items snoozés (activités VX85/VX210(c) + approbations VX210(b)) de
+    TOUTES les sociétés, échéance ou déclencheur métier. Best-effort par
+    société ; renvoie le nombre total d'items réveillés."""
+    total = 0
+    for company in _companies():
+        try:
+            total += _sweep_reveiller_snoozes_activites(company)
+            total += _sweep_reveiller_snoozes_approbations(company)
+        except Exception:  # pragma: no cover
+            logger.warning('sweeps: reveiller_snoozes société %s échouée',
+                           getattr(company, 'pk', None), exc_info=True)
+    logger.info('reveiller_snoozes: %s item(s) réveillé(s)', total)
+    return total
+
+
+@shared_task(name='notifications.sweep_hot_leads')
+def sweep_hot_leads():
+    """QX31be — balayage rapide (cadence minutes) : escalade les leads chauds
+    dont la notif d'arrivée reste non lue. Best-effort par société."""
+    total = 0
+    for company in _companies():
+        try:
+            total += _sweep_hot_leads(company)
+        except Exception:  # pragma: no cover
+            logger.warning('sweeps: hot_leads société %s échouée',
+                           getattr(company, 'pk', None), exc_info=True)
+    logger.info('sweep_hot_leads: %s escalade(s)', total)
+    return total
+
+
 # ── Tâche Celery Beat ─────────────────────────────────────────────────────────
 
 @shared_task(name='notifications.sweep_daily')
@@ -386,7 +746,8 @@ def sweep_daily():
     tickets SAV en rupture de délai, chantiers à venir, factures en retard
     (YEVNT3), annonces programmées à publier (XKB5), relances de lecture
     obligatoire en retard (XKB6), relances/escalades d'approbations en
-    attente (YEVNT9).
+    attente (YEVNT9), demandes d'achat soumises non décidées (VX213),
+    activités SAV à échéance et lots bientôt périmés (VX209(d)).
     Best-effort par société ; renvoie le total de notifications émises."""
     total = 0
     for company in _companies():
@@ -399,6 +760,9 @@ def sweep_daily():
             total += _sweep_annonces_due(company)
             total += _sweep_annonce_reminders(company)
             total += _sweep_approval_reminders(company)
+            total += _sweep_da_soumise_stale(company)
+            total += _sweep_sav_activite_due(company)
+            total += _sweep_stock_expiration_soon(company)
         except Exception:  # pragma: no cover
             logger.warning('sweeps: société %s échouée globalement',
                            getattr(company, 'pk', None), exc_info=True)

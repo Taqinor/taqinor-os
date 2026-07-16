@@ -142,10 +142,96 @@ jobs:
       - name: Lint imports (import-linter contracts — M3)
         working-directory: backend/django_core
         run: lint-imports
+      # ARC52 — garde-fous du socle en UN script DB-free (ARC8 *Activity, ARC26
+      # FileField, ARC11 imports WeasyPrint hors allowlist, ARC6 numérotation
+      # count()+1 hors socle). Étape ajoutée au job backend-lint EXISTANT — pas
+      # un nouveau check requis (protection de branche inchangée).
+      - name: Platform-kernel guards (check_platform — ARC8/26/11/6)
+        run: python scripts/check_platform.py
+      # YDATA1/3 — every FK/O2O declares on_delete=, every CASCADE is either
+      # inline-justified ('# on_delete: <reason>') or reviewed+allowlisted;
+      # every SET_NULL has null=True and never targets a tenant/owner field.
+      - name: Check on_delete completeness/justification (YDATA1/3)
+        run: python scripts/check_on_delete.py
+      # YDATA2 — financial-target FK (Devis/Facture/BonCommande/Paiement/
+      # Avoir/Company/Produit) sweep: fails only on a NEW un-reviewed
+      # CASCADE/SET_NULL (docs/on-delete-financial-audit.md is the baseline).
+      - name: Check financial-target on_delete sweep (YDATA2)
+        run: python scripts/check_on_delete.py --financial
+      # YDATA4 — every business-app model carries a company scope (direct
+      # FK, TenantModel base, or transitively via a FK to a scoped model).
+      - name: Check multi-tenant company-FK completeness (YDATA4)
+        run: python scripts/check_company_fk.py
+      # YDATA6/7 — money-semantic fields are DecimalField (never FloatField,
+      # GPS/rate names excepted) with explicit max_digits/decimal_places=2
+      # (4 tolerated for taux_*/*_pct/pourcentage rate fields).
+      - name: Check money fields are DecimalField (YDATA6)
+        run: python scripts/check_money_fields.py
+      - name: Check money DecimalField max_digits/decimal_places (YDATA7)
+        run: python scripts/check_money_fields.py --decimal-places
+      # YDATA8 — advisory: round() on a money-looking value in a pricing/tax
+      # module should use core.money.quantize_mad() instead (see
+      # docs/money-convention.md); baseline-allowlisted, fails only on NEW.
+      - name: Check money rounding convention (YDATA8, advisory)
+        run: python scripts/check_money_rounding.py
+      # YDATA10/11 — timezone.now() everywhere (no naive datetime.now()/
+      # utcnow()/datetime(...) ctor); timestamp columns are aware
+      # DateTimeField, never DateField(auto_now[_add]=True).
+      - name: Check for naive datetime / DateField timestamps (YDATA10/11)
+        run: python scripts/check_naive_datetime.py
+      # YDATA14 — advisory: a Celery task with external effects should take
+      # a pk, never a hydrated model instance, as a parameter.
+      - name: Check Celery task signatures (YDATA14, advisory)
+        run: python scripts/check_celery_tasks.py
+      # YDATA15 — advisory: get_or_create/update_or_create lookup keys
+      # should be backed by a UniqueConstraint; audit doc IS the baseline.
+      - name: Check get_or_create/update_or_create audit (YDATA15, advisory)
+        run: python scripts/check_get_or_create.py
+      # YDATA22 — mono-devise MAD invariant sweep. Advisory only (per the plan
+      # task: "v1 ... pas de blocage") — prints the currency audit for
+      # visibility, never fails the build.
+      - name: Currency mono-devise sweep (check_money_monodevise — YDATA22, advisory)
+        run: python scripts/check_money_monodevise.py
+      # YDATA16 — read-modify-write on a shared numeric field (counters/stock/
+      # balances) must hold a lock (select_for_update) or use F(); fails on a
+      # NEW unlocked site not in scripts/read_modify_write_allow.txt.
+      - name: Check read-modify-write locking on shared counters (YDATA16)
+        run: python scripts/check_read_modify_write.py
+      - name: Test the read-modify-write checker itself (YDATA16)
+        run: python -m unittest scripts.tests.test_check_read_modify_write -v
+      # YDATA18 — business unique=True must be company-scoped; a unique on a
+      # soft-delete model must be a partial index. Fails on a NEW unscoped
+      # business unique not in scripts/unique_scoping_allow.txt.
+      - name: Check unique constraints are tenant-scoped (YDATA18)
+        run: python scripts/check_unique_scoping.py
+      - name: Test the unique-scoping checker itself (YDATA18)
+        run: python -m unittest scripts.tests.test_check_unique_scoping -v
+      # YDATA20 — constraint-on-populated-table (AddField unique/not-null in one
+      # step) + index/constraint name drift vs models.py. Fails on a NEW
+      # migration not in scripts/migration_safety_allow.txt.
+      - name: Check migration safety — 3-step constraints + name drift (YDATA20)
+        run: python scripts/check_migration_safety.py
+      - name: Test the migration-safety checker itself (YDATA20)
+        run: python -m unittest scripts.tests.test_check_migration_safety -v
+      # YDATA21 — tenant isolation: every business ModelViewSet/GenericAPIView
+      # must scope by request.user.company and never accept company from the
+      # body. Fails on a NEW view not in scripts/tenant_view_allowlist.txt.
+      - name: Check multi-tenant view isolation (YDATA21)
+        run: python scripts/check_tenant_isolation.py
+      - name: Test the tenant-isolation checker itself (YDATA21)
+        run: python -m unittest scripts.tests.test_check_tenant_isolation -v
 
-  backend-tests:
+  # WOW6 — the fast backend suite is sharded 4× across free public-repo runners
+  # (matrix legs run concurrently, each on its own 4-vCPU runner + Postgres). The
+  # REQUIRED `backend-tests` status check name is preserved by the thin
+  # `backend-tests` aggregator job defined right after this one.
+  backend-tests-shard:
     needs: changes
     if: ${{ needs.changes.outputs.backend == 'true' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -186,33 +272,15 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'   # MUST match prod (django_core/fastapi Dockerfiles: python:3.11.x). A 3.12+/3.13 CI would not catch 3.11-only SyntaxErrors (e.g. backslash in f-string) that crash the live PDF generator.
-      - name: Install WeasyPrint system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b fonts-dejavu-core
-      - name: Install Python dependencies
-        working-directory: backend/django_core
-        run: pip install -r requirements-dev.txt
-      - name: Start MinIO + create buckets
-        run: |
-          docker run -d --name minio -p 9000:9000 \
-            -e MINIO_ROOT_USER=erp_admin \
-            -e MINIO_ROOT_PASSWORD=erp_minio_password \
-            minio/minio:latest server /data
-          # Attente de disponibilité (endpoint santé MinIO).
-          for i in $(seq 1 30); do
-            if curl -sf http://localhost:9000/minio/health/live; then
-              echo "MinIO prêt"; break
-            fi
-            echo "Attente MinIO ($i)…"; sleep 2
-            if [ "$i" = "30" ]; then echo "MinIO indisponible"; exit 1; fi
-          done
-          # Pré-création des buckets (erp-pdf est aussi auto-créé par l'app).
-          # L'entrypoint de minio/mc est « mc » → on force « sh » pour chaîner.
-          docker run --rm --network host --entrypoint sh minio/mc:latest -c "
-            mc alias set local http://localhost:9000 erp_admin erp_minio_password &&
-            mc mb -p local/erp-pdf local/erp-uploads"
+          cache: 'pip'   # WOW4 — cache les deps Python (npm l'était déjà, pas pip) ; clé sur requirements-dev.txt.
+          cache-dependency-path: backend/django_core/requirements-dev.txt
+      # WOW7 — shared WeasyPrint + pip (requirements-dev.txt) + MinIO setup.
+      # WOW8 — restore the cached pre-migrated test DB (measured: the ~850-
+      # migration replay was 2255s of a 2388s shard — 97% of the job); the test
+      # step's --keepdb then reuses it and only clones the 4 parallel workers.
+      - uses: ./.github/actions/backend-env
+        with:
+          testdb-cache-into: test_erp_db
       # YOPSB5 — anti-dérive modèle<->migration : échoue si un changement de
       # modèle n'a pas sa migration (index nommé à la main divergent,
       # contrainte sans migration…). Tourne AVANT la suite de tests, même
@@ -223,14 +291,35 @@ jobs:
       # Palier « par-merge » : tout SAUF les tests lourds étiquetés `pdf`/`slow`
       # (rendu WeasyPrint, golden PDF…). Ceux-ci tournent dans release-verify
       # (manuel + nightly), pour un retour rapide sur chaque merge.
-      - name: Run Django test suite (fast tier — excludes pdf/slow) + coverage
+      # WOW6 — ce shard n'exécute QUE son quart des apps (round-robin déterministe
+      # via scripts/ci_shard.py) ; l'union des 4 shards == `apps authentication
+      # core` (garanti par un test d'égalité d'ensembles). --parallel 4 (WOW1)
+      # exploite les 4 vCPU du runner ; `coverage` reste hors du gate (WOW3).
+      - name: Run Django test suite — shard ${{ matrix.shard }}/4 (fast tier — excludes pdf/slow)
         working-directory: backend/django_core
-        # coverage run propage le code de sortie des tests → gate intact ;
-        # `coverage report` imprime un % backend visible (informatif).
         run: |
-          pip install coverage
-          coverage run manage.py test apps authentication core -v 2 --exclude-tag=pdf --exclude-tag=slow
-          coverage report
+          LABELS=$(python ../../scripts/ci_shard.py ${{ matrix.shard }} 4)
+          echo "Shard ${{ matrix.shard }}/4 -> $LABELS"
+          python manage.py test $LABELS -v 2 --exclude-tag=pdf --exclude-tag=slow --parallel 4 --keepdb
+
+  # WOW6 — thin aggregator that PRESERVES the required `backend-tests` status
+  # check name. Branch protection requires the literal `backend-tests` context
+  # (NOT `ci-gate`), so the real job renamed to `backend-tests-shard` above must
+  # be paired with a job still literally named `backend-tests`. Passes iff no
+  # shard failed; also passes when the shards SKIP (backend=false), preserving the
+  # path-filter "a skipped required check counts as success" behaviour.
+  backend-tests:
+    needs: [changes, backend-tests-shard]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail if any shard failed or was cancelled
+        if: ${{ needs.backend-tests-shard.result == 'failure' || needs.backend-tests-shard.result == 'cancelled' }}
+        run: |
+          echo "A backend-tests shard did not pass (result=${{ needs.backend-tests-shard.result }})."
+          exit 1
+      - name: All shards passed (or were skipped)
+        run: echo "backend-tests-shard result=${{ needs.backend-tests-shard.result }} — gate OK."
 
   frontend-lint:
     needs: changes
@@ -249,6 +338,13 @@ jobs:
       - name: Lint frontend (eslint)
         working-directory: frontend
         run: npm run lint
+      # VX121 — garde « zéro couleur hors token » : les blocs de composants déjà
+      # tokenisés d'index.css (form-control/modal/table/lead-nav/page-loading…)
+      # ne doivent plus jamais réintroduire un hex codé en dur (script maison,
+      # zéro dépendance — frontend/scripts/check_hex.mjs).
+      - name: Check hex colors outside design tokens (index.css)
+        working-directory: frontend
+        run: npm run check-hex
       # Logique pure (sizing solaire, parité catalogue, utils…) : node:test, AUTO-
       # DÉCOUVERTE via glob — tout nouveau *.test.mjs tourne sans liste à tenir.
       - name: Frontend unit tests (node:test — pure logic, auto-discovered)
@@ -306,6 +402,8 @@ jobs:
         run: python scripts/check_modules.py
       - name: Check test determinism (no sleeps / unfrozen live-clock assertions)
         run: python scripts/check_test_determinism.py
+      - name: Check heavy tests carry a @tag (WOW5 — keep the fast tier fast)
+        run: python scripts/check_test_tags.py
       - name: Check invariant registry (docs/invariants.md still points at real tests)
         run: python scripts/check_invariants.py
       - name: Check CODEMAP structural fingerprint
@@ -314,6 +412,10 @@ jobs:
         run: python scripts/check_safe_migrations.py
       - name: Test the safe-migrations checker itself (YOPSB4)
         run: python -m unittest scripts.tests.test_check_safe_migrations -v
+      - name: Validate docs/BUILD_ORDER.yml (SCA5 — acyclic DAG, parseable thresholds, no orphaned plan prefix)
+        run: python scripts/check_build_order.py
+      - name: Test the BUILD_ORDER.yml checker itself (SCA5)
+        run: python -m unittest scripts.tests.test_check_build_order -v
 
   web-build-test:
     needs: changes
@@ -389,35 +491,21 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'   # MUST match prod (django_core/fastapi Dockerfiles: python:3.11.x). A 3.12+/3.13 CI would not catch 3.11-only SyntaxErrors (e.g. backslash in f-string) that crash the live PDF generator.
+          cache: 'pip'   # WOW4 — cache les deps Python (npm l'était déjà, pas pip) ; clé sur requirements-dev.txt.
+          cache-dependency-path: backend/django_core/requirements-dev.txt
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - name: Install WeasyPrint system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b fonts-dejavu-core
-      - name: Install Python dependencies
-        working-directory: backend/django_core
-        run: pip install -r requirements-dev.txt
-      - name: Start MinIO + create buckets
-        run: |
-          docker run -d --name minio -p 9000:9000 \
-            -e MINIO_ROOT_USER=erp_admin \
-            -e MINIO_ROOT_PASSWORD=erp_minio_password \
-            minio/minio:latest server /data
-          for i in $(seq 1 30); do
-            if curl -sf http://localhost:9000/minio/health/live; then
-              echo "MinIO prêt"; break
-            fi
-            echo "Attente MinIO ($i)…"; sleep 2
-            if [ "$i" = "30" ]; then echo "MinIO indisponible"; exit 1; fi
-          done
-          docker run --rm --network host --entrypoint sh minio/mc:latest -c "
-            mc alias set local http://localhost:9000 erp_admin erp_minio_password &&
-            mc mb -p local/erp-pdf local/erp-uploads"
+      # WOW7 — shared WeasyPrint + pip (requirements-dev.txt) + MinIO setup.
+      # WOW8 — restore the cached pre-migrated dump straight into erp_db
+      # (measured: this job's migrate+seed step was 1796s of a 1915s total —
+      # 94% — while the E2E specs themselves ran in 36s). The migrate below
+      # becomes a fast no-op; the seeds still run fresh.
+      - uses: ./.github/actions/backend-env
+        with:
+          testdb-cache-into: erp_db
       - name: Migrate + seed throwaway demo data
         working-directory: backend/django_core
         run: |
@@ -429,9 +517,11 @@ jobs:
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
-      - name: Install Playwright browser (chromium)
+      - name: Install Playwright browsers (chromium + webkit)
         working-directory: frontend
-        run: npx playwright install --with-deps chromium
+        # VX68 — WebKit (Safari réel) en plus de Chromium : le smoke ajoute un
+        # passage `mobile-safari` pour attraper ce qui ne casse QUE sur Safari.
+        run: npx playwright install --with-deps chromium webkit
       - name: Build frontend (no service worker for E2E)
         working-directory: frontend
         env:
@@ -459,6 +549,10 @@ jobs:
           # dans la matrice ordonnée → reste en e2e COMPLET (release-verify), pas
           # en smoke. La matrice complète + mobile tourne dans release-verify.yml.
           npx playwright test --project=chromium devis.spec.js health.spec.js
+          # VX68 — passage WebKit RÉEL (Safari) sur le spec mobile : capte les
+          # régressions qui n'apparaissent que sur Safari (VX48 window.open
+          # post-await, sticky, backdrop-blur). PR-only, hors matrice complète.
+          npx playwright test --project=mobile-safari
       - name: Upload Playwright report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
@@ -466,6 +560,64 @@ jobs:
           name: playwright-report
           path: frontend/playwright-report
           retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # NTPLT5 — suite d'étanchéité RLS, job FACULTATIF (non-required). N'entre
+  # PAS dans ci-gate → la protection de branche reste intacte. Lance la seule
+  # suite core.tests.test_rls avec POSTGRES_RLS_ENABLED=1 (elle est sautée
+  # partout ailleurs, donc n'alourdit jamais le gate backend-tests requis).
+  # ---------------------------------------------------------------------------
+  rls-tests:
+    needs: changes
+    if: ${{ needs.changes.outputs.backend == 'true' }}
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: erp_db
+          POSTGRES_USER: erp_user
+          POSTGRES_PASSWORD: ci_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U erp_user"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7.4-alpine
+        ports:
+          - 6379:6379
+    env:
+      DJANGO_SETTINGS_MODULE: erp_agentique.settings.dev
+      DJANGO_SECRET_KEY: ci-only-secret-key-not-used-in-production
+      DJANGO_DEBUG: 'True'
+      DB_NAME: erp_db
+      DB_USER: erp_user
+      DB_PASSWORD: ci_password
+      DB_HOST: localhost
+      DB_PORT: '5432'
+      REDIS_HOST: localhost
+      REDIS_PORT: '6379'
+      MINIO_ENDPOINT: localhost:9000
+      MINIO_ROOT_USER: erp_admin
+      MINIO_ROOT_PASSWORD: erp_minio_password
+      MINIO_BUCKET_PDF: erp-pdf
+      MINIO_BUCKET_UPLOADS: erp-uploads
+      # Active la suite RLS (sautée partout ailleurs).
+      POSTGRES_RLS_ENABLED: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: backend/django_core/requirements-dev.txt
+      - uses: ./.github/actions/backend-env
+      - name: Run RLS seal suite (opt-in — flag ON)
+        working-directory: backend/django_core
+        run: python manage.py test core.tests.test_rls -v 2
 
   # ---------------------------------------------------------------------------
   # Always-running aggregate gate. Pin THIS one job as the single required
@@ -479,6 +631,7 @@ jobs:
     needs:
       - changes
       - backend-lint
+      - backend-tests-shard
       - backend-tests
       - frontend-lint
       - frontend-perf
@@ -491,6 +644,7 @@ jobs:
         run: |
           echo "changes=${{ needs.changes.result }}"
           echo "backend-lint=${{ needs.backend-lint.result }}"
+          echo "backend-tests-shard=${{ needs.backend-tests-shard.result }}"
           echo "backend-tests=${{ needs.backend-tests.result }}"
           echo "frontend-lint=${{ needs.frontend-lint.result }}"
           echo "frontend-perf=${{ needs.frontend-perf.result }}"

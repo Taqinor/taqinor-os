@@ -12,6 +12,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSelector } from 'react-redux'
 import { MessageSquare, Send, Trash2 } from 'lucide-react'
 import recordsApi from '../api/recordsApi'
+import { IconButton } from '../ui/IconButton'
 
 // Surligne les @mentions dans le texte.
 function renderBody(body) {
@@ -42,6 +43,10 @@ export default function ChatterWidget({ model, id, readOnly = false }) {
   const [body, setBody] = useState('')
   const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  // VX204 — un échec de chargement/envoi ne doit jamais rendre un état muet
+  // (liste vide indiscernable d'« aucun commentaire »).
+  const [loadError, setLoadError] = useState(false)
+  const [submitError, setSubmitError] = useState(false)
   const textareaRef = useRef(null)
 
   const load = useCallback(async () => {
@@ -53,8 +58,9 @@ export default function ChatterWidget({ model, id, readOnly = false }) {
       setComments(Array.isArray(data)
         ? data
         : (data?.results ?? []))
+      setLoadError(false)
     } catch {
-      // ignore
+      setLoadError(true)
     } finally {
       setLoading(false)
     }
@@ -68,12 +74,13 @@ export default function ChatterWidget({ model, id, readOnly = false }) {
     const text = body.trim()
     if (!text || submitting) return
     setSubmitting(true)
+    setSubmitError(false)
     try {
       const res = await recordsApi.createComment(model, id, text)
       setComments(prev => [...prev, res.data])
       setBody('')
     } catch {
-      // ignore
+      setSubmitError(true)
     } finally {
       setSubmitting(false)
     }
@@ -84,7 +91,7 @@ export default function ChatterWidget({ model, id, readOnly = false }) {
       await recordsApi.deleteComment(commentId)
       setComments(prev => prev.filter(c => c.id !== commentId))
     } catch {
-      // ignore
+      setSubmitError(true)
     }
   }
 
@@ -97,11 +104,17 @@ export default function ChatterWidget({ model, id, readOnly = false }) {
         <span>Commentaires {comments.length > 0 && `(${comments.length})`}</span>
       </div>
 
-      <div className="chatter-list">
+      <div className="chatter-list" role="log" aria-live="polite" aria-relevant="additions">
         {loading && (
           <div className="chatter-empty">Chargement…</div>
         )}
-        {!loading && comments.length === 0 && (
+        {!loading && loadError && (
+          <div className="chatter-empty chatter-error" role="alert">
+            Impossible de charger les commentaires.
+            <button type="button" className="chatter-retry" onClick={load}>Réessayer</button>
+          </div>
+        )}
+        {!loading && !loadError && comments.length === 0 && (
           <div className="chatter-empty">Aucun commentaire.</div>
         )}
         {comments.map(c => (
@@ -111,19 +124,31 @@ export default function ChatterWidget({ model, id, readOnly = false }) {
               <span className="chatter-date">{formatDate(c.created_at)}</span>
               {/* Suppression : auteur lui-même ou admin */}
               {!readOnly && (user?.username === c.author_username || isAdmin) && (
-                <button
+                // VX194(b) — WCAG 2.5.8 : ce bouton (Trash2 size=12, aucun CSS
+                // dédié) était largement sous 24×24 px hors `pointer: coarse`.
+                // `IconButton size="icon-sm"` pose le plancher AA sans faire
+                // grossir la ligne de métadonnées comme le ferait `icon`
+                // (~40px, --control-h).
+                <IconButton
                   className="chatter-delete"
+                  variant="ghost"
+                  size="icon-sm"
                   title="Supprimer"
+                  label="Supprimer le commentaire"
                   onClick={() => handleDelete(c.id)}
                 >
-                  <Trash2 size={12} />
-                </button>
+                  <Trash2 size={14} />
+                </IconButton>
               )}
             </div>
             <div className="chatter-body">{renderBody(c.body)}</div>
           </div>
         ))}
       </div>
+
+      {!readOnly && submitError && (
+        <p className="form-error" role="alert">Envoi impossible — réessayez.</p>
+      )}
 
       {!readOnly && (
         <form className="chatter-form" onSubmit={handleSubmit}>

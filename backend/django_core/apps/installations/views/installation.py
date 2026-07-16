@@ -6,6 +6,7 @@ from authentication.mixins import TenantMixin  # noqa: F401
 from authentication.permissions import (  # noqa: F401
     IsAnyRole, IsResponsableOrAdmin, IsAdminRole,
 )
+from core.viewsets import CompanyScopedModelViewSet
 from django.utils import timezone  # noqa: F401
 
 from .. import activity  # noqa: F401
@@ -156,7 +157,7 @@ def seed_types_intervention(company):
 # package __init__ ré-exporte toutes les vues publiques.
 
 
-class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
+class InstallationViewSet(CompanyScopedModelViewSet):
     """Chantiers + historique « chatter ». Tout est scopé à la société du
     user ; l'acteur et la société sont posés côté serveur, jamais lus du corps.
     """
@@ -318,6 +319,14 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
         inst = serializer.instance
         _stamp_statut_dates(inst, old.statut)
         activity.log_changes(old, inst, self.request.user)
+        # VX213 (b) — handoff AVAL : réassigner un chantier à un NOUVEAU
+        # technicien le notifie (diff pré/post sur technicien_responsable_id).
+        # `_notifier_chantier_assigne` no-op si absent ; best-effort (ne lève
+        # jamais). On ne notifie QUE sur un vrai changement de titulaire.
+        if (inst.technicien_responsable_id
+                and inst.technicien_responsable_id != old.technicien_responsable_id):
+            from ..services import _notifier_chantier_assigne
+            _notifier_chantier_assigne(inst, inst.technicien_responsable)
         if franchit_vers_planifie and motif_override:
             activity.log_note(
                 inst, self.request.user,
@@ -341,6 +350,14 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
         # parc SAV (un équipement par ligne, série optionnelle). Idempotent.
         _apply_reception_handover(
             inst, canon_old, canon_new, self.request.user)
+        # YSERV4 — événement bus au franchissement vers RECEPTIONNE (best-
+        # effort, ne modifie aucun statut). Abonné : compta (enquête NPS).
+        if (canon_new == Installation.Statut.RECEPTIONNE
+                and canon_old != Installation.Statut.RECEPTIONNE):
+            from core.events import chantier_receptionne
+            chantier_receptionne.send(
+                sender=Installation, installation=inst,
+                user=self.request.user, ancien_statut=old.statut)
         # N14 — applique les effets stock du changement de statut (consomme à
         # « Installé », libère à la clôture). Idempotent côté service.
         _apply_stock_statut_effects(
@@ -458,6 +475,14 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
         # FG70 — « Mise en service » se rabat sur « Réceptionné » : la remise de
         # garantie balaie le BoM gelé vers le parc SAV (idempotente côté service).
         _apply_reception_handover(inst, canon_old, canon_new, request.user)
+        # YSERV4 — événement bus au franchissement vers RECEPTIONNE (best-
+        # effort, ne modifie aucun statut). Abonné : compta (enquête NPS).
+        if (canon_new == Installation.Statut.RECEPTIONNE
+                and canon_old != Installation.Statut.RECEPTIONNE):
+            from core.events import chantier_receptionne
+            chantier_receptionne.send(
+                sender=Installation, installation=inst,
+                user=request.user, ancien_statut=old.statut)
         _apply_stock_statut_effects(inst, canon_old, canon_new, request.user)
         # CH2 — aligne le pointeur d'étape sur le nouveau statut.
         from ..services import sync_etape_from_statut

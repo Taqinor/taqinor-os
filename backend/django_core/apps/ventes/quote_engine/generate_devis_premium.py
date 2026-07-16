@@ -337,6 +337,10 @@ ENT_NOM_MARQUE = "TAQINOR"                       # nom affiché dans les footers
 ENT_CONTACT_LINE = ("contact@taqinor.com &nbsp;&#183;&nbsp; "
                     "+212&#160;6&#160;61&#160;85&#160;04&#160;10 "
                     "&nbsp;&#183;&nbsp; www.taqinor.ma")
+# Pied de la page ETUDE (email · site, sans téléphone) — littéral historique
+# exact (SCA27 : reconstruit par _apply_entreprise dès qu’un email ou un site
+# de profil est fourni — plus de fuite du contact fondateur sur la page étude).
+ENT_ETUDE_CONTACT = "contact@taqinor.com &nbsp;·&nbsp; www.taqinor.ma"
 # Ligne légale du footer page 3 (raison sociale · RC · ICE · capital · siège).
 ENT_LEGAL_LINE = ("Taqinor Solutions SARLAU &middot; RC 691213 &middot; "
                   "ICE 003799642000067 &middot; Capital 100&#8239;000 MAD "
@@ -352,6 +356,7 @@ ENT_RIB_LINE = ('<strong style="color:{cg7}">TAQINOR SOLUTION</strong> '
 # pour qu'aucune identité de tenant ne persiste d'un rendu au suivant.
 _ENT_DEFAULT_NOM_MARQUE = ENT_NOM_MARQUE
 _ENT_DEFAULT_CONTACT_LINE = ENT_CONTACT_LINE
+_ENT_DEFAULT_ETUDE_CONTACT = ENT_ETUDE_CONTACT
 _ENT_DEFAULT_LEGAL_LINE = ENT_LEGAL_LINE
 _ENT_DEFAULT_RIB_LINE = ENT_RIB_LINE
 
@@ -365,11 +370,13 @@ def _apply_entreprise(ent):
     le devis d'un autre tenant n'affiche plus jamais l'identité de Taqinor.
     """
     global ENT_NOM_MARQUE, ENT_CONTACT_LINE, ENT_LEGAL_LINE, ENT_RIB_LINE
+    global ENT_ETUDE_CONTACT
     global CA
     # Réinitialise TOUJOURS depuis les défauts d'abord : pas de fuite d'un rendu
     # précédent (les globals sont mutés sous _RENDER_LOCK).
     ENT_NOM_MARQUE = _ENT_DEFAULT_NOM_MARQUE
     ENT_CONTACT_LINE = _ENT_DEFAULT_CONTACT_LINE
+    ENT_ETUDE_CONTACT = _ENT_DEFAULT_ETUDE_CONTACT
     ENT_LEGAL_LINE = _ENT_DEFAULT_LEGAL_LINE
     ENT_RIB_LINE = _ENT_DEFAULT_RIB_LINE
     CA = _CA_DEFAULT
@@ -397,6 +404,20 @@ def _apply_entreprise(ent):
     if email or tel:
         parts = [p for p in (_esc(email), _esc(tel)) if p]
         ENT_CONTACT_LINE = " &nbsp;&#183;&nbsp; ".join(parts)
+
+    # Pied de page ÉTUDE : reconstruit dès QU'UN contact quelconque est fourni
+    # (email, site OU téléphone) — même sémantique que la ligne de contact
+    # ci-dessus (SCA27). On préfère email + site ; si les deux manquent mais
+    # qu'un téléphone est présent (profil PME tel-seul), on affiche le tél afin
+    # de ne JAMAIS laisser le littéral fondateur près d'un nom de tenant. Seul
+    # le cas « aucun contact » (nom-seul / DC1) garde le défaut Taqinor, donc le
+    # rendu du fondateur (email+tél+site) reste byte-identique.
+    site_web = (ent.get("site_web") or "").strip()
+    if email or tel or site_web:
+        etude_parts = [p for p in (_esc(email), _esc(site_web)) if p]
+        if not etude_parts and tel:
+            etude_parts = [_esc(tel)]
+        ENT_ETUDE_CONTACT = " &nbsp;·&nbsp; ".join(etude_parts)
 
     # Ligne légale : raison sociale · RC · ICE · IF · Patente · Siège.
     legal_bits = []
@@ -1631,30 +1652,39 @@ def page3():
         _pct_m = round(_materiel / _pay_total * 100) if _pay_total else 0
         _pct_s = round(_solde / _pay_total * 100) if _pay_total else 0
 
+        def _pay_box(pct, montant, label):
+            return (
+                f'<div style="flex:1;text-align:center;padding:6px 5px;background:white;border-radius:8px;border:1px solid {CG2};">'
+                f'<div class="serif" style="font-size:22px;font-weight:800;color:{CA};line-height:1.0;">{pct}%</div>'
+                f'<div style="font-size:12px;color:{CN};font-weight:700;margin-top:2px;">{fmt(montant)} MAD</div>'
+                f'<div style="font-size:9px;color:{CG4};margin-top:2px;">{label}</div>'
+                f'</div>')
+
+        # QX7b — n’imprime JAMAIS une case Matériel morte à 0 % : quand
+        # l’acompte custom absorbe la tranche matériel (materiel <= 0), on
+        # bascule sur un échéancier à DEUX cases (Acompte + Solde) qui somment
+        # à 100 % — plus de pourcentages faux. Chemin standard (materiel > 0) :
+        # trois cases, rendu inchangé. Le solde reprend le reliquat exact.
+        _ac_l = 'Acompte · À la signature'
+        _mt_l = 'Matériel · Avant installation'
+        _sd_l = 'Solde · Après installation'
+        if _materiel > 0:
+            _boxes = (_pay_box(_pct_a, _acompte, _ac_l)
+                      + _pay_box(_pct_m, _materiel, _mt_l)
+                      + _pay_box(_pct_s, _solde, _sd_l))
+        else:
+            _solde2 = int(_pay_total) - _acompte  # reliquat exact -> somme 100 %
+            _pct_s2 = round(_solde2 / _pay_total * 100) if _pay_total else 0
+            _boxes = (_pay_box(_pct_a, _acompte, _ac_l)
+                      + _pay_box(_pct_s2, _solde2, 'Solde · À la livraison'))
+
         _payment_html = (
             f'<div style="margin-bottom:4px;">'
             f'<div style="border-left:3px solid {CN};padding-left:8px;margin-bottom:4px;">'
-            f'<div style="font-size:8pt;font-weight:700;color:{CN};text-transform:uppercase;letter-spacing:1px;">Modalit\u00e9s de paiement</div>'
+            f'<div style="font-size:8pt;font-weight:700;color:{CN};text-transform:uppercase;letter-spacing:1px;">Modalités de paiement</div>'
             f'</div>'
             f'<div style="display:flex;gap:6px;margin-bottom:3px;">'
-            # Box 1 — Acompte
-            f'<div style="flex:1;text-align:center;padding:6px 5px;background:white;border-radius:8px;border:1px solid {CG2};">'
-            f'<div class="serif" style="font-size:22px;font-weight:800;color:{CA};line-height:1.0;">{_pct_a}%</div>'
-            f'<div style="font-size:12px;color:{CN};font-weight:700;margin-top:2px;">{fmt(_acompte)}\u00a0MAD</div>'
-            f'<div style="font-size:9px;color:{CG4};margin-top:2px;">Acompte \u00b7 \u00c0 la signature</div>'
-            f'</div>'
-            # Box 2 — Matériel
-            f'<div style="flex:1;text-align:center;padding:6px 5px;background:white;border-radius:8px;border:1px solid {CG2};">'
-            f'<div class="serif" style="font-size:22px;font-weight:800;color:{CA};line-height:1.0;">{_pct_m}%</div>'
-            f'<div style="font-size:12px;color:{CN};font-weight:700;margin-top:2px;">{fmt(_materiel)}\u00a0MAD</div>'
-            f'<div style="font-size:9px;color:{CG4};margin-top:2px;">Mat\u00e9riel \u00b7 Avant installation</div>'
-            f'</div>'
-            # Box 3 — Solde
-            f'<div style="flex:1;text-align:center;padding:6px 5px;background:white;border-radius:8px;border:1px solid {CG2};">'
-            f'<div class="serif" style="font-size:22px;font-weight:800;color:{CA};line-height:1.0;">{_pct_s}%</div>'
-            f'<div style="font-size:12px;color:{CN};font-weight:700;margin-top:2px;">{fmt(_solde)}\u00a0MAD</div>'
-            f'<div style="font-size:9px;color:{CG4};margin-top:2px;">Solde \u00b7 Apr\u00e8s installation</div>'
-            f'</div>'
+            f'{_boxes}'
             f'</div>'
             # Note
             f'<div style="font-size:7pt;color:{CG4};font-style:italic;margin-bottom:3px;">'
@@ -1970,7 +2000,7 @@ def page_etude():
 
   <div style="background:{CN};padding:6px 24px 5px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;">
     <div style="font-size:9pt;font-weight:800;color:{CA};letter-spacing:1px;">{ENT_NOM_MARQUE}</div>
-    <div style="font-size:7pt;color:#888;">contact@taqinor.com &nbsp;\u00b7&nbsp; www.taqinor.ma</div>
+    <div style="font-size:7pt;color:#888;">{ENT_ETUDE_CONTACT}</div>
     <div style="font-size:7pt;color:#888;">\u00c9tude \u2014 R\u00e9f.\u00a0{REF}</div>
   </div>
 </div>

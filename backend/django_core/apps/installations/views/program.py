@@ -13,13 +13,13 @@ générée via le numéroteur anti-collision partagé (jamais ``count()+1``). Le
 objets cross-app (devis ``ventes`` / ticket ``sav``) sont référencés par
 string-FK et validés tenant via l'objet résolu par DRF — leurs modèles ne sont
 JAMAIS importés, et leurs statuts ne sont JAMAIS touchés."""
-from rest_framework import viewsets, status
+from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.viewsets import CompanyScopedModelViewSet
 
 from apps.ventes.utils.references import create_with_reference
 
@@ -52,7 +52,7 @@ def _check_projet_tenant(serializer, company):
     _check_tenant(serializer, company, 'projet')
 
 
-class ProjetViewSet(TenantMixin, viewsets.ModelViewSet):
+class ProjetViewSet(CompanyScopedModelViewSet):
     """FG291 — programme/projet multi-chantiers (ferme à 4 forages, toiture par
     tranches). Lecture tout rôle, écriture responsable/admin. Référence et
     société posées côté serveur. Filtrable par `statut` et `client`."""
@@ -155,7 +155,7 @@ class ProjetViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(projet_pnl(projet))
 
 
-class ProjetChantierViewSet(TenantMixin, viewsets.ModelViewSet):
+class ProjetChantierViewSet(CompanyScopedModelViewSet):
     """FG291 — rattachements chantier↔programme. Filtrable par `projet`."""
     queryset = ProjetChantier.objects.select_related(
         'projet', 'installation').all()
@@ -186,7 +186,7 @@ class ProjetChantierViewSet(TenantMixin, viewsets.ModelViewSet):
         serializer.save(company=company)
 
 
-class ProjetDevisViewSet(TenantMixin, viewsets.ModelViewSet):
+class ProjetDevisViewSet(CompanyScopedModelViewSet):
     """FG291 — rattachements devis↔programme (string-FK, statut intact)."""
     queryset = ProjetDevis.objects.select_related('projet', 'devis').all()
     serializer_class = ProjetDevisSerializer
@@ -216,7 +216,7 @@ class ProjetDevisViewSet(TenantMixin, viewsets.ModelViewSet):
         serializer.save(company=company)
 
 
-class ProjetTicketViewSet(TenantMixin, viewsets.ModelViewSet):
+class ProjetTicketViewSet(CompanyScopedModelViewSet):
     """FG291 — rattachements ticket SAV↔programme (string-FK, statut intact)."""
     queryset = ProjetTicket.objects.select_related('projet', 'ticket').all()
     serializer_class = ProjetTicketSerializer
@@ -269,7 +269,7 @@ def _check_tache_links_same_projet(serializer, instance=None):
                 {field: 'Doit appartenir au même programme.'})
 
 
-class ProjetTacheViewSet(TenantMixin, viewsets.ModelViewSet):
+class ProjetTacheViewSet(CompanyScopedModelViewSet):
     """FG292 — tâches & sous-tâches de programme avec dépendances. Lecture tout
     rôle, écriture responsable/admin. Société posée côté serveur. Le programme,
     le parent, le prédécesseur et l'assigné sont validés tenant. Les cycles
@@ -340,7 +340,7 @@ class ProjetTacheViewSet(TenantMixin, viewsets.ModelViewSet):
 
 # ── FG294 — Budget projet vs réel (engagé / dépensé) ──────────────────────────
 
-class BudgetProjetViewSet(TenantMixin, viewsets.ModelViewSet):
+class BudgetProjetViewSet(CompanyScopedModelViewSet):
     """FG294 — budget d'un programme + synthèse vs réel.
 
     CRUD du budget (enveloppes par catégorie, tarif main-d'œuvre, seuil
@@ -382,7 +382,7 @@ class BudgetProjetViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(budget_projet_synthese(budget))
 
 
-class BudgetEngagementViewSet(TenantMixin, viewsets.ModelViewSet):
+class BudgetEngagementViewSet(CompanyScopedModelViewSet):
     """FG294 — rattachement d'un coût fournisseur (BCF ou facture fournisseur)
     à un budget de programme. INTERNE (responsable/admin). La société est posée
     côté serveur ; le budget et l'objet stock rattaché sont validés tenant. Les

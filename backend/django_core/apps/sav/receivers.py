@@ -1,4 +1,4 @@
-"""Récepteurs d'événements métier (M6) — YSUBS5, YSERV2.
+"""Récepteurs d'événements métier (M6) — YSUBS5, YSERV2, YSERV10.
 
 Abonne ``sav`` aux événements du cœur métier exposés par ``core.events``, pour
 réagir à la résiliation d'un contrat (``apps.contrats``) SANS que ``contrats``
@@ -12,11 +12,15 @@ départ fiable, jamais la simple date de dernière sauvegarde du ticket.
 """
 import logging
 
+from django.contrib.contenttypes.models import ContentType
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.utils import timezone
 
-from core.events import contrat_resilie, devis_accepted, intervention_completed
+from core.events import (
+    chantier_receptionne, contrat_resilie, devis_accepted,
+    intervention_completed,
+)
 from .models import Ticket
 
 logger = logging.getLogger(__name__)
@@ -113,6 +117,12 @@ def _avancer_ticket_on_intervention_completed(sender, intervention, company,
             f"Intervention {intervention.get_type_intervention_display()} "
             'terminée — ticket avancé automatiquement vers Résolu '
             f'(depuis {ancien_statut}).')
+        # ARC37 — sav devient émetteur du bus (core.events.ticket_resolu),
+        # même point d'émission unique que la transition manuelle gardée
+        # (apps/sav/views.py).
+        from . import services as sav_services
+        sav_services.emettre_ticket_resolu(
+            ticket, company=company, user=user, ancien_statut=ancien_statut)
     except Exception:  # pragma: no cover - défensif (best-effort)
         logger.warning(
             'sav: échec avancement ticket sur intervention terminée '
@@ -136,3 +146,88 @@ def _creer_contrat_maintenance_on_devis_accepted(sender, devis, user,
         logger.warning(
             'sav: échec création contrat de maintenance sur devis accepté '
             '#%s', getattr(devis, 'pk', None), exc_info=True)
+
+
+@receiver(chantier_receptionne, dispatch_uid="sav_proposer_contrat_on_chantier_receptionne")
+def _proposer_contrat_maintenance_on_chantier_receptionne(
+        sender, installation, user, ancien_statut, **kwargs):
+    """YSERV10 — à la réception d'un chantier, si le client n'a AUCUN
+    ``ContratMaintenance`` actif (``selectors.client_a_contrat_actif``),
+    crée une ``records.Activity`` « Proposer le contrat d'entretien »
+    assignée au commercial du chantier (échéance J+14) + une notification
+    ``notifications.notify()``. Idempotent : une SEULE activité par
+    chantier (marqueur dans ``note``, même pattern que le rappel détracteur
+    NPS de ``apps/compta/services.py``). Client déjà sous contrat -> aucun
+    effet. Best-effort : une erreur ici ne doit jamais remonter (la
+    réception, côté installations, est déjà actée)."""
+    try:
+        client = getattr(installation, 'client', None)
+        if client is None:
+            return
+
+        from .selectors import client_a_contrat_actif
+
+        if client_a_contrat_actif(client, installation.company):
+            return  # déjà sous contrat — aucune offre à proposer.
+
+        # Commercial responsable : le créateur du devis à l'origine du
+        # chantier (fallback : propriétaire du lead lié) — même chemin que
+        # les autres relances commerciales de ce dépôt.
+        devis = getattr(installation, 'devis', None)
+        assigne = getattr(devis, 'created_by', None) if devis else None
+        if assigne is None:
+            lead = getattr(installation, 'lead', None)
+            assigne = getattr(lead, 'owner', None) if lead else None
+        if assigne is None:
+            return  # aucun destinataire résolvable — pas d'activité orpheline.
+
+        from apps.records.models import Activity, ActivityType
+
+        marque = f'[yserv10:{installation.id}]'
+        ct = ContentType.objects.get_for_model(type(client))
+        deja = Activity.objects.filter(
+            company=installation.company, content_type=ct,
+            object_id=client.id, note__contains=marque).exists()
+        if deja:
+            return
+
+        atype = ActivityType.objects.filter(
+            company=installation.company, nom='Appel').first()
+        if atype is None:
+            atype = ActivityType.objects.create(
+                company=installation.company, nom='Appel', ordre=10)
+
+        Activity.objects.create(
+            company=installation.company, content_type=ct,
+            object_id=client.id, activity_type=atype,
+            summary="Proposer le contrat d'entretien"[:255],
+            due_date=timezone.localdate() + timezone.timedelta(days=14),
+            assigned_to=assigne,
+            note=f'{marque} Chantier réceptionné sans contrat de '
+                 "maintenance actif — proposer un contrat d'entretien.",
+            created_by=None,
+        )
+
+        from apps.notifications.services import notify
+        from apps.notifications.models import EventType
+
+        note = notify(
+            assigne, EventType.SAV_ACTIVITE_DUE,
+            "Proposer un contrat d'entretien",
+            body=(f'Le chantier #{installation.id} a été réceptionné sans '
+                  'contrat de maintenance actif.'),
+            link='/crm/clients',
+            company=installation.company,
+        )
+        if note is None:
+            logger.warning(
+                'yserv10: notify() no-op (module off ou préférence in-app '
+                'coupée) pour destinataire=%s event=%s company=%s',
+                getattr(assigne, 'username', assigne),
+                EventType.SAV_ACTIVITE_DUE, getattr(
+                    installation.company, 'pk', None))
+    except Exception:  # pragma: no cover - défensif (best-effort)
+        logger.warning(
+            'sav: échec offre auto de contrat entretien sur chantier '
+            'réceptionné #%s', getattr(installation, 'pk', None),
+            exc_info=True)

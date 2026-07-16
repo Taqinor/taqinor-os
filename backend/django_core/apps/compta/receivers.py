@@ -19,9 +19,11 @@ from django.dispatch import receiver
 
 from core.events import (
     avoir_cree,
+    chantier_receptionne,
     facture_annulee,
     facture_emise,
     facture_fournisseur_creee,
+    facture_payee,
     paiement_enregistre,
     paiement_fournisseur_enregistre,
     paiement_rejete,
@@ -37,9 +39,15 @@ from .services import (  # noqa: F401  (ré-export du point d'intégration)
     ecriture_pour_paiement,
     ecriture_pour_paiement_especes_via_caisse,
     ecriture_pour_paiement_fournisseur,
+    # XPLT20 — miroir inter-sociétés (vente A → achat B), opt-in strict via
+    # RegleInterSociete (désactivée par défaut) ; indépendant du toggle
+    # COMPTA_AUTO_ECRITURES (n'écrit jamais l'écriture de vente elle-même).
+    generer_facture_fournisseur_miroir_intersociete,
     # YLEDG10 — chèques clients reçus → portefeuille d'effets (3425), jamais
     # directement en banque (l'argent n'y est pas encore).
     enregistrer_effet_pour_paiement_cheque,
+    # YSERV4 — envoi (gated Brevo) de l'enquête NPS créée à la réception.
+    envoyer_enquete_nps,
     extourner_ecriture,
     # XACC1 — transfert TVA attente→définitif (régime encaissement). Même
     # point d'ancrage : appel de service explicite depuis ``ventes`` tant
@@ -59,6 +67,13 @@ from .services import (  # noqa: F401  (ré-export du point d'intégration)
 @receiver(facture_emise, dispatch_uid="compta_ecriture_pour_facture_emise")
 def _ecriture_pour_facture_emise(sender, instance, company, **kwargs):
     ecriture_pour_facture(instance)
+
+
+# ── XPLT20 — miroir inter-sociétés, indépendant de COMPTA_AUTO_ECRITURES ────
+
+@receiver(facture_emise, dispatch_uid="compta_miroir_intersociete_facture_emise")
+def _miroir_intersociete_pour_facture_emise(sender, instance, company, **kwargs):
+    generer_facture_fournisseur_miroir_intersociete(instance, company)
 
 
 @receiver(paiement_enregistre, dispatch_uid="compta_ecriture_pour_paiement")
@@ -147,3 +162,43 @@ def _delettrer_paiement_rejete(sender, paiement, facture, montant, company,
         return
     from . import selectors
     selectors.delettrer(company, ligne_lettree.lettrage)
+
+
+# ── ARC36 — facture intégralement réglée → lettrage du solde (compta) ────────
+# S'abonne à ``facture_payee`` (YEVNT6 — TOUT chemin qui solde la facture,
+# y compris « marquer payée » manuel sans nouveau Paiement). Complète le
+# lettrage YLEDG6 déjà déclenché sur ``paiement_enregistre`` : ce chemin-ci
+# couvre les soldes SANS événement de paiement. ``auto_lettrer_facture_
+# soldee`` est idempotente (lignes déjà lettrées exclues, no-op silencieux)
+# — une double invocation (paiement_enregistre PUIS facture_payee) ne pose
+# jamais deux lettrages. Le signal frère ``facture_paid`` (YDOCF4) porte le
+# même fait : DÉPRÉCIÉ pour l'abonnement (docstring du bus) — on n'écoute
+# que ``facture_payee``. Additif : aucun statut document modifié (règle #4).
+
+@receiver(facture_payee, dispatch_uid="compta_lettrage_facture_payee")
+def _lettrer_facture_payee(sender, instance, company, **kwargs):
+    auto_lettrer_facture_soldee(instance)
+
+
+# ── YSERV4 — enquête NPS auto à la réception d'un chantier ──────────────────
+# FG238 avait livré EnqueteNPS + envoyer_enquete_nps (gated Brevo) sans aucun
+# déclencheur : ce récepteur ferme la boucle sur core.events.chantier_
+# receptionne (émis par apps.installations aux deux sites de transition vers
+# RECEPTIONNE). Idempotent par chantier (get_or_create sur chantier_id) : une
+# ré-émission du signal (ex. ré-sauvegarde) ne crée jamais une deuxième
+# enquête pour le même chantier. L'envoi réel reste gated Brevo (envoyer_
+# enquete_nps est déjà un no-op sans clé) — comportement FG238 inchangé.
+
+@receiver(chantier_receptionne, dispatch_uid="compta_enquete_nps_reception")
+def _creer_enquete_nps_a_reception(sender, installation, user, ancien_statut,
+                                   **kwargs):
+    from .models import EnqueteNPS
+
+    client_id = getattr(installation, 'client_id', None)
+    if not client_id:
+        return
+    enquete, created = EnqueteNPS.objects.get_or_create(
+        company=installation.company, chantier_id=installation.id,
+        defaults={'client_id': client_id})
+    if created:
+        envoyer_enquete_nps(enquete)

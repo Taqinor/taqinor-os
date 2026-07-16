@@ -1,0 +1,80 @@
+# NTPLT53 — règles Semgrep MAISON encodant les invariants du repo (patterns de
+# CODE). Complémentaire des gardes AST YDATA (qui vérifient la STRUCTURE des
+# modèles) : ici on attrape des motifs d'usage dangereux. Job CI advisory.
+rules:
+  # ── Règle 1 : pas de SQL formaté ni objects.raw ────────────────────────────
+  # Rule non-négociable #1 (Odoo JSON-2) + hygiène anti-injection : un raw()
+  # avec une chaîne f-string / .format / concaténation est une injection en
+  # puissance. objects.raw() est banni tout court côté domaine.
+  - id: no-formatted-raw-sql
+    languages: [python]
+    severity: ERROR
+    message: >-
+      SQL brut interdit ici : n'utilisez jamais objects.raw() ni une requête
+      SQL construite par f-string/.format/concaténation (injection + rule #1).
+      Passez par l'ORM ou un paramétrage sûr.
+    patterns:
+      - pattern-either:
+          - pattern: $M.objects.raw(f"...")
+          - pattern: $M.objects.raw("...".format(...))
+          - pattern: $M.objects.raw("..." % ...)
+          - pattern: $CURSOR.execute(f"...")
+          - pattern: $CURSOR.execute("...".format(...))
+          - pattern: $CURSOR.execute("..." % ...)
+
+  # ── Règle 2 : `company` jamais lu du corps de requête ──────────────────────
+  # Multi-tenant : la société est TOUJOURS forcée server-side
+  # (request.user.company), jamais acceptée du client.
+  - id: no-company-from-request-body
+    languages: [python]
+    severity: ERROR
+    message: >-
+      Ne lisez jamais `company` depuis le corps de la requête : le tenant est
+      forcé server-side (request.user.company / perform_create). Lire
+      company du body est une faille d'isolation multi-tenant.
+    patterns:
+      - pattern-either:
+          - pattern: request.data.get("company", ...)
+          - pattern: request.data.get("company")
+          - pattern: request.data["company"]
+          - pattern: $SER.validated_data.get("company", ...)
+          - pattern: $SER.validated_data["company"]
+
+  # ── Règle 3 : pas de count()+1 pour une référence ──────────────────────────
+  # count()+1 a COLLISIONNÉ en production (les documents supprimés rétrécissent
+  # le compte). Utiliser apps/ventes/utils/references.py.
+  - id: no-count-plus-one-reference
+    languages: [python]
+    severity: ERROR
+    message: >-
+      Ne dérivez jamais une référence/numéro par count()+1 (collision en prod
+      quand un document est supprimé). Utilisez le générateur
+      apps/ventes/utils/references.py (highest-used+1, savepoint + retry).
+    patterns:
+      - pattern-either:
+          - pattern: $M.objects.count() + 1
+          - pattern: $M.objects.filter(...).count() + 1
+
+  # ── Règle 4 : aucun nouveau chemin PDF devis hors /proposal (RÈGLE #4) ──────
+  # Le seul moteur de PDF devis client est quote_engine via /proposal. Un
+  # nouveau WeasyPrint/render_to_* nommé « devis » ailleurs viole la règle #4.
+  - id: no-alt-quote-pdf-path
+    languages: [python]
+    severity: ERROR
+    # Cible les modules « devis/quote » hors quote_engine : un rendu PDF de
+    # devis ne doit exister QUE dans le moteur vendored. Les factures gardent
+    # leur PDF legacy propre (chemins « facture »), donc non ciblés ici.
+    paths:
+      include:
+        - "**/*devis*.py"
+        - "**/*quote*.py"
+      exclude:
+        - "**/quote_engine/**"
+    message: >-
+      Chemin PDF devis alternatif interdit (RÈGLE #4) : le seul moteur de PDF
+      devis client est apps/ventes/quote_engine via /proposal. N'ajoutez aucun
+      autre rendu PDF de devis.
+    patterns:
+      - pattern-either:
+          - pattern: $H.write_pdf(...)
+          - pattern: weasyprint.HTML(...)

@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   Link2, FileText, Package, Hammer, ClipboardList, Camera, Wrench, Zap,
   History, Send, ScrollText, Download, ExternalLink, WifiOff, TriangleAlert,
-  RotateCw, Milestone,
+  RotateCw, Milestone, Printer,
 } from 'lucide-react'
 import { updateInstallation } from '../../features/installations/store/installationsSlice'
 import { fetchProduits } from '../../features/stock/store/stockSlice'
@@ -14,7 +14,12 @@ import crmApi from '../../api/crmApi'
 import documentsApi from '../../api/documentsApi'
 import ventesApi from '../../api/ventesApi'
 import { downloadBlob } from '../../utils/downloadBlob'
+import { openPdfInGesture } from '../../utils/pdfBlob'
 import { errorMessageFrom } from '../../lib/toast'
+import { toast } from '../../ui/confirm'
+// VX156 — le moment « chantier terminé » (mise en service) porte la voix Taqinor.
+import { voice } from '../../lib/voice'
+import { telHref } from '../../lib/contactLinks'
 import {
   pdfBlob, previewView, classifyFetchError, PREVIEW_VIEW,
 } from '../../features/ventes/previewPdf'
@@ -27,6 +32,7 @@ import {
   nextBestAction,
 } from '../../features/installations/statuses'
 import ProduitPicker from '../../components/ProduitPicker'
+import OwnerChain from '../../components/OwnerChain'
 import ChantierChecklist from './ChantierChecklist'
 import ChantierTimeline from './ChantierTimeline'
 import ChantierGateTimeline from './ChantierGateTimeline'
@@ -42,12 +48,13 @@ import {
   SOUS_GARANTIE_LABELS,
 } from '../../features/sav/ticketStatuses'
 import { formatDate } from '../../lib/format'
+import useDocumentTitle from '../../hooks/useDocumentTitle'
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle,
   Card, CardHeader, CardTitle, CardContent,
   Button, Input, Textarea, Checkbox, Label, StatusPill,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
-  FormField, FormActions, useDirtyGuard,
+  FormField, FormActions, useDirtyGuard, confirmLeaveIfDirty,
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
   AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
   Spinner, EmptyState,
@@ -120,6 +127,11 @@ const equipStatutLabel = (v) =>
   EQUIP_STATUTS.find((s) => s.value === v)?.label ?? '—'
 
 export default function InstallationDetail({ installation, onClose, onSaved }) {
+  // VX82 — titre d'onglet dédié (chrome navigateur vivant) : la fiche
+  // installation est un panneau/hub ouvert par actif, donc dynamique (client)
+  // plutôt qu'une route dédiée — repli sur « Installation » si le client
+  // n'est pas encore chargé.
+  useDocumentTitle(installation?.client_nom ? `Installation · ${installation.client_nom}` : 'Installation')
   const dispatch = useDispatch()
   const navigate = useNavigate()
   const id = installation.id
@@ -239,6 +251,12 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   // picker par TYPE ; '' = tous les produits du BOM (comportement historique).
   const [equipSlot, setEquipSlot] = useState('')
   const [tickets, setTickets] = useState([])
+  // VX216(c) — le ticket SAV le plus récent de ce chantier, pour le maillon
+  // « SAV » de l'OwnerChain (lecture seule, aucun état nouveau à charger —
+  // `tickets` est déjà chargé pour la section Tickets plus bas).
+  const latestTicket = tickets.length > 0
+    ? [...tickets].sort((a, b) => (b.date_ouverture || '').localeCompare(a.date_ouverture || ''))[0]
+    : null
   const [newTicket, setNewTicket] = useState({ type: 'correctif', description: '', equipement: '' })
   const [ticketBusy, setTicketBusy] = useState(false)
   const [contrats, setContrats] = useState([])
@@ -460,6 +478,9 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
         Object.entries(mes).map(([k, v]) => [k, nullable(v)]))
       await installationsApi.miseEnService(id, data)
       setActionError(null)
+      // VX156 — moment « chantier terminé » : la voix Taqinor célèbre la mise
+      // en service (pas un toast plat de sauvegarde).
+      toast.success(voice.chantierDone)
       onSaved?.()
     } catch (err) {
       setActionError(actionMsg(err, 'Enregistrement de la mise en service impossible.'))
@@ -584,7 +605,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
         downloadBlob(res.data, previewDoc.filename)
       }
     } catch {
-      alert('Téléchargement indisponible. Réessayez.')
+      toast.error('Téléchargement indisponible. Réessayez.')
     } finally {
       setPreviewDownloading(false)
     }
@@ -592,19 +613,22 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
 
   // « Ouvrir dans un nouvel onglet » : MÊME PDF authentifié via une URL blob,
   // révoquée ensuite (aucune fuite).
+  // VX48 — onglet pré-ouvert SYNCHRONE avant l'await (Safari iOS bloque
+  // silencieusement un window.open() post-await).
   const openPreviewNewTab = async () => {
     if (!previewDoc) return
+    const pending = openPdfInGesture()
     try {
       let blob = previewBlob
       if (!blob) {
         const res = await previewDoc.fetcher()
         blob = pdfBlob(res.data)
       }
-      const url = URL.createObjectURL(blob)
-      window.open(url, '_blank', 'noopener')
-      setTimeout(() => URL.revokeObjectURL(url), 60000)
+      if (!pending.deliver(blob, previewDoc.filename)) {
+        toast.error('Ouverture bloquée par le navigateur. Téléchargez le document.')
+      }
     } catch {
-      alert('Ouverture impossible. Réessayez ou téléchargez le document.')
+      toast.error('Ouverture impossible. Réessayez ou téléchargez le document.')
     }
   }
 
@@ -642,10 +666,10 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   const commanderBesoin = async () => {
     try {
       const r = await installationsApi.commanderBesoin(current.id)
-      alert(`Bon de commande fournisseur créé : ${r.data.reference} (${r.data.nb_lignes} ligne(s)).`)
+      toast.success(`Bon de commande fournisseur créé : ${r.data.reference} (${r.data.nb_lignes} ligne(s)).`)
       chargerBesoin()
     } catch (e) {
-      alert(e?.response?.data?.detail || 'Création impossible.')
+      toast.error(e?.response?.data?.detail || 'Création impossible.')
     }
   }
 
@@ -722,7 +746,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
     : 'Disponible une fois le chantier installé et la checklist quasi-complète.'
 
   return (
-    <Sheet open onOpenChange={(o) => { if (!o) onClose?.() }}>
+    <Sheet open onOpenChange={(o) => { if (!o && confirmLeaveIfDirty(dirty)) onClose?.() }}>
       <SheetContent side="right" className="w-[min(64rem,calc(100%-1.5rem))] sm:max-w-none">
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
@@ -781,9 +805,22 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
 
           {/* ── Liens ── */}
           <Section icon={Link2} title="Liens">
+            {/* VX216(c) — chaîne de responsabilité cliquable : personne ne
+                voyait « Lead : A · Devis : B · Chantier : C · SAV : D » d'un
+                coup d'œil quand le client rappelle. Maillons = deep-links
+                RÉELS existants (VX79 ?id=/?lead=/?devis=) ; un maillon sans
+                id connu est simplement absent. */}
+            <OwnerChain
+              className="mb-2"
+              lead={current.lead ? { id: current.lead, nom: current.lead_nom } : null}
+              devis={current.devis ? { id: current.devis, nom: current.devis_reference } : null}
+              chantier={{ id: current.id, nom: current.reference }}
+              sav={latestTicket ? { id: latestTicket.id, nom: latestTicket.reference } : null}
+            />
             <div className="flex flex-wrap gap-2">
               {current.devis && (
-                <Button size="sm" variant="outline" onClick={() => navigate('/ventes/devis')}>
+                <Button size="sm" variant="outline"
+                        onClick={() => navigate(`/ventes/devis?devis=${current.devis}`)}>
                   Voir le devis{current.devis_reference ? ` (${current.devis_reference})` : ''}
                 </Button>
               )}
@@ -793,7 +830,8 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                 </Button>
               )}
               {current.lead && (
-                <Button size="sm" variant="outline" onClick={() => navigate('/crm/leads')}>
+                <Button size="sm" variant="outline"
+                        onClick={() => navigate(`/crm/leads?lead=${current.lead}`)}>
                   Voir le lead
                 </Button>
               )}
@@ -973,8 +1011,14 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                        onChange={(e) => set('contact_site_nom', e.target.value)} />
               </FormField>
               <FormField label="Téléphone du contact" htmlFor="ch-contact-tel">
-                <Input id="ch-contact-tel" value={fields.contact_site_telephone ?? ''}
-                       onChange={(e) => set('contact_site_telephone', e.target.value)} />
+                <div className="flex items-center gap-2">
+                  <Input id="ch-contact-tel" value={fields.contact_site_telephone ?? ''}
+                         onChange={(e) => set('contact_site_telephone', e.target.value)} />
+                  {telHref(fields.contact_site_telephone) && (
+                    <a href={telHref(fields.contact_site_telephone)} title="Appeler"
+                       className="link-blue whitespace-nowrap">☎</a>
+                  )}
+                </div>
               </FormField>
               <FormField label="Horaires d'accès" htmlFor="ch-horaires" className="sm:col-span-2">
                 <Input id="ch-horaires" value={fields.horaires_acces ?? ''}
@@ -1062,6 +1106,14 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
 
           {/* ── Checklist d'exécution (N4/N9) ── */}
           <Section icon={ClipboardList} title="Checklist d'exécution">
+            {/* VX80 — impression de la checklist chantier (feuille print.css :
+                chrome masqué, noir-sur-blanc, contenu complet). Distinct des PDF
+                WeasyPrint. */}
+            <div className="mb-3">
+              <Button size="sm" variant="outline" onClick={() => window.print()}>
+                <Printer /> Imprimer la checklist
+              </Button>
+            </div>
             {/* FG386/N91/F21 — état de la synchro terrain hors-ligne (silencieux
                 si en ligne et file vide). */}
             <OfflineSyncIndicator />
@@ -1508,9 +1560,12 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
       {/* ── Aperçu in-app d'un document après-vente AVANT téléchargement (L4) ──
           Panneau plein écran réutilisant l'aperçu PDF.js (canvas) du devis :
           même rendu inblocable, même source d'octets que le téléchargement. */}
-      {previewDoc && (
-        <div className="ldp-overlay" onClick={closePreview}>
-          <div className="ldp-panel" onClick={(e) => e.stopPropagation()}>
+      {/* VX133 — migré du `.ldp-overlay`/`.ldp-panel` bespoke (pop centré) vers
+          un Sheet imbriqué side="right" : glisse depuis son bord réel. */}
+      <Sheet open={!!previewDoc} onOpenChange={(o) => { if (!o) closePreview() }}>
+        <SheetContent side="right" showClose={false} className="w-[min(1100px,100%)] gap-0 p-0 sm:max-w-none">
+          {previewDoc && (
+            <>
             <div className="ldp-header">
               <h3 className="ldp-title">
                 {previewDoc.title}
@@ -1596,9 +1651,10 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                 </div>
               </div>
             </div>
-          </div>
-        </div>
-      )}
+            </>
+          )}
+        </SheetContent>
+      </Sheet>
     </Sheet>
   )
 }

@@ -32,6 +32,10 @@ from authentication.permissions import (
     HasPermissionOrLegacy, IsAdminRole,
 )
 from core.permissions import ScopedPermission, WriteScopedPermissionMixin
+# ARC8 — chatter générique (records.Activity). records est une app de
+# FONDATION : l'import direct de son mixin de vue est autorisé (frontière
+# cross-app exemptée pour records/core/authentication).
+from apps.records.views import ChatterViewSetMixin
 
 from . import selectors, services
 from .models import (
@@ -153,7 +157,7 @@ class _ContratsBaseViewSet(
     write_permission = 'contrat_gerer'
 
 
-class ContratViewSet(_ContratsBaseViewSet):
+class ContratViewSet(ChatterViewSetMixin, _ContratsBaseViewSet):
     """Contrats de la société (CLM). Recherche par référence/objet.
 
     Visibilité par confidentialité : les contrats ``CONFIDENTIEL`` ne sont
@@ -161,6 +165,17 @@ class ContratViewSet(_ContratsBaseViewSet):
     sont accessibles à tous les Responsables et Administrateurs de la société.
     Un filtre optionnel ``?confidentialite=<niveau>`` permet de restreindre
     la liste retournée.
+
+    SCA35 — pilote « bout en bout » du kit ``core.documents`` : ce viewset
+    mixe DÉJÀ ``ChatterViewSetMixin`` (ARC8, chatter générique consommé —
+    jamais refait) ; le kit CONSOMME ce chatter au lieu de le dupliquer. Base
+    volontairement conservée (``_ContratsBaseViewSet`` + confidentialité +
+    actions ``pdf``/``changer-statut``/``statuts-suivants`` ci-dessous) plutôt
+    que remplacée par la factory générique ``core.documents.document_viewset``
+    : cette dernière composerait un viewset PLUS PAUVRE (perdrait le filtre de
+    confidentialité YRBAC3, le second garde-fou « ≥2 parties », et les actions
+    métier) pour un gain nul — la Meta note « Done = cycle de vie contrat
+    inchangé fonctionnellement » (``docs/PLAN.md``) exclut ce remplacement.
     """
     queryset = Contrat.objects.all()
     serializer_class = ContratSerializer

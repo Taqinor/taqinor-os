@@ -269,6 +269,8 @@ class TicketSerializer(serializers.ModelSerializer):
         source='get_priorite_display', read_only=True)
     statut_ordre = serializers.SerializerMethodField()
     client_nom = serializers.SerializerMethodField()
+    # VX108 — tap-to-call : numéro du client du ticket (lecture seule).
+    client_telephone = serializers.SerializerMethodField()
     installation_reference = serializers.CharField(
         source='installation.reference', read_only=True, default=None)
     equipement_serie = serializers.CharField(
@@ -387,6 +389,10 @@ class TicketSerializer(serializers.ModelSerializer):
         if not c:
             return None
         return f"{c.nom} {c.prenom or ''}".strip()
+
+    def get_client_telephone(self, obj):
+        c = obj.client
+        return c.telephone if c else None
 
     def get_technicien_nom(self, obj):
         return getattr(obj.technicien_responsable, 'username', None)

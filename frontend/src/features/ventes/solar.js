@@ -4,6 +4,8 @@
 // simulator UI) and only converted to HT at save time. Pure functions, no I/O.
 // The premium PDF engine computes its own figures server-side — never fed here.
 
+import { formatMAD } from '../../lib/format.js'
+
 // ── Constantes Maroc (irradiance GHI mensuelle + tarif ONEE) ──────────────────
 // DC9 — MIROIR de la source Python unique
 // (backend apps/ventes/quote_engine/constants.py GHI). Les deux tables DOIVENT
@@ -26,6 +28,43 @@ export const CHART_MONTHS = [
 export const EFFICIENCY = 0.8 // rendement global
 export const KWH_PRICE = 1.75 // MAD/kWh ONEE — usage interne, jamais affiché
 
+// ── QX38 — productible CANONIQUE (kWh/kWc/an) par ville, source PVGIS ─────────
+// MIROIR EXACT de backend apps/ventes/quote_engine/productible.py
+// (PRODUCTIBLE_PAR_VILLE + DEFAULT_PRODUCTIBLE) et de apps/web yieldTable.ts
+// (aspect Sud, inclinaison optimale). Les trois DOIVENT rester alignés :
+// l'écran, le PDF et la proposition web affichent alors la MÊME production/
+// économies pour les mêmes entrées. Ne jamais éditer l'un sans les deux autres.
+export const PRODUCTIBLE_PAR_VILLE = {
+  agadir: 1687,
+  marrakech: 1651,
+  casablanca: 1651,
+  rabat: 1630,
+  tanger: 1634,
+}
+export const DEFAULT_PRODUCTIBLE = 1651 // Casablanca (centre zone de service)
+const _PRODUCTIBLE_HISTORICAL_DEFAULT = 1600
+const _CITY_ALIASES = {
+  casa: 'casablanca', kenitra: 'rabat', sale: 'rabat', salé: 'rabat',
+  mohammedia: 'casablanca', 'el jadida': 'casablanca', essaouira: 'agadir',
+  safi: 'casablanca', temara: 'rabat', témara: 'rabat', tetouan: 'tanger',
+  tétouan: 'tanger', settat: 'casablanca', benguerir: 'marrakech',
+  berrechid: 'casablanca',
+}
+
+// Productible canonique pour une ville. `override` = productible société
+// (CompanyProfile) : quand il diffère RÉELLEMENT du défaut historique 1600, il
+// prime ; sinon on lit le productible PVGIS de la ville (repli DEFAULT).
+export function productibleForCity(city, override = null) {
+  const ov = parseFloat(override)
+  if (Number.isFinite(ov) && ov > 0 && Math.abs(ov - _PRODUCTIBLE_HISTORICAL_DEFAULT) > 0.5) {
+    return ov
+  }
+  const key = String(city || '').trim().toLowerCase()
+  if (!key) return DEFAULT_PRODUCTIBLE
+  const norm = _CITY_ALIASES[key] || key
+  return PRODUCTIBLE_PAR_VILLE[norm] ?? DEFAULT_PRODUCTIBLE
+}
+
 // Factures mensuelles affichées au chargement (initApp du simulateur)
 export const DEFAULT_MONTHLY_BILLS = [500, 450, 400, 380, 360, 500, 700, 680, 580, 480, 430, 480]
 
@@ -40,7 +79,7 @@ export const DAY_USAGE_DEFAULTS = {
 // ── Format monétaire (port exact de formatMoney) ─────────────────────────────
 export function formatMoney(val) {
   if (val === null || val === undefined || isNaN(val)) return '0 MAD'
-  return Math.round(val).toLocaleString('fr-MA') + ' MAD'
+  return formatMAD(val, { decimals: 0 })
 }
 
 // ── Estimation des factures mensuelles depuis hiver/été ──────────────────────
@@ -69,6 +108,49 @@ export function estimerPanneaux(factureHiver, perTranche = 8) {
 export const AUTOCONSO_SANS = 0.60
 export const AUTOCONSO_AVEC = 0.85
 
+// ── QX39 — cashflow 25 ans honnête (MIROIR backend pricing.py) ───────────────
+// Mêmes hypothèses documentées : dégradation panneau, escalade tarifaire,
+// rendement batterie, remplacement onduleur optionnel. Le payback = croisement
+// du cumul à zéro. Écran, PDF et proposition web affichent le MÊME payback.
+export const CASHFLOW_YEARS = 25
+export const PANEL_DEGRADATION = 0.005
+export const TARIFF_ESCALATION = 0.02
+export const BATTERY_ROUNDTRIP = 0.90
+export const INVERTER_REPLACE_YEAR = 12
+export const INVERTER_REPLACE_FRACTION = 0.08
+
+export function computeCashflowPayback(investment, economieAnnee1, { battery = false } = {}) {
+  const inv = parseFloat(investment) || 0
+  const base = parseFloat(economieAnnee1) || 0
+  if (base <= 0 || inv <= 0) {
+    return { paybackYears: null, cumulative: [], netGain: 0, years: CASHFLOW_YEARS }
+  }
+  const cumulative = []
+  let cumul = -inv
+  let payback = null
+  let prev = -inv
+  for (let y = 1; y <= CASHFLOW_YEARS; y++) {
+    const prodFactor = (1 - PANEL_DEGRADATION) ** (y - 1)
+    const tarifFactor = (1 + TARIFF_ESCALATION) ** (y - 1)
+    let yearSaving = base * prodFactor * tarifFactor
+    if (battery) yearSaving *= BATTERY_ROUNDTRIP
+    let yearCf = yearSaving
+    if (INVERTER_REPLACE_YEAR && y === INVERTER_REPLACE_YEAR) {
+      yearCf -= inv * INVERTER_REPLACE_FRACTION
+    }
+    prev = cumul
+    cumul += yearCf
+    cumulative.push(Math.round(cumul))
+    if (payback === null && cumul >= 0) {
+      const span = cumul - prev
+      const frac = span ? (0 - prev) / span : 0
+      payback = Math.round(((y - 1) + frac) * 10) / 10
+    }
+  }
+  if (payback === null) payback = CASHFLOW_YEARS
+  return { paybackYears: payback, cumulative, netGain: Math.round(cumul), years: CASHFLOW_YEARS }
+}
+
 // ── Simulation ROI (port exact de /api/roi/calculate du simulateur) ──────────
 // QF5 — quand une consommation annuelle RÉELLE + un distributeur connu sont
 // fournis (`consoAnnuelleKwh`/`utility`, capturés par QF4), l'économie bascule
@@ -78,12 +160,20 @@ export const AUTOCONSO_AVEC = 0.85
 // autoconsommation diurne × tarif) — jamais de régression pour un devis existant.
 export function computeROI({
   kwp, factures, dayUsagePct, totalSans, totalAvec, batteryKwh, kwhPrice, efficiency,
-  consoAnnuelleKwh, utility,
+  consoAnnuelleKwh, utility, productible,
 }) {
   // Tarif ONEE et rendement éditables (Paramètres → Avancé) ; sans valeur, on
   // garde EXACTEMENT les constantes historiques (parité simulateur garantie).
   const PRICE = (Number.isFinite(Number(kwhPrice)) && Number(kwhPrice) > 0) ? Number(kwhPrice) : KWH_PRICE
   const EFF = (Number.isFinite(Number(efficiency)) && Number(efficiency) > 0) ? Number(efficiency) : EFFICIENCY
+  // QX38 — productible CANONIQUE (kWh/kWc/an) : quand il est fourni (PVGIS par
+  // ville, source unique partagée avec le PDF/web), la production annuelle vaut
+  // productible × kwp, répartie par la FORME saisonnière GHI (le graphe mensuel
+  // garde sa saisonnalité). Sans productible, comportement HISTORIQUE inchangé
+  // (GHI[i] × kwp × rendement) — jamais de régression pour un devis existant.
+  const PROD = Number(productible)
+  const useProductible = Number.isFinite(PROD) && PROD > 0
+  const GHI_SUM = GHI.reduce((s, v) => s + v, 0)
   let bills = [...(factures ?? [])]
   if (bills.length < 12) {
     const last = bills.length ? bills[bills.length - 1] : 500
@@ -98,7 +188,9 @@ export function computeROI({
   let productionAnnuelle = 0
 
   for (let i = 0; i < 12; i++) {
-    const prodKwh = GHI[i] * kwp * EFF
+    const prodKwh = useProductible
+      ? (PROD * kwp) * (GHI[i] / GHI_SUM)   // productible réparti par forme GHI
+      : GHI[i] * kwp * EFF
     productionAnnuelle += prodKwh
     const selfConsumed = prodKwh * dayPct
     const ecoSans = selfConsumed * PRICE
@@ -134,10 +226,12 @@ export function computeROI({
     }
   }
 
-  const paybackSans = (ecoAnnuelleSans > 0 && totalSans > 0)
-    ? Math.round(totalSans / ecoAnnuelleSans * 10) / 10 : null
-  const paybackAvec = (ecoAnnuelleAvec > 0 && totalAvec > 0)
-    ? Math.round(totalAvec / ecoAnnuelleAvec * 10) / 10 : null
+  // QX39 — payback par croisement du cumul du cashflow 25 ans (miroir backend),
+  // pas un ratio année-1 : écran/PDF/proposition affichent le MÊME payback.
+  const cfSans = computeCashflowPayback(totalSans, ecoAnnuelleSans)
+  const cfAvec = computeCashflowPayback(totalAvec, ecoAnnuelleAvec, { battery: true })
+  const paybackSans = (ecoAnnuelleSans > 0 && totalSans > 0) ? cfSans.paybackYears : null
+  const paybackAvec = (ecoAnnuelleAvec > 0 && totalAvec > 0) ? cfAvec.paybackYears : null
 
   return {
     production_annuelle_kwh: Math.round(productionAnnuelle * 10) / 10,
@@ -148,6 +242,11 @@ export function computeROI({
     eco_avec_monthly: ecoAvecMonthly,
     payback_sans: paybackSans,
     payback_avec: paybackAvec,
+    // QX39 — cumul cashflow 25 ans + gain net (mêmes clés que le PDF).
+    cashflow_sans: cfSans.cumulative,
+    cashflow_avec: cfAvec.cumulative,
+    net_gain_sans: cfSans.netGain,
+    net_gain_avec: cfAvec.netGain,
     // QF5 — transparence : le PDF (builder.py) porte les mêmes clés
     // (savings_model/facture_sans/facture_avec_s/facture_avec_a).
     savings_model: savingsModel,
@@ -172,10 +271,14 @@ export const FALLBACK_KWH_PRICE = 1.20 // MAD/kWh — miroir pricing.py._FALLBAC
 
 // Tables de tranches (miroir pricing.py — mêmes valeurs, mêmes plafonds).
 // Format : [plafond_kWh_mensuel | null, prix_MAD_kWh_TTC].
+// QX38 — plafonds cumulatifs alignés sur les vraies bandes ONEE (0-100 /
+// 101-250 / 251-400 / >400), miroir EXACT de pricing.py ONEE_TRANCHES. Prix
+// inchangés ; seuls les plafonds 150/200 → 250/400 sont corrigés (ils
+// contredisaient leurs libellés et sous-tarifaient les foyers 150-400 kWh/mois).
 export const ONEE_TRANCHES = [
   [100, 0.9010],
-  [150, 1.0258],
-  [200, 1.2515],
+  [250, 1.0258],
+  [400, 1.2515],
   [null, 1.4017],
 ]
 export const LYDEC_TRANCHES = [
@@ -566,11 +669,17 @@ export function defaultProductLines(produits) {
 // ── Auto-remplissage (port exact de auto_fill_from_power + autofill_router) ───
 // Retourne la table complète dans l'ordre canonique du simulateur, lignes à
 // quantité nulle comprises (elles s'affichent mais ne sont pas enregistrées).
-export function autoFillLines(produits, { kwp, panelW, structureType }) {
+export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux: nbOverride }) {
   if (!kwp || kwp <= 0) return []
   const byType = indexProduits(produits)
 
-  const nbPanneaux = Math.max(1, Math.round(kwp * 1000 / panelW))
+  // QX19 — nombre de panneaux : override explicite (dérivé d'une taille kWc
+  // souhaitée) sinon dérivé de la puissance. Le kWc RÉEL est recalculé plus bas
+  // depuis la puissance du panneau EFFECTIVEMENT retenu (jamais une divergence
+  // silencieuse 550W-pour-710W).
+  const nbPanneaux = (Number(nbOverride) > 0)
+    ? Math.round(Number(nbOverride))
+    : Math.max(1, Math.round(kwp * 1000 / panelW))
   const threshold = kwp * 0.8
 
   // Sélection onduleur : plus petit modèle >= 80 % de la puissance, sinon le
@@ -660,7 +769,7 @@ export function autoFillLines(produits, { kwp, panelW, structureType }) {
     ? row(structChosen, 'Structures aluminium', nbPanneaux)
     : row(structOther, 'Structures aluminium', 0)
 
-  return [
+  const lignes = [
     row(reseau?.p ?? null, 'Onduleur réseau', reseau ? inverterQty(reseau.kw) : 1),
     row(hybride?.p ?? null, 'Onduleur hybride', hybride ? Math.max(1, inverterQty(hybride.kw)) : 1),
     row(first('smart_meter'), 'Smart Meter', smQty),
@@ -677,6 +786,15 @@ export function autoFillLines(produits, { kwp, panelW, structureType }) {
     row(first('transport'), 'Transport', 1),
     row(first('suivi'), 'Suivi journalier, maintenance chaque 12 mois pendant 2 ans', 0),
   ]
+  // QX19 — puissance du panneau EFFECTIVEMENT retenu (peut différer de panelW
+  // quand le catalogue n'a pas exactement panelW → substitution la plus proche)
+  // + nb de panneaux : l'écran recalcule le kWc RÉEL depuis ces valeurs plutôt
+  // que d'afficher un kWc théorique divergent. Métadonnées portées sur le
+  // tableau (les consommateurs qui itèrent les lignes ne les voient pas).
+  lignes.actualPanelW = panel?.w ?? panelW
+  lignes.nbPanneaux = nbPanneaux
+  lignes.kwcReel = Math.round(nbPanneaux * (panel?.w ?? panelW) / 10) / 100
+  return lignes
 }
 
 // ══ Multi-marchés (2026-06) ═══════════════════════════════════════════════════
@@ -789,30 +907,63 @@ export function debitAtHmt(courbe, hmt) {
 
 const _hasPrix = (p) => (parseFloat(p.prix_vente) || 0) > 0
 
+// QX40 — tension d'un produit (pompe/variateur) : champ tension_v prioritaire,
+// sinon lecture « 220V »/« 380V » dans le nom, sinon null (inconnu).
+export function tensionOf(p) {
+  if (p && p.tension_v) return Number(p.tension_v)
+  const nom = (p && p.nom) || ''
+  if (/220\s*v/i.test(nom)) return 220
+  if (/380\s*v/i.test(nom)) return 380
+  return null
+}
+
+// Tension attendue selon l'alimentation demandée : mono → 220 V, tri → 380 V.
+export function tensionForAlim(alim) {
+  return alim === 'mono' ? 220 : 380
+}
+
 // Pompe à courbe : la plus petite (kW) qui délivre ≥ le débit souhaité (m³/h)
 // à la HMT demandée. Jamais de produit sans prix sur un devis : si seules des
 // pompes « prix à renseigner » conviennent, on le dit au lieu d'en chiffrer une.
-export function selectPompeByCurve(produits, { hmt, debit, typePompe }) {
+// QX40 — filtre de compatibilité PHASE/TENSION avant sélection : une demande
+// mono/220 V ne peut JAMAIS renvoyer une pompe 380 V (et inversement). Une pompe
+// de tension inconnue reste candidate (aucune régression pour les données
+// existantes sans tension). Quand aucune pompe à courbe PRICÉE et compatible
+// n'existe, `phaseMismatch` signale le repli attendu vers le chemin CV.
+export function selectPompeByCurve(produits, { hmt, debit, typePompe, alim }) {
   const H = parseFloat(hmt)
   const Q = parseFloat(debit)
-  if (!(H > 0) || !(Q > 0)) return { pump: null, sansPrix: [] }
+  if (!(H > 0) || !(Q > 0)) return { pump: null, sansPrix: [], phaseMismatch: false }
   const wantSurface = typePompe === 'surface'
-  const cands = produits
+  const wantV = alim ? tensionForAlim(alim) : null
+  const base = produits
     .map(p => ({
       p, n: _norm(p.nom),
       kw: parseFloat(p.pompe_kw) || 0,
       q: debitAtHmt(p.courbe_pompe, H),
+      v: tensionOf(p),
     }))
     .filter(x => x.p.courbe_pompe && x.kw > 0 && x.q != null && x.q >= Q)
     .filter(x => wantSurface ? x.n.includes('surface') : x.n.includes('immerg'))
+  // Compat phase : quand une alim est demandée, on écarte les tensions
+  // INCOMPATIBLES (une tension inconnue reste tolérée). Sans alim, comportement
+  // historique (aucun filtre de tension).
+  const cands = base
+    .filter(x => wantV == null || x.v == null || x.v === wantV)
     .sort((a, b) => a.kw - b.kw
       || (parseFloat(a.p.prix_vente) || 0) - (parseFloat(b.p.prix_vente) || 0))
   const priced = cands.filter(x => _hasPrix(x.p))
   if (priced.length) {
     const best = priced[0]
-    return { pump: best.p, kw: best.kw, debitHmt: best.q, sansPrix: [] }
+    return { pump: best.p, kw: best.kw, debitHmt: best.q, sansPrix: [],
+      phaseMismatch: false }
   }
-  return { pump: null, sansPrix: cands.map(x => x.p.nom) }
+  // QX40 — signale un mismatch de phase : des pompes à courbe convenaient
+  // (débit/type) mais AUCUNE compatible+pricée → on dégradera vers le CV avec
+  // un avertissement visible plutôt que de chiffrer une tension incompatible.
+  const phaseMismatch = wantV != null && priced.length === 0
+    && base.some(x => _hasPrix(x.p) && x.v != null && x.v !== wantV)
+  return { pump: null, sansPrix: cands.map(x => x.p.nom), phaseMismatch }
 }
 
 // Variateur VEICHI : le plus petit dont kW ≥ kW pompe, tension assortie
@@ -843,8 +994,8 @@ export function findAfficheurVariateur(produits) {
 // Si HMT + débit souhaité sont renseignés et qu'une pompe à courbe convient,
 // elle pilote tout (kW réels, débit interpolé, m³/jour). Sinon : sélection
 // historique par CV, débit manuel, pas de m³/jour (jamais de chiffre inventé).
-export function pompageSelection(produits, { cv, typePompe, hmt, debit, heures }) {
-  const sel = selectPompeByCurve(produits, { hmt, debit, typePompe })
+export function pompageSelection(produits, { cv, typePompe, hmt, debit, heures, alim }) {
+  const sel = selectPompeByCurve(produits, { hmt, debit, typePompe, alim })
   if (sel.pump) {
     const kw = sel.kw
     const cvP = parseFloat(sel.pump.pompe_cv)
@@ -859,9 +1010,18 @@ export function pompageSelection(produits, { cv, typePompe, hmt, debit, heures }
       debitHmt: sel.debitHmt,
       m3Jour: hrs > 0 ? Math.round(sel.debitHmt * hrs) : null,
       sansPrix: [],
+      warning: null,
     }
   }
   const cvNum = parseFloat(cv) || 0
+  // QX40 — dégradation VERS LE CHEMIN CV avec avertissement visible quand une
+  // pompe à courbe convenait mais aucune n'était compatible avec la phase/
+  // tension demandée (jamais une pompe 380 V pour une demande mono/220 V).
+  const warning = sel.phaseMismatch
+    ? `Aucune pompe à courbe compatible ${alim === 'mono' ? 'monophasée 220 V'
+        : 'triphasée 380 V'} n'est disponible et pricée : dimensionnement par CV `
+      + '(vérifiez la tension de la pompe et du variateur).'
+    : null
   return {
     mode: 'cv',
     pump: null,
@@ -871,10 +1031,18 @@ export function pompageSelection(produits, { cv, typePompe, hmt, debit, heures }
     debitHmt: null,
     m3Jour: null,
     sansPrix: sel.sansPrix,
+    warning,
   }
 }
 
 const _isPompe = (n) => n.includes('pompe ') || n.startsWith('pompe')
+
+// QX20 — classification « pompe » exposée (garde d'équipement du générateur) :
+// une désignation de ligne est une pompe si son nom normalisé le dit. Utilise
+// le même _norm que les autres classificateurs.
+export function isPompe(designation) {
+  return _isPompe(_norm(designation || ''))
+}
 const _isVfdPompage = (n) =>
   (n.includes('variateur') || n.includes('coffret')) && n.includes('pompage')
 const _isCableMetre = (n) => n.includes('cable') && n.includes('metre')
@@ -920,6 +1088,18 @@ export function autoFillPompage(produits, { cv, alim, typePompe, distance, struc
       ?? vfds[vfds.length - 1] ?? null)?.p ?? null
   }
   const afficheur = vfdP && /veichi/i.test(vfdP.nom) ? findAfficheurVariateur(produits) : null
+
+  // QX40 — garde-fou de tension : pompe et variateur DOIVENT partager la même
+  // tension. Si les deux ont une tension connue et qu'elles divergent (ex.
+  // pompe 380 V + variateur 220 V), on n'assortit PAS la pompe (on ne chiffre
+  // jamais un couple incompatible). Une tension inconnue est tolérée.
+  if (pump && vfdP) {
+    const vp = tensionOf(pump.p)
+    const vv = tensionOf(vfdP)
+    if (vp != null && vv != null && vp !== vv) {
+      pump = null
+    }
+  }
 
   const dims = sel.dims
   const byType = {}

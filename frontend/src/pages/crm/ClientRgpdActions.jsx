@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { useSelector } from 'react-redux'
+import { useIsAdmin, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import { Download, ShieldOff } from 'lucide-react'
 import crmApi from '../../api/crmApi'
+import { downloadBlobInGesture } from '../../utils/downloadBlob'
 import {
   Button, toast,
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
@@ -15,28 +16,21 @@ import {
 //   AlertDialog. La règle vit côté serveur (permissions DRF) — le gate UI
 //   n'est qu'un confort ; un rôle non autorisé ne voit pas les boutons.
 export default function ClientRgpdActions({ client, onChanged }) {
-  const role = useSelector((s) => s.auth.role)
   const [busy, setBusy] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
 
-  const canExport = role === 'admin' || role === 'responsable'
-  const canAnonymize = role === 'admin'
+  const canExport = useIsAdminOrResponsable()
+  const canAnonymize = useIsAdmin()
   if (!canExport && !canAnonymize) return null
 
   const exporter = async () => {
+    const pending = downloadBlobInGesture()
     setBusy(true)
     try {
       const r = await crmApi.clientDataExport(client.id)
       const blob = new Blob(
         [JSON.stringify(r.data, null, 2)], { type: 'application/json' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `client-${client.id}-donnees-rgpd.json`
-      document.body.appendChild(a)
-      a.click()
-      a.remove()
-      setTimeout(() => URL.revokeObjectURL(url), 1000)
+      pending.deliver(blob, `client-${client.id}-donnees-rgpd.json`)
       toast.success('Export RGPD téléchargé')
     } catch (err) {
       toast.error(err?.response?.data?.detail

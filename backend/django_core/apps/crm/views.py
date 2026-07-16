@@ -1,14 +1,16 @@
-from rest_framework import viewsets, filters, status
+from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
-from rest_framework.parsers import MultiPartParser
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
-from authentication.mixins import TenantMixin
+from core.mixins import TenantMixin
+from core.viewsets import CompanyScopedModelViewSet
+from apps.core.destroy_mixins import UsageGuardedDestroyMixin
 from authentication.scoping import scope_queryset, scope_client_queryset
 from .models import (
     Appointment, Client, ConcurrentPerte, EquipeCommerciale, Lead, LeadTag,
     MotifPerte, Canal, Parrainage, MessageTemplate, ObjectifCommercial,
-    PlanActivite, PointContact, SiteProfile,
+    PlanActivite, PointContact, SiteProfile, WebsiteLeadPayload,
 )
 from .serializers import (
     AppointmentSerializer, ClientSerializer, ConcurrentPerteSerializer,
@@ -17,7 +19,7 @@ from .serializers import (
     ParrainageSerializer, MessageTemplateSerializer, _tag_en_usage, _motif_en_usage,
     ObjectifCommercialSerializer, ObjectifAttainmentSerializer,
     PlanActiviteSerializer, PointContactSerializer, SiteProfileSerializer,
-    EquipeCommercialeSerializer,
+    EquipeCommercialeSerializer, WebsiteLeadPayloadSerializer,
 )
 from . import activity
 from .services import default_responsable_for
@@ -26,6 +28,21 @@ from authentication.permissions import (
     IsAnyRole,
     IsResponsableOrAdmin,
     IsAdminRole,
+    HasPermissionOrLegacy,
+)
+
+# ODX13 — ré-export TRANSITOIRE des ViewSets partenaires/territoires (FG234–
+# 237) qui vivent encore dans ``apps.compta.views`` (adossés à
+# ``_ComptaBaseViewSet`` = ``TenantMixin`` + ``ModelViewSet``, scoping
+# ``request.user.company`` + assignation forcée de ``company``). Ce module
+# donne aux nouvelles routes ``/api/django/crm/…`` un point d'entrée
+# ``apps.crm.views`` stable ; les anciennes routes ``/api/django/compta/…``
+# continuent de servir les MÊMES classes. ODX22 re-logera le corps ici.
+from apps.compta.views import (  # noqa: F401
+    CommissionPartenaireViewSet,
+    PartenaireViewSet,
+    SoumissionLeadPartenaireViewSet,
+    TerritoireCommercialViewSet,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -93,7 +110,10 @@ def rapport_attribution(request):
     return Response(attribution_leads(user.company, debut=debut, fin=fin))
 
 
-class ClientViewSet(TenantMixin, viewsets.ModelViewSet):
+class ClientViewSet(CompanyScopedModelViewSet):
+    # ARC2 — pilote : base transverse unique (TenantMixin + ModelViewSet). Le
+    # get_queryset (portée de visibilité) et perform_create (company +
+    # created_by forcés serveur) SURCHARGENT la base : réponses inchangées.
     queryset = Client.objects.all()
     serializer_class = ClientSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
@@ -196,6 +216,11 @@ class ClientViewSet(TenantMixin, viewsets.ModelViewSet):
                 'id': f.id,
                 'reference': f.reference,
                 'statut': _statut(f),
+                # VX245(c) — clé RAW (additive, jamais lue par les autres
+                # consommateurs de `statut`) : « Relancer par WhatsApp »
+                # n'apparaît QUE sur une facture réellement en retard, sans
+                # dépendre du libellé FR affiché (fragile/localisé).
+                'statut_key': f.statut,
                 'total_ttc': str(f.total_ttc),
                 'date': _date(f),
             }
@@ -404,7 +429,7 @@ class ClientViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response({'segment': segment, 'count': len(result), 'results': result})
 
 
-class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
+class LeadViewSet(CompanyScopedModelViewSet):
     """Leads + historique « chatter » (journal automatique + notes manuelles).
 
     L'utilisateur acteur et la société viennent toujours de la requête côté
@@ -565,6 +590,10 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
         old = Lead.objects.get(pk=serializer.instance.pk)
         super().perform_update(serializer)
         new_lead = serializer.instance
+        # VX98 — dernier auteur de modification (server-side, jamais du corps) :
+        # alimente la puce de fraîcheur. Pattern archived_by.
+        new_lead.updated_by = self.request.user
+        new_lead.save(update_fields=['updated_by'])
         activity.log_changes(old, new_lead, self.request.user)
         from .services import sync_relance_activity, maybe_set_first_contacted_at, recompute_lead_score
         sync_relance_activity(new_lead, self.request.user)
@@ -581,10 +610,16 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
                                           'client_match', 'points_contact',
                                           'scan_carte']:
             return [IsAnyRole()]
+        elif self.action in ('merge', 'convertir_client'):
+            # VX199 — fusion / conversion de lead : permission ERP FINE
+            # (crm_modifier), pas le grossier IsResponsableOrAdmin. get_permissions
+            # PRIME sur le permission_classes de l'@action, donc la garde fine
+            # doit être ICI.
+            return [HasPermissionOrLegacy('crm_modifier')()]
         elif self.action in WRITE_ACTIONS + [
-            'noter', 'devis_auto', 'archiver', 'restaurer', 'merge',
+            'noter', 'devis_auto', 'archiver', 'restaurer',
             'whatsapp_devis', 'bulk', 'log_interaction',
-            'appliquer_plan', 'convertir_client',
+            'appliquer_plan',
         ]:
             # L'archivage réversible est ouvert à la Commerciale.
             return [IsResponsableOrAdmin()]
@@ -696,9 +731,14 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
         })
 
     def destroy(self, request, *args, **kwargs):
-        """Suppression DÉFINITIVE (admin). Bloquée si des devis sont liés —
-        on n'orpheline jamais de pièces financières : message clair, archiver
-        à la place. L'événement est journalisé (qui/quand) côté serveur."""
+        """Suppression RÉVERSIBLE (admin) — VX96 : soft-delete + undo 30 min.
+
+        Le lead n'est plus détruit : ``soft_delete`` le masque des querysets par
+        défaut (``Lead.objects``) et journalise une entrée de corbeille
+        (``DeletionRecord``) restaurable pendant 30 min via ``/core/corbeille/``.
+        Toujours bloqué si des devis sont liés (on n'orpheline jamais de pièces
+        financières). L'événement est journalisé (qui/quand) côté serveur ; la
+        réponse porte l'``corbeille_id`` pour l'undo-toast du front."""
         import logging
         lead = self.get_object()
         if lead.devis.exists():
@@ -708,11 +748,23 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
                 status=status.HTTP_409_CONFLICT,
             )
         logging.getLogger('crm.audit').warning(
-            'HARD DELETE lead id=%s "%s" par user=%s (company=%s)',
+            'SOFT DELETE lead id=%s "%s" par user=%s (company=%s)',
             lead.id, lead, getattr(request.user, 'username', '?'),
             getattr(lead, 'company_id', None),
         )
-        return super().destroy(request, *args, **kwargs)
+        lead.soft_delete(request.user)
+        # Entrée de corbeille tout juste créée (undo dans la fenêtre de 30 min).
+        from django.contrib.contenttypes.models import ContentType
+        from core.models import DeletionRecord
+        ct = ContentType.objects.get_for_model(Lead)
+        record = (DeletionRecord.objects
+                  .filter(content_type=ct, object_id=lead.pk,
+                          restored_at__isnull=True)
+                  .order_by('-id').first())
+        return Response(
+            {'corbeille_id': getattr(record, 'id', None), 'id': lead.id},
+            status=status.HTTP_200_OK,
+        )
 
     @action(detail=True, methods=['get'], url_path='duplicates',
             permission_classes=[IsAnyRole])
@@ -855,7 +907,7 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(out)
 
     @action(detail=True, methods=['post'], url_path='merge',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[HasPermissionOrLegacy('crm_modifier')])
     def merge(self, request, pk=None):
         """Fusionne d'autres leads DANS celui-ci (survivant). Sans perte :
         devis, chantiers, activités, pièces jointes et historique sont déplacés ;
@@ -912,7 +964,7 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
             status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], url_path='convertir-client',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[HasPermissionOrLegacy('crm_modifier')])
     def convertir_client(self, request, pk=None):
         """ZSAL4 — assistant de conversion EXPLICITE lead → client (body
         {mode: nouveau|lier|aucun, client_id?}). Journalisé dans le chatter."""
@@ -973,23 +1025,16 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
 
         scope= overdue (en retard) | today (aujourd'hui) | week (cette semaine)
         Portée de visibilité de l'utilisateur respectée (scope_queryset).
+
+        VX83 — la logique de sélection vit désormais dans
+        ``crm.selectors.relances_du_jour`` (consommée aussi par « Ma file »
+        cross-module) ; cette vue ne fait que la présenter (convention
+        selectors — jamais deux implémentations divergentes).
         """
-        from django.utils import timezone
-        import datetime
+        from .selectors import relances_du_jour
         scope = request.query_params.get('scope', 'today')
-        today = timezone.localdate()
-        qs = self.get_queryset().filter(
-            is_archived=False,
-            relance_date__isnull=False,
-        )
-        if scope == 'overdue':
-            qs = qs.filter(relance_date__lt=today)
-        elif scope == 'week':
-            week_end = today + datetime.timedelta(days=6)
-            qs = qs.filter(relance_date__lte=week_end)
-        else:  # today
-            qs = qs.filter(relance_date=today)
-        qs = qs.order_by('relance_date', 'nom')
+        company = request.user.company if request.user.company_id else None
+        qs = relances_du_jour(company, request.user, scope=scope)
         serializer = LeadSerializer(qs, many=True, context={'request': request})
         return Response({'count': qs.count(), 'results': serializer.data})
 
@@ -1138,19 +1183,42 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
         })
 
     @action(detail=True, methods=['post'], url_path='noter',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[IsResponsableOrAdmin],
+            parser_classes=[MultiPartParser, FormParser, JSONParser])
     def noter(self, request, pk=None):
         """Note manuelle (appel, commentaire…) — auteur pris de la requête.
 
         FG28 : si le lead est encore en NEW et n'a jamais été contacté, cette
         note constitue la première prise de contact → first_contacted_at est posé.
+
+        VX111 — accepte en plus un fichier multipart optionnel (`file`, ex.
+        photo prise depuis mobile pendant une visite) : réutilise le magasin
+        `records.Attachment` EXISTANT (déjà whitelisté ('crm','lead')) — la
+        pièce jointe créée cible directement le LEAD (visible aussi dans
+        AttachmentsPanel) et est liée à cette note. Jamais un second magasin.
         """
         lead = self.get_object()
         body = (request.data.get('body') or '').strip()
-        if not body:
+        file = request.FILES.get('file')
+        if not body and not file:
             return Response({'body': 'Note vide.'},
                             status=status.HTTP_400_BAD_REQUEST)
-        act = activity.log_note(lead, request.user, body)
+        attachment = None
+        if file:
+            from apps.records.storage import store_attachment
+            from apps.records.models import Attachment
+            from django.contrib.contenttypes.models import ContentType
+            meta, err = store_attachment(file, company=request.user.company)
+            if err:
+                return Response({'file': err}, status=status.HTTP_400_BAD_REQUEST)
+            ct = ContentType.objects.get(app_label='crm', model='lead')
+            attachment = Attachment.objects.create(
+                company=request.user.company, content_type=ct, object_id=lead.id,
+                uploaded_by=request.user, **meta)
+        act = activity.log_note(lead, request.user, body or '📎 Pièce jointe')
+        if attachment:
+            act.attachment = attachment
+            act.save(update_fields=['attachment'])
         # FG28 — première note = premier contact (même sans changer d'étape)
         if lead.stage == 'NEW' and lead.first_contacted_at is None:
             from django.utils import timezone
@@ -1264,10 +1332,12 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
         return export_leads_xlsx(leads)
 
 
-class LeadTagViewSet(TenantMixin, viewsets.ModelViewSet):
+class LeadTagViewSet(UsageGuardedDestroyMixin, CompanyScopedModelViewSet):
     """Étiquettes de lead gérées (Paramètres → CRM). Lecture tout rôle,
     écriture admin. Garde-fou (L780) : une étiquette référencée par des leads
-    ne se supprime pas — l'admin l'archive plutôt (l'historique est préservé)."""
+    ne se supprime pas — l'admin l'archive plutôt (l'historique est préservé).
+    VX241(b) — la suppression effective écrit désormais une ligne AuditLog
+    (UsageGuardedDestroyMixin) : LeadTag n'est pas dans TRACKED_MODELS."""
     queryset = LeadTag.objects.all()
     serializer_class = LeadTagSerializer
 
@@ -1276,20 +1346,19 @@ class LeadTagViewSet(TenantMixin, viewsets.ModelViewSet):
             return [IsAnyRole()]
         return [IsAdminRole()]
 
-    def destroy(self, request, *args, **kwargs):
-        tag = self.get_object()
+    def destroy_guard_message(self, tag):
         if _tag_en_usage(tag.company, tag.nom) > 0:
-            return Response(
-                {'detail': "Cette étiquette est utilisée par des leads — "
-                           "archivez-la plutôt que de la supprimer."},
-                status=status.HTTP_409_CONFLICT)
-        return super().destroy(request, *args, **kwargs)
+            return ("Cette étiquette est utilisée par des leads — "
+                    "archivez-la plutôt que de la supprimer.")
+        return None
 
 
-class MotifPerteViewSet(TenantMixin, viewsets.ModelViewSet):
+class MotifPerteViewSet(UsageGuardedDestroyMixin, CompanyScopedModelViewSet):
     """Motifs de perte gérés (Paramètres → CRM). Lecture tout rôle,
     écriture admin. Garde-fou (L779) : un motif utilisé par des leads ne se
-    supprime pas — l'admin l'archive plutôt (comme pour les canaux)."""
+    supprime pas — l'admin l'archive plutôt (comme pour les canaux).
+    VX241(b) — la suppression effective écrit désormais une ligne AuditLog
+    (UsageGuardedDestroyMixin) : MotifPerte n'est pas dans TRACKED_MODELS."""
     queryset = MotifPerte.objects.all()
     serializer_class = MotifPerteSerializer
 
@@ -1298,14 +1367,11 @@ class MotifPerteViewSet(TenantMixin, viewsets.ModelViewSet):
             return [IsAnyRole()]
         return [IsAdminRole()]
 
-    def destroy(self, request, *args, **kwargs):
-        motif = self.get_object()
+    def destroy_guard_message(self, motif):
         if _motif_en_usage(motif.company, motif.nom) > 0:
-            return Response(
-                {'detail': "Ce motif est utilisé par des leads — archivez-le "
-                           "plutôt que de le supprimer."},
-                status=status.HTTP_409_CONFLICT)
-        return super().destroy(request, *args, **kwargs)
+            return ("Ce motif est utilisé par des leads — archivez-le "
+                    "plutôt que de le supprimer.")
+        return None
 
 
 # Canaux par défaut (clés = Lead.Canal) — 'site_web' est PROTÉGÉ (webhook site).
@@ -1331,10 +1397,12 @@ def seed_canaux(company):
             defaults={'libelle': libelle, 'ordre': i, 'protege': protege})
 
 
-class CanalViewSet(TenantMixin, viewsets.ModelViewSet):
+class CanalViewSet(UsageGuardedDestroyMixin, CompanyScopedModelViewSet):
     """Canaux / sources de lead gérés (Paramètres → CRM). Lecture tout rôle,
     écriture admin. Garde-fous : un canal protégé ('site_web') ne se supprime
-    pas, et aucun canal utilisé par des leads ne se supprime."""
+    pas, et aucun canal utilisé par des leads ne se supprime.
+    VX241(b) — la suppression effective écrit désormais une ligne AuditLog
+    (UsageGuardedDestroyMixin) : Canal n'est pas dans TRACKED_MODELS."""
     queryset = Canal.objects.all()
     serializer_class = CanalSerializer
 
@@ -1350,22 +1418,17 @@ class CanalViewSet(TenantMixin, viewsets.ModelViewSet):
             seed_canaux(request.user.company)
         return super().list(request, *args, **kwargs)
 
-    def destroy(self, request, *args, **kwargs):
-        canal = self.get_object()
+    def destroy_guard_message(self, canal):
         if canal.protege:
-            return Response(
-                {'detail': "Ce canal est protégé (utilisé par le site web) et "
-                           "ne peut pas être supprimé."},
-                status=status.HTTP_409_CONFLICT)
+            return ("Ce canal est protégé (utilisé par le site web) et "
+                    "ne peut pas être supprimé.")
         if Lead.objects.filter(company=canal.company, canal=canal.cle).exists():
-            return Response(
-                {'detail': "Ce canal est utilisé par des leads — archivez-le "
-                           "plutôt que de le supprimer."},
-                status=status.HTTP_409_CONFLICT)
-        return super().destroy(request, *args, **kwargs)
+            return ("Ce canal est utilisé par des leads — archivez-le "
+                    "plutôt que de le supprimer.")
+        return None
 
 
-class ParrainageViewSet(TenantMixin, viewsets.ModelViewSet):
+class ParrainageViewSet(CompanyScopedModelViewSet):
     """N98 — parrainages. Lecture tout rôle, écriture responsable/admin.
 
     À la création, la récompense est pré-remplie depuis Paramètres
@@ -1417,9 +1480,51 @@ class ParrainageViewSet(TenantMixin, viewsets.ModelViewSet):
         })
 
 
+# ── QX16 — Surface de rejeu des payloads leads site web ──────────────────────
+
+class WebsiteLeadPayloadViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
+    """QX16 — « Jamais perdre un lead » (webhooks.py) devient opérationnel :
+    liste des payloads bruts, avec un filtre par défaut sur ceux qui méritent
+    une action (mapping en erreur OU sans lead rattaché). ``?all=1`` renvoie
+    la liste complète (comportement admin). LECTURE SEULE — la seule écriture
+    possible est l'action ``replay``, qui rejoue EXACTEMENT le même mapping
+    que le webhook (jamais une seconde implémentation)."""
+    queryset = WebsiteLeadPayload.objects.select_related('lead').all()
+    serializer_class = WebsiteLeadPayloadSerializer
+    permission_classes = [IsResponsableOrAdmin]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if self.request.query_params.get('all'):
+            return qs
+        # Défaut : ce qui mérite une action — erreur de mapping OU jamais
+        # rattaché à un lead (payload traité mais orphelin, ex. ping
+        # d'engagement QW7 sans lead correspondant — n'est pas une PERTE,
+        # mais reste utile à voir).
+        from django.db.models import Q
+        return qs.filter(Q(error__gt='') | Q(lead__isnull=True))
+
+    @action(detail=True, methods=['post'], url_path='replay',
+            permission_classes=[IsResponsableOrAdmin])
+    def replay(self, request, pk=None):
+        """QX16 — rejoue ce payload à travers le mapping webhook standard.
+
+        Renvoie 200 avec le lead résultant en cas de succès, 422 si le rejeu
+        échoue encore (le payload reste rejouable — jamais supprimé)."""
+        from .webhooks import replay_website_lead_payload
+
+        payload = self.get_object()
+        ok, detail, lead = replay_website_lead_payload(payload)
+        payload.refresh_from_db()
+        data = WebsiteLeadPayloadSerializer(payload).data
+        if not ok:
+            return Response({'detail': detail, 'payload': data}, status=422)
+        return Response({'detail': detail, 'payload': data}, status=200)
+
+
 # ── DC12 — Profil site/énergie réutilisable par client ───────────────────────
 
-class SiteProfileViewSet(TenantMixin, viewsets.ModelViewSet):
+class SiteProfileViewSet(CompanyScopedModelViewSet):
     """DC12 — profil site/énergie réutilisable, attaché au client.
 
     Saisi une fois par client, le générateur de devis le pré-remplit ensuite
@@ -1450,7 +1555,7 @@ class SiteProfileViewSet(TenantMixin, viewsets.ModelViewSet):
 
 # ── ZSAL2 — Plans d'activité ──────────────────────────────────────────────────
 
-class PlanActiviteViewSet(TenantMixin, viewsets.ModelViewSet):
+class PlanActiviteViewSet(CompanyScopedModelViewSet):
     """Plans d'activité (checklists de tâches commerciales) : lecture tout
     rôle, écriture responsable/admin. Société forcée côté serveur."""
     queryset = PlanActivite.objects.prefetch_related(
@@ -1463,7 +1568,7 @@ class PlanActiviteViewSet(TenantMixin, viewsets.ModelViewSet):
         return [IsResponsableOrAdmin()]
 
 
-class EquipeCommercialeViewSet(TenantMixin, viewsets.ModelViewSet):
+class EquipeCommercialeViewSet(CompanyScopedModelViewSet):
     """ZSAL3 — Équipes commerciales (admin CRUD, Paramètres → CRM). Lecture
     tout rôle (le dashboard « Mes équipes » y référence des noms), écriture
     responsable/admin. Société forcée côté serveur (TenantMixin)."""
@@ -1478,7 +1583,7 @@ class EquipeCommercialeViewSet(TenantMixin, viewsets.ModelViewSet):
 
 # ── FG36 — Modèles de messages WhatsApp/SMS ───────────────────────────────────
 
-class MessageTemplateViewSet(TenantMixin, viewsets.ModelViewSet):
+class MessageTemplateViewSet(CompanyScopedModelViewSet):
     """Modèles de messages CRM (WhatsApp/SMS). Lecture tout rôle, écriture admin.
 
     La société est toujours posée côté serveur (TenantMixin). Un modèle archivé
@@ -1544,7 +1649,7 @@ class MessageTemplateViewSet(TenantMixin, viewsets.ModelViewSet):
 
 # ── QJ20 — Rendez-vous (visites commerciales/techniques) ──────────────────────
 
-class AppointmentViewSet(TenantMixin, viewsets.ModelViewSet):
+class AppointmentViewSet(CompanyScopedModelViewSet):
     """QJ20 — Rendez-vous planifiés sur les leads (visites commerciales/techniques).
 
     Lecture tout rôle, écriture responsable/admin.
@@ -1559,7 +1664,10 @@ class AppointmentViewSet(TenantMixin, viewsets.ModelViewSet):
     ordering = ['scheduled_at']
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS:
+        # VX245(a) — `ics` (téléchargement, lecture seule) rejoint les
+        # READ_ACTIONS : tout rôle peut télécharger le `.ics` d'un RDV qu'il
+        # peut déjà VOIR (queryset scopé société, jamais un nouveau droit).
+        if self.action in READ_ACTIONS or self.action == 'ics':
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]
 
@@ -1587,10 +1695,62 @@ class AppointmentViewSet(TenantMixin, viewsets.ModelViewSet):
         # response. Patch self so the serializer picks up the instance.
         serializer.instance = appt
 
+    @action(detail=True, methods=['get'], url_path='ics')
+    def ics(self, request, pk=None):
+        """VX245(a) — `.ics` d'ÉVÉNEMENT UNIQUE pour CE rendez-vous (RFC 5545,
+        1 VEVENT horodaté) — distinct du flux d'ABONNEMENT complet de
+        `reporting.calendar.calendar_ics`. Réutilise la MÊME fonction pure
+        `build_ics` (extraite pour être réutilisable, jamais une 2ᵉ
+        implémentation ICS).
+
+        Scopé société via `get_object()` (`CompanyScopedModelViewSet` — le
+        RDV d'une autre société renvoie 404, jamais fabriqué)."""
+        appt = self.get_object()
+        from datetime import timedelta
+
+        from django.http import HttpResponse
+
+        from apps.reporting.calendar import build_ics
+
+        lead_nom = f'{appt.lead.nom} {appt.lead.prenom or ""}'.strip()
+        titre = f'RDV — {lead_nom}' if lead_nom else f'RDV #{appt.pk}'
+        events = [{
+            'uid': f'appointment-{appt.pk}',
+            'start_dt': appt.scheduled_at,
+            'end_dt': appt.scheduled_at + timedelta(hours=1),
+            'summary': titre,
+            'description': appt.notes or '',
+        }]
+        body = build_ics(request.user, events, calname=titre)
+        resp = HttpResponse(body, content_type='text/calendar; charset=utf-8')
+        resp['Content-Disposition'] = f'attachment; filename="rdv-{appt.pk}.ics"'
+        return resp
+
+    @action(detail=True, methods=['post'], url_path='confirmer-whatsapp',
+            permission_classes=[IsResponsableOrAdmin])
+    def confirmer_whatsapp(self, request, pk=None):
+        """VX245(b) — aperçu du message de CONFIRMATION WhatsApp post-RDV
+        (date/heure + lien `.ics`). N'ENVOIE RIEN : le commercial ouvre
+        WhatsApp lui-même après avoir vérifié l'aperçu (même convention que
+        `LeadViewSet.whatsapp_devis`)."""
+        appt = self.get_object()
+        from .services import build_appointment_confirmation_whatsapp
+
+        message, wa_url, ics_url = build_appointment_confirmation_whatsapp(
+            request, appt)
+        if wa_url is None:
+            return Response(
+                {'detail': 'Aucun numéro de téléphone.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response({
+            'message': message, 'wa_url': wa_url, 'ics_url': ics_url,
+        })
+
 
 # ── FG39 — ObjectifCommercial / KPI Target ────────────────────────────────────
 
-class ObjectifCommercialViewSet(TenantMixin, viewsets.ModelViewSet):
+class ObjectifCommercialViewSet(CompanyScopedModelViewSet):
     """CRUD objectifs commerciaux + endpoint d'atteinte (réalisé vs cible).
 
     Routes :
@@ -1684,7 +1844,7 @@ class ObjectifCommercialViewSet(TenantMixin, viewsets.ModelViewSet):
 
 # ── FG242 — Suivi des concurrents sur deals perdus ────────────────────────────
 
-class ConcurrentPerteViewSet(TenantMixin, viewsets.ModelViewSet):
+class ConcurrentPerteViewSet(CompanyScopedModelViewSet):
     """FG242 — concurrent gagnant + prix saisis sur un lead perdu.
 
     Intelligence concurrentielle : sur un lead PERDU (drapeau ``Lead.perdu`` —
@@ -1740,7 +1900,7 @@ class ConcurrentPerteViewSet(TenantMixin, viewsets.ModelViewSet):
             pass
 
 
-class PointContactViewSet(TenantMixin, viewsets.ModelViewSet):
+class PointContactViewSet(CompanyScopedModelViewSet):
     """FG204 — journal multi-touch des points de contact d'un lead.
 
     Au-delà du first-touch (``Lead.canal``), on consigne chaque point de contact

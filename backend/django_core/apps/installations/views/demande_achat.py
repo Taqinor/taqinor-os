@@ -8,6 +8,15 @@ responsable/admin (FG310 : la réquisition doit être approuvée avant de deveni
 BCF). Multi-tenant via ``TenantMixin`` : référence/société/created_by posés côté
 serveur ; les FK liées (chantier/programme/fournisseur_suggere) sont validées
 tenant. Cross-app : ``stock.Fournisseur`` / ``stock.Produit`` en string-FK.
+
+SCA36 — pilote 3 du kit ``core.documents`` (dégradation gracieuse sans totaux).
+Le viewset gagne le chatter générique ARC8 (``ChatterViewSetMixin`` :
+``chatter/historique`` GET tout rôle + ``chatter/noter`` POST
+responsable/admin) ; la numérotation passe EXPLICITEMENT par la primitive du
+kit ``core.numbering`` (le shim ``apps.ventes.utils.references`` en était déjà
+le ré-export bit-identique — format ``DA-YYYYMM-NNNN`` inchangé). Les actions
+d'approbation et leurs gardes restent STRICTEMENT inchangées (moteur propre,
+chemin ARC10 nommé) ; aucun PDF (document d'approbation interne).
 """
 from django.utils import timezone
 from rest_framework import viewsets, status
@@ -15,15 +24,18 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.numbering import create_with_reference
+from core.viewsets import CompanyScopedModelViewSet
 
-from apps.ventes.utils.references import create_with_reference
+from apps.records.views import ChatterViewSetMixin
 
 from ..models import DemandeAchat, DemandeAchatLigne
 from ..serializers import DemandeAchatSerializer, DemandeAchatLigneSerializer
 
-READ_ACTIONS = ['list', 'retrieve']
+# SCA36 — 'chatter_historique' est une lecture (patron flotte : le
+# get_permissions maison prime sur les permission_classes d'@action du mixin).
+READ_ACTIONS = ['list', 'retrieve', 'chatter_historique']
 
 
 def _check_tenant(serializer, company, field):
@@ -33,11 +45,44 @@ def _check_tenant(serializer, company, field):
         raise ValidationError({field: 'Objet inconnu pour cette société.'})
 
 
-class DemandeAchatViewSet(TenantMixin, viewsets.ModelViewSet):
+def _notifier_demandeur_decision(da, approuvee):
+    """VX213 (c) — bord RETOUR : notifie le DEMANDEUR (``created_by``) de la
+    décision d'approbation de sa réquisition (motif inclus si refus).
+
+    Best-effort (ne lève jamais) : émettre la notification ne doit jamais
+    casser la transition d'approbation. No-op si aucun demandeur. Le corps
+    reste CLIENT-SAFE — aucun montant (jamais dérivé de ``prix_achat``) : la
+    décision porte sur la référence + l'objet, pas sur un prix d'achat interne.
+    La société est celle de la DA (jamais issue d'une requête)."""
+    demandeur = getattr(da, 'created_by', None)
+    if demandeur is None or not getattr(demandeur, 'pk', None):
+        return
+    try:
+        from apps.notifications.services import notify
+        from apps.notifications.models import EventType
+        if approuvee:
+            titre = f"Demande d'achat approuvée — {da.reference}"
+            corps = f"Votre demande « {da.objet} » ({da.reference}) a été approuvée."
+        else:
+            titre = f"Demande d'achat refusée — {da.reference}"
+            corps = f"Votre demande « {da.objet} » ({da.reference}) a été refusée."
+            if da.motif_refus:
+                corps += f" Motif : {da.motif_refus}"
+        notify(
+            demandeur, EventType.DA_DECIDEE, titre, body=corps,
+            link=f'/installations/demandes-achat?demande={da.pk}',
+            company=da.company)
+    except Exception:  # pragma: no cover - défensif
+        pass
+
+
+class DemandeAchatViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
     """FG310 — réquisitions d'achat. Lecture tout rôle, écriture
     responsable/admin. Référence anti-collision + société + `created_by` posés
     serveur ; chantier/programme/fournisseur_suggere validés tenant. Filtrable
-    par `statut`, `chantier`, `programme`. Cycle de vie via les actions."""
+    par `statut`, `chantier`, `programme`. Cycle de vie via les actions.
+    SCA36 — chatter générique (`chatter/historique`, `chatter/noter`) via le
+    kit ; approbations inchangées."""
     queryset = DemandeAchat.objects.select_related(
         'chantier', 'programme', 'fournisseur_suggere',
         'approuvee_par', 'created_by').prefetch_related('lignes').all()
@@ -108,6 +153,7 @@ class DemandeAchatViewSet(TenantMixin, viewsets.ModelViewSet):
         da.motif_refus = None
         da.save(update_fields=['statut', 'approuvee_par', 'date_decision',
                                'motif_refus', 'date_modification'])
+        _notifier_demandeur_decision(da, approuvee=True)
         return Response(self.get_serializer(da).data)
 
     @action(detail=True, methods=['post'])
@@ -124,6 +170,7 @@ class DemandeAchatViewSet(TenantMixin, viewsets.ModelViewSet):
         da.motif_refus = (request.data.get('motif_refus') or '').strip() or None
         da.save(update_fields=['statut', 'approuvee_par', 'date_decision',
                                'motif_refus', 'date_modification'])
+        _notifier_demandeur_decision(da, approuvee=False)
         return Response(self.get_serializer(da).data)
 
     @action(detail=True, methods=['post'])

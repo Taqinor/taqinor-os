@@ -4,35 +4,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Search } from 'lucide-react'
-import reportingApi from '../../api/reportingApi'
-
-// Route d'ouverture par type d'entité (cf. router/index.jsx).
-const ROUTE = {
-  lead: (id) => `/crm/leads?lead=${id}`,
-  client: () => '/crm',
-  devis: () => '/ventes/devis',
-  facture: () => '/ventes/factures',
-  chantier: () => '/chantiers',
-  equipement: () => '/equipements',
-  ticket: () => '/sav',
-  bon_commande: () => '/ventes/bons-commande',
-  contrat: () => '/sav/contrats',
-  dossier: () => '/chantiers',
-}
-
-// Route de LISTE par type, filtrée par la requête (lien « voir tout »). On reste
-// sur la route d'ouverture du type quand aucune liste filtrable n'existe.
-const LIST_ROUTE = {
-  lead: (q) => `/crm/leads?q=${encodeURIComponent(q)}`,
-  client: (q) => `/crm?q=${encodeURIComponent(q)}`,
-  devis: (q) => `/ventes/devis?q=${encodeURIComponent(q)}`,
-  facture: (q) => `/ventes/factures?q=${encodeURIComponent(q)}`,
-  chantier: (q) => `/chantiers?q=${encodeURIComponent(q)}`,
-  equipement: (q) => `/equipements?q=${encodeURIComponent(q)}`,
-  ticket: (q) => `/sav?q=${encodeURIComponent(q)}`,
-  bon_commande: (q) => `/ventes/bons-commande?q=${encodeURIComponent(q)}`,
-  contrat: (q) => `/sav/contrats?q=${encodeURIComponent(q)}`,
-}
+// VX13 — ROUTE/LIST_ROUTE + recherche débouncée mutualisés avec CommandPalette
+// (⌘K) : plus aucune table dupliquée (cf. lib/search/entityRoutes.js).
+import { ROUTE, LIST_ROUTE, TYPE_ACCENT, useEntitySearch } from '../../lib/search/entityRoutes'
+import { useActiveDescendant } from '../../hooks/useActiveDescendant'
 
 // Mémoire des recherches récentes (localStorage, effacée à la déconnexion).
 const RECENT_KEY = 'taqinor.search.recent'
@@ -56,11 +31,7 @@ function writeRecent(items) {
 
 export default function GlobalSearch() {
   const [q, setQ] = useState('')
-  const [groups, setGroups] = useState([])
   const [open, setOpen] = useState(false)
-  const [loading, setLoading] = useState(false)
-  // L11 — distinguer un échec réseau d'un vrai « aucun résultat ».
-  const [failed, setFailed] = useState(false)
   // L9 — mémoire des recherches récentes (affichée quand la boîte vide a le focus).
   const [recent, setRecent] = useState(readRecent)
   // L9 — navigation clavier : index de l'item surligné dans la liste aplatie.
@@ -70,8 +41,14 @@ export default function GlobalSearch() {
   const boxRef = useRef(null)
   const inputRef = useRef(null)
   const navigate = useNavigate()
+  // VX191 — `aria-activedescendant` : flécher au clavier annonçait déjà le
+  // style visuel (`gs-result-active`) mais rien au lecteur d'écran.
+  const { getOptionId, activeId } = useActiveDescendant(activeIndex)
 
   const term = q.trim()
+  // VX13 — recherche débouncée mutualisée (cf. lib/search/entityRoutes.js) ;
+  // L11 — `failed` distingue un échec réseau d'un vrai « aucun résultat ».
+  const { groups, loading, failed } = useEntitySearch(term)
 
   // Liste APLATIE des cibles ouvrables (résultats + liens « voir tout ») pour la
   // navigation clavier, en portant déjà l'index plat sur chaque élément de
@@ -107,22 +84,26 @@ export default function GlobalSearch() {
     return { flat: flatList, recentRows: [], groupRows: grows }
   }, [term, recent, groups])
 
-  // Débounce : on ne lance la recherche que ~250 ms après la dernière frappe.
+  // VX13 — la recherche elle-même vit dans useEntitySearch (débounce ~250 ms,
+  // cf. lib/search/entityRoutes.js) ; ici on garde SEULEMENT les effets propres
+  // à GlobalSearch : réinitialiser la sélection clavier à chaque nouvelle
+  // requête, et rouvrir le panneau quand une réponse (résultats OU échec) est
+  // disponible — comportement byte-identique à l'ancien effet local.
+  // Réinitialise la sélection clavier quand la requête change — en phase de
+  // rendu (patron React « ajuster l'état quand une valeur change »), pas dans
+  // un effet-setState.
+  const [prevTerm, setPrevTerm] = useState(term)
+  if (term !== prevTerm) {
+    setPrevTerm(term)
+    setActiveIndex(-1)
+  }
+
   useEffect(() => {
-    const t = setTimeout(() => {
-      if (term.length < 2) {
-        setGroups([]); setLoading(false); setFailed(false); setActiveIndex(-1); return
-      }
-      setLoading(true)
-      setFailed(false)
-      setActiveIndex(-1)
-      reportingApi.search(term)
-        .then((r) => { setGroups(r.data.groups ?? []); setOpen(true) })
-        .catch(() => { setGroups([]); setFailed(true); setOpen(true) })
-        .finally(() => setLoading(false))
-    }, term.length < 2 ? 0 : 250)
-    return () => clearTimeout(t)
-  }, [q]) // eslint-disable-line react-hooks/exhaustive-deps
+    // Rouvre le panneau à l'ARRIVÉE d'une réponse asynchrone (résultats/échec) :
+    // réaction à un état externe, pas un état dérivable en rendu.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (term.length >= 2 && !loading) setOpen(true)
+  }, [groups, failed, loading, term])
 
   // Fermer le panneau au clic extérieur (et replier l'input mobile).
   useEffect(() => {
@@ -237,6 +218,8 @@ export default function GlobalSearch() {
         role="combobox"
         aria-expanded={open}
         aria-controls="gs-panel"
+        aria-autocomplete="list"
+        aria-activedescendant={activeId}
         aria-label="Recherche globale"
         autoComplete="off"
       />
@@ -249,6 +232,7 @@ export default function GlobalSearch() {
               {recentRows.map(({ value, index }) => (
                 <button
                   key={`recent-${value}`}
+                  id={getOptionId(index)}
                   type="button"
                   role="option"
                   aria-selected={activeIndex === index}
@@ -278,6 +262,7 @@ export default function GlobalSearch() {
               {g.results.map((r) => (
                 <button
                   key={`${g.type}-${r.id}`}
+                  id={getOptionId(r.index)}
                   type="button"
                   role="option"
                   aria-selected={activeIndex === r.index}
@@ -285,6 +270,14 @@ export default function GlobalSearch() {
                   onMouseEnter={() => setActiveIndex(r.index)}
                   onClick={() => go(g.type, r.id)}
                 >
+                  {/* VX13 — pastille d'accent du module d'origine (VX8). */}
+                  {TYPE_ACCENT[g.type] && (
+                    <span
+                      className="gs-result-accent"
+                      style={{ '--module-accent': `var(--module-accent-${TYPE_ACCENT[g.type]})` }}
+                      aria-hidden="true"
+                    />
+                  )}
                   <span className="gs-result-label">{r.label}</span>
                   {r.sublabel && <span className="gs-result-sub">{r.sublabel}</span>}
                 </button>
@@ -292,6 +285,7 @@ export default function GlobalSearch() {
               {g.moreRow && (
                 <button
                   type="button"
+                  id={getOptionId(g.moreRow.index)}
                   role="option"
                   aria-selected={activeIndex === g.moreRow.index}
                   className={`gs-more${activeIndex === g.moreRow.index ? ' gs-result-active' : ''}`}

@@ -12,33 +12,30 @@ self-contained dans ``apps.paie`` : aucune dépendance à une autre app business
 champs PUBLICS du bulletin/profil — jamais de donnée d'achat/marge. Donnée
 SENSIBLE (salaires) — usage paie/employé uniquement.
 
-WeasyPrint est optionnel à l'import : si la lib n'est pas installée (build
-allégé), ``render_bulletin_pdf`` lève une ``RuntimeError`` explicite plutôt que
-de planter à l'import du module.
+ARC12 — la plomberie WeasyPrint (``HTML(string=...).write_pdf()`` + import
+paresseux) est déléguée au service partagé ``core.pdf.render_pdf`` ; les
+GABARITS HTML ci-dessous restent STRICTEMENT identiques, donc le rendu est
+inchangé à l'octet près. ``render_bulletins_periode_pdf`` (ZPAI5, fusion
+PyMuPDF) est HORS PÉRIMÈTRE : elle n'importe pas WeasyPrint directement, elle
+réutilise ``render_bulletin_pdf`` (déjà migré) puis fusionne les pages via
+``fitz``.
 """
 from datetime import date
 from decimal import Decimal
 from html import escape
-from io import BytesIO
+
+from core.pdf import render_pdf
+
+
+def _html_to_pdf(html_string):
+    """HTML → octets PDF via ``core.pdf.render_pdf`` (ARC12)."""
+    return render_pdf(html=html_string)
+
 
 MOIS_FR = [
     '', 'janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet',
     'août', 'septembre', 'octobre', 'novembre', 'décembre',
 ]
-
-
-def _html_to_pdf(html_string):
-    """HTML → octets PDF (WeasyPrint). Import paresseux de weasyprint."""
-    try:
-        import weasyprint
-    except ImportError as exc:  # pragma: no cover - dépend de l'environnement
-        raise RuntimeError(
-            "WeasyPrint n'est pas installé : génération PDF indisponible."
-        ) from exc
-    buf = BytesIO()
-    weasyprint.HTML(string=html_string).write_pdf(buf)
-    buf.seek(0)
-    return buf.read()
 
 
 def _fmt(montant):

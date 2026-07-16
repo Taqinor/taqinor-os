@@ -61,7 +61,7 @@ export default function ChatPage() {
     dispatch(markConversationRead({ conversationId: activeId }))
   }, [dispatch, activeId])
 
-  useChatPolling(activeId)
+  const { stalled: pollingStalled, resume: resumePolling } = useChatPolling(activeId)
 
   const members = useMemo(() => {
     const list = activeConv?.members ?? []
@@ -84,10 +84,20 @@ export default function ChatPage() {
   )
 
   return (
-    <div
-      className={`chat-shell${activeId != null ? ' has-active' : ''} grid h-[calc(100dvh-8rem)] gap-3 md:grid-cols-[320px_1fr]`}
-      data-testid="chat-page"
-    >
+    <div className="chat-shell-wrap flex h-[calc(100dvh-8rem)] flex-col gap-2">
+      {pollingStalled && (
+        <button
+          type="button"
+          className="chat-stalled-banner flex shrink-0 items-center justify-center gap-1.5 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/15"
+          onClick={resumePolling}
+        >
+          Mise à jour interrompue — cliquer pour reprendre
+        </button>
+      )}
+      <div
+        className={`chat-shell${activeId != null ? ' has-active' : ''} grid min-h-0 flex-1 gap-3 md:grid-cols-[320px_1fr]`}
+        data-testid="chat-page"
+      >
       <aside
         className={`chat-pane-list min-h-0 overflow-hidden rounded-lg border border-border bg-card ${activeId != null ? 'hidden md:block' : 'block'}`}
       >
@@ -143,6 +153,7 @@ export default function ChatPage() {
           </>
         )}
       </section>
+      </div>
 
       <NewConversation
         open={newOpen}

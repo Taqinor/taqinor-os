@@ -1,15 +1,34 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit'
 import stockApi from '../../../api/stockApi'
+import { fetchAllPages } from '../../../utils/fetchAllPages'
+import { createCancellableThunk, dedupeInFlight } from '../../../lib/thunkHelpers'
+
+// VX164 — garde anti-course PAR RESSOURCE sur les `update*.fulfilled` :
+// deux PATCH rapides du MÊME enregistrement, résolus dans l'ordre INVERSE
+// (le second dispatché répond avant le premier), ne doivent plus faire
+// régresser l'écran vers le payload le plus ANCIEN. `seqMap[id]` retient le
+// `requestId` (RTK) de la DERNIÈRE requête DISPATCHÉE pour cet id ; un
+// `.fulfilled` dont le `requestId` ne correspond plus est un no-op silencieux
+// — le payload le plus récemment DEMANDÉ gagne toujours, quel que soit
+// l'ordre de résolution réseau.
+function isStaleResourceUpdate(seqMap, id, requestId) {
+  return seqMap[id] != null && seqMap[id] !== requestId
+}
 
 // ── Produits ───────────────────────────────────────────────────
-export const fetchProduits = createAsyncThunk('stock/fetchProduits', async (_, { rejectWithValue }) => {
-  try {
-    const res = await stockApi.getProduits()
-    return res.data
-  } catch (err) {
-    return rejectWithValue(err.response?.data ?? err.message)
-  }
-})
+// VX54 — la page 1 DRF (PAGE_SIZE=100) ne renvoyait que les 100 premiers
+// produits : StockList et les KPI/graphiques du Dashboard étaient FAUX dès
+// 101 produits, sans indicateur. On lit désormais TOUTES les pages, en
+// parallèle borné (pas un escalier sériel).
+// VX163 — `{signal}` câblé (démontage annule la pagination en vol,
+// `meta.aborted === true`) + dé-duplication en vol (deux montages simultanés
+// de StockList ne déclenchent qu'UNE seule pagination complète, partagée).
+export const fetchProduits = createCancellableThunk('stock/fetchProduits', (_, { signal }) =>
+  dedupeInFlight('stock/fetchProduits', () =>
+    fetchAllPages((page) => stockApi.getProduits({ page }, { signal }).then((r) => r.data), { concurrency: 20 })
+      .then((results) => ({ results })),
+  ),
+)
 
 export const createProduit = createAsyncThunk('stock/createProduit', async (data, { rejectWithValue }) => {
   try {
@@ -171,29 +190,57 @@ const stockSlice = createSlice({
     fournisseurs: [],
     mouvements: [],
     loading: false,
+    // VX165 — compteur de sondages EN VOL partagés par `fetchProduits`/
+    // `fetchMouvements` (`loading` reste dérivé — rétrocompatible avec les
+    // sélecteurs existants) : le premier résolu n'éteint plus le spinner
+    // pendant qu'une requête sœur charge encore.
+    pendingCount: 0,
     error: null,
     selectedProduit: null,
+    // VX164 — requestId (RTK) de la DERNIÈRE update dispatchée, par id — une
+    // map par ressource (produits/fournisseurs/catégories sont des tables
+    // distinctes).
+    produitUpdateSeq: {},
+    fournisseurUpdateSeq: {},
+    categorieUpdateSeq: {},
   },
   reducers: {
     setSelectedProduit(state, action) { state.selectedProduit = action.payload },
     clearError(state) { state.error = null },
   },
   extraReducers: (builder) => {
-    const pending = (state) => { state.loading = true; state.error = null }
-    const rejected = (state, action) => { state.loading = false; state.error = action.payload }
+    // VX165 — voir `pendingCount` ci-dessus : `pending` incrémente,
+    // `settleLoading` (fulfilled/rejected) décrémente et redérive `loading`.
+    const pending = (state) => {
+      state.pendingCount = (state.pendingCount || 0) + 1
+      state.loading = true
+      state.error = null
+    }
+    const settleLoading = (state) => {
+      state.pendingCount = Math.max(0, (state.pendingCount || 0) - 1)
+      state.loading = state.pendingCount > 0
+    }
+    const rejected = (state, action) => {
+      settleLoading(state)
+      state.error = action.payload
+    }
 
     builder
       // Produits
       .addCase(fetchProduits.pending, pending)
       .addCase(fetchProduits.fulfilled, (state, action) => {
-        state.loading = false
+        settleLoading(state)
         state.produits = action.payload.results ?? action.payload
       })
       .addCase(fetchProduits.rejected, rejected)
       .addCase(createProduit.fulfilled, (state, action) => {
         state.produits.push(action.payload)
       })
+      .addCase(updateProduit.pending, (state, action) => {
+        state.produitUpdateSeq[action.meta.arg.id] = action.meta.requestId
+      })
       .addCase(updateProduit.fulfilled, (state, action) => {
+        if (isStaleResourceUpdate(state.produitUpdateSeq, action.payload.id, action.meta.requestId)) return
         const idx = state.produits.findIndex(p => p.id === action.payload.id)
         if (idx !== -1) state.produits[idx] = action.payload
       })
@@ -235,7 +282,11 @@ const stockSlice = createSlice({
       .addCase(createFournisseur.fulfilled, (state, action) => {
         state.fournisseurs.push(action.payload)
       })
+      .addCase(updateFournisseur.pending, (state, action) => {
+        state.fournisseurUpdateSeq[action.meta.arg.id] = action.meta.requestId
+      })
       .addCase(updateFournisseur.fulfilled, (state, action) => {
+        if (isStaleResourceUpdate(state.fournisseurUpdateSeq, action.payload.id, action.meta.requestId)) return
         const idx = state.fournisseurs.findIndex(f => f.id === action.payload.id)
         if (idx !== -1) state.fournisseurs[idx] = action.payload
       })
@@ -244,7 +295,11 @@ const stockSlice = createSlice({
       })
 
       // Catégories (update/delete)
+      .addCase(updateCategorie.pending, (state, action) => {
+        state.categorieUpdateSeq[action.meta.arg.id] = action.meta.requestId
+      })
       .addCase(updateCategorie.fulfilled, (state, action) => {
+        if (isStaleResourceUpdate(state.categorieUpdateSeq, action.payload.id, action.meta.requestId)) return
         const idx = state.categories.findIndex(c => c.id === action.payload.id)
         if (idx !== -1) state.categories[idx] = action.payload
       })
@@ -255,7 +310,7 @@ const stockSlice = createSlice({
       // Mouvements
       .addCase(fetchMouvements.pending, pending)
       .addCase(fetchMouvements.fulfilled, (state, action) => {
-        state.loading = false
+        settleLoading(state)
         state.mouvements = action.payload.results ?? action.payload
       })
       .addCase(fetchMouvements.rejected, rejected)

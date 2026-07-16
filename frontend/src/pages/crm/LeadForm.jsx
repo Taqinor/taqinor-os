@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useDispatch } from 'react-redux'
+import { useDispatch, useSelector } from 'react-redux'
+import {
+  User, TrendingUp, Zap, Droplet, Home, ClipboardList, Globe,
+  FileText, Clock, Paperclip, GitMerge, History, Lightbulb,
+} from 'lucide-react'
 import { createLead, updateLead, archiveLead, restoreLead } from '../../features/crm/store/crmSlice'
 import api from '../../api/axios'
 import crmApi from '../../api/crmApi'
@@ -11,18 +15,49 @@ import AssigneePicker from '../../components/AssigneePicker'
 import ActivitiesPanel from '../../components/ActivitiesPanel'
 import AttachmentsPanel from '../../components/AttachmentsPanel'
 import CustomFieldsInput from '../../components/CustomFieldsInput'
+// VX23 — chatter réutilisable (regroupement par jour, avatars, notes/logs).
+import ChatterTimeline from '../../components/ChatterTimeline'
 import AppointmentBooker from './leads/AppointmentBooker'
 import LeadDevisPanel from './leads/LeadDevisPanel'
 import SigneDialog from './leads/SigneDialog'
 import PlanActiviteDialog from './leads/PlanActiviteDialog'
 import ConvertirClientDialog from './leads/ConvertirClientDialog'
-import { CONVERSION_STAGE } from '../../features/crm/stages'
-import useCanaux from '../../features/crm/useCanaux'
 import {
-  Button, Input,
+  CONVERSION_STAGE, STAGE_LABELS, PRIORITE_LABELS, TYPE_INSTALLATION_LABELS,
+} from '../../features/crm/stages'
+import useCanaux from '../../features/crm/useCanaux'
+import { useServerFieldErrors } from '../../hooks/useServerFieldErrors'
+import { useStaleGuard } from '../../hooks/useStaleGuard'
+import { usePasteClean, parsePastedPhone, parsePasteCard } from '../../hooks/usePasteClean'
+import { useDuplicateCheck } from '../../hooks/useDuplicateCheck'
+import PhoneHint from '../../components/PhoneHint'
+// VX24 — bandeau de faits clés (LeadSummaryBar) réutilise le même ScoreBadge.
+import ScoreBadge from '../../features/crm/ScoreBadge'
+// VX87 — journal d'appel en un geste (issue + note + prochaine relance).
+import CallLogPopover from '../../features/crm/CallLogPopover'
+import useKeyboardAwareScroll from '../../hooks/useKeyboardAwareScroll'
+import {
+  Button, IconButton, Input, FormSection, FormField, Switch,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
+  ErrorBoundary, RelationCounters, ScrollProgress,
 } from '../../ui'
-import { normalizeMaPhone } from '../../lib/format'
+// VX89 — shell externe Escape + focus-trap + bottom-sheet mobile (comme ClientForm).
+import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
+import { toast } from '../../ui/confirm'
+// VX167 — garde de saisie sur LE modal n°1 de l'ERP (complément direct de
+// VX89 : Escape ferme désormais sans rien demander, comme l'overlay/✕ déjà
+// avant). `isDirty` (VX224, JSON diff ci-dessous) est la source de vérité
+// unique ; ce hook n'ajoute que le filet beforeunload + la confirmation
+// impérative sur fermeture volontaire (✕ / overlay / futur onOpenChange).
+import { useDirtyGuard, confirmLeaveIfDirty } from '../../ui/useDirtyGuard'
+import { formatMAD, normalizeMaPhone } from '../../lib/format'
+// VX224 — même garde « jamais en train de saisir » que les raccourcis
+// globaux (ShortcutsProvider) pour J/K, une seule source de vérité.
+import { isTypingTarget } from '../../providers/shortcuts'
+// VX248 — raccourcis d'ACTION sur la fiche focalisée (a archiver, d
+// déléguer, 1..4 changer d'étape) : registre + câblage partagés avec
+// DevisList.jsx/FactureList.jsx et la cheatsheet « ? ».
+import { useFocusedRecordShortcuts, LEAD_STAGE_SHORTCUTS } from '../../providers/focusedRecordShortcuts'
 
 // Canal posé par défaut sur un lead créé à la main (jamais null) : une visite/
 // un appel direct au showroom. Le webhook du site impose 'site_web' de son côté.
@@ -30,27 +65,43 @@ const DEFAULT_CANAL = 'walk_in'
 // Validation e-mail minimale (le formulaire est noValidate) : « un@deux.trois ».
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
-const STAGE_LABELS = {
-  NEW: 'Nouveau',
-  CONTACTED: 'Contacté',
-  QUOTE_SENT: 'Devis envoyé',
-  FOLLOW_UP: 'Relance',
-  SIGNED: 'Signé',
-  COLD: 'Froid',
+// VX93 — défauts intelligents : mémoire de la dernière ville saisie (par
+// localStorage, toujours modifiable, jamais bloquant ; le pattern owner=moi
+// utilise l'utilisateur courant côté composant). Silencieux si absent.
+const LAST_VILLE_KEY = 'vx93.lead.ville'
+const readLastVille = () => {
+  try { return localStorage.getItem(LAST_VILLE_KEY) || '' } catch { return '' }
 }
+const rememberVille = (v) => {
+  try { if (v && v.trim()) localStorage.setItem(LAST_VILLE_KEY, v.trim()) } catch { /* best-effort */ }
+}
+
+// VX224 — « Créer un autre » (VX92 étendu à LeadForm, seul le plus gros
+// formulaire CRM ne l'avait pas) : persisté par utilisateur/poste
+// (localStorage), défaut OFF (comportement historique inchangé). Une session
+// de qualification en rafale = 20-40 leads/j ; sans ce toggle chaque création
+// coûte un cycle fermer/rouvrir.
+const CREER_UN_AUTRE_KEY = 'taqinor.leadForm.creerUnAutre'
+const lireCreerUnAutre = () => {
+  try { return localStorage.getItem(CREER_UN_AUTRE_KEY) === '1' } catch { return false }
+}
+const ecrireCreerUnAutre = (v) => {
+  try { localStorage.setItem(CREER_UN_AUTRE_KEY, v ? '1' : '0') } catch { /* best-effort */ }
+}
+
+// VX143 — STAGE_LABELS/PRIORITE_LABELS/TYPE_INSTALLATION_LABELS viennent
+// désormais de features/crm/stages.js (miroir strict de STAGES.py) au lieu
+// d'une copie locale : une seule source, jamais de divergence (#2).
 
 const STATUT_DEVIS = {
   brouillon: 'Brouillon', envoye: 'Envoyé', accepte: 'Accepté',
   refuse: 'Refusé', expire: 'Expiré',
 }
 
-const PRIORITES = { basse: 'Basse', normale: 'Normale', haute: 'Haute' }
+// VX23 — OUTCOME_LABELS (résultat d'appel/e-mail journalisé) déménagé dans
+// ChatterTimeline.jsx, seule source de rendu du chatter désormais.
 // Langue préférée du contact — pré-sélectionne la langue du message WhatsApp.
 const LANGUES_PREFEREES = { fr: 'Français', darija: 'Darija' }
-const TYPES_INSTALLATION = {
-  residentiel: 'Résidentiel', commercial: 'Commercial',
-  industriel: 'Industriel', agricole: 'Agricole',
-}
 const RACCORDEMENTS = { monophase: 'Monophasé', triphase: 'Triphasé', inconnu: 'Je ne sais pas' }
 const TYPES_TOITURE = {
   terrasse_beton: 'Terrasse béton', tole_metal: 'Tôle/Métal', tuiles: 'Tuiles',
@@ -69,20 +120,62 @@ const enumOptions = (labels) => [
   ...Object.entries(labels).map(([k, v]) => <option key={k} value={k}>{v}</option>),
 ]
 
-// Helpers hors composant : identité stable entre rendus (sinon les champs
-// seraient démontés à chaque frappe et perdraient le focus).
-const Sec = ({ title, children, id }) => (
-  <div className="form-section" data-nav-id={id}>
-    <div className="form-section-header">
-      <span className="form-section-title">{title}</span>
-    </div>
-    {children}
-  </div>
-)
+// VX143 — un seul langage de formulaire dans le module CRM : les anciens
+// helpers locaux `Sec`/`Txt`/`Sel` (classes hex-brutes) sont remplacés par les
+// primitifs composables démontrés par ClientForm.jsx (`FormSection`/`FormField`),
+// présentation pure — le scroll-spy `data-nav-id` et les verrouillages métier
+// (perdu/motif, agricole, devis auto…) restent inchangés.
 
-// Navigateur de sections (rail gauche) : libellé court → section du formulaire.
-// La liste est calculée dans le composant car Pompage n'apparaît qu'en agricole.
-const buildNavSections = ({ agricole, isEdit, hasWebOrigin }) => {
+// Icône par section — même icône que le rail de navigation (VX143), à la
+// place des emoji bruts. `contentBadge` (optionnel) affiche un compte dans le
+// rail (ex. « Doublons (3) ») là où une simple emoji n'affichait jamais rien.
+const NAV_ICONS = {
+  contact: User,
+  pipeline: TrendingUp,
+  energie: Zap,
+  pompage: Droplet,
+  toiture: Home,
+  visite: ClipboardList,
+  origine: Globe,
+  devis: FileText,
+  activites: Clock,
+  pieces: Paperclip,
+  doublons: GitMerge,
+  historique: History,
+}
+
+// Carte de section titrée, avec bordure/séparation visible (VX143 : les
+// sections n'étaient distinguées que par une emoji, sans frontière). Identité
+// stable hors composant (les champs enfants ne doivent pas être démontés à
+// chaque frappe et perdre le focus).
+// VX205 — chaque section (l'équivalent local d'un `TabsContent` : toutes
+// montées simultanément, navigation en scroll-spy) est isolée dans SA PROPRE
+// `ErrorBoundary` (déjà construite, `ui/ErrorBoundary.jsx`) : un throw dans
+// UNE section (ex. Pompage, Doublons) ne fait plus disparaître le formulaire
+// entier — seule cette section affiche l'écran de récupération, les autres
+// restent utilisables.
+const Sec = ({ title, children, id }) => {
+  const Icon = NAV_ICONS[id]
+  return (
+    <div className="form-section" data-nav-id={id}>
+      <FormSection
+        title={(
+          <span className="form-section-title-inner">
+            {Icon && <Icon className="form-section-icon" aria-hidden="true" size={16} />}
+            {title}
+          </span>
+        )}
+      >
+        <ErrorBoundary>{children}</ErrorBoundary>
+      </FormSection>
+    </div>
+  )
+}
+
+// Navigateur de sections (rail gauche) : id → libellé court + compte de
+// contenu optionnel (ex. nombre de doublons). La liste est calculée dans le
+// composant car Pompage n'apparaît qu'en agricole et les comptes varient.
+const buildNavSections = ({ agricole, isEdit, hasWebOrigin, dupCount = 0 }) => {
   const secs = [
     ['contact', 'Contact'],
     ['pipeline', 'Suivi commercial'],
@@ -93,141 +186,71 @@ const buildNavSections = ({ agricole, isEdit, hasWebOrigin }) => {
   if (hasWebOrigin) secs.push(['origine', 'Origine web'])
   if (isEdit) secs.push(
     ['devis', 'Devis'], ['activites', 'Activités'],
-    ['pieces', 'Pièces jointes'], ['doublons', 'Doublons'],
+    ['pieces', 'Pièces jointes'], ['doublons', 'Doublons', dupCount || null],
     ['historique', 'Historique'])
   return secs
 }
 
-const Txt = ({ fields, set, k, label, type = 'text', ...rest }) => (
-  <div className="form-group">
-    <label className="form-label">{label}</label>
-    <input type={type} step={type === 'number' ? 'any' : undefined}
-           className="form-control" value={fields[k] ?? ''}
-           onChange={e => set(k, e.target.value)} {...rest} />
-  </div>
-)
+// VX23 — timeAgo() déménagé dans ChatterTimeline.jsx (seul consommateur).
 
-const Sel = ({ fields, set, k, label, labels }) => (
-  <div className="form-group">
-    <label className="form-label">{label}</label>
-    <select className="form-select" value={fields[k] ?? ''}
-            onChange={e => set(k, e.target.value)}>
-      {enumOptions(labels)}
-    </select>
-  </div>
-)
-
-function timeAgo(iso) {
-  const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000)
-  if (mins < 1) return "à l'instant"
-  if (mins < 60) return `il y a ${mins} min`
-  const h = Math.round(mins / 60)
-  if (h < 24) return `il y a ${h} h`
-  return new Date(iso).toLocaleDateString('fr-FR')
+// VX24 — nombre de jours entiers depuis une date ISO (ou null si absente).
+function joursDepuis(iso) {
+  if (!iso) return null
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return null
+  const jours = Math.floor((Date.now() - d.getTime()) / 86400000)
+  return jours >= 0 ? jours : null
 }
 
-export default function LeadForm({ lead = null, onClose, onSaved, initialDevis = null, onOpenDuplicate = null }) {
-  const dispatch = useDispatch()
-  const navigate = useNavigate()
-  const isEdit = !!lead
-  // Canaux depuis le référentiel géré (Paramètres → CRM) + libellés statiques :
-  // un canal ajouté en Paramètres apparaît dans le sélecteur sans redéploiement.
-  const { labels: canalLabels } = useCanaux()
+// VX24 — LeadSummaryBar : le bandeau de faits clés façon Attio, en tête de
+// fiche. Score, montant estimé, prochaine activité, jours depuis dernière
+// modification — les 4 faits qui comptent pour préparer un appel, visibles
+// sans avoir à scroller dans les sections détaillées.
+function LeadSummaryBar({ lead }) {
+  if (!lead) return null
+  const jours = joursDepuis(lead.date_modification)
+  const montant = lead.montant_estime != null && lead.montant_estime !== ''
+    ? formatMAD(parseFloat(lead.montant_estime)) : null
+  return (
+    <div className="lead-summary-bar" data-testid="lead-summary-bar">
+      <span className="lead-summary-item" title="Score de qualité du lead">
+        <ScoreBadge lead={lead} />
+      </span>
+      <span className="lead-summary-item" title="Montant estimé (avant devis)">
+        {montant ?? '—'}
+      </span>
+      <span className="lead-summary-item" title="Prochaine activité planifiée">
+        {lead.next_activity
+          ? `⏰ ${lead.next_activity.summary} — ${lead.next_activity.due_date}`
+          : 'Aucune activité planifiée'}
+      </span>
+      <span className="lead-summary-item" title="Jours depuis la dernière modification">
+        {jours != null ? `Modifié il y a ${jours} j` : '—'}
+      </span>
+    </div>
+  )
+}
 
-  // Copie « vivante » du lead : reflète les enregistrements ponctuels faits
-  // SANS soumettre tout le formulaire (facture inline, devis créés). Sert au
-  // verrouillage des boutons devis (devis_auto.pret) et à la liste des devis.
-  const [liveLead, setLiveLead] = useState(lead)
-  // On ne resynchronise la copie « vivante » que quand on change DE lead
-  // (id différent). Sinon un simple re-rendu du parent (déclenché par onSaved
-  // après création d'un devis) repasse un objet `lead` issu de la LISTE — dont
-  // la liste `devis` est périmée/absente — et écrasait le devis fraîchement
-  // ajouté tant qu'on ne rechargeait pas la page (FEATURE 0, symptôme 2).
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setLiveLead(lead)
-  }, [lead?.id]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Panneau devis inline (mode : auto | remise | onepage | premium | edit | view).
-  const [devisPanel, setDevisPanel] = useState(null)
-  const [panelDevisId, setPanelDevisId] = useState(null)
-  const [devisMenuOpen, setDevisMenuOpen] = useState(false)
-  const devisMenuRef = useRef(null)
-  // Envoyer par WhatsApp : sélection multiple de devis du lead.
-  const [waSelected, setWaSelected] = useState(() => new Set())
-  const [waBusy, setWaBusy] = useState(false)
-  // L851 — langue du message ('fr' par défaut, 'darija' au choix).
-  // L17 — pré-sélectionne la langue préférée du lead quand elle est renseignée.
-  const [waLangue, setWaLangue] = useState(() => lead?.langue_preferee || 'fr')
-  // L852 — aperçu du message avant ouverture de wa.me.
-  const [waPreview, setWaPreview] = useState(null) // { message, links, wa_url }
-
-  const toggleWaSelect = (id) => setWaSelected(prev => {
-    const next = new Set(prev)
-    next.has(id) ? next.delete(id) : next.add(id)
-    return next
-  })
-
-  const leadPhone = (liveLead?.whatsapp || liveLead?.telephone || '').trim()
-  // L853 — téléphone normalisable côté front (miroir de normalize_ma_phone) :
-  // un numéro inexploitable désactive le bouton, sans aller-retour 400.
-  const leadPhoneOk = !!normalizeMaPhone(leadPhone)
-
-  // L852 — construit le message côté serveur puis affiche l'aperçu (FR/Darija)
-  // + le(s) lien(s) public(s) avant d'ouvrir wa.me. Le POST consigne aussi
-  // l'action au chatter du lead (côté serveur, L856).
-  const envoyerWhatsApp = async () => {
-    if (!leadPhoneOk) return
-    if (waSelected.size === 0) {
-      alert('Sélectionnez au moins un devis.')
-      return
-    }
-    setWaBusy(true)
-    try {
-      const res = await crmApi.whatsappDevis(lead.id, {
-        devis_ids: Array.from(waSelected),
-        langue: waLangue,
-      })
-      setWaPreview({
-        message: res.data?.message ?? '',
-        links: res.data?.links ?? [],
-        wa_url: res.data?.wa_url ?? '',
-      })
-    } catch (err) {
-      alert(err?.response?.data?.detail ?? 'Envoi WhatsApp impossible.')
-    } finally {
-      setWaBusy(false)
-    }
-  }
-
-  // Ouvre wa.me avec le message pré-rempli après confirmation de l'aperçu.
-  const ouvrirWhatsApp = () => {
-    if (waPreview?.wa_url) window.open(waPreview.wa_url, '_blank', 'noopener')
-    setWaPreview(null)
-  }
-
-  // Doublons probables (fusion sans perte).
-  const [dups, setDups] = useState([])
-  // Listes gérées (suggestions ; le texte libre reste possible).
-  const [tagOptions, setTagOptions] = useState([])
-  const [motifOptions, setMotifOptions] = useState([])
-
-  // Édition inline de la facture (enregistre CE champ seul, sans le formulaire).
-  const [billEditing, setBillEditing] = useState(false)
-  const [billSaving, setBillSaving] = useState(false)
-  const [billError, setBillError] = useState(null)
-  const [billHiver, setBillHiver] = useState('')
-  const [billEte, setBillEte] = useState('')
-
+// VX224 — extrait du corps du composant pour être réutilisable tel quel par
+// « Créer un autre » (VX92 étendu à LeadForm) : succès de création → RESET
+// complet vers les mêmes défauts qu'une ouverture fraîche (owner=moi,
+// dernière ville, canal par défaut…), jamais une réinitialisation partielle
+// qui oublierait un défaut VX93. `lead` reste `null` pour un reset (jamais
+// l'ancien lead créé), `currentUserId` reste celui de la session.
+function buildInitialFields(lead, currentUserId) {
   const F = (k, d = '') => lead?.[k] ?? d
-  const [fields, setFields] = useState({
+  return {
     // Contact
     nom: F('nom'), prenom: F('prenom'), societe: F('societe'),
     email: F('email'), telephone: F('telephone'), whatsapp: F('whatsapp'),
-    adresse: F('adresse'), ville: F('ville'),
+    adresse: F('adresse'),
+    // VX93 — ville pré-remplie avec la dernière saisie (création seulement).
+    ville: lead ? F('ville') : (F('ville') || readLastVille()),
     gps_lat: F('gps_lat'), gps_lng: F('gps_lng'),
     // Pipeline
-    stage: F('stage', 'NEW'), owner: F('owner', '') ?? '',
+    stage: F('stage', 'NEW'),
+    // VX93 — owner = utilisateur courant à la création (jamais en édition).
+    owner: lead ? (F('owner', '') ?? '') : (F('owner', '') || (currentUserId ? String(currentUserId) : '')),
     // Canal prérempli à la création (jamais null) ; en édition on respecte la
     // valeur du lead (y compris vide pour un ancien lead).
     canal: lead ? (F('canal', '') ?? '') : DEFAULT_CANAL,
@@ -262,19 +285,207 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
     visite_effectuee: lead?.visite_effectuee ?? false,
     visite_notes: F('visite_notes'),
     note: F('note'),
+  }
+}
+
+export default function LeadForm({
+  lead = null, onClose, onSaved, initialDevis = null, onOpenDuplicate = null,
+  // QX25 — « Planifier une relance » (kanban) ouvre directement la fiche sur
+  // la section « Suivi commercial » (relance_date) au lieu d'un texte inerte.
+  focusSection = null,
+  // VX224 — session de qualification en rafale : `leadsQueue` = liste FILTRÉE
+  // déjà en mémoire côté LeadsPage.jsx (même liste que ListView/KanbanView,
+  // jamais une re-requête dédiée) ; `onNavigateLead(lead)` fait remonter la
+  // demande de bascule — LeadsPage.jsx reste seul propriétaire de `editLead`
+  // (même contrat que `onClose`/`onSaved`, LeadForm ne mute rien lui-même).
+  leadsQueue = null, onNavigateLead = null,
+}) {
+  const dispatch = useDispatch()
+  const navigate = useNavigate()
+  const isEdit = !!lead
+  // VX93 — défaut « propriétaire = moi » à la création (le créateur est presque
+  // toujours le propriétaire) ; toujours modifiable ensuite.
+  const currentUserId = useSelector((s) => s.auth?.user?.id)
+  // Canaux depuis le référentiel géré (Paramètres → CRM) + libellés statiques :
+  // un canal ajouté en Paramètres apparaît dans le sélecteur sans redéploiement.
+  const { labels: canalLabels } = useCanaux()
+  // VX51 — un champ bas de page ne doit plus rester caché sous le clavier iOS.
+  useKeyboardAwareScroll()
+
+  // Copie « vivante » du lead : reflète les enregistrements ponctuels faits
+  // SANS soumettre tout le formulaire (facture inline, devis créés). Sert au
+  // verrouillage des boutons devis (devis_auto.pret) et à la liste des devis.
+  const [liveLead, setLiveLead] = useState(lead)
+  // On ne resynchronise la copie « vivante » que quand on change DE lead
+  // (id différent). Sinon un simple re-rendu du parent (déclenché par onSaved
+  // après création d'un devis) repasse un objet `lead` issu de la LISTE — dont
+  // la liste `devis` est périmée/absente — et écrasait le devis fraîchement
+  // ajouté tant qu'on ne rechargeait pas la page (FEATURE 0, symptôme 2).
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLiveLead(lead)
+  }, [lead?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // VX243(c) — garde d'édition périmée. `openedUpdatedAt` = `updated_at` connu
+  // à l'OUVERTURE de la fiche (ou après la dernière sauvegarde réussie faite
+  // ICI). Au submit, un GET léger relit `updated_at` : s'il a changé sans que
+  // ce soit nous, on affiche une bannière non bloquante (Revoir / Enregistrer
+  // quand même). Re-synchronisé quand on change DE lead.
+  // Lead porte son horodatage de fraîcheur sur `date_modification` (auto_now),
+  // pas `updated_at` (Devis/Facture) — d'où `timestampField` ci-dessous.
+  const [openedUpdatedAt, setOpenedUpdatedAt] = useState(lead?.date_modification)
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setOpenedUpdatedAt(lead?.date_modification)
+  }, [lead?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  const staleGuard = useStaleGuard({
+    openedAt: openedUpdatedAt,
+    timestampField: 'date_modification',
+    fetchLatest: lead?.id
+      ? () => crmApi.getLead(lead.id).then(r => r.data)
+      : undefined,
   })
+
+  // Panneau devis inline (mode : auto | remise | onepage | premium | edit | view).
+  const [devisPanel, setDevisPanel] = useState(null)
+  const [panelDevisId, setPanelDevisId] = useState(null)
+  const [devisMenuOpen, setDevisMenuOpen] = useState(false)
+  const devisMenuRef = useRef(null)
+  // Envoyer par WhatsApp : sélection multiple de devis du lead.
+  const [waSelected, setWaSelected] = useState(() => new Set())
+  const [waBusy, setWaBusy] = useState(false)
+  // L851 — langue du message ('fr' par défaut, 'darija' au choix).
+  // L17 — pré-sélectionne la langue préférée du lead quand elle est renseignée.
+  const [waLangue, setWaLangue] = useState(() => lead?.langue_preferee || 'fr')
+  // L852 — aperçu du message avant ouverture de wa.me.
+  const [waPreview, setWaPreview] = useState(null) // { message, links, wa_url }
+  // VX87 — ouverture contrôlée du popover « Journaliser un appel » (section
+  // Historique), pour pouvoir la déclencher aussi depuis un futur nudge.
+  const [callLogOpen, setCallLogOpen] = useState(false)
+
+  const toggleWaSelect = (id) => setWaSelected(prev => {
+    const next = new Set(prev)
+    next.has(id) ? next.delete(id) : next.add(id)
+    return next
+  })
+
+  const leadPhone = (liveLead?.whatsapp || liveLead?.telephone || '').trim()
+  // L853 — téléphone normalisable côté front (miroir de normalize_ma_phone) :
+  // un numéro inexploitable désactive le bouton, sans aller-retour 400.
+  const leadPhoneOk = !!normalizeMaPhone(leadPhone)
+
+  // L852 — construit le message côté serveur puis affiche l'aperçu (FR/Darija)
+  // + le(s) lien(s) public(s) avant d'ouvrir wa.me. Le POST consigne aussi
+  // l'action au chatter du lead (côté serveur, L856).
+  const envoyerWhatsApp = async () => {
+    if (!leadPhoneOk) return
+    if (waSelected.size === 0) {
+      toast.error('Sélectionnez au moins un devis.')
+      return
+    }
+    setWaBusy(true)
+    try {
+      const res = await crmApi.whatsappDevis(lead.id, {
+        devis_ids: Array.from(waSelected),
+        langue: waLangue,
+      })
+      setWaPreview({
+        message: res.data?.message ?? '',
+        links: res.data?.links ?? [],
+        wa_url: res.data?.wa_url ?? '',
+      })
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Envoi WhatsApp impossible.')
+    } finally {
+      setWaBusy(false)
+    }
+  }
+
+  // Ouvre wa.me avec le message pré-rempli après confirmation de l'aperçu.
+  const ouvrirWhatsApp = () => {
+    if (waPreview?.wa_url) window.open(waPreview.wa_url, '_blank', 'noopener')
+    setWaPreview(null)
+  }
+
+  // Doublons probables (fusion sans perte).
+  const [dups, setDups] = useState([])
+  // Listes gérées (suggestions ; le texte libre reste possible).
+  const [tagOptions, setTagOptions] = useState([])
+  const [motifOptions, setMotifOptions] = useState([])
+
+  // Édition inline de la facture (enregistre CE champ seul, sans le formulaire).
+  const [billEditing, setBillEditing] = useState(false)
+  const [billSaving, setBillSaving] = useState(false)
+  const [billError, setBillError] = useState(null)
+  const [billHiver, setBillHiver] = useState('')
+  const [billEte, setBillEte] = useState('')
+
+  const [fields, setFields] = useState(() => buildInitialFields(lead, currentUserId))
+  // VX224 — instantané « propre » pour la garde de saisie (◀▶/J-K) : mis à
+  // jour à chaque point où `fields` revient intentionnellement à un état non
+  // modifié (montage, changement de lead, reset « créer un autre », sauvegarde
+  // réussie en édition). Comparaison JSON simple — suffisante ici ; VX167
+  // branche cette même valeur sur la garde beforeunload + la confirmation de
+  // fermeture volontaire ci-dessous.
+  const [cleanFieldsJSON, setCleanFieldsJSON] = useState(() => JSON.stringify(fields))
+  const isDirty = JSON.stringify(fields) !== cleanFieldsJSON
+  // VX167 — filet de sortie navigateur (beforeunload), même contrat que les 7
+  // adoptants VX166.
+  useDirtyGuard(isDirty)
+  // VX167 — fermeture volontaire (✕ / overlay / Escape via onOpenChange) :
+  // demande confirmation si `isDirty`, sinon ferme immédiatement (parité avec
+  // `confirmLeaveIfDirty` des 7 formulaires VX166).
+  const guardedClose = () => {
+    if (confirmLeaveIfDirty(isDirty)) onClose()
+  }
+  // VX224 — « Créer un autre » : pertinent uniquement à la création (jamais en
+  // édition), persisté, défaut OFF. `nomRef` reçoit le focus au reset (même
+  // geste que VX89 `autoFocus`, mais posé manuellement puisque le champ ne se
+  // démonte pas entre deux créations).
+  const [creerUnAutre, setCreerUnAutre] = useState(() => !isEdit && lireCreerUnAutre())
+  const nomRef = useRef(null)
+
+  // VX249(b) — owner/ville sont 2 des 4 champs VX93 EXACTEMENT (avec TVA sur
+  // ProduitForm.jsx/DevisGenerator.jsx et payMode sur FactureList.jsx) : un
+  // style « suggéré » discret tant que la valeur pré-remplie n'a pas été
+  // touchée — jamais un système de confidence générique. « Suggéré » n'a de
+  // sens qu'À LA CRÉATION (VX93 ne pré-remplit jamais en édition) ; retiré dès
+  // la première modification.
+  const [ownerTouched, setOwnerTouched] = useState(false)
+  const [villeTouched, setVilleTouched] = useState(false)
+  const [ownerFocused, setOwnerFocused] = useState(false)
+  const [villeFocused, setVilleFocused] = useState(false)
+  const ownerSuggested = !isEdit && !ownerTouched
+  const villeSuggested = !isEdit && !villeTouched
+
   const [users, setUsers] = useState([])
   const [historique, setHistorique] = useState([])
   const [noteBody, setNoteBody] = useState('')
   const [noteError, setNoteError] = useState(null)
+  // VX111 — pièce jointe optionnelle sur la note en cours de rédaction (ex.
+  // photo prise depuis mobile). Réutilise records.Attachment côté serveur
+  // (jamais un second magasin) — voir crmApi via postNote().
+  const [noteFile, setNoteFile] = useState(null)
+  const noteFileInputRef = useRef(null)
   const [saving, setSaving] = useState(false)
   const [savedConfirm, setSavedConfirm] = useState(false)
   const savedConfirmTimer = useRef(null)
-  const [errors, setErrors] = useState({})
+  // VX171 — vérité serveur → champ ; le rouge s'efface à la frappe (clearField
+  // dans `set`), jamais seulement au prochain submit.
+  const { errors, setErrors, setFromResponse, clearField } = useServerFieldErrors()
   const [activeSec, setActiveSec] = useState('contact')
-  // Doublons probables détectés EN DIRECT depuis le téléphone/email saisi
-  // (avertissement NON bloquant, à la création comme à l'édition).
-  const [dupMatches, setDupMatches] = useState([])
+  // VX237 — carte de visite collée dans « Nom » : { nom, telephone } détectés,
+  // JAMAIS répartis silencieusement — le collage brut atterrit dans le champ
+  // comme d'habitude, un bandeau propose « Répartir » sur confirmation.
+  const [cardPaste, setCardPaste] = useState(null)
+  const onNomPaste = (e) => {
+    const text = e.clipboardData?.getData('text')
+    const card = parsePasteCard(text)
+    if (card) setCardPaste(card)
+  }
+  // `applyCardPaste` est déclaré plus bas, APRÈS `set` qu'il utilise
+  // (react-hooks/immutability : pas d'accès avant déclaration).
+  // (onTelephonePaste/onWhatsappPaste sont déclarés plus bas, après `set`.)
   // Dialogue « Signé » : passer l'étape à Signé via le select ouvre le
   // dialogue d'acceptation (devis + option) au lieu d'enregistrer SIGNED.
   const [signeOpen, setSigneOpen] = useState(false)
@@ -285,6 +496,65 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
   // Champs personnalisés (T11).
   const [customData, setCustomData] = useState(lead?.custom_data || {})
   const bodyRef = useRef(null)
+
+  // VX224 — session de qualification en rafale : ◀▶/J-K changent `lead` SANS
+  // démonter LeadForm (même instance, LeadsPage.jsx fait juste passer un
+  // autre objet via `onNavigateLead` → `editLead`). `fields`/`errors`/
+  // `customData` ne se resynchronisaient jusqu'ici QUE via `useState`
+  // (premier montage) — un changement de `lead.id` en cours de vie laissait
+  // les anciens champs affichés (aucun chemin ne changeait `lead` sans
+  // démonter avant cette tâche). Skip au tout premier rendu (déjà couvert par
+  // les `useState` initiaux ci-dessus).
+  const fieldsSyncedFor = useRef(lead?.id ?? null)
+  useEffect(() => {
+    if (fieldsSyncedFor.current === (lead?.id ?? null)) return
+    fieldsSyncedFor.current = lead?.id ?? null
+    const next = buildInitialFields(lead, currentUserId)
+    setFields(next)
+    setCleanFieldsJSON(JSON.stringify(next))
+    setErrors({})
+    setCustomData(lead?.custom_data || {})
+    // VX249(b) — un changement de lead redémarre l'état « suggéré » (jamais
+    // pertinent en édition de toute façon, ownerSuggested/villeSuggested
+    // valent alors toujours false via `!isEdit`, mais on repart propre).
+    setOwnerTouched(false)
+    setVilleTouched(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lead?.id])
+
+  // Index du lead courant dans la file filtrée passée par LeadsPage.jsx (même
+  // liste que la vue active) — `null`/absent hors flux de rafale (ex. ouvert
+  // depuis une notification), les boutons ◀▶ restent alors simplement absents.
+  const queueIndex = (leadsQueue && isEdit)
+    ? leadsQueue.findIndex((l) => l.id === lead.id) : -1
+  const prevInQueue = queueIndex > 0 ? leadsQueue[queueIndex - 1] : null
+  const nextInQueue = (queueIndex >= 0 && queueIndex < leadsQueue.length - 1)
+    ? leadsQueue[queueIndex + 1] : null
+
+  // Garde de saisie : une navigation qui jetterait une modification non
+  // enregistrée demande confirmation (une seule fois, jamais silencieuse).
+  const goToLead = (target) => {
+    if (!target || !onNavigateLead) return
+    if (isDirty && !window.confirm(
+      'Des modifications non enregistrées seront perdues. Continuer ?')) return
+    onNavigateLead(target)
+  }
+
+  // VX224 — touches J/K façon Gmail (suivant/précédent), actives seulement en
+  // édition avec une file fournie ; jamais volées à un champ de saisie
+  // (`isTypingTarget`, même garde que les raccourcis globaux) ni à une
+  // combinaison avec modificateur.
+  useEffect(() => {
+    if (!isEdit || !leadsQueue || !onNavigateLead) return undefined
+    const onKey = (e) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return
+      if (isTypingTarget(e.target)) return
+      if (e.key === 'j' || e.key === 'J') { e.preventDefault(); goToLead(nextInQueue) }
+      else if (e.key === 'k' || e.key === 'K') { e.preventDefault(); goToLead(prevInQueue) }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  })
 
   // Scroll-spy : la section dont le haut est le plus proche du haut du
   // panneau (avec une marge) devient active dans le rail de navigation.
@@ -324,26 +594,11 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
     }
   }, [isEdit, lead?.id])
 
-  // Avertissement doublon EN DIRECT (non bloquant) : dès qu'un téléphone ou un
-  // email est saisi, on interroge le serveur (société côté serveur). En édition
-  // on exclut le lead courant de ses propres doublons. Debounce léger.
-  const phoneKey = fields.telephone
-  const emailKey = fields.email
-  useEffect(() => {
-    const phone = (phoneKey ?? '').trim()
-    const email = (emailKey ?? '').trim()
-    const t = setTimeout(() => {
-      if (!phone && !email) { setDupMatches([]); return }
-      const params = {}
-      if (phone) params.telephone = phone
-      if (email) params.email = email
-      if (isEdit) params.exclude = lead.id
-      crmApi.checkDuplicates(params)
-        .then(r => setDupMatches(r.data || []))
-        .catch(() => setDupMatches([]))
-    }, 400)
-    return () => clearTimeout(t)
-  }, [phoneKey, emailKey, isEdit, lead?.id])
+  // VX239 — avertissement doublon EN DIRECT (non bloquant), extrait dans
+  // `useDuplicateCheck` (posé aussi sur ClientForm/ClientQuickCreateModal).
+  // En édition on exclut le lead courant de ses PROPRES doublons.
+  const dupMatches = useDuplicateCheck(
+    fields.telephone, fields.email, { exclude: isEdit ? lead.id : undefined })
 
   const doMerge = async (otherId) => {
     if (!window.confirm('Fusionner ce doublon dans la fiche courante ? '
@@ -353,10 +608,9 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
       await crmApi.mergeLeads(lead.id, [otherId])
       setDups(d => d.filter(x => x.id !== otherId))
       refreshLead()
-      api.get(`/crm/leads/${lead.id}/historique/`)
-        .then(r => setHistorique(r.data)).catch(() => {})
+      refreshHistorique()
     } catch (err) {
-      alert(err?.response?.data?.detail ?? 'La fusion a échoué — réessayez.')
+      toast.error(err?.response?.data?.detail ?? 'La fusion a échoué — réessayez.')
     }
   }
 
@@ -368,6 +622,31 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
       setDevisPanel(initialDevis)
     }
   }, [isEdit, initialDevis])
+
+  // QX25 — « Planifier une relance » : fait défiler jusqu'à la section « Suivi
+  // commercial » (relance_date) à l'ouverture, une seule fois.
+  // VX223 — même geste pour « → Renseigner la facture » (LeadCard.jsx), SANS
+  // prop dédiée : la carte pose une clé sessionStorage ciblant ce lead avant
+  // d'appeler `onOpen`, consommée ICI une seule fois puis retirée (jamais un
+  // focus fantôme sur un futur lead sans rapport).
+  const focusSectionRan = useRef(false)
+  useEffect(() => {
+    if (!isEdit || focusSectionRan.current) return
+    let target = focusSection
+    if (!target) {
+      try {
+        const raw = sessionStorage.getItem('taqinor.leadform.pendingFocus')
+        if (raw) {
+          const pending = JSON.parse(raw)
+          sessionStorage.removeItem('taqinor.leadform.pendingFocus')
+          if (pending && String(pending.leadId) === String(lead.id)) target = pending.section
+        }
+      } catch { /* best-effort */ }
+    }
+    if (!target) return
+    focusSectionRan.current = true
+    setTimeout(() => jumpTo(target), 0)
+  }, [isEdit, focusSection, lead?.id])
 
   // Fermeture du petit menu « Devis modifiable » au clic extérieur.
   useEffect(() => {
@@ -381,7 +660,20 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
     return () => document.removeEventListener('mousedown', onDoc)
   }, [devisMenuOpen])
 
-  const set = (k, v) => setFields(f => ({ ...f, [k]: v }))
+  // VX171 — le rouge ne doit jamais mentir pendant que l'utilisateur corrige.
+  const set = (k, v) => { clearField(k); setFields(f => ({ ...f, [k]: v })) }
+  // VX237 — applique la carte de visite détectée (utilise `set` ci-dessus).
+  const applyCardPaste = () => {
+    if (!cardPaste) return
+    set('nom', cardPaste.nom)
+    set('telephone', cardPaste.telephone)
+    setCardPaste(null)
+  }
+  // VX237 — collage téléphone/WhatsApp nettoyé vers la forme canonique de
+  // stockage (espaces/points/tirets tolérés), silencieux (un numéro seul ne
+  // prête pas à confusion). Déclarés ici (après `set`) — react-hooks/immutability.
+  const onTelephonePaste = usePasteClean(parsePastedPhone, (clean) => set('telephone', clean))
+  const onWhatsappPaste = usePasteClean(parsePastedPhone, (clean) => set('whatsapp', clean))
   const agricole = fields.type_installation === 'agricole'
 
   // Champs d'origine web (taqinor.ma) en LECTURE SEULE : capturés par le site,
@@ -408,6 +700,10 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
   const devisReady = !!liveLead?.devis_auto?.pret
   const devisNotReadyMsg = liveLead?.devis_auto?.message
     ?? 'Renseignez la facture du lead pour activer le devis automatique.'
+  // QX28 — mêmes chips de préparation que LeadCard.jsx (crm/leads/views/) :
+  // ce que le site a déjà capturé, visible dès l'ouverture de la fiche.
+  const roofReady = !!liveLead?.roof_point
+  const factureReady = liveLead?.facture_hiver != null && liveLead.facture_hiver !== ''
 
   const openDevisPanel = (mode) => {
     setDevisMenuOpen(false)
@@ -513,14 +809,67 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
     } catch { /* erreur silencieuse */ } finally { setArchiveBusy(false) }
   }
 
+  // VX248 — raccourci « 1..4 » : changement d'étape COMMIS immédiatement
+  // (PATCH), pas juste une valeur de formulaire en attente — la « vélocité
+  // perçue » vient d'une ACTION, pas d'un champ à sauvegarder en plus. Les 4
+  // touches ne couvrent QUE NEW/CONTACTED/QUOTE_SENT/FOLLOW_UP
+  // (LEAD_STAGE_SHORTCUTS) : SIGNED reste exclu à dessein (exige le dialogue
+  // d'acceptation devis+option, cf. handleSubmit) et COLD est un abandon
+  // délibéré, jamais un raccourci à une touche.
+  const quickChangeStage = async (newStage) => {
+    if (!isEdit || fields.stage === newStage) return
+    try {
+      const updated = await dispatch(updateLead({ id: lead.id, data: { stage: newStage } })).unwrap()
+      setLiveLead(updated)
+      const merged = { ...fields, stage: updated.stage ?? newStage }
+      setFields(merged)
+      setCleanFieldsJSON(JSON.stringify(merged))
+      onSaved?.()
+    } catch { /* erreur silencieuse */ }
+  }
+
+  // VX248 — câblage des raccourcis d'ACTION sur CETTE fiche (registre
+  // focusedRecordShortcuts.js, partagé avec la cheatsheet « ? »). Actif
+  // uniquement en édition (archiver/déléguer/changer d'étape n'ont pas de
+  // sens sur un lead pas encore créé).
+  const leadShortcutHandlers = { a: toggleArchive, d: () => jumpTo('pipeline') }
+  LEAD_STAGE_SHORTCUTS.forEach((s) => {
+    leadShortcutHandlers[s.key] = () => quickChangeStage(s.stage)
+  })
+  useFocusedRecordShortcuts('leadForm', leadShortcutHandlers, isEdit)
+
+  // VX87 — helper partagé : recharge l'Historique (chatter) sans tout
+  // recharger le lead. Consommé par le merge de doublons (déjà existant) et
+  // par CallLogPopover après une journalisation d'appel réussie.
+  const refreshHistorique = () => {
+    if (!lead?.id) return
+    api.get(`/crm/leads/${lead.id}/historique/`)
+      .then(r => setHistorique(r.data)).catch(() => {})
+  }
+
+  // VX111 — la note poste en multipart dès qu'une pièce jointe est attachée
+  // (endpoint `noter` désormais bilingue JSON/multipart côté serveur) ; sans
+  // fichier, comportement STRICTEMENT inchangé (JSON simple).
   const postNote = async () => {
     const body = noteBody.trim()
-    if (!body) return
+    if (!body && !noteFile) return
     setNoteError(null)
     try {
-      const r = await api.post(`/crm/leads/${lead.id}/noter/`, { body })
+      let r
+      if (noteFile) {
+        const form = new FormData()
+        form.append('body', body)
+        form.append('file', noteFile)
+        r = await api.post(`/crm/leads/${lead.id}/noter/`, form, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        })
+      } else {
+        r = await api.post(`/crm/leads/${lead.id}/noter/`, { body })
+      }
       setHistorique(h => [r.data, ...h])
       setNoteBody('')
+      setNoteFile(null)
+      if (noteFileInputRef.current) noteFileInputRef.current.value = ''
     } catch (err) {
       // La note reste saisie ; on explique l'échec au lieu de l'avaler.
       setNoteError(err?.response?.data?.detail
@@ -550,6 +899,13 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
       setSigneOpen(true)
       return
     }
+    // VX243(c) — garde de fraîcheur AVANT le PATCH en édition : un conflit
+    // (édition concurrente détectée) interrompt CE submit et affiche la
+    // bannière, sans muter quoi que ce soit.
+    if (isEdit) {
+      const canProceed = await staleGuard.checkBeforeSave()
+      if (!canProceed) return
+    }
     setSaving(true)
     try {
       const nullable = (v) => (v === '' || v === undefined) ? null : v
@@ -562,10 +918,19 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
         const updated = await dispatch(updateLead({ id: lead.id, data: payload })).unwrap()
         // En mode ÉDITION : on reste ouvert — on recharge les données en place.
         setLiveLead(updated)
+        // VX243(c) — notre propre sauvegarde devient le nouveau point de
+        // référence de fraîcheur (sinon la garde crierait « périmé » sur le
+        // prochain submit à cause de notre PROPRE écriture).
+        if (updated?.date_modification) setOpenedUpdatedAt(updated.date_modification)
         // Ré-hydrate les champs modifiés (par ex. valeurs normalisées côté serveur).
-        setFields(prev => ({ ...prev, ...Object.fromEntries(
-          Object.keys(prev).map(k => [k, updated[k] !== undefined ? (updated[k] ?? '') : prev[k]])
-        )}))
+        const merged = { ...fields, ...Object.fromEntries(
+          Object.keys(fields).map(k => [k, updated[k] !== undefined ? (updated[k] ?? '') : fields[k]])
+        )}
+        setFields(merged)
+        // VX224 — une sauvegarde réussie redevient le nouvel état « propre »
+        // (la garde de saisie ◀▶/J-K ne doit pas rester bloquée sur une
+        // modification déjà enregistrée).
+        setCleanFieldsJSON(JSON.stringify(merged))
         setCustomData(updated.custom_data || {})
         onSaved?.()  // rafraîchit la liste/kanban parent sans fermer la fiche
         // Confirmation visuelle transitoire (2 s).
@@ -574,20 +939,57 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
         savedConfirmTimer.current = setTimeout(() => setSavedConfirm(false), 2000)
       } else {
         await dispatch(createLead(payload)).unwrap()
+        rememberVille(fields.ville)  // VX93 — mémorise la ville pour le prochain lead
         onSaved?.()
-        onClose()
+        // VX224 — « Créer un autre » : on vide le formulaire (mêmes défauts
+        // VX93 qu'une ouverture fraîche — owner=moi, dernière ville, canal
+        // par défaut) et on refocalise Nom, au lieu de fermer.
+        if (creerUnAutre) {
+          const reset = buildInitialFields(null, currentUserId)
+          setFields(reset)
+          setCleanFieldsJSON(JSON.stringify(reset))
+          setErrors({})
+          setDups([])
+          // VX249(b) — le lead SUIVANT reçoit de NOUVEAUX défauts VX93
+          // (owner=moi, ville mémorisée juste au-dessus) : « suggéré »
+          // redevient vrai, jamais figé « touché » par le lead précédent.
+          setOwnerTouched(false)
+          setVilleTouched(false)
+          nomRef.current?.focus()
+        } else {
+          onClose()
+        }
       }
     } catch (err) {
-      setErrors(typeof err === 'object' ? err : { submit: String(err) })
+      // VX171 — mapping DRF générique (detail / {champ:[…]} / array).
+      setFromResponse(err)
     } finally {
       setSaving(false)
     }
   }
 
+  // VX89 — le modal n°1 de l'ERP (20-40 ouvertures/jour/commercial) était le
+  // SEUL à ne pas répondre à Escape ni focuser son champ requis : shell brut
+  // `div.modal-overlay` (MB4 prétendait la migration ResponsiveDialog faite —
+  // fact-check : faux pour ce fichier, corrigé ici). Le shell EXTERNE
+  // (overlay + conteneur) est désormais `ResponsiveDialog` (Escape + focus-
+  // trap + bottom-sheet mobile gratuits, comme ClientForm) ; l'entête
+  // personnalisée (avatar, badge devis, actions Convertir/Archiver, bouton
+  // fermer) et tout le `lead-form-layout` interne restent EXACTEMENT ceux
+  // d'avant — ResponsiveDialog est monté SANS `title` (donc sans rendre de
+  // second header) et avec `showClose={false}` (le bouton ✕ existant reste
+  // l'unique fermeture).
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal modal-xl" onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
+    <ResponsiveDialog
+      open
+      onOpenChange={(o) => { if (!o) guardedClose() }}
+      // p-0 : .modal-header/.modal-body/.modal-footer portent déjà chacun
+      // leur propre padding (comme avant ResponsiveDialog) — sans ce reset,
+      // le p-5 par défaut de DialogContent doublerait la marge visuelle.
+      className="sm:max-w-5xl p-0 overflow-hidden gap-0"
+      showClose={false}
+    >
+      <div className="modal-header">
           <h3 className="modal-title">
             {isEdit ? `Lead — ${lead.nom} ${lead.prenom || ''}` : 'Nouveau lead'}
             {isEdit && lead.is_archived && (
@@ -595,6 +997,39 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
             )}
           </h3>
           <div className="lead-head-actions">
+            {/* VX224 — session de qualification en rafale : ◀▶ passent au lead
+                voisin de la file filtrée courante SANS fermer la fiche (même
+                geste que J/K). Absentes hors flux de rafale (`leadsQueue`
+                non fourni — ex. ouvert depuis une notification). */}
+            {isEdit && leadsQueue && (
+              <span className="lead-nav-prevnext" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                <IconButton
+                  label="Lead précédent (touche K)"
+                  variant="ghost"
+                  size="icon"
+                  className="size-8"
+                  disabled={!prevInQueue}
+                  onClick={() => goToLead(prevInQueue)}
+                >
+                  ◀
+                </IconButton>
+                {queueIndex >= 0 && (
+                  <span className="lead-nav-position" style={{ fontSize: '12px', color: 'var(--muted-foreground)' }}>
+                    {queueIndex + 1} / {leadsQueue.length}
+                  </span>
+                )}
+                <IconButton
+                  label="Lead suivant (touche J)"
+                  variant="ghost"
+                  size="icon"
+                  className="size-8"
+                  disabled={!nextInQueue}
+                  onClick={() => goToLead(nextInQueue)}
+                >
+                  ▶
+                </IconButton>
+              </span>
+            )}
             {isEdit && (
               <span className="lead-head-owner" title="Responsable du lead">
                 <Avatar
@@ -626,25 +1061,78 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
               </Button>
             )}
             {isEdit && (
+              // VX248 — apprentissage passif : le raccourci s'affiche en
+              // tooltip sur le bouton équivalent (@coord VX129 — même slot
+              // qu'un futur <kbd> visuel ; en attendant, le title reste le
+              // canal d'apprentissage disponible aujourd'hui).
               <Button
                 type="button"
                 size="sm"
                 variant="outline"
                 disabled={archiveBusy}
                 onClick={toggleArchive}
+                title={lead.is_archived ? 'Restaurer (raccourci : A)' : 'Archiver (raccourci : A)'}
               >
                 {lead.is_archived ? 'Restaurer' : 'Archiver'}
               </Button>
             )}
-            <button type="button" className="modal-close" onClick={onClose}>✕</button>
+            <button type="button" className="modal-close" onClick={guardedClose}>✕</button>
           </div>
         </div>
+
+        {/* QX28 — chips de préparation (même logique que LeadCard.jsx) : ce
+            que le site a déjà capturé pour ce lead, visible dès l'ouverture
+            de la fiche, jamais un chip « manquant » — juste l'absence. */}
+        {isEdit && (roofReady || factureReady || devisReady) && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', padding: '0 1rem' }}>
+            {roofReady && (
+              <span style={{ fontSize: '11px', borderRadius: '9999px', padding: '1px 8px', background: 'var(--color-success-muted, rgba(22,163,74,.12))', color: 'var(--color-success, #16a34a)' }}
+                    title="Un repère GPS de toiture a été capturé (site ou 3D)">
+                📍 Toit épinglé (GPS)
+              </span>
+            )}
+            {factureReady && (
+              <span style={{ fontSize: '11px', borderRadius: '9999px', padding: '1px 8px', background: 'var(--color-info-muted, rgba(37,99,235,.12))', color: 'var(--color-info, #2563eb)' }}
+                    title="Une facture d'électricité a été saisie">
+                🧾 Facture saisie
+              </span>
+            )}
+            {devisReady && (
+              <span style={{ fontSize: '11px', borderRadius: '9999px', padding: '1px 8px', background: 'var(--color-primary-muted, rgba(37,99,235,.12))', color: 'var(--color-primary, #2563eb)' }}
+                    title="Toutes les données nécessaires sont réunies pour générer un devis en un clic">
+                ⚡ Prêt à deviser en 1 clic
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* VX24 — bandeau de faits clés (LeadSummaryBar) : score, montant
+            estimé, prochaine activité, jours depuis dernière modification —
+            les 4 faits qui comptent, visibles sans scroller. */}
+        {isEdit && <LeadSummaryBar lead={liveLead} />}
+
+        {/* VX159/VX250 — RelationCounters : devis déjà chargés sur le lead
+            (`liveLead.devis`, VX24) — ZÉRO appel réseau nouveau. Clic → liste
+            devis pré-filtrée par nom (DevisList.jsx lit désormais ?q=,
+            VX250). */}
+        {isEdit && (liveLead?.devis?.length ?? 0) > 0 && (
+          <RelationCounters
+            className="mb-2"
+            counters={[{
+              label: 'devis',
+              count: liveLead.devis.length,
+              to: `/ventes/devis?q=${encodeURIComponent(`${lead.nom} ${lead.prenom || ''}`.trim())}`,
+            }]}
+          />
+        )}
 
         {/* ── Barre d'actions devis (style Odoo) — tout reste dans la fiche ── */}
         {isEdit && (
           <div className="lead-subbar">
             <div className="lead-subbar-bills">
-              <span className="lead-subbar-label">💡 Facture :</span>
+              <span className="lead-subbar-label">
+                <Lightbulb className="lead-subbar-icon" aria-hidden="true" size={14} /> Facture :
+              </span>
               {billEditing ? (
                 <>
                   <Input type="number" step="any" className="lead-bill-input"
@@ -668,9 +1156,9 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
                         title="Cliquer pour modifier la facture (enregistre ce champ seul)">
                   {liveLead?.facture_hiver != null && liveLead.facture_hiver !== ''
                     ? <>
-                        {Math.round(parseFloat(liveLead.facture_hiver)).toLocaleString('fr-MA')} MAD
+                        {formatMAD(liveLead.facture_hiver, { decimals: 0 })}
                         {liveLead?.ete_differente && liveLead?.facture_ete != null && liveLead.facture_ete !== ''
-                          ? ` (hiver) · ${Math.round(parseFloat(liveLead.facture_ete)).toLocaleString('fr-MA')} MAD (été)` : ''}
+                          ? ` (hiver) · ${formatMAD(liveLead.facture_ete, { decimals: 0 })} (été)` : ''}
                         <span className="lead-bill-edit-hint"> ✎</span>
                       </>
                     : <span className="lead-bill-empty">+ Renseigner la facture ✎</span>}
@@ -684,21 +1172,23 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
             <div className="lead-subbar-devis">
               {lead?.id && (
                 <Button type="button" size="sm" className="gen-btn-orange"
-                        title="Ouvrir l'outil de conception 3D du site avec ce lead déjà chargé"
+                        title={roofReady
+                          ? 'Repère toit (GPS) disponible — ouvrir le plan déjà positionné'
+                          : "Ouvrir l'outil de conception 3D du site avec ce lead déjà chargé"}
                         onClick={ouvrirConceptionToiture}>
-                  🏠 Concevoir la toiture (3D)
+                  <Home aria-hidden="true" size={14} /> Concevoir la toiture (3D){roofReady ? ' 📍' : ''}
                 </Button>
               )}
               <Button type="button" size="sm" className="gen-btn-orange"
                       disabled={!devisReady}
                       title={devisReady ? 'Créer le devis automatique (affiché ici)' : devisNotReadyMsg}
                       onClick={() => openDevisPanel('auto')}>
-                ⚡ Devis automatique
+                <Zap aria-hidden="true" size={14} /> Devis automatique
               </Button>
               <div className="lead-devis-menu-wrap" ref={devisMenuRef}>
                 <Button type="button" size="sm"
                         onClick={() => setDevisMenuOpen(o => !o)}>
-                  📝 Devis modifiable ▾
+                  <FileText aria-hidden="true" size={14} /> Devis modifiable ▾
                 </Button>
                 {devisMenuOpen && (
                   <div className="lead-devis-menu">
@@ -731,16 +1221,52 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
         <form onSubmit={handleSubmit} noValidate>
           <div className="lead-form-layout">
             <nav className="lead-nav" aria-label="Sections du lead">
-              {buildNavSections({ agricole, isEdit, hasWebOrigin }).map(([id, label]) => (
-                <button key={id} type="button"
-                        className={activeSec === id ? 'active' : ''}
-                        onClick={() => jumpTo(id)}>
-                  {label}
-                </button>
-              ))}
+              {buildNavSections({ agricole, isEdit, hasWebOrigin, dupCount: dups.length })
+                .map(([id, label, badge]) => {
+                  const Icon = NAV_ICONS[id]
+                  return (
+                    <button key={id} type="button"
+                            className={activeSec === id ? 'active' : ''}
+                            onClick={() => jumpTo(id)}>
+                      {Icon && <Icon className="lead-nav-icon" aria-hidden="true" size={15} />}
+                      <span>{label}</span>
+                      {!!badge && <span className="lead-nav-badge">{badge}</span>}
+                    </button>
+                  )
+                })}
             </nav>
           <div className="modal-body" ref={bodyRef} onScroll={onBodyScroll}>
-            <Sec id="contact" title="👤 Contact">
+            {/* VX136 — formulaire-fleuve (1297+ l.) : barre de progression de
+                scroll native, `scroll(nearest)` suit `.modal-body` (le
+                conteneur qui défile réellement, pas la fenêtre). */}
+            <ScrollProgress />
+            {/* VX243(c) — bannière non bloquante : un autre utilisateur a
+                sauvegardé ce lead pendant l'édition en cours. */}
+            {staleGuard.staleInfo && (
+              <div role="alert" className="lead-stale-warning" style={{
+                display: 'flex', flexWrap: 'wrap', alignItems: 'center',
+                justifyContent: 'space-between', gap: 8, margin: '0 0 12px',
+                padding: 12, borderRadius: 8,
+                border: '1px solid var(--warning)', background: 'var(--warning-bg, rgba(234,179,8,0.1))',
+              }}>
+                <span>
+                  Modifié par {staleGuard.staleInfo.by || 'un autre utilisateur'}
+                  {' '}pendant votre édition — vérifiez avant d'enregistrer.
+                </span>
+                <span style={{ display: 'flex', gap: 8 }}>
+                  <Button type="button" size="sm" variant="outline" onClick={staleGuard.dismiss}>
+                    Revoir
+                  </Button>
+                  <Button
+                    type="button" size="sm" variant="outline"
+                    onClick={() => { staleGuard.force(); handleSubmit({ preventDefault: () => {} }) }}
+                  >
+                    Enregistrer quand même
+                  </Button>
+                </span>
+              </div>
+            )}
+            <Sec id="contact" title="Contact">
               {dupMatches.length > 0 && (
                 <div className="lead-dup-warning" role="status">
                   ⚠️ Un lead avec ce numéro existe déjà
@@ -760,31 +1286,98 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
               )}
               <div className="form-row">
                 <div className="form-group fg-grow">
-                  <label className="form-label">Nom <span className="req">*</span></label>
-                  <input className={`form-control${errors.nom ? ' is-invalid' : ''}`}
-                         value={fields.nom} onChange={e => set('nom', e.target.value)} />
-                  {errors.nom && <div className="form-feedback">{errors.nom}</div>}
+                  {/* VX193 — label/champ associés via FormField (htmlFor déjà
+                      correct depuis VX143, mais aria-invalid/aria-describedby/
+                      role="alert" manquaient sur ce champ resté en balisage
+                      brut) ; VX89 — le modal n°1 de l'ERP (20-40 ouvertures/
+                      jour/commercial) focusait jusqu'ici son champ requis
+                      nulle part : autoFocus posé explicitement (indépendant du
+                      focus-management par défaut de Radix Dialog/Sheet). */}
+                  <FormField label="Nom" required htmlFor="lf-nom" error={errors.nom} errorKind="required">
+                    {/* VX224 — `ref` posé pour le refocus manuel après un
+                        « Créer un autre » (le champ ne se démonte pas entre
+                        deux créations, `autoFocus` seul ne suffit qu'au
+                        premier montage). VX237 — coller une carte de visite
+                        (« Nom … Tel … ») propose « Répartir » ci-dessous,
+                        jamais une répartition automatique. */}
+                    <Input id="lf-nom" autoFocus ref={nomRef} invalid={!!errors.nom}
+                           value={fields.nom} onChange={e => set('nom', e.target.value)}
+                           onPaste={onNomPaste} />
+                  </FormField>
+                  {cardPaste && (
+                    <div
+                      role="status"
+                      className="mt-1.5 flex flex-wrap items-center gap-2 rounded-md border border-info/30 bg-info/5 px-2.5 py-1.5 text-xs text-foreground"
+                    >
+                      <span>
+                        Carte de visite détectée — {cardPaste.nom} · {cardPaste.telephone}
+                      </span>
+                      <Button type="button" variant="outline" size="sm" onClick={applyCardPaste}>
+                        Répartir
+                      </Button>
+                      <Button type="button" variant="ghost" size="sm" onClick={() => setCardPaste(null)}>
+                        Ignorer
+                      </Button>
+                    </div>
+                  )}
                 </div>
-                <Txt fields={fields} set={set} k="prenom" label="Prénom" />
-                <Txt fields={fields} set={set} k="telephone" label="Téléphone" />
+                <FormField label="Prénom" htmlFor="lf-prenom">
+                  <Input id="lf-prenom" value={fields.prenom ?? ''} onChange={e => set('prenom', e.target.value)} />
+                </FormField>
+                <FormField label="Téléphone" htmlFor="lf-telephone">
+                  <Input id="lf-telephone" value={fields.telephone ?? ''} onChange={e => set('telephone', e.target.value)}
+                         onPaste={onTelephonePaste} />
+                  {/* VX239 — <PhoneHint> extrait de ClientForm (seul écran qui
+                      l'avait) : aperçu de la forme normalisée uniquement. */}
+                  <PhoneHint value={fields.telephone} testId="lf-tel-hint" />
+                </FormField>
               </div>
               <div className="form-row">
-                <Txt fields={fields} set={set} k="whatsapp" label="WhatsApp" />
-                <Txt fields={fields} set={set} k="ville" label="Ville / quartier" />
+                <FormField label="WhatsApp" htmlFor="lf-whatsapp">
+                  <Input id="lf-whatsapp" value={fields.whatsapp ?? ''} onChange={e => set('whatsapp', e.target.value)}
+                         onPaste={onWhatsappPaste} />
+                </FormField>
+                {/* VX249(b) — 1 des 4 champs VX93 exactement : contour
+                    pointillé + micro-libellé au focus tant que la ville
+                    pré-remplie (dernière saisie mémorisée) n'a pas été
+                    touchée — retiré dès la première modification. */}
+                <FormField
+                  label="Ville / quartier"
+                  htmlFor="lf-ville"
+                  hint={villeSuggested && villeFocused ? 'Suggéré — modifiable' : undefined}
+                >
+                  <Input
+                    id="lf-ville"
+                    className={villeSuggested ? 'vx-suggested-field' : undefined}
+                    value={fields.ville ?? ''}
+                    onChange={e => { set('ville', e.target.value); setVilleTouched(true) }}
+                    onFocus={() => setVilleFocused(true)}
+                    onBlur={() => setVilleFocused(false)}
+                  />
+                </FormField>
                 <div className="form-group">
-                  <label className="form-label">Email</label>
-                  <input type="email"
-                         className={`form-control${errors.email ? ' is-invalid' : ''}`}
-                         value={fields.email ?? ''}
-                         onChange={e => set('email', e.target.value)} />
-                  {errors.email && <div className="form-feedback">{errors.email}</div>}
+                  <FormField label="Email" htmlFor="lf-email" error={errors.email}>
+                    <Input id="lf-email" type="email" invalid={!!errors.email}
+                           value={fields.email ?? ''}
+                           onChange={e => set('email', e.target.value)} />
+                  </FormField>
                 </div>
               </div>
               <div className="form-row">
-                <Txt fields={fields} set={set} k="societe" label="Société" />
-                <div className="form-group fg-grow"><Txt fields={fields} set={set} k="adresse" label="Adresse" /></div>
-                <Txt fields={fields} set={set} k="gps_lat" label="GPS lat." type="number" />
-                <Txt fields={fields} set={set} k="gps_lng" label="GPS long." type="number" />
+                <FormField label="Société" htmlFor="lf-societe">
+                  <Input id="lf-societe" value={fields.societe ?? ''} onChange={e => set('societe', e.target.value)} />
+                </FormField>
+                <div className="form-group fg-grow">
+                  <FormField label="Adresse" htmlFor="lf-adresse">
+                    <Input id="lf-adresse" value={fields.adresse ?? ''} onChange={e => set('adresse', e.target.value)} />
+                  </FormField>
+                </div>
+                <FormField label="GPS lat." htmlFor="lf-gps-lat">
+                  <Input id="lf-gps-lat" type="number" step="any" value={fields.gps_lat ?? ''} onChange={e => set('gps_lat', e.target.value)} />
+                </FormField>
+                <FormField label="GPS long." htmlFor="lf-gps-lng">
+                  <Input id="lf-gps-lng" type="number" step="any" value={fields.gps_lng ?? ''} onChange={e => set('gps_lng', e.target.value)} />
+                </FormField>
               </div>
               {fields.gps_lat && fields.gps_lng && (
                 <div className="form-row">
@@ -797,33 +1390,81 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
               )}
             </Sec>
 
-            <Sec id="pipeline" title="📈 Suivi commercial">
+            <Sec id="pipeline" title="Suivi commercial">
               <div className="form-row">
-                <Sel fields={fields} set={set} k="type_installation" label="Type d'installation" labels={TYPES_INSTALLATION} />
-                <Sel fields={fields} set={set} k="stage" label="Étape" labels={STAGE_LABELS} />
+                <FormField label="Type d'installation" htmlFor="lf-type-installation">
+                  <select id="lf-type-installation" className="form-select" value={fields.type_installation ?? ''}
+                          onChange={e => set('type_installation', e.target.value)}>
+                    {enumOptions(TYPE_INSTALLATION_LABELS)}
+                  </select>
+                </FormField>
+                <FormField label="Étape" htmlFor="lf-stage">
+                  <select id="lf-stage" className="form-select" value={fields.stage ?? ''}
+                          onChange={e => set('stage', e.target.value)}>
+                    {enumOptions(STAGE_LABELS)}
+                  </select>
+                </FormField>
+                {/* VX249(b) — owner : 1 des 4 champs VX93 exactement. Pas de
+                    `className` exposé par AssigneePicker (hors périmètre de
+                    cette tâche) : le contour pointillé + le focus sont posés
+                    sur le WRAPPER (React normalise onFocus/onBlur en
+                    focusin/focusout — ils remontent bien depuis le bouton
+                    interne du picker). */}
                 <div className="form-group">
                   <label className="form-label">Responsable</label>
-                  <AssigneePicker
-                    users={users}
-                    value={fields.owner ?? ''}
-                    onChange={(id) => set('owner', id ?? '')}
-                  />
+                  <div
+                    className={ownerSuggested ? 'vx-suggested-field inline-block rounded-full' : undefined}
+                    onFocus={() => setOwnerFocused(true)}
+                    onBlur={() => setOwnerFocused(false)}
+                  >
+                    <AssigneePicker
+                      users={users}
+                      value={fields.owner ?? ''}
+                      onChange={(id) => { set('owner', id ?? ''); setOwnerTouched(true) }}
+                    />
+                  </div>
+                  {ownerSuggested && ownerFocused && (
+                    <p className="mt-1 text-xs text-muted-foreground">Suggéré — modifiable</p>
+                  )}
                 </div>
-                <Txt fields={fields} set={set} k="relance_date" label="Relance le" type="date" />
+                <FormField label="Relance le" htmlFor="lf-relance-date">
+                  <Input id="lf-relance-date" type="date" value={fields.relance_date ?? ''} onChange={e => set('relance_date', e.target.value)} />
+                </FormField>
               </div>
               <div className="form-row">
                 {/* XSAL7 — pipeline pondéré pré-devis : un lead chaud sans
                     devis pèse zéro dans la prévision sans ces deux champs. */}
-                <Txt fields={fields} set={set} k="montant_estime" label="Montant estimé (MAD)" type="number" />
-                <Txt fields={fields} set={set} k="date_cloture_prevue" label="Clôture prévue le" type="date" />
+                <FormField label="Montant estimé (MAD)" htmlFor="lf-montant-estime">
+                  <Input id="lf-montant-estime" type="number" step="any" value={fields.montant_estime ?? ''} onChange={e => set('montant_estime', e.target.value)} />
+                </FormField>
+                <FormField label="Clôture prévue le" htmlFor="lf-date-cloture">
+                  <Input id="lf-date-cloture" type="date" value={fields.date_cloture_prevue ?? ''} onChange={e => set('date_cloture_prevue', e.target.value)} />
+                </FormField>
               </div>
               <div className="form-row">
-                <Sel fields={fields} set={set} k="priorite" label="Priorité" labels={PRIORITES} />
-                <Sel fields={fields} set={set} k="canal" label="Canal" labels={canalLabels} />
-                <Sel fields={fields} set={set} k="langue_preferee" label="Langue préférée" labels={LANGUES_PREFEREES} />
+                <FormField label="Priorité" htmlFor="lf-priorite">
+                  <select id="lf-priorite" className="form-select" value={fields.priorite ?? ''}
+                          onChange={e => set('priorite', e.target.value)}>
+                    {enumOptions(PRIORITE_LABELS)}
+                  </select>
+                </FormField>
+                <FormField label="Canal" htmlFor="lf-canal">
+                  <select id="lf-canal" className="form-select" value={fields.canal ?? ''}
+                          onChange={e => set('canal', e.target.value)}>
+                    {enumOptions(canalLabels)}
+                  </select>
+                </FormField>
+                <FormField label="Langue préférée" htmlFor="lf-langue-preferee">
+                  <select id="lf-langue-preferee" className="form-select" value={fields.langue_preferee ?? ''}
+                          onChange={e => set('langue_preferee', e.target.value)}>
+                    {enumOptions(LANGUES_PREFEREES)}
+                  </select>
+                </FormField>
                 <div className="form-group fg-grow">
-                  <Txt fields={fields} set={set} k="tags" label="Tags (séparés par des virgules)"
-                       placeholder="ex: Régularisation 82-21, VIP" list="ld-tags" />
+                  <FormField label="Tags (séparés par des virgules)" htmlFor="lf-tags">
+                    <Input id="lf-tags" value={fields.tags ?? ''} onChange={e => set('tags', e.target.value)}
+                           placeholder="ex: Régularisation 82-21, VIP" list="ld-tags" />
+                  </FormField>
                   <datalist id="ld-tags">
                     {tagOptions.map(t => <option key={t.id} value={t.nom} />)}
                   </datalist>
@@ -857,29 +1498,27 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
                     quelle que soit l'étape. */}
                 {fields.perdu && (
                   <div className="form-group fg-grow">
-                    <label className="form-label">
-                      Motif de perte <span className="req">*</span>
-                    </label>
-                    <input className={`form-control${errors.motif_perte ? ' is-invalid' : ''}`}
-                           value={fields.motif_perte ?? ''}
-                           onChange={e => set('motif_perte', e.target.value)}
-                           list="ld-motifs" />
-                    <datalist id="ld-motifs">
-                      {motifOptions.map(m => <option key={m.id} value={m.nom} />)}
-                    </datalist>
-                    {errors.motif_perte && (
-                      <div className="form-feedback">{errors.motif_perte}</div>
-                    )}
+                    <FormField label="Motif de perte" required htmlFor="lf-motif-perte"
+                               error={errors.motif_perte} errorKind="required">
+                      <Input id="lf-motif-perte" invalid={!!errors.motif_perte}
+                             value={fields.motif_perte ?? ''}
+                             onChange={e => set('motif_perte', e.target.value)}
+                             list="ld-motifs" />
+                      <datalist id="ld-motifs">
+                        {motifOptions.map(m => <option key={m.id} value={m.nom} />)}
+                      </datalist>
+                    </FormField>
                   </div>
                 )}
               </div>
             </Sec>
 
-            <Sec id="energie" title="💡 Profil énergétique">
+            <Sec id="energie" title="Profil énergétique">
               <div className="form-row">
-                <Txt fields={fields} set={set} k="facture_hiver"
-                     label={fields.ete_differente ? 'Facture Hiver (MAD/mois)' : 'Facture mensuelle (MAD/mois)'}
-                     type="number" placeholder="ex: 650" />
+                <FormField label={fields.ete_differente ? 'Facture Hiver (MAD/mois)' : 'Facture mensuelle (MAD/mois)'} htmlFor="lf-facture-hiver">
+                  <Input id="lf-facture-hiver" type="number" step="any" placeholder="ex: 650"
+                         value={fields.facture_hiver ?? ''} onChange={e => set('facture_hiver', e.target.value)} />
+                </FormField>
                 <div className="form-group" style={{ alignSelf: 'flex-end' }}>
                   <label className="pdf-toggle">
                     <input type="checkbox" checked={fields.ete_differente}
@@ -888,13 +1527,25 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
                   </label>
                 </div>
                 {fields.ete_differente && (
-                  <Txt fields={fields} set={set} k="facture_ete" label="Facture Été (MAD/mois)" type="number" placeholder="ex: 420" />
+                  <FormField label="Facture Été (MAD/mois)" htmlFor="lf-facture-ete">
+                    <Input id="lf-facture-ete" type="number" step="any" placeholder="ex: 420"
+                           value={fields.facture_ete ?? ''} onChange={e => set('facture_ete', e.target.value)} />
+                  </FormField>
                 )}
               </div>
               <div className="form-row">
-                <Txt fields={fields} set={set} k="conso_mensuelle_kwh" label="Conso mensuelle (kWh)" type="number" />
-                <Txt fields={fields} set={set} k="tranche_onee" label="Tarif / tranche ONEE" />
-                <Sel fields={fields} set={set} k="raccordement" label="Raccordement" labels={RACCORDEMENTS} />
+                <FormField label="Conso mensuelle (kWh)" htmlFor="lf-conso-mensuelle">
+                  <Input id="lf-conso-mensuelle" type="number" step="any" value={fields.conso_mensuelle_kwh ?? ''} onChange={e => set('conso_mensuelle_kwh', e.target.value)} />
+                </FormField>
+                <FormField label="Tarif / tranche ONEE" htmlFor="lf-tranche-onee">
+                  <Input id="lf-tranche-onee" value={fields.tranche_onee ?? ''} onChange={e => set('tranche_onee', e.target.value)} />
+                </FormField>
+                <FormField label="Raccordement" htmlFor="lf-raccordement">
+                  <select id="lf-raccordement" className="form-select" value={fields.raccordement ?? ''}
+                          onChange={e => set('raccordement', e.target.value)}>
+                    {enumOptions(RACCORDEMENTS)}
+                  </select>
+                </FormField>
                 <div className="form-group" style={{ alignSelf: 'flex-end' }}>
                   <label className="pdf-toggle">
                     <input type="checkbox" checked={fields.regularisation_8221}
@@ -908,17 +1559,20 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
             {/* Pompage — section dédiée, visible uniquement en mode agricole ;
                 ces champs alimentent le devis automatique. */}
             {agricole && (
-              <Sec id="pompage" title="💧 Pompage">
+              <Sec id="pompage" title="Pompage">
                 <div className="form-row">
-                  <Txt fields={fields} set={set} k="pompe_cv" type="number"
-                       label={<>Pompe (CV)<span className="req-auto"> *</span></>}
-                       placeholder="ex: 10" />
-                  <Txt fields={fields} set={set} k="pompe_hmt_m" type="number"
-                       label={<>HMT (m)<span className="req-auto"> *</span></>}
-                       placeholder="ex: 80" />
-                  <Txt fields={fields} set={set} k="pompe_debit_m3h" type="number"
-                       label={<>Débit souhaité (m³/h)<span className="req-auto"> *</span></>}
-                       placeholder="ex: 12" />
+                  <FormField label={<>Pompe (CV)<span className="req-auto"> *</span></>} htmlFor="lf-pompe-cv">
+                    <Input id="lf-pompe-cv" type="number" step="any" placeholder="ex: 10"
+                           value={fields.pompe_cv ?? ''} onChange={e => set('pompe_cv', e.target.value)} />
+                  </FormField>
+                  <FormField label={<>HMT (m)<span className="req-auto"> *</span></>} htmlFor="lf-pompe-hmt">
+                    <Input id="lf-pompe-hmt" type="number" step="any" placeholder="ex: 80"
+                           value={fields.pompe_hmt_m ?? ''} onChange={e => set('pompe_hmt_m', e.target.value)} />
+                  </FormField>
+                  <FormField label={<>Débit souhaité (m³/h)<span className="req-auto"> *</span></>} htmlFor="lf-pompe-debit">
+                    <Input id="lf-pompe-debit" type="number" step="any" placeholder="ex: 12"
+                           value={fields.pompe_debit_m3h ?? ''} onChange={e => set('pompe_debit_m3h', e.target.value)} />
+                  </FormField>
                 </div>
                 <p className="gen-hint">
                   <span className="req-auto">*</span> Requis pour le devis automatique en mode agricole.
@@ -926,30 +1580,67 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
               </Sec>
             )}
 
-            <Sec id="toiture" title="🏠 Toiture & site">
+            <Sec id="toiture" title="Toiture & site">
               <div className="form-row">
-                <Sel fields={fields} set={set} k="type_toiture" label="Type de toiture" labels={TYPES_TOITURE} />
-                <Txt fields={fields} set={set} k="surface_toiture_m2" label="Surface (m²)" type="number" />
-                <Txt fields={fields} set={set} k="taille_souhaitee_kwc" label="Taille souhaitée (kWc)" type="number" />
-                <Sel fields={fields} set={set} k="batterie_souhaitee" label="Batterie" labels={BATTERIES} />
+                <FormField label="Type de toiture" htmlFor="lf-type-toiture">
+                  <select id="lf-type-toiture" className="form-select" value={fields.type_toiture ?? ''}
+                          onChange={e => set('type_toiture', e.target.value)}>
+                    {enumOptions(TYPES_TOITURE)}
+                  </select>
+                </FormField>
+                <FormField label="Surface (m²)" htmlFor="lf-surface-toiture">
+                  <Input id="lf-surface-toiture" type="number" step="any" value={fields.surface_toiture_m2 ?? ''} onChange={e => set('surface_toiture_m2', e.target.value)} />
+                </FormField>
+                <FormField label="Taille souhaitée (kWc)" htmlFor="lf-taille-souhaitee">
+                  <Input id="lf-taille-souhaitee" type="number" step="any" value={fields.taille_souhaitee_kwc ?? ''} onChange={e => set('taille_souhaitee_kwc', e.target.value)} />
+                </FormField>
+                <FormField label="Batterie" htmlFor="lf-batterie">
+                  <select id="lf-batterie" className="form-select" value={fields.batterie_souhaitee ?? ''}
+                          onChange={e => set('batterie_souhaitee', e.target.value)}>
+                    {enumOptions(BATTERIES)}
+                  </select>
+                </FormField>
               </div>
               <div className="form-row">
-                <Sel fields={fields} set={set} k="orientation" label="Orientation" labels={ORIENTATIONS} />
-                <Txt fields={fields} set={set} k="inclinaison_deg" label="Inclinaison / pente (°)" type="number" />
-                <Sel fields={fields} set={set} k="ombrage" label="Ombrage" labels={OMBRAGES} />
+                <FormField label="Orientation" htmlFor="lf-orientation">
+                  <select id="lf-orientation" className="form-select" value={fields.orientation ?? ''}
+                          onChange={e => set('orientation', e.target.value)}>
+                    {enumOptions(ORIENTATIONS)}
+                  </select>
+                </FormField>
+                <FormField label="Inclinaison / pente (°)" htmlFor="lf-inclinaison">
+                  <Input id="lf-inclinaison" type="number" step="any" value={fields.inclinaison_deg ?? ''} onChange={e => set('inclinaison_deg', e.target.value)} />
+                </FormField>
+                <FormField label="Ombrage" htmlFor="lf-ombrage">
+                  <select id="lf-ombrage" className="form-select" value={fields.ombrage ?? ''}
+                          onChange={e => set('ombrage', e.target.value)}>
+                    {enumOptions(OMBRAGES)}
+                  </select>
+                </FormField>
                 <div className="form-group fg-grow">
-                  <Txt fields={fields} set={set} k="ombrage_notes" label="Notes ombrage" />
+                  <FormField label="Notes ombrage" htmlFor="lf-ombrage-notes">
+                    <Input id="lf-ombrage-notes" value={fields.ombrage_notes ?? ''} onChange={e => set('ombrage_notes', e.target.value)} />
+                  </FormField>
                 </div>
               </div>
               <div className="form-row">
-                <Sel fields={fields} set={set} k="structure_pref" label="Structure" labels={STRUCTURES} />
-                <Txt fields={fields} set={set} k="nb_etages" label="Étages / hauteur" type="number" />
+                <FormField label="Structure" htmlFor="lf-structure">
+                  <select id="lf-structure" className="form-select" value={fields.structure_pref ?? ''}
+                          onChange={e => set('structure_pref', e.target.value)}>
+                    {enumOptions(STRUCTURES)}
+                  </select>
+                </FormField>
+                <FormField label="Étages / hauteur" htmlFor="lf-nb-etages">
+                  <Input id="lf-nb-etages" type="number" step="any" value={fields.nb_etages ?? ''} onChange={e => set('nb_etages', e.target.value)} />
+                </FormField>
               </div>
             </Sec>
 
-            <Sec id="visite" title="📋 Visite technique">
+            <Sec id="visite" title="Visite technique">
               <div className="form-row">
-                <Txt fields={fields} set={set} k="visite_prevue_le" label="Visite prévue le" type="date" />
+                <FormField label="Visite prévue le" htmlFor="lf-visite-prevue">
+                  <Input id="lf-visite-prevue" type="date" value={fields.visite_prevue_le ?? ''} onChange={e => set('visite_prevue_le', e.target.value)} />
+                </FormField>
                 <div className="form-group" style={{ alignSelf: 'flex-end' }}>
                   <label className="pdf-toggle">
                     <input type="checkbox" checked={fields.visite_effectuee}
@@ -958,7 +1649,9 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
                   </label>
                 </div>
                 <div className="form-group fg-grow">
-                  <Txt fields={fields} set={set} k="visite_notes" label="Notes de visite" />
+                  <FormField label="Notes de visite" htmlFor="lf-visite-notes">
+                    <Input id="lf-visite-notes" value={fields.visite_notes ?? ''} onChange={e => set('visite_notes', e.target.value)} />
+                  </FormField>
                 </div>
               </div>
               {/* QJ20 — Planifier une visite (inline, edit mode seulement) */}
@@ -968,7 +1661,7 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
             {/* ── Origine web (taqinor.ma) — lecture seule ; masquée si tout vide.
                 Ces champs sont capturés par le site et ne s'éditent pas ici. ── */}
             {hasWebOrigin && (
-              <Sec id="origine" title="🌐 Origine (site web)">
+              <Sec id="origine" title="Origine (site web)">
                 <div className="form-row">
                   {webRO('bill_range_bucket', 'Tranche de facture (site)')}
                   {webRO('roi_band', 'Estimation ROI (site)')}
@@ -989,17 +1682,11 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
             </div>
 
             {/* ── Devis empilés ── */}
+            {/* VX143 — le bouton « Concevoir la toiture (3D) » vit désormais
+                UNE SEULE FOIS, dans la barre d'actions devis (sticky, hors
+                scroll) : plus de doublon verbatim ici. */}
             {isEdit && (
-              <Sec id="devis" title={`📄 Devis de ce lead${liveLead?.client_nom ? ` — client : ${liveLead.client_nom}` : ''}`}>
-                {lead?.id && (
-                  <div style={{ margin: '0 0 8px' }}>
-                    <Button type="button" size="sm" className="gen-btn-orange"
-                            title="Ouvrir l'outil de conception 3D du site avec ce lead déjà chargé"
-                            onClick={ouvrirConceptionToiture}>
-                      🏠 Concevoir la toiture (3D)
-                    </Button>
-                  </div>
-                )}
+              <Sec id="devis" title={`Devis de ce lead${liveLead?.client_nom ? ` — client : ${liveLead.client_nom}` : ''}`}>
                 {(liveLead?.devis ?? []).length === 0 ? (
                   <p className="gen-hint">Aucun devis pour ce lead.</p>
                 ) : (
@@ -1093,7 +1780,7 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
                             <td><strong>{d.reference}</strong></td>
                             <td>{STATUT_DEVIS[d.statut] ?? d.statut}</td>
                             <td className="ta-right">
-                              {Math.round(parseFloat(d.total_ttc)).toLocaleString('fr-MA')} MAD
+                              {formatMAD(d.total_ttc, { decimals: 0 })}
                             </td>
                             <td>{new Date(d.date_creation).toLocaleDateString('fr-FR')}</td>
                             <td className="ta-right">
@@ -1138,7 +1825,7 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
 
             {/* ── Activités planifiées ── */}
             {isEdit && (
-              <Sec id="activites" title="⏰ Activités">
+              <Sec id="activites" title="Activités">
                 <div style={{ margin: '0 0 8px' }}>
                   <Button type="button" size="sm" variant="outline"
                           onClick={() => setPlanOpen(true)}>
@@ -1154,14 +1841,14 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
 
             {/* ── Pièces jointes ── */}
             {isEdit && (
-              <Sec id="pieces" title="📎 Pièces jointes">
+              <Sec id="pieces" title="Pièces jointes">
                 <AttachmentsPanel model="crm.lead" id={lead.id} />
               </Sec>
             )}
 
             {/* ── Doublons / Fusion ── */}
             {isEdit && (
-              <Sec id="doublons" title={`🔀 Doublons${dups.length ? ` (${dups.length})` : ''}`}>
+              <Sec id="doublons" title={`Doublons${dups.length ? ` (${dups.length})` : ''}`}>
                 {dups.length === 0 ? (
                   <p className="gen-hint">Aucun doublon détecté (même téléphone ou email).</p>
                 ) : (
@@ -1192,41 +1879,60 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
 
             {/* ── Historique (chatter) ── */}
             {isEdit && (
-              <Sec id="historique" title="🕐 Historique">
+              <Sec id="historique" title="Historique">
                 <div className="chatter-note-box">
                   <input className="form-control" placeholder="Écrire une note (appel, commentaire…)"
                          value={noteBody} onChange={e => setNoteBody(e.target.value)}
                          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); postNote() } }} />
+                  {/* VX111 — attacher une pièce jointe à CETTE note (ex. photo
+                      prise depuis mobile pendant une visite) : réutilise le
+                      magasin records.Attachment existant, jamais un second
+                      magasin (décision tranchée dans cette tâche). */}
+                  <input
+                    ref={noteFileInputRef}
+                    type="file"
+                    accept="application/pdf,image/png,image/jpeg,image/webp"
+                    className="chatter-note-file-input"
+                    onChange={e => setNoteFile(e.target.files?.[0] ?? null)}
+                  />
+                  <IconButton
+                    type="button"
+                    variant="outline"
+                    label="Attacher une pièce jointe à la note"
+                    onClick={() => noteFileInputRef.current?.click()}
+                  >
+                    <Paperclip aria-hidden="true" size={16} />
+                  </IconButton>
                   <Button type="button" variant="outline" onClick={postNote}>
                     Noter
                   </Button>
+                  {/* VX87 — journal d'appel en un geste : issue + note +
+                      prochaine relance, le tout en 1 requête (logInteraction
+                      avait ZÉRO site d'appel avant cette tâche). */}
+                  <CallLogPopover
+                    leadId={lead.id}
+                    open={callLogOpen}
+                    onOpenChange={setCallLogOpen}
+                    onLogged={refreshHistorique}
+                  />
                 </div>
+                {noteFile && (
+                  <p className="chatter-note-file-preview" data-testid="chatter-note-file-preview">
+                    <Paperclip size={12} aria-hidden="true" /> {noteFile.name}
+                    <button type="button" className="chatter-note-file-clear"
+                            aria-label="Retirer la pièce jointe"
+                            onClick={() => { setNoteFile(null); if (noteFileInputRef.current) noteFileInputRef.current.value = '' }}>
+                      ✕
+                    </button>
+                  </p>
+                )}
                 {noteError && (
                   <p className="form-error" role="alert">{noteError}</p>
                 )}
-                <div className="chatter-timeline">
-                  {historique.length === 0 && (
-                    <p className="gen-hint">Aucune activité pour le moment.</p>
-                  )}
-                  {historique.map(a => (
-                    <div key={a.id} className={`chatter-item chatter-${a.kind}`}>
-                      {a.kind === 'note' && (
-                        <span>📝 <strong>Note&nbsp;:</strong> {a.body}</span>
-                      )}
-                      {a.kind === 'creation' && <span>✨ {a.body}</span>}
-                      {a.kind === 'modification' && (
-                        <span>
-                          ✏️ <strong>{a.field_label}&nbsp;:</strong>{' '}
-                          {a.old_value} → <strong>{a.new_value}</strong>
-                        </span>
-                      )}
-                      {a.bulk && <span className="chatter-bulk">en masse</span>}
-                      <span className="chatter-meta">
-                        — par {a.user_nom ?? '?'} · {timeAgo(a.created_at)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
+                {/* VX23 — ChatterTimeline : composant réutilisable (regroupement
+                    par jour, avatars, distinction note/log). Remplace l'ancien
+                    journal texte plat rendu inline ici. */}
+                <ChatterTimeline entries={historique} />
               </Sec>
             )}
 
@@ -1237,12 +1943,24 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
           </div>
 
           <div className="modal-footer">
+            {/* VX224 — « Créer un autre » (VX92 étendu) : seulement à la
+                création, comme ClientForm.jsx. */}
+            {!isEdit && (
+              <label className="mr-auto flex items-center gap-2 text-sm text-muted-foreground">
+                <Switch
+                  checked={creerUnAutre}
+                  onCheckedChange={(v) => { setCreerUnAutre(v); ecrireCreerUnAutre(v) }}
+                  aria-label="Créer un autre"
+                />
+                Créer un autre
+              </label>
+            )}
             {savedConfirm && (
               <span className="lead-saved-confirm" role="status" aria-live="polite">
                 ✓ Enregistré
               </span>
             )}
-            <Button type="button" variant="outline" onClick={onClose}>
+            <Button type="button" variant="outline" onClick={guardedClose}>
               Annuler
             </Button>
             <Button type="submit" loading={saving} disabled={saving}>
@@ -1250,7 +1968,6 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
             </Button>
           </div>
         </form>
-      </div>
 
       {/* Panneau devis inline : créer / voir / télécharger sans quitter la fiche. */}
       {isEdit && devisPanel && (
@@ -1292,6 +2009,6 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
           onConverted={refreshLead}
         />
       )}
-    </div>
+    </ResponsiveDialog>
   )
 }
