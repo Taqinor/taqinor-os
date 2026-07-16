@@ -6,14 +6,16 @@ rôle authentifié (``IsAnyRole``) ; écriture réservée Responsable/Admin
 (``IsResponsableOrAdmin``), sauf actions explicitement ouvertes (ex. tâches de
 housekeeping assignées à l'utilisateur courant).
 """
-from rest_framework import filters, status, viewsets
+import datetime
+
+from rest_framework import filters, status, views, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 
-from . import services
+from . import selectors, services
 from .models import (
     Chambre, Folio, PlanTarifaire, Reservation, TacheMenage, TypeChambre,
 )
@@ -259,3 +261,26 @@ class TacheMenageViewSet(TenantMixin, viewsets.ModelViewSet):
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(tache).data)
+
+
+class TableauBordView(views.APIView):
+    """NTHOT11 — Tableau de bord RevPAR/ADR/TO. ``?debut=&fin=`` (YYYY-MM-DD,
+    fin exclusive) ; défaut = les 30 derniers jours."""
+    permission_classes = [IsAnyRole]
+
+    def get(self, request):
+        today = datetime.date.today()
+        debut_str = request.query_params.get('debut')
+        fin_str = request.query_params.get('fin')
+        try:
+            debut = (
+                datetime.date.fromisoformat(debut_str) if debut_str
+                else today - datetime.timedelta(days=30))
+            fin = datetime.date.fromisoformat(fin_str) if fin_str else today
+        except ValueError:
+            return Response(
+                {'detail': 'Dates invalides (attendu YYYY-MM-DD).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        data = selectors.dashboard_hotellerie(
+            request.user.company, debut, fin)
+        return Response(data)

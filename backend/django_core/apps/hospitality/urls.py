@@ -3,7 +3,7 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     ChambreViewSet, FolioViewSet, PlanTarifaireViewSet, ReservationViewSet,
-    TacheMenageViewSet, TypeChambreViewSet,
+    TableauBordView, TacheMenageViewSet, TypeChambreViewSet,
 )
 
 router = DefaultRouter()
@@ -15,5 +15,6 @@ router.register(r'folios', FolioViewSet)
 router.register(r'taches-menage', TacheMenageViewSet)
 
 urlpatterns = [
+    path('tableau-bord/', TableauBordView.as_view(), name='hospitality-tableau-bord'),
     path('', include(router.urls)),
 ]
