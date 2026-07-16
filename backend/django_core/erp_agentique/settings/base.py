@@ -172,6 +172,10 @@ INSTALLED_APPS = [
     # propose→approuve→applique, création TOUJOURS PAUSED). App satellite
     # multi-société ; tout no-ope sans token/clé configuré.
     'apps.adsengine',
+    # Groupe NTPRO — Vertical immobilier & facilities (patrimoine, baux,
+    # quittancement, GMAO bâtiment). App satellite multi-société ; aucune
+    # écriture Facture ici (délègue à apps.ventes.services).
+    'apps.immobilier',
 ]
 
 MIDDLEWARE = [
