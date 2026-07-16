@@ -331,3 +331,43 @@ class GrilleTarifaire(TenantModel):
 
     def __str__(self):
         return f'{self.convention_id} / {self.acte_id}'
+
+
+class ActeRealise(TenantModel):
+    """NTSAN10 — acte réalisé. ``tarif_applique_ttc`` est SNAPSHOTTÉ à la
+    réalisation (jamais recalculé rétroactivement si ``GrilleTarifaire``
+    change ensuite — test de non-régression dédié).
+
+    ``facturable=False`` (NTSAN6) marque explicitement un acte comme non
+    facturable, permettant la clôture de l'admission sans facturation.
+    ``facture_sante`` (posé par NTSAN13, pas encore ici) référencera la
+    facture qui a réglé cet acte."""
+
+    admission = models.ForeignKey(
+        Admission, on_delete=models.CASCADE, related_name='actes_realises',
+        verbose_name='Admission')
+    patient = models.ForeignKey(
+        Patient, on_delete=models.CASCADE, related_name='actes_realises',
+        verbose_name='Patient')
+    praticien = models.ForeignKey(
+        Praticien, on_delete=models.CASCADE, related_name='actes_realises',
+        verbose_name='Praticien')
+    acte = models.ForeignKey(
+        ActeMedical, on_delete=models.PROTECT, related_name='realisations',
+        verbose_name='Acte')
+    date_realisation = models.DateTimeField(verbose_name='Date de réalisation')
+    quantite = models.PositiveIntegerField(default=1, verbose_name='Quantité')
+    tarif_applique_ttc = models.DecimalField(
+        max_digits=10, decimal_places=2, verbose_name='Tarif appliqué TTC')
+    facturable = models.BooleanField(
+        default=True, verbose_name='Facturable',
+        help_text="Décoché : l'acte est explicitement marqué non-facturable "
+                  "(n'empêche pas la clôture de l'admission).")
+
+    class Meta:
+        verbose_name = 'Acte réalisé'
+        verbose_name_plural = 'Actes réalisés'
+        ordering = ['-date_realisation']
+
+    def __str__(self):
+        return f'{self.acte_id} @ {self.date_realisation}'

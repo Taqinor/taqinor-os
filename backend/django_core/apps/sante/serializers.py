@@ -6,8 +6,8 @@
 from rest_framework import serializers
 
 from .models import (
-    ActeMedical, Admission, Convention, GrilleTarifaire, Patient, Praticien,
-    RendezVous, Salle)
+    ActeMedical, ActeRealise, Admission, Convention, GrilleTarifaire, Patient,
+    Praticien, RendezVous, Salle)
 
 
 class PraticienSerializer(serializers.ModelSerializer):
@@ -86,6 +86,17 @@ class ConventionSerializer(serializers.ModelSerializer):
             'id', 'nom', 'type', 'type_display', 'taux_tiers_payant_pct',
             'contact', 'actif',
         ]
+
+
+class ActeRealiseSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ActeRealise
+        fields = [
+            'id', 'admission', 'patient', 'praticien', 'acte',
+            'date_realisation', 'quantite', 'tarif_applique_ttc',
+            'facturable',
+        ]
+        read_only_fields = ['tarif_applique_ttc']
 
 
 class GrilleTarifaireSerializer(serializers.ModelSerializer):

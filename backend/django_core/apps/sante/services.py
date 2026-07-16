@@ -104,12 +104,13 @@ def cloturer_admission(admission, *, date_sortie=None):
     """NTSAN6 — clôture une admission (``en_cours`` → ``cloturee``).
 
     Garde (critère d'acceptation NTSAN6) : une admission ne peut être
-    clôturée que si tous ses actes réalisés rattachés sont facturés ou
-    explicitement marqués non-facturables. ``ActeRealise`` n'existe pas
-    encore à ce stade du lot (posé par NTSAN10) : cette fonction est
-    COMPLÉTÉE — pas réécrite — dans la même passe que NTSAN10 pour vérifier
-    réellement les actes rattachés (``admission.actes_realises``). En
-    attendant, seule la transition de statut est appliquée.
+    clôturée que si tous ses actes réalisés rattachés sont facturés
+    (``facture_sante_id`` posé, NTSAN13) ou explicitement marqués
+    non-facturables (``facturable=False``, NTSAN10). La partie « facturé »
+    est complétée dans la même passe que NTSAN13 (``FactureSante`` pas
+    encore posé à ce stade) — ici, seule la partie « non-facturable » est
+    vérifiée : un acte facturable ET pas encore rattaché à une facture
+    bloque la clôture.
     """
     from django.utils import timezone
 
@@ -118,7 +119,38 @@ def cloturer_admission(admission, *, date_sortie=None):
     if admission.statut == Admission.Statut.CLOTUREE:
         raise ValueError('Cette admission est déjà clôturée.')
 
+    actes_bloquants = admission.actes_realises.filter(facturable=True)
+    if actes_bloquants.exists():
+        raise ValueError(
+            "Impossible de clôturer : des actes réalisés ne sont ni "
+            "facturés ni marqués non-facturables.")
+
     admission.statut = Admission.Statut.CLOTUREE
     admission.date_sortie = date_sortie or timezone.now()
     admission.save(update_fields=['statut', 'date_sortie'])
     return admission
+
+
+def realiser_acte(
+        *, admission, patient, praticien, acte, date_realisation,
+        quantite=1, facturable=True):
+    """NTSAN10 — enregistre un acte réalisé, tarif SNAPSHOTTÉ à la
+    réalisation via ``selectors.tarif_applicable`` (convention du patient si
+    connue, sinon ``tarif_base_ttc``). Le tarif appliqué ne change JAMAIS
+    rétroactivement si ``GrilleTarifaire`` évolue ensuite."""
+    from .models import ActeRealise
+    from .selectors import tarif_applicable
+
+    tarif = tarif_applicable(acte, getattr(patient, 'convention', None))
+
+    return ActeRealise.objects.create(
+        company=admission.company,
+        admission=admission,
+        patient=patient,
+        praticien=praticien,
+        acte=acte,
+        date_realisation=date_realisation,
+        quantite=quantite,
+        tarif_applique_ttc=tarif['tarif_ttc'],
+        facturable=facturable,
+    )

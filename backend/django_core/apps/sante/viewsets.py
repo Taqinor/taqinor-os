@@ -15,12 +15,12 @@ from apps.core.destroy_mixins import UsageGuardedDestroyMixin
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
-    ActeMedical, Admission, Convention, GrilleTarifaire, Patient, Praticien,
-    RendezVous, Salle)
+    ActeMedical, ActeRealise, Admission, Convention, GrilleTarifaire, Patient,
+    Praticien, RendezVous, Salle)
 from .serializers import (
-    ActeMedicalSerializer, AdmissionSerializer, ConventionSerializer,
-    GrilleTarifaireSerializer, PatientSerializer, PraticienSerializer,
-    RendezVousSerializer, SalleSerializer)
+    ActeMedicalSerializer, ActeRealiseSerializer, AdmissionSerializer,
+    ConventionSerializer, GrilleTarifaireSerializer, PatientSerializer,
+    PraticienSerializer, RendezVousSerializer, SalleSerializer)
 
 
 class PraticienViewSet(CompanyScopedModelViewSet):
@@ -134,6 +134,17 @@ class ActeMedicalViewSet(UsageGuardedDestroyMixin, CompanyScopedModelViewSet):
     serializer_class = ActeMedicalSerializer
 
     def destroy_guard_message(self, acte):
+        """NTSAN7/NTSAN10 — un acte déjà réalisé (facturé ou non) ou déjà
+        présent dans une grille tarifaire ne se supprime jamais physiquement
+        (soft-disable uniquement, via `desactiver`)."""
+        if acte.realisations.exists():
+            return (
+                "Cet acte a déjà été réalisé sur au moins un patient — il "
+                "ne peut plus être supprimé, seulement désactivé.")
+        if acte.grilles_tarifaires.exists():
+            return (
+                "Cet acte est référencé dans une grille tarifaire — il ne "
+                "peut plus être supprimé, seulement désactivé.")
         return None
 
     @action(detail=True, methods=['post'], url_path='desactiver')
@@ -165,3 +176,28 @@ class GrilleTarifaireViewSet(CompanyScopedModelViewSet):
 
     queryset = GrilleTarifaire.objects.select_related('convention', 'acte').all()
     serializer_class = GrilleTarifaireSerializer
+
+
+class ActeRealiseViewSet(CompanyScopedModelViewSet):
+    """NTSAN10 — actes réalisés. `tarif_applique_ttc` est TOUJOURS calculé
+    côté serveur (jamais lu du corps de requête) via
+    `services.realiser_acte`, snapshotté à la réalisation."""
+
+    queryset = ActeRealise.objects.select_related(
+        'admission', 'patient', 'praticien', 'acte').all()
+    serializer_class = ActeRealiseSerializer
+
+    def perform_create(self, serializer):
+        from .services import realiser_acte
+
+        data = serializer.validated_data
+        instance = realiser_acte(
+            admission=data['admission'],
+            patient=data['patient'],
+            praticien=data['praticien'],
+            acte=data['acte'],
+            date_realisation=data['date_realisation'],
+            quantite=data.get('quantite', 1),
+            facturable=data.get('facturable', True),
+        )
+        serializer.instance = instance
