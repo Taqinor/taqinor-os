@@ -172,6 +172,10 @@ INSTALLED_APPS = [
     # propose→approuve→applique, création TOUJOURS PAUSED). App satellite
     # multi-société ; tout no-ope sans token/clé configuré.
     'apps.adsengine',
+    # Groupe NTHOT — Vertical hôtellerie & restauration (plan de chambres,
+    # réservations, check-in/out, folio client unifié, housekeeping). Nouvelle
+    # app greenfield, multi-société, additive.
+    'apps.hospitality',
 ]
 
 MIDDLEWARE = [
