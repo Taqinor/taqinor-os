@@ -100,11 +100,59 @@ def _eval_frequency_high(company, policy, template, *, now, config):
     return findings
 
 
-# Registre template_key → évaluateur. ADSENG16 en ajoute (zéro-delivery, bande
-# CPL…) ; les templates dépendant d'une autre lane (pacing, réconciliation) ne
-# sont PAS câblés ici et sont consignés ``evaluated: False`` (jamais un skip muet).
+def _eval_cpl_band(company, policy, template, *, now, config):
+    """Bande CPL (ADSENG16) : coût par lead d'une campagne hors de sa bande
+    trainante ±2× (détecteur pur ``anomaly.detect_cpl_band``). Sous le plancher
+    de leads → ``insufficient_data`` (ALERTE toujours). Une anomalie déclenchée
+    matérialise une ``AnomalyEvent``."""
+    from django.contrib.contenttypes.models import ContentType
+
+    from . import anomaly
+    from .models import AdCampaignMirror, InsightSnapshot
+
+    params = rule_templates.resolve_params(policy.template_key, policy.params)
+    window_days = int(params.get('window_days', 14))
+    min_samples = int(params.get('min_samples', 5))
+    low_mult = float(params.get('band_low_mult', 0.5))
+    high_mult = float(params.get('band_high_mult', 2.0))
+    start = _window_start_date(now, window_days)
+    today = now.date() if isinstance(now, datetime.datetime) else (
+        now if isinstance(now, datetime.date) else datetime.date.today())
+    ct = ContentType.objects.get_for_model(AdCampaignMirror)
+
+    findings = []
+    for camp in AdCampaignMirror.objects.filter(company=company):
+        snaps = list(InsightSnapshot.objects.filter(
+            company=company, content_type=ct, object_id=camp.pk,
+            date__gte=start).order_by('date'))
+        daily_cpls = [s.cpl for s in snaps
+                      if s.cpl is not None and (s.results or 0) >= 1
+                      and s.date < today]
+        n_leads = sum((s.results or 0) for s in snaps)
+        cpl_today = next((s.cpl for s in snaps if s.date == today), None)
+        det = anomaly.detect_cpl_band(
+            daily_cpls, cpl_today, n_leads,
+            band_low_mult=low_mult, band_high_mult=high_mult,
+            min_samples=min_samples)
+        if det.fired:
+            anomaly.record_anomaly(
+                company, det, entity_type='campaign',
+                entity_meta_id=camp.meta_id, rule_policy=policy)
+        findings.append({
+            'target_type': 'campaign', 'target_meta_id': camp.meta_id,
+            'target_object_id': camp.pk, 'fired': det.fired,
+            'insufficient_data': det.insufficient_data,
+            'computed': det.computed, 'severity': det.severity})
+    return findings
+
+
+# Registre template_key → évaluateur. Les templates dépendant d'une autre lane
+# (pacing, réconciliation) ou d'une donnée non encore stockée (impressions pour
+# zéro-delivery) ne sont PAS câblés ici et sont consignés ``evaluated: False``
+# (jamais un skip muet — c'est audité dans ``last_result``).
 _EVALUATORS = {
     'frequency_high': _eval_frequency_high,
+    'cpl_band': _eval_cpl_band,
 }
 
 
