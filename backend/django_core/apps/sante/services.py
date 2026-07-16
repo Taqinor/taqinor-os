@@ -103,14 +103,10 @@ def verifier_chevauchement_rdv(
 def cloturer_admission(admission, *, date_sortie=None):
     """NTSAN6 — clôture une admission (``en_cours`` → ``cloturee``).
 
-    Garde (critère d'acceptation NTSAN6) : une admission ne peut être
-    clôturée que si tous ses actes réalisés rattachés sont facturés
-    (``facture_sante_id`` posé, NTSAN13) ou explicitement marqués
-    non-facturables (``facturable=False``, NTSAN10). La partie « facturé »
-    est complétée dans la même passe que NTSAN13 (``FactureSante`` pas
-    encore posé à ce stade) — ici, seule la partie « non-facturable » est
-    vérifiée : un acte facturable ET pas encore rattaché à une facture
-    bloque la clôture.
+    Garde (critère d'acceptation NTSAN6, complétée par NTSAN10/NTSAN13) :
+    une admission ne peut être clôturée que si tous ses actes réalisés
+    rattachés sont facturés (``facture_sante_id`` posé) ou explicitement
+    marqués non-facturables (``facturable=False``).
     """
     from django.utils import timezone
 
@@ -119,7 +115,8 @@ def cloturer_admission(admission, *, date_sortie=None):
     if admission.statut == Admission.Statut.CLOTUREE:
         raise ValueError('Cette admission est déjà clôturée.')
 
-    actes_bloquants = admission.actes_realises.filter(facturable=True)
+    actes_bloquants = admission.actes_realises.filter(
+        facturable=True, facture_sante__isnull=True)
     if actes_bloquants.exists():
         raise ValueError(
             "Impossible de clôturer : des actes réalisés ne sont ni "
@@ -171,6 +168,99 @@ def reste_a_charge_total(acte_realise):
     if pec.date_expiration and pec.date_expiration < _date.today():
         return True
     return False
+
+
+def _split_ligne(acte_realise):
+    """NTSAN13 — split tiers payant/patient d'UNE ligne (``ActeRealise``).
+
+    Ordre de résolution :
+    1. Reste-à-charge total forcé (prise en charge refusée/expirée) →
+       patient 100 %.
+    2. ``PriseEnCharge.montant_accorde`` posé → plafonne la part tiers
+       payant au montant accordé (restant de la ligne à charge du patient).
+    3. ``GrilleTarifaire.taux_prise_charge_pct`` de la convention du
+       patient pour cet acte → split proportionnel.
+    4. Sinon → patient 100 % (aucune couverture connue).
+    """
+    from decimal import Decimal
+
+    ligne_ttc = acte_realise.tarif_applique_ttc * acte_realise.quantite
+
+    if reste_a_charge_total(acte_realise):
+        return Decimal('0'), ligne_ttc
+
+    pec = acte_realise.prise_en_charge
+    if pec is not None and pec.montant_accorde is not None:
+        tiers = min(pec.montant_accorde, ligne_ttc)
+        return tiers, ligne_ttc - tiers
+
+    from .models import GrilleTarifaire
+
+    convention = getattr(acte_realise.patient, 'convention', None)
+    if convention is not None:
+        grille = GrilleTarifaire.objects.filter(
+            company=acte_realise.company, convention=convention,
+            acte_id=acte_realise.acte_id).first()
+        if grille is not None and grille.taux_prise_charge_pct:
+            tiers = (
+                ligne_ttc * grille.taux_prise_charge_pct
+                / Decimal('100')).quantize(Decimal('0.01'))
+            return tiers, ligne_ttc - tiers
+
+    return Decimal('0'), ligne_ttc
+
+
+def calculer_split_facture_sante(actes_realises):
+    """NTSAN13 — somme le split tiers payant/patient sur un ensemble de
+    lignes (``ActeRealise``). Renvoie ``(sous_total_ttc, part_tiers_payant,
+    part_patient)``. Invariant testé : ``part_tiers_payant + part_patient ==
+    sous_total_ttc`` (aucune remise appliquée ici — la remise, si posée,
+    s'applique ensuite au niveau facture et réduit la part patient)."""
+    from decimal import Decimal
+
+    sous_total = Decimal('0')
+    part_tiers_payant = Decimal('0')
+    part_patient = Decimal('0')
+    for acte_realise in actes_realises:
+        tiers, patient_part = _split_ligne(acte_realise)
+        sous_total += acte_realise.tarif_applique_ttc * acte_realise.quantite
+        part_tiers_payant += tiers
+        part_patient += patient_part
+    return sous_total, part_tiers_payant, part_patient
+
+
+def creer_facture_sante(
+        *, admission, actes_realises, convention=None, remise_ttc=None):
+    """NTSAN13 — crée une ``FactureSante`` à partir d'un ensemble d'
+    ``ActeRealise`` réalisés pour cette admission, rattache chaque ligne
+    (``ActeRealise.facture_sante``). Une remise TTC (optionnelle) réduit la
+    part patient (jamais la part tiers payant, déjà contractuelle)."""
+    from decimal import Decimal
+
+    from .models import FactureSante
+
+    remise = remise_ttc or Decimal('0')
+    sous_total, part_tiers_payant, part_patient = calculer_split_facture_sante(
+        actes_realises)
+    part_patient -= remise
+    total_ttc = sous_total - remise
+
+    facture = FactureSante.objects.create(
+        company=admission.company,
+        patient=admission.patient,
+        admission=admission,
+        convention=convention,
+        sous_total_ttc=sous_total,
+        remise_ttc=remise,
+        total_ttc=total_ttc,
+        part_tiers_payant_ttc=part_tiers_payant,
+        part_patient_ttc=part_patient,
+        statut=FactureSante.Statut.EMISE,
+    )
+    for acte_realise in actes_realises:
+        acte_realise.facture_sante = facture
+        acte_realise.save(update_fields=['facture_sante'])
+    return facture
 
 
 def verifier_prise_en_charge(prise_en_charge, *, user=None):

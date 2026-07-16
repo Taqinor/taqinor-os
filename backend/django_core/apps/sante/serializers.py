@@ -6,8 +6,8 @@
 from rest_framework import serializers
 
 from .models import (
-    ActeMedical, ActeRealise, Admission, Convention, GrilleTarifaire, Patient,
-    Praticien, PriseEnCharge, RendezVous, Salle)
+    ActeMedical, ActeRealise, Admission, Convention, FactureSante,
+    GrilleTarifaire, Patient, Praticien, PriseEnCharge, RendezVous, Salle)
 
 
 class PraticienSerializer(serializers.ModelSerializer):
@@ -94,9 +94,26 @@ class ActeRealiseSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'admission', 'patient', 'praticien', 'acte',
             'date_realisation', 'quantite', 'tarif_applique_ttc',
-            'facturable', 'prise_en_charge',
+            'facturable', 'prise_en_charge', 'facture_sante',
         ]
-        read_only_fields = ['tarif_applique_ttc']
+        read_only_fields = ['tarif_applique_ttc', 'facture_sante']
+
+
+class FactureSanteSerializer(serializers.ModelSerializer):
+    statut_display = serializers.CharField(source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = FactureSante
+        fields = [
+            'id', 'patient', 'admission', 'convention', 'sous_total_ttc',
+            'remise_ttc', 'taux_tva', 'montant_tva', 'total_ttc',
+            'part_tiers_payant_ttc', 'part_patient_ttc', 'statut',
+            'statut_display', 'date_emission',
+        ]
+        read_only_fields = [
+            'sous_total_ttc', 'total_ttc', 'part_tiers_payant_ttc',
+            'part_patient_ttc',
+        ]
 
 
 class PriseEnChargeSerializer(serializers.ModelSerializer):

@@ -368,6 +368,12 @@ class ActeRealise(TenantModel):
     prise_en_charge = models.ForeignKey(
         'PriseEnCharge', on_delete=models.SET_NULL, null=True, blank=True,
         related_name='actes_realises', verbose_name='Prise en charge')
+    # NTSAN13 — facture qui a réglé cet acte (lignes = actes réalisés). Une
+    # fois posée, l'admission considère cet acte comme facturé (garde de
+    # clôture NTSAN6).
+    facture_sante = models.ForeignKey(
+        'FactureSante', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='lignes_actes', verbose_name='Facture santé')
 
     class Meta:
         verbose_name = 'Acte réalisé'
@@ -425,3 +431,65 @@ class PriseEnCharge(TenantModel):
 
     def __str__(self):
         return f'PEC {self.patient_id} / {self.convention_id}'
+
+
+class FactureSante(TenantModel):
+    """NTSAN13 — facturation patient/tiers payant.
+
+    Lignes = ``ActeRealise`` rattachés (via ``ActeRealise.facture_sante``).
+    Split tiers payant/patient calculé par
+    ``services.calculer_split_facture_sante`` depuis
+    ``GrilleTarifaire.taux_prise_charge_pct`` ou
+    ``PriseEnCharge.montant_accorde``. Même chaîne Sous-total → Remise →
+    Total HT → TVA → Total TTC que les factures ventes existantes — la TVA
+    reste à 0 par défaut (actes médicaux généralement exonérés), le champ
+    existe pour permettre une TVA le cas échéant, jamais un moteur de calcul
+    différent. PDF via le moteur légataire ventes (règle #4 — factures
+    gardent leur PDF séparé, jamais ``/proposal``), pas construit dans ce lot
+    (NTSAN14)."""
+
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        EMISE = 'emise', 'Émise'
+        PAYEE_PARTIEL = 'payee_partiel', 'Payée partiellement'
+        PAYEE = 'payee', 'Payée'
+        IMPAYEE = 'impayee', 'Impayée'
+
+    patient = models.ForeignKey(
+        Patient, on_delete=models.CASCADE, related_name='factures_sante',
+        verbose_name='Patient')
+    admission = models.ForeignKey(
+        Admission, on_delete=models.CASCADE, related_name='factures_sante',
+        verbose_name='Admission')
+    convention = models.ForeignKey(
+        Convention, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='factures_sante', verbose_name='Convention')
+    sous_total_ttc = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0, verbose_name='Sous-total TTC')
+    remise_ttc = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0, verbose_name='Remise TTC')
+    taux_tva = models.DecimalField(
+        max_digits=5, decimal_places=2, default=0, verbose_name='Taux TVA (%)')
+    montant_tva = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0, verbose_name='Montant TVA')
+    total_ttc = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0, verbose_name='Total TTC')
+    part_tiers_payant_ttc = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        verbose_name='Part tiers payant TTC')
+    part_patient_ttc = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        verbose_name='Part patient TTC (reste à charge)')
+    statut = models.CharField(
+        max_length=15, choices=Statut.choices, default=Statut.BROUILLON,
+        verbose_name='Statut')
+    date_emission = models.DateTimeField(
+        null=True, blank=True, verbose_name="Date d'émission")
+
+    class Meta:
+        verbose_name = 'Facture santé'
+        verbose_name_plural = 'Factures santé'
+        ordering = ['-id']
+
+    def __str__(self):
+        return f'Facture santé {self.patient_id} ({self.total_ttc})'

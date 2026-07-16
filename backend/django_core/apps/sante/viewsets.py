@@ -7,6 +7,7 @@ rôles ``secretaire_medicale``/``praticien``/``caissier_sante``) est posé par
 NTSAN17 — en attendant, le défaut « authentifié suffit » de
 ``CompanyScopedModelViewSet`` s'applique.
 """
+from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
@@ -15,13 +16,13 @@ from apps.core.destroy_mixins import UsageGuardedDestroyMixin
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
-    ActeMedical, ActeRealise, Admission, Convention, GrilleTarifaire, Patient,
-    Praticien, PriseEnCharge, RendezVous, Salle)
+    ActeMedical, ActeRealise, Admission, Convention, FactureSante,
+    GrilleTarifaire, Patient, Praticien, PriseEnCharge, RendezVous, Salle)
 from .serializers import (
     ActeMedicalSerializer, ActeRealiseSerializer, AdmissionSerializer,
-    ConventionSerializer, GrilleTarifaireSerializer, PatientSerializer,
-    PraticienSerializer, PriseEnChargeSerializer, RendezVousSerializer,
-    SalleSerializer)
+    ConventionSerializer, FactureSanteSerializer, GrilleTarifaireSerializer,
+    PatientSerializer, PraticienSerializer, PriseEnChargeSerializer,
+    RendezVousSerializer, SalleSerializer)
 
 
 class PraticienViewSet(CompanyScopedModelViewSet):
@@ -220,3 +221,45 @@ class PriseEnChargeViewSet(CompanyScopedModelViewSet):
         if instance.statut != ancien_statut:
             from .services import verifier_prise_en_charge
             verifier_prise_en_charge(instance, user=self.request.user)
+
+
+class FactureSanteViewSet(CompanyScopedModelViewSet):
+    """NTSAN13 — facturation patient/tiers payant. La création agrège des
+    `ActeRealise` existants (jamais de lignes libres) : `POST` attend
+    `{"admission": <id>, "actes_realises": [<id>, ...], "convention": <id?>,
+    "remise_ttc": <decimal?>}`. Le split tiers payant/patient est TOUJOURS
+    calculé côté serveur (`services.creer_facture_sante`)."""
+
+    queryset = FactureSante.objects.select_related(
+        'patient', 'admission', 'convention').all()
+    serializer_class = FactureSanteSerializer
+
+    def create(self, request, *args, **kwargs):
+        from .services import creer_facture_sante
+
+        company = request.user.company
+        admission = Admission.objects.filter(
+            company=company, pk=request.data.get('admission')).first()
+        if admission is None:
+            raise ValidationError({'admission': 'Admission introuvable.'})
+
+        acte_ids = request.data.get('actes_realises') or []
+        actes = list(ActeRealise.objects.filter(
+            company=company, admission=admission, pk__in=acte_ids,
+            facture_sante__isnull=True))
+        if not actes:
+            raise ValidationError(
+                {'actes_realises': 'Aucun acte réalisé facturable trouvé.'})
+
+        convention = None
+        convention_id = request.data.get('convention')
+        if convention_id:
+            convention = Convention.objects.filter(
+                company=company, pk=convention_id).first()
+
+        facture = creer_facture_sante(
+            admission=admission, actes_realises=actes, convention=convention,
+            remise_ttc=request.data.get('remise_ttc'))
+        return Response(
+            FactureSanteSerializer(facture).data,
+            status=status.HTTP_201_CREATED)
