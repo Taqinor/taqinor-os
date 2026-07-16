@@ -45,11 +45,20 @@ const adsengineApi = {
     // Drill-down : la liste des leads réels derrière un chiffre (traçabilité).
     leads: (metric, params) =>
       api.get('/adsengine/metrics/leads/', { params: { metric, ...params } }),
+    // ENG20/ENG42 — Pacing : enveloppe, burn, projection, état + détail.
+    pacing: (params) => api.get('/adsengine/metrics/pacing/', { params }),
+  },
+
+  // ── ENG31/ENG42 — Réconciliation Meta-vs-ERP (écart + statut) ──
+  reconciliation: {
+    list: (params) => api.get('/adsengine/reconciliation/', { params }),
   },
 
   // ── ENG13 — Alertes (bandeau dashboard, WhatsApp-first) ──
   alerts: {
     list: (params) => api.get('/adsengine/alerts/', { params }),
+    // ENG43 — historique des alertes (past, pour l'écran Règles & anomalies).
+    history: (params) => api.get('/adsengine/alerts/history/', { params }),
   },
 
   // ── ENG5/ENG24 — Campagnes (miroirs) + classement par créatif ──
@@ -82,6 +91,67 @@ const adsengineApi = {
     policyCheck: (id, payload) =>
       api.post(`/adsengine/creatives/${id}/policy-check/`, payload),
     generateVariants: (id) => api.post(`/adsengine/creatives/${id}/variantes/`),
+  },
+
+  // ── ENG12/ENG39 — Expérimentations (bandit) : phases, bras, DecisionLog ──
+  experiments: {
+    ...resource('experiments'),
+    // DecisionLog d'une expérimentation (« pourquoi le moteur a fait X »).
+    decisionLog: (id, params) =>
+      api.get(`/adsengine/experiments/${id}/decisions/`, { params }),
+  },
+
+  // ── ENG28/ENG38/ENG40 — Plan de vol (compose 6 mois) + préflight autonomie ──
+  flightplan: {
+    ...resource('flightplans'),
+    // Gabarits de plan 6 mois (phases pré-composées).
+    templates: () => api.get('/adsengine/flightplans/templates/'),
+    // Bras disponibles depuis le backlog (recombinaisons prêtes).
+    backlogArms: () => api.get('/adsengine/flightplans/backlog-arms/'),
+    // ADSENG38 — préflight d'autonomie (toutes les portes go-live).
+    preflight: () => api.get('/adsengine/flightplans/preflight/'),
+    // Valide un plan composé (refus structuré avec raisons FR).
+    validate: (payload) => api.post('/adsengine/flightplans/validate/', payload),
+    // Lance une simulation depuis le plan composé.
+    simulate: (payload) => api.post('/adsengine/flightplans/simulate/', payload),
+  },
+
+  // ── ENG14/ENG43 — Règles (gabarits) + dry-run ──
+  rules: {
+    // Catalogue de gabarits FR (picker — jamais un builder libre).
+    templates: () => api.get('/adsengine/rules/templates/'),
+    // Simulation « dry-run » d'un gabarit : objets touchés + effet, sans appliquer.
+    dryRun: (templateKey, payload) =>
+      api.post('/adsengine/rules/dry-run/', { template: templateKey, ...payload }),
+  },
+
+  // ── ENG16/ENG43 — Anomalies (flux avec sévérités) ──
+  anomalies: {
+    list: (params) => api.get('/adsengine/anomalies/', { params }),
+  },
+
+  // ── ENG36/ENG44 — Simulations (rejeu visuel d'un run) ──
+  simulations: {
+    list: (params) => api.get('/adsengine/simulations/', { params }),
+    get: (id) => api.get(`/adsengine/simulations/${id}/`),
+  },
+
+  // ── ENG33/ENG45 — Reporting (drill-downs : variantes, entonnoir, cohortes) ──
+  reports: {
+    variants: (params) => api.get('/adsengine/reports/variants/', { params }),
+    funnel: (params) => api.get('/adsengine/reports/funnel/', { params }),
+    cohorts: (params) => api.get('/adsengine/reports/cohorts/', { params }),
+  },
+
+  // ── ENG27/ENG41 — Backlog par campagne (CreativeGenerationBatch) ──
+  backlog: {
+    // File par campagne : runway, diversité de hooks, lots de recombinaisons.
+    list: (params) => api.get('/adsengine/backlog/', { params }),
+    // Approbation par LOT d'une recombinaison.
+    approveLot: (lotId) => api.post(`/adsengine/backlog/lots/${lotId}/approuver/`),
+    // Dépôt d'un asset dans le backlog d'une campagne.
+    dropAsset: (campagneId, formData) =>
+      api.post(`/adsengine/backlog/${campagneId}/assets/`, formData),
   },
 }
 

@@ -269,3 +269,356 @@ export function filterActionLog(actions, { statut, mode } = {}) {
     return true
   })
 }
+
+// ── ENG39 — Expérimentations (bandit) : posteriors lisibles par un humain ──
+// Pourcentage (fraction 0..1 → « 72 % »). L'API donne une PROBABILITÉ (p_best,
+// allocation) ; on ne fait que la formater — « — » si la donnée manque.
+export function formatPercent(value, decimals = 0) {
+  const n = typeof value === 'string' ? Number(value) : value
+  if (n === null || n === undefined || !Number.isFinite(n)) return '—'
+  return `${formatNumber(n * 100, decimals)} %`
+}
+
+// Normalise une expérimentation ENG12 : phases + bras (avec posteriors). Aucun
+// chiffre inventé — on ne fait que défensivement lire ceux de l'API.
+export function normalizeExperiment(raw) {
+  const e = raw && typeof raw === 'object' ? raw : {}
+  const phases = (Array.isArray(e.phases) ? e.phases : []).filter(Boolean).map((p, i) => ({
+    key: p.key ?? String(i),
+    label: p.label || p.nom || p.key || `Phase ${i + 1}`,
+    statut: p.statut || '',
+    statut_display: p.statut_display || p.statut || '',
+  }))
+  const bras = (Array.isArray(e.bras) ? e.bras : (Array.isArray(e.arms) ? e.arms : []))
+    .filter(Boolean).map((b, i) => ({
+      id: b.id ?? i,
+      nom: b.nom || b.name || `Bras ${i + 1}`,
+      p_best: numOrNull(b.p_best ?? b.prob_best),
+      mean: numOrNull(b.mean ?? b.moyenne),
+      ci_low: numOrNull(b.ci_low ?? b.ic_bas),
+      ci_high: numOrNull(b.ci_high ?? b.ic_haut),
+      allocation: numOrNull(b.allocation ?? b.part),
+    }))
+  return {
+    id: e.id,
+    nom: e.nom || e.name || '',
+    statut_display: e.statut_display || e.statut || '',
+    metrique_label: e.metrique_label || e.metrique || 'Métrique',
+    metrique_fmt: e.metrique_fmt || 'mad', // 'mad' | 'ratio' | 'percent'
+    phases,
+    bras,
+  }
+}
+
+// Le bras avec la plus forte probabilité d'être le meilleur (ou null).
+export function bestArm(bras) {
+  const list = (bras || []).filter(b => Number.isFinite(b?.p_best))
+  if (!list.length) return null
+  return list.reduce((best, b) => (b.p_best > best.p_best ? b : best))
+}
+
+// Normalise le DecisionLog ENG12 (« pourquoi le moteur a fait X », FR + chiffres).
+export function normalizeDecisionLog(raw) {
+  if (!raw) return []
+  const list = Array.isArray(raw) ? raw : (raw.results || raw.log || raw.decisions || [])
+  return (list || []).filter(Boolean).map((d, i) => ({
+    id: d.id ?? i,
+    phase: d.phase || '',
+    phase_label: d.phase_label || d.phase || '',
+    quand: d.quand || d.date || d.created_at || '',
+    decision_fr: d.decision_fr || d.raison_fr || d.message || '',
+    chiffres: (d.chiffres && typeof d.chiffres === 'object') ? d.chiffres : {},
+  }))
+}
+
+// Filtre pur du DecisionLog par phase — testable isolément.
+export function filterDecisionLog(log, { phase } = {}) {
+  return (log || []).filter(d => !phase || d.phase === phase)
+}
+
+// ── ENG40 — Plan de vol + préflight ADSENG38 ──
+// Normalise la réponse du préflight (agrégat de TOUTES les portes d'autonomie) :
+// [{ key, label, ok, detail }] + `pret` (toutes vertes) + `manquantes` (labels
+// des portes rouges). Tant qu'une porte est rouge, l'autonomie ne peut PAS
+// s'activer (structurel). On ne fait que LIRE l'état de l'API — jamais l'inventer.
+export function normalizePreflight(raw) {
+  const p = raw && typeof raw === 'object' ? raw : {}
+  const portes = (Array.isArray(p.portes) ? p.portes : (Array.isArray(p.gates) ? p.gates : []))
+    .filter(Boolean).map((g, i) => ({
+      key: g.key ?? String(i),
+      label: g.label || g.nom || g.key || `Porte ${i + 1}`,
+      ok: !!g.ok,
+      detail: g.detail || g.raison || '',
+    }))
+  const pret = typeof p.pret === 'boolean' ? p.pret
+    : (portes.length ? portes.every(g => g.ok) : false)
+  return { pret, portes, manquantes: portes.filter(g => !g.ok).map(g => g.label) }
+}
+
+// Normalise le résultat de validation d'un plan : { ok, raisons[] } — les
+// raisons FR d'un refus viennent telles quelles de l'API (jamais fabriquées).
+export function normalizeValidation(raw) {
+  const v = raw && typeof raw === 'object' ? raw : {}
+  const raisons = (Array.isArray(v.raisons) ? v.raisons : (Array.isArray(v.reasons) ? v.reasons : []))
+    .filter(Boolean).map(String)
+  return { ok: !!v.ok, raisons }
+}
+
+// Normalise un gabarit de plan de vol 6 mois : phases avec durée en mois.
+export function normalizeFlightTemplate(raw) {
+  const t = raw && typeof raw === 'object' ? raw : {}
+  const phases = (Array.isArray(t.phases) ? t.phases : []).filter(Boolean).map((p, i) => ({
+    key: p.key ?? String(i),
+    label: p.label || p.nom || p.key || `Phase ${i + 1}`,
+    duree_mois: numOrNull(p.duree_mois ?? p.mois),
+  }))
+  return { key: t.key, nom: t.nom || t.label || t.key || '', phases }
+}
+
+// ── ENG41 — Gestionnaire de backlog (CreativeGenerationBatch par campagne) ──
+// Borne une fraction dans [0, 1] (largeur de barre / jauge — présentation).
+export function clampRatio(value) {
+  const n = typeof value === 'string' ? Number(value) : value
+  if (!Number.isFinite(n)) return 0
+  return Math.max(0, Math.min(1, n))
+}
+
+// Normalise le backlog par campagne : runway, diversité de hooks, LOTS de
+// recombinaisons (chacun approuvable). On ne fait que lire les nombres de l'API.
+export function normalizeBacklog(raw) {
+  const list = Array.isArray(raw) ? raw : (raw?.results || raw?.campagnes || [])
+  return (list || []).filter(Boolean).map((c, i) => ({
+    id: c.id ?? i,
+    campagne: c.campagne || c.campaign || c.nom || c.name || `Campagne ${i + 1}`,
+    runway_jours: numOrNull(c.runway_jours ?? c.runway_days),
+    runway_cible: numOrNull(c.runway_cible ?? c.runway_target),
+    diversite_hooks: numOrNull(c.diversite_hooks ?? c.hook_diversity),
+    lots: (Array.isArray(c.lots) ? c.lots : (Array.isArray(c.batches) ? c.batches : []))
+      .filter(Boolean).map((l, j) => ({
+        id: l.id ?? j,
+        nom: l.nom || l.name || `Lot ${j + 1}`,
+        statut: l.statut || '',
+        statut_display: l.statut_display || l.statut || 'En attente',
+        nb_hooks: numOrNull(l.nb_hooks ?? l.hooks_count),
+        assets: (Array.isArray(l.assets) ? l.assets : []).filter(Boolean).map((a, k) => ({
+          id: a.id ?? k,
+          designation: a.designation || a.nom || a.name || `Asset ${k + 1}`,
+        })),
+      })),
+  }))
+}
+
+// Ton de la barre de runway selon combien de jours restent vs la cible.
+export function runwayTone(jours, cible) {
+  const j = Number(jours); const c = Number(cible)
+  if (!Number.isFinite(j) || !Number.isFinite(c) || c <= 0) {
+    return { color: '#94a3b8', ratio: 0 }
+  }
+  const ratio = clampRatio(j / c)
+  if (j < c * 0.5) return { color: '#dc2626', ratio } // critique
+  if (j < c) return { color: '#d97706', ratio } // à surveiller
+  return { color: '#16a34a', ratio } // confortable
+}
+
+// ── ENG20/ENG42 — Pacing (enveloppe / burn / projection / état) ──
+// Normalise la réponse de pacing : montants + état + détail (lignes de dépense).
+export function normalizePacing(raw) {
+  const p = raw && typeof raw === 'object' ? raw : {}
+  return {
+    enveloppe_mad: numOrNull(p.enveloppe_mad ?? p.envelope_mad),
+    depense_mad: numOrNull(p.depense_mad ?? p.burn_mad ?? p.spend_mad),
+    projection_mad: numOrNull(p.projection_mad ?? p.projected_mad),
+    jours_restants: numOrNull(p.jours_restants ?? p.days_left),
+    etat: p.etat || p.state || '',
+    etat_display: p.etat_display || p.state_display || p.etat || '—',
+    lignes: (Array.isArray(p.lignes) ? p.lignes : (Array.isArray(p.detail) ? p.detail : []))
+      .filter(Boolean).map((l, i) => ({
+        id: l.id ?? i,
+        label: l.label || l.campagne || l.jour || `Ligne ${i + 1}`,
+        montant_mad: numOrNull(l.montant_mad ?? l.montant ?? l.amount_mad),
+      })),
+  }
+}
+
+// Ton de l'état de pacing (déterministe).
+export function pacingStateTone(etat) {
+  const s = String(etat || '').toLowerCase()
+  if (s.includes('plafond') || s.includes('depass') || s.includes('sur_rythme')) {
+    return { bg: '#fee2e2', color: '#991b1b' }
+  }
+  if (s.includes('sous_rythme') || s.includes('retard')) {
+    return { bg: '#fef9c3', color: '#854d0e' }
+  }
+  return { bg: '#dcfce7', color: '#166534' } // dans le rythme
+}
+
+// ── ENG31/ENG42 — Réconciliation Meta-vs-ERP ──
+// Normalise les lignes de réconciliation : écart Meta↔ERP + statut. On ne fait
+// que LIRE l'écart fourni par l'API — jamais le recalculer/inventer.
+export function normalizeReconciliation(raw) {
+  const list = Array.isArray(raw) ? raw : (raw?.results || raw?.lignes || [])
+  return (list || []).filter(Boolean).map((r, i) => ({
+    id: r.id ?? i,
+    campagne: r.campagne || r.campaign || r.nom || `Campagne ${i + 1}`,
+    meta_mad: numOrNull(r.meta_mad),
+    erp_mad: numOrNull(r.erp_mad),
+    ecart_mad: numOrNull(r.ecart_mad ?? r.gap_mad),
+    ecart_pct: numOrNull(r.ecart_pct ?? r.gap_pct),
+    statut: r.statut || r.status || '',
+    statut_display: r.statut_display || r.statut || '—',
+    lignes: (Array.isArray(r.lignes) ? r.lignes : (Array.isArray(r.detail) ? r.detail : []))
+      .filter(Boolean).map((l, j) => ({
+        id: l.id ?? j,
+        label: l.label || l.jour || l.date || `Ligne ${j + 1}`,
+        meta_mad: numOrNull(l.meta_mad),
+        erp_mad: numOrNull(l.erp_mad),
+      })),
+  }))
+}
+
+// Ton du statut de réconciliation (ok / écart / alerte).
+export function reconStatusTone(statut) {
+  const s = String(statut || '').toLowerCase()
+  if (s.includes('alerte') || s.includes('critique')) return { bg: '#fee2e2', color: '#991b1b' }
+  if (s.includes('ecart') || s.includes('écart') || s.includes('gap')) return { bg: '#fef9c3', color: '#854d0e' }
+  return { bg: '#dcfce7', color: '#166534' } // ok / réconcilié
+}
+
+// ── ENG14/ENG43 — Règles (gabarits) & dry-run ──
+// Normalise un gabarit de règle (picker FR — jamais un builder libre) :
+// condition FR → action FR, en clair.
+export function normalizeRuleTemplate(raw) {
+  const t = raw && typeof raw === 'object' ? raw : {}
+  return {
+    key: t.key ?? t.id,
+    nom: t.nom || t.name || t.label || 'Règle',
+    description: t.description || t.desc || '',
+    condition_fr: t.condition_fr || t.condition || '',
+    action_fr: t.action_fr || t.action || '',
+  }
+}
+
+// Normalise le résultat d'un dry-run : résumé FR + objets touchés avec l'effet
+// FR de la règle sur chacun (jamais appliqué — juste simulé/visualisé).
+export function normalizeDryRun(raw) {
+  const d = raw && typeof raw === 'object' ? raw : {}
+  return {
+    resume_fr: d.resume_fr || d.summary_fr || '',
+    objets_touches: (Array.isArray(d.objets_touches) ? d.objets_touches
+      : (Array.isArray(d.affected) ? d.affected : [])).filter(Boolean).map((o, i) => ({
+        id: o.id ?? i,
+        nom: o.nom || o.name || `Objet ${i + 1}`,
+        effet_fr: o.effet_fr || o.effect_fr || o.effet || '',
+      })),
+  }
+}
+
+// ── ENG16/ENG43 — Anomalies (flux) avec sévérités ──
+// Réutilise `alertTone` (vocabulaire critique/alerte/info commun aux alertes).
+export function normalizeAnomalies(raw) {
+  const list = Array.isArray(raw) ? raw : (raw?.results || raw?.anomalies || [])
+  return (list || []).filter(Boolean).map((a, i) => ({
+    id: a.id ?? i,
+    titre: a.titre || a.title || 'Anomalie',
+    severite: a.severite || a.severity || a.niveau || 'info',
+    message: a.message || a.detail || '',
+    quand: a.quand || a.date || a.created_at || '',
+  }))
+}
+
+// ── ENG36/ENG44 — Rapport de simulation (rejeu visuel) ──
+// Normalise un rapport de simulation ENG36 : scénarios (avec verdict),
+// allocations dans le temps (budget par bras à chaque étape), décisions
+// annotées (FR + chiffres). L'outil de confiance fondateur AVANT tout dirham
+// réel — on ne fait que LIRE ce que la simulation a produit.
+export function normalizeSimReport(raw) {
+  const s = raw && typeof raw === 'object' ? raw : {}
+  return {
+    id: s.id,
+    nom: s.nom || s.name || '',
+    cree_le: s.cree_le || s.created_at || '',
+    scenarios: (Array.isArray(s.scenarios) ? s.scenarios : []).filter(Boolean).map((sc, i) => ({
+      key: sc.key ?? String(i),
+      nom: sc.nom || sc.name || `Scénario ${i + 1}`,
+      verdict: sc.verdict || '',
+      verdict_display: sc.verdict_display || sc.verdict || '—',
+      resume_fr: sc.resume_fr || sc.summary_fr || '',
+    })),
+    allocations: (Array.isArray(s.allocations) ? s.allocations : []).filter(Boolean).map((a, i) => ({
+      etape: a.etape ?? (i + 1),
+      label: a.label || a.date || a.jour || `Étape ${a.etape ?? (i + 1)}`,
+      bras: (Array.isArray(a.bras) ? a.bras : (Array.isArray(a.arms) ? a.arms : []))
+        .filter(Boolean).map((b, j) => ({
+          nom: b.nom || b.name || `Bras ${j + 1}`,
+          budget_mad: numOrNull(b.budget_mad ?? b.budget ?? b.montant_mad),
+        })),
+    })),
+    decisions: (Array.isArray(s.decisions) ? s.decisions : []).filter(Boolean).map((d, i) => ({
+      id: d.id ?? i,
+      etape: d.etape ?? null,
+      label: d.label || d.date || d.jour || (d.etape != null ? `Étape ${d.etape}` : ''),
+      decision_fr: d.decision_fr || d.raison_fr || d.message || '',
+      chiffres: (d.chiffres && typeof d.chiffres === 'object') ? d.chiffres : {},
+    })),
+  }
+}
+
+// Ton du verdict d'un scénario de simulation (gagnant / perdant / neutre).
+export function verdictTone(verdict) {
+  const v = String(verdict || '').toLowerCase()
+  if (v.includes('gagn') || v.includes('positif') || v.includes('succes') || v.includes('succès') || v.includes('vert')) {
+    return { bg: '#dcfce7', color: '#166534' }
+  }
+  if (v.includes('perd') || v.includes('negat') || v.includes('échec') || v.includes('echec') || v.includes('rouge')) {
+    return { bg: '#fee2e2', color: '#991b1b' }
+  }
+  return { bg: '#f1f5f9', color: '#475569' }
+}
+
+// ── ENG33/ENG45 — Reporting (drill-downs) ──
+// Normalise les variantes (table de reporting) — chiffres bruts de l'API.
+export function normalizeVariants(raw) {
+  const list = Array.isArray(raw) ? raw : (raw?.results || raw?.variantes || [])
+  return (list || []).filter(Boolean).map((v, i) => ({
+    id: v.id ?? i,
+    nom: v.nom || v.name || v.designation || `Variante ${i + 1}`,
+    impressions: numOrNull(v.impressions),
+    reponses_whatsapp: numOrNull(v.reponses_whatsapp ?? v.whatsapp_replies),
+    cout_mad: numOrNull(v.cout_mad ?? v.cost_mad),
+    cout_par_reponse: numOrNull(v.cout_par_reponse ?? v.cost_per_reply),
+  }))
+}
+
+// Normalise l'entonnoir campagne : étapes ordonnées avec leur valeur.
+export function normalizeFunnel(raw) {
+  const f = raw && typeof raw === 'object' ? raw : {}
+  const etapes = (Array.isArray(f.etapes) ? f.etapes : (Array.isArray(f.steps) ? f.steps : (Array.isArray(raw) ? raw : [])))
+  return (etapes || []).filter(Boolean).map((e, i) => ({
+    key: e.key ?? String(i),
+    label: e.label || e.nom || e.key || `Étape ${i + 1}`,
+    valeur: numOrNull(e.valeur ?? e.value ?? e.count),
+  }))
+}
+
+// Normalise les cohortes (avec lag jusqu'à la signature).
+export function normalizeCohorts(raw) {
+  const list = Array.isArray(raw) ? raw : (raw?.results || raw?.cohortes || [])
+  return (list || []).filter(Boolean).map((c, i) => ({
+    id: c.id ?? i,
+    cohorte: c.cohorte || c.cohort || c.label || `Cohorte ${i + 1}`,
+    taille: numOrNull(c.taille ?? c.size),
+    lag_jours_median: numOrNull(c.lag_jours_median ?? c.median_lag_days ?? c.lag),
+    signatures: numOrNull(c.signatures),
+  }))
+}
+
+// Construit un CSV depuis des en-têtes + lignes (échappement RFC-4180 simple).
+export function toCsv(headers, rows) {
+  const esc = (v) => {
+    const s = v == null ? '' : String(v)
+    return /[",\n;]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+  }
+  const lines = [(headers || []).map(esc).join(',')]
+  for (const r of (rows || [])) lines.push((r || []).map(esc).join(','))
+  return lines.join('\n')
+}
