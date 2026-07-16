@@ -350,6 +350,34 @@ the web plan » (édite UNIQUEMENT apps/web) NE PEUT PAS construire — elles re
 hand-roller un substitut backend dans apps/web. WJ117/118/119/120/121/125 sont web-only
 (WJ120 @after WJ119 est intra-web).
 
+**SUIVI (revue adversariale Fable, 2026-07-16 — findings non-bloquants de la passe WJ125).**
+La passe Fable a bloqué et fait corriger la fuite du compteur de panneaux 3D (WJ125 finding 1,
+corrigée dans ce batch). Les findings restants sont notés ici comme tâches de suivi :
+
+- [ ] WJ127 — **Repli teaser honnête pour les cas SANS estimation (finding 2, MEDIUM).** Les
+  cartes d'erreur/edge (`mt-estimate-toolarge`, `-toolarge-pro`, callback agricole indispo) vivent
+  DANS `#mt-doc` désormais masqué : un visiteur industriel à 2 000 000 MAD ne voit plus le message
+  honnête « à cette échelle, étude dédiée » — seulement le teaser générique « Recevez votre étude
+  complète… ». Parité a11y inversée (le lecteur d'écran reçoit GATED_ANNOUNCE, le voyant non).
+  Fix : une variante figure-free du hook teaser pour ces chemins (« votre projet relève d'une étude
+  dédiée — un conseiller vous rappelle »), FR/EN/AR, sans divulguer de chiffre. (@lane: web-journey)
+  (@model: sonnet)
+- [ ] WJ128 — **Robustesse prix/capacité du simulateur batterie (findings 3+4, LOW).** Dans
+  `proposition/[token].astro`/`batterySim.ts` : (a) si la ligne batterie de l'offre matche le
+  mot-clé mais ne porte ni réf ni « N kWh » lisible, `resolveOfferBattery` retombe à 5 kWh tout en
+  affichant le prix réel — dissocier « capacité connue » de « prix réel » (afficher « sur étude » si
+  la capacité n'est pas sûre) ; (b) `BATTERY_KEYWORDS /batter…/` prend la PREMIÈRE ligne qui matche —
+  une ligne accessoire « câble batterie » listée avant le pack gagnerait : préférer la ligne au plus
+  gros montant/capacité ; (c) si l'offre quote > 3 unités, le slider (max 3) ne peut jamais afficher
+  le prix réel (n === offeredUnits jamais atteint) — élargir le max au nombre offert ou afficher le
+  vrai total. (@lane: web-proposal) (@model: sonnet)
+- [ ] WJ129 — **Durcissements mineurs (findings 5+6, NITS).** `batterySim.ts` : `clamp01` renvoie
+  `hi` (1.0, borne la plus optimiste) sur entrée non-finie — le `??` ne rattrape que null/undefined ;
+  utiliser le constant par défaut documenté sur NaN (inatteignable des appelants actuels, mais piège).
+  Et documenter le décalage sémantique télémétrie : en chemin gaté, `estimation/viewed` se déclenche
+  bien que rien de chiffré ne soit rendu, et `contact/reached` au même instant (discontinuité de
+  conversion dans les dashboards funnel). (@lane: web-proposal) (@model: haiku)
+
 ---
 
 ### WJ110–WJ116 — QUOTE JOURNEY ROUND 6: verified capture/estimate defects + proposal conversion layer (2-round adversarial audit + Fable design, 2026-07-10)
@@ -1813,6 +1841,12 @@ each for Lydec/Redal/Amendis).
 - **WJ120 (web-proposal):** nouveau bloc « et avec N batteries ? » sur /proposition/<token> (résidentiel + commercial uniquement — jamais agricole/pompage). Moteur horaire glouton PUR et testable (`lib/batterySim.ts`) : boucle 24 h jouée DEUX fois en reportant le SoC (résultats jour 2 = régime établi, évite le biais du SoC initial vide) sur courbe conso (WJ119) × courbe solaire ; direct = min(prod, conso), surplus → batterie (η one-way 0,96 ≈ round-trip 0,92 LFP, DoD 0,90), déficit ← batterie puis réseau. Capacité par unité STRICTEMENT du catalogue (BAT-DEY-5 = 5 kWh / BAT-DEY-10 = 10 kWh — commentaire d'avertissement contre la confusion avec BATTERY_KWH_PER_DAY=6, une grandeur différente). Slider 0/1/2/3 → recalcul live sans re-fetch : autoconsommation % ET autosuffisance % (deux libellés distincts, formules commentées), split kWh direct/batterie/réseau en aire empilée SVG (style SolarEdge, aucune lib), heures de secours sur CHARGES ESSENTIELLES (frigo+éclairage+box ≈200 W, ESTIMATION). Prix : ligne batterie réelle du devis si N correspond à l'offre, sinon « sur étude » — jamais un prix inventé. Tests moteur (N=0, monotonie autosuffisance↑/réseau↓, conservation d'énergie, secours ∝ N, jour2 ≠ jour1-vide).
 - **WJ125 (web-journey):** RÈGLE FONDATEUR anti-concurrent appliquée — le document d'estimation détaillé ne se rend PLUS pendant la saisie publique. `computeEstimate` calcule toujours `estimateShown` en silence (envoyé au CRM via le webhook, « le commercial voit tout ») puis un drapeau `PUBLIC_ESTIMATE_GATED` fait un retour anticipé AVANT toute écriture de chiffre dans le DOM visible : `showEstimateTeaser` masque `#mt-doc`, `mt-nearest-install`, `mt-cost-of-waiting` et le bouton Imprimer, et révèle une carte TEASER verrouillée (aperçu décoratif sans chiffre + une accroche grossière mode-aware + « Recevez votre étude complète et personnalisée ») → le formulaire contact. Annonce lecteur d'écran figure-free (`GATED_ANNOUNCE`, parité a11y). Le document complet + Imprimer vivent désormais UNIQUEMENT sur /proposition/<token>. FR/EN/AR. Tests : `perceivedPerfWJ34` adapté (nouvelle réalité gatée documentée, rien affaibli), calcul/API (`captureWJ`/`wj111`/`wj112`) intacts et verts, nouveau `teaserGateWJ125` (aucun token chiffré dans le teaser sur les 3 locales, estimateShown atteint toujours le payload).
 - **WJ122/WJ123 :** `[BLOCKED: attend QX51]`, **WJ124 :** `[BLOCKED: attend QX48]`, **WJ126 :** `[BLOCKED: attend QX49]` — prérequis backend PLAN2 non présents sur `main` (garde de composition : jamais de substitut backend hand-rollé dans apps/web).
+- **Revue adversariale Fable (1 passe, autorisée — batch touchant la règle fondateur anti-fuite) :**
+  a bloqué et fait corriger un TROU DE FUITE réel que la revue Opus et l'agent WJ125 avaient tous deux
+  manqué — la scène 3D `#mt-panels3d` rendait `ceil(kWc×1000/720)` panneaux pendant le parcours public
+  gaté (un concurrent les compte → kWc au sous-kWc près ; « nb panneaux » est une valeur interdite par
+  la règle). Corrigé au point de contrôle unique (`updatePanels3dVisibility` force le masquage sous gate,
+  3 locales) + test verrou. Findings restants (non-bloquants) → WJ127-WJ129 ci-dessus.
 - **À VÉRIFIER PAR LE FONDATEUR (WJ125, hors critères Done) :** le deeplink WhatsApp (message SORTANT du visiteur vers Taqinor) préremplit encore les 2 libellés kWc + économies/an. Les zones DOM énumérées par la règle (#mt-doc, mt-nearest-install, mt-cost-of-waiting) sont toutes gatées ; le préremplissage WhatsApp est un canal de handoff (règle web « ne pas toucher au flux lead sans demander ») — laissé intact, `estimateShown` atteignant déjà le CRM par le webhook. Dire si tu veux aussi retirer ces 2 libellés du préremplissage WhatsApp public.
 
 ### 2026-07-11 — W187 real brand logos sourced from the web (founder: "search yourself") — 6/7
