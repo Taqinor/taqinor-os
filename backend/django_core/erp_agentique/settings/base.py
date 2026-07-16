@@ -172,6 +172,10 @@ INSTALLED_APPS = [
     # propose→approuve→applique, création TOUJOURS PAUSED). App satellite
     # multi-société ; tout no-ope sans token/clé configuré.
     'apps.adsengine',
+    # Groupe NTIDE — Boîte à idées interne, campagnes d'innovation ciblées et
+    # canal de feedback produit in-app. Additif, company-scopé ; le chatter
+    # réutilise records.Activity (ARC8), aucun modèle *Activity maison.
+    'apps.innovation',
 ]
 
 MIDDLEWARE = [
