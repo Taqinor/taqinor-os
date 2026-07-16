@@ -1539,3 +1539,123 @@ def reconciliation_lead_rows(company, *, date_start=None, date_end=None):
             'date': lead.date_creation.date() if lead.date_creation else None,
         })
     return rows
+
+
+# ── ADSENG32 — Émetteur CAPI CRM-stage : contexte lead borné société ──────────
+
+# Valeur d'``external_system`` d'un lead issu d'un formulaire Meta Lead Ads : son
+# ``external_id`` EST alors le leadgen_id Meta (clé de match préférée, cf.
+# services._META_LEAD_ADS_SYSTEM). Constante locale pour éviter d'importer les
+# services CRM sur ce chemin de lecture.
+_META_LEAD_ADS_SYSTEM = 'meta_lead_ads'
+
+
+def pipeline_stage_order():
+    """ADSENG32 — Ordre canonique des étapes + repères SIGNED/COLD, depuis
+    ``STAGES.py`` (jamais codés en dur côté adsengine — règle #2). Point d'entrée
+    cross-app pour que ``apps.adsengine`` détecte une transition AVANT (rang qui
+    augmente) sans importer ``apps.crm.models`` ni ``STAGES.py`` directement.
+
+    Renvoie ``{'stages': [...], 'funnel': [...], 'signed': str, 'cold': str}``
+    où ``funnel`` = les étapes AVANT-ordonnées hors COLD (« Perdu » n'est pas une
+    étape)."""
+    from . import stages as stage_mod
+    order = list(stage_mod.STAGES)
+    return {
+        'stages': order,
+        'funnel': [k for k in order if k != stage_mod.COLD],
+        'signed': stage_mod.SIGNED,
+        'cold': stage_mod.COLD,
+    }
+
+
+def lead_current_stage(company, lead_id):
+    """ADSENG32 — Étape COURANTE (clé STAGES.py) d'un lead borné société, ou
+    None. Point d'entrée cross-app LECTURE SEULE : appelé en ``pre_save`` par
+    l'émetteur CAPI CRM-stage pour capturer l'ANCIENNE étape (la base porte
+    encore l'ancienne valeur) et n'émettre que sur une VRAIE transition."""
+    if not lead_id:
+        return None
+    from .models import Lead
+    return (Lead.objects
+            .filter(pk=lead_id, company=company)
+            .values_list('stage', flat=True)
+            .first())
+
+
+def lead_capi_identifiers(company, lead_id):
+    """ADSENG32 — Identifiants de MATCH d'un lead borné société pour le CAPI
+    CRM-stage (Conversion Leads), ou None si hors société. Point d'entrée cross-
+    app LECTURE SEULE (jamais un import de ``apps.crm.models`` côté adsengine).
+
+    Renvoie ``{'lead_id', 'leadgen_id', 'phone', 'email', 'fbclid',
+    'is_meta_origin'}`` : ``leadgen_id`` = ``external_id`` quand
+    ``external_system == 'meta_lead_ads'`` (clé de match Meta préférée) ; sinon
+    ''. ``phone``/``email`` sont bruts (le HACHAGE SHA-256 se fait côté émetteur,
+    jamais ici — on n'expose pas de PII hachée en dur). ``is_meta_origin`` =
+    lead issu d'un canal/source Meta (éligible à l'intégration). Ne renvoie
+    JAMAIS de donnée interne (aucun prix_achat n'existe côté lead)."""
+    if not lead_id:
+        return None
+    from .models import Lead
+    lead = (Lead.objects
+            .filter(pk=lead_id, company=company)
+            .only('id', 'external_system', 'external_id', 'telephone', 'email',
+                  'fbclid', 'canal', 'source')
+            .first())
+    if lead is None:
+        return None
+    leadgen_id = ''
+    if lead.external_system == _META_LEAD_ADS_SYSTEM and lead.external_id:
+        leadgen_id = str(lead.external_id)
+    meta_canaux = {Lead.Canal.META_ADS, Lead.Canal.WHATSAPP_CTWA}
+    is_meta_origin = (
+        lead.canal in meta_canaux
+        or lead.source == _META_LEAD_ADS_SYSTEM
+        or bool(leadgen_id) or bool(lead.fbclid))
+    return {
+        'lead_id': lead.id,
+        'leadgen_id': leadgen_id,
+        'phone': lead.telephone or '',
+        'email': lead.email or '',
+        'fbclid': lead.fbclid or '',
+        'is_meta_origin': is_meta_origin,
+    }
+
+
+def meta_lead_match_coverage(company):
+    """ADSENG32 — Couverture de MATCH des leads Meta de la société (moniteur EMQ
+    LOCAL, sans appel réseau). Point d'entrée cross-app LECTURE SEULE : donne au
+    moniteur EMQ d'``apps.adsengine`` une estimation de la qualité de match
+    ATTENDUE (quelle proportion des leads Meta porte un identifiant fort :
+    leadgen_id ou téléphone) sans exposer les modèles crm.
+
+    Le score EMQ réel (0-10) exige l'API Dataset Quality de Meta (séparée) ; ce
+    proxy local rend « visible » la qualité de match côté ERP en attendant.
+    Renvoie ``{'meta_leads', 'with_leadgen_id', 'with_phone', 'strong_match'}``."""
+    from .models import Lead
+    meta_canaux = {Lead.Canal.META_ADS, Lead.Canal.WHATSAPP_CTWA}
+    qs = Lead.objects.filter(company=company, is_archived=False).only(
+        'external_system', 'external_id', 'telephone', 'canal', 'source')
+    meta_leads = with_leadgen = with_phone = strong = 0
+    for lead in qs:
+        is_meta = (lead.canal in meta_canaux
+                   or lead.source == _META_LEAD_ADS_SYSTEM)
+        if not is_meta:
+            continue
+        meta_leads += 1
+        has_leadgen = (lead.external_system == _META_LEAD_ADS_SYSTEM
+                       and bool(lead.external_id))
+        has_phone = bool(lead.telephone)
+        if has_leadgen:
+            with_leadgen += 1
+        if has_phone:
+            with_phone += 1
+        if has_leadgen or has_phone:
+            strong += 1
+    return {
+        'meta_leads': meta_leads,
+        'with_leadgen_id': with_leadgen,
+        'with_phone': with_phone,
+        'strong_match': strong,
+    }

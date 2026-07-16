@@ -14,3 +14,11 @@ class AdsengineConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'apps.adsengine'
     verbose_name = 'Moteur publicitaire (Meta Ads)'
+
+    def ready(self):
+        # ADSENG32 — câble l'émetteur CAPI CRM-stage (Conversion Leads), SÉPARÉ
+        # de l'émetteur signature QJ9 : un récepteur pre_save/post_save sur
+        # crm.Lead (sender résolu via apps.get_model, jamais un import des
+        # modèles crm) émet un événement sur chaque transition d'étape STAGES.py.
+        from . import capi_crm
+        capi_crm.connect()
