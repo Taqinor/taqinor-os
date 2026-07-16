@@ -2000,6 +2000,11 @@ class ListePrix(models.Model):
         related_name='listes_prix')
     nom = models.CharField(max_length=150)
     devise = models.CharField(max_length=10, default='MAD')
+    # NTCPQ4 — segmentation multi-segment : choix libre référentiel (ex.
+    # Résidentiel / Industriel / Revendeur). Vide = liste par défaut (aucun
+    # segment ciblé). La résolution de prix (services.prix_applicable) retient
+    # la liste dont le segment correspond au client, hors listes expirées.
+    segment_client = models.CharField(max_length=100, blank=True, default='')
     date_debut = models.DateField(null=True, blank=True)
     date_fin = models.DateField(null=True, blank=True)
     archived = models.BooleanField(default=False)

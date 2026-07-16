@@ -4185,6 +4185,35 @@ def _appliquer_regle(regle, prix_base):
     return _round2(prix_base)  # pragma: no cover - défensif, type inconnu
 
 
+def _resolve_liste_prix(client):
+    """NTCPQ4 — Sélectionne la liste de prix applicable à un client.
+
+    Priorité : liste explicitement assignée au client (``client.liste_prix``)
+    si elle est active > liste de la société correspondant au SEGMENT du client
+    (la plus récente active) > aucune. Les listes hors fenêtre de validité ou
+    archivées (``est_active`` False) ne sont JAMAIS retenues, même si leur
+    segment correspond au client (NTCPQ4). Renvoie une ``ListePrix`` active ou
+    ``None``."""
+    if client is None:
+        return None
+    liste = getattr(client, 'liste_prix', None)
+    if liste is not None and liste.est_active:
+        return liste
+    # Segment du client : champ dédié s'il existe, sinon type de client.
+    segment = (getattr(client, 'segment_client', '')
+               or getattr(client, 'type_client', '') or '')
+    company_id = getattr(client, 'company_id', None)
+    if segment and company_id is not None:
+        from apps.ventes.models import ListePrix
+        candidates = ListePrix.objects.filter(
+            company_id=company_id, segment_client=segment, archived=False,
+        ).order_by('-created_at')
+        for candidate in candidates:
+            if candidate.est_active:
+                return candidate
+    return None
+
+
 def prix_applicable(*, produit, client=None, quantite=1):
     """XSAL1/XSAL2 — Prix unitaire résolu pour un produit/client/quantité.
 
@@ -4203,8 +4232,8 @@ def prix_applicable(*, produit, client=None, quantite=1):
     quantite = Decimal(str(quantite or 1))
     prix_standard = produit.prix_vente
 
-    liste = getattr(client, 'liste_prix', None) if client is not None else None
-    if liste is None or not liste.est_active:
+    liste = _resolve_liste_prix(client)
+    if liste is None:
         return {'prix': prix_standard, 'source': 'standard', 'liste_nom': None}
 
     regles = list(liste.regles.filter(actif=True).select_related('produit'))
