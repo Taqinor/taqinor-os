@@ -12,6 +12,7 @@ from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from authentication.permissions import HasPermissionOrLegacy
 from core.permissions import _user_has_or_legacy
 from core.viewsets import CompanyScopedModelViewSet
 
@@ -203,7 +204,8 @@ class CreativeAssetViewSet(AdsengineViewSet):
     queryset = CreativeAsset.objects.all()
     serializer_class = CreativeAssetSerializer
 
-    @action(detail=False, methods=['post'])
+    @action(detail=False, methods=['post'],
+            permission_classes=[HasPermissionOrLegacy('adsengine_manage')])
     def upload(self, request):
         """Téléverse un fichier statique (image) dans MinIO et crée l'asset en
         attente de check-list policy (``policy_stamp`` vide → non validé).
@@ -230,14 +232,16 @@ class CreativeAssetViewSet(AdsengineViewSet):
         )
         return Response(self.get_serializer(asset).data, status=201)
 
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=['get'],
+            permission_classes=[HasPermissionOrLegacy('adsengine_view')])
     def checklist(self, request):
         """ENG16 — Renvoie la check-list policy à confirmer par l'humain."""
         from .policy import build_checklist
         company = getattr(request.user, 'company', None)
         return Response(build_checklist(company))
 
-    @action(detail=True, methods=['post'], url_path='policy-check')
+    @action(detail=True, methods=['post'], url_path='policy-check',
+            permission_classes=[HasPermissionOrLegacy('adsengine_manage')])
     def policy_check(self, request, pk=None):
         """ENG16 — Enregistre la confirmation HUMAINE règle par règle (le système
         ne juge jamais seul). ``passed`` ne devient vrai que si toutes les règles
@@ -314,7 +318,8 @@ class RulePolicyViewSet(AdsengineViewSet):
     # ADSENG14 — catalogue FIXE (lecture) : le front rend la liste des templates
     # (style STAGES.py) sans que le fondateur puisse en inventer un (pas de
     # builder libre). GET → permission de LECTURE (adsengine_view) héritée.
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=['get'],
+            permission_classes=[HasPermissionOrLegacy('adsengine_view')])
     def catalogue(self, request):
         """Liste des templates du catalogue fixe (clé, libellé, sévérité,
         cadence, action par défaut, params éditables + défauts). Aucune donnée
@@ -339,7 +344,8 @@ class RulePolicyViewSet(AdsengineViewSet):
     # ADSENG14 — seed du catalogue fixe pour la société (idempotent). Chaque
     # règle naît OFF + dry-run (défaut sûr). POST → permission d'ÉCRITURE
     # (adsengine_manage) héritée du mapping méthode→permission.
-    @action(detail=False, methods=['post'])
+    @action(detail=False, methods=['post'],
+            permission_classes=[HasPermissionOrLegacy('adsengine_manage')])
     def seed(self, request):
         """Seed idempotent des ``RulePolicy`` du catalogue pour la société de
         l'appelant — jamais un doublon (get_or_create sur (company, template)).
@@ -379,7 +385,8 @@ class CreativeGenerationBatchViewSet(AdsengineViewSet):
     queryset = CreativeGenerationBatch.objects.all()
     serializer_class = CreativeGenerationBatchSerializer
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=['post'],
+            permission_classes=[HasPermissionOrLegacy('adsengine_manage')])
     def approve(self, request, pk=None):
         """Approuve le LOT ENTIER (acteur + horodatage posés côté serveur)."""
         from django.utils import timezone
@@ -390,7 +397,8 @@ class CreativeGenerationBatchViewSet(AdsengineViewSet):
         batch.save(update_fields=['status', 'approved_by', 'approved_at'])
         return Response(self.get_serializer(batch).data)
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=['post'],
+            permission_classes=[HasPermissionOrLegacy('adsengine_manage')])
     def reject(self, request, pk=None):
         """Rejette le LOT ENTIER."""
         from django.utils import timezone
