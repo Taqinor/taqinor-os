@@ -11,8 +11,16 @@ import { makeResourceFactory } from './resource'
 const crud = makeResourceFactory(api, '/immobilier')
 
 const immobilierApi = {
-  sites: crud('sites'),
-  batiments: crud('batiments'),
+  sites: {
+    ...crud('sites'),
+    rentabilite: (id, params) =>
+      api.get(`/immobilier/sites/${id}/rentabilite/`, { params }),
+  },
+  batiments: {
+    ...crud('batiments'),
+    rentabilite: (id, params) =>
+      api.get(`/immobilier/batiments/${id}/rentabilite/`, { params }),
+  },
   niveaux: crud('niveaux'),
   locaux: crud('locaux'),
   locataires: {

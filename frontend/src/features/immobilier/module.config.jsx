@@ -16,6 +16,7 @@ import { Building2 } from 'lucide-react'
    ========================================================================== */
 
 const PatrimoineTree = lazy(() => import('../../pages/immobilier/PatrimoineTree'))
+const RentabiliteActif = lazy(() => import('../../pages/immobilier/RentabiliteActif'))
 
 const ROLES = ['responsable', 'admin']
 
@@ -31,12 +32,22 @@ const config = {
         icon: <Building2 size={17} strokeWidth={1.75} aria-hidden="true" />,
         roles: ROLES,
       },
+      {
+        to: '/immobilier/rentabilite',
+        label: 'Rentabilité',
+        icon: <Building2 size={17} strokeWidth={1.75} aria-hidden="true" />,
+        roles: ROLES,
+      },
     ],
   },
-  titles: [['/immobilier', 'Immobilier']],
+  titles: [
+    ['/immobilier/rentabilite', 'Rentabilité'],
+    ['/immobilier', 'Immobilier'],
+  ],
   sectionLabels: { immobilier: 'Immobilier' },
   routes: [
     { path: '/immobilier', component: PatrimoineTree, roles: ROLES },
+    { path: '/immobilier/rentabilite', component: RentabiliteActif, roles: ROLES },
   ],
 }
 

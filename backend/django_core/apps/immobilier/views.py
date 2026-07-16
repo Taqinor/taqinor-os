@@ -33,6 +33,17 @@ class SiteViewSet(_ImmobilierBaseViewSet):
     search_fields = ['nom', 'ville']
     ordering_fields = ['nom', 'date_creation']
 
+    @action(detail=True, methods=['get'])
+    def rentabilite(self, request, pk=None):
+        """NTPRO9 — Rentabilité agrégée du site (revenus - charges - travaux)."""
+        from . import selectors
+
+        site = self.get_object()
+        data = selectors.rentabilite_actif(
+            request.user.company, site_id=site.id,
+            periode=request.query_params.get('periode'))
+        return Response(data)
+
 
 class BatimentViewSet(_ImmobilierBaseViewSet):
     queryset = Batiment.objects.select_related('site').all()
@@ -47,6 +58,17 @@ class BatimentViewSet(_ImmobilierBaseViewSet):
         if site_id:
             qs = qs.filter(site_id=site_id)
         return qs
+
+    @action(detail=True, methods=['get'])
+    def rentabilite(self, request, pk=None):
+        """NTPRO9 — Rentabilité agrégée du bâtiment (revenus - charges - travaux)."""
+        from . import selectors
+
+        batiment = self.get_object()
+        data = selectors.rentabilite_actif(
+            request.user.company, batiment_id=batiment.id,
+            periode=request.query_params.get('periode'))
+        return Response(data)
 
 
 class NiveauViewSet(_ImmobilierBaseViewSet):
