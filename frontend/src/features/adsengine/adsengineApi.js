@@ -45,6 +45,13 @@ const adsengineApi = {
     // Drill-down : la liste des leads réels derrière un chiffre (traçabilité).
     leads: (metric, params) =>
       api.get('/adsengine/metrics/leads/', { params: { metric, ...params } }),
+    // ENG20/ENG42 — Pacing : enveloppe, burn, projection, état + détail.
+    pacing: (params) => api.get('/adsengine/metrics/pacing/', { params }),
+  },
+
+  // ── ENG31/ENG42 — Réconciliation Meta-vs-ERP (écart + statut) ──
+  reconciliation: {
+    list: (params) => api.get('/adsengine/reconciliation/', { params }),
   },
 
   // ── ENG13 — Alertes (bandeau dashboard, WhatsApp-first) ──

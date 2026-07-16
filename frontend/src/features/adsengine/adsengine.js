@@ -419,3 +419,67 @@ export function runwayTone(jours, cible) {
   if (j < c) return { color: '#d97706', ratio } // à surveiller
   return { color: '#16a34a', ratio } // confortable
 }
+
+// ── ENG20/ENG42 — Pacing (enveloppe / burn / projection / état) ──
+// Normalise la réponse de pacing : montants + état + détail (lignes de dépense).
+export function normalizePacing(raw) {
+  const p = raw && typeof raw === 'object' ? raw : {}
+  return {
+    enveloppe_mad: numOrNull(p.enveloppe_mad ?? p.envelope_mad),
+    depense_mad: numOrNull(p.depense_mad ?? p.burn_mad ?? p.spend_mad),
+    projection_mad: numOrNull(p.projection_mad ?? p.projected_mad),
+    jours_restants: numOrNull(p.jours_restants ?? p.days_left),
+    etat: p.etat || p.state || '',
+    etat_display: p.etat_display || p.state_display || p.etat || '—',
+    lignes: (Array.isArray(p.lignes) ? p.lignes : (Array.isArray(p.detail) ? p.detail : []))
+      .filter(Boolean).map((l, i) => ({
+        id: l.id ?? i,
+        label: l.label || l.campagne || l.jour || `Ligne ${i + 1}`,
+        montant_mad: numOrNull(l.montant_mad ?? l.montant ?? l.amount_mad),
+      })),
+  }
+}
+
+// Ton de l'état de pacing (déterministe).
+export function pacingStateTone(etat) {
+  const s = String(etat || '').toLowerCase()
+  if (s.includes('plafond') || s.includes('depass') || s.includes('sur_rythme')) {
+    return { bg: '#fee2e2', color: '#991b1b' }
+  }
+  if (s.includes('sous_rythme') || s.includes('retard')) {
+    return { bg: '#fef9c3', color: '#854d0e' }
+  }
+  return { bg: '#dcfce7', color: '#166534' } // dans le rythme
+}
+
+// ── ENG31/ENG42 — Réconciliation Meta-vs-ERP ──
+// Normalise les lignes de réconciliation : écart Meta↔ERP + statut. On ne fait
+// que LIRE l'écart fourni par l'API — jamais le recalculer/inventer.
+export function normalizeReconciliation(raw) {
+  const list = Array.isArray(raw) ? raw : (raw?.results || raw?.lignes || [])
+  return (list || []).filter(Boolean).map((r, i) => ({
+    id: r.id ?? i,
+    campagne: r.campagne || r.campaign || r.nom || `Campagne ${i + 1}`,
+    meta_mad: numOrNull(r.meta_mad),
+    erp_mad: numOrNull(r.erp_mad),
+    ecart_mad: numOrNull(r.ecart_mad ?? r.gap_mad),
+    ecart_pct: numOrNull(r.ecart_pct ?? r.gap_pct),
+    statut: r.statut || r.status || '',
+    statut_display: r.statut_display || r.statut || '—',
+    lignes: (Array.isArray(r.lignes) ? r.lignes : (Array.isArray(r.detail) ? r.detail : []))
+      .filter(Boolean).map((l, j) => ({
+        id: l.id ?? j,
+        label: l.label || l.jour || l.date || `Ligne ${j + 1}`,
+        meta_mad: numOrNull(l.meta_mad),
+        erp_mad: numOrNull(l.erp_mad),
+      })),
+  }))
+}
+
+// Ton du statut de réconciliation (ok / écart / alerte).
+export function reconStatusTone(statut) {
+  const s = String(statut || '').toLowerCase()
+  if (s.includes('alerte') || s.includes('critique')) return { bg: '#fee2e2', color: '#991b1b' }
+  if (s.includes('ecart') || s.includes('écart') || s.includes('gap')) return { bg: '#fef9c3', color: '#854d0e' }
+  return { bg: '#dcfce7', color: '#166534' } // ok / réconcilié
+}
