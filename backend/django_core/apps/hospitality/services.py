@@ -1,5 +1,10 @@
 """Services (écriture/orchestration) du module Hôtellerie & restauration."""
-from .models import PlanTarifaire, Reservation
+from .models import Chambre, FicheClient, PlanTarifaire, Reservation
+
+FICHE_CLIENT_CHAMPS_REQUIS = [
+    'nom_complet', 'nationalite', 'type_piece', 'numero_piece',
+    'date_naissance',
+]
 
 
 # ── NTHOT2 — Tarification saisonnière (rack/corporate/ota) ─────────────────
@@ -136,3 +141,62 @@ def creer_reservation(
         prix_nuit_snapshot=prix_snapshot,
         created_by=user,
     )
+
+
+# ── NTHOT5 — Check-in avec fiche de police marocaine ────────────────────────
+
+class CheckInError(ValueError):
+    """Levée quand le check-in est refusé (fiche client incomplète/absente,
+    ou aucune chambre disponible à assigner)."""
+
+
+def _validate_fiche_data(fiche):
+    manquants = [c for c in FICHE_CLIENT_CHAMPS_REQUIS if not fiche.get(c)]
+    if manquants:
+        raise CheckInError(
+            'Fiche client incomplète (champs manquants : '
+            f'{", ".join(manquants)}).')
+
+
+def check_in(reservation, *, fiches_data, user=None):
+    """Check-in : passe la réservation ``en_cours``, assigne une chambre si
+    besoin (LIBRE du type demandé) et la passe ``occupee``, crée une
+    ``FicheClient`` PAR occupant. Refuse (``CheckInError``) si aucune fiche
+    n'est fournie ou si une fiche est incomplète — AUCUNE fiche n'est créée
+    dans ce cas (tout ou rien)."""
+    if not fiches_data:
+        raise CheckInError(
+            'Au moins une fiche client complète est requise pour le check-in.')
+    for fiche in fiches_data:
+        _validate_fiche_data(fiche)
+
+    chambre = reservation.chambre
+    if chambre is None:
+        if reservation.type_chambre is None:
+            raise CheckInError(
+                'Aucune chambre à assigner : ni chambre ni type de chambre '
+                'renseignés sur la réservation.')
+        chambre = Chambre.objects.filter(
+            company=reservation.company,
+            type_chambre=reservation.type_chambre,
+            statut=Chambre.Statut.LIBRE,
+        ).order_by('numero').first()
+        if chambre is None:
+            raise CheckInError(
+                'Aucune chambre libre du type demandé à assigner.')
+        reservation.chambre = chambre
+
+    fiches = [
+        FicheClient.objects.create(
+            company=reservation.company,
+            reservation=reservation,
+            **{k: fiche[k] for k in FICHE_CLIENT_CHAMPS_REQUIS},
+        )
+        for fiche in fiches_data
+    ]
+
+    chambre.statut = Chambre.Statut.OCCUPEE
+    chambre.save(update_fields=['statut'])
+    reservation.statut = Reservation.Statut.EN_COURS
+    reservation.save(update_fields=['statut', 'chambre'])
+    return fiches

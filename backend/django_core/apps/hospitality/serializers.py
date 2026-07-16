@@ -5,7 +5,7 @@
 """
 from rest_framework import serializers
 
-from .models import Chambre, PlanTarifaire, Reservation, TypeChambre
+from .models import Chambre, FicheClient, PlanTarifaire, Reservation, TypeChambre
 
 
 class TypeChambreSerializer(serializers.ModelSerializer):
@@ -84,3 +84,17 @@ class ReservationSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             'client', 'statut', 'prix_nuit_snapshot', 'date_creation']
+
+
+class FicheClientSerializer(serializers.ModelSerializer):
+    type_piece_display = serializers.CharField(
+        source='get_type_piece_display', read_only=True)
+
+    class Meta:
+        model = FicheClient
+        fields = [
+            'id', 'reservation', 'nom_complet', 'nationalite', 'type_piece',
+            'type_piece_display', 'numero_piece', 'date_naissance',
+            'date_creation',
+        ]
+        read_only_fields = ['reservation', 'date_creation']

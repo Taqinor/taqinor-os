@@ -213,3 +213,42 @@ class Reservation(models.Model):
     @property
     def nb_nuits(self):
         return max((self.date_depart - self.date_arrivee).days, 0)
+
+
+# ── NTHOT5 — Fiche de police marocaine (check-in) ───────────────────────────
+
+class FicheClient(models.Model):
+    """Fiche de police par occupant (réglementation police des étrangers/
+    nationaux), requise pour le check-in — un occupant sans fiche complète
+    bloque l'action ``check-in``."""
+
+    class TypePiece(models.TextChoices):
+        CIN = 'cin', 'CIN'
+        PASSEPORT = 'passeport', 'Passeport'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='hospitality_fiches_client',
+        verbose_name='Société',
+    )
+    reservation = models.ForeignKey(
+        Reservation,
+        on_delete=models.CASCADE,
+        related_name='fiches_client',
+        verbose_name='Réservation',
+    )
+    nom_complet = models.CharField(max_length=200)
+    nationalite = models.CharField(max_length=100)
+    type_piece = models.CharField(max_length=10, choices=TypePiece.choices)
+    numero_piece = models.CharField(max_length=50)
+    date_naissance = models.DateField()
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Fiche de police'
+        verbose_name_plural = 'Fiches de police'
+        ordering = ['id']
+
+    def __str__(self):
+        return self.nom_complet

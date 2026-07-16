@@ -7,6 +7,7 @@ rôle authentifié (``IsAnyRole``) ; écriture réservée Responsable/Admin
 housekeeping assignées à l'utilisateur courant).
 """
 from rest_framework import filters, status, viewsets
+from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
@@ -15,8 +16,8 @@ from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 from . import services
 from .models import Chambre, PlanTarifaire, Reservation, TypeChambre
 from .serializers import (
-    ChambreSerializer, PlanTarifaireSerializer, ReservationSerializer,
-    TypeChambreSerializer,
+    ChambreSerializer, FicheClientSerializer, PlanTarifaireSerializer,
+    ReservationSerializer, TypeChambreSerializer,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -131,3 +132,51 @@ class ReservationViewSet(TenantMixin, viewsets.ModelViewSet):
         headers = self.get_success_headers(out.data)
         return Response(
             out.data, status=status.HTTP_201_CREATED, headers=headers)
+
+    # ── NTHOT5 — Check-in avec fiche de police marocaine ────────────────────
+    @action(detail=True, methods=['post'], url_path='check-in')
+    def check_in(self, request, pk=None):
+        """Check-in : corps ``{"fiches": [{nom_complet, nationalite,
+        type_piece, numero_piece, date_naissance}, ...]}``. 400 si une fiche
+        est absente/incomplète (aucune fiche créée dans ce cas)."""
+        reservation = self.get_object()
+        fiches_data = request.data.get('fiches') or []
+        try:
+            services.check_in(
+                reservation, fiches_data=fiches_data, user=request.user)
+        except services.CheckInError as exc:
+            return Response(
+                {'fiches': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(reservation).data)
+
+    @action(detail=True, methods=['get'], url_path='fiches-police')
+    def fiches_police(self, request, pk=None):
+        """Liste les fiches de police saisies au check-in de cette réservation."""
+        reservation = self.get_object()
+        return Response(
+            FicheClientSerializer(
+                reservation.fiches_client.all(), many=True).data)
+
+    @action(detail=True, methods=['get'], url_path='fiche-police-pdf')
+    def fiche_police_pdf(self, request, pk=None):
+        """PDF « fiche de police » (NTHOT5) — document interne, jamais le
+        moteur ``/proposal`` de devis client (rule #4)."""
+        from django.http import HttpResponse
+
+        from .pdf import render_fiche_police_pdf
+
+        reservation = self.get_object()
+        if not reservation.fiches_client.exists():
+            return Response(
+                {'detail': 'Aucune fiche de police : check-in non effectué.'},
+                status=status.HTTP_404_NOT_FOUND)
+        try:
+            pdf_bytes = render_fiche_police_pdf(reservation)
+        except RuntimeError as exc:
+            return Response(
+                {'detail': str(exc)},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = (
+            f'attachment; filename="fiche-police-{reservation.pk}.pdf"')
+        return response
