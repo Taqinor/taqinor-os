@@ -377,3 +377,21 @@ class ConsoleWiringTests(TestCase):
         self.assertEqual(resp.status_code, 201, resp.data)
         self.assertEqual(
             self.campaign.backlog_items.count(), 1)
+
+    # ── ENG45 — Reporting reshaped pour les écrans (clés normalizer) ─────────
+    def test_reports_variants_has_variantes_key(self):
+        resp = auth(self.viewer).get(f'{BASE}/reporting/variantes/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertIn('variantes', resp.data)
+        self.assertIsInstance(resp.data['variantes'], list)
+
+    def test_reports_funnel_has_etapes_key(self):
+        resp = auth(self.viewer).get(f'{BASE}/reporting/entonnoir/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertIn('etapes', resp.data)
+        self.assertIsInstance(resp.data['etapes'], list)
+
+    def test_reports_cohorts_is_list(self):
+        resp = auth(self.viewer).get(f'{BASE}/reporting/cohortes/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertIsInstance(resp.data, list)

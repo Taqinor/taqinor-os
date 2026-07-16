@@ -764,6 +764,20 @@ def _adseng_reporting_company(request):
     return company, None
 
 
+def _median_lag_days(cohort):
+    """Estime le lag médian (jours) d'une cohorte de signature depuis ses buckets
+    CUMULATIFS (``lag_buckets``) : le plus petit ``lag_weeks`` dont le nombre de
+    signés couvre la moitié du total. None si aucune signature (jamais 0 trompeur)."""
+    total = cohort.get('signed_total') or 0
+    if total <= 0:
+        return None
+    half = (total + 1) // 2
+    for bucket in cohort.get('lag_buckets', []):
+        if (bucket.get('signed') or 0) >= half:
+            return bucket['lag_weeks'] * 7
+    return None
+
+
 def _adseng_parse_date(value):
     """``date`` ISO (YYYY-MM-DD) ou None (jamais une 500 sur une entrée libre)."""
     import datetime
@@ -786,7 +800,17 @@ class VariantReportView(APIView):
         if err is not None:
             return err
         from .reporting import variant_table
-        return Response(variant_table(company))
+        data = variant_table(company)
+        # ADSENGINT — clés attendues par ``normalizeVariants`` du front (en plus
+        # du contrat ENG33 historique). ``leads`` = conversions attribuées
+        # (réponses CTWA) ; ``impressions`` non stocké → None (jamais fabriqué).
+        data['variantes'] = [
+            {'id': v['meta_id'], 'nom': v['name'], 'impressions': None,
+             'reponses_whatsapp': v['leads'], 'cout_mad': v['spend'],
+             'cout_par_reponse': v['cost_per_lead']}
+            for v in data['variants']
+        ]
+        return Response(data)
 
 
 class CampaignFunnelView(APIView):
@@ -802,8 +826,21 @@ class CampaignFunnelView(APIView):
         from .reporting import campaign_funnel
         debut = _adseng_parse_date(request.query_params.get('debut'))
         fin = _adseng_parse_date(request.query_params.get('fin'))
-        return Response(
-            campaign_funnel(company, date_start=debut, date_end=fin))
+        funnel = campaign_funnel(company, date_start=debut, date_end=fin)
+        # ADSENGINT — ``etapes`` : entonnoir AGRÉGÉ (somme des « atteint » par
+        # étape sur toutes les campagnes) pour ``normalizeFunnel`` du front, en
+        # plus du détail par campagne (contrat ENG33). Les clés d'étape viennent
+        # de campaign_funnel (donc de STAGES.py via le sélecteur) — jamais codées.
+        agg, order = {}, []
+        for camp in funnel:
+            for step in camp['funnel']:
+                s = step['stage']
+                if s not in agg:
+                    agg[s] = 0
+                    order.append(s)
+                agg[s] += step['reached']
+        etapes = [{'key': s, 'label': s, 'valeur': agg[s]} for s in order]
+        return Response({'etapes': etapes, 'campaigns': funnel})
 
 
 class CohortReportView(APIView):
@@ -819,8 +856,16 @@ class CohortReportView(APIView):
         from .reporting import signature_cohorts
         debut = _adseng_parse_date(request.query_params.get('debut'))
         fin = _adseng_parse_date(request.query_params.get('fin'))
-        return Response(
-            signature_cohorts(company, date_start=debut, date_end=fin))
+        cohorts = signature_cohorts(company, date_start=debut, date_end=fin)
+        # ADSENGINT — clés attendues par ``normalizeCohorts`` du front (ajoutées
+        # aux items du contrat ENG33). Le lag médian est ESTIMÉ depuis les
+        # buckets cumulatifs (plus petit lag couvrant la moitié des signatures).
+        for c in cohorts:
+            c['cohorte'] = c['cohort_week']
+            c['taille'] = c['total_leads']
+            c['signatures'] = c['signed_total']
+            c['lag_jours_median'] = _median_lag_days(c)
+        return Response(cohorts)
 
 
 class ReportExportView(APIView):
