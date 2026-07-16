@@ -76,3 +76,38 @@ def creer_bail(*, company, local, locataire, **champs):
         local.statut = Local.Statut.LOUE
 
     return bail
+
+
+def appliquer_revision(bail, nouveau_loyer, date_effet, *, indice=''):
+    """NTPRO4 — Applique une révision de loyer INDEXÉE sur ``bail``.
+
+    Journalise une ligne ``RevisionLoyer`` IMMUABLE (ancien loyer, nouveau
+    loyer, taux de variation calculé) puis met à jour
+    ``Bail.loyer_mensuel_ht`` au NOUVEAU loyer, à compter de ``date_effet``.
+
+    JAMAIS rétroactif : les ``EcheanceLoyer`` déjà générées gardent leur
+    ``montant_loyer_ht`` figé au moment de leur génération (NTPRO6) — seules
+    les échéances générées APRÈS cette révision hériteront du nouveau loyer.
+    Renvoie la ``RevisionLoyer`` créée."""
+    from decimal import Decimal
+
+    from .models import RevisionLoyer
+
+    ancien_loyer = bail.loyer_mensuel_ht
+    nouveau_loyer = Decimal(nouveau_loyer)
+    taux_variation = None
+    if ancien_loyer:
+        taux_variation = (
+            (nouveau_loyer - ancien_loyer) / ancien_loyer * 100
+        ).quantize(Decimal('0.01'))
+
+    revision = RevisionLoyer.objects.create(
+        company=bail.company, bail=bail, date_effet=date_effet,
+        ancien_loyer=ancien_loyer, nouveau_loyer=nouveau_loyer,
+        indice=indice, taux_variation=taux_variation,
+    )
+
+    bail.loyer_mensuel_ht = nouveau_loyer
+    bail.save(update_fields=['loyer_mensuel_ht'])
+
+    return revision

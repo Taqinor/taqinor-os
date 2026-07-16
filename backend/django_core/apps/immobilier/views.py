@@ -13,7 +13,7 @@ from core.mixins import TenantMixin
 from .models import Bail, Batiment, Local, Locataire, Niveau, Site
 from .serializers import (
     BailSerializer, BatimentSerializer, LocalSerializer, LocataireSerializer,
-    NiveauSerializer, SiteSerializer,
+    NiveauSerializer, RevisionLoyerSerializer, SiteSerializer,
 )
 
 
@@ -147,3 +147,22 @@ class BailViewSet(_ImmobilierBaseViewSet):
             return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         out = self.get_serializer(bail)
         return Response(out.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'])
+    def reviser(self, request, pk=None):
+        """NTPRO4 — Révision de loyer indexée (body: nouveau_loyer, date_effet)."""
+        from . import services
+
+        bail = self.get_object()
+        nouveau_loyer = request.data.get('nouveau_loyer')
+        date_effet = request.data.get('date_effet')
+        if not nouveau_loyer or not date_effet:
+            return Response(
+                {'detail': 'nouveau_loyer et date_effet sont requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        revision = services.appliquer_revision(
+            bail, nouveau_loyer, date_effet,
+            indice=request.data.get('indice', ''))
+        return Response(
+            RevisionLoyerSerializer(revision).data,
+            status=status.HTTP_201_CREATED)

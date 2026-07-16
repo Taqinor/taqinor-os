@@ -6,7 +6,7 @@ multi-tenant).
 """
 from rest_framework import serializers
 
-from .models import Bail, Batiment, Local, Locataire, Niveau, Site
+from .models import Bail, Batiment, Local, Locataire, Niveau, RevisionLoyer, Site
 
 
 class SiteSerializer(serializers.ModelSerializer):
@@ -74,6 +74,19 @@ class LocataireSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'client_ventes_id', 'date_creation', 'company']
 
 
+class RevisionLoyerSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = RevisionLoyer
+        fields = [
+            'id', 'bail', 'date_effet', 'ancien_loyer', 'nouveau_loyer',
+            'indice', 'taux_variation', 'date_creation', 'company',
+        ]
+        read_only_fields = [
+            'id', 'ancien_loyer', 'nouveau_loyer', 'taux_variation',
+            'date_creation', 'company',
+        ]
+
+
 class BailSerializer(serializers.ModelSerializer):
     type_bail_display = serializers.CharField(
         source='get_type_bail_display', read_only=True)
@@ -83,6 +96,8 @@ class BailSerializer(serializers.ModelSerializer):
         source='local.reference', read_only=True)
     locataire_nom = serializers.CharField(
         source='locataire.nom', read_only=True)
+    # NTPRO4 — historique des révisions visible sur le détail du bail.
+    revisions = RevisionLoyerSerializer(many=True, read_only=True)
 
     class Meta:
         model = Bail
@@ -95,7 +110,7 @@ class BailSerializer(serializers.ModelSerializer):
             'locataire_nom_snapshot', 'depot_garantie_recu',
             'date_reception_depot', 'depot_garantie_restitue',
             'date_restitution', 'montant_retenu', 'motif_retenue',
-            'date_creation', 'company',
+            'revisions', 'date_creation', 'company',
         ]
         read_only_fields = [
             'id', 'statut', 'bailleur_nom_snapshot', 'locataire_nom_snapshot',
