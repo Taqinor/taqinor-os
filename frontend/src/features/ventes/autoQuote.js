@@ -27,8 +27,11 @@ const structFromLead = (lead) =>
 const screenTtc = (r) => ttcFromHt(htFromTtc(r.prix_unit_ttc, r.taux_tva ?? 20), r.taux_tva ?? 20)
 const roundTripRowsTtc = (rows) => rows.map((r) => ({ ...r, prix_unit_ttc: screenTtc(r) }))
 
+// QX52 — parité 4 modes : `commercial` route désormais vers son PROPRE mode
+// (plus le repli historique vers `industriel`). Aucun mode ne tombe dans un
+// libellé/comportement d'un autre.
 export const LEAD_TYPE_TO_MODE = {
-  residentiel: 'residentiel', commercial: 'industriel',
+  residentiel: 'residentiel', commercial: 'commercial',
   industriel: 'industriel', agricole: 'agricole',
 }
 
@@ -124,7 +127,10 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch,
         : _bat === 'avec' ? 'Avec batterie'
           : 'Les deux (Sans + Avec)',
     }
-    if (mode === 'industriel') {
+    // QX52 — industriel ET commercial partagent l'étude d'autoconsommation ; le
+    // day-share diffère (industriel 80 % vs commercial 80 % archétype par défaut)
+    // et chaque mode garde SON `mode_installation` (jamais un repli croisé).
+    if (mode === 'industriel' || mode === 'commercial') {
       const ete = (lead.ete_differente && lead.facture_ete)
         ? parseFloat(lead.facture_ete) : hiver
       const moisAuto = hiver > 0 ? estimerMois(hiver, ete) : []
@@ -132,12 +138,14 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch,
         .reduce((s, v) => s + (parseFloat(v) || 0), 0) / 12
       const conso = (parseFloat(lead.conso_mensuelle_kwh) || 0)
         || (avgAuto > 0 ? Math.round(avgAuto / kwhPrice) : 0)
-      extra.mode_installation = 'industriel'
+      extra.mode_installation = mode
+      const _dayUsage = mode === 'commercial'
+        ? DAY_USAGE_DEFAULTS['Commerciale'] : DAY_USAGE_DEFAULTS['Industrielle']
       const _scenarioPrev = extra.etude_params?.scenario
       const _etudeInd = (kwpAuto > 0 && conso > 0)
         ? computeEtudeIndustrielle({
             kwp: kwpAuto, consoMensuelleKwh: conso,
-            dayUsagePct: DAY_USAGE_DEFAULTS['Industrielle'],
+            dayUsagePct: _dayUsage,
             totalTtc: optionTotalsTTC(roundTripRowsTtc(rows), discountStr || '0').totalSans,
             kwhPrice, efficiency,
           })

@@ -288,6 +288,11 @@ def _extract_web_questionnaire(data):
         if val is not None:
             out[snake] = val
 
+    def _bool(camel, snake):
+        val = data.get(camel, data.get(snake))
+        if isinstance(val, bool):
+            out[snake] = val
+
     # ── Mode PROFESSIONNEL ──
     # NB : `tensionRaccordement` (bt/mt = basse/moyenne tension) n'est PAS
     # Lead.raccordement (monophase/triphase) — vocabulaires distincts.
@@ -326,6 +331,44 @@ def _extract_web_questionnaire(data):
             ('aucune', 'diesel', 'butane', 'electrique'))
     _num('pompeCvActuelle', 'pompe_cv_actuelle', hi=10000)
     _num('fuelSpendMad', 'fuel_spend_mad')
+
+    # ── QX51 — Mode COMMERCIAL (catégorie + réponses par catégorie) ──
+    # Clés snake_case alignées sur COMMERCIAL_CATEGORY_QUESTIONS (générateur) et
+    # etude_params. Bornées, choix fermés ; byte-identique sans ces champs.
+    _choice('categorieCommerciale', 'categorie_commerciale',
+            ('hotel', 'restaurant', 'commerce', 'bureau', 'sante', 'ecole',
+             'hammam', 'boulangerie', 'froid', 'autre'))
+    _num('chambres', 'chambres', hi=100000)
+    _num('occupationPct', 'occupation_pct', hi=100)
+    _num('chambresFroides', 'chambres_froides', hi=10000)
+    _num('effectif', 'effectif', hi=1000000)
+    _num('lits', 'lits', hi=100000)
+    _num('surfaceVenteM2', 'surface_vente_m2', hi=1000000)
+    _num('volumeM3', 'volume_m3', hi=10000000)
+    # Température de consigne (froid) : peut être NÉGATIVE (ex. -18 °C).
+    _num('temperatureConsigne', 'temperature_consigne', lo=-60, hi=60)
+    _choice('cuisson', 'cuisson', ('electrique', 'gaz'))
+    _choice('four', 'four', ('electrique', 'gaz'))
+    _choice('chauffe', 'chauffe', ('electrique', 'gaz'))
+    _choice('horaires', 'horaires', ('midi', 'soir', 'continu'))
+    _bool('cuissonNocturne', 'cuisson_nocturne')
+    _bool('piscine', 'piscine')
+    _bool('blanchisserie', 'blanchisserie')
+    _bool('internat', 'internat')
+    _bool('fermetureEstivale', 'fermeture_estivale')
+    _bool('saisonnaliteRecolte', 'saisonnalite_recolte')
+    _bool('gardeNuit', 'garde_nuit')
+    _bool('clim', 'clim')
+
+    # ── QX51 — Mode INDUSTRIEL v2 (profil de charge affiné) ──
+    _choice('equipes', 'equipes', ('1x8', '2x8', '3x8', 'continu'))
+    _bool('weekend', 'weekend')
+    _num('cosPhiConnu', 'cos_phi_connu', hi=1)
+    _num('groupeKva', 'groupe_kva', hi=1000000)
+    _num('dieselDhMois', 'diesel_dh_mois')
+    _num('surfaceToitureM2', 'surface_toiture_m2', hi=1000000)
+    _bool('ombriere', 'ombriere')
+    _bool('terrain', 'terrain')
     return out
 
 
@@ -416,6 +459,57 @@ def _build_questionnaire_note(questionnaire, estimate, type_installation):
         parts.append(f"{fmt(questionnaire['pro_monthly_kwh'])} kWh/mois")
     if questionnaire.get('pro_monthly_mad') is not None:
         parts.append(f"{fmt(questionnaire['pro_monthly_mad'])} MAD/mois")
+
+    # QX51 — Commercial : catégorie + réponses par catégorie (résumé compact).
+    cat = questionnaire.get('categorie_commerciale')
+    if cat:
+        cat_lbl = {
+            'hotel': 'hôtel/riad', 'restaurant': 'restaurant/café',
+            'commerce': 'commerce', 'bureau': 'bureau', 'sante': 'santé',
+            'ecole': 'école privée', 'hammam': 'hammam/spa', 'boulangerie':
+            'boulangerie', 'froid': 'entrepôt froid', 'autre': 'commerce',
+        }.get(cat, cat)
+        parts.append(f"catégorie {cat_lbl}")
+    if questionnaire.get('chambres') is not None:
+        parts.append(f"{fmt(questionnaire['chambres'])} chambres")
+    if questionnaire.get('occupation_pct') is not None:
+        parts.append(f"occupation {fmt(questionnaire['occupation_pct'])} %")
+    if questionnaire.get('effectif') is not None:
+        parts.append(f"effectif {fmt(questionnaire['effectif'])}")
+    if questionnaire.get('lits') is not None:
+        parts.append(f"{fmt(questionnaire['lits'])} lits")
+    if questionnaire.get('chambres_froides') is not None:
+        parts.append(f"{fmt(questionnaire['chambres_froides'])} chambres froides")
+    if questionnaire.get('temperature_consigne') is not None:
+        parts.append(f"consigne {fmt(questionnaire['temperature_consigne'])} °C")
+    for key, label in (('cuisson', 'cuisson'), ('four', 'four'),
+                       ('chauffe', 'chauffe')):
+        if questionnaire.get(key):
+            parts.append(f"{label} {questionnaire[key]}")
+    for flag, label in (('cuisson_nocturne', 'cuisson nocturne'),
+                        ('piscine', 'piscine'), ('blanchisserie', 'blanchisserie'),
+                        ('internat', 'internat'),
+                        ('fermeture_estivale', 'fermeture estivale')):
+        if questionnaire.get(flag) is True:
+            parts.append(label)
+
+    # QX51 — Industriel v2 : profil de charge (équipes, groupe, diesel, surface).
+    equipes = questionnaire.get('equipes')
+    if equipes:
+        parts.append({'continu': 'marche continue'}.get(equipes, f"équipes {equipes}"))
+    if questionnaire.get('weekend') is True:
+        parts.append('week-end travaillé')
+    if questionnaire.get('cos_phi_connu') is not None:
+        parts.append(f"cos φ {fmt(questionnaire['cos_phi_connu'])}")
+    if questionnaire.get('groupe_kva') is not None:
+        parts.append(f"groupe {fmt(questionnaire['groupe_kva'])} kVA")
+    if questionnaire.get('diesel_dh_mois') is not None:
+        parts.append(f"diesel {fmt(questionnaire['diesel_dh_mois'])} MAD/mois")
+    if questionnaire.get('surface_toiture_m2') is not None:
+        parts.append(f"toiture {fmt(questionnaire['surface_toiture_m2'])} m²")
+    for flag, label in (('ombriere', 'ombrière'), ('terrain', 'terrain')):
+        if questionnaire.get(flag) is True:
+            parts.append(label)
 
     est_parts = []
     if estimate.get('kwc') is not None:
