@@ -381,3 +381,41 @@ class DeclarationSinistre(models.Model):
 
     def __str__(self):
         return f'{self.reference} ({self.get_type_sinistre_display()})'
+
+
+# ── NTASS11 — Chatter dédié « SinistreActivity » ───────────────────────────
+
+class SinistreActivity(models.Model):
+    """Historique « chatter » d'une ``DeclarationSinistre`` (NTASS11), même
+    patron que ``PoliceActivity``/``ReclamationActivity``/``ContratActivity``.
+    """
+
+    class Kind(models.TextChoices):
+        CREATION = 'creation', 'Création'
+        MODIFICATION = 'modification', 'Modification'
+        NOTE = 'note', 'Note'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='sinistre_activities')
+    declaration = models.ForeignKey(
+        DeclarationSinistre, on_delete=models.CASCADE, related_name='activites')
+    kind = models.CharField(max_length=15, choices=Kind.choices)
+    champ = models.CharField(max_length=100, blank=True, null=True)
+    champ_label = models.CharField(max_length=150, blank=True, null=True)
+    ancienne_valeur = models.TextField(blank=True, null=True)
+    nouvelle_valeur = models.TextField(blank=True, null=True)
+    description = models.TextField(blank=True, null=True)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='sinistre_activities')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Activité sinistre'
+        verbose_name_plural = 'Activités sinistre'
+        ordering = ['-created_at']
+        indexes = [models.Index(fields=['declaration', '-created_at'])]
+
+    def __str__(self):
+        return f'{self.declaration_id} {self.kind} {self.champ or ""}'.strip()

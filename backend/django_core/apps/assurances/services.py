@@ -11,7 +11,7 @@ from django.core.exceptions import ValidationError
 
 from .models import (
     ActifCouvert, EcheancePrime, GarantiePolice, PoliceActivity,
-    PoliceAssurance,
+    PoliceAssurance, SinistreActivity,
 )
 
 # ── NTASS3 — Chatter PoliceAssurance ────────────────────────────────────────
@@ -260,3 +260,50 @@ def renouveler_police(police, *, user=None, periodicite=None,
         PoliceAssurance.Statut.RESILIEE, user)
 
     return nouvelle
+
+
+# ── NTASS11 — Chatter DeclarationSinistre ───────────────────────────────────
+
+#: Champs de ``DeclarationSinistre`` dont la transition est auto-loggée.
+CHAMPS_SUIVIS_SINISTRE = {
+    'statut': 'Statut',
+}
+
+
+def log_sinistre_creation(declaration, user):
+    """Journalise la création d'une déclaration de sinistre (NTASS11)."""
+    return SinistreActivity.objects.create(
+        company=declaration.company, declaration=declaration,
+        kind=SinistreActivity.Kind.CREATION, user=user)
+
+
+def log_sinistre_transition(declaration, champ, champ_label, ancienne_valeur,
+                            nouvelle_valeur, user):
+    """Journalise un changement de champ suivi (NTASS11)."""
+    return SinistreActivity.objects.create(
+        company=declaration.company, declaration=declaration,
+        kind=SinistreActivity.Kind.MODIFICATION,
+        champ=champ, champ_label=champ_label,
+        ancienne_valeur='' if ancienne_valeur is None else str(ancienne_valeur),
+        nouvelle_valeur='' if nouvelle_valeur is None else str(nouvelle_valeur),
+        user=user)
+
+
+def log_sinistre_transitions_auto(declaration, valeurs_avant, user):
+    """Compare l'état AVANT à l'état COURANT de ``declaration`` et loggue une
+    entrée par champ suivi (``CHAMPS_SUIVIS_SINISTRE``) modifié (NTASS11)."""
+    entrees = []
+    for champ, label in CHAMPS_SUIVIS_SINISTRE.items():
+        avant = valeurs_avant.get(champ)
+        apres = getattr(declaration, champ)
+        if avant != apres:
+            entrees.append(log_sinistre_transition(
+                declaration, champ, label, avant, apres, user))
+    return entrees
+
+
+def log_sinistre_note(declaration, user, body):
+    """Ajoute une note manuelle au chatter d'un sinistre (NTASS11)."""
+    return SinistreActivity.objects.create(
+        company=declaration.company, declaration=declaration,
+        kind=SinistreActivity.Kind.NOTE, description=body, user=user)

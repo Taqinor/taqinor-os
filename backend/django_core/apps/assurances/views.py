@@ -18,13 +18,14 @@ from .serializers import (
     ActifCouvertSerializer, AssureurSerializer, CourtierSerializer,
     DeclarationSinistreSerializer, EcheancePrimeSerializer,
     GarantiePoliceSerializer, PoliceActivitySerializer,
-    PoliceAssuranceSerializer,
+    PoliceAssuranceSerializer, SinistreActivitySerializer,
 )
 from .selectors import polices_expirantes
 from .services import (
-    CHAMPS_SUIVIS_POLICE, generer_echeancier_prime, log_police_creation,
-    log_police_note, log_police_transitions_auto, proposer_ecriture_prime,
-    renouveler_police,
+    CHAMPS_SUIVIS_POLICE, CHAMPS_SUIVIS_SINISTRE, generer_echeancier_prime,
+    log_police_creation, log_police_note, log_police_transitions_auto,
+    log_sinistre_creation, log_sinistre_note, log_sinistre_transitions_auto,
+    proposer_ecriture_prime, renouveler_police,
 )
 
 
@@ -239,3 +240,33 @@ class DeclarationSinistreViewSet(_AssurancesBaseViewSet):
             lambda reference: serializer.save(
                 company=company, reference=reference),
             padding=3, period='yearly')
+        log_sinistre_creation(serializer.instance, self.request.user)
+
+    def perform_update(self, serializer):
+        # NTASS11 — capture l'état AVANT sauvegarde des champs suivis.
+        avant = {
+            champ: getattr(serializer.instance, champ)
+            for champ in CHAMPS_SUIVIS_SINISTRE
+        }
+        super().perform_update(serializer)
+        log_sinistre_transitions_auto(
+            serializer.instance, avant, self.request.user)
+
+    @action(detail=True, methods=['get'], url_path='historique')
+    def historique(self, request, pk=None):
+        """NTASS11 — timeline chatter du sinistre (plus récent d'abord)."""
+        declaration = self.get_object()
+        return Response(SinistreActivitySerializer(
+            declaration.activites.all(), many=True).data)
+
+    @action(detail=True, methods=['post'], url_path='noter')
+    def noter(self, request, pk=None):
+        """NTASS11 — note manuelle (auteur posé côté serveur)."""
+        declaration = self.get_object()
+        body = (request.data.get('body') or '').strip()
+        if not body:
+            return Response({'body': 'Note vide.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        act = log_sinistre_note(declaration, request.user, body)
+        return Response(SinistreActivitySerializer(act).data,
+                        status=status.HTTP_201_CREATED)
