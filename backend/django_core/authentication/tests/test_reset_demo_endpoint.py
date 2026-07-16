@@ -43,3 +43,20 @@ class ResetDemoEndpointTest(TestCase):
             format='json')
         real.refresh_from_db()
         self.assertFalse(real.est_demo)  # jamais écrit via l'API
+
+    def test_presentation_mode_toggle_on_demo_company(self):
+        resp = self.client.patch(
+            f'/api/django/companies/{self.demo.id}/',
+            {'mode_presentation_actif': True}, format='json')
+        self.assertEqual(resp.status_code, 200)
+        self.demo.refresh_from_db()
+        self.assertTrue(self.demo.mode_presentation_actif)
+
+    def test_presentation_mode_forbidden_on_non_demo(self):
+        real = Company.objects.create(nom='Réelle 3', slug='reelle-3')
+        resp = self.client.patch(
+            f'/api/django/companies/{real.id}/',
+            {'mode_presentation_actif': True}, format='json')
+        self.assertEqual(resp.status_code, 403)
+        real.refresh_from_db()
+        self.assertFalse(real.mode_presentation_actif)

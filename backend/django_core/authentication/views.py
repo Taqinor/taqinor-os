@@ -877,6 +877,19 @@ class CompanyViewSet(viewsets.ModelViewSet):
     serializer_class = CompanySerializer
     permission_classes = [permissions.IsAdminUser]
 
+    def perform_update(self, serializer):
+        # NTDMO10 — le mode présentation ne peut être activé/modifié QUE sur une
+        # société de démonstration (jamais sur une société réelle, même par un
+        # admin). ``est_demo`` reste read-only côté sérialiseur (NTDMO8).
+        company = self.get_object()
+        if ('mode_presentation_actif' in serializer.validated_data
+                and not company.est_demo):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied(
+                "Le mode présentation n'est disponible que sur une société de "
+                "démonstration.")
+        serializer.save()
+
     @action(detail=True, methods=['post'], url_path='reset-demo')
     def reset_demo(self, request, pk=None):
         """NTDMO7 — réinitialise les données de démonstration d'une société.

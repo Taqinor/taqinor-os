@@ -13,6 +13,7 @@ import { Card, CardContent, Input, Textarea } from '../../ui'
 import { Ic, SectionTitle, Field, UploadZone } from './peComponents'
 import { mediaUrl } from './peConstants'
 import DemoResetButton from './DemoResetButton'
+import PresentationModeToggle from './PresentationModeToggle'
 
 // L773 — validation de format des identifiants marocains, NON bloquante : on
 // affiche un indice si la longueur en chiffres ne correspond pas, sans rejeter
@@ -40,7 +41,9 @@ export default function SocieteSection({ accent, profile, form, set, uploading, 
   const [showLegacyFr, setShowLegacyFr] = useState(false)
   return (
     <>
-      {/* NTDMO7 — réinitialisation des données de démo (sociétés démo seules). */}
+      {/* NTDMO7/10 — contrôles Démo (sociétés démo seules) : mode présentation
+          + réinitialisation des données. */}
+      <PresentationModeToggle />
       <DemoResetButton />
       {/* ── Carte d'aperçu en direct ── */}
       <div
