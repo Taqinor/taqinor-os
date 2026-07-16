@@ -945,12 +945,12 @@ const noscriptTelHref = `tel:${NAP.phone}`;
                   <p class="mt-doc-flow-value" id="mt-flow-heures">—</p>
                   <p class="mt-doc-kpi-label">الضخ / يوم</p>
                 </div>
-                <div class="mt-doc-flowarrow" aria-hidden="true">→</div>
+                <div class="mt-doc-flowarrow" aria-hidden="true">←</div>
                 <div class="mt-doc-flowitem">
                   <p class="mt-doc-flow-value" id="mt-flow-pompe">—</p>
                   <p class="mt-doc-kpi-label">مضخة شمسية</p>
                 </div>
-                <div class="mt-doc-flowarrow" aria-hidden="true">→</div>
+                <div class="mt-doc-flowarrow" aria-hidden="true">←</div>
                 <div class="mt-doc-flowitem">
                   <p class="mt-doc-flow-value" id="mt-flow-eau">—</p>
                   <p class="mt-doc-kpi-label">الماء المضخوخ / يوم</p>
@@ -1074,7 +1074,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
         <!-- Formulaire de contact (la porte vient APRÈS l'estimation). -->
         <form id="mt-form" novalidate class="cine-card mt-5 space-y-4 p-5 sm:p-6">
           <!-- W317 — honeypot anti-bot : champ jamais rempli par un humain. -->
-          <div aria-hidden="true" style="position:absolute; left:-9999px; width:1px; height:1px; overflow:hidden;">
+          <div aria-hidden="true" style="position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap;">
             <label>لا تملأوا هذا الحقل<input id="mt-hp" name="website_url" type="text" tabindex="-1" autocomplete="off" /></label>
           </div>
 

@@ -1115,7 +1115,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
                with a real keyboard user. Rejected server-side (lib/lead.ts
                isHoneypotTripped) — the webhook contract is unchanged, this
                field is never forwarded to the CRM. -->
-          <div aria-hidden="true" style="position:absolute; left:-9999px; width:1px; height:1px; overflow:hidden;">
+          <div aria-hidden="true" style="position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap;">
             <label>Do not fill<input id="mt-hp" name="website_url" type="text" tabindex="-1" autocomplete="off" /></label>
           </div>
 
