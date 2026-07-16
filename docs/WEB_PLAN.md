@@ -275,7 +275,7 @@ la beauté vit sur la page tokenisée + les PDF.*
   models.py:296-300). Stepper/labels par mode.
   **Done =** 4 cartes, leads commercial typés `commercial` (et industriel `industriel`) dans le
   CRM, tests capture. (@lane: web-journey) (@model: sonnet)
-- [ ] WJ122 — **Panneau questions COMMERCIAL par catégorie.** Étape 2 commerciale : cartes
+- [BLOCKED: attend QX51] WJ122 — **Panneau questions COMMERCIAL par catégorie.** Étape 2 commerciale : cartes
   catégorie (9 + Autre, pictos) puis 2-4 questions SPÉCIFIQUES à la catégorie choisie
   (même liste que QX44 — hôtel chambres/occupation/piscine ; restaurant chambres froides/
   horaires/cuisson ; boulangerie four/cuisson nocturne ; froid T°/volume/récolte ; école
@@ -286,7 +286,7 @@ la beauté vit sur la page tokenisée + les PDF.*
   Payload : categorieCommerciale + réponses (whitelist QX51). FR/EN/AR. **Done =** hôtel ≠
   bureau à facture égale à l'écran ; payload persisté ; tests. (@lane: web-journey)
   (@model: opus) (@after: WJ121, QX51)
-- [ ] WJ123 — **Panneau INDUSTRIEL v2 (équipes, MT, réalisme).** Étape 2 industrielle :
+- [BLOCKED: attend QX51] WJ123 — **Panneau INDUSTRIEL v2 (équipes, MT, réalisme).** Étape 2 industrielle :
   pattern d'équipes en cartes (Journée 1x8 / 2x8 / 3x8-continu / continu+weekend) →
   day-share et PLAFOND d'autoconsommation honnête (1x8 ~70-85 %, 2x8 ~55-70 %, continu
   ~25-40 % — recherche 2026-07-16) ; puissance souscrite kVA ; 12 mois de kWh (facultatif,
@@ -297,7 +297,7 @@ la beauté vit sur la page tokenisée + les PDF.*
   ligne injection potentielle APRÈS QX50 (sinon absente). Payload → QX51. FR/EN/AR.
   **Done =** un 3x8 ne voit plus une autoconso de bureau ; tests plafonds. 
   (@lane: web-journey) (@model: opus) (@after: WJ121, QX51)
-- [ ] WJ124 — **Moteur agricole web : culture → eau → pompe.** Étape 2 agricole enrichie :
+- [BLOCKED: attend QX48] WJ124 — **Moteur agricole web : culture → eau → pompe.** Étape 2 agricole enrichie :
   culture (cartes ~16 cultures QX48, pictos), région (8 zones dont gharb-loukkos/haouz),
   surface (ha), irrigation, + option « je connais mon débit/HMT » (chemin actuel conservé).
   Sans débit connu : besoin d'eau via le miroir web des tables QX48 (Kc mensuels, pluie
@@ -331,7 +331,7 @@ la beauté vit sur la page tokenisée + les PDF.*
   mt-nearest-install / mt-cost-of-waiting) ; capture Playwright des 3 profils ; CRM reçoit
   toujours estimateShown ; tests adaptés documentés.
   (@lane: web-journey) (@model: opus) (@after: WJ121)
-- [ ] WJ126 — **Page /proposition : 4 variantes de devis (la vitrine client).** Rendre la
+- [BLOCKED: attend QX49] WJ126 — **Page /proposition : 4 variantes de devis (la vitrine client).** Rendre la
   page tokenisée mode-aware (payload QX49) : AGRICOLE — héros pompe (CV/kW, m³/jour à HMT,
   champ kWc), graphe mensuel eau livrée vs besoin culture, bloc bassin + FDA 30 % (caveat),
   économies diesel ; INDUSTRIEL — tuiles couverture/autoconso/économies par bande,
