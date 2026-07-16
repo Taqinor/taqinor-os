@@ -2,7 +2,7 @@
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 
-from .models import SoumissionBudgetDepartement
+from .models import CycleBudgetaire, SoumissionBudgetDepartement
 
 
 def _get_or_creer_soumission(company, cycle, departement):
@@ -80,3 +80,29 @@ def rejeter_budget_departement(company, cycle, departement, user, motif=''):
         f'Budget rejeté — motif : {motif or "(non précisé)"}', company=company)
 
     return soumission
+
+
+def dupliquer_cycle_precedent(company, cycle_source, nouveau_nom):
+    """NTFPA7 — copie toutes les ``LigneBudgetDepartement`` d'un cycle
+    (typiquement clos) vers un NOUVEAU cycle ``brouillon`` (base de départ
+    éditable, jamais un écrasement du cycle source)."""
+    from .models import LigneBudgetDepartement
+
+    nouveau = CycleBudgetaire.objects.create(
+        company=company, nom=nouveau_nom,
+        exercice_comptable_id=cycle_source.exercice_comptable_id,
+        date_debut=cycle_source.date_debut, date_fin=cycle_source.date_fin,
+        type_cycle=cycle_source.type_cycle,
+        statut=CycleBudgetaire.Statut.BROUILLON,
+    )
+    lignes = LigneBudgetDepartement.objects.filter(
+        company=company, cycle=cycle_source)
+    LigneBudgetDepartement.objects.bulk_create([
+        LigneBudgetDepartement(
+            company=company, cycle=nouveau, departement_id=ligne.departement_id,
+            categorie=ligne.categorie, mois=ligne.mois,
+            montant_prevu=ligne.montant_prevu, commentaire=ligne.commentaire,
+        )
+        for ligne in lignes
+    ])
+    return nouveau

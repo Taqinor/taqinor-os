@@ -83,6 +83,17 @@ class CycleBudgetaireViewSet(TenantMixin, viewsets.ModelViewSet):
         cycle.save(update_fields=['statut'])
         return Response(CycleBudgetaireSerializer(cycle).data)
 
+    @action(detail=True, methods=['post'], url_path='dupliquer')
+    def dupliquer(self, request, pk=None):
+        cycle_source = self.get_object()
+        nouveau_nom = request.data.get('nouveau_nom') or f'{cycle_source.nom} (copie)'
+        from .services import dupliquer_cycle_precedent
+        nouveau = dupliquer_cycle_precedent(
+            request.user.company, cycle_source, nouveau_nom)
+        return Response(
+            CycleBudgetaireSerializer(nouveau).data,
+            status=status.HTTP_201_CREATED)
+
 
 class LigneBudgetDepartementViewSet(TenantMixin, viewsets.ModelViewSet):
     """NTFPA3 — Lignes de budget départemental (saisie mensuelle par
