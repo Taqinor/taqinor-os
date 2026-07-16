@@ -32,7 +32,10 @@ class FakeMetaClient:
         return [{'id': 'ad1', 'adset_id': 'as1', 'name': 'AD',
                  'status': 'PAUSED'}]
 
+    insights_kw = None
+
     def get_insights(self, meta_id, **kw):
+        self.insights_kw = kw  # capturé pour vérifier la fenêtre demandée
         return [{'date_start': '2026-07-16', 'spend': '10.00', 'results': 2,
                  'frequency': '1.2', 'cpl': '5.00'}]
 
@@ -91,6 +94,20 @@ class SyncInsightsRunTests(TestCase):
         self.assertEqual(AdSetMirror.objects.count(), 1)
         self.assertEqual(AdMirror.objects.count(), 1)
         self.assertEqual(InsightSnapshot.objects.count(), 1)
+
+    @patch('apps.adsengine.meta_client.MetaClient')
+    def test_insights_pulled_over_full_history(self, mock_cls):
+        """Régression ENG6 : les insights sont lus sur TOUT l'historique
+        (``date_preset='maximum'``), ventilés par JOUR (``time_increment=1``).
+        Sans fenêtre explicite, l'API Graph tronque la dépense à un défaut récent
+        → coût-par-signature ~100x trop bas (bug remonté : 90 MAD au lieu de
+        >10 000 pour >1000 $ dépensés)."""
+        fake = FakeMetaClient()
+        mock_cls.from_connection.return_value = fake
+        sync_insights_daily()
+        self.assertEqual(
+            fake.insights_kw.get('params'),
+            {'date_preset': 'maximum', 'time_increment': 1})
 
 
 class BeatReachabilityTests(SimpleTestCase):
