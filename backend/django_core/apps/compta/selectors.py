@@ -4054,3 +4054,29 @@ def kpi_echeances(company):
          'label': 'Échéances dépassées (effets ouverts)',
          'valeur': depassees, 'unite': 'effets'},
     ]
+
+
+# ── NTFPA2 — lecture minimale pour l'app FP&A (apps.fpa) ────────────────────
+# `apps.fpa.CycleBudgetaire.exercice_comptable_id` référence
+# `ExerciceComptable` en STRING-ID (jamais un FK dur — cross-app boundary) ;
+# ce sélecteur est le SEUL point de lecture que FP&A utilise pour résoudre le
+# libellé/les bornes d'un exercice. Lecture seule, scopé société.
+def get_exercice_label(company, exercice_id):
+    """Libellé + bornes d'un ``ExerciceComptable`` (ou ``None`` si absent/hors
+    société) — utilisé par ``apps.fpa`` sans jamais importer ``ExerciceComptable``
+    directement."""
+    if not exercice_id:
+        return None
+    from .models import ExerciceComptable
+
+    exercice = ExerciceComptable.objects.filter(
+        company=company, pk=exercice_id).first()
+    if exercice is None:
+        return None
+    return {
+        'id': exercice.pk,
+        'libelle': exercice.libelle or f'Exercice {exercice.date_debut}',
+        'date_debut': exercice.date_debut,
+        'date_fin': exercice.date_fin,
+        'statut': exercice.statut,
+    }

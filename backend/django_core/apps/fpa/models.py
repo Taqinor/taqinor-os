@@ -57,3 +57,54 @@ class Departement(models.Model):
         for enfant in Departement.objects.filter(parent_id=self.pk):
             ids |= enfant.sous_arbre_ids()
         return ids
+
+
+class CycleBudgetaire(models.Model):
+    """NTFPA2 — Cycle budgétaire d'entreprise (ex. « Budget 2027 »).
+
+    ``exercice_comptable_id`` référence ``compta.ExerciceComptable`` en
+    STRING-ID (jamais un FK dur — cross-app boundary, FPA lit compta via
+    ``apps.compta.selectors.get_exercice_label`` uniquement).
+    """
+
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        OUVERT_SAISIE = 'ouvert_saisie', 'Ouvert à la saisie'
+        EN_VALIDATION = 'en_validation', 'En validation'
+        CLOS = 'clos', 'Clos'
+
+    class TypeCycle(models.TextChoices):
+        ANNUEL = 'annuel', 'Annuel'
+        TRIMESTRIEL = 'trimestriel', 'Trimestriel'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='fpa_cycles_budgetaires', verbose_name='Société',
+    )
+    nom = models.CharField(max_length=120, verbose_name='Nom')
+    exercice_comptable_id = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='Exercice comptable (référence)',
+    )
+    date_debut = models.DateField(verbose_name='Début')
+    date_fin = models.DateField(verbose_name='Fin')
+    statut = models.CharField(
+        max_length=15, choices=Statut.choices, default=Statut.BROUILLON,
+        verbose_name='Statut',
+    )
+    type_cycle = models.CharField(
+        max_length=15, choices=TypeCycle.choices, default=TypeCycle.ANNUEL,
+        verbose_name='Type de cycle',
+    )
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Cycle budgétaire'
+        ordering = ['-date_debut']
+
+    def __str__(self):
+        return self.nom
+
+    @property
+    def clos(self):
+        return self.statut == self.Statut.CLOS

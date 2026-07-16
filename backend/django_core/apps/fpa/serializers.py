@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Departement
+from .models import CycleBudgetaire, Departement
 
 
 class DepartementSerializer(serializers.ModelSerializer):
@@ -19,3 +19,20 @@ class DepartementSerializer(serializers.ModelSerializer):
             return (getattr(obj.responsable, 'get_full_name', lambda: '')()
                     or obj.responsable.username)
         return ''
+
+
+class CycleBudgetaireSerializer(serializers.ModelSerializer):
+    exercice_label = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CycleBudgetaire
+        fields = [
+            'id', 'company', 'nom', 'exercice_comptable_id', 'exercice_label',
+            'date_debut', 'date_fin', 'statut', 'type_cycle', 'date_creation',
+        ]
+        read_only_fields = ['id', 'company', 'statut', 'date_creation']
+
+    def get_exercice_label(self, obj):
+        from apps.compta.selectors import get_exercice_label
+
+        return get_exercice_label(obj.company, obj.exercice_comptable_id)

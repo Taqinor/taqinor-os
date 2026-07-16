@@ -1,10 +1,11 @@
-from rest_framework import filters, viewsets
+from rest_framework import filters, status, viewsets
+from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from core.mixins import TenantMixin
 
-from .models import Departement
-from .serializers import DepartementSerializer
+from .models import CycleBudgetaire, Departement
+from .serializers import CycleBudgetaireSerializer, DepartementSerializer
 
 
 class DepartementViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -39,3 +40,39 @@ class DepartementViewSet(TenantMixin, viewsets.ModelViewSet):
             racines = by_parent.get(None, [])
             return Response([self._to_node(d, by_parent) for d in racines])
         return super().list(request, *args, **kwargs)
+
+
+class CycleBudgetaireViewSet(TenantMixin, viewsets.ModelViewSet):
+    """NTFPA2 — Cycles budgétaires : machine d'états gardée (brouillon →
+    ouvert_saisie → en_validation → clos), transitions illégales refusées
+    (400)."""
+
+    queryset = CycleBudgetaire.objects.all()
+    serializer_class = CycleBudgetaireSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom']
+    ordering_fields = ['date_debut', 'nom']
+
+    @action(detail=True, methods=['post'], url_path='ouvrir-saisie')
+    def ouvrir_saisie(self, request, pk=None):
+        cycle = self.get_object()
+        if cycle.statut != CycleBudgetaire.Statut.BROUILLON:
+            return Response(
+                {'detail': "Seul un cycle « brouillon » peut être ouvert à la saisie."},
+                status=status.HTTP_400_BAD_REQUEST)
+        cycle.statut = CycleBudgetaire.Statut.OUVERT_SAISIE
+        cycle.save(update_fields=['statut'])
+        return Response(CycleBudgetaireSerializer(cycle).data)
+
+    @action(detail=True, methods=['post'], url_path='clore')
+    def clore(self, request, pk=None):
+        cycle = self.get_object()
+        if cycle.statut not in (
+                CycleBudgetaire.Statut.OUVERT_SAISIE,
+                CycleBudgetaire.Statut.EN_VALIDATION):
+            return Response(
+                {'detail': "Un cycle brouillon ou déjà clos ne peut pas être clôturé."},
+                status=status.HTTP_400_BAD_REQUEST)
+        cycle.statut = CycleBudgetaire.Statut.CLOS
+        cycle.save(update_fields=['statut'])
+        return Response(CycleBudgetaireSerializer(cycle).data)
