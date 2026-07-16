@@ -164,10 +164,14 @@ export function estimatePro(inputs: ProInputs): ProEstimateResult {
   const tauxCouverture = Math.round((autoconsomme / consoAnnuelle) * 1000) / 10;
 
   // Économies = kWh autoconsommés × tarif d'hypothèse, bande ±10 % (le tarif
-  // réel du site varie autour du blend indicatif).
+  // réel du site varie autour du blend indicatif). Les bornes sont arrondies
+  // à un grain lisible et HONNÊTE (une fourchette d'estimation à 6 chiffres
+  // significatifs serait de la fausse précision) : plancher/plafond au grain,
+  // donc la fourchette ne rétrécit jamais.
   const eco = autoconsomme * tarif;
-  const ecoAnnuelleMadLow = Math.round(eco * 0.9);
-  const ecoAnnuelleMadHigh = Math.round(eco * 1.1);
+  const ecoGrain = eco * 0.9 >= 20_000 ? 1000 : 100;
+  const ecoAnnuelleMadLow = Math.max(ecoGrain, Math.floor((eco * 0.9) / ecoGrain) * ecoGrain);
+  const ecoAnnuelleMadHigh = Math.ceil((eco * 1.1) / ecoGrain) * ecoGrain;
 
   // Payback = investissement d'hypothèse / économies : borne basse optimiste
   // (prix bas / éco haute), borne haute prudente (prix haut / éco basse).
