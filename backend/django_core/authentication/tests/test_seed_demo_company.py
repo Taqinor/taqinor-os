@@ -168,3 +168,35 @@ class SeedDemoChantiersFacturesNTDMO4Test(TestCase):
             company=self.company, statut=Facture.Statut.PAYEE).exists())
         self.assertTrue(
             Paiement.objects.filter(company=self.company).exists())
+
+
+@override_settings(DEBUG=True)
+class SeedDemoSavStockNTDMO5Test(TestCase):
+    SLUG = 'taqinor-demo-full'
+
+    def setUp(self):
+        call_command('seed_demo_company', verbosity=0)
+        self.company = Company.objects.get(slug=self.SLUG)
+
+    def test_tickets_span_four_plus_statuses(self):
+        from apps.sav.models import Ticket
+        statuts = set(Ticket.objects.filter(company=self.company)
+                      .values_list('statut', flat=True))
+        self.assertGreaterEqual(len(statuts), 4)
+
+    def test_active_maintenance_contracts(self):
+        from apps.sav.models import ContratMaintenance
+        self.assertGreaterEqual(
+            ContratMaintenance.objects.filter(
+                company=self.company, actif=True).count(), 3)
+
+    def test_stock_movements_span_six_plus_months(self):
+        from apps.stock.models import MouvementStock
+        months = {(m.date.year, m.date.month) for m in
+                  MouvementStock.objects.filter(company=self.company)}
+        self.assertGreaterEqual(len(months), 6)
+
+    def test_some_pieces_consumed(self):
+        from apps.sav.models import PieceConsommee
+        self.assertTrue(
+            PieceConsommee.objects.filter(company=self.company).exists())

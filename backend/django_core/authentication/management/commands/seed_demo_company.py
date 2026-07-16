@@ -164,6 +164,7 @@ class Command(BaseCommand):
         self._seed_leads(ctx)
         self._seed_devis(ctx)
         self._seed_chantiers_factures(ctx)
+        self._seed_sav_stock(ctx)
 
     # ── NTDMO2 — leads répartis sur les 6 stages STAGES.py ─────────────────
     # Prénoms/noms/villes marocaines (Faker arrive en NTDMO17, hors de ce lot).
@@ -466,3 +467,84 @@ class Command(BaseCommand):
             factures.append(facture)
         ctx['chantiers'] = chantiers
         ctx['factures'] = factures
+
+    # ── NTDMO5 — tickets SAV, contrats de maintenance, mouvements de stock ──
+    def _seed_sav_stock(self, ctx):
+        from apps.sav.models import ContratMaintenance, PieceConsommee, Ticket
+        from apps.ventes.utils.references import create_with_reference
+        from apps.stock.models import MouvementStock, Produit
+        company, admin, rng = ctx['company'], ctx['admin'], ctx['rng']
+        clients = ctx.get('clients') or []
+        now = timezone.now()
+        if not clients:
+            return
+
+        produits = [p for p in Produit.objects.filter(company=company)
+                    if (p.quantite_stock or 0) > 5][:6]
+
+        # ── ~15 tickets SAV, statuts variés (≥4 distincts) ──
+        statuts = list(Ticket.Statut.values)
+        types = list(Ticket.Type.values)
+        priorites = list(Ticket.Priorite.values)
+        for k in range(15):
+            client = clients[k % len(clients)]
+            statut = statuts[k % len(statuts)]
+
+            def _mk_ticket(reference, client=client, statut=statut, k=k):
+                return Ticket.objects.create(
+                    company=company, reference=reference, client=client,
+                    type=types[k % len(types)], statut=statut,
+                    priorite=priorites[k % len(priorites)],
+                    description=f'Intervention de démonstration #{k + 1}',
+                    technicien_responsable=admin)
+            ticket = create_with_reference(Ticket, 'SAV', company, _mk_ticket)
+            Ticket.objects.filter(pk=ticket.pk).update(
+                date_creation=now - timedelta(days=rng.randint(5, 330)))
+            # Quelques tickets consomment une pièce (décrémente le stock).
+            if produits and k % 3 == 0:
+                produit = produits[k % len(produits)]
+                qte = 1
+                PieceConsommee.objects.create(
+                    company=company, ticket=ticket, produit=produit,
+                    quantite=qte, stock_decremente=True, created_by=admin)
+                avant = produit.quantite_stock
+                produit.quantite_stock = max(0, avant - qte)
+                produit.save(update_fields=['quantite_stock'])
+                MouvementStock.objects.create(
+                    company=company, produit=produit,
+                    type_mouvement=MouvementStock.TypeMouvement.SORTIE,
+                    quantite=qte, quantite_avant=avant,
+                    quantite_apres=produit.quantite_stock,
+                    reference=ticket.reference,
+                    note='Pièce consommée SAV (démo)', created_by=admin)
+
+        # ── 3-4 contrats de maintenance actifs, visites à venir ──
+        periodicites = [ContratMaintenance.Periodicite.TRIMESTRIEL,
+                        ContratMaintenance.Periodicite.SEMESTRIEL,
+                        ContratMaintenance.Periodicite.ANNUEL,
+                        ContratMaintenance.Periodicite.MENSUEL]
+        for n in range(4):
+            ContratMaintenance.objects.create(
+                company=company, client=clients[n % len(clients)],
+                periodicite=periodicites[n], actif=True,
+                date_debut=(now.date() - timedelta(days=45 + n * 20)),
+                prix=Decimal('2500.00'))
+
+        # ── Mouvements de stock étalés sur 12 mois (≥6 mois distincts) ──
+        if produits:
+            types_mvt = [MouvementStock.TypeMouvement.ENTREE,
+                         MouvementStock.TypeMouvement.SORTIE,
+                         MouvementStock.TypeMouvement.TRANSFERT]
+            for m in range(18):
+                produit = produits[m % len(produits)]
+                tmv = types_mvt[m % 3]
+                qte = rng.randint(1, 10)
+                avant = produit.quantite_stock or 0
+                mvt = MouvementStock.objects.create(
+                    company=company, produit=produit, type_mouvement=tmv,
+                    quantite=qte, quantite_avant=avant, quantite_apres=avant,
+                    reference=f'DEMO-MVT-{m + 1:03d}',
+                    note='Mouvement de démonstration', created_by=admin)
+                # Étale sur 12 mois : un mois différent par pas de ~20 jours.
+                MouvementStock.objects.filter(pk=mvt.pk).update(
+                    date=now - timedelta(days=20 * m))
