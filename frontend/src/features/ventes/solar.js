@@ -76,6 +76,115 @@ export const DAY_USAGE_DEFAULTS = {
   'Agricole': 100,
 }
 
+// ── QX44 — Étude COMMERCIALE par catégorie ────────────────────────────────────
+// Chaque marché commercial a une signature de consommation DIURNE distincte : un
+// bureau consomme le jour (autoconsommation élevée), un hôtel/restaurant a un pic
+// du soir. Le « day-share » (part de la conso pendant les heures solaires)
+// remplace l'unique DAY_USAGE_DEFAULTS['Commerciale']=80 par une table par
+// catégorie. SOURCE = archétype de charge documenté ; EST. = estimation marché à
+// vérifier fondateur (QXG6 durcira ces valeurs). Réglable société (override).
+// Miroir informatif du questionnaire webhook (QX51) — clés snake_case.
+export const COMMERCIAL_CATEGORIES = [
+  { value: 'hotel', label: 'Hôtel / Riad' },
+  { value: 'restaurant', label: 'Restaurant / Café' },
+  { value: 'commerce', label: 'Commerce / Supermarché' },
+  { value: 'bureau', label: 'Bureau / Siège' },
+  { value: 'sante', label: 'Santé (clinique / cabinet)' },
+  { value: 'ecole', label: 'École privée' },
+  { value: 'hammam', label: 'Hammam / Spa / Gym' },
+  { value: 'boulangerie', label: 'Boulangerie' },
+  { value: 'froid', label: 'Entrepôt froid' },
+  { value: 'autre', label: 'Autre commerce' },
+]
+
+// Day-share (%) par catégorie — part de la consommation consommée en journée.
+export const COMMERCIAL_DAY_SHARE = {
+  bureau: 80,      // SOURCE archétype bureau : conso ~9h-18h alignée au solaire
+  ecole: 85,       // SOURCE école (période scolaire) : forte conso diurne
+  commerce: 75,    // EST. supermarché : froid + éclairage jour, pic soir modéré
+  sante: 70,       // EST. clinique : diurne dominant, garde de nuit résiduelle
+  restaurant: 70,  // EST. restaurant : services midi + soir → part solaire moyenne
+  hammam: 65,      // EST. hammam/spa/gym : chauffe jour + soirée
+  hotel: 55,       // EST. hôtel : occupation soir/nuit, base diurne (clim/piscine)
+  froid: 50,       // EST. entrepôt froid : base 24 h, part solaire ≈ heures de jour
+  boulangerie: 45, // EST. boulangerie : cuisson souvent nocturne → faible part solaire
+  autre: 80,       // repli = ancien défaut Commerciale
+}
+export const COMMERCIAL_DAY_SHARE_DEFAUT = 80
+
+// Day-share effectif d'une catégorie (override société optionnel, borné 10-100).
+export function commercialDayShare(category, { override } = {}) {
+  if (override && typeof override === 'object' && override[category] != null) {
+    const v = parseFloat(override[category])
+    if (Number.isFinite(v) && v > 0) return Math.min(100, Math.max(10, v))
+  }
+  return COMMERCIAL_DAY_SHARE[category] ?? COMMERCIAL_DAY_SHARE_DEFAUT
+}
+
+// Questions 2-4 par catégorie (recherche 2026-07-16). key = clé snake_case
+// stockée dans etude_params (et acceptée par le webhook QX51). type =
+// 'number' | 'bool' | 'select' (+ options).
+export const COMMERCIAL_CATEGORY_QUESTIONS = {
+  hotel: [
+    { key: 'chambres', label: 'Nombre de chambres', type: 'number' },
+    { key: 'occupation_pct', label: "Taux d'occupation annuel (%)", type: 'number' },
+    { key: 'piscine', label: 'Piscine chauffée', type: 'bool' },
+  ],
+  restaurant: [
+    { key: 'chambres_froides', label: 'Chambres froides', type: 'number' },
+    {
+      key: 'horaires', label: 'Horaires', type: 'select', options: [
+        { value: 'midi', label: 'Midi' }, { value: 'soir', label: 'Soir' },
+        { value: 'continu', label: 'Continu' },
+      ],
+    },
+    {
+      key: 'cuisson', label: 'Cuisson', type: 'select', options: [
+        { value: 'electrique', label: 'Électrique' }, { value: 'gaz', label: 'Gaz' },
+      ],
+    },
+  ],
+  commerce: [
+    { key: 'surface_vente_m2', label: 'Surface de vente (m²)', type: 'number' },
+    { key: 'chambres_froides', label: 'Meubles / chambres froids', type: 'number' },
+  ],
+  bureau: [
+    { key: 'effectif', label: 'Effectif (postes)', type: 'number' },
+    { key: 'clim', label: 'Climatisation centralisée', type: 'bool' },
+  ],
+  sante: [
+    { key: 'lits', label: 'Nombre de lits', type: 'number' },
+    { key: 'garde_nuit', label: 'Garde de nuit', type: 'bool' },
+  ],
+  ecole: [
+    { key: 'effectif', label: 'Effectif (élèves)', type: 'number' },
+    { key: 'internat', label: 'Internat', type: 'bool' },
+    { key: 'fermeture_estivale', label: 'Fermeture estivale', type: 'bool' },
+  ],
+  hammam: [
+    { key: 'surface_m2', label: 'Surface (m²)', type: 'number' },
+    {
+      key: 'chauffe', label: 'Chauffe eau', type: 'select', options: [
+        { value: 'electrique', label: 'Électrique' }, { value: 'gaz', label: 'Gaz' },
+      ],
+    },
+  ],
+  boulangerie: [
+    {
+      key: 'four', label: 'Four', type: 'select', options: [
+        { value: 'electrique', label: 'Électrique' }, { value: 'gaz', label: 'Gaz' },
+      ],
+    },
+    { key: 'cuisson_nocturne', label: 'Cuisson nocturne', type: 'bool' },
+  ],
+  froid: [
+    { key: 'temperature_consigne', label: 'Température de consigne (°C)', type: 'number' },
+    { key: 'volume_m3', label: 'Volume froid (m³)', type: 'number' },
+    { key: 'saisonnalite_recolte', label: 'Pic saisonnier (récolte)', type: 'bool' },
+  ],
+  autre: [],
+}
+
 // ── Format monétaire (port exact de formatMoney) ─────────────────────────────
 export function formatMoney(val) {
   if (val === null || val === undefined || isNaN(val)) return '0 MAD'
