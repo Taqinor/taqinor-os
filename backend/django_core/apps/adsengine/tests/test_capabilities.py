@@ -77,6 +77,9 @@ class ExecuteAutoActionTests(TestCase):
         client.create_ad.assert_called_once()
 
     def test_rebalance_capability_on_auto_applies(self):
+        # ENGFIX1 — un rééquilibrage porte désormais current_budget + daily_budget
+        # (CENTIMES) : 100→110 c = 1,00→1,10 MAD = +10% (≤ 20% défaut) et 1,10 MAD
+        # < plafond 100 MAD → les deux garde-fous passent, l'action s'applique.
         GuardrailConfig.objects.create(
             company=self.company, auto_rebalance_within_band=True)
         client = Mock()
@@ -84,7 +87,8 @@ class ExecuteAutoActionTests(TestCase):
         action = services.execute_auto_action(
             self.company, kind=EngineAction.Kind.REBALANCE_BUDGET,
             reason_fr="Rééquilibrer +10% vers l'ad set performant (dans la bande).",
-            payload={'adset_id': 'as1', 'daily_budget': 110}, client=client)
+            payload={'adset_id': 'as1', 'daily_budget': 110,
+                     'current_budget': 100}, client=client)
         self.assertEqual(action.status, EngineAction.Statut.APPLIQUEE)
         self.assertTrue(action.auto)
         client.update_adset_budget.assert_called_once()

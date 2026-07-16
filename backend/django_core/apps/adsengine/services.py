@@ -15,9 +15,18 @@ import logging
 
 from django.utils import timezone
 
+from . import guardrails
 from .models import EngineAction
 
 logger = logging.getLogger(__name__)
+
+# ENGFIX1/G2 — Contrat d'unité de budget. Les budgets de l'API Marketing Meta
+# sont en UNITÉS MINEURES (centimes) de la devise du compte ; le plafond
+# ``GuardrailConfig.daily_budget_ceiling_mad`` est en MAD (unités majeures).
+# CONVENTION FIGÉE : ``payload['daily_budget']`` / ``payload['current_budget']``
+# sont en CENTIMES ; on les convertit en MAD (÷100) AVANT toute comparaison au
+# plafond (voir ``_centimes_to_mad`` / ``_guard_before_dispatch``).
+CENTIMES_PER_MAD = 100
 
 
 # ── ENG8 — Toggles de capacités (par société) ────────────────────────────────
@@ -160,14 +169,68 @@ def _dispatch(client, action):
     raise ValueError(f"Type d'action non routable : {kind}")
 
 
+def _centimes_to_mad(value):
+    """ENGFIX1/G2 — Centimes (unités mineures Meta) → MAD (unités majeures).
+
+    ``None`` reste ``None`` (le garde-fou le traitera comme inopérant → blocage
+    fail-safe) ; une valeur illisible est renvoyée telle quelle pour que la règle
+    lève ``GuardrailInoperative`` plutôt que d'être silencieusement ignorée."""
+    if value is None:
+        return None
+    try:
+        return float(value) / CENTIMES_PER_MAD
+    except (TypeError, ValueError):
+        return value
+
+
+def _guard_before_dispatch(action):
+    """ENGFIX1 — Applique les garde-fous AVANT tout appel au client Meta.
+
+    Câble les checks de ``guardrails`` (jusqu'ici définis mais JAMAIS appelés sur
+    le chemin d'``apply``), pour que ``_dispatch`` n'atteigne jamais le client sur
+    une action qui viole un garde-fou :
+
+    * ``REBALANCE_BUDGET`` → plafond quotidien (``check_daily_ceiling``) +
+      variation hebdomadaire (``check_weekly_change``). Le budget du payload
+      (``daily_budget`` = nouveau, ``current_budget`` = courant) est en CENTIMES
+      (unités mineures Meta) ; on le convertit en MAD (÷100) avant de le comparer
+      au plafond MAD. La variation en % est indépendante de l'unité (ratio) — on
+      convertit tout de même par cohérence de contrat.
+    * Toute transition de statut explicite (``payload['target_status']``) →
+      ``enforce_paused_only`` + ``enforce_never_activate`` (PAUSED-only, jamais
+      d'activation — invariant permanent règle #3).
+
+    Lève ``GuardrailViolation`` / ``GuardrailInoperative`` (budget/courant manquant
+    → règle inopérante = blocage fail-safe, jamais un skip silencieux) ; l'appelant
+    ``apply_action`` marque alors l'action ``echouee`` et relance."""
+    from .models import GuardrailConfig
+    payload = action.payload or {}
+    config = GuardrailConfig.objects.filter(company=action.company).first()
+
+    if action.kind == EngineAction.Kind.REBALANCE_BUDGET:
+        new_mad = _centimes_to_mad(payload.get('daily_budget'))
+        current_mad = _centimes_to_mad(payload.get('current_budget'))
+        guardrails.check_daily_ceiling(config, new_mad, company=action.company)
+        guardrails.check_weekly_change(
+            config, current_budget=current_mad, new_budget=new_mad,
+            company=action.company)
+
+    # Toute transition de statut demandée reste PAUSED-only (jamais d'activation).
+    target_status = payload.get('target_status')
+    if target_status:
+        guardrails.enforce_paused_only(target_status, company=action.company)
+        guardrails.enforce_never_activate(target_status, company=action.company)
+
+
 def apply_action(action, *, connection=None, client=None):
     """Applique une action **UNIQUEMENT si elle est approuvée**.
 
     Garde de sécurité EN PREMIER : une action non ``approuvee`` lève
     ``ActionNotApproved`` AVANT toute construction/appel du client Meta (le
-    client n'est jamais atteint). En cas d'échec Meta, l'action passe ``echouee``
-    (erreur consignée) et l'exception est relancée ; en cas de succès, elle passe
-    ``appliquee`` (``applied_at`` + ``result`` posés côté serveur).
+    client n'est jamais atteint). En cas d'échec Meta OU de violation de
+    garde-fou (ENGFIX1), l'action passe ``echouee`` (erreur consignée) et
+    l'exception est relancée ; en cas de succès, elle passe ``appliquee``
+    (``applied_at`` + ``result`` posés côté serveur).
     """
     if action.status != EngineAction.Statut.APPROUVEE:
         raise ActionNotApproved(
@@ -186,6 +249,9 @@ def apply_action(action, *, connection=None, client=None):
         client = MetaClient.from_connection(connection)
 
     try:
+        # ENGFIX1 — garde-fous AVANT le dispatch : une violation lève ici et le
+        # client n'est jamais appelé (l'action est marquée « echouee » ci-dessous).
+        _guard_before_dispatch(action)
         result = _dispatch(client, action)
     except Exception as exc:
         action.status = EngineAction.Statut.ECHOUEE
