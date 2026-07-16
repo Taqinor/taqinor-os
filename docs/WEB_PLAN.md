@@ -217,7 +217,7 @@ aucun simulateur batterie (sans/avec = 2 presets). RÈGLE FONDATEUR (anti-concur
 2026-07-16) : le document d'estimation détaillé N'EST PLUS rendu pendant la saisie publique —
 la beauté vit sur la page tokenisée + les PDF.*
 
-- [ ] WJ117 — **Fix état sélectionné des cartes (bug cascade layers).** Cause auditée : les
+- [x] WJ117 — **Fix état sélectionné des cartes (bug cascade layers).** Cause auditée : les
   8 groupes (.mt-mode/.mt-roof-card/.mt-tension/.mt-activity/.mt-water-source/.mt-irrigation/
   .mt-water-unit/.mt-pro-unit) togglent bien border-brass-400 (wireCardGroup :2596, syncMode
   :2170, syncRoof :2205) mais `.cine-card` (global.css:386, NON layered) écrase la couleur
@@ -265,7 +265,7 @@ la beauté vit sur la page tokenisée + les PDF.*
   **Done =** slider live sans re-fetch ; chiffres cohérents avec totaux_avec quand N
   correspond à l'offre ; tests du moteur horaire (cas canoniques). (@lane: web-proposal)
   (@model: opus) (@after: WJ119)
-- [ ] WJ121 — **4 vrais modes au départ du parcours.** Split de la carte « Professionnel » :
+- [x] WJ121 — **4 vrais modes au départ du parcours.** Split de la carte « Professionnel » :
   🏭 Industriel (usine, production) et 🏪 Commercial (hôtel, commerce, services) — FR/EN/AR.
   lead.ts : `LEAD_MODES` (aujourd'hui `['residentiel','professionnel','agricole']`, lead.ts:84)
   + `MAX_BILL_BY_MODE` (:169-173) + règles billRange/qualified gagnent À LA FOIS `industriel`
@@ -1804,6 +1804,11 @@ each for Lydec/Redal/Amendis).
 ---
 
 ## DONE LOG (agent appends one plain-language line per completed task)
+
+### 2026-07-16 — WJ117–WJ126 drain (4 modes + règle anti-concurrent) — web-only lanes
+- **WJ117 (web-journey):** l'état sélectionné des 8 groupes de cartes du parcours devis est enfin VISIBLE — une règle CSS non-layered `.cine-card[aria-pressed="true"]` dans global.css (bordure brass 2px sans décalage de layout, fond teinté brass 10 %, ✓ en coin RTL-aware, label gras) bat le shorthand `.cine-card` qui écrasait l'utilitaire Tailwind layered togglé par le JS. aria-pressed était déjà câblé sur les 3 locales — zéro changement JS. Test source-level (16 assertions) en substitut des captures Playwright (apps/web n'a que vitest) ; focus-visible W209 intact.
+- **WJ121 (web-journey):** la carte « Professionnel » est scindée en 🏭 Industriel et 🏪 Commercial sur les 3 locales de /devis/mon-toit (grille 2×2, stepper/libellés/sous-titres par mode). lead.ts : LEAD_MODES gagne industriel+commercial (l'alias `professionnel` reste accepté pour les sessions en vol mais n'est plus jamais émis — les sessions réhydratées migrent vers industriel) ; MAX_BILL_BY_MODE : les deux nouveaux modes reprennent le plafond professionnel existant (1 M MAD, aucun chiffre inventé) ; qualification 1000 MAD et billRange identiques. TELEMETRY_MODES suit son contrat de miroir. Test bout-en-bout : le webhook CRM reçoit `mode: commercial` / `mode: industriel` verbatim.
+- **WJ122/WJ123 :** `[BLOCKED: attend QX51]`, **WJ124 :** `[BLOCKED: attend QX48]`, **WJ126 :** `[BLOCKED: attend QX49]` — prérequis backend PLAN2 non présents sur `main` (garde de composition : jamais de substitut backend hand-rollé dans apps/web).
 
 ### 2026-07-11 — W187 real brand logos sourced from the web (founder: "search yourself") — 6/7
 - **W187 (brand trust-strip):** re-attempted web sourcing instead of waiting on founder-dropped files, then pushed harder across every reachable host when the first pass got 4. Reachable: `commons.wikimedia.org`, `upload.wikimedia.org` (which ALSO serves each Wikipedia's non-free logo store — the trick that unlocked Canadian Solar), `raw.githubusercontent.com`; blocked (403/000): open web, brand sites, en.wikipedia API, jsDelivr/unpkg/iconify. Sourced **6 of 7 real official logos**: Huawei / Nexans / JA Solar (official SVG, Commons), Jinko (PD PNG, Commons), **Canadian Solar** (official PNG, Wikipedia EN non-free store via computed MD5 path — nominative use), **Deye** (PNG, Commons CC BY-SA 4.0 — attribution in new `public/brands/CREDITS.md`; identity confirmed: the file is used on Wikipedia DE's "Deye" article + Wikidata Q131827394). All wired in `brands.ts`, `<img>` renders SVG+PNG with greyscale→colour on hover, a test verifies each non-null logo is a real on-disk file, SVGs scanned clean. **Only Dyness** has NO reachable official asset (absent from Wikimedia / Wikidata / GitHub logo repos; dyness.com + brandfetch blocked by the allowlist) → honest word-mark, never fabricated; one dropped `dyness.png` finishes it. No new dependency.
