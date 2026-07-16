@@ -77,7 +77,13 @@ import {
   objectionFaq,
   sellerNote,
 } from '../../lib/proposition';
-import { renderYearCurve } from '../../lib/proposalCurve';
+import {
+  renderYearCurve,
+  resolveProposalCurveMode,
+  type ProposalCurveVariant,
+  type DailyCurve,
+  type CurveLang,
+} from '../../lib/proposalCurve';
 import { renderProposalChart, resolveSeries } from '../../lib/proposalChart';
 import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
 // W342 — « installation la plus proche » : haversine sur un point GPS réel
@@ -221,6 +227,19 @@ const instLabel =
         ? String(q.inst_type)
         : 'Installation solaire';
 
+// WJ119 — mode de courbe journalière dérivé du MÊME champ backend (repli
+// residentiel si absent/inconnu ; resolveProposalCurveMode documente les
+// valeurs RÉELLEMENT observées aujourd'hui — "Résidentielle" / "Industrielle /
+// Commerciale" / "Agricole", cf. quote_engine/builder.py).
+const curveMode = resolveProposalCurveMode(q?.inst_type ?? null);
+// Été/Ramadan n'ont de sens que pour un profil résidentiel/commercial (clim,
+// horaires de jeûne) — jamais pour un poste industriel (équipes fixes) ou un
+// pompage agricole (fenêtre solaire fixe, sans confort thermique à moduler).
+const curveVariantToggle = curveMode === 'residentiel' || curveMode === 'commercial';
+const CURVE_VARIANTS: readonly ProposalCurveVariant[] = curveVariantToggle
+  ? (['normal', 'ete', 'ramadan'] as const)
+  : (['normal'] as const);
+
 // ── P2 — Graphe production estimée vs consommation (depuis les tableaux Q6) ──
 // On ne dessine QUE les chiffres backend ; tableaux vides/absents → bloc masqué.
 const chartSeries = ok ? resolveSeries(data?.monthly_production, data?.monthly_consumption) : { mode: 'none' as const, production: null, consumption: null };
@@ -246,9 +265,24 @@ const chartHasConso = chartSeries.mode === 'comparison';
 // Calée sur la production annuelle RÉELLE backend si présente, sinon « année
 // type » clairement libellée. Le visuel le plus persuasif ne disparaît jamais.
 // WJ80 — même pré-rendu tri-langue que le graphe ci-dessus.
-const dailyCurveFr = ok ? renderYearCurve(prodKwh, undefined, 'fr') : { svg: '', hasRealScale: false };
-const dailyCurveEn = ok ? renderYearCurve(prodKwh, undefined, 'en') : { svg: '', hasRealScale: false };
-const dailyCurveAr = ok ? renderYearCurve(prodKwh, undefined, 'ar') : { svg: '', hasRealScale: false };
+// WJ119 — la silhouette de consommation dépend maintenant du MODE (curveMode) ;
+// résidentiel/commercial pré-rendent aussi été/Ramadan (toggle discret côté
+// page, CURVE_VARIANTS) — industriel/agricole gardent une seule forme (aucun
+// poids HTML supplémentaire quand le toggle ne s'applique pas).
+const EMPTY_DAILY_CURVE: DailyCurve = { svg: '', hasRealScale: false };
+const dailyCurvesByVariant: Record<CurveLang, Partial<Record<ProposalCurveVariant, DailyCurve>>> = {
+  fr: {}, en: {}, ar: {},
+};
+if (ok) {
+  for (const lang of ['fr', 'en', 'ar'] as const) {
+    for (const variant of CURVE_VARIANTS) {
+      dailyCurvesByVariant[lang][variant] = renderYearCurve(prodKwh, undefined, lang, { mode: curveMode, variant });
+    }
+  }
+}
+const dailyCurveFr = dailyCurvesByVariant.fr.normal ?? EMPTY_DAILY_CURVE;
+const dailyCurveEn = dailyCurvesByVariant.en.normal ?? EMPTY_DAILY_CURVE;
+const dailyCurveAr = dailyCurvesByVariant.ar.normal ?? EMPTY_DAILY_CURVE;
 const dailyCurve = dailyCurveFr;
 
 // ── WJ15 — Fenêtre de validité honnête (date backend réelle, jamais inventée) ─
@@ -999,13 +1033,40 @@ const signConfig = ok
           <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Votre journée solaire" data-en="Your solar day" data-ar="يومكم الشمسي">Votre journée solaire</p>
           <div class="cine-card mt-5 rounded-2xl p-5 sm:p-6">
             <!-- WJ80 — mêmes trois variantes langue pré-rendues que le graphe
-                 ci-dessus (FR visible par défaut). -->
-            <div class="daily-curve-wrap" data-curve-lang="fr" set:html={dailyCurveFr.svg}></div>
-            <div class="daily-curve-wrap" data-curve-lang="en" hidden set:html={dailyCurveEn.svg}></div>
-            <div class="daily-curve-wrap" data-curve-lang="ar" hidden set:html={dailyCurveAr.svg}></div>
+                 ci-dessus (FR visible par défaut). WJ119 — croisées avec la
+                 variante été/Ramadan (normal/ete/ramadan) quand le toggle
+                 s'applique (résidentiel/commercial, curveVariantToggle) ;
+                 industriel/agricole n'ont que "normal" — zéro poids HTML en
+                 plus quand le toggle ne s'applique pas. -->
+            {CURVE_VARIANTS.map((variant) => (
+              <div class="daily-curve-wrap" data-curve-lang="fr" data-curve-variant={variant} hidden={variant !== 'normal'} set:html={dailyCurvesByVariant.fr[variant]?.svg ?? ''}></div>
+            ))}
+            {CURVE_VARIANTS.map((variant) => (
+              <div class="daily-curve-wrap" data-curve-lang="en" data-curve-variant={variant} hidden set:html={dailyCurvesByVariant.en[variant]?.svg ?? ''}></div>
+            ))}
+            {CURVE_VARIANTS.map((variant) => (
+              <div class="daily-curve-wrap" data-curve-lang="ar" data-curve-variant={variant} hidden set:html={dailyCurvesByVariant.ar[variant]?.svg ?? ''}></div>
+            ))}
             <!-- WJ80 — tap-to-reveal du repère pic/moyenne (même discipline que
                  le graphe ci-dessus — le survol est invisible au tactile). -->
             <p id="curve-tap-caption" class="mt-2 min-h-[1.25rem] text-sm text-brass-300" aria-live="polite"></p>
+            <!-- WJ119 — toggle DISCRET été/Ramadan (résidentiel/commercial
+                 uniquement — un poste industriel ou un pompage agricole ne
+                 varient pas avec la clim/le jeûne). Change uniquement la
+                 SILHOUETTE de consommation affichée ; jamais un chiffre. -->
+            {curveVariantToggle && (
+              <div class="mt-3 flex flex-wrap items-center gap-2" role="group" aria-label="Variante du profil de consommation">
+                <button type="button" id="curve-variant-normal" data-curve-variant-btn="normal" aria-pressed="true"
+                  class="btn-pill px-3 py-1 text-xs" style="background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)"
+                  data-i18n data-fr="Standard" data-en="Standard" data-ar="عادي">Standard</button>
+                <button type="button" id="curve-variant-ete" data-curve-variant-btn="ete" aria-pressed="false"
+                  class="btn-pill px-3 py-1 text-xs"
+                  data-i18n data-fr="Été (clim)" data-en="Summer (AC)" data-ar="الصيف (تكييف)">Été (clim)</button>
+                <button type="button" id="curve-variant-ramadan" data-curve-variant-btn="ramadan" aria-pressed="false"
+                  class="btn-pill px-3 py-1 text-xs"
+                  data-i18n data-fr="Ramadan" data-en="Ramadan" data-ar="رمضان">Ramadan</button>
+              </div>
+            )}
             <div class="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
               <span class="inline-flex items-center gap-2 text-lune-soft">
                 <span class="inline-block h-3 w-3 rounded-sm" style="background: var(--color-brass-400)" aria-hidden="true"></span>
@@ -1019,6 +1080,13 @@ const signConfig = ok
                 <span class="text-lune-faint" data-i18n data-fr="profil — année type (forme indicative)" data-en="profile — typical year (indicative shape)" data-ar="نمط — سنة نموذجية (شكل إرشادي)">profil — année type (forme indicative)</span>
               )}
             </div>
+            <!-- WJ119 — libellé honnête : jamais « mesuré », toujours « type ». -->
+            <p class="mt-1 text-xs text-lune-faint" data-i18n
+              data-fr="Profil type au Maroc, ajusté à votre facture."
+              data-en="Typical Moroccan profile, adjusted to your bill."
+              data-ar="نمط نموذجي في المغرب، معدّل حسب فاتورتكم.">
+              Profil type au Maroc, ajusté à votre facture.
+            </p>
             <p class="v2-body mt-4 text-sm text-lune-soft" data-i18n
               data-fr={`Le soleil produit en pleine journée : chaque kWh consommé à ce moment-là ne vient plus du réseau. ${dailyCurve.hasRealScale ? 'Les repères sont calés sur votre production estimée.' : 'Cette courbe illustre une journée type — votre profil exact est précisé avec votre conseiller.'}`}
               data-en={`The sun produces during the day: every kWh consumed at that moment no longer comes from the grid. ${dailyCurve.hasRealScale ? 'The markers are calibrated on your estimated production.' : 'This curve illustrates a typical day — your exact profile is confirmed with your advisor.'}`}
@@ -2304,6 +2372,18 @@ const signConfig = ok
   // simplement sur le markup FR en mode EN plutôt que de planter.
   type PropLang = 'fr' | 'en' | 'ar';
   let currentLang: PropLang = 'fr';
+  // WJ119 — variante de la courbe journalière (été/Ramadan, toggle discret,
+  // résidentiel/commercial uniquement) : croisée avec currentLang ci-dessous
+  // (un bloc n'est visible que si lang ET variante correspondent toutes deux).
+  type CurveVariantId = 'normal' | 'ete' | 'ramadan';
+  let currentCurveVariant: CurveVariantId = 'normal';
+  /** Filtre lang+variant partagé par applyLang() et le toggle été/Ramadan. */
+  function applyCurveVisibility(): void {
+    document.querySelectorAll<HTMLElement>('[data-curve-lang]').forEach((el) => {
+      const variant = (el.dataset.curveVariant as CurveVariantId | undefined) ?? 'normal';
+      el.hidden = el.dataset.curveLang !== currentLang || variant !== currentCurveVariant;
+    });
+  }
   const i18nTriples: Array<{ fr: HTMLElement; en: HTMLElement; ar: HTMLElement }> = [];
   /** Registre des labels à retraduire à chaque bascule (busy-state, non couverts par data-i18n). */
   const propI18nBusyLabels: Array<(lang: PropLang) => void> = [];
@@ -2367,9 +2447,9 @@ const signConfig = ok
     document.querySelectorAll<HTMLElement>('[data-chart-lang]').forEach((el) => {
       el.hidden = el.dataset.chartLang !== currentLang;
     });
-    document.querySelectorAll<HTMLElement>('[data-curve-lang]').forEach((el) => {
-      el.hidden = el.dataset.curveLang !== currentLang;
-    });
+    // WJ119 — les blocs `[data-curve-lang]` portent AUSSI `data-curve-variant`
+    // (été/Ramadan) : le filtre partagé applyCurveVisibility() gère les deux.
+    applyCurveVisibility();
     // WJ87 — les attributs `placeholder` ne sont pas couverts par le mécanisme
     // data-i18n (qui ne touche que le contenu affiché) : ce petit registre
     // dédié retraduit les placeholders posés via data-placeholder-{fr,en,ar}
@@ -2393,6 +2473,25 @@ const signConfig = ok
   document.getElementById('prop-lang-fr')?.addEventListener('click', () => applyLang('fr'));
   document.getElementById('prop-lang-en')?.addEventListener('click', () => applyLang('en'));
   document.getElementById('prop-lang-ar')?.addEventListener('click', () => applyLang('ar'));
+  // WJ119 — toggle discret été/Ramadan de la courbe journalière (résidentiel/
+  // commercial uniquement — absent du DOM sinon, la boucle ne trouve alors
+  // aucun bouton et ne fait rien). Change UNIQUEMENT la silhouette affichée.
+  function applyCurveVariant(variant: CurveVariantId): void {
+    currentCurveVariant = variant;
+    document.querySelectorAll<HTMLElement>('[data-curve-variant-btn]').forEach((btn) => {
+      const on = btn.getAttribute('data-curve-variant-btn') === variant;
+      btn.setAttribute('aria-pressed', String(on));
+      btn.setAttribute(
+        'style',
+        on ? 'background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)' : '',
+      );
+    });
+    applyCurveVisibility();
+  }
+  document.querySelectorAll<HTMLElement>('[data-curve-variant-btn]').forEach((btn) => {
+    const variant = btn.getAttribute('data-curve-variant-btn') as CurveVariantId | null;
+    if (variant) btn.addEventListener('click', () => applyCurveVariant(variant));
+  });
   // Exposé aux AUTRES <script> de cette page (PDF affordance) — chaque bloc
   // <script> d'une île Astro est un module séparé, donc pas de portée
   // partagée native ; `window` est le pont volontairement minimal ici.
