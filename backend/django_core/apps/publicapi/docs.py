@@ -12,7 +12,10 @@ La source de vérité des scopes/évènements reste `constants.py` : on lit
 """
 from .constants import SCOPE_CHOICES, EVENT_CHOICES
 from .auth import AUTH_KEYWORD
-from .delivery import SIGNATURE_HEADER, EVENT_HEADER, TIMESTAMP_HEADER
+from .delivery import (
+    SIGNATURE_HEADER, SIGNATURE_HEADER_V2, EVENT_HEADER, TIMESTAMP_HEADER,
+    DEFAULT_SIGNATURE_TOLERANCE_SECONDS,
+)
 
 # Recette de vérification de la signature HMAC, identique à `delivery.sign_payload`
 # (YAPIC8 : HMAC-SHA256 de `f"{timestamp}.".encode() + body`, où body est le
@@ -28,6 +31,25 @@ _HMAC_RECIPE_PYTHON = (
     "signe = f'{timestamp}.'.encode('utf-8') + body\n"
     "expected = hmac.new(secret.encode('utf-8'), signe, hashlib.sha256).hexdigest()\n"
     f"recu = request.headers['{SIGNATURE_HEADER}']\n"
+    "valide = hmac.compare_digest(expected, recu)\n"
+    "# `event_id` (dans le corps JSON) est stable : dédupliquez dessus."
+)
+
+# NTAPI9 — recette V2 (auto-suffisante, façon Stripe) : horodatage + signature
+# dans le SEUL en-tête `X-Taqinor-Signature-V2`. Le calcul du HMAC est
+# IDENTIQUE à la recette legacy ci-dessus — seul le transport (un en-tête au
+# lieu de deux) change.
+_HMAC_RECIPE_V2_PYTHON = (
+    "import hmac, hashlib, time\n"
+    "# `secret` = secret du webhook (affiché une seule fois à la création).\n"
+    "# `body` = corps HTTP brut reçu (bytes), tel quel.\n"
+    f"entete = request.headers['{SIGNATURE_HEADER_V2}']  # 't=<epoch>,v1=<hex>'\n"
+    "parts = dict(p.split('=', 1) for p in entete.split(','))\n"
+    "timestamp, recu = parts['t'], parts['v1']\n"
+    "# Rejette un horodatage hors tolérance (anti-rejeu) :\n"
+    f"assert abs(time.time() - int(timestamp)) <= {DEFAULT_SIGNATURE_TOLERANCE_SECONDS}\n"
+    "signe = f'{timestamp}.'.encode('utf-8') + body\n"
+    "expected = hmac.new(secret.encode('utf-8'), signe, hashlib.sha256).hexdigest()\n"
     "valide = hmac.compare_digest(expected, recu)\n"
     "# `event_id` (dans le corps JSON) est stable : dédupliquez dessus."
 )
@@ -172,6 +194,9 @@ def public_api_reference():
             ),
             'entetes': {
                 'signature': SIGNATURE_HEADER,
+                # NTAPI9 — format auto-suffisant recommandé pour toute
+                # intégration NEUVE ; le legacy ci-dessus reste valide.
+                'signature_v2': SIGNATURE_HEADER_V2,
                 'horodatage': TIMESTAMP_HEADER,
                 'evenement': EVENT_HEADER,
             },
@@ -189,6 +214,18 @@ def public_api_reference():
                     "hors tolérance (anti-rejeu)."
                 ),
                 'exemple_python': _HMAC_RECIPE_PYTHON,
+            },
+            'verification_signature_v2': {
+                'algorithme': (
+                    f"Recommandé (NTAPI9) — l'en-tête {SIGNATURE_HEADER_V2} "
+                    "porte à lui seul `t=<epoch>,v1=<hex>` : même calcul HMAC "
+                    "que le format legacy, mais horodatage + signature dans "
+                    "UN SEUL en-tête. Rejetez un `t` hors tolérance (défaut "
+                    f"{DEFAULT_SIGNATURE_TOLERANCE_SECONDS} s) — le format "
+                    f"legacy {SIGNATURE_HEADER} reste envoyé EN PARALLÈLE, "
+                    "sans changement, pour toute intégration existante."
+                ),
+                'exemple_python': _HMAC_RECIPE_V2_PYTHON,
             },
             'livraison': (
                 "Chaque évènement porte un `event_id` stable (uuid4) dans le "

@@ -1,4 +1,4 @@
-"""Service de livraison des webhooks (N89 ; fiabilisé YAPIC8).
+"""Service de livraison des webhooks (N89 ; fiabilisé YAPIC8 ; NTAPI9).
 
 POST best-effort, signé HMAC-SHA256, vers chaque webhook activé d'une société
 abonnée à l'évènement. Chaque tentative est journalisée dans WebhookDelivery.
@@ -13,6 +13,15 @@ YAPIC8 — livraison FIABLE :
     rejetable par le receveur ;
   * un ``event_id`` (uuid4) STABLE est posé dans le payload, réutilisé à
     l'identique par le replay (FG102) et partagé par toutes les tentatives.
+
+NTAPI9 — format de signature auto-suffisant façon Stripe, en PLUS du format
+legacy ci-dessus (jamais un remplacement — l'ancien en-tête reste valide à
+l'identique, aucune rupture pour les intégrations existantes) :
+``X-Taqinor-Signature-V2: t=<epoch>,v1=<hex>`` où ``<hex>`` est EXACTEMENT
+``sign_payload(secret, body, timestamp=t)`` — un consommateur peut vérifier
+sans dépendre d'un second en-tête séparé pour l'horodatage, et rejeter un
+``t`` hors fenêtre de tolérance (300 s par défaut) directement depuis cette
+seule valeur.
 """
 import hashlib
 import hmac
@@ -28,8 +37,14 @@ from .validators import UnsafeWebhookURL, validate_webhook_target_url
 
 logger = logging.getLogger(__name__)
 
-# En-tête portant la signature HMAC-SHA256 (hex) de `timestamp.body`.
+# En-tête LEGACY portant la signature HMAC-SHA256 (hex, seule) de
+# `timestamp.body` — conservé À L'IDENTIQUE (NTAPI9 : « garder l'ancien
+# en-tête hex en parallèle pour compat »).
 SIGNATURE_HEADER = 'X-Taqinor-Signature'
+# NTAPI9 — format auto-suffisant façon Stripe : "t=<epoch>,v1=<hex>". Le
+# ``hex`` est EXACTEMENT le même calcul que `SIGNATURE_HEADER` — seul le
+# conditionnement change (horodatage + signature dans une SEULE valeur).
+SIGNATURE_HEADER_V2 = 'X-Taqinor-Signature-V2'
 EVENT_HEADER = 'X-Taqinor-Event'
 # YAPIC8 — horodatage d'émission (epoch secondes) COUVERT par la signature.
 TIMESTAMP_HEADER = 'X-Taqinor-Timestamp'
@@ -40,6 +55,11 @@ EVENT_ID_KEY = 'event_id'
 # Celery immédiates YAPIC8).
 DELIVERY_ATTEMPT_HEADER = 'X-Taqinor-Delivery-Attempt'
 DELIVERY_TIMEOUT = 5.0  # secondes
+# NTAPI9 — fenêtre de tolérance par défaut (secondes) pour la vérification
+# anti-rejeu du format V2 côté CONSOMMATEUR (documentée dans `docs.py`/FG105 ;
+# `verify_signature_v2` ci-dessous n'est jamais appelée par l'ÉMETTEUR — c'est
+# un utilitaire de référence pour les tests/la doc).
+DEFAULT_SIGNATURE_TOLERANCE_SECONDS = 300
 
 
 def sign_payload(secret, body_bytes, timestamp=None):
@@ -54,6 +74,39 @@ def sign_payload(secret, body_bytes, timestamp=None):
     return hmac.new(
         secret.encode('utf-8'), body_bytes, hashlib.sha256
     ).hexdigest()
+
+
+def build_signature_v2(secret, body_bytes, timestamp):
+    """NTAPI9 — valeur de ``SIGNATURE_HEADER_V2`` : ``"t=<epoch>,v1=<hex>"``.
+
+    ``<hex>`` est calculé EXACTEMENT comme ``sign_payload(secret, body,
+    timestamp=timestamp)`` — même algorithme, seul le transport change (un
+    consommateur récupère horodatage + signature d'un SEUL en-tête)."""
+    hex_signature = sign_payload(secret, body_bytes, timestamp=timestamp)
+    return f't={timestamp},v1={hex_signature}'
+
+
+def verify_signature_v2(secret, body_bytes, header_value, *,
+                        tolerance_seconds=DEFAULT_SIGNATURE_TOLERANCE_SECONDS,
+                        now=None):
+    """Référence de vérification côté CONSOMMATEUR du format ``t=…,v1=…``
+    (utilitaire pour tests/doc — jamais appelé par l'émetteur).
+
+    Renvoie ``True`` si la signature est valide ET que ``t`` est dans la
+    fenêtre de tolérance (anti-rejeu) ; ``False`` sinon (jamais d'exception :
+    un en-tête malformé est simplement invalide)."""
+    try:
+        parts = dict(
+            item.split('=', 1) for item in header_value.split(',') if '=' in item)
+        timestamp = int(parts['t'])
+        received = parts['v1']
+    except (KeyError, ValueError, AttributeError):
+        return False
+    now = int(now if now is not None else time.time())
+    if abs(now - timestamp) > tolerance_seconds:
+        return False
+    expected = sign_payload(secret, body_bytes, timestamp=str(timestamp))
+    return hmac.compare_digest(expected, received)
 
 
 def ensure_event_id(payload):
@@ -117,6 +170,10 @@ def _send(webhook, event, payload, extra_headers=None):
     headers = {
         'Content-Type': 'application/json',
         SIGNATURE_HEADER: signature,
+        # NTAPI9 — format auto-suffisant, EN PLUS du legacy ci-dessus (jamais
+        # un remplacement).
+        SIGNATURE_HEADER_V2: build_signature_v2(
+            webhook.secret, body_bytes, timestamp),
         TIMESTAMP_HEADER: timestamp,
         EVENT_HEADER: event,
     }
