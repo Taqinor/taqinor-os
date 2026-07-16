@@ -8,6 +8,7 @@ suivantes de la lane.
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
+from .odoo_views import OdooCostPerSignatureView
 from .views import (
     AdCampaignMirrorViewSet, AnomalyEventViewSet, ArmDailyStatViewSet,
     BacklogDropAssetView, BacklogListView, BacklogLotApproveView,
@@ -58,6 +59,10 @@ urlpatterns = [
     path('status/', StatusView.as_view(), name='adsengine-status'),
     path('metrics/cout-par-signature/', CostPerSignatureView.as_view(),
          name='adsengine-cout-par-signature'),
+    # ADSENG-ODOO — même chiffre, dénominateur = signatures RÉELLES Odoo.
+    path('metrics/cost-per-signature-odoo/',
+         OdooCostPerSignatureView.as_view(),
+         name='adsengine-cost-per-signature-odoo'),
     path('wiring-health/', WiringHealthView.as_view(),
          name='adsengine-wiring-health'),
     # ── ADSENGINT1/ADSENGINT2 — endpoints console (vues minces) ──────────────
