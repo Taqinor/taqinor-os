@@ -15,11 +15,12 @@ from apps.core.destroy_mixins import UsageGuardedDestroyMixin
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
-    ActeMedical, Admission, Convention, Patient, Praticien, RendezVous, Salle)
+    ActeMedical, Admission, Convention, GrilleTarifaire, Patient, Praticien,
+    RendezVous, Salle)
 from .serializers import (
     ActeMedicalSerializer, AdmissionSerializer, ConventionSerializer,
-    PatientSerializer, PraticienSerializer, RendezVousSerializer,
-    SalleSerializer)
+    GrilleTarifaireSerializer, PatientSerializer, PraticienSerializer,
+    RendezVousSerializer, SalleSerializer)
 
 
 class PraticienViewSet(CompanyScopedModelViewSet):
@@ -156,3 +157,11 @@ class ConventionViewSet(CompanyScopedModelViewSet):
 
     queryset = Convention.objects.all()
     serializer_class = ConventionSerializer
+
+
+class GrilleTarifaireViewSet(CompanyScopedModelViewSet):
+    """NTSAN8 — tarifs par convention. Consommée par la facturation
+    (NTSAN13, via `selectors.tarif_applicable`)."""
+
+    queryset = GrilleTarifaire.objects.select_related('convention', 'acte').all()
+    serializer_class = GrilleTarifaireSerializer

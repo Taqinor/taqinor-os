@@ -298,3 +298,36 @@ class Convention(TenantModel):
 
     def __str__(self):
         return self.nom
+
+
+class GrilleTarifaire(TenantModel):
+    """NTSAN8 — tarif par convention (mutuelle/CNOPS/CNSS), différent du
+    ``tarif_base_ttc`` de l'acte. La facturation (NTSAN13) lit cette grille
+    pour la convention du patient si une ligne existe, sinon retombe sur
+    ``ActeMedical.tarif_base_ttc`` (voir ``selectors.tarif_applicable``)."""
+
+    convention = models.ForeignKey(
+        Convention, on_delete=models.CASCADE,
+        related_name='grilles_tarifaires', verbose_name='Convention')
+    acte = models.ForeignKey(
+        ActeMedical, on_delete=models.CASCADE,
+        related_name='grilles_tarifaires', verbose_name='Acte')
+    tarif_convention_ttc = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0,
+        verbose_name='Tarif convention TTC')
+    taux_prise_charge_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, default=0,
+        verbose_name='Taux de prise en charge (%)')
+
+    class Meta:
+        verbose_name = 'Grille tarifaire'
+        verbose_name_plural = 'Grilles tarifaires'
+        ordering = ['convention', 'acte']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'convention', 'acte'],
+                name='sante_grille_unique_convention_acte'),
+        ]
+
+    def __str__(self):
+        return f'{self.convention_id} / {self.acte_id}'

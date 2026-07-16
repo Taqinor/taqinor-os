@@ -6,7 +6,8 @@
 from rest_framework import serializers
 
 from .models import (
-    ActeMedical, Admission, Convention, Patient, Praticien, RendezVous, Salle)
+    ActeMedical, Admission, Convention, GrilleTarifaire, Patient, Praticien,
+    RendezVous, Salle)
 
 
 class PraticienSerializer(serializers.ModelSerializer):
@@ -84,6 +85,15 @@ class ConventionSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'nom', 'type', 'type_display', 'taux_tiers_payant_pct',
             'contact', 'actif',
+        ]
+
+
+class GrilleTarifaireSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = GrilleTarifaire
+        fields = [
+            'id', 'convention', 'acte', 'tarif_convention_ttc',
+            'taux_prise_charge_pct',
         ]
 
 
