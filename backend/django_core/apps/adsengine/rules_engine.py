@@ -291,6 +291,8 @@ def evaluate_company(company, *, cadences=None, now=None, client=None,
     if config is None:
         config = GuardrailConfig.objects.filter(company=company).first()
 
+    from . import watchdog
+
     evaluated = 0
     for policy in RulePolicy.objects.filter(company=company, enabled=True):
         template = rule_templates.get_template(policy.template_key)
@@ -347,19 +349,19 @@ def evaluate_company(company, *, cadences=None, now=None, client=None,
             'findings': summaries, 'at': now.isoformat()})
         evaluated += 1
 
+    # ADSENG17 — heartbeat de l'évaluateur (le watchdog détecte son arrêt).
+    watchdog.record_heartbeat(company)
     return evaluated
 
 
 def _report_inoperative(company, policy, error):
-    """Alerte dédiée « règle inopérante » (leçon Madgicx). ADSENG17 (watchdog)
-    enrichit ; ici on émet via le hook garde-fou existant."""
-    from . import guardrails
+    """Alerte 🔴 dédiée « règle inopérante » (leçon Madgicx) — déléguée au
+    watchdog (ADSENG17) : sévérité CRITICAL + dédup par (société, règle)."""
+    from . import watchdog
     template = rule_templates.get_template(policy.template_key)
     label = template['label_fr'] if template else policy.template_key
-    guardrails.emit_alert(
-        company, alert_type=guardrails.ALERT_INOPERATIVE,
-        message=(f"La règle « {label} » n'a pas pu s'exécuter ({error})."),
-        detail={'template_key': policy.template_key, 'error': error})
+    watchdog.report_rule_failure(
+        company, template_key=label, error=error)
 
 
 def evaluate_all(cadences=None, *, now=None, client=None):

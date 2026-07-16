@@ -99,6 +99,10 @@ class WiringHealthView(APIView):
                      .values_list('updated_at', flat=True)
                      .first())
 
+        # ADSENG17 — santé du Gardien : heartbeat de l'évaluateur de règles
+        # (le watchdog détecte un beat/worker Celery arrêté). Aucun secret.
+        from .watchdog import health as guardian_health
+
         return Response({
             'keys': keys,
             'connection': connection,
@@ -108,6 +112,7 @@ class WiringHealthView(APIView):
             # disponibles : rapportés None honnêtement, jamais fabriqués.
             'last_lead_ads_webhook': None,
             'last_capi_event': None,
+            'guardian': guardian_health(company),
         })
 
 
