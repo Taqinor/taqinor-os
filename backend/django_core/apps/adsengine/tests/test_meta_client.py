@@ -147,6 +147,24 @@ class TransportTests(SimpleTestCase):
         self.assertEqual(parsed, rows)
         self.assertEqual(parsed[0]['spend'], '12.50')
 
+    def test_insights_follows_pagination(self):
+        """Régression : les insights ventilés par jour sur un long historique
+        sont PAGINÉS — sans suivre ``paging.next`` on ne lit que la 1re page et la
+        dépense est tronquée. On concatène toutes les pages via le curseur
+        ``after``."""
+        def handler(request):
+            after = request.url.params.get('after')
+            if not after:
+                return httpx.Response(200, json={
+                    'data': [{'date_start': '2026-01-01', 'spend': '100'}],
+                    'paging': {'cursors': {'after': 'CUR2'}, 'next': 'more'}})
+            return httpx.Response(200, json={
+                'data': [{'date_start': '2026-01-02', 'spend': '200'}],
+                'paging': {'cursors': {'after': 'CUR3'}}})  # pas de 'next' -> fin
+
+        rows = make_client(handler).get_insights('act_1')
+        self.assertEqual([r['spend'] for r in rows], ['100', '200'])
+
     def test_expired_token_raises_meta_auth_error(self):
         def handler(request):
             return httpx.Response(400, json={'error': {
