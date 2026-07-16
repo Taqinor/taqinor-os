@@ -57,6 +57,19 @@ BASELINE_ALLOWLIST = {
     "backend/django_core/apps/compta/services.py:11991",
     "backend/django_core/apps/compta/services.py:8374",
     "backend/django_core/apps/compta/services.py:8378",
+    # XSAL14 (2026-07-16) — builder.py edits shifted existing display-round
+    # sites; re-based 1:1 (premium engine, sanctioned rounding).
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1285",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1291",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1344",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1345",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:496",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:591",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:593",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:618",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:620",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:764",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:777",
 }
 
 TARGET_FILES = [
