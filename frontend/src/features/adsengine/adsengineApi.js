@@ -83,6 +83,14 @@ const adsengineApi = {
       api.post(`/adsengine/creatives/${id}/policy-check/`, payload),
     generateVariants: (id) => api.post(`/adsengine/creatives/${id}/variantes/`),
   },
+
+  // ── ENG12/ENG39 — Expérimentations (bandit) : phases, bras, DecisionLog ──
+  experiments: {
+    ...resource('experiments'),
+    // DecisionLog d'une expérimentation (« pourquoi le moteur a fait X »).
+    decisionLog: (id, params) =>
+      api.get(`/adsengine/experiments/${id}/decisions/`, { params }),
+  },
 }
 
 export default adsengineApi

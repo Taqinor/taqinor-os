@@ -39,10 +39,11 @@ describe('adsengine — module.config (auto-enregistrement ENG21)', () => {
   it('nav et routes sont cohérents, gatés responsable/admin', async () => {
     const { default: config } = await import('./module.config.jsx')
     expect(config.key).toBe('adsengine')
-    // 7 écrans : dashboard, approbations, campagnes, créatifs, brief, journal, connexion.
-    expect(config.routes).toHaveLength(7)
-    expect(config.nav.items).toHaveLength(7)
-    expect(config.titles).toHaveLength(7)
+    // Écrans : dashboard, approbations, campagnes, créatifs, expérimentations,
+    // brief, journal, connexion (+ écrans P7 ajoutés au fil des tâches ADSENG39+).
+    expect(config.routes).toHaveLength(8)
+    expect(config.nav.items).toHaveLength(8)
+    expect(config.titles).toHaveLength(8)
 
     const routePaths = config.routes.map(r => r.path).sort()
     const navTargets = config.nav.items.map(i => i.to).sort()

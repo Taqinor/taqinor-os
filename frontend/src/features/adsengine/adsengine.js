@@ -269,3 +269,69 @@ export function filterActionLog(actions, { statut, mode } = {}) {
     return true
   })
 }
+
+// ── ENG39 — Expérimentations (bandit) : posteriors lisibles par un humain ──
+// Pourcentage (fraction 0..1 → « 72 % »). L'API donne une PROBABILITÉ (p_best,
+// allocation) ; on ne fait que la formater — « — » si la donnée manque.
+export function formatPercent(value, decimals = 0) {
+  const n = typeof value === 'string' ? Number(value) : value
+  if (n === null || n === undefined || !Number.isFinite(n)) return '—'
+  return `${formatNumber(n * 100, decimals)} %`
+}
+
+// Normalise une expérimentation ENG12 : phases + bras (avec posteriors). Aucun
+// chiffre inventé — on ne fait que défensivement lire ceux de l'API.
+export function normalizeExperiment(raw) {
+  const e = raw && typeof raw === 'object' ? raw : {}
+  const phases = (Array.isArray(e.phases) ? e.phases : []).filter(Boolean).map((p, i) => ({
+    key: p.key ?? String(i),
+    label: p.label || p.nom || p.key || `Phase ${i + 1}`,
+    statut: p.statut || '',
+    statut_display: p.statut_display || p.statut || '',
+  }))
+  const bras = (Array.isArray(e.bras) ? e.bras : (Array.isArray(e.arms) ? e.arms : []))
+    .filter(Boolean).map((b, i) => ({
+      id: b.id ?? i,
+      nom: b.nom || b.name || `Bras ${i + 1}`,
+      p_best: numOrNull(b.p_best ?? b.prob_best),
+      mean: numOrNull(b.mean ?? b.moyenne),
+      ci_low: numOrNull(b.ci_low ?? b.ic_bas),
+      ci_high: numOrNull(b.ci_high ?? b.ic_haut),
+      allocation: numOrNull(b.allocation ?? b.part),
+    }))
+  return {
+    id: e.id,
+    nom: e.nom || e.name || '',
+    statut_display: e.statut_display || e.statut || '',
+    metrique_label: e.metrique_label || e.metrique || 'Métrique',
+    metrique_fmt: e.metrique_fmt || 'mad', // 'mad' | 'ratio' | 'percent'
+    phases,
+    bras,
+  }
+}
+
+// Le bras avec la plus forte probabilité d'être le meilleur (ou null).
+export function bestArm(bras) {
+  const list = (bras || []).filter(b => Number.isFinite(b?.p_best))
+  if (!list.length) return null
+  return list.reduce((best, b) => (b.p_best > best.p_best ? b : best))
+}
+
+// Normalise le DecisionLog ENG12 (« pourquoi le moteur a fait X », FR + chiffres).
+export function normalizeDecisionLog(raw) {
+  if (!raw) return []
+  const list = Array.isArray(raw) ? raw : (raw.results || raw.log || raw.decisions || [])
+  return (list || []).filter(Boolean).map((d, i) => ({
+    id: d.id ?? i,
+    phase: d.phase || '',
+    phase_label: d.phase_label || d.phase || '',
+    quand: d.quand || d.date || d.created_at || '',
+    decision_fr: d.decision_fr || d.raison_fr || d.message || '',
+    chiffres: (d.chiffres && typeof d.chiffres === 'object') ? d.chiffres : {},
+  }))
+}
+
+// Filtre pur du DecisionLog par phase — testable isolément.
+export function filterDecisionLog(log, { phase } = {}) {
+  return (log || []).filter(d => !phase || d.phase === phase)
+}
