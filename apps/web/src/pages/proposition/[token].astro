@@ -1208,7 +1208,7 @@ const signConfig = ok
             <div class="mt-5">
               <div class="flex items-center justify-between text-sm">
                 <label for="battery-sim-slider" class="text-lune-soft" data-i18n data-fr="Nombre de batteries" data-en="Number of batteries" data-ar="عدد البطاريات">Nombre de batteries</label>
-                <span class="font-semibold text-brass-300"><span id="battery-sim-units">{batterySimInitialN}</span> × <span id="battery-sim-cap">{formatNumber(batteryUnitCapacityKwh, 0)}</span> kWh</span>
+                <span class="font-semibold text-brass-300" dir="ltr"><span id="battery-sim-units">{batterySimInitialN}</span> × <span id="battery-sim-cap">{formatNumber(batteryUnitCapacityKwh, 0)}</span> kWh</span>
               </div>
               <input type="range" id="battery-sim-slider" min="0" max={BATTERY_SIM_MAX_UNITS} step="1" value={batterySimInitialN} class="mt-2 w-full accent-brass-400" aria-describedby="battery-sim-assumptions" />
               <div class="mt-1 flex justify-between text-xs text-lune-faint" aria-hidden="true">
@@ -1219,17 +1219,17 @@ const signConfig = ok
             <!-- 3 chiffres live : autoconsommation %, autosuffisance %, heures de secours -->
             <div class="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3">
               <div>
-                <p class="text-2xl font-bold text-brass-300" id="battery-sim-selfconso">{formatPercent(batteryInitial.selfConsumptionPct, 0)}</p>
+                <p class="text-2xl font-bold text-brass-300" id="battery-sim-selfconso" dir="ltr">{formatPercent(batteryInitial.selfConsumptionPct, 0)}</p>
                 <p class="text-xs text-lune-soft" data-i18n data-fr="Autoconsommation" data-en="Self-consumption" data-ar="الاستهلاك الذاتي">Autoconsommation</p>
                 <p class="text-[11px] text-lune-faint" data-i18n data-fr="du solaire produit, gardé chez vous" data-en="of the solar you produce, kept at home" data-ar="من الطاقة الشمسية المنتَجة، تبقى في منزلك">du solaire produit, gardé chez vous</p>
               </div>
               <div>
-                <p class="text-2xl font-bold text-brass-300" id="battery-sim-selfsuff">{formatPercent(batteryInitial.selfSufficiencyPct, 0)}</p>
+                <p class="text-2xl font-bold text-brass-300" id="battery-sim-selfsuff" dir="ltr">{formatPercent(batteryInitial.selfSufficiencyPct, 0)}</p>
                 <p class="text-xs text-lune-soft" data-i18n data-fr="Autosuffisance" data-en="Self-sufficiency" data-ar="الاكتفاء الذاتي">Autosuffisance</p>
                 <p class="text-[11px] text-lune-faint" data-i18n data-fr="de votre consommation couverte par le solaire" data-en="of your consumption covered by solar" data-ar="من استهلاككم مغطى بالطاقة الشمسية">de votre consommation couverte par le solaire</p>
               </div>
               <div>
-                <p class="text-2xl font-bold text-brass-300"><span id="battery-sim-backup">{formatNumber(batteryInitial.backupHours, 0)}</span> h</p>
+                <p class="text-2xl font-bold text-brass-300" dir="ltr"><span id="battery-sim-backup">{formatNumber(batteryInitial.backupHours, 0)}</span> h</p>
                 <p class="text-xs text-lune-soft" data-i18n data-fr="Heures de secours" data-en="Backup hours" data-ar="ساعات الطوارئ">Heures de secours</p>
                 <p class="text-[11px] text-lune-faint" data-i18n data-fr="frigo + éclairage + box, batterie pleine" data-en="fridge + lighting + router, full battery" data-ar="ثلاجة + إنارة + راوتر، بطارية ممتلئة">frigo + éclairage + box, batterie pleine</p>
               </div>
@@ -1254,16 +1254,16 @@ const signConfig = ok
               </div>
               <p class="mt-3 text-sm text-lune-soft">
                 <span data-i18n data-fr="Sur une journée type :" data-en="On a typical day:" data-ar="في يوم نموذجي:">Sur une journée type :</span>
-                <span class="font-semibold text-brass-300"><span id="battery-sim-direct">{formatNumber(batteryInitial.directKwh, 1)}</span> kWh</span> <span data-i18n data-fr="en direct" data-en="direct" data-ar="مباشرة">en direct</span>,
-                <span class="font-semibold" style="color: var(--color-azur-300, #7fb4e8)"><span id="battery-sim-battery">{formatNumber(batteryInitial.fromBatteryKwh, 1)}</span> kWh</span> <span data-i18n data-fr="via batterie" data-en="via battery" data-ar="عبر البطارية">via batterie</span>,
-                <span class="font-semibold text-lune-faint"><span id="battery-sim-grid">{formatNumber(batteryInitial.fromGridKwh, 1)}</span> kWh</span> <span data-i18n data-fr="du réseau" data-en="from the grid" data-ar="من الشبكة">du réseau</span>.
+                <span class="font-semibold text-brass-300" dir="ltr"><span id="battery-sim-direct">{formatNumber(batteryInitial.directKwh, 1)}</span> kWh</span> <span data-i18n data-fr="en direct" data-en="direct" data-ar="مباشرة">en direct</span>,
+                <span class="font-semibold" style="color: var(--color-azur-300, #7fb4e8)" dir="ltr"><span id="battery-sim-battery">{formatNumber(batteryInitial.fromBatteryKwh, 1)}</span> kWh</span> <span data-i18n data-fr="via batterie" data-en="via battery" data-ar="عبر البطارية">via batterie</span>,
+                <span class="font-semibold text-lune-faint" dir="ltr"><span id="battery-sim-grid">{formatNumber(batteryInitial.fromGridKwh, 1)}</span> kWh</span> <span data-i18n data-fr="du réseau" data-en="from the grid" data-ar="من الشبكة">du réseau</span>.
               </p>
             </div>
 
             <!-- Prix : réel du devis quand N correspond à l'offre, sinon « sur étude ». -->
             <p class="mt-4 text-sm">
               <span class="text-lune-soft" data-i18n data-fr="Prix de cette configuration :" data-en="Price for this configuration:" data-ar="سعر هذا التكوين:">Prix de cette configuration :</span>
-              <span class="ms-1 font-semibold text-brass-300" id="battery-sim-price">{batteryInitialPrice ?? 'Sur étude'}</span>
+              <span class="ms-1 font-semibold text-brass-300" id="battery-sim-price" dir="ltr">{batteryInitialPrice ?? 'Sur étude'}</span>
             </p>
 
             <!-- Hypothèses (DoD / rendement) + libellé honnête « jamais mesuré ». -->
