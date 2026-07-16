@@ -20,7 +20,7 @@ Dédup : réutilise la normalisation QW10 (téléphone/email) exposée par le
 sélecteur CRM — on compte des leads DÉDUPLIFIÉS, jamais un payload webhook brut
 (dd-attribution §3.3).
 
-Règle de tolérance (dd-attribution §3.4) : à l'échelle TAQINOR (5-15 leads/sem),
+Règle de tolérance (dd-attribution §3.4) : à l'échelle SMB (5-15 leads/sem),
 un seuil en % pur est du bruit ; on combine un plancher ABSOLU et un RATIO. Un
 écart au-delà ⇒ statut « écart » + alerte 🟠 « divergence silencieuse » (sévérité
 ATTENTION par défaut d'``EngineAlert``). Les seuils sont un point de départ

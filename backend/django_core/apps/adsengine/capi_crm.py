@@ -17,7 +17,8 @@ Choix conformes au spec Conversion Leads (primary-sourced, dd-attribution §4.4)
     de refléter « les étapes de votre CRM » ; on émet sur chaque transition
     AVANT et on laisse l'UI Meta décider laquelle est « qualifiée » ;
   * ``action_source='system_generated'`` + ``custom_data.event_source='crm'`` +
-    ``custom_data.lead_event_source='TAQINOR OS'`` ;
+    ``custom_data.lead_event_source='ERP CRM'`` (neutre, white-label — jamais la
+    marque plateforme en dur, SCA29) ;
   * match via ``lead_id`` = leadgen_id (= ``Lead.external_id`` quand
     ``external_system='meta_lead_ads'``) + téléphone/email HACHÉS SHA-256 ;
   * ``event_id`` DÉTERMINISTE (dedup Meta 48 h) — un re-save ne double jamais ;
@@ -49,7 +50,7 @@ _TOKEN_KEY = 'META_CAPI_ACCESS_TOKEN'
 _PIXEL_KEY = 'META_CAPI_PIXEL_ID'
 
 # custom_data.lead_event_source (primary-sourced : nom de la source CRM).
-_LEAD_EVENT_SOURCE = 'TAQINOR OS'
+_LEAD_EVENT_SOURCE = 'ERP CRM'
 
 _STASH_ATTR = '_adseng32_old_stage'
 
