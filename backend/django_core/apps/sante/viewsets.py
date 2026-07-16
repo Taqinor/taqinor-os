@@ -17,12 +17,13 @@ from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
     ActeMedical, ActeRealise, Admission, Convention, FactureSante,
-    GrilleTarifaire, Patient, Praticien, PriseEnCharge, RendezVous, Salle)
+    GrilleTarifaire, PaiementSante, Patient, Praticien, PriseEnCharge,
+    RendezVous, Salle)
 from .serializers import (
     ActeMedicalSerializer, ActeRealiseSerializer, AdmissionSerializer,
     ConventionSerializer, FactureSanteSerializer, GrilleTarifaireSerializer,
-    PatientSerializer, PraticienSerializer, PriseEnChargeSerializer,
-    RendezVousSerializer, SalleSerializer)
+    PaiementSanteSerializer, PatientSerializer, PraticienSerializer,
+    PriseEnChargeSerializer, RendezVousSerializer, SalleSerializer)
 
 
 class PraticienViewSet(CompanyScopedModelViewSet):
@@ -263,3 +264,26 @@ class FactureSanteViewSet(CompanyScopedModelViewSet):
         return Response(
             FactureSanteSerializer(facture).data,
             status=status.HTTP_201_CREATED)
+
+
+class PaiementSanteViewSet(CompanyScopedModelViewSet):
+    """NTSAN15 — encaissement. `montant`/`facture_sante` viennent du corps de
+    requête ; `encaisse_par` est TOUJOURS posé côté serveur (jamais lu du
+    corps). Le statut de la facture est recalculé (`services.
+    enregistrer_paiement`) après chaque paiement partiel/total."""
+
+    queryset = PaiementSante.objects.select_related('facture_sante').all()
+    serializer_class = PaiementSanteSerializer
+
+    def perform_create(self, serializer):
+        from .services import enregistrer_paiement
+
+        data = serializer.validated_data
+        instance = enregistrer_paiement(
+            facture_sante=data['facture_sante'],
+            montant=data['montant'],
+            mode=data.get('mode', PaiementSante.Mode.ESPECES),
+            date_paiement=data['date_paiement'],
+            encaisse_par=self.request.user,
+        )
+        serializer.instance = instance

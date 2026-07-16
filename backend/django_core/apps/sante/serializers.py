@@ -7,7 +7,8 @@ from rest_framework import serializers
 
 from .models import (
     ActeMedical, ActeRealise, Admission, Convention, FactureSante,
-    GrilleTarifaire, Patient, Praticien, PriseEnCharge, RendezVous, Salle)
+    GrilleTarifaire, PaiementSante, Patient, Praticien, PriseEnCharge,
+    RendezVous, Salle)
 
 
 class PraticienSerializer(serializers.ModelSerializer):
@@ -101,6 +102,7 @@ class ActeRealiseSerializer(serializers.ModelSerializer):
 
 class FactureSanteSerializer(serializers.ModelSerializer):
     statut_display = serializers.CharField(source='get_statut_display', read_only=True)
+    montant_du = serializers.SerializerMethodField()
 
     class Meta:
         model = FactureSante
@@ -108,12 +110,28 @@ class FactureSanteSerializer(serializers.ModelSerializer):
             'id', 'patient', 'admission', 'convention', 'sous_total_ttc',
             'remise_ttc', 'taux_tva', 'montant_tva', 'total_ttc',
             'part_tiers_payant_ttc', 'part_patient_ttc', 'statut',
-            'statut_display', 'date_emission',
+            'statut_display', 'date_emission', 'montant_du',
         ]
         read_only_fields = [
             'sous_total_ttc', 'total_ttc', 'part_tiers_payant_ttc',
             'part_patient_ttc',
         ]
+
+    def get_montant_du(self, obj):
+        from .services import montant_du
+        return montant_du(obj)
+
+
+class PaiementSanteSerializer(serializers.ModelSerializer):
+    mode_display = serializers.CharField(source='get_mode_display', read_only=True)
+
+    class Meta:
+        model = PaiementSante
+        fields = [
+            'id', 'facture_sante', 'montant', 'mode', 'mode_display',
+            'date_paiement', 'encaisse_par',
+        ]
+        read_only_fields = ['encaisse_par']
 
 
 class PriseEnChargeSerializer(serializers.ModelSerializer):

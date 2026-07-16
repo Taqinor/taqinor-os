@@ -493,3 +493,39 @@ class FactureSante(TenantModel):
 
     def __str__(self):
         return f'Facture santé {self.patient_id} ({self.total_ttc})'
+
+
+class PaiementSante(TenantModel):
+    """NTSAN15 — encaissement. Une ``FactureSante`` peut avoir plusieurs
+    paiements partiels (le patient règle en plusieurs fois) : ``montant_du``
+    (``services.montant_du``) = ``total_ttc - somme(paiements)``, jamais
+    négatif sans un flag d'avoir explicite (voir ``FactureSante.statut``)."""
+
+    class Mode(models.TextChoices):
+        ESPECES = 'especes', 'Espèces'
+        CARTE = 'carte', 'Carte'
+        CHEQUE = 'cheque', 'Chèque'
+        VIREMENT = 'virement', 'Virement'
+        TIERS_PAYANT = 'tiers_payant', 'Tiers payant'
+
+    facture_sante = models.ForeignKey(
+        FactureSante, on_delete=models.CASCADE, related_name='paiements',
+        verbose_name='Facture santé')
+    montant = models.DecimalField(
+        max_digits=12, decimal_places=2, verbose_name='Montant')
+    mode = models.CharField(
+        max_length=15, choices=Mode.choices, default=Mode.ESPECES,
+        verbose_name='Mode de paiement')
+    date_paiement = models.DateTimeField(verbose_name='Date de paiement')
+    encaisse_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='sante_paiements_encaisses',
+        verbose_name='Encaissé par')
+
+    class Meta:
+        verbose_name = 'Paiement santé'
+        verbose_name_plural = 'Paiements santé'
+        ordering = ['-date_paiement']
+
+    def __str__(self):
+        return f'{self.facture_sante_id} — {self.montant}'

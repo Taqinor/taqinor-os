@@ -263,6 +263,44 @@ def creer_facture_sante(
     return facture
 
 
+def montant_du(facture_sante):
+    """NTSAN15 — ``montant_du = total_ttc - somme(paiements)``, jamais
+    négatif sans un flag d'avoir explicite : un trop-perçu est plafonné à 0
+    ici (un avoir est un document distinct, hors périmètre de ce lot)."""
+    from decimal import Decimal
+
+    from django.db.models import Sum
+
+    total_paye = facture_sante.paiements.aggregate(
+        total=Sum('montant'))['total'] or Decimal('0')
+    reste = facture_sante.total_ttc - total_paye
+    return max(reste, Decimal('0'))
+
+
+def enregistrer_paiement(
+        *, facture_sante, montant, mode, date_paiement, encaisse_par=None):
+    """NTSAN15 — enregistre un paiement partiel ou total sur une facture
+    santé, met à jour son statut (payee/payee_partiel) selon le reste dû."""
+    from .models import FactureSante, PaiementSante
+
+    paiement = PaiementSante.objects.create(
+        company=facture_sante.company,
+        facture_sante=facture_sante,
+        montant=montant,
+        mode=mode,
+        date_paiement=date_paiement,
+        encaisse_par=encaisse_par,
+    )
+
+    reste = montant_du(facture_sante)
+    if reste <= 0:
+        facture_sante.statut = FactureSante.Statut.PAYEE
+    else:
+        facture_sante.statut = FactureSante.Statut.PAYEE_PARTIEL
+    facture_sante.save(update_fields=['statut'])
+    return paiement
+
+
 def verifier_prise_en_charge(prise_en_charge, *, user=None):
     """NTSAN12 — à appeler quand une `PriseEnCharge` bascule refusee/expiree :
     journalise (chatter + audit, `records.Activity` via `apps.audit.
