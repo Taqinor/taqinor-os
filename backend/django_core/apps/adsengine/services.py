@@ -17,6 +17,10 @@ from django.utils import timezone
 
 from . import guardrails
 from .models import EngineAction
+from .pacing import (
+    KIND_ENABLE_CBO, KIND_INCREASE_PACE, KIND_PAUSE_FOR_MONTH,
+    KIND_REBALANCE_ADSET_BUDGET,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +71,14 @@ _AD_CREATING_KINDS = frozenset({
     EngineAction.Kind.CREATE_AD, EngineAction.Kind.ROTATE_CREATIVE,
 })
 
+# ADSENG22 — kinds trésorerie qui MODIFIENT un budget ad set : passent par les
+# garde-fous budget (plafond quotidien + variation hebdo + pas ≤15% + ligne de
+# base G4 + validation propriété miroir). ``pause_for_month`` (PAUSED-only) et
+# ``enable_cbo`` (propose-only) n'en font PAS partie — cf. ``_dispatch``.
+_TREASURY_BUDGET_KINDS = frozenset({
+    KIND_INCREASE_PACE, KIND_REBALANCE_ADSET_BUDGET,
+})
+
 
 def assert_creative_ok_for_ad(company, kind, payload):
     """ENG15 — Garde-fou policy créative : un asset dont ``policy_stamp.passed``
@@ -102,6 +114,20 @@ def propose_action(company, *, kind, reason_fr, payload=None, auto=False):
         company=company, kind=kind, payload=payload or {},
         reason_fr=str(reason_fr).strip(),
         status=EngineAction.Statut.PROPOSEE, auto=auto)
+
+
+def propose_pause_for_month(company, *, target_meta_id, target_type='campaign',
+                            reason_fr=None):
+    """ADSENG22 — Propose une pause « pour le mois » (chemin breach-imminent du
+    pacing, dd-treasury §A3). PAUSED-only par construction : l'application route
+    vers ``update_status_paused`` (jamais un statut paramétrable). Propose-only —
+    l'approbation humaine reste requise avant toute pause effective."""
+    reason_fr = reason_fr or (
+        f"Mettre en pause {target_type} {target_meta_id} pour le mois : "
+        f"franchissement imminent du plafond mensuel (protection d'invariant).")
+    return propose_action(
+        company, kind=KIND_PAUSE_FOR_MONTH, reason_fr=reason_fr,
+        payload={'target_type': target_type, 'target_meta_id': target_meta_id})
 
 
 def approve_action(action, *, user):
@@ -202,6 +228,34 @@ def _dispatch(client, action):
         return client.update_status_paused(
             object_id=payload.get('target_meta_id', ''),
             level=payload.get('target_type'))
+    if kind == KIND_PAUSE_FOR_MONTH:
+        # ADSENG22 — Pause « pour le mois » (chemin breach-imminent du pacing,
+        # dd-treasury §A3). PAUSED-only par construction, MÊME défense que PAUSE :
+        # garde PAUSED-only AVANT l'appel + méthode client qui FORCE PAUSED.
+        guardrails.enforce_paused_only('PAUSED', company=action.company)
+        return client.update_status_paused(
+            object_id=payload.get('target_meta_id', ''),
+            level=payload.get('target_type'))
+    if kind in (KIND_INCREASE_PACE, KIND_REBALANCE_ADSET_BUDGET):
+        # ADSENG22 — Changement de budget ad set (increase_pace / rebalance).
+        # Les garde-fous budget ont été appliqués AVANT par
+        # ``_guard_before_dispatch`` (plafond + variation hebdo + pas ≤15% + G4
+        # + propriété miroir) ; on route vers la même méthode budget que
+        # REBALANCE_BUDGET (un client réel qui ne l'expose pas encore lève →
+        # « echouee », jamais d'activation ni d'application silencieuse).
+        return client.update_adset_budget(
+            adset_id=payload.get('adset_id', ''),
+            daily_budget=payload.get('daily_budget'),
+            extra_fields=payload.get('extra_fields'))
+    if kind == KIND_ENABLE_CBO:
+        # ADSENG22 — ``enable_cbo`` est PROPOSE-ONLY : activer l'Advantage+
+        # campaign budget (CBO) est une décision HUMAINE hors moteur — jamais
+        # appliquée programmatiquement (aucune méthode client, par conception).
+        # Une tentative d'apply lève → l'action passe « echouee » (jamais Meta).
+        raise ValueError(
+            "enable_cbo est propose-only : l'activation CBO (Advantage+ "
+            "campaign budget) est une décision humaine hors moteur, jamais "
+            "appliquée programmatiquement par le moteur.")
     raise ValueError(f"Type d'action non routable : {kind}")
 
 
@@ -250,6 +304,38 @@ def _guard_before_dispatch(action):
         guardrails.check_weekly_change(
             config, current_budget=current_mad, new_budget=new_mad,
             company=action.company)
+
+    # ADSENG22 — kinds trésorerie de budget (increase_pace / rebalance_adset_
+    # budget) : mêmes garde-fous budget + DEFER (propriété miroir) + pas ≤15% +
+    # G4 (ligne de base à 7 jours). Bloc DISJOINT du REBALANCE_BUDGET ci-dessus
+    # (dont la logique reste inchangée : aucune validation miroir rétroactive).
+    if action.kind in _TREASURY_BUDGET_KINDS:
+        from . import budget_applier, pacing
+        new_mad = _centimes_to_mad(payload.get('daily_budget'))
+        current_mad = _centimes_to_mad(payload.get('current_budget'))
+        # DEFER ADSENG21 — cible = ad set POSSÉDÉ (jamais un id hors miroirs).
+        budget_applier.validate_adset_target(action.company, payload)
+        guardrails.check_daily_ceiling(config, new_mad, company=action.company)
+        guardrails.check_weekly_change(
+            config, current_budget=current_mad, new_budget=new_mad,
+            company=action.company)
+        # Pas quotidien ≤ 15 % (belt-and-suspenders au-delà du plafond hebdo).
+        budget_applier.assert_step_within_cap(
+            current_mad, new_mad, company=action.company)
+        # G4 — variation hebdo contre la VRAIE ligne de base à 7 jours (jamais
+        # la veille) : N pas quotidiens ne composent pas au-delà de la limite.
+        if config is not None:
+            baseline = pacing.weekly_baseline_budget_mad(
+                action.company, payload.get('adset_id'))
+            if not pacing.weekly_change_within_baseline(
+                    new_mad, baseline, config.weekly_change_pct_max):
+                msg = (
+                    "Variation hebdomadaire vs ligne de base 7 j > maximum "
+                    f"{config.weekly_change_pct_max}% (anti-compounding G4).")
+                guardrails.emit_alert(
+                    action.company, alert_type=guardrails.ALERT_GUARDRAIL,
+                    message=msg)
+                raise guardrails.GuardrailViolation(msg)
 
     # Toute transition de statut demandée reste PAUSED-only (jamais d'activation).
     target_status = payload.get('target_status')
