@@ -7,7 +7,8 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     ActifCouvertViewSet, AssureurViewSet, CourtierViewSet,
-    EcheancePrimeViewSet, GarantiePoliceViewSet, PoliceAssuranceViewSet,
+    DeclarationSinistreViewSet, EcheancePrimeViewSet, GarantiePoliceViewSet,
+    PoliceAssuranceViewSet,
 )
 
 router = DefaultRouter()
@@ -23,6 +24,9 @@ router.register(
 router.register(
     r'actifs-couverts', ActifCouvertViewSet,
     basename='assurances-actif-couvert')
+router.register(
+    r'declarations-sinistre', DeclarationSinistreViewSet,
+    basename='assurances-declaration-sinistre')
 
 urlpatterns = [
     path('', include(router.urls)),

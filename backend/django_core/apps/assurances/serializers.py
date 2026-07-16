@@ -2,8 +2,8 @@
 from rest_framework import serializers
 
 from .models import (
-    ActifCouvert, Assureur, Courtier, EcheancePrime, GarantiePolice,
-    PoliceActivity, PoliceAssurance,
+    ActifCouvert, Assureur, Courtier, DeclarationSinistre, EcheancePrime,
+    GarantiePolice, PoliceActivity, PoliceAssurance,
 )
 from .selectors import resoudre_libelle_actif
 
@@ -86,6 +86,31 @@ class GarantiePoliceSerializer(serializers.ModelSerializer):
             'franchise_pourcentage', 'notes',
         ]
         read_only_fields = ['id', 'company']
+
+    def validate_police(self, value):
+        request = self.context.get('request')
+        if request and value.company_id != request.user.company_id:
+            raise serializers.ValidationError(
+                'La police doit appartenir à la même société.')
+        return value
+
+
+class DeclarationSinistreSerializer(serializers.ModelSerializer):
+    numero_dossier = serializers.CharField(source='reference', read_only=True)
+    type_sinistre_display = serializers.CharField(
+        source='get_type_sinistre_display', read_only=True)
+
+    class Meta:
+        model = DeclarationSinistre
+        fields = [
+            'id', 'company', 'police', 'numero_dossier', 'date_survenance',
+            'date_declaration', 'nature_sinistre', 'type_sinistre',
+            'type_sinistre_display', 'montant_estime_degats', 'statut',
+            'description', 'flotte_sinistre_id', 'created_at',
+        ]
+        read_only_fields = [
+            'id', 'company', 'numero_dossier', 'date_declaration', 'created_at',
+        ]
 
     def validate_police(self, value):
         request = self.context.get('request')

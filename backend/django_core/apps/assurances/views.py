@@ -11,13 +11,14 @@ from core.mixins import TenantMixin
 from core.permissions import WriteScopedPermissionMixin
 
 from .models import (
-    ActifCouvert, Assureur, Courtier, EcheancePrime, GarantiePolice,
-    PoliceAssurance,
+    ActifCouvert, Assureur, Courtier, DeclarationSinistre, EcheancePrime,
+    GarantiePolice, PoliceAssurance,
 )
 from .serializers import (
     ActifCouvertSerializer, AssureurSerializer, CourtierSerializer,
-    EcheancePrimeSerializer, GarantiePoliceSerializer,
-    PoliceActivitySerializer, PoliceAssuranceSerializer,
+    DeclarationSinistreSerializer, EcheancePrimeSerializer,
+    GarantiePoliceSerializer, PoliceActivitySerializer,
+    PoliceAssuranceSerializer,
 )
 from .selectors import polices_expirantes
 from .services import (
@@ -218,3 +219,23 @@ class ActifCouvertViewSet(_AssurancesBaseViewSet):
     queryset = ActifCouvert.objects.select_related('police')
     serializer_class = ActifCouvertSerializer
     filterset_fields = ['police', 'type_actif']
+
+
+class DeclarationSinistreViewSet(_AssurancesBaseViewSet):
+    """CRUD des déclarations de sinistre transverses (NTASS10).
+
+    ``reference`` (numéro de dossier ``SIN-<année>-NNN``) est générée
+    RACE-SAFE via ``core.numbering`` (jamais ``count()+1``)."""
+    queryset = DeclarationSinistre.objects.select_related('police')
+    serializer_class = DeclarationSinistreSerializer
+    filterset_fields = ['police', 'statut', 'type_sinistre']
+
+    def perform_create(self, serializer):
+        from apps.ventes.utils.references import create_with_reference
+
+        company = self.request.user.company
+        create_with_reference(
+            DeclarationSinistre, 'SIN', company,
+            lambda reference: serializer.save(
+                company=company, reference=reference),
+            padding=3, period='yearly')

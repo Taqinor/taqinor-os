@@ -313,3 +313,71 @@ class ActifCouvert(models.Model):
 
     def __str__(self):
         return f'{self.get_type_actif_display()} — {self.actif_libelle}'
+
+
+# ── NTASS10 — Déclaration de sinistre transverse (hors véhicule) ──────────
+
+class DeclarationSinistre(models.Model):
+    """Sinistre TRANSVERSE (hors véhicule — le sinistre véhicule reste
+    ``flotte.Sinistre`` FLOTTE25, référencé ici en string-FK optionnel
+    ``flotte_sinistre_id`` quand un sinistre véhicule implique AUSSI une
+    police d'entreprise, ex. RC après collision) (NTASS10).
+
+    ``reference`` (numéro de dossier, ex. ``SIN-2026-001``) est générée
+    RACE-SAFE via ``core.numbering`` (plus-haut-utilisé+1 par société+année,
+    savepoint+retry) — JAMAIS ``count()+1`` (CLAUDE.md)."""
+
+    class TypeSinistre(models.TextChoices):
+        DOMMAGE_MATERIEL = 'dommage_materiel', 'Dommage matériel'
+        RESPONSABILITE_CIVILE = 'responsabilite_civile', 'Responsabilité civile'
+        DECENNALE = 'decennale', 'Décennale'
+        CYBER = 'cyber', 'Cyber'
+        VOL = 'vol', 'Vol'
+        INCENDIE = 'incendie', 'Incendie'
+        AUTRE = 'autre', 'Autre'
+
+    class Statut(models.TextChoices):
+        DECLARE = 'declare', 'Déclaré'
+        EN_EXPERTISE = 'en_expertise', 'En expertise'
+        INDEMNISE = 'indemnise', 'Indemnisé'
+        REFUSE = 'refuse', 'Refusé'
+        CLOS = 'clos', 'Clos'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='declarations_sinistre', verbose_name='Société')
+    police = models.ForeignKey(
+        PoliceAssurance, on_delete=models.PROTECT,
+        related_name='declarations_sinistre')
+    # Numéro de dossier — race-safe (core.numbering), ex. SIN-2026-001.
+    reference = models.CharField(max_length=40, blank=True, default='')
+    date_survenance = models.DateField(verbose_name='Date de survenance')
+    date_declaration = models.DateField(
+        auto_now_add=True, verbose_name='Date de déclaration')
+    nature_sinistre = models.TextField(blank=True, default='')
+    type_sinistre = models.CharField(
+        max_length=25, choices=TypeSinistre.choices,
+        default=TypeSinistre.AUTRE)
+    montant_estime_degats = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0,
+        verbose_name='Montant estimé des dégâts')
+    statut = models.CharField(
+        max_length=15, choices=Statut.choices, default=Statut.DECLARE)
+    description = models.TextField(blank=True, default='')
+    # String-FK optionnelle — jamais dupliquée avec flotte.Sinistre (FLOTTE25).
+    flotte_sinistre_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Sinistre véhicule lié (flotte)')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-date_survenance']
+        verbose_name = 'Déclaration de sinistre'
+        verbose_name_plural = 'Déclarations de sinistre'
+        unique_together = [('company', 'reference')]
+        indexes = [
+            models.Index(fields=['company', 'statut']),
+            models.Index(fields=['company', 'type_sinistre']),
+        ]
+
+    def __str__(self):
+        return f'{self.reference} ({self.get_type_sinistre_display()})'
