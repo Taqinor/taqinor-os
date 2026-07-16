@@ -34,6 +34,9 @@ _DEFAULT_WATT = 710
 PAYMENT_TERMS_BY_MODE = {
     "residentiel": {"acompte": 30, "materiel": 60, "solde": 10},
     "industriel": {"acompte": 50, "materiel": 40, "solde": 10},
+    # QX43 — commercial : mêmes conditions que l'industriel (50/40/10), en
+    # attente d'un éventuel veto du fondateur.
+    "commercial": {"acompte": 50, "materiel": 40, "solde": 10},
     "agricole": {"acompte": 30, "materiel": 60, "solde": 10},
 }
 
@@ -253,6 +256,15 @@ _FINANCING_PROGRAMS = {
         "programme_label": None,      # no specific named programme
     },
     "industriel": {
+        "nom": "Tatwir Croissance Verte (PME)",
+        "taux_annuel": 0.045,         # milieu fourchette 4–5 %
+        "duree_mois": 84,             # 7 ans
+        "programme_label": "Tatwir",
+    },
+    # QX43 — commercial : réutilise le programme PME industriel « Tatwir
+    # Croissance Verte » (mêmes bénéficiaires PME/TPE) — aucun programme inventé,
+    # sauf veto du fondateur.
+    "commercial": {
         "nom": "Tatwir Croissance Verte (PME)",
         "taux_annuel": 0.045,         # milieu fourchette 4–5 %
         "duree_mois": 84,             # 7 ans
@@ -946,13 +958,17 @@ def build_quote_data(devis, pdf_options=None) -> dict:
 
     inst_type = {
         "residentiel": "Résidentielle",
-        "industriel": "Industrielle / Commerciale",
+        # QX43 — industriel et commercial séparés (le libellé industriel ne dit
+        # plus « / Commerciale »).
+        "industriel": "Industrielle",
+        "commercial": "Commerciale",
         "agricole": "Agricole",
     }.get(mode, "Résidentielle")
 
-    # Mode industriel : l'étude fait partie du document (page dédiée incluse
-    # d'office quand des données d'étude existent).
-    include_etude = opts['include_etude'] or (mode == "industriel" and bool(etude))
+    # Modes industriel ET commercial (QX43) : l'étude fait partie du document
+    # (page dédiée incluse d'office quand des données d'étude existent).
+    include_etude = opts['include_etude'] or (
+        mode in ("industriel", "commercial") and bool(etude))
 
     # Puces des cartes d'option de la page 1 — générées depuis l'équipement
     # RÉEL de chaque option, jamais du texte boilerplate.

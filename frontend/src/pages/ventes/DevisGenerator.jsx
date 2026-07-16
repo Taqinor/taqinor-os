@@ -52,9 +52,11 @@ import {
 } from '../../features/ventes/solar'
 import { formatNumber, formatMAD, formatDateTime } from '../../lib/format'
 
+// QX43 — 4 marchés réels : industriel et commercial sont désormais distincts.
 const MODE_OPTIONS = [
   { value: 'residentiel', label: '🏠 Résidentiel' },
-  { value: 'industriel', label: '🏭 Industriel / Commercial' },
+  { value: 'industriel', label: '🏭 Industriel' },
+  { value: 'commercial', label: '🏪 Commercial' },
   { value: 'agricole', label: '🌾 Agricole (pompage)' },
 ]
 
@@ -612,6 +614,11 @@ export default function DevisGenerator({
     if (m === 'industriel') {
       onInstTypeChange('Industrielle')
       setScenario('Sans batterie') // défaut industriel : sans batterie, réseau
+    } else if (m === 'commercial') {
+      // QX43 — commercial : comme l'industriel, autoconsommation réseau sans
+      // batterie par défaut (l'étude par catégorie arrive avec QX44).
+      onInstTypeChange('Commerciale')
+      setScenario('Sans batterie')
     } else if (m === 'agricole') {
       onInstTypeChange('Agricole')
     } else {
