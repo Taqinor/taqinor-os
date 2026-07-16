@@ -78,3 +78,55 @@ class Salle(TenantModel):
 
     def __str__(self):
         return self.nom
+
+
+class Patient(TenantModel):
+    """NTSAN3 — dossier ADMINISTRATIF patient (aucune donnée médicale
+    clinique). ``client`` référence ``crm.Client`` par FK À CHAÎNE (jamais
+    d'import direct de ``apps.crm.models``) ; la résolution/rattachement se
+    fait via ``services.resoudre_client_pour_patient`` (import local par
+    l'appelant).
+
+    ``convention``/``numero_affiliation`` sont posés par NTSAN9 (nécessitent
+    le modèle ``Convention``, qui n'existe pas encore à ce stade).
+    """
+
+    class Sexe(models.TextChoices):
+        M = 'M', 'Masculin'
+        F = 'F', 'Féminin'
+
+    nom = models.CharField(max_length=255, verbose_name='Nom')
+    prenom = models.CharField(max_length=255, blank=True, default='', verbose_name='Prénom')
+    cin = models.CharField(max_length=30, blank=True, default='', verbose_name='CIN')
+    date_naissance = models.DateField(
+        null=True, blank=True, verbose_name='Date de naissance')
+    sexe = models.CharField(
+        max_length=1, choices=Sexe.choices, blank=True, default='',
+        verbose_name='Sexe')
+    telephone = models.CharField(max_length=20, blank=True, default='', verbose_name='Téléphone')
+    whatsapp = models.CharField(max_length=20, blank=True, default='', verbose_name='WhatsApp')
+    email = models.EmailField(blank=True, default='', verbose_name='Email')
+    adresse = models.TextField(blank=True, default='', verbose_name='Adresse')
+    numero_dossier = models.CharField(
+        max_length=30, blank=True, default='', db_index=True,
+        verbose_name='Numéro de dossier')
+    contact_urgence = models.CharField(
+        max_length=255, blank=True, default='', verbose_name="Contact d'urgence")
+    # NTSAN3 — jamais d'import direct de crm.models : FK par chaîne.
+    client = models.ForeignKey(
+        'crm.Client', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='patients_sante', verbose_name='Client CRM lié')
+
+    class Meta:
+        verbose_name = 'Patient'
+        verbose_name_plural = 'Patients'
+        ordering = ['nom', 'prenom']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'numero_dossier'],
+                condition=~models.Q(numero_dossier=''),
+                name='sante_patient_unique_dossier_par_societe'),
+        ]
+
+    def __str__(self):
+        return f"{self.nom} {self.prenom}".strip()

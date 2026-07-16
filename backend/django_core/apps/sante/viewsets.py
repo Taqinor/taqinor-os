@@ -9,8 +9,8 @@ NTSAN17 — en attendant, le défaut « authentifié suffit » de
 """
 from core.viewsets import CompanyScopedModelViewSet
 
-from .models import Praticien, Salle
-from .serializers import PraticienSerializer, SalleSerializer
+from .models import Patient, Praticien, Salle
+from .serializers import PatientSerializer, PraticienSerializer, SalleSerializer
 
 
 class PraticienViewSet(CompanyScopedModelViewSet):
@@ -21,3 +21,17 @@ class PraticienViewSet(CompanyScopedModelViewSet):
 class SalleViewSet(CompanyScopedModelViewSet):
     queryset = Salle.objects.all()
     serializer_class = SalleSerializer
+
+
+class PatientViewSet(CompanyScopedModelViewSet):
+    """NTSAN3 — dossier administratif patient. ``numero_dossier`` est
+    attribué côté serveur à la création (anti-collision, jamais un
+    ``count()+1``)."""
+
+    queryset = Patient.objects.select_related('client').all()
+    serializer_class = PatientSerializer
+
+    def perform_create(self, serializer):
+        super().perform_create(serializer)
+        from .services import attribuer_numero_dossier
+        attribuer_numero_dossier(serializer.instance)
