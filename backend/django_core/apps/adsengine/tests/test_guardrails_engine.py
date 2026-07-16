@@ -150,11 +150,18 @@ class AnomalyDetectorTests(TestCase):
         self.assertEqual(created, [])
 
     def test_degraded_without_config_alerts_and_still_runs(self):
-        self._insight(spend='30.00', results=0)
+        # Société SANS aucune GuardrailConfig → chemin dégradé (fenêtre 48 h par
+        # défaut) + alerte « règle inopérante » ; jamais un skip silencieux.
+        bare = Company.objects.create(nom='Bare', slug='bare-co')
+        camp = AdCampaignMirror.objects.create(
+            company=bare, meta_id='b1', name='B', status='PAUSED')
+        ct = ContentType.objects.get_for_model(AdCampaignMirror)
+        InsightSnapshot.objects.create(
+            company=bare, content_type=ct, object_id=camp.pk,
+            date=self.today, spend='30.00', results=0)
         with patch.object(guardrails, 'emit_alert') as mock_alert:
             created = guardrails.detect_anomalies(
-                self.company, now=self.today, config=None)
-        # Sans config : tourne en dégradé (fenêtre 48 h) + alerte inopérante.
+                bare, now=self.today, config=None)
         self.assertEqual(len(created), 1)
         inop_calls = [
             c for c in mock_alert.call_args_list
