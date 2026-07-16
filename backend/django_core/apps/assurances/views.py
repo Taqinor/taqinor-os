@@ -8,10 +8,10 @@ from rest_framework.response import Response
 from core.mixins import TenantMixin
 from core.permissions import WriteScopedPermissionMixin
 
-from .models import Assureur, Courtier, PoliceAssurance
+from .models import Assureur, Courtier, GarantiePolice, PoliceAssurance
 from .serializers import (
-    AssureurSerializer, CourtierSerializer, PoliceActivitySerializer,
-    PoliceAssuranceSerializer,
+    AssureurSerializer, CourtierSerializer, GarantiePoliceSerializer,
+    PoliceActivitySerializer, PoliceAssuranceSerializer,
 )
 from .services import (
     CHAMPS_SUIVIS_POLICE, log_police_creation, log_police_note,
@@ -95,3 +95,12 @@ class PoliceAssuranceViewSet(_AssurancesBaseViewSet):
         act = log_police_note(police, request.user, body)
         return Response(PoliceActivitySerializer(act).data,
                         status=status.HTTP_201_CREATED)
+
+
+class GarantiePoliceViewSet(_AssurancesBaseViewSet):
+    """CRUD des garanties d'une police, scopé société (NTASS4).
+
+    Endpoint imbriqué : ``?police=<id>`` filtre les garanties d'une police."""
+    queryset = GarantiePolice.objects.select_related('police')
+    serializer_class = GarantiePoliceSerializer
+    filterset_fields = ['police']

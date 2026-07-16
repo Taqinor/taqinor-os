@@ -186,3 +186,38 @@ class PoliceActivity(models.Model):
 
     def __str__(self):
         return f'{self.police_id} {self.kind} {self.champ or ""}'.strip()
+
+
+# ── NTASS4 — Garanties, plafonds & franchises par police ───────────────────
+
+class GarantiePolice(models.Model):
+    """Une garantie d'une ``PoliceAssurance`` avec son plafond/franchise
+    propres (NTASS4). Une police porte plusieurs garanties (ex. une DÉCENNALE
+    peut avoir 3 garanties à plafonds différents)."""
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='garanties_police', verbose_name='Société')
+    police = models.ForeignKey(
+        PoliceAssurance, on_delete=models.CASCADE, related_name='garanties')
+    libelle_garantie = models.CharField(
+        max_length=200, verbose_name='Libellé de la garantie')
+    plafond_indemnisation = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0,
+        verbose_name="Plafond d'indemnisation")
+    franchise_montant = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0,
+        verbose_name='Franchise (montant)')
+    franchise_pourcentage = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        verbose_name='Franchise (%)')
+    notes = models.TextField(blank=True, default='')
+
+    class Meta:
+        ordering = ['id']
+        verbose_name = 'Garantie de police'
+        verbose_name_plural = 'Garanties de police'
+        indexes = [models.Index(fields=['police'])]
+
+    def __str__(self):
+        return f'{self.libelle_garantie} ({self.police_id})'

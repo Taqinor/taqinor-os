@@ -5,12 +5,18 @@ Montées sous ``/api/django/assurances/…`` (et ``/api/v1/assurances/…``) via
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
-from .views import AssureurViewSet, CourtierViewSet, PoliceAssuranceViewSet
+from .views import (
+    AssureurViewSet, CourtierViewSet, GarantiePoliceViewSet,
+    PoliceAssuranceViewSet,
+)
 
 router = DefaultRouter()
 router.register(r'assureurs', AssureurViewSet, basename='assurances-assureur')
 router.register(r'courtiers', CourtierViewSet, basename='assurances-courtier')
 router.register(r'polices', PoliceAssuranceViewSet, basename='assurances-police')
+router.register(
+    r'garanties-police', GarantiePoliceViewSet,
+    basename='assurances-garantie-police')
 
 urlpatterns = [
     path('', include(router.urls)),

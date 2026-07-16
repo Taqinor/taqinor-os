@@ -1,7 +1,9 @@
 """Serializers du registre des assurances & sinistres d'entreprise (NTASS)."""
 from rest_framework import serializers
 
-from .models import Assureur, Courtier, PoliceActivity, PoliceAssurance
+from .models import (
+    Assureur, Courtier, GarantiePolice, PoliceActivity, PoliceAssurance,
+)
 
 
 class AssureurSerializer(serializers.ModelSerializer):
@@ -71,3 +73,21 @@ class PoliceActivitySerializer(serializers.ModelSerializer):
             'user', 'user_nom', 'created_at',
         ]
         read_only_fields = fields
+
+
+class GarantiePoliceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = GarantiePolice
+        fields = [
+            'id', 'company', 'police', 'libelle_garantie',
+            'plafond_indemnisation', 'franchise_montant',
+            'franchise_pourcentage', 'notes',
+        ]
+        read_only_fields = ['id', 'company']
+
+    def validate_police(self, value):
+        request = self.context.get('request')
+        if request and value.company_id != request.user.company_id:
+            raise serializers.ValidationError(
+                'La police doit appartenir à la même société.')
+        return value
