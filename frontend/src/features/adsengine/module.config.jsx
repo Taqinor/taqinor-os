@@ -5,7 +5,7 @@
 import { lazy } from 'react'
 import {
   LayoutDashboard, PlugZap, Megaphone, ClipboardCheck,
-  FileText, Images, History, FlaskConical, Route,
+  FileText, Images, History, FlaskConical, Route, Layers,
 } from 'lucide-react'
 
 /* ============================================================================
@@ -31,6 +31,7 @@ const CreativeLibraryScreen = lazy(() => import('./CreativeLibraryScreen'))
 const ActionsLogScreen = lazy(() => import('./ActionsLogScreen'))
 const ExperimentsScreen = lazy(() => import('./ExperimentsScreen'))
 const FlightPlanScreen = lazy(() => import('./FlightPlanScreen'))
+const BacklogScreen = lazy(() => import('./BacklogScreen'))
 
 const ROLES = ['responsable', 'admin']
 
@@ -47,6 +48,7 @@ const config = {
       { to: '/publicite/creatifs', label: 'Bibliothèque créative', icon: <Images size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/publicite/experimentations', label: 'Expérimentations', icon: <FlaskConical size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/publicite/plan-de-vol', label: 'Plan de vol', icon: <Route size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
+      { to: '/publicite/backlog', label: 'Backlog créatif', icon: <Layers size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/publicite/brief', label: 'Brief hebdomadaire', icon: <FileText size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/publicite/journal', label: "Journal d'actions", icon: <History size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/publicite/connexion', label: 'Connexion & garde-fous', icon: <PlugZap size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
@@ -60,6 +62,7 @@ const config = {
     ['/publicite/creatifs', 'Publicité — Bibliothèque créative'],
     ['/publicite/experimentations', 'Publicité — Expérimentations'],
     ['/publicite/plan-de-vol', 'Publicité — Plan de vol'],
+    ['/publicite/backlog', 'Publicité — Backlog créatif'],
     ['/publicite/brief', 'Publicité — Brief hebdomadaire'],
     ['/publicite/journal', "Publicité — Journal d'actions"],
     ['/publicite/connexion', 'Publicité — Connexion & garde-fous'],
@@ -72,6 +75,7 @@ const config = {
     { path: '/publicite/creatifs', component: CreativeLibraryScreen, roles: ROLES },
     { path: '/publicite/experimentations', component: ExperimentsScreen, roles: ROLES },
     { path: '/publicite/plan-de-vol', component: FlightPlanScreen, roles: ROLES },
+    { path: '/publicite/backlog', component: BacklogScreen, roles: ROLES },
     { path: '/publicite/brief', component: BriefScreen, roles: ROLES },
     { path: '/publicite/journal', component: ActionsLogScreen, roles: ROLES },
     { path: '/publicite/connexion', component: ConnectionScreen, roles: ROLES },

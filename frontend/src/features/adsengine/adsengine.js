@@ -374,3 +374,48 @@ export function normalizeFlightTemplate(raw) {
   }))
   return { key: t.key, nom: t.nom || t.label || t.key || '', phases }
 }
+
+// ── ENG41 — Gestionnaire de backlog (CreativeGenerationBatch par campagne) ──
+// Borne une fraction dans [0, 1] (largeur de barre / jauge — présentation).
+export function clampRatio(value) {
+  const n = typeof value === 'string' ? Number(value) : value
+  if (!Number.isFinite(n)) return 0
+  return Math.max(0, Math.min(1, n))
+}
+
+// Normalise le backlog par campagne : runway, diversité de hooks, LOTS de
+// recombinaisons (chacun approuvable). On ne fait que lire les nombres de l'API.
+export function normalizeBacklog(raw) {
+  const list = Array.isArray(raw) ? raw : (raw?.results || raw?.campagnes || [])
+  return (list || []).filter(Boolean).map((c, i) => ({
+    id: c.id ?? i,
+    campagne: c.campagne || c.campaign || c.nom || c.name || `Campagne ${i + 1}`,
+    runway_jours: numOrNull(c.runway_jours ?? c.runway_days),
+    runway_cible: numOrNull(c.runway_cible ?? c.runway_target),
+    diversite_hooks: numOrNull(c.diversite_hooks ?? c.hook_diversity),
+    lots: (Array.isArray(c.lots) ? c.lots : (Array.isArray(c.batches) ? c.batches : []))
+      .filter(Boolean).map((l, j) => ({
+        id: l.id ?? j,
+        nom: l.nom || l.name || `Lot ${j + 1}`,
+        statut: l.statut || '',
+        statut_display: l.statut_display || l.statut || 'En attente',
+        nb_hooks: numOrNull(l.nb_hooks ?? l.hooks_count),
+        assets: (Array.isArray(l.assets) ? l.assets : []).filter(Boolean).map((a, k) => ({
+          id: a.id ?? k,
+          designation: a.designation || a.nom || a.name || `Asset ${k + 1}`,
+        })),
+      })),
+  }))
+}
+
+// Ton de la barre de runway selon combien de jours restent vs la cible.
+export function runwayTone(jours, cible) {
+  const j = Number(jours); const c = Number(cible)
+  if (!Number.isFinite(j) || !Number.isFinite(c) || c <= 0) {
+    return { color: '#94a3b8', ratio: 0 }
+  }
+  const ratio = clampRatio(j / c)
+  if (j < c * 0.5) return { color: '#dc2626', ratio } // critique
+  if (j < c) return { color: '#d97706', ratio } // à surveiller
+  return { color: '#16a34a', ratio } // confortable
+}

@@ -106,6 +106,17 @@ const adsengineApi = {
     // Lance une simulation depuis le plan composé.
     simulate: (payload) => api.post('/adsengine/flightplans/simulate/', payload),
   },
+
+  // ── ENG27/ENG41 — Backlog par campagne (CreativeGenerationBatch) ──
+  backlog: {
+    // File par campagne : runway, diversité de hooks, lots de recombinaisons.
+    list: (params) => api.get('/adsengine/backlog/', { params }),
+    // Approbation par LOT d'une recombinaison.
+    approveLot: (lotId) => api.post(`/adsengine/backlog/lots/${lotId}/approuver/`),
+    // Dépôt d'un asset dans le backlog d'une campagne.
+    dropAsset: (campagneId, formData) =>
+      api.post(`/adsengine/backlog/${campagneId}/assets/`, formData),
+  },
 }
 
 export default adsengineApi
