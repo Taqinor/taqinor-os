@@ -678,6 +678,24 @@ class Lead(SoftDeleteModel):
         max_length=300, blank=True, null=True,
         verbose_name='Page de landing (first-touch)')
 
+    # ── Questionnaire quote-journey du site (pro/agricole) — additif ──
+    # Réponses de dimensionnement SANS colonne d'accueil, clés snake_case
+    # alignées sur le vocabulaire etude_params du générateur (water_source,
+    # irrigation, besoin_m3j, tension_raccordement, puissance_kva…). Les
+    # réponses qui ONT déjà une colonne (HMT/débit/CV pompe → pompe_*,
+    # kWh/MAD pro → bill_kwh/facture_hiver) sont mappées sur ces colonnes
+    # par le webhook (apps/crm/webhooks.py) et ne sont PAS dupliquées ici.
+    web_questionnaire = models.JSONField(
+        default=dict, blank=True,
+        verbose_name='Questionnaire web (quote-journey)')
+    # Chiffres MONTRÉS au visiteur au moment de la capture (kwc, prodKwh,
+    # ecoMad*, paybackLabel, pompeCv, champKwc, m3Jour…) — snapshot verbatim
+    # re-whitelisté CÔTÉ SERVEUR (webhooks._clean_estimate_shown), jamais
+    # recalculé : c'est la promesse vue par le prospect, pas une étude.
+    web_estimate = models.JSONField(
+        default=dict, blank=True,
+        verbose_name='Estimation montrée (web)')
+
     note = models.TextField(blank=True, null=True)
 
     # FG28 — Horodatage de la PREMIÈRE prise de contact (set server-side dès

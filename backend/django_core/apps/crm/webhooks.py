@@ -178,12 +178,18 @@ def _clean_roof_outline(raw):
 
 
 # QK1 — Mode marché du site → Lead.type_installation (tolérant FR/EN).
+# Le site émet mode ∈ {residentiel, professionnel, agricole} (lead.ts
+# LEAD_MODES) : 'professionnel' était ABSENT de cette table → chaque lead
+# pro perdait silencieusement son type_installation. Rapproché
+# d'« industriel » (même segment pro que l'alias EN 'industrial').
 _MARKET_MODE_ALIASES = {
     'residentiel': 'residentiel',
     'residential': 'residentiel',
     'commercial': 'commercial',
     'industriel': 'industriel',
     'industrial': 'industriel',
+    'professionnel': 'industriel',
+    'professional': 'industriel',
     'agricole': 'agricole',
     'agricultural': 'agricole',
     'pompage': 'agricole',
@@ -222,6 +228,225 @@ def _clean_futures_charges(raw):
         return None
     out = sorted({str(k).strip().lower() for k in keys} & set(allowed))
     return out or None
+
+
+#: Quote-journey — clés autorisées de `estimateShown` (les chiffres montrés
+#: au visiteur). Whitelist CÔTÉ SERVEUR : le corps de requête n'est jamais
+#: copié tel quel dans Lead.web_estimate.
+_ESTIMATE_SHOWN_KEYS = frozenset([
+    'kwc', 'prodKwh',
+    'ecoMadMonthLow', 'ecoMadMonthHigh',
+    'ecoMadYearLow', 'ecoMadYearHigh',
+    'paybackLabel', 'tauxAutoconso', 'tauxCouverture',
+    'pompeCv', 'champKwc', 'm3Jour',
+])
+
+
+def _clean_estimate_shown(raw):
+    """`estimateShown` du site → dict whitelisté pour Lead.web_estimate.
+
+    Ne garde que les clés connues (_ESTIMATE_SHOWN_KEYS) avec des valeurs
+    scalaires (nombre, ou chaîne courte pour paybackLabel) — tout le reste
+    (clés inconnues, dict/list/bool/None) est silencieusement ignoré, dans
+    le style tolérant du webhook (jamais d'erreur)."""
+    if not isinstance(raw, dict):
+        return {}
+    out = {}
+    for key, value in raw.items():
+        if key not in _ESTIMATE_SHOWN_KEYS:
+            continue
+        if isinstance(value, bool):
+            continue
+        if isinstance(value, (int, float)):
+            out[key] = value
+        elif isinstance(value, str):
+            value = value.strip()[:120]
+            if value:
+                out[key] = value
+    return out
+
+
+def _extract_web_questionnaire(data):
+    """Nouveaux champs du questionnaire quote-journey (pro/agricole) du site
+    → dict snake_case nettoyé, clés alignées sur le vocabulaire etude_params
+    du générateur. Style tolérant du webhook : toute valeur invalide ou hors
+    bornes est ignorée — jamais d'erreur.
+
+    ``_map_payload_to_fields`` consomme ensuite les clés qui RÉUTILISENT une
+    colonne Lead existante (hmt_m/debit_souhaite_m3h/pompe_cv_actuelle →
+    pompe_*, pro_monthly_kwh/pro_monthly_mad → bill_kwh/facture_hiver) ; le
+    reste va dans Lead.web_questionnaire."""
+    out = {}
+
+    def _num(camel, snake, lo=0, hi=None):
+        val = _clean_decimal(data.get(camel, data.get(snake)), lo=lo, hi=hi)
+        if val is not None:
+            out[snake] = val
+
+    def _choice(camel, snake, values):
+        val = _clean_choice(data.get(camel, data.get(snake)), values)
+        if val is not None:
+            out[snake] = val
+
+    # ── Mode PROFESSIONNEL ──
+    # NB : `tensionRaccordement` (bt/mt = basse/moyenne tension) n'est PAS
+    # Lead.raccordement (monophase/triphase) — vocabulaires distincts.
+    _choice('tensionRaccordement', 'tension_raccordement', ('bt', 'mt'))
+    _num('puissanceKva', 'puissance_kva', hi=100000)
+    _choice('activityProfile', 'activity_profile',
+            ('day', 'day_evening', 'continuous'))
+    # `surfaceType` inclut ombrière/terrain : PAS Lead.type_toiture (taxonomie
+    # toiture pure) ni surface_toiture_m2 (la surface peut être au sol).
+    _choice('surfaceType', 'surface_type',
+            ('bac_acier', 'terrasse', 'ombriere', 'terrain'))
+    _num('surfaceM2', 'surface_m2', hi=1000000)
+    has_gen = data.get('hasGenerator', data.get('has_generator'))
+    if isinstance(has_gen, bool):
+        out['has_generator'] = has_gen
+    _num('proMonthlyKwh', 'pro_monthly_kwh')
+    _num('proMonthlyMad', 'pro_monthly_mad')
+
+    # ── Mode AGRICOLE (pompage) ──
+    _choice('waterSource', 'water_source',
+            ('puits', 'forage', 'bassin', 'riviere'))
+    _num('profondeurM', 'profondeur_m', hi=2000)
+    _num('hmtM', 'hmt_m', hi=2000)
+    _num('debitM3h', 'debit_souhaite_m3h', hi=100000)
+    _num('besoinM3j', 'besoin_m3j', hi=1000000)
+    _num('heuresPompage', 'heures_pompage', hi=24)
+    _choice('irrigation', 'irrigation',
+            ('goutte', 'aspersion', 'gravitaire'))
+    culture = data.get('culture')
+    if culture not in (None, ''):
+        culture = str(culture).strip()[:120]
+        if culture:
+            out['culture'] = culture
+    _num('surfaceHa', 'surface_ha', hi=1000000)
+    _choice('pompeActuelle', 'pompe_actuelle',
+            ('aucune', 'diesel', 'butane', 'electrique'))
+    _num('pompeCvActuelle', 'pompe_cv_actuelle', hi=10000)
+    _num('fuelSpendMad', 'fuel_spend_mad')
+    return out
+
+
+def _fmt_qn_number(val):
+    """Format FR compact d'un nombre du questionnaire pour le chatter
+    (7.5 → '7,5' ; 2500 → '2 500'). Jamais d'erreur : une valeur non
+    numérique est rendue telle quelle."""
+    try:
+        num = float(val)
+    except (TypeError, ValueError):
+        return str(val)
+    if num == int(num):
+        return f'{int(num):,}'.replace(',', ' ')
+    return f'{num:g}'.replace('.', ',')
+
+
+def _build_questionnaire_note(questionnaire, estimate, type_installation):
+    """Résumé chatter FR compact du questionnaire web — réponses FOURNIES
+    uniquement — suivi des chiffres montrés au visiteur (web_estimate).
+
+    ``questionnaire`` est le dict COMPLET extrait du payload (y compris les
+    réponses mappées sur des colonnes Lead : HMT, débit, CV pompe…), pour que
+    le commercial voie tout d'un coup d'œil sans ouvrir chaque champ."""
+    fmt = _fmt_qn_number
+    parts = []
+
+    # Agricole (pompage) — ordre : source d'eau → hydraulique → usage → pompe.
+    water = questionnaire.get('water_source')
+    if water:
+        parts.append({'riviere': 'rivière'}.get(water, water))
+    if questionnaire.get('profondeur_m') is not None:
+        parts.append(f"profondeur {fmt(questionnaire['profondeur_m'])} m")
+    if questionnaire.get('hmt_m') is not None:
+        parts.append(f"HMT {fmt(questionnaire['hmt_m'])} m")
+    if questionnaire.get('debit_souhaite_m3h') is not None:
+        parts.append(f"{fmt(questionnaire['debit_souhaite_m3h'])} m³/h")
+    if questionnaire.get('besoin_m3j') is not None:
+        parts.append(f"besoin {fmt(questionnaire['besoin_m3j'])} m³/j")
+    if questionnaire.get('heures_pompage') is not None:
+        parts.append(f"{fmt(questionnaire['heures_pompage'])} h/j")
+    irrigation = questionnaire.get('irrigation')
+    if irrigation:
+        parts.append({'goutte': 'goutte-à-goutte'}.get(irrigation, irrigation))
+    if questionnaire.get('culture'):
+        parts.append(f"culture {questionnaire['culture']}")
+    if questionnaire.get('surface_ha') is not None:
+        parts.append(f"{fmt(questionnaire['surface_ha'])} ha")
+    pompe = questionnaire.get('pompe_actuelle')
+    pompe_cv = questionnaire.get('pompe_cv_actuelle')
+    if pompe == 'aucune':
+        parts.append('aucune pompe actuelle')
+    elif pompe:
+        label = {'electrique': 'électrique'}.get(pompe, pompe)
+        cv_txt = f" {fmt(pompe_cv)} CV" if pompe_cv is not None else ''
+        parts.append(f"pompe {label}{cv_txt}")
+    elif pompe_cv is not None:
+        parts.append(f"pompe actuelle {fmt(pompe_cv)} CV")
+    if questionnaire.get('fuel_spend_mad') is not None:
+        parts.append(
+            f"carburant {fmt(questionnaire['fuel_spend_mad'])} MAD/mois")
+
+    # Professionnel — ordre : raccordement → activité → surface → énergie.
+    tension = questionnaire.get('tension_raccordement')
+    if tension:
+        parts.append({'bt': 'raccordement BT', 'mt': 'raccordement MT'}.get(
+            tension, tension))
+    if questionnaire.get('puissance_kva') is not None:
+        parts.append(f"{fmt(questionnaire['puissance_kva'])} kVA")
+    activity = questionnaire.get('activity_profile')
+    if activity:
+        parts.append({
+            'day': 'activité de jour',
+            'day_evening': 'activité jour + soirée',
+            'continuous': 'activité 24h/24',
+        }.get(activity, activity))
+    surface_type = questionnaire.get('surface_type')
+    if surface_type:
+        parts.append({'bac_acier': 'bac acier', 'ombriere': 'ombrière'}.get(
+            surface_type, surface_type))
+    if questionnaire.get('surface_m2') is not None:
+        parts.append(f"{fmt(questionnaire['surface_m2'])} m²")
+    has_gen = questionnaire.get('has_generator')
+    if has_gen is True:
+        parts.append('groupe électrogène présent')
+    elif has_gen is False:
+        parts.append('sans groupe électrogène')
+    if questionnaire.get('pro_monthly_kwh') is not None:
+        parts.append(f"{fmt(questionnaire['pro_monthly_kwh'])} kWh/mois")
+    if questionnaire.get('pro_monthly_mad') is not None:
+        parts.append(f"{fmt(questionnaire['pro_monthly_mad'])} MAD/mois")
+
+    est_parts = []
+    if estimate.get('kwc') is not None:
+        est_parts.append(f"{fmt(estimate['kwc'])} kWc")
+    if estimate.get('prodKwh') is not None:
+        est_parts.append(f"{fmt(estimate['prodKwh'])} kWh/an")
+    eco_low = estimate.get('ecoMadMonthLow')
+    eco_high = estimate.get('ecoMadMonthHigh')
+    if eco_low is not None and eco_high is not None:
+        est_parts.append(f"économie {fmt(eco_low)}–{fmt(eco_high)} MAD/mois")
+    elif eco_low is not None or eco_high is not None:
+        eco = eco_low if eco_low is not None else eco_high
+        est_parts.append(f"économie {fmt(eco)} MAD/mois")
+    if estimate.get('paybackLabel'):
+        est_parts.append(str(estimate['paybackLabel']))
+    if estimate.get('tauxAutoconso') is not None:
+        est_parts.append(f"autoconsommation {fmt(estimate['tauxAutoconso'])} %")
+    if estimate.get('tauxCouverture') is not None:
+        est_parts.append(f"couverture {fmt(estimate['tauxCouverture'])} %")
+    if estimate.get('pompeCv') is not None:
+        est_parts.append(f"pompe {fmt(estimate['pompeCv'])} CV")
+    if estimate.get('champKwc') is not None:
+        est_parts.append(f"champ {fmt(estimate['champKwc'])} kWc")
+    if estimate.get('m3Jour') is not None:
+        est_parts.append(f"{fmt(estimate['m3Jour'])} m³/j")
+
+    mode = type_installation or 'web'
+    body = f"Questionnaire web ({mode}) : " + ' · '.join(parts)
+    if est_parts:
+        body += ' — Estimation montrée : ' + ', '.join(est_parts)
+    return body
 
 
 def _map_payload_to_fields(data: dict) -> dict:
@@ -467,6 +692,38 @@ def _map_payload_to_fields(data: dict) -> dict:
         # depuis la création du lead (couche 2 dédup — visiteur revenant).
         fields['contact_preference_set_at'] = timezone.now()
 
+    # ── Quote-journey — questionnaire pro/agricole + estimation montrée ──
+    # RÉUTILISE d'abord les colonnes Lead existantes (pompage, profil
+    # énergie) ; seul le RESTE atterrit dans web_questionnaire. Les clés kWh/
+    # MAD pro ne remplissent bill_kwh/facture_hiver que si le payload ne les
+    # a pas déjà posées explicitement (billKwh/factureHiver priment) — dans
+    # ce cas la réponse reste visible dans web_questionnaire.
+    questionnaire = _extract_web_questionnaire(data)
+    if questionnaire:
+        hmt = questionnaire.pop('hmt_m', None)
+        if hmt is not None:
+            fields['pompe_hmt_m'] = hmt
+        debit = questionnaire.pop('debit_souhaite_m3h', None)
+        if debit is not None:
+            fields['pompe_debit_m3h'] = debit
+        pompe_cv = questionnaire.pop('pompe_cv_actuelle', None)
+        if pompe_cv is not None:
+            fields['pompe_cv'] = pompe_cv
+        if 'bill_kwh' not in fields:
+            pro_kwh = questionnaire.pop('pro_monthly_kwh', None)
+            if pro_kwh is not None:
+                fields['bill_kwh'] = pro_kwh
+        if 'facture_hiver' not in fields:
+            pro_mad = questionnaire.pop('pro_monthly_mad', None)
+            if pro_mad is not None:
+                fields['facture_hiver'] = pro_mad
+        if questionnaire:
+            fields['web_questionnaire'] = questionnaire
+    estimate = _clean_estimate_shown(
+        data.get('estimateShown', data.get('estimate_shown')))
+    if estimate:
+        fields['web_estimate'] = estimate
+
     if fields['whatsapp_opt_in'] and fields['telephone']:
         fields['whatsapp'] = fields['telephone']
     # Sous le seuil (ne devrait pas arriver — le site filtre) : étiqueté.
@@ -624,6 +881,28 @@ def _map_and_link_lead(raw, data, company):
         except Exception as _exc:  # noqa: BLE001 — best-effort
             logger.warning(
                 'website_lead_webhook: recompute_lead_score échoué '
+                '(lead #%s) : %s', lead.pk, _exc)
+        # Quote-journey — visibilité commerciale immédiate : UNE note chatter
+        # automatique résumant le questionnaire web (pro/agricole) + les
+        # chiffres montrés au visiteur. Le dict COMPLET est repris du payload
+        # (y compris les réponses déjà mappées sur des colonnes : HMT, débit,
+        # CV pompe…). Même patron que les autres notes du webhook (company du
+        # lead, user=None — attribution serveur). Best-effort : une note en
+        # échec ne remet jamais le lead en cause.
+        try:
+            questionnaire_full = _extract_web_questionnaire(data)
+            if questionnaire_full:
+                LeadActivity.objects.create(
+                    company=lead.company, lead=lead, user=None,
+                    kind=LeadActivity.Kind.NOTE,
+                    body=_build_questionnaire_note(
+                        questionnaire_full,
+                        fields.get('web_estimate') or {},
+                        fields.get('type_installation')),
+                )
+        except Exception as _exc:  # noqa: BLE001 — best-effort
+            logger.warning(
+                'website_lead_webhook: note questionnaire échouée '
                 '(lead #%s) : %s', lead.pk, _exc)
 
     # QK6 — photo de facture/compteur/toiture jointe à la capture :
