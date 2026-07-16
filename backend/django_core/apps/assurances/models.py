@@ -271,3 +271,45 @@ class EcheancePrime(models.Model):
 
     def __str__(self):
         return f'{self.police_id} — {self.montant} le {self.date_echeance_paiement}'
+
+
+# ── NTASS7 — Actifs/sites couverts par police (string-FK transverse) ──────
+
+class ActifCouvert(models.Model):
+    """Un actif (site/véhicule/équipement) couvert par une police (NTASS7).
+
+    ``actif_ref`` est une string-FK (id brut, JAMAIS une vraie FK cross-app) —
+    résolue à la volée en libellé lisible via
+    ``selectors.resoudre_libelle_actif`` (import paresseux de
+    ``flotte.selectors`` pour VEHICULE ; futur ``NTPRO.selectors`` pour SITE).
+    ``actif_libelle`` est un SNAPSHOT texte capturé à l'ajout — reste lisible
+    même si l'actif source est renommé/supprimé côté app propriétaire."""
+
+    class TypeActif(models.TextChoices):
+        SITE = 'site', 'Site'
+        VEHICULE = 'vehicule', 'Véhicule'
+        EQUIPEMENT = 'equipement', 'Équipement'
+        AUTRE = 'autre', 'Autre'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='actifs_couverts', verbose_name='Société')
+    police = models.ForeignKey(
+        PoliceAssurance, on_delete=models.CASCADE, related_name='actifs_couverts')
+    type_actif = models.CharField(
+        max_length=15, choices=TypeActif.choices, default=TypeActif.AUTRE)
+    actif_ref = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name="Référence de l'actif (string-FK)")
+    actif_libelle = models.CharField(
+        max_length=200, blank=True, default='',
+        verbose_name='Libellé (snapshot)')
+    date_ajout = models.DateField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['id']
+        verbose_name = 'Actif couvert'
+        verbose_name_plural = 'Actifs couverts'
+        indexes = [models.Index(fields=['police', 'type_actif'])]
+
+    def __str__(self):
+        return f'{self.get_type_actif_display()} — {self.actif_libelle}'

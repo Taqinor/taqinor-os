@@ -6,8 +6,8 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
-    AssureurViewSet, CourtierViewSet, EcheancePrimeViewSet,
-    GarantiePoliceViewSet, PoliceAssuranceViewSet,
+    ActifCouvertViewSet, AssureurViewSet, CourtierViewSet,
+    EcheancePrimeViewSet, GarantiePoliceViewSet, PoliceAssuranceViewSet,
 )
 
 router = DefaultRouter()
@@ -20,6 +20,9 @@ router.register(
 router.register(
     r'echeances-prime', EcheancePrimeViewSet,
     basename='assurances-echeance-prime')
+router.register(
+    r'actifs-couverts', ActifCouvertViewSet,
+    basename='assurances-actif-couvert')
 
 urlpatterns = [
     path('', include(router.urls)),

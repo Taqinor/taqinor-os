@@ -2,9 +2,10 @@
 from rest_framework import serializers
 
 from .models import (
-    Assureur, Courtier, EcheancePrime, GarantiePolice, PoliceActivity,
-    PoliceAssurance,
+    ActifCouvert, Assureur, Courtier, EcheancePrime, GarantiePolice,
+    PoliceActivity, PoliceAssurance,
 )
+from .selectors import resoudre_libelle_actif
 
 
 class AssureurSerializer(serializers.ModelSerializer):
@@ -85,6 +86,36 @@ class GarantiePoliceSerializer(serializers.ModelSerializer):
             'franchise_pourcentage', 'notes',
         ]
         read_only_fields = ['id', 'company']
+
+    def validate_police(self, value):
+        request = self.context.get('request')
+        if request and value.company_id != request.user.company_id:
+            raise serializers.ValidationError(
+                'La police doit appartenir à la même société.')
+        return value
+
+
+class ActifCouvertSerializer(serializers.ModelSerializer):
+    """NTASS7 — ``actif_libelle`` accepté en écriture (snapshot posé à
+    l'ajout) ; en LECTURE, la représentation le remplace par le libellé
+    RÉSOLU à la volée quand un selector propriétaire (``flotte`` pour
+    VEHICULE) le connaît, sinon le snapshot reste affiché tel quel."""
+
+    class Meta:
+        model = ActifCouvert
+        fields = [
+            'id', 'company', 'police', 'type_actif', 'actif_ref',
+            'actif_libelle', 'date_ajout',
+        ]
+        read_only_fields = ['id', 'company', 'date_ajout']
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        resolu = resoudre_libelle_actif(
+            instance.company, instance.type_actif, instance.actif_ref)
+        if resolu:
+            data['actif_libelle'] = resolu
+        return data
 
     def validate_police(self, value):
         request = self.context.get('request')

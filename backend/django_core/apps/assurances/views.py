@@ -11,12 +11,13 @@ from core.mixins import TenantMixin
 from core.permissions import WriteScopedPermissionMixin
 
 from .models import (
-    Assureur, Courtier, EcheancePrime, GarantiePolice, PoliceAssurance,
+    ActifCouvert, Assureur, Courtier, EcheancePrime, GarantiePolice,
+    PoliceAssurance,
 )
 from .serializers import (
-    AssureurSerializer, CourtierSerializer, EcheancePrimeSerializer,
-    GarantiePoliceSerializer, PoliceActivitySerializer,
-    PoliceAssuranceSerializer,
+    ActifCouvertSerializer, AssureurSerializer, CourtierSerializer,
+    EcheancePrimeSerializer, GarantiePoliceSerializer,
+    PoliceActivitySerializer, PoliceAssuranceSerializer,
 )
 from .services import (
     CHAMPS_SUIVIS_POLICE, generer_echeancier_prime, log_police_creation,
@@ -165,3 +166,12 @@ class GarantiePoliceViewSet(_AssurancesBaseViewSet):
     queryset = GarantiePolice.objects.select_related('police')
     serializer_class = GarantiePoliceSerializer
     filterset_fields = ['police']
+
+
+class ActifCouvertViewSet(_AssurancesBaseViewSet):
+    """CRUD des actifs couverts par une police, scopé société (NTASS7).
+
+    Endpoint imbriqué : ``?police=<id>`` filtre les actifs d'une police."""
+    queryset = ActifCouvert.objects.select_related('police')
+    serializer_class = ActifCouvertSerializer
+    filterset_fields = ['police', 'type_actif']
