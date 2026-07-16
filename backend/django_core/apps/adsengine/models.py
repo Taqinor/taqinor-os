@@ -14,6 +14,7 @@ dans les tâches suivantes de la lane ``backend/adsengine`` :
 Tout nouveau modèle métier hérite de ``core.models.TenantModel`` (FK société +
 horodatage) et les ViewSets de ``core.viewsets.CompanyScopedModelViewSet``.
 """
+from django.conf import settings
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.db import models
 
@@ -255,3 +256,68 @@ class InsightSnapshot(TenantModel):
 
     def __str__(self):
         return f'Insight {self.object_id}@{self.date}'
+
+
+class EngineAction(TenantModel):
+    """ENG7 — Colonne vertébrale propose→approuve→applique du moteur.
+
+    Chaque changement que le moteur veut opérer sur Meta est d'abord PROPOSÉ
+    (avec une ``reason_fr`` obligatoire — une phrase en français), puis APPROUVÉ
+    par un humain habilité, et seulement alors APPLIQUÉ via ``meta_client``
+    (jamais autrement). Le pattern suit ``contrats.EtapeApprobation`` (statut
+    LOCAL persistant + acteur serveur), PAS le registre stateless ``apps/agent``.
+
+    **Jamais d'auto-apply** hors des toggles de capacités (ENG8) ; et même dans ce
+    cas, une ligne ``EngineAction`` avec ``auto=True`` est TOUJOURS écrite (trace
+    d'audit). ``approved_by`` / ``applied_at`` sont posés côté serveur.
+    """
+
+    class Statut(models.TextChoices):
+        PROPOSEE = 'proposee', 'Proposée'
+        APPROUVEE = 'approuvee', 'Approuvée'
+        REJETEE = 'rejetee', 'Rejetée'
+        APPLIQUEE = 'appliquee', 'Appliquée'
+        ECHOUEE = 'echouee', 'Échouée'
+
+    class Kind(models.TextChoices):
+        CREATE_CAMPAIGN = 'create_campaign', 'Créer une campagne'
+        CREATE_ADSET = 'create_adset', 'Créer un ad set'
+        CREATE_AD = 'create_ad', 'Créer une ad'
+
+    kind = models.CharField(
+        max_length=32, choices=Kind.choices, verbose_name='Type')
+    payload = models.JSONField(
+        default=dict, blank=True, verbose_name='Charge utile')
+    # Raison OBLIGATOIRE (une phrase FR). Requise au niveau service + serializer,
+    # et garantie non vide en base (contrainte CHECK ``adseng_action_reason_req``).
+    reason_fr = models.TextField(verbose_name='Raison (une phrase FR)')
+    status = models.CharField(
+        max_length=12, choices=Statut.choices, default=Statut.PROPOSEE,
+        verbose_name='Statut')
+    # Écrite même en auto-apply (ENG8) : une action jouée sans approbation humaine
+    # laisse quand même une trace ``auto=True``. Défaut False (approbation requise).
+    auto = models.BooleanField(
+        default=False, verbose_name='Jouée automatiquement (ENG8)')
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='adsengine_actions_approuvees',
+        verbose_name='Approuvée / décidée par')
+    applied_at = models.DateTimeField(
+        null=True, blank=True, verbose_name='Appliquée le')
+    result = models.JSONField(
+        default=dict, blank=True, verbose_name='Résultat')
+    error = models.TextField(
+        blank=True, default='', verbose_name='Erreur')
+
+    class Meta:
+        verbose_name = 'Action du moteur'
+        verbose_name_plural = 'Actions du moteur'
+        ordering = ['-created_at']
+        constraints = [
+            models.CheckConstraint(
+                condition=~models.Q(reason_fr=''),
+                name='adseng_action_reason_req'),
+        ]
+
+    def __str__(self):
+        return f'{self.get_kind_display()} — {self.get_status_display()}'

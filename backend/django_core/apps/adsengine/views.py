@@ -5,14 +5,18 @@ ViewSets métier (connexion, garde-fous, actions) atterrissent aux tâches
 suivantes de la lane et sont tous basés sur
 ``core.viewsets.CompanyScopedModelViewSet`` (scoping société garanti).
 """
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.decorators import action
+from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from core.permissions import _user_has_or_legacy
 from core.viewsets import CompanyScopedModelViewSet
 
-from .models import GuardrailConfig, MetaConnection
-from .serializers import GuardrailConfigSerializer, MetaConnectionSerializer
+from .models import EngineAction, GuardrailConfig, MetaConnection
+from .serializers import (
+    EngineActionSerializer, GuardrailConfigSerializer, MetaConnectionSerializer,
+)
 
 
 class StatusView(APIView):
@@ -64,3 +68,77 @@ class GuardrailConfigViewSet(AdsengineViewSet):
 
     queryset = GuardrailConfig.objects.all()
     serializer_class = GuardrailConfigSerializer
+
+
+class HasAdsengineApprove(BasePermission):
+    """ENG7 — Permission d'APPROBATION (distincte de la proposition).
+
+    Approuver / appliquer une ``EngineAction`` exige ``adsengine_approve`` —
+    une permission SÉPARÉE de ``adsengine_manage`` (proposer). Réutilise le
+    repli légacy commun (``_user_has_or_legacy``) pour rester cohérent avec le
+    reste du gating de l'app.
+    """
+
+    def has_permission(self, request, view):
+        user = getattr(request, 'user', None)
+        if not (user and user.is_authenticated):
+            return False
+        return _user_has_or_legacy(user, 'adsengine_approve')
+
+
+class EngineActionViewSet(AdsengineViewSet):
+    """ENG7 — Boucle propose→approuve→applique.
+
+    Proposer (POST) exige ``adsengine_manage`` ; approuver / rejeter / appliquer
+    exigent ``adsengine_approve`` (permission DISTINCTE). Une action ne s'applique
+    qu'une fois APPROUVÉE — ``services.apply_action`` refuse tout le reste (le
+    client Meta n'est jamais atteint). Aucun PATCH direct de ``status`` (champ en
+    lecture seule au serializer).
+    """
+
+    queryset = EngineAction.objects.all()
+    serializer_class = EngineActionSerializer
+
+    _APPROVE_ACTIONS = ('approve', 'reject', 'apply')
+
+    def get_permissions(self):
+        if getattr(self, 'action', None) in self._APPROVE_ACTIONS:
+            return [HasAdsengineApprove()]
+        return super().get_permissions()
+
+    @action(detail=True, methods=['post'])
+    def approve(self, request, pk=None):
+        """Approuve l'action (acteur posé côté serveur)."""
+        from .services import approve_action
+        instance = self.get_object()
+        try:
+            approve_action(instance, user=request.user)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        return Response(self.get_serializer(instance).data)
+
+    @action(detail=True, methods=['post'])
+    def reject(self, request, pk=None):
+        """Rejette l'action (jamais applicable ensuite)."""
+        from .services import reject_action
+        instance = self.get_object()
+        try:
+            reject_action(
+                instance, user=request.user,
+                commentaire=request.data.get('commentaire', ''))
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        return Response(self.get_serializer(instance).data)
+
+    @action(detail=True, methods=['post'])
+    def apply(self, request, pk=None):
+        """Applique l'action — UNIQUEMENT si elle est approuvée."""
+        from .services import ActionNotApproved, apply_action
+        instance = self.get_object()
+        try:
+            apply_action(instance)
+        except ActionNotApproved as exc:
+            return Response({'detail': str(exc)}, status=409)
+        except Exception as exc:  # échec Meta → action déjà passée « echouee »
+            return Response({'detail': str(exc)}, status=502)
+        return Response(self.get_serializer(instance).data)
