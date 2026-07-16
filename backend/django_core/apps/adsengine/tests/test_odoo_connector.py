@@ -303,3 +303,19 @@ class OdooCostPerSignatureMathTests(TestCase):
         self.assertIsNone(result['cost_per_signature'])
         self.assertEqual(result['total_spend'], '9000.00')  # dépense conservée
         self.assertEqual(result['signed_deals'], [])
+        self.assertNotIn('odoo_error', result)  # chemin succès : forme inchangée
+
+    def test_odoo_read_failure_degrades_instead_of_500(self):
+        # CONTRAT DE LA VUE : une lecture Odoo qui échoue (ici auth refusée, mais
+        # aussi bien réseau/DB/login erronés en prod) ne doit JAMAIS lever — on
+        # dégrade en signatures=0 + ``odoo_error`` explicite, la dépense Meta
+        # locale restant servie. Régression : sans le try/except la vue renvoyait
+        # un 500 dès que le connecteur était configuré mais l'appel Odoo échouait.
+        client = make_client(make_handler(auth_uid=False))  # authenticate refusé
+        result = odoo_cost_per_signature(self.company, client=client)
+        self.assertEqual(result['signatures'], 0)
+        self.assertIsNone(result['cost_per_signature'])
+        self.assertEqual(result['total_spend'], '9000.00')  # dépense conservée
+        self.assertEqual(result['signed_deals'], [])
+        self.assertIn('odoo_error', result)
+        self.assertIn('OdooAuthError', result['odoo_error'])
