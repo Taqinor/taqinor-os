@@ -121,6 +121,38 @@ def generate_weekly_brief():
     return {'briefs_generated': generated}
 
 
+@shared_task(name='adsengine.evaluate_guardrails')
+def evaluate_guardrails():
+    """ADSENG15 — Boucle CRITIQUE du Gardien (toutes les 6 h).
+
+    Évalue les règles de cadence critique (zéro-diffusion, ad refusée, pic/chute
+    de dépense…) sur chaque société active. JAMAIS sub-horaire (les rate limits
+    Meta scalent au spend et pénalisent les petits comptes, dd-guardian §A9).
+    NO-OP propre tant qu'aucune ``RulePolicy`` critique n'est activée. Renvoie le
+    récapitulatif ``{'companies': n, 'rules_evaluated': m}``."""
+    from . import rules_engine
+
+    result = rules_engine.evaluate_all(
+        cadences=rules_engine.CRITICAL_CADENCES)
+    logger.info('adsengine.evaluate_guardrails: %s', result)
+    return result
+
+
+@shared_task(name='adsengine.evaluate_optimization_rules')
+def evaluate_optimization_rules():
+    """ADSENG15 — Boucle d'OPTIMISATION du Gardien (quotidienne).
+
+    Évalue les règles de cadence quotidienne + hebdomadaire (fatigue créative,
+    bande CPL, backlog bas…) après la synchro ENG6. Best-effort par société ;
+    idempotent (dédup par cible sur le cooldown). Renvoie le récapitulatif."""
+    from . import rules_engine
+
+    result = rules_engine.evaluate_all(
+        cadences=rules_engine.OPTIMIZATION_CADENCES)
+    logger.info('adsengine.evaluate_optimization_rules: %s', result)
+    return result
+
+
 @shared_task(name='adsengine.generate_creative_variants')
 def generate_creative_variants(base_asset_id, brand_fields=None, count=2):
     """ENG18 — Tâche « variantes » : 2-3 statiques d'un asset de base approuvé.
