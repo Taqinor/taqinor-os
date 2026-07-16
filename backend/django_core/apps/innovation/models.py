@@ -118,3 +118,43 @@ class VoteIdee(TenantModel):
 
     def __str__(self):
         return f'{self.votant_id} → idée {self.idee_id}'
+
+
+class InnovationSettings(TenantModel):
+    """Paramètres du tab Paramètres → Avancé « Campagnes innovation »
+    (NTIDE7). Une ligne par société (singleton, ``OneToOneField``, pattern
+    ``parametres.CompanyProfile``)."""
+
+    class ThemeCouleur(models.TextChoices):
+        PRIMARY = 'primary', 'Primaire'
+        SUCCESS = 'success', 'Succès'
+        WARNING = 'warning', 'Avertissement'
+        INFO = 'info', 'Info'
+        DESTRUCTIVE = 'destructive', 'Destructive'
+
+    # Redéclaré en OneToOne (ARC1 autorise la redéclaration du champ hérité) :
+    # une seule ligne de paramètres par société.
+    company = models.OneToOneField(
+        'authentication.Company',
+        # on_delete: paramètres scopés société — disparaissent avec elle (nettoyage tenant standard).
+        on_delete=models.CASCADE,
+        related_name='innovation_settings', verbose_name='Société')
+    campagnes_activees = models.BooleanField(
+        default=False, verbose_name='Campagnes activées')
+    # Segment par défaut — nom de Departement (NTFPA1) si bâti, sinon un des
+    # rôles ['Technicien', 'Commercial', 'Directeur'] (texte libre, dropdown
+    # côté frontend). Vide = pas de segment par défaut.
+    segment_defaut = models.CharField(
+        max_length=80, blank=True, default='', verbose_name='Segment par défaut')
+    theme_couleur_cta = models.CharField(
+        max_length=12, choices=ThemeCouleur.choices,
+        default=ThemeCouleur.PRIMARY, verbose_name='Thème couleur du CTA')
+    message_relance = models.TextField(
+        blank=True, default='', verbose_name='Message de relance')
+
+    class Meta:
+        verbose_name = 'Paramètres innovation'
+        verbose_name_plural = 'Paramètres innovation'
+
+    def __str__(self):
+        return f'Paramètres innovation — {self.company_id}'

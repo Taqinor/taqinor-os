@@ -32,6 +32,12 @@ const innovationApi = {
   retirerVote: (voteId) => api.delete(`/innovation/votes/${voteId}/`),
   votesRecents: () => api.get('/innovation/votes/recents/'),
   mesVotes: () => api.get('/innovation/votes/mes-idees/'),
+
+  // ── Paramètres → Avancé « Campagnes innovation » (NTIDE7, singleton) ──
+  parametres: {
+    get: () => api.get('/innovation/parametres/'),
+    update: (data) => api.patch('/innovation/parametres/', data),
+  },
 }
 
 export default innovationApi

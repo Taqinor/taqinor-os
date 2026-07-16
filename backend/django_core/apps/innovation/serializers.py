@@ -6,7 +6,7 @@
 """
 from rest_framework import serializers
 
-from .models import Idee, VoteIdee
+from .models import Idee, InnovationSettings, VoteIdee
 
 
 class IdeeSerializer(serializers.ModelSerializer):
@@ -68,3 +68,12 @@ class VoteIdeeSerializer(serializers.ModelSerializer):
 
     def get_votant_nom(self, obj):
         return getattr(obj.votant, 'username', None)
+
+
+class InnovationSettingsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = InnovationSettings
+        fields = [
+            'campagnes_activees', 'segment_defaut', 'theme_couleur_cta',
+            'message_relance',
+        ]

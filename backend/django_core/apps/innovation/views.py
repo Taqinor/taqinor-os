@@ -9,6 +9,7 @@ Palier d'accès :
 from rest_framework import filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from authentication.permissions import (
     IsAdminOrResponsableTier, IsAnyRole, IsResponsableOrAdmin,
@@ -16,8 +17,11 @@ from authentication.permissions import (
 from core.viewsets import CompanyScopedModelViewSet
 
 from . import selectors, services
-from .models import Idee, VoteIdee
-from .serializers import IdeeDetailSerializer, IdeeSerializer, VoteIdeeSerializer
+from .models import Idee, InnovationSettings, VoteIdee
+from .serializers import (
+    IdeeDetailSerializer, IdeeSerializer, InnovationSettingsSerializer,
+    VoteIdeeSerializer,
+)
 
 
 class IdeeViewSet(CompanyScopedModelViewSet):
@@ -165,3 +169,47 @@ class VoteIdeeViewSet(CompanyScopedModelViewSet):
         (``votes_my_ideas``)."""
         qs = self.get_queryset().filter(idee__auteur=request.user)
         return Response(VoteIdeeSerializer(qs, many=True).data)
+
+
+class InnovationSettingsView(APIView):
+    """Paramètres → Avancé « Campagnes innovation » (NTIDE7).
+
+    Singleton par société (``get_or_create``). Chaque changement journalise
+    une ligne ``SettingsAuditLog`` (section ``innovation``)."""
+
+    permission_classes = [IsAdminOrResponsableTier]
+
+    def _instance(self, request):
+        obj, _ = InnovationSettings.objects.get_or_create(
+            company=request.user.company)
+        return obj
+
+    def get(self, request):
+        return Response(
+            InnovationSettingsSerializer(self._instance(request)).data)
+
+    def patch(self, request):
+        instance = self._instance(request)
+        serializer = InnovationSettingsSerializer(
+            instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+
+        from apps.parametres.models_audit import SettingsAuditLog
+        champs_label = {
+            'campagnes_activees': 'Campagnes activées',
+            'segment_defaut': 'Segment par défaut',
+            'theme_couleur_cta': 'Thème couleur du CTA',
+            'message_relance': 'Message de relance',
+        }
+        anciennes = {f: getattr(instance, f) for f in champs_label}
+        serializer.save()
+        for champ, label in champs_label.items():
+            nouvelle = getattr(instance, champ)
+            if nouvelle != anciennes[champ]:
+                SettingsAuditLog.log_change(
+                    company=request.user.company, user=request.user,
+                    section='innovation', field=champ, field_label=label,
+                    old=anciennes[champ], new=nouvelle)
+        return Response(serializer.data)
+
+    put = patch
