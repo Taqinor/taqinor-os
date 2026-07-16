@@ -85,3 +85,38 @@ class ContrainteCompatibilite(models.Model):
         est un simple avertissement."""
         return self.type in (
             self.TypeContrainte.INCOMPATIBLE, self.TypeContrainte.REQUIERT)
+
+
+class RegleProduitCPQ(models.Model):
+    """NTCPQ2 — Règle produit data-driven réutilisant ``core.rules``.
+
+    ``condition_group`` est un arbre de conditions ET/OU/NON évalué par
+    ``core.rules.evaluate_condition_group`` (le moteur GÉNÉRIQUE existant, jamais
+    réécrit). ``actions`` est une liste libre de dicts (ex.
+    ``[{"type": "exiger_option", "valeur": "triphase"}]``) renvoyée quand la
+    règle se déclenche. Aucune action n'est exécutée par le modèle : le
+    déclenchement est purement déclaratif (l'appelant décide de la suite)."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='cpq_regles_produit')
+    nom = models.CharField(max_length=150)
+    condition_group = models.JSONField(
+        default=dict, blank=True,
+        help_text="Arbre de conditions ET/OU/NON (core.rules).")
+    actions = models.JSONField(
+        default=list, blank=True,
+        help_text='Liste d\'actions déclenchées quand la règle est vraie.')
+    actif = models.BooleanField(default=True)
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Règle produit CPQ'
+        verbose_name_plural = 'Règles produit CPQ'
+        ordering = ['-date_creation', 'id']
+        indexes = [
+            models.Index(fields=['company', 'actif'],
+                         name='cpq_regle_co_actif'),
+        ]
+
+    def __str__(self):
+        return self.nom

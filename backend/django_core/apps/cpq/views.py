@@ -4,6 +4,7 @@ Tous les ViewSets héritent de ``CompanyScopedModelViewSet`` (ARC2) : le
 queryset est scopé société et ``perform_create`` force ``company`` côté
 serveur. La liste des produits n'est jamais lue du corps pour le scope."""
 from rest_framework import status
+from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
@@ -11,9 +12,10 @@ from rest_framework.permissions import IsAuthenticated
 from core.viewsets import CompanyScopedModelViewSet
 from authentication.permissions import IsResponsableOrAdmin, IsAnyRole
 
-from .models import OptionProduit, ContrainteCompatibilite
+from .models import OptionProduit, ContrainteCompatibilite, RegleProduitCPQ
 from .serializers import (
     OptionProduitSerializer, ContrainteCompatibiliteSerializer,
+    RegleProduitCPQSerializer,
 )
 from . import selectors
 
@@ -36,6 +38,31 @@ class ContrainteCompatibiliteViewSet(CompanyScopedModelViewSet):
         if self.action in ('list', 'retrieve'):
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]
+
+
+class RegleProduitCPQViewSet(CompanyScopedModelViewSet):
+    queryset = RegleProduitCPQ.objects.all()
+    serializer_class = RegleProduitCPQSerializer
+
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve', 'evaluer'):
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    @action(detail=False, methods=['post'], url_path='evaluer')
+    def evaluer(self, request):
+        """NTCPQ2 — Évalue les règles actives contre un contexte fourni.
+
+        Corps : ``{"context": {...}}`` (dict plat construit depuis les lignes
+        candidates du devis, ex. ``{"kwc": 12}``). Renvoie les actions
+        déclenchées."""
+        context = request.data.get('context')
+        if context is None:
+            # Repli : tout champ hors "context" est traité comme le contexte.
+            context = {k: v for k, v in request.data.items() if k != 'context'}
+        declenchees = selectors.evaluer_regles_produit(
+            company=request.user.company, context=context)
+        return Response({'actions_declenchees': declenchees})
 
 
 class ValiderCompatibiliteView(APIView):

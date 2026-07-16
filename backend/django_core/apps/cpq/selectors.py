@@ -2,7 +2,8 @@
 
 Fonctions de lecture pures, scopées société. Aucun import des modèles des
 autres apps domaine (string-FK uniquement)."""
-from .models import ContrainteCompatibilite
+from core.rules import evaluate_condition_group
+from .models import ContrainteCompatibilite, RegleProduitCPQ
 
 
 def violations_compatibilite(*, company, produit_ids):
@@ -44,3 +45,23 @@ def _violation(contrainte):
         'message': contrainte.message_utilisateur,
         'bloquante': contrainte.bloquante,
     }
+
+
+def evaluer_regles_produit(*, company, context):
+    """NTCPQ2 — Évalue les règles produit actives de la société contre un
+    ``context`` (dict plat construit par l'appelant depuis les lignes/champs du
+    devis) via ``core.rules.evaluate_condition_group``.
+
+    Renvoie la liste des règles déclenchées :
+    ``[{regle_id, nom, actions}, ...]``."""
+    if not isinstance(context, dict):
+        context = {}
+    declenchees = []
+    for regle in RegleProduitCPQ.objects.filter(company=company, actif=True):
+        if evaluate_condition_group(regle.condition_group, context):
+            declenchees.append({
+                'regle_id': regle.id,
+                'nom': regle.nom,
+                'actions': regle.actions,
+            })
+    return declenchees
