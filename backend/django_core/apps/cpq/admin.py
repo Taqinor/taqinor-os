@@ -2,7 +2,7 @@ from django.contrib import admin
 
 from .models import (
     OptionProduit, ContrainteCompatibilite, RegleProduitCPQ,
-    OffreGroupee, LigneOffreGroupee, PrixContractuel,
+    OffreGroupee, LigneOffreGroupee, PrixContractuel, SeuilMargeFamille,
 )
 
 
@@ -40,4 +40,10 @@ class OffreGroupeeAdmin(admin.ModelAdmin):
 class PrixContractuelAdmin(admin.ModelAdmin):
     list_display = ('id', 'company', 'client', 'produit', 'prix_ht',
                     'date_debut', 'date_fin')
+    list_filter = ('company',)
+
+
+@admin.register(SeuilMargeFamille)
+class SeuilMargeFamilleAdmin(admin.ModelAdmin):
+    list_display = ('id', 'company', 'categorie', 'marge_min_pct')
     list_filter = ('company',)

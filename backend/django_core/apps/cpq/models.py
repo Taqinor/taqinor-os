@@ -234,3 +234,33 @@ class PrixContractuel(models.Model):
         if self.date_fin and today > self.date_fin:
             return False
         return True
+
+
+class SeuilMargeFamille(models.Model):
+    """NTCPQ6 — Garde-fou de marge minimale par famille (catégorie) produit.
+
+    INTERNE only : sert au check serveur qui pose ``marge_sous_seuil`` sur le
+    détail devis (staff). N'apparaît JAMAIS dans un PDF/proposition client
+    (règle #4). String-FK vers ``stock.Categorie``."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='cpq_seuils_marge')
+    categorie = models.ForeignKey(
+        'stock.Categorie', on_delete=models.CASCADE,
+        related_name='cpq_seuils_marge')
+    marge_min_pct = models.DecimalField(
+        max_digits=5, decimal_places=2,
+        help_text='Marge minimale attendue (%) pour cette famille.')
+
+    class Meta:
+        verbose_name = 'Seuil de marge par famille'
+        verbose_name_plural = 'Seuils de marge par famille'
+        ordering = ['id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'categorie'],
+                name='cpq_seuilmarge_unique_co_cat'),
+        ]
+
+    def __str__(self):
+        return f'{self.categorie_id} ≥ {self.marge_min_pct}%'
