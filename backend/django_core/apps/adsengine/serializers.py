@@ -2,8 +2,9 @@
 from rest_framework import serializers
 
 from .models import (
-    ArmDailyStat, CreativeAsset, CreativePolicy, DecisionLog, EngineAction,
-    EngineAlert, Experiment, ExperimentArm, GuardrailConfig, MetaConnection,
+    AnomalyEvent, ArmDailyStat, CreativeAsset, CreativePolicy, DecisionLog,
+    EngineAction, EngineAlert, Experiment, ExperimentArm, GuardrailConfig,
+    MetaConnection, PacingState, RulePolicy,
 )
 
 
@@ -61,6 +62,9 @@ class GuardrailConfigSerializer(serializers.ModelSerializer):
             'anomaly_window_hours',
             # ENG8 — toggles de capacités (auto-apply par capacité).
             'auto_rotate_creative', 'auto_rebalance_within_band',
+            # ADSENG4 — trésorerie : enveloppe mensuelle + pacing + exploration.
+            'monthly_budget_ceiling_mad', 'pacing_band_pct',
+            'exploration_floor_mad', 'exploration_floor_pct',
             'created_at', 'updated_at',
         ]
         read_only_fields = ['created_at', 'updated_at']
@@ -110,6 +114,9 @@ class EngineAlertSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'alert_type', 'message', 'action', 'detail',
             'acknowledged', 'wa_links', 'created_at', 'updated_at',
+            # ADSENG4 — sévérité + cooldown + escalade.
+            'severity', 'entity_key', 'cooldown_hours', 'unresolved_cycles',
+            'resolved',
         ]
         # ``wa_links`` est un champ déclaré (SerializerMethodField, déjà
         # read-only) — il ne doit PAS figurer dans read_only_fields (DRF
@@ -117,6 +124,8 @@ class EngineAlertSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'id', 'alert_type', 'message', 'action', 'detail',
             'acknowledged', 'created_at', 'updated_at',
+            'severity', 'entity_key', 'cooldown_hours', 'unresolved_cycles',
+            'resolved',
         ]
 
     def get_wa_links(self, obj):
@@ -226,4 +235,68 @@ class DecisionLogSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'id', 'experiment', 'inputs', 'posteriors', 'allocations',
             'summary_fr', 'action', 'created_at', 'updated_at',
+        ]
+
+
+class RulePolicySerializer(serializers.ModelSerializer):
+    """ADSENG4 — Règle de garde-fou (le fondateur configure). ``company`` +
+    ``created_by`` posés côté serveur ; ``last_*`` écrits par le moteur.
+    Invariant DUR : ``mode='auto'`` interdit tant que ``dry_run`` est vrai."""
+
+    class Meta:
+        model = RulePolicy
+        fields = [
+            'id', 'template_key', 'enabled', 'mode', 'dry_run', 'conditions',
+            'params', 'cadence_hours', 'cooldown_hours', 'last_evaluated_at',
+            'last_result', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'last_evaluated_at', 'last_result', 'created_at', 'updated_at',
+        ]
+
+    def validate(self, attrs):
+        # État final = valeurs entrantes fondues sur l'instance existante.
+        mode = attrs.get(
+            'mode', getattr(self.instance, 'mode', RulePolicy.Mode.PROPOSE))
+        dry_run = attrs.get(
+            'dry_run', getattr(self.instance, 'dry_run', True))
+        if mode == RulePolicy.Mode.AUTO and dry_run:
+            raise serializers.ValidationError(
+                "Le mode automatique est interdit en simulation (dry-run) : "
+                "désactivez d'abord la simulation.")
+        return attrs
+
+
+class AnomalyEventSerializer(serializers.ModelSerializer):
+    """ADSENG4 — Anomalie détectée (lecture seule : écrite par le gardien)."""
+
+    class Meta:
+        model = AnomalyEvent
+        fields = [
+            'id', 'kind', 'entity_type', 'entity_meta_id', 'severity',
+            'message_fr', 'detail', 'resolved', 'rule_policy', 'alert',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'kind', 'entity_type', 'entity_meta_id', 'severity',
+            'message_fr', 'detail', 'resolved', 'rule_policy', 'alert',
+            'created_at', 'updated_at',
+        ]
+
+
+class PacingStateSerializer(serializers.ModelSerializer):
+    """ADSENG4 — État de pacing mensuel (lecture seule : calculé par le
+    moteur de trésorerie)."""
+
+    class Meta:
+        model = PacingState
+        fields = [
+            'id', 'period_start', 'monthly_budget_ceiling_mad',
+            'spend_to_date', 'expected_spend_to_date', 'forecast_spend',
+            'pacing_ratio', 'state', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'period_start', 'monthly_budget_ceiling_mad',
+            'spend_to_date', 'expected_spend_to_date', 'forecast_spend',
+            'pacing_ratio', 'state', 'created_at', 'updated_at',
         ]

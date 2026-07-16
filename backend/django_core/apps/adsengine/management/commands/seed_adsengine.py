@@ -24,10 +24,12 @@ class Command(BaseCommand):
 
         guardrails_created = self._seed_guardrails(active_companies())
         policies_created = self._seed_policies(active_companies())
+        rules_created = self._seed_rule_policies(active_companies())
 
         self.stdout.write(self.style.SUCCESS(
             f"seed_adsengine : {guardrails_created} GuardrailConfig(s), "
-            f"{policies_created} CreativePolicy(s) créée(s)."))
+            f"{policies_created} CreativePolicy(s), "
+            f"{rules_created} RulePolicy(s) créée(s)."))
         return None
 
     def _seed_guardrails(self, companies):
@@ -49,4 +51,23 @@ class Command(BaseCommand):
             _, was_created = ensure_default_policy(company)
             if was_created:
                 created += 1
+        return created
+
+    def _seed_rule_policies(self, companies):
+        """ADSENG4 — Seed une ``RulePolicy`` par template du catalogue, PAR
+        société, en DÉFAUT SÛR : ``enabled=False`` + ``dry_run=True`` (rien ne
+        se déclenche tant que le fondateur n'a pas opté). Idempotent : jamais
+        d'écrasement d'une règle existante (``get_or_create`` sur
+        ``(company, template_key)``)."""
+        from apps.adsengine.models import RulePolicy
+        from apps.adsengine.rules import RULE_TEMPLATES
+
+        created = 0
+        for company in companies:
+            for template_key in RULE_TEMPLATES:
+                _, was_created = RulePolicy.objects.get_or_create(
+                    company=company, template_key=template_key,
+                    defaults={'enabled': False, 'dry_run': True})
+                if was_created:
+                    created += 1
         return created

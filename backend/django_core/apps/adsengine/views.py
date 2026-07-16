@@ -16,14 +16,16 @@ from core.permissions import _user_has_or_legacy
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
-    ArmDailyStat, CreativeAsset, CreativePolicy, DecisionLog, EngineAction,
-    EngineAlert, Experiment, ExperimentArm, GuardrailConfig, MetaConnection,
+    AnomalyEvent, ArmDailyStat, CreativeAsset, CreativePolicy, DecisionLog,
+    EngineAction, EngineAlert, Experiment, ExperimentArm, GuardrailConfig,
+    MetaConnection, PacingState, RulePolicy,
 )
 from .serializers import (
-    ArmDailyStatSerializer, CreativeAssetSerializer, CreativePolicySerializer,
-    DecisionLogSerializer, EngineActionSerializer, EngineAlertSerializer,
-    ExperimentArmSerializer, ExperimentSerializer, GuardrailConfigSerializer,
-    MetaConnectionSerializer,
+    AnomalyEventSerializer, ArmDailyStatSerializer, CreativeAssetSerializer,
+    CreativePolicySerializer, DecisionLogSerializer, EngineActionSerializer,
+    EngineAlertSerializer, ExperimentArmSerializer, ExperimentSerializer,
+    GuardrailConfigSerializer, MetaConnectionSerializer, PacingStateSerializer,
+    RulePolicySerializer,
 )
 
 
@@ -274,6 +276,40 @@ class DecisionLogViewSet(AdsengineViewSet):
 
     queryset = DecisionLog.objects.all()
     serializer_class = DecisionLogSerializer
+    http_method_names = ['get', 'head', 'options']
+
+
+class RulePolicyViewSet(AdsengineViewSet):
+    """ADSENG4 — CRUD des règles de garde-fou (le fondateur configure).
+
+    Company-scopé (hérité) ; ``created_by`` posé côté serveur. Défaut sûr : une
+    règle naît ``enabled=False`` + ``dry_run=True`` (aucun effet tant que le
+    fondateur n'a pas explicitement activé + quitté la simulation)."""
+
+    queryset = RulePolicy.objects.all()
+    serializer_class = RulePolicySerializer
+
+    def perform_create(self, serializer):
+        # ``company`` forcée par la base (TenantMixin) ; ``created_by`` posé ici.
+        super().perform_create(serializer)
+        if serializer.instance.created_by_id is None:
+            serializer.instance.created_by = self.request.user
+            serializer.instance.save(update_fields=['created_by'])
+
+
+class AnomalyEventViewSet(AdsengineViewSet):
+    """ADSENG4 — Liste (lecture seule) des anomalies détectées par le gardien."""
+
+    queryset = AnomalyEvent.objects.all()
+    serializer_class = AnomalyEventSerializer
+    http_method_names = ['get', 'head', 'options']
+
+
+class PacingStateViewSet(AdsengineViewSet):
+    """ADSENG4 — Liste (lecture seule) des états de pacing mensuels."""
+
+    queryset = PacingState.objects.all()
+    serializer_class = PacingStateSerializer
     http_method_names = ['get', 'head', 'options']
 
 
