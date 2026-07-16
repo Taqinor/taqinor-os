@@ -178,12 +178,18 @@ class EngineAlertViewSet(AdsengineViewSet):
     """ENG13 — Liste (lecture seule) des alertes moteur pour le dashboard.
 
     Company-scopé (hérité) + gaté ``adsengine_view``. Restreint à GET : les
-    alertes sont créées par le moteur (ENG9), jamais par un client API.
+    alertes sont créées par le moteur (ENG9), jamais par un client API. Comme la
+    ressource est en lecture seule (``http_method_names`` GET-only), on ne pose
+    AUCUNE permission d'écriture (``write_permission = None``) : une écriture est
+    structurellement impossible et DRF renvoie 405 (méthode non autorisée) au
+    dispatch, plutôt que 403 en amont dans ``check_permissions`` (qui exigerait
+    ``adsengine_manage`` sur une méthode qui ne s'exécute jamais).
     """
 
     queryset = EngineAlert.objects.all()
     serializer_class = EngineAlertSerializer
     http_method_names = ['get', 'head', 'options']
+    write_permission = None
 
 
 class CreativeAssetViewSet(AdsengineViewSet):
