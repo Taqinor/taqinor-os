@@ -3,6 +3,7 @@
 Palier d'accès : lecture/proposition/vote — tout utilisateur connecté de la
 société (``IsAnyRole``) — « logged-in users only » (NTIDE4/NTIDE8).
 """
+from rest_framework import filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -10,8 +11,45 @@ from authentication.permissions import IsAnyRole
 from core.viewsets import CompanyScopedModelViewSet
 
 from . import services
-from .models import VoteIdee
-from .serializers import VoteIdeeSerializer
+from .models import Idee, VoteIdee
+from .serializers import IdeeSerializer, VoteIdeeSerializer
+
+
+class IdeeViewSet(CompanyScopedModelViewSet):
+    """Boîte à idées interne : liste/détail/proposition (NTIDE4).
+
+    Aucun ``destroy`` : une idée se ferme (action ``fermer``, NTIDE5), elle
+    ne se supprime jamais (dossier de décision produit, comme les litiges/
+    dossiers légaux ailleurs dans le dépôt)."""
+
+    queryset = Idee.objects.select_related('auteur').all()
+    serializer_class = IdeeSerializer
+    http_method_names = ['get', 'post', 'patch', 'head', 'options']
+    permission_classes = [IsAnyRole]
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['votes_count', 'created_at', 'id']
+    ordering = ['-created_at']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        statut = params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        contexte = params.get('contexte')
+        if contexte:
+            qs = qs.filter(contexte__iexact=contexte)
+        created_since = params.get('created_since')
+        if created_since:
+            qs = qs.filter(created_at__gte=created_since)
+        owner = params.get('owner') or params.get('auteur')
+        if owner:
+            qs = qs.filter(auteur_id=owner)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company, auteur=self.request.user)
 
 
 class VoteIdeeViewSet(CompanyScopedModelViewSet):
