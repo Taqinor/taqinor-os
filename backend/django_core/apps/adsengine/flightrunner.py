@@ -432,10 +432,15 @@ class FlightRunner:
         qs = ExperimentArm.objects.filter(
             company=self.company, experiment=experiment, is_active=True)
         for arm in qs:
-            stat_qs = ArmDailyStat.objects.filter(company=self.company, arm=arm)
+            # Toujours borné « à date » (``date <= as_of``) : le futur n'existe
+            # pas, et l'horloge injectée (simulateur ADSENG36) voit ainsi la
+            # croyance du bandit ÉVOLUER dans le temps accéléré. ``window_days``
+            # limite en plus le regard en arrière.
+            stat_qs = ArmDailyStat.objects.filter(
+                company=self.company, arm=arm, date__lte=as_of)
             if window_days:
                 start = as_of - datetime.timedelta(days=window_days)
-                stat_qs = stat_qs.filter(date__gte=start, date__lte=as_of)
+                stat_qs = stat_qs.filter(date__gte=start)
             agg = stat_qs.aggregate(
                 imp=Sum('impressions'), conv=Sum('conversations'))
             arms.append({
