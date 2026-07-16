@@ -63,3 +63,18 @@ frontend/src/pages/sav/TicketSuiviClientPanel.test.jsx
 frontend/src/pages/ventes/DevisList.jsx
 frontend/src/pages/ventes/ToitureDesign.jsx
 frontend/src/test/a11y.test.jsx
+# QX45/QX46 — renderers dédiés industriel/commercial du moteur de devis (règle #4,
+# vendorisé). Même fallback de marque « TAQINOR »/« taqinor.ma » que les mirrors
+# residential/agricole déjà baseline-listés : le branding réel vient de
+# CompanyProfile/TenantTheme (company_identity), la constante n'est que le repli
+# tant que le multi-installeur white-label (N100) n'est pas vendu.
+apps/ventes/quote_engine/industriel/cover.py
+apps/ventes/quote_engine/industriel/render.py
+apps/ventes/quote_engine/industriel/renderer.py
+apps/ventes/quote_engine/industriel/sample_data.py
+apps/ventes/quote_engine/industriel/trust.py
+apps/ventes/quote_engine/commercial/cover.py
+apps/ventes/quote_engine/commercial/render.py
+apps/ventes/quote_engine/commercial/renderer.py
+apps/ventes/quote_engine/commercial/sample_data.py
+apps/ventes/quote_engine/commercial/trust.py

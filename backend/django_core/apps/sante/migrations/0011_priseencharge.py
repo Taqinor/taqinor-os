@@ -76,7 +76,7 @@ class Migration(migrations.Migration):
                     'company',
                     models.ForeignKey(
                         on_delete=django.db.models.deletion.CASCADE,
-                        related_name='sante_priseencharge_set',
+                        related_name='%(app_label)s_%(class)s_set',
                         to='authentication.company', verbose_name='Société'),
                 ),
                 (
