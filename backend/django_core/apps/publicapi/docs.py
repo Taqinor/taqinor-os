@@ -14,7 +14,7 @@ from .constants import SCOPE_CHOICES, EVENT_CHOICES
 from .auth import AUTH_KEYWORD
 from .delivery import (
     SIGNATURE_HEADER, SIGNATURE_HEADER_V2, EVENT_HEADER, TIMESTAMP_HEADER,
-    DEFAULT_SIGNATURE_TOLERANCE_SECONDS,
+    IDEMPOTENCY_HEADER, DEFAULT_SIGNATURE_TOLERANCE_SECONDS,
 )
 
 # Recette de vérification de la signature HMAC, identique à `delivery.sign_payload`
@@ -199,6 +199,9 @@ def public_api_reference():
                 'signature_v2': SIGNATURE_HEADER_V2,
                 'horodatage': TIMESTAMP_HEADER,
                 'evenement': EVENT_HEADER,
+                # NTAPI10 — même valeur sur TOUTES les tentatives d'une même
+                # livraison (dédup côté consommateur).
+                'idempotence': IDEMPOTENCY_HEADER,
             },
             'evenements': [
                 {'code': code, 'libelle': libelle}

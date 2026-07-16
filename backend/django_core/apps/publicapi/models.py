@@ -186,6 +186,13 @@ class WebhookDelivery(models.Model):
     # les livraisons historiques antérieures à YAPIC8.
     event_id = models.CharField(max_length=36, blank=True, default='',
                                 db_index=True)
+    # NTAPI10 — clé d'idempotence envoyée au consommateur (en-tête
+    # `X-Taqinor-Idempotency-Key`) : UNE clé par ÉVÈNEMENT SOURCE, partagée
+    # par TOUTES les tentatives (envoi original + reprises NTAPI8/YAPIC8) —
+    # réutilise `event_id` (même garantie de stabilité, jamais un second
+    # UUID indépendant). Vide pour les livraisons historiques sans event_id.
+    idempotency_key = models.CharField(max_length=36, blank=True, default='',
+                                       db_index=True)
     # Charge utile envoyée (telle quelle) — pour rejouer/diagnostiquer.
     payload = models.JSONField(default=dict, blank=True)
     status = models.CharField(

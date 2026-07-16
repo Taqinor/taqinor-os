@@ -54,6 +54,9 @@ EVENT_ID_KEY = 'event_id'
 # posé uniquement par ces reprises (absent de l'envoi original/des reprises
 # Celery immédiates YAPIC8).
 DELIVERY_ATTEMPT_HEADER = 'X-Taqinor-Delivery-Attempt'
+# NTAPI10 — clé d'idempotence (= `event_id`), UNE par évènement source,
+# partagée par TOUTES les tentatives (le consommateur déduplique dessus).
+IDEMPOTENCY_HEADER = 'X-Taqinor-Idempotency-Key'
 DELIVERY_TIMEOUT = 5.0  # secondes
 # NTAPI9 — fenêtre de tolérance par défaut (secondes) pour la vérification
 # anti-rejeu du format V2 côté CONSOMMATEUR (documentée dans `docs.py`/FG105 ;
@@ -126,13 +129,17 @@ def _record(webhook, event, payload, *, status, response_status, error):
     échoué) — NTAPI8 s'en sert pour programmer la première reprise
     long-tail sans dupliquer la requête de lecture."""
     try:
+        event_id = (payload.get(EVENT_ID_KEY, '')
+                    if isinstance(payload, dict) else '')
         return WebhookDelivery.objects.create(
             company_id=webhook.company_id,
             webhook=webhook,
             event=event,
             payload=payload,
-            event_id=(payload.get(EVENT_ID_KEY, '')
-                      if isinstance(payload, dict) else ''),
+            event_id=event_id,
+            # NTAPI10 — même valeur que `event_id` : une clé par évènement
+            # SOURCE, jamais un second UUID indépendant.
+            idempotency_key=event_id,
             status=status,
             response_status=response_status,
             error=(error or '')[:1000],
@@ -176,6 +183,10 @@ def _send(webhook, event, payload, extra_headers=None):
             webhook.secret, body_bytes, timestamp),
         TIMESTAMP_HEADER: timestamp,
         EVENT_HEADER: event,
+        # NTAPI10 — même valeur sur TOUTES les tentatives (envoi original +
+        # reprises) : le consommateur déduplique sur cette clé.
+        IDEMPOTENCY_HEADER: (
+            payload.get(EVENT_ID_KEY, '') if isinstance(payload, dict) else ''),
     }
     if extra_headers:
         headers.update(extra_headers)

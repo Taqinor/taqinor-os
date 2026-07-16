@@ -86,6 +86,9 @@ class WebhookDeliverySerializer(serializers.ModelSerializer):
         fields = [
             'id', 'webhook', 'event', 'payload', 'status', 'response_status',
             'error', 'created_at',
+            # NTAPI10 — clé d'idempotence envoyée au consommateur (visible
+            # dans l'historique de livraison de l'écran Paramètres).
+            'idempotency_key',
         ]
         read_only_fields = fields
 
