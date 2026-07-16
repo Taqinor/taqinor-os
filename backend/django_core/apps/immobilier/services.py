@@ -111,3 +111,53 @@ def appliquer_revision(bail, nouveau_loyer, date_effet, *, indice=''):
     bail.save(update_fields=['loyer_mensuel_ht'])
 
     return revision
+
+
+class DepotGarantieError(Exception):
+    """NTPRO5 — opération invalide sur le cycle de vie du dépôt de garantie."""
+
+
+def encaisser_depot(bail, date_reception=None):
+    """NTPRO5 — Marque le dépôt de garantie du bail comme reçu (horodaté)."""
+    from django.utils import timezone
+
+    bail.depot_garantie_recu = True
+    bail.date_reception_depot = date_reception or timezone.localdate()
+    bail.save(update_fields=['depot_garantie_recu', 'date_reception_depot'])
+    return bail
+
+
+def restituer_depot(bail, montant_retenu=0, motif_retenue='', date_restitution=None):
+    """NTPRO5 — Restitue le dépôt de garantie (jamais plus que le dépôt initial).
+
+    ``montant_restitue`` = ``depot_garantie - montant_retenu``, jamais négatif
+    — une retenue supérieure au dépôt initial est refusée
+    (``DepotGarantieError``) plutôt que silencieusement plafonnée."""
+    from decimal import Decimal
+
+    from django.utils import timezone
+
+    montant_retenu = Decimal(montant_retenu or 0)
+    if montant_retenu < 0:
+        raise DepotGarantieError('Le montant retenu ne peut pas être négatif.')
+    if montant_retenu > bail.depot_garantie:
+        raise DepotGarantieError(
+            'Le montant retenu ne peut pas excéder le dépôt de garantie.')
+
+    bail.depot_garantie_restitue = True
+    bail.date_restitution = date_restitution or timezone.localdate()
+    bail.montant_retenu = montant_retenu
+    bail.motif_retenue = motif_retenue or ''
+    bail.save(update_fields=[
+        'depot_garantie_restitue', 'date_restitution', 'montant_retenu',
+        'motif_retenue',
+    ])
+    return bail
+
+
+def montant_restitue_depot(bail):
+    """NTPRO5 — Montant effectivement restitué (dépôt - retenue), jamais < 0."""
+    from decimal import Decimal
+
+    montant = bail.depot_garantie - (bail.montant_retenu or Decimal('0'))
+    return max(montant, Decimal('0'))

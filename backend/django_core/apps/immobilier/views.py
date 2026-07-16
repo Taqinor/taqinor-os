@@ -166,3 +166,32 @@ class BailViewSet(_ImmobilierBaseViewSet):
         return Response(
             RevisionLoyerSerializer(revision).data,
             status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='encaisser-depot')
+    def encaisser_depot(self, request, pk=None):
+        """NTPRO5 — Marque le dépôt de garantie comme reçu."""
+        from . import services
+
+        bail = self.get_object()
+        services.encaisser_depot(
+            bail, date_reception=request.data.get('date_reception'))
+        return Response(self.get_serializer(bail).data)
+
+    @action(detail=True, methods=['post'], url_path='restituer-depot')
+    def restituer_depot(self, request, pk=None):
+        """NTPRO5 — Restitue le dépôt de garantie (jamais plus que le dépôt initial)."""
+        from . import services
+
+        bail = self.get_object()
+        try:
+            services.restituer_depot(
+                bail,
+                montant_retenu=request.data.get('montant_retenu', 0),
+                motif_retenue=request.data.get('motif_retenue', ''),
+                date_restitution=request.data.get('date_restitution'))
+        except services.DepotGarantieError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        data = self.get_serializer(bail).data
+        data['montant_restitue'] = str(services.montant_restitue_depot(bail))
+        return Response(data)
