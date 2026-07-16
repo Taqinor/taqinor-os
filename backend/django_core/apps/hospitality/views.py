@@ -14,10 +14,10 @@ from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 
 from . import services
-from .models import Chambre, PlanTarifaire, Reservation, TypeChambre
+from .models import Chambre, Folio, PlanTarifaire, Reservation, TypeChambre
 from .serializers import (
-    ChambreSerializer, FicheClientSerializer, PlanTarifaireSerializer,
-    ReservationSerializer, TypeChambreSerializer,
+    ChambreSerializer, FicheClientSerializer, FolioSerializer,
+    PlanTarifaireSerializer, ReservationSerializer, TypeChambreSerializer,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -180,3 +180,27 @@ class ReservationViewSet(TenantMixin, viewsets.ModelViewSet):
         response['Content-Disposition'] = (
             f'attachment; filename="fiche-police-{reservation.pk}.pdf"')
         return response
+
+
+class FolioViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
+    """Folio client unifié (NTHOT7) — lecture + action de clôture. Créé
+    automatiquement à la réservation (``services.creer_reservation``) ;
+    aucune création manuelle via l'API."""
+    queryset = Folio.objects.select_related('reservation').prefetch_related(
+        'lignes').all()
+    serializer_class = FolioSerializer
+
+    def get_permissions(self):
+        return [IsAnyRole()]
+
+    @action(detail=True, methods=['post'], url_path='cloturer',
+            permission_classes=[IsResponsableOrAdmin])
+    def cloturer(self, request, pk=None):
+        """Clôture le folio en UNE facture ventes consolidée (NTHOT7)."""
+        folio = self.get_object()
+        try:
+            services.cloturer_folio(folio, user=request.user)
+        except services.FolioClotureError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(folio).data)

@@ -5,7 +5,10 @@
 """
 from rest_framework import serializers
 
-from .models import Chambre, FicheClient, PlanTarifaire, Reservation, TypeChambre
+from .models import (
+    Chambre, FicheClient, Folio, LigneFolio, PlanTarifaire, Reservation,
+    TypeChambre,
+)
 
 
 class TypeChambreSerializer(serializers.ModelSerializer):
@@ -98,3 +101,31 @@ class FicheClientSerializer(serializers.ModelSerializer):
             'date_creation',
         ]
         read_only_fields = ['reservation', 'date_creation']
+
+
+class LigneFolioSerializer(serializers.ModelSerializer):
+    origine_display = serializers.CharField(
+        source='get_origine_display', read_only=True)
+
+    class Meta:
+        model = LigneFolio
+        fields = [
+            'id', 'origine', 'origine_display', 'description', 'montant_ht',
+            'tva', 'source_type', 'source_id', 'date_creation',
+        ]
+
+
+class FolioSerializer(serializers.ModelSerializer):
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    lignes = LigneFolioSerializer(many=True, read_only=True)
+    total_ht = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = Folio
+        fields = [
+            'id', 'reservation', 'statut', 'statut_display', 'facture_id',
+            'lignes', 'total_ht', 'date_creation', 'date_cloture',
+        ]
+        read_only_fields = fields

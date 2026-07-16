@@ -7,6 +7,8 @@ vers d'autres apps métier (crm, ventes, sav) passent par des FK string
 ('app.Model') ou par des identifiants souples (`*_id`) résolus via les
 selectors/services de l'app cible — jamais un import direct de leurs modèles.
 """
+from decimal import Decimal
+
 from django.conf import settings
 from django.db import models
 
@@ -252,3 +254,80 @@ class FicheClient(models.Model):
 
     def __str__(self):
         return self.nom_complet
+
+
+# ── NTHOT7 — Folio client unifié ────────────────────────────────────────────
+
+class Folio(models.Model):
+    """Folio client : toutes les lignes facturables d'un séjour (nuitées,
+    extras, restaurant, taxe de séjour) avant clôture en UNE facture ventes
+    consolidée (``services.cloturer_folio``, via ``apps.ventes.services``,
+    jamais un import du modèle Facture)."""
+
+    class Statut(models.TextChoices):
+        OUVERT = 'ouvert', 'Ouvert'
+        SOLDE = 'solde', 'Soldé'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='hospitality_folios',
+        verbose_name='Société',
+    )
+    reservation = models.OneToOneField(
+        Reservation,
+        on_delete=models.CASCADE,
+        related_name='folio',
+        verbose_name='Réservation',
+    )
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.OUVERT)
+    # ID de la Facture ventes consolidée, posée à la clôture — identifiant
+    # souple (jamais un import de apps.ventes.models sur ce champ).
+    facture_id = models.PositiveIntegerField(null=True, blank=True)
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_cloture = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Folio'
+        verbose_name_plural = 'Folios'
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return f'Folio #{self.pk} — réservation #{self.reservation_id}'
+
+    @property
+    def total_ht(self):
+        return sum(
+            (ligne.montant_ht for ligne in self.lignes.all()), Decimal('0'))
+
+
+class LigneFolio(models.Model):
+    """Ligne facturable du folio (nuitée/extra/restaurant/taxe de séjour)."""
+
+    class Origine(models.TextChoices):
+        NUITEE = 'nuitee', 'Nuitée'
+        EXTRA = 'extra', 'Extra'
+        RESTAURANT = 'restaurant', 'Restaurant'
+        TAXE_SEJOUR = 'taxe_sejour', 'Taxe de séjour'
+
+    folio = models.ForeignKey(
+        Folio, on_delete=models.CASCADE, related_name='lignes')
+    origine = models.CharField(max_length=15, choices=Origine.choices)
+    description = models.CharField(max_length=255, blank=True, default='')
+    montant_ht = models.DecimalField(max_digits=10, decimal_places=2)
+    tva = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('20'))
+    # Origine documentaire souple (ex. 'pos.VenteComptoir') — jamais un import
+    # direct du modèle source ; résolu via le selector de l'app cible.
+    source_type = models.CharField(max_length=30, blank=True, default='')
+    source_id = models.PositiveIntegerField(null=True, blank=True)
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Ligne de folio'
+        verbose_name_plural = 'Lignes de folio'
+        ordering = ['id']
+
+    def __str__(self):
+        return f'{self.origine} — {self.montant_ht}'

@@ -1,5 +1,10 @@
 """Services (écriture/orchestration) du module Hôtellerie & restauration."""
-from .models import Chambre, FicheClient, PlanTarifaire, Reservation
+import datetime
+from decimal import Decimal
+
+from django.utils import timezone
+
+from .models import Chambre, FicheClient, Folio, LigneFolio, PlanTarifaire, Reservation
 
 FICHE_CLIENT_CHAMPS_REQUIS = [
     'nom_complet', 'nationalite', 'type_piece', 'numero_piece',
@@ -125,7 +130,7 @@ def creer_reservation(
         prix_snapshot = prix_applicable(
             effective_type, date_arrivee, canal=canal_tarif)
 
-    return Reservation.objects.create(
+    reservation = Reservation.objects.create(
         company=company,
         chambre=chambre,
         type_chambre=type_chambre or effective_type,
@@ -141,6 +146,86 @@ def creer_reservation(
         prix_nuit_snapshot=prix_snapshot,
         created_by=user,
     )
+    _creer_folio_avec_nuitees(reservation)
+    return reservation
+
+
+# ── NTHOT7 — Folio client unifié (nuitées auto à la création) ──────────────
+
+def _creer_folio_avec_nuitees(reservation):
+    """Crée le ``Folio`` de la réservation + UNE ``LigneFolio`` nuitée par
+    nuit, selon ``prix_nuit_snapshot`` (figé à la création, NTHOT2/NTHOT3).
+    Aucune ligne créée si le prix n'est pas connu (tarif non configuré) —
+    le folio reste créé, vide, complétable manuellement."""
+    folio = Folio.objects.create(company=reservation.company, reservation=reservation)
+    if reservation.prix_nuit_snapshot is None:
+        return folio
+    nb_nuits = reservation.nb_nuits
+    for i in range(nb_nuits):
+        nuit = reservation.date_arrivee + datetime.timedelta(days=i)
+        LigneFolio.objects.create(
+            folio=folio,
+            origine=LigneFolio.Origine.NUITEE,
+            description=f'Nuitée du {nuit.isoformat()}',
+            montant_ht=reservation.prix_nuit_snapshot,
+        )
+    return folio
+
+
+class FolioClotureError(ValueError):
+    """Levée quand la clôture d'un folio est refusée (déjà soldé, vide, ou
+    aucun client CRM résolu pour émettre la facture)."""
+
+
+def cloturer_folio(folio, *, user):
+    """Clôture UN folio en UNE facture ventes consolidée (jamais de double-
+    facturation — refuse un folio déjà ``solde``).
+
+    Passe EXCLUSIVEMENT par ``apps.ventes.services`` (function-local, jamais
+    un import de ``apps.ventes.models.Facture``) : ``creer_facture_regie``
+    crée la facture BROUILLON, puis ``ajouter_lignes_frais_refactures`` y pousse
+    le détail ligne par ligne du folio (recalcule les totaux depuis les lignes).
+    """
+    if folio.statut == Folio.Statut.SOLDE:
+        raise FolioClotureError('Ce folio est déjà clôturé.')
+    lignes = list(folio.lignes.all())
+    if not lignes:
+        raise FolioClotureError('Le folio est vide : aucune ligne à facturer.')
+    reservation = folio.reservation
+    if reservation.client_id is None:
+        raise FolioClotureError(
+            "Impossible de clôturer : aucun client CRM résolu sur la "
+            "réservation (renseignez un client avant de facturer).")
+
+    from apps.ventes.services import (
+        ajouter_lignes_frais_refactures, creer_facture_regie,
+    )
+
+    facture = creer_facture_regie(
+        company=folio.company,
+        client=reservation.client,
+        user=user,
+        libelle=f'Séjour — réservation #{reservation.pk}',
+        montant_ht=Decimal('0'),
+    )
+    ajouter_lignes_frais_refactures(
+        facture=facture,
+        lignes=[
+            {
+                'designation': ligne.description or ligne.get_origine_display(),
+                'montant_ht': ligne.montant_ht,
+                'taux_tva': ligne.tva,
+            }
+            for ligne in lignes
+        ],
+        user=user,
+    )
+
+    folio.statut = Folio.Statut.SOLDE
+    folio.facture_id = facture.id
+    folio.date_cloture = timezone.now()
+    folio.save(update_fields=['statut', 'facture_id', 'date_cloture'])
+    return facture
 
 
 # ── NTHOT5 — Check-in avec fiche de police marocaine ────────────────────────
