@@ -7,7 +7,12 @@ import calendar
 import datetime
 from decimal import ROUND_HALF_UP, Decimal
 
-from .models import EcheancePrime, PoliceActivity
+from django.core.exceptions import ValidationError
+
+from .models import (
+    ActifCouvert, EcheancePrime, GarantiePolice, PoliceActivity,
+    PoliceAssurance,
+)
 
 # ── NTASS3 — Chatter PoliceAssurance ────────────────────────────────────────
 
@@ -164,3 +169,94 @@ def proposer_ecriture_prime(echeance, *, user=None):
     echeance.statut = EcheancePrime.Statut.PROPOSEE_COMPTA
     echeance.save(update_fields=['ecriture_ref', 'statut'])
     return ecriture
+
+
+# ── NTASS9 — Renouvellement de police (versioning léger) ───────────────────
+
+def _numero_police_renouvelee(ancienne, nouveau_numero_police=None):
+    """Détermine le ``numero_police`` de la police renouvelée : celui fourni
+    explicitement (nouveau numéro émis par l'assureur), sinon un suffixe
+    ``-R<n>`` sur l'ancien (en évitant toute collision company+numéro)."""
+    if nouveau_numero_police:
+        return nouveau_numero_police
+    base = ancienne.numero_police
+    n = 1
+    while True:
+        candidat = f'{base}-R{n}'
+        if not PoliceAssurance.objects.filter(
+                company=ancienne.company, numero_police=candidat).exists():
+            return candidat
+        n += 1
+
+
+def renouveler_police(police, *, user=None, periodicite=None,
+                      nouveau_numero_police=None):
+    """NTASS9 — renouvelle une police à ``tacite_reconduction=False`` :
+
+    - crée une NOUVELLE ``PoliceAssurance`` (``date_effet`` = ancienne
+      ``date_echeance`` + 1 jour, même durée de couverture que l'ancienne) ;
+    - régénère son échéancier de primes (NTASS5) ;
+    - copie ses garanties (NTASS4) et ses actifs couverts (NTASS7) ;
+    - passe l'ANCIENNE police à ``statut='resiliee'`` (loggé au chatter,
+      NTASS3) avec le lien ``police_precedente_id`` posé sur la nouvelle.
+
+    Une police à tacite reconduction ne passe PAS par ce chemin (son
+    échéance avance simplement sur la MÊME police) : lève ``ValidationError``.
+    """
+    if police.tacite_reconduction:
+        raise ValidationError(
+            'Une police à tacite reconduction ne se renouvelle pas via '
+            'cette action — mettez à jour sa date d\'échéance directement.')
+
+    duree = police.date_echeance - police.date_effet
+    nouvelle_date_effet = police.date_echeance + datetime.timedelta(days=1)
+    nouvelle_date_echeance = nouvelle_date_effet + duree
+
+    nouvelle = PoliceAssurance.objects.create(
+        company=police.company, assureur=police.assureur,
+        courtier=police.courtier,
+        numero_police=_numero_police_renouvelee(police, nouveau_numero_police),
+        type_police=police.type_police, libelle=police.libelle,
+        date_effet=nouvelle_date_effet, date_echeance=nouvelle_date_echeance,
+        tacite_reconduction=police.tacite_reconduction,
+        prime_annuelle_ht=police.prime_annuelle_ht,
+        statut=PoliceAssurance.Statut.ACTIVE,
+        police_precedente=police,
+    )
+    log_police_creation(nouvelle, user)
+
+    # Échéancier de primes — même périodicité que la dernière échéance
+    # connue de l'ancienne police (défaut annuelle si aucune n'existe).
+    if periodicite is None:
+        derniere = police.echeances_prime.order_by('-date_echeance_paiement').first()
+        periodicite = (
+            derniere.periodicite if derniere
+            else EcheancePrime.Periodicite.ANNUELLE)
+    generer_echeancier_prime(nouvelle, periodicite)
+
+    # Copie des garanties (NTASS4).
+    for garantie in police.garanties.all():
+        GarantiePolice.objects.create(
+            company=nouvelle.company, police=nouvelle,
+            libelle_garantie=garantie.libelle_garantie,
+            plafond_indemnisation=garantie.plafond_indemnisation,
+            franchise_montant=garantie.franchise_montant,
+            franchise_pourcentage=garantie.franchise_pourcentage,
+            notes=garantie.notes)
+
+    # Copie des actifs couverts (NTASS7).
+    for actif in police.actifs_couverts.all():
+        ActifCouvert.objects.create(
+            company=nouvelle.company, police=nouvelle,
+            type_actif=actif.type_actif, actif_ref=actif.actif_ref,
+            actif_libelle=actif.actif_libelle)
+
+    # Ancienne police → résiliée, loggée au chatter (NTASS3).
+    ancien_statut = police.statut
+    police.statut = PoliceAssurance.Statut.RESILIEE
+    police.save(update_fields=['statut'])
+    log_police_transition(
+        police, 'statut', 'Statut', ancien_statut,
+        PoliceAssurance.Statut.RESILIEE, user)
+
+    return nouvelle

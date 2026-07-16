@@ -23,7 +23,14 @@ from .selectors import polices_expirantes
 from .services import (
     CHAMPS_SUIVIS_POLICE, generer_echeancier_prime, log_police_creation,
     log_police_note, log_police_transitions_auto, proposer_ecriture_prime,
+    renouveler_police,
 )
+
+
+def _detail_django_validation_error(exc):
+    """Message client-lisible depuis un ``django.core.exceptions.
+    ValidationError`` (dont ``str()`` renvoie un repr de liste peu lisible)."""
+    return ' '.join(exc.messages) if getattr(exc, 'messages', None) else str(exc)
 
 
 class _AssurancesBaseViewSet(
@@ -136,6 +143,25 @@ class PoliceAssuranceViewSet(_AssurancesBaseViewSet):
             EcheancePrimeSerializer(echeances, many=True).data,
             status=status.HTTP_201_CREATED)
 
+    @action(detail=True, methods=['post'], url_path='renouveler')
+    def renouveler(self, request, pk=None):
+        """NTASS9 — renouvelle la police (versioning léger, voir
+        ``services.renouveler_police``). Corps optionnel :
+        ``{"periodicite": "...", "nouveau_numero_police": "..."}``."""
+        police = self.get_object()
+        try:
+            nouvelle = renouveler_police(
+                police, user=request.user,
+                periodicite=request.data.get('periodicite'),
+                nouveau_numero_police=request.data.get('nouveau_numero_police'))
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': _detail_django_validation_error(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            PoliceAssuranceSerializer(nouvelle).data,
+            status=status.HTTP_201_CREATED)
+
 
 class EcheancePrimeViewSet(_AssurancesBaseViewSet):
     """CRUD de l'échéancier de primes, scopé société (NTASS5)."""
@@ -166,8 +192,9 @@ class EcheancePrimeViewSet(_AssurancesBaseViewSet):
         except DjangoValidationError as exc:
             # Levée par compta.services (ex. période comptable verrouillée,
             # FG115) — remontée en 400 lisible plutôt qu'un 500.
-            return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {'detail': _detail_django_validation_error(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
         return Response({
             'echeance': EcheancePrimeSerializer(echeance).data,
             'ecriture_id': ecriture.id,
