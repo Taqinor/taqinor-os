@@ -159,10 +159,21 @@ describe('WJ119 — commercial : UN archétype journée générique (pas de tabl
     expect(closed).toBeGreaterThan(0); // jamais zéro (petit socle hors ouverture)
   });
 
-  it('la variante été booste aussi le commercial (climatisation en boutique)', () => {
-    const normal = consumptionProfile(15, { mode: 'commercial', variant: 'normal' });
-    const ete = consumptionProfile(15, { mode: 'commercial', variant: 'ete' });
-    expect(ete).toBeGreaterThan(normal);
+  it('la variante été déplace la part vers l’après-midi (climatisation en boutique)', () => {
+    // L'archétype commercial est plat à 1.0 sur les heures d'ouverture ; comme la
+    // courbe est normalisée à son propre maximum (comportement documenté, hérité de
+    // l'ancienne gaussienne), un boost de l'après-midi ramène simplement ce nouveau
+    // maximum à 1.0 — l'effet ÉTÉ est donc visible aux ÉPAULES (le matin/le soir
+    // baissent RELATIVEMENT à l'après-midi climatisé), pas au pic lui-même. On teste
+    // ce déplacement réel : le ratio après-midi (15h, boosté) / matin (10h, non
+    // boosté) augmente en été.
+    const normalRatio =
+      consumptionProfile(15, { mode: 'commercial', variant: 'normal' }) /
+      consumptionProfile(10, { mode: 'commercial', variant: 'normal' });
+    const eteRatio =
+      consumptionProfile(15, { mode: 'commercial', variant: 'ete' }) /
+      consumptionProfile(10, { mode: 'commercial', variant: 'ete' });
+    expect(eteRatio).toBeGreaterThan(normalRatio);
   });
 });
 
