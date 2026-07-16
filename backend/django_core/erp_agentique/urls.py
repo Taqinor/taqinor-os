@@ -35,6 +35,8 @@ _APP_URLS = [
     path('records/', include('apps.records.urls')),
     path('imports/', include('apps.dataimport.urls')),
     path('custom-fields/', include('apps.customfields.urls')),
+    # NTEXT13 — catalogue des packages d'extension (marketplace interne).
+    path('extensions/', include('apps.extensions.urls')),
     path('documents/', include('apps.documents.urls')),
     path('audit/', include('apps.audit.urls')),
     path('monitoring/', include('apps.monitoring.urls')),
