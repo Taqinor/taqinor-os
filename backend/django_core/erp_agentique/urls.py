@@ -91,6 +91,8 @@ _APP_URLS = [
     path('identity/', include('apps.identity.urls')),
     # Groupe ENG — Moteur publicitaire Meta Ads dans l'ERP.
     path('adsengine/', include('apps.adsengine.urls')),
+    # NTSAN1 — Santé (cabinet/clinique).
+    path('sante/', include('apps.sante.urls')),
 ]
 
 urlpatterns = [
