@@ -215,6 +215,9 @@ UTILISATEUR_PERMISSIONS = [
     'reporting_voir',
     # FG20 — préserve l'accès historique aux coordonnées client.
     'client_pii_voir',
+    # ENG19 — lecture du moteur publicitaire : `adsengine_view` est distribuée
+    # à TOUS les rôles (manage/approve restent réservés aux paliers supérieurs).
+    'adsengine_view',
 ]
 
 
