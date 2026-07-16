@@ -400,6 +400,12 @@ app.conf.beat_schedule = {
         'task': 'adsengine.sync_insights_daily',
         'schedule': crontab(hour=6, minute=45),
     },
+    # ENG11 — brief hebdomadaire déterministe (lundi, heure creuse). Ne génère
+    # un brief que pour les sociétés ayant des campagnes ; idempotent.
+    'adsengine-generate-weekly-brief': {
+        'task': 'adsengine.generate_weekly_brief',
+        'schedule': crontab(hour=6, minute=50, day_of_week=1),
+    },
 }
 
 # YHARD6 — compteurs Celery succès/échec (process-local, best-effort) pour

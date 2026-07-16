@@ -88,3 +88,34 @@ def sync_insights_daily():
     logger.info(
         'adsengine.sync_insights_daily: %s société(s) synchronisée(s)', synced)
     return {'companies_synced': synced}
+
+
+@shared_task(name='adsengine.generate_weekly_brief')
+def generate_weekly_brief():
+    """ENG11 — Génère le brief hebdomadaire déterministe de chaque société.
+
+    Best-effort par société ; ne génère un brief que pour les sociétés ayant au
+    moins un miroir de campagne (rien à résumer sinon). Idempotent : le brief est
+    upserté par ``(company, period_start)``. Renvoie le nombre de briefs générés.
+    """
+    from authentication.selectors import active_companies
+
+    from . import brief as brief_mod
+    from .models import AdCampaignMirror
+
+    generated = 0
+    for company in active_companies():
+        if not AdCampaignMirror.objects.filter(company=company).exists():
+            continue  # rien à résumer tant qu'aucune campagne n'est synchronisée
+        try:
+            brief_mod.build_brief(company)
+            generated += 1
+        except Exception:  # pragma: no cover - défensif, isolation société
+            logger.warning(
+                'adsengine.generate_weekly_brief: échec société %s',
+                company.pk, exc_info=True)
+            continue
+
+    logger.info(
+        'adsengine.generate_weekly_brief: %s brief(s) généré(s)', generated)
+    return {'briefs_generated': generated}

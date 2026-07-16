@@ -342,3 +342,38 @@ class EngineAction(TenantModel):
 
     def __str__(self):
         return f'{self.get_kind_display()} — {self.get_status_display()}'
+
+
+class WeeklyBrief(TenantModel):
+    """ENG11 — Brief hebdomadaire déterministe (v1, SANS LLM).
+
+    Un instantané hebdomadaire, PAR société, des chiffres RÉELS (dépense, CPL,
+    coût-par-signature, fréquence vs seuil de fatigue, conformité SLA) rendu en
+    phrases template FR — **jamais de texte généré par un LLM en v1** (motif
+    anti-hallucination : c'est exactement le commentaire que les utilisateurs
+    éteignent). ``data`` porte les chiffres (JSON) ; ``markdown`` le rendu FR ;
+    ``propositions`` (dans ``data``) relie 0-3 ``EngineAction`` proposées.
+
+    Idempotent : une (re)génération pour la même semaine met à jour la ligne
+    existante (unique par ``(company, period_start)``), jamais de doublon.
+    """
+
+    period_start = models.DateField(verbose_name='Début de période')
+    period_end = models.DateField(verbose_name='Fin de période')
+    data = models.JSONField(
+        default=dict, blank=True, verbose_name='Chiffres (JSON)')
+    markdown = models.TextField(
+        blank=True, default='', verbose_name='Rendu markdown (FR)')
+
+    class Meta:
+        verbose_name = 'Brief hebdomadaire'
+        verbose_name_plural = 'Briefs hebdomadaires'
+        ordering = ['-period_start', '-created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'period_start'],
+                name='uniq_adsengine_weekly_brief'),
+        ]
+
+    def __str__(self):
+        return f'Brief {self.period_start} → {self.period_end}'
