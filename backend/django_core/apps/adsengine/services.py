@@ -192,6 +192,16 @@ def _dispatch(client, action):
             adset_id=payload.get('adset_id', ''),
             daily_budget=payload.get('daily_budget'),
             extra_fields=payload.get('extra_fields'))
+    if kind == EngineAction.Kind.PAUSE:
+        # ENGFIX5 — Mise en pause : l'action de sécurité par excellence (proposée
+        # par le détecteur d'anomalie ENG9 + le brief hebdo ENG11). Gardée
+        # PAUSED-only AVANT tout appel (belt-and-suspenders : la transition ne peut
+        # être que vers PAUSED), puis routée vers la méthode dédiée du client qui
+        # FORCE PAUSED — aucun statut ACTIVE possible (invariant permanent #3).
+        guardrails.enforce_paused_only('PAUSED', company=action.company)
+        return client.update_status_paused(
+            object_id=payload.get('target_meta_id', ''),
+            level=payload.get('target_type'))
     raise ValueError(f"Type d'action non routable : {kind}")
 
 

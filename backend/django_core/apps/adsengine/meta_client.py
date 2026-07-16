@@ -223,9 +223,27 @@ class MetaClient:
         return self._request(
             'POST', self._account_edge('ads'), data=payload)
 
+    # ── Mise en pause (PAUSED-only — jamais de kwarg status) ─────────────────
+    def update_status_paused(self, *, object_id, level=None):
+        """ENGFIX5 — Met un objet (campagne / adset / ad) en ``PAUSED`` — et RIEN
+        d'autre. C'est l'action de SÉCURITÉ du moteur (le détecteur d'anomalie et
+        le brief hebdo proposent des pauses ; sans cette méthode elles ne peuvent
+        pas s'exécuter).
+
+        INVARIANT PERMANENT (règle #3) : la méthode n'accepte AUCUN paramètre
+        ``status`` — le passer lève ``TypeError`` (garanti par le langage), comme
+        les méthodes de création. Le corps FORCE ``status=PAUSED`` via
+        ``_forced_status_payload`` (mot final, même défense en profondeur que les
+        créations) : il est impossible d'activer / dé-pauser quoi que ce soit par
+        cette méthode. ``level`` (campaign/adset/ad) est purement indicatif
+        (journalisation / routing) et n'influence jamais le statut posé."""
+        payload = self._forced_status_payload({}, None)
+        return self._request('POST', f'{object_id}', data=payload)
+
     # NOTE : il n'existe DÉLIBÉRÉMENT aucune méthode d'activation / dé-pause /
     # resume / enable. Une campagne ne peut jamais être activée par ce client
-    # (règle permanente #3) — vérifié par test.
+    # (règle permanente #3) — vérifié par test. ``update_status_paused`` ne peut,
+    # elle, QUE poser PAUSED (aucun status paramétrable).
 
     # ── Hygiène ──────────────────────────────────────────────────────────────
     def close(self):
