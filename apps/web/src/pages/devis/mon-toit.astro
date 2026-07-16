@@ -1062,9 +1062,13 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
               </div>
             </div>
 
-            <!-- WJ71 — bande de confiance climatique (résidentiel), ids conservés -->
+            <!-- WJ71 — bande de confiance climatique (résidentiel), ids conservés.
+                 QX — la valeur est la borne BASSE des économies ANNUELLES (MAD,
+                 savingsLowBand) : la phrase parle donc d'économies, pas de
+                 production (l'ancien libellé « la production… » associait une
+                 valeur en MAD à un mot en kWh). -->
             <p id="mt-climate-band" hidden class="mt-doc-note">
-              Été côtier chaud/poussiéreux&nbsp;: la production peut descendre jusqu'à ≈
+              Été côtier chaud/poussiéreux&nbsp;: vos économies annuelles peuvent descendre jusqu'à ≈
               {' '}<strong id="mt-climate-band-value">—</strong>.
             </p>
 
@@ -2398,7 +2402,15 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     }
   }
   // WJ4 — repli carte : on montre le champ d'adresse en clair ET on garde la suite ouverte.
-  function showFallback() { if (fallback) fallback.hidden = false; clearMapSkeleton(); }
+  // QX — et on MASQUE le bloc carte entier (#mt-stage : géocodeur « Localiser »,
+  // canevas, boutons de tracé) : sans clé imagerie, ces contrôles sont morts —
+  // deux champs d'adresse visibles dont un inerte, c'était de l'UI mensongère.
+  function showFallback() {
+    if (fallback) fallback.hidden = false;
+    const stage = $('mt-stage');
+    if (stage) stage.hidden = true;
+    clearMapSkeleton();
+  }
 
   // WJ60 — sur 3G lente, un fetch sans délai peut rester en attente indéfiniment
   // (l'UI restait bloquée sur le squelette de la carte). 10 s laisse largement le
