@@ -809,11 +809,60 @@ const noscriptTelHref = `tel:${NAP.phone}`;
         </p>
         <p id="mt-estimate-announce" class="sr-only" aria-live="polite"></p>
 
-        <!-- ===== QX — LE DOCUMENT D'ESTIMATION : une « feuille » A4 dans le langage
-             visuel du devis premium PDF (bande navy, titres DM Serif Display, cartes
-             KPI à liseré or, hypothèses honnêtes, pied navy). S'imprime tel quel
-             (@media print) en RTL. ===== -->
-        <div id="mt-doc" class="mt-doc mt-4">
+        <!-- ===== WJ125 — CARTE TEASER VERROUILLÉE (RÈGLE FONDATEUR anti-concurrent) :
+             en parcours public, le document chiffré (#mt-doc, ci-dessous, hidden) ne
+             se rend PLUS. Aperçu FLOUTÉ décoratif (formes génériques — JAMAIS un vrai
+             chiffre dans le DOM), accroche grossière SANS kWc/DH/nb de panneaux/m²/
+             production, promesse « étude complète et personnalisée », puis le
+             formulaire. Le document complet + Imprimer vivent UNIQUEMENT sur
+             /proposition/<token> (envoyé par le commercial). RTL-aware. ===== -->
+        <div id="mt-teaser" hidden dir="rtl" class="mt-teaser relative mt-4 overflow-hidden border border-brass-400/25 bg-white/5 p-5 sm:p-6">
+          <!-- aperçu flouté & décoratif : aucune valeur, seulement des barres grises -->
+          <div class="mt-teaser-preview" aria-hidden="true">
+            <div class="mt-teaser-kpis">
+              <span class="mt-teaser-bar"></span>
+              <span class="mt-teaser-bar"></span>
+              <span class="mt-teaser-bar"></span>
+              <span class="mt-teaser-bar"></span>
+            </div>
+            <div class="mt-teaser-chart"></div>
+          </div>
+          <!-- voile + cadenas + accroche par-dessus le flou -->
+          <div class="mt-teaser-lock">
+            <span class="mt-teaser-lock-badge" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" />
+              </svg>
+            </span>
+            <p class="mt-teaser-hook" id="mt-teaser-hook-roof" data-i18n
+              data-fr="Votre toit peut couvrir une bonne part de votre facture."
+              data-ar="سطحكم يمكن أن يغطّي جزءاً كبيراً من فاتورتكم.">
+              Votre toit peut couvrir une bonne part de votre facture.
+            </p>
+            <p class="mt-teaser-hook" id="mt-teaser-hook-pump" hidden data-i18n
+              data-fr="Le solaire peut alimenter votre pompage au fil du soleil."
+              data-ar="يمكن للطاقة الشمسية أن تشغّل ضخّكم على مدار الشمس.">
+              Le solaire peut alimenter votre pompage au fil du soleil.
+            </p>
+            <p class="mt-teaser-headline" data-i18n
+              data-fr="Recevez votre étude complète et personnalisée"
+              data-ar="استلموا دراستكم الكاملة والمخصّصة">
+              Recevez votre étude complète et personnalisée
+            </p>
+            <p class="mt-teaser-sub" data-i18n
+              data-fr="Renseignez vos coordonnées ci-dessous — un ingénieur vous l'envoie."
+              data-ar="أدخلوا معلوماتكم أدناه — يرسلها لكم مهندس.">
+              Renseignez vos coordonnées ci-dessous — un ingénieur vous l'envoie.
+            </p>
+          </div>
+        </div>
+
+        <!-- ===== QX — LE DOCUMENT D'ESTIMATION (bande navy, titres serif, cartes
+             KPI à liseré or), RTL. WJ125 — `hidden` en permanence dans le parcours
+             public : il ne se rend plus ici. Sa version complète + « Imprimer »
+             vivent UNIQUEMENT sur /proposition/<token> (envoyé par le commercial) ;
+             la carte teaser ci-dessus le remplace. ===== -->
+        <div id="mt-doc" class="mt-doc mt-4" hidden>
           <header class="mt-doc-header">
             <div>
               <Logo size={17} theme="dark" />
@@ -1016,23 +1065,12 @@ const noscriptTelHref = `tel:${NAP.phone}`;
           </footer>
         </div>
 
-        <!-- QX — impression : le document ci-dessus devient un PDF via la boîte
-             d'impression du navigateur (remplace l'ancien one-pager PNG W356). -->
-        <div class="mt-4 flex flex-wrap items-center justify-between gap-3">
-          <button type="button" id="mt-print-estimate" hidden
-            class="inline-flex items-center gap-2 border border-white/25 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:border-brass-400 hover:text-brass-300">
-            <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="6 9 6 2 18 2 18 9" /><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" /><rect x="6" y="14" width="12" height="8" />
-            </svg>
-            <span>طباعة / حفظ PDF</span>
-          </button>
-          <!-- WJ48 — ligne de positionnement concurrentiel (conservée) -->
-          <p class="flex items-center gap-1.5 text-xs font-semibold text-ok-400" data-i18n
-            data-fr="Estimation immédiate — pas une simple demande de rappel sous 24 h."
-            data-ar="تقدير فوري — وليس مجرد طلب اتصال خلال 24 ساعة.">
-            Estimation immédiate — pas une simple demande de rappel sous 24 h.
-          </p>
-        </div>
+        <!-- WJ125 — « Imprimer / Enregistrer en PDF » RETIRÉ du parcours public :
+             le document chiffré ne se rend plus ici, donc rien à imprimer. Le PDF
+             complet est téléchargé depuis /proposition/<token> (envoyé par le
+             commercial). L'ancienne ligne « Estimation immédiate… » est aussi
+             retirée : plus d'estimation chiffrée à l'écran — la promesse honnête
+             (« étude complète et personnalisée ») vit dans la carte teaser ci-dessus. -->
           <!-- W342 — « L'installation la plus proche de chez vous » : calculée
                côté client (haversine sur REALISATIONS) à partir du repère GPS. -->
           <div id="mt-nearest-install" hidden class="mt-4 border border-brass-400/25 bg-white/5 p-3 text-sm text-white">
@@ -1364,6 +1402,76 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   @keyframes mt-thinking-pulse {
     0%, 100% { opacity: 0.35; transform: scale(0.85); }
     50% { opacity: 1; transform: scale(1); }
+  }
+
+  /* ===== WJ125 — carte teaser verrouillée. Le flou n'est qu'un habillage : les
+     barres/graphe ci-dessous ne contiennent AUCUN chiffre (le vrai masquage des
+     valeurs se fait côté JS — les zones chiffrées ne sont jamais peuplées dans le
+     parcours public). ===== */
+  .mt-teaser-preview {
+    filter: blur(7px);
+    opacity: 0.4;
+    pointer-events: none;
+    user-select: none;
+  }
+  .mt-teaser-kpis {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+  }
+  .mt-teaser-bar {
+    display: block;
+    height: 2.5rem;
+    border-radius: 0.375rem;
+    background: rgb(255 255 255 / 0.12);
+  }
+  .mt-teaser-chart {
+    margin-top: 0.75rem;
+    height: 4.5rem;
+    border-radius: 0.375rem;
+    background: repeating-linear-gradient(
+      90deg,
+      rgb(255 255 255 / 0.12) 0 14px,
+      transparent 14px 26px
+    );
+  }
+  .mt-teaser-lock {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    padding: 1rem;
+    text-align: center;
+    background: rgb(10 15 26 / 0.55);
+  }
+  .mt-teaser-lock-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 9999px;
+    border: 1px solid var(--color-brass-400, #f5a623);
+    color: var(--color-brass-300, #f7c66a);
+  }
+  .mt-teaser-hook {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #ffffff;
+    max-width: 30ch;
+  }
+  .mt-teaser-headline {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--color-brass-300, #f7c66a);
+  }
+  .mt-teaser-sub {
+    font-size: 0.8rem;
+    color: var(--color-lune-soft, #c7cdd6);
+    max-width: 34ch;
   }
 </style>
 
@@ -2414,6 +2522,38 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   let lastKwc: number | null = null;
   let docRendered = false;
   let estimateShown: Record<string, number | string> | null = null;
+  // ——— WJ125 — RÈGLE FONDATEUR anti-concurrent : en parcours public, le
+  // document d'estimation chiffré (#mt-doc), l'« installation la plus proche »
+  // (kWc + km) et le « coût de l'attente » (MAD) NE SE RENDENT PLUS. Le calcul
+  // continue en silence (estimateShown + labels partent au CRM et au deeplink
+  // WhatsApp) mais AUCUN chiffre précis n'est écrit dans le DOM public : une
+  // carte teaser verrouillée (aperçu flouté SANS le moindre chiffre) renvoie au
+  // formulaire. Le document complet + « Imprimer » vivent UNIQUEMENT sur
+  // /proposition/<token> (envoyé par le commercial). ———
+  const PUBLIC_ESTIMATE_GATED: boolean = true;
+  const GATED_ANNOUNCE = 'تقديركم جاهز. أدخلوا معلوماتكم لاستلام دراستكم الكاملة والمخصّصة.';
+  /** WJ125 — bascule le parcours public en mode gaté : masque le document
+   *  chiffré ET les zones hors-#mt-doc qui fuiraient des chiffres, puis révèle
+   *  la carte teaser verrouillée (accroche figure-free adaptée au profil). Le
+   *  CALCUL reste inchangé — seul le RENDU public change. */
+  function showEstimateTeaser(m: string) {
+    docRendered = true;
+    const doc = $('mt-doc');
+    if (doc) doc.hidden = true;
+    const printBtn = $('mt-print-estimate');
+    if (printBtn) printBtn.hidden = true;
+    const nearestEl = $('mt-nearest-install');
+    if (nearestEl) nearestEl.hidden = true;
+    const cowEl = $('mt-cost-of-waiting');
+    if (cowEl) cowEl.hidden = true;
+    const teaser = $('mt-teaser');
+    if (teaser) teaser.hidden = false;
+    const isAgri = m === 'agricole';
+    const roofHook = $('mt-teaser-hook-roof');
+    if (roofHook) roofHook.hidden = isAgri;
+    const pumpHook = $('mt-teaser-hook-pump');
+    if (pumpHook) pumpHook.hidden = !isAgri;
+  }
   let lastProTarifMadKwh: number | null = null;
   function announceEstimate(message: string) {
     const el = $('mt-estimate-announce');
@@ -2608,6 +2748,36 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     const est = raw;
     lastProTarifMadKwh = est.hypotheses && est.hypotheses.tarifMadKwh > 0 ? est.hypotheses.tarifMadKwh : null;
     if (hasReachedConsentStep()) sendFunnelBeacon('estimation', 'viewed');
+    // WJ125 — payload lead (chiffres exacts) + labels construits AVANT tout
+    // rendu ; en parcours public gaté on s'arrête ici SANS écrire un chiffre.
+    {
+      const s: Record<string, number | string> = {};
+      const kOk = Number.isFinite(est.kwc) && est.kwc > 0;
+      if (kOk) s.kwc = est.kwc;
+      if (Number.isFinite(est.prodAnnuelleKwh) && est.prodAnnuelleKwh > 0) s.prodKwh = Math.round(est.prodAnnuelleKwh);
+      if (Number.isFinite(est.tauxAutoconso) && est.tauxAutoconso > 0) s.tauxAutoconso = pct(est.tauxAutoconso);
+      if (Number.isFinite(est.tauxCouverture) && est.tauxCouverture > 0) s.tauxCouverture = pct(est.tauxCouverture);
+      const eOk = est.ecoAnnuelleMadLow > 0 && est.ecoAnnuelleMadHigh > 0;
+      if (eOk) { s.ecoMadYearLow = est.ecoAnnuelleMadLow; s.ecoMadYearHigh = est.ecoAnnuelleMadHigh; }
+      const rOk = est.paybackYearsLow > 0 && est.paybackYearsHigh > 0;
+      const rLabel = rOk
+        ? (est.paybackYearsLow === est.paybackYearsHigh
+          ? `${fmtYears(est.paybackYearsLow)} سنة`
+          : `${fmtYears(est.paybackYearsLow)} – ${fmtYears(est.paybackYearsHigh)} سنة`)
+        : null;
+      if (rLabel) s.paybackLabel = rLabel;
+      estimateShown = s;
+      lastKwc = kOk ? est.kwc : null;
+      lastKwcLabel = kOk ? `${formatKwc(est.kwc)} kWc` : '';
+      const eLabel = eOk ? formatMadRange(est.ecoAnnuelleMadLow, est.ecoAnnuelleMadHigh) : null;
+      lastSavingsLabel = eLabel ? `${eLabel}/سنة` : '';
+    }
+    if (PUBLIC_ESTIMATE_GATED) {
+      updatePanels3dVisibility();
+      if (hasReachedConsentStep()) sendFunnelBeacon('contact', 'reached');
+      announceEstimate(GATED_ANNOUNCE);
+      return true;
+    }
     const kpis = $('mt-doc-kpis-pro');
     if (kpis) kpis.hidden = false;
     const shown: Record<string, number | string> = {};
@@ -2698,6 +2868,27 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   }
   function renderAgricoleEstimate(ag: AgricoleEstimateOk) {
     if (hasReachedConsentStep()) sendFunnelBeacon('estimation', 'viewed');
+    // WJ125 — payload lead (chiffres pompage) + labels construits AVANT tout
+    // rendu ; en parcours public gaté on s'arrête ici SANS écrire un chiffre.
+    {
+      const s: Record<string, number | string> = {};
+      if (ag.pompeCv > 0) s.pompeCv = ag.pompeCv;
+      const cOk = ag.champKwc > 0;
+      if (cOk) s.champKwc = ag.champKwc;
+      if (ag.m3Jour > 0) s.m3Jour = ag.m3Jour;
+      const fOk = (ag.fuelSavingMadYearLow ?? 0) > 0 && (ag.fuelSavingMadYearHigh ?? 0) > 0;
+      if (fOk) { s.ecoMadYearLow = ag.fuelSavingMadYearLow as number; s.ecoMadYearHigh = ag.fuelSavingMadYearHigh as number; }
+      estimateShown = s;
+      lastKwc = null;
+      lastKwcLabel = cOk ? `${formatKwc(ag.champKwc)} kWc (حقل كهروضوئي)` : '';
+      lastSavingsLabel = fOk ? `${formatMadRange(ag.fuelSavingMadYearLow as number, ag.fuelSavingMadYearHigh as number)}/سنة` : '';
+    }
+    if (PUBLIC_ESTIMATE_GATED) {
+      updatePanels3dVisibility();
+      if (hasReachedConsentStep()) sendFunnelBeacon('contact', 'reached');
+      announceEstimate(GATED_ANNOUNCE);
+      return;
+    }
     const kpis = $('mt-doc-kpis-agri');
     if (kpis) kpis.hidden = false;
     const shown: Record<string, number | string> = {};
@@ -2766,6 +2957,11 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     const printBtn = $('mt-print-estimate');
     const agricoleEl = $('mt-estimate-agricole');
     resetDocZones();
+    // WJ125 — parcours public gaté : révèle la carte teaser verrouillée et
+    // masque le document chiffré + les zones fuiantes AVANT tout rendu. Le
+    // calcul se poursuit plus bas (silencieux) ; les chemins « succès »
+    // s'arrêtent avant d'écrire le moindre chiffre à l'écran.
+    if (PUBLIC_ESTIMATE_GATED) showEstimateTeaser(mode);
     if (mode === 'agricole') {
       // WJ111 — jamais estimateFromBill ici : le pompage se dimensionne sur
       // l'hydraulique (profondeur/HMT + besoin en eau), pas sur une facture.
@@ -2835,6 +3031,26 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       updatePanels3dVisibility();
       announceEstimate('التقدير غير متوفر: أدخلوا فاتورتكم الشهرية لحسابه.');
       return false;
+    }
+    // WJ125 — chiffres calculés (payload lead) + labels (deeplink WhatsApp / CRM),
+    // construits AVANT tout rendu ; puis, en parcours public gaté, on s'arrête ici
+    // SANS écrire le moindre chiffre à l'écran (la carte teaser est déjà affichée).
+    lastKwc = est.kwc;
+    lastKwcLabel = `${formatKwc(est.kwc)} kWc`;
+    lastSavingsLabel = `${formatMadRange(est.savingsMonthlyLow, est.savingsMonthlyHigh)}/mois`;
+    estimateShown = {
+      kwc: est.kwc,
+      prodKwh: est.productionKwhYr,
+      ecoMadMonthLow: est.savingsMonthlyLow,
+      ecoMadMonthHigh: est.savingsMonthlyHigh,
+      paybackLabel: est.paybackLabel,
+    };
+    if (hasReachedConsentStep()) sendFunnelBeacon('estimation', 'viewed');
+    if (PUBLIC_ESTIMATE_GATED) {
+      updatePanels3dVisibility();
+      if (hasReachedConsentStep()) sendFunnelBeacon('contact', 'reached');
+      announceEstimate(GATED_ANNOUNCE);
+      return true;
     }
     if (card) card.hidden = false;
     if (note) note.hidden = false;

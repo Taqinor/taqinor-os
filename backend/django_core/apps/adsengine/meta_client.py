@@ -154,17 +154,32 @@ class MetaClient:
                 return {}
 
     # ── Lectures ─────────────────────────────────────────────────────────────
+    # Champs demandés PAR DÉFAUT à l'API Graph pour la synchro des miroirs.
+    # SANS ``fields`` explicite, un edge Graph ne renvoie que ``id`` — d'où des
+    # miroirs sans nom/statut/objectif/budget (colonnes vides à l'écran). On
+    # demande donc exactement ce que ``sync.py`` exploite pour chaque niveau.
+    CAMPAIGN_SYNC_FIELDS = (
+        'id', 'name', 'status', 'effective_status', 'objective',
+        'daily_budget', 'lifetime_budget')
+    ADSET_SYNC_FIELDS = (
+        'id', 'name', 'status', 'effective_status', 'campaign_id',
+        'daily_budget', 'lifetime_budget')
+    AD_SYNC_FIELDS = ('id', 'name', 'status', 'effective_status', 'adset_id')
+
     def get_campaigns(self, *, fields=None, limit=None):
         return self._read_list(self._account_edge('campaigns'),
-                               fields=fields, limit=limit)
+                               fields=fields or self.CAMPAIGN_SYNC_FIELDS,
+                               limit=limit)
 
     def get_adsets(self, *, fields=None, limit=None):
         return self._read_list(self._account_edge('adsets'),
-                               fields=fields, limit=limit)
+                               fields=fields or self.ADSET_SYNC_FIELDS,
+                               limit=limit)
 
     def get_ads(self, *, fields=None, limit=None):
         return self._read_list(self._account_edge('ads'),
-                               fields=fields, limit=limit)
+                               fields=fields or self.AD_SYNC_FIELDS,
+                               limit=limit)
 
     def get_insights(self, object_id, *, fields=None, params=None):
         """Insights d'un objet (compte/campagne/adset/ad). Renvoie la liste

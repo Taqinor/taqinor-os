@@ -28,7 +28,10 @@ describe('WJ34 — mon-toit.astro : squelettes de performance perçue', () => {
     expect(fallbackFn.slice(0, 120)).toContain('clearMapSkeleton()');
   });
 
-  it("l'estimation affiche un squelette AVANT le calcul (performance perçue), zéro CLS (même gabarit text-3xl)", () => {
+  it("l'estimation affiche un squelette/anticipation AVANT le calcul (performance perçue), zéro CLS (même gabarit text-3xl)", () => {
+    // Le câblage du squelette + anticipation branded reste EN PLACE (l'affordance
+    // « un calcul se produit » demeure). Le calcul (computeEstimate) est toujours
+    // déclenché dans le rAF, exactement comme avant.
     expect(MON_TOIT).toContain('function showEstimateSkeleton()');
     expect(MON_TOIT).toContain('mt-est-skeleton');
     expect(MON_TOIT).toContain('showEstimateSkeleton();');
@@ -36,6 +39,18 @@ describe('WJ34 — mon-toit.astro : squelettes de performance perçue', () => {
     // l'offre WhatsApp au rendu de l'estimation) — le squelette reste peint avant le calcul.
     expect(MON_TOIT).toContain('requestAnimationFrame(() => {');
     expect(MON_TOIT).toContain('computeEstimate();');
+  });
+
+  it("WJ125 — le squelette/anticipation précède désormais la CARTE TEASER gatée (le document chiffré ne se rend plus dans le parcours public — seul le RENDU change, le CALCUL reste)", () => {
+    // Adaptation délibérée au nouveau rendu gaté (RÈGLE FONDATEUR anti-concurrent) :
+    // computeEstimate calcule toujours (estimateShown part au CRM) mais, en public,
+    // il révèle une carte teaser verrouillée au lieu du document chiffré. Le
+    // squelette ci-dessus reste l'affordance « calcul en cours » qui la précède.
+    expect(MON_TOIT).toContain('const PUBLIC_ESTIMATE_GATED: boolean = true;');
+    expect(MON_TOIT).toContain('function showEstimateTeaser(');
+    expect(MON_TOIT).toContain('if (PUBLIC_ESTIMATE_GATED) showEstimateTeaser(mode);');
+    // le document détaillé est masqué en permanence dans le parcours public.
+    expect(MON_TOIT).toContain('<div id="mt-doc" class="mt-doc mt-4" hidden>');
   });
 
   it('le shimmer est gated prefers-reduced-motion (statique sinon)', () => {
