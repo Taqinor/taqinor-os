@@ -66,6 +66,11 @@ class ApiKey(models.Model):
     # Scopes accordés à cette clé (sous-ensemble de constants.ALL_SCOPES).
     scopes = models.JSONField(default=list, blank=True)
     enabled = models.BooleanField(default=True)
+    # NTAPI5 — épingle la version d'API SERVIE à cette clé, indépendamment du
+    # préfixe de chemin appelé (NTAPI1, pas encore construit) : une clé
+    # épinglée 'v1' reste sur 'v1' même via un path non-versionné. Changer de
+    # version est une action admin explicite (jamais automatique).
+    api_version = models.CharField(max_length=10, default='v1', blank=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

@@ -18,7 +18,7 @@ class ApiKeySerializer(serializers.ModelSerializer):
     class Meta:
         model = ApiKey
         fields = [
-            'id', 'label', 'prefix', 'scopes', 'enabled',
+            'id', 'label', 'prefix', 'scopes', 'enabled', 'api_version',
             'created_by', 'created_by_nom', 'created_at', 'last_used_at',
         ]
         read_only_fields = fields
