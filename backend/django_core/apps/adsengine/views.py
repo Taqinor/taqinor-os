@@ -274,6 +274,29 @@ class EngineActionViewSet(AdsengineViewSet):
             return [HasAdsengineApprove()]
         return super().get_permissions()
 
+    def perform_create(self, serializer):
+        """ENGFIX2 — Garde policy créative sur le chemin de création API.
+
+        ``assert_creative_ok_for_ad`` n'était appelé que par
+        ``services.propose_action`` / ``execute_auto_action`` : un POST direct
+        (``create_ad`` référençant un ``CreativeAsset`` non estampillé policy)
+        passait outre. On réenclenche ICI le même contrôle AVANT ``save`` — la
+        société est forcée côté serveur (jamais lue du corps). Une violation
+        (``CreativePolicyNotPassed``, sous-classe de ``ValueError``) est traduite
+        en ``ValidationError`` (400), jamais une 500."""
+        from rest_framework import serializers as drf_serializers
+
+        from .services import CreativePolicyNotPassed, assert_creative_ok_for_ad
+        company = self.request.user.company
+        kind = serializer.validated_data.get('kind')
+        payload = serializer.validated_data.get('payload') or {}
+        try:
+            assert_creative_ok_for_ad(company, kind, payload)
+        except CreativePolicyNotPassed as exc:
+            raise drf_serializers.ValidationError(
+                {'creative_asset_id': str(exc)})
+        super().perform_create(serializer)
+
     @action(detail=True, methods=['post'])
     def approve(self, request, pk=None):
         """Approuve l'action (acteur posé côté serveur)."""

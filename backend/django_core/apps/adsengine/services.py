@@ -15,9 +15,18 @@ import logging
 
 from django.utils import timezone
 
+from . import guardrails
 from .models import EngineAction
 
 logger = logging.getLogger(__name__)
+
+# ENGFIX1/G2 — Contrat d'unité de budget. Les budgets de l'API Marketing Meta
+# sont en UNITÉS MINEURES (centimes) de la devise du compte ; le plafond
+# ``GuardrailConfig.daily_budget_ceiling_mad`` est en MAD (unités majeures).
+# CONVENTION FIGÉE : ``payload['daily_budget']`` / ``payload['current_budget']``
+# sont en CENTIMES ; on les convertit en MAD (÷100) AVANT toute comparaison au
+# plafond (voir ``_centimes_to_mad`` / ``_guard_before_dispatch``).
+CENTIMES_PER_MAD = 100
 
 
 # ── ENG8 — Toggles de capacités (par société) ────────────────────────────────
@@ -96,24 +105,50 @@ def propose_action(company, *, kind, reason_fr, payload=None, auto=False):
 
 
 def approve_action(action, *, user):
-    """Approuve une action PROPOSÉE (acteur posé côté serveur)."""
-    if action.status != EngineAction.Statut.PROPOSEE:
-        raise ValueError("Seule une action proposée peut être approuvée.")
+    """Approuve une action PROPOSÉE (acteur posé côté serveur).
+
+    ENGFIX3 — Verrou de ligne (``select_for_update``) + re-vérification du statut
+    SOUS le verrou : deux décisions concurrentes (approuver contre rejeter) ne
+    peuvent pas toutes deux gagner (course dernier-écrivain). Seule une action
+    ENCORE ``proposee`` sous le verrou passe ``approuvee``."""
+    from django.db import transaction
+    with transaction.atomic():
+        locked = (EngineAction.objects
+                  .select_for_update()
+                  .filter(pk=action.pk).first())
+        if locked is None or locked.status != EngineAction.Statut.PROPOSEE:
+            raise ValueError("Seule une action proposée peut être approuvée.")
+        locked.status = EngineAction.Statut.APPROUVEE
+        locked.approved_by = user
+        locked.save(update_fields=['status', 'approved_by', 'updated_at'])
+    # Réaligne l'objet en mémoire fourni par l'appelant sur l'état réclamé.
     action.status = EngineAction.Statut.APPROUVEE
     action.approved_by = user
-    action.save(update_fields=['status', 'approved_by', 'updated_at'])
     return action
 
 
 def reject_action(action, *, user, commentaire=''):
-    """Rejette une action PROPOSÉE (elle ne pourra jamais être appliquée)."""
-    if action.status != EngineAction.Statut.PROPOSEE:
-        raise ValueError("Seule une action proposée peut être rejetée.")
+    """Rejette une action PROPOSÉE (elle ne pourra jamais être appliquée).
+
+    ENGFIX3 — Même discipline verrou-de-ligne + re-vérification sous verrou que
+    ``approve_action`` (course approuver/rejeter)."""
+    from django.db import transaction
+    with transaction.atomic():
+        locked = (EngineAction.objects
+                  .select_for_update()
+                  .filter(pk=action.pk).first())
+        if locked is None or locked.status != EngineAction.Statut.PROPOSEE:
+            raise ValueError("Seule une action proposée peut être rejetée.")
+        locked.status = EngineAction.Statut.REJETEE
+        locked.approved_by = user
+        if commentaire:
+            locked.error = str(commentaire)
+        locked.save(
+            update_fields=['status', 'approved_by', 'error', 'updated_at'])
     action.status = EngineAction.Statut.REJETEE
     action.approved_by = user
     if commentaire:
         action.error = str(commentaire)
-    action.save(update_fields=['status', 'approved_by', 'error', 'updated_at'])
     return action
 
 
@@ -157,7 +192,70 @@ def _dispatch(client, action):
             adset_id=payload.get('adset_id', ''),
             daily_budget=payload.get('daily_budget'),
             extra_fields=payload.get('extra_fields'))
+    if kind == EngineAction.Kind.PAUSE:
+        # ENGFIX5 — Mise en pause : l'action de sécurité par excellence (proposée
+        # par le détecteur d'anomalie ENG9 + le brief hebdo ENG11). Gardée
+        # PAUSED-only AVANT tout appel (belt-and-suspenders : la transition ne peut
+        # être que vers PAUSED), puis routée vers la méthode dédiée du client qui
+        # FORCE PAUSED — aucun statut ACTIVE possible (invariant permanent #3).
+        guardrails.enforce_paused_only('PAUSED', company=action.company)
+        return client.update_status_paused(
+            object_id=payload.get('target_meta_id', ''),
+            level=payload.get('target_type'))
     raise ValueError(f"Type d'action non routable : {kind}")
+
+
+def _centimes_to_mad(value):
+    """ENGFIX1/G2 — Centimes (unités mineures Meta) → MAD (unités majeures).
+
+    ``None`` reste ``None`` (le garde-fou le traitera comme inopérant → blocage
+    fail-safe) ; une valeur illisible est renvoyée telle quelle pour que la règle
+    lève ``GuardrailInoperative`` plutôt que d'être silencieusement ignorée."""
+    if value is None:
+        return None
+    try:
+        return float(value) / CENTIMES_PER_MAD
+    except (TypeError, ValueError):
+        return value
+
+
+def _guard_before_dispatch(action):
+    """ENGFIX1 — Applique les garde-fous AVANT tout appel au client Meta.
+
+    Câble les checks de ``guardrails`` (jusqu'ici définis mais JAMAIS appelés sur
+    le chemin d'``apply``), pour que ``_dispatch`` n'atteigne jamais le client sur
+    une action qui viole un garde-fou :
+
+    * ``REBALANCE_BUDGET`` → plafond quotidien (``check_daily_ceiling``) +
+      variation hebdomadaire (``check_weekly_change``). Le budget du payload
+      (``daily_budget`` = nouveau, ``current_budget`` = courant) est en CENTIMES
+      (unités mineures Meta) ; on le convertit en MAD (÷100) avant de le comparer
+      au plafond MAD. La variation en % est indépendante de l'unité (ratio) — on
+      convertit tout de même par cohérence de contrat.
+    * Toute transition de statut explicite (``payload['target_status']``) →
+      ``enforce_paused_only`` + ``enforce_never_activate`` (PAUSED-only, jamais
+      d'activation — invariant permanent règle #3).
+
+    Lève ``GuardrailViolation`` / ``GuardrailInoperative`` (budget/courant manquant
+    → règle inopérante = blocage fail-safe, jamais un skip silencieux) ; l'appelant
+    ``apply_action`` marque alors l'action ``echouee`` et relance."""
+    from .models import GuardrailConfig
+    payload = action.payload or {}
+    config = GuardrailConfig.objects.filter(company=action.company).first()
+
+    if action.kind == EngineAction.Kind.REBALANCE_BUDGET:
+        new_mad = _centimes_to_mad(payload.get('daily_budget'))
+        current_mad = _centimes_to_mad(payload.get('current_budget'))
+        guardrails.check_daily_ceiling(config, new_mad, company=action.company)
+        guardrails.check_weekly_change(
+            config, current_budget=current_mad, new_budget=new_mad,
+            company=action.company)
+
+    # Toute transition de statut demandée reste PAUSED-only (jamais d'activation).
+    target_status = payload.get('target_status')
+    if target_status:
+        guardrails.enforce_paused_only(target_status, company=action.company)
+        guardrails.enforce_never_activate(target_status, company=action.company)
 
 
 def apply_action(action, *, connection=None, client=None):
@@ -165,10 +263,24 @@ def apply_action(action, *, connection=None, client=None):
 
     Garde de sécurité EN PREMIER : une action non ``approuvee`` lève
     ``ActionNotApproved`` AVANT toute construction/appel du client Meta (le
-    client n'est jamais atteint). En cas d'échec Meta, l'action passe ``echouee``
-    (erreur consignée) et l'exception est relancée ; en cas de succès, elle passe
-    ``appliquee`` (``applied_at`` + ``result`` posés côté serveur).
+    client n'est jamais atteint).
+
+    ENGFIX3 — Réclamation ATOMIQUE (compare-and-swap) : la transition
+    ``approuvee → appliquee`` se fait par un ``UPDATE ... WHERE status=approuvee``
+    unique (verrou de ligne du SGBD). Deux workers concurrents : le premier
+    réclame (``claimed=1``) et dispatche ; le second voit 0 ligne encore
+    ``approuvee`` (``claimed=0``) → ``ActionNotApproved`` — aucun double-dispatch,
+    jamais d'objet Meta dupliqué. En cas d'échec Meta OU de violation de garde-fou
+    (ENGFIX1) APRÈS réclamation, l'action est repassée ``echouee`` (jamais laissée
+    faussement ``appliquee``) et l'exception relancée ; en cas de succès elle
+    reste ``appliquee`` (``applied_at`` + ``result`` posés côté serveur).
     """
+    from django.db import transaction
+
+    # Garde de sécurité rapide (non atomique) : une action non approuvée est
+    # refusée d'emblée, avant toute construction de client. Le compare-and-swap
+    # ci-dessous reste l'AUTORITÉ anti-double-apply (l'objet en mémoire peut être
+    # périmé ; la base tranche).
     if action.status != EngineAction.Statut.APPROUVEE:
         raise ActionNotApproved(
             "Action non approuvée : refus d'appliquer (le client Meta n'est "
@@ -185,15 +297,34 @@ def apply_action(action, *, connection=None, client=None):
                 "Aucune connexion Meta active : application impossible.")
         client = MetaClient.from_connection(connection)
 
+    # ENGFIX3 — Réclamation atomique : SEULE une ligne encore ``approuvee`` en
+    # base peut être réclamée (elle passe ``appliquee`` dans le même UPDATE).
+    with transaction.atomic():
+        claimed = (EngineAction.objects
+                   .filter(pk=action.pk,
+                           status=EngineAction.Statut.APPROUVEE)
+                   .update(status=EngineAction.Statut.APPLIQUEE))
+    if claimed != 1:
+        raise ActionNotApproved(
+            "Action déjà réclamée ou non approuvée : refus d'appliquer (aucun "
+            "double-dispatch — le client Meta n'est pas rappelé).")
+    # Réaligne l'objet en mémoire sur l'état réclamé.
+    action.status = EngineAction.Statut.APPLIQUEE
+
     try:
+        # ENGFIX1 — garde-fous AVANT le dispatch : une violation lève ici et le
+        # client n'est jamais appelé (l'action repasse « echouee » ci-dessous).
+        _guard_before_dispatch(action)
         result = _dispatch(client, action)
     except Exception as exc:
+        # Un échec APRÈS réclamation ne doit pas laisser l'action faussement
+        # « appliquee » : on la repasse « echouee » (erreur consignée) et on
+        # relance.
         action.status = EngineAction.Statut.ECHOUEE
         action.error = str(exc)
         action.save(update_fields=['status', 'error', 'updated_at'])
         raise
 
-    action.status = EngineAction.Statut.APPLIQUEE
     action.applied_at = timezone.now()
     action.result = result if isinstance(result, dict) else {'result': result}
     action.error = ''

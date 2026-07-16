@@ -99,7 +99,16 @@ def cost_per_signature_summary(company):
     per_campaign = cost_per_signature(company)
     total_spend = sum((Decimal(row['spend']) for row in per_campaign),
                       Decimal('0'))
-    total_signed = sum(row['signed_count'] for row in per_campaign)
+    # ENGFIX4 — total signatures = nombre de leads DISTINCTS (union des ids), et
+    # NON la somme des compteurs par campagne : deux miroirs de MÊME nom
+    # partagent la même clé d'attribution → le même bucket signé, donc chaque
+    # lead serait compté deux fois par une simple somme (gonflement du total,
+    # écrasement du coût-par-signature héros). La dépense, elle, reste sommée
+    # (chaque miroir porte sa propre dépense, clée par pk distinct).
+    distinct_signed_ids = set()
+    for row in per_campaign:
+        distinct_signed_ids.update(row['signed_lead_ids'])
+    total_signed = len(distinct_signed_ids)
     global_cps = (total_spend / total_signed) if total_signed else None
     return {
         'total_spend': str(total_spend),
