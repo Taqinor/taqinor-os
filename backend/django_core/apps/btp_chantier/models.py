@@ -365,3 +365,64 @@ class VisaDocument(models.Model):
 
     def __str__(self):
         return f'Visa {self.reference} ({self.get_statut_display()})'
+
+
+# ── NTCON6 — Journal de chantier quotidien ──────────────────────────────────
+
+class JournalChantier(models.Model):
+    """Entrée quotidienne du journal de chantier (NTCON6) — une par jour par
+    chantier (contrainte unique). Photos via ``records.Attachment``
+    (déclaré dans ``platform.py``)."""
+
+    class Meteo(models.TextChoices):
+        ENSOLEILLE = 'ensoleille', 'Ensoleillé'
+        NUAGEUX = 'nuageux', 'Nuageux'
+        PLUVIEUX = 'pluvieux', 'Pluvieux'
+        VENTEUX = 'venteux', 'Venteux'
+        AUTRE = 'autre', 'Autre'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='btp_journaux_chantier', verbose_name='Société')
+    chantier = models.ForeignKey(
+        'installations.Installation', on_delete=models.CASCADE,
+        related_name='btp_journaux', verbose_name='Chantier')
+    date = models.DateField(verbose_name='Date')
+    redacteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='btp_journaux_rediges',
+        verbose_name='Rédacteur')
+    meteo = models.CharField(
+        max_length=15, choices=Meteo.choices, blank=True, default='',
+        verbose_name='Météo')
+    # Métier → nombre, ex. {'macon': 4, 'electricien': 2}.
+    effectif_interne = models.JSONField(
+        default=dict, blank=True, verbose_name='Effectif interne')
+    # OrdreSousTraitance loose-FK (id, texte) → nombre — réutilise FG304/305.
+    effectif_sous_traitant = models.JSONField(
+        default=dict, blank=True, verbose_name='Effectif sous-traitant')
+    materiel_present = models.TextField(
+        blank=True, default='', verbose_name='Matériel présent')
+    evenements = models.TextField(
+        blank=True, default='', verbose_name='Événements')
+    # Liste de {'nom', 'societe', 'motif'}.
+    visiteurs = models.JSONField(
+        default=list, blank=True, verbose_name='Visiteurs')
+    created_at = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+
+    class Meta:
+        verbose_name = 'Journal de chantier'
+        verbose_name_plural = 'Journaux de chantier'
+        ordering = ['-date', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['chantier', 'date'],
+                name='btp_journal_chantier_date_uniq'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'chantier', 'date']),
+        ]
+
+    def __str__(self):
+        return f'Journal {self.chantier_id} — {self.date}'

@@ -1,6 +1,7 @@
 """Vues du vertical BTP/EPC (Groupe NTCON) — scopées société (TenantMixin) +
 lecture/écriture fine-grainée (``WriteScopedPermissionMixin``)."""
 from django.contrib.contenttypes.models import ContentType
+from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -9,11 +10,17 @@ from authentication.mixins import TenantMixin
 from core.permissions import WriteScopedPermissionMixin
 
 from . import selectors, services
-from .models import RFI, ReserveChantier, VisaDocument
+from .models import JournalChantier, RFI, ReserveChantier, VisaDocument
 from .serializers import (
-    ReserveChantierSerializer, RFISerializer, SignatureBtpSerializer,
-    VisaDocumentSerializer,
+    JournalChantierSerializer, ReserveChantierSerializer, RFISerializer,
+    SignatureBtpSerializer, VisaDocumentSerializer,
 )
+
+
+def _chantier_model():
+    """Classe ``installations.Installation`` résolue via la FK déjà déclarée
+    sur ``JournalChantier`` — aucun import cross-app statique."""
+    return JournalChantier._meta.get_field('chantier').related_model
 
 
 def _client_ip(request):
@@ -262,3 +269,69 @@ class VisaDocumentViewSet(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         visa.refresh_from_db()
         return Response(VisaDocumentSerializer(visa).data)
+
+
+class JournalChantierViewSet(
+        WriteScopedPermissionMixin, TenantMixin, viewsets.ModelViewSet):
+    """Journal de chantier quotidien — NTCON6.
+
+    Filtres liste : ``?chantier=&du=&au=``. Une entrée par jour par chantier
+    (contrainte unique en base — un doublon renvoie 400). Export PDF
+    hebdomadaire/mensuel via ``export-pdf/``.
+    """
+    queryset = JournalChantier.objects.select_related(
+        'chantier', 'redacteur').all()
+    serializer_class = JournalChantierSerializer
+    read_permission = 'btp_voir'
+    write_permission = 'btp_gerer'
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        p = self.request.query_params
+        chantier_id = p.get('chantier')
+        du = p.get('du')
+        au = p.get('au')
+        if chantier_id not in (None, ''):
+            qs = qs.filter(chantier_id=chantier_id)
+        if du not in (None, ''):
+            qs = qs.filter(date__gte=du)
+        if au not in (None, ''):
+            qs = qs.filter(date__lte=au)
+        return qs
+
+    def perform_create(self, serializer):
+        from django.db import IntegrityError
+        from rest_framework.exceptions import ValidationError
+
+        try:
+            serializer.save(
+                company=self.request.user.company,
+                redacteur=self.request.user)
+        except IntegrityError:
+            raise ValidationError({
+                'date': (
+                    'Une entrée de journal existe déjà pour ce chantier à '
+                    'cette date.'),
+            })
+
+    @action(detail=False, methods=['get'], url_path='export-pdf')
+    def export_pdf(self, request):
+        """PDF interne (WeasyPrint) du journal sur ``?chantier=&du=&au=``."""
+        from django.http import HttpResponse
+
+        from .pdf import render_journal_chantier_pdf
+
+        chantier_id = request.query_params.get('chantier')
+        if not chantier_id:
+            return Response(
+                {'detail': 'chantier est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        chantier = get_object_or_404(
+            _chantier_model(), pk=chantier_id, company=request.user.company)
+        entries = self.get_queryset().filter(
+            chantier_id=chantier_id).order_by('date')
+        pdf_bytes = render_journal_chantier_pdf(chantier, entries)
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = (
+            f'attachment; filename="journal-chantier-{chantier_id}.pdf"')
+        return response

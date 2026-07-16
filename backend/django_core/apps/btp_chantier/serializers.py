@@ -4,7 +4,7 @@ from rest_framework import serializers
 
 from .models import (
     RFI, RFIReponse, ReserveChantier, ReserveChantierHistorique,
-    SignatureBtp, VisaDocument,
+    JournalChantier, SignatureBtp, VisaDocument,
 )
 
 
@@ -141,6 +141,22 @@ class VisaDocumentSerializer(serializers.ModelSerializer):
             'revu_par', 'date_revue', 'observations', 'date_limite',
             'nb_resoumissions', 'created_at',
         ]
+
+    def validate_chantier(self, value):
+        return _meme_societe(self, value, 'Chantier')
+
+
+# ── NTCON6 — Journal de chantier ─────────────────────────────────────────────
+
+class JournalChantierSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = JournalChantier
+        fields = [
+            'id', 'chantier', 'date', 'redacteur', 'meteo',
+            'effectif_interne', 'effectif_sous_traitant',
+            'materiel_present', 'evenements', 'visiteurs', 'created_at',
+        ]
+        read_only_fields = ['id', 'redacteur', 'created_at']
 
     def validate_chantier(self, value):
         return _meme_societe(self, value, 'Chantier')
