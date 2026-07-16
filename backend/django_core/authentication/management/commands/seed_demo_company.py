@@ -163,6 +163,7 @@ class Command(BaseCommand):
         ctx = {'company': company, 'admin': admin, 'resp': resp, 'rng': rng}
         self._seed_leads(ctx)
         self._seed_devis(ctx)
+        self._seed_chantiers_factures(ctx)
 
     # ── NTDMO2 — leads répartis sur les 6 stages STAGES.py ─────────────────
     # Prénoms/noms/villes marocaines (Faker arrive en NTDMO17, hors de ce lot).
@@ -385,3 +386,83 @@ class Command(BaseCommand):
             (pompe, f'Pompe solaire — {pompe.nom}', 1, self._line_price(pompe)),
             (var, f'Variateur — {var.nom}', 1, self._line_price(var)),
         ]
+
+    # ── NTDMO4 — chaîne chantier→facture→paiement + balance âgée vivante ────
+    @staticmethod
+    def _devis_total_ttc(devis):
+        from apps.ventes.models import LigneDevis
+        total_ht = Decimal('0')
+        for li in LigneDevis.objects.filter(devis=devis):
+            total_ht += (li.quantite or 0) * (li.prix_unitaire or 0)
+        return (total_ht * Decimal('1.2')).quantize(Decimal('0.01'))
+
+    def _seed_chantiers_factures(self, ctx):
+        from apps.ventes.models import Devis, Facture, LigneFacture, Paiement
+        from apps.ventes.utils.references import create_with_reference
+        from apps.installations import services as inst_services
+        from apps.installations.models import Installation
+        company, admin = ctx['company'], ctx['admin']
+        now = timezone.now()
+        today = now.date()
+
+        acceptes = [d for d in ctx['devis'] if d.statut == Devis.Statut.ACCEPTE]
+        # Décalages d'échéance dépassée → tranches d'ancienneté 0-30/31-60/
+        # 61-90/90+ toutes peuplées (critère balance âgée).
+        overdue_offsets = [15, 50, 75, 100]
+        chantiers = []
+        factures = []
+        for j, devis in enumerate(acceptes):
+            # Chantier via le service existant (jamais de duplication).
+            chantier, _created = inst_services.create_installation_from_devis(
+                devis, admin, company)
+            if chantier is not None:
+                pose = today - timedelta(days=60 + j * 12)
+                updates = {'date_creation': now - timedelta(days=70 + j * 12),
+                           'date_pose_reelle': pose}
+                # ~la moitié des chantiers réceptionnés (Installation en aval).
+                if j % 2 == 0:
+                    updates['statut'] = Installation.Statut.RECEPTIONNE
+                    updates['date_reception'] = pose + timedelta(days=5)
+                Installation.objects.filter(pk=chantier.pk).update(**updates)
+                chantiers.append(chantier)
+
+            total = self._devis_total_ttc(devis)
+            # Mix : payée à temps / en retard non payée / partiellement réglée.
+            bucket = j % 4
+            if bucket == 0:
+                statut, echeance, paye = (
+                    Facture.Statut.PAYEE, today - timedelta(days=20), total)
+            elif bucket == 2:
+                statut = Facture.Statut.EMISE
+                echeance = today - timedelta(days=overdue_offsets[j % 4])
+                paye = (total * Decimal('0.4')).quantize(Decimal('0.01'))
+            else:
+                statut = Facture.Statut.EMISE
+                echeance = today - timedelta(days=overdue_offsets[j % 4])
+                paye = Decimal('0')
+
+            def _make_fac(reference, devis=devis, statut=statut,
+                          echeance=echeance):
+                fac = Facture.objects.create(
+                    company=company, reference=reference, client=devis.client,
+                    devis=devis, statut=statut, taux_tva=Decimal('20.00'),
+                    date_echeance=echeance, created_by=admin)
+                for li in devis.lignes.all():
+                    LigneFacture.objects.create(
+                        facture=fac, produit=li.produit,
+                        designation=li.designation, quantite=li.quantite,
+                        prix_unitaire=li.prix_unitaire, remise=li.remise)
+                return fac
+
+            facture = create_with_reference(Facture, 'FAC', company, _make_fac)
+            emise = echeance - timedelta(days=30)
+            Facture.objects.filter(pk=facture.pk).update(date_emission=emise)
+            if paye > 0:
+                Paiement.objects.create(
+                    company=company, facture=facture, montant=paye,
+                    date_paiement=emise + timedelta(days=3),
+                    mode=Paiement.Mode.VIREMENT, created_by=admin,
+                    statut=Paiement.Statut.ENCAISSE)
+            factures.append(facture)
+        ctx['chantiers'] = chantiers
+        ctx['factures'] = factures

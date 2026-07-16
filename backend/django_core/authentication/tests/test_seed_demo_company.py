@@ -125,3 +125,46 @@ class SeedDemoDevisNTDMO3Test(TestCase):
                     .values_list('reference', flat=True))
         self.assertTrue(all(r.startswith('DEV-') for r in refs))
         self.assertEqual(len(refs), len(set(refs)))  # aucune collision
+
+
+@override_settings(DEBUG=True)
+class SeedDemoChantiersFacturesNTDMO4Test(TestCase):
+    SLUG = 'taqinor-demo-full'
+
+    def setUp(self):
+        call_command('seed_demo_company', verbosity=0)
+        self.company = Company.objects.get(slug=self.SLUG)
+
+    def test_chantiers_created_some_receptionnes(self):
+        from apps.installations.models import Installation
+        qs = Installation.objects.filter(company=self.company)
+        self.assertTrue(qs.exists())
+        self.assertTrue(
+            qs.filter(statut=Installation.Statut.RECEPTIONNE).exists())
+
+    def test_aged_balance_has_three_plus_buckets(self):
+        from django.utils import timezone
+        from apps.ventes.models import Facture
+        today = timezone.now().date()
+        overdue = Facture.objects.filter(
+            company=self.company, statut=Facture.Statut.EMISE,
+            date_echeance__lt=today)
+        buckets = set()
+        for f in overdue:
+            days = (today - f.date_echeance).days
+            if days <= 30:
+                buckets.add('0-30')
+            elif days <= 60:
+                buckets.add('31-60')
+            elif days <= 90:
+                buckets.add('61-90')
+            else:
+                buckets.add('90+')
+        self.assertGreaterEqual(len(buckets), 3)
+
+    def test_payment_mix(self):
+        from apps.ventes.models import Facture, Paiement
+        self.assertTrue(Facture.objects.filter(
+            company=self.company, statut=Facture.Statut.PAYEE).exists())
+        self.assertTrue(
+            Paiement.objects.filter(company=self.company).exists())
