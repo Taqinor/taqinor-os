@@ -1,7 +1,7 @@
 """Serializers du registre des assurances & sinistres d'entreprise (NTASS)."""
 from rest_framework import serializers
 
-from .models import Assureur, Courtier, PoliceAssurance
+from .models import Assureur, Courtier, PoliceActivity, PoliceAssurance
 
 
 class AssureurSerializer(serializers.ModelSerializer):
@@ -57,3 +57,17 @@ class PoliceAssuranceSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 'Le courtier doit appartenir à la même société.')
         return value
+
+
+class PoliceActivitySerializer(serializers.ModelSerializer):
+    user_nom = serializers.CharField(
+        source='user.get_full_name', read_only=True, default='')
+
+    class Meta:
+        model = PoliceActivity
+        fields = [
+            'id', 'police', 'kind', 'champ', 'champ_label',
+            'ancienne_valeur', 'nouvelle_valeur', 'description',
+            'user', 'user_nom', 'created_at',
+        ]
+        read_only_fields = fields

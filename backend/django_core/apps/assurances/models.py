@@ -14,6 +14,7 @@ Frontières (voir docs/plans/PLAN_FINANCE.md Groupe NTASS) :
     (string-FK ``dossier_contentieux_ref``) ;
   - le futur NTPRO sera la cible string-FK pour les sites/biens immobiliers.
 """
+from django.conf import settings
 from django.db import models
 
 
@@ -144,3 +145,44 @@ class PoliceAssurance(models.Model):
 
     def __str__(self):
         return f'{self.numero_police} ({self.get_type_police_display()})'
+
+
+# ── NTASS3 — Chatter dédié « PoliceActivity » (pattern DevisActivity/
+# ContratActivity/crm.LeadActivity) ─────────────────────────────────────────
+
+class PoliceActivity(models.Model):
+    """Historique « chatter » d'une ``PoliceAssurance`` (NTASS3).
+
+    Deux familles d'entrées : automatiques (transitions de ``statut``,
+    ``date_echeance``, ``prime_annuelle_ht`` — champ/ancienne valeur/nouvelle
+    valeur, posées côté serveur) et manuelles (notes libres)."""
+
+    class Kind(models.TextChoices):
+        CREATION = 'creation', 'Création'
+        MODIFICATION = 'modification', 'Modification'
+        NOTE = 'note', 'Note'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='police_activities')
+    police = models.ForeignKey(
+        PoliceAssurance, on_delete=models.CASCADE, related_name='activites')
+    kind = models.CharField(max_length=15, choices=Kind.choices)
+    champ = models.CharField(max_length=100, blank=True, null=True)
+    champ_label = models.CharField(max_length=150, blank=True, null=True)
+    ancienne_valeur = models.TextField(blank=True, null=True)
+    nouvelle_valeur = models.TextField(blank=True, null=True)
+    description = models.TextField(blank=True, null=True)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='police_activities')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Activité police'
+        verbose_name_plural = 'Activités police'
+        ordering = ['-created_at']
+        indexes = [models.Index(fields=['police', '-created_at'])]
+
+    def __str__(self):
+        return f'{self.police_id} {self.kind} {self.champ or ""}'.strip()

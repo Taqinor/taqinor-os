@@ -1,14 +1,21 @@
 """Vues du registre des assurances & sinistres d'entreprise (NTASS)."""
 from django.db import IntegrityError
-from rest_framework import viewsets
+from rest_framework import status, viewsets
+from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
+from rest_framework.response import Response
 
 from core.mixins import TenantMixin
 from core.permissions import WriteScopedPermissionMixin
 
 from .models import Assureur, Courtier, PoliceAssurance
 from .serializers import (
-    AssureurSerializer, CourtierSerializer, PoliceAssuranceSerializer,
+    AssureurSerializer, CourtierSerializer, PoliceActivitySerializer,
+    PoliceAssuranceSerializer,
+)
+from .services import (
+    CHAMPS_SUIVIS_POLICE, log_police_creation, log_police_note,
+    log_police_transitions_auto,
 )
 
 
@@ -52,11 +59,39 @@ class PoliceAssuranceViewSet(_AssurancesBaseViewSet):
             raise ValidationError(
                 {'numero_police':
                  'Ce numéro de police existe déjà dans votre société.'})
+        log_police_creation(serializer.instance, self.request.user)
 
     def perform_update(self, serializer):
+        # NTASS3 — capture l'état AVANT sauvegarde des champs suivis pour
+        # loguer automatiquement toute transition (statut/échéance/prime).
+        avant = {
+            champ: getattr(serializer.instance, champ)
+            for champ in CHAMPS_SUIVIS_POLICE
+        }
         try:
             super().perform_update(serializer)
         except IntegrityError:
             raise ValidationError(
                 {'numero_police':
                  'Ce numéro de police existe déjà dans votre société.'})
+        log_police_transitions_auto(
+            serializer.instance, avant, self.request.user)
+
+    @action(detail=True, methods=['get'], url_path='historique')
+    def historique(self, request, pk=None):
+        """NTASS3 — timeline chatter de la police (plus récent d'abord)."""
+        police = self.get_object()
+        return Response(
+            PoliceActivitySerializer(police.activites.all(), many=True).data)
+
+    @action(detail=True, methods=['post'], url_path='noter')
+    def noter(self, request, pk=None):
+        """NTASS3 — note manuelle (auteur posé côté serveur)."""
+        police = self.get_object()
+        body = (request.data.get('body') or '').strip()
+        if not body:
+            return Response({'body': 'Note vide.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        act = log_police_note(police, request.user, body)
+        return Response(PoliceActivitySerializer(act).data,
+                        status=status.HTTP_201_CREATED)
