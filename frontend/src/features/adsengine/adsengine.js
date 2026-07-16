@@ -177,3 +177,30 @@ export function actionCreative(action) {
     type: c.type || '',
   }
 }
+
+// ── ENG26 — Brief hebdomadaire (que s'est-il passé → pourquoi → suggestion) ──
+// Normalise la réponse en { periode, resume, items:[{ id, quoi, pourquoi,
+// suggestion, action_id }] }. `action_id` (quand présent) permet à la carte de
+// pointer vers la boîte d'approbation (ENG25).
+export function normalizeBrief(raw) {
+  const b = raw && typeof raw === 'object' ? raw : {}
+  const rawItems = Array.isArray(b.items) ? b.items
+    : Array.isArray(b.sections) ? b.sections : []
+  const items = rawItems.filter(Boolean).map((it, i) => ({
+    id: it.id ?? i,
+    quoi: it.quoi || it.what || it.titre || '',
+    pourquoi: it.pourquoi || it.why || '',
+    suggestion: it.suggestion || it.recommandation || '',
+    action_id: it.action_id ?? it.engine_action_id ?? null,
+  }))
+  return {
+    periode: b.periode || b.period || '',
+    resume: b.resume || b.summary || '',
+    items,
+  }
+}
+
+// La carte pointe-t-elle vers une action à approuver (ENG25) ?
+export function briefItemHasAction(item) {
+  return !!(item && item.action_id != null)
+}
