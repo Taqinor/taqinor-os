@@ -15,8 +15,11 @@ BACKEND_ROOT = pathlib.Path(__file__).resolve().parents[3]
 
 # Tâches délibérément DÉCLENCHÉES À LA DEMANDE (jamais périodiques) OU
 # planifiées par une autre tâche/lane — chacune justifiée.
-# (Vide : toutes les tâches périodiques connues sont désormais planifiées.)
-ON_DEMAND_ALLOWLIST = set()
+ON_DEMAND_ALLOWLIST = {
+    # ENG18 — génération de variantes créatives : déclenchée à la demande
+    # depuis la bibliothèque créative (jamais périodique).
+    'adsengine.generate_creative_variants',
+}
 
 
 def _all_shared_task_names():
