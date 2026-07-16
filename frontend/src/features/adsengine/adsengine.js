@@ -77,3 +77,20 @@ export function normalizeWiringStatuses(raw) {
   }
   return []
 }
+
+// ── ENG13/ENG23 — Alertes (bandeau dashboard) ──
+// Niveaux → ton d'affichage (couleur de badge). Défaut : info.
+const ALERT_TONES = {
+  critique: { bg: '#fee2e2', color: '#991b1b', label: 'Critique' },
+  alerte: { bg: '#ffedd5', color: '#9a3412', label: 'Alerte' },
+  info: { bg: '#e0f2fe', color: '#075985', label: 'Info' },
+}
+export function alertTone(niveau) {
+  return ALERT_TONES[niveau] || ALERT_TONES.info
+}
+
+export function normalizeAlerts(raw) {
+  if (!raw) return []
+  const list = Array.isArray(raw) ? raw : (raw.alerts || raw.results || [])
+  return list.filter(Boolean)
+}
