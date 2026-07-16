@@ -172,6 +172,10 @@ INSTALLED_APPS = [
     # propose→approuve→applique, création TOUJOURS PAUSED). App satellite
     # multi-société ; tout no-ope sans token/clé configuré.
     'apps.adsengine',
+    # Groupe NTCRD — Gestion du crédit client (limite de crédit, credit hold,
+    # scoring, assurance-crédit, exposition consolidée). Foundation-adjacent :
+    # ne modifie AUCUN modèle ventes/crm existant, string-FK uniquement.
+    'apps.credit',
 ]
 
 MIDDLEWARE = [
