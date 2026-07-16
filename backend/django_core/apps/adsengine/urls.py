@@ -8,10 +8,13 @@ suivantes de la lane.
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
-from .views import MetaConnectionViewSet, StatusView
+from .views import (
+    GuardrailConfigViewSet, MetaConnectionViewSet, StatusView,
+)
 
 router = DefaultRouter()
 router.register(r'connexions', MetaConnectionViewSet, basename='meta-connexion')
+router.register(r'garde-fous', GuardrailConfigViewSet, basename='guardrail')
 
 urlpatterns = [
     path('status/', StatusView.as_view(), name='adsengine-status'),

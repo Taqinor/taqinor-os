@@ -70,3 +70,42 @@ class MetaConnection(TenantModel):
     def is_live(self):
         """Vrai si la connexion peut réellement appeler Meta : activée + token."""
         return bool(self.enabled and self.has_token)
+
+
+class GuardrailConfig(TenantModel):
+    """ENG3 — Garde-fous publicitaires d'UNE société (``OneToOne``).
+
+    Plafonds & fenêtres réglables PAR société. L'**activation d'une campagne
+    n'est délibérément PAS un champ ici** : elle est interdite en dur au niveau
+    service (``guardrails.enforce`` lève TOUJOURS sur une transition ACTIVE,
+    quelle que soit la config) — extension permanente de la règle #3. Aucun
+    réglage ne peut donc jamais autoriser une activation automatique.
+    """
+
+    company = models.OneToOneField(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='adsengine_guardrail_config',
+        verbose_name='Société',
+    )
+    # Plafond de dépense quotidienne (MAD entiers — seuil de garde-fou, pas un
+    # montant comptable). ENG9 compare la dépense des miroirs à ce plafond.
+    daily_budget_ceiling_mad = models.PositiveIntegerField(
+        default=100, verbose_name='Plafond budget quotidien (MAD)')
+    # Variation hebdomadaire maximale d'un budget (en %), dans les deux sens.
+    weekly_change_pct_max = models.PositiveIntegerField(
+        default=20, verbose_name='Variation hebdomadaire max (%)')
+    # Fenêtre (heures) d'observation « dépense > 0 et 0 lead » → anomalie (ENG9).
+    anomaly_window_hours = models.PositiveIntegerField(
+        default=48, verbose_name="Fenêtre de détection d'anomalie (heures)")
+
+    class Meta:
+        verbose_name = 'Garde-fous publicitaires'
+        verbose_name_plural = 'Garde-fous publicitaires'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return (
+            f'Garde-fous <plafond {self.daily_budget_ceiling_mad} MAD/j, '
+            f'±{self.weekly_change_pct_max}%>'
+        )

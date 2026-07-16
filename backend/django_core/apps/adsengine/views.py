@@ -11,8 +11,8 @@ from rest_framework.views import APIView
 
 from core.viewsets import CompanyScopedModelViewSet
 
-from .models import MetaConnection
-from .serializers import MetaConnectionSerializer
+from .models import GuardrailConfig, MetaConnection
+from .serializers import GuardrailConfigSerializer, MetaConnectionSerializer
 
 
 class StatusView(APIView):
@@ -52,3 +52,15 @@ class MetaConnectionViewSet(AdsengineViewSet):
 
     queryset = MetaConnection.objects.all()
     serializer_class = MetaConnectionSerializer
+
+
+class GuardrailConfigViewSet(AdsengineViewSet):
+    """ENG3 — CRUD des garde-fous publicitaires (un jeu par société).
+
+    ``company`` posée côté serveur. L'activation d'une campagne n'est aucun
+    champ ici : elle reste interdite en dur au niveau service
+    (``guardrails.enforce``).
+    """
+
+    queryset = GuardrailConfig.objects.all()
+    serializer_class = GuardrailConfigSerializer

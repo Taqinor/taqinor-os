@@ -1,7 +1,7 @@
 """Sérialiseurs du moteur publicitaire Meta Ads (Groupe ENG)."""
 from rest_framework import serializers
 
-from .models import MetaConnection
+from .models import GuardrailConfig, MetaConnection
 
 
 class MetaConnectionSerializer(serializers.ModelSerializer):
@@ -29,3 +29,19 @@ class MetaConnectionSerializer(serializers.ModelSerializer):
 
     def get_has_credentials(self, obj):
         return bool(obj.credentials)
+
+
+class GuardrailConfigSerializer(serializers.ModelSerializer):
+    """ENG3 — Garde-fous publicitaires d'une société.
+
+    ``company`` est absente des champs (posée côté serveur). L'activation d'une
+    campagne n'est volontairement AUCUN champ ici (interdite au niveau service).
+    """
+
+    class Meta:
+        model = GuardrailConfig
+        fields = [
+            'id', 'daily_budget_ceiling_mad', 'weekly_change_pct_max',
+            'anomaly_window_hours', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
