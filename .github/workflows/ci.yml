@@ -614,10 +614,20 @@ jobs:
           python-version: '3.11'
           cache: 'pip'
           cache-dependency-path: backend/django_core/requirements-dev.txt
+      # WOW-CI (2026-07-16): reuse the WOW8 pre-migrated dump + --keepdb exactly
+      # like the shards. Before this, rls-tests cold-replayed the full ~1,150-
+      # migration history on every run (measured 36-52 min, 94-97% of the job;
+      # the RLS assertions themselves run <1 min) — it was the job that made the
+      # whole workflow read as ~45 min. Safe because the suite applies its own
+      # policies in setUp and reverts them in tearDown (no env-gated migration:
+      # POSTGRES_RLS_ENABLED changes nothing about migrate output), so the
+      # restored dump exercises the RLS seal identically to a cold build.
       - uses: ./.github/actions/backend-env
+        with:
+          testdb-cache-into: test_erp_db
       - name: Run RLS seal suite (opt-in — flag ON)
         working-directory: backend/django_core
-        run: python manage.py test core.tests.test_rls -v 2
+        run: python manage.py test core.tests.test_rls -v 2 --keepdb
 
   # ---------------------------------------------------------------------------
   # Always-running aggregate gate. Pin THIS one job as the single required
