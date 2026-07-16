@@ -78,6 +78,8 @@ _APP_URLS = [
     path('qhse/', include('apps.qhse.urls')),
     path('kb/', include('apps.kb.urls')),
     path('litiges/', include('apps.litiges.urls')),
+    # Groupe NTESG — Reporting ESG/durabilité consolidé.
+    path('esg/', include('apps.esg.urls')),
     # ARC17 — Répertoire des tiers (res.partner), couche fondation.
     path('tiers/', include('apps.tiers.urls')),
     # XPLT21 — Softphone VoIP intégré (SIP/WebRTC, gated).
