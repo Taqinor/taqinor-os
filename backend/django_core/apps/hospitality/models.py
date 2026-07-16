@@ -331,3 +331,28 @@ class LigneFolio(models.Model):
 
     def __str__(self):
         return f'{self.origine} — {self.montant_ht}'
+
+
+# ── NTHOT8 — Taxe de séjour paramétrable ───────────────────────────────────
+
+class ParametresTaxeSejour(models.Model):
+    """Paramètres de taxe de séjour, une ligne par société. Appliquée
+    automatiquement à la clôture du folio (``services.cloturer_folio``)."""
+
+    company = models.OneToOneField(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='hospitality_parametres_taxe_sejour',
+        verbose_name='Société',
+    )
+    montant_par_nuit_par_personne = models.DecimalField(
+        max_digits=8, decimal_places=2, default=Decimal('0'))
+    exoneration_enfants = models.BooleanField(default=True)
+    actif = models.BooleanField(default=True)
+
+    class Meta:
+        verbose_name = 'Paramètres taxe de séjour'
+        verbose_name_plural = 'Paramètres taxe de séjour'
+
+    def __str__(self):
+        return f'Taxe de séjour — {self.company}'

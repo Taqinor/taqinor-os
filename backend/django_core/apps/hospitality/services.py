@@ -4,7 +4,10 @@ from decimal import Decimal
 
 from django.utils import timezone
 
-from .models import Chambre, FicheClient, Folio, LigneFolio, PlanTarifaire, Reservation
+from .models import (
+    Chambre, FicheClient, Folio, LigneFolio, ParametresTaxeSejour,
+    PlanTarifaire, Reservation,
+)
 
 FICHE_CLIENT_CHAMPS_REQUIS = [
     'nom_complet', 'nationalite', 'type_piece', 'numero_piece',
@@ -177,21 +180,52 @@ class FolioClotureError(ValueError):
     aucun client CRM résolu pour émettre la facture)."""
 
 
+def calculer_taxe_sejour(reservation):
+    """NTHOT8 — Taxe de séjour due pour ``reservation`` : nb_nuits × nb_adultes
+    × montant/nuit/personne (enfants exonérés si le flag société est actif).
+
+    Renvoie ``Decimal('0')`` si aucun paramètre n'est configuré pour la
+    société, ou si la taxe est désactivée (``actif=False``)."""
+    try:
+        params = reservation.company.hospitality_parametres_taxe_sejour
+    except ParametresTaxeSejour.DoesNotExist:
+        return Decimal('0')
+    if not params.actif:
+        return Decimal('0')
+
+    nb_personnes = reservation.nb_adultes
+    if not params.exoneration_enfants:
+        nb_personnes += reservation.nb_enfants
+
+    return (
+        Decimal(reservation.nb_nuits) * Decimal(nb_personnes)
+        * params.montant_par_nuit_par_personne)
+
+
 def cloturer_folio(folio, *, user):
     """Clôture UN folio en UNE facture ventes consolidée (jamais de double-
     facturation — refuse un folio déjà ``solde``).
 
-    Passe EXCLUSIVEMENT par ``apps.ventes.services`` (function-local, jamais
-    un import de ``apps.ventes.models.Facture``) : ``creer_facture_regie``
-    crée la facture BROUILLON, puis ``ajouter_lignes_frais_refactures`` y pousse
-    le détail ligne par ligne du folio (recalcule les totaux depuis les lignes).
-    """
+    Ajoute automatiquement la ligne ``taxe_sejour`` (NTHOT8, si configurée et
+    active) AVANT facturation, puis passe EXCLUSIVEMENT par
+    ``apps.ventes.services`` (function-local, jamais un import de
+    ``apps.ventes.models.Facture``) : ``creer_facture_regie`` crée la facture
+    BROUILLON, puis ``ajouter_lignes_frais_refactures`` y pousse le détail
+    ligne par ligne du folio (recalcule les totaux depuis les lignes)."""
     if folio.statut == Folio.Statut.SOLDE:
         raise FolioClotureError('Ce folio est déjà clôturé.')
+
+    reservation = folio.reservation
+    taxe = calculer_taxe_sejour(reservation)
+    if taxe > 0 and not folio.lignes.filter(
+            origine=LigneFolio.Origine.TAXE_SEJOUR).exists():
+        LigneFolio.objects.create(
+            folio=folio, origine=LigneFolio.Origine.TAXE_SEJOUR,
+            description='Taxe de séjour', montant_ht=taxe, tva=Decimal('0'))
+
     lignes = list(folio.lignes.all())
     if not lignes:
         raise FolioClotureError('Le folio est vide : aucune ligne à facturer.')
-    reservation = folio.reservation
     if reservation.client_id is None:
         raise FolioClotureError(
             "Impossible de clôturer : aucun client CRM résolu sur la "
