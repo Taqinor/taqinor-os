@@ -869,6 +869,38 @@ export const CV_TO_KW = 0.7355
 // plein-soleil ; ~7 h/jour est l'hypothèse marché retenue — modifiable).
 export const HEURES_POMPAGE_DEFAUT = 7
 
+// ── QX48(f) — garde de suffisance hydraulique du repli CV ─────────────────────
+// Puissance hydraulique P(kW) = ρ·g·Q·H / 3,6e6 = Q·H·0,002725 (Q m³/h, H m,
+// ρ=1000, g=9,81). La puissance ARBRE/électrique = hydraulique ÷ η (rendement
+// wire-to-water). On compare la pompe SAISIE (CV→kW) au minimum requis quand
+// HMT + débit sont renseignés, et on AVERTIT si sous-dimensionnée — JAMAIS un
+// blocage. η défaut 0,5 (EST. wire-to-water pompe solaire immergée, à vérifier
+// fondateur : la plage réaliste est ~0,35-0,55).
+export const PUMP_WIRE_TO_WATER_ETA = 0.5 // EST. — à vérifier fondateur
+
+export function pumpHydraulicKwMin(debit, hmt, eta = PUMP_WIRE_TO_WATER_ETA) {
+  const Q = parseFloat(debit)
+  const H = parseFloat(hmt)
+  const e = parseFloat(eta)
+  if (!(Q > 0) || !(H > 0) || !(e > 0)) return null
+  return Math.round((Q * H * 2.725 / (1000 * e)) * 100) / 100
+}
+
+// Avertissement (string) si la pompe saisie (kW) est sous le minimum hydraulique
+// requis, sinon null. Ne bloque JAMAIS le devis.
+export function pumpSufficiencyWarning({ hmt, debit, cvKw, eta = PUMP_WIRE_TO_WATER_ETA } = {}) {
+  const kwMin = pumpHydraulicKwMin(debit, hmt, eta)
+  const kw = parseFloat(cvKw)
+  if (kwMin == null || !(kw > 0)) return null
+  if (kw < kwMin * 0.98) {
+    return `Pompe possiblement sous-dimensionnée : ~${kwMin.toFixed(1)} kW requis `
+      + `pour ${parseFloat(debit)} m³/h à ${parseFloat(hmt)} m HMT `
+      + `(η≈${eta}), pompe saisie ${Math.round(kw * 100) / 100} kW. `
+      + 'Vérifiez le CV ou la HMT.'
+  }
+  return null
+}
+
 // Champ PV ≈ 1.4 × puissance pompe (approche marché 1.3–1.5×), panneaux 710 W
 export function champFromKw(kw) {
   const champKw = Math.round(kw * 1.4 * 100) / 100
@@ -1017,11 +1049,17 @@ export function pompageSelection(produits, { cv, typePompe, hmt, debit, heures, 
   // QX40 — dégradation VERS LE CHEMIN CV avec avertissement visible quand une
   // pompe à courbe convenait mais aucune n'était compatible avec la phase/
   // tension demandée (jamais une pompe 380 V pour une demande mono/220 V).
-  const warning = sel.phaseMismatch
+  const phaseWarn = sel.phaseMismatch
     ? `Aucune pompe à courbe compatible ${alim === 'mono' ? 'monophasée 220 V'
         : 'triphasée 380 V'} n'est disponible et pricée : dimensionnement par CV `
       + '(vérifiez la tension de la pompe et du variateur).'
     : null
+  // QX48(f) — garde de suffisance hydraulique : si HMT + débit sont saisis, on
+  // compare la pompe CV saisie au minimum requis et on avertit si sous-
+  // dimensionnée (jamais bloquant). Cumulable avec l'avertissement de phase.
+  const cvKw = Math.round(cvNum * CV_TO_KW * 100) / 100
+  const suffWarn = pumpSufficiencyWarning({ hmt, debit, cvKw })
+  const warning = [phaseWarn, suffWarn].filter(Boolean).join(' ') || null
   return {
     mode: 'cv',
     pump: null,
