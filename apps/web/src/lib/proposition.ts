@@ -1582,6 +1582,33 @@ export function buildViewerModel(layout: RoofLayout | null): ViewerModel | null 
   return { zones, radiusM: Math.max(radiusM, 6), totalPanels };
 }
 
+/**
+ * WJ118 — Aplati les sommets de TOUTES les zones d'un RoofLayout (roof_layout
+ * exposé par le backend depuis QJ26, `_safe_roof_layout`) en un contour
+ * [lat,lng] — la convention attendue par `buildPublicRoofImageSpec`
+ * (roofPro11/viewerOnly.ts, IDENTIQUE à `captureOutline`), alors que
+ * `RoofLayoutZone.vertices` est en [lng,lat]. Même ENSEMBLE de sommets que le
+ * centroïde calculé par `buildViewerModel` ci-dessus (une moyenne ne dépend pas
+ * de l'ordre) : l'origine ENU de la photo drapée tombe donc EXACTEMENT sur
+ * celle du modèle 3D. Filtre défensivement les entrées invalides — jamais un
+ * throw ; layout absent ou sans zone exploitable → tableau vide (le client
+ * saute alors l'appel réseau de la photo satellite). Pure, exportée pour test.
+ */
+export function roofLayoutOutlineLatLng(layout: RoofLayout | null): Array<[number, number]> {
+  if (!layout || !Array.isArray(layout.zones)) return [];
+  const out: Array<[number, number]> = [];
+  for (const zone of layout.zones) {
+    if (!zone || !Array.isArray(zone.vertices)) continue;
+    for (const v of zone.vertices) {
+      if (!Array.isArray(v) || v.length < 2) continue;
+      const [lng, lat] = v;
+      if (!isFiniteNum(lng) || !isFiniteNum(lat)) continue;
+      out.push([lat, lng]);
+    }
+  }
+  return out;
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 // WJ2 — « Voir les panneaux sur votre toit » à la CAPTURE (mon-toit.astro).
 // Construit un RoofLayout ILLUSTRATIF à un seul pan à partir du contour posé

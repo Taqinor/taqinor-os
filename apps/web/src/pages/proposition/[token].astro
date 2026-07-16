@@ -66,6 +66,7 @@ import {
   whatsappReferralLink,
   parseRoofLayout,
   buildViewerModel,
+  roofLayoutOutlineLatLng,
   zoneAnnotations,
   walkthroughSteps,
   backendFinancing,
@@ -301,22 +302,29 @@ const waLinkReferral = ok ? whatsappReferralLink(Astro.url.origin, reference) : 
 // ── P3 — Lien public du devis PDF premium (même token, nouvel onglet) ────────
 const pdfUrl = ok ? proposalPdfEndpoint(API_BASE, token) : '';
 
-// ── WJ25 — visionneuse 3D en lecture seule (layout backend OPTIONNEL QJ26) ───
-// Le backend n'expose pas encore `roof_layout` (PLAN2 QJ26) : le parse renvoie
-// alors null et la page garde EXACTEMENT le héros statique d'aujourd'hui. Quand
-// le champ arrivera, le modèle 3D (JSON pur) est calculé ICI côté serveur — le
-// client ne charge que le rendu Three.js, en différé (jamais au premier paint).
+// ── WJ25 — visionneuse 3D en lecture seule (layout backend QJ26) ────────────
+// Le backend expose `roof_layout` depuis QJ26 (_safe_roof_layout,
+// apps/ventes/public_views.py) : quand le devis porte un layout exploitable,
+// le modèle 3D (JSON pur) est calculé ICI côté serveur — le client ne charge
+// que le rendu Three.js, en différé (jamais au premier paint). Layout
+// absent/invalide → le parse renvoie null et la page garde EXACTEMENT le héros
+// statique d'aujourd'hui.
 const roofLayout = ok ? parseRoofLayout(data?.roof_layout) : null;
 const viewerModel = roofLayout ? buildViewerModel(roofLayout) : null;
 const show3d = !!viewerModel && viewerModel.totalPanels >= 0;
-const viewerConfig = show3d ? JSON.stringify({ model: viewerModel }) : null;
+// WJ118 — contour aplati [lat,lng] (roof_layout.zones[].vertices, [lng,lat] →
+// [lat,lng] — même convention que captureOutline) transmis au client pour
+// draper la VRAIE photo satellite sur la 3D (buildPublicRoofImageSpec) ; vide
+// si aucun roof_layout exploitable, le client saute alors l'appel réseau.
+const roofOutlineLatLng = roofLayout ? roofLayoutOutlineLatLng(roofLayout) : [];
+const viewerConfig = show3d ? JSON.stringify({ model: viewerModel, roofOutlineLatLng }) : null;
 
 // ── W342 — « L'installation la plus proche de chez vous » ────────────────────
 // Priorité au VRAI GPS du toit (premier sommet du premier pan de
-// roofLayout — [lng, lat]) quand le backend l'expose (QJ26, pas encore en
-// prod aujourd'hui) ; à défaut, correspondance texte du nom de ville dans
-// `client_addr` (déjà exposé). Honnêtement scopé aux villes réelles de
-// REALISATIONS (nearestRealisation borne à 80 km) — jamais une ville devinée.
+// roofLayout — [lng, lat]) quand le backend l'expose (QJ26) ; à défaut,
+// correspondance texte du nom de ville dans `client_addr` (déjà exposé).
+// Honnêtement scopé aux villes réelles de REALISATIONS (nearestRealisation
+// borne à 80 km) — jamais une ville devinée.
 const roofPinLngLat = roofLayout?.zones?.[0]?.vertices?.[0] ?? null;
 const nearestInstall = ok
   ? (roofPinLngLat ? nearestRealisation(roofPinLngLat[1], roofPinLngLat[0])?.realisation ?? null : null) ??
@@ -734,7 +742,11 @@ const signConfig = ok
                   decoding="async"
                 />
               ) : (
-                <div class="absolute inset-0 bg-azur-950" aria-hidden="true"></div>
+                // WJ118 — pas de bg-azur-950 ici : c'est le fond CSS de
+                // `.roof3d-stage` (togglé --sky quand la photo satellite est
+                // drapée) qui peint DÉJÀ EXACTEMENT la même teinte par défaut
+                // (même var(--color-azur-950)) — dégradation byte-identique.
+                <div class="absolute inset-0" aria-hidden="true"></div>
               )}
               <div class="roof3d-scrim absolute inset-0" aria-hidden="true"></div>
               <div id="roof3d-overlay" class="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center">
@@ -1345,7 +1357,7 @@ const signConfig = ok
         </div>
 
         {/* W342 — « L'installation la plus proche de chez vous » : GPS réel du
-            toit (roof_layout, pas encore exposé backend) ou correspondance
+            toit (roof_layout, exposé backend depuis QJ26) ou correspondance
             texte de ville (client_addr). Absent → section entière omise,
             jamais une ville inventée. */}
         {nearestInstall && (
@@ -2872,6 +2884,7 @@ const signConfig = ok
   // en conditions normales, UNIQUEMENT au tap en reduced-motion / Save-Data.
   // Échec WebGL / import → le poster (photo d'étude) reste, avec une note claire.
   import type { ViewerModel } from '../../lib/proposition';
+  import type { RoofImageSpec } from '../../scripts/roofPro11/viewerOnly';
 
   const section3d = document.getElementById('roof3d');
   const stage = document.getElementById('roof3d-stage');
@@ -2882,8 +2895,18 @@ const signConfig = ok
 
   if (section3d && stage && section3d.dataset.viewerConfig) {
     let model: ViewerModel | null = null;
+    // WJ118 — contour [lat,lng] (calculé côté serveur par
+    // roofLayoutOutlineLatLng, roof_layout.zones[].vertices aplati) pour la
+    // photo satellite drapée sur la 3D ; vide si aucun roof_layout exploitable
+    // (le client saute alors l'appel réseau de buildPublicRoofImageSpec).
+    let roofOutlineLatLng: Array<[number, number]> = [];
     try {
-      model = (JSON.parse(section3d.dataset.viewerConfig) as { model: ViewerModel }).model;
+      const parsed = JSON.parse(section3d.dataset.viewerConfig) as {
+        model: ViewerModel;
+        roofOutlineLatLng?: Array<[number, number]>;
+      };
+      model = parsed.model;
+      roofOutlineLatLng = Array.isArray(parsed.roofOutlineLatLng) ? parsed.roofOutlineLatLng : [];
     } catch {
       model = null;
     }
@@ -2918,12 +2941,26 @@ const signConfig = ok
           showFallback(strategy.fallbackMessage ?? 'Vue 3D indisponible sur cet appareil — voici la photo de votre étude.');
           return;
         }
+        // WJ118 — photo satellite RÉELLE du toit du client (contrat viewerOnly
+        // ci-dessus) : TOUT échec (pas de clé MAPTILER/MAPBOX, contour < 3
+        // sommets, /api/roof-config en échec, image cassée/trop lente) → null,
+        // jamais un throw — createRoofViewer traite alors roofImage absent/null
+        // EXACTEMENT comme avant (rendu abstrait, aucune régression).
+        let roofImage: RoofImageSpec | null = null;
+        if (roofOutlineLatLng.length >= 3) {
+          roofImage = await mod.buildPublicRoofImageSpec({ outline: roofOutlineLatLng }).catch(() => null);
+        }
         handle = mod.createRoofViewer(stage, model, {
           reducedMotion: reduced,
           lowEnd: strategy.lowEnd,
+          roofImage,
           onReady: () => {
             if (overlay) overlay.hidden = true;
             if (hintEl) hintEl.hidden = false;
+            // WJ118 — bascule le fond en ciel clair/jour UNIQUEMENT quand la
+            // photo a été réellement drapée ; sans elle, le fond nuit abstrait
+            // actuel reste (aucune classe ajoutée = dégradation byte-identique).
+            if (roofImage && stage) stage.classList.add('roof3d-stage--sky');
           },
           onFail: () => {
             if (overlay) overlay.hidden = false;
@@ -3403,6 +3440,16 @@ const signConfig = ok
     width: 100%;
     aspect-ratio: 16 / 10;
     background: var(--color-azur-950, #0a1a33);
+  }
+  /* WJ118 — la scène Three.js est transparente (setClearColor 0,0,
+     roofPro11/viewerOnly.ts) : sans photo satellite, le fond nuit ci-dessus
+     reste (rendu abstrait actuel, inchangé). Quand la photo est RÉELLEMENT
+     drapée (roofImage résolu côté client, clé MAPTILER/MAPBOX configurée +
+     contour ≥3 sommets + image chargée), la visionneuse ajoute cette classe :
+     un ciel clair/jour, cohérent avec une vraie vue satellite plutôt qu'un
+     vide bleu nuit. Même dégradé que mon-toit.astro (.mt-panels3d-stage). */
+  .roof3d-stage.roof3d-stage--sky {
+    background: linear-gradient(180deg, #b9d7ee 0%, #dcebf7 55%, #f2ecdf 100%);
   }
   .roof3d-stage :global(canvas) {
     touch-action: none;
