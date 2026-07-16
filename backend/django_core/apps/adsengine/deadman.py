@@ -52,7 +52,7 @@ ADRULES_EDGE = 'adrules_library'
 
 
 def build_deadman_rule_spec(*, ceiling_mad=DEFAULT_CATASTROPHE_CEILING_MAD,
-                            name='TAQINOR — Homme-mort (plafond catastrophe)'):
+                            name='Homme-mort (plafond catastrophe)'):
     """Construit le PAYLOAD de la règle ``adrules_library`` — DONNÉES PURES.
 
     La règle : si la dépense du compte sur la fenêtre du jour dépasse
