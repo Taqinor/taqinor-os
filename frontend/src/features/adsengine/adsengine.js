@@ -525,3 +525,52 @@ export function normalizeAnomalies(raw) {
     quand: a.quand || a.date || a.created_at || '',
   }))
 }
+
+// ── ENG36/ENG44 — Rapport de simulation (rejeu visuel) ──
+// Normalise un rapport de simulation ENG36 : scénarios (avec verdict),
+// allocations dans le temps (budget par bras à chaque étape), décisions
+// annotées (FR + chiffres). L'outil de confiance fondateur AVANT tout dirham
+// réel — on ne fait que LIRE ce que la simulation a produit.
+export function normalizeSimReport(raw) {
+  const s = raw && typeof raw === 'object' ? raw : {}
+  return {
+    id: s.id,
+    nom: s.nom || s.name || '',
+    cree_le: s.cree_le || s.created_at || '',
+    scenarios: (Array.isArray(s.scenarios) ? s.scenarios : []).filter(Boolean).map((sc, i) => ({
+      key: sc.key ?? String(i),
+      nom: sc.nom || sc.name || `Scénario ${i + 1}`,
+      verdict: sc.verdict || '',
+      verdict_display: sc.verdict_display || sc.verdict || '—',
+      resume_fr: sc.resume_fr || sc.summary_fr || '',
+    })),
+    allocations: (Array.isArray(s.allocations) ? s.allocations : []).filter(Boolean).map((a, i) => ({
+      etape: a.etape ?? (i + 1),
+      label: a.label || a.date || a.jour || `Étape ${a.etape ?? (i + 1)}`,
+      bras: (Array.isArray(a.bras) ? a.bras : (Array.isArray(a.arms) ? a.arms : []))
+        .filter(Boolean).map((b, j) => ({
+          nom: b.nom || b.name || `Bras ${j + 1}`,
+          budget_mad: numOrNull(b.budget_mad ?? b.budget ?? b.montant_mad),
+        })),
+    })),
+    decisions: (Array.isArray(s.decisions) ? s.decisions : []).filter(Boolean).map((d, i) => ({
+      id: d.id ?? i,
+      etape: d.etape ?? null,
+      label: d.label || d.date || d.jour || (d.etape != null ? `Étape ${d.etape}` : ''),
+      decision_fr: d.decision_fr || d.raison_fr || d.message || '',
+      chiffres: (d.chiffres && typeof d.chiffres === 'object') ? d.chiffres : {},
+    })),
+  }
+}
+
+// Ton du verdict d'un scénario de simulation (gagnant / perdant / neutre).
+export function verdictTone(verdict) {
+  const v = String(verdict || '').toLowerCase()
+  if (v.includes('gagn') || v.includes('positif') || v.includes('succes') || v.includes('succès') || v.includes('vert')) {
+    return { bg: '#dcfce7', color: '#166534' }
+  }
+  if (v.includes('perd') || v.includes('negat') || v.includes('échec') || v.includes('echec') || v.includes('rouge')) {
+    return { bg: '#fee2e2', color: '#991b1b' }
+  }
+  return { bg: '#f1f5f9', color: '#475569' }
+}

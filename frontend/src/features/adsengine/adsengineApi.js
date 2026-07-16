@@ -130,6 +130,12 @@ const adsengineApi = {
     list: (params) => api.get('/adsengine/anomalies/', { params }),
   },
 
+  // ── ENG36/ENG44 — Simulations (rejeu visuel d'un run) ──
+  simulations: {
+    list: (params) => api.get('/adsengine/simulations/', { params }),
+    get: (id) => api.get(`/adsengine/simulations/${id}/`),
+  },
+
   // ── ENG27/ENG41 — Backlog par campagne (CreativeGenerationBatch) ──
   backlog: {
     // File par campagne : runway, diversité de hooks, lots de recombinaisons.
