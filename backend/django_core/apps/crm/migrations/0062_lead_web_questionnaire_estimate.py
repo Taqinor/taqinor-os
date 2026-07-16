@@ -8,7 +8,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("crm", "0060_yopsb11_leadactivityarchive"),
+        ("crm", "0061_adseng1_lead_meta_ids"),
     ]
 
     operations = [
