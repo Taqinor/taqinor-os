@@ -300,7 +300,7 @@ jobs:
         run: |
           LABELS=$(python ../../scripts/ci_shard.py ${{ matrix.shard }} 4)
           echo "Shard ${{ matrix.shard }}/4 -> $LABELS"
-          python manage.py test $LABELS -v 2 --exclude-tag=pdf --exclude-tag=slow --parallel 2 --keepdb
+          python manage.py test $LABELS -v 2 --exclude-tag=pdf --exclude-tag=slow --parallel 1 --keepdb
 
   # WOW6 — thin aggregator that PRESERVES the required `backend-tests` status
   # check name. Branch protection requires the literal `backend-tests` context
