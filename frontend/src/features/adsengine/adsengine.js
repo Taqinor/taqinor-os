@@ -33,3 +33,47 @@ export function formatMAD(value, decimals = 0) {
 export function formatRatio(value, decimals = 1) {
   return formatNumber(value, decimals)
 }
+
+// ── ENG22 — Statuts de câblage (ENG12 health) ──
+// Normalise la réponse de santé (tableau `statuses` OU objet plat clé→bool)
+// en une liste stable [{ key, label, ok, detail }]. Une valeur booléenne vraie
+// = câblé/OK ; un objet { ok, detail } conserve le détail. Repli : [].
+const WIRING_LABELS = {
+  token: "Jeton d'accès (System User)",
+  access_token: "Jeton d'accès (System User)",
+  ad_account: 'Compte publicitaire',
+  ad_account_id: 'Compte publicitaire',
+  pixel: 'Pixel',
+  capi: 'API de conversions (CAPI)',
+  page: 'Page Facebook',
+  paused: 'Client en pause (par design)',
+  business: 'Business Portfolio',
+}
+
+export function normalizeWiringStatuses(raw) {
+  if (!raw) return []
+  const list = Array.isArray(raw) ? raw : (raw.statuses || null)
+  if (Array.isArray(list)) {
+    return list
+      .filter(Boolean)
+      .map(s => ({
+        key: s.key,
+        label: s.label || WIRING_LABELS[s.key] || s.key,
+        ok: !!s.ok,
+        detail: s.detail || '',
+      }))
+  }
+  // Objet plat clé→bool | { ok, detail }.
+  if (typeof raw === 'object') {
+    return Object.entries(raw).map(([key, val]) => {
+      const isObj = val && typeof val === 'object'
+      return {
+        key,
+        label: WIRING_LABELS[key] || key,
+        ok: isObj ? !!val.ok : !!val,
+        detail: isObj ? (val.detail || '') : '',
+      }
+    })
+  }
+  return []
+}
