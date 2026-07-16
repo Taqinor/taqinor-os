@@ -28,6 +28,8 @@ from django.db.models import Sum
 from django.db.models.functions import TruncMonth
 from django.utils import timezone
 
+from core.analytics_db import analytics_queryset
+
 from .models import CleaningEvent, ProductionReading
 from .services import _expected_recent_kwh, get_or_create_config
 
@@ -47,7 +49,9 @@ def _q(value, places='0.01'):
 
 def _monthly_series(installation, since, today):
     """Série mensuelle [(month_date, kwh_decimal)] triée croissant."""
-    qs = (ProductionReading.objects
+    # YHARD9 — agrégat BI lourd (série mensuelle) : route vers le réplica
+    # analytique si configuré (no-op strict sinon). 100 % lecture.
+    qs = (analytics_queryset(ProductionReading.objects)
           .filter(installation=installation, date__gte=since, date__lte=today)
           .annotate(month=TruncMonth('date'))
           .values('month')
@@ -84,7 +88,9 @@ def om_metrics(installation, *, window_days=DEFAULT_WINDOW_DAYS, today=None):
     since = today - timedelta(days=window_days)
     config = get_or_create_config(installation)
 
-    readings = ProductionReading.objects.filter(
+    # YHARD9 — lecture BI (relevés de production sur la fenêtre) : réplica si
+    # configuré, no-op strict sinon. 100 % lecture.
+    readings = analytics_queryset(ProductionReading.objects).filter(
         installation=installation, date__gte=since, date__lte=today)
     total_kwh = Decimal('0')
     days_with_data = set()
