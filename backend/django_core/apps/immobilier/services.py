@@ -161,3 +161,63 @@ def montant_restitue_depot(bail):
 
     montant = bail.depot_garantie - (bail.montant_retenu or Decimal('0'))
     return max(montant, Decimal('0'))
+
+
+def _add_months(d, months):
+    """NTPRO6 — ``d`` décalée de ``months`` mois (jour recadré fin de mois).
+
+    Fonction pure stdlib (pas de dépendance ajoutée) : même calcul que
+    ``apps.ventes.services._add_months`` mais gardée LOCALE (pas d'import
+    cross-app pour une simple arithmétique de date, cf. frontière CLAUDE.md)."""
+    import calendar
+    from datetime import date
+
+    total = d.month - 1 + int(months)
+    year = d.year + total // 12
+    month = total % 12 + 1
+    day = min(d.day, calendar.monthrange(year, month)[1])
+    return date(year, month, day)
+
+
+def generer_echeancier(bail):
+    """NTPRO6 — Génère l'échéancier mensuel d'un ``Bail`` ``actif``.
+
+    Crée une ``EcheanceLoyer`` par mois, de ``date_debut`` sur ``duree_mois``
+    mois. IDEMPOTENT : une période déjà présente (``unique_together`` bail +
+    periode_debut) est SAUTÉE, jamais dupliquée ni recréée — relancer la
+    génération sur un bail déjà échéancé ne crée que les mois manquants.
+    Ne fait rien (renvoie une liste vide) si le bail n'est pas ``actif``.
+    """
+    from datetime import timedelta
+
+    from .models import Bail, EcheanceLoyer
+
+    if bail.statut != Bail.Statut.ACTIF:
+        return []
+
+    existantes = set(
+        EcheanceLoyer.objects
+        .filter(bail=bail)
+        .values_list('periode_debut', flat=True)
+    )
+
+    montant_loyer_ht = bail.loyer_mensuel_ht
+    montant_charges = bail.charges_mensuelles_provisions or 0
+    montant_total = montant_loyer_ht + montant_charges
+
+    creees = []
+    for i in range(bail.duree_mois):
+        periode_debut = _add_months(bail.date_debut, i)
+        if periode_debut in existantes:
+            continue
+        periode_fin = _add_months(periode_debut, 1) - timedelta(days=1)
+        echeance = EcheanceLoyer.objects.create(
+            company=bail.company, bail=bail,
+            periode_debut=periode_debut, periode_fin=periode_fin,
+            montant_loyer_ht=montant_loyer_ht,
+            montant_charges=montant_charges,
+            montant_total=montant_total,
+        )
+        creees.append(echeance)
+
+    return creees

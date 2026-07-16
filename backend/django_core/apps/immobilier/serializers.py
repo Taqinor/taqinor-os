@@ -6,7 +6,10 @@ multi-tenant).
 """
 from rest_framework import serializers
 
-from .models import Bail, Batiment, Local, Locataire, Niveau, RevisionLoyer, Site
+from .models import (
+    Bail, Batiment, EcheanceLoyer, Local, Locataire, Niveau, RevisionLoyer,
+    Site,
+)
 
 
 class SiteSerializer(serializers.ModelSerializer):
@@ -117,4 +120,28 @@ class BailSerializer(serializers.ModelSerializer):
             'depot_garantie_recu', 'date_reception_depot',
             'depot_garantie_restitue', 'date_restitution', 'montant_retenu',
             'motif_retenue', 'date_creation', 'company',
+        ]
+
+
+class EcheanceLoyerSerializer(serializers.ModelSerializer):
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    bail_local_reference = serializers.CharField(
+        source='bail.local.reference', read_only=True)
+    bail_locataire_nom = serializers.CharField(
+        source='bail.locataire.nom', read_only=True)
+
+    class Meta:
+        model = EcheanceLoyer
+        fields = [
+            'id', 'bail', 'bail_local_reference', 'bail_locataire_nom',
+            'periode_debut', 'periode_fin', 'montant_loyer_ht',
+            'montant_charges', 'montant_total', 'statut', 'statut_display',
+            'facture_ventes_id', 'date_emission_quittance', 'date_creation',
+            'company',
+        ]
+        read_only_fields = [
+            'id', 'montant_loyer_ht', 'montant_charges', 'montant_total',
+            'statut', 'facture_ventes_id', 'date_emission_quittance',
+            'date_creation', 'company',
         ]

@@ -19,7 +19,17 @@ const immobilierApi = {
     ...crud('locataires'),
     resolveClient: (id) => api.post(`/immobilier/locataires/${id}/resolve-client/`),
   },
-  baux: crud('baux'),
+  baux: {
+    ...crud('baux'),
+    reviser: (id, data) => api.post(`/immobilier/baux/${id}/reviser/`, data),
+    encaisserDepot: (id, data) =>
+      api.post(`/immobilier/baux/${id}/encaisser-depot/`, data),
+    restituerDepot: (id, data) =>
+      api.post(`/immobilier/baux/${id}/restituer-depot/`, data),
+    genererEcheancier: (id) =>
+      api.post(`/immobilier/baux/${id}/generer-echeancier/`),
+  },
+  echeancesLoyer: crud('echeances-loyer'),
 }
 
 export default immobilierApi

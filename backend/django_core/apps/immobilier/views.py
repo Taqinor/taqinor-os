@@ -10,10 +10,11 @@ from rest_framework.response import Response
 
 from core.mixins import TenantMixin
 
-from .models import Bail, Batiment, Local, Locataire, Niveau, Site
+from .models import Bail, Batiment, EcheanceLoyer, Local, Locataire, Niveau, Site
 from .serializers import (
-    BailSerializer, BatimentSerializer, LocalSerializer, LocataireSerializer,
-    NiveauSerializer, RevisionLoyerSerializer, SiteSerializer,
+    BailSerializer, BatimentSerializer, EcheanceLoyerSerializer,
+    LocalSerializer, LocataireSerializer, NiveauSerializer,
+    RevisionLoyerSerializer, SiteSerializer,
 )
 
 
@@ -195,3 +196,41 @@ class BailViewSet(_ImmobilierBaseViewSet):
         data = self.get_serializer(bail).data
         data['montant_restitue'] = str(services.montant_restitue_depot(bail))
         return Response(data)
+
+    @action(detail=True, methods=['post'], url_path='generer-echeancier')
+    def generer_echeancier(self, request, pk=None):
+        """NTPRO6 — Génère l'échéancier mensuel du bail (idempotent)."""
+        from . import services
+
+        bail = self.get_object()
+        creees = services.generer_echeancier(bail)
+        return Response(
+            EcheanceLoyerSerializer(creees, many=True).data,
+            status=status.HTTP_201_CREATED)
+
+
+class EcheanceLoyerViewSet(_ImmobilierBaseViewSet):
+    """NTPRO6/7/8 — Échéances de loyer (échéancier + quittancement + impayés)."""
+    queryset = EcheanceLoyer.objects.select_related(
+        'bail', 'bail__local', 'bail__locataire').all()
+    serializer_class = EcheanceLoyerSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['periode_debut', 'date_creation']
+
+    def create(self, request, *args, **kwargs):
+        # Aucune création directe : une EcheanceLoyer naît TOUJOURS de
+        # ``services.generer_echeancier`` (Bail.generer-echeancier), jamais
+        # d'un POST libre qui contournerait l'idempotence/unique_together.
+        return Response(
+            {'detail': "Utiliser baux/{id}/generer-echeancier/."},
+            status=status.HTTP_405_METHOD_NOT_ALLOWED)
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        bail_id = self.request.query_params.get('bail')
+        statut = self.request.query_params.get('statut')
+        if bail_id:
+            qs = qs.filter(bail_id=bail_id)
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
