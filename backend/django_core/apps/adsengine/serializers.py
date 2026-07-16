@@ -1,7 +1,10 @@
 """Sérialiseurs du moteur publicitaire Meta Ads (Groupe ENG)."""
 from rest_framework import serializers
 
-from .models import EngineAction, GuardrailConfig, MetaConnection
+from .models import (
+    CreativeAsset, CreativePolicy, EngineAction, EngineAlert, GuardrailConfig,
+    MetaConnection,
+)
 
 
 class MetaConnectionSerializer(serializers.ModelSerializer):
@@ -42,7 +45,10 @@ class GuardrailConfigSerializer(serializers.ModelSerializer):
         model = GuardrailConfig
         fields = [
             'id', 'daily_budget_ceiling_mad', 'weekly_change_pct_max',
-            'anomaly_window_hours', 'created_at', 'updated_at',
+            'anomaly_window_hours',
+            # ENG8 — toggles de capacités (auto-apply par capacité).
+            'auto_rotate_creative', 'auto_rebalance_within_band',
+            'created_at', 'updated_at',
         ]
         read_only_fields = ['created_at', 'updated_at']
 
@@ -75,3 +81,66 @@ class EngineActionSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "Une raison en une phrase (français) est obligatoire.")
         return value.strip()
+
+
+class EngineAlertSerializer(serializers.ModelSerializer):
+    """ENG13 — Alerte moteur (lecture seule côté API).
+
+    Rendue avec des deep-links ``wa.me`` (un par destinataire configuré) — mais
+    l'ENVOI réel reste gated (BSP). Aucun secret exposé.
+    """
+
+    wa_links = serializers.SerializerMethodField()
+
+    class Meta:
+        model = EngineAlert
+        fields = [
+            'id', 'alert_type', 'message', 'action', 'detail',
+            'acknowledged', 'wa_links', 'created_at', 'updated_at',
+        ]
+        # ``wa_links`` est un champ déclaré (SerializerMethodField, déjà
+        # read-only) — il ne doit PAS figurer dans read_only_fields (DRF
+        # l'interdit). Ce viewset est de toute façon GET-only (ENG13).
+        read_only_fields = [
+            'id', 'alert_type', 'message', 'action', 'detail',
+            'acknowledged', 'created_at', 'updated_at',
+        ]
+
+    def get_wa_links(self, obj):
+        from .alerts import wa_links
+        return wa_links(obj.message)
+
+
+class CreativeAssetSerializer(serializers.ModelSerializer):
+    """ENG15 — Asset créatif. ``file_key`` (posé par l'upload/la fabrique),
+    ``policy_stamp`` (posé par la check-list ENG16) et ``perf`` sont en lecture
+    seule : le client ne les écrit jamais directement. ``company`` posée côté
+    serveur. ``is_policy_passed`` expose l'état de validation."""
+
+    is_policy_passed = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = CreativeAsset
+        fields = [
+            'id', 'asset_type', 'file_key', 'source_lane', 'cost_cents',
+            'policy_stamp', 'is_policy_passed', 'perf', 'parent',
+            'created_at', 'updated_at',
+        ]
+        # NB : ``is_policy_passed`` est déjà read-only (champ déclaré) — ne PAS
+        # le remettre ici (DRF interdit un champ à la fois déclaré ET dans
+        # read_only_fields).
+        read_only_fields = [
+            'file_key', 'policy_stamp', 'perf', 'created_at', 'updated_at',
+        ]
+
+
+class CreativePolicySerializer(serializers.ModelSerializer):
+    """ENG16 — Policy créative d'une société. ``company`` posée côté serveur."""
+
+    class Meta:
+        model = CreativePolicy
+        fields = [
+            'id', 'forbidden_rules', 'allowed_rules',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']

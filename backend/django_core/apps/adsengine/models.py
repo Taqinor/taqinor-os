@@ -101,6 +101,19 @@ class GuardrailConfig(TenantModel):
     anomaly_window_hours = models.PositiveIntegerField(
         default=48, verbose_name="Fenêtre de détection d'anomalie (heures)")
 
+    # ── ENG8 — Toggles de capacités PAR société (motif HubSpot Breeze : « par
+    # capacité, pas un interrupteur global »). Défaut False : rien ne s'auto-
+    # applique tant que la société n'active pas explicitement la capacité. Un
+    # ``kind`` couvert par une capacité activée saute l'approbation humaine, mais
+    # une ligne ``EngineAction auto=True`` est TOUJOURS écrite (trace d'audit) et
+    # l'exécution est journalisée. Ces toggles ne peuvent JAMAIS autoriser une
+    # activation de campagne (interdite en dur, invariant permanent).
+    auto_rotate_creative = models.BooleanField(
+        default=False, verbose_name='Auto — rotation créative (ENG8)')
+    auto_rebalance_within_band = models.BooleanField(
+        default=False,
+        verbose_name='Auto — rééquilibrage dans la bande (ENG8)')
+
     class Meta:
         verbose_name = 'Garde-fous publicitaires'
         verbose_name_plural = 'Garde-fous publicitaires'
@@ -283,6 +296,14 @@ class EngineAction(TenantModel):
         CREATE_CAMPAIGN = 'create_campaign', 'Créer une campagne'
         CREATE_ADSET = 'create_adset', 'Créer un ad set'
         CREATE_AD = 'create_ad', 'Créer une ad'
+        # ENG8 — kinds couverts par les toggles de capacités (auto-apply possible
+        # si la capacité est activée sur la GuardrailConfig de la société).
+        ROTATE_CREATIVE = 'rotate_creative', 'Roter le créatif'
+        REBALANCE_BUDGET = 'rebalance_budget', 'Rééquilibrer le budget'
+        # ENG9 — mise en pause (proposée par le détecteur d'anomalie). Pauser
+        # n'active JAMAIS rien : c'est l'action de sécurité par excellence. La
+        # cible (campaign/adset/ad + meta_id) vit dans ``payload``.
+        PAUSE = 'pause', 'Mettre en pause'
 
     kind = models.CharField(
         max_length=32, choices=Kind.choices, verbose_name='Type')
@@ -321,3 +342,170 @@ class EngineAction(TenantModel):
 
     def __str__(self):
         return f'{self.get_kind_display()} — {self.get_status_display()}'
+
+
+class WeeklyBrief(TenantModel):
+    """ENG11 — Brief hebdomadaire déterministe (v1, SANS LLM).
+
+    Un instantané hebdomadaire, PAR société, des chiffres RÉELS (dépense, CPL,
+    coût-par-signature, fréquence vs seuil de fatigue, conformité SLA) rendu en
+    phrases template FR — **jamais de texte généré par un LLM en v1** (motif
+    anti-hallucination : c'est exactement le commentaire que les utilisateurs
+    éteignent). ``data`` porte les chiffres (JSON) ; ``markdown`` le rendu FR ;
+    ``propositions`` (dans ``data``) relie 0-3 ``EngineAction`` proposées.
+
+    Idempotent : une (re)génération pour la même semaine met à jour la ligne
+    existante (unique par ``(company, period_start)``), jamais de doublon.
+    """
+
+    period_start = models.DateField(verbose_name='Début de période')
+    period_end = models.DateField(verbose_name='Fin de période')
+    data = models.JSONField(
+        default=dict, blank=True, verbose_name='Chiffres (JSON)')
+    markdown = models.TextField(
+        blank=True, default='', verbose_name='Rendu markdown (FR)')
+
+    class Meta:
+        verbose_name = 'Brief hebdomadaire'
+        verbose_name_plural = 'Briefs hebdomadaires'
+        ordering = ['-period_start', '-created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'period_start'],
+                name='uniq_adsengine_weekly_brief'),
+        ]
+
+    def __str__(self):
+        return f'Brief {self.period_start} → {self.period_end}'
+
+
+class EngineAlert(TenantModel):
+    """ENG13 — Alerte moteur (WhatsApp-first) : violation / anomalie / inopérante.
+
+    Matérialise une alerte émise par le moteur de garde-fous (ENG9) : une
+    violation de garde-fou, une anomalie détectée, ou une règle INOPÉRANTE (qui
+    n'a pas pu tourner — leçon Madgicx : jamais un échec silencieux). Le rendu FR
+    court + le deep-link ``wa.me`` vivent dans ``alerts.py`` (l'ENVOI réel via
+    template WhatsApp BSP est gated/plus tard — ici on ne fait que rendre + lister).
+
+    ``action`` relie optionnellement l'alerte à la proposition ``EngineAction``
+    qui l'accompagne (ex. l'anomalie propose une pause).
+
+    Les valeurs d'``alert_type`` sont alignées sur ``guardrails.ALERT_*``.
+    """
+
+    class Type(models.TextChoices):
+        ANOMALIE = 'anomalie', 'Anomalie'
+        GARDE_FOU = 'garde_fou', 'Violation de garde-fou'
+        REGLE_INOPERANTE = 'regle_inoperante', 'Règle inopérante'
+
+    alert_type = models.CharField(
+        max_length=20, choices=Type.choices, verbose_name="Type d'alerte")
+    message = models.TextField(verbose_name='Message (FR)')
+    action = models.ForeignKey(
+        'adsengine.EngineAction', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='alerts',
+        verbose_name='Action liée')
+    detail = models.JSONField(
+        default=dict, blank=True, verbose_name='Détail')
+    acknowledged = models.BooleanField(
+        default=False, verbose_name='Acquittée')
+
+    class Meta:
+        verbose_name = 'Alerte moteur'
+        verbose_name_plural = 'Alertes moteur'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['company', 'acknowledged'],
+                         name='adseng_alert_co_ack_idx'),
+        ]
+
+    def __str__(self):
+        return f'[{self.get_alert_type_display()}] {self.message[:40]}'
+
+
+class CreativeAsset(TenantModel):
+    """ENG15 — Asset créatif (reel / static / explainer) stocké dans MinIO.
+
+    ``file_key`` porte la clé de l'objet MinIO (jamais un ``FileField`` — clé
+    préfixée société, pattern SCA42). ``policy_stamp`` porte la trace de la
+    check-list policy (ENG16) : ``{passed, rules_checked[], checked_at,
+    checked_by}``. ``perf`` remonte les chiffres d'insights (impressions/spend/
+    résultats). ``parent`` relie une variante (ENG18) à son asset de base.
+
+    RÈGLE DURE (testée) : un asset dont ``policy_stamp.passed`` n'est pas vrai NE
+    PEUT PAS être référencé par une ``EngineAction`` de création d'ad — le
+    contrôle vit dans ``services`` (``assert_creative_ok_for_ad``). Un asset non
+    validé ne part donc jamais en production.
+    """
+
+    class AssetType(models.TextChoices):
+        REEL = 'reel', 'Reel (vidéo verticale)'
+        STATIC = 'static', 'Statique (image)'
+        EXPLAINER = 'explainer', 'Explainer animé'
+
+    asset_type = models.CharField(
+        max_length=12, choices=AssetType.choices, verbose_name='Type')
+    file_key = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Clé MinIO')
+    source_lane = models.CharField(
+        max_length=40, blank=True, default='',
+        verbose_name='Lane source',
+        help_text="Origine (upload / fal / templated / zapcap / …).")
+    cost_cents = models.PositiveIntegerField(
+        default=0, verbose_name='Coût de production (centimes)')
+    policy_stamp = models.JSONField(
+        default=dict, blank=True,
+        verbose_name='Tampon policy (check-list)')
+    perf = models.JSONField(
+        default=dict, blank=True,
+        verbose_name='Performance (remontée des insights)')
+    parent = models.ForeignKey(
+        'adsengine.CreativeAsset', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='variants',
+        verbose_name='Asset parent (variante)')
+
+    class Meta:
+        verbose_name = 'Asset créatif'
+        verbose_name_plural = 'Assets créatifs'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.get_asset_type_display()} #{self.pk}'
+
+    @property
+    def is_policy_passed(self):
+        """Vrai si la check-list policy est explicitement passée (ENG16)."""
+        return bool((self.policy_stamp or {}).get('passed') is True)
+
+
+class CreativePolicy(TenantModel):
+    """ENG16 — Policy créative PAR société (une par société, ``OneToOne``).
+
+    Deux listes de règles (interdits / permis). Le contrôle est une CHECK-LIST
+    DÉTERMINISTE que l'humain confirme règle par règle dans l'UI : **le système
+    ENREGISTRE la confirmation, il n'« évalue » jamais seul** le créatif (pas de
+    jugement automatique du contenu). ``policy.py`` porte les défauts + la
+    logique de check ; ``seed_adsengine`` seed la policy par défaut.
+
+    Défaut (seedé) : JAMAIS de faux chantiers / faux clients / faux témoignages
+    ni de chiffre non vérifié ; explainers animés / B-roll abstrait / rendus
+    produit OK. Chaque tenant peut définir sa propre policy.
+    """
+
+    company = models.OneToOneField(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='adsengine_creative_policy', verbose_name='Société')
+    forbidden_rules = models.JSONField(
+        default=list, blank=True, verbose_name='Règles interdites')
+    allowed_rules = models.JSONField(
+        default=list, blank=True, verbose_name='Règles permises')
+
+    class Meta:
+        verbose_name = 'Policy créative'
+        verbose_name_plural = 'Policies créatives'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'Policy créative société {self.company_id}'

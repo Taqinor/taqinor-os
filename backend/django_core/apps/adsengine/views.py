@@ -5,6 +5,8 @@ ViewSets métier (connexion, garde-fous, actions) atterrissent aux tâches
 suivantes de la lane et sont tous basés sur
 ``core.viewsets.CompanyScopedModelViewSet`` (scoping société garanti).
 """
+import os
+
 from rest_framework.decorators import action
 from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.response import Response
@@ -13,9 +15,13 @@ from rest_framework.views import APIView
 from core.permissions import _user_has_or_legacy
 from core.viewsets import CompanyScopedModelViewSet
 
-from .models import EngineAction, GuardrailConfig, MetaConnection
+from .models import (
+    CreativeAsset, CreativePolicy, EngineAction, EngineAlert, GuardrailConfig,
+    MetaConnection,
+)
 from .serializers import (
-    EngineActionSerializer, GuardrailConfigSerializer, MetaConnectionSerializer,
+    CreativeAssetSerializer, CreativePolicySerializer, EngineActionSerializer,
+    EngineAlertSerializer, GuardrailConfigSerializer, MetaConnectionSerializer,
 )
 
 
@@ -31,6 +37,91 @@ class StatusView(APIView):
 
     def get(self, request):
         return Response({'ok': True})
+
+
+# ENG12 — clés d'environnement dont l'endpoint santé rapporte la PRÉSENCE (jamais
+# la valeur). Lead Ads (webhook), CAPI (conversions serveur), fabrique créative.
+WIRING_ENV_KEYS = (
+    'META_LEAD_ADS_APP_SECRET',
+    'META_LEAD_ADS_VERIFY_TOKEN',
+    'META_CAPI_ACCESS_TOKEN',
+    'META_CAPI_PIXEL_ID',
+    'ZAPCAP_API_KEY',
+    'FAL_API_KEY',
+    'TEMPLATED_API_KEY',
+    'ELEVENLABS_API_KEY',
+    'JSON2VIDEO_API_KEY',
+)
+
+
+class WiringHealthView(APIView):
+    """ENG12 — Santé du câblage publicitaire (pour le dashboard ENG23).
+
+    ``GET /api/django/adsengine/wiring-health/`` — company-scopé, gaté par
+    ``adsengine_view``. Rapporte la seule PRÉSENCE (booléen) de chaque clé
+    d'environnement (Lead Ads / CAPI / fabrique) — **jamais la valeur** — plus la
+    présence d'un token de connexion, la dernière synchro réussie, et (non encore
+    câblés) le dernier webhook Lead Ads / événement CAPI. Aucun secret ne fuit.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if not _user_has_or_legacy(request.user, 'adsengine_view'):
+            return Response({'detail': 'Permission refusée.'}, status=403)
+        company = getattr(request.user, 'company', None)
+        if company is None:
+            return Response({'detail': 'Aucune société.'}, status=400)
+
+        from .models import InsightSnapshot
+
+        # PRÉSENCE uniquement — jamais la valeur du secret.
+        keys = {name: bool(os.environ.get(name)) for name in WIRING_ENV_KEYS}
+
+        conn = MetaConnection.objects.filter(company=company).first()
+        connection = {
+            'exists': conn is not None,
+            'enabled': bool(conn and conn.enabled),
+            'has_token': bool(conn and conn.has_token),  # présence, pas le token
+        }
+
+        last_snap = (InsightSnapshot.objects
+                     .filter(company=company)
+                     .order_by('-updated_at')
+                     .values_list('updated_at', flat=True)
+                     .first())
+
+        return Response({
+            'keys': keys,
+            'connection': connection,
+            'last_successful_sync': (
+                last_snap.isoformat() if last_snap else None),
+            # Câblés par les groupes Meta Lead Ads / CAPI (gated) — non encore
+            # disponibles : rapportés None honnêtement, jamais fabriqués.
+            'last_lead_ads_webhook': None,
+            'last_capi_event': None,
+        })
+
+
+class CostPerSignatureView(APIView):
+    """ENG10 — Métrique coût-par-signature (héro-chiffre du dashboard).
+
+    ``GET /api/django/adsengine/metrics/cout-par-signature/`` — company-scopé
+    (jamais d'autre société), gaté par ``adsengine_view``. Renvoie l'agrégat +
+    le détail par campagne AVEC les ids de leads derrière chaque chiffre
+    (traçabilité). Aucun secret exposé.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if not _user_has_or_legacy(request.user, 'adsengine_view'):
+            return Response({'detail': 'Permission refusée.'}, status=403)
+        from .metrics import cost_per_signature_summary
+        company = getattr(request.user, 'company', None)
+        if company is None:
+            return Response({'detail': 'Aucune société.'}, status=400)
+        return Response(cost_per_signature_summary(company))
 
 
 class AdsengineViewSet(CompanyScopedModelViewSet):
@@ -68,6 +159,83 @@ class GuardrailConfigViewSet(AdsengineViewSet):
 
     queryset = GuardrailConfig.objects.all()
     serializer_class = GuardrailConfigSerializer
+
+
+class EngineAlertViewSet(AdsengineViewSet):
+    """ENG13 — Liste (lecture seule) des alertes moteur pour le dashboard.
+
+    Company-scopé (hérité) + gaté ``adsengine_view``. Restreint à GET : les
+    alertes sont créées par le moteur (ENG9), jamais par un client API.
+    """
+
+    queryset = EngineAlert.objects.all()
+    serializer_class = EngineAlertSerializer
+    http_method_names = ['get', 'head', 'options']
+
+
+class CreativeAssetViewSet(AdsengineViewSet):
+    """ENG15 — CRUD des assets créatifs + upload MinIO.
+
+    Company-scopé (hérité) ; lecture ``adsengine_view`` / écriture
+    ``adsengine_manage``. ``file_key`` / ``policy_stamp`` / ``perf`` sont posés
+    côté serveur (upload / check-list ENG16 / insights), jamais par le client.
+    """
+
+    queryset = CreativeAsset.objects.all()
+    serializer_class = CreativeAssetSerializer
+
+    @action(detail=False, methods=['post'])
+    def upload(self, request):
+        """Téléverse un fichier statique (image) dans MinIO et crée l'asset en
+        attente de check-list policy (``policy_stamp`` vide → non validé).
+
+        Réutilise le pipeline de stockage de fondation (``records.storage`` —
+        clé préfixée société, SCA42). Les reels/explainers vidéo passent par la
+        fabrique créative (ENG17), pas par cet upload d'image."""
+        from apps.records.storage import store_attachment
+
+        f = request.FILES.get('file')
+        if f is None:
+            return Response({'detail': 'Fichier requis.'}, status=400)
+        company = getattr(request.user, 'company', None)
+        stored, err = store_attachment(f, company=company)
+        if err:
+            return Response({'detail': err}, status=400)
+        asset = CreativeAsset.objects.create(
+            company=company,
+            asset_type=request.data.get(
+                'asset_type', CreativeAsset.AssetType.STATIC),
+            file_key=stored['file_key'],
+            source_lane='upload',
+            cost_cents=int(request.data.get('cost_cents') or 0),
+        )
+        return Response(self.get_serializer(asset).data, status=201)
+
+    @action(detail=False, methods=['get'])
+    def checklist(self, request):
+        """ENG16 — Renvoie la check-list policy à confirmer par l'humain."""
+        from .policy import build_checklist
+        company = getattr(request.user, 'company', None)
+        return Response(build_checklist(company))
+
+    @action(detail=True, methods=['post'], url_path='policy-check')
+    def policy_check(self, request, pk=None):
+        """ENG16 — Enregistre la confirmation HUMAINE règle par règle (le système
+        ne juge jamais seul). ``passed`` ne devient vrai que si toutes les règles
+        interdites sont confirmées. Écriture → ``adsengine_manage``."""
+        from .policy import record_policy_check
+        asset = self.get_object()
+        confirmed = request.data.get('confirmed_keys') or []
+        record_policy_check(
+            asset, confirmed_keys=confirmed, checked_by=request.user)
+        return Response(self.get_serializer(asset).data)
+
+
+class CreativePolicyViewSet(AdsengineViewSet):
+    """ENG16 — CRUD de la policy créative (une par société)."""
+
+    queryset = CreativePolicy.objects.all()
+    serializer_class = CreativePolicySerializer
 
 
 class HasAdsengineApprove(BasePermission):
