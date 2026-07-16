@@ -19,7 +19,8 @@ def attribuer_numero_dossier(patient):
     from .models import Patient
 
     patient.numero_dossier = next_reference(
-        Patient, 'PAT', patient.company, padding=5, period='none')
+        Patient, 'PAT', patient.company, padding=5, period='none',
+        field='numero_dossier')
     patient.save(update_fields=['numero_dossier'])
     return patient
 
@@ -170,6 +171,15 @@ def reste_a_charge_total(acte_realise):
     return False
 
 
+def _dec(value):
+    """NTSAN13 — coerce un champ monétaire en ``Decimal``. Django ne convertit
+    PAS une valeur assignée en mémoire avant un reload DB : une instance
+    fraîchement créée (ou un montant passé en chaîne) peut porter une ``str``.
+    Un service de calcul monétaire doit rester robuste à ce cas."""
+    from decimal import Decimal
+    return value if isinstance(value, Decimal) else Decimal(str(value))
+
+
 def _split_ligne(acte_realise):
     """NTSAN13 — split tiers payant/patient d'UNE ligne (``ActeRealise``).
 
@@ -184,14 +194,14 @@ def _split_ligne(acte_realise):
     """
     from decimal import Decimal
 
-    ligne_ttc = acte_realise.tarif_applique_ttc * acte_realise.quantite
+    ligne_ttc = _dec(acte_realise.tarif_applique_ttc) * acte_realise.quantite
 
     if reste_a_charge_total(acte_realise):
         return Decimal('0'), ligne_ttc
 
     pec = acte_realise.prise_en_charge
     if pec is not None and pec.montant_accorde is not None:
-        tiers = min(pec.montant_accorde, ligne_ttc)
+        tiers = min(_dec(pec.montant_accorde), ligne_ttc)
         return tiers, ligne_ttc - tiers
 
     from .models import GrilleTarifaire
@@ -203,7 +213,7 @@ def _split_ligne(acte_realise):
             acte_id=acte_realise.acte_id).first()
         if grille is not None and grille.taux_prise_charge_pct:
             tiers = (
-                ligne_ttc * grille.taux_prise_charge_pct
+                ligne_ttc * _dec(grille.taux_prise_charge_pct)
                 / Decimal('100')).quantize(Decimal('0.01'))
             return tiers, ligne_ttc - tiers
 
@@ -223,7 +233,7 @@ def calculer_split_facture_sante(actes_realises):
     part_patient = Decimal('0')
     for acte_realise in actes_realises:
         tiers, patient_part = _split_ligne(acte_realise)
-        sous_total += acte_realise.tarif_applique_ttc * acte_realise.quantite
+        sous_total += _dec(acte_realise.tarif_applique_ttc) * acte_realise.quantite
         part_tiers_payant += tiers
         part_patient += patient_part
     return sous_total, part_tiers_payant, part_patient
