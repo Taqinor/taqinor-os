@@ -88,6 +88,8 @@ _APP_URLS = [
     path('identity/', include('apps.identity.urls')),
     # Groupe ENG — Moteur publicitaire Meta Ads dans l'ERP.
     path('adsengine/', include('apps.adsengine.urls')),
+    # Groupe NTFPA — FP&A (budgets, prévisions glissantes, scénarios).
+    path('fpa/', include('apps.fpa.urls')),
 ]
 
 urlpatterns = [

@@ -172,6 +172,10 @@ INSTALLED_APPS = [
     # propose→approuve→applique, création TOUJOURS PAUSED). App satellite
     # multi-société ; tout no-ope sans token/clé configuré.
     'apps.adsengine',
+    # Groupe NTFPA — FP&A entreprise : cycles budgétaires par département,
+    # prévisions glissantes, scénarios what-if, variance analysis. DISTINCT
+    # du budget micro par chantier (gestion_projet.BudgetProjet, PROJ21/22).
+    'apps.fpa',
 ]
 
 MIDDLEWARE = [
