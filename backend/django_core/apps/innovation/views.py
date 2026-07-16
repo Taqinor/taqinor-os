@@ -130,6 +130,16 @@ class IdeeViewSet(CompanyScopedModelViewSet):
         qs = chatter_qs(idee, company=idee.company)
         return Response(ChatterActivitySerializer(qs, many=True).data)
 
+    # ── NTIDE12 — export .xlsx (paramètres → campagnes innovation) ──────────
+    @action(detail=False, methods=['get'], url_path='export-xlsx',
+            permission_classes=[IsAdminOrResponsableTier])
+    def export_xlsx(self, request):
+        """Exporte les idées (filtres statut/contexte/date déjà appliqués par
+        ``get_queryset``) en .xlsx."""
+        from .exports import export_idees_xlsx
+        qs = self.filter_queryset(self.get_queryset()).select_related('auteur')
+        return export_idees_xlsx(qs)
+
 
 class VoteIdeeViewSet(CompanyScopedModelViewSet):
     """Votes sur idées (NTIDE2). Lecture : tout utilisateur connecté.

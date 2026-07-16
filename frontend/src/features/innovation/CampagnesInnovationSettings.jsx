@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
+import { Download } from 'lucide-react'
 import { Card, CardContent, Input, Textarea, Switch, Button, toast } from '../../ui'
 import innovationApi from '../../api/innovationApi'
+import { downloadBlob } from '../../utils/downloadBlob'
 import { SectionTitle, Field } from '../../pages/parametres/peComponents'
 
 /* ============================================================================
@@ -23,6 +25,7 @@ const THEMES = [
 export default function CampagnesInnovationSettings() {
   const [form, setForm] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [exporting, setExporting] = useState(false)
 
   useEffect(() => {
     innovationApi.parametres.get()
@@ -44,6 +47,20 @@ export default function CampagnesInnovationSettings() {
       toast.error('Enregistrement impossible.')
     } finally {
       setSaving(false)
+    }
+  }
+
+  // NTIDE12 — export .xlsx des idées (filtres statut/date appliqués côté
+  // backend ; ce bouton exporte l'ensemble, sans filtre, depuis Paramètres).
+  const exportIdees = async () => {
+    setExporting(true)
+    try {
+      const res = await innovationApi.exportXlsx()
+      downloadBlob(res.data, 'idees.xlsx')
+    } catch {
+      toast.error('Export impossible.')
+    } finally {
+      setExporting(false)
     }
   }
 
@@ -97,9 +114,12 @@ export default function CampagnesInnovationSettings() {
             />
           </Field>
         </div>
-        <div className="mt-3">
+        <div className="mt-3 flex items-center gap-2">
           <Button type="button" onClick={save} disabled={saving}>
             Enregistrer
+          </Button>
+          <Button type="button" variant="outline" onClick={exportIdees} disabled={exporting}>
+            <Download className="size-4" aria-hidden="true" /> Exporter idées.xlsx
           </Button>
         </div>
       </CardContent>

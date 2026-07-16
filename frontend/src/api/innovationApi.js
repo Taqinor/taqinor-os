@@ -30,6 +30,10 @@ const innovationApi = {
   // ── Chatter (historique, NTIDE5) ──
   historique: (id) => api.get(`/innovation/idees/${id}/historique/`),
 
+  // ── Export .xlsx (NTIDE12, filtres statut/contexte/date appliqués) ──
+  exportXlsx: (params) =>
+    api.get('/innovation/idees/export-xlsx/', { params, responseType: 'blob' }),
+
   // ── Votes (NTIDE2) ──
   vote: (idee) => api.post('/innovation/votes/', { idee }),
   retirerVote: (voteId) => api.delete(`/innovation/votes/${voteId}/`),
