@@ -225,3 +225,47 @@ export function assetPolicyRules(asset) {
   const r = asset && Array.isArray(asset.policy_rules) ? asset.policy_rules.filter(Boolean) : null
   return r && r.length ? r : DEFAULT_POLICY_RULES
 }
+
+// ── ENG28 — Journal d'actions (timeline EngineAction) ──
+export const ACTION_RESULT_LABELS = {
+  en_attente: 'En attente',
+  approuve: 'Approuvée',
+  rejete: 'Rejetée',
+  applique: 'Appliquée',
+  echec: 'Échec',
+}
+
+// Normalise le statut/résultat d'une action en une clé de bucket stable.
+export function actionResultKey(action) {
+  const s = String(action?.statut ?? action?.result ?? '').toLowerCase()
+  if (s.startsWith('approuv')) return 'approuve'
+  if (s.startsWith('rejet')) return 'rejete'
+  if (s.startsWith('appliqu')) return 'applique'
+  if (s.startsWith('echec') || s.startsWith('éch')) return 'echec'
+  if (s.startsWith('attente') || s.startsWith('en_attente') || s === 'pending') return 'en_attente'
+  return s || 'en_attente'
+}
+
+export function actionResultLabel(action) {
+  return ACTION_RESULT_LABELS[actionResultKey(action)] || '—'
+}
+
+// auto vs manuel : explicite (mode/auto) sinon déduit de la présence d'un
+// approbateur humain.
+export function actionMode(action) {
+  if (!action) return 'auto'
+  if (action.mode === 'manuel' || action.mode === 'manual') return 'manuel'
+  if (action.mode === 'auto') return 'auto'
+  if (action.auto === true) return 'auto'
+  if (action.auto === false) return 'manuel'
+  return action.approuve_par ? 'manuel' : 'auto'
+}
+
+// Filtre pur de la timeline (statut + mode) — testable isolément.
+export function filterActionLog(actions, { statut, mode } = {}) {
+  return (actions || []).filter(a => {
+    if (statut && actionResultKey(a) !== statut) return false
+    if (mode && actionMode(a) !== mode) return false
+    return true
+  })
+}
