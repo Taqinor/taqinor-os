@@ -106,6 +106,32 @@ class TransportTests(SimpleTestCase):
         self.assertEqual(req.headers.get('Authorization'), f'Bearer {TOKEN}')
         self.assertNotIn(TOKEN, str(req.url))
 
+    def test_reads_request_metadata_fields_by_default(self):
+        """Régression ENG5 : sans ``fields`` explicite, un edge Graph ne renvoie
+        que ``id`` — d'où des miroirs sans nom/statut/objectif/budget (colonnes
+        vides). Les lectures de synchro demandent donc par défaut les champs que
+        ``sync.py`` exploite à chaque niveau."""
+        captured = {}
+
+        def handler(request):
+            captured['request'] = request
+            return httpx.Response(200, json={'data': []})
+
+        client = make_client(handler)
+        cases = [
+            (client.get_campaigns, ('name', 'status', 'objective',
+                                    'daily_budget')),
+            (client.get_adsets, ('name', 'status', 'campaign_id',
+                                 'daily_budget')),
+            (client.get_ads, ('name', 'status', 'adset_id')),
+        ]
+        for read, expected in cases:
+            read()
+            fields = (captured['request'].url.params.get('fields') or '')
+            got = fields.split(',')
+            for f in expected:
+                self.assertIn(f, got, f'{read.__name__} doit demander « {f} »')
+
     def test_insights_parsing(self):
         rows = [
             {'spend': '12.50', 'impressions': '100', 'clicks': '4',
