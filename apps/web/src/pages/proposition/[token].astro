@@ -54,6 +54,8 @@ import {
   proposalEndpoint,
   proposalPdfEndpoint,
   hasProductionSeries,
+  monthlySeries,
+  formatPercent,
   resolveValidity,
   savingsHeadline,
   environmentalImpact,
@@ -80,10 +82,20 @@ import {
 import {
   renderYearCurve,
   resolveProposalCurveMode,
+  consumptionProfile,
+  solarProfile,
   type ProposalCurveVariant,
   type DailyCurve,
   type CurveLang,
 } from '../../lib/proposalCurve';
+// WJ120 — simulateur « et avec N batteries ? » (moteur horaire glouton PUR).
+import {
+  simulateBattery,
+  resolveOfferBattery,
+  renderBatterySplitSvg,
+  DEFAULT_UNIT_CAPACITY_KWH,
+  HOURS_PER_DAY,
+} from '../../lib/batterySim';
 import { renderProposalChart, resolveSeries } from '../../lib/proposalChart';
 import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
 // W342 — « installation la plus proche » : haversine sur un point GPS réel
@@ -284,6 +296,82 @@ const dailyCurveFr = dailyCurvesByVariant.fr.normal ?? EMPTY_DAILY_CURVE;
 const dailyCurveEn = dailyCurvesByVariant.en.normal ?? EMPTY_DAILY_CURVE;
 const dailyCurveAr = dailyCurvesByVariant.ar.normal ?? EMPTY_DAILY_CURVE;
 const dailyCurve = dailyCurveFr;
+
+// ── WJ120 — Simulateur « et avec N batteries ? » (résidentiel + commercial) ──
+// Moteur horaire glouton PUR (lib/batterySim, jour 2 simulé) : conso journalière
+// RÉELLE du client (monthly_consumption /365) opposée à la production estimée
+// (prod_kwh /365), réparties heure par heure (direct → surplus vers batterie →
+// déficit depuis batterie puis réseau). Ne s'affiche QUE pour résidentiel/commercial
+// (jamais agricole/pompage — aucune batterie en pompage, CLAUDE.md — ni industriel
+// par défaut). La capacité par unité vient STRICTEMENT de la réf catalogue Deyness
+// du devis (5/10 kWh), jamais inventée ; AUCUN prix batterie fabriqué (prix réel du
+// devis quand N correspond à l'offre, sinon « sur étude »). Le recalcul au curseur
+// est 100 % côté client (aucun re-fetch) : les silhouettes + totaux sont sérialisés.
+const batterySimEligible = ok && (curveMode === 'residentiel' || curveMode === 'commercial');
+const consMonthly = ok ? monthlySeries(data?.monthly_consumption) : null;
+const annualConsKwh = consMonthly ? consMonthly.reduce((a, b) => a + b, 0) : 0;
+const dailyConsKwh = annualConsKwh > 0 ? annualConsKwh / 365 : 0;
+const dailyProdKwh = prodKwh && prodKwh > 0 ? prodKwh / 365 : 0;
+// La batterie OFFERTE au devis (avec_items) : capacité/unité (réf catalogue) + nb
+// d'unités. Sans batterie au devis → l'unité de base catalogue (BAT-DEY-5, 5 kWh).
+const offerBattery = ok
+  ? resolveOfferBattery(q?.avec_items ?? null)
+  : { present: false, capacityKwhPerUnit: null, units: 0, designation: '' };
+const batteryUnitCapacityKwh = offerBattery.capacityKwhPerUnit ?? DEFAULT_UNIT_CAPACITY_KWH;
+const offeredUnits = offerBattery.present && offerBattery.units > 0 ? offerBattery.units : 0;
+const BATTERY_SIM_MAX_UNITS = 3;
+// Curseur au départ : les unités offertes (bornées à 3) si le devis porte une
+// batterie, sinon 1 (« et avec 1 batterie ? »).
+const batterySimInitialN = offeredUnits >= 1 ? Math.min(offeredUnits, BATTERY_SIM_MAX_UNITS) : 1;
+// Prix RÉELS des options (jamais recalculés/inventés) : N=0 ↔ option sans batterie,
+// N = unités offertes ↔ option avec batterie (cohérent avec totaux_sans/totaux_avec).
+const sansTtc = ok && hasRealPrice(data!, 'sans_batterie') ? optionTtc(data!, 'sans_batterie') : null;
+const avecTtc = ok && offerBattery.present && hasRealPrice(data!, 'avec_batterie')
+  ? optionTtc(data!, 'avec_batterie')
+  : null;
+const showBatterySim = batterySimEligible && dailyConsKwh > 0 && dailyProdKwh > 0;
+// Silhouettes horaires (mode courant, variante NORMALE) — passées au client pour un
+// recalcul 100 % local au curseur (aucun re-fetch, aucun proposalCurve côté client).
+const batteryConsShape = showBatterySim
+  ? Array.from({ length: HOURS_PER_DAY }, (_, h) => consumptionProfile(h, { mode: curveMode, variant: 'normal' }))
+  : [];
+const batterySolarShape = showBatterySim
+  ? Array.from({ length: HOURS_PER_DAY }, (_, h) => solarProfile(h))
+  : [];
+// Rendu SERVEUR initial (au N de départ) : le bloc n'est jamais vide avant hydratation.
+const batteryInitial = showBatterySim
+  ? simulateBattery({
+      consumptionShape: batteryConsShape,
+      productionShape: batterySolarShape,
+      dailyConsumptionKwh: dailyConsKwh,
+      dailyProductionKwh: dailyProdKwh,
+      capacityKwhPerUnit: batteryUnitCapacityKwh,
+      units: batterySimInitialN,
+    })
+  : null;
+const batterySplitSvgInitial = batteryInitial ? renderBatterySplitSvg(batteryInitial.hourly, undefined, 'fr') : '';
+// Prix affiché au N initial : réel si N == unités offertes (option avec batterie),
+// sinon « sur étude » (jamais un prix batterie extrapolé/inventé).
+const batteryInitialPrice = batterySimInitialN === offeredUnits && avecTtc !== null
+  ? formatMAD(avecTtc)
+  : batterySimInitialN === 0 && sansTtc !== null
+    ? formatMAD(sansTtc)
+    : null;
+// Config sérialisée pour le script client (recalcul au curseur, sans réseau).
+const batterySimConfig = showBatterySim
+  ? JSON.stringify({
+      consShape: batteryConsShape,
+      solarShape: batterySolarShape,
+      dailyConsKwh,
+      dailyProdKwh,
+      capacityPerUnit: batteryUnitCapacityKwh,
+      maxUnits: BATTERY_SIM_MAX_UNITS,
+      initialN: batterySimInitialN,
+      offeredUnits,
+      sansTtc,
+      avecTtc,
+    })
+  : '';
 
 // ── WJ15 — Fenêtre de validité honnête (date backend réelle, jamais inventée) ─
 const validity = ok ? resolveValidity(data!) : { label: null, fromBackend: false, expired: false };
@@ -1095,6 +1183,95 @@ const signConfig = ok
               ne vient plus du réseau. {dailyCurve.hasRealScale
                 ? 'Les repères sont calés sur votre production estimée.'
                 : 'Cette courbe illustre une journée type — votre profil exact est précisé avec votre conseiller.'}
+            </p>
+          </div>
+        </section>
+      )}
+
+      <!-- ── WJ120 · SIMULATEUR « ET AVEC N BATTERIES ? » ──────────────────── -->
+      {/* Moteur horaire glouton (lib/batterySim, jour 2 simulé) recalculé EN
+          DIRECT au curseur, 100 % côté client (aucun re-fetch). Résidentiel +
+          commercial uniquement. Capacité/unité = réf catalogue Deyness du devis ;
+          aucun prix batterie inventé (prix réel du devis, sinon « sur étude »). */}
+      {showBatterySim && batteryInitial && (
+        <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8" id="battery-sim" data-battery-sim-config={batterySimConfig}>
+          <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Et avec une batterie ?" data-en="And with a battery?" data-ar="وماذا مع بطارية؟">Et avec une batterie ?</p>
+          <div class="cine-card mt-5 rounded-2xl p-5 sm:p-6">
+            <p class="v2-body text-sm text-lune-soft" data-i18n
+              data-fr="Déplacez le curseur : voyez ce qu’une ou plusieurs batteries changeraient — plus de solaire gardé chez vous, moins de réseau le soir, et des heures d’autonomie en cas de coupure."
+              data-en="Move the slider: see what one or more batteries would change — more solar kept at home, less grid in the evening, and hours of backup during an outage."
+              data-ar="حرّك المؤشر: شاهد ما ستغيّره بطارية واحدة أو أكثر — طاقة شمسية أكثر تبقى في منزلك، وشبكة أقل في المساء، وساعات استقلالية عند انقطاع التيار.">
+              Déplacez le curseur : voyez ce qu’une ou plusieurs batteries changeraient — plus de solaire gardé chez vous, moins de réseau le soir, et des heures d’autonomie en cas de coupure.
+            </p>
+
+            <!-- Curseur 0/1/2/3 unités -->
+            <div class="mt-5">
+              <div class="flex items-center justify-between text-sm">
+                <label for="battery-sim-slider" class="text-lune-soft" data-i18n data-fr="Nombre de batteries" data-en="Number of batteries" data-ar="عدد البطاريات">Nombre de batteries</label>
+                <span class="font-semibold text-brass-300" dir="ltr"><span id="battery-sim-units">{batterySimInitialN}</span> × <span id="battery-sim-cap">{formatNumber(batteryUnitCapacityKwh, 0)}</span> kWh</span>
+              </div>
+              <input type="range" id="battery-sim-slider" min="0" max={BATTERY_SIM_MAX_UNITS} step="1" value={batterySimInitialN} class="mt-2 w-full accent-brass-400" aria-describedby="battery-sim-assumptions" />
+              <div class="mt-1 flex justify-between text-xs text-lune-faint" aria-hidden="true">
+                <span>0</span><span>1</span><span>2</span><span>3</span>
+              </div>
+            </div>
+
+            <!-- 3 chiffres live : autoconsommation %, autosuffisance %, heures de secours -->
+            <div class="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3">
+              <div>
+                <p class="text-2xl font-bold text-brass-300" id="battery-sim-selfconso" dir="ltr">{formatPercent(batteryInitial.selfConsumptionPct, 0)}</p>
+                <p class="text-xs text-lune-soft" data-i18n data-fr="Autoconsommation" data-en="Self-consumption" data-ar="الاستهلاك الذاتي">Autoconsommation</p>
+                <p class="text-[11px] text-lune-faint" data-i18n data-fr="du solaire produit, gardé chez vous" data-en="of the solar you produce, kept at home" data-ar="من الطاقة الشمسية المنتَجة، تبقى في منزلك">du solaire produit, gardé chez vous</p>
+              </div>
+              <div>
+                <p class="text-2xl font-bold text-brass-300" id="battery-sim-selfsuff" dir="ltr">{formatPercent(batteryInitial.selfSufficiencyPct, 0)}</p>
+                <p class="text-xs text-lune-soft" data-i18n data-fr="Autosuffisance" data-en="Self-sufficiency" data-ar="الاكتفاء الذاتي">Autosuffisance</p>
+                <p class="text-[11px] text-lune-faint" data-i18n data-fr="de votre consommation couverte par le solaire" data-en="of your consumption covered by solar" data-ar="من استهلاككم مغطى بالطاقة الشمسية">de votre consommation couverte par le solaire</p>
+              </div>
+              <div>
+                <p class="text-2xl font-bold text-brass-300" dir="ltr"><span id="battery-sim-backup">{formatNumber(batteryInitial.backupHours, 0)}</span> h</p>
+                <p class="text-xs text-lune-soft" data-i18n data-fr="Heures de secours" data-en="Backup hours" data-ar="ساعات الطوارئ">Heures de secours</p>
+                <p class="text-[11px] text-lune-faint" data-i18n data-fr="frigo + éclairage + box, batterie pleine" data-en="fridge + lighting + router, full battery" data-ar="ثلاجة + إنارة + راوتر، بطارية ممتلئة">frigo + éclairage + box, batterie pleine</p>
+              </div>
+            </div>
+
+            <!-- Aire empilée style SolarEdge : direct / batterie / réseau, sur 24 h -->
+            <div class="mt-6">
+              <div class="battery-split-wrap" id="battery-sim-chart" set:html={batterySplitSvgInitial}></div>
+              <div class="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-xs">
+                <span class="inline-flex items-center gap-2 text-lune-soft">
+                  <span class="inline-block h-3 w-3 rounded-sm" style="background: var(--color-brass-400)" aria-hidden="true"></span>
+                  <span data-i18n data-fr="Solaire direct" data-en="Direct solar" data-ar="شمسي مباشر">Solaire direct</span>
+                </span>
+                <span class="inline-flex items-center gap-2 text-lune-soft">
+                  <span class="inline-block h-3 w-3 rounded-sm" style="background: var(--color-azur-300, #7fb4e8)" aria-hidden="true"></span>
+                  <span data-i18n data-fr="Batterie" data-en="Battery" data-ar="بطارية">Batterie</span>
+                </span>
+                <span class="inline-flex items-center gap-2 text-lune-soft">
+                  <span class="inline-block h-3 w-3 rounded-sm" style="background: var(--color-lune-faint)" aria-hidden="true"></span>
+                  <span data-i18n data-fr="Réseau" data-en="Grid" data-ar="الشبكة">Réseau</span>
+                </span>
+              </div>
+              <p class="mt-3 text-sm text-lune-soft">
+                <span data-i18n data-fr="Sur une journée type :" data-en="On a typical day:" data-ar="في يوم نموذجي:">Sur une journée type :</span>
+                <span class="font-semibold text-brass-300" dir="ltr"><span id="battery-sim-direct">{formatNumber(batteryInitial.directKwh, 1)}</span> kWh</span> <span data-i18n data-fr="en direct" data-en="direct" data-ar="مباشرة">en direct</span>,
+                <span class="font-semibold" style="color: var(--color-azur-300, #7fb4e8)" dir="ltr"><span id="battery-sim-battery">{formatNumber(batteryInitial.fromBatteryKwh, 1)}</span> kWh</span> <span data-i18n data-fr="via batterie" data-en="via battery" data-ar="عبر البطارية">via batterie</span>,
+                <span class="font-semibold text-lune-faint" dir="ltr"><span id="battery-sim-grid">{formatNumber(batteryInitial.fromGridKwh, 1)}</span> kWh</span> <span data-i18n data-fr="du réseau" data-en="from the grid" data-ar="من الشبكة">du réseau</span>.
+              </p>
+            </div>
+
+            <!-- Prix : réel du devis quand N correspond à l'offre, sinon « sur étude ». -->
+            <p class="mt-4 text-sm">
+              <span class="text-lune-soft" data-i18n data-fr="Prix de cette configuration :" data-en="Price for this configuration:" data-ar="سعر هذا التكوين:">Prix de cette configuration :</span>
+              <span class="ms-1 font-semibold text-brass-300" id="battery-sim-price" dir="ltr">{batteryInitialPrice ?? 'Sur étude'}</span>
+            </p>
+
+            <!-- Hypothèses (DoD / rendement) + libellé honnête « jamais mesuré ». -->
+            <p id="battery-sim-assumptions" class="mt-4 text-xs text-lune-faint" data-i18n
+              data-fr="Hypothèses : batterie lithium LFP, décharge 90 %, rendement aller-retour ≈ 92 %. Profil type au Maroc ajusté à votre facture — jamais un chiffre mesuré. Le prix batterie affiché est celui de votre devis ; toute autre configuration est chiffrée sur étude."
+              data-en="Assumptions: LFP lithium battery, 90% depth of discharge, round-trip efficiency ≈ 92%. Typical Moroccan profile adjusted to your bill — never a measured figure. The battery price shown is from your quote; any other configuration is priced on request."
+              data-ar="الافتراضات: بطارية ليثيوم LFP، عمق تفريغ 90٪، كفاءة ذهاب وإياب ≈ 92٪. نمط نموذجي في المغرب معدّل حسب فاتورتكم — وليس رقماً مقيساً. السعر المعروض للبطارية هو سعر عرضكم؛ أي تكوين آخر يُسعّر حسب الدراسة.">
+              Hypothèses : batterie lithium LFP, décharge 90 %, rendement aller-retour ≈ 92 %. Profil type au Maroc ajusté à votre facture — jamais un chiffre mesuré. Le prix batterie affiché est celui de votre devis ; toute autre configuration est chiffrée sur étude.
             </p>
           </div>
         </section>
@@ -3137,6 +3314,10 @@ const signConfig = ok
   // suite) et on poste en parallèle vers le proxy same-origin — un échec ne
   // gêne jamais le client, il garde de toute façon son canal instantané.
   import { buildContactBody, type ContactChannel } from '../../lib/proposition';
+  // WJ120 — moteur du simulateur batterie (PUR) importé ES pour un recalcul 100 %
+  // local au curseur (aucun re-fetch). Regroupé dans CE script (cf. note WJ34/WJ53
+  // ci-dessous) ; batterySim n'a aucune dépendance runtime lourde.
+  import { simulateBattery, renderBatterySplitSvg } from '../../lib/batterySim';
 
   const contactSection = document.querySelector<HTMLElement>('[data-contact-token]');
   const confirmEl = document.getElementById('contact-confirm');
@@ -3472,6 +3653,126 @@ const signConfig = ok
 
     document.querySelectorAll<HTMLElement>('.chart-svg, .daily-curve-wrap').forEach(wireTapReveal);
   })();
+
+  // ── WJ120 — Simulateur « et avec N batteries ? » : recalcul EN DIRECT au
+  // curseur, 100 % côté client (aucun re-fetch). Le moteur horaire glouton
+  // (lib/batterySim, jour 2 simulé) tourne dans le navigateur à partir des
+  // silhouettes + totaux déjà posés côté serveur (data-battery-sim-config).
+  // Regroupé dans CE script (import ES → chunk garanti, cf. WJ34/WJ53). Les
+  // nombres sont formatés localement (séparateur d'espace, virgule décimale —
+  // même convention que proposition.formatNumber) pour ne dépendre d'aucun
+  // import supplémentaire ; le prix batterie n'est JAMAIS inventé (prix réel du
+  // devis quand N == offre, sinon « sur étude »).
+  (function setupBatterySim(): void {
+    type BsLang = 'fr' | 'en' | 'ar';
+    interface BsConfig {
+      consShape: number[];
+      solarShape: number[];
+      dailyConsKwh: number;
+      dailyProdKwh: number;
+      capacityPerUnit: number;
+      maxUnits: number;
+      initialN: number;
+      offeredUnits: number;
+      sansTtc: number | null;
+      avecTtc: number | null;
+    }
+    const section = document.getElementById('battery-sim');
+    if (!section) return;
+    const raw = section.getAttribute('data-battery-sim-config');
+    if (!raw) return;
+    let cfg: BsConfig;
+    try {
+      cfg = JSON.parse(raw) as BsConfig;
+    } catch {
+      return;
+    }
+
+    const bsWin = window as unknown as {
+      __propCurrentLang?: () => BsLang;
+      __propRegisterBusyLabel?: (fn: (l: BsLang) => void) => void;
+    };
+    const curLang = (): BsLang => bsWin.__propCurrentLang?.() ?? 'fr';
+
+    // Formatage local (aucun import) : espace de milliers, virgule décimale —
+    // exactement proposition.formatNumber (virgule quelle que soit la langue).
+    const group = (s: string): string => s.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+    function fmtNum(v: number, decimals: number): string {
+      const n = Number.isFinite(v) ? v : 0;
+      const factor = 10 ** decimals;
+      const r = Math.round(n * factor) / factor;
+      const sign = r < 0 ? '-' : '';
+      const abs = Math.abs(r);
+      const intPart = group(Math.trunc(abs).toString());
+      if (decimals <= 0) return `${sign}${intPart}`;
+      const frac = (abs - Math.trunc(abs)).toFixed(decimals).slice(2).replace(/0+$/, '');
+      return frac ? `${sign}${intPart},${frac}` : `${sign}${intPart}`;
+    }
+    const fmtPct = (v: number): string => `${fmtNum(v, 0)} %`;
+    const fmtMad = (v: number): string => `${fmtNum(Math.round(v), 0)} MAD`;
+    const ON_STUDY: Record<BsLang, string> = {
+      fr: 'Sur étude',
+      en: 'On request',
+      ar: 'حسب الدراسة',
+    };
+
+    const setText = (id: string, text: string): void => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = text;
+    };
+
+    let currentN = Math.max(0, Math.min(cfg.maxUnits, Math.trunc(cfg.initialN)));
+    let lastHourly: { direct: number[]; battery: number[]; grid: number[] } | null = null;
+
+    function renderPrice(n: number): void {
+      const el = document.getElementById('battery-sim-price');
+      if (!el) return;
+      if (n === cfg.offeredUnits && cfg.avecTtc != null) el.textContent = fmtMad(cfg.avecTtc);
+      else if (n === 0 && cfg.sansTtc != null) el.textContent = fmtMad(cfg.sansTtc);
+      else el.textContent = ON_STUDY[curLang()];
+    }
+
+    function update(n: number): void {
+      currentN = n;
+      const res = simulateBattery({
+        consumptionShape: cfg.consShape,
+        productionShape: cfg.solarShape,
+        dailyConsumptionKwh: cfg.dailyConsKwh,
+        dailyProductionKwh: cfg.dailyProdKwh,
+        capacityKwhPerUnit: cfg.capacityPerUnit,
+        units: n,
+      });
+      lastHourly = res.hourly;
+      setText('battery-sim-units', String(n));
+      setText('battery-sim-selfconso', fmtPct(res.selfConsumptionPct));
+      setText('battery-sim-selfsuff', fmtPct(res.selfSufficiencyPct));
+      setText('battery-sim-backup', fmtNum(res.backupHours, 0));
+      setText('battery-sim-direct', fmtNum(res.directKwh, 1));
+      setText('battery-sim-battery', fmtNum(res.fromBatteryKwh, 1));
+      setText('battery-sim-grid', fmtNum(res.fromGridKwh, 1));
+      const chart = document.getElementById('battery-sim-chart');
+      if (chart) chart.innerHTML = renderBatterySplitSvg(res.hourly, undefined, curLang());
+      renderPrice(n);
+    }
+
+    const slider = document.getElementById('battery-sim-slider') as HTMLInputElement | null;
+    slider?.addEventListener('input', () => {
+      const n = Math.max(0, Math.min(cfg.maxUnits, Number(slider.value) || 0));
+      update(n);
+    });
+
+    // Re-localise le prix « sur étude » ET le SVG (title/desc) à chaque bascule
+    // de langue — même registre que le libellé PDF (busy-label non couvert par
+    // data-i18n car réécrit en JS après le premier rendu).
+    bsWin.__propRegisterBusyLabel?.((l: BsLang) => {
+      renderPrice(currentN);
+      const chart = document.getElementById('battery-sim-chart');
+      if (chart && lastHourly) chart.innerHTML = renderBatterySplitSvg(lastHourly, undefined, l);
+    });
+
+    // Recalcule une fois au chargement (idempotent avec le rendu serveur).
+    update(currentN);
+  })();
 </script>
 
 <style>
@@ -3505,6 +3806,18 @@ const signConfig = ok
     aspect-ratio: 360 / 170;
   }
   .daily-curve-wrap :global(svg) {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  /* WJ120 — aire empilée « direct/batterie/réseau » : ratio réservé AVANT rendu
+     (viewBox 360×150) → zéro CLS ; le SVG (re-rendu au curseur) occupe la boîte. */
+  .battery-split-wrap {
+    width: 100%;
+    aspect-ratio: 360 / 150;
+  }
+  .battery-split-wrap :global(svg) {
     display: block;
     width: 100%;
     height: 100%;
