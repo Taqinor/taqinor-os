@@ -1477,3 +1477,234 @@ def lead_chatter_envelope(lead):
         'created_at': a.created_at,
         'source': 'crm.leadactivity',
     } for a in rows]
+
+
+# ── ADSENG31 — Réconciliation Meta-vs-ERP : lignes de lead par mécanisme ──────
+
+def reconciliation_lead_rows(company, *, date_start=None, date_end=None):
+    """ADSENG31 — Lignes d'un lead pour la RÉCONCILIATION Meta-vs-ERP (dd-
+    attribution part b). Point d'entrée cross-app SANCTIONNÉ pour
+    ``apps.adsengine`` (le CRM est lu UNIQUEMENT via ce sélecteur, jamais un
+    import de ``apps.crm.models``).
+
+    Chaque ligne porte de quoi classer le lead par MÉCANISME DE CAPTURE (les deux
+    dénominateurs que la réconciliation ne fusionne jamais) et de quoi le
+    rapprocher d'une campagne + le dédupliquer :
+
+      * ``is_meta_form``      — formulaire Meta Lead Ads (``source=meta_lead_ads``,
+        appariable 1:1 via leadgen_id) ;
+      * ``is_site``           — lead du site (``source=site_web``) — Meta-attribué
+        seulement si son canal/utm indique Meta (l'appelant tranche) ;
+      * ``is_ctwa``           — canal WhatsApp/CTWA (auto-déclaré, JAMAIS confirmé
+        côté Meta — montré à part) ;
+      * ``is_meta_ads_canal`` — canal « Publicité Meta » ;
+      * ``phone_key``/``email_key`` — clés NORMALISÉES QW10 (réutilise
+        ``services.normalize_phone``/``normalize_email``) pour dédupliquer sans
+        recompter un payload webhook brut (dd-attribution §3.3) ;
+      * ``utm_campaign``/``meta_campaign_id`` — clés de rapprochement de campagne.
+
+    Lecture seule, scopée société ; ne compte jamais un lead archivé.
+    ``date_start``/``date_end`` (date, inclus) bornent ``date_creation`` ;
+    ``None`` = pas de borne. Renvoie une LISTE de dicts (données pures)."""
+    from . import services as crm_services
+    from .models import Lead
+
+    qs = Lead.objects.filter(company=company, is_archived=False)
+    if date_start is not None:
+        qs = qs.filter(date_creation__date__gte=date_start)
+    if date_end is not None:
+        qs = qs.filter(date_creation__date__lte=date_end)
+
+    meta_form = Lead.Source.META_LEAD_ADS
+    site_source = Lead.Source.SITE_WEB
+    ctwa_canal = Lead.Canal.WHATSAPP_CTWA
+    meta_canal = Lead.Canal.META_ADS
+
+    rows = []
+    for lead in qs.only(
+            'id', 'utm_campaign', 'utm_source', 'meta_campaign_id',
+            'source', 'canal', 'telephone', 'email', 'date_creation'):
+        rows.append({
+            'id': lead.id,
+            'utm_campaign': lead.utm_campaign or '',
+            'utm_source': (lead.utm_source or '').strip().lower(),
+            'meta_campaign_id': lead.meta_campaign_id or '',
+            'source': lead.source or '',
+            'is_meta_form': lead.source == meta_form,
+            'is_site': lead.source == site_source,
+            'is_ctwa': lead.canal == ctwa_canal,
+            'is_meta_ads_canal': lead.canal == meta_canal,
+            'phone_key': crm_services.normalize_phone(lead.telephone),
+            'email_key': crm_services.normalize_email(lead.email),
+            'date': lead.date_creation.date() if lead.date_creation else None,
+        })
+    return rows
+
+
+# ── ADSENG32 — Émetteur CAPI CRM-stage : contexte lead borné société ──────────
+
+# Valeur d'``external_system`` d'un lead issu d'un formulaire Meta Lead Ads : son
+# ``external_id`` EST alors le leadgen_id Meta (clé de match préférée, cf.
+# services._META_LEAD_ADS_SYSTEM). Constante locale pour éviter d'importer les
+# services CRM sur ce chemin de lecture.
+_META_LEAD_ADS_SYSTEM = 'meta_lead_ads'
+
+
+def pipeline_stage_order():
+    """ADSENG32 — Ordre canonique des étapes + repères SIGNED/COLD, depuis
+    ``STAGES.py`` (jamais codés en dur côté adsengine — règle #2). Point d'entrée
+    cross-app pour que ``apps.adsengine`` détecte une transition AVANT (rang qui
+    augmente) sans importer ``apps.crm.models`` ni ``STAGES.py`` directement.
+
+    Renvoie ``{'stages': [...], 'funnel': [...], 'signed': str, 'cold': str}``
+    où ``funnel`` = les étapes AVANT-ordonnées hors COLD (« Perdu » n'est pas une
+    étape)."""
+    from . import stages as stage_mod
+    order = list(stage_mod.STAGES)
+    return {
+        'stages': order,
+        'funnel': [k for k in order if k != stage_mod.COLD],
+        'signed': stage_mod.SIGNED,
+        'cold': stage_mod.COLD,
+    }
+
+
+def lead_current_stage(company, lead_id):
+    """ADSENG32 — Étape COURANTE (clé STAGES.py) d'un lead borné société, ou
+    None. Point d'entrée cross-app LECTURE SEULE : appelé en ``pre_save`` par
+    l'émetteur CAPI CRM-stage pour capturer l'ANCIENNE étape (la base porte
+    encore l'ancienne valeur) et n'émettre que sur une VRAIE transition."""
+    if not lead_id:
+        return None
+    from .models import Lead
+    return (Lead.objects
+            .filter(pk=lead_id, company=company)
+            .values_list('stage', flat=True)
+            .first())
+
+
+def lead_capi_identifiers(company, lead_id):
+    """ADSENG32 — Identifiants de MATCH d'un lead borné société pour le CAPI
+    CRM-stage (Conversion Leads), ou None si hors société. Point d'entrée cross-
+    app LECTURE SEULE (jamais un import de ``apps.crm.models`` côté adsengine).
+
+    Renvoie ``{'lead_id', 'leadgen_id', 'phone', 'email', 'fbclid',
+    'is_meta_origin'}`` : ``leadgen_id`` = ``external_id`` quand
+    ``external_system == 'meta_lead_ads'`` (clé de match Meta préférée) ; sinon
+    ''. ``phone``/``email`` sont bruts (le HACHAGE SHA-256 se fait côté émetteur,
+    jamais ici — on n'expose pas de PII hachée en dur). ``is_meta_origin`` =
+    lead issu d'un canal/source Meta (éligible à l'intégration). Ne renvoie
+    JAMAIS de donnée interne (aucun prix_achat n'existe côté lead)."""
+    if not lead_id:
+        return None
+    from .models import Lead
+    lead = (Lead.objects
+            .filter(pk=lead_id, company=company)
+            .only('id', 'external_system', 'external_id', 'telephone', 'email',
+                  'fbclid', 'canal', 'source')
+            .first())
+    if lead is None:
+        return None
+    leadgen_id = ''
+    if lead.external_system == _META_LEAD_ADS_SYSTEM and lead.external_id:
+        leadgen_id = str(lead.external_id)
+    meta_canaux = {Lead.Canal.META_ADS, Lead.Canal.WHATSAPP_CTWA}
+    is_meta_origin = (
+        lead.canal in meta_canaux
+        or lead.source == _META_LEAD_ADS_SYSTEM
+        or bool(leadgen_id) or bool(lead.fbclid))
+    return {
+        'lead_id': lead.id,
+        'leadgen_id': leadgen_id,
+        'phone': lead.telephone or '',
+        'email': lead.email or '',
+        'fbclid': lead.fbclid or '',
+        'is_meta_origin': is_meta_origin,
+    }
+
+
+def meta_lead_match_coverage(company):
+    """ADSENG32 — Couverture de MATCH des leads Meta de la société (moniteur EMQ
+    LOCAL, sans appel réseau). Point d'entrée cross-app LECTURE SEULE : donne au
+    moniteur EMQ d'``apps.adsengine`` une estimation de la qualité de match
+    ATTENDUE (quelle proportion des leads Meta porte un identifiant fort :
+    leadgen_id ou téléphone) sans exposer les modèles crm.
+
+    Le score EMQ réel (0-10) exige l'API Dataset Quality de Meta (séparée) ; ce
+    proxy local rend « visible » la qualité de match côté ERP en attendant.
+    Renvoie ``{'meta_leads', 'with_leadgen_id', 'with_phone', 'strong_match'}``."""
+    from .models import Lead
+    meta_canaux = {Lead.Canal.META_ADS, Lead.Canal.WHATSAPP_CTWA}
+    qs = Lead.objects.filter(company=company, is_archived=False).only(
+        'external_system', 'external_id', 'telephone', 'canal', 'source')
+    meta_leads = with_leadgen = with_phone = strong = 0
+    for lead in qs:
+        is_meta = (lead.canal in meta_canaux
+                   or lead.source == _META_LEAD_ADS_SYSTEM)
+        if not is_meta:
+            continue
+        meta_leads += 1
+        has_leadgen = (lead.external_system == _META_LEAD_ADS_SYSTEM
+                       and bool(lead.external_id))
+        has_phone = bool(lead.telephone)
+        if has_leadgen:
+            with_leadgen += 1
+        if has_phone:
+            with_phone += 1
+        if has_leadgen or has_phone:
+            strong += 1
+    return {
+        'meta_leads': meta_leads,
+        'with_leadgen_id': with_leadgen,
+        'with_phone': with_phone,
+        'strong_match': strong,
+    }
+
+
+# ── ADSENG33 — Drill-down reporting : lignes de lead (entonnoir + cohortes) ────
+
+def reporting_lead_rows(company, *, date_start=None, date_end=None):
+    """ADSENG33 — Lignes de lead pour les drill-downs de reporting (entonnoir par
+    campagne + cohortes de signature). Point d'entrée cross-app SANCTIONNÉ pour
+    ``apps.adsengine`` (le CRM est lu UNIQUEMENT via ce sélecteur, jamais un
+    import de ``apps.crm.models``).
+
+    Chaque ligne porte l'étape courante (clé STAGES.py), le drapeau ``perdu``, la
+    clé de campagne (``meta_campaign_id``/``utm_campaign``), la date de création,
+    et — pour le lag de signature (dd-attribution §5.3) — la DATE de signature :
+    la plus ANCIENNE ``date_acceptation`` parmi les devis ACCEPTÉS du lead (lus
+    via la relation ``lead.devis`` déjà dans le domaine crm, JAMAIS un import de
+    ``apps.ventes.models`` — même patron que ``attribution_leads``). None si le
+    lead n'a pas de devis accepté (un lead au stade SIGNÉ sans devis n'a pas
+    d'horodatage de signature → lag indéterminé, jamais fabriqué).
+
+    Lecture seule, scopée société ; jamais un lead archivé. ``date_start``/
+    ``date_end`` (date, inclus) bornent ``date_creation``. Renvoie une LISTE de
+    dicts (données pures)."""
+    from .models import Lead
+
+    qs = Lead.objects.filter(company=company, is_archived=False)
+    if date_start is not None:
+        qs = qs.filter(date_creation__date__gte=date_start)
+    if date_end is not None:
+        qs = qs.filter(date_creation__date__lte=date_end)
+
+    meta_canaux = {Lead.Canal.META_ADS, Lead.Canal.WHATSAPP_CTWA}
+    rows = []
+    for lead in qs.prefetch_related('devis'):
+        accept_dates = [
+            d.date_acceptation for d in lead.devis.all()
+            if getattr(d, 'statut', None) == 'accepte' and d.date_acceptation]
+        signature_date = min(accept_dates) if accept_dates else None
+        rows.append({
+            'id': lead.id,
+            'utm_campaign': lead.utm_campaign or '',
+            'meta_campaign_id': lead.meta_campaign_id or '',
+            'stage': lead.stage,
+            'perdu': bool(lead.perdu),
+            'is_meta_channel': lead.canal in meta_canaux,
+            'created_date': (lead.date_creation.date()
+                             if lead.date_creation else None),
+            'signature_date': signature_date,
+        })
+    return rows

@@ -473,3 +473,104 @@ class EngineActionViewSet(AdsengineViewSet):
         except Exception as exc:  # échec Meta → action déjà passée « echouee »
             return Response({'detail': str(exc)}, status=502)
         return Response(self.get_serializer(instance).data)
+
+
+# ── ADSENG33 — Drill-downs de reporting (dd-attribution part d) ───────────────
+# Endpoints LECTURE SEULE, company-scopés, gatés ``adsengine_view`` : table par
+# variante, entonnoir par campagne, cohortes de signature, export CSV. Les
+# calculs vivent dans ``reporting.py`` (le CRM y est lu via ``crm.selectors``).
+
+def _adseng_reporting_company(request):
+    """(company, error_response) : gate ``adsengine_view`` + société présente.
+    ``error_response`` est None quand tout est bon."""
+    if not _user_has_or_legacy(request.user, 'adsengine_view'):
+        return None, Response({'detail': 'Permission refusée.'}, status=403)
+    company = getattr(request.user, 'company', None)
+    if company is None:
+        return None, Response({'detail': 'Aucune société.'}, status=400)
+    return company, None
+
+
+def _adseng_parse_date(value):
+    """``date`` ISO (YYYY-MM-DD) ou None (jamais une 500 sur une entrée libre)."""
+    import datetime
+    if not value:
+        return None
+    try:
+        return datetime.date.fromisoformat(value)
+    except (ValueError, TypeError):
+        return None
+
+
+class VariantReportView(APIView):
+    """ADSENG33 — Table par variante (spend/conv/CPL-qualifié/coût-signature +
+    ids de leads). Company-scopé, gaté ``adsengine_view``."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        company, err = _adseng_reporting_company(request)
+        if err is not None:
+            return err
+        from .reporting import variant_table
+        return Response(variant_table(company))
+
+
+class CampaignFunnelView(APIView):
+    """ADSENG33 — Entonnoir par campagne (NEW→SIGNED cumulatif ; COLD/perdu à
+    côté). ``?debut=&fin=`` (dates ISO) bornent la création."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        company, err = _adseng_reporting_company(request)
+        if err is not None:
+            return err
+        from .reporting import campaign_funnel
+        debut = _adseng_parse_date(request.query_params.get('debut'))
+        fin = _adseng_parse_date(request.query_params.get('fin'))
+        return Response(
+            campaign_funnel(company, date_start=debut, date_end=fin))
+
+
+class CohortReportView(APIView):
+    """ADSENG33 — Cohortes de signature (leads/semaine → lag). ``?debut=&fin=``
+    bornent la création ; cohortes non écoulées marquées incomplètes."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        company, err = _adseng_reporting_company(request)
+        if err is not None:
+            return err
+        from .reporting import signature_cohorts
+        debut = _adseng_parse_date(request.query_params.get('debut'))
+        fin = _adseng_parse_date(request.query_params.get('fin'))
+        return Response(
+            signature_cohorts(company, date_start=debut, date_end=fin))
+
+
+class ReportExportView(APIView):
+    """ADSENG33 — Export CSV. ``?table=variantes`` (défaut) ou
+    ``?table=reconciliation`` (``&date=`` ISO pour le jour réconcilié)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        company, err = _adseng_reporting_company(request)
+        if err is not None:
+            return err
+        from django.http import HttpResponse
+
+        from .reporting import reconciliation_csv, variant_table_csv
+        table = request.query_params.get('table', 'variantes')
+        if table == 'reconciliation':
+            day = _adseng_parse_date(request.query_params.get('date'))
+            csv_text = reconciliation_csv(company, day=day)
+            filename = 'reconciliation.csv'
+        else:
+            csv_text = variant_table_csv(company)
+            filename = 'variantes.csv'
+        resp = HttpResponse(csv_text, content_type='text/csv')
+        resp['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return resp
