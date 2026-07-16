@@ -42,8 +42,11 @@ logger = logging.getLogger(__name__)
 # = la cadence d'une phase (dd-science-core), assez pour que le bandit voie la
 # PERFORMANCE RÉCENTE (indispensable pour révéler une dérive de mi-vol).
 SIM_WINDOW_DAYS = 14
-# Pas d'échantillonnage de l'horloge accélérée (hebdomadaire).
-SIM_STEP_DAYS = 7
+# Pas d'échantillonnage = fenêtre : les fenêtres consécutives ne se CHEVAUCHENT
+# donc PAS. La convergence « soutenue » (deux derniers pas) porte alors sur deux
+# échantillons INDÉPENDANTS — un ``noisy_tie`` ne peut pas paraître converger deux
+# fenêtres de suite par corrélation de bruit partagé.
+SIM_STEP_DAYS = 14
 # Seuil de « conclusion » : P(best) au-dessus ⇒ le moteur a un gagnant décisif.
 # On exige la convergence SOUTENUE (les DEUX derniers pas au-dessus du seuil sur
 # le MÊME bras) : un pic de bruit ponctuel ne suffit pas à « conclure » — c'est ce
