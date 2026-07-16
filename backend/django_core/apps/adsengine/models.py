@@ -14,6 +14,7 @@ dans les tâches suivantes de la lane ``backend/adsengine`` :
 Tout nouveau modèle métier hérite de ``core.models.TenantModel`` (FK société +
 horodatage) et les ViewSets de ``core.viewsets.CompanyScopedModelViewSet``.
 """
+from django.contrib.contenttypes.fields import GenericForeignKey
 from django.db import models
 
 from core.models import TenantModel
@@ -109,3 +110,148 @@ class GuardrailConfig(TenantModel):
             f'Garde-fous <plafond {self.daily_budget_ceiling_mad} MAD/j, '
             f'±{self.weekly_change_pct_max}%>'
         )
+
+
+class AdCampaignMirror(TenantModel):
+    """ENG5 — Miroir local d'une campagne Meta.
+
+    Reflet en LECTURE de l'état côté Meta (le ``status`` peut donc valoir
+    ``ACTIVE`` si Meta le montre ainsi — le miroir rapporte la réalité ; c'est le
+    service qui, lui, n'active jamais). ``created_via_engine`` distingue une
+    campagne créée par le moteur (toujours née PAUSED) d'une campagne découverte
+    lors d'une synchro. Upsert idempotent par ``(company, meta_id)``.
+    """
+
+    meta_id = models.CharField(max_length=64, verbose_name='ID Meta')
+    name = models.CharField(max_length=255, blank=True, default='',
+                            verbose_name='Nom')
+    status = models.CharField(max_length=32, blank=True, default='',
+                              verbose_name='Statut Meta')
+    objective = models.CharField(max_length=64, blank=True, default='',
+                                 verbose_name='Objectif')
+    budget = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        verbose_name='Budget (unités mineures Meta)')
+    created_via_engine = models.BooleanField(
+        default=False, verbose_name='Créée par le moteur')
+
+    class Meta:
+        verbose_name = 'Miroir de campagne'
+        verbose_name_plural = 'Miroirs de campagne'
+        ordering = ['-created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'meta_id'],
+                name='uniq_adsengine_campaign_meta'),
+        ]
+
+    def __str__(self):
+        return f'Campagne {self.meta_id} ({self.status or "?"})'
+
+
+class AdSetMirror(TenantModel):
+    """ENG5 — Miroir local d'un ad set Meta (rattaché à un miroir de campagne)."""
+
+    meta_id = models.CharField(max_length=64, verbose_name='ID Meta')
+    name = models.CharField(max_length=255, blank=True, default='',
+                            verbose_name='Nom')
+    status = models.CharField(max_length=32, blank=True, default='',
+                              verbose_name='Statut Meta')
+    budget = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        verbose_name='Budget (unités mineures Meta)')
+    created_via_engine = models.BooleanField(
+        default=False, verbose_name='Créé par le moteur')
+    # FK MÊME APP (adsengine) — autorisée. Nullable : un ad set peut être
+    # synchronisé avant que son miroir de campagne parent existe.
+    campaign = models.ForeignKey(
+        'adsengine.AdCampaignMirror', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='adsets',
+        verbose_name='Campagne')
+
+    class Meta:
+        verbose_name = "Miroir d'ad set"
+        verbose_name_plural = "Miroirs d'ad set"
+        ordering = ['-created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'meta_id'],
+                name='uniq_adsengine_adset_meta'),
+        ]
+
+    def __str__(self):
+        return f'AdSet {self.meta_id} ({self.status or "?"})'
+
+
+class AdMirror(TenantModel):
+    """ENG5 — Miroir local d'une ad Meta (rattachée à un miroir d'ad set)."""
+
+    meta_id = models.CharField(max_length=64, verbose_name='ID Meta')
+    name = models.CharField(max_length=255, blank=True, default='',
+                            verbose_name='Nom')
+    status = models.CharField(max_length=32, blank=True, default='',
+                              verbose_name='Statut Meta')
+    created_via_engine = models.BooleanField(
+        default=False, verbose_name='Créée par le moteur')
+    adset = models.ForeignKey(
+        'adsengine.AdSetMirror', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='ads',
+        verbose_name='Ad set')
+
+    class Meta:
+        verbose_name = "Miroir d'ad"
+        verbose_name_plural = "Miroirs d'ad"
+        ordering = ['-created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'meta_id'],
+                name='uniq_adsengine_ad_meta'),
+        ]
+
+    def __str__(self):
+        return f'Ad {self.meta_id} ({self.status or "?"})'
+
+
+class InsightSnapshot(TenantModel):
+    """ENG5 — Instantané de performance daté d'un objet publicitaire.
+
+    Rattaché par FK générique (``contenttypes``) à N'IMPORTE quel miroir
+    (campagne / ad set / ad). Upsert idempotent par
+    ``(company, content_type, object_id, date)``.
+    """
+
+    content_type = models.ForeignKey(
+        'contenttypes.ContentType', on_delete=models.CASCADE,
+        verbose_name='Type de cible')
+    object_id = models.PositiveIntegerField(verbose_name='ID cible')
+    content_object = GenericForeignKey('content_type', 'object_id')
+    date = models.DateField(verbose_name='Date')
+    spend = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        verbose_name='Dépense')
+    results = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Résultats')
+    frequency = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True,
+        verbose_name='Fréquence')
+    cpl = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='Coût par lead')
+
+    class Meta:
+        verbose_name = 'Instantané de performance'
+        verbose_name_plural = 'Instantanés de performance'
+        ordering = ['-date', '-created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'content_type', 'object_id', 'date'],
+                name='uniq_adsengine_insight_snap'),
+        ]
+        indexes = [
+            models.Index(
+                fields=['content_type', 'object_id'],
+                name='adseng_insight_ct_obj_idx'),
+        ]
+
+    def __str__(self):
+        return f'Insight {self.object_id}@{self.date}'
