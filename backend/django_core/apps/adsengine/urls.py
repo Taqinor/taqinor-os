@@ -9,15 +9,19 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
-    AnomalyEventViewSet, ArmDailyStatViewSet, CampaignFunnelView,
-    CohortReportView, CostPerSignatureView, CreativeAssetViewSet,
-    CreativeBacklogItemViewSet, CreativeGenerationBatchViewSet,
-    CreativePolicyViewSet, DecisionLogViewSet, EngineActionViewSet,
-    EngineAlertViewSet, ExperimentArmViewSet, ExperimentViewSet,
-    FlightPhaseViewSet, FlightPlanViewSet, GuardrailConfigViewSet,
-    MetaConnectionViewSet, PacingStateViewSet, ReconciliationSnapshotViewSet,
-    ReportExportView, RulePolicyViewSet, StatusView, VariantReportView,
-    WiringHealthView,
+    AdCampaignMirrorViewSet, AnomalyEventViewSet, ArmDailyStatViewSet,
+    BacklogDropAssetView, BacklogListView, BacklogLotApproveView,
+    BriefLatestView, CampaignFunnelView, CohortReportView, CostPerSignatureView,
+    CreativeAssetViewSet, CreativeBacklogItemViewSet,
+    CreativeGenerationBatchViewSet, CreativePolicyViewSet, DecisionLogViewSet,
+    EngineActionViewSet, EngineAlertViewSet, ExperimentArmViewSet,
+    ExperimentViewSet, FlightPhaseViewSet, FlightPlanViewSet,
+    GuardrailConfigViewSet, GuardrailSingletonView, MetaConnectionHealthView,
+    MetaConnectionStatusView, MetaConnectionViewSet, MetricsDashboardView,
+    MetricsLeadsView, MetricsPacingView, PacingStateViewSet,
+    ReconciliationListView, ReconciliationSnapshotViewSet, ReportExportView,
+    RulePolicyViewSet, SimulationDetailView, SimulationListView, StatusView,
+    VariantReportView, WiringHealthView,
 )
 
 router = DefaultRouter()
@@ -46,6 +50,9 @@ router.register(r'plans-vol', FlightPlanViewSet, basename='flight-plan')
 router.register(r'phases-vol', FlightPhaseViewSet, basename='flight-phase')
 router.register(r'reconciliations', ReconciliationSnapshotViewSet,
                 basename='reconciliation')
+# ADSENGINT2 — miroirs de campagne (liste + sync-now + creative-ranking).
+router.register(r'campaigns', AdCampaignMirrorViewSet,
+                basename='ad-campaign-mirror')
 
 urlpatterns = [
     path('status/', StatusView.as_view(), name='adsengine-status'),
@@ -53,6 +60,38 @@ urlpatterns = [
          name='adsengine-cout-par-signature'),
     path('wiring-health/', WiringHealthView.as_view(),
          name='adsengine-wiring-health'),
+    # ── ADSENGINT1/ADSENGINT2 — endpoints console (vues minces) ──────────────
+    # ENG22 — connexion Meta (statut + save write-only) + santé du câblage.
+    path('connection/', MetaConnectionStatusView.as_view(),
+         name='adsengine-connection'),
+    path('connection/health/', MetaConnectionHealthView.as_view(),
+         name='adsengine-connection-health'),
+    # ENG22 — garde-fous singleton (GET/PATCH sans id).
+    path('guardrail/', GuardrailSingletonView.as_view(),
+         name='adsengine-guardrail'),
+    # ENG23 — dashboard « un chiffre » + drill-down leads + pacing.
+    path('metrics/dashboard/', MetricsDashboardView.as_view(),
+         name='adsengine-metrics-dashboard'),
+    path('metrics/leads/', MetricsLeadsView.as_view(),
+         name='adsengine-metrics-leads'),
+    path('metrics/pacing/', MetricsPacingView.as_view(),
+         name='adsengine-metrics-pacing'),
+    # ENG42 — réconciliation (liste reshaped pour l'écran).
+    path('reconciliation/', ReconciliationListView.as_view(),
+         name='adsengine-reconciliation'),
+    # ENG26 — dernier brief hebdomadaire.
+    path('brief/', BriefLatestView.as_view(), name='adsengine-brief'),
+    # ENG44 — simulations (catalogue de scénarios + shell de rapport).
+    path('simulations/', SimulationListView.as_view(),
+         name='adsengine-simulations'),
+    path('simulations/<str:key>/', SimulationDetailView.as_view(),
+         name='adsengine-simulation-detail'),
+    # ENG41 — backlog par campagne + approbation de lot + dépôt d'asset.
+    path('backlog/', BacklogListView.as_view(), name='adsengine-backlog'),
+    path('backlog/lots/<int:lot_id>/approuver/',
+         BacklogLotApproveView.as_view(), name='adsengine-backlog-lot-approve'),
+    path('backlog/<int:campagne_id>/assets/',
+         BacklogDropAssetView.as_view(), name='adsengine-backlog-drop-asset'),
     # ADSENG33 — drill-downs de reporting (table variante / entonnoir / cohortes
     # / export CSV).
     path('reporting/variantes/', VariantReportView.as_view(),
