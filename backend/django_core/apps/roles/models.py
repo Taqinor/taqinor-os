@@ -92,6 +92,14 @@ ALL_PERMISSIONS = [
     'adsengine_view',
     'adsengine_manage',
     'adsengine_approve',
+    # ── ADSENG47 — permissions FINES du moteur autonome (runner P6). Deux
+    # pouvoirs DISTINCTS de l'approbation ENG19 : gérer les plans de vol
+    # (``adsengine_flightplan_manage``, palier responsable+) et ACTIVER le mode
+    # autonome (``adsengine_autonomy_toggle``). L'activation de l'autonomie est
+    # admin-SEUL : elle n'est mappée sur AUCUN autre rôle ci-dessous, donc seuls
+    # Directeur/Administrateur (qui héritent d'``ALL_PERMISSIONS``) la portent.
+    'adsengine_flightplan_manage',
+    'adsengine_autonomy_toggle',
     # ── Portée de visibilité des enregistrements (Feature F) ──
     # Marqueurs de RÔLE (pas des cases « action ») : narrowing OPT-IN. Un rôle
     # SANS l'un de ces marqueurs voit tous les enregistrements de sa société
@@ -256,6 +264,9 @@ COMMERCIAL_RESP_PERMISSIONS = [
     'kb_voir', 'kb_gerer',
     # ENG — gestion des campagnes (l'approbation reste au palier admin).
     'adsengine_view', 'adsengine_manage',
+    # ADSENG47 — gestion des plans de vol (palier responsable). L'ACTIVATION de
+    # l'autonomie (``adsengine_autonomy_toggle``) reste admin-seul, non ici.
+    'adsengine_flightplan_manage',
     SCOPE_SUBTREE,
 ]
 
@@ -302,6 +313,9 @@ TECHNICIEN_RESP_PERMISSIONS = [
     'kb_voir', 'kb_gerer',
     # ENG — gestion des campagnes (l'approbation reste au palier admin).
     'adsengine_view', 'adsengine_manage',
+    # ADSENG47 — gestion des plans de vol (palier responsable). L'ACTIVATION de
+    # l'autonomie (``adsengine_autonomy_toggle``) reste admin-seul, non ici.
+    'adsengine_flightplan_manage',
     SCOPE_SUBTREE,
 ]
 

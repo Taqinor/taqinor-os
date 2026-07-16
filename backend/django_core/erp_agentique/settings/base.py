@@ -749,6 +749,8 @@ CELERY_TASK_ROUTES = {
     # ADSENG15 — boucles du Gardien (critique 6 h + optimisation quotidienne).
     'adsengine.evaluate_guardrails': {'queue': 'scheduled'},
     'adsengine.evaluate_optimization_rules': {'queue': 'scheduled'},
+    # ADSENG35 — boucle du FlightRunner (quotidienne, autonomie gated).
+    'adsengine.run_active_flightplans': {'queue': 'scheduled'},
     # NTPLT27 — 4e queue `bulk` pour le travail de masse (imports dataimport,
     # exports planifiés volumineux, backfills, seed à l'échelle). Un import de
     # 100 000 lignes ne doit plus retarder un digest planifié ni un rendu PDF

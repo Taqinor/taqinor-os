@@ -419,6 +419,13 @@ app.conf.beat_schedule = {
         'task': 'adsengine.evaluate_optimization_rules',
         'schedule': crontab(hour=6, minute=55),
     },
+    # ADSENG35 — boucle du FlightRunner (quotidienne, après le gardien de 06:55).
+    # NO-OP par défaut : ne tourne que pour les sociétés ayant ACTIVÉ le mode
+    # autonome (préflight ADSENG38 vert) et sans interrupteur global engagé.
+    'adsengine-run-active-flightplans': {
+        'task': 'adsengine.run_active_flightplans',
+        'schedule': crontab(hour=7, minute=5),
+    },
 }
 
 # YHARD6 — compteurs Celery succès/échec (process-local, best-effort) pour
