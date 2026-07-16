@@ -5,7 +5,7 @@
 """
 from rest_framework import serializers
 
-from .models import Patient, Praticien, Salle
+from .models import Patient, Praticien, RendezVous, Salle
 
 
 class PraticienSerializer(serializers.ModelSerializer):
@@ -38,3 +38,24 @@ class PatientSerializer(serializers.ModelSerializer):
             'numero_dossier', 'contact_urgence', 'client',
         ]
         read_only_fields = ['numero_dossier']
+
+
+class RendezVousSerializer(serializers.ModelSerializer):
+    statut_display = serializers.CharField(source='get_statut_display', read_only=True)
+    patient_nom = serializers.SerializerMethodField()
+    praticien_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = RendezVous
+        fields = [
+            'id', 'patient', 'patient_nom', 'praticien', 'praticien_nom',
+            'salle', 'date_heure_debut', 'duree_min', 'type_acte', 'statut',
+            'statut_display', 'motif_court', 'cree_par',
+        ]
+        read_only_fields = ['cree_par']
+
+    def get_patient_nom(self, obj):
+        return str(obj.patient) if obj.patient_id else None
+
+    def get_praticien_nom(self, obj):
+        return obj.praticien.nom if obj.praticien_id else None

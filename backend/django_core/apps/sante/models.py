@@ -130,3 +130,59 @@ class Patient(TenantModel):
 
     def __str__(self):
         return f"{self.nom} {self.prenom}".strip()
+
+
+class RendezVous(TenantModel):
+    """NTSAN4 — agenda multi-praticiens. La détection de chevauchement
+    (praticien OU salle) est appliquée côté serveur dans
+    ``services.verifier_chevauchement_rdv`` (appelée par le viewset), pas ici
+    (garde de service, pas de contrainte DB — les créneaux se chevauchent sur
+    des intervalles calculés, pas une simple égalité de colonnes)."""
+
+    class Statut(models.TextChoices):
+        PLANIFIE = 'planifie', 'Planifié'
+        CONFIRME = 'confirme', 'Confirmé'
+        ARRIVE = 'arrive', 'Arrivé'
+        EN_COURS = 'en_cours', 'En cours'
+        TERMINE = 'termine', 'Terminé'
+        ANNULE = 'annule', 'Annulé'
+        ABSENT = 'absent', 'Absent'
+
+    patient = models.ForeignKey(
+        Patient, on_delete=models.CASCADE, related_name='rendez_vous',
+        verbose_name='Patient')
+    praticien = models.ForeignKey(
+        Praticien, on_delete=models.CASCADE, related_name='rendez_vous',
+        verbose_name='Praticien')
+    salle = models.ForeignKey(
+        Salle, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='rendez_vous', verbose_name='Salle')
+    date_heure_debut = models.DateTimeField(verbose_name='Date et heure de début')
+    duree_min = models.PositiveIntegerField(default=30, verbose_name='Durée (min)')
+    type_acte = models.CharField(
+        max_length=255, blank=True, default='', verbose_name="Type d'acte")
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.PLANIFIE,
+        verbose_name='Statut')
+    motif_court = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Motif')
+    cree_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='sante_rdv_crees',
+        verbose_name='Créé par')
+
+    class Meta:
+        verbose_name = 'Rendez-vous'
+        verbose_name_plural = 'Rendez-vous'
+        ordering = ['date_heure_debut']
+        indexes = [
+            models.Index(
+                fields=['praticien', 'date_heure_debut'],
+                name='sante_rdv_praticien_debut_idx'),
+            models.Index(
+                fields=['salle', 'date_heure_debut'],
+                name='sante_rdv_salle_debut_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.patient_id} @ {self.date_heure_debut}'

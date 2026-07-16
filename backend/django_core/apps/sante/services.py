@@ -58,3 +58,43 @@ def resoudre_client_pour_patient(patient):
     patient.client = client
     patient.save(update_fields=['client'])
     return client
+
+
+def verifier_chevauchement_rdv(
+        *, company, praticien, salle, date_heure_debut, duree_min,
+        exclude_id=None):
+    """NTSAN2/NTSAN4 — garde applicative de non-double-réservation.
+
+    Refuse un `RendezVous` qui chevaucherait un autre RDV actif (statut !=
+    annulé) sur le MÊME praticien OU la MÊME salle (si une salle est
+    demandée). Renvoie un message FR de blocage, ou ``None`` si le créneau
+    est libre. Les durées variant par RDV, le chevauchement est calculé en
+    Python (pas une contrainte DB) : ``debut < autre_fin ET fin > autre_debut``.
+    """
+    from datetime import timedelta
+
+    from .models import RendezVous
+
+    fin = date_heure_debut + timedelta(minutes=duree_min)
+
+    qs = RendezVous.objects.filter(company=company).exclude(
+        statut=RendezVous.Statut.ANNULE)
+    if exclude_id:
+        qs = qs.exclude(id=exclude_id)
+
+    def _chevauche(autre):
+        autre_fin = autre.date_heure_debut + timedelta(minutes=autre.duree_min)
+        return date_heure_debut < autre_fin and fin > autre.date_heure_debut
+
+    if praticien is not None:
+        for autre in qs.filter(praticien=praticien):
+            if _chevauche(autre):
+                return (
+                    "Ce praticien a déjà un rendez-vous sur ce créneau.")
+
+    if salle is not None:
+        for autre in qs.filter(salle=salle):
+            if _chevauche(autre):
+                return "Cette salle est déjà réservée sur ce créneau."
+
+    return None
