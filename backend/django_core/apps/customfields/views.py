@@ -12,6 +12,28 @@ from .serializers import (
     _module_model,
 )
 
+# NTEXT2 — largeur/formatage suggérés par type de champ pour la vue LISTE
+# auto-générée (purement indicatif, le front reste libre de les ajuster).
+_COLONNE_LARGEUR_PAR_TYPE = {
+    'text': 200, 'number': 110, 'date': 130, 'boolean': 90,
+    'choice': 160, 'relation': 200, 'fichier': 160, 'ia': 220,
+}
+_COLONNE_FORMAT_PAR_TYPE = {
+    'text': 'texte', 'number': 'nombre', 'date': 'date', 'boolean': 'oui_non',
+    'choice': 'badge', 'relation': 'lien', 'fichier': 'fichier', 'ia': 'texte',
+}
+
+
+def _colonne_liste(field_def):
+    """NTEXT2 — schéma d'une colonne de liste pour un CustomFieldDef donné."""
+    return {
+        'code': field_def.code,
+        'libelle': field_def.libelle,
+        'type': field_def.type,
+        'largeur': _COLONNE_LARGEUR_PAR_TYPE.get(field_def.type, 150),
+        'formatage': _COLONNE_FORMAT_PAR_TYPE.get(field_def.type, 'texte'),
+    }
+
 
 class CustomFieldDefViewSet(TenantMixin, viewsets.ModelViewSet):
     """Définitions de champs personnalisés (Paramètres). Lecture tout rôle
@@ -200,3 +222,29 @@ class CustomRecordViewSet(TenantMixin, viewsets.ModelViewSet):
     def perform_destroy(self, instance):
         self._check_object_permission('gerer')
         instance.delete()
+
+    def vue_liste(self, request, *args, **kwargs):
+        """NTEXT2 — schéma de liste auto-générée (colonnes ``visible_liste``)
+        + les données paginées de l'objet. Multi-tenant strict : la société
+        vient de ``request.user`` (via ``_objet``/``get_queryset``), jamais du
+        corps ni de l'URL au-delà du ``object_code``."""
+        objet = self._objet()
+        self._check_object_permission('voir')
+        champs = CustomFieldDef.objects.filter(
+            company=request.user.company, module=objet.field_module,
+            actif=True, visible_liste=True).order_by('ordre', 'libelle')
+        colonnes = [_colonne_liste(c) for c in champs]
+
+        queryset = CustomRecord.objects.filter(
+            company=request.user.company, objet=objet)
+        page = self.paginate_queryset(queryset)
+        objects = page if page is not None else list(queryset)
+        serializer = CustomRecordSerializer(objects, many=True)
+        if page is not None:
+            paginated = self.get_paginated_response(serializer.data)
+            data = dict(paginated.data)
+        else:
+            data = {'count': len(objects), 'next': None,
+                    'previous': None, 'results': serializer.data}
+        data['colonnes'] = colonnes
+        return Response(data)
