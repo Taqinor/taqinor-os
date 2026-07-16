@@ -228,6 +228,54 @@ def cloturer_folio(folio, *, user):
     return facture
 
 
+# ── NTHOT6 — Check-out et libération de chambre ─────────────────────────────
+
+class CheckOutError(ValueError):
+    """Levée quand le check-out est refusé (réservation pas en cours, ou
+    solde folio non réglé sans override admin)."""
+
+
+def check_out(reservation, *, user=None, override=False):
+    """Check-out : passe la réservation ``terminee`` et la chambre ``sale``
+    (JAMAIS directement ``libre`` — repasse par le housekeeping, NTHOT9).
+
+    Refuse (``CheckOutError``) si le folio n'est pas soldé, SAUF ``override``
+    (admin/responsable) — dans ce cas, l'override est journalisé via
+    ``apps.audit`` (foundation, exempte de la frontière cross-app)."""
+    if reservation.statut != Reservation.Statut.EN_COURS:
+        raise CheckOutError(
+            "Seule une réservation en cours (check-in effectué) peut faire "
+            "l'objet d'un check-out.")
+
+    folio = getattr(reservation, 'folio', None)
+    if folio is not None and folio.statut != Folio.Statut.SOLDE:
+        if not override:
+            raise CheckOutError(
+                "Le solde du folio n'est pas réglé — clôturez le folio "
+                "(NTHOT7) avant le check-out, ou utilisez l'override admin.")
+        from apps.audit.models import AuditLog
+        from apps.audit.recorder import record
+
+        record(
+            AuditLog.Action.STATUS,
+            instance=reservation,
+            company=reservation.company,
+            user=user,
+            detail=(
+                f'Check-out forcé (override admin) malgré folio #{folio.pk} '
+                'non soldé.'),
+        )
+
+    reservation.statut = Reservation.Statut.TERMINEE
+    reservation.save(update_fields=['statut'])
+
+    if reservation.chambre_id:
+        reservation.chambre.statut = Chambre.Statut.SALE
+        reservation.chambre.save(update_fields=['statut'])
+
+    return reservation
+
+
 # ── NTHOT5 — Check-in avec fiche de police marocaine ────────────────────────
 
 class CheckInError(ValueError):

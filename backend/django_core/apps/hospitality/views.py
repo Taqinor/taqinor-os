@@ -149,6 +149,24 @@ class ReservationViewSet(TenantMixin, viewsets.ModelViewSet):
                 {'fiches': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(reservation).data)
 
+    # ── NTHOT6 — Check-out et libération de chambre ─────────────────────────
+    @action(detail=True, methods=['post'], url_path='check-out')
+    def check_out(self, request, pk=None):
+        """Check-out : corps optionnel ``{"override": true}`` (admin/
+        responsable) pour forcer malgré un folio non soldé — journalisé."""
+        reservation = self.get_object()
+        override = bool(request.data.get('override'))
+        if override and not request.user.is_responsable:
+            return Response(
+                {'override': "Réservé aux rôles Responsable/Administrateur."},
+                status=status.HTTP_403_FORBIDDEN)
+        try:
+            services.check_out(reservation, user=request.user, override=override)
+        except services.CheckOutError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(reservation).data)
+
     @action(detail=True, methods=['get'], url_path='fiches-police')
     def fiches_police(self, request, pk=None):
         """Liste les fiches de police saisies au check-in de cette réservation."""
