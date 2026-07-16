@@ -934,7 +934,11 @@ class MetaConnectionStatusView(APIView):
     masqué. L'enregistrement N'ACTIVE JAMAIS la connexion (aucune activation
     depuis l'ERP) — ``enabled`` reste tel quel."""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated]  # affiné par get_permissions
+
+    def get_permissions(self):
+        _w = self.request.method in ('POST', 'PATCH', 'PUT', 'DELETE')
+        return [HasPermissionOrLegacy('adsengine_manage' if _w else 'adsengine_view')]
 
     def get(self, request):
         company, err = _adseng_company_gate(request, 'adsengine_view')
@@ -977,7 +981,7 @@ class MetaConnectionHealthView(APIView):
     valeur) : jeton, compte pub, page, pixel, CAPI (clés serveur), et l'état « en
     pause par design ». Aucun secret ne fuit. Lecture ``adsengine_view``."""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
 
     def get(self, request):
         company, err = _adseng_company_gate(request, 'adsengine_view')
@@ -1009,7 +1013,11 @@ class GuardrailSingletonView(APIView):
     (``daily_budget_ceiling_mad`` / ``monthly_budget_ceiling_mad``). Company-
     scopé ; lecture ``adsengine_view`` / écriture ``adsengine_manage``."""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated]  # affiné par get_permissions
+
+    def get_permissions(self):
+        _w = self.request.method in ('POST', 'PATCH', 'PUT', 'DELETE')
+        return [HasPermissionOrLegacy('adsengine_manage' if _w else 'adsengine_view')]
 
     @staticmethod
     def _payload(cfg):
@@ -1059,7 +1067,7 @@ class MetricsDashboardView(APIView):
     ``InsightSnapshot`` de campagne + ``metrics.cost_per_signature_summary``.
     Lecture ``adsengine_view``."""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
 
     def get(self, request):
         company, err = _adseng_company_gate(request, 'adsengine_view')
@@ -1096,7 +1104,7 @@ class MetricsLeadsView(APIView):
     ``crm.selectors.lead_card`` (jamais un import de ``crm.models``). Lecture
     ``adsengine_view``."""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
 
     def get(self, request):
         company, err = _adseng_company_gate(request, 'adsengine_view')
@@ -1132,7 +1140,7 @@ class MetricsPacingView(APIView):
     restants, état. Dérivé (aucune écriture) via
     ``pacing.compute_pacing_for_company``. Lecture ``adsengine_view``."""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
 
     def get(self, request):
         company, err = _adseng_company_gate(request, 'adsengine_view')
@@ -1168,7 +1176,7 @@ class ReconciliationListView(APIView):
     LEADS (la réconciliation compare des leads, pas des MAD) surfacés via le
     canal numérique générique de l'écran."""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
 
     def get(self, request):
         company, err = _adseng_company_gate(request, 'adsengine_view')
@@ -1237,7 +1245,7 @@ class BriefLatestView(APIView):
     """ENG11/ENG26 — Dernier brief hebdomadaire de la société. Company-scopé ;
     lecture ``adsengine_view``. Aucun texte LLM (déterministe, v1)."""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
 
     def get(self, request):
         company, err = _adseng_company_gate(request, 'adsengine_view')
@@ -1354,7 +1362,7 @@ class SimulationListView(APIView):
     (``[{id, nom, cree_le}]``). Métadonnée statique ; lecture ``adsengine_view``.
     Aucun effet de bord (le moteur n'est pas exécuté)."""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
 
     def get(self, request):
         company, err = _adseng_company_gate(request, 'adsengine_view')
@@ -1372,7 +1380,7 @@ class SimulationDetailView(APIView):
     """ENG44 — Rapport (shell) d'un scénario de simulation. Lecture
     ``adsengine_view`` ; company-scopé ; aucun effet de bord."""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
 
     def get(self, request, key):
         company, err = _adseng_company_gate(request, 'adsengine_view')
@@ -1390,7 +1398,7 @@ class BacklogListView(APIView):
     et lots de recombinaison (chacun approuvable). Lecture ``adsengine_view`` ;
     company-scopé. Chiffres LECTURE SEULE via ``backlog.py``."""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
 
     def get(self, request):
         company, err = _adseng_company_gate(request, 'adsengine_view')
@@ -1448,7 +1456,7 @@ class BacklogLotApproveView(APIView):
     Réutilise ``recombine.approve_lot``. Écriture ``adsengine_manage`` ;
     company-scopé (le lot d'une autre société → 404)."""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasPermissionOrLegacy('adsengine_manage')]
 
     def post(self, request, lot_id):
         company, err = _adseng_company_gate(request, 'adsengine_manage')
@@ -1472,7 +1480,7 @@ class BacklogDropAssetView(APIView):
     ``CreativeBacklogItem`` EN FILE. Écriture ``adsengine_manage`` ;
     company-scopé (campagne d'une autre société → 404)."""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasPermissionOrLegacy('adsengine_manage')]
 
     def post(self, request, campagne_id):
         company, err = _adseng_company_gate(request, 'adsengine_manage')
