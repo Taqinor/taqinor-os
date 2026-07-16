@@ -101,6 +101,19 @@ class GuardrailConfig(TenantModel):
     anomaly_window_hours = models.PositiveIntegerField(
         default=48, verbose_name="Fenêtre de détection d'anomalie (heures)")
 
+    # ── ENG8 — Toggles de capacités PAR société (motif HubSpot Breeze : « par
+    # capacité, pas un interrupteur global »). Défaut False : rien ne s'auto-
+    # applique tant que la société n'active pas explicitement la capacité. Un
+    # ``kind`` couvert par une capacité activée saute l'approbation humaine, mais
+    # une ligne ``EngineAction auto=True`` est TOUJOURS écrite (trace d'audit) et
+    # l'exécution est journalisée. Ces toggles ne peuvent JAMAIS autoriser une
+    # activation de campagne (interdite en dur, invariant permanent).
+    auto_rotate_creative = models.BooleanField(
+        default=False, verbose_name='Auto — rotation créative (ENG8)')
+    auto_rebalance_within_band = models.BooleanField(
+        default=False,
+        verbose_name='Auto — rééquilibrage dans la bande (ENG8)')
+
     class Meta:
         verbose_name = 'Garde-fous publicitaires'
         verbose_name_plural = 'Garde-fous publicitaires'
@@ -283,6 +296,10 @@ class EngineAction(TenantModel):
         CREATE_CAMPAIGN = 'create_campaign', 'Créer une campagne'
         CREATE_ADSET = 'create_adset', 'Créer un ad set'
         CREATE_AD = 'create_ad', 'Créer une ad'
+        # ENG8 — kinds couverts par les toggles de capacités (auto-apply possible
+        # si la capacité est activée sur la GuardrailConfig de la société).
+        ROTATE_CREATIVE = 'rotate_creative', 'Roter le créatif'
+        REBALANCE_BUDGET = 'rebalance_budget', 'Rééquilibrer le budget'
 
     kind = models.CharField(
         max_length=32, choices=Kind.choices, verbose_name='Type')

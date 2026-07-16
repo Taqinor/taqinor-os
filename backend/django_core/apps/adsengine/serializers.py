@@ -42,7 +42,10 @@ class GuardrailConfigSerializer(serializers.ModelSerializer):
         model = GuardrailConfig
         fields = [
             'id', 'daily_budget_ceiling_mad', 'weekly_change_pct_max',
-            'anomaly_window_hours', 'created_at', 'updated_at',
+            'anomaly_window_hours',
+            # ENG8 — toggles de capacités (auto-apply par capacité).
+            'auto_rotate_creative', 'auto_rebalance_within_band',
+            'created_at', 'updated_at',
         ]
         read_only_fields = ['created_at', 'updated_at']
 

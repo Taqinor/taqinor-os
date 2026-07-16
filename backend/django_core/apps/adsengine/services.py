@@ -11,9 +11,38 @@ côté serveur), pas le registre stateless ``apps/agent``.
 """
 from __future__ import annotations
 
+import logging
+
 from django.utils import timezone
 
 from .models import EngineAction
+
+logger = logging.getLogger(__name__)
+
+
+# ── ENG8 — Toggles de capacités (par société) ────────────────────────────────
+# Chaque ``kind`` auto-applicable est associé au champ booléen de capacité qui,
+# une fois activé sur la ``GuardrailConfig`` de la société, autorise l'exécution
+# SANS approbation humaine (mais avec une trace ``EngineAction auto=True`` +
+# journalisation). Tout kind ABSENT de ce mapping exige TOUJOURS l'approbation.
+CAPABILITY_FOR_KIND = {
+    EngineAction.Kind.ROTATE_CREATIVE: 'auto_rotate_creative',
+    EngineAction.Kind.REBALANCE_BUDGET: 'auto_rebalance_within_band',
+}
+
+
+def capability_enabled(config, kind):
+    """ENG8 — Vrai si le ``kind`` est couvert par une capacité ACTIVÉE.
+
+    ``config`` ``None`` (aucune GuardrailConfig) ou kind hors mapping →
+    ``False`` : par défaut, tout exige l'approbation (aucune auto-application).
+    """
+    if config is None:
+        return False
+    field = CAPABILITY_FOR_KIND.get(kind)
+    if not field:
+        return False
+    return bool(getattr(config, field, False))
 
 
 class ActionNotApproved(Exception):
@@ -78,6 +107,22 @@ def _dispatch(client, action):
             name=payload.get('name', ''),
             adset_id=payload.get('adset_id', ''),
             extra_fields=payload.get('extra_fields'))
+    if kind == EngineAction.Kind.ROTATE_CREATIVE:
+        # Roter le créatif = créer une NOUVELLE ad (toujours PAUSED) portant le
+        # nouveau créatif ; le client garantit le statut PAUSED (jamais d'activ.).
+        return client.create_ad(
+            name=payload.get('name', ''),
+            adset_id=payload.get('adset_id', ''),
+            extra_fields=payload.get('extra_fields'))
+    if kind == EngineAction.Kind.REBALANCE_BUDGET:
+        # Rééquilibrage de budget dans la bande. La méthode concrète de mise à
+        # jour de budget du client atterrit avec le groupe budget (ADSENG) ; ici
+        # on route déjà l'appel. Un client réel qui ne l'expose pas encore lève
+        # (→ action « echouee », jamais d'application silencieuse ni d'activation).
+        return client.update_adset_budget(
+            adset_id=payload.get('adset_id', ''),
+            daily_budget=payload.get('daily_budget'),
+            extra_fields=payload.get('extra_fields'))
     raise ValueError(f"Type d'action non routable : {kind}")
 
 
@@ -121,3 +166,42 @@ def apply_action(action, *, connection=None, client=None):
     action.save(
         update_fields=['status', 'applied_at', 'result', 'error', 'updated_at'])
     return action
+
+
+def execute_auto_action(company, *, kind, reason_fr, payload=None,
+                        config=None, client=None, connection=None):
+    """ENG8 — Exécute une action en respectant les toggles de capacités.
+
+    * Capacité NON activée pour ce ``kind`` (défaut) → l'action est simplement
+      PROPOSÉE (``auto=False``) : le chemin humain propose→approuve→applique reste
+      obligatoire, comme pour tout le reste.
+    * Capacité ACTIVÉE → on saute l'approbation humaine, MAIS on écrit quand même
+      une ligne ``EngineAction`` (``auto=True``) marquée approuvée côté SYSTÈME
+      (jamais un ``approved_by`` humain), on JOURNALISE, puis on applique via
+      ``apply_action`` (qui passe par ``meta_client`` — statut PAUSED garanti,
+      jamais d'activation). La trace d'audit existe toujours.
+
+    ``config`` : ``GuardrailConfig`` de la société (résolue si non fournie).
+    """
+    if config is None:
+        from .models import GuardrailConfig
+        config = GuardrailConfig.objects.filter(company=company).first()
+
+    if not capability_enabled(config, kind):
+        # Capacité non activée → approbation humaine requise (aucun auto-apply).
+        return propose_action(
+            company, kind=kind, reason_fr=reason_fr, payload=payload, auto=False)
+
+    if not (reason_fr and str(reason_fr).strip()):
+        raise ValueError(
+            "Une raison en une phrase (français) est obligatoire.")
+
+    # Capacité activée : trace d'audit auto=True, approuvée côté système, appliquée.
+    action = EngineAction.objects.create(
+        company=company, kind=kind, payload=payload or {},
+        reason_fr=str(reason_fr).strip(),
+        status=EngineAction.Statut.APPROUVEE, auto=True)
+    logger.info(
+        'ENG8 auto-apply capacité=%s kind=%s société=%s action=%s',
+        CAPABILITY_FOR_KIND.get(kind), kind, company.pk, action.pk)
+    return apply_action(action, client=client, connection=connection)
