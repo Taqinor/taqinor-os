@@ -44,3 +44,37 @@ class Praticien(TenantModel):
 
     def __str__(self):
         return self.nom
+
+
+class Salle(TenantModel):
+    """NTSAN2 — salle/ressource (consultation, bloc, imagerie, labo).
+
+    Réservation croisée praticien+salle dans l'agenda : une salle ne peut pas
+    être double-réservée sur le même créneau. La contrainte applicative vit
+    dans ``services.py`` (``verifier_disponibilite_salle``) et n'est
+    exerçable qu'une fois le modèle ``RendezVous`` posé (NTSAN4) — c'est
+    l'unique consommateur d'un créneau de salle ; elle est implémentée et
+    testée dans la même passe que NTSAN4.
+    """
+
+    class Type(models.TextChoices):
+        CONSULTATION = 'consultation', 'Consultation'
+        BLOC = 'bloc', 'Bloc opératoire'
+        IMAGERIE = 'imagerie', 'Imagerie'
+        LABO = 'labo', 'Laboratoire'
+
+    nom = models.CharField(max_length=150, verbose_name='Nom')
+    type = models.CharField(
+        max_length=15, choices=Type.choices, default=Type.CONSULTATION,
+        verbose_name='Type')
+    capacite = models.PositiveIntegerField(default=1, verbose_name='Capacité')
+    equipements = models.TextField(
+        blank=True, default='', verbose_name='Équipements')
+
+    class Meta:
+        verbose_name = 'Salle'
+        verbose_name_plural = 'Salles'
+        ordering = ['nom']
+
+    def __str__(self):
+        return self.nom

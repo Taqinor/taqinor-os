@@ -9,10 +9,15 @@ NTSAN17 — en attendant, le défaut « authentifié suffit » de
 """
 from core.viewsets import CompanyScopedModelViewSet
 
-from .models import Praticien
-from .serializers import PraticienSerializer
+from .models import Praticien, Salle
+from .serializers import PraticienSerializer, SalleSerializer
 
 
 class PraticienViewSet(CompanyScopedModelViewSet):
     queryset = Praticien.objects.select_related('user').all()
     serializer_class = PraticienSerializer
+
+
+class SalleViewSet(CompanyScopedModelViewSet):
+    queryset = Salle.objects.all()
+    serializer_class = SalleSerializer
