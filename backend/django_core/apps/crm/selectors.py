@@ -67,6 +67,22 @@ def find_client_by_phone(company, telephone):
     return candidates[0] if candidates else None
 
 
+def normalize_phone_key(value):
+    """ADSENG-ODOO — Clé téléphone normalisée EXPOSÉE aux autres apps.
+
+    Point d'entrée cross-app SANCTIONNÉ (jamais un import de
+    ``apps.crm.services`` ou ``apps.crm.models`` depuis une autre app) : délègue
+    à la MÊME normalisation QW10 (``services.normalize_phone``) que celle
+    utilisée par ``reconciliation_lead_rows`` (``phone_key``) et l'import Odoo.
+
+    Sert au connecteur Odoo lecture-seule d'``apps.adsengine`` : un numéro de
+    téléphone Odoo (``+212…``) passé ici produit EXACTEMENT la même clé que le
+    ``phone_key`` d'un lead Meta capturé par l'ERP, donc les deux se rapprochent
+    (matching signature ↔ campagne). Lecture pure, aucun accès base."""
+    from . import services as crm_services
+    return crm_services.normalize_phone(value)
+
+
 def signed_leads_for_campaigns(company, utm_campaigns):
     """ENG10 — Leads SIGNÉS attribués par ``utm_campaign``, avec traçabilité.
 
