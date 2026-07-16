@@ -6,14 +6,17 @@ rôle authentifié (``IsAnyRole``) ; écriture réservée Responsable/Admin
 (``IsResponsableOrAdmin``), sauf actions explicitement ouvertes (ex. tâches de
 housekeeping assignées à l'utilisateur courant).
 """
-from rest_framework import filters, viewsets
+from rest_framework import filters, status, viewsets
+from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 
-from .models import Chambre, PlanTarifaire, TypeChambre
+from . import services
+from .models import Chambre, PlanTarifaire, Reservation, TypeChambre
 from .serializers import (
-    ChambreSerializer, PlanTarifaireSerializer, TypeChambreSerializer,
+    ChambreSerializer, PlanTarifaireSerializer, ReservationSerializer,
+    TypeChambreSerializer,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -73,3 +76,58 @@ class PlanTarifaireViewSet(TenantMixin, viewsets.ModelViewSet):
         if type_chambre:
             qs = qs.filter(type_chambre_id=type_chambre)
         return qs
+
+
+class ReservationViewSet(TenantMixin, viewsets.ModelViewSet):
+    """Réservations, CRUD scopé société (NTHOT3). Filtre ``?statut=&date_
+    arrivee=``. La création passe par ``services.creer_reservation``
+    (validation de chevauchement + résolution client + snapshot prix)."""
+    queryset = Reservation.objects.select_related(
+        'chambre', 'type_chambre', 'client').all()
+    serializer_class = ReservationSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_arrivee', 'date_depart', 'date_creation']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        statut = params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        date_arrivee = params.get('date_arrivee')
+        if date_arrivee:
+            qs = qs.filter(date_arrivee=date_arrivee)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        v = serializer.validated_data
+        chambre = v.get('chambre')
+        try:
+            reservation = services.creer_reservation(
+                company=request.user.company,
+                user=request.user,
+                chambre=chambre,
+                type_chambre=v.get('type_chambre'),
+                date_arrivee=v['date_arrivee'],
+                date_depart=v['date_depart'],
+                nb_adultes=v.get('nb_adultes', 1),
+                nb_enfants=v.get('nb_enfants', 0),
+                origine=v.get('origine', Reservation.Origine.WALK_IN),
+                client_id=v.get('client_id'),
+                client_nom=v.get('client_nom', ''),
+                client_telephone=v.get('client_telephone', ''),
+            )
+        except services.ReservationOverlapError as exc:
+            return Response(
+                {'chambre': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        out = self.get_serializer(reservation)
+        headers = self.get_success_headers(out.data)
+        return Response(
+            out.data, status=status.HTTP_201_CREATED, headers=headers)

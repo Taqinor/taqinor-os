@@ -7,6 +7,7 @@ vers d'autres apps métier (crm, ventes, sav) passent par des FK string
 ('app.Model') ou par des identifiants souples (`*_id`) résolus via les
 selectors/services de l'app cible — jamais un import direct de leurs modèles.
 """
+from django.conf import settings
 from django.db import models
 
 
@@ -124,3 +125,91 @@ class PlanTarifaire(models.Model):
         return (
             f'{self.type_chambre} — {self.canal} '
             f'({self.date_debut}→{self.date_fin})')
+
+
+# ── NTHOT3 — Réservations (walk-in/téléphone/email) ─────────────────────────
+
+class Reservation(models.Model):
+    """Réservation walk-in/téléphone/email/OTA (saisie manuelle uniquement —
+    aucune intégration OTA automatique, cf. NTHOT4 gated)."""
+
+    class Origine(models.TextChoices):
+        WALK_IN = 'walk_in', 'Walk-in'
+        TELEPHONE = 'telephone', 'Téléphone'
+        EMAIL = 'email', 'Email'
+        OTA_GATED = 'ota_gated', 'OTA (saisie manuelle)'
+
+    class Statut(models.TextChoices):
+        CONFIRMEE = 'confirmee', 'Confirmée'
+        EN_ATTENTE = 'en_attente', 'En attente'
+        ANNULEE = 'annulee', 'Annulée'
+        NO_SHOW = 'no_show', 'No-show'
+        EN_COURS = 'en_cours', 'En cours (check-in fait)'
+        TERMINEE = 'terminee', 'Terminée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='hospitality_reservations',
+        verbose_name='Société',
+    )
+    chambre = models.ForeignKey(
+        Chambre,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='reservations',
+        verbose_name='Chambre',
+    )
+    type_chambre = models.ForeignKey(
+        TypeChambre,
+        on_delete=models.PROTECT,
+        null=True, blank=True,
+        related_name='reservations',
+        verbose_name='Type de chambre (si chambre non assignée)',
+    )
+    origine = models.CharField(
+        max_length=12, choices=Origine.choices, default=Origine.WALK_IN)
+    date_arrivee = models.DateField(verbose_name="Date d'arrivée")
+    date_depart = models.DateField(verbose_name='Date de départ')
+    nb_adultes = models.PositiveIntegerField(default=1)
+    nb_enfants = models.PositiveIntegerField(default=0)
+
+    # Client résolu (pattern crm.resolve_client_for_lead) : soit un compte
+    # CRM existant (FK string souple, jamais un import de apps.crm.models),
+    # soit une saisie directe nom/téléphone si aucun compte CRM.
+    client = models.ForeignKey(
+        'crm.Client',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='hospitality_reservations',
+        verbose_name='Client CRM',
+    )
+    client_nom = models.CharField(max_length=200, blank=True, default='')
+    client_telephone = models.CharField(max_length=30, blank=True, default='')
+
+    statut = models.CharField(
+        max_length=12, choices=Statut.choices, default=Statut.CONFIRMEE)
+    # Prix figé au moment de la réservation (résolu via services.prix_applicable,
+    # NTHOT2) — indépendant d'une évolution ultérieure des plans tarifaires.
+    prix_nuit_snapshot = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True)
+
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='hospitality_reservations_creees',
+    )
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Réservation'
+        verbose_name_plural = 'Réservations'
+        ordering = ['-date_arrivee']
+
+    def __str__(self):
+        return f'Réservation #{self.pk} ({self.date_arrivee}→{self.date_depart})'
+
+    @property
+    def nb_nuits(self):
+        return max((self.date_depart - self.date_arrivee).days, 0)

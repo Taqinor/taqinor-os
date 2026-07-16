@@ -5,7 +5,7 @@
 """
 from rest_framework import serializers
 
-from .models import Chambre, PlanTarifaire, TypeChambre
+from .models import Chambre, PlanTarifaire, Reservation, TypeChambre
 
 
 class TypeChambreSerializer(serializers.ModelSerializer):
@@ -52,3 +52,35 @@ class PlanTarifaireSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {'date_fin': 'La date de fin doit être postérieure à la date de début.'})
         return attrs
+
+
+class ReservationSerializer(serializers.ModelSerializer):
+    """Création/édition de réservation.
+
+    ``company``/``statut``/``prix_nuit_snapshot`` sont posés côté serveur
+    (jamais lus du corps) : le statut suit le cycle de vie (check-in/check-out/
+    annulation), le prix est figé via ``services.prix_applicable`` à la
+    création. La validation de chevauchement (``services.check_reservation_
+    overlap``) est appliquée par le viewset (``services.creer_reservation``),
+    pas ici, pour renvoyer un message métier clair plutôt qu'une erreur de
+    champ générique.
+    """
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    origine_display = serializers.CharField(
+        source='get_origine_display', read_only=True)
+    # ``client_id`` en écriture (résolution côté service) ; ``client`` reste
+    # exposé en LECTURE seule (le FK effectivement retenu après résolution).
+    client_id = serializers.IntegerField(
+        required=False, allow_null=True, write_only=True)
+
+    class Meta:
+        model = Reservation
+        fields = [
+            'id', 'chambre', 'type_chambre', 'origine', 'origine_display',
+            'date_arrivee', 'date_depart', 'nb_adultes', 'nb_enfants',
+            'client', 'client_id', 'client_nom', 'client_telephone',
+            'statut', 'statut_display', 'prix_nuit_snapshot', 'date_creation',
+        ]
+        read_only_fields = [
+            'client', 'statut', 'prix_nuit_snapshot', 'date_creation']
