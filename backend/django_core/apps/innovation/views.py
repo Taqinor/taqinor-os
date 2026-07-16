@@ -1,26 +1,29 @@
 """Vues du module Innovation (boîte à idées interne).
 
-Palier d'accès : lecture/proposition/vote — tout utilisateur connecté de la
-société (``IsAnyRole``) — « logged-in users only » (NTIDE4/NTIDE8).
+Palier d'accès :
+  * lecture/proposition/vote — tout utilisateur connecté de la société
+    (``IsAnyRole``) — « logged-in users only » (NTIDE4/NTIDE8) ;
+  * transitions de statut (examiner/retenir/réaliser/fermer) — palier
+    Directeur/Responsable (``IsResponsableOrAdmin``, NTIDE5).
 """
-from rest_framework import filters
+from rest_framework import filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from authentication.permissions import IsAnyRole
+from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 from core.viewsets import CompanyScopedModelViewSet
 
 from . import services
 from .models import Idee, VoteIdee
-from .serializers import IdeeSerializer, VoteIdeeSerializer
+from .serializers import IdeeDetailSerializer, IdeeSerializer, VoteIdeeSerializer
 
 
 class IdeeViewSet(CompanyScopedModelViewSet):
-    """Boîte à idées interne : liste/détail/proposition (NTIDE4).
+    """Boîte à idées interne : liste/détail/proposition + actions (NTIDE4/5).
 
-    Aucun ``destroy`` : une idée se ferme (action ``fermer``, NTIDE5), elle
-    ne se supprime jamais (dossier de décision produit, comme les litiges/
-    dossiers légaux ailleurs dans le dépôt)."""
+    Aucun ``destroy`` : une idée se ferme (action ``fermer``), elle ne se
+    supprime jamais (dossier de décision produit, comme les litiges/dossiers
+    légaux ailleurs dans le dépôt)."""
 
     queryset = Idee.objects.select_related('auteur').all()
     serializer_class = IdeeSerializer
@@ -29,6 +32,11 @@ class IdeeViewSet(CompanyScopedModelViewSet):
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['votes_count', 'created_at', 'id']
     ordering = ['-created_at']
+
+    def get_serializer_class(self):
+        if self.action == 'retrieve':
+            return IdeeDetailSerializer
+        return IdeeSerializer
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -48,8 +56,59 @@ class IdeeViewSet(CompanyScopedModelViewSet):
         return qs
 
     def perform_create(self, serializer):
-        serializer.save(
+        idee = serializer.save(
             company=self.request.user.company, auteur=self.request.user)
+        from apps.records.models import Activity
+        from apps.records.services import log_activity
+        log_activity(
+            idee, Activity.Kind.CREATION, user=self.request.user,
+            company=idee.company)
+
+    # ── NTIDE5 — machine à états + chatter ──────────────────────────────────
+    def _transition(self, request, target):
+        idee = self.get_object()
+        note = (request.data.get('note') or '').strip()
+        try:
+            services.transitionner(
+                idee, target=target, user=request.user, note=note)
+        except services.TransitionInvalide as exc:
+            return Response({'statut': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(IdeeSerializer(idee).data)
+
+    @action(detail=True, methods=['post'], url_path='examiner',
+            permission_classes=[IsResponsableOrAdmin])
+    def examiner(self, request, pk=None):
+        """ouvert → examinée."""
+        return self._transition(request, Idee.Statut.EXAMINEE)
+
+    @action(detail=True, methods=['post'], url_path='retenir',
+            permission_classes=[IsResponsableOrAdmin])
+    def retenir(self, request, pk=None):
+        """examinée → retenue."""
+        return self._transition(request, Idee.Statut.RETENUE)
+
+    @action(detail=True, methods=['post'], url_path='realiser',
+            permission_classes=[IsResponsableOrAdmin])
+    def realiser(self, request, pk=None):
+        """retenue → réalisée."""
+        return self._transition(request, Idee.Statut.REALISEE)
+
+    @action(detail=True, methods=['post'], url_path='fermer',
+            permission_classes=[IsResponsableOrAdmin])
+    def fermer(self, request, pk=None):
+        """ouvert|examinée|retenue → fermée. Note de fermeture optionnelle
+        (``{"note": "..."}``), journalisée dans le chatter."""
+        return self._transition(request, Idee.Statut.FERMEE)
+
+    @action(detail=True, methods=['get'], url_path='historique')
+    def historique(self, request, pk=None):
+        """Timeline chatter (générique ``records.Activity``, ARC8)."""
+        idee = self.get_object()
+        from apps.records.serializers import ChatterActivitySerializer
+        from apps.records.services import chatter_qs
+        qs = chatter_qs(idee, company=idee.company)
+        return Response(ChatterActivitySerializer(qs, many=True).data)
 
 
 class VoteIdeeViewSet(CompanyScopedModelViewSet):

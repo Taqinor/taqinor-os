@@ -1,8 +1,9 @@
-import { describe, it, expect, beforeAll } from 'vitest'
-import { render, screen } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { describe, it, expect, vi, beforeAll } from 'vitest'
+import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
-import { STATUT_MAP } from './innovationStatus'
+import { transitionsPour, estTerminal, STATUT_MAP } from './innovationStatus'
 import FilterSelect from './FilterSelect'
 
 function wrap(ui, { route = '/' } = {}) {
@@ -12,6 +13,24 @@ function wrap(ui, { route = '/' } = {}) {
     </MemoryRouter>
   )
 }
+
+// ── Stub complet du client API innovation (aucun réseau) ──
+const innovationApiMock = vi.hoisted(() => ({
+  list: vi.fn(),
+  get: vi.fn(),
+  create: vi.fn(),
+  update: vi.fn(),
+  examiner: vi.fn(),
+  retenir: vi.fn(),
+  realiser: vi.fn(),
+  fermer: vi.fn(),
+  historique: vi.fn(),
+  vote: vi.fn(),
+  retirerVote: vi.fn(),
+  votesRecents: vi.fn(),
+  mesVotes: vi.fn(),
+}))
+vi.mock('../../api/innovationApi', () => ({ default: innovationApiMock }))
 
 // jsdom n'implémente pas ResizeObserver (Radix Switch/Select).
 beforeAll(() => {
@@ -24,7 +43,22 @@ beforeAll(() => {
   }
 })
 
-describe('innovationStatus (NTIDE1/NTIDE4 — miroir apps.innovation.models.Idee.Statut)', () => {
+describe('innovation state machine helpers (miroir apps.innovation.services)', () => {
+  it('transitionsPour reflète la machine à états backend', () => {
+    expect(transitionsPour('ouvert')).toEqual(['examiner', 'fermer'])
+    expect(transitionsPour('examinee')).toEqual(['retenir', 'fermer'])
+    expect(transitionsPour('retenue')).toEqual(['realiser', 'fermer'])
+    expect(transitionsPour('realisee')).toEqual([])
+    expect(transitionsPour('fermee')).toEqual([])
+  })
+
+  it('estTerminal marque realisee/fermee comme terminaux', () => {
+    expect(estTerminal('realisee')).toBe(true)
+    expect(estTerminal('fermee')).toBe(true)
+    expect(estTerminal('ouvert')).toBe(false)
+    expect(estTerminal('retenue')).toBe(false)
+  })
+
   it('STATUT_MAP couvre les 5 statuts backend', () => {
     expect(Object.keys(STATUT_MAP).sort()).toEqual(
       ['examinee', 'fermee', 'ouvert', 'realisee', 'retenue'],
@@ -45,5 +79,70 @@ describe('FilterSelect (smoke)', () => {
     const select = screen.getByRole('combobox', { name: 'Statut' })
     expect(select.value).toBe('retenue')
     expect(screen.getByText('Retenue')).toBeTruthy()
+  })
+})
+
+describe('IdeeDetail', () => {
+  it('affiche titre/contexte/votes/lien et propose les transitions du statut', async () => {
+    innovationApiMock.get.mockResolvedValue({
+      data: {
+        id: 1,
+        titre: 'Ajouter un export PDF',
+        description: 'Ce serait pratique.',
+        contexte: 'SAV',
+        statut: 'ouvert',
+        votes_count: 3,
+        auteur_nom: 'jdupont',
+        linked_type: 'devis',
+        linked_id: 42,
+        date_creation: '2026-07-01T10:00:00Z',
+        historique: [],
+      },
+    })
+
+    const { default: IdeeDetail } = await import('./IdeeDetail')
+    render(wrap(
+      <Routes><Route path="/innovation/idees/:id" element={<IdeeDetail />} /></Routes>,
+      { route: '/innovation/idees/1' },
+    ))
+
+    await waitFor(() => expect(screen.getByText('Ajouter un export PDF')).toBeTruthy())
+    expect(screen.getByText('Devis #42')).toBeTruthy()
+    expect(screen.getByRole('button', { name: /Voter/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /Examiner/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /Fermer/ })).toBeTruthy()
+  })
+
+  it('une idée réalisée est terminale : aucune transition proposée', async () => {
+    innovationApiMock.get.mockResolvedValue({
+      data: {
+        id: 2, titre: 'Idée livrée', statut: 'realisee', votes_count: 5,
+        historique: [],
+      },
+    })
+    const { default: IdeeDetail } = await import('./IdeeDetail')
+    render(wrap(
+      <Routes><Route path="/innovation/idees/:id" element={<IdeeDetail />} /></Routes>,
+      { route: '/innovation/idees/2' },
+    ))
+    await waitFor(() => expect(screen.getByText('Idée livrée')).toBeTruthy())
+    expect(screen.queryByRole('button', { name: /Examiner/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Fermer/ })).toBeNull()
+  })
+
+  it('vote : POST via innovationApi.vote puis recharge', async () => {
+    innovationApiMock.get.mockResolvedValue({
+      data: { id: 3, titre: 'Idée à voter', statut: 'ouvert', votes_count: 0, historique: [] },
+    })
+    innovationApiMock.vote.mockResolvedValue({ data: { id: 99 } })
+    const { default: IdeeDetail } = await import('./IdeeDetail')
+    render(wrap(
+      <Routes><Route path="/innovation/idees/:id" element={<IdeeDetail />} /></Routes>,
+      { route: '/innovation/idees/3' },
+    ))
+    await waitFor(() => expect(screen.getByText('Idée à voter')).toBeTruthy())
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: /Voter/ }))
+    await waitFor(() => expect(innovationApiMock.vote).toHaveBeenCalledWith('3'))
   })
 })

@@ -1,7 +1,55 @@
-"""Services (écritures/orchestration) du module ``apps.innovation``."""
+"""Services (écritures/orchestration) du module ``apps.innovation``.
+
+Le chatter (« historique ») réutilise ``apps.records.services.log_activity``
+(ARC8, générique) — jamais un modèle ``*Activity`` maison.
+"""
 from django.db import IntegrityError, transaction
 
 from .models import Idee, VoteIdee
+
+# ── Machine à états (NTIDE5) ────────────────────────────────────────────────
+
+# {statut_cible: {statuts_de_depart_autorises}}
+_TRANSITIONS = {
+    Idee.Statut.EXAMINEE: {Idee.Statut.OUVERT},
+    Idee.Statut.RETENUE: {Idee.Statut.EXAMINEE},
+    Idee.Statut.REALISEE: {Idee.Statut.RETENUE},
+    # Fermeture optionnelle depuis n'importe quel statut ACTIF (pas déjà
+    # réalisée/fermée — ces deux-là sont terminales).
+    Idee.Statut.FERMEE: set(Idee.STATUTS_ACTIFS),
+}
+
+
+class TransitionInvalide(ValueError):
+    """Levée quand la transition demandée n'est pas légale depuis le statut
+    courant de l'idée."""
+
+
+def transitionner(idee, *, target, user, note=''):
+    """Applique une transition de statut si elle est légale, journalise le
+    changement dans le chatter générique (``records.Activity``, ARC8).
+
+    Lève ``TransitionInvalide`` si le statut courant n'autorise pas
+    ``target``. ``note`` (optionnelle) est jointe au journal (utilisée par
+    l'action ``fermer``, NTIDE5, qui accepte une note de fermeture)."""
+    autorises = _TRANSITIONS.get(target)
+    if autorises is None or idee.statut not in autorises:
+        raise TransitionInvalide(
+            f"Transition invalide depuis « {idee.get_statut_display()} » "
+            f"vers « {Idee.Statut(target).label} ».")
+
+    old = idee.statut
+    idee.statut = target
+    idee.save(update_fields=['statut', 'updated_at'])
+
+    from apps.records.models import Activity
+    from apps.records.services import log_activity
+    log_activity(
+        idee, Activity.Kind.MODIFICATION, user=user, field='statut',
+        field_label='Statut', old_value=old, new_value=target,
+        body=note or '', company=idee.company)
+    return idee
+
 
 # ── Votes (NTIDE2) ──────────────────────────────────────────────────────────
 

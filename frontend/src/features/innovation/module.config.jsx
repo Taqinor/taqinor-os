@@ -9,11 +9,12 @@ import { Lightbulb } from 'lucide-react'
    enregistrée). Collectée par le registre ``router/moduleRoutes.jsx`` via glob
    (nav Sidebar, routes.meta, fil d'Ariane, route lazy).
 
-   Liste : ouverte à TOUT utilisateur connecté (« logged-in users only »,
-   NTIDE4 — aucun ``roles`` déclaré ⇒ authLoader seul).
+   Liste/détail : ouverts à TOUT utilisateur connecté (« logged-in users
+   only », NTIDE4/NTIDE5 — aucun ``roles`` déclaré ⇒ authLoader seul).
    ========================================================================== */
 
 const IdeesPage = lazy(() => import('./IdeesPage'))
+const IdeeDetail = lazy(() => import('./IdeeDetail'))
 
 const config = {
   key: 'innovation',
@@ -35,6 +36,7 @@ const config = {
   sectionLabels: { innovation: 'Innovation' },
   routes: [
     { path: '/innovation/idees', component: IdeesPage },
+    { path: '/innovation/idees/:id', component: IdeeDetail },
   ],
 }
 

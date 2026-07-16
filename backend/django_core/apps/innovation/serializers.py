@@ -41,6 +41,22 @@ class IdeeSerializer(serializers.ModelSerializer):
         return getattr(obj.auteur, 'username', None)
 
 
+class IdeeDetailSerializer(IdeeSerializer):
+    """Sérialiseur de détail (NTIDE5) — ajoute l'historique (chatter)."""
+
+    historique = serializers.SerializerMethodField()
+
+    class Meta(IdeeSerializer.Meta):
+        fields = IdeeSerializer.Meta.fields + ['historique']
+
+    def get_historique(self, obj):
+        from apps.records.serializers import ChatterActivitySerializer
+        from apps.records.services import chatter_qs
+
+        qs = chatter_qs(obj, company=obj.company)
+        return ChatterActivitySerializer(qs, many=True).data
+
+
 class VoteIdeeSerializer(serializers.ModelSerializer):
     votant_nom = serializers.SerializerMethodField()
     date = serializers.DateTimeField(source='created_at', read_only=True)

@@ -15,6 +15,15 @@ const innovationApi = {
   create: (data) => api.post('/innovation/idees/', data),
   update: (id, data) => api.patch(`/innovation/idees/${id}/`, data),
 
+  // ── Machine à états (POST) — palier Directeur/Responsable (NTIDE5) ──
+  examiner: (id) => api.post(`/innovation/idees/${id}/examiner/`),
+  retenir: (id) => api.post(`/innovation/idees/${id}/retenir/`),
+  realiser: (id) => api.post(`/innovation/idees/${id}/realiser/`),
+  fermer: (id, note) => api.post(`/innovation/idees/${id}/fermer/`, { note }),
+
+  // ── Chatter (historique, NTIDE5) ──
+  historique: (id) => api.get(`/innovation/idees/${id}/historique/`),
+
   // ── Votes (NTIDE2) ──
   vote: (idee) => api.post('/innovation/votes/', { idee }),
   retirerVote: (voteId) => api.delete(`/innovation/votes/${voteId}/`),
