@@ -102,9 +102,11 @@ def meets_diversity_floor(company, *, floor=DIVERSITY_FLOOR_HOOKS,
 
 def queue_for_campaign(company, campaign, *, today=None):
     """File ordonnée (date-au-plus-tôt puis tag saisonnier) pour une campagne
-    cible — la liste des items EN FILE prêts à programmer."""
-    today = today or datetime.date.today()
-    qs = _ready_now(_base_queue(company, campaign=campaign), today)
+    cible — TOUS les items EN FILE programmés (y compris datés dans le futur),
+    la file complète à visualiser/planifier. ``today`` est accepté pour une
+    signature cohérente mais n'exclut rien (le runway, lui, filtre le prêt-
+    maintenant)."""
+    qs = _base_queue(company, campaign=campaign)
     return list(qs.order_by('earliest_date', 'seasonal_tag', 'id'))
 
 
