@@ -17,7 +17,9 @@ describe('telemetryEvents — vocabulaire fermé (WJ91)', () => {
   });
 
   it('les modes correspondent EXACTEMENT à LEAD_MODES (lib/lead.ts)', () => {
-    expect(TELEMETRY_MODES).toEqual(['residentiel', 'professionnel', 'agricole']);
+    // WJ121 — 4 modes émis (residentiel/industriel/commercial/agricole) +
+    // l'alias hérité 'professionnel' (accepté, plus jamais émis par le site).
+    expect(TELEMETRY_MODES).toEqual(['residentiel', 'professionnel', 'industriel', 'commercial', 'agricole']);
   });
 
   it('couvre les événements attendus (journey_step_*, estimate_rendered, whatsapp_clicked, proposal_*)', () => {
@@ -120,7 +122,7 @@ describe('buildTelemetryEvent — CONTRAT DE VIE PRIVÉE : jamais de PII (WJ91)'
   it('une valeur malformée (hors vocabulaire) est écartée SANS lever ni bloquer', () => {
     const evt = buildTelemetryEvent('whatsapp_clicked', {
       step_id: 'un_id_invente',
-      mode: 'industriel', // pas dans TELEMETRY_MODES
+      mode: 'startup', // pas dans TELEMETRY_MODES (WJ121 : 'industriel' est désormais un vrai mode)
       locale: 'es',
       page: 'javascript:alert(1)', // ne commence pas par "/"
     });
