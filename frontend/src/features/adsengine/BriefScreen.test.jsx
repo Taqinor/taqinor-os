@@ -72,4 +72,12 @@ describe('BriefScreen (ENG26)', () => {
     renderAt(<BriefScreen />)
     expect(await screen.findByTestId('ae-brief-empty')).toBeInTheDocument()
   })
+
+  it('ENG31 — le brief porte la marque tenant (repli propre sans thème)', async () => {
+    renderAt(<BriefScreen />)
+    await waitFor(() => expect(mocks.latest).toHaveBeenCalled())
+    // Le bandeau de marque est présent en tête (repli = nom produit par défaut).
+    expect(screen.getByTestId('ae-tenant-brand')).toBeInTheDocument()
+    expect(screen.getByTestId('ae-tenant-name')).toHaveTextContent('TAQINOR')
+  })
 })

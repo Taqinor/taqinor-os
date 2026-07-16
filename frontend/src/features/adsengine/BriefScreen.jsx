@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { ClipboardCheck, History } from 'lucide-react'
 import adsengineApi from './adsengineApi'
 import { normalizeBrief, briefItemHasAction } from './adsengine'
+import TenantBrand from './TenantBrand'
 
 /* ============================================================================
    ENG26 — Écran « Brief hebdomadaire » du moteur publicitaire.
@@ -31,6 +32,8 @@ export default function BriefScreen() {
 
   return (
     <div className="page ae-brief">
+      {/* ENG31 — marque tenant (logo/nom) en tête du brief, repli propre sinon. */}
+      <TenantBrand subtitle="Brief hebdomadaire du moteur publicitaire" />
       <div className="page-header">
         <h2>Brief hebdomadaire</h2>
         <Link to="/publicite/journal" className="btn btn-light" data-testid="ae-brief-history"
