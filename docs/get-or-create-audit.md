@@ -24,8 +24,8 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/adsengine/sync.py:116` | get_or_create | AdMirror.objects | company, meta_id |
 | `backend/django_core/apps/adsengine/sync.py:136` | update_or_create | InsightSnapshot.objects | company, content_type, date, object_id |
 | `backend/django_core/apps/adsengine/views.py:958` | get_or_create | MetaConnection.objects | company |
-| `backend/django_core/apps/adsengine/views.py:1035` | get_or_create | GuardrailConfig.objects | company |
-| `backend/django_core/apps/adsengine/views.py:1042` | get_or_create | GuardrailConfig.objects | company |
+| `backend/django_core/apps/adsengine/views.py:1040` | get_or_create | GuardrailConfig.objects | company |
+| `backend/django_core/apps/adsengine/views.py:1047` | get_or_create | GuardrailConfig.objects | company |
 | `backend/django_core/apps/automation/views.py:400` | get_or_create | IncomingWebhookTrigger.objects | rule |
 | `backend/django_core/apps/chat/services.py:152` | get_or_create | MessageMention.objects | mentioned_user, message |
 | `backend/django_core/apps/chat/services.py:258` | get_or_create | UserChatStatus.objects | user |
