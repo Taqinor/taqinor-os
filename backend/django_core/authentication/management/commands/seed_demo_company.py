@@ -23,6 +23,7 @@ accounts with a KNOWN password).
 """
 import random
 from datetime import timedelta
+from decimal import Decimal
 
 from django.conf import settings
 from django.core.management import call_command
@@ -161,6 +162,7 @@ class Command(BaseCommand):
         (devis), NTDMO4 (chantiers/factures), NTDMO5 (SAV/stock)."""
         ctx = {'company': company, 'admin': admin, 'resp': resp, 'rng': rng}
         self._seed_leads(ctx)
+        self._seed_devis(ctx)
 
     # ── NTDMO2 — leads répartis sur les 6 stages STAGES.py ─────────────────
     # Prénoms/noms/villes marocaines (Faker arrive en NTDMO17, hors de ce lot).
@@ -231,3 +233,155 @@ class Command(BaseCommand):
                 leads.append(lead)
                 i += 1
         ctx['leads'] = leads
+
+    # ── NTDMO3 — devis couvrant les 3 modes marché + historique de statuts ──
+    @staticmethod
+    def _line_price(produit):
+        """Prix unitaire robuste (certains produits OSP ont un prix vide)."""
+        pv = getattr(produit, 'prix_vente', None)
+        if pv and pv > 0:
+            return pv
+        return Decimal('1500.00')
+
+    def _seed_clients_from_leads(self, ctx):
+        """Crée des clients (dont certains liés à des leads) pour les devis."""
+        from apps.crm.models import Client
+        company, rng, leads = ctx['company'], ctx['rng'], ctx['leads']
+        clients = []
+        # Réutilise les leads les plus avancés (SIGNED/QUOTE_SENT/FOLLOW_UP).
+        avances = [ld for ld in leads if not ld.perdu][:16]
+        for idx, ld in enumerate(avances):
+            entreprise = bool(ld.societe)
+            clients.append(Client.objects.create(
+                company=company, nom=ld.nom, prenom=ld.prenom,
+                email=f'{ld.prenom}.{ld.nom}@demo.local'.lower().replace(' ', ''),
+                telephone=ld.telephone, adresse=f'{ld.ville}',
+                type_client=(Client.TypeClient.ENTREPRISE if entreprise
+                             else Client.TypeClient.PARTICULIER),
+                created_by=ctx['resp'],
+            ))
+        ctx['clients'] = clients
+        _ = rng
+        return clients
+
+    def _seed_devis(self, ctx):
+        from apps.ventes.models import Devis, LigneDevis
+        from apps.ventes.utils.references import create_with_reference
+        company, rng, resp = ctx['company'], ctx['rng'], ctx['resp']
+        now = timezone.now()
+
+        clients = self._seed_clients_from_leads(ctx)
+        leads = [ld for ld in ctx['leads'] if not ld.perdu]
+        produits = self._catalogue_index(company)
+
+        # 25 devis : ~40 % acceptés (pipeline convaincant), reste réparti.
+        S = Devis.Statut
+        statuts = (
+            [S.ACCEPTE] * 10 + [S.ENVOYE] * 5 + [S.BROUILLON] * 4
+            + [S.REFUSE] * 3 + [S.EXPIRE] * 3)
+        modes = ['residentiel', 'industriel', 'agricole']
+        signed_resid_batt = 0
+        devis_list = []
+        for i, statut in enumerate(statuts):
+            client = clients[i % len(clients)]
+            lead = leads[i % len(leads)] if leads else None
+            mode = modes[i % 3]
+            avec_batterie = False
+            etude = None
+            if mode == 'residentiel':
+                # ≥3 devis résidentiels signés « Avec batterie » (illustre A1-A3).
+                if statut == S.ACCEPTE and signed_resid_batt < 3:
+                    avec_batterie = True
+                    signed_resid_batt += 1
+                lignes = self._lignes_residentiel(produits, avec_batterie)
+            elif mode == 'industriel':
+                etude = {
+                    'mode': 'industriel',
+                    'taux_autoconsommation': rng.randint(55, 85),
+                    'taux_couverture': rng.randint(40, 70),
+                    'economies_annuelles': rng.randint(20000, 90000),
+                    'payback_ans': round(rng.uniform(4.0, 7.5), 1),
+                }
+                lignes = self._lignes_industriel(produits)
+            else:  # agricole (pompage)
+                debit = rng.randint(8, 40)
+                hmt = rng.randint(30, 90)
+                etude = {
+                    'mode': 'agricole',
+                    'pompe_type': 'immergée',
+                    'hmt_m': hmt, 'debit_m3h': debit,
+                    'm3_jour': debit * 7,
+                    'courbe_pompe': [
+                        [0, hmt + 20], [debit / 2, hmt + 8], [debit, hmt]],
+                }
+                lignes = self._lignes_agricole(produits)
+
+            def _make(reference, statut=statut, client=client, lead=lead,
+                      etude=etude, lignes=lignes):
+                validite = 30 if statut != S.EXPIRE else -20
+                dv = Devis.objects.create(
+                    company=company, reference=reference, client=client,
+                    lead=lead, statut=statut, taux_tva=Decimal('20.00'),
+                    remise_globale=Decimal('0'),
+                    date_validite=(now.date() + timedelta(days=validite)),
+                    etude_params=etude, created_by=resp)
+                for produit, designation, qte, pu in lignes:
+                    LigneDevis.objects.create(
+                        devis=dv, produit=produit, designation=designation,
+                        quantite=Decimal(str(qte)), prix_unitaire=pu,
+                        remise=Decimal('0'))
+                return dv
+
+            devis = create_with_reference(Devis, 'DEV', company, _make)
+            # Étale les dates sur 12 mois (≥8 mois couverts pour le dashboard).
+            created = now - timedelta(days=15 + i * 14)
+            Devis.objects.filter(pk=devis.pk).update(date_creation=created)
+            devis_list.append(devis)
+        ctx['devis'] = devis_list
+
+    def _catalogue_index(self, company):
+        from apps.stock.models import Produit
+        produits = list(Produit.objects.filter(company=company))
+
+        def find(*kws):
+            for p in produits:
+                low = p.nom.lower()
+                if any(kw in low for kw in kws):
+                    return p
+            return produits[0] if produits else None
+        return {
+            'panneau': find('panneau'),
+            'onduleur': find('onduleur', 'inverter'),
+            'batterie': find('batterie', 'battery'),
+            'pompe': find('pompe', 'pompage', 'osp'),
+            'variateur': find('variateur', 'veichi', 'vfd'),
+            'accessoire': find('câble', 'cable', 'accessoire', 'structure'),
+        }
+
+    def _lignes_residentiel(self, produits, avec_batterie):
+        lignes = [
+            (produits['panneau'], produits['panneau'].nom, 12,
+             self._line_price(produits['panneau'])),
+            (produits['onduleur'], produits['onduleur'].nom, 1,
+             self._line_price(produits['onduleur'])),
+        ]
+        if avec_batterie and produits['batterie']:
+            lignes.append((produits['batterie'], produits['batterie'].nom, 1,
+                           self._line_price(produits['batterie'])))
+        return lignes
+
+    def _lignes_industriel(self, produits):
+        return [
+            (produits['panneau'], produits['panneau'].nom, 40,
+             self._line_price(produits['panneau'])),
+            (produits['onduleur'], produits['onduleur'].nom, 2,
+             self._line_price(produits['onduleur'])),
+        ]
+
+    def _lignes_agricole(self, produits):
+        pompe = produits['pompe'] or produits['panneau']
+        var = produits['variateur'] or produits['onduleur']
+        return [
+            (pompe, f'Pompe solaire — {pompe.nom}', 1, self._line_price(pompe)),
+            (var, f'Variateur — {var.nom}', 1, self._line_price(var)),
+        ]

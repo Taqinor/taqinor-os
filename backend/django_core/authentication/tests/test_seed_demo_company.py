@@ -84,3 +84,44 @@ class SeedDemoLeadsNTDMO2Test(TestCase):
             Lead.objects.filter(
                 company=self.company,
                 relance_date__gte=timezone.now().date()).exists())
+
+
+@override_settings(DEBUG=True)
+class SeedDemoDevisNTDMO3Test(TestCase):
+    SLUG = 'taqinor-demo-full'
+
+    def setUp(self):
+        call_command('seed_demo_company', verbosity=0)
+        self.company = Company.objects.get(slug=self.SLUG)
+
+    def test_devis_span_at_least_eight_months(self):
+        from apps.ventes.models import Devis
+        qs = Devis.objects.filter(company=self.company)
+        self.assertGreaterEqual(qs.count(), 20)
+        months = {(d.date_creation.year, d.date_creation.month) for d in qs}
+        self.assertGreaterEqual(len(months), 8)
+
+    def test_three_market_modes_present(self):
+        from apps.ventes.models import Devis
+        modes = set()
+        for d in Devis.objects.filter(company=self.company):
+            if d.etude_params:
+                modes.add(d.etude_params.get('mode'))
+            else:
+                modes.add('residentiel')
+        self.assertIn('residentiel', modes)
+        self.assertIn('industriel', modes)
+        self.assertIn('agricole', modes)
+
+    def test_roughly_forty_percent_signed(self):
+        from apps.ventes.models import Devis
+        qs = Devis.objects.filter(company=self.company)
+        signed = qs.filter(statut=Devis.Statut.ACCEPTE).count()
+        self.assertGreaterEqual(signed, qs.count() * 0.3)
+
+    def test_uses_reference_numbering(self):
+        from apps.ventes.models import Devis
+        refs = list(Devis.objects.filter(company=self.company)
+                    .values_list('reference', flat=True))
+        self.assertTrue(all(r.startswith('DEV-') for r in refs))
+        self.assertEqual(len(refs), len(set(refs)))  # aucune collision
