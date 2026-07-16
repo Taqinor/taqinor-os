@@ -64,7 +64,7 @@ waves:
       ARC sweeps that consume the noyau primitives, and the SCA kit
       DocumentMetier (SCA30-38) which composes ARC1/2/6/8/10/11 into one
       abstraction — both gated on ARC-noyau reaching its threshold.
-    groups: [ARC-sweep, SCA-kit-document]
+    groups: [ARC-sweep, SCA-kit-document, ADSENG]
   B:
     order: 3
     description: >-
@@ -104,6 +104,9 @@ aliases:
   ARC-sweep:
     prefix: ARC
     members: [3, 4, 5, 7, 12]
+  ENG-noyau:
+    prefix: ENG
+    members: [1, 2, 3, 4, 5, 7, 13, 15, 19, 20]
   SCA-gov:
     prefix: SCA
     members: [1, 2, 3, 4, 5, 6]
@@ -136,6 +139,10 @@ edges:
     wave: A2
     after:
       ARC-noyau: 80
+  - group: ADSENG
+    wave: A2
+    after:
+      ENG-noyau: 80
   - group: SCA-kit-document
     wave: A2
     after:
