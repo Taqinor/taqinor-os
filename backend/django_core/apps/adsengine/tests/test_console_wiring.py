@@ -121,7 +121,7 @@ class ConsoleWiringTests(TestCase):
         self.assertIn('3456', resp.data['ad_account_id_masque'])
         self.assertNotIn('act_123456', resp.data['ad_account_id_masque'])
 
-    def test_connection_save_is_write_only_and_never_enables(self):
+    def test_connection_save_write_only_activates_read(self):
         api = auth(self.manager)
         resp = api.post(f'{BASE}/connection/', {
             'access_token': SECRET, 'ad_account_id': 'act_999',
@@ -130,10 +130,11 @@ class ConsoleWiringTests(TestCase):
         self.assertNotIn(SECRET, json.dumps(resp.data))
         conn = MetaConnection.objects.get(company=self.company)
         self.assertEqual(conn.credentials['access_token'], SECRET)
+        # Un jeton valide active la connexion en LECTURE (la synchro devient
+        # possible) ; les campagnes restent PAUSED-only côté meta_client.
+        self.assertTrue(conn.enabled)
         self.assertEqual(conn.credentials['app_id'], '42')
         self.assertEqual(conn.ad_account_id, 'act_999')
-        # Invariant #3 : jamais d'activation depuis l'ERP.
-        self.assertFalse(conn.enabled)
 
     def test_connection_save_requires_manage(self):
         resp = auth(self.viewer).post(

@@ -966,7 +966,12 @@ class MetaConnectionStatusView(APIView):
             v = data.get(k)
             if v not in (None, ''):
                 setattr(conn, k, str(v))
-        # Invariant #3 : jamais d'activation depuis l'ERP — ``enabled`` inchangé.
+        # Activer la connexion en LECTURE dès qu'un jeton valide est présent :
+        # cela autorise seulement la synchro/lecture Meta (miroirs + insights),
+        # JAMAIS une dépense. L'invariant #3 (toute campagne/adset/ad naît PAUSED,
+        # aucune ACTIVATION de campagne possible) reste garanti côté meta_client,
+        # inchangé ici — activer la connexion ≠ activer une campagne.
+        conn.enabled = bool(conn.has_token)
         conn.save()
         return Response({
             'connected': bool(conn.has_token),
