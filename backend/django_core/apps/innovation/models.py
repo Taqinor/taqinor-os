@@ -83,3 +83,38 @@ class Idee(TenantModel):
 
     def __str__(self):
         return self.titre
+
+
+class VoteIdee(TenantModel):
+    """Un vote d'un utilisateur pour une idée (NTIDE2) — unique par (idee,
+    votant). L'auteur de l'idée ne peut pas voter pour sa propre idée (règle
+    appliquée côté vue, cf. ``apps.innovation.views.VoteIdeeViewSet``)."""
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        # on_delete: votes scopés société — disparaissent avec elle (nettoyage tenant standard).
+        on_delete=models.CASCADE,
+        related_name='innovation_votes', verbose_name='Société')
+    idee = models.ForeignKey(
+        Idee,
+        # on_delete: un vote n'existe que rattaché à son idée (composition).
+        on_delete=models.CASCADE,
+        related_name='votes', verbose_name='Idée')
+    votant = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        # on_delete: vote sans valeur historique isolée — disparaît avec le compte votant.
+        on_delete=models.CASCADE,
+        related_name='votes_idees', verbose_name='Votant')
+
+    class Meta:
+        verbose_name = 'Vote idée'
+        verbose_name_plural = 'Votes idée'
+        ordering = ['-created_at', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['idee', 'votant'],
+                name='innovation_vote_unique_idee_votant'),
+        ]
+
+    def __str__(self):
+        return f'{self.votant_id} → idée {self.idee_id}'
