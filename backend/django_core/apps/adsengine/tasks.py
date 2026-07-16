@@ -50,7 +50,17 @@ def _sync_company(conn):
 
     today = datetime.date.today()
     for camp in AdCampaignMirror.objects.filter(company=company):
-        for row in client.get_insights(camp.meta_id):
+        # ENG6 — insights sur TOUT l'historique, ventilés par JOUR. Sans
+        # ``date_preset``, l'API Graph ne renvoie qu'une fenêtre récente par
+        # défaut -> dépense tronquée (ex. 90 MAD au lieu de >10 000) et donc un
+        # coût-par-signature FAUX (~100x trop bas). ``maximum`` couvre la vie de
+        # la campagne ; ``time_increment=1`` => une ligne (donc un snapshot) par
+        # jour : somme EXACTE + upsert idempotent par date (aucun double comptage
+        # entre deux synchros, chaque jour étant réécrit à sa vraie valeur).
+        rows = client.get_insights(
+            camp.meta_id,
+            params={'date_preset': 'maximum', 'time_increment': 1})
+        for row in rows:
             day = _parse_date(row.get('date_start')) or today
             sync.upsert_insight(
                 company, camp, date=day,
