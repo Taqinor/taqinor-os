@@ -10,7 +10,9 @@ from django.test import TestCase
 
 from authentication.models import Company
 
-from apps.adsengine.models import GuardrailConfig, MetaConnection
+from apps.adsengine.models import (
+    CreativePolicy, GuardrailConfig, MetaConnection,
+)
 
 
 class SeedAdsengineTests(TestCase):
@@ -30,10 +32,17 @@ class SeedAdsengineTests(TestCase):
         # Rien de « live » : aucune connexion Meta créée.
         self.assertEqual(MetaConnection.objects.count(), 0)
 
+    def test_seeds_default_creative_policy_per_company(self):
+        self._run()
+        self.assertEqual(CreativePolicy.objects.count(), 2)
+        pol = CreativePolicy.objects.get(company=self.c1)
+        self.assertTrue(pol.forbidden_rules)
+
     def test_double_run_is_idempotent(self):
         self._run()
         self._run()
         self.assertEqual(GuardrailConfig.objects.count(), 2)
+        self.assertEqual(CreativePolicy.objects.count(), 2)
 
     def test_does_not_overwrite_existing_config(self):
         GuardrailConfig.objects.create(

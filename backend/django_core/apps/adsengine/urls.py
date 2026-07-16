@@ -9,9 +9,9 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
-    CostPerSignatureView, CreativeAssetViewSet, EngineActionViewSet,
-    EngineAlertViewSet, GuardrailConfigViewSet, MetaConnectionViewSet,
-    StatusView, WiringHealthView,
+    CostPerSignatureView, CreativeAssetViewSet, CreativePolicyViewSet,
+    EngineActionViewSet, EngineAlertViewSet, GuardrailConfigViewSet,
+    MetaConnectionViewSet, StatusView, WiringHealthView,
 )
 
 router = DefaultRouter()
@@ -20,6 +20,8 @@ router.register(r'garde-fous', GuardrailConfigViewSet, basename='guardrail')
 router.register(r'actions', EngineActionViewSet, basename='engine-action')
 router.register(r'alertes', EngineAlertViewSet, basename='engine-alert')
 router.register(r'creatifs', CreativeAssetViewSet, basename='creative-asset')
+router.register(r'policy-creative', CreativePolicyViewSet,
+                basename='creative-policy')
 
 urlpatterns = [
     path('status/', StatusView.as_view(), name='adsengine-status'),

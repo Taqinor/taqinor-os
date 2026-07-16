@@ -16,11 +16,12 @@ from core.permissions import _user_has_or_legacy
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
-    CreativeAsset, EngineAction, EngineAlert, GuardrailConfig, MetaConnection,
+    CreativeAsset, CreativePolicy, EngineAction, EngineAlert, GuardrailConfig,
+    MetaConnection,
 )
 from .serializers import (
-    CreativeAssetSerializer, EngineActionSerializer, EngineAlertSerializer,
-    GuardrailConfigSerializer, MetaConnectionSerializer,
+    CreativeAssetSerializer, CreativePolicySerializer, EngineActionSerializer,
+    EngineAlertSerializer, GuardrailConfigSerializer, MetaConnectionSerializer,
 )
 
 
@@ -209,6 +210,32 @@ class CreativeAssetViewSet(AdsengineViewSet):
             cost_cents=int(request.data.get('cost_cents') or 0),
         )
         return Response(self.get_serializer(asset).data, status=201)
+
+    @action(detail=False, methods=['get'])
+    def checklist(self, request):
+        """ENG16 — Renvoie la check-list policy à confirmer par l'humain."""
+        from .policy import build_checklist
+        company = getattr(request.user, 'company', None)
+        return Response(build_checklist(company))
+
+    @action(detail=True, methods=['post'], url_path='policy-check')
+    def policy_check(self, request, pk=None):
+        """ENG16 — Enregistre la confirmation HUMAINE règle par règle (le système
+        ne juge jamais seul). ``passed`` ne devient vrai que si toutes les règles
+        interdites sont confirmées. Écriture → ``adsengine_manage``."""
+        from .policy import record_policy_check
+        asset = self.get_object()
+        confirmed = request.data.get('confirmed_keys') or []
+        record_policy_check(
+            asset, confirmed_keys=confirmed, checked_by=request.user)
+        return Response(self.get_serializer(asset).data)
+
+
+class CreativePolicyViewSet(AdsengineViewSet):
+    """ENG16 — CRUD de la policy créative (une par société)."""
+
+    queryset = CreativePolicy.objects.all()
+    serializer_class = CreativePolicySerializer
 
 
 class HasAdsengineApprove(BasePermission):

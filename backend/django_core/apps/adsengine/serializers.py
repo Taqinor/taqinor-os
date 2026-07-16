@@ -2,7 +2,8 @@
 from rest_framework import serializers
 
 from .models import (
-    CreativeAsset, EngineAction, EngineAlert, GuardrailConfig, MetaConnection,
+    CreativeAsset, CreativePolicy, EngineAction, EngineAlert, GuardrailConfig,
+    MetaConnection,
 )
 
 
@@ -123,3 +124,15 @@ class CreativeAssetSerializer(serializers.ModelSerializer):
             'file_key', 'policy_stamp', 'is_policy_passed', 'perf',
             'created_at', 'updated_at',
         ]
+
+
+class CreativePolicySerializer(serializers.ModelSerializer):
+    """ENG16 — Policy créative d'une société. ``company`` posée côté serveur."""
+
+    class Meta:
+        model = CreativePolicy
+        fields = [
+            'id', 'forbidden_rules', 'allowed_rules',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']

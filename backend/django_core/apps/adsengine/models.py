@@ -478,3 +478,34 @@ class CreativeAsset(TenantModel):
     def is_policy_passed(self):
         """Vrai si la check-list policy est explicitement passée (ENG16)."""
         return bool((self.policy_stamp or {}).get('passed') is True)
+
+
+class CreativePolicy(TenantModel):
+    """ENG16 — Policy créative PAR société (une par société, ``OneToOne``).
+
+    Deux listes de règles (interdits / permis). Le contrôle est une CHECK-LIST
+    DÉTERMINISTE que l'humain confirme règle par règle dans l'UI : **le système
+    ENREGISTRE la confirmation, il n'« évalue » jamais seul** le créatif (pas de
+    jugement automatique du contenu). ``policy.py`` porte les défauts + la
+    logique de check ; ``seed_adsengine`` seed la policy par défaut.
+
+    Défaut (seedé) : JAMAIS de faux chantiers / faux clients / faux témoignages
+    ni de chiffre non vérifié ; explainers animés / B-roll abstrait / rendus
+    produit OK. Chaque tenant peut définir sa propre policy.
+    """
+
+    company = models.OneToOneField(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='adsengine_creative_policy', verbose_name='Société')
+    forbidden_rules = models.JSONField(
+        default=list, blank=True, verbose_name='Règles interdites')
+    allowed_rules = models.JSONField(
+        default=list, blank=True, verbose_name='Règles permises')
+
+    class Meta:
+        verbose_name = 'Policy créative'
+        verbose_name_plural = 'Policies créatives'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'Policy créative société {self.company_id}'
