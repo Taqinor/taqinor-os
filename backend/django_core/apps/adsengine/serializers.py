@@ -1,12 +1,14 @@
 """Sérialiseurs du moteur publicitaire Meta Ads (Groupe ENG)."""
+from decimal import Decimal
+
 from rest_framework import serializers
 
 from .models import (
-    AnomalyEvent, ArmDailyStat, CreativeAsset, CreativeBacklogItem,
-    CreativeGenerationBatch, CreativePolicy, DecisionLog, EngineAction,
-    EngineAlert, Experiment, ExperimentArm, FlightPhase, FlightPlan,
-    GuardrailConfig, MetaConnection, PacingState, ReconciliationSnapshot,
-    RulePolicy,
+    AdCampaignMirror, AnomalyEvent, ArmDailyStat, CreativeAsset,
+    CreativeBacklogItem, CreativeGenerationBatch, CreativePolicy, DecisionLog,
+    EngineAction, EngineAlert, Experiment, ExperimentArm, FlightPhase,
+    FlightPlan, GuardrailConfig, InsightSnapshot, MetaConnection, PacingState,
+    ReconciliationSnapshot, RulePolicy,
 )
 
 
@@ -400,3 +402,71 @@ class ReconciliationSnapshotSerializer(serializers.ModelSerializer):
             'id', 'date', 'campaign', 'meta_leads', 'erp_leads', 'meta_spend',
             'delta_leads', 'status', 'detail', 'created_at', 'updated_at',
         ]
+
+
+# ── ADSENGINT2 — Miroir de campagne pour la console (ENG24) ───────────────────
+# Statut Meta FR pour l'affichage (le miroir rapporte la réalité Meta ; le
+# service n'active jamais rien — invariant PAUSED intact).
+_META_STATUT_FR = {
+    'ACTIVE': 'Active',
+    'PAUSED': 'En pause',
+    'ARCHIVED': 'Archivée',
+    'DELETED': 'Supprimée',
+    'CAMPAIGN_PAUSED': 'Campagne en pause',
+    'ADSET_PAUSED': "Ad set en pause",
+}
+
+
+class AdCampaignMirrorSerializer(serializers.ModelSerializer):
+    """ADSENGINT2 — Miroir de campagne (lecture seule) pour l'écran Campagnes.
+
+    Reflète le statut Meta tel quel (jamais d'activation), convertit le budget
+    (unités mineures Meta → MAD) et agrège la dépense cumulée + le nombre de
+    résultats depuis les ``InsightSnapshot`` rattachés (une seule source). Aucun
+    secret ; company-scopé par le viewset."""
+
+    statut = serializers.CharField(source='status', read_only=True)
+    statut_display = serializers.SerializerMethodField()
+    objectif = serializers.CharField(source='objective', read_only=True)
+    budget_quotidien_mad = serializers.SerializerMethodField()
+    depense_mad = serializers.SerializerMethodField()
+    nb_leads = serializers.SerializerMethodField()
+
+    class Meta:
+        model = AdCampaignMirror
+        fields = [
+            'id', 'meta_id', 'name', 'statut', 'statut_display', 'objectif',
+            'budget_quotidien_mad', 'depense_mad', 'nb_leads',
+            'created_via_engine', 'created_at', 'updated_at',
+        ]
+        read_only_fields = fields
+
+    def _insights(self, obj):
+        """Agrégat (dépense, résultats) mémoïsé par instance (évite un double
+        calcul entre ``depense_mad`` et ``nb_leads``)."""
+        cached = getattr(obj, '_ae_insights', None)
+        if cached is None:
+            from django.contrib.contenttypes.models import ContentType
+            from django.db.models import Sum
+            ct = ContentType.objects.get_for_model(AdCampaignMirror)
+            cached = (InsightSnapshot.objects
+                      .filter(company_id=obj.company_id, content_type=ct,
+                              object_id=obj.pk)
+                      .aggregate(spend=Sum('spend'), results=Sum('results')))
+            obj._ae_insights = cached
+        return cached
+
+    def get_statut_display(self, obj):
+        return _META_STATUT_FR.get(obj.status, obj.status or '—')
+
+    def get_budget_quotidien_mad(self, obj):
+        if obj.budget is None:
+            return None
+        # Budget Meta en unités mineures (centimes) → MAD (unités majeures).
+        return str((obj.budget / Decimal('100')).quantize(Decimal('0.01')))
+
+    def get_depense_mad(self, obj):
+        return str(self._insights(obj)['spend'] or Decimal('0'))
+
+    def get_nb_leads(self, obj):
+        return int(self._insights(obj)['results'] or 0)

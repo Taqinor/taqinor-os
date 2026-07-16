@@ -55,10 +55,11 @@ const adsengineApi = {
   },
 
   // ── ENG13 — Alertes (bandeau dashboard, WhatsApp-first) ──
+  // Chemins alignés sur le routeur backend FR (« alertes », ADSENGINT1).
   alerts: {
-    list: (params) => api.get('/adsengine/alerts/', { params }),
+    list: (params) => api.get('/adsengine/alertes/', { params }),
     // ENG43 — historique des alertes (past, pour l'écran Règles & anomalies).
-    history: (params) => api.get('/adsengine/alerts/history/', { params }),
+    history: (params) => api.get('/adsengine/alertes/history/', { params }),
   },
 
   // ── ENG5/ENG24 — Campagnes (miroirs) + classement par créatif ──
@@ -75,8 +76,9 @@ const adsengineApi = {
     pending: (params) =>
       api.get('/adsengine/actions/', { params: { statut: 'en_attente', ...params } }),
     log: (params) => api.get('/adsengine/actions/', { params }),
-    approve: (id) => api.post(`/adsengine/actions/${id}/approuver/`),
-    reject: (id, payload) => api.post(`/adsengine/actions/${id}/rejeter/`, payload),
+    // @action backend EN : approve / reject (ADSENGINT1).
+    approve: (id) => api.post(`/adsengine/actions/${id}/approve/`),
+    reject: (id, payload) => api.post(`/adsengine/actions/${id}/reject/`, payload),
   },
 
   // ── ENG11/ENG26 — Brief hebdomadaire ──
@@ -85,44 +87,48 @@ const adsengineApi = {
   },
 
   // ── ENG15/ENG27 — Bibliothèque créative + policy-check + variantes ──
+  // Routeur backend FR : « creatifs » (ADSENGINT1).
   creatives: {
-    ...resource('creatives'),
-    upload: (formData) => api.post('/adsengine/creatives/upload/', formData),
+    ...resource('creatifs'),
+    upload: (formData) => api.post('/adsengine/creatifs/upload/', formData),
     policyCheck: (id, payload) =>
-      api.post(`/adsengine/creatives/${id}/policy-check/`, payload),
-    generateVariants: (id) => api.post(`/adsengine/creatives/${id}/variantes/`),
+      api.post(`/adsengine/creatifs/${id}/policy-check/`, payload),
+    generateVariants: (id) => api.post(`/adsengine/creatifs/${id}/variantes/`),
   },
 
   // ── ENG12/ENG39 — Expérimentations (bandit) : phases, bras, DecisionLog ──
+  // Routeur backend FR : « experiences » (ADSENGINT1).
   experiments: {
-    ...resource('experiments'),
+    ...resource('experiences'),
     // DecisionLog d'une expérimentation (« pourquoi le moteur a fait X »).
     decisionLog: (id, params) =>
-      api.get(`/adsengine/experiments/${id}/decisions/`, { params }),
+      api.get(`/adsengine/experiences/${id}/decisions/`, { params }),
   },
 
   // ── ENG28/ENG38/ENG40 — Plan de vol (compose 6 mois) + préflight autonomie ──
+  // Routeur backend FR : « plans-vol » (ADSENGINT1).
   flightplan: {
-    ...resource('flightplans'),
+    ...resource('plans-vol'),
     // Gabarits de plan 6 mois (phases pré-composées).
-    templates: () => api.get('/adsengine/flightplans/templates/'),
+    templates: () => api.get('/adsengine/plans-vol/templates/'),
     // Bras disponibles depuis le backlog (recombinaisons prêtes).
-    backlogArms: () => api.get('/adsengine/flightplans/backlog-arms/'),
+    backlogArms: () => api.get('/adsengine/plans-vol/backlog-arms/'),
     // ADSENG38 — préflight d'autonomie (toutes les portes go-live).
-    preflight: () => api.get('/adsengine/flightplans/preflight/'),
+    preflight: () => api.get('/adsengine/plans-vol/preflight/'),
     // Valide un plan composé (refus structuré avec raisons FR).
-    validate: (payload) => api.post('/adsengine/flightplans/validate/', payload),
+    validate: (payload) => api.post('/adsengine/plans-vol/validate/', payload),
     // Lance une simulation depuis le plan composé.
-    simulate: (payload) => api.post('/adsengine/flightplans/simulate/', payload),
+    simulate: (payload) => api.post('/adsengine/plans-vol/simulate/', payload),
   },
 
   // ── ENG14/ENG43 — Règles (gabarits) + dry-run ──
+  // Routeur backend FR : « regles » (catalogue + dry-run) (ADSENGINT1).
   rules: {
     // Catalogue de gabarits FR (picker — jamais un builder libre).
-    templates: () => api.get('/adsengine/rules/templates/'),
+    templates: () => api.get('/adsengine/regles/catalogue/'),
     // Simulation « dry-run » d'un gabarit : objets touchés + effet, sans appliquer.
     dryRun: (templateKey, payload) =>
-      api.post('/adsengine/rules/dry-run/', { template: templateKey, ...payload }),
+      api.post('/adsengine/regles/dry-run/', { template: templateKey, ...payload }),
   },
 
   // ── ENG16/ENG43 — Anomalies (flux avec sévérités) ──
@@ -137,10 +143,11 @@ const adsengineApi = {
   },
 
   // ── ENG33/ENG45 — Reporting (drill-downs : variantes, entonnoir, cohortes) ──
+  // Routeur backend FR : « reporting/{variantes,entonnoir,cohortes} » (ADSENGINT1).
   reports: {
-    variants: (params) => api.get('/adsengine/reports/variants/', { params }),
-    funnel: (params) => api.get('/adsengine/reports/funnel/', { params }),
-    cohorts: (params) => api.get('/adsengine/reports/cohorts/', { params }),
+    variants: (params) => api.get('/adsengine/reporting/variantes/', { params }),
+    funnel: (params) => api.get('/adsengine/reporting/entonnoir/', { params }),
+    cohorts: (params) => api.get('/adsengine/reporting/cohortes/', { params }),
   },
 
   // ── ENG27/ENG41 — Backlog par campagne (CreativeGenerationBatch) ──
