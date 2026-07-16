@@ -54,10 +54,14 @@ const STEPS = [
   { fr: 'Votre estimation', ar: 'تقديرك' },
 ];
 
-// WJ6 — sélecteur de mode (résidentiel / professionnel / agricole), FR + AR.
+// WJ6 — sélecteur de mode, FR + AR. WJ121 — 4 vrais modes : la carte
+// « Professionnel » est scindée en 🏭 Industriel (usine, production) et
+// 🏪 Commercial (hôtel, commerce, services) ; le site n'émet plus jamais
+// 'professionnel' (alias serveur conservé côté lib/lead.ts + backend).
 const MODES = [
   { id: 'residentiel', fr: 'Résidentiel', ar: 'سكني', desc_fr: 'Villa, appartement', desc_ar: 'فيلا، شقة' },
-  { id: 'professionnel', fr: 'Professionnel', ar: 'مهني', desc_fr: 'Industrie, commerce', desc_ar: 'صناعة، تجارة' },
+  { id: 'industriel', fr: '🏭 Industriel', ar: '🏭 صناعي', desc_fr: 'Usine, production', desc_ar: 'مصنع، إنتاج' },
+  { id: 'commercial', fr: '🏪 Commercial', ar: '🏪 تجاري', desc_fr: 'Hôtel, commerce, services', desc_ar: 'فندق، تجارة، خدمات' },
   { id: 'agricole', fr: 'Agricole', ar: 'فلاحي', desc_fr: 'Pompage, ferme', desc_ar: 'ضخ، مزرعة' },
 ];
 
@@ -169,7 +173,8 @@ const noscriptTelHref = `tel:${NAP.phone}`;
              choix explicite (nudge inline sur les cartes, jamais une alerte). -->
         <fieldset class="mt-6">
           <legend class="text-sm text-lune-soft" data-i18n data-fr="Votre type de projet" data-ar="نوع مشروعك">Votre type de projet</legend>
-          <div id="mt-mode-grid" class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <!-- WJ121 : 4 cartes — 1 colonne sur mobile, 2×2 dès `sm:` (640 px). -->
+          <div id="mt-mode-grid" class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
             {MODES.map((m) => (
               <button type="button" class="mt-mode cine-card flex flex-col items-start gap-0.5 border border-white/15 p-3 text-start transition-colors"
                 data-mode={m.id} aria-pressed="false" aria-describedby="mt-mode-err">
@@ -1928,17 +1933,29 @@ const noscriptTelHref = `tel:${NAP.phone}`;
 
   // ——— WJ6/QX : sélecteur de mode — plus AUCUN défaut silencieux. ———
   let mode = savedWizard?.mode || '';
+  // WJ121 — migration des sessions en cours : l'ancien profil unique
+  // 'professionnel' est réhydraté comme 'industriel' (le backend mappe déjà
+  // professionnel→industriel) — le site n'ÉMET plus jamais 'professionnel'.
+  if (mode === 'professionnel') mode = 'industriel';
+  /** WJ121 — les deux modes C&I partagent le sous-panneau/moteur pro existant
+   *  (panneaux dédiés = WJ122/WJ123) ; 'professionnel' couvert par défense en
+   *  profondeur (la migration ci-dessus l'élimine déjà). */
+  function isProMode(m: string): boolean {
+    return m === 'industriel' || m === 'commercial' || m === 'professionnel';
+  }
   // QX — libellés du fil d'étapes + habillage du document par profil (arabe).
   const STEP_LABELS_BY_MODE: Record<string, [string, string, string]> = {
     residentiel: ['سطحك', 'فاتورتك', 'تقديرك'],
-    professionnel: ['موقعك', 'طاقتك', 'تقديرك'],
+    industriel: ['موقعك', 'طاقتك', 'تقديرك'],
+    commercial: ['مؤسستك', 'طاقتك', 'تقديرك'],
     agricole: ['أرضك', 'ضخّك', 'تقديرك'],
   };
   const MODE_LABEL: Record<string, string> = {
-    residentiel: 'سكني', professionnel: 'مهني', agricole: 'فلاحي',
+    residentiel: 'سكني', industriel: 'صناعي', commercial: 'تجاري', agricole: 'فلاحي',
   };
   const MODE_DOC_SUBTITLE: Record<string, string> = {
-    residentiel: 'سكني', professionnel: 'استهلاك ذاتي صناعي', agricole: 'ضخ فلاحي',
+    residentiel: 'سكني', industriel: 'استهلاك ذاتي صناعي',
+    commercial: 'استهلاك ذاتي تجاري', agricole: 'ضخ فلاحي',
   };
   /** QX — le fil d'étapes suit le profil (textContent direct : la paire data-i18n
    *  de ces nœuds n'est plus basculée après ce point). */
@@ -1959,7 +1976,8 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     const pro = $('mt-sub-professionnel');
     const agri = $('mt-sub-agricole');
     if (res) res.hidden = m !== 'residentiel';
-    if (pro) pro.hidden = m !== 'professionnel';
+    // WJ121 — industriel ET commercial partagent le sous-panneau pro (WJ122/WJ123 : panneaux dédiés).
+    if (pro) pro.hidden = !isProMode(m);
     if (agri) agri.hidden = m !== 'agricole';
   }
   function syncModeCards() {
@@ -2553,7 +2571,8 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       announceEstimate('التقدير غير متوفر: أدخلوا استهلاككم الشهري (درهم أو kWh).');
       return false;
     }
-    if (proUnit === 'mad' && proBill > maxBillFor('professionnel')) {
+    // WJ121 — plafond du mode C&I actif (industriel et commercial partagent 1 M MAD).
+    if (proUnit === 'mad' && proBill > maxBillFor(mode)) {
       if (toolargePro) toolargePro.hidden = false;
       clearShown();
       fillDocChrome();
@@ -2774,7 +2793,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       return true;
     }
     if (agricoleEl) agricoleEl.hidden = true;
-    if (mode === 'professionnel') {
+    if (isProMode(mode)) {
       if (card) card.hidden = true;
       if (note) note.hidden = true;
       setFieldError('mt-facture-hiver', 'mt-facture-hiver-err', null);
@@ -3101,7 +3120,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   }
   /** Étape questions : validation PAR PROFIL avant le calcul. */
   function validateStep1(): boolean {
-    if (mode === 'professionnel') {
+    if (isProMode(mode)) {
       if (!checkOptionalNumber('mt-puissance-kva', 'القدرة المكتتبة')) {
         scrollToInvalid($('mt-puissance-kva'));
         return false;
@@ -3165,7 +3184,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   }
   // ——— QX : roofType par profil (validateLead l'exige). ———
   function resolveRoofType(): string {
-    if (mode === 'professionnel') {
+    if (isProMode(mode)) {
       if (surfaceType === 'bac_acier') return 'hangar';
       if (surfaceType === 'terrasse') return 'toit_plat';
       return 'autre';
@@ -3206,7 +3225,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       fullName: val('mt-name'),
       phone: val('mt-phone'),
       city: adresse,
-      billRange: mode === 'professionnel' ? resolveProBillRange() : mode === 'agricole' ? '' : val('mt-bill'),
+      billRange: isProMode(mode) ? resolveProBillRange() : mode === 'agricole' ? '' : val('mt-bill'),
       roofType: resolveRoofType(),
       consent,
       whatsappOptIn,
@@ -3237,9 +3256,9 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       siteCount: val('mt-site-count') || undefined,
       // QX — sous-panneau PROFESSIONNEL. `tensionRaccordement` (bt/mt) distinct du
       // select résidentiel `raccordement` (monophasé/triphasé).
-      tensionRaccordement: mode === 'professionnel' ? tension : undefined,
+      tensionRaccordement: isProMode(mode) ? tension : undefined,
       puissanceKva: num('mt-puissance-kva') ?? undefined,
-      activityProfile: mode === 'professionnel' ? activity : undefined,
+      activityProfile: isProMode(mode) ? activity : undefined,
       surfaceType: surfaceType || undefined,
       surfaceM2: num('mt-surface-m2') ?? undefined,
       hasGenerator: generator ? generator === 'oui' : undefined,
