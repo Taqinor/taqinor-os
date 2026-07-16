@@ -65,3 +65,82 @@ class Courtier(models.Model):
 
     def __str__(self):
         return self.raison_sociale
+
+
+# ── NTASS2 — Police d'assurance d'entreprise ───────────────────────────────
+
+class PoliceAssurance(models.Model):
+    """Police d'assurance d'ENTREPRISE (NTASS2) — RC pro, décennale,
+    multirisque, cyber, homme-clé, transport de marchandises, bris de machine,
+    perte d'exploitation… Distincte de ``flotte.AssuranceVehicule`` (véhicule)
+    et des cautions bancaires marché (``compta.CautionBancaire``).
+
+    ``statut`` est une machine INDÉPENDANTE (pas ``STAGES.py`` — le funnel CRM
+    n'a rien à voir avec le cycle de vie d'une police)."""
+
+    class TypePolice(models.TextChoices):
+        RC_PRO = 'rc_pro', 'RC professionnelle'
+        DECENNALE = 'decennale', 'Décennale'
+        MULTIRISQUE = 'multirisque', 'Multirisque'
+        CYBER = 'cyber', 'Cyber'
+        HOMME_CLE = 'homme_cle', 'Homme-clé'
+        TRANSPORT_MARCHANDISES = (
+            'transport_marchandises', 'Transport de marchandises')
+        BRIS_MACHINE = 'bris_machine', 'Bris de machine'
+        PERTE_EXPLOITATION = 'perte_exploitation', "Perte d'exploitation"
+        AUTRE = 'autre', 'Autre'
+
+    class Statut(models.TextChoices):
+        ACTIVE = 'active', 'Active'
+        SUSPENDUE = 'suspendue', 'Suspendue'
+        RESILIEE = 'resiliee', 'Résiliée'
+        EXPIREE = 'expiree', 'Expirée'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='polices_assurance', verbose_name='Société')
+    assureur = models.ForeignKey(
+        Assureur, on_delete=models.PROTECT,
+        related_name='polices', verbose_name='Assureur')
+    courtier = models.ForeignKey(
+        Courtier, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='polices', verbose_name='Courtier')
+    numero_police = models.CharField(
+        max_length=80, verbose_name='Numéro de police')
+    type_police = models.CharField(
+        max_length=30, choices=TypePolice.choices,
+        default=TypePolice.AUTRE, verbose_name='Type de police')
+    libelle = models.CharField(max_length=200, blank=True, default='')
+    date_effet = models.DateField(verbose_name="Date d'effet")
+    date_echeance = models.DateField(verbose_name="Date d'échéance")
+    tacite_reconduction = models.BooleanField(
+        default=False, verbose_name='Tacite reconduction')
+    prime_annuelle_ht = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0,
+        verbose_name='Prime annuelle HT')
+    statut = models.CharField(
+        max_length=15, choices=Statut.choices, default=Statut.ACTIVE)
+    document_police = models.FileField(
+        upload_to='assurances/polices/%Y/%m/', null=True, blank=True,
+        verbose_name='Contrat scanné')
+    notes = models.TextField(blank=True, default='')
+    # NTASS9 — versioning léger : lien vers la police remplacée au renouvellement.
+    police_precedente = models.ForeignKey(
+        'self', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='polices_suivantes', verbose_name='Police précédente')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['date_echeance']
+        verbose_name = "Police d'assurance"
+        verbose_name_plural = "Polices d'assurance"
+        unique_together = [('company', 'numero_police')]
+        indexes = [
+            models.Index(fields=['company', 'statut']),
+            models.Index(fields=['company', 'type_police']),
+            models.Index(fields=['company', 'date_echeance']),
+        ]
+
+    def __str__(self):
+        return f'{self.numero_police} ({self.get_type_police_display()})'

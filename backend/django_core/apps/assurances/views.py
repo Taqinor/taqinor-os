@@ -1,11 +1,15 @@
 """Vues du registre des assurances & sinistres d'entreprise (NTASS)."""
+from django.db import IntegrityError
 from rest_framework import viewsets
+from rest_framework.exceptions import ValidationError
 
 from core.mixins import TenantMixin
 from core.permissions import WriteScopedPermissionMixin
 
-from .models import Assureur, Courtier
-from .serializers import AssureurSerializer, CourtierSerializer
+from .models import Assureur, Courtier, PoliceAssurance
+from .serializers import (
+    AssureurSerializer, CourtierSerializer, PoliceAssuranceSerializer,
+)
 
 
 class _AssurancesBaseViewSet(
@@ -31,3 +35,28 @@ class CourtierViewSet(_AssurancesBaseViewSet):
     queryset = Courtier.objects.all()
     serializer_class = CourtierSerializer
     filterset_fields = ['actif']
+
+
+class PoliceAssuranceViewSet(_AssurancesBaseViewSet):
+    """CRUD des polices d'assurance d'entreprise, scopé société (NTASS2)."""
+    queryset = PoliceAssurance.objects.select_related('assureur', 'courtier')
+    serializer_class = PoliceAssuranceSerializer
+    filterset_fields = ['type_police', 'statut', 'assureur', 'courtier']
+
+    def perform_create(self, serializer):
+        try:
+            super().perform_create(serializer)
+        except IntegrityError:
+            # Filet de course sur (company, numero_police) — la contrainte DB
+            # se déclenche entre la validation serializer et l'écriture.
+            raise ValidationError(
+                {'numero_police':
+                 'Ce numéro de police existe déjà dans votre société.'})
+
+    def perform_update(self, serializer):
+        try:
+            super().perform_update(serializer)
+        except IntegrityError:
+            raise ValidationError(
+                {'numero_police':
+                 'Ce numéro de police existe déjà dans votre société.'})
