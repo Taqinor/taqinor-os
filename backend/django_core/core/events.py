@@ -579,6 +579,17 @@ chantier_receptionne = django.dispatch.Signal()
 # Client lié) — voir docstring du module ci-dessus.
 ticket_resolu = django.dispatch.Signal()
 
+# NTCRM12 — Émis quand ``crm.Lead.stage`` change (à N'IMPORTE quel point
+# d'entrée : avance auto premier contact, avance auto devis envoyé/accepté,
+# réactivation YLEAD11, avance manuelle depuis l'écran lead). Arguments :
+# lead, old_stage, new_stage, user (peut être None — transitions système).
+# Abonné dans ce repo : crm lui-même (``apps/crm/receivers.py``) — génère la
+# progression des tâches du playbook actif de la nouvelle étape
+# (``LeadPlaybookProgress``), même patron émetteur=abonné que
+# ``incident_declared``/``contrat_signe`` (preuve de visibilité cross-app
+# sans import direct).
+lead_stage_changed = django.dispatch.Signal()
+
 # Émis quand un Equipement SAV est marqué REMPLACE suite au retrait d'une
 # pièce (ARC37). Arguments : equipement, ticket, company, user (peut être
 # None). Abonné dans ce repo : notifications (EventType.

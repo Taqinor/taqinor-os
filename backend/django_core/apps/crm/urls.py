@@ -21,6 +21,12 @@ from .views import (
     CommissionPartenaireViewSet, PartenaireViewSet,
     SoumissionLeadPartenaireViewSet, TerritoireCommercialViewSet,
 )
+# NTCRM4/5/6/10/12 — forecast, plan de compte, playbooks.
+from .views import (
+    ForecastEntryViewSet, PlanCompteViewSet, PlaybookEtapeViewSet,
+    PlaybookTacheViewSet, PlaybookViewSet, RevueCompteViewSet,
+    forecast_historique_view, forecast_rollup_view, lead_playbook_view,
+)
 
 router = DefaultRouter()
 router.register(r'clients', ClientViewSet)
@@ -47,6 +53,15 @@ router.register(r'commissions-partenaire', CommissionPartenaireViewSet,
                 basename='crm-commission-partenaire')
 router.register(r'territoires-commerciaux', TerritoireCommercialViewSet,
                 basename='crm-territoire-commercial')
+# NTCRM4 — Catégories de forecast (commit/best-case/pipeline/omis).
+router.register(r'forecast-entries', ForecastEntryViewSet)
+# NTCRM10 — Plan de compte (Account Planning).
+router.register(r'plans-compte', PlanCompteViewSet)
+router.register(r'revues-compte', RevueCompteViewSet)
+# NTCRM12 — Playbooks de vente par étape STAGES.py.
+router.register(r'playbooks', PlaybookViewSet)
+router.register(r'playbook-etapes', PlaybookEtapeViewSet)
+router.register(r'playbook-taches', PlaybookTacheViewSet)
 
 urlpatterns = [
     # Récepteur des leads du site public (secret statique, voir webhooks.py)
@@ -74,5 +89,12 @@ urlpatterns = [
          name='public-booking-status'),
     path('public/booking/<str:token>/reserve/', public_booking_reserve,
          name='public-booking-reserve'),
+    # NTCRM5 — Roll-up hiérarchique du forecast. Doit précéder le routeur :
+    # sinon 'forecast-entries/<pk>/' du routeur intercepterait 'rollup'.
+    path('forecast/rollup/', forecast_rollup_view, name='forecast-rollup'),
+    # NTCRM6 — Historique des snapshots hebdomadaires du forecast.
+    path('forecast/historique/', forecast_historique_view, name='forecast-historique'),
+    # NTCRM12 — Progression playbook d'un lead (lecture + coche tâche).
+    path('leads/<int:lead_id>/playbook/', lead_playbook_view, name='lead-playbook'),
     path('', include(router.urls)),
 ]

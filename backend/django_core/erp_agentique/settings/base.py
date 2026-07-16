@@ -172,6 +172,15 @@ INSTALLED_APPS = [
     # propose→approuve→applique, création TOUJOURS PAUSED). App satellite
     # multi-société ; tout no-ope sans token/clé configuré.
     'apps.adsengine',
+    # NTCRM1 — Moteur de territoires (règles d'affectation round-robin par
+    # territoire géo/segment/secteur). Additif, company-scopé, aucune
+    # dépendance sur les modèles crm (lecture/écriture via imports fonction-
+    # locaux + selectors.py côté crm, jamais un import module-level).
+    'apps.territoires',
+    # NTCRM8 — Contacts multi-rôles par client (organigramme d'achat).
+    # Additif : ContactClient référence crm.Client par FK STRING, ne retire
+    # rien aux champs contact existants sur Client (comportement inchangé).
+    'apps.contacts',
 ]
 
 MIDDLEWARE = [

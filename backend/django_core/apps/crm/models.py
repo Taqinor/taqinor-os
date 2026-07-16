@@ -2078,3 +2078,281 @@ class LeadActivityArchive(models.Model):
 
     def __str__(self):
         return f'archive:{self.original_id}'
+
+
+# ── NTCRM4 — Catégories de forecast (commit/best-case/pipeline/omis) ─────────
+class ForecastEntry(models.Model):
+    """Catégorisation forecast d'UN lead, liée 1-1 pour ne pas alourdir
+    ``Lead``. Un lead SANS ``ForecastEntry`` explicite est classé PIPELINE par
+    défaut (voir ``montant_effectif``/le sélecteur ``forecast_rollup`` — aucune
+    migration de données requise)."""
+
+    class Categorie(models.TextChoices):
+        COMMIT = 'commit', 'Commit'
+        BEST_CASE = 'best_case', 'Best case'
+        PIPELINE = 'pipeline', 'Pipeline'
+        OMIS = 'omis', 'Omis'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='forecast_entries')
+    lead = models.OneToOneField(
+        Lead, on_delete=models.CASCADE, related_name='forecast_entry')
+    categorie = models.CharField(
+        max_length=12, choices=Categorie.choices, default=Categorie.PIPELINE)
+    # Vide = repli sur le devis actif le plus récent du lead, sinon
+    # `Lead.montant_estime` (voir la propriété `montant_effectif`).
+    montant_prevu = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='Montant prévu (MAD)')
+    commentaire = models.TextField(blank=True, default='')
+    mis_a_jour_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='forecast_entries_maj')
+    mis_a_jour_le = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Entrée de forecast'
+        verbose_name_plural = 'Entrées de forecast'
+        ordering = ['-mis_a_jour_le']
+
+    def __str__(self):
+        return f'{self.lead_id} — {self.categorie}'
+
+    @property
+    def montant_effectif(self):
+        """Montant retenu pour l'agrégation forecast : ``montant_prevu`` posé
+        explicitement, sinon le devis ACTIF le plus récent du lead, sinon
+        ``Lead.montant_estime`` (XSAL7), sinon zéro."""
+        from decimal import Decimal
+        if self.montant_prevu is not None:
+            return self.montant_prevu
+        try:
+            devis = self.lead.devis.filter(is_active=True).order_by(
+                '-date_creation').first()
+            if devis is not None:
+                return devis.total_ttc
+        except Exception:
+            pass
+        return self.lead.montant_estime or Decimal('0')
+
+
+# ── NTCRM6 — Snapshots hebdomadaires du forecast ──────────────────────────────
+class ForecastSnapshot(models.Model):
+    """Photo hebdomadaire agrégée du forecast (glissement visible dans le
+    temps) — créée par ``manage.py snapshot_forecast_hebdo`` (idempotente : un
+    seul snapshot par semaine ISO + owner, upsert). ``owner`` nul = snapshot
+    SOCIÉTÉ (tous commerciaux confondus) ; renseigné = snapshot individuel."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='forecast_snapshots')
+    semaine_iso = models.CharField(
+        max_length=8, verbose_name='Semaine ISO (ex. 2026-W29)')
+    categorie = models.CharField(
+        max_length=12, choices=ForecastEntry.Categorie.choices)
+    montant_total = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    nb_leads = models.PositiveIntegerField(default=0)
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        null=True, blank=True, related_name='forecast_snapshots')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Snapshot de forecast'
+        verbose_name_plural = 'Snapshots de forecast'
+        ordering = ['-semaine_iso']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'semaine_iso', 'categorie', 'owner'],
+                name='crm_forecast_snapshot_uniq_semaine_owner',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.semaine_iso} {self.categorie} = {self.montant_total}'
+
+
+# ── NTCRM10 — Plan de compte (Account Planning) formel ────────────────────────
+class PlanCompte(models.Model):
+    """Plan de compte stratégique pour un client (création MANUELLE only —
+    réservé aux comptes stratégiques, pas tous les clients)."""
+
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        ACTIF = 'actif', 'Actif'
+        ARCHIVE = 'archive', 'Archivé'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='plans_compte')
+    client = models.OneToOneField(
+        Client, on_delete=models.CASCADE, related_name='plan_compte')
+    objectifs_strategiques = models.TextField(blank=True, default='')
+    potentiel_estime = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        verbose_name='Potentiel estimé (MAD)')
+    # Distinct de ConcurrentPerte/FG242 (qui ne couvre que les deals PERDUS) —
+    # ici, un texte libre sur les concurrents présents chez ce compte.
+    concurrents_presents = models.TextField(blank=True, default='')
+    swot_forces = models.JSONField(null=True, blank=True)
+    swot_faiblesses = models.JSONField(null=True, blank=True)
+    swot_opportunites = models.JSONField(null=True, blank=True)
+    swot_menaces = models.JSONField(null=True, blank=True)
+    prochaine_revue = models.DateField(null=True, blank=True)
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.BROUILLON)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='plans_compte_crees')
+    mis_a_jour_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='plans_compte_maj')
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Plan de compte'
+        verbose_name_plural = 'Plans de compte'
+        ordering = ['-date_modification']
+
+    def __str__(self):
+        return f'Plan de compte — {self.client_id}'
+
+
+class PlanCompteActivity(models.Model):
+    """Historique (chatter léger, même esprit que ``LeadActivity``) d'un
+    ``PlanCompte`` : changements de champs suivis + notes manuelles."""
+
+    class Kind(models.TextChoices):
+        CREATION = 'creation', 'Création'
+        MODIFICATION = 'modification', 'Modification'
+        NOTE = 'note', 'Note'
+
+    plan = models.ForeignKey(
+        PlanCompte, on_delete=models.CASCADE, related_name='activites')
+    kind = models.CharField(max_length=15, choices=Kind.choices)
+    field = models.CharField(max_length=100, blank=True, null=True)
+    field_label = models.CharField(max_length=150, blank=True, null=True)
+    old_value = models.TextField(blank=True, null=True)
+    new_value = models.TextField(blank=True, null=True)
+    body = models.TextField(blank=True, null=True)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='plan_compte_activities')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Activité plan de compte'
+        verbose_name_plural = 'Activités plan de compte'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.plan_id} {self.kind}'
+
+
+# ── NTCRM30 (préparé par NTCRM10/11) — Revue de compte ────────────────────────
+class RevueCompte(models.Model):
+    """Note de réunion structurée liée à un ``PlanCompte`` (même esprit que
+    ``ReunionChantier``/FG296 côté commercial), affichée en timeline."""
+    plan = models.ForeignKey(
+        PlanCompte, on_delete=models.CASCADE, related_name='revues')
+    date_revue = models.DateField()
+    participants = models.TextField(blank=True, default='')
+    decisions = models.TextField(blank=True, default='')
+    prochaine_action = models.CharField(max_length=255, blank=True, default='')
+    prochaine_action_date = models.DateField(null=True, blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='revues_compte_creees')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Revue de compte'
+        verbose_name_plural = 'Revues de compte'
+        ordering = ['-date_revue']
+
+    def __str__(self):
+        return f'Revue {self.plan_id} — {self.date_revue}'
+
+
+# ── NTCRM12 — Playbooks de vente par étape (STAGES.py — jamais codé en dur) ──
+class Playbook(models.Model):
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='playbooks')
+    nom = models.CharField(max_length=150)
+    actif = models.BooleanField(default=True)
+    # Configuration STRICTE optionnelle : un changement de stage avec tâches
+    # obligatoires non cochées reste TOUJOURS possible (avertissement
+    # seulement) SAUF si ce playbook est marqué bloquant=True — cohérent avec
+    # « never auto-move »/jamais un blocage dur par défaut.
+    bloquant = models.BooleanField(default=False)
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Playbook'
+        verbose_name_plural = 'Playbooks'
+        ordering = ['nom']
+
+    def __str__(self):
+        return self.nom
+
+
+class PlaybookEtape(models.Model):
+    """Étape d'un playbook — la clé ``stage`` vient TOUJOURS de STAGES.py
+    (``STAGE_CHOICES``), jamais codée en dur (règle #2)."""
+    playbook = models.ForeignKey(
+        Playbook, on_delete=models.CASCADE, related_name='etapes')
+    stage = models.CharField(max_length=20, choices=STAGE_CHOICES)
+    ordre = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        verbose_name = 'Étape de playbook'
+        verbose_name_plural = 'Étapes de playbook'
+        ordering = ['ordre', 'id']
+        unique_together = [('playbook', 'stage')]
+
+    def __str__(self):
+        return f'{self.playbook.nom} — {self.stage}'
+
+
+class PlaybookTache(models.Model):
+    etape = models.ForeignKey(
+        PlaybookEtape, on_delete=models.CASCADE, related_name='taches')
+    libelle = models.CharField(max_length=255)
+    obligatoire = models.BooleanField(default=False)
+    ordre = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        verbose_name = 'Tâche de playbook'
+        verbose_name_plural = 'Tâches de playbook'
+        ordering = ['ordre', 'id']
+
+    def __str__(self):
+        return self.libelle
+
+
+class LeadPlaybookProgress(models.Model):
+    """Progression d'UN lead sur UNE tâche de playbook — créée automatiquement
+    (signal ``core.events.lead_stage_changed``, voir ``receivers.py``) quand le
+    lead entre dans une étape portant un playbook actif. Cocher une tâche pose
+    l'acteur + la date, jamais silencieux."""
+    lead = models.ForeignKey(
+        Lead, on_delete=models.CASCADE, related_name='playbook_progress')
+    tache = models.ForeignKey(
+        PlaybookTache, on_delete=models.CASCADE, related_name='progressions')
+    fait = models.BooleanField(default=False)
+    fait_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='playbook_taches_faites')
+    fait_le = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Progression playbook du lead'
+        verbose_name_plural = 'Progressions playbook des leads'
+        ordering = ['tache__ordre', 'id']
+        unique_together = [('lead', 'tache')]
+
+    def __str__(self):
+        return f'{self.lead_id} — {self.tache_id} ({"fait" if self.fait else "à faire"})'

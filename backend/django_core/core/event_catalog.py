@@ -142,6 +142,9 @@ CATALOG = {
     'document_statut_change': _e(
         'Un document métier (kit SCA30) change de statut.',
         ['instance', 'ancien_statut', 'nouveau_statut', 'user', 'company']),
+    'lead_stage_changed': _e(
+        "Un lead CRM change d'étape de pipeline (STAGES.py).",
+        ['lead', 'old_stage', 'new_stage', 'user']),
 }
 
 
