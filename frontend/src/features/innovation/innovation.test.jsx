@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 import { transitionsPour, estTerminal, STATUT_MAP } from './innovationStatus'
-import { contexteFromPath } from './linkedContext'
+import { contexteFromPath, linkedFromLocation } from './linkedContext'
 import FilterSelect from './FilterSelect'
 
 function wrap(ui, { route = '/' } = {}) {
@@ -68,13 +68,20 @@ describe('innovation state machine helpers (miroir apps.innovation.services)', (
   })
 })
 
-describe('linkedContext (NTIDE9)', () => {
+describe('linkedContext (NTIDE9/NTIDE11)', () => {
   it('contexteFromPath dérive le contexte du 1er segment', () => {
     expect(contexteFromPath('/crm/leads/12')).toBe('CRM')
     expect(contexteFromPath('/sav')).toBe('SAV')
     expect(contexteFromPath('/ventes/devis')).toBe('Devis')
     expect(contexteFromPath('/ventes/nouveau')).toBe('Ventes')
     expect(contexteFromPath('/route-inconnue')).toBe('')
+  })
+
+  it('linkedFromLocation détecte un devis en édition (?edit=)', () => {
+    expect(linkedFromLocation('/ventes/devis', '?edit=42'))
+      .toEqual({ type: 'devis', id: '42' })
+    expect(linkedFromLocation('/ventes/devis', '')).toBeNull()
+    expect(linkedFromLocation('/sav', '?edit=42')).toBeNull()
   })
 })
 
@@ -206,5 +213,37 @@ describe('ProposerIdeeForm (NTIDE8/NTIDE9)', () => {
       const options = container.querySelectorAll('datalist option')
       expect(Array.from(options).map((o) => o.value)).toEqual(['SAV', 'Devis', 'Stock'])
     })
+  })
+
+  it('NTIDE11 — propose de lier l\'idée au devis en édition et l\'inclut au payload', async () => {
+    innovationApiMock.create.mockResolvedValue({ data: { id: 8 } })
+    const { default: ProposerIdeeForm } = await import('./ProposerIdeeForm')
+    render(wrap(<ProposerIdeeForm />, { route: '/ventes/devis?edit=42' }))
+
+    expect(await screen.findByText(/Ajouter une idée liée à ce devis #42/)).toBeTruthy()
+
+    const user = userEvent.setup()
+    await user.type(screen.getByLabelText('Titre'), 'Ajouter une remise groupée')
+    await user.click(screen.getByRole('button', { name: /Proposer l'idée/ }))
+
+    await waitFor(() => expect(innovationApiMock.create).toHaveBeenCalled())
+    const [payload] = innovationApiMock.create.mock.calls[0]
+    expect(payload.linked_type).toBe('devis')
+    expect(payload.linked_id).toBe('42')
+  })
+
+  it('NTIDE11 — décocher « lier » retire linked_type/linked_id du payload', async () => {
+    innovationApiMock.create.mockResolvedValue({ data: { id: 9 } })
+    const { default: ProposerIdeeForm } = await import('./ProposerIdeeForm')
+    render(wrap(<ProposerIdeeForm />, { route: '/ventes/devis?edit=42' }))
+
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('checkbox'))
+    await user.type(screen.getByLabelText('Titre'), 'Sans lien')
+    await user.click(screen.getByRole('button', { name: /Proposer l'idée/ }))
+
+    await waitFor(() => expect(innovationApiMock.create).toHaveBeenCalled())
+    const [payload] = innovationApiMock.create.mock.calls[0]
+    expect(payload.linked_type).toBeUndefined()
   })
 })

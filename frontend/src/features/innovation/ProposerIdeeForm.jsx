@@ -1,16 +1,17 @@
 import { useEffect, useId, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Send } from 'lucide-react'
-import { Button, Input, Textarea, toast } from '../../ui'
+import { Button, Input, Textarea, Checkbox, toast } from '../../ui'
 import innovationApi from '../../api/innovationApi'
-import { contexteFromPath } from './linkedContext'
+import { contexteFromPath, linkedFromLocation } from './linkedContext'
 
 /* ============================================================================
-   NTIDE8/NTIDE9/NTIDE10 — Formulaire « Proposer une idée », partagé entre la
-   page dédiée (/innovation/proposer) et le CTA modal (Intercom-style, monté
-   sur chaque écran). Contexte autodétecté depuis la route courante (NTIDE9,
-   ex. leads → « CRM »), avec autocomplétion des 5 contextes les plus
-   fréquents (NTIDE10).
+   NTIDE8/NTIDE9/NTIDE10/NTIDE11 — Formulaire « Proposer une idée », partagé
+   entre la page dédiée (/innovation/proposer) et le CTA modal (Intercom-style,
+   monté sur chaque écran). Contexte autodétecté depuis la route courante
+   (NTIDE9, ex. leads → « CRM »), avec autocomplétion des 5 contextes les plus
+   fréquents (NTIDE10). Propose de lier l'idée au document ouvert quand un
+   signal fiable existe dans l'URL (NTIDE11, ex. devis en édition).
    ========================================================================== */
 
 export default function ProposerIdeeForm({ onCreated, onCancel, compact = false }) {
@@ -23,6 +24,9 @@ export default function ProposerIdeeForm({ onCreated, onCancel, compact = false 
   const [contexte, setContexte] = useState(() => contexteFromPath(location.pathname))
   const [suggestions, setSuggestions] = useState([])
   const [submitting, setSubmitting] = useState(false)
+
+  const linked = linkedFromLocation(location.pathname, location.search)
+  const [lierIdee, setLierIdee] = useState(!!linked)
 
   useEffect(() => {
     innovationApi.contextes()
@@ -37,6 +41,10 @@ export default function ProposerIdeeForm({ onCreated, onCancel, compact = false 
     setSubmitting(true)
     try {
       const payload = { titre: t, description: description.trim(), contexte: contexte.trim() }
+      if (lierIdee && linked) {
+        payload.linked_type = linked.type
+        payload.linked_id = linked.id
+      }
       const res = await innovationApi.create(payload)
       toast.success("Merci ! L'équipe examinera votre idée.")
       setTitre(''); setDescription('')
@@ -87,6 +95,13 @@ export default function ProposerIdeeForm({ onCreated, onCancel, compact = false 
           {suggestions.map((s) => <option key={s} value={s} />)}
         </datalist>
       </div>
+
+      {linked && (
+        <label className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Checkbox checked={lierIdee} onCheckedChange={(v) => setLierIdee(!!v)} />
+          Ajouter une idée liée à ce {linked.type === 'devis' ? 'devis' : linked.type} #{linked.id} ?
+        </label>
+      )}
 
       <div className="flex items-center justify-end gap-2 pt-1">
         {onCancel && (
