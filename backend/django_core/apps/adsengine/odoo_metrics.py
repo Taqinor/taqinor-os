@@ -190,16 +190,30 @@ def odoo_cost_per_signature(company, since=None, client=None):
           'signed_deals': [ {...}, ],  # liste traçable des deals signés
           'per_campaign': [ {...}, ],  # attribution best-effort par campagne
           'attribution': {'attributed', 'unattributed', 'note'},
+          'odoo_error': str,           # présent SEULEMENT si la lecture Odoo échoue
         }
 
-    Ne lève JAMAIS de division par zéro. Sans config Odoo → ``configured=False``,
-    ``signatures=0``, ``cost_per_signature=None`` (la dépense reste renvoyée)."""
-    deals = odoo_signed_deals(since=since, client=client)
+    Ne lève JAMAIS (ni division par zéro, ni exception de lecture). Sans config
+    Odoo → ``configured=False``, ``signatures=0``, ``cost_per_signature=None``.
+    Config présente mais lecture Odoo en échec (auth/réseau/DB erronés) →
+    ``signatures=0`` + ``odoo_error`` explicite, JAMAIS un 500 (la dépense Meta,
+    locale, reste renvoyée dans tous les cas)."""
+    # CONTRAT DE LA VUE : JAMAIS un 500. Une fois le connecteur configuré, la
+    # lecture Odoo (``odoo_signed_deals`` → JSON-RPC) peut échouer pour une raison
+    # EXTERNE (auth refusée, réseau injoignable, DB/login erronés). On dégrade
+    # proprement — ``signatures=0`` + ``odoo_error`` explicite — au lieu de laisser
+    # l'exception remonter en 500. La dépense Meta (locale) reste toujours servie.
+    odoo_error = None
+    try:
+        deals = odoo_signed_deals(since=since, client=client)
+    except Exception as exc:  # noqa: BLE001 — dégradation propre voulue (jamais un 500)
+        deals = []
+        odoo_error = f"{type(exc).__name__}: {exc}"[:300]
     signatures = len(deals)
     spend = _company_meta_spend(company, since)
     cost = (spend / signatures) if signatures else None
     per_campaign = _attribute_per_campaign(company, deals, since)
-    return {
+    result = {
         'configured': odoo_is_configured(),
         'total_spend': str(spend),
         'signatures': signatures,
@@ -212,3 +226,8 @@ def odoo_cost_per_signature(company, since=None, client=None):
             'note': ATTRIBUTION_GAP_NOTE,
         },
     }
+    # Présent UNIQUEMENT en cas d'échec de lecture Odoo (diagnostic côté front) —
+    # le chemin succès garde EXACTEMENT la même forme qu'avant (zéro régression).
+    if odoo_error is not None:
+        result['odoo_error'] = odoo_error
+    return result
