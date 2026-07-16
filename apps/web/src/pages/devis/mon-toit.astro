@@ -61,10 +61,14 @@ const STEPS = [
   { fr: 'Votre estimation', ar: 'تقديرك' },
 ];
 
-// WJ6 — sélecteur de mode (résidentiel / professionnel / agricole), FR + AR.
+// WJ6 — sélecteur de mode, FR + AR. WJ121 — 4 vrais modes : la carte
+// « Professionnel » est scindée en 🏭 Industriel (usine, production) et
+// 🏪 Commercial (hôtel, commerce, services) ; le site n'émet plus jamais
+// 'professionnel' (alias serveur conservé côté lib/lead.ts + backend).
 const MODES = [
   { id: 'residentiel', fr: 'Résidentiel', ar: 'سكني', desc_fr: 'Villa, appartement', desc_ar: 'فيلا، شقة' },
-  { id: 'professionnel', fr: 'Professionnel', ar: 'مهني', desc_fr: 'Industrie, commerce', desc_ar: 'صناعة، تجارة' },
+  { id: 'industriel', fr: '🏭 Industriel', ar: '🏭 صناعي', desc_fr: 'Usine, production', desc_ar: 'مصنع، إنتاج' },
+  { id: 'commercial', fr: '🏪 Commercial', ar: '🏪 تجاري', desc_fr: 'Hôtel, commerce, services', desc_ar: 'فندق، تجارة، خدمات' },
   { id: 'agricole', fr: 'Agricole', ar: 'فلاحي', desc_fr: 'Pompage, ferme', desc_ar: 'ضخ، مزرعة' },
 ];
 
@@ -196,10 +200,10 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
              explicite (nudge inline sur les cartes, jamais une alerte). -->
         <fieldset class="mt-6">
           <legend class="text-sm text-lune-soft" data-i18n data-fr="Votre type de projet" data-ar="نوع مشروعك">Votre type de projet</legend>
-          <!-- WJ65 — sur les tout petits écrans (≲360 px), 3 colonnes serrent trop
-               le texte (troncature/chevauchement) : on empile en 1 colonne, puis
-               3 dès `sm:` (640 px), cohérent avec le reste de la page. -->
-          <div id="mt-mode-grid" class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <!-- WJ65 — sur les tout petits écrans (≲360 px), plusieurs colonnes
+               serrent trop le texte (troncature/chevauchement) : on empile en
+               1 colonne, puis 2×2 dès `sm:` (640 px) — WJ121 : 4 cartes. -->
+          <div id="mt-mode-grid" class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
             {MODES.map((m) => (
               <button type="button" class="mt-mode cine-card flex flex-col items-start gap-0.5 border border-white/15 p-3 text-left transition-colors"
                 data-mode={m.id} aria-pressed="false" aria-describedby="mt-mode-err">
@@ -2132,17 +2136,29 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
   // pilote des questions d'étape 2 entièrement différentes) ; « Continuer »
   // exige un choix explicite (validateStep0, nudge inline sur les cartes). ———
   let mode = savedWizard?.mode || '';
+  // WJ121 — migration des sessions en cours : l'ancien profil unique
+  // 'professionnel' est réhydraté comme 'industriel' (le backend mappe déjà
+  // professionnel→industriel) — le site n'ÉMET plus jamais 'professionnel'.
+  if (mode === 'professionnel') mode = 'industriel';
+  /** WJ121 — les deux modes C&I partagent le sous-panneau/moteur pro existant
+   *  (panneaux dédiés = WJ122/WJ123) ; 'professionnel' couvert par défense en
+   *  profondeur (la migration ci-dessus l'élimine déjà). */
+  function isProMode(m: string): boolean {
+    return m === 'industriel' || m === 'commercial' || m === 'professionnel';
+  }
   // QX — libellés du fil d'étapes + habillage du document par profil.
   const STEP_LABELS_BY_MODE: Record<string, [string, string, string]> = {
     residentiel: ['Votre toit', 'Votre facture', 'Votre estimation'],
-    professionnel: ['Votre site', 'Votre énergie', 'Votre estimation'],
+    industriel: ['Votre site', 'Votre énergie', 'Votre estimation'],
+    commercial: ['Votre établissement', 'Votre énergie', 'Votre estimation'],
     agricole: ['Votre terrain', 'Votre pompage', 'Votre estimation'],
   };
   const MODE_LABEL: Record<string, string> = {
-    residentiel: 'Résidentiel', professionnel: 'Professionnel', agricole: 'Agricole',
+    residentiel: 'Résidentiel', industriel: 'Industriel', commercial: 'Commercial', agricole: 'Agricole',
   };
   const MODE_DOC_SUBTITLE: Record<string, string> = {
-    residentiel: 'Résidentielle', professionnel: 'Autoconsommation Industrielle', agricole: 'Pompage Agricole',
+    residentiel: 'Résidentielle', industriel: 'Autoconsommation Industrielle',
+    commercial: 'Autoconsommation Commerciale', agricole: 'Pompage Agricole',
   };
   /** QX — le fil d'étapes suit le profil. Page FR figée en français (WJ106) :
    *  textContent direct — la paire data-i18n dormante de ces nœuds n'est plus
@@ -2164,7 +2180,8 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     const pro = $('mt-sub-professionnel');
     const agri = $('mt-sub-agricole');
     if (res) res.hidden = m !== 'residentiel';
-    if (pro) pro.hidden = m !== 'professionnel';
+    // WJ121 — industriel ET commercial partagent le sous-panneau pro (WJ122/WJ123 : panneaux dédiés).
+    if (pro) pro.hidden = !isProMode(m);
     if (agri) agri.hidden = m !== 'agricole';
   }
   function syncModeCards() {
@@ -2888,7 +2905,8 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
       announceEstimate('Estimation indisponible : indiquez votre consommation mensuelle (MAD ou kWh).');
       return false;
     }
-    if (proUnit === 'mad' && proBill > maxBillFor('professionnel')) {
+    // WJ121 — plafond du mode C&I actif (industriel et commercial partagent 1 M MAD).
+    if (proUnit === 'mad' && proBill > maxBillFor(mode)) {
       if (toolargePro) toolargePro.hidden = false;
       clearShown();
       fillDocChrome();
@@ -3119,7 +3137,7 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
       return true;
     }
     if (agricoleEl) agricoleEl.hidden = true;
-    if (mode === 'professionnel') {
+    if (isProMode(mode)) {
       if (card) card.hidden = true;
       if (note) note.hidden = true;
       setFieldError('mt-facture-hiver', 'mt-facture-hiver-err', null);
@@ -3520,7 +3538,7 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
   }
   /** Étape questions : validation PAR PROFIL avant le calcul. */
   function validateStep1(): boolean {
-    if (mode === 'professionnel') {
+    if (isProMode(mode)) {
       if (!checkOptionalNumber('mt-puissance-kva', 'Puissance souscrite')) {
         scrollToInvalid($('mt-puissance-kva'));
         return false;
@@ -3596,7 +3614,7 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
   // les champs précis). NOTE orchestrateur : si Lane A assouplit roofType par
   // mode plus tard, cette dérivation peut disparaître. ———
   function resolveRoofType(): string {
-    if (mode === 'professionnel') {
+    if (isProMode(mode)) {
       if (surfaceType === 'bac_acier') return 'hangar';
       if (surfaceType === 'terrasse') return 'toit_plat';
       return 'autre';
@@ -3652,9 +3670,9 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
       city: adresse,
       // QX — billRange TOUJOURS cohérent avec ce qui a piloté l'estimation
       // affichée : résidentiel = le <select> (auto-dérivé du montant exact,
-      // syncBillRangeFromExact) ; professionnel = dérivé de la conso saisie ;
+      // syncBillRangeFromExact) ; C&I (industriel/commercial) = dérivé de la conso saisie ;
       // agricole = plus requis (lib/lead.ts, mode 'agricole').
-      billRange: mode === 'professionnel' ? resolveProBillRange() : mode === 'agricole' ? '' : val('mt-bill'),
+      billRange: isProMode(mode) ? resolveProBillRange() : mode === 'agricole' ? '' : val('mt-bill'),
       // QX — dérivé des vraies réponses pour pro/agricole (cartes toit =
       // sous-panneau résidentiel uniquement) ; cf. resolveRoofType.
       roofType: resolveRoofType(),
@@ -3698,11 +3716,11 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
       // QX — sous-panneau PROFESSIONNEL. `tensionRaccordement` (bt/mt) est
       // volontairement DISTINCT du select résidentiel `raccordement`
       // (monophasé/triphasé) — jamais les deux sens dans un même champ. Les
-      // champs à DÉFAUT visible (tension/activité) ne partent que si le profil
-      // professionnel est actif — jamais une donnée fabriquée pour un autre profil.
-      tensionRaccordement: mode === 'professionnel' ? tension : undefined,
+      // champs à DÉFAUT visible (tension/activité) ne partent que si un profil
+      // C&I (industriel/commercial) est actif — jamais une donnée fabriquée pour un autre profil.
+      tensionRaccordement: isProMode(mode) ? tension : undefined,
       puissanceKva: num('mt-puissance-kva') ?? undefined,
-      activityProfile: mode === 'professionnel' ? activity : undefined,
+      activityProfile: isProMode(mode) ? activity : undefined,
       surfaceType: surfaceType || undefined,
       surfaceM2: num('mt-surface-m2') ?? undefined,
       hasGenerator: generator ? generator === 'oui' : undefined,

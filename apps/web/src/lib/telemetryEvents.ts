@@ -54,9 +54,11 @@ export type TelemetryStepId = (typeof TELEMETRY_STEP_IDS)[number];
 
 /**
  * Modes de parcours — MIROIR exact de `LEAD_MODES` (lib/lead.ts, WJ6/WJ30) :
- * résidentiel / professionnel / agricole. Jamais un 4ᵉ mode inventé ici.
+ * résidentiel / industriel / commercial / agricole, plus l'alias hérité
+ * professionnel (WJ121 — accepté, plus jamais émis par le site). Jamais un
+ * mode inventé ici qui n'existe pas dans LEAD_MODES.
  */
-export const TELEMETRY_MODES = ['residentiel', 'professionnel', 'agricole'] as const;
+export const TELEMETRY_MODES = ['residentiel', 'professionnel', 'industriel', 'commercial', 'agricole'] as const;
 export type TelemetryMode = (typeof TELEMETRY_MODES)[number];
 
 /** Langues actives suivies — MIROIR de `LEAD_LANGS` (lib/lead.ts). */
