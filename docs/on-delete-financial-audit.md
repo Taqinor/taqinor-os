@@ -769,7 +769,7 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/apps/rh/models.py:6031` | HistoriqueCompetence.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/rh/models.py:6094` | RetourFeedback360.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/rh/models.py:6166` | PlanAppreciation.company | authentication.Company | CASCADE |
-| `backend/django_core/apps/roles/models.py:379` | Role.company | authentication.Company | CASCADE |
+| `backend/django_core/apps/roles/models.py:382` | Role.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/sav/models.py:54` | SavSlaSettings.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/sav/models.py:159` | MaintenanceChecklistTemplate.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/sav/models.py:177` | MaintenanceChecklistItem.company | authentication.Company | CASCADE |
