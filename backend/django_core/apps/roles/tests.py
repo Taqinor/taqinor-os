@@ -362,3 +362,106 @@ class RevueAccesTest(TestCase):
             HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.recent)}')
         resp = api.get('/api/django/roles/revue-acces/')
         self.assertEqual(resp.status_code, 403)
+
+
+class AdsEnginePermissionsTest(TestCase):
+    """ENG19 — Permissions adsengine_view/manage/approve et role mapping.
+
+    Couvre:
+    - Les trois permissions existent dans ALL_PERMISSIONS ;
+    - init_roles mappe adsengine_view et adsengine_manage selon le pattern YRBAC3
+      (toutes les roles canoniques sauf VIEWER pour manage; VIEWER inclus pour view) ;
+    - adsengine_approve est réservé à DIRECTEUR, ADMIN, RESPONSABLE (ancien système)
+      et COMMERCIAL_RESP/TECHNICIEN_RESP (responsable level), mais NOT à COMMERCIAL/
+      TECHNICIEN/VIEWER.
+    """
+
+    def setUp(self):
+        from apps.roles.models import (
+            DIRECTEUR_PERMISSIONS, ADMIN_PERMISSIONS, COMMERCIAL_RESP_PERMISSIONS,
+            COMMERCIAL_PERMISSIONS, TECHNICIEN_RESP_PERMISSIONS, TECHNICIEN_PERMISSIONS,
+            VIEWER_PERMISSIONS, RESPONSABLE_PERMISSIONS, UTILISATEUR_PERMISSIONS,
+        )
+        self.company = Company.objects.create(nom='AdsEng Co', slug='adseng-co')
+
+        # Créer les sept rôles canoniques avec leurs permissions par défaut.
+        self.directeur = Role.objects.create(
+            company=self.company, nom='Directeur',
+            permissions=list(DIRECTEUR_PERMISSIONS), est_systeme=True)
+        self.admin = Role.objects.create(
+            company=self.company, nom='Administrateur',
+            permissions=list(ADMIN_PERMISSIONS), est_systeme=True)
+        self.commercial_resp = Role.objects.create(
+            company=self.company, nom='Commercial responsable',
+            permissions=list(COMMERCIAL_RESP_PERMISSIONS), est_systeme=True)
+        self.commercial = Role.objects.create(
+            company=self.company, nom='Commercial',
+            permissions=list(COMMERCIAL_PERMISSIONS), est_systeme=True)
+        self.technicien_resp = Role.objects.create(
+            company=self.company, nom='Technicien responsable',
+            permissions=list(TECHNICIEN_RESP_PERMISSIONS), est_systeme=True)
+        self.technicien = Role.objects.create(
+            company=self.company, nom='Technicien',
+            permissions=list(TECHNICIEN_PERMISSIONS), est_systeme=True)
+        self.viewer = Role.objects.create(
+            company=self.company, nom='Viewer',
+            permissions=list(VIEWER_PERMISSIONS), est_systeme=True)
+
+        # Rôles légacy.
+        self.responsable = Role.objects.create(
+            company=self.company, nom='Responsable',
+            permissions=list(RESPONSABLE_PERMISSIONS), est_systeme=True)
+        self.utilisateur = Role.objects.create(
+            company=self.company, nom='Utilisateur',
+            permissions=list(UTILISATEUR_PERMISSIONS), est_systeme=True)
+
+    def test_adsengine_permissions_in_all_permissions(self):
+        """Les trois permissions existent dans ALL_PERMISSIONS."""
+        self.assertIn('adsengine_view', ALL_PERMISSIONS)
+        self.assertIn('adsengine_manage', ALL_PERMISSIONS)
+        self.assertIn('adsengine_approve', ALL_PERMISSIONS)
+
+    def test_adsengine_view_distribution(self):
+        """adsengine_view est distribuée à tous les rôles."""
+        roles_with_view = [
+            self.directeur, self.admin, self.commercial_resp,
+            self.commercial, self.technicien_resp, self.technicien,
+            self.viewer, self.responsable, self.utilisateur,
+        ]
+        for role in roles_with_view:
+            self.assertIn('adsengine_view', role.permissions,
+                          f'{role.nom} doit avoir adsengine_view')
+
+    def test_adsengine_manage_distribution(self):
+        """adsengine_manage est distribuée à tous sauf VIEWER et UTILISATEUR."""
+        roles_with_manage = [
+            self.directeur, self.admin, self.commercial_resp,
+            self.commercial, self.technicien_resp, self.technicien,
+            self.responsable,
+        ]
+        for role in roles_with_manage:
+            self.assertIn('adsengine_manage', role.permissions,
+                          f'{role.nom} doit avoir adsengine_manage')
+
+        roles_without_manage = [self.viewer, self.utilisateur]
+        for role in roles_without_manage:
+            self.assertNotIn('adsengine_manage', role.permissions,
+                             f'{role.nom} ne doit NOT avoir adsengine_manage')
+
+    def test_adsengine_approve_restricted(self):
+        """adsengine_approve est réservé à DIRECTEUR, ADMIN, RESPONSABLE."""
+        roles_with_approve = [
+            self.directeur, self.admin, self.responsable,
+        ]
+        for role in roles_with_approve:
+            self.assertIn('adsengine_approve', role.permissions,
+                          f'{role.nom} doit avoir adsengine_approve')
+
+        roles_without_approve = [
+            self.commercial_resp, self.commercial,
+            self.technicien_resp, self.technicien,
+            self.viewer, self.utilisateur,
+        ]
+        for role in roles_without_approve:
+            self.assertNotIn('adsengine_approve', role.permissions,
+                             f'{role.nom} ne doit NOT avoir adsengine_approve')

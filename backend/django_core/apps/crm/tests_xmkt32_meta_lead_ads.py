@@ -41,16 +41,21 @@ def _lead_data(leadgen_id='1001', nom='Yassine Bennani',
     }
 
 
-def _notification_payload(leadgen_id='1001', campaign='Campagne Été',
-                          adset='Adset Casablanca'):
+def _notification_payload(leadgen_id='1001', ad_id='', adgroup_id='',
+                          form_id=''):
+    # ADSENG1 — le webhook leadgen de Meta pousse UNIQUEMENT des clés de
+    # jointure stables (ad_id/adgroup_id/form_id), JAMAIS campaign_name/
+    # adset_name : les noms lisibles sont résolus côté ERP via les miroirs
+    # adsengine. Ce payload reflète donc la vraie forme Meta.
     return {
         'entry': [{
             'changes': [{
                 'field': 'leadgen',
                 'value': {
                     'leadgen_id': leadgen_id,
-                    'campaign_name': campaign,
-                    'adset_name': adset,
+                    'ad_id': ad_id,
+                    'adgroup_id': adgroup_id,
+                    'form_id': form_id,
                 },
             }]
         }]
@@ -115,9 +120,20 @@ class MetaLeadAdsIngestTests(TestCase):
     @mock.patch('apps.crm.webhooks.fetch_meta_lead_data')
     def test_simulated_payload_creates_attributed_lead(self, fetch_mock):
         """Payload Lead Ads simulé (API officielle mockée) → lead créé,
-        attribué canal META_ADS + utm_source facebook + campagne/adset."""
+        attribué canal META_ADS + utm_source facebook ; le NOM de campagne est
+        résolu via les miroirs adsengine (ADSENG1 : Meta ne pousse que
+        ad_id/adgroup_id), utm_content = ad-<ad_id> (convention ADSENG23)."""
+        from apps.adsengine.models import AdCampaignMirror, AdSetMirror
+        campaign = AdCampaignMirror.objects.create(
+            company=self.company, meta_id='CMP-1', name='Campagne Été',
+            status='PAUSED')
+        AdSetMirror.objects.create(
+            company=self.company, meta_id='ASET-1', name='Adset Casablanca',
+            campaign=campaign)
         fetch_mock.return_value = _lead_data(leadgen_id='2001')
-        resp = self._post(_notification_payload(leadgen_id='2001'))
+        resp = self._post(_notification_payload(
+            leadgen_id='2001', ad_id='AD-2001', adgroup_id='ASET-1',
+            form_id='FORM-1'))
         self.assertEqual(resp.status_code, 200)
         fetch_mock.assert_called_once_with('2001', ACCESS_TOKEN)
 
@@ -125,8 +141,10 @@ class MetaLeadAdsIngestTests(TestCase):
         self.assertEqual(lead.canal, Lead.Canal.META_ADS)
         self.assertEqual(lead.source, Lead.Source.META_LEAD_ADS)
         self.assertEqual(lead.utm_source, 'facebook')
+        # Nom de campagne résolu localement via le miroir (ad_id/adgroup_id).
         self.assertEqual(lead.utm_campaign, 'Campagne Été')
-        self.assertEqual(lead.utm_content, 'Adset Casablanca')
+        # Convention ADSENG23 : utm_content = ad-<ad_id>, jamais l'adset_name.
+        self.assertEqual(lead.utm_content, 'ad-AD-2001')
         self.assertEqual(lead.external_system, 'meta_lead_ads')
         self.assertEqual(lead.external_id, '2001')
         self.assertEqual(lead.nom, 'Yassine Bennani')

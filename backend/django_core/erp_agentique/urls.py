@@ -86,6 +86,8 @@ _APP_URLS = [
     path('pos/', include('apps.pos.urls')),
     # NTSEC — Fondation Identité & accès (NTSEC11 : allowlist IP/CIDR).
     path('identity/', include('apps.identity.urls')),
+    # Groupe ENG — Moteur publicitaire Meta Ads dans l'ERP.
+    path('adsengine/', include('apps.adsengine.urls')),
 ]
 
 urlpatterns = [

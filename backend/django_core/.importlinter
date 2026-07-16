@@ -204,6 +204,18 @@ forbidden_modules =
     apps.installations.models
     apps.compta.models
 
+[importlinter:contract:adsengine-models-decoupled]
+name = AdsEngine models never import a business-core domain's models (string FKs only — ENG20)
+type = forbidden
+source_modules =
+    apps.adsengine.models
+forbidden_modules =
+    apps.crm.models
+    apps.ventes.models
+    apps.stock.models
+    apps.sav.models
+    apps.installations.models
+
 [importlinter:contract:tiers-is-a-base-layer]
 name = The tiers foundation app imports downward only (no domain-core or satellite app — locks ARC17)
 type = forbidden

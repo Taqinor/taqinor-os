@@ -618,6 +618,19 @@ class Lead(SoftDeleteModel):
     utm_content = models.CharField(max_length=300, blank=True, null=True)
     utm_term = models.CharField(max_length=300, blank=True, null=True)
 
+    # ── ADSENG1 — Identifiants Meta natifs des leads Lead Ads (additifs,
+    # nullable). Meta ne pousse JAMAIS campaign_name/adset_name dans le webhook
+    # leadgen ; il pousse ad_id/adgroup_id/form_id (+ leadgen_id). On les
+    # capture ici comme CLÉS DE JOINTURE STABLES vers les miroirs adsengine
+    # (AdMirror.meta_id / AdSetMirror.meta_id / AdCampaignMirror.meta_id), là où
+    # les utm_* (chaînes saisies) ne sont bons que pour l'affichage. Vides pour
+    # tout lead non-Meta (site/appel/DM). L'attribution PAR VARIANTE (ADSENG6)
+    # joint sur meta_ad_id.
+    meta_ad_id = models.CharField(max_length=64, blank=True, null=True)
+    meta_adset_id = models.CharField(max_length=64, blank=True, null=True)
+    meta_campaign_id = models.CharField(max_length=64, blank=True, null=True)
+    meta_form_id = models.CharField(max_length=64, blank=True, null=True)
+
     # ── QK1 — Qualification captée par le site (additifs, nullable) ──
     # Le site collecte ces signaux au moment de la capture ; ils ne doivent
     # jamais être re-demandés au prospect par le commercial.
@@ -796,6 +809,10 @@ class Lead(SoftDeleteModel):
                          name='crm_lead_phone_norm_idx'),
             models.Index(fields=['company', 'email_normalise'],
                          name='crm_lead_email_norm_idx'),
+            # ADSENG1/ADSENG6 — jointure d'attribution PAR VARIANTE : on
+            # regroupe les leads d'une société par leur ad Meta (meta_ad_id).
+            models.Index(fields=['company', 'meta_ad_id'],
+                         name='crm_lead_meta_ad_idx'),
         ]
         constraints = [
             # An imported record is unique per (company, system, external id) so

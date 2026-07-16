@@ -5,6 +5,27 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | Fichier:ligne | Appel | Récepteur | Clés de lookup |
 |---|---|---|---|
 | `backend/django_core/apps/accessreview/sod.py:127` | get_or_create | SodRule.objects | company, permission_a, permission_b |
+| `backend/django_core/apps/adsengine/brief.py:178` | update_or_create | WeeklyBrief.objects | company, period_start |
+| `backend/django_core/apps/adsengine/flightrunner.py:375` | update_or_create | AdCampaignMirror.objects | company, meta_id |
+| `backend/django_core/apps/adsengine/flightrunner.py:385` | update_or_create | AdSetMirror.objects | company, meta_id |
+| `backend/django_core/apps/adsengine/management/commands/seed_adsengine.py:40` | get_or_create | GuardrailConfig.objects | company |
+| `backend/django_core/apps/adsengine/management/commands/seed_adsengine.py:68` | get_or_create | RulePolicy.objects | company, template_key |
+| `backend/django_core/apps/adsengine/management/commands/seed_synthetic_account.py:137` | update_or_create | AdCampaignMirror.objects | company, meta_id |
+| `backend/django_core/apps/adsengine/management/commands/seed_synthetic_account.py:141` | update_or_create | AdSetMirror.objects | company, meta_id |
+| `backend/django_core/apps/adsengine/management/commands/seed_synthetic_account.py:159` | update_or_create | AdMirror.objects | company, meta_id |
+| `backend/django_core/apps/adsengine/models.py:745` | update_or_create | cls.objects | arm, company, date |
+| `backend/django_core/apps/adsengine/models.py:969` | update_or_create | cls.objects | company, period_start |
+| `backend/django_core/apps/adsengine/policy.py:40` | get_or_create | CreativePolicy.objects | company |
+| `backend/django_core/apps/adsengine/reconciliation.py:350` | update_or_create | RS.objects | campaign, company, date |
+| `backend/django_core/apps/adsengine/rule_templates.py:345` | get_or_create | RulePolicy.objects | company, template_key |
+| `backend/django_core/apps/adsengine/simulator.py:85` | get_or_create | GuardrailConfig.objects | company |
+| `backend/django_core/apps/adsengine/sync.py:56` | get_or_create | AdCampaignMirror.objects | company, meta_id |
+| `backend/django_core/apps/adsengine/sync.py:87` | get_or_create | AdSetMirror.objects | company, meta_id |
+| `backend/django_core/apps/adsengine/sync.py:116` | get_or_create | AdMirror.objects | company, meta_id |
+| `backend/django_core/apps/adsengine/sync.py:136` | update_or_create | InsightSnapshot.objects | company, content_type, date, object_id |
+| `backend/django_core/apps/adsengine/views.py:958` | get_or_create | MetaConnection.objects | company |
+| `backend/django_core/apps/adsengine/views.py:1035` | get_or_create | GuardrailConfig.objects | company |
+| `backend/django_core/apps/adsengine/views.py:1042` | get_or_create | GuardrailConfig.objects | company |
 | `backend/django_core/apps/automation/views.py:400` | get_or_create | IncomingWebhookTrigger.objects | rule |
 | `backend/django_core/apps/chat/services.py:152` | get_or_create | MessageMention.objects | mentioned_user, message |
 | `backend/django_core/apps/chat/services.py:258` | get_or_create | UserChatStatus.objects | user |
@@ -51,7 +72,7 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/contrats/management/commands/seed_motifs_resiliation.py:40` | get_or_create | MotifResiliation.objects | code, company |
 | `backend/django_core/apps/contrats/management/commands/seed_plans_recurrents.py:34` | get_or_create | PlanRecurrent.objects | company, nom |
 | `backend/django_core/apps/contrats/views.py:2527` | get_or_create | ParametresLocation.objects | company |
-| `backend/django_core/apps/crm/services.py:3116` | get_or_create | MessageTemplate.objects | company, nom |
+| `backend/django_core/apps/crm/services.py:3247` | get_or_create | MessageTemplate.objects | company, nom |
 | `backend/django_core/apps/crm/views.py:1395` | get_or_create | Canal.objects | cle, company |
 | `backend/django_core/apps/dataimport/services.py:224` | update_or_create | ImportMapping.objects | company, entity, nom |
 | `backend/django_core/apps/dataimport/services.py:261` | get_or_create | ExternalRef.objects | company, external_id, external_system |
@@ -192,8 +213,8 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/stock/services.py:5090` | get_or_create | PrixFournisseur.objects | fournisseur, produit |
 | `backend/django_core/apps/stock/services.py:5103` | update_or_create | PalierPrixFournisseur.objects | prix_fournisseur, qte_min |
 | `backend/django_core/apps/stock/views/marque.py:57` | get_or_create | Marque.objects | company, nom |
-| `backend/django_core/apps/ventes/services.py:2436` | get_or_create | Produit.objects | company, nom |
-| `backend/django_core/apps/ventes/services.py:3770` | get_or_create | Produit.objects | company, sku |
+| `backend/django_core/apps/ventes/services.py:2456` | get_or_create | Produit.objects | company, nom |
+| `backend/django_core/apps/ventes/services.py:3790` | get_or_create | Produit.objects | company, sku |
 | `backend/django_core/apps/ventes/views/liste_prix.py:72` | update_or_create | LignePrixListe.objects | liste, produit_id |
 | `backend/django_core/apps/ventes/views/remise_encaissement.py:81` | get_or_create | LigneRemiseEncaissement.objects | paiement, remise |
 | `backend/django_core/apps/voip/services.py:26` | get_or_create | VoipParametres.objects | company |

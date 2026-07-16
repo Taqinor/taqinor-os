@@ -31,3 +31,5 @@ backend/django_core/apps/rh/migrations/0019_epi_peremption_controle.py
 backend/django_core/apps/sav/migrations/0007_fg81_fg82_fg83_fg85_fg87.py
 backend/django_core/apps/stock/migrations/0013_backfill_garantie_onduleurs.py
 backend/django_core/apps/facturation/migrations/0002_odx17_rename_stale_contenttypes.py
+backend/django_core/apps/adsengine/migrations/0012_adseng4_guardian_treasury.py
+backend/django_core/apps/crm/migrations/0061_adseng1_lead_meta_ids.py
