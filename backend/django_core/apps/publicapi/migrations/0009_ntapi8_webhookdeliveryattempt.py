@@ -41,6 +41,7 @@ class Migration(migrations.Migration):
                     ],
                     default='en_attente', max_length=12)),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
                 ('company', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
                     related_name='webhook_delivery_attempts',

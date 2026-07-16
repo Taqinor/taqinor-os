@@ -17,6 +17,7 @@ from django.conf import settings
 from django.db import models
 
 from core.crypto_fields import EncryptedCharField
+from core.models import TenantModel
 
 from .constants import SCOPE_CHOICES, EVENT_CHOICES
 
@@ -214,7 +215,7 @@ class WebhookDelivery(models.Model):
         return f'{self.event} → {self.status}'
 
 
-class WebhookDeliveryAttempt(models.Model):
+class WebhookDeliveryAttempt(TenantModel):
     """NTAPI8 — reprise SCHEDULÉE (long-tail) d'une livraison en échec.
 
     Distincte des reprises Celery immédiates (YAPIC8, backoff court en
@@ -231,6 +232,8 @@ class WebhookDeliveryAttempt(models.Model):
         SUCCES = 'succes', 'Succès'
         ECHEC = 'echec', 'Échec'
 
+    # ARC1 — company + created_at/updated_at viennent de core.TenantModel ;
+    # company REDÉCLARÉ à l'identique pour conserver le related_name historique.
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
@@ -249,7 +252,7 @@ class WebhookDeliveryAttempt(models.Model):
     prochain_essai_at = models.DateTimeField(null=True, blank=True, db_index=True)
     statut = models.CharField(
         max_length=12, choices=Statut.choices, default=Statut.EN_ATTENTE)
-    created_at = models.DateTimeField(auto_now_add=True)
+    # created_at / updated_at hérités de core.TenantModel (TimestampedModel).
 
     class Meta:
         verbose_name = 'Reprise programmée de livraison webhook'
