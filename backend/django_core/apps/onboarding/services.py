@@ -76,6 +76,34 @@ def marquer_item_complete(company, user, item_key):
     return progress
 
 
+def ignorer_item(company, user, item_id):
+    """NTDMO13 — masque manuellement un item pour ``user`` (persistant), sans le
+    marquer fait. Idempotent. Renvoie le ``OnboardingProgress`` ou None."""
+    if company is None or user is None or not getattr(user, 'pk', None):
+        return None
+    from .models import OnboardingChecklistItem, OnboardingProgress
+    item = OnboardingChecklistItem.objects.filter(
+        pk=item_id, actif=True).first()
+    if item is None:
+        return None
+    progress = OnboardingProgress.objects.filter(user=user, item=item).first()
+    if progress is None:
+        progress = OnboardingProgress.objects.create(
+            company=company, user=user, item=item)
+    if progress.ignore_le is None:
+        progress.ignore_le = timezone.now()
+        progress.save(update_fields=['ignore_le'])
+    return progress
+
+
+def ignorer_tout(company, user):
+    """NTDMO13 — masque TOUS les items restants (à faire) de l'utilisateur."""
+    from .selectors import checklist_pour_utilisateur
+    for it in checklist_pour_utilisateur(company, user):
+        if not it['fait']:
+            ignorer_item(company, user, it['id'])
+
+
 def completer_par_evenement(event_key, company, user):
     """Coche tous les items dont ``event_key`` correspond (NTDMO12)."""
     if not event_key or company is None or user is None:

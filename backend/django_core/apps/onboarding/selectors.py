@@ -35,6 +35,9 @@ def checklist_pour_utilisateur(company, user):
     resolved = []
     for it in items:
         p = progress.get(it.id)
+        # Un item IGNORÉ (masqué manuellement) est retiré de la liste.
+        if p is not None and p.ignore_le is not None:
+            continue
         resolved.append({
             'id': it.id,
             'key': it.key,
@@ -45,3 +48,19 @@ def checklist_pour_utilisateur(company, user):
             'complete_le': p.complete_le if p else None,
         })
     return resolved
+
+
+def resume_pour_utilisateur(company, user):
+    """Résumé pour le widget « Premiers pas » : {items, faits, total, pourcentage,
+    termine}. ``termine`` = plus aucun item à faire (100 % ou tout ignoré)."""
+    items = checklist_pour_utilisateur(company, user)
+    total = len(items)
+    faits = sum(1 for it in items if it['fait'])
+    pourcentage = round(100 * faits / total) if total else 100
+    return {
+        'items': items,
+        'faits': faits,
+        'total': total,
+        'pourcentage': pourcentage,
+        'termine': total == 0 or faits == total,
+    }

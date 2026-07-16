@@ -65,6 +65,9 @@ class OnboardingProgress(models.Model):
         related_name='progress')
     # Horodatage de complétion (NULL = à faire).
     complete_le = models.DateTimeField(null=True, blank=True)
+    # NTDMO13 — masquage manuel d'un item (persistant) SANS le marquer fait :
+    # NULL = visible, non-NULL = ignoré par l'utilisateur.
+    ignore_le = models.DateTimeField(null=True, blank=True)
     date_creation = models.DateTimeField(auto_now_add=True)
 
     class Meta:

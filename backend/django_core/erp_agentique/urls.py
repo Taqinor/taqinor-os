@@ -29,6 +29,8 @@ _APP_URLS = [
     path('contact/', include('apps.contact.urls')),
     path('installations/', include('apps.installations.urls')),
     path('sav/', include('apps.sav.urls')),
+    # NTDMO13 — onboarding produit (checklist « Premiers pas »).
+    path('onboarding/', include('apps.onboarding.urls')),
     path('outillage/', include('apps.outillage.urls')),
     path('ged/', include('apps.ged.urls')),
     path('core/', include('core.urls')),  # FG368 — jobs Celery Beat
