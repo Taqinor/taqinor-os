@@ -185,6 +185,26 @@ class ConsoleWiringTests(TestCase):
             self.assertIn(k, resp.data)
         self.assertEqual(resp.data['spend'], '120.00')
 
+    def test_metrics_dashboard_prefers_odoo_signatures_when_configured(self):
+        """ADSENG-ODOO : connecteur Odoo configuré + signatures RÉELLES -> le
+        héro-chiffre du dashboard reflète le coût-par-signature Odoo (le CRM ERP
+        peut être vide), avec ``signatures_source`` = 'odoo'. Sans Odoo (défaut
+        des tests), le comportement CRM historique est inchangé."""
+        from unittest import mock
+        odoo_result = {'configured': True, 'signatures': 9,
+                       'cost_per_signature': '10.03', 'total_spend': '90.31'}
+        with mock.patch(
+                'apps.adsengine.odoo_client.is_configured',
+                return_value=True), \
+                mock.patch(
+                    'apps.adsengine.odoo_metrics.odoo_cost_per_signature',
+                    return_value=odoo_result):
+            resp = auth(self.viewer).get(f'{BASE}/metrics/dashboard/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['cost_per_signature'], '10.03')
+        self.assertEqual(resp.data['signatures'], 9)
+        self.assertEqual(resp.data['signatures_source'], 'odoo')
+
     def test_metrics_leads_is_list(self):
         resp = auth(self.viewer).get(
             f'{BASE}/metrics/leads/', {'metric': 'cost_per_signature'})
