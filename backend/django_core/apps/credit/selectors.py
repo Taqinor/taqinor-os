@@ -29,3 +29,34 @@ def encours_client(client):
         if entry['tiers_id'] == client.id:
             return entry['encours']
     return Decimal('0')
+
+
+def disponible_credit(client):
+    """NTCRD5 — disponible de crédit d'un client.
+
+    ``montant_limite - encours_client`` ; ``None`` (illimité) si aucune
+    ``LimiteCredit`` active n'est définie pour ce client — comportement
+    historique inchangé (aucun hold possible sans limite). Renvoie
+    ``{'limite': Decimal|None, 'encours': Decimal, 'disponible': Decimal|None,
+    'pct_utilise': float|None, 'depasse': bool}``."""
+    from .models import LimiteCredit
+
+    encours = encours_client(client)
+    limite_obj = LimiteCredit.objects.filter(
+        client=client, actif=True).first()
+    montant_limite = limite_obj.montant_limite if limite_obj else None
+
+    if montant_limite is None:
+        return {
+            'limite': None, 'encours': encours, 'disponible': None,
+            'pct_utilise': None, 'depasse': False,
+        }
+
+    disponible = montant_limite - encours
+    pct_utilise = (
+        float(encours / montant_limite) if montant_limite > 0 else 0.0)
+    return {
+        'limite': montant_limite, 'encours': encours,
+        'disponible': disponible, 'pct_utilise': pct_utilise,
+        'depasse': disponible < 0,
+    }
