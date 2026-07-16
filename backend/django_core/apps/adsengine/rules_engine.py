@@ -201,15 +201,31 @@ def _recently_acted(company, template_key, target_meta_id, *, since):
 
 # ── Émission d'alerte (ADSENG15 : basique ; ADSENG18 enrichit ce point) ───────
 def _emit_alert(company, *, template_key, finding, message, action=None,
-                dry_run=False):
+                dry_run=False, insufficient=False):
     """Point d'émission d'alerte du moteur. En simulation, aucune alerte n'est
     émise (visible in-app via le journal d'actions uniquement — dd-guardian §A10).
 
-    ADSENG18 réécrit ce corps pour router vers ``alerts.emit_guarded_alert``
-    (rendu WhatsApp FR + dédup/cooldown/escalade). Ici : émission basique."""
+    Un finding DÉCLENCHÉ sur un template mappé (ADSENG18) route vers
+    ``alerts.emit_guarded_alert`` (rendu WhatsApp FR + dédup/cooldown/escalade) ;
+    une branche insufficient_data ou un template non mappé retombe sur l'alerte
+    basique avec son message custom."""
     if dry_run:
         return None
+    from . import alerts as alerts_mod
     from . import guardrails
+
+    wa_key = None
+    if not insufficient:
+        wa_key = alerts_mod.wa_template_for_catalogue(template_key)
+    if wa_key:
+        target_type = finding.get('target_type', '')
+        target_id = finding.get('target_meta_id', '')
+        context = alerts_mod.context_from_computed(
+            target_id, finding.get('computed', {}))
+        return alerts_mod.emit_guarded_alert(
+            company, template_key=wa_key, target_type=target_type,
+            target_id=target_id, context=context, action=action,
+            dry_run=dry_run)
     return guardrails.emit_alert(
         company, alert_type=guardrails.ALERT_ANOMALY, message=message,
         action=action,
@@ -338,7 +354,7 @@ def evaluate_company(company, *, cadences=None, now=None, client=None,
                     message=(f"{template['label_fr']} : données insuffisantes "
                              f"pour {finding.get('target_meta_id', '?')} — "
                              f"vérification impossible (jamais un skip muet)."),
-                    dry_run=policy.dry_run)
+                    dry_run=policy.dry_run, insufficient=True)
             elif finding.get('fired'):
                 fired_any = True
                 _act_on_finding(company, policy, template, finding,
