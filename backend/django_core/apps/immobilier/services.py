@@ -221,3 +221,66 @@ def generer_echeancier(bail):
         creees.append(echeance)
 
     return creees
+
+
+class ClientVentesIntrouvableError(Exception):
+    """NTPRO7 — le locataire n'a aucun ``crm.Client`` résolu/résolvable."""
+
+
+def emettre_quittance(echeance):
+    """NTPRO7 — Émet la quittance d'une ``EcheanceLoyer`` : crée UNE facture
+    ventes via ``apps.ventes.services`` (function-local, jamais un import de
+    modèle ``Facture``) liée au Locataire résolu (NTPRO2), avec un libellé
+    combinant loyer + charges de la période.
+
+    IDEMPOTENT — jamais de doublon : si l'échéance porte déjà un
+    ``facture_ventes_id`` (quittance déjà émise), ne recrée RIEN et renvoie
+    l'id de facture existant tel quel. Résout le client ventes du locataire
+    à la volée si nécessaire (best-effort, ``resolve_client_ventes_for_
+    locataire``). Passe le statut de l'échéance à ``emise``."""
+    from decimal import Decimal
+
+    from django.utils import timezone
+
+    from .models import EcheanceLoyer
+
+    if echeance.facture_ventes_id:
+        return echeance.facture_ventes_id
+
+    locataire = echeance.bail.locataire
+    client_id = locataire.client_ventes_id
+    if not client_id:
+        client_id = resolve_client_ventes_for_locataire(locataire)
+    if not client_id:
+        raise ClientVentesIntrouvableError(
+            f'Aucun client ventes résolu pour le locataire {locataire}.')
+
+    from apps.crm.selectors import get_company_client
+    client = get_company_client(echeance.company, client_id)
+    if client is None:
+        raise ClientVentesIntrouvableError(
+            f'Client ventes {client_id} introuvable pour cette société.')
+
+    periode = f'{echeance.periode_debut:%m/%Y}'
+    libelle = f'Loyer {periode} — {echeance.bail.local}'
+    if echeance.montant_charges and echeance.montant_charges > 0:
+        libelle += f' + Charges {periode}'
+
+    from apps.ventes.services import creer_facture_classique
+
+    montant_total = echeance.montant_total
+    facture = creer_facture_classique(
+        company=echeance.company, client=client, user=None,
+        taux_tva=Decimal('0'), montant_ht=montant_total,
+        montant_tva=Decimal('0'), montant_ttc=montant_total,
+        libelle=libelle,
+    )
+
+    EcheanceLoyer.objects.filter(pk=echeance.pk).update(
+        facture_ventes_id=facture.id, statut=EcheanceLoyer.Statut.EMISE,
+        date_emission_quittance=timezone.now())
+    echeance.facture_ventes_id = facture.id
+    echeance.statut = EcheanceLoyer.Statut.EMISE
+    echeance.date_emission_quittance = timezone.now()
+
+    return facture.id

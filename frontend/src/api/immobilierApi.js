@@ -29,7 +29,12 @@ const immobilierApi = {
     genererEcheancier: (id) =>
       api.post(`/immobilier/baux/${id}/generer-echeancier/`),
   },
-  echeancesLoyer: crud('echeances-loyer'),
+  echeancesLoyer: {
+    ...crud('echeances-loyer'),
+    emettreQuittance: (id) =>
+      api.post(`/immobilier/echeances-loyer/${id}/emettre-quittance/`),
+    quittancePdfUrl: (id) => `/immobilier/echeances-loyer/${id}/quittance-pdf/`,
+  },
 }
 
 export default immobilierApi

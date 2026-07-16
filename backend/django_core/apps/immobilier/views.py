@@ -234,3 +234,32 @@ class EcheanceLoyerViewSet(_ImmobilierBaseViewSet):
         if statut:
             qs = qs.filter(statut=statut)
         return qs
+
+    @action(detail=True, methods=['post'], url_path='emettre-quittance')
+    def emettre_quittance(self, request, pk=None):
+        """NTPRO7 — Émet la quittance (facture ventes) de cette échéance."""
+        from . import services
+
+        echeance = self.get_object()
+        try:
+            facture_id = services.emettre_quittance(echeance)
+        except services.ClientVentesIntrouvableError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        data = self.get_serializer(echeance).data
+        data['facture_ventes_id'] = facture_id
+        return Response(data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'], url_path='quittance-pdf')
+    def quittance_pdf(self, request, pk=None):
+        """NTPRO7 — PDF de la quittance (période/local/locataire/montant)."""
+        from django.http import HttpResponse
+
+        from . import pdf as immobilier_pdf
+
+        echeance = self.get_object()
+        pdf_bytes = immobilier_pdf.render_quittance_pdf(echeance)
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = (
+            f'inline; filename="quittance-{echeance.id}.pdf"')
+        return response
