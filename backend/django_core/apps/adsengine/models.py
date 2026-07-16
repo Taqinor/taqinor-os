@@ -52,6 +52,12 @@ class MetaConnection(TenantModel):
         max_length=64, blank=True, default='', verbose_name='ID Page')
     pixel_id = models.CharField(
         max_length=64, blank=True, default='', verbose_name='ID Pixel')
+    # Devise du compte publicitaire (ISO-4217, ex. « USD ») — Meta rapporte TOUS
+    # les montants (dépense, budgets, insights) dans CETTE devise, pas en MAD.
+    # Renseignée par la synchro (lecture du nœud de compte) ; '' tant qu'inconnue.
+    currency = models.CharField(
+        max_length=8, blank=True, default='',
+        verbose_name='Devise du compte')
     # JSON par société (token System-User long-lived…). Write-only en API : le
     # sérialiseur ne le relit JAMAIS ; un GET n'expose que sa PRÉSENCE.
     credentials = models.JSONField(

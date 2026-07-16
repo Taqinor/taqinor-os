@@ -166,6 +166,18 @@ class MetaClient:
         'daily_budget', 'lifetime_budget')
     AD_SYNC_FIELDS = ('id', 'name', 'status', 'effective_status', 'adset_id')
 
+    def get_account(self, *, fields=None):
+        """Nœud du compte publicitaire (LECTURE) — ex. sa devise (``currency``,
+        ISO-4217) : Meta rapporte TOUS les montants dans la devise du compte."""
+        if not self.ad_account_id:
+            raise MetaError("ad_account_id manquant sur la connexion Meta.")
+        acct = self.ad_account_id
+        if not str(acct).startswith('act_'):
+            acct = f'act_{acct}'
+        payload = self._request(
+            'GET', acct, params={'fields': ','.join(fields or ('currency',))})
+        return payload if isinstance(payload, dict) else {}
+
     def get_campaigns(self, *, fields=None, limit=None):
         return self._read_list(self._account_edge('campaigns'),
                                fields=fields or self.CAMPAIGN_SYNC_FIELDS,

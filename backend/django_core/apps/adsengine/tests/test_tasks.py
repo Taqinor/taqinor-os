@@ -20,6 +20,9 @@ from apps.adsengine.tasks import sync_insights_daily
 class FakeMetaClient:
     """Client Meta mocké — renvoie des fixtures déterministes, aucun réseau."""
 
+    def get_account(self, **kw):
+        return {'currency': 'USD'}
+
     def get_campaigns(self, **kw):
         return [{'id': 'c1', 'name': 'Camp', 'status': 'PAUSED',
                  'objective': 'OUTCOME_LEADS'}]
@@ -94,6 +97,15 @@ class SyncInsightsRunTests(TestCase):
         self.assertEqual(AdSetMirror.objects.count(), 1)
         self.assertEqual(AdMirror.objects.count(), 1)
         self.assertEqual(InsightSnapshot.objects.count(), 1)
+
+    @patch('apps.adsengine.meta_client.MetaClient')
+    def test_sync_stores_account_currency(self, mock_cls):
+        """La synchro mémorise la devise du COMPTE Meta (USD…) sur la connexion
+        — Meta rapporte tous les montants dans cette devise, pas en MAD."""
+        mock_cls.from_connection.return_value = FakeMetaClient()
+        sync_insights_daily()
+        conn = MetaConnection.objects.get(company=self.company)
+        self.assertEqual(conn.currency, 'USD')
 
     @patch('apps.adsengine.meta_client.MetaClient')
     def test_insights_pulled_over_full_history(self, mock_cls):
