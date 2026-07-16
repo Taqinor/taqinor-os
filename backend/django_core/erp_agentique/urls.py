@@ -88,6 +88,8 @@ _APP_URLS = [
     path('identity/', include('apps.identity.urls')),
     # Groupe ENG — Moteur publicitaire Meta Ads dans l'ERP.
     path('adsengine/', include('apps.adsengine.urls')),
+    # Groupe NTASS — Registre des assurances & sinistres d'entreprise.
+    path('assurances/', include('apps.assurances.urls')),
 ]
 
 urlpatterns = [

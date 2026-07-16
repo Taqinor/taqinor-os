@@ -172,6 +172,10 @@ INSTALLED_APPS = [
     # propose→approuve→applique, création TOUJOURS PAUSED). App satellite
     # multi-société ; tout no-ope sans token/clé configuré.
     'apps.adsengine',
+    # Groupe NTASS — Registre des assurances & sinistres d'entreprise (RC pro,
+    # décennale, multirisque, cyber, homme-clé) ; distinct des polices/sinistres
+    # véhicule (flotte) et des cautions bancaires marché (compta).
+    'apps.assurances',
 ]
 
 MIDDLEWARE = [
