@@ -14,10 +14,12 @@ from authentication.permissions import IsResponsableOrAdmin, IsAnyRole
 
 from .models import (
     OptionProduit, ContrainteCompatibilite, RegleProduitCPQ, OffreGroupee,
+    PrixContractuel,
 )
 from .serializers import (
     OptionProduitSerializer, ContrainteCompatibiliteSerializer,
     RegleProduitCPQSerializer, OffreGroupeeSerializer,
+    PrixContractuelSerializer,
 )
 from . import selectors, services
 
@@ -99,6 +101,25 @@ class OffreGroupeeViewSet(CompanyScopedModelViewSet):
             'lignes_creees': [li.id for li in lignes],
             'sous_total_ht': str(devis.total_ht),
         }, status=status.HTTP_201_CREATED)
+
+
+class PrixContractuelViewSet(CompanyScopedModelViewSet):
+    queryset = PrixContractuel.objects.select_related(
+        'client', 'produit').all()
+    serializer_class = PrixContractuelSerializer
+    # NTCPQ5 — CRUD réservé Directeur / Commercial responsable.
+    permission_classes = [IsResponsableOrAdmin]
+
+    def perform_create(self, serializer):
+        from rest_framework.exceptions import ValidationError
+        company = self.request.user.company
+        client = serializer.validated_data.get('client')
+        produit = serializer.validated_data.get('produit')
+        if client is not None and client.company_id != company.id:
+            raise ValidationError({'client': 'Client inconnu.'})
+        if produit is not None and produit.company_id != company.id:
+            raise ValidationError({'produit': 'Produit inconnu.'})
+        serializer.save(company=company, created_by=self.request.user)
 
 
 class ValiderCompatibiliteView(APIView):

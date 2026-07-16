@@ -4185,6 +4185,27 @@ def _appliquer_regle(regle, prix_base):
     return _round2(prix_base)  # pragma: no cover - défensif, type inconnu
 
 
+def _prix_contractuel(client, produit):
+    """NTCPQ5 — Prix contractuel actif pour un couple client/produit.
+
+    Lecture cross-app cpq via import LOCAL (aucun import de cpq.models au niveau
+    module ; évite tout cycle ventes↔cpq). Renvoie l'instance ``PrixContractuel``
+    active la plus récente, ou ``None``."""
+    if client is None or produit is None:
+        return None
+    company_id = getattr(client, 'company_id', None)
+    if company_id is None:
+        return None
+    from apps.cpq.models import PrixContractuel
+    candidates = PrixContractuel.objects.filter(
+        company_id=company_id, client_id=client.id, produit_id=produit.id,
+    ).order_by('-date_creation')
+    for candidate in candidates:
+        if candidate.est_actif:
+            return candidate
+    return None
+
+
 def _resolve_liste_prix(client):
     """NTCPQ4 — Sélectionne la liste de prix applicable à un client.
 
@@ -4231,6 +4252,16 @@ def prix_applicable(*, produit, client=None, quantite=1):
     afficher le badge « Tarif : <nom de la liste> »."""
     quantite = Decimal(str(quantite or 1))
     prix_standard = produit.prix_vente
+
+    # NTCPQ5 — priorité 1 : prix contractuel négocié (client + produit). Écrase
+    # toute liste de prix générique (segment/assignée) pour ce couple.
+    contractuel = _prix_contractuel(client, produit)
+    if contractuel is not None:
+        return {
+            'prix': contractuel.prix_ht,
+            'source': 'contractuel',
+            'liste_nom': contractuel.motif or None,
+        }
 
     liste = _resolve_liste_prix(client)
     if liste is None:

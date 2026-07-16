@@ -4,6 +4,7 @@ Toutes les liaisons vers les autres apps DOMAINE (``stock``, ``ventes``,
 ``crm``) sont des string-FK (M3 : aucun import de leurs ``models``). Chaque
 modèle porte un FK ``company`` (multi-tenant) posé côté serveur.
 """
+from django.conf import settings
 from django.db import models
 
 
@@ -183,3 +184,53 @@ class LigneOffreGroupee(models.Model):
 
     def __str__(self):
         return f'{self.offre_id} · produit {self.produit_id} × {self.quantite}'
+
+
+class PrixContractuel(models.Model):
+    """NTCPQ5 — Prix négocié par contrat nommé pour un couple client/produit.
+
+    Prime sur TOUTE liste de prix générique (segment, assignée…) pour ce couple
+    client/produit tant qu'il est dans sa fenêtre de validité (priorité 1 dans
+    ``ventes.services.prix_applicable``). Liaisons string-FK (aucun import des
+    modèles crm/stock)."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='cpq_prix_contractuels')
+    client = models.ForeignKey(
+        'crm.Client', on_delete=models.CASCADE,
+        related_name='cpq_prix_contractuels')
+    produit = models.ForeignKey(
+        'stock.Produit', on_delete=models.CASCADE,
+        related_name='cpq_prix_contractuels')
+    prix_ht = models.DecimalField(max_digits=12, decimal_places=2)
+    date_debut = models.DateField(null=True, blank=True)
+    date_fin = models.DateField(null=True, blank=True)
+    motif = models.TextField(blank=True, default='')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='cpq_prix_contractuels_crees')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Prix contractuel'
+        verbose_name_plural = 'Prix contractuels'
+        ordering = ['-date_creation', 'id']
+        indexes = [
+            models.Index(fields=['company', 'client', 'produit'],
+                         name='cpq_prixctr_co_cl_pr'),
+        ]
+
+    def __str__(self):
+        return f'{self.client_id}/{self.produit_id} @ {self.prix_ht}'
+
+    @property
+    def est_actif(self):
+        """Dans sa fenêtre de validité (bornes optionnelles, ouvertes si
+        non renseignées)."""
+        from django.utils import timezone
+        today = timezone.now().date()
+        if self.date_debut and today < self.date_debut:
+            return False
+        if self.date_fin and today > self.date_fin:
+            return False
+        return True

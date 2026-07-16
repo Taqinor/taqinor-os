@@ -2,7 +2,7 @@ from django.contrib import admin
 
 from .models import (
     OptionProduit, ContrainteCompatibilite, RegleProduitCPQ,
-    OffreGroupee, LigneOffreGroupee,
+    OffreGroupee, LigneOffreGroupee, PrixContractuel,
 )
 
 
@@ -34,3 +34,10 @@ class OffreGroupeeAdmin(admin.ModelAdmin):
     list_display = ('id', 'company', 'nom', 'prix_total', 'actif')
     list_filter = ('company', 'actif')
     inlines = [LigneOffreGroupeeInline]
+
+
+@admin.register(PrixContractuel)
+class PrixContractuelAdmin(admin.ModelAdmin):
+    list_display = ('id', 'company', 'client', 'produit', 'prix_ht',
+                    'date_debut', 'date_fin')
+    list_filter = ('company',)

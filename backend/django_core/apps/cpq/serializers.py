@@ -9,7 +9,7 @@ from django.db import transaction
 from core.rules import validate_condition_group
 from .models import (
     OptionProduit, ContrainteCompatibilite, RegleProduitCPQ,
-    OffreGroupee, LigneOffreGroupee,
+    OffreGroupee, LigneOffreGroupee, PrixContractuel,
 )
 
 
@@ -84,3 +84,14 @@ class OffreGroupeeSerializer(serializers.ModelSerializer):
             for ligne in lignes:
                 LigneOffreGroupee.objects.create(offre=instance, **ligne)
         return instance
+
+
+class PrixContractuelSerializer(serializers.ModelSerializer):
+    est_actif = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = PrixContractuel
+        fields = ['id', 'client', 'produit', 'prix_ht', 'date_debut',
+                  'date_fin', 'motif', 'created_by', 'date_creation',
+                  'est_actif']
+        read_only_fields = ['created_by', 'date_creation']
