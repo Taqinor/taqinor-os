@@ -85,6 +85,13 @@ ALL_PERMISSIONS = [
     # CAPA/incident). Donnée financière interne, jamais client-facing (même
     # règle que `prix_achat`/`marge_voir`). Élevée (cf. ELEVATED_PERMISSIONS).
     'cout_non_qualite_voir',
+    # ── ENG — Moteur de Publicités Meta (apps/adsengine) ──
+    # Trois permissions DISJOINTES : lecture du moteur (adsengine_view),
+    # gestion des campagnes (adsengine_manage), et approbation (propose → approuve).
+    # L'approbation est réservée au palier direction/admin + responsable.
+    'adsengine_view',
+    'adsengine_manage',
+    'adsengine_approve',
     # ── Portée de visibilité des enregistrements (Feature F) ──
     # Marqueurs de RÔLE (pas des cases « action ») : narrowing OPT-IN. Un rôle
     # SANS l'un de ces marqueurs voit tous les enregistrements de sa société
@@ -185,6 +192,8 @@ RESPONSABLE_PERMISSIONS = [
     'contrat_voir', 'contrat_gerer',
     'litige_voir', 'litige_gerer',
     'kb_voir', 'kb_gerer',
+    # ENG — accès complet au moteur de publicités (y compris approbation).
+    'adsengine_view', 'adsengine_manage', 'adsengine_approve',
 ]
 
 UTILISATEUR_PERMISSIONS = [
@@ -245,6 +254,8 @@ COMMERCIAL_RESP_PERMISSIONS = [
     'contrat_voir', 'contrat_gerer',
     'litige_voir', 'litige_gerer',
     'kb_voir', 'kb_gerer',
+    # ENG — gestion des campagnes (l'approbation reste au palier admin).
+    'adsengine_view', 'adsengine_manage',
     SCOPE_SUBTREE,
 ]
 
@@ -264,6 +275,8 @@ COMMERCIAL_PERMISSIONS = [
     'contrat_voir', 'contrat_gerer',
     'litige_voir', 'litige_gerer',
     'kb_voir', 'kb_gerer',
+    # ENG — gestion des campagnes (l'approbation reste au palier admin).
+    'adsengine_view', 'adsengine_manage',
     SCOPE_TEAM,
 ]
 
@@ -287,6 +300,8 @@ TECHNICIEN_RESP_PERMISSIONS = [
     'contrat_voir', 'contrat_gerer',
     'litige_voir', 'litige_gerer',
     'kb_voir', 'kb_gerer',
+    # ENG — gestion des campagnes (l'approbation reste au palier admin).
+    'adsengine_view', 'adsengine_manage',
     SCOPE_SUBTREE,
 ]
 
@@ -305,6 +320,8 @@ TECHNICIEN_PERMISSIONS = [
     'contrat_voir', 'contrat_gerer',
     'litige_voir', 'litige_gerer',
     'kb_voir', 'kb_gerer',
+    # ENG — gestion des campagnes (l'approbation reste au palier admin).
+    'adsengine_view', 'adsengine_manage',
     SCOPE_TEAM,
 ]
 
@@ -322,6 +339,8 @@ VIEWER_PERMISSIONS = [
     'contrat_voir',
     'litige_voir',
     'kb_voir',
+    # ENG — accès en lecture seule (pas de gestion ni approbation).
+    'adsengine_view',
     SCOPE_TEAM,
 ]
 
