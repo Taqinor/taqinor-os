@@ -3,6 +3,7 @@ from django.contrib import admin
 from .models import (
     OptionProduit, ContrainteCompatibilite, RegleProduitCPQ,
     OffreGroupee, LigneOffreGroupee, PrixContractuel, SeuilMargeFamille,
+    RegleApprobationRemise, EtapeApprobationDevis,
 )
 
 
@@ -47,3 +48,17 @@ class PrixContractuelAdmin(admin.ModelAdmin):
 class SeuilMargeFamilleAdmin(admin.ModelAdmin):
     list_display = ('id', 'company', 'categorie', 'marge_min_pct')
     list_filter = ('company',)
+
+
+@admin.register(RegleApprobationRemise)
+class RegleApprobationRemiseAdmin(admin.ModelAdmin):
+    list_display = ('id', 'company', 'libelle', 'remise_min_pct',
+                    'remise_max_pct', 'nombre_approbateurs', 'actif')
+    list_filter = ('company', 'actif')
+
+
+@admin.register(EtapeApprobationDevis)
+class EtapeApprobationDevisAdmin(admin.ModelAdmin):
+    list_display = ('id', 'company', 'devis', 'niveau', 'statut',
+                    'approbateur')
+    list_filter = ('company', 'statut')

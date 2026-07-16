@@ -5,7 +5,20 @@ autres apps domaine (string-FK uniquement)."""
 from decimal import Decimal
 
 from core.rules import evaluate_condition_group
-from .models import ContrainteCompatibilite, RegleProduitCPQ, SeuilMargeFamille
+from .models import (
+    ContrainteCompatibilite, RegleProduitCPQ, SeuilMargeFamille,
+    EtapeApprobationDevis,
+)
+
+
+def premiere_etape_en_attente(devis):
+    """NTCPQ7 — Première étape d'approbation de remise encore ``en_attente``
+    pour un devis (ordre ``niveau``), ou ``None`` si aucune. Sert au blocage
+    de l'envoi/PDF tant qu'une approbation est requise."""
+    return EtapeApprobationDevis.objects.filter(
+        devis_id=devis.id,
+        statut=EtapeApprobationDevis.Statut.EN_ATTENTE,
+    ).order_by('niveau', 'id').first()
 
 
 def violations_compatibilite(*, company, produit_ids):

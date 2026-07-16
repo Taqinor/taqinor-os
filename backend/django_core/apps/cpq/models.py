@@ -264,3 +264,115 @@ class SeuilMargeFamille(models.Model):
 
     def __str__(self):
         return f'{self.categorie_id} ≥ {self.marge_min_pct}%'
+
+
+class RegleApprobationRemise(models.Model):
+    """NTCPQ7 — Règle d'approbation par PROFONDEUR de remise (calquée sur
+    ``contrats.RegleApprobation``, mais par intervalle de remise % au lieu de
+    montant).
+
+    Le résolveur (``services.resoudre_regle_remise``) retient, parmi les règles
+    actives de la société, la plus SPÉCIFIQUE (intervalle le plus étroit, puis
+    ``priorite``, puis id récent) couvrant la remise réelle du devis."""
+
+    class NiveauApprobation(models.TextChoices):
+        RESPONSABLE = 'responsable', 'Responsable'
+        ADMINISTRATEUR = 'administrateur', 'Administrateur'
+        DIRECTION = 'direction', 'Direction'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='cpq_regles_approbation_remise')
+    libelle = models.CharField(max_length=200, blank=True, default='')
+    remise_min_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True)
+    remise_max_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True)
+    niveau_approbation = models.CharField(
+        max_length=20, choices=NiveauApprobation.choices,
+        default=NiveauApprobation.RESPONSABLE)
+    nombre_approbateurs = models.PositiveIntegerField(default=1)
+    priorite = models.PositiveIntegerField(default=0)
+    actif = models.BooleanField(default=True)
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Règle d'approbation de remise"
+        verbose_name_plural = "Règles d'approbation de remise"
+        ordering = ['-priorite', 'id']
+        indexes = [
+            models.Index(fields=['company', 'actif'],
+                         name='cpq_regleremise_co_act'),
+        ]
+
+    def __str__(self):
+        return self.libelle or f'Règle remise #{self.pk}'
+
+    def couvre(self, remise):
+        """La remise (%) tombe-t-elle dans ``[remise_min_pct, remise_max_pct]``
+        (bornes incluses ; borne NULL = ouverte de ce côté) ?"""
+        from decimal import Decimal
+        if remise is None:
+            return self.remise_min_pct is None and self.remise_max_pct is None
+        remise = Decimal(str(remise))
+        if self.remise_min_pct is not None and remise < self.remise_min_pct:
+            return False
+        if self.remise_max_pct is not None and remise > self.remise_max_pct:
+            return False
+        return True
+
+    def largeur_intervalle(self):
+        """Largeur de l'intervalle (None = ouvert → moins spécifique)."""
+        if self.remise_min_pct is None or self.remise_max_pct is None:
+            return None
+        return self.remise_max_pct - self.remise_min_pct
+
+
+class EtapeApprobationDevis(models.Model):
+    """NTCPQ7 — Étape séquentielle d'approbation de remise d'un devis (même
+    schéma que ``contrats.EtapeApprobation``).
+
+    Statut LOCAL (``en_attente`` → ``approuve``/``rejete``), sans lien avec le
+    funnel STAGES.py ni le statut du devis. ``devis`` est une string-FK vers
+    ``ventes.Devis`` (aucun import cross-app des modèles)."""
+
+    class Statut(models.TextChoices):
+        EN_ATTENTE = 'en_attente', 'En attente'
+        APPROUVE = 'approuve', 'Approuvé'
+        REJETE = 'rejete', 'Rejeté'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='cpq_etapes_approbation_devis')
+    devis = models.ForeignKey(
+        'ventes.Devis', on_delete=models.CASCADE,
+        related_name='cpq_etapes_approbation')
+    regle = models.ForeignKey(
+        RegleApprobationRemise, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='etapes')
+    niveau = models.PositiveIntegerField(default=1)
+    niveau_approbation = models.CharField(
+        max_length=20, choices=RegleApprobationRemise.NiveauApprobation.choices,
+        default=RegleApprobationRemise.NiveauApprobation.RESPONSABLE)
+    approbateur = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='cpq_etapes_devis_decidees')
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices, default=Statut.EN_ATTENTE)
+    decision_le = models.DateTimeField(null=True, blank=True)
+    commentaire = models.TextField(blank=True, default='')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Étape d'approbation de devis"
+        verbose_name_plural = "Étapes d'approbation de devis"
+        ordering = ['devis_id', 'niveau', 'id']
+        indexes = [
+            models.Index(fields=['company', 'statut'],
+                         name='cpq_etapedev_co_sta'),
+            models.Index(fields=['devis', 'niveau'],
+                         name='cpq_etapedev_dv_niv'),
+        ]
+
+    def __str__(self):
+        return f'Devis {self.devis_id} · étape {self.niveau} · {self.statut}'

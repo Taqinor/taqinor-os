@@ -1631,6 +1631,21 @@ def refresh_marge_snapshot(devis):
                        getattr(devis, 'reference', '?'), exc)
 
 
+def verifier_devis_envoyable(devis):
+    """NTCPQ7 — lève ``ValidationError`` si une étape d'approbation de remise
+    est encore ``en_attente`` (blocage envoi/génération PDF).
+
+    Lecture cross-app cpq via import LOCAL (aucun cycle au niveau module).
+    Aucune étape en attente ⇒ ne lève rien (comportement inchangé)."""
+    from rest_framework.exceptions import ValidationError
+    from apps.cpq.selectors import premiere_etape_en_attente
+    etape = premiere_etape_en_attente(devis)
+    if etape is not None:
+        raise ValidationError({'statut': (
+            f"Approbation de remise en attente (étape {etape.niveau}) : "
+            "l'envoi est bloqué tant qu'elle n'est pas approuvée.")})
+
+
 def mark_devis_sent(*, devis, user=None):
     """U4 — flip a Devis to « envoyé » through the ONE status-change path.
 
@@ -1664,6 +1679,10 @@ def mark_devis_sent(*, devis, user=None):
     # must stay put (the guard the test pins).
     if devis.statut != Devis.Statut.BROUILLON:
         return devis
+
+    # NTCPQ7 — bloque l'envoi tant qu'une étape d'approbation de remise reste
+    # en attente (matrice à paliers, remplace/étend le seuil unique T17).
+    verifier_devis_envoyable(devis)
 
     ancien = devis.statut
     devis.statut = Devis.Statut.ENVOYE
