@@ -60,11 +60,18 @@ def rfi_filtres(qs, *, chantier_id=None, statut=None):
     return qs
 
 
-def rfi_en_retard(company, *, chantier=None):
-    """``RFI`` ouverts dont l'échéance de réponse est dépassée (lecture)."""
+def rfi_en_retard(company=None, *, chantier=None):
+    """``RFI`` ouverts dont l'échéance de réponse est dépassée (lecture).
+
+    ``company=None`` (défaut) balaie TOUTES les sociétés — usage sweep
+    Celery beat (``alertes_rfi_retard``, NTCON4) ; un appelant scopé société
+    (vue/API) passe explicitement sa société.
+    """
     qs = RFI.objects.filter(
-        company=company, statut=RFI.Statut.OUVERT,
+        statut=RFI.Statut.OUVERT,
         date_limite_reponse__lt=timezone.localdate())
+    if company is not None:
+        qs = qs.filter(company=company)
     if chantier is not None:
         qs = qs.filter(chantier=chantier)
     return qs
