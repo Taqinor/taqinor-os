@@ -220,6 +220,31 @@ class OdooClient:
         count = self._execute_kw(model, 'search_count', [domain or []])
         return int(count) if isinstance(count, int) else 0
 
+    def _model_fields(self, model):
+        """Noms des champs RÉELLEMENT exposés par ``model`` (``fields_get``,
+        mémoïsé par client). ``None`` si indéterminable — l'appelant retombe
+        alors sur la liste demandée telle quelle (comportement historique)."""
+        cache = self.__dict__.setdefault('_fields_cache', {})
+        if model not in cache:
+            try:
+                meta = self._execute_kw(model, 'fields_get', [],
+                                        {'attributes': []})
+                cache[model] = set(meta) if isinstance(meta, dict) else None
+            except OdooError:
+                cache[model] = None
+        return cache[model]
+
+    def _existing_fields(self, model, wanted):
+        """``wanted`` filtré aux champs présents sur ``model``. Un Odoo tiers peut
+        ne pas exposer un champ optionnel (p. ex. ``crm.lead`` SANS ``mobile``) —
+        sans ce filtre, ``search_read`` lève « Invalid field » et TOUTE la lecture
+        échoue (0 signature alors que des deals signés existent). Indéterminable
+        (``fields_get`` muet) → ``wanted`` inchangé."""
+        present = self._model_fields(model)
+        if not present:
+            return list(wanted)
+        return [f for f in wanted if f in present]
+
     # ── Lectures métier ──────────────────────────────────────────────────────
     # Champs lus sur crm.lead (nom encode souvent la campagne/formulaire ;
     # phone/mobile pour le matching ; expected_revenue en repli de montant ;
@@ -247,7 +272,9 @@ class OdooClient:
         if since is not None:
             domain.append(['create_date', '>=', _as_odoo_dt(since)])
         return self.search_read(
-            'crm.lead', domain, fields=self.LEAD_FIELDS, order='id')
+            'crm.lead', domain,
+            fields=self._existing_fields('crm.lead', self.LEAD_FIELDS),
+            order='id')
 
     def read_sale_orders(self, since=None):
         """LECTURE SEULE — tous les ``sale.order``. ``since`` borne
@@ -257,7 +284,9 @@ class OdooClient:
         if since is not None:
             domain.append(['date_order', '>=', _as_odoo_dt(since)])
         return self.search_read(
-            'sale.order', domain, fields=self.SALE_ORDER_FIELDS, order='id')
+            'sale.order', domain,
+            fields=self._existing_fields('sale.order', self.SALE_ORDER_FIELDS),
+            order='id')
 
     def read_partners(self, ids):
         """LECTURE SEULE — ``res.partner`` (phone/mobile) pour un ensemble d'ids,
@@ -267,7 +296,8 @@ class OdooClient:
         if not ids:
             return {}
         rows = self.search_read(
-            'res.partner', [['id', 'in', ids]], fields=self.PARTNER_FIELDS)
+            'res.partner', [['id', 'in', ids]],
+            fields=self._existing_fields('res.partner', self.PARTNER_FIELDS))
         return {r['id']: r for r in rows if r.get('id')}
 
     # ── Hygiène ──────────────────────────────────────────────────────────────

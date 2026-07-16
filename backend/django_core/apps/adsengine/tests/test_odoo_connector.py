@@ -159,6 +159,45 @@ class ParsingTests(SimpleTestCase):
         self.assertEqual([o['state'] for o in orders],
                          ['sale', 'done', 'draft'])
 
+    def test_read_leads_filters_out_fields_absent_from_odoo(self):
+        """Régression ADSENG-ODOO : un Odoo tiers dont ``crm.lead`` n'expose PAS
+        le champ ``mobile`` ne doit pas faire échouer TOUTE la lecture. On filtre
+        les champs demandés via ``fields_get`` ; ``mobile`` est retiré, le reste
+        est lu et les deals signés sont trouvés (avant : « Invalid field 'mobile'
+        on crm.lead » → 0 signature alors que des deals réels existent)."""
+        lead_fields_present = tuple(
+            f for f in odoo_client.OdooClient.LEAD_FIELDS if f != 'mobile')
+        seen = {}
+
+        def handler(request):
+            p = json.loads(request.content.decode('utf-8'))['params']
+            service, method, args = p['service'], p['method'], p['args']
+            if service == 'common' and method == 'authenticate':
+                return httpx.Response(200, json={'result': UID})
+            model, orm = args[3], args[4]
+            if orm == 'fields_get':
+                present = {
+                    'crm.lead': lead_fields_present,
+                    'sale.order': odoo_client.OdooClient.SALE_ORDER_FIELDS,
+                    'res.partner': odoo_client.OdooClient.PARTNER_FIELDS,
+                }.get(model, ())
+                return httpx.Response(
+                    200, json={'result': {f: {} for f in present}})
+            if orm == 'search_read':
+                seen[model] = list(args[6].get('fields') or [])
+                data = {'crm.lead': LEADS, 'sale.order': ORDERS,
+                        'res.partner': PARTNERS}.get(model, [])
+                return httpx.Response(200, json={'result': data})
+            return httpx.Response(200, json={'result': []})
+
+        client = make_client(handler)
+        deals = odoo_selectors.signed_deals(client=client)
+        # 'mobile' (absent de cet Odoo) retiré de la requête ; 'phone' conservé.
+        self.assertNotIn('mobile', seen['crm.lead'])
+        self.assertIn('phone', seen['crm.lead'])
+        # La lecture aboutit : les deals signés sont bien trouvés (pas 0).
+        self.assertTrue(deals)
+
     def test_api_key_travels_in_body_never_in_url(self):
         captured = {}
 
