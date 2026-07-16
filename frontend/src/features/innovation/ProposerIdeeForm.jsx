@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Send } from 'lucide-react'
 import { Button, Input, Textarea, toast } from '../../ui'
@@ -6,20 +6,29 @@ import innovationApi from '../../api/innovationApi'
 import { contexteFromPath } from './linkedContext'
 
 /* ============================================================================
-   NTIDE8/NTIDE9 — Formulaire « Proposer une idée », partagé entre la page
-   dédiée (/innovation/proposer) et le CTA modal (Intercom-style, monté sur
-   chaque écran). Contexte autodétecté depuis la route courante (NTIDE9, ex.
-   leads → « CRM »).
+   NTIDE8/NTIDE9/NTIDE10 — Formulaire « Proposer une idée », partagé entre la
+   page dédiée (/innovation/proposer) et le CTA modal (Intercom-style, monté
+   sur chaque écran). Contexte autodétecté depuis la route courante (NTIDE9,
+   ex. leads → « CRM »), avec autocomplétion des 5 contextes les plus
+   fréquents (NTIDE10).
    ========================================================================== */
 
 export default function ProposerIdeeForm({ onCreated, onCancel, compact = false }) {
   const location = useLocation()
   const navigate = useNavigate()
+  const datalistId = useId()
 
   const [titre, setTitre] = useState('')
   const [description, setDescription] = useState('')
   const [contexte, setContexte] = useState(() => contexteFromPath(location.pathname))
+  const [suggestions, setSuggestions] = useState([])
   const [submitting, setSubmitting] = useState(false)
+
+  useEffect(() => {
+    innovationApi.contextes()
+      .then((res) => setSuggestions(res.data?.results || []))
+      .catch(() => setSuggestions([]))
+  }, [])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -69,10 +78,14 @@ export default function ProposerIdeeForm({ onCreated, onCancel, compact = false 
         <label htmlFor="idee-contexte" className="text-sm font-medium">Contexte</label>
         <Input
           id="idee-contexte"
+          list={datalistId}
           value={contexte}
           onChange={(e) => setContexte(e.target.value)}
           placeholder="ex. SAV, Devis, Stock…"
         />
+        <datalist id={datalistId}>
+          {suggestions.map((s) => <option key={s} value={s} />)}
+        </datalist>
       </div>
 
       <div className="flex items-center justify-end gap-2 pt-1">

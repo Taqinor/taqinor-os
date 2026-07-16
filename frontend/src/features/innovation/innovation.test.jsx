@@ -21,6 +21,7 @@ const innovationApiMock = vi.hoisted(() => ({
   get: vi.fn(),
   create: vi.fn(),
   update: vi.fn(),
+  contextes: vi.fn(() => Promise.resolve({ data: { results: [] } })),
   examiner: vi.fn(),
   retenir: vi.fn(),
   realiser: vi.fn(),
@@ -192,5 +193,18 @@ describe('ProposerIdeeForm (NTIDE8/NTIDE9)', () => {
     const user = userEvent.setup()
     await user.click(screen.getByRole('button', { name: /Proposer l'idée/ }))
     expect(innovationApiMock.create).not.toHaveBeenCalled()
+  })
+
+  it('NTIDE10 — propose les contextes fréquents en autocomplétion (datalist)', async () => {
+    innovationApiMock.contextes.mockResolvedValueOnce({
+      data: { results: ['SAV', 'Devis', 'Stock'] },
+    })
+    const { default: ProposerIdeeForm } = await import('./ProposerIdeeForm')
+    const { container } = render(wrap(<ProposerIdeeForm />))
+    await waitFor(() => expect(innovationApiMock.contextes).toHaveBeenCalled())
+    await waitFor(() => {
+      const options = container.querySelectorAll('datalist option')
+      expect(Array.from(options).map((o) => o.value)).toEqual(['SAV', 'Devis', 'Stock'])
+    })
   })
 })

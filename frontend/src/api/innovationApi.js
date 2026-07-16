@@ -15,6 +15,9 @@ const innovationApi = {
   create: (data) => api.post('/innovation/idees/', data),
   update: (id, data) => api.patch(`/innovation/idees/${id}/`, data),
 
+  // ── Autocomplétion contexte (NTIDE10) ──
+  contextes: () => api.get('/innovation/idees/contextes/'),
+
   // ── Tableau de bord admin (NTIDE6) ──
   tableauBord: () => api.get('/innovation/idees/tableau-bord/'),
 

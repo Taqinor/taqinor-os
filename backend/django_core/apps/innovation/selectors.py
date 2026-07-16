@@ -66,6 +66,12 @@ def heat_par_contexte(company):
     return [{'contexte': r['contexte'], 'nombre': r['nombre']} for r in qs]
 
 
+def contextes_frequents(company, limit=5):
+    """NTIDE10 — top N contextes existants par fréquence (autocomplétion du
+    formulaire proposer une idée, NTIDE8/NTIDE9)."""
+    return [row['contexte'] for row in heat_par_contexte(company)[:limit]]
+
+
 def tableau_bord_idees(company):
     """NTIDE6 — agrégat complet du tableau de bord admin (une seule lecture)."""
     return {

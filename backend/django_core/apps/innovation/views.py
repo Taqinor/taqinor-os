@@ -70,6 +70,13 @@ class IdeeViewSet(CompanyScopedModelViewSet):
             idee, Activity.Kind.CREATION, user=self.request.user,
             company=idee.company)
 
+    # ── NTIDE10 — autocomplétion du contexte ────────────────────────────────
+    @action(detail=False, methods=['get'], url_path='contextes')
+    def contextes(self, request):
+        """Les 5 contextes existants les plus fréquents (autocomplétion)."""
+        data = selectors.contextes_frequents(request.user.company)
+        return Response({'results': data})
+
     # ── NTIDE6 — tableau de bord admin ──────────────────────────────────────
     @action(detail=False, methods=['get'], url_path='tableau-bord',
             permission_classes=[IsAdminOrResponsableTier])
