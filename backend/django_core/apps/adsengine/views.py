@@ -33,6 +33,27 @@ class StatusView(APIView):
         return Response({'ok': True})
 
 
+class CostPerSignatureView(APIView):
+    """ENG10 — Métrique coût-par-signature (héro-chiffre du dashboard).
+
+    ``GET /api/django/adsengine/metrics/cout-par-signature/`` — company-scopé
+    (jamais d'autre société), gaté par ``adsengine_view``. Renvoie l'agrégat +
+    le détail par campagne AVEC les ids de leads derrière chaque chiffre
+    (traçabilité). Aucun secret exposé.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if not _user_has_or_legacy(request.user, 'adsengine_view'):
+            return Response({'detail': 'Permission refusée.'}, status=403)
+        from .metrics import cost_per_signature_summary
+        company = getattr(request.user, 'company', None)
+        if company is None:
+            return Response({'detail': 'Aucune société.'}, status=400)
+        return Response(cost_per_signature_summary(company))
+
+
 class AdsengineViewSet(CompanyScopedModelViewSet):
     """Base des ViewSets du moteur publicitaire.
 

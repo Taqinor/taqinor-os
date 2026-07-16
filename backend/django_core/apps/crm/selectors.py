@@ -67,6 +67,37 @@ def find_client_by_phone(company, telephone):
     return candidates[0] if candidates else None
 
 
+def signed_leads_for_campaigns(company, utm_campaigns):
+    """ENG10 — Leads SIGNÉS attribués par ``utm_campaign``, avec traçabilité.
+
+    Point d'entrée cross-app SANCTIONNÉ pour ``apps.adsengine`` (métrique
+    coût-par-signature) : lit le CRM UNIQUEMENT via ce sélecteur, jamais un
+    import de ``apps.crm.models`` ni du stade « SIGNED » en dur — la clé de stade
+    vient de la source de vérité ``STAGES.py`` (via ``apps.crm.stages``).
+
+    Pour chaque valeur d'``utm_campaign`` demandée, renvoie le nombre de leads au
+    stade SIGNÉ et la LISTE de leurs ids (chaque chiffre est donc cliquable
+    jusqu'au lead réel — traçabilité Northbeam). Lecture seule, scopée société ;
+    ne compte jamais un lead supprimé (``Lead.objects`` = vivants). Renvoie ::
+
+        {utm_campaign: {'signed_count': int, 'signed_lead_ids': [int, ...]}}
+    """
+    from . import stages as stage_mod
+    from .models import Lead
+
+    result = {}
+    for key in utm_campaigns:
+        if key in result:
+            continue
+        ids = list(
+            Lead.objects
+            .filter(company=company, utm_campaign=key, stage=stage_mod.SIGNED)
+            .order_by('id')
+            .values_list('id', flat=True))
+        result[key] = {'signed_count': len(ids), 'signed_lead_ids': ids}
+    return result
+
+
 def client_credit_warning(client, montant_ttc_nouveau=None):
     """FG41 — encours client + avertissement plafond.
 
