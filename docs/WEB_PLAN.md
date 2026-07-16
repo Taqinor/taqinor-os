@@ -226,7 +226,7 @@ la beauté vit sur la page tokenisée + les PDF.*
   label bold) dans global.css — UNE règle répare les 8 groupes × 3 locales ; état keyboard
   focus-visible conservé. **Done =** capture Playwright avant/après sur les 3 profils ;
   test source-level asserte la règle. (@lane: web-journey) (@model: sonnet)
-- [ ] WJ118 — **Photo satellite sur la 3D de la page client.** [token].astro : appeler
+- [x] WJ118 — **Photo satellite sur la 3D de la page client.** [token].astro : appeler
   `buildPublicRoofImageSpec({outline})` (export viewerOnly.ts:280 ; doc/usage :1-36) avec le
   contour = `roof_layout.zones[].vertices` (champ ASSAINI exposé par `_safe_roof_layout`,
   public_views.py:386-392) converti [lng,lat]→[lat,lng], passer `roofImage` à createRoofViewer
@@ -237,7 +237,7 @@ la beauté vit sur la page tokenisée + les PDF.*
   visible (contrat viewerOnly, champ `attribution`). **Done =** avec MAPTILER/MAPBOX configuré,
   la 3D client montre SON toit photographié ; sans clé, rendu actuel inchangé ; test du
   convertisseur de coordonnées. (@lane: web-proposal) (@model: sonnet)
-- [ ] WJ119 — **Courbe journalière RÉELLE Maroc + par mode.** proposalCurve.ts : remplacer
+- [x] WJ119 — **Courbe journalière RÉELLE Maroc + par mode.** proposalCurve.ts : remplacer
   la double-gaussienne (:46-52) par la silhouette marocaine soirée-dominante (porter
   BASELINE_SHAPE, applianceConsumption.ts:111-116 — pic 19h-21h ≈26 % de l'énergie) ;
   variantes : été/intérieur (+40-60 % 13h-18h, clim) et Ramadan (jour −30-40 %, pic iftar,
@@ -1808,6 +1808,8 @@ each for Lydec/Redal/Amendis).
 ### 2026-07-16 — WJ117–WJ126 drain (4 modes + règle anti-concurrent) — web-only lanes
 - **WJ117 (web-journey):** l'état sélectionné des 8 groupes de cartes du parcours devis est enfin VISIBLE — une règle CSS non-layered `.cine-card[aria-pressed="true"]` dans global.css (bordure brass 2px sans décalage de layout, fond teinté brass 10 %, ✓ en coin RTL-aware, label gras) bat le shorthand `.cine-card` qui écrasait l'utilitaire Tailwind layered togglé par le JS. aria-pressed était déjà câblé sur les 3 locales — zéro changement JS. Test source-level (16 assertions) en substitut des captures Playwright (apps/web n'a que vitest) ; focus-visible W209 intact.
 - **WJ121 (web-journey):** la carte « Professionnel » est scindée en 🏭 Industriel et 🏪 Commercial sur les 3 locales de /devis/mon-toit (grille 2×2, stepper/libellés/sous-titres par mode). lead.ts : LEAD_MODES gagne industriel+commercial (l'alias `professionnel` reste accepté pour les sessions en vol mais n'est plus jamais émis — les sessions réhydratées migrent vers industriel) ; MAX_BILL_BY_MODE : les deux nouveaux modes reprennent le plafond professionnel existant (1 M MAD, aucun chiffre inventé) ; qualification 1000 MAD et billRange identiques. TELEMETRY_MODES suit son contrat de miroir. Test bout-en-bout : le webhook CRM reçoit `mode: commercial` / `mode: industriel` verbatim.
+- **WJ118 (web-proposal):** la 3D de la page client /proposition/<token> drape enfin la PHOTO SATELLITE du vrai toit — `[token].astro` appelle `buildPublicRoofImageSpec` avec le contour `roof_layout.zones[].vertices` (exposé par le backend depuis QJ26) converti [lng,lat]→[lat,lng] via le nouvel export défensif `roofLayoutOutlineLatLng` (proposition.ts : layout null / zones non-array / points malformés / coords non-finies tous gérés), et passe `roofImage` à `createRoofViewer` (contrat texture+attribution déjà présent depuis WJ25/27). Le fond bascule en ciel clair (`.roof3d-stage--sky`) uniquement quand une photo drape réellement ; sans clé MAPTILER/MAPBOX ou sans contour, rendu actuel byte-identique. Commentaires périmés « backend n'expose pas roof_layout » supprimés. Test du convertisseur (anneau normal/multi-zone/vide/malformé) + assertions source.
+- **WJ119 (web-proposal):** la courbe journalière de conso cesse d'être la même double-gaussienne pour une villa et une usine — remplacée par la silhouette marocaine soirée-dominante (BASELINE_SHAPE portée d'applianceConsumption.ts, pic 19h-21h) et déclinée PAR MODE via `resolveProposalCurveMode(inst_type)` : industriel (régimes 1x8/2x8/3x8), commercial (archétype journée générique — QX44 pas construit, repli honnête), agricole (fenêtre de pompage jour, nulle la nuit). Variantes été (clim 13h-18h) et Ramadan (jour −35 %, pic iftar, bosse suhoor) en toggle discret pour résidentiel/commercial. Libellé honnête « profil type au Maroc, ajusté à votre facture » (jamais « mesuré »). Tests de forme (pic du soir dominant résidentiel, 3x8 plat, nuit-zéro agricole, déplacement de part été).
 - **WJ122/WJ123 :** `[BLOCKED: attend QX51]`, **WJ124 :** `[BLOCKED: attend QX48]`, **WJ126 :** `[BLOCKED: attend QX49]` — prérequis backend PLAN2 non présents sur `main` (garde de composition : jamais de substitut backend hand-rollé dans apps/web).
 
 ### 2026-07-11 — W187 real brand logos sourced from the web (founder: "search yourself") — 6/7
