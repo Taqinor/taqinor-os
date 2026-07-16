@@ -261,7 +261,13 @@ def emq_monitor(company):
 def _capture_old_stage(sender, instance, **kwargs):
     """``pre_save`` : capture l'ANCIENNE étape (la base porte encore l'ancienne
     valeur) via le sélecteur CRM, pour n'émettre que sur une VRAIE transition.
-    Un lead neuf (pas de pk) → ancienne étape None."""
+    Un lead neuf (pas de pk) → ancienne étape None.
+
+    PERF : porte OFF par défaut (``META_CRM_STAGE_CAPI_ENABLED``) → on ne touche
+    JAMAIS la base sur le save d'un lead tant que l'intégration n'est pas activée
+    (ce récepteur est câblé app-wide sur chaque save de ``crm.Lead``)."""
+    if not _enabled():
+        return
     old = None
     if getattr(instance, 'pk', None):
         try:
@@ -277,6 +283,8 @@ def _capture_old_stage(sender, instance, **kwargs):
 def _emit_on_stage_change(sender, instance, created, **kwargs):
     """``post_save`` : sur une transition d'étape AVANT, émet l'événement CAPI
     CRM-stage. Best-effort — jamais d'exception remontée au save du lead."""
+    if not _enabled():
+        return
     try:
         new_stage = getattr(instance, 'stage', None)
         if not new_stage:
