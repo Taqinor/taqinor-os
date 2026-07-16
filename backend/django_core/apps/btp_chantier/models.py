@@ -177,3 +177,99 @@ class SignatureBtp(models.Model):
 
     def __str__(self):
         return f'{self.contexte}: {self.signataire_nom}'
+
+
+# ── NTCON3 — RFI (Request For Information) ──────────────────────────────────
+
+class RFI(models.Model):
+    """Question technique posée au MOE/BE, avec délai de réponse (NTCON3).
+
+    ``numero`` est INCRÉMENTAL PAR CHANTIER (jamais ``count()+1`` — pattern
+    ``gestion_projet.services.prochain_numero_situation`` : verrou de ligne
+    sur le ``chantier`` + plus-haut-utilisé+1, dans une transaction atomique ;
+    ``core.numbering`` ne convient pas ici car il scope par SOCIÉTÉ+période,
+    pas par chantier). ``date_limite_reponse`` est calculée à la création
+    depuis ``delai_jours`` (jours OUVRÉS, ``apps.notifications.calendar_utils.
+    ajouter_jours_ouvres`` — férié-aware).
+    """
+
+    class Statut(models.TextChoices):
+        OUVERT = 'ouvert', 'Ouvert'
+        REPONDU = 'repondu', 'Répondu'
+        CLOS = 'clos', 'Clos'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='btp_rfis', verbose_name='Société')
+    chantier = models.ForeignKey(
+        'installations.Installation', on_delete=models.CASCADE,
+        related_name='btp_rfis', verbose_name='Chantier')
+    numero = models.PositiveIntegerField(verbose_name='N° de RFI')
+    question = models.TextField(verbose_name='Question')
+    pose_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='btp_rfis_poses',
+        verbose_name='Posé par')
+    destinataire_texte = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Destinataire (texte libre — MOE/BE)')
+    destinataire_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='btp_rfis_destinataire',
+        verbose_name='Destinataire (utilisateur)')
+    delai_jours = models.PositiveIntegerField(
+        default=5, verbose_name='Délai de réponse (jours ouvrés)')
+    date_limite_reponse = models.DateField(
+        null=True, blank=True, verbose_name='Date limite de réponse')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.OUVERT,
+        verbose_name='Statut')
+    impact_cout = models.BooleanField(
+        default=False, verbose_name='Impact coût')
+    impact_delai_jours = models.IntegerField(
+        null=True, blank=True, verbose_name='Impact délai (jours)')
+    # NTCON4 — une seule alerte de retard par jour (idempotence du sweep).
+    derniere_alerte_retard = models.DateField(
+        null=True, blank=True, verbose_name='Dernière alerte de retard')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'RFI'
+        verbose_name_plural = 'RFI'
+        ordering = ['date_limite_reponse', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['chantier', 'numero'], name='btp_rfi_chantier_numero_uniq'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'chantier', 'statut']),
+        ]
+
+    def __str__(self):
+        return f'RFI #{self.numero} — chantier {self.chantier_id}'
+
+
+class RFIReponse(models.Model):
+    """Réponse à un ``RFI`` (NTCON3). Pièces jointes via ``records.
+    Attachment`` (déclaré dans ``platform.py``)."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='btp_rfi_reponses', verbose_name='Société')
+    rfi = models.ForeignKey(
+        RFI, on_delete=models.CASCADE, related_name='reponses',
+        verbose_name='RFI')
+    texte = models.TextField(verbose_name='Réponse')
+    auteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='btp_rfi_reponses',
+        verbose_name='Auteur')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+
+    class Meta:
+        verbose_name = 'Réponse RFI'
+        verbose_name_plural = 'Réponses RFI'
+        ordering = ['-date_creation', '-id']
+
+    def __str__(self):
+        return f'Réponse à RFI #{self.rfi_id}'

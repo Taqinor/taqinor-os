@@ -1,7 +1,11 @@
 """Sérialiseurs du vertical BTP/EPC (Groupe NTCON)."""
+from django.utils import timezone
 from rest_framework import serializers
 
-from .models import ReserveChantier, ReserveChantierHistorique, SignatureBtp
+from .models import (
+    RFI, RFIReponse, ReserveChantier, ReserveChantierHistorique,
+    SignatureBtp,
+)
 
 
 def _meme_societe(serializer, value, label):
@@ -81,3 +85,41 @@ class ReserveChantierSerializer(serializers.ModelSerializer):
 
     def validate_responsable_leve(self, value):
         return _meme_societe(self, value, 'Responsable')
+
+
+# ── NTCON3 — RFI ─────────────────────────────────────────────────────────────
+
+class RFIReponseSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = RFIReponse
+        fields = ['id', 'rfi', 'texte', 'auteur', 'date_creation']
+        read_only_fields = ['id', 'rfi', 'auteur', 'date_creation']
+
+
+class RFISerializer(serializers.ModelSerializer):
+    reponses = RFIReponseSerializer(many=True, read_only=True)
+    en_retard = serializers.SerializerMethodField()
+
+    class Meta:
+        model = RFI
+        fields = [
+            'id', 'chantier', 'numero', 'question', 'pose_par',
+            'destinataire_texte', 'destinataire_user', 'delai_jours',
+            'date_limite_reponse', 'statut', 'impact_cout',
+            'impact_delai_jours', 'created_at', 'reponses', 'en_retard',
+        ]
+        read_only_fields = [
+            'id', 'numero', 'pose_par', 'date_limite_reponse', 'statut',
+            'created_at', 'reponses', 'en_retard',
+        ]
+
+    def get_en_retard(self, obj):
+        return bool(
+            obj.statut == RFI.Statut.OUVERT and obj.date_limite_reponse
+            and obj.date_limite_reponse < timezone.localdate())
+
+    def validate_chantier(self, value):
+        return _meme_societe(self, value, 'Chantier')
+
+    def validate_destinataire_user(self, value):
+        return _meme_societe(self, value, 'Destinataire')

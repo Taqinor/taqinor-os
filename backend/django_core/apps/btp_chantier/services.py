@@ -129,3 +129,77 @@ def contester_reserve(reserve, *, user, motif):
     _transitionner_reserve(
         reserve, ReserveChantier.Statut.CONTESTEE, auteur=user, motif=motif)
     return reserve
+
+
+# ── NTCON3 — RFI ─────────────────────────────────────────────────────────────
+
+def _prochain_numero_rfi(chantier):
+    """Numéro de RFI SUIVANT pour ce chantier (jamais ``count()+1``).
+
+    Verrouille la ligne ``chantier`` (``select_for_update``) le temps du
+    calcul pour sérialiser des créations concurrentes sur le MÊME chantier,
+    puis prend le plus haut ``numero`` déjà UTILISÉ + 1 — pattern
+    ``gestion_projet.services.prochain_numero_situation``. Doit être appelé
+    dans une transaction atomique par l'appelant.
+    """
+    from django.db.models import Max
+
+    from .models import RFI
+
+    chantier.__class__.objects.select_for_update().get(pk=chantier.pk)
+    plus_haut = RFI.objects.filter(
+        chantier=chantier).aggregate(Max('numero'))['numero__max'] or 0
+    return plus_haut + 1
+
+
+@transaction.atomic
+def creer_rfi(*, company, chantier, pose_par, delai_jours=5, **kwargs):
+    """NTCON3 — crée un RFI, numéro race-safe par chantier + échéance en
+    jours OUVRÉS (férié-aware, ``notifications.calendar_utils``). Notifie le
+    destinataire (best-effort)."""
+    from apps.notifications.calendar_utils import ajouter_jours_ouvres
+
+    from .models import RFI
+
+    numero = _prochain_numero_rfi(chantier)
+    date_limite = ajouter_jours_ouvres(
+        timezone.localdate(), delai_jours, company)
+    rfi = RFI.objects.create(
+        company=company, chantier=chantier, numero=numero,
+        pose_par=pose_par, delai_jours=delai_jours,
+        date_limite_reponse=date_limite, **kwargs)
+    if rfi.destinataire_user_id:
+        _notifier_btp(
+            rfi.destinataire_user, 'APPROVAL_REQUESTED',
+            f'RFI #{rfi.numero} en attente de réponse', rfi.question[:200],
+            company=company, link=f'/btp/rfi/{rfi.id}')
+    return rfi
+
+
+def repondre_rfi(rfi, *, auteur, texte):
+    """NTCON3 — ajoute une réponse et clôt le cycle (statut → repondu)."""
+    from .models import RFI, RFIReponse
+
+    if rfi.statut == RFI.Statut.CLOS:
+        raise TransitionInvalide(f'RFI {rfi.pk} : déjà clos.')
+    with transaction.atomic():
+        reponse = RFIReponse.objects.create(
+            company=rfi.company, rfi=rfi, texte=texte, auteur=auteur)
+        rfi.statut = RFI.Statut.REPONDU
+        rfi.save(update_fields=['statut'])
+    if rfi.pose_par_id and rfi.pose_par_id != getattr(auteur, 'id', None):
+        _notifier_btp(
+            rfi.pose_par, 'APPROVAL_DECIDED', f'RFI #{rfi.numero} répondu',
+            texte[:200], company=rfi.company, link=f'/btp/rfi/{rfi.id}')
+    return reponse
+
+
+def clore_rfi(rfi, *, user):
+    """NTCON3 — clôt un RFI répondu (ou directement ouvert, sans réponse)."""
+    from .models import RFI
+
+    if rfi.statut == RFI.Statut.CLOS:
+        raise TransitionInvalide(f'RFI {rfi.pk} : déjà clos.')
+    rfi.statut = RFI.Statut.CLOS
+    rfi.save(update_fields=['statut'])
+    return rfi

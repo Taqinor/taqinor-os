@@ -9,8 +9,10 @@ from authentication.mixins import TenantMixin
 from core.permissions import WriteScopedPermissionMixin
 
 from . import selectors, services
-from .models import ReserveChantier
-from .serializers import ReserveChantierSerializer, SignatureBtpSerializer
+from .models import RFI, ReserveChantier
+from .serializers import (
+    ReserveChantierSerializer, RFISerializer, SignatureBtpSerializer,
+)
 
 
 def _client_ip(request):
@@ -118,3 +120,67 @@ class ReserveChantierViewSet(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         reserve.refresh_from_db()
         return Response(ReserveChantierSerializer(reserve).data)
+
+
+class RFIViewSet(WriteScopedPermissionMixin, TenantMixin, viewsets.ModelViewSet):
+    """RFI (Request For Information) — NTCON3.
+
+    Filtres liste : ``?chantier=&statut=``. Triée par échéance dépassée en
+    premier (``RFI.Meta.ordering``). Actions ``repondre/`` et ``clore/``.
+    """
+    queryset = RFI.objects.select_related(
+        'chantier', 'pose_par', 'destinataire_user').prefetch_related(
+            'reponses').all()
+    serializer_class = RFISerializer
+    read_permission = 'btp_voir'
+    write_permission = 'btp_gerer'
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        p = self.request.query_params
+        return selectors.rfi_filtres(
+            qs, chantier_id=p.get('chantier'), statut=p.get('statut'))
+
+    def perform_create(self, serializer):
+        rfi = services.creer_rfi(
+            company=self.request.user.company,
+            chantier=serializer.validated_data['chantier'],
+            pose_par=self.request.user,
+            delai_jours=serializer.validated_data.get('delai_jours', 5),
+            question=serializer.validated_data['question'],
+            destinataire_texte=serializer.validated_data.get(
+                'destinataire_texte', ''),
+            destinataire_user=serializer.validated_data.get(
+                'destinataire_user'),
+            impact_cout=serializer.validated_data.get('impact_cout', False),
+            impact_delai_jours=serializer.validated_data.get(
+                'impact_delai_jours'),
+        )
+        serializer.instance = rfi
+
+    @action(detail=True, methods=['post'])
+    def repondre(self, request, pk=None):
+        rfi = self.get_object()
+        texte = (request.data.get('texte') or '').strip()
+        if not texte:
+            return Response(
+                {'detail': 'texte est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            services.repondre_rfi(rfi, auteur=request.user, texte=texte)
+        except services.TransitionInvalide as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        rfi.refresh_from_db()
+        return Response(RFISerializer(rfi).data)
+
+    @action(detail=True, methods=['post'])
+    def clore(self, request, pk=None):
+        rfi = self.get_object()
+        try:
+            services.clore_rfi(rfi, user=request.user)
+        except services.TransitionInvalide as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        rfi.refresh_from_db()
+        return Response(RFISerializer(rfi).data)

@@ -11,6 +11,7 @@ PLATFORM = {
     'record_targets': [
         'btp_chantier.reservechantier',
         'btp_chantier.journalchantier',
+        'btp_chantier.rfireponse',
     ],
     'searchable_models': [],
     'customfield_models': [],

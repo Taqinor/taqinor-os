@@ -8,7 +8,9 @@ cross-app sans arête d'import ; JAMAIS pour une écriture).
 """
 from __future__ import annotations
 
-from .models import ReserveChantier
+from django.utils import timezone
+
+from .models import RFI, ReserveChantier
 
 
 # ── NTCON1 — Réserves de chantier ───────────────────────────────────────────
@@ -37,6 +39,32 @@ def reserves_actives_bloquantes(company, chantier=None):
         gravite=ReserveChantier.Gravite.BLOQUANTE,
         statut__in=[ReserveChantier.Statut.OUVERTE, ReserveChantier.Statut.EN_COURS],
     )
+    if chantier is not None:
+        qs = qs.filter(chantier=chantier)
+    return qs
+
+
+# ── NTCON3 — RFI ─────────────────────────────────────────────────────────────
+
+def rfi_filtres(qs, *, chantier_id=None, statut=None):
+    """Filtres optionnels ``?chantier=&statut=`` (queryset déjà scopé société).
+
+    L'ordre par défaut (``RFI.Meta.ordering``) trie déjà par
+    ``date_limite_reponse`` ascendant — un RFI en retard (échéance passée)
+    apparaît donc TOUJOURS avant un RFI encore dans les temps.
+    """
+    if chantier_id not in (None, ''):
+        qs = qs.filter(chantier_id=chantier_id)
+    if statut not in (None, ''):
+        qs = qs.filter(statut=statut)
+    return qs
+
+
+def rfi_en_retard(company, *, chantier=None):
+    """``RFI`` ouverts dont l'échéance de réponse est dépassée (lecture)."""
+    qs = RFI.objects.filter(
+        company=company, statut=RFI.Statut.OUVERT,
+        date_limite_reponse__lt=timezone.localdate())
     if chantier is not None:
         qs = qs.filter(chantier=chantier)
     return qs
