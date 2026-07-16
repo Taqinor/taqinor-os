@@ -205,6 +205,51 @@ class ConsoleWiringTests(TestCase):
         self.assertEqual(resp.data['signatures'], 9)
         self.assertEqual(resp.data['signatures_source'], 'odoo')
 
+    def test_metrics_dashboard_reports_account_currency(self):
+        """Régression : Meta rapporte dans la devise du COMPTE (souvent USD) —
+        le dashboard l'expose pour que le front n'étiquette plus « MAD » en dur.
+        Sans connexion (ou devise inconnue) : repli 'MAD' inchangé."""
+        resp = auth(self.viewer).get(f'{BASE}/metrics/dashboard/')
+        self.assertEqual(resp.data['currency'], 'MAD')  # repli sans connexion
+        MetaConnection.objects.update_or_create(
+            company=self.company, defaults={'currency': 'USD'})
+        resp = auth(self.viewer).get(f'{BASE}/metrics/dashboard/')
+        self.assertEqual(resp.data['currency'], 'USD')
+
+    def test_connection_status_includes_currency(self):
+        MetaConnection.objects.update_or_create(
+            company=self.company,
+            defaults={'currency': 'USD', 'ad_account_id': 'act_99'})
+        resp = auth(self.viewer).get(f'{BASE}/connection/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['currency'], 'USD')
+
+    def test_metrics_leads_includes_odoo_deals_when_configured(self):
+        """ADSENG-ODOO : le drill « signature » liste AUSSI les deals signés
+        Odoo (sinon le héro affiche un chiffre Odoo mais la liste reste vide).
+        ``id`` None (pas de fiche CRM ERP), montant en MAD."""
+        from decimal import Decimal
+        from unittest import mock
+        deals = [{'source_name': 'S00160', 'phone_norm': '661223344',
+                  'origin': 'sale_order',
+                  'amount_mad': Decimal('24051.36'), 'date': '2026-02-13',
+                  'lead_id': None}]
+        with mock.patch(
+                'apps.adsengine.odoo_client.is_configured',
+                return_value=True), \
+                mock.patch(
+                    'apps.adsengine.odoo_selectors.signed_deals',
+                    return_value=deals):
+            resp = auth(self.viewer).get(
+                f'{BASE}/metrics/leads/', {'metric': 'signature'})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        odoo_rows = [r for r in resp.data if r.get('source') == 'odoo']
+        self.assertEqual(len(odoo_rows), 1)
+        self.assertEqual(odoo_rows[0]['nom'], 'S00160')
+        self.assertEqual(odoo_rows[0]['etape'], 'Commande confirmée (Odoo)')
+        self.assertAlmostEqual(odoo_rows[0]['montant'], 24051.36)
+        self.assertIsNone(odoo_rows[0]['id'])
+
     def test_metrics_leads_is_list(self):
         resp = auth(self.viewer).get(
             f'{BASE}/metrics/leads/', {'metric': 'cost_per_signature'})

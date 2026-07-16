@@ -23,10 +23,19 @@ export function formatNumber(value, decimals = 0) {
   return decPart ? `${sign}${grouped},${decPart}` : `${sign}${grouped}`
 }
 
-// Montant en dirhams : « 1 234 MAD » (ou « — » si la donnée manque).
-export function formatMAD(value, decimals = 0) {
+// Montant dans une devise donnée : « 1 234 USD » (ou « — » si absent). Meta
+// rapporte TOUS ses montants dans la devise du COMPTE publicitaire (souvent
+// USD) — jamais convertis, seulement étiquetés avec la vraie devise.
+export function formatMoney(value, currency = 'MAD', decimals = 0) {
   const formatted = formatNumber(value, decimals)
-  return formatted === '—' ? '—' : `${formatted} MAD`
+  return formatted === '—' ? '—' : `${formatted} ${currency || 'MAD'}`
+}
+
+// Montant en dirhams : « 1 234 MAD » (ou « — » si la donnée manque). Réservé
+// aux montants RÉELLEMENT en MAD (garde-fous, deals Odoo…) — pour un montant
+// Meta, utiliser formatMoney(value, deviseDuCompte).
+export function formatMAD(value, decimals = 0) {
+  return formatMoney(value, 'MAD', decimals)
 }
 
 // Ratio/nombre décimal simple (ex. fréquence « 1,8 ») — « — » si absent.

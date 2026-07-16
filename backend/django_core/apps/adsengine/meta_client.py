@@ -166,6 +166,18 @@ class MetaClient:
         'daily_budget', 'lifetime_budget')
     AD_SYNC_FIELDS = ('id', 'name', 'status', 'effective_status', 'adset_id')
 
+    def get_account(self, *, fields=None):
+        """Nœud du compte publicitaire (LECTURE) — ex. sa devise (``currency``,
+        ISO-4217) : Meta rapporte TOUS les montants dans la devise du compte."""
+        if not self.ad_account_id:
+            raise MetaError("ad_account_id manquant sur la connexion Meta.")
+        acct = self.ad_account_id
+        if not str(acct).startswith('act_'):
+            acct = f'act_{acct}'
+        payload = self._request(
+            'GET', acct, params={'fields': ','.join(fields or ('currency',))})
+        return payload if isinstance(payload, dict) else {}
+
     def get_campaigns(self, *, fields=None, limit=None):
         return self._read_list(self._account_edge('campaigns'),
                                fields=fields or self.CAMPAIGN_SYNC_FIELDS,
@@ -183,12 +195,11 @@ class MetaClient:
 
     def get_insights(self, object_id, *, fields=None, params=None):
         """Insights d'un objet (compte/campagne/adset/ad). Renvoie la liste
-        ``data`` parsée (jamais ``None``)."""
+        ``data`` COMPLÈTE (toutes les pages), jamais ``None``."""
         query = dict(params or {})
         if fields:
             query['fields'] = ','.join(fields)
-        payload = self._request('GET', f'{object_id}/insights', params=query)
-        return payload.get('data', []) if isinstance(payload, dict) else []
+        return self._paged(f'{object_id}/insights', params=query)
 
     def _read_list(self, path, *, fields=None, limit=None):
         params = {}
@@ -196,8 +207,32 @@ class MetaClient:
             params['fields'] = ','.join(fields)
         if limit is not None:
             params['limit'] = limit
-        payload = self._request('GET', path, params=params or None)
-        return payload.get('data', []) if isinstance(payload, dict) else []
+        return self._paged(path, params=params or None)
+
+    def _paged(self, path, *, params=None):
+        """Suit la pagination Graph (curseur ``paging.cursors.after``) et
+        concatène TOUTES les pages. Sans cela, seule la 1re page (~25 lignes) est
+        lue → dépense TRONQUÉE dès qu'un objet a un historique long (insights
+        ventilés par jour sur plusieurs mois : ex. 600 $ affichés au lieu du
+        total réel). Le curseur voyage en paramètre ``after`` (jamais l'URL
+        ``next`` renvoyée par Graph, qui embarque le token en clair). Borne dure
+        anti-boucle."""
+        rows = []
+        base = dict(params or {})
+        after = None
+        for _ in range(1000):  # borne dure (~25k lignes) — jamais infini
+            query = dict(base)
+            if after:
+                query['after'] = after
+            payload = self._request('GET', path, params=query or None)
+            if not isinstance(payload, dict):
+                break
+            rows.extend(payload.get('data', []) or [])
+            paging = payload.get('paging') or {}
+            after = (paging.get('cursors') or {}).get('after')
+            if not after or not paging.get('next'):
+                break
+        return rows
 
     # ── Créations (TOUJOURS PAUSED — jamais de kwarg status) ─────────────────
     @staticmethod

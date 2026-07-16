@@ -2034,3 +2034,13 @@ backend/django_core/apps/ventes/models.py:2201
 backend/django_core/apps/ventes/models.py:2223
 backend/django_core/apps/ventes/models.py:2225
 backend/django_core/apps/ventes/models.py:932
+backend/django_core/apps/adsengine/models.py:95
+backend/django_core/apps/adsengine/models.py:204
+backend/django_core/apps/adsengine/models.py:233
+backend/django_core/apps/adsengine/models.py:586
+backend/django_core/apps/adsengine/models.py:673
+backend/django_core/apps/adsengine/models.py:714
+backend/django_core/apps/adsengine/models.py:769
+backend/django_core/apps/adsengine/models.py:1043
+backend/django_core/apps/adsengine/models.py:1123
+backend/django_core/apps/adsengine/models.py:260

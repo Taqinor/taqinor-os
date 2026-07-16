@@ -259,6 +259,67 @@ class SignedDealsShapeTests(SimpleTestCase):
         self.assertEqual(counts.get('New'), 1)
 
 
+class SignatureDedupTests(SimpleTestCase):
+    """UNE SIGNATURE = UN CLIENT — réplique des données RÉELLES du fondateur
+    (2026-07-16) : 6 leads « Contract Signed + Deposit » (téléphones distincts,
+    aucun ``partner_id``) + 3 commandes confirmées SANS lead lié ni téléphone
+    partenaire, dont S00158 saisi DEUX fois → le connecteur comptait 9
+    signatures pour 6 clients signés réels."""
+
+    WON_LEADS = [
+        {'id': lid, 'name': f'TAQINOR FORM-4.0 #{lid}',
+         'phone': phone, 'expected_revenue': 0, 'probability': 100,
+         'stage_id': [9, 'Contract Signed + Deposit'], 'partner_id': False,
+         'date_closed': '2026-03-01 10:00:00', 'active': True,
+         'create_date': '2026-02-01 09:00:00'}
+        for lid, phone in [
+            (140, '+212661177444'), (439, '+212661231416'),
+            (462, '+212667035859'), (473, '+212661169814'),
+            (474, '+212661213268'), (1345, '+212661094907'),
+        ]
+    ]
+    # 3 commandes confirmées : S00158 en DOUBLE (même partner 9), S00160 —
+    # aucune n'a d'``opportunity_id`` ni de partner avec téléphone.
+    DUP_ORDERS = [
+        {'id': 2, 'name': 'S00158', 'state': 'sale', 'amount_total': '3000',
+         'date_order': '2025-12-23 10:24:47', 'partner_id': [9, 'Point d’exclamation'],
+         'opportunity_id': False, 'create_date': '2025-12-23 10:00:00'},
+        {'id': 4, 'name': 'S00158', 'state': 'sale', 'amount_total': '12000',
+         'date_order': '2025-12-23 10:32:16', 'partner_id': [9, 'Point d’exclamation'],
+         'opportunity_id': False, 'create_date': '2025-12-23 10:30:00'},
+        {'id': 6, 'name': 'S00160', 'state': 'sale', 'amount_total': '24051.36',
+         'date_order': '2026-02-13 20:23:32',
+         'partner_id': [11, 'COMPTOIR AGRICOLE AL FADILA'],
+         'opportunity_id': False, 'create_date': '2026-02-13 20:00:00'},
+    ]
+
+    def test_founder_real_data_counts_6_not_9(self):
+        client = make_client(make_handler(
+            leads=self.WON_LEADS, orders=self.DUP_ORDERS, partners=[]))
+        deals = odoo_selectors.signed_deals(client=client)
+        self.assertEqual(len(deals), 6)
+        self.assertEqual({d['origin'] for d in deals}, {'won_lead'})
+        self.assertEqual(odoo_selectors.signed_count(client=client), 6)
+
+    def test_duplicate_orders_collapse_to_latest_without_won_leads(self):
+        # Sans aucun lead gagné, les commandes restent comptées (rien contre
+        # quoi dédoublonner) — mais le S00158 dupliqué ne compte qu'UNE fois,
+        # version la plus récente (12000).
+        client = make_client(make_handler(
+            leads=[], orders=self.DUP_ORDERS, partners=[]))
+        deals = odoo_selectors.signed_deals(client=client)
+        self.assertEqual(len(deals), 2)  # S00158 (déduit) + S00160
+        by_name = {d['source_name']: d for d in deals}
+        self.assertEqual(by_name['S00158']['amount_mad'], Decimal('12000'))
+
+    def test_won_leads_same_phone_count_once(self):
+        twin = dict(self.WON_LEADS[0], id=9999,
+                    name='TAQINOR FORM-4.0 (doublon)')
+        client = make_client(make_handler(
+            leads=[self.WON_LEADS[0], twin], orders=[], partners=[]))
+        self.assertEqual(odoo_selectors.signed_count(client=client), 1)
+
+
 class ReadOnlyGuaranteeTests(SimpleTestCase):
     """Règle #1 : le client ne peut, par construction, QUE lire Odoo."""
 
