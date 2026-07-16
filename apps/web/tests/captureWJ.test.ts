@@ -2,7 +2,7 @@
 //
 // On NE teste PAS le DOM Astro ici (couvert par les boots W112/W2/W3) : on prouve
 // les invariants LOGIQUES qui doivent rester vrais après l'élévation —
-//  - WJ1 : l'estimation instantanée vient du VRAI moteur (estimatorBrain) et donne
+//  - WJ1 : l'estimation instantanée vient du VRAI moteur (estimatorBrainV2) et donne
 //    une fourchette PLAUSIBLE non fabriquée, à partir de la facture SEULE ;
 //  - WJ3 : le deeplink WhatsApp est correctement construit avec l'estimation ;
 //  - WJ4 : le contrat webhook + le seuil 1 000 MAD restent intacts (capture-lead) ;
@@ -10,7 +10,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { estimateFromBill, formatMadRange } from '../src/lib/billEstimate';
-import { billToAnnualKwh } from '../src/lib/estimatorBrain';
+// V1 (estimatorBrain.ts, labo) supprimé — billToAnnualKwh vit dans V2 (corps
+// identique, parité prouvée avant suppression).
+import { billToAnnualKwh } from '../src/lib/estimatorBrainV2';
 import { qualifiesForCrm } from '../src/lib/billRange';
 import { captureWhatsappText, whatsappLink } from '../src/lib/whatsapp';
 

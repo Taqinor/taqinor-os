@@ -139,6 +139,64 @@ export type FacilityTypeId = (typeof FACILITY_TYPES)[number];
 export const SITE_COUNTS = ['1', '2-5', '6+'] as const;
 export type SiteCountId = (typeof SITE_COUNTS)[number];
 
+// ——— QX parcours 3 profils : vocabulaires FACULTATIFS pro & agricole (additifs,
+// jamais bloquants — même discipline que WJ30/WJ31). `tensionRaccordement`
+// (BT/MT, tension de livraison pro) est DISTINCT du `raccordement` existant
+// (monophasé/triphasé, résidentiel) — les deux champs cohabitent. ———
+export const TENSION_RACCORDEMENTS = ['bt', 'mt'] as const;
+export type TensionRaccordementId = (typeof TENSION_RACCORDEMENTS)[number];
+
+export const ACTIVITY_PROFILES = ['day', 'day_evening', 'continuous'] as const;
+export type ActivityProfileId = (typeof ACTIVITY_PROFILES)[number];
+
+export const SURFACE_TYPES = ['bac_acier', 'terrasse', 'ombriere', 'terrain'] as const;
+export type SurfaceTypeId = (typeof SURFACE_TYPES)[number];
+
+export const WATER_SOURCES = ['puits', 'forage', 'bassin', 'riviere'] as const;
+export type WaterSourceId = (typeof WATER_SOURCES)[number];
+
+export const IRRIGATIONS = ['goutte', 'aspersion', 'gravitaire'] as const;
+export type IrrigationId = (typeof IRRIGATIONS)[number];
+
+export const POMPES_ACTUELLES = ['aucune', 'diesel', 'butane', 'electrique'] as const;
+export type PompeActuelleId = (typeof POMPES_ACTUELLES)[number];
+
+/**
+ * Plafond de facture mensuelle saisissable (MAD) PAR MODE — le professionnel
+ * monte à 1 M MAD (sites C&I), résidentiel/agricole gardent le plafond
+ * historique 200 000. Constante partagée écran/serveur (une seule source).
+ */
+export const MAX_BILL_BY_MODE: Record<LeadModeId, number> = {
+  residentiel: 200_000,
+  professionnel: 1_000_000,
+  agricole: 200_000,
+};
+
+/**
+ * Instantané de l'ESTIMATION AFFICHÉE au visiteur au moment de la soumission
+ * (pour que le CRM voie exactement les chiffres promis) — clés en LISTE
+ * BLANCHE stricte, tout le reste est écarté (jamais un objet arbitraire
+ * forwardé au webhook).
+ */
+export interface EstimateShown {
+  kwc?: number;
+  prodKwh?: number;
+  ecoMadMonthLow?: number;
+  ecoMadMonthHigh?: number;
+  ecoMadYearLow?: number;
+  ecoMadYearHigh?: number;
+  paybackLabel?: string;
+  tauxAutoconso?: number;
+  tauxCouverture?: number;
+  pompeCv?: number;
+  champKwc?: number;
+  m3Jour?: number;
+}
+const ESTIMATE_SHOWN_NUMERIC_KEYS = [
+  'kwc', 'prodKwh', 'ecoMadMonthLow', 'ecoMadMonthHigh', 'ecoMadYearLow',
+  'ecoMadYearHigh', 'tauxAutoconso', 'tauxCouverture', 'pompeCv', 'champKwc', 'm3Jour',
+] as const;
+
 /**
  * Bornes GPS ≈ Maroc (Tanger ~35,9 N → Lagouira ~20,8 N ; Atlantique ~-17,2 O →
  * frontière est ~-1,0). Garde-fou anti-garbage : un repère hors bornes est
@@ -243,11 +301,37 @@ export interface ValidatedLead {
   raisonSociale?: string;
   facilityType?: FacilityTypeId;
   siteCount?: SiteCountId;
-  // — WJ92 : CAPI « match quality » — em haché (SHA-256, spec Meta) quand un
-  //   e-mail est capturé, + un identifiant de déduplication par soumission
-  //   (echoé au CRM ET au CAPI). Ni l'un ni l'autre n'est de la PII en clair.
-  emHash?: string;
+  // — WJ92 : identifiant de déduplication CAPI par soumission (echoé au CRM ET
+  //   au CAPI — pas de la PII). Le hash e-mail `em` est calculé dans fireCapi
+  //   au moment de l'envoi (jamais stocké sur le lead).
   eventId?: string;
+  // — QX parcours 3 profils : champs FACULTATIFS pro & agricole, même
+  //   discipline WJ30 (validés un à un, écartés si malformés, jamais
+  //   bloquants ; absents ⇒ contrat de fil inchangé octet pour octet).
+  // Professionnel :
+  tensionRaccordement?: TensionRaccordementId;
+  puissanceKva?: number;
+  activityProfile?: ActivityProfileId;
+  surfaceType?: SurfaceTypeId;
+  surfaceM2?: number;
+  hasGenerator?: boolean;
+  proMonthlyKwh?: number;
+  proMonthlyMad?: number;
+  // Agricole (pompage) :
+  waterSource?: WaterSourceId;
+  profondeurM?: number;
+  hmtM?: number;
+  debitM3h?: number;
+  besoinM3j?: number;
+  heuresPompage?: number;
+  irrigation?: IrrigationId;
+  culture?: string;
+  surfaceHa?: number;
+  pompeActuelle?: PompeActuelleId;
+  pompeCvActuelle?: number;
+  fuelSpendMad?: number;
+  // Instantané de l'estimation affichée (liste blanche stricte — cf. EstimateShown).
+  estimateShown?: EstimateShown;
 }
 
 export type ValidationResult =
@@ -310,6 +394,24 @@ function cleanEnumList<T extends string>(v: unknown, allowed: readonly T[]): T[]
     if (typeof item === 'string' && (allowed as readonly string[]).includes(item)) set.add(item as T);
   }
   return Array.from(set).slice(0, allowed.length);
+}
+
+/**
+ * QX — instantané d'estimation en LISTE BLANCHE stricte : seules les clés
+ * numériques connues (finies, [0, 1e9]) et `paybackLabel` (chaîne bornée)
+ * passent ; tout le reste est écarté. Objet vide/malformé ⇒ null (absent).
+ */
+function cleanEstimateShown(v: unknown): EstimateShown | null {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return null;
+  const o = v as Record<string, unknown>;
+  const out: EstimateShown = {};
+  for (const key of ESTIMATE_SHOWN_NUMERIC_KEYS) {
+    const n = Number(o[key]);
+    if (o[key] != null && o[key] !== '' && Number.isFinite(n) && n >= 0 && n <= 1e9) out[key] = n;
+  }
+  const paybackLabel = cleanStr(o.paybackLabel, 60);
+  if (paybackLabel) out.paybackLabel = paybackLabel;
+  return Object.keys(out).length > 0 ? out : null;
 }
 
 /** [[lat,lng],…] (≥ 3 paires finies dans les bornes ≈ Maroc), borné à 200 sommets, ou []. */
@@ -446,6 +548,72 @@ function validateOptionalFields(b: Record<string, unknown>): Partial<ValidatedLe
   const eventId = cleanStr(b.eventId, 64);
   if (eventId && /^[A-Za-z0-9_-]{8,64}$/.test(eventId)) opt.eventId = eventId;
 
+  // ——— QX parcours 3 profils : champs pro & agricole (facultatifs, bornés,
+  // écartés en silence si malformés — jamais bloquants). ———
+  // Professionnel :
+  const tensionRaccordement = cleanEnum(b.tensionRaccordement, TENSION_RACCORDEMENTS);
+  if (tensionRaccordement) opt.tensionRaccordement = tensionRaccordement;
+
+  const puissanceKva = cleanPositiveNumber(b.puissanceKva, 10_000);
+  if (puissanceKva != null) opt.puissanceKva = puissanceKva;
+
+  const activityProfile = cleanEnum(b.activityProfile, ACTIVITY_PROFILES);
+  if (activityProfile) opt.activityProfile = activityProfile;
+
+  const surfaceType = cleanEnum(b.surfaceType, SURFACE_TYPES);
+  if (surfaceType) opt.surfaceType = surfaceType;
+
+  const surfaceM2 = cleanPositiveNumber(b.surfaceM2, 1_000_000);
+  if (surfaceM2 != null) opt.surfaceM2 = surfaceM2;
+
+  if (typeof b.hasGenerator === 'boolean') opt.hasGenerator = b.hasGenerator;
+
+  const proMonthlyKwh = cleanPositiveNumber(b.proMonthlyKwh, MAX_KWH);
+  if (proMonthlyKwh != null) opt.proMonthlyKwh = proMonthlyKwh;
+
+  const proMonthlyMad = cleanPositiveNumber(b.proMonthlyMad, MAX_BILL_MAD);
+  if (proMonthlyMad != null) opt.proMonthlyMad = proMonthlyMad;
+
+  // Agricole (pompage) :
+  const waterSource = cleanEnum(b.waterSource, WATER_SOURCES);
+  if (waterSource) opt.waterSource = waterSource;
+
+  const profondeurM = cleanPositiveNumber(b.profondeurM, 1_000);
+  if (profondeurM != null) opt.profondeurM = profondeurM;
+
+  const hmtM = cleanPositiveNumber(b.hmtM, 1_000);
+  if (hmtM != null) opt.hmtM = hmtM;
+
+  const debitM3h = cleanPositiveNumber(b.debitM3h, 1_000);
+  if (debitM3h != null) opt.debitM3h = debitM3h;
+
+  const besoinM3j = cleanPositiveNumber(b.besoinM3j, 100_000);
+  if (besoinM3j != null) opt.besoinM3j = besoinM3j;
+
+  const heuresPompage = cleanPositiveNumber(b.heuresPompage, 24);
+  if (heuresPompage != null) opt.heuresPompage = heuresPompage;
+
+  const irrigation = cleanEnum(b.irrigation, IRRIGATIONS);
+  if (irrigation) opt.irrigation = irrigation;
+
+  const culture = cleanStr(b.culture, 60);
+  if (culture) opt.culture = culture;
+
+  const surfaceHa = cleanPositiveNumber(b.surfaceHa, 100_000);
+  if (surfaceHa != null) opt.surfaceHa = surfaceHa;
+
+  const pompeActuelle = cleanEnum(b.pompeActuelle, POMPES_ACTUELLES);
+  if (pompeActuelle) opt.pompeActuelle = pompeActuelle;
+
+  const pompeCvActuelle = cleanPositiveNumber(b.pompeCvActuelle, 1_000);
+  if (pompeCvActuelle != null) opt.pompeCvActuelle = pompeCvActuelle;
+
+  const fuelSpendMad = cleanPositiveNumber(b.fuelSpendMad, MAX_BILL_MAD);
+  if (fuelSpendMad != null) opt.fuelSpendMad = fuelSpendMad;
+
+  const estimateShown = cleanEstimateShown(b.estimateShown);
+  if (estimateShown) opt.estimateShown = estimateShown;
+
   return opt;
 }
 
@@ -476,8 +644,15 @@ export function validateLead(body: unknown): ValidationResult {
   const roofType = cleanStr(b.roofType, 20);
   if (!quickCallback && !ROOF_TYPES.some((r) => r.id === roofType)) errors.roofType = 'Type de toiture requis';
 
+  // — QX : la tranche de facture reste REQUISE en résidentiel/professionnel
+  //   mais devient FACULTATIVE en mode agricole (un projet pompage se
+  //   dimensionne sur HMT × débit, pas sur une facture d'électricité — on ne
+  //   force jamais une tranche fabriquée). Une tranche fournie ET valide est
+  //   conservée ; malformée, elle est écartée comme tout champ facultatif.
+  const mode = cleanEnum(b.mode, LEAD_MODES);
+  const billRangeOptional = quickCallback || mode === 'agricole';
   const billRange = cleanStr(b.billRange, 20);
-  if (!quickCallback && !isBillRangeId(billRange)) errors.billRange = 'Tranche de facture requise';
+  if (!billRangeOptional && !isBillRangeId(billRange)) errors.billRange = 'Tranche de facture requise';
 
   if (b.consent !== true) errors.consent = 'Le consentement est requis pour être recontacté';
 
@@ -502,8 +677,15 @@ export function validateLead(body: unknown): ValidationResult {
       whatsappOptIn: b.whatsappOptIn === true,
       // WJ97 — honnête : sur le chemin rappel rapide, ces trois champs restent
       // ABSENTS (jamais une valeur fabriquée) plutôt que forcés à une chaîne
-      // vide/enum arbitraire.
-      ...(quickCallback ? {} : { city, roofType: roofType as RoofTypeId, billRange: billRange as BillRangeId }),
+      // vide/enum arbitraire. QX — en mode agricole, billRange n'est inclus
+      // que s'il est présent ET valide (facultatif, jamais fabriqué).
+      ...(quickCallback
+        ? {}
+        : {
+            city,
+            roofType: roofType as RoofTypeId,
+            ...(isBillRangeId(billRange) ? { billRange: billRange as BillRangeId } : {}),
+          }),
       ...(quickCallback ? { quickCallback: true as const } : {}),
       consent: true,
       fbclid,
@@ -579,7 +761,13 @@ export function buildLeadRecord(
     // facture à appliquer) : un visiteur qui demande EXPLICITEMENT à être
     // rappelé par téléphone est par nature un lead qualifié, jamais filtré
     // sous un seuil qu'on n'a même pas mesuré.
-    qualified: lead.quickCallback === true ? true : qualifiesForCrm(lead.billRange!),
+    // QX — un lead AGRICOLE (pompage) est TOUJOURS qualifié : le projet se
+    // dimensionne sur HMT × débit (haute valeur), jamais gaté sur une facture
+    // d'électricité qu'il n'a parfois même pas.
+    qualified:
+      lead.quickCallback === true || lead.mode === 'agricole'
+        ? true
+        : qualifiesForCrm(lead.billRange!),
     band,
     page,
   };

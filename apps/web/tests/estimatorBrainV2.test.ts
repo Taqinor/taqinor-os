@@ -1,17 +1,14 @@
-// Cerveau V2 de l'estimateur — src/lib/estimatorBrainV2.ts (preview privé pro-4).
-// La V2 est une COPIE versionnée de estimatorBrain.ts : SEULE la recommandation
-// change (balayage d'inclinaison capé + objet recommandé toujours plafonné au
-// besoin). Ces tests prouvent :
-//  1. PARITÉ des fonctions pures V2 == V1 (l'isolation n'a pas dérivé) → pro-3 sûr.
-//  2. Le balayage choisit une inclinaison plus plate UNIQUEMENT sur toit limité et
+// Cerveau V2 de l'estimateur — src/lib/estimatorBrainV2.ts (LE moteur public).
+// La V2 était une copie versionnée de estimatorBrain.ts (V1, labo) ; la parité
+// V2 == V1 a été prouvée ici jusqu'à la suppression de V1 (code mort, plus
+// aucun call-site — parcours 3 profils 2026-07). Ces tests prouvent :
+//  1. Le balayage choisit une inclinaison plus plate UNIQUEMENT sur toit limité et
 //     ne dépasse JAMAIS le plafond « besoin ».
-//  3. Toit spacieux → garde l'optimal (~30°) et le besoin (pas de sur-remplissage).
-//  4. Cohérence/plafond sur toute la matrice orientation × inclinaison.
-//  5. Basculer d'option ne corrompt pas la recommandation.
+//  2. Toit spacieux → garde l'optimal (~30°) et le besoin (pas de sur-remplissage).
+//  3. Cohérence/plafond sur toute la matrice orientation × inclinaison.
+//  4. Basculer d'option ne corrompt pas la recommandation.
 // Voir apps/web/BRAIN_V2_NOTES.md.
 import { describe, expect, it } from 'vitest';
-import * as V2 from '../src/lib/estimatorBrainV2';
-import * as V1 from '../src/lib/estimatorBrain';
 import {
   recommend,
   packConfig,
@@ -72,49 +69,7 @@ const LAT = 33.59;
 const OPT = optimalSouthTiltDeg(LAT);
 
 // ——————————————————————————————————————————————————————————————————————
-// 1. PARITÉ V2 == V1 : la copie n'a pas dérivé sauf recommend() (régression).
-// ——————————————————————————————————————————————————————————————————————
-describe('Parité V2 ≡ V1 — fonctions pures inchangées (régression isolation)', () => {
-  it('sunPositionWinterSolstice identique', () => {
-    for (const h of [9, 10, 12, 14]) {
-      const a = V2.sunPositionWinterSolstice(LAT, h);
-      const b = V1.sunPositionWinterSolstice(LAT, h);
-      expect(a.elevationDeg).toBe(b.elevationDeg);
-      expect(a.azimuthFromSouthDeg).toBe(b.azimuthFromSouthDeg);
-    }
-  });
-
-  it('rowPitchM, specificYield, billMAD, billToAnnualKwh identiques', () => {
-    for (const t of [10, 15, 29]) {
-      expect(V2.rowPitchM(2.384, t, LAT)).toBe(V1.rowPitchM(2.384, t, LAT));
-      expect(V2.specificYield(LAT, t, 0)).toBe(V1.specificYield(LAT, t, 0));
-    }
-    for (const k of [100, 250, 600, 1200]) expect(V2.billMAD(k)).toBe(V1.billMAD(k));
-    for (const b of [800, 1500, 3500]) expect(V2.billToAnnualKwh(b)).toBe(V1.billToAnnualKwh(b));
-  });
-
-  it('packConfig pose le MÊME nombre de panneaux (géométrie non touchée)', () => {
-    for (const side of [12, 20, 40]) {
-      for (const family of ['south', 'eastwest'] as const) {
-        for (const tiltDeg of [10, 15, 29]) {
-          const a = V2.packConfig(squareRing(side), LAT, { family, tiltDeg });
-          const b = V1.packConfig(squareRing(side), LAT, { family, tiltDeg });
-          expect(a.best.count).toBe(b.best.count);
-          expect(a.usableAreaM2).toBe(b.usableAreaM2);
-        }
-      }
-    }
-  });
-
-  it('neededPanelsForTarget identique', () => {
-    for (const tgt of [4000, 9000, 20000]) {
-      expect(V2.neededPanelsForTarget(tgt, LAT)).toBe(V1.neededPanelsForTarget(tgt, LAT));
-    }
-  });
-});
-
-// ——————————————————————————————————————————————————————————————————————
-// 2. Plafond « besoin » : JAMAIS dépassé, sur tout le balayage.
+// 1. Plafond « besoin » : JAMAIS dépassé, sur tout le balayage.
 // ——————————————————————————————————————————————————————————————————————
 describe('Plafond besoin — recommended.count ≤ neededPanels, toujours', () => {
   for (const side of [9, 11, 12, 14, 16, 20, 25, 40]) {
