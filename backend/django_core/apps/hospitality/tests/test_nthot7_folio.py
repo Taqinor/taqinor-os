@@ -161,3 +161,18 @@ class FolioApiTests(TestCase):
             f'/api/django/hospitality/folios/{self.folio_a.pk}/')
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.data['statut'], 'ouvert')
+
+    def test_cloturer_refuse_pour_role_non_responsable(self):
+        # Réel bug potentiel : un get_permissions() inconditionnel écraserait
+        # le permission_classes propre à l'action `cloturer` (IsResponsableOrAdmin)
+        # et laisserait passer n'importe quel rôle authentifié en lecture.
+        normal = make_user(self.co_a, 'hot-folio-api-normal', role='normal')
+        resp = auth(normal).post(
+            f'/api/django/hospitality/folios/{self.folio_a.pk}/cloturer/')
+        self.assertEqual(resp.status_code, 403)
+
+    def test_get_folio_autorise_pour_role_normal(self):
+        normal = make_user(self.co_a, 'hot-folio-api-normal2', role='normal')
+        resp = auth(normal).get(
+            f'/api/django/hospitality/folios/{self.folio_a.pk}/')
+        self.assertEqual(resp.status_code, 200)

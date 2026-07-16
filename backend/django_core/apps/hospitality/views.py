@@ -212,9 +212,14 @@ class FolioViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
     queryset = Folio.objects.select_related('reservation').prefetch_related(
         'lignes').all()
     serializer_class = FolioSerializer
-
-    def get_permissions(self):
-        return [IsAnyRole()]
+    # NB : ne PAS surcharger ``get_permissions`` ici — le comportement DRF par
+    # défaut lit ``self.permission_classes`` (posé par ViewSetMixin depuis le
+    # kwarg ``permission_classes=`` de ``@action`` AVANT l'appel), donc la
+    # classe reste la lecture par défaut et l'action ``cloturer`` ci-dessous
+    # applique correctement son ``IsResponsableOrAdmin`` propre. Un
+    # ``get_permissions`` inconditionnel écraserait cet override d'action
+    # (bug réel déjà documenté sur ``WriteScopedPermissionMixin``).
+    permission_classes = [IsAnyRole]
 
     @action(detail=True, methods=['post'], url_path='cloturer',
             permission_classes=[IsResponsableOrAdmin])
