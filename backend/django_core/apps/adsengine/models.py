@@ -300,6 +300,10 @@ class EngineAction(TenantModel):
         # si la capacité est activée sur la GuardrailConfig de la société).
         ROTATE_CREATIVE = 'rotate_creative', 'Roter le créatif'
         REBALANCE_BUDGET = 'rebalance_budget', 'Rééquilibrer le budget'
+        # ENG9 — mise en pause (proposée par le détecteur d'anomalie). Pauser
+        # n'active JAMAIS rien : c'est l'action de sécurité par excellence. La
+        # cible (campaign/adset/ad + meta_id) vit dans ``payload``.
+        PAUSE = 'pause', 'Mettre en pause'
 
     kind = models.CharField(
         max_length=32, choices=Kind.choices, verbose_name='Type')
