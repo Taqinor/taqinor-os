@@ -29,4 +29,22 @@ class Migration(migrations.Migration):
                 null=True,
             ),
         ),
+        # DevisPreset partage l'enum Devis.ModeInstallation — élargir aussi son
+        # champ (sinon makemigrations --check détecte une dérive modèle↔migration).
+        migrations.AlterField(
+            model_name='devispreset',
+            name='mode_installation',
+            field=models.CharField(
+                blank=True,
+                choices=[
+                    ('residentiel', 'Résidentiel'),
+                    ('industriel', 'Industriel'),
+                    ('commercial', 'Commercial'),
+                    ('agricole', 'Agricole (pompage)'),
+                ],
+                max_length=20,
+                null=True,
+                verbose_name="Mode d'installation",
+            ),
+        ),
     ]

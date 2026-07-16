@@ -45,7 +45,10 @@ export default function SanteAgenda() {
       .finally(() => setLoading(false))
   }
 
-  useEffect(load, [date])
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount
+    load()
+  }, [date])
 
   const parCol = useMemo(() => {
     const map = new Map()
