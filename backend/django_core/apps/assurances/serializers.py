@@ -2,7 +2,8 @@
 from rest_framework import serializers
 
 from .models import (
-    Assureur, Courtier, GarantiePolice, PoliceActivity, PoliceAssurance,
+    Assureur, Courtier, EcheancePrime, GarantiePolice, PoliceActivity,
+    PoliceAssurance,
 )
 
 
@@ -84,6 +85,23 @@ class GarantiePoliceSerializer(serializers.ModelSerializer):
             'franchise_pourcentage', 'notes',
         ]
         read_only_fields = ['id', 'company']
+
+    def validate_police(self, value):
+        request = self.context.get('request')
+        if request and value.company_id != request.user.company_id:
+            raise serializers.ValidationError(
+                'La police doit appartenir à la même société.')
+        return value
+
+
+class EcheancePrimeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EcheancePrime
+        fields = [
+            'id', 'company', 'police', 'date_echeance_paiement', 'montant',
+            'periodicite', 'statut', 'ecriture_ref',
+        ]
+        read_only_fields = ['id', 'company', 'ecriture_ref']
 
     def validate_police(self, value):
         request = self.context.get('request')

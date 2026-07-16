@@ -8,14 +8,17 @@ from rest_framework.response import Response
 from core.mixins import TenantMixin
 from core.permissions import WriteScopedPermissionMixin
 
-from .models import Assureur, Courtier, GarantiePolice, PoliceAssurance
+from .models import (
+    Assureur, Courtier, EcheancePrime, GarantiePolice, PoliceAssurance,
+)
 from .serializers import (
-    AssureurSerializer, CourtierSerializer, GarantiePoliceSerializer,
-    PoliceActivitySerializer, PoliceAssuranceSerializer,
+    AssureurSerializer, CourtierSerializer, EcheancePrimeSerializer,
+    GarantiePoliceSerializer, PoliceActivitySerializer,
+    PoliceAssuranceSerializer,
 )
 from .services import (
-    CHAMPS_SUIVIS_POLICE, log_police_creation, log_police_note,
-    log_police_transitions_auto,
+    CHAMPS_SUIVIS_POLICE, generer_echeancier_prime, log_police_creation,
+    log_police_note, log_police_transitions_auto,
 )
 
 
@@ -95,6 +98,39 @@ class PoliceAssuranceViewSet(_AssurancesBaseViewSet):
         act = log_police_note(police, request.user, body)
         return Response(PoliceActivitySerializer(act).data,
                         status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='generer-echeancier')
+    def generer_echeancier(self, request, pk=None):
+        """NTASS5 — découpe ``prime_annuelle_ht`` en échéances datées.
+
+        Corps : ``{"periodicite": "trimestrielle"}`` (voir
+        ``EcheancePrime.Periodicite``, défaut ``annuelle``)."""
+        police = self.get_object()
+        periodicite = request.data.get(
+            'periodicite', EcheancePrime.Periodicite.ANNUELLE)
+        if periodicite not in EcheancePrime.Periodicite.values:
+            return Response(
+                {'periodicite': 'Périodicité invalide.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        echeances = generer_echeancier_prime(police, periodicite)
+        return Response(
+            EcheancePrimeSerializer(echeances, many=True).data,
+            status=status.HTTP_201_CREATED)
+
+
+class EcheancePrimeViewSet(_AssurancesBaseViewSet):
+    """CRUD de l'échéancier de primes, scopé société (NTASS5)."""
+    queryset = EcheancePrime.objects.select_related('police')
+    serializer_class = EcheancePrimeSerializer
+    filterset_fields = ['police', 'statut', 'periodicite']
+
+    @action(detail=True, methods=['post'], url_path='marquer-payee')
+    def marquer_payee(self, request, pk=None):
+        """NTASS5 — marque l'échéance comme payée."""
+        echeance = self.get_object()
+        echeance.statut = EcheancePrime.Statut.PAYEE
+        echeance.save(update_fields=['statut'])
+        return Response(EcheancePrimeSerializer(echeance).data)
 
 
 class GarantiePoliceViewSet(_AssurancesBaseViewSet):

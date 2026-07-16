@@ -221,3 +221,53 @@ class GarantiePolice(models.Model):
 
     def __str__(self):
         return f'{self.libelle_garantie} ({self.police_id})'
+
+
+# ── NTASS5 — Échéancier de primes ───────────────────────────────────────────
+
+class EcheancePrime(models.Model):
+    """Une échéance de paiement de prime d'une ``PoliceAssurance`` (NTASS5).
+
+    ``ecriture_ref`` est une string-FK (id brut, jamais une vraie FK) vers
+    ``compta.EcritureComptable`` — la compta reste la SEULE app qui écrit ses
+    modèles (voir ``services.proposer_ecriture_prime``, NTASS6)."""
+
+    class Periodicite(models.TextChoices):
+        ANNUELLE = 'annuelle', 'Annuelle'
+        SEMESTRIELLE = 'semestrielle', 'Semestrielle'
+        TRIMESTRIELLE = 'trimestrielle', 'Trimestrielle'
+        MENSUELLE = 'mensuelle', 'Mensuelle'
+
+    class Statut(models.TextChoices):
+        A_PAYER = 'a_payer', 'À payer'
+        PROPOSEE_COMPTA = 'proposee_compta', 'Proposée en compta'
+        PAYEE = 'payee', 'Payée'
+        EN_RETARD = 'en_retard', 'En retard'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='echeances_prime', verbose_name='Société')
+    police = models.ForeignKey(
+        PoliceAssurance, on_delete=models.CASCADE, related_name='echeances_prime')
+    date_echeance_paiement = models.DateField(verbose_name="Date d'échéance")
+    montant = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    periodicite = models.CharField(
+        max_length=15, choices=Periodicite.choices,
+        default=Periodicite.ANNUELLE)
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices, default=Statut.A_PAYER)
+    # String-FK (pas de vraie FK cross-app) — voir docstring de la classe.
+    ecriture_ref = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Référence écriture comptable')
+
+    class Meta:
+        ordering = ['date_echeance_paiement']
+        verbose_name = 'Échéance de prime'
+        verbose_name_plural = 'Échéances de prime'
+        indexes = [
+            models.Index(fields=['police', 'date_echeance_paiement']),
+            models.Index(fields=['company', 'statut']),
+        ]
+
+    def __str__(self):
+        return f'{self.police_id} — {self.montant} le {self.date_echeance_paiement}'
