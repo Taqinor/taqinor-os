@@ -10,10 +10,12 @@ beforeEach(() => { resetTenantTheme() })
 afterEach(() => { resetTenantTheme() })
 
 describe('TenantBrand (ENG31)', () => {
-  it('repli propre : nom produit par défaut, aucun logo', () => {
+  it('repli propre : aucune marque en dur, aucun logo (white-label SCA29)', () => {
     render(<TenantBrand />)
-    expect(screen.getByTestId('ae-tenant-name')).toHaveTextContent('TAQINOR')
+    // Sans thème configuré, aucun nom de marque n'est affiché (pas de chaîne en dur).
+    expect(screen.queryByTestId('ae-tenant-name')).toBeNull()
     expect(screen.queryByTestId('ae-tenant-logo')).toBeNull()
+    expect(screen.getByTestId('ae-tenant-brand')).toBeInTheDocument()
   })
 
   it('thème configuré : logo + nom du tenant', () => {

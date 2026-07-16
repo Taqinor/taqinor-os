@@ -73,11 +73,12 @@ describe('BriefScreen (ENG26)', () => {
     expect(await screen.findByTestId('ae-brief-empty')).toBeInTheDocument()
   })
 
-  it('ENG31 — le brief porte la marque tenant (repli propre sans thème)', async () => {
+  it('ENG31 — le brief porte le bandeau de marque tenant (repli propre sans thème)', async () => {
     renderAt(<BriefScreen />)
     await waitFor(() => expect(mocks.latest).toHaveBeenCalled())
-    // Le bandeau de marque est présent en tête (repli = nom produit par défaut).
+    // Le bandeau de marque est présent en tête ; sans thème configuré, repli
+    // propre = aucun nom de marque en dur (white-label SCA29).
     expect(screen.getByTestId('ae-tenant-brand')).toBeInTheDocument()
-    expect(screen.getByTestId('ae-tenant-name')).toHaveTextContent('TAQINOR')
+    expect(screen.queryByTestId('ae-tenant-name')).toBeNull()
   })
 })
