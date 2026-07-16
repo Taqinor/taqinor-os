@@ -94,3 +94,28 @@ export function normalizeAlerts(raw) {
   const list = Array.isArray(raw) ? raw : (raw.alerts || raw.results || [])
   return list.filter(Boolean)
 }
+
+// ── ENG24 — Classement des créatifs (réponses WhatsApp / coût par asset) ──
+// Doctrine (scope P3/P7) : on classe par VALEUR business — réponses WhatsApp
+// par dirham dépensé, PAS par CTR abstrait. Meilleur = coût par réponse le plus
+// bas ; les créatifs sans réponse WhatsApp sont relégués en fin de classement
+// (départagés par volume de réponses). Retourne une COPIE triée, chaque entrée
+// enrichie de `_reponses`, `_cout`, `_coutParReponse` (null si 0 réponse).
+export function rankCreatives(list) {
+  return (list || [])
+    .filter(Boolean)
+    .map(c => {
+      const reponses = Number(c.reponses_whatsapp ?? c.whatsapp_replies ?? 0) || 0
+      const cout = Number(c.cout_mad ?? c.cost_mad ?? c.cout ?? 0) || 0
+      const coutParReponse = reponses > 0 ? cout / reponses : null
+      return { ...c, _reponses: reponses, _cout: cout, _coutParReponse: coutParReponse }
+    })
+    .sort((a, b) => {
+      if (a._coutParReponse == null && b._coutParReponse == null) {
+        return b._reponses - a._reponses
+      }
+      if (a._coutParReponse == null) return 1
+      if (b._coutParReponse == null) return -1
+      return a._coutParReponse - b._coutParReponse
+    })
+}
