@@ -5,6 +5,8 @@ ViewSets métier (connexion, garde-fous, actions) atterrissent aux tâches
 suivantes de la lane et sont tous basés sur
 ``core.viewsets.CompanyScopedModelViewSet`` (scoping société garanti).
 """
+import os
+
 from rest_framework.decorators import action
 from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.response import Response
@@ -31,6 +33,70 @@ class StatusView(APIView):
 
     def get(self, request):
         return Response({'ok': True})
+
+
+# ENG12 — clés d'environnement dont l'endpoint santé rapporte la PRÉSENCE (jamais
+# la valeur). Lead Ads (webhook), CAPI (conversions serveur), fabrique créative.
+WIRING_ENV_KEYS = (
+    'META_LEAD_ADS_APP_SECRET',
+    'META_LEAD_ADS_VERIFY_TOKEN',
+    'META_CAPI_ACCESS_TOKEN',
+    'META_CAPI_PIXEL_ID',
+    'ZAPCAP_API_KEY',
+    'FAL_API_KEY',
+    'TEMPLATED_API_KEY',
+    'ELEVENLABS_API_KEY',
+    'JSON2VIDEO_API_KEY',
+)
+
+
+class WiringHealthView(APIView):
+    """ENG12 — Santé du câblage publicitaire (pour le dashboard ENG23).
+
+    ``GET /api/django/adsengine/wiring-health/`` — company-scopé, gaté par
+    ``adsengine_view``. Rapporte la seule PRÉSENCE (booléen) de chaque clé
+    d'environnement (Lead Ads / CAPI / fabrique) — **jamais la valeur** — plus la
+    présence d'un token de connexion, la dernière synchro réussie, et (non encore
+    câblés) le dernier webhook Lead Ads / événement CAPI. Aucun secret ne fuit.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if not _user_has_or_legacy(request.user, 'adsengine_view'):
+            return Response({'detail': 'Permission refusée.'}, status=403)
+        company = getattr(request.user, 'company', None)
+        if company is None:
+            return Response({'detail': 'Aucune société.'}, status=400)
+
+        from .models import InsightSnapshot
+
+        # PRÉSENCE uniquement — jamais la valeur du secret.
+        keys = {name: bool(os.environ.get(name)) for name in WIRING_ENV_KEYS}
+
+        conn = MetaConnection.objects.filter(company=company).first()
+        connection = {
+            'exists': conn is not None,
+            'enabled': bool(conn and conn.enabled),
+            'has_token': bool(conn and conn.has_token),  # présence, pas le token
+        }
+
+        last_snap = (InsightSnapshot.objects
+                     .filter(company=company)
+                     .order_by('-updated_at')
+                     .values_list('updated_at', flat=True)
+                     .first())
+
+        return Response({
+            'keys': keys,
+            'connection': connection,
+            'last_successful_sync': (
+                last_snap.isoformat() if last_snap else None),
+            # Câblés par les groupes Meta Lead Ads / CAPI (gated) — non encore
+            # disponibles : rapportés None honnêtement, jamais fabriqués.
+            'last_lead_ads_webhook': None,
+            'last_capi_event': None,
+        })
 
 
 class CostPerSignatureView(APIView):

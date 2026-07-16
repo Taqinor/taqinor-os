@@ -10,7 +10,7 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     CostPerSignatureView, EngineActionViewSet, GuardrailConfigViewSet,
-    MetaConnectionViewSet, StatusView,
+    MetaConnectionViewSet, StatusView, WiringHealthView,
 )
 
 router = DefaultRouter()
@@ -22,5 +22,7 @@ urlpatterns = [
     path('status/', StatusView.as_view(), name='adsengine-status'),
     path('metrics/cout-par-signature/', CostPerSignatureView.as_view(),
          name='adsengine-cout-par-signature'),
+    path('wiring-health/', WiringHealthView.as_view(),
+         name='adsengine-wiring-health'),
     path('', include(router.urls)),
 ]
