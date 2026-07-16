@@ -52,3 +52,45 @@ class LimiteCredit(models.Model):
 
     def __str__(self):
         return f'{self.client_id} — {self.montant_limite} {self.devise}'
+
+
+class ReglageCredit(models.Model):
+    """NTCRD3 — réglages crédit par société (1-1), défauts NON bloquants.
+
+    Les défauts reproduisent le comportement actuel (aucun hold tant que le
+    founder n'active rien) : ``mode_hold_defaut`` reste ``avertissement``
+    (jamais ``blocage`` sans opt-in explicite)."""
+
+    company = models.OneToOneField(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='reglage_credit')
+    mode_hold_defaut = models.CharField(
+        max_length=20, choices=LimiteCredit.ModeHold.choices,
+        default=LimiteCredit.ModeHold.AVERTISSEMENT,
+        help_text=(
+            'Mode de hold hérité par une LimiteCredit qui ne le surcharge '
+            'pas explicitement. Jamais "blocage" par défaut.'))
+    inclure_bc_non_factures = models.BooleanField(default=True)
+    inclure_devis_en_cours = models.BooleanField(default=False)
+    seuil_alerte_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, default=80,
+        help_text="Seuil (% de la limite) déclenchant une alerte avant blocage.")
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Réglage crédit (société)'
+        verbose_name_plural = 'Réglages crédit (société)'
+
+    def __str__(self):
+        return f'Réglage crédit — {self.company_id}'
+
+    @classmethod
+    def get_or_default(cls, company):
+        """Renvoie le réglage de ``company`` ou une INSTANCE NON SAUVEGARDÉE
+        aux défauts (jamais bloquant) si aucun réglage n'existe encore —
+        comportement actuel inchangé tant que le founder n'a rien configuré."""
+        try:
+            return cls.objects.get(company=company)
+        except cls.DoesNotExist:
+            return cls(company=company)
