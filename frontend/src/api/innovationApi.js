@@ -15,6 +15,9 @@ const innovationApi = {
   create: (data) => api.post('/innovation/idees/', data),
   update: (id, data) => api.patch(`/innovation/idees/${id}/`, data),
 
+  // ── Tableau de bord admin (NTIDE6) ──
+  tableauBord: () => api.get('/innovation/idees/tableau-bord/'),
+
   // ── Machine à états (POST) — palier Directeur/Responsable (NTIDE5) ──
   examiner: (id) => api.post(`/innovation/idees/${id}/examiner/`),
   retenir: (id) => api.post(`/innovation/idees/${id}/retenir/`),

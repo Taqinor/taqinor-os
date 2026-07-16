@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Lightbulb, Eye, ThumbsUp } from 'lucide-react'
 import { ListShell } from '../../ui/module'
 import { Badge } from '../../ui'
@@ -20,11 +20,13 @@ const STATUT_FILTER_OPTIONS = [
 
 export default function IdeesPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [idees, setIdees] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
-  const [statutFilter, setStatutFilter] = useState('')
-  const [contexteFilter, setContexteFilter] = useState('')
+  // NTIDE6 — drill-down depuis le tableau de bord (?statut=/?contexte=).
+  const [statutFilter, setStatutFilter] = useState(() => searchParams.get('statut') || '')
+  const [contexteFilter, setContexteFilter] = useState(() => searchParams.get('contexte') || '')
 
   const load = () => {
     setLoading(true)

@@ -10,10 +10,12 @@ from rest_framework import filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from authentication.permissions import (
+    IsAdminOrResponsableTier, IsAnyRole, IsResponsableOrAdmin,
+)
 from core.viewsets import CompanyScopedModelViewSet
 
-from . import services
+from . import selectors, services
 from .models import Idee, VoteIdee
 from .serializers import IdeeDetailSerializer, IdeeSerializer, VoteIdeeSerializer
 
@@ -63,6 +65,13 @@ class IdeeViewSet(CompanyScopedModelViewSet):
         log_activity(
             idee, Activity.Kind.CREATION, user=self.request.user,
             company=idee.company)
+
+    # ── NTIDE6 — tableau de bord admin ──────────────────────────────────────
+    @action(detail=False, methods=['get'], url_path='tableau-bord',
+            permission_classes=[IsAdminOrResponsableTier])
+    def tableau_bord(self, request):
+        """KPI par statut, top votes, plus récentes, heat-chart contexte."""
+        return Response(selectors.tableau_bord_idees(request.user.company))
 
     # ── NTIDE5 — machine à états + chatter ──────────────────────────────────
     def _transition(self, request, target):

@@ -11,10 +11,15 @@ import { Lightbulb } from 'lucide-react'
 
    Liste/détail : ouverts à TOUT utilisateur connecté (« logged-in users
    only », NTIDE4/NTIDE5 — aucun ``roles`` déclaré ⇒ authLoader seul).
+   Tableau de bord : palier Directeur/Responsable (NTIDE6, gaté aussi côté
+   serveur par ``IsAdminOrResponsableTier``).
    ========================================================================== */
 
 const IdeesPage = lazy(() => import('./IdeesPage'))
 const IdeeDetail = lazy(() => import('./IdeeDetail'))
+const InnovationDashboard = lazy(() => import('./InnovationDashboard'))
+
+const ADMIN_RESPONSABLE = ['responsable', 'admin']
 
 const config = {
   key: 'innovation',
@@ -28,15 +33,23 @@ const config = {
         label: 'Boîte à idées',
         icon: <Lightbulb size={17} strokeWidth={1.75} aria-hidden="true" />,
       },
+      {
+        to: '/innovation/tableau-bord',
+        label: 'Tableau de bord',
+        icon: <Lightbulb size={17} strokeWidth={1.75} aria-hidden="true" />,
+        roles: ADMIN_RESPONSABLE,
+      },
     ],
   },
   titles: [
     ['/innovation/idees', 'Boîte à idées'],
+    ['/innovation/tableau-bord', 'Tableau de bord — Idées'],
   ],
   sectionLabels: { innovation: 'Innovation' },
   routes: [
     { path: '/innovation/idees', component: IdeesPage },
     { path: '/innovation/idees/:id', component: IdeeDetail },
+    { path: '/innovation/tableau-bord', component: InnovationDashboard, roles: ADMIN_RESPONSABLE },
   ],
 }
 
