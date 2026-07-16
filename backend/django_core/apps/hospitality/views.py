@@ -14,10 +14,13 @@ from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 
 from . import services
-from .models import Chambre, Folio, PlanTarifaire, Reservation, TypeChambre
+from .models import (
+    Chambre, Folio, PlanTarifaire, Reservation, TacheMenage, TypeChambre,
+)
 from .serializers import (
     ChambreSerializer, FicheClientSerializer, FolioSerializer,
-    PlanTarifaireSerializer, ReservationSerializer, TypeChambreSerializer,
+    PlanTarifaireSerializer, ReservationSerializer, TacheMenageSerializer,
+    TypeChambreSerializer,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -222,3 +225,37 @@ class FolioViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(folio).data)
+
+
+class TacheMenageViewSet(TenantMixin, viewsets.ModelViewSet):
+    """Tâches de ménage (NTHOT9). Une femme/homme de chambre (rôle non
+    responsable/admin) ne voit QUE ses tâches assignées ; Responsable/Admin
+    voient tout (vue de pilotage). Filtre optionnel ``?statut=``."""
+    queryset = TacheMenage.objects.select_related('chambre', 'assignee').all()
+    serializer_class = TacheMenageSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS + ['terminer']:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        user = self.request.user
+        if not user.is_responsable:
+            qs = qs.filter(assignee=user)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    @action(detail=True, methods=['post'], url_path='terminer')
+    def terminer(self, request, pk=None):
+        """Marque la tâche terminée — repasse la chambre à ``libre``."""
+        tache = self.get_object()
+        try:
+            services.terminer_tache_menage(tache, user=request.user)
+        except services.TacheMenageError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(tache).data)

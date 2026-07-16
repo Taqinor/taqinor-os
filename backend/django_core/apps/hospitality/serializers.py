@@ -7,7 +7,7 @@ from rest_framework import serializers
 
 from .models import (
     Chambre, FicheClient, Folio, LigneFolio, PlanTarifaire, Reservation,
-    TypeChambre,
+    TacheMenage, TypeChambre,
 )
 
 
@@ -129,3 +129,21 @@ class FolioSerializer(serializers.ModelSerializer):
             'lignes', 'total_ht', 'date_creation', 'date_cloture',
         ]
         read_only_fields = fields
+
+
+class TacheMenageSerializer(serializers.ModelSerializer):
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    type_tache_display = serializers.CharField(
+        source='get_type_tache_display', read_only=True)
+    chambre_numero = serializers.CharField(
+        source='chambre.numero', read_only=True)
+
+    class Meta:
+        model = TacheMenage
+        fields = [
+            'id', 'chambre', 'chambre_numero', 'type_tache',
+            'type_tache_display', 'assignee', 'statut', 'statut_display',
+            'date_creation', 'date_completion',
+        ]
+        read_only_fields = ['statut', 'date_creation', 'date_completion']

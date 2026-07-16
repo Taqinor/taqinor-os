@@ -356,3 +356,50 @@ class ParametresTaxeSejour(models.Model):
 
     def __str__(self):
         return f'Taxe de séjour — {self.company}'
+
+
+# ── NTHOT9 — Housekeeping ───────────────────────────────────────────────────
+
+class TacheMenage(models.Model):
+    """Tâche de ménage assignée à une femme/homme de chambre. Créée
+    automatiquement au check-out (``services.check_out``, type ``depart``)."""
+
+    class TypeTache(models.TextChoices):
+        DEPART = 'depart', 'Départ'
+        RECOUCHE = 'recouche', 'Recouche'
+        NETTOYAGE_COMPLET = 'nettoyage_complet', 'Nettoyage complet'
+
+    class Statut(models.TextChoices):
+        A_FAIRE = 'a_faire', 'À faire'
+        EN_COURS = 'en_cours', 'En cours'
+        TERMINEE = 'terminee', 'Terminée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='hospitality_taches_menage',
+        verbose_name='Société',
+    )
+    chambre = models.ForeignKey(
+        Chambre, on_delete=models.CASCADE, related_name='taches_menage')
+    type_tache = models.CharField(
+        max_length=20, choices=TypeTache.choices,
+        default=TypeTache.NETTOYAGE_COMPLET)
+    assignee = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='hospitality_taches_menage',
+    )
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.A_FAIRE)
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_completion = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Tâche de ménage'
+        verbose_name_plural = 'Tâches de ménage'
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return f'{self.get_type_tache_display()} — {self.chambre}'

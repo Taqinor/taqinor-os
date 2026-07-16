@@ -6,7 +6,7 @@ from django.utils import timezone
 
 from .models import (
     Chambre, FicheClient, Folio, LigneFolio, ParametresTaxeSejour,
-    PlanTarifaire, Reservation,
+    PlanTarifaire, Reservation, TacheMenage,
 )
 
 FICHE_CLIENT_CHAMPS_REQUIS = [
@@ -306,8 +306,40 @@ def check_out(reservation, *, user=None, override=False):
     if reservation.chambre_id:
         reservation.chambre.statut = Chambre.Statut.SALE
         reservation.chambre.save(update_fields=['statut'])
+        # NTHOT9 — housekeeping : le check-out génère automatiquement la
+        # tâche de ménage « départ » sur la chambre libérée.
+        TacheMenage.objects.create(
+            company=reservation.company,
+            chambre=reservation.chambre,
+            type_tache=TacheMenage.TypeTache.DEPART,
+        )
 
     return reservation
+
+
+# ── NTHOT9 — Housekeeping ───────────────────────────────────────────────────
+
+class TacheMenageError(ValueError):
+    """Levée quand une tâche de ménage ne peut pas être marquée terminée."""
+
+
+def terminer_tache_menage(tache, *, user=None):
+    """Marque la tâche ``terminee`` et repasse la chambre ``sale``/``en_
+    nettoyage`` à ``libre`` — UNIQUEMENT si la chambre est encore dans un état
+    « à nettoyer » (jamais un écrasement d'un état ``occupee``/``hors_
+    service`` posé entre-temps par un autre flux)."""
+    if tache.statut == TacheMenage.Statut.TERMINEE:
+        raise TacheMenageError('Cette tâche de ménage est déjà terminée.')
+
+    tache.statut = TacheMenage.Statut.TERMINEE
+    tache.date_completion = timezone.now()
+    tache.save(update_fields=['statut', 'date_completion'])
+
+    chambre = tache.chambre
+    if chambre.statut in (Chambre.Statut.SALE, Chambre.Statut.EN_NETTOYAGE):
+        chambre.statut = Chambre.Statut.LIBRE
+        chambre.save(update_fields=['statut'])
+    return tache
 
 
 # ── NTHOT5 — Check-in avec fiche de police marocaine ────────────────────────
