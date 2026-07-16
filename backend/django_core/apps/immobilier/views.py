@@ -4,16 +4,16 @@ Aucune permission fine dédiée (comme ``apps.flotte``) : ``IsAuthenticated``
 (défaut DRF global) suffit pour ce premier lot — une gate fine pourra être
 ajoutée plus tard sans changer la forme des endpoints.
 """
-from rest_framework import filters, viewsets
+from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from core.mixins import TenantMixin
 
-from .models import Batiment, Local, Locataire, Niveau, Site
+from .models import Bail, Batiment, Local, Locataire, Niveau, Site
 from .serializers import (
-    BatimentSerializer, LocalSerializer, LocataireSerializer, NiveauSerializer,
-    SiteSerializer,
+    BailSerializer, BatimentSerializer, LocalSerializer, LocataireSerializer,
+    NiveauSerializer, SiteSerializer,
 )
 
 
@@ -110,3 +110,40 @@ class LocataireViewSet(_ImmobilierBaseViewSet):
         locataire = self.get_object()
         client_id = services.resolve_client_ventes_for_locataire(locataire)
         return Response({'client_ventes_id': client_id})
+
+
+class BailViewSet(_ImmobilierBaseViewSet):
+    """NTPRO3 — Baux (habitation loi 67-12 / commercial loi 49-16)."""
+    queryset = Bail.objects.select_related('local', 'locataire').all()
+    serializer_class = BailSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_debut', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        local_id = self.request.query_params.get('local')
+        locataire_id = self.request.query_params.get('locataire')
+        statut = self.request.query_params.get('statut')
+        if local_id:
+            qs = qs.filter(local_id=local_id)
+        if locataire_id:
+            qs = qs.filter(locataire_id=locataire_id)
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        from . import services
+
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        local = serializer.validated_data.pop('local')
+        locataire = serializer.validated_data.pop('locataire')
+        try:
+            bail = services.creer_bail(
+                company=request.user.company, local=local,
+                locataire=locataire, **serializer.validated_data)
+        except services.BailActifExistantError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        out = self.get_serializer(bail)
+        return Response(out.data, status=status.HTTP_201_CREATED)

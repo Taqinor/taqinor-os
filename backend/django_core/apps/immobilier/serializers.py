@@ -6,7 +6,7 @@ multi-tenant).
 """
 from rest_framework import serializers
 
-from .models import Batiment, Local, Locataire, Niveau, Site
+from .models import Bail, Batiment, Local, Locataire, Niveau, Site
 
 
 class SiteSerializer(serializers.ModelSerializer):
@@ -72,3 +72,34 @@ class LocataireSerializer(serializers.ModelSerializer):
             'date_creation', 'company',
         ]
         read_only_fields = ['id', 'client_ventes_id', 'date_creation', 'company']
+
+
+class BailSerializer(serializers.ModelSerializer):
+    type_bail_display = serializers.CharField(
+        source='get_type_bail_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    local_reference = serializers.CharField(
+        source='local.reference', read_only=True)
+    locataire_nom = serializers.CharField(
+        source='locataire.nom', read_only=True)
+
+    class Meta:
+        model = Bail
+        fields = [
+            'id', 'local', 'local_reference', 'locataire', 'locataire_nom',
+            'type_bail', 'type_bail_display', 'date_debut', 'duree_mois',
+            'loyer_mensuel_ht', 'charges_mensuelles_provisions',
+            'depot_garantie', 'statut', 'statut_display', 'date_preavis',
+            'date_fin_effective', 'bailleur_nom_snapshot',
+            'locataire_nom_snapshot', 'depot_garantie_recu',
+            'date_reception_depot', 'depot_garantie_restitue',
+            'date_restitution', 'montant_retenu', 'motif_retenue',
+            'date_creation', 'company',
+        ]
+        read_only_fields = [
+            'id', 'statut', 'bailleur_nom_snapshot', 'locataire_nom_snapshot',
+            'depot_garantie_recu', 'date_reception_depot',
+            'depot_garantie_restitue', 'date_restitution', 'montant_retenu',
+            'motif_retenue', 'date_creation', 'company',
+        ]

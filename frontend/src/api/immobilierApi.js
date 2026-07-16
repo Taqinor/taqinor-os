@@ -19,6 +19,7 @@ const immobilierApi = {
     ...crud('locataires'),
     resolveClient: (id) => api.post(`/immobilier/locataires/${id}/resolve-client/`),
   },
+  baux: crud('baux'),
 }
 
 export default immobilierApi
