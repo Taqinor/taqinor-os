@@ -22,7 +22,7 @@ ERR88 guard: refused outside ``settings.DEBUG`` without ``--force`` (it creates
 accounts with a KNOWN password).
 """
 import random
-from decimal import Decimal
+from datetime import timedelta
 
 from django.conf import settings
 from django.core.management import call_command
@@ -159,5 +159,75 @@ class Command(BaseCommand):
     def _generate_history(self, company, admin, resp, rng):
         """Génère l'historique vivant. Étendu par NTDMO2 (leads), NTDMO3
         (devis), NTDMO4 (chantiers/factures), NTDMO5 (SAV/stock)."""
-        # NTDMO2-5 remplissent cette section.
-        _ = (company, admin, resp, rng, Decimal, timezone)
+        ctx = {'company': company, 'admin': admin, 'resp': resp, 'rng': rng}
+        self._seed_leads(ctx)
+
+    # ── NTDMO2 — leads répartis sur les 6 stages STAGES.py ─────────────────
+    # Prénoms/noms/villes marocaines (Faker arrive en NTDMO17, hors de ce lot).
+    _NOMS = ['Alaoui', 'Bennani', 'Tazi', 'Chraibi', 'Berrada', 'Idrissi',
+             'El Amrani', 'Bouazza', 'Sekkat', 'Benjelloun', 'Fassi', 'Ouazzani',
+             'Cherkaoui', 'Lahlou', 'Kettani', 'Bennis', 'Sqalli', 'Alami',
+             'Mernissi', 'Belghiti', 'Tahiri', 'Naciri', 'Guerraoui', 'Filali']
+    _PRENOMS = ['Karim', 'Salma', 'Omar', 'Fatima-Zahra', 'Youssef', 'Mehdi',
+                'Sara', 'Hamid', 'Nadia', 'Rachid', 'Meryem', 'Anas', 'Imane',
+                'Hicham', 'Loubna', 'Adil', 'Khadija', 'Yassine']
+    _VILLES = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Fès', 'Agadir',
+               'Meknès', 'Oujda', 'Kénitra', 'Béni Mellal', 'Safi', 'El Jadida']
+    _MOTIFS_PERTE = ['Prix trop élevé', 'Projet reporté', 'Concurrent choisi',
+                     'Budget insuffisant', 'Sans suite']
+
+    def _seed_leads(self, ctx):
+        from apps.crm.models import Lead, MotifPerte
+        # Clés de stage canoniques — chargées depuis STAGES.py (jamais en dur).
+        from apps.crm.stages import (
+            COLD, CONTACTED, FOLLOW_UP, NEW, QUOTE_SENT, SIGNED,
+        )
+        company, rng = ctx['company'], ctx['rng']
+        now = timezone.now()
+
+        motifs = [
+            MotifPerte.objects.get_or_create(company=company, nom=nom)[0]
+            for nom in self._MOTIFS_PERTE
+        ]
+        canaux = [c.value for c in Lead.Canal]
+        priorites = [p.value for p in Lead.Priorite]
+        types_inst = [t.value for t in Lead.TypeInstallation]
+
+        # Distribution réaliste (entonnoir) : plus de NEW/CONTACTED récents,
+        # moins de SIGNED anciens ; ~40 leads. (stage, count, âge_max_jours).
+        plan = [
+            (NEW, 12, 45), (CONTACTED, 10, 90), (QUOTE_SENT, 7, 150),
+            (FOLLOW_UP, 5, 120), (SIGNED, 4, 300), (COLD, 4, 330),
+        ]
+        leads = []
+        i = 0
+        for stage, count, age_max in plan:
+            for _ in range(count):
+                nom = self._NOMS[i % len(self._NOMS)]
+                prenom = self._PRENOMS[i % len(self._PRENOMS)]
+                ville = rng.choice(self._VILLES)
+                age = rng.randint(0, age_max)
+                perdu = stage == COLD
+                lead = Lead.objects.create(
+                    company=company, nom=nom, prenom=prenom,
+                    societe=(f'{nom} Énergie' if i % 3 == 0 else None),
+                    telephone=f'+212 6 {rng.randint(10, 99)} '
+                              f'{rng.randint(10, 99)} '
+                              f'{rng.randint(10, 99)} {rng.randint(10, 99)}',
+                    ville=ville, stage=stage, source=Lead.Source.OS_NATIVE,
+                    canal=rng.choice(canaux), priorite=rng.choice(priorites),
+                    type_installation=rng.choice(types_inst),
+                    perdu=perdu,
+                    motif_perte=(rng.choice(motifs).nom if perdu else None),
+                )
+                # date_creation est auto_now_add → réancrée par update().
+                created = now - timedelta(days=age)
+                Lead.objects.filter(pk=lead.pk).update(date_creation=created)
+                # Quelques relances proches à venir (calendrier + alertes).
+                if stage in (CONTACTED, FOLLOW_UP) and i % 2 == 0:
+                    lead.relance_date = (
+                        now + timedelta(days=rng.randint(1, 5))).date()
+                    lead.save(update_fields=['relance_date'])
+                leads.append(lead)
+                i += 1
+        ctx['leads'] = leads

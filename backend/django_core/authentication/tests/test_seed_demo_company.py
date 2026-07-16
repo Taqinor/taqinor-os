@@ -44,3 +44,43 @@ class SeedDemoCompanyNTDMO1Test(TestCase):
         from django.core.management.base import CommandError
         with self.assertRaises(CommandError):
             call_command('seed_demo_company', verbosity=0)
+
+
+@override_settings(DEBUG=True)
+class SeedDemoLeadsNTDMO2Test(TestCase):
+    SLUG = 'taqinor-demo-full'
+
+    def setUp(self):
+        call_command('seed_demo_company', verbosity=0)
+        self.company = Company.objects.get(slug=self.SLUG)
+
+    def test_lead_on_each_of_six_stages_and_lost(self):
+        from apps.crm.models import Lead
+        from apps.crm.stages import STAGES
+        stages_present = set(
+            Lead.objects.filter(company=self.company)
+            .values_list('stage', flat=True))
+        for key in STAGES:
+            self.assertIn(key, stages_present, f'stage {key} manquant')
+        lost = Lead.objects.filter(company=self.company, perdu=True)
+        self.assertGreaterEqual(lost.count(), 3)
+        # Les leads perdus portent un motif peuplé.
+        self.assertTrue(all(bool(m) for m in lost.values_list(
+            'motif_perte', flat=True)))
+
+    def test_leads_dated_relative_to_now(self):
+        from django.utils import timezone
+        from apps.crm.models import Lead
+        # Aucune date de création dans le futur, ~40 leads sur 12 mois.
+        qs = Lead.objects.filter(company=self.company)
+        self.assertGreaterEqual(qs.count(), 35)
+        self.assertFalse(
+            qs.filter(date_creation__gt=timezone.now()).exists())
+
+    def test_some_future_relances(self):
+        from django.utils import timezone
+        from apps.crm.models import Lead
+        self.assertTrue(
+            Lead.objects.filter(
+                company=self.company,
+                relance_date__gte=timezone.now().date()).exists())
