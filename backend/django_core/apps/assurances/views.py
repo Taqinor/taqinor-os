@@ -19,6 +19,7 @@ from .serializers import (
     EcheancePrimeSerializer, GarantiePoliceSerializer,
     PoliceActivitySerializer, PoliceAssuranceSerializer,
 )
+from .selectors import polices_expirantes
 from .services import (
     CHAMPS_SUIVIS_POLICE, generer_echeancier_prime, log_police_creation,
     log_police_note, log_police_transitions_auto, proposer_ecriture_prime,
@@ -101,6 +102,21 @@ class PoliceAssuranceViewSet(_AssurancesBaseViewSet):
         act = log_police_note(police, request.user, body)
         return Response(PoliceActivitySerializer(act).data,
                         status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['get'], url_path='expirantes')
+    def expirantes(self, request):
+        """NTASS8 — Polices ACTIVES expirant sous ``?within=N`` jours (défaut
+        30). Pattern ``expirantes/?within=N`` (flotte/rh)."""
+        try:
+            within = int(request.query_params.get('within', 30))
+        except (TypeError, ValueError):
+            within = 30
+        qs = polices_expirantes(request.user.company, within=within)
+        page = self.paginate_queryset(qs)
+        serializer = self.get_serializer(page or qs, many=True)
+        if page is not None:
+            return self.get_paginated_response(serializer.data)
+        return Response(serializer.data)
 
     @action(detail=True, methods=['post'], url_path='generer-echeancier')
     def generer_echeancier(self, request, pk=None):

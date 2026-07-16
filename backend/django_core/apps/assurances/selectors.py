@@ -4,7 +4,9 @@ Point d'entrée des LECTURES cross-app entrantes (aucune autre app n'a besoin
 de lire ``assurances`` pour l'instant, ce module reste donc côté LECTEUR :
 il importe PARESSEUSEMENT les selectors des autres apps — jamais leurs
 ``models`` — pour résoudre des libellés d'actifs transverses (NTASS7/20)."""
-from .models import ActifCouvert
+import datetime
+
+from .models import ActifCouvert, PoliceAssurance
 
 
 def resoudre_libelle_actif(company, type_actif, actif_ref):
@@ -49,3 +51,28 @@ def actifs_couverts_de_la_police(police):
             'date_ajout': actif.date_ajout,
         })
     return resultats
+
+
+# ── NTASS8 — Alertes de renouvellement (polices) ────────────────────────────
+
+def polices_de_la_societe(company, statut=None, type_police=None):
+    """Polices d'assurance d'une société (queryset scopé, lecture seule)."""
+    qs = PoliceAssurance.objects.filter(company=company).select_related(
+        'assureur', 'courtier')
+    if statut:
+        qs = qs.filter(statut=statut)
+    if type_police:
+        qs = qs.filter(type_police=type_police)
+    return qs
+
+
+def polices_expirantes(company, within=30, today=None):
+    """NTASS8 — Polices ACTIVES dont ``date_echeance`` tombe sous ``within``
+    jours (inclusif), pattern ``expirantes/?within=N`` (flotte/rh). ``today``
+    est INJECTABLE (date du jour par défaut). Lecture seule, scopée société."""
+    if today is None:
+        today = datetime.date.today()
+    horizon = today + datetime.timedelta(days=within)
+    return polices_de_la_societe(
+        company, statut=PoliceAssurance.Statut.ACTIVE,
+    ).filter(date_echeance__lte=horizon).order_by('date_echeance', 'id')
