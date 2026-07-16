@@ -63,7 +63,16 @@ runs:
     - name: Restore cached pre-migrated DB dump (WOW8)
       id: testdb-cache
       if: ${{ inputs.testdb-cache-into != '' }}
-      uses: actions/cache@v4
+      # Restore/save are SPLIT (WOW-CI 2026-07-16): actions/cache@v4's automatic
+      # post-job save let PR-branch runs write dumps into the PR's own cache
+      # scope. GitHub resolves exact key AND restore-keys against the CURRENT
+      # branch scope BEFORE the default branch, so a PR that added then REVERTED
+      # a migration kept restoring its own stale superset dump instead of main's
+      # clean exact one — the manifest guard below then (correctly) forced a
+      # ~40-min CLEAN rebuild on every required shard + e2e. With the split,
+      # PR runs are restore-only (they resolve straight to main's dumps) and the
+      # cache advances exclusively from push runs (main/dev, release-verify).
+      uses: actions/cache/restore@v4
       with:
         # The dump AND a manifest of the migration-file hashes that produced it —
         # the manifest lets the build step below prove "only new migrations added"
@@ -167,7 +176,24 @@ runs:
           rm -f /tmp/testdb.dump
           pgtool pg_dump -h "$PGHOST" -U "$PGUSER" -Fc -f /tmp/testdb.dump "$TARGET"
           manifest > /tmp/testdb.manifest
-          echo "Re-dumped + manifest under the new key — actions/cache saves at job end (first save wins)."
+          echo "Re-dumped + manifest under the new key — the save step below persists it (push runs only, first save wins)."
         else
           echo "Exact hit — DB already current, no re-dump needed."
         fi
+    - name: Save the pre-migrated DB dump (push runs only — never from a PR)
+      # WOW-CI (2026-07-16): PR runs must NOT save. A PR-scoped dump shadows
+      # main's clean dump in cache resolution (current-branch scope wins), and a
+      # PR that reverts one of its own migrations then keeps restoring a stale
+      # superset dump — tripping the manifest guard into a ~40-min clean rebuild
+      # on the REQUIRED shards + e2e. Saving only from push events (main/dev
+      # merges, release-verify) keeps every PR resolving against main's dumps:
+      # migration-adding PRs pay a small delta-migrate per run instead, and
+      # revert-PRs exact-hit main's dump again. Cache advances post-merge on the
+      # main push run. Skipped on an exact hit (nothing new to save).
+      if: ${{ inputs.testdb-cache-into != '' && github.event_name != 'pull_request' && steps.testdb-cache.outputs.cache-hit != 'true' }}
+      uses: actions/cache/save@v4
+      with:
+        path: |
+          /tmp/testdb.dump
+          /tmp/testdb.manifest
+        key: testdb-v1-${{ hashFiles('backend/django_core/**/migrations/*.py', 'backend/django_core/requirements.txt') }}
