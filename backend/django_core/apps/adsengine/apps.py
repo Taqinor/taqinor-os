@@ -15,6 +15,19 @@ class AdsengineConfig(AppConfig):
     name = 'apps.adsengine'
     verbose_name = 'Moteur publicitaire (Meta Ads)'
 
+    # ODX21 — registre de modules (doit correspondre à la clé du
+    # frontend features/adsengine/module.config.jsx). Satellite OFF par défaut.
+    module_manifest = {
+        'key': 'adsengine',
+        'label': 'Publicité',
+        'icone': 'megaphone',
+        'depends': [],
+        'installable': False,
+        'description': "Moteur publicitaire Meta Ads autonome (propose→approuve→"
+                       "applique, campagnes toujours PAUSED, off par défaut).",
+        'categorie': 'Commercial',
+    }
+
     def ready(self):
         # ADSENG32 — câble l'émetteur CAPI CRM-stage (Conversion Leads), SÉPARÉ
         # de l'émetteur signature QJ9 : un récepteur pre_save/post_save sur
