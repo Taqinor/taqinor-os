@@ -742,6 +742,8 @@ CELERY_TASK_ROUTES = {
     'qhse.escalader_checkins_en_retard': {'queue': 'scheduled'},
     # Notifications — balayage des leads chauds.
     'notifications.sweep_hot_leads': {'queue': 'scheduled'},
+    # ENG6 — synchro quotidienne des insights publicitaires.
+    'adsengine.sync_insights_daily': {'queue': 'scheduled'},
     # NTPLT27 — 4e queue `bulk` pour le travail de masse (imports dataimport,
     # exports planifiés volumineux, backfills, seed à l'échelle). Un import de
     # 100 000 lignes ne doit plus retarder un digest planifié ni un rendu PDF

@@ -394,6 +394,12 @@ app.conf.beat_schedule = {
         'task': 'notifications.sweep_hot_leads',
         'schedule': crontab(minute='*/15'),
     },
+    # ENG6 — synchro quotidienne des insights publicitaires (miroirs +
+    # snapshots). NO-OP propre tant qu'aucune MetaConnection n'est activée.
+    'adsengine-sync-insights-daily': {
+        'task': 'adsengine.sync_insights_daily',
+        'schedule': crontab(hour=6, minute=45),
+    },
 }
 
 # YHARD6 — compteurs Celery succès/échec (process-local, best-effort) pour
