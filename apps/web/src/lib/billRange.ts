@@ -28,6 +28,36 @@ export function billRangeLabel(id: BillRangeId): string {
 }
 
 /**
+ * Bornes numériques de chaque tranche (MAD/mois) — intervalles semi-ouverts
+ * [min, max) pour que chaque montant tombe dans EXACTEMENT une tranche ; la
+ * dernière est ouverte (∞) et attrape tout grand montant. Dérivées des ids/
+ * libellés de BILL_RANGES ci-dessus — garder alignées si les tranches bougent.
+ */
+const BILL_RANGE_BOUNDS: Record<BillRangeId, { min: number; max: number }> = {
+  lt800: { min: 0, max: 800 },
+  '800-1000': { min: 800, max: 1000 },
+  '1000-1500': { min: 1000, max: 1500 },
+  '1500-3000': { min: 1500, max: 3000 },
+  '3000-5000': { min: 3000, max: 5000 },
+  '5000-10000': { min: 5000, max: 10000 },
+  gt10000: { min: 10000, max: Infinity },
+};
+
+/**
+ * Tranche correspondant à un montant EXACT de facture (MAD/mois) : la plus
+ * petite tranche dont les bornes contiennent le montant (valeur du select du
+ * formulaire). null pour une entrée non chiffrable (NaN/≤ 0) — jamais deviné.
+ */
+export function billRangeFromExact(mad: number): BillRangeId | null {
+  if (!Number.isFinite(mad) || mad <= 0) return null;
+  for (const r of BILL_RANGES) {
+    const b = BILL_RANGE_BOUNDS[r.id];
+    if (mad >= b.min && mad < b.max) return r.id;
+  }
+  return null; // inatteignable (dernière tranche ouverte) — défensif
+}
+
+/**
  * Bande préliminaire kWc + ROI — fallback local quand SIMULATOR_API_URL
  * n'est pas configurée. Jamais un devis : une fourchette indicative.
  * Hypothèses : barème régie ONEE (tranche effective ≈ 1,38–1,60 MAD/kWh selon la

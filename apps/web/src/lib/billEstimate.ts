@@ -259,7 +259,10 @@ function paybackForKwc(kwc: number): string {
  */
 export function formatMad(v: number): string {
   const n = Math.max(0, Math.round(v));
-  return n.toLocaleString('fr-FR').replace(/ | |,/g, ' ').trim();
+  // Séparateur de milliers normalisé en ESPACE FINE INSÉCABLE (U+202F) : un
+  // montant ne se coupe jamais en fin de ligne (« 263 794 » ne devient jamais
+  // « 263 » / « 794 » sur deux lignes — vu sur les cartes KPI du document).
+  return n.toLocaleString('fr-FR').replace(/ | |,/g, ' ').trim();
 }
 
 /** Fourchette MAD « X – Y » (déjà arrondie). Si bornes égales, un seul nombre. */
