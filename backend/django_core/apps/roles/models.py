@@ -361,6 +361,31 @@ VIEWER_PERMISSIONS = [
     SCOPE_TEAM,
 ]
 
+# ── NTPRT1 — Rôles système du Portail EXTERNE (self-service) ────────────────
+# AXE DE PERMISSION SÉPARÉ du catalogue interne ``ALL_PERMISSIONS`` : ces codes
+# ``portail_*_acces`` n'apparaissent JAMAIS dans la grille de rôles interne
+# (Paramètres, module × action) ni dans la matrice RBAC interne
+# (``core.rbac_matrix``). Ils bornent l'accès aux endpoints self-service
+# ``/api/django/portail/*`` et RIEN d'autre. Un compte portail ne porte AUCUNE
+# permission interne, donc n'a par construction accès à aucun endpoint interne
+# (critère d'acceptation NTPRT1). Le préfixe ``portail_`` est exclu de
+# ``CustomUser._role_grants_write`` : un compte portail n'est JAMAIS
+# « responsable » interne. La classe de permission d'enforcement (accès borné à
+# SON id) est posée par NTPRT5 ; ici on ne pose que la donnée (rôles + champs).
+PORTAIL_CLIENT_PERMISSIONS = ['portail_client_acces']
+PORTAIL_FOURNISSEUR_PERMISSIONS = ['portail_fournisseur_acces']
+PORTAIL_PARTENAIRE_PERMISSIONS = ['portail_partenaire_acces']
+
+# Les 3 rôles système du portail (nom → permissions). Créés/synchronisés par le
+# seeder ``init_roles`` (idempotent, additif) exactement comme les rôles
+# internes ci-dessus, avec ``est_systeme=True``.
+CANONICAL_PORTAIL_ROLES = [
+    ('Portail client', PORTAIL_CLIENT_PERMISSIONS),
+    ('Portail fournisseur', PORTAIL_FOURNISSEUR_PERMISSIONS),
+    ('Portail partenaire', PORTAIL_PARTENAIRE_PERMISSIONS),
+]
+
+
 # Registre canonique : (nom, permissions). Les trois premiers conservent les
 # noms système historiques. Ordre = ordre d'affichage souhaité. Le seeder crée/
 # met à jour ces rôles système pour chaque société (idempotent, additif).
@@ -375,6 +400,10 @@ CANONICAL_SYSTEM_ROLES = [
     # Rôles légacy conservés pour les comptes/données déjà en place.
     ('Responsable', RESPONSABLE_PERMISSIONS),
     ('Utilisateur', UTILISATEUR_PERMISSIONS),
+    # NTPRT1 — rôles système du Portail externe (client/fournisseur/partenaire).
+    # Un même axe que les rôles internes pour le SEEDING (est_systeme=True,
+    # idempotent), mais des permissions portail-seules (jamais internes).
+    *CANONICAL_PORTAIL_ROLES,
 ]
 
 
