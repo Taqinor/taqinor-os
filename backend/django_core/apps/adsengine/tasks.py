@@ -153,6 +153,56 @@ def evaluate_optimization_rules():
     return result
 
 
+@shared_task(name='adsengine.run_active_flightplans')
+def run_active_flightplans():
+    """ADSENG35 — Boucle du FlightRunner (quotidienne, après la synchro ENG6).
+
+    Pour chaque société dont un ``FlightPlan`` est ACTIF, exécute la boucle
+    quotidienne du runner — mais UNIQUEMENT si le mode autonome est ACTIVÉ pour
+    la société (``is_autonomy_active``, OFF par défaut, posé seulement quand le
+    préflight ADSENG38 est vert) ET si l'interrupteur global n'est pas engagé.
+    Le lundi, exécute aussi la boucle hebdo + l'avancement de phase.
+
+    NO-OP propre par défaut : tant qu'aucune société n'a activé l'autonomie, ce
+    beat ne fait rien (aucun run autonome n'est jamais déclenché sans go-live
+    humain). Best-effort par société ; jamais d'unpause programmatique."""
+    import datetime as _dt
+
+    from authentication.selectors import active_companies
+
+    from .flightrunner import FlightRunner, is_autonomy_active
+    from .models import FlightPlan
+
+    today = _dt.date.today()
+    is_monday = today.weekday() == 0
+    ran = 0
+    for company in active_companies():
+        if not is_autonomy_active(company):
+            continue  # OFF par défaut : aucun run autonome sans activation verte
+        plan = FlightPlan.objects.filter(
+            company=company, status=FlightPlan.Statut.ACTIF).first()
+        if plan is None:
+            continue
+        try:
+            runner = FlightRunner(plan)
+            if runner.is_killed():
+                continue  # interrupteur global engagé : no-op
+            runner.run_daily(today=today)
+            if is_monday:
+                runner.run_weekly(today=today)
+                runner.advance_phase(today=today)
+            ran += 1
+        except Exception:  # pragma: no cover - défensif, isolation société
+            logger.warning(
+                'adsengine.run_active_flightplans: échec société %s',
+                company.pk, exc_info=True)
+            continue
+
+    logger.info(
+        'adsengine.run_active_flightplans: %s société(s) exécutée(s)', ran)
+    return {'companies_ran': ran}
+
+
 @shared_task(name='adsengine.generate_creative_variants')
 def generate_creative_variants(base_asset_id, brand_fields=None, count=2):
     """ENG18 — Tâche « variantes » : 2-3 statiques d'un asset de base approuvé.
