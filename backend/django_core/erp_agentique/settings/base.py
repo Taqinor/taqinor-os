@@ -172,6 +172,10 @@ INSTALLED_APPS = [
     # propose→approuve→applique, création TOUJOURS PAUSED). App satellite
     # multi-société ; tout no-ope sans token/clé configuré.
     'apps.adsengine',
+    # NTEXT13 — registre de packages d'extension (marketplace interne no-code).
+    # Catalogue READ-ONLY (company=None) ; installation par tenant hors
+    # périmètre de ce lot (NTEXT14, non construite ici).
+    'apps.extensions',
 ]
 
 MIDDLEWARE = [
