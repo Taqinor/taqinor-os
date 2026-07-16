@@ -11,6 +11,20 @@ from .models import (
     RendezVous, Salle)
 
 
+def _meme_societe(serializer, value, label):
+    """Garde-fou tenant : refuse une FK qui appartient à une AUTRE société —
+    jamais un ``patient``/``praticien``/``convention``/etc. d'une société
+    tierce accepté en écriture depuis le corps de requête. Miroir du helper
+    répété (mêmes nom/signature) dans ``apps/rh``, ``apps/qhse``,
+    ``apps/compta``, ``apps/paie``, ``apps/gestion_projet`` — convention
+    déjà établie plutôt qu'un mécanisme neuf."""
+    request = serializer.context.get('request')
+    if value is not None and request is not None:
+        if value.company_id != request.user.company_id:
+            raise serializers.ValidationError(f'{label} inconnu.')
+    return value
+
+
 class PraticienSerializer(serializers.ModelSerializer):
     class Meta:
         model = Praticien
@@ -43,6 +57,12 @@ class PatientSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['numero_dossier']
 
+    def validate_client(self, value):
+        return _meme_societe(self, value, 'Client')
+
+    def validate_convention(self, value):
+        return _meme_societe(self, value, 'Convention')
+
 
 class RendezVousSerializer(serializers.ModelSerializer):
     statut_display = serializers.CharField(source='get_statut_display', read_only=True)
@@ -64,6 +84,15 @@ class RendezVousSerializer(serializers.ModelSerializer):
     def get_praticien_nom(self, obj):
         return obj.praticien.nom if obj.praticien_id else None
 
+    def validate_patient(self, value):
+        return _meme_societe(self, value, 'Patient')
+
+    def validate_praticien(self, value):
+        return _meme_societe(self, value, 'Praticien')
+
+    def validate_salle(self, value):
+        return _meme_societe(self, value, 'Salle')
+
 
 class AdmissionSerializer(serializers.ModelSerializer):
     type_display = serializers.CharField(source='get_type_display', read_only=True)
@@ -76,6 +105,15 @@ class AdmissionSerializer(serializers.ModelSerializer):
             'date_sortie', 'type', 'type_display', 'statut', 'statut_display',
         ]
         read_only_fields = ['statut', 'date_sortie']
+
+    def validate_patient(self, value):
+        return _meme_societe(self, value, 'Patient')
+
+    def validate_rdv(self, value):
+        return _meme_societe(self, value, 'Rendez-vous')
+
+    def validate_praticien(self, value):
+        return _meme_societe(self, value, 'Praticien')
 
 
 class ConventionSerializer(serializers.ModelSerializer):
@@ -98,6 +136,21 @@ class ActeRealiseSerializer(serializers.ModelSerializer):
             'facturable', 'prise_en_charge', 'facture_sante',
         ]
         read_only_fields = ['tarif_applique_ttc', 'facture_sante']
+
+    def validate_admission(self, value):
+        return _meme_societe(self, value, 'Admission')
+
+    def validate_patient(self, value):
+        return _meme_societe(self, value, 'Patient')
+
+    def validate_praticien(self, value):
+        return _meme_societe(self, value, 'Praticien')
+
+    def validate_acte(self, value):
+        return _meme_societe(self, value, 'Acte médical')
+
+    def validate_prise_en_charge(self, value):
+        return _meme_societe(self, value, 'Prise en charge')
 
 
 class FactureSanteSerializer(serializers.ModelSerializer):
@@ -133,6 +186,9 @@ class PaiementSanteSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['encaisse_par']
 
+    def validate_facture_sante(self, value):
+        return _meme_societe(self, value, 'Facture santé')
+
 
 class PriseEnChargeSerializer(serializers.ModelSerializer):
     statut_display = serializers.CharField(source='get_statut_display', read_only=True)
@@ -146,6 +202,15 @@ class PriseEnChargeSerializer(serializers.ModelSerializer):
             'date_expiration',
         ]
 
+    def validate_patient(self, value):
+        return _meme_societe(self, value, 'Patient')
+
+    def validate_convention(self, value):
+        return _meme_societe(self, value, 'Convention')
+
+    def validate_admission(self, value):
+        return _meme_societe(self, value, 'Admission')
+
 
 class GrilleTarifaireSerializer(serializers.ModelSerializer):
     class Meta:
@@ -154,6 +219,12 @@ class GrilleTarifaireSerializer(serializers.ModelSerializer):
             'id', 'convention', 'acte', 'tarif_convention_ttc',
             'taux_prise_charge_pct',
         ]
+
+    def validate_convention(self, value):
+        return _meme_societe(self, value, 'Convention')
+
+    def validate_acte(self, value):
+        return _meme_societe(self, value, 'Acte médical')
 
 
 class ActeMedicalSerializer(serializers.ModelSerializer):
