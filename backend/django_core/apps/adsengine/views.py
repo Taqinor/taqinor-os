@@ -15,9 +15,10 @@ from rest_framework.views import APIView
 from core.permissions import _user_has_or_legacy
 from core.viewsets import CompanyScopedModelViewSet
 
-from .models import EngineAction, GuardrailConfig, MetaConnection
+from .models import EngineAction, EngineAlert, GuardrailConfig, MetaConnection
 from .serializers import (
-    EngineActionSerializer, GuardrailConfigSerializer, MetaConnectionSerializer,
+    EngineActionSerializer, EngineAlertSerializer, GuardrailConfigSerializer,
+    MetaConnectionSerializer,
 )
 
 
@@ -155,6 +156,18 @@ class GuardrailConfigViewSet(AdsengineViewSet):
 
     queryset = GuardrailConfig.objects.all()
     serializer_class = GuardrailConfigSerializer
+
+
+class EngineAlertViewSet(AdsengineViewSet):
+    """ENG13 — Liste (lecture seule) des alertes moteur pour le dashboard.
+
+    Company-scopé (hérité) + gaté ``adsengine_view``. Restreint à GET : les
+    alertes sont créées par le moteur (ENG9), jamais par un client API.
+    """
+
+    queryset = EngineAlert.objects.all()
+    serializer_class = EngineAlertSerializer
+    http_method_names = ['get', 'head', 'options']
 
 
 class HasAdsengineApprove(BasePermission):

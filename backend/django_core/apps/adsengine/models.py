@@ -377,3 +377,48 @@ class WeeklyBrief(TenantModel):
 
     def __str__(self):
         return f'Brief {self.period_start} → {self.period_end}'
+
+
+class EngineAlert(TenantModel):
+    """ENG13 — Alerte moteur (WhatsApp-first) : violation / anomalie / inopérante.
+
+    Matérialise une alerte émise par le moteur de garde-fous (ENG9) : une
+    violation de garde-fou, une anomalie détectée, ou une règle INOPÉRANTE (qui
+    n'a pas pu tourner — leçon Madgicx : jamais un échec silencieux). Le rendu FR
+    court + le deep-link ``wa.me`` vivent dans ``alerts.py`` (l'ENVOI réel via
+    template WhatsApp BSP est gated/plus tard — ici on ne fait que rendre + lister).
+
+    ``action`` relie optionnellement l'alerte à la proposition ``EngineAction``
+    qui l'accompagne (ex. l'anomalie propose une pause).
+
+    Les valeurs d'``alert_type`` sont alignées sur ``guardrails.ALERT_*``.
+    """
+
+    class Type(models.TextChoices):
+        ANOMALIE = 'anomalie', 'Anomalie'
+        GARDE_FOU = 'garde_fou', 'Violation de garde-fou'
+        REGLE_INOPERANTE = 'regle_inoperante', 'Règle inopérante'
+
+    alert_type = models.CharField(
+        max_length=20, choices=Type.choices, verbose_name="Type d'alerte")
+    message = models.TextField(verbose_name='Message (FR)')
+    action = models.ForeignKey(
+        'adsengine.EngineAction', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='alerts',
+        verbose_name='Action liée')
+    detail = models.JSONField(
+        default=dict, blank=True, verbose_name='Détail')
+    acknowledged = models.BooleanField(
+        default=False, verbose_name='Acquittée')
+
+    class Meta:
+        verbose_name = 'Alerte moteur'
+        verbose_name_plural = 'Alertes moteur'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['company', 'acknowledged'],
+                         name='adseng_alert_co_ack_idx'),
+        ]
+
+    def __str__(self):
+        return f'[{self.get_alert_type_display()}] {self.message[:40]}'

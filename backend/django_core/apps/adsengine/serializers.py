@@ -1,7 +1,7 @@
 """Sérialiseurs du moteur publicitaire Meta Ads (Groupe ENG)."""
 from rest_framework import serializers
 
-from .models import EngineAction, GuardrailConfig, MetaConnection
+from .models import EngineAction, EngineAlert, GuardrailConfig, MetaConnection
 
 
 class MetaConnectionSerializer(serializers.ModelSerializer):
@@ -78,3 +78,25 @@ class EngineActionSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "Une raison en une phrase (français) est obligatoire.")
         return value.strip()
+
+
+class EngineAlertSerializer(serializers.ModelSerializer):
+    """ENG13 — Alerte moteur (lecture seule côté API).
+
+    Rendue avec des deep-links ``wa.me`` (un par destinataire configuré) — mais
+    l'ENVOI réel reste gated (BSP). Aucun secret exposé.
+    """
+
+    wa_links = serializers.SerializerMethodField()
+
+    class Meta:
+        model = EngineAlert
+        fields = [
+            'id', 'alert_type', 'message', 'action', 'detail',
+            'acknowledged', 'wa_links', 'created_at', 'updated_at',
+        ]
+        read_only_fields = fields
+
+    def get_wa_links(self, obj):
+        from .alerts import wa_links
+        return wa_links(obj.message)

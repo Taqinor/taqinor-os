@@ -72,18 +72,28 @@ def enforce(*, target_status, config=None):
 def emit_alert(company, *, alert_type, message, action=None, detail=None):
     """Émet une alerte moteur (garde-fou / anomalie / règle inopérante).
 
-    HOOK ENG9→ENG13 : à ENG9, cette fonction JOURNALISE seulement (jamais un
-    échec silencieux — la trace existe). ENG13 remplace son CORPS pour
-    matérialiser un ``EngineAlert`` (modèle) à partir de la même signature —
-    aucun appelant d'ENG9 ne change. ``action`` (optionnel) relie l'alerte à la
-    proposition ``EngineAction`` créée ; ``detail`` porte un contexte JSON.
+    HOOK ENG9→ENG13 (désormais BRANCHÉ) : journalise TOUJOURS (jamais un échec
+    silencieux) PUIS matérialise un ``EngineAlert`` via ``alerts.create_alert``.
+    ``action`` (optionnel) relie l'alerte à la proposition ``EngineAction`` ;
+    ``detail`` porte un contexte JSON. Renvoie l'``EngineAlert`` créé, ou ``None``
+    si aucune société n'est fournie (chemins de test purs).
 
-    Renvoie l'objet alerte créé (ENG13) ou ``None`` (ENG9, log-only).
-    """
+    La persistance est best-effort : une erreur d'écriture d'alerte ne doit
+    jamais faire échouer la règle de garde-fou elle-même (elle est déjà
+    journalisée)."""
     logger.warning(
         'adsengine ALERTE [%s] société=%s: %s',
         alert_type, getattr(company, 'pk', company), message)
-    return None
+    if company is None:
+        return None
+    try:
+        from .alerts import create_alert
+        return create_alert(
+            company, alert_type=alert_type, message=message,
+            action=action, detail=detail)
+    except Exception:  # pragma: no cover - défensif, l'alerte est déjà loggée
+        logger.warning('adsengine: échec persistance EngineAlert', exc_info=True)
+        return None
 
 
 # ── ENG9 — Checks PRÉ-APPLY ───────────────────────────────────────────────────
