@@ -271,3 +271,53 @@ def enabled_adapters():
     """Liste des noms d'adaptateurs dont la clé est présente (les autres
     no-opent). Utile pour l'endpoint santé du câblage (ENG12)."""
     return [name for name, cls in ADAPTERS.items() if cls().is_enabled()]
+
+
+# Adaptateurs produisant des STATIQUES (pour les variantes ENG18), par priorité.
+STATIC_ADAPTERS = ('fal', 'templated')
+
+
+def _first_enabled_static_adapter():
+    """Premier adaptateur statique activé (fal puis templated), ou ``None``."""
+    for name in STATIC_ADAPTERS:
+        adapter = ADAPTERS[name]()
+        if adapter.is_enabled():
+            return adapter
+    return None
+
+
+def generate_variants(base_asset, *, brand_fields=None, count=2,
+                      http_client=None):
+    """ENG18 — Génère 2-3 variantes STATIQUES d'un asset de base APPROUVÉ.
+
+    À partir d'un asset de base dont la policy est VALIDÉE (``is_policy_passed``)
+    et des champs de marque, produit ``count`` (borné 1-3) variantes via le
+    premier adaptateur statique activé (fal / Templated, gated). Chaque variante
+    est créée en stamp policy PENDING (elle doit repasser la check-list humaine)
+    et LIÉE à l'asset parent (``parent=base_asset``).
+
+    NO-OP (renvoie ``[]``) si l'asset de base n'est pas validé, ou si aucun
+    adaptateur statique n'a de clé. Renvoie la liste des variantes créées.
+    """
+    if not base_asset.is_policy_passed:
+        logger.info(
+            'generate_variants: asset %s non validé policy — no-op',
+            base_asset.pk)
+        return []
+    adapter = _first_enabled_static_adapter()
+    if adapter is None:
+        logger.info('generate_variants: aucun adaptateur statique activé — no-op')
+        return []
+    count = max(1, min(3, int(count or 2)))
+    variants = []
+    for index in range(count):
+        payload = {
+            'asset_type': CreativeAsset.AssetType.STATIC,
+            'input': {**(brand_fields or {}), 'variant_index': index},
+        }
+        asset = adapter.run(
+            base_asset.company, payload,
+            http_client=http_client, parent=base_asset)
+        if asset is not None:
+            variants.append(asset)
+    return variants

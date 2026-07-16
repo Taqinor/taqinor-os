@@ -119,3 +119,25 @@ def generate_weekly_brief():
     logger.info(
         'adsengine.generate_weekly_brief: %s brief(s) généré(s)', generated)
     return {'briefs_generated': generated}
+
+
+@shared_task(name='adsengine.generate_creative_variants')
+def generate_creative_variants(base_asset_id, brand_fields=None, count=2):
+    """ENG18 — Tâche « variantes » : 2-3 statiques d'un asset de base approuvé.
+
+    Charge l'asset de base, délègue à ``creative_factory.generate_variants``
+    (gated fal/Templated — no-op sans clé), et renvoie le nombre de variantes
+    créées. Les variantes naissent en policy PENDING, liées au parent. NO-OP
+    propre si l'asset est introuvable."""
+    from . import creative_factory as cf
+    from .models import CreativeAsset
+
+    base = CreativeAsset.objects.filter(id=base_asset_id).first()
+    if base is None:
+        return {'variants_created': 0}
+    variants = cf.generate_variants(
+        base, brand_fields=brand_fields, count=count)
+    logger.info(
+        'adsengine.generate_creative_variants: %s variante(s) pour asset %s',
+        len(variants), base_asset_id)
+    return {'variants_created': len(variants)}
