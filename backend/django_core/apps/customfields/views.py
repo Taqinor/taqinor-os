@@ -35,6 +35,29 @@ def _colonne_liste(field_def):
     }
 
 
+def _champ_formulaire(field_def):
+    """NTEXT3 — schéma d'un champ de formulaire pour un CustomFieldDef donné.
+
+    Les conditions XPLT15 (visible_si/requis_si/lecture_seule_si) sont
+    renvoyées TELLES QUELLES (arbres core.rules) pour évaluation front ;
+    requis_si reste de toute façon RE-VALIDÉ côté serveur par
+    ``serializers.validate_custom_data`` — le front ne fait jamais foi seul."""
+    conditions = field_def.conditions or {}
+    return {
+        'code': field_def.code,
+        'libelle': field_def.libelle,
+        'type': field_def.type,
+        'obligatoire': field_def.obligatoire,
+        'options': field_def.options or [],
+        # XPLT14 — module cible d'un champ RELATION (ignoré sinon).
+        'module_cible': field_def.relation_module
+        if field_def.type == 'relation' else None,
+        'visible_si': conditions.get('visible_si'),
+        'requis_si': conditions.get('requis_si'),
+        'lecture_seule_si': conditions.get('lecture_seule_si'),
+    }
+
+
 class CustomFieldDefViewSet(TenantMixin, viewsets.ModelViewSet):
     """Définitions de champs personnalisés (Paramètres). Lecture tout rôle
     (les formulaires en ont besoin), écriture admin. Filtre ?module=lead.
@@ -248,3 +271,13 @@ class CustomRecordViewSet(TenantMixin, viewsets.ModelViewSet):
                     'previous': None, 'results': serializer.data}
         data['colonnes'] = colonnes
         return Response(data)
+
+    def vue_formulaire(self, request, *args, **kwargs):
+        """NTEXT3 — schéma de formulaire auto-généré (tous les champs actifs
+        de l'objet, ordonnés) pour un rendu no-code du formulaire de saisie."""
+        objet = self._objet()
+        self._check_object_permission('voir')
+        champs = CustomFieldDef.objects.filter(
+            company=request.user.company, module=objet.field_module,
+            actif=True).order_by('ordre', 'libelle')
+        return Response({'champs': [_champ_formulaire(c) for c in champs]})
