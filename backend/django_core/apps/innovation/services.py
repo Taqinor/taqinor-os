@@ -1,8 +1,12 @@
 """Services (écritures/orchestration) du module ``apps.innovation``.
 
 Le chatter (« historique ») réutilise ``apps.records.services.log_activity``
-(ARC8, générique) — jamais un modèle ``*Activity`` maison.
+(ARC8, générique) — jamais un modèle ``*Activity`` maison. Le marquage
+(NTIDE13) réutilise ``apps.records.models.Tag``/``TaggedItem`` (FG9,
+générique). Ces deux mécanismes sont des primitives PLATEFORME existantes :
+aucune nouvelle table n'est créée pour les porter.
 """
+from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 
 from .models import Idee, VoteIdee
@@ -88,3 +92,92 @@ def retirer_vote(vote):
     vote.delete()
     Idee.objects.filter(pk=idee_id, votes_count__gt=0).update(
         votes_count=F('votes_count') - 1)
+
+
+# ── Marquage en masse (NTIDE13) — réutilise records.Tag/TaggedItem (FG9) ────
+
+
+def _content_type_idee():
+    from django.contrib.contenttypes.models import ContentType
+    return ContentType.objects.get_for_model(Idee)
+
+
+def bulk_add_tag(company, ids, tag_nom):
+    """Applique le tag ``tag_nom`` (créé si besoin, scopé société) à chaque
+    idée de ``ids``. Réutilise ``records.Tag``/``TaggedItem`` — jamais un
+    champ ``tags`` maison sur ``Idee``."""
+    from apps.records.models import Tag, TaggedItem
+
+    tag, _ = Tag.objects.get_or_create(company=company, nom=tag_nom)
+    ct = _content_type_idee()
+    ids = list(Idee.objects.filter(company=company, id__in=ids)
+               .values_list('id', flat=True))
+    created = 0
+    for object_id in ids:
+        _, was_created = TaggedItem.objects.get_or_create(
+            tag=tag, content_type=ct, object_id=object_id)
+        created += int(was_created)
+    return {'tag': tag.nom, 'idees': len(ids), 'nouveaux': created}
+
+
+def bulk_remove_tag(company, ids, tag_nom):
+    """Retire le tag ``tag_nom`` de chaque idée de ``ids`` (no-op silencieux
+    si le tag ou l'association n'existe pas)."""
+    from apps.records.models import Tag, TaggedItem
+
+    tag = Tag.objects.filter(company=company, nom=tag_nom).first()
+    if tag is None:
+        return {'tag': tag_nom, 'idees': 0, 'retires': 0}
+    ct = _content_type_idee()
+    ids = list(Idee.objects.filter(company=company, id__in=ids)
+               .values_list('id', flat=True))
+    retires, _ = TaggedItem.objects.filter(
+        tag=tag, content_type=ct, object_id__in=ids).delete()
+    return {'tag': tag.nom, 'idees': len(ids), 'retires': retires}
+
+
+BULK_STATUT_CIBLES = frozenset({
+    Idee.Statut.EXAMINEE, Idee.Statut.RETENUE, Idee.Statut.REALISEE,
+    Idee.Statut.FERMEE,
+})
+
+
+def bulk_set_statut(company, ids, target, user):
+    """Applique la transition ``target`` à chaque idée de ``ids`` qui
+    l'autorise depuis son statut courant ; ignore silencieusement celles qui
+    ne l'autorisent pas (retournées dans ``ignorees``)."""
+    if target not in BULK_STATUT_CIBLES:
+        raise ValidationError('Statut cible invalide pour une action en masse.')
+    idees = Idee.objects.filter(company=company, id__in=ids)
+    appliquees, ignorees = [], []
+    for idee in idees:
+        try:
+            transitionner(idee, target=target, user=user)
+        except TransitionInvalide:
+            ignorees.append(idee.id)
+        else:
+            appliquees.append(idee.id)
+    return {'appliquees': appliquees, 'ignorees': ignorees}
+
+
+BULK_ACTIONS = frozenset({'set_statut', 'add_tag', 'remove_tag'})
+
+
+def apply_bulk_action(*, company, user, ids, op, params):
+    """Point d'entrée unique des actions en masse (NTIDE13). ``op`` in
+    ``BULK_ACTIONS`` (l'export est géré séparément côté vue : il renvoie un
+    fichier, pas un JSON)."""
+    if op == 'set_statut':
+        target = params.get('statut')
+        return bulk_set_statut(company, ids, target, user)
+    if op == 'add_tag':
+        tag_nom = (params.get('tag') or '').strip()
+        if not tag_nom:
+            raise ValidationError('Tag requis.')
+        return bulk_add_tag(company, ids, tag_nom)
+    if op == 'remove_tag':
+        tag_nom = (params.get('tag') or '').strip()
+        if not tag_nom:
+            raise ValidationError('Tag requis.')
+        return bulk_remove_tag(company, ids, tag_nom)
+    raise ValidationError('Action en masse inconnue.')

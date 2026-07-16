@@ -1,16 +1,20 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Lightbulb, Plus, Eye, ThumbsUp } from 'lucide-react'
+import { Lightbulb, Plus, Eye, ThumbsUp, Download, Tag as TagIcon } from 'lucide-react'
 import { ListShell } from '../../ui/module'
-import { Badge, Button } from '../../ui'
+import { Badge, Button, toast } from '../../ui'
 import { formatDate } from '../../lib/format'
 import innovationApi from '../../api/innovationApi'
+import { downloadBlob } from '../../utils/downloadBlob'
 import { STATUT_MAP, StatutIdeePill } from './innovationStatus'
 import FilterSelect from './FilterSelect'
 
 /* ============================================================================
    NTIDE4 — Liste des idées + filtres (statut/contexte), tri par votes/date.
-   Ouverte à TOUT utilisateur connecté (« logged-in users only »).
+   NTIDE13 — Actions en masse (admin) : changer statut / tag / exporter la
+   sélection. Ouverte à TOUT utilisateur connecté (« logged-in users only ») ;
+   les actions en masse restent réservées au palier admin/responsable côté
+   serveur (403 affiché en toast si le rôle est insuffisant).
    ========================================================================== */
 
 const STATUT_FILTER_OPTIONS = [
@@ -116,6 +120,60 @@ export default function IdeesPage() {
     { id: 'view', label: 'Ouvrir', icon: Eye, onClick: () => navigate(`/innovation/idees/${i.id}`) },
   ]
 
+  const bulkActions = (selectedRows, _keys, clearSelection) => [
+    {
+      id: 'set_statut_examinee',
+      label: 'Marquer « Examinée »',
+      onClick: () => runBulk({ action: 'set_statut', statut: 'examinee' }, selectedRows, clearSelection),
+    },
+    {
+      id: 'set_statut_retenue',
+      label: 'Marquer « Retenue »',
+      onClick: () => runBulk({ action: 'set_statut', statut: 'retenue' }, selectedRows, clearSelection),
+    },
+    {
+      id: 'set_statut_fermee',
+      label: 'Marquer « Fermée »',
+      onClick: () => runBulk({ action: 'set_statut', statut: 'fermee' }, selectedRows, clearSelection),
+    },
+    {
+      id: 'add_tag',
+      label: 'Ajouter un tag…',
+      icon: TagIcon,
+      separatorBefore: true,
+      onClick: () => {
+        const tag = window.prompt('Nom du tag à appliquer :')
+        if (tag && tag.trim()) runBulk({ action: 'add_tag', tag: tag.trim() }, selectedRows, clearSelection)
+      },
+    },
+    {
+      id: 'export',
+      label: 'Exporter la sélection (.xlsx)',
+      icon: Download,
+      onClick: () => runBulk({ action: 'export' }, selectedRows, clearSelection),
+    },
+  ]
+
+  const runBulk = async (body, selectedRows, clearSelection) => {
+    const ids = selectedRows.map((r) => r.id)
+    if (!ids.length) { toast.error('Sélectionnez au moins une idée.'); return }
+    try {
+      const resp = await innovationApi.bulk({ ...body, ids })
+      if (body.action === 'export') {
+        downloadBlob(resp.data, 'idees.xlsx')
+        toast.success('Export téléchargé.')
+      } else {
+        toast.success('Action en masse appliquée.')
+        clearSelection?.()
+        load()
+      }
+    } catch (err) {
+      toast.error(err?.response?.status === 403
+        ? 'Action réservée au palier admin/responsable.'
+        : 'Action en masse impossible.')
+    }
+  }
+
   const contexteOptions = [
     { value: '', label: 'Tous les contextes' },
     ...contextes.map((c) => ({ value: c, label: c })),
@@ -161,6 +219,8 @@ export default function IdeesPage() {
         error={error}
         onRowClick={(i) => navigate(`/innovation/idees/${i.id}`)}
         rowActions={rowActions}
+        bulkActions={bulkActions}
+        selectable
         searchable
         searchPlaceholder="Rechercher (titre)…"
         exportName="innovation-idees"

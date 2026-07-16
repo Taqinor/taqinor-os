@@ -4,8 +4,11 @@ Palier d'accès :
   * lecture/proposition/vote — tout utilisateur connecté de la société
     (``IsAnyRole``) — « logged-in users only » (NTIDE4/NTIDE8) ;
   * transitions de statut (examiner/retenir/réaliser/fermer) — palier
-    Directeur/Responsable (``IsResponsableOrAdmin``, NTIDE5).
+    Directeur/Responsable (``IsResponsableOrAdmin``, NTIDE5) ;
+  * tableau de bord, paramètres de campagne, export, actions en masse —
+    palier administration (``IsAdminOrResponsableTier``, NTIDE6/7/12/13).
 """
+from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -139,6 +142,38 @@ class IdeeViewSet(CompanyScopedModelViewSet):
         from .exports import export_idees_xlsx
         qs = self.filter_queryset(self.get_queryset()).select_related('auteur')
         return export_idees_xlsx(qs)
+
+    # ── NTIDE13 — actions en masse (admin) ───────────────────────────────────
+    @action(detail=False, methods=['post'], url_path='bulk',
+            permission_classes=[IsAdminOrResponsableTier])
+    def bulk(self, request):
+        """Corps : {ids: [...], action: 'set_statut'|'add_tag'|'remove_tag'
+        |'export', + paramètres}. ``export`` court-circuite vers le .xlsx de
+        la sélection (NTIDE12 sur la sélection) ; les autres délèguent à
+        ``services.apply_bulk_action``."""
+        ids = request.data.get('ids') or []
+        op = request.data.get('action')
+        if not isinstance(ids, list) or not ids:
+            return Response({'detail': 'Sélectionnez au moins une idée.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        if op == 'export':
+            from .exports import export_idees_xlsx
+            qs = (Idee.objects.filter(
+                company=request.user.company, id__in=ids)
+                .select_related('auteur'))
+            return export_idees_xlsx(qs)
+        if op not in services.BULK_ACTIONS:
+            return Response({'detail': 'Action en masse inconnue.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            result = services.apply_bulk_action(
+                company=request.user.company, user=request.user,
+                ids=ids, op=op, params=request.data)
+        except (DjangoValidationError, ValueError) as exc:
+            detail = exc.messages[0] if hasattr(exc, 'messages') else str(exc)
+            return Response({'detail': detail},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(result)
 
 
 class VoteIdeeViewSet(CompanyScopedModelViewSet):

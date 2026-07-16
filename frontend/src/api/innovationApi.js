@@ -34,6 +34,13 @@ const innovationApi = {
   exportXlsx: (params) =>
     api.get('/innovation/idees/export-xlsx/', { params, responseType: 'blob' }),
 
+  // ── Actions en masse (NTIDE13) : set_statut / add_tag / remove_tag / export ──
+  bulk: (body) => {
+    const isExport = body?.action === 'export'
+    return api.post('/innovation/idees/bulk/', body,
+      isExport ? { responseType: 'blob' } : undefined)
+  },
+
   // ── Votes (NTIDE2) ──
   vote: (idee) => api.post('/innovation/votes/', { idee }),
   retirerVote: (voteId) => api.delete(`/innovation/votes/${voteId}/`),
