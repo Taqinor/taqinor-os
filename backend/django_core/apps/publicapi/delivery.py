@@ -35,6 +35,10 @@ EVENT_HEADER = 'X-Taqinor-Event'
 TIMESTAMP_HEADER = 'X-Taqinor-Timestamp'
 # Clé stable d'identité d'évènement dans le payload (uuid4).
 EVENT_ID_KEY = 'event_id'
+# NTAPI8 — numéro de la tentative PROGRAMMÉE (long-tail, `retry.py`) en cours,
+# posé uniquement par ces reprises (absent de l'envoi original/des reprises
+# Celery immédiates YAPIC8).
+DELIVERY_ATTEMPT_HEADER = 'X-Taqinor-Delivery-Attempt'
 DELIVERY_TIMEOUT = 5.0  # secondes
 
 
@@ -63,9 +67,13 @@ def ensure_event_id(payload):
 
 
 def _record(webhook, event, payload, *, status, response_status, error):
-    """Journalise UNE tentative dans WebhookDelivery. Ne lève jamais."""
+    """Journalise UNE tentative dans WebhookDelivery. Ne lève jamais.
+
+    Renvoie l'instance créée (ou ``None`` si la journalisation elle-même a
+    échoué) — NTAPI8 s'en sert pour programmer la première reprise
+    long-tail sans dupliquer la requête de lecture."""
     try:
-        WebhookDelivery.objects.create(
+        return WebhookDelivery.objects.create(
             company_id=webhook.company_id,
             webhook=webhook,
             event=event,
@@ -78,15 +86,20 @@ def _record(webhook, event, payload, *, status, response_status, error):
         )
     except Exception:  # noqa: BLE001 — ne jamais propager
         logger.exception('Could not log webhook delivery')
+        return None
 
 
-def _send(webhook, event, payload):
+def _send(webhook, event, payload, extra_headers=None):
     """Effectue UNE tentative HTTP signée. Retourne
     ``(outcome, response_status, error)`` avec ``outcome`` ∈
     {'success', 'failed', 'blocked'}. Ne lève jamais.
 
     'blocked' = cible SSRF (permanent, ne pas retenter) ; 'failed' =
     non-2xx ou erreur réseau (retentable) ; 'success' = 2xx.
+
+    ``extra_headers`` (NTAPI8) : en-têtes additionnels fusionnés APRÈS les
+    en-têtes standards (ex. ``X-Taqinor-Delivery-Attempt`` posé par les
+    reprises programmées `retry.py`) — jamais utilisé par l'envoi original.
     """
     # ERR46 — garde-fou anti-SSRF AU MOMENT de la livraison (defense-in-depth) :
     # même si une URL interne a été stockée avant, ou si le DNS a été ré-pointé
@@ -107,6 +120,8 @@ def _send(webhook, event, payload):
         TIMESTAMP_HEADER: timestamp,
         EVENT_HEADER: event,
     }
+    if extra_headers:
+        headers.update(extra_headers)
     try:
         resp = httpx.post(
             webhook.target_url, content=body_bytes,
