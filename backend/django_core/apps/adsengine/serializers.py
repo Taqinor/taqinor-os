@@ -98,7 +98,13 @@ class EngineAlertSerializer(serializers.ModelSerializer):
             'id', 'alert_type', 'message', 'action', 'detail',
             'acknowledged', 'wa_links', 'created_at', 'updated_at',
         ]
-        read_only_fields = fields
+        # ``wa_links`` est un champ déclaré (SerializerMethodField, déjà
+        # read-only) — il ne doit PAS figurer dans read_only_fields (DRF
+        # l'interdit). Ce viewset est de toute façon GET-only (ENG13).
+        read_only_fields = [
+            'id', 'alert_type', 'message', 'action', 'detail',
+            'acknowledged', 'created_at', 'updated_at',
+        ]
 
     def get_wa_links(self, obj):
         from .alerts import wa_links
@@ -120,9 +126,11 @@ class CreativeAssetSerializer(serializers.ModelSerializer):
             'policy_stamp', 'is_policy_passed', 'perf', 'parent',
             'created_at', 'updated_at',
         ]
+        # NB : ``is_policy_passed`` est déjà read-only (champ déclaré) — ne PAS
+        # le remettre ici (DRF interdit un champ à la fois déclaré ET dans
+        # read_only_fields).
         read_only_fields = [
-            'file_key', 'policy_stamp', 'is_policy_passed', 'perf',
-            'created_at', 'updated_at',
+            'file_key', 'policy_stamp', 'perf', 'created_at', 'updated_at',
         ]
 
 
