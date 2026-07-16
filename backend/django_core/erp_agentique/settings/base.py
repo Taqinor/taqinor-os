@@ -172,6 +172,10 @@ INSTALLED_APPS = [
     # propose→approuve→applique, création TOUJOURS PAUSED). App satellite
     # multi-société ; tout no-ope sans token/clé configuré.
     'apps.adsengine',
+    # NTSAN1 — Santé (cabinet/clinique) : agenda multi-praticiens, admission,
+    # nomenclature d'actes, facturation patient/tiers payant. Additive,
+    # scopée société côté serveur ; aucune donnée médicale clinique stockée.
+    'apps.sante',
 ]
 
 MIDDLEWARE = [
