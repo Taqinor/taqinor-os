@@ -172,6 +172,10 @@ INSTALLED_APPS = [
     # propose→approuve→applique, création TOUJOURS PAUSED). App satellite
     # multi-société ; tout no-ope sans token/clé configuré.
     'apps.adsengine',
+    # NTAGR1 — Vertical Agriculture (exploitations, parcelles, campagnes
+    # culturales, intrants, main d'œuvre saisonnière). Multi-société,
+    # additif ; intrants liés à apps.stock via string-ref (jamais dupliqué).
+    'apps.agriculture',
 ]
 
 MIDDLEWARE = [

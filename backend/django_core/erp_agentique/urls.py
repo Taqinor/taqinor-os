@@ -66,6 +66,9 @@ _APP_URLS = [
     path('achats/', include('apps.achats.urls')),
     # FLOTTE1 — Gestion de flotte (véhicules + engins roulants, interne).
     path('flotte/', include('apps.flotte.urls')),
+    # NTAGR1 — Vertical Agriculture (exploitations, parcelles, campagnes,
+    # intrants, main d'œuvre saisonnière).
+    path('agriculture/', include('apps.agriculture.urls')),
     # AG1 — Catalogue d'actions agentiques (métadonnées, filtré par caller).
     path('agent/', include('apps.agent.urls')),
     # Group S — Messagerie interne d'équipe (« Discuss »).
