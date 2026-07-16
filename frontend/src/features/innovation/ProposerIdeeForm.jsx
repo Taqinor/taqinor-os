@@ -1,21 +1,24 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { Send } from 'lucide-react'
 import { Button, Input, Textarea, toast } from '../../ui'
 import innovationApi from '../../api/innovationApi'
+import { contexteFromPath } from './linkedContext'
 
 /* ============================================================================
-   NTIDE8 — Formulaire « Proposer une idée » (route dédiée /innovation/
-   proposer). Immédiat (pas de brouillon) : le submit crée l'Idee et
-   redirige vers son détail avec un toast de confirmation.
+   NTIDE8/NTIDE9 — Formulaire « Proposer une idée », partagé entre la page
+   dédiée (/innovation/proposer) et le CTA modal (Intercom-style, monté sur
+   chaque écran). Contexte autodétecté depuis la route courante (NTIDE9, ex.
+   leads → « CRM »).
    ========================================================================== */
 
 export default function ProposerIdeeForm({ onCreated, onCancel, compact = false }) {
+  const location = useLocation()
   const navigate = useNavigate()
 
   const [titre, setTitre] = useState('')
   const [description, setDescription] = useState('')
-  const [contexte, setContexte] = useState('')
+  const [contexte, setContexte] = useState(() => contexteFromPath(location.pathname))
   const [submitting, setSubmitting] = useState(false)
 
   const handleSubmit = async (e) => {

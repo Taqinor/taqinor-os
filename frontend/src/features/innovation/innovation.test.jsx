@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 import { transitionsPour, estTerminal, STATUT_MAP } from './innovationStatus'
+import { contexteFromPath } from './linkedContext'
 import FilterSelect from './FilterSelect'
 
 function wrap(ui, { route = '/' } = {}) {
@@ -63,6 +64,16 @@ describe('innovation state machine helpers (miroir apps.innovation.services)', (
     expect(Object.keys(STATUT_MAP).sort()).toEqual(
       ['examinee', 'fermee', 'ouvert', 'realisee', 'retenue'],
     )
+  })
+})
+
+describe('linkedContext (NTIDE9)', () => {
+  it('contexteFromPath dérive le contexte du 1er segment', () => {
+    expect(contexteFromPath('/crm/leads/12')).toBe('CRM')
+    expect(contexteFromPath('/sav')).toBe('SAV')
+    expect(contexteFromPath('/ventes/devis')).toBe('Devis')
+    expect(contexteFromPath('/ventes/nouveau')).toBe('Ventes')
+    expect(contexteFromPath('/route-inconnue')).toBe('')
   })
 })
 
@@ -147,7 +158,7 @@ describe('IdeeDetail', () => {
   })
 })
 
-describe('ProposerIdeeForm (NTIDE8)', () => {
+describe('ProposerIdeeForm (NTIDE8/NTIDE9)', () => {
   it('soumet titre/description/contexte', async () => {
     innovationApiMock.create.mockResolvedValue({ data: { id: 7 } })
     const onCreated = vi.fn()
@@ -167,6 +178,12 @@ describe('ProposerIdeeForm (NTIDE8)', () => {
     expect(payload.titre).toBe('Automatiser les relances')
     expect(payload.contexte).toBe('CRM')
     expect(onCreated).toHaveBeenCalled()
+  })
+
+  it('NTIDE9 — propose le contexte autodétecté depuis la route courante', async () => {
+    const { default: ProposerIdeeForm } = await import('./ProposerIdeeForm')
+    render(wrap(<ProposerIdeeForm />, { route: '/crm/leads' }))
+    expect((await screen.findByLabelText('Contexte')).value).toBe('CRM')
   })
 
   it('refuse un titre vide', async () => {
