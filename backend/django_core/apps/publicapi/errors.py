@@ -23,6 +23,8 @@ publique : le corps Stripe-like est la SEULE forme renvoyée.
 """
 from __future__ import annotations
 
+from django.core.exceptions import PermissionDenied as DjangoPermissionDenied
+from django.http import Http404
 from rest_framework import exceptions as drf_exceptions
 from rest_framework import status
 from rest_framework.response import Response
@@ -52,6 +54,14 @@ _TYPE_OVERRIDES = {
 
 
 def _code_for(exc) -> str:
+    # DRF traduit `Http404` / `PermissionDenied` Django en réponses 404/403 mais
+    # passe l'exception Django BRUTE à ce handler (jamais la classe DRF) — il
+    # faut donc les reconnaître ici, sinon un 404 légitime retombe en
+    # `server_error` alors que le statut HTTP est bien 404 (bug NTAPI3).
+    if isinstance(exc, Http404):
+        return 'not_found'
+    if isinstance(exc, DjangoPermissionDenied):
+        return 'permission_denied'
     for exc_class, code in _KNOWN_CODES:
         if isinstance(exc, exc_class):
             return code

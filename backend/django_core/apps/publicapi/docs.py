@@ -65,7 +65,7 @@ def public_api_reference():
             "API REST authentifiée par clé d'API et scopée à votre société. "
             "Principalement en lecture seule ; un sous-ensemble d'écriture "
             "existe (voir « endpoints_ecriture », scopes dédiés `*:write`). "
-            "Aucun prix d'achat / marge n'est jamais renvoyé."
+            "Aucun prix d'achat ni donnée de rentabilité interne n'est jamais renvoyé."
         ),
         'authentification': {
             'methode': "Clé d'API dans l'en-tête HTTP Authorization.",
