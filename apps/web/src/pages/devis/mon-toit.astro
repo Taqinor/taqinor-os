@@ -3590,6 +3590,13 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
    *  aperçu sur un simple repère). */
   function updatePanels3dVisibility() {
     if (!panels3dBlock) return;
+    // WJ125 — la scène 3D dessine EXACTEMENT le nombre de panneaux
+    // (nb × 720 Wc = kWc) : une valeur dimensionnante que la règle
+    // anti-concurrent interdit d'exposer avant l'envoi du lien. Tant que le
+    // parcours public est gaté, le bloc reste masqué — l'aperçu dimensionné
+    // vit sur /proposition/<token>. Drapeau OFF (futur) → comportement
+    // byte-identique à l'ancien (l'éligibilité pilote seule).
+    if (PUBLIC_ESTIMATE_GATED) { panels3dBlock.hidden = true; return; }
     const eligible = captureOutline.length >= 3 && lastKwc != null;
     panels3dBlock.hidden = !eligible;
   }

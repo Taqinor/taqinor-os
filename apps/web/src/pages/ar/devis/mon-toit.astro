@@ -3185,6 +3185,12 @@ const noscriptTelHref = `tel:${NAP.phone}`;
 
   function updatePanels3dVisibility() {
     if (!panels3dBlock) return;
+    // WJ125 — la scène 3D dessine EXACTEMENT le nombre de panneaux
+    // (nb × 720 Wc = kWc), valeur dimensionnante interdite avant l'envoi du
+    // lien par la règle anti-concurrent. Parcours public gaté → bloc masqué ;
+    // l'aperçu dimensionné vit sur /proposition/<token>. Drapeau OFF (futur) →
+    // comportement byte-identique.
+    if (PUBLIC_ESTIMATE_GATED) { panels3dBlock.hidden = true; return; }
     const eligible = captureOutline.length >= 3 && lastKwc != null;
     panels3dBlock.hidden = !eligible;
   }

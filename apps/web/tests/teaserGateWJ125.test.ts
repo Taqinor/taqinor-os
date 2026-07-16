@@ -75,10 +75,26 @@ describe.each(Object.entries(PAGES))('WJ125 — %s mon-toit.astro : rendu public
     expect(fn).toContain('teaser.hidden = false');
   });
 
+  it('l\'aperçu 3D (nb panneaux = kWc) est FORCÉ masqué tant que le parcours public est gaté', () => {
+    // Trou de fuite trouvé à la revue Fable : la scène 3D dessine EXACTEMENT
+    // ceil(kWc×1000/720) panneaux — un concurrent les compte et récupère le kWc
+    // au sous-kWc près. `showEstimateTeaser` masque #mt-doc mais PAS #mt-panels3d,
+    // et les chemins gatés rappelaient `updatePanels3dVisibility()`. La visibilité
+    // du bloc 3D est le point de contrôle unique : il force le masquage sous gate.
+    const start = src.indexOf('function updatePanels3dVisibility(');
+    expect(start).toBeGreaterThan(-1);
+    const fn = src.slice(start, start + 600);
+    expect(fn).toContain('if (PUBLIC_ESTIMATE_GATED) { panels3dBlock.hidden = true; return; }');
+    // Et le bloc part `hidden` dans le markup statique (aucun flash avant JS).
+    expect(src).toContain('id="mt-panels3d" hidden');
+  });
+
   it('les 3 chemins « succès » (résidentiel/pro/agricole) s\'arrêtent AVANT d\'écrire un chiffre', () => {
-    // Exactement une porte-teaser sans accolade (le top-gate) + 3 retours gatés.
-    const gatedReturns = (src.match(/if \(PUBLIC_ESTIMATE_GATED\) \{/g) ?? []).length;
-    expect(gatedReturns).toBe(3);
+    // 3 retours gatés des chemins succès + 1 garde de visibilité 3D (WJ125,
+    // correctif de fuite : force le masquage du bloc panneaux). Le VRAI compte
+    // des retours succès reste 3 — vérifié par les 3 GATED_ANNOUNCE ci-dessous.
+    const gatedBlocks = (src.match(/if \(PUBLIC_ESTIMATE_GATED\) \{/g) ?? []).length;
+    expect(gatedBlocks).toBe(4);
     // Chaque retour gaté annonce un message SANS chiffre (GATED_ANNOUNCE), jamais
     // l'ancienne annonce « Votre estimation : X kWc … ».
     const gatedAnnounce = (src.match(/announceEstimate\(GATED_ANNOUNCE\)/g) ?? []).length;
