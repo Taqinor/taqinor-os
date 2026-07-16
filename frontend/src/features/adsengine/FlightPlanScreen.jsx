@@ -111,7 +111,7 @@ export default function FlightPlanScreen() {
   const composed = phases.length > 0
 
   return (
-    <div className="page ae-flightplan">
+    <div className="page ae-flightplan" data-testid="ae-flightplan">
       <div className="page-header">
         <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
           <Route size={20} aria-hidden="true" /> Plan de vol

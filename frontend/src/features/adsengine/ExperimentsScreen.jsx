@@ -92,7 +92,7 @@ export default function ExperimentsScreen() {
   }
 
   return (
-    <div className="page ae-experiments">
+    <div className="page ae-experiments" data-testid="ae-experiments">
       <div className="page-header">
         <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
           <FlaskConical size={20} aria-hidden="true" /> Expérimentations

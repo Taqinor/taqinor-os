@@ -37,6 +37,110 @@ export const AE_HOOKS = {
     batchBar: 'ae-batch-bar',
     batchApprove: 'ae-batch-approve',
   },
+
+  // ── ENG46 — Écrans P7 (contrat DOM des NOUVEAUX écrans, axe sans violation
+  // sur FlightPlan + Experiments) ──
+
+  // Expérimentations (ENG39) — posteriors lisibles + DecisionLog filtrable.
+  experiments: {
+    root: 'ae-experiments', // className sur la page
+    list: 'ae-exp-list',
+    selectPrefix: 'ae-exp-select-', // + id d'expérimentation
+    phases: 'ae-exp-phases',
+    phase: 'ae-exp-phase',
+    arms: 'ae-exp-arms',
+    arm: 'ae-exp-arm',
+    armBest: 'ae-exp-arm-best', // le favori du moteur
+    pbestPrefix: 'ae-exp-pbest-', // + id de bras — P(meilleur)
+    meanPrefix: 'ae-exp-mean-', // + id de bras — estimation ponctuelle
+    bandPrefix: 'ae-exp-band-', // + id de bras — bande de crédibilité
+    decisions: 'ae-exp-decisions',
+    decision: 'ae-exp-decision',
+    decisionFilter: 'ae-exp-decision-filter', // filtre par phase
+  },
+
+  // Plan de vol (ENG40) — écran-amiral : compose + préflight ADSENG38.
+  flightplan: {
+    root: 'ae-flightplan',
+    compose: 'ae-fp-compose',
+    nom: 'ae-fp-nom',
+    template: 'ae-fp-template',
+    phases: 'ae-fp-phases',
+    phase: 'ae-fp-phase',
+    variables: 'ae-fp-variables',
+    varAdd: 'ae-fp-var-add',
+    arms: 'ae-fp-arms',
+    armPrefix: 'ae-fp-arm-', // + id de bras backlog
+    validate: 'ae-fp-validate',
+    simulate: 'ae-fp-simulate',
+    valid: 'ae-fp-valid', // feu vert
+    refusal: 'ae-fp-refusal', // refus + raisons
+    refusalReason: 'ae-fp-refusal-reason',
+    preflight: 'ae-fp-preflight', // panneau ADSENG38
+    preflightVerdict: 'ae-fp-preflight-verdict',
+    gate: 'ae-fp-gate', // une porte d'autonomie
+    gateOk: 'ae-fp-gate-ok',
+    gateKo: 'ae-fp-gate-ko',
+  },
+
+  // Backlog créatif (ENG41) — runway, diversité, approbation par LOT.
+  backlog: {
+    root: 'ae-backlog',
+    campaign: 'ae-backlog-campaign',
+    runway: 'ae-backlog-runway',
+    diversity: 'ae-backlog-diversity',
+    lot: 'ae-backlog-lot',
+    approveLotPrefix: 'ae-backlog-approve-lot-', // + id de lot
+    dropPrefix: 'ae-backlog-drop-', // + id de campagne
+  },
+
+  // Extension dashboard (ENG42) — onglets Pacing + Réconciliation.
+  dashboardExt: {
+    tabs: 'ae-dashboard-tabs',
+    tabPrefix: 'ae-tab-', // + overview|pacing|reconciliation
+    pacing: 'ae-pacing',
+    pacingBurn: 'ae-pacing-burn', // cliquable → détail
+    pacingDetail: 'ae-pacing-detail',
+    recon: 'ae-recon',
+    reconRow: 'ae-recon-row',
+    reconOpenPrefix: 'ae-recon-open-', // + id
+    reconDetail: 'ae-recon-detail',
+  },
+
+  // Règles & anomalies (ENG43) — picker + dry-run + anomalies.
+  rules: {
+    root: 'ae-rules',
+    catalogue: 'ae-rules-catalogue',
+    template: 'ae-rule-template',
+    dryRunPrefix: 'ae-rule-dryrun-', // + key de gabarit
+    dryRunResultPrefix: 'ae-rule-dryrun-result-', // + key
+    anomaly: 'ae-anomaly',
+    anomalySeverity: 'ae-anomaly-severity',
+    alertHistory: 'ae-alert-history',
+  },
+
+  // Visionneuse de simulation (ENG44) — rejeu d'un run ADSENG36.
+  simulation: {
+    root: 'ae-simulation',
+    runPrefix: 'ae-sim-run-', // + id de run
+    report: 'ae-sim-report',
+    scenario: 'ae-sim-scenario',
+    verdict: 'ae-sim-verdict',
+    allocations: 'ae-sim-allocations',
+    step: 'ae-sim-step',
+    armBudget: 'ae-sim-arm-budget',
+    decision: 'ae-sim-decision',
+  },
+
+  // Reporting (ENG45) — drill-downs + export CSV.
+  reports: {
+    root: 'ae-reports',
+    variantsTable: 'ae-reports-variants-table',
+    variantRow: 'ae-reports-variant-row',
+    funnelStep: 'ae-reports-funnel-step',
+    cohortRow: 'ae-reports-cohort-row',
+    export: 'ae-reports-export', // lien de téléchargement CSV
+  },
 }
 
 export default AE_HOOKS
