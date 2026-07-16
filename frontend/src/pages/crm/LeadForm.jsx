@@ -10,13 +10,16 @@ import api from '../../api/axios'
 import crmApi from '../../api/crmApi'
 import ventesApi from '../../api/ventesApi'
 import installationsApi from '../../api/installationsApi'
+// NTMKT11 — résout le lien cliquable d'une touche marketing (campagne/
+// séquence) reconnue dans le chatter (voir `resolveMarketingLink` ci-dessous).
+import marketingApi from '../../api/marketingApi'
 import Avatar from '../../components/Avatar'
 import AssigneePicker from '../../components/AssigneePicker'
 import ActivitiesPanel from '../../components/ActivitiesPanel'
 import AttachmentsPanel from '../../components/AttachmentsPanel'
 import CustomFieldsInput from '../../components/CustomFieldsInput'
 // VX23 — chatter réutilisable (regroupement par jour, avatars, notes/logs).
-import ChatterTimeline from '../../components/ChatterTimeline'
+import ChatterTimeline, { parseMarketingTouch } from '../../components/ChatterTimeline'
 import AppointmentBooker from './leads/AppointmentBooker'
 import LeadDevisPanel from './leads/LeadDevisPanel'
 import SigneDialog from './leads/SigneDialog'
@@ -460,6 +463,10 @@ export default function LeadForm({
 
   const [users, setUsers] = useState([])
   const [historique, setHistorique] = useState([])
+  // NTMKT11 — nom → id, résolus paresseusement UNE FOIS dès qu'une touche
+  // marketing apparaît dans le chatter (jamais d'appel réseau si le lead n'a
+  // aucune touche marketing). Alimente `resolveMarketingLink` ci-dessous.
+  const [marketingLookup, setMarketingLookup] = useState(null)
   const [noteBody, setNoteBody] = useState('')
   const [noteError, setNoteError] = useState(null)
   // VX111 — pièce jointe optionnelle sur la note en cours de rédaction (ex.
@@ -593,6 +600,42 @@ export default function LeadForm({
         .then(r => setDups(r.data)).catch(() => {})
     }
   }, [isEdit, lead?.id])
+
+  // NTMKT11 — dès que le chatter contient au moins une touche marketing
+  // (campagne/séquence — voir `parseMarketingTouch`), résout PARESSEUSEMENT
+  // (une seule fois) les listes marketing déjà exposées par NTMKT2/NTMKT6
+  // pour construire le lien cliquable. Aucun appel si le lead n'a jamais été
+  // touché par le marketing (cas courant).
+  useEffect(() => {
+    if (marketingLookup) return
+    const aUneToucheMarketing = historique.some(
+      (a) => a.kind === 'note' && parseMarketingTouch(a.body))
+    if (!aUneToucheMarketing) return
+    Promise.all([marketingApi.campagnes.list(), marketingApi.sequences.list()])
+      .then(([campagnesRes, sequencesRes]) => {
+        const campagnes = marketingApi.unwrapList(campagnesRes)
+        const sequences = marketingApi.unwrapList(sequencesRes)
+        const parNom = (liste) => {
+          const map = {}
+          for (const item of liste) {
+            // Nom ambigu (2 objets homonymes) : jamais de lien plutôt qu'un
+            // lien vers le mauvais objet — `null` marque l'ambiguïté.
+            map[item.nom] = map[item.nom] === undefined ? item.id : null
+          }
+          return map
+        }
+        setMarketingLookup({ campagnes: parNom(campagnes), sequences: parNom(sequences) })
+      })
+      .catch(() => setMarketingLookup({ campagnes: {}, sequences: {} }))
+  }, [historique, marketingLookup])
+
+  const resolveMarketingLink = (type, nom) => {
+    if (!marketingLookup) return null
+    const id = type === 'campagne'
+      ? marketingLookup.campagnes[nom] : marketingLookup.sequences[nom]
+    if (!id) return null
+    return type === 'campagne' ? `/marketing/campagnes/${id}` : `/marketing/sequences/${id}`
+  }
 
   // VX239 — avertissement doublon EN DIRECT (non bloquant), extrait dans
   // `useDuplicateCheck` (posé aussi sur ClientForm/ClientQuickCreateModal).
@@ -1932,7 +1975,7 @@ export default function LeadForm({
                 {/* VX23 — ChatterTimeline : composant réutilisable (regroupement
                     par jour, avatars, distinction note/log). Remplace l'ancien
                     journal texte plat rendu inline ici. */}
-                <ChatterTimeline entries={historique} />
+                <ChatterTimeline entries={historique} resolveMarketingLink={resolveMarketingLink} />
               </Sec>
             )}
 
