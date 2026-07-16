@@ -42,7 +42,10 @@ class SnapchatPlatform(AdsPlatform):
         ADSENG49 (données) : cette plateforme n'est pas paused-par-défaut, donc
         ``requires_forced_paused(name)`` est True et le client DOIT forcer PAUSED.
         On renvoie ``forced_status`` quoi qu'il arrive — aucun ACTIVE possible."""
-        requires_forced_paused(self.name)  # lecture du garde (data-driven)
+        if not requires_forced_paused(self.name):
+            # N'arrive que si la matrice ADSENG49 marquait la plateforme
+            # paused-par-défaut ; on force PAUSED quoi qu'il arrive.
+            return self.forced_status
         return self.forced_status
 
     def _gated(self, operation):
