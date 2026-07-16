@@ -1,16 +1,18 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import marketingApi from '../../api/marketingApi'
+import { computeAbComparatif } from './campagneDetail'
 
 /* ============================================================================
-   NTMKT2 — Détail d'une campagne : trace destinataire, envoi de test,
-   pré-check santé.
+   NTMKT2/NTMKT3 — Détail d'une campagne : trace destinataire, envoi de test,
+   pré-check santé, comparatif A/B.
    ----------------------------------------------------------------------------
    `marketing/envois-campagne/?campagne=<id>` (XMKT2) pour le drill-down par
    destinataire (queued/envoyé/ouvert/cliqué/rebond/désinscrit), l'action
    `envoyer-test` (XMKT13, jamais vers de vrais destinataires) et `precheck`
-   (bloquant/avertissant, affiché avant confirmation d'envoi de masse). Le
-   panneau comparatif A/B (XMKT14) est ajouté par NTMKT3.
+   (bloquant/avertissant, affiché avant confirmation d'envoi de masse). NTMKT3
+   — panneau comparatif A vs B vs reste depuis la même trace (`variante_ab`),
+   gagnant affiché une fois `ab_gagnant`/`ab_decide_le` posés côté serveur.
    ========================================================================== */
 
 const ENVOI_STATUTS = [
@@ -102,6 +104,9 @@ export default function CampagneDetail() {
   if (loading) return <div className="page"><p className="page-loading">Chargement…</p></div>
   if (!campagne) return <div className="page"><p style={{ color: '#dc2626' }}>{err || 'Introuvable.'}</p></div>
 
+  const abComparatif = computeAbComparatif(envois)
+  const abConfigure = !!(campagne.ab_test && (campagne.ab_test.objet_b || campagne.ab_test.corps_b))
+
   return (
     <div className="page">
       <div className="page-header">
@@ -178,6 +183,41 @@ export default function CampagneDetail() {
           </div>
         )}
       </section>
+
+      {abConfigure && (
+        <section style={{ marginBottom: '1.25rem' }} data-testid="campagne-ab-comparatif">
+          <h3>
+            Test A/B (XMKT14)
+            {campagne.ab_gagnant && (
+              <span style={{ marginLeft: 8, color: '#16a34a', fontSize: '0.85rem' }}>
+                Gagnant : variante {campagne.ab_gagnant.toUpperCase()}
+              </span>
+            )}
+          </h3>
+          <table className="data-table">
+            <thead>
+              <tr><th>Variante</th><th>Envoyés</th><th>Ouverture %</th><th>Clic %</th></tr>
+            </thead>
+            <tbody>
+              <tr data-testid="campagne-ab-ligne-a">
+                <td>A</td><td>{abComparatif.a.total}</td>
+                <td>{abComparatif.a.taux_ouverture_pct}%</td>
+                <td>{abComparatif.a.taux_clic_pct}%</td>
+              </tr>
+              <tr data-testid="campagne-ab-ligne-b">
+                <td>B</td><td>{abComparatif.b.total}</td>
+                <td>{abComparatif.b.taux_ouverture_pct}%</td>
+                <td>{abComparatif.b.taux_clic_pct}%</td>
+              </tr>
+              <tr data-testid="campagne-ab-ligne-reste">
+                <td>Reste</td><td>{abComparatif.reste.total}</td>
+                <td>{abComparatif.reste.taux_ouverture_pct}%</td>
+                <td>{abComparatif.reste.taux_clic_pct}%</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+      )}
 
       <section>
         <h3>Trace par destinataire ({envoisFiltres.length})</h3>

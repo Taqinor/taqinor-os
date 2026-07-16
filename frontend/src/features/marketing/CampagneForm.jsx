@@ -2,15 +2,16 @@ import { useEffect, useState } from 'react'
 import marketingApi from '../../api/marketingApi'
 
 /* ============================================================================
-   NTMKT2 — Formulaire de création/édition d'une campagne.
+   NTMKT2/NTMKT3 — Formulaire de création/édition d'une campagne.
    ----------------------------------------------------------------------------
    Objet/corps par canal email/sms/whatsapp, listes de diffusion ciblées
    (XMKT5, `marketing/listes-diffusion/`), variantes de langue (XMKT11,
    `variantes_langue` JSON — vide par défaut = comportement actuel FR
-   uniquement) et aperçu de variables de fusion (XMKT8, `apercu_fusion` avec
-   `?lead_id=`). Rien n'est envoyé depuis ce composant : la sauvegarde
-   crée/met à jour la `Campagne` en `brouillon` (comportement backend
-   inchangé). Le test A/B (XMKT14) est ajouté par NTMKT3.
+   uniquement), aperçu de variables de fusion (XMKT8, `apercu_fusion` avec
+   `?lead_id=`) et — NTMKT3 — configuration du test A/B (XMKT14, `ab_test`
+   JSON : variante B, % d'échantillon, fenêtre de décision, critère). Rien
+   n'est envoyé depuis ce composant : la sauvegarde crée/met à jour la
+   `Campagne` en `brouillon` (comportement backend inchangé).
    ========================================================================== */
 
 const CANAUX = [
@@ -24,10 +25,16 @@ const LANGUES_VARIANTES = [
   { key: 'darija', label: 'Darija' },
 ]
 
+// XMKT14 — critères de décision du gagnant A/B (backend `ab_test.critere`).
+const AB_CRITERES = [
+  { key: 'ouvertures', label: 'Ouvertures' },
+  { key: 'clics', label: 'Clics' },
+]
+
 export function emptyForm() {
   return {
     nom: '', canal: 'email', objet: '', corps: '', planifiee_le: '',
-    listes: [], variantes_langue: {},
+    listes: [], variantes_langue: {}, ab_test: {},
   }
 }
 
@@ -39,6 +46,7 @@ export function formFromCampagne(c) {
     planifiee_le: c.planifiee_le ? c.planifiee_le.slice(0, 16) : '',
     listes: (c.listes || []).map(l => (typeof l === 'object' ? l.id : l)),
     variantes_langue: c.variantes_langue || {},
+    ab_test: c.ab_test || {},
   }
 }
 
@@ -76,6 +84,21 @@ export default function CampagneForm({ initial, onSave, onCancel, editing }) {
     },
   }))
 
+  // ── NTMKT3 — configuration du test A/B (XMKT14) ──
+  const abActif = !!(form.ab_test && (form.ab_test.objet_b || form.ab_test.corps_b))
+  const setAbField = (champ) => (e) => setForm(f => ({
+    ...f, ab_test: { ...f.ab_test, [champ]: e.target.value },
+  }))
+  const toggleAb = () => setForm(f => ({
+    ...f,
+    ab_test: (f.ab_test && (f.ab_test.objet_b || f.ab_test.corps_b))
+      ? {}
+      : {
+        objet_b: '', corps_b: '', pct_echantillon: 20, fenetre_heures: 4,
+        critere: 'ouvertures',
+      },
+  }))
+
   const apercuFusion = async () => {
     if (!leadIdApercu) return
     setApercuLoading(true)
@@ -99,6 +122,7 @@ export default function CampagneForm({ initial, onSave, onCancel, editing }) {
       ...form,
       planifiee_le: form.planifiee_le
         ? new Date(form.planifiee_le).toISOString() : null,
+      ab_test: abActif ? form.ab_test : {},
     }
     try {
       await onSave(payload)
@@ -204,6 +228,54 @@ export default function CampagneForm({ initial, onSave, onCancel, editing }) {
           )}
         </fieldset>
       )}
+
+      <fieldset style={{ border: '1px dashed #cbd5e1', borderRadius: 8,
+        padding: '0.5rem 0.75rem' }}>
+        <legend style={{ fontSize: '0.8rem', color: '#475569' }}>
+          Test A/B (XMKT14)
+        </legend>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6,
+          fontSize: '0.85rem' }}>
+          <input type="checkbox" data-testid="campagne-ab-toggle"
+            checked={abActif} onChange={toggleAb} />
+          Activer un test A/B sur cette campagne
+        </label>
+        {abActif && (
+          <div style={{ display: 'grid', gap: '0.4rem', marginTop: 6 }}>
+            <input className="form-input" placeholder="Objet — variante B"
+              data-testid="campagne-ab-objet-b"
+              value={form.ab_test.objet_b || ''} onChange={setAbField('objet_b')} />
+            <textarea className="form-input" placeholder="Corps — variante B"
+              rows={3} data-testid="campagne-ab-corps-b"
+              value={form.ab_test.corps_b || ''} onChange={setAbField('corps_b')} />
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <label style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                % échantillon
+                <input type="number" min={1} max={100} className="form-input"
+                  data-testid="campagne-ab-pct"
+                  value={form.ab_test.pct_echantillon ?? 20}
+                  onChange={setAbField('pct_echantillon')} />
+              </label>
+              <label style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                Fenêtre de décision (h)
+                <input type="number" min={1} className="form-input"
+                  data-testid="campagne-ab-fenetre"
+                  value={form.ab_test.fenetre_heures ?? 4}
+                  onChange={setAbField('fenetre_heures')} />
+              </label>
+              <label style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                Critère
+                <select className="form-input" data-testid="campagne-ab-critere"
+                  value={form.ab_test.critere || 'ouvertures'}
+                  onChange={setAbField('critere')}>
+                  {AB_CRITERES.map(c => (
+                    <option key={c.key} value={c.key}>{c.label}</option>))}
+                </select>
+              </label>
+            </div>
+          </div>
+        )}
+      </fieldset>
 
       {err && <p style={{ color: '#dc2626', margin: 0 }}>{err}</p>}
       <div style={{ display: 'flex', gap: '0.5rem' }}>

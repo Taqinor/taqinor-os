@@ -83,3 +83,42 @@ describe('CampagneForm (smoke + interactions)', () => {
     expect(await screen.findByTestId('campagne-apercu-resultat')).toHaveTextContent('Bonjour Ahmed')
   })
 })
+
+// ── NTMKT3 — configuration du test A/B (XMKT14) ──
+describe('CampagneForm — test A/B (NTMKT3)', () => {
+  it('les champs A/B restent masqués tant que le test n\'est pas activé', () => {
+    render(<CampagneForm initial={emptyForm()} onSave={vi.fn()} editing={false} />)
+    expect(screen.queryByTestId('campagne-ab-objet-b')).toBeNull()
+  })
+
+  it('activer le toggle révèle les champs variante B avec des défauts sensés', () => {
+    render(<CampagneForm initial={emptyForm()} onSave={vi.fn()} editing={false} />)
+    fireEvent.click(screen.getByTestId('campagne-ab-toggle'))
+    expect(screen.getByTestId('campagne-ab-objet-b')).toBeInTheDocument()
+    expect(screen.getByTestId('campagne-ab-pct').value).toBe('20')
+    expect(screen.getByTestId('campagne-ab-fenetre').value).toBe('4')
+    expect(screen.getByTestId('campagne-ab-critere').value).toBe('ouvertures')
+  })
+
+  it('la sauvegarde inclut ab_test rempli quand actif, {} sinon', async () => {
+    const onSave = vi.fn().mockResolvedValue()
+    render(<CampagneForm initial={emptyForm()} onSave={onSave} editing={false} />)
+    fireEvent.change(screen.getByTestId('campagne-nom'), { target: { value: 'Test AB' } })
+    fireEvent.click(screen.getByTestId('campagne-ab-toggle'))
+    fireEvent.change(screen.getByTestId('campagne-ab-objet-b'), { target: { value: 'Objet B' } })
+    fireEvent.click(screen.getByTestId('campagne-save'))
+    await waitFor(() => expect(onSave).toHaveBeenCalled())
+    expect(onSave.mock.calls[0][0].ab_test.objet_b).toBe('Objet B')
+  })
+
+  it('désactiver le toggle après édition efface la config A/B', async () => {
+    const onSave = vi.fn().mockResolvedValue()
+    render(<CampagneForm initial={emptyForm()} onSave={onSave} editing={false} />)
+    fireEvent.click(screen.getByTestId('campagne-ab-toggle'))
+    fireEvent.change(screen.getByTestId('campagne-ab-objet-b'), { target: { value: 'Objet B' } })
+    fireEvent.click(screen.getByTestId('campagne-ab-toggle')) // désactive
+    fireEvent.click(screen.getByTestId('campagne-save'))
+    await waitFor(() => expect(onSave).toHaveBeenCalled())
+    expect(onSave.mock.calls[0][0].ab_test).toEqual({})
+  })
+})

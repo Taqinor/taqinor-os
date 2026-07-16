@@ -105,3 +105,35 @@ describe('CampagneDetail', () => {
     await waitFor(() => expect(mocks.envoyer).toHaveBeenCalledWith('7', {}))
   })
 })
+
+// ── NTMKT3 — panneau comparatif A/B (XMKT14) ──
+describe('CampagneDetail — comparatif A/B (NTMKT3)', () => {
+  it("n'affiche aucun panneau A/B sans configuration ab_test", async () => {
+    renderScreen()
+    await screen.findByText('Relance été')
+    expect(screen.queryByTestId('campagne-ab-comparatif')).toBeNull()
+  })
+
+  it('affiche le comparatif A vs B vs reste + le gagnant quand décidé', async () => {
+    mocks.get.mockResolvedValue({
+      data: {
+        id: 7, nom: 'Relance été', statut: 'envoyee', statut_display: 'Envoyée',
+        nb_envois: 10, taux_ouverture_pct: 30, taux_clic_pct: 10,
+        taux_desinscription_pct: 0,
+        ab_test: { objet_b: 'Objet B', corps_b: 'Corps B' },
+        ab_gagnant: 'b',
+      },
+    })
+    mocks.envoisList.mockResolvedValue({
+      data: [
+        { id: 1, destinataire: 'a@x.ma', statut: 'ouvert', variante_ab: 'a' },
+        { id: 2, destinataire: 'b@x.ma', statut: 'clique', variante_ab: 'b' },
+      ],
+    })
+    renderScreen()
+    const panel = await screen.findByTestId('campagne-ab-comparatif')
+    expect(panel).toHaveTextContent('Gagnant : variante B')
+    expect(screen.getByTestId('campagne-ab-ligne-a')).toHaveTextContent('1')
+    expect(screen.getByTestId('campagne-ab-ligne-b')).toHaveTextContent('1')
+  })
+})
