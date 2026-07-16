@@ -88,6 +88,9 @@ _APP_URLS = [
     path('identity/', include('apps.identity.urls')),
     # Groupe ENG — Moteur publicitaire Meta Ads dans l'ERP.
     path('adsengine/', include('apps.adsengine.urls')),
+    # Groupe NTCPQ — CPQ enterprise (options/contraintes, règles, offres
+    # groupées, prix contractuels, approbations de remise, configurateur).
+    path('cpq/', include('apps.cpq.urls')),
 ]
 
 urlpatterns = [

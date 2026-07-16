@@ -172,6 +172,11 @@ INSTALLED_APPS = [
     # propose→approuve→applique, création TOUJOURS PAUSED). App satellite
     # multi-société ; tout no-ope sans token/clé configuré.
     'apps.adsengine',
+    # Groupe NTCPQ — CPQ (Configure-Price-Quote) enterprise : options/
+    # contraintes produit, moteur de règles, offres groupées, listes de prix
+    # multi-segment, approbations de remise, configurateur guidé, clauses/CGV.
+    # App satellite en aval de ventes ; string-FK vers ventes/stock/crm.
+    'apps.cpq',
 ]
 
 MIDDLEWARE = [
