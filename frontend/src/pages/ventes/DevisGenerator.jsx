@@ -1689,7 +1689,7 @@ export default function DevisGenerator({
             {modeInstallation === 'residentiel' && kwp > 36 && (
               <div className="mt-3 rounded-lg border border-info/30 bg-info/10 p-3 text-sm text-info">
                 Ce système fait {formatNumber(kwp, { decimals: 2 })} kWc — au-delà de l'échelle résidentielle.
-                Le mode Industriel / Commercial produira un document plus adapté
+                Le mode Industriel ou Commercial produira un document plus adapté
                 (étude d'autoconsommation, option unique). Vous pouvez ignorer cette suggestion.
               </div>
             )}
