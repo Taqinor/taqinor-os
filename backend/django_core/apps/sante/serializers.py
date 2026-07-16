@@ -5,7 +5,8 @@
 """
 from rest_framework import serializers
 
-from .models import ActeMedical, Admission, Patient, Praticien, RendezVous, Salle
+from .models import (
+    ActeMedical, Admission, Convention, Patient, Praticien, RendezVous, Salle)
 
 
 class PraticienSerializer(serializers.ModelSerializer):
@@ -35,7 +36,8 @@ class PatientSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'nom', 'prenom', 'cin', 'date_naissance', 'sexe',
             'sexe_display', 'telephone', 'whatsapp', 'email', 'adresse',
-            'numero_dossier', 'contact_urgence', 'client',
+            'numero_dossier', 'contact_urgence', 'client', 'convention',
+            'numero_affiliation',
         ]
         read_only_fields = ['numero_dossier']
 
@@ -72,6 +74,17 @@ class AdmissionSerializer(serializers.ModelSerializer):
             'date_sortie', 'type', 'type_display', 'statut', 'statut_display',
         ]
         read_only_fields = ['statut', 'date_sortie']
+
+
+class ConventionSerializer(serializers.ModelSerializer):
+    type_display = serializers.CharField(source='get_type_display', read_only=True)
+
+    class Meta:
+        model = Convention
+        fields = [
+            'id', 'nom', 'type', 'type_display', 'taux_tiers_payant_pct',
+            'contact', 'actif',
+        ]
 
 
 class ActeMedicalSerializer(serializers.ModelSerializer):

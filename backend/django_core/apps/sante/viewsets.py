@@ -14,10 +14,12 @@ from rest_framework.response import Response
 from apps.core.destroy_mixins import UsageGuardedDestroyMixin
 from core.viewsets import CompanyScopedModelViewSet
 
-from .models import ActeMedical, Admission, Patient, Praticien, RendezVous, Salle
+from .models import (
+    ActeMedical, Admission, Convention, Patient, Praticien, RendezVous, Salle)
 from .serializers import (
-    ActeMedicalSerializer, AdmissionSerializer, PatientSerializer,
-    PraticienSerializer, RendezVousSerializer, SalleSerializer)
+    ActeMedicalSerializer, AdmissionSerializer, ConventionSerializer,
+    PatientSerializer, PraticienSerializer, RendezVousSerializer,
+    SalleSerializer)
 
 
 class PraticienViewSet(CompanyScopedModelViewSet):
@@ -146,3 +148,11 @@ class ActeMedicalViewSet(UsageGuardedDestroyMixin, CompanyScopedModelViewSet):
         acte.actif = True
         acte.save(update_fields=['actif'])
         return Response(ActeMedicalSerializer(acte).data)
+
+
+class ConventionViewSet(CompanyScopedModelViewSet):
+    """NTSAN9 — liste des conventions (mutuelle/CNOPS/CNSS/cash), paramétrable
+    par clinique — aucune convention codée en dur."""
+
+    queryset = Convention.objects.all()
+    serializer_class = ConventionSerializer

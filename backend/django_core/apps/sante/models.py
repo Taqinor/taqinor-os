@@ -85,11 +85,8 @@ class Patient(TenantModel):
     clinique). ``client`` référence ``crm.Client`` par FK À CHAÎNE (jamais
     d'import direct de ``apps.crm.models``) ; la résolution/rattachement se
     fait via ``services.resoudre_client_pour_patient`` (import local par
-    l'appelant).
-
-    ``convention``/``numero_affiliation`` sont posés par NTSAN9 (nécessitent
-    le modèle ``Convention``, qui n'existe pas encore à ce stade).
-    """
+    l'appelant). ``convention``/``numero_affiliation`` (NTSAN9) permettent un
+    tarif par mutuelle/CNOPS/CNSS via ``GrilleTarifaire`` (NTSAN8)."""
 
     class Sexe(models.TextChoices):
         M = 'M', 'Masculin'
@@ -116,6 +113,12 @@ class Patient(TenantModel):
     client = models.ForeignKey(
         'crm.Client', on_delete=models.SET_NULL, null=True, blank=True,
         related_name='patients_sante', verbose_name='Client CRM lié')
+    # NTSAN9 — mutuelle/CNOPS/CNSS/cash par défaut du patient.
+    convention = models.ForeignKey(
+        'Convention', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='patients', verbose_name='Convention')
+    numero_affiliation = models.CharField(
+        max_length=50, blank=True, default='', verbose_name="Numéro d'affiliation")
 
     class Meta:
         verbose_name = 'Patient'
@@ -265,3 +268,33 @@ class ActeMedical(TenantModel):
 
     def __str__(self):
         return self.libelle
+
+
+class Convention(TenantModel):
+    """NTSAN9 — mutuelle/CNOPS/CNSS/cash, paramétrable par clinique (jamais
+    codée en dur)."""
+
+    class Type(models.TextChoices):
+        CNOPS = 'cnops', 'CNOPS'
+        CNSS = 'cnss', 'CNSS'
+        MUTUELLE_PRIVEE = 'mutuelle_privee', 'Mutuelle privée'
+        CASH = 'cash', 'Cash'
+        AUTRE = 'autre', 'Autre'
+
+    nom = models.CharField(max_length=150, verbose_name='Nom')
+    type = models.CharField(
+        max_length=20, choices=Type.choices, default=Type.AUTRE,
+        verbose_name='Type')
+    taux_tiers_payant_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, default=0,
+        verbose_name='Taux tiers payant par défaut (%)')
+    contact = models.CharField(max_length=255, blank=True, default='', verbose_name='Contact')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+
+    class Meta:
+        verbose_name = 'Convention'
+        verbose_name_plural = 'Conventions'
+        ordering = ['nom']
+
+    def __str__(self):
+        return self.nom
