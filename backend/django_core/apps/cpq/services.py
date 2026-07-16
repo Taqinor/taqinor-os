@@ -129,3 +129,72 @@ def lancer_approbation_devis(devis, *, user=None):
             niveau=niveau, niveau_approbation=regle.niveau_approbation,
             statut=EtapeApprobationDevis.Statut.EN_ATTENTE))
     return etapes
+
+
+def approuver_etape_devis(devis, *, user, commentaire=''):
+    """NTCPQ8 — Approuve la PREMIÈRE étape en attente du devis.
+
+    Pose ``approbateur``/``decision_le``, passe la statut à ``approuve``, logue
+    l'événement dans le chatter du devis (DevisActivity). Renvoie
+    ``(etape, toutes_approuvees)`` où ``toutes_approuvees`` est True quand plus
+    aucune étape n'est en attente. Lève ``ValidationError`` s'il n'y a aucune
+    étape en attente."""
+    from django.utils import timezone
+    from rest_framework.exceptions import ValidationError
+    from apps.ventes import activity
+
+    etape = EtapeApprobationDevis.objects.filter(
+        devis_id=devis.id,
+        statut=EtapeApprobationDevis.Statut.EN_ATTENTE,
+    ).order_by('niveau', 'id').first()
+    if etape is None:
+        raise ValidationError({'detail': 'Aucune étape en attente.'})
+    etape.statut = EtapeApprobationDevis.Statut.APPROUVE
+    etape.approbateur = user
+    etape.decision_le = timezone.now()
+    if commentaire:
+        etape.commentaire = commentaire
+    etape.save(update_fields=[
+        'statut', 'approbateur', 'decision_le', 'commentaire'])
+    activity.log_devis_note(
+        devis, user,
+        f"Approbation de remise — étape {etape.niveau} approuvée"
+        + (f" : {commentaire}" if commentaire else ""))
+    reste = EtapeApprobationDevis.objects.filter(
+        devis_id=devis.id,
+        statut=EtapeApprobationDevis.Statut.EN_ATTENTE).exists()
+    return etape, not reste
+
+
+def rejeter_etape_devis(devis, *, user, motif=''):
+    """NTCPQ8 — Rejette la première étape en attente : passe la statut à
+    ``rejete`` (approbateur/motif), remet le devis en ``brouillon`` et logue
+    l'événement (auteur + motif) dans le chatter. Renvoie l'étape rejetée."""
+    from django.utils import timezone
+    from rest_framework.exceptions import ValidationError
+    from apps.ventes import activity
+    from apps.ventes.models import Devis
+
+    etape = EtapeApprobationDevis.objects.filter(
+        devis_id=devis.id,
+        statut=EtapeApprobationDevis.Statut.EN_ATTENTE,
+    ).order_by('niveau', 'id').first()
+    if etape is None:
+        raise ValidationError({'detail': 'Aucune étape en attente.'})
+    etape.statut = EtapeApprobationDevis.Statut.REJETE
+    etape.approbateur = user
+    etape.decision_le = timezone.now()
+    etape.commentaire = motif or ''
+    etape.save(update_fields=[
+        'statut', 'approbateur', 'decision_le', 'commentaire'])
+    # Renvoie le devis en brouillon (jamais envoyé tant que la remise n'est pas
+    # approuvée / revue à la baisse).
+    if devis.statut != Devis.Statut.BROUILLON:
+        devis.statut = Devis.Statut.BROUILLON
+        devis.save(update_fields=['statut'])
+    activity.log_devis_note(
+        devis, user,
+        f"Approbation de remise — étape {etape.niveau} REJETÉE"
+        + (f" : {motif}" if motif else "")
+        + " — devis renvoyé en brouillon.")
+    return etape

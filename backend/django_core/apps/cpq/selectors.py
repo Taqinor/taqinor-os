@@ -21,6 +21,25 @@ def premiere_etape_en_attente(devis):
     ).order_by('niveau', 'id').first()
 
 
+def etapes_approbation_devis(devis):
+    """NTCPQ8 — Étapes d'approbation de remise d'un devis, en dicts JSON-safe
+    (pour l'écran « Approbation » du devis)."""
+    etapes = EtapeApprobationDevis.objects.filter(
+        devis_id=devis.id).select_related('approbateur').order_by(
+            'niveau', 'id')
+    return [{
+        'id': e.id,
+        'niveau': e.niveau,
+        'niveau_approbation': e.niveau_approbation,
+        'statut': e.statut,
+        'approbateur': (
+            getattr(e.approbateur, 'username', None) if e.approbateur_id
+            else None),
+        'decision_le': e.decision_le.isoformat() if e.decision_le else None,
+        'commentaire': e.commentaire,
+    } for e in etapes]
+
+
 def violations_compatibilite(*, company, produit_ids):
     """NTCPQ1 — Évalue les contraintes de compatibilité pour une sélection.
 

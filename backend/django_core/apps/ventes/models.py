@@ -309,6 +309,14 @@ class Devis(models.Model):
     def total_ttc(self):
         return self.total_ht + self.total_tva
 
+    @property
+    def approbation_remise_en_attente(self):
+        """NTCPQ8 — True si une étape d'approbation de remise (cpq) est encore
+        en attente pour ce devis. Lecture cross-app cpq via sélecteur (import
+        local, aucun couplage au niveau module)."""
+        from apps.cpq.selectors import premiere_etape_en_attente
+        return premiere_etape_en_attente(self) is not None
+
 
 class LigneDevis(models.Model):
     # ── XSAL14 — Type de ligne : produit (défaut) / section / note ────────────

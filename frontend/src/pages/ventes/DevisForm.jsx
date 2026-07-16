@@ -44,6 +44,76 @@ const emptyLine = () => ({
   taux_tva: '',
 })
 
+// NTCPQ8 — onglet « Approbation » : liste les étapes d'approbation de remise
+// (matrice NTCPQ7) et permet d'approuver / rejeter l'étape courante. Réutilise
+// le pattern déjà en prod pour les contrats. Silencieux si aucune étape.
+function ApprobationPanel({ devisId }) {
+  const [etapes, setEtapes] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [motif, setMotif] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const reload = () => {
+    setLoading(true)
+    ventesApi.approbationDevis(devisId)
+      .then((r) => setEtapes(r.data || []))
+      .catch(() => setEtapes([]))
+      .finally(() => setLoading(false))
+  }
+  useEffect(() => { reload() }, [devisId])
+
+  const approuver = async () => {
+    setBusy(true)
+    try { await ventesApi.approuverEtapeDevis(devisId); reload() }
+    finally { setBusy(false) }
+  }
+  const rejeter = async () => {
+    setBusy(true)
+    try { await ventesApi.rejeterEtapeDevis(devisId, motif); setMotif(''); reload() }
+    finally { setBusy(false) }
+  }
+
+  if (loading) return null
+  if (!etapes.length) return null
+  const enAttente = etapes.some((e) => e.statut === 'en_attente')
+
+  return (
+    <div className="border-t border-border pt-4" data-testid="cpq-approbation">
+      <p className="mb-2 text-sm font-semibold text-foreground">
+        Approbation de remise
+      </p>
+      <ul className="mb-3 space-y-1 text-sm">
+        {etapes.map((e) => (
+          <li key={e.id} className="flex items-center justify-between gap-2">
+            <span>
+              Étape {e.niveau} · {e.niveau_approbation}
+              {e.approbateur ? ` · ${e.approbateur}` : ''}
+            </span>
+            <span className="font-medium">{e.statut}</span>
+          </li>
+        ))}
+      </ul>
+      {enAttente && (
+        <div className="space-y-2">
+          <Input
+            placeholder="Motif de rejet (optionnel)"
+            value={motif}
+            onChange={(ev) => setMotif(ev.target.value)}
+          />
+          <div className="flex gap-2">
+            <Button type="button" onClick={approuver} loading={busy}>
+              Approuver
+            </Button>
+            <Button type="button" variant="ghost" onClick={rejeter} loading={busy}>
+              Rejeter
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function DevisForm({ devis = null, onClose, onSaved }) {
   const dispatch = useDispatch()
   const isEdit = !!devis
@@ -588,6 +658,8 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
               <AttachmentsPanel model="ventes.devis" id={devis.id} />
             </div>
           )}
+
+          {isEdit && devis?.id && <ApprobationPanel devisId={devis.id} />}
 
           <FormActions sticky={false}>
             <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>
