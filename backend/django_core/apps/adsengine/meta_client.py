@@ -16,6 +16,7 @@ Aucune dépendance pip nouvelle : ``httpx`` est déjà épinglé.
 """
 from __future__ import annotations
 
+import json
 import time
 
 import httpx
@@ -221,6 +222,33 @@ class MetaClient:
     def create_ad(self, *, name, adset_id, extra_fields=None):
         """Crée une ad — TOUJOURS PAUSED (aucun ``status`` acceptable)."""
         base = {'name': name, 'adset_id': adset_id}
+        payload = self._forced_status_payload(base, extra_fields)
+        return self._request(
+            'POST', self._account_edge('ads'), data=payload)
+
+    def create_ad_with_object_story_spec(self, *, name, adset_id,
+                                         object_story_spec, extra_fields=None):
+        """ADSENG30 — Crée une ad « style post » via ``object_story_spec``.
+
+        Un ad ``object_story_spec`` (message + ``page_id``) fait créer par Meta
+        le post sous-jacent EN EFFET DE BORD — c'est le chemin des tests type
+        « boosted post », ENTIÈREMENT dans le scope ``ads_management`` existant
+        (PAS de nouvelle App Review). La publication ORGANIQUE
+        (``pages_manage_posts``) reste GATED / hors périmètre : cette méthode ne
+        publie AUCUN contenu organique, elle crée un ad.
+
+        INVARIANT PERMANENT (règle #3) : comme toutes les méthodes de création,
+        elle n'accepte AUCUN ``status`` (le passer lève ``TypeError``) et FORCE
+        ``status=PAUSED`` via ``_forced_status_payload`` (mot final, même défense
+        en profondeur) — jamais un chemin qui puisse créer un objet ACTIF. Le
+        ``object_story_spec`` est encodé JSON dans le champ ``creative`` (les
+        objets imbriqués voyagent en JSON dans les paramètres de formulaire Meta).
+        """
+        base = {
+            'name': name,
+            'adset_id': adset_id,
+            'creative': json.dumps({'object_story_spec': object_story_spec}),
+        }
         payload = self._forced_status_payload(base, extra_fields)
         return self._request(
             'POST', self._account_edge('ads'), data=payload)
