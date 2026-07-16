@@ -4,8 +4,13 @@
 ``TenantMixin`` (``perform_create``)."""
 from rest_framework import serializers
 
+from django.db import transaction
+
 from core.rules import validate_condition_group
-from .models import OptionProduit, ContrainteCompatibilite, RegleProduitCPQ
+from .models import (
+    OptionProduit, ContrainteCompatibilite, RegleProduitCPQ,
+    OffreGroupee, LigneOffreGroupee,
+)
 
 
 class OptionProduitSerializer(serializers.ModelSerializer):
@@ -43,3 +48,39 @@ class RegleProduitCPQSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 'actions doit être une liste.')
         return value
+
+
+class LigneOffreGroupeeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = LigneOffreGroupee
+        fields = ['id', 'produit', 'quantite', 'mode_prix', 'valeur']
+
+
+class OffreGroupeeSerializer(serializers.ModelSerializer):
+    lignes = LigneOffreGroupeeSerializer(many=True, required=False)
+
+    class Meta:
+        model = OffreGroupee
+        fields = ['id', 'nom', 'prix_total', 'actif', 'date_creation',
+                  'lignes']
+        read_only_fields = ['date_creation']
+
+    @transaction.atomic
+    def create(self, validated_data):
+        lignes = validated_data.pop('lignes', [])
+        offre = OffreGroupee.objects.create(**validated_data)
+        for ligne in lignes:
+            LigneOffreGroupee.objects.create(offre=offre, **ligne)
+        return offre
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        lignes = validated_data.pop('lignes', None)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        if lignes is not None:
+            instance.lignes.all().delete()
+            for ligne in lignes:
+                LigneOffreGroupee.objects.create(offre=instance, **ligne)
+        return instance

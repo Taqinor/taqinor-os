@@ -12,12 +12,14 @@ from rest_framework.permissions import IsAuthenticated
 from core.viewsets import CompanyScopedModelViewSet
 from authentication.permissions import IsResponsableOrAdmin, IsAnyRole
 
-from .models import OptionProduit, ContrainteCompatibilite, RegleProduitCPQ
+from .models import (
+    OptionProduit, ContrainteCompatibilite, RegleProduitCPQ, OffreGroupee,
+)
 from .serializers import (
     OptionProduitSerializer, ContrainteCompatibiliteSerializer,
-    RegleProduitCPQSerializer,
+    RegleProduitCPQSerializer, OffreGroupeeSerializer,
 )
-from . import selectors
+from . import selectors, services
 
 
 class OptionProduitViewSet(CompanyScopedModelViewSet):
@@ -63,6 +65,40 @@ class RegleProduitCPQViewSet(CompanyScopedModelViewSet):
         declenchees = selectors.evaluer_regles_produit(
             company=request.user.company, context=context)
         return Response({'actions_declenchees': declenchees})
+
+
+class OffreGroupeeViewSet(CompanyScopedModelViewSet):
+    queryset = OffreGroupee.objects.prefetch_related('lignes').all()
+    serializer_class = OffreGroupeeSerializer
+
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve'):
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    @action(detail=True, methods=['post'], url_path='appliquer',
+            permission_classes=[IsResponsableOrAdmin])
+    def appliquer(self, request, pk=None):
+        """NTCPQ3 — Applique le bundle au devis ``?devis_id=`` : insère les
+        LigneDevis correspondantes en respectant le mode de prix."""
+        offre = self.get_object()
+        devis_id = request.query_params.get('devis_id') or request.data.get('devis_id')
+        if not devis_id:
+            return Response({'detail': 'devis_id requis.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        from apps.ventes.models import Devis
+        try:
+            devis = Devis.objects.get(pk=devis_id, company=request.user.company)
+        except Devis.DoesNotExist:
+            return Response({'detail': 'Devis introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        lignes = services.appliquer_offre_groupee(
+            offre=offre, devis=devis, user=request.user)
+        return Response({
+            'detail': f'Offre « {offre.nom} » appliquée.',
+            'lignes_creees': [li.id for li in lignes],
+            'sous_total_ht': str(devis.total_ht),
+        }, status=status.HTTP_201_CREATED)
 
 
 class ValiderCompatibiliteView(APIView):

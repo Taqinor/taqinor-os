@@ -120,3 +120,66 @@ class RegleProduitCPQ(models.Model):
 
     def __str__(self):
         return self.nom
+
+
+class OffreGroupee(models.Model):
+    """NTCPQ3 — Bundle produit à prix cascadé.
+
+    ``prix_total`` (optionnel) : quand il est renseigné et que les lignes sont
+    en mode ``FIXE``, le total du bundle PRIME et est réparti au prorata du prix
+    catalogue sur les lignes lors de l'application au devis. Sinon chaque ligne
+    est valorisée selon son propre ``mode_prix``."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='cpq_offres_groupees')
+    nom = models.CharField(max_length=150)
+    prix_total = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        help_text='Prix fixe du bundle (mode FIXE) réparti au prorata.')
+    actif = models.BooleanField(default=True)
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Offre groupée'
+        verbose_name_plural = 'Offres groupées'
+        ordering = ['-date_creation', 'id']
+        indexes = [
+            models.Index(fields=['company', 'actif'],
+                         name='cpq_offre_co_actif'),
+        ]
+
+    def __str__(self):
+        return self.nom
+
+
+class LigneOffreGroupee(models.Model):
+    """NTCPQ3 — Composant d'une offre groupée.
+
+    ``mode_prix`` : ``FIXE`` (le total du bundle prime, réparti au prorata),
+    ``REMISE_PCT`` (prix catalogue moins ``valeur`` %), ``PRIX_COMPOSANT``
+    (prix imposé = ``valeur``)."""
+    class ModePrix(models.TextChoices):
+        FIXE = 'FIXE', 'Prix fixe (bundle)'
+        REMISE_PCT = 'REMISE_PCT', 'Remise %'
+        PRIX_COMPOSANT = 'PRIX_COMPOSANT', 'Prix composant imposé'
+
+    offre = models.ForeignKey(
+        OffreGroupee, on_delete=models.CASCADE, related_name='lignes')
+    produit = models.ForeignKey(
+        'stock.Produit', on_delete=models.CASCADE,
+        related_name='cpq_lignes_offre')
+    quantite = models.DecimalField(
+        max_digits=10, decimal_places=2, default=1)
+    mode_prix = models.CharField(
+        max_length=20, choices=ModePrix.choices, default=ModePrix.FIXE)
+    valeur = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        help_text='% de remise (REMISE_PCT) ou prix imposé (PRIX_COMPOSANT).')
+
+    class Meta:
+        verbose_name = 'Ligne offre groupée'
+        verbose_name_plural = 'Lignes offre groupée'
+        ordering = ['offre_id', 'id']
+
+    def __str__(self):
+        return f'{self.offre_id} · produit {self.produit_id} × {self.quantite}'
