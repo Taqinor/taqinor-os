@@ -483,3 +483,45 @@ export function reconStatusTone(statut) {
   if (s.includes('ecart') || s.includes('écart') || s.includes('gap')) return { bg: '#fef9c3', color: '#854d0e' }
   return { bg: '#dcfce7', color: '#166534' } // ok / réconcilié
 }
+
+// ── ENG14/ENG43 — Règles (gabarits) & dry-run ──
+// Normalise un gabarit de règle (picker FR — jamais un builder libre) :
+// condition FR → action FR, en clair.
+export function normalizeRuleTemplate(raw) {
+  const t = raw && typeof raw === 'object' ? raw : {}
+  return {
+    key: t.key ?? t.id,
+    nom: t.nom || t.name || t.label || 'Règle',
+    description: t.description || t.desc || '',
+    condition_fr: t.condition_fr || t.condition || '',
+    action_fr: t.action_fr || t.action || '',
+  }
+}
+
+// Normalise le résultat d'un dry-run : résumé FR + objets touchés avec l'effet
+// FR de la règle sur chacun (jamais appliqué — juste simulé/visualisé).
+export function normalizeDryRun(raw) {
+  const d = raw && typeof raw === 'object' ? raw : {}
+  return {
+    resume_fr: d.resume_fr || d.summary_fr || '',
+    objets_touches: (Array.isArray(d.objets_touches) ? d.objets_touches
+      : (Array.isArray(d.affected) ? d.affected : [])).filter(Boolean).map((o, i) => ({
+        id: o.id ?? i,
+        nom: o.nom || o.name || `Objet ${i + 1}`,
+        effet_fr: o.effet_fr || o.effect_fr || o.effet || '',
+      })),
+  }
+}
+
+// ── ENG16/ENG43 — Anomalies (flux) avec sévérités ──
+// Réutilise `alertTone` (vocabulaire critique/alerte/info commun aux alertes).
+export function normalizeAnomalies(raw) {
+  const list = Array.isArray(raw) ? raw : (raw?.results || raw?.anomalies || [])
+  return (list || []).filter(Boolean).map((a, i) => ({
+    id: a.id ?? i,
+    titre: a.titre || a.title || 'Anomalie',
+    severite: a.severite || a.severity || a.niveau || 'info',
+    message: a.message || a.detail || '',
+    quand: a.quand || a.date || a.created_at || '',
+  }))
+}

@@ -57,6 +57,8 @@ const adsengineApi = {
   // ── ENG13 — Alertes (bandeau dashboard, WhatsApp-first) ──
   alerts: {
     list: (params) => api.get('/adsengine/alerts/', { params }),
+    // ENG43 — historique des alertes (past, pour l'écran Règles & anomalies).
+    history: (params) => api.get('/adsengine/alerts/history/', { params }),
   },
 
   // ── ENG5/ENG24 — Campagnes (miroirs) + classement par créatif ──
@@ -112,6 +114,20 @@ const adsengineApi = {
     validate: (payload) => api.post('/adsengine/flightplans/validate/', payload),
     // Lance une simulation depuis le plan composé.
     simulate: (payload) => api.post('/adsengine/flightplans/simulate/', payload),
+  },
+
+  // ── ENG14/ENG43 — Règles (gabarits) + dry-run ──
+  rules: {
+    // Catalogue de gabarits FR (picker — jamais un builder libre).
+    templates: () => api.get('/adsengine/rules/templates/'),
+    // Simulation « dry-run » d'un gabarit : objets touchés + effet, sans appliquer.
+    dryRun: (templateKey, payload) =>
+      api.post('/adsengine/rules/dry-run/', { template: templateKey, ...payload }),
+  },
+
+  // ── ENG16/ENG43 — Anomalies (flux avec sévérités) ──
+  anomalies: {
+    list: (params) => api.get('/adsengine/anomalies/', { params }),
   },
 
   // ── ENG27/ENG41 — Backlog par campagne (CreativeGenerationBatch) ──
