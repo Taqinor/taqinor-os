@@ -1479,6 +1479,19 @@ def generate_premium_devis_pdf(devis_id, pdf_options=None, persist=True) -> str:
                 "Industriel renderer failed for %s; using legacy engine",
                 getattr(devis, "reference", devis_id), exc_info=True)
             pdf_bytes = None
+    # QX46 — renderer COMMERCIAL (catégorie-aware) : full/premium seulement,
+    # intercepté AVANT le repli legacy (comme QX45).
+    from .commercial import renderer as commercial
+    if pdf_bytes is None and commercial.is_commercial(devis, pdf_options):
+        try:
+            pdf_bytes = commercial.render_pdf_bytes(data)
+        except commercial.Unsupported:
+            pdf_bytes = None
+        except Exception:
+            logger.warning(
+                "Commercial renderer failed for %s; using legacy engine",
+                getattr(devis, "reference", devis_id), exc_info=True)
+            pdf_bytes = None
     from .residential import renderer as residential
     if pdf_bytes is None and residential.is_residential(devis, pdf_options):
         try:
