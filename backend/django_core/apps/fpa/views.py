@@ -4,8 +4,11 @@ from rest_framework.response import Response
 
 from core.mixins import TenantMixin
 
-from .models import CycleBudgetaire, Departement
-from .serializers import CycleBudgetaireSerializer, DepartementSerializer
+from .models import CycleBudgetaire, Departement, LigneBudgetDepartement
+from .serializers import (
+    CycleBudgetaireSerializer, DepartementSerializer,
+    LigneBudgetDepartementSerializer,
+)
 
 
 class DepartementViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -76,3 +79,26 @@ class CycleBudgetaireViewSet(TenantMixin, viewsets.ModelViewSet):
         cycle.statut = CycleBudgetaire.Statut.CLOS
         cycle.save(update_fields=['statut'])
         return Response(CycleBudgetaireSerializer(cycle).data)
+
+
+class LigneBudgetDepartementViewSet(TenantMixin, viewsets.ModelViewSet):
+    """NTFPA3 — Lignes de budget départemental (saisie mensuelle par
+    catégorie). NTFPA6 — un cycle clos refuse toute écriture (400, via le
+    ``ValidationError`` levé par ``LigneBudgetDepartement.save()``)."""
+
+    queryset = LigneBudgetDepartement.objects.select_related(
+        'cycle', 'departement').all()
+    serializer_class = LigneBudgetDepartementSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['mois', 'categorie']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        if cycle_id := params.get('cycle'):
+            qs = qs.filter(cycle_id=cycle_id)
+        if departement_id := params.get('departement'):
+            qs = qs.filter(departement_id=departement_id)
+        if categorie := params.get('categorie'):
+            qs = qs.filter(categorie=categorie)
+        return qs

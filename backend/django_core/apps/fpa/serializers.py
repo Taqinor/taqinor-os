@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import CycleBudgetaire, Departement
+from .models import CycleBudgetaire, Departement, LigneBudgetDepartement
 
 
 class DepartementSerializer(serializers.ModelSerializer):
@@ -36,3 +36,13 @@ class CycleBudgetaireSerializer(serializers.ModelSerializer):
         from apps.compta.selectors import get_exercice_label
 
         return get_exercice_label(obj.company, obj.exercice_comptable_id)
+
+
+class LigneBudgetDepartementSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = LigneBudgetDepartement
+        fields = [
+            'id', 'company', 'cycle', 'departement', 'categorie', 'mois',
+            'montant_prevu', 'commentaire', 'date_modification',
+        ]
+        read_only_fields = ['id', 'company', 'date_modification']

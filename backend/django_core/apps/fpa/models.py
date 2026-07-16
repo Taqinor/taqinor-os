@@ -108,3 +108,77 @@ class CycleBudgetaire(models.Model):
     @property
     def clos(self):
         return self.statut == self.Statut.CLOS
+
+
+class Categorie(models.TextChoices):
+    """Catégorie budgétaire FP&A — partagée par lignes budget/prévision/scénario."""
+    MASSE_SALARIALE = 'masse_salariale', 'Masse salariale'
+    MARKETING = 'marketing', 'Marketing'
+    IT = 'it', 'IT'
+    FRAIS_GENERAUX = 'frais_generaux', 'Frais généraux'
+    INVESTISSEMENT = 'investissement', 'Investissement'
+    AUTRE = 'autre', 'Autre'
+
+
+class LigneBudgetDepartement(models.Model):
+    """NTFPA3 — Ligne de budget mensuelle d'un département, par catégorie.
+
+    NTFPA6 — verrouillage post-clôture : ``save()``/``delete()`` refusent toute
+    écriture dès que ``cycle.statut == CLOS`` (même patron que
+    ``compta.EcritureComptable._verifier_periode_ouverte``)."""
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='fpa_lignes_budget', verbose_name='Société',
+    )
+    cycle = models.ForeignKey(
+        CycleBudgetaire, on_delete=models.CASCADE,
+        related_name='lignes_budget', verbose_name='Cycle budgétaire',
+    )
+    departement = models.ForeignKey(
+        Departement, on_delete=models.CASCADE,
+        related_name='lignes_budget', verbose_name='Département',
+    )
+    categorie = models.CharField(
+        max_length=20, choices=Categorie.choices, verbose_name='Catégorie')
+    mois = models.PositiveSmallIntegerField(verbose_name='Mois (1-12)')
+    montant_prevu = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0, verbose_name='Montant prévu')
+    commentaire = models.TextField(blank=True, default='', verbose_name='Commentaire')
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Ligne de budget département'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['cycle', 'departement', 'categorie', 'mois'],
+                name='fpa_ligne_budget_unique'),
+            models.CheckConstraint(
+                condition=models.Q(mois__gte=1) & models.Q(mois__lte=12),
+                name='fpa_ligne_budget_mois_valide'),
+        ]
+        ordering = ['departement', 'categorie', 'mois']
+
+    def __str__(self):
+        return f'{self.departement_id} {self.categorie} M{self.mois}'
+
+    def _verifier_cycle_ouvert(self):
+        """NTFPA6 — refuse toute écriture si le cycle parent est clos."""
+        if not self.cycle_id:
+            return
+        statut = CycleBudgetaire.objects.filter(
+            pk=self.cycle_id).values_list('statut', flat=True).first()
+        if statut == CycleBudgetaire.Statut.CLOS:
+            from django.core.exceptions import ValidationError
+            raise ValidationError(
+                "Ce cycle budgétaire est clôturé : la ligne "
+                f'{self.departement_id}/{self.categorie}/M{self.mois} '
+                "ne peut plus être modifiée.")
+
+    def save(self, *args, **kwargs):
+        self._verifier_cycle_ouvert()
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        self._verifier_cycle_ouvert()
+        return super().delete(*args, **kwargs)
