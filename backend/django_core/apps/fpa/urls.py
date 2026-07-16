@@ -3,6 +3,7 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     CycleBudgetaireViewSet, DepartementViewSet, LigneBudgetDepartementViewSet,
+    SoumissionBudgetDepartementViewSet,
 )
 
 router = DefaultRouter()
@@ -13,6 +14,9 @@ router.register(
 router.register(
     r'lignes-budget-departement', LigneBudgetDepartementViewSet,
     basename='fpa-ligne-budget-departement')
+router.register(
+    r'soumissions-budget', SoumissionBudgetDepartementViewSet,
+    basename='fpa-soumission-budget')
 
 urlpatterns = [
     path('', include(router.urls)),

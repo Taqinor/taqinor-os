@@ -175,10 +175,82 @@ class LigneBudgetDepartement(models.Model):
                 f'{self.departement_id}/{self.categorie}/M{self.mois} '
                 "ne peut plus être modifiée.")
 
+    def _verifier_non_soumis(self):
+        """NTFPA5 — refuse toute écriture si la soumission (cycle, département)
+        est ``soumis`` ou ``valide`` (verrouillage le temps de la validation).
+        Une soumission ``en_saisie``/``rejete``/absente laisse l'édition
+        ouverte (un budget rejeté repasse en saisie, éditable)."""
+        soumission = SoumissionBudgetDepartement.objects.filter(
+            cycle_id=self.cycle_id, departement_id=self.departement_id,
+        ).values_list('statut', flat=True).first()
+        if soumission in (
+                SoumissionBudgetDepartement.Statut.SOUMIS,
+                SoumissionBudgetDepartement.Statut.VALIDE):
+            from django.core.exceptions import ValidationError
+            raise ValidationError(
+                "Ce budget de département est soumis/validé : il est "
+                "verrouillé le temps de la décision (rejet pour rouvrir).")
+
     def save(self, *args, **kwargs):
         self._verifier_cycle_ouvert()
+        self._verifier_non_soumis()
         super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):
         self._verifier_cycle_ouvert()
+        self._verifier_non_soumis()
         return super().delete(*args, **kwargs)
+
+
+class SoumissionBudgetDepartement(models.Model):
+    """NTFPA5 — Workflow soumission/validation d'un budget de département pour
+    un cycle donné. Statut LOCAL au workflow (jamais lié à STAGES.py ni au
+    ``CycleBudgetaire.statut``, même patron que ``contrats.EtapeApprobation``
+    vs ``Contrat.statut``)."""
+
+    class Statut(models.TextChoices):
+        EN_SAISIE = 'en_saisie', 'En saisie'
+        SOUMIS = 'soumis', 'Soumis'
+        VALIDE = 'valide', 'Validé'
+        REJETE = 'rejete', 'Rejeté'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='fpa_soumissions_budget', verbose_name='Société',
+    )
+    cycle = models.ForeignKey(
+        CycleBudgetaire, on_delete=models.CASCADE,
+        related_name='soumissions', verbose_name='Cycle budgétaire',
+    )
+    departement = models.ForeignKey(
+        Departement, on_delete=models.CASCADE,
+        related_name='soumissions_budget', verbose_name='Département',
+    )
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.EN_SAISIE,
+        verbose_name='Statut',
+    )
+    motif_rejet = models.TextField(blank=True, default='', verbose_name='Motif de rejet')
+    soumis_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='fpa_budgets_soumis',
+        verbose_name='Soumis par',
+    )
+    soumis_le = models.DateTimeField(null=True, blank=True, verbose_name='Soumis le')
+    valide_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='fpa_budgets_valides',
+        verbose_name='Validé par',
+    )
+    valide_le = models.DateTimeField(null=True, blank=True, verbose_name='Validé le')
+
+    class Meta:
+        verbose_name = 'Soumission de budget département'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['cycle', 'departement'],
+                name='fpa_soumission_cycle_departement_unique'),
+        ]
+
+    def __str__(self):
+        return f'{self.departement_id} / cycle {self.cycle_id} — {self.statut}'

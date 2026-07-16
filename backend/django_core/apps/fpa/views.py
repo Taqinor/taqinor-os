@@ -4,10 +4,13 @@ from rest_framework.response import Response
 
 from core.mixins import TenantMixin
 
-from .models import CycleBudgetaire, Departement, LigneBudgetDepartement
+from .models import (
+    CycleBudgetaire, Departement, LigneBudgetDepartement,
+    SoumissionBudgetDepartement,
+)
 from .serializers import (
     CycleBudgetaireSerializer, DepartementSerializer,
-    LigneBudgetDepartementSerializer,
+    LigneBudgetDepartementSerializer, SoumissionBudgetDepartementSerializer,
 )
 
 
@@ -102,3 +105,92 @@ class LigneBudgetDepartementViewSet(TenantMixin, viewsets.ModelViewSet):
         if categorie := params.get('categorie'):
             qs = qs.filter(categorie=categorie)
         return qs
+
+    def _cycle_departement(self, request):
+        cycle_id = request.query_params.get('cycle')
+        departement_id = request.query_params.get('departement')
+        cycle = CycleBudgetaire.objects.filter(
+            company=request.user.company, pk=cycle_id).first()
+        departement = Departement.objects.filter(
+            company=request.user.company, pk=departement_id).first()
+        return cycle, departement
+
+    @action(detail=False, methods=['post'], url_path='soumettre')
+    def soumettre(self, request):
+        cycle, departement = self._cycle_departement(request)
+        if cycle is None or departement is None:
+            return Response(
+                {'detail': 'cycle et departement requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        from django.core.exceptions import ValidationError
+
+        from .services import soumettre_budget_departement
+        try:
+            soumission = soumettre_budget_departement(
+                request.user.company, cycle, departement, request.user)
+        except ValidationError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(SoumissionBudgetDepartementSerializer(soumission).data)
+
+    @action(detail=False, methods=['post'], url_path='valider')
+    def valider(self, request):
+        cycle, departement = self._cycle_departement(request)
+        if cycle is None or departement is None:
+            return Response(
+                {'detail': 'cycle et departement requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        from django.core.exceptions import ValidationError
+
+        from .services import valider_budget_departement
+        try:
+            soumission = valider_budget_departement(
+                request.user.company, cycle, departement, request.user)
+        except ValidationError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(SoumissionBudgetDepartementSerializer(soumission).data)
+
+    @action(detail=False, methods=['post'], url_path='rejeter')
+    def rejeter(self, request):
+        cycle, departement = self._cycle_departement(request)
+        if cycle is None or departement is None:
+            return Response(
+                {'detail': 'cycle et departement requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        from django.core.exceptions import ValidationError
+
+        from .services import rejeter_budget_departement
+        try:
+            soumission = rejeter_budget_departement(
+                request.user.company, cycle, departement, request.user,
+                motif=request.data.get('motif', ''))
+        except ValidationError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(SoumissionBudgetDepartementSerializer(soumission).data)
+
+
+class SoumissionBudgetDepartementViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
+    """NTFPA5 — lecture des soumissions + chatter (historique/note)."""
+
+    queryset = SoumissionBudgetDepartement.objects.select_related(
+        'cycle', 'departement').all()
+    serializer_class = SoumissionBudgetDepartementSerializer
+
+    @action(detail=True, methods=['get'], url_path='historique')
+    def historique(self, request, pk=None):
+        from apps.records.serializers import ActivitySerializer
+        from apps.records.services import chatter_qs
+
+        soumission = self.get_object()
+        qs = chatter_qs(soumission, company=request.user.company)
+        return Response(ActivitySerializer(qs, many=True).data)
+
+    @action(detail=True, methods=['post'], url_path='noter')
+    def noter(self, request, pk=None):
+        from apps.records.services import log_note
+
+        soumission = self.get_object()
+        body = request.data.get('body', '')
+        activite = log_note(
+            soumission, request.user, body, company=request.user.company)
+        from apps.records.serializers import ActivitySerializer
+        return Response(ActivitySerializer(activite).data)

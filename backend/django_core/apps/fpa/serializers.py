@@ -1,6 +1,9 @@
 from rest_framework import serializers
 
-from .models import CycleBudgetaire, Departement, LigneBudgetDepartement
+from .models import (
+    CycleBudgetaire, Departement, LigneBudgetDepartement,
+    SoumissionBudgetDepartement,
+)
 
 
 class DepartementSerializer(serializers.ModelSerializer):
@@ -46,3 +49,13 @@ class LigneBudgetDepartementSerializer(serializers.ModelSerializer):
             'montant_prevu', 'commentaire', 'date_modification',
         ]
         read_only_fields = ['id', 'company', 'date_modification']
+
+
+class SoumissionBudgetDepartementSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SoumissionBudgetDepartement
+        fields = [
+            'id', 'company', 'cycle', 'departement', 'statut', 'motif_rejet',
+            'soumis_par', 'soumis_le', 'valide_par', 'valide_le',
+        ]
+        read_only_fields = fields
