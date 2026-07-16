@@ -35,6 +35,17 @@ const santeApi = {
     update: (id, data) => api.patch(`/sante/rendezvous/${id}/`, data),
     remove: (id) => api.delete(`/sante/rendezvous/${id}/`),
   },
+
+  // ── Nomenclature des actes (NTSAN7 — paramétrage clinique) ──
+  // `actif` est en lecture seule côté API : le soft-disable passe par les
+  // actions dédiées (jamais un DELETE physique une fois l'acte utilisé).
+  actesMedicaux: {
+    list: (params) => api.get('/sante/actes-medicaux/', { params }),
+    create: (data) => api.post('/sante/actes-medicaux/', data),
+    update: (id, data) => api.patch(`/sante/actes-medicaux/${id}/`, data),
+    desactiver: (id) => api.post(`/sante/actes-medicaux/${id}/desactiver/`),
+    activer: (id) => api.post(`/sante/actes-medicaux/${id}/activer/`),
+  },
 }
 
 export default santeApi

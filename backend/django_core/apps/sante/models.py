@@ -232,3 +232,36 @@ class Admission(TenantModel):
 
     def __str__(self):
         return f'Admission {self.patient_id} ({self.date_admission:%Y-%m-%d})'
+
+
+class ActeMedical(TenantModel):
+    """NTSAN7 — nomenclature des actes (paramétrage clinique).
+
+    Pas de table NGAP officielle importée en v1 : ``code_ngap``/
+    ``cotation_lettre_cle`` sont du texte libre paramétrable par la clinique.
+    Soft-disable uniquement (``actif``) : un acte déjà référencé par
+    ``GrilleTarifaire``/``ActeRealise`` ne doit JAMAIS être supprimé
+    physiquement — la garde de suppression est complétée dans la même passe
+    que NTSAN10 (une fois ``ActeRealise`` posé, seul vrai « acte déjà
+    facturé »)."""
+
+    code_ngap = models.CharField(
+        max_length=30, blank=True, default='', verbose_name='Code NGAP')
+    libelle = models.CharField(max_length=255, verbose_name='Libellé')
+    categorie = models.CharField(
+        max_length=100, blank=True, default='', verbose_name='Catégorie')
+    tarif_base_ttc = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0,
+        verbose_name='Tarif de base TTC')
+    cotation_lettre_cle = models.CharField(
+        max_length=20, blank=True, default='',
+        verbose_name='Cotation (lettre clé)')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+
+    class Meta:
+        verbose_name = 'Acte médical'
+        verbose_name_plural = 'Actes médicaux'
+        ordering = ['libelle']
+
+    def __str__(self):
+        return self.libelle

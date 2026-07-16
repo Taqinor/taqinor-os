@@ -11,12 +11,13 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
+from apps.core.destroy_mixins import UsageGuardedDestroyMixin
 from core.viewsets import CompanyScopedModelViewSet
 
-from .models import Admission, Patient, Praticien, RendezVous, Salle
+from .models import ActeMedical, Admission, Patient, Praticien, RendezVous, Salle
 from .serializers import (
-    AdmissionSerializer, PatientSerializer, PraticienSerializer,
-    RendezVousSerializer, SalleSerializer)
+    ActeMedicalSerializer, AdmissionSerializer, PatientSerializer,
+    PraticienSerializer, RendezVousSerializer, SalleSerializer)
 
 
 class PraticienViewSet(CompanyScopedModelViewSet):
@@ -119,3 +120,29 @@ class AdmissionViewSet(CompanyScopedModelViewSet):
         except ValueError as exc:
             raise ValidationError({'detail': str(exc)})
         return Response(AdmissionSerializer(admission).data)
+
+
+class ActeMedicalViewSet(UsageGuardedDestroyMixin, CompanyScopedModelViewSet):
+    """NTSAN7 — nomenclature des actes. Soft-disable via `desactiver`/
+    `activer` (jamais un DELETE physique une fois l'acte utilisé — la garde
+    de suppression est complétée dans la même passe que NTSAN10)."""
+
+    queryset = ActeMedical.objects.all()
+    serializer_class = ActeMedicalSerializer
+
+    def destroy_guard_message(self, acte):
+        return None
+
+    @action(detail=True, methods=['post'], url_path='desactiver')
+    def desactiver(self, request, pk=None):
+        acte = self.get_object()
+        acte.actif = False
+        acte.save(update_fields=['actif'])
+        return Response(ActeMedicalSerializer(acte).data)
+
+    @action(detail=True, methods=['post'], url_path='activer')
+    def activer(self, request, pk=None):
+        acte = self.get_object()
+        acte.actif = True
+        acte.save(update_fields=['actif'])
+        return Response(ActeMedicalSerializer(acte).data)
