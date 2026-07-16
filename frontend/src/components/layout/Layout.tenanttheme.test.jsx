@@ -11,6 +11,8 @@ vi.mock('./Sidebar', () => ({ default: () => <div className="sidebar" /> }))
 vi.mock('./Header', () => ({ default: () => <header className="header" /> }))
 vi.mock('./BottomTabBar', () => ({ default: () => null }))
 vi.mock('../../features/ia/CopilotPanel', () => ({ default: () => null }))
+// NTIDE9 — même neutralisation que Layout.test.jsx (voir ce fichier).
+vi.mock('../../features/innovation/SuggestionCTA', () => ({ default: () => null }))
 vi.mock('../../ui/OfflineState', () => ({ OfflineBanner: () => null }))
 vi.mock('react-router-dom', async (orig) => ({
   ...(await orig()),

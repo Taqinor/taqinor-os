@@ -180,6 +180,10 @@ INSTALLED_APPS = [
     # nomenclature d'actes, facturation patient/tiers payant. Additive,
     # scopée société côté serveur ; aucune donnée médicale clinique stockée.
     'apps.sante',
+    # Groupe NTIDE — Boîte à idées interne, campagnes d'innovation ciblées et
+    # canal de feedback produit in-app. Additif, company-scopé ; le chatter
+    # réutilise records.Activity (ARC8), aucun modèle *Activity maison.
+    'apps.innovation',
 ]
 
 MIDDLEWARE = [

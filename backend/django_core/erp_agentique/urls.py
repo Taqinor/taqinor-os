@@ -93,6 +93,8 @@ _APP_URLS = [
     path('adsengine/', include('apps.adsengine.urls')),
     # NTSAN1 — Santé (cabinet/clinique).
     path('sante/', include('apps.sante.urls')),
+    # Groupe NTIDE — Boîte à idées interne, campagnes d'innovation, feedback.
+    path('innovation/', include('apps.innovation.urls')),
 ]
 
 urlpatterns = [
