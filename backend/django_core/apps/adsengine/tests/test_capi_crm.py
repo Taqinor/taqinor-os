@@ -48,7 +48,8 @@ class BuildStageEventTests(TestCase):
         self.assertEqual(ev['event_name'], CONTACTED)
         self.assertEqual(ev['action_source'], 'system_generated')
         self.assertEqual(ev['custom_data']['event_source'], 'crm')
-        self.assertEqual(ev['custom_data']['lead_event_source'], 'TAQINOR OS')
+        # SCA29 white-label : source CRM neutre, jamais la marque plateforme.
+        self.assertEqual(ev['custom_data']['lead_event_source'], 'ERP CRM')
 
     def test_match_uses_leadgen_id_and_hashed_phone(self):
         lead = self._meta_lead()
@@ -156,7 +157,13 @@ class SignalTriggerTests(TestCase):
             calls.append((lead_id, new_stage, kw.get('old_stage')))
             return {'emitted': False, 'reason': 'test'}
 
-        with mock.patch.object(capi_crm, 'emit_lead_stage_event', _recorder):
+        # Le récepteur pre_save/post_save est gardé par META_CRM_STAGE_CAPI_ENABLED
+        # (perf : aucune requête sur chaque save de Lead tant que l'intégration
+        # n'est pas activée — OFF par défaut). Il faut donc l'activer pour que le
+        # déclencheur atteigne l'émetteur (mocké ici).
+        with mock.patch.dict(
+                os.environ, {'META_CRM_STAGE_CAPI_ENABLED': '1'}), \
+                mock.patch.object(capi_crm, 'emit_lead_stage_event', _recorder):
             lead = Lead.objects.create(
                 company=self.company, nom='P',
                 source=Lead.Source.META_LEAD_ADS, canal=Lead.Canal.META_ADS,

@@ -135,7 +135,7 @@ class RunDivergenceCheckTests(TestCase):
             company=self.company, experiment=self.exp, label=label,
             ad_id=ad.meta_id)
         ArmDailyStat.upsert(arm=arm, date=self.today,
-                            impressions=impressions, conversions=conversions)
+                            impressions=impressions, conversations=conversions)
         return arm
 
     def _spend(self, ad, amount):

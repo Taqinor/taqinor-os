@@ -1119,8 +1119,11 @@ class FlightPhase(TenantModel):
         related_name='phases', verbose_name='Plan')
     order = models.PositiveIntegerField(default=0, verbose_name='Ordre')
     name = models.CharField(max_length=120, verbose_name='Nom')
+    # La séquence canonique (flightplan.PHASE_SEQUENCE) inclut 'consolidation'
+    # (13 car.) — max_length=12 tronquait la matérialisation. 32 laisse de la
+    # marge pour toute future variable testée (texte libre, pas de choices).
     tested_variable = models.CharField(
-        max_length=12, blank=True, default='', verbose_name='Variable testée')
+        max_length=32, blank=True, default='', verbose_name='Variable testée')
     launch_template = models.CharField(
         max_length=64, blank=True, default='',
         verbose_name='Template de lancement')

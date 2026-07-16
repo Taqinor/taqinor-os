@@ -56,7 +56,11 @@ class PauseForMonthCycleTests(TestCase):
         services.apply_action(action, client=client)
         # Chemin PAUSED-only exclusif : jamais un update de budget/statut libre.
         client.update_status_paused.assert_called_once()
-        self.assertFalse(hasattr(client.update_status_paused, 'status_arg'))
+        # L'appel ne porte AUCUN argument `status` paramétrable : la méthode
+        # dédiée FORCE PAUSED (elle ne reçoit qu'object_id/level). Un `hasattr`
+        # sur un Mock renvoie toujours True — on inspecte donc les vrais kwargs.
+        _call_args, call_kwargs = client.update_status_paused.call_args
+        self.assertNotIn('status', call_kwargs)
         action.refresh_from_db()
         self.assertEqual(action.status, EngineAction.Statut.APPLIQUEE)
 
