@@ -1150,7 +1150,7 @@ def _persist_attribution(*, devis):
                 getattr(devis, 'reference', '?'), list(attribution.keys()))
 
 
-def _fire_capi_signed_quote(*, devis):
+def _fire_capi_signed_quote(*, devis, ip=None, user_agent=''):
     """QJ9 — Émet un événement « SignedQuote » vers l'API Conversions Meta (CAPI).
 
     Gate : si ``META_CAPI_ACCESS_TOKEN`` est absent (ou vide) dans les settings
@@ -1241,6 +1241,13 @@ def _fire_capi_signed_quote(*, devis):
     fbclid = attribution.get('fbclid', '')
     if fbclid:
         user_data['fbc'] = f'fb.1.{int(time.time() * 1000)}.{fbclid}'
+    # ADSENG2 — EMQ (Event Match Quality) : ip + user_agent NON hachés (Meta les
+    # recommande tels quels). Déjà disponibles au point d'acceptation (accept_devis
+    # les reçoit), auparavant abandonnés ici. Aucune nouvelle collecte de donnée.
+    if ip:
+        user_data['client_ip_address'] = str(ip)
+    if user_agent:
+        user_data['client_user_agent'] = str(user_agent)
 
     custom_data = {
         'currency': 'MAD',
@@ -1254,16 +1261,28 @@ def _fire_capi_signed_quote(*, devis):
     if utm_campaign:
         custom_data['utm_campaign'] = utm_campaign
 
+    # ADSENG2 — event_id DÉTERMINISTE (dedup) : Meta dé-duplique deux événements
+    # de même event_name + event_id dans une fenêtre de 48 h. La référence du
+    # devis est unique et déjà la clé d'idempotence naturelle ailleurs — la
+    # réutiliser ferme d'avance tout double-comptage si un Pixel navigateur est
+    # un jour ajouté sur /proposal.
+    event_id = f'signedquote:{getattr(devis, "reference", "") or devis.pk}'
+
     event = {
         'event_name': 'SignedQuote',
         'event_time': event_time,
+        'event_id': event_id,
         'action_source': 'website',
         'user_data': user_data,
         'custom_data': custom_data,
     }
 
     payload = _json.dumps({'data': [event]}).encode('utf-8')
-    api_url = f'https://graph.facebook.com/v19.0/{pixel_id}/events' if pixel_id else None
+    # ADSENG2 — version depuis la SOURCE UNIQUE partagée (v25 courante), jamais
+    # la v19.0 codée en dur (expirée 02/2025 → 400 garanti dès qu'un pixel est
+    # configuré). Constante plain (aucun modèle adsengine importé dans ventes).
+    from apps.adsengine.api_version import GRAPH_BASE_URL
+    api_url = f'{GRAPH_BASE_URL}/{pixel_id}/events' if pixel_id else None
 
     if not api_url:
         logger.info(
@@ -1445,8 +1464,9 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
     devis_accepted.send(
         sender=Devis, devis=devis, user=user, ancien_statut=ancien)
     # QJ9 — CAPI SignedQuote event (gated on META_CAPI_ACCESS_TOKEN).
+    # ADSENG2 — thread ip/user_agent (EMQ) déjà reçus par accept_devis.
     try:
-        _fire_capi_signed_quote(devis=devis)
+        _fire_capi_signed_quote(devis=devis, ip=ip, user_agent=user_agent)
     except Exception as exc:  # noqa: BLE001 — best-effort
         logger.warning('QJ9: _fire_capi_signed_quote échoué pour devis %s : %s',
                        getattr(devis, 'reference', '?'), exc)

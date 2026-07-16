@@ -9,9 +9,14 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
-    CostPerSignatureView, CreativeAssetViewSet, CreativePolicyViewSet,
-    EngineActionViewSet, EngineAlertViewSet, GuardrailConfigViewSet,
-    MetaConnectionViewSet, StatusView, WiringHealthView,
+    AnomalyEventViewSet, ArmDailyStatViewSet, CostPerSignatureView,
+    CreativeAssetViewSet, CreativeBacklogItemViewSet,
+    CreativeGenerationBatchViewSet, CreativePolicyViewSet, DecisionLogViewSet,
+    EngineActionViewSet, EngineAlertViewSet, ExperimentArmViewSet,
+    ExperimentViewSet, FlightPhaseViewSet, FlightPlanViewSet,
+    GuardrailConfigViewSet, MetaConnectionViewSet, PacingStateViewSet,
+    ReconciliationSnapshotViewSet, RulePolicyViewSet, StatusView,
+    WiringHealthView,
 )
 
 router = DefaultRouter()
@@ -22,6 +27,24 @@ router.register(r'alertes', EngineAlertViewSet, basename='engine-alert')
 router.register(r'creatifs', CreativeAssetViewSet, basename='creative-asset')
 router.register(r'policy-creative', CreativePolicyViewSet,
                 basename='creative-policy')
+# ADSENG3 — expérimentation
+router.register(r'experiences', ExperimentViewSet, basename='experiment')
+router.register(r'bras', ExperimentArmViewSet, basename='experiment-arm')
+router.register(r'stats-bras', ArmDailyStatViewSet, basename='arm-daily-stat')
+router.register(r'decisions', DecisionLogViewSet, basename='decision-log')
+# ADSENG4 — gardien + trésorerie
+router.register(r'regles', RulePolicyViewSet, basename='rule-policy')
+router.register(r'anomalies', AnomalyEventViewSet, basename='anomaly-event')
+router.register(r'pacing', PacingStateViewSet, basename='pacing-state')
+# ADSENG5 — créa + vol
+router.register(r'lots-creatifs', CreativeGenerationBatchViewSet,
+                basename='creative-batch')
+router.register(r'backlog-creatif', CreativeBacklogItemViewSet,
+                basename='creative-backlog')
+router.register(r'plans-vol', FlightPlanViewSet, basename='flight-plan')
+router.register(r'phases-vol', FlightPhaseViewSet, basename='flight-phase')
+router.register(r'reconciliations', ReconciliationSnapshotViewSet,
+                basename='reconciliation')
 
 urlpatterns = [
     path('status/', StatusView.as_view(), name='adsengine-status'),

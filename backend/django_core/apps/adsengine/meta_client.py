@@ -20,9 +20,11 @@ import time
 
 import httpx
 
-# Version figée de l'API Marketing (recherche 16/07 : v25).
-GRAPH_VERSION = 'v25.0'
-GRAPH_BASE_URL = f'https://graph.facebook.com/{GRAPH_VERSION}'
+# Version figée de l'API Marketing (recherche 16/07 : v25). SOURCE UNIQUE :
+# ADSENG2 l'a extraite dans ``api_version`` (plain-constant, sans dépendance)
+# pour que l'émetteur CAPI côté ventes partage EXACTEMENT la même version — plus
+# jamais deux littéraux divergents. Ré-exportée ici pour les importeurs existants.
+from .api_version import GRAPH_BASE_URL, GRAPH_VERSION  # noqa: F401
 
 # Statut FORCÉ de toute création — codé en dur, jamais surchargeable.
 FORCED_STATUS = 'PAUSED'

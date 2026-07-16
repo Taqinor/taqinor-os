@@ -16,12 +16,20 @@ from core.permissions import _user_has_or_legacy
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
-    CreativeAsset, CreativePolicy, EngineAction, EngineAlert, GuardrailConfig,
-    MetaConnection,
+    AnomalyEvent, ArmDailyStat, CreativeAsset, CreativeBacklogItem,
+    CreativeGenerationBatch, CreativePolicy, DecisionLog, EngineAction,
+    EngineAlert, Experiment, ExperimentArm, FlightPhase, FlightPlan,
+    GuardrailConfig, MetaConnection, PacingState, ReconciliationSnapshot,
+    RulePolicy,
 )
 from .serializers import (
-    CreativeAssetSerializer, CreativePolicySerializer, EngineActionSerializer,
-    EngineAlertSerializer, GuardrailConfigSerializer, MetaConnectionSerializer,
+    AnomalyEventSerializer, ArmDailyStatSerializer, CreativeAssetSerializer,
+    CreativeBacklogItemSerializer, CreativeGenerationBatchSerializer,
+    CreativePolicySerializer, DecisionLogSerializer, EngineActionSerializer,
+    EngineAlertSerializer, ExperimentArmSerializer, ExperimentSerializer,
+    FlightPhaseSerializer, FlightPlanSerializer, GuardrailConfigSerializer,
+    MetaConnectionSerializer, PacingStateSerializer,
+    ReconciliationSnapshotSerializer, RulePolicySerializer,
 )
 
 
@@ -236,6 +244,138 @@ class CreativePolicyViewSet(AdsengineViewSet):
 
     queryset = CreativePolicy.objects.all()
     serializer_class = CreativePolicySerializer
+
+
+class ExperimentViewSet(AdsengineViewSet):
+    """ADSENG3 — CRUD des expériences (tests A/B/n). Company-scopé (hérité) ;
+    lecture ``adsengine_view`` / écriture ``adsengine_manage``."""
+
+    queryset = Experiment.objects.all()
+    serializer_class = ExperimentSerializer
+
+
+class ExperimentArmViewSet(AdsengineViewSet):
+    """ADSENG3 — CRUD des bras d'expérience (créatifs candidats)."""
+
+    queryset = ExperimentArm.objects.all()
+    serializer_class = ExperimentArmSerializer
+
+
+class ArmDailyStatViewSet(AdsengineViewSet):
+    """ADSENG3 — CRUD des stats quotidiennes de bras (données du bandit).
+
+    Alimentées surtout par la sync (ENG6 étendue) via
+    ``ArmDailyStat.upsert`` — l'API reste disponible pour lecture/saisie
+    manuelle, company-scopée."""
+
+    queryset = ArmDailyStat.objects.all()
+    serializer_class = ArmDailyStatSerializer
+
+
+class DecisionLogViewSet(AdsengineViewSet):
+    """ADSENG3 — Liste (lecture seule) des journaux de décision de la science.
+
+    Company-scopé (hérité) + gaté ``adsengine_view``. Restreint à GET : les
+    décisions sont écrites par le moteur (P1), jamais par un client API."""
+
+    queryset = DecisionLog.objects.all()
+    serializer_class = DecisionLogSerializer
+    http_method_names = ['get', 'head', 'options']
+
+
+class RulePolicyViewSet(AdsengineViewSet):
+    """ADSENG4 — CRUD des règles de garde-fou (le fondateur configure).
+
+    Company-scopé (hérité) ; ``created_by`` posé côté serveur. Défaut sûr : une
+    règle naît ``enabled=False`` + ``dry_run=True`` (aucun effet tant que le
+    fondateur n'a pas explicitement activé + quitté la simulation)."""
+
+    queryset = RulePolicy.objects.all()
+    serializer_class = RulePolicySerializer
+
+    def perform_create(self, serializer):
+        # ``company`` forcée par la base (TenantMixin) ; ``created_by`` posé ici.
+        super().perform_create(serializer)
+        if serializer.instance.created_by_id is None:
+            serializer.instance.created_by = self.request.user
+            serializer.instance.save(update_fields=['created_by'])
+
+
+class AnomalyEventViewSet(AdsengineViewSet):
+    """ADSENG4 — Liste (lecture seule) des anomalies détectées par le gardien."""
+
+    queryset = AnomalyEvent.objects.all()
+    serializer_class = AnomalyEventSerializer
+    http_method_names = ['get', 'head', 'options']
+
+
+class PacingStateViewSet(AdsengineViewSet):
+    """ADSENG4 — Liste (lecture seule) des états de pacing mensuels."""
+
+    queryset = PacingState.objects.all()
+    serializer_class = PacingStateSerializer
+    http_method_names = ['get', 'head', 'options']
+
+
+class CreativeGenerationBatchViewSet(AdsengineViewSet):
+    """ADSENG5 — CRUD des lots de génération créative + approbation par LOT.
+
+    L'approbation est BATCH-level (jamais par variante) : une seule action
+    approuve/rejette le lot entier. ``adsengine_manage`` gate l'écriture."""
+
+    queryset = CreativeGenerationBatch.objects.all()
+    serializer_class = CreativeGenerationBatchSerializer
+
+    @action(detail=True, methods=['post'])
+    def approve(self, request, pk=None):
+        """Approuve le LOT ENTIER (acteur + horodatage posés côté serveur)."""
+        from django.utils import timezone
+        batch = self.get_object()
+        batch.status = CreativeGenerationBatch.Statut.APPROUVEE
+        batch.approved_by = request.user
+        batch.approved_at = timezone.now()
+        batch.save(update_fields=['status', 'approved_by', 'approved_at'])
+        return Response(self.get_serializer(batch).data)
+
+    @action(detail=True, methods=['post'])
+    def reject(self, request, pk=None):
+        """Rejette le LOT ENTIER."""
+        from django.utils import timezone
+        batch = self.get_object()
+        batch.status = CreativeGenerationBatch.Statut.REJETEE
+        batch.approved_by = request.user
+        batch.approved_at = timezone.now()
+        batch.save(update_fields=['status', 'approved_by', 'approved_at'])
+        return Response(self.get_serializer(batch).data)
+
+
+class CreativeBacklogItemViewSet(AdsengineViewSet):
+    """ADSENG5 — CRUD des items de backlog créatif (file de publication)."""
+
+    queryset = CreativeBacklogItem.objects.all()
+    serializer_class = CreativeBacklogItemSerializer
+
+
+class FlightPlanViewSet(AdsengineViewSet):
+    """ADSENG5 — CRUD des plans de vol (feuille de route 3-6 mois comme data)."""
+
+    queryset = FlightPlan.objects.all()
+    serializer_class = FlightPlanSerializer
+
+
+class FlightPhaseViewSet(AdsengineViewSet):
+    """ADSENG5 — CRUD des phases de vol (2-4 bras, 1-8 semaines)."""
+
+    queryset = FlightPhase.objects.all()
+    serializer_class = FlightPhaseSerializer
+
+
+class ReconciliationSnapshotViewSet(AdsengineViewSet):
+    """ADSENG5 — Liste (lecture seule) des instantanés de réconciliation."""
+
+    queryset = ReconciliationSnapshot.objects.all()
+    serializer_class = ReconciliationSnapshotSerializer
+    http_method_names = ['get', 'head', 'options']
 
 
 class HasAdsengineApprove(BasePermission):

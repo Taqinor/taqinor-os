@@ -2,9 +2,25 @@
 from rest_framework import serializers
 
 from .models import (
-    CreativeAsset, CreativePolicy, EngineAction, EngineAlert, GuardrailConfig,
-    MetaConnection,
+    AnomalyEvent, ArmDailyStat, CreativeAsset, CreativeBacklogItem,
+    CreativeGenerationBatch, CreativePolicy, DecisionLog, EngineAction,
+    EngineAlert, Experiment, ExperimentArm, FlightPhase, FlightPlan,
+    GuardrailConfig, MetaConnection, PacingState, ReconciliationSnapshot,
+    RulePolicy,
 )
+
+
+def _same_company(serializer, value):
+    """ADSENG3 — Refuse une FK vers un objet d'une AUTRE société (isolation
+    multi-tenant côté serializer, en plus du scoping du viewset). ``value`` est
+    l'instance liée ; None passe (champ optionnel absent)."""
+    if value is None:
+        return value
+    request = serializer.context.get('request')
+    company = getattr(getattr(request, 'user', None), 'company', None)
+    if company is not None and value.company_id != company.id:
+        raise serializers.ValidationError("Référence d'une autre société.")
+    return value
 
 
 class MetaConnectionSerializer(serializers.ModelSerializer):
@@ -48,6 +64,9 @@ class GuardrailConfigSerializer(serializers.ModelSerializer):
             'anomaly_window_hours',
             # ENG8 — toggles de capacités (auto-apply par capacité).
             'auto_rotate_creative', 'auto_rebalance_within_band',
+            # ADSENG4 — trésorerie : enveloppe mensuelle + pacing + exploration.
+            'monthly_budget_ceiling_mad', 'pacing_band_pct',
+            'exploration_floor_mad', 'exploration_floor_pct',
             'created_at', 'updated_at',
         ]
         read_only_fields = ['created_at', 'updated_at']
@@ -97,6 +116,9 @@ class EngineAlertSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'alert_type', 'message', 'action', 'detail',
             'acknowledged', 'wa_links', 'created_at', 'updated_at',
+            # ADSENG4 — sévérité + cooldown + escalade.
+            'severity', 'entity_key', 'cooldown_hours', 'unresolved_cycles',
+            'resolved',
         ]
         # ``wa_links`` est un champ déclaré (SerializerMethodField, déjà
         # read-only) — il ne doit PAS figurer dans read_only_fields (DRF
@@ -104,6 +126,8 @@ class EngineAlertSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'id', 'alert_type', 'message', 'action', 'detail',
             'acknowledged', 'created_at', 'updated_at',
+            'severity', 'entity_key', 'cooldown_hours', 'unresolved_cycles',
+            'resolved',
         ]
 
     def get_wa_links(self, obj):
@@ -124,6 +148,8 @@ class CreativeAssetSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'asset_type', 'file_key', 'source_lane', 'cost_cents',
             'policy_stamp', 'is_policy_passed', 'perf', 'parent',
+            # ADSENG5 — composants (accroche / texte / visuel / CTA).
+            'hook_id', 'hook_text', 'primary_text', 'visual_asset_key', 'cta',
             'created_at', 'updated_at',
         ]
         # NB : ``is_policy_passed`` est déjà read-only (champ déclaré) — ne PAS
@@ -144,3 +170,233 @@ class CreativePolicySerializer(serializers.ModelSerializer):
             'created_at', 'updated_at',
         ]
         read_only_fields = ['created_at', 'updated_at']
+
+
+class ExperimentSerializer(serializers.ModelSerializer):
+    """ADSENG3 — Expérience (test A/B/n). ``company`` posée côté serveur ;
+    campagne/ad set cibles validés dans la même société."""
+
+    class Meta:
+        model = Experiment
+        fields = [
+            'id', 'name', 'tested_variable', 'status', 'campaign', 'adset',
+            'start_date', 'end_date', 'notes', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+    def validate_campaign(self, value):
+        return _same_company(self, value)
+
+    def validate_adset(self, value):
+        return _same_company(self, value)
+
+
+class ExperimentArmSerializer(serializers.ModelSerializer):
+    """ADSENG3 — Bras d'expérience. ``company`` posée côté serveur ;
+    expérience/asset validés dans la même société."""
+
+    class Meta:
+        model = ExperimentArm
+        fields = [
+            'id', 'experiment', 'creative_asset', 'label', 'ad_id',
+            'hook_id', 'visual_id', 'is_active', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+    def validate_experiment(self, value):
+        return _same_company(self, value)
+
+    def validate_creative_asset(self, value):
+        return _same_company(self, value)
+
+
+class ArmDailyStatSerializer(serializers.ModelSerializer):
+    """ADSENG3 — Stat quotidienne d'un bras. ``company`` posée côté serveur ;
+    bras validé dans la même société."""
+
+    class Meta:
+        model = ArmDailyStat
+        fields = [
+            'id', 'arm', 'date', 'impressions', 'clicks', 'conversations',
+            'spend', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+    def validate_arm(self, value):
+        return _same_company(self, value)
+
+
+class DecisionLogSerializer(serializers.ModelSerializer):
+    """ADSENG3 — Journal de décision (lecture seule côté API : écrit par la
+    science P1, jamais par un client)."""
+
+    class Meta:
+        model = DecisionLog
+        fields = [
+            'id', 'experiment', 'inputs', 'posteriors', 'allocations',
+            'summary_fr', 'action', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'experiment', 'inputs', 'posteriors', 'allocations',
+            'summary_fr', 'action', 'created_at', 'updated_at',
+        ]
+
+
+class RulePolicySerializer(serializers.ModelSerializer):
+    """ADSENG4 — Règle de garde-fou (le fondateur configure). ``company`` +
+    ``created_by`` posés côté serveur ; ``last_*`` écrits par le moteur.
+    Invariant DUR : ``mode='auto'`` interdit tant que ``dry_run`` est vrai."""
+
+    class Meta:
+        model = RulePolicy
+        fields = [
+            'id', 'template_key', 'enabled', 'mode', 'dry_run', 'conditions',
+            'params', 'cadence_hours', 'cooldown_hours', 'last_evaluated_at',
+            'last_result', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'last_evaluated_at', 'last_result', 'created_at', 'updated_at',
+        ]
+
+    def validate(self, attrs):
+        # État final = valeurs entrantes fondues sur l'instance existante.
+        mode = attrs.get(
+            'mode', getattr(self.instance, 'mode', RulePolicy.Mode.PROPOSE))
+        dry_run = attrs.get(
+            'dry_run', getattr(self.instance, 'dry_run', True))
+        if mode == RulePolicy.Mode.AUTO and dry_run:
+            raise serializers.ValidationError(
+                "Le mode automatique est interdit en simulation (dry-run) : "
+                "désactivez d'abord la simulation.")
+        return attrs
+
+
+class AnomalyEventSerializer(serializers.ModelSerializer):
+    """ADSENG4 — Anomalie détectée (lecture seule : écrite par le gardien)."""
+
+    class Meta:
+        model = AnomalyEvent
+        fields = [
+            'id', 'kind', 'entity_type', 'entity_meta_id', 'severity',
+            'message_fr', 'detail', 'resolved', 'rule_policy', 'alert',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'kind', 'entity_type', 'entity_meta_id', 'severity',
+            'message_fr', 'detail', 'resolved', 'rule_policy', 'alert',
+            'created_at', 'updated_at',
+        ]
+
+
+class PacingStateSerializer(serializers.ModelSerializer):
+    """ADSENG4 — État de pacing mensuel (lecture seule : calculé par le
+    moteur de trésorerie)."""
+
+    class Meta:
+        model = PacingState
+        fields = [
+            'id', 'period_start', 'monthly_budget_ceiling_mad',
+            'spend_to_date', 'expected_spend_to_date', 'forecast_spend',
+            'pacing_ratio', 'state', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'period_start', 'monthly_budget_ceiling_mad',
+            'spend_to_date', 'expected_spend_to_date', 'forecast_spend',
+            'pacing_ratio', 'state', 'created_at', 'updated_at',
+        ]
+
+
+class CreativeGenerationBatchSerializer(serializers.ModelSerializer):
+    """ADSENG5 — Lot de génération créative. ``company`` posée côté serveur ;
+    l'approbation (statut/approved_by/at) passe par les actions dédiées."""
+
+    class Meta:
+        model = CreativeGenerationBatch
+        fields = [
+            'id', 'source_hook_asset', 'visual_ids', 'status', 'approved_by',
+            'approved_at', 'note', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'status', 'approved_by', 'approved_at', 'created_at', 'updated_at',
+        ]
+
+    def validate_source_hook_asset(self, value):
+        return _same_company(self, value)
+
+
+class CreativeBacklogItemSerializer(serializers.ModelSerializer):
+    """ADSENG5 — Item de backlog créatif. FK validées dans la même société."""
+
+    class Meta:
+        model = CreativeBacklogItem
+        fields = [
+            'id', 'asset', 'batch', 'target_campaign', 'source',
+            'earliest_date', 'seasonal_tag', 'status',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+    def validate_asset(self, value):
+        return _same_company(self, value)
+
+    def validate_batch(self, value):
+        return _same_company(self, value)
+
+    def validate_target_campaign(self, value):
+        return _same_company(self, value)
+
+
+class FlightPlanSerializer(serializers.ModelSerializer):
+    """ADSENG5 — Plan de vol. ``company`` posée côté serveur."""
+
+    class Meta:
+        model = FlightPlan
+        fields = [
+            'id', 'name', 'objective', 'status', 'start_date', 'end_date',
+            'notes', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+
+class FlightPhaseSerializer(serializers.ModelSerializer):
+    """ADSENG5 — Phase de vol. Bornes de base : 2-4 bras, 1-8 semaines."""
+
+    class Meta:
+        model = FlightPhase
+        fields = [
+            'id', 'plan', 'order', 'name', 'tested_variable',
+            'launch_template', 'budget_mad', 'start_date', 'end_date',
+            'num_arms', 'week_span', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+    def validate_plan(self, value):
+        return _same_company(self, value)
+
+    def validate_num_arms(self, value):
+        if not (2 <= value <= 4):
+            raise serializers.ValidationError(
+                "Une phase teste entre 2 et 4 bras.")
+        return value
+
+    def validate_week_span(self, value):
+        if not (1 <= value <= 8):
+            raise serializers.ValidationError(
+                "La durée d'une phase est de 1 à 8 semaines.")
+        return value
+
+
+class ReconciliationSnapshotSerializer(serializers.ModelSerializer):
+    """ADSENG5 — Instantané de réconciliation (lecture seule : calculé par le
+    moteur ; les deux chiffres Meta/ERP sont montrés côte à côte)."""
+
+    class Meta:
+        model = ReconciliationSnapshot
+        fields = [
+            'id', 'date', 'campaign', 'meta_leads', 'erp_leads', 'meta_spend',
+            'delta_leads', 'status', 'detail', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'date', 'campaign', 'meta_leads', 'erp_leads', 'meta_spend',
+            'delta_leads', 'status', 'detail', 'created_at', 'updated_at',
+        ]
