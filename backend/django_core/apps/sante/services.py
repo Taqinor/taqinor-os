@@ -154,3 +154,48 @@ def realiser_acte(
         tarif_applique_ttc=tarif['tarif_ttc'],
         facturable=facturable,
     )
+
+
+def reste_a_charge_total(acte_realise):
+    """NTSAN12 — vrai si cet acte doit basculer en reste-à-charge patient
+    total : sa prise en charge (si posée) est refusée, expirée, ou dont la
+    ``date_expiration`` est dépassée."""
+    from datetime import date as _date
+
+    pec = acte_realise.prise_en_charge
+    if pec is None:
+        return False
+    from .models import PriseEnCharge
+    if pec.statut in (PriseEnCharge.Statut.REFUSEE, PriseEnCharge.Statut.EXPIREE):
+        return True
+    if pec.date_expiration and pec.date_expiration < _date.today():
+        return True
+    return False
+
+
+def verifier_prise_en_charge(prise_en_charge, *, user=None):
+    """NTSAN12 — à appeler quand une `PriseEnCharge` bascule refusee/expiree :
+    journalise (chatter + audit, `records.Activity` via `apps.audit.
+    recorder.record_field_change`) le basculement en reste-à-charge patient
+    total de chaque `ActeRealise` rattaché. Ne modifie AUCUN champ de
+    l'acte : le calcul réel du reste-à-charge se fait au moment de la
+    facturation (NTSAN13, via `reste_a_charge_total`) — ceci ne fait que
+    tracer l'événement, une seule fois par acte concerné."""
+    if prise_en_charge.statut not in (
+            prise_en_charge.Statut.REFUSEE, prise_en_charge.Statut.EXPIREE):
+        return []
+
+    from apps.audit import recorder
+
+    touches = []
+    for acte_realise in prise_en_charge.actes_realises.all():
+        recorder.record_field_change(
+            acte_realise, 'prise_en_charge', 'accordee',
+            prise_en_charge.get_statut_display(),
+            user=user, field_label='Prise en charge',
+            detail=(
+                f'Prise en charge {prise_en_charge.get_statut_display().lower()} '
+                '— acte basculé en reste-à-charge patient total.'),
+        )
+        touches.append(acte_realise)
+    return touches

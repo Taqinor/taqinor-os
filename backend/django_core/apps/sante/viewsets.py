@@ -16,11 +16,12 @@ from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
     ActeMedical, ActeRealise, Admission, Convention, GrilleTarifaire, Patient,
-    Praticien, RendezVous, Salle)
+    Praticien, PriseEnCharge, RendezVous, Salle)
 from .serializers import (
     ActeMedicalSerializer, ActeRealiseSerializer, AdmissionSerializer,
     ConventionSerializer, GrilleTarifaireSerializer, PatientSerializer,
-    PraticienSerializer, RendezVousSerializer, SalleSerializer)
+    PraticienSerializer, PriseEnChargeSerializer, RendezVousSerializer,
+    SalleSerializer)
 
 
 class PraticienViewSet(CompanyScopedModelViewSet):
@@ -201,3 +202,21 @@ class ActeRealiseViewSet(CompanyScopedModelViewSet):
             facturable=data.get('facturable', True),
         )
         serializer.instance = instance
+
+
+class PriseEnChargeViewSet(CompanyScopedModelViewSet):
+    """NTSAN12 — prise en charge / entente préalable. Une transition vers
+    refusee/expiree déclenche `services.verifier_prise_en_charge` (traçage
+    chatter+audit du basculement en reste-à-charge patient total)."""
+
+    queryset = PriseEnCharge.objects.select_related(
+        'patient', 'convention', 'admission').all()
+    serializer_class = PriseEnChargeSerializer
+
+    def perform_update(self, serializer):
+        ancien_statut = serializer.instance.statut
+        super().perform_update(serializer)
+        instance = serializer.instance
+        if instance.statut != ancien_statut:
+            from .services import verifier_prise_en_charge
+            verifier_prise_en_charge(instance, user=self.request.user)

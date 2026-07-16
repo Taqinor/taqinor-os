@@ -7,7 +7,7 @@ from rest_framework import serializers
 
 from .models import (
     ActeMedical, ActeRealise, Admission, Convention, GrilleTarifaire, Patient,
-    Praticien, RendezVous, Salle)
+    Praticien, PriseEnCharge, RendezVous, Salle)
 
 
 class PraticienSerializer(serializers.ModelSerializer):
@@ -94,9 +94,22 @@ class ActeRealiseSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'admission', 'patient', 'praticien', 'acte',
             'date_realisation', 'quantite', 'tarif_applique_ttc',
-            'facturable',
+            'facturable', 'prise_en_charge',
         ]
         read_only_fields = ['tarif_applique_ttc']
+
+
+class PriseEnChargeSerializer(serializers.ModelSerializer):
+    statut_display = serializers.CharField(source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = PriseEnCharge
+        fields = [
+            'id', 'patient', 'convention', 'admission',
+            'numero_dossier_convention', 'date_demande', 'date_reponse',
+            'statut', 'statut_display', 'montant_accorde', 'motif_refus',
+            'date_expiration',
+        ]
 
 
 class GrilleTarifaireSerializer(serializers.ModelSerializer):

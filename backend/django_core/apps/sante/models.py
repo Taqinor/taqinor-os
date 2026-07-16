@@ -363,6 +363,11 @@ class ActeRealise(TenantModel):
         default=True, verbose_name='Facturable',
         help_text="Décoché : l'acte est explicitement marqué non-facturable "
                   "(n'empêche pas la clôture de l'admission).")
+    # NTSAN12 — si posée, une prise en charge refusée/expirée fait basculer
+    # cet acte en reste-à-charge patient total (services.verifier_prise_en_charge).
+    prise_en_charge = models.ForeignKey(
+        'PriseEnCharge', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='actes_realises', verbose_name='Prise en charge')
 
     class Meta:
         verbose_name = 'Acte réalisé'
@@ -371,3 +376,52 @@ class ActeRealise(TenantModel):
 
     def __str__(self):
         return f'{self.acte_id} @ {self.date_realisation}'
+
+
+class PriseEnCharge(TenantModel):
+    """NTSAN12 — prise en charge / entente préalable auprès d'une convention.
+
+    Une ``ActeRealise`` liée à une prise en charge refusée ou expirée
+    bascule automatiquement en reste-à-charge patient total — appliqué par
+    ``services.verifier_prise_en_charge`` (appelé à la transition de statut),
+    tracé dans l'historique via ``records.Activity``."""
+
+    class Statut(models.TextChoices):
+        DEMANDEE = 'demandee', 'Demandée'
+        ACCORDEE = 'accordee', 'Accordée'
+        REFUSEE = 'refusee', 'Refusée'
+        EXPIREE = 'expiree', 'Expirée'
+
+    patient = models.ForeignKey(
+        Patient, on_delete=models.CASCADE, related_name='prises_en_charge',
+        verbose_name='Patient')
+    convention = models.ForeignKey(
+        Convention, on_delete=models.CASCADE, related_name='prises_en_charge',
+        verbose_name='Convention')
+    admission = models.ForeignKey(
+        Admission, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='prises_en_charge', verbose_name='Admission')
+    numero_dossier_convention = models.CharField(
+        max_length=50, blank=True, default='',
+        verbose_name='Numéro de dossier (convention)')
+    date_demande = models.DateField(verbose_name='Date de demande')
+    date_reponse = models.DateField(
+        null=True, blank=True, verbose_name='Date de réponse')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.DEMANDEE,
+        verbose_name='Statut')
+    montant_accorde = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        verbose_name='Montant accordé')
+    motif_refus = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Motif de refus')
+    date_expiration = models.DateField(
+        null=True, blank=True, verbose_name="Date d'expiration")
+
+    class Meta:
+        verbose_name = 'Prise en charge'
+        verbose_name_plural = 'Prises en charge'
+        ordering = ['-date_demande']
+
+    def __str__(self):
+        return f'PEC {self.patient_id} / {self.convention_id}'
