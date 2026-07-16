@@ -74,7 +74,8 @@ class IdeeViewSet(CompanyScopedModelViewSet):
             company=idee.company)
 
     # ── NTIDE10 — autocomplétion du contexte ────────────────────────────────
-    @action(detail=False, methods=['get'], url_path='contextes')
+    @action(detail=False, methods=['get'], url_path='contextes',
+            permission_classes=[IsAnyRole])
     def contextes(self, request):
         """Les 5 contextes existants les plus fréquents (autocomplétion)."""
         data = selectors.contextes_frequents(request.user.company)
@@ -124,7 +125,8 @@ class IdeeViewSet(CompanyScopedModelViewSet):
         (``{"note": "..."}``), journalisée dans le chatter."""
         return self._transition(request, Idee.Statut.FERMEE)
 
-    @action(detail=True, methods=['get'], url_path='historique')
+    @action(detail=True, methods=['get'], url_path='historique',
+            permission_classes=[IsAnyRole])
     def historique(self, request, pk=None):
         """Timeline chatter (générique ``records.Activity``, ARC8)."""
         idee = self.get_object()
@@ -209,13 +211,15 @@ class VoteIdeeViewSet(CompanyScopedModelViewSet):
         services.retirer_vote(instance)
 
     # ── Sélecteurs exposés (NTIDE2) ──────────────────────────────────────────
-    @action(detail=False, methods=['get'], url_path='recents')
+    @action(detail=False, methods=['get'], url_path='recents',
+            permission_classes=[IsAnyRole])
     def recents(self, request):
         """Votes récents de la société (``votes_recents``)."""
         qs = self.get_queryset().order_by('-created_at')[:20]
         return Response(VoteIdeeSerializer(qs, many=True).data)
 
-    @action(detail=False, methods=['get'], url_path='mes-idees')
+    @action(detail=False, methods=['get'], url_path='mes-idees',
+            permission_classes=[IsAnyRole])
     def mes_idees(self, request):
         """Votes reçus sur les idées PROPOSÉES par l'appelant
         (``votes_my_ideas``)."""

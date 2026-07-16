@@ -21,6 +21,7 @@ const ProposerIdeePage = lazy(() => import('./ProposerIdeePage'))
 const InnovationDashboard = lazy(() => import('./InnovationDashboard'))
 
 const ADMIN_RESPONSABLE = ['responsable', 'admin']
+const TOUS_ROLES = ['normal', 'responsable', 'admin']
 
 const config = {
   key: 'innovation',
@@ -33,6 +34,7 @@ const config = {
         to: '/innovation/idees',
         label: 'Boîte à idées',
         icon: <Lightbulb size={17} strokeWidth={1.75} aria-hidden="true" />,
+        roles: TOUS_ROLES,
       },
       {
         to: '/innovation/tableau-bord',

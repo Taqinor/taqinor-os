@@ -14,5 +14,5 @@ class ExtensionsConfig(AppConfig):
         'description': (
             "Catalogue global (lecture seule) de packages d'extension "
             "no-code installables sur un tenant."),
-        'categorie': 'Plateforme',
+        'categorie': 'Technique',
     }

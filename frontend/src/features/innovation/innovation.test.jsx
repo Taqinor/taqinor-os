@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll } from 'vitest'
+import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
@@ -43,6 +43,13 @@ beforeAll(() => {
       disconnect() {}
     }
   }
+})
+
+// Historique d'appels remis à zéro entre chaque test (mockClear conserve les
+// implémentations par défaut, ex. `contextes`) — sinon un appel `create` d'un
+// test précédent fait échouer `not.toHaveBeenCalled()` / `mock.calls[0]`.
+beforeEach(() => {
+  vi.clearAllMocks()
 })
 
 describe('innovation state machine helpers (miroir apps.innovation.services)', () => {
