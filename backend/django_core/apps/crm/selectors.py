@@ -98,6 +98,65 @@ def signed_leads_for_campaigns(company, utm_campaigns):
     return result
 
 
+def attribution_lead_rows(company, qualifying_stage=None):
+    """ADSENG6 — Lignes d'attribution PAR LEAD pour la jointure par variante.
+
+    Point d'entrée cross-app SANCTIONNÉ pour ``apps.adsengine`` (attribution par
+    variante) : le CRM est lu UNIQUEMENT via ce sélecteur, jamais un import de
+    ``apps.crm.models``. Le stade « SIGNÉ » et le rang de qualification viennent
+    de ``STAGES.py`` (via ``apps.crm.stages``) — jamais codés en dur côté
+    adsengine (règle #2).
+
+    Pour chaque lead vivant de la société, renvoie un dict portant les CLÉS
+    d'attribution (``meta_ad_id`` d'ADSENG1, ``utm_content``/``utm_campaign``) +
+    le canal (sous forme booléenne ``is_meta_channel`` pour ne pas exposer la
+    taxonomie de canal crm à adsengine) + deux drapeaux dérivés du funnel :
+
+      * ``signed``    — le lead est au stade SIGNÉ ;
+      * ``qualified`` — le lead a atteint AU MOINS ``qualifying_stage``
+        (défaut : CONTACTED), hors COLD et hors perdu.
+
+    Lecture seule, scopée société. Renvoie une LISTE de dicts (jamais un
+    queryset de modèles — le contrat cross-app reste des données pures)."""
+    from . import stages as stage_mod
+    from .models import Lead
+
+    order = list(stage_mod.STAGES)
+    qual_key = qualifying_stage or stage_mod.CONTACTED
+
+    def _rank(key):
+        try:
+            return order.index(key)
+        except ValueError:
+            return -1
+
+    qual_rank = _rank(qual_key)
+    meta_channels = {Lead.Canal.META_ADS, Lead.Canal.WHATSAPP_CTWA}
+
+    rows = []
+    qs = (Lead.objects
+          .filter(company=company, is_archived=False)
+          .only('id', 'meta_ad_id', 'utm_content', 'utm_campaign', 'canal',
+                'stage', 'perdu'))
+    for lead in qs:
+        stage = lead.stage
+        rank = _rank(stage)
+        is_signed = (stage == stage_mod.SIGNED)
+        is_qualified = (
+            stage != stage_mod.COLD and not lead.perdu
+            and rank >= qual_rank)
+        rows.append({
+            'id': lead.id,
+            'meta_ad_id': lead.meta_ad_id or '',
+            'utm_content': lead.utm_content or '',
+            'utm_campaign': lead.utm_campaign or '',
+            'is_meta_channel': lead.canal in meta_channels,
+            'signed': is_signed,
+            'qualified': is_qualified,
+        })
+    return rows
+
+
 def client_credit_warning(client, montant_ttc_nouveau=None):
     """FG41 — encours client + avertissement plafond.
 
