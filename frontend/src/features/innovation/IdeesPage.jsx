@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Lightbulb, Eye, ThumbsUp } from 'lucide-react'
+import { Lightbulb, Plus, Eye, ThumbsUp } from 'lucide-react'
 import { ListShell } from '../../ui/module'
-import { Badge } from '../../ui'
+import { Badge, Button } from '../../ui'
 import { formatDate } from '../../lib/format'
 import innovationApi from '../../api/innovationApi'
 import { STATUT_MAP, StatutIdeePill } from './innovationStatus'
@@ -147,6 +147,9 @@ export default function IdeesPage() {
           <Lightbulb className="size-5" aria-hidden="true" />
           Boîte à idées
         </h1>
+        <Button onClick={() => navigate('/innovation/proposer')}>
+          <Plus /> Proposer une idée
+        </Button>
       </div>
 
       <ListShell
@@ -163,6 +166,7 @@ export default function IdeesPage() {
         exportName="innovation-idees"
         emptyTitle="Aucune idée"
         emptyDescription="Aucune idée ne correspond à ces filtres."
+        emptyAction={<Button size="sm" onClick={() => navigate('/innovation/proposer')}><Plus className="size-4" /> Proposer une idée</Button>}
       />
     </div>
   )

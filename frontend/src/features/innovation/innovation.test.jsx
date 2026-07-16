@@ -146,3 +146,34 @@ describe('IdeeDetail', () => {
     await waitFor(() => expect(innovationApiMock.vote).toHaveBeenCalledWith('3'))
   })
 })
+
+describe('ProposerIdeeForm (NTIDE8)', () => {
+  it('soumet titre/description/contexte', async () => {
+    innovationApiMock.create.mockResolvedValue({ data: { id: 7 } })
+    const onCreated = vi.fn()
+
+    const { default: ProposerIdeeForm } = await import('./ProposerIdeeForm')
+    render(wrap(<ProposerIdeeForm onCreated={onCreated} />))
+
+    const titreInput = await screen.findByLabelText('Titre')
+    const user = userEvent.setup()
+    await user.type(titreInput, 'Automatiser les relances')
+    await user.type(screen.getByLabelText('Contexte'), 'CRM')
+
+    await user.click(screen.getByRole('button', { name: /Proposer l'idée/ }))
+
+    await waitFor(() => expect(innovationApiMock.create).toHaveBeenCalled())
+    const [payload] = innovationApiMock.create.mock.calls[0]
+    expect(payload.titre).toBe('Automatiser les relances')
+    expect(payload.contexte).toBe('CRM')
+    expect(onCreated).toHaveBeenCalled()
+  })
+
+  it('refuse un titre vide', async () => {
+    const { default: ProposerIdeeForm } = await import('./ProposerIdeeForm')
+    render(wrap(<ProposerIdeeForm />))
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: /Proposer l'idée/ }))
+    expect(innovationApiMock.create).not.toHaveBeenCalled()
+  })
+})
