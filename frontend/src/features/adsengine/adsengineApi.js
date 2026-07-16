@@ -91,6 +91,21 @@ const adsengineApi = {
     decisionLog: (id, params) =>
       api.get(`/adsengine/experiments/${id}/decisions/`, { params }),
   },
+
+  // ── ENG28/ENG38/ENG40 — Plan de vol (compose 6 mois) + préflight autonomie ──
+  flightplan: {
+    ...resource('flightplans'),
+    // Gabarits de plan 6 mois (phases pré-composées).
+    templates: () => api.get('/adsengine/flightplans/templates/'),
+    // Bras disponibles depuis le backlog (recombinaisons prêtes).
+    backlogArms: () => api.get('/adsengine/flightplans/backlog-arms/'),
+    // ADSENG38 — préflight d'autonomie (toutes les portes go-live).
+    preflight: () => api.get('/adsengine/flightplans/preflight/'),
+    // Valide un plan composé (refus structuré avec raisons FR).
+    validate: (payload) => api.post('/adsengine/flightplans/validate/', payload),
+    // Lance une simulation depuis le plan composé.
+    simulate: (payload) => api.post('/adsengine/flightplans/simulate/', payload),
+  },
 }
 
 export default adsengineApi

@@ -335,3 +335,42 @@ export function normalizeDecisionLog(raw) {
 export function filterDecisionLog(log, { phase } = {}) {
   return (log || []).filter(d => !phase || d.phase === phase)
 }
+
+// ── ENG40 — Plan de vol + préflight ADSENG38 ──
+// Normalise la réponse du préflight (agrégat de TOUTES les portes d'autonomie) :
+// [{ key, label, ok, detail }] + `pret` (toutes vertes) + `manquantes` (labels
+// des portes rouges). Tant qu'une porte est rouge, l'autonomie ne peut PAS
+// s'activer (structurel). On ne fait que LIRE l'état de l'API — jamais l'inventer.
+export function normalizePreflight(raw) {
+  const p = raw && typeof raw === 'object' ? raw : {}
+  const portes = (Array.isArray(p.portes) ? p.portes : (Array.isArray(p.gates) ? p.gates : []))
+    .filter(Boolean).map((g, i) => ({
+      key: g.key ?? String(i),
+      label: g.label || g.nom || g.key || `Porte ${i + 1}`,
+      ok: !!g.ok,
+      detail: g.detail || g.raison || '',
+    }))
+  const pret = typeof p.pret === 'boolean' ? p.pret
+    : (portes.length ? portes.every(g => g.ok) : false)
+  return { pret, portes, manquantes: portes.filter(g => !g.ok).map(g => g.label) }
+}
+
+// Normalise le résultat de validation d'un plan : { ok, raisons[] } — les
+// raisons FR d'un refus viennent telles quelles de l'API (jamais fabriquées).
+export function normalizeValidation(raw) {
+  const v = raw && typeof raw === 'object' ? raw : {}
+  const raisons = (Array.isArray(v.raisons) ? v.raisons : (Array.isArray(v.reasons) ? v.reasons : []))
+    .filter(Boolean).map(String)
+  return { ok: !!v.ok, raisons }
+}
+
+// Normalise un gabarit de plan de vol 6 mois : phases avec durée en mois.
+export function normalizeFlightTemplate(raw) {
+  const t = raw && typeof raw === 'object' ? raw : {}
+  const phases = (Array.isArray(t.phases) ? t.phases : []).filter(Boolean).map((p, i) => ({
+    key: p.key ?? String(i),
+    label: p.label || p.nom || p.key || `Phase ${i + 1}`,
+    duree_mois: numOrNull(p.duree_mois ?? p.mois),
+  }))
+  return { key: t.key, nom: t.nom || t.label || t.key || '', phases }
+}

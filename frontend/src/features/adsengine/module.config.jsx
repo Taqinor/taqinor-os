@@ -5,7 +5,7 @@
 import { lazy } from 'react'
 import {
   LayoutDashboard, PlugZap, Megaphone, ClipboardCheck,
-  FileText, Images, History, FlaskConical,
+  FileText, Images, History, FlaskConical, Route,
 } from 'lucide-react'
 
 /* ============================================================================
@@ -30,6 +30,7 @@ const BriefScreen = lazy(() => import('./BriefScreen'))
 const CreativeLibraryScreen = lazy(() => import('./CreativeLibraryScreen'))
 const ActionsLogScreen = lazy(() => import('./ActionsLogScreen'))
 const ExperimentsScreen = lazy(() => import('./ExperimentsScreen'))
+const FlightPlanScreen = lazy(() => import('./FlightPlanScreen'))
 
 const ROLES = ['responsable', 'admin']
 
@@ -45,6 +46,7 @@ const config = {
       { to: '/publicite/campagnes', label: 'Campagnes', icon: <Megaphone size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/publicite/creatifs', label: 'Bibliothèque créative', icon: <Images size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/publicite/experimentations', label: 'Expérimentations', icon: <FlaskConical size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
+      { to: '/publicite/plan-de-vol', label: 'Plan de vol', icon: <Route size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/publicite/brief', label: 'Brief hebdomadaire', icon: <FileText size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/publicite/journal', label: "Journal d'actions", icon: <History size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/publicite/connexion', label: 'Connexion & garde-fous', icon: <PlugZap size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
@@ -57,6 +59,7 @@ const config = {
     ['/publicite/campagnes', 'Publicité — Campagnes'],
     ['/publicite/creatifs', 'Publicité — Bibliothèque créative'],
     ['/publicite/experimentations', 'Publicité — Expérimentations'],
+    ['/publicite/plan-de-vol', 'Publicité — Plan de vol'],
     ['/publicite/brief', 'Publicité — Brief hebdomadaire'],
     ['/publicite/journal', "Publicité — Journal d'actions"],
     ['/publicite/connexion', 'Publicité — Connexion & garde-fous'],
@@ -68,6 +71,7 @@ const config = {
     { path: '/publicite/campagnes', component: CampaignsScreen, roles: ROLES },
     { path: '/publicite/creatifs', component: CreativeLibraryScreen, roles: ROLES },
     { path: '/publicite/experimentations', component: ExperimentsScreen, roles: ROLES },
+    { path: '/publicite/plan-de-vol', component: FlightPlanScreen, roles: ROLES },
     { path: '/publicite/brief', component: BriefScreen, roles: ROLES },
     { path: '/publicite/journal', component: ActionsLogScreen, roles: ROLES },
     { path: '/publicite/connexion', component: ConnectionScreen, roles: ROLES },
