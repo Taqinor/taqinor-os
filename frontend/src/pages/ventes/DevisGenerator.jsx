@@ -347,6 +347,9 @@ export default function DevisGenerator({
   const [commercialAnswers, setCommercialAnswers] = useState({})
   const setCommercialAnswer = (key, val) =>
     setCommercialAnswers(prev => ({ ...prev, [key]: val }))
+  // QX50 — injection du surplus (loi 82-21). OFF par défaut, activable par devis
+  // (industriel/commercial) ; la ligne ne s'affiche jamais sans sa mention.
+  const [injectionEnabled, setInjectionEnabled] = useState(false)
   const [prixCible, setPrixCible] = useState('')
   // ── Logique de devis éditable (D5 ; Paramètres → Avancé). Défauts = constantes
   // historiques du simulateur, donc le devis est identique tant que rien n'est
@@ -407,7 +410,7 @@ export default function DevisGenerator({
     fHiver, fEte, monthly, distributeur, realBillMode, realBillMad, realBillKwh,
     nbPanneaux, panelW, structureType, dayUsage, lines, tauxTva, discountPct,
     multiMode, nombreProprietes, villaGroups, modeInstallation, consoMensuelle,
-    categorieCommerciale, commercialAnswers,
+    categorieCommerciale, commercialAnswers, injectionEnabled,
     prixCible, remiseMax, accessoiresOnly,
     pompeCv, pompeType, pompeAlim, pompeHmt, pompeDebit, pompeProfondeur,
     pompeDistance, pompeHeures, farmRegion, farmCrop, farmSurfaceHa,
@@ -419,7 +422,7 @@ export default function DevisGenerator({
     fHiver, fEte, monthly, distributeur, realBillMode, realBillMad, realBillKwh,
     nbPanneaux, panelW, structureType, dayUsage, lines, tauxTva, discountPct,
     multiMode, nombreProprietes, villaGroups, modeInstallation, consoMensuelle,
-    categorieCommerciale, commercialAnswers,
+    categorieCommerciale, commercialAnswers, injectionEnabled,
     prixCible, remiseMax, accessoiresOnly,
     pompeCv, pompeType, pompeAlim, pompeHmt, pompeDebit, pompeProfondeur,
     pompeDistance, pompeHeures, farmRegion, farmCrop, farmSurfaceHa,
@@ -471,6 +474,7 @@ export default function DevisGenerator({
     if (d.consoMensuelle != null) setConsoMensuelle(d.consoMensuelle)
     if (d.categorieCommerciale != null) setCategorieCommerciale(d.categorieCommerciale)
     if (d.commercialAnswers && typeof d.commercialAnswers === 'object') setCommercialAnswers(d.commercialAnswers)
+    if (d.injectionEnabled != null) setInjectionEnabled(d.injectionEnabled)
     if (d.prixCible != null) setPrixCible(d.prixCible)
     if (d.remiseMax != null) setRemiseMax(d.remiseMax)
     if (d.accessoiresOnly != null) setAccessoiresOnly(d.accessoiresOnly)
@@ -798,6 +802,8 @@ export default function DevisGenerator({
         .reduce((s, r) => s + (parseFloat(r.quantite) || 0), 0)
       if (panneaux > 0) setNbPanneaux(String(panneaux))
       const e = d.etude_params || {}
+      // QX50 — round-trip de l'injection 82-21 (flag activé si l'étude la porte).
+      if (e.injection_82_21 || e.injection_dh_an != null) setInjectionEnabled(true)
       // QX44 — round-trip de l'étude commerciale : catégorie + réponses par
       // catégorie (clés snake_case) réinjectées dans le formulaire.
       if (e.categorie_commerciale) {
@@ -1532,6 +1538,7 @@ export default function DevisGenerator({
         kwp, consoMensuelleKwh: consoKwhDerivee,
         dayUsagePct: dayUsage, totalTtc: kpiTotal,
         kwhPrice: quoteLogic.kwhPrice, efficiency: quoteLogic.efficiency,
+        injectionEnabled,
       })
     : null
 
@@ -1544,6 +1551,7 @@ export default function DevisGenerator({
         kwp, consoMensuelleKwh: consoKwhDerivee,
         dayUsagePct: commercialDayShare(categorieCommerciale), totalTtc: kpiTotal,
         kwhPrice: quoteLogic.kwhPrice, efficiency: quoteLogic.efficiency,
+        injectionEnabled,
       })
     : null
   // Étude « industriel/commercial » unifiée pour l'aperçu écran + la persistance.
@@ -1962,6 +1970,18 @@ export default function DevisGenerator({
                   <Input id="gen-conso" type="number" min="0" step="any"
                          placeholder="ex: 12000" value={consoMensuelle}
                          onChange={e => setConsoMensuelle(e.target.value)} />
+                </div>
+                {/* QX50 — injection du surplus (loi 82-21), OFF par défaut */}
+                <div className="grid gap-1.5">
+                  <Label>Injection du surplus (loi 82-21)</Label>
+                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input type="checkbox" checked={injectionEnabled}
+                           onChange={e => setInjectionEnabled(e.target.checked)} />
+                    Valoriser le surplus injecté (plafond 20 %, tarif ANRE net)
+                  </label>
+                  <p className="text-xs text-muted-foreground">
+                    Tarif ANRE 03/2026-02/2027, plafond en révision.
+                  </p>
                 </div>
               </div>
             )}

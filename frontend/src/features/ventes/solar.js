@@ -913,7 +913,43 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
 // ONEE et le rendement de la société (Paramètres → Avancé) pilotent l'étude à
 // l'écran, plus seulement le PDF. Sans valeur → constantes historiques
 // (parité simulateur garantie).
-export function computeEtudeIndustrielle({ kwp, consoMensuelleKwh, dayUsagePct, totalTtc, kwhPrice, efficiency }) {
+// ── QX50 — Injection 82-21 (miroir de quote_engine/constants_82_21.py) ────────
+// Décret 82-21 (2-25-100, BO 09/03/2026, en vigueur 09/06/2026). TOUTES ces
+// valeurs sont ESTIMÉES (recherche 2026-07-16) et à VÉRIFIER FONDATEUR (QXG6) :
+// elles pilotent une ligne OFF par défaut, activée devis par devis, et ne
+// s'affichent JAMAIS sans la mention réglementaire INJECTION_82_21.MENTION.
+export const INJECTION_82_21 = {
+  TARIF_POINTE: 0.21,        // DH/kWh — à vérifier fondateur
+  TARIF_HORS_POINTE: 0.18,   // DH/kWh — à vérifier fondateur
+  FRAIS_RESEAU_C1: 6.07,     // c/kWh — à vérifier fondateur
+  FRAIS_RESEAU_C2: 6.38,     // c/kWh — à vérifier fondateur
+  PLAFOND_PCT: 20,           // % de la production — décret en révision (à vérifier)
+  MENTION: 'Tarif ANRE 03/2026-02/2027, plafond en révision',
+}
+INJECTION_82_21.FRAIS_RESEAU_DH = (INJECTION_82_21.FRAIS_RESEAU_C1 + INJECTION_82_21.FRAIS_RESEAU_C2) / 100
+
+// Tarif NET (rachat − frais réseau), DH/kWh, jamais négatif. Injection diurne →
+// tarif HORS POINTE net par défaut (prudent, jamais la pointe sans stockage).
+export function netTarif8221(pointe = false) {
+  const base = pointe ? INJECTION_82_21.TARIF_POINTE : INJECTION_82_21.TARIF_HORS_POINTE
+  return Math.max(0, base - INJECTION_82_21.FRAIS_RESEAU_DH)
+}
+
+// Surplus injectable (kWh) plafonné à 20 % de la prod + sa valeur nette (DH).
+// Retourne { kwh, dh }, ≥ 0, arrondis. Miroir de injection_annuelle().
+export function injection8221(productionKwh, autoconsommeKwh, pointe = false) {
+  const prod = Math.max(0, parseFloat(productionKwh) || 0)
+  const auto = Math.max(0, parseFloat(autoconsommeKwh) || 0)
+  const surplus = Math.max(0, prod - auto)
+  const plafond = prod * INJECTION_82_21.PLAFOND_PCT / 100
+  const kwh = Math.min(surplus, plafond)
+  const dh = kwh * netTarif8221(pointe)
+  return { kwh: Math.round(kwh), dh: Math.round(dh) }
+}
+
+// QX50 — `injectionEnabled` (défaut false, OFF) ajoute la ligne d'injection
+// 82-21 SANS toucher l'étude d'autoconsommation : étude avec = étude sans + ligne.
+export function computeEtudeIndustrielle({ kwp, consoMensuelleKwh, dayUsagePct, totalTtc, kwhPrice, efficiency, injectionEnabled = false }) {
   if (!kwp || kwp <= 0) return null
   const PRICE = (Number.isFinite(Number(kwhPrice)) && Number(kwhPrice) > 0) ? Number(kwhPrice) : KWH_PRICE
   const EFF = (Number.isFinite(Number(efficiency)) && Number(efficiency) > 0) ? Number(efficiency) : EFFICIENCY
@@ -935,7 +971,7 @@ export function computeEtudeIndustrielle({ kwp, consoMensuelleKwh, dayUsagePct, 
   const economies = autoconsomme * PRICE
   const payback = (economies > 0 && totalTtc > 0)
     ? Math.round(totalTtc / economies * 10) / 10 : null
-  return {
+  const out = {
     kwc: Math.round(kwp * 100) / 100,
     production_annuelle: Math.round(prodA),
     conso_annuelle: consoA ? Math.round(consoA) : null,
@@ -947,6 +983,15 @@ export function computeEtudeIndustrielle({ kwp, consoMensuelleKwh, dayUsagePct, 
     prod_mensuelle: prodM.map(v => Math.round(v)),
     conso_mensuelle: consoA ? Array(12).fill(Math.round(consoMois)) : null,
   }
+  // QX50 — injection 82-21 : ligne SÉPARÉE (ne modifie pas l'étude ci-dessus).
+  // OFF par défaut ; activée par devis. La mention est portée par le renderer.
+  if (injectionEnabled) {
+    const inj = injection8221(prodA, autoconsomme)
+    out.injection_kwh_an = inj.kwh
+    out.injection_dh_an = inj.dh
+    out.injection_82_21 = true
+  }
+  return out
 }
 
 // ── QF7 — fusion des paramètres d'étude + choix scénario/option, TOUS modes ──

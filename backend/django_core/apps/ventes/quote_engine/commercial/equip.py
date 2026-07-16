@@ -65,6 +65,18 @@ def build(ctx):
         f'<tr><td>Remise</td><td class="c2-tr">- {fmt(round(remise))} MAD</td></tr>'
         if remise > 0 else "")
 
+    # QX50 — ligne injection 82-21 (rendue SEULEMENT si l'étude la porte, avec
+    # sa mention obligatoire ; jamais affichée sans la mention).
+    _etude = d.get("etude") or {}
+    _inj = _num(_etude.get("injection_dh_an"))
+    injection_html = ""
+    if _inj and _inj > 0:
+        injection_html = (
+            '<div class="c2-inj"><b>+ ' + fmt(round(_inj)) + ' MAD/an</b> — '
+            'surplus injecté (loi 82-21, net des frais réseau, plafond 20 % de la '
+            'production). <span class="c2-inj-m">Tarif ANRE 03/2026-02/2027, '
+            'plafond en révision.</span></div>')
+
     block = categories.category_block(d.get("com_category"), d.get("etude"), C, fmt)
 
     css = f"""
@@ -108,6 +120,10 @@ def build(ctx):
 .c2b-tbl{{width:100%;border-collapse:collapse;margin-top:4px;font-size:8pt;}}
 .c2b-tbl td{{padding:4px 6px;border-bottom:1px solid {line_soft};vertical-align:top;}}
 .c2b-tbl td:first-child{{font-weight:700;color:{navy};white-space:nowrap;width:32%;}}
+.c2-inj{{margin-top:12px;border:1px solid {green_bg};border-left:4px solid {green};
+  border-radius:12px;background:{green_bg};padding:9px 14px;font-size:8pt;color:{ink};line-height:1.4;}}
+.c2-inj b{{color:{green};}}
+.c2-inj-m{{color:{muted};font-size:7pt;}}
 </style>
 """
 
@@ -134,6 +150,7 @@ def build(ctx):
     </div>
   </div>
 
+  {injection_html}
   {block}
 </div>
 """
