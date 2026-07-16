@@ -422,3 +422,59 @@ class EngineAlert(TenantModel):
 
     def __str__(self):
         return f'[{self.get_alert_type_display()}] {self.message[:40]}'
+
+
+class CreativeAsset(TenantModel):
+    """ENG15 — Asset créatif (reel / static / explainer) stocké dans MinIO.
+
+    ``file_key`` porte la clé de l'objet MinIO (jamais un ``FileField`` — clé
+    préfixée société, pattern SCA42). ``policy_stamp`` porte la trace de la
+    check-list policy (ENG16) : ``{passed, rules_checked[], checked_at,
+    checked_by}``. ``perf`` remonte les chiffres d'insights (impressions/spend/
+    résultats). ``parent`` relie une variante (ENG18) à son asset de base.
+
+    RÈGLE DURE (testée) : un asset dont ``policy_stamp.passed`` n'est pas vrai NE
+    PEUT PAS être référencé par une ``EngineAction`` de création d'ad — le
+    contrôle vit dans ``services`` (``assert_creative_ok_for_ad``). Un asset non
+    validé ne part donc jamais en production.
+    """
+
+    class AssetType(models.TextChoices):
+        REEL = 'reel', 'Reel (vidéo verticale)'
+        STATIC = 'static', 'Statique (image)'
+        EXPLAINER = 'explainer', 'Explainer animé'
+
+    asset_type = models.CharField(
+        max_length=12, choices=AssetType.choices, verbose_name='Type')
+    file_key = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Clé MinIO')
+    source_lane = models.CharField(
+        max_length=40, blank=True, default='',
+        verbose_name='Lane source',
+        help_text="Origine (upload / fal / templated / zapcap / …).")
+    cost_cents = models.PositiveIntegerField(
+        default=0, verbose_name='Coût de production (centimes)')
+    policy_stamp = models.JSONField(
+        default=dict, blank=True,
+        verbose_name='Tampon policy (check-list)')
+    perf = models.JSONField(
+        default=dict, blank=True,
+        verbose_name='Performance (remontée des insights)')
+    parent = models.ForeignKey(
+        'adsengine.CreativeAsset', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='variants',
+        verbose_name='Asset parent (variante)')
+
+    class Meta:
+        verbose_name = 'Asset créatif'
+        verbose_name_plural = 'Assets créatifs'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.get_asset_type_display()} #{self.pk}'
+
+    @property
+    def is_policy_passed(self):
+        """Vrai si la check-list policy est explicitement passée (ENG16)."""
+        return bool((self.policy_stamp or {}).get('passed') is True)

@@ -15,10 +15,12 @@ from rest_framework.views import APIView
 from core.permissions import _user_has_or_legacy
 from core.viewsets import CompanyScopedModelViewSet
 
-from .models import EngineAction, EngineAlert, GuardrailConfig, MetaConnection
+from .models import (
+    CreativeAsset, EngineAction, EngineAlert, GuardrailConfig, MetaConnection,
+)
 from .serializers import (
-    EngineActionSerializer, EngineAlertSerializer, GuardrailConfigSerializer,
-    MetaConnectionSerializer,
+    CreativeAssetSerializer, EngineActionSerializer, EngineAlertSerializer,
+    GuardrailConfigSerializer, MetaConnectionSerializer,
 )
 
 
@@ -168,6 +170,45 @@ class EngineAlertViewSet(AdsengineViewSet):
     queryset = EngineAlert.objects.all()
     serializer_class = EngineAlertSerializer
     http_method_names = ['get', 'head', 'options']
+
+
+class CreativeAssetViewSet(AdsengineViewSet):
+    """ENG15 — CRUD des assets créatifs + upload MinIO.
+
+    Company-scopé (hérité) ; lecture ``adsengine_view`` / écriture
+    ``adsengine_manage``. ``file_key`` / ``policy_stamp`` / ``perf`` sont posés
+    côté serveur (upload / check-list ENG16 / insights), jamais par le client.
+    """
+
+    queryset = CreativeAsset.objects.all()
+    serializer_class = CreativeAssetSerializer
+
+    @action(detail=False, methods=['post'])
+    def upload(self, request):
+        """Téléverse un fichier statique (image) dans MinIO et crée l'asset en
+        attente de check-list policy (``policy_stamp`` vide → non validé).
+
+        Réutilise le pipeline de stockage de fondation (``records.storage`` —
+        clé préfixée société, SCA42). Les reels/explainers vidéo passent par la
+        fabrique créative (ENG17), pas par cet upload d'image."""
+        from apps.records.storage import store_attachment
+
+        f = request.FILES.get('file')
+        if f is None:
+            return Response({'detail': 'Fichier requis.'}, status=400)
+        company = getattr(request.user, 'company', None)
+        stored, err = store_attachment(f, company=company)
+        if err:
+            return Response({'detail': err}, status=400)
+        asset = CreativeAsset.objects.create(
+            company=company,
+            asset_type=request.data.get(
+                'asset_type', CreativeAsset.AssetType.STATIC),
+            file_key=stored['file_key'],
+            source_lane='upload',
+            cost_cents=int(request.data.get('cost_cents') or 0),
+        )
+        return Response(self.get_serializer(asset).data, status=201)
 
 
 class HasAdsengineApprove(BasePermission):

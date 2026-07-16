@@ -49,12 +49,46 @@ class ActionNotApproved(Exception):
     """Levée si on tente d'appliquer une action non approuvée (jamais de client)."""
 
 
+class CreativePolicyNotPassed(ValueError):
+    """ENG15 — Levée si une création d'ad référence un asset non validé policy."""
+
+
+# Kinds qui créent une ad et peuvent donc référencer un ``CreativeAsset``.
+_AD_CREATING_KINDS = frozenset({
+    EngineAction.Kind.CREATE_AD, EngineAction.Kind.ROTATE_CREATIVE,
+})
+
+
+def assert_creative_ok_for_ad(company, kind, payload):
+    """ENG15 — Garde-fou policy créative : un asset dont ``policy_stamp.passed``
+    n'est pas vrai NE PEUT PAS être référencé par une action de création d'ad.
+
+    No-op si le kind ne crée pas d'ad ou si aucun ``creative_asset_id`` n'est
+    référencé. Lève ``CreativePolicyNotPassed`` (sous-classe de ``ValueError``)
+    sinon — l'action n'est jamais créée."""
+    if kind not in _AD_CREATING_KINDS:
+        return
+    asset_id = (payload or {}).get('creative_asset_id')
+    if not asset_id:
+        return
+    from .models import CreativeAsset
+    asset = CreativeAsset.objects.filter(company=company, id=asset_id).first()
+    if asset is None:
+        raise CreativePolicyNotPassed(
+            "Créatif introuvable pour cette société.")
+    if not asset.is_policy_passed:
+        raise CreativePolicyNotPassed(
+            "Créatif non validé (policy_stamp.passed absent) : il ne peut pas "
+            "être référencé par une création d'ad.")
+
+
 def propose_action(company, *, kind, reason_fr, payload=None, auto=False):
     """Crée une action PROPOSÉE. ``reason_fr`` (une phrase FR) est obligatoire."""
     if not (reason_fr and str(reason_fr).strip()):
         raise ValueError(
             "Une raison en une phrase (français) est obligatoire pour proposer "
             "une action.")
+    assert_creative_ok_for_ad(company, kind, payload)
     return EngineAction.objects.create(
         company=company, kind=kind, payload=payload or {},
         reason_fr=str(reason_fr).strip(),
@@ -195,6 +229,9 @@ def execute_auto_action(company, *, kind, reason_fr, payload=None,
     if not (reason_fr and str(reason_fr).strip()):
         raise ValueError(
             "Une raison en une phrase (français) est obligatoire.")
+
+    # ENG15 — même en auto, un asset non validé policy ne part jamais en prod.
+    assert_creative_ok_for_ad(company, kind, payload)
 
     # Capacité activée : trace d'audit auto=True, approuvée côté système, appliquée.
     action = EngineAction.objects.create(

@@ -1,7 +1,9 @@
 """Sérialiseurs du moteur publicitaire Meta Ads (Groupe ENG)."""
 from rest_framework import serializers
 
-from .models import EngineAction, EngineAlert, GuardrailConfig, MetaConnection
+from .models import (
+    CreativeAsset, EngineAction, EngineAlert, GuardrailConfig, MetaConnection,
+)
 
 
 class MetaConnectionSerializer(serializers.ModelSerializer):
@@ -100,3 +102,24 @@ class EngineAlertSerializer(serializers.ModelSerializer):
     def get_wa_links(self, obj):
         from .alerts import wa_links
         return wa_links(obj.message)
+
+
+class CreativeAssetSerializer(serializers.ModelSerializer):
+    """ENG15 — Asset créatif. ``file_key`` (posé par l'upload/la fabrique),
+    ``policy_stamp`` (posé par la check-list ENG16) et ``perf`` sont en lecture
+    seule : le client ne les écrit jamais directement. ``company`` posée côté
+    serveur. ``is_policy_passed`` expose l'état de validation."""
+
+    is_policy_passed = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = CreativeAsset
+        fields = [
+            'id', 'asset_type', 'file_key', 'source_lane', 'cost_cents',
+            'policy_stamp', 'is_policy_passed', 'perf', 'parent',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'file_key', 'policy_stamp', 'is_policy_passed', 'perf',
+            'created_at', 'updated_at',
+        ]
