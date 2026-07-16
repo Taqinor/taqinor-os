@@ -1,10 +1,12 @@
 """Vues du registre des assurances & sinistres d'entreprise (NTASS)."""
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import IntegrityError
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
+from authentication.permissions import HasPermissionOrLegacy
 from core.mixins import TenantMixin
 from core.permissions import WriteScopedPermissionMixin
 
@@ -18,7 +20,7 @@ from .serializers import (
 )
 from .services import (
     CHAMPS_SUIVIS_POLICE, generer_echeancier_prime, log_police_creation,
-    log_police_note, log_police_transitions_auto,
+    log_police_note, log_police_transitions_auto, proposer_ecriture_prime,
 )
 
 
@@ -131,6 +133,29 @@ class EcheancePrimeViewSet(_AssurancesBaseViewSet):
         echeance.statut = EcheancePrime.Statut.PAYEE
         echeance.save(update_fields=['statut'])
         return Response(EcheancePrimeSerializer(echeance).data)
+
+    @action(detail=True, methods=['post'], url_path='proposer-ecriture',
+            permission_classes=[HasPermissionOrLegacy(
+                'assurances_proposer_ecriture')])
+    def proposer_ecriture(self, request, pk=None):
+        """NTASS6 — propose (brouillon) l'écriture comptable de l'échéance.
+
+        Réservé compta/admin (``assurances_proposer_ecriture`` — NTASS29 ;
+        repli légacy Responsable/Administrateur pour les comptes sans rôle
+        fin, voir ``HasPermissionOrLegacy``)."""
+        echeance = self.get_object()
+        try:
+            ecriture = proposer_ecriture_prime(echeance, user=request.user)
+        except DjangoValidationError as exc:
+            # Levée par compta.services (ex. période comptable verrouillée,
+            # FG115) — remontée en 400 lisible plutôt qu'un 500.
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            'echeance': EcheancePrimeSerializer(echeance).data,
+            'ecriture_id': ecriture.id,
+            'ecriture_statut': ecriture.statut,
+        }, status=status.HTTP_201_CREATED)
 
 
 class GarantiePoliceViewSet(_AssurancesBaseViewSet):
