@@ -35,6 +35,168 @@ one-task-at-a-time agent), and the **sync-safe single merge** (integrate the lat
 
 ## BUILD QUEUE (do top-down — highest value first)
 
+### Groupe QX ROUND 7 — 4 MODÈLES DE DEVIS : split industriel/commercial, 4 renderers, moteur agricole FAO-56, injection 82-21 (QX43-QX52 + QXG6, fondateur 2026-07-16)
+
+*Commande fondateur 2026-07-16 : séparer industriel et commercial (4 modes réels avec
+résidentiel/agricole), UN moteur de devis (règle #4) avec 4 rendus distincts visibles sur la
+page proposition ET les PDF, questions par catégorie commerciale, moteur agricole eau→pompe
+mondial-best-practice. Recherche 5 volets 2026-07-16 (commercial 9 catégories, industriel
+MT/82-21, agricole FAO-56, courbes de charge MA + batteries, audit codebase) — constats clés :
+`Lead.TypeInstallation.COMMERCIAL` et l'alias webhook `commercial` EXISTENT déjà
+(crm/models.py:296-300, webhooks.py:185-196) ; le trou est côté Devis/moteur/web. Le décret
+82-21 (2-25-100, BO 9 mars 2026, en vigueur 9 juin 2026) rend l'injection MT/HT RÉELLE :
+tarif ANRE 0,21/0,18 DH/kWh (mars 2026-févr 2027), plafond 20 % de la production (en
+révision), frais réseau ≈6,07+6,38 c/kWh à déduire.*
+
+> Contraintes (toutes tâches) : règle #4 — le moteur RE ND seulement, jamais de statut ;
+> nouveaux renderers DANS apps/ventes/quote_engine/ ; migrations additives ; zéro chiffre
+> inventé — chaque constante tarifaire/Kc porte sa source en commentaire + flag « à vérifier
+> fondateur » quand estimée ; prix_achat jamais client-facing.
+
+- [ ] QX43 — **Mode `commercial` de bout en bout côté ERP.** `Devis.ModeInstallation` gagne
+  `COMMERCIAL='commercial'` (ventes/models.py:93-97, migration additive) et le label
+  INDUSTRIEL redevient « Industriel » (il dit « Industriel / Commercial » aujourd'hui).
+  DevisGenerator.jsx `MODE_OPTIONS` (:55-59) passe à 4 (🏪 Commercial). builder.py :
+  `PAYMENT_TERMS_BY_MODE` (:34-38, commercial = 50/40/10 comme industriel),
+  `_FINANCING_PROGRAMS` (:248-267, clé `commercial` = réutilise industriel/« Tatwir Croissance
+  Verte (PME) » sauf veto fondateur — pas de programme inventé) et la carte `inst_type`
+  (:947-951, « Commerciale ») gagnent la clé
+  `commercial`. QX20 (garde équipement par mode) et QX23 (garde de bascule) étendus au
+  4e mode. **Done =** un Devis commercial se crée/édite/rend sans tomber dans un fallback
+  résidentiel silencieux ; tests de non-régression sur les 3 modes existants.
+  (SCHEMA — migration additive : nouveau choix de champ ModeInstallation)
+  (@lane: ventes-backend) (@model: sonnet)
+- [ ] QX44 — **Étude COMMERCIALE par catégorie dans le générateur.** DevisGenerator mode
+  commercial : select « Catégorie » (hôtel/riad, restaurant/café, commerce/supermarché,
+  bureau/siège, santé, école privée, hammam/spa/gym, boulangerie, entrepôt froid, autre) +
+  2-4 questions par catégorie (hôtel : chambres+occupation+piscine ; restaurant : chambres
+  froides+horaires+cuisson élec/gaz ; boulangerie : four élec/gaz+cuisson nocturne ; froid :
+  T° consigne+volume+saisonnalité récolte ; école : effectif+internat+fermeture estivale…)
+  d'après la recherche 2026-07-16. Le day-share de l'étude vient d'une table d'archétypes
+  par catégorie (bureau 0,80 ; école 0,85 en période scolaire ; restaurant 0,70 ; hôtel
+  0,55 ; froid 0,50 ; boulangerie 0,45… — table commentée SOURCE vs ESTIMATION, ajustable
+  société) au lieu de l'unique valeur `DAY_USAGE_DEFAULTS['Commerciale']` (=80, solar.js:71-77 —
+  que le chemin auto-quote n'utilise même pas : `autoQuote.js:140` code en dur `['Industrielle']`).
+  `etude_params` gagne `categorie_commerciale` + les réponses catégorie (clés snake_case).
+  solar.js aligné (miroir commenté). NOTE LANE : QX44 édite `DevisGenerator.jsx`, fichier PARTAGÉ
+  avec QX43 → même lane (union `plan_lanes.py`), séquentiel après le mode commercial de QX43.
+  **Done =** une étude commerciale hôtel ≠ bureau à facture égale ;
+  etude_params round-trip édition ; tests. (@lane: ventes-frontend) (@model: opus) (@after: QX43)
+- [ ] QX45 — **Renderer INDUSTRIEL dédié (quote_engine/industriel/).** Nouveau package
+  miroir de residential/ + agricole/ (renderer.py expose `is_industrial(devis, pdf_options)`
+  + `render_pdf_bytes(data)` + exception `Unsupported`, EXACTEMENT comme agricole/residential ;
+  câblé dans le dispatch `generate_premium_devis_pdf` builder.py:1442-1463, AVANT le repli
+  legacy et après le bloc agricole ; full/premium seulement, jamais one-page ; render.py
+  harnais ; pages cover/finance/trust ; réutilise residential/theme.py
+  company_identity/fonts/footer — RENDERING_NOTES.md : tables CSS, jamais flex). Contenu
+  CFO (recherche 2026-07-16) : P1 baseline (12 mois, répartition pointe/pleines/creuses DH,
+  cos φ, pattern d'équipes) + KPIs (kWc, autoconso %, couverture %) ; P2 cashflow 10-15 ans
+  (économies par bande — l'essentiel en heures PLEINES, jamais promettre la pointe sans
+  batterie —, ligne injection ANRE nette des frais réseau plafonnée 20 % flag « conditions
+  ANRE en vigueur, sujettes à révision », O&M, payback + TRI) ; P3 tranches phasées +
+  ISO 50001/CBAM + garanties + signature. Le fallback legacy reste l'off-switch (règle #4) :
+  l'ancien chemin industriel = moteur legacy WeasyPrint — le nouveau renderer l'intercepte en
+  amont, le legacy ne meurt pas (repli automatique + off-switch).
+  **Done =** PDF industriel visuellement distinct (3 pages), test page-count dédié ;
+  test_quote_engine.py :444 (étude 4 pages legacy) reste vert car son helper `_render`
+  (test_quote_engine.py:343-356) appelle le moteur legacy `generate_premium_pdf` EN DIRECT, hors
+  du dispatch `generate_premium_devis_pdf` — il ne voit donc jamais le nouveau renderer.
+  (@lane: quote-engine) (@model: opus)
+- [ ] QX46 — **Renderer COMMERCIAL dédié (quote_engine/commercial/).** Package miroir exposant
+  `is_commercial(devis, pdf_options)` + `render_pdf_bytes` + `Unsupported`, câblé dans le dispatch
+  `generate_premium_devis_pdf` builder.py:1442-1463 avant le repli legacy (comme QX45).
+  P1 cover catégorie-aware (label + pictogramme catégorie, KPIs
+  autoconso/couverture/économies, accroche par catégorie) ; P2 équipements + totaux +
+  blocs catégorie de la recherche 2026-07-16 (hôtel : tableau saison haute/basse + badge
+  éco-OTA ; restaurant/froid : sécurisation chaîne du froid ; boulangerie : transparence
+  cuisson nocturne ; école : note fermeture estivale/injection ; bureau : alignement
+  horaires/production) ; P3 confiance/étapes/signature. Catégorie lue depuis
+  `etude_params.categorie_commerciale` (QX44) ; sans catégorie → blocs génériques.
+  **Done =** PDF commercial distinct, blocs conditionnels par catégorie testés, 3 pages.
+  (@lane: quote-engine) (@model: opus) (@after: QX43, QX44)
+- [ ] QX47 — **Devis AGRICOLE : le document que le fermier comprend.** Étendre
+  quote_engine/agricole/ : (a) graphique mensuel « eau livrée (pompe, m³/j) vs besoin de la
+  culture (ETc mensuel) » — dépend des stades Kc de QX48 ; (b) bloc bassin recommandé (m³ =
+  1-3× besoin journalier, « X jours d'autonomie ») ; (c) ligne subvention FDA 30 % avec
+  caveat éligibilité (irrigation localisée + fournisseur agréé + dossier DPA/ORMVA guichet
+  unique + paiement a posteriori) ; (d) bloc économies vs diesel/butane (dépense actuelle
+  saisie → économie annuelle, bande honnête). Réutilise la ligne catalogue SUIVI-2A si elle
+  figure au devis (SKU produit `seed_catalogue.py:62` « Suivi journalier, maintenance chaque
+  12 mois pendant 2 ans » — c'est un SKU, PAS une tâche plan) : pas de doublon de bloc O&M.
+  NOTE : le devis agricole CHIFFRABLE reste gaté par QXG3 (11 pompes à courbe prix=0) —
+  le rendu doit dégrader proprement sans prix. **Done =** 4 pages agricoles enrichies,
+  tests page-count/snapshot à jour. (@lane: quote-engine) (@model: sonnet) (@after: QX48)
+- [ ] QX48 — **Moteur agronomique v2 (FAO-56 réel, partagé).** Étendre
+  frontend/src/features/ventes/agronomy.js + le miroir backend quote_engine/agricole/
+  agronomy.py : (a) table cultures ~16 entrées (agrumes, olivier, amandier, dattier,
+  avocatier, myrtille/fraise, tomate/poivron serre, pomme de terre, oignon, melon/pastèque,
+  banane serre, vigne, céréales, luzerne, grenadier, figuier, cannabis licite [Kc estimé
+  ~1,0 flag ANRAC], arganier) avec Kc-mid FAO-56 Table 12 + valeurs Maroc citées
+  (avocatier Gharb 8-12 000 m³/ha/an ; myrtille pics 80 m³/ha/j ; dattier 51 m³/arbre/an) —
+  CHAQUE valeur avec sa source en commentaire, plus jamais « à confirmer » nu ; (b) stades
+  Kc ini/dev/late → série MENSUELLE d'ETc (le graphe QX47) au lieu du seul mois de pointe ;
+  (c) régions + gharb-loukkos + haouz (ET0 mensuels) ; (d) crédit pluie efficace par
+  région (l'actuel surestime le Gharb) ; (e) remplacer l'annualisation plate 0,62×300j
+  par l'intégrale de la série mensuelle ; (f) garde de suffisance hydraulique du repli CV
+  dans solar.js : si HMT+débit saisis, kW_min = Q×HMT×2,725/(1000×η) comparé au CV tapé —
+  avertissement « pompe sous-dimensionnée » (jamais un blocage). **Done =** besoins
+  mensuels par culture/région testés contre 3 valeurs citées ; miroirs front/back alignés
+  (test de parité) ; garde CV testée. (@lane: ventes-frontend) (@model: opus)
+- [ ] QX49 — **Payload proposition mode-complet.** public_views.py : le payload proposal
+  expose `mode_installation`, `categorie_commerciale`, et un bloc KPI par mode (pompage :
+  pompe_cv/kw, hmt_m, debit_hmt_m3h, m3_jour, champ_kwc, bassin_m3, fda_eligible ;
+  industriel/commercial : taux_autoconso, taux_couverture, economies_annuelles, payback,
+  injection_kwh_an/injection_dh_an si calculés) — whitelist stricte côté serveur, jamais
+  prix_achat/marge. Tests payload par mode. **Done =** la page web peut rendre 4 variantes
+  sans re-calcul client. (@lane: ventes-backend) (@model: sonnet) (@after: QX43)
+- [ ] QX50 — **Ligne injection 82-21 (industriel/commercial).** computeEtudeIndustrielle +
+  builder : option `injection` — surplus = max(0, prod − autoconsommé) plafonné à 20 % de
+  la production, valorisé au tarif ANRE période courante (0,21 pointe / 0,18 hors pointe
+  DH/kWh) NET des frais d'accès réseau (≈6,07 + 6,38 c/kWh), OFF par défaut, activable par
+  devis avec mention obligatoire « tarif ANRE 03/2026-02/2027, plafond en révision ».
+  Constantes dans UN module commenté-sourcé (`quote_engine/constants_82_21.py` + miroir
+  solar.js) que le fondateur peut vérifier ligne à ligne. **Done =** étude avec injection
+  = étude sans + ligne bornée ; jamais affichée sans la mention ; tests bornes 20 %/net.
+  (@lane: quote-engine) (@model: opus) (@after: QX43)
+- [ ] QX51 — **Webhook : questionnaire commercial/industriel v2 persisté.** Étendre la
+  whitelist `_extract_web_questionnaire` (webhooks.py) : `categorie_commerciale` + réponses
+  par catégorie (chambres, occupation_pct, chambres_froides, cuisson, four, cuisson_nocturne,
+  temperature_consigne, effectif, internat, fermeture_estivale, piscine, blanchisserie…),
+  industriel v2 (`equipes` 1x8/2x8/3x8/continu, `weekend`, `cos_phi_connu`, `groupe_kva`,
+  `diesel_dh_mois`, `surface_toiture_m2`, `ombriere`, `terrain`) — clés snake_case, bornées,
+  choix fermés ; note chatter enrichie (résumé par catégorie). Byte-identique sans les
+  nouveaux champs. **Done =** tests mapping + note + tolérance. (@lane: crm-webhook)
+  (@model: sonnet)
+- [ ] QX52 — **`instType`/`type_installation` : parité 4 modes (backend+frontend).** Balayage
+  des surfaces mode↔type SAUF apps/web (voir NB) : (1) webhooks `_MARKET_MODE_ALIASES`
+  (webhooks.py:185-196) mappe DÉJÀ correctement `commercial`→commercial et `professionnel`/
+  `professional`→industriel — RIEN à changer, juste garder + tester ; (2) `autoQuote.js`
+  `LEAD_TYPE_TO_MODE` (:30-33) mappe aujourd'hui `commercial`→`industriel` (repli), ET la
+  branche mode ne connaît que agricole/industriel — le VRAI travail : router `commercial`→
+  `commercial` et lui donner sa branche/`DAY_USAGE_DEFAULTS['Commerciale']` ; (3) builder
+  `inst_type` (:947-951) reçoit sa clé `commercial` VIA QX43 (déjà couvert — ne pas ré-éditer).
+  Le quadruplet residentiel/commercial/industriel/agricole devient cohérent. NB PÉRIMÈTRE :
+  le libellé public `instLabel` ([token].astro:214-221, apps/web) traite DÉJÀ `commercial`
+  (→ « Autoconsommation ») et appartient à WJ126 — NE PAS le toucher ici (collision inter-plan).
+  **Done =** grep de cohérence + tests ; aucun mode ne tombe dans un libellé d'un autre.
+  (@lane: frontend-generator) (@model: haiku) (@after: QX43)
+
+GATED (fondateur — vérifications avant durcissement des constantes) :
+- [ ] QXG6 — **[GATED: vérifs fondateur avant hard-coding]** (a) tarifs MT ONEE exacts
+  (pointe/pleines/creuses TTC) contre le simulateur one.org.ma ; (b) bande prix/kWc C&I
+  >100 kWc contre les vraies offres fournisseurs (l'estimation recherche = 6 000-9 000
+  DH/kWc HT) ; (c) seuil déclaration/autorisation 82-21 (5 MW vs 1 MW selon sources) ;
+  (d) statut du plafond d'injection 20 % (décret en révision). Chaque valeur validée
+  remplace le flag « à vérifier » dans constants_82_21.py / la table day-share QX44.
+  (@lane: founder-verify)
+
+*Notes de cohérence : dépendances QX44/QX46/QX49/QX50/QX52 → QX43 ; QX47 → QX48 ; aucune
+circularité. QXG3 (prix des 11 pompes à courbe) reste LE gate du devis agricole chiffré ;
+QXG1 (BSP WhatsApp) gate l'envoi automatisé ; QXG4 (contenu confiance réel) vaudra pour les
+3 nouveaux renderers. Les moitiés web (WJ117-WJ126) vivent dans docs/WEB_PLAN.md.*
+
+---
+
 ### Group QJ — Quote-journey best-in-world (ERP backend + frontend; research-driven, 2026-06-24)
 
 *From a June-2026 deep audit of TAQINOR's quote journey (website pin+bill capture → CRM lead →

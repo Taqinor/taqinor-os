@@ -198,6 +198,160 @@ unlinked):
 
 ## BUILD QUEUE (do top-down — highest value first)
 
+### WJ117–WJ126 — 4 MODES + RÈGLE ANTI-CONCURRENT + DÉFAUTS VÉRIFIÉS (fondateur 2026-07-16 ; recherche 5 volets + audit adversarial)
+
+*Même commande fondateur. Défauts constatés (audit + capture d'écran fondateur) : cases de
+choix sans état sélectionné VISIBLE (bug cascade layers CSS confirmé Tailwind v4 : `.cine-card`
+non-layered bat le layer utilities Tailwind, global.css:386-405 ; VÉRIFIÉ — aucun sélecteur
+`[aria-pressed]` CSS sur `.cine-card`/`.mt-*` (il en existe 2 SEULEMENT sur `.rp9-*`,
+preview/toiture-3d-pro-11.astro:1013/1215)) ; 3D proposition sur fond bleu nuit = le fond CSS
+`.roof3d-stage` var(--color-azur-950,#0a1a33) [token].astro:3405 (la scène Three.js est
+transparente, setClearColor 0,0 viewerOnly.ts:716), sans photo satellite : [token].astro:2921
+appelle createRoofViewer SANS roofImage, et buildPublicRoofImageSpec (export viewerOnly.ts:280 ;
+usage doc :1-36) n'est JAMAIS appelé dans le fichier ; commentaire :305 « backend n'expose pas
+roof_layout » PÉRIMÉ — QJ26 l'expose (public_views.py:517 via `_safe_roof_layout`), test
+test_qj26_roof_layout_proposal.py présent ; adaptateur [lng,lat]→[lat,lng]
+requis) ; courbe journalière générique double-gaussienne (proposalCurve.ts:46-52) alors que
+BASELINE_SHAPE marocaine (soirée dominante, applianceConsumption.ts:111-116) existe déjà ;
+aucun simulateur batterie (sans/avec = 2 presets). RÈGLE FONDATEUR (anti-concurrent,
+2026-07-16) : le document d'estimation détaillé N'EST PLUS rendu pendant la saisie publique —
+la beauté vit sur la page tokenisée + les PDF.*
+
+- [ ] WJ117 — **Fix état sélectionné des cartes (bug cascade layers).** Cause auditée : les
+  8 groupes (.mt-mode/.mt-roof-card/.mt-tension/.mt-activity/.mt-water-source/.mt-irrigation/
+  .mt-water-unit/.mt-pro-unit) togglent bien border-brass-400 (wireCardGroup :2596, syncMode
+  :2170, syncRoof :2205) mais `.cine-card` (global.css:386, NON layered) écrase la couleur
+  de bordure des utilitaires (layered). Fix : règle CSS non-layered
+  `.cine-card[aria-pressed="true"]` (bordure or 2px + fond teinté brass/10 + ✓ coin +
+  label bold) dans global.css — UNE règle répare les 8 groupes × 3 locales ; état keyboard
+  focus-visible conservé. **Done =** capture Playwright avant/après sur les 3 profils ;
+  test source-level asserte la règle. (@lane: web-journey) (@model: sonnet)
+- [ ] WJ118 — **Photo satellite sur la 3D de la page client.** [token].astro : appeler
+  `buildPublicRoofImageSpec({outline})` (export viewerOnly.ts:280 ; doc/usage :1-36) avec le
+  contour = `roof_layout.zones[].vertices` (champ ASSAINI exposé par `_safe_roof_layout`,
+  public_views.py:386-392) converti [lng,lat]→[lat,lng], passer `roofImage` à createRoofViewer
+  (:2921 — aujourd'hui appelé SANS roofImage ; vérifier que createRoofViewer accepte/applique
+  une texture satellite, sinon l'ÉTENDRE) ; supprimer le commentaire périmé (:305) ; le « fond
+  bleu » est le fond CSS `.roof3d-stage` (:3405) — basculer en ciel clair/jour quand drapé,
+  l'abstrait actuel sinon (dégradation byte-identique sans clé/contour). Attribution
+  visible (contrat viewerOnly, champ `attribution`). **Done =** avec MAPTILER/MAPBOX configuré,
+  la 3D client montre SON toit photographié ; sans clé, rendu actuel inchangé ; test du
+  convertisseur de coordonnées. (@lane: web-proposal) (@model: sonnet)
+- [ ] WJ119 — **Courbe journalière RÉELLE Maroc + par mode.** proposalCurve.ts : remplacer
+  la double-gaussienne (:46-52) par la silhouette marocaine soirée-dominante (porter
+  BASELINE_SHAPE, applianceConsumption.ts:111-116 — pic 19h-21h ≈26 % de l'énergie) ;
+  variantes : été/intérieur (+40-60 % 13h-18h, clim) et Ramadan (jour −30-40 %, pic iftar,
+  bosse suhoor 3h-5h) en toggle discret ; par MODE : industriel = profil d'équipes (1x8/
+  2x8/3x8), commercial = archétype catégorie (QX44), agricole = fenêtre de pompage.
+  Libellé honnête « profil type au Maroc, ajusté à votre facture » (jamais « mesuré »).
+  **Done =** la courbe cesse d'être la même pour une villa et une usine ; sources en
+  commentaire ; tests de forme (pic du soir dominant résidentiel). (@lane: web-proposal)
+  (@model: sonnet)
+- [ ] WJ120 — **Simulateur « et avec N batteries ? » sur la page client.** Nouveau bloc
+  proposition (résidentiel + commercial) : moteur horaire glouton (jour 2 simulé pour
+  éviter le biais de SoC initial) sur courbe conso (WJ119) × courbe solaire existante :
+  direct = min(prod, conso) ; surplus → batterie (η one-way ≈0,96, DoD 90-95 % LFP) ;
+  déficit ← batterie puis réseau. Unités RÉELLES du catalogue (seed_catalogue.py:48-49) :
+  Deyness 5 kWh (BAT-DEY-5) / 10 kWh (BAT-DEY-10) — la CAPACITÉ par unité vient de ces réfs.
+  NB : le `?? 5.0` (solar.js:503 = capacité/unité par défaut) et `BATTERY_KWH_PER_DAY=6`
+  (applianceConsumption.ts:33 = conso journalière) mesurent des choses DIFFÉRENTES (kWh de
+  capacité vs kWh/jour consommés) — ne PAS les « réconcilier » comme si c'était le même
+  nombre ; sourcer la capacité du catalogue (5/10), jamais le 6. Slider 0/1/2/3 unités →
+  3 chiffres live : autoconsommation
+  % (et autosuffisance %, les DEUX libellés distincts), kWh directs/batterie/réseau (aire
+  empilée style SolarEdge), heures de secours sur CHARGES ESSENTIELLES (frigo+éclairage+
+  box, jamais toute la maison). Hypothèses (DoD/rendement) en note. AUCUN prix batterie
+  inventé : si la ligne batterie existe au devis, prix réel ; sinon « sur étude ».
+  **Done =** slider live sans re-fetch ; chiffres cohérents avec totaux_avec quand N
+  correspond à l'offre ; tests du moteur horaire (cas canoniques). (@lane: web-proposal)
+  (@model: opus) (@after: WJ119)
+- [ ] WJ121 — **4 vrais modes au départ du parcours.** Split de la carte « Professionnel » :
+  🏭 Industriel (usine, production) et 🏪 Commercial (hôtel, commerce, services) — FR/EN/AR.
+  lead.ts : `LEAD_MODES` (aujourd'hui `['residentiel','professionnel','agricole']`, lead.ts:84)
+  + `MAX_BILL_BY_MODE` (:169-173) + règles billRange/qualified gagnent À LA FOIS `industriel`
+  ET `commercial` ; `professionnel` n'est plus ÉMIS par le site (alias serveur conservé :
+  webhooks.py:185-196 mappe déjà `professionnel`/`professional`→industriel ET `commercial`→
+  commercial ET `industriel`→industriel, et `crm.Lead.TypeInstallation` accepte les 4 —
+  models.py:296-300). Stepper/labels par mode.
+  **Done =** 4 cartes, leads commercial typés `commercial` (et industriel `industriel`) dans le
+  CRM, tests capture. (@lane: web-journey) (@model: sonnet)
+- [ ] WJ122 — **Panneau questions COMMERCIAL par catégorie.** Étape 2 commerciale : cartes
+  catégorie (9 + Autre, pictos) puis 2-4 questions SPÉCIFIQUES à la catégorie choisie
+  (même liste que QX44 — hôtel chambres/occupation/piscine ; restaurant chambres froides/
+  horaires/cuisson ; boulangerie four/cuisson nocturne ; froid T°/volume/récolte ; école
+  effectif/internat/fermeture ; santé imagerie/24h ; hammam-gym mode chauffage eau/soirée ;
+  bureau effectif/serveurs/clim ; commerce froid alimentaire/horaires) + facture MAD⇄kWh.
+  Estimateur : jour-share par archétype de catégorie (table miroir de QX44, commentée
+  SOURCE/ESTIMATION) → puissance/production/autoconso/couverture/économies fourchette.
+  Payload : categorieCommerciale + réponses (whitelist QX51). FR/EN/AR. **Done =** hôtel ≠
+  bureau à facture égale à l'écran ; payload persisté ; tests. (@lane: web-journey)
+  (@model: opus) (@after: WJ121, QX51)
+- [ ] WJ123 — **Panneau INDUSTRIEL v2 (équipes, MT, réalisme).** Étape 2 industrielle :
+  pattern d'équipes en cartes (Journée 1x8 / 2x8 / 3x8-continu / continu+weekend) →
+  day-share et PLAFOND d'autoconsommation honnête (1x8 ~70-85 %, 2x8 ~55-70 %, continu
+  ~25-40 % — recherche 2026-07-16) ; puissance souscrite kVA ; 12 mois de kWh (facultatif,
+  1 champ « moyenne » + « été différent » réutilisé) ; surface toiture/ombrière/terrain ;
+  groupe électrogène kVA + dépense diesel DH/mois (accroche substitution) ; horizon de
+  décision. Micro-copy : le solaire déplace les heures PLEINES (~1,01 DH/kWh), la POINTE
+  seulement avec batterie — jamais l'inverse. Estimateur v2 avec plafond par équipe ;
+  ligne injection potentielle APRÈS QX50 (sinon absente). Payload → QX51. FR/EN/AR.
+  **Done =** un 3x8 ne voit plus une autoconso de bureau ; tests plafonds. 
+  (@lane: web-journey) (@model: opus) (@after: WJ121, QX51)
+- [ ] WJ124 — **Moteur agricole web : culture → eau → pompe.** Étape 2 agricole enrichie :
+  culture (cartes ~16 cultures QX48, pictos), région (8 zones dont gharb-loukkos/haouz),
+  surface (ha), irrigation, + option « je connais mon débit/HMT » (chemin actuel conservé).
+  Sans débit connu : besoin d'eau via le miroir web des tables QX48 (Kc mensuels, pluie
+  efficace) → m³/j du mois de pointe → débit requis sur les heures de pompage → pompe/
+  variateur/champ via estimateurAgricole existant + suggestion bassin (1-3× jour).
+  Honnêteté : pas de prix pompe tant que QXG3 ouvert (« étude gratuite » CTA) ; la série
+  mensuelle s'affiche en mini-graphe besoin vs livraison. FR/EN/AR. **Done =** un
+  agriculteur (avocat Gharb 5 ha goutte) obtient besoin m³/j crédible cité, pompe CV,
+  champ kWc, bassin m³ ; parité avec QX48 testée. (@lane: web-journey) (@model: opus)
+  (@after: WJ121, QX48)
+- [ ] WJ125 — **RÈGLE FONDATEUR anti-concurrent : le document d'estimation ne se montre
+  plus pendant la saisie publique.** Le `#mt-doc` détaillé (KPIs chiffrés, graphe, imprimer)
+  disparaît du parcours public : à l'étape 3, une CARTE TEASER verrouillée (aperçu flouté
+  du document + 1 accroche grossière max — ex. « votre toit peut couvrir une bonne part de
+  votre facture » sans kWc/DH précis + « Recevez votre étude complète et personnalisée »)
+  → le formulaire contact. Le document complet + Imprimer vivent UNIQUEMENT sur
+  /proposition/<token> (envoyé par le commercial). ATTENTION (audit `mon-toit.astro`) :
+  `computeEstimate` écrit AUSSI des chiffres HORS `#mt-doc` (qui ferme à :1121) — `mt-nearest-
+  install-text`/`-link` (kWc d'une réalisation + km, :1146-1149) et `mt-cost-of-waiting-value`
+  (montant MAD, :1156-1160) : gater CES zones AUSSI, pas seulement `#mt-doc` (elles sont déjà
+  listées avec les zones de #mt-doc dans `resetDocZones()` :2841-2850) — sinon des chiffres
+  fuient malgré le masquage de #mt-doc. `estimateShown` continue d'être calculé et envoyé au
+  CRM (le commercial voit tout) — calcul silencieux, rendu gaté. TESTS (vérifié) : `captureWJ`,
+  `wj111AgricoleEstimate` et la partie unitaire de `wj112RefineEstimate` testent le CALCUL/l'API
+  (qui restent) → verts SANS changement ; ce sont les checks source-texte affirmant que le
+  document/squelette d'estimation SE REND (`perceivedPerfWJ34` : `showEstimateSkeleton` /
+  `mt-est-skeleton` / `mt-skeleton-shimmer`, et un éventuel check « délai réflexion ≤500 ms » de
+  `wj112`) qui sont ADAPTÉS délibérément au nouveau rendu gaté, jamais affaiblis : le calcul
+  reste, seul le RENDU public change. FR/EN/AR + mise à jour du bouton « Enregistrer/Imprimer ».
+  **Done =** aucune valeur dimensionnante précise visible avant envoi du lien (y compris
+  mt-nearest-install / mt-cost-of-waiting) ; capture Playwright des 3 profils ; CRM reçoit
+  toujours estimateShown ; tests adaptés documentés.
+  (@lane: web-journey) (@model: opus) (@after: WJ121)
+- [ ] WJ126 — **Page /proposition : 4 variantes de devis (la vitrine client).** Rendre la
+  page tokenisée mode-aware (payload QX49) : AGRICOLE — héros pompe (CV/kW, m³/jour à HMT,
+  champ kWc), graphe mensuel eau livrée vs besoin culture, bloc bassin + FDA 30 % (caveat),
+  économies diesel ; INDUSTRIEL — tuiles couverture/autoconso/économies par bande,
+  mini-cashflow 10 ans, ligne injection (si QX50 active) avec mention ANRE, blocs tranches/
+  ISO-CBAM ; COMMERCIAL — tuiles + blocs par catégorie (hôtel saison, restaurant froid,
+  école été…) ; RÉSIDENTIEL — inchangé + WJ119/WJ120. Les cartes sans/avec batterie
+  restent résidentiel(/commercial pertinent) — jamais sur pompage. PDF téléchargé = le bon
+  renderer (QX45/46/47 côté moteur). FR/EN/AR. **Done =** 4 captures Playwright distinctes
+  d'une même page selon le mode du devis ; zéro champ résiduel d'un autre mode ; tests
+  fixtures par mode. (@lane: web-proposal) (@model: opus) (@after: QX49)
+
+**GARDE DE COMPOSITION (convention « attend <ID> »).** WJ122/WJ123 (@after QX51), WJ124
+(@after QX48) et WJ126 (@after QX49) dépendent de tâches BACKEND (PLAN2) qu'un run « work on
+the web plan » (édite UNIQUEMENT apps/web) NE PEUT PAS construire — elles restent
+`[BLOCKED: attend QXnn]` tant que la QX correspondante n'est pas sur `main` ; ne JAMAIS
+hand-roller un substitut backend dans apps/web. WJ117/118/119/120/121/125 sont web-only
+(WJ120 @after WJ119 est intra-web).
+
+---
+
 ### WJ110–WJ116 — QUOTE JOURNEY ROUND 6: verified capture/estimate defects + proposal conversion layer (2-round adversarial audit + Fable design, 2026-07-10)
 
 *Web half of PLAN2 Groupe QX (cross-referenced per task). All findings adversarially verified
