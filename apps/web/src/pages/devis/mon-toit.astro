@@ -3310,14 +3310,26 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
         // WJ46 — pic d'intérêt : dès que l'estimation instantanée est RÉELLEMENT
         // affichée (pas le squelette, pas l'état « indisponible »), on propose
         // l'offre WhatsApp ici plutôt que d'attendre un exit-intent (desktop
-        // uniquement, de moins en moins vu) — c'est l'équivalent honnête et
-        // mobile-réel du moment de plus fort engagement. Court délai (pas un
-        // compte à rebours, aucune urgence affichée) pour laisser les chiffres
-        // s'afficher avant l'offre.
-        if (hasEstimate) setTimeout(() => showWhatsappOffer(triggerEl), reducedMotion ? 0 : 1500);
+        // uniquement, de moins en moins vu). QX — le document d'estimation doit
+        // d'abord RESPIRER : 12 s de lecture (l'ancien 1,5 s recouvrait les
+        // chiffres à l'instant où ils apparaissaient — et 0 ms en reduced-motion,
+        // pire encore : le délai d'une modale n'est pas une animation). Et si le
+        // visiteur est déjà ENGAGÉ (il remplit le formulaire ou imprime), on ne
+        // l'interrompt jamais — l'exit-intent, lui, reste actif.
+        if (hasEstimate) {
+          setTimeout(() => {
+            if (!docEngaged) showWhatsappOffer(triggerEl);
+          }, 12_000);
+        }
       }, thinkingDelayMs());
     });
   });
+  // QX — « engagé » : le visiteur remplit déjà le formulaire de contact ou
+  // imprime son document — l'offre WhatsApp automatique (pic d'intérêt) ne
+  // doit alors JAMAIS l'interrompre. L'exit-intent reste actif, lui.
+  let docEngaged = false;
+  $('mt-form')?.addEventListener('focusin', () => { docEngaged = true; });
+  $('mt-print-estimate')?.addEventListener('click', () => { docEngaged = true; }, { capture: true });
   // recalcule à la volée si l'utilisateur revient corriger sa facture (ne
   // redéclenche PAS l'offre WhatsApp : showWhatsappOffer n'est ici jamais appelée).
   // QX — la saisie du montant exact synchronise d'abord la tranche dérivée
