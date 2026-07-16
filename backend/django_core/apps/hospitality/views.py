@@ -11,8 +11,10 @@ from rest_framework import filters, viewsets
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 
-from .models import Chambre, TypeChambre
-from .serializers import ChambreSerializer, TypeChambreSerializer
+from .models import Chambre, PlanTarifaire, TypeChambre
+from .serializers import (
+    ChambreSerializer, PlanTarifaireSerializer, TypeChambreSerializer,
+)
 
 READ_ACTIONS = ['list', 'retrieve']
 
@@ -49,4 +51,25 @@ class ChambreViewSet(TenantMixin, viewsets.ModelViewSet):
         statut = self.request.query_params.get('statut')
         if statut:
             qs = qs.filter(statut=statut)
+        return qs
+
+
+class PlanTarifaireViewSet(TenantMixin, viewsets.ModelViewSet):
+    """Plans tarifaires (rack/corporate/ota) par type de chambre, CRUD scopé
+    société (NTHOT2)."""
+    queryset = PlanTarifaire.objects.select_related('type_chambre').all()
+    serializer_class = PlanTarifaireSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_debut', 'date_fin', 'prix_nuit_ht']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        type_chambre = self.request.query_params.get('type_chambre')
+        if type_chambre:
+            qs = qs.filter(type_chambre_id=type_chambre)
         return qs

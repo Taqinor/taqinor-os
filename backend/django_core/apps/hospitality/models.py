@@ -78,3 +78,49 @@ class Chambre(models.Model):
 
     def __str__(self):
         return self.nom or self.numero
+
+
+# ── NTHOT2 — Tarification saisonnière (rack/corporate/ota) ─────────────────
+
+class PlanTarifaire(models.Model):
+    """Prix par nuit d'un type de chambre pour une période/canal donnés.
+
+    Plusieurs plans peuvent se chevaucher : le prix applicable est résolu par
+    ``services.prix_applicable`` (priorité canal explicite, sinon
+    corporate > ota > rack par défaut — jamais ambigu)."""
+
+    class Canal(models.TextChoices):
+        RACK = 'rack', 'Rack (tarif public)'
+        CORPORATE = 'corporate', 'Corporate'
+        OTA = 'ota', 'OTA'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='hospitality_plans_tarifaires',
+        verbose_name='Société',
+    )
+    type_chambre = models.ForeignKey(
+        TypeChambre,
+        on_delete=models.CASCADE,
+        related_name='plans_tarifaires',
+        verbose_name='Type de chambre',
+    )
+    canal = models.CharField(
+        max_length=10, choices=Canal.choices, default=Canal.RACK)
+    date_debut = models.DateField(verbose_name='Date de début')
+    date_fin = models.DateField(verbose_name='Date de fin')
+    prix_nuit_ht = models.DecimalField(
+        max_digits=10, decimal_places=2, verbose_name='Prix/nuit HT')
+    min_nuits = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Minimum de nuits')
+
+    class Meta:
+        verbose_name = 'Plan tarifaire'
+        verbose_name_plural = 'Plans tarifaires'
+        ordering = ['-date_debut']
+
+    def __str__(self):
+        return (
+            f'{self.type_chambre} — {self.canal} '
+            f'({self.date_debut}→{self.date_fin})')

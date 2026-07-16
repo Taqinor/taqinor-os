@@ -5,7 +5,7 @@
 """
 from rest_framework import serializers
 
-from .models import Chambre, TypeChambre
+from .models import Chambre, PlanTarifaire, TypeChambre
 
 
 class TypeChambreSerializer(serializers.ModelSerializer):
@@ -30,3 +30,25 @@ class ChambreSerializer(serializers.ModelSerializer):
         # défaut (valeur du modèle) ; le statut évolue ensuite via les
         # actions du cycle de vie (check-in/check-out/housekeeping).
         extra_kwargs = {'statut': {'required': False}}
+
+
+class PlanTarifaireSerializer(serializers.ModelSerializer):
+    canal_display = serializers.CharField(
+        source='get_canal_display', read_only=True)
+
+    class Meta:
+        model = PlanTarifaire
+        fields = [
+            'id', 'type_chambre', 'canal', 'canal_display', 'date_debut',
+            'date_fin', 'prix_nuit_ht', 'min_nuits',
+        ]
+
+    def validate(self, attrs):
+        date_debut = attrs.get(
+            'date_debut', getattr(self.instance, 'date_debut', None))
+        date_fin = attrs.get(
+            'date_fin', getattr(self.instance, 'date_fin', None))
+        if date_debut and date_fin and date_fin < date_debut:
+            raise serializers.ValidationError(
+                {'date_fin': 'La date de fin doit être postérieure à la date de début.'})
+        return attrs
