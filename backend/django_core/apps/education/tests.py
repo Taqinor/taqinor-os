@@ -407,3 +407,44 @@ class NTEDU12PresenceBulkTests(EducationTestCaseMixin, TestCase):
         self.assertEqual(
             Presence.objects.get(seance=self.seance, eleve=self.eleve1).statut,
             Presence.Statut.RETARD)
+
+
+class NTEDU13NotificationAbsenceTests(EducationTestCaseMixin, TestCase):
+    """NTEDU13 — notification parent sur absence, anti-doublon par jour."""
+
+    def setUp(self):
+        super().setUp()
+        self.eleve = Eleve.objects.create(
+            company=self.company, famille=self.famille, nom='A', prenom='A',
+            classe=self.classe)
+        self.seance1 = Seance.objects.create(
+            company=self.company, classe=self.classe, matiere='Maths',
+            date=date(2026, 9, 15), heure_debut=time(8, 0), heure_fin=time(9, 0))
+        self.seance2 = Seance.objects.create(
+            company=self.company, classe=self.classe, matiere='Français',
+            date=date(2026, 9, 15), heure_debut=time(10, 0), heure_fin=time(11, 0))
+
+    def test_une_seule_notification_par_jour_meme_si_plusieurs_absences(self):
+        from unittest.mock import patch
+
+        with patch(
+                'apps.notifications.services.send_whatsapp_campaign_message'
+        ) as mocked:
+            Presence.objects.create(
+                company=self.company, seance=self.seance1, eleve=self.eleve,
+                statut=Presence.Statut.ABSENT)
+            Presence.objects.create(
+                company=self.company, seance=self.seance2, eleve=self.eleve,
+                statut=Presence.Statut.ABSENT)
+            self.assertEqual(mocked.call_count, 1)
+
+    def test_pas_de_notification_si_present(self):
+        from unittest.mock import patch
+
+        with patch(
+                'apps.notifications.services.send_whatsapp_campaign_message'
+        ) as mocked:
+            Presence.objects.create(
+                company=self.company, seance=self.seance1, eleve=self.eleve,
+                statut=Presence.Statut.PRESENT)
+            self.assertEqual(mocked.call_count, 0)
