@@ -96,6 +96,7 @@ import {
   consumptionProfile,
   solarProfile,
   type ProposalCurveVariant,
+  type ProposalCurveMode,
   type DailyCurve,
   type CurveLang,
 } from '../../lib/proposalCurve';
@@ -285,7 +286,15 @@ const instLabel =
 // residentiel si absent/inconnu ; resolveProposalCurveMode documente les
 // valeurs RÉELLEMENT observées aujourd'hui — "Résidentielle" / "Industrielle /
 // Commerciale" / "Agricole", cf. quote_engine/builder.py).
-const curveMode = resolveProposalCurveMode(q?.inst_type ?? null);
+// WJ126 finding 4 — préférer `mode_installation` (clé machine QX49, distingue
+// commercial d'industriel) ; l'ancien `inst_type` portait le libellé combiné
+// « Industrielle / Commerciale » qui privait le commercial du variant de courbe
+// et du simulateur batterie. Repli sur inst_type pour les devis hérités.
+const curveMode: ProposalCurveMode =
+  installMode === 'residentiel' || installMode === 'industriel'
+    || installMode === 'commercial' || installMode === 'agricole'
+    ? installMode
+    : resolveProposalCurveMode(q?.inst_type ?? null);
 // Été/Ramadan n'ont de sens que pour un profil résidentiel/commercial (clim,
 // horaires de jeûne) — jamais pour un poste industriel (équipes fixes) ou un
 // pompage agricole (fenêtre solaire fixe, sans confort thermique à moduler).
@@ -1266,9 +1275,9 @@ const signConfig = ok
                 data-en={`≈ ${formatNumber(auto.injection_kwh_an)} kWh/year of injectable surplus${auto.injection_dh_an !== null ? `, i.e. ≈ ${formatMAD(auto.injection_dh_an)}/year` : ''}.`}
                 data-ar={`≈ ${formatNumber(auto.injection_kwh_an)} kWh/سنة من الفائض القابل للحقن${auto.injection_dh_an !== null ? `، أي ≈ ${formatMAD(auto.injection_dh_an)}/سنة` : ''}.`}>≈ {formatNumber(auto.injection_kwh_an)} kWh/an de surplus injectables{auto.injection_dh_an !== null ? <>, soit ≈ {formatMAD(auto.injection_dh_an)}/an</> : null}.</p>
               <p class="mt-1 text-xs text-lune-faint" data-i18n
-                data-fr="Sous réserve de la convention d'injection ANRE/ONEE en vigueur — l'autoconsommation reste prioritaire (loi 82-21). Aucune revente n'est garantie."
-                data-en="Subject to the applicable ANRE/ONEE injection agreement — self-consumption remains the priority (law 82-21). No resale is guaranteed."
-                data-ar="رهْن اتفاقية الحقن السارية لدى ANRE/ONEE — يبقى الاستهلاك الذاتي أولوية (القانون 82-21). لا يُضمن أي إعادة بيع.">Sous réserve de la convention d'injection ANRE/ONEE en vigueur — l'autoconsommation reste prioritaire (loi 82-21). Aucune revente n'est garantie.</p>
+                data-fr="Tarif ANRE valable 03/2026–02/2027, plafond en révision. Sous réserve de la convention d'injection ANRE/ONEE en vigueur — l'autoconsommation reste prioritaire (loi 82-21). Aucune revente n'est garantie."
+                data-en="ANRE tariff valid 03/2026–02/2027, cap under revision. Subject to the applicable ANRE/ONEE injection agreement — self-consumption remains the priority (law 82-21). No resale is guaranteed."
+                data-ar="تعريفة ANRE سارية 03/2026–02/2027، السقف قيد المراجعة. رهْن اتفاقية الحقن السارية لدى ANRE/ONEE — يبقى الاستهلاك الذاتي أولوية (القانون 82-21). لا يُضمن أي إعادة بيع.">Tarif ANRE valable 03/2026–02/2027, plafond en révision. Sous réserve de la convention d'injection ANRE/ONEE en vigueur — l'autoconsommation reste prioritaire (loi 82-21). Aucune revente n'est garantie.</p>
             </div>
           )}
 
