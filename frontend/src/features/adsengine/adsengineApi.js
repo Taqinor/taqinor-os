@@ -148,6 +148,18 @@ const adsengineApi = {
     list: (params) => api.get('/adsengine/breakdowns/', { params }),
   },
 
+  // ── ADSDEEP12/13/14 — Créatif LIVE : média frais + previews iframe ──
+  media: {
+    // URL FRAÎCHE (jamais persistée) : kind ∈ video|image.
+    resolve: (ref, kind = 'video') =>
+      api.get(`/adsengine/media/${ref}/`, { params: { kind } }),
+  },
+  previews: {
+    // Snippet iframe d'aperçu Meta (valide 24 h — refetch par affichage).
+    get: (adMetaId, format) =>
+      api.get(`/adsengine/ads/${adMetaId}/previews/`, { params: { format } }),
+  },
+
   // ── ENG33/ENG45 — Reporting (drill-downs : variantes, entonnoir, cohortes) ──
   // Routeur backend FR : « reporting/{variantes,entonnoir,cohortes} » (ADSENGINT1).
   reports: {
