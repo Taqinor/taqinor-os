@@ -3,9 +3,9 @@ from rest_framework.routers import DefaultRouter
 
 from .viewsets import (
     ActeMedicalViewSet, ActeRealiseViewSet, AdmissionViewSet,
-    ConventionViewSet, FactureSanteViewSet, GrilleTarifaireViewSet,
-    PaiementSanteViewSet, PatientViewSet, PraticienViewSet,
-    PriseEnChargeViewSet, RendezVousViewSet, SalleViewSet)
+    ConventionViewSet, DisponibilitesView, FactureSanteViewSet,
+    GrilleTarifaireViewSet, PaiementSanteViewSet, PatientViewSet,
+    PraticienViewSet, PriseEnChargeViewSet, RendezVousViewSet, SalleViewSet)
 
 router = DefaultRouter()
 router.register(r'praticiens', PraticienViewSet, basename='sante-praticien')
@@ -29,5 +29,10 @@ router.register(
     r'paiements-sante', PaiementSanteViewSet, basename='sante-paiement-sante')
 
 urlpatterns = [
+    # NTSAN29 — endpoint interne de disponibilités (avant le router : ne
+    # doit jamais être capté par un basename DRF).
+    path(
+        'disponibilites/', DisponibilitesView.as_view(),
+        name='sante-disponibilites'),
     path('', include(router.urls)),
 ]

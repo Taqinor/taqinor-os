@@ -11,6 +11,7 @@ from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from apps.core.destroy_mixins import UsageGuardedDestroyMixin
 from core.viewsets import CompanyScopedModelViewSet
@@ -290,6 +291,47 @@ class FactureSanteViewSet(CompanyScopedModelViewSet):
             date_debut=request.query_params.get('date_debut'),
             date_fin=request.query_params.get('date_fin'))
         return Response(data)
+
+
+class DisponibilitesView(APIView):
+    """NTSAN29 — `GET /api/django/sante/disponibilites/?praticien=&date=` :
+    créneaux libres d'un praticien pour un jour donné. Lecture seule, SANS
+    exposition publique ni auth patient en v1 — juste la disponibilité en
+    lecture pour un futur module de prise de RDV en ligne (NTCOL, hors
+    périmètre de ce lot). Authentification standard du projet (voir
+    `REST_FRAMEWORK` défauts) : pas de route publique."""
+
+    def get(self, request):
+        import datetime as dt
+
+        from .models import Praticien
+        from .selectors import creneaux_disponibles
+
+        praticien_id = request.query_params.get('praticien')
+        date_str = request.query_params.get('date')
+        if not praticien_id or not date_str:
+            raise ValidationError(
+                {'detail': 'Paramètres `praticien` et `date` requis.'})
+
+        praticien = Praticien.objects.filter(
+            company=request.user.company, pk=praticien_id).first()
+        if praticien is None:
+            raise ValidationError({'praticien': 'Praticien introuvable.'})
+
+        try:
+            date = dt.datetime.strptime(date_str, '%Y-%m-%d').date()
+        except ValueError:
+            raise ValidationError({'date': 'Format attendu AAAA-MM-JJ.'})
+
+        try:
+            duree_min = int(request.query_params.get('duree_min', 30))
+        except ValueError:
+            duree_min = 30
+
+        creneaux = creneaux_disponibles(
+            company=request.user.company, praticien=praticien, date=date,
+            duree_min=duree_min)
+        return Response({'creneaux': [c.isoformat() for c in creneaux]})
 
 
 class PaiementSanteViewSet(CompanyScopedModelViewSet):
