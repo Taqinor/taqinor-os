@@ -172,6 +172,10 @@ const adsengineApi = {
     variants: (params) => api.get('/adsengine/reporting/variantes/', { params }),
     funnel: (params) => api.get('/adsengine/reporting/entonnoir/', { params }),
     cohorts: (params) => api.get('/adsengine/reporting/cohortes/', { params }),
+    // ADSDEEP47 — leaderboard créatif (hook/angle/format) + nuage hook rate ×
+    // dépense. `params` : { dimension, debut, fin }.
+    leaderboard: (params) => api.get('/adsengine/reporting/creatifs/classement/', { params }),
+    scatter: (params) => api.get('/adsengine/reporting/creatifs/nuage/', { params }),
   },
 
   // ── ENG27/ENG41 — Backlog par campagne (CreativeGenerationBatch) ──

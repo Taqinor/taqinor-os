@@ -689,6 +689,56 @@ export function normalizeCohorts(raw) {
   }))
 }
 
+// ── ADSDEEP47 — Leaderboard créatif (hook/angle/format) + nuage hook rate ×
+// dépense (quadrants FR). Chiffres bruts de l'API, jamais recalculés côté front.
+export function normalizeLeaderboard(raw) {
+  const d = raw && typeof raw === 'object' ? raw : {}
+  const rows = Array.isArray(d.classement) ? d.classement : []
+  return {
+    dimension: d.dimension || 'hook',
+    periode: d.periode || null,
+    untaggedCount: numOrNull(d.untagged_count) ?? 0,
+    classement: rows.filter(Boolean).map((r, i) => ({
+      id: r.tag ?? String(i),
+      tag: r.tag || `(#${i + 1})`,
+      spend: numOrNull(r.spend),
+      results: numOrNull(r.results),
+      costPerResult: numOrNull(r.cost_per_result),
+      adCount: numOrNull(r.ad_count),
+      hookRateWeighted: numOrNull(r.hook_rate_weighted),
+    })),
+  }
+}
+
+// Libellés FR des quadrants (repli si l'API n'en fournit pas).
+export const SCATTER_QUADRANT_LABELS = {
+  pepites_cachees: 'Pépites cachées',
+  gouffres: 'Gouffres à budget',
+  gagnants_confirmes: 'Gagnants confirmés',
+  a_surveiller: 'À surveiller',
+}
+
+export function normalizeScatter(raw) {
+  const d = raw && typeof raw === 'object' ? raw : {}
+  const points = Array.isArray(d.points) ? d.points : []
+  return {
+    periode: d.periode || null,
+    medianHookRate: numOrNull(d.median_hook_rate),
+    medianSpend: numOrNull(d.median_spend),
+    points: points.filter(Boolean).map((p, i) => ({
+      id: p.ad_meta_id ?? String(i),
+      nom: p.name || p.ad_meta_id || `Ad ${i + 1}`,
+      hookTag: p.hook_tag || '',
+      angleTag: p.angle_tag || '',
+      formatTag: p.format_tag || '',
+      spend: numOrNull(p.spend),
+      hookRate: numOrNull(p.hook_rate),
+      quadrant: p.quadrant || '',
+      quadrantLabel: p.quadrant_label_fr || SCATTER_QUADRANT_LABELS[p.quadrant] || '',
+    })),
+  }
+}
+
 // Construit un CSV depuis des en-têtes + lignes (échappement RFC-4180 simple).
 export function toCsv(headers, rows) {
   const esc = (v) => {

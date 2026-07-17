@@ -1044,6 +1044,44 @@ _CONN_CRED_KEYS = ('app_id', 'app_secret', 'access_token')
 _CONN_COLUMN_KEYS = ('ad_account_id', 'page_id', 'pixel_id')
 
 
+class CreativeLeaderboardView(APIView):
+    """ADSDEEP47 — Classement créatif spend-weighted par ``?dimension=`` (hook
+    par défaut, angle/format sinon). ``?debut=&fin=`` (dates ISO) bornent la
+    période (défaut : 30 jours glissants)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        company, err = _adseng_reporting_company(request)
+        if err is not None:
+            return err
+        from .reporting import creative_leaderboard
+        dimension = request.query_params.get('dimension', 'hook')
+        debut = _adseng_parse_date(request.query_params.get('debut'))
+        fin = _adseng_parse_date(request.query_params.get('fin'))
+        data = creative_leaderboard(
+            company, dimension=dimension, date_start=debut, date_end=fin)
+        return Response(data)
+
+
+class CreativeScatterView(APIView):
+    """ADSDEEP47 — Nuage de points hook rate × dépense (quadrants FR « pépites
+    cachées »/« gouffres »/« gagnants confirmés »/« à surveiller »).
+    ``?debut=&fin=`` bornent la période (défaut : 30 jours glissants)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        company, err = _adseng_reporting_company(request)
+        if err is not None:
+            return err
+        from .reporting import creative_scatter
+        debut = _adseng_parse_date(request.query_params.get('debut'))
+        fin = _adseng_parse_date(request.query_params.get('fin'))
+        data = creative_scatter(company, date_start=debut, date_end=fin)
+        return Response(data)
+
+
 class MetaConnectionStatusView(APIView):
     """ENG22 — Statut de connexion (GET) + enregistrement des identifiants
     (POST). Les identifiants sont **write-only** : un GET ne renvoie JAMAIS un

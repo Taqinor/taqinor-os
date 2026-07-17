@@ -14,7 +14,7 @@ from .views import (
     ArmDailyStatViewSet, ConversationsPerAdView,
     BacklogDropAssetView, BacklogListView, BacklogLotApproveView,
     BreakdownsView, BriefLatestView, CampaignFunnelView, CohortReportView,
-    CostPerSignatureView,
+    CostPerSignatureView, CreativeLeaderboardView, CreativeScatterView,
     CreativeAssetViewSet, CreativeBacklogItemViewSet,
     CreativeGenerationBatchViewSet, CreativePolicyViewSet, DecisionLogViewSet,
     EngineActionViewSet, EngineAlertViewSet, ExperimentArmViewSet,
@@ -111,6 +111,12 @@ urlpatterns = [
          name='adsengine-reporting-cohortes'),
     path('reporting/export/', ReportExportView.as_view(),
          name='adsengine-reporting-export'),
+    # ADSDEEP47 — leaderboard créatif (hook/angle/format, spend-weighted) +
+    # nuage hook rate × dépense (quadrants FR).
+    path('reporting/creatifs/classement/', CreativeLeaderboardView.as_view(),
+         name='adsengine-reporting-creatifs-classement'),
+    path('reporting/creatifs/nuage/', CreativeScatterView.as_view(),
+         name='adsengine-reporting-creatifs-nuage'),
     # ADSDEEP9 — ventilations (audience & diffusion) d'un objet publicitaire.
     path('breakdowns/', BreakdownsView.as_view(), name='adsengine-breakdowns'),
     # ADSDEEP19 — comptes de leads RÉELS par ad / campagne (MetaLeadMirror).

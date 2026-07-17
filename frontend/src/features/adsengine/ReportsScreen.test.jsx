@@ -10,11 +10,16 @@ const mocks = vi.hoisted(() => ({
   variants: vi.fn(),
   funnel: vi.fn(),
   cohorts: vi.fn(),
+  leaderboard: vi.fn(),
+  scatter: vi.fn(),
 }))
 
 vi.mock('./adsengineApi', () => ({
   default: {
-    reports: { variants: mocks.variants, funnel: mocks.funnel, cohorts: mocks.cohorts },
+    reports: {
+      variants: mocks.variants, funnel: mocks.funnel, cohorts: mocks.cohorts,
+      leaderboard: mocks.leaderboard, scatter: mocks.scatter,
+    },
   },
 }))
 
@@ -37,6 +42,24 @@ beforeEach(() => {
   mocks.cohorts.mockResolvedValue({ data: [
     { id: 1, cohorte: 'Juillet 2026', taille: 46, lag_jours_median: 9, signatures: 6 },
   ] })
+  mocks.leaderboard.mockResolvedValue({ data: {
+    dimension: 'hook', untagged_count: 1,
+    classement: [
+      { tag: 'PAIN', spend: '900.00', results: 10, cost_per_result: '90.00',
+        hook_rate_weighted: 0.32, ad_count: 3 },
+      { tag: 'PEUR', spend: '300.00', results: 4, cost_per_result: '75.00',
+        hook_rate_weighted: 0.18, ad_count: 1 },
+    ],
+  } })
+  mocks.scatter.mockResolvedValue({ data: {
+    median_hook_rate: 0.2, median_spend: 300,
+    points: [
+      { ad_meta_id: 'a1', name: 'Reel pépite', spend: '50.00', hook_rate: 0.5,
+        quadrant: 'pepites_cachees', quadrant_label_fr: 'Pépites cachées' },
+      { ad_meta_id: 'a2', name: 'Statique gouffre', spend: '950.00', hook_rate: 0.05,
+        quadrant: 'gouffres', quadrant_label_fr: 'Gouffres à budget' },
+    ],
+  } })
 })
 
 describe('ReportsScreen (ENG45)', () => {
@@ -88,5 +111,60 @@ describe('ReportsScreen (ENG45)', () => {
     expect(screen.getByTestId('ae-reports-cohorts-empty')).toBeInTheDocument()
     // Pas de lien d'export sans variante.
     expect(screen.queryByTestId('ae-reports-export')).toBeNull()
+  })
+})
+
+describe('ReportsScreen — onglet Créatifs (ADSDEEP47)', () => {
+  it('affiche le classement spend-weighted et masque l\'export CSV', async () => {
+    renderScreen()
+    screen.getByTestId('ae-reports-tab-creatifs').click()
+    const rows = await screen.findAllByTestId('ae-creatifs-leaderboard-row')
+    expect(rows.length).toBe(2)
+    // Trié par dépense décroissante (comme le backend le renvoie).
+    expect(rows[0]).toHaveTextContent('PAIN')
+    expect(rows[0]).toHaveTextContent('900 MAD')
+    expect(rows[0]).toHaveTextContent('32')
+    expect(screen.getByTestId('ae-creatifs-untagged')).toHaveTextContent('1 ad(s)')
+    // Le bouton d'export CSV (onglet Vue d'ensemble) disparaît sur cet onglet.
+    expect(screen.queryByTestId('ae-reports-export')).toBeNull()
+  })
+
+  it('affiche le nuage hook rate × dépense avec les quadrants FR', async () => {
+    renderScreen()
+    screen.getByTestId('ae-reports-tab-creatifs').click()
+    const rows = await screen.findAllByTestId('ae-creatifs-scatter-row')
+    expect(rows.length).toBe(2)
+    expect(rows[0]).toHaveTextContent('Reel pépite')
+    expect(rows[0]).toHaveTextContent('Pépites cachées')
+    expect(rows[1]).toHaveTextContent('Gouffres à budget')
+  })
+
+  it('change de dimension et relance l\'appel API', async () => {
+    renderScreen()
+    screen.getByTestId('ae-reports-tab-creatifs').click()
+    await screen.findAllByTestId('ae-creatifs-leaderboard-row')
+    mocks.leaderboard.mockClear()
+    screen.getByTestId('ae-creatifs-dimension-angle').click()
+    await waitFor(() => expect(mocks.leaderboard).toHaveBeenCalledWith(
+      expect.objectContaining({ dimension: 'angle' })))
+  })
+
+  it('change de période et relance l\'appel API', async () => {
+    renderScreen()
+    screen.getByTestId('ae-reports-tab-creatifs').click()
+    await screen.findAllByTestId('ae-creatifs-leaderboard-row')
+    mocks.leaderboard.mockClear()
+    screen.getByTestId('ae-creatifs-period-7').click()
+    await waitFor(() => expect(mocks.leaderboard).toHaveBeenCalledWith(
+      expect.objectContaining({ dimension: 'hook', debut: expect.any(String), fin: expect.any(String) })))
+  })
+
+  it('affiche des états vides quand rien n\'est tagué/calculable', async () => {
+    mocks.leaderboard.mockResolvedValue({ data: { dimension: 'hook', untagged_count: 0, classement: [] } })
+    mocks.scatter.mockResolvedValue({ data: { points: [], median_hook_rate: null, median_spend: null } })
+    renderScreen()
+    screen.getByTestId('ae-reports-tab-creatifs').click()
+    expect(await screen.findByTestId('ae-creatifs-leaderboard-empty')).toBeInTheDocument()
+    expect(screen.getByTestId('ae-creatifs-scatter-empty')).toBeInTheDocument()
   })
 })
