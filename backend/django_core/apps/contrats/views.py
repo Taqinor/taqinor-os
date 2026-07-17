@@ -2748,6 +2748,34 @@ class AbonnementAddOnLigneViewSet(_ContratsBaseViewSet):
             qs = qs.filter(cible_id=cible_id)
         return qs
 
+    def _journaliser_addon(self, ligne, *, ajout):
+        """NTSUB33 — journalise l'ajout/désactivation d'un add-on au chatter du
+        contrat cible (acteur = utilisateur courant). Aucun effet si la cible
+        n'est pas un contrat de la société (best-effort)."""
+        if ligne.type_cible != AbonnementAddOnLigne.TypeCible.CONTRAT:
+            return
+        contrat = Contrat.objects.filter(
+            company=ligne.company, id=ligne.cible_id).first()
+        if contrat is None:
+            return
+        code = ligne.addon.code if ligne.addon_id else ''
+        services.journaliser_transition(
+            contrat, field='addon',
+            old_value='' if ajout else code,
+            new_value=code if ajout else '',
+            message=(
+                'Add-on ajouté au contrat.' if ajout
+                else 'Add-on retiré du contrat.'),
+            auteur=self.request.user)
+
+    def perform_create(self, serializer):
+        ligne = serializer.save(company=self.request.user.company)
+        self._journaliser_addon(ligne, ajout=True)
+
+    def perform_destroy(self, instance):
+        self._journaliser_addon(instance, ajout=False)
+        instance.delete()
+
 
 class PalierUsageViewSet(_ContratsBaseViewSet):
     """Paliers de prix (tiered/volume pricing) pour la facturation à l'usage — NTSUB3.
