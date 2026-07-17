@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import marketingApi from '../../api/marketingApi'
 import CampagneForm, { emptyForm, formFromCampagne } from './CampagneForm'
+import { formatDateTime } from '../../lib/format'
 
 /* ============================================================================
    NTMKT2 — Liste des campagnes (statut/canal, filtre) + éditeur inline.
@@ -116,7 +117,7 @@ export default function CampagnesList() {
                   <td>{c.nom}</td>
                   <td>{c.canal_display || c.canal}</td>
                   <td>{c.statut_display || c.statut}</td>
-                  <td>{c.planifiee_le ? new Date(c.planifiee_le).toLocaleString('fr-FR') : '—'}</td>
+                  <td>{c.planifiee_le ? formatDateTime(c.planifiee_le) : '—'}</td>
                   <td>{c.nb_envois ?? 0}</td>
                   <td>{c.taux_ouverture_pct ?? 0}%</td>
                   <td>

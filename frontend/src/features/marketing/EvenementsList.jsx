@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import marketingApi from '../../api/marketingApi'
 import EvenementForm, { emptyForm, formFromEvenement } from './EvenementForm'
+import { formatDateTime } from '../../lib/format'
 
 /* ============================================================================
    NTMKT7 — Liste des événements marketing (XMKT28) + éditeur inline.
@@ -70,7 +71,7 @@ export default function EvenementsList() {
                   onClick={() => navigate(`/marketing/evenements/${ev.id}`)}>
                   <td>{ev.nom}</td>
                   <td>{ev.type_display || ev.type_evenement}</td>
-                  <td>{ev.date_debut ? new Date(ev.date_debut).toLocaleString('fr-FR') : '—'}</td>
+                  <td>{ev.date_debut ? formatDateTime(ev.date_debut) : '—'}</td>
                   <td>{ev.nb_inscrits ?? 0}</td>
                   <td>
                     <button className="btn btn-light" type="button"

@@ -51,8 +51,8 @@ test('QX27 : les branches existantes (note/creation/modification) restent intact
 })
 
 test('VX23 : LeadForm.jsx délègue le rendu du chatter à ChatterTimeline (plus de logique inline)', () => {
-  assert.match(LEADFORM_SRC, /import ChatterTimeline from '\.\.\/\.\.\/components\/ChatterTimeline'/)
-  assert.match(LEADFORM_SRC, /<ChatterTimeline entries=\{historique\} \/>/)
+  assert.match(LEADFORM_SRC, /import ChatterTimeline(, \{[^}]*\})? from '\.\.\/\.\.\/components\/ChatterTimeline'/)
+  assert.match(LEADFORM_SRC, /<ChatterTimeline entries=\{historique\}/)
   // L'ancienne logique de branchement par kind n'est plus dupliquée ici.
   assert.doesNotMatch(LEADFORM_SRC, /a\.kind === 'appel'/)
 })

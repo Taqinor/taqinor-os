@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import marketingApi from '../../api/marketingApi'
+import { formatDateTime } from '../../lib/format'
 
 /* ============================================================================
    NTMKT6 — Détail d'une séquence : étapes ordonnées + vue participant.
@@ -112,7 +113,7 @@ export default function SequenceDetail() {
                           {(p.executions || []).map(x => (
                             <tr key={x.id}>
                               <td>{x.etape}</td>
-                              <td>{x.execute_le ? new Date(x.execute_le).toLocaleString('fr-FR') : '—'}</td>
+                              <td>{x.execute_le ? formatDateTime(x.execute_le) : '—'}</td>
                               <td>{x.resultat}</td>
                               <td>{x.erreur || '—'}</td>
                             </tr>

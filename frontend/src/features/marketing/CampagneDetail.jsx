@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import marketingApi from '../../api/marketingApi'
 import { computeAbComparatif } from './campagneDetail'
+import { formatDateTime } from '../../lib/format'
 
 /* ============================================================================
    NTMKT2/NTMKT3 — Détail d'une campagne : trace destinataire, envoi de test,
@@ -235,9 +236,9 @@ export default function CampagneDetail() {
               <tr key={e.id} data-testid="envoi-row">
                 <td>{e.destinataire}</td>
                 <td>{e.statut_display || e.statut}</td>
-                <td>{e.envoye_le ? new Date(e.envoye_le).toLocaleString('fr-FR') : '—'}</td>
-                <td>{e.ouvert_le ? new Date(e.ouvert_le).toLocaleString('fr-FR') : '—'}</td>
-                <td>{e.clique_le ? new Date(e.clique_le).toLocaleString('fr-FR') : '—'}</td>
+                <td>{e.envoye_le ? formatDateTime(e.envoye_le) : '—'}</td>
+                <td>{e.ouvert_le ? formatDateTime(e.ouvert_le) : '—'}</td>
+                <td>{e.clique_le ? formatDateTime(e.clique_le) : '—'}</td>
               </tr>
             ))}
             {envoisFiltres.length === 0 && (

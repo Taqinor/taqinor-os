@@ -94,7 +94,11 @@ const MODULEPRELOAD_ALLOWLIST = new Set([
 // chunks — chaque écran lazy ajoute 1 chunk (croissance produit, pas une
 // prolifération d'icônes). Palier généreux couvrant les deux vagues ; le budget
 // gzip (2440) + PER_CHUNK_BUDGET_KB (350) restent les vrais garde-fous de poids.
-const MAX_CHUNK_COUNT = 430
+// 2026-07-17 : 430 -> 460. Les 5 verticales plateforme (agriculture/immobilier/
+// hospitality/esg/btp_chantier) + le shell Marketing PLAN_CRM_VENTES portent le
+// réel à 436 chunks, tous lazy-loadés (chaque écran = 1 chunk). Palier généreux ;
+// le budget gzip (2440, réel 2430) + PER_CHUNK_BUDGET_KB (350) restent les garde-fous.
+const MAX_CHUNK_COUNT = 460
 
 // Extrait les `<link rel="modulepreload" href="...">` de `dist/index.html` et
 // signale tout vendor lourd nommé qui s'y trouve (hors allowlist). Silencieux
