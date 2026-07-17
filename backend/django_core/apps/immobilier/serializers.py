@@ -47,7 +47,8 @@ class BatimentSerializer(serializers.ModelSerializer):
         model = Batiment
         fields = [
             'id', 'site', 'site_nom', 'nom', 'nb_niveaux',
-            'annee_construction', 'plan_ged_document_id', 'company',
+            'annee_construction', 'plan_ged_document_id',
+            'mode_repartition', 'company',
         ]
         read_only_fields = ['id', 'company']
 

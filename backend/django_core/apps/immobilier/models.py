@@ -46,6 +46,10 @@ class Site(TenantModel):
 class Batiment(TenantModel):
     """NTPRO1 — Bâtiment d'un site."""
 
+    class ModeRepartition(models.TextChoices):
+        TANTIEMES = 'tantiemes', 'Tantièmes'
+        SURFACE = 'surface', 'Surface'
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,  # on_delete: cascade tenant (purge des données de la société supprimée)
@@ -66,6 +70,12 @@ class Batiment(TenantModel):
     plan_ged_document_id = models.PositiveIntegerField(
         null=True, blank=True,
         verbose_name='ID document GED (plan)')
+    # NTPRO12 — bascule tantièmes/surface pour la répartition des charges
+    # réelles (`services.repartir_charges`), éditable par bâtiment.
+    mode_repartition = models.CharField(
+        max_length=10, choices=ModeRepartition.choices,
+        default=ModeRepartition.TANTIEMES,
+        verbose_name='Mode de répartition des charges')
 
     class Meta:
         verbose_name = 'Bâtiment'

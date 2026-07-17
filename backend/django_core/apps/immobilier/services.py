@@ -322,3 +322,99 @@ def relancer_echeance(echeance, *, canal=None, template_utilise=''):
     echeance.statut = EcheanceLoyer.Statut.RELANCEE
 
     return relance
+
+
+def _total_depenses_reelles(batiment, exercice):
+    """NTPRO12 — Σ des dépenses réelles (TOUS postes confondus) de
+    ``batiment`` pour ``exercice`` (int)."""
+    from decimal import Decimal
+
+    from django.db.models import Sum
+
+    from .models import DepenseCharges
+
+    total = (
+        DepenseCharges.objects
+        .filter(budget_charges__batiment=batiment,
+                budget_charges__exercice=exercice)
+        .aggregate(total=Sum('montant_reel'))['total']
+    )
+    return total or Decimal('0')
+
+
+def repartir_charges(batiment, exercice):
+    """NTPRO12 — Répartit les dépenses réelles d'un ``batiment``/``exercice``
+    entre ses locaux OCCUPÉS (``statut=loue``), au prorata des tantièmes ou de
+    la surface (``Batiment.mode_repartition``).
+
+    LECTURE SEULE — pas de modèle, calcul à la demande. La somme des
+    quotes-parts renvoyées égale EXACTEMENT le total des dépenses réelles :
+    chaque ligne (sauf la DERNIÈRE, dans l'ordre stable ``id``) est arrondie
+    au centime, et la dernière absorbe le reliquat d'arrondi. Si la base de
+    répartition (Σ tantièmes / Σ surface des locaux occupés) est nulle ou
+    absente, le total est réparti À PARTS ÉGALES entre les locaux occupés
+    (jamais de ``ZeroDivisionError``, jamais de quote-part perdue). Sans local
+    occupé, renvoie une liste vide (rien à répartir).
+
+    Renvoie ``{'total_depenses': Decimal, 'mode_repartition': str,
+    'par_local': [{'local_id', 'reference', 'base', 'quote_part'}, …]}``."""
+    from decimal import ROUND_HALF_UP, Decimal
+
+    from .models import Batiment, Local
+
+    total = _total_depenses_reelles(batiment, exercice)
+
+    locaux = list(
+        Local.objects
+        .filter(niveau__batiment=batiment, statut=Local.Statut.LOUE)
+        .order_by('id')
+    )
+    if not locaux:
+        return {
+            'total_depenses': total, 'mode_repartition': batiment.mode_repartition,
+            'par_local': [],
+        }
+
+    surface_mode = batiment.mode_repartition == Batiment.ModeRepartition.SURFACE
+    bases = [
+        (Decimal(local.surface_m2) if surface_mode and local.surface_m2 else
+         Decimal(local.tantiemes) if not surface_mode and local.tantiemes else
+         Decimal('0'))
+        for local in locaux
+    ]
+    total_base = sum(bases, Decimal('0'))
+
+    quote_parts = []
+    if total_base > 0:
+        for base in bases:
+            quote_parts.append(
+                (total * base / total_base).quantize(
+                    Decimal('0.01'), rounding=ROUND_HALF_UP))
+    else:
+        # NTPRO12 — aucune base de répartition connue (tantièmes/surface non
+        # renseignés) : repli sur un partage à parts égales, jamais un crash.
+        part_egale = (total / len(locaux)).quantize(
+            Decimal('0.01'), rounding=ROUND_HALF_UP)
+        quote_parts = [part_egale] * len(locaux)
+
+    # Le reliquat d'arrondi (centime) est absorbé par la DERNIÈRE ligne pour
+    # que la somme colle EXACTEMENT au total (invariant testé NTPRO12).
+    ecart = total - sum(quote_parts, Decimal('0'))
+    if quote_parts:
+        quote_parts[-1] = quote_parts[-1] + ecart
+
+    par_local = [
+        {
+            'local_id': local.id,
+            'reference': local.reference,
+            'base': bases[i],
+            'quote_part': quote_parts[i],
+        }
+        for i, local in enumerate(locaux)
+    ]
+
+    return {
+        'total_depenses': total,
+        'mode_repartition': batiment.mode_repartition,
+        'par_local': par_local,
+    }

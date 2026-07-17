@@ -74,6 +74,22 @@ class BatimentViewSet(_ImmobilierBaseViewSet):
             periode=request.query_params.get('periode'))
         return Response(data)
 
+    @action(detail=True, methods=['get'], url_path='repartition-charges',
+            permission_classes=[ScopedPermission])
+    def repartition_charges(self, request, pk=None):
+        """NTPRO12 — Répartition des dépenses réelles de charges par local
+        occupé (tantièmes ou surface selon ``mode_repartition``)."""
+        from . import services
+
+        batiment = self.get_object()
+        exercice = request.query_params.get('exercice')
+        if not exercice:
+            return Response(
+                {'detail': 'Le paramètre exercice est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        data = services.repartir_charges(batiment, int(exercice))
+        return Response(data)
+
 
 class NiveauViewSet(_ImmobilierBaseViewSet):
     queryset = Niveau.objects.select_related('batiment').all()
