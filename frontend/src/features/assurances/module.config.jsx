@@ -3,7 +3,7 @@
    de composants : le fast-refresh ne s'y applique pas (même contrat que
    `router/moduleRoutes.jsx`). */
 import { lazy } from 'react'
-import { ShieldCheck } from 'lucide-react'
+import { ShieldCheck, ShieldAlert } from 'lucide-react'
 
 /* ============================================================================
    NTASS25 — Configuration du module ERP « Assurances » (registre des polices
@@ -21,8 +21,10 @@ const ROLES = ['responsable', 'admin']
 
 const PolicesList = lazy(() => import('./PolicesList'))
 const PoliceDetail = lazy(() => import('./PoliceDetail'))
+const SinistresPage = lazy(() => import('./SinistresPage'))
 
 const SC = <ShieldCheck size={17} strokeWidth={1.75} aria-hidden="true" />
+const SA = <ShieldAlert size={17} strokeWidth={1.75} aria-hidden="true" />
 
 export default {
   key: 'assurances',
@@ -32,18 +34,21 @@ export default {
     accent: 'lune', // documentaire/financier = accent lune (dérivé)
     items: [
       { to: '/assurances', label: 'Polices', icon: SC, roles: ROLES },
+      { to: '/assurances/sinistres', label: 'Sinistres', icon: SA, roles: ROLES },
     ],
   },
   // routes.meta : du plus spécifique au plus général.
   titles: [
+    ['/assurances/sinistres', 'Sinistres transverses'],
     ['/assurances', "Polices d'assurance"],
   ],
   sectionLabels: { assurances: 'Assurances' },
   routes: [
     { path: '/assurances', component: PolicesList, roles: ROLES },
-    // NTASS26 — fiche police détail (onglets). Placée après la liste ; le
-    // segment `:id` ne capture pas `/assurances/sinistres` (ajouté NTASS27
-    // AVANT cette route dynamique).
+    // NTASS27 — sinistres : route STATIQUE déclarée AVANT la route dynamique
+    // `:id` pour qu'elle ne soit jamais capturée comme un id de police.
+    { path: '/assurances/sinistres', component: SinistresPage, roles: ROLES },
+    // NTASS26 — fiche police détail (onglets).
     { path: '/assurances/:id', component: PoliceDetail, roles: ROLES },
   ],
 }
