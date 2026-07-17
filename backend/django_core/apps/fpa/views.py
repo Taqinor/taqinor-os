@@ -132,6 +132,13 @@ class LigneBudgetDepartementViewSet(TenantMixin, viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
+        # NTFPA26 — périmètre par département : un responsable ne voit/édite que
+        # son département (et son sous-arbre) ; FP&A/Directeur voit tout.
+        from .permissions import departements_visibles_ids
+        visibles = departements_visibles_ids(
+            self.request.user, self.request.user.company)
+        if visibles is not None:
+            qs = qs.filter(departement_id__in=visibles)
         params = self.request.query_params
         if cycle_id := params.get('cycle'):
             qs = qs.filter(cycle_id=cycle_id)
@@ -140,6 +147,29 @@ class LigneBudgetDepartementViewSet(TenantMixin, viewsets.ModelViewSet):
         if categorie := params.get('categorie'):
             qs = qs.filter(categorie=categorie)
         return qs
+
+    def _refuser_hors_perimetre(self, departement_id):
+        """NTFPA26 — 403 si l'utilisateur tente d'écrire une ligne d'un
+        département hors de son périmètre."""
+        from rest_framework.exceptions import PermissionDenied
+
+        from .permissions import departements_visibles_ids
+        visibles = departements_visibles_ids(
+            self.request.user, self.request.user.company)
+        if visibles is not None and int(departement_id) not in visibles:
+            raise PermissionDenied(
+                "Vous ne pouvez pas éditer le budget d'un autre département.")
+
+    def perform_create(self, serializer):
+        dept_id = serializer.validated_data.get('departement')
+        self._refuser_hors_perimetre(getattr(dept_id, 'pk', dept_id))
+        super().perform_create(serializer)
+
+    def perform_update(self, serializer):
+        dept = serializer.validated_data.get('departement') \
+            or serializer.instance.departement
+        self._refuser_hors_perimetre(getattr(dept, 'pk', dept))
+        super().perform_update(serializer)
 
     def _cycle_departement(self, request):
         cycle_id = request.query_params.get('cycle')
