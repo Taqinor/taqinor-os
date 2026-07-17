@@ -16,6 +16,14 @@ from apps.assurances.selectors import (
 #: Horizons d'alerte (jours) — J-60/J-30/J-7 (NTASS8).
 HORIZONS_ALERTE = [60, 30, 7]
 
+#: Type d'événement notifications (NTASS28). On RÉUTILISE l'événement EXISTANT
+#: ``warranty_expiring`` (« Garantie bientôt expirée ») du référentiel
+#: ``notifications.EventType`` — une police d'assurance EST une garantie de
+#: couverture bientôt expirée. Enregistrer un nouveau code exigerait d'éditer
+#: ``apps/notifications/models.py`` (hors périmètre FINANCE) ; la réutilisation
+#: garde l'intégration entièrement dans le système ``notify()`` existant.
+EVENEMENT_ALERTE = 'warranty_expiring'
+
 
 def destinataires_admin_compta(company):
     """Utilisateurs admin/responsable de la société à notifier (NTASS8)."""
@@ -49,7 +57,7 @@ class Command(BaseCommand):
                     (h for h in sorted(HORIZONS_ALERTE)
                      if _sous_horizon(police, h)), horizon_max)
                 notify_many(
-                    destinataires, 'assurance_police_expirante',
+                    destinataires, EVENEMENT_ALERTE,
                     title=(
                         f'Police {police.numero_police} expire le '
                         f'{police.date_echeance}'),
@@ -67,7 +75,7 @@ class Command(BaseCommand):
             for attestation in attestations_expirantes(
                     company, within=horizon_max):
                 notify_many(
-                    destinataires, 'assurance_police_expirante',
+                    destinataires, EVENEMENT_ALERTE,
                     title=(
                         f'Attestation {attestation.police.numero_police} '
                         f'expire le {attestation.date_validite}'),

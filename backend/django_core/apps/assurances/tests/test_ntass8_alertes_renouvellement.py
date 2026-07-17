@@ -73,7 +73,9 @@ class AlertesRenouvellementTests(TestCase):
         self.assertEqual(len(rows(resp)), 0)
 
     def test_commande_notifie_une_seule_fois(self):
+        from apps.assurances.management.commands.alertes_expiration_assurances \
+            import EVENEMENT_ALERTE
         call_command('alertes_expiration_assurances')
         notifs = Notification.objects.filter(
-            recipient=self.user, event_type='assurance_police_expirante')
+            recipient=self.user, event_type=EVENEMENT_ALERTE)
         self.assertEqual(notifs.count(), 1)

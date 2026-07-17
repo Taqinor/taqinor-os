@@ -6,6 +6,7 @@ import { Badge, Button, Segmented } from '../../ui'
 import { ListShell } from '../../ui/module'
 import { formatMAD, formatDate } from '../../lib/format'
 import { POLICE_TYPES, POLICE_STATUS, toneEcheance, joursAvant } from './status'
+import ExpirationBanner from './ExpirationBanner'
 
 /* ============================================================================
    NTASS25 — Écran `/assurances` : liste des polices d'assurance d'entreprise.
@@ -133,6 +134,7 @@ export default function PolicesList() {
       emptyDescription="Aucune police ne correspond à ces filtres."
       onRowClick={(p) => navigate(`/assurances/${p.id}`)}
     >
+      <ExpirationBanner />
       <div className="flex flex-wrap items-center gap-2">
         <Segmented
           options={STATUT_FILTERS}
