@@ -83,6 +83,15 @@ from .models import (
     CycleConsolidation, LiasseRemontee, MappingConsolidation,
     OperationInterco, EcritureElimination,
     ReferentielComptable, AjustementGaap,
+    RunAllocation, AllocationRecurrente,
+    EngagementComptable,
+    ModeleCloture, TacheClotureModele, InstanceCloture, TacheCloture,
+    AccrualCloture,
+    RapprochementCompte, LigneJustificationCompte,
+    DepreciationImmobilisation, MutationImmobilisation,
+    ImmobilisationEnCours,
+    ObligationPerformance, EcheancierReconnaissance,
+    EtapeAuditConsolidation,
 )
 
 
@@ -12979,3 +12988,865 @@ def poster_ajustement_gaap(company, referentiel_cible, lignes, motif, *,
         company=company, referentiel=referentiel_cible,
         type_ajustement=type_ajustement or '', motif=motif,
         ecriture=ecriture, reversible=True)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Groupe NTFIN — Moteur d'allocations & comptabilité d'engagement (encumbrance)
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ── NTFIN20 — Clés de répartition ──────────────────────────────────────────
+
+def valider_cle_repartition(cle):
+    """NTFIN20 — vérifie que Σ des coefficients d'une clé vaut 100 %.
+
+    Lève ``ValidationError`` si la somme des coefficients de ses lignes n'est
+    pas égale à 100 (une clé sans ligne est refusée). Renvoie la clé.
+    """
+    total = cle.total_coefficients
+    if total != Decimal('100'):
+        raise ValidationError(
+            "La clé de répartition doit sommer à 100 % "
+            f"(actuel : {total} %).")
+    return cle
+
+
+# ── NTFIN21 — Moteur d'allocation (déversement de charges indirectes) ──────
+
+def _solde_compte_centre(company, compte_numero, *, centre_cout=None,
+                         date_fin=None):
+    """Solde débiteur net (débit − crédit) d'un compte (+ centre) au GL."""
+    qs = LigneEcriture.objects.filter(
+        company=company, compte__numero=compte_numero)
+    if centre_cout is not None:
+        qs = qs.filter(centre_cout=centre_cout)
+    if date_fin is not None:
+        qs = qs.filter(ecriture__date_ecriture__lte=date_fin)
+    agg = qs.aggregate(debit=Sum('debit'), credit=Sum('credit'))
+    return (agg['debit'] or Decimal('0')) - (agg['credit'] or Decimal('0'))
+
+
+@transaction.atomic
+def executer_allocation(company, compte_source, cle, periode, *,
+                        referentiel=None, montant=None, centre_source=None,
+                        created_by=None):
+    """Déverse un compte/centre source vers les cibles d'une clé (NTFIN21).
+
+    ``montant`` (optionnel) : montant à répartir ; par défaut le solde débiteur
+    net du ``compte_source`` (+ ``centre_source``) au grand livre à la fin de la
+    ``periode``. Poste une OD d'allocation qui déplace analytiquement la charge
+    du centre source vers les centres cibles (crédit source, débit cibles au
+    prorata des coefficients de la clé) — le solde comptable du compte reste
+    inchangé, seule la ventilation analytique bouge. Réversible via
+    ``reverser_allocation``. Renvoie le ``RunAllocation`` créé.
+    """
+    valider_cle_repartition(cle)
+    if montant is None:
+        montant = _solde_compte_centre(
+            company, compte_source, centre_cout=centre_source,
+            date_fin=periode)
+    montant = Decimal(str(montant)).quantize(_CENT)
+    if montant <= 0:
+        raise ValidationError(
+            "Aucun montant à répartir pour cette allocation.")
+    compte_obj = _assurer_compte(company, compte_source)
+    lignes = [
+        {'compte': compte_obj,
+         'libelle': f'Déversement source {compte_source}',
+         'debit': '0', 'credit': str(montant),
+         'centre_cout': centre_source},
+    ]
+    reparti = Decimal('0')
+    lignes_cle = list(cle.lignes.select_related('centre_cout').all())
+    for i, li in enumerate(lignes_cle):
+        if i == len(lignes_cle) - 1:
+            part = montant - reparti  # dernier reçoit le résiduel (arrondi)
+        else:
+            part = (montant * (li.coefficient or Decimal('0'))
+                    / Decimal('100')).quantize(_CENT)
+        reparti += part
+        lignes.append({
+            'compte': compte_obj,
+            'libelle': f'Allocation vers {li.centre_cout.code}',
+            'debit': str(part), 'credit': '0',
+            'centre_cout': li.centre_cout})
+    journal = _journal(company, Journal.Type.OPERATIONS_DIVERSES)
+    ecriture = creer_ecriture(
+        company, journal, periode,
+        f'Allocation {compte_source} ({cle.code})', lignes,
+        created_by=created_by, statut=EcritureComptable.Statut.VALIDEE,
+        referentiel=referentiel)
+    return RunAllocation.objects.create(
+        company=company, cle=cle, compte_source=compte_source,
+        centre_source=centre_source, referentiel=referentiel,
+        periode=periode, montant_reparti=montant, ecriture=ecriture,
+        statut=RunAllocation.Statut.EXECUTEE)
+
+
+@transaction.atomic
+def reverser_allocation(run, *, created_by=None):
+    """NTFIN21 — extourne une allocation (OD inverse), la marque ``reversee``."""
+    if run.statut == RunAllocation.Statut.REVERSEE:
+        raise ValidationError("Cette allocation est déjà réversée.")
+    lignes = []
+    if run.ecriture_id:
+        for lg in run.ecriture.lignes.select_related('compte').all():
+            lignes.append({
+                'compte': lg.compte,
+                'libelle': f'Extourne {lg.libelle}',
+                'debit': str(lg.credit), 'credit': str(lg.debit),
+                'centre_cout': lg.centre_cout})
+    if lignes:
+        journal = _journal(run.company, Journal.Type.OPERATIONS_DIVERSES)
+        creer_ecriture(
+            run.company, journal, run.periode,
+            f'Extourne allocation {run.compte_source}', lignes,
+            created_by=created_by, statut=EcritureComptable.Statut.VALIDEE,
+            referentiel=run.referentiel)
+    run.statut = RunAllocation.Statut.REVERSEE
+    run.save(update_fields=['statut', 'updated_at'])
+    return run
+
+
+# ── NTFIN22 — Allocations récurrentes planifiées ───────────────────────────
+
+def generer_allocations_recurrentes(company, *, jusqua=None):
+    """NTFIN22 — exécute les allocations récurrentes échues (idempotent).
+
+    Pour chaque ``AllocationRecurrente`` active dont ``prochaine_echeance`` ≤
+    ``jusqua`` (défaut aujourd'hui), exécute l'allocation via NTFIN21 et avance
+    l'échéance. IDEMPOTENT par (clé, compte_source, période) : une allocation
+    déjà exécutée pour la période n'est pas redoublée. Renvoie
+    ``{'generees': [...], 'ignorees': [...]}``.
+    """
+    jusqua = jusqua or timezone.localdate()
+    generees, ignorees = [], []
+    recurrentes = AllocationRecurrente.objects.filter(
+        company=company, actif=True,
+        prochaine_echeance__lte=jusqua).select_related('cle')
+    for rec in recurrentes:
+        echeance = rec.prochaine_echeance
+        # Boucle de rattrapage : plusieurs périodes échues d'un coup.
+        while echeance <= jusqua:
+            deja = RunAllocation.objects.filter(
+                company=company, cle=rec.cle,
+                compte_source=rec.compte_source, periode=echeance,
+                statut=RunAllocation.Statut.EXECUTEE).exists()
+            if deja:
+                ignorees.append({
+                    'allocation_id': rec.id, 'periode': echeance.isoformat(),
+                    'raison': 'déjà exécutée pour cette période'})
+            else:
+                try:
+                    run = executer_allocation(
+                        company, rec.compte_source, rec.cle, echeance,
+                        referentiel=rec.referentiel,
+                        centre_source=rec.centre_source)
+                    generees.append({
+                        'allocation_id': rec.id, 'run_id': run.id,
+                        'periode': echeance.isoformat()})
+                except ValidationError as exc:
+                    ignorees.append({
+                        'allocation_id': rec.id,
+                        'periode': echeance.isoformat(),
+                        'raison': '; '.join(exc.messages)})
+            echeance = rec.echeance_suivante(echeance)
+        rec.prochaine_echeance = echeance
+        rec.derniere_generation = jusqua
+        rec.save(update_fields=['prochaine_echeance', 'derniere_generation',
+                                'updated_at'])
+    return {'generees': generees, 'ignorees': ignorees}
+
+
+# ── NTFIN23 — Engagements (encumbrance) ────────────────────────────────────
+
+def engager(company, *, compte, montant, date_engagement, type_engagement=None,
+            centre_cout=None, referentiel=None, source_type='', source_id=None,
+            reference='', libelle=''):
+    """NTFIN23 — crée un engagement comptable (réserve un budget à la commande).
+
+    ``compte`` est un ``CompteComptable``. Renvoie l'``EngagementComptable``.
+    """
+    eng = EngagementComptable(
+        company=company, compte=compte,
+        montant_engage=Decimal(str(montant)).quantize(_CENT),
+        date_engagement=date_engagement,
+        type_engagement=type_engagement or EngagementComptable.Type.BON_COMMANDE,
+        centre_cout=centre_cout, referentiel=referentiel,
+        source_type=source_type or '', source_id=source_id,
+        reference=reference or '', libelle=libelle or '',
+        statut=EngagementComptable.Statut.ENGAGE)
+    eng.full_clean()
+    eng.save()
+    return eng
+
+
+def liquider(engagement, montant):
+    """NTFIN23 — liquide (consomme) une part d'un engagement à la facturation.
+
+    Ajoute ``montant`` au liquidé et met à jour le statut (engagé →
+    partiellement liquidé → soldé). Refuse un dépassement du montant engagé.
+    Renvoie l'engagement.
+    """
+    montant = Decimal(str(montant)).quantize(_CENT)
+    nouveau = (engagement.montant_liquide or Decimal('0')) + montant
+    if nouveau > engagement.montant_engage:
+        raise ValidationError(
+            "La liquidation dépasserait le montant engagé "
+            f"({engagement.montant_engage}).")
+    engagement.montant_liquide = nouveau
+    if nouveau >= engagement.montant_engage:
+        engagement.statut = EngagementComptable.Statut.SOLDE
+    elif nouveau > 0:
+        engagement.statut = EngagementComptable.Statut.PARTIELLEMENT_LIQUIDE
+    engagement.save(update_fields=['montant_liquide', 'statut', 'updated_at'])
+    return engagement
+
+
+# ── NTFIN24 — Contrôle budgétaire à l'engagement ───────────────────────────
+
+def verifier_disponible_engagement(company, *, compte, centre_cout=None,
+                                   montant, periode):
+    """NTFIN24 — contrôle qu'un nouvel engagement tient dans le disponible.
+
+    Disponible = budget − engagé − réalisé (le contrôle XACC21 ne comptait que
+    le réalisé). Renvoie un dict ``{'statut': 'ok'|'avertissement'|'blocage',
+    'disponible', 'budget', 'engage', 'realise', 'controle'}``. Ne LÈVE PAS :
+    l'appelant décide (la vue 400 sur ``blocage``). Sans budget défini →
+    ``statut='ok'`` (aucun contrôle possible, comportement historique).
+    """
+    from . import selectors as _sel
+    montant = Decimal(str(montant)).quantize(_CENT)
+    dispo = _sel.disponible_budgetaire_compte(
+        company, compte=compte, centre_cout=centre_cout, periode=periode)
+    if dispo is None:
+        return {'statut': 'ok', 'disponible': None, 'budget': None,
+                'engage': Decimal('0'), 'realise': Decimal('0'),
+                'controle': None}
+    apres = dispo['disponible'] - montant
+    if apres >= 0:
+        statut = 'ok'
+    elif dispo['controle'] == Budget.Controle.BLOQUANT:
+        statut = 'blocage'
+    else:
+        statut = 'avertissement'
+    return {
+        'statut': statut,
+        'disponible': dispo['disponible'],
+        'disponible_apres': apres,
+        'budget': dispo['budget'],
+        'engage': dispo['engage'],
+        'realise': dispo['realise'],
+        'controle': dispo['controle'],
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Groupe NTFIN — Close management (clôture rapide)
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ── NTFIN26 — Seed d'un modèle de clôture mensuelle standard ───────────────
+
+_TACHES_CLOTURE_MENSUELLE = [
+    ('Rapprochements bancaires du mois', 'rapprochement', True),
+    ('Rapprochement des comptes de tiers', 'rapprochement', True),
+    ('Clôture des caisses', 'rapprochement', True),
+    ('Comptabilisation des accruals (FAE/FNP)', 'accrual', True),
+    ('Dotations aux amortissements du mois', 'accrual', True),
+    ('Provisions et régularisations', 'accrual', False),
+    ('Analyse des variations significatives', 'analyse', True),
+    ('Revue des comptes d\'attente', 'analyse', True),
+    ('Édition de la balance et du grand livre', 'reporting', True),
+    ('Validation de la clôture', 'reporting', True),
+]
+
+
+def seed_modele_cloture_mensuel(company):
+    """NTFIN26 — amorce un modèle de clôture mensuelle standard (idempotent).
+
+    Crée (une fois) un ``ModeleCloture`` mensuel + ses ≥ 8 tâches ordonnées.
+    Re-lancement : ne duplique rien. Renvoie le modèle.
+    """
+    modele, _ = ModeleCloture.objects.get_or_create(
+        company=company, libelle='Clôture mensuelle standard',
+        periodicite=ModeleCloture.Periodicite.MENSUELLE,
+        defaults={'actif': True})
+    for ordre, (libelle, categorie, obligatoire) in enumerate(
+            _TACHES_CLOTURE_MENSUELLE, start=1):
+        TacheClotureModele.objects.get_or_create(
+            company=company, modele=modele, libelle=libelle,
+            defaults={'ordre': ordre, 'categorie': categorie,
+                      'obligatoire': obligatoire})
+    return modele
+
+
+# ── NTFIN27 — Instance de clôture (workspace de période) ───────────────────
+
+@transaction.atomic
+def instancier_cloture(periode, modele, *, date_cible=None):
+    """NTFIN27 — matérialise une checklist de clôture sur une période.
+
+    Crée l'``InstanceCloture`` (une par période, idempotent) et une
+    ``TacheCloture`` par tâche-modèle. Renvoie l'instance.
+    """
+    instance, cree = InstanceCloture.objects.get_or_create(
+        company=periode.company, periode=periode,
+        defaults={'modele': modele, 'date_cible': date_cible})
+    if not cree:
+        return instance
+    for tm in modele.taches.order_by('ordre', 'id'):
+        TacheCloture.objects.create(
+            company=periode.company, instance=instance, libelle=tm.libelle,
+            ordre=tm.ordre, obligatoire=tm.obligatoire, categorie=tm.categorie)
+    return instance
+
+
+def cocher_tache_cloture(tache, *, user=None, statut=None,
+                         piece_jointe_key=None):
+    """NTFIN27 — met à jour le statut d'une tâche de clôture (fait par défaut).
+
+    Rafraîchit le statut global de l'instance selon l'avancement. Renvoie la
+    tâche.
+    """
+    tache.statut = statut or TacheCloture.Statut.FAIT
+    if tache.statut == TacheCloture.Statut.FAIT:
+        tache.fait_par = user
+        tache.fait_le = timezone.now()
+    if piece_jointe_key is not None:
+        tache.piece_jointe_key = piece_jointe_key
+    tache.save(update_fields=['statut', 'fait_par', 'fait_le',
+                              'piece_jointe_key', 'updated_at'])
+    _rafraichir_statut_instance(tache.instance)
+    return tache
+
+
+def _rafraichir_statut_instance(instance):
+    """Recalcule le statut global d'une instance de clôture depuis ses tâches."""
+    taches = list(instance.taches.all())
+    if not taches:
+        return instance
+    faites = [t for t in taches
+              if t.statut in (TacheCloture.Statut.FAIT, TacheCloture.Statut.NA)]
+    if len(faites) == len(taches):
+        statut = InstanceCloture.Statut.VALIDE
+    elif faites:
+        statut = InstanceCloture.Statut.EN_COURS
+    else:
+        statut = InstanceCloture.Statut.OUVERT
+    if instance.statut != statut:
+        instance.statut = statut
+        instance.save(update_fields=['statut', 'updated_at'])
+    return instance
+
+
+# ── NTFIN29 — Accruals automatiques (avec extourne) ────────────────────────
+
+@transaction.atomic
+def poster_accrual(accrual, *, user=None):
+    """NTFIN29 — poste l'OD d'accrual + son extourne au 1er jour suivant.
+
+    Charge à payer / FNP : débit charge, crédit contrepartie ; produit à
+    recevoir : débit contrepartie (créance), crédit produit. L'extourne inverse
+    exactement l'écriture, datée du lendemain de la fin de période (impact net
+    nul sur la période suivante hors régularisation). Idempotent : un accrual
+    déjà posté n'est pas redoublé. Renvoie l'accrual.
+    """
+    from datetime import timedelta
+    if accrual.ecriture_id:
+        return accrual
+    montant = accrual.montant
+    if montant is None or montant <= 0:
+        raise ValidationError("Le montant de l'accrual doit être positif.")
+    date_accrual = accrual.periode.date_fin
+    date_extourne = date_accrual + timedelta(days=1)
+    compte_cp = _assurer_compte(accrual.company, accrual.compte_charge_produit)
+    compte_ctr = _assurer_compte(accrual.company, accrual.compte_contrepartie)
+    if accrual.type_accrual == AccrualCloture.Type.PRODUIT_A_RECEVOIR:
+        lignes = [
+            {'compte': compte_ctr,
+             'libelle': accrual.libelle or 'Produit à recevoir',
+             'debit': str(montant), 'credit': '0'},
+            {'compte': compte_cp,
+             'libelle': accrual.libelle or 'Produit à recevoir',
+             'debit': '0', 'credit': str(montant)},
+        ]
+    else:
+        lignes = [
+            {'compte': compte_cp,
+             'libelle': accrual.libelle or 'Charge à payer',
+             'debit': str(montant), 'credit': '0'},
+            {'compte': compte_ctr,
+             'libelle': accrual.libelle or 'Charge à payer',
+             'debit': '0', 'credit': str(montant)},
+        ]
+    ecriture = creer_ecriture_od(
+        accrual.company, date_accrual,
+        f'Accrual clôture : {accrual.libelle or accrual.type_accrual}',
+        lignes, created_by=user, statut=EcritureComptable.Statut.VALIDEE)
+    lignes_extourne = [
+        {'compte': li['compte'], 'libelle': f"Extourne {li['libelle']}",
+         'debit': li['credit'], 'credit': li['debit']} for li in lignes]
+    ecriture_extourne = creer_ecriture_od(
+        accrual.company, date_extourne,
+        f'Extourne accrual : {accrual.libelle or accrual.type_accrual}',
+        lignes_extourne, created_by=user,
+        statut=EcritureComptable.Statut.VALIDEE)
+    accrual.ecriture = ecriture
+    accrual.ecriture_extourne = ecriture_extourne
+    accrual.save(update_fields=['ecriture', 'ecriture_extourne', 'updated_at'])
+    return accrual
+
+
+# ── NTFIN32 — Journaux récurrents de clôture (OD depuis modèle) ────────────
+
+@transaction.atomic
+def generer_od_cloture(tache_cloture, modele_ecriture, *, date_ecriture,
+                       montants=None, user=None):
+    """NTFIN32 — matérialise une OD de clôture depuis un modèle et coche la tâche.
+
+    Réutilise ``generer_ecriture_depuis_modele`` (XACC8) et coche la
+    ``TacheCloture`` dans la foulée. Renvoie ``(ecriture, tache)``.
+    """
+    ecriture = generer_ecriture_depuis_modele(
+        modele_ecriture, date_ecriture=date_ecriture, montants=montants,
+        user=user, statut=EcritureComptable.Statut.VALIDEE)
+    cocher_tache_cloture(tache_cloture, user=user)
+    return ecriture, tache_cloture
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Groupe NTFIN — Rapprochements de comptes de bilan (workflow 4 yeux)
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ── NTFIN35/36 — Recalcul du solde justifié depuis les lignes ──────────────
+
+def recalculer_rapprochement_compte(rapprochement):
+    """NTFIN35/36 — recalcule solde justifié (Σ lignes) et écart. Renvoie l'objet."""
+    total = sum(
+        (li.montant or Decimal('0')
+         for li in rapprochement.lignes.all()), Decimal('0'))
+    rapprochement.solde_justifie = total
+    rapprochement.recalculer_ecart()
+    rapprochement.save(update_fields=['solde_justifie', 'ecart', 'updated_at'])
+    if rapprochement.ecart == 0 and rapprochement.statut in (
+            RapprochementCompte.Statut.A_RAPPROCHER,
+            RapprochementCompte.Statut.EN_COURS):
+        rapprochement.statut = RapprochementCompte.Statut.RAPPROCHE
+        rapprochement.save(update_fields=['statut', 'updated_at'])
+    return rapprochement
+
+
+# ── NTFIN37 — Workflow préparateur → réviseur (revue 4 yeux) ───────────────
+
+def soumettre_rapprochement_compte(rapprochement, *, user):
+    """NTFIN37 — le préparateur soumet le rapprochement à revue.
+
+    Enregistre l'acteur (préparateur) et l'horodatage côté serveur. Renvoie
+    l'objet.
+    """
+    if user is None:
+        raise ValidationError("Un préparateur est requis.")
+    rapprochement.preparateur = user
+    rapprochement.statut = RapprochementCompte.Statut.SOUMIS
+    rapprochement.date_soumission = timezone.now()
+    rapprochement.save(update_fields=[
+        'preparateur', 'statut', 'date_soumission', 'updated_at'])
+    return rapprochement
+
+
+def valider_rapprochement_compte(rapprochement, *, user):
+    """NTFIN37 — le réviseur valide (revue 4 yeux, séparation des tâches).
+
+    Le réviseur ne peut PAS être le préparateur (COMPTA40) → ``ValidationError``.
+    Contrôle aussi que Σ lignes justificatives = solde justifié. Enregistre
+    l'acteur (réviseur) + horodatage. Renvoie l'objet.
+    """
+    if user is None:
+        raise ValidationError("Un réviseur est requis pour valider.")
+    if (rapprochement.preparateur_id is not None
+            and rapprochement.preparateur_id == user.id):
+        raise ValidationError(
+            "Séparation des tâches : le préparateur d'un rapprochement ne peut "
+            "pas le valider lui-même. Un réviseur distinct est requis.")
+    total = sum(
+        (li.montant or Decimal('0')
+         for li in rapprochement.lignes.all()), Decimal('0'))
+    if total != rapprochement.solde_justifie:
+        raise ValidationError(
+            "La somme des lignes justificatives "
+            f"({total}) doit égaler le solde justifié "
+            f"({rapprochement.solde_justifie}).")
+    rapprochement.reviseur = user
+    rapprochement.statut = RapprochementCompte.Statut.VALIDE
+    rapprochement.date_validation = timezone.now()
+    rapprochement.save(update_fields=[
+        'reviseur', 'statut', 'date_validation', 'updated_at'])
+    return rapprochement
+
+
+def rejeter_rapprochement_compte(rapprochement, *, user, motif=''):
+    """NTFIN37 — le réviseur rejette le rapprochement (retour au préparateur)."""
+    if (rapprochement.preparateur_id is not None
+            and rapprochement.preparateur_id == user.id if user else False):
+        raise ValidationError(
+            "Séparation des tâches : le préparateur ne peut pas arbitrer sa "
+            "propre revue.")
+    rapprochement.reviseur = user
+    rapprochement.statut = RapprochementCompte.Statut.EN_COURS
+    if motif:
+        rapprochement.commentaire = motif
+    rapprochement.save(update_fields=[
+        'reviseur', 'statut', 'commentaire', 'updated_at'])
+    return rapprochement
+
+
+# ── NTFIN39 — Modèles de rapprochement récurrents (report N-1) ─────────────
+
+def ouvrir_rapprochement_compte(company, compte, periode, *, solde_gl=None):
+    """NTFIN35/39 — ouvre un rapprochement de compte pour la période N.
+
+    Idempotent par (company, compte, periode). Pré-remplit les lignes
+    justificatives PERMANENTES reportées du rapprochement le plus récent d'une
+    période antérieure du même compte (report du justifié N-1, NTFIN39).
+    ``solde_gl`` (optionnel) fige le solde grand livre à rapprocher. Renvoie le
+    rapprochement.
+    """
+    rappr, cree = RapprochementCompte.objects.get_or_create(
+        company=company, compte=compte, periode=periode,
+        defaults={'solde_gl': Decimal(str(solde_gl or 0))})
+    if not cree:
+        return rappr
+    precedent = RapprochementCompte.objects.filter(
+        company=company, compte=compte,
+        periode__date_debut__lt=periode.date_debut).order_by(
+        '-periode__date_debut').first()
+    if precedent is not None:
+        for li in precedent.lignes.filter(permanente=True):
+            LigneJustificationCompte.objects.create(
+                company=company, rapprochement=rappr, libelle=li.libelle,
+                montant=li.montant, type_element=li.type_element,
+                source_type=li.source_type, source_id=li.source_id,
+                permanente=True)
+        recalculer_rapprochement_compte(rappr)
+    return rappr
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Groupe NTFIN — Immobilisations avancées
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ── NTFIN41 — Dépréciation d'immobilisation (impairment IAS 36) ────────────
+
+@transaction.atomic
+def poster_depreciation_immobilisation(depreciation, *, user=None):
+    """NTFIN41 — poste la dépréciation quand recouvrable < comptable (IAS 36).
+
+    Débit 6194 (dotations aux provisions pour dépréciation des immos) / crédit
+    2920 (provisions pour dépréciation des immobilisations). Idempotent : une
+    dépréciation déjà postée n'est pas redoublée. Renvoie la dépréciation.
+    """
+    if depreciation.ecriture_id:
+        return depreciation
+    perte = depreciation.calculer_perte()
+    depreciation.save(update_fields=['perte_valeur', 'updated_at'])
+    if perte <= 0:
+        return depreciation
+    compte_dot = _assurer_compte(depreciation.company, '6194')
+    compte_prov = _assurer_compte(depreciation.company, '2920')
+    ecriture = creer_ecriture_od(
+        depreciation.company, depreciation.date_test,
+        f'Dépréciation immobilisation {depreciation.immobilisation_id}',
+        [
+            {'compte': compte_dot,
+             'libelle': 'Dotation dépréciation immobilisation',
+             'debit': str(perte), 'credit': '0'},
+            {'compte': compte_prov,
+             'libelle': 'Provision pour dépréciation immobilisation',
+             'debit': '0', 'credit': str(perte)},
+        ], created_by=user, statut=EcritureComptable.Statut.VALIDEE)
+    depreciation.ecriture = ecriture
+    depreciation.save(update_fields=['ecriture', 'updated_at'])
+    return depreciation
+
+
+@transaction.atomic
+def reprendre_depreciation_immobilisation(depreciation_origine, montant_reprise,
+                                          *, date_reprise=None, user=None):
+    """NTFIN41 — reprise de dépréciation quand la valeur remonte (réversible).
+
+    Poste l'écriture inverse (débit 2920 / crédit 7194) et crée une
+    ``DepreciationImmobilisation`` marquée ``reprise``. Renvoie la reprise.
+    """
+    if not depreciation_origine.reversible:
+        raise ValidationError("Cette dépréciation n'est pas réversible.")
+    montant = Decimal(str(montant_reprise)).quantize(_CENT)
+    if montant <= 0:
+        raise ValidationError("Le montant de reprise doit être positif.")
+    date_reprise = date_reprise or timezone.localdate()
+    compte_prov = _assurer_compte(depreciation_origine.company, '2920')
+    compte_reprise = _assurer_compte(depreciation_origine.company, '7194')
+    ecriture = creer_ecriture_od(
+        depreciation_origine.company, date_reprise,
+        f'Reprise dépréciation immobilisation '
+        f'{depreciation_origine.immobilisation_id}',
+        [
+            {'compte': compte_prov,
+             'libelle': 'Reprise provision dépréciation',
+             'debit': str(montant), 'credit': '0'},
+            {'compte': compte_reprise,
+             'libelle': 'Reprise sur dépréciation immobilisation',
+             'debit': '0', 'credit': str(montant)},
+        ], created_by=user, statut=EcritureComptable.Statut.VALIDEE)
+    return DepreciationImmobilisation.objects.create(
+        company=depreciation_origine.company,
+        immobilisation=depreciation_origine.immobilisation,
+        date_test=date_reprise,
+        valeur_recuperable=Decimal('0'), valeur_comptable=Decimal('0'),
+        perte_valeur=-montant, reversible=False, reprise=True,
+        ecriture=ecriture)
+
+
+# ── NTFIN42 — Mutation / transfert d'immobilisation ────────────────────────
+
+def muter_immobilisation(immobilisation, *, nouveau_centre=None,
+                         entite_cible=None, date=None, motif='',
+                         ancien_centre=None):
+    """NTFIN42 — trace le transfert d'un actif entre centres/entités.
+
+    Enregistre la mutation ; les futures dotations sont réaffectées au nouveau
+    centre (le plan d'amortissement lit le centre courant à compter de la date).
+    Renvoie la ``MutationImmobilisation``.
+    """
+    return MutationImmobilisation.objects.create(
+        company=immobilisation.company, immobilisation=immobilisation,
+        ancien_centre=ancien_centre, nouveau_centre=nouveau_centre,
+        entite_source=immobilisation.company, entite_cible=entite_cible,
+        date=date or timezone.localdate(), motif=motif or '')
+
+
+# ── NTFIN43 — Immobilisations en cours (CIP) & mise en service ─────────────
+
+@transaction.atomic
+def mettre_en_service_encours(encours, *, date_mise_en_service=None,
+                              categorie=None, compte_immo='2321', user=None):
+    """NTFIN43 — transfère un CIP (compte 23) vers une immobilisation (compte 2).
+
+    Crée une ``Immobilisation`` de valeur = montant cumulé, poste l'écriture de
+    transfert (débit compte 2 / crédit compte 23) et solde le CIP. Idempotent :
+    un CIP déjà mis en service n'est pas retransféré. Renvoie l'immobilisation.
+    """
+    from .models import Immobilisation as _Immo
+    if encours.statut == ImmobilisationEnCours.Statut.MIS_EN_SERVICE:
+        return encours.immobilisation
+    montant = encours.montant_cumule
+    if montant is None or montant <= 0:
+        raise ValidationError("Le CIP n'a aucun montant cumulé à immobiliser.")
+    date_mes = date_mise_en_service or timezone.localdate()
+    immo = _Immo.objects.create(
+        company=encours.company, libelle=encours.libelle,
+        categorie=categorie or _Immo.Categorie.MATERIEL,
+        cout=montant, date_acquisition=date_mes,
+        date_mise_en_service=date_mes)
+    compte_2 = _assurer_compte(encours.company, compte_immo)
+    compte_23 = _assurer_compte(encours.company, encours.compte_encours)
+    creer_ecriture_od(
+        encours.company, date_mes,
+        f'Mise en service immobilisation : {encours.libelle}',
+        [
+            {'compte': compte_2, 'libelle': 'Immobilisation mise en service',
+             'debit': str(montant), 'credit': '0'},
+            {'compte': compte_23, 'libelle': 'Solde immobilisation en cours',
+             'debit': '0', 'credit': str(montant)},
+        ], created_by=user, statut=EcritureComptable.Statut.VALIDEE)
+    encours.statut = ImmobilisationEnCours.Statut.MIS_EN_SERVICE
+    encours.date_mise_en_service = date_mes
+    encours.immobilisation = immo
+    encours.save(update_fields=[
+        'statut', 'date_mise_en_service', 'immobilisation', 'updated_at'])
+    return immo
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Groupe NTFIN — Reconnaissance du revenu IFRS 15 & états consolidés
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ── NTFIN47 — Allocation du prix de transaction (IFRS 15 étape 4) ──────────
+
+def allouer_prix_transaction(contrat):
+    """NTFIN47 — répartit le prix de transaction au prorata des PVS (IFRS 15).
+
+    Alloue ``contrat.montant_transaction`` entre ses obligations au prorata de
+    leur ``prix_vente_specifique`` (standalone selling price). La dernière
+    obligation reçoit le résiduel (arrondi). Renvoie la liste des obligations.
+    """
+    obligations = list(contrat.obligations.all())
+    total_pvs = sum(
+        (o.prix_vente_specifique or Decimal('0') for o in obligations),
+        Decimal('0'))
+    if total_pvs <= 0:
+        raise ValidationError(
+            "Impossible d'allouer : la somme des prix de vente spécifiques "
+            "est nulle.")
+    montant = contrat.montant_transaction or Decimal('0')
+    alloue = Decimal('0')
+    for i, o in enumerate(obligations):
+        if i == len(obligations) - 1:
+            part = montant - alloue
+        else:
+            part = (montant * o.prix_vente_specifique / total_pvs).quantize(
+                _CENT)
+        alloue += part
+        o.prix_alloue = part
+        o.save(update_fields=['prix_alloue', 'updated_at'])
+    return obligations
+
+
+# ── NTFIN48 — Échéancier & produit constaté d'avance (IFRS 15 étape 5) ─────
+
+def generer_echeancier_reconnaissance(obligation):
+    """NTFIN48 — génère l'échéancier de reconnaissance d'une obligation.
+
+    ``dans_le_temps`` : ``duree_mois`` échéances linéaires (dernière = résiduel)
+    à compter de ``date_debut``. ``a_une_date`` : une seule échéance au
+    ``date_debut``. Idempotent : ne régénère pas si des échéances existent.
+    Renvoie la liste des échéances.
+    """
+    import calendar
+    if obligation.echeances.exists():
+        return list(obligation.echeances.all())
+    montant = obligation.prix_alloue or Decimal('0')
+    debut = obligation.date_debut or timezone.localdate()
+    echeances = []
+    if (obligation.methode_reconnaissance
+            == ObligationPerformance.Methode.DANS_LE_TEMPS
+            and obligation.duree_mois):
+        n = obligation.duree_mois
+        part = (montant / Decimal(n)).quantize(_CENT)
+        cumul = Decimal('0')
+        for i in range(n):
+            mois_total = debut.month - 1 + i
+            annee = debut.year + mois_total // 12
+            mois = mois_total % 12 + 1
+            jour = min(debut.day, calendar.monthrange(annee, mois)[1])
+            d = debut.replace(year=annee, month=mois, day=jour)
+            m = part if i < n - 1 else (montant - cumul)
+            cumul += m
+            echeances.append(EcheancierReconnaissance.objects.create(
+                company=obligation.company, obligation=obligation, date=d,
+                montant_a_reconnaitre=m))
+    else:
+        echeances.append(EcheancierReconnaissance.objects.create(
+            company=obligation.company, obligation=obligation, date=debut,
+            montant_a_reconnaitre=montant))
+    return echeances
+
+
+@transaction.atomic
+def reconnaitre_echeance(echeance, *, compte_pca='4870', compte_produit='7111',
+                         user=None):
+    """NTFIN48 — reconnaît une échéance (solde le produit constaté d'avance).
+
+    Débit ``compte_pca`` (487 produit constaté d'avance) / crédit
+    ``compte_produit`` (7xxx). Idempotent : une échéance déjà reconnue n'est pas
+    redoublée. Renvoie l'échéance.
+    """
+    if echeance.statut == EcheancierReconnaissance.Statut.RECONNU:
+        return echeance
+    montant = echeance.montant_a_reconnaitre
+    if montant is None or montant <= 0:
+        raise ValidationError("Le montant à reconnaître doit être positif.")
+    compte_pca_obj = _assurer_compte(echeance.company, compte_pca)
+    compte_prod_obj = _assurer_compte(echeance.company, compte_produit)
+    ecriture = creer_ecriture_od(
+        echeance.company, echeance.date,
+        f'Reconnaissance revenu IFRS 15 (obligation {echeance.obligation_id})',
+        [
+            {'compte': compte_pca_obj,
+             'libelle': "Solde produit constaté d'avance",
+             'debit': str(montant), 'credit': '0'},
+            {'compte': compte_prod_obj, 'libelle': 'Revenu reconnu',
+             'debit': '0', 'credit': str(montant)},
+        ], created_by=user, statut=EcritureComptable.Statut.VALIDEE)
+    echeance.statut = EcheancierReconnaissance.Statut.RECONNU
+    echeance.ecriture = ecriture
+    echeance.save(update_fields=['statut', 'ecriture', 'updated_at'])
+    return echeance
+
+
+# ── NTFIN55 — Piste d'audit renforcée des opérations de consolidation ──────
+
+def enregistrer_etape_audit_consolidation(cycle, etape, *, acteur=None,
+                                          snapshot=None, detail=''):
+    """NTFIN55 — scelle un maillon d'audit d'une étape de consolidation.
+
+    Chaîne le maillon au précédent du même cycle : ``hash = SHA256(
+    hash_precedent + etape + hash_snapshot + sequence)``. Append-only : chaque
+    republication laisse une trace horodatée distincte sans écraser l'historique.
+    Renvoie le maillon.
+    """
+    dernier = EtapeAuditConsolidation.objects.filter(
+        cycle=cycle).order_by('-sequence').first()
+    sequence = (dernier.sequence + 1) if dernier else 1
+    hash_precedent = dernier.hash if dernier else ''
+    hash_snapshot = ''
+    if snapshot is not None:
+        hash_snapshot = hashlib.sha256(
+            str(snapshot).encode('utf-8')).hexdigest()
+    empreinte = f'{hash_precedent}{etape}{hash_snapshot}{sequence}'
+    hash_maillon = hashlib.sha256(empreinte.encode('utf-8')).hexdigest()
+    return EtapeAuditConsolidation.objects.create(
+        company=cycle.company, cycle=cycle, etape=etape, acteur=acteur,
+        sequence=sequence, hash_snapshot=hash_snapshot,
+        hash_precedent=hash_precedent, hash=hash_maillon, detail=detail or '')
+
+
+# ── NTFIN56 — Simulation de consolidation (what-if périmètre) ──────────────
+
+def simuler_consolidation(cycle, ajustements_perimetre=None):
+    """NTFIN56 — recalcule un bilan/CPC consolidé provisoire (what-if).
+
+    ``ajustements_perimetre`` : liste de dicts ``{'entite_id', 'pourcentage'}``
+    (nouveau % d'intérêt) et/ou ``{'entite_id', 'retirer': True}``. Recalcule les
+    intérêts minoritaires et le résultat part groupe SANS écrire aucune écriture
+    définitive (le cycle publié n'est pas altéré). Renvoie un dict provisoire.
+    """
+    from . import selectors as _sel
+    ajustements = {a['entite_id']: a for a in (ajustements_perimetre or [])}
+    cpc = _sel.cpc_consolide_v2(cycle)
+    resultat_total = cpc['resultat']
+    # Recalcule la part minoritaire simulée par entité intégrée globalement.
+    membres = EntiteConsolidation.objects.filter(
+        cycle=cycle, actif=True,
+        methode=EntiteConsolidation.Methode.INTEGRATION_GLOBALE)
+    part_minoritaires = Decimal('0')
+    perimetre = []
+    for m in membres:
+        adj = ajustements.get(m.entite_id)
+        if adj and adj.get('retirer'):
+            continue
+        pct = Decimal(str(adj['pourcentage'])) if adj and 'pourcentage' in adj \
+            else (m.pourcentage_interet or Decimal('0'))
+        liasse = LiasseRemontee.objects.filter(
+            cycle=cycle, entite=m.entite).first()
+        resultat_entite = Decimal('0')
+        if liasse:
+            for li in (liasse.snapshot_balance or []):
+                classe = li.get('classe') or _classe_de_numero(li['numero'])
+                if classe in (6, 7):
+                    resultat_entite += (
+                        Decimal(str(li.get('credit') or 0))
+                        - Decimal(str(li.get('debit') or 0)))
+        pct_min = Decimal('100') - pct
+        part = (resultat_entite * pct_min / Decimal('100')).quantize(_CENT)
+        part_minoritaires += part
+        perimetre.append({
+            'entite_id': m.entite_id, 'pourcentage_interet': pct,
+            'resultat_entite': resultat_entite,
+            'part_minoritaire': part})
+    return {
+        'cycle': cycle.id,
+        'simulation': True,
+        'resultat_consolide': resultat_total,
+        'part_minoritaires': part_minoritaires,
+        'resultat_part_groupe': resultat_total - part_minoritaires,
+        'perimetre': perimetre,
+    }

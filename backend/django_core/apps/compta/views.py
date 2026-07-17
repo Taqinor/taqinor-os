@@ -85,6 +85,15 @@ from .models import (
     OperationInterco, EcritureElimination, MargeInterneStock,
     EliminationTitres,
     ReferentielComptable, AjustementGaap, AxeAnalytique, ImputationAxe,
+    CleRepartition, LigneCleRepartition, RunAllocation, AllocationRecurrente,
+    EngagementComptable,
+    ModeleCloture, TacheClotureModele, InstanceCloture, TacheCloture,
+    AccrualCloture, JustificationVariation, ModeleEcriture,
+    RapprochementCompte, LigneJustificationCompte,
+    ComposantImmobilisation, DepreciationImmobilisation,
+    MutationImmobilisation, ImmobilisationEnCours, LigneImmobilisationEnCours,
+    ContratRevenu, ObligationPerformance, EcheancierReconnaissance,
+    EtapeAuditConsolidation,
 )
 from .serializers import (
     AppelTelephoniqueSerializer, AvancementRevenuSerializer,
@@ -157,6 +166,18 @@ from .serializers import (
     EliminationTitresSerializer,
     ReferentielComptableSerializer, AjustementGaapSerializer,
     AxeAnalytiqueSerializer, ImputationAxeSerializer,
+    CleRepartitionSerializer, LigneCleRepartitionSerializer,
+    RunAllocationSerializer, AllocationRecurrenteSerializer,
+    EngagementComptableSerializer,
+    ModeleClotureSerializer, TacheClotureModeleSerializer,
+    InstanceClotureSerializer, TacheClotureSerializer,
+    AccrualClotureSerializer, JustificationVariationSerializer,
+    RapprochementCompteSerializer, LigneJustificationCompteSerializer,
+    ComposantImmobilisationSerializer, DepreciationImmobilisationSerializer,
+    MutationImmobilisationSerializer, ImmobilisationEnCoursSerializer,
+    LigneImmobilisationEnCoursSerializer,
+    ContratRevenuSerializer, ObligationPerformanceSerializer,
+    EcheancierReconnaissanceSerializer, EtapeAuditConsolidationSerializer,
 )
 
 
@@ -442,6 +463,116 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
             date_debut=params.get('date_debut') or None,
             date_fin=params.get('date_fin') or None)
         return Response(data)
+
+    @action(detail=False, methods=['get'], url_path='execution-budgetaire')
+    def execution_budgetaire(self, request):
+        """NTFIN25 — état d'exécution budgétaire avec engagements."""
+        annee = request.query_params.get('annee') or request.query_params.get(
+            'exercice')
+        try:
+            annee = int(annee) if annee else timezone.localdate().year
+        except (TypeError, ValueError):
+            return Response({'detail': "Paramètre 'annee' invalide."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            selectors.execution_budgetaire(request.user.company, annee))
+
+    @action(detail=False, methods=['get'], url_path='analyse-variation')
+    def analyse_variation(self, request):
+        """NTFIN30 — rapport de variation N vs N-1 (fluctuation analysis)."""
+        from decimal import Decimal
+        params = request.query_params
+        try:
+            periode = (_parse_date(params.get('date_debut')),
+                       _parse_date(params.get('date_fin')))
+            periode_comparee = (_parse_date(params.get('date_debut_n1')),
+                                _parse_date(params.get('date_fin_n1')))
+        except ValueError as exc:
+            return _err400(exc)
+        seuil = params.get('seuil') or '10000'
+        data = selectors.analyse_variation(
+            request.user.company, compte_prefixe=params.get('compte') or None,
+            periode=periode, periode_comparee=periode_comparee,
+            seuil_materialite=Decimal(str(seuil)))
+        return Response(data)
+
+    @action(detail=False, methods=['get'], url_path='anomalies-ecritures')
+    def anomalies_ecritures(self, request):
+        """NTFIN33 — scan qualité GL (anomalies d'écritures d'une période)."""
+        params = request.query_params
+        try:
+            date_debut = _parse_date(params.get('date_debut'))
+            date_fin = _parse_date(params.get('date_fin'))
+        except ValueError as exc:
+            return _err400(exc)
+        return Response(selectors.anomalies_ecritures(
+            request.user.company, date_debut=date_debut, date_fin=date_fin))
+
+    @action(detail=False, methods=['get'], url_path='cockpit-cloture')
+    def cockpit_cloture(self, request):
+        """NTFIN34 — tableau de bord de clôture (``?periode=<id>``)."""
+        periode = PeriodeComptable.objects.filter(
+            company=request.user.company,
+            pk=request.query_params.get('periode')).first()
+        if periode is None:
+            return Response({'detail': 'Période inconnue.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(selectors.cockpit_cloture(request.user.company, periode))
+
+    @action(detail=False, methods=['get'], url_path='pret-a-cloturer')
+    def pret_a_cloturer(self, request):
+        """NTFIN28 — la période est-elle prête à clôturer (``?periode=<id>``)."""
+        periode = PeriodeComptable.objects.filter(
+            company=request.user.company,
+            pk=request.query_params.get('periode')).first()
+        if periode is None:
+            return Response({'detail': 'Période inconnue.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(selectors.pret_a_cloturer(periode))
+
+    @action(detail=False, methods=['get'], url_path='rapprochements-en-retard')
+    def rapprochements_en_retard(self, request):
+        """NTFIN38 — comptes de bilan non rapprochés (``?periode=<id>``)."""
+        periode = PeriodeComptable.objects.filter(
+            company=request.user.company,
+            pk=request.query_params.get('periode')).first()
+        if periode is None:
+            return Response({'detail': 'Période inconnue.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            selectors.rapprochements_en_retard(request.user.company, periode))
+
+    @action(detail=False, methods=['get'], url_path='registre-immobilisations')
+    def registre_immobilisations(self, request):
+        """NTFIN44 — registre des immos multi-référentiel (``?referentiel=<id>``)."""
+        company = request.user.company
+        ref = None
+        ref_id = request.query_params.get('referentiel')
+        if ref_id:
+            ref = ReferentielComptable.objects.filter(
+                company=company, id=ref_id).first()
+        return Response(selectors.registre_immobilisations(company, referentiel=ref))
+
+    @action(detail=False, methods=['get'], url_path='projection-dotations')
+    def projection_dotations(self, request):
+        """NTFIN45 — projection des dotations futures (``?annees=5``)."""
+        try:
+            annees = int(request.query_params.get('annees') or 5)
+        except (TypeError, ValueError):
+            annees = 5
+        ref = None
+        ref_id = request.query_params.get('referentiel')
+        if ref_id:
+            ref = ReferentielComptable.objects.filter(
+                company=request.user.company, id=ref_id).first()
+        return Response(selectors.projection_dotations(
+            request.user.company, annees=annees, referentiel=ref))
+
+    @action(detail=False, methods=['get'], url_path='positions-contrat-revenu')
+    def positions_contrat_revenu(self, request):
+        """NTFIN49 — actif sur contrat / produit différé par contrat (IFRS 15)."""
+        return Response(
+            selectors.positions_contrat_revenu(request.user.company))
 
     @action(detail=False, methods=['get'])
     def cpc(self, request):
@@ -7778,6 +7909,17 @@ def _err400(exc):
         status=status.HTTP_400_BAD_REQUEST)
 
 
+def _parse_date(value):
+    """Parse une date ISO (str) → ``date`` ; lève ``ValueError`` si invalide."""
+    from datetime import date as _date
+    if value is None or value == '':
+        raise ValueError("Date requise.")
+    if isinstance(value, _date):
+        return value
+    parsed = _date.fromisoformat(str(value))
+    return parsed
+
+
 class CycleConsolidationViewSet(_ComptaBaseViewSet):
     """Cycles de consolidation (NTFIN1) + tout le moniteur de consolidation.
 
@@ -7803,7 +7945,7 @@ class CycleConsolidationViewSet(_ComptaBaseViewSet):
         if self.action in (
                 'create', 'update', 'partial_update', 'destroy',
                 'ouvrir', 'verrouiller', 'collecter', 'apparier',
-                'generer_reciproques', 'interets_minoritaires'):
+                'generer_reciproques', 'interets_minoritaires', 'simuler'):
             return [HasPermissionOrLegacy('compta_valider')()]
         return super().get_permissions()
 
@@ -7905,6 +8047,131 @@ class CycleConsolidationViewSet(_ComptaBaseViewSet):
         """NTFIN12 — Moniteur d'avancement de la consolidation."""
         cycle = self.get_object()
         return Response(selectors.moniteur_consolidation(cycle))
+
+    def _cycle_precedent(self, request):
+        cp_id = request.query_params.get('cycle_precedent')
+        if not cp_id:
+            return None
+        return CycleConsolidation.objects.filter(
+            company=request.user.company, pk=cp_id).first()
+
+    @action(detail=True, methods=['get'], url_path='tableau-flux')
+    def tableau_flux(self, request, pk=None):
+        """NTFIN50 — Tableau des flux de trésorerie consolidé (indirecte)."""
+        cycle = self.get_object()
+        return Response(selectors.tableau_flux_consolide(
+            cycle, cycle_precedent=self._cycle_precedent(request)))
+
+    @action(detail=True, methods=['get'], url_path='variation-capitaux')
+    def variation_capitaux(self, request, pk=None):
+        """NTFIN51 — Variation des capitaux propres consolidés."""
+        cycle = self.get_object()
+        return Response(selectors.variation_capitaux_consolides(
+            cycle, cycle_precedent=self._cycle_precedent(request)))
+
+    @action(detail=True, methods=['get'])
+    def annexes(self, request, pk=None):
+        """NTFIN52 — Notes annexes consolidées (jeu de tableaux)."""
+        cycle = self.get_object()
+        return Response(selectors.annexes_consolidation(cycle))
+
+    @action(detail=True, methods=['get'])
+    def comparatif(self, request, pk=None):
+        """NTFIN53 — Comparatif inter-entités (benchmark groupe)."""
+        cycle = self.get_object()
+        return Response(selectors.comparatif_entites(cycle))
+
+    @action(detail=True, methods=['get'], url_path='etapes-audit')
+    def etapes_audit(self, request, pk=None):
+        """NTFIN55 — Piste d'audit des étapes de consolidation."""
+        cycle = self.get_object()
+        qs = EtapeAuditConsolidation.objects.filter(cycle=cycle)
+        return Response(
+            EtapeAuditConsolidationSerializer(qs, many=True).data)
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[HasPermissionOrLegacy('compta_valider')])
+    def simuler(self, request, pk=None):
+        """NTFIN56 — Simulation what-if de périmètre (sans écriture définitive)."""
+        cycle = self.get_object()
+        ajustements = request.data.get('ajustements_perimetre') or []
+        try:
+            data = services.simuler_consolidation(cycle, ajustements)
+        except DjangoValidationError as exc:
+            return _err400(exc)
+        return Response(data)
+
+    @action(detail=True, methods=['get'], url_path='export-liasse')
+    def export_liasse(self, request, pk=None):
+        """NTFIN54 — Export XLSX de la liasse de consolidation (``?export=xlsx``)."""
+        cycle = self.get_object()
+        if request.query_params.get('export') != 'xlsx':
+            return Response(
+                {'detail': "Seul 'export=xlsx' est supporté pour la liasse "
+                           "de consolidation."},
+                status=status.HTTP_400_BAD_REQUEST)
+        from openpyxl import Workbook
+        from openpyxl.styles import Font
+        from apps.records.xlsx import coerce_cell, XLSX_CONTENT_TYPE
+
+        bilan = selectors.bilan_consolide(cycle)
+        cpc = selectors.cpc_consolide_v2(cycle)
+        flux = selectors.tableau_flux_consolide(cycle)
+        capitaux = selectors.variation_capitaux_consolides(cycle)
+        annexes = selectors.annexes_consolidation(cycle)
+        comparatif = selectors.comparatif_entites(cycle)
+
+        def _feuille(wb, titre, headers, rows, first=False):
+            ws = wb.active if first else wb.create_sheet()
+            ws.title = titre[:31]
+            ws.append(list(headers))
+            bold = Font(bold=True)
+            for cell in ws[1]:
+                cell.font = bold
+            for row in rows:
+                ws.append([coerce_cell(v) for v in row])
+            return ws
+
+        wb = Workbook()
+        _feuille(wb, 'Bilan consolidé', ['Classe', 'Débit', 'Crédit'],
+                 [[k, v['debit'], v['credit']]
+                  for k, v in bilan['par_classe'].items()]
+                 + [['Total actif', bilan['total_actif'], ''],
+                    ['Total passif', bilan['total_passif_avec_resultat'], ''],
+                    ['Résultat', bilan['resultat'], '']],
+                 first=True)
+        _feuille(wb, 'CPC consolidé', ['Poste', 'Montant'],
+                 [['Produits', cpc['total_produits']],
+                  ['Charges', cpc['total_charges']],
+                  ['Résultat', cpc['resultat']]])
+        _feuille(wb, 'Tableau de flux', ['Flux', 'Montant'],
+                 [['Exploitation', flux['flux_exploitation']],
+                  ['Investissement', flux['flux_investissement']],
+                  ['Financement', flux['flux_financement']],
+                  ['Variation trésorerie', flux['variation_tresorerie']]])
+        _feuille(wb, 'Variation capitaux', ['Poste', 'Montant'],
+                 [['Ouverture', capitaux['capitaux_ouverture']],
+                  ['Résultat part groupe', capitaux['resultat_part_groupe']],
+                  ['Résultat minoritaires',
+                   capitaux['resultat_part_minoritaires']],
+                  ['Clôture part groupe',
+                   capitaux['capitaux_cloture_part_groupe']]])
+        _feuille(wb, 'Périmètre',
+                 ['Entité', 'Libellé', 'Méthode', '% intérêt'],
+                 [[p['entite_id'], p['libelle'], p['methode'],
+                   p['pourcentage_interet']] for p in annexes['perimetre']])
+        _feuille(wb, 'Comparatif entités',
+                 ['Entité', 'CA', 'Résultat', 'Marge %'],
+                 [[li['entite_id'], li['ca'], li['resultat'], li['marge_pct']]
+                  for li in comparatif['lignes']])
+
+        import io as _io
+        buf = _io.BytesIO()
+        wb.save(buf)
+        resp = HttpResponse(buf.getvalue(), content_type=XLSX_CONTENT_TYPE)
+        resp['Content-Disposition'] = (
+            f'attachment; filename="liasse_consolidation_{cycle.id}.xlsx"')
+        return resp
 
 
 class LiasseRemonteeViewSet(_ComptaBaseViewSet):
@@ -8113,3 +8380,718 @@ class ImputationAxeViewSet(_ComptaBaseViewSet):
         if ligne:
             qs = qs.filter(ligne_ecriture_id=ligne)
         return qs
+
+
+# ── NTFIN20-25 — Allocations & comptabilité d'engagement (encumbrance) ─────
+
+class CleRepartitionViewSet(_ComptaBaseViewSet):
+    """Clés de répartition (NTFIN20). Company-scopé + action ``valider``."""
+    queryset = CleRepartition.objects.prefetch_related(
+        'lignes__centre_cout').all()
+    serializer_class = CleRepartitionSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['code']
+
+    @action(detail=True, methods=['get'],
+            permission_classes=[IsResponsableOrAdmin])
+    def valider(self, request, pk=None):
+        """NTFIN20 — vérifie Σ coefficients = 100 % (OK/400)."""
+        cle = self.get_object()
+        try:
+            services.valider_cle_repartition(cle)
+        except DjangoValidationError as exc:
+            return _err400(exc)
+        return Response({'valide': True,
+                         'total_coefficients': cle.total_coefficients})
+
+
+class LigneCleRepartitionViewSet(_ComptaBaseViewSet):
+    """Lignes (coefficients) d'une clé de répartition (NTFIN20)."""
+    queryset = LigneCleRepartition.objects.select_related(
+        'cle', 'centre_cout').all()
+    serializer_class = LigneCleRepartitionSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        cle = self.request.query_params.get('cle')
+        if cle:
+            qs = qs.filter(cle_id=cle)
+        return qs
+
+
+class RunAllocationViewSet(_ComptaBaseViewSet):
+    """Runs d'allocation (NTFIN21) : liste + ``executer`` + ``reverser``."""
+    queryset = RunAllocation.objects.select_related(
+        'cle', 'centre_source', 'referentiel', 'ecriture').all()
+    serializer_class = RunAllocationSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['periode', 'id']
+    http_method_names = ['get', 'post', 'head', 'options']
+
+    def get_permissions(self):
+        if self.action in ('executer', 'reverser'):
+            return [HasPermissionOrLegacy('compta_valider')()]
+        return super().get_permissions()
+
+    @action(detail=False, methods=['post'],
+            permission_classes=[HasPermissionOrLegacy('compta_valider')])
+    def executer(self, request):
+        """NTFIN21 — déverse un compte source vers les cibles d'une clé."""
+        company = request.user.company
+        data = request.data
+        cle = CleRepartition.objects.filter(
+            company=company, pk=data.get('cle')).first()
+        if cle is None:
+            return Response({'detail': 'Clé de répartition inconnue.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            periode = _parse_date(data.get('periode'))
+            centre_source = None
+            if data.get('centre_source'):
+                centre_source = CentreCout.objects.filter(
+                    company=company, pk=data.get('centre_source')).first()
+            referentiel = None
+            if data.get('referentiel'):
+                referentiel = ReferentielComptable.objects.filter(
+                    company=company, pk=data.get('referentiel')).first()
+            run = services.executer_allocation(
+                company, data.get('compte_source'), cle, periode,
+                referentiel=referentiel, montant=data.get('montant'),
+                centre_source=centre_source, created_by=request.user)
+        except (DjangoValidationError, ValueError, TypeError) as exc:
+            return _err400(exc)
+        return Response(RunAllocationSerializer(run).data,
+                        status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[HasPermissionOrLegacy('compta_valider')])
+    def reverser(self, request, pk=None):
+        """NTFIN21 — extourne une allocation exécutée."""
+        run = self.get_object()
+        try:
+            services.reverser_allocation(run, created_by=request.user)
+        except DjangoValidationError as exc:
+            return _err400(exc)
+        return Response(self.get_serializer(run).data)
+
+
+class AllocationRecurrenteViewSet(_ComptaBaseViewSet):
+    """Allocations récurrentes planifiées (NTFIN22)."""
+    queryset = AllocationRecurrente.objects.select_related(
+        'cle', 'centre_source', 'referentiel').all()
+    serializer_class = AllocationRecurrenteSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['prochaine_echeance', 'id']
+
+
+class EngagementComptableViewSet(_ComptaBaseViewSet):
+    """Engagements comptables — encumbrance (NTFIN23-24).
+
+    CRUD (création = engagement) + ``liquider`` (NTFIN23) + ``verifier-
+    disponible`` (NTFIN24, contrôle budget − engagé − réalisé).
+    """
+    queryset = EngagementComptable.objects.select_related(
+        'compte', 'centre_cout', 'referentiel').all()
+    serializer_class = EngagementComptableSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_engagement', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def get_permissions(self):
+        if self.action in ('liquider',):
+            return [HasPermissionOrLegacy('compta_valider')()]
+        return super().get_permissions()
+
+    def create(self, request, *args, **kwargs):
+        """NTFIN24 — refuse (400) un engagement qui dépasse un budget bloquant."""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        compte = serializer.validated_data.get('compte')
+        centre = serializer.validated_data.get('centre_cout')
+        montant = serializer.validated_data.get('montant_engage')
+        date_eng = serializer.validated_data.get('date_engagement')
+        check = services.verifier_disponible_engagement(
+            request.user.company, compte=compte, centre_cout=centre,
+            montant=montant, periode=date_eng)
+        if check['statut'] == 'blocage':
+            return Response(
+                {'detail': "Budget dépassé (contrôle bloquant) : "
+                           "engagement refusé.", 'controle': check},
+                status=status.HTTP_400_BAD_REQUEST)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED,
+                        headers=headers)
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[HasPermissionOrLegacy('compta_valider')])
+    def liquider(self, request, pk=None):
+        """NTFIN23 — liquide (consomme) une part de l'engagement."""
+        eng = self.get_object()
+        try:
+            services.liquider(eng, request.data.get('montant'))
+        except (DjangoValidationError, ValueError, TypeError) as exc:
+            return _err400(exc)
+        return Response(self.get_serializer(eng).data)
+
+    @action(detail=False, methods=['post'], url_path='verifier-disponible',
+            permission_classes=[IsResponsableOrAdmin])
+    def verifier_disponible(self, request):
+        """NTFIN24 — contrôle le disponible pour un montant projeté."""
+        company = request.user.company
+        data = request.data
+        compte = CompteComptable.objects.filter(
+            company=company, pk=data.get('compte')).first()
+        if compte is None:
+            return Response({'detail': 'Compte inconnu.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        centre = None
+        if data.get('centre_cout'):
+            centre = CentreCout.objects.filter(
+                company=company, pk=data.get('centre_cout')).first()
+        try:
+            periode = _parse_date(data.get('periode'))
+            check = services.verifier_disponible_engagement(
+                company, compte=compte, centre_cout=centre,
+                montant=data.get('montant') or 0, periode=periode)
+        except (ValueError, TypeError) as exc:
+            return _err400(exc)
+        return Response(check)
+
+
+# ── NTFIN26-34 — Close management (clôture rapide) ─────────────────────────
+
+class ModeleClotureViewSet(_ComptaBaseViewSet):
+    """Modèles de checklist de clôture (NTFIN26) + action ``seed``."""
+    queryset = ModeleCloture.objects.prefetch_related('taches').all()
+    serializer_class = ModeleClotureSerializer
+
+    @action(detail=False, methods=['post'],
+            permission_classes=[IsResponsableOrAdmin])
+    def seed(self, request):
+        """NTFIN26 — amorce un modèle de clôture mensuelle standard (idempotent)."""
+        modele = services.seed_modele_cloture_mensuel(request.user.company)
+        return Response(self.get_serializer(modele).data)
+
+
+class TacheClotureModeleViewSet(_ComptaBaseViewSet):
+    """Tâches-modèle d'une checklist de clôture (NTFIN26)."""
+    queryset = TacheClotureModele.objects.select_related('modele').all()
+    serializer_class = TacheClotureModeleSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        modele = self.request.query_params.get('modele')
+        if modele:
+            qs = qs.filter(modele_id=modele)
+        return qs
+
+
+class InstanceClotureViewSet(_ComptaBaseViewSet):
+    """Instances (workspaces) de clôture d'une période (NTFIN27)."""
+    queryset = InstanceCloture.objects.select_related(
+        'periode', 'modele').prefetch_related('taches').all()
+    serializer_class = InstanceClotureSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        periode = self.request.query_params.get('periode')
+        if periode:
+            qs = qs.filter(periode_id=periode)
+        return qs
+
+    @action(detail=False, methods=['post'],
+            permission_classes=[HasPermissionOrLegacy('compta_valider')])
+    def instancier(self, request):
+        """NTFIN27 — matérialise une checklist sur une période."""
+        company = request.user.company
+        periode = PeriodeComptable.objects.filter(
+            company=company, pk=request.data.get('periode')).first()
+        modele = ModeleCloture.objects.filter(
+            company=company, pk=request.data.get('modele')).first()
+        if periode is None or modele is None:
+            return Response({'detail': 'Période ou modèle inconnu.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        date_cible = request.data.get('date_cible')
+        try:
+            instance = services.instancier_cloture(
+                periode, modele,
+                date_cible=_parse_date(date_cible) if date_cible else None)
+        except DjangoValidationError as exc:
+            return _err400(exc)
+        return Response(self.get_serializer(instance).data,
+                        status=status.HTTP_201_CREATED)
+
+
+class TacheClotureViewSet(_ComptaBaseViewSet):
+    """Tâches concrètes d'une instance de clôture (NTFIN27) + ``cocher``."""
+    queryset = TacheCloture.objects.select_related(
+        'instance', 'assigne_a', 'fait_par').all()
+    serializer_class = TacheClotureSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['ordre', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        instance = self.request.query_params.get('instance')
+        if instance:
+            qs = qs.filter(instance_id=instance)
+        return qs
+
+    def get_permissions(self):
+        if self.action in ('cocher', 'generer_od'):
+            return [HasPermissionOrLegacy('compta_valider')()]
+        return super().get_permissions()
+
+    @action(detail=True, methods=['post'])
+    def cocher(self, request, pk=None):
+        """NTFIN27 — coche/actualise le statut d'une tâche de clôture."""
+        tache = self.get_object()
+        services.cocher_tache_cloture(
+            tache, user=request.user, statut=request.data.get('statut'),
+            piece_jointe_key=request.data.get('piece_jointe_key'))
+        return Response(self.get_serializer(tache).data)
+
+    @action(detail=True, methods=['post'], url_path='generer-od')
+    def generer_od(self, request, pk=None):
+        """NTFIN32 — génère une OD de clôture depuis un modèle et coche la tâche."""
+        tache = self.get_object()
+        modele = ModeleEcriture.objects.filter(
+            company=request.user.company, pk=request.data.get('modele'),
+            cloture=True).first()
+        if modele is None:
+            return Response(
+                {'detail': "Modèle de clôture inconnu (flag cloture requis)."},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            date_ecriture = _parse_date(request.data.get('date_ecriture'))
+            montants = request.data.get('montants') or None
+            ecriture, _ = services.generer_od_cloture(
+                tache, modele, date_ecriture=date_ecriture,
+                montants=montants, user=request.user)
+        except (DjangoValidationError, ValueError, TypeError) as exc:
+            return _err400(exc)
+        return Response({
+            'ecriture_id': ecriture.id,
+            'tache': self.get_serializer(tache).data,
+        }, status=status.HTTP_201_CREATED)
+
+
+class AccrualClotureViewSet(_ComptaBaseViewSet):
+    """Accruals de clôture (NTFIN29) + action ``poster`` (OD + extourne)."""
+    queryset = AccrualCloture.objects.select_related('periode').all()
+    serializer_class = AccrualClotureSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        periode = self.request.query_params.get('periode')
+        if periode:
+            qs = qs.filter(periode_id=periode)
+        return qs
+
+    def get_permissions(self):
+        if self.action in ('poster',):
+            return [HasPermissionOrLegacy('compta_valider')()]
+        return super().get_permissions()
+
+    @action(detail=True, methods=['post'])
+    def poster(self, request, pk=None):
+        """NTFIN29 — poste l'accrual + son extourne au 1er jour suivant."""
+        accrual = self.get_object()
+        try:
+            services.poster_accrual(accrual, user=request.user)
+        except DjangoValidationError as exc:
+            return _err400(exc)
+        return Response(self.get_serializer(accrual).data)
+
+
+class JustificationVariationViewSet(_ComptaBaseViewSet):
+    """Justifications de variations matérielles (NTFIN31)."""
+    queryset = JustificationVariation.objects.select_related(
+        'periode', 'auteur').all()
+    serializer_class = JustificationVariationSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        periode = self.request.query_params.get('periode')
+        if periode:
+            qs = qs.filter(periode_id=periode)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company,
+                        auteur=self.request.user)
+
+
+# ── NTFIN35-39 — Rapprochements de comptes de bilan (workflow 4 yeux) ──────
+
+class RapprochementCompteViewSet(_ComptaBaseViewSet):
+    """Rapprochements de comptes de bilan (NTFIN35) + workflow 4 yeux (NTFIN37).
+
+    Actions : ``ouvrir`` (NTFIN35/39, report N-1), ``recalculer`` (NTFIN36),
+    ``soumettre`` (préparateur), ``valider``/``rejeter`` (réviseur ≠
+    préparateur, 403 sinon).
+    """
+    queryset = RapprochementCompte.objects.select_related(
+        'compte', 'periode', 'preparateur', 'reviseur').prefetch_related(
+        'lignes').all()
+    serializer_class = RapprochementCompteSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        periode = self.request.query_params.get('periode')
+        if periode:
+            qs = qs.filter(periode_id=periode)
+        compte = self.request.query_params.get('compte')
+        if compte:
+            qs = qs.filter(compte_id=compte)
+        return qs
+
+    def get_permissions(self):
+        if self.action in ('soumettre', 'valider', 'rejeter', 'ouvrir'):
+            return [HasPermissionOrLegacy('compta_valider')()]
+        return super().get_permissions()
+
+    @action(detail=False, methods=['post'],
+            permission_classes=[HasPermissionOrLegacy('compta_valider')])
+    def ouvrir(self, request):
+        """NTFIN35/39 — ouvre un rapprochement (report des lignes permanentes N-1)."""
+        company = request.user.company
+        compte = CompteComptable.objects.filter(
+            company=company, pk=request.data.get('compte')).first()
+        periode = PeriodeComptable.objects.filter(
+            company=company, pk=request.data.get('periode')).first()
+        if compte is None or periode is None:
+            return Response({'detail': 'Compte ou période inconnu.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        rappr = services.ouvrir_rapprochement_compte(
+            company, compte, periode, solde_gl=request.data.get('solde_gl'))
+        return Response(self.get_serializer(rappr).data,
+                        status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[IsResponsableOrAdmin])
+    def recalculer(self, request, pk=None):
+        """NTFIN36 — recalcule solde justifié (Σ lignes) et écart."""
+        rappr = self.get_object()
+        services.recalculer_rapprochement_compte(rappr)
+        return Response(self.get_serializer(rappr).data)
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[HasPermissionOrLegacy('compta_valider')])
+    def soumettre(self, request, pk=None):
+        """NTFIN37 — le préparateur soumet à revue."""
+        rappr = self.get_object()
+        try:
+            services.soumettre_rapprochement_compte(rappr, user=request.user)
+        except DjangoValidationError as exc:
+            return _err400(exc)
+        return Response(self.get_serializer(rappr).data)
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[HasPermissionOrLegacy('compta_valider')])
+    def valider(self, request, pk=None):
+        """NTFIN37 — le réviseur valide (403 si = préparateur)."""
+        rappr = self.get_object()
+        try:
+            services.valider_rapprochement_compte(rappr, user=request.user)
+        except DjangoValidationError as exc:
+            msg = exc.messages[0] if getattr(exc, 'messages', None) else str(exc)
+            if 'Séparation des tâches' in msg:
+                return Response({'detail': msg},
+                                status=status.HTTP_403_FORBIDDEN)
+            return _err400(exc)
+        return Response(self.get_serializer(rappr).data)
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[HasPermissionOrLegacy('compta_valider')])
+    def rejeter(self, request, pk=None):
+        """NTFIN37 — le réviseur rejette (retour au préparateur)."""
+        rappr = self.get_object()
+        try:
+            services.rejeter_rapprochement_compte(
+                rappr, user=request.user, motif=request.data.get('motif', ''))
+        except DjangoValidationError as exc:
+            return _err400(exc)
+        return Response(self.get_serializer(rappr).data)
+
+
+class LigneJustificationCompteViewSet(_ComptaBaseViewSet):
+    """Lignes justificatives d'un rapprochement de compte (NTFIN36)."""
+    queryset = LigneJustificationCompte.objects.select_related(
+        'rapprochement').all()
+    serializer_class = LigneJustificationCompteSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        rappr = self.request.query_params.get('rapprochement')
+        if rappr:
+            qs = qs.filter(rapprochement_id=rappr)
+        return qs
+
+    def perform_create(self, serializer):
+        obj = serializer.save(company=self.request.user.company)
+        services.recalculer_rapprochement_compte(obj.rapprochement)
+
+    def perform_update(self, serializer):
+        obj = serializer.save(company=self.request.user.company)
+        services.recalculer_rapprochement_compte(obj.rapprochement)
+
+    def perform_destroy(self, instance):
+        rappr = instance.rapprochement
+        instance.delete()
+        services.recalculer_rapprochement_compte(rappr)
+
+
+# ── NTFIN40-45 — Immobilisations avancées ──────────────────────────────────
+
+class ComposantImmobilisationViewSet(_ComptaBaseViewSet):
+    """Composants d'immobilisation (NTFIN40) + action ``plans``."""
+    queryset = ComposantImmobilisation.objects.select_related(
+        'immobilisation').all()
+    serializer_class = ComposantImmobilisationSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        immo = self.request.query_params.get('immobilisation')
+        if immo:
+            qs = qs.filter(immobilisation_id=immo)
+        return qs
+
+    @action(detail=False, methods=['get'],
+            permission_classes=[IsResponsableOrAdmin])
+    def plans(self, request):
+        """NTFIN40 — plans par composant d'un actif (``?immobilisation=<id>``)."""
+        immo = Immobilisation.objects.filter(
+            company=request.user.company,
+            pk=request.query_params.get('immobilisation')).first()
+        if immo is None:
+            return Response({'detail': 'Immobilisation inconnue.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(selectors.plans_composants_immobilisation(immo))
+
+
+class DepreciationImmobilisationViewSet(_ComptaBaseViewSet):
+    """Tests de dépréciation d'immobilisation (NTFIN41) + ``poster``/``reprendre``."""
+    queryset = DepreciationImmobilisation.objects.select_related(
+        'immobilisation', 'ecriture').all()
+    serializer_class = DepreciationImmobilisationSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        immo = self.request.query_params.get('immobilisation')
+        if immo:
+            qs = qs.filter(immobilisation_id=immo)
+        return qs
+
+    def get_permissions(self):
+        if self.action in ('poster', 'reprendre'):
+            return [HasPermissionOrLegacy('compta_valider')()]
+        return super().get_permissions()
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[HasPermissionOrLegacy('compta_valider')])
+    def poster(self, request, pk=None):
+        """NTFIN41 — poste la dépréciation (si recouvrable < comptable)."""
+        dep = self.get_object()
+        try:
+            services.poster_depreciation_immobilisation(dep, user=request.user)
+        except DjangoValidationError as exc:
+            return _err400(exc)
+        return Response(self.get_serializer(dep).data)
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[HasPermissionOrLegacy('compta_valider')])
+    def reprendre(self, request, pk=None):
+        """NTFIN41 — reprise de dépréciation (valeur remontée)."""
+        dep = self.get_object()
+        try:
+            reprise = services.reprendre_depreciation_immobilisation(
+                dep, request.data.get('montant'),
+                user=request.user)
+        except (DjangoValidationError, ValueError, TypeError) as exc:
+            return _err400(exc)
+        return Response(self.get_serializer(reprise).data,
+                        status=status.HTTP_201_CREATED)
+
+
+class MutationImmobilisationViewSet(_ComptaBaseViewSet):
+    """Mutations/transferts d'immobilisation (NTFIN42)."""
+    queryset = MutationImmobilisation.objects.select_related(
+        'immobilisation', 'ancien_centre', 'nouveau_centre').all()
+    serializer_class = MutationImmobilisationSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        immo = self.request.query_params.get('immobilisation')
+        if immo:
+            qs = qs.filter(immobilisation_id=immo)
+        return qs
+
+
+class ImmobilisationEnCoursViewSet(_ComptaBaseViewSet):
+    """Immobilisations en cours (CIP, NTFIN43) + ``mettre-en-service``."""
+    queryset = ImmobilisationEnCours.objects.prefetch_related('lignes').all()
+    serializer_class = ImmobilisationEnCoursSerializer
+
+    def get_permissions(self):
+        if self.action == 'mettre_en_service':
+            return [HasPermissionOrLegacy('compta_valider')()]
+        return super().get_permissions()
+
+    @action(detail=True, methods=['post'], url_path='mettre-en-service',
+            permission_classes=[HasPermissionOrLegacy('compta_valider')])
+    def mettre_en_service(self, request, pk=None):
+        """NTFIN43 — transfère le CIP vers une immobilisation amortissable."""
+        encours = self.get_object()
+        date_mes = request.data.get('date_mise_en_service')
+        try:
+            immo = services.mettre_en_service_encours(
+                encours,
+                date_mise_en_service=_parse_date(date_mes) if date_mes else None,
+                user=request.user)
+        except (DjangoValidationError, ValueError, TypeError) as exc:
+            return _err400(exc)
+        encours.refresh_from_db()
+        return Response({
+            'encours': self.get_serializer(encours).data,
+            'immobilisation_id': immo.id if immo else None,
+        })
+
+
+class LigneImmobilisationEnCoursViewSet(_ComptaBaseViewSet):
+    """Lignes de montants engagés d'un CIP (NTFIN43)."""
+    queryset = LigneImmobilisationEnCours.objects.select_related(
+        'encours').all()
+    serializer_class = LigneImmobilisationEnCoursSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        encours = self.request.query_params.get('encours')
+        if encours:
+            qs = qs.filter(encours_id=encours)
+        return qs
+
+    def _recalculer_cumul(self, encours):
+        from django.db.models import Sum as _Sum
+        total = encours.lignes.aggregate(t=_Sum('montant'))['t'] or 0
+        from decimal import Decimal as _D
+        encours.montant_cumule = _D(str(total))
+        encours.save(update_fields=['montant_cumule', 'updated_at'])
+
+    def perform_create(self, serializer):
+        obj = serializer.save(company=self.request.user.company)
+        self._recalculer_cumul(obj.encours)
+
+    def perform_update(self, serializer):
+        obj = serializer.save(company=self.request.user.company)
+        self._recalculer_cumul(obj.encours)
+
+    def perform_destroy(self, instance):
+        encours = instance.encours
+        instance.delete()
+        self._recalculer_cumul(encours)
+
+
+# ── NTFIN46-48 — Reconnaissance du revenu IFRS 15 ──────────────────────────
+
+class ContratRevenuViewSet(_ComptaBaseViewSet):
+    """Contrats de revenu IFRS 15 (NTFIN46) + action ``allouer`` (NTFIN47)."""
+    queryset = ContratRevenu.objects.prefetch_related(
+        'obligations__echeances').all()
+    serializer_class = ContratRevenuSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id']
+
+    def get_permissions(self):
+        if self.action == 'allouer':
+            return [HasPermissionOrLegacy('compta_valider')()]
+        return super().get_permissions()
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[HasPermissionOrLegacy('compta_valider')])
+    def allouer(self, request, pk=None):
+        """NTFIN47 — alloue le prix de transaction au prorata des PVS."""
+        contrat = self.get_object()
+        try:
+            services.allouer_prix_transaction(contrat)
+        except DjangoValidationError as exc:
+            return _err400(exc)
+        contrat.refresh_from_db()
+        return Response(self.get_serializer(contrat).data)
+
+
+class ObligationPerformanceViewSet(_ComptaBaseViewSet):
+    """Obligations de performance (NTFIN46) + ``generer-echeancier`` (NTFIN48)."""
+    queryset = ObligationPerformance.objects.select_related(
+        'contrat').prefetch_related('echeances').all()
+    serializer_class = ObligationPerformanceSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        contrat = self.request.query_params.get('contrat')
+        if contrat:
+            qs = qs.filter(contrat_id=contrat)
+        return qs
+
+    def get_permissions(self):
+        if self.action == 'generer_echeancier':
+            return [HasPermissionOrLegacy('compta_valider')()]
+        return super().get_permissions()
+
+    @action(detail=True, methods=['post'], url_path='generer-echeancier',
+            permission_classes=[HasPermissionOrLegacy('compta_valider')])
+    def generer_echeancier(self, request, pk=None):
+        """NTFIN48 — génère l'échéancier de reconnaissance de l'obligation."""
+        obligation = self.get_object()
+        try:
+            echeances = services.generer_echeancier_reconnaissance(obligation)
+        except DjangoValidationError as exc:
+            return _err400(exc)
+        return Response(
+            EcheancierReconnaissanceSerializer(echeances, many=True).data,
+            status=status.HTTP_201_CREATED)
+
+
+class EcheancierReconnaissanceViewSet(_ComptaBaseViewSet):
+    """Échéances de reconnaissance (NTFIN48) + action ``reconnaitre``."""
+    queryset = EcheancierReconnaissance.objects.select_related(
+        'obligation', 'ecriture').all()
+    serializer_class = EcheancierReconnaissanceSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        obligation = self.request.query_params.get('obligation')
+        if obligation:
+            qs = qs.filter(obligation_id=obligation)
+        return qs
+
+    def get_permissions(self):
+        if self.action == 'reconnaitre':
+            return [HasPermissionOrLegacy('compta_valider')()]
+        return super().get_permissions()
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[HasPermissionOrLegacy('compta_valider')])
+    def reconnaitre(self, request, pk=None):
+        """NTFIN48 — reconnaît l'échéance (solde le produit constaté d'avance)."""
+        echeance = self.get_object()
+        try:
+            services.reconnaitre_echeance(echeance, user=request.user)
+        except DjangoValidationError as exc:
+            return _err400(exc)
+        return Response(self.get_serializer(echeance).data)

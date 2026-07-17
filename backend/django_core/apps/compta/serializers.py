@@ -61,6 +61,16 @@ from .models import (
     OperationInterco, EcritureElimination, MargeInterneStock,
     EliminationTitres,
     ReferentielComptable, AjustementGaap, AxeAnalytique, ImputationAxe,
+    CleRepartition, LigneCleRepartition, RunAllocation, AllocationRecurrente,
+    EngagementComptable,
+    ModeleCloture, TacheClotureModele, InstanceCloture, TacheCloture,
+    AccrualCloture, JustificationVariation,
+    RapprochementCompte, LigneJustificationCompte,
+    ComposantImmobilisation, DepreciationImmobilisation,
+    MutationImmobilisation, ImmobilisationEnCours,
+    LigneImmobilisationEnCours,
+    ContratRevenu, ObligationPerformance, EcheancierReconnaissance,
+    EtapeAuditConsolidation,
 )
 
 
@@ -2821,3 +2831,357 @@ class ImputationAxeSerializer(serializers.ModelSerializer):
 
     def validate_centre_cout(self, value):
         return _meme_societe(self, value, 'Centre de coût')
+
+
+# ── NTFIN20-25 — Allocations & engagement (encumbrance) ────────────────────
+
+class LigneCleRepartitionSerializer(serializers.ModelSerializer):
+    """NTFIN20 — Coefficient d'une cible dans une clé de répartition."""
+    centre_code = serializers.CharField(
+        source='centre_cout.code', read_only=True)
+
+    class Meta:
+        model = LigneCleRepartition
+        fields = [
+            'id', 'cle', 'centre_cout', 'centre_code', 'coefficient',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+    def validate_centre_cout(self, value):
+        return _meme_societe(self, value, 'Centre de coût')
+
+
+class CleRepartitionSerializer(serializers.ModelSerializer):
+    """NTFIN20 — Clé de répartition (base d'allocation)."""
+    lignes = LigneCleRepartitionSerializer(many=True, read_only=True)
+    total_coefficients = serializers.DecimalField(
+        max_digits=9, decimal_places=4, read_only=True)
+    type_display = serializers.CharField(
+        source='get_type_cle_display', read_only=True)
+
+    class Meta:
+        model = CleRepartition
+        fields = [
+            'id', 'code', 'libelle', 'type_cle', 'type_display', 'base',
+            'actif', 'lignes', 'total_coefficients',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+
+class RunAllocationSerializer(serializers.ModelSerializer):
+    """NTFIN21 — Run d'allocation (déversement)."""
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = RunAllocation
+        fields = [
+            'id', 'cle', 'compte_source', 'centre_source', 'referentiel',
+            'periode', 'montant_reparti', 'ecriture', 'statut',
+            'statut_display', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'montant_reparti', 'ecriture', 'statut', 'created_at', 'updated_at']
+
+    def validate_cle(self, value):
+        return _meme_societe(self, value, 'Clé de répartition')
+
+
+class AllocationRecurrenteSerializer(serializers.ModelSerializer):
+    """NTFIN22 — Allocation récurrente planifiée."""
+    class Meta:
+        model = AllocationRecurrente
+        fields = [
+            'id', 'cle', 'libelle', 'compte_source', 'centre_source',
+            'referentiel', 'periodicite', 'prochaine_echeance', 'actif',
+            'derniere_generation', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['derniere_generation', 'created_at', 'updated_at']
+
+    def validate_cle(self, value):
+        return _meme_societe(self, value, 'Clé de répartition')
+
+
+class EngagementComptableSerializer(serializers.ModelSerializer):
+    """NTFIN23 — Engagement comptable (encumbrance)."""
+    montant_residuel = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    type_display = serializers.CharField(
+        source='get_type_engagement_display', read_only=True)
+
+    class Meta:
+        model = EngagementComptable
+        fields = [
+            'id', 'referentiel', 'type_engagement', 'type_display',
+            'source_type', 'source_id', 'reference', 'compte', 'centre_cout',
+            'libelle', 'montant_engage', 'montant_liquide', 'montant_residuel',
+            'date_engagement', 'statut', 'statut_display',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'montant_liquide', 'statut', 'created_at', 'updated_at']
+
+    def validate_compte(self, value):
+        return _meme_societe(self, value, 'Compte')
+
+
+# ── NTFIN26-34 — Close management (clôture) ────────────────────────────────
+
+class TacheClotureModeleSerializer(serializers.ModelSerializer):
+    """NTFIN26 — Tâche-modèle d'une checklist de clôture."""
+    class Meta:
+        model = TacheClotureModele
+        fields = [
+            'id', 'modele', 'libelle', 'ordre', 'role_responsable',
+            'obligatoire', 'categorie', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+
+class ModeleClotureSerializer(serializers.ModelSerializer):
+    """NTFIN26 — Modèle de checklist de clôture."""
+    taches = TacheClotureModeleSerializer(many=True, read_only=True)
+    periodicite_display = serializers.CharField(
+        source='get_periodicite_display', read_only=True)
+
+    class Meta:
+        model = ModeleCloture
+        fields = [
+            'id', 'libelle', 'periodicite', 'periodicite_display', 'actif',
+            'taches', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+
+class TacheClotureSerializer(serializers.ModelSerializer):
+    """NTFIN27 — Tâche concrète d'une instance de clôture."""
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = TacheCloture
+        fields = [
+            'id', 'instance', 'libelle', 'ordre', 'obligatoire', 'categorie',
+            'statut', 'statut_display', 'assigne_a', 'fait_par', 'fait_le',
+            'piece_jointe_key', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'fait_par', 'fait_le', 'created_at', 'updated_at']
+
+
+class InstanceClotureSerializer(serializers.ModelSerializer):
+    """NTFIN27 — Instance (workspace) de clôture d'une période."""
+    taches = TacheClotureSerializer(many=True, read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = InstanceCloture
+        fields = [
+            'id', 'periode', 'modele', 'statut', 'statut_display',
+            'date_cible', 'taches', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['statut', 'created_at', 'updated_at']
+
+
+class AccrualClotureSerializer(serializers.ModelSerializer):
+    """NTFIN29 — Accrual de clôture (charge/produit à recevoir)."""
+    type_display = serializers.CharField(
+        source='get_type_accrual_display', read_only=True)
+
+    class Meta:
+        model = AccrualCloture
+        fields = [
+            'id', 'periode', 'type_accrual', 'type_display',
+            'compte_charge_produit', 'compte_contrepartie', 'montant',
+            'libelle', 'source_type', 'source_id', 'ecriture',
+            'ecriture_extourne', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'ecriture', 'ecriture_extourne', 'created_at', 'updated_at']
+
+
+class JustificationVariationSerializer(serializers.ModelSerializer):
+    """NTFIN31 — Justification d'une variation matérielle."""
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = JustificationVariation
+        fields = [
+            'id', 'periode', 'compte', 'montant_variation', 'commentaire',
+            'statut', 'statut_display', 'auteur', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['auteur', 'created_at', 'updated_at']
+
+
+# ── NTFIN35-39 — Rapprochements de comptes de bilan ────────────────────────
+
+class LigneJustificationCompteSerializer(serializers.ModelSerializer):
+    """NTFIN36 — Ligne justificative d'un rapprochement de compte."""
+    class Meta:
+        model = LigneJustificationCompte
+        fields = [
+            'id', 'rapprochement', 'libelle', 'montant', 'type_element',
+            'source_type', 'source_id', 'permanente',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+
+class RapprochementCompteSerializer(serializers.ModelSerializer):
+    """NTFIN35 — Rapprochement d'un compte de bilan."""
+    lignes = LigneJustificationCompteSerializer(many=True, read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    compte_numero = serializers.CharField(
+        source='compte.numero', read_only=True)
+
+    class Meta:
+        model = RapprochementCompte
+        fields = [
+            'id', 'compte', 'compte_numero', 'periode', 'solde_gl',
+            'solde_justifie', 'ecart', 'statut', 'statut_display',
+            'preparateur', 'reviseur', 'date_soumission', 'date_validation',
+            'commentaire', 'lignes', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'solde_justifie', 'ecart', 'statut', 'preparateur', 'reviseur',
+            'date_soumission', 'date_validation', 'created_at', 'updated_at']
+
+    def validate_compte(self, value):
+        return _meme_societe(self, value, 'Compte')
+
+
+# ── NTFIN40-45 — Immobilisations avancées ──────────────────────────────────
+
+class ComposantImmobilisationSerializer(serializers.ModelSerializer):
+    """NTFIN40 — Composant amortissable d'un actif (IAS 16)."""
+    dotation_annuelle = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = ComposantImmobilisation
+        fields = [
+            'id', 'immobilisation', 'libelle', 'valeur',
+            'duree_amortissement', 'methode', 'dotation_annuelle',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+
+class DepreciationImmobilisationSerializer(serializers.ModelSerializer):
+    """NTFIN41 — Test de dépréciation d'immobilisation (IAS 36)."""
+    class Meta:
+        model = DepreciationImmobilisation
+        fields = [
+            'id', 'immobilisation', 'date_test', 'valeur_recuperable',
+            'valeur_comptable', 'perte_valeur', 'reversible', 'reprise',
+            'ecriture', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'perte_valeur', 'reprise', 'ecriture', 'created_at', 'updated_at']
+
+
+class MutationImmobilisationSerializer(serializers.ModelSerializer):
+    """NTFIN42 — Mutation/transfert d'immobilisation."""
+    class Meta:
+        model = MutationImmobilisation
+        fields = [
+            'id', 'immobilisation', 'ancien_centre', 'nouveau_centre',
+            'entite_source', 'entite_cible', 'date', 'motif',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+
+class LigneImmobilisationEnCoursSerializer(serializers.ModelSerializer):
+    """NTFIN43 — Montant engagé cumulé sur un CIP."""
+    class Meta:
+        model = LigneImmobilisationEnCours
+        fields = [
+            'id', 'encours', 'libelle', 'montant', 'date', 'source_type',
+            'source_id', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+
+class ImmobilisationEnCoursSerializer(serializers.ModelSerializer):
+    """NTFIN43 — Immobilisation en cours (CIP)."""
+    lignes = LigneImmobilisationEnCoursSerializer(many=True, read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = ImmobilisationEnCours
+        fields = [
+            'id', 'libelle', 'compte_encours', 'montant_cumule', 'statut',
+            'statut_display', 'date_mise_en_service', 'immobilisation',
+            'lignes', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'montant_cumule', 'statut', 'date_mise_en_service',
+            'immobilisation', 'created_at', 'updated_at']
+
+
+# ── NTFIN46-56 — IFRS 15 & états consolidés ────────────────────────────────
+
+class EcheancierReconnaissanceSerializer(serializers.ModelSerializer):
+    """NTFIN48 — Échéance de reconnaissance du revenu."""
+    class Meta:
+        model = EcheancierReconnaissance
+        fields = [
+            'id', 'obligation', 'date', 'montant_a_reconnaitre', 'statut',
+            'ecriture', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['statut', 'ecriture', 'created_at', 'updated_at']
+
+
+class ObligationPerformanceSerializer(serializers.ModelSerializer):
+    """NTFIN46 — Obligation de performance d'un contrat de revenu."""
+    echeances = EcheancierReconnaissanceSerializer(many=True, read_only=True)
+    montant_reconnu = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True)
+    methode_display = serializers.CharField(
+        source='get_methode_reconnaissance_display', read_only=True)
+
+    class Meta:
+        model = ObligationPerformance
+        fields = [
+            'id', 'contrat', 'libelle', 'prix_vente_specifique',
+            'prix_alloue', 'methode_reconnaissance', 'methode_display',
+            'duree_mois', 'date_debut', 'statut', 'montant_facture',
+            'montant_reconnu', 'echeances', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['prix_alloue', 'created_at', 'updated_at']
+
+
+class ContratRevenuSerializer(serializers.ModelSerializer):
+    """NTFIN46 — Contrat de revenu (IFRS 15)."""
+    obligations = ObligationPerformanceSerializer(many=True, read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = ContratRevenu
+        fields = [
+            'id', 'reference', 'libelle', 'client_id', 'client_nom',
+            'source_devis_ref', 'montant_transaction', 'devise', 'statut',
+            'statut_display', 'obligations', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+
+class EtapeAuditConsolidationSerializer(serializers.ModelSerializer):
+    """NTFIN55 — Maillon d'audit d'une étape de consolidation."""
+    class Meta:
+        model = EtapeAuditConsolidation
+        fields = [
+            'id', 'cycle', 'etape', 'acteur', 'sequence', 'hash_snapshot',
+            'hash_precedent', 'hash', 'detail', 'created_at',
+        ]
+        read_only_fields = fields
