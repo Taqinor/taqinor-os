@@ -1833,6 +1833,31 @@ each for Lydec/Redal/Amendis).
 
 ## DONE LOG (agent appends one plain-language line per completed task)
 
+### 2026-07-17 — Fix-forward après revue adversariale Fable (WJ122-126)
+Une passe Fable (autorisée — batch de constantes physiques/tarifaires client-facing) a trouvé
+des défauts réels après le merge de PR #432 ; corrigés en fix-forward (`main` reste revertable) :
+- **surfaceToitureM2 (finding 2, corrigé) :** n'envoie plus la surface au sol/ombrière comme
+  surface de TOIT (le backend distingue le sol, webhooks.py:303-304) — gaté à bac_acier/terrasse.
+- **Champs industriels non gatés (finding 6, corrigé) :** cosPhiConnu/groupeKva/dieselDhMois/
+  surfaceToitureM2/ombriere/terrain gatés au mode industriel (des valeurs de session périmées ne
+  peuvent plus accompagner un lead résidentiel/agricole) ; `weekend` envoyé uniquement si coché
+  (plus de « faux non » affirmatif).
+- **Proposition commerciale (finding 4, corrigé) :** la courbe et le simulateur batterie se
+  basent désormais sur `mode_installation` (QX49) et non `inst_type` — un devis commercial
+  retrouve les variantes été/Ramadan + le simulateur batterie (que le libellé combiné
+  « Industrielle / Commerciale » lui retirait).
+- **Ligne injection (finding 5, corrigé) :** porte maintenant la mention tarifaire ANRE
+  obligatoire (fenêtre 03/2026–02/2027, plafond en révision).
+- **GATED — SUIVI BACKEND (findings 1 & 3, hors périmètre web) :** `regionAgricole` (WJ124) et
+  `estimateShown.bassinM3` (WJ124) sont ÉMIS par le site mais le webhook QX51
+  (`crm/webhooks.py _extract_web_questionnaire` / `_ESTIMATE_SHOWN_KEYS`) ne les PERSISTE PAS —
+  la région (qui pilote la série ET0 derrière le dimensionnement pompe/m³-jour) et le bassin sont
+  perdus côté CRM. **À AJOUTER PAR UN RUN BACKEND/PLATEFORME** (une ligne `_choice`/`_num` dans la
+  whitelist QX51 pour `region_agricole` + `bassin_m3`), et **trancher la convention bassin**
+  (site = 1× besoin de pointe vs proposition backend = 2× ≈ 2 jours d'autonomie). Émission
+  laissée en place (compat ascendante, ignorée sans dommage jusqu'à l'ajout backend). Un web run
+  ne peut pas éditer le backend.
+
 ### 2026-07-17 — WJ122/123/124/126 unblocked & shipped (QX43-52 landed on main, batch 1)
 - **WJ122 (web-journey):** le mode « commercial » a désormais SON PROPRE panneau étape-2 (`mt-sub-commercial`) : cartes catégorie (10, pictos) → 2-4 questions spécifiques par catégorie + facture MAD⇄kWh. Nouveau `lib/commercialCategories.ts` = port VERBATIM de QX44 (`solar.js:87-186`, commenté SOURCE) : catégories, `COMMERCIAL_DAY_SHARE` (bureau 80 % vs hôtel 55 %), questions. `estimatorPro.ts` prend `categorieCommerciale` → hôtel ≠ bureau à facture égale. Payload → whitelist QX51 (clés camelCase `categorieCommerciale`+réponses) ajoutées à `lead.ts` (interface + `validateLead`, jamais silencieusement droppées ; `temperatureConsigne` accepte le négatif). FR/EN/AR. Tests parité + hôtel<bureau + traversée validateLead.
 - **WJ123 (web-journey):** panneau INDUSTRIEL v2 : cartes de régime d'équipes (`equipes` = 1x8/2x8/3x8/continu, aligné sur le webhook) + toggle `weekend` séparé → PLAFOND d'autoconsommation honnête (`SHIFT_DAY_SHARE_CEILING` 1x8 0.775 / 2x8 0.625 / 3x8+continu 0.325, première occurrence chiffrée, cité « recherche 2026-07-16 à vérifier fondateur ») : un 3x8 ne montre plus l'autoconso d'un bureau. Champs kVA/diesel/cos φ/surface. Nouveau `lib/constants82_21.ts` = miroir QX50 (tarifs ANRE 0.21/0.18, plafond 20 %, MENTION obligatoire) ; ligne injection OFF par défaut (`enableInjection`), absente du parcours public gaté. Payload `equipes/weekend/cosPhiConnu/groupeKva/dieselDhMois/surfaceToitureM2/ombriere/terrain` → `lead.ts`. FR/EN/AR. Tests plafonds monotones + injection.

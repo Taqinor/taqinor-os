@@ -373,6 +373,10 @@ export interface ValidatedLead {
   fuelSpendMad?: number;
   // — WJ124 : région agronomique (8 zones FAO) — pilote le moteur eau agricole
   //   (agronomy.ts) quand le débit/HMT n'est pas connu. Même discipline WJ30.
+  //   NOTE (revue 2026-07-17) : émise dès aujourd'hui (compat ascendante) mais le
+  //   webhook QX51 ne la PERSISTE PAS encore (aucun champ region_agricole dans
+  //   crm/webhooks.py `_extract_web_questionnaire`) — champ agricole hors du
+  //   périmètre commercial/industriel de QX51 ; en attente d'un ajout backend.
   regionAgricole?: RegionAgricoleId;
   // — WJ122 : mode COMMERCIAL — catégorie + réponses par catégorie (facultatives,
   //   validées une à une, écartées si malformées, jamais bloquantes). Les clés
