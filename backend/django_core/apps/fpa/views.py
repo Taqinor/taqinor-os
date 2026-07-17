@@ -5,16 +5,16 @@ from rest_framework.response import Response
 from core.mixins import TenantMixin
 
 from .models import (
-    CycleBudgetaire, Departement, HypotheseRecrutement,
+    CommentaireVariance, CycleBudgetaire, Departement, HypotheseRecrutement,
     LigneBudgetDepartement, LignePrevisionGlissante, LigneScenario,
     PrevisionGlissante, ScenarioBudgetaire, SoumissionBudgetDepartement,
 )
 from .serializers import (
-    CycleBudgetaireSerializer, DepartementSerializer,
-    HypotheseRecrutementSerializer, LigneBudgetDepartementSerializer,
-    LignePrevisionGlissanteSerializer, LigneScenarioSerializer,
-    PrevisionGlissanteSerializer, ScenarioBudgetaireSerializer,
-    SoumissionBudgetDepartementSerializer,
+    CommentaireVarianceSerializer, CycleBudgetaireSerializer,
+    DepartementSerializer, HypotheseRecrutementSerializer,
+    LigneBudgetDepartementSerializer, LignePrevisionGlissanteSerializer,
+    LigneScenarioSerializer, PrevisionGlissanteSerializer,
+    ScenarioBudgetaireSerializer, SoumissionBudgetDepartementSerializer,
 )
 
 
@@ -383,6 +383,25 @@ class VarianceViewSet(viewsets.ViewSet):
                 for k, v in r.items()
             })
         return Response(payload)
+
+
+class CommentaireVarianceViewSet(TenantMixin, viewsets.ModelViewSet):
+    """NTFPA20 — commentaires de variance (un par cellule, historique complet)."""
+
+    queryset = CommentaireVariance.objects.select_related('auteur').all()
+    serializer_class = CommentaireVarianceSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        for champ in ('cycle', 'departement', 'categorie', 'mois'):
+            if val := params.get(champ):
+                qs = qs.filter(**{champ: val})
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company, auteur=self.request.user)
 
 
 class DriversViewSet(viewsets.ViewSet):

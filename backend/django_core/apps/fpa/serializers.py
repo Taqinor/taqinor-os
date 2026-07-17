@@ -1,9 +1,9 @@
 from rest_framework import serializers
 
 from .models import (
-    CycleBudgetaire, Departement, HypotheseRecrutement, LigneBudgetDepartement,
-    LignePrevisionGlissante, LigneScenario, PrevisionGlissante,
-    ScenarioBudgetaire, SoumissionBudgetDepartement,
+    CommentaireVariance, CycleBudgetaire, Departement, HypotheseRecrutement,
+    LigneBudgetDepartement, LignePrevisionGlissante, LigneScenario,
+    PrevisionGlissante, ScenarioBudgetaire, SoumissionBudgetDepartement,
 )
 
 
@@ -117,3 +117,21 @@ class ScenarioBudgetaireSerializer(serializers.ModelSerializer):
             'est_scenario_base', 'date_creation', 'lignes',
         ]
         read_only_fields = ['id', 'company', 'date_creation']
+
+
+class CommentaireVarianceSerializer(serializers.ModelSerializer):
+    auteur_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CommentaireVariance
+        fields = [
+            'id', 'company', 'cycle', 'departement', 'categorie', 'mois',
+            'auteur', 'auteur_nom', 'texte', 'cree_le',
+        ]
+        read_only_fields = ['id', 'company', 'auteur', 'auteur_nom', 'cree_le']
+
+    def get_auteur_nom(self, obj):
+        if obj.auteur_id:
+            return (getattr(obj.auteur, 'get_full_name', lambda: '')()
+                    or obj.auteur.username)
+        return ''

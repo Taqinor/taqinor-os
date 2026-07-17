@@ -498,3 +498,37 @@ class LigneScenario(models.Model):
 
     def __str__(self):
         return f'{self.scenario_id} — {self.categorie or self.ligne_budget_id}'
+
+
+class CommentaireVariance(models.Model):
+    """NTFPA20 — Explication traçable (qui, quand, pourquoi) d'un écart de
+    variance, rattachée à une cellule (cycle+département+catégorie+mois)."""
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='fpa_commentaires_variance', verbose_name='Société',
+    )
+    cycle = models.ForeignKey(
+        CycleBudgetaire, on_delete=models.CASCADE,
+        related_name='commentaires_variance', verbose_name='Cycle budgétaire',
+    )
+    departement = models.ForeignKey(
+        Departement, on_delete=models.CASCADE,
+        related_name='commentaires_variance', verbose_name='Département',
+    )
+    categorie = models.CharField(
+        max_length=20, choices=Categorie.choices, verbose_name='Catégorie')
+    mois = models.PositiveSmallIntegerField(verbose_name='Mois (1-12)')
+    auteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='fpa_commentaires_variance', verbose_name='Auteur',
+    )
+    texte = models.TextField(verbose_name='Explication')
+    cree_le = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Commentaire de variance'
+        ordering = ['-cree_le']
+
+    def __str__(self):
+        return f'{self.departement_id}/{self.categorie}/M{self.mois} — {self.cree_le:%Y-%m-%d}'
