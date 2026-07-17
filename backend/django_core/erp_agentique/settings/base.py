@@ -196,6 +196,15 @@ INSTALLED_APPS = [
     # décennale, multirisque, cyber, homme-clé) ; distinct des polices/sinistres
     # véhicule (flotte) et des cautions bancaires marché (compta).
     'apps.assurances',
+    # Groupe NTADM — Administration enterprise. `apps.entites` : hiérarchie
+    # d'entités intra-tenant (holding/filiale/agence), additive, aucun modèle
+    # métier existant ne la référence encore (NTADM2 hors périmètre).
+    'apps.entites',
+    # Groupe NTADM — `apps.adminops` : health score, licences/sièges
+    # (lecture), sandbox, packages de config, adoption, annonces produit,
+    # diagnostic/support. Regroupe plusieurs sous-domaines admin plutôt que
+    # de créer 5+ micro-apps.
+    'apps.adminops',
     # NTEDU1 — Éducation (établissement scolaire) : structure année/niveau/
     # classe, dossier famille/élève, inscriptions (liste d'attente), scolarité
     # (grille tarifaire/remises/échéancier), présences, matières. Additive,
@@ -798,6 +807,14 @@ CELERY_TASK_ROUTES = {
     'credit.recalculer_encours_quotidien': {'queue': 'scheduled'},
     # NTSAN31 — alerte J-7 avant expiration d'une PriseEnCharge santé.
     'sante.alertes_prise_en_charge_expirant': {'queue': 'scheduled'},
+    # NTADM10/11/16/35/36/38 — jobs adminops planifiés (sandbox clone/purge/
+    # rappel, health score, purge packages/usage).
+    'adminops.cloner_sandbox': {'queue': 'scheduled'},
+    'adminops.purger_sandbox_expires': {'queue': 'scheduled'},
+    'adminops.rappeler_sandbox_a_expirer': {'queue': 'scheduled'},
+    'adminops.recalculer_health_score_tenants': {'queue': 'scheduled'},
+    'adminops.purger_config_packages_anciens': {'queue': 'scheduled'},
+    'adminops.purger_evenements_usage': {'queue': 'scheduled'},
     # NTEDU22 — matérialisation hebdomadaire des séances (emploi du temps).
     'education.generer_seances_semaine': {'queue': 'scheduled'},
     # NTIDE40 — digest feedback produit non-lu, gated par société.
