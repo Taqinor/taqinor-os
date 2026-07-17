@@ -5,6 +5,47 @@ from django.utils import timezone
 from .models import CycleBudgetaire, SoumissionBudgetDepartement
 
 
+def notifier_ouverture_cycle(cycle):
+    """NTFPA28 — à l'ouverture d'un cycle en saisie, notifie chaque responsable
+    de département ACTIF (best-effort, réutilise ``notifications.notify``)."""
+    from .models import Departement
+
+    company = cycle.company
+    responsables = (
+        Departement.objects
+        .filter(company=company, actif=True, responsable__isnull=False)
+        .values_list('responsable', flat=True).distinct())
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
+    for user in User.objects.filter(pk__in=list(responsables)):
+        try:
+            from apps.notifications.services import notify
+            # Réutilise un EventType existant (annonce interne) — l'ajout d'un
+            # type FP&A dédié dans apps/notifications est hors périmètre.
+            notify(user, 'annonce_published',
+                   title=f'Saisie budgétaire ouverte — {cycle.nom}',
+                   body='Vous pouvez saisir le budget de votre département.',
+                   company=company)
+        except Exception:  # noqa: BLE001 — best-effort
+            continue
+
+
+def _utilisateurs_valideurs_fpa(company):
+    """NTFPA28 — utilisateurs habilités à valider (``fpa_valider``) ou, à
+    défaut, le palier Administrateur/Directeur (repli)."""
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
+    valideurs = []
+    for user in User.objects.filter(company=company, is_active=True):
+        try:
+            if user.has_erp_permission('fpa_valider') or \
+                    getattr(user, 'is_admin_role', False):
+                valideurs.append(user)
+        except Exception:
+            continue
+    return valideurs
+
+
 def _get_or_creer_soumission(company, cycle, departement):
     soumission, _ = SoumissionBudgetDepartement.objects.get_or_create(
         company=company, cycle=cycle, departement=departement,
@@ -35,6 +76,20 @@ def soumettre_budget_departement(company, cycle, departement, user):
         soumission, user,
         f'Budget soumis pour validation ({departement.nom}, {cycle.nom}).',
         company=company)
+
+    # NTFPA28 — notifie les valideurs FP&A (best-effort).
+    for valideur in _utilisateurs_valideurs_fpa(company):
+        try:
+            from apps.notifications.services import notify
+            # EventType existant (approbation demandée) — pas d'ajout hors
+            # périmètre dans apps/notifications.
+            notify(valideur, 'approval_requested',
+                   title=f'Budget à valider — {departement.nom}',
+                   body=f'Le budget de {departement.nom} ({cycle.nom}) '
+                        'est soumis pour validation.',
+                   company=company)
+        except Exception:  # noqa: BLE001 — best-effort
+            continue
 
     return soumission
 

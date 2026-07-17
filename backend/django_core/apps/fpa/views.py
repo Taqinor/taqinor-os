@@ -74,6 +74,8 @@ class CycleBudgetaireViewSet(TenantMixin, viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST)
         cycle.statut = CycleBudgetaire.Statut.OUVERT_SAISIE
         cycle.save(update_fields=['statut'])
+        from .services import notifier_ouverture_cycle
+        notifier_ouverture_cycle(cycle)
         return Response(CycleBudgetaireSerializer(cycle).data)
 
     @action(detail=True, methods=['post'], url_path='clore')
