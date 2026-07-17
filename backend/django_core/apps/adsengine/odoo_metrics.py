@@ -177,6 +177,124 @@ def _attribute_per_campaign(company, deals, since=None):
             'attributed': attributed, 'unattributed': unattributed}
 
 
+def _phone_to_ad(company):
+    """ADSDEEP20 — Carte ``{phone_key: ad_id}`` des leads Meta miroités par AD.
+
+    Lue depuis ``MetaLeadMirror`` (ADSDEEP17 — clé ``phone_key`` normalisée QW10,
+    la MÊME que ``deal['phone_norm']``). Le premier lead vu pour un téléphone
+    gagne (déterministe). Descend l'attribution Odoo AU NIVEAU AD (dd-attribution
+    §e) — sous le niveau campagne d'``_phone_to_campaign``."""
+    from .models import MetaLeadMirror
+
+    mapping = {}
+    qs = (MetaLeadMirror.objects
+          .filter(company=company)
+          .exclude(phone_key='').exclude(ad_id=''))
+    for m in qs:
+        if m.phone_key not in mapping:
+            mapping[m.phone_key] = m.ad_id
+    return mapping
+
+
+def _ad_spend_by_meta(company, ad_meta_ids, since=None):
+    """``{ad_meta_id: Decimal}`` de dépense RÉELLE par ad (``InsightSnapshot`` sur
+    ``AdMirror`` — peuplé par la synchro ad-level ADSDEEP2). Bornée société +
+    ``date >= since``."""
+    from .models import AdMirror
+
+    ad_meta_ids = [str(a) for a in ad_meta_ids]
+    if not ad_meta_ids:
+        return {}
+    ads = list(AdMirror.objects.filter(
+        company=company, meta_id__in=ad_meta_ids).only('id', 'meta_id'))
+    pk_to_meta = {a.pk: a.meta_id for a in ads}
+    if not pk_to_meta:
+        return {}
+    ct = ContentType.objects.get_for_model(AdMirror)
+    qs = InsightSnapshot.objects.filter(
+        company=company, content_type=ct, object_id__in=list(pk_to_meta))
+    since_date = _as_date(since)
+    if since_date is not None:
+        qs = qs.filter(date__gte=since_date)
+    rows = qs.values('object_id').annotate(spend=Sum('spend'))
+    return {pk_to_meta[r['object_id']]: (r['spend'] or Decimal('0'))
+            for r in rows}
+
+
+def odoo_signatures_by_ad(company, since=None, client=None):
+    """ADSDEEP20 — Signatures Odoo attribuées PAR AD (match téléphone) + coût-
+    par-signature par ad (dépense ad RÉELLE ADSDEEP2).
+
+    Descend l'attribution phone-match (deal signé → ``phone_key`` → MetaLeadMirror
+    → ``ad_id``) au niveau AD. Renvoie ::
+
+        {
+          'configured': bool,
+          'ads': [ {ad_id, ad_name, signatures, signed_phones, deal_ids,
+                    spend, cost_per_signature}, ... ],
+          'attributed': int, 'unattributed': int, 'note': str,
+          'odoo_error': str,   # seulement si la lecture Odoo échoue
+        }
+
+    Ne lève JAMAIS (dégradation propre comme ``odoo_cost_per_signature``)."""
+    odoo_error = None
+    try:
+        deals = odoo_signed_deals(since=since, client=client)
+    except Exception as exc:  # noqa: BLE001 — dégradation propre (jamais un 500)
+        deals = []
+        odoo_error = f"{type(exc).__name__}: {exc}"[:300]
+
+    phone_to_ad = _phone_to_ad(company)
+    buckets = {}
+    attributed = unattributed = 0
+    for deal in deals:
+        phone = deal.get('phone_norm')
+        ad_id = phone_to_ad.get(phone) if phone else None
+        if ad_id:
+            bucket = buckets.setdefault(
+                ad_id, {'signatures': 0, 'signed_phones': [], 'deal_ids': []})
+            bucket['signatures'] += 1
+            bucket['signed_phones'].append(phone)
+            if deal.get('lead_id') is not None:
+                bucket['deal_ids'].append(deal['lead_id'])
+            attributed += 1
+        else:
+            unattributed += 1
+
+    spend_by_ad = _ad_spend_by_meta(company, buckets.keys(), since)
+    from .models import AdMirror
+    name_by_meta = {
+        a.meta_id: (a.name or '')
+        for a in AdMirror.objects.filter(
+            company=company, meta_id__in=list(buckets)).only('meta_id', 'name')}
+
+    ads = []
+    for ad_id in sorted(buckets):
+        bucket = buckets[ad_id]
+        spend = spend_by_ad.get(ad_id)
+        count = bucket['signatures']
+        cost = (spend / count) if (spend is not None and count) else None
+        ads.append({
+            'ad_id': ad_id,
+            'ad_name': name_by_meta.get(ad_id, ''),
+            'signatures': count,
+            'signed_phones': bucket['signed_phones'],
+            'deal_ids': bucket['deal_ids'],
+            'spend': (str(spend) if spend is not None else None),
+            'cost_per_signature': (str(cost) if cost is not None else None),
+        })
+    result = {
+        'configured': odoo_is_configured(),
+        'ads': ads,
+        'attributed': attributed,
+        'unattributed': unattributed,
+        'note': ATTRIBUTION_GAP_NOTE,
+    }
+    if odoo_error is not None:
+        result['odoo_error'] = odoo_error
+    return result
+
+
 def odoo_cost_per_signature(company, since=None, client=None):
     """Coût-par-signature adossé aux signatures Odoo, avec traçabilité.
 

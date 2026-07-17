@@ -10,16 +10,19 @@ from rest_framework.routers import DefaultRouter
 
 from .odoo_views import OdooCostPerSignatureView
 from .views import (
-    AdCampaignMirrorViewSet, AnomalyEventViewSet, ArmDailyStatViewSet,
+    AdCampaignMirrorViewSet, AdPreviewsView, AnomalyEventViewSet,
+    ArmDailyStatViewSet,
     BacklogDropAssetView, BacklogListView, BacklogLotApproveView,
-    BriefLatestView, CampaignFunnelView, CohortReportView, CostPerSignatureView,
+    BreakdownsView, BriefLatestView, CampaignFunnelView, CohortReportView,
+    CostPerSignatureView,
     CreativeAssetViewSet, CreativeBacklogItemViewSet,
     CreativeGenerationBatchViewSet, CreativePolicyViewSet, DecisionLogViewSet,
     EngineActionViewSet, EngineAlertViewSet, ExperimentArmViewSet,
     ExperimentViewSet, FlightPhaseViewSet, FlightPlanViewSet,
-    GuardrailConfigViewSet, GuardrailSingletonView, MetaConnectionHealthView,
+    GuardrailConfigViewSet, GuardrailSingletonView, MediaResolveView,
+    MetaConnectionHealthView,
     MetaConnectionStatusView, MetaConnectionViewSet, MetricsDashboardView,
-    MetricsLeadsView, MetricsPacingView, PacingStateViewSet,
+    MetricsLeadsView, MetricsPacingView, PacingStateViewSet, RealLeadsView,
     ReconciliationListView, ReconciliationSnapshotViewSet, ReportExportView,
     RulePolicyViewSet, SimulationDetailView, SimulationListView, StatusView,
     VariantReportView, WiringHealthView,
@@ -107,5 +110,16 @@ urlpatterns = [
          name='adsengine-reporting-cohortes'),
     path('reporting/export/', ReportExportView.as_view(),
          name='adsengine-reporting-export'),
+    # ADSDEEP9 — ventilations (audience & diffusion) d'un objet publicitaire.
+    path('breakdowns/', BreakdownsView.as_view(), name='adsengine-breakdowns'),
+    # ADSDEEP19 — comptes de leads RÉELS par ad / campagne (MetaLeadMirror).
+    path('metrics/real-leads/', RealLeadsView.as_view(),
+         name='adsengine-real-leads'),
+    # ADSDEEP12 — résolveur de médias frais (URL jouable non persistée).
+    path('media/<str:ref>/', MediaResolveView.as_view(),
+         name='adsengine-media-resolve'),
+    # ADSDEEP13 — proxy previews (iframe Meta, jamais persistée).
+    path('ads/<str:ad_meta_id>/previews/', AdPreviewsView.as_view(),
+         name='adsengine-ad-previews'),
     path('', include(router.urls)),
 ]

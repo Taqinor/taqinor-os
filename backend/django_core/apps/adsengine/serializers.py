@@ -7,8 +7,8 @@ from .models import (
     AdCampaignMirror, AnomalyEvent, ArmDailyStat, CreativeAsset,
     CreativeBacklogItem, CreativeGenerationBatch, CreativePolicy, DecisionLog,
     EngineAction, EngineAlert, Experiment, ExperimentArm, FlightPhase,
-    FlightPlan, GuardrailConfig, InsightSnapshot, MetaConnection, PacingState,
-    ReconciliationSnapshot, RulePolicy,
+    FlightPlan, GuardrailConfig, InsightBreakdown, InsightSnapshot,
+    MetaConnection, PacingState, ReconciliationSnapshot, RulePolicy,
 )
 
 
@@ -147,12 +147,19 @@ class CreativeAssetSerializer(serializers.ModelSerializer):
     serveur. ``is_policy_passed`` expose l'état de validation."""
 
     is_policy_passed = serializers.BooleanField(read_only=True)
+    # ADSDEEP15 — URL présignée MinIO depuis ``file_key`` (patron
+    # ``records.storage``) : sans elle, la créathèque n'affiche aucune preview
+    # (l'écran attend ``preview_url || file_url``). ``is_video`` pilote le rendu
+    # ``<video>`` pour un reel/explainer.
+    preview_url = serializers.SerializerMethodField()
+    is_video = serializers.SerializerMethodField()
 
     class Meta:
         model = CreativeAsset
         fields = [
             'id', 'asset_type', 'file_key', 'source_lane', 'cost_cents',
             'policy_stamp', 'is_policy_passed', 'perf', 'parent',
+            'preview_url', 'is_video',
             # ADSENG5 — composants (accroche / texte / visuel / CTA).
             'hook_id', 'hook_text', 'primary_text', 'visual_asset_key', 'cta',
             'created_at', 'updated_at',
@@ -163,6 +170,20 @@ class CreativeAssetSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'file_key', 'policy_stamp', 'perf', 'created_at', 'updated_at',
         ]
+
+    def get_preview_url(self, obj):
+        """ADSDEEP15 — URL présignée MinIO depuis ``file_key`` (None si vide/
+        stockage indisponible). Jamais un secret : c'est une URL de lecture
+        temporaire signée, patron ``records.storage.presign_attachment``."""
+        if not obj.file_key:
+            return None
+        from apps.records.storage import presign_attachment
+        return presign_attachment(obj.file_key)
+
+    def get_is_video(self, obj):
+        """Un reel / explainer se rend en ``<video>`` (les statiques en ``<img>``)."""
+        return obj.asset_type in (
+            CreativeAsset.AssetType.REEL, CreativeAsset.AssetType.EXPLAINER)
 
 
 class CreativePolicySerializer(serializers.ModelSerializer):
@@ -473,3 +494,19 @@ class AdCampaignMirrorSerializer(serializers.ModelSerializer):
 
     def get_nb_leads(self, obj):
         return int(self._insights(obj)['results'] or 0)
+
+
+class InsightBreakdownSerializer(serializers.ModelSerializer):
+    """ADSDEEP9 — Ligne de ventilation (démo/placement/région/horaire) exposée à
+    l'écran « Audience & diffusion ». Lecture seule ; aucun secret."""
+
+    dimension_display = serializers.CharField(
+        source='get_dimension_display', read_only=True)
+
+    class Meta:
+        model = InsightBreakdown
+        fields = [
+            'id', 'date', 'dimension', 'dimension_display', 'key',
+            'spend', 'impressions', 'clicks', 'results', 'conversations',
+        ]
+        read_only_fields = fields
