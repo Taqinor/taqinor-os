@@ -18,11 +18,12 @@ from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
     ActeMedical, ActeRealise, Admission, Convention, FactureSante,
-    GrilleTarifaire, PaiementSante, Patient, Praticien, PriseEnCharge,
-    RendezVous, Salle)
+    GrilleTarifaire, HoraireOuverturePraticien, IndisponibilitePraticien,
+    PaiementSante, Patient, Praticien, PriseEnCharge, RendezVous, Salle)
 from .serializers import (
     ActeMedicalSerializer, ActeRealiseSerializer, AdmissionSerializer,
     ConventionSerializer, FactureSanteSerializer, GrilleTarifaireSerializer,
+    HoraireOuverturePraticienSerializer, IndisponibilitePraticienSerializer,
     PaiementSanteSerializer, PatientSerializer, PraticienSerializer,
     PriseEnChargeSerializer, RendezVousSerializer, SalleSerializer)
 
@@ -93,11 +94,18 @@ class RendezVousViewSet(CompanyScopedModelViewSet):
 
     def _guard(self, *, praticien, salle, date_heure_debut, duree_min,
                exclude_id=None):
-        from .services import verifier_chevauchement_rdv
+        from .services import (
+            verifier_chevauchement_rdv, verifier_horaires_praticien)
         message = verifier_chevauchement_rdv(
             company=self.request.user.company, praticien=praticien,
             salle=salle, date_heure_debut=date_heure_debut,
             duree_min=duree_min, exclude_id=exclude_id)
+        if message:
+            raise ValidationError({'detail': message})
+        # NTSAN30 — horaires d'ouverture + indisponibilités du praticien.
+        message = verifier_horaires_praticien(
+            praticien=praticien, date_heure_debut=date_heure_debut,
+            duree_min=duree_min)
         if message:
             raise ValidationError({'detail': message})
 
@@ -122,6 +130,23 @@ class RendezVousViewSet(CompanyScopedModelViewSet):
             duree_min=data.get('duree_min', instance.duree_min),
             exclude_id=instance.id)
         super().perform_update(serializer)
+
+
+class HoraireOuverturePraticienViewSet(CompanyScopedModelViewSet):
+    """NTSAN30 — horaires d'ouverture hebdomadaires d'un praticien, consommés
+    par le calcul de disponibilités (NTSAN29) et la garde de création de
+    ``RendezVous`` (``services.verifier_horaires_praticien``)."""
+
+    queryset = HoraireOuverturePraticien.objects.select_related('praticien').all()
+    serializer_class = HoraireOuverturePraticienSerializer
+
+
+class IndisponibilitePraticienViewSet(CompanyScopedModelViewSet):
+    """NTSAN30 — indisponibilités ponctuelles d'un praticien (congé,
+    formation…), bloquant TOUJOURS la prise de RDV sur la période."""
+
+    queryset = IndisponibilitePraticien.objects.select_related('praticien').all()
+    serializer_class = IndisponibilitePraticienSerializer
 
 
 class AdmissionViewSet(CompanyScopedModelViewSet):

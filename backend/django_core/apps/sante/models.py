@@ -529,3 +529,63 @@ class PaiementSante(TenantModel):
 
     def __str__(self):
         return f'{self.facture_sante_id} — {self.montant}'
+
+
+class HoraireOuverturePraticien(TenantModel):
+    """NTSAN30 — horaire d'ouverture hebdomadaire d'un praticien (nourrit le
+    calcul de disponibilités NTSAN29 et la garde de création de
+    ``RendezVous``). Un praticien SANS ligne d'horaire configurée n'est PAS
+    restreint (défaut 08:00-18:00 côté ``selectors.creneaux_disponibles`` /
+    aucune garde côté ``services.verifier_horaires_praticien``) — additif,
+    jamais de régression pour un praticien déjà en service avant
+    paramétrage."""
+
+    class JourSemaine(models.IntegerChoices):
+        LUNDI = 0, 'Lundi'
+        MARDI = 1, 'Mardi'
+        MERCREDI = 2, 'Mercredi'
+        JEUDI = 3, 'Jeudi'
+        VENDREDI = 4, 'Vendredi'
+        SAMEDI = 5, 'Samedi'
+        DIMANCHE = 6, 'Dimanche'
+
+    praticien = models.ForeignKey(
+        # on_delete: un horaire n'existe que pour son praticien (composition)
+        Praticien, on_delete=models.CASCADE,
+        related_name='horaires_ouverture', verbose_name='Praticien')
+    jour_semaine = models.PositiveSmallIntegerField(
+        choices=JourSemaine.choices, verbose_name='Jour de la semaine')
+    heure_debut = models.TimeField(verbose_name='Heure de début')
+    heure_fin = models.TimeField(verbose_name='Heure de fin')
+
+    class Meta:
+        verbose_name = "Horaire d'ouverture praticien"
+        verbose_name_plural = "Horaires d'ouverture praticien"
+        ordering = ['praticien', 'jour_semaine', 'heure_debut']
+
+    def __str__(self):
+        return (
+            f'{self.praticien_id} / {self.get_jour_semaine_display()} '
+            f'{self.heure_debut}-{self.heure_fin}')
+
+
+class IndisponibilitePraticien(TenantModel):
+    """NTSAN30 — indisponibilité ponctuelle d'un praticien (congé, formation,
+    absence) bloquant la prise de RDV sur la période, quels que soient les
+    horaires d'ouverture configurés."""
+
+    praticien = models.ForeignKey(
+        # on_delete: une indisponibilité n'existe que pour son praticien (composition)
+        Praticien, on_delete=models.CASCADE,
+        related_name='indisponibilites', verbose_name='Praticien')
+    date_debut = models.DateTimeField(verbose_name='Date et heure de début')
+    date_fin = models.DateTimeField(verbose_name='Date et heure de fin')
+    motif = models.CharField(max_length=255, blank=True, default='', verbose_name='Motif')
+
+    class Meta:
+        verbose_name = 'Indisponibilité praticien'
+        verbose_name_plural = 'Indisponibilités praticien'
+        ordering = ['-date_debut']
+
+    def __str__(self):
+        return f'{self.praticien_id} indisponible {self.date_debut} → {self.date_fin}'

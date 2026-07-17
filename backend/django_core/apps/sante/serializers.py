@@ -7,8 +7,8 @@ from rest_framework import serializers
 
 from .models import (
     ActeMedical, ActeRealise, Admission, Convention, FactureSante,
-    GrilleTarifaire, PaiementSante, Patient, Praticien, PriseEnCharge,
-    RendezVous, Salle)
+    GrilleTarifaire, HoraireOuverturePraticien, IndisponibilitePraticien,
+    PaiementSante, Patient, Praticien, PriseEnCharge, RendezVous, Salle)
 
 
 def _meme_societe(serializer, value, label):
@@ -225,6 +225,30 @@ class GrilleTarifaireSerializer(serializers.ModelSerializer):
 
     def validate_acte(self, value):
         return _meme_societe(self, value, 'Acte médical')
+
+
+class HoraireOuverturePraticienSerializer(serializers.ModelSerializer):
+    jour_semaine_display = serializers.CharField(
+        source='get_jour_semaine_display', read_only=True)
+
+    class Meta:
+        model = HoraireOuverturePraticien
+        fields = [
+            'id', 'praticien', 'jour_semaine', 'jour_semaine_display',
+            'heure_debut', 'heure_fin',
+        ]
+
+    def validate_praticien(self, value):
+        return _meme_societe(self, value, 'Praticien')
+
+
+class IndisponibilitePraticienSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = IndisponibilitePraticien
+        fields = ['id', 'praticien', 'date_debut', 'date_fin', 'motif']
+
+    def validate_praticien(self, value):
+        return _meme_societe(self, value, 'Praticien')
 
 
 class ActeMedicalSerializer(serializers.ModelSerializer):

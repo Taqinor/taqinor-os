@@ -101,6 +101,47 @@ def verifier_chevauchement_rdv(
     return None
 
 
+def verifier_horaires_praticien(*, praticien, date_heure_debut, duree_min):
+    """NTSAN30 — garde applicative : refuse un ``RendezVous`` hors horaire
+    d'ouverture configuré ou pendant une indisponibilité du praticien.
+
+    Un praticien SANS ``HoraireOuverturePraticien`` configuré n'est PAS
+    restreint par cette garde (additif, jamais de régression pour un
+    praticien déjà en service avant paramétrage des horaires — miroir de
+    ``selectors._plages_ouverture`` qui retombe sur 08:00-18:00 côté
+    calcul de disponibilités NTSAN29). Une ``IndisponibilitePraticien`` qui
+    recoupe le créneau bloque TOUJOURS, configurée ou non. Renvoie un
+    message FR de blocage, ou ``None`` si le créneau est autorisé."""
+    from datetime import timedelta
+
+    from .models import HoraireOuverturePraticien, IndisponibilitePraticien
+
+    if praticien is None:
+        return None
+
+    fin = date_heure_debut + timedelta(minutes=duree_min)
+
+    horaires = list(HoraireOuverturePraticien.objects.filter(
+        company=praticien.company, praticien=praticien,
+        jour_semaine=date_heure_debut.weekday()))
+    if horaires:
+        dans_horaire = any(
+            date_heure_debut.date() == fin.date()
+            and date_heure_debut.time() >= h.heure_debut
+            and fin.time() <= h.heure_fin
+            for h in horaires)
+        if not dans_horaire:
+            return "Ce créneau est hors des horaires d'ouverture du praticien."
+
+    indisponible = IndisponibilitePraticien.objects.filter(
+        company=praticien.company, praticien=praticien,
+        date_debut__lt=fin, date_fin__gt=date_heure_debut).exists()
+    if indisponible:
+        return 'Le praticien est indisponible sur ce créneau.'
+
+    return None
+
+
 def cloturer_admission(admission, *, date_sortie=None):
     """NTSAN6 — clôture une admission (``en_cours`` → ``cloturee``).
 
