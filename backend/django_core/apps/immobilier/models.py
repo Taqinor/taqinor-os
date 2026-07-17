@@ -8,6 +8,7 @@ conformément à la frontière cross-app de CLAUDE.md. ``client_ventes_id`` est
 une référence LÂCHE (id entier, pas de FK dure) vers ``crm.Client`` — même
 convention que ``chantier_id``/``ged_document_id`` ailleurs dans le repo.
 """
+from django.conf import settings
 from django.db import models
 
 from core.models import TenantModel
@@ -545,3 +546,119 @@ class RegularisationCharges(TenantModel):
 
     def __str__(self):
         return f'{self.bail} — régularisation {self.exercice}'
+
+
+class EtatLieuxImmo(TenantModel):
+    """NTPRO15 — État des lieux (entrée/sortie) d'un bail."""
+
+    class Moment(models.TextChoices):
+        ENTREE = 'entree', 'Entrée'
+        SORTIE = 'sortie', 'Sortie'
+
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        SIGNE = 'signe', 'Signé'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: cascade tenant (purge des données de la société supprimée)
+        related_name='immobilier_etats_lieux',
+        verbose_name='Société',
+    )
+    bail = models.ForeignKey(
+        Bail, on_delete=models.CASCADE,  # on_delete: cascade parent→enfant (composant du parent)
+        related_name='etats_lieux',
+        verbose_name='Bail')
+    moment = models.CharField(
+        max_length=10, choices=Moment.choices, verbose_name='Moment')
+    date = models.DateField(verbose_name='Date')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.BROUILLON,
+        verbose_name='Statut')
+    technicien = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,  # on_delete: SET_NULL — technicien supprimé ne doit jamais effacer l'état des lieux (null=True posé, champ non-tenant)
+        null=True, blank=True, related_name='etats_lieux_immo_realises',
+        verbose_name='Technicien')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'État des lieux'
+        verbose_name_plural = 'États des lieux'
+        ordering = ['-date', '-id']
+
+    def __str__(self):
+        return f'{self.bail} — {self.get_moment_display()} ({self.date})'
+
+
+class PieceEtatLieux(TenantModel):
+    """NTPRO15 — Pièce inspectée d'un état des lieux."""
+
+    class EtatGeneral(models.TextChoices):
+        NEUF = 'neuf', 'Neuf'
+        BON = 'bon', 'Bon'
+        USAGE_NORMAL = 'usage_normal', 'Usage normal'
+        DEGRADE = 'degrade', 'Dégradé'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: cascade tenant (purge des données de la société supprimée)
+        related_name='immobilier_pieces_etat_lieux',
+        verbose_name='Société',
+    )
+    etat_lieux = models.ForeignKey(
+        EtatLieuxImmo, on_delete=models.CASCADE,  # on_delete: cascade parent→enfant (composant du parent)
+        related_name='pieces',
+        verbose_name='État des lieux')
+    nom_piece = models.CharField(max_length=120, verbose_name='Pièce')
+    etat_general = models.CharField(
+        max_length=15, choices=EtatGeneral.choices,
+        default=EtatGeneral.BON, verbose_name='État général')
+    commentaire = models.TextField(
+        blank=True, default='', verbose_name='Commentaire')
+    ordre = models.IntegerField(default=0, verbose_name="Ordre d'affichage")
+
+    class Meta:
+        verbose_name = 'Pièce (état des lieux)'
+        verbose_name_plural = 'Pièces (état des lieux)'
+        ordering = ['etat_lieux_id', 'ordre', 'id']
+
+    def __str__(self):
+        return f'{self.etat_lieux} — {self.nom_piece}'
+
+
+class ElementEtatLieux(TenantModel):
+    """NTPRO15 — Élément inspecté d'une pièce (sol/murs/plafond/…)."""
+
+    class Etat(models.TextChoices):
+        NEUF = 'neuf', 'Neuf'
+        BON = 'bon', 'Bon'
+        USAGE_NORMAL = 'usage_normal', 'Usage normal'
+        DEGRADE = 'degrade', 'Dégradé'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: cascade tenant (purge des données de la société supprimée)
+        related_name='immobilier_elements_etat_lieux',
+        verbose_name='Société',
+    )
+    piece = models.ForeignKey(
+        PieceEtatLieux, on_delete=models.CASCADE,  # on_delete: cascade parent→enfant (composant du parent)
+        related_name='elements',
+        verbose_name='Pièce')
+    element = models.CharField(
+        max_length=60, verbose_name='Élément (ex. sol/murs/plafond)')
+    etat = models.CharField(
+        max_length=15, choices=Etat.choices, default=Etat.BON,
+        verbose_name='État')
+    commentaire = models.TextField(
+        blank=True, default='', verbose_name='Commentaire')
+    ordre = models.IntegerField(default=0, verbose_name="Ordre d'affichage")
+
+    class Meta:
+        verbose_name = 'Élément (état des lieux)'
+        verbose_name_plural = 'Éléments (état des lieux)'
+        ordering = ['piece_id', 'ordre', 'id']
+
+    def __str__(self):
+        return f'{self.piece} — {self.element}'

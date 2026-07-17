@@ -556,3 +556,66 @@ def emettre_regularisation(regularisation):
         avoir_ventes_id=avoir.id, date_emission=timezone.now())
     regularisation.avoir_ventes_id = avoir.id
     return avoir.id
+
+
+# NTPRO15 — grille STANDARD éditable (constante Python pour ce lot ; un futur
+# lot pourra la rendre éditable en base par l'admin sans changer l'appelant)
+# de pièces/éléments pré-remplis selon le type de local, indexée par
+# `Local.TypeLocal`. Une clé absente du dict retombe sur `_GRILLE_DEFAUT`
+# (jamais de grille vide).
+_GRILLE_DEFAUT = [
+    ('Pièce principale', ['sol', 'murs', 'plafond', 'électricité']),
+]
+
+_GRILLE_STANDARD_PAR_TYPE = {
+    'habitation': [
+        ('Séjour', ['sol', 'murs', 'plafond', 'électricité']),
+        ('Cuisine', ['sol', 'murs', 'plafond', 'électricité', 'plomberie']),
+        ('Salle de bain', ['sol', 'murs', 'plafond', 'électricité', 'plomberie']),
+        ('Chambre', ['sol', 'murs', 'plafond', 'électricité']),
+    ],
+    'commerce': [
+        ('Espace de vente', ['sol', 'murs', 'plafond', 'électricité', 'vitrine']),
+        ('Réserve', ['sol', 'murs', 'plafond', 'électricité']),
+        ('Sanitaires', ['sol', 'murs', 'plafond', 'électricité', 'plomberie']),
+    ],
+    'bureau': [
+        ('Bureau', ['sol', 'murs', 'plafond', 'électricité', 'climatisation']),
+        ('Sanitaires', ['sol', 'murs', 'plafond', 'électricité', 'plomberie']),
+    ],
+    'parking': [
+        ('Emplacement', ['sol', 'murs', 'éclairage']),
+    ],
+    'entrepot': [
+        ('Entrepôt', ['sol', 'murs', 'plafond', 'électricité', 'portail']),
+    ],
+}
+
+
+def creer_etat_lieux(bail, moment, *, technicien=None, date=None):
+    """NTPRO15 — Crée un ``EtatLieuxImmo`` PRÉ-REMPLI avec la grille standard
+    de pièces/éléments correspondant à ``bail.local.type_local`` (repli sur
+    une grille générique à une pièce si le type est inconnu — jamais une
+    grille vide). Renvoie l'``EtatLieuxImmo`` créé (accessible via
+    ``.pieces.all()`` → ``.elements.all()``)."""
+    from django.utils import timezone
+
+    from .models import ElementEtatLieux, EtatLieuxImmo, PieceEtatLieux
+
+    etat_lieux = EtatLieuxImmo.objects.create(
+        company=bail.company, bail=bail, moment=moment,
+        date=date or timezone.localdate(), technicien=technicien)
+
+    grille = _GRILLE_STANDARD_PAR_TYPE.get(
+        bail.local.type_local, _GRILLE_DEFAUT)
+
+    for ordre_piece, (nom_piece, elements) in enumerate(grille):
+        piece = PieceEtatLieux.objects.create(
+            company=bail.company, etat_lieux=etat_lieux, nom_piece=nom_piece,
+            ordre=ordre_piece)
+        for ordre_element, nom_element in enumerate(elements):
+            ElementEtatLieux.objects.create(
+                company=bail.company, piece=piece, element=nom_element,
+                ordre=ordre_element)
+
+    return etat_lieux

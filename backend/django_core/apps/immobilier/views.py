@@ -12,13 +12,15 @@ from core.permissions import ScopedPermission
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
-    Bail, Batiment, BudgetCharges, DepenseCharges, EcheanceLoyer, Local,
-    Locataire, Niveau, RegularisationCharges, RelanceLoyer, Site,
+    Bail, Batiment, BudgetCharges, DepenseCharges, EcheanceLoyer,
+    ElementEtatLieux, EtatLieuxImmo, Local, Locataire, Niveau,
+    PieceEtatLieux, RegularisationCharges, RelanceLoyer, Site,
 )
 from .serializers import (
     BailSerializer, BatimentSerializer, BudgetChargesSerializer,
-    DepenseChargesSerializer, EcheanceLoyerSerializer, LocalSerializer,
-    LocataireSerializer, NiveauSerializer, RegularisationChargesSerializer,
+    DepenseChargesSerializer, EcheanceLoyerSerializer, ElementEtatLieuxSerializer,
+    EtatLieuxImmoSerializer, LocalSerializer, LocataireSerializer,
+    NiveauSerializer, PieceEtatLieuxSerializer, RegularisationChargesSerializer,
     RelanceLoyerSerializer, RevisionLoyerSerializer, SiteSerializer,
 )
 
@@ -449,6 +451,78 @@ class RegularisationChargesViewSet(_ImmobilierBaseViewSet):
         data = self.get_serializer(regularisation).data
         data['document_ventes_id'] = document_id
         return Response(data, status=status.HTTP_200_OK)
+
+
+class EtatLieuxImmoViewSet(_ImmobilierBaseViewSet):
+    """NTPRO15 — États des lieux (entrée/sortie) d'un bail, pré-remplis
+    depuis la grille standard du type de local à la création."""
+    queryset = EtatLieuxImmo.objects.select_related(
+        'bail', 'bail__local').prefetch_related('pieces__elements').all()
+    serializer_class = EtatLieuxImmoSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        bail_id = self.request.query_params.get('bail')
+        moment = self.request.query_params.get('moment')
+        if bail_id:
+            qs = qs.filter(bail_id=bail_id)
+        if moment:
+            qs = qs.filter(moment=moment)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        """NTPRO15 — Crée l'état des lieux PRÉ-REMPLI (grille standard) via
+        ``services.creer_etat_lieux`` : jamais un POST libre qui contournerait
+        le pré-remplissage."""
+        from . import services
+
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        bail = serializer.validated_data['bail']
+        etat_lieux = services.creer_etat_lieux(
+            bail, serializer.validated_data['moment'],
+            technicien=serializer.validated_data.get('technicien'),
+            date=serializer.validated_data.get('date'))
+        out = self.get_serializer(etat_lieux)
+        return Response(out.data, status=status.HTTP_201_CREATED)
+
+
+class PieceEtatLieuxViewSet(_ImmobilierBaseViewSet):
+    """NTPRO15 — Pièces inspectées (créées automatiquement via la grille
+    standard — pas de création directe, seulement lecture/mise à jour de
+    l'état/commentaire relevés sur le terrain)."""
+    queryset = PieceEtatLieux.objects.select_related('etat_lieux').all()
+    serializer_class = PieceEtatLieuxSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['ordre']
+    http_method_names = ['get', 'patch', 'head', 'options']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        etat_lieux_id = self.request.query_params.get('etat_lieux')
+        if etat_lieux_id:
+            qs = qs.filter(etat_lieux_id=etat_lieux_id)
+        return qs
+
+
+class ElementEtatLieuxViewSet(_ImmobilierBaseViewSet):
+    """NTPRO15 — Éléments inspectés (créés automatiquement via la grille
+    standard — pas de création directe, seulement lecture/mise à jour de
+    l'état/commentaire relevés sur le terrain)."""
+    queryset = ElementEtatLieux.objects.select_related('piece').all()
+    serializer_class = ElementEtatLieuxSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['ordre']
+    http_method_names = ['get', 'patch', 'head', 'options']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        piece_id = self.request.query_params.get('piece')
+        if piece_id:
+            qs = qs.filter(piece_id=piece_id)
+        return qs
 
 
 class RelanceLoyerViewSet(_ImmobilierBaseViewSet):
