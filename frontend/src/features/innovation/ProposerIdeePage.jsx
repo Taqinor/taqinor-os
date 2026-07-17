@@ -4,8 +4,9 @@ import ProposerIdeeForm from './ProposerIdeeForm'
 
 /* ============================================================================
    NTIDE8 — Page « proposer une idée » (route dédiée /innovation/proposer).
-   Immédiate (pas de brouillon) : le submit crée l'Idee et redirige vers son
-   détail avec un toast de confirmation (voir ProposerIdeeForm).
+   Le submit crée l'Idee et redirige vers son détail avec un toast de
+   confirmation ; « Enregistrer en brouillon » (NTIDE18) la garde interne à
+   l'auteur jusqu'à publication (voir ProposerIdeeForm).
    ========================================================================== */
 
 export default function ProposerIdeePage() {

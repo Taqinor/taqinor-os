@@ -32,7 +32,16 @@ class IdeeViewSet(CompanyScopedModelViewSet):
 
     Aucun ``destroy`` : une idée se ferme (action ``fermer``), elle ne se
     supprime jamais (dossier de décision produit, comme les litiges/dossiers
-    légaux ailleurs dans le dépôt)."""
+    légaux ailleurs dans le dépôt).
+
+    NTIDE21 — cette même route (GET liste + GET détail, déjà company-scoped
+    via ``CompanyScopedModelViewSet``, déjà ouverte à « tout utilisateur
+    connecté ») EST l'API que le futur portail client réutilisera : aucune
+    route dupliquée à créer. Seul ``permission_classes`` changerait le jour
+    où un portail externe existe réellement — volontairement PAS fait ici
+    (« idées portée interne pour now ») : ouvrir un accès non-authentifié
+    à la boîte à idées interne d'une société serait une régression de
+    confidentialité, pas une préparation."""
 
     queryset = Idee.objects.select_related('auteur').all()
     serializer_class = IdeeSerializer
@@ -49,7 +58,21 @@ class IdeeViewSet(CompanyScopedModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
+        # NTIDE18 — une idée en brouillon (draft=True) reste interne à son
+        # auteur : invisible de tout le monde d'autre, y compris dans les
+        # exports/actions en masse admin (qui réutilisent get_queryset()).
+        from django.db.models import Q
+        qs = qs.filter(Q(draft=False) | Q(auteur=self.request.user))
         params = self.request.query_params
+        # NTIDE19 — une idée masquée (modération) disparaît des listes
+        # normales ; le palier Directeur/Responsable peut la retrouver avec
+        # ``?include_archived=1`` (« reste accessible en admin »), jamais un
+        # autre palier.
+        include_archived = (
+            params.get('include_archived') == '1'
+            and getattr(self.request.user, 'is_responsable', False))
+        if not include_archived:
+            qs = qs.exclude(archived=True)
         statut = params.get('statut')
         if statut:
             qs = qs.filter(statut=statut)
@@ -65,8 +88,13 @@ class IdeeViewSet(CompanyScopedModelViewSet):
         return qs
 
     def perform_create(self, serializer):
+        # NTIDE18 — « Enregistrer en brouillon » : lu directement du corps
+        # (c'est l'intention même de la case à cocher), jamais depuis un
+        # champ PATCH-able ensuite (``draft`` est read-only, cf. serializer).
+        draft = bool(self.request.data.get('draft'))
         idee = serializer.save(
-            company=self.request.user.company, auteur=self.request.user)
+            company=self.request.user.company, auteur=self.request.user,
+            draft=draft)
         from apps.records.models import Activity
         from apps.records.services import log_activity
         log_activity(
@@ -79,6 +107,16 @@ class IdeeViewSet(CompanyScopedModelViewSet):
     def contextes(self, request):
         """Les 5 contextes existants les plus fréquents (autocomplétion)."""
         data = selectors.contextes_frequents(request.user.company)
+        return Response({'results': data})
+
+    # ── NTIDE20 — dédup : idées similaires (avant de proposer un doublon) ────
+    @action(detail=False, methods=['get'], url_path='similaires',
+            permission_classes=[IsAnyRole])
+    def similaires(self, request):
+        """« Existe-t-il une idée similaire ? » — top 3, recherche
+        titre+description (``?q=texte``)."""
+        texte = request.query_params.get('q', '')
+        data = selectors.idees_similaires(request.user.company, texte)
         return Response({'results': data})
 
     # ── NTIDE6 — tableau de bord admin ──────────────────────────────────────
@@ -124,6 +162,96 @@ class IdeeViewSet(CompanyScopedModelViewSet):
         """ouvert|examinée|retenue → fermée. Note de fermeture optionnelle
         (``{"note": "..."}``), journalisée dans le chatter."""
         return self._transition(request, Idee.Statut.FERMEE)
+
+    # ── NTIDE18 — publier une idée brouillon (draft → False) ─────────────────
+    @action(detail=True, methods=['post'], url_path='publier',
+            permission_classes=[IsAnyRole])
+    def publier(self, request, pk=None):
+        """Réservé à l'auteur du brouillon (403 sinon). Une fois publiée,
+        l'idée redevient visible de toute la société (``get_queryset``)."""
+        idee = self.get_object()
+        if idee.auteur_id != request.user.id:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied(
+                "Seul l'auteur peut publier son brouillon.")
+        if idee.draft:
+            idee.draft = False
+            idee.save(update_fields=['draft', 'updated_at'])
+        return Response(IdeeSerializer(idee).data)
+
+    # ── NTIDE19 — modération : masquer une idée sans la supprimer ────────────
+    @action(detail=True, methods=['post'], url_path='masquer',
+            permission_classes=[IsResponsableOrAdmin])
+    def masquer(self, request, pk=None):
+        """Palier Directeur/Responsable uniquement. Ne supprime jamais
+        l'idée : elle disparaît des listes normales (``get_queryset``) mais
+        reste consultable via ``?include_archived=1`` (même palier).
+        Journalise dans le chatter générique (ARC8)."""
+        idee = self.get_object()
+        if not idee.archived:
+            idee.archived = True
+            idee.save(update_fields=['archived', 'updated_at'])
+            from apps.records.models import Activity
+            from apps.records.services import log_activity
+            log_activity(
+                idee, Activity.Kind.MODIFICATION, user=request.user,
+                field='archived', field_label='Masquée', old_value='False',
+                new_value='True', company=idee.company)
+        return Response(IdeeSerializer(idee).data)
+
+    # ── NTIDE17 — l'auteur ré-ouvre sa propre idée fermée/examinée ───────────
+    @action(detail=True, methods=['post'], url_path='reouvrir',
+            permission_classes=[IsAnyRole])
+    def reouvrir(self, request, pk=None):
+        """« Notion de "auteur peut modifier" » : réservé à l'auteur (403
+        sinon), depuis FERMÉE/EXAMINÉE uniquement (verrouillé après
+        RETENUE/RÉALISÉE — géré côté serveur, 400 sinon)."""
+        idee = self.get_object()
+        try:
+            services.reouvrir(idee, request.user)
+        except services.ReouvertureInterdite as exc:
+            return Response({'statut': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(IdeeSerializer(idee).data)
+
+    # ── NTIDE14 — lier une idée à un devis/ticket/chantier (opaque string-FK) ─
+    @action(detail=True, methods=['post'], url_path='lier',
+            permission_classes=[IsAnyRole])
+    def lier(self, request, pk=None):
+        """Corps : ``{linked_type: 'devis'|'ticket'|'chantier', linked_id:
+        N}``. Saisie MANUELLE (type + identifiant) — jamais une recherche
+        live dans les modèles ``ventes``/``sav``/``installations`` (cross-app
+        interdit, cf. règle de frontière) : ``linked_id`` reste une référence
+        OPAQUE, exactement comme la pré-détection de création (NTIDE11).
+        Journalise le lien dans le chatter générique (ARC8)."""
+        idee = self.get_object()
+        linked_type = (request.data.get('linked_type') or '').strip()
+        linked_id_raw = request.data.get('linked_id')
+        if linked_type not in Idee.LinkedType.values:
+            return Response({'linked_type': 'Type invalide.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            linked_id = int(linked_id_raw)
+            if linked_id <= 0:
+                raise ValueError
+        except (TypeError, ValueError):
+            return Response({'linked_id': 'Identifiant invalide.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        old_type, old_id = idee.linked_type, idee.linked_id
+        idee.linked_type = linked_type
+        idee.linked_id = linked_id
+        idee.save(update_fields=['linked_type', 'linked_id', 'updated_at'])
+
+        from apps.records.models import Activity
+        from apps.records.services import log_activity
+        old_label = f'{old_type} #{old_id}' if old_type else ''
+        new_label = f'{linked_type} #{linked_id}'
+        log_activity(
+            idee, Activity.Kind.MODIFICATION, user=request.user,
+            field='linked_type', field_label='Lié à',
+            old_value=old_label, new_value=new_label, company=idee.company)
+        return Response(IdeeSerializer(idee).data)
 
     @action(detail=True, methods=['get'], url_path='historique',
             permission_classes=[IsAnyRole])
@@ -256,6 +384,7 @@ class InnovationSettingsView(APIView):
             'segment_defaut': 'Segment par défaut',
             'theme_couleur_cta': 'Thème couleur du CTA',
             'message_relance': 'Message de relance',
+            'seuil_votes_notification': 'Seuil de votes pour notifier l\'auteur',
         }
         anciennes = {f: getattr(instance, f) for f in champs_label}
         serializer.save()

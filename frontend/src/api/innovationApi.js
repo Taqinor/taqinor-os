@@ -18,6 +18,9 @@ const innovationApi = {
   // ── Autocomplétion contexte (NTIDE10) ──
   contextes: () => api.get('/innovation/idees/contextes/'),
 
+  // ── Dédup : idées similaires (NTIDE20, top 3 titre+description) ──
+  similaires: (q) => api.get('/innovation/idees/similaires/', { params: { q } }),
+
   // ── Tableau de bord admin (NTIDE6) ──
   tableauBord: () => api.get('/innovation/idees/tableau-bord/'),
 
@@ -29,6 +32,20 @@ const innovationApi = {
 
   // ── Chatter (historique, NTIDE5) ──
   historique: (id) => api.get(`/innovation/idees/${id}/historique/`),
+
+  // ── Lier à un devis/ticket/chantier (NTIDE14, opaque string-FK) ──
+  lier: (id, linkedType, linkedId) =>
+    api.post(`/innovation/idees/${id}/lier/`,
+      { linked_type: linkedType, linked_id: linkedId }),
+
+  // ── Ré-ouverture par l'auteur (NTIDE17, fermée/examinée uniquement) ──
+  reouvrir: (id) => api.post(`/innovation/idees/${id}/reouvrir/`),
+
+  // ── Publier un brouillon (NTIDE18, draft → False, réservé à l'auteur) ──
+  publier: (id) => api.post(`/innovation/idees/${id}/publier/`),
+
+  // ── Modération : masquer sans supprimer (NTIDE19, palier Directeur/Responsable) ──
+  masquer: (id) => api.post(`/innovation/idees/${id}/masquer/`),
 
   // ── Export .xlsx (NTIDE12, filtres statut/contexte/date appliqués) ──
   exportXlsx: (params) =>
