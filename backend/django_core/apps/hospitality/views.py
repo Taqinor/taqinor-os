@@ -8,6 +8,7 @@ housekeeping assignées à l'utilisateur courant).
 """
 import datetime
 
+from django.shortcuts import get_object_or_404
 from rest_framework import filters, status, views, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
@@ -19,12 +20,13 @@ from core.viewsets import CompanyScopedModelViewSet
 
 from . import selectors, services
 from .models import (
-    Chambre, Folio, MainCourante, PlanTarifaire, Reservation, TacheMenage,
-    TypeChambre,
+    Chambre, Folio, IngredientRecette, MainCourante, PlanTarifaire, Recette,
+    Reservation, TacheMenage, TypeChambre,
 )
 from .serializers import (
     ChambreSerializer, FicheClientSerializer, FolioSerializer,
-    MainCouranteSerializer, PlanTarifaireSerializer, ReservationSerializer,
+    IngredientRecetteSerializer, MainCouranteSerializer,
+    PlanTarifaireSerializer, RecetteSerializer, ReservationSerializer,
     TacheMenageSerializer, TypeChambreSerializer,
 )
 
@@ -324,6 +326,52 @@ class MainCouranteViewSet(CompanyScopedModelViewSet):
     def perform_create(self, serializer):
         serializer.save(
             company=self.request.user.company, auteur=self.request.user)
+
+
+class RecetteViewSet(CompanyScopedModelViewSet):
+    """NTHOT13 — Cartes/menus (recettes), CRUD scopé société avec
+    sous-ressource ``ingredients`` (GET liste / POST ajoute ; DELETE sur
+    ``ingredients/{ingredient_id}/`` retire une ligne)."""
+    queryset = Recette.objects.prefetch_related('ingredients__produit').all()
+    serializer_class = RecetteSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom_plat']
+    ordering_fields = ['nom_plat', 'prix_vente_ht']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS + ['ingredients']:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    @action(detail=True, methods=['get', 'post'], url_path='ingredients')
+    def ingredients(self, request, pk=None):
+        recette = self.get_object()
+        if request.method == 'POST':
+            if not request.user.is_responsable:
+                return Response(
+                    {'detail': "Réservé aux rôles Responsable/Administrateur."},
+                    status=status.HTTP_403_FORBIDDEN)
+            serializer = IngredientRecetteSerializer(
+                data=request.data, context={'request': request})
+            serializer.is_valid(raise_exception=True)
+            ingredient = IngredientRecette.objects.create(
+                recette=recette, **serializer.validated_data)
+            return Response(
+                IngredientRecetteSerializer(ingredient).data,
+                status=status.HTTP_201_CREATED)
+        return Response(
+            IngredientRecetteSerializer(
+                recette.ingredients.all(), many=True).data)
+
+    @action(detail=True, methods=['delete'],
+            url_path=r'ingredients/(?P<ingredient_id>\d+)',
+            permission_classes=[IsResponsableOrAdmin])
+    def ingredient_delete(self, request, pk=None, ingredient_id=None):
+        recette = self.get_object()
+        ingredient = get_object_or_404(
+            IngredientRecette, pk=ingredient_id, recette=recette)
+        ingredient.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class TableauBordView(views.APIView):

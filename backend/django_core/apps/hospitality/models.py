@@ -454,3 +454,77 @@ class MainCourante(TenantModel):
 
     def __str__(self):
         return f'{self.get_categorie_display()} — {self.date_note:%Y-%m-%d %H:%M}'
+
+
+# ── NTHOT13 — Cartes/menus avec recettes et fiches techniques ───────────────
+
+# Liste de référence (informative — le champ ``allergenes`` reste une liste
+# JSON librement éditable, jamais des choices figées : la réglementation
+# évolue et un établissement peut vouloir un libellé propre).
+ALLERGENES_REFERENCE = [
+    'gluten', 'crustaces', 'oeufs', 'poisson', 'arachides', 'soja', 'lactose',
+    'fruits_a_coque', 'celeri', 'moutarde', 'sesame', 'sulfites', 'lupin',
+    'mollusques',
+]
+
+
+class Recette(TenantModel):
+    """Carte/menu — fiche technique d'un plat (NTHOT13)."""
+
+    class CategorieMenu(models.TextChoices):
+        ENTREE = 'entree', 'Entrée'
+        PLAT = 'plat', 'Plat'
+        DESSERT = 'dessert', 'Dessert'
+        BOISSON = 'boisson', 'Boisson'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: cascade tenant (purge des données de la société supprimée)
+        related_name='hospitality_recettes',
+        verbose_name='Société',
+    )
+    nom_plat = models.CharField(max_length=150, verbose_name='Nom du plat')
+    categorie_menu = models.CharField(
+        max_length=10, choices=CategorieMenu.choices, default=CategorieMenu.PLAT)
+    prix_vente_ht = models.DecimalField(
+        max_digits=10, decimal_places=2, verbose_name='Prix de vente HT')
+    description = models.TextField(blank=True, default='')
+    # Liste JSON de codes allergènes (voir ALLERGENES_REFERENCE) — librement
+    # éditable, jamais figée en choices (obligation réglementaire évolutive).
+    allergenes = models.JSONField(default=list, blank=True)
+
+    class Meta:
+        verbose_name = 'Recette'
+        verbose_name_plural = 'Recettes'
+        ordering = ['nom_plat']
+
+    def __str__(self):
+        return self.nom_plat
+
+
+class IngredientRecette(models.Model):
+    """Ligne d'ingrédient d'une recette — quantité + unité d'un produit du
+    catalogue stock (résolu via ``apps.stock.selectors``, jamais un import
+    direct du modèle ``stock.Produit`` en dehors de la FK string ci-dessous,
+    qui ne déclenche AUCUN import Python — pattern déjà en usage sur
+    ``Reservation.client`` FK ``'crm.Client'``)."""
+
+    recette = models.ForeignKey(
+        Recette, on_delete=models.CASCADE,  # on_delete: cascade parent→enfant (composant du parent)
+        related_name='ingredients')
+    produit = models.ForeignKey(
+        'stock.Produit',
+        on_delete=models.PROTECT,  # on_delete: jamais une suppression silencieuse d'un produit encore utilisé dans une fiche technique
+        related_name='hospitality_ingredients_recette',
+        verbose_name='Produit (stock)',
+    )
+    quantite = models.DecimalField(max_digits=10, decimal_places=3)
+    unite = models.CharField(max_length=20, default='unite')
+
+    class Meta:
+        verbose_name = 'Ingrédient de recette'
+        verbose_name_plural = 'Ingrédients de recette'
+        ordering = ['id']
+
+    def __str__(self):
+        return f'{self.quantite} {self.unite} — {self.produit_id}'

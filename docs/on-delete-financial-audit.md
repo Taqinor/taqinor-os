@@ -381,6 +381,8 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/apps/hospitality/models.py:345` | ParametresTaxeSejour.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/hospitality/models.py:380` | TacheMenage.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/hospitality/models.py:427` | MainCourante.company | authentication.Company | CASCADE |
+| `backend/django_core/apps/hospitality/models.py:480` | Recette.company | authentication.Company | CASCADE |
+| `backend/django_core/apps/hospitality/models.py:515` | IngredientRecette.produit | stock.Produit | PROTECT |
 | `backend/django_core/apps/immobilier/models.py:19` | Site.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/immobilier/models.py:49` | Batiment.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/immobilier/models.py:82` | Niveau.company | authentication.Company | CASCADE |

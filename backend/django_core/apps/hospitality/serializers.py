@@ -6,8 +6,8 @@
 from rest_framework import serializers
 
 from .models import (
-    Chambre, FicheClient, Folio, LigneFolio, MainCourante, PlanTarifaire,
-    Reservation, TacheMenage, TypeChambre,
+    Chambre, FicheClient, Folio, IngredientRecette, LigneFolio, MainCourante,
+    PlanTarifaire, Recette, Reservation, TacheMenage, TypeChambre,
 )
 
 
@@ -203,3 +203,39 @@ class MainCouranteSerializer(serializers.ModelSerializer):
         if obj.auteur_id is None:
             return ''
         return obj.auteur.get_full_name() or obj.auteur.username
+
+
+class IngredientRecetteSerializer(serializers.ModelSerializer):
+    """NTHOT13 — ligne d'ingrédient (sous-ressource de ``Recette``)."""
+    produit_nom = serializers.CharField(source='produit.nom', read_only=True)
+
+    class Meta:
+        model = IngredientRecette
+        fields = ['id', 'recette', 'produit', 'produit_nom', 'quantite', 'unite']
+        read_only_fields = ['recette']
+
+    def validate_produit(self, value):
+        _check_same_company(self, value, 'produit')
+        return value
+
+
+class RecetteSerializer(serializers.ModelSerializer):
+    categorie_menu_display = serializers.CharField(
+        source='get_categorie_menu_display', read_only=True)
+    ingredients = IngredientRecetteSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Recette
+        fields = [
+            'id', 'nom_plat', 'categorie_menu', 'categorie_menu_display',
+            'prix_vente_ht', 'description', 'allergenes', 'ingredients',
+        ]
+
+    def validate_allergenes(self, value):
+        if value in (None, ''):
+            return []
+        if not isinstance(value, list) or not all(
+                isinstance(v, str) for v in value):
+            raise serializers.ValidationError(
+                'allergenes doit être une liste de codes texte.')
+        return value
