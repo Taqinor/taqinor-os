@@ -276,6 +276,9 @@ class PoliceAssuranceCredit(models.Model):
         max_digits=16, decimal_places=2, null=True, blank=True,
         help_text='Encours max garanti, tous clients confondus.')
     actif = models.BooleanField(default=True)
+    # NTCRD34 — dédup de l'alerte d'échéance (J-30) : date de la dernière
+    # alerte émise pour cette police (une seule par jour).
+    derniere_alerte_le = models.DateField(null=True, blank=True)
     date_creation = models.DateTimeField(auto_now_add=True)
     date_modification = models.DateTimeField(auto_now=True)
 
