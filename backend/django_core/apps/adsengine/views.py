@@ -64,6 +64,51 @@ WIRING_ENV_KEYS = (
 )
 
 
+# ADSDEEP16 — message FR actionnable quand la lecture d'un post de Page échoue
+# (piège n°1 : un System User sans l'asset Page assigné, dossier creative §4).
+_PAGE_ASSET_FIX_FR = (
+    "Le token n'a pas accès à l'asset Page. Correctif : Business Settings → "
+    "Comptes → Pages → sélectionner la Page → « Attribuer des personnes » (ou "
+    "« Assign Assets ») → ajouter le System User avec la tâche « Gérer la Page ». "
+    "Avoir le scope dans le token NE SUFFIT PAS — l'asset Page doit être assigné "
+    "au System User (piège fréquent des ads CTWA)."
+)
+
+
+def _page_asset_probe(company, conn):
+    """ADSDEEP16 — Teste la lecture d'un ``effective_object_story_id`` (post de
+    Page réellement diffusé). Renvoie ``{status, message}`` avec ``status`` ∈
+    ``ok``/``error``/``inconnu`` : ``ok`` (vert) si un post se lit, ``error``
+    (rouge) + correctif FR exact si Meta refuse (typiquement asset Page non
+    assigné au System User), ``inconnu`` si rien à sonder (no-op propre)."""
+    if conn is None or not conn.is_live:
+        return {'status': 'inconnu',
+                'message': "Connexion Meta inactive — sonde non exécutée."}
+
+    from .models import AdCreativeMirror
+
+    story_id = (AdCreativeMirror.objects
+                .filter(company=company)
+                .exclude(effective_object_story_id='')
+                .values_list('effective_object_story_id', flat=True)
+                .first())
+    if not story_id:
+        return {'status': 'inconnu',
+                'message': "Aucun post de Page diffusé à sonder pour l'instant."}
+
+    from .meta_client import MetaClient, MetaError
+
+    try:
+        client = MetaClient.from_connection(conn)
+        client._request('GET', str(story_id), params={'fields': 'id'})
+    except MetaError:
+        return {'status': 'error', 'message': _PAGE_ASSET_FIX_FR}
+    except Exception:  # noqa: BLE001 — jamais casser la santé sur un imprévu
+        return {'status': 'error', 'message': _PAGE_ASSET_FIX_FR}
+    return {'status': 'ok',
+            'message': "Accès à l'asset Page confirmé (post lisible)."}
+
+
 class WiringHealthView(APIView):
     """ENG12 — Santé du câblage publicitaire (pour le dashboard ENG23).
 
@@ -122,6 +167,8 @@ class WiringHealthView(APIView):
             'guardian': guardian_health(company),
             # ADSDEEP5 — santé du débit Meta (% d'usage, palier, drapeau throttled).
             'rate_limit': rate_limit,
+            # ADSDEEP16 — sonde d'accès à l'asset Page (lecture d'un post diffusé).
+            'page_asset_access': _page_asset_probe(company, conn),
         })
 
 
