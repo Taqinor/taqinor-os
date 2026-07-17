@@ -1631,3 +1631,59 @@ class CapiOdooEvent(TenantModel):
 
     def __str__(self):
         return f'CAPI {self.event_name} ({self.event_key})'
+
+
+class PagePostMirror(TenantModel):
+    """ADSDEEP49 — Miroir local d'un POST ORGANIQUE de la Page Facebook.
+
+    Reflet en LECTURE d'un post de la Page (dossier organic-posts §1). Deux
+    drapeaux gouvernent ce que l'ERP peut faire :
+
+      * ``created_by_app`` — Meta n'autorise l'ÉDITION que des posts créés PAR
+        l'app elle-même (les posts faits via Business Suite/autres outils sont
+        intouchables). Déduit en synchro par comparaison de l'``application.id``
+        du post à l'``app_id`` de la connexion.
+      * ``ad_linked`` — croisé via ``GET /<page_id>/ads_posts`` (liste TOUS les
+        posts utilisés en ads, dark compris) : un post adossé à une pub est à
+        RISQUE à éditer (re-review/désync) et le supprimer casserait la pub.
+
+    Le visuel d'un post PUBLIÉ est immuable côté Meta : seul le ``message`` est
+    éditable (ADSDEEP50). Upsert idempotent par ``(company, meta_id)``.
+    """
+
+    meta_id = models.CharField(max_length=64, verbose_name='ID post Meta')
+    message = models.TextField(blank=True, default='', verbose_name='Texte')
+    permalink = models.TextField(
+        blank=True, default='', verbose_name='Permalien')
+    created_time = models.DateTimeField(
+        null=True, blank=True, verbose_name='Créé le (Meta)')
+    is_published = models.BooleanField(
+        default=True, verbose_name='Publié')
+    scheduled_publish_time = models.DateTimeField(
+        null=True, blank=True, verbose_name='Publication programmée')
+    created_by_app = models.BooleanField(
+        default=False, verbose_name="Créé par l'app (éditable)")
+    ad_linked = models.BooleanField(
+        default=False, verbose_name='Adossé à une pub (édition à risque)')
+    fetched_at = models.DateTimeField(
+        null=True, blank=True, verbose_name='Récupéré le')
+
+    class Meta:
+        verbose_name = 'Miroir de post de Page'
+        verbose_name_plural = 'Miroirs de post de Page'
+        ordering = ['-created_time', '-created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'meta_id'],
+                name='uniq_adseng_page_post_meta'),
+        ]
+
+    def __str__(self):
+        state = 'publié' if self.is_published else 'non publié'
+        return f'Post {self.meta_id} ({state})'
+
+    @property
+    def is_editable_by_app(self):
+        """Vrai si l'app peut éditer ce post (contrainte Meta : uniquement les
+        posts créés par l'app elle-même)."""
+        return bool(self.created_by_app)

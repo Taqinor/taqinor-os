@@ -225,6 +225,13 @@ class MetaClient:
             acct = f'act_{acct}'
         return f'{acct}/{edge}'
 
+    def _page_edge(self, edge):
+        """ADSDEEP49 — Chemin d'un edge de la Page (``<page_id>/<edge>``). Lève si
+        la connexion n'a pas de ``page_id`` (aucun appel sur une Page inconnue)."""
+        if not self.page_id:
+            raise MetaError("page_id manquant sur la connexion Meta.")
+        return f'{self.page_id}/{edge}'
+
     def _sleep(self, attempt):
         if self._backoff_base:
             time.sleep(self._backoff_base * (2 ** (attempt - 1)))
@@ -428,6 +435,30 @@ class MetaClient:
         rows = self._paged(
             f'{ad_id}/previews', params={'ad_format': ad_format})
         return rows[0].get('body', '') if rows else ''
+
+    # ── ADSDEEP49 — Posts ORGANIQUES de Page (lecture + cross-check ads_posts) ─
+    # ``application`` permet de déduire ``created_by_app`` côté synchro : l'app ne
+    # peut ÉDITER que les posts créés par elle-même (dossier organic-posts §1).
+    PAGE_POST_FIELDS = (
+        'id', 'message', 'created_time', 'permalink_url', 'is_published',
+        'scheduled_publish_time', 'application')
+
+    def get_page_posts(self, *, fields=None, limit=None):
+        """ADSDEEP49 — Lit les posts de la Page (``GET /<page_id>/posts``).
+        Renvoie la liste COMPLÈTE (toutes les pages, curseur ``after``)."""
+        return self._read_list(
+            self._page_edge('posts'),
+            fields=fields or self.PAGE_POST_FIELDS, limit=limit)
+
+    def get_ads_posts_ids(self):
+        """ADSDEEP49 — Ensemble des IDs de TOUS les posts de la Page utilisés en
+        ads (dark compris) via ``GET /<page_id>/ads_posts``. Sert au cross-check
+        ``ad_linked`` (un post adossé à une pub est risqué à éditer/supprimer —
+        dossier organic-posts §1)."""
+        rows = self._read_list(self._page_edge('ads_posts'), fields=('id',))
+        return {
+            str(r.get('id') or '').strip()
+            for r in rows or [] if isinstance(r, dict) and r.get('id')}
 
     def _read_list(self, path, *, fields=None, limit=None):
         params = {}

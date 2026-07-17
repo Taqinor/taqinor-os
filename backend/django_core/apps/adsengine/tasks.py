@@ -218,6 +218,9 @@ def _sync_company(conn):
     # ADSDEEP11 — miroir du créatif LIVE de chaque ad (best-effort).
     sync_ad_creatives(company, client)
 
+    # ADSDEEP49 — miroir des posts organiques de la Page (best-effort).
+    sync_page_posts(company, conn, client)
+
     today = datetime.date.today()
     for camp in AdCampaignMirror.objects.filter(company=company):
         # ENG6 — insights sur TOUT l'historique, ventilés par JOUR. Sans
@@ -399,6 +402,37 @@ def sync_ad_creatives(company, client):
             sync.sync_ad_creative(company, ad, creative)
             written += 1
     return written
+
+
+def sync_page_posts(company, conn, client):
+    """ADSDEEP49 — Miroite les posts ORGANIQUES de la Page (best-effort).
+
+    Lit ``GET /<page>/posts`` puis croise ``GET /<page>/ads_posts`` pour marquer
+    ``ad_linked``. ``created_by_app`` (posts éditables — l'app ne peut éditer que
+    les siens) est déduit de l'``app_id`` lu dans les credentials write-only de la
+    connexion. NO-OP propre si le client n'expose pas ``get_page_posts`` (mock
+    ancien) ou si la connexion n'a pas de ``page_id``. Renvoie le nombre de
+    miroirs upsertés."""
+    from . import sync
+
+    reader = getattr(client, 'get_page_posts', None)
+    if not callable(reader) or not (conn.page_id or ''):
+        return 0
+    try:
+        posts = reader()
+    except Exception:  # noqa: BLE001 — les posts n'empêchent jamais la synchro
+        return 0
+    ad_ids = set()
+    get_ads = getattr(client, 'get_ads_posts_ids', None)
+    if callable(get_ads):
+        try:
+            ad_ids = get_ads()
+        except Exception:  # noqa: BLE001 — cross-check best-effort
+            ad_ids = set()
+    app_id = str((conn.credentials or {}).get('app_id') or '')
+    mirrors = sync.sync_page_posts(
+        company, posts, ad_linked_ids=ad_ids, app_id=app_id)
+    return len(mirrors)
 
 
 def pull_ad_leads_for_company(company, conn, client):
