@@ -152,6 +152,11 @@ INSTALLED_APPS = [
     'apps.qhse',
     'apps.kb',
     'apps.litiges',
+    # Groupe NTESG — Reporting ESG/durabilité consolidé (périodes figées,
+    # agrégation cross-app EN LECTURE via selectors.py, catalogue GRI-lite,
+    # rapports PDF/xlsx, trajectoires d'objectifs). Lit qhse/flotte/rh en
+    # lecture seule ; ne réécrit jamais leurs données sources.
+    'apps.esg',
     # XPOS1 — Vente comptoir (point of sale, accessoires).
     'apps.pos',
     # ARC17 — Répertoire unifié des tiers (res.partner). COUCHE FONDATION :
