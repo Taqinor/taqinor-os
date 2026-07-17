@@ -48,7 +48,7 @@ class NTEDU37ExportClasseTests(ExportsTrombinoscopeTestCaseMixin, TestCase):
     def test_export_xlsx_ouvrable_avec_entetes_corrects(self):
         resp = self.client.get(
             f'/api/django/education/classes/{self.classe.id}/export/'
-            '?format=xlsx')
+            '?type=xlsx')
         self.assertEqual(resp.status_code, 200)
         self.assertIn('spreadsheetml', resp['Content-Type'])
 
@@ -64,14 +64,14 @@ class NTEDU37ExportClasseTests(ExportsTrombinoscopeTestCaseMixin, TestCase):
     def test_export_pdf_genere_octets_pdf(self):
         resp = self.client.get(
             f'/api/django/education/classes/{self.classe.id}/export/'
-            '?format=pdf')
+            '?type=pdf')
         self.assertEqual(resp.status_code, 200, resp.content)
         self.assertEqual(resp['Content-Type'], 'application/pdf')
 
     def test_format_invalide_rejete(self):
         resp = self.client.get(
             f'/api/django/education/classes/{self.classe.id}/export/'
-            '?format=doc')
+            '?type=doc')
         self.assertEqual(resp.status_code, 400)
 
 

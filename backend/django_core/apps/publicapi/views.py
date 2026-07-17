@@ -178,7 +178,8 @@ class ApiKeyViewSet(_CompanyScopedMixin, viewsets.ModelViewSet):
         instance.save(update_fields=['enabled'])
         return Response(ApiKeySerializer(instance).data)
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=['post'],
+            permission_classes=[IsAdminOrResponsableTier])
     def rotate(self, request, pk=None):
         """NTAPI23 — rotation sans coupure : émet une nouvelle clé (mêmes
         scopes/environnement), garde l'ancienne valide jusqu'à `expire_le`

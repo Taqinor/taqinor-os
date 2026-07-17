@@ -51,11 +51,14 @@ class ClasseViewSet(CompanyScopedModelViewSet):
             permission_classes=[IsAuthenticated])
     def export(self, request, pk=None):
         """NTEDU37 — export de la liste de classe (contacts parents inclus),
-        usage administratif. ``?format=pdf|xlsx`` (défaut xlsx)."""
+        usage administratif. ``?type=pdf|xlsx`` (défaut xlsx). On N'utilise PAS
+        ``?format=`` : c'est le paramètre RÉSERVÉ de négociation de contenu DRF
+        (``URL_FORMAT_OVERRIDE``) — ``?format=pdf`` chercherait un renderer
+        « pdf » inexistant et renverrait 404 avant d'atteindre cette action."""
         classe = self.get_object()
-        fmt = (request.query_params.get('format') or 'xlsx').lower()
+        fmt = (request.query_params.get('type') or 'xlsx').lower()
         if fmt not in ('pdf', 'xlsx'):
-            raise ValidationError({'format': "doit être 'pdf' ou 'xlsx'."})
+            raise ValidationError({'type': "doit être 'pdf' ou 'xlsx'."})
 
         from .exports import export_classe_pdf_bytes, export_classe_xlsx_bytes
 

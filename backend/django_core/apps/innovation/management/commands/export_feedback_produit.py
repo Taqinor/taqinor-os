@@ -14,8 +14,8 @@ Exemples :
   python manage.py export_feedback_produit --format=csv --out-file=/tmp/fb.csv
 """
 import csv
+import io
 import json
-import sys
 
 from django.core.management.base import BaseCommand, CommandError
 
@@ -92,25 +92,29 @@ class Command(BaseCommand):
 
         out_file = opts.get('out_file')
         fmt = opts.get('format')
-        stream = open(out_file, 'w', newline='', encoding='utf-8') if out_file \
-            else sys.stdout
 
-        try:
-            if fmt == 'csv':
-                fieldnames = (
-                    ['company', 'auteur'] + list(FEEDBACK_FIELDS)
-                    + ['annonce', 'date_creation'])
-                writer = csv.DictWriter(stream, fieldnames=fieldnames)
-                writer.writeheader()
-                for row in rows:
-                    writer.writerow(row)
-            else:
-                json.dump(rows, stream, ensure_ascii=False, indent=2)
-                stream.write('\n')
-        finally:
-            if out_file:
-                stream.close()
+        # On sérialise dans un tampon mémoire, puis on l'émet en UN write : sur
+        # stdout via ``self.stdout`` (l'``OutputWrapper`` que ``call_command``
+        # redirige, ending='' pour ne pas injecter de retour-ligne token par
+        # token) — jamais ``sys.stdout`` direct, que les tests ne capturent pas.
+        buffer = io.StringIO()
+        if fmt == 'csv':
+            fieldnames = (
+                ['company', 'auteur'] + list(FEEDBACK_FIELDS)
+                + ['annonce', 'date_creation'])
+            writer = csv.DictWriter(buffer, fieldnames=fieldnames)
+            writer.writeheader()
+            for row in rows:
+                writer.writerow(row)
+        else:
+            json.dump(rows, buffer, ensure_ascii=False, indent=2)
+            buffer.write('\n')
 
+        payload = buffer.getvalue()
         if out_file:
+            with open(out_file, 'w', newline='', encoding='utf-8') as fh:
+                fh.write(payload)
             self.stdout.write(self.style.SUCCESS(
                 f'{len(rows)} feedback(s) exporté(s) → {out_file}'))
+        else:
+            self.stdout.write(payload, ending='')
