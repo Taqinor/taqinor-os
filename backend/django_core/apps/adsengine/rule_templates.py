@@ -254,6 +254,230 @@ RULE_TEMPLATES = {
         'editable_params': ['max_rank_gap', 'min_qualified_leads'],
         'default_params': {'max_rank_gap': 1, 'min_qualified_leads': 10},
     },
+    # ══════════════════════════════════════════════════════════════════════
+    # ADSDEEP38 — VOCABULAIRE DE CONDITIONS v2 (barre Bïrch, benchmark §1).
+    # ----------------------------------------------------------------------
+    # Sept gabarits FR PARAMÉTRÉS (jamais un builder anglais libre — même
+    # doctrine catalogue-fixe que ci-dessus) qui couvrent : toutes les
+    # métriques snapshot + dérivées (CPL, coût/conversation, CTR lien,
+    # rétention vidéo, fréquence), les COMPARAISONS DE FENÊTRES (« CPA 3 j >
+    # CPA 7 j × 1,2 »), le CLASSEMENT top/bottom-N, et des opérateurs riches
+    # (gt/lt/ratio_gt/rank_top). Chaque gabarit porte un bloc ``v2`` que
+    # ``rules_engine`` lit pour choisir l'évaluateur + la métrique (jamais de
+    # logique dupliquée en base). Tous ALERTE-SEULE par défaut (``action``
+    # None) : les ACTIONS de règle (budget/stop-loss/duplication) atterrissent
+    # en ADSDEEP40, propose-first et plafonnées learning-safe. Le hint
+    # ``v2['action']`` PRÉ-DÉCLARE l'intention d'action (surf-scaling) que
+    # ADSDEEP40 câble — inerte tant que 40 n'a pas livré l'acteur.
+    # ══════════════════════════════════════════════════════════════════════
+    # 9) Régression CPA — coût par lead court terme vs long terme (fenêtres
+    #    comparées). CPL(court) > CPL(long) × facteur ⇒ dégradation.
+    'cpa_window_regression': {
+        'label_fr': 'Régression CPA — coût/lead court terme vs long terme',
+        'severity': SEVERITY_WARNING,
+        'cadence': CADENCE_DAILY,
+        'scope': 'campaign',
+        'detector': None,
+        'action': None,  # alerte seule (l'action budget/pause vient d'ADSDEEP40)
+        'conditions': {
+            'logic': 'all',
+            'conditions': [{
+                'field': 'cost_per_lead_mad',
+                'scope': 'campaign',
+                'operator': 'ratio_gt',
+                'compare_window': {
+                    'short': {'type': 'trailing_days', 'param': 'short_days'},
+                    'long': {'type': 'trailing_days', 'param': 'long_days'},
+                    'factor_param': 'regression_factor',
+                },
+                'min_samples_param': 'min_samples',
+                'on_insufficient_data': 'alert_info',
+            }],
+        },
+        'editable_params': [
+            'short_days', 'long_days', 'regression_factor', 'min_samples'],
+        'default_params': {
+            'short_days': 3, 'long_days': 7, 'regression_factor': 1.2,
+            'min_samples': 3},
+        'v2': {'evaluator': 'window_regression', 'metric': 'cpl',
+               'direction': 'up'},
+    },
+    # 10) Coût par conversation WhatsApp au plafond (dépense / conversations).
+    'cost_per_conversation_high': {
+        'label_fr': 'Coût par conversation WhatsApp au plafond',
+        'severity': SEVERITY_WARNING,
+        'cadence': CADENCE_DAILY,
+        'scope': 'campaign',
+        'detector': None,
+        'action': None,
+        'conditions': {
+            'logic': 'all',
+            'conditions': [{
+                'field': 'cost_per_conversation_mad',
+                'scope': 'campaign',
+                'operator': 'gt',
+                'value_param': 'threshold_mad',
+                'window': {'type': 'trailing_days', 'param': 'window_days'},
+                'min_samples_param': 'min_samples',
+                'on_insufficient_data': 'alert_info',
+            }],
+        },
+        'editable_params': ['threshold_mad', 'window_days', 'min_samples'],
+        'default_params': {
+            'threshold_mad': 50, 'window_days': 7, 'min_samples': 3},
+        'v2': {'evaluator': 'threshold', 'metric': 'cost_per_conversation',
+               'operator': 'gt', 'threshold_param': 'threshold_mad'},
+    },
+    # 11) CTR lien faible (clics sur lien / impressions) — signal créatif tôt.
+    'link_ctr_low': {
+        'label_fr': 'CTR lien faible (clics sur lien / impressions)',
+        'severity': SEVERITY_INFO,
+        'cadence': CADENCE_DAILY,
+        'scope': 'ad',
+        'detector': None,
+        'action': None,
+        'conditions': {
+            'logic': 'all',
+            'conditions': [{
+                'field': 'link_ctr',
+                'scope': 'ad',
+                'operator': 'lt',
+                'value_param': 'min_ctr',
+                'window': {'type': 'trailing_days', 'param': 'window_days'},
+                'min_samples_param': 'min_samples',
+                'on_insufficient_data': 'skip',
+            }],
+        },
+        'editable_params': ['min_ctr', 'window_days', 'min_samples'],
+        'default_params': {
+            'min_ctr': 0.005, 'window_days': 7, 'min_samples': 3},
+        'v2': {'evaluator': 'threshold', 'metric': 'ctr_link',
+               'operator': 'lt', 'threshold_param': 'min_ctr'},
+    },
+    # 12) Rétention vidéo faible (vues 6 s / impressions) — fatigue/hook faible.
+    #     Utilise la métrique vidéo RÉELLE ``s6`` (video_6_sec_watched_actions) —
+    #     jamais un champ « 3 s » inexistant (dossier insights-api §3).
+    'hold_rate_low': {
+        'label_fr': 'Rétention vidéo faible (vues 6 s / impressions)',
+        'severity': SEVERITY_INFO,
+        'cadence': CADENCE_WEEKLY,
+        'scope': 'ad',
+        'detector': None,
+        'action': None,
+        'conditions': {
+            'logic': 'all',
+            'conditions': [{
+                'field': 'hold_rate',
+                'scope': 'ad',
+                'operator': 'lt',
+                'value_param': 'min_hold_rate',
+                'window': {'type': 'trailing_days', 'param': 'window_days'},
+                'min_samples_param': 'min_samples',
+                'on_insufficient_data': 'skip',
+            }],
+        },
+        'editable_params': ['min_hold_rate', 'window_days', 'min_samples'],
+        'default_params': {
+            'min_hold_rate': 0.15, 'window_days': 14, 'min_samples': 3},
+        'v2': {'evaluator': 'threshold', 'metric': 'hold_rate',
+               'operator': 'lt', 'threshold_param': 'min_hold_rate'},
+    },
+    # 13) Top dépensiers sans résultat (CLASSEMENT top-N par dépense). Les N
+    #     campagnes qui dépensent le PLUS mais restent sous le plancher de
+    #     résultats ⇒ argent gaspillé (benchmark : ranking top/bottom-N).
+    'top_spend_low_result': {
+        'label_fr': 'Top dépensiers sans résultat (classement top-N)',
+        'severity': SEVERITY_WARNING,
+        'cadence': CADENCE_DAILY,
+        'scope': 'campaign',
+        'detector': None,
+        'action': None,
+        'conditions': {
+            'logic': 'all',
+            'conditions': [{
+                'field': 'spend',
+                'scope': 'campaign',
+                'operator': 'rank_top',
+                'rank': {'by': 'spend', 'order': 'desc', 'n_param': 'top_n'},
+                'value_param': 'min_results',
+                'window': {'type': 'trailing_days', 'param': 'window_days'},
+                'min_samples_param': 'min_samples',
+                'on_insufficient_data': 'skip',
+            }],
+        },
+        'editable_params': [
+            'top_n', 'min_results', 'window_days', 'min_samples'],
+        'default_params': {
+            'top_n': 3, 'min_results': 1, 'window_days': 7, 'min_samples': 3},
+        'v2': {'evaluator': 'rank_low_result'},
+    },
+    # 14) Fréquence en hausse — court terme vs long terme (fenêtres comparées) :
+    #     frequence(court) > frequence(long) × facteur ⇒ saturation qui monte.
+    'frequency_ratio_regression': {
+        'label_fr': 'Fréquence en hausse — court terme vs long terme',
+        'severity': SEVERITY_WARNING,
+        'cadence': CADENCE_DAILY,
+        'scope': 'adset',
+        'detector': None,
+        'action': None,
+        'conditions': {
+            'logic': 'all',
+            'conditions': [{
+                'field': 'frequency',
+                'scope': 'adset',
+                'operator': 'ratio_gt',
+                'compare_window': {
+                    'short': {'type': 'trailing_days', 'param': 'short_days'},
+                    'long': {'type': 'trailing_days', 'param': 'long_days'},
+                    'factor_param': 'regression_factor',
+                },
+                'min_samples_param': 'min_samples',
+                'on_insufficient_data': 'alert_info',
+            }],
+        },
+        'editable_params': [
+            'short_days', 'long_days', 'regression_factor', 'min_samples'],
+        'default_params': {
+            'short_days': 3, 'long_days': 7, 'regression_factor': 1.15,
+            'min_samples': 3},
+        'v2': {'evaluator': 'window_regression', 'metric': 'frequency',
+               'direction': 'up'},
+    },
+    # 15) Surf-scaling — le CPL s'AMÉLIORE (court terme < long terme × facteur) :
+    #     candidat à une montée de budget learning-safe. Alerte seule ici ;
+    #     ADSDEEP40 câble l'ACTION budget +% (plafonnée ≤ 20 %, propose-first)
+    #     via le hint ``v2['action']``.
+    'surf_scale_budget': {
+        'label_fr': 'Surf-scaling — CPL en amélioration (candidat montée budget)',
+        'severity': SEVERITY_INFO,
+        'cadence': CADENCE_DAILY,
+        'scope': 'adset',
+        'detector': None,
+        'action': None,  # ADSDEEP40 : l'acteur budget lit v2['action'].
+        'conditions': {
+            'logic': 'all',
+            'conditions': [{
+                'field': 'cost_per_lead_mad',
+                'scope': 'adset',
+                'operator': 'ratio_lt',
+                'compare_window': {
+                    'short': {'type': 'trailing_days', 'param': 'short_days'},
+                    'long': {'type': 'trailing_days', 'param': 'long_days'},
+                    'factor_param': 'improve_factor',
+                },
+                'min_samples_param': 'min_samples',
+                'on_insufficient_data': 'skip',
+            }],
+        },
+        'editable_params': [
+            'short_days', 'long_days', 'improve_factor', 'scale_pct',
+            'min_samples'],
+        'default_params': {
+            'short_days': 3, 'long_days': 7, 'improve_factor': 0.9,
+            'scale_pct': 20, 'min_samples': 3},
+        'v2': {'evaluator': 'window_regression', 'metric': 'cpl',
+               'direction': 'down', 'action': 'budget_scale_up'},
+    },
 }
 
 

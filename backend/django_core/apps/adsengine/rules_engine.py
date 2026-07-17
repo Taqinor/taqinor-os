@@ -146,6 +146,249 @@ def _eval_cpl_band(company, policy, template, *, now, config):
     return findings
 
 
+# ══════════════════════════════════════════════════════════════════════════
+# ADSDEEP38 — Vocabulaire de conditions v2 : métriques dérivées, fenêtres
+# comparées, classement top/bottom-N. Un évaluateur GÉNÉRIQUE par forme de
+# condition (seuil / fenêtres comparées / classement) lit le bloc ``v2`` du
+# template pour choisir la métrique — jamais de logique dupliquée en base.
+# ══════════════════════════════════════════════════════════════════════════
+def _mirror_model_for_scope(scope):
+    """Modèle miroir pour un ``scope`` de template (campaign/adset/ad)."""
+    from .models import AdCampaignMirror, AdMirror, AdSetMirror
+    return {
+        'campaign': AdCampaignMirror, 'adset': AdSetMirror, 'ad': AdMirror,
+    }.get(scope)
+
+
+def _name_matches(pattern, name):
+    """ADSDEEP39 — Vrai si ``name`` matche le motif de sélection (glob
+    insensible à la casse, style Bïrch Selection Filter). Un motif vide matche
+    TOUT (aucune restriction). ``*``/``?`` supportés (fnmatch)."""
+    import fnmatch
+    if not pattern:
+        return True
+    return fnmatch.fnmatch((name or '').lower(), str(pattern).lower())
+
+
+def _scoped_mirrors(company, policy, scope):
+    """Liste des miroirs d'un scope pour la société, RESTREINTE au motif de nom
+    de la règle (ADSDEEP39 — s'applique DYNAMIQUEMENT, donc aux campagnes
+    FUTURES matchant le motif puisque l'évaluation relit les miroirs à chaque
+    beat). Un motif vide = tous les miroirs."""
+    model = _mirror_model_for_scope(scope)
+    if model is None:
+        return None, []
+    pattern = getattr(policy, 'name_pattern', '') or ''
+    mirrors = [
+        m for m in model.objects.filter(company=company)
+        if _name_matches(pattern, m.name)]
+    return model, mirrors
+
+
+def _sum_attr(snaps, attr):
+    """Somme d'un attribut numérique sur des snapshots (ignore les None)."""
+    total = 0.0
+    for s in snaps:
+        v = getattr(s, attr, None)
+        if v is not None:
+            try:
+                total += float(v)
+            except (TypeError, ValueError):
+                continue
+    return total
+
+
+def _sum_video(snaps, key):
+    """Somme d'une clé de ``video_metrics`` (ex. ``s6``) sur des snapshots."""
+    total = 0.0
+    for s in snaps:
+        vm = getattr(s, 'video_metrics', None) or {}
+        v = vm.get(key)
+        if v is not None:
+            try:
+                total += float(v)
+            except (TypeError, ValueError):
+                continue
+    return total
+
+
+def _derived_metric(snaps, metric):
+    """Valeur d'une métrique DÉRIVÉE sur une fenêtre de snapshots.
+
+    Renvoie ``(valeur|None, samples)`` : ``None`` quand le dénominateur est nul
+    ou la donnée absente (le déclencheur retombe alors sur ``insufficient_data``
+    — jamais un faux 0). ``samples`` = nombre de snapshots de la fenêtre."""
+    n = len(snaps)
+    if metric == 'cpl':
+        spend = _sum_attr(snaps, 'spend')
+        results = _sum_attr(snaps, 'results')
+        return ((spend / results) if results > 0 else None), n
+    if metric == 'cost_per_conversation':
+        spend = _sum_attr(snaps, 'spend')
+        conv = _sum_attr(snaps, 'conversations')
+        return ((spend / conv) if conv > 0 else None), n
+    if metric == 'ctr_link':
+        clicks = _sum_attr(snaps, 'link_clicks')
+        impr = _sum_attr(snaps, 'impressions')
+        return ((clicks / impr) if impr > 0 else None), n
+    if metric == 'hold_rate':
+        s6 = _sum_video(snaps, 's6')
+        impr = _sum_attr(snaps, 'impressions')
+        return ((s6 / impr) if impr > 0 else None), n
+    if metric == 'spend':
+        return _sum_attr(snaps, 'spend'), n
+    if metric == 'frequency':
+        freqs = [float(s.frequency) for s in snaps
+                 if getattr(s, 'frequency', None) is not None]
+        return ((max(freqs)) if freqs else None), n
+    return None, n
+
+
+def _window_snaps(company, ct, obj_pk, *, now, days):
+    """Snapshots d'un objet sur une fenêtre glissante de ``days`` jours."""
+    from .models import InsightSnapshot
+    start = _window_start_date(now, days)
+    return list(InsightSnapshot.objects.filter(
+        company=company, content_type=ct, object_id=obj_pk, date__gte=start))
+
+
+def _eval_metric_threshold(company, policy, template, *, now, config):
+    """ADSDEEP38 — Évaluateur GÉNÉRIQUE « métrique dérivée vs seuil » (opérateurs
+    ``gt``/``lt``). Lit ``template['v2']`` (metric/operator/threshold_param).
+    Sous le plancher d'échantillons → ``insufficient_data``."""
+    from django.contrib.contenttypes.models import ContentType
+
+    spec = template.get('v2', {})
+    metric = spec['metric']
+    operator = spec.get('operator', 'gt')
+    params = rule_templates.resolve_params(policy.template_key, policy.params)
+    threshold = float(params.get(spec['threshold_param']))
+    window_days = int(params.get('window_days', 7))
+    min_samples = int(params.get('min_samples', 3))
+    scope = template['scope']
+    model, mirrors = _scoped_mirrors(company, policy, scope)
+    if model is None:
+        return []
+    ct = ContentType.objects.get_for_model(model)
+
+    findings = []
+    for m in mirrors:
+        snaps = _window_snaps(company, ct, m.pk, now=now, days=window_days)
+        value, n = _derived_metric(snaps, metric)
+        base = {'target_type': scope, 'target_meta_id': m.meta_id,
+                'target_object_id': m.pk, 'severity': template['severity']}
+        if n < min_samples or value is None:
+            findings.append({**base, 'fired': False, 'insufficient_data': True,
+                             'computed': {'metric': metric, 'value': value,
+                                          'samples': n}})
+            continue
+        fired = value > threshold if operator == 'gt' else value < threshold
+        findings.append({
+            **base, 'fired': fired, 'insufficient_data': False,
+            'computed': {'metric': metric, 'value': round(value, 4),
+                         'threshold': threshold, 'operator': operator,
+                         'window_days': window_days, 'samples': n}})
+    return findings
+
+
+def _eval_window_regression(company, policy, template, *, now, config):
+    """ADSDEEP38 — Évaluateur GÉNÉRIQUE « fenêtres comparées » (« CPA 3 j > CPA
+    7 j × 1,2 »). Compare la métrique sur une fenêtre COURTE vs une fenêtre
+    LONGUE × facteur. ``direction`` ``up`` = déclenche si court > long × facteur
+    (dégradation) ; ``down`` = si court < long × facteur (amélioration, surf-
+    scaling). La fenêtre longue borne le plancher d'échantillons."""
+    from django.contrib.contenttypes.models import ContentType
+
+    spec = template.get('v2', {})
+    metric = spec['metric']
+    direction = spec.get('direction', 'up')
+    params = rule_templates.resolve_params(policy.template_key, policy.params)
+    short_days = int(params.get('short_days', 3))
+    long_days = int(params.get('long_days', 7))
+    factor = float(params.get('regression_factor',
+                              params.get('improve_factor', 1.0)))
+    min_samples = int(params.get('min_samples', 3))
+    scope = template['scope']
+    model, mirrors = _scoped_mirrors(company, policy, scope)
+    if model is None:
+        return []
+    ct = ContentType.objects.get_for_model(model)
+
+    findings = []
+    for m in mirrors:
+        short_snaps = _window_snaps(company, ct, m.pk, now=now, days=short_days)
+        long_snaps = _window_snaps(company, ct, m.pk, now=now, days=long_days)
+        short_val, _ = _derived_metric(short_snaps, metric)
+        long_val, long_n = _derived_metric(long_snaps, metric)
+        base = {'target_type': scope, 'target_meta_id': m.meta_id,
+                'target_object_id': m.pk, 'severity': template['severity']}
+        if (long_n < min_samples or short_val is None or long_val is None
+                or long_val <= 0):
+            findings.append({**base, 'fired': False, 'insufficient_data': True,
+                             'computed': {'metric': metric,
+                                          'short': short_val, 'long': long_val,
+                                          'samples': long_n}})
+            continue
+        boundary = long_val * factor
+        fired = short_val > boundary if direction == 'up' else (
+            short_val < boundary)
+        findings.append({
+            **base, 'fired': fired, 'insufficient_data': False,
+            'computed': {'metric': metric, 'short': round(short_val, 4),
+                         'long': round(long_val, 4), 'factor': factor,
+                         'boundary': round(boundary, 4), 'direction': direction,
+                         'short_days': short_days, 'long_days': long_days,
+                         'samples': long_n}})
+    return findings
+
+
+def _eval_rank_low_result(company, policy, template, *, now, config):
+    """ADSDEEP38 — Évaluateur GÉNÉRIQUE « classement top-N » : classe les objets
+    du scope par dépense décroissante sur la fenêtre, prend les ``top_n``
+    premiers, et DÉCLENCHE ceux dont les résultats restent sous le plancher
+    ``min_results`` (top dépensiers sans résultat). Les objets sans assez de
+    snapshots sont ``insufficient_data`` (jamais un skip muet)."""
+    from django.contrib.contenttypes.models import ContentType
+
+    params = rule_templates.resolve_params(policy.template_key, policy.params)
+    top_n = int(params.get('top_n', 3))
+    min_results = float(params.get('min_results', 1))
+    window_days = int(params.get('window_days', 7))
+    min_samples = int(params.get('min_samples', 3))
+    scope = template['scope']
+    model, mirrors = _scoped_mirrors(company, policy, scope)
+    if model is None:
+        return []
+    ct = ContentType.objects.get_for_model(model)
+
+    ranked = []
+    findings = []
+    for m in mirrors:
+        snaps = _window_snaps(company, ct, m.pk, now=now, days=window_days)
+        base = {'target_type': scope, 'target_meta_id': m.meta_id,
+                'target_object_id': m.pk, 'severity': template['severity']}
+        if len(snaps) < min_samples:
+            findings.append({**base, 'fired': False, 'insufficient_data': True,
+                             'computed': {'metric': 'spend', 'value': None,
+                                          'samples': len(snaps)}})
+            continue
+        spend = _sum_attr(snaps, 'spend')
+        results = _sum_attr(snaps, 'results')
+        ranked.append((spend, results, base))
+    # Classement top-N par dépense décroissante.
+    ranked.sort(key=lambda r: r[0], reverse=True)
+    for idx, (spend, results, base) in enumerate(ranked):
+        in_top = idx < top_n
+        fired = in_top and results < min_results
+        findings.append({
+            **base, 'fired': fired, 'insufficient_data': False,
+            'computed': {'metric': 'spend', 'spend': round(spend, 4),
+                         'results': results, 'rank': idx + 1, 'top_n': top_n,
+                         'min_results': min_results, 'in_top_n': in_top,
+                         'window_days': window_days}})
+    return findings
+
+
 # Registre template_key → évaluateur. Les templates dépendant d'une autre lane
 # (pacing, réconciliation) ou d'une donnée non encore stockée (impressions pour
 # zéro-delivery) ne sont PAS câblés ici et sont consignés ``evaluated: False``
@@ -153,6 +396,15 @@ def _eval_cpl_band(company, policy, template, *, now, config):
 _EVALUATORS = {
     'frequency_high': _eval_frequency_high,
     'cpl_band': _eval_cpl_band,
+    # ADSDEEP38 — vocabulaire de conditions v2 (métriques dérivées / fenêtres
+    # comparées / classement top-N).
+    'cost_per_conversation_high': _eval_metric_threshold,
+    'link_ctr_low': _eval_metric_threshold,
+    'hold_rate_low': _eval_metric_threshold,
+    'cpa_window_regression': _eval_window_regression,
+    'frequency_ratio_regression': _eval_window_regression,
+    'surf_scale_budget': _eval_window_regression,
+    'top_spend_low_result': _eval_rank_low_result,
 }
 
 
