@@ -921,3 +921,39 @@ class NTEDU27IncidentDisciplineTests(EducationTestCaseMixin, TestCase):
         self.assertEqual(response.status_code, 200, response.content)
         incident.refresh_from_db()
         self.assertEqual(incident.statut, IncidentDiscipline.Statut.CLOS)
+
+
+class NTEDU30WhatsAppGatedTests(EducationTestCaseMixin, TestCase):
+    """NTEDU30 — [GATED: WhatsApp Business API] canal WhatsApp COST-gated,
+    déjà satisfait par la réutilisation du provider ``notifications.
+    whatsapp_bsp`` (QJ23/FG33) : sans ``WHATSAPP_BSP_ENABLED=1``, le repli
+    ``wa.me`` manuel est TOUJOURS utilisé, sans exception ni appel réseau."""
+
+    def test_sans_cle_api_le_canal_absence_utilise_le_lien_wame_manuel(self):
+        import os
+        from unittest.mock import patch
+
+        from apps.notifications.services import send_whatsapp_campaign_message
+
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop('WHATSAPP_BSP_ENABLED', None)
+            result = send_whatsapp_campaign_message(
+                self.company, recipient='+212600000000', body='Test NTEDU30')
+
+        self.assertEqual(result['provider'], 'manual')
+        self.assertIsNotNone(result['url'])
+        self.assertTrue(result['url'].startswith('https://wa.me/'))
+
+    def test_incident_majeur_notification_ne_leve_jamais_meme_sans_cle(self):
+        import os
+
+        os.environ.pop('WHATSAPP_BSP_ENABLED', None)
+        eleve = Eleve.objects.create(
+            company=self.company, famille=self.famille, nom='X', prenom='Y',
+            classe=self.classe)
+        # Aucune exception attendue même sans clé API configurée (fallback
+        # wa.me systématique — critère NTEDU30).
+        IncidentDiscipline.objects.create(
+            company=self.company, eleve=eleve, date=date(2026, 9, 15),
+            type=IncidentDiscipline.Type.COMPORTEMENT,
+            gravite=IncidentDiscipline.Gravite.MAJEUR)
