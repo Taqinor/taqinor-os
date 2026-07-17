@@ -4469,6 +4469,62 @@ def ingerer_compteur_usage(company, *, type_cible, cible_id, code_compteur,
     return compteur, cree
 
 
+def importer_compteurs_usage_csv(company, contenu_csv):
+    """Import CSV en masse de compteurs d'usage — NTSUB31.
+
+    ``contenu_csv`` : texte CSV avec en-tête. Colonnes reconnues :
+    ``cible_id`` (requis), ``code_compteur`` (requis), ``periode_debut``,
+    ``periode_fin`` (dates ISO ``YYYY-MM-DD``, requises), ``quantite``
+    (requis), ``type_cible`` (optionnel, défaut ``contrat``). Chaque ligne
+    valide est ingérée via ``ingerer_compteur_usage`` (IDEMPOTENT par
+    ``(cible, code, période)`` — un doublon MET À JOUR sans dupliquer). Les
+    lignes invalides sont RAPPORTÉES sans interrompre l'import.
+
+    Renvoie ``{'inserees', 'mises_a_jour', 'erreurs': [{'ligne', 'erreur'}]}``.
+    """
+    import csv
+    import datetime
+    import io
+    from decimal import InvalidOperation
+
+    from .models import AbonnementAddOnLigne
+
+    rapport = {'inserees': 0, 'mises_a_jour': 0, 'erreurs': []}
+    valides = {c for c, _ in AbonnementAddOnLigne.TypeCible.choices}
+
+    reader = csv.DictReader(io.StringIO(contenu_csv))
+    for i, row in enumerate(reader, start=2):  # ligne 1 = en-tête
+        try:
+            type_cible = (row.get('type_cible') or 'contrat').strip()
+            if type_cible not in valides:
+                type_cible = AbonnementAddOnLigne.TypeCible.CONTRAT
+            cible_id = int(str(row.get('cible_id', '')).strip())
+            code_compteur = (row.get('code_compteur') or '').strip()
+            if not code_compteur:
+                raise ValueError('code_compteur manquant')
+            periode_debut = datetime.date.fromisoformat(
+                (row.get('periode_debut') or '').strip())
+            periode_fin = datetime.date.fromisoformat(
+                (row.get('periode_fin') or '').strip())
+            if periode_fin < periode_debut:
+                raise ValueError('periode_fin antérieure à periode_debut')
+            quantite = Decimal(str(row.get('quantite', '')).strip())
+        except (ValueError, InvalidOperation, TypeError) as exc:
+            rapport['erreurs'].append({'ligne': i, 'erreur': str(exc)})
+            continue
+
+        _, cree = ingerer_compteur_usage(
+            company, type_cible=type_cible, cible_id=cible_id,
+            code_compteur=code_compteur, periode_debut=periode_debut,
+            periode_fin=periode_fin, quantite=quantite, source='api')
+        if cree:
+            rapport['inserees'] += 1
+        else:
+            rapport['mises_a_jour'] += 1
+
+    return rapport
+
+
 def total_usage_periode(company, *, type_cible, cible_id, code_compteur,
                         periode_debut, periode_fin):
     """Somme des ``CompteurUsage`` d'une cible/compteur RECOUVRANT la fenêtre

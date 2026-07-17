@@ -2767,6 +2767,28 @@ class CompteurUsageViewSet(_ContratsBaseViewSet):
         out = self.get_serializer(compteur)
         return Response(out.data, status=status.HTTP_201_CREATED)
 
+    @action(detail=False, methods=['post'], url_path='import-csv')
+    def import_csv(self, request):
+        """Import CSV en masse de compteurs d'usage — NTSUB31.
+
+        Corps : ``contenu`` (texte CSV) OU un fichier ``fichier`` (multipart).
+        Colonnes : ``cible_id``, ``code_compteur``, ``periode_debut``,
+        ``periode_fin``, ``quantite`` (+ ``type_cible`` optionnel). Idempotent
+        par ``(cible, code, période)`` (un doublon met à jour, ne duplique
+        pas). Réponse synchrone : lignes insérées / mises à jour / rejetées.
+        Écriture gardée par ``contrat_gerer`` (base)."""
+        contenu = request.data.get('contenu')
+        if not contenu and 'fichier' in request.FILES:
+            contenu = request.FILES['fichier'].read().decode('utf-8', 'replace')
+        if not contenu:
+            return Response(
+                {'detail': 'Aucun contenu CSV fourni (champ « contenu » ou '
+                           '« fichier »).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        rapport = services.importer_compteurs_usage_csv(
+            request.user.company, contenu)
+        return Response(rapport, status=status.HTTP_200_OK)
+
 
 # ---------------------------------------------------------------------------
 # NTSUB8 — Séquences de dunning (relances impayés multi-étapes)
