@@ -13526,7 +13526,10 @@ def ouvrir_rapprochement_compte(company, compte, periode, *, solde_gl=None):
                 montant=li.montant, type_element=li.type_element,
                 source_type=li.source_type, source_id=li.source_id,
                 permanente=True)
-        recalculer_rapprochement_compte(rappr)
+    # Fige l'écart dès l'ouverture (solde_gl - Σ lignes), même sans report
+    # N-1 : un compte ouvert non justifié doit remonter dans la liste des
+    # en-retard (NTFIN38) avec son écart réel.
+    recalculer_rapprochement_compte(rappr)
     return rappr
 
 
