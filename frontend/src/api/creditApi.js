@@ -23,6 +23,16 @@ const creditApi = {
   // NTCRD12 — score crédit d'un client (lettre + position vs limite).
   getScoreClient: (clientId) => api.get(`/credit/clients/${clientId}/score/`),
 
+  // NTCRD13/15 — conditions de paiement par segment.
+  getConditionsSegment: (params) =>
+    api.get('/credit/conditions-segment/', { params }),
+  createConditionSegment: (data) =>
+    api.post('/credit/conditions-segment/', data),
+  updateConditionSegment: (id, data) =>
+    api.patch(`/credit/conditions-segment/${id}/`, data),
+  deleteConditionSegment: (id) =>
+    api.delete(`/credit/conditions-segment/${id}/`),
+
   // NTCRD9 — dérogations : demande + décision (approuver/rejeter).
   getDerogations: (params) => api.get('/credit/derogations/', { params }),
   createDerogation: (data) => api.post('/credit/derogations/', data),
