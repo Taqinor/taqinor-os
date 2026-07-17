@@ -130,6 +130,36 @@ def quota_assurance_utilise(client):
     }
 
 
+def badge_credit(client):
+    """NTCRD23 — pastille d'état crédit d'un client pour les listes
+    (devis/BC) : ``vert`` (marge OK), ``orange`` (proche/mode avertissement en
+    dépassement) ou ``rouge`` (blocage actif + dépassement). Lecture seule,
+    léger."""
+    from .models import LimiteCredit
+
+    limite_obj = LimiteCredit.objects.filter(client=client, actif=True).first()
+    if limite_obj is None or limite_obj.montant_limite is None:
+        return 'vert'
+
+    dispo = disponible_credit(client)
+    if dispo['depasse']:
+        if limite_obj.mode_hold == LimiteCredit.ModeHold.BLOCAGE:
+            return 'rouge'
+        return 'orange'
+    if dispo['pct_utilise'] is not None and dispo['pct_utilise'] >= 0.8:
+        return 'orange'
+    return 'vert'
+
+
+def badges_credit(company, client_ids):
+    """NTCRD23 — pastilles d'état crédit pour une liste d'ids clients (batch,
+    company-scopé). Renvoie ``{client_id: 'vert'|'orange'|'rouge'}``."""
+    from apps.crm.selectors import client_base_qs
+
+    clients = client_base_qs(company).filter(id__in=client_ids)
+    return {c.id: badge_credit(c) for c in clients}
+
+
 def segment_du_client(client):
     """NTCRD13 — segment crédit affecté à un client (repli local
     ``SegmentClientCredit``), ou ``None`` si aucun (comportement société par

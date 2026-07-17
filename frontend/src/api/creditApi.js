@@ -31,6 +31,10 @@ const creditApi = {
   // NTCRD12 — score crédit d'un client (lettre + position vs limite).
   getScoreClient: (clientId) => api.get(`/credit/clients/${clientId}/score/`),
 
+  // NTCRD23 — pastilles d'état crédit pour une liste d'ids clients (batch).
+  getBadges: (clientIds) =>
+    api.get('/credit/badges/', { params: { client_ids: clientIds.join(',') } }),
+
   // NTCRD13/15 — conditions de paiement par segment.
   getConditionsSegment: (params) =>
     api.get('/credit/conditions-segment/', { params }),

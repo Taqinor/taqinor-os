@@ -66,6 +66,18 @@ def fiche_credit_client(request, client_id):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
+def badges_credit_view(request):
+    """NTCRD23 — pastilles d'état crédit pour une liste d'ids clients
+    (``?client_ids=1,2,3``), company-scopé. Lecture seule/léger."""
+    from .selectors import badges_credit
+
+    raw = request.query_params.get('client_ids', '')
+    ids = [int(x) for x in raw.split(',') if x.strip().isdigit()]
+    return Response(badges_credit(request.user.company, ids))
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def exposition_credit(request):
     """NTCRD19 — rapport d'exposition consolidée (trié par risque). ``?format=
     xlsx`` renvoie un classeur .xlsx (jamais de ``prix_achat``/marge)."""
