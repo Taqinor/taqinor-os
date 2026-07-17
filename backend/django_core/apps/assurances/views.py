@@ -72,6 +72,32 @@ class PoliceAssuranceViewSet(_AssurancesBaseViewSet):
     serializer_class = PoliceAssuranceSerializer
     filterset_fields = ['type_police', 'statut', 'assureur', 'courtier']
 
+    def list(self, request, *args, **kwargs):
+        """NTASS24 — ``?export=xlsx`` télécharge le registre filtré (colonnes
+        assureur/courtier/numéro/type/échéance/prime/statut). Réutilise le
+        builder xlsx partagé ; sinon liste JSON standard."""
+        if request.query_params.get('export') == 'xlsx':
+            from apps.records.xlsx import build_xlsx_response
+
+            qs = self.filter_queryset(self.get_queryset())
+            headers = [
+                'Assureur', 'Courtier', 'N° police', 'Type', 'Échéance',
+                'Prime annuelle HT', 'Statut']
+            rows = [
+                [
+                    p.assureur.raison_sociale if p.assureur_id else '',
+                    p.courtier.raison_sociale if p.courtier_id else '',
+                    p.numero_police, p.get_type_police_display(),
+                    p.date_echeance, p.prime_annuelle_ht,
+                    p.get_statut_display(),
+                ]
+                for p in qs
+            ]
+            return build_xlsx_response(
+                'registre-polices-assurance.xlsx', headers, rows,
+                sheet_title='Polices')
+        return super().list(request, *args, **kwargs)
+
     def perform_create(self, serializer):
         try:
             super().perform_create(serializer)
