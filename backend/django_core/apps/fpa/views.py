@@ -260,3 +260,42 @@ class LignePrevisionGlissanteViewSet(TenantMixin, viewsets.ModelViewSet):
         if prevision_id := self.request.query_params.get('prevision'):
             qs = qs.filter(prevision_id=prevision_id)
         return qs
+
+
+class DriversViewSet(viewsets.ViewSet):
+    """NTFPA9/11/12 — drivers de planning (endpoints de calcul, aucun modèle
+    propre). Company scopée via ``request.user.company``."""
+
+    @action(detail=False, methods=['post'], url_path='masse-salariale/projeter')
+    def masse_salariale_projeter(self, request):
+        from datetime import date
+
+        from .services import projeter_masse_salariale
+
+        def _parse_date(v):
+            if not v:
+                return None
+            if isinstance(v, date):
+                return v
+            return date.fromisoformat(str(v))
+
+        mois_debut = _parse_date(request.data.get('mois_debut'))
+        mois_fin = _parse_date(request.data.get('mois_fin'))
+        if mois_debut is None or mois_fin is None:
+            return Response(
+                {'detail': 'mois_debut et mois_fin (YYYY-MM-DD) requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        departement_id = request.data.get('departement')
+        hypotheses = request.data.get('hypothese_recrutements') or []
+        # Normalise les dates des hypothèses passées en JSON.
+        for hyp in hypotheses:
+            if isinstance(hyp.get('date_effet'), str):
+                hyp['date_effet'] = _parse_date(hyp['date_effet'])
+        rows = projeter_masse_salariale(
+            request.user.company, departement_id, mois_debut, mois_fin,
+            hypothese_recrutements=hypotheses)
+        return Response({'projection': [
+            {'annee': r['annee'], 'mois': r['mois'],
+             'masse_salariale_chargee': str(r['masse_salariale_chargee'])}
+            for r in rows
+        ]})

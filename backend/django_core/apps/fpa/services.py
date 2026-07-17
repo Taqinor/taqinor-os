@@ -162,3 +162,65 @@ def generer_prevision_glissante(prevision):
             )
             crees += 1
     return crees
+
+
+def _mois_iterables(mois_debut, mois_fin):
+    """Suite de tuples ``(annee, mois)`` de ``mois_debut`` à ``mois_fin``
+    inclus (dates au 1er du mois)."""
+    a, m = mois_debut.year, mois_debut.month
+    fin = (mois_fin.year, mois_fin.month)
+    out = []
+    while (a, m) <= fin:
+        out.append((a, m))
+        m += 1
+        if m > 12:
+            m = 1
+            a += 1
+    return out
+
+
+def projeter_masse_salariale(company, departement, mois_debut, mois_fin,
+                             hypothese_recrutements=None):
+    """NTFPA9 — projection mensuelle de la masse salariale CHARGÉE (charges
+    patronales incluses) sur ``[mois_debut, mois_fin]``.
+
+    Combine le référentiel salaires courant (``paie.selectors`` — jamais un
+    import de ``paie.models``) + une liste d'hypothèses de recrutement/départ.
+    Chaque hypothèse est un dict ``{'salaire_brut_estime', 'date_effet'
+    (date), 'type_mouvement' ('embauche'|'depart')}``. Un recrutement s'ajoute
+    à partir de son mois d'effet ; un départ se retranche.
+
+    Renvoie une liste ``[{'annee', 'mois', 'masse_salariale_chargee'}]``.
+    ``departement`` est accepté pour l'API (segmentation future) mais la base
+    salaires courante est company-wide (le référentiel paie n'est pas ventilé
+    par département FP&A)."""
+    from decimal import Decimal
+
+    from apps.paie import selectors as paie_selectors
+
+    base = paie_selectors.masse_salariale_base_mensuelle(company)
+    taux = paie_selectors.taux_charges_patronales(company)
+    facteur_charge = Decimal('1') + Decimal(taux)
+
+    hypotheses = list(hypothese_recrutements or [])
+
+    resultat = []
+    for annee, mois in _mois_iterables(mois_debut, mois_fin):
+        brut = Decimal(base)
+        for hyp in hypotheses:
+            date_effet = hyp.get('date_effet')
+            if date_effet is None:
+                continue
+            # Actif à partir du mois d'effet inclus.
+            if (date_effet.year, date_effet.month) <= (annee, mois):
+                montant = Decimal(str(hyp.get('salaire_brut_estime') or 0))
+                if hyp.get('type_mouvement') == 'depart':
+                    brut -= montant
+                else:
+                    brut += montant
+        chargee = (brut * facteur_charge).quantize(Decimal('0.01'))
+        resultat.append({
+            'annee': annee, 'mois': mois,
+            'masse_salariale_chargee': chargee,
+        })
+    return resultat

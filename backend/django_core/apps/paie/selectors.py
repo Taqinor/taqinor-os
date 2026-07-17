@@ -113,6 +113,44 @@ def mes_bulletins_valides(user):
     ]
 
 
+def taux_charges_patronales(company):
+    """NTFPA9 — taux global de charges PATRONALES d'une société (fraction, ex.
+    0.18 = 18 %), somme des taux patronaux du ``ParametrePaie`` courant (CNSS +
+    AMO + allocations familiales + formation pro).
+
+    Sélecteur de LECTURE pour ``apps.fpa`` (driver masse salariale) : FP&A ne
+    lit jamais ``paie.models`` directement. Repli sur les défauts du modèle si
+    aucun ``ParametrePaie`` n'existe encore (jamais d'exception)."""
+    from decimal import Decimal
+
+    from .models import ParametrePaie
+
+    param = ParametrePaie.objects.filter(company=company).order_by('-id').first()
+    if param is None:
+        # Défauts du cadre marocain (mêmes valeurs par défaut que le modèle).
+        pct = Decimal('8.98') + Decimal('2.26') + Decimal('6.4') + Decimal('1.6')
+    else:
+        pct = (
+            (param.taux_cnss_patronal or 0)
+            + (param.taux_amo_patronal or 0)
+            + (param.taux_allocations_familiales or 0)
+            + (param.taux_formation_pro or 0))
+    return Decimal(pct) / Decimal('100')
+
+
+def masse_salariale_base_mensuelle(company):
+    """NTFPA9 — somme des ``salaire_base`` des profils de paie ACTIFS d'une
+    société (référentiel salaires courant, base mensuelle). Lecture seule pour
+    ``apps.fpa`` ; jamais un import de ``paie.models`` côté FP&A."""
+    from decimal import Decimal
+
+    from django.db.models import Sum
+
+    total = ProfilPaie.objects.filter(
+        company=company, actif=True).aggregate(s=Sum('salaire_base'))['s']
+    return Decimal(total or 0)
+
+
 def solde_avance(avance_id):
     """Solde restant dû d'une ``AvanceSalarie`` par id (YHIRE5, cross-app).
 

@@ -2,9 +2,9 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
-    CycleBudgetaireViewSet, DepartementViewSet, LigneBudgetDepartementViewSet,
-    LignePrevisionGlissanteViewSet, PrevisionGlissanteViewSet,
-    SoumissionBudgetDepartementViewSet,
+    CycleBudgetaireViewSet, DepartementViewSet, DriversViewSet,
+    LigneBudgetDepartementViewSet, LignePrevisionGlissanteViewSet,
+    PrevisionGlissanteViewSet, SoumissionBudgetDepartementViewSet,
 )
 
 router = DefaultRouter()
@@ -24,6 +24,7 @@ router.register(
 router.register(
     r'lignes-prevision-glissante', LignePrevisionGlissanteViewSet,
     basename='fpa-ligne-prevision-glissante')
+router.register(r'drivers', DriversViewSet, basename='fpa-drivers')
 
 urlpatterns = [
     path('', include(router.urls)),
