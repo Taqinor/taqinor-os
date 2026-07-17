@@ -87,6 +87,8 @@ from .models import (
     ReferentielComptable, AjustementGaap, AxeAnalytique, ImputationAxe,
     CleRepartition, LigneCleRepartition, RunAllocation, AllocationRecurrente,
     EngagementComptable,
+    ModeleCloture, TacheClotureModele, InstanceCloture, TacheCloture,
+    AccrualCloture, JustificationVariation, ModeleEcriture,
 )
 from .serializers import (
     AppelTelephoniqueSerializer, AvancementRevenuSerializer,
@@ -162,6 +164,9 @@ from .serializers import (
     CleRepartitionSerializer, LigneCleRepartitionSerializer,
     RunAllocationSerializer, AllocationRecurrenteSerializer,
     EngagementComptableSerializer,
+    ModeleClotureSerializer, TacheClotureModeleSerializer,
+    InstanceClotureSerializer, TacheClotureSerializer,
+    AccrualClotureSerializer, JustificationVariationSerializer,
 )
 
 
@@ -447,6 +452,72 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
             date_debut=params.get('date_debut') or None,
             date_fin=params.get('date_fin') or None)
         return Response(data)
+
+    @action(detail=False, methods=['get'], url_path='execution-budgetaire')
+    def execution_budgetaire(self, request):
+        """NTFIN25 — état d'exécution budgétaire avec engagements."""
+        annee = request.query_params.get('annee') or request.query_params.get(
+            'exercice')
+        try:
+            annee = int(annee) if annee else timezone.localdate().year
+        except (TypeError, ValueError):
+            return Response({'detail': "Paramètre 'annee' invalide."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            selectors.execution_budgetaire(request.user.company, annee))
+
+    @action(detail=False, methods=['get'], url_path='analyse-variation')
+    def analyse_variation(self, request):
+        """NTFIN30 — rapport de variation N vs N-1 (fluctuation analysis)."""
+        from decimal import Decimal
+        params = request.query_params
+        try:
+            periode = (_parse_date(params.get('date_debut')),
+                       _parse_date(params.get('date_fin')))
+            periode_comparee = (_parse_date(params.get('date_debut_n1')),
+                                _parse_date(params.get('date_fin_n1')))
+        except ValueError as exc:
+            return _err400(exc)
+        seuil = params.get('seuil') or '10000'
+        data = selectors.analyse_variation(
+            request.user.company, compte_prefixe=params.get('compte') or None,
+            periode=periode, periode_comparee=periode_comparee,
+            seuil_materialite=Decimal(str(seuil)))
+        return Response(data)
+
+    @action(detail=False, methods=['get'], url_path='anomalies-ecritures')
+    def anomalies_ecritures(self, request):
+        """NTFIN33 — scan qualité GL (anomalies d'écritures d'une période)."""
+        params = request.query_params
+        try:
+            date_debut = _parse_date(params.get('date_debut'))
+            date_fin = _parse_date(params.get('date_fin'))
+        except ValueError as exc:
+            return _err400(exc)
+        return Response(selectors.anomalies_ecritures(
+            request.user.company, date_debut=date_debut, date_fin=date_fin))
+
+    @action(detail=False, methods=['get'], url_path='cockpit-cloture')
+    def cockpit_cloture(self, request):
+        """NTFIN34 — tableau de bord de clôture (``?periode=<id>``)."""
+        periode = PeriodeComptable.objects.filter(
+            company=request.user.company,
+            pk=request.query_params.get('periode')).first()
+        if periode is None:
+            return Response({'detail': 'Période inconnue.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(selectors.cockpit_cloture(request.user.company, periode))
+
+    @action(detail=False, methods=['get'], url_path='pret-a-cloturer')
+    def pret_a_cloturer(self, request):
+        """NTFIN28 — la période est-elle prête à clôturer (``?periode=<id>``)."""
+        periode = PeriodeComptable.objects.filter(
+            company=request.user.company,
+            pk=request.query_params.get('periode')).first()
+        if periode is None:
+            return Response({'detail': 'Période inconnue.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(selectors.pret_a_cloturer(periode))
 
     @action(detail=False, methods=['get'])
     def cpc(self, request):
@@ -8312,3 +8383,171 @@ class EngagementComptableViewSet(_ComptaBaseViewSet):
         except (ValueError, TypeError) as exc:
             return _err400(exc)
         return Response(check)
+
+
+# ── NTFIN26-34 — Close management (clôture rapide) ─────────────────────────
+
+class ModeleClotureViewSet(_ComptaBaseViewSet):
+    """Modèles de checklist de clôture (NTFIN26) + action ``seed``."""
+    queryset = ModeleCloture.objects.prefetch_related('taches').all()
+    serializer_class = ModeleClotureSerializer
+
+    @action(detail=False, methods=['post'],
+            permission_classes=[IsResponsableOrAdmin])
+    def seed(self, request):
+        """NTFIN26 — amorce un modèle de clôture mensuelle standard (idempotent)."""
+        modele = services.seed_modele_cloture_mensuel(request.user.company)
+        return Response(self.get_serializer(modele).data)
+
+
+class TacheClotureModeleViewSet(_ComptaBaseViewSet):
+    """Tâches-modèle d'une checklist de clôture (NTFIN26)."""
+    queryset = TacheClotureModele.objects.select_related('modele').all()
+    serializer_class = TacheClotureModeleSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        modele = self.request.query_params.get('modele')
+        if modele:
+            qs = qs.filter(modele_id=modele)
+        return qs
+
+
+class InstanceClotureViewSet(_ComptaBaseViewSet):
+    """Instances (workspaces) de clôture d'une période (NTFIN27)."""
+    queryset = InstanceCloture.objects.select_related(
+        'periode', 'modele').prefetch_related('taches').all()
+    serializer_class = InstanceClotureSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        periode = self.request.query_params.get('periode')
+        if periode:
+            qs = qs.filter(periode_id=periode)
+        return qs
+
+    @action(detail=False, methods=['post'],
+            permission_classes=[HasPermissionOrLegacy('compta_valider')])
+    def instancier(self, request):
+        """NTFIN27 — matérialise une checklist sur une période."""
+        company = request.user.company
+        periode = PeriodeComptable.objects.filter(
+            company=company, pk=request.data.get('periode')).first()
+        modele = ModeleCloture.objects.filter(
+            company=company, pk=request.data.get('modele')).first()
+        if periode is None or modele is None:
+            return Response({'detail': 'Période ou modèle inconnu.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        date_cible = request.data.get('date_cible')
+        try:
+            instance = services.instancier_cloture(
+                periode, modele,
+                date_cible=_parse_date(date_cible) if date_cible else None)
+        except DjangoValidationError as exc:
+            return _err400(exc)
+        return Response(self.get_serializer(instance).data,
+                        status=status.HTTP_201_CREATED)
+
+
+class TacheClotureViewSet(_ComptaBaseViewSet):
+    """Tâches concrètes d'une instance de clôture (NTFIN27) + ``cocher``."""
+    queryset = TacheCloture.objects.select_related(
+        'instance', 'assigne_a', 'fait_par').all()
+    serializer_class = TacheClotureSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['ordre', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        instance = self.request.query_params.get('instance')
+        if instance:
+            qs = qs.filter(instance_id=instance)
+        return qs
+
+    def get_permissions(self):
+        if self.action in ('cocher', 'generer_od'):
+            return [HasPermissionOrLegacy('compta_valider')()]
+        return super().get_permissions()
+
+    @action(detail=True, methods=['post'])
+    def cocher(self, request, pk=None):
+        """NTFIN27 — coche/actualise le statut d'une tâche de clôture."""
+        tache = self.get_object()
+        services.cocher_tache_cloture(
+            tache, user=request.user, statut=request.data.get('statut'),
+            piece_jointe_key=request.data.get('piece_jointe_key'))
+        return Response(self.get_serializer(tache).data)
+
+    @action(detail=True, methods=['post'], url_path='generer-od')
+    def generer_od(self, request, pk=None):
+        """NTFIN32 — génère une OD de clôture depuis un modèle et coche la tâche."""
+        tache = self.get_object()
+        modele = ModeleEcriture.objects.filter(
+            company=request.user.company, pk=request.data.get('modele'),
+            cloture=True).first()
+        if modele is None:
+            return Response(
+                {'detail': "Modèle de clôture inconnu (flag cloture requis)."},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            date_ecriture = _parse_date(request.data.get('date_ecriture'))
+            montants = request.data.get('montants') or None
+            ecriture, _ = services.generer_od_cloture(
+                tache, modele, date_ecriture=date_ecriture,
+                montants=montants, user=request.user)
+        except (DjangoValidationError, ValueError, TypeError) as exc:
+            return _err400(exc)
+        return Response({
+            'ecriture_id': ecriture.id,
+            'tache': self.get_serializer(tache).data,
+        }, status=status.HTTP_201_CREATED)
+
+
+class AccrualClotureViewSet(_ComptaBaseViewSet):
+    """Accruals de clôture (NTFIN29) + action ``poster`` (OD + extourne)."""
+    queryset = AccrualCloture.objects.select_related('periode').all()
+    serializer_class = AccrualClotureSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        periode = self.request.query_params.get('periode')
+        if periode:
+            qs = qs.filter(periode_id=periode)
+        return qs
+
+    def get_permissions(self):
+        if self.action in ('poster',):
+            return [HasPermissionOrLegacy('compta_valider')()]
+        return super().get_permissions()
+
+    @action(detail=True, methods=['post'])
+    def poster(self, request, pk=None):
+        """NTFIN29 — poste l'accrual + son extourne au 1er jour suivant."""
+        accrual = self.get_object()
+        try:
+            services.poster_accrual(accrual, user=request.user)
+        except DjangoValidationError as exc:
+            return _err400(exc)
+        return Response(self.get_serializer(accrual).data)
+
+
+class JustificationVariationViewSet(_ComptaBaseViewSet):
+    """Justifications de variations matérielles (NTFIN31)."""
+    queryset = JustificationVariation.objects.select_related(
+        'periode', 'auteur').all()
+    serializer_class = JustificationVariationSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        periode = self.request.query_params.get('periode')
+        if periode:
+            qs = qs.filter(periode_id=periode)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company,
+                        auteur=self.request.user)

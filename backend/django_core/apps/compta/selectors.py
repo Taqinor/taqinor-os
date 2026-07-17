@@ -28,6 +28,7 @@ from .models import (
     PeriodeComptable,
     ReferentielComptable, ImputationAxe,
     EngagementComptable,
+    InstanceCloture, TacheCloture, JustificationVariation, AccrualCloture,
 )
 
 
@@ -4785,4 +4786,221 @@ def execution_budgetaire(company, exercice):
         'total_engage': total_engage,
         'total_realise': total_realise,
         'total_disponible': total_disponible,
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Groupe NTFIN — Close management : gates, variance, anomalies, cockpit
+# ═══════════════════════════════════════════════════════════════════════════
+
+def pret_a_cloturer(periode):
+    """NTFIN28 — la période est-elle prête à être clôturée (checklist) ?
+
+    Renvoie ``{'pret': bool, 'taches_manquantes': [...], 'instance_id'}``. Une
+    période sans instance de clôture est considérée prête (aucune checklist =
+    aucun blocage, comportement historique). ``pret=False`` liste les tâches
+    OBLIGATOIRES non faites. Lecture seule.
+    """
+    instance = InstanceCloture.objects.filter(
+        company=periode.company, periode=periode).order_by('-id').first()
+    if instance is None:
+        return {'pret': True, 'taches_manquantes': [], 'instance_id': None}
+    manquantes = []
+    for t in instance.taches.filter(obligatoire=True).order_by('ordre', 'id'):
+        if t.statut not in (TacheCloture.Statut.FAIT, TacheCloture.Statut.NA):
+            manquantes.append({
+                'id': t.id, 'libelle': t.libelle, 'categorie': t.categorie,
+                'statut': t.statut})
+    return {
+        'pret': not manquantes,
+        'taches_manquantes': manquantes,
+        'instance_id': instance.id,
+    }
+
+
+def _solde_prefixe(company, compte_prefixe, debut, fin):
+    """Solde net par compte (numéro préfixé) sur une plage de dates.
+
+    Renvoie ``{numero: {'intitule', 'classe', 'solde'}}`` où solde = crédit −
+    débit pour la classe 7, débit − crédit sinon.
+    """
+    qs = LigneEcriture.objects.filter(
+        company=company,
+        ecriture__date_ecriture__gte=debut,
+        ecriture__date_ecriture__lte=fin).select_related('compte')
+    if compte_prefixe:
+        qs = qs.filter(compte__numero__startswith=str(compte_prefixe))
+    soldes = {}
+    for lg in qs:
+        c = lg.compte
+        slot = soldes.setdefault(c.numero, {
+            'intitule': c.intitule, 'classe': c.classe,
+            'debit': Decimal('0'), 'credit': Decimal('0')})
+        slot['debit'] += lg.debit or Decimal('0')
+        slot['credit'] += lg.credit or Decimal('0')
+    out = {}
+    for numero, s in soldes.items():
+        if s['classe'] == 7:
+            solde = s['credit'] - s['debit']
+        else:
+            solde = s['debit'] - s['credit']
+        out[numero] = {'intitule': s['intitule'], 'classe': s['classe'],
+                       'solde': solde}
+    return out
+
+
+def analyse_variation(company, *, compte_prefixe=None, periode=None,
+                      periode_comparee=None, seuil_materialite=Decimal('10000')):
+    """NTFIN30 — rapport de variation N vs N-1 (flux/fluctuation analysis).
+
+    ``periode`` et ``periode_comparee`` : chacun un ``(debut, fin)`` de dates.
+    Pour chaque compte (préfixé), solde N, solde comparé, variation absolue et
+    %, signalé « à expliquer » si |variation| ≥ ``seuil_materialite``. Marque
+    ``justifiee`` selon l'existence d'une ``JustificationVariation`` expliquée
+    (NTFIN31) sur la période N. Lecture seule.
+    """
+    seuil = Decimal(str(seuil_materialite))
+    debut_n, fin_n = periode
+    debut_c, fin_c = periode_comparee
+    soldes_n = _solde_prefixe(company, compte_prefixe, debut_n, fin_n)
+    soldes_c = _solde_prefixe(company, compte_prefixe, debut_c, fin_c)
+    justifs = {
+        j.compte: j.statut for j in JustificationVariation.objects.filter(
+            company=company,
+            periode__date_debut__lte=fin_n,
+            periode__date_fin__gte=debut_n)}
+    lignes = []
+    for numero in sorted(set(soldes_n) | set(soldes_c)):
+        n = soldes_n.get(numero, {}).get('solde', Decimal('0'))
+        c = soldes_c.get(numero, {}).get('solde', Decimal('0'))
+        variation = n - c
+        pct = ((variation / c * Decimal('100')).quantize(Decimal('0.01'))
+               if c else Decimal('0'))
+        materielle = abs(variation) >= seuil
+        justif_statut = justifs.get(numero)
+        intitule = (soldes_n.get(numero) or soldes_c.get(numero, {})).get(
+            'intitule', '')
+        lignes.append({
+            'compte': numero,
+            'intitule': intitule,
+            'solde_n': n,
+            'solde_compare': c,
+            'variation': variation,
+            'variation_pct': pct,
+            'materielle': materielle,
+            'a_expliquer': materielle and justif_statut != 'expliquee',
+            'justifiee': justif_statut == 'expliquee',
+        })
+    return {
+        'seuil_materialite': seuil,
+        'lignes': lignes,
+        'nb_a_expliquer': sum(1 for li in lignes if li['a_expliquer']),
+    }
+
+
+def anomalies_ecritures(company, *, periode=None, date_debut=None,
+                        date_fin=None):
+    """NTFIN33 — scan qualité GL : anomalies d'écritures d'une période.
+
+    ``periode`` (objet ``PeriodeComptable``) OU ``date_debut``/``date_fin``.
+    Détecte : écritures déséquilibrées (bloquant), doublons probables (même
+    tiers + montant + date), montants ronds inhabituels (≥ 10 000 multiples de
+    1 000), écritures postées un jour non ouvré (samedi/dimanche). Renvoie
+    ``{'anomalies': [...], 'nb_bloquantes'}``. Lecture seule.
+    """
+    if periode is not None:
+        date_debut = periode.date_debut
+        date_fin = periode.date_fin
+    ecritures = EcritureComptable.objects.filter(
+        company=company,
+        date_ecriture__gte=date_debut,
+        date_ecriture__lte=date_fin).prefetch_related('lignes')
+    anomalies = []
+    signatures = {}
+    for ec in ecritures:
+        total_debit = sum((li.debit or Decimal('0') for li in ec.lignes.all()),
+                          Decimal('0'))
+        total_credit = sum((li.credit or Decimal('0') for li in ec.lignes.all()),
+                           Decimal('0'))
+        if total_debit != total_credit:
+            anomalies.append({
+                'ecriture_id': ec.id, 'type': 'desequilibre',
+                'gravite': 'bloquant',
+                'detail': f'Somme debit {total_debit} != credit {total_credit}'})
+        # Doublon probable : même date + même total débit + mêmes tiers.
+        tiers = tuple(sorted(
+            (li.tiers_type, li.tiers_id) for li in ec.lignes.all()
+            if li.tiers_id))
+        sig = (ec.date_ecriture, total_debit, tiers)
+        if total_debit > 0 and sig in signatures:
+            anomalies.append({
+                'ecriture_id': ec.id, 'type': 'doublon_probable',
+                'gravite': 'avertissement',
+                'detail': f'Doublon probable de ecriture {signatures[sig]}'})
+        else:
+            signatures[sig] = ec.id
+        # Montant rond inhabituel.
+        if (total_debit >= Decimal('10000')
+                and total_debit % Decimal('1000') == 0):
+            anomalies.append({
+                'ecriture_id': ec.id, 'type': 'montant_rond',
+                'gravite': 'info',
+                'detail': f'Montant rond inhabituel : {total_debit}'})
+        # Jour non ouvré (samedi=5, dimanche=6).
+        if ec.date_ecriture.weekday() >= 5:
+            anomalies.append({
+                'ecriture_id': ec.id, 'type': 'jour_non_ouvre',
+                'gravite': 'info',
+                'detail': f'Ecriture postee un jour non ouvre '
+                          f'({ec.date_ecriture})'})
+    return {
+        'anomalies': anomalies,
+        'nb_bloquantes': sum(1 for a in anomalies
+                             if a['gravite'] == 'bloquant'),
+    }
+
+
+def cockpit_cloture(company, periode):
+    """NTFIN34 — tableau de bord de clôture (vitesse & statut).
+
+    Agrège : % tâches faites, accruals postés, variations non expliquées,
+    jours écoulés depuis la date cible, et un ``close_status`` unique
+    (en_bonne_voie/en_retard). Lecture seule.
+    """
+    instance = InstanceCloture.objects.filter(
+        company=company, periode=periode).order_by('-id').first()
+    taches_total = taches_faites = 0
+    date_cible = None
+    if instance is not None:
+        taches = list(instance.taches.all())
+        taches_total = len(taches)
+        taches_faites = sum(
+            1 for t in taches
+            if t.statut in (TacheCloture.Statut.FAIT, TacheCloture.Statut.NA))
+        date_cible = instance.date_cible
+    pct_faites = (
+        (Decimal(taches_faites) / Decimal(taches_total) * Decimal('100'))
+        .quantize(Decimal('0.01')) if taches_total else Decimal('0'))
+    accruals_postes = AccrualCloture.objects.filter(
+        company=company, periode=periode).exclude(ecriture__isnull=True).count()
+    variations_non_expliquees = JustificationVariation.objects.filter(
+        company=company, periode=periode,
+        statut=JustificationVariation.Statut.NON_EXPLIQUEE).count()
+    jours_depuis_cible = None
+    if date_cible is not None:
+        jours_depuis_cible = (timezone.localdate() - date_cible).days
+    en_retard = (
+        jours_depuis_cible is not None and jours_depuis_cible > 0
+        and taches_faites < taches_total)
+    return {
+        'periode_id': periode.id,
+        'instance_id': instance.id if instance else None,
+        'taches_total': taches_total,
+        'taches_faites': taches_faites,
+        'pct_faites': pct_faites,
+        'accruals_postes': accruals_postes,
+        'variations_non_expliquees': variations_non_expliquees,
+        'date_cible': date_cible,
+        'jours_depuis_cible': jours_depuis_cible,
+        'close_status': 'en_retard' if en_retard else 'en_bonne_voie',
     }

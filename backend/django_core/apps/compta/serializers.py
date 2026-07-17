@@ -63,6 +63,8 @@ from .models import (
     ReferentielComptable, AjustementGaap, AxeAnalytique, ImputationAxe,
     CleRepartition, LigneCleRepartition, RunAllocation, AllocationRecurrente,
     EngagementComptable,
+    ModeleCloture, TacheClotureModele, InstanceCloture, TacheCloture,
+    AccrualCloture, JustificationVariation,
 )
 
 
@@ -2919,3 +2921,93 @@ class EngagementComptableSerializer(serializers.ModelSerializer):
 
     def validate_compte(self, value):
         return _meme_societe(self, value, 'Compte')
+
+
+# ── NTFIN26-34 — Close management (clôture) ────────────────────────────────
+
+class TacheClotureModeleSerializer(serializers.ModelSerializer):
+    """NTFIN26 — Tâche-modèle d'une checklist de clôture."""
+    class Meta:
+        model = TacheClotureModele
+        fields = [
+            'id', 'modele', 'libelle', 'ordre', 'role_responsable',
+            'obligatoire', 'categorie', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+
+class ModeleClotureSerializer(serializers.ModelSerializer):
+    """NTFIN26 — Modèle de checklist de clôture."""
+    taches = TacheClotureModeleSerializer(many=True, read_only=True)
+    periodicite_display = serializers.CharField(
+        source='get_periodicite_display', read_only=True)
+
+    class Meta:
+        model = ModeleCloture
+        fields = [
+            'id', 'libelle', 'periodicite', 'periodicite_display', 'actif',
+            'taches', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+
+class TacheClotureSerializer(serializers.ModelSerializer):
+    """NTFIN27 — Tâche concrète d'une instance de clôture."""
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = TacheCloture
+        fields = [
+            'id', 'instance', 'libelle', 'ordre', 'obligatoire', 'categorie',
+            'statut', 'statut_display', 'assigne_a', 'fait_par', 'fait_le',
+            'piece_jointe_key', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'fait_par', 'fait_le', 'created_at', 'updated_at']
+
+
+class InstanceClotureSerializer(serializers.ModelSerializer):
+    """NTFIN27 — Instance (workspace) de clôture d'une période."""
+    taches = TacheClotureSerializer(many=True, read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = InstanceCloture
+        fields = [
+            'id', 'periode', 'modele', 'statut', 'statut_display',
+            'date_cible', 'taches', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['statut', 'created_at', 'updated_at']
+
+
+class AccrualClotureSerializer(serializers.ModelSerializer):
+    """NTFIN29 — Accrual de clôture (charge/produit à recevoir)."""
+    type_display = serializers.CharField(
+        source='get_type_accrual_display', read_only=True)
+
+    class Meta:
+        model = AccrualCloture
+        fields = [
+            'id', 'periode', 'type_accrual', 'type_display',
+            'compte_charge_produit', 'compte_contrepartie', 'montant',
+            'libelle', 'source_type', 'source_id', 'ecriture',
+            'ecriture_extourne', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'ecriture', 'ecriture_extourne', 'created_at', 'updated_at']
+
+
+class JustificationVariationSerializer(serializers.ModelSerializer):
+    """NTFIN31 — Justification d'une variation matérielle."""
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = JustificationVariation
+        fields = [
+            'id', 'periode', 'compte', 'montant_variation', 'commentaire',
+            'statut', 'statut_display', 'auteur', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['auteur', 'created_at', 'updated_at']

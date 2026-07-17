@@ -77,6 +77,8 @@ from .views import (
     AxeAnalytiqueViewSet, ImputationAxeViewSet,
     CleRepartitionViewSet, LigneCleRepartitionViewSet, RunAllocationViewSet,
     AllocationRecurrenteViewSet, EngagementComptableViewSet,
+    ModeleClotureViewSet, TacheClotureModeleViewSet, InstanceClotureViewSet,
+    TacheClotureViewSet, AccrualClotureViewSet, JustificationVariationViewSet,
 )
 
 router = DefaultRouter()
@@ -229,6 +231,13 @@ router.register(r'lignes-cle-repartition', LigneCleRepartitionViewSet)
 router.register(r'allocations', RunAllocationViewSet)
 router.register(r'allocations-recurrentes', AllocationRecurrenteViewSet)
 router.register(r'engagements', EngagementComptableViewSet)
+# ── NTFIN — Close management (clôture rapide) ──────────────────────────────
+router.register(r'modeles-cloture', ModeleClotureViewSet)
+router.register(r'taches-cloture-modele', TacheClotureModeleViewSet)
+router.register(r'instances-cloture', InstanceClotureViewSet)
+router.register(r'taches-cloture', TacheClotureViewSet)
+router.register(r'accruals-cloture', AccrualClotureViewSet)
+router.register(r'justifications-variation', JustificationVariationViewSet)
 
 urlpatterns = [
     # XMKT30 (partiel) — calendrier marketing agrégé (campagnes + posts

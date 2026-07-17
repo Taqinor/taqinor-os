@@ -481,6 +481,15 @@ class ModeleEcriture(models.Model):
     # période suivante) — réutilise COMPTA11 (``services.extourner_ecriture``).
     extourne_auto = models.BooleanField(
         default=False, verbose_name='Extourne automatique')
+    # NTFIN32 — modèle d'OD récurrente de CLÔTURE (dotations, provisions
+    # standards). ``cloture=True`` le rend matérialisable en un clic depuis une
+    # tâche de clôture (NTFIN27) ; ``categorie_cloture`` le rattache à la
+    # catégorie de tâche cochée. Additif (défaut False = comportement actuel).
+    cloture = models.BooleanField(
+        default=False, verbose_name='Modèle de clôture')
+    categorie_cloture = models.CharField(
+        max_length=14, blank=True, default='',
+        verbose_name='Catégorie de clôture')
     actif = models.BooleanField(default=True, verbose_name='Actif')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
@@ -7896,3 +7905,291 @@ class EngagementComptable(TenantModel):
                 and self.montant_liquide > self.montant_engage):
             raise ValidationError(
                 "Le montant liquidé ne peut pas dépasser le montant engagé.")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Groupe NTFIN — Close management (clôture rapide)
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ── NTFIN26 — Modèle de checklist de clôture ───────────────────────────────
+
+class ModeleCloture(TenantModel):
+    """Modèle de checklist de clôture (NTFIN26).
+
+    Gabarit d'un cycle de clôture (mensuel/trimestriel/annuel) ; ses
+    ``TacheClotureModele`` définissent l'ordre, le responsable et la catégorie
+    des tâches. Instancié par période via ``InstanceCloture`` (NTFIN27). Hérite
+    de ``core.models.TenantModel``.
+    """
+    class Periodicite(models.TextChoices):
+        MENSUELLE = 'mensuelle', 'Mensuelle'
+        TRIMESTRIELLE = 'trimestrielle', 'Trimestrielle'
+        ANNUELLE = 'annuelle', 'Annuelle'
+
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    periodicite = models.CharField(
+        max_length=14, choices=Periodicite.choices,
+        default=Periodicite.MENSUELLE, verbose_name='Périodicité')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+
+    class Meta:
+        verbose_name = 'Modèle de clôture'
+        verbose_name_plural = 'Modèles de clôture'
+        ordering = ['periodicite', 'libelle']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'libelle', 'periodicite'],
+                name='uniq_modele_cloture'),
+        ]
+
+    def __str__(self):
+        return f'{self.libelle} ({self.get_periodicite_display()})'
+
+
+class CategorieTacheCloture(models.TextChoices):
+    """Catégorie d'une tâche de clôture (partagée NTFIN26/27/32)."""
+    RAPPROCHEMENT = 'rapprochement', 'Rapprochement'
+    ACCRUAL = 'accrual', 'Accrual / régularisation'
+    ANALYSE = 'analyse', 'Analyse'
+    REPORTING = 'reporting', 'Reporting'
+
+
+class TacheClotureModele(TenantModel):
+    """Tâche-modèle d'une checklist de clôture (NTFIN26). Hérite de TenantModel."""
+    modele = models.ForeignKey(
+        ModeleCloture,
+        # on_delete: CASCADE — une tâche-modèle n'existe qu'attachée à son modèle.
+        on_delete=models.CASCADE,
+        related_name='taches',
+        verbose_name='Modèle de clôture',
+    )
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    role_responsable = models.CharField(
+        max_length=60, blank=True, default='',
+        verbose_name='Rôle responsable')
+    obligatoire = models.BooleanField(default=True, verbose_name='Obligatoire')
+    categorie = models.CharField(
+        max_length=14, choices=CategorieTacheCloture.choices,
+        default=CategorieTacheCloture.ANALYSE, verbose_name='Catégorie')
+
+    class Meta:
+        verbose_name = 'Tâche-modèle de clôture'
+        verbose_name_plural = 'Tâches-modèle de clôture'
+        ordering = ['modele', 'ordre', 'id']
+
+    def __str__(self):
+        return f'{self.ordre}. {self.libelle}'
+
+
+# ── NTFIN27 — Instance de clôture (workspace de période) ───────────────────
+
+class InstanceCloture(TenantModel):
+    """Workspace de clôture d'une période (NTFIN27).
+
+    Matérialise un ``ModeleCloture`` sur une ``PeriodeComptable`` : une
+    ``TacheCloture`` par tâche-modèle. Le statut global suit l'avancement.
+    Hérite de ``core.models.TenantModel``.
+    """
+    class Statut(models.TextChoices):
+        OUVERT = 'ouvert', 'Ouvert'
+        EN_COURS = 'en_cours', 'En cours'
+        VALIDE = 'valide', 'Validé'
+
+    periode = models.ForeignKey(
+        PeriodeComptable,
+        # on_delete: CASCADE — le workspace de clôture n'a de sens que pour sa
+        # période ; supprimer la période retire son instance de clôture.
+        on_delete=models.CASCADE,
+        related_name='instances_cloture',
+        verbose_name='Période',
+    )
+    modele = models.ForeignKey(
+        ModeleCloture,
+        # on_delete: SET_NULL — le modèle source est indicatif une fois
+        # instancié ; sa purge ne casse pas l'instance déjà matérialisée.
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='instances',
+        verbose_name='Modèle de clôture',
+    )
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.OUVERT,
+        verbose_name='Statut')
+    date_cible = models.DateField(
+        null=True, blank=True, verbose_name='Date cible de clôture')
+
+    class Meta:
+        verbose_name = 'Instance de clôture'
+        verbose_name_plural = 'Instances de clôture'
+        ordering = ['-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'periode'],
+                name='uniq_instance_cloture_periode'),
+        ]
+
+    def __str__(self):
+        return f'Clôture période {self.periode_id} ({self.statut})'
+
+
+class TacheCloture(TenantModel):
+    """Tâche concrète d'une instance de clôture (NTFIN27). Hérite de TenantModel."""
+    class Statut(models.TextChoices):
+        A_FAIRE = 'a_faire', 'À faire'
+        EN_COURS = 'en_cours', 'En cours'
+        FAIT = 'fait', 'Fait'
+        NA = 'na', 'Non applicable'
+
+    instance = models.ForeignKey(
+        InstanceCloture,
+        # on_delete: CASCADE — une tâche n'existe qu'attachée à son instance.
+        on_delete=models.CASCADE,
+        related_name='taches',
+        verbose_name='Instance de clôture',
+    )
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    obligatoire = models.BooleanField(default=True, verbose_name='Obligatoire')
+    categorie = models.CharField(
+        max_length=14, choices=CategorieTacheCloture.choices,
+        default=CategorieTacheCloture.ANALYSE, verbose_name='Catégorie')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.A_FAIRE,
+        verbose_name='Statut')
+    assigne_a = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        # on_delete: SET_NULL — un utilisateur supprimé ne doit pas effacer la
+        # tâche ; l'assignation se dénoue.
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='taches_cloture_assignees',
+        verbose_name='Assigné à')
+    fait_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        # on_delete: SET_NULL — trace l'acteur ; sa purge ne casse pas la tâche.
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='taches_cloture_faites',
+        verbose_name='Fait par')
+    fait_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Fait le')
+    piece_jointe_key = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Pièce jointe (clé de stockage)')
+
+    class Meta:
+        verbose_name = 'Tâche de clôture'
+        verbose_name_plural = 'Tâches de clôture'
+        ordering = ['instance', 'ordre', 'id']
+
+    def __str__(self):
+        return f'{self.libelle} ({self.statut})'
+
+
+# ── NTFIN29 — Accruals automatiques (avec extourne) ────────────────────────
+
+class AccrualCloture(TenantModel):
+    """Accrual de clôture (charge/produit à recevoir) avec extourne (NTFIN29).
+
+    Poste une OD de régularisation à la clôture (``ecriture``) et son extourne
+    automatique au 1er jour de la période suivante (``ecriture_extourne``). La
+    pièce source est référencée par string-ref. Hérite de ``TenantModel``.
+    """
+    class Type(models.TextChoices):
+        CHARGE_A_PAYER = 'charge_a_payer', 'Charge à payer'
+        PRODUIT_A_RECEVOIR = 'produit_a_recevoir', 'Produit à recevoir'
+        FNP = 'fnp', 'Facture non parvenue'
+
+    periode = models.ForeignKey(
+        PeriodeComptable,
+        # on_delete: CASCADE — un accrual de clôture est rattaché à sa période.
+        on_delete=models.CASCADE,
+        related_name='accruals_cloture',
+        verbose_name='Période',
+    )
+    type_accrual = models.CharField(
+        max_length=20, choices=Type.choices,
+        default=Type.CHARGE_A_PAYER, verbose_name="Type d'accrual")
+    compte_charge_produit = models.CharField(
+        max_length=20, verbose_name='Compte de charge/produit')
+    compte_contrepartie = models.CharField(
+        max_length=20, verbose_name='Compte de contrepartie')
+    montant = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant')
+    libelle = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Libellé')
+    source_type = models.CharField(
+        max_length=40, blank=True, default='',
+        verbose_name='Type de pièce source (string-ref)')
+    source_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID de la pièce source (string-ref)')
+    ecriture = models.ForeignKey(
+        EcritureComptable,
+        # on_delete: SET_NULL — l'OD d'accrual est traçée ; sa purge ne doit pas
+        # effacer la donnée d'accrual source.
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='accruals_cloture',
+        verbose_name="Écriture d'accrual")
+    ecriture_extourne = models.ForeignKey(
+        EcritureComptable,
+        # on_delete: SET_NULL — l'extourne est traçée ; idem.
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='accruals_cloture_extourne',
+        verbose_name="Écriture d'extourne")
+
+    class Meta:
+        verbose_name = 'Accrual de clôture'
+        verbose_name_plural = 'Accruals de clôture'
+        ordering = ['-id']
+
+    def __str__(self):
+        return f'Accrual {self.type_accrual} {self.montant} (période {self.periode_id})'
+
+
+# ── NTFIN31 — Justification des variations ─────────────────────────────────
+
+class JustificationVariation(TenantModel):
+    """Commentaire justifiant une variation matérielle (NTFIN31).
+
+    Documente un écart signalé par l'analyse de variation NTFIN30. Statut
+    ``expliquee``/``non_expliquee``. Hérite de ``core.models.TenantModel``.
+    """
+    class Statut(models.TextChoices):
+        EXPLIQUEE = 'expliquee', 'Expliquée'
+        NON_EXPLIQUEE = 'non_expliquee', 'Non expliquée'
+
+    periode = models.ForeignKey(
+        PeriodeComptable,
+        # on_delete: CASCADE — une justification est rattachée à sa période.
+        on_delete=models.CASCADE,
+        related_name='justifications_variation',
+        verbose_name='Période',
+    )
+    compte = models.CharField(max_length=20, verbose_name='Compte')
+    montant_variation = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant de la variation')
+    commentaire = models.TextField(
+        blank=True, default='', verbose_name='Commentaire')
+    statut = models.CharField(
+        max_length=14, choices=Statut.choices, default=Statut.EXPLIQUEE,
+        verbose_name='Statut')
+    auteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        # on_delete: SET_NULL — trace l'auteur ; sa purge ne casse pas la
+        # justification.
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='justifications_variation',
+        verbose_name='Auteur')
+
+    class Meta:
+        verbose_name = 'Justification de variation'
+        verbose_name_plural = 'Justifications de variation'
+        ordering = ['-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'periode', 'compte'],
+                name='uniq_justif_variation_periode_compte'),
+        ]
+
+    def __str__(self):
+        return f'Justif {self.compte} période {self.periode_id} ({self.statut})'

@@ -85,6 +85,8 @@ from .models import (
     ReferentielComptable, AjustementGaap,
     RunAllocation, AllocationRecurrente,
     EngagementComptable,
+    ModeleCloture, TacheClotureModele, InstanceCloture, TacheCloture,
+    AccrualCloture,
 )
 
 
@@ -13041,8 +13043,9 @@ def executer_allocation(company, compte_source, cle, periode, *,
     if montant <= 0:
         raise ValidationError(
             "Aucun montant à répartir pour cette allocation.")
+    compte_obj = _assurer_compte(company, compte_source)
     lignes = [
-        {'compte': compte_source,
+        {'compte': compte_obj,
          'libelle': f'Déversement source {compte_source}',
          'debit': '0', 'credit': str(montant),
          'centre_cout': centre_source},
@@ -13057,7 +13060,7 @@ def executer_allocation(company, compte_source, cle, periode, *,
                     / Decimal('100')).quantize(_CENT)
         reparti += part
         lignes.append({
-            'compte': compte_source,
+            'compte': compte_obj,
             'libelle': f'Allocation vers {li.centre_cout.code}',
             'debit': str(part), 'credit': '0',
             'centre_cout': li.centre_cout})
@@ -13081,9 +13084,9 @@ def reverser_allocation(run, *, created_by=None):
         raise ValidationError("Cette allocation est déjà réversée.")
     lignes = []
     if run.ecriture_id:
-        for lg in run.ecriture.lignes.all():
+        for lg in run.ecriture.lignes.select_related('compte').all():
             lignes.append({
-                'compte': lg.compte.numero,
+                'compte': lg.compte,
                 'libelle': f'Extourne {lg.libelle}',
                 'debit': str(lg.credit), 'credit': str(lg.debit),
                 'centre_cout': lg.centre_cout})
@@ -13230,3 +13233,176 @@ def verifier_disponible_engagement(company, *, compte, centre_cout=None,
         'realise': dispo['realise'],
         'controle': dispo['controle'],
     }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Groupe NTFIN — Close management (clôture rapide)
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ── NTFIN26 — Seed d'un modèle de clôture mensuelle standard ───────────────
+
+_TACHES_CLOTURE_MENSUELLE = [
+    ('Rapprochements bancaires du mois', 'rapprochement', True),
+    ('Rapprochement des comptes de tiers', 'rapprochement', True),
+    ('Clôture des caisses', 'rapprochement', True),
+    ('Comptabilisation des accruals (FAE/FNP)', 'accrual', True),
+    ('Dotations aux amortissements du mois', 'accrual', True),
+    ('Provisions et régularisations', 'accrual', False),
+    ('Analyse des variations significatives', 'analyse', True),
+    ('Revue des comptes d\'attente', 'analyse', True),
+    ('Édition de la balance et du grand livre', 'reporting', True),
+    ('Validation de la clôture', 'reporting', True),
+]
+
+
+def seed_modele_cloture_mensuel(company):
+    """NTFIN26 — amorce un modèle de clôture mensuelle standard (idempotent).
+
+    Crée (une fois) un ``ModeleCloture`` mensuel + ses ≥ 8 tâches ordonnées.
+    Re-lancement : ne duplique rien. Renvoie le modèle.
+    """
+    modele, _ = ModeleCloture.objects.get_or_create(
+        company=company, libelle='Clôture mensuelle standard',
+        periodicite=ModeleCloture.Periodicite.MENSUELLE,
+        defaults={'actif': True})
+    for ordre, (libelle, categorie, obligatoire) in enumerate(
+            _TACHES_CLOTURE_MENSUELLE, start=1):
+        TacheClotureModele.objects.get_or_create(
+            company=company, modele=modele, libelle=libelle,
+            defaults={'ordre': ordre, 'categorie': categorie,
+                      'obligatoire': obligatoire})
+    return modele
+
+
+# ── NTFIN27 — Instance de clôture (workspace de période) ───────────────────
+
+@transaction.atomic
+def instancier_cloture(periode, modele, *, date_cible=None):
+    """NTFIN27 — matérialise une checklist de clôture sur une période.
+
+    Crée l'``InstanceCloture`` (une par période, idempotent) et une
+    ``TacheCloture`` par tâche-modèle. Renvoie l'instance.
+    """
+    instance, cree = InstanceCloture.objects.get_or_create(
+        company=periode.company, periode=periode,
+        defaults={'modele': modele, 'date_cible': date_cible})
+    if not cree:
+        return instance
+    for tm in modele.taches.order_by('ordre', 'id'):
+        TacheCloture.objects.create(
+            company=periode.company, instance=instance, libelle=tm.libelle,
+            ordre=tm.ordre, obligatoire=tm.obligatoire, categorie=tm.categorie)
+    return instance
+
+
+def cocher_tache_cloture(tache, *, user=None, statut=None,
+                         piece_jointe_key=None):
+    """NTFIN27 — met à jour le statut d'une tâche de clôture (fait par défaut).
+
+    Rafraîchit le statut global de l'instance selon l'avancement. Renvoie la
+    tâche.
+    """
+    tache.statut = statut or TacheCloture.Statut.FAIT
+    if tache.statut == TacheCloture.Statut.FAIT:
+        tache.fait_par = user
+        tache.fait_le = timezone.now()
+    if piece_jointe_key is not None:
+        tache.piece_jointe_key = piece_jointe_key
+    tache.save(update_fields=['statut', 'fait_par', 'fait_le',
+                              'piece_jointe_key', 'updated_at'])
+    _rafraichir_statut_instance(tache.instance)
+    return tache
+
+
+def _rafraichir_statut_instance(instance):
+    """Recalcule le statut global d'une instance de clôture depuis ses tâches."""
+    taches = list(instance.taches.all())
+    if not taches:
+        return instance
+    faites = [t for t in taches
+              if t.statut in (TacheCloture.Statut.FAIT, TacheCloture.Statut.NA)]
+    if len(faites) == len(taches):
+        statut = InstanceCloture.Statut.VALIDE
+    elif faites:
+        statut = InstanceCloture.Statut.EN_COURS
+    else:
+        statut = InstanceCloture.Statut.OUVERT
+    if instance.statut != statut:
+        instance.statut = statut
+        instance.save(update_fields=['statut', 'updated_at'])
+    return instance
+
+
+# ── NTFIN29 — Accruals automatiques (avec extourne) ────────────────────────
+
+@transaction.atomic
+def poster_accrual(accrual, *, user=None):
+    """NTFIN29 — poste l'OD d'accrual + son extourne au 1er jour suivant.
+
+    Charge à payer / FNP : débit charge, crédit contrepartie ; produit à
+    recevoir : débit contrepartie (créance), crédit produit. L'extourne inverse
+    exactement l'écriture, datée du lendemain de la fin de période (impact net
+    nul sur la période suivante hors régularisation). Idempotent : un accrual
+    déjà posté n'est pas redoublé. Renvoie l'accrual.
+    """
+    from datetime import timedelta
+    if accrual.ecriture_id:
+        return accrual
+    montant = accrual.montant
+    if montant is None or montant <= 0:
+        raise ValidationError("Le montant de l'accrual doit être positif.")
+    date_accrual = accrual.periode.date_fin
+    date_extourne = date_accrual + timedelta(days=1)
+    compte_cp = _assurer_compte(accrual.company, accrual.compte_charge_produit)
+    compte_ctr = _assurer_compte(accrual.company, accrual.compte_contrepartie)
+    if accrual.type_accrual == AccrualCloture.Type.PRODUIT_A_RECEVOIR:
+        lignes = [
+            {'compte': compte_ctr,
+             'libelle': accrual.libelle or 'Produit à recevoir',
+             'debit': str(montant), 'credit': '0'},
+            {'compte': compte_cp,
+             'libelle': accrual.libelle or 'Produit à recevoir',
+             'debit': '0', 'credit': str(montant)},
+        ]
+    else:
+        lignes = [
+            {'compte': compte_cp,
+             'libelle': accrual.libelle or 'Charge à payer',
+             'debit': str(montant), 'credit': '0'},
+            {'compte': compte_ctr,
+             'libelle': accrual.libelle or 'Charge à payer',
+             'debit': '0', 'credit': str(montant)},
+        ]
+    ecriture = creer_ecriture_od(
+        accrual.company, date_accrual,
+        f'Accrual clôture : {accrual.libelle or accrual.type_accrual}',
+        lignes, created_by=user, statut=EcritureComptable.Statut.VALIDEE)
+    lignes_extourne = [
+        {'compte': li['compte'], 'libelle': f"Extourne {li['libelle']}",
+         'debit': li['credit'], 'credit': li['debit']} for li in lignes]
+    ecriture_extourne = creer_ecriture_od(
+        accrual.company, date_extourne,
+        f'Extourne accrual : {accrual.libelle or accrual.type_accrual}',
+        lignes_extourne, created_by=user,
+        statut=EcritureComptable.Statut.VALIDEE)
+    accrual.ecriture = ecriture
+    accrual.ecriture_extourne = ecriture_extourne
+    accrual.save(update_fields=['ecriture', 'ecriture_extourne', 'updated_at'])
+    return accrual
+
+
+# ── NTFIN32 — Journaux récurrents de clôture (OD depuis modèle) ────────────
+
+@transaction.atomic
+def generer_od_cloture(tache_cloture, modele_ecriture, *, date_ecriture,
+                       montants=None, user=None):
+    """NTFIN32 — matérialise une OD de clôture depuis un modèle et coche la tâche.
+
+    Réutilise ``generer_ecriture_depuis_modele`` (XACC8) et coche la
+    ``TacheCloture`` dans la foulée. Renvoie ``(ecriture, tache)``.
+    """
+    ecriture = generer_ecriture_depuis_modele(
+        modele_ecriture, date_ecriture=date_ecriture, montants=montants,
+        user=user, statut=EcritureComptable.Statut.VALIDEE)
+    cocher_tache_cloture(tache_cloture, user=user)
+    return ecriture, tache_cloture
