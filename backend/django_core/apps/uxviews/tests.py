@@ -224,4 +224,5 @@ class SavedViewApiTests(TestCase):
         # Le rôle par défaut n'apparaît que pour la vue qui le porte.
         roles_col = {ws.cell(row=r, column=2).value: ws.cell(row=r, column=5).value for r in (2, 3)}
         self.assertEqual(roles_col['Équipe'], 'Commercial')
-        self.assertEqual(roles_col['Perso'], '')
+        # openpyxl relit une cellule chaîne-vide comme None (l'export écrit bien '').
+        self.assertIn(roles_col['Perso'], (None, ''))

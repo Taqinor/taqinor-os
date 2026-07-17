@@ -711,7 +711,8 @@ class NTEDU21EmploiDuTempsTests(EducationTestCaseMixin, TestCase):
         url = f'/api/django/education/emploi-du-temps/?classe={self.classe.id}'
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200, response.content)
-        self.assertEqual(len(response.data), 1)
+        # Réponse paginée (StandardPagination) : {count,next,previous,results}.
+        self.assertEqual(response.data['count'], 1)
 
 
 class NTEDU22GenerationSeancesTests(EducationTestCaseMixin, TestCase):
