@@ -5,6 +5,7 @@ doublon), le PDF quittance affiche période/local/locataire/montant. Le
 service ``apps.ventes.services.creer_facture_classique`` est MOCKÉ — ce test
 ne dépend d'aucun objet ``ventes`` réel, seulement du CONTRAT d'appel.
 """
+from datetime import date
 from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -59,7 +60,7 @@ class Ntpro7QuittancementTests(TestCase):
             company=self.co_a, nom='Bennani', client_ventes_id=999)
         self.bail = creer_bail(
             company=self.co_a, local=local, locataire=self.locataire,
-            type_bail=Bail.TypeBail.HABITATION, date_debut='2026-01-01',
+            type_bail=Bail.TypeBail.HABITATION, date_debut=date(2026, 1, 1),
             duree_mois=1, loyer_mensuel_ht=Decimal('3000.00'),
             charges_mensuelles_provisions=Decimal('200.00'))
         generer_echeancier(self.bail)
@@ -108,7 +109,7 @@ class Ntpro7QuittancementTests(TestCase):
             company=self.co_a, local=self.bail.local,
             locataire=locataire_sans_client,
             statut=Bail.Statut.BROUILLON, type_bail=Bail.TypeBail.HABITATION,
-            date_debut='2026-02-01', duree_mois=1,
+            date_debut=date(2026, 2, 1), duree_mois=1,
             loyer_mensuel_ht=Decimal('1000.00'))
         # Forcer actif pour générer une échéance sans avoir de conflit avec
         # le bail déjà actif du même local (statut brouillon plus haut).

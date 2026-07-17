@@ -3,6 +3,7 @@
 Couvre : un bail actif génère ses échéances sans doublon à chaque exécution,
 montant_total = loyer + charges, et la commande de management idempotente.
 """
+from datetime import date
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
@@ -51,7 +52,7 @@ class Ntpro6EcheancierTests(TestCase):
         locataire = Locataire.objects.create(company=self.co_a, nom='Bennani')
         self.bail = creer_bail(
             company=self.co_a, local=local, locataire=locataire,
-            type_bail=Bail.TypeBail.HABITATION, date_debut='2026-01-01',
+            type_bail=Bail.TypeBail.HABITATION, date_debut=date(2026, 1, 1),
             duree_mois=3, loyer_mensuel_ht=Decimal('3000.00'),
             charges_mensuelles_provisions=Decimal('200.00'))
 

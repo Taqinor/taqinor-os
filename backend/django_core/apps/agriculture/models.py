@@ -24,6 +24,7 @@ class Exploitation(TenantModel):
     """Une exploitation agricole (ou membre d'une coopérative) d'une société."""
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
+        # on_delete: cascade tenant (purge des données de la société supprimée)
         related_name='exploitations_agricoles')
     nom = models.CharField(max_length=255)
     adresse = models.CharField(max_length=500, blank=True, default='')
@@ -51,9 +52,12 @@ class Parcelle(TenantModel):
 
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
+        # on_delete: cascade tenant (purge des données de la société supprimée)
         related_name='parcelles_agricoles')
     exploitation = models.ForeignKey(
-        Exploitation, on_delete=models.CASCADE, related_name='parcelles')
+        Exploitation, on_delete=models.CASCADE,
+        # on_delete: cascade parent→enfant (composant du parent)
+        related_name='parcelles')
     nom = models.CharField(max_length=255)
     code = models.CharField(max_length=50, blank=True, default='')
     superficie_ha = models.DecimalField(
@@ -89,9 +93,12 @@ class CampagneCulturale(TenantModel):
 
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
+        # on_delete: cascade tenant (purge des données de la société supprimée)
         related_name='campagnes_agricoles')
     parcelle = models.ForeignKey(
-        Parcelle, on_delete=models.CASCADE, related_name='campagnes')
+        Parcelle, on_delete=models.CASCADE,
+        # on_delete: cascade parent→enfant (composant du parent)
+        related_name='campagnes')
     culture = models.CharField(max_length=100)
     variete = models.CharField(max_length=100, blank=True, default='')
     date_semis = models.DateField(null=True, blank=True)
@@ -177,9 +184,12 @@ class EtapeCampagne(TenantModel):
 
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
+        # on_delete: cascade tenant (purge des données de la société supprimée)
         related_name='etapes_campagne_agricole')
     campagne = models.ForeignKey(
-        CampagneCulturale, on_delete=models.CASCADE, related_name='etapes')
+        CampagneCulturale, on_delete=models.CASCADE,
+        # on_delete: cascade parent→enfant (composant du parent)
+        related_name='etapes')
     type_etape = models.CharField(max_length=20, choices=TypeEtape.choices)
     date = models.DateField()
     description = models.TextField(blank=True, default='')
@@ -223,6 +233,7 @@ class IntrantAgricole(TenantModel):
 
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
+        # on_delete: cascade tenant (purge des données de la société supprimée)
         related_name='intrants_agricoles')
     produit_id = models.IntegerField(unique=True)
     categorie = models.CharField(max_length=20, choices=Categorie.choices)
@@ -246,6 +257,7 @@ class EquipeSaisonniere(TenantModel):
     """Équipe de travailleurs saisonniers d'une exploitation."""
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
+        # on_delete: cascade tenant (purge des données de la société supprimée)
         related_name='equipes_saisonnieres')
     nom = models.CharField(max_length=255)
     # String-ref vers l'utilisateur chef d'équipe (authentication.User).
@@ -268,6 +280,7 @@ class PointageAgricole(TenantModel):
     être renseigné en plus, sans effet côté paie."""
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
+        # on_delete: cascade tenant (purge des données de la société supprimée)
         related_name='pointages_agricoles')
     equipe = models.ForeignKey(
         EquipeSaisonniere, on_delete=models.SET_NULL, null=True, blank=True,
@@ -277,7 +290,9 @@ class PointageAgricole(TenantModel):
         CampagneCulturale, on_delete=models.SET_NULL, null=True, blank=True,
         related_name='pointages')
     parcelle = models.ForeignKey(
-        Parcelle, on_delete=models.CASCADE, related_name='pointages')
+        Parcelle, on_delete=models.CASCADE,
+        # on_delete: cascade parent→enfant (composant du parent)
+        related_name='pointages')
     date = models.DateField()
     tache = models.CharField(max_length=255)
     nombre_journees = models.DecimalField(max_digits=6, decimal_places=2)

@@ -108,13 +108,17 @@ class VisaResoumissionTests(TestCase):
         self.user = make_user(self.co)
         self.chantier = make_chantier(self.co)
 
-    def _make_ged_document(self):
+    def _make_ged_document(self, nom='Plan RDC'):
         from apps.ged.models import Cabinet, Document, Folder
-        cabinet = Cabinet.objects.create(company=self.co, nom='BTP')
-        folder = Folder.objects.create(
+        # get_or_create : plusieurs documents de ce TestCase partagent le même
+        # classeur/dossier GED — un second appel avec la même société ne doit
+        # jamais retenter une création et violer l'unique (company, nom).
+        cabinet, _ = Cabinet.objects.get_or_create(
+            company=self.co, nom='BTP')
+        folder, _ = Folder.objects.get_or_create(
             company=self.co, cabinet=cabinet, nom='Plans')
         return Document.objects.create(
-            company=self.co, folder=folder, nom='Plan RDC')
+            company=self.co, folder=folder, nom=nom)
 
     def test_nouvelle_version_reouvre_visa_approuve(self):
         document = self._make_ged_document()

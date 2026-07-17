@@ -97,7 +97,7 @@ class SnapshotESG(TenantModel):
 
     periode = models.OneToOneField(
         PeriodeReportingESG,
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: cascade parent→enfant (composant du parent)
         related_name='snapshot',
         verbose_name='Période',
     )

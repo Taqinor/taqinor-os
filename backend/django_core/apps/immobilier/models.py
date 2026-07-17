@@ -18,7 +18,7 @@ class Site(TenantModel):
 
     company = models.ForeignKey(
         'authentication.Company',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: cascade tenant (purge des données de la société supprimée)
         related_name='immobilier_sites',
         verbose_name='Société',
     )
@@ -48,12 +48,13 @@ class Batiment(TenantModel):
 
     company = models.ForeignKey(
         'authentication.Company',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: cascade tenant (purge des données de la société supprimée)
         related_name='immobilier_batiments',
         verbose_name='Société',
     )
     site = models.ForeignKey(
-        Site, on_delete=models.CASCADE, related_name='batiments',
+        Site, on_delete=models.CASCADE,  # on_delete: cascade parent→enfant (composant du parent)
+        related_name='batiments',
         verbose_name='Site')
     nom = models.CharField(max_length=255, verbose_name='Nom')
     nb_niveaux = models.PositiveIntegerField(
@@ -80,12 +81,13 @@ class Niveau(TenantModel):
 
     company = models.ForeignKey(
         'authentication.Company',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: cascade tenant (purge des données de la société supprimée)
         related_name='immobilier_niveaux',
         verbose_name='Société',
     )
     batiment = models.ForeignKey(
-        Batiment, on_delete=models.CASCADE, related_name='niveaux',
+        Batiment, on_delete=models.CASCADE,  # on_delete: cascade parent→enfant (composant du parent)
+        related_name='niveaux',
         verbose_name='Bâtiment')
     numero = models.CharField(
         max_length=50, verbose_name='Numéro / libellé')
@@ -117,12 +119,13 @@ class Local(TenantModel):
 
     company = models.ForeignKey(
         'authentication.Company',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: cascade tenant (purge des données de la société supprimée)
         related_name='immobilier_locaux',
         verbose_name='Société',
     )
     niveau = models.ForeignKey(
-        Niveau, on_delete=models.CASCADE, related_name='locaux',
+        Niveau, on_delete=models.CASCADE,  # on_delete: cascade parent→enfant (composant du parent)
+        related_name='locaux',
         verbose_name='Niveau')
     reference = models.CharField(max_length=50, verbose_name='Référence')
     type_local = models.CharField(
@@ -156,7 +159,7 @@ class Locataire(TenantModel):
 
     company = models.ForeignKey(
         'authentication.Company',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: cascade tenant (purge des données de la société supprimée)
         related_name='immobilier_locataires',
         verbose_name='Société',
     )
@@ -204,7 +207,7 @@ class Bail(TenantModel):
 
     company = models.ForeignKey(
         'authentication.Company',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: cascade tenant (purge des données de la société supprimée)
         related_name='immobilier_baux',
         verbose_name='Société',
     )
@@ -271,12 +274,13 @@ class RevisionLoyer(TenantModel):
 
     company = models.ForeignKey(
         'authentication.Company',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: cascade tenant (purge des données de la société supprimée)
         related_name='immobilier_revisions_loyer',
         verbose_name='Société',
     )
     bail = models.ForeignKey(
-        Bail, on_delete=models.CASCADE, related_name='revisions',
+        Bail, on_delete=models.CASCADE,  # on_delete: cascade parent→enfant (composant du parent)
+        related_name='revisions',
         verbose_name='Bail')
     date_effet = models.DateField(verbose_name="Date d'effet")
     ancien_loyer = models.DecimalField(
@@ -312,12 +316,13 @@ class EcheanceLoyer(TenantModel):
 
     company = models.ForeignKey(
         'authentication.Company',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: cascade tenant (purge des données de la société supprimée)
         related_name='immobilier_echeances_loyer',
         verbose_name='Société',
     )
     bail = models.ForeignKey(
-        Bail, on_delete=models.CASCADE, related_name='echeances',
+        Bail, on_delete=models.CASCADE,  # on_delete: cascade parent→enfant (composant du parent)
+        related_name='echeances',
         verbose_name='Bail')
     periode_debut = models.DateField(verbose_name='Début de période')
     periode_fin = models.DateField(verbose_name='Fin de période')
@@ -365,12 +370,13 @@ class RelanceLoyer(TenantModel):
 
     company = models.ForeignKey(
         'authentication.Company',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: cascade tenant (purge des données de la société supprimée)
         related_name='immobilier_relances_loyer',
         verbose_name='Société',
     )
     echeance_loyer = models.ForeignKey(
-        EcheanceLoyer, on_delete=models.CASCADE, related_name='relances',
+        EcheanceLoyer, on_delete=models.CASCADE,  # on_delete: cascade parent→enfant (composant du parent)
+        related_name='relances',
         verbose_name='Échéance de loyer')
     niveau = models.PositiveSmallIntegerField(
         choices=Niveau.choices, default=Niveau.NIVEAU_1, verbose_name='Niveau')

@@ -9,7 +9,7 @@ gardé par ``skipUnless`` comme le reste de la suite qui dépend de WeasyPrint
 from datetime import date
 from unittest import skipUnless
 
-from django.test import TestCase
+from django.test import TestCase, tag
 
 from testkit.factories import CompanyFactory
 
@@ -85,6 +85,7 @@ class RapportEsgSectionsTests(TestCase):
         self.assertIn('environnement', indic_section['piliers'])
 
 
+@tag('pdf')
 class RapportEsgPdfRenderTests(TestCase):
     """Rendu PDF réel — sauté si WeasyPrint/fitz absents de l'environnement."""
 

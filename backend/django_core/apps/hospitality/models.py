@@ -22,7 +22,7 @@ class TypeChambre(TenantModel):
 
     company = models.ForeignKey(
         'authentication.Company',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: cascade tenant (purge des données de la société supprimée)
         related_name='hospitality_types_chambre',
         verbose_name='Société',
     )
@@ -52,7 +52,7 @@ class Chambre(TenantModel):
 
     company = models.ForeignKey(
         'authentication.Company',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: cascade tenant (purge des données de la société supprimée)
         related_name='hospitality_chambres',
         verbose_name='Société',
     )
@@ -101,13 +101,13 @@ class PlanTarifaire(TenantModel):
 
     company = models.ForeignKey(
         'authentication.Company',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: cascade tenant (purge des données de la société supprimée)
         related_name='hospitality_plans_tarifaires',
         verbose_name='Société',
     )
     type_chambre = models.ForeignKey(
         TypeChambre,
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: cascade parent→enfant (composant du parent)
         related_name='plans_tarifaires',
         verbose_name='Type de chambre',
     )
@@ -153,7 +153,7 @@ class Reservation(TenantModel):
 
     company = models.ForeignKey(
         'authentication.Company',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: cascade tenant (purge des données de la société supprimée)
         related_name='hospitality_reservations',
         verbose_name='Société',
     )
@@ -232,13 +232,13 @@ class FicheClient(TenantModel):
 
     company = models.ForeignKey(
         'authentication.Company',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: cascade tenant (purge des données de la société supprimée)
         related_name='hospitality_fiches_client',
         verbose_name='Société',
     )
     reservation = models.ForeignKey(
         Reservation,
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: cascade parent→enfant (composant du parent)
         related_name='fiches_client',
         verbose_name='Réservation',
     )
@@ -272,13 +272,13 @@ class Folio(TenantModel):
 
     company = models.ForeignKey(
         'authentication.Company',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: cascade tenant (purge des données de la société supprimée)
         related_name='hospitality_folios',
         verbose_name='Société',
     )
     reservation = models.OneToOneField(
         Reservation,
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: cascade parent→enfant (composant du parent)
         related_name='folio',
         verbose_name='Réservation',
     )
@@ -314,7 +314,8 @@ class LigneFolio(models.Model):
         TAXE_SEJOUR = 'taxe_sejour', 'Taxe de séjour'
 
     folio = models.ForeignKey(
-        Folio, on_delete=models.CASCADE, related_name='lignes')
+        Folio, on_delete=models.CASCADE,  # on_delete: cascade parent→enfant (composant du parent)
+        related_name='lignes')
     origine = models.CharField(max_length=15, choices=Origine.choices)
     description = models.CharField(max_length=255, blank=True, default='')
     montant_ht = models.DecimalField(max_digits=10, decimal_places=2)
@@ -343,7 +344,7 @@ class ParametresTaxeSejour(TenantModel):
 
     company = models.OneToOneField(
         'authentication.Company',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: cascade tenant (purge des données de la société supprimée)
         related_name='hospitality_parametres_taxe_sejour',
         verbose_name='Société',
     )
@@ -378,12 +379,13 @@ class TacheMenage(TenantModel):
 
     company = models.ForeignKey(
         'authentication.Company',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: cascade tenant (purge des données de la société supprimée)
         related_name='hospitality_taches_menage',
         verbose_name='Société',
     )
     chambre = models.ForeignKey(
-        Chambre, on_delete=models.CASCADE, related_name='taches_menage')
+        Chambre, on_delete=models.CASCADE,  # on_delete: cascade parent→enfant (composant du parent)
+        related_name='taches_menage')
     type_tache = models.CharField(
         max_length=20, choices=TypeTache.choices,
         default=TypeTache.NETTOYAGE_COMPLET)

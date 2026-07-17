@@ -4,6 +4,7 @@ Couvre : le tableau des impayés liste les locataires en retard avec montant +
 jours de retard (lu via ``apps.ventes.selectors``, mocké), et une relance
 incrémente le niveau (1 → 2 → 3, plafonné).
 """
+from datetime import date
 from decimal import Decimal
 from unittest.mock import patch
 
@@ -54,7 +55,7 @@ class Ntpro8ImpayesTests(TestCase):
         locataire = Locataire.objects.create(company=self.co_a, nom='Bennani')
         self.bail = creer_bail(
             company=self.co_a, local=local, locataire=locataire,
-            type_bail=Bail.TypeBail.HABITATION, date_debut='2026-01-01',
+            type_bail=Bail.TypeBail.HABITATION, date_debut=date(2026, 1, 1),
             duree_mois=1, loyer_mensuel_ht=Decimal('3000.00'))
         generer_echeancier(self.bail)
         self.echeance = EcheanceLoyer.objects.get(bail=self.bail)

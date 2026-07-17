@@ -48,10 +48,12 @@ class ReserveChantier(TenantModel):
 
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
+        # on_delete: cascade tenant (purge des données de la société supprimée)
         related_name='btp_reserves_chantier', verbose_name='Société')
     # FK réelle (chaîne, aucun import statique) — pattern sav.models/achats.models.
     chantier = models.ForeignKey(
         'installations.Installation', on_delete=models.CASCADE,
+        # on_delete: cascade parent→enfant (composant du parent)
         related_name='btp_reserves', verbose_name='Chantier')
     lot = models.CharField(
         max_length=100, blank=True, default='',
@@ -114,9 +116,11 @@ class ReserveChantierHistorique(TenantModel):
     """
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
+        # on_delete: cascade tenant (purge des données de la société supprimée)
         related_name='btp_reserve_historiques', verbose_name='Société')
     reserve = models.ForeignKey(
         ReserveChantier, on_delete=models.CASCADE,
+        # on_delete: cascade parent→enfant (composant du parent)
         related_name='historique', verbose_name='Réserve')
     ancien_statut = models.CharField(max_length=10, blank=True, default='')
     nouveau_statut = models.CharField(max_length=10)
@@ -152,9 +156,11 @@ class SignatureBtp(TenantModel):
 
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
+        # on_delete: cascade tenant (purge des données de la société supprimée)
         related_name='btp_signatures', verbose_name='Société')
     content_type = models.ForeignKey(
         'contenttypes.ContentType', on_delete=models.CASCADE)
+    # on_delete: cascade parent→enfant (composant du parent)
     object_id = models.PositiveIntegerField()
     content_object = GenericForeignKey('content_type', 'object_id')
     contexte = models.CharField(
@@ -202,9 +208,11 @@ class RFI(TenantModel):
 
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
+        # on_delete: cascade tenant (purge des données de la société supprimée)
         related_name='btp_rfis', verbose_name='Société')
     chantier = models.ForeignKey(
         'installations.Installation', on_delete=models.CASCADE,
+        # on_delete: cascade parent→enfant (composant du parent)
         related_name='btp_rfis', verbose_name='Chantier')
     numero = models.PositiveIntegerField(verbose_name='N° de RFI')
     question = models.TextField(verbose_name='Question')
@@ -256,9 +264,12 @@ class RFIReponse(TenantModel):
     Attachment`` (déclaré dans ``platform.py``)."""
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
+        # on_delete: cascade tenant (purge des données de la société supprimée)
         related_name='btp_rfi_reponses', verbose_name='Société')
     rfi = models.ForeignKey(
-        RFI, on_delete=models.CASCADE, related_name='reponses',
+        RFI, on_delete=models.CASCADE,
+        # on_delete: cascade parent→enfant (composant du parent)
+        related_name='reponses',
         verbose_name='RFI')
     texte = models.TextField(verbose_name='Réponse')
     auteur = models.ForeignKey(
@@ -315,9 +326,11 @@ class VisaDocument(TenantModel):
 
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
+        # on_delete: cascade tenant (purge des données de la société supprimée)
         related_name='btp_visas', verbose_name='Société')
     chantier = models.ForeignKey(
         'installations.Installation', on_delete=models.CASCADE,
+        # on_delete: cascade parent→enfant (composant du parent)
         related_name='btp_visas', verbose_name='Chantier')
     document_ged_id = models.PositiveIntegerField(
         verbose_name='ID du document GED')
@@ -385,9 +398,11 @@ class JournalChantier(TenantModel):
 
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
+        # on_delete: cascade tenant (purge des données de la société supprimée)
         related_name='btp_journaux_chantier', verbose_name='Société')
     chantier = models.ForeignKey(
         'installations.Installation', on_delete=models.CASCADE,
+        # on_delete: cascade parent→enfant (composant du parent)
         related_name='btp_journaux', verbose_name='Chantier')
     date = models.DateField(verbose_name='Date')
     redacteur = models.ForeignKey(

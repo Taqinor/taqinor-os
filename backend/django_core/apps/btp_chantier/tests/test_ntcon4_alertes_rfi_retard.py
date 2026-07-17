@@ -35,9 +35,9 @@ class AlertesRfiRetardTests(TestCase):
         rfi.refresh_from_db()
         self.assertEqual(rfi.derniere_alerte_retard, timezone.localdate())
         self.assertTrue(
-            Notification.objects.filter(user=self.pose_par).exists())
+            Notification.objects.filter(recipient=self.pose_par).exists())
         self.assertTrue(
-            Notification.objects.filter(user=self.destinataire).exists())
+            Notification.objects.filter(recipient=self.destinataire).exists())
 
     def test_sweep_idempotent_same_day(self):
         RFI.objects.create(
@@ -46,10 +46,10 @@ class AlertesRfiRetardTests(TestCase):
             date_limite_reponse=self.hier)
         self._run()
         count_after_first = Notification.objects.filter(
-            user=self.pose_par).count()
+            recipient=self.pose_par).count()
         self._run()
         count_after_second = Notification.objects.filter(
-            user=self.pose_par).count()
+            recipient=self.pose_par).count()
         self.assertEqual(count_after_first, count_after_second)
 
     def test_rfi_repondu_ou_clos_exclus(self):
@@ -63,7 +63,7 @@ class AlertesRfiRetardTests(TestCase):
             date_limite_reponse=self.hier, statut=RFI.Statut.CLOS)
         self._run()
         self.assertFalse(
-            Notification.objects.filter(user=self.pose_par).exists())
+            Notification.objects.filter(recipient=self.pose_par).exists())
 
     def test_rfi_dans_les_temps_exclu(self):
         demain = timezone.localdate() + timedelta(days=2)
@@ -72,4 +72,4 @@ class AlertesRfiRetardTests(TestCase):
             question='Q', pose_par=self.pose_par, date_limite_reponse=demain)
         self._run()
         self.assertFalse(
-            Notification.objects.filter(user=self.pose_par).exists())
+            Notification.objects.filter(recipient=self.pose_par).exists())

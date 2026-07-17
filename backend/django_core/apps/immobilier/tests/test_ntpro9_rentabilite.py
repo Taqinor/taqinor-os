@@ -4,6 +4,7 @@ Couvre : le calcul dégrade proprement si aucun chantier lié (marge = revenus
 - charges), pas d'exposition de prix d'achat produit, et l'agrégation
 site/bâtiment.
 """
+from datetime import date
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
@@ -54,7 +55,7 @@ class Ntpro9RentabiliteTests(TestCase):
         locataire = Locataire.objects.create(company=self.co_a, nom='Bennani')
         bail = creer_bail(
             company=self.co_a, local=self.local_loue, locataire=locataire,
-            type_bail=Bail.TypeBail.HABITATION, date_debut='2026-01-01',
+            type_bail=Bail.TypeBail.HABITATION, date_debut=date(2026, 1, 1),
             duree_mois=1, loyer_mensuel_ht=Decimal('3000.00'))
         generer_echeancier(bail)
         echeance = EcheanceLoyer.objects.get(bail=bail)

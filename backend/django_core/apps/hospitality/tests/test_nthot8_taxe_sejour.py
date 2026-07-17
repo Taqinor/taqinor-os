@@ -3,6 +3,7 @@
 Done = une réservation de 3 nuits/2 adultes/1 enfant avec exonération enfants
 calcule la taxe exacte, désactivée = aucune ligne ajoutée, tests.
 """
+from datetime import date
 from decimal import Decimal
 from unittest import mock
 
@@ -26,7 +27,7 @@ class CalculerTaxeSejourTests(TestCase):
             company=self.co, type_chambre=self.type_std, numero='1001')
         self.reservation = Reservation.objects.create(
             company=self.co, chambre=self.chambre,
-            date_arrivee='2026-08-01', date_depart='2026-08-04',  # 3 nuits
+            date_arrivee=date(2026, 8, 1), date_depart=date(2026, 8, 4),  # 3 nuits
             nb_adultes=2, nb_enfants=1,
         )
 
@@ -76,7 +77,7 @@ class ClotureAvecTaxeSejourTests(TestCase):
             company=self.co, type_chambre=self.type_std, numero='1002')
         self.reservation = Reservation.objects.create(
             company=self.co, chambre=self.chambre,
-            date_arrivee='2026-08-01', date_depart='2026-08-04',
+            date_arrivee=date(2026, 8, 1), date_depart=date(2026, 8, 4),
             nb_adultes=2, nb_enfants=1,
         )
         self.folio = Folio.objects.create(

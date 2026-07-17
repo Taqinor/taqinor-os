@@ -11,7 +11,7 @@ teste le rendu PDF qu'au niveau HTML/texte.
 """
 from unittest import skipUnless
 
-from django.test import TestCase
+from django.test import TestCase, tag
 
 from apps.agriculture.models import (
     CampagneCulturale, Exploitation, IntrantAgricole, Parcelle,
@@ -39,6 +39,7 @@ def _pdf_text(pdf_bytes):
         doc.close()
 
 
+@tag('pdf')
 class RegistrePhytoPdfTests(TestCase):
     def setUp(self):
         self.co = make_company('agr-phyto-a', 'Ferme Phyto A')
