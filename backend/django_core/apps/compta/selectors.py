@@ -27,6 +27,11 @@ from .models import (
     OperationInterco, EcritureElimination,
     PeriodeComptable,
     ReferentielComptable, ImputationAxe,
+    EngagementComptable,
+    InstanceCloture, TacheCloture, JustificationVariation, AccrualCloture,
+    RapprochementCompte,
+    PlanAmortissement,
+    ContratRevenu,
 )
 
 
@@ -4647,3 +4652,751 @@ def resultat_par_axe(company, axe_code, *, date_debut=None, date_fin=None):
     valeurs.sort(key=lambda s: s['centre_code'])
     return {
         'axe': axe_code, 'valeurs': valeurs, 'total_resultat': total_resultat}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Groupe NTFIN — Contrôle budgétaire à l'engagement (NTFIN24/25)
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _realise_compte(company, compte, *, centre_cout=None, annee=None):
+    """Réalisé net d'un compte (+ centre) sur une année (charge = débiteur)."""
+    qs = LigneEcriture.objects.filter(company=company, compte=compte)
+    if centre_cout is not None:
+        qs = qs.filter(centre_cout=centre_cout)
+    if annee is not None:
+        qs = qs.filter(ecriture__date_ecriture__gte=date(annee, 1, 1),
+                       ecriture__date_ecriture__lte=date(annee, 12, 31))
+    agg = qs.aggregate(debit=Sum('debit'), credit=Sum('credit'))
+    debit = agg['debit'] or Decimal('0')
+    credit = agg['credit'] or Decimal('0')
+    if compte.classe == 7:
+        return credit - debit
+    return debit - credit
+
+
+def _engage_ouvert(company, compte, *, centre_cout=None):
+    """Somme des résiduels d'engagement (encumbrance) ouverts (NTFIN23)."""
+    qs = EngagementComptable.objects.filter(
+        company=company, compte=compte).exclude(
+        statut=EngagementComptable.Statut.SOLDE)
+    if centre_cout is not None:
+        qs = qs.filter(centre_cout=centre_cout)
+    total = Decimal('0')
+    for eng in qs:
+        total += eng.montant_residuel
+    return total
+
+
+def disponible_budgetaire_compte(company, *, compte, centre_cout=None, periode):
+    """NTFIN24 — disponible = budget − engagé − réalisé, par compte/centre.
+
+    ``periode`` : une ``date`` dans l'année budgétaire visée. Renvoie ``None``
+    si aucun budget n'est défini (aucun contrôle possible) ; sinon
+    ``{'budget', 'engage', 'realise', 'disponible', 'controle', 'budget_id'}``.
+    Lecture seule, scopée société.
+    """
+    annee = periode.year
+    budget = Budget.objects.filter(
+        company=company, annee=annee).order_by('-id').first()
+    if budget is None:
+        return None
+    lignes_qs = budget.lignes.filter(compte=compte)
+    if centre_cout is not None:
+        lignes_qs = lignes_qs.filter(centre_cout=centre_cout)
+    if not lignes_qs.exists():
+        return None
+    budgete = sum((bl.montant_annuel for bl in lignes_qs), Decimal('0'))
+    realise = _realise_compte(company, compte, centre_cout=centre_cout,
+                              annee=annee)
+    engage = _engage_ouvert(company, compte, centre_cout=centre_cout)
+    return {
+        'budget_id': budget.id,
+        'controle': budget.controle,
+        'budget': budgete,
+        'realise': realise,
+        'engage': engage,
+        'disponible': budgete - engage - realise,
+    }
+
+
+def disponible_budgetaire(budget_ligne):
+    """NTFIN24 — disponible d'une ligne de budget (budget − engagé − réalisé).
+
+    Intègre les engagements ouverts NTFIN23 EN PLUS du réalisé. Renvoie
+    ``{'budget', 'engage', 'realise', 'disponible', 'taux_consommation'}``.
+    """
+    company = budget_ligne.company
+    annee = budget_ligne.budget.annee
+    compte = budget_ligne.compte
+    centre = budget_ligne.centre_cout
+    budgete = budget_ligne.montant_annuel
+    realise = _realise_compte(company, compte, centre_cout=centre, annee=annee)
+    engage = _engage_ouvert(company, compte, centre_cout=centre)
+    consomme = engage + realise
+    return {
+        'budget': budgete,
+        'engage': engage,
+        'realise': realise,
+        'disponible': budgete - consomme,
+        'taux_consommation': (
+            (consomme / budgete * Decimal('100')).quantize(Decimal('0.01'))
+            if budgete else Decimal('0')),
+    }
+
+
+def execution_budgetaire(company, exercice):
+    """NTFIN25 — état d'exécution budgétaire avec engagements.
+
+    ``exercice`` : un ``ExerciceComptable`` (son année est déduite) ou un entier
+    (année). Pour chaque ligne du budget de l'année : budget, engagé, réalisé,
+    disponible, taux de consommation. Invariant : engagé + réalisé + disponible
+    = budget par ligne. Lecture seule, scopée société.
+    """
+    annee = getattr(getattr(exercice, 'date_debut', None), 'year', None)
+    if annee is None:
+        annee = int(exercice)
+    budget = Budget.objects.filter(
+        company=company, annee=annee).order_by('-id').first()
+    lignes = []
+    total_budget = Decimal('0')
+    total_engage = Decimal('0')
+    total_realise = Decimal('0')
+    total_disponible = Decimal('0')
+    if budget is not None:
+        for bl in budget.lignes.select_related('compte', 'centre_cout').all():
+            d = disponible_budgetaire(bl)
+            total_budget += d['budget']
+            total_engage += d['engage']
+            total_realise += d['realise']
+            total_disponible += d['disponible']
+            lignes.append({
+                'ligne_id': bl.id,
+                'compte_numero': bl.compte.numero,
+                'compte_intitule': bl.compte.intitule,
+                'centre_cout': bl.centre_cout.code if bl.centre_cout else '',
+                'libelle': bl.libelle,
+                'budget': d['budget'],
+                'engage': d['engage'],
+                'realise': d['realise'],
+                'disponible': d['disponible'],
+                'taux_consommation': d['taux_consommation'],
+            })
+    return {
+        'annee': annee,
+        'budget_id': budget.id if budget else None,
+        'lignes': lignes,
+        'total_budget': total_budget,
+        'total_engage': total_engage,
+        'total_realise': total_realise,
+        'total_disponible': total_disponible,
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Groupe NTFIN — Close management : gates, variance, anomalies, cockpit
+# ═══════════════════════════════════════════════════════════════════════════
+
+def pret_a_cloturer(periode):
+    """NTFIN28 — la période est-elle prête à être clôturée (checklist) ?
+
+    Renvoie ``{'pret': bool, 'taches_manquantes': [...], 'instance_id'}``. Une
+    période sans instance de clôture est considérée prête (aucune checklist =
+    aucun blocage, comportement historique). ``pret=False`` liste les tâches
+    OBLIGATOIRES non faites. Lecture seule.
+    """
+    instance = InstanceCloture.objects.filter(
+        company=periode.company, periode=periode).order_by('-id').first()
+    if instance is None:
+        return {'pret': True, 'taches_manquantes': [], 'instance_id': None}
+    manquantes = []
+    for t in instance.taches.filter(obligatoire=True).order_by('ordre', 'id'):
+        if t.statut not in (TacheCloture.Statut.FAIT, TacheCloture.Statut.NA):
+            manquantes.append({
+                'id': t.id, 'libelle': t.libelle, 'categorie': t.categorie,
+                'statut': t.statut})
+    return {
+        'pret': not manquantes,
+        'taches_manquantes': manquantes,
+        'instance_id': instance.id,
+    }
+
+
+def _solde_prefixe(company, compte_prefixe, debut, fin):
+    """Solde net par compte (numéro préfixé) sur une plage de dates.
+
+    Renvoie ``{numero: {'intitule', 'classe', 'solde'}}`` où solde = crédit −
+    débit pour la classe 7, débit − crédit sinon.
+    """
+    qs = LigneEcriture.objects.filter(
+        company=company,
+        ecriture__date_ecriture__gte=debut,
+        ecriture__date_ecriture__lte=fin).select_related('compte')
+    if compte_prefixe:
+        qs = qs.filter(compte__numero__startswith=str(compte_prefixe))
+    soldes = {}
+    for lg in qs:
+        c = lg.compte
+        slot = soldes.setdefault(c.numero, {
+            'intitule': c.intitule, 'classe': c.classe,
+            'debit': Decimal('0'), 'credit': Decimal('0')})
+        slot['debit'] += lg.debit or Decimal('0')
+        slot['credit'] += lg.credit or Decimal('0')
+    out = {}
+    for numero, s in soldes.items():
+        if s['classe'] == 7:
+            solde = s['credit'] - s['debit']
+        else:
+            solde = s['debit'] - s['credit']
+        out[numero] = {'intitule': s['intitule'], 'classe': s['classe'],
+                       'solde': solde}
+    return out
+
+
+def analyse_variation(company, *, compte_prefixe=None, periode=None,
+                      periode_comparee=None, seuil_materialite=Decimal('10000')):
+    """NTFIN30 — rapport de variation N vs N-1 (flux/fluctuation analysis).
+
+    ``periode`` et ``periode_comparee`` : chacun un ``(debut, fin)`` de dates.
+    Pour chaque compte (préfixé), solde N, solde comparé, variation absolue et
+    %, signalé « à expliquer » si |variation| ≥ ``seuil_materialite``. Marque
+    ``justifiee`` selon l'existence d'une ``JustificationVariation`` expliquée
+    (NTFIN31) sur la période N. Lecture seule.
+    """
+    seuil = Decimal(str(seuil_materialite))
+    debut_n, fin_n = periode
+    debut_c, fin_c = periode_comparee
+    soldes_n = _solde_prefixe(company, compte_prefixe, debut_n, fin_n)
+    soldes_c = _solde_prefixe(company, compte_prefixe, debut_c, fin_c)
+    justifs = {
+        j.compte: j.statut for j in JustificationVariation.objects.filter(
+            company=company,
+            periode__date_debut__lte=fin_n,
+            periode__date_fin__gte=debut_n)}
+    lignes = []
+    for numero in sorted(set(soldes_n) | set(soldes_c)):
+        n = soldes_n.get(numero, {}).get('solde', Decimal('0'))
+        c = soldes_c.get(numero, {}).get('solde', Decimal('0'))
+        variation = n - c
+        pct = ((variation / c * Decimal('100')).quantize(Decimal('0.01'))
+               if c else Decimal('0'))
+        materielle = abs(variation) >= seuil
+        justif_statut = justifs.get(numero)
+        intitule = (soldes_n.get(numero) or soldes_c.get(numero, {})).get(
+            'intitule', '')
+        lignes.append({
+            'compte': numero,
+            'intitule': intitule,
+            'solde_n': n,
+            'solde_compare': c,
+            'variation': variation,
+            'variation_pct': pct,
+            'materielle': materielle,
+            'a_expliquer': materielle and justif_statut != 'expliquee',
+            'justifiee': justif_statut == 'expliquee',
+        })
+    return {
+        'seuil_materialite': seuil,
+        'lignes': lignes,
+        'nb_a_expliquer': sum(1 for li in lignes if li['a_expliquer']),
+    }
+
+
+def anomalies_ecritures(company, *, periode=None, date_debut=None,
+                        date_fin=None):
+    """NTFIN33 — scan qualité GL : anomalies d'écritures d'une période.
+
+    ``periode`` (objet ``PeriodeComptable``) OU ``date_debut``/``date_fin``.
+    Détecte : écritures déséquilibrées (bloquant), doublons probables (même
+    tiers + montant + date), montants ronds inhabituels (≥ 10 000 multiples de
+    1 000), écritures postées un jour non ouvré (samedi/dimanche). Renvoie
+    ``{'anomalies': [...], 'nb_bloquantes'}``. Lecture seule.
+    """
+    if periode is not None:
+        date_debut = periode.date_debut
+        date_fin = periode.date_fin
+    ecritures = EcritureComptable.objects.filter(
+        company=company,
+        date_ecriture__gte=date_debut,
+        date_ecriture__lte=date_fin).prefetch_related('lignes')
+    anomalies = []
+    signatures = {}
+    for ec in ecritures:
+        total_debit = sum((li.debit or Decimal('0') for li in ec.lignes.all()),
+                          Decimal('0'))
+        total_credit = sum((li.credit or Decimal('0') for li in ec.lignes.all()),
+                           Decimal('0'))
+        if total_debit != total_credit:
+            anomalies.append({
+                'ecriture_id': ec.id, 'type': 'desequilibre',
+                'gravite': 'bloquant',
+                'detail': f'Somme debit {total_debit} != credit {total_credit}'})
+        # Doublon probable : même date + même total débit + mêmes tiers.
+        tiers = tuple(sorted(
+            (li.tiers_type, li.tiers_id) for li in ec.lignes.all()
+            if li.tiers_id))
+        sig = (ec.date_ecriture, total_debit, tiers)
+        if total_debit > 0 and sig in signatures:
+            anomalies.append({
+                'ecriture_id': ec.id, 'type': 'doublon_probable',
+                'gravite': 'avertissement',
+                'detail': f'Doublon probable de ecriture {signatures[sig]}'})
+        else:
+            signatures[sig] = ec.id
+        # Montant rond inhabituel.
+        if (total_debit >= Decimal('10000')
+                and total_debit % Decimal('1000') == 0):
+            anomalies.append({
+                'ecriture_id': ec.id, 'type': 'montant_rond',
+                'gravite': 'info',
+                'detail': f'Montant rond inhabituel : {total_debit}'})
+        # Jour non ouvré (samedi=5, dimanche=6).
+        if ec.date_ecriture.weekday() >= 5:
+            anomalies.append({
+                'ecriture_id': ec.id, 'type': 'jour_non_ouvre',
+                'gravite': 'info',
+                'detail': f'Ecriture postee un jour non ouvre '
+                          f'({ec.date_ecriture})'})
+    return {
+        'anomalies': anomalies,
+        'nb_bloquantes': sum(1 for a in anomalies
+                             if a['gravite'] == 'bloquant'),
+    }
+
+
+def cockpit_cloture(company, periode):
+    """NTFIN34 — tableau de bord de clôture (vitesse & statut).
+
+    Agrège : % tâches faites, accruals postés, variations non expliquées,
+    jours écoulés depuis la date cible, et un ``close_status`` unique
+    (en_bonne_voie/en_retard). Lecture seule.
+    """
+    instance = InstanceCloture.objects.filter(
+        company=company, periode=periode).order_by('-id').first()
+    taches_total = taches_faites = 0
+    date_cible = None
+    if instance is not None:
+        taches = list(instance.taches.all())
+        taches_total = len(taches)
+        taches_faites = sum(
+            1 for t in taches
+            if t.statut in (TacheCloture.Statut.FAIT, TacheCloture.Statut.NA))
+        date_cible = instance.date_cible
+    pct_faites = (
+        (Decimal(taches_faites) / Decimal(taches_total) * Decimal('100'))
+        .quantize(Decimal('0.01')) if taches_total else Decimal('0'))
+    accruals_postes = AccrualCloture.objects.filter(
+        company=company, periode=periode).exclude(ecriture__isnull=True).count()
+    variations_non_expliquees = JustificationVariation.objects.filter(
+        company=company, periode=periode,
+        statut=JustificationVariation.Statut.NON_EXPLIQUEE).count()
+    jours_depuis_cible = None
+    if date_cible is not None:
+        jours_depuis_cible = (timezone.localdate() - date_cible).days
+    en_retard = (
+        jours_depuis_cible is not None and jours_depuis_cible > 0
+        and taches_faites < taches_total)
+    return {
+        'periode_id': periode.id,
+        'instance_id': instance.id if instance else None,
+        'taches_total': taches_total,
+        'taches_faites': taches_faites,
+        'pct_faites': pct_faites,
+        'accruals_postes': accruals_postes,
+        'variations_non_expliquees': variations_non_expliquees,
+        'date_cible': date_cible,
+        'jours_depuis_cible': jours_depuis_cible,
+        'close_status': 'en_retard' if en_retard else 'en_bonne_voie',
+    }
+
+
+# ── NTFIN38 — Rapprochements de compte en retard / non justifiés ───────────
+
+def rapprochements_en_retard(company, periode):
+    """NTFIN38 — comptes de bilan non rapprochés à la date cible + écarts.
+
+    Liste les ``RapprochementCompte`` de la période qui ne sont pas encore
+    ``valide`` (ou dont l'écart n'est pas nul), et le total des écarts non
+    justifiés. Alimente le cockpit de clôture (NTFIN34). Lecture seule.
+    """
+    qs = RapprochementCompte.objects.filter(
+        company=company, periode=periode).select_related('compte').exclude(
+        statut=RapprochementCompte.Statut.VALIDE)
+    lignes = []
+    total_ecart = Decimal('0')
+    for r in qs:
+        total_ecart += abs(r.ecart or Decimal('0'))
+        lignes.append({
+            'id': r.id,
+            'compte_numero': r.compte.numero,
+            'compte_intitule': r.compte.intitule,
+            'solde_gl': r.solde_gl,
+            'solde_justifie': r.solde_justifie,
+            'ecart': r.ecart,
+            'statut': r.statut,
+        })
+    return {
+        'periode_id': periode.id,
+        'lignes': lignes,
+        'nb_en_retard': len(lignes),
+        'total_ecart_non_justifie': total_ecart,
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Groupe NTFIN — Immobilisations avancées (composants, registre, projection)
+# ═══════════════════════════════════════════════════════════════════════════
+
+def plans_composants_immobilisation(immobilisation):
+    """NTFIN40 — plans d'amortissement par composant (IAS 16).
+
+    Un plan distinct par composant (durées propres) ; la dotation annuelle
+    totale de l'actif = Σ des dotations des composants. Lecture seule.
+    """
+    composants = []
+    total = Decimal('0')
+    for c in immobilisation.composants.all():
+        dot = c.dotation_annuelle
+        total += dot
+        composants.append({
+            'id': c.id, 'libelle': c.libelle, 'valeur': c.valeur,
+            'duree': c.duree_amortissement, 'methode': c.methode,
+            'dotation_annuelle': dot,
+        })
+    return {
+        'immobilisation_id': immobilisation.id,
+        'composants': composants,
+        'dotation_annuelle_totale': total,
+    }
+
+
+def _vnc_lineaire(cout, duree, date_debut, date_reference):
+    """VNC linéaire d'un actif à ``date_reference`` (années entières écoulées)."""
+    cout = cout or Decimal('0')
+    if not duree:
+        return cout
+    annees_ecoulees = max(0, date_reference.year - date_debut.year)
+    annees_ecoulees = min(annees_ecoulees, duree)
+    dotation_an = (cout / Decimal(duree)).quantize(Decimal('0.01'))
+    cumul = (dotation_an * Decimal(annees_ecoulees)).quantize(Decimal('0.01'))
+    vnc = cout - cumul
+    return vnc if vnc > 0 else Decimal('0')
+
+
+def registre_immobilisations(company, referentiel=None, date_reference=None):
+    """NTFIN44 — registre des immobilisations multi-référentiel (CGNC vs IFRS).
+
+    Pour chaque immobilisation : coût, base d'amortissement et VNC. Le
+    référentiel PRINCIPAL (CGNC) lit le ``PlanAmortissement`` (durée fiscale).
+    Un référentiel NON principal (IFRS) applique l'approche par COMPOSANTS
+    (NTFIN40) quand ils existent — durées IFRS distinctes → VNC IFRS ≠ VNC CGNC.
+    Lecture seule.
+    """
+    from datetime import date as _date
+    date_ref = date_reference or _date.today()
+    est_principal = referentiel is None or getattr(
+        referentiel, 'est_principal', True)
+    lignes = []
+    total_vnc = Decimal('0')
+    for immo in Immobilisation.objects.filter(company=company):
+        plan = PlanAmortissement.objects.filter(immobilisation=immo).first()
+        composants = list(immo.composants.all())
+        if not est_principal and composants:
+            # Vue IFRS par composants (durées propres).
+            vnc = Decimal('0')
+            duree_aff = None
+            debut = plan.date_debut if plan else immo.date_acquisition
+            for c in composants:
+                vnc += _vnc_lineaire(
+                    c.valeur, c.duree_amortissement, debut, date_ref)
+            base = sum((c.valeur for c in composants), Decimal('0'))
+        else:
+            base = plan.base_amortissable if plan else immo.cout
+            duree_aff = plan.duree_annees if plan else None
+            debut = plan.date_debut if plan else immo.date_acquisition
+            vnc = _vnc_lineaire(base, duree_aff, debut, date_ref)
+        total_vnc += vnc
+        lignes.append({
+            'immobilisation_id': immo.id,
+            'libelle': immo.libelle,
+            'cout': immo.cout,
+            'base_amortissable': base,
+            'vnc': vnc,
+            'par_composants': (not est_principal and bool(composants)),
+        })
+    return {
+        'referentiel': getattr(referentiel, 'code', None),
+        'date_reference': date_ref,
+        'lignes': lignes,
+        'total_vnc': total_vnc,
+    }
+
+
+def projection_dotations(company, annees=5, referentiel=None):
+    """NTFIN45 — projection des dotations futures (roll-forward) sur N ans.
+
+    Pour chaque actif à plan linéaire : N dotations annuelles et la VNC
+    décroissante. Renvoie ``{'annees', 'par_actif': [...], 'totaux_par_annee'}``.
+    Lecture seule.
+    """
+    from datetime import date as _date
+    annee_courante = _date.today().year
+    par_actif = []
+    totaux = {annee_courante + i: Decimal('0') for i in range(annees)}
+    for plan in PlanAmortissement.objects.filter(
+            company=company).select_related('immobilisation'):
+        if not plan.duree_annees:
+            continue
+        base = plan.base_amortissable or Decimal('0')
+        dotation_an = (base / Decimal(plan.duree_annees)).quantize(
+            Decimal('0.01'))
+        debut_annee = plan.date_debut.year
+        projection = []
+        for i in range(annees):
+            an = annee_courante + i
+            annees_ecoulees = an - debut_annee
+            if 0 <= annees_ecoulees < plan.duree_annees:
+                dot = dotation_an
+            else:
+                dot = Decimal('0')
+            cumul = (dotation_an * Decimal(
+                min(max(annees_ecoulees + 1, 0), plan.duree_annees))
+            ).quantize(Decimal('0.01'))
+            vnc = base - cumul
+            projection.append({
+                'annee': an, 'dotation': dot,
+                'vnc': vnc if vnc > 0 else Decimal('0')})
+            totaux[an] += dot
+        par_actif.append({
+            'immobilisation_id': plan.immobilisation_id,
+            'libelle': plan.immobilisation.libelle,
+            'dotation_annuelle': dotation_an,
+            'projection': projection,
+        })
+    return {
+        'annees': annees,
+        'referentiel': getattr(referentiel, 'code', None),
+        'par_actif': par_actif,
+        'totaux_par_annee': totaux,
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Groupe NTFIN — Reconnaissance du revenu IFRS 15 & états consolidés
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ── NTFIN49 — Actif/passif sur contrat (contract asset / deferred revenue) ─
+
+def positions_contrat_revenu(company, periode=None):
+    """NTFIN49 — position par contrat : revenu reconnu vs facturé (IFRS 15).
+
+    Par contrat : total reconnu (échéances reconnues) vs total facturé
+    (``montant_facture`` des obligations) → actif sur contrat (reconnu >
+    facturé) ou produit différé (facturé > reconnu). Lecture seule.
+    """
+    lignes = []
+    total_actif = Decimal('0')
+    total_differe = Decimal('0')
+    for contrat in ContratRevenu.objects.filter(
+            company=company).prefetch_related('obligations__echeances'):
+        reconnu = Decimal('0')
+        facture = Decimal('0')
+        for o in contrat.obligations.all():
+            facture += o.montant_facture or Decimal('0')
+            for e in o.echeances.all():
+                if e.statut == 'reconnu':
+                    reconnu += e.montant_a_reconnaitre or Decimal('0')
+        position = reconnu - facture
+        actif_contrat = position if position > 0 else Decimal('0')
+        produit_differe = -position if position < 0 else Decimal('0')
+        total_actif += actif_contrat
+        total_differe += produit_differe
+        lignes.append({
+            'contrat_id': contrat.id,
+            'reference': contrat.reference,
+            'reconnu': reconnu,
+            'facture': facture,
+            'actif_sur_contrat': actif_contrat,
+            'produit_differe': produit_differe,
+        })
+    return {
+        'lignes': lignes,
+        'total_actif_sur_contrat': total_actif,
+        'total_produit_differe': total_differe,
+    }
+
+
+# ── NTFIN50-53 — États consolidés (flux, capitaux, annexes, comparatif) ────
+
+def _soldes_par_classe_consolide(cycle):
+    """Soldes nets (débit − crédit) par classe d'un bilan consolidé (NTFIN11)."""
+    b = bilan_consolide(cycle)
+    soldes = {}
+    for k, v in b['par_classe'].items():
+        soldes[int(k)] = (v['debit'] or Decimal('0')) - (
+            v['credit'] or Decimal('0'))
+    return soldes, b
+
+
+def tableau_flux_consolide(cycle, cycle_precedent=None):
+    """NTFIN50 — tableau des flux de trésorerie consolidé (méthode indirecte).
+
+    Construit exploitation/investissement/financement à partir des variations du
+    bilan consolidé N vs N-1 (ouverture = 0 sans N-1) et du résultat consolidé.
+    La variation de trésorerie du tableau réconcilie EXACTEMENT la variation de
+    trésorerie du bilan consolidé (identité comptable). Lecture seule.
+    """
+    soldes_n, bilan_n = _soldes_par_classe_consolide(cycle)
+    soldes_c = {}
+    if cycle_precedent is not None:
+        soldes_c, _ = _soldes_par_classe_consolide(cycle_precedent)
+
+    def delta(classe):
+        return soldes_n.get(classe, Decimal('0')) - soldes_c.get(
+            classe, Decimal('0'))
+
+    resultat = bilan_n['resultat']
+    # Actif (2,3,5) en solde débiteur ; passif (1,4) en solde créditeur.
+    delta_immo = delta(2)             # actif immobilisé
+    delta_circulant = delta(3)        # actif circulant hors tréso
+    delta_treso = delta(5)            # trésorerie
+    delta_capitaux = -delta(1)        # capitaux/financement permanent (passif)
+    delta_dettes_expl = -delta(4)     # dettes d'exploitation (passif)
+
+    flux_exploitation = resultat + delta_dettes_expl - delta_circulant
+    flux_investissement = -delta_immo
+    flux_financement = delta_capitaux
+    variation_tresorerie = (
+        flux_exploitation + flux_investissement + flux_financement)
+    return {
+        'cycle': cycle.id,
+        'resultat_consolide': resultat,
+        'flux_exploitation': flux_exploitation,
+        'flux_investissement': flux_investissement,
+        'flux_financement': flux_financement,
+        'variation_tresorerie': variation_tresorerie,
+        'variation_tresorerie_bilan': delta_treso,
+        'reconcilie': variation_tresorerie == delta_treso,
+    }
+
+
+def variation_capitaux_consolides(cycle, cycle_precedent=None,
+                                  dividendes=None, ecart_conversion=None):
+    """NTFIN51 — variation des capitaux propres consolidés (part groupe/minoritaires).
+
+    Capitaux clôture = ouverture + résultat − dividendes ± écart de conversion,
+    part groupe et part minoritaires séparées. Ouverture = 0 sans N-1. Lecture
+    seule.
+    """
+    soldes_n, bilan_n = _soldes_par_classe_consolide(cycle)
+    capitaux_ouverture = Decimal('0')
+    if cycle_precedent is not None:
+        soldes_c, _ = _soldes_par_classe_consolide(cycle_precedent)
+        capitaux_ouverture = -soldes_c.get(1, Decimal('0'))
+    resultat = bilan_n['resultat']
+    dividendes = Decimal(str(dividendes or 0))
+    ecart = Decimal(str(ecart_conversion or 0))
+    # Part minoritaire du résultat (mêmes règles que NTFIN10).
+    part_min_resultat = Decimal('0')
+    membres = EntiteConsolidation.objects.filter(
+        cycle=cycle, actif=True,
+        methode=EntiteConsolidation.Methode.INTEGRATION_GLOBALE)
+    for m in membres:
+        pct_min = Decimal('100') - (m.pourcentage_interet or Decimal('0'))
+        if pct_min <= 0:
+            continue
+        liasse = LiasseRemontee.objects.filter(
+            cycle=cycle, entite=m.entite).first()
+        if not liasse:
+            continue
+        r = Decimal('0')
+        for li in (liasse.snapshot_balance or []):
+            classe = li.get('classe') or _classe_num(li['numero'])
+            if classe in (6, 7):
+                r += (Decimal(str(li.get('credit') or 0))
+                      - Decimal(str(li.get('debit') or 0)))
+        part_min_resultat += (r * pct_min / Decimal('100')).quantize(
+            Decimal('0.01'))
+    resultat_part_groupe = resultat - part_min_resultat
+    cloture_groupe = (capitaux_ouverture + resultat_part_groupe
+                      - dividendes + ecart)
+    return {
+        'cycle': cycle.id,
+        'capitaux_ouverture': capitaux_ouverture,
+        'resultat_part_groupe': resultat_part_groupe,
+        'resultat_part_minoritaires': part_min_resultat,
+        'dividendes': dividendes,
+        'ecart_conversion': ecart,
+        'capitaux_cloture_part_groupe': cloture_groupe,
+    }
+
+
+def annexes_consolidation(cycle):
+    """NTFIN52 — jeu de tableaux d'annexe consolidés.
+
+    Tableau de périmètre (entité + méthode + % d'intérêt, cohérent NTFIN1),
+    variation des immobilisations consolidées, échéancier des dettes, engagements
+    hors bilan agrégés. Lecture seule.
+    """
+    soldes, _ = _soldes_par_classe_consolide(cycle)
+    perimetre = []
+    for m in EntiteConsolidation.objects.filter(
+            cycle=cycle, actif=True).select_related('entite'):
+        perimetre.append({
+            'entite_id': m.entite_id,
+            'libelle': m.libelle or getattr(m.entite, 'nom', ''),
+            'methode': m.methode,
+            'pourcentage_interet': m.pourcentage_interet,
+        })
+    return {
+        'cycle': cycle.id,
+        'perimetre': perimetre,
+        'immobilisations_consolidees': soldes.get(2, Decimal('0')),
+        'dettes_consolidees': -soldes.get(4, Decimal('0')),
+        'engagements_hors_bilan': Decimal('0'),
+    }
+
+
+def comparatif_entites(cycle, indicateurs=None):
+    """NTFIN53 — comparatif inter-entités (benchmark groupe).
+
+    Une ligne par entité du périmètre : CA (classe 7), marge %, résultat, à
+    partir de sa liasse collectée. Somme au consolidé AVANT éliminations.
+    Lecture seule.
+    """
+    lignes = []
+    total_ca = Decimal('0')
+    total_resultat = Decimal('0')
+    for m in EntiteConsolidation.objects.filter(
+            cycle=cycle, actif=True).select_related('entite'):
+        liasse = LiasseRemontee.objects.filter(
+            cycle=cycle, entite=m.entite).first()
+        ca = Decimal('0')
+        charges = Decimal('0')
+        if liasse:
+            for li in (liasse.snapshot_balance or []):
+                classe = li.get('classe') or _classe_num(li['numero'])
+                credit = Decimal(str(li.get('credit') or 0))
+                debit = Decimal(str(li.get('debit') or 0))
+                if classe == 7:
+                    ca += credit - debit
+                elif classe == 6:
+                    charges += debit - credit
+        resultat = ca - charges
+        marge_pct = ((resultat / ca * Decimal('100')).quantize(Decimal('0.01'))
+                     if ca else Decimal('0'))
+        total_ca += ca
+        total_resultat += resultat
+        lignes.append({
+            'entite_id': m.entite_id,
+            'libelle': m.libelle or getattr(m.entite, 'nom', ''),
+            'ca': ca,
+            'resultat': resultat,
+            'marge_pct': marge_pct,
+        })
+    lignes.sort(key=lambda x: x['ca'], reverse=True)
+    return {
+        'cycle': cycle.id,
+        'lignes': lignes,
+        'total_ca_avant_elimination': total_ca,
+        'total_resultat_avant_elimination': total_resultat,
+    }
