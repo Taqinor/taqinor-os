@@ -147,3 +147,44 @@ class InscriptionViewSet(CompanyScopedModelViewSet):
             valider_inscription(inscription, user=request.user)
             for inscription in qs]
         return Response(InscriptionSerializer(confirmees, many=True).data)
+
+    @action(detail=False, methods=['get'], url_path='liste-attente')
+    def liste_attente(self, request):
+        """NTEDU5 — liste d'attente d'une classe, triée par position FIFO
+        (recalculée côté serveur — jamais une valeur figée)."""
+        classe_id = request.query_params.get('classe')
+        if not classe_id:
+            raise ValidationError({'classe': 'Paramètre requis.'})
+        qs = self.get_queryset().filter(
+            classe_demandee_id=classe_id,
+            statut=Inscription.Statut.LISTE_ATTENTE,
+        ).order_by('position_liste_attente', 'date_demande', 'id')
+        return Response(InscriptionSerializer(qs, many=True).data)
+
+    @action(detail=True, methods=['post'], url_path='desinscrire')
+    def desinscrire_action(self, request, pk=None):
+        """NTEDU5 — désinscrit un élève ; si la classe libérée avait une
+        liste d'attente, promeut automatiquement le suivant (``services.
+        desinscrire``)."""
+        from .services import desinscrire
+
+        inscription = desinscrire(self.get_object())
+        return Response(InscriptionSerializer(inscription).data)
+
+    @action(detail=False, methods=['post'], url_path='promouvoir')
+    def promouvoir(self, request):
+        """NTEDU5 — promotion manuelle du 1er de la liste d'attente d'une
+        classe (même logique que la promotion automatique post-
+        désinscription)."""
+        from .services import promouvoir_premier_liste_attente
+
+        classe = Classe.objects.filter(
+            company=request.user.company, pk=request.data.get('classe')).first()
+        if classe is None:
+            raise ValidationError({'classe': 'Classe introuvable.'})
+        promu = promouvoir_premier_liste_attente(classe)
+        if promu is None:
+            return Response(
+                {'detail': 'Aucun candidat en liste d\'attente à promouvoir.'},
+                status=200)
+        return Response(InscriptionSerializer(promu).data)

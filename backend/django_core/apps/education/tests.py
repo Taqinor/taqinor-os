@@ -150,3 +150,66 @@ class NTEDU4ReinscriptionMasseTests(EducationTestCaseMixin, TestCase):
         self.assertEqual(response.status_code, 200, response.content)
         inscription = Inscription.objects.get(pk=inscription_id)
         self.assertEqual(inscription.statut, Inscription.Statut.VALIDEE)
+
+
+class NTEDU5ListeAttenteTests(EducationTestCaseMixin, TestCase):
+    """NTEDU5 — liste d'attente : position FIFO + promotion automatique."""
+
+    def setUp(self):
+        super().setUp()
+        self.inscrits = []
+        for i in range(2):
+            eleve = Eleve.objects.create(
+                company=self.company, famille=self.famille, nom='X',
+                prenom=f'E{i}', classe=self.classe, statut=Eleve.Statut.INSCRIT)
+            inscription = Inscription.objects.create(
+                company=self.company, eleve=eleve, annee_scolaire=self.annee,
+                classe_demandee=self.classe, classe_affectee=self.classe,
+                statut=Inscription.Statut.VALIDEE)
+            self.inscrits.append((eleve, inscription))
+
+        self.eleve_attente = Eleve.objects.create(
+            company=self.company, famille=self.famille, nom='Attente',
+            prenom='Un')
+        self.inscription_attente = Inscription.objects.create(
+            company=self.company, eleve=self.eleve_attente,
+            annee_scolaire=self.annee, classe_demandee=self.classe)
+        affecter_classe(self.inscription_attente, self.classe)
+
+    def test_desinscription_promeut_le_suivant(self):
+        from .services import desinscrire
+
+        self.inscription_attente.refresh_from_db()
+        self.assertEqual(
+            self.inscription_attente.statut, Inscription.Statut.LISTE_ATTENTE)
+
+        _, inscription_a_liberer = self.inscrits[0]
+        desinscrire(inscription_a_liberer)
+
+        self.inscription_attente.refresh_from_db()
+        self.assertEqual(
+            self.inscription_attente.statut, Inscription.Statut.VALIDEE)
+        self.eleve_attente.refresh_from_db()
+        self.assertEqual(self.eleve_attente.classe_id, self.classe.id)
+
+    def test_endpoint_desinscrire_promeut_via_api(self):
+        _, inscription_a_liberer = self.inscrits[0]
+        url = (
+            f'/api/django/education/inscriptions/{inscription_a_liberer.id}/'
+            'desinscrire/')
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, 200, response.content)
+
+        self.inscription_attente.refresh_from_db()
+        self.assertEqual(
+            self.inscription_attente.statut, Inscription.Statut.VALIDEE)
+
+    def test_endpoint_liste_attente_filtre_par_classe_triee_par_position(self):
+        url = (
+            '/api/django/education/inscriptions/liste-attente/'
+            f'?classe={self.classe.id}')
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]['id'], self.inscription_attente.id)
+        self.assertEqual(response.data[0]['position_liste_attente'], 1)
