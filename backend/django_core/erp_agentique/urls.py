@@ -95,6 +95,8 @@ _APP_URLS = [
     path('sante/', include('apps.sante.urls')),
     # Groupe NTIDE — Boîte à idées interne, campagnes d'innovation, feedback.
     path('innovation/', include('apps.innovation.urls')),
+    # NTUX1 — Vues sauvegardées serveur (personnelles/partagées).
+    path('uxviews/', include('apps.uxviews.urls')),
 ]
 
 urlpatterns = [

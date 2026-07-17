@@ -184,6 +184,9 @@ INSTALLED_APPS = [
     # canal de feedback produit in-app. Additif, company-scopé ; le chatter
     # réutilise records.Activity (ARC8), aucun modèle *Activity maison.
     'apps.innovation',
+    # NTUX1 — Vues sauvegardées serveur (personnelles/partagées), fondation de
+    # la couche UX power-user (NTUX2-11). Additive, company-scopée.
+    'apps.uxviews',
 ]
 
 MIDDLEWARE = [
