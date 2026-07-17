@@ -4,7 +4,7 @@ from decimal import Decimal
 from rest_framework import serializers
 
 from .models import (
-    AdCampaignMirror, AnomalyEvent, ArmDailyStat, CreativeAsset,
+    AdCampaignMirror, AdSetMirror, AnomalyEvent, ArmDailyStat, CreativeAsset,
     CreativeBacklogItem, CreativeGenerationBatch, CreativePolicy, DecisionLog,
     EngineAction, EngineAlert, Experiment, ExperimentArm, FlightPhase,
     FlightPlan, GuardrailConfig, InsightBreakdown, InsightSnapshot,
@@ -494,6 +494,48 @@ class AdCampaignMirrorSerializer(serializers.ModelSerializer):
 
     def get_nb_leads(self, obj):
         return int(self._insights(obj)['results'] or 0)
+
+
+# ── ADSDEEP32 — Badge de phase d'apprentissage par ad set ─────────────────────
+# Libellé + tonalité par statut d'apprentissage (le rendu frontend — badge dans
+# ApprovalsScreen — est la tâche SÉPARÉE ADSDEEP35 ; ici on n'expose que la
+# donnée). '' (inconnu) → un badge neutre, jamais d'erreur.
+_LEARNING_BADGE = {
+    'LEARNING': {'label': 'En apprentissage', 'tone': 'info'},
+    'SUCCESS': {'label': 'Optimisé', 'tone': 'success'},
+    'FAIL': {'label': 'Apprentissage limité', 'tone': 'danger'},
+}
+
+
+class AdSetMirrorSerializer(serializers.ModelSerializer):
+    """ADSDEEP32 — Miroir d'ad set (lecture seule) exposant la phase
+    d'apprentissage pour le badge UI. Le miroir reflète l'état Meta (jamais
+    d'activation) ; company-scopé par le viewset."""
+
+    learning_badge = serializers.SerializerMethodField()
+
+    class Meta:
+        model = AdSetMirror
+        fields = [
+            'id', 'meta_id', 'name', 'status', 'campaign',
+            'learning_status', 'last_sig_edit', 'learning_stage_info',
+            'learning_badge', 'created_via_engine',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = fields
+
+    def get_learning_badge(self, obj):
+        """Badge {status, label, tone, is_learning, last_sig_edit} pour l'UI."""
+        meta = _LEARNING_BADGE.get(
+            obj.learning_status, {'label': 'Inconnu', 'tone': 'neutral'})
+        return {
+            'status': obj.learning_status or '',
+            'label': meta['label'],
+            'tone': meta['tone'],
+            'is_learning': obj.is_learning,
+            'last_sig_edit': (obj.last_sig_edit.isoformat()
+                              if obj.last_sig_edit else None),
+        }
 
 
 class InsightBreakdownSerializer(serializers.ModelSerializer):

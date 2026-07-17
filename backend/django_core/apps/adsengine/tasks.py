@@ -58,6 +58,74 @@ def _account_node(conn):
     return acct if acct.startswith('act_') else f'act_{acct}'
 
 
+# ── ADSDEEP32 — Phase d'apprentissage par ad set (learning_stage_info) ────────
+# Champs demandés à l'edge ``adsets`` pour miroiter la phase d'apprentissage.
+ADSET_LEARNING_FIELDS = ('id', 'learning_stage_info')
+
+
+def _parse_meta_ts(value):
+    """Horodatage Meta (unix int/str OU ISO-8601) → datetime aware, ou None."""
+    if value in (None, ''):
+        return None
+    from django.utils import timezone as _tz
+    try:
+        # Unix (secondes) → datetime aware UTC directement (jamais via une
+        # heure locale naïve, qui décalerait l'instant selon le fuseau serveur).
+        return datetime.datetime.fromtimestamp(
+            int(value), datetime.timezone.utc)
+    except (ValueError, TypeError, OverflowError, OSError):
+        pass
+    try:
+        dt = datetime.datetime.fromisoformat(
+            str(value).replace('Z', '+00:00'))
+    except (ValueError, TypeError):
+        return None
+    if _tz.is_naive(dt):
+        dt = _tz.make_aware(dt, datetime.timezone.utc)
+    return dt
+
+
+def sync_adset_learning(company, client):
+    """ADSDEEP32 — Miroite ``learning_stage_info`` par ad set (dossier §2).
+
+    Lit ``GET /act_<id>/adsets?fields=learning_stage_info`` et met à jour chaque
+    ``AdSetMirror`` : ``learning_status`` (LEARNING/SUCCESS/FAIL normalisé, '' si
+    inconnu), ``last_sig_edit`` (last_sig_edit_ts) et le dict brut
+    ``learning_stage_info``. Best-effort ; NO-OP propre si le client n'expose pas
+    ``get_adsets``. Renvoie le nombre d'ad sets mis à jour."""
+    from .models import AdSetMirror
+
+    reader = getattr(client, 'get_adsets', None)
+    if not callable(reader):
+        return 0
+    try:
+        rows = reader(fields=ADSET_LEARNING_FIELDS)
+    except Exception:  # noqa: BLE001 — l'apprentissage n'empêche jamais la synchro
+        return 0
+    by_id = {
+        str(r.get('id') or '').strip(): r
+        for r in (rows or []) if isinstance(r, dict)}
+    updated = 0
+    for adset in AdSetMirror.objects.filter(company=company):
+        row = by_id.get(adset.meta_id)
+        if not row:
+            continue
+        info = row.get('learning_stage_info')
+        if not isinstance(info, dict):
+            info = {}
+        status = str(info.get('status') or '').strip().upper()
+        if status not in ('LEARNING', 'SUCCESS', 'FAIL'):
+            status = ''
+        last_sig = _parse_meta_ts(info.get('last_sig_edit_ts'))
+        adset.learning_stage_info = info
+        adset.learning_status = status
+        if last_sig is not None:
+            adset.last_sig_edit = last_sig
+        adset.save()
+        updated += 1
+    return updated
+
+
 def _sync_level_insights(company, conn, client, *, level):
     """ADSDEEP2 — Synchronise les snapshots niveau ``ad`` ou ``adset``.
 
@@ -143,6 +211,9 @@ def _sync_company(conn):
     # celui de la campagne (fenêtre ``maximum`` — contrat ENG6 préservé).
     _sync_level_insights(company, conn, client, level='adset')
     _sync_level_insights(company, conn, client, level='ad')
+
+    # ADSDEEP32 — phase d'apprentissage par ad set (learning_stage_info).
+    sync_adset_learning(company, client)
 
     # ADSDEEP11 — miroir du créatif LIVE de chaque ad (best-effort).
     sync_ad_creatives(company, client)

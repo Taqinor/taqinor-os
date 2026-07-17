@@ -186,8 +186,41 @@ class AdCampaignMirror(TenantModel):
         return f'Campagne {self.meta_id} ({self.status or "?"})'
 
 
+# ── ADSDEEP32 — Reset d'apprentissage : seuils + avertissements approbateur ───
+# Seuil documenté (dossier write-surface §2) : une variation de budget de PLUS de
+# 20 % réinitialise la phase d'apprentissage de l'ad set (comme un changement de
+# créatif, de ciblage ou de bid). Meta 2026 « Andromeda » a resserré les seuils :
+# on avertit LARGE (au franchissement du seuil documenté).
+LEARNING_RESET_BUDGET_PCT = 20
+WARN_LEARNING_RESET_BUDGET = (
+    "Variation de budget supérieure à 20 % : Meta réinitialise la phase "
+    "d'apprentissage de l'ad set (coûts instables pendant quelques jours).")
+WARN_LEARNING_RESET_CREATIVE = (
+    "Changement de créatif : Meta réinitialise la phase d'apprentissage de "
+    "l'ad set (coûts instables pendant quelques jours).")
+
+
+def _budget_change_pct(current, new):
+    """Variation ABSOLUE en % entre budget courant et nouveau (``None`` si l'un
+    est illisible ou si le courant est nul — pas de base de comparaison)."""
+    try:
+        current = float(current)
+        new = float(new)
+    except (TypeError, ValueError):
+        return None
+    if current <= 0:
+        return None
+    return abs(new - current) / current * 100.0
+
+
 class AdSetMirror(TenantModel):
     """ENG5 — Miroir local d'un ad set Meta (rattaché à un miroir de campagne)."""
+
+    # ADSDEEP32 — phase d'apprentissage Meta (learning_stage_info).
+    class LearningStatus(models.TextChoices):
+        LEARNING = 'LEARNING', 'En apprentissage'
+        SUCCESS = 'SUCCESS', 'Apprentissage réussi'
+        FAIL = 'FAIL', 'Apprentissage limité'
 
     meta_id = models.CharField(max_length=64, verbose_name='ID Meta')
     name = models.CharField(max_length=255, blank=True, default='',
@@ -206,6 +239,22 @@ class AdSetMirror(TenantModel):
         null=True, blank=True, related_name='adsets',
         verbose_name='Campagne')
 
+    # ── ADSDEEP32 — learning_stage_info (dossier write-surface §2) ──
+    # ``learning_status`` = statut normalisé (LEARNING/SUCCESS/FAIL ; '' = inconnu)
+    # pour piloter le badge UI ; ``last_sig_edit`` = horodatage de la dernière
+    # édition significative (last_sig_edit_ts) ; ``learning_stage_info`` = le dict
+    # BRUT de Meta (conversions, attribution_windows…) pour l'audit. Alimentés par
+    # ``tasks.sync_adset_learning``. Le badge frontend (ApprovalsScreen) est une
+    # tâche SÉPARÉE (ADSDEEP35).
+    learning_status = models.CharField(
+        max_length=16, choices=LearningStatus.choices, blank=True, default='',
+        verbose_name="Phase d'apprentissage")
+    last_sig_edit = models.DateTimeField(
+        null=True, blank=True, verbose_name='Dernière édition significative')
+    learning_stage_info = models.JSONField(
+        default=dict, blank=True,
+        verbose_name="Info de phase d'apprentissage (brut Meta)")
+
     class Meta:
         verbose_name = "Miroir d'ad set"
         verbose_name_plural = "Miroirs d'ad set"
@@ -218,6 +267,30 @@ class AdSetMirror(TenantModel):
 
     def __str__(self):
         return f'AdSet {self.meta_id} ({self.status or "?"})'
+
+    @property
+    def is_learning(self):
+        """Vrai si l'ad set est ENCORE en phase d'apprentissage (badge UI)."""
+        return self.learning_status == self.LearningStatus.LEARNING
+
+    def learning_reset_warnings(self, *, current_budget_mad=None,
+                                new_budget_mad=None, creative_change=False):
+        """ADSDEEP32 — Avertissements « cette action réinitialise l'apprentissage »
+        à montrer dans la boîte d'approbation quand une action franchit un SEUIL
+        de reset documenté (dossier §2) : variation de budget > 20 % OU changement
+        de créatif. Renvoie la liste (éventuellement vide) des avertissements FR.
+
+        Le reset survient QUE l'ad set soit déjà en apprentissage ou non (un
+        *significant edit* renvoie même un ad set optimisé en apprentissage) —
+        d'où un avertissement au franchissement du seuil, indépendamment de
+        ``learning_status``."""
+        warnings = []
+        if creative_change:
+            warnings.append(WARN_LEARNING_RESET_CREATIVE)
+        pct = _budget_change_pct(current_budget_mad, new_budget_mad)
+        if pct is not None and pct > LEARNING_RESET_BUDGET_PCT:
+            warnings.append(WARN_LEARNING_RESET_BUDGET)
+        return warnings
 
 
 class AdMirror(TenantModel):
