@@ -17,12 +17,15 @@ export default function SuggestionCTA() {
 
   return (
     <>
+      {/* Masqué sous `md` : sur mobile l'écran est bord-à-bord (+ barre d'onglets
+          basse), un bouton flottant bas-droite recouvrirait le contenu de la liste
+          (garde e2e MB6). Accessible sur mobile via la nav Innovation. */}
       <button
         type="button"
         onClick={() => setOpen(true)}
         aria-label="Suggérer une amélioration"
         title="Suggérer une amélioration"
-        className="fixed bottom-5 right-5 z-[var(--z-modal)] inline-flex items-center gap-2
+        className="hidden md:inline-flex fixed bottom-5 right-5 z-[var(--z-modal)] items-center gap-2
                    rounded-full border border-border bg-card px-4 py-2.5 text-sm font-medium
                    text-foreground shadow-ui-md transition-colors hover:bg-accent focus-ring"
       >
