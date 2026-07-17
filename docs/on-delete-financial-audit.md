@@ -28,6 +28,11 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/apps/agriculture/models.py:237` | IntrantAgricole.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/agriculture/models.py:266` | EquipeSaisonniere.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/agriculture/models.py:289` | PointageAgricole.company | authentication.Company | CASCADE |
+| `backend/django_core/apps/agriculture/models.py:343` | MaterielAgricole.company | authentication.Company | CASCADE |
+| `backend/django_core/apps/agriculture/models.py:371` | UtilisationMateriel.company | authentication.Company | CASCADE |
+| `backend/django_core/apps/agriculture/models.py:408` | PointIrrigation.company | authentication.Company | CASCADE |
+| `backend/django_core/apps/agriculture/models.py:437` | RelevePointIrrigation.company | authentication.Company | CASCADE |
+| `backend/django_core/apps/agriculture/models.py:474` | LotRecolte.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/ao/models.py:44` | AppelOffre.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/ao/models.py:100` | BordereauPrix.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/ao/models.py:136` | LigneBordereau.company | authentication.Company | CASCADE |
