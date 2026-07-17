@@ -2,9 +2,9 @@
 from rest_framework import serializers
 
 from .models import (
-    ActifCouvert, Assureur, Courtier, DeclarationSinistre, EcheancePrime,
-    GarantiePolice, IndemnisationSinistre, PoliceActivity, PoliceAssurance,
-    SinistreActivity,
+    ActifCouvert, AttestationAssurance, Assureur, Courtier, DeclarationSinistre,
+    EcheancePrime, GarantiePolice, IndemnisationSinistre, PoliceActivity,
+    PoliceAssurance, SinistreActivity,
 )
 from .selectors import resoudre_libelle_actif
 
@@ -196,6 +196,23 @@ class EcheancePrimeSerializer(serializers.ModelSerializer):
             'periodicite', 'statut', 'ecriture_ref',
         ]
         read_only_fields = ['id', 'company', 'ecriture_ref']
+
+    def validate_police(self, value):
+        request = self.context.get('request')
+        if request and value.company_id != request.user.company_id:
+            raise serializers.ValidationError(
+                'La police doit appartenir à la même société.')
+        return value
+
+
+class AttestationAssuranceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AttestationAssurance
+        fields = [
+            'id', 'company', 'police', 'document', 'date_emission',
+            'date_validite', 'emise_pour', 'statut', 'created_at',
+        ]
+        read_only_fields = ['id', 'company', 'created_at']
 
     def validate_police(self, value):
         request = self.context.get('request')

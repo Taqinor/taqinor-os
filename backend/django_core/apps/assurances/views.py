@@ -11,12 +11,12 @@ from core.mixins import TenantMixin
 from core.permissions import WriteScopedPermissionMixin
 
 from .models import (
-    ActifCouvert, Assureur, Courtier, DeclarationSinistre, EcheancePrime,
-    GarantiePolice, PoliceAssurance,
+    ActifCouvert, AttestationAssurance, Assureur, Courtier, DeclarationSinistre,
+    EcheancePrime, GarantiePolice, PoliceAssurance,
 )
 from .serializers import (
-    ActifCouvertSerializer, AssureurSerializer, CourtierSerializer,
-    DeclarationSinistreSerializer, EcheancePrimeSerializer,
+    ActifCouvertSerializer, AttestationAssuranceSerializer, AssureurSerializer,
+    CourtierSerializer, DeclarationSinistreSerializer, EcheancePrimeSerializer,
     GarantiePoliceSerializer, IndemnisationSinistreSerializer,
     PoliceActivitySerializer, PoliceAssuranceSerializer,
     SinistreActivitySerializer,
@@ -341,3 +341,13 @@ class DeclarationSinistreViewSet(_AssurancesBaseViewSet):
             'Sinistre marqué contesté (escalade contentieux préparée).')
         return Response(
             DeclarationSinistreSerializer(declaration).data)
+
+
+class AttestationAssuranceViewSet(_AssurancesBaseViewSet):
+    """CRUD des attestations d'assurance que NOUS détenons (NTASS17).
+
+    ``?police=<id>`` filtre les attestations d'une police. Accepte l'upload
+    multipart du document scanné (FileField ``document``)."""
+    queryset = AttestationAssurance.objects.select_related('police')
+    serializer_class = AttestationAssuranceSerializer
+    filterset_fields = ['police', 'statut']

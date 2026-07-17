@@ -472,3 +472,47 @@ class IndemnisationSinistre(models.Model):
 
     def __str__(self):
         return f'{self.declaration_id} — indemnisé {self.montant_indemnise}'
+
+
+# ── NTASS17 — Attestations d'assurance émises par NOS assureurs (GED) ──────
+
+class AttestationAssurance(models.Model):
+    """Attestation d'assurance que NOUS détenons en tant qu'ASSURÉ (NTASS17),
+    exigée par les maîtres d'ouvrage BTP (miroir de l'attestation fournisseur
+    NTP2P7, côté « nous sommes l'assuré »).
+
+    Le document est stocké via le storage projet (MinIO, même convention que
+    ``PoliceAssurance.document_police``) — pas d'édition du module GED."""
+
+    class Statut(models.TextChoices):
+        VALIDE = 'valide', 'Valide'
+        EXPIREE = 'expiree', 'Expirée'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='attestations_assurance', verbose_name='Société')
+    police = models.ForeignKey(
+        PoliceAssurance, on_delete=models.CASCADE, related_name='attestations')
+    document = models.FileField(
+        upload_to='assurances/attestations/%Y/%m/', null=True, blank=True,
+        verbose_name='Attestation scannée')
+    date_emission = models.DateField(verbose_name="Date d'émission")
+    date_validite = models.DateField(verbose_name='Date de validité')
+    emise_pour = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Émise pour (client / marché)')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.VALIDE)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-date_validite']
+        verbose_name = "Attestation d'assurance"
+        verbose_name_plural = "Attestations d'assurance"
+        indexes = [
+            models.Index(fields=['company', 'statut']),
+            models.Index(fields=['police', '-date_validite']),
+        ]
+
+    def __str__(self):
+        return f'Attestation {self.police_id} → {self.emise_pour}'.strip()
