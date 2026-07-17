@@ -186,7 +186,8 @@ class IdeeViewSet(CompanyScopedModelViewSet):
         return Response(IdeeSerializer(idee).data)
 
     # ── NTIDE19 — modération : masquer une idée sans la supprimer ────────────
-    @action(detail=True, methods=['post'], url_path='masquer')
+    @action(detail=True, methods=['post'], url_path='masquer',
+            permission_classes=[IsAnyRole])
     def masquer(self, request, pk=None):
         """Palier Directeur/Responsable uniquement. Ne supprime jamais
         l'idée : elle disparaît des listes normales (``get_queryset``) mais
