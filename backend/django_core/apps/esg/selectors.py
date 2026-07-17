@@ -375,9 +375,94 @@ def trajectoire_vs_realise(objectif):
     return resultats
 
 
+# ── NTESG11 — comparateur multi-période (N vs N-1) ─────────────────────────
+
+def comparer_periodes(periode_reference, periode_n):
+    """Comparateur multi-période N vs N-1 (NTESG11).
+
+    Compare, pilier par pilier puis indicateur par indicateur (code
+    ``qhse.IndicateurESG``), les données effectives (NTESG1/2,
+    ``donnees_effectives_periode`` — snapshot gelé si figée, aperçu live
+    sinon) de deux périodes. Un indicateur présent dans une seule des deux
+    périodes est signalé ``comparable=False`` (« non comparable ») — JAMAIS
+    traité comme une variation de +100 %/-100 %.
+
+    Renvoie ``{'periode_reference': {...}, 'periode_n': {...},
+    'piliers': {pilier: [{'code', 'libelle', 'comparable', ...}, ...]}}``.
+    """
+    donnees_ref = donnees_effectives_periode(periode_reference)
+    donnees_n = donnees_effectives_periode(periode_n)
+    piliers_ref = (
+        (donnees_ref.get('sources') or {}).get('indicateurs_esg') or {}
+    ).get('piliers') or {}
+    piliers_n = (
+        (donnees_n.get('sources') or {}).get('indicateurs_esg') or {}
+    ).get('piliers') or {}
+
+    tous_piliers = sorted(set(piliers_ref) | set(piliers_n))
+    resultat_piliers = {}
+    for pilier in tous_piliers:
+        lignes_ref = {
+            ligne.get('code'): ligne
+            for ligne in (piliers_ref.get(pilier) or {}).get('lignes', [])
+            if ligne.get('code')
+        }
+        lignes_n = {
+            ligne.get('code'): ligne
+            for ligne in (piliers_n.get(pilier) or {}).get('lignes', [])
+            if ligne.get('code')
+        }
+        codes = sorted(set(lignes_ref) | set(lignes_n))
+        entrees = []
+        for code in codes:
+            ligne_ref = lignes_ref.get(code)
+            ligne_n = lignes_n.get(code)
+            libelle = (ligne_n or ligne_ref or {}).get('libelle')
+            if ligne_ref is None or ligne_n is None:
+                entrees.append({
+                    'code': code, 'libelle': libelle, 'comparable': False,
+                    'raison': "Indicateur absent d'une des deux périodes.",
+                })
+                continue
+            try:
+                valeur_ref = (
+                    float(ligne_ref['valeur'])
+                    if ligne_ref.get('valeur') is not None else None)
+                valeur_n = (
+                    float(ligne_n['valeur'])
+                    if ligne_n.get('valeur') is not None else None)
+            except (TypeError, ValueError):
+                valeur_ref = valeur_n = None
+            if valeur_ref is None or valeur_n is None:
+                entrees.append({
+                    'code': code, 'libelle': libelle, 'comparable': False,
+                    'raison': 'Valeur manquante ou non numérique.',
+                })
+                continue
+            variation_abs = round(valeur_n - valeur_ref, 4)
+            variation_pct = (
+                round((valeur_n - valeur_ref) * 100.0 / abs(valeur_ref), 2)
+                if valeur_ref else None)
+            entrees.append({
+                'code': code, 'libelle': libelle, 'comparable': True,
+                'valeur_reference': valeur_ref, 'valeur_n': valeur_n,
+                'variation_abs': variation_abs,
+                'variation_pct': variation_pct,
+            })
+        resultat_piliers[pilier] = entrees
+
+    return {
+        'periode_reference': {
+            'id': periode_reference.pk, 'libelle': periode_reference.libelle},
+        'periode_n': {'id': periode_n.pk, 'libelle': periode_n.libelle},
+        'piliers': resultat_piliers,
+    }
+
+
 __all__ = [
     'agreger_indicateurs_periode',
     'donnees_effectives_periode',
     'couverture_catalogue',
     'trajectoire_vs_realise',
+    'comparer_periodes',
 ]

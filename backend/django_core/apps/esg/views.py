@@ -48,6 +48,28 @@ class PeriodeReportingESGViewSet(CompanyScopedModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(periode).data)
 
+    @action(detail=False, methods=['get'],
+            permission_classes=[ScopedPermission])
+    def comparer(self, request):
+        """Comparateur multi-période N vs N-1 (NTESG11) —
+        ``?periode=X&reference=Y`` (les deux IDs scopés société)."""
+        from .selectors import comparer_periodes
+
+        periode_id = request.query_params.get('periode')
+        reference_id = request.query_params.get('reference')
+        if not periode_id or not reference_id:
+            return Response(
+                {'detail': "Paramètres 'periode' et 'reference' requis."},
+                status=status.HTTP_400_BAD_REQUEST)
+        queryset = self.get_queryset()
+        periode = queryset.filter(pk=periode_id).first()
+        reference = queryset.filter(pk=reference_id).first()
+        if periode is None or reference is None:
+            return Response(
+                {'detail': 'Période introuvable pour cette société.'},
+                status=status.HTTP_404_NOT_FOUND)
+        return Response(comparer_periodes(reference, periode))
+
     @action(detail=True, methods=['get'],
             permission_classes=[ScopedPermission])
     def indicateurs(self, request, pk=None):
