@@ -107,6 +107,34 @@ def tableau_bord_idees(company):
     }
 
 
+def users_for_campaign(company, campagne):
+    """NTIDE26 — utilisateurs de ``company`` dont le rôle FIN (``role.nom``,
+    ``apps.roles``) figure dans le segment de ``campagne`` (liste
+    ``segment`` + ``cible_departement`` en repli mono-cible).
+
+    Departement (NTFPA1, ``apps.fpa``) n'étant PAS une dépendance de ce
+    module (jamais un import cross-app, cf. ``models.CampagneInnovation``),
+    le nom stocké est comparé au nom du RÔLE fin de l'utilisateur qu'il
+    s'agisse d'un rôle (``ROLES_CIBLABLES``) ou — le jour où une société
+    câble Departement — d'un nom de département repris tel quel côté rôle
+    (même mécanique de repli que ``InnovationSettings.segment_defaut``,
+    NTIDE7). Un utilisateur sans rôle fin assigné (compte hérité) n'est
+    jamais ciblé — un segment nommé exige un rôle nommé.
+
+    Renvoie un queryset vide si la campagne n'a ni ``segment`` ni
+    ``cible_departement`` (rien à cibler)."""
+    from django.contrib.auth import get_user_model
+
+    User = get_user_model()
+    noms = list(campagne.segment or [])
+    if campagne.cible_departement:
+        noms.append(campagne.cible_departement)
+    if not noms:
+        return User.objects.none()
+    return (User.objects.filter(company=company, role__nom__in=noms)
+            .distinct())
+
+
 def timeline(company, statut=None, contexte=None):
     """NTIDE23 — nombre d'idées PROPOSÉES par jour (``created_at``), filtres
     statut/contexte optionnels, ordre chronologique croissant (adapté à un
