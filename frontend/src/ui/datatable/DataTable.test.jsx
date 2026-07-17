@@ -1,10 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, within, fireEvent } from '@testing-library/react'
+import { render, screen, within, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { axe } from 'vitest-axe'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 import { setStoredDensity } from '../../design/theme.js'
+
+// NTUX11 — espionne `pushRecentEntity` (providers/commandActions.js) pour le
+// bloc de tests `trackRecent` en fin de fichier ; n'affecte aucun autre test
+// (module réel non consommé ailleurs dans ce fichier).
+const pushRecentEntityMock = vi.fn()
+vi.mock('../../providers/commandActions.js', () => ({ pushRecentEntity: (...a) => pushRecentEntityMock(...a) }))
+
 import { DataTable } from './DataTable.jsx'
 
 /* ============================================================================
@@ -598,5 +605,98 @@ describe('ARC49/ARC53 — extensions opt-in (chemin de l\'argent)', () => {
     // Avec hideToolbar, la barre disparaît.
     const { container: noBar } = renderTable({ hideToolbar: true })
     expect(noBar.querySelector('input[aria-label="Recherche globale"]')).toBeNull()
+  })
+})
+
+/* ============================== NTUX8 — NAVIGATION CLAVIER TABLEUR ============================== */
+
+describe('NTUX8 — édition inline avec navigation clavier (Tab/Entrée)', () => {
+  const EDIT_COLUMNS = [
+    { id: 'nom', header: 'Nom', editable: true, onSave: vi.fn() },
+    { id: 'ville', header: 'Ville', editable: true, onSave: vi.fn() },
+    { id: 'montant', header: 'Montant', align: 'right', numeric: true },
+  ]
+
+  beforeEach(() => { EDIT_COLUMNS[0].onSave = vi.fn().mockResolvedValue({}); EDIT_COLUMNS[1].onSave = vi.fn().mockResolvedValue({}) })
+
+  it('Tab depuis la première cellule éditable ouvre automatiquement la suivante, sans clic souris', async () => {
+    const { container } = renderTable({ columns: EDIT_COLUMNS })
+    const table = container.querySelector('[data-dt-table]')
+    // Ouvre la cellule "Kasri" (colonne Nom, ligne 1) par double-clic.
+    fireEvent.doubleClick(within(table).getByText('Kasri'))
+    const nomInput = table.querySelector('input')
+    fireEvent.change(nomInput, { target: { value: 'Kasri modifié' } })
+    fireEvent.keyDown(nomInput, { key: 'Tab' })
+    // Après le commit (async), la cellule Ville de la MÊME ligne s'ouvre automatiquement.
+    await waitFor(() => {
+      const inputs = table.querySelectorAll('input')
+      expect(inputs.length).toBe(1)
+      expect(inputs[0]).toHaveValue('Rabat')
+    })
+    expect(EDIT_COLUMNS[0].onSave).toHaveBeenCalledWith('Kasri modifié', DATA[0])
+  })
+
+  it('Tab en fin de ligne enjambe vers la première colonne éditable de la ligne suivante', async () => {
+    const { container } = renderTable({ columns: EDIT_COLUMNS })
+    const table = container.querySelector('[data-dt-table]')
+    fireEvent.doubleClick(within(table).getByText('Rabat')) // dernière colonne éditable, ligne 1
+    fireEvent.change(table.querySelector('input'), { target: { value: 'Rabat modifié' } })
+    fireEvent.keyDown(table.querySelector('input'), { key: 'Tab' })
+    await waitFor(() => {
+      const input = table.querySelector('input')
+      expect(input).toHaveValue('Benani') // colonne Nom, ligne 2
+    })
+  })
+
+  it('Entrée valide et descend d\'une ligne (même colonne)', async () => {
+    const { container } = renderTable({ columns: EDIT_COLUMNS })
+    const table = container.querySelector('[data-dt-table]')
+    fireEvent.doubleClick(within(table).getByText('Kasri'))
+    fireEvent.change(table.querySelector('input'), { target: { value: 'Kasri modifié' } })
+    fireEvent.keyDown(table.querySelector('input'), { key: 'Enter' })
+    await waitFor(() => expect(table.querySelector('input')).toHaveValue('Benani'))
+  })
+
+  it('Échap annule la cellule courante sans naviguer', () => {
+    const { container } = renderTable({ columns: EDIT_COLUMNS })
+    const table = container.querySelector('[data-dt-table]')
+    fireEvent.doubleClick(within(table).getByText('Kasri'))
+    fireEvent.change(table.querySelector('input'), { target: { value: 'brouillon' } })
+    fireEvent.keyDown(table.querySelector('input'), { key: 'Escape' })
+    expect(table.querySelector('input')).toBeNull()
+    expect(within(table).getByText('Kasri')).toBeInTheDocument() // valeur d'origine, pas "brouillon"
+  })
+})
+
+/* ============================== NTUX11 — RÉCENTS (trackRecent) ============================== */
+
+describe('NTUX11 — trackRecent : capture des « récents » au clic direct sur une ligne', () => {
+  beforeEach(() => pushRecentEntityMock.mockClear())
+
+  it('sans trackRecent (79 écrans existants) : onRowClick fonctionne sans jamais appeler pushRecentEntity', () => {
+    const onRowClick = vi.fn()
+    const { container } = renderTable({ onRowClick })
+    const table = container.querySelector('[data-dt-table]')
+    fireEvent.click(within(table).getByText('Kasri'))
+    expect(onRowClick).toHaveBeenCalledWith(DATA[0])
+    expect(pushRecentEntityMock).not.toHaveBeenCalled()
+  })
+
+  it('avec trackRecent : le clic sur une ligne alimente pushRecentEntity ET appelle toujours onRowClick', () => {
+    const onRowClick = vi.fn()
+    const trackRecent = (row) => ({ type: 'client', id: row.id, label: row.nom })
+    const { container } = renderTable({ onRowClick, trackRecent })
+    const table = container.querySelector('[data-dt-table]')
+    fireEvent.click(within(table).getByText('Kasri'))
+    expect(pushRecentEntityMock).toHaveBeenCalledWith({ type: 'client', id: 1, label: 'Kasri' })
+    expect(onRowClick).toHaveBeenCalledWith(DATA[0])
+  })
+
+  it('trackRecent renvoyant null n\'appelle pas pushRecentEntity', () => {
+    const trackRecent = () => null
+    const { container } = renderTable({ onRowClick: vi.fn(), trackRecent })
+    const table = container.querySelector('[data-dt-table]')
+    fireEvent.click(within(table).getByText('Kasri'))
+    expect(pushRecentEntityMock).not.toHaveBeenCalled()
   })
 })

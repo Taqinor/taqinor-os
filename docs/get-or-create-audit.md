@@ -79,6 +79,7 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/crm/views.py:1395` | get_or_create | Canal.objects | cle, company |
 | `backend/django_core/apps/dataimport/services.py:224` | update_or_create | ImportMapping.objects | company, entity, nom |
 | `backend/django_core/apps/dataimport/services.py:261` | get_or_create | ExternalRef.objects | company, external_id, external_system |
+| `backend/django_core/apps/education/viewsets.py:320` | update_or_create | Presence.objects | company, eleve, seance |
 | `backend/django_core/apps/flotte/management/commands/seed_baremes_vignette.py:75` | get_or_create | BaremeVignette.objects | annee, company, cv_max, cv_min, energie |
 | `backend/django_core/apps/flotte/management/commands/seed_referentiels_flotte.py:79` | get_or_create | ReferentielFlotte.objects | code, company, domaine |
 | `backend/django_core/apps/ged/management/commands/migrate_attachments_to_ged.py:57` | get_or_create | Cabinet.objects | company, nom |
@@ -96,9 +97,10 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/gestion_projet/services.py:1052` | get_or_create | ReglageTemps.objects | company |
 | `backend/django_core/apps/gestion_projet/services.py:1322` | get_or_create | JourFerie.objects | calendrier, company, date |
 | `backend/django_core/apps/gestion_projet/views.py:563` | get_or_create | EvaluationProjet.objects | company, projet |
-| `backend/django_core/apps/innovation/services.py:111` | get_or_create | Tag.objects | company, nom |
-| `backend/django_core/apps/innovation/services.py:117` | get_or_create | TaggedItem.objects | content_type, object_id, tag |
-| `backend/django_core/apps/innovation/views.py:239` | get_or_create | InnovationSettings.objects | company |
+| `backend/django_core/apps/innovation/services.py:139` | get_or_create | InnovationSettings.objects | company |
+| `backend/django_core/apps/innovation/services.py:180` | get_or_create | Tag.objects | company, nom |
+| `backend/django_core/apps/innovation/services.py:186` | get_or_create | TaggedItem.objects | content_type, object_id, tag |
+| `backend/django_core/apps/innovation/views.py:382` | get_or_create | InnovationSettings.objects | company |
 | `backend/django_core/apps/installations/field_capture.py:79` | get_or_create | MaterielConsommation.objects | intervention |
 | `backend/django_core/apps/installations/field_capture.py:334` | get_or_create | SafetyChecklistSlot.objects | cle, company |
 | `backend/django_core/apps/installations/field_capture.py:344` | get_or_create | SafetySignoff.objects | intervention |
@@ -195,6 +197,7 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/rh/views.py:1782` | get_or_create | ReglageRH.objects | company |
 | `backend/django_core/apps/rh/views.py:3949` | update_or_create | NoteEntretien.objects | entretien, evaluateur |
 | `backend/django_core/apps/roles/management/commands/init_roles.py:53` | get_or_create | Role.objects | company, nom |
+| `backend/django_core/apps/sante/models.py:708` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/sav/models.py:138` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/sav/services.py:1055` | get_or_create | TicketFollower.objects | company, ticket, user |
 | `backend/django_core/apps/sav/views.py:1229` | get_or_create | TicketFollower.objects | company, ticket, user |

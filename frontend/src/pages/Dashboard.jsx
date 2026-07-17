@@ -8,6 +8,9 @@ const ApprobationsAttentionCard = lazy(() => import('../components/ApprobationsA
 // VX36 — bannière de prise en main (autonome : se masque si terminé/rejeté),
 // visible dès le premier login en haut du Dashboard.
 const OnboardingBanner = lazy(() => import('../components/OnboardingBanner'))
+// NTUX11 — historique de navigation récente unifié (autonome : ne rend rien
+// si aucune entité récente).
+const RecentEntitiesWidget = lazy(() => import('../features/uxviews/RecentEntitiesWidget'))
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -1261,6 +1264,11 @@ export function Component() {
               si aucune équipe ou si le rôle n'y a pas accès). */}
           <Suspense fallback={null}>
             <MesEquipesCard />
+          </Suspense>
+
+          {/* NTUX11 — Récents (autonome : ne rend rien sans entité récente). */}
+          <Suspense fallback={null}>
+            <RecentEntitiesWidget />
           </Suspense>
 
           {/* FG8 — Flux d'activités planifiées (records.Activity).

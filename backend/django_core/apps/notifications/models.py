@@ -198,6 +198,10 @@ class EventType(models.TextChoices):
     # MFA, passkey…) notifié à l'utilisateur concerné — non désactivable.
     SECURITY_ALERT = 'security_alert', 'Alerte de sécurité'
     SECURITY_CHANGE = 'security_change', 'Changement de sécurité'
+    # NTIDE16 — une idée (apps.innovation.Idee) ATTEINT le seuil de votes
+    # configuré (InnovationSettings.seuil_votes_notification, défaut 3) :
+    # notifie l'auteur (in-app + email, préférences respectées par notify()).
+    IDEA_VOTE = 'idea_vote', 'Vote reçu sur une idée'
 
 
 class Channel(models.TextChoices):
@@ -231,10 +235,10 @@ class Notification(models.Model):
     table dédiée : elles réutilisent les journaux des intégrations existantes."""
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: tenant (societe)
         null=True, blank=True, related_name='notifications')
     recipient = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,  # on_delete: composition (utilisateur)
         related_name='notifications')
     event_type = models.CharField(
         max_length=40, choices=EventType.choices)
@@ -277,10 +281,10 @@ class NotificationPreference(models.Model):
     lorsque l'utilisateur modifie ses préférences."""
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: tenant (societe)
         null=True, blank=True, related_name='notification_preferences')
     user = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,  # on_delete: composition (utilisateur)
         related_name='notification_preferences')
     event_type = models.CharField(
         max_length=40, choices=EventType.choices)
@@ -312,10 +316,10 @@ class PushSubscription(models.Model):
     absentes, ces lignes restent inertes (le moteur ne les utilise pas)."""
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: tenant (societe)
         null=True, blank=True, related_name='push_subscriptions')
     user = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,  # on_delete: composition (utilisateur)
         related_name='push_subscriptions')
     # Endpoint unique fourni par le PushManager du navigateur (identifie l'appareil).
     endpoint = models.URLField(max_length=1000, unique=True)
@@ -364,7 +368,7 @@ class NotificationRoutingRule(models.Model):
     ]
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: tenant (societe)
         related_name='notification_routing_rules')
     event_type = models.CharField(
         max_length=40, choices=EventType.choices,
@@ -374,7 +378,7 @@ class NotificationRoutingRule(models.Model):
         max_length=20, choices=ROLE_CHOICES,
         null=True, blank=True, verbose_name='Rôle cible')
     target_user = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,  # on_delete: composition (utilisateur)
         null=True, blank=True, related_name='notification_routing_rules',
         verbose_name='Utilisateur cible')
     enabled = models.BooleanField(default=True, verbose_name='Actif')
@@ -505,7 +509,7 @@ class WorkingHoursConfig(models.Model):
     DEFAULT_WORKING_DAYS = 0b00011111  # 31
 
     company = models.OneToOneField(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: tenant (societe)
         related_name='notif_working_hours_config',
         verbose_name='Société')
     # Bitmask des jours ouvrés (Lundi=bit0 … Dimanche=bit6).
@@ -544,7 +548,7 @@ class Holiday(models.Model):
     """
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: tenant (societe)
         related_name='notif_holidays',
         verbose_name='Société')
     date = models.DateField(verbose_name='Date')
@@ -594,7 +598,7 @@ class WhatsAppTemplate(TenantModel):
 
     # Redéclaré à l'identique (ARC1) : conserve le related_name historique.
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: tenant (societe)
         related_name='whatsapp_bsp_templates')
     # Nom du gabarit tel qu'approuvé par Meta (ex. 'devis_envoye_v1').
     name = models.CharField(max_length=100, verbose_name='Nom du gabarit Meta')
@@ -687,7 +691,7 @@ class WhatsAppMessageLog(TenantModel):
         BSP = 'bsp', 'BSP (API WhatsApp Business)'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: tenant (societe)
         related_name='whatsapp_message_logs')
     # Destinataire (numéro normalisé, ex. 2126xxxxxxxx).
     recipient = models.CharField(max_length=30, verbose_name='Destinataire')
@@ -768,7 +772,7 @@ class Annonce(TenantModel):
         DEPARTEMENT = 'departement', 'Par département'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: tenant (societe)
         related_name='annonces', verbose_name='Société')
     titre = models.CharField(max_length=200, verbose_name='Titre')
     corps = models.TextField(blank=True, default='', verbose_name='Corps')
@@ -848,10 +852,10 @@ class AnnonceLecture(models.Model):
     annonce = models.ForeignKey(
         Annonce, on_delete=models.CASCADE, related_name='lectures')
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: tenant (societe)
         related_name='annonce_lectures')
     utilisateur = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,  # on_delete: composition (utilisateur)
         related_name='annonce_lectures')
     date_lecture = models.DateTimeField(auto_now_add=True)
 
@@ -884,10 +888,10 @@ class AnnonceRelance(models.Model):
     annonce = models.ForeignKey(
         Annonce, on_delete=models.CASCADE, related_name='relances')
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: tenant (societe)
         related_name='annonce_relances')
     utilisateur = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,  # on_delete: composition (utilisateur)
         related_name='annonce_relances')
     relances_envoyees = models.PositiveSmallIntegerField(default=0)
     derniere_relance_le = models.DateTimeField(null=True, blank=True)
@@ -927,7 +931,7 @@ class ApprovalReminderConfig(models.Model):
     DEFAULT_ESCALADE_DAYS = 6
 
     company = models.OneToOneField(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: tenant (societe)
         related_name='approval_reminder_config', verbose_name='Société')
     relance_days = models.PositiveSmallIntegerField(
         default=DEFAULT_RELANCE_DAYS,
@@ -957,10 +961,10 @@ class ApprovalReminderState(models.Model):
     plus dans la requête « en attente » de son moteur)."""
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: tenant (societe)
         related_name='approval_reminder_states')
     content_type = models.ForeignKey(
-        'contenttypes.ContentType', on_delete=models.CASCADE)
+        'contenttypes.ContentType', on_delete=models.CASCADE)  # on_delete: composition (parent-enfant)
     object_id = models.PositiveIntegerField()
     palier = models.PositiveSmallIntegerField(default=0)
     derniere_action_le = models.DateTimeField(null=True, blank=True)
@@ -1002,10 +1006,10 @@ class SnoozedItem(TenantModel):
     (sweep ``reveiller_snoozes``), jamais accumulée."""
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: tenant (societe)
         related_name='snoozed_items')
     user = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,  # on_delete: composition (utilisateur)
         related_name='snoozed_items')
     source = models.CharField(max_length=20)
     object_id = models.PositiveIntegerField()

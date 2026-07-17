@@ -69,6 +69,17 @@ class Idee(TenantModel):
         verbose_name='Type lié (devis/ticket/chantier)')
     linked_id = models.PositiveIntegerField(
         null=True, blank=True, verbose_name='ID lié (opaque)')
+    # NTIDE18 — « Enregistrer en brouillon » : tant que True, l'idée reste
+    # interne à son auteur (invisible des autres dans les listes/le tableau
+    # de bord, cf. ``IdeeViewSet.get_queryset``/``selectors``) ; passe à
+    # False quand l'auteur clique « Publier ».
+    draft = models.BooleanField(default=False, verbose_name='Brouillon')
+    # NTIDE19 — modération de contenu : le palier Directeur/Responsable peut
+    # « masquer » une idée SANS la supprimer (action ``masquer``). Une idée
+    # masquée disparaît des listes normales mais reste consultable en admin
+    # (``?include_archived=1``, réservé au même palier).
+    archived = models.BooleanField(
+        default=False, verbose_name='Masquée (modération)')
 
     class Meta:
         verbose_name = 'Idée'
@@ -151,6 +162,12 @@ class InnovationSettings(TenantModel):
         default=ThemeCouleur.PRIMARY, verbose_name='Thème couleur du CTA')
     message_relance = models.TextField(
         blank=True, default='', verbose_name='Message de relance')
+    # NTIDE16 — nombre de votes qui déclenche UNE notification (in-app +
+    # email via ``notify()``) à l'auteur de l'idée (``services._maybe_
+    # notify_seuil_votes``, déclenchée une seule fois, exactement au moment
+    # où le seuil est atteint — jamais répétée à chaque vote suivant).
+    seuil_votes_notification = models.PositiveIntegerField(
+        default=3, verbose_name="Seuil de votes pour notifier l'auteur")
 
     class Meta:
         verbose_name = 'Paramètres innovation'

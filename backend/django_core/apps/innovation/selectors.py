@@ -13,7 +13,12 @@ def idees_par_statut(company):
     from .models import Idee
 
     S = Idee.Statut
-    qs = Idee.objects.filter(company=company)
+    # NTIDE18 — une idée en brouillon reste interne à son auteur : jamais
+    # comptée dans les agrégats admin (mêmes chiffres qu'avant qu'elle soit
+    # publiée). NTIDE19 — une idée masquée (modération) ne s'affiche plus
+    # « dans les listes » : le tableau de bord est un agrégat de liste, donc
+    # exclue aussi (reste consultable via le détail ``?include_archived=1``).
+    qs = Idee.objects.filter(company=company, draft=False, archived=False)
     compte = qs.aggregate(
         ouvert=Count('id', filter=Q(statut=S.OUVERT)),
         examinee=Count('id', filter=Q(statut=S.EXAMINEE)),
@@ -37,7 +42,7 @@ def top_votes(company, limit=5):
     d'abord en cas d'égalité."""
     from .models import Idee
 
-    qs = (Idee.objects.filter(company=company)
+    qs = (Idee.objects.filter(company=company, draft=False, archived=False)
           .order_by('-votes_count', '-created_at')[:limit])
     return list(qs.values('id', 'titre', 'votes_count', 'statut', 'contexte'))
 
@@ -46,7 +51,8 @@ def plus_recentes(company, limit=5):
     """NTIDE6 — N idées les plus récemment proposées."""
     from .models import Idee
 
-    qs = Idee.objects.filter(company=company).order_by('-created_at', '-id')[:limit]
+    qs = (Idee.objects.filter(company=company, draft=False, archived=False)
+          .order_by('-created_at', '-id')[:limit])
     return list(qs.values(
         'id', 'titre', 'votes_count', 'statut', 'contexte', 'created_at'))
 
@@ -58,7 +64,7 @@ def heat_par_contexte(company):
 
     from .models import Idee
 
-    qs = (Idee.objects.filter(company=company)
+    qs = (Idee.objects.filter(company=company, draft=False, archived=False)
           .exclude(contexte='')
           .values('contexte')
           .annotate(nombre=Count('id'))
@@ -70,6 +76,25 @@ def contextes_frequents(company, limit=5):
     """NTIDE10 — top N contextes existants par fréquence (autocomplétion du
     formulaire proposer une idée, NTIDE8/NTIDE9)."""
     return [row['contexte'] for row in heat_par_contexte(company)[:limit]]
+
+
+def idees_similaires(company, texte, limit=3):
+    """NTIDE20 — « Existe-t-il une idée similaire ? » : recherche simple
+    ``icontains`` titre+description (même patron que ``apps.kb.selectors``),
+    top N par votes (plus de votes = plus consolidée), plus récente d'abord
+    en cas d'égalité. Exclut les brouillons d'autrui (invisibles/hors sujet
+    pour la dédup) et les idées masquées (modération, NTIDE19)."""
+    from django.db.models import Q
+
+    from .models import Idee
+
+    texte = (texte or '').strip()
+    if not texte:
+        return []
+    qs = (Idee.objects.filter(company=company, draft=False, archived=False)
+          .filter(Q(titre__icontains=texte) | Q(description__icontains=texte))
+          .order_by('-votes_count', '-created_at')[:limit])
+    return list(qs.values('id', 'titre', 'contexte', 'votes_count', 'statut'))
 
 
 def tableau_bord_idees(company):

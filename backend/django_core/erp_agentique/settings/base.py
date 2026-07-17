@@ -184,6 +184,14 @@ INSTALLED_APPS = [
     # canal de feedback produit in-app. Additif, company-scopé ; le chatter
     # réutilise records.Activity (ARC8), aucun modèle *Activity maison.
     'apps.innovation',
+    # NTEDU1 — Éducation (établissement scolaire) : structure année/niveau/
+    # classe, dossier famille/élève, inscriptions (liste d'attente), scolarité
+    # (grille tarifaire/remises/échéancier), présences, matières. Additive,
+    # scopée société côté serveur.
+    'apps.education',
+    # NTUX1 — Vues sauvegardées serveur (personnelles/partagées), fondation de
+    # la couche UX power-user (NTUX2-11). Additive, company-scopée.
+    'apps.uxviews',
 ]
 
 MIDDLEWARE = [
@@ -766,6 +774,8 @@ CELERY_TASK_ROUTES = {
     # ADSDEEP8/18 — sync hebdo des breakdowns + pull quotidien des leads.
     'adsengine.sync_breakdowns_weekly': {'queue': 'scheduled'},
     'adsengine.pull_meta_leads': {'queue': 'scheduled'},
+    # NTSAN31 — alerte J-7 avant expiration d'une PriseEnCharge santé.
+    'sante.alertes_prise_en_charge_expirant': {'queue': 'scheduled'},
     # NTPLT27 — 4e queue `bulk` pour le travail de masse (imports dataimport,
     # exports planifiés volumineux, backfills, seed à l'échelle). Un import de
     # 100 000 lignes ne doit plus retarder un digest planifié ni un rendu PDF

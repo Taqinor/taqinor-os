@@ -62,6 +62,9 @@ DATEFIELD_AUTO_NOW_ALLOWLIST = {
     "backend/django_core/apps/facturation/models.py:888",
     "backend/django_core/apps/facturation/models.py:1072",
     "backend/django_core/apps/ventes/models.py:750",  # NoteDebit.date_emission — remapped +4 (QX43 ModeInstallation.COMMERCIAL insert), same reviewed date-anchor field
+    # NTEDU4 — Inscription.date_demande : date (jour) de la demande d'inscription,
+    # même motif que les dates-ancre facture/paiement ci-dessus (pas un horodatage).
+    "backend/django_core/apps/education/models.py:255",
 }
 TIMESTAMP_AS_DATEFIELD_ALLOWLIST = {
     # CommissionPartenaire.paye_le — date de paiement (jour, pas horodatage),

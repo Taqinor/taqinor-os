@@ -64,7 +64,12 @@ export default function IdeesPage() {
       header: 'Titre',
       width: 260,
       accessor: (i) => i.titre,
-      cell: (value) => <span className="font-medium">{value || '—'}</span>,
+      cell: (value, row) => (
+        <span className="inline-flex items-center gap-2 font-medium">
+          {value || '—'}
+          {row.draft && <Badge tone="warning">Brouillon</Badge>}
+        </span>
+      ),
     },
     {
       id: 'auteur',
