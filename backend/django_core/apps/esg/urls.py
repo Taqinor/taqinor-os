@@ -3,8 +3,8 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     CatalogueIndicateurESGViewSet, DocumentPolitiqueESGViewSet,
-    ObjectifESGTrajectoireViewSet, PartiePrenanteESGViewSet,
-    PeriodeReportingESGViewSet,
+    FacteurEmissionReferenceViewSet, ObjectifESGTrajectoireViewSet,
+    PartiePrenanteESGViewSet, PeriodeReportingESGViewSet,
 )
 
 router = DefaultRouter()
@@ -20,6 +20,9 @@ router.register(
 router.register(
     r'documents-politique-esg', DocumentPolitiqueESGViewSet,
     basename='esg-document-politique')
+router.register(
+    r'facteurs-emission', FacteurEmissionReferenceViewSet,
+    basename='esg-facteur-emission')
 
 urlpatterns = [
     path('', include(router.urls)),

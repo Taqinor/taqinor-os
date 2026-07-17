@@ -14,11 +14,12 @@ from core.permissions import ScopedPermission
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import CatalogueIndicateurESG, DocumentPolitiqueESG, \
-    ObjectifESGTrajectoire, PartiePrenanteESG, PeriodeReportingESG
+    FacteurEmissionReference, ObjectifESGTrajectoire, PartiePrenanteESG, \
+    PeriodeReportingESG
 from .serializers import (
     CatalogueIndicateurESGSerializer, DocumentPolitiqueESGSerializer,
-    ObjectifESGTrajectoireSerializer, PartiePrenanteESGSerializer,
-    PeriodeReportingESGSerializer,
+    FacteurEmissionReferenceSerializer, ObjectifESGTrajectoireSerializer,
+    PartiePrenanteESGSerializer, PeriodeReportingESGSerializer,
 )
 
 
@@ -189,3 +190,44 @@ class DocumentPolitiqueESGViewSet(CompanyScopedModelViewSet):
 
     queryset = DocumentPolitiqueESG.objects.all()
     serializer_class = DocumentPolitiqueESGSerializer
+
+
+class FacteurEmissionReferenceViewSet(CompanyScopedModelViewSet):
+    """Bibliothèque de facteurs d'émission éditable et versionnée (NTESG16).
+
+    ``create`` passe TOUJOURS par ``services.creer_version_facteur`` — jamais
+    un écrasement silencieux : posté une seconde fois pour la même
+    ``(categorie, unite)``, une NOUVELLE version active est créée et
+    l'ancienne désactivée (jamais supprimée). Pas de PUT/PATCH exposé (une
+    version publiée est un fait historique immuable) — seules
+    liste/détail/création/suppression le sont."""
+
+    http_method_names = ['get', 'post', 'delete', 'head', 'options']
+    queryset = FacteurEmissionReference.objects.all()
+    serializer_class = FacteurEmissionReferenceSerializer
+
+    def perform_create(self, serializer):
+        from . import services
+
+        data = serializer.validated_data
+        instance = services.creer_version_facteur(
+            self.request.user.company,
+            categorie=data['categorie'], unite=data['unite'],
+            valeur=data['valeur'], source=data.get('source', ''),
+            date_maj=data['date_maj'])
+        serializer.instance = instance
+
+    @action(detail=False, methods=['get'],
+            permission_classes=[ScopedPermission])
+    def historique(self, request):
+        """Historique COMPLET (toutes versions, actives et désactivées)
+        d'un facteur ``?categorie=X&unite=Y`` (NTESG16)."""
+        categorie = request.query_params.get('categorie')
+        unite = request.query_params.get('unite')
+        if not categorie or not unite:
+            return Response(
+                {'detail': "Paramètres 'categorie' et 'unite' requis."},
+                status=status.HTTP_400_BAD_REQUEST)
+        qs = self.get_queryset().filter(
+            categorie=categorie, unite=unite).order_by('-version')
+        return Response(self.get_serializer(qs, many=True).data)

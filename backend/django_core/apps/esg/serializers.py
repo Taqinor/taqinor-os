@@ -8,8 +8,9 @@ change que via l'action ``figer`` (machine à états à sens unique, NTESG1).
 from rest_framework import serializers
 
 from .models import (
-    CatalogueIndicateurESG, DocumentPolitiqueESG, ObjectifESGTrajectoire,
-    PartiePrenanteESG, PeriodeReportingESG, SnapshotESG,
+    CatalogueIndicateurESG, DocumentPolitiqueESG, FacteurEmissionReference,
+    ObjectifESGTrajectoire, PartiePrenanteESG, PeriodeReportingESG,
+    SnapshotESG,
 )
 
 
@@ -157,3 +158,16 @@ class DocumentPolitiqueESGSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at',
         ]
         read_only_fields = ['created_at', 'updated_at']
+
+
+class FacteurEmissionReferenceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FacteurEmissionReference
+        fields = [
+            'id', 'categorie', 'unite', 'valeur', 'source', 'date_maj',
+            'version', 'actif', 'created_at', 'updated_at',
+        ]
+        # `version`/`actif` sont posés SERVEUR par
+        # `services.creer_version_facteur` (jamais un écrasement silencieux
+        # côté client) — voir `FacteurEmissionReferenceViewSet.perform_create`.
+        read_only_fields = ['version', 'actif', 'created_at', 'updated_at']

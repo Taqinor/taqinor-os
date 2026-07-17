@@ -287,3 +287,45 @@ class DocumentPolitiqueESG(TenantModel):
 
     def __str__(self):
         return f'{self.libelle} ({self.get_statut_display()})'
+
+
+class FacteurEmissionReference(TenantModel):
+    """Bibliothèque de facteurs d'émission éditable et versionnée (NTESG16).
+
+    Centralise/met à jour les facteurs d'émission (ex. nouvelle version
+    ADEME Base Carbone) au lieu de les ressaisir à la main à chaque
+    ``qhse.LigneBilanCarbone.facteur_emission`` — reste une SUGGESTION
+    pré-remplie éditable côté qhse, jamais imposée (hors périmètre de cette
+    app : la consommation par le formulaire de ligne de bilan carbone est un
+    futur lane qhse-side, cette app ne fait qu'exposer le registre versionné
+    en lecture/écriture).
+
+    JAMAIS d'écrasement silencieux : chaque mise à jour crée une NOUVELLE
+    ligne ``version`` (numérotée ``max(version)+1``, jamais ``count()+1`` —
+    ARC6, voir ``services.creer_version_facteur``) et désactive
+    l'ancienne (``actif=False``) — l'historique complet reste consultable.
+    """
+
+    categorie = models.CharField(max_length=120, verbose_name='Catégorie')
+    unite = models.CharField(max_length=30, verbose_name='Unité')
+    valeur = models.DecimalField(
+        max_digits=18, decimal_places=6,
+        verbose_name="Valeur (facteur d'émission)")
+    source = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Source')
+    date_maj = models.DateField(verbose_name='Date de mise à jour')
+    version = models.PositiveIntegerField(default=1, verbose_name='Version')
+    actif = models.BooleanField(default=True, verbose_name='Version active')
+
+    class Meta:
+        verbose_name = "Facteur d'émission de référence"
+        verbose_name_plural = "Facteurs d'émission de référence"
+        ordering = ['categorie', 'unite', '-version']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'categorie', 'unite', 'version'],
+                name='esg_facteur_co_cat_unite_version_uniq'),
+        ]
+
+    def __str__(self):
+        return f'{self.categorie} ({self.unite}) v{self.version}'

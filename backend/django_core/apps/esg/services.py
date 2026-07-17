@@ -161,3 +161,30 @@ def alerter_derive_trajectoire(periode, *, seuil_pct=None):
             destinataires, EventType.DIGEST, title, body=body,
             company=company))
     return notifications
+
+
+@transaction.atomic
+def creer_version_facteur(
+        company, *, categorie, unite, valeur, source, date_maj):
+    """Crée une nouvelle version ACTIVE d'un facteur d'émission (NTESG16).
+
+    JAMAIS un écrasement silencieux : la (les) version(s) précédente(s) de
+    la même ``(company, categorie, unite)`` sont désactivées (``actif=
+    False``, jamais supprimées — historique intégral conservé) ; la
+    nouvelle version est numérotée ``max(version) + 1`` (jamais
+    ``count() + 1`` — ARC6, une ligne désactivée par erreur ne doit jamais
+    faire régresser la numérotation) et devient la référence active.
+    Renvoie la nouvelle ``FacteurEmissionReference``.
+    """
+    from django.db.models import Max
+
+    from .models import FacteurEmissionReference
+
+    qs_existant = FacteurEmissionReference.objects.filter(
+        company=company, categorie=categorie, unite=unite)
+    version_max = qs_existant.aggregate(m=Max('version'))['m'] or 0
+    qs_existant.filter(actif=True).update(actif=False)
+    return FacteurEmissionReference.objects.create(
+        company=company, categorie=categorie, unite=unite, valeur=valeur,
+        source=source or '', date_maj=date_maj, version=version_max + 1,
+        actif=True)
