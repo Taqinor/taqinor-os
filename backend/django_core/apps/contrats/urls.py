@@ -2,11 +2,14 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
+    AbonnementAddOnLigneViewSet,
+    AddOnAbonnementViewSet,
     AlerteContratViewSet,
     AvenantViewSet,
     CautionViewSet,
     ClauseContratViewSet,
     ClauseViewSet,
+    CompteurUsageViewSet,
     ContratLienViewSet,
     ContratViewSet,
     CycleFacturationLogViewSet,
@@ -20,9 +23,11 @@ from .views import (
     MotifResiliationViewSet,
     ObligationViewSet,
     OrdreLocationViewSet,
+    PalierUsageViewSet,
     ParametresLocationViewSet,
     PartieContratViewSet,
     PieceConformiteViewSet,
+    PlanAbonnementViewSet,
     PlanRecurrentViewSet,
     RegleApprobationViewSet,
     ResiliationViewSet,
@@ -57,6 +62,11 @@ router.register(r'ordres-location', OrdreLocationViewSet)
 router.register(r'plans-recurrents', PlanRecurrentViewSet)
 router.register(r'motifs-resiliation', MotifResiliationViewSet)
 router.register(r'parametres-location', ParametresLocationViewSet)
+router.register(r'plans-abonnement', PlanAbonnementViewSet)
+router.register(r'addons-abonnement', AddOnAbonnementViewSet)
+router.register(r'addon-lignes', AbonnementAddOnLigneViewSet)
+router.register(r'paliers-usage', PalierUsageViewSet)
+router.register(r'compteurs-usage', CompteurUsageViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

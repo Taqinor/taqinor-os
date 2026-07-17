@@ -19,6 +19,12 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
 
+# NTSUB1-4 — nouveaux modèles « revenus récurrents » héritent du socle
+# multi-tenant (core.models.TenantModel, ARC1/SCA4) plutôt que de re-hand-roller
+# la FK ``company`` à la main (les modèles PRÉ-EXISTANTS de ce fichier restent
+# tels quels — baseline gelée, cf. apps/records/platform_baselines).
+from core.models import TenantModel
+
 
 class Contrat(models.Model):
     """Un contrat de la société (cycle de vie contractuel).
@@ -161,6 +167,18 @@ class Contrat(models.Model):
         null=True, blank=True,
         related_name='contrats',
         verbose_name='Plan de facturation récurrente',
+    )
+    # NTSUB1 — offre catalogue rattachée (nullable). NULL = comportement actuel
+    # inchangé. Sert UNIQUEMENT à pré-remplir montant/plan_recurrent à la
+    # CRÉATION (services.appliquer_plan_abonnement, snapshot — jamais un lien
+    # vivant qui recalculerait le montant si l'offre change après coup). SET_NULL
+    # : supprimer l'offre ne perd jamais le contrat, il perd seulement le lien.
+    plan_abonnement = models.ForeignKey(
+        'PlanAbonnement',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='contrats',
+        verbose_name="Plan d'abonnement",
     )
     # Niveau de confidentialité : contrôle la visibilité du contrat au sein de
     # la société. PUBLIC = tous les utilisateurs authentifiés de la société ;
@@ -3093,3 +3111,340 @@ class ParametresLocation(models.Model):
 
     def __str__(self):
         return f'Paramètres de location — {self.company_id}'
+
+
+# ---------------------------------------------------------------------------
+# NTSUB1-4 — Revenus récurrents : catalogue d'offres, add-ons, paliers d'usage,
+# compteurs génériques (fondation d'un moteur SaaS billing — bench Zuora/
+# Chargebee « Product Catalog »).
+#
+# Ces quatre modèles héritent de ``core.models.TenantModel`` (FK ``company`` +
+# horodatage, ARC1/SCA4) — contrairement aux modèles PRÉ-EXISTANTS de ce
+# fichier (baseline gelée), tout NOUVEAU modèle de ce groupe suit le socle.
+# ---------------------------------------------------------------------------
+
+
+class PlanAbonnement(TenantModel):
+    """Catalogue d'offres commerciales (« Product Catalog » Zuora/Chargebee) — NTSUB1.
+
+    Distinct de ``PlanRecurrent`` (ZCTR1, réglages de CADENCE réutilisables —
+    unité/intervalle/clôture auto — jamais un prix ni une offre vendable) et du
+    ``Contrat.montant``/``ContratMaintenance.prix`` (saisis à la main à chaque
+    contrat). Un ``PlanAbonnement`` est une OFFRE VENDABLE réutilisable : un
+    ``code``/``nom``/``description`` commerciaux, un ``prix_base`` (MAD), un
+    ``engagement_mois`` optionnel, et la CADENCE de facturation via ``plan_recurrent``
+    (référence au socle ZCTR1 existant — jamais une nouvelle notion de
+    périodicité).
+
+    ``Contrat.plan_abonnement`` (FK nullable, NULL = comportement actuel
+    inchangé) peut RÉFÉRENCER une offre : ``services.appliquer_plan_abonnement``
+    PRÉ-REMPLIT alors ``montant``/``plan_recurrent`` du contrat en SNAPSHOT (copie
+    ponctuelle à la création) — le contrat garde ensuite ses valeurs PROPRES,
+    éditables librement, et modifier l'offre après coup ne touche JAMAIS un
+    contrat déjà créé.
+
+    **Note de nommage (ne pas confondre)** : ``contrats.PlanAbonnement`` désigne
+    une offre commerciale VENDUE PAR LE TENANT à SES clients (maintenance,
+    monitoring, location) — un concept TOTALEMENT DIFFÉRENT des plans de
+    LICENCE de l'ERP lui-même (souscription au logiciel, tenant/modules/
+    sièges) qui vivent dans ``adminops.PlanLicence`` (NTADM7, renommé
+    précisément pour éviter cette collision). Aucune relation entre les deux
+    modèles.
+
+    Multi-tenant : ``company`` héritée de ``TenantModel``, posée CÔTÉ SERVEUR
+    (``TenantMixin.perform_create`` — jamais lue du corps de requête).
+
+    RUNTIME-SAFETY (leçon FG136) : ``code``/``nom`` bornés ; ``description`` en
+    ``TextField`` (jamais de longueur maximale à dépasser) ; contrainte d'unicité
+    et index NOMMÉS explicitement (≤30 chars).
+    """
+
+    code = models.CharField(max_length=50, verbose_name='Code')
+    nom = models.CharField(max_length=120, verbose_name='Nom')
+    description = models.TextField(
+        blank=True, default='', verbose_name='Description')
+    # Cadence de facturation réutilisée (ZCTR1) — jamais une nouvelle notion de
+    # périodicité créée ici. PROTECT : un plan de facturation récurrente encore
+    # référencé par au moins une offre du catalogue ne peut pas être supprimé
+    # silencieusement (il faudrait d'abord réaffecter/désactiver l'offre).
+    plan_recurrent = models.ForeignKey(
+        'PlanRecurrent',
+        on_delete=models.PROTECT,
+        related_name='plans_abonnement',
+        verbose_name='Plan de facturation récurrente',
+    )
+    prix_base = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Prix de base')
+    engagement_mois = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Engagement (mois)')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+
+    class Meta:
+        verbose_name = "Plan d'abonnement"
+        verbose_name_plural = "Plans d'abonnement"
+        ordering = ['nom', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'code'], name='contrats_planabo_uniq_code'),
+        ]
+        indexes = [
+            models.Index(
+                fields=['company', 'actif'], name='contrats_planabo_co_act'),
+        ]
+
+    def __str__(self):
+        return f'{self.code} — {self.nom}'
+
+
+class AddOnAbonnement(TenantModel):
+    """Option payante (add-on) du catalogue, attachable à un abonnement — NTSUB2.
+
+    Ex. « supervision avancée », « visite supplémentaire ». Rattachable
+    optionnellement à un ``PlanAbonnement`` du catalogue (``plan_abonnement``
+    nullable — un add-on peut aussi être générique, proposé sur plusieurs
+    plans) ; ``facturation`` distingue un add-on RÉCURRENT (facturé à chaque
+    cycle tant qu'actif) d'un add-on PONCTUEL (facturé une seule fois à
+    l'activation — non branché ici, réservé à un futur point d'entrée manuel).
+
+    Multi-tenant : ``company`` héritée de ``TenantModel``, posée CÔTÉ SERVEUR.
+    """
+
+    class Facturation(models.TextChoices):
+        RECURRENTE = 'recurrente', 'Récurrente'
+        PONCTUELLE = 'ponctuelle', 'Ponctuelle'
+
+    plan_abonnement = models.ForeignKey(
+        'PlanAbonnement',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='addons',
+        verbose_name="Plan d'abonnement",
+    )
+    code = models.CharField(max_length=50, verbose_name='Code')
+    nom = models.CharField(max_length=120, verbose_name='Nom')
+    prix_unitaire = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Prix unitaire')
+    facturation = models.CharField(
+        max_length=15, choices=Facturation.choices,
+        default=Facturation.RECURRENTE, verbose_name='Facturation')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+
+    class Meta:
+        verbose_name = "Add-on d'abonnement"
+        verbose_name_plural = "Add-ons d'abonnement"
+        ordering = ['nom', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'code'], name='contrats_addon_uniq_code'),
+        ]
+
+    def __str__(self):
+        return f'{self.code} — {self.nom}'
+
+
+class AbonnementAddOnLigne(TenantModel):
+    """Rattachement d'un add-on à un ``Contrat`` ou ``sav.ContratMaintenance`` — NTSUB2.
+
+    Lien LÂCHE polymorphe par couple typé ``(type_cible, cible_id)`` — même
+    patron que ``CycleFacturationLog.source_type/source_id`` (XCTR5) : jamais
+    un FK dur ni un import du modèle d'une autre app (``sav`` n'expose pas de
+    modèle importable depuis ``contrats`` — frontière cross-app, CLAUDE.md).
+
+    ``actif_depuis``/``actif_jusqua`` bornent la période de facturation : un
+    add-on actif à la date du cycle de facturation ajoute son montant à la
+    facture générée (``services.montant_addons_periode``) ; désactivé
+    (``actif_jusqua`` dépassée) il n'est plus facturé au cycle suivant.
+
+    Multi-tenant : ``company`` héritée de ``TenantModel``, posée CÔTÉ SERVEUR.
+    """
+
+    class TypeCible(models.TextChoices):
+        CONTRAT = 'contrat', 'Contrat'
+        SAV_MAINTENANCE = 'sav_maintenance', 'Maintenance SAV'
+
+    type_cible = models.CharField(
+        max_length=20, choices=TypeCible.choices, verbose_name='Type de cible')
+    cible_id = models.PositiveIntegerField(verbose_name='ID de la cible')
+    addon = models.ForeignKey(
+        'AddOnAbonnement',
+        on_delete=models.CASCADE,  # on_delete: une ligne rattachée à un add-on supprimé n'a plus de sens (pas de facturation orpheline)
+        related_name='lignes',
+        verbose_name='Add-on',
+    )
+    quantite = models.PositiveIntegerField(default=1, verbose_name='Quantité')
+    actif_depuis = models.DateField(verbose_name='Actif depuis')
+    actif_jusqua = models.DateField(
+        null=True, blank=True, verbose_name="Actif jusqu'à")
+
+    class Meta:
+        verbose_name = "Ligne add-on d'abonnement"
+        verbose_name_plural = "Lignes add-on d'abonnement"
+        ordering = ['-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'type_cible', 'cible_id'],
+                name='contrats_addonlig_cible'),
+        ]
+
+    def actif_le(self, date_reference):
+        """``True`` si cette ligne est active à ``date_reference`` (bornes incluses)."""
+        if self.actif_depuis and date_reference < self.actif_depuis:
+            return False
+        if self.actif_jusqua and date_reference > self.actif_jusqua:
+            return False
+        return True
+
+    def montant_periode(self):
+        """Montant facturable de cette ligne (``quantite`` × prix unitaire de l'add-on)."""
+        return (self.quantite or 0) * (self.addon.prix_unitaire or Decimal('0'))
+
+    def __str__(self):
+        return f'{self.addon_id} x{self.quantite} — {self.type_cible} #{self.cible_id}'
+
+
+class PalierUsage(TenantModel):
+    """Palier de prix (tiered/volume pricing) pour la facturation à l'usage — NTSUB3.
+
+    XCTR16 (``apps.sav``) facture l'usage monitoring à un TARIF UNIQUE
+    (``tarif_usage`` × unités au-delà de la franchise) — aucun palier
+    dégressif/progressif. Un ``PalierUsage`` déclare UNE tranche de tarif,
+    rattachée à un ``AddOnAbonnement`` ou un ``PlanAbonnement`` (l'un OU
+    l'autre, jamais les deux — un palier qualifie soit un add-on à l'usage
+    soit l'offre elle-même) : ``seuil_min``/``seuil_max`` (NULL = infini) et
+    ``prix_unitaire`` de la tranche. ``mode`` distingue :
+
+      - ``volume``    : la totalité de l'usage est facturée au tarif du DERNIER
+        palier atteint ;
+      - ``graduated`` : chaque tranche d'usage est facturée à SON tarif propre
+        (cumul des tranches).
+
+    Le calcul PUR (aucune app métier, aucune base) vit dans
+    ``core.pricing_paliers.calculer_prix_paliers`` — réutilisé par XCTR16 (sav)
+    et NTSUB2/4 (contrats). RÉTROCOMPATIBLE : sans palier configuré, un appelant
+    retombe sur son tarif unique existant (comportement XCTR16 inchangé).
+
+    ``seuil_alerte_pct`` (NTSUB18, non branché ici) : seuil optionnel
+    d'alerte de dépassement, laissé pour un futur branchement notifications —
+    NULL = aucune alerte.
+
+    Multi-tenant : ``company`` héritée de ``TenantModel``, posée CÔTÉ SERVEUR.
+    """
+
+    class Mode(models.TextChoices):
+        VOLUME = 'volume', 'Volume (dernier palier atteint)'
+        GRADUATED = 'graduated', 'Graduated (par tranche)'
+
+    addon = models.ForeignKey(
+        'AddOnAbonnement',
+        on_delete=models.CASCADE,  # on_delete: un palier n'a pas de sens sans l'add-on/plan qu'il tarife
+        null=True, blank=True,
+        related_name='paliers',
+        verbose_name='Add-on',
+    )
+    plan_abonnement = models.ForeignKey(
+        'PlanAbonnement',
+        on_delete=models.CASCADE,  # on_delete: idem — un palier n'a pas de sens sans l'offre qu'il tarife
+        null=True, blank=True,
+        related_name='paliers',
+        verbose_name="Plan d'abonnement",
+    )
+    seuil_min = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Seuil minimum')
+    seuil_max = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        verbose_name='Seuil maximum (NULL = infini)')
+    prix_unitaire = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Prix unitaire de la tranche')
+    mode = models.CharField(
+        max_length=15, choices=Mode.choices, default=Mode.VOLUME,
+        verbose_name='Mode')
+    seuil_alerte_pct = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name="Seuil d'alerte (%)")
+
+    class Meta:
+        verbose_name = "Palier d'usage"
+        verbose_name_plural = "Paliers d'usage"
+        ordering = ['seuil_min', 'id']
+        indexes = [
+            models.Index(
+                fields=['company', 'addon'], name='contrats_palier_co_addon'),
+            models.Index(
+                fields=['company', 'plan_abonnement'],
+                name='contrats_palier_co_plan'),
+        ]
+
+    def __str__(self):
+        borne = self.seuil_max if self.seuil_max is not None else '∞'
+        return f'{self.seuil_min}–{borne} @ {self.prix_unitaire}'
+
+
+class CompteurUsage(TenantModel):
+    """Compteur d'usage générique (metering) au-delà du monitoring solaire — NTSUB4.
+
+    XCTR16 lit exclusivement ``monitoring.ProductionReading`` (kWh/m³) — aucun
+    mécanisme générique pour d'autres compteurs (interventions SAV consommées
+    au-delà du quota, utilisateurs actifs, appels API publicapi…). Lien LÂCHE
+    polymorphe par couple typé ``(type_cible, cible_id)`` — même patron que
+    ``AbonnementAddOnLigne``/``CycleFacturationLog`` (XCTR5) : jamais un FK dur
+    ni un import cross-app.
+
+    ``code_compteur`` est un identifiant LIBRE (texte, choisi par l'appelant —
+    ex. ``'interventions'``, ``'appels_api'``) : la lecture/agrégation se fait
+    par ``(company, type_cible, cible_id, code_compteur, periode_debut,
+    periode_fin)``. Idempotence d'ingestion garantie par une contrainte
+    d'unicité sur ce sextuplet — ingérer deux fois le même relevé pour la MÊME
+    période ne duplique jamais la ligne (``services.ingerer_compteur_usage``
+    fait un update_or_create).
+
+    Multi-tenant : ``company`` héritée de ``TenantModel``, posée CÔTÉ SERVEUR.
+    """
+
+    class Source(models.TextChoices):
+        MANUEL = 'manuel', 'Manuel'
+        API = 'api', 'API'
+        CALCULE = 'calcule', 'Calculé'
+
+    type_cible = models.CharField(
+        max_length=20,
+        choices=AbonnementAddOnLigne.TypeCible.choices,
+        verbose_name='Type de cible')
+    cible_id = models.PositiveIntegerField(verbose_name='ID de la cible')
+    code_compteur = models.CharField(
+        max_length=100, verbose_name='Code du compteur')
+    periode_debut = models.DateField(verbose_name='Début de période')
+    periode_fin = models.DateField(verbose_name='Fin de période')
+    quantite = models.DecimalField(
+        max_digits=14, decimal_places=4, default=Decimal('0'),
+        verbose_name='Quantité')
+    source = models.CharField(
+        max_length=10, choices=Source.choices, default=Source.MANUEL,
+        verbose_name='Source')
+
+    class Meta:
+        verbose_name = "Compteur d'usage"
+        verbose_name_plural = "Compteurs d'usage"
+        ordering = ['-periode_debut', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=[
+                    'company', 'type_cible', 'cible_id', 'code_compteur',
+                    'periode_debut', 'periode_fin',
+                ],
+                name='contrats_compteur_uniq_periode',
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=['company', 'type_cible', 'cible_id', 'code_compteur'],
+                name='contrats_compteur_co_cible'),
+        ]
+
+    def __str__(self):
+        return (
+            f'{self.code_compteur} {self.type_cible}#{self.cible_id} '
+            f'[{self.periode_debut}..{self.periode_fin}] = {self.quantite}'
+        )

@@ -2387,6 +2387,18 @@ def facturer_ligne_echeance(ligne, *, user=None, taux_tva=Decimal('20')):
         raise FacturationError(
             "Le client du contrat est introuvable dans votre société.")
 
+    # NTSUB2 — ajoute le montant des add-ons ACTIFS de la période au total
+    # facturé (0 si aucun add-on rattaché : comportement STRICTEMENT inchangé
+    # pour tout contrat sans add-on — la quasi-totalité des contrats existants).
+    from .models import AbonnementAddOnLigne
+
+    montant_addons = montant_addons_periode(
+        echeancier.company,
+        type_cible=AbonnementAddOnLigne.TypeCible.CONTRAT,
+        cible_id=contrat.id, periode_fin=ligne.date_echeance)
+    if montant_addons:
+        montant_ttc += montant_addons
+
     tva_pct = Decimal(str(taux_tva))
     montant_ht = (montant_ttc / (1 + tva_pct / 100)).quantize(
         Decimal('0.01'), rounding=ROUND_HALF_UP)
@@ -2396,6 +2408,8 @@ def facturer_ligne_echeance(ligne, *, user=None, taux_tva=Decimal('20')):
         f'Échéance n°{ligne.numero} — contrat #{contrat.id} '
         f'({echeancier.get_periodicite_display()})'
     )
+    if montant_addons:
+        libelle += f' — inclut {montant_addons} MAD d\'add-ons'
 
     # YSUBS9 — période de service couverte par CETTE échéance : de l'échéance
     # PRÉCÉDENTE (numéro le plus proche en-dessous) à celle-ci, ou de
@@ -4270,3 +4284,118 @@ def creer_contrat_import(company, ligne, *, user=None):
         return 'erreur', str(exc)
 
     return 'cree', None
+
+
+# ---------------------------------------------------------------------------
+# NTSUB1 — Catalogue d'offres (``PlanAbonnement``) : pré-remplissage snapshot
+# ---------------------------------------------------------------------------
+
+
+def appliquer_plan_abonnement(contrat, plan_abonnement):
+    """Pré-remplit ``montant``/``plan_recurrent`` d'un ``Contrat`` depuis un
+    ``PlanAbonnement`` (NTSUB1) — SNAPSHOT, jamais un lien vivant.
+
+    Copie ``plan_abonnement.prix_base`` → ``contrat.montant`` et
+    ``plan_abonnement.plan_recurrent`` → ``contrat.plan_recurrent`` UNE FOIS, à
+    l'appel. Les valeurs restent ensuite PROPRES au contrat, éditables
+    librement — modifier l'offre catalogue après coup ne touche JAMAIS un
+    contrat déjà créé (pas de recalcul dynamique). Renvoie le contrat mis à
+    jour.
+    """
+    contrat.montant = plan_abonnement.prix_base
+    contrat.plan_recurrent = plan_abonnement.plan_recurrent
+    contrat.save(update_fields=['montant', 'plan_recurrent'])
+    return contrat
+
+
+# ---------------------------------------------------------------------------
+# NTSUB2 — Add-ons (options payantes) : montant facturable d'une période
+# ---------------------------------------------------------------------------
+
+
+def lignes_addon_actives_periode(company, *, type_cible, cible_id, periode_fin):
+    """Lignes ``AbonnementAddOnLigne`` ACTIVES d'une cible à ``periode_fin``
+    (date de référence du cycle de facturation, NTSUB2).
+
+    Une ligne est active si ``actif_depuis <= periode_fin`` et
+    (``actif_jusqua`` est NULL OU ``actif_jusqua >= periode_fin``) — même
+    contrat que ``AbonnementAddOnLigne.actif_le``, filtré au niveau requête
+    pour éviter de charger des lignes hors période. Ne renvoie que les add-ons
+    encore ``actif=True`` au catalogue.
+    """
+    from django.db.models import Q
+
+    from .models import AbonnementAddOnLigne
+
+    return (
+        AbonnementAddOnLigne.objects
+        .filter(
+            company=company, type_cible=type_cible, cible_id=cible_id,
+            addon__actif=True, actif_depuis__lte=periode_fin)
+        .filter(Q(actif_jusqua__isnull=True) | Q(actif_jusqua__gte=periode_fin))
+        .select_related('addon')
+    )
+
+
+def montant_addons_periode(company, *, type_cible, cible_id, periode_fin):
+    """Somme facturable des add-ons ACTIFS d'une cible à ``periode_fin`` — NTSUB2.
+
+    Renvoie ``Decimal('0')`` si aucun add-on actif (comportement inchangé pour
+    un contrat sans add-on — n'ajoute rien au cycle de facturation).
+    """
+    total = Decimal('0')
+    for ligne in lignes_addon_actives_periode(
+            company, type_cible=type_cible, cible_id=cible_id,
+            periode_fin=periode_fin):
+        total += ligne.montant_periode()
+    return total
+
+
+# ---------------------------------------------------------------------------
+# NTSUB4 — Compteurs d'usage génériques (metering) : ingestion + agrégation
+# ---------------------------------------------------------------------------
+
+
+def ingerer_compteur_usage(company, *, type_cible, cible_id, code_compteur,
+                           periode_debut, periode_fin, quantite,
+                           source='manuel'):
+    """Ingère (ou MET À JOUR) un relevé de compteur d'usage — NTSUB4.
+
+    Idempotent par ``(company, type_cible, cible_id, code_compteur,
+    periode_debut, periode_fin)`` (contrainte d'unicité du modèle) :
+    ré-ingérer la MÊME période remplace la quantité (pas de doublon créé) —
+    utile pour un relevé corrigé/recalculé sans devoir d'abord supprimer
+    l'ancien. Renvoie ``(compteur, cree)``.
+    """
+    from .models import CompteurUsage
+
+    compteur, cree = CompteurUsage.objects.update_or_create(
+        company=company, type_cible=type_cible, cible_id=cible_id,
+        code_compteur=code_compteur, periode_debut=periode_debut,
+        periode_fin=periode_fin,
+        defaults={'quantite': quantite, 'source': source},
+    )
+    return compteur, cree
+
+
+def total_usage_periode(company, *, type_cible, cible_id, code_compteur,
+                        periode_debut, periode_fin):
+    """Somme des ``CompteurUsage`` d'une cible/compteur RECOUVRANT la fenêtre
+    ``[periode_debut, periode_fin]`` — NTSUB4.
+
+    Renvoie ``Decimal('0')`` si aucun compteur ingéré (absence de compteur =
+    ligne d'usage omise, comportement symétrique de XCTR16).
+    """
+    from django.db.models import Sum
+
+    from .models import CompteurUsage
+
+    total = (
+        CompteurUsage.objects
+        .filter(
+            company=company, type_cible=type_cible, cible_id=cible_id,
+            code_compteur=code_compteur,
+            periode_debut__gte=periode_debut, periode_fin__lte=periode_fin)
+        .aggregate(total=Sum('quantite'))['total']
+    )
+    return total if total is not None else Decimal('0')

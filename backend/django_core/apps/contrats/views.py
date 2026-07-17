@@ -39,11 +39,14 @@ from apps.records.views import ChatterViewSetMixin
 
 from . import selectors, services
 from .models import (
+    AbonnementAddOnLigne,
+    AddOnAbonnement,
     AlerteContrat,
     Avenant,
     Caution,
     Clause,
     ClauseContrat,
+    CompteurUsage,
     Contrat,
     ContratLien,
     CycleFacturationLog,
@@ -57,9 +60,11 @@ from .models import (
     MotifResiliation,
     Obligation,
     OrdreLocation,
+    PalierUsage,
     ParametresLocation,
     PartieContrat,
     PieceConformite,
+    PlanAbonnement,
     PlanRecurrent,
     RegleApprobation,
     Resiliation,
@@ -67,10 +72,13 @@ from .models import (
     VersionContrat,
 )
 from .serializers import (
+    AbonnementAddOnLigneSerializer,
+    AddOnAbonnementSerializer,
     AjouterLigneEcheanceSerializer,
     AlerteContratSerializer,
     AvenantSerializer,
     CautionSerializer,
+    CompteurUsageSerializer,
     ChangerStatutOrdreLocationSerializer,
     ChangerStatutSerializer,
     EcourterOrdreLocationSerializer,
@@ -100,10 +108,12 @@ from .serializers import (
     NoterContratSerializer,
     ObligationSerializer,
     OrdreLocationSerializer,
+    PalierUsageSerializer,
     ParametresLocationSerializer,
     PartieContratSerializer,
     PenaliteSLASerializer,
     PieceConformiteSerializer,
+    PlanAbonnementSerializer,
     PlanRecurrentSerializer,
     ProlongerOrdreLocationSerializer,
     RegleApprobationSerializer,
@@ -210,8 +220,15 @@ class ContratViewSet(ChatterViewSetMixin, _ContratsBaseViewSet):
         return qs
 
     def perform_create(self, serializer):
-        serializer.save(
+        contrat = serializer.save(
             company=self.request.user.company, created_by=self.request.user)
+        # NTSUB1 — un plan d'abonnement (offre catalogue) rattaché à la
+        # CRÉATION pré-remplit montant/plan_recurrent en SNAPSHOT, SAUF si le
+        # client a explicitement saisi un montant (jamais d'écrasement d'une
+        # valeur saisie). Sans plan_abonnement : comportement inchangé.
+        if contrat.plan_abonnement_id and 'montant' not in serializer.initial_data:
+            services.appliquer_plan_abonnement(
+                contrat, contrat.plan_abonnement)
 
     def perform_update(self, serializer):
         """Sauvegarde + audit du changement de confidentialité (CONTRAT15).
@@ -2534,3 +2551,141 @@ class ParametresLocationViewSet(_ContratsBaseViewSet):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)
+
+
+# ---------------------------------------------------------------------------
+# NTSUB1-4 — Revenus récurrents : catalogue d'offres, add-ons, paliers d'usage,
+# compteurs génériques.
+# ---------------------------------------------------------------------------
+
+
+class PlanAbonnementViewSet(_ContratsBaseViewSet):
+    """Catalogue d'offres commerciales (« Product Catalog ») — NTSUB1.
+
+    Scopé société (``TenantMixin``) ; ``company`` posée CÔTÉ SERVEUR. CRUD
+    complet. Filtre ``?actif=1``.
+    """
+    queryset = PlanAbonnement.objects.all()
+    serializer_class = PlanAbonnementSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['code', 'nom']
+    ordering_fields = ['nom', 'prix_base', 'created_at', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        actif = self.request.query_params.get('actif')
+        if actif is not None:
+            qs = qs.filter(actif=actif.lower() in ('1', 'true', 'oui'))
+        return qs
+
+
+class AddOnAbonnementViewSet(_ContratsBaseViewSet):
+    """Add-ons (options payantes) du catalogue — NTSUB2.
+
+    Scopé société (``TenantMixin``) ; ``company`` posée CÔTÉ SERVEUR. CRUD
+    complet. Filtres ``?actif=1``, ``?plan_abonnement=<id>``.
+    """
+    queryset = AddOnAbonnement.objects.all()
+    serializer_class = AddOnAbonnementSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['code', 'nom']
+    ordering_fields = ['nom', 'prix_unitaire', 'created_at', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        actif = self.request.query_params.get('actif')
+        if actif is not None:
+            qs = qs.filter(actif=actif.lower() in ('1', 'true', 'oui'))
+        plan_abonnement = self.request.query_params.get('plan_abonnement')
+        if plan_abonnement:
+            qs = qs.filter(plan_abonnement_id=plan_abonnement)
+        return qs
+
+
+class AbonnementAddOnLigneViewSet(_ContratsBaseViewSet):
+    """Rattachement d'un add-on à une cible (contrat/maintenance SAV) — NTSUB2.
+
+    Scopé société (``TenantMixin``) ; ``company`` posée CÔTÉ SERVEUR. Filtres
+    ``?type_cible=<contrat|sav_maintenance>&cible_id=<id>``.
+    """
+    queryset = AbonnementAddOnLigne.objects.all()
+    serializer_class = AbonnementAddOnLigneSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['actif_depuis', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        type_cible = self.request.query_params.get('type_cible')
+        if type_cible:
+            qs = qs.filter(type_cible=type_cible)
+        cible_id = self.request.query_params.get('cible_id')
+        if cible_id:
+            qs = qs.filter(cible_id=cible_id)
+        return qs
+
+
+class PalierUsageViewSet(_ContratsBaseViewSet):
+    """Paliers de prix (tiered/volume pricing) pour la facturation à l'usage — NTSUB3.
+
+    Scopé société (``TenantMixin``) ; ``company`` posée CÔTÉ SERVEUR. Filtres
+    ``?addon=<id>``, ``?plan_abonnement=<id>``.
+    """
+    queryset = PalierUsage.objects.all()
+    serializer_class = PalierUsageSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['seuil_min', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        addon = self.request.query_params.get('addon')
+        if addon:
+            qs = qs.filter(addon_id=addon)
+        plan_abonnement = self.request.query_params.get('plan_abonnement')
+        if plan_abonnement:
+            qs = qs.filter(plan_abonnement_id=plan_abonnement)
+        return qs
+
+
+class CompteurUsageViewSet(_ContratsBaseViewSet):
+    """Compteurs d'usage génériques (metering) — NTSUB4.
+
+    Scopé société (``TenantMixin``) ; ``company`` posée CÔTÉ SERVEUR. La
+    CRÉATION (``POST``) est IDEMPOTENTE par ``(type_cible, cible_id,
+    code_compteur, periode_debut, periode_fin)`` : ré-ingérer la même période
+    MET À JOUR la quantité au lieu de créer un doublon (``services.
+    ingerer_compteur_usage`` — ``update_or_create``, jamais un 400/409 de
+    contrainte d'unicité). Filtres ``?type_cible=&cible_id=&code_compteur=``.
+    """
+    queryset = CompteurUsage.objects.all()
+    serializer_class = CompteurUsageSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['periode_debut', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        type_cible = self.request.query_params.get('type_cible')
+        if type_cible:
+            qs = qs.filter(type_cible=type_cible)
+        cible_id = self.request.query_params.get('cible_id')
+        if cible_id:
+            qs = qs.filter(cible_id=cible_id)
+        code_compteur = self.request.query_params.get('code_compteur')
+        if code_compteur:
+            qs = qs.filter(code_compteur=code_compteur)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        compteur, _cree = services.ingerer_compteur_usage(
+            request.user.company,
+            type_cible=data['type_cible'], cible_id=data['cible_id'],
+            code_compteur=data['code_compteur'],
+            periode_debut=data['periode_debut'],
+            periode_fin=data['periode_fin'],
+            quantite=data.get('quantite', 0),
+            source=data.get('source', CompteurUsage.Source.MANUEL),
+        )
+        out = self.get_serializer(compteur)
+        return Response(out.data, status=status.HTTP_201_CREATED)

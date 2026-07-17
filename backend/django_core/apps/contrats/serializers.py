@@ -7,11 +7,14 @@ serveur.
 from rest_framework import serializers
 
 from .models import (
+    AbonnementAddOnLigne,
+    AddOnAbonnement,
     AlerteContrat,
     Avenant,
     Caution,
     Clause,
     ClauseContrat,
+    CompteurUsage,
     Contrat,
     ContratActivity,
     ContratLien,
@@ -27,9 +30,11 @@ from .models import (
     MotifResiliation,
     Obligation,
     OrdreLocation,
+    PalierUsage,
     ParametresLocation,
     PartieContrat,
     PieceConformite,
+    PlanAbonnement,
     PlanRecurrent,
     RegleApprobation,
     Resiliation,
@@ -112,7 +117,7 @@ class ContratSerializer(serializers.ModelSerializer):
             'date_dernier_renouvellement', 'nb_renouvellements',
             'echeance_preavis', 'jours_avant_preavis',
             'jours_avant_echeance',
-            'montant', 'devise', 'plan_recurrent',
+            'montant', 'devise', 'plan_recurrent', 'plan_abonnement',
             'confidentialite', 'confidentialite_display',
             'responsable', 'responsable_nom',
             'created_by', 'date_creation', 'custom_data',
@@ -172,6 +177,16 @@ class ContratSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "Ce plan de facturation récurrente n'appartient pas à "
                 "votre société.")
+        return plan
+
+    def validate_plan_abonnement(self, plan):
+        """L'offre catalogue (optionnelle) doit appartenir à la société — NTSUB1."""
+        if plan is None:
+            return plan
+        request = self.context.get('request')
+        if request is not None and plan.company_id != request.user.company_id:
+            raise serializers.ValidationError(
+                "Ce plan d'abonnement n'appartient pas à votre société.")
         return plan
 
     def validate_responsable(self, responsable):
@@ -1423,3 +1438,153 @@ class ParametresLocationSerializer(serializers.ModelSerializer):
             'frais_retard_jour_defaut', 'date_creation', 'date_modification',
         ]
         read_only_fields = ['id', 'date_creation', 'date_modification']
+
+
+# ---------------------------------------------------------------------------
+# NTSUB1-4 — Revenus récurrents : catalogue d'offres, add-ons, paliers d'usage,
+# compteurs génériques.
+# ---------------------------------------------------------------------------
+
+
+class PlanAbonnementSerializer(serializers.ModelSerializer):
+    """Offre commerciale du catalogue d'abonnements — NTSUB1.
+
+    ``company`` n'est jamais exposée en écriture (posée côté serveur par le
+    ``TenantMixin``).
+    """
+
+    class Meta:
+        model = PlanAbonnement
+        fields = [
+            'id', 'code', 'nom', 'description', 'plan_recurrent',
+            'prix_base', 'engagement_mois', 'actif', 'created_at',
+        ]
+        read_only_fields = ['id', 'created_at']
+
+    def validate_plan_recurrent(self, plan_recurrent):
+        request = self.context.get('request')
+        if request is not None and \
+                plan_recurrent.company_id != request.user.company_id:
+            raise serializers.ValidationError(
+                "Ce plan de facturation récurrente n'appartient pas à "
+                "votre société.")
+        return plan_recurrent
+
+
+class AddOnAbonnementSerializer(serializers.ModelSerializer):
+    """Add-on (option payante) du catalogue — NTSUB2.
+
+    ``company`` n'est jamais exposée en écriture (posée côté serveur par le
+    ``TenantMixin``).
+    """
+    facturation_display = serializers.CharField(
+        source='get_facturation_display', read_only=True)
+
+    class Meta:
+        model = AddOnAbonnement
+        fields = [
+            'id', 'plan_abonnement', 'code', 'nom', 'prix_unitaire',
+            'facturation', 'facturation_display', 'actif', 'created_at',
+        ]
+        read_only_fields = ['id', 'created_at']
+
+    def validate_plan_abonnement(self, plan):
+        if plan is None:
+            return plan
+        request = self.context.get('request')
+        if request is not None and plan.company_id != request.user.company_id:
+            raise serializers.ValidationError(
+                "Ce plan d'abonnement n'appartient pas à votre société.")
+        return plan
+
+
+class AbonnementAddOnLigneSerializer(serializers.ModelSerializer):
+    """Rattachement d'un add-on à une cible (contrat/maintenance SAV) — NTSUB2.
+
+    ``company`` n'est jamais exposée en écriture (posée côté serveur par le
+    ``TenantMixin``).
+    """
+    type_cible_display = serializers.CharField(
+        source='get_type_cible_display', read_only=True)
+    montant_periode = serializers.SerializerMethodField()
+
+    class Meta:
+        model = AbonnementAddOnLigne
+        fields = [
+            'id', 'type_cible', 'type_cible_display', 'cible_id', 'addon',
+            'quantite', 'actif_depuis', 'actif_jusqua', 'montant_periode',
+            'created_at',
+        ]
+        read_only_fields = ['id', 'created_at']
+
+    def get_montant_periode(self, obj):
+        return str(obj.montant_periode())
+
+    def validate_addon(self, addon):
+        request = self.context.get('request')
+        if request is not None and addon.company_id != request.user.company_id:
+            raise serializers.ValidationError(
+                "Cet add-on n'appartient pas à votre société.")
+        return addon
+
+
+class PalierUsageSerializer(serializers.ModelSerializer):
+    """Palier de prix (tiered/volume pricing) pour la facturation à l'usage — NTSUB3.
+
+    ``company`` n'est jamais exposée en écriture (posée côté serveur par le
+    ``TenantMixin``). Exactement un de ``addon``/``plan_abonnement`` doit être
+    renseigné (l'un OU l'autre, jamais les deux, jamais aucun).
+    """
+    mode_display = serializers.CharField(
+        source='get_mode_display', read_only=True)
+
+    class Meta:
+        model = PalierUsage
+        fields = [
+            'id', 'addon', 'plan_abonnement', 'seuil_min', 'seuil_max',
+            'prix_unitaire', 'mode', 'mode_display', 'seuil_alerte_pct',
+            'created_at',
+        ]
+        read_only_fields = ['id', 'created_at']
+
+    def validate(self, attrs):
+        addon = attrs.get(
+            'addon', getattr(self.instance, 'addon', None))
+        plan_abonnement = attrs.get(
+            'plan_abonnement', getattr(self.instance, 'plan_abonnement', None))
+        if bool(addon) == bool(plan_abonnement):
+            raise serializers.ValidationError(
+                "Un palier doit référencer exactement un add-on OU un plan "
+                "d'abonnement (jamais les deux, jamais aucun).")
+        return attrs
+
+
+class CompteurUsageSerializer(serializers.ModelSerializer):
+    """Relevé de compteur d'usage générique (metering) — NTSUB4.
+
+    ``company`` n'est jamais exposée en écriture (posée côté serveur par le
+    ``TenantMixin``).
+    """
+    source_display = serializers.CharField(
+        source='get_source_display', read_only=True)
+    type_cible_display = serializers.CharField(
+        source='get_type_cible_display', read_only=True)
+
+    class Meta:
+        model = CompteurUsage
+        fields = [
+            'id', 'type_cible', 'type_cible_display', 'cible_id',
+            'code_compteur', 'periode_debut', 'periode_fin', 'quantite',
+            'source', 'source_display', 'created_at',
+        ]
+        read_only_fields = ['id', 'created_at']
+
+    def validate(self, attrs):
+        debut = attrs.get(
+            'periode_debut', getattr(self.instance, 'periode_debut', None))
+        fin = attrs.get(
+            'periode_fin', getattr(self.instance, 'periode_fin', None))
+        if debut and fin and fin < debut:
+            raise serializers.ValidationError(
+                'La fin de période doit être postérieure ou égale au début.')
+        return attrs
