@@ -35,6 +35,9 @@ const esgApi = {
   catalogue: {
     list: (params) => api.get('/esg/catalogue-esg/', { params }),
     couverture: () => api.get('/esg/catalogue-esg/couverture/'),
+    // Badge de maturité ESG interne (NTESG15) — auto-évaluation, jamais une
+    // certification externe (voir `disclaimer` dans la réponse).
+    badgeMaturite: () => api.get('/esg/catalogue-esg/badge-maturite/'),
   },
 
   // ── Objectifs de trajectoire ESG (NTESG7) ──

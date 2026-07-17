@@ -375,6 +375,101 @@ def trajectoire_vs_realise(objectif):
     return resultats
 
 
+# ── NTESG15 — badge de maturité ESG interne ─────────────────────────────────
+
+DISCLAIMER_BADGE_MATURITE = (
+    'Auto-évaluation interne Taqinor OS — ne remplace aucune certification/'
+    'notation externe (EcoVadis, B Corp, etc.).')
+
+
+def badge_maturite_esg(company):
+    """Badge de maturité ESG interne — score composite 0-100 (NTESG15).
+
+    AUTO-ÉVALUATION INTERNE, jamais présentée comme une certification/
+    notation externe (voir ``DISCLAIMER_BADGE_MATURITE``, toujours affiché
+    à côté du score côté frontend). Trois composantes pondérées à 1/3
+    chacune (poids fixe tant que ``ParametresESG``/NTESG20 — hors périmètre
+    de ce lane — n'introduit pas de pondération éditable par société) :
+
+    * couverture du catalogue GRI-lite (NTESG3, ``couverture_catalogue``) ;
+    * % d'indicateurs QHSE40 AYANT une cible définie qui l'atteignent
+      (``atteinte_cible`` — ne compte que les indicateurs avec cible
+      renseignée, jamais tous les indicateurs) ;
+    * % de codes du catalogue GRI-lite dotés d'une trajectoire ESG ACTIVE
+      (NTESG7, ``ObjectifESGTrajectoire.actif``).
+
+    Chaque composante non calculable (aucune donnée) compte pour 0 dans le
+    score composite mais reste signalée ``disponible=False`` — le score
+    n'est jamais caché, seulement partiel.
+    """
+    from .models import CatalogueIndicateurESG, ObjectifESGTrajectoire
+
+    vide = {
+        'score': 0.0,
+        'composantes': {
+            'couverture_catalogue': {'disponible': False, 'valeur_pct': 0.0},
+            'atteinte_cibles': {'disponible': False, 'valeur_pct': 0.0},
+            'trajectoires_actives': {'disponible': False, 'valeur_pct': 0.0},
+        },
+        'disclaimer': DISCLAIMER_BADGE_MATURITE,
+    }
+    if company is None:
+        return vide
+
+    couverture = couverture_catalogue(company)
+    couverture_pct = couverture.get('global_pct', 0.0)
+    couverture_disponible = any(
+        bloc.get('total', 0) for bloc in couverture.get('piliers', {}).values())
+
+    atteinte_pct = 0.0
+    atteinte_disponible = False
+    try:
+        from apps.qhse.selectors import export_esg
+        data = export_esg(company)
+        avec_cible = [
+            ligne for ligne in data.get('lignes', [])
+            if ligne.get('atteinte_cible') is not None
+        ]
+        if avec_cible:
+            atteints = sum(1 for ligne in avec_cible if ligne['atteinte_cible'])
+            atteinte_pct = round(atteints * 100.0 / len(avec_cible), 1)
+            atteinte_disponible = True
+    except Exception:  # noqa: BLE001 - dégradation gracieuse
+        pass
+
+    codes_catalogue = set(
+        CatalogueIndicateurESG.objects.filter(company=company)
+        .values_list('code', flat=True))
+    trajectoire_pct = 0.0
+    trajectoire_disponible = False
+    if codes_catalogue:
+        codes_avec_trajectoire = set(
+            ObjectifESGTrajectoire.objects.filter(
+                company=company, actif=True,
+                indicateur_code__in=codes_catalogue)
+            .values_list('indicateur_code', flat=True))
+        trajectoire_pct = round(
+            len(codes_avec_trajectoire) * 100.0 / len(codes_catalogue), 1)
+        trajectoire_disponible = True
+
+    score = round((couverture_pct + atteinte_pct + trajectoire_pct) / 3.0, 1)
+
+    return {
+        'score': score,
+        'composantes': {
+            'couverture_catalogue': {
+                'disponible': bool(couverture_disponible),
+                'valeur_pct': couverture_pct},
+            'atteinte_cibles': {
+                'disponible': atteinte_disponible, 'valeur_pct': atteinte_pct},
+            'trajectoires_actives': {
+                'disponible': trajectoire_disponible,
+                'valeur_pct': trajectoire_pct},
+        },
+        'disclaimer': DISCLAIMER_BADGE_MATURITE,
+    }
+
+
 # ── NTESG11 — comparateur multi-période (N vs N-1) ─────────────────────────
 
 def comparer_periodes(periode_reference, periode_n):
@@ -464,5 +559,6 @@ __all__ = [
     'donnees_effectives_periode',
     'couverture_catalogue',
     'trajectoire_vs_realise',
+    'badge_maturite_esg',
     'comparer_periodes',
 ]

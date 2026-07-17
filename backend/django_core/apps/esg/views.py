@@ -144,6 +144,15 @@ class CatalogueIndicateurESGViewSet(
 
         return Response(couverture_catalogue(request.user.company))
 
+    @action(detail=False, methods=['get'], url_path='badge-maturite',
+            permission_classes=[ScopedPermission])
+    def badge_maturite(self, request):
+        """Badge de maturité ESG interne (NTESG15) — auto-évaluation, JAMAIS
+        une certification/notation externe (voir ``disclaimer``)."""
+        from .selectors import badge_maturite_esg
+
+        return Response(badge_maturite_esg(request.user.company))
+
 
 class ObjectifESGTrajectoireViewSet(CompanyScopedModelViewSet):
     """Objectifs de trajectoire ESG (NTESG7) — CRUD + comparaison théorique
