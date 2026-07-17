@@ -86,6 +86,27 @@ const innovationApi = {
     rapport: (id) => api.get(`/innovation/campagnes/${id}/rapport/`),
     // NTIDE30 — clonage (copie brouillon, même segment/message/tag).
     cloner: (id) => api.post(`/innovation/campagnes/${id}/cloner/`),
+    // NTIDE34 — dashboard admin « Nos campagnes innovation ».
+    tableauBord: () => api.get('/innovation/campagnes/tableau-bord/'),
+    // NTIDE35 — segments proposables (multi-select rôles/départements).
+    segmentsDisponibles: () => api.get('/innovation/campagnes/segments-disponibles/'),
+    // NTIDE33 — chatter de campagne (historique + note manuelle).
+    historique: (id) => api.get(`/innovation/campagnes/${id}/historique/`),
+    noter: (id, body) => api.post(`/innovation/campagnes/${id}/noter/`, { body }),
+  },
+
+  // ── Canal feedback produit in-app (NTIDE36+, bouton discret) ──
+  feedback: {
+    // NTIDE37 — tout utilisateur connecté peut envoyer un feedback.
+    create: (data) => api.post('/innovation/feedback-produit/', data),
+    // NTIDE38 — liste/détail réservés au palier admin.
+    list: (params) => api.get('/innovation/feedback-produit/', { params }),
+    get: (id) => api.get(`/innovation/feedback-produit/${id}/`),
+    // NTIDE38 — agrégation par thème (counts + citations).
+    resume: () => api.get('/innovation/feedback-resume/'),
+    // NTIDE39 — fermeture via annonce produit (« c'est livré »).
+    lierAnnonce: (id, data) =>
+      api.post(`/innovation/feedback-produit/${id}/lier-annonce/`, data),
   },
 }
 
