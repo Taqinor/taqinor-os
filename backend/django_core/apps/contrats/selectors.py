@@ -14,6 +14,7 @@ from django.db.models import ExpressionWrapper, F, fields
 from django.utils import timezone
 
 from .models import (
+    AddOnAbonnement,
     Avenant,
     Contrat,
     ContratActivity,
@@ -21,6 +22,8 @@ from .models import (
     EtapeApprobation,
     JalonContrat,
     Obligation,
+    PalierUsage,
+    PlanAbonnement,
     RegleApprobation,
     Resiliation,
     SignatureContrat,
@@ -1489,3 +1492,145 @@ def contrat_chatter_envelope(contrat):
         'created_at': a.date_creation,
         'source': 'contrats.contratactivity',
     } for a in rows]
+
+
+# ---------------------------------------------------------------------------
+# NTSUB21 — Export du catalogue d'offres (plans / add-ons / paliers)
+# ---------------------------------------------------------------------------
+
+
+def catalogue_abonnement_export(company):
+    """Données d'export du catalogue d'offres, scopées société — NTSUB21.
+
+    Renvoie une liste de feuilles ``(titre, en-têtes, lignes)`` : une par
+    catalogue (plans d'abonnement, add-ons, paliers d'usage). Lecture seule ;
+    aucun champ interne sensible n'est exposé (prix publics uniquement).
+    """
+    plans = PlanAbonnement.objects.filter(company=company).order_by('code')
+    plans_rows = [
+        [p.code, p.nom, float(p.prix_base), p.engagement_mois or '',
+         'oui' if p.actif else 'non']
+        for p in plans
+    ]
+
+    addons = AddOnAbonnement.objects.filter(company=company).order_by('code')
+    addons_rows = [
+        [a.code, a.nom, float(a.prix_unitaire), a.get_facturation_display(),
+         a.plan_abonnement.code if a.plan_abonnement_id else '',
+         'oui' if a.actif else 'non']
+        for a in addons
+    ]
+
+    paliers = (
+        PalierUsage.objects.filter(company=company)
+        .select_related('addon', 'plan_abonnement')
+        .order_by('id')
+    )
+    paliers_rows = [
+        [
+            (pa.addon.code if pa.addon_id else
+             (pa.plan_abonnement.code if pa.plan_abonnement_id else '')),
+            float(pa.seuil_min),
+            float(pa.seuil_max) if pa.seuil_max is not None else '',
+            float(pa.prix_unitaire), pa.get_mode_display(),
+        ]
+        for pa in paliers
+    ]
+
+    return [
+        ('Plans', ['Code', 'Nom', 'Prix de base', 'Engagement (mois)',
+                   'Actif'], plans_rows),
+        ('Add-ons', ['Code', 'Nom', 'Prix unitaire', 'Facturation',
+                     'Plan', 'Actif'], addons_rows),
+        ('Paliers', ['Cible', 'Seuil min', 'Seuil max', 'Prix unitaire',
+                     'Mode'], paliers_rows),
+    ]
+
+
+# ---------------------------------------------------------------------------
+# NTSUB12 — Métriques SaaS avancées : ARR bridge, Quick Ratio, Rule of 40
+# ---------------------------------------------------------------------------
+
+
+def arr_bridge(company, debut, fin):
+    """Pont d'ARR sur ``[debut, fin]`` (ARR = MRR × 12) — NTSUB12.
+
+    Réutilise la cascade ``mouvements_mrr`` (XCTR7, montants MENSUELS) et la
+    convertit en annuel (×12). ``arr_fin`` = MRR combiné courant × 12 ;
+    ``arr_debut`` = ``arr_fin − net×12`` (le net mensuel × 12 = variation
+    annuelle). Renvoie
+    ``{'arr_debut','new','expansion','contraction','churn','arr_fin'}`` (tous
+    ``Decimal``). ``contraction``/``churn`` sont négatifs (cohérent XCTR7).
+    """
+    from decimal import Decimal
+
+    mov = mouvements_mrr(company, debut, fin)
+    douze = Decimal('12')
+    arr_fin = (mrr_combine(company) * douze).quantize(Decimal('0.01'))
+    net_annuel = (mov['net'] * douze).quantize(Decimal('0.01'))
+    arr_debut = (arr_fin - net_annuel).quantize(Decimal('0.01'))
+    return {
+        'arr_debut': arr_debut,
+        'new': (mov['new'] * douze).quantize(Decimal('0.01')),
+        'expansion': (mov['expansion'] * douze).quantize(Decimal('0.01')),
+        'contraction': (mov['contraction'] * douze).quantize(Decimal('0.01')),
+        'churn': (mov['churn'] * douze).quantize(Decimal('0.01')),
+        'arr_fin': arr_fin,
+    }
+
+
+def quick_ratio(company, debut, fin):
+    """SaaS Quick Ratio = (new + expansion) / (|contraction| + |churn|) — NTSUB12.
+
+    Div-by-zéro GARDÉE : dénominateur nul (aucune perte de MRR sur la période)
+    → renvoie ``None`` (indéfini) plutôt que de lever. ``Decimal`` arrondi 2
+    décimales sinon.
+    """
+    from decimal import Decimal
+
+    mov = mouvements_mrr(company, debut, fin)
+    numerateur = mov['new'] + mov['expansion']
+    denominateur = abs(mov['contraction']) + abs(mov['churn'])
+    if denominateur == 0:
+        return None
+    return (numerateur / denominateur).quantize(Decimal('0.01'))
+
+
+def rule_of_40(company, debut, fin):
+    """Rule of 40 = croissance ARR % + marge % — NTSUB12.
+
+    Croissance ARR % = ``net_annuel / arr_debut × 100`` (``None`` si
+    ``arr_debut`` nul — div-by-zéro gardée). La marge % est lue best-effort via
+    ``compta.selectors.pilotage_financier`` (frontière cross-app, import
+    fonction-local) ; indisponible → marge ``None``. Renvoie
+    ``{'croissance_arr_pct','marge_pct','rule_of_40'}`` (``rule_of_40`` = somme
+    quand les deux composantes existent, sinon ``None``).
+    """
+    from decimal import Decimal
+
+    bridge = arr_bridge(company, debut, fin)
+    arr_debut = bridge['arr_debut']
+    net_annuel = bridge['arr_fin'] - arr_debut
+    croissance = (
+        (net_annuel / arr_debut * Decimal('100')).quantize(Decimal('0.01'))
+        if arr_debut else None)
+
+    marge_pct = None
+    try:
+        from apps.compta.selectors import pilotage_financier
+
+        cockpit = pilotage_financier(
+            company, date_debut=debut, date_fin=fin)
+        marge_pct = cockpit.get('marge_brute_pct')
+    except Exception:  # pragma: no cover - compta absente / best-effort
+        marge_pct = None
+
+    rule = None
+    if croissance is not None and marge_pct is not None:
+        rule = (croissance + Decimal(str(marge_pct))).quantize(Decimal('0.01'))
+
+    return {
+        'croissance_arr_pct': croissance,
+        'marge_pct': marge_pct,
+        'rule_of_40': rule,
+    }

@@ -39,16 +39,20 @@ from apps.records.views import ChatterViewSetMixin
 
 from . import selectors, services
 from .models import (
+    AbonnementAddOnLigne,
+    AddOnAbonnement,
     AlerteContrat,
     Avenant,
     Caution,
     Clause,
     ClauseContrat,
+    CompteurUsage,
     Contrat,
     ContratLien,
     CycleFacturationLog,
     EcheancierContrat,
     EngagementSLA,
+    EtapeDunning,
     IndexationPrix,
     JalonContrat,
     LigneEcheance,
@@ -57,20 +61,28 @@ from .models import (
     MotifResiliation,
     Obligation,
     OrdreLocation,
+    PalierUsage,
     ParametresLocation,
     PartieContrat,
     PieceConformite,
+    PlanAbonnement,
     PlanRecurrent,
     RegleApprobation,
     Resiliation,
     RetenueGarantie,
+    SequenceDunning,
     VersionContrat,
 )
 from .serializers import (
+    AbonnementAddOnLigneSerializer,
+    AddOnAbonnementSerializer,
     AjouterLigneEcheanceSerializer,
     AlerteContratSerializer,
     AvenantSerializer,
     CautionSerializer,
+    ChangerPlanSerializer,
+    CompteurUsageSerializer,
+    EtapeDunningSerializer,
     ChangerStatutOrdreLocationSerializer,
     ChangerStatutSerializer,
     EcourterOrdreLocationSerializer,
@@ -100,10 +112,12 @@ from .serializers import (
     NoterContratSerializer,
     ObligationSerializer,
     OrdreLocationSerializer,
+    PalierUsageSerializer,
     ParametresLocationSerializer,
     PartieContratSerializer,
     PenaliteSLASerializer,
     PieceConformiteSerializer,
+    PlanAbonnementSerializer,
     PlanRecurrentSerializer,
     ProlongerOrdreLocationSerializer,
     RegleApprobationSerializer,
@@ -115,6 +129,7 @@ from .serializers import (
     ResoudreRegleApprobationSerializer,
     RollbackCampagneRevisionSerializer,
     SemerAlertesSerializer,
+    SequenceDunningSerializer,
     SignatureContratSerializer,
     SignerContratSerializer,
     VersionContratSerializer,
@@ -210,8 +225,15 @@ class ContratViewSet(ChatterViewSetMixin, _ContratsBaseViewSet):
         return qs
 
     def perform_create(self, serializer):
-        serializer.save(
+        contrat = serializer.save(
             company=self.request.user.company, created_by=self.request.user)
+        # NTSUB1 — un plan d'abonnement (offre catalogue) rattaché à la
+        # CRÉATION pré-remplit montant/plan_recurrent en SNAPSHOT, SAUF si le
+        # client a explicitement saisi un montant (jamais d'écrasement d'une
+        # valeur saisie). Sans plan_abonnement : comportement inchangé.
+        if contrat.plan_abonnement_id and 'montant' not in serializer.initial_data:
+            services.appliquer_plan_abonnement(
+                contrat, contrat.plan_abonnement)
 
     def perform_update(self, serializer):
         """Sauvegarde + audit du changement de confidentialité (CONTRAT15).
@@ -358,6 +380,55 @@ class ContratViewSet(ChatterViewSetMixin, _ContratsBaseViewSet):
             'net_par_responsable': {
                 str(k): _money(v)
                 for k, v in data['net_par_responsable'].items()},
+        })
+
+    @action(detail=False, methods=['get'], url_path='metriques-saas',
+            permission_classes=[HasPermissionOrLegacy('contrat_voir')])
+    def metriques_saas(self, request):
+        """Métriques SaaS niveau investisseur : ARR bridge, Quick Ratio,
+        Rule of 40 — NTSUB12.
+
+        Filtres ``?debut=AAAA-MM-JJ&fin=AAAA-MM-JJ`` (défaut : mois courant).
+        Lecture seule, scopée société. Div-by-zéro gardée (Quick Ratio /
+        croissance ARR renvoient ``null`` si indéfinis)."""
+        from datetime import date as _date
+
+        from django.utils import timezone as _tz
+
+        debut_raw = request.query_params.get('debut')
+        fin_raw = request.query_params.get('fin')
+        try:
+            debut = (
+                _date.fromisoformat(debut_raw) if debut_raw
+                else _tz.localdate().replace(day=1))
+            fin = _date.fromisoformat(fin_raw) if fin_raw else _tz.localdate()
+        except ValueError:
+            return Response(
+                {'detail': 'debut/fin invalides (AAAA-MM-JJ).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        if debut > fin:
+            return Response(
+                {'detail': 'debut doit précéder fin.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        company = request.user.company
+        bridge = selectors.arr_bridge(company, debut, fin)
+        qr = selectors.quick_ratio(company, debut, fin)
+        ro40 = selectors.rule_of_40(company, debut, fin)
+        return Response({
+            'arr_bridge': {k: _money(v) for k, v in bridge.items()},
+            'quick_ratio': str(qr) if qr is not None else None,
+            'rule_of_40': {
+                'croissance_arr_pct': (
+                    str(ro40['croissance_arr_pct'])
+                    if ro40['croissance_arr_pct'] is not None else None),
+                'marge_pct': (
+                    str(ro40['marge_pct'])
+                    if ro40['marge_pct'] is not None else None),
+                'rule_of_40': (
+                    str(ro40['rule_of_40'])
+                    if ro40['rule_of_40'] is not None else None),
+            },
         })
 
     @action(detail=False, methods=['get'], url_path='cohortes-retention')
@@ -897,6 +968,41 @@ class ContratViewSet(ChatterViewSetMixin, _ContratsBaseViewSet):
                 avenant, context={'request': request}).data,
             status=status.HTTP_201_CREATED,
         )
+
+    @action(detail=True, methods=['post'], url_path='changer-plan',
+            permission_classes=[HasPermissionOrLegacy('contrat_gerer')])
+    def changer_plan(self, request, pk=None):
+        """Change le plan d'abonnement du contrat avec proration — NTSUB7.
+
+        Corps : ``plan_abonnement`` (id, requis — offre catalogue cible,
+        validée même-société) + ``type_changement`` (``immediat``/``differe``,
+        défaut ``immediat``). Crée l'avenant du delta de montant, snapshot le
+        nouveau plan, et — pour un UPGRADE immédiat — applique le prorata XCTR6
+        sur la prochaine échéance à venir (un downgrade ou un changement différé
+        n'émet aucun avoir immédiat). La société est garantie par
+        ``get_object`` ; l'écriture est gardée par ``contrat_gerer`` (base).
+        """
+        contrat = self.get_object()
+        body = ChangerPlanSerializer(
+            data=request.data, context={'request': request})
+        body.is_valid(raise_exception=True)
+        data = body.validated_data
+        try:
+            resultat = services.changer_plan_contrat(
+                contrat, data['plan_abonnement'],
+                type_changement=data.get('type_changement', 'immediat'),
+                auteur=request.user)
+        except services.ChangementPlanError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        prorata = resultat['prorata']
+        return Response({
+            'avenant': AvenantSerializer(
+                resultat['avenant'], context={'request': request}).data,
+            'prorata_applique': prorata is not None,
+            'prorata': (
+                _money(prorata['prorata']) if prorata is not None else None),
+        }, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['get'], url_path='resiliations')
     def resiliations(self, request, pk=None):
@@ -2534,3 +2640,275 @@ class ParametresLocationViewSet(_ContratsBaseViewSet):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)
+
+
+# ---------------------------------------------------------------------------
+# NTSUB1-4 — Revenus récurrents : catalogue d'offres, add-ons, paliers d'usage,
+# compteurs génériques.
+# ---------------------------------------------------------------------------
+
+
+class PlanAbonnementViewSet(_ContratsBaseViewSet):
+    """Catalogue d'offres commerciales (« Product Catalog ») — NTSUB1.
+
+    Scopé société (``TenantMixin``) ; ``company`` posée CÔTÉ SERVEUR. CRUD
+    complet. Filtre ``?actif=1``.
+    """
+    queryset = PlanAbonnement.objects.all()
+    serializer_class = PlanAbonnementSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['code', 'nom']
+    ordering_fields = ['nom', 'prix_base', 'created_at', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        actif = self.request.query_params.get('actif')
+        if actif is not None:
+            qs = qs.filter(actif=actif.lower() in ('1', 'true', 'oui'))
+        return qs
+
+    @action(detail=False, methods=['get'], url_path='export',
+            permission_classes=[HasPermissionOrLegacy('contrat_voir')])
+    def export(self, request):
+        """Export .xlsx du catalogue (plans / add-ons / paliers) — NTSUB21.
+
+        Un onglet par catalogue, scopé société. Chemin de lecture seule ;
+        gardé par ``contrat_voir`` (base). Chaque cellule texte commençant par
+        ``= + - @`` est neutralisée (ERR11)."""
+        from openpyxl import Workbook
+        from openpyxl.styles import Font
+
+        from apps.records.xlsx import (
+            XLSX_CONTENT_TYPE, coerce_cell,
+        )
+
+        feuilles = selectors.catalogue_abonnement_export(request.user.company)
+        wb = Workbook()
+        wb.remove(wb.active)
+        risky = ('=', '+', '-', '@')
+        for titre, headers, rows in feuilles:
+            ws = wb.create_sheet(title=titre[:31] or 'Export')
+            ws.append(list(headers))
+            bold = Font(bold=True)
+            for cell in ws[1]:
+                cell.font = bold
+            for row in rows:
+                cells = []
+                for v in row:
+                    cv = coerce_cell(v)
+                    if isinstance(cv, str) and cv[:1] in risky:
+                        cv = "'" + cv
+                    cells.append(cv)
+                ws.append(cells)
+        response = HttpResponse(content_type=XLSX_CONTENT_TYPE)
+        response['Content-Disposition'] = (
+            'attachment; filename="catalogue-abonnement.xlsx"')
+        wb.save(response)
+        return response
+
+
+class AddOnAbonnementViewSet(_ContratsBaseViewSet):
+    """Add-ons (options payantes) du catalogue — NTSUB2.
+
+    Scopé société (``TenantMixin``) ; ``company`` posée CÔTÉ SERVEUR. CRUD
+    complet. Filtres ``?actif=1``, ``?plan_abonnement=<id>``.
+    """
+    queryset = AddOnAbonnement.objects.all()
+    serializer_class = AddOnAbonnementSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['code', 'nom']
+    ordering_fields = ['nom', 'prix_unitaire', 'created_at', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        actif = self.request.query_params.get('actif')
+        if actif is not None:
+            qs = qs.filter(actif=actif.lower() in ('1', 'true', 'oui'))
+        plan_abonnement = self.request.query_params.get('plan_abonnement')
+        if plan_abonnement:
+            qs = qs.filter(plan_abonnement_id=plan_abonnement)
+        return qs
+
+
+class AbonnementAddOnLigneViewSet(_ContratsBaseViewSet):
+    """Rattachement d'un add-on à une cible (contrat/maintenance SAV) — NTSUB2.
+
+    Scopé société (``TenantMixin``) ; ``company`` posée CÔTÉ SERVEUR. Filtres
+    ``?type_cible=<contrat|sav_maintenance>&cible_id=<id>``.
+    """
+    queryset = AbonnementAddOnLigne.objects.all()
+    serializer_class = AbonnementAddOnLigneSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['actif_depuis', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        type_cible = self.request.query_params.get('type_cible')
+        if type_cible:
+            qs = qs.filter(type_cible=type_cible)
+        cible_id = self.request.query_params.get('cible_id')
+        if cible_id:
+            qs = qs.filter(cible_id=cible_id)
+        return qs
+
+    def _journaliser_addon(self, ligne, *, ajout):
+        """NTSUB33 — journalise l'ajout/désactivation d'un add-on au chatter du
+        contrat cible (acteur = utilisateur courant). Aucun effet si la cible
+        n'est pas un contrat de la société (best-effort)."""
+        if ligne.type_cible != AbonnementAddOnLigne.TypeCible.CONTRAT:
+            return
+        contrat = Contrat.objects.filter(
+            company=ligne.company, id=ligne.cible_id).first()
+        if contrat is None:
+            return
+        code = ligne.addon.code if ligne.addon_id else ''
+        services.journaliser_transition(
+            contrat, field='addon',
+            old_value='' if ajout else code,
+            new_value=code if ajout else '',
+            message=(
+                'Add-on ajouté au contrat.' if ajout
+                else 'Add-on retiré du contrat.'),
+            auteur=self.request.user)
+
+    def perform_create(self, serializer):
+        ligne = serializer.save(company=self.request.user.company)
+        self._journaliser_addon(ligne, ajout=True)
+
+    def perform_destroy(self, instance):
+        self._journaliser_addon(instance, ajout=False)
+        instance.delete()
+
+
+class PalierUsageViewSet(_ContratsBaseViewSet):
+    """Paliers de prix (tiered/volume pricing) pour la facturation à l'usage — NTSUB3.
+
+    Scopé société (``TenantMixin``) ; ``company`` posée CÔTÉ SERVEUR. Filtres
+    ``?addon=<id>``, ``?plan_abonnement=<id>``.
+    """
+    queryset = PalierUsage.objects.all()
+    serializer_class = PalierUsageSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['seuil_min', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        addon = self.request.query_params.get('addon')
+        if addon:
+            qs = qs.filter(addon_id=addon)
+        plan_abonnement = self.request.query_params.get('plan_abonnement')
+        if plan_abonnement:
+            qs = qs.filter(plan_abonnement_id=plan_abonnement)
+        return qs
+
+
+class CompteurUsageViewSet(_ContratsBaseViewSet):
+    """Compteurs d'usage génériques (metering) — NTSUB4.
+
+    Scopé société (``TenantMixin``) ; ``company`` posée CÔTÉ SERVEUR. La
+    CRÉATION (``POST``) est IDEMPOTENTE par ``(type_cible, cible_id,
+    code_compteur, periode_debut, periode_fin)`` : ré-ingérer la même période
+    MET À JOUR la quantité au lieu de créer un doublon (``services.
+    ingerer_compteur_usage`` — ``update_or_create``, jamais un 400/409 de
+    contrainte d'unicité). Filtres ``?type_cible=&cible_id=&code_compteur=``.
+    """
+    queryset = CompteurUsage.objects.all()
+    serializer_class = CompteurUsageSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['periode_debut', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        type_cible = self.request.query_params.get('type_cible')
+        if type_cible:
+            qs = qs.filter(type_cible=type_cible)
+        cible_id = self.request.query_params.get('cible_id')
+        if cible_id:
+            qs = qs.filter(cible_id=cible_id)
+        code_compteur = self.request.query_params.get('code_compteur')
+        if code_compteur:
+            qs = qs.filter(code_compteur=code_compteur)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        compteur, _cree = services.ingerer_compteur_usage(
+            request.user.company,
+            type_cible=data['type_cible'], cible_id=data['cible_id'],
+            code_compteur=data['code_compteur'],
+            periode_debut=data['periode_debut'],
+            periode_fin=data['periode_fin'],
+            quantite=data.get('quantite', 0),
+            source=data.get('source', CompteurUsage.Source.MANUEL),
+        )
+        out = self.get_serializer(compteur)
+        return Response(out.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['post'], url_path='import-csv',
+            permission_classes=[HasPermissionOrLegacy('contrat_gerer')])
+    def import_csv(self, request):
+        """Import CSV en masse de compteurs d'usage — NTSUB31.
+
+        Corps : ``contenu`` (texte CSV) OU un fichier ``fichier`` (multipart).
+        Colonnes : ``cible_id``, ``code_compteur``, ``periode_debut``,
+        ``periode_fin``, ``quantite`` (+ ``type_cible`` optionnel). Idempotent
+        par ``(cible, code, période)`` (un doublon met à jour, ne duplique
+        pas). Réponse synchrone : lignes insérées / mises à jour / rejetées.
+        Écriture gardée par ``contrat_gerer`` (base)."""
+        contenu = request.data.get('contenu')
+        if not contenu and 'fichier' in request.FILES:
+            contenu = request.FILES['fichier'].read().decode('utf-8', 'replace')
+        if not contenu:
+            return Response(
+                {'detail': 'Aucun contenu CSV fourni (champ « contenu » ou '
+                           '« fichier »).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        rapport = services.importer_compteurs_usage_csv(
+            request.user.company, contenu)
+        return Response(rapport, status=status.HTTP_200_OK)
+
+
+# ---------------------------------------------------------------------------
+# NTSUB8 — Séquences de dunning (relances impayés multi-étapes)
+# ---------------------------------------------------------------------------
+
+
+class SequenceDunningViewSet(_ContratsBaseViewSet):
+    """Séquences de dunning (relances impayés) — NTSUB8.
+
+    Scopé société (``TenantMixin``) ; ``company`` posée CÔTÉ SERVEUR. CRUD
+    complet + étapes en lecture imbriquée. Filtre ``?actif=1``.
+    """
+    queryset = SequenceDunning.objects.all()
+    serializer_class = SequenceDunningSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom']
+    ordering_fields = ['nom', 'created_at', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        actif = self.request.query_params.get('actif')
+        if actif is not None:
+            qs = qs.filter(actif=actif.lower() in ('1', 'true', 'oui'))
+        return qs
+
+
+class EtapeDunningViewSet(_ContratsBaseViewSet):
+    """Étapes d'une séquence de dunning — NTSUB8.
+
+    Scopé société (``TenantMixin``) ; ``company`` posée CÔTÉ SERVEUR. Filtre
+    ``?sequence=<id>``.
+    """
+    queryset = EtapeDunning.objects.all()
+    serializer_class = EtapeDunningSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['ordre', 'jour_offset', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        sequence = self.request.query_params.get('sequence')
+        if sequence:
+            qs = qs.filter(sequence_id=sequence)
+        return qs

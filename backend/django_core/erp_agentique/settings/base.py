@@ -736,6 +736,8 @@ CELERY_TASK_ROUTES = {
     'ged.notifier_emetteurs_expiration_signature': {'queue': 'scheduled'},
     'contrats.generer_factures_recurrentes_dues': {'queue': 'scheduled'},
     'contrats.reconductions_et_alertes_daily': {'queue': 'scheduled'},
+    'contrats.convertir_essais_expires_daily': {'queue': 'scheduled'},
+    'contrats.executer_dunning_daily': {'queue': 'scheduled'},
     'chat.send_scheduled_messages': {'queue': 'scheduled'},
     'chat.send_due_reminders': {'queue': 'scheduled'},
     'chat.retention_sweep': {'queue': 'scheduled'},

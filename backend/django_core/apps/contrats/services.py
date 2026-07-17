@@ -45,6 +45,7 @@ Contenu :
   (règle interdite pour ce pilote — voir ``docs/PLAN.md`` SCA35).
 """
 import html as _html
+import logging
 import re
 from datetime import timedelta
 from decimal import Decimal
@@ -61,6 +62,8 @@ from .machine_etats import (  # noqa: F401 — réexport (point d'entrée servic
     statuts_suivants,
     transition_permise,
 )
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # ARC34 — émission automation générique sur transition de statut du Contrat
@@ -2387,6 +2390,18 @@ def facturer_ligne_echeance(ligne, *, user=None, taux_tva=Decimal('20')):
         raise FacturationError(
             "Le client du contrat est introuvable dans votre société.")
 
+    # NTSUB2 — ajoute le montant des add-ons ACTIFS de la période au total
+    # facturé (0 si aucun add-on rattaché : comportement STRICTEMENT inchangé
+    # pour tout contrat sans add-on — la quasi-totalité des contrats existants).
+    from .models import AbonnementAddOnLigne
+
+    montant_addons = montant_addons_periode(
+        echeancier.company,
+        type_cible=AbonnementAddOnLigne.TypeCible.CONTRAT,
+        cible_id=contrat.id, periode_fin=ligne.date_echeance)
+    if montant_addons:
+        montant_ttc += montant_addons
+
     tva_pct = Decimal(str(taux_tva))
     montant_ht = (montant_ttc / (1 + tva_pct / 100)).quantize(
         Decimal('0.01'), rounding=ROUND_HALF_UP)
@@ -2396,6 +2411,8 @@ def facturer_ligne_echeance(ligne, *, user=None, taux_tva=Decimal('20')):
         f'Échéance n°{ligne.numero} — contrat #{contrat.id} '
         f'({echeancier.get_periodicite_display()})'
     )
+    if montant_addons:
+        libelle += f' — inclut {montant_addons} MAD d\'add-ons'
 
     # YSUBS9 — période de service couverte par CETTE échéance : de l'échéance
     # PRÉCÉDENTE (numéro le plus proche en-dessous) à celle-ci, ou de
@@ -4010,7 +4027,6 @@ def suspendre_contrat_si_impaye(contrat, *, today=None, auteur=None):
 
     Renvoie le ``Contrat`` si suspendu, ``None`` sinon (rien à faire).
     """
-    from .machine_etats import transition_permise
     from .models import Contrat
 
     if today is None:
@@ -4028,6 +4044,30 @@ def suspendre_contrat_si_impaye(contrat, *, today=None, auteur=None):
     if jours_impaye <= delai:
         return None
 
+    return _appliquer_suspension_impaye(
+        contrat,
+        message=(
+            f'Suspension automatique — facture impayée depuis '
+            f'{jours_impaye} jour(s) (délai {delai} j).'),
+        body=(
+            f'Le contrat #{contrat.id} a été suspendu automatiquement '
+            f'(facture impayée depuis {jours_impaye} jour(s)).'),
+        auteur=auteur)
+
+
+def _appliquer_suspension_impaye(contrat, *, message, body, auteur=None):
+    """Applique la transition ``actif → suspendu`` GARDÉE + journal + notif —
+    ZCTR2/NTSUB8.
+
+    Point d'entrée UNIQUE de la suspension pour impayé : la clôture ZCTR2
+    (``suspendre_contrat_si_impaye``) ET la dernière étape de dunning NTSUB8
+    l'appellent, jamais un second chemin dupliqué. Renvoie le ``Contrat`` si
+    suspendu, ``None`` si la transition n'est pas permise (préservation des
+    statuts).
+    """
+    from .machine_etats import transition_permise
+    from .models import Contrat
+
     if not transition_permise(contrat.statut, Contrat.Statut.SUSPENDU):
         return None  # pragma: no cover - défensif (garde machine d'états)
 
@@ -4036,11 +4076,7 @@ def suspendre_contrat_si_impaye(contrat, *, today=None, auteur=None):
 
     journaliser_transition(
         contrat, field='statut', old_value=ancien,
-        new_value=contrat.statut,
-        message=(
-            f'Suspension automatique — facture impayée depuis '
-            f'{jours_impaye} jour(s) (délai {delai} j).'),
-        auteur=auteur)
+        new_value=contrat.statut, message=message, auteur=auteur)
 
     try:
         from apps.notifications.services import notify_many, resolve_recipients
@@ -4048,10 +4084,7 @@ def suspendre_contrat_si_impaye(contrat, *, today=None, auteur=None):
         recipients = resolve_recipients(contrat.company, 'digest')
         notify_many(
             recipients, 'digest', 'Contrat suspendu — impayé',
-            body=(
-                f'Le contrat #{contrat.id} a été suspendu automatiquement '
-                f'(facture impayée depuis {jours_impaye} jour(s)).'),
-            link='/contrats', company=contrat.company)
+            body=body, link='/contrats', company=contrat.company)
     except Exception:  # pragma: no cover - défensif (best-effort)
         pass
 
@@ -4270,3 +4303,537 @@ def creer_contrat_import(company, ligne, *, user=None):
         return 'erreur', str(exc)
 
     return 'cree', None
+
+
+# ---------------------------------------------------------------------------
+# NTSUB1 — Catalogue d'offres (``PlanAbonnement``) : pré-remplissage snapshot
+# ---------------------------------------------------------------------------
+
+
+def appliquer_plan_abonnement(contrat, plan_abonnement):
+    """Pré-remplit ``montant``/``plan_recurrent`` d'un ``Contrat`` depuis un
+    ``PlanAbonnement`` (NTSUB1) — SNAPSHOT, jamais un lien vivant.
+
+    Copie ``plan_abonnement.prix_base`` → ``contrat.montant`` et
+    ``plan_abonnement.plan_recurrent`` → ``contrat.plan_recurrent`` UNE FOIS, à
+    l'appel. Les valeurs restent ensuite PROPRES au contrat, éditables
+    librement — modifier l'offre catalogue après coup ne touche JAMAIS un
+    contrat déjà créé (pas de recalcul dynamique). Renvoie le contrat mis à
+    jour.
+    """
+    contrat.montant = plan_abonnement.prix_base
+    contrat.plan_recurrent = plan_abonnement.plan_recurrent
+    contrat.save(update_fields=['montant', 'plan_recurrent'])
+    return contrat
+
+
+class ChangementPlanError(Exception):
+    """Levée quand un changement de plan d'abonnement ne peut pas s'appliquer."""
+
+
+@transaction.atomic
+def changer_plan_contrat(contrat, nouveau_plan, *, type_changement='immediat',
+                         auteur=None):
+    """Change le plan d'abonnement d'un contrat avec proration — NTSUB7.
+
+    Crée l'``Avenant`` du delta de montant (``nouveau_plan.prix_base −
+    contrat.montant``, appliqué à ``Contrat.montant`` par ``creer_avenant``),
+    snapshot le nouveau plan (``plan_abonnement`` + ``plan_recurrent``), puis :
+
+    - UPGRADE (delta > 0) + ``type_changement='immediat'`` : applique le prorata
+      XCTR6 (``appliquer_prorata_avenant``) sur la PROCHAINE échéance non
+      facturée à venir → une ligne complémentaire facture le reste de période
+      au nouveau tarif dès le cycle suivant ;
+    - DOWNGRADE (delta < 0) OU ``type_changement='differe'`` : AUCUN prorata
+      immédiat (aucun avoir) — le nouveau tarif s'applique à la prochaine
+      échéance normale.
+
+    L'historique est journalisé au chatter (``creer_avenant`` /
+    ``appliquer_prorata_avenant`` le font). Renvoie
+    ``{'avenant', 'prorata'}`` (``prorata`` = None si non appliqué).
+    """
+    from .models import EcheancierContrat, LigneEcheance
+
+    if nouveau_plan.company_id != contrat.company_id:
+        raise ChangementPlanError(
+            "Ce plan d'abonnement n'appartient pas à la société du contrat.")
+    if type_changement not in ('immediat', 'differe'):
+        raise ChangementPlanError(
+            "type_changement doit valoir 'immediat' ou 'differe'.")
+
+    delta = (nouveau_plan.prix_base or Decimal('0')) - (
+        contrat.montant or Decimal('0'))
+
+    avenant = creer_avenant(
+        contrat, objet=f'Changement de plan → {nouveau_plan.code}',
+        description=nouveau_plan.nom,
+        montant_delta=delta if delta != 0 else None,
+        auteur=auteur)
+
+    contrat.plan_abonnement = nouveau_plan
+    contrat.plan_recurrent = nouveau_plan.plan_recurrent
+    contrat.save(update_fields=['plan_abonnement', 'plan_recurrent'])
+
+    # NTSUB34 — notifie le responsable du changement de plan (upgrade/downgrade).
+    sens = 'upgrade' if delta > 0 else ('downgrade' if delta < 0 else 'sans effet')
+    _notifier_responsable_contrat(
+        contrat, 'Changement de plan effectué',
+        f"Le contrat « {contrat.objet} » a changé de plan ({sens}) vers "
+        f"« {nouveau_plan.code} ».")
+
+    prorata = None
+    # Prorata immédiat UNIQUEMENT pour un upgrade immédiat.
+    if delta > 0 and type_changement == 'immediat':
+        ligne = (
+            LigneEcheance.objects
+            .filter(
+                company=contrat.company,
+                echeancier__contrat=contrat,
+                echeancier__facturation_active=True,
+                echeancier__statut=EcheancierContrat.Statut.ACTIF,
+                facture_id__isnull=True,
+                statut=LigneEcheance.Statut.A_VENIR)
+            .order_by('date_echeance', 'numero')
+            .first()
+        )
+        if ligne is not None:
+            try:
+                prorata = appliquer_prorata_avenant(
+                    avenant, ligne, auteur=auteur)
+            except ProrataError:
+                prorata = None  # périodicité non prorata-able → pas de prorata
+
+    return {'avenant': avenant, 'prorata': prorata}
+
+
+# ---------------------------------------------------------------------------
+# NTSUB2 — Add-ons (options payantes) : montant facturable d'une période
+# ---------------------------------------------------------------------------
+
+
+def lignes_addon_actives_periode(company, *, type_cible, cible_id, periode_fin):
+    """Lignes ``AbonnementAddOnLigne`` ACTIVES d'une cible à ``periode_fin``
+    (date de référence du cycle de facturation, NTSUB2).
+
+    Une ligne est active si ``actif_depuis <= periode_fin`` et
+    (``actif_jusqua`` est NULL OU ``actif_jusqua >= periode_fin``) — même
+    contrat que ``AbonnementAddOnLigne.actif_le``, filtré au niveau requête
+    pour éviter de charger des lignes hors période. Ne renvoie que les add-ons
+    encore ``actif=True`` au catalogue.
+    """
+    from django.db.models import Q
+
+    from .models import AbonnementAddOnLigne
+
+    return (
+        AbonnementAddOnLigne.objects
+        .filter(
+            company=company, type_cible=type_cible, cible_id=cible_id,
+            addon__actif=True, actif_depuis__lte=periode_fin)
+        .filter(Q(actif_jusqua__isnull=True) | Q(actif_jusqua__gte=periode_fin))
+        .select_related('addon')
+    )
+
+
+def montant_addons_periode(company, *, type_cible, cible_id, periode_fin):
+    """Somme facturable des add-ons ACTIFS d'une cible à ``periode_fin`` — NTSUB2.
+
+    Renvoie ``Decimal('0')`` si aucun add-on actif (comportement inchangé pour
+    un contrat sans add-on — n'ajoute rien au cycle de facturation).
+    """
+    total = Decimal('0')
+    for ligne in lignes_addon_actives_periode(
+            company, type_cible=type_cible, cible_id=cible_id,
+            periode_fin=periode_fin):
+        total += ligne.montant_periode()
+    return total
+
+
+# ---------------------------------------------------------------------------
+# NTSUB4 — Compteurs d'usage génériques (metering) : ingestion + agrégation
+# ---------------------------------------------------------------------------
+
+
+def ingerer_compteur_usage(company, *, type_cible, cible_id, code_compteur,
+                           periode_debut, periode_fin, quantite,
+                           source='manuel'):
+    """Ingère (ou MET À JOUR) un relevé de compteur d'usage — NTSUB4.
+
+    Idempotent par ``(company, type_cible, cible_id, code_compteur,
+    periode_debut, periode_fin)`` (contrainte d'unicité du modèle) :
+    ré-ingérer la MÊME période remplace la quantité (pas de doublon créé) —
+    utile pour un relevé corrigé/recalculé sans devoir d'abord supprimer
+    l'ancien. Renvoie ``(compteur, cree)``.
+    """
+    from .models import CompteurUsage
+
+    compteur, cree = CompteurUsage.objects.update_or_create(
+        company=company, type_cible=type_cible, cible_id=cible_id,
+        code_compteur=code_compteur, periode_debut=periode_debut,
+        periode_fin=periode_fin,
+        defaults={'quantite': quantite, 'source': source},
+    )
+    return compteur, cree
+
+
+def importer_compteurs_usage_csv(company, contenu_csv):
+    """Import CSV en masse de compteurs d'usage — NTSUB31.
+
+    ``contenu_csv`` : texte CSV avec en-tête. Colonnes reconnues :
+    ``cible_id`` (requis), ``code_compteur`` (requis), ``periode_debut``,
+    ``periode_fin`` (dates ISO ``YYYY-MM-DD``, requises), ``quantite``
+    (requis), ``type_cible`` (optionnel, défaut ``contrat``). Chaque ligne
+    valide est ingérée via ``ingerer_compteur_usage`` (IDEMPOTENT par
+    ``(cible, code, période)`` — un doublon MET À JOUR sans dupliquer). Les
+    lignes invalides sont RAPPORTÉES sans interrompre l'import.
+
+    Renvoie ``{'inserees', 'mises_a_jour', 'erreurs': [{'ligne', 'erreur'}]}``.
+    """
+    import csv
+    import datetime
+    import io
+    from decimal import InvalidOperation
+
+    from .models import AbonnementAddOnLigne
+
+    rapport = {'inserees': 0, 'mises_a_jour': 0, 'erreurs': []}
+    valides = {c for c, _ in AbonnementAddOnLigne.TypeCible.choices}
+
+    reader = csv.DictReader(io.StringIO(contenu_csv))
+    for i, row in enumerate(reader, start=2):  # ligne 1 = en-tête
+        try:
+            type_cible = (row.get('type_cible') or 'contrat').strip()
+            if type_cible not in valides:
+                type_cible = AbonnementAddOnLigne.TypeCible.CONTRAT
+            cible_id = int(str(row.get('cible_id', '')).strip())
+            code_compteur = (row.get('code_compteur') or '').strip()
+            if not code_compteur:
+                raise ValueError('code_compteur manquant')
+            periode_debut = datetime.date.fromisoformat(
+                (row.get('periode_debut') or '').strip())
+            periode_fin = datetime.date.fromisoformat(
+                (row.get('periode_fin') or '').strip())
+            if periode_fin < periode_debut:
+                raise ValueError('periode_fin antérieure à periode_debut')
+            quantite = Decimal(str(row.get('quantite', '')).strip())
+        except (ValueError, InvalidOperation, TypeError) as exc:
+            rapport['erreurs'].append({'ligne': i, 'erreur': str(exc)})
+            continue
+
+        _, cree = ingerer_compteur_usage(
+            company, type_cible=type_cible, cible_id=cible_id,
+            code_compteur=code_compteur, periode_debut=periode_debut,
+            periode_fin=periode_fin, quantite=quantite, source='api')
+        if cree:
+            rapport['inserees'] += 1
+        else:
+            rapport['mises_a_jour'] += 1
+
+    return rapport
+
+
+def total_usage_periode(company, *, type_cible, cible_id, code_compteur,
+                        periode_debut, periode_fin):
+    """Somme des ``CompteurUsage`` d'une cible/compteur RECOUVRANT la fenêtre
+    ``[periode_debut, periode_fin]`` — NTSUB4.
+
+    Renvoie ``Decimal('0')`` si aucun compteur ingéré (absence de compteur =
+    ligne d'usage omise, comportement symétrique de XCTR16).
+    """
+    from django.db.models import Sum
+
+    from .models import CompteurUsage
+
+    total = (
+        CompteurUsage.objects
+        .filter(
+            company=company, type_cible=type_cible, cible_id=cible_id,
+            code_compteur=code_compteur,
+            periode_debut__gte=periode_debut, periode_fin__lte=periode_fin)
+        .aggregate(total=Sum('quantite'))['total']
+    )
+    return total if total is not None else Decimal('0')
+
+
+# ---------------------------------------------------------------------------
+# NTSUB5 — Période d'essai (trial) sur abonnement + conversion planifiée
+# ---------------------------------------------------------------------------
+
+
+class EssaiAbonnementError(Exception):
+    """Levée quand un essai d'abonnement ne peut pas être démarré."""
+
+
+def demarrer_essai_contrat(contrat, *, date_fin_essai, plan_apres_essai=None,
+                           auteur=None):
+    """Démarre une période d'essai sur un ``Contrat`` — NTSUB5.
+
+    Gèle la facturation (``facturation_active=False`` sur tous les échéanciers
+    du contrat — réutilise le garde-fou YSUBS8 : aucune échéance générée tant
+    que la facturation n'est pas active) et crée un ``EssaiAbonnement`` daté.
+    Idempotent par cible (contrainte d'unicité) : un second appel sur le même
+    contrat lève ``EssaiAbonnementError``. Journalise au chatter. Renvoie
+    l'essai créé.
+    """
+    from .models import AbonnementAddOnLigne, EcheancierContrat, EssaiAbonnement
+
+    if EssaiAbonnement.objects.filter(
+            company=contrat.company,
+            type_cible=AbonnementAddOnLigne.TypeCible.CONTRAT,
+            cible_id=contrat.id).exists():
+        raise EssaiAbonnementError(
+            "Un essai existe déjà pour ce contrat.")
+
+    EcheancierContrat.objects.filter(
+        company=contrat.company, contrat=contrat,
+        facturation_active=True).update(facturation_active=False)
+
+    essai = EssaiAbonnement.objects.create(
+        company=contrat.company,
+        type_cible=AbonnementAddOnLigne.TypeCible.CONTRAT,
+        cible_id=contrat.id, date_fin_essai=date_fin_essai,
+        plan_apres_essai=plan_apres_essai)
+    journaliser_transition(
+        contrat, field='essai', old_value='',
+        new_value=f"En essai jusqu'au {date_fin_essai}",
+        message="Démarrage de la période d'essai.", auteur=auteur)
+    return essai
+
+
+def convertir_essais_expires(company, *, today=None, alerte_j3_jours=3):
+    """Convertit les essais échus + notifie J-3 avant la fin — NTSUB5.
+
+    Pour une société, à ``today`` (injectable pour les tests) :
+
+    (a) tout ``EssaiAbonnement`` non converti dont ``date_fin_essai <= today``
+        et dont le contrat lié n'est PAS résilié devient facturable :
+        réactive ``facturation_active=True`` sur ses échéanciers, génère le
+        plan (YSUBS8), marque ``converti=True`` + ``date_conversion`` et
+        journalise. Un contrat résilié avant terme n'est JAMAIS converti ;
+    (b) tout essai non converti dont ``date_fin_essai == today +
+        alerte_j3_jours`` et non encore notifié déclenche UNE notification J-3
+        au responsable (idempotence via ``notifie_j3``).
+
+    Renvoie ``{'convertis', 'alertes_j3'}``. Best-effort par essai : une
+    exception n'empêche jamais les suivants.
+    """
+    from datetime import timedelta
+
+    from .models import (
+        AbonnementAddOnLigne, Contrat, EcheancierContrat, EssaiAbonnement,
+    )
+
+    if today is None:
+        today = timezone.localdate()
+
+    total = {'convertis': 0, 'alertes_j3': 0}
+
+    essais = EssaiAbonnement.objects.filter(company=company, converti=False)
+    for essai in essais:
+        try:
+            # (a) conversion des essais échus.
+            if essai.date_fin_essai <= today:
+                if essai.type_cible != AbonnementAddOnLigne.TypeCible.CONTRAT:
+                    continue  # cible sav gérée par son app (hors périmètre)
+                contrat = Contrat.objects.filter(
+                    company=company, id=essai.cible_id).first()
+                if contrat is None or contrat.statut == Contrat.Statut.RESILIE:
+                    continue  # annulé avant terme → jamais converti
+                for echeancier in EcheancierContrat.objects.filter(
+                        company=company, contrat=contrat):
+                    echeancier.facturation_active = True
+                    echeancier.save(update_fields=['facturation_active'])
+                    try:
+                        generer_echeancier_depuis_dates(contrat, echeancier)
+                    except Exception:  # pragma: no cover - best-effort
+                        pass
+                essai.converti = True
+                essai.date_conversion = today
+                essai.save(update_fields=['converti', 'date_conversion'])
+                journaliser_transition(
+                    contrat, field='essai', old_value='en essai',
+                    new_value='converti',
+                    message="Fin d'essai : facturation activée.")
+                # NTSUB34 — notifie le responsable de la conversion réussie.
+                _notifier_responsable_contrat(
+                    contrat, 'Essai converti en abonnement payant',
+                    f"L'essai du contrat « {contrat.objet} » est converti : "
+                    f"la facturation est désormais active.")
+                total['convertis'] += 1
+            # (b) alerte J-3.
+            elif (essai.date_fin_essai == today + timedelta(
+                    days=alerte_j3_jours) and not essai.notifie_j3):
+                if essai.type_cible == AbonnementAddOnLigne.TypeCible.CONTRAT:
+                    contrat = Contrat.objects.filter(
+                        company=company, id=essai.cible_id).first()
+                    if contrat is not None:
+                        _notifier_responsable_contrat(
+                            contrat, "Fin d'essai imminente",
+                            f"L'essai du contrat « {contrat.objet} » se "
+                            f"termine le {essai.date_fin_essai}.")
+                essai.notifie_j3 = True
+                essai.save(update_fields=['notifie_j3'])
+                total['alertes_j3'] += 1
+        except Exception:  # pragma: no cover - défensif, isolation
+            logger.warning(
+                'convertir_essais_expires: échec essai #%s (société %s)',
+                essai.pk, company.pk, exc_info=True)
+
+    return total
+
+
+def _notifier_responsable_contrat(contrat, titre, body, link='/contrats'):
+    """Notifie le responsable d'un contrat (in-app), best-effort — NTSUB5/34.
+
+    Frontière cross-app : ``apps.notifications.services`` seulement (import
+    fonction-local, jamais ses models/views). Aucun responsable = skip
+    silencieux. Une erreur de notification ne remonte jamais.
+    """
+    if not contrat.responsable_id:
+        return
+    try:
+        from apps.notifications.services import notify
+
+        notify(
+            contrat.responsable, 'digest', titre, body=body,
+            link=link, company=contrat.company)
+    except Exception:  # pragma: no cover - best-effort
+        pass
+
+
+# ---------------------------------------------------------------------------
+# NTSUB8 — Séquence de dunning multi-étapes (relances impayés) planifiée
+# ---------------------------------------------------------------------------
+
+
+def _envoyer_etape_dunning(contrat, etape):
+    """Envoie une relance de dunning sur le canal de l'étape — NTSUB8.
+
+    Frontière cross-app : ``apps.notifications.services`` seulement (import
+    fonction-local). Les canaux e-mail/WhatsApp/notification interne sont tous
+    livrés via ``notify`` (le routage réel par canal est géré par le service de
+    notifications) — best-effort, une erreur ne remonte jamais.
+    """
+    titre = 'Relance de paiement'
+    body = (
+        f'Relance ({etape.get_canal_display()}) pour le contrat '
+        f'« {contrat.objet} » — facture en retard.'
+    )
+    try:
+        from apps.notifications.services import notify, notify_many, resolve_recipients
+
+        if contrat.responsable_id:
+            notify(
+                contrat.responsable, 'digest', titre, body=body,
+                link='/contrats', company=contrat.company)
+        else:
+            recipients = resolve_recipients(contrat.company, 'digest')
+            notify_many(
+                recipients, 'digest', titre, body=body,
+                link='/contrats', company=contrat.company)
+    except Exception:  # pragma: no cover - best-effort
+        pass
+
+
+def executer_dunning_contrat(contrat, *, today=None):
+    """Exécute les étapes de dunning DUES d'un contrat impayé — NTSUB8.
+
+    Un contrat SANS ``sequence_dunning`` (NULL) ou dont la séquence est
+    inactive garde le comportement ZCTR2 inchangé (aucune étape jouée ici).
+    Sinon, pour chaque ``EtapeDunning`` dont ``jour_offset <= jours_impaye`` et
+    non encore jouée (garde d'idempotence ``EtapeDunningLog (contrat, etape)``) :
+    envoie la relance sur son canal, journalise, et — si
+    ``declenche_suspension`` — appelle la suspension ZCTR2 existante
+    (``_appliquer_suspension_impaye``, jamais dupliquée). Re-run le même jour =
+    0 doublon (contrainte d'unicité).
+
+    Renvoie ``{'etapes_jouees', 'suspendu'}``.
+    """
+    from .models import EtapeDunning, EtapeDunningLog
+
+    if today is None:
+        today = timezone.localdate()
+
+    resultat = {'etapes_jouees': 0, 'suspendu': False}
+
+    sequence = contrat.sequence_dunning
+    if sequence is None or not sequence.actif:
+        return resultat
+
+    jours_impaye = _jours_impaye_contrat(contrat)
+    if jours_impaye <= 0:
+        return resultat
+
+    etapes = EtapeDunning.objects.filter(
+        company=contrat.company, sequence=sequence,
+        jour_offset__lte=jours_impaye).order_by('ordre', 'jour_offset', 'id')
+
+    premiere_relance = not EtapeDunningLog.objects.filter(
+        company=contrat.company, contrat=contrat).exists()
+
+    for etape in etapes:
+        _, cree = EtapeDunningLog.objects.get_or_create(
+            company=contrat.company, contrat=contrat, etape=etape,
+            defaults={'date_execution': today})
+        if not cree:
+            continue  # déjà jouée (idempotence)
+        _envoyer_etape_dunning(contrat, etape)
+        # NTSUB34 — notifie le responsable à l'ENTRÉE en dunning (1re relance).
+        if premiere_relance:
+            _notifier_responsable_contrat(
+                contrat, 'Entrée en séquence de relance (dunning)',
+                f"Le contrat « {contrat.objet} » est entré en relance "
+                f"pour impayé.")
+            premiere_relance = False
+        journaliser_transition(
+            contrat, field='dunning', old_value='',
+            new_value=f'Étape J+{etape.jour_offset} ({etape.get_canal_display()})',
+            message='Relance de dunning envoyée.')
+        resultat['etapes_jouees'] += 1
+
+        if etape.declenche_suspension:
+            suspendu = _appliquer_suspension_impaye(
+                contrat,
+                message=(
+                    f'Suspension via dunning — impayé depuis '
+                    f'{jours_impaye} jour(s) (étape J+{etape.jour_offset}).'),
+                body=(
+                    f'Le contrat #{contrat.id} a été suspendu '
+                    f'(dernière étape de dunning atteinte).'))
+            if suspendu is not None:
+                resultat['suspendu'] = True
+
+    return resultat
+
+
+def executer_dunning_company(company, *, today=None):
+    """Exécute le dunning des contrats ACTIFS d'une société — NTSUB8.
+
+    Boucle par contrat actif porteur d'une ``sequence_dunning`` (les autres
+    gardent le comportement ZCTR2). Une exception sur UN contrat n'empêche
+    jamais les suivants. Renvoie ``{'etapes_jouees', 'contrats_suspendus'}``.
+    """
+    from .models import Contrat
+
+    if today is None:
+        today = timezone.localdate()
+
+    total = {'etapes_jouees': 0, 'contrats_suspendus': 0}
+    contrats = Contrat.objects.filter(
+        company=company, statut=Contrat.Statut.ACTIF,
+        sequence_dunning__isnull=False,
+        sequence_dunning__actif=True,
+    ).select_related('sequence_dunning')
+
+    for contrat in contrats:
+        try:
+            res = executer_dunning_contrat(contrat, today=today)
+            total['etapes_jouees'] += res['etapes_jouees']
+            if res['suspendu']:
+                total['contrats_suspendus'] += 1
+        except Exception:  # pragma: no cover - défensif, isolation
+            logger.warning(
+                'executer_dunning_company: échec contrat #%s (société %s)',
+                contrat.pk, company.pk, exc_info=True)
+
+    return total
