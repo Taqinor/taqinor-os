@@ -74,6 +74,12 @@ class Idee(TenantModel):
     # de bord, cf. ``IdeeViewSet.get_queryset``/``selectors``) ; passe à
     # False quand l'auteur clique « Publier ».
     draft = models.BooleanField(default=False, verbose_name='Brouillon')
+    # NTIDE19 — modération de contenu : le palier Directeur/Responsable peut
+    # « masquer » une idée SANS la supprimer (action ``masquer``). Une idée
+    # masquée disparaît des listes normales mais reste consultable en admin
+    # (``?include_archived=1``, réservé au même palier).
+    archived = models.BooleanField(
+        default=False, verbose_name='Masquée (modération)')
 
     class Meta:
         verbose_name = 'Idée'

@@ -55,6 +55,15 @@ class IdeeViewSet(CompanyScopedModelViewSet):
         from django.db.models import Q
         qs = qs.filter(Q(draft=False) | Q(auteur=self.request.user))
         params = self.request.query_params
+        # NTIDE19 — une idée masquée (modération) disparaît des listes
+        # normales ; le palier Directeur/Responsable peut la retrouver avec
+        # ``?include_archived=1`` (« reste accessible en admin »), jamais un
+        # autre palier.
+        include_archived = (
+            params.get('include_archived') == '1'
+            and getattr(self.request.user, 'is_responsable', False))
+        if not include_archived:
+            qs = qs.exclude(archived=True)
         statut = params.get('statut')
         if statut:
             qs = qs.filter(statut=statut)
@@ -149,6 +158,26 @@ class IdeeViewSet(CompanyScopedModelViewSet):
         if idee.draft:
             idee.draft = False
             idee.save(update_fields=['draft', 'updated_at'])
+        return Response(IdeeSerializer(idee).data)
+
+    # ── NTIDE19 — modération : masquer une idée sans la supprimer ────────────
+    @action(detail=True, methods=['post'], url_path='masquer',
+            permission_classes=[IsResponsableOrAdmin])
+    def masquer(self, request, pk=None):
+        """Palier Directeur/Responsable uniquement. Ne supprime jamais
+        l'idée : elle disparaît des listes normales (``get_queryset``) mais
+        reste consultable via ``?include_archived=1`` (même palier).
+        Journalise dans le chatter générique (ARC8)."""
+        idee = self.get_object()
+        if not idee.archived:
+            idee.archived = True
+            idee.save(update_fields=['archived', 'updated_at'])
+            from apps.records.models import Activity
+            from apps.records.services import log_activity
+            log_activity(
+                idee, Activity.Kind.MODIFICATION, user=request.user,
+                field='archived', field_label='Masquée', old_value='False',
+                new_value='True', company=idee.company)
         return Response(IdeeSerializer(idee).data)
 
     # ── NTIDE17 — l'auteur ré-ouvre sa propre idée fermée/examinée ───────────

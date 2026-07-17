@@ -41,6 +41,9 @@ const innovationApi = {
   // ── Publier un brouillon (NTIDE18, draft → False, réservé à l'auteur) ──
   publier: (id) => api.post(`/innovation/idees/${id}/publier/`),
 
+  // ── Modération : masquer sans supprimer (NTIDE19, palier Directeur/Responsable) ──
+  masquer: (id) => api.post(`/innovation/idees/${id}/masquer/`),
+
   // ── Export .xlsx (NTIDE12, filtres statut/contexte/date appliqués) ──
   exportXlsx: (params) =>
     api.get('/innovation/idees/export-xlsx/', { params, responseType: 'blob' }),

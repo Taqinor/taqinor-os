@@ -29,6 +29,8 @@ const innovationApiMock = vi.hoisted(() => ({
   historique: vi.fn(),
   lier: vi.fn(),
   reouvrir: vi.fn(),
+  publier: vi.fn(),
+  masquer: vi.fn(),
   vote: vi.fn(),
   retirerVote: vi.fn(),
   votesRecents: vi.fn(),
@@ -198,6 +200,23 @@ describe('IdeeDetail', () => {
     const user = userEvent.setup()
     await user.click(screen.getByRole('button', { name: /Ré-ouvrir/ }))
     await waitFor(() => expect(innovationApiMock.reouvrir).toHaveBeenCalledWith('4'))
+  })
+
+  it('NTIDE19 — « Masquer » confirmé appelle innovationApi.masquer', async () => {
+    innovationApiMock.get.mockResolvedValue({
+      data: { id: 6, titre: 'Idée à modérer', statut: 'ouvert', votes_count: 0, historique: [] },
+    })
+    innovationApiMock.masquer.mockResolvedValue({ data: { id: 6 } })
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const { default: IdeeDetail } = await import('./IdeeDetail')
+    render(wrap(
+      <Routes><Route path="/innovation/idees/:id" element={<IdeeDetail />} /></Routes>,
+      { route: '/innovation/idees/6' },
+    ))
+    await waitFor(() => expect(screen.getByText('Idée à modérer')).toBeTruthy())
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: /Masquer/ }))
+    await waitFor(() => expect(innovationApiMock.masquer).toHaveBeenCalledWith('6'))
   })
 
   it('NTIDE17 — un non-auteur ne voit pas « Ré-ouvrir » sur une idée fermée', async () => {

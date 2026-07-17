@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useSelector } from 'react-redux'
 import {
   ThumbsUp, Search, CheckCircle2, Rocket, XCircle, Send, Link2, RotateCcw,
-  Upload,
+  Upload, EyeOff,
 } from 'lucide-react'
 import { DetailShell } from '../../ui/module'
 import {
@@ -114,6 +114,22 @@ export default function IdeeDetail() {
     }
   }
 
+  const handleMasquer = async () => {
+    if (!window.confirm('Masquer cette idée ? Elle disparaîtra des listes (jamais supprimée, reste accessible en admin).')) return
+    setBusy(true)
+    try {
+      await innovationApi.masquer(id)
+      toast.success('Idée masquée.')
+      await load()
+    } catch (err) {
+      toast.error(err?.response?.status === 403
+        ? 'Action réservée au palier Directeur/Responsable.'
+        : 'Impossible de masquer cette idée.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const handleLier = async () => {
     const id = Number(lierId)
     if (!lierType || !id || id <= 0) { toast.error('Choisissez un type et un identifiant valides.'); return }
@@ -163,6 +179,12 @@ export default function IdeeDetail() {
     items.push({
       term: 'Visibilité',
       description: <Badge tone="warning">Brouillon — visible uniquement par vous</Badge>,
+    })
+  }
+  if (idee.archived) {
+    items.push({
+      term: 'Modération',
+      description: <Badge tone="destructive">Masquée — invisible des listes</Badge>,
     })
   }
   if (idee.linked_type) {
@@ -238,6 +260,11 @@ export default function IdeeDetail() {
       {peutReouvrir && (
         <Button type="button" variant="outline" onClick={handleReouvrir} disabled={busy}>
           <RotateCcw /> Ré-ouvrir
+        </Button>
+      )}
+      {!idee.archived && (
+        <Button type="button" variant="outline" onClick={handleMasquer} disabled={busy}>
+          <EyeOff /> Masquer
         </Button>
       )}
       {!estTerminal(idee.statut) && transitions.map((key) => {
