@@ -24,8 +24,14 @@ BASE = '/api/django/btp-chantier/reserves-chantier/'
 def make_reserve(company, chantier, created_by, **kwargs):
     kwargs.setdefault('description', 'Prise défectueuse')
     kwargs.setdefault('statut', ReserveChantier.Statut.OUVERTE)
-    return ReserveChantier.objects.create(
+    reserve = ReserveChantier.objects.create(
         company=company, chantier=chantier, created_by=created_by, **kwargs)
+    # Journalise la création (statut initial « ouverte ») comme le fait la
+    # vraie voie de création — ``ReserveChantierViewSet.perform_create`` — pour
+    # que l'historique reflète la production (création + transitions).
+    from apps.btp_chantier.services import enregistrer_creation_reserve
+    enregistrer_creation_reserve(reserve, created_by=created_by)
+    return reserve
 
 
 class LeverReserveTests(TestCase):

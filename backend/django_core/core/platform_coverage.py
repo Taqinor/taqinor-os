@@ -86,6 +86,13 @@ BASELINE_DRIFT: set[tuple[str, str]] = {
     ('flotte.vehicule', 'chatter_sans_recherche'),
     ('gestion_projet.projet', 'chatter_sans_recherche'),
     ('ao.appeloffre', 'chatter_sans_recherche'),
+    # NTCON (2026-07-17) — le vertical BTP/chantier attache des pièces via
+    # records.Attachment (réserves/journaux/réponses RFI chatter-isés) mais
+    # n'est pas encore branché sur la recherche globale — trou assumé à combler
+    # modèle par modèle, comme les cibles héritées ci-dessus.
+    ('btp_chantier.reservechantier', 'chatter_sans_recherche'),
+    ('btp_chantier.journalchantier', 'chatter_sans_recherche'),
+    ('btp_chantier.rfireponse', 'chatter_sans_recherche'),
     # ODX17 (2026-07-13) — la Facture a migré ventes -> facturation (split
     # state-only). Sa cible chatter porte désormais le label `facturation.facture`
     # (ContentType du modèle déplacé) tandis que la recherche globale garde la
