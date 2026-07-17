@@ -15,6 +15,7 @@ from .views import (
     CycleFacturationLogViewSet,
     EcheancierContratViewSet,
     EngagementSLAViewSet,
+    EtapeDunningViewSet,
     IndexationPrixViewSet,
     JalonContratViewSet,
     LigneEcheanceViewSet,
@@ -32,6 +33,7 @@ from .views import (
     RegleApprobationViewSet,
     ResiliationViewSet,
     RetenueGarantieViewSet,
+    SequenceDunningViewSet,
     VersionContratViewSet,
 )
 
@@ -67,6 +69,8 @@ router.register(r'addons-abonnement', AddOnAbonnementViewSet)
 router.register(r'addon-lignes', AbonnementAddOnLigneViewSet)
 router.register(r'paliers-usage', PalierUsageViewSet)
 router.register(r'compteurs-usage', CompteurUsageViewSet)
+router.register(r'sequences-dunning', SequenceDunningViewSet)
+router.register(r'etapes-dunning', EtapeDunningViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

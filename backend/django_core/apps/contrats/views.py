@@ -52,6 +52,7 @@ from .models import (
     CycleFacturationLog,
     EcheancierContrat,
     EngagementSLA,
+    EtapeDunning,
     IndexationPrix,
     JalonContrat,
     LigneEcheance,
@@ -69,6 +70,7 @@ from .models import (
     RegleApprobation,
     Resiliation,
     RetenueGarantie,
+    SequenceDunning,
     VersionContrat,
 )
 from .serializers import (
@@ -79,6 +81,7 @@ from .serializers import (
     AvenantSerializer,
     CautionSerializer,
     CompteurUsageSerializer,
+    EtapeDunningSerializer,
     ChangerStatutOrdreLocationSerializer,
     ChangerStatutSerializer,
     EcourterOrdreLocationSerializer,
@@ -125,6 +128,7 @@ from .serializers import (
     ResoudreRegleApprobationSerializer,
     RollbackCampagneRevisionSerializer,
     SemerAlertesSerializer,
+    SequenceDunningSerializer,
     SignatureContratSerializer,
     SignerContratSerializer,
     VersionContratSerializer,
@@ -2689,3 +2693,47 @@ class CompteurUsageViewSet(_ContratsBaseViewSet):
         )
         out = self.get_serializer(compteur)
         return Response(out.data, status=status.HTTP_201_CREATED)
+
+
+# ---------------------------------------------------------------------------
+# NTSUB8 — Séquences de dunning (relances impayés multi-étapes)
+# ---------------------------------------------------------------------------
+
+
+class SequenceDunningViewSet(_ContratsBaseViewSet):
+    """Séquences de dunning (relances impayés) — NTSUB8.
+
+    Scopé société (``TenantMixin``) ; ``company`` posée CÔTÉ SERVEUR. CRUD
+    complet + étapes en lecture imbriquée. Filtre ``?actif=1``.
+    """
+    queryset = SequenceDunning.objects.all()
+    serializer_class = SequenceDunningSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom']
+    ordering_fields = ['nom', 'created_at', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        actif = self.request.query_params.get('actif')
+        if actif is not None:
+            qs = qs.filter(actif=actif.lower() in ('1', 'true', 'oui'))
+        return qs
+
+
+class EtapeDunningViewSet(_ContratsBaseViewSet):
+    """Étapes d'une séquence de dunning — NTSUB8.
+
+    Scopé société (``TenantMixin``) ; ``company`` posée CÔTÉ SERVEUR. Filtre
+    ``?sequence=<id>``.
+    """
+    queryset = EtapeDunning.objects.all()
+    serializer_class = EtapeDunningSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['ordre', 'jour_offset', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        sequence = self.request.query_params.get('sequence')
+        if sequence:
+            qs = qs.filter(sequence_id=sequence)
+        return qs

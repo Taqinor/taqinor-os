@@ -4027,7 +4027,6 @@ def suspendre_contrat_si_impaye(contrat, *, today=None, auteur=None):
 
     Renvoie le ``Contrat`` si suspendu, ``None`` sinon (rien à faire).
     """
-    from .machine_etats import transition_permise
     from .models import Contrat
 
     if today is None:
@@ -4045,6 +4044,30 @@ def suspendre_contrat_si_impaye(contrat, *, today=None, auteur=None):
     if jours_impaye <= delai:
         return None
 
+    return _appliquer_suspension_impaye(
+        contrat,
+        message=(
+            f'Suspension automatique — facture impayée depuis '
+            f'{jours_impaye} jour(s) (délai {delai} j).'),
+        body=(
+            f'Le contrat #{contrat.id} a été suspendu automatiquement '
+            f'(facture impayée depuis {jours_impaye} jour(s)).'),
+        auteur=auteur)
+
+
+def _appliquer_suspension_impaye(contrat, *, message, body, auteur=None):
+    """Applique la transition ``actif → suspendu`` GARDÉE + journal + notif —
+    ZCTR2/NTSUB8.
+
+    Point d'entrée UNIQUE de la suspension pour impayé : la clôture ZCTR2
+    (``suspendre_contrat_si_impaye``) ET la dernière étape de dunning NTSUB8
+    l'appellent, jamais un second chemin dupliqué. Renvoie le ``Contrat`` si
+    suspendu, ``None`` si la transition n'est pas permise (préservation des
+    statuts).
+    """
+    from .machine_etats import transition_permise
+    from .models import Contrat
+
     if not transition_permise(contrat.statut, Contrat.Statut.SUSPENDU):
         return None  # pragma: no cover - défensif (garde machine d'états)
 
@@ -4053,11 +4076,7 @@ def suspendre_contrat_si_impaye(contrat, *, today=None, auteur=None):
 
     journaliser_transition(
         contrat, field='statut', old_value=ancien,
-        new_value=contrat.statut,
-        message=(
-            f'Suspension automatique — facture impayée depuis '
-            f'{jours_impaye} jour(s) (délai {delai} j).'),
-        auteur=auteur)
+        new_value=contrat.statut, message=message, auteur=auteur)
 
     try:
         from apps.notifications.services import notify_many, resolve_recipients
@@ -4065,10 +4084,7 @@ def suspendre_contrat_si_impaye(contrat, *, today=None, auteur=None):
         recipients = resolve_recipients(contrat.company, 'digest')
         notify_many(
             recipients, 'digest', 'Contrat suspendu — impayé',
-            body=(
-                f'Le contrat #{contrat.id} a été suspendu automatiquement '
-                f'(facture impayée depuis {jours_impaye} jour(s)).'),
-            link='/contrats', company=contrat.company)
+            body=body, link='/contrats', company=contrat.company)
     except Exception:  # pragma: no cover - défensif (best-effort)
         pass
 
@@ -4543,3 +4559,131 @@ def _notifier_responsable_contrat(contrat, titre, body, link='/contrats'):
             link=link, company=contrat.company)
     except Exception:  # pragma: no cover - best-effort
         pass
+
+
+# ---------------------------------------------------------------------------
+# NTSUB8 — Séquence de dunning multi-étapes (relances impayés) planifiée
+# ---------------------------------------------------------------------------
+
+
+def _envoyer_etape_dunning(contrat, etape):
+    """Envoie une relance de dunning sur le canal de l'étape — NTSUB8.
+
+    Frontière cross-app : ``apps.notifications.services`` seulement (import
+    fonction-local). Les canaux e-mail/WhatsApp/notification interne sont tous
+    livrés via ``notify`` (le routage réel par canal est géré par le service de
+    notifications) — best-effort, une erreur ne remonte jamais.
+    """
+    titre = 'Relance de paiement'
+    body = (
+        f'Relance ({etape.get_canal_display()}) pour le contrat '
+        f'« {contrat.objet} » — facture en retard.'
+    )
+    try:
+        from apps.notifications.services import notify, notify_many, resolve_recipients
+
+        if contrat.responsable_id:
+            notify(
+                contrat.responsable, 'digest', titre, body=body,
+                link='/contrats', company=contrat.company)
+        else:
+            recipients = resolve_recipients(contrat.company, 'digest')
+            notify_many(
+                recipients, 'digest', titre, body=body,
+                link='/contrats', company=contrat.company)
+    except Exception:  # pragma: no cover - best-effort
+        pass
+
+
+def executer_dunning_contrat(contrat, *, today=None):
+    """Exécute les étapes de dunning DUES d'un contrat impayé — NTSUB8.
+
+    Un contrat SANS ``sequence_dunning`` (NULL) ou dont la séquence est
+    inactive garde le comportement ZCTR2 inchangé (aucune étape jouée ici).
+    Sinon, pour chaque ``EtapeDunning`` dont ``jour_offset <= jours_impaye`` et
+    non encore jouée (garde d'idempotence ``EtapeDunningLog (contrat, etape)``) :
+    envoie la relance sur son canal, journalise, et — si
+    ``declenche_suspension`` — appelle la suspension ZCTR2 existante
+    (``_appliquer_suspension_impaye``, jamais dupliquée). Re-run le même jour =
+    0 doublon (contrainte d'unicité).
+
+    Renvoie ``{'etapes_jouees', 'suspendu'}``.
+    """
+    from .models import EtapeDunning, EtapeDunningLog
+
+    if today is None:
+        today = timezone.localdate()
+
+    resultat = {'etapes_jouees': 0, 'suspendu': False}
+
+    sequence = contrat.sequence_dunning
+    if sequence is None or not sequence.actif:
+        return resultat
+
+    jours_impaye = _jours_impaye_contrat(contrat)
+    if jours_impaye <= 0:
+        return resultat
+
+    etapes = EtapeDunning.objects.filter(
+        company=contrat.company, sequence=sequence,
+        jour_offset__lte=jours_impaye).order_by('ordre', 'jour_offset', 'id')
+
+    for etape in etapes:
+        _, cree = EtapeDunningLog.objects.get_or_create(
+            company=contrat.company, contrat=contrat, etape=etape,
+            defaults={'date_execution': today})
+        if not cree:
+            continue  # déjà jouée (idempotence)
+        _envoyer_etape_dunning(contrat, etape)
+        journaliser_transition(
+            contrat, field='dunning', old_value='',
+            new_value=f'Étape J+{etape.jour_offset} ({etape.get_canal_display()})',
+            message='Relance de dunning envoyée.')
+        resultat['etapes_jouees'] += 1
+
+        if etape.declenche_suspension:
+            suspendu = _appliquer_suspension_impaye(
+                contrat,
+                message=(
+                    f'Suspension via dunning — impayé depuis '
+                    f'{jours_impaye} jour(s) (étape J+{etape.jour_offset}).'),
+                body=(
+                    f'Le contrat #{contrat.id} a été suspendu '
+                    f'(dernière étape de dunning atteinte).'))
+            if suspendu is not None:
+                resultat['suspendu'] = True
+
+    return resultat
+
+
+def executer_dunning_company(company, *, today=None):
+    """Exécute le dunning des contrats ACTIFS d'une société — NTSUB8.
+
+    Boucle par contrat actif porteur d'une ``sequence_dunning`` (les autres
+    gardent le comportement ZCTR2). Une exception sur UN contrat n'empêche
+    jamais les suivants. Renvoie ``{'etapes_jouees', 'contrats_suspendus'}``.
+    """
+    from .models import Contrat
+
+    if today is None:
+        today = timezone.localdate()
+
+    total = {'etapes_jouees': 0, 'contrats_suspendus': 0}
+    contrats = Contrat.objects.filter(
+        company=company, statut=Contrat.Statut.ACTIF,
+        sequence_dunning__isnull=False,
+        sequence_dunning__actif=True,
+    ).select_related('sequence_dunning')
+
+    for contrat in contrats:
+        try:
+            res = executer_dunning_contrat(contrat, today=today)
+            total['etapes_jouees'] += res['etapes_jouees']
+            if res['suspendu']:
+                total['contrats_suspendus'] += 1
+        except Exception:  # pragma: no cover - défensif, isolation
+            logger.warning(
+                'executer_dunning_company: échec contrat #%s (société %s)',
+                contrat.pk, company.pk, exc_info=True)
+
+    return total

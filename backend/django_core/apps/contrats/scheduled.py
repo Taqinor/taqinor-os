@@ -245,3 +245,37 @@ def convertir_essais_expires_daily():
         '%s alerte(s) J-3',
         total['convertis'], total['alertes_j3'])
     return total
+
+
+@shared_task(name='contrats.executer_dunning_daily')
+def executer_dunning_daily():
+    """NTSUB8 — Exécute les séquences de dunning des contrats impayés, par
+    société, quotidien.
+
+    Fine enveloppe planifiable de ``services.executer_dunning_company`` (toute
+    la logique — étapes dues par jour d'impayé, idempotence par
+    ``EtapeDunningLog``, dernière étape → suspension ZCTR2 — y vit). Un contrat
+    sans séquence de dunning garde le comportement ZCTR2 (traité par le beat
+    ``cloturer_contrats_impayes`` séparé). Chaque société est isolée. Renvoie
+    ``{'etapes_jouees', 'contrats_suspendus'}`` agrégé.
+    """
+    from authentication.selectors import active_companies
+
+    from . import services
+
+    total = {'etapes_jouees': 0, 'contrats_suspendus': 0}
+    for company in active_companies():
+        try:
+            res = services.executer_dunning_company(company)
+            total['etapes_jouees'] += res['etapes_jouees']
+            total['contrats_suspendus'] += res['contrats_suspendus']
+        except Exception:  # pragma: no cover - défensif, isolation société
+            logger.warning(
+                'contrats.executer_dunning_daily: échec société %s',
+                company.pk, exc_info=True)
+
+    logger.info(
+        'contrats.executer_dunning_daily: %s étape(s) jouée(s), '
+        '%s contrat(s) suspendu(s)',
+        total['etapes_jouees'], total['contrats_suspendus'])
+    return total

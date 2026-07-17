@@ -180,6 +180,17 @@ class Contrat(models.Model):
         related_name='contrats',
         verbose_name="Plan d'abonnement",
     )
+    # NTSUB8 — séquence de dunning (relances multi-étapes) rattachée (nullable).
+    # NULL = comportement ZCTR2 actuel inchangé (suspension tout-ou-rien au délai
+    # unique). Référence interne à l'app `contrats`, SET_NULL pour ne jamais
+    # perdre le contrat si la séquence est supprimée.
+    sequence_dunning = models.ForeignKey(
+        'SequenceDunning',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='contrats',
+        verbose_name='Séquence de dunning',
+    )
     # Niveau de confidentialité : contrôle la visibilité du contrat au sein de
     # la société. PUBLIC = tous les utilisateurs authentifiés de la société ;
     # INTERNE = uniquement Responsables et Administrateurs ; CONFIDENTIEL =
@@ -3509,3 +3520,126 @@ class EssaiAbonnement(TenantModel):
             f'Essai {self.type_cible}#{self.cible_id} '
             f'→ {self.date_fin_essai} ({"converti" if self.converti else "en cours"})'
         )
+
+
+class SequenceDunning(TenantModel):
+    """Séquence de relances (dunning) multi-étapes paramétrable — NTSUB8.
+
+    ZCTR2 suspend un contrat après un délai UNIQUE d'impayé (tout ou rien).
+    Une ``SequenceDunning`` déclare une suite d'``EtapeDunning`` (relances par
+    canal aux jours J+n après l'échéance impayée) que l'on rattache
+    optionnellement à un ``Contrat`` (``Contrat.sequence_dunning``, NULL =
+    comportement ZCTR2 inchangé). La dernière étape peut DÉCLENCHER la
+    suspension ZCTR2 existante (jamais dupliquée).
+
+    Multi-tenant : ``company`` héritée de ``TenantModel``, posée CÔTÉ SERVEUR.
+    """
+
+    nom = models.CharField(max_length=120, verbose_name='Nom')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+
+    class Meta:
+        verbose_name = 'Séquence de dunning'
+        verbose_name_plural = 'Séquences de dunning'
+        ordering = ['nom', 'id']
+        indexes = [
+            models.Index(
+                fields=['company', 'actif'], name='contrats_dunseq_co_act'),
+        ]
+
+    def __str__(self):
+        return self.nom
+
+
+class EtapeDunning(TenantModel):
+    """Étape d'une séquence de dunning (relance datée par canal) — NTSUB8.
+
+    ``jour_offset`` = jours après l'échéance impayée où la relance part ;
+    ``canal`` = email / whatsapp / notification interne ; ``template_ref`` =
+    référence libre au gabarit de message (jamais un FK dur cross-app vers
+    ``parametres`` — la livraison passe par ``notifications.services``) ;
+    ``declenche_suspension`` = cette étape appelle la suspension ZCTR2.
+
+    Multi-tenant : ``company`` héritée de ``TenantModel``, posée CÔTÉ SERVEUR.
+    """
+
+    class Canal(models.TextChoices):
+        EMAIL = 'email', 'E-mail'
+        WHATSAPP = 'whatsapp', 'WhatsApp'
+        NOTIFICATION_INTERNE = 'notification_interne', 'Notification interne'
+
+    sequence = models.ForeignKey(
+        'SequenceDunning',
+        on_delete=models.CASCADE,  # on_delete: une étape n'a pas de sens sans sa séquence
+        related_name='etapes',
+        verbose_name='Séquence',
+    )
+    jour_offset = models.PositiveIntegerField(
+        verbose_name="Jours après l'échéance impayée")
+    canal = models.CharField(
+        max_length=25, choices=Canal.choices,
+        default=Canal.NOTIFICATION_INTERNE, verbose_name='Canal')
+    template_ref = models.CharField(
+        max_length=100, blank=True, default='',
+        verbose_name='Référence de gabarit')
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    declenche_suspension = models.BooleanField(
+        default=False, verbose_name='Déclenche la suspension (ZCTR2)')
+
+    class Meta:
+        verbose_name = 'Étape de dunning'
+        verbose_name_plural = 'Étapes de dunning'
+        ordering = ['sequence_id', 'ordre', 'jour_offset', 'id']
+        indexes = [
+            models.Index(
+                fields=['company', 'sequence'],
+                name='contrats_dunetape_co_seq'),
+        ]
+
+    def __str__(self):
+        return f'J+{self.jour_offset} ({self.get_canal_display()})'
+
+
+class EtapeDunningLog(TenantModel):
+    """Trace d'exécution d'une étape de dunning pour un contrat — NTSUB8.
+
+    Garde d'idempotence : une étape n'est exécutée qu'UNE fois par contrat
+    (contrainte d'unicité ``(contrat, etape)``) — re-run le même jour = zéro
+    doublon d'envoi.
+
+    Multi-tenant : ``company`` héritée de ``TenantModel``, posée CÔTÉ SERVEUR.
+    ``contrat``/``etape`` sont des références internes à l'app `contrats` (FK
+    dur autorisé).
+    """
+
+    contrat = models.ForeignKey(
+        'Contrat',
+        on_delete=models.CASCADE,  # on_delete: la trace de relance suit le contrat supprimé
+        related_name='dunning_logs',
+        verbose_name='Contrat',
+    )
+    etape = models.ForeignKey(
+        'EtapeDunning',
+        on_delete=models.CASCADE,  # on_delete: la trace suit l'étape supprimée
+        related_name='logs',
+        verbose_name='Étape',
+    )
+    date_execution = models.DateField(verbose_name="Date d'exécution")
+
+    class Meta:
+        verbose_name = 'Trace de dunning'
+        verbose_name_plural = 'Traces de dunning'
+        ordering = ['-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['contrat', 'etape'],
+                name='contrats_dunlog_uniq'),
+        ]
+        indexes = [
+            models.Index(
+                fields=['company', 'contrat'],
+                name='contrats_dunlog_co_ct'),
+        ]
+
+    def __str__(self):
+        return f'contrat {self.contrat_id} / étape {self.etape_id}'

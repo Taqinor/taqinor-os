@@ -22,6 +22,7 @@ from .models import (
     EcheancierContrat,
     EngagementSLA,
     EtapeApprobation,
+    EtapeDunning,
     IndexationPrix,
     JalonContrat,
     LigneEcheance,
@@ -39,6 +40,7 @@ from .models import (
     RegleApprobation,
     Resiliation,
     RetenueGarantie,
+    SequenceDunning,
     SignatureContrat,
     VersionContrat,
 )
@@ -118,6 +120,7 @@ class ContratSerializer(serializers.ModelSerializer):
             'echeance_preavis', 'jours_avant_preavis',
             'jours_avant_echeance',
             'montant', 'devise', 'plan_recurrent', 'plan_abonnement',
+            'sequence_dunning',
             'confidentialite', 'confidentialite_display',
             'responsable', 'responsable_nom',
             'created_by', 'date_creation', 'custom_data',
@@ -188,6 +191,17 @@ class ContratSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "Ce plan d'abonnement n'appartient pas à votre société.")
         return plan
+
+    def validate_sequence_dunning(self, sequence):
+        """La séquence de dunning (optionnelle) doit appartenir à la société — NTSUB8."""
+        if sequence is None:
+            return sequence
+        request = self.context.get('request')
+        if request is not None and \
+                sequence.company_id != request.user.company_id:
+            raise serializers.ValidationError(
+                "Cette séquence de dunning n'appartient pas à votre société.")
+        return sequence
 
     def validate_responsable(self, responsable):
         """Le responsable (optionnel) doit appartenir à la société — XCTR10."""
@@ -1588,3 +1602,42 @@ class CompteurUsageSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 'La fin de période doit être postérieure ou égale au début.')
         return attrs
+
+
+class EtapeDunningSerializer(serializers.ModelSerializer):
+    """Étape d'une séquence de dunning — NTSUB8.
+
+    ``company`` posée côté serveur (``TenantMixin``).
+    """
+    canal_display = serializers.CharField(
+        source='get_canal_display', read_only=True)
+
+    class Meta:
+        model = EtapeDunning
+        fields = [
+            'id', 'sequence', 'jour_offset', 'canal', 'canal_display',
+            'template_ref', 'ordre', 'declenche_suspension', 'created_at',
+        ]
+        read_only_fields = ['id', 'created_at']
+
+    def validate_sequence(self, sequence):
+        request = self.context.get('request')
+        if request is not None and \
+                sequence.company_id != request.user.company_id:
+            raise serializers.ValidationError(
+                "Cette séquence n'appartient pas à votre société.")
+        return sequence
+
+
+class SequenceDunningSerializer(serializers.ModelSerializer):
+    """Séquence de dunning (relances multi-étapes) — NTSUB8.
+
+    ``company`` posée côté serveur (``TenantMixin``). Les étapes sont exposées
+    en lecture imbriquée ; leur création/édition passe par le viewset dédié.
+    """
+    etapes = EtapeDunningSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = SequenceDunning
+        fields = ['id', 'nom', 'actif', 'etapes', 'created_at']
+        read_only_fields = ['id', 'created_at']
