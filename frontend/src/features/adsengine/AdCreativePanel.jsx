@@ -104,7 +104,6 @@ export default function AdCreativePanel({ adMetaId, creative }) {
       {showPreview && (
         <div
           data-testid="ae-creative-preview"
-          // eslint-disable-next-line react/no-danger -- iframe Meta officielle (aperçu)
           dangerouslySetInnerHTML={{ __html: previewHtml }}
         />
       )}

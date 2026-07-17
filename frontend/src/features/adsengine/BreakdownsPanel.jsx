@@ -73,7 +73,7 @@ export default function BreakdownsPanel({ objectType = 'campaign', objectId }) {
         const max = Math.max(...items.map((i) => Number(i.impressions || 0)), 1)
         return (
           <section key={key} data-testid={`ae-breakdown-${key}`}>
-            <h4><Icon size={16} aria-hidden /> {label}</h4>
+            <h4>{Icon && <Icon size={16} aria-hidden />} {label}</h4>
             <ul>
               {items.map((item) => (
                 <li key={item.id} data-testid={`ae-breakdown-${key}-row`}>
