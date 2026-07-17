@@ -6,11 +6,12 @@ from core.mixins import TenantMixin
 
 from .models import (
     CycleBudgetaire, Departement, LigneBudgetDepartement,
-    SoumissionBudgetDepartement,
+    LignePrevisionGlissante, PrevisionGlissante, SoumissionBudgetDepartement,
 )
 from .serializers import (
     CycleBudgetaireSerializer, DepartementSerializer,
-    LigneBudgetDepartementSerializer, SoumissionBudgetDepartementSerializer,
+    LigneBudgetDepartementSerializer, LignePrevisionGlissanteSerializer,
+    PrevisionGlissanteSerializer, SoumissionBudgetDepartementSerializer,
 )
 
 
@@ -205,3 +206,57 @@ class SoumissionBudgetDepartementViewSet(TenantMixin, viewsets.ReadOnlyModelView
             soumission, request.user, body, company=request.user.company)
         from apps.records.serializers import ActivitySerializer
         return Response(ActivitySerializer(activite).data)
+
+
+class PrevisionGlissanteViewSet(TenantMixin, viewsets.ModelViewSet):
+    """NTFPA8 — Prévisions glissantes (rolling forecast 12-18 mois) +
+    génération depuis la moyenne des 3 derniers mois réels (compta)."""
+
+    queryset = PrevisionGlissante.objects.prefetch_related('lignes').all()
+    serializer_class = PrevisionGlissanteSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_reference']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if departement_id := self.request.query_params.get('departement'):
+            qs = qs.filter(departement_id=departement_id)
+        return qs
+
+    @action(detail=False, methods=['post'], url_path='generer')
+    def generer(self, request):
+        departement_id = request.query_params.get('departement') or \
+            request.data.get('departement')
+        horizon = int(request.query_params.get('horizon')
+                      or request.data.get('horizon') or 12)
+        date_reference = request.data.get('date_reference')
+        if not date_reference:
+            from django.utils import timezone
+            date_reference = timezone.now().date().replace(day=1)
+        prevision, _ = PrevisionGlissante.objects.get_or_create(
+            company=request.user.company,
+            date_reference=date_reference,
+            departement_id=departement_id or None,
+            defaults={'horizon_mois': horizon},
+        )
+        if prevision.horizon_mois != horizon:
+            prevision.horizon_mois = horizon
+            prevision.save(update_fields=['horizon_mois'])
+        from .services import generer_prevision_glissante
+        generer_prevision_glissante(prevision)
+        prevision.refresh_from_db()
+        return Response(PrevisionGlissanteSerializer(prevision).data)
+
+
+class LignePrevisionGlissanteViewSet(TenantMixin, viewsets.ModelViewSet):
+    """NTFPA8 — édition directe des points d'une prévision glissante (une
+    modification manuelle pose ``source='manuel'``, jamais réécrasée)."""
+
+    queryset = LignePrevisionGlissante.objects.all()
+    serializer_class = LignePrevisionGlissanteSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if prevision_id := self.request.query_params.get('prevision'):
+            qs = qs.filter(prevision_id=prevision_id)
+        return qs

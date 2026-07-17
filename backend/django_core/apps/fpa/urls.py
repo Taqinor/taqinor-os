@@ -3,6 +3,7 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     CycleBudgetaireViewSet, DepartementViewSet, LigneBudgetDepartementViewSet,
+    LignePrevisionGlissanteViewSet, PrevisionGlissanteViewSet,
     SoumissionBudgetDepartementViewSet,
 )
 
@@ -17,6 +18,12 @@ router.register(
 router.register(
     r'soumissions-budget', SoumissionBudgetDepartementViewSet,
     basename='fpa-soumission-budget')
+router.register(
+    r'previsions-glissantes', PrevisionGlissanteViewSet,
+    basename='fpa-prevision-glissante')
+router.register(
+    r'lignes-prevision-glissante', LignePrevisionGlissanteViewSet,
+    basename='fpa-ligne-prevision-glissante')
 
 urlpatterns = [
     path('', include(router.urls)),

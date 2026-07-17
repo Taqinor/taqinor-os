@@ -2,7 +2,7 @@ from rest_framework import serializers
 
 from .models import (
     CycleBudgetaire, Departement, LigneBudgetDepartement,
-    SoumissionBudgetDepartement,
+    LignePrevisionGlissante, PrevisionGlissante, SoumissionBudgetDepartement,
 )
 
 
@@ -59,3 +59,25 @@ class SoumissionBudgetDepartementSerializer(serializers.ModelSerializer):
             'soumis_par', 'soumis_le', 'valide_par', 'valide_le',
         ]
         read_only_fields = fields
+
+
+class LignePrevisionGlissanteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = LignePrevisionGlissante
+        fields = [
+            'id', 'company', 'prevision', 'mois_relatif', 'categorie',
+            'montant_prevu', 'source',
+        ]
+        read_only_fields = ['id', 'company']
+
+
+class PrevisionGlissanteSerializer(serializers.ModelSerializer):
+    lignes = LignePrevisionGlissanteSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = PrevisionGlissante
+        fields = [
+            'id', 'company', 'date_reference', 'horizon_mois', 'departement',
+            'date_creation', 'date_modification', 'lignes',
+        ]
+        read_only_fields = ['id', 'company', 'date_creation', 'date_modification']

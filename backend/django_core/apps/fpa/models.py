@@ -254,3 +254,118 @@ class SoumissionBudgetDepartement(models.Model):
 
     def __str__(self):
         return f'{self.departement_id} / cycle {self.cycle_id} — {self.statut}'
+
+
+# NB — modèle construit un peu en avance sur son ticket NTFPA21 (« Mapping
+# catégorie FP&A ↔ compte CGNC ») : NTFPA8 (prévision glissante) et NTFPA19
+# (variance budget vs réel) en ont besoin plus tôt dans la file pour lire le
+# réel comptable par catégorie sans coder en dur le plan CGNC. NTFPA21 ajoute
+# le ViewSet/serializer/urls ; le modèle lui-même est DÉJÀ complet ici.
+DEFAULT_COMPTE_CGNC_PREFIXES = {
+    Categorie.MASSE_SALARIALE: ('617',),
+    Categorie.MARKETING: ('622',),
+    Categorie.IT: ('613',),
+    Categorie.FRAIS_GENERAUX: ('61', '62'),
+    Categorie.INVESTISSEMENT: ('23',),
+    Categorie.AUTRE: (),
+}
+
+
+class MappingCategorieCompte(models.Model):
+    """NTFPA21 — Mapping catégorie budgétaire FP&A ↔ préfixe de compte CGNC.
+
+    Une catégorie peut être couverte par PLUSIEURS préfixes de compte (ex.
+    « frais_generaux » → 61 et 62). Sans ligne pour une catégorie donnée, le
+    repli est ``DEFAULT_COMPTE_CGNC_PREFIXES`` (comportement additif, jamais
+    bloquant)."""
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='fpa_mappings_categorie_compte', verbose_name='Société',
+    )
+    categorie = models.CharField(
+        max_length=20, choices=Categorie.choices, verbose_name='Catégorie FP&A')
+    compte_cgnc_prefixe = models.CharField(
+        max_length=10, verbose_name='Préfixe de compte CGNC')
+    compte_cgnc_libelle = models.CharField(
+        max_length=150, blank=True, default='', verbose_name='Libellé du compte')
+
+    class Meta:
+        verbose_name = 'Mapping catégorie ↔ compte CGNC'
+        ordering = ['categorie', 'compte_cgnc_prefixe']
+
+    def __str__(self):
+        return f'{self.categorie} → {self.compte_cgnc_prefixe}'
+
+
+class PrevisionGlissante(models.Model):
+    """NTFPA8 — Prévision glissante (rolling forecast) 12-18 mois."""
+
+    HORIZONS = [(12, '12 mois'), (18, '18 mois')]
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='fpa_previsions_glissantes', verbose_name='Société',
+    )
+    date_reference = models.DateField(verbose_name='Mois de départ')
+    horizon_mois = models.PositiveSmallIntegerField(
+        choices=HORIZONS, default=12, verbose_name='Horizon (mois)')
+    departement = models.ForeignKey(
+        Departement, on_delete=models.CASCADE, null=True, blank=True,
+        related_name='previsions_glissantes',
+        verbose_name='Département (vide = vue globale)',
+    )
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Prévision glissante'
+        ordering = ['-date_reference']
+
+    def __str__(self):
+        dept = self.departement_id or 'global'
+        return f'Prévision {dept} — {self.date_reference} ({self.horizon_mois}m)'
+
+
+class SourcePrevision(models.TextChoices):
+    MANUEL = 'manuel', 'Manuel'
+    DRIVER = 'driver', 'Driver'
+    STATISTIQUE = 'statistique', 'Statistique'
+
+
+class LignePrevisionGlissante(models.Model):
+    """NTFPA8 — Point mensuel d'une prévision glissante.
+
+    ``source='manuel'`` marque un ajustement humain qu'une régénération
+    (``services.generer_prevision_glissante``) ne doit JAMAIS écraser."""
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='fpa_lignes_prevision_glissante', verbose_name='Société',
+    )
+    prevision = models.ForeignKey(
+        PrevisionGlissante, on_delete=models.CASCADE,
+        related_name='lignes', verbose_name='Prévision glissante',
+    )
+    mois_relatif = models.PositiveSmallIntegerField(
+        verbose_name='Mois relatif (1..horizon)')
+    categorie = models.CharField(
+        max_length=20, choices=Categorie.choices, verbose_name='Catégorie')
+    montant_prevu = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0, verbose_name='Montant prévu')
+    source = models.CharField(
+        max_length=15, choices=SourcePrevision.choices,
+        default=SourcePrevision.STATISTIQUE, verbose_name='Source',
+    )
+
+    class Meta:
+        verbose_name = 'Ligne de prévision glissante'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['prevision', 'mois_relatif', 'categorie'],
+                name='fpa_ligne_prevision_glissante_unique'),
+        ]
+        ordering = ['mois_relatif', 'categorie']
+
+    def __str__(self):
+        return f'{self.prevision_id} M+{self.mois_relatif} {self.categorie}'

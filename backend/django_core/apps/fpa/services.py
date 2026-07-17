@@ -106,3 +106,59 @@ def dupliquer_cycle_precedent(company, cycle_source, nouveau_nom):
         for ligne in lignes
     ])
     return nouveau
+
+
+def _prefixes_pour_categorie(company, categorie):
+    """NTFPA21 — préfixes de compte CGNC couvrant une catégorie FP&A : le
+    mapping configuré s'il existe, sinon le repli par défaut."""
+    from .models import DEFAULT_COMPTE_CGNC_PREFIXES, MappingCategorieCompte
+
+    mappes = list(
+        MappingCategorieCompte.objects
+        .filter(company=company, categorie=categorie)
+        .values_list('compte_cgnc_prefixe', flat=True))
+    if mappes:
+        return tuple(mappes)
+    return DEFAULT_COMPTE_CGNC_PREFIXES.get(categorie, ())
+
+
+def generer_prevision_glissante(prevision):
+    """NTFPA8 — pré-remplit les mois futurs d'une prévision glissante à partir
+    de la moyenne glissante des 3 derniers mois réels (lue via
+    ``apps.compta.selectors`` — jamais un import de ``compta.models``).
+
+    Les lignes ``source='manuel'`` déjà saisies ne sont JAMAIS écrasées : une
+    régénération mensuelle préserve tous les ajustements humains."""
+    from apps.compta.selectors import moyenne_mensuelle_par_prefixes
+
+    from .models import Categorie, LignePrevisionGlissante, SourcePrevision
+
+    company = prevision.company
+    existantes_manuelles = set(
+        LignePrevisionGlissante.objects
+        .filter(prevision=prevision, source=SourcePrevision.MANUEL)
+        .values_list('mois_relatif', 'categorie'))
+
+    # Moyenne de référence par catégorie (constante sur l'horizon — un point de
+    # départ éditable, pas une projection sophistiquée).
+    moyennes = {}
+    for categorie, _ in Categorie.choices:
+        prefixes = _prefixes_pour_categorie(company, categorie)
+        moyennes[categorie] = moyenne_mensuelle_par_prefixes(
+            company, prefixes, prevision.date_reference, n_mois=3)
+
+    crees = 0
+    for mois_relatif in range(1, prevision.horizon_mois + 1):
+        for categorie, _ in Categorie.choices:
+            if (mois_relatif, categorie) in existantes_manuelles:
+                continue
+            LignePrevisionGlissante.objects.update_or_create(
+                company=company, prevision=prevision,
+                mois_relatif=mois_relatif, categorie=categorie,
+                defaults={
+                    'montant_prevu': moyennes.get(categorie, 0),
+                    'source': SourcePrevision.STATISTIQUE,
+                },
+            )
+            crees += 1
+    return crees
