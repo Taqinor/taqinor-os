@@ -25,6 +25,13 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
 
+from core.models import TenantModel
+
+
+def _comptes_frais_defaut():
+    """NTTRE28 — comptes de frais bancaires suivis par défaut (CGNC 6147)."""
+    return ['6147']
+
 
 # ── FG107 / COMPTA1 — Plan comptable CGNC ──────────────────────────────────
 
@@ -631,6 +638,15 @@ class CompteTresorerie(models.Model):
         verbose_name='Compte comptable',
     )
     actif = models.BooleanField(default=True, verbose_name='Actif')
+    # ── NTTRE8 — seuils d'alerte de position (nullable = pas de surveillance) ──
+    seuil_alerte_bas = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        verbose_name="Seuil d'alerte bas",
+        help_text='Notifie quand le solde passe sous ce seuil (vide = aucune).')
+    seuil_alerte_decouvert = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        verbose_name='Seuil de découvert',
+        help_text='Notifie quand le solde passe sous ce seuil (vide = aucune).')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -1964,6 +1980,12 @@ class Effet(models.Model):
         verbose_name="Bénéficiaire de l'endossement")
     date_endossement = models.DateField(
         null=True, blank=True, verbose_name="Date de l'endossement")
+    # ── NTTRE7 — Protêt (constat d'huissier sur un effet impayé) ──
+    date_protet = models.DateField(
+        null=True, blank=True, verbose_name='Date du protêt')
+    frais_protet = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Frais de protêt')
 
     class Meta:
         verbose_name = 'Effet (chèque / traite)'
@@ -2201,6 +2223,8 @@ class PaymentRun(models.Model):
     class Statut(models.TextChoices):
         BROUILLON = 'brouillon', 'Brouillon'
         PROPOSEE = 'proposee', 'Proposition figée'
+        # ── NTTRE5 — étape intermédiaire du workflow à 4 yeux ──
+        EN_ATTENTE_APPROBATION = 'en_attente_approbation', "En attente d'approbation"
         POSTEE = 'postee', 'Postée au grand livre'
 
     company = models.ForeignKey(
@@ -2224,7 +2248,7 @@ class PaymentRun(models.Model):
     )
     date_paiement = models.DateField(verbose_name='Date de paiement')
     statut = models.CharField(
-        max_length=12, choices=Statut.choices,
+        max_length=24, choices=Statut.choices,
         default=Statut.BROUILLON, verbose_name='Statut')
     total = models.DecimalField(
         max_digits=14, decimal_places=2, default=Decimal('0'),
@@ -2247,6 +2271,29 @@ class PaymentRun(models.Model):
         related_name='compta_payment_runs_crees',
         verbose_name='Créée par',
     )
+    # ── NTTRE5 — workflow à 4 yeux (deux approbateurs distincts) ──
+    # (``statut`` élargi à 24 pour accueillir « en_attente_approbation ».)
+    # SET_NULL nullable vers CustomUser : approbateur conservé nullable si le
+    # compte est supprimé (traçabilité seule, ce n'est pas une identité
+    # propriétaire/tenant — non concerné par la garde SET_NULL_ON_TENANT_FIELD).
+    approbateur_1 = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='compta_payment_runs_approuves_1',
+        verbose_name='Premier approbateur',
+    )
+    date_approbation_1 = models.DateTimeField(
+        null=True, blank=True, verbose_name='Première approbation le')
+    approbateur_2 = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='compta_payment_runs_approuves_2',
+        verbose_name='Second approbateur',
+    )
+    date_approbation_2 = models.DateTimeField(
+        null=True, blank=True, verbose_name='Seconde approbation le')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créée le')
 
@@ -2262,6 +2309,12 @@ class PaymentRun(models.Model):
     @property
     def est_postee(self):
         return self.statut == self.Statut.POSTEE
+
+    @property
+    def approbations_distinctes(self):
+        """NTTRE5 — True si deux approbateurs DISTINCTS ont validé la campagne."""
+        return bool(self.approbateur_1_id and self.approbateur_2_id
+                    and self.approbateur_1_id != self.approbateur_2_id)
 
 
 class PaymentRunLine(models.Model):
@@ -6695,3 +6748,123 @@ from apps.marketing.models import (  # noqa: E402,F401
     SuppressionMarketing,
     TypeEvenement,
 )
+
+
+# ── NTTRE6 — Registre des pouvoirs bancaires (signataires autorisés) ────────
+
+class PouvoirBancaire(TenantModel):
+    """Signataire habilité sur un compte de trésorerie (NTTRE6).
+
+    Registre des pouvoirs bancaires : qui peut engager la société sur quel
+    compte, et jusqu'à quel plafond seul ou en signature conjointe. Consommé par
+    le workflow à 4 yeux (NTTRE5) : un ``PaymentRun`` dont le montant dépasse le
+    ``plafond_signature_seul`` du premier approbateur exige une seconde
+    signature, même si la double validation société est désactivée. Hérite de
+    ``core.models.TenantModel`` (company + horodatage).
+    """
+    class Statut(models.TextChoices):
+        ACTIF = 'actif', 'Actif'
+        REVOQUE = 'revoque', 'Révoqué'
+
+    compte_tresorerie = models.ForeignKey(
+        CompteTresorerie,
+        # on_delete: PROTECT — un pouvoir bancaire trace une habilitation
+        # réglementaire ; on n'efface jamais un compte encore couvert par un
+        # pouvoir (le compte doit être clos explicitement d'abord).
+        on_delete=models.PROTECT,
+        related_name='pouvoirs_bancaires',
+        verbose_name='Compte de trésorerie',
+    )
+    titulaire_nom = models.CharField(
+        max_length=160, verbose_name='Titulaire (nom)')
+    titulaire_cin = models.CharField(
+        max_length=40, blank=True, default='', verbose_name='CIN du titulaire')
+    # Titulaire éventuellement rattaché à un utilisateur ERP (approbateur).
+    utilisateur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        # on_delete: SET_NULL — le lien vers le compte ERP est facultatif ;
+        # supprimer l'utilisateur ne doit pas effacer l'habilitation (le nom /
+        # CIN restent la référence réglementaire).
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='pouvoirs_bancaires',
+        verbose_name='Utilisateur ERP',
+    )
+    plafond_signature_seul = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Plafond signature seul',
+        help_text='Montant max engageable seul (0 = aucune signature seule).')
+    plafond_signature_conjointe = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Plafond signature conjointe')
+    date_debut = models.DateField(
+        null=True, blank=True, verbose_name='Début de validité')
+    date_fin = models.DateField(
+        null=True, blank=True, verbose_name='Fin de validité')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.ACTIF,
+        verbose_name='Statut')
+
+    class Meta:
+        verbose_name = 'Pouvoir bancaire'
+        verbose_name_plural = 'Pouvoirs bancaires'
+        ordering = ['titulaire_nom', 'id']
+
+    def __str__(self):
+        return f'{self.titulaire_nom} — {self.compte_tresorerie_id} ({self.statut})'
+
+    @property
+    def est_actif(self):
+        return self.statut == self.Statut.ACTIF
+
+
+# ── NTTRE27 — Réglages trésorerie par société (singleton) ───────────────────
+
+class ParametresTresorerie(TenantModel):
+    """Réglages du module trésorerie, un par société (NTTRE27/28).
+
+    Singleton par société (contrainte d'unicité sur ``company`` + accès
+    ``services.get_parametres_tresorerie`` en get-or-create). Centralise les
+    options par défaut consommées par les autres tâches NTTRE : double
+    validation des campagnes de paiement (NTTRE5), délai d'alerte de rupture
+    (NTTRE18/29), format d'export de virement par défaut (NTTRE14), scénario
+    prévisionnel par défaut (NTTRE16), et comptes de frais bancaires suivis
+    (NTTRE9/28). Une société sans réglage obtient les valeurs par défaut
+    actuelles — aucune régression. Hérite de ``core.models.TenantModel``.
+    """
+    class FormatExport(models.TextChoices):
+        CSV = 'csv', 'CSV générique'
+        BANCAIRE = 'bancaire', 'Format banque marocaine (largeur fixe)'
+
+    class Scenario(models.TextChoices):
+        REALISTE = 'realiste', 'Réaliste'
+        OPTIMISTE = 'optimiste', 'Optimiste'
+        PESSIMISTE = 'pessimiste', 'Pessimiste'
+
+    double_validation_paiement_actif = models.BooleanField(
+        default=False, verbose_name='Double validation des paiements',
+        help_text='NTTRE5 — exige deux approbateurs distincts avant de poster '
+                  'une campagne de règlement.')
+    delai_alerte_rupture_jours = models.PositiveIntegerField(
+        default=14, verbose_name='Délai alerte rupture (jours)')
+    format_export_virement_defaut = models.CharField(
+        max_length=10, choices=FormatExport.choices,
+        default=FormatExport.CSV, verbose_name='Format export virement')
+    scenario_previsionnel_defaut = models.CharField(
+        max_length=12, choices=Scenario.choices,
+        default=Scenario.REALISTE, verbose_name='Scénario prévisionnel')
+    comptes_frais_bancaires = models.JSONField(
+        default=_comptes_frais_defaut, blank=True,
+        verbose_name='Comptes de frais bancaires (CGNC)',
+        help_text='Numéros de compte suivis par l\'analyse des frais (NTTRE9).')
+
+    class Meta:
+        verbose_name = 'Paramètres trésorerie'
+        verbose_name_plural = 'Paramètres trésorerie'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company'], name='uniq_parametres_tresorerie_company'),
+        ]
+
+    def __str__(self):
+        return f'Paramètres trésorerie — société {self.company_id}'

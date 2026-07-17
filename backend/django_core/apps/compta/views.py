@@ -12,7 +12,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import IntegrityError
 from django.http import HttpResponse
 
-from rest_framework import filters, status, viewsets
+from rest_framework import filters, generics, status, viewsets
 from rest_framework.decorators import (
     action, api_view, permission_classes, throttle_classes,
 )
@@ -43,7 +43,8 @@ from .models import (
     Journal,
     LignePrevisionnelTresorerie, LigneReleve, MessageWhatsAppEntrant,
     ModeleDevis, MouvementCaisse, NoteFrais, OuverturePartage, PostSocial,
-    PaymentRun, PeriodeComptable, PlafondNoteFrais, PlanComptable, Provision,
+    PaymentRun, PeriodeComptable, PlafondNoteFrais,
+    PlanComptable, PouvoirBancaire, Provision,
     ProvisionCreance, RapportNoteFrais,
     Rapprochement, RapprochementBancaire, RelanceDevisAbandonne,
     RetenueGarantie, RetenueSource, SequenceRelance, SessionGuidedSelling,
@@ -105,7 +106,8 @@ from .serializers import (
     LignePrevisionnelTresorerieSerializer, LigneReleveSerializer,
     MessageWhatsAppEntrantSerializer, ModeleDevisSerializer,
     MouvementCaisseSerializer, NoteFraisSerializer, OuverturePartageSerializer,
-    PaymentRunSerializer,
+    ParametresTresorerieSerializer, PaymentRunSerializer,
+    PouvoirBancaireSerializer,
     PeriodeComptableSerializer, PlanAmortissementSerializer,
     PlafondNoteFraisSerializer,
     PlanComptableSerializer, ProvisionSerializer, ProvisionCreanceSerializer,
@@ -2590,6 +2592,26 @@ class EffetViewSet(_ComptaBaseViewSet):
                 status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(effet).data)
 
+    @action(detail=True, methods=['post'], url_path='constater-protet')
+    def constater_protet(self, request, pk=None):
+        """NTTRE7 — Constate un protêt (constat d'huissier) sur un effet impayé.
+
+        Corps : ``{frais_protet?, date_protet?}``. L'effet doit être ``impaye``.
+        Distinct du simple rejet FG130 : trace les frais + la date de protêt.
+        """
+        effet = self.get_object()  # scopé société par TenantMixin.
+        try:
+            effet = services.constater_protet(
+                effet,
+                frais_protet=request.data.get('frais_protet'),
+                date_protet=request.data.get('date_protet') or None,
+                user=request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(effet).data)
+
 
 # ── FG129 — Bordereau de remise en banque ──────────────────────────────────
 
@@ -2837,6 +2859,37 @@ class PaymentRunViewSet(_ComptaBaseViewSet):
         run.refresh_from_db()
         return Response(self.get_serializer(run).data)
 
+    @action(detail=True, methods=['post'])
+    def approuver(self, request, pk=None):
+        """NTTRE5 — Première approbation (approbateur ≠ créateur).
+
+        Contrôle à 4 yeux : le premier approbateur ne peut pas être le créateur.
+        Fige la campagne en ``en_attente_approbation``.
+        """
+        run = self.get_object()  # scopé société par TenantMixin.
+        try:
+            run = services.approuver_payment_run(run, request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(run).data)
+
+    @action(detail=True, methods=['post'], url_path='approuver-final')
+    def approuver_final(self, request, pk=None):
+        """NTTRE5 — Seconde approbation (approbateur ≠ premier ≠ créateur).
+
+        Rend la campagne éligible au posting (contrôle à 4 yeux complet).
+        """
+        run = self.get_object()  # scopé société par TenantMixin.
+        try:
+            run = services.approuver_final_payment_run(run, request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(run).data)
+
     @action(detail=True, methods=['get'], url_path='fichier-virement')
     def fichier_virement(self, request, pk=None):
         """Exporte l'ordre de virement bancaire de la campagne (FG134).
@@ -2861,6 +2914,72 @@ class PaymentRunViewSet(_ComptaBaseViewSet):
         resp['Content-Disposition'] = (
             f'attachment; filename="virements_{run.reference or run.id}.csv"')
         return resp
+
+
+# ── NTTRE6 — Registre des pouvoirs bancaires (signataires autorisés) ────────
+
+class PouvoirBancaireViewSet(_ComptaBaseViewSet):
+    """Pouvoirs bancaires / signataires autorisés (NTTRE6).
+
+    CRUD des habilitations de signature par compte de trésorerie, consommées par
+    le workflow à 4 yeux (NTTRE5). Société scopée, posée côté serveur ;
+    Admin/Responsable. La lecture reste ouverte ; la modification des signataires
+    exige ``compta_gerer_pouvoirs_bancaires`` (NTTRE32) — octroyé par défaut au
+    Responsable/Admin via le repli légal, restreint pour un rôle explicitement
+    privé du code.
+    """
+    queryset = PouvoirBancaire.objects.select_related(
+        'compte_tresorerie', 'utilisateur').all()
+    serializer_class = PouvoirBancaireSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['titulaire_nom', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        compte = params.get('compte_tresorerie')
+        if compte:
+            qs = qs.filter(compte_tresorerie_id=compte)
+        statut = params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def get_permissions(self):
+        # NTTRE32 — la modification des signataires exige une permission dédiée
+        # (distincte de la gestion trésorerie générique) ; la lecture reste
+        # ouverte à Admin/Responsable.
+        if self.action in (
+                'create', 'update', 'partial_update', 'destroy', 'revoquer'):
+            return [HasPermissionOrLegacy('compta_gerer_pouvoirs_bancaires')()]
+        return super().get_permissions()
+
+    @action(detail=True, methods=['post'])
+    def revoquer(self, request, pk=None):
+        """NTTRE6/42 — Révoque un pouvoir bancaire (statut → révoqué, audité)."""
+        pouvoir = self.get_object()  # scopé société par TenantMixin.
+        pouvoir.statut = PouvoirBancaire.Statut.REVOQUE
+        pouvoir.save(update_fields=['statut', 'updated_at'])
+        services._auditer_action_sensible(
+            pouvoir, request.user, 'pouvoir_bancaire.revocation')
+        return Response(self.get_serializer(pouvoir).data)
+
+
+# ── NTTRE27 — Réglages trésorerie par société (singleton) ───────────────────
+
+class ParametresTresorerieView(generics.RetrieveUpdateAPIView):
+    """Réglages trésorerie de la société (NTTRE27), singleton auto-créé.
+
+    ``GET`` renvoie le réglage (créé avec les valeurs par défaut à la première
+    lecture — aucune régression) ; ``PATCH`` le met à jour. Société scopée, posée
+    côté serveur ; Admin/Responsable.
+    """
+    http_method_names = ['get', 'patch', 'head', 'options']
+    serializer_class = ParametresTresorerieSerializer
+    permission_classes = [IsResponsableOrAdmin]
+
+    def get_object(self):
+        return services.get_parametres_tresorerie(self.request.user.company)
 
 
 # ── FG135 — Notes de frais & remboursements employés ───────────────────────

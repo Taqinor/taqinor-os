@@ -35,7 +35,7 @@ from .views import (
     IndemniteChantierViewSet, JournalViewSet,
     LignePrevisionnelTresorerieViewSet, MessageWhatsAppEntrantViewSet,
     ModeleDevisViewSet, NoteFraisViewSet, OuverturePartageViewSet,
-    PaymentRunViewSet,
+    ParametresTresorerieView, PaymentRunViewSet, PouvoirBancaireViewSet,
     PeriodeComptableViewSet, PilotageViewSet, PlafondNoteFraisViewSet,
     PlanComptableViewSet,
     ProvisionCreanceViewSet, ProvisionViewSet,
@@ -92,6 +92,7 @@ router.register(r'previsionnel', LignePrevisionnelTresorerieViewSet)
 router.register(r'effets', EffetViewSet)
 router.register(r'bordereaux', BordereauRemiseViewSet)
 router.register(r'payment-runs', PaymentRunViewSet)
+router.register(r'pouvoirs-bancaires', PouvoirBancaireViewSet)
 router.register(r'notes-frais', NoteFraisViewSet)
 router.register(r'rapports-notes-frais', RapportNoteFraisViewSet)
 router.register(r'plafonds-notes-frais', PlafondNoteFraisViewSet)
@@ -232,5 +233,8 @@ urlpatterns = [
          name='portail-mon-releve-pdf'),
     path('portail/<str:token>/factures/<int:facture_id>/contester/',
          portail_contester_facture, name='portail-contester-facture'),
+    # NTTRE27 — réglages trésorerie (singleton par société, GET/PATCH).
+    path('parametres-tresorerie/', ParametresTresorerieView.as_view(),
+         name='parametres-tresorerie'),
     path('', include(router.urls)),
 ]

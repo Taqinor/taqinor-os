@@ -1195,6 +1195,41 @@ def position_tresorerie(company, *, date_fin=None, validees_seulement=False):
     return {'comptes': comptes, 'total': total, 'encours_emprunts': encours_emprunts}
 
 
+def comptes_sous_seuil(company, *, date_fin=None):
+    """NTTRE8 — Comptes de trésorerie dont le solde courant est sous un seuil.
+
+    Pour chaque ``CompteTresorerie`` actif portant un ``seuil_alerte_bas`` ou un
+    ``seuil_alerte_decouvert``, compare le solde courant (solde_initial +
+    mouvements GL, comme ``position_tresorerie``). Renvoie la liste des comptes
+    en alerte : ``[{'id', 'libelle', 'solde', 'seuil_alerte_bas',
+    'seuil_alerte_decouvert', 'sous_bas', 'sous_decouvert'}]``. Lecture seule,
+    scopée société.
+    """
+    resultat = []
+    treso_qs = CompteTresorerie.objects.filter(
+        company=company, actif=True).select_related('compte_comptable')
+    for treso in treso_qs:
+        seuil_bas = treso.seuil_alerte_bas
+        seuil_dec = treso.seuil_alerte_decouvert
+        if seuil_bas is None and seuil_dec is None:
+            continue
+        solde = (treso.solde_initial or Decimal('0')) + solde_compte(
+            company, treso.compte_comptable, date_fin=date_fin)
+        sous_bas = seuil_bas is not None and solde < seuil_bas
+        sous_dec = seuil_dec is not None and solde < seuil_dec
+        if sous_bas or sous_dec:
+            resultat.append({
+                'id': treso.id,
+                'libelle': treso.libelle,
+                'solde': solde,
+                'seuil_alerte_bas': seuil_bas,
+                'seuil_alerte_decouvert': seuil_dec,
+                'sous_bas': sous_bas,
+                'sous_decouvert': sous_dec,
+            })
+    return resultat
+
+
 def projection_tresorerie(company, *, date_fin=None, validees_seulement=False):
     """Projection nette de trésorerie : position actuelle ± AR/AP/paie/impôts.
 

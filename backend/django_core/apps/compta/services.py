@@ -3082,7 +3082,66 @@ def poster_virement(virement, *, user=None):
     virement.posted = True
     virement.ecriture = ecriture
     virement.save(update_fields=['posted', 'ecriture'])
+    # NTTRE8 — après l'écriture GL, vérifie les seuils d'alerte des comptes
+    # impactés (source + destination) et notifie une fois par jour au maximum.
+    notifier_comptes_sous_seuil(company, user=user)
     return virement.ecriture
+
+
+def notifier_comptes_sous_seuil(company, *, user=None):
+    """NTTRE8 — Notifie (une fois/jour/compte) les comptes passés sous leur seuil.
+
+    S'appuie sur le sélecteur ``selectors.comptes_sous_seuil`` (lecture GL) et
+    l'infrastructure ``notifications.notify`` existante — aucun nouveau canal ni
+    nouveau type d'événement. Dé-doublonne : si une notification pour ce compte a
+    déjà été émise le jour même, elle n'est pas répétée. Renvoie la liste des
+    ``compte_id`` effectivement notifiés (best-effort, ne lève jamais).
+    """
+    from . import selectors
+    try:  # pragma: no cover - défensif : ne jamais casser un posting GL
+        from apps.notifications.models import EventType, Notification
+        from apps.notifications.services import notify
+    except Exception:  # pragma: no cover
+        return []
+
+    breaches = selectors.comptes_sous_seuil(company)
+    if not breaches:
+        return []
+    destinataires = _destinataires_alerte_tresorerie(company, user)
+    if not destinataires:
+        return []
+    aujourdhui = timezone.now().date()
+    event = EventType.FLOTTE_BUDGET_DEPASSEMENT  # réutilise un type existant
+    notifies = []
+    for compte in breaches:
+        lien = f'/compta/tresorerie?compte={compte["id"]}'
+        deja = Notification.objects.filter(
+            company=company, event_type=event, link=lien,
+            created_at__date=aujourdhui).exists()
+        if deja:
+            continue
+        titre = f"Compte « {compte['libelle']} » sous son seuil d'alerte"
+        corps = (f"Solde courant : {compte['solde']} — "
+                 f"seuil bas : {compte['seuil_alerte_bas']}, "
+                 f"seuil découvert : {compte['seuil_alerte_decouvert']}.")
+        for dest in destinataires:
+            notify(dest, event, titre, body=corps[:2000], link=lien,
+                   company=company)
+        notifies.append(compte['id'])
+    return notifies
+
+
+def _destinataires_alerte_tresorerie(company, user):
+    """Destinataires d'une alerte de trésorerie : les admins/responsables de la
+    société (repli sur ``user`` si aucun n'est trouvé)."""
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
+    dests = list(User.objects.filter(
+        company=company, is_active=True,
+        role_legacy__in=['admin', 'responsable']))
+    if not dests and user is not None:
+        dests = [user]
+    return dests
 
 
 # ── FG126 — Prévisionnel de trésorerie roulant 13 semaines ─────────────────
@@ -3350,6 +3409,33 @@ def endosser_effet(effet, *, beneficiaire, date_endossement=None, user=None):
     effet.date_endossement = date_endossement or timezone.now().date()
     effet.save(update_fields=[
         'statut', 'beneficiaire_endossement', 'date_endossement'])
+    _auditer_action_sensible(
+        effet, user, 'effet.endossement',
+        detail=f'beneficiaire={beneficiaire}')
+    return effet
+
+
+def constater_protet(effet, *, frais_protet=None, date_protet=None, user=None):
+    """NTTRE7 — Constate un protêt (constat d'huissier) sur un effet impayé.
+
+    DISTINCT du simple rejet (``rejeter_effet``, FG130) : le protêt est l'acte
+    d'huissier qui ouvre la voie du recouvrement forcé. Il ne change PAS le
+    statut de l'effet (qui reste ``impaye``) — il enregistre la date et les
+    frais de protêt pour la traçabilité. L'effet doit d'abord être ``impaye``.
+    Journalise via ``AuditLog`` (NTTRE42). Renvoie l'effet.
+    """
+    if effet.statut != Effet.Statut.IMPAYE:
+        raise ValidationError(
+            "Un protêt ne se constate que sur un effet impayé (constater "
+            "d'abord le rejet).")
+    frais = Decimal(frais_protet or 0)
+    if frais < 0:
+        raise ValidationError("Les frais de protêt doivent être positifs.")
+    effet.date_protet = date_protet or timezone.now().date()
+    effet.frais_protet = frais
+    effet.save(update_fields=['date_protet', 'frais_protet'])
+    _auditer_action_sensible(
+        effet, user, 'effet.protet', detail=f'frais={frais}')
     return effet
 
 
@@ -3909,6 +3995,11 @@ def poster_payment_run(run, *, user=None):
         raise ValidationError(
             "Période comptable clôturée : impossible de poster la campagne "
             f"du {run.date_paiement}.")
+    # ── NTTRE5/6 — contrôle à 4 yeux (double validation) ──
+    if double_validation_requise(run) and not run.approbations_distinctes:
+        raise ValidationError(
+            "Double validation requise : deux approbateurs DISTINCTS et "
+            "habilités doivent approuver cette campagne avant de la poster.")
     journal = _journal(company, Journal.Type.BANQUE)
     if journal is None:
         seed_journaux(company)
@@ -3956,6 +4047,122 @@ def poster_payment_run(run, *, user=None):
             montant=ligne.montant, date_paiement=run.date_paiement,
             user=user)
     return ecriture
+
+
+# ── NTTRE27 — Réglages trésorerie (singleton par société, auto-créé) ────────
+
+def get_parametres_tresorerie(company):
+    """NTTRE27 — Réglages trésorerie de la société (get-or-create singleton).
+
+    Une société sans réglage explicite obtient les valeurs par défaut (aucune
+    régression). Consommé par NTTRE5 (double validation), NTTRE9/28 (comptes de
+    frais), NTTRE14 (format export), NTTRE16 (scénario), NTTRE18 (délai rupture).
+    """
+    from .models import ParametresTresorerie
+    params, _ = ParametresTresorerie.objects.get_or_create(company=company)
+    return params
+
+
+# ── NTTRE5/6 — Workflow à 4 yeux sur les campagnes de paiement ──────────────
+
+def _pouvoir_bancaire_actif(run, user):
+    """PouvoirBancaire ACTIF de ``user`` sur le compte payeur du run (ou None)."""
+    from .models import PouvoirBancaire
+    if user is None or run.compte_tresorerie_id is None:
+        return None
+    return (PouvoirBancaire.objects
+            .filter(company=run.company, compte_tresorerie_id=run.compte_tresorerie_id,
+                    utilisateur=user, statut=PouvoirBancaire.Statut.ACTIF)
+            .order_by('-id').first())
+
+
+def double_validation_requise(run):
+    """NTTRE5/6 — True si le run exige deux approbateurs distincts.
+
+    Deux déclencheurs INDÉPENDANTS :
+      * le réglage société ``double_validation_paiement_actif`` (NTTRE5) ;
+      * un plafond (NTTRE6) : le premier approbateur a un ``PouvoirBancaire``
+        dont ``plafond_signature_seul`` est inférieur au total du run — il ne
+        peut alors PAS engager seul, une seconde signature habilitée est exigée
+        même si le réglage société est désactivé.
+    Sans réglage ni pouvoir enregistré, retourne False (comportement historique
+    inchangé : mono-validation).
+    """
+    params = get_parametres_tresorerie(run.company)
+    if params.double_validation_paiement_actif:
+        return True
+    if run.approbateur_1_id:
+        pouvoir = _pouvoir_bancaire_actif(run, run.approbateur_1)
+        if pouvoir is not None and (run.total or Decimal('0')) > (
+                pouvoir.plafond_signature_seul or Decimal('0')):
+            return True
+    return False
+
+
+def approuver_payment_run(run, user):
+    """NTTRE5 — Première approbation d'une campagne (approbateur ≠ créateur).
+
+    Le premier approbateur ne peut pas être le créateur de la campagne. Fige la
+    campagne en ``en_attente_approbation``. Journalise via ``AuditLog`` (NTTRE42).
+    """
+    if run.est_postee:
+        raise ValidationError("Campagne déjà postée : approbation impossible.")
+    if run.created_by_id and user is not None and run.created_by_id == user.id:
+        raise ValidationError(
+            "Le créateur de la campagne ne peut pas être le premier "
+            "approbateur (contrôle à 4 yeux).")
+    if run.approbateur_1_id:
+        raise ValidationError("Campagne déjà approuvée une première fois.")
+    run.approbateur_1 = user
+    run.date_approbation_1 = timezone.now()
+    if run.statut in (PaymentRun.Statut.BROUILLON, PaymentRun.Statut.PROPOSEE):
+        run.statut = PaymentRun.Statut.EN_ATTENTE_APPROBATION
+    run.save(update_fields=[
+        'approbateur_1', 'date_approbation_1', 'statut'])
+    _auditer_payment_run(run, user, 'approbation_1')
+    return run
+
+
+def approuver_final_payment_run(run, user):
+    """NTTRE5 — Seconde approbation (approbateur ≠ premier ≠ créateur).
+
+    Le second approbateur doit être distinct du premier ET du créateur. Rend la
+    campagne éligible au posting. Journalise via ``AuditLog`` (NTTRE42).
+    """
+    if run.est_postee:
+        raise ValidationError("Campagne déjà postée : approbation impossible.")
+    if not run.approbateur_1_id:
+        raise ValidationError(
+            "Une première approbation est requise avant l'approbation finale.")
+    if user is not None and run.approbateur_1_id == user.id:
+        raise ValidationError(
+            "Le second approbateur doit être distinct du premier.")
+    if run.created_by_id and user is not None and run.created_by_id == user.id:
+        raise ValidationError(
+            "Le créateur ne peut pas être le second approbateur.")
+    run.approbateur_2 = user
+    run.date_approbation_2 = timezone.now()
+    run.save(update_fields=['approbateur_2', 'date_approbation_2'])
+    _auditer_payment_run(run, user, 'approbation_2')
+    return run
+
+
+def _auditer_action_sensible(instance, user, action, detail=''):
+    """NTTRE42 — Trace une action sensible trésorerie dans ``AuditLog``.
+
+    Réutilise le recorder d'audit existant (``apps.audit.recorder.record``,
+    best-effort : ne lève jamais). Utilisé par les approbations de PaymentRun
+    (NTTRE5), la révocation de PouvoirBancaire (NTTRE6) et le protêt (NTTRE7).
+    """
+    from apps.audit.recorder import record
+    record(action, instance=instance, company=instance.company, user=user,
+           detail=detail)
+
+
+def _auditer_payment_run(run, user, action):
+    _auditer_action_sensible(
+        run, user, f'payment_run.{action}',
+        detail=f'statut={run.statut} total={run.total}')
 
 
 def proposer_lignes_payment_run(run, *, date_limite=None):
