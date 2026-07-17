@@ -20,6 +20,7 @@ import { ShieldCheck } from 'lucide-react'
 const ROLES = ['responsable', 'admin']
 
 const PolicesList = lazy(() => import('./PolicesList'))
+const PoliceDetail = lazy(() => import('./PoliceDetail'))
 
 const SC = <ShieldCheck size={17} strokeWidth={1.75} aria-hidden="true" />
 
@@ -40,5 +41,9 @@ export default {
   sectionLabels: { assurances: 'Assurances' },
   routes: [
     { path: '/assurances', component: PolicesList, roles: ROLES },
+    // NTASS26 — fiche police détail (onglets). Placée après la liste ; le
+    // segment `:id` ne capture pas `/assurances/sinistres` (ajouté NTASS27
+    // AVANT cette route dynamique).
+    { path: '/assurances/:id', component: PoliceDetail, roles: ROLES },
   ],
 }
