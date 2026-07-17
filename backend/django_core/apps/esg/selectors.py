@@ -555,6 +555,7 @@ def comparer_periodes(periode_reference, periode_n):
 
 
 __all__ = [
+    'intensite_carbone',
     'agreger_indicateurs_periode',
     'donnees_effectives_periode',
     'couverture_catalogue',
@@ -687,6 +688,3 @@ def intensite_carbone(periode_esg):
                 etp_source, 'tCO2e/ETP', 'effectif_actif'),
         },
     }
-
-
-    'intensite_carbone',
