@@ -19,15 +19,15 @@ from core.viewsets import CompanyScopedModelViewSet
 from .models import (
     ActeMedical, ActeRealise, Admission, Convention, FactureSante,
     GrilleTarifaire, HoraireOuverturePraticien, IndisponibilitePraticien,
-    PaiementSante, Patient, Praticien, PraticienSite, PriseEnCharge,
-    RendezVous, Salle)
+    MotifConsultation, PaiementSante, Patient, Praticien, PraticienSite,
+    PriseEnCharge, RendezVous, Salle)
 from .serializers import (
     ActeMedicalSerializer, ActeRealiseSerializer, AdmissionSerializer,
     ConventionSerializer, FactureSanteSerializer, GrilleTarifaireSerializer,
     HoraireOuverturePraticienSerializer, IndisponibilitePraticienSerializer,
-    PaiementSanteSerializer, PatientSerializer, PraticienSerializer,
-    PraticienSiteSerializer, PriseEnChargeSerializer, RendezVousSerializer,
-    SalleSerializer)
+    MotifConsultationSerializer, PaiementSanteSerializer, PatientSerializer,
+    PraticienSerializer, PraticienSiteSerializer, PriseEnChargeSerializer,
+    RendezVousSerializer, SalleSerializer)
 
 
 class PraticienViewSet(CompanyScopedModelViewSet):
@@ -113,13 +113,21 @@ class RendezVousViewSet(CompanyScopedModelViewSet):
 
     def perform_create(self, serializer):
         data = serializer.validated_data
+        praticien = data.get('praticien')
+        duree_min = data.get('duree_min', 30)
+        # NTSAN35 — si le client n'a PAS envoyé `duree_min` explicitement,
+        # pré-remplit depuis la durée par défaut du praticien sélectionné
+        # (paramétrage clinique) ; un `duree_min` explicite reste TOUJOURS
+        # prioritaire (modifiable manuellement par l'utilisateur).
+        if ('duree_min' not in self.request.data and praticien is not None
+                and praticien.duree_consultation_defaut_min):
+            duree_min = praticien.duree_consultation_defaut_min
         self._guard(
-            praticien=data.get('praticien'), salle=data.get('salle'),
-            date_heure_debut=data['date_heure_debut'],
-            duree_min=data.get('duree_min', 30))
+            praticien=praticien, salle=data.get('salle'),
+            date_heure_debut=data['date_heure_debut'], duree_min=duree_min)
         serializer.save(
             company=self.request.user.company,
-            cree_par=self.request.user)
+            cree_par=self.request.user, duree_min=duree_min)
 
     def perform_update(self, serializer):
         instance = serializer.instance
@@ -149,6 +157,14 @@ class IndisponibilitePraticienViewSet(CompanyScopedModelViewSet):
 
     queryset = IndisponibilitePraticien.objects.select_related('praticien').all()
     serializer_class = IndisponibilitePraticienSerializer
+
+
+class MotifConsultationViewSet(CompanyScopedModelViewSet):
+    """NTSAN35 — motifs de consultation prédéfinis, paramétrables PAR
+    SOCIÉTÉ (jamais codés en dur)."""
+
+    queryset = MotifConsultation.objects.all()
+    serializer_class = MotifConsultationSerializer
 
 
 class PraticienSiteViewSet(CompanyScopedModelViewSet):

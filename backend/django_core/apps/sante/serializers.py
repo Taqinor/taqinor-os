@@ -8,8 +8,8 @@ from rest_framework import serializers
 from .models import (
     ActeMedical, ActeRealise, Admission, Convention, FactureSante,
     GrilleTarifaire, HoraireOuverturePraticien, IndisponibilitePraticien,
-    PaiementSante, Patient, Praticien, PraticienSite, PriseEnCharge,
-    RendezVous, Salle)
+    MotifConsultation, PaiementSante, Patient, Praticien, PraticienSite,
+    PriseEnCharge, RendezVous, Salle)
 
 
 def _meme_societe(serializer, value, label):
@@ -31,7 +31,7 @@ class PraticienSerializer(serializers.ModelSerializer):
         model = Praticien
         fields = [
             'id', 'user', 'nom', 'specialite', 'numero_ordre',
-            'couleur_agenda', 'actif',
+            'couleur_agenda', 'actif', 'duree_consultation_defaut_min',
         ]
 
 
@@ -264,6 +264,12 @@ class PraticienSiteSerializer(serializers.ModelSerializer):
 
     def validate_salle(self, value):
         return _meme_societe(self, value, 'Salle')
+
+
+class MotifConsultationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MotifConsultation
+        fields = ['id', 'libelle', 'actif']
 
 
 class ActeMedicalSerializer(serializers.ModelSerializer):

@@ -36,6 +36,13 @@ class Praticien(TenantModel):
         max_length=20, blank=True, default='#2563eb',
         verbose_name='Couleur agenda')
     actif = models.BooleanField(default=True, verbose_name='Actif')
+    # NTSAN35 — paramétrage clinique : durée par défaut de consultation pour
+    # ce praticien (pré-remplit RendezVous.duree_min à la création côté
+    # serveur si le client n'en envoie pas — voir RendezVousViewSet.
+    # perform_create), modifiable manuellement par l'utilisateur.
+    duree_consultation_defaut_min = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='Durée par défaut de consultation (min)')
 
     class Meta:
         verbose_name = 'Praticien'
@@ -622,3 +629,20 @@ class PraticienSite(TenantModel):
 
     def __str__(self):
         return f'{self.praticien_id} @ {self.salle_id}'
+
+
+class MotifConsultation(TenantModel):
+    """NTSAN35 — motif de consultation prédéfini, paramétrable PAR SOCIÉTÉ
+    (jamais codé en dur), pour pré-remplir ``RendezVous.motif_court`` côté
+    écran de prise de RDV."""
+
+    libelle = models.CharField(max_length=255, verbose_name='Libellé')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+
+    class Meta:
+        verbose_name = 'Motif de consultation'
+        verbose_name_plural = 'Motifs de consultation'
+        ordering = ['libelle']
+
+    def __str__(self):
+        return self.libelle
