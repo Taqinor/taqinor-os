@@ -25,6 +25,7 @@ class ReglageCreditSerializer(serializers.ModelSerializer):
             'id', 'mode_hold_defaut', 'inclure_bc_non_factures',
             'inclure_devis_en_cours', 'seuil_alerte_pct',
             'seuil_alerte_exposition_globale', 'devise_consolidation',
+            'seuil_tolerance_depassement', 'roles_bypass_hold',
             'date_creation', 'date_modification',
         ]
         read_only_fields = ['id', 'date_creation', 'date_modification']

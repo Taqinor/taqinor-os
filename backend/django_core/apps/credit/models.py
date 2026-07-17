@@ -87,6 +87,14 @@ class ReglageCredit(models.Model):
     # (taux déjà stocké sur facture/devis) est appliquée par l'appelant quand
     # un sélecteur ventes expose devise+taux par document.
     devise_consolidation = models.CharField(max_length=3, default='MAD')
+    # NTCRD30 — grâce automatique petits montants : un dépassement inférieur à
+    # ce seuil ne déclenche jamais de hold, même en mode blocage (0 = désactivé,
+    # défaut = comportement actuel inchangé).
+    seuil_tolerance_depassement = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0)
+    # NTCRD31 — rôles (noms) autorisés à passer outre un hold de blocage sans
+    # dérogation formelle (liste JSON, défaut vide = personne).
+    roles_bypass_hold = models.JSONField(default=list, blank=True)
     date_creation = models.DateTimeField(auto_now_add=True)
     date_modification = models.DateTimeField(auto_now=True)
 

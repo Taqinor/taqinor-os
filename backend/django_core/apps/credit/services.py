@@ -2,7 +2,24 @@
 from decimal import Decimal
 
 
-def verifier_hold_credit(client, montant_transaction=None):
+def role_peut_bypass_hold(user, company):
+    """NTCRD31 — vrai si le rôle de ``user`` figure dans
+    ``ReglageCredit.roles_bypass_hold`` de ``company`` (liste de noms de rôles),
+    l'autorisant à passer outre un hold de blocage SANS dérogation formelle.
+    Défaut vide = personne (comportement actuel inchangé)."""
+    if user is None:
+        return False
+    from .models import ReglageCredit
+
+    reglage = ReglageCredit.objects.filter(company=company).first()
+    roles = (reglage.roles_bypass_hold if reglage else None) or []
+    if not roles:
+        return False
+    role = getattr(user, 'role', None)
+    return bool(role and role.nom in roles)
+
+
+def verifier_hold_credit(client, montant_transaction=None, user=None):
     """NTCRD6 — verdict de hold crédit pour ``client`` face à une transaction
     proposée (devis à accepter, BC à créer) de ``montant_transaction`` (TTC).
 
@@ -13,8 +30,14 @@ def verifier_hold_credit(client, montant_transaction=None):
     ``montant_limite`` non défini), toujours autorisé (illimité — comportement
     historique inchangé).
 
+    NTCRD30 — un dépassement inférieur au seuil de tolérance société
+    (``ReglageCredit.seuil_tolerance_depassement``) n'est jamais bloquant.
+    NTCRD31 — un ``user`` d'un rôle listé dans ``roles_bypass_hold`` passe
+    outre un blocage sans dérogation (le champ ``bypass_role`` du verdict le
+    signale à l'appelant, qui journalise — NTCRD31/44).
+
     Renvoie ``{'autorise': bool, 'mode': str, 'depassement': Decimal,
-    'disponible': Decimal|None}``.
+    'disponible': Decimal|None, 'bypass_role': bool}``.
     """
     from .models import LimiteCredit
 
@@ -25,8 +48,10 @@ def verifier_hold_credit(client, montant_transaction=None):
         return {
             'autorise': True, 'mode': LimiteCredit.ModeHold.AUCUN,
             'depassement': Decimal('0'), 'disponible': None,
+            'bypass_role': False,
         }
 
+    from .models import ReglageCredit
     from .selectors import derogation_valide_pour, encours_client
 
     encours = encours_client(client)
@@ -35,20 +60,34 @@ def verifier_hold_credit(client, montant_transaction=None):
     depassement = depassement_apres if depassement_apres > 0 else Decimal('0')
     mode = limite_obj.mode_hold
 
+    reglage = ReglageCredit.objects.filter(company=client.company).first()
+    tolerance = (
+        reglage.seuil_tolerance_depassement if reglage else Decimal('0')
+    ) or Decimal('0')
+
+    bypass_role = False
     if mode == LimiteCredit.ModeHold.BLOCAGE:
-        # NTCRD9 — une dérogation approuvée non expirée couvrant ce montant
-        # lève le hold de blocage pour cette transaction précise.
         if depassement <= 0:
             autorise = True
+        elif depassement <= tolerance:
+            # NTCRD30 — grâce automatique petits montants.
+            autorise = True
+        elif derogation_valide_pour(client, montant_transaction):
+            # NTCRD9 — dérogation approuvée non expirée.
+            autorise = True
+        elif role_peut_bypass_hold(user, client.company):
+            # NTCRD31 — bypass rôle (tracé par l'appelant).
+            autorise = True
+            bypass_role = True
         else:
-            autorise = derogation_valide_pour(client, montant_transaction)
+            autorise = False
     else:
         # 'aucun' et 'avertissement' : jamais bloquant.
         autorise = True
 
     return {
         'autorise': autorise, 'mode': mode, 'depassement': depassement,
-        'disponible': disponible,
+        'disponible': disponible, 'bypass_role': bypass_role,
     }
 
 
