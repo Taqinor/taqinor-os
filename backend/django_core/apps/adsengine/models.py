@@ -263,7 +263,7 @@ class AdCreativeMirror(TenantModel):
     """
 
     ad = models.OneToOneField(
-        'adsengine.AdMirror', on_delete=models.CASCADE,
+        'adsengine.AdMirror', on_delete=models.CASCADE,  # on_delete: un miroir créatif n'existe que pour son ad (composition, OneToOne)
         related_name='creative_mirror', verbose_name='Ad')
     creative_meta_id = models.CharField(
         max_length=64, blank=True, default='',
@@ -311,7 +311,7 @@ class InsightSnapshot(TenantModel):
     """
 
     content_type = models.ForeignKey(
-        'contenttypes.ContentType', on_delete=models.CASCADE,
+        'contenttypes.ContentType', on_delete=models.CASCADE,  # on_delete: snapshot d'insight rattaché à sa cible générique; disparaît avec elle
         verbose_name='Type de cible')
     object_id = models.PositiveIntegerField(verbose_name='ID cible')
     content_object = GenericForeignKey('content_type', 'object_id')
@@ -392,7 +392,7 @@ class InsightBreakdown(TenantModel):
         HOURLY = 'hourly', 'Horaire'
 
     content_type = models.ForeignKey(
-        'contenttypes.ContentType', on_delete=models.CASCADE,
+        'contenttypes.ContentType', on_delete=models.CASCADE,  # on_delete: breakdown rattaché à sa cible générique; disparaît avec elle
         verbose_name='Type de cible')
     object_id = models.PositiveIntegerField(verbose_name='ID cible')
     content_object = GenericForeignKey('content_type', 'object_id')
@@ -741,7 +741,7 @@ class CreativePolicy(TenantModel):
     """
 
     company = models.OneToOneField(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: la police créative d'une société disparaît avec elle (tenant, OneToOne)
         related_name='adsengine_creative_policy', verbose_name='Société')
     forbidden_rules = models.JSONField(
         default=list, blank=True, verbose_name='Règles interdites')
@@ -828,7 +828,7 @@ class ExperimentArm(TenantModel):
     """
 
     experiment = models.ForeignKey(
-        'adsengine.Experiment', on_delete=models.CASCADE,
+        'adsengine.Experiment', on_delete=models.CASCADE,  # on_delete: un bras n'existe que dans son expérience (composition)
         related_name='arms', verbose_name='Expérience')
     creative_asset = models.ForeignKey(
         'adsengine.CreativeAsset', on_delete=models.SET_NULL,
@@ -869,7 +869,7 @@ class ArmDailyStat(TenantModel):
     """
 
     arm = models.ForeignKey(
-        'adsengine.ExperimentArm', on_delete=models.CASCADE,
+        'adsengine.ExperimentArm', on_delete=models.CASCADE,  # on_delete: une stat quotidienne n'existe que pour son bras (composition)
         related_name='daily_stats', verbose_name='Bras')
     date = models.DateField(verbose_name='Date')
     impressions = models.PositiveIntegerField(
@@ -924,7 +924,7 @@ class DecisionLog(TenantModel):
     """
 
     experiment = models.ForeignKey(
-        'adsengine.Experiment', on_delete=models.CASCADE,
+        'adsengine.Experiment', on_delete=models.CASCADE,  # on_delete: une décision n'existe que dans son expérience (composition)
         related_name='decisions', verbose_name='Expérience')
     inputs = models.JSONField(
         default=dict, blank=True, verbose_name='Entrées (instantané)')
@@ -1198,7 +1198,7 @@ class CreativeBacklogItem(TenantModel):
         RETIRE = 'retire', 'Retiré'
 
     asset = models.ForeignKey(
-        'adsengine.CreativeAsset', on_delete=models.CASCADE,
+        'adsengine.CreativeAsset', on_delete=models.CASCADE,  # on_delete: un item de backlog rattaché à son asset disparaît avec lui (composition)
         related_name='backlog_items', verbose_name='Asset')
     batch = models.ForeignKey(
         'adsengine.CreativeGenerationBatch', on_delete=models.SET_NULL,
@@ -1278,7 +1278,7 @@ class FlightPhase(TenantModel):
     """
 
     plan = models.ForeignKey(
-        'adsengine.FlightPlan', on_delete=models.CASCADE,
+        'adsengine.FlightPlan', on_delete=models.CASCADE,  # on_delete: une phase n'existe que dans son plan de vol (composition)
         related_name='phases', verbose_name='Plan')
     order = models.PositiveIntegerField(default=0, verbose_name='Ordre')
     name = models.CharField(max_length=120, verbose_name='Nom')
