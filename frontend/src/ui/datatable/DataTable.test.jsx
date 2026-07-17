@@ -815,3 +815,70 @@ describe('NTUX17 — densityOverride (densité par vue sauvegardée)', () => {
     expect(tr.style.height).toBe('32px')
   })
 })
+
+/* ============================== NTUX19 — GROUPEMENT DE LIGNES ============================== */
+
+describe('NTUX19 — groupBy (grouper par colonne, en-têtes collapsibles + sous-totaux)', () => {
+  const GROUPED_DATA = [
+    { id: 1, statut: 'Envoyé', montant: 1000 },
+    { id: 2, statut: 'Accepté', montant: 2000 },
+    { id: 3, statut: 'Envoyé', montant: 500 },
+    { id: 4, statut: 'Refusé', montant: 300 },
+  ]
+  const GROUPED_COLUMNS = [
+    { id: 'statut', header: 'Statut' },
+    { id: 'montant', header: 'Montant TTC', align: 'right', numeric: true },
+  ]
+
+  it('sans groupBy (79 écrans existants) : rendu plat inchangé', () => {
+    renderTable({ data: GROUPED_DATA, columns: GROUPED_COLUMNS })
+    expect(screen.queryByRole('button', { name: /envoyé/i })).not.toBeInTheDocument()
+  })
+
+  it('affiche une section par valeur distincte, avec le COMPTEUR de lignes', () => {
+    renderTable({ data: GROUPED_DATA, columns: GROUPED_COLUMNS, groupBy: 'statut' })
+    expect(screen.getByRole('button', { name: /envoyé.*2/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /accepté.*1/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /refusé.*1/i })).toBeInTheDocument()
+  })
+
+  it('groupSummary calcule un SOUS-TOTAL par groupe (ex. montant total)', () => {
+    renderTable({
+      data: GROUPED_DATA, columns: GROUPED_COLUMNS, groupBy: 'statut',
+      groupSummary: { montant: 'sum' },
+    })
+    const envoyeHeader = screen.getByRole('button', { name: /envoyé/i })
+    // 1000 + 500 = 1500 pour le groupe « Envoyé ».
+    expect(within(envoyeHeader).getByText(/1500/)).toBeInTheDocument()
+  })
+
+  it('cliquer l\'en-tête d\'un groupe le REPLIE (masque ses lignes) puis le déplie à nouveau', async () => {
+    const user = userEvent.setup()
+    renderTable({ data: GROUPED_DATA, columns: GROUPED_COLUMNS, groupBy: 'statut' })
+    expect(screen.getByText('2000')).toBeInTheDocument() // ligne « Accepté » visible
+    await user.click(screen.getByRole('button', { name: /accepté/i }))
+    expect(screen.queryByText('2000')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /accepté/i }))
+    expect(screen.getByText('2000')).toBeInTheDocument()
+  })
+
+  it('groupe TOUTES les lignes filtrées (allRows), pas seulement la page courante', () => {
+    const many = Array.from({ length: 30 }, (unused, i) => ({ id: i + 1, statut: i % 2 ? 'A' : 'B', montant: i }))
+    renderTable({ data: many, columns: GROUPED_COLUMNS, groupBy: 'statut', pageSize: 10 })
+    // 30 lignes réparties en 2 groupes de 15 — jamais limitées à 10 (pageSize).
+    expect(screen.getByRole('button', { name: /^a.*15/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^b.*15/i })).toBeInTheDocument()
+  })
+
+  it('la pagination classique est masquée en mode groupé', () => {
+    const many = Array.from({ length: 30 }, (unused, i) => ({ id: i + 1, statut: 'X', montant: i }))
+    renderTable({ data: many, columns: GROUPED_COLUMNS, groupBy: 'statut', pageSize: 10 })
+    expect(screen.queryByLabelText('Page précédente')).not.toBeInTheDocument()
+  })
+
+  it('valeur de groupement vide/absente regroupe sous « Non renseigné »', () => {
+    const data = [{ id: 1, statut: '', montant: 10 }, { id: 2, statut: null, montant: 20 }]
+    renderTable({ data, columns: GROUPED_COLUMNS, groupBy: 'statut' })
+    expect(screen.getByRole('button', { name: /non renseigné.*2/i })).toBeInTheDocument()
+  })
+})

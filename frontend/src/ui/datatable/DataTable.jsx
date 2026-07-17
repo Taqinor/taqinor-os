@@ -26,7 +26,10 @@ import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
   DropdownMenuItem, DropdownMenuSeparator, DropdownMenuLabel,
 } from '../DropdownMenu'
-import { highlightSegments, computeWindow, pinnedEdgeOffsets, columnWidthVars } from './logic.js'
+import {
+  highlightSegments, computeWindow, pinnedEdgeOffsets, columnWidthVars,
+  groupRows, summarize,
+} from './logic.js'
 import { debounce } from '../../lib/debounce.js'
 import { rowsToCSV, exportFileName } from './csv.js'
 import { useDataTable } from './useDataTable.js'
@@ -335,6 +338,17 @@ export const DataTable = forwardRef(function DataTable(
     rowCount,
     summary = null,
     summaryLabel = 'Total',
+    // NTUX19 — mode « grouper par colonne » (ex. Devis groupés par statut).
+    // Opt-in : non fourni, rendu STRICTEMENT identique à avant. `groupBy` =
+    // id de colonne ; `groupSummary` = mêmes agrégations que `summary`
+    // ({[colId]: 'sum'|'avg'|'count'|fn}), affichées dans l'en-tête de
+    // groupe ; `groupLabel(key)` personnalise le libellé (défaut : la clé,
+    // ou « Non renseigné » si vide). Le groupement porte sur TOUTES les
+    // lignes filtrées/triées (`allRows`), pas seulement la page courante —
+    // la pagination classique n'a pas de sens en mode groupé (masquée).
+    groupBy,
+    groupSummary = null,
+    groupLabel,
     // persistance URL (H33)
     persistToUrl = false,
     urlKey = '',
@@ -387,6 +401,7 @@ export const DataTable = forwardRef(function DataTable(
     selected, selectedKeys, selectedRows, pageKeys, pageSelectionState, onToggleRow, onToggleAllPage, clearSelection,
     view, setView,
     keyOf, pageOffset,
+    accessor,
   } = table
 
   // VX249(a) — compteur de pulse PAR CELLULE (`${rowKey}:${colId}`),
@@ -395,6 +410,10 @@ export const DataTable = forwardRef(function DataTable(
   // (aucune régression sur les ~79 écrans existants).
   const [pulseMap, setPulseMap] = useState({})
   const [expanded, setExpanded] = useState({})
+  // NTUX19 — groupes REPLIÉS par clé (`{ [groupKey]: true }`) ; un groupe
+  // absent de la map est déplié par défaut. Inerte tant que `groupBy` n'est
+  // pas fourni.
+  const [collapsedGroups, setCollapsedGroups] = useState({})
   // ARC49 — état d'ouverture des panneaux dépliables NOMMÉS, indépendant par
   // ligne : { [rowKey]: { [panelId]: bool } }. Utilisé UNIQUEMENT par le mode
   // `renderRow` (via l'`api`) ; sans lui, cet état reste vide et inerte, donc
@@ -650,6 +669,34 @@ export const DataTable = forwardRef(function DataTable(
 
   const cellPadY = compact ? 'py-1.5' : 'py-2.5'
   const cellPadX = 'px-3'
+
+  /* ---- NTUX19 — Groupement de lignes (« grouper par colonne ») ----
+     Porte sur `allRows` (filtrées + triées, TOUTES les pages), pas sur
+     `rows` (page courante) : une grille groupée affiche systématiquement
+     l'ensemble filtré, comme les vues « groupées » de référence (Odoo). Le
+     mode custom `renderRow` reste prioritaire (aucun changement) ; le
+     groupement lui est incompatible et n'est simplement pas activé si
+     `renderRow` est fourni sans `groupBy`, ou l'inverse. */
+  const groupModeActive = !!groupBy && !customRow
+  const groupedRows = useMemo(
+    () => (groupModeActive ? groupRows(allRows, groupBy, accessor) : null),
+    [groupModeActive, allRows, groupBy, accessor],
+  )
+  const toggleGroupCollapsed = useCallback((key) => {
+    setCollapsedGroups((p) => ({ ...p, [key]: !p[key] }))
+  }, [])
+  // NTUX19 — clé de ligne stable en mode groupé : les groupes réordonnent
+  // `allRows` (clustering par 1re apparition), donc l'index LOCAL au groupe
+  // ne correspond plus à l'index global attendu par `keyOf`/`getRowId`. Une
+  // Map row→index global (construite une fois par rendu groupé) évite toute
+  // collision entre deux lignes de groupes différents partageant le même
+  // index local.
+  const groupGlobalIndex = useMemo(() => {
+    if (!groupModeActive) return null
+    const m = new Map()
+    allRows.forEach((r, i) => m.set(r, i))
+    return m
+  }, [groupModeActive, allRows])
 
   /* ---- Cellule (avec surlignage + clic ligne) ---- */
   function renderCell(c, row, rowKey) {
@@ -974,6 +1021,112 @@ export const DataTable = forwardRef(function DataTable(
                         {rowActions && <td className="px-3 py-2.5" />}
                       </tr>
                     ))
+                  ) : groupModeActive ? (
+                    /* ---- NTUX19 — Corps groupé : en-têtes de groupe collapsibles
+                       (compteur + sous-total quand `groupSummary` est fourni),
+                       sur TOUT `allRows` (jamais virtualisé/paginé — cf. props). */
+                    allRows.length === 0 ? (
+                      <tr>
+                        <td colSpan={colSpan} className="p-0">
+                          <EmptyState
+                            icon={emptyIllustrated ? undefined : Inbox}
+                            illustrated={emptyIllustrated}
+                            title={emptyTitle}
+                            description={emptyDescription}
+                            action={emptyAction}
+                            className="m-3 border-0"
+                          />
+                        </td>
+                      </tr>
+                    ) : (
+                      groupedRows.map((g) => {
+                        const collapsed = !!collapsedGroups[g.key]
+                        const label = groupLabel ? groupLabel(g.key) : (g.key || 'Non renseigné')
+                        const groupTotals = groupSummary ? summarize(g.rows, groupSummary, accessor) : null
+                        return (
+                          <Fragment key={g.key || '__vide__'}>
+                            <tr className="border-t border-border bg-muted/30">
+                              <td colSpan={colSpan} className={cn(cellPadX, 'py-2')}>
+                                <button
+                                  type="button"
+                                  onClick={() => toggleGroupCollapsed(g.key)}
+                                  aria-expanded={!collapsed}
+                                  className="flex w-full items-center gap-2 text-left text-sm font-semibold text-foreground focus-ring"
+                                >
+                                  <ChevronRight
+                                    className={cn('size-4 shrink-0 transition-transform', !collapsed && 'rotate-90')}
+                                    aria-hidden="true"
+                                  />
+                                  <span>{label}</span>
+                                  <span className="rounded bg-muted px-1.5 text-xs font-normal text-muted-foreground">
+                                    {g.rows.length}
+                                  </span>
+                                  {groupTotals && (
+                                    <span className="ml-auto flex flex-wrap gap-3 text-xs font-normal tabular-nums text-muted-foreground">
+                                      {Object.entries(groupTotals).map(([id, val]) => {
+                                        const col = resolvedColumns.find((c) => c.id === id)
+                                        return (
+                                          <span key={id}>
+                                            {col?.header ?? id} : {col?.summaryFormat ? col.summaryFormat(val) : val}
+                                          </span>
+                                        )
+                                      })}
+                                    </span>
+                                  )}
+                                </button>
+                              </td>
+                            </tr>
+                            {!collapsed && g.rows.map((row) => {
+                              const rowKey = keyOf(row, groupGlobalIndex.get(row))
+                              const isSelected = !!selected[rowKey]
+                              return (
+                                <tr
+                                  key={rowKey}
+                                  className={cn(
+                                    'border-t border-border transition-colors',
+                                    onRowClick && 'cursor-pointer',
+                                    isSelected ? 'bg-primary/5' : 'hover:bg-muted/40',
+                                  )}
+                                  onClick={onRowClick ? () => handleRowClick(row) : undefined}
+                                  aria-selected={selectable ? isSelected : undefined}
+                                  style={{ height: densityRowHeight }}
+                                >
+                                  {selectable && (
+                                    <td className="w-11 px-3" onClick={(e) => e.stopPropagation()}>
+                                      {/* NTUX19 — sélection par plage (Maj-clic, H131) non
+                                          applicable entre groupes : bascule simple ici. */}
+                                      <Checkbox
+                                        checked={isSelected}
+                                        onCheckedChange={() => onToggleRow(rowKey)}
+                                        aria-label="Sélectionner la ligne"
+                                      />
+                                    </td>
+                                  )}
+                                  {resolvedColumns.map((c) => (
+                                    <td
+                                      key={c.id}
+                                      className={cn(
+                                        cellPadX, cellPadY, 'align-middle',
+                                        c.align === 'right' && 'text-right tabular-nums',
+                                        c.align === 'center' && 'text-center',
+                                        c.numeric && 'text-right tabular-nums',
+                                      )}
+                                    >
+                                      {renderCell(c, row, rowKey)}
+                                    </td>
+                                  ))}
+                                  {rowActions && (
+                                    <td className="px-2" onClick={(e) => e.stopPropagation()}>
+                                      <RowActions actions={rowActions(row)} />
+                                    </td>
+                                  )}
+                                </tr>
+                              )
+                            })}
+                          </Fragment>
+                        )
+                      })
+                    )
                   ) : rows.length === 0 ? (
                     <tr>
                       <td colSpan={colSpan} className="p-0">
@@ -1170,8 +1323,11 @@ export const DataTable = forwardRef(function DataTable(
              `hidden dt-desktop:block`). */}
           {/* ARC49 — le mode `renderRow` (ou `hideMobileCards`) supprime le
               repli en cartes : l'écran conserve son unique table `data-table`
-              responsive (CSS) comme aujourd'hui, sans DOM carte dupliqué. */}
-          {!(customRow || hideMobileCards) && (
+              responsive (CSS) comme aujourd'hui, sans DOM carte dupliqué.
+              NTUX19 — le groupement (desktop uniquement pour ce lot) fait de
+              même : le repli carte non groupé serait incohérent avec la
+              grille groupée au-dessus. */}
+          {!(customRow || hideMobileCards || groupModeActive) && (
           <div data-dt-cards className="flex flex-col gap-2 dt-desktop:hidden">
             {loading ? (
               Array.from({ length: 4 }).map((unused, i) => (
@@ -1290,7 +1446,9 @@ export const DataTable = forwardRef(function DataTable(
           )}
 
           {/* -------- Pagination -------- */}
-          {!hidePagination && !customRow && !loading && rows.length > 0 && (
+          {/* NTUX19 — le mode groupé affiche TOUT `allRows` (jamais paginé) :
+              une pagination classique n'a pas de sens par-dessus des groupes. */}
+          {!hidePagination && !customRow && !groupModeActive && !loading && rows.length > 0 && (
             <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
               <div className="flex items-center gap-2 text-muted-foreground">
                 <span aria-live="polite">{range.from === 0 ? '0 sur 0' : `${range.from}–${range.to} sur ${range.total}`}</span>
