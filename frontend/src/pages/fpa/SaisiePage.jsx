@@ -46,10 +46,11 @@ export default function SaisiePage() {
 
   useEffect(() => {
     if (!cycleId || !departementId) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount loading state
     setLoading(true)
-    setError(null)
     fpaApi.getLignesBudget({ cycle: cycleId, departement: departementId })
       .then((res) => {
+        setError(null)
         const rows = Array.isArray(res.data) ? res.data : (res.data?.results ?? [])
         const next = {}
         rows.forEach((r) => {

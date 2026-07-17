@@ -40,9 +40,8 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!cycleId) return
-    setError(null)
     fpaApi.consolidation({ cycle: cycleId })
-      .then((res) => setConso(res.data))
+      .then((res) => { setConso(res.data); setError(null) })
       .catch(() => setError('Impossible de charger la consolidation.'))
   }, [cycleId])
 
