@@ -2,19 +2,58 @@
 lecture/écriture fine-grainée (``WriteScopedPermissionMixin``)."""
 from django.contrib.contenttypes.models import ContentType
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from rest_framework import status
-from rest_framework.decorators import action
+from rest_framework.decorators import (
+    action, api_view, permission_classes, throttle_classes,
+)
+from rest_framework.exceptions import PermissionDenied
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
+from rest_framework.throttling import SimpleRateThrottle
+from rest_framework.views import APIView
 
 from core.permissions import ScopedPermission, WriteScopedPermissionMixin
 from core.viewsets import CompanyScopedModelViewSet
 
 from . import selectors, services
-from .models import JournalChantier, RFI, ReserveChantier, VisaDocument
+from .models import (
+    AvenantChantier, DecompteGeneral, DiffusionPlan, JournalChantier, RFI,
+    ReserveChantier, VisaDocument,
+)
 from .serializers import (
+    AvenantChantierPublicSerializer, AvenantChantierSerializer,
+    DecompteGeneralSerializer, DiffusionPlanSerializer,
     JournalChantierSerializer, ReserveChantierSerializer, RFISerializer,
     SignatureBtpSerializer, VisaDocumentSerializer,
 )
+
+
+class BtpPublicLinkRateThrottle(SimpleRateThrottle):
+    """Limite le débit des liens publics BTP par IP + jeton (cache-based) —
+    pattern ``ventes.public_views.PublicLinkRateThrottle`` répliqué SANS
+    import cross-app (jamais de dépendance externe)."""
+    scope = 'btp_public_link'
+    rate = '30/minute'
+
+    def get_rate(self):
+        # Repli sur ``self.rate`` : pas de réglage ``DEFAULT_THROTTLE_RATES``
+        # nécessaire (contrairement à ``SimpleRateThrottle.get_rate`` par
+        # défaut qui lève ``ImproperlyConfigured`` sans entrée settings).
+        try:
+            from django.conf import settings
+            rates = (settings.REST_FRAMEWORK or {}).get(
+                'DEFAULT_THROTTLE_RATES', {})
+            return rates.get(self.scope) or self.rate
+        except Exception:  # noqa: BLE001
+            return self.rate
+
+    def get_cache_key(self, request, view):
+        token = (view.kwargs or {}).get('token', '') if view else ''
+        ident = self.get_ident(request)
+        return self.cache_format % {
+            'scope': self.scope, 'ident': f'{ident}:{token}',
+        }
 
 
 def _chantier_model():
@@ -344,3 +383,363 @@ class JournalChantierViewSet(
         response['Content-Disposition'] = (
             f'attachment; filename="journal-chantier-{chantier_id}.pdf"')
         return response
+
+
+# ── NTCON7/NTCON8 — Avenant de chantier ─────────────────────────────────────
+
+class AvenantChantierViewSet(
+        WriteScopedPermissionMixin, CompanyScopedModelViewSet):
+    """Avenants de chantier (chiffrage + approbation) — NTCON7/NTCON8.
+
+    Filtres liste : ``?chantier=&statut=``. Actions ``faire-approuver/``
+    (génère/renouvelle le lien public client), ``approuver/``/``refuser/``
+    (décision INTERNE, sans passer par le lien public).
+    """
+    queryset = AvenantChantier.objects.select_related(
+        'chantier', 'cree_par', 'approuve_par').all()
+    serializer_class = AvenantChantierSerializer
+    read_permission = 'btp_voir'
+    write_permission = 'btp_gerer'
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        p = self.request.query_params
+        chantier_id = p.get('chantier')
+        statut = p.get('statut')
+        if chantier_id not in (None, ''):
+            qs = qs.filter(chantier_id=chantier_id)
+        if statut not in (None, ''):
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def perform_create(self, serializer):
+        avenant = services.creer_avenant_chantier(
+            company=self.request.user.company,
+            chantier=serializer.validated_data['chantier'],
+            cree_par=self.request.user,
+            description=serializer.validated_data['description'],
+            montant_ht=serializer.validated_data['montant_ht'],
+            impact_delai_jours=serializer.validated_data.get(
+                'impact_delai_jours'),
+            impact_budget=serializer.validated_data.get(
+                'impact_budget', False),
+            avenant_contrat_id=serializer.validated_data.get(
+                'avenant_contrat_id'),
+            lignes=serializer.validated_data.get('lignes'),
+        )
+        serializer.instance = avenant
+
+    @action(detail=True, methods=['post'], url_path='faire-approuver',
+            permission_classes=[ScopedPermission])
+    def faire_approuver(self, request, pk=None):
+        """NTCON8 — passe en « soumis au client » + (re)génère le lien
+        public tokenisé (loi 53-05)."""
+        avenant = self.get_object()
+        try:
+            services.soumettre_client_avenant(avenant, user=request.user)
+        except services.TransitionInvalide as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        avenant.refresh_from_db()
+        return Response({
+            'avenant': AvenantChantierSerializer(avenant).data,
+            'lien_public': f'/btp/avenants/public/{avenant.token}/',
+        })
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[ScopedPermission])
+    def approuver(self, request, pk=None):
+        """Décision INTERNE (sans lien public) — même service que NTCON8."""
+        avenant = self.get_object()
+        try:
+            services.approuver_avenant(avenant, user=request.user)
+        except services.TransitionInvalide as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        avenant.refresh_from_db()
+        return Response(AvenantChantierSerializer(avenant).data)
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[ScopedPermission])
+    def refuser(self, request, pk=None):
+        avenant = self.get_object()
+        motif = (request.data.get('motif') or '').strip()
+        try:
+            services.refuser_avenant(avenant, user=request.user, motif=motif)
+        except services.TransitionInvalide as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        avenant.refresh_from_db()
+        return Response(AvenantChantierSerializer(avenant).data)
+
+
+def _client_ip_public(request):
+    forwarded = request.META.get('HTTP_X_FORWARDED_FOR', '')
+    if forwarded:
+        ip = forwarded.split(',')[0].strip()
+    else:
+        ip = request.META.get('REMOTE_ADDR', '') or ''
+    return ip[:45]
+
+
+def _resolve_avenant_token(token):
+    """NTCON8 — résout un avenant par jeton public : jeton inconnu OU
+    expiré → 404 (jamais de fuite distinguant les deux cas)."""
+    avenant = AvenantChantier.objects.filter(token=token).first()
+    if avenant is None:
+        return None
+    if avenant.token_expires_at and avenant.token_expires_at < timezone.now():
+        return None
+    return avenant
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+@throttle_classes([BtpPublicLinkRateThrottle])
+def avenant_public_detail(request, token):
+    """NTCON8 — chiffrage de l'avenant en lecture publique (lien tokenisé,
+    jamais de coût interne)."""
+    avenant = _resolve_avenant_token(token)
+    if avenant is None:
+        return Response(status=status.HTTP_404_NOT_FOUND)
+    return Response(AvenantChantierPublicSerializer(avenant).data)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+@throttle_classes([BtpPublicLinkRateThrottle])
+def avenant_public_approuver(request, token):
+    """NTCON8 — approbation CLIENT (signature typée loi 53-05, IP/UA
+    serveur). Idempotent : un avenant déjà décidé renvoie 400."""
+    avenant = _resolve_avenant_token(token)
+    if avenant is None:
+        return Response(status=status.HTTP_404_NOT_FOUND)
+    signataire_nom = (request.data.get('signataire_nom') or '').strip()
+    if not signataire_nom:
+        return Response(
+            {'detail': 'signataire_nom est requis (loi 53-05).'},
+            status=status.HTTP_400_BAD_REQUEST)
+    try:
+        services.approuver_avenant_public(
+            avenant, signataire_nom=signataire_nom,
+            ip_adresse=_client_ip_public(request),
+            user_agent=request.META.get('HTTP_USER_AGENT', ''))
+    except services.TransitionInvalide as exc:
+        return Response(
+            {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+    avenant.refresh_from_db()
+    return Response(AvenantChantierPublicSerializer(avenant).data)
+
+
+# ── NTCON9/NTCON10 — DGD (Décompte Général et Définitif) ───────────────────
+
+class DecompteGeneralViewSet(
+        WriteScopedPermissionMixin, CompanyScopedModelViewSet):
+    """DGD (Décompte Général et Définitif) — NTCON9/NTCON10.
+
+    Un DGD ``definitif`` est VERROUILLÉ (403 sur toute écriture) sauf via
+    l'action ``deverrouiller/`` (admin only, journalisée).
+    """
+    queryset = DecompteGeneral.objects.select_related(
+        'chantier', 'cree_par', 'finalise_par').all()
+    serializer_class = DecompteGeneralSerializer
+    read_permission = 'btp_voir'
+    write_permission = 'btp_gerer'
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        chantier_id = self.request.query_params.get('chantier')
+        if chantier_id not in (None, ''):
+            qs = qs.filter(chantier_id=chantier_id)
+        return qs
+
+    def perform_create(self, serializer):
+        dgd = services.creer_decompte_general(
+            company=self.request.user.company,
+            chantier=serializer.validated_data['chantier'],
+            cree_par=self.request.user,
+            montant_marche_initial_ht=serializer.validated_data.get(
+                'montant_marche_initial_ht', 0),
+            situations_incluses=serializer.validated_data.get(
+                'situations_incluses'),
+            retenue_garantie_id=serializer.validated_data.get(
+                'retenue_garantie_id'),
+        )
+        serializer.instance = dgd
+
+    def _refuser_si_verrouille(self, instance):
+        if instance.statut == DecompteGeneral.Statut.DEFINITIF:
+            raise PermissionDenied(
+                f'DGD {instance.reference} : définitif — verrouillé en '
+                'lecture seule (déverrouillage admin requis).')
+
+    def perform_update(self, serializer):
+        self._refuser_si_verrouille(self.get_object())
+        super().perform_update(serializer)
+
+    def perform_destroy(self, instance):
+        self._refuser_si_verrouille(instance)
+        super().perform_destroy(instance)
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[ScopedPermission])
+    def notifier(self, request, pk=None):
+        dgd = self.get_object()
+        try:
+            services.notifier_dgd(dgd, user=request.user)
+        except services.TransitionInvalide as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        dgd.refresh_from_db()
+        return Response(DecompteGeneralSerializer(dgd).data)
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[ScopedPermission])
+    def contester(self, request, pk=None):
+        dgd = self.get_object()
+        motif = (request.data.get('motif') or '').strip()
+        if not motif:
+            return Response(
+                {'detail': 'motif est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            services.contester_dgd(
+                dgd, user=request.user, motif=motif,
+                montant_conteste=request.data.get('montant_conteste'))
+        except services.TransitionInvalide as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        dgd.refresh_from_db()
+        return Response(DecompteGeneralSerializer(dgd).data)
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[ScopedPermission])
+    def finaliser(self, request, pk=None):
+        dgd = self.get_object()
+        try:
+            services.finaliser_dgd(dgd, user=request.user)
+        except services.TransitionInvalide as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        dgd.refresh_from_db()
+        return Response(DecompteGeneralSerializer(dgd).data)
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[ScopedPermission])
+    def deverrouiller(self, request, pk=None):
+        """NTCON10 — déverrouillage ADMIN ONLY, journalisé."""
+        if not getattr(request.user, 'is_admin_role', False):
+            return Response(
+                {'detail': 'Réservé aux administrateurs.'},
+                status=status.HTTP_403_FORBIDDEN)
+        dgd = self.get_object()
+        motif = (request.data.get('motif') or '').strip()
+        if not motif:
+            return Response(
+                {'detail': 'motif est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            services.deverrouiller_dgd(dgd, user=request.user, motif=motif)
+        except services.TransitionInvalide as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        dgd.refresh_from_db()
+        return Response(DecompteGeneralSerializer(dgd).data)
+
+    @action(detail=True, methods=['get'], url_path='export-pdf',
+            permission_classes=[ScopedPermission])
+    def export_pdf(self, request, pk=None):
+        from django.http import HttpResponse
+
+        from .pdf import render_dgd_pdf
+
+        dgd = self.get_object()
+        pdf_bytes = render_dgd_pdf(dgd)
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = (
+            f'attachment; filename="dgd-{dgd.reference}.pdf"')
+        return response
+
+
+# ── NTCON11 — Comparatif déboursé sec vs facturé (admin/responsable only) ──
+
+class ChantierDebourseVsFactureView(APIView):
+    """NTCON11 — ``chantiers/<id>/debourse-vs-facture/``. Admin/responsable
+    only : ``read_permission`` posé au niveau ``btp_gerer`` (exigé même en
+    LECTURE — jamais un coût dans une sortie client)."""
+    permission_classes = [ScopedPermission]
+    read_permission = 'btp_gerer'
+    write_permission = 'btp_gerer'
+
+    def get(self, request, chantier_id):
+        chantier = get_object_or_404(
+            _chantier_model(), pk=chantier_id, company=request.user.company)
+        return Response(selectors.debourse_sec_vs_facture(chantier))
+
+
+# ── NTCON12/NTCON13 — Diffusion contrôlée de plans ──────────────────────────
+
+class DiffusionPlanViewSet(
+        WriteScopedPermissionMixin, CompanyScopedModelViewSet):
+    """Diffusion contrôlée de plans — NTCON12/NTCON13.
+
+    Filtres liste : ``?chantier=&document=``. Action ``diffuser/`` crée le
+    partage GED externe (si destinataires externes) + notifie les internes.
+    """
+    queryset = DiffusionPlan.objects.select_related('chantier', 'cree_par').all()
+    serializer_class = DiffusionPlanSerializer
+    read_permission = 'btp_voir'
+    write_permission = 'btp_gerer'
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        p = self.request.query_params
+        chantier_id = p.get('chantier')
+        document_id = p.get('document')
+        if chantier_id not in (None, ''):
+            qs = qs.filter(chantier_id=chantier_id)
+        if document_id not in (None, ''):
+            qs = qs.filter(document_ged_id=document_id)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company, cree_par=self.request.user)
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[ScopedPermission])
+    def diffuser(self, request, pk=None):
+        diffusion = self.get_object()
+        services.diffuser_plan(diffusion, user=request.user)
+        diffusion.refresh_from_db()
+        return Response(DiffusionPlanSerializer(diffusion).data)
+
+    @action(detail=False, methods=['get'], url_path='plans-perimes',
+            permission_classes=[ScopedPermission])
+    def plans_perimes(self, request):
+        chantier_id = request.query_params.get('chantier')
+        if not chantier_id:
+            return Response(
+                {'detail': 'chantier est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        chantier = get_object_or_404(
+            _chantier_model(), pk=chantier_id, company=request.user.company)
+        return Response(selectors.plans_perimes_sur_chantier(chantier))
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+@throttle_classes([BtpPublicLinkRateThrottle])
+def diffusion_public_ouvrir(request, token):
+    """NTCON12 — accusé de réception : marque ``?destinataire=`` (email ou
+    ID utilisateur) comme ayant OUVERT cette diffusion. 404 si jeton inconnu
+    (jamais de fuite)."""
+    diffusion = DiffusionPlan.objects.filter(token=token).first()
+    if diffusion is None:
+        return Response(status=status.HTTP_404_NOT_FOUND)
+    destinataire = request.query_params.get('destinataire', '') or 'anonyme'
+    services.marquer_diffusion_lue(diffusion, cle_destinataire=destinataire)
+    return Response({
+        'document_ged_id': diffusion.document_ged_id,
+        'version_diffusee': diffusion.version_diffusee,
+    })
