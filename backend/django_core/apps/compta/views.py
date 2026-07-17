@@ -12,11 +12,12 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import IntegrityError
 from django.http import HttpResponse
 
-from rest_framework import filters, status, viewsets
+from rest_framework import filters, generics, status, viewsets
 from rest_framework.decorators import (
     action, api_view, permission_classes, throttle_classes,
 )
 from rest_framework.exceptions import ValidationError
+from rest_framework.negotiation import DefaultContentNegotiation
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -27,6 +28,12 @@ from django.utils import timezone
 
 from authentication.mixins import TenantMixin
 from authentication.permissions import HasPermissionOrLegacy, IsResponsableOrAdmin
+
+# NTTRE42 — la trace d'audit des actions sensibles trésorerie est écrite ICI (vue)
+# et non dans ``compta.services`` : ``ventes`` importe ``compta.services`` mais
+# jamais ``compta.views``, ce qui garde ``ventes`` libre de toute dépendance
+# transitive vers ``apps.audit`` (contrat import-linter M4 « ventes → audit »).
+from apps.audit.recorder import record as _audit_record
 
 from . import selectors, services
 from .models import (
@@ -43,7 +50,8 @@ from .models import (
     Journal,
     LignePrevisionnelTresorerie, LigneReleve, MessageWhatsAppEntrant,
     ModeleDevis, MouvementCaisse, NoteFrais, OuverturePartage, PostSocial,
-    PaymentRun, PeriodeComptable, PlafondNoteFrais, PlanComptable, Provision,
+    PaymentRun, PeriodeComptable, PlafondNoteFrais,
+    PlanComptable, PlanRelanceTresorerie, PouvoirBancaire, Provision,
     ProvisionCreance, RapportNoteFrais,
     Rapprochement, RapprochementBancaire, RelanceDevisAbandonne,
     RetenueGarantie, RetenueSource, SequenceRelance, SessionGuidedSelling,
@@ -105,7 +113,8 @@ from .serializers import (
     LignePrevisionnelTresorerieSerializer, LigneReleveSerializer,
     MessageWhatsAppEntrantSerializer, ModeleDevisSerializer,
     MouvementCaisseSerializer, NoteFraisSerializer, OuverturePartageSerializer,
-    PaymentRunSerializer,
+    ParametresTresorerieSerializer, PaymentRunSerializer,
+    PlanRelanceTresorerieSerializer, PouvoirBancaireSerializer,
     PeriodeComptableSerializer, PlanAmortissementSerializer,
     PlafondNoteFraisSerializer,
     PlanComptableSerializer, ProvisionSerializer, ProvisionCreanceSerializer,
@@ -483,6 +492,21 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
             'projection': projection,
         })
 
+    @action(detail=False, methods=['get'], url_path='frais-bancaires')
+    def frais_bancaires(self, request):
+        """NTTRE9 — Analyse des frais bancaires par compte et par mois.
+
+        Query ``?debut=YYYY-MM-DD&fin=YYYY-MM-DD``. Agrège les écritures GL des
+        comptes de frais (réglage NTTRE28) par compte de trésorerie et par mois.
+        Lecture seule, scopée société, Admin/Responsable.
+        """
+        params = request.query_params
+        data = selectors.analyse_frais_bancaires(
+            request.user.company,
+            debut=params.get('debut') or None,
+            fin=params.get('fin') or None)
+        return Response(data)
+
     @action(detail=False, methods=['get'], url_path='previsionnel-tresorerie')
     def previsionnel_tresorerie(self, request):
         """Prévisionnel de trésorerie roulant 13 semaines (FG126).
@@ -501,7 +525,8 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
         data = selectors.previsionnel_tresorerie(
             company,
             date_debut=request.query_params.get('date_debut') or None,
-            nb_semaines=max(1, min(nb_semaines, 52)))
+            nb_semaines=max(1, min(nb_semaines, 52)),
+            scenario=request.query_params.get('scenario') or None)
         return Response(data)
 
     @action(detail=False, methods=['get'], url_path='balance-agee-fournisseurs')
@@ -1976,6 +2001,23 @@ class DotationAmortissementViewSet(_ComptaBaseViewSet):
 
 # ── FG123 — Rapprochement bancaire (relevé ↔ écritures) ────────────────────
 
+class _BankFormatContentNegotiation(DefaultContentNegotiation):
+    """NTTRE1-3 — sur ``import-releve`` le paramètre ``?format=`` désigne le FORMAT
+    BANCAIRE (cfonb120/mt940/camt053), PAS le renderer DRF.
+
+    Sans cette surcharge, DRF traite ``?format=cfonb120`` comme un override de
+    renderer (``URL_FORMAT_OVERRIDE``) et lève un ``Http404`` (« Pas trouvé »)
+    car aucun renderer ne porte ce format — AVANT même d'exécuter la vue (dans
+    ``initial()``), d'où un 404 au lieu du 201/400 attendu. On neutralise donc
+    l'override par query param et on rend toujours du JSON (endpoint interne)."""
+
+    def select_renderer(self, request, renderers, format_suffix=None):
+        for renderer in renderers:
+            if renderer.format == 'json':
+                return renderer, renderer.media_type
+        return renderers[0], renderers[0].media_type
+
+
 class RapprochementBancaireViewSet(_ComptaBaseViewSet):
     """Rapprochements bancaires (FG123) : pointer relevé ↔ grand livre.
 
@@ -2016,7 +2058,7 @@ class RapprochementBancaireViewSet(_ComptaBaseViewSet):
         # défaut ; seul un rôle fin explicitement privé du code est affecté.
         if self.action in ('lignes_gl', 'resume', 'suggestions'):
             return [IsResponsableOrAdmin()]
-        if self.action in ('ligne_releve', 'ocr_import'):
+        if self.action in ('ligne_releve', 'ocr_import', 'import_releve'):
             return [HasPermissionOrLegacy('compta_saisir')()]
         if self.action in ('pointer', 'accepter_suggestions', 'cloturer'):
             return [HasPermissionOrLegacy('compta_valider')()]
@@ -2162,6 +2204,64 @@ class RapprochementBancaireViewSet(_ComptaBaseViewSet):
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
         return Response(services.controler_solde_releve_ocr(champs_bruts))
+
+    @action(detail=True, methods=['post'], url_path='import-releve',
+            parser_classes=[MultiPartParser, FormParser],
+            content_negotiation_class=_BankFormatContentNegotiation)
+    def import_releve(self, request, pk=None):
+        """NTTRE1-3 — Importe un relevé bancaire au format normalisé.
+
+        Query ``?format=cfonb120|mt940|camt053`` ; corps multipart ``releve``
+        (fichier). Parse le fichier via ``bank_formats`` puis matérialise chaque
+        ligne parsée en ``LigneReleve`` via ``services.ajouter_ligne_releve``
+        (aucun nouveau modèle). Rejette avec un message FR clair si le format est
+        inconnu ou le fichier mal formé.
+        """
+        from .bank_formats import (
+            parser_camt053, parser_cfonb120, parser_mt940)
+
+        rapprochement = self.get_object()  # scopé société par TenantMixin.
+        parseurs = {
+            'cfonb120': parser_cfonb120,
+            'mt940': parser_mt940,
+            'camt053': parser_camt053,
+        }
+        fmt = (request.query_params.get('format')
+               or request.data.get('format') or '').lower()
+        parseur = parseurs.get(fmt)
+        if parseur is None:
+            return Response(
+                {'detail': "Format inconnu : utilisez « cfonb120 », "
+                           "« mt940 » ou « camt053 »."},
+                status=status.HTTP_400_BAD_REQUEST)
+        releve = request.FILES.get('releve')
+        if releve is None:
+            return Response(
+                {'releve': "Le fichier 'releve' est obligatoire."},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            lignes_parsees = parseur(releve.read())
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        creees = []
+        try:
+            for ligne in lignes_parsees:
+                creees.append(services.ajouter_ligne_releve(
+                    rapprochement,
+                    date_operation=ligne.get('date_operation'),
+                    libelle=ligne.get('libelle', '') or '',
+                    montant=ligne.get('montant'),
+                    reference=ligne.get('reference', '') or '',
+                ))
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {'lignes_creees': LigneReleveSerializer(creees, many=True).data,
+             'nombre': len(creees)},
+            status=status.HTTP_201_CREATED)
 
 
 # ── FG124 — Caisse / petty cash (journal d'espèces) ────────────────────────
@@ -2403,6 +2503,36 @@ class EffetViewSet(_ComptaBaseViewSet):
             qs = qs.filter(statut=statut)
         return qs
 
+    def list(self, request, *args, **kwargs):
+        # NTTRE38 — export XLSX de la situation des effets (retraitement compta).
+        if request.query_params.get('export') == 'xlsx':
+            from decimal import Decimal
+            from openpyxl import Workbook
+            from openpyxl.styles import Font
+            from apps.records.xlsx import coerce_cell, XLSX_CONTENT_TYPE
+            wb = Workbook()
+            ws = wb.active
+            ws.title = 'Effets'
+            ws.append(['Numéro', 'Type', 'Sens', 'Tireur', 'Banque',
+                       'Échéance', 'Statut', 'Montant'])
+            for cell in ws[1]:
+                cell.font = Font(bold=True)
+            total = Decimal('0')
+            for ef in self.filter_queryset(self.get_queryset()):
+                total += ef.montant or Decimal('0')
+                ws.append([coerce_cell(v) for v in [
+                    ef.numero, ef.get_type_effet_display(),
+                    ef.get_sens_display(), ef.tireur, ef.banque,
+                    ef.date_echeance, ef.get_statut_display(), ef.montant]])
+            ws.append(['', '', '', '', '', '', 'Total',
+                       coerce_cell(total)])
+            buf = io.BytesIO()
+            wb.save(buf)
+            resp = HttpResponse(buf.getvalue(), content_type=XLSX_CONTENT_TYPE)
+            resp['Content-Disposition'] = 'attachment; filename="effets.xlsx"'
+            return resp
+        return super().list(request, *args, **kwargs)
+
     def perform_create(self, serializer):
         serializer.save(
             company=self.request.user.company, created_by=self.request.user)
@@ -2531,6 +2661,35 @@ class EffetViewSet(_ComptaBaseViewSet):
             return Response(
                 {'detail': exc.messages[0] if exc.messages else str(exc)},
                 status=status.HTTP_400_BAD_REQUEST)
+        # NTTRE42 — trace d'audit (au niveau vue : cf. import _audit_record).
+        _audit_record(
+            'effet.endossement', instance=effet, company=effet.company,
+            user=request.user,
+            detail=f'beneficiaire={effet.beneficiaire_endossement}')
+        return Response(self.get_serializer(effet).data)
+
+    @action(detail=True, methods=['post'], url_path='constater-protet')
+    def constater_protet(self, request, pk=None):
+        """NTTRE7 — Constate un protêt (constat d'huissier) sur un effet impayé.
+
+        Corps : ``{frais_protet?, date_protet?}``. L'effet doit être ``impaye``.
+        Distinct du simple rejet FG130 : trace les frais + la date de protêt.
+        """
+        effet = self.get_object()  # scopé société par TenantMixin.
+        try:
+            effet = services.constater_protet(
+                effet,
+                frais_protet=request.data.get('frais_protet'),
+                date_protet=request.data.get('date_protet') or None,
+                user=request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        # NTTRE42 — trace d'audit (au niveau vue : cf. import _audit_record).
+        _audit_record(
+            'effet.protet', instance=effet, company=effet.company,
+            user=request.user, detail=f'frais={effet.frais_protet}')
         return Response(self.get_serializer(effet).data)
 
 
@@ -2778,6 +2937,51 @@ class PaymentRunViewSet(_ComptaBaseViewSet):
                 {'detail': exc.messages[0] if exc.messages else str(exc)},
                 status=status.HTTP_400_BAD_REQUEST)
         run.refresh_from_db()
+        # NTTRE42 — trace d'audit (au niveau vue : cf. import _audit_record).
+        _audit_record(
+            'payment_run.postee', instance=run, company=run.company,
+            user=request.user, detail=f'total={run.total}')
+        return Response(self.get_serializer(run).data)
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[HasPermissionOrLegacy('compta_valider')])
+    def approuver(self, request, pk=None):
+        """NTTRE5 — Première approbation (approbateur ≠ créateur).
+
+        Contrôle à 4 yeux : le premier approbateur ne peut pas être le créateur.
+        Fige la campagne en ``en_attente_approbation``.
+        """
+        run = self.get_object()  # scopé société par TenantMixin.
+        try:
+            run = services.approuver_payment_run(run, request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        # NTTRE42 — trace d'audit (au niveau vue : cf. import _audit_record).
+        _audit_record(
+            'payment_run.approbation_1', instance=run, company=run.company,
+            user=request.user, detail=f'statut={run.statut} total={run.total}')
+        return Response(self.get_serializer(run).data)
+
+    @action(detail=True, methods=['post'], url_path='approuver-final',
+            permission_classes=[HasPermissionOrLegacy('compta_valider')])
+    def approuver_final(self, request, pk=None):
+        """NTTRE5 — Seconde approbation (approbateur ≠ premier ≠ créateur).
+
+        Rend la campagne éligible au posting (contrôle à 4 yeux complet).
+        """
+        run = self.get_object()  # scopé société par TenantMixin.
+        try:
+            run = services.approuver_final_payment_run(run, request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        # NTTRE42 — trace d'audit (au niveau vue : cf. import _audit_record).
+        _audit_record(
+            'payment_run.approbation_2', instance=run, company=run.company,
+            user=request.user, detail=f'statut={run.statut} total={run.total}')
         return Response(self.get_serializer(run).data)
 
     @action(detail=True, methods=['get'], url_path='fichier-virement')
@@ -2789,7 +2993,19 @@ class PaymentRunViewSet(_ComptaBaseViewSet):
         ou si une ligne n'a aucune coordonnée bancaire. Lecture seule.
         """
         run = self.get_object()  # scopé société par TenantMixin.
+        # NTTRE14 — format bancaire à largeur fixe si demandé (query ?format=
+        # bancaire ou run.format_export=bancaire) ; CSV par défaut (inchangé).
+        fmt = (request.query_params.get('format')
+               or run.format_export or 'csv').lower()
         try:
+            if fmt == 'bancaire':
+                data = services.fichier_virement_bancaire(run)
+                resp = HttpResponse(
+                    data['texte'], content_type='text/plain; charset=utf-8')
+                resp['Content-Disposition'] = (
+                    'attachment; filename='
+                    f'"virements_{run.reference or run.id}.txt"')
+                return resp
             data = services.fichier_virement(run)
         except DjangoValidationError as exc:
             return Response(
@@ -2804,6 +3020,119 @@ class PaymentRunViewSet(_ComptaBaseViewSet):
         resp['Content-Disposition'] = (
             f'attachment; filename="virements_{run.reference or run.id}.csv"')
         return resp
+
+
+# ── NTTRE6 — Registre des pouvoirs bancaires (signataires autorisés) ────────
+
+class PouvoirBancaireViewSet(_ComptaBaseViewSet):
+    """Pouvoirs bancaires / signataires autorisés (NTTRE6).
+
+    CRUD des habilitations de signature par compte de trésorerie, consommées par
+    le workflow à 4 yeux (NTTRE5). Société scopée, posée côté serveur ;
+    Admin/Responsable. La lecture reste ouverte ; la modification des signataires
+    exige ``compta_gerer_pouvoirs_bancaires`` (NTTRE32) — octroyé par défaut au
+    Responsable/Admin via le repli légal, restreint pour un rôle explicitement
+    privé du code.
+    """
+    queryset = PouvoirBancaire.objects.select_related(
+        'compte_tresorerie', 'utilisateur').all()
+    serializer_class = PouvoirBancaireSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['titulaire_nom', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        compte = params.get('compte_tresorerie')
+        if compte:
+            qs = qs.filter(compte_tresorerie_id=compte)
+        statut = params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def list(self, request, *args, **kwargs):
+        # NTTRE36 — export CSV du registre des pouvoirs (audit annuel).
+        if request.query_params.get('export') == 'csv':
+            buffer = io.StringIO()
+            writer = csv.writer(buffer, delimiter=';')
+            writer.writerow([
+                'Titulaire', 'CIN', 'Compte', 'Plafond seul',
+                'Plafond conjoint', 'Début', 'Fin', 'Statut'])
+            for p in self.filter_queryset(self.get_queryset()):
+                writer.writerow([
+                    p.titulaire_nom, p.titulaire_cin,
+                    p.compte_tresorerie.libelle if p.compte_tresorerie_id else '',
+                    p.plafond_signature_seul, p.plafond_signature_conjointe,
+                    p.date_debut or '', p.date_fin or '', p.statut])
+            resp = HttpResponse(
+                buffer.getvalue(), content_type='text/csv; charset=utf-8')
+            resp['Content-Disposition'] = (
+                'attachment; filename="pouvoirs_bancaires.csv"')
+            return resp
+        return super().list(request, *args, **kwargs)
+
+    def get_permissions(self):
+        # NTTRE32 — la modification des signataires exige une permission dédiée
+        # (distincte de la gestion trésorerie générique) ; la lecture reste
+        # ouverte à Admin/Responsable.
+        if self.action in (
+                'create', 'update', 'partial_update', 'destroy', 'revoquer'):
+            return [HasPermissionOrLegacy('compta_gerer_pouvoirs_bancaires')()]
+        return super().get_permissions()
+
+    @action(detail=True, methods=['post'])
+    def revoquer(self, request, pk=None):
+        """NTTRE6/42 — Révoque un pouvoir bancaire (statut → révoqué, audité)."""
+        pouvoir = self.get_object()  # scopé société par TenantMixin.
+        pouvoir.statut = PouvoirBancaire.Statut.REVOQUE
+        pouvoir.save(update_fields=['statut', 'updated_at'])
+        # NTTRE42 — trace d'audit (au niveau vue : cf. import _audit_record) ;
+        # NTTRE41 — chatter conservé via le service (records, non contraint).
+        _audit_record(
+            'pouvoir_bancaire.revocation', instance=pouvoir,
+            company=pouvoir.company, user=request.user)
+        services._chatter_action_sensible(
+            pouvoir, request.user, 'pouvoir_bancaire.revocation')
+        return Response(self.get_serializer(pouvoir).data)
+
+
+# ── NTTRE27 — Réglages trésorerie par société (singleton) ───────────────────
+
+class ParametresTresorerieView(generics.RetrieveUpdateAPIView):
+    """Réglages trésorerie de la société (NTTRE27), singleton auto-créé.
+
+    ``GET`` renvoie le réglage (créé avec les valeurs par défaut à la première
+    lecture — aucune régression) ; ``PATCH`` le met à jour. Société scopée, posée
+    côté serveur ; Admin/Responsable.
+    """
+    http_method_names = ['get', 'patch', 'head', 'options']
+    serializer_class = ParametresTresorerieSerializer
+    permission_classes = [IsResponsableOrAdmin]
+
+    def get_object(self):
+        return services.get_parametres_tresorerie(self.request.user.company)
+
+
+# ── NTTRE11 — Plans de relance clients (recouvrement segmenté) ──────────────
+
+class PlanRelanceTresorerieViewSet(_ComptaBaseViewSet):
+    """Plans de relance de recouvrement segmentés (NTTRE11).
+
+    CRUD des plans multi-paliers (J+7 email, J+15 WhatsApp…), optionnellement
+    par segment client. Société scopée, posée côté serveur ; Admin/Responsable.
+    """
+    queryset = PlanRelanceTresorerie.objects.all()
+    serializer_class = PlanRelanceTresorerieSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['nom', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        segment = self.request.query_params.get('segment_client')
+        if segment:
+            qs = qs.filter(segment_client=segment)
+        return qs
 
 
 # ── FG135 — Notes de frais & remboursements employés ───────────────────────

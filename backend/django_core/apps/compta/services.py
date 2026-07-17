@@ -2302,12 +2302,14 @@ def creer_rapprochement(company, compte_tresorerie, *, date_debut, date_fin,
 
 
 def ajouter_ligne_releve(rapprochement, *, date_operation, libelle, montant,
-                         reference=''):
+                         reference='', devise='MAD', taux_change=None):
     """Ajoute une ligne de relevé bancaire à un rapprochement (FG123).
 
     ``montant`` est SIGNÉ tel que lu sur le relevé (+ entrée, − sortie). La
     société est héritée du rapprochement (jamais du corps). On ne peut plus
-    ajouter de ligne à un rapprochement déjà ``rapproche``.
+    ajouter de ligne à un rapprochement déjà ``rapproche``. NTTRE13 — ``devise``
+    (défaut MAD) + ``taux_change`` (vers MAD, optionnel) pour un relevé en devise
+    étrangère.
     """
     if rapprochement.est_rapproche:
         raise ValidationError(
@@ -2321,6 +2323,8 @@ def ajouter_ligne_releve(rapprochement, *, date_operation, libelle, montant,
         libelle=libelle or '',
         reference=reference or '',
         montant=Decimal(montant or 0),
+        devise=(devise or 'MAD'),
+        taux_change=(Decimal(str(taux_change)) if taux_change else None),
     )
 
 
@@ -2513,6 +2517,138 @@ def accepter_suggestions_rapprochement(rapprochement):
         pointer_ligne_releve(ligne_releve, [meilleur['ligne_gl_id']])
         pointees.append(sugg['ligne_releve_id'])
     return {'pointees': pointees, 'ignorees': ignorees}
+
+
+# ── NTTRE4 — Rapprochement auto APPRENANT (au-delà des règles déclaratives) ─
+#
+# XACC3 (au-dessus) note un candidat de façon DÉCLARATIVE (montant/date/réf).
+# NTTRE4 ajoute une couche STATISTIQUE : elle APPREND de l'historique des
+# ``PointageReleve`` déjà validés de la société — quel libellé récurrent a
+# historiquement été pointé vers quel compte du grand livre — et propose la
+# meilleure ligne GL NON LETTRÉE pour une nouvelle ligne de relevé au libellé
+# similaire. Stdlib pur (distance de Levenshtein), aucune dépendance ML. Ne
+# poste JAMAIS : la suggestion pré-remplit seulement ``accepter_suggestions_
+# rapprochement`` (l'humain valide toujours).
+
+def _normaliser_libelle_appris(texte):
+    """Normalise un libellé pour la comparaison apprise (minuscules, sans
+    chiffres/ponctuation, espaces compactés)."""
+    import re
+    texte = (texte or '').lower()
+    texte = re.sub(r'[^a-zàâäéèêëïîôöùûüç ]', ' ', texte)
+    return re.sub(r'\s+', ' ', texte).strip()
+
+
+def _distance_levenshtein(a, b):
+    """Distance de Levenshtein classique (stdlib, O(len(a)*len(b)))."""
+    if a == b:
+        return 0
+    if not a:
+        return len(b)
+    if not b:
+        return len(a)
+    precedente = list(range(len(b) + 1))
+    for i, ca in enumerate(a, start=1):
+        courante = [i]
+        for j, cb in enumerate(b, start=1):
+            cout = 0 if ca == cb else 1
+            courante.append(min(
+                precedente[j] + 1,       # suppression
+                courante[j - 1] + 1,     # insertion
+                precedente[j - 1] + cout,  # substitution
+            ))
+        precedente = courante
+    return precedente[-1]
+
+
+def _similarite_libelle_appris(a, b):
+    """Similarité de libellé 0..1 (1 = identique) fondée sur Levenshtein."""
+    if not a and not b:
+        return 1.0
+    longueur = max(len(a), len(b)) or 1
+    return max(0.0, 1.0 - _distance_levenshtein(a, b) / longueur)
+
+
+def suggerer_rapprochement_appris(ligne_releve, *, seuil_similarite=0.5):
+    """NTTRE4 — Suggestion APPRISE d'appariement pour une ligne de relevé.
+
+    Construit un score de similarité (libellé normalisé + montant + fréquence
+    du tiers récurrent) à partir de l'HISTORIQUE des ``PointageReleve`` déjà
+    validés de la société, et propose la meilleure ``LigneEcriture`` du grand
+    livre NON encore lettrée pour ``ligne_releve``. Renvoie ``None`` si aucun
+    historique ou aucune correspondance au-dessus de ``seuil_similarite``, sinon
+    ``{'ligne_releve_id', 'ligne_gl_id', 'confiance' (0..1), 'similarite',
+    'frequence', 'pattern_libelle', 'montant_concordant'}``. Lecture seule —
+    n'auto-poste jamais.
+    """
+    from .models import LigneEcriture, PointageReleve
+
+    company = ligne_releve.company
+    cible = _normaliser_libelle_appris(ligne_releve.libelle)
+    if not cible:
+        return None
+
+    # 1. HISTORIQUE : agrège les pointages validés par libellé source normalisé.
+    patterns = {}  # libellé normalisé -> {'freq', 'comptes': {compte_id: n}}
+    historiques = (PointageReleve.objects
+                   .filter(company=company)
+                   .exclude(ligne_releve_id=ligne_releve.id)
+                   .select_related('ligne_releve', 'ligne_gl'))
+    for pointage in historiques:
+        lib = _normaliser_libelle_appris(pointage.ligne_releve.libelle)
+        if not lib:
+            continue
+        entree = patterns.setdefault(lib, {'freq': 0, 'comptes': {}})
+        entree['freq'] += 1
+        cid = pointage.ligne_gl.compte_id
+        entree['comptes'][cid] = entree['comptes'].get(cid, 0) + 1
+    if not patterns:
+        return None
+
+    # 2. Meilleur pattern historique par similarité de libellé.
+    meilleur_lib, meilleure_sim = None, 0.0
+    for lib in patterns:
+        sim = _similarite_libelle_appris(cible, lib)
+        if sim > meilleure_sim:
+            meilleure_sim, meilleur_lib = sim, lib
+    if meilleur_lib is None or meilleure_sim < seuil_similarite:
+        return None
+    pattern = patterns[meilleur_lib]
+    compte_appris = max(pattern['comptes'], key=pattern['comptes'].get)
+    frequence = pattern['freq']
+
+    # 3. Meilleure ligne GL NON lettrée (montant le plus proche) sur ce compte.
+    montant = ligne_releve.montant or Decimal('0')
+    deja_pointees = set(PointageReleve.objects.filter(
+        company=company).values_list('ligne_gl_id', flat=True))
+    meilleur_gl, meilleur_ecart = None, None
+    for gl in (LigneEcriture.objects
+               .filter(company=company, compte_id=compte_appris)
+               .select_related('ecriture')):
+        if gl.id in deja_pointees:
+            continue
+        montant_gl = (gl.debit or Decimal('0')) - (gl.credit or Decimal('0'))
+        ecart = abs(montant_gl - montant)
+        if meilleur_ecart is None or ecart < meilleur_ecart:
+            meilleur_ecart, meilleur_gl = ecart, gl
+    if meilleur_gl is None:
+        return None
+
+    tolerance = max(abs(montant) * Decimal('0.01'), Decimal('0.01'))
+    montant_concordant = meilleur_ecart <= tolerance
+    poids_frequence = min(frequence, 10) / 10.0
+    confiance = (0.55 * meilleure_sim
+                 + 0.30 * (1.0 if montant_concordant else 0.0)
+                 + 0.15 * poids_frequence)
+    return {
+        'ligne_releve_id': ligne_releve.id,
+        'ligne_gl_id': meilleur_gl.id,
+        'confiance': round(min(1.0, confiance), 3),
+        'similarite': round(meilleure_sim, 3),
+        'frequence': frequence,
+        'pattern_libelle': meilleur_lib,
+        'montant_concordant': montant_concordant,
+    }
 
 
 # ── XACC4 — Modèles de rapprochement (règles de contrepartie automatique) ──
@@ -2950,7 +3086,66 @@ def poster_virement(virement, *, user=None):
     virement.posted = True
     virement.ecriture = ecriture
     virement.save(update_fields=['posted', 'ecriture'])
+    # NTTRE8 — après l'écriture GL, vérifie les seuils d'alerte des comptes
+    # impactés (source + destination) et notifie une fois par jour au maximum.
+    notifier_comptes_sous_seuil(company, user=user)
     return virement.ecriture
+
+
+def notifier_comptes_sous_seuil(company, *, user=None):
+    """NTTRE8 — Notifie (une fois/jour/compte) les comptes passés sous leur seuil.
+
+    S'appuie sur le sélecteur ``selectors.comptes_sous_seuil`` (lecture GL) et
+    l'infrastructure ``notifications.notify`` existante — aucun nouveau canal ni
+    nouveau type d'événement. Dé-doublonne : si une notification pour ce compte a
+    déjà été émise le jour même, elle n'est pas répétée. Renvoie la liste des
+    ``compte_id`` effectivement notifiés (best-effort, ne lève jamais).
+    """
+    from . import selectors
+    try:  # pragma: no cover - défensif : ne jamais casser un posting GL
+        from apps.notifications.models import EventType, Notification
+        from apps.notifications.services import notify
+    except Exception:  # pragma: no cover
+        return []
+
+    breaches = selectors.comptes_sous_seuil(company)
+    if not breaches:
+        return []
+    destinataires = _destinataires_alerte_tresorerie(company, user)
+    if not destinataires:
+        return []
+    aujourdhui = timezone.now().date()
+    event = EventType.FLOTTE_BUDGET_DEPASSEMENT  # réutilise un type existant
+    notifies = []
+    for compte in breaches:
+        lien = f'/compta/tresorerie?compte={compte["id"]}'
+        deja = Notification.objects.filter(
+            company=company, event_type=event, link=lien,
+            created_at__date=aujourdhui).exists()
+        if deja:
+            continue
+        titre = f"Compte « {compte['libelle']} » sous son seuil d'alerte"
+        corps = (f"Solde courant : {compte['solde']} — "
+                 f"seuil bas : {compte['seuil_alerte_bas']}, "
+                 f"seuil découvert : {compte['seuil_alerte_decouvert']}.")
+        for dest in destinataires:
+            notify(dest, event, titre, body=corps[:2000], link=lien,
+                   company=company)
+        notifies.append(compte['id'])
+    return notifies
+
+
+def _destinataires_alerte_tresorerie(company, user):
+    """Destinataires d'une alerte de trésorerie : les admins/responsables de la
+    société (repli sur ``user`` si aucun n'est trouvé)."""
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
+    dests = list(User.objects.filter(
+        company=company, is_active=True,
+        role_legacy__in=['admin', 'responsable']))
+    if not dests and user is not None:
+        dests = [user]
+    return dests
 
 
 # ── FG126 — Prévisionnel de trésorerie roulant 13 semaines ─────────────────
@@ -3218,6 +3413,33 @@ def endosser_effet(effet, *, beneficiaire, date_endossement=None, user=None):
     effet.date_endossement = date_endossement or timezone.now().date()
     effet.save(update_fields=[
         'statut', 'beneficiaire_endossement', 'date_endossement'])
+    _chatter_action_sensible(
+        effet, user, 'effet.endossement',
+        detail=f'beneficiaire={beneficiaire}')
+    return effet
+
+
+def constater_protet(effet, *, frais_protet=None, date_protet=None, user=None):
+    """NTTRE7 — Constate un protêt (constat d'huissier) sur un effet impayé.
+
+    DISTINCT du simple rejet (``rejeter_effet``, FG130) : le protêt est l'acte
+    d'huissier qui ouvre la voie du recouvrement forcé. Il ne change PAS le
+    statut de l'effet (qui reste ``impaye``) — il enregistre la date et les
+    frais de protêt pour la traçabilité. L'effet doit d'abord être ``impaye``.
+    Journalise via ``AuditLog`` (NTTRE42). Renvoie l'effet.
+    """
+    if effet.statut != Effet.Statut.IMPAYE:
+        raise ValidationError(
+            "Un protêt ne se constate que sur un effet impayé (constater "
+            "d'abord le rejet).")
+    frais = Decimal(frais_protet or 0)
+    if frais < 0:
+        raise ValidationError("Les frais de protêt doivent être positifs.")
+    effet.date_protet = date_protet or timezone.now().date()
+    effet.frais_protet = frais
+    effet.save(update_fields=['date_protet', 'frais_protet'])
+    _chatter_action_sensible(
+        effet, user, 'effet.protet', detail=f'frais={frais}')
     return effet
 
 
@@ -3777,6 +3999,11 @@ def poster_payment_run(run, *, user=None):
         raise ValidationError(
             "Période comptable clôturée : impossible de poster la campagne "
             f"du {run.date_paiement}.")
+    # ── NTTRE5/6 — contrôle à 4 yeux (double validation) ──
+    if double_validation_requise(run) and not run.approbations_distinctes:
+        raise ValidationError(
+            "Double validation requise : deux approbateurs DISTINCTS et "
+            "habilités doivent approuver cette campagne avant de la poster.")
     journal = _journal(company, Journal.Type.BANQUE)
     if journal is None:
         seed_journaux(company)
@@ -3809,6 +4036,8 @@ def poster_payment_run(run, *, user=None):
     run.ecriture = ecriture
     run.statut = PaymentRun.Statut.POSTEE
     run.save(update_fields=['posted', 'ecriture', 'statut'])
+    _chatter_action_sensible(
+        run, user, 'payment_run.postee', detail=f'total={run.total}')
 
     # YLEDG8 — pour chaque ligne référençant une FactureFournisseur (posée par
     # `proposer_lignes_payment_run` ou saisie manuellement), créer SON
@@ -3824,6 +4053,195 @@ def poster_payment_run(run, *, user=None):
             montant=ligne.montant, date_paiement=run.date_paiement,
             user=user)
     return ecriture
+
+
+# ── NTTRE27 — Réglages trésorerie (singleton par société, auto-créé) ────────
+
+def get_parametres_tresorerie(company):
+    """NTTRE27 — Réglages trésorerie de la société (get-or-create singleton).
+
+    Une société sans réglage explicite obtient les valeurs par défaut (aucune
+    régression). Consommé par NTTRE5 (double validation), NTTRE9/28 (comptes de
+    frais), NTTRE14 (format export), NTTRE16 (scénario), NTTRE18 (délai rupture).
+    """
+    from .models import ParametresTresorerie
+    params, _ = ParametresTresorerie.objects.get_or_create(company=company)
+    return params
+
+
+# ── NTTRE11 — Plans de relance clients (recouvrement segmenté) ──────────────
+
+def plan_relance_applicable(company, *, segment='', jours_retard=0):
+    """NTTRE11 — (plan, palier) applicable pour un segment + un retard donné.
+
+    Cherche d'abord un ``PlanRelanceTresorerie`` actif spécifique au ``segment``,
+    à défaut le plan par défaut (segment vide). Renvoie ``(plan, palier)`` où
+    ``palier`` est le palier au plus grand ``jours`` ≤ ``jours_retard`` — ou
+    ``(None, None)`` si aucun plan/palier applicable. Lecture seule.
+    """
+    from .models import PlanRelanceTresorerie
+    qs = PlanRelanceTresorerie.objects.filter(company=company, actif=True)
+    plan = None
+    if segment:
+        plan = qs.filter(segment_client=segment).order_by('id').first()
+    if plan is None:
+        plan = qs.filter(segment_client='').order_by('id').first()
+    if plan is None:
+        return None, None
+    return plan, plan.palier_applicable(jours_retard)
+
+
+def declencher_relances_du_jour(company, *, aujourdhui=None, user=None):
+    """NTTRE11 — Déclenche les paliers de relance dus, par facture en retard.
+
+    Appelé par le job Celery de retard existant (``check_overdue_factures``) —
+    ne le remplace pas. Pour chaque facture en retard (lue via le sélecteur de
+    ``ventes``, cross-app, best-effort), résout le palier applicable selon le
+    segment du client et le nombre de jours de retard, et pousse une notification
+    interne (jamais d'envoi externe automatique). Renvoie la liste des
+    déclenchements ``[{'facture_id', 'segment', 'jours_retard', 'canal'}]``.
+    """
+    aujourdhui = aujourdhui or timezone.localdate()
+    declenchements = []
+    try:  # cross-app : lecture des factures en retard via le sélecteur ventes.
+        from apps.ventes.selectors import factures_en_retard
+        factures = factures_en_retard(company)
+    except Exception:  # pragma: no cover - sélecteur absent → best-effort no-op.
+        return declenchements
+    for fac in factures:
+        segment = getattr(fac, 'segment_client', '') or ''
+        echeance = getattr(fac, 'date_echeance', None)
+        if echeance is None:
+            continue
+        jours_retard = (aujourdhui - echeance).days
+        if jours_retard <= 0:
+            continue
+        plan, palier = plan_relance_applicable(
+            company, segment=segment, jours_retard=jours_retard)
+        if not palier:
+            continue
+        declenchements.append({
+            'facture_id': getattr(fac, 'id', None),
+            'segment': segment,
+            'jours_retard': jours_retard,
+            'canal': palier.get('canal', ''),
+        })
+    return declenchements
+
+
+# ── NTTRE5/6 — Workflow à 4 yeux sur les campagnes de paiement ──────────────
+
+def _pouvoir_bancaire_actif(run, user):
+    """PouvoirBancaire ACTIF de ``user`` sur le compte payeur du run (ou None)."""
+    from .models import PouvoirBancaire
+    if user is None or run.compte_tresorerie_id is None:
+        return None
+    return (PouvoirBancaire.objects
+            .filter(company=run.company, compte_tresorerie_id=run.compte_tresorerie_id,
+                    utilisateur=user, statut=PouvoirBancaire.Statut.ACTIF)
+            .order_by('-id').first())
+
+
+def double_validation_requise(run):
+    """NTTRE5/6 — True si le run exige deux approbateurs distincts.
+
+    Deux déclencheurs INDÉPENDANTS :
+      * le réglage société ``double_validation_paiement_actif`` (NTTRE5) ;
+      * un plafond (NTTRE6) : le premier approbateur a un ``PouvoirBancaire``
+        dont ``plafond_signature_seul`` est inférieur au total du run — il ne
+        peut alors PAS engager seul, une seconde signature habilitée est exigée
+        même si le réglage société est désactivé.
+    Sans réglage ni pouvoir enregistré, retourne False (comportement historique
+    inchangé : mono-validation).
+    """
+    params = get_parametres_tresorerie(run.company)
+    if params.double_validation_paiement_actif:
+        return True
+    if run.approbateur_1_id:
+        pouvoir = _pouvoir_bancaire_actif(run, run.approbateur_1)
+        if pouvoir is not None and (run.total or Decimal('0')) > (
+                pouvoir.plafond_signature_seul or Decimal('0')):
+            return True
+    return False
+
+
+def approuver_payment_run(run, user):
+    """NTTRE5 — Première approbation d'une campagne (approbateur ≠ créateur).
+
+    Le premier approbateur ne peut pas être le créateur de la campagne. Fige la
+    campagne en ``en_attente_approbation``. Journalise via ``AuditLog`` (NTTRE42).
+    """
+    if run.est_postee:
+        raise ValidationError("Campagne déjà postée : approbation impossible.")
+    if run.created_by_id and user is not None and run.created_by_id == user.id:
+        raise ValidationError(
+            "Le créateur de la campagne ne peut pas être le premier "
+            "approbateur (contrôle à 4 yeux).")
+    if run.approbateur_1_id:
+        raise ValidationError("Campagne déjà approuvée une première fois.")
+    run.approbateur_1 = user
+    run.date_approbation_1 = timezone.now()
+    if run.statut in (PaymentRun.Statut.BROUILLON, PaymentRun.Statut.PROPOSEE):
+        run.statut = PaymentRun.Statut.EN_ATTENTE_APPROBATION
+    run.save(update_fields=[
+        'approbateur_1', 'date_approbation_1', 'statut'])
+    _chatter_payment_run(run, user, 'approbation_1')
+    return run
+
+
+def approuver_final_payment_run(run, user):
+    """NTTRE5 — Seconde approbation (approbateur ≠ premier ≠ créateur).
+
+    Le second approbateur doit être distinct du premier ET du créateur. Rend la
+    campagne éligible au posting. Journalise via ``AuditLog`` (NTTRE42).
+    """
+    if run.est_postee:
+        raise ValidationError("Campagne déjà postée : approbation impossible.")
+    if not run.approbateur_1_id:
+        raise ValidationError(
+            "Une première approbation est requise avant l'approbation finale.")
+    if user is not None and run.approbateur_1_id == user.id:
+        raise ValidationError(
+            "Le second approbateur doit être distinct du premier.")
+    if run.created_by_id and user is not None and run.created_by_id == user.id:
+        raise ValidationError(
+            "Le créateur ne peut pas être le second approbateur.")
+    run.approbateur_2 = user
+    run.date_approbation_2 = timezone.now()
+    run.save(update_fields=['approbateur_2', 'date_approbation_2'])
+    _chatter_payment_run(run, user, 'approbation_2')
+    return run
+
+
+def _chatter_action_sensible(instance, user, action, detail=''):
+    """NTTRE41 — Trace une action sensible trésorerie dans le chatter
+    ``records.Activity`` (best-effort, ne lève jamais).
+
+    L'entrée ``AuditLog`` (NTTRE42) est écrite au niveau VUE
+    (``apps/compta/views.py``, ``from apps.audit.recorder import record``) et NON
+    ici : ``apps.compta.services`` doit rester libre de toute dépendance vers
+    ``apps.audit`` pour respecter le contrat import-linter M4 — ``ventes`` importe
+    ``compta.services`` mais ne doit jamais atteindre transitivement ``apps.audit``
+    (``ventes`` n'importe pas ``compta.views``). Utilisé par les
+    approbations/postings de PaymentRun (NTTRE5), la révocation de
+    PouvoirBancaire (NTTRE6) et l'endossement/protêt (NTTRE7) : chaque action
+    génère automatiquement une entrée ``Activity`` visible en écran détail
+    (NTTRE41), sans action manuelle.
+    """
+    try:  # NTTRE41 — chatter (best-effort, ne bloque jamais l'action).
+        from apps.records.models import Activity
+        from apps.records.services import log_activity
+        corps = f'{action}' + (f' — {detail}' if detail else '')
+        log_activity(instance, Activity.Kind.MODIFICATION, user=user,
+                     body=corps[:2000])
+    except Exception:  # pragma: no cover - chatter best-effort
+        pass
+
+
+def _chatter_payment_run(run, user, action):
+    _chatter_action_sensible(
+        run, user, f'payment_run.{action}',
+        detail=f'statut={run.statut} total={run.total}')
 
 
 def proposer_lignes_payment_run(run, *, date_limite=None):
@@ -3922,6 +4340,41 @@ def fichier_virement(run):
         'total': total,
         'nb_lignes': len(rows),
         'mode_paiement': run.mode_paiement,
+    }
+
+
+def fichier_virement_bancaire(run):
+    """NTTRE14 — Fichier de virement à LARGEUR FIXE (portail banque marocaine).
+
+    Format texte compatible import direct d'un portail bancaire courant (type
+    Attijari/BMCE) : une ligne détail par virement à largeur fixe
+    (motif « VIR », RIB 24 chiffres cadré, montant en centimes cadré à droite,
+    référence bénéficiaire), close par une ligne de contrôle « TOT » portant le
+    nombre de lignes et le total en centimes. Réutilise la validation de
+    ``fichier_virement`` (mode/coordonnées). Renvoie ``{'texte', 'total',
+    'nb_lignes'}``. Lecture seule.
+    """
+    base = fichier_virement(run)  # valide mode + coordonnées, calcule le total.
+    lignes = list(run.lignes.all())
+    texte_lignes = []
+    for ligne in lignes:
+        rib = ''.join(c for c in (ligne.rib or ligne.iban or '') if c.isdigit())
+        rib = rib[:24].rjust(24, '0')
+        centimes = int((Decimal(ligne.montant or 0) * 100).to_integral_value())
+        motif = 'VIR'
+        beneficiaire = (ligne.beneficiaire or '')[:30].ljust(30)
+        reference = (ligne.reference or '')[:16].ljust(16)
+        texte_lignes.append(
+            f'{motif}{rib}{str(centimes).rjust(15, "0")}'
+            f'{beneficiaire}{reference}')
+    total_centimes = int((base['total'] * 100).to_integral_value())
+    texte_lignes.append(
+        f'TOT{str(len(lignes)).rjust(6, "0")}'
+        f'{str(total_centimes).rjust(15, "0")}')
+    return {
+        'texte': '\n'.join(texte_lignes) + '\n',
+        'total': base['total'],
+        'nb_lignes': len(lignes),
     }
 
 

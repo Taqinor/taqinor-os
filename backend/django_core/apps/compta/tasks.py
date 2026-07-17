@@ -89,3 +89,8 @@ def traiter_posts_sociaux_task():
     for company in Company.objects.all():
         total += len(traiter_posts_sociaux_dus(company))
     return {'posts_traites': total}
+
+
+# NTTRE29/31 — enregistre les tâches Beat trésorerie (scheduled.py) auprès de
+# Celery via ce module tasks.py auto-découvert (autodiscover_tasks).
+from . import scheduled  # noqa: E402,F401

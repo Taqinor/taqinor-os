@@ -1195,6 +1195,103 @@ def position_tresorerie(company, *, date_fin=None, validees_seulement=False):
     return {'comptes': comptes, 'total': total, 'encours_emprunts': encours_emprunts}
 
 
+def comptes_sous_seuil(company, *, date_fin=None):
+    """NTTRE8 — Comptes de trésorerie dont le solde courant est sous un seuil.
+
+    Pour chaque ``CompteTresorerie`` actif portant un ``seuil_alerte_bas`` ou un
+    ``seuil_alerte_decouvert``, compare le solde courant (solde_initial +
+    mouvements GL, comme ``position_tresorerie``). Renvoie la liste des comptes
+    en alerte : ``[{'id', 'libelle', 'solde', 'seuil_alerte_bas',
+    'seuil_alerte_decouvert', 'sous_bas', 'sous_decouvert'}]``. Lecture seule,
+    scopée société.
+    """
+    resultat = []
+    treso_qs = CompteTresorerie.objects.filter(
+        company=company, actif=True).select_related('compte_comptable')
+    for treso in treso_qs:
+        seuil_bas = treso.seuil_alerte_bas
+        seuil_dec = treso.seuil_alerte_decouvert
+        if seuil_bas is None and seuil_dec is None:
+            continue
+        solde = (treso.solde_initial or Decimal('0')) + solde_compte(
+            company, treso.compte_comptable, date_fin=date_fin)
+        sous_bas = seuil_bas is not None and solde < seuil_bas
+        sous_dec = seuil_dec is not None and solde < seuil_dec
+        if sous_bas or sous_dec:
+            resultat.append({
+                'id': treso.id,
+                'libelle': treso.libelle,
+                'solde': solde,
+                'seuil_alerte_bas': seuil_bas,
+                'seuil_alerte_decouvert': seuil_dec,
+                'sous_bas': sous_bas,
+                'sous_decouvert': sous_dec,
+            })
+    return resultat
+
+
+def analyse_frais_bancaires(company, *, debut=None, fin=None):
+    """NTTRE9 — Analyse des frais bancaires dans le temps (lecture seule).
+
+    Agrège les écritures GL sur les comptes de frais bancaires (par défaut 6147,
+    élargissable via ``ParametresTresorerie.comptes_frais_bancaires`` — NTTRE28)
+    par compte de trésorerie (banque) et par mois. Le compte bancaire est déduit
+    de la ligne de trésorerie (classe 5) présente dans la même écriture. Renvoie
+    ``{'par_compte': [{'compte_id', 'libelle', 'mois': [{'mois', 'montant'}],
+    'total'}], 'total': Decimal}``. Cohérent avec le grand livre.
+    """
+    from .models import ParametresTresorerie
+
+    params = ParametresTresorerie.objects.filter(company=company).first()
+    numeros = (params.comptes_frais_bancaires
+               if params and params.comptes_frais_bancaires else ['6147'])
+    comptes_treso = list(CompteTresorerie.objects.filter(company=company))
+    treso_par_compte = {t.compte_comptable_id: t for t in comptes_treso}
+    treso_par_id = {t.id: t for t in comptes_treso}
+
+    qs = LigneEcriture.objects.filter(
+        company=company, compte__numero__in=numeros).select_related(
+        'ecriture').prefetch_related('ecriture__lignes')
+    if debut:
+        qs = qs.filter(ecriture__date_ecriture__gte=debut)
+    if fin:
+        qs = qs.filter(ecriture__date_ecriture__lte=fin)
+
+    # agg[compte_treso_id][mois] = total des frais
+    agg = {}
+    total_global = Decimal('0')
+    for lg in qs:
+        montant = (lg.debit or Decimal('0')) - (lg.credit or Decimal('0'))
+        if montant == 0:
+            continue
+        treso = None
+        for sib in lg.ecriture.lignes.all():
+            candidat = treso_par_compte.get(sib.compte_id)
+            if candidat is not None:
+                treso = candidat
+                break
+        treso_id = treso.id if treso else None
+        mois = lg.ecriture.date_ecriture.strftime('%Y-%m')
+        agg.setdefault(treso_id, {}).setdefault(mois, Decimal('0'))
+        agg[treso_id][mois] += montant
+        total_global += montant
+
+    par_compte = []
+    for treso_id, mois_map in agg.items():
+        treso = treso_par_id.get(treso_id)
+        libelle = treso.libelle if treso else 'Non rattaché'
+        mois_liste = [{'mois': m, 'montant': mois_map[m]}
+                      for m in sorted(mois_map)]
+        par_compte.append({
+            'compte_id': treso_id,
+            'libelle': libelle,
+            'mois': mois_liste,
+            'total': sum(mois_map.values(), Decimal('0')),
+        })
+    par_compte.sort(key=lambda c: (c['compte_id'] is None, c['compte_id'] or 0))
+    return {'par_compte': par_compte, 'total': total_global}
+
+
 def projection_tresorerie(company, *, date_fin=None, validees_seulement=False):
     """Projection nette de trésorerie : position actuelle ± AR/AP/paie/impôts.
 
@@ -1659,7 +1756,8 @@ def caisses_de(company):
 
 # ── FG126 — Prévisionnel de trésorerie roulant 13 semaines ─────────────────
 
-def previsionnel_tresorerie(company, *, date_debut=None, nb_semaines=13):
+def previsionnel_tresorerie(company, *, date_debut=None, nb_semaines=13,
+                            scenario=None):
     """Prévisionnel de trésorerie roulant sur ``nb_semaines`` semaines (FG126).
 
     Construit une projection SEMAINE PAR SEMAINE en partant de la position de
@@ -1667,9 +1765,14 @@ def previsionnel_tresorerie(company, *, date_debut=None, nb_semaines=13):
     chaque semaine, les ``LignePrevisionnelTresorerie`` prévues qui y tombent
     (montant signé : + encaissement, − décaissement) PLUS les effets ouverts
     (FG127/FG128) dont l'échéance tombe dans la semaine (effets à recevoir → +,
-    à payer → −). Renvoie ``{'solde_initial', 'date_debut', 'semaines': [...]}``
-    où chaque semaine porte ``{'index', 'date_debut', 'date_fin', 'entrees',
-    'sorties', 'flux_net', 'solde_fin', 'lignes': [...]}``. Lecture seule.
+    à payer → −). Renvoie ``{'solde_initial', 'date_debut', 'semaines': [...],
+    'date_rupture_estimee'}`` où chaque semaine porte ``{'index', 'date_debut',
+    'date_fin', 'entrees', 'sorties', 'flux_net', 'solde_fin', 'lignes': [...]}``.
+
+    NTTRE16 — ``scenario`` (realiste/optimiste/pessimiste) filtre les lignes
+    manuelles : ``None`` ou ``'realiste'`` = comportement historique (les lignes
+    réalistes, défaut du champ). NTTRE18 — ``date_rupture_estimee`` = première
+    date où le solde projeté passe sous zéro (``None`` sinon). Lecture seule.
     """
     debut = date_debut or timezone.localdate()
     # Cale le début sur le lundi de la semaine de ``debut``.
@@ -1679,9 +1782,12 @@ def previsionnel_tresorerie(company, *, date_debut=None, nb_semaines=13):
     solde_initial = solde
 
     fin_horizon = debut + timedelta(weeks=nb_semaines)
-    lignes_prev = list(LignePrevisionnelTresorerie.objects.filter(
-        company=company, date_prevue__gte=debut,
-        date_prevue__lt=fin_horizon).order_by('date_prevue', 'id'))
+    lignes_prev_qs = LignePrevisionnelTresorerie.objects.filter(
+        company=company, date_prevue__gte=debut, date_prevue__lt=fin_horizon)
+    # NTTRE16 — filtre scénario : réaliste (défaut) = comportement inchangé.
+    lignes_prev_qs = lignes_prev_qs.filter(
+        scenario=scenario or LignePrevisionnelTresorerie.Scenario.REALISTE)
+    lignes_prev = list(lignes_prev_qs.order_by('date_prevue', 'id'))
     effets = list(Effet.objects.filter(
         company=company, date_echeance__gte=debut,
         date_echeance__lt=fin_horizon,
@@ -1755,11 +1861,18 @@ def previsionnel_tresorerie(company, *, date_debut=None, nb_semaines=13):
             'solde_fin': solde,
             'lignes': lignes,
         })
+    # NTTRE18 — première semaine où le solde projeté passe sous zéro.
+    date_rupture = None
+    for semaine in semaines:
+        if semaine['solde_fin'] < 0:
+            date_rupture = semaine['date_debut']
+            break
     return {
         'solde_initial': solde_initial,
         'date_debut': debut,
         'nb_semaines': nb_semaines,
         'semaines': semaines,
+        'date_rupture_estimee': date_rupture,
     }
 
 

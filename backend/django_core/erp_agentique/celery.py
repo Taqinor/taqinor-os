@@ -73,6 +73,15 @@ app.conf.beat_schedule = {
         'task': 'ventes.check_overdue_factures',
         'schedule': crontab(hour=0, minute=30),
     },
+    # NTTRE29/31 — trésorerie : alerte rupture (quotidien) + relances du jour.
+    'compta-recalculer-alerte-rupture': {
+        'task': 'compta.recalculer_alerte_rupture',
+        'schedule': crontab(hour=6, minute=45),
+    },
+    'compta-relances-tresorerie-du-jour': {
+        'task': 'compta.relances_tresorerie_du_jour',
+        'schedule': crontab(hour=7, minute=5),
+    },
     'ventes-expire-stale-devis': {
         'task': 'ventes.expire_stale_devis',
         'schedule': crontab(hour=1, minute=0),
