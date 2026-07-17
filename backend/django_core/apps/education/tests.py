@@ -79,3 +79,74 @@ class FoundationTests(EducationTestCaseMixin, TestCase):
         inscription.refresh_from_db()
         self.assertEqual(inscription.statut, Inscription.Statut.LISTE_ATTENTE)
         self.assertEqual(inscription.position_liste_attente, 1)
+
+
+class NTEDU4ReinscriptionMasseTests(EducationTestCaseMixin, TestCase):
+    """NTEDU4 — réinscription annuelle en masse, idempotente."""
+
+    def setUp(self):
+        super().setUp()
+        self.annee_cible = AnneeScolaire.objects.create(
+            company=self.company, libelle='2027-2028',
+            date_debut=date(2027, 9, 1), date_fin=date(2028, 6, 30),
+            statut=AnneeScolaire.Statut.ARCHIVEE)
+        self.classe_ce1 = Classe.objects.create(
+            company=self.company, annee_scolaire=self.annee_cible,
+            niveau=self.niveau_ce1, nom='CE1 A', capacite_max=30)
+        self.eleve = Eleve.objects.create(
+            company=self.company, famille=self.famille, nom='Bennani',
+            prenom='Yasmine', classe=self.classe, statut=Eleve.Statut.INSCRIT)
+
+    def test_reinscription_masse_propose_niveau_superieur(self):
+        from .services import reinscrire_en_masse
+
+        result = reinscrire_en_masse(
+            company=self.company, annee_source=self.annee,
+            annee_cible=self.annee_cible)
+        self.assertEqual(len(result['creees']), 1)
+        inscription = result['creees'][0]
+        self.assertEqual(inscription.classe_demandee, self.classe_ce1)
+        self.assertEqual(inscription.statut, Inscription.Statut.EN_ATTENTE)
+
+    def test_reinscription_masse_est_idempotente(self):
+        from .services import reinscrire_en_masse
+
+        reinscrire_en_masse(
+            company=self.company, annee_source=self.annee,
+            annee_cible=self.annee_cible)
+        result = reinscrire_en_masse(
+            company=self.company, annee_source=self.annee,
+            annee_cible=self.annee_cible)
+        self.assertEqual(len(result['creees']), 0)
+        self.assertEqual(result['deja_existantes'], 1)
+        self.assertEqual(
+            Inscription.objects.filter(
+                eleve=self.eleve, annee_scolaire=self.annee_cible).count(), 1)
+
+    def test_endpoint_reinscription_masse_deux_fois_ne_duplique_pas(self):
+        url = '/api/django/education/inscriptions/reinscription-masse/'
+        payload = {
+            'annee_source': self.annee.id, 'annee_cible': self.annee_cible.id}
+        response1 = self.client.post(url, payload, format='json')
+        self.assertEqual(response1.status_code, 200, response1.content)
+        self.assertEqual(response1.data['creees'], 1)
+
+        response2 = self.client.post(url, payload, format='json')
+        self.assertEqual(response2.status_code, 200, response2.content)
+        self.assertEqual(response2.data['creees'], 0)
+        self.assertEqual(response2.data['deja_existantes'], 1)
+
+    def test_confirmer_reinscription_bulk(self):
+        from .services import reinscrire_en_masse
+
+        result = reinscrire_en_masse(
+            company=self.company, annee_source=self.annee,
+            annee_cible=self.annee_cible)
+        inscription_id = result['creees'][0].id
+
+        url = '/api/django/education/inscriptions/confirmer-reinscription/'
+        response = self.client.post(
+            url, {'ids': [inscription_id]}, format='json')
+        self.assertEqual(response.status_code, 200, response.content)
+        inscription = Inscription.objects.get(pk=inscription_id)
+        self.assertEqual(inscription.statut, Inscription.Statut.VALIDEE)

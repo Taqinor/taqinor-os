@@ -95,3 +95,55 @@ class InscriptionViewSet(CompanyScopedModelViewSet):
         inscription = affecter_classe(
             self.get_object(), classe, user=request.user)
         return Response(InscriptionSerializer(inscription).data)
+
+    @action(detail=False, methods=['post'], url_path='reinscription-masse')
+    def reinscription_masse(self, request):
+        """NTEDU4 — génère les inscriptions de réinscription (en_attente) sur
+        l'année cible pour chaque élève actif de l'année source. IDEMPOTENT :
+        relancer deux fois ne duplique jamais rien (``services.
+        reinscrire_en_masse``)."""
+        from .services import reinscrire_en_masse
+
+        company = request.user.company
+        annee_source = AnneeScolaire.objects.filter(
+            company=company, pk=request.data.get('annee_source')).first()
+        annee_cible = AnneeScolaire.objects.filter(
+            company=company, pk=request.data.get('annee_cible')).first()
+        if annee_source is None or annee_cible is None:
+            raise ValidationError(
+                {'detail': 'annee_source/annee_cible introuvable(s).'})
+
+        result = reinscrire_en_masse(
+            company=company, annee_source=annee_source, annee_cible=annee_cible)
+        return Response({
+            'creees': len(result['creees']),
+            'deja_existantes': result['deja_existantes'],
+            'inscriptions': InscriptionSerializer(
+                result['creees'], many=True).data,
+        })
+
+    @action(detail=False, methods=['get'], url_path='a-reinscrire')
+    def a_reinscrire(self, request):
+        """NTEDU4 — filtre « à réinscrire » : inscriptions ``en_attente``
+        générées par une réinscription en masse, en attente de confirmation."""
+        qs = self.get_queryset().filter(statut=Inscription.Statut.EN_ATTENTE)
+        annee_cible = request.query_params.get('annee_cible')
+        if annee_cible:
+            qs = qs.filter(annee_scolaire_id=annee_cible)
+        return Response(InscriptionSerializer(qs, many=True).data)
+
+    @action(
+        detail=False, methods=['post'], url_path='confirmer-reinscription')
+    def confirmer_reinscription(self, request):
+        """NTEDU4 — action bulk « confirmer réinscription » : valide en une
+        fois toutes les inscriptions ``ids`` (statut ``en_attente`` issues de
+        la réinscription en masse)."""
+        from .services import valider_inscription
+
+        ids = request.data.get('ids') or []
+        qs = self.get_queryset().filter(
+            pk__in=ids, statut=Inscription.Statut.EN_ATTENTE)
+        confirmees = [
+            valider_inscription(inscription, user=request.user)
+            for inscription in qs]
+        return Response(InscriptionSerializer(confirmees, many=True).data)
