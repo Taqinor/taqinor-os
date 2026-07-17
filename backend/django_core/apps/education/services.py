@@ -272,3 +272,71 @@ def reinscrire_en_masse(*, company, annee_source, annee_cible):
         crees.append(inscription)
 
     return {'creees': crees, 'deja_existantes': deja_existantes}
+
+
+# =============================================================================
+# NTEDU15 — permission de saisie des notes (AUTH).
+# =============================================================================
+
+def peut_saisir_notes(user, matiere_classe):
+    """NTEDU15 — un enseignant ne peut saisir des notes QUE sur les
+    classes/matières qui lui sont assignées (``MatiereClasse.enseignant`` ==
+    son ``rh.DossierEmploye``, résolu via ``user.dossier_employe`` — JAMAIS
+    un import direct de ``apps.rh.models``). Un compte superuser ou palier
+    Responsable/Admin (repli légacy, comme ``core.permissions.
+    _user_has_or_legacy``) contourne la restriction (administration)."""
+    if getattr(user, 'is_superuser', False):
+        return True
+    if getattr(user, 'is_responsable', False):
+        return True
+    dossier = getattr(user, 'dossier_employe', None)
+    if dossier is None:
+        return False
+    return matiere_classe.enseignant_id == dossier.id
+
+
+# =============================================================================
+# NTEDU18 — certificat de scolarité imprimable (numéroté, jamais count()+1).
+# =============================================================================
+
+def generer_certificat_scolarite(eleve, annee_scolaire, *, user=None):
+    """NTEDU18 — génère un NOUVEAU certificat de scolarité PDF pour
+    ``eleve``. ``numero`` attribué via ``core.numbering.next_reference``
+    (même util que ``attribuer_numero_dossier`` — plus-haut-utilisé+1 par
+    société, JAMAIS ``count()+1``). Contrairement à ``numero_dossier``
+    (idempotent), CHAQUE appel pose une NOUVELLE ligne ``CertificatScolarite``
+    : deux certificats générés le même jour pour deux élèves différents
+    obtiennent des numéros distincts et séquentiels. Renvoie
+    ``(certificat, pdf_bytes)``."""
+    from django.utils import timezone
+
+    from core.numbering import next_reference
+
+    from .certificat_pdf import render_certificat_scolarite_pdf
+    from .models import CertificatScolarite
+
+    today = timezone.now().date()
+    numero = next_reference(
+        CertificatScolarite, 'CERT', eleve.company, padding=4, period='none',
+        field='numero')
+    certificat = CertificatScolarite.objects.create(
+        company=eleve.company, eleve=eleve, annee_scolaire=annee_scolaire,
+        numero=numero, date_generation=today,
+        genere_par=user if user is not None and getattr(
+            user, 'is_authenticated', False) else None)
+
+    company_nom = ''
+    try:
+        from apps.parametres.models_company import CompanyProfile
+        profile = CompanyProfile.objects.filter(company=eleve.company).first()
+        if profile is not None:
+            company_nom = profile.nom or ''
+    except Exception:  # pragma: no cover - profil optionnel
+        pass
+
+    pdf_bytes = render_certificat_scolarite_pdf(
+        nom_eleve=f"{eleve.prenom} {eleve.nom}",
+        classe_nom=str(eleve.classe) if eleve.classe else '',
+        annee_scolaire_libelle=annee_scolaire.libelle,
+        numero=numero, date_generation=today, company_nom=company_nom)
+    return certificat, pdf_bytes

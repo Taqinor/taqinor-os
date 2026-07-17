@@ -229,6 +229,51 @@ def bulk_set_statut(company, ids, target, user):
     return {'appliquees': appliquees, 'ignorees': ignorees}
 
 
+# ── Tag automatique de campagne (NTIDE28) ───────────────────────────────────
+
+
+def maybe_apply_campagne_tag(idee, user):
+    """NTIDE28 — si ``user`` matche le segment d'une campagne ACTIVE portant
+    un ``tag_auto`` (``selectors.campagne_active_pour_utilisateur``, même
+    règle que le bandeau d'incitation NTIDE27), applique ce tag à ``idee``
+    automatiquement. Réutilise ``bulk_add_tag`` (``records.Tag``/
+    ``TaggedItem``) — le tag reste ensuite modifiable manuellement comme
+    n'importe quel autre (pas verrouillé). No-op silencieux si aucune
+    campagne ne matche, ou si elle n'a pas de ``tag_auto``."""
+    from . import selectors
+
+    campagne = selectors.campagne_active_pour_utilisateur(user)
+    if campagne is None or not campagne.tag_auto:
+        return
+    bulk_add_tag(idee.company, [idee.id], campagne.tag_auto)
+
+
+# ── Notification de lancement de campagne (NTIDE31) ─────────────────────────
+
+
+def notifier_campagne_lancee(campagne):
+    """NTIDE31 — quand une campagne passe brouillon → active (détecté côté
+    vue, ``CampagneInnovationViewSet.perform_update``), notifie CHAQUE
+    utilisateur du segment ciblé (``selectors.users_for_campaign`` — même
+    règle que le bandeau d'incitation NTIDE27/le tag auto NTIDE28) : in-app
+    systématique + email OPT-IN — l'arbitrage canal/préférence reste dans
+    ``notify()``/``NotificationPreference`` (``notify_many``, best-effort
+    par destinataire), jamais dupliqué ici. Tag
+    ``EventType.INNOVATION_CAMPAIGN``. No-op silencieux si le segment ne
+    cible personne."""
+    from apps.notifications.models import EventType
+    from apps.notifications.services import notify_many
+
+    from . import selectors
+
+    utilisateurs = selectors.users_for_campaign(campagne.company, campagne)
+    titre = f"Nouvelle campagne d'innovation : {campagne.nom}"
+    corps = campagne.message_incitation or campagne.description or ''
+    notify_many(
+        utilisateurs, EventType.INNOVATION_CAMPAIGN, titre, body=corps,
+        link='/innovation/proposer', company=campagne.company)
+
+
 BULK_ACTIONS = frozenset({'set_statut', 'add_tag', 'remove_tag'})
 
 

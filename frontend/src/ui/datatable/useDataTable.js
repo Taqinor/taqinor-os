@@ -60,6 +60,15 @@ export function useDataTable({
   summary = null, // { [colId]: 'sum'|'avg'|'count'|fn }
   persistToUrl = false,
   urlKey = '',
+  // NTUX16 — état des colonnes initial injecté par l'appelant (ex.
+  // `useColumnPrefs(ecran)`, localStorage) au lieu du défaut dérivé de
+  // `columns` — lu UNE SEULE FOIS au montage (fonction d'init de useReducer,
+  // comme avant). Non fourni (~79 écrans existants) → comportement
+  // strictement inchangé. `onColumnStateChange` est notifié APRÈS chaque
+  // changement d'état de colonnes (show/hide/reorder/resize/pin), pour la
+  // persistance légère (indépendante des vues nommées NTUX1/2).
+  initialColumnState,
+  onColumnStateChange,
 } = {}) {
   // useSearchParams est TOUJOURS appelé (règle des hooks) ; on n'écrit dans
   // l'URL que si `persistToUrl`. Nécessite un <Router> dans l'arbre ; le
@@ -85,8 +94,21 @@ export function useDataTable({
   const [columnState, dispatchColumns] = useReducer(
     columnStateReducer,
     columns,
-    initColumnState,
+    // NTUX16 — la fonction d'init ne s'exécute qu'UNE FOIS (montage) : un
+    // `initialColumnState` fourni (préférences localStorage) prime sur le
+    // défaut dérivé des colonnes ; les colonnes ajoutées après coup restent
+    // fusionnées en fin de liste par `resolveColumns` (comportement déjà
+    // en place, inchangé).
+    (cols) => initialColumnState || initColumnState(cols),
   )
+
+  // NTUX16 — notifie l'appelant après chaque changement d'état de colonnes
+  // (show/hide/reorder/resize/pin), pour une auto-persistance légère par
+  // écran (localStorage, `useColumnPrefs`). Non fourni → aucun effet.
+  useEffect(() => {
+    if (onColumnStateChange) onColumnStateChange(columnState)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ne réagit qu'aux changements de columnState, pas à l'identité du callback
+  }, [columnState])
 
   // Colonnes balayées par la recherche globale (par défaut : toutes).
   const globalIds = useMemo(

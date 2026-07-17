@@ -44,10 +44,13 @@ def detecter_remise_fratrie(eleve, annee_scolaire, *, taux=None):
 
 
 def _taux_fratrie_par_defaut(company):
-    """Taux paramétrable par société — 10% par défaut tant qu'aucun réglage
-    dédié n'existe (le paramétrage fin vit dans ``parametres``, hors
-    périmètre de cette tâche)."""
-    return Decimal('10')
+    """NTEDU19 — taux paramétrable par société via ``ParametresEducation.
+    taux_remise_fratrie_defaut`` (10% par défaut, singleton get_or_create :
+    changer le réglage pré-remplit automatiquement la PROCHAINE remise
+    fratrie détectée, sans ressaisie)."""
+    from .models import ParametresEducation
+
+    return ParametresEducation.get(company).taux_remise_fratrie_defaut
 
 
 def montant_remises_approuvees(eleve, annee_scolaire, montant_base):

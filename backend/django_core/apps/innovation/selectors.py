@@ -105,3 +105,119 @@ def tableau_bord_idees(company):
         'plus_recentes': plus_recentes(company),
         'heat_contexte': heat_par_contexte(company),
     }
+
+
+def users_for_campaign(company, campagne):
+    """NTIDE26 — utilisateurs de ``company`` dont le rôle FIN (``role.nom``,
+    ``apps.roles``) figure dans le segment de ``campagne`` (liste
+    ``segment`` + ``cible_departement`` en repli mono-cible).
+
+    Departement (NTFPA1, ``apps.fpa``) n'étant PAS une dépendance de ce
+    module (jamais un import cross-app, cf. ``models.CampagneInnovation``),
+    le nom stocké est comparé au nom du RÔLE fin de l'utilisateur qu'il
+    s'agisse d'un rôle (``ROLES_CIBLABLES``) ou — le jour où une société
+    câble Departement — d'un nom de département repris tel quel côté rôle
+    (même mécanique de repli que ``InnovationSettings.segment_defaut``,
+    NTIDE7). Un utilisateur sans rôle fin assigné (compte hérité) n'est
+    jamais ciblé — un segment nommé exige un rôle nommé.
+
+    Renvoie un queryset vide si la campagne n'a ni ``segment`` ni
+    ``cible_departement`` (rien à cibler)."""
+    from django.contrib.auth import get_user_model
+
+    User = get_user_model()
+    noms = list(campagne.segment or [])
+    if campagne.cible_departement:
+        noms.append(campagne.cible_departement)
+    if not noms:
+        return User.objects.none()
+    return (User.objects.filter(company=company, role__nom__in=noms)
+            .distinct())
+
+
+def campagne_active_pour_utilisateur(user):
+    """NTIDE27 — la campagne ACTIVE (s'il y en a une) dont le segment matche
+    le rôle FIN de ``user`` (même règle que ``users_for_campaign``, en sens
+    inverse : depuis l'utilisateur vers LA campagne à lui montrer sur le
+    formulaire « Proposer une idée »). La plus récente en cas de plusieurs
+    correspondances. ``None`` si l'utilisateur n'a pas de rôle fin, ou si
+    aucune campagne active ne le cible.
+
+    Filtrage fait en PYTHON (pas de lookup JSON spécifique au backend) : le
+    nombre de campagnes ACTIVES d'une société reste petit, et ``contains``
+    sur un ``JSONField`` diverge selon le moteur de base de données."""
+    from .models import CampagneInnovation
+
+    role_nom = getattr(getattr(user, 'role', None), 'nom', None)
+    if not role_nom:
+        return None
+    qs = (CampagneInnovation.objects.filter(
+        company_id=user.company_id, statut=CampagneInnovation.Statut.ACTIVE)
+        .order_by('-created_at', '-id'))
+    for campagne in qs:
+        if campagne.cible_departement == role_nom or role_nom in (campagne.segment or []):
+            return campagne
+    return None
+
+
+def rapport_campagne(campagne):
+    """NTIDE29 — rapport d'une campagne : nb d'utilisateurs ciblés
+    (``users_for_campaign``), nb d'idées proposées PAR CES UTILISATEURS
+    depuis ``date_debut`` (jusqu'à ``date_fin`` si renseignée), top 5 par
+    votes, taux de conversion (auteurs distincts ayant proposé / nb
+    utilisateurs ciblés — 0 si aucun utilisateur ciblé).
+
+    Brouillons/masquées exclus (même règle que le tableau de bord, NTIDE6) :
+    une idée qu'aucun autre utilisateur ne voit ne compte pas dans le
+    rapport tant qu'elle n'est pas publiée."""
+    from .models import Idee
+
+    utilisateurs = users_for_campaign(campagne.company, campagne)
+    user_ids = list(utilisateurs.values_list('id', flat=True))
+    nb_utilisateurs = len(user_ids)
+
+    idees = Idee.objects.filter(
+        company=campagne.company, auteur_id__in=user_ids,
+        draft=False, archived=False)
+    if campagne.date_debut:
+        idees = idees.filter(created_at__date__gte=campagne.date_debut)
+    if campagne.date_fin:
+        idees = idees.filter(created_at__date__lte=campagne.date_fin)
+
+    nb_idees = idees.count()
+    auteurs_distincts = idees.values('auteur_id').distinct().count()
+    taux_conversion = (
+        round(auteurs_distincts / nb_utilisateurs, 4) if nb_utilisateurs else 0.0)
+    top = list(idees.order_by('-votes_count', '-created_at')[:5]
+               .values('id', 'titre', 'votes_count', 'statut'))
+
+    return {
+        'nb_utilisateurs_cibles': nb_utilisateurs,
+        'nb_idees_proposees': nb_idees,
+        'top_idees': top,
+        'taux_conversion': taux_conversion,
+    }
+
+
+def timeline(company, statut=None, contexte=None):
+    """NTIDE23 — nombre d'idées PROPOSÉES par jour (``created_at``), filtres
+    statut/contexte optionnels, ordre chronologique croissant (adapté à un
+    graphe Recharts). Mêmes exclusions que le tableau de bord (NTIDE6) : une
+    idée brouillon (NTIDE18) ou masquée (NTIDE19) n'apparaît pas dans un
+    agrégat de liste."""
+    from django.db.models import Count
+    from django.db.models.functions import TruncDate
+
+    from .models import Idee
+
+    qs = Idee.objects.filter(company=company, draft=False, archived=False)
+    if statut:
+        qs = qs.filter(statut=statut)
+    if contexte:
+        qs = qs.filter(contexte__iexact=contexte)
+    qs = (qs.annotate(jour=TruncDate('created_at'))
+          .values('jour')
+          .annotate(nombre=Count('id'))
+          .order_by('jour'))
+    return [{'date': row['jour'].isoformat(), 'nombre': row['nombre']}
+            for row in qs if row['jour'] is not None]

@@ -65,6 +65,9 @@ app.conf.enable_utc = False
 #   - NTSAN31 : alerte J-7 avant expiration d'une PriseEnCharge santé (07:40)
 #     — apps/sante/tasks.py (idempotent par jour+PriseEnCharge, miroir du
 #     pattern apps/rh/tasks.py alertes_expiration).
+#   - NTEDU22 : matérialisation hebdomadaire des séances depuis l'emploi du
+#     temps actif (dimanche 20:00, fériés marocains exclus) — apps/education/
+#     tasks.py (idempotent par classe/matière/date/heure de début).
 app.conf.beat_schedule = {
     'ventes-check-overdue-factures': {
         'task': 'ventes.check_overdue_factures',
@@ -478,6 +481,12 @@ app.conf.beat_schedule = {
     'sante-alertes-prise-en-charge-expirant': {
         'task': 'sante.alertes_prise_en_charge_expirant',
         'schedule': crontab(hour=7, minute=40),
+    },
+    # NTEDU22 — matérialise les séances de la semaine à venir depuis l'emploi
+    # du temps actif. Dimanche soir (heure creuse), avant la semaine ciblée.
+    'education-generer-seances-semaine': {
+        'task': 'education.generer_seances_semaine',
+        'schedule': crontab(hour=20, minute=0, day_of_week=0),
     },
 }
 

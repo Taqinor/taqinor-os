@@ -796,6 +796,8 @@ CELERY_TASK_ROUTES = {
     'credit.recalculer_encours_quotidien': {'queue': 'scheduled'},
     # NTSAN31 — alerte J-7 avant expiration d'une PriseEnCharge santé.
     'sante.alertes_prise_en_charge_expirant': {'queue': 'scheduled'},
+    # NTEDU22 — matérialisation hebdomadaire des séances (emploi du temps).
+    'education.generer_seances_semaine': {'queue': 'scheduled'},
     # NTPLT27 — 4e queue `bulk` pour le travail de masse (imports dataimport,
     # exports planifiés volumineux, backfills, seed à l'échelle). Un import de
     # 100 000 lignes ne doit plus retarder un digest planifié ni un rendu PDF

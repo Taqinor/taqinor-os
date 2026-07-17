@@ -700,3 +700,217 @@ describe('NTUX11 — trackRecent : capture des « récents » au clic direct sur
     expect(pushRecentEntityMock).not.toHaveBeenCalled()
   })
 })
+
+/* ============================== NTUX15 — EXPORT CONFIGURABLE PAR VUE ============================== */
+
+describe('NTUX15 — export respecte la vue active (colonnes visibles/ordre/filtre/tri)', () => {
+  it('exporte uniquement les colonnes VISIBLES, dans leur ORDRE courant (colonne masquée exclue)', async () => {
+    const user = userEvent.setup()
+    const onExport = vi.fn()
+    renderTable({
+      onExport,
+      columns: [
+        { id: 'nom', header: 'Nom' },
+        { id: 'ville', header: 'Ville' },
+        { id: 'montant', header: 'Montant', align: 'right', numeric: true },
+      ],
+    })
+    // Masque « Ville » via le gestionnaire de colonnes (H31). Le menu reste
+    // ouvert après la case à cocher (ColumnManager `onSelect` preventDefault,
+    // pour cocher plusieurs colonnes sans le rouvrir) — Échap le referme.
+    await user.click(screen.getByRole('button', { name: /colonnes/i }))
+    await user.click(screen.getByRole('menuitemcheckbox', { name: /ville/i }))
+    await user.keyboard('{Escape}')
+    await user.click(screen.getByRole('button', { name: /^exporter$/i }))
+    const [, exportCols] = onExport.mock.calls[0]
+    expect(exportCols.map((c) => c.id)).toEqual(['nom', 'montant'])
+  })
+
+  it('sans sélection : un clic simple exporte tout (comportement historique inchangé)', async () => {
+    const user = userEvent.setup()
+    const onExport = vi.fn()
+    renderTable({ onExport, selectable: true })
+    await user.click(screen.getByRole('button', { name: /^exporter$/i }))
+    const [exportRows] = onExport.mock.calls[0]
+    expect(exportRows).toHaveLength(DATA.length)
+  })
+
+  it('avec des lignes cochées : un CHOIX explicite « tout » vs « la sélection uniquement » est proposé', async () => {
+    const user = userEvent.setup()
+    const onExport = vi.fn()
+    const { container } = renderTable({ onExport, selectable: true })
+    const table = container.querySelector('[data-dt-table]')
+    await user.click(within(table).getByLabelText('Sélectionner la ligne 1'))
+    await user.click(screen.getByRole('button', { name: /^exporter$/i }))
+    expect(screen.getByText(/exporter tout/i)).toBeInTheDocument()
+    expect(screen.getByText(/exporter la sélection uniquement/i)).toBeInTheDocument()
+    await user.click(screen.getByText(/exporter la sélection uniquement/i))
+    const [exportRows] = onExport.mock.calls.at(-1)
+    expect(exportRows).toHaveLength(1)
+    expect(exportRows[0]).toEqual(DATA[0])
+  })
+
+  it('le choix « exporter tout » ignore la sélection cochée', async () => {
+    const user = userEvent.setup()
+    const onExport = vi.fn()
+    const { container } = renderTable({ onExport, selectable: true })
+    const table = container.querySelector('[data-dt-table]')
+    await user.click(within(table).getByLabelText('Sélectionner la ligne 1'))
+    await user.click(screen.getByRole('button', { name: /^exporter$/i }))
+    await user.click(screen.getByText(/exporter tout/i))
+    const [exportRows] = onExport.mock.calls.at(-1)
+    expect(exportRows).toHaveLength(DATA.length)
+  })
+})
+
+/* ============================== NTUX16 — PRÉFÉRENCES DE COLONNES PAR ÉCRAN ============================== */
+
+describe('NTUX16 — initialColumnState / onColumnStateChange (préférences de colonnes)', () => {
+  it('sans initialColumnState (79 écrans existants) : état par défaut inchangé', () => {
+    const { container } = renderTable()
+    // Les 3 colonnes par défaut sont toutes visibles (desktop + repli carte mobile — VX43).
+    expect(container.querySelectorAll('thead th').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Ville').length).toBeGreaterThan(0)
+  })
+
+  it('un initialColumnState fourni (colonne masquée) s\'applique dès le montage', () => {
+    renderTable({ initialColumnState: { order: ['nom', 'ville', 'montant'], hidden: { ville: true }, pinned: {}, widths: {} } })
+    expect(screen.queryByText('Ville')).not.toBeInTheDocument()
+  })
+
+  it('masquer une colonne notifie onColumnStateChange avec le nouvel état', async () => {
+    const user = userEvent.setup()
+    const onColumnStateChange = vi.fn()
+    renderTable({ onColumnStateChange })
+    onColumnStateChange.mockClear() // ignore l'appel initial (état par défaut)
+    await user.click(screen.getByRole('button', { name: /colonnes/i }))
+    await user.click(screen.getByRole('menuitemcheckbox', { name: /ville/i }))
+    expect(onColumnStateChange).toHaveBeenCalled()
+    const lastState = onColumnStateChange.mock.calls.at(-1)[0]
+    expect(lastState.hidden.ville).toBe(true)
+  })
+})
+
+/* ============================== NTUX17 — DENSITÉ PAR VUE ============================== */
+
+describe('NTUX17 — densityOverride (densité par vue sauvegardée)', () => {
+  it('sans densityOverride : la densité GLOBALE (confort) pilote la hauteur de ligne', () => {
+    setStoredDensity('comfortable')
+    const { container } = renderTable()
+    const tr = container.querySelector('[data-dt-table] tbody tr')
+    expect(tr.style.height).toBe('40px')
+  })
+
+  it('densityOverride="compact" s\'applique MÊME si la préférence globale est confort', () => {
+    setStoredDensity('comfortable')
+    const { container } = renderTable({ densityOverride: 'compact' })
+    const tr = container.querySelector('[data-dt-table] tbody tr')
+    expect(tr.style.height).toBe('32px')
+  })
+
+  it('densityOverride absent laisse la densité globale « compact » inchangée', () => {
+    setStoredDensity('compact')
+    const { container } = renderTable()
+    const tr = container.querySelector('[data-dt-table] tbody tr')
+    expect(tr.style.height).toBe('32px')
+  })
+})
+
+/* ============================== NTUX19 — GROUPEMENT DE LIGNES ============================== */
+
+describe('NTUX19 — groupBy (grouper par colonne, en-têtes collapsibles + sous-totaux)', () => {
+  const GROUPED_DATA = [
+    { id: 1, statut: 'Envoyé', montant: 1000 },
+    { id: 2, statut: 'Accepté', montant: 2000 },
+    { id: 3, statut: 'Envoyé', montant: 500 },
+    { id: 4, statut: 'Refusé', montant: 300 },
+  ]
+  const GROUPED_COLUMNS = [
+    { id: 'statut', header: 'Statut' },
+    { id: 'montant', header: 'Montant TTC', align: 'right', numeric: true },
+  ]
+
+  it('sans groupBy (79 écrans existants) : rendu plat inchangé', () => {
+    renderTable({ data: GROUPED_DATA, columns: GROUPED_COLUMNS })
+    expect(screen.queryByRole('button', { name: /envoyé/i })).not.toBeInTheDocument()
+  })
+
+  it('affiche une section par valeur distincte, avec le COMPTEUR de lignes', () => {
+    renderTable({ data: GROUPED_DATA, columns: GROUPED_COLUMNS, groupBy: 'statut' })
+    expect(screen.getByRole('button', { name: /envoyé.*2/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /accepté.*1/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /refusé.*1/i })).toBeInTheDocument()
+  })
+
+  it('groupSummary calcule un SOUS-TOTAL par groupe (ex. montant total)', () => {
+    renderTable({
+      data: GROUPED_DATA, columns: GROUPED_COLUMNS, groupBy: 'statut',
+      groupSummary: { montant: 'sum' },
+    })
+    const envoyeHeader = screen.getByRole('button', { name: /envoyé/i })
+    // 1000 + 500 = 1500 pour le groupe « Envoyé ».
+    expect(within(envoyeHeader).getByText(/1500/)).toBeInTheDocument()
+  })
+
+  it('cliquer l\'en-tête d\'un groupe le REPLIE (masque ses lignes) puis le déplie à nouveau', async () => {
+    const user = userEvent.setup()
+    renderTable({ data: GROUPED_DATA, columns: GROUPED_COLUMNS, groupBy: 'statut' })
+    expect(screen.getByText('2000')).toBeInTheDocument() // ligne « Accepté » visible
+    await user.click(screen.getByRole('button', { name: /accepté/i }))
+    expect(screen.queryByText('2000')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /accepté/i }))
+    expect(screen.getByText('2000')).toBeInTheDocument()
+  })
+
+  it('groupe TOUTES les lignes filtrées (allRows), pas seulement la page courante', () => {
+    const many = Array.from({ length: 30 }, (unused, i) => ({ id: i + 1, statut: i % 2 ? 'A' : 'B', montant: i }))
+    renderTable({ data: many, columns: GROUPED_COLUMNS, groupBy: 'statut', pageSize: 10 })
+    // 30 lignes réparties en 2 groupes de 15 — jamais limitées à 10 (pageSize).
+    expect(screen.getByRole('button', { name: /^a.*15/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^b.*15/i })).toBeInTheDocument()
+  })
+
+  it('la pagination classique est masquée en mode groupé', () => {
+    const many = Array.from({ length: 30 }, (unused, i) => ({ id: i + 1, statut: 'X', montant: i }))
+    renderTable({ data: many, columns: GROUPED_COLUMNS, groupBy: 'statut', pageSize: 10 })
+    expect(screen.queryByLabelText('Page précédente')).not.toBeInTheDocument()
+  })
+
+  it('valeur de groupement vide/absente regroupe sous « Non renseigné »', () => {
+    const data = [{ id: 1, statut: '', montant: 10 }, { id: 2, statut: null, montant: 20 }]
+    renderTable({ data, columns: GROUPED_COLUMNS, groupBy: 'statut' })
+    expect(screen.getByRole('button', { name: /non renseigné.*2/i })).toBeInTheDocument()
+  })
+})
+
+/* ============================== NTUX22 — APERÇU AU SURVOL (PEEK) ============================== */
+
+describe('NTUX22 — rowPeek (aperçu au survol, HoverCard sur la 1re colonne desktop)', () => {
+  it('sans rowPeek (79 écrans existants) : rendu inchangé, aucun peek au survol', async () => {
+    const user = userEvent.setup()
+    const { container } = renderTable()
+    const table = container.querySelector('[data-dt-table]')
+    await user.hover(within(table).getByText('Kasri'))
+    expect(screen.queryByText(/résumé/i)).not.toBeInTheDocument()
+  })
+
+  it('un survol prolongé (délai par défaut ~400ms) affiche le résumé condensé fourni par rowPeek', async () => {
+    const user = userEvent.setup()
+    const rowPeek = (row) => <div>Résumé — {row.montant} MAD</div>
+    const { container } = renderTable({ rowPeek })
+    const table = container.querySelector('[data-dt-table]')
+    const cell = within(table).getByText('Kasri').closest('td')
+    await user.hover(cell)
+    expect(await screen.findByText('Résumé — 1200 MAD', {}, { timeout: 2000 })).toBeInTheDocument()
+  }, 10000)
+
+  it('rowPeekDelay personnalisé raccourcit le délai de survol', async () => {
+    const user = userEvent.setup()
+    const rowPeek = (row) => <div>Peek {row.nom}</div>
+    const { container } = renderTable({ rowPeek, rowPeekDelay: 10 })
+    const table = container.querySelector('[data-dt-table]')
+    const cell = within(table).getByText('Kasri').closest('td')
+    await user.hover(cell)
+    expect(await screen.findByText('Peek Kasri', {}, { timeout: 1000 })).toBeInTheDocument()
+  })
+})

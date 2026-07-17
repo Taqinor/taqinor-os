@@ -52,3 +52,58 @@ def _notifier_famille_absence(presence):
         )
     except Exception:  # pragma: no cover - défensif
         pass
+
+
+# =============================================================================
+# NTEDU27/NTEDU30 — notification parent sur incident disciplinaire.
+# =============================================================================
+#
+# NTEDU30 (« notifications parents automatiques via WhatsApp », COST-gated
+# GATED-founder) est déjà satisfait PAR CONSTRUCTION ici : ce signal réutilise
+# EXACTEMENT le même canal que ``notifier_absence`` ci-dessus —
+# ``apps.notifications.services.send_whatsapp_campaign_message`` →
+# ``notifications.whatsapp_bsp.get_whatsapp_provider()``. Sans
+# ``WHATSAPP_BSP_ENABLED=1`` + credentials complets, le provider retombe
+# TOUJOURS sur ``ManualWaMeProvider`` (lien wa.me, ZÉRO appel réseau) — le
+# flag COST-gated demandé par le plan est donc déjà celui posé par QJ23/FG33,
+# jamais un second flag dupliqué (« ne jamais hand-rolle un substitut local
+# d'une primitive déjà posée »).
+
+@receiver(post_save, sender='education.IncidentDiscipline')
+def notifier_incident_discipline(sender, instance, created, **kwargs):
+    """NTEDU27 — un incident ``majeur`` notifie TOUJOURS le parent à la
+    création ; un incident ``mineur`` ne notifie que si l'école l'a activé
+    (``ParametresEducation.notifier_incidents_mineurs``). ``moyen`` ne
+    notifie jamais (hors périmètre du critère d'acceptation)."""
+    from .models import IncidentDiscipline
+
+    if not created:
+        return
+    if instance.gravite == IncidentDiscipline.Gravite.MAJEUR:
+        _notifier_famille_incident(instance)
+    elif instance.gravite == IncidentDiscipline.Gravite.MINEUR:
+        from .models import ParametresEducation
+
+        if ParametresEducation.get(instance.company).notifier_incidents_mineurs:
+            _notifier_famille_incident(instance)
+
+
+def _notifier_famille_incident(incident):
+    """Best-effort, jamais bloquant (comme ``_notifier_famille_absence``)."""
+    famille = incident.eleve.famille
+    recipient = famille.parent1_whatsapp or famille.parent1_telephone
+    if not recipient:
+        return
+    try:
+        from apps.notifications.services import send_whatsapp_campaign_message
+        send_whatsapp_campaign_message(
+            incident.company,
+            recipient=recipient,
+            body=(
+                f"Bonjour {famille.parent1_nom or famille.nom}, un incident "
+                f"({incident.get_type_display()}) a été signalé pour "
+                f"{incident.eleve} le {incident.date}. Merci de contacter "
+                "l'administration."),
+        )
+    except Exception:  # pragma: no cover - défensif
+        pass

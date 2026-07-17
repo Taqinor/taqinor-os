@@ -55,6 +55,32 @@ export const GLOBAL_SHORTCUTS = [
   { keys: '?', label: 'Afficher l’aide des raccourcis' },
 ]
 
+// NTUX18 — raccourcis d'ÉDITION documentés dans la cheatsheet enrichie :
+// navigation clavier type tableur dans les colonnes éditables du DataTable
+// (NTUX8) — gérés LOCALEMENT par le moteur de grille (EditableCell.jsx),
+// pas des raccourcis GLOBAUX comme les tables « g x »/« c x » ci-dessus,
+// mais listés ici pour que la cheatsheet « ? » les regroupe sous « Édition ».
+export const EDIT_SHORTCUTS = [
+  { keys: 'Tab', label: 'Cellule éditable suivante (grille)' },
+  { keys: '⇧ Tab', label: 'Cellule éditable précédente (grille)' },
+  { keys: 'Entrée', label: 'Valider la cellule, passer à la ligne suivante' },
+  { keys: 'Échap', label: 'Annuler l’édition de la cellule en cours' },
+]
+
+// NTUX18 — filtre la cheatsheet par un texte libre (recherche EN DIRECT dans
+// la cheatsheet elle-même) : ne garde, dans chaque groupe `{title, items}`,
+// que les raccourcis dont le LIBELLÉ contient la requête (insensible à la
+// casse). Un groupe sans correspondance disparaît entièrement de l'affichage
+// ; une requête vide renvoie tous les groupes inchangés. Module PUR (aucune
+// dépendance React), testable isolément.
+export function filterShortcutGroups(groups, query) {
+  const q = String(query ?? '').trim().toLowerCase()
+  if (!q) return groups
+  return (groups || [])
+    .map((g) => ({ ...g, items: (g.items || []).filter((it) => String(it.label ?? '').toLowerCase().includes(q)) }))
+    .filter((g) => g.items.length > 0)
+}
+
 /**
  * isTypingTarget — vrai si l'événement vient d'un champ de saisie, d'un
  * textarea, d'un select ou d'un contenu éditable : on n'y intercepte JAMAIS la
