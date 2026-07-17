@@ -2230,35 +2230,9 @@ class PlanCompte(TenantModel):
         return f'Plan de compte — {self.client_id}'
 
 
-class PlanCompteActivity(models.Model):
-    """Historique (chatter léger, même esprit que ``LeadActivity``) d'un
-    ``PlanCompte`` : changements de champs suivis + notes manuelles."""
-
-    class Kind(models.TextChoices):
-        CREATION = 'creation', 'Création'
-        MODIFICATION = 'modification', 'Modification'
-        NOTE = 'note', 'Note'
-
-    plan = models.ForeignKey(
-        PlanCompte, on_delete=models.CASCADE, related_name='activites')
-    kind = models.CharField(max_length=15, choices=Kind.choices)
-    field = models.CharField(max_length=100, blank=True, null=True)
-    field_label = models.CharField(max_length=150, blank=True, null=True)
-    old_value = models.TextField(blank=True, null=True)
-    new_value = models.TextField(blank=True, null=True)
-    body = models.TextField(blank=True, null=True)
-    user = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
-        null=True, blank=True, related_name='plan_compte_activities')
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        verbose_name = 'Activité plan de compte'
-        verbose_name_plural = 'Activités plan de compte'
-        ordering = ['-created_at']
-
-    def __str__(self):
-        return f'{self.plan_id} {self.kind}'
+# ARC8 — l'historique (chatter) d'un ``PlanCompte`` NE passe PLUS par un modèle
+# ``*Activity`` maison : il converge sur ``records.Activity`` via
+# ``records.services.log_activity`` / ``chatter_qs`` (voir ``PlanCompteViewSet``).
 
 
 # ── NTCRM30 (préparé par NTCRM10/11) — Revue de compte ────────────────────────

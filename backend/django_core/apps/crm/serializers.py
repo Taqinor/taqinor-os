@@ -3,7 +3,7 @@ from .models import (
     Appointment, Client, ConcurrentPerte, EquipeCommerciale,
     EtapePlanActivite, ForecastEntry, ForecastSnapshot, Lead, LeadActivity,
     LeadPlaybookProgress, MessageTemplate, ObjectifCommercial, Parrainage,
-    PlanActivite, PlanCompte, PlanCompteActivity, Playbook, PlaybookEtape,
+    PlanActivite, PlanCompte, Playbook, PlaybookEtape,
     PlaybookTache, PointContact, RevueCompte, SiteProfile,
     WebsiteLeadPayload,
 )
@@ -940,17 +940,9 @@ class ForecastSnapshotSerializer(serializers.ModelSerializer):
 
 
 # ── NTCRM10 — Plan de compte ─────────────────────────────────────────────────
-
-class PlanCompteActivitySerializer(serializers.ModelSerializer):
-    user_nom = serializers.CharField(source='user.username', read_only=True, default=None)
-
-    class Meta:
-        model = PlanCompteActivity
-        fields = [
-            'id', 'plan', 'kind', 'field', 'field_label', 'old_value',
-            'new_value', 'body', 'user', 'user_nom', 'created_at',
-        ]
-        read_only_fields = fields
+# ARC8 — l'historique (chatter) d'un PlanCompte est sérialisé par
+# records.serializers.ChatterActivitySerializer (records.Activity), plus aucun
+# serializer *Activity maison ici.
 
 
 class RevueCompteSerializer(serializers.ModelSerializer):

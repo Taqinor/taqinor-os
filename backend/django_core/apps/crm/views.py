@@ -11,7 +11,7 @@ from .models import (
     Appointment, Client, ConcurrentPerte, EquipeCommerciale,
     ForecastEntry, ForecastSnapshot, Lead, LeadPlaybookProgress, LeadTag,
     MotifPerte, Canal, Parrainage, MessageTemplate, ObjectifCommercial,
-    PlanActivite, PlanCompte, PlanCompteActivity, Playbook, PlaybookEtape,
+    PlanActivite, PlanCompte, Playbook, PlaybookEtape,
     PlaybookTache, PointContact, RevueCompte, SiteProfile, WebsiteLeadPayload,
 )
 from .serializers import (
@@ -23,10 +23,11 @@ from .serializers import (
     PlanActiviteSerializer, PointContactSerializer, SiteProfileSerializer,
     EquipeCommercialeSerializer, WebsiteLeadPayloadSerializer,
     ForecastEntrySerializer, ForecastSnapshotSerializer,
-    PlanCompteSerializer, PlanCompteActivitySerializer, RevueCompteSerializer,
+    PlanCompteSerializer, RevueCompteSerializer,
     PlaybookSerializer, PlaybookEtapeSerializer, PlaybookTacheSerializer,
     LeadPlaybookProgressSerializer,
 )
+from apps.records.views import ChatterViewSetMixin
 from . import activity
 from .services import default_responsable_for
 from .devis_auto import champs_manquants, message_manquants
@@ -2138,7 +2139,12 @@ def forecast_historique_view(request):
 
 # ── NTCRM10 — Plan de compte ─────────────────────────────────────────────────
 
-class PlanCompteViewSet(CompanyScopedModelViewSet):
+class PlanCompteViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
+    """NTCRM10 — Plan de compte. ARC8 : l'historique (chatter) converge sur
+    ``records.Activity`` — création + changements de champ suivis journalisés
+    via ``records.services`` (le « mail.thread » maison), jamais un modèle
+    ``*Activity`` local. Le mixin ``ChatterViewSetMixin`` ajoute en plus les
+    actions génériques ``chatter/historique`` (GET) et ``chatter/noter`` (POST)."""
     queryset = PlanCompte.objects.select_related('client')
     serializer_class = PlanCompteSerializer
 
@@ -2148,15 +2154,17 @@ class PlanCompteViewSet(CompanyScopedModelViewSet):
         return [IsResponsableOrAdmin()]
 
     def perform_create(self, serializer):
+        from apps.records.models import Activity
+        from apps.records.services import log_activity
         instance = serializer.save(
             company=self.request.user.company, created_by=self.request.user,
             mis_a_jour_par=self.request.user)
-        PlanCompteActivity.objects.create(
-            plan=instance, kind=PlanCompteActivity.Kind.CREATION,
-            user=self.request.user,
+        log_activity(
+            instance, Activity.Kind.CREATION, user=self.request.user,
             body=f'Plan de compte créé pour {instance.client}.')
 
     def perform_update(self, serializer):
+        from apps.records.services import log_field_change
         old = PlanCompte.objects.get(pk=serializer.instance.pk)
         instance = serializer.save(mis_a_jour_par=self.request.user)
         tracked = [
@@ -2166,17 +2174,19 @@ class PlanCompteViewSet(CompanyScopedModelViewSet):
         for field in tracked:
             old_val, new_val = getattr(old, field), getattr(instance, field)
             if old_val != new_val:
-                PlanCompteActivity.objects.create(
-                    plan=instance, kind=PlanCompteActivity.Kind.MODIFICATION,
-                    user=self.request.user, field=field,
-                    old_value=str(old_val) if old_val is not None else '',
-                    new_value=str(new_val) if new_val is not None else '')
+                log_field_change(
+                    instance, field,
+                    str(old_val) if old_val is not None else '',
+                    str(new_val) if new_val is not None else '',
+                    user=self.request.user)
 
     @action(detail=True, methods=['get'], url_path='historique')
     def historique(self, request, pk=None):
+        from apps.records.serializers import ChatterActivitySerializer
+        from apps.records.services import chatter_qs
         plan = self.get_object()
-        activites = plan.activites.all()
-        return Response(PlanCompteActivitySerializer(activites, many=True).data)
+        qs = chatter_qs(plan, company=request.user.company)
+        return Response(ChatterActivitySerializer(qs, many=True).data)
 
 
 class RevueCompteViewSet(CompanyScopedModelViewSet):
