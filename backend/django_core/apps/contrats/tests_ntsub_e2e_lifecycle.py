@@ -101,6 +101,7 @@ class NtsubLifecycleE2ETests(TestCase):
         for numero, jours in ((1, 40), (2, 20)):
             facture = Facture.objects.create(
                 company=co, client=client, statut=Facture.Statut.EMISE,
+                reference=f"E2E-DUN-{numero}",
                 taux_tva=Decimal("20"), montant_ttc=Decimal("900"),
                 date_echeance=(
                     timezone.localdate() - datetime.timedelta(days=jours)))
