@@ -403,10 +403,21 @@ def compute_cashflow_payback(
     }
 
 
+def _fr_pct(v) -> str:
+    """0.5 -> '0,5' ; 2.0 -> '2' (French decimal comma, no trailing zero)."""
+    s = f"{float(v):g}"
+    return s.replace(".", ",")
+
+
 def cashflow_assumptions() -> dict:
     """QX39 — hypothèses documentées du cashflow, rendues sur le PDF/la
     proposition (autoconsommation d'abord ; rachat BT surplus toujours non
-    publié ; plafond d'injection 20 % pré-intégré via l'autoconso)."""
+    publié ; plafond d'injection 20 % pré-intégré via l'autoconso).
+
+    QRES1 — chaque idée tient en UNE note (la loi 82-21 et le plafond
+    d'injection fusionnés ; plus de « performance garantie 25 ans » redondant
+    avec les garanties produit) et les pourcentages s'écrivent à la française
+    (« 0,5 %/an », jamais « 0.5 »)."""
     return {
         "years": CASHFLOW_YEARS,
         "degradation_pct": round(PANEL_DEGRADATION * 100, 2),
@@ -416,11 +427,12 @@ def cashflow_assumptions() -> dict:
         "notes": [
             "Autoconsommation d'abord (loi 82-21) : seuls les kWh autoconsommés "
             "sont valorisés ; le surplus injecté n'est pas rémunéré (tarif de "
-            "rachat BT résidentiel toujours non publié).",
-            "Plafond d'injection 20 % pré-intégré dans les taux d'autoconsommation.",
-            f"Dégradation panneau {round(PANEL_DEGRADATION * 100, 2)} %/an ; "
-            f"hypothèse d'escalade du tarif électrique {round(TARIFF_ESCALATION * 100, 1)} %/an "
-            "(prudente) ; performance garantie 25 ans.",
+            "rachat BT résidentiel toujours non publié) — plafond d'injection "
+            "20 % pré-intégré dans les taux d'autoconsommation.",
+            f"Dégradation panneau {_fr_pct(round(PANEL_DEGRADATION * 100, 2))} %/an "
+            f"et escalade du tarif électrique "
+            f"{_fr_pct(round(TARIFF_ESCALATION * 100, 1))} %/an (hypothèse "
+            "prudente) intégrées au calcul de rentabilité.",
         ],
     }
 

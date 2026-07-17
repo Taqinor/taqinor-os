@@ -855,9 +855,9 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             "approximatif": True,
             "ligne_methode": (
                 "Estimation : production annuelle × part autoconsommée × tarif "
-                "kWh — loi 82-21 : seuls les kWh autoconsommés sont valorisés, "
-                "le surplus injecté n'est pas rémunéré. Fournissez une facture "
-                "réelle pour un calcul par tranche exact."),
+                "kWh (loi 82-21 : seul l'autoconsommé est valorisé — détail "
+                "dans nos hypothèses). Fournissez une facture réelle pour un "
+                "calcul par tranche exact."),
             "exemple": None,
         }
 
@@ -889,20 +889,29 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     hypotheses.append(
         "Économies valorisées sur l'autoconsommation uniquement (loi 82-21) — "
         "le surplus injecté n'est pas rémunéré (rachat BT résidentiel différé "
-        "par l'ANRE).")
+        "par l'ANRE) ; plafond d'injection 20 % pré-intégré dans les taux "
+        "d'autoconsommation.")
     if _prod_factor:
+        # QRES1 — la garantie panneaux vit dans les badges « Nos garanties »
+        # (une seule source) : plus de « garantie sur 25 ans » contradictoire
+        # avec la garantie performance 30 ans des fiches produit.
         hypotheses.append(
             f"Production estimée : ≈ {int(round(_prod_factor))} kWh par kWc et "
-            "par an (irradiation moyenne au Maroc), performance panneaux "
-            "garantie sur 25 ans.")
+            "par an (irradiation moyenne au Maroc).")
     # QX39 — hypothèses du cashflow 25 ans (dégradation/escalade/batterie),
     # documentées et rendues sur le PDF/la proposition. Le payback vient
     # désormais du croisement du cumul à zéro, pas d'un ratio année-1.
+    # QRES1 — dédoublonnage SÉMANTIQUE : le bloc cumulait trois formulations de
+    # la loi 82-21 (la sienne, celle de savings_method, celle du cashflow) —
+    # une idée n'apparaît qu'une fois, le mur de texte de la page 3 disparaît.
     _cf_assum = roi.get("cashflow_assumptions") or {}
     for _n in (_cf_assum.get("notes") or []):
         _n = str(_n).strip()
-        if _n and _n not in hypotheses:
-            hypotheses.append(_n)
+        if not _n or _n in hypotheses:
+            continue
+        if "82-21" in _n and any("82-21" in h for h in hypotheses):
+            continue
+        hypotheses.append(_n)
     hypotheses.append(
         "Estimations non contractuelles ; toute hausse future du tarif "
         "électrique améliore votre rentabilité.")

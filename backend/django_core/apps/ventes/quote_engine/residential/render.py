@@ -53,8 +53,11 @@ def build_html(data: dict) -> str:
 def render_pdf(out_path, data: dict | None = None) -> str:
     from weasyprint import HTML
     if data is None:
-        from . import sample_data
-        data = sample_data.build()
+        # QRES12 — le repli d'aperçu passe par le VRAI pipeline (fixture
+        # sample_data + renderer._augment) ; l'ancien chemin importait une
+        # fixture inexistante (ImportError latent) et sautait l'augmentation.
+        from . import renderer, sample_data
+        data = renderer._augment(sample_data.build())
     html = build_html(data)
     base = str(Path(__file__).resolve().parent)
     HTML(string=html, base_url=f"file://{base}/").write_pdf(str(out_path))

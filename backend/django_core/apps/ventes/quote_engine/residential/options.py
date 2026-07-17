@@ -118,6 +118,8 @@ def _totals_chain(label, accent, tot, fmt, C, recommended=False):
 
 
 def build(ctx) -> str:
+    from . import theme
+
     d = ctx["d"]
     C = ctx["C"]
     fmt = ctx["fmt"]
@@ -253,6 +255,27 @@ def build(ctx) -> str:
     gain25 = max(0, round(_eco_ref * 25 - _tot_ref))
     gain25 = round(gain25 / 1000) * 1000
 
+    # QRES3 — sous-titre du graphe fidèle au devis : « deux scénarios »
+    # seulement quand le document porte réellement deux options.
+    fin_sub = ("gain cumulé, deux scénarios — le point marque le retour "
+               "sur investissement" if deux_options
+               else "gain cumulé — le point marque le retour sur investissement")
+
+    # QRES5 — badges de garantie (déplacés de la page 3) : ils meublent le bas
+    # de la page 2, à côté de l'équipement qu'ils couvrent, et allègent la
+    # page 3. Une seule source : theme.WARRANTIES.
+    badges_html = "".join(
+        f'<div class="p2-badge"><div class="p2-badge-n">{n}'
+        f'<span class="p2-badge-u">{u}</span></div>'
+        f'<div class="p2-badge-l">{label}</div></div>'
+        for n, u, label in theme.WARRANTIES)
+
+    # QRES6 — densité adaptative : un devis à beaucoup de lignes serre le
+    # tableau au lieu de pousser la page en débordement (.page = A4 FIXE).
+    _nrows = len(shared) + (len(delta_sans) + len(delta_avec)
+                            if deux_options else 0)
+    dense_cls = " p2-dense" if _nrows > 9 else ""
+
     style = f"""
 <style>
   .p2-wrap {{ padding:7mm 14mm 6mm 14mm; }}
@@ -377,6 +400,27 @@ def build(ctx) -> str:
     margin-top:3mm; font-style:italic; }}
   .p2-fin-cap b {{ color:{C['navy']}; font-weight:700; font-style:normal; }}
 
+  /* QRES5 — garanties (badges déplacés de la page 3) */
+  .p2-badges {{ display:flex; gap:9px; margin-top:1.5mm; }}
+  .p2-badge {{ flex:1; text-align:center; border:1px solid {C['line']};
+    border-top:3px solid {C['gold']}; border-radius:11px; padding:9px 4px 8px;
+    background:{C['paper']}; }}
+  .p2-badge-n {{ font-family:{fonts['display']}; font-size:19pt;
+    color:{C['navy']}; line-height:1; }}
+  .p2-badge-u {{ font-family:{fonts['sans']}; font-size:7.5pt;
+    color:{C['gold']}; font-weight:700; margin-left:3px; }}
+  .p2-badge-l {{ font-size:7.2pt; color:{C['muted']}; font-weight:600;
+    margin-top:4px; letter-spacing:.02em; }}
+
+  /* QRES6 — densité adaptative pour les tableaux longs */
+  .p2-dense .p2-tbl {{ font-size:8.1pt; }}
+  .p2-dense .p2-tbl tbody td {{ padding:0.8mm 0; }}
+  .p2-dense .p2-band {{ padding:1.2mm 5mm; }}
+  .p2-dense .p2-dbody li {{ padding:1.2mm 3.5mm; font-size:8.1pt; }}
+  .p2-dense .p2-fin-cc img {{ height:29mm; }}
+  .p2-dense .p2-badge {{ padding:7px 4px 6px; }}
+  .p2-dense .p2-badge-n {{ font-size:16pt; }}
+
   /* QJ30 — multi-propriétés */
   .p2-multi-wrap {{ margin-top:2.5mm; }}
   .p2-multi-n {{ background:{C['wash']}; border:1px solid {C['gold']};
@@ -397,7 +441,7 @@ def build(ctx) -> str:
 
     html = f"""
 {style}
-<div class="p2-wrap">
+<div class="p2-wrap{dense_cls}">
 
   <div class="p2-kick">Votre installation</div>
   <div class="p2-title">Le détail de votre projet</div>
@@ -436,7 +480,7 @@ def build(ctx) -> str:
   <div class="p2-fin">
     <div class="p2-fin-head">
       <span class="p2-fin-title">Rentabilité sur 25 ans</span>
-      <span class="p2-fin-sub">gain cumulé, deux scénarios — le point marque le retour sur investissement</span>
+      <span class="p2-fin-sub">{fin_sub}</span>
     </div>
 
     <div class="p2-fin-grid">
@@ -455,9 +499,9 @@ def build(ctx) -> str:
           <span class="p2-stat-s">{gain25_label}</span>
         </div>
         <div class="p2-side-stat">
-          <span class="p2-stat-k">Production garantie</span>
-          <span class="p2-stat-v">25 ans</span>
-          <span class="p2-stat-s">panneaux &amp; performance</span>
+          <span class="p2-stat-k">Performance garantie</span>
+          <span class="p2-stat-v">30 ans</span>
+          <span class="p2-stat-s">panneaux — 87,4 % de rendement à 30 ans</span>
         </div>
       </div>
     </div>
@@ -467,6 +511,9 @@ def build(ctx) -> str:
       l'électricité accélère votre rentabilité, votre coût solaire restant fixe.
     </div>
   </div>
+
+  <div class="p2-lbl">Nos garanties</div>
+  <div class="p2-badges">{badges_html}</div>
 
 </div>
 """

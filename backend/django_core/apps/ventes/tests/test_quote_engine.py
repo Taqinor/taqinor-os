@@ -1367,6 +1367,120 @@ class TestResidentialRenderer(TestCase):
         self.assertIn('data:image/png', html)
 
 
+@tag('pdf')
+class TestResidentialQRESRound(TestCase):
+    """QRES — corrections du rendu résidentiel (audit fondateur 2026-07-17) :
+    pagination JAMAIS débordée (le vrai devis DEV-202607-0021 rendait 4 pages
+    physiques étiquetées « Page 3 / 3 »), lien de signature court, plus de
+    scénario batterie fantôme sur un devis mono-option, garanties à source
+    unique, bande légale alignée sur le pied de page, méta client dédoublonnée."""
+
+    def _render(self, variant):
+        from weasyprint import HTML
+        from apps.ventes.quote_engine.residential import (
+            renderer, render, sample_data)
+        d = renderer._augment(sample_data.build(variant))
+        html = render.build_html(d)
+        return html, HTML(string=html).render()
+
+    def test_every_sample_variant_renders_exactly_three_pages(self):
+        """La garde anti-débordement : les TROIS fixtures (deux options /
+        mono-option / page-3 chargée « long ») tiennent en 3 pages A4 — le
+        bloc signature ne bascule plus jamais sur une 4ᵉ page orpheline."""
+        from apps.ventes.quote_engine.residential import sample_data
+        for variant in sample_data.keys():
+            _, doc = self._render(variant)
+            self.assertEqual(
+                len(doc.pages), 3,
+                f'variant {variant!r}: expected 3 pages, got {len(doc.pages)}')
+
+    def test_bottom_content_never_silently_clipped(self):
+        """Le cadre .page (A4 fixe, overflow:hidden) peut ROGNER sans faire de
+        4ᵉ page : une page 3 trop haute perdait silencieusement la bande légale
+        (SARLAU/RC/ICE). On rastérise le VRAI PDF et on exige que la bande
+        légale ET les hypothèses soient physiquement sur la dernière page."""
+        import fitz
+        from apps.ventes.quote_engine.residential import renderer, sample_data
+        for variant in sample_data.keys():
+            pdf = renderer.render_pdf_bytes(sample_data.build(variant))
+            doc = fitz.open(stream=pdf, filetype='pdf')
+            last = doc[-1].get_text()
+            self.assertIn('SARLAU', last,
+                          f'variant {variant!r}: legal band clipped off page 3')
+            self.assertIn('hypoth', last.lower(),
+                          f'variant {variant!r}: hypotheses strip clipped')
+
+    def test_sign_link_token_never_displayed_as_text(self):
+        """Le lien tokenisé vit dans le href et le QR ; le bouton n'affiche que
+        « hôte/segment » (l'URL complète débordait sous le QR)."""
+        html, _ = self._render("deux")
+        token_tail = "rKJtbjsY-qTML35ZnjQ9Lt_v4_demo"
+        self.assertEqual(html.count(token_tail), 1)          # href uniquement
+        self.assertIn("Signez en ligne", html)
+        self.assertIn("taqinor.ma/proposition</a>", html)
+
+    def test_mono_option_has_no_phantom_battery_scenario(self):
+        """Un devis réseau seul ne mentionne plus « Avec batterie » ni « deux
+        scénarios » nulle part (cartes, sous-titre du graphe, accord)."""
+        html, _ = self._render("sans")
+        self.assertNotIn("deux scénarios", html)
+        self.assertNotIn("Avec batterie", html)
+
+    def test_warranties_single_source(self):
+        """theme.WARRANTIES est LA source : badges en page 2, bande de
+        crédibilité page 1 alignée (30 ans performance — plus aucun
+        « Garantie 25 ans » contradictoire)."""
+        from apps.ventes.quote_engine.residential import theme
+        html, _ = self._render("deux")
+        for n, _u, label in theme.WARRANTIES:
+            self.assertIn(label, html)
+        self.assertIn("Performance garantie 30 ans", html)
+        self.assertNotIn("Garantie 25 ans", html)
+        self.assertNotIn("garantie sur 25 ans", html)
+
+    def test_legal_band_contact_matches_footer(self):
+        """La bande légale lit l'identité résolue : même email que le pied de
+        page (le PDF réel imprimait .ma en pied et .com dans la bande)."""
+        html, _ = self._render("deux")   # profil TAQINOR avec contact@taqinor.ma
+        self.assertNotIn("contact@taqinor.com", html)
+        self.assertGreaterEqual(html.count("contact@taqinor.ma"), 2)
+
+    def test_hypotheses_deduplicated_by_builder_shape(self):
+        """La fixture (miroir du builder corrigé) ne porte plus qu'UNE mention
+        de la loi 82-21 dans les hypothèses, et le rendu l'affiche en bande
+        fine-print pleine largeur."""
+        from apps.ventes.quote_engine.residential import sample_data
+        items = sample_data.build("deux")["hypotheses"]["items"]
+        self.assertEqual(sum("82-21" in i for i in items), 1)
+        html, _ = self._render("deux")
+        self.assertIn("p3-hyp", html)
+
+    def test_join_meta_dedups_repeated_fragments(self):
+        """« casablanca, casablanca · casablanca » → « casablanca » (l'adresse
+        saisie contient souvent déjà la ville)."""
+        from apps.ventes.quote_engine.residential import theme
+        self.assertEqual(
+            theme.join_meta("casablanca, casablanca", "casablanca",
+                            "+212661850412"),
+            "casablanca · +212661850412")
+        self.assertEqual(
+            theme.join_meta("12 rue des Orangers", "Casablanca",
+                            "+212600000000"),
+            "12 rue des Orangers · Casablanca · +212600000000")
+
+    def test_builder_hypotheses_mention_8221_once(self):
+        """Le builder réel dédoublonne : une seule formulation 82-21 dans le
+        bloc hypothèses (il en cumulait deux, plus celle de la méthode)."""
+        from apps.ventes.quote_engine.pricing import cashflow_assumptions
+        notes = cashflow_assumptions()["notes"]
+        self.assertTrue(any("82-21" in n for n in notes))
+        self.assertTrue(any("injection" in n.lower() for n in notes))
+        # plus de décimale anglaise dans les notes rendues au client
+        joined = " ".join(notes)
+        self.assertNotIn("0.5", joined)
+        self.assertNotIn("2.0", joined)
+
+
 class TestCanonicalProductible(TestCase):
     """QX38 — un seul modèle de productible (PVGIS par ville), partagé par
     l'écran, le PDF et la proposition web. CompanyProfile.productible (1600)

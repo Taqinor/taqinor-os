@@ -137,6 +137,19 @@ def fmt(n) -> str:
     return f"{n:,.0f}".replace(",", " ")
 
 
+# ── QRES5 — garanties canoniques (UNE source pour tout le document) ──────────
+# Chiffres traçables aux fiches produit du catalogue (Canadian Solar TOPHiKu7 :
+# 12 ans produit / 30 ans performance linéaire 87,4 % ; onduleurs 10 ans ;
+# structures 20 ans). La bande de crédibilité (page 1), les badges (page 2) et
+# toute mention de garantie lisent CETTE liste — plus jamais deux chiffres
+# contradictoires (« 25 ans » vs « 30 ans ») dans le même PDF.
+WARRANTIES = [
+    ("10", "ans", "Onduleur"),
+    ("12", "ans", "Panneaux (produit)"),
+    ("20", "ans", "Structure"),
+    ("30", "ans", "Performance 87,4 %"),
+]
+
 # French name particles that stay lowercase inside a name.
 _NAME_PARTICLES = {"de", "du", "des", "la", "le", "les", "van", "von",
                    "el", "al", "ben", "bin", "ould", "aït", "ait"}
@@ -175,9 +188,26 @@ def titlecase_name(name) -> str:
 
 def join_meta(*parts, sep=" · ") -> str:
     """Join non-empty, stripped meta fragments with `sep` (no dangling commas/dots
-    when a field like the address or city is missing)."""
-    clean = [str(p).strip().strip(",").strip() for p in parts if p and str(p).strip()]
-    return sep.join(c for c in clean if c)
+    when a field like the address or city is missing).
+
+    QRES2 — dédoublonne les morceaux répétés : l'adresse saisie contient
+    souvent déjà la ville (« casablanca, casablanca · casablanca »), le PDF ne
+    doit jamais imprimer deux fois le même morceau. Un fragment n'est gardé que
+    s'il apporte au moins un morceau (séparé par des virgules) encore inédit."""
+    seen_bits: set = set()
+    out = []
+    for p in parts:
+        if not p or not str(p).strip():
+            continue
+        kept = []
+        for b in (x.strip() for x in str(p).split(",")):
+            if b and b.lower() not in seen_bits:
+                kept.append(b)
+                seen_bits.add(b.lower())
+        frag = ", ".join(kept)
+        if frag:
+            out.append(frag)
+    return sep.join(out)
 
 
 def fiche_slug(designation, marque="") -> str:

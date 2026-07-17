@@ -98,7 +98,8 @@ def coverage_donut(pct, w=1.95, h=1.95) -> str:
 
 
 def payback_curve(total_sans, total_avec, eco_s, eco_a, roi_s, roi_a,
-                  w=6.9, h=2.35, cashflow_sans=None, cashflow_avec=None) -> str:
+                  w=6.9, h=2.35, cashflow_sans=None, cashflow_avec=None,
+                  deux=True, avec_ok=True) -> str:
     import numpy as np
     years = np.arange(0, 26)
     # QX39 — quand le cumul du cashflow 25 ans réel est fourni (dégradation
@@ -113,17 +114,29 @@ def payback_curve(total_sans, total_avec, eco_s, eco_a, roi_s, roi_a,
     else:
         cs = np.array([(-total_sans + eco_s * y) / 1000 for y in years])
         ca = np.array([(-total_avec + eco_a * y) / 1000 for y in years])
+
+    # QRES3 — un devis MONO-option ne trace qu'UNE courbe (celle de l'option
+    # réelle) : plus de scénario « Avec batterie » fantôme ni de double
+    # étiquette « rentabilisé » qui se chevauchent sur un devis réseau seul.
+    if deux:
+        series = [(cs, NAVY, "Sans batterie", roi_s, 13),
+                  (ca, GOLD, "Avec batterie", roi_a, -24)]
+        fill_curve = ca
+    else:
+        one = (ca, GOLD, None, roi_a, 13) if avec_ok else (cs, NAVY, None, roi_s, 13)
+        series = [one]
+        fill_curve = one[0]
+
     fig, ax = plt.subplots(figsize=(w, h))
 
     # Profit zone: everything above break-even reads as money earned.
-    ax.fill_between(years, ca, 0, where=(ca > 0), color=GOLD, alpha=0.10,
-                    zorder=1, interpolate=True)
+    ax.fill_between(years, fill_curve, 0, where=(fill_curve > 0), color=GOLD,
+                    alpha=0.10, zorder=1, interpolate=True)
     ax.axhline(0, color="#C5CCD6", linewidth=1, zorder=2)
 
-    ax.plot(years, cs, color=NAVY, linewidth=2.6, label="Sans batterie",
-            zorder=4, solid_capstyle="round")
-    ax.plot(years, ca, color=GOLD, linewidth=2.6, label="Avec batterie",
-            zorder=4, solid_capstyle="round")
+    for curve, col, label, _roi, _dy in series:
+        ax.plot(years, curve, color=col, linewidth=2.6, label=label,
+                zorder=4, solid_capstyle="round")
 
     # Break-even markers ON the curve (interpolated y), with a soft drop guide.
     def _y_on(curve, roi):
@@ -133,7 +146,11 @@ def payback_curve(total_sans, total_avec, eco_s, eco_a, roi_s, roi_a,
         if yr >= len(curve) - 1:
             return float(curve[-1])
         return float(curve[yr] + fr * (curve[yr + 1] - curve[yr]))
-    for roi, curve, col, dy in ((roi_s, cs, NAVY, 13), (roi_a, ca, GOLD, -22)):
+    # QRES15 — plus d'étiquette texte sur les repères : deux ROI proches
+    # faisaient se chevaucher les libellés (et l'un tombait sur l'axe). Le
+    # sous-titre du bloc + les stats latérales portent déjà les chiffres ;
+    # le point + la guide pointillée suffisent sur la courbe.
+    for curve, col, _label, roi, _dy in series:
         if not roi:
             continue
         yv = _y_on(curve, roi)
@@ -141,9 +158,6 @@ def payback_curve(total_sans, total_avec, eco_s, eco_a, roi_s, roi_a,
                   alpha=0.55, zorder=3)
         ax.scatter([roi], [yv], s=64, color=col, zorder=6,
                    edgecolor="white", linewidth=1.6, marker="o")
-        ax.annotate(f"rentabilisé\n{str(roi).replace('.', ',')} ans", (roi, yv),
-                    textcoords="offset points", xytext=(7, dy), fontsize=7.6,
-                    color=col, fontweight="bold", linespacing=1.0)
 
     ax.set_xlim(0, 25); ax.margins(y=0.10)
     ax.set_xlabel("Années", fontsize=8, color=MUTED)
@@ -152,8 +166,9 @@ def payback_curve(total_sans, total_avec, eco_s, eco_a, roi_s, roi_a,
     ax.yaxis.set_major_formatter(
         plt.FuncFormatter(lambda v, _: f"{int(v):,}".replace(",", " ")))
     _clean(ax)
-    ax.legend(loc="upper left", frameon=False, fontsize=8.5, labelcolor=INK,
-              handlelength=1.4)
+    if deux:
+        ax.legend(loc="upper left", frameon=False, fontsize=8.5,
+                  labelcolor=INK, handlelength=1.4)
     fig.tight_layout()
     return _uri(fig)
 
@@ -195,6 +210,8 @@ def build_all(data: dict) -> dict:
             data["total_sans"], data["total_avec"],
             data["eco_s_ann"], data["eco_a_ann"], data["roi_s"], data["roi_a"],
             cashflow_sans=data.get("cashflow_sans"),
-            cashflow_avec=data.get("cashflow_avec")),
+            cashflow_avec=data.get("cashflow_avec"),
+            deux=bool(data.get("deux_options", True)),
+            avec_ok=bool(data.get("avec_ok", True))),
         "roof": roof_layout(data["nb_panneaux"]),
     }

@@ -98,6 +98,16 @@ def build(ctx):
     # QX7a — couverture solaire : étiquetée « estimation » quand la conso réelle
     # est inconnue (dérivée d'une facture, pas d'une conso kWh réelle).
     cov_est_txt = " (estimation)" if d.get("coverage_estimated") else ""
+    # QRES4 — cohérence donut / gros pourcentage : quand la couverture (part de
+    # la conso produite) dépasse nettement la baisse de facture (part
+    # autoconsommée valorisée), une ligne explique l'écart au lieu de laisser
+    # « −85 % » côtoyer « 100 % » sans lien apparent.
+    cov_gap_note = ""
+    if coverage_pct - pct_cut >= 10:
+        cov_gap_note = (
+            '<div class="c1-bigcut-note">Pourquoi pas −{cov} % ? Seuls les kWh '
+            'autoconsommés réduisent la facture (loi 82-21) — le surplus '
+            'injecté n\'est pas rémunéré.</div>').format(cov=coverage_pct)
 
     kwc_str = f"{kwc:.2f}".rstrip("0").rstrip(".").replace(".", ",")
     pkwc_sans = fmt(total_sans / kwc) if kwc else "—"
@@ -199,6 +209,7 @@ def build(ctx):
 .c1-bigcut-m{{font-size:8pt;color:{muted};margin-top:3px;white-space:nowrap;}}
 .c1-bigcut-m s{{color:{muted_2};text-decoration-thickness:1.2px;}}
 .c1-bigcut-m b{{color:{gold};font-weight:700;}}
+.c1-bigcut-note{{font-size:6.8pt;color:{muted_2};margin-top:6px;line-height:1.3;}}
 .c1-cut{{background:{gold};color:{navy_900};font-weight:700;font-size:9.5pt;
   padding:3px 11px;border-radius:20px;letter-spacing:.2px;white-space:nowrap;}}
 .c1-cmp{{display:flex;align-items:center;gap:12px;}}
@@ -363,7 +374,7 @@ def build(ctx):
   <!-- CREDIBILITY CUE (number-free) ──────────────────────────────────────── -->
   <div class="c1-trust">
     <div class="c1-trust-line"></div>
-    <div class="c1-trust-txt"><b>Ingénieurs solaires</b> · Garantie 25 ans · Suivi temps réel</div>
+    <div class="c1-trust-txt"><b>Ingénieurs solaires</b> · Performance garantie 30 ans · Suivi temps réel</div>
     <div class="c1-trust-line"></div>
   </div>
 
@@ -383,6 +394,7 @@ def build(ctx):
               &nbsp;&rarr;&nbsp;<b>{fmt(month_after)} MAD/mois</b></div>
           </div>
         </div>
+        {cov_gap_note}
       </div>
       <div class="c1-hook-gap"></div>
       <div class="c1-hook-right">
