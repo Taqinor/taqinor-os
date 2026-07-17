@@ -100,6 +100,76 @@ DEFAULT_SERVER_CONTROLLED_FIELDS = frozenset({
 })
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# NTDMO9 — Masquage PII en MODE PRÉSENTATION (démo devant prospect)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Valeurs de remplacement par champ masqué (adresse exacte, email, téléphone).
+# La ville n'est JAMAIS dans cette liste : elle reste visible (« garder ville,
+# masquer le reste »).
+_PRESENTATION_MASKS = {
+    'email': '***@***',
+    'telephone': '06 ** ** ** **',
+    'adresse': '••• (masqué en mode présentation)',
+}
+
+
+def _company_masks_pii(user) -> bool:
+    """Vrai si la société de ``user`` masque les PII en mode présentation.
+
+    Double garde (défense en profondeur, NTDMO9) : le masquage n'est actif que
+    si la société est BIEN une société de DÉMONSTRATION (``est_demo``) ET que le
+    ``mode_presentation_actif`` est vrai. Une société RÉELLE dont le drapeau
+    serait manipulé n'est JAMAIS masquée. Sans utilisateur/société → jamais
+    masqué (rendu serveur interne, comportement inchangé)."""
+    if user is None or not getattr(user, 'is_authenticated', False):
+        return False
+    company = getattr(user, 'company', None)
+    if company is None:
+        return False
+    return bool(getattr(company, 'est_demo', False)) and bool(
+        getattr(company, 'mode_presentation_actif', False))
+
+
+class SerializerMaskMixin:
+    """Masque les PII (email/téléphone/adresse exacte) en LECTURE quand la
+    société courante est en mode présentation (NTDMO9).
+
+    À poser sur les sérialiseurs de LECTURE ``Client``/``Lead`` du CRM/ventes.
+    Le masquage :
+
+    * n'a lieu QUE si ``request.user.company.est_demo`` ET
+      ``mode_presentation_actif`` sont vrais (double garde) → une société où le
+      drapeau reste False se comporte de façon BYTE-IDENTIQUE (non-régression
+      totale), et une société RÉELLE n'est jamais affectée même si le drapeau
+      est manipulé ;
+    * est en LECTURE SEULE (``to_representation``) — il ne modifie jamais
+      l'instance ni la base, et ne touche donc JAMAIS l'écriture ni les
+      documents officiels (factures / PDF ``/proposal``, règle #4) ;
+    * garde la ``ville`` (jamais masquée) et ne masque que les champs listés
+      dans ``presentation_mask_fields``.
+
+    Sans ``context['request']`` (rendu serveur/interne) rien n'est masqué.
+    """
+
+    # Champs masqués en mode présentation (la ``ville`` en est volontairement
+    # absente). Un sérialiseur peut restreindre/étendre cette liste.
+    presentation_mask_fields = ('email', 'telephone', 'adresse')
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        request = self.context.get('request') if hasattr(self, 'context') \
+            else None
+        user = getattr(request, 'user', None) if request is not None else None
+        if not _company_masks_pii(user):
+            return data
+        for field_name in self.presentation_mask_fields:
+            if field_name in data and data.get(field_name):
+                data[field_name] = _PRESENTATION_MASKS.get(
+                    field_name, '***')
+        return data
+
+
 class ServerControlledFieldsMixin:
     """Ignore les champs de gouvernance présents dans le body (YRBAC8).
 

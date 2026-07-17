@@ -9,9 +9,12 @@ class CompanySerializer(serializers.ModelSerializer):
         # SCA46 — expose le consentement benchmarking (Boolean, défaut False,
         # opt-in strict). Aucune agrégation construite : le CONSENTEMENT est la
         # donnée (voir NTDATA46 — toute future agrégation pointe ce champ).
+        # NTDMO7/8 — ``est_demo`` exposé en LECTURE SEULE (jamais posé via
+        # l'API publique) ; ``mode_presentation_actif`` écrivable par un admin
+        # (NTDMO10) mais uniquement sur une société démo (gardé côté viewset).
         fields = ('id', 'nom', 'slug', 'actif', 'benchmarking_opt_in',
-                  'date_creation')
-        read_only_fields = ('id', 'slug', 'date_creation')
+                  'est_demo', 'mode_presentation_actif', 'date_creation')
+        read_only_fields = ('id', 'slug', 'est_demo', 'date_creation')
 
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
@@ -186,6 +189,15 @@ class UserSerializer(serializers.ModelSerializer):
     company_nom = serializers.CharField(
         source='company.nom', read_only=True
     )
+    # NTDMO7/10 — drapeaux démo de la société courante, lecture seule, servis au
+    # bootstrap (/auth/me) pour que le frontend affiche le bouton reset démo et
+    # la bannière/toggle « mode présentation ». Jamais écrivables ici.
+    company_est_demo = serializers.BooleanField(
+        source='company.est_demo', read_only=True, default=False
+    )
+    company_mode_presentation_actif = serializers.BooleanField(
+        source='company.mode_presentation_actif', read_only=True, default=False
+    )
     role_nom = serializers.CharField(
         source='role.nom', read_only=True
     )
@@ -236,10 +248,12 @@ class UserSerializer(serializers.ModelSerializer):
             'must_change_password', 'password_changed_at',
             'password', 'date_joined', 'last_login',
             'company_id', 'company_nom',
+            'company_est_demo', 'company_mode_presentation_actif',
         )
         read_only_fields = (
             'id', 'date_joined', 'last_login',
             'company_id', 'company_nom',
+            'company_est_demo', 'company_mode_presentation_actif',
             'societes_operables', 'active_company_id',
             'password_changed_at',
             'role_nom', 'role_legacy', 'menu_tier', 'permissions',

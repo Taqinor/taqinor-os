@@ -8,6 +8,8 @@ const ApprobationsAttentionCard = lazy(() => import('../components/ApprobationsA
 // VX36 — bannière de prise en main (autonome : se masque si terminé/rejeté),
 // visible dès le premier login en haut du Dashboard.
 const OnboardingBanner = lazy(() => import('../components/OnboardingBanner'))
+// NTDMO13 — widget « Premiers pas » (checklist onboarding, autonome).
+const PremiersPasWidget = lazy(() => import('../components/PremiersPasWidget'))
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -777,6 +779,11 @@ export function Component() {
           « ne plus afficher »). En tête, visible au premier login. */}
       <Suspense fallback={null}>
         <OnboardingBanner />
+      </Suspense>
+
+      {/* NTDMO13 — widget « Premiers pas » (checklist, se masque à 100 %). */}
+      <Suspense fallback={null}>
+        <PremiersPasWidget />
       </Suspense>
 
       {/* VX27 — bandeau « aujourd'hui » : les signaux du jour, cliquables. Se

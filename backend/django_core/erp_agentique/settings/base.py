@@ -172,6 +172,10 @@ INSTALLED_APPS = [
     # propose→approuve→applique, création TOUJOURS PAUSED). App satellite
     # multi-société ; tout no-ope sans token/clé configuré.
     'apps.adsengine',
+    # Groupe NTDMO — Onboarding produit (checklist « Premiers pas », tours).
+    # App légère : catalogue d'items global + avancement company-scopé, auto-
+    # complété via le bus core.events (jamais d'import cross-app des modèles).
+    'apps.onboarding',
 ]
 
 MIDDLEWARE = [
