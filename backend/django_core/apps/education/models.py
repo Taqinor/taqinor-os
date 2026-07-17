@@ -453,3 +453,75 @@ class LigneEcheance(TenantModel):
 
     def __str__(self):
         return f"{self.libelle} ({self.date_echeance})"
+
+
+# =============================================================================
+# NTEDU12 — Présences/absences par séance.
+# =============================================================================
+
+class Seance(TenantModel):
+    """NTEDU12 — séance de cours d'une classe. ``matiere`` reste un libellé
+    libre à ce stade (l'app expose par ailleurs le référentiel structuré
+    ``Matiere``/``MatiereClasse`` — NTEDU14 — pour les coefficients ; les
+    séances n'ont pas besoin d'y être liées pour la saisie de présence)."""
+
+    classe = models.ForeignKey(
+        Classe, on_delete=models.CASCADE, related_name='seances',
+        verbose_name='Classe')
+    matiere = models.CharField(max_length=100, verbose_name='Matière')
+    enseignant = models.ForeignKey(
+        'rh.DossierEmploye', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='seances', verbose_name='Enseignant')
+    date = models.DateField(verbose_name='Date')
+    heure_debut = models.TimeField(verbose_name='Heure de début')
+    heure_fin = models.TimeField(verbose_name='Heure de fin')
+    salle = models.CharField(
+        max_length=50, blank=True, default='', verbose_name='Salle')
+
+    class Meta:
+        verbose_name = 'Séance'
+        verbose_name_plural = 'Séances'
+        ordering = ['-date', '-heure_debut']
+
+    def __str__(self):
+        return f"{self.classe} — {self.matiere} ({self.date})"
+
+
+class Presence(TenantModel):
+    """NTEDU12 — présence d'un élève à une séance. ``justificatif`` référence
+    ``ged.Document`` par FK à chaîne (pièce jointe justifiant une absence)."""
+
+    class Statut(models.TextChoices):
+        PRESENT = 'present', 'Présent'
+        ABSENT = 'absent', 'Absent'
+        RETARD = 'retard', 'Retard'
+        EXCUSE = 'excuse', 'Excusé'
+
+    seance = models.ForeignKey(
+        Seance, on_delete=models.CASCADE, related_name='presences',
+        verbose_name='Séance')
+    eleve = models.ForeignKey(
+        Eleve, on_delete=models.CASCADE, related_name='presences',
+        verbose_name='Élève')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.PRESENT,
+        verbose_name='Statut')
+    justificatif = models.ForeignKey(
+        'ged.Document', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='presences_education', verbose_name='Justificatif (GED)')
+    saisi_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='education_presences_saisies', verbose_name='Saisi par')
+
+    class Meta:
+        verbose_name = 'Présence'
+        verbose_name_plural = 'Présences'
+        ordering = ['-seance__date']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['seance', 'eleve'],
+                name='education_presence_unique_par_seance_eleve'),
+        ]
+
+    def __str__(self):
+        return f"{self.eleve} — {self.seance} — {self.get_statut_display()}"

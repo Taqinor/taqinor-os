@@ -5,7 +5,7 @@ workflow d'inscription) — prérequis direct des tâches NTEDU4-8/12-14 de ce
 lot, dont les tests dédiés sont ajoutés section par section au fil des
 commits (une classe de tests par tâche, en dessous de ce module).
 """
-from datetime import date
+from datetime import date, time
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
@@ -16,7 +16,7 @@ from authentication.models import Company
 
 from .models import (
     AnneeScolaire, Classe, Eleve, Famille, GrilleTarifaire, Inscription,
-    Niveau, Remise)
+    Niveau, Presence, Remise, Seance)
 from .services import affecter_classe, valider_inscription
 
 User = get_user_model()
@@ -359,3 +359,51 @@ class NTEDU8EcheancierTests(EducationTestCaseMixin, TestCase):
 
         response_post = self.client.post(url, {}, format='json')
         self.assertEqual(response_post.status_code, 405)
+
+
+class NTEDU12PresenceBulkTests(EducationTestCaseMixin, TestCase):
+    """NTEDU12 — saisie de présence pour une classe entière en un seul appel."""
+
+    def setUp(self):
+        super().setUp()
+        self.eleve1 = Eleve.objects.create(
+            company=self.company, famille=self.famille, nom='A', prenom='A',
+            classe=self.classe)
+        self.eleve2 = Eleve.objects.create(
+            company=self.company, famille=self.famille, nom='B', prenom='B',
+            classe=self.classe)
+        self.seance = Seance.objects.create(
+            company=self.company, classe=self.classe, matiere='Maths',
+            date=date(2026, 9, 15), heure_debut=time(8, 0), heure_fin=time(9, 0))
+
+    def test_bulk_saisie_un_seul_appel_pour_toute_la_classe(self):
+        url = '/api/django/education/presences/bulk-saisie/'
+        response = self.client.post(url, {
+            'seance': self.seance.id,
+            'presences': [
+                {'eleve': self.eleve1.id, 'statut': 'present'},
+                {'eleve': self.eleve2.id, 'statut': 'absent'},
+            ],
+        }, format='json')
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(
+            Presence.objects.filter(seance=self.seance).count(), 2)
+        self.assertEqual(
+            Presence.objects.get(seance=self.seance, eleve=self.eleve2).statut,
+            Presence.Statut.ABSENT)
+
+    def test_bulk_saisie_est_un_upsert_rejouable(self):
+        url = '/api/django/education/presences/bulk-saisie/'
+        payload = {
+            'seance': self.seance.id,
+            'presences': [{'eleve': self.eleve1.id, 'statut': 'absent'}],
+        }
+        self.client.post(url, payload, format='json')
+        payload['presences'][0]['statut'] = 'retard'
+        self.client.post(url, payload, format='json')
+
+        self.assertEqual(
+            Presence.objects.filter(seance=self.seance).count(), 1)
+        self.assertEqual(
+            Presence.objects.get(seance=self.seance, eleve=self.eleve1).statut,
+            Presence.Statut.RETARD)

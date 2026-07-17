@@ -3,7 +3,8 @@ from rest_framework import serializers
 
 from .models import (
     AnneeScolaire, Classe, EcheancierScolarite, Eleve, Famille,
-    GrilleTarifaire, Inscription, LigneEcheance, Niveau, Remise)
+    GrilleTarifaire, Inscription, LigneEcheance, Niveau, Presence, Remise,
+    Seance)
 
 
 class AnneeScolaireSerializer(serializers.ModelSerializer):
@@ -106,3 +107,20 @@ class EcheancierScolariteSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'id', 'grille_tarifaire', 'remises', 'montant_total',
             'nombre_echeances', 'lignes']
+
+
+class SeanceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Seance
+        fields = [
+            'id', 'classe', 'matiere', 'enseignant', 'date', 'heure_debut',
+            'heure_fin', 'salle']
+        read_only_fields = ['id']
+
+
+class PresenceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Presence
+        fields = [
+            'id', 'seance', 'eleve', 'statut', 'justificatif', 'saisi_par']
+        read_only_fields = ['id', 'saisi_par']

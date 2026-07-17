@@ -14,11 +14,12 @@ from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
     AnneeScolaire, Classe, EcheancierScolarite, Eleve, Famille,
-    GrilleTarifaire, Inscription, Niveau, Remise)
+    GrilleTarifaire, Inscription, Niveau, Presence, Remise, Seance)
 from .serializers import (
     AnneeScolaireSerializer, ClasseSerializer, EcheancierScolariteSerializer,
     EleveSerializer, FamilleSerializer, GrilleTarifaireSerializer,
-    InscriptionSerializer, NiveauSerializer, RemiseSerializer)
+    InscriptionSerializer, NiveauSerializer, PresenceSerializer,
+    RemiseSerializer, SeanceSerializer)
 
 
 class AnneeScolaireViewSet(CompanyScopedModelViewSet):
@@ -277,3 +278,51 @@ class EcheancierScolariteViewSet(
         'eleve', 'annee_scolaire', 'grille_tarifaire').prefetch_related(
         'lignes').all()
     serializer_class = EcheancierScolariteSerializer
+
+
+class SeanceViewSet(CompanyScopedModelViewSet):
+    queryset = Seance.objects.select_related('classe', 'enseignant').all()
+    serializer_class = SeanceSerializer
+
+
+class PresenceViewSet(CompanyScopedModelViewSet):
+    queryset = Presence.objects.select_related('seance', 'eleve').all()
+    serializer_class = PresenceSerializer
+
+    @action(detail=False, methods=['post'], url_path='bulk-saisie')
+    def bulk_saisie(self, request):
+        """NTEDU12 — saisie de présence pour une classe entière EN UN SEUL
+        appel API (jamais un appel par élève). Corps attendu :
+        ``{"seance": <id>, "presences": [{"eleve": <id>, "statut": "...",
+        "justificatif": <id?>}, ...]}``. ``upsert`` (create/update) par
+        (seance, eleve) — rejouer le même appel est sans effet de bord
+        supplémentaire."""
+        company = request.user.company
+        seance_id = request.data.get('seance')
+        seance = Seance.objects.filter(company=company, pk=seance_id).first()
+        if seance is None:
+            raise ValidationError({'seance': 'Séance introuvable.'})
+
+        entrees = request.data.get('presences') or []
+        valid_statuts = {c for c, _ in Presence.Statut.choices}
+        resultats = []
+        for entree in entrees:
+            eleve_id = entree.get('eleve')
+            statut = entree.get('statut', Presence.Statut.PRESENT)
+            if statut not in valid_statuts:
+                raise ValidationError(
+                    {'statut': f'Statut invalide : {statut}.'})
+            eleve = Eleve.objects.filter(company=company, pk=eleve_id).first()
+            if eleve is None:
+                raise ValidationError(
+                    {'eleve': f'Élève introuvable : {eleve_id}.'})
+            presence, _created = Presence.objects.update_or_create(
+                company=company, seance=seance, eleve=eleve,
+                defaults={
+                    'statut': statut,
+                    'justificatif_id': entree.get('justificatif'),
+                    'saisi_par': request.user,
+                })
+            resultats.append(presence)
+
+        return Response(PresenceSerializer(resultats, many=True).data)
