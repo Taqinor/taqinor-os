@@ -47,6 +47,8 @@ const adsengineApi = {
       api.get('/adsengine/metrics/leads/', { params: { metric, ...params } }),
     // ENG20/ENG42 — Pacing : enveloppe, burn, projection, état + détail.
     pacing: (params) => api.get('/adsengine/metrics/pacing/', { params }),
+    // ADSDEEP19 — comptes de leads RÉELS par ad / campagne (MetaLeadMirror).
+    realLeads: (params) => api.get('/adsengine/metrics/real-leads/', { params }),
   },
 
   // ── ENG31/ENG42 — Réconciliation Meta-vs-ERP (écart + statut) ──
@@ -140,6 +142,24 @@ const adsengineApi = {
   simulations: {
     list: (params) => api.get('/adsengine/simulations/', { params }),
     get: (id) => api.get(`/adsengine/simulations/${id}/`),
+  },
+
+  // ── ADSDEEP9/10 — Breakdowns (audience & diffusion : démo/placement/région/heure) ──
+  breakdowns: {
+    // Ventilations d'un objet (campaign/adset/ad) ; dimension & since optionnels.
+    list: (params) => api.get('/adsengine/breakdowns/', { params }),
+  },
+
+  // ── ADSDEEP12/13/14 — Créatif LIVE : média frais + previews iframe ──
+  media: {
+    // URL FRAÎCHE (jamais persistée) : kind ∈ video|image.
+    resolve: (ref, kind = 'video') =>
+      api.get(`/adsengine/media/${ref}/`, { params: { kind } }),
+  },
+  previews: {
+    // Snippet iframe d'aperçu Meta (valide 24 h — refetch par affichage).
+    get: (adMetaId, format) =>
+      api.get(`/adsengine/ads/${adMetaId}/previews/`, { params: { format } }),
   },
 
   // ── ENG33/ENG45 — Reporting (drill-downs : variantes, entonnoir, cohortes) ──

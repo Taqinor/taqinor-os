@@ -64,6 +64,51 @@ WIRING_ENV_KEYS = (
 )
 
 
+# ADSDEEP16 — message FR actionnable quand la lecture d'un post de Page échoue
+# (piège n°1 : un System User sans l'asset Page assigné, dossier creative §4).
+_PAGE_ASSET_FIX_FR = (
+    "Le token n'a pas accès à l'asset Page. Correctif : Business Settings → "
+    "Comptes → Pages → sélectionner la Page → « Attribuer des personnes » (ou "
+    "« Assign Assets ») → ajouter le System User avec la tâche « Gérer la Page ». "
+    "Avoir le scope dans le token NE SUFFIT PAS — l'asset Page doit être assigné "
+    "au System User (piège fréquent des ads CTWA)."
+)
+
+
+def _page_asset_probe(company, conn):
+    """ADSDEEP16 — Teste la lecture d'un ``effective_object_story_id`` (post de
+    Page réellement diffusé). Renvoie ``{status, message}`` avec ``status`` ∈
+    ``ok``/``error``/``inconnu`` : ``ok`` (vert) si un post se lit, ``error``
+    (rouge) + correctif FR exact si Meta refuse (typiquement asset Page non
+    assigné au System User), ``inconnu`` si rien à sonder (no-op propre)."""
+    if conn is None or not conn.is_live:
+        return {'status': 'inconnu',
+                'message': "Connexion Meta inactive — sonde non exécutée."}
+
+    from .models import AdCreativeMirror
+
+    story_id = (AdCreativeMirror.objects
+                .filter(company=company)
+                .exclude(effective_object_story_id='')
+                .values_list('effective_object_story_id', flat=True)
+                .first())
+    if not story_id:
+        return {'status': 'inconnu',
+                'message': "Aucun post de Page diffusé à sonder pour l'instant."}
+
+    from .meta_client import MetaClient, MetaError
+
+    try:
+        client = MetaClient.from_connection(conn)
+        client._request('GET', str(story_id), params={'fields': 'id'})
+    except MetaError:
+        return {'status': 'error', 'message': _PAGE_ASSET_FIX_FR}
+    except Exception:  # noqa: BLE001 — jamais casser la santé sur un imprévu
+        return {'status': 'error', 'message': _PAGE_ASSET_FIX_FR}
+    return {'status': 'ok',
+            'message': "Accès à l'asset Page confirmé (post lisible)."}
+
+
 class WiringHealthView(APIView):
     """ENG12 — Santé du câblage publicitaire (pour le dashboard ENG23).
 
@@ -105,6 +150,11 @@ class WiringHealthView(APIView):
         # (le watchdog détecte un beat/worker Celery arrêté). Aucun secret.
         from .watchdog import health as guardian_health
 
+        # ADSDEEP5 — % d'usage rate-limit Meta observé sur la dernière réponse
+        # (backoff préventif avant le 613). None si aucune synchro récente.
+        from .meta_client import rate_limit_status
+        rate_limit = rate_limit_status(conn.ad_account_id) if conn else None
+
         return Response({
             'keys': keys,
             'connection': connection,
@@ -115,6 +165,10 @@ class WiringHealthView(APIView):
             'last_lead_ads_webhook': None,
             'last_capi_event': None,
             'guardian': guardian_health(company),
+            # ADSDEEP5 — santé du débit Meta (% d'usage, palier, drapeau throttled).
+            'rate_limit': rate_limit,
+            # ADSDEEP16 — sonde d'accès à l'asset Page (lecture d'un post diffusé).
+            'page_asset_access': _page_asset_probe(company, conn),
         })
 
 
@@ -1568,3 +1622,187 @@ class BacklogDropAssetView(APIView):
             status=CreativeBacklogItem.Statut.EN_FILE)
         return Response(
             CreativeBacklogItemSerializer(item).data, status=201)
+
+
+# ── ADSDEEP9 — Endpoints breakdowns (audience & diffusion) ────────────────────
+_BREAKDOWN_MIRROR_TYPES = {
+    'campaign': 'AdCampaignMirror',
+    'adset': 'AdSetMirror',
+    'ad': 'AdMirror',
+}
+
+
+class BreakdownsView(APIView):
+    """ADSDEEP9 — Ventilations (démo/placement/région/horaire) d'un objet
+    publicitaire, company-scopées et gatées ``adsengine_view``.
+
+    ``GET /api/django/adsengine/breakdowns/?object_type=campaign&object_id=<pk>
+    &dimension=age_gender&since=YYYY-MM-DD`` — ``object_type`` ∈ campaign/adset/
+    ad ; ``dimension`` et ``since`` optionnels (filtres). L'objet est résolu
+    DANS la société de l'appelant : un id d'une autre société renvoie 404 (jamais
+    de fuite cross-tenant). Aucun secret."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
+
+    def get(self, request):
+        company, err = _adseng_company_gate(request, 'adsengine_view')
+        if err is not None:
+            return err
+
+        from django.contrib.contenttypes.models import ContentType
+
+        from . import models as m
+        from .models import InsightBreakdown
+        from .serializers import InsightBreakdownSerializer
+
+        object_type = (request.query_params.get('object_type') or '').strip()
+        object_id = request.query_params.get('object_id')
+        model_name = _BREAKDOWN_MIRROR_TYPES.get(object_type)
+        if model_name is None or not object_id:
+            return Response(
+                {'detail': "Paramètres object_type (campaign/adset/ad) et "
+                           "object_id requis."}, status=400)
+        mirror_model = getattr(m, model_name)
+        # Résolution company-scopée : un objet d'une autre société → 404.
+        target = mirror_model.objects.filter(
+            company=company, pk=object_id).first()
+        if target is None:
+            return Response({'detail': 'Objet introuvable.'}, status=404)
+
+        ct = ContentType.objects.get_for_model(mirror_model)
+        qs = InsightBreakdown.objects.filter(
+            company=company, content_type=ct, object_id=target.pk)
+        dimension = (request.query_params.get('dimension') or '').strip()
+        if dimension:
+            qs = qs.filter(dimension=dimension)
+        since = (request.query_params.get('since') or '').strip()
+        if since:
+            qs = qs.filter(date__gte=since)
+        return Response(InsightBreakdownSerializer(qs, many=True).data)
+
+
+class MediaResolveView(APIView):
+    """ADSDEEP12 — Résolveur de médias FRAIS d'un créatif.
+
+    ``GET /api/django/adsengine/media/<ref>/?kind=video|image`` — fetch à la
+    volée l'URL JOUABLE d'une vidéo (``/<video_id>?fields=source`` — expire
+    ~1 h) ou l'URL PERMANENTE d'une image (``adimages`` ``permalink_url``). Le
+    résultat est mis en cache Redis ≤30 min et n'est JAMAIS persisté en base (les
+    URLs CDN expirent). 404 propre sans média / sans connexion Meta live.
+    Company-scopé + gaté ``adsengine_view``."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
+    # Durée de cache (s) — < durée de vie CDN (~1 h). Jamais persisté en base.
+    CACHE_TTL = 1800
+
+    def get(self, request, ref):
+        company, err = _adseng_company_gate(request, 'adsengine_view')
+        if err is not None:
+            return err
+        kind = (request.query_params.get('kind') or 'video').strip().lower()
+        if kind not in ('video', 'image'):
+            return Response({'detail': 'kind invalide (video|image).'},
+                            status=400)
+
+        from django.core.cache import cache
+
+        cache_key = f'adsengine-media:{company.pk}:{kind}:{ref}'
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return Response({'url': cached, 'cached': True})
+
+        conn = MetaConnection.objects.filter(
+            company=company, enabled=True).first()
+        if conn is None or not conn.is_live:
+            return Response({'detail': 'Connexion Meta indisponible.'},
+                            status=404)
+
+        from .meta_client import MetaClient, MetaError
+
+        client = MetaClient.from_connection(conn)
+        try:
+            if kind == 'video':
+                data = client.get_video_source(ref)
+                url = (data or {}).get('source') or ''
+            else:
+                data = client.get_ad_image(ref)
+                url = (data or {}).get('permalink_url') or ''
+        except MetaError:
+            return Response({'detail': 'Média introuvable.'}, status=404)
+        if not url:
+            return Response({'detail': 'Média introuvable.'}, status=404)
+        # Cache la seule URL (Redis, ≤30 min) — JAMAIS d'écriture en base.
+        cache.set(cache_key, url, self.CACHE_TTL)
+        return Response({'url': url, 'cached': False})
+
+
+# ── ADSDEEP13 — Proxy previews (aperçus rendus par Meta) ──────────────────────
+# Formats d'aperçu whitelistés (dossier creative-retrieval §5). L'iframe n'est
+# valide que 24 h ⇒ jamais stockée, refetch par affichage.
+PREVIEW_FORMATS = (
+    'MOBILE_FEED_STANDARD', 'INSTAGRAM_STANDARD',
+    'FACEBOOK_REELS_MOBILE', 'INSTAGRAM_STORY',
+)
+
+
+class AdPreviewsView(APIView):
+    """ADSDEEP13 — Snippet iframe d'aperçu Meta d'une ad, pour un format
+    whitelisté.
+
+    ``GET /api/django/adsengine/ads/<ad_meta_id>/previews/?format=<FORMAT>`` —
+    l'ad doit appartenir à la société de l'appelant (isolation). L'iframe (valide
+    24 h) n'est JAMAIS persistée : refetch à chaque affichage. Company-scopé +
+    gaté ``adsengine_view``."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
+
+    def get(self, request, ad_meta_id):
+        company, err = _adseng_company_gate(request, 'adsengine_view')
+        if err is not None:
+            return err
+        ad_format = (request.query_params.get('format')
+                     or 'MOBILE_FEED_STANDARD').strip()
+        if ad_format not in PREVIEW_FORMATS:
+            return Response(
+                {'detail': 'Format non autorisé.',
+                 'formats': list(PREVIEW_FORMATS)}, status=400)
+
+        from .models import AdMirror
+
+        ad = AdMirror.objects.filter(
+            company=company, meta_id=ad_meta_id).first()
+        if ad is None:
+            return Response({'detail': 'Ad introuvable.'}, status=404)
+
+        conn = MetaConnection.objects.filter(
+            company=company, enabled=True).first()
+        if conn is None or not conn.is_live:
+            return Response({'detail': 'Connexion Meta indisponible.'},
+                            status=404)
+
+        from .meta_client import MetaClient, MetaError
+
+        client = MetaClient.from_connection(conn)
+        try:
+            body = client.get_ad_previews(ad_meta_id, ad_format)
+        except MetaError:
+            return Response({'detail': 'Aperçu indisponible.'}, status=404)
+        # iframe NON persistée (valide 24 h) — rendue telle quelle à l'affichage.
+        return Response({'format': ad_format, 'body': body})
+
+
+class RealLeadsView(APIView):
+    """ADSDEEP19 — Comptes de leads RÉELS par ad / par campagne (MetaLeadMirror).
+
+    ``GET /api/django/adsengine/metrics/real-leads/`` — company-scopé, gaté
+    ``adsengine_view``. Remplace le « Leads: 0 » des insights par le vrai nombre
+    de leads capturés (webhook + pull, dédupliqués). Aucun secret."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
+
+    def get(self, request):
+        company, err = _adseng_company_gate(request, 'adsengine_view')
+        if err is not None:
+            return err
+        from .metrics import real_lead_counts
+        return Response(real_lead_counts(company))

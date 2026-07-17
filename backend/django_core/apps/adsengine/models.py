@@ -249,6 +249,59 @@ class AdMirror(TenantModel):
         return f'Ad {self.meta_id} ({self.status or "?"})'
 
 
+class AdCreativeMirror(TenantModel):
+    """ADSDEEP11 — Miroir du CRÉATIF LIVE d'une ad Meta (copie/vidéo/image).
+
+    ``OneToOne`` sur ``AdMirror`` (un créatif effectif par ad). Reflète le
+    contenu réellement diffusé (dossier creative-retrieval §1) : texte
+    (``body``/``title``/``description``), ``cta_type``, ``link_url``, et les
+    IDENTIFIANTS PERMANENTS des médias (``image_hash``/``video_id``) — jamais une
+    URL CDN (elles expirent ~1 h : le résolveur ADSDEEP12 fabrique une URL fraîche
+    à l'affichage). ``asset_feed_spec`` porte le créatif dynamique/Advantage+ tel
+    quel (le round-trip GET peut revenir INCOMPLET — bug forum connu, toléré).
+    Upsert idempotent par ``ad`` (OneToOne).
+    """
+
+    ad = models.OneToOneField(
+        'adsengine.AdMirror', on_delete=models.CASCADE,
+        related_name='creative_mirror', verbose_name='Ad')
+    creative_meta_id = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name='ID créatif Meta')
+    body = models.TextField(blank=True, default='', verbose_name='Texte principal')
+    title = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Titre')
+    description = models.TextField(
+        blank=True, default='', verbose_name='Description')
+    cta_type = models.CharField(
+        max_length=64, blank=True, default='', verbose_name='Type de CTA')
+    link_url = models.TextField(blank=True, default='', verbose_name='Lien')
+    image_hash = models.CharField(
+        max_length=128, blank=True, default='',
+        verbose_name='Hash image (permanent)')
+    video_id = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name='ID vidéo (permanent)')
+    instagram_permalink_url = models.TextField(
+        blank=True, default='', verbose_name='Permalien Instagram')
+    effective_object_story_id = models.CharField(
+        max_length=128, blank=True, default='',
+        verbose_name='ID post de Page diffusé')
+    asset_feed_spec = models.JSONField(
+        default=dict, blank=True,
+        verbose_name='Spéc. créatif dynamique (peut être incomplète)')
+    fetched_at = models.DateTimeField(
+        null=True, blank=True, verbose_name='Récupéré le')
+
+    class Meta:
+        verbose_name = 'Miroir de créatif'
+        verbose_name_plural = 'Miroirs de créatif'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'Créatif ad {self.ad_id} ({self.creative_meta_id or "?"})'
+
+
 class InsightSnapshot(TenantModel):
     """ENG5 — Instantané de performance daté d'un objet publicitaire.
 
@@ -275,6 +328,29 @@ class InsightSnapshot(TenantModel):
         max_digits=12, decimal_places=2, null=True, blank=True,
         verbose_name='Coût par lead')
 
+    # ── ADSDEEP1 — colonnes de diffusion/conversion typées (dossier
+    # insights-api). Alimentées par ``sync.upsert_insight`` depuis les champs
+    # normalisés de ``platforms.base.normalize_insight_row`` (parsing de
+    # ``actions[]``/AdsActionStats). Nullable + ADDITIF : les anciens rows
+    # restent intacts (valeurs None). ``conversations`` = action
+    # ``onsite_conversion.messaging_conversation_started_7d`` ; ``leads_count``
+    # = action ``lead`` ; ``video_metrics`` = dict p25/50/75/95/100 + plays +
+    # 6s/15s/30s + thruplay + avg_time (jamais de champ vidéo « 3 s » — inexistant).
+    impressions = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Impressions')
+    reach = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Portée (reach)')
+    clicks = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Clics')
+    link_clicks = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Clics sur lien')
+    conversations = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Conversations WhatsApp')
+    leads_count = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Leads')
+    video_metrics = models.JSONField(
+        default=dict, blank=True, verbose_name='Métriques vidéo')
+
     class Meta:
         verbose_name = 'Instantané de performance'
         verbose_name_plural = 'Instantanés de performance'
@@ -292,6 +368,87 @@ class InsightSnapshot(TenantModel):
 
     def __str__(self):
         return f'Insight {self.object_id}@{self.date}'
+
+
+class InsightBreakdown(TenantModel):
+    """ADSDEEP7 — Instantané d'insight VENTILÉ par une dimension de diffusion.
+
+    Rattaché par FK générique (comme ``InsightSnapshot``) à n'importe quel miroir
+    (campagne / ad set / ad). ``dimension`` désigne l'axe (âge×genre, placement,
+    région, horaire) ; ``key`` la valeur dans cet axe (ex. ``"25-34/f"``,
+    ``"instagram/reels"``, ``"Casablanca"``, ``"14"``). Upsert idempotent par
+    ``(company, content_type, object_id, date, dimension, key)`` : une resynchro
+    du même jour/axe/clé met à jour la ligne au lieu d'en créer une.
+
+    Les métriques ventilables varient selon la dimension (dossier insights-api §2 :
+    les breakdowns horaires perdent reach/frequency/unique_*) : seules les
+    colonnes robustes sous breakdown sont matérialisées ici (spend/impressions/
+    clicks/results/conversations)."""
+
+    class Dimension(models.TextChoices):
+        AGE_GENDER = 'age_gender', 'Âge × genre'
+        PLATFORM = 'platform', 'Placement'
+        REGION = 'region', 'Région'
+        HOURLY = 'hourly', 'Horaire'
+
+    content_type = models.ForeignKey(
+        'contenttypes.ContentType', on_delete=models.CASCADE,
+        verbose_name='Type de cible')
+    object_id = models.PositiveIntegerField(verbose_name='ID cible')
+    content_object = GenericForeignKey('content_type', 'object_id')
+    date = models.DateField(verbose_name='Date')
+    dimension = models.CharField(
+        max_length=16, choices=Dimension.choices, verbose_name='Dimension')
+    key = models.CharField(max_length=80, verbose_name='Clé de ventilation')
+    spend = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        verbose_name='Dépense')
+    impressions = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Impressions')
+    clicks = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Clics')
+    results = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Résultats')
+    conversations = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Conversations')
+
+    class Meta:
+        verbose_name = 'Ventilation de performance'
+        verbose_name_plural = 'Ventilations de performance'
+        ordering = ['-date', 'dimension', 'key']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'content_type', 'object_id', 'date',
+                        'dimension', 'key'],
+                name='uniq_adseng_breakdown'),
+        ]
+        indexes = [
+            models.Index(
+                fields=['content_type', 'object_id', 'dimension'],
+                name='adseng_bkdn_ct_obj_dim_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.get_dimension_display()} {self.key}@{self.date}'
+
+    @classmethod
+    def upsert(cls, company, target, *, date, dimension, key, spend=None,
+               impressions=None, clicks=None, results=None, conversations=None):
+        """Upsert idempotent d'une ligne de ventilation (la synchro écrase, jamais
+        de doublon). Company toujours dérivée de l'appelant ; FK générique résolue
+        depuis ``target``. Renvoie ``(obj, created)``."""
+        from django.contrib.contenttypes.models import ContentType
+        ct = ContentType.objects.get_for_model(target)
+        defaults = {}
+        for name, value in (
+                ('spend', spend), ('impressions', impressions),
+                ('clicks', clicks), ('results', results),
+                ('conversations', conversations)):
+            if value is not None:
+                defaults[name] = value
+        return cls.objects.update_or_create(
+            company=company, content_type=ct, object_id=target.pk, date=date,
+            dimension=dimension, key=key, defaults=defaults)
 
 
 class EngineAction(TenantModel):
@@ -1153,6 +1310,59 @@ class FlightPhase(TenantModel):
 
     def __str__(self):
         return f'{self.name} (plan {self.plan_id})'
+
+
+class MetaLeadMirror(TenantModel):
+    """ADSDEEP17 — Miroir d'un lead Meta (par AD) pour l'attribution fine.
+
+    Alimenté par l'ÉVÉNEMENT DOMAINE (M6) ``core.events.meta_lead_captured`` que
+    le webhook CRM EXISTANT émet — ``adsengine`` s'abonne dans son ``apps.py``
+    ``ready()`` (``receivers.py``) sans importer ``apps.crm``. Porte les clés de
+    jointure stables Meta (``ad_id``/``adset_id``/``campaign_id``/``form_id``), le
+    ``phone_key`` NORMALISÉ (QW10, via ``crm.selectors.normalize_phone_key``) qui
+    rapproche une signature Odoo d'une ad, et ``crm_lead_id`` (référence STRING au
+    lead CRM — jamais une FK cross-app dure). ``leadgen_id`` UNIQUE par société :
+    webhook et pull-sync (ADSDEEP18) convergent sans jamais dupliquer.
+    """
+
+    leadgen_id = models.CharField(max_length=64, verbose_name='ID lead Meta')
+    ad_id = models.CharField(
+        max_length=64, blank=True, default='', verbose_name='ID ad')
+    adset_id = models.CharField(
+        max_length=64, blank=True, default='', verbose_name='ID ad set')
+    campaign_id = models.CharField(
+        max_length=64, blank=True, default='', verbose_name='ID campagne')
+    form_id = models.CharField(
+        max_length=64, blank=True, default='', verbose_name='ID formulaire')
+    created_time = models.DateTimeField(
+        null=True, blank=True, verbose_name='Créé le (Meta)')
+    is_organic = models.BooleanField(
+        default=False, verbose_name='Lead organique (sans ad)')
+    phone_key = models.CharField(
+        max_length=32, blank=True, default='',
+        verbose_name='Clé téléphone normalisée')
+    # Référence STRING au lead CRM (jamais une FK cross-app dure — frontière M3).
+    crm_lead_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID lead CRM')
+
+    class Meta:
+        verbose_name = 'Miroir de lead Meta'
+        verbose_name_plural = 'Miroirs de leads Meta'
+        ordering = ['-created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'leadgen_id'],
+                name='uniq_adseng_meta_lead'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'ad_id'],
+                         name='adseng_mlead_co_ad_idx'),
+            models.Index(fields=['company', 'phone_key'],
+                         name='adseng_mlead_co_ph_idx'),
+        ]
+
+    def __str__(self):
+        return f'MetaLead {self.leadgen_id} (ad {self.ad_id or "?"})'
 
 
 class ReconciliationSnapshot(TenantModel):

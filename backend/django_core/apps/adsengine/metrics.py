@@ -28,6 +28,81 @@ from django.db.models import Sum
 
 from .models import AdCampaignMirror, InsightSnapshot
 
+# ── ADSDEEP6 — Objectif de campagne → métrique « résultats » homogène ─────────
+# Meta rapporte ``results`` selon l'objectif, mais l'objectif lui-même n'a pas
+# de nom métier partagé côté ERP. Cette table (DONNÉES, pas de logique) associe
+# chaque objectif à la métrique qui FAIT SENS et à son libellé FR, pour que
+# ``results``/``cpl`` aient une signification homogène par campagne et que le
+# dashboard affiche « conversations » (CTWA) vs « leads » (OUTCOME_LEADS) plutôt
+# qu'un « résultats » opaque. ``metric`` désigne une clé de
+# ``platforms.base.normalize_insight_row`` (conversations/leads_count/…).
+DEFAULT_RESULT_METRIC = {'metric': 'results', 'label_fr': 'résultats'}
+RESULT_METRIC_BY_OBJECTIVE = {
+    # CTWA / messagerie → conversations WhatsApp (action
+    # messaging_conversation_started_7d).
+    'OUTCOME_ENGAGEMENT': {'metric': 'conversations', 'label_fr': 'conversations'},
+    'MESSAGES': {'metric': 'conversations', 'label_fr': 'conversations'},
+    'CONVERSATIONS': {'metric': 'conversations', 'label_fr': 'conversations'},
+    'OUTCOME_MESSAGES': {'metric': 'conversations', 'label_fr': 'conversations'},
+    # Génération de leads → leads.
+    'OUTCOME_LEADS': {'metric': 'leads_count', 'label_fr': 'leads'},
+    'LEAD_GENERATION': {'metric': 'leads_count', 'label_fr': 'leads'},
+    # Trafic → clics sur lien.
+    'OUTCOME_TRAFFIC': {'metric': 'link_clicks', 'label_fr': 'clics sur lien'},
+    'LINK_CLICKS': {'metric': 'link_clicks', 'label_fr': 'clics sur lien'},
+    # Notoriété → impressions.
+    'OUTCOME_AWARENESS': {'metric': 'impressions', 'label_fr': 'impressions'},
+    'BRAND_AWARENESS': {'metric': 'impressions', 'label_fr': 'impressions'},
+    # Ventes → résultats génériques (achats), libellé dédié.
+    'OUTCOME_SALES': {'metric': 'results', 'label_fr': 'achats'},
+    'CONVERSIONS': {'metric': 'results', 'label_fr': 'conversions'},
+}
+
+
+def result_metric_for_objective(objective):
+    """ADSDEEP6 — Métrique « résultats » + libellé FR pour un objectif Meta.
+
+    Renvoie un dict ``{metric, label_fr}`` ; repli sur ``résultats`` générique
+    pour un objectif inconnu/absent (jamais d'erreur)."""
+    key = (objective or '').strip().upper()
+    return RESULT_METRIC_BY_OBJECTIVE.get(key, DEFAULT_RESULT_METRIC)
+
+
+def real_lead_counts(company):
+    """ADSDEEP19 — Comptes de leads RÉELS par ad et par campagne (MetaLeadMirror).
+
+    Remplace le « Leads: 0 » issu des insights par le vrai nombre de leads
+    capturés (webhook + pull, dédupliqués par ``leadgen_id``). Le ``campaign_id``
+    d'un miroir peut être vide (le webhook leadgen ne le pousse pas) : dans ce
+    cas la campagne est résolue via l'échelle miroir ``ad_id`` → ``AdMirror`` →
+    ``AdSetMirror`` → ``AdCampaignMirror``. Company-scopé. Renvoie
+    ``{by_ad, by_campaign, total}`` (``by_campaign`` clé = meta_id de campagne)."""
+    from .models import AdMirror, MetaLeadMirror
+
+    mirrors = list(MetaLeadMirror.objects.filter(company=company))
+    total = len(mirrors)
+    by_ad = {}
+    for m in mirrors:
+        if m.ad_id:
+            by_ad[m.ad_id] = by_ad.get(m.ad_id, 0) + 1
+
+    # Échelle ad_id → campagne (meta_id) via les miroirs (une seule requête).
+    ad_to_campaign = {}
+    ad_qs = (AdMirror.objects
+             .filter(company=company)
+             .select_related('adset__campaign'))
+    for ad in ad_qs:
+        camp = getattr(getattr(ad, 'adset', None), 'campaign', None)
+        if camp is not None:
+            ad_to_campaign[ad.meta_id] = camp.meta_id
+
+    by_campaign = {}
+    for m in mirrors:
+        camp_id = m.campaign_id or ad_to_campaign.get(m.ad_id, '')
+        if camp_id:
+            by_campaign[camp_id] = by_campaign.get(camp_id, 0) + 1
+    return {'by_ad': by_ad, 'by_campaign': by_campaign, 'total': total}
+
 
 def _campaign_spend_map(company, campaigns):
     """Dépense cumulée (``InsightSnapshot.spend``) par miroir de campagne.
@@ -80,6 +155,8 @@ def cost_per_signature(company):
         bucket = signed.get(key, {'signed_count': 0, 'signed_lead_ids': []})
         count = bucket['signed_count']
         cps = (spend / count) if count else None
+        # ADSDEEP6 — libellé homogène de la métrique « résultats » par objectif.
+        metric_info = result_metric_for_objective(camp.objective)
         results.append({
             'campaign_meta_id': camp.meta_id,
             'campaign_name': camp.name,
@@ -88,6 +165,9 @@ def cost_per_signature(company):
             'signed_count': count,
             'cost_per_signature': (str(cps) if cps is not None else None),
             'signed_lead_ids': list(bucket['signed_lead_ids']),
+            'objective': camp.objective or '',
+            'result_metric': metric_info['metric'],
+            'result_metric_label': metric_info['label_fr'],
         })
     return results
 
