@@ -28,7 +28,7 @@ class OnboardingChecklistItem(TenantModel):
     # sociétés). Présent pour la portée multi-tenant (YDATA4) ; les items seedés
     # sont globaux (company=None).
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
         null=True, blank=True, related_name='onboarding_items')
     key = models.SlugField(
         max_length=80, unique=True,
@@ -66,13 +66,13 @@ class OnboardingProgress(TenantModel):
     ARC1 — hérite de ``core.models.TenantModel``; ``company`` redéclaré à
     l'identique (related_name historique)."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
         related_name='onboarding_progress')
     user = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,  # on_delete: lié à l'utilisateur
         related_name='onboarding_progress')
     item = models.ForeignKey(
-        OnboardingChecklistItem, on_delete=models.CASCADE,
+        OnboardingChecklistItem, on_delete=models.CASCADE,  # on_delete: composant du parent
         related_name='progress')
     # Horodatage de complétion (NULL = à faire).
     complete_le = models.DateTimeField(null=True, blank=True)

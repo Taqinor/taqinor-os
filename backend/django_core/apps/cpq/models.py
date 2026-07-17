@@ -24,10 +24,10 @@ class OptionProduit(TenantModel):
     l'accesseur inverse historique (``company.cpq_options_produit``)."""
     # Redéclaré à l'identique (ARC1) : conserve le related_name historique.
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
         related_name='cpq_options_produit')
     produit = models.ForeignKey(
-        'stock.Produit', on_delete=models.CASCADE,
+        'stock.Produit', on_delete=models.CASCADE,  # on_delete: option sans objet si produit supprimé
         related_name='cpq_options')
     groupe_option = models.CharField(
         max_length=100,
@@ -64,13 +64,13 @@ class ContrainteCompatibilite(TenantModel):
         RECOMMANDE = 'RECOMMANDE', 'Recommandé'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
         related_name='cpq_contraintes_compatibilite')
     produit_a = models.ForeignKey(
-        'stock.Produit', on_delete=models.CASCADE,
+        'stock.Produit', on_delete=models.CASCADE,  # on_delete: contrainte sans objet si produit supprimé
         related_name='cpq_contraintes_a')
     produit_b = models.ForeignKey(
-        'stock.Produit', on_delete=models.CASCADE,
+        'stock.Produit', on_delete=models.CASCADE,  # on_delete: contrainte sans objet si produit supprimé
         related_name='cpq_contraintes_b')
     type = models.CharField(
         max_length=20, choices=TypeContrainte.choices)
@@ -113,7 +113,7 @@ class RegleProduitCPQ(TenantModel):
     ARC1 — hérite de ``core.models.TenantModel``; ``company`` redéclaré à
     l'identique (related_name historique)."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
         related_name='cpq_regles_produit')
     nom = models.CharField(max_length=150)
     condition_group = models.JSONField(
@@ -149,7 +149,7 @@ class OffreGroupee(TenantModel):
     ARC1 — hérite de ``core.models.TenantModel``; ``company`` redéclaré à
     l'identique (related_name historique)."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
         related_name='cpq_offres_groupees')
     nom = models.CharField(max_length=150)
     prix_total = models.DecimalField(
@@ -183,9 +183,10 @@ class LigneOffreGroupee(models.Model):
         PRIX_COMPOSANT = 'PRIX_COMPOSANT', 'Prix composant imposé'
 
     offre = models.ForeignKey(
-        OffreGroupee, on_delete=models.CASCADE, related_name='lignes')
+        OffreGroupee, on_delete=models.CASCADE,  # on_delete: composant du parent
+        related_name='lignes')
     produit = models.ForeignKey(
-        'stock.Produit', on_delete=models.CASCADE,
+        'stock.Produit', on_delete=models.CASCADE,  # on_delete: ligne sans objet si produit supprimé
         related_name='cpq_lignes_offre')
     quantite = models.DecimalField(
         max_digits=10, decimal_places=2, default=1)
@@ -215,13 +216,13 @@ class PrixContractuel(TenantModel):
     ARC1 — hérite de ``core.models.TenantModel``; ``company`` redéclaré à
     l'identique (related_name historique)."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
         related_name='cpq_prix_contractuels')
     client = models.ForeignKey(
-        'crm.Client', on_delete=models.CASCADE,
+        'crm.Client', on_delete=models.CASCADE,  # on_delete: prix sans objet si client supprimé
         related_name='cpq_prix_contractuels')
     produit = models.ForeignKey(
-        'stock.Produit', on_delete=models.CASCADE,
+        'stock.Produit', on_delete=models.CASCADE,  # on_delete: prix sans objet si produit supprimé
         related_name='cpq_prix_contractuels')
     prix_ht = models.DecimalField(max_digits=12, decimal_places=2)
     date_debut = models.DateField(null=True, blank=True)
@@ -267,10 +268,10 @@ class SeuilMargeFamille(TenantModel):
     ARC1 — hérite de ``core.models.TenantModel``; ``company`` redéclaré à
     l'identique (related_name historique)."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
         related_name='cpq_seuils_marge')
     categorie = models.ForeignKey(
-        'stock.Categorie', on_delete=models.CASCADE,
+        'stock.Categorie', on_delete=models.CASCADE,  # on_delete: seuil sans objet si catégorie supprimée
         related_name='cpq_seuils_marge')
     marge_min_pct = models.DecimalField(
         max_digits=5, decimal_places=2,
@@ -308,7 +309,7 @@ class RegleApprobationRemise(TenantModel):
         DIRECTION = 'direction', 'Direction'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
         related_name='cpq_regles_approbation_remise')
     libelle = models.CharField(max_length=200, blank=True, default='')
     remise_min_pct = models.DecimalField(
@@ -372,10 +373,10 @@ class EtapeApprobationDevis(TenantModel):
         REJETE = 'rejete', 'Rejeté'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
         related_name='cpq_etapes_approbation_devis')
     devis = models.ForeignKey(
-        'ventes.Devis', on_delete=models.CASCADE,
+        'ventes.Devis', on_delete=models.CASCADE,  # on_delete: étape sans objet si devis supprimé
         related_name='cpq_etapes_approbation')
     regle = models.ForeignKey(
         RegleApprobationRemise, on_delete=models.SET_NULL,
@@ -424,7 +425,7 @@ class QuestionConfigurateur(TenantModel):
         NUMERIQUE = 'NUMERIQUE', 'Numérique'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
         related_name='cpq_questions_configurateur')
     ordre = models.PositiveIntegerField(default=0)
     texte = models.CharField(max_length=255)
@@ -464,7 +465,7 @@ class SessionConfigurateur(TenantModel):
     l'identique (related_name historique). ``created_at``/``updated_at``
     hérités de TenantModel (à l'identique)."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
         related_name='cpq_sessions_configurateur')
     token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     devis = models.ForeignKey(
@@ -487,10 +488,10 @@ class SessionConfigurateur(TenantModel):
 class ReponseConfigurateur(models.Model):
     """NTCPQ9 — Réponse à une question dans une session de configurateur."""
     session = models.ForeignKey(
-        SessionConfigurateur, on_delete=models.CASCADE,
+        SessionConfigurateur, on_delete=models.CASCADE,  # on_delete: composant du parent
         related_name='reponses')
     question = models.ForeignKey(
-        QuestionConfigurateur, on_delete=models.CASCADE,
+        QuestionConfigurateur, on_delete=models.CASCADE,  # on_delete: réponse sans objet si question supprimée
         related_name='reponses')
     valeur = models.JSONField(null=True, blank=True)
 

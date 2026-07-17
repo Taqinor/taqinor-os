@@ -24,10 +24,11 @@ class ContactClient(TenantModel):
         AUTRE = 'autre', 'Autre'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
         related_name='contacts_client')
     client = models.ForeignKey(
-        'crm.Client', on_delete=models.CASCADE, related_name='contacts_multi_roles')
+        'crm.Client', on_delete=models.CASCADE,  # on_delete: contact sans objet si client supprimé
+        related_name='contacts_multi_roles')
     nom = models.CharField(max_length=255)
     prenom = models.CharField(max_length=255, blank=True, default='')
     poste = models.CharField(max_length=150, blank=True, default='')

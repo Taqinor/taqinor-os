@@ -559,14 +559,14 @@ class UserSession(models.Model):
 
     company = models.ForeignKey(
         Company,
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: purge tenant
         related_name='user_sessions',
         null=True,
         blank=True,
     )
     user = models.ForeignKey(
         'authentication.CustomUser',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: lié à l'utilisateur
         related_name='sessions',
     )
     # Identifiant du jeton de rafraîchissement (claim ``jti``) — sert à relier la

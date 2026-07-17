@@ -26,7 +26,7 @@ class Territoire(TenantModel):
         SECTEUR = 'secteur', 'Secteur'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
         related_name='territoires')
     nom = models.CharField(max_length=120)
     type_territoire = models.CharField(
@@ -58,7 +58,8 @@ class TerritoireRegle(models.Model):
     croissante ; la première règle ACTIVE qui matche, parmi tous les
     territoires actifs de la société, gagne."""
     territoire = models.ForeignKey(
-        Territoire, on_delete=models.CASCADE, related_name='regles')
+        Territoire, on_delete=models.CASCADE,  # on_delete: composant du parent
+        related_name='regles')
     ordre = models.PositiveIntegerField(
         default=0, verbose_name='Ordre de priorité')
     condition = models.JSONField(
@@ -80,9 +81,10 @@ class TerritoireMembre(models.Model):
     optionnel. ``nb_assignations``/``dernier_assigne_at`` portent l'état de la
     rotation round-robin (NTCRM2) — jamais un pur modulo sur ``count()``."""
     territoire = models.ForeignKey(
-        Territoire, on_delete=models.CASCADE, related_name='membres')
+        Territoire, on_delete=models.CASCADE,  # on_delete: composant du parent
+        related_name='membres')
     utilisateur = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,  # on_delete: lié à l'utilisateur
         related_name='territoires_membre')
     quota_pct = models.DecimalField(
         max_digits=5, decimal_places=2, null=True, blank=True,

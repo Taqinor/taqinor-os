@@ -2097,10 +2097,11 @@ class ForecastEntry(TenantModel):
         OMIS = 'omis', 'Omis'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
         related_name='forecast_entries')
     lead = models.OneToOneField(
-        Lead, on_delete=models.CASCADE, related_name='forecast_entry')
+        Lead, on_delete=models.CASCADE,  # on_delete: entrée sans objet si lead supprimé
+        related_name='forecast_entry')
     categorie = models.CharField(
         max_length=12, choices=Categorie.choices, default=Categorie.PIPELINE)
     # Vide = repli sur le devis actif le plus récent du lead, sinon
@@ -2151,7 +2152,7 @@ class ForecastSnapshot(TenantModel):
     l'identique (related_name historique). ``created_at`` hérité de
     TenantModel (à l'identique)."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
         related_name='forecast_snapshots')
     semaine_iso = models.CharField(
         max_length=8, verbose_name='Semaine ISO (ex. 2026-W29)')
@@ -2161,6 +2162,9 @@ class ForecastSnapshot(TenantModel):
     nb_leads = models.PositiveIntegerField(default=0)
     owner = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        # on_delete: snapshot individuel lié à l'utilisateur (CASCADE conservé
+        # plutôt que SET_NULL pour ne pas risquer une collision avec le
+        # snapshot société existant sous la même contrainte unique)
         null=True, blank=True, related_name='forecast_snapshots')
 
     class Meta:
@@ -2194,10 +2198,11 @@ class PlanCompte(TenantModel):
         ARCHIVE = 'archive', 'Archivé'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
         related_name='plans_compte')
     client = models.OneToOneField(
-        Client, on_delete=models.CASCADE, related_name='plan_compte')
+        Client, on_delete=models.CASCADE,  # on_delete: plan sans objet si client supprimé
+        related_name='plan_compte')
     objectifs_strategiques = models.TextField(blank=True, default='')
     potentiel_estime = models.DecimalField(
         max_digits=14, decimal_places=2, null=True, blank=True,
@@ -2240,7 +2245,8 @@ class RevueCompte(models.Model):
     """Note de réunion structurée liée à un ``PlanCompte`` (même esprit que
     ``ReunionChantier``/FG296 côté commercial), affichée en timeline."""
     plan = models.ForeignKey(
-        PlanCompte, on_delete=models.CASCADE, related_name='revues')
+        PlanCompte, on_delete=models.CASCADE,  # on_delete: composant du parent
+        related_name='revues')
     date_revue = models.DateField()
     participants = models.TextField(blank=True, default='')
     decisions = models.TextField(blank=True, default='')
@@ -2265,7 +2271,7 @@ class Playbook(TenantModel):
     """ARC1 — hérite de ``core.models.TenantModel``; ``company`` redéclaré à
     l'identique (related_name historique)."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
         related_name='playbooks')
     nom = models.CharField(max_length=150)
     actif = models.BooleanField(default=True)
@@ -2289,7 +2295,8 @@ class PlaybookEtape(models.Model):
     """Étape d'un playbook — la clé ``stage`` vient TOUJOURS de STAGES.py
     (``STAGE_CHOICES``), jamais codée en dur (règle #2)."""
     playbook = models.ForeignKey(
-        Playbook, on_delete=models.CASCADE, related_name='etapes')
+        Playbook, on_delete=models.CASCADE,  # on_delete: composant du parent
+        related_name='etapes')
     stage = models.CharField(max_length=20, choices=STAGE_CHOICES)
     ordre = models.PositiveIntegerField(default=0)
 
@@ -2305,7 +2312,8 @@ class PlaybookEtape(models.Model):
 
 class PlaybookTache(models.Model):
     etape = models.ForeignKey(
-        PlaybookEtape, on_delete=models.CASCADE, related_name='taches')
+        PlaybookEtape, on_delete=models.CASCADE,  # on_delete: composant du parent
+        related_name='taches')
     libelle = models.CharField(max_length=255)
     obligatoire = models.BooleanField(default=False)
     ordre = models.PositiveIntegerField(default=0)
@@ -2325,9 +2333,11 @@ class LeadPlaybookProgress(models.Model):
     lead entre dans une étape portant un playbook actif. Cocher une tâche pose
     l'acteur + la date, jamais silencieux."""
     lead = models.ForeignKey(
-        Lead, on_delete=models.CASCADE, related_name='playbook_progress')
+        Lead, on_delete=models.CASCADE,  # on_delete: progression sans objet si lead supprimé
+        related_name='playbook_progress')
     tache = models.ForeignKey(
-        PlaybookTache, on_delete=models.CASCADE, related_name='progressions')
+        PlaybookTache, on_delete=models.CASCADE,  # on_delete: composant du parent
+        related_name='progressions')
     fait = models.BooleanField(default=False)
     fait_par = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
