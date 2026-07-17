@@ -246,3 +246,38 @@ class TwoStepPerLeadTests(TestCase):
         self.assertEqual(blob.count(b'"lead_id": "LX"'), 2)
         self.assertIn(b'lead_received', blob)
         self.assertIn(b'signed_contract', blob)
+
+
+class StageEventMapTests(TestCase):
+    """ADSDEEP29 — table étape STAGES.py → event_name Meta (en DATA)."""
+
+    def test_map_covers_all_canonical_stages(self):
+        from apps.crm.selectors import pipeline_stage_order
+        order = pipeline_stage_order()
+        mapping = capi_odoo.stage_event_map()
+        # une entrée par étape canonique, aucune de plus.
+        self.assertEqual(set(mapping), set(order['stages']))
+        self.assertEqual(mapping[order['signed']], 'signed_contract')
+        self.assertEqual(mapping[order['cold']], 'crm_lead_lost')
+
+    def test_non_signed_stage_is_derived_from_key(self):
+        from apps.crm.stages import CONTACTED
+        self.assertEqual(
+            capi_odoo.event_name_for_stage(CONTACTED),
+            f'crm_stage_{CONTACTED.lower()}')
+
+    def test_unknown_stage_returns_empty(self):
+        self.assertEqual(capi_odoo.event_name_for_stage('NOT_A_STAGE'), '')
+
+    def test_no_hardcoded_stage_key_grep_guard(self):
+        import inspect
+
+        from apps.crm.selectors import pipeline_stage_order
+        src = inspect.getsource(capi_odoo)
+        for key in pipeline_stage_order()['stages']:
+            self.assertNotIn(
+                f"'{key}'", src,
+                f"étape STAGES.py '{key}' codée en dur dans capi_odoo.py")
+            self.assertNotIn(
+                f'"{key}"', src,
+                f'étape STAGES.py "{key}" codée en dur dans capi_odoo.py')

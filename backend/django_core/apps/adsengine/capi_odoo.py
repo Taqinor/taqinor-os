@@ -356,3 +356,42 @@ def emit_lead_received(company, *, now=None, transport=None):
         else:
             result['skipped'] += 1  # échec HTTP : pas de marqueur → réessai demain
     return result
+
+
+# ── ADSDEEP29 — Table étape → event_name Meta (en DATA, clés STAGES.py) ────────
+# La boucle Conversion Leads reflète « les étapes de votre CRM » (dossier §4). Les
+# CLÉS de la table viennent de STAGES.py via ``crm.selectors.pipeline_stage_order``
+# (jamais une liste d'étapes codée en dur — règle #2, garde grep-guard) ; seules
+# les VALEURS (vocabulaire d'événements Meta) sont à nous :
+#   * l'étape SIGNED  → 'signed_contract' (l'issue de la boucle, ADSDEEP27) ;
+#   * l'étape COLD    → 'crm_lead_lost' (issue négative « Perdu ») ;
+#   * toute autre étape du funnel → 'crm_stage_<clé minuscule>' (nom stable dérivé
+#     de la clé, jamais un littéral d'étape).
+# Mapping documenté : docs/engine/research/adsdeep-capi-stage-map.md.
+_LOST_EVENT_NAME = 'crm_lead_lost'
+_STAGE_EVENT_PREFIX = 'crm_stage_'
+
+
+def stage_event_map():
+    """ADSDEEP29 — ``{clé_STAGES.py: event_name Meta}`` construit à partir des
+    étapes CANONIQUES (``crm.selectors.pipeline_stage_order`` → STAGES.py, jamais
+    en dur). SIGNED → ``signed_contract`` (issue), COLD → ``crm_lead_lost``, les
+    autres étapes → ``crm_stage_<clé>``. Point unique de vérité pour associer une
+    étape de pipeline à son événement Conversion Leads."""
+    from apps.crm.selectors import pipeline_stage_order
+    order = pipeline_stage_order()
+    signed, cold = order['signed'], order['cold']
+    mapping = {}
+    for key in order['stages']:
+        if key == signed:
+            mapping[key] = SIGNED_EVENT_NAME
+        elif key == cold:
+            mapping[key] = _LOST_EVENT_NAME
+        else:
+            mapping[key] = f'{_STAGE_EVENT_PREFIX}{key.lower()}'
+    return mapping
+
+
+def event_name_for_stage(stage_key):
+    """ADSDEEP29 — event_name Meta d'une étape (clé STAGES.py), ou '' si inconnue."""
+    return stage_event_map().get(stage_key, '')
