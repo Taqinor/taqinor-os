@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Card, Badge, Button, EmptyState, Spinner, Textarea, toast } from '../../ui'
 import hospitalityApi from '../../api/hospitalityApi'
+import { formatDateTime } from '../../lib/format'
 
 /* ============================================================================
    NTHOT12 — Main courante / passations d'équipe.
@@ -114,7 +115,7 @@ export default function MainCourante() {
                 </Badge>
                 <span>{note.auteur_nom || 'Auteur inconnu'}</span>
                 <span>·</span>
-                <span>{new Date(note.date_note).toLocaleString('fr-FR')}</span>
+                <span>{formatDateTime(note.date_note)}</span>
               </div>
               <p className="text-sm">{note.texte}</p>
             </Card>
