@@ -129,7 +129,8 @@ def approuver_derogation(derogation, user, *, jours_validite=30):
 def _log_decision_derogation(derogation, user, verbe):
     """NTCRD43 — journalise la décision de dérogation dans le chatter records
     UNIFIÉ, rattaché au CLIENT (une seule source d'enregistrement, visible dans
-    le fil d'activité générique du client). Best-effort, jamais bloquant."""
+    le fil d'activité générique du client). Best-effort, jamais bloquant.
+    NTCRD44 — trace aussi l'action dans ``audit.AuditLog``."""
     try:
         from apps.crm.selectors import get_company_client
         from apps.records.services import log_note
@@ -141,6 +142,24 @@ def _log_decision_derogation(derogation, user, verbe):
                 f'Dérogation crédit {verbe} : {derogation.montant_demande} MAD.',
                 company=derogation.company)
     except Exception:  # pragma: no cover - journalisation best-effort
+        pass
+    audit_credit(
+        derogation, f'Dérogation crédit {verbe}', user=user,
+        company=derogation.company)
+
+
+def audit_credit(instance, detail, *, user=None, company=None):
+    """NTCRD44 — écrit une entrée ``audit.AuditLog`` pour une action sensible
+    crédit (best-effort, jamais bloquant) — réutilise le service d'audit
+    existant, jamais un log applicatif parallèle."""
+    try:
+        from apps.audit.models import AuditLog
+        from apps.audit.recorder import record
+
+        record(
+            AuditLog.Action.STATUS, instance=instance, detail=detail,
+            user=user, company=company)
+    except Exception:  # pragma: no cover - audit best-effort
         pass
 
 

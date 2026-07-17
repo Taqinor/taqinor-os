@@ -314,15 +314,25 @@ class LimiteCreditViewSet(CompanyScopedModelViewSet):
         nouvel = serializer.instance
         try:
             from apps.records.services import log_field_change
+            from .services import audit_credit
             if ancien_montant != nouvel.montant_limite:
                 log_field_change(
                     nouvel, 'montant_limite', ancien_montant,
                     nouvel.montant_limite, user=self.request.user,
                     field_label='Limite de crédit')
+                # NTCRD44 — trace la modification de limite dans AuditLog.
+                audit_credit(
+                    nouvel,
+                    f'Limite modifiée : {ancien_montant} → {nouvel.montant_limite}',
+                    user=self.request.user, company=nouvel.company)
             if ancien_mode != nouvel.mode_hold:
                 log_field_change(
                     nouvel, 'mode_hold', ancien_mode, nouvel.mode_hold,
                     user=self.request.user, field_label='Mode de hold')
+                audit_credit(
+                    nouvel,
+                    f'Mode de hold : {ancien_mode} → {nouvel.mode_hold}',
+                    user=self.request.user, company=nouvel.company)
         except Exception:  # pragma: no cover - journalisation best-effort
             pass
 
