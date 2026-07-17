@@ -2617,6 +2617,44 @@ class PlanAbonnementViewSet(_ContratsBaseViewSet):
             qs = qs.filter(actif=actif.lower() in ('1', 'true', 'oui'))
         return qs
 
+    @action(detail=False, methods=['get'], url_path='export')
+    def export(self, request):
+        """Export .xlsx du catalogue (plans / add-ons / paliers) — NTSUB21.
+
+        Un onglet par catalogue, scopé société. Chemin de lecture seule ;
+        gardé par ``contrat_voir`` (base). Chaque cellule texte commençant par
+        ``= + - @`` est neutralisée (ERR11)."""
+        from openpyxl import Workbook
+        from openpyxl.styles import Font
+
+        from apps.records.xlsx import (
+            XLSX_CONTENT_TYPE, coerce_cell,
+        )
+
+        feuilles = selectors.catalogue_abonnement_export(request.user.company)
+        wb = Workbook()
+        wb.remove(wb.active)
+        risky = ('=', '+', '-', '@')
+        for titre, headers, rows in feuilles:
+            ws = wb.create_sheet(title=titre[:31] or 'Export')
+            ws.append(list(headers))
+            bold = Font(bold=True)
+            for cell in ws[1]:
+                cell.font = bold
+            for row in rows:
+                cells = []
+                for v in row:
+                    cv = coerce_cell(v)
+                    if isinstance(cv, str) and cv[:1] in risky:
+                        cv = "'" + cv
+                    cells.append(cv)
+                ws.append(cells)
+        response = HttpResponse(content_type=XLSX_CONTENT_TYPE)
+        response['Content-Disposition'] = (
+            'attachment; filename="catalogue-abonnement.xlsx"')
+        wb.save(response)
+        return response
+
 
 class AddOnAbonnementViewSet(_ContratsBaseViewSet):
     """Add-ons (options payantes) du catalogue — NTSUB2.

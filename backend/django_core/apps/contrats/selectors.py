@@ -14,6 +14,7 @@ from django.db.models import ExpressionWrapper, F, fields
 from django.utils import timezone
 
 from .models import (
+    AddOnAbonnement,
     Avenant,
     Contrat,
     ContratActivity,
@@ -21,6 +22,8 @@ from .models import (
     EtapeApprobation,
     JalonContrat,
     Obligation,
+    PalierUsage,
+    PlanAbonnement,
     RegleApprobation,
     Resiliation,
     SignatureContrat,
@@ -1489,3 +1492,56 @@ def contrat_chatter_envelope(contrat):
         'created_at': a.date_creation,
         'source': 'contrats.contratactivity',
     } for a in rows]
+
+
+# ---------------------------------------------------------------------------
+# NTSUB21 — Export du catalogue d'offres (plans / add-ons / paliers)
+# ---------------------------------------------------------------------------
+
+
+def catalogue_abonnement_export(company):
+    """Données d'export du catalogue d'offres, scopées société — NTSUB21.
+
+    Renvoie une liste de feuilles ``(titre, en-têtes, lignes)`` : une par
+    catalogue (plans d'abonnement, add-ons, paliers d'usage). Lecture seule ;
+    aucun champ interne sensible n'est exposé (prix publics uniquement).
+    """
+    plans = PlanAbonnement.objects.filter(company=company).order_by('code')
+    plans_rows = [
+        [p.code, p.nom, float(p.prix_base), p.engagement_mois or '',
+         'oui' if p.actif else 'non']
+        for p in plans
+    ]
+
+    addons = AddOnAbonnement.objects.filter(company=company).order_by('code')
+    addons_rows = [
+        [a.code, a.nom, float(a.prix_unitaire), a.get_facturation_display(),
+         a.plan_abonnement.code if a.plan_abonnement_id else '',
+         'oui' if a.actif else 'non']
+        for a in addons
+    ]
+
+    paliers = (
+        PalierUsage.objects.filter(company=company)
+        .select_related('addon', 'plan_abonnement')
+        .order_by('id')
+    )
+    paliers_rows = [
+        [
+            (pa.addon.code if pa.addon_id else
+             (pa.plan_abonnement.code if pa.plan_abonnement_id else '')),
+            float(pa.seuil_min),
+            float(pa.seuil_max) if pa.seuil_max is not None else '',
+            float(pa.prix_unitaire), pa.get_mode_display(),
+        ]
+        for pa in paliers
+    ]
+
+    return [
+        ('Plans', ['Code', 'Nom', 'Prix de base', 'Engagement (mois)',
+                   'Actif'], plans_rows),
+        ('Add-ons', ['Code', 'Nom', 'Prix unitaire', 'Facturation',
+                     'Plan', 'Actif'], addons_rows),
+        ('Paliers', ['Cible', 'Seuil min', 'Seuil max', 'Prix unitaire',
+                     'Mode'], paliers_rows),
+    ]
