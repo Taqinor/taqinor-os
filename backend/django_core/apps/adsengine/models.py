@@ -1312,6 +1312,59 @@ class FlightPhase(TenantModel):
         return f'{self.name} (plan {self.plan_id})'
 
 
+class MetaLeadMirror(TenantModel):
+    """ADSDEEP17 — Miroir d'un lead Meta (par AD) pour l'attribution fine.
+
+    Alimenté par l'ÉVÉNEMENT DOMAINE (M6) ``core.events.meta_lead_captured`` que
+    le webhook CRM EXISTANT émet — ``adsengine`` s'abonne dans son ``apps.py``
+    ``ready()`` (``receivers.py``) sans importer ``apps.crm``. Porte les clés de
+    jointure stables Meta (``ad_id``/``adset_id``/``campaign_id``/``form_id``), le
+    ``phone_key`` NORMALISÉ (QW10, via ``crm.selectors.normalize_phone_key``) qui
+    rapproche une signature Odoo d'une ad, et ``crm_lead_id`` (référence STRING au
+    lead CRM — jamais une FK cross-app dure). ``leadgen_id`` UNIQUE par société :
+    webhook et pull-sync (ADSDEEP18) convergent sans jamais dupliquer.
+    """
+
+    leadgen_id = models.CharField(max_length=64, verbose_name='ID lead Meta')
+    ad_id = models.CharField(
+        max_length=64, blank=True, default='', verbose_name='ID ad')
+    adset_id = models.CharField(
+        max_length=64, blank=True, default='', verbose_name='ID ad set')
+    campaign_id = models.CharField(
+        max_length=64, blank=True, default='', verbose_name='ID campagne')
+    form_id = models.CharField(
+        max_length=64, blank=True, default='', verbose_name='ID formulaire')
+    created_time = models.DateTimeField(
+        null=True, blank=True, verbose_name='Créé le (Meta)')
+    is_organic = models.BooleanField(
+        default=False, verbose_name='Lead organique (sans ad)')
+    phone_key = models.CharField(
+        max_length=32, blank=True, default='',
+        verbose_name='Clé téléphone normalisée')
+    # Référence STRING au lead CRM (jamais une FK cross-app dure — frontière M3).
+    crm_lead_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID lead CRM')
+
+    class Meta:
+        verbose_name = 'Miroir de lead Meta'
+        verbose_name_plural = 'Miroirs de leads Meta'
+        ordering = ['-created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'leadgen_id'],
+                name='uniq_adseng_meta_lead'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'ad_id'],
+                         name='adseng_mlead_co_ad_idx'),
+            models.Index(fields=['company', 'phone_key'],
+                         name='adseng_mlead_co_ph_idx'),
+        ]
+
+    def __str__(self):
+        return f'MetaLead {self.leadgen_id} (ad {self.ad_id or "?"})'
+
+
 class ReconciliationSnapshot(TenantModel):
     """ADSENG5 — Instantané de RÉCONCILIATION Meta-vs-ERP (dd-attribution part b).
 
