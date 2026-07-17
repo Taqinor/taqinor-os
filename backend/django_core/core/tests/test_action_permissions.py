@@ -53,6 +53,12 @@ UNGUARDED_ACTION_BASELINE = {
     # dette restante, follow-up possible.
     "compta": 115,
     "contrats": 56,
+    # NTADM1/28/43 — EntiteViewSet : 3 @action coarse (deplacer/tree/desactiver)
+    # gardées au niveau CLASSE par ``permission_classes = [IsAdministrateur]``
+    # (Administrateur only) + company-scopées (CompanyScopedModelViewSet) ; les
+    # 2 autres @action (export/importer) sont, elles, FINE-gardées par action.
+    # Dette coarse figée (fine-grain ultérieur, YRBAC3).
+    "entites": 3,
     "flotte": 39,
     # NTFPA — viewsets FP&A gardés au niveau CLASSE (CompanyScopedModelViewSet
     # + rôle Directeur/FP&A), company-scopés ; dette coarse figée (fine-grain

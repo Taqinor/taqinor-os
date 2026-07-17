@@ -27,7 +27,7 @@ export default {
   key: 'adminops',
   order: 93,
   nav: {
-    label: 'ADMINISTRATION',
+    label: 'ADMINISTRATION AVANCÉE',
     accent: 'lune',
     items: [
       { to: '/admin/sante', label: 'Santé du compte', icon: icon(HeartPulse), roles: ROLES },
