@@ -449,6 +449,13 @@ class LigneEcheance(TenantModel):
     statut = models.CharField(
         max_length=10, choices=Statut.choices, default=Statut.A_VENIR,
         verbose_name='Statut')
+    cantine_montant = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant cantine (inclus)')  # NTEDU26 — composante
+    # cantine du montant total, ISOLÉE pour permettre un recalcul propre des
+    # lignes futures (statut a_venir) sans toucher les lignes déjà facturées
+    # quand une InscriptionCantine change (services_cantine.resynchroniser_
+    # lignes_futures_cantine — jamais rétroactif).
 
     class Meta:
         verbose_name = "Ligne d'échéance"

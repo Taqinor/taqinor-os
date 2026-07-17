@@ -560,5 +560,21 @@ class MenuCantineViewSet(CompanyScopedModelViewSet):
 
 
 class InscriptionCantineViewSet(CompanyScopedModelViewSet):
+    """NTEDU25/NTEDU26 — chaque création/mise à jour re-synchronise la
+    composante cantine des lignes d'échéance FUTURES (jamais rétroactif —
+    ``services_cantine.resynchroniser_lignes_futures_cantine``)."""
+
     queryset = InscriptionCantine.objects.select_related('eleve').all()
     serializer_class = InscriptionCantineSerializer
+
+    def perform_create(self, serializer):
+        from .services_cantine import resynchroniser_lignes_futures_cantine
+
+        instance = serializer.save(company=self.request.user.company)
+        resynchroniser_lignes_futures_cantine(instance.eleve)
+
+    def perform_update(self, serializer):
+        from .services_cantine import resynchroniser_lignes_futures_cantine
+
+        instance = serializer.save()
+        resynchroniser_lignes_futures_cantine(instance.eleve)

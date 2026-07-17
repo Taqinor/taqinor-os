@@ -16,8 +16,9 @@ from authentication.models import Company
 
 from .models import (
     AnneeScolaire, Classe, CreneauEmploiDuTemps, Eleve, Evaluation, Famille,
-    GrilleTarifaire, Inscription, InscriptionCantine, Matiere, MatiereClasse,
-    MenuCantine, Niveau, Note, ParametresEducation, Presence, Remise, Seance)
+    GrilleTarifaire, Inscription, InscriptionCantine, LigneEcheance, Matiere,
+    MatiereClasse, MenuCantine, Niveau, Note, ParametresEducation, Presence,
+    Remise, Seance)
 from .services import affecter_classe, valider_inscription
 
 User = get_user_model()
@@ -797,3 +798,59 @@ class NTEDU25CantineAllergieTests(EducationTestCaseMixin, TestCase):
         self.assertEqual(response.status_code, 200, response.content)
         alertes = {r['eleve']['id']: r['alerte_allergie'] for r in response.data}
         self.assertTrue(alertes[self.eleve_allergique.id])
+
+
+class NTEDU26CantineEcheancierTests(EducationTestCaseMixin, TestCase):
+    """NTEDU26 — facturation cantine proratisée dans l'échéancier."""
+
+    def setUp(self):
+        super().setUp()
+        GrilleTarifaire.objects.create(
+            company=self.company, annee_scolaire=self.annee,
+            niveau=self.niveau_cp, frais_inscription=Decimal('0'),
+            scolarite_annuelle=Decimal('12000'), cantine_mensuelle=Decimal('500'))
+        self.eleve = Eleve.objects.create(
+            company=self.company, famille=self.famille, nom='X', prenom='Y',
+            classe=self.classe)
+
+    def test_inscription_2j_semaine_facture_2_5e_du_tarif_plein(self):
+        InscriptionCantine.objects.create(
+            company=self.company, eleve=self.eleve,
+            date_debut=self.annee.date_debut,
+            jours_semaine=['lundi', 'mercredi'])
+
+        from .services_echeancier import generer_echeancier
+        echeancier = generer_echeancier(self.eleve, self.annee)
+
+        attendu_mensuel = (Decimal('500') * Decimal('2') / Decimal('5'))
+        for ligne in echeancier.lignes.all():
+            self.assertEqual(ligne.cantine_montant, attendu_mensuel)
+        self.assertEqual(
+            echeancier.montant_total,
+            Decimal('12000.00') + attendu_mensuel * echeancier.nombre_echeances)
+
+    def test_retirer_cantine_najuste_que_les_lignes_futures(self):
+        inscription = InscriptionCantine.objects.create(
+            company=self.company, eleve=self.eleve,
+            date_debut=self.annee.date_debut,
+            jours_semaine=['lundi', 'mercredi', 'vendredi'])
+
+        from .services_echeancier import generer_echeancier
+        echeancier = generer_echeancier(self.eleve, self.annee)
+        lignes = list(echeancier.lignes.all().order_by('date_echeance'))
+        premiere = lignes[0]
+        premiere.statut = LigneEcheance.Statut.FACTUREE
+        premiere.save(update_fields=['statut'])
+        montant_facture_avant = premiere.montant
+
+        inscription.actif = False
+        inscription.save(update_fields=['actif'])
+
+        from .services_cantine import resynchroniser_lignes_futures_cantine
+        resynchroniser_lignes_futures_cantine(self.eleve)
+
+        premiere.refresh_from_db()
+        self.assertEqual(premiere.montant, montant_facture_avant)
+
+        deuxieme = LigneEcheance.objects.get(pk=lignes[1].pk)
+        self.assertEqual(deuxieme.cantine_montant, Decimal('0'))
