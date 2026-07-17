@@ -6,7 +6,7 @@ from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from core.permissions import WriteScopedPermissionMixin
+from core.permissions import ScopedPermission, WriteScopedPermissionMixin
 from core.viewsets import CompanyScopedModelViewSet
 
 from . import selectors, services
@@ -74,7 +74,8 @@ class ReserveChantierViewSet(
         services.enregistrer_creation_reserve(
             serializer.instance, created_by=self.request.user)
 
-    @action(detail=True, methods=['get'])
+    @action(detail=True, methods=['get'],
+            permission_classes=[ScopedPermission])
     def photos(self, request, pk=None):
         """Photos avant/pendant/après de la réserve (``records.Attachment``)."""
         from apps.records.serializers import AttachmentSerializer
@@ -82,7 +83,8 @@ class ReserveChantierViewSet(
         return Response(
             AttachmentSerializer(_photos_pour(reserve), many=True).data)
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=['post'],
+            permission_classes=[ScopedPermission])
     def lever(self, request, pk=None):
         """NTCON2 — lève la réserve. Requiert une photo « après » existante
         (400 sinon) et un ``signataire_nom`` (loi 53-05, 400 sinon)."""
@@ -112,7 +114,8 @@ class ReserveChantierViewSet(
             'signature': SignatureBtpSerializer(signature).data,
         })
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=['post'],
+            permission_classes=[ScopedPermission])
     def contester(self, request, pk=None):
         """NTCON2 — réouvre une réserve levée (statut → contestee + motif)."""
         reserve = self.get_object()
@@ -166,7 +169,8 @@ class RFIViewSet(WriteScopedPermissionMixin, CompanyScopedModelViewSet):
         )
         serializer.instance = rfi
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=['post'],
+            permission_classes=[ScopedPermission])
     def repondre(self, request, pk=None):
         rfi = self.get_object()
         texte = (request.data.get('texte') or '').strip()
@@ -182,7 +186,8 @@ class RFIViewSet(WriteScopedPermissionMixin, CompanyScopedModelViewSet):
         rfi.refresh_from_db()
         return Response(RFISerializer(rfi).data)
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=['post'],
+            permission_classes=[ScopedPermission])
     def clore(self, request, pk=None):
         rfi = self.get_object()
         try:
@@ -228,7 +233,8 @@ class VisaDocumentViewSet(
         )
         serializer.instance = visa
 
-    @action(detail=True, methods=['post'], url_path='soumettre-observations')
+    @action(detail=True, methods=['post'], url_path='soumettre-observations',
+            permission_classes=[ScopedPermission])
     def soumettre_observations(self, request, pk=None):
         visa = self.get_object()
         observations = (request.data.get('observations') or '').strip()
@@ -241,7 +247,8 @@ class VisaDocumentViewSet(
         visa.refresh_from_db()
         return Response(VisaDocumentSerializer(visa).data)
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=['post'],
+            permission_classes=[ScopedPermission])
     def approuver(self, request, pk=None):
         visa = self.get_object()
         avec_observations = bool(request.data.get('avec_observations'))
@@ -257,7 +264,8 @@ class VisaDocumentViewSet(
         visa.refresh_from_db()
         return Response(VisaDocumentSerializer(visa).data)
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=['post'],
+            permission_classes=[ScopedPermission])
     def refuser(self, request, pk=None):
         visa = self.get_object()
         observations = (request.data.get('observations') or '').strip()
@@ -314,7 +322,8 @@ class JournalChantierViewSet(
                     'cette date.'),
             })
 
-    @action(detail=False, methods=['get'], url_path='export-pdf')
+    @action(detail=False, methods=['get'], url_path='export-pdf',
+            permission_classes=[ScopedPermission])
     def export_pdf(self, request):
         """PDF interne (WeasyPrint) du journal sur ``?chantier=&du=&au=``."""
         from django.http import HttpResponse

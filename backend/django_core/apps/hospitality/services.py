@@ -2,6 +2,7 @@
 import datetime
 from decimal import Decimal
 
+from django.db import transaction
 from django.utils import timezone
 
 from .models import (
@@ -202,6 +203,7 @@ def calculer_taxe_sejour(reservation):
         * params.montant_par_nuit_par_personne)
 
 
+@transaction.atomic
 def cloturer_folio(folio, *, user):
     """Clôture UN folio en UNE facture ventes consolidée (jamais de double-
     facturation — refuse un folio déjà ``solde``).
@@ -211,8 +213,13 @@ def cloturer_folio(folio, *, user):
     ``apps.ventes.services`` (function-local, jamais un import de
     ``apps.ventes.models.Facture``) : ``creer_facture_regie`` crée la facture
     BROUILLON, puis ``ajouter_lignes_frais_refactures`` y pousse le détail
-    ligne par ligne du folio (recalcule les totaux depuis les lignes)."""
-    if folio.statut == Folio.Statut.SOLDE:
+    ligne par ligne du folio (recalcule les totaux depuis les lignes).
+
+    Verrou de ligne (M2) : sous ``@transaction.atomic``, ``select_for_update``
+    sérialise deux clôtures concurrentes du même folio — sans lui, toutes deux
+    franchiraient la garde ``déjà solde`` et créeraient DEUX factures."""
+    locked = Folio.objects.select_for_update().get(pk=folio.pk)
+    if locked.statut == Folio.Statut.SOLDE:
         raise FolioClotureError('Ce folio est déjà clôturé.')
 
     reservation = folio.reservation

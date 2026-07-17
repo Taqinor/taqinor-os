@@ -305,6 +305,8 @@ def resoumettre_visas_pour_document(document_ged_id, *, company=None):
     nouvelle version invalide aussi une revue en cours), incrémente
     ``nb_resoumissions`` (ré-ouverture tracée) et recalcule l'échéance.
     """
+    from django.db.models import F
+
     from .models import VisaDocument
 
     qs = VisaDocument.objects.filter(document_ged_id=document_ged_id)
@@ -313,7 +315,10 @@ def resoumettre_visas_pour_document(document_ged_id, *, company=None):
     resoumis = []
     for visa in qs:
         visa.statut = VisaDocument.Statut.SOUMIS
-        visa.nb_resoumissions += 1
+        # Compteur partagé : incrément ATOMIQUE via F() (jamais un
+        # read-modify-write non verrouillé — une seconde version déposée en
+        # concurrence ne doit pas perdre une incrémentation).
+        visa.nb_resoumissions = F('nb_resoumissions') + 1
         visa.date_soumission = timezone.now()
         visa.observations = ''
         visa.revu_par = None
@@ -323,5 +328,8 @@ def resoumettre_visas_pour_document(document_ged_id, *, company=None):
         visa.save(update_fields=[
             'statut', 'nb_resoumissions', 'date_soumission', 'observations',
             'revu_par', 'date_revue', 'date_limite'])
+        # ``nb_resoumissions`` porte l'expression F() en mémoire après save :
+        # recharger la valeur entière résolue pour l'objet renvoyé.
+        visa.refresh_from_db(fields=['nb_resoumissions'])
         resoumis.append(visa)
     return resoumis

@@ -12,6 +12,24 @@ from .models import (
 )
 
 
+def _company(serializer):
+    request = serializer.context.get('request')
+    user = getattr(request, 'user', None)
+    return getattr(user, 'company', None)
+
+
+def _check_same_company(serializer, obj, field_label):
+    """Refuse une FK pointant vers une ligne d'une AUTRE société — sans quoi le
+    queryset non scopé de DRF laisserait un id étranger fuir/écrire de la donnée
+    cross-tenant (même garde que ``apps.agriculture`` / ``apps.btp_chantier``)."""
+    if obj is None:
+        return
+    company = _company(serializer)
+    if company is not None and obj.company_id != company.id:
+        raise serializers.ValidationError(
+            {field_label: f"{field_label} introuvable pour votre société."})
+
+
 class SiteSerializer(serializers.ModelSerializer):
     class Meta:
         model = Site
@@ -33,6 +51,10 @@ class BatimentSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'company']
 
+    def validate_site(self, value):
+        _check_same_company(self, value, 'site')
+        return value
+
 
 class NiveauSerializer(serializers.ModelSerializer):
     batiment_nom = serializers.CharField(source='batiment.nom', read_only=True)
@@ -43,6 +65,10 @@ class NiveauSerializer(serializers.ModelSerializer):
             'id', 'batiment', 'batiment_nom', 'numero', 'ordre', 'company',
         ]
         read_only_fields = ['id', 'company']
+
+    def validate_batiment(self, value):
+        _check_same_company(self, value, 'batiment')
+        return value
 
 
 class LocalSerializer(serializers.ModelSerializer):
@@ -61,6 +87,10 @@ class LocalSerializer(serializers.ModelSerializer):
             'statut_display', 'company',
         ]
         read_only_fields = ['id', 'company']
+
+    def validate_niveau(self, value):
+        _check_same_company(self, value, 'niveau')
+        return value
 
 
 class LocataireSerializer(serializers.ModelSerializer):
@@ -88,6 +118,10 @@ class RevisionLoyerSerializer(serializers.ModelSerializer):
             'id', 'ancien_loyer', 'nouveau_loyer', 'taux_variation',
             'date_creation', 'company',
         ]
+
+    def validate_bail(self, value):
+        _check_same_company(self, value, 'bail')
+        return value
 
 
 class BailSerializer(serializers.ModelSerializer):
@@ -122,6 +156,14 @@ class BailSerializer(serializers.ModelSerializer):
             'motif_retenue', 'date_creation', 'company',
         ]
 
+    def validate_local(self, value):
+        _check_same_company(self, value, 'local')
+        return value
+
+    def validate_locataire(self, value):
+        _check_same_company(self, value, 'locataire')
+        return value
+
 
 class EcheanceLoyerSerializer(serializers.ModelSerializer):
     statut_display = serializers.CharField(
@@ -146,6 +188,10 @@ class EcheanceLoyerSerializer(serializers.ModelSerializer):
             'date_creation', 'company',
         ]
 
+    def validate_bail(self, value):
+        _check_same_company(self, value, 'bail')
+        return value
+
 
 class RelanceLoyerSerializer(serializers.ModelSerializer):
     canal_display = serializers.CharField(
@@ -158,3 +204,7 @@ class RelanceLoyerSerializer(serializers.ModelSerializer):
             'canal_display', 'template_utilise', 'company',
         ]
         read_only_fields = ['id', 'niveau', 'date_envoi', 'company']
+
+    def validate_echeance_loyer(self, value):
+        _check_same_company(self, value, 'echeance_loyer')
+        return value

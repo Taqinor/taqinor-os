@@ -10,6 +10,7 @@ import datetime
 
 from rest_framework import filters, status, views, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
@@ -138,6 +139,31 @@ class ReservationViewSet(CompanyScopedModelViewSet):
         headers = self.get_success_headers(out.data)
         return Response(
             out.data, status=status.HTTP_201_CREATED, headers=headers)
+
+    def perform_update(self, serializer):
+        """NTHOT3 — un PATCH/PUT peut modifier ``chambre``/``date_arrivee``/
+        ``date_depart`` : la garde de chevauchement (posée seulement à la
+        création via ``creer_reservation``) DOIT être ré-appliquée ici, sinon
+        une mise à jour double-réserverait une chambre ou la re-pointerait vers
+        une chambre d'une autre société. La société des FK est aussi revérifiée
+        (défense en profondeur, en plus des ``validate_*`` du sérialiseur)."""
+        instance = serializer.instance
+        company = self.request.user.company
+        v = serializer.validated_data
+        chambre = v.get('chambre', instance.chambre)
+        type_chambre = v.get('type_chambre', instance.type_chambre)
+        for obj, label in ((chambre, 'chambre'), (type_chambre, 'type_chambre')):
+            if obj is not None and obj.company_id != company.id:
+                raise ValidationError(
+                    {label: f"{label} introuvable pour votre société."})
+        date_arrivee = v.get('date_arrivee', instance.date_arrivee)
+        date_depart = v.get('date_depart', instance.date_depart)
+        try:
+            services.check_reservation_overlap(
+                chambre, date_arrivee, date_depart, exclude_id=instance.pk)
+        except services.ReservationOverlapError as exc:
+            raise ValidationError({'chambre': str(exc)})
+        serializer.save()
 
     # ── NTHOT5 — Check-in avec fiche de police marocaine ────────────────────
     @action(detail=True, methods=['post'], url_path='check-in')

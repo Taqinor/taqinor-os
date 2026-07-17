@@ -11,6 +11,24 @@ from .models import (
 )
 
 
+def _company(serializer):
+    request = serializer.context.get('request')
+    user = getattr(request, 'user', None)
+    return getattr(user, 'company', None)
+
+
+def _check_same_company(serializer, obj, field_label):
+    """Refuse une FK pointant vers une ligne d'une AUTRE société — sans quoi le
+    queryset non scopé de DRF laisserait un id étranger référencer/écrire de la
+    donnée cross-tenant (même garde que ``apps.agriculture``)."""
+    if obj is None:
+        return
+    company = _company(serializer)
+    if company is not None and obj.company_id != company.id:
+        raise serializers.ValidationError(
+            {field_label: f"{field_label} introuvable pour votre société."})
+
+
 class TypeChambreSerializer(serializers.ModelSerializer):
     class Meta:
         model = TypeChambre
@@ -45,6 +63,10 @@ class PlanTarifaireSerializer(serializers.ModelSerializer):
             'id', 'type_chambre', 'canal', 'canal_display', 'date_debut',
             'date_fin', 'prix_nuit_ht', 'min_nuits',
         ]
+
+    def validate_type_chambre(self, value):
+        _check_same_company(self, value, 'type_chambre')
+        return value
 
     def validate(self, attrs):
         date_debut = attrs.get(
@@ -87,6 +109,14 @@ class ReservationSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             'client', 'statut', 'prix_nuit_snapshot', 'date_creation']
+
+    def validate_chambre(self, value):
+        _check_same_company(self, value, 'chambre')
+        return value
+
+    def validate_type_chambre(self, value):
+        _check_same_company(self, value, 'type_chambre')
+        return value
 
 
 class FicheClientSerializer(serializers.ModelSerializer):
@@ -147,3 +177,7 @@ class TacheMenageSerializer(serializers.ModelSerializer):
             'date_creation', 'date_completion',
         ]
         read_only_fields = ['statut', 'date_creation', 'date_completion']
+
+    def validate_chambre(self, value):
+        _check_same_company(self, value, 'chambre')
+        return value

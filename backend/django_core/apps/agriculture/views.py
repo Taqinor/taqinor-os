@@ -79,7 +79,8 @@ class CampagneCulturaleViewSet(_AgricultureBaseViewSet):
             qs = qs.filter(statut=statut)
         return qs
 
-    @action(detail=True, methods=['get'], url_path='registre-phyto-pdf')
+    @action(detail=True, methods=['get'], url_path='registre-phyto-pdf',
+            permission_classes=[IsResponsableOrAdmin])
     def registre_phyto_pdf(self, request, pk=None):
         """NTAGR7 — Registre phytosanitaire ONSSA imprimable (PDF interne,
         WeasyPrint) — JAMAIS le moteur ``/proposal`` (règle CLAUDE.md #4, ce

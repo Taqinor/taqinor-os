@@ -29,7 +29,8 @@ class PeriodeReportingESGViewSet(CompanyScopedModelViewSet):
         'figee_par', 'snapshot').all()
     serializer_class = PeriodeReportingESGSerializer
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=['post'],
+            permission_classes=[ScopedPermission])
     def figer(self, request, pk=None):
         """Fige la période (NTESG1) : gèle son ``SnapshotESG``.
 
@@ -47,7 +48,8 @@ class PeriodeReportingESGViewSet(CompanyScopedModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(periode).data)
 
-    @action(detail=True, methods=['get'])
+    @action(detail=True, methods=['get'],
+            permission_classes=[ScopedPermission])
     def indicateurs(self, request, pk=None):
         """Données ESG effectives de la période (NTESG2/6) — snapshot gelé
         si figée, aperçu LIVE (jamais persisté) si brouillon."""
@@ -56,7 +58,8 @@ class PeriodeReportingESGViewSet(CompanyScopedModelViewSet):
         periode = self.get_object()
         return Response(donnees_effectives_periode(periode))
 
-    @action(detail=True, methods=['get'], url_path='rapport-pdf')
+    @action(detail=True, methods=['get'], url_path='rapport-pdf',
+            permission_classes=[ScopedPermission])
     def rapport_pdf(self, request, pk=None):
         """Rapport ESG GRI-lite PDF (NTESG4) — jamais ``/proposal``, aucune
         donnée commerciale/prix."""
@@ -69,7 +72,8 @@ class PeriodeReportingESGViewSet(CompanyScopedModelViewSet):
             f'attachment; filename="rapport-esg-{periode.pk}.pdf"')
         return response
 
-    @action(detail=True, methods=['get'])
+    @action(detail=True, methods=['get'],
+            permission_classes=[ScopedPermission])
     def export(self, request, pk=None):
         """Export xlsx multi-feuilles (NTESG5) — ``?format=xlsx`` (seul
         format supporté aujourd'hui)."""
@@ -94,7 +98,8 @@ class CatalogueIndicateurESGViewSet(
     serializer_class = CatalogueIndicateurESGSerializer
     permission_classes = [ScopedPermission]
 
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=['get'],
+            permission_classes=[ScopedPermission])
     def couverture(self, request):
         """% du catalogue effectivement renseigné par pilier (NTESG3)."""
         from .selectors import couverture_catalogue
@@ -109,7 +114,8 @@ class ObjectifESGTrajectoireViewSet(CompanyScopedModelViewSet):
     queryset = ObjectifESGTrajectoire.objects.all()
     serializer_class = ObjectifESGTrajectoireSerializer
 
-    @action(detail=True, methods=['get'])
+    @action(detail=True, methods=['get'],
+            permission_classes=[ScopedPermission])
     def trajectoire(self, request, pk=None):
         """Trajectoire linéaire théorique vs valeurs réelles par année
         (NTESG7)."""

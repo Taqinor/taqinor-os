@@ -222,9 +222,12 @@ class IntrantAgricole(TenantModel):
     Le stock physique reste géré EXCLUSIVEMENT par ``apps.stock`` — ce modèle
     n'ajoute QUE les attributs agronomiques et référence le produit par
     string-ref (``produit_id``), lu via ``apps.stock.selectors`` (jamais un
-    import de ``stock.models``). ``produit_id`` est unique : une fiche
-    agricole par produit stock (relation « OneToOne » côté données, sans FK
-    Django cross-app)."""
+    import de ``stock.models``). ``produit_id`` est unique PAR SOCIÉTÉ : une
+    fiche agricole par produit stock (relation « OneToOne » côté données, sans
+    FK Django cross-app). L'unicité est scopée société via un
+    ``UniqueConstraint(company, produit_id)`` — ``produit_id`` étant la PK d'un
+    ``stock.Produit`` déjà scopé société, une unicité GLOBALE empêcherait à tort
+    deux sociétés de référencer chacune leur propre produit portant le même id."""
 
     class Categorie(models.TextChoices):
         SEMENCE = 'semence', 'Semence'
@@ -235,7 +238,7 @@ class IntrantAgricole(TenantModel):
         'authentication.Company', on_delete=models.CASCADE,
         # on_delete: cascade tenant (purge des données de la société supprimée)
         related_name='intrants_agricoles')
-    produit_id = models.IntegerField(unique=True)
+    produit_id = models.IntegerField()
     categorie = models.CharField(max_length=20, choices=Categorie.choices)
     dose_reference_par_ha = models.DecimalField(
         max_digits=10, decimal_places=3, null=True, blank=True)
@@ -246,6 +249,11 @@ class IntrantAgricole(TenantModel):
 
     class Meta:
         ordering = ['categorie', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'produit_id'],
+                name='uniq_intrant_produit_par_societe'),
+        ]
 
     def __str__(self):
         return f'Intrant #{self.produit_id} ({self.get_categorie_display()})'

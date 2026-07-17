@@ -8,6 +8,7 @@ from rest_framework import filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from core.permissions import ScopedPermission
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
@@ -33,7 +34,8 @@ class SiteViewSet(_ImmobilierBaseViewSet):
     search_fields = ['nom', 'ville']
     ordering_fields = ['nom', 'date_creation']
 
-    @action(detail=True, methods=['get'])
+    @action(detail=True, methods=['get'],
+            permission_classes=[ScopedPermission])
     def rentabilite(self, request, pk=None):
         """NTPRO9 — Rentabilité agrégée du site (revenus - charges - travaux)."""
         from . import selectors
@@ -59,7 +61,8 @@ class BatimentViewSet(_ImmobilierBaseViewSet):
             qs = qs.filter(site_id=site_id)
         return qs
 
-    @action(detail=True, methods=['get'])
+    @action(detail=True, methods=['get'],
+            permission_classes=[ScopedPermission])
     def rentabilite(self, request, pk=None):
         """NTPRO9 — Rentabilité agrégée du bâtiment (revenus - charges - travaux)."""
         from . import selectors
@@ -129,7 +132,8 @@ class LocataireViewSet(_ImmobilierBaseViewSet):
             pass
         return locataire
 
-    @action(detail=True, methods=['post'], url_path='resolve-client')
+    @action(detail=True, methods=['post'], url_path='resolve-client',
+            permission_classes=[ScopedPermission])
     def resolve_client(self, request, pk=None):
         """Relance la résolution vers un ``crm.Client`` existant (idempotent)."""
         from . import services
@@ -174,7 +178,8 @@ class BailViewSet(_ImmobilierBaseViewSet):
         out = self.get_serializer(bail)
         return Response(out.data, status=status.HTTP_201_CREATED)
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=['post'],
+            permission_classes=[ScopedPermission])
     def reviser(self, request, pk=None):
         """NTPRO4 — Révision de loyer indexée (body: nouveau_loyer, date_effet)."""
         from . import services
@@ -193,7 +198,8 @@ class BailViewSet(_ImmobilierBaseViewSet):
             RevisionLoyerSerializer(revision).data,
             status=status.HTTP_201_CREATED)
 
-    @action(detail=True, methods=['post'], url_path='encaisser-depot')
+    @action(detail=True, methods=['post'], url_path='encaisser-depot',
+            permission_classes=[ScopedPermission])
     def encaisser_depot(self, request, pk=None):
         """NTPRO5 — Marque le dépôt de garantie comme reçu."""
         from . import services
@@ -203,7 +209,8 @@ class BailViewSet(_ImmobilierBaseViewSet):
             bail, date_reception=request.data.get('date_reception'))
         return Response(self.get_serializer(bail).data)
 
-    @action(detail=True, methods=['post'], url_path='restituer-depot')
+    @action(detail=True, methods=['post'], url_path='restituer-depot',
+            permission_classes=[ScopedPermission])
     def restituer_depot(self, request, pk=None):
         """NTPRO5 — Restitue le dépôt de garantie (jamais plus que le dépôt initial)."""
         from . import services
@@ -222,7 +229,8 @@ class BailViewSet(_ImmobilierBaseViewSet):
         data['montant_restitue'] = str(services.montant_restitue_depot(bail))
         return Response(data)
 
-    @action(detail=True, methods=['post'], url_path='generer-echeancier')
+    @action(detail=True, methods=['post'], url_path='generer-echeancier',
+            permission_classes=[ScopedPermission])
     def generer_echeancier(self, request, pk=None):
         """NTPRO6 — Génère l'échéancier mensuel du bail (idempotent)."""
         from . import services
@@ -260,7 +268,8 @@ class EcheanceLoyerViewSet(_ImmobilierBaseViewSet):
             qs = qs.filter(statut=statut)
         return qs
 
-    @action(detail=True, methods=['post'], url_path='emettre-quittance')
+    @action(detail=True, methods=['post'], url_path='emettre-quittance',
+            permission_classes=[ScopedPermission])
     def emettre_quittance(self, request, pk=None):
         """NTPRO7 — Émet la quittance (facture ventes) de cette échéance."""
         from . import services
@@ -275,7 +284,8 @@ class EcheanceLoyerViewSet(_ImmobilierBaseViewSet):
         data['facture_ventes_id'] = facture_id
         return Response(data, status=status.HTTP_201_CREATED)
 
-    @action(detail=True, methods=['get'], url_path='quittance-pdf')
+    @action(detail=True, methods=['get'], url_path='quittance-pdf',
+            permission_classes=[ScopedPermission])
     def quittance_pdf(self, request, pk=None):
         """NTPRO7 — PDF de la quittance (période/local/locataire/montant)."""
         from django.http import HttpResponse
@@ -289,7 +299,8 @@ class EcheanceLoyerViewSet(_ImmobilierBaseViewSet):
             f'inline; filename="quittance-{echeance.id}.pdf"')
         return response
 
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=['get'],
+            permission_classes=[ScopedPermission])
     def impayees(self, request):
         """NTPRO8 — Tableau des échéances impayées (locataire, montant, jours
         de retard), lu via ``apps.ventes.selectors`` (jamais un modèle
@@ -299,7 +310,8 @@ class EcheanceLoyerViewSet(_ImmobilierBaseViewSet):
         data = selectors.echeances_impayees(request.user.company)
         return Response(data)
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=['post'],
+            permission_classes=[ScopedPermission])
     def relancer(self, request, pk=None):
         """NTPRO8 — Enregistre une relance d'impayé (incrémente le niveau)."""
         from . import services

@@ -5,6 +5,7 @@ exclusivement par ses ``selectors.py``/``services.py`` (imports FONCTION-LOCAL,
 jamais ``apps.crm.models``/``apps.ventes.models`` importés en tête de module) —
 frontière cross-app de CLAUDE.md.
 """
+from django.db import transaction
 
 
 def resolve_client_ventes_for_locataire(locataire):
@@ -227,6 +228,7 @@ class ClientVentesIntrouvableError(Exception):
     """NTPRO7 — le locataire n'a aucun ``crm.Client`` résolu/résolvable."""
 
 
+@transaction.atomic
 def emettre_quittance(echeance):
     """NTPRO7 — Émet la quittance d'une ``EcheanceLoyer`` : crée UNE facture
     ventes via ``apps.ventes.services`` (function-local, jamais un import de
@@ -244,8 +246,16 @@ def emettre_quittance(echeance):
 
     from .models import EcheanceLoyer
 
-    if echeance.facture_ventes_id:
-        return echeance.facture_ventes_id
+    # Verrou de ligne (M2) : sous ``@transaction.atomic``, ``select_for_update``
+    # sérialise deux requêtes concurrentes sur la même échéance — sans lui,
+    # toutes deux franchiraient la garde d'idempotence et créeraient DEUX
+    # factures. On lit l'état ``facture_ventes_id`` sur la ligne VERROUILLÉE.
+    locked = EcheanceLoyer.objects.select_for_update().get(pk=echeance.pk)
+    if locked.facture_ventes_id:
+        # Synchronise l'instance passée pour la sérialisation côté appelant.
+        echeance.facture_ventes_id = locked.facture_ventes_id
+        echeance.statut = locked.statut
+        return locked.facture_ventes_id
 
     locataire = echeance.bail.locataire
     client_id = locataire.client_ventes_id

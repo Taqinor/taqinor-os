@@ -47,6 +47,11 @@ HISTORICAL_TARGETS = {
     # SCA36 — pilote 3 du kit core.documents (dégradation gracieuse sans
     # totaux ; chatter câblé sur son viewset).
     ('installations', 'demandeachat'),
+    # NTCON — vertical BTP/Chantier : pièces jointes photos via
+    # ``records.Attachment`` (déclarées dans ``apps/btp_chantier/platform.py``).
+    ('btp_chantier', 'reservechantier'),
+    ('btp_chantier', 'journalchantier'),
+    ('btp_chantier', 'rfireponse'),
 }
 
 
@@ -61,7 +66,7 @@ class TestAllowedTargetsNonRegression(SimpleTestCase):
             f"en trop: {resolved - HISTORICAL_TARGETS}")
 
     def test_len_matches(self):
-        self.assertEqual(len(ALLOWED_TARGETS), 21)
+        self.assertEqual(len(ALLOWED_TARGETS), 24)
 
     def test_contains_works_for_each_historical_pair(self):
         for pair in HISTORICAL_TARGETS:

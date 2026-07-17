@@ -76,6 +76,7 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/crm/views.py:1395` | get_or_create | Canal.objects | cle, company |
 | `backend/django_core/apps/dataimport/services.py:224` | update_or_create | ImportMapping.objects | company, entity, nom |
 | `backend/django_core/apps/dataimport/services.py:261` | get_or_create | ExternalRef.objects | company, external_id, external_system |
+| `backend/django_core/apps/esg/management/commands/seed_catalogue_esg.py:22` | get_or_create | CatalogueIndicateurESG.objects | code, company |
 | `backend/django_core/apps/flotte/management/commands/seed_baremes_vignette.py:75` | get_or_create | BaremeVignette.objects | annee, company, cv_max, cv_min, energie |
 | `backend/django_core/apps/flotte/management/commands/seed_referentiels_flotte.py:79` | get_or_create | ReferentielFlotte.objects | code, company, domaine |
 | `backend/django_core/apps/ged/management/commands/migrate_attachments_to_ged.py:57` | get_or_create | Cabinet.objects | company, nom |
