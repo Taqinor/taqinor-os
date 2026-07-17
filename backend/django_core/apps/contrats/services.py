@@ -4327,6 +4327,78 @@ def appliquer_plan_abonnement(contrat, plan_abonnement):
     return contrat
 
 
+class ChangementPlanError(Exception):
+    """Levée quand un changement de plan d'abonnement ne peut pas s'appliquer."""
+
+
+@transaction.atomic
+def changer_plan_contrat(contrat, nouveau_plan, *, type_changement='immediat',
+                         auteur=None):
+    """Change le plan d'abonnement d'un contrat avec proration — NTSUB7.
+
+    Crée l'``Avenant`` du delta de montant (``nouveau_plan.prix_base −
+    contrat.montant``, appliqué à ``Contrat.montant`` par ``creer_avenant``),
+    snapshot le nouveau plan (``plan_abonnement`` + ``plan_recurrent``), puis :
+
+    - UPGRADE (delta > 0) + ``type_changement='immediat'`` : applique le prorata
+      XCTR6 (``appliquer_prorata_avenant``) sur la PROCHAINE échéance non
+      facturée à venir → une ligne complémentaire facture le reste de période
+      au nouveau tarif dès le cycle suivant ;
+    - DOWNGRADE (delta < 0) OU ``type_changement='differe'`` : AUCUN prorata
+      immédiat (aucun avoir) — le nouveau tarif s'applique à la prochaine
+      échéance normale.
+
+    L'historique est journalisé au chatter (``creer_avenant`` /
+    ``appliquer_prorata_avenant`` le font). Renvoie
+    ``{'avenant', 'prorata'}`` (``prorata`` = None si non appliqué).
+    """
+    from .models import EcheancierContrat, LigneEcheance
+
+    if nouveau_plan.company_id != contrat.company_id:
+        raise ChangementPlanError(
+            "Ce plan d'abonnement n'appartient pas à la société du contrat.")
+    if type_changement not in ('immediat', 'differe'):
+        raise ChangementPlanError(
+            "type_changement doit valoir 'immediat' ou 'differe'.")
+
+    delta = (nouveau_plan.prix_base or Decimal('0')) - (
+        contrat.montant or Decimal('0'))
+
+    avenant = creer_avenant(
+        contrat, objet=f'Changement de plan → {nouveau_plan.code}',
+        description=nouveau_plan.nom,
+        montant_delta=delta if delta != 0 else None,
+        auteur=auteur)
+
+    contrat.plan_abonnement = nouveau_plan
+    contrat.plan_recurrent = nouveau_plan.plan_recurrent
+    contrat.save(update_fields=['plan_abonnement', 'plan_recurrent'])
+
+    prorata = None
+    # Prorata immédiat UNIQUEMENT pour un upgrade immédiat.
+    if delta > 0 and type_changement == 'immediat':
+        ligne = (
+            LigneEcheance.objects
+            .filter(
+                company=contrat.company,
+                echeancier__contrat=contrat,
+                echeancier__facturation_active=True,
+                echeancier__statut=EcheancierContrat.Statut.ACTIF,
+                facture_id__isnull=True,
+                statut=LigneEcheance.Statut.A_VENIR)
+            .order_by('date_echeance', 'numero')
+            .first()
+        )
+        if ligne is not None:
+            try:
+                prorata = appliquer_prorata_avenant(
+                    avenant, ligne, auteur=auteur)
+            except ProrataError:
+                prorata = None  # périodicité non prorata-able → pas de prorata
+
+    return {'avenant': avenant, 'prorata': prorata}
+
+
 # ---------------------------------------------------------------------------
 # NTSUB2 — Add-ons (options payantes) : montant facturable d'une période
 # ---------------------------------------------------------------------------

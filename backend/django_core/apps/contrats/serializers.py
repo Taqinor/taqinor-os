@@ -1641,3 +1641,22 @@ class SequenceDunningSerializer(serializers.ModelSerializer):
         model = SequenceDunning
         fields = ['id', 'nom', 'actif', 'etapes', 'created_at']
         read_only_fields = ['id', 'created_at']
+
+
+class ChangerPlanSerializer(serializers.Serializer):
+    """Corps de l'action ``changer-plan`` — NTSUB7.
+
+    ``plan_abonnement`` (offre catalogue cible, même société) + ``type_changement``
+    (immediat/differe).
+    """
+    plan_abonnement = serializers.PrimaryKeyRelatedField(
+        queryset=PlanAbonnement.objects.all())
+    type_changement = serializers.ChoiceField(
+        choices=['immediat', 'differe'], default='immediat')
+
+    def validate_plan_abonnement(self, plan):
+        request = self.context.get('request')
+        if request is not None and plan.company_id != request.user.company_id:
+            raise serializers.ValidationError(
+                "Ce plan d'abonnement n'appartient pas à votre société.")
+        return plan

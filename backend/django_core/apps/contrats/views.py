@@ -80,6 +80,7 @@ from .serializers import (
     AlerteContratSerializer,
     AvenantSerializer,
     CautionSerializer,
+    ChangerPlanSerializer,
     CompteurUsageSerializer,
     EtapeDunningSerializer,
     ChangerStatutOrdreLocationSerializer,
@@ -918,6 +919,40 @@ class ContratViewSet(ChatterViewSetMixin, _ContratsBaseViewSet):
                 avenant, context={'request': request}).data,
             status=status.HTTP_201_CREATED,
         )
+
+    @action(detail=True, methods=['post'], url_path='changer-plan')
+    def changer_plan(self, request, pk=None):
+        """Change le plan d'abonnement du contrat avec proration — NTSUB7.
+
+        Corps : ``plan_abonnement`` (id, requis — offre catalogue cible,
+        validée même-société) + ``type_changement`` (``immediat``/``differe``,
+        défaut ``immediat``). Crée l'avenant du delta de montant, snapshot le
+        nouveau plan, et — pour un UPGRADE immédiat — applique le prorata XCTR6
+        sur la prochaine échéance à venir (un downgrade ou un changement différé
+        n'émet aucun avoir immédiat). La société est garantie par
+        ``get_object`` ; l'écriture est gardée par ``contrat_gerer`` (base).
+        """
+        contrat = self.get_object()
+        body = ChangerPlanSerializer(
+            data=request.data, context={'request': request})
+        body.is_valid(raise_exception=True)
+        data = body.validated_data
+        try:
+            resultat = services.changer_plan_contrat(
+                contrat, data['plan_abonnement'],
+                type_changement=data.get('type_changement', 'immediat'),
+                auteur=request.user)
+        except services.ChangementPlanError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        prorata = resultat['prorata']
+        return Response({
+            'avenant': AvenantSerializer(
+                resultat['avenant'], context={'request': request}).data,
+            'prorata_applique': prorata is not None,
+            'prorata': (
+                _money(prorata['prorata']) if prorata is not None else None),
+        }, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['get'], url_path='resiliations')
     def resiliations(self, request, pk=None):
