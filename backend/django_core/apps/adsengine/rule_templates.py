@@ -583,3 +583,112 @@ def seed_default_policies(company, *, created_by=None):
         if was_created:
             created.append(_)
     return created
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# ADSDEEP41 — « Stratégies » : bundles de RulePolicy prêts à activer (barre
+# Bïrch « Strategies », benchmark §1). Chaque bundle regroupe des templates du
+# catalogue FIXE (jamais une nouvelle logique) autour d'un objectif, avec une
+# phrase de doc fondateur. Le seed est IDEMPOTENT et crée les RulePolicy
+# DÉSACTIVÉES (``enabled=False`` + ``dry_run=True`` + ``mode=propose``) : le
+# fondateur ACTIVE un bundle en connaissance de cause — jamais rien ne tourne
+# tant qu'il n'a pas opté. Aucun bundle ne réactive/dé-pause quoi que ce soit
+# (invariant permanent règle #3).
+# ══════════════════════════════════════════════════════════════════════════
+STRATEGIES = {
+    'surf_scaling': {
+        'label_fr': 'Surf-scaling — monter le budget des gagnants (learning-safe)',
+        'doc_fr': (
+            "Quand le coût par lead d'un ad set s'améliore sur 3 jours vs 7 jours, "
+            "propose une hausse de budget plafonnée à 20 % (jamais un reset "
+            "d'apprentissage)."),
+        'templates': [{'template_key': 'surf_scale_budget', 'params': {}}],
+    },
+    'stop_loss': {
+        'label_fr': 'Stop-loss — couper les campagnes trop chères',
+        'doc_fr': (
+            "Met en pause (proposition) toute campagne dont le coût par lead dépasse "
+            "ton plafond dur sur la fenêtre — jamais de réactivation automatique."),
+        'templates': [{'template_key': 'stop_loss_cpl', 'params': {}}],
+    },
+    'rotation_fatigue': {
+        'label_fr': 'Rotation anti-fatigue — rafraîchir les créatifs usés',
+        'doc_fr': (
+            "Repère la fatigue créative (fréquence en hausse, rétention vidéo et CTR "
+            "lien en baisse) et propose de faire tourner une nouvelle création avant "
+            "l'effondrement des performances."),
+        'templates': [
+            {'template_key': 'frequency_high', 'params': {}},
+            {'template_key': 'frequency_ratio_regression', 'params': {}},
+            {'template_key': 'hold_rate_low', 'params': {}},
+            {'template_key': 'link_ctr_low', 'params': {}},
+        ],
+    },
+    'dayparting_overlay': {
+        'label_fr': 'Overlay dayparting — garde-fous de coût aux heures de diffusion',
+        'doc_fr': (
+            "À poser en complément d'un horaire de diffusion (composeur dayparting) : "
+            "surveille le coût par conversation et les gros dépensiers sans résultat "
+            "pour que les heures actives ne brûlent pas le budget."),
+        'templates': [
+            {'template_key': 'cost_per_conversation_high', 'params': {}},
+            {'template_key': 'top_spend_low_result', 'params': {}},
+        ],
+    },
+}
+
+
+def strategy_keys():
+    """Clés des bundles « Stratégies » (ordre stable d'insertion)."""
+    return list(STRATEGIES.keys())
+
+
+def get_strategy(strategy_key):
+    """Métadonnées d'un bundle, ou ``None`` si la clé est inconnue."""
+    return STRATEGIES.get(strategy_key)
+
+
+def strategy_choices():
+    """Paires (clé, libellé FR) des bundles (pour l'UI)."""
+    return [(k, STRATEGIES[k]['label_fr']) for k in STRATEGIES]
+
+
+def seed_strategies(company, *, created_by=None):
+    """ADSDEEP41 — Seed IDEMPOTENT des bundles « Stratégies » pour ``company``.
+
+    Pour chaque template référencé par un bundle, crée (ou laisse tel quel) la
+    ``RulePolicy`` correspondante en DÉFAUT SÛR : ``enabled=False`` +
+    ``dry_run=True`` + ``mode='propose'`` (aucun bundle ne tourne tant que le
+    fondateur ne l'a pas activé). ``get_or_create`` sur ``(company, template_key)``
+    (contrainte unique) — deux exécutions ne créent JAMAIS de doublon, et un
+    template partagé par deux bundles ne mappe qu'UNE ``RulePolicy``. Ne modifie
+    jamais une policy déjà présente (additif). Renvoie la liste des ``RulePolicy``
+    créées (vide au 2e passage)."""
+    from .models import RulePolicy
+
+    created = []
+    for bundle in STRATEGIES.values():
+        for item in bundle['templates']:
+            key = item['template_key']
+            tpl = RULE_TEMPLATES.get(key)
+            if tpl is None:
+                continue  # bundle jamais désaligné du catalogue (garde défensive)
+            params = dict(tpl['default_params'])
+            params.update(item.get('params') or {})
+            policy, was_created = RulePolicy.objects.get_or_create(
+                company=company, template_key=key,
+                defaults={
+                    'enabled': False,
+                    'dry_run': True,
+                    'mode': RulePolicy.Mode.PROPOSE,
+                    'conditions': tpl['conditions'],
+                    'params': params,
+                    'cadence_hours': (
+                        6 if tpl['cadence'] == CADENCE_CRITICAL else 24),
+                    'cooldown_hours': 0,
+                    'created_by': created_by,
+                },
+            )
+            if was_created:
+                created.append(policy)
+    return created
