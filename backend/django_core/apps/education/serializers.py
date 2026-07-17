@@ -3,9 +3,9 @@ from rest_framework import serializers
 
 from .models import (
     AnneeScolaire, Classe, CreneauEmploiDuTemps, EcheancierScolarite, Eleve,
-    Evaluation, Famille, GrilleTarifaire, Inscription, LigneEcheance,
-    Matiere, MatiereClasse, Niveau, Note, ParametresEducation, Presence,
-    Remise, Seance)
+    Evaluation, Famille, GrilleTarifaire, Inscription, InscriptionCantine,
+    LigneEcheance, Matiere, MatiereClasse, MenuCantine, Niveau, Note,
+    ParametresEducation, Presence, Remise, Seance)
 
 
 class AnneeScolaireSerializer(serializers.ModelSerializer):
@@ -54,7 +54,8 @@ class EleveSerializer(serializers.ModelSerializer):
         model = Eleve
         fields = [
             'id', 'famille', 'nom', 'prenom', 'date_naissance', 'sexe',
-            'cin', 'photo', 'classe', 'statut', 'numero_dossier']
+            'cin', 'photo', 'classe', 'statut', 'numero_dossier',
+            'allergies']
         read_only_fields = ['id', 'numero_dossier']
 
 
@@ -189,4 +190,23 @@ class CreneauEmploiDuTempsSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'classe', 'matiere_classe', 'jour_semaine', 'heure_debut',
             'heure_fin', 'salle', 'actif']
+        read_only_fields = ['id']
+
+
+# =============================================================================
+# NTEDU25 — Cantine (menus + inscriptions).
+# =============================================================================
+
+class MenuCantineSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MenuCantine
+        fields = ['id', 'date', 'description', 'allergenes']
+        read_only_fields = ['id']
+
+
+class InscriptionCantineSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = InscriptionCantine
+        fields = [
+            'id', 'eleve', 'date_debut', 'date_fin', 'jours_semaine', 'actif']
         read_only_fields = ['id']

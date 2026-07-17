@@ -16,8 +16,8 @@ from authentication.models import Company
 
 from .models import (
     AnneeScolaire, Classe, CreneauEmploiDuTemps, Eleve, Evaluation, Famille,
-    GrilleTarifaire, Inscription, Matiere, MatiereClasse, Niveau, Note,
-    ParametresEducation, Presence, Remise, Seance)
+    GrilleTarifaire, Inscription, InscriptionCantine, Matiere, MatiereClasse,
+    MenuCantine, Niveau, Note, ParametresEducation, Presence, Remise, Seance)
 from .services import affecter_classe, valider_inscription
 
 User = get_user_model()
@@ -758,3 +758,42 @@ class NTEDU22GenerationSeancesTests(EducationTestCaseMixin, TestCase):
         self.assertEqual(len(creees1), 1)
         self.assertEqual(len(creees2), 0)
         self.assertEqual(Seance.objects.filter(classe=self.classe).count(), 1)
+
+
+class NTEDU25CantineAllergieTests(EducationTestCaseMixin, TestCase):
+    """NTEDU25 — menus + inscriptions cantine, alerte allergie (substring)."""
+
+    def setUp(self):
+        super().setUp()
+        self.eleve_allergique = Eleve.objects.create(
+            company=self.company, famille=self.famille, nom='X', prenom='Y',
+            classe=self.classe, allergies='Arachide, fruits à coque')
+        self.eleve_sans_allergie = Eleve.objects.create(
+            company=self.company, famille=self.famille, nom='X', prenom='Z',
+            classe=self.classe)
+        self.jour = date(2026, 9, 14)  # lundi
+        MenuCantine.objects.create(
+            company=self.company, date=self.jour, description='Poulet',
+            allergenes=['arachide', 'gluten'])
+        InscriptionCantine.objects.create(
+            company=self.company, eleve=self.eleve_allergique,
+            date_debut=self.jour, jours_semaine=['lundi'])
+        InscriptionCantine.objects.create(
+            company=self.company, eleve=self.eleve_sans_allergie,
+            date_debut=self.jour, jours_semaine=['lundi'])
+
+    def test_eleve_allergique_a_une_alerte_menu_du_jour(self):
+        from .services_cantine import eleves_cantine_du_jour
+
+        resultats = {
+            r['eleve'].id: r['alerte_allergie']
+            for r in eleves_cantine_du_jour(self.company, self.jour)}
+        self.assertTrue(resultats[self.eleve_allergique.id])
+        self.assertFalse(resultats[self.eleve_sans_allergie.id])
+
+    def test_endpoint_liste_du_jour(self):
+        url = f'/api/django/education/menus-cantine/jour/?date={self.jour}'
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200, response.content)
+        alertes = {r['eleve']['id']: r['alerte_allergie'] for r in response.data}
+        self.assertTrue(alertes[self.eleve_allergique.id])

@@ -205,6 +205,10 @@ class Eleve(TenantModel):
     numero_dossier = models.CharField(
         max_length=30, blank=True, default='', db_index=True,
         verbose_name='Numéro de dossier')
+    allergies = models.TextField(
+        blank=True, default='', verbose_name='Allergies')  # NTEDU25 — texte
+    # libre comparé (substring simple, pas de NLP) aux allergènes du menu
+    # cantine du jour (services_cantine.eleves_cantine_du_jour).
 
     class Meta:
         verbose_name = 'Élève'
@@ -783,3 +787,56 @@ class CreneauEmploiDuTemps(TenantModel):
 
     def __str__(self):
         return f"{self.classe} — {self.get_jour_semaine_display()} {self.heure_debut}"
+
+
+# =============================================================================
+# NTEDU25 — Cantine (menus + inscriptions).
+# =============================================================================
+
+class MenuCantine(TenantModel):
+    """NTEDU25 — menu du jour. ``allergenes`` liste de libellés texte libre
+    (ex. ``["arachide", "gluten"]``) comparée en simple substring (pas de
+    NLP) aux ``Eleve.allergies`` déclarées (``services_cantine.
+    eleves_cantine_du_jour``)."""
+
+    date = models.DateField(verbose_name='Date')
+    description = models.CharField(max_length=255, verbose_name='Description')
+    allergenes = models.JSONField(
+        default=list, blank=True, verbose_name='Allergènes')
+
+    class Meta:
+        verbose_name = 'Menu cantine'
+        verbose_name_plural = 'Menus cantine'
+        ordering = ['-date']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'date'],
+                name='education_un_menu_cantine_par_jour'),
+        ]
+
+    def __str__(self):
+        return f"Menu {self.date}"
+
+
+class InscriptionCantine(TenantModel):
+    """NTEDU25 — inscription cantine d'un élève (jours de la semaine libres,
+    ex. ``["lundi", "mercredi", "vendredi"]``). Consommée par NTEDU26 pour
+    proratiser la facturation (``montant × len(jours_semaine)/5``)."""
+
+    eleve = models.ForeignKey(
+        Eleve, on_delete=models.CASCADE,  # on_delete: composition (parent-enfant)
+        related_name='inscriptions_cantine', verbose_name='Élève')
+    date_debut = models.DateField(verbose_name='Date de début')
+    date_fin = models.DateField(
+        null=True, blank=True, verbose_name='Date de fin')
+    jours_semaine = models.JSONField(
+        default=list, verbose_name='Jours de la semaine')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+
+    class Meta:
+        verbose_name = 'Inscription cantine'
+        verbose_name_plural = 'Inscriptions cantine'
+        ordering = ['-id']
+
+    def __str__(self):
+        return f"Cantine — {self.eleve}"

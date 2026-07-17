@@ -15,16 +15,17 @@ from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
     AnneeScolaire, Classe, CreneauEmploiDuTemps, EcheancierScolarite, Eleve,
-    Evaluation, Famille, GrilleTarifaire, Inscription, Matiere,
-    MatiereClasse, Niveau, Note, ParametresEducation, Presence, Remise,
-    Seance)
+    Evaluation, Famille, GrilleTarifaire, Inscription, InscriptionCantine,
+    Matiere, MatiereClasse, MenuCantine, Niveau, Note, ParametresEducation,
+    Presence, Remise, Seance)
 from .serializers import (
     AnneeScolaireSerializer, ClasseSerializer, CreneauEmploiDuTempsSerializer,
     EcheancierScolariteSerializer, EleveSerializer, EvaluationSerializer,
-    FamilleSerializer, GrilleTarifaireSerializer, InscriptionSerializer,
-    MatiereClasseSerializer, MatiereSerializer, NiveauSerializer,
-    NoteSerializer, ParametresEducationSerializer, PresenceSerializer,
-    RemiseSerializer, SeanceSerializer)
+    FamilleSerializer, GrilleTarifaireSerializer,
+    InscriptionCantineSerializer, InscriptionSerializer,
+    MatiereClasseSerializer, MatiereSerializer, MenuCantineSerializer,
+    NiveauSerializer, NoteSerializer, ParametresEducationSerializer,
+    PresenceSerializer, RemiseSerializer, SeanceSerializer)
 
 
 class AnneeScolaireViewSet(CompanyScopedModelViewSet):
@@ -519,3 +520,45 @@ class CreneauEmploiDuTempsViewSet(CompanyScopedModelViewSet):
             actif=data.get('actif', instance.actif))
         verifier_conflit_creneau(candidat)
         super().perform_update(serializer)
+
+
+# =============================================================================
+# NTEDU25 — Cantine (menus + inscriptions).
+# =============================================================================
+
+class MenuCantineViewSet(CompanyScopedModelViewSet):
+    queryset = MenuCantine.objects.all()
+    serializer_class = MenuCantineSerializer
+
+    @action(detail=False, methods=['get'], url_path='jour')
+    def jour(self, request):
+        """NTEDU25 — liste cantine du jour (élèves inscrits ce jour + alerte
+        allergie si le menu contient un allergène déclaré). Paramètre
+        ``date`` (YYYY-MM-DD), défaut aujourd'hui."""
+        from datetime import date as date_cls
+
+        from .services_cantine import eleves_cantine_du_jour
+
+        date_str = request.query_params.get('date')
+        if date_str:
+            try:
+                cible = date_cls.fromisoformat(date_str)
+            except ValueError:
+                raise ValidationError({'date': 'Format attendu : YYYY-MM-DD.'})
+        else:
+            from django.utils import timezone
+            cible = timezone.localdate()
+
+        resultats = eleves_cantine_du_jour(request.user.company, cible)
+        return Response([
+            {
+                'eleve': EleveSerializer(r['eleve']).data,
+                'alerte_allergie': r['alerte_allergie'],
+            }
+            for r in resultats
+        ])
+
+
+class InscriptionCantineViewSet(CompanyScopedModelViewSet):
+    queryset = InscriptionCantine.objects.select_related('eleve').all()
+    serializer_class = InscriptionCantineSerializer
