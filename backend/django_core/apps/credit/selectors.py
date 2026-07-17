@@ -101,6 +101,35 @@ def fiche_credit(client):
     }
 
 
+def quota_assurance_utilise(client):
+    """NTCRD18 — compare l'encours du client (NTCRD4) au ``montant_garanti``
+    de sa police active. Un client sans encours garanti ``accorde`` est « non
+    couvert » (``garanti=None``, aucune fausse alerte). Un dépassement de la
+    garantie assureur N'IMPLIQUE PAS un blocage (juste une alerte — l'assureur
+    reste souverain). Renvoie ``{'garanti': Decimal|None, 'utilise': Decimal,
+    'pct': float|None, 'depasse_garantie': bool}``. Lecture seule."""
+    from .models import EncoursGarantiClient
+
+    utilise = encours_client(client)
+    garanti_obj = EncoursGarantiClient.objects.filter(
+        client=client, police__actif=True,
+        statut_agrement=EncoursGarantiClient.StatutAgrement.ACCORDE,
+    ).order_by('-montant_garanti').first()
+
+    if garanti_obj is None:
+        return {
+            'garanti': None, 'utilise': utilise, 'pct': None,
+            'depasse_garantie': False,
+        }
+
+    garanti = garanti_obj.montant_garanti
+    pct = float(utilise / garanti) if garanti > 0 else 0.0
+    return {
+        'garanti': garanti, 'utilise': utilise, 'pct': pct,
+        'depasse_garantie': utilise > garanti,
+    }
+
+
 def segment_du_client(client):
     """NTCRD13 — segment crédit affecté à un client (repli local
     ``SegmentClientCredit``), ou ``None`` si aucun (comportement société par
