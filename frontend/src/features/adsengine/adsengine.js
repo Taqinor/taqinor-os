@@ -141,6 +141,13 @@ export const ACTION_TYPE_LABELS = {
   swap_creative: 'Rotation de créatif',
   enable_cbo: 'Activation du budget de campagne (CBO)',
   pause_for_month: "Mise en pause jusqu'à la fin du mois",
+  // ADSDEEP31/34/36/37 — surface d'édition + étude native + horaire + duplication.
+  edit_copy: 'Édition du texte / créatif',
+  set_spend_cap: 'Plafond de dépense',
+  rename: 'Renommage',
+  create_ad_study: 'Étude A/B native',
+  set_schedule: 'Horaire de diffusion (dayparting)',
+  duplicate: "Duplication d'ad set",
 }
 export function actionTypeLabel(type) {
   return ACTION_TYPE_LABELS[type] || type || 'Action'
@@ -184,6 +191,51 @@ export function actionCreative(action) {
     url: c.preview_url || c.file_url || c.url || '',
     designation: c.designation || c.nom || c.name || 'Créatif',
     type: c.type || '',
+  }
+}
+
+// ── ADSDEEP35 — Composeur EDIT_COPY (boîte d'approbation) ──
+// Avertissements portés par le backend (ADSDEEP31 : reset d'apprentissage /
+// perte de preuve sociale ; ADSDEEP32/34 : seuil budget/immutabilité étude) —
+// JAMAIS recalculés côté front, seulement lus tels quels dans le payload.
+export function actionWarnings(action) {
+  const list = action && action.payload && Array.isArray(action.payload.warnings)
+    ? action.payload.warnings
+    : []
+  return list.filter(Boolean)
+}
+
+// Avertissements STATIQUES montrés dans le composeur AVANT même la soumission
+// (le backend recalcule et pousse les MÊMES avertissements dans le payload une
+// fois la proposition créée — ``actionWarnings`` ci-dessus reste la source de
+// vérité affichée sur la carte de la boîte d'approbation).
+export const EDIT_COPY_STATIC_WARNINGS = [
+  "Édition significative : cette action réinitialise la phase d'apprentissage "
+  + "de l'ad set (Meta ré-explore — coûts instables pendant quelques jours).",
+  'Changer le texte crée un NOUVEAU post : la preuve sociale déjà accumulée '
+  + '(J’aime, commentaires, partages) est perdue.',
+]
+
+// Diff avant→après du texte d'une action EDIT_COPY : le texte ACTUEL (miroir
+// AdCreativeMirror, porté par le payload en `current_text` ou l'objet
+// `current_creative`) vs le texte PROPOSÉ (`creative_spec`). Renvoie null si
+// l'action n'est pas de type edit_copy ou ne porte aucun texte à comparer.
+export function editCopyDiff(action) {
+  if (!action || action.type !== 'edit_copy') return null
+  const p = action.payload || {}
+  const current = p.current_creative || p.current_text || null
+  const proposed = p.creative_spec || null
+  if (!current && !proposed) return null
+  const pick = (obj, key) => (obj && typeof obj === 'object' ? (obj[key] || '') : '')
+  return {
+    before: {
+      title: pick(current, 'title'), body: pick(current, 'body'),
+      description: pick(current, 'description'),
+    },
+    after: {
+      title: pick(proposed, 'title'), body: pick(proposed, 'body'),
+      description: pick(proposed, 'description'),
+    },
   }
 }
 

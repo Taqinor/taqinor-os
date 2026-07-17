@@ -1,9 +1,11 @@
 import { useEffect, useState, useCallback } from 'react'
-import { Check, X, ClipboardCheck } from 'lucide-react'
+import { Check, X, ClipboardCheck, AlertTriangle, PlusCircle } from 'lucide-react'
 import adsengineApi from './adsengineApi'
 import {
   actionTypeLabel, budgetDiff, actionCreative, formatMAD, REJECTION_REASONS,
+  actionWarnings, editCopyDiff,
 } from './adsengine'
+import EditCopyComposer from './EditCopyComposer'
 
 /* ============================================================================
    ENG25 — Boîte d'approbation (l'écran-vaisseau-amiral).
@@ -27,6 +29,8 @@ export default function ApprovalsScreen() {
   const [rejectReason, setRejectReason] = useState(REJECTION_REASONS[0].value)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
+  // ADSDEEP35 — composeur EDIT_COPY (avant/après + envoi comme proposition).
+  const [showComposer, setShowComposer] = useState(false)
 
   const load = useCallback(() => {
     setLoading(true)
@@ -106,11 +110,22 @@ export default function ApprovalsScreen() {
 
   return (
     <div className="page ae-approvals">
-      <div className="page-header">
+      <div className="page-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
           <ClipboardCheck size={20} aria-hidden="true" /> Boîte d&apos;approbation
         </h2>
+        <button type="button" className="btn btn-light ae-toggle-composer"
+          data-testid="ae-toggle-composer"
+          onClick={() => setShowComposer(v => !v)}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+          <PlusCircle size={15} aria-hidden="true" />
+          {showComposer ? 'Fermer le composeur' : "Éditer le texte d'une ad"}
+        </button>
       </div>
+
+      {showComposer && (
+        <EditCopyComposer onProposed={() => { setShowComposer(false); load() }} />
+      )}
 
       {err && <p data-testid="ae-approvals-err" style={{ color: '#dc2626' }}>{err}</p>}
 
@@ -137,6 +152,8 @@ export default function ApprovalsScreen() {
               {actions.map(a => {
                 const diff = budgetDiff(a)
                 const creative = actionCreative(a)
+                const warnings = actionWarnings(a)
+                const copyDiff = editCopyDiff(a)
                 return (
                   <article key={a.id} className="card ae-action-card" data-testid="ae-action-card"
                     style={{ padding: '1rem', border: '1px solid #e2e8f0' }}>
@@ -169,6 +186,39 @@ export default function ApprovalsScreen() {
                             <span style={{ color: '#64748b', fontSize: '0.85rem' }}>
                               ({diff.delta > 0 ? '+' : ''}{formatMAD(diff.delta)})
                             </span>
+                          </div>
+                        )}
+
+                        {/* ADSDEEP31/32/34 — avertissements (reset d'apprentissage,
+                            perte de preuve sociale, immutabilité d'étude…) : PORTÉS
+                            par le backend, jamais recalculés ici. */}
+                        {warnings.length > 0 && (
+                          <div className="ae-warnings" data-testid="ae-warnings"
+                            style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', margin: '0.4rem 0' }}>
+                            {warnings.map((w, i) => (
+                              <span key={i} className="ae-warning-chip" data-testid="ae-warning-chip"
+                                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+                                  background: '#fff7ed', color: '#9a3412', border: '1px solid #fed7aa',
+                                  borderRadius: 999, padding: '0.2rem 0.6rem', fontSize: '0.8rem' }}>
+                                <AlertTriangle size={12} aria-hidden="true" /> {w}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* ADSDEEP35 — avant/après côte à côte (EDIT_COPY) */}
+                        {copyDiff && (
+                          <div className="ae-edit-copy-diff" data-testid="ae-edit-copy-diff"
+                            style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem',
+                              background: '#f8fafc', padding: '0.6rem', borderRadius: 6, margin: '0.5rem 0' }}>
+                            <div data-testid="ae-edit-copy-before">
+                              <strong style={{ fontSize: '0.8rem', color: '#64748b' }}>Actuel</strong>
+                              <p style={{ margin: '0.2rem 0' }}>{copyDiff.before.body || '—'}</p>
+                            </div>
+                            <div data-testid="ae-edit-copy-after">
+                              <strong style={{ fontSize: '0.8rem', color: '#64748b' }}>Proposé</strong>
+                              <p style={{ margin: '0.2rem 0' }}>{copyDiff.after.body || '—'}</p>
+                            </div>
                           </div>
                         )}
 
