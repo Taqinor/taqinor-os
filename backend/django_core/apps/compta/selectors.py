@@ -29,6 +29,7 @@ from .models import (
     ReferentielComptable, ImputationAxe,
     EngagementComptable,
     InstanceCloture, TacheCloture, JustificationVariation, AccrualCloture,
+    RapprochementCompte,
 )
 
 
@@ -5003,4 +5004,37 @@ def cockpit_cloture(company, periode):
         'date_cible': date_cible,
         'jours_depuis_cible': jours_depuis_cible,
         'close_status': 'en_retard' if en_retard else 'en_bonne_voie',
+    }
+
+
+# ── NTFIN38 — Rapprochements de compte en retard / non justifiés ───────────
+
+def rapprochements_en_retard(company, periode):
+    """NTFIN38 — comptes de bilan non rapprochés à la date cible + écarts.
+
+    Liste les ``RapprochementCompte`` de la période qui ne sont pas encore
+    ``valide`` (ou dont l'écart n'est pas nul), et le total des écarts non
+    justifiés. Alimente le cockpit de clôture (NTFIN34). Lecture seule.
+    """
+    qs = RapprochementCompte.objects.filter(
+        company=company, periode=periode).select_related('compte').exclude(
+        statut=RapprochementCompte.Statut.VALIDE)
+    lignes = []
+    total_ecart = Decimal('0')
+    for r in qs:
+        total_ecart += abs(r.ecart or Decimal('0'))
+        lignes.append({
+            'id': r.id,
+            'compte_numero': r.compte.numero,
+            'compte_intitule': r.compte.intitule,
+            'solde_gl': r.solde_gl,
+            'solde_justifie': r.solde_justifie,
+            'ecart': r.ecart,
+            'statut': r.statut,
+        })
+    return {
+        'periode_id': periode.id,
+        'lignes': lignes,
+        'nb_en_retard': len(lignes),
+        'total_ecart_non_justifie': total_ecart,
     }

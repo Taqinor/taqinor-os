@@ -87,6 +87,7 @@ from .models import (
     EngagementComptable,
     ModeleCloture, TacheClotureModele, InstanceCloture, TacheCloture,
     AccrualCloture,
+    RapprochementCompte, LigneJustificationCompte,
 )
 
 
@@ -13406,3 +13407,120 @@ def generer_od_cloture(tache_cloture, modele_ecriture, *, date_ecriture,
         user=user, statut=EcritureComptable.Statut.VALIDEE)
     cocher_tache_cloture(tache_cloture, user=user)
     return ecriture, tache_cloture
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Groupe NTFIN — Rapprochements de comptes de bilan (workflow 4 yeux)
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ── NTFIN35/36 — Recalcul du solde justifié depuis les lignes ──────────────
+
+def recalculer_rapprochement_compte(rapprochement):
+    """NTFIN35/36 — recalcule solde justifié (Σ lignes) et écart. Renvoie l'objet."""
+    total = sum(
+        (li.montant or Decimal('0')
+         for li in rapprochement.lignes.all()), Decimal('0'))
+    rapprochement.solde_justifie = total
+    rapprochement.recalculer_ecart()
+    rapprochement.save(update_fields=['solde_justifie', 'ecart', 'updated_at'])
+    if rapprochement.ecart == 0 and rapprochement.statut in (
+            RapprochementCompte.Statut.A_RAPPROCHER,
+            RapprochementCompte.Statut.EN_COURS):
+        rapprochement.statut = RapprochementCompte.Statut.RAPPROCHE
+        rapprochement.save(update_fields=['statut', 'updated_at'])
+    return rapprochement
+
+
+# ── NTFIN37 — Workflow préparateur → réviseur (revue 4 yeux) ───────────────
+
+def soumettre_rapprochement_compte(rapprochement, *, user):
+    """NTFIN37 — le préparateur soumet le rapprochement à revue.
+
+    Enregistre l'acteur (préparateur) et l'horodatage côté serveur. Renvoie
+    l'objet.
+    """
+    if user is None:
+        raise ValidationError("Un préparateur est requis.")
+    rapprochement.preparateur = user
+    rapprochement.statut = RapprochementCompte.Statut.SOUMIS
+    rapprochement.date_soumission = timezone.now()
+    rapprochement.save(update_fields=[
+        'preparateur', 'statut', 'date_soumission', 'updated_at'])
+    return rapprochement
+
+
+def valider_rapprochement_compte(rapprochement, *, user):
+    """NTFIN37 — le réviseur valide (revue 4 yeux, séparation des tâches).
+
+    Le réviseur ne peut PAS être le préparateur (COMPTA40) → ``ValidationError``.
+    Contrôle aussi que Σ lignes justificatives = solde justifié. Enregistre
+    l'acteur (réviseur) + horodatage. Renvoie l'objet.
+    """
+    if user is None:
+        raise ValidationError("Un réviseur est requis pour valider.")
+    if (rapprochement.preparateur_id is not None
+            and rapprochement.preparateur_id == user.id):
+        raise ValidationError(
+            "Séparation des tâches : le préparateur d'un rapprochement ne peut "
+            "pas le valider lui-même. Un réviseur distinct est requis.")
+    total = sum(
+        (li.montant or Decimal('0')
+         for li in rapprochement.lignes.all()), Decimal('0'))
+    if total != rapprochement.solde_justifie:
+        raise ValidationError(
+            "La somme des lignes justificatives "
+            f"({total}) doit égaler le solde justifié "
+            f"({rapprochement.solde_justifie}).")
+    rapprochement.reviseur = user
+    rapprochement.statut = RapprochementCompte.Statut.VALIDE
+    rapprochement.date_validation = timezone.now()
+    rapprochement.save(update_fields=[
+        'reviseur', 'statut', 'date_validation', 'updated_at'])
+    return rapprochement
+
+
+def rejeter_rapprochement_compte(rapprochement, *, user, motif=''):
+    """NTFIN37 — le réviseur rejette le rapprochement (retour au préparateur)."""
+    if (rapprochement.preparateur_id is not None
+            and rapprochement.preparateur_id == user.id if user else False):
+        raise ValidationError(
+            "Séparation des tâches : le préparateur ne peut pas arbitrer sa "
+            "propre revue.")
+    rapprochement.reviseur = user
+    rapprochement.statut = RapprochementCompte.Statut.EN_COURS
+    if motif:
+        rapprochement.commentaire = motif
+    rapprochement.save(update_fields=[
+        'reviseur', 'statut', 'commentaire', 'updated_at'])
+    return rapprochement
+
+
+# ── NTFIN39 — Modèles de rapprochement récurrents (report N-1) ─────────────
+
+def ouvrir_rapprochement_compte(company, compte, periode, *, solde_gl=None):
+    """NTFIN35/39 — ouvre un rapprochement de compte pour la période N.
+
+    Idempotent par (company, compte, periode). Pré-remplit les lignes
+    justificatives PERMANENTES reportées du rapprochement le plus récent d'une
+    période antérieure du même compte (report du justifié N-1, NTFIN39).
+    ``solde_gl`` (optionnel) fige le solde grand livre à rapprocher. Renvoie le
+    rapprochement.
+    """
+    rappr, cree = RapprochementCompte.objects.get_or_create(
+        company=company, compte=compte, periode=periode,
+        defaults={'solde_gl': Decimal(str(solde_gl or 0))})
+    if not cree:
+        return rappr
+    precedent = RapprochementCompte.objects.filter(
+        company=company, compte=compte,
+        periode__date_debut__lt=periode.date_debut).order_by(
+        '-periode__date_debut').first()
+    if precedent is not None:
+        for li in precedent.lignes.filter(permanente=True):
+            LigneJustificationCompte.objects.create(
+                company=company, rapprochement=rappr, libelle=li.libelle,
+                montant=li.montant, type_element=li.type_element,
+                source_type=li.source_type, source_id=li.source_id,
+                permanente=True)
+        recalculer_rapprochement_compte(rappr)
+    return rappr

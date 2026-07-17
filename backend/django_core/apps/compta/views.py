@@ -89,6 +89,7 @@ from .models import (
     EngagementComptable,
     ModeleCloture, TacheClotureModele, InstanceCloture, TacheCloture,
     AccrualCloture, JustificationVariation, ModeleEcriture,
+    RapprochementCompte, LigneJustificationCompte,
 )
 from .serializers import (
     AppelTelephoniqueSerializer, AvancementRevenuSerializer,
@@ -167,6 +168,7 @@ from .serializers import (
     ModeleClotureSerializer, TacheClotureModeleSerializer,
     InstanceClotureSerializer, TacheClotureSerializer,
     AccrualClotureSerializer, JustificationVariationSerializer,
+    RapprochementCompteSerializer, LigneJustificationCompteSerializer,
 )
 
 
@@ -518,6 +520,18 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
             return Response({'detail': 'Période inconnue.'},
                             status=status.HTTP_400_BAD_REQUEST)
         return Response(selectors.pret_a_cloturer(periode))
+
+    @action(detail=False, methods=['get'], url_path='rapprochements-en-retard')
+    def rapprochements_en_retard(self, request):
+        """NTFIN38 — comptes de bilan non rapprochés (``?periode=<id>``)."""
+        periode = PeriodeComptable.objects.filter(
+            company=request.user.company,
+            pk=request.query_params.get('periode')).first()
+        if periode is None:
+            return Response({'detail': 'Période inconnue.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            selectors.rapprochements_en_retard(request.user.company, periode))
 
     @action(detail=False, methods=['get'])
     def cpc(self, request):
@@ -8551,3 +8565,125 @@ class JustificationVariationViewSet(_ComptaBaseViewSet):
     def perform_create(self, serializer):
         serializer.save(company=self.request.user.company,
                         auteur=self.request.user)
+
+
+# ── NTFIN35-39 — Rapprochements de comptes de bilan (workflow 4 yeux) ──────
+
+class RapprochementCompteViewSet(_ComptaBaseViewSet):
+    """Rapprochements de comptes de bilan (NTFIN35) + workflow 4 yeux (NTFIN37).
+
+    Actions : ``ouvrir`` (NTFIN35/39, report N-1), ``recalculer`` (NTFIN36),
+    ``soumettre`` (préparateur), ``valider``/``rejeter`` (réviseur ≠
+    préparateur, 403 sinon).
+    """
+    queryset = RapprochementCompte.objects.select_related(
+        'compte', 'periode', 'preparateur', 'reviseur').prefetch_related(
+        'lignes').all()
+    serializer_class = RapprochementCompteSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        periode = self.request.query_params.get('periode')
+        if periode:
+            qs = qs.filter(periode_id=periode)
+        compte = self.request.query_params.get('compte')
+        if compte:
+            qs = qs.filter(compte_id=compte)
+        return qs
+
+    def get_permissions(self):
+        if self.action in ('soumettre', 'valider', 'rejeter', 'ouvrir'):
+            return [HasPermissionOrLegacy('compta_valider')()]
+        return super().get_permissions()
+
+    @action(detail=False, methods=['post'],
+            permission_classes=[HasPermissionOrLegacy('compta_valider')])
+    def ouvrir(self, request):
+        """NTFIN35/39 — ouvre un rapprochement (report des lignes permanentes N-1)."""
+        company = request.user.company
+        compte = CompteComptable.objects.filter(
+            company=company, pk=request.data.get('compte')).first()
+        periode = PeriodeComptable.objects.filter(
+            company=company, pk=request.data.get('periode')).first()
+        if compte is None or periode is None:
+            return Response({'detail': 'Compte ou période inconnu.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        rappr = services.ouvrir_rapprochement_compte(
+            company, compte, periode, solde_gl=request.data.get('solde_gl'))
+        return Response(self.get_serializer(rappr).data,
+                        status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[IsResponsableOrAdmin])
+    def recalculer(self, request, pk=None):
+        """NTFIN36 — recalcule solde justifié (Σ lignes) et écart."""
+        rappr = self.get_object()
+        services.recalculer_rapprochement_compte(rappr)
+        return Response(self.get_serializer(rappr).data)
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[HasPermissionOrLegacy('compta_valider')])
+    def soumettre(self, request, pk=None):
+        """NTFIN37 — le préparateur soumet à revue."""
+        rappr = self.get_object()
+        try:
+            services.soumettre_rapprochement_compte(rappr, user=request.user)
+        except DjangoValidationError as exc:
+            return _err400(exc)
+        return Response(self.get_serializer(rappr).data)
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[HasPermissionOrLegacy('compta_valider')])
+    def valider(self, request, pk=None):
+        """NTFIN37 — le réviseur valide (403 si = préparateur)."""
+        rappr = self.get_object()
+        try:
+            services.valider_rapprochement_compte(rappr, user=request.user)
+        except DjangoValidationError as exc:
+            msg = exc.messages[0] if getattr(exc, 'messages', None) else str(exc)
+            if 'Séparation des tâches' in msg:
+                return Response({'detail': msg},
+                                status=status.HTTP_403_FORBIDDEN)
+            return _err400(exc)
+        return Response(self.get_serializer(rappr).data)
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[HasPermissionOrLegacy('compta_valider')])
+    def rejeter(self, request, pk=None):
+        """NTFIN37 — le réviseur rejette (retour au préparateur)."""
+        rappr = self.get_object()
+        try:
+            services.rejeter_rapprochement_compte(
+                rappr, user=request.user, motif=request.data.get('motif', ''))
+        except DjangoValidationError as exc:
+            return _err400(exc)
+        return Response(self.get_serializer(rappr).data)
+
+
+class LigneJustificationCompteViewSet(_ComptaBaseViewSet):
+    """Lignes justificatives d'un rapprochement de compte (NTFIN36)."""
+    queryset = LigneJustificationCompte.objects.select_related(
+        'rapprochement').all()
+    serializer_class = LigneJustificationCompteSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        rappr = self.request.query_params.get('rapprochement')
+        if rappr:
+            qs = qs.filter(rapprochement_id=rappr)
+        return qs
+
+    def perform_create(self, serializer):
+        obj = serializer.save(company=self.request.user.company)
+        services.recalculer_rapprochement_compte(obj.rapprochement)
+
+    def perform_update(self, serializer):
+        obj = serializer.save(company=self.request.user.company)
+        services.recalculer_rapprochement_compte(obj.rapprochement)
+
+    def perform_destroy(self, instance):
+        rappr = instance.rapprochement
+        instance.delete()
+        services.recalculer_rapprochement_compte(rappr)

@@ -65,6 +65,7 @@ from .models import (
     EngagementComptable,
     ModeleCloture, TacheClotureModele, InstanceCloture, TacheCloture,
     AccrualCloture, JustificationVariation,
+    RapprochementCompte, LigneJustificationCompte,
 )
 
 
@@ -3011,3 +3012,41 @@ class JustificationVariationSerializer(serializers.ModelSerializer):
             'statut', 'statut_display', 'auteur', 'created_at', 'updated_at',
         ]
         read_only_fields = ['auteur', 'created_at', 'updated_at']
+
+
+# ── NTFIN35-39 — Rapprochements de comptes de bilan ────────────────────────
+
+class LigneJustificationCompteSerializer(serializers.ModelSerializer):
+    """NTFIN36 — Ligne justificative d'un rapprochement de compte."""
+    class Meta:
+        model = LigneJustificationCompte
+        fields = [
+            'id', 'rapprochement', 'libelle', 'montant', 'type_element',
+            'source_type', 'source_id', 'permanente',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+
+class RapprochementCompteSerializer(serializers.ModelSerializer):
+    """NTFIN35 — Rapprochement d'un compte de bilan."""
+    lignes = LigneJustificationCompteSerializer(many=True, read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    compte_numero = serializers.CharField(
+        source='compte.numero', read_only=True)
+
+    class Meta:
+        model = RapprochementCompte
+        fields = [
+            'id', 'compte', 'compte_numero', 'periode', 'solde_gl',
+            'solde_justifie', 'ecart', 'statut', 'statut_display',
+            'preparateur', 'reviseur', 'date_soumission', 'date_validation',
+            'commentaire', 'lignes', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'solde_justifie', 'ecart', 'statut', 'preparateur', 'reviseur',
+            'date_soumission', 'date_validation', 'created_at', 'updated_at']
+
+    def validate_compte(self, value):
+        return _meme_societe(self, value, 'Compte')

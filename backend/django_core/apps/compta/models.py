@@ -8193,3 +8193,139 @@ class JustificationVariation(TenantModel):
 
     def __str__(self):
         return f'Justif {self.compte} période {self.periode_id} ({self.statut})'
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Groupe NTFIN — Rapprochements de comptes de bilan (workflow 4 yeux)
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ── NTFIN35 — Rapprochement de compte de bilan ─────────────────────────────
+
+class RapprochementCompte(TenantModel):
+    """Rapprochement d'un compte de bilan quelconque (NTFIN35).
+
+    Au-delà du bancaire (``RapprochementBancaire`` reste dédié au bancaire) :
+    rapproche tout compte de bilan (fournisseurs, comptes d'attente, TVA,
+    comptes courants) — ``solde_gl`` (grand livre) vs ``solde_justifie`` (somme
+    des ``LigneJustificationCompte``), ``ecart`` = gl − justifié. Workflow
+    préparateur → réviseur (NTFIN37, revue 4 yeux). Hérite de ``TenantModel``.
+    """
+    class Statut(models.TextChoices):
+        A_RAPPROCHER = 'a_rapprocher', 'À rapprocher'
+        EN_COURS = 'en_cours', 'En cours'
+        SOUMIS = 'soumis', 'Soumis à revue'
+        RAPPROCHE = 'rapproche', 'Rapproché'
+        VALIDE = 'valide', 'Validé'
+
+    compte = models.ForeignKey(
+        CompteComptable,
+        # on_delete: PROTECT — un compte rapproché ne doit pas être supprimé
+        # tant qu'un rapprochement le référence (piste d'audit).
+        on_delete=models.PROTECT,
+        related_name='rapprochements_compte',
+        verbose_name='Compte',
+    )
+    periode = models.ForeignKey(
+        PeriodeComptable,
+        # on_delete: CASCADE — un rapprochement est rattaché à sa période.
+        on_delete=models.CASCADE,
+        related_name='rapprochements_compte',
+        verbose_name='Période',
+    )
+    solde_gl = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Solde grand livre')
+    solde_justifie = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Solde justifié')
+    ecart = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Écart')
+    statut = models.CharField(
+        max_length=14, choices=Statut.choices, default=Statut.A_RAPPROCHER,
+        verbose_name='Statut')
+    preparateur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        # on_delete: SET_NULL — trace le préparateur ; sa purge ne casse pas le
+        # rapprochement.
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='rapprochements_compte_prepares',
+        verbose_name='Préparateur')
+    reviseur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        # on_delete: SET_NULL — trace le réviseur ; idem.
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='rapprochements_compte_revises',
+        verbose_name='Réviseur')
+    date_soumission = models.DateTimeField(
+        null=True, blank=True, verbose_name='Soumis le')
+    date_validation = models.DateTimeField(
+        null=True, blank=True, verbose_name='Validé le')
+    commentaire = models.TextField(
+        blank=True, default='', verbose_name='Commentaire')
+
+    class Meta:
+        verbose_name = 'Rapprochement de compte'
+        verbose_name_plural = 'Rapprochements de compte'
+        ordering = ['-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'compte', 'periode'],
+                name='uniq_rapprochement_compte_periode'),
+        ]
+
+    def __str__(self):
+        return f'Rappr. {self.compte_id} période {self.periode_id} ({self.statut})'
+
+    def recalculer_ecart(self):
+        self.ecart = (self.solde_gl or Decimal('0')) - (
+            self.solde_justifie or Decimal('0'))
+        return self.ecart
+
+
+# ── NTFIN36 — Lignes justificatives d'un rapprochement de compte ───────────
+
+class LigneJustificationCompte(TenantModel):
+    """Élément justificatif du solde d'un rapprochement de compte (NTFIN36).
+
+    ``type_element`` = écriture / document / reconciliant. La source est
+    référencée par string-ref. La somme des lignes = ``solde_justifie`` du
+    rapprochement (contrôlé à la validation). Hérite de ``TenantModel``.
+    """
+    class TypeElement(models.TextChoices):
+        ECRITURE = 'ecriture', 'Écriture'
+        DOCUMENT = 'document', 'Document'
+        RECONCILIANT = 'reconciliant', 'Élément réconciliant'
+
+    rapprochement = models.ForeignKey(
+        RapprochementCompte,
+        # on_delete: CASCADE — une ligne justificative n'existe qu'attachée à
+        # son rapprochement.
+        on_delete=models.CASCADE,
+        related_name='lignes',
+        verbose_name='Rapprochement',
+    )
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    montant = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant')
+    type_element = models.CharField(
+        max_length=14, choices=TypeElement.choices,
+        default=TypeElement.ECRITURE, verbose_name="Type d'élément")
+    source_type = models.CharField(
+        max_length=40, blank=True, default='',
+        verbose_name='Type de source (string-ref)')
+    source_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID de la source (string-ref)')
+    permanente = models.BooleanField(
+        default=False,
+        verbose_name='Ligne permanente (reportée N+1)',
+        help_text='NTFIN39 — reportée automatiquement à la période suivante.')
+
+    class Meta:
+        verbose_name = 'Ligne justificative de compte'
+        verbose_name_plural = 'Lignes justificatives de compte'
+        ordering = ['rapprochement', 'id']
+
+    def __str__(self):
+        return f'{self.libelle} ({self.montant})'

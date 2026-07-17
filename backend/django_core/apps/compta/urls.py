@@ -79,6 +79,7 @@ from .views import (
     AllocationRecurrenteViewSet, EngagementComptableViewSet,
     ModeleClotureViewSet, TacheClotureModeleViewSet, InstanceClotureViewSet,
     TacheClotureViewSet, AccrualClotureViewSet, JustificationVariationViewSet,
+    RapprochementCompteViewSet, LigneJustificationCompteViewSet,
 )
 
 router = DefaultRouter()
@@ -238,6 +239,9 @@ router.register(r'instances-cloture', InstanceClotureViewSet)
 router.register(r'taches-cloture', TacheClotureViewSet)
 router.register(r'accruals-cloture', AccrualClotureViewSet)
 router.register(r'justifications-variation', JustificationVariationViewSet)
+# ── NTFIN — Rapprochements de comptes de bilan (workflow 4 yeux) ───────────
+router.register(r'rapprochements-compte', RapprochementCompteViewSet)
+router.register(r'lignes-justification-compte', LigneJustificationCompteViewSet)
 
 urlpatterns = [
     # XMKT30 (partiel) — calendrier marketing agrégé (campagnes + posts
