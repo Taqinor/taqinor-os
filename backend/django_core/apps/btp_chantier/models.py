@@ -10,11 +10,21 @@ retenue de garantie, situation de travaux) est référencé par un ID lâche
 (``PositiveIntegerField``/``JSONField``) — jamais un FK dur, jamais un import
 de modèle.
 """
+import secrets
+
 from django.conf import settings
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.db import models
 
 from core.models import TenantModel
+
+
+def _default_btp_token():
+    """Jeton public long/imprévisible (NTCON8/NTCON12) — réplique le motif
+    ``ged.PartageGed``/``ventes.ShareLink`` (``secrets.token_urlsafe``, 32
+    octets) SANS importer ces apps : ``btp_chantier`` génère son propre jeton
+    local, résolu par lookup (jamais un JWT/token signé)."""
+    return secrets.token_urlsafe(32)
 
 
 # ── NTCON1 — ReserveChantier (punch-list géo-localisée sur plan) ───────────
@@ -443,3 +453,286 @@ class JournalChantier(TenantModel):
 
     def __str__(self):
         return f'Journal {self.chantier_id} — {self.date}'
+
+
+# ── NTCON7/NTCON8 — Avenant marché côté projet (chiffrage + approbation) ───
+
+class AvenantChantier(TenantModel):
+    """Chiffrage/impact opérationnel d'un avenant marché (NTCON7), avec
+    approbation CLIENT par lien public tokenisé + signature typée (NTCON8).
+
+    Distinct de ``contrats.Avenant`` (CONTRAT24, l'amendement CONTRACTUEL —
+    nouvelle version de contrat) : ``avenant_contrat_id`` le référence
+    LÂCHEMENT (optionnel). ``reference`` est posée via ``core.numbering``
+    (préfixe ``AVC``). ``impact_budget`` est le CHOIX fait à la création
+    (spec NTCON7) qui détermine, à l'approbation :
+
+    * ``impact_budget=False`` (défaut) → génère une ``ventes.Facture``
+      d'acompte via la fonction cross-app SANCTIONNÉE
+      ``apps.ventes.services.creer_facture_acompte_situation`` (jamais un
+      import de ``ventes.models`` — appel FONCTION-LOCAL) ; ``facture_id``
+      référence LÂCHEMENT la facture créée.
+    * ``impact_budget=True`` → résout (best-effort, LECTURE SEULE, jamais
+      d'écriture cross-app) le ``BudgetProjet`` actif du projet auquel ce
+      chantier est rattaché (``gestion_projet.ProjetChantier`` → ``apps.
+      gestion_projet.selectors.budget_effectif`` — aucune fonction de
+      SERVICE n'existe aujourd'hui côté ``gestion_projet`` pour MUTER un
+      budget depuis une autre app ; conformément à la frontière cross-app
+      [CLAUDE.md : lecture via ``selectors.py``, écriture via
+      ``services.py`` OU référence lâche], l'« impact » se traduit par une
+      référence lâche ``budget_projet_id`` posée ici — le montant de
+      l'avenant approuvé est ensuite AGRÉGÉ par les sélecteurs de CE module
+      (NTCON9 ``calculer_dgd``, NTCON11 ``debourse_sec_vs_facture``), jamais
+      par une mutation directe des lignes de ``gestion_projet.BudgetProjet``.
+
+    Un avenant REFUSÉ n'impacte jamais rien (ni facture, ni référence
+    budget) — state machine stricte (``services.TransitionInvalide``).
+    """
+
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        SOUMIS_CLIENT = 'soumis_client', 'Soumis au client'
+        APPROUVE = 'approuve', 'Approuvé'
+        REFUSE = 'refuse', 'Refusé'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        # on_delete: cascade tenant (purge des données de la société supprimée)
+        related_name='btp_avenants_chantier', verbose_name='Société')
+    chantier = models.ForeignKey(
+        'installations.Installation', on_delete=models.CASCADE,
+        # on_delete: cascade parent→enfant (composant du parent)
+        related_name='btp_avenants', verbose_name='Chantier')
+    avenant_contrat_id = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name="ID de l'avenant contractuel (contrats.Avenant)")
+    reference = models.CharField(max_length=50, verbose_name='Référence')
+    description = models.TextField(verbose_name='Description')
+    montant_ht = models.DecimalField(
+        max_digits=14, decimal_places=2, verbose_name='Montant HT')
+    impact_delai_jours = models.IntegerField(
+        null=True, blank=True, verbose_name='Impact délai (jours)')
+    impact_budget = models.BooleanField(
+        default=False,
+        verbose_name='Impact budget projet (sinon facture acompte)')
+    # Lignes simples matériel/MO/sous-traitance : [{type, libelle, montant}].
+    lignes = models.JSONField(
+        default=list, blank=True, verbose_name='Lignes')
+    statut = models.CharField(
+        max_length=15, choices=Statut.choices, default=Statut.BROUILLON,
+        verbose_name='Statut')
+    # NTCON8 — lien public tokenisé (approbation client sans compte ERP).
+    token = models.CharField(
+        max_length=64, unique=True, default=_default_btp_token,
+        editable=False)
+    token_expires_at = models.DateTimeField(
+        null=True, blank=True, verbose_name='Lien expire le')
+    # NTCON7 — traces d'impact posées À L'APPROBATION UNIQUEMENT.
+    budget_projet_id = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='ID du budget projet impacté (gestion_projet.BudgetProjet)')
+    facture_id = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name="ID de la facture d'acompte générée (ventes.Facture)")
+    motif_refus = models.TextField(
+        blank=True, default='', verbose_name='Motif de refus')
+    cree_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='btp_avenants_crees',
+        verbose_name='Créé par')
+    approuve_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='btp_avenants_approuves',
+        # Nullable : un signataire CLIENT externe (NTCON8) n'a pas de compte ERP.
+        verbose_name='Approuvé par')
+    date_approbation = models.DateTimeField(
+        null=True, blank=True, verbose_name='Approuvé le')
+    created_at = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    updated_at = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = 'Avenant de chantier'
+        verbose_name_plural = 'Avenants de chantier'
+        ordering = ['-created_at', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'reference'],
+                name='btp_avenant_company_reference_uniq'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'chantier', 'statut']),
+        ]
+
+    def __str__(self):
+        return f'Avenant {self.reference} ({self.get_statut_display()})'
+
+
+# ── NTCON9/NTCON10 — DGD (Décompte Général et Définitif) ───────────────────
+
+class DecompteGeneral(TenantModel):
+    """Décompte Général et Définitif d'un chantier (NTCON9), avec
+    contestation/finalisation verrouillante (NTCON10).
+
+    Les totaux (``total_avenants_ht``, ``total_situations_facturees_ht``,
+    ``solde_du_ht``) sont RECALCULÉS À LA DEMANDE par le sélecteur
+    ``selectors.calculer_dgd`` (jamais stockés en dur sans recalcul) — les
+    champs ici ne portent que le DERNIER instantané calculé (utile à
+    l'affichage/PDF sans recalcul systématique). ``situations_incluses``
+    référence LÂCHEMENT une liste d'IDs ``gestion_projet.SituationTravaux``.
+    ``retenue_garantie_id`` référence LÂCHEMENT une ``compta.RetenueGarantie``
+    (FG145) — le SUIVI de sa libération reste dans ``compta``, jamais réécrit
+    ici.
+
+    ``statut=definitif`` VERROUILLE le décompte (pattern ``compta.
+    PeriodeComptable.verrouillee`` — toute écriture ultérieure est refusée en
+    403, sauf déverrouillage admin JOURNALISÉ dans
+    ``historique_deverrouillage``).
+    """
+
+    class Statut(models.TextChoices):
+        PROJET = 'projet', 'Projet'
+        NOTIFIE = 'notifie', 'Notifié'
+        ACCEPTE = 'accepte', 'Accepté'
+        CONTESTE = 'conteste', 'Contesté'
+        DEFINITIF = 'definitif', 'Définitif'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        # on_delete: cascade tenant (purge des données de la société supprimée)
+        related_name='btp_decomptes_generaux', verbose_name='Société')
+    chantier = models.ForeignKey(
+        'installations.Installation', on_delete=models.CASCADE,
+        # on_delete: cascade parent→enfant (composant du parent)
+        related_name='btp_decomptes', verbose_name='Chantier')
+    reference = models.CharField(max_length=50, verbose_name='Référence')
+    montant_marche_initial_ht = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0,
+        verbose_name='Montant marché initial HT')
+    situations_incluses = models.JSONField(
+        default=list, blank=True,
+        verbose_name='Situations incluses (IDs gestion_projet.SituationTravaux)')
+    total_avenants_ht = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0,
+        verbose_name='Total avenants approuvés HT')
+    total_situations_facturees_ht = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0,
+        verbose_name='Total situations facturées HT')
+    retenue_garantie_id = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='ID de la retenue de garantie (compta.RetenueGarantie)')
+    retenue_garantie_montant = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        verbose_name='Montant de retenue de garantie libérée (instantané)')
+    solde_du_ht = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0, verbose_name='Solde dû HT')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.PROJET,
+        verbose_name='Statut')
+    motif_contestation = models.TextField(
+        blank=True, default='', verbose_name='Motif de contestation')
+    montant_conteste = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        verbose_name='Montant contesté')
+    date_notification = models.DateTimeField(
+        null=True, blank=True, verbose_name='Notifié le')
+    date_finalisation = models.DateTimeField(
+        null=True, blank=True, verbose_name='Finalisé le')
+    finalise_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='btp_decomptes_finalises',
+        verbose_name='Finalisé par')
+    # NTCON10 — déverrouillage admin JOURNALISÉ : [{date, user_id, motif}].
+    historique_deverrouillage = models.JSONField(
+        default=list, blank=True, verbose_name='Historique de déverrouillage')
+    cree_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='btp_decomptes_crees',
+        verbose_name='Créé par')
+    created_at = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    updated_at = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = 'Décompte général et définitif'
+        verbose_name_plural = 'Décomptes généraux et définitifs'
+        ordering = ['-created_at', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'reference'],
+                name='btp_dgd_company_reference_uniq'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'chantier', 'statut']),
+        ]
+
+    def __str__(self):
+        return f'DGD {self.reference} ({self.get_statut_display()})'
+
+
+# ── NTCON12/NTCON13 — Diffusion contrôlée de plans ──────────────────────────
+
+class DiffusionPlan(TenantModel):
+    """Diffusion tracée d'une version d'un plan (document GED) à des
+    destinataires internes/externes, avec accusé de réception (NTCON12) et
+    détection de plan périmé consulté (NTCON13 — ``selectors.
+    plans_perimes_sur_chantier``).
+
+    Réutilise ``ged.PartageGed`` (GED20, via ``apps.ged.services.
+    create_partage`` — fonction cross-app SANCTIONNÉE, jamais un import de
+    ``ged.models``) pour le lien externe tokenisé plutôt que d'inventer un
+    2e mécanisme de partage ; ``partage_ged_id`` référence LÂCHEMENT le
+    ``PartageGed`` créé. ``token`` (propre à CE module) sert au lien
+    d'ACCUSÉ DE RÉCEPTION interne (``accuse_reception``, JSON
+    ``{cle_destinataire: {'lu': bool, 'horodatage': iso}}``) — distinct du
+    jeton de téléchargement GED.
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        # on_delete: cascade tenant (purge des données de la société supprimée)
+        related_name='btp_diffusions_plan', verbose_name='Société')
+    chantier = models.ForeignKey(
+        'installations.Installation', on_delete=models.CASCADE,
+        # on_delete: cascade parent→enfant (composant du parent)
+        related_name='btp_diffusions', verbose_name='Chantier')
+    document_ged_id = models.PositiveIntegerField(
+        verbose_name='ID du document GED')
+    version_diffusee = models.PositiveIntegerField(
+        verbose_name='Version diffusée (ged.DocumentVersion.version)')
+    destinataires_internes = models.ManyToManyField(
+        settings.AUTH_USER_MODEL, blank=True,
+        related_name='btp_diffusions_recues',
+        verbose_name='Destinataires internes')
+    destinataires_externes = models.JSONField(
+        default=list, blank=True,
+        verbose_name='Destinataires externes (emails)')
+    token = models.CharField(
+        max_length=64, unique=True, default=_default_btp_token,
+        editable=False)
+    partage_ged_id = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='ID du partage GED externe (ged.PartageGed)')
+    date_diffusion = models.DateTimeField(
+        null=True, blank=True, verbose_name='Diffusé le')
+    accuse_reception = models.JSONField(
+        default=dict, blank=True, verbose_name='Accusé de réception')
+    cree_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='btp_diffusions_creees',
+        verbose_name='Créé par')
+    created_at = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Diffusion de plan'
+        verbose_name_plural = 'Diffusions de plan'
+        ordering = ['-created_at', '-id']
+        indexes = [
+            models.Index(fields=['company', 'chantier', 'document_ged_id']),
+        ]
+
+    def __str__(self):
+        return f'Diffusion {self.document_ged_id} v{self.version_diffusee} — chantier {self.chantier_id}'
