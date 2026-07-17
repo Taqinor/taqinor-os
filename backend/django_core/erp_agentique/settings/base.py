@@ -181,6 +181,10 @@ INSTALLED_APPS = [
     # culturales, intrants, main d'œuvre saisonnière). Multi-société,
     # additif ; intrants liés à apps.stock via string-ref (jamais dupliqué).
     'apps.agriculture',
+    # Groupe NTPRO — Vertical immobilier & facilities (patrimoine, baux,
+    # quittancement, GMAO bâtiment). App satellite multi-société ; aucune
+    # écriture Facture ici (délègue à apps.ventes.services).
+    'apps.immobilier',
 ]
 
 MIDDLEWARE = [
