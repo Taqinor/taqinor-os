@@ -82,6 +82,8 @@ const innovationApi = {
     update: (id, data) => api.patch(`/innovation/campagnes/${id}/`, data),
     // NTIDE27 — bandeau d'incitation (tout utilisateur connecté).
     incitation: () => api.get('/innovation/campagnes/incitation/'),
+    // NTIDE29 — rapport (ciblés/proposées/top votes/conversion).
+    rapport: (id) => api.get(`/innovation/campagnes/${id}/rapport/`),
   },
 }
 

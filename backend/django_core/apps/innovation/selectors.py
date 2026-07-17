@@ -160,6 +160,45 @@ def campagne_active_pour_utilisateur(user):
     return None
 
 
+def rapport_campagne(campagne):
+    """NTIDE29 — rapport d'une campagne : nb d'utilisateurs ciblés
+    (``users_for_campaign``), nb d'idées proposées PAR CES UTILISATEURS
+    depuis ``date_debut`` (jusqu'à ``date_fin`` si renseignée), top 5 par
+    votes, taux de conversion (auteurs distincts ayant proposé / nb
+    utilisateurs ciblés — 0 si aucun utilisateur ciblé).
+
+    Brouillons/masquées exclus (même règle que le tableau de bord, NTIDE6) :
+    une idée qu'aucun autre utilisateur ne voit ne compte pas dans le
+    rapport tant qu'elle n'est pas publiée."""
+    from .models import Idee
+
+    utilisateurs = users_for_campaign(campagne.company, campagne)
+    user_ids = list(utilisateurs.values_list('id', flat=True))
+    nb_utilisateurs = len(user_ids)
+
+    idees = Idee.objects.filter(
+        company=campagne.company, auteur_id__in=user_ids,
+        draft=False, archived=False)
+    if campagne.date_debut:
+        idees = idees.filter(created_at__date__gte=campagne.date_debut)
+    if campagne.date_fin:
+        idees = idees.filter(created_at__date__lte=campagne.date_fin)
+
+    nb_idees = idees.count()
+    auteurs_distincts = idees.values('auteur_id').distinct().count()
+    taux_conversion = (
+        round(auteurs_distincts / nb_utilisateurs, 4) if nb_utilisateurs else 0.0)
+    top = list(idees.order_by('-votes_count', '-created_at')[:5]
+               .values('id', 'titre', 'votes_count', 'statut'))
+
+    return {
+        'nb_utilisateurs_cibles': nb_utilisateurs,
+        'nb_idees_proposees': nb_idees,
+        'top_idees': top,
+        'taux_conversion': taux_conversion,
+    }
+
+
 def timeline(company, statut=None, contexte=None):
     """NTIDE23 — nombre d'idées PROPOSÉES par jour (``created_at``), filtres
     statut/contexte optionnels, ordre chronologique croissant (adapté à un

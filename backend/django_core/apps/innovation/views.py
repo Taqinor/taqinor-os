@@ -399,6 +399,12 @@ class CampagneInnovationViewSet(CompanyScopedModelViewSet):
             return Response({'campagne': None})
         return Response({'campagne': IncitationSerializer(campagne).data})
 
+    # ── NTIDE29 — rapport (nb ciblés/proposées, top votes, conversion) ──────
+    @action(detail=True, methods=['get'], url_path='rapport')
+    def rapport(self, request, pk=None):
+        campagne = self.get_object()
+        return Response(selectors.rapport_campagne(campagne))
+
 
 class InnovationSettingsView(APIView):
     """Paramètres → Avancé « Campagnes innovation » (NTIDE7).
