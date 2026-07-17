@@ -324,6 +324,95 @@ def generer_ou_regenerer_compte_parent(famille, email):
         token_acces=secrets.token_urlsafe(32), actif=True)
 
 
+# =============================================================================
+# NTEDU40 — Rappels de relance réinscription (tâche planifiée, admin only).
+# =============================================================================
+
+def eleves_sans_reinscription(company):
+    """NTEDU40 — élèves ACTIFS (``inscrit``/``reinscrit``) SANS
+    ``Inscription`` créée pour l'année scolaire SUIVANTE (la plus proche
+    après l'année ``active`` de la société). Exclut par construction les
+    élèves radiés/diplômés (hors des statuts filtrés). Renvoie un queryset
+    vide si aucune année active ou aucune année suivante n'existe."""
+    from .models import AnneeScolaire, Eleve, Inscription
+
+    annee_courante = AnneeScolaire.objects.filter(
+        company=company, statut=AnneeScolaire.Statut.ACTIVE).first()
+    if annee_courante is None:
+        return Eleve.objects.none()
+
+    annee_suivante = AnneeScolaire.objects.filter(
+        company=company, date_debut__gt=annee_courante.date_debut,
+    ).order_by('date_debut').first()
+    if annee_suivante is None:
+        return Eleve.objects.none()
+
+    deja_reinscrits = Inscription.objects.filter(
+        annee_scolaire=annee_suivante).values_list('eleve_id', flat=True)
+
+    return Eleve.objects.filter(
+        company=company,
+        statut__in=[Eleve.Statut.INSCRIT, Eleve.Statut.REINSCRIT],
+    ).exclude(id__in=deja_reinscrits)
+
+
+def _administration_recipients(company):
+    """Destinataires « administration » (jamais les familles) — mêmes
+    critères que ``notifications.sweeps._managers`` (rôle admin/responsable,
+    repli sur tous les utilisateurs actifs de la société si aucun rôle
+    trouvé). Recopié localement (jamais un import d'une fonction PRIVÉE
+    d'une autre app) ; ``authentication`` est une app de fondation, exempte
+    de la frontière cross-app."""
+    from authentication.models import CustomUser
+
+    base = CustomUser.objects.filter(company=company, is_active=True)
+    admins = [
+        u for u in base
+        if getattr(u, 'is_admin_role', False)
+        or getattr(u, 'role_tier', None) in ('admin', 'responsable')]
+    return admins or list(base)
+
+
+def relancer_reinscriptions_dues(company):
+    """NTEDU40 — au-delà de ``ParametresEducation.date_limite_reinscription``
+    (paramétrable, no-op tant que non renseignée), notifie l'ADMINISTRATION
+    (jamais les familles directement — contrôle humain avant relance) de la
+    liste des élèves sans réinscription créée pour l'année suivante. Renvoie
+    le nombre d'élèves listés (0 = rien à faire ou date pas encore atteinte).
+    Best-effort : une notification en échec n'empêche jamais les suivantes."""
+    from .models import ParametresEducation
+
+    params = ParametresEducation.get(company)
+    limite = params.date_limite_reinscription
+    if limite is None or timezone.now().date() < limite:
+        return 0
+
+    eleves = list(eleves_sans_reinscription(company))
+    if not eleves:
+        return 0
+
+    try:
+        from apps.notifications.models import EventType
+        from apps.notifications.services import notify
+
+        noms = ', '.join(f'{e.prenom} {e.nom}' for e in eleves[:10])
+        suffixe = '…' if len(eleves) > 10 else ''
+        for destinataire in _administration_recipients(company):
+            try:
+                notify(
+                    destinataire, EventType.EDUCATION_REINSCRIPTION_RELANCE,
+                    title=(
+                        f'{len(eleves)} élève(s) sans réinscription pour '
+                        "l'année suivante"),
+                    body=f'{noms}{suffixe}', company=company)
+            except Exception:  # pragma: no cover - défensif, best-effort
+                pass
+    except Exception:  # pragma: no cover - app notifications indisponible
+        pass
+
+    return len(eleves)
+
+
 def generer_certificat_scolarite(eleve, annee_scolaire, *, user=None):
     """NTEDU18 — génère un NOUVEAU certificat de scolarité PDF pour
     ``eleve``. ``numero`` attribué via ``core.numbering.next_reference``

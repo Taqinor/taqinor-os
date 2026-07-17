@@ -207,6 +207,12 @@ class EventType(models.TextChoices):
     # (in-app systématique + email opt-in, préférences respectées par
     # notify()).
     INNOVATION_CAMPAIGN = 'innovation_campagne', "Campagne d'innovation lancée"
+    # NTEDU40 — un élève actif n'a aucune ``education.Inscription`` créée pour
+    # l'année scolaire suivante après la date limite paramétrable
+    # (``ParametresEducation.date_limite_reinscription``) : notifie
+    # l'ADMINISTRATION (jamais les familles directement — contrôle humain).
+    EDUCATION_REINSCRIPTION_RELANCE = (
+        'education_reinscription_relance', 'Relance réinscription à traiter')
 
 
 class Channel(models.TextChoices):

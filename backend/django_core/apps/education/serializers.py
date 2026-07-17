@@ -176,7 +176,8 @@ class ParametresEducationSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'nombre_echeances_defaut', 'taux_remise_fratrie_defaut',
             'grille_mentions', 'delai_relance_impaye_jours', 'devise',
-            'notifier_incidents_mineurs']
+            'notifier_incidents_mineurs',
+            'date_limite_reinscription']  # NTEDU40
         read_only_fields = ['id']
 
 

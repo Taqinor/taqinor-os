@@ -736,6 +736,12 @@ class ParametresEducation(models.Model):
         max_length=3, default='MAD', verbose_name='Devise')
     notifier_incidents_mineurs = models.BooleanField(
         default=False, verbose_name='Notifier les incidents mineurs')
+    date_limite_reinscription = models.DateField(
+        null=True, blank=True,
+        verbose_name='Date limite de réinscription')  # NTEDU40 — au-delà de
+    # cette date, ``services.relancer_reinscriptions_dues`` notifie
+    # l'administration (jamais les familles) des élèves sans Inscription
+    # créée pour l'année scolaire suivante. Vide = tâche inactive (no-op).
 
     class Meta:
         verbose_name = 'Paramètres éducation'
