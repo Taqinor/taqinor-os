@@ -22,21 +22,21 @@ export default function FicheCreditClient({ clientId }) {
 
   useEffect(() => {
     let alive = true
-    setLoading(true)
-    creditApi
-      .getFicheClient(clientId)
-      .then((res) => {
+    async function load() {
+      setLoading(true)
+      try {
+        const res = await creditApi.getFicheClient(clientId)
         if (alive) {
           setFiche(res.data)
           setError(null)
         }
-      })
-      .catch(() => {
+      } catch {
         if (alive) setError('Impossible de charger la fiche crédit.')
-      })
-      .finally(() => {
+      } finally {
         if (alive) setLoading(false)
-      })
+      }
+    }
+    load()
     return () => {
       alive = false
     }
