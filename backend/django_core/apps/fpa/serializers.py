@@ -2,7 +2,8 @@ from rest_framework import serializers
 
 from .models import (
     CycleBudgetaire, Departement, HypotheseRecrutement, LigneBudgetDepartement,
-    LignePrevisionGlissante, PrevisionGlissante, SoumissionBudgetDepartement,
+    LignePrevisionGlissante, LigneScenario, PrevisionGlissante,
+    ScenarioBudgetaire, SoumissionBudgetDepartement,
 )
 
 
@@ -92,5 +93,27 @@ class HypotheseRecrutementSerializer(serializers.ModelSerializer):
             'id', 'company', 'prevision_glissante', 'poste', 'departement',
             'date_effet', 'salaire_brut_estime', 'type_mouvement', 'statut',
             'est_engage', 'date_creation',
+        ]
+        read_only_fields = ['id', 'company', 'date_creation']
+
+
+class LigneScenarioSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = LigneScenario
+        fields = [
+            'id', 'company', 'scenario', 'ligne_budget', 'categorie',
+            'delta_pct', 'delta_montant', 'raison',
+        ]
+        read_only_fields = ['id', 'company']
+
+
+class ScenarioBudgetaireSerializer(serializers.ModelSerializer):
+    lignes = LigneScenarioSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = ScenarioBudgetaire
+        fields = [
+            'id', 'company', 'cycle', 'nom', 'description', 'statut',
+            'est_scenario_base', 'date_creation', 'lignes',
         ]
         read_only_fields = ['id', 'company', 'date_creation']

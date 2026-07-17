@@ -422,3 +422,79 @@ class HypotheseRecrutement(models.Model):
     def est_engage(self):
         """NTFPA16 — une hypothèse confirmée est « engagée » (vs « prévu »)."""
         return self.statut == self.Statut.CONFIRME
+
+
+class ScenarioBudgetaire(models.Model):
+    """NTFPA15 — Scénario what-if nommé sur un cycle. Un scénario ne modifie
+    JAMAIS les lignes du cycle réel : il porte des deltas appliqués en LECTURE
+    pour calculer un total dérivé à la volée."""
+
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        ACTIF = 'actif', 'Actif'
+        ARCHIVE = 'archive', 'Archivé'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='fpa_scenarios', verbose_name='Société',
+    )
+    cycle = models.ForeignKey(
+        CycleBudgetaire, on_delete=models.CASCADE,
+        related_name='scenarios', verbose_name='Cycle budgétaire',
+    )
+    nom = models.CharField(max_length=150, verbose_name='Nom')
+    description = models.TextField(blank=True, default='', verbose_name='Description')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.BROUILLON,
+        verbose_name='Statut')
+    est_scenario_base = models.BooleanField(
+        default=False, verbose_name='Scénario de base')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Scénario budgétaire'
+        ordering = ['-date_creation']
+        constraints = [
+            # Un seul scénario de base par cycle (parmi ceux marqués base).
+            models.UniqueConstraint(
+                fields=['cycle'], condition=models.Q(est_scenario_base=True),
+                name='fpa_un_seul_scenario_base_par_cycle'),
+        ]
+
+    def __str__(self):
+        return self.nom
+
+
+class LigneScenario(models.Model):
+    """NTFPA15 — Delta d'un scénario : appliqué en LECTURE sur une catégorie
+    (ou une ligne budget de référence), jamais écrit dans le cycle réel."""
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='fpa_lignes_scenario', verbose_name='Société',
+    )
+    scenario = models.ForeignKey(
+        ScenarioBudgetaire, on_delete=models.CASCADE,
+        related_name='lignes', verbose_name='Scénario',
+    )
+    ligne_budget = models.ForeignKey(
+        LigneBudgetDepartement, on_delete=models.CASCADE, null=True, blank=True,
+        related_name='deltas_scenario',
+        verbose_name='Ligne budget de référence (optionnel)',
+    )
+    categorie = models.CharField(
+        max_length=20, choices=Categorie.choices, blank=True, default='',
+        verbose_name='Catégorie ciblée (si pas une ligne précise)')
+    delta_pct = models.DecimalField(
+        max_digits=7, decimal_places=2, null=True, blank=True,
+        verbose_name='Delta %% (ex. -10)')
+    delta_montant = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        verbose_name='Delta montant absolu')
+    raison = models.CharField(max_length=255, blank=True, default='', verbose_name='Raison')
+
+    class Meta:
+        verbose_name = 'Ligne de scénario'
+
+    def __str__(self):
+        return f'{self.scenario_id} — {self.categorie or self.ligne_budget_id}'

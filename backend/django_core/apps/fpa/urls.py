@@ -4,7 +4,8 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     CycleBudgetaireViewSet, DepartementViewSet, DriversViewSet,
     HypotheseRecrutementViewSet, LigneBudgetDepartementViewSet,
-    LignePrevisionGlissanteViewSet, PrevisionGlissanteViewSet,
+    LignePrevisionGlissanteViewSet, LigneScenarioViewSet,
+    PrevisionGlissanteViewSet, ScenarioBudgetaireViewSet,
     SoumissionBudgetDepartementViewSet,
 )
 
@@ -28,6 +29,9 @@ router.register(
 router.register(
     r'hypotheses-recrutement', HypotheseRecrutementViewSet,
     basename='fpa-hypothese-recrutement')
+router.register(r'scenarios', ScenarioBudgetaireViewSet, basename='fpa-scenario')
+router.register(
+    r'lignes-scenario', LigneScenarioViewSet, basename='fpa-ligne-scenario')
 router.register(r'drivers', DriversViewSet, basename='fpa-drivers')
 
 urlpatterns = [

@@ -234,3 +234,92 @@ def projeter_revenu_pipeline(company, mois_debut, mois_fin):
 
     return crm_selectors.revenu_pipeline_pondere_par_mois(
         company, mois_debut, mois_fin)
+
+
+def promouvoir_scenario_en_base(scenario, user):
+    """NTFPA17 — promeut un scénario en budget de base : applique ses deltas
+    aux lignes RÉELLES du cycle (copie), archive l'ancien scénario de base et
+    fige l'audit de la bascule. Réservé FP&A/Directeur (garde côté vue)."""
+    from decimal import Decimal
+
+    from .models import (
+        LigneBudgetDepartement, ScenarioBudgetaire,
+    )
+
+    company = scenario.company
+    cycle = scenario.cycle
+
+    # Archive l'ancien scénario de base du cycle (fige-le en archivé).
+    ancien = ScenarioBudgetaire.objects.filter(
+        company=company, cycle=cycle, est_scenario_base=True
+    ).exclude(pk=scenario.pk).first()
+    if ancien is not None:
+        ancien.est_scenario_base = False
+        ancien.statut = ScenarioBudgetaire.Statut.ARCHIVE
+        ancien.save(update_fields=['est_scenario_base', 'statut'])
+
+    # Applique les deltas aux lignes réelles (copie in situ, cycle non clos).
+    total_par_categorie = {}
+    for ligne in LigneBudgetDepartement.objects.filter(company=company, cycle=cycle):
+        total_par_categorie.setdefault(ligne.categorie, []).append(ligne)
+
+    for delta in scenario.lignes.all():
+        cibles = []
+        if delta.ligne_budget_id:
+            ligne = LigneBudgetDepartement.objects.filter(
+                pk=delta.ligne_budget_id).first()
+            if ligne is not None:
+                cibles = [ligne]
+        elif delta.categorie:
+            cibles = total_par_categorie.get(delta.categorie, [])
+        for ligne in cibles:
+            montant = Decimal(str(ligne.montant_prevu or 0))
+            if delta.delta_pct is not None:
+                montant += montant * Decimal(str(delta.delta_pct)) / Decimal('100')
+            if delta.delta_montant is not None:
+                # Delta absolu réparti sur les cibles de la catégorie.
+                montant += Decimal(str(delta.delta_montant)) / Decimal(len(cibles))
+            ligne.montant_prevu = montant
+            ligne.save(update_fields=['montant_prevu'])
+
+    scenario.est_scenario_base = True
+    scenario.statut = ScenarioBudgetaire.Statut.ACTIF
+    scenario.save(update_fields=['est_scenario_base', 'statut'])
+
+    from apps.audit.recorder import record
+    from apps.audit.models import AuditLog
+    record(AuditLog.Action.STATUS, instance=scenario, company=company,
+           user=user, detail=f'Scénario « {scenario.nom} » promu en budget de base.')
+    return scenario
+
+
+def analyse_sensibilite(company, cycle_id, variable, plage_pct):
+    """NTFPA18 — Monte-Carlo simplifié (sensibilité) : fait varier UNE variable
+    sur ``[-plage_pct, +plage_pct]`` par pas de 5 % et recalcule le revenu
+    prévisionnel total pour chaque pas (via NTFPA11). Stdlib seul, aucune
+    dépendance (pas de numpy/scipy).
+
+    Renvoie une liste de dicts ``{'variation_pct', 'revenu_total'}`` (9 points
+    pour plage=20)."""
+    from decimal import Decimal
+
+    # Revenu prévisionnel de base sur les 12 mois de l'année du cycle.
+    from .models import CycleBudgetaire
+
+    cycle = CycleBudgetaire.objects.filter(company=company, pk=cycle_id).first()
+    if cycle is None:
+        return []
+    base = projeter_revenu_pipeline(company, cycle.date_debut, cycle.date_fin)
+    revenu_base = sum(base.values(), Decimal('0'))
+
+    points = []
+    pas = 5
+    variation = -plage_pct
+    while variation <= plage_pct:
+        facteur = Decimal('1') + Decimal(variation) / Decimal('100')
+        points.append({
+            'variation_pct': variation,
+            'revenu_total': str((revenu_base * facteur).quantize(Decimal('0.01'))),
+        })
+        variation += pas
+    return points

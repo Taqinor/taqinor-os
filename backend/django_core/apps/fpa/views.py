@@ -6,13 +6,14 @@ from core.mixins import TenantMixin
 
 from .models import (
     CycleBudgetaire, Departement, HypotheseRecrutement,
-    LigneBudgetDepartement, LignePrevisionGlissante, PrevisionGlissante,
-    SoumissionBudgetDepartement,
+    LigneBudgetDepartement, LignePrevisionGlissante, LigneScenario,
+    PrevisionGlissante, ScenarioBudgetaire, SoumissionBudgetDepartement,
 )
 from .serializers import (
     CycleBudgetaireSerializer, DepartementSerializer,
     HypotheseRecrutementSerializer, LigneBudgetDepartementSerializer,
-    LignePrevisionGlissanteSerializer, PrevisionGlissanteSerializer,
+    LignePrevisionGlissanteSerializer, LigneScenarioSerializer,
+    PrevisionGlissanteSerializer, ScenarioBudgetaireSerializer,
     SoumissionBudgetDepartementSerializer,
 )
 
@@ -261,6 +262,83 @@ class LignePrevisionGlissanteViewSet(TenantMixin, viewsets.ModelViewSet):
         qs = super().get_queryset()
         if prevision_id := self.request.query_params.get('prevision'):
             qs = qs.filter(prevision_id=prevision_id)
+        return qs
+
+
+class ScenarioBudgetaireViewSet(TenantMixin, viewsets.ModelViewSet):
+    """NTFPA15/16/17/18 — Scénarios what-if : deltas appliqués en lecture,
+    comparaison côte-à-côte, promotion en base, analyse de sensibilité."""
+
+    queryset = ScenarioBudgetaire.objects.prefetch_related('lignes').all()
+    serializer_class = ScenarioBudgetaireSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation', 'nom']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if cycle_id := self.request.query_params.get('cycle'):
+            qs = qs.filter(cycle_id=cycle_id)
+        return qs
+
+    @action(detail=False, methods=['get'], url_path='comparer')
+    def comparer(self, request):
+        cycle_id = request.query_params.get('cycle')
+        scenarios_raw = request.query_params.get('scenarios', '')
+        scenario_ids = [s for s in scenarios_raw.split(',') if s.strip()]
+        if not cycle_id:
+            return Response(
+                {'detail': 'cycle requis.'}, status=status.HTTP_400_BAD_REQUEST)
+        from .selectors import comparer_scenarios
+        result = comparer_scenarios(request.user.company, cycle_id, scenario_ids)
+        return Response({
+            'base': str(result['base']),
+            'scenarios': [
+                {'id': r['id'], 'nom': r['nom'],
+                 'total': str(r['total']), 'ecart': str(r['ecart'])}
+                for r in result['scenarios']
+            ],
+        })
+
+    @action(detail=True, methods=['post'], url_path='promouvoir')
+    def promouvoir(self, request, pk=None):
+        scenario = self.get_object()
+        from django.core.exceptions import ValidationError
+
+        from .services import promouvoir_scenario_en_base
+        try:
+            promouvoir_scenario_en_base(scenario, request.user)
+        except ValidationError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        scenario.refresh_from_db()
+        return Response(ScenarioBudgetaireSerializer(scenario).data)
+
+    @action(detail=False, methods=['get'], url_path='sensibilite')
+    def sensibilite(self, request):
+        cycle_id = request.query_params.get('cycle')
+        variable = request.query_params.get('variable', 'taux_conversion')
+        try:
+            plage = int(request.query_params.get('plage', 20))
+        except (TypeError, ValueError):
+            plage = 20
+        if not cycle_id:
+            return Response(
+                {'detail': 'cycle requis.'}, status=status.HTTP_400_BAD_REQUEST)
+        from .services import analyse_sensibilite
+        points = analyse_sensibilite(
+            request.user.company, cycle_id, variable, plage)
+        return Response({'variable': variable, 'points': points})
+
+
+class LigneScenarioViewSet(TenantMixin, viewsets.ModelViewSet):
+    """NTFPA15 — deltas d'un scénario (jamais écrits dans le cycle réel)."""
+
+    queryset = LigneScenario.objects.all()
+    serializer_class = LigneScenarioSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if scenario_id := self.request.query_params.get('scenario'):
+            qs = qs.filter(scenario_id=scenario_id)
         return qs
 
 
