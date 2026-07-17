@@ -45,6 +45,113 @@ DEAD_ATTRIBUTION_WINDOWS = ('7d_view', '28d_view')
 
 
 # ── Taxonomie d'erreurs ──────────────────────────────────────────────────────
+# ── ADSDEEP5 — Budgeteur de rate-limit ───────────────────────────────────────
+# Seuil (%) d'utilisation au-delà duquel on RALENTIT la boucle AVANT de heurter
+# l'erreur 613 (BUC compte). Meta scale les limites au spend : un petit compte
+# atteint vite le plafond, d'où un backoff préventif plutôt que réactif.
+THROTTLE_SLOWDOWN_PCT = 90.0
+# Pause (s) injectée avant une requête quand l'usage connu franchit le seuil.
+THROTTLE_SLEEP_SECONDS = 2.0
+# Préfixe de clé de cache où l'état d'usage le plus récent est mémorisé PAR
+# compte (lu par ``wiring-health`` — le client vit le temps d'une synchro).
+THROTTLE_CACHE_PREFIX = 'adsengine-throttle'
+THROTTLE_CACHE_TTL = 3600  # 1 h — au-delà l'info est périmée (fenêtre BUC = 1 h)
+
+
+def _to_pct(value):
+    """Convertit une valeur d'en-tête en float (%), ou None si illisible."""
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def parse_usage_headers(headers):
+    """ADSDEEP5 — Extrait l'état d'usage des en-têtes de rate-limit Meta.
+
+    Lit ``X-FB-Ads-Insights-Throttle`` (``app_id_util_pct``/``acc_id_util_pct``/
+    ``ads_api_access_tier``), ``X-Ad-Account-Usage`` (``acc_id_util_pct``) et
+    ``X-Business-Use-Case-Usage`` (par type : ``call_count``/``total_cputime``/
+    ``total_time``/``estimated_time_to_regain_access``). Renvoie un dict
+    ``{usage_pct, insights_throttle, account_usage, buc, tier}`` où ``usage_pct``
+    est le MAX de tous les pourcentages connus (le budget le plus contraint).
+    Robuste à un en-tête absent ou à un JSON illisible (ignoré)."""
+    import json as _json
+
+    headers = headers or {}
+    pcts = []
+    insights_throttle = {}
+    account_usage = {}
+    buc = {}
+    tier = ''
+
+    raw_throttle = headers.get('X-FB-Ads-Insights-Throttle')
+    if raw_throttle:
+        try:
+            insights_throttle = _json.loads(raw_throttle) or {}
+        except (ValueError, TypeError):
+            insights_throttle = {}
+        for key in ('app_id_util_pct', 'acc_id_util_pct'):
+            p = _to_pct(insights_throttle.get(key))
+            if p is not None:
+                pcts.append(p)
+        tier = insights_throttle.get('ads_api_access_tier', '') or ''
+
+    raw_acct = headers.get('X-Ad-Account-Usage')
+    if raw_acct:
+        try:
+            account_usage = _json.loads(raw_acct) or {}
+        except (ValueError, TypeError):
+            account_usage = {}
+        p = _to_pct(account_usage.get('acc_id_util_pct'))
+        if p is not None:
+            pcts.append(p)
+
+    raw_buc = headers.get('X-Business-Use-Case-Usage')
+    if raw_buc:
+        try:
+            buc = _json.loads(raw_buc) or {}
+        except (ValueError, TypeError):
+            buc = {}
+        for entries in (buc or {}).values():
+            for entry in (entries or []):
+                if not isinstance(entry, dict):
+                    continue
+                for key in ('call_count', 'total_cputime', 'total_time'):
+                    p = _to_pct(entry.get(key))
+                    if p is not None:
+                        pcts.append(p)
+
+    return {
+        'usage_pct': max(pcts) if pcts else None,
+        'insights_throttle': insights_throttle,
+        'account_usage': account_usage,
+        'buc': buc,
+        'tier': tier,
+    }
+
+
+def rate_limit_status(ad_account_id):
+    """ADSDEEP5 — État d'usage rate-limit mémorisé pour un compte (lu par
+    ``wiring-health``). Renvoie ``{usage_pct, tier, throttled}`` ou ``None`` si
+    aucune réponse récente n'a été observée. ``throttled`` = usage ≥ seuil."""
+    if not ad_account_id:
+        return None
+    try:
+        from django.core.cache import cache
+        state = cache.get(f'{THROTTLE_CACHE_PREFIX}:{ad_account_id}')
+    except Exception:  # noqa: BLE001 — cache indisponible
+        return None
+    if not state:
+        return None
+    pct = state.get('usage_pct')
+    return {
+        'usage_pct': pct,
+        'tier': state.get('tier', ''),
+        'throttled': bool(pct is not None and pct >= THROTTLE_SLOWDOWN_PCT),
+    }
+
+
 class MetaError(Exception):
     """Erreur générique côté client Meta (réseau, ou non classée)."""
 
@@ -90,6 +197,9 @@ class MetaClient:
         self._owns_client = http_client is None
         self._max_retries = max_retries
         self._backoff_base = backoff_base
+        # ADSDEEP5 — état d'usage rate-limit le plus récent (rempli à chaque
+        # réponse). ``usage_pct`` guide le backoff préventif AVANT le 613.
+        self.usage_state = {}
 
     @classmethod
     def from_connection(cls, connection, **kwargs):
@@ -137,6 +247,34 @@ class MetaClient:
         return MetaAPIError(
             f'Erreur API Meta : {message}', code=code, subcode=subcode)
 
+    def _maybe_throttle(self):
+        """ADSDEEP5 — Backoff PRÉVENTIF : si le dernier usage connu franchit le
+        seuil, on dort brièvement AVANT la requête (évite de heurter le 613)."""
+        pct = (self.usage_state or {}).get('usage_pct')
+        if pct is not None and pct >= THROTTLE_SLOWDOWN_PCT:
+            if THROTTLE_SLEEP_SECONDS:
+                time.sleep(THROTTLE_SLEEP_SECONDS)
+
+    def _record_usage(self, resp):
+        """Mémorise l'état d'usage des en-têtes de la réponse (sur l'instance +
+        cache par compte pour ``wiring-health``). Best-effort, jamais bloquant."""
+        try:
+            state = parse_usage_headers(getattr(resp, 'headers', {}) or {})
+        except Exception:  # noqa: BLE001 — l'usage n'empêche jamais la requête
+            return
+        if state.get('usage_pct') is None and not state.get('insights_throttle'):
+            return
+        self.usage_state = state
+        if not self.ad_account_id:
+            return
+        try:
+            from django.core.cache import cache
+            cache.set(
+                f'{THROTTLE_CACHE_PREFIX}:{self.ad_account_id}',
+                state, THROTTLE_CACHE_TTL)
+        except Exception:  # noqa: BLE001 — cache indisponible : no-op
+            pass
+
     def _request(self, method, path, *, params=None, data=None):
         url = f'{self._base_url}/{path.lstrip("/")}'
         # Token dans l'en-tête (jamais dans l'URL) : aucun secret en query string.
@@ -144,6 +282,7 @@ class MetaClient:
         attempt = 0
         while True:
             attempt += 1
+            self._maybe_throttle()
             try:
                 resp = self._client.request(
                     method, url, params=params, data=data, headers=headers)
@@ -152,6 +291,7 @@ class MetaClient:
                     self._sleep(attempt)
                     continue
                 raise MetaError(f'Erreur réseau Meta : {exc}') from exc
+            self._record_usage(resp)
             if resp.status_code >= 400:
                 err = self._classify(resp)
                 transient = (

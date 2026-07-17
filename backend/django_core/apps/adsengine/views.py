@@ -105,6 +105,11 @@ class WiringHealthView(APIView):
         # (le watchdog détecte un beat/worker Celery arrêté). Aucun secret.
         from .watchdog import health as guardian_health
 
+        # ADSDEEP5 — % d'usage rate-limit Meta observé sur la dernière réponse
+        # (backoff préventif avant le 613). None si aucune synchro récente.
+        from .meta_client import rate_limit_status
+        rate_limit = rate_limit_status(conn.ad_account_id) if conn else None
+
         return Response({
             'keys': keys,
             'connection': connection,
@@ -115,6 +120,8 @@ class WiringHealthView(APIView):
             'last_lead_ads_webhook': None,
             'last_capi_event': None,
             'guardian': guardian_health(company),
+            # ADSDEEP5 — santé du débit Meta (% d'usage, palier, drapeau throttled).
+            'rate_limit': rate_limit,
         })
 
 
