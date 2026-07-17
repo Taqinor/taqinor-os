@@ -18,5 +18,8 @@ PLATFORM = {
     'import_specs': [],
     'agent_actions_module': '',
     'automation_state_fields': [],
-    'kpi_providers': [],
+    # NTCRD45/46 — fournisseur KPI crédit (DSO pondéré risque, répartition par
+    # lettre de score, taux de dérogations) agrégé par l'endpoint reporting
+    # fédéré (ARC40). Callable dotted résolu à l'exécution.
+    'kpi_providers': ['apps.credit.selectors.kpi_credit'],
 }

@@ -266,6 +266,69 @@ def rapport_exposition(company, clients=None):
     return lignes
 
 
+def kpi_credit(company):
+    """NTCRD45/46 — tuiles KPI crédit normalisées pour l'endpoint reporting
+    fédéré (ARC40, ``apps/reporting/reports.py::kpi_federes``). Déclaré dans
+    ``apps/credit/platform.py`` (``kpi_providers``). Chaque tuile :
+    ``{id, label, valeur, unite?}``. Lecture seule, scopé société.
+
+    - ``credit_dso_pondere`` (NTCRD45) : DSO pondéré par le risque = retard
+      moyen observé des clients, pondéré par leur encours (les gros encours
+      pèsent plus). Cohérent avec ``rapport_exposition`` (mêmes encours).
+    - ``credit_score_<lettre>`` (NTCRD45) : répartition des clients par lettre.
+    - ``credit_taux_derogations`` (NTCRD46) : ratio dérogations approuvées /
+      demandées sur 90 jours glissants.
+    """
+    from datetime import timedelta
+    from decimal import Decimal
+
+    from django.utils import timezone
+
+    from apps.crm.selectors import client_base_qs
+    from apps.ventes.selectors import comportement_paiement
+
+    from .models import DerogationCredit
+
+    total_pondere = Decimal('0')
+    total_encours = Decimal('0')
+    repartition = {'A': 0, 'B': 0, 'C': 0, 'D': 0, 'E': 0}
+    for client in client_base_qs(company):
+        score = comportement_paiement(client)
+        repartition[score['lettre']] = repartition.get(score['lettre'], 0) + 1
+        encours = encours_client(client)
+        retard = score['retard_moyen_jours'] or 0
+        if encours > 0:
+            total_pondere += Decimal(str(retard)) * encours
+            total_encours += encours
+
+    dso_pondere = (
+        float(total_pondere / total_encours) if total_encours > 0 else 0.0)
+
+    # NTCRD46 — taux de dérogations approuvées / demandées sur 90 jours.
+    depuis = timezone.now() - timedelta(days=90)
+    demandes = DerogationCredit.objects.filter(
+        company=company, date_creation__gte=depuis)
+    nb_demandes = demandes.count()
+    nb_approuvees = demandes.filter(
+        statut=DerogationCredit.Statut.APPROUVEE).count()
+    taux_derog = (nb_approuvees / nb_demandes) if nb_demandes else 0.0
+
+    tuiles = [
+        {'id': 'credit_dso_pondere',
+         'label': 'DSO pondéré par le risque crédit',
+         'valeur': round(dso_pondere, 1), 'unite': 'jours'},
+        {'id': 'credit_taux_derogations',
+         'label': 'Taux de dérogations approuvées (90 j)',
+         'valeur': round(taux_derog, 3)},
+    ]
+    for lettre, nb in sorted(repartition.items()):
+        tuiles.append({
+            'id': f'credit_score_{lettre.lower()}',
+            'label': f'Clients score {lettre}',
+            'valeur': nb, 'unite': 'clients'})
+    return tuiles
+
+
 def rapport_derogations(company, date_debut=None, date_fin=None, client_id=None):
     """NTCRD26 — liste des ``DerogationCredit`` d'une société sur une période
     (``date_creation`` dans [date_debut, date_fin]), avec statut, montant,
