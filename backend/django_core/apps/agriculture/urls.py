@@ -3,9 +3,10 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     CampagneCulturaleViewSet, EquipeSaisonniereViewSet, EtapeCampagneViewSet,
-    ExploitationViewSet, IntrantAgricoleViewSet, MaterielAgricoleViewSet,
-    ParcelleViewSet, PointageAgricoleViewSet, PointIrrigationViewSet,
-    RelevePointIrrigationViewSet, UtilisationMaterielViewSet,
+    ExploitationViewSet, IntrantAgricoleViewSet, LotRecolteViewSet,
+    MaterielAgricoleViewSet, ParcelleViewSet, PointageAgricoleViewSet,
+    PointIrrigationViewSet, RelevePointIrrigationViewSet,
+    UtilisationMaterielViewSet,
 )
 
 router = DefaultRouter()
@@ -20,6 +21,7 @@ router.register(r'materiels-agricoles', MaterielAgricoleViewSet)
 router.register(r'utilisations-materiel', UtilisationMaterielViewSet)
 router.register(r'points-irrigation', PointIrrigationViewSet)
 router.register(r'releves-irrigation', RelevePointIrrigationViewSet)
+router.register(r'lots-recolte', LotRecolteViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

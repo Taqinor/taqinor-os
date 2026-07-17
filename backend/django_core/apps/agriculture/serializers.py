@@ -12,7 +12,7 @@ from rest_framework import serializers
 
 from .models import (
     CampagneCulturale, EquipeSaisonniere, EtapeCampagne, Exploitation,
-    IntrantAgricole, MaterielAgricole, Parcelle, PointageAgricole,
+    IntrantAgricole, LotRecolte, MaterielAgricole, Parcelle, PointageAgricole,
     PointIrrigation, RelevePointIrrigation, UtilisationMateriel,
     check_dar_guard,
 )
@@ -290,3 +290,27 @@ class RelevePointIrrigationSerializer(serializers.ModelSerializer):
     def validate_point(self, value):
         _check_same_company(self, value, 'point')
         return value
+
+
+class LotRecolteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = LotRecolte
+        fields = [
+            'id', 'company', 'campagne', 'date_recolte', 'quantite_qtl',
+            'calibre', 'qualite', 'numero_lot', 'stock_lot_id',
+            'date_creation',
+        ]
+        read_only_fields = ['id', 'company', 'numero_lot', 'date_creation']
+
+    def validate_campagne(self, value):
+        _check_same_company(self, value, 'campagne')
+        return value
+
+    def create(self, validated_data):
+        # NTAGR15 — numérotation race-safe via core.numbering, jamais un
+        # ModelSerializer.create() nu (qui laisserait numero_lot vide).
+        # ``company`` est déjà dans ``validated_data`` : le viewset l'injecte
+        # via ``serializer.save(company=...)`` (TenantMixin.perform_create).
+        from .services import creer_lot_recolte
+
+        return creer_lot_recolte(**validated_data)

@@ -453,3 +453,49 @@ class RelevePointIrrigation(TenantModel):
 
     def __str__(self):
         return f'{self.point} — {self.date}'
+
+
+# ── NTAGR15 — LotRecolte (lié à stock, jamais un second système de lots) ───
+
+class LotRecolte(TenantModel):
+    """Lot de récolte — numéro unique par société généré via
+    ``core.numbering`` (jamais ``count()+1`` — voir
+    ``services.creer_lot_recolte``), rattachement OPTIONNEL à un lot stock
+    physique existant.
+
+    ``stock_lot_id`` porte le ``numero_lot`` (texte) d'un ``stock.LotEntrepot``
+    quand le produit récolté est AUSSI suivi en stock physique — c'est la
+    SEULE clé de traçabilité cross-app exposée en lecture par
+    ``apps.stock.selectors.trace_serie(company, numero_lot=...)`` (NTAGR16) ;
+    jamais un import de ``stock.models``, et le stock physique reste géré
+    EXCLUSIVEMENT par ``apps.stock`` — ce champ ne DUPLIQUE aucun système de
+    traçabilité, il référence juste la clé publique existante."""
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        # on_delete: cascade tenant (purge des données de la société supprimée)
+        related_name='lots_recolte')
+    campagne = models.ForeignKey(
+        CampagneCulturale, on_delete=models.CASCADE,
+        # on_delete: cascade parent→enfant (composant du parent)
+        related_name='lots_recolte')
+    date_recolte = models.DateField()
+    quantite_qtl = models.DecimalField(max_digits=10, decimal_places=2)
+    calibre = models.CharField(max_length=50, blank=True, default='')
+    # A/B/C ou label libre (pas de choices figées — marché agricole marocain
+    # utilise des grilles de qualité variables selon la culture/coopérative).
+    qualite = models.CharField(max_length=50, blank=True, default='')
+    numero_lot = models.CharField(max_length=40, blank=True, default='', db_index=True)
+    stock_lot_id = models.CharField(max_length=100, blank=True, default='')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-date_recolte', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'numero_lot'],
+                name='uniq_lotrecolte_numero_par_societe'),
+        ]
+
+    def __str__(self):
+        return self.numero_lot or f'Lot #{self.pk}'

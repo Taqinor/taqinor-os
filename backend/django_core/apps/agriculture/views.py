@@ -10,15 +10,16 @@ from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
     CampagneCulturale, EquipeSaisonniere, EtapeCampagne, Exploitation,
-    IntrantAgricole, MaterielAgricole, Parcelle, PointageAgricole,
+    IntrantAgricole, LotRecolte, MaterielAgricole, Parcelle, PointageAgricole,
     PointIrrigation, RelevePointIrrigation, UtilisationMateriel,
 )
 from .serializers import (
     CampagneCulturaleSerializer, EquipeSaisonniereSerializer,
     EtapeCampagneSerializer, ExploitationSerializer,
-    IntrantAgricoleSerializer, MaterielAgricoleSerializer, ParcelleSerializer,
-    PointageAgricoleSerializer, PointIrrigationSerializer,
-    RelevePointIrrigationSerializer, UtilisationMaterielSerializer,
+    IntrantAgricoleSerializer, LotRecolteSerializer,
+    MaterielAgricoleSerializer, ParcelleSerializer, PointageAgricoleSerializer,
+    PointIrrigationSerializer, RelevePointIrrigationSerializer,
+    UtilisationMaterielSerializer,
 )
 
 READ_ACTIONS = {'list', 'retrieve'}
@@ -218,4 +219,20 @@ class RelevePointIrrigationViewSet(_AgricultureBaseViewSet):
         point_id = self.request.query_params.get('point_id')
         if point_id:
             qs = qs.filter(point_id=point_id)
+        return qs
+
+
+class LotRecolteViewSet(_AgricultureBaseViewSet):
+    """NTAGR15 — Lots de récolte. Filtrable ``?campagne_id=``."""
+    queryset = LotRecolte.objects.all()
+    serializer_class = LotRecolteSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['numero_lot', 'calibre', 'qualite']
+    ordering_fields = ['date_recolte', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        campagne_id = self.request.query_params.get('campagne_id')
+        if campagne_id:
+            qs = qs.filter(campagne_id=campagne_id)
         return qs
