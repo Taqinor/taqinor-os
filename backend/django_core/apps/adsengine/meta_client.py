@@ -769,6 +769,150 @@ class MetaClient:
         payload = self._edit_payload(base, extra_fields)
         return self._request('POST', f'{campaign_id}', data=payload)
 
+    # ── ADSDEEP50 — Éditer le texte d'un post de Page (message SEUL) ──────────
+    def edit_page_post(self, *, post_id, message, extra_fields=None):
+        """ADSDEEP50 — Édite le TEXTE d'un post de Page (``POST /<post_id>``).
+
+        SEUL le ``message`` est éditable : le visuel (image/vidéo) d'un post
+        PUBLIÉ est IMMUABLE côté Meta (dossier organic-posts §1 — le changer =
+        supprimer + recréer, perte de l'historique d'engagement). Comme toute
+        édition, AUCUN ``status`` n'est jamais envoyé (invariant permanent
+        règle #3). La contrainte « posts créés par l'app SEULEMENT » est vérifiée
+        en amont (``services.propose_edit_post`` refuse proprement un post non
+        créé par l'app) — Meta la rejetterait de toute façon."""
+        base = {'message': message}
+        payload = self._edit_payload(base, extra_fields)
+        return self._request('POST', f'{post_id}', data=payload)
+
+    # ── ADSDEEP51 — Publier des posts de Page (organique, pages_manage_posts) ─
+    # Fenêtre de programmation Meta (dossier organic-posts §2) : 10 min à 30 j.
+    SCHEDULE_MIN_SECONDS = 10 * 60
+    SCHEDULE_MAX_SECONDS = 30 * 24 * 3600
+    # Taille max d'une vidéo (Resumable Upload API, dossier §2) : 1,75 Go.
+    MAX_VIDEO_BYTES = int(1.75 * 1024 * 1024 * 1024)
+
+    def _validate_schedule(self, scheduled_publish_time):
+        """Fail-fast : une programmation doit tomber entre 10 min et 30 j dans le
+        futur (jamais un rejet Graph tardif après un aller-retour réseau)."""
+        try:
+            ts = int(scheduled_publish_time)
+        except (TypeError, ValueError):
+            raise MetaError(
+                "scheduled_publish_time doit être un horodatage unix (secondes).")
+        delta = ts - int(time.time())
+        if not (self.SCHEDULE_MIN_SECONDS <= delta <= self.SCHEDULE_MAX_SECONDS):
+            raise MetaError(
+                "La programmation d'un post doit tomber entre 10 minutes et "
+                "30 jours dans le futur (dossier organic-posts §2).")
+
+    def create_page_post(self, *, message='', link='', published=True,
+                         scheduled_publish_time=None, attached_media=None,
+                         extra_fields=None):
+        """ADSDEEP51 — Crée un post via ``POST /<page_id>/feed``. Trois modes :
+
+          * PUBLIÉ — ``published=True`` (affiché tout de suite) ;
+          * DARK — ``published=False`` SANS programmation : objet post complet
+            jamais affiché sur la Page, réutilisable en ad (``object_story_id``) ;
+          * PROGRAMMÉ — ``published=False`` + ``scheduled_publish_time`` (fenêtre
+            10 min-30 j revalidée ici, fail-fast).
+
+        ``attached_media`` porte les ``{"media_fbid": …}`` des photos
+        pré-uploadées (post multi-photos). Ce n'est PAS un objet publicitaire :
+        aucun ``status`` de campagne/adset/ad n'est en jeu ici."""
+        if scheduled_publish_time is not None:
+            published = False
+            self._validate_schedule(scheduled_publish_time)
+        body = {'published': 'true' if published else 'false'}
+        if message:
+            body['message'] = message
+        if link:
+            body['link'] = link
+        if scheduled_publish_time is not None:
+            body['scheduled_publish_time'] = int(scheduled_publish_time)
+        for i, media in enumerate(attached_media or []):
+            body[f'attached_media[{i}]'] = json.dumps(media)
+        body.update(dict(extra_fields or {}))
+        return self._request('POST', self._page_edge('feed'), data=body)
+
+    def upload_page_photo(self, *, image_url='', published=False, caption='',
+                          extra_fields=None):
+        """ADSDEEP51 — Upload une photo (``POST /<page_id>/photos``).
+        ``published=False`` (défaut) sert au post multi-photos (récupérer le
+        ``id``/media_fbid sans afficher) ; ``published=True`` = simple
+        publication photo."""
+        body = {'published': 'true' if published else 'false'}
+        if image_url:
+            body['url'] = image_url
+        if caption:
+            body['caption'] = caption
+        body.update(dict(extra_fields or {}))
+        return self._request('POST', self._page_edge('photos'), data=body)
+
+    def create_multi_photo_post(self, *, message='', image_urls=None,
+                                extra_fields=None):
+        """ADSDEEP51 — Post multi-photos : upload chaque photo ``published=false``
+        (récupère les media_fbid) puis ``POST /feed`` avec ``attached_media``
+        (dossier organic-posts §2)."""
+        media = []
+        for url in image_urls or []:
+            photo = self.upload_page_photo(image_url=url, published=False)
+            fbid = str((photo or {}).get('id') or '').strip()
+            if not fbid:
+                raise MetaError(
+                    "Upload photo échoué (aucun id/media_fbid renvoyé).")
+            media.append({'media_fbid': fbid})
+        return self.create_page_post(
+            message=message, published=True, attached_media=media,
+            extra_fields=extra_fields)
+
+    def upload_page_video(self, *, file_url='', message='', file_size=None,
+                          extra_fields=None):
+        """ADSDEEP51 — Publie une vidéo (``POST /<page_id>/videos``). Les gros
+        fichiers passent par la Resumable Upload API côté client d'upload ; ici on
+        BORNE la taille à 1,75 Go (dossier §2, fail-fast) et on transmet
+        ``file_url`` + ``description``."""
+        if file_size is not None:
+            try:
+                size = int(file_size)
+            except (TypeError, ValueError):
+                size = 0
+            if size > self.MAX_VIDEO_BYTES:
+                raise MetaError(
+                    "Vidéo trop lourde : 1,75 Go maximum (dossier "
+                    "organic-posts §2).")
+        body = {}
+        if file_url:
+            body['file_url'] = file_url
+        if message:
+            body['description'] = message
+        body.update(dict(extra_fields or {}))
+        return self._request('POST', self._page_edge('videos'), data=body)
+
+    # ── ADSDEEP52 — Booster un post existant (object_story_id — preuve sociale) ─
+    def boost_page_post(self, *, post_id, adset_id, name, extra_fields=None):
+        """ADSDEEP52 — Booste un post EXISTANT : crée un adcreative portant
+        ``object_story_id`` (la preuve sociale — J'aime/commentaires/partages —
+        est PRÉSERVÉE ; on n'utilise JAMAIS ``object_story_spec`` ici, qui
+        créerait un post NEUF aux compteurs à zéro) puis une ad qui le porte,
+        née PAUSED (invariant permanent règle #3 — ``create_ad`` force PAUSED,
+        aucune activation possible).
+
+        Renvoie ``{creative, ad}`` (les deux payloads Graph)."""
+        if not post_id:
+            raise MetaError("boost_page_post exige un post_id.")
+        creative = self._request(
+            'POST', self._account_edge('adcreatives'),
+            data={'object_story_id': post_id})
+        creative_id = str((creative or {}).get('id') or '').strip()
+        if not creative_id:
+            raise MetaError(
+                "Boost : création du créatif échouée (aucun id renvoyé).")
+        extra = dict(extra_fields or {})
+        extra.pop('status', None)
+        extra['creative'] = json.dumps({'creative_id': creative_id})
+        ad = self.create_ad(name=name, adset_id=adset_id, extra_fields=extra)
+        return {'creative': creative, 'ad': ad}
+
     # ── Mise en pause (PAUSED-only — jamais de kwarg status) ─────────────────
     def update_status_paused(self, *, object_id, level=None):
         """ENGFIX5 — Met un objet (campagne / adset / ad) en ``PAUSED`` — et RIEN

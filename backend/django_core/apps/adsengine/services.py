@@ -354,6 +354,117 @@ def propose_pause_for_month(company, *, target_meta_id, target_type='campaign',
         payload={'target_type': target_type, 'target_meta_id': target_meta_id})
 
 
+# ── ADSDEEP49-52 — Posts ORGANIQUES de Page (propose→approuve→applique) ───────
+# Kinds en constantes simples (même pattern que KIND_DUPLICATE / KIND_SET_SCHEDULE
+# / KIND_CREATE_AD_STUDY — hors de ``EngineAction.Kind`` : le ``CharField.choices``
+# n'est pas appliqué par Django au ``save()``, donc AUCUNE migration requise pour
+# un nouveau kind qui suit ce pattern déjà établi).
+KIND_EDIT_POST = 'edit_post'
+KIND_CREATE_POST = 'create_post'
+KIND_BOOST_POST = 'boost_post'
+
+# ADSDEEP50 — avertissements montrés à l'approbateur pour une édition de post.
+WARN_POST_MESSAGE_ONLY = (
+    "Seul le message est éditable : le visuel (image/vidéo) d'un post déjà "
+    "publié est IMMUABLE côté Meta — le changer imposerait de supprimer puis "
+    "recréer le post (perte de l'historique d'engagement).")
+WARN_POST_AD_LINKED = (
+    "Post adossé à une pub : l'éditer est à RISQUE. Le post a été reviewé comme "
+    "publicité — un changement de texte peut déclencher une re-review Meta et "
+    "une désynchronisation de l'annonce.")
+
+
+def propose_edit_post(company, *, post, message, reason_fr=None):
+    """ADSDEEP50 — Propose l'édition du TEXTE d'un post de Page (kind EDIT_POST).
+
+    REFUS PROPRE (``ValueError``, AUCUNE action créée) si le post n'a pas été créé
+    par l'app : Meta n'autorise l'édition QUE des posts créés par l'app elle-même
+    (dossier organic-posts §1). Avertissements portés à l'approbateur : « seul le
+    message est éditable » TOUJOURS ; DOUBLE avertissement quand le post est
+    adossé à une pub (édition à risque / re-review). Seul ``message`` est
+    transmis — le visuel d'un post publié est immuable."""
+    if not getattr(post, 'created_by_app', False):
+        raise ValueError(
+            "Post non créé par l'app : Meta n'autorise l'édition que des posts "
+            "créés par l'app elle-même — édition refusée.")
+    warnings = [WARN_POST_MESSAGE_ONLY]
+    if getattr(post, 'ad_linked', False):
+        warnings.append(WARN_POST_AD_LINKED)
+    reason_fr = reason_fr or f"Éditer le texte du post de Page {post.meta_id}."
+    payload = {
+        'post_id': post.meta_id, 'message': message, 'warnings': warnings}
+    return propose_action(
+        company, kind=KIND_EDIT_POST, reason_fr=reason_fr, payload=payload)
+
+
+def propose_create_post(company, *, message='', link='', mode='published',
+                        scheduled_publish_time=None, media=None, reason_fr=None):
+    """ADSDEEP51 — Propose la création d'un post de Page (kind CREATE_POST).
+
+    ``mode`` ∈ {published, dark, scheduled} ; ``media`` optionnel
+    ``{'kind': 'photo'|'photos'|'video', …}`` (aucun = post texte/lien). Un post
+    programmé exige un ``scheduled_publish_time`` (fenêtre 10 min-30 j revalidée
+    au dispatch par le client, fail-fast). Le dispatch route vers la bonne
+    méthode de publication du client selon le média et le mode."""
+    mode = str(mode or 'published').strip().lower()
+    if mode not in ('published', 'dark', 'scheduled'):
+        raise ValueError("mode doit être published, dark ou scheduled.")
+    if mode == 'scheduled' and scheduled_publish_time is None:
+        raise ValueError(
+            "Un post programmé exige un scheduled_publish_time (unix).")
+    reason_fr = reason_fr or "Publier un post de Page."
+    payload = {
+        'mode': mode, 'message': message, 'link': link,
+        'scheduled_publish_time': scheduled_publish_time,
+        'media': media or {},
+    }
+    return propose_action(
+        company, kind=KIND_CREATE_POST, reason_fr=reason_fr, payload=payload)
+
+
+def propose_boost_post(company, *, post, adset, name=None, reason_fr=None):
+    """ADSDEEP52 — Propose de BOOSTER un post existant (kind BOOST_POST) : une ad
+    portant ``object_story_id`` (preuve sociale PRÉSERVÉE) dans l'ad set choisi,
+    née PAUSED (invariant permanent règle #3 — garanti par ``meta_client``,
+    jamais d'activation). ``post`` = ``PagePostMirror`` ; ``adset`` =
+    ``AdSetMirror`` possédé."""
+    name = name or f'Boost post {post.meta_id}'
+    reason_fr = reason_fr or (
+        f"Booster le post de Page {post.meta_id} dans l'ad set "
+        f"{adset.meta_id} (ad née PAUSED).")
+    payload = {
+        'post_id': post.meta_id, 'adset_id': adset.meta_id, 'name': name}
+    return propose_action(
+        company, kind=KIND_BOOST_POST, reason_fr=reason_fr, payload=payload)
+
+
+def _dispatch_create_post(client, payload):
+    """ADSDEEP51 — Route une action CREATE_POST vers la bonne méthode de
+    publication du client selon le média (aucun / photo / multi-photos / vidéo)
+    et le mode (publié / dark / programmé)."""
+    media = payload.get('media') or {}
+    mkind = str(media.get('kind') or '').strip().lower()
+    message = payload.get('message', '') or ''
+    if mkind == 'photo':
+        return client.upload_page_photo(
+            image_url=media.get('image_url', ''), published=True,
+            caption=message)
+    if mkind == 'photos':
+        return client.create_multi_photo_post(
+            message=message, image_urls=media.get('image_urls') or [])
+    if mkind == 'video':
+        return client.upload_page_video(
+            file_url=media.get('file_url', ''), message=message,
+            file_size=media.get('file_size'))
+    mode = str(payload.get('mode') or 'published').strip().lower()
+    published = mode == 'published'
+    scheduled = (payload.get('scheduled_publish_time')
+                 if mode == 'scheduled' else None)
+    return client.create_page_post(
+        message=message, link=payload.get('link', '') or '',
+        published=published, scheduled_publish_time=scheduled)
+
+
 def approve_action(action, *, user):
     """Approuve une action PROPOSÉE (acteur posé côté serveur).
 
@@ -517,6 +628,29 @@ def _dispatch(client, action):
         # référencent des objets DÉJÀ nés PAUSED par le reste du moteur.
         return client.create_ad_study(
             name=payload.get('name', ''), cells=payload.get('cells', []),
+            extra_fields=payload.get('extra_fields'))
+    if kind == KIND_EDIT_POST:
+        # ADSDEEP50 — édition du TEXTE d'un post de Page (message SEUL, le visuel
+        # d'un post publié est immuable). La contrainte « app-created only » a été
+        # vérifiée à la proposition (``propose_edit_post`` refuse un post non créé
+        # par l'app) ; aucun ``status`` n'est envoyé (invariant permanent #3).
+        return client.edit_page_post(
+            post_id=payload.get('post_id', ''),
+            message=payload.get('message', ''),
+            extra_fields=payload.get('extra_fields'))
+    if kind == KIND_CREATE_POST:
+        # ADSDEEP51 — publication organique (publié / dark / programmé ; texte /
+        # photo / multi-photos / vidéo). Ce n'est pas un objet publicitaire —
+        # aucun ``status`` de campagne/adset/ad n'est en jeu.
+        return _dispatch_create_post(client, payload)
+    if kind == KIND_BOOST_POST:
+        # ADSDEEP52 — boost d'un post existant : adcreative object_story_id
+        # (preuve sociale préservée) → ad née PAUSED (garanti par meta_client,
+        # invariant permanent règle #3 : aucune activation possible).
+        return client.boost_page_post(
+            post_id=payload.get('post_id', ''),
+            adset_id=payload.get('adset_id', ''),
+            name=payload.get('name', ''),
             extra_fields=payload.get('extra_fields'))
     if kind == KIND_ENABLE_CBO:
         # ADSENG22 — ``enable_cbo`` est PROPOSE-ONLY : activer l'Advantage+
