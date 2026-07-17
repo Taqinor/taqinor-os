@@ -184,6 +184,10 @@ INSTALLED_APPS = [
     # canal de feedback produit in-app. Additif, company-scopé ; le chatter
     # réutilise records.Activity (ARC8), aucun modèle *Activity maison.
     'apps.innovation',
+    # Groupe NTCRD — Gestion du crédit client (limite de crédit, credit hold,
+    # scoring, assurance-crédit, exposition consolidée). Foundation-adjacent :
+    # ne modifie AUCUN modèle ventes/crm existant, string-FK uniquement.
+    'apps.credit',
 ]
 
 MIDDLEWARE = [
