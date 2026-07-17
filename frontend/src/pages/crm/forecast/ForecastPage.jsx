@@ -24,7 +24,7 @@ export default function ForecastPage() {
   const [rollup, setRollup] = useState(null)
   const [loading, setLoading] = useState(true)
   const [periode, setPeriode] = useState('')
-  const [equipeFiltre, setEquipeFiltre] = useState('')
+  const [equipeFiltre] = useState('')
 
   const load = useCallback(() => {
     setLoading(true)
@@ -37,6 +37,7 @@ export default function ForecastPage() {
       .finally(() => setLoading(false))
   }, [periode, equipeFiltre])
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement initial au montage
   useEffect(() => { load() }, [load])
 
   const recategoriser = async (leadId, categorie) => {

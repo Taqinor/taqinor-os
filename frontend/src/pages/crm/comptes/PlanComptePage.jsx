@@ -51,6 +51,7 @@ export default function PlanComptePage({ clientId, planId }) {
       .finally(() => setLoading(false))
   }, [planId, clientId])
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement initial au montage
   useEffect(() => { load() }, [load])
 
   const handleSave = async (e) => {

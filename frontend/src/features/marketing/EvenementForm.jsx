@@ -33,6 +33,7 @@ export default function EvenementForm({ initial, onSave, onCancel, editing }) {
   const [err, setErr] = useState('')
   const [saving, setSaving] = useState(false)
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- resync le formulaire quand la prop initial change
   useEffect(() => { setForm(initial || emptyForm()) }, [initial])
 
   const setField = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }))

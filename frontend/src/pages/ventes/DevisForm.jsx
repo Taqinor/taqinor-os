@@ -60,6 +60,7 @@ function ApprobationPanel({ devisId }) {
       .catch(() => setEtapes([]))
       .finally(() => setLoading(false))
   }
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- rechargement au changement de devis
   useEffect(() => { reload() }, [devisId])
 
   const approuver = async () => {

@@ -33,6 +33,7 @@ export default function OrgChartTab({ clientId }) {
 
   useEffect(() => {
     if (!clientId) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- état de chargement avant le fetch
     setLoading(true)
     api.get('/contacts/contacts-client/', { params: { client: clientId } })
       .then((res) => setContacts(res.data?.results ?? res.data ?? []))

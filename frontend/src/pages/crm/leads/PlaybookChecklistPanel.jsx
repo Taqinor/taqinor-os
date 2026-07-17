@@ -19,6 +19,7 @@ export default function PlaybookChecklistPanel({ leadId }) {
       .finally(() => setLoading(false))
   }, [leadId])
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement initial au montage
   useEffect(() => { load() }, [load])
 
   const toggle = async (tacheId, fait) => {

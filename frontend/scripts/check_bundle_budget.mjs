@@ -86,7 +86,12 @@ const MODULEPRELOAD_ALLOWLIST = new Set([
 // chunks < 1 Ko gzip d'icônes lucide individuelles, cf. VX189). Généreux :
 // n'attrape qu'une régression de structure massive, pas la croissance produit
 // normale (chaque écran lazy-loadé ajoute un chunk).
-const MAX_CHUNK_COUNT = 400
+// 2026-07-17 : 400 -> 430. Les vagues plateforme (santé/innovation/QX) + le
+// shell Marketing PLAN_CRM_VENTES (9 écrans lazy-loadés) portent le total à 404
+// chunks — chaque écran lazy ajoute 1 chunk (croissance produit, pas une
+// prolifération d'icônes). Palier généreux ; le budget gzip (2440) reste le
+// vrai garde-fou de poids.
+const MAX_CHUNK_COUNT = 430
 
 // Extrait les `<link rel="modulepreload" href="...">` de `dist/index.html` et
 // signale tout vendor lourd nommé qui s'y trouve (hors allowlist). Silencieux

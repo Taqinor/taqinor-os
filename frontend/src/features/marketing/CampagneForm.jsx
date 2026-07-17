@@ -62,6 +62,7 @@ export default function CampagneForm({ initial, onSave, onCancel, editing }) {
   const [apercuLoading, setApercuLoading] = useState(false)
   const [apercuErr, setApercuErr] = useState('')
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- resync le formulaire quand la prop initial change
   useEffect(() => { setForm(initial || emptyForm()) }, [initial])
 
   useEffect(() => {
