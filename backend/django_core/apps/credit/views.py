@@ -135,9 +135,18 @@ def exposition_credit(request):
     xlsx`` renvoie un classeur .xlsx (jamais de ``prix_achat``/marge)."""
     from django.http import HttpResponse
 
+    from apps.crm.selectors import client_base_qs
+    from core.scoping import scope_client_queryset
+
     from .selectors import rapport_exposition
 
-    lignes = rapport_exposition(request.user.company)
+    # NTCRD36 — un Commercial ne voit QUE ses propres clients (filtre déjà
+    # utilisé ailleurs, ``core.scoping.scope_client_queryset``) ; le Directeur/
+    # Administrateur voit tout le portefeuille (scope 'all' → inchangé).
+    clients_visibles = list(
+        scope_client_queryset(client_base_qs(request.user.company),
+                              request.user))
+    lignes = rapport_exposition(request.user.company, clients=clients_visibles)
 
     if request.query_params.get('format') == 'xlsx':
         from apps.records.xlsx import workbook_bytes

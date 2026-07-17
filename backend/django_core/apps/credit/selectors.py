@@ -223,12 +223,12 @@ def rapport_exposition(company, clients=None):
     Le tri combine deux signaux normalisés (0-1) sans nouvel algorithme opaque :
     ``risque = lettre_num/4 + min(pct_utilise, 1)`` — une lettre E (num 4) et un
     dépassement pèsent le plus. Tri stable (id en clé secondaire)."""
-    from apps.crm.selectors import client_base_qs
     from apps.ventes.selectors import comportement_paiement
 
     from .models import LimiteCredit
 
     if clients is None:
+        from apps.crm.selectors import client_base_qs
         clients = list(client_base_qs(company))
 
     lettre_num = {'A': 0, 'B': 1, 'C': 2, 'D': 3, 'E': 4}
