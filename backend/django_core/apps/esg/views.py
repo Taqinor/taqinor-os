@@ -95,6 +95,21 @@ class PeriodeReportingESGViewSet(CompanyScopedModelViewSet):
             f'attachment; filename="rapport-esg-{periode.pk}.pdf"')
         return response
 
+    @action(detail=True, methods=['get'], url_path='dpef',
+            permission_classes=[ScopedPermission])
+    def dpef(self, request, pk=None):
+        """Export DPEF-friendly (NTESG14) — gabarit texte structuré
+        Markdown, JAMAIS présenté comme une DPEF officielle déposée."""
+        from .dpef_export import generer_dpef_texte
+
+        periode = self.get_object()
+        texte = generer_dpef_texte(periode)
+        response = HttpResponse(
+            texte, content_type='text/markdown; charset=utf-8')
+        response['Content-Disposition'] = (
+            f'attachment; filename="dpef-{periode.pk}.md"')
+        return response
+
     @action(detail=True, methods=['get'],
             permission_classes=[ScopedPermission])
     def export(self, request, pk=None):
