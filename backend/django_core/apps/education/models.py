@@ -847,3 +847,59 @@ class InscriptionCantine(TenantModel):
 
     def __str__(self):
         return f"Cantine — {self.eleve}"
+
+
+# =============================================================================
+# NTEDU27 — Discipline et incidents.
+# =============================================================================
+
+class IncidentDiscipline(TenantModel):
+    """NTEDU27 — incident disciplinaire, workflow simple ``ouvert →
+    en_traitement → clos`` (actions dédiées du viewset, jamais un PATCH
+    ``statut`` direct — même politique que ``Remise``/``Inscription``).
+    Un incident ``majeur`` notifie TOUJOURS le parent à la création
+    (WhatsApp — ``signals.notifier_incident_discipline``, même canal gated
+    ``notifications.whatsapp_bsp`` que NTEDU13, cf. NTEDU30) ; un incident
+    ``mineur`` ne notifie que si ``ParametresEducation.
+    notifier_incidents_mineurs`` est activé pour la société."""
+
+    class Type(models.TextChoices):
+        RETARD = 'retard', 'Retard'
+        COMPORTEMENT = 'comportement', 'Comportement'
+        ABSENCE_INJUSTIFIEE = 'absence_injustifiee', 'Absence injustifiée'
+        AUTRE = 'autre', 'Autre'
+
+    class Gravite(models.TextChoices):
+        MINEUR = 'mineur', 'Mineur'
+        MOYEN = 'moyen', 'Moyen'
+        MAJEUR = 'majeur', 'Majeur'
+
+    class Statut(models.TextChoices):
+        OUVERT = 'ouvert', 'Ouvert'
+        EN_TRAITEMENT = 'en_traitement', 'En traitement'
+        CLOS = 'clos', 'Clos'
+
+    eleve = models.ForeignKey(
+        Eleve, on_delete=models.CASCADE,  # on_delete: composition (parent-enfant)
+        related_name='incidents_discipline', verbose_name='Élève')
+    date = models.DateField(verbose_name='Date')
+    type = models.CharField(
+        max_length=25, choices=Type.choices, verbose_name="Type d'incident")
+    gravite = models.CharField(
+        max_length=10, choices=Gravite.choices, verbose_name='Gravité')
+    description = models.TextField(
+        blank=True, default='', verbose_name='Description')
+    signale_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='education_incidents_signales', verbose_name='Signalé par')
+    statut = models.CharField(
+        max_length=15, choices=Statut.choices, default=Statut.OUVERT,
+        verbose_name='Statut')
+
+    class Meta:
+        verbose_name = 'Incident de discipline'
+        verbose_name_plural = 'Incidents de discipline'
+        ordering = ['-date']
+
+    def __str__(self):
+        return f"{self.get_type_display()} — {self.eleve} ({self.date})"

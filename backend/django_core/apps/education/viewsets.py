@@ -15,17 +15,18 @@ from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
     AnneeScolaire, Classe, CreneauEmploiDuTemps, EcheancierScolarite, Eleve,
-    Evaluation, Famille, GrilleTarifaire, Inscription, InscriptionCantine,
-    Matiere, MatiereClasse, MenuCantine, Niveau, Note, ParametresEducation,
-    Presence, Remise, Seance)
+    Evaluation, Famille, GrilleTarifaire, IncidentDiscipline, Inscription,
+    InscriptionCantine, Matiere, MatiereClasse, MenuCantine, Niveau, Note,
+    ParametresEducation, Presence, Remise, Seance)
 from .serializers import (
     AnneeScolaireSerializer, ClasseSerializer, CreneauEmploiDuTempsSerializer,
     EcheancierScolariteSerializer, EleveSerializer, EvaluationSerializer,
     FamilleSerializer, GrilleTarifaireSerializer,
-    InscriptionCantineSerializer, InscriptionSerializer,
-    MatiereClasseSerializer, MatiereSerializer, MenuCantineSerializer,
-    NiveauSerializer, NoteSerializer, ParametresEducationSerializer,
-    PresenceSerializer, RemiseSerializer, SeanceSerializer)
+    IncidentDisciplineSerializer, InscriptionCantineSerializer,
+    InscriptionSerializer, MatiereClasseSerializer, MatiereSerializer,
+    MenuCantineSerializer, NiveauSerializer, NoteSerializer,
+    ParametresEducationSerializer, PresenceSerializer, RemiseSerializer,
+    SeanceSerializer)
 
 
 class AnneeScolaireViewSet(CompanyScopedModelViewSet):
@@ -578,3 +579,36 @@ class InscriptionCantineViewSet(CompanyScopedModelViewSet):
 
         instance = serializer.save()
         resynchroniser_lignes_futures_cantine(instance.eleve)
+
+
+# =============================================================================
+# NTEDU27 — Discipline et incidents.
+# =============================================================================
+
+class IncidentDisciplineViewSet(CompanyScopedModelViewSet):
+    """NTEDU27 — workflow simple ``ouvert → en_traitement → clos`` : les
+    actions dédiées passent TOUJOURS par le viewset (jamais un PATCH
+    ``statut`` direct — même politique que ``Remise``). La notification
+    parent (majeur toujours, mineur si paramétré) est déclenchée par
+    ``signals.notifier_incident_discipline`` à la CRÉATION."""
+
+    queryset = IncidentDiscipline.objects.select_related('eleve').all()
+    serializer_class = IncidentDisciplineSerializer
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company, signale_par=self.request.user)
+
+    @action(detail=True, methods=['post'], url_path='demarrer-traitement')
+    def demarrer_traitement(self, request, pk=None):
+        incident = self.get_object()
+        incident.statut = IncidentDiscipline.Statut.EN_TRAITEMENT
+        incident.save(update_fields=['statut'])
+        return Response(IncidentDisciplineSerializer(incident).data)
+
+    @action(detail=True, methods=['post'], url_path='cloturer')
+    def cloturer(self, request, pk=None):
+        incident = self.get_object()
+        incident.statut = IncidentDiscipline.Statut.CLOS
+        incident.save(update_fields=['statut'])
+        return Response(IncidentDisciplineSerializer(incident).data)

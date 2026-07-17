@@ -16,9 +16,9 @@ from authentication.models import Company
 
 from .models import (
     AnneeScolaire, Classe, CreneauEmploiDuTemps, Eleve, Evaluation, Famille,
-    GrilleTarifaire, Inscription, InscriptionCantine, LigneEcheance, Matiere,
-    MatiereClasse, MenuCantine, Niveau, Note, ParametresEducation, Presence,
-    Remise, Seance)
+    GrilleTarifaire, IncidentDiscipline, Inscription, InscriptionCantine,
+    LigneEcheance, Matiere, MatiereClasse, MenuCantine, Niveau, Note,
+    ParametresEducation, Presence, Remise, Seance)
 from .services import affecter_classe, valider_inscription
 
 User = get_user_model()
@@ -854,3 +854,70 @@ class NTEDU26CantineEcheancierTests(EducationTestCaseMixin, TestCase):
 
         deuxieme = LigneEcheance.objects.get(pk=lignes[1].pk)
         self.assertEqual(deuxieme.cantine_montant, Decimal('0'))
+
+
+class NTEDU27IncidentDisciplineTests(EducationTestCaseMixin, TestCase):
+    """NTEDU27 — incident disciplinaire, workflow + notification parent."""
+
+    def setUp(self):
+        super().setUp()
+        self.eleve = Eleve.objects.create(
+            company=self.company, famille=self.famille, nom='X', prenom='Y',
+            classe=self.classe)
+
+    def test_incident_majeur_notifie_toujours_le_parent(self):
+        from unittest.mock import patch
+
+        with patch(
+                'apps.notifications.services.send_whatsapp_campaign_message'
+        ) as mocked:
+            IncidentDiscipline.objects.create(
+                company=self.company, eleve=self.eleve, date=date(2026, 9, 15),
+                type=IncidentDiscipline.Type.COMPORTEMENT,
+                gravite=IncidentDiscipline.Gravite.MAJEUR)
+            self.assertEqual(mocked.call_count, 1)
+
+    def test_incident_mineur_ne_notifie_pas_par_defaut(self):
+        from unittest.mock import patch
+
+        with patch(
+                'apps.notifications.services.send_whatsapp_campaign_message'
+        ) as mocked:
+            IncidentDiscipline.objects.create(
+                company=self.company, eleve=self.eleve, date=date(2026, 9, 15),
+                type=IncidentDiscipline.Type.RETARD,
+                gravite=IncidentDiscipline.Gravite.MINEUR)
+            self.assertEqual(mocked.call_count, 0)
+
+    def test_incident_mineur_notifie_si_parametre_active(self):
+        from unittest.mock import patch
+
+        ParametresEducation.objects.create(
+            company=self.company, notifier_incidents_mineurs=True)
+        with patch(
+                'apps.notifications.services.send_whatsapp_campaign_message'
+        ) as mocked:
+            IncidentDiscipline.objects.create(
+                company=self.company, eleve=self.eleve, date=date(2026, 9, 15),
+                type=IncidentDiscipline.Type.RETARD,
+                gravite=IncidentDiscipline.Gravite.MINEUR)
+            self.assertEqual(mocked.call_count, 1)
+
+    def test_workflow_ouvert_en_traitement_clos(self):
+        incident = IncidentDiscipline.objects.create(
+            company=self.company, eleve=self.eleve, date=date(2026, 9, 15),
+            type=IncidentDiscipline.Type.AUTRE,
+            gravite=IncidentDiscipline.Gravite.MOYEN)
+        self.assertEqual(incident.statut, IncidentDiscipline.Statut.OUVERT)
+
+        url = f'/api/django/education/incidents/{incident.id}/demarrer-traitement/'
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, 200, response.content)
+        incident.refresh_from_db()
+        self.assertEqual(incident.statut, IncidentDiscipline.Statut.EN_TRAITEMENT)
+
+        url = f'/api/django/education/incidents/{incident.id}/cloturer/'
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, 200, response.content)
+        incident.refresh_from_db()
+        self.assertEqual(incident.statut, IncidentDiscipline.Statut.CLOS)
