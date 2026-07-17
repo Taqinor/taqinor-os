@@ -5,7 +5,6 @@ from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from authentication.permissions import IsResponsableOrAdmin
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
@@ -242,6 +241,16 @@ class LimiteCreditViewSet(CompanyScopedModelViewSet):
     queryset = LimiteCredit.objects.select_related('client', 'cree_par').all()
     serializer_class = LimiteCreditSerializer
 
+    def get_permissions(self):
+        # NTCRD35 — modification de limite réservée Directeur/Administrateur
+        # (un Commercial standard n'a que la LECTURE de la fiche). La variante
+        # à CLÉS de permission fines (credit.modifier_limite…) dans apps/roles
+        # est hors périmètre de ce lane ; le gate par palier de rôle satisfait
+        # le critère d'acceptation (Commercial → 403 en écriture).
+        if self.action in ('create', 'update', 'partial_update', 'destroy'):
+            return [IsDirecteurOrAdmin()]
+        return super().get_permissions()
+
     def perform_create(self, serializer):
         serializer.save(
             company=self.request.user.company, cree_par=self.request.user)
@@ -294,8 +303,9 @@ class ReglageCreditView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get_permissions(self):
+        # NTCRD35 — configuration des réglages réservée Directeur/Administrateur.
         if self.request.method in ('PATCH', 'PUT', 'POST'):
-            return [IsResponsableOrAdmin()]
+            return [IsDirecteurOrAdmin()]
         return super().get_permissions()
 
     def get(self, request):
