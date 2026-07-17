@@ -201,6 +201,23 @@ def position_credit_pdf(request, client_id):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
+def limite_suggeree_view(request, client_id):
+    """NTCRD27 — limite de crédit suggérée (règle documentée, modifiable) pour
+    le wizard. Company-scopé."""
+    from apps.crm.selectors import get_company_client
+
+    from .selectors import limite_suggeree
+
+    client = get_company_client(request.user.company, client_id)
+    if client is None:
+        return Response(
+            {'detail': 'Client introuvable.'},
+            status=status.HTTP_404_NOT_FOUND)
+    return Response(limite_suggeree(client))
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def score_credit_client(request, client_id):
     """NTCRD12 — score crédit d'un client (lettre A-E + position vs limite +
     recommandation lisible). Company-scopé, 404 propre hors société."""

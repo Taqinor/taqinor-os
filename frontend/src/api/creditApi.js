@@ -20,6 +20,10 @@ const creditApi = {
   // NTCRD10 — fiche crédit consolidée d'un client.
   getFicheClient: (clientId) => api.get(`/credit/clients/${clientId}/fiche/`),
 
+  // NTCRD27 — limite suggérée (wizard « définir une limite »).
+  getLimiteSuggeree: (clientId) =>
+    api.get(`/credit/clients/${clientId}/limite-suggeree/`),
+
   // NTCRD19/20 — rapport d'exposition consolidée (+ export xlsx).
   getExposition: (params) => api.get('/credit/exposition/', { params }),
   exportExpositionXlsx: () =>

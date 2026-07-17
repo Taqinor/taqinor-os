@@ -160,6 +160,35 @@ def badges_credit(company, client_ids):
     return {c.id: badge_credit(c) for c in clients}
 
 
+def limite_suggeree(client):
+    """NTCRD27 — limite de crédit SUGGÉRÉE pour un client sans limite.
+
+    Règle simple DOCUMENTÉE (jamais opaque) et toujours modifiable par le
+    Directeur avant validation : ``2 × encours_actuel`` arrondi au millier
+    supérieur (marge de sécurité au-dessus de l'exposition constatée) ; 0 si le
+    client n'a aucun encours (le Directeur saisit alors manuellement).
+
+    NOTE — la variante « 2× la moyenne des 3 dernières factures payées à temps »
+    évoquée par NTCRD27 nécessiterait un sélecteur ventes exposant l'historique
+    des factures payées (absent) : hors périmètre de ce lane (jamais un import
+    de ``facturation.models`` ni une édition de ``ventes.selectors``). La règle
+    basée sur l'encours reste cohérente et modifiable."""
+    from decimal import Decimal
+
+    encours = encours_client(client)
+    if encours <= 0:
+        suggestion = Decimal('0')
+    else:
+        millier = (encours / Decimal('1000')).to_integral_value(
+            rounding='ROUND_CEILING') * Decimal('1000')
+        suggestion = millier * 2
+    return {
+        'suggestion': suggestion,
+        'base_encours': encours,
+        'regle': '2 x encours actuel, arrondi au millier superieur',
+    }
+
+
 def segment_du_client(client):
     """NTCRD13 — segment crédit affecté à un client (repli local
     ``SegmentClientCredit``), ou ``None`` si aucun (comportement société par
