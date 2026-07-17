@@ -565,9 +565,11 @@ def run_active_flightplans():
 
 @shared_task(name='adsengine.emit_capi_signatures')
 def emit_capi_signatures():
-    """ADSDEEP27 — Beat quotidien : pousse au CRM Dataset Meta l'événement d'issue
-    de la boucle *Conversion Leads* (``signed_contract`` sur chaque deal signé
-    Odoo), idempotent (marqueur ``CapiOdooEvent``).
+    """ADSDEEP27/28 — Beat quotidien : pousse au CRM Dataset Meta les deux bornes
+    de la boucle *Conversion Leads* — l'amont ``lead_received`` (par
+    ``MetaLeadMirror``) et l'issue ``signed_contract`` (par deal signé Odoo) —
+    idempotents (marqueur ``CapiOdooEvent``). Meta exige AU MOINS deux étapes par
+    ``lead_id`` : un lead signé porte donc bien réception + signature.
 
     NO-OP propre sans ``CAPI_CRM_DATASET_ID`` + token : aucune société n'est
     balayée, aucune lecture Odoo ni appel réseau. Best-effort par société ; une
@@ -579,11 +581,12 @@ def emit_capi_signatures():
     if not capi_odoo.is_configured():
         logger.info(
             'adsengine.emit_capi_signatures: CRM Dataset non configuré — no-op')
-        return {'configured': False, 'signed': 0}
+        return {'configured': False, 'received': 0, 'signed': 0}
 
-    signed = 0
+    received = signed = 0
     for company in active_companies():
         try:
+            received += capi_odoo.emit_lead_received(company)['emitted']
             signed += capi_odoo.emit_signed_deals(company)['emitted']
         except Exception:  # pragma: no cover - défensif, isolation société
             logger.warning(
@@ -591,8 +594,10 @@ def emit_capi_signatures():
                 company.pk, exc_info=True)
             continue
 
-    logger.info('adsengine.emit_capi_signatures: %s signé(s)', signed)
-    return {'configured': True, 'signed': signed}
+    logger.info(
+        'adsengine.emit_capi_signatures: %s reçu(s), %s signé(s)',
+        received, signed)
+    return {'configured': True, 'received': received, 'signed': signed}
 
 
 @shared_task(name='adsengine.generate_creative_variants')

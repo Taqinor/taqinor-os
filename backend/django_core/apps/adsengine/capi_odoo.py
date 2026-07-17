@@ -270,3 +270,89 @@ def emit_signed_deals(company, *, since=None, client=None, now=None,
         else:
             result['skipped'] += 1  # échec HTTP : pas de marqueur → réessai demain
     return result
+
+
+# ── ADSDEEP28 — Événement AMONT ``lead_received`` (≥ 2 étapes par lead_id) ─────
+
+def _mirror_event_time(mirror, now):
+    """``event_time`` d'un ``MetaLeadMirror`` (``created_time``), rabattu sur
+    ``now`` si absent, futur, ou > 7 j (contrainte Meta)."""
+    created = getattr(mirror, 'created_time', None)
+    if created is None:
+        return now
+    try:
+        ts = int(created.timestamp())
+    except (AttributeError, OSError, ValueError, OverflowError):
+        return now
+    if ts > now or (now - ts) > _EVENT_TIME_MAX_AGE:
+        return now
+    return ts
+
+
+def build_received_event(company, mirror, *, now=None):
+    """ADSDEEP28 — Construit l'événement AMONT ``lead_received`` d'un
+    ``MetaLeadMirror`` (PUR). Meta exige AU MOINS deux étapes par ``lead_id``
+    (réception + issue) : ce ``lead_received`` est la première borne, l'issue
+    ``signed_contract`` (ADSDEEP27) la seconde.
+
+    ``user_data.lead_id`` = leadgen Meta (JAMAIS haché) ; ``ph`` = SHA-256 du
+    téléphone E.164 quand le ``phone_key`` est présent (qualité de match). Renvoie
+    ``{'eligible', 'reason', 'event'|None, 'event_key'|None}`` — inéligible sans
+    ``leadgen_id`` (pas de clé de match Meta)."""
+    now = int(now if now is not None else time.time())
+    leadgen_id = (getattr(mirror, 'leadgen_id', '') or '').strip()
+    if not leadgen_id:
+        return {'eligible': False, 'reason': 'no_leadgen_id',
+                'event': None, 'event_key': None}
+
+    user_data = {'lead_id': leadgen_id}
+    e164 = _e164_digits(getattr(mirror, 'phone_key', '') or '')
+    if e164:
+        user_data['ph'] = [_sha256(e164)]
+
+    event_key = f'lead_received:{leadgen_id}'
+    event = {
+        'event_name': LEAD_RECEIVED_EVENT_NAME,
+        'event_time': _mirror_event_time(mirror, now),
+        'event_id': event_key,
+        'action_source': 'system_generated',
+        'user_data': user_data,
+        'custom_data': {
+            'event_source': _EVENT_SOURCE,
+            'lead_event_source': _LEAD_EVENT_SOURCE,
+        },
+    }
+    return {'eligible': True, 'reason': 'ok',
+            'event': event, 'event_key': event_key}
+
+
+def emit_lead_received(company, *, now=None, transport=None):
+    """ADSDEEP28 — Émet un événement AMONT ``lead_received`` par ``MetaLeadMirror``
+    de la société, idempotent (marqueur ``CapiOdooEvent``). NO-OP propre sans
+    dataset/token. Best-effort — ne lève jamais.
+
+    Renvoie ``{'emitted', 'skipped', 'reason'}``."""
+    result = {'emitted': 0, 'skipped': 0, 'reason': 'ok'}
+    if not is_configured():
+        result['reason'] = 'not_configured'
+        return result
+
+    from .models import MetaLeadMirror
+    qs = (MetaLeadMirror.objects
+          .filter(company=company)
+          .exclude(leadgen_id=''))
+    for mirror in qs:
+        built = build_received_event(company, mirror, now=now)
+        if not built['eligible']:
+            result['skipped'] += 1
+            continue
+        event_key = built['event_key']
+        if _already_sent(company, event_key):
+            result['skipped'] += 1  # déjà émis — jamais deux fois par lead
+            continue
+        if _send_event(built['event'], transport=transport):
+            _mark_sent(company, event_key, built['event']['event_name'])
+            result['emitted'] += 1
+        else:
+            result['skipped'] += 1  # échec HTTP : pas de marqueur → réessai demain
+    return result

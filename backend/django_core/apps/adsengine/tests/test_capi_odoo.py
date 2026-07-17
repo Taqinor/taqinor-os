@@ -163,3 +163,86 @@ class EmitSignedDealsTests(TestCase):
         # pas de marqueur → l'événement repartira au prochain passage.
         self.assertFalse(CapiOdooEvent.objects.filter(
             company=self.company, event_key='odoo_signed:9').exists())
+
+
+class LeadReceivedTests(TestCase):
+    """ADSDEEP28 — événement amont ``lead_received`` par MetaLeadMirror."""
+
+    def setUp(self):
+        self.company = Company.objects.create(nom='Recv Co', slug='recv-co')
+
+    def test_build_uses_lead_id_and_hashed_phone(self):
+        mirror = MetaLeadMirror.objects.create(
+            company=self.company, leadgen_id='L1', phone_key='612345678')
+        built = capi_odoo.build_received_event(self.company, mirror, now=1000)
+        ev = built['event']
+        self.assertEqual(ev['event_name'], 'lead_received')
+        self.assertEqual(ev['action_source'], 'system_generated')
+        self.assertEqual(ev['user_data']['lead_id'], 'L1')
+        expected = hashlib.sha256('212612345678'.encode()).hexdigest()
+        self.assertEqual(ev['user_data']['ph'], [expected])
+        self.assertEqual(ev['event_id'], 'lead_received:L1')
+
+    def test_emit_idempotent(self):
+        MetaLeadMirror.objects.create(
+            company=self.company, leadgen_id='L2', phone_key='')
+        calls = []
+        with mock.patch.dict(os.environ, _ENV_ON):
+            first = capi_odoo.emit_lead_received(
+                self.company,
+                transport=lambda u, p: calls.append(p) or (200, 'ok'))
+            second = capi_odoo.emit_lead_received(
+                self.company,
+                transport=lambda u, p: calls.append(p) or (200, 'ok'))
+        self.assertEqual(first['emitted'], 1)
+        self.assertEqual(second['emitted'], 0)
+        self.assertEqual(len(calls), 1)
+
+    def test_no_op_without_config(self):
+        MetaLeadMirror.objects.create(
+            company=self.company, leadgen_id='L3', phone_key='')
+        sent = []
+        with mock.patch.dict(os.environ, {}, clear=False):
+            for k in ('CAPI_CRM_DATASET_ID', 'META_CAPI_ACCESS_TOKEN',
+                      'CAPI_CRM_ACCESS_TOKEN'):
+                os.environ.pop(k, None)
+            res = capi_odoo.emit_lead_received(
+                self.company,
+                transport=lambda u, p: sent.append(p) or (200, 'ok'))
+        self.assertEqual(res['reason'], 'not_configured')
+        self.assertEqual(sent, [])
+
+
+class TwoStepPerLeadTests(TestCase):
+    """ADSDEEP28 — un lead signé porte bien DEUX étapes (Meta exige ≥ 2 par
+    lead_id) : ``lead_received`` (amont) + ``signed_contract`` (issue)."""
+
+    def test_signed_lead_gets_received_and_signed(self):
+        company = Company.objects.create(nom='2step Co', slug='2step-co')
+        MetaLeadMirror.objects.create(
+            company=company, leadgen_id='LX', phone_key='612345678')
+        posted = []
+
+        def _transport(url, payload):
+            posted.append(payload)
+            return 200, 'ok'
+
+        with mock.patch.dict(os.environ, _ENV_ON), \
+                mock.patch.object(
+                    capi_odoo, 'odoo_signed_deals',
+                    lambda **k: [_deal(phone_norm='612345678', lead_id=1)]):
+            recv = capi_odoo.emit_lead_received(company, transport=_transport)
+            sign = capi_odoo.emit_signed_deals(company, transport=_transport)
+
+        self.assertEqual(recv['emitted'], 1)
+        self.assertEqual(sign['emitted'], 1)
+        # deux marqueurs distincts pour ce lead : réception + signature.
+        keys = set(CapiOdooEvent.objects.filter(
+            company=company).values_list('event_key', flat=True))
+        self.assertEqual(keys, {'lead_received:LX', 'odoo_signed:1'})
+        # les DEUX événements portent le MÊME lead_id Meta (LX) — matché via
+        # MetaLeadMirror côté signature.
+        blob = b''.join(posted)
+        self.assertEqual(blob.count(b'"lead_id": "LX"'), 2)
+        self.assertIn(b'lead_received', blob)
+        self.assertIn(b'signed_contract', blob)
