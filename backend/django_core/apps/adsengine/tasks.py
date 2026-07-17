@@ -31,6 +31,84 @@ def _parse_date(value):
         return None
 
 
+# ADSDEEP2 — champs insights niveau ad/adset (dossier insights-api §1 + §3).
+# Une seule liste de champs demandée à l'edge COMPTE avec ``level=ad|adset`` :
+# diffusion + conversion (``actions[]``) + métriques vidéo (AdsActionStats).
+AD_INSIGHT_FIELDS = (
+    'spend', 'impressions', 'reach', 'clicks', 'frequency',
+    'inline_link_clicks', 'results', 'actions',
+    'video_p25_watched_actions', 'video_p50_watched_actions',
+    'video_p75_watched_actions', 'video_p95_watched_actions',
+    'video_p100_watched_actions', 'video_play_actions',
+    'video_6_sec_watched_actions', 'video_15_sec_watched_actions',
+    'video_30_sec_watched_actions', 'video_thruplay_watched_actions',
+    'video_avg_time_watched_actions',
+)
+
+# Fenêtre glissante (jours) pour la synchro ad/adset — les insights fins sont
+# lus sur les 7 derniers jours (le détail campagne reste sur ``maximum``).
+AD_INSIGHT_WINDOW_DAYS = 7
+
+
+def _account_node(conn):
+    """Nœud de compte publicitaire (``act_<id>``) depuis la connexion, ou ''."""
+    acct = str(conn.ad_account_id or '').strip()
+    if not acct:
+        return ''
+    return acct if acct.startswith('act_') else f'act_{acct}'
+
+
+def _sync_level_insights(company, conn, client, *, level):
+    """ADSDEEP2 — Synchronise les snapshots niveau ``ad`` ou ``adset``.
+
+    Tire les insights de l'edge COMPTE avec ``level=ad|adset``,
+    ``time_increment=1`` (une ligne par jour) sur une fenêtre 7 j glissants,
+    puis upserte un ``InsightSnapshot`` par (miroir, jour) — colonnes typées
+    ADSDEEP1 comprises. Les rows sans id d'objet, ou sans miroir correspondant,
+    sont ignorés (jamais d'erreur). Débloque ``attribution.variant_attribution``,
+    la fréquence dans ``rules_engine`` et le CBO de ``budget_applier`` — tous
+    DÉJÀ codés et affamés de snapshots ad/adset (dossier existing-map §1)."""
+    from . import sync
+    from .models import AdMirror, AdSetMirror
+    from .platforms.base import normalize_insight_row
+
+    node = _account_node(conn)
+    if not node:
+        return
+    id_field = 'ad_id' if level == 'ad' else 'adset_id'
+    mirror_model = AdMirror if level == 'ad' else AdSetMirror
+    today = datetime.date.today()
+    since = today - datetime.timedelta(days=AD_INSIGHT_WINDOW_DAYS - 1)
+    rows = client.get_insights(
+        node,
+        fields=AD_INSIGHT_FIELDS + (id_field,),
+        params={
+            'level': level,
+            'time_increment': 1,
+            'time_range': {
+                'since': since.isoformat(), 'until': today.isoformat()},
+        })
+    mirrors = {
+        m.meta_id: m
+        for m in mirror_model.objects.filter(company=company)}
+    for row in rows or []:
+        obj_id = str(row.get(id_field) or '').strip()
+        mirror = mirrors.get(obj_id)
+        if mirror is None:
+            continue  # ad/adset non miroité (synchro miroirs à faire d'abord)
+        day = _parse_date(row.get('date_start')) or today
+        norm = normalize_insight_row(row)
+        sync.upsert_insight(
+            company, mirror, date=day,
+            spend=norm['spend'], results=norm['results'],
+            frequency=norm['frequency'], cpl=norm['cpl'],
+            impressions=norm['impressions'], reach=norm['reach'],
+            clicks=norm['clicks'], link_clicks=norm['link_clicks'],
+            conversations=norm['conversations'],
+            leads_count=norm['leads_count'],
+            video_metrics=norm['video_metrics'])
+
+
 def _sync_company(conn):
     """Synchronise UNE société depuis sa connexion Meta active (avec token).
 
@@ -59,6 +137,12 @@ def _sync_company(conn):
     sync.sync_campaigns(company, client.get_campaigns())
     sync.sync_adsets(company, client.get_adsets())
     sync.sync_ads(company, client.get_ads())
+
+    # ADSDEEP2 — snapshots niveau adset PUIS ad (edge compte, level=…). Placés
+    # AVANT la boucle campagne pour que le dernier appel get_insights reste
+    # celui de la campagne (fenêtre ``maximum`` — contrat ENG6 préservé).
+    _sync_level_insights(company, conn, client, level='adset')
+    _sync_level_insights(company, conn, client, level='ad')
 
     today = datetime.date.today()
     for camp in AdCampaignMirror.objects.filter(company=company):
