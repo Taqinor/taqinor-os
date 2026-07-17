@@ -95,6 +95,12 @@ _APP_URLS = [
     path('sante/', include('apps.sante.urls')),
     # Groupe NTIDE — Boîte à idées interne, campagnes d'innovation, feedback.
     path('innovation/', include('apps.innovation.urls')),
+    # Groupe NTCRD — Gestion du crédit client.
+    path('credit/', include('apps.credit.urls')),
+    # Groupe NTFPA — FP&A (budgets, prévisions glissantes, scénarios).
+    path('fpa/', include('apps.fpa.urls')),
+    # Groupe NTASS — Registre des assurances & sinistres d'entreprise.
+    path('assurances/', include('apps.assurances.urls')),
     # NTEDU1 — Éducation (établissement scolaire).
     path('education/', include('apps.education.urls')),
     # NTUX1 — Vues sauvegardées serveur (personnelles/partagées).

@@ -50,6 +50,16 @@ HISTORICAL_TARGETS = {
     # NTIDE1 — boîte à idées : l'historique/tags d'une idée passe par le
     # chatter/tag générique records (ARC8/FG9), pas un modèle *Activity maison.
     ('innovation', 'idee'),
+    # NTASS — le registre assurances (police/sinistre/attestation) journalise
+    # ses transitions via le chatter générique records (ARC8), ciblé par les
+    # manifestes ``apps/assurances/platform.py``.
+    ('assurances', 'declarationsinistre'),
+    ('assurances', 'policeassurance'),
+    ('assurances', 'attestationassurance'),
+    # NTCRD — limites & dérogations de crédit journalisées via le chatter
+    # records (ARC8), ciblées par ``apps/credit/platform.py``.
+    ('credit', 'limitecredit'),
+    ('credit', 'derogationcredit'),
 }
 
 
@@ -64,7 +74,7 @@ class TestAllowedTargetsNonRegression(SimpleTestCase):
             f"en trop: {resolved - HISTORICAL_TARGETS}")
 
     def test_len_matches(self):
-        self.assertEqual(len(ALLOWED_TARGETS), 22)
+        self.assertEqual(len(ALLOWED_TARGETS), 27)
 
     def test_contains_works_for_each_historical_pair(self):
         for pair in HISTORICAL_TARGETS:

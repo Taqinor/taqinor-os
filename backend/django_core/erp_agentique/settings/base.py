@@ -184,6 +184,18 @@ INSTALLED_APPS = [
     # canal de feedback produit in-app. Additif, company-scopé ; le chatter
     # réutilise records.Activity (ARC8), aucun modèle *Activity maison.
     'apps.innovation',
+    # Groupe NTCRD — Gestion du crédit client (limite de crédit, credit hold,
+    # scoring, assurance-crédit, exposition consolidée). Foundation-adjacent :
+    # ne modifie AUCUN modèle ventes/crm existant, string-FK uniquement.
+    'apps.credit',
+    # Groupe NTFPA — FP&A entreprise : cycles budgétaires par département,
+    # prévisions glissantes, scénarios what-if, variance analysis. DISTINCT
+    # du budget micro par chantier (gestion_projet.BudgetProjet, PROJ21/22).
+    'apps.fpa',
+    # Groupe NTASS — Registre des assurances & sinistres d'entreprise (RC pro,
+    # décennale, multirisque, cyber, homme-clé) ; distinct des polices/sinistres
+    # véhicule (flotte) et des cautions bancaires marché (compta).
+    'apps.assurances',
     # NTEDU1 — Éducation (établissement scolaire) : structure année/niveau/
     # classe, dossier famille/élève, inscriptions (liste d'attente), scolarité
     # (grille tarifaire/remises/échéancier), présences, matières. Additive,
@@ -774,6 +786,12 @@ CELERY_TASK_ROUTES = {
     # ADSDEEP8/18 — sync hebdo des breakdowns + pull quotidien des leads.
     'adsengine.sync_breakdowns_weekly': {'queue': 'scheduled'},
     'adsengine.pull_meta_leads': {'queue': 'scheduled'},
+    # NTCRD21/32/33/34 — jobs crédit planifiés (exposition, encours, dérogations,
+    # polices assurance-crédit expirantes).
+    'credit.alerter_exposition_globale': {'queue': 'scheduled'},
+    'credit.expirer_derogations': {'queue': 'scheduled'},
+    'credit.alerter_polices_expirantes': {'queue': 'scheduled'},
+    'credit.recalculer_encours_quotidien': {'queue': 'scheduled'},
     # NTSAN31 — alerte J-7 avant expiration d'une PriseEnCharge santé.
     'sante.alertes_prise_en_charge_expirant': {'queue': 'scheduled'},
     # NTPLT27 — 4e queue `bulk` pour le travail de masse (imports dataimport,

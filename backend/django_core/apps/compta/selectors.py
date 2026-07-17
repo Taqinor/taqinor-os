@@ -4054,3 +4054,103 @@ def kpi_echeances(company):
          'label': 'Échéances dépassées (effets ouverts)',
          'valeur': depassees, 'unite': 'effets'},
     ]
+
+
+# ── NTFPA2 — lecture minimale pour l'app FP&A (apps.fpa) ────────────────────
+# `apps.fpa.CycleBudgetaire.exercice_comptable_id` référence
+# `ExerciceComptable` en STRING-ID (jamais un FK dur — cross-app boundary) ;
+# ce sélecteur est le SEUL point de lecture que FP&A utilise pour résoudre le
+# libellé/les bornes d'un exercice. Lecture seule, scopé société.
+def get_exercice_label(company, exercice_id):
+    """Libellé + bornes d'un ``ExerciceComptable`` (ou ``None`` si absent/hors
+    société) — utilisé par ``apps.fpa`` sans jamais importer ``ExerciceComptable``
+    directement."""
+    if not exercice_id:
+        return None
+    from .models import ExerciceComptable
+
+    exercice = ExerciceComptable.objects.filter(
+        company=company, pk=exercice_id).first()
+    if exercice is None:
+        return None
+    return {
+        'id': exercice.pk,
+        'libelle': exercice.libelle or f'Exercice {exercice.date_debut}',
+        'date_debut': exercice.date_debut,
+        'date_fin': exercice.date_fin,
+        'statut': exercice.statut,
+    }
+
+
+def _mois_precedents(mois_reference, n_mois):
+    """``n_mois`` tuples ``(annee, mois)`` STRICTEMENT avant ``mois_reference``
+    (le mois de ``mois_reference`` lui-même est exclu), du plus ancien au plus
+    récent."""
+    annee, mois = mois_reference.year, mois_reference.month
+    bornes = []
+    for i in range(n_mois, 0, -1):
+        m = mois - i
+        a = annee
+        while m <= 0:
+            m += 12
+            a -= 1
+        bornes.append((a, m))
+    return bornes
+
+
+def moyenne_mensuelle_par_prefixes(company, prefixes, mois_reference, *,
+                                   n_mois=3, validees_seulement=True):
+    """NTFPA8 — moyenne mensuelle du montant net (Σ débit − Σ crédit) des
+    comptes du plan CGNC dont le numéro commence par l'un des ``prefixes``,
+    sur les ``n_mois`` mois CLOS précédant ``mois_reference`` (le mois de
+    référence lui-même est exclu).
+
+    Lecture seule ; c'est le SEUL point d'entrée que ``apps.fpa`` utilise pour
+    amorcer une prévision glissante depuis le réel comptable (jamais un import
+    direct de ``LigneEcriture``). Renvoie ``Decimal('0')`` si aucun mouvement.
+    """
+    prefixes = tuple(str(p) for p in (prefixes or ()))
+    if not prefixes:
+        return Decimal('0')
+
+    mois_bornes = _mois_precedents(mois_reference, n_mois)
+    annee_debut, mois_debut = mois_bornes[0]
+    date_debut = date(annee_debut, mois_debut, 1)
+    # Dernier jour du mois juste avant mois_reference.
+    date_fin = date(mois_reference.year, mois_reference.month, 1) - timedelta(days=1)
+
+    comptes = grand_livre(
+        company, date_debut=date_debut, date_fin=date_fin,
+        validees_seulement=validees_seulement)
+    total = Decimal('0')
+    for bucket in comptes:
+        if not str(bucket['numero']).startswith(prefixes):
+            continue
+        total += bucket['total_debit'] - bucket['total_credit']
+    return total / Decimal(n_mois)
+
+
+def total_reel_par_prefixes_mois(company, prefixes, annee, mois, *,
+                                 validees_seulement=True):
+    """NTFPA19 — total réel comptable (Σ débit − Σ crédit) des comptes dont le
+    numéro commence par l'un des ``prefixes``, sur le mois ``(annee, mois)``.
+
+    Lecture seule ; point d'entrée pour ``apps.fpa`` (variance budget vs réel).
+    Renvoie ``Decimal('0')`` si aucun mouvement. Jamais un import de
+    ``LigneEcriture`` côté FP&A."""
+    prefixes = tuple(str(p) for p in (prefixes or ()))
+    if not prefixes:
+        return Decimal('0')
+    date_debut = date(annee, mois, 1)
+    if mois == 12:
+        date_fin = date(annee, 12, 31)
+    else:
+        date_fin = date(annee, mois + 1, 1) - timedelta(days=1)
+    comptes = grand_livre(
+        company, date_debut=date_debut, date_fin=date_fin,
+        validees_seulement=validees_seulement)
+    total = Decimal('0')
+    for bucket in comptes:
+        if str(bucket['numero']).startswith(prefixes):
+            total += bucket['total_debit'] - bucket['total_credit']
+    return total

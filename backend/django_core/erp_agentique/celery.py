@@ -441,6 +441,29 @@ app.conf.beat_schedule = {
         'task': 'adsengine.pull_meta_leads',
         'schedule': crontab(hour=7, minute=25),
     },
+    # NTCRD21 — alerte quotidienne d'exposition crédit consolidée (07:20).
+    # Best-effort, une alerte par jour et par société (dédup), no-op tant que
+    # le seuil société vaut 0 (défaut).
+    'credit-alerter-exposition-globale': {
+        'task': 'credit.alerter_exposition_globale',
+        'schedule': crontab(hour=7, minute=20),
+    },
+    # NTCRD33 — expiration quotidienne des dérogations crédit échues (01:15).
+    'credit-expirer-derogations': {
+        'task': 'credit.expirer_derogations',
+        'schedule': crontab(hour=1, minute=15),
+    },
+    # NTCRD34 — alerte hebdomadaire (lundi 07:25) des polices d'assurance-crédit
+    # proches de leur échéance (J-30).
+    'credit-alerter-polices-expirantes': {
+        'task': 'credit.alerter_polices_expirantes',
+        'schedule': crontab(hour=7, minute=25, day_of_week=1),
+    },
+    # NTCRD32 — rafraîchit le cache court d'encours (quotidien, 02:10).
+    'credit-recalculer-encours-quotidien': {
+        'task': 'credit.recalculer_encours_quotidien',
+        'schedule': crontab(hour=2, minute=10),
+    },
     # NTSAN31 — alerte J-7 avant expiration d'une PriseEnCharge santé (évite
     # les actes réalisés hors couverture), quotidien, heure creuse matinale.
     'sante-alertes-prise-en-charge-expirant': {

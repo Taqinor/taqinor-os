@@ -621,6 +621,13 @@ incident_declared = django.dispatch.Signal()
 # audit/notifications/KPI d'un futur type de document construit sur le kit).
 document_statut_change = django.dispatch.Signal()
 
+# NTFPA29 — Émis EXACTEMENT une fois quand un ``fpa.CycleBudgetaire`` passe à
+# ``clos`` (action ``clore`` gardée côté service FP&A). Pose le crochet pour
+# qu'un futur module (paie, reporting…) réagisse à la clôture d'un cycle
+# budgétaire sans couplage direct. Aucun abonné requis dans le lot NTFPA.
+# Arguments : company, cycle_id, totaux (dict, ex. {'total_depenses': ...}).
+budget_cycle_clos = django.dispatch.Signal()
+
 
 # ===========================================================================
 # NTPLT9/10 — Outbox transactionnel FIABLE (façade au-dessus des signaux M6).

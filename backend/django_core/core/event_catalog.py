@@ -146,6 +146,9 @@ CATALOG = {
     'document_statut_change': _e(
         'Un document métier (kit SCA30) change de statut.',
         ['instance', 'ancien_statut', 'nouveau_statut', 'user', 'company']),
+    'budget_cycle_clos': _e(
+        'Un cycle budgétaire FP&A (NTFPA29) bascule vers « clos ».',
+        ['company', 'cycle_id', 'totaux']),
 }
 
 
