@@ -34,3 +34,10 @@ def entite_tree(company):
 
 def entites_actives_count(company):
     return Entite.objects.filter(company=company, actif=True).count()
+
+
+def entites_pour_journal(company):
+    """NTADM27 — entités d'une société ordonnées par date de création (pour le
+    journal d'administration imprimable). Lecture publique via selector pour
+    éviter un import direct de `entites.models` par une autre app."""
+    return list(Entite.objects.filter(company=company).order_by('created_at'))

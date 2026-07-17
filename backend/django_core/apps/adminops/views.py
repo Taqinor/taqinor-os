@@ -268,12 +268,12 @@ def journal_admin_pdf_view(request):
     date_debut = request.query_params.get('date_debut', '')
     date_fin = request.query_params.get('date_fin', '')
 
-    from apps.entites.models import Entite
-    entites_qs = Entite.objects.filter(company=company).order_by('created_at')
+    from apps.entites.selectors import entites_pour_journal
+    entites = entites_pour_journal(company)
     packages_qs = ConfigPackage.objects.filter(company=company).order_by('date_creation')
 
     lignes = []
-    for e in entites_qs:
+    for e in entites:
         lignes.append((e.created_at, f'Entité créée : {e.code} — {e.nom}'))
     for p in packages_qs:
         lignes.append((p.date_creation, f'Package de configuration exporté : {p.nom} v{p.version}'))
