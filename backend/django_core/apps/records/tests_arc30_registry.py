@@ -65,6 +65,10 @@ HISTORICAL_TARGETS = {
     # records (ARC8), ciblées par ``apps/credit/platform.py``.
     ('credit', 'limitecredit'),
     ('credit', 'derogationcredit'),
+    # NTESG13 — dépôt des documents de politique RSE (charte éthique,
+    # politique environnementale…) via ``records.Attachment``, ciblé par
+    # ``apps/esg/platform.py``.
+    ('esg', 'documentpolitiqueesg'),
 }
 
 
@@ -79,7 +83,7 @@ class TestAllowedTargetsNonRegression(SimpleTestCase):
             f"en trop: {resolved - HISTORICAL_TARGETS}")
 
     def test_len_matches(self):
-        self.assertEqual(len(ALLOWED_TARGETS), 30)
+        self.assertEqual(len(ALLOWED_TARGETS), 31)
 
     def test_contains_works_for_each_historical_pair(self):
         for pair in HISTORICAL_TARGETS:

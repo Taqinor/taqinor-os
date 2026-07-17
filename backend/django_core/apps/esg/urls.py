@@ -2,8 +2,9 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
-    CatalogueIndicateurESGViewSet, ObjectifESGTrajectoireViewSet,
-    PartiePrenanteESGViewSet, PeriodeReportingESGViewSet,
+    CatalogueIndicateurESGViewSet, DocumentPolitiqueESGViewSet,
+    ObjectifESGTrajectoireViewSet, PartiePrenanteESGViewSet,
+    PeriodeReportingESGViewSet,
 )
 
 router = DefaultRouter()
@@ -16,6 +17,9 @@ router.register(
 router.register(
     r'parties-prenantes-esg', PartiePrenanteESGViewSet,
     basename='esg-partie-prenante')
+router.register(
+    r'documents-politique-esg', DocumentPolitiqueESGViewSet,
+    basename='esg-document-politique')
 
 urlpatterns = [
     path('', include(router.urls)),

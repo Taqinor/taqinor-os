@@ -242,3 +242,48 @@ class PartiePrenanteESG(TenantModel):
 
     def __str__(self):
         return f'{self.nom} ({self.get_categorie_display()})'
+
+
+class DocumentPolitiqueESG(TenantModel):
+    """Registre déclaratif des politiques RSE publiées (NTESG13).
+
+    Le FICHIER lui-même est déposé via ``records.Attachment`` (générique,
+    MinIO — JAMAIS un ``FileField`` propre à cette app, ARC26) : ce modèle
+    porte uniquement les métadonnées de cycle de vie. Cible enregistrée dans
+    ``apps/esg/platform.py`` (``record_targets``). Aucune allégation de
+    conformité générée automatiquement — l'utilisateur dépose et date ses
+    propres documents ; inspiré du cycle de vie ``ged.Document.statut``
+    (brouillon/publiée/obsolète) SANS import cross-app.
+    """
+
+    class TypeDocument(models.TextChoices):
+        CHARTE_ETHIQUE = 'charte_ethique', 'Charte éthique'
+        POLITIQUE_ENVIRONNEMENTALE = (
+            'politique_environnementale', 'Politique environnementale')
+        POLITIQUE_DIVERSITE = 'politique_diversite', 'Politique diversité'
+        CODE_FOURNISSEUR = 'code_fournisseur', 'Code fournisseur'
+
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        PUBLIEE = 'publiee', 'Publiée'
+        OBSOLETE = 'obsolete', 'Obsolète'
+
+    libelle = models.CharField(max_length=255, verbose_name='Libellé')
+    type_document = models.CharField(
+        max_length=30, choices=TypeDocument.choices,
+        verbose_name='Type de document')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.BROUILLON,
+        verbose_name='Statut')
+    date_publication = models.DateField(
+        null=True, blank=True, verbose_name='Date de publication')
+    date_revue = models.DateField(
+        null=True, blank=True, verbose_name='Date de dernière revue')
+
+    class Meta:
+        verbose_name = 'Document de politique ESG'
+        verbose_name_plural = 'Documents de politique ESG'
+        ordering = ['-date_publication', '-id']
+
+    def __str__(self):
+        return f'{self.libelle} ({self.get_statut_display()})'

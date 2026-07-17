@@ -13,11 +13,12 @@ from core.mixins import TenantMixin
 from core.permissions import ScopedPermission
 from core.viewsets import CompanyScopedModelViewSet
 
-from .models import CatalogueIndicateurESG, ObjectifESGTrajectoire, \
-    PartiePrenanteESG, PeriodeReportingESG
+from .models import CatalogueIndicateurESG, DocumentPolitiqueESG, \
+    ObjectifESGTrajectoire, PartiePrenanteESG, PeriodeReportingESG
 from .serializers import (
-    CatalogueIndicateurESGSerializer, ObjectifESGTrajectoireSerializer,
-    PartiePrenanteESGSerializer, PeriodeReportingESGSerializer,
+    CatalogueIndicateurESGSerializer, DocumentPolitiqueESGSerializer,
+    ObjectifESGTrajectoireSerializer, PartiePrenanteESGSerializer,
+    PeriodeReportingESGSerializer,
 )
 
 
@@ -154,3 +155,13 @@ class PartiePrenanteESGViewSet(CompanyScopedModelViewSet):
 
     queryset = PartiePrenanteESG.objects.all()
     serializer_class = PartiePrenanteESGSerializer
+
+
+class DocumentPolitiqueESGViewSet(CompanyScopedModelViewSet):
+    """Registre déclaratif des politiques RSE publiées (NTESG13) : CRUD des
+    métadonnées ; le fichier lui-même se dépose via le endpoint générique
+    ``records.Attachment`` (cible ``esg.documentpolitiqueesg``,
+    ``apps/esg/platform.py``)."""
+
+    queryset = DocumentPolitiqueESG.objects.all()
+    serializer_class = DocumentPolitiqueESGSerializer
