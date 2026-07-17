@@ -224,3 +224,13 @@ def projeter_masse_salariale(company, departement, mois_debut, mois_fin,
             'masse_salariale_chargee': chargee,
         })
     return resultat
+
+
+def projeter_revenu_pipeline(company, mois_debut, mois_fin):
+    """NTFPA11 — revenu prévisionnel pondéré-probabilité issu du pipeline CRM,
+    par mois de clôture prévue. Lit ``crm.selectors`` (jamais ``crm.models``).
+    Recalcul à la demande, aucun cache. Renvoie ``{'YYYY-MM': Decimal}``."""
+    from apps.crm import selectors as crm_selectors
+
+    return crm_selectors.revenu_pipeline_pondere_par_mois(
+        company, mois_debut, mois_fin)

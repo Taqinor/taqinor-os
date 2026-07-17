@@ -321,3 +321,24 @@ class DriversViewSet(viewsets.ViewSet):
              'masse_salariale_chargee': str(r['masse_salariale_chargee'])}
             for r in rows
         ]})
+
+    @action(detail=False, methods=['get'], url_path='revenu-pipeline')
+    def revenu_pipeline(self, request):
+        from datetime import date
+
+        from .services import projeter_revenu_pipeline
+
+        def _parse_date(v):
+            return date.fromisoformat(str(v)) if v else None
+
+        mois_debut = _parse_date(request.query_params.get('mois_debut'))
+        mois_fin = _parse_date(request.query_params.get('mois_fin'))
+        if mois_debut is None or mois_fin is None:
+            return Response(
+                {'detail': 'mois_debut et mois_fin (YYYY-MM-DD) requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        par_mois = projeter_revenu_pipeline(
+            request.user.company, mois_debut, mois_fin)
+        return Response({'revenu_pipeline': {
+            k: str(v) for k, v in sorted(par_mois.items())
+        }})
