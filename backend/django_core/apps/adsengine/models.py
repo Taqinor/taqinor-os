@@ -317,6 +317,87 @@ class InsightSnapshot(TenantModel):
         return f'Insight {self.object_id}@{self.date}'
 
 
+class InsightBreakdown(TenantModel):
+    """ADSDEEP7 — Instantané d'insight VENTILÉ par une dimension de diffusion.
+
+    Rattaché par FK générique (comme ``InsightSnapshot``) à n'importe quel miroir
+    (campagne / ad set / ad). ``dimension`` désigne l'axe (âge×genre, placement,
+    région, horaire) ; ``key`` la valeur dans cet axe (ex. ``"25-34/f"``,
+    ``"instagram/reels"``, ``"Casablanca"``, ``"14"``). Upsert idempotent par
+    ``(company, content_type, object_id, date, dimension, key)`` : une resynchro
+    du même jour/axe/clé met à jour la ligne au lieu d'en créer une.
+
+    Les métriques ventilables varient selon la dimension (dossier insights-api §2 :
+    les breakdowns horaires perdent reach/frequency/unique_*) : seules les
+    colonnes robustes sous breakdown sont matérialisées ici (spend/impressions/
+    clicks/results/conversations)."""
+
+    class Dimension(models.TextChoices):
+        AGE_GENDER = 'age_gender', 'Âge × genre'
+        PLATFORM = 'platform', 'Placement'
+        REGION = 'region', 'Région'
+        HOURLY = 'hourly', 'Horaire'
+
+    content_type = models.ForeignKey(
+        'contenttypes.ContentType', on_delete=models.CASCADE,
+        verbose_name='Type de cible')
+    object_id = models.PositiveIntegerField(verbose_name='ID cible')
+    content_object = GenericForeignKey('content_type', 'object_id')
+    date = models.DateField(verbose_name='Date')
+    dimension = models.CharField(
+        max_length=16, choices=Dimension.choices, verbose_name='Dimension')
+    key = models.CharField(max_length=80, verbose_name='Clé de ventilation')
+    spend = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        verbose_name='Dépense')
+    impressions = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Impressions')
+    clicks = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Clics')
+    results = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Résultats')
+    conversations = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Conversations')
+
+    class Meta:
+        verbose_name = 'Ventilation de performance'
+        verbose_name_plural = 'Ventilations de performance'
+        ordering = ['-date', 'dimension', 'key']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'content_type', 'object_id', 'date',
+                        'dimension', 'key'],
+                name='uniq_adseng_breakdown'),
+        ]
+        indexes = [
+            models.Index(
+                fields=['content_type', 'object_id', 'dimension'],
+                name='adseng_bkdn_ct_obj_dim_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.get_dimension_display()} {self.key}@{self.date}'
+
+    @classmethod
+    def upsert(cls, company, target, *, date, dimension, key, spend=None,
+               impressions=None, clicks=None, results=None, conversations=None):
+        """Upsert idempotent d'une ligne de ventilation (la synchro écrase, jamais
+        de doublon). Company toujours dérivée de l'appelant ; FK générique résolue
+        depuis ``target``. Renvoie ``(obj, created)``."""
+        from django.contrib.contenttypes.models import ContentType
+        ct = ContentType.objects.get_for_model(target)
+        defaults = {}
+        for name, value in (
+                ('spend', spend), ('impressions', impressions),
+                ('clicks', clicks), ('results', results),
+                ('conversations', conversations)):
+            if value is not None:
+                defaults[name] = value
+        return cls.objects.update_or_create(
+            company=company, content_type=ct, object_id=target.pk, date=date,
+            dimension=dimension, key=key, defaults=defaults)
+
+
 class EngineAction(TenantModel):
     """ENG7 — Colonne vertébrale propose→approuve→applique du moteur.
 
