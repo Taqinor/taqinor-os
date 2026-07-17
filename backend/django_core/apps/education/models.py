@@ -651,3 +651,43 @@ class Note(TenantModel):
     def __str__(self):
         valeur = self.valeur if self.valeur is not None else 'absent'
         return f"{self.eleve} — {self.evaluation} : {valeur}"
+
+
+# =============================================================================
+# NTEDU18 — Certificat de scolarité.
+# =============================================================================
+
+class CertificatScolarite(TenantModel):
+    """NTEDU18 — certificat de scolarité généré à la demande. ``numero``
+    attribué côté serveur via ``core.numbering`` (plus-haut-utilisé+1 par
+    société, JAMAIS ``count()+1`` — même util que ``Eleve.numero_dossier``).
+    Contrairement à ``numero_dossier`` (idempotent par élève), CHAQUE appel de
+    ``services.generer_certificat_scolarite`` pose une NOUVELLE ligne : deux
+    certificats générés le même jour pour deux élèves différents obtiennent
+    des numéros distincts et séquentiels."""
+
+    eleve = models.ForeignKey(
+        Eleve, on_delete=models.CASCADE, related_name='certificats_scolarite',  # on_delete: composition (parent-enfant)
+        verbose_name='Élève')
+    annee_scolaire = models.ForeignKey(
+        AnneeScolaire, on_delete=models.CASCADE, related_name='certificats_scolarite',  # on_delete: composition (parent-enfant)
+        verbose_name='Année scolaire')
+    numero = models.CharField(
+        max_length=30, db_index=True, verbose_name='Numéro')
+    date_generation = models.DateField(verbose_name='Date de génération')
+    genere_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='education_certificats_generes', verbose_name='Généré par')
+
+    class Meta:
+        verbose_name = 'Certificat de scolarité'
+        verbose_name_plural = 'Certificats de scolarité'
+        ordering = ['-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'numero'],
+                name='education_certificat_numero_unique_par_societe'),
+        ]
+
+    def __str__(self):
+        return f"{self.numero} — {self.eleve}"

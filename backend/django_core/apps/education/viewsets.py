@@ -4,6 +4,7 @@ Tous les viewsets héritent de ``core.viewsets.CompanyScopedModelViewSet`` :
 queryset filtré par ``request.user.company``, ``company`` forcée côté serveur
 en création (jamais lue du corps de requête).
 """
+from django.http import HttpResponse
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
@@ -67,6 +68,38 @@ class EleveViewSet(CompanyScopedModelViewSet):
         super().perform_create(serializer)
         from .services import attribuer_numero_dossier
         attribuer_numero_dossier(serializer.instance)
+
+    @action(detail=True, methods=['get'], url_path='certificat-scolarite')
+    def certificat_scolarite(self, request, pk=None):
+        """NTEDU18 — certificat de scolarité PDF à la demande, numéroté côté
+        serveur (``services.generer_certificat_scolarite`` — jamais un
+        ``count()+1``). Nécessite ``annee_scolaire`` en query param (ou
+        l'année ACTIVE de la société à défaut)."""
+        eleve = self.get_object()
+        annee_scolaire_id = request.query_params.get('annee_scolaire')
+        if annee_scolaire_id:
+            annee_scolaire = AnneeScolaire.objects.filter(
+                company=request.user.company, pk=annee_scolaire_id).first()
+        else:
+            annee_scolaire = AnneeScolaire.objects.filter(
+                company=request.user.company,
+                statut=AnneeScolaire.Statut.ACTIVE).first()
+        if annee_scolaire is None:
+            raise ValidationError(
+                {'annee_scolaire': 'Année scolaire introuvable.'})
+
+        from .services import generer_certificat_scolarite
+        try:
+            certificat, pdf_bytes = generer_certificat_scolarite(
+                eleve, annee_scolaire, user=request.user)
+        except RuntimeError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+        resp['Content-Disposition'] = (
+            f'attachment; filename="certificat_scolarite_'
+            f'{certificat.numero}.pdf"')
+        return resp
 
 
 class InscriptionViewSet(CompanyScopedModelViewSet):

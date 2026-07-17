@@ -555,3 +555,35 @@ class NTEDU15SaisieNotesTests(EducationTestCaseMixin, TestCase):
         self.assertEqual(response.status_code, 200, response.content)
         self.assertIsNone(
             Note.objects.get(evaluation=self.evaluation, eleve=self.eleve).valeur)
+
+
+class NTEDU18CertificatScolariteTests(EducationTestCaseMixin, TestCase):
+    """NTEDU18 — certificat de scolarité imprimable, numéroté séquentiel."""
+
+    def setUp(self):
+        super().setUp()
+        self.eleve1 = Eleve.objects.create(
+            company=self.company, famille=self.famille, nom='Bennani',
+            prenom='Yasmine', classe=self.classe)
+        self.eleve2 = Eleve.objects.create(
+            company=self.company, famille=self.famille, nom='Bennani',
+            prenom='Sami', classe=self.classe)
+
+    def test_deux_certificats_meme_jour_numeros_distincts_sequentiels(self):
+        from .services import generer_certificat_scolarite
+
+        cert1, _pdf1 = generer_certificat_scolarite(self.eleve1, self.annee)
+        cert2, _pdf2 = generer_certificat_scolarite(self.eleve2, self.annee)
+
+        self.assertNotEqual(cert1.numero, cert2.numero)
+        suffix1 = int(cert1.numero.rsplit('-', 1)[1])
+        suffix2 = int(cert2.numero.rsplit('-', 1)[1])
+        self.assertEqual(suffix2, suffix1 + 1)
+
+    def test_endpoint_certificat_scolarite_pdf(self):
+        url = (
+            f'/api/django/education/eleves/{self.eleve1.id}/'
+            f'certificat-scolarite/?annee_scolaire={self.annee.id}')
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response['Content-Type'], 'application/pdf')
