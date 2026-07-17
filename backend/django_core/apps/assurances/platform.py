@@ -7,7 +7,11 @@ from __future__ import annotations
 
 PLATFORM = {
     'module': 'assurances',
-    'record_targets': [],
+    # NTASS14 — cible de pièce jointe records.Attachment (constat amiable,
+    # rapport d'expertise, photos de dégâts sur un sinistre). L'union
+    # paresseuse de records.ALLOWED_TARGETS lit ce manifeste (ARC30) : aucun
+    # besoin d'éditer apps/records/models.py.
+    'record_targets': ['assurances.declarationsinistre'],
     'searchable_models': [],
     'customfield_models': [],
     'import_specs': [],
