@@ -16,3 +16,8 @@ class FpaConfig(AppConfig):
         ),
         'categorie': 'Finance',
     }
+
+    def ready(self):
+        # NTFPA27 — audit des changements budgétaires (signaux → AuditLog),
+        # câblé DANS l'app FP&A (apps/audit TRACKED_MODELS = plateforme).
+        from . import receivers  # noqa: F401
