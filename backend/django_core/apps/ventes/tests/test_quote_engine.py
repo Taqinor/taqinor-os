@@ -855,7 +855,10 @@ class TestPdfFormats(TestCase):
         self.assertNotIn('Onduleur hybride Deye', html)
         self.assertNotIn('Batterie de stockage incluse', html)
         self.assertIn('Confirmation de la commande', html)
-        self.assertIn('Industrielle / Commerciale', html)
+        # QX43 — industriel et commercial séparés : le libellé industriel est
+        # désormais « Industrielle » (plus « Industrielle / Commerciale »).
+        self.assertIn('Industrielle', html)
+        self.assertNotIn('Industrielle / Commerciale', html)
         # taux réels présents (consommation fournie)
         self.assertIn('Taux de couverture', html)
 

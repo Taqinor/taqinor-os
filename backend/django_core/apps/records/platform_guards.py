@@ -176,6 +176,12 @@ GRANDFATHERED_WEASYPRINT = frozenset({
     "apps/ventes/quote_engine/agricole/renderer.py",
     "apps/ventes/quote_engine/residential/render.py",
     "apps/ventes/quote_engine/residential/renderer.py",
+    # QX45/QX46 — renderers dédiés industriel/commercial (mêmes mirrors rule #4
+    # que residential/agricole ci-dessus, CSS-tables, jamais flex).
+    "apps/ventes/quote_engine/industriel/render.py",
+    "apps/ventes/quote_engine/industriel/renderer.py",
+    "apps/ventes/quote_engine/commercial/render.py",
+    "apps/ventes/quote_engine/commercial/renderer.py",
     "apps/ventes/utils/pdf.py",
     "apps/ventes/connection_declaration.py",
     # Importeurs directs GELÉS (à migrer vers core.pdf plus tard).

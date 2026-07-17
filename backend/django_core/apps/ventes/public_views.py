@@ -467,6 +467,58 @@ def _variant_summaries(devis) -> list:
         return []
 
 
+def _kpi_num(v):
+    """Coercion numérique défensive pour le bloc KPI (None si non numérique)."""
+    try:
+        f = float(v)
+        return f if f == f else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _mode_kpis(data):
+    """QX49 — bloc KPI par mode d'installation, whitelist STRICTE côté serveur.
+
+    Ne renvoie QUE des grandeurs client-facing (jamais prix_achat/marge — RULE
+    #4). La page web peut rendre les 4 variantes (résidentiel/agricole/
+    industriel/commercial) sans re-calcul côté client. None hors des modes gérés.
+    """
+    mode = (data.get('mode_installation') or '').strip().lower()
+    etude = data.get('etude') or {}
+    if mode == 'agricole':
+        method = (etude.get('irrigation_method') or '').strip().lower()
+        bassin = None
+        try:  # bassin recommandé ≈ 2× le besoin de pointe FAO-56 (QX47)
+            from .quote_engine.agricole.agronomy import peak_need_m3_day
+            besoin = peak_need_m3_day(etude)
+            if besoin:
+                bassin = round(besoin * 2)
+        except Exception:  # noqa: BLE001 — best-effort, pas bloquant
+            bassin = None
+        return {
+            'pompe_cv': _kpi_num(etude.get('pompe_cv')),
+            'pompe_kw': _kpi_num(etude.get('pompe_kw')),
+            'hmt_m': _kpi_num(etude.get('hmt_m')),
+            'debit_hmt_m3h': _kpi_num(etude.get('debit_hmt_m3h')),
+            'm3_jour': _kpi_num(etude.get('m3_jour')),
+            'champ_kwc': _kpi_num(etude.get('champ_kwc')) or _kpi_num(data.get('puissance_kwc')),
+            'bassin_m3': bassin,
+            # FDA gaté sur l'irrigation localisée (goutte) — « sous réserve ».
+            'fda_eligible': method == 'goutte',
+        }
+    if mode in ('industriel', 'commercial'):
+        return {
+            'taux_autoconso': _kpi_num(etude.get('taux_autoconso')),
+            'taux_couverture': _kpi_num(etude.get('taux_couverture')),
+            'economies_annuelles': _kpi_num(etude.get('economies_annuelles')),
+            'payback': _kpi_num(etude.get('payback')),
+            # Injection 82-21 (QX50) — présente seulement si calculée sur le devis.
+            'injection_kwh_an': _kpi_num(etude.get('injection_kwh_an')),
+            'injection_dh_an': _kpi_num(etude.get('injection_dh_an')),
+        }
+    return None
+
+
 @api_view(['GET'])
 @permission_classes([AllowAny])
 @throttle_classes([PublicLinkRateThrottle])
@@ -510,6 +562,12 @@ def proposal_data(request, token):
             'client_name': data['client_name'],
             'statut': devis.statut,
             'quote': data,
+            # QX49 — mode d'installation + catégorie commerciale + bloc KPI par
+            # mode (whitelist stricte, jamais prix_achat/marge). La page web rend
+            # les 4 variantes sans re-calcul client.
+            'mode_installation': data.get('mode_installation'),
+            'categorie_commerciale': (data.get('etude') or {}).get('categorie_commerciale'),
+            'mode_kpis': _mode_kpis(data),
             'roof_image_url': roof_url,
             # QJ26 — layout de toiture ASSAINI (géométrie + par-pan uniquement,
             # jamais de prix/marge/champ interne). None quand absent → le PNG

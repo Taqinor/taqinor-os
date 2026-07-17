@@ -17,6 +17,7 @@ from django.conf import settings
 from django.db import models
 
 from core.crypto_fields import EncryptedCharField
+from core.models import TenantModel
 
 from .constants import SCOPE_CHOICES, EVENT_CHOICES
 
@@ -66,6 +67,11 @@ class ApiKey(models.Model):
     # Scopes accordés à cette clé (sous-ensemble de constants.ALL_SCOPES).
     scopes = models.JSONField(default=list, blank=True)
     enabled = models.BooleanField(default=True)
+    # NTAPI5 — épingle la version d'API SERVIE à cette clé, indépendamment du
+    # préfixe de chemin appelé (NTAPI1, pas encore construit) : une clé
+    # épinglée 'v1' reste sur 'v1' même via un path non-versionné. Changer de
+    # version est une action admin explicite (jamais automatique).
+    api_version = models.CharField(max_length=10, default='v1', blank=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -159,6 +165,11 @@ class WebhookDelivery(models.Model):
     class Statut(models.TextChoices):
         SUCCESS = 'success', 'Succès'
         FAILED = 'failed', 'Échec'
+        # NTAPI8 — échec DÉFINITIF : la cascade de reprises programmées
+        # (`WebhookDeliveryAttempt`, jusqu'à 6 tentatives) est épuisée sans
+        # succès. Distinct de FAILED (encore retentable) : posé UNIQUEMENT par
+        # `retry.run_due_retries` quand la dernière tentative échoue.
+        EN_ECHEC = 'en_echec', 'Échec définitif'
 
     company = models.ForeignKey(
         'authentication.Company',
@@ -176,6 +187,13 @@ class WebhookDelivery(models.Model):
     # les livraisons historiques antérieures à YAPIC8.
     event_id = models.CharField(max_length=36, blank=True, default='',
                                 db_index=True)
+    # NTAPI10 — clé d'idempotence envoyée au consommateur (en-tête
+    # `X-Taqinor-Idempotency-Key`) : UNE clé par ÉVÈNEMENT SOURCE, partagée
+    # par TOUTES les tentatives (envoi original + reprises NTAPI8/YAPIC8) —
+    # réutilise `event_id` (même garantie de stabilité, jamais un second
+    # UUID indépendant). Vide pour les livraisons historiques sans event_id.
+    idempotency_key = models.CharField(max_length=36, blank=True, default='',
+                                       db_index=True)
     # Charge utile envoyée (telle quelle) — pour rejouer/diagnostiquer.
     payload = models.JSONField(default=dict, blank=True)
     status = models.CharField(
@@ -195,6 +213,58 @@ class WebhookDelivery(models.Model):
 
     def __str__(self):
         return f'{self.event} → {self.status}'
+
+
+class WebhookDeliveryAttempt(TenantModel):
+    """NTAPI8 — reprise SCHEDULÉE (long-tail) d'une livraison en échec.
+
+    Distincte des reprises Celery immédiates (YAPIC8, backoff court en
+    secondes/minutes borné à ~10 min) : ce mécanisme prend le relais UNE FOIS
+    ces reprises rapides épuisées, avec une cadence humaine — 1 min, 5 min,
+    30 min, 2 h, 6 h — jusqu'à 6 tentatives au total (l'originale + 5 reprises
+    programmées), rejouée par la commande `retry_webhook_deliveries`
+    (idempotente, Celery-beat ou manuelle). Chaque ligne = UNE tentative
+    programmée ; `delivery` pointe vers la `WebhookDelivery` d'origine (dont le
+    payload/event est réutilisé tel quel, avec le même `event_id`)."""
+
+    class Statut(models.TextChoices):
+        EN_ATTENTE = 'en_attente', 'En attente'
+        SUCCES = 'succes', 'Succès'
+        ECHEC = 'echec', 'Échec'
+
+    # ARC1 — company + created_at/updated_at viennent de core.TenantModel ;
+    # company REDÉCLARÉ à l'identique pour conserver le related_name historique.
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='webhook_delivery_attempts',
+    )
+    delivery = models.ForeignKey(
+        WebhookDelivery,
+        on_delete=models.CASCADE,
+        related_name='attempts',
+    )
+    # Numéro de tentative GLOBAL pour cette livraison (2..6 — la tentative 1
+    # est l'envoi original déjà journalisé sur `delivery`).
+    numero_tentative = models.PositiveSmallIntegerField()
+    # Horodatage auquel CETTE tentative doit être rejouée. `null` une fois la
+    # tentative traitée (succès ou abandon définitif).
+    prochain_essai_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    statut = models.CharField(
+        max_length=12, choices=Statut.choices, default=Statut.EN_ATTENTE)
+    # created_at / updated_at hérités de core.TenantModel (TimestampedModel).
+
+    class Meta:
+        verbose_name = 'Reprise programmée de livraison webhook'
+        verbose_name_plural = 'Reprises programmées de livraison webhook'
+        ordering = ['numero_tentative']
+        indexes = [
+            models.Index(fields=['statut', 'prochain_essai_at'],
+                         name='publicapi_wda_due_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.delivery_id}#{self.numero_tentative} → {self.statut}'
 
 
 class IdempotencyRecord(models.Model):
@@ -241,7 +311,8 @@ class IdempotencyRecord(models.Model):
 
 # Re-export pour confort (utilisé par admin/serializers/tests).
 __all__ = [
-    'ApiKey', 'Webhook', 'WebhookDelivery', 'IdempotencyRecord',
+    'ApiKey', 'Webhook', 'WebhookDelivery', 'WebhookDeliveryAttempt',
+    'IdempotencyRecord',
     'hash_key', 'generate_raw_key',
     'API_KEY_PREFIX', 'SCOPE_CHOICES', 'EVENT_CHOICES',
 ]

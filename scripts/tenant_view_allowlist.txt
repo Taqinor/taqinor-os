@@ -7,3 +7,8 @@
 # .user, company)); it never exposes a company-wide queryset, so the static
 # get_queryset company filter does not apply. Reviewed safe 2026-07-13.
 backend/django_core/apps/chat/views.py::UserChatStatusViewSet
+# ExtensionPackageCatalogueView (NTEXT13): read-only ListAPIView over the GLOBAL
+# extension catalogue (extensions.ExtensionPackage, a shared reference table with
+# no company FK — see tenant_exempt_models.txt). No per-tenant rows are exposed;
+# there is no create/update surface. Reviewed safe 2026-07-16.
+backend/django_core/apps/extensions/views.py::ExtensionPackageCatalogueView

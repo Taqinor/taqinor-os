@@ -16,3 +16,9 @@ compta.EcritureLiaisonInterSociete
 automation.AutomationRunArchive
 crm.LeadActivityArchive
 publicapi.WebhookDeliveryArchive
+# NTEXT13 — global extension-marketplace CATALOGUE (shared, read-only reference
+# table of installable package templates). Not tenant business data: catalogue
+# rows are global gabarits any tenant browses before installing. Per-tenant
+# materialisation/installation (which IS company-scoped) is a separate brick
+# (NTEXT14, unbuilt). Reviewed global-by-design 2026-07-16.
+extensions.ExtensionPackage
