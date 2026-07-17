@@ -23,7 +23,6 @@ export default function Menage() {
   }
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount
     load()
   }, [])
 

@@ -26,13 +26,14 @@ export default function PatrimoineTree() {
   const [batiments, setBatiments] = useState([])
   const [niveaux, setNiveaux] = useState([])
   const [locaux, setLocaux] = useState([])
-  const [loading, setLoading] = useState(false)
+  // Chargée dès le montage (l'effet ci-dessous lance la requête sites sans
+  // condition) : l'état initial porte déjà `true`/`null`, ce qui évite tout
+  // setState synchrone au premier rendu de l'effet (react-hooks/set-state-in-effect).
+  const [loading, setLoading] = useState(true)
   const [erreur, setErreur] = useState(null)
 
   useEffect(() => {
     let annule = false
-    setLoading(true)
-    setErreur(null)
     immobilierApi.sites
       .list()
       .then((res) => {
@@ -50,10 +51,10 @@ export default function PatrimoineTree() {
   }, [])
 
   useEffect(() => {
-    if (!site) {
-      setBatiments([])
-      return undefined
-    }
+    // Pas de reset synchrone vers [] ici (react-hooks/set-state-in-effect) :
+    // `batiments` n'est de toute façon jamais lu par le rendu tant que `site`
+    // est vide (cf. `currentRows` plus bas), le early-return suffit.
+    if (!site) return undefined
     let annule = false
     immobilierApi.batiments.list({ site: site.id }).then((res) => {
       if (!annule) setBatiments(rowsFrom(res.data))
@@ -64,10 +65,8 @@ export default function PatrimoineTree() {
   }, [site])
 
   useEffect(() => {
-    if (!batiment) {
-      setNiveaux([])
-      return undefined
-    }
+    // Idem : `niveaux` n'est jamais lu par le rendu tant que `batiment` est vide.
+    if (!batiment) return undefined
     let annule = false
     immobilierApi.niveaux.list({ batiment: batiment.id }).then((res) => {
       if (!annule) setNiveaux(rowsFrom(res.data))
@@ -78,10 +77,8 @@ export default function PatrimoineTree() {
   }, [batiment])
 
   useEffect(() => {
-    if (!niveau) {
-      setLocaux([])
-      return undefined
-    }
+    // Idem : `locaux` n'est jamais lu par le rendu tant que `niveau` est vide.
+    if (!niveau) return undefined
     let annule = false
     immobilierApi.locaux.list({ niveau: niveau.id }).then((res) => {
       if (!annule) setLocaux(rowsFrom(res.data))

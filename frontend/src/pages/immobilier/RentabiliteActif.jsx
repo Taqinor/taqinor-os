@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import immobilierApi from '../../api/immobilierApi'
 
 /* ============================================================================
@@ -32,32 +32,42 @@ export default function RentabiliteActif() {
     immobilierApi.sites.list().then((res) => setSites(rowsFrom(res.data)))
   }, [])
 
-  useEffect(() => {
-    if (!selection) {
+  // Chargement de la rentabilité déclenché par l'événement de sélection (pas
+  // par un effet keyé sur `selection`) : setLoading/setErreur/setData
+  // s'exécutent depuis le handler `selectionner` ci-dessous, jamais
+  // synchronement dans un effet (react-hooks/set-state-in-effect). `latestRef`
+  // rejoue le rôle du flag `annule` précédent : ignore une réponse devenue
+  // obsolète si la sélection a changé entre-temps.
+  const latestRef = useRef(null)
+
+  const charger = useCallback((sel) => {
+    latestRef.current = sel
+    if (!sel) {
       setData(null)
-      return undefined
+      return
     }
-    let annule = false
     setLoading(true)
     setErreur(null)
     const call =
-      selection.type === 'site'
-        ? immobilierApi.sites.rentabilite(selection.id)
-        : immobilierApi.batiments.rentabilite(selection.id)
+      sel.type === 'site'
+        ? immobilierApi.sites.rentabilite(sel.id)
+        : immobilierApi.batiments.rentabilite(sel.id)
     call
       .then((res) => {
-        if (!annule) setData(res.data)
+        if (latestRef.current === sel) setData(res.data)
       })
       .catch(() => {
-        if (!annule) setErreur('Calcul de rentabilité impossible.')
+        if (latestRef.current === sel) setErreur('Calcul de rentabilité impossible.')
       })
       .finally(() => {
-        if (!annule) setLoading(false)
+        if (latestRef.current === sel) setLoading(false)
       })
-    return () => {
-      annule = true
-    }
-  }, [selection])
+  }, [])
+
+  const selectionner = (sel) => {
+    setSelection(sel)
+    charger(sel)
+  }
 
   const kpis = useMemo(() => {
     if (!data) return []
@@ -78,7 +88,7 @@ export default function RentabiliteActif() {
         aria-label="Sélectionner un site"
         value={selection && selection.type === 'site' ? selection.id : ''}
         onChange={(e) =>
-          setSelection(e.target.value ? { type: 'site', id: Number(e.target.value) } : null)
+          selectionner(e.target.value ? { type: 'site', id: Number(e.target.value) } : null)
         }
       >
         <option value="">— Sélectionner un site —</option>

@@ -47,22 +47,29 @@ export default function EsgCockpit() {
   const [loadError, setLoadError] = useState(false)
   const [busyId, setBusyId] = useState(null)
 
+  // Fetch seule (aucun setState synchrone) : c'est ce que l'effet de montage
+  // appelle — un effet ne doit synchroniser que via des callbacks async
+  // (react-hooks/set-state-in-effect). `load` ci-dessous ajoute le flag
+  // `loading` synchrone pour les rechargements déclenchés par un événement
+  // (retry, figer-période) où setState synchrone est parfaitement légitime.
+  const fetchCockpit = useCallback(() => Promise.allSettled([
+    esgApi.catalogue.couverture(),
+    esgApi.periodes.list(),
+  ]).then(([couvRes, periodesRes]) => {
+    setCouverture(couvRes.status === 'fulfilled' ? couvRes.value.data : null)
+    const rows = periodesRes.status === 'fulfilled'
+      ? (periodesRes.value.data?.results ?? periodesRes.value.data ?? [])
+      : []
+    setPeriodes(rows)
+    setLoadError(couvRes.status === 'rejected' && periodesRes.status === 'rejected')
+  }).finally(() => setLoading(false)), [])
+
   const load = useCallback(() => {
     setLoading(true)
-    return Promise.allSettled([
-      esgApi.catalogue.couverture(),
-      esgApi.periodes.list(),
-    ]).then(([couvRes, periodesRes]) => {
-      setCouverture(couvRes.status === 'fulfilled' ? couvRes.value.data : null)
-      const rows = periodesRes.status === 'fulfilled'
-        ? (periodesRes.value.data?.results ?? periodesRes.value.data ?? [])
-        : []
-      setPeriodes(rows)
-      setLoadError(couvRes.status === 'rejected' && periodesRes.status === 'rejected')
-    }).finally(() => setLoading(false))
-  }, [])
+    return fetchCockpit()
+  }, [fetchCockpit])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { fetchCockpit() }, [fetchCockpit])
 
   const figerPeriode = async (id) => {
     if (!window.confirm('Figer cette période ? Les chiffres seront gelés définitivement.')) return

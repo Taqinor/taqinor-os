@@ -36,7 +36,6 @@ export default function PlanChambres() {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount
     load(statutFiltre)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statutFiltre])
 
   if (loading) {

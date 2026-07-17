@@ -25,7 +25,6 @@ export default function CalendrierReservations() {
   const [error, setError] = useState(null)
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount
     Promise.all([hospitalityApi.listChambres(), hospitalityApi.listReservations()])
       .then(([resChambres, resReservations]) => {
         setChambres(resChambres.data?.results ?? resChambres.data ?? [])

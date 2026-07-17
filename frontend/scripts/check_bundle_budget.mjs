@@ -48,7 +48,10 @@ const PER_CHUNK_BUDGET_KB = 350
 // garde anti-gonflement reste PER_CHUNK_BUDGET_KB (350) + les budgets vendors
 // par chunk ; ce total ne sert qu'à attraper une régression MASSIVE. Ici ~91 Ko
 // de marge au-dessus du réel (2248.8) — le garde reste actif au-dessus de 2340.
-const TOTAL_BUDGET_KB = 2340
+// 2026-07-16 : 2340 -> 2400 Ko. 5 nouvelles verticales (agriculture,
+// immobilier, hospitality, esg, btp_chantier), toutes lazy-loadées via
+// module.config.jsx, ajoutent ~7.7 Ko gzip de poids produit légitime.
+const TOTAL_BUDGET_KB = 2400
 const VENDOR_CHUNK_BUDGETS_KB = {
   recharts: 450,
   'pdfjs-dist': 450,

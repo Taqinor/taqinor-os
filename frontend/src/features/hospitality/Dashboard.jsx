@@ -18,7 +18,6 @@ export default function Dashboard() {
   const [error, setError] = useState(null)
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount
     hospitalityApi
       .tableauBord()
       .then((res) => setData(res.data))

@@ -25,7 +25,8 @@ vi.mock('../../api/agricultureApi', () => ({
   default: { etapesCampagne: { create: (...args) => etapesCreate(...args) } },
 }))
 
-import EtapeCampagneForm, { checkDarAlert } from './EtapeCampagneForm'
+import EtapeCampagneForm from './EtapeCampagneForm'
+import { checkDarAlert } from '../../features/agriculture/darAlert'
 
 beforeEach(() => { vi.clearAllMocks() })
 
