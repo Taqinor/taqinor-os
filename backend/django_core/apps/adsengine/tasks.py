@@ -164,6 +164,145 @@ def _sync_company(conn):
                 frequency=row.get('frequency'), cpl=row.get('cpl'))
 
 
+# ── ADSDEEP8 — Spécifications de breakdown (combos LÉGAUX uniquement) ─────────
+# Dossier insights-api §2 : seules certaines permutations passent, et les
+# breakdowns HORAIRES perdent reach/frequency/unique_*. Chaque spec porte les
+# ``breakdowns`` Meta, la liste de ``fields`` sûre sous CE breakdown, et une
+# fonction qui fabrique la ``key`` de ventilation stockée (ex. "25-34/f").
+# Champs de base ventilables partout (jamais reach/frequency ici — ils sautent
+# sous certains breakdowns ; on ne les demande qu'où c'est légal).
+_BREAKDOWN_BASE_FIELDS = ('spend', 'impressions', 'clicks', 'actions')
+
+
+def _key_age_gender(row):
+    age = str(row.get('age') or '').strip()
+    gender = str(row.get('gender') or '').strip()
+    return f'{age}/{gender[:1]}' if age or gender else ''
+
+
+def _key_platform(row):
+    plat = str(row.get('publisher_platform') or '').strip()
+    pos = str(row.get('platform_position') or '').strip()
+    # "instagram/instagram_reels" → "instagram/reels" (le préfixe redondant sauté).
+    pos = pos.replace(f'{plat}_', '') if plat and pos.startswith(plat) else pos
+    return f'{plat}/{pos}' if plat or pos else ''
+
+
+def _key_region(row):
+    return str(row.get('region') or '').strip()
+
+
+def _key_hourly(row):
+    raw = str(
+        row.get('hourly_stats_aggregated_by_advertiser_time_zone') or '').strip()
+    # "14:00:00 - 14:59:59" → "14"
+    return raw.split(':', 1)[0] if raw else ''
+
+
+# dimension → {breakdowns, fields, key_fn}. Les fields d'HOURLY excluent
+# volontairement reach/frequency (combo illégal — dossier §2).
+BREAKDOWN_SPECS = {
+    'age_gender': {
+        'breakdowns': ('age', 'gender'),
+        'fields': _BREAKDOWN_BASE_FIELDS,
+        'key_fn': _key_age_gender,
+    },
+    'platform': {
+        'breakdowns': ('publisher_platform', 'platform_position'),
+        'fields': _BREAKDOWN_BASE_FIELDS,
+        'key_fn': _key_platform,
+    },
+    'region': {
+        'breakdowns': ('region',),
+        'fields': _BREAKDOWN_BASE_FIELDS,
+        'key_fn': _key_region,
+    },
+    'hourly': {
+        'breakdowns': ('hourly_stats_aggregated_by_advertiser_time_zone',),
+        # PAS de reach/frequency/unique_* sous breakdown horaire (illégal).
+        'fields': _BREAKDOWN_BASE_FIELDS,
+        'key_fn': _key_hourly,
+    },
+}
+
+# Fenêtre glissante (jours) des breakdowns — agrégat sur 28 j (pas de
+# time_increment : une ligne par clé de ventilation, pas par jour).
+BREAKDOWN_WINDOW_DAYS = 28
+
+
+def sync_breakdowns_for_campaign(company, client, campaign_mirror):
+    """ADSDEEP8 — Synchronise les 4 dimensions de breakdown d'UNE campagne.
+
+    Pour chaque dimension (âge×genre, placement, région, horaire) tire l'insight
+    ventilé sur une fenêtre 28 j glissants avec les combos LÉGAUX uniquement
+    (``BREAKDOWN_SPECS``) et upserte une ligne ``InsightBreakdown`` par clé.
+    Idempotent (upsert par clé). Best-effort par dimension : une dimension en
+    échec n'empêche pas les autres. Renvoie le nombre de lignes upsertées."""
+    from .models import InsightBreakdown
+    from .platforms.base import normalize_insight_row
+
+    today = datetime.date.today()
+    since = today - datetime.timedelta(days=BREAKDOWN_WINDOW_DAYS - 1)
+    written = 0
+    for dimension, spec in BREAKDOWN_SPECS.items():
+        try:
+            rows = client.get_insights(
+                campaign_mirror.meta_id,
+                fields=spec['fields'],
+                params={
+                    'breakdowns': ','.join(spec['breakdowns']),
+                    'time_range': {
+                        'since': since.isoformat(), 'until': today.isoformat()},
+                })
+        except Exception:  # noqa: BLE001 — une dimension en échec n'arrête pas
+            continue
+        for row in rows or []:
+            key = spec['key_fn'](row)
+            if not key:
+                continue
+            norm = normalize_insight_row(row)
+            InsightBreakdown.upsert(
+                company, campaign_mirror, date=today,
+                dimension=dimension, key=key,
+                spend=norm['spend'], impressions=norm['impressions'],
+                clicks=norm['clicks'], results=norm['results'],
+                conversations=norm['conversations'])
+            written += 1
+    return written
+
+
+@shared_task(name='adsengine.sync_breakdowns_weekly')
+def sync_breakdowns_weekly():
+    """ADSDEEP8 — Beat HEBDO : synchronise les breakdowns de chaque campagne
+    miroir des sociétés à connexion Meta active. NO-OP propre sans connexion
+    live. Best-effort par société. Renvoie le nombre de campagnes traitées."""
+    from authentication.selectors import active_companies
+
+    from .meta_client import MetaClient
+    from .models import AdCampaignMirror, MetaConnection
+
+    processed = 0
+    for company in active_companies():
+        conn = MetaConnection.objects.filter(
+            company=company, enabled=True).first()
+        if conn is None or not conn.is_live:
+            continue
+        try:
+            client = MetaClient.from_connection(conn)
+            for camp in AdCampaignMirror.objects.filter(company=company):
+                sync_breakdowns_for_campaign(company, client, camp)
+                processed += 1
+        except Exception:  # pragma: no cover - défensif, isolation société
+            logger.warning(
+                'adsengine.sync_breakdowns_weekly: échec société %s',
+                company.pk, exc_info=True)
+            continue
+    logger.info(
+        'adsengine.sync_breakdowns_weekly: %s campagne(s) traitée(s)',
+        processed)
+    return {'campaigns_processed': processed}
+
+
 @shared_task(name='adsengine.sync_insights_daily')
 def sync_insights_daily():
     """ENG6 — Synchro quotidienne des insights, société par société.
