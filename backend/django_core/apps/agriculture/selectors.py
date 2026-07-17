@@ -55,6 +55,66 @@ def volume_irrigation_solaire_campagne(campagne):
     return total
 
 
+def tracer_lot(lot_recolte):
+    """NTAGR16 — Traçabilité amont-aval d'un ``LotRecolte`` EN UN APPEL.
+
+    AMONT (toujours présent, données propres à cette app) : parcelle
+    d'origine (GPS/culture), et chaque traitement (``EtapeCampagne`` de type
+    ``traitement``, NTAGR3) avec le produit/matière active/n° AMM/DAR — lu
+    via ``apps.stock.selectors.get_produit_scoped`` (jamais ``stock.models``).
+
+    AVAL : si le lot est rattaché à un lot stock physique
+    (``stock_lot_id`` — le ``numero_lot`` d'un ``stock.LotEntrepot``, NTAGR15),
+    remonte la chaîne réception/emplacement via
+    ``apps.stock.selectors.trace_serie(company, numero_lot=...)`` (jamais un
+    import de modèle). Un lot SANS ``stock_lot_id`` s'arrête proprement à
+    l'amont — ``aval`` reste ``None``, jamais une erreur."""
+    from apps.stock.selectors import get_produit_scoped, trace_serie
+
+    campagne = lot_recolte.campagne
+    parcelle = campagne.parcelle
+    company = lot_recolte.company
+
+    traitements = []
+    etapes = (
+        campagne.etapes.filter(type_etape='traitement')
+        .select_related('intrant').order_by('date', 'id'))
+    for etape in etapes:
+        intrant = etape.intrant
+        produit_nom = None
+        if intrant is not None:
+            produit = get_produit_scoped(company, intrant.produit_id)
+            produit_nom = produit.nom if produit else None
+        traitements.append({
+            'date': etape.date.isoformat() if etape.date else None,
+            'produit_nom': produit_nom,
+            'matiere_active': intrant.matiere_active if intrant else '',
+            'numero_amm': intrant.numero_amm if intrant else '',
+            'delai_avant_recolte_jours': (
+                intrant.delai_avant_recolte_jours if intrant else None),
+        })
+
+    amont = {
+        'parcelle_id': parcelle.id,
+        'parcelle_nom': parcelle.nom,
+        'geometrie_gps': parcelle.geometrie_gps,
+        'culture': campagne.culture,
+        'campagne_id': campagne.id,
+        'traitements': traitements,
+    }
+
+    aval = None
+    if lot_recolte.stock_lot_id:
+        aval = trace_serie(company, numero_lot=lot_recolte.stock_lot_id)
+
+    return {
+        'lot_id': lot_recolte.id,
+        'numero_lot': lot_recolte.numero_lot,
+        'amont': amont,
+        'aval': aval,
+    }
+
+
 def cout_total_campagne(campagne):
     """NTAGR3/NTAGR14 — Somme des coûts des étapes de campagne
     (``EtapeCampagne.cout_mad``) + le coût d'irrigation PAYANTE de sa

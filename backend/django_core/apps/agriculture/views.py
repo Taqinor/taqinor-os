@@ -4,6 +4,7 @@
 from django.http import HttpResponse
 from rest_framework import filters
 from rest_framework.decorators import action
+from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 from core.viewsets import CompanyScopedModelViewSet
@@ -236,3 +237,13 @@ class LotRecolteViewSet(_AgricultureBaseViewSet):
         if campagne_id:
             qs = qs.filter(campagne_id=campagne_id)
         return qs
+
+    @action(detail=True, methods=['get'], url_path='tracabilite',
+            permission_classes=[IsAnyRole])
+    def tracabilite(self, request, pk=None):
+        """NTAGR16 — Traçabilité amont-aval (parcelle→traitements→client) en
+        un seul appel JSON."""
+        from .selectors import tracer_lot
+
+        lot = self.get_object()
+        return Response(tracer_lot(lot))
