@@ -208,6 +208,15 @@ class ScopedPermission(BasePermission):
         user = getattr(request, 'user', None)
         if not (user and user.is_authenticated):
             return False
+        # NTPRT5 — un compte PORTAIL externe (``portee != interne``) n'accède
+        # JAMAIS à une route INTERNE gardée par ScopedPermission, même côté
+        # lecture sans ``read_permission`` (où « authentifié suffisait »).
+        # Les endpoints portail portent leur propre garde
+        # (``roles.IsPortalScopedUser``) ; les endpoints communs essentiels
+        # (auth/me, logout, token) restent sur IsAuthenticated/AllowAny, non
+        # affectés. Littéral ``interne`` — pas d'import cross-app depuis core.
+        if getattr(user, 'portee', 'interne') != 'interne':
+            return False
         if request.method in SAFE_METHODS:
             code = getattr(view, 'read_permission', None)
         else:
