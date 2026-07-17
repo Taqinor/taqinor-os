@@ -35,6 +35,17 @@ import '../../styles/v3-photo-motion.css';
 import {
   type ProposalResponse,
   type OptionKey,
+  type InstallMode,
+  type AgricoleKpis,
+  type AutoconsoKpis,
+  resolveInstallMode,
+  agricoleKpis,
+  autoconsoKpis,
+  hasInjection,
+  autoconsoCashflow,
+  agricoleMonthlyDelivery,
+  commercialArchetype,
+  MONTHS_SHORT,
   formatMAD,
   formatNumber,
   formatPayback,
@@ -217,6 +228,31 @@ const options: OptionKey[] = ok
       : ['sans_batterie']
   : [];
 
+// ── WJ126 · Mode d'installation + KPI par mode (payload QX49) ─────────────────
+// La page rend 4 variantes de la MÊME page selon `mode_installation` (clé machine
+// minuscule QX49) — JAMAIS l'ancien `inst_type` (libellé capitalisé qui ne
+// matchait aucun littéral). `agricoleKpis`/`autoconsoKpis` extraient les KPI
+// typés (null hors de leur mode → zéro fuite inter-mode) ; chaque champ manquant
+// devient null → omission honnête à l'écran (aucun chiffre inventé).
+const installMode: InstallMode = ok ? resolveInstallMode(data!) : 'residentiel';
+const isAgricole = installMode === 'agricole';
+const isAutoconso = installMode === 'industriel' || installMode === 'commercial';
+const isCommercial = installMode === 'commercial';
+const agri: AgricoleKpis | null = ok ? agricoleKpis(data!) : null;
+const auto: AutoconsoKpis | null = ok ? autoconsoKpis(data!) : null;
+const autoHasInjection = hasInjection(auto);
+// Mini-cashflow 10 ans (industriel/commercial) — même modèle linéaire que le PDF.
+const autoCashflow = ok && isAutoconso ? autoconsoCashflow(data!, reco ?? 'sans_batterie', auto, 10) : null;
+const cashMaxAbs = autoCashflow ? Math.max(...autoCashflow.map((p) => Math.abs(p.cumulative)), 1) : 1;
+// Année du point mort (première année à trésorerie cumulée ≥ 0), pour le libellé.
+const cashBreakEven = autoCashflow ? (autoCashflow.find((p) => p.cumulative >= 0)?.year ?? null) : null;
+// Livraison d'eau mensuelle estimée (agricole) — dérivée de m3_jour + production
+// mensuelle ; null (bloc omis) si l'une des deux manque. Jamais de courbe besoin.
+const waterDelivery = ok && isAgricole ? agricoleMonthlyDelivery(data!, agri) : null;
+const waterMax = waterDelivery ? Math.max(...waterDelivery.map((m) => m.m3), 1) : 1;
+// Archétype de bloc commercial (miroir backend) — seulement en mode commercial.
+const comArchetype = ok && isCommercial ? commercialArchetype(data?.categorie_commerciale) : null;
+
 // Bloc énergie/économies (résidentiel/industriel). Pompage n'a pas ces champs.
 const puissance = q?.puissance_kwc ?? null;
 const nbPanneaux = q?.nb_panneaux ?? null;
@@ -230,13 +266,19 @@ const paybackAvec = formatPayback(q?.roi_a);
 const ecoHero = reco === 'avec_batterie' ? (ecoAvec ?? ecoSans) : (ecoSans ?? ecoAvec);
 const paybackHero = reco === 'avec_batterie' ? (paybackAvec ?? paybackSans) : (paybackSans ?? paybackAvec);
 
+// WJ126 — CORRECTIF : ce libellé branchait sur `q?.inst_type` en le comparant à
+// des littéraux MINUSCULES ('agricole'…), alors que la vraie valeur runtime est
+// un libellé CAPITALISÉ ('Agricole'/'Industrielle'…) — la comparaison ne matchait
+// donc JAMAIS et retombait toujours sur le libellé brut. On branche désormais sur
+// `installMode` (clé machine minuscule QX49, `resolveInstallMode`), qui distingue
+// bien les 4 marchés.
 const instLabel =
-  q?.inst_type === 'agricole'
+  installMode === 'agricole'
     ? 'Pompage solaire'
-    : q?.inst_type === 'industriel' || q?.inst_type === 'commercial'
-      ? 'Autoconsommation'
-      : q?.inst_type
-        ? String(q.inst_type)
+    : installMode === 'industriel'
+      ? 'Autoconsommation industrielle'
+      : installMode === 'commercial'
+        ? 'Autoconsommation'
         : 'Installation solaire';
 
 // WJ119 — mode de courbe journalière dérivé du MÊME champ backend (repli
@@ -966,7 +1008,10 @@ const signConfig = ok
 
       <!-- ── WJ9 · ARGENT DANS LE TEMPS (cumul 25 ans + payback + /mois) ───── -->
       <!-- id="financing-headline" — ancre WJ55 (télémétrie « scrolled to financing »). -->
-      {headline && (headline.cumulative || headline.annual || paybackHero || prodKwh) && (
+      <!-- WJ126 — jamais en pompage (agricole) : la valeur d'un pompage solaire est
+           l'eau livrée + le carburant évité, pas un cumul de facture réseau ; le
+           cadrage « économies cumulées 25 ans » est résidentiel/autoconso. -->
+      {!isAgricole && headline && (headline.cumulative || headline.annual || paybackHero || prodKwh) && (
         <section id="financing-headline" class="mx-auto max-w-4xl px-5 pt-12 sm:px-8 sm:pt-16">
           {/* Accroche « coût de ne rien faire » : le cumul phare. */}
           {headline.cumulative ? (
@@ -1054,6 +1099,238 @@ const signConfig = ok
               <p class="tech-label text-lune-faint" data-i18n data-fr="Type" data-en="Type" data-ar="النوع">Type</p>
               <p class="fig mt-2 text-2xl text-lune">{instLabel}</p>
             </div>
+          </div>
+        </section>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════════
+          WJ126 · VARIANTE AGRICOLE (pompage solaire) — héros pompe + eau/mois
+          + bassin + FDA (sous réserve) + carburant évité. Chaque chiffre vient
+          du bloc KPI backend (`agri`) ; un champ manquant est OMIS (jamais 0).
+          Aucune carte batterie ici (pompage = pas de batterie, CLAUDE.md).
+          ════════════════════════════════════════════════════════════════════ */}
+      {isAgricole && agri && (
+        <section class="mx-auto max-w-4xl px-5 pt-12 sm:px-8" id="mode-agricole">
+          <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Votre pompage solaire" data-en="Your solar pumping" data-ar="ضخّكم الشمسي">Votre pompage solaire</p>
+          <div class="mt-5 grid gap-4 sm:grid-cols-3">
+            {(agri.pompe_cv || agri.pompe_kw) ? (
+              <div class="cine-card rounded-xl p-5">
+                <p class="tech-label text-lune-faint" data-i18n data-fr="Pompe" data-en="Pump" data-ar="المضخة">Pompe</p>
+                <p class="fig mt-2 text-2xl text-lune" dir="ltr">
+                  {agri.pompe_cv ? <>{formatNumber(agri.pompe_cv, 1)} <span class="text-base text-lune-soft">CV</span></> : null}
+                  {agri.pompe_cv && agri.pompe_kw ? <span class="text-lune-faint"> · </span> : null}
+                  {agri.pompe_kw ? <>{formatNumber(agri.pompe_kw, 1)} <span class="text-base text-lune-soft">kW</span></> : null}
+                </p>
+              </div>
+            ) : null}
+            {agri.m3_jour ? (
+              <div class="cine-card rounded-xl p-5">
+                <p class="tech-label text-lune-faint" data-i18n data-fr="Eau / jour" data-en="Water / day" data-ar="الماء / يوم">Eau / jour</p>
+                <p class="fig mt-2 text-2xl text-lune" dir="ltr">{formatNumber(agri.m3_jour)} <span class="text-base text-lune-soft">m³</span></p>
+                {agri.hmt_m ? (
+                  <p class="mt-1 text-sm text-lune-faint" dir="ltr" data-i18n
+                    data-fr={`à ${formatNumber(agri.hmt_m)} m HMT`}
+                    data-en={`at ${formatNumber(agri.hmt_m)} m head`}
+                    data-ar={`عند ${formatNumber(agri.hmt_m)} m (ع.ر.)`}>à {formatNumber(agri.hmt_m)} m HMT</p>
+                ) : null}
+              </div>
+            ) : null}
+            {agri.champ_kwc ? (
+              <div class="cine-card rounded-xl p-5">
+                <p class="tech-label text-lune-faint" data-i18n data-fr="Champ solaire" data-en="Solar array" data-ar="الحقل الشمسي">Champ solaire</p>
+                <p class="fig mt-2 text-2xl text-lune" dir="ltr">{formatNumber(agri.champ_kwc, 2)} <span class="text-base text-lune-soft">kWc</span></p>
+              </div>
+            ) : null}
+          </div>
+          {/* Honnêteté : aucun KPI pompe exploitable → message d'omission clair. */}
+          {(!agri.pompe_cv && !agri.pompe_kw && !agri.m3_jour && !agri.champ_kwc) ? (
+            <p class="mt-4 text-sm text-lune-faint" data-i18n
+              data-fr="Le dimensionnement précis de votre pompe est confirmé avec votre conseiller."
+              data-en="The precise sizing of your pump is confirmed with your advisor."
+              data-ar="يُحدَّد تحجيم مضختكم الدقيق مع مستشاركم.">Le dimensionnement précis de votre pompe est confirmé avec votre conseiller.</p>
+          ) : null}
+          {agri.debit_hmt_m3h ? (
+            <p class="mt-4 text-sm text-lune-soft" data-i18n
+              data-fr={`Débit estimé ≈ ${formatNumber(agri.debit_hmt_m3h)} m³/h à la hauteur de refoulement retenue.`}
+              data-en={`Estimated flow ≈ ${formatNumber(agri.debit_hmt_m3h)} m³/h at the selected head.`}
+              data-ar={`التدفق المقدّر ≈ ${formatNumber(agri.debit_hmt_m3h)} m³/h عند ارتفاع الرفع المعتمد.`}>Débit estimé ≈ {formatNumber(agri.debit_hmt_m3h)} m³/h à la hauteur de refoulement retenue.</p>
+          ) : null}
+
+          {/* Livraison d'eau mensuelle estimée — suit l'ensoleillement. Omise si
+              m3_jour ou la production mensuelle manque (jamais une courbe besoin
+              fabriquée : la série besoin/culture n'est pas dans ce payload). */}
+          {waterDelivery && (
+            <div class="cine-card mt-5 rounded-2xl p-5 sm:p-6">
+              <p class="tech-label text-lune-faint" data-i18n data-fr="Votre eau au fil des mois" data-en="Your water month by month" data-ar="ماؤكم على مدار الأشهر">Votre eau au fil des mois</p>
+              <div class="mt-4 flex items-end gap-1.5" dir="ltr" role="img"
+                aria-label="Livraison d'eau estimée par mois, suivant l'ensoleillement">
+                {waterDelivery.map((m) => (
+                  <div class="flex flex-1 flex-col items-center gap-1">
+                    <span class="w-full rounded-t" style={`height:${Math.max(4, Math.round((m.m3 / waterMax) * 72))}px; background: var(--color-azur-300, #7fb4e8)`}></span>
+                    <span class="text-[10px] text-lune-faint">{MONTHS_SHORT.fr[m.monthIndex]}</span>
+                  </div>
+                ))}
+              </div>
+              <p class="mt-3 text-xs text-lune-faint" data-i18n
+                data-fr="Capacité de livraison indicative — le pompage solaire suit l'ensoleillement (dérivée du débit journalier et de la production estimée, jamais un relevé mesuré)."
+                data-en="Indicative delivery capacity — solar pumping follows the sun (derived from the daily flow and estimated production, never a measured reading)."
+                data-ar="قدرة تسليم إرشادية — يتبع الضخّ الشمسي أشعة الشمس (مشتقّة من التدفق اليومي والإنتاج المقدّر، وليست قراءة مقيسة).">Capacité de livraison indicative — le pompage solaire suit l'ensoleillement (dérivée du débit journalier et de la production estimée, jamais un relevé mesuré).</p>
+            </div>
+          )}
+
+          <div class="mt-5 grid gap-4 sm:grid-cols-2">
+            {agri.bassin_m3 ? (
+              <div class="cine-card rounded-xl p-5">
+                <p class="tech-label text-lune-faint" data-i18n data-fr="Bassin recommandé" data-en="Recommended reservoir" data-ar="حوض موصى به">Bassin recommandé</p>
+                <p class="fig mt-2 text-2xl text-lune" dir="ltr">{formatNumber(agri.bassin_m3)} <span class="text-base text-lune-soft">m³</span></p>
+                <p class="mt-1 text-sm text-lune-faint" data-i18n
+                  data-fr="≈ 2 jours d'autonomie d'eau : pompez au soleil, irriguez à la demande."
+                  data-en="≈ 2 days of water autonomy: pump in the sun, irrigate on demand."
+                  data-ar="≈ يومان من استقلالية الماء: اضخّوا تحت الشمس واسقوا عند الحاجة.">≈ 2 jours d'autonomie d'eau : pompez au soleil, irriguez à la demande.</p>
+              </div>
+            ) : null}
+            {agri.fda_eligible ? (
+              <div class="cine-card rounded-xl p-5">
+                <p class="tech-label text-brass-300" data-i18n data-fr="Subvention FDA envisageable" data-en="FDA subsidy possible" data-ar="دعم FDA ممكن">Subvention FDA envisageable</p>
+                <p class="mt-2 text-sm text-lune-soft" data-i18n
+                  data-fr="Votre irrigation localisée (goutte-à-goutte) peut ouvrir droit à une aide du Fonds de Développement Agricole pouvant atteindre 30 %. Sous réserve d'éligibilité — votre conseiller vous accompagne dans le dossier."
+                  data-en="Your localized (drip) irrigation may qualify for Agricultural Development Fund support of up to 30%. Subject to eligibility — your advisor guides you through the application."
+                  data-ar="قد يؤهّل ريّكم الموضعي (بالتنقيط) للحصول على دعم من صندوق التنمية الفلاحية قد يصل إلى 30%. رهْن الأهلية — يرافقكم مستشاركم في الملف.">Votre irrigation localisée (goutte-à-goutte) peut ouvrir droit à une aide du Fonds de Développement Agricole pouvant atteindre 30 %. Sous réserve d'éligibilité — votre conseiller vous accompagne dans le dossier.</p>
+              </div>
+            ) : null}
+          </div>
+
+          {/* Carburant évité — QUALITATIF (aucun chiffre de gasoil dans le payload). */}
+          <div class="cine-card mt-5 rounded-xl p-5">
+            <p class="tech-label text-brass-300" data-i18n data-fr="Fini le carburant" data-en="No more fuel" data-ar="وداعاً للوقود">Fini le carburant</p>
+            <p class="mt-2 text-sm text-lune-soft" data-i18n
+              data-fr="Le pompage solaire tourne au soleil : plus de gasoil à acheter ni à transporter, plus de groupe à entretenir. Une pompe silencieuse, sans facture de carburant."
+              data-en="Solar pumping runs on sunlight: no more diesel to buy or haul, no generator to service. A quiet pump, with no fuel bill."
+              data-ar="يعمل الضخّ الشمسي بالطاقة الشمسية: لا مازوط للشراء أو النقل، ولا مولّد للصيانة. مضخة صامتة، بلا فاتورة وقود.">Le pompage solaire tourne au soleil : plus de gasoil à acheter ni à transporter, plus de groupe à entretenir. Une pompe silencieuse, sans facture de carburant.</p>
+          </div>
+        </section>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════════
+          WJ126 · VARIANTE AUTOCONSOMMATION (industriel + commercial) — tuiles
+          autoconso/couverture/économies/payback + injection 82-21 (si calculée,
+          mention ANRE) + mini-cashflow 10 ans (même modèle linéaire que le PDF).
+          ════════════════════════════════════════════════════════════════════ */}
+      {isAutoconso && auto && (
+        <section class="mx-auto max-w-4xl px-5 pt-12 sm:px-8" id="mode-autoconso">
+          <p class="tech-label rule-brass text-brass-300" data-i18n
+            data-fr={isCommercial ? 'Votre autoconsommation' : 'Votre autoconsommation industrielle'}
+            data-en={isCommercial ? 'Your self-consumption' : 'Your industrial self-consumption'}
+            data-ar={isCommercial ? 'استهلاككم الذاتي' : 'استهلاككم الذاتي الصناعي'}>{isCommercial ? 'Votre autoconsommation' : 'Votre autoconsommation industrielle'}</p>
+          <div class="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {auto.taux_autoconso !== null ? (
+              <div class="cine-card rounded-xl p-5">
+                <p class="tech-label text-lune-faint" data-i18n data-fr="Taux d'autoconsommation" data-en="Self-consumption rate" data-ar="نسبة الاستهلاك الذاتي">Taux d'autoconsommation</p>
+                <p class="fig fig-md lum mt-2" dir="ltr">{formatNumber(auto.taux_autoconso)} %</p>
+              </div>
+            ) : null}
+            {auto.taux_couverture !== null ? (
+              <div class="cine-card rounded-xl p-5">
+                <p class="tech-label text-lune-faint" data-i18n data-fr="Taux de couverture" data-en="Coverage rate" data-ar="نسبة التغطية">Taux de couverture</p>
+                <p class="fig fig-md mt-2 text-lune" dir="ltr">{formatNumber(auto.taux_couverture)} %</p>
+              </div>
+            ) : null}
+            {auto.economies_annuelles !== null ? (
+              <div class="cine-card rounded-xl p-5">
+                <p class="tech-label text-lune-faint" data-i18n data-fr="Économies estimées / an" data-en="Estimated savings / year" data-ar="التوفير المقدّر / سنة">Économies estimées / an</p>
+                <p class="fig fig-md lum mt-2" dir="ltr">{formatMAD(auto.economies_annuelles)}</p>
+              </div>
+            ) : null}
+            {auto.payback !== null ? (
+              <div class="cine-card rounded-xl p-5">
+                <p class="tech-label text-lune-faint" data-i18n data-fr="Rentabilisé en" data-en="Paid back in" data-ar="يُسترد خلال">Rentabilisé en</p>
+                <p class="fig fig-md mt-2 text-lune" dir="ltr">{formatNumber(auto.payback, 1)} <span class="text-base text-lune-soft" data-i18n data-fr="ans" data-en="years" data-ar="سنة">ans</span></p>
+              </div>
+            ) : null}
+          </div>
+          {(auto.taux_autoconso === null && auto.taux_couverture === null && auto.economies_annuelles === null && auto.payback === null) ? (
+            <p class="mt-4 text-sm text-lune-faint" data-i18n
+              data-fr="Les indicateurs détaillés de votre étude sont confirmés avec votre conseiller."
+              data-en="The detailed indicators of your study are confirmed with your advisor."
+              data-ar="تُؤكَّد المؤشرات التفصيلية لدراستكم مع مستشاركم.">Les indicateurs détaillés de votre étude sont confirmés avec votre conseiller.</p>
+          ) : null}
+
+          {/* Injection 82-21 — UNIQUEMENT si réellement calculée. Mention ANRE
+              obligatoire : l'autoconsommation reste prioritaire, l'injection du
+              surplus dépend de la convention en vigueur (jamais promise). */}
+          {autoHasInjection && auto.injection_kwh_an !== null && (
+            <div class="cine-card mt-5 rounded-xl p-5">
+              <p class="tech-label text-brass-300" data-i18n data-fr="Injection du surplus (loi 82-21)" data-en="Surplus injection (law 82-21)" data-ar="حقن الفائض (القانون 82-21)">Injection du surplus (loi 82-21)</p>
+              <p class="mt-2 text-sm text-lune-soft" data-i18n
+                data-fr={`≈ ${formatNumber(auto.injection_kwh_an)} kWh/an de surplus injectables${auto.injection_dh_an !== null ? `, soit ≈ ${formatMAD(auto.injection_dh_an)}/an` : ''}.`}
+                data-en={`≈ ${formatNumber(auto.injection_kwh_an)} kWh/year of injectable surplus${auto.injection_dh_an !== null ? `, i.e. ≈ ${formatMAD(auto.injection_dh_an)}/year` : ''}.`}
+                data-ar={`≈ ${formatNumber(auto.injection_kwh_an)} kWh/سنة من الفائض القابل للحقن${auto.injection_dh_an !== null ? `، أي ≈ ${formatMAD(auto.injection_dh_an)}/سنة` : ''}.`}>≈ {formatNumber(auto.injection_kwh_an)} kWh/an de surplus injectables{auto.injection_dh_an !== null ? <>, soit ≈ {formatMAD(auto.injection_dh_an)}/an</> : null}.</p>
+              <p class="mt-1 text-xs text-lune-faint" data-i18n
+                data-fr="Sous réserve de la convention d'injection ANRE/ONEE en vigueur — l'autoconsommation reste prioritaire (loi 82-21). Aucune revente n'est garantie."
+                data-en="Subject to the applicable ANRE/ONEE injection agreement — self-consumption remains the priority (law 82-21). No resale is guaranteed."
+                data-ar="رهْن اتفاقية الحقن السارية لدى ANRE/ONEE — يبقى الاستهلاك الذاتي أولوية (القانون 82-21). لا يُضمن أي إعادة بيع.">Sous réserve de la convention d'injection ANRE/ONEE en vigueur — l'autoconsommation reste prioritaire (loi 82-21). Aucune revente n'est garantie.</p>
+            </div>
+          )}
+
+          {/* Mini-cashflow 10 ans : investissement remboursé puis bénéfice net
+              cumulé. Azur = encore en déficit, laiton = bénéfice. Même hypothèse
+              tarif constant que le PDF (aucune dérive inventée). */}
+          {autoCashflow && (
+            <div class="cine-card mt-5 rounded-2xl p-5 sm:p-6">
+              <p class="tech-label text-lune-faint" data-i18n data-fr="Votre trésorerie sur 10 ans" data-en="Your cash flow over 10 years" data-ar="خزينتكم على مدى 10 سنوات">Votre trésorerie sur 10 ans</p>
+              <div class="mt-4 flex items-end gap-1.5" dir="ltr" role="img"
+                aria-label="Trésorerie nette cumulée sur 10 ans">
+                {autoCashflow.map((p) => (
+                  <div class="flex flex-1 flex-col items-center gap-1">
+                    <span class="w-full rounded-t" style={`height:${Math.max(3, Math.round((Math.abs(p.cumulative) / cashMaxAbs) * 60))}px; background: ${p.cumulative >= 0 ? 'var(--color-brass-400, #e8b54a)' : 'var(--color-azur-300, #7fb4e8)'}`}></span>
+                    <span class="text-[10px] text-lune-faint" dir="ltr">{p.year}</span>
+                  </div>
+                ))}
+              </div>
+              <p class="mt-3 text-xs text-lune-faint" data-i18n
+                data-fr={`Trésorerie nette cumulée, année après année${cashBreakEven !== null ? ` — au point mort dès l'année ${cashBreakEven}` : ''}. Azur : investissement pas encore remboursé ; laiton : bénéfice net. Estimation à tarif constant (même hypothèse que votre devis PDF).`}
+                data-en={`Cumulative net cash flow, year after year${cashBreakEven !== null ? ` — breaks even by year ${cashBreakEven}` : ''}. Blue: investment not yet repaid; brass: net profit. Estimate at constant tariff (same assumption as your PDF quote).`}
+                data-ar={`الخزينة الصافية التراكمية سنة بعد سنة${cashBreakEven !== null ? ` — تبلغ نقطة التعادل ابتداءً من السنة ${cashBreakEven}` : ''}. الأزرق: الاستثمار لم يُسترد بعد؛ الذهبي: ربح صافٍ. تقدير بتعريفة ثابتة (نفس افتراض عرض PDF).`}>Trésorerie nette cumulée, année après année{cashBreakEven !== null ? <> — au point mort dès l'année {cashBreakEven}</> : null}. Azur : investissement pas encore remboursé ; laiton : bénéfice net. Estimation à tarif constant (même hypothèse que votre devis PDF).</p>
+            </div>
+          )}
+
+          {/* Industriel uniquement : tranches horaires + décarbonation/CBAM/ISO
+              (qualitatif, aucun chiffre inventé). */}
+          {installMode === 'industriel' && (
+            <div class="mt-5 grid gap-4 sm:grid-cols-2">
+              <div class="cine-card rounded-xl p-5">
+                <p class="tech-label text-brass-300" data-i18n data-fr="Écrêter vos tranches horaires" data-en="Shave your time-of-use peaks" data-ar="تقليص فترات الذروة">Écrêter vos tranches horaires</p>
+                <p class="mt-2 text-sm text-lune-soft" data-i18n
+                  data-fr="Le solaire produit en pleine journée, aux heures où le tarif industriel est le plus cher : vous écrêtez vos pointes et lissez votre puissance souscrite."
+                  data-en="Solar produces in the middle of the day, when industrial tariffs peak: you shave your peaks and smooth your subscribed power."
+                  data-ar="تنتج الطاقة الشمسية في وضح النهار، حين يكون التعريف الصناعي في ذروته: تقلّصون ذرواتكم وتُنعّمون القدرة المكتتبة.">Le solaire produit en pleine journée, aux heures où le tarif industriel est le plus cher : vous écrêtez vos pointes et lissez votre puissance souscrite.</p>
+              </div>
+              <div class="cine-card rounded-xl p-5">
+                <p class="tech-label text-brass-300" data-i18n data-fr="Décarbonation, CBAM et ISO" data-en="Decarbonation, CBAM and ISO" data-ar="إزالة الكربون، CBAM و ISO">Décarbonation, CBAM et ISO</p>
+                <p class="mt-2 text-sm text-lune-soft" data-i18n
+                  data-fr="Chaque kWh solaire autoconsommé retire du CO₂ de votre bilan — un atout pour vos clients européens (mécanisme d'ajustement carbone aux frontières, CBAM) et vos certifications ISO 14001/50001."
+                  data-en="Every self-consumed solar kWh removes CO₂ from your footprint — an asset for your European customers (Carbon Border Adjustment Mechanism, CBAM) and your ISO 14001/50001 certifications."
+                  data-ar="كل كيلوواط ساعة شمسي مستهلك ذاتياً يزيل CO₂ من حصيلتكم — ميزة لعملائكم الأوروبيين (آلية تعديل الكربون على الحدود، CBAM) ولشهادات ISO 14001/50001.">Chaque kWh solaire autoconsommé retire du CO₂ de votre bilan — un atout pour vos clients européens (mécanisme d'ajustement carbone aux frontières, CBAM) et vos certifications ISO 14001/50001.</p>
+              </div>
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════════
+          WJ126 · BLOC CATÉGORIE COMMERCIALE — archétype par secteur (hôtel,
+          restaurant/froid, école, bureau…), miroir QUALITATIF du backend
+          (categories.py). Commercial uniquement ; `autre` en repli honnête.
+          ════════════════════════════════════════════════════════════════════ */}
+      {isCommercial && comArchetype && (
+        <section class="mx-auto max-w-4xl px-5 pt-12 sm:px-8" id="mode-commercial-cat">
+          <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Votre secteur" data-en="Your sector" data-ar="قطاعكم">Votre secteur</p>
+          <div class="cine-card mt-5 rounded-2xl p-5 sm:p-6">
+            <p class="text-2xl" aria-hidden="true">{comArchetype.icon}</p>
+            <p class="fig mt-2 text-xl text-lune" data-i18n
+              data-fr={comArchetype.labelFr} data-en={comArchetype.labelEn} data-ar={comArchetype.labelAr}>{comArchetype.labelFr}</p>
+            <p class="mt-2 text-sm text-lune-soft" data-i18n
+              data-fr={comArchetype.accrocheFr} data-en={comArchetype.accrocheEn} data-ar={comArchetype.accrocheAr}>{comArchetype.accrocheFr}</p>
           </div>
         </section>
       )}
