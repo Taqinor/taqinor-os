@@ -708,6 +708,8 @@ CELERY_TASK_ROUTES = {
     'chat.transcribe_voice_attachment': {'queue': 'interactive'},
     # Toutes les tâches planifiées (beat_schedule) → `scheduled`.
     'ventes.check_overdue_factures': {'queue': 'scheduled'},
+    'compta.recalculer_alerte_rupture': {'queue': 'scheduled'},
+    'compta.relances_tresorerie_du_jour': {'queue': 'scheduled'},
     'ventes.expire_stale_devis': {'queue': 'scheduled'},
     'ventes.relance_reminders': {'queue': 'scheduled'},
     'ventes.devis_followup_nudges': {'queue': 'scheduled'},
