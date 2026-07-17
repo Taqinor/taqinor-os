@@ -84,17 +84,20 @@ def rapport_derogations_view(request):
         except ValueError:
             return None
 
+    client_raw = request.query_params.get('client')
+    client_id = int(client_raw) if client_raw and client_raw.isdigit() else None
     rapport = rapport_derogations(
-        request.user.company, _parse('date_debut'), _parse('date_fin'))
+        request.user.company, _parse('date_debut'), _parse('date_fin'),
+        client_id=client_id)
 
-    if request.query_params.get('format') == 'xlsx':
-        from apps.records.xlsx import workbook_bytes
+    # NTCRD40 — colonnes STABLES documentées (jamais renommées silencieusement).
+    header = [
+        'ID', 'Client', 'Montant', 'Statut', 'Demandeur', 'Décideur',
+        'Créée le', 'Décidée le', 'Délai (h)',
+    ]
 
-        header = [
-            'ID', 'Client', 'Montant', 'Statut', 'Demandeur', 'Décideur',
-            'Créée le', 'Décidée le', 'Délai (h)',
-        ]
-        rows = [
+    def _rows():
+        return [
             [
                 ligne['id'], ligne['client_id'], ligne['montant_demande'],
                 ligne['statut'], ligne['demandeur'], ligne['decideur'],
@@ -103,7 +106,11 @@ def rapport_derogations_view(request):
             ]
             for ligne in rapport['lignes']
         ]
-        content = workbook_bytes(header, rows, sheet_title='derogations')
+
+    fmt = request.query_params.get('format')
+    if fmt == 'xlsx':
+        from apps.records.xlsx import workbook_bytes
+        content = workbook_bytes(header, _rows(), sheet_title='derogations')
         resp = HttpResponse(
             content,
             content_type=(
@@ -111,6 +118,21 @@ def rapport_derogations_view(request):
                 'spreadsheetml.sheet'))
         resp['Content-Disposition'] = (
             'attachment; filename="derogations_credit.xlsx"')
+        return resp
+
+    if fmt == 'csv':
+        # NTCRD40 — CSV brut UTF-8 avec BOM (compatibilité Excel FR).
+        import csv as _csv
+        import io as _io
+        buf = _io.StringIO()
+        writer = _csv.writer(buf)
+        writer.writerow(header)
+        for row in _rows():
+            writer.writerow(['' if v is None else v for v in row])
+        content = ('﻿' + buf.getvalue()).encode('utf-8')
+        resp = HttpResponse(content, content_type='text/csv; charset=utf-8')
+        resp['Content-Disposition'] = (
+            'attachment; filename="derogations_credit.csv"')
         return resp
 
     return Response(rapport)

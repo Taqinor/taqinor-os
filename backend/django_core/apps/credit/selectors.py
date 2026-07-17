@@ -266,7 +266,7 @@ def rapport_exposition(company, clients=None):
     return lignes
 
 
-def rapport_derogations(company, date_debut=None, date_fin=None):
+def rapport_derogations(company, date_debut=None, date_fin=None, client_id=None):
     """NTCRD26 — liste des ``DerogationCredit`` d'une société sur une période
     (``date_creation`` dans [date_debut, date_fin]), avec statut, montant,
     décideur et délai de traitement moyen (heures création→décision, sur les
@@ -280,6 +280,8 @@ def rapport_derogations(company, date_debut=None, date_fin=None):
         qs = qs.filter(date_creation__date__gte=date_debut)
     if date_fin is not None:
         qs = qs.filter(date_creation__date__lte=date_fin)
+    if client_id is not None:
+        qs = qs.filter(client_id=client_id)
 
     lignes = []
     delais = []
