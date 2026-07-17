@@ -91,7 +91,7 @@ class LeverReserveTests(TestCase):
         from apps.notifications.models import Notification
         self.assertTrue(
             Notification.objects.filter(
-                user=self.createur, event_type='approval_decided').exists())
+                recipient=self.createur, event_type='approval_decided').exists())
 
     def test_lever_reserve_dune_autre_societe_404(self):
         other_co = make_company()
