@@ -1,17 +1,16 @@
 from django.db.models import Q
-from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
 
-from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.viewsets import CompanyScopedModelViewSet
 
 from .models import SavedView
 from .serializers import SavedViewSerializer
 
 
-class SavedViewViewSet(TenantMixin, viewsets.ModelViewSet):
+class SavedViewViewSet(CompanyScopedModelViewSet):
     """NTUX1/2 — CRUD des vues sauvegardées, filtré par `?ecran=`. Une vue est
     visible si l'appelant en est le propriétaire, OU si elle est partagée à
     l'équipe (`visibilite=EQUIPE`) — la société est déjà bornée par

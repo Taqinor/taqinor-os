@@ -94,7 +94,7 @@ class Classe(TenantModel):
     (jamais d'import direct de ``apps.rh.models``)."""
 
     annee_scolaire = models.ForeignKey(
-        AnneeScolaire, on_delete=models.CASCADE, related_name='classes',
+        AnneeScolaire, on_delete=models.CASCADE, related_name='classes',  # on_delete: composition (parent-enfant)
         verbose_name='Année scolaire')
     niveau = models.ForeignKey(
         Niveau, on_delete=models.PROTECT, related_name='classes',
@@ -182,7 +182,7 @@ class Eleve(TenantModel):
         DIPLOME = 'diplome', 'Diplômé'
 
     famille = models.ForeignKey(
-        Famille, on_delete=models.CASCADE, related_name='eleves',
+        Famille, on_delete=models.CASCADE, related_name='eleves',  # on_delete: composition (parent-enfant)
         verbose_name='Famille')
     nom = models.CharField(max_length=150, verbose_name='Nom')
     prenom = models.CharField(max_length=150, verbose_name='Prénom')
@@ -238,10 +238,10 @@ class Inscription(TenantModel):
         LISTE_ATTENTE = "liste_attente", "Liste d'attente"
 
     eleve = models.ForeignKey(
-        Eleve, on_delete=models.CASCADE, related_name='inscriptions',
+        Eleve, on_delete=models.CASCADE, related_name='inscriptions',  # on_delete: composition (parent-enfant)
         verbose_name='Élève')
     annee_scolaire = models.ForeignKey(
-        AnneeScolaire, on_delete=models.CASCADE, related_name='inscriptions',
+        AnneeScolaire, on_delete=models.CASCADE, related_name='inscriptions',  # on_delete: composition (parent-enfant)
         verbose_name='Année scolaire')
     classe_demandee = models.ForeignKey(
         Classe, on_delete=models.SET_NULL, null=True, blank=True,
@@ -282,10 +282,10 @@ class GrilleTarifaire(TenantModel):
     en historique sans violer la contrainte)."""
 
     annee_scolaire = models.ForeignKey(
-        AnneeScolaire, on_delete=models.CASCADE, related_name='grilles_tarifaires',
+        AnneeScolaire, on_delete=models.CASCADE, related_name='grilles_tarifaires',  # on_delete: composition (parent-enfant)
         verbose_name='Année scolaire')
     niveau = models.ForeignKey(
-        Niveau, on_delete=models.CASCADE, related_name='grilles_tarifaires',
+        Niveau, on_delete=models.CASCADE, related_name='grilles_tarifaires',  # on_delete: composition (parent-enfant)
         verbose_name='Niveau')
     frais_inscription = models.DecimalField(
         max_digits=10, decimal_places=2, default=Decimal('0'),
@@ -346,10 +346,10 @@ class Remise(TenantModel):
         REJETEE = 'rejetee', 'Rejetée'
 
     famille = models.ForeignKey(
-        Famille, on_delete=models.CASCADE, null=True, blank=True,
+        Famille, on_delete=models.CASCADE, null=True, blank=True,  # on_delete: composition (parent-enfant)
         related_name='remises', verbose_name='Famille')
     eleve = models.ForeignKey(
-        Eleve, on_delete=models.CASCADE, null=True, blank=True,
+        Eleve, on_delete=models.CASCADE, null=True, blank=True,  # on_delete: composition (parent-enfant)
         related_name='remises', verbose_name='Élève')
     type = models.CharField(
         max_length=10, choices=Type.choices, verbose_name='Type')
@@ -362,7 +362,7 @@ class Remise(TenantModel):
     motif = models.CharField(
         max_length=255, blank=True, default='', verbose_name='Motif')
     valable_annee_scolaire = models.ForeignKey(
-        AnneeScolaire, on_delete=models.CASCADE, related_name='remises',
+        AnneeScolaire, on_delete=models.CASCADE, related_name='remises',  # on_delete: composition (parent-enfant)
         verbose_name='Année scolaire')
     justificatif = models.ForeignKey(
         'ged.Document', on_delete=models.SET_NULL, null=True, blank=True,
@@ -394,10 +394,10 @@ class EcheancierScolarite(TenantModel):
     echeancier.generer_echeancier``)."""
 
     eleve = models.ForeignKey(
-        Eleve, on_delete=models.CASCADE, related_name='echeanciers',
+        Eleve, on_delete=models.CASCADE, related_name='echeanciers',  # on_delete: composition (parent-enfant)
         verbose_name='Élève')
     annee_scolaire = models.ForeignKey(
-        AnneeScolaire, on_delete=models.CASCADE, related_name='echeanciers',
+        AnneeScolaire, on_delete=models.CASCADE, related_name='echeanciers',  # on_delete: composition (parent-enfant)
         verbose_name='Année scolaire')
     grille_tarifaire = models.ForeignKey(
         GrilleTarifaire, on_delete=models.PROTECT, related_name='echeanciers',
@@ -435,7 +435,7 @@ class LigneEcheance(TenantModel):
         EN_RETARD = 'en_retard', 'En retard'
 
     echeancier = models.ForeignKey(
-        EcheancierScolarite, on_delete=models.CASCADE, related_name='lignes',
+        EcheancierScolarite, on_delete=models.CASCADE, related_name='lignes',  # on_delete: composition (parent-enfant)
         verbose_name='Échéancier')
     libelle = models.CharField(max_length=150, verbose_name='Libellé')
     montant = models.DecimalField(
@@ -466,7 +466,7 @@ class Seance(TenantModel):
     séances n'ont pas besoin d'y être liées pour la saisie de présence)."""
 
     classe = models.ForeignKey(
-        Classe, on_delete=models.CASCADE, related_name='seances',
+        Classe, on_delete=models.CASCADE, related_name='seances',  # on_delete: composition (parent-enfant)
         verbose_name='Classe')
     matiere = models.CharField(max_length=100, verbose_name='Matière')
     enseignant = models.ForeignKey(
@@ -498,10 +498,10 @@ class Presence(TenantModel):
         EXCUSE = 'excuse', 'Excusé'
 
     seance = models.ForeignKey(
-        Seance, on_delete=models.CASCADE, related_name='presences',
+        Seance, on_delete=models.CASCADE, related_name='presences',  # on_delete: composition (parent-enfant)
         verbose_name='Séance')
     eleve = models.ForeignKey(
-        Eleve, on_delete=models.CASCADE, related_name='presences',
+        Eleve, on_delete=models.CASCADE, related_name='presences',  # on_delete: composition (parent-enfant)
         verbose_name='Élève')
     statut = models.CharField(
         max_length=10, choices=Statut.choices, default=Statut.PRESENT,
@@ -557,10 +557,10 @@ class MatiereClasse(TenantModel):
     ``rh.DossierEmploye`` par FK à chaîne."""
 
     classe = models.ForeignKey(
-        Classe, on_delete=models.CASCADE, related_name='matieres_classe',
+        Classe, on_delete=models.CASCADE, related_name='matieres_classe',  # on_delete: composition (parent-enfant)
         verbose_name='Classe')
     matiere = models.ForeignKey(
-        Matiere, on_delete=models.CASCADE, related_name='classes_matiere',
+        Matiere, on_delete=models.CASCADE, related_name='classes_matiere',  # on_delete: composition (parent-enfant)
         verbose_name='Matière')
     enseignant = models.ForeignKey(
         'rh.DossierEmploye', on_delete=models.SET_NULL, null=True, blank=True,
