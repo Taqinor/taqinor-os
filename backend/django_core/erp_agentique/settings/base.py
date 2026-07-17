@@ -771,6 +771,8 @@ CELERY_TASK_ROUTES = {
     'ventes.releve_mensuel_reminders': {'queue': 'scheduled'},
     'crm.appointment_reminders': {'queue': 'scheduled'},
     'crm.recycler_leads_non_travailles': {'queue': 'scheduled'},
+    # NTCRM6 — snapshot forecast hebdomadaire (beat, tâche planifiée).
+    'crm.snapshot_forecast_hebdo': {'queue': 'scheduled'},
     'notifications.daily_digest': {'queue': 'scheduled'},
     'notifications.weekly_digest': {'queue': 'scheduled'},
     'notifications.sweep_daily': {'queue': 'scheduled'},

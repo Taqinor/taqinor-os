@@ -18,7 +18,7 @@ from django.utils import timezone
 from apps.crm.models import Client
 from apps.parametres.models_company import CompanyProfile
 from apps.ventes.models import EmailLog, Facture
-from apps.ventes.scheduled import pre_echeance_reminders
+from apps.ventes.scheduled import casablanca_today, pre_echeance_reminders
 
 MONTH = timezone.now().strftime('%Y%m')
 
@@ -40,7 +40,10 @@ class XFAC7PreEcheanceTests(TestCase):
     def setUp(self):
         self.company = make_company()
         self.client_obj = make_client(self.company)
-        today = timezone.now().date()
+        # Aligné sur la base de date du code (casablanca_today) — sinon flake
+        # UTC-vs-Casablanca près de minuit UTC (échéance J+N calée sur UTC mais
+        # le job compare à casablanca_today+N, décalés d'un jour à la frontière).
+        today = casablanca_today()
         self.facture = Facture.objects.create(
             company=self.company, reference=f'FAC-{MONTH}-0001',
             client=self.client_obj, statut=Facture.Statut.EMISE,

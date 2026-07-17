@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import marketingApi from '../../api/marketingApi'
+import { formatDateTime } from '../../lib/format'
 
 /* ============================================================================
    NTMKT10 — Paramètres → Marketing : domaine d'envoi (SPF/DKIM/DMARC, XMKT33).
@@ -101,7 +102,7 @@ export default function DomaineEnvoi() {
                   <td>{d.dmarc_verifie ? '✓' : '✗'}</td>
                   <td>{d.authentifie ? 'Oui' : 'Non'}</td>
                   <td>{d.derniere_verification_le
-                    ? new Date(d.derniere_verification_le).toLocaleString('fr-FR') : 'Jamais'}</td>
+                    ? formatDateTime(d.derniere_verification_le) : 'Jamais'}</td>
                   <td style={{ display: 'flex', gap: 6 }}>
                     <button className="btn btn-light" type="button"
                       data-testid="domaine-attendus" onClick={() => revoir(d.id)}>
