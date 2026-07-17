@@ -35,7 +35,8 @@ from .views import (
     IndemniteChantierViewSet, JournalViewSet,
     LignePrevisionnelTresorerieViewSet, MessageWhatsAppEntrantViewSet,
     ModeleDevisViewSet, NoteFraisViewSet, OuverturePartageViewSet,
-    PaymentRunViewSet,
+    ParametresTresorerieView, PaymentRunViewSet, PouvoirBancaireViewSet,
+    PlanRelanceTresorerieViewSet,
     PeriodeComptableViewSet, PilotageViewSet, PlafondNoteFraisViewSet,
     PlanComptableViewSet,
     ProvisionCreanceViewSet, ProvisionViewSet,
@@ -69,6 +70,11 @@ from .views import (
     FamilleTvaNonDeductibleViewSet,
     LettrageViewSet,
     CompensationViewSet,
+    CycleConsolidationViewSet, LiasseRemonteeViewSet,
+    MappingConsolidationViewSet, OperationIntercoViewSet,
+    MargeInterneStockViewSet, EliminationTitresViewSet,
+    ReferentielComptableViewSet, AjustementGaapViewSet,
+    AxeAnalytiqueViewSet, ImputationAxeViewSet,
 )
 
 router = DefaultRouter()
@@ -92,6 +98,8 @@ router.register(r'previsionnel', LignePrevisionnelTresorerieViewSet)
 router.register(r'effets', EffetViewSet)
 router.register(r'bordereaux', BordereauRemiseViewSet)
 router.register(r'payment-runs', PaymentRunViewSet)
+router.register(r'pouvoirs-bancaires', PouvoirBancaireViewSet)
+router.register(r'plans-relance-tresorerie', PlanRelanceTresorerieViewSet)
 router.register(r'notes-frais', NoteFraisViewSet)
 router.register(r'rapports-notes-frais', RapportNoteFraisViewSet)
 router.register(r'plafonds-notes-frais', PlafondNoteFraisViewSet)
@@ -200,6 +208,19 @@ router.register(r'communications-evenement', CommunicationEvenementViewSet)
 router.register(r'supports-offline', SupportOfflineViewSet)
 # ── XMKT33 — Assistant d'authentification du domaine d'envoi ───────────────
 router.register(r'domaines-envoi', DomaineEnvoiViewSet)
+# ── NTFIN — Consolidation multi-sociétés (grand groupe) ────────────────────
+router.register(r'cycles-consolidation', CycleConsolidationViewSet,
+                basename='cycle-consolidation')
+router.register(r'liasses-remontee', LiasseRemonteeViewSet)
+router.register(r'mappings-consolidation', MappingConsolidationViewSet)
+router.register(r'operations-interco', OperationIntercoViewSet)
+router.register(r'marges-internes-stock', MargeInterneStockViewSet)
+router.register(r'eliminations-titres', EliminationTitresViewSet)
+# ── NTFIN — Multi-référentiel & analytique multi-axes ──────────────────────
+router.register(r'referentiels-comptables', ReferentielComptableViewSet)
+router.register(r'ajustements-gaap', AjustementGaapViewSet)
+router.register(r'axes-analytiques', AxeAnalytiqueViewSet)
+router.register(r'imputations-axes', ImputationAxeViewSet)
 
 urlpatterns = [
     # XMKT30 (partiel) — calendrier marketing agrégé (campagnes + posts
@@ -232,5 +253,8 @@ urlpatterns = [
          name='portail-mon-releve-pdf'),
     path('portail/<str:token>/factures/<int:facture_id>/contester/',
          portail_contester_facture, name='portail-contester-facture'),
+    # NTTRE27 — réglages trésorerie (singleton par société, GET/PATCH).
+    path('parametres-tresorerie/', ParametresTresorerieView.as_view(),
+         name='parametres-tresorerie'),
     path('', include(router.urls)),
 ]

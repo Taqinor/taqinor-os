@@ -86,11 +86,12 @@ const MODULEPRELOAD_ALLOWLIST = new Set([
 // chunks < 1 Ko gzip d'icônes lucide individuelles, cf. VX189). Généreux :
 // n'attrape qu'une régression de structure massive, pas la croissance produit
 // normale (chaque écran lazy-loadé ajoute un chunk).
-// 2026-07-17 : 400 -> 430. Les vagues plateforme (santé/innovation/QX) + le
-// shell Marketing PLAN_CRM_VENTES (9 écrans lazy-loadés) portent le total à 404
+// 2026-07-17 : 400 -> 430. Le batch plateforme NT (portail développeur API /
+// webhooks, vues sauvegardées, frontends éducation/innovation, réel 405) ET le
+// shell Marketing PLAN_CRM_VENTES (9 écrans lazy-loadés) portent le total à ~404
 // chunks — chaque écran lazy ajoute 1 chunk (croissance produit, pas une
-// prolifération d'icônes). Palier généreux ; le budget gzip (2440) reste le
-// vrai garde-fou de poids.
+// prolifération d'icônes). Palier généreux couvrant les deux vagues ; le budget
+// gzip (2440) + PER_CHUNK_BUDGET_KB (350) restent les vrais garde-fous de poids.
 const MAX_CHUNK_COUNT = 430
 
 // Extrait les `<link rel="modulepreload" href="...">` de `dist/index.html` et

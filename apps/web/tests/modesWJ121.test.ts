@@ -182,13 +182,24 @@ describe.each(LOCALES)('WJ121 — 4 cartes de mode dans mon-toit.astro (%s)', (_
     expect(src).toContain("if (mode === 'professionnel') mode = 'industriel';");
   });
 
-  it('industriel et commercial partagent le sous-panneau/moteur pro via isProMode (WJ122/WJ123 : panneaux dédiés)', () => {
+  it('industriel et commercial partagent le MOTEUR pro via isProMode ; WJ122 : commercial a son PROPRE panneau', () => {
     expect(src).toContain('function isProMode(');
-    expect(src).toContain('pro.hidden = !isProMode(m);');
-    // Plus aucun branchement métier sur l'ancien littéral (seule la ligne de
-    // migration ci-dessus peut le mentionner).
-    const businessBranches = src.match(/mode === 'professionnel'/g) ?? [];
-    expect(businessBranches).toHaveLength(1); // uniquement la migration
+    // WJ122 — le panneau pro ne s'affiche plus que pour industriel (+ alias
+    // professionnel) ; 'commercial' a désormais son propre sous-panneau. Le
+    // MOTEUR (computeProEstimate) reste partagé via isProMode côté CALCUL.
+    expect(src).toContain("pro.hidden = !(m === 'industriel' || m === 'professionnel');");
+    expect(src).toContain("commercial.hidden = m !== 'commercial';");
+    expect(src).toContain('isProMode(mode)');
+    // 'professionnel' n'est JAMAIS traité comme un mode AUTONOME : chaque
+    // occurrence du littéral est soit la ligne de migration, soit une garde
+    // d'alias industriel `mode === 'industriel' || mode === 'professionnel'`
+    // (WJ123 — professionnel = alias hérité d'industriel pour les champs de
+    // charge industriels). Aucun branchement métier sur professionnel seul.
+    const proLiteral = src.match(/mode === 'professionnel'/g) ?? [];
+    const aliasGuards = src.match(/mode === 'industriel' \|\| mode === 'professionnel'/g) ?? [];
+    const migration = src.match(/if \(mode === 'professionnel'\) mode = 'industriel'/g) ?? [];
+    expect(proLiteral.length).toBe(aliasGuards.length + migration.length);
+    expect(migration).toHaveLength(1); // la migration existe toujours
   });
 
   it('le fil d’étapes a un libellé par mode pour industriel ET commercial', () => {

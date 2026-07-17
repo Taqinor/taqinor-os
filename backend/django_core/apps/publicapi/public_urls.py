@@ -13,6 +13,8 @@ from .public_views import (
 from .public_write_views import (
     PublicLeadCreateView, PublicLeadUpdateView, PublicActivityCreateView,
 )
+from .public_sandbox_views import SandboxResetView
+from .public_changelog_views import PublicChangelogView
 
 router = DefaultRouter()
 router.register(r'leads', PublicLeadViewSet, basename='public-lead')
@@ -30,5 +32,11 @@ urlpatterns = [
          name='public-lead-write-update'),
     path('leads-write/<int:pk>/activites/', PublicActivityCreateView.as_view(),
          name='public-activity-write-create'),
+    # NTAPI27 — reset du bac à sable (clé `test` seule).
+    path('sandbox/reset/', SandboxResetView.as_view(),
+         name='public-sandbox-reset'),
+    # NTAPI24 — fil « changelog API » dédié (public, aucune clé requise).
+    path('changelog/', PublicChangelogView.as_view(),
+         name='public-changelog'),
     path('', include(router.urls)),
 ]

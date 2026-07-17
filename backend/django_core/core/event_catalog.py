@@ -43,6 +43,10 @@ def _e(description, payload, version=1):
 # événements émis via l'outbox. Tout NOUVEAU signal de ``core.events`` DOIT
 # recevoir une entrée ici (sinon le test de couverture échoue).
 CATALOG = {
+    'meta_lead_captured': _e(
+        'Un lead Meta Lead Ads est capturé (webhook CRM).',
+        ['lead', 'company', 'leadgen_id', 'ad_id', 'adset_id',
+         'campaign_id', 'form_id', 'created_time', 'is_organic']),
     'devis_accepted': _e(
         'Un devis passe à « accepté ».',
         ['devis', 'user', 'ancien_statut']),
@@ -145,6 +149,9 @@ CATALOG = {
     'lead_stage_changed': _e(
         "Un lead CRM change d'étape de pipeline (STAGES.py).",
         ['lead', 'old_stage', 'new_stage', 'user']),
+    'budget_cycle_clos': _e(
+        'Un cycle budgétaire FP&A (NTFPA29) bascule vers « clos ».',
+        ['company', 'cycle_id', 'totaux']),
 }
 
 

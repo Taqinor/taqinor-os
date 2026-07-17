@@ -22,17 +22,33 @@ const innovationApiMock = vi.hoisted(() => ({
   create: vi.fn(),
   update: vi.fn(),
   contextes: vi.fn(() => Promise.resolve({ data: { results: [] } })),
+  similaires: vi.fn(() => Promise.resolve({ data: { results: [] } })),
   examiner: vi.fn(),
   retenir: vi.fn(),
   realiser: vi.fn(),
   fermer: vi.fn(),
   historique: vi.fn(),
+  lier: vi.fn(),
+  reouvrir: vi.fn(),
+  publier: vi.fn(),
+  masquer: vi.fn(),
   vote: vi.fn(),
   retirerVote: vi.fn(),
   votesRecents: vi.fn(),
   mesVotes: vi.fn(),
+  // NTIDE27 — bandeau d'incitation (défaut : aucune campagne matchée).
+  campagnes: {
+    incitation: vi.fn(() => Promise.resolve({ data: { campagne: null } })),
+  },
 }))
 vi.mock('../../api/innovationApi', () => ({ default: innovationApiMock }))
+
+// NTIDE15 (« Mes idées ») lit l'utilisateur connecté via useSelector — pas de
+// Provider redux dans `wrap()`, on stub directement (patron
+// UsersManagement.test.jsx).
+vi.mock('react-redux', () => ({
+  useSelector: (sel) => sel({ auth: { user: { id: 1, username: 'demo_user' } } }),
+}))
 
 // jsdom n'implémente pas ResizeObserver (Radix Switch/Select).
 beforeAll(() => {
@@ -171,6 +187,73 @@ describe('IdeeDetail', () => {
     await user.click(screen.getByRole('button', { name: /Voter/ }))
     await waitFor(() => expect(innovationApiMock.vote).toHaveBeenCalledWith('3'))
   })
+
+  it('NTIDE17 — l\'auteur voit « Ré-ouvrir » sur une idée fermée et peut la ré-ouvrir', async () => {
+    innovationApiMock.get.mockResolvedValue({
+      data: {
+        id: 4, titre: 'Idée fermée', statut: 'fermee', votes_count: 1,
+        auteur: 1, historique: [],
+      },
+    })
+    innovationApiMock.reouvrir.mockResolvedValue({ data: { id: 4 } })
+    const { default: IdeeDetail } = await import('./IdeeDetail')
+    render(wrap(
+      <Routes><Route path="/innovation/idees/:id" element={<IdeeDetail />} /></Routes>,
+      { route: '/innovation/idees/4' },
+    ))
+    await waitFor(() => expect(screen.getByText('Idée fermée')).toBeTruthy())
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: /Ré-ouvrir/ }))
+    await waitFor(() => expect(innovationApiMock.reouvrir).toHaveBeenCalledWith('4'))
+  })
+
+  it('NTIDE19 — « Masquer » confirmé appelle innovationApi.masquer', async () => {
+    innovationApiMock.get.mockResolvedValue({
+      data: { id: 6, titre: 'Idée à modérer', statut: 'ouvert', votes_count: 0, historique: [] },
+    })
+    innovationApiMock.masquer.mockResolvedValue({ data: { id: 6 } })
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const { default: IdeeDetail } = await import('./IdeeDetail')
+    render(wrap(
+      <Routes><Route path="/innovation/idees/:id" element={<IdeeDetail />} /></Routes>,
+      { route: '/innovation/idees/6' },
+    ))
+    await waitFor(() => expect(screen.getByText('Idée à modérer')).toBeTruthy())
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: /Masquer/ }))
+    await waitFor(() => expect(innovationApiMock.masquer).toHaveBeenCalledWith('6'))
+  })
+
+  it('NTIDE17 — un non-auteur ne voit pas « Ré-ouvrir » sur une idée fermée', async () => {
+    innovationApiMock.get.mockResolvedValue({
+      data: {
+        id: 5, titre: 'Idée fermée (autre auteur)', statut: 'fermee',
+        votes_count: 1, auteur: 99, historique: [],
+      },
+    })
+    const { default: IdeeDetail } = await import('./IdeeDetail')
+    render(wrap(
+      <Routes><Route path="/innovation/idees/:id" element={<IdeeDetail />} /></Routes>,
+      { route: '/innovation/idees/5' },
+    ))
+    await waitFor(() => expect(screen.getByText('Idée fermée (autre auteur)')).toBeTruthy())
+    expect(screen.queryByRole('button', { name: /Ré-ouvrir/ })).toBeNull()
+  })
+})
+
+describe('MesIdeesPage (NTIDE15)', () => {
+  it('charge les idées de l\'utilisateur connecté (filtre owner) et les affiche', async () => {
+    innovationApiMock.list.mockResolvedValue({
+      data: [
+        { id: 1, titre: 'Ma première idée', statut: 'ouvert', votes_count: 2, date_creation: '2026-07-01T10:00:00Z' },
+      ],
+    })
+    const { default: MesIdeesPage } = await import('./MesIdeesPage')
+    render(wrap(<MesIdeesPage />))
+
+    await waitFor(() => expect(innovationApiMock.list).toHaveBeenCalledWith({ owner: 1 }))
+    expect((await screen.findAllByText('Ma première idée')).length).toBeGreaterThan(0)
+  })
 })
 
 describe('ProposerIdeeForm (NTIDE8/NTIDE9)', () => {
@@ -201,12 +284,68 @@ describe('ProposerIdeeForm (NTIDE8/NTIDE9)', () => {
     expect((await screen.findByLabelText('Contexte')).value).toBe('CRM')
   })
 
+  it("NTIDE27 — affiche le bandeau d'incitation quand une campagne matche l'utilisateur", async () => {
+    innovationApiMock.campagnes.incitation.mockResolvedValueOnce({
+      data: { campagne: { id: 1, nom: 'Idées pompage', message_incitation: 'Parlez-nous du pompage.' } },
+    })
+    const { default: ProposerIdeeForm } = await import('./ProposerIdeeForm')
+    render(wrap(<ProposerIdeeForm />))
+    expect(await screen.findByText('Parlez-nous du pompage.')).toBeInTheDocument()
+  })
+
+  it("NTIDE27 — aucun bandeau quand aucune campagne ne matche", async () => {
+    const { default: ProposerIdeeForm } = await import('./ProposerIdeeForm')
+    render(wrap(<ProposerIdeeForm />))
+    await screen.findByLabelText('Titre')
+    expect(screen.queryByText(/Parlez-nous/)).not.toBeInTheDocument()
+  })
+
   it('refuse un titre vide', async () => {
     const { default: ProposerIdeeForm } = await import('./ProposerIdeeForm')
     render(wrap(<ProposerIdeeForm />))
     const user = userEvent.setup()
     await user.click(screen.getByRole('button', { name: /Proposer l'idée/ }))
     expect(innovationApiMock.create).not.toHaveBeenCalled()
+  })
+
+  it('NTIDE18 — coche « Enregistrer en brouillon » : payload.draft = true', async () => {
+    innovationApiMock.create.mockResolvedValue({ data: { id: 10 } })
+    const { default: ProposerIdeeForm } = await import('./ProposerIdeeForm')
+    render(wrap(<ProposerIdeeForm />))
+
+    const user = userEvent.setup()
+    await user.type(screen.getByLabelText('Titre'), 'Idée pas encore prête')
+    await user.click(screen.getByRole('checkbox', { name: /Enregistrer en brouillon/ }))
+    await user.click(screen.getByRole('button', { name: /Enregistrer en brouillon/ }))
+
+    await waitFor(() => expect(innovationApiMock.create).toHaveBeenCalled())
+    const [payload] = innovationApiMock.create.mock.calls[0]
+    expect(payload.draft).toBe(true)
+  })
+
+  it('NTIDE20 — recherche des idées similaires et vote dessus au lieu de dupliquer', async () => {
+    innovationApiMock.similaires.mockResolvedValue({
+      data: {
+        results: [
+          { id: 42, titre: 'Idée déjà proposée', contexte: 'SAV', statut: 'ouvert', votes_count: 4 },
+        ],
+      },
+    })
+    innovationApiMock.vote.mockResolvedValue({ data: { id: 1 } })
+    const { default: ProposerIdeeForm } = await import('./ProposerIdeeForm')
+    render(wrap(<ProposerIdeeForm />))
+
+    const user = userEvent.setup()
+    await user.type(screen.getByLabelText('Titre'), 'Export PDF')
+
+    await waitFor(
+      () => expect(innovationApiMock.similaires).toHaveBeenCalledWith('Export PDF'),
+      { timeout: 2000 },
+    )
+    expect(await screen.findByText('Idée déjà proposée')).toBeTruthy()
+
+    await user.click(screen.getByRole('button', { name: /4/ }))
+    await waitFor(() => expect(innovationApiMock.vote).toHaveBeenCalledWith(42))
   })
 
   it('NTIDE10 — propose les contextes fréquents en autocomplétion (datalist)', async () => {
@@ -245,7 +384,7 @@ describe('ProposerIdeeForm (NTIDE8/NTIDE9)', () => {
     render(wrap(<ProposerIdeeForm />, { route: '/ventes/devis?edit=42' }))
 
     const user = userEvent.setup()
-    await user.click(await screen.findByRole('checkbox'))
+    await user.click((await screen.findAllByRole('checkbox'))[0])
     await user.type(screen.getByLabelText('Titre'), 'Sans lien')
     await user.click(screen.getByRole('button', { name: /Proposer l'idée/ }))
 

@@ -18,8 +18,15 @@ const innovationApi = {
   // ── Autocomplétion contexte (NTIDE10) ──
   contextes: () => api.get('/innovation/idees/contextes/'),
 
+  // ── Dédup : idées similaires (NTIDE20, top 3 titre+description) ──
+  similaires: (q) => api.get('/innovation/idees/similaires/', { params: { q } }),
+
   // ── Tableau de bord admin (NTIDE6) ──
   tableauBord: () => api.get('/innovation/idees/tableau-bord/'),
+
+  // ── Timeline — idées par jour (NTIDE23) ──
+  // params: statut / contexte.
+  timeline: (params) => api.get('/innovation/timeline/', { params }),
 
   // ── Machine à états (POST) — palier Directeur/Responsable (NTIDE5) ──
   examiner: (id) => api.post(`/innovation/idees/${id}/examiner/`),
@@ -29,6 +36,20 @@ const innovationApi = {
 
   // ── Chatter (historique, NTIDE5) ──
   historique: (id) => api.get(`/innovation/idees/${id}/historique/`),
+
+  // ── Lier à un devis/ticket/chantier (NTIDE14, opaque string-FK) ──
+  lier: (id, linkedType, linkedId) =>
+    api.post(`/innovation/idees/${id}/lier/`,
+      { linked_type: linkedType, linked_id: linkedId }),
+
+  // ── Ré-ouverture par l'auteur (NTIDE17, fermée/examinée uniquement) ──
+  reouvrir: (id) => api.post(`/innovation/idees/${id}/reouvrir/`),
+
+  // ── Publier un brouillon (NTIDE18, draft → False, réservé à l'auteur) ──
+  publier: (id) => api.post(`/innovation/idees/${id}/publier/`),
+
+  // ── Modération : masquer sans supprimer (NTIDE19, palier Directeur/Responsable) ──
+  masquer: (id) => api.post(`/innovation/idees/${id}/masquer/`),
 
   // ── Export .xlsx (NTIDE12, filtres statut/contexte/date appliqués) ──
   exportXlsx: (params) =>
@@ -51,6 +72,41 @@ const innovationApi = {
   parametres: {
     get: () => api.get('/innovation/parametres/'),
     update: (data) => api.patch('/innovation/parametres/', data),
+  },
+
+  // ── Campagnes d'innovation ciblées (NTIDE25+, palier Directeur/Admin) ──
+  campagnes: {
+    list: (params) => api.get('/innovation/campagnes/', { params }),
+    get: (id) => api.get(`/innovation/campagnes/${id}/`),
+    create: (data) => api.post('/innovation/campagnes/', data),
+    update: (id, data) => api.patch(`/innovation/campagnes/${id}/`, data),
+    // NTIDE27 — bandeau d'incitation (tout utilisateur connecté).
+    incitation: () => api.get('/innovation/campagnes/incitation/'),
+    // NTIDE29 — rapport (ciblés/proposées/top votes/conversion).
+    rapport: (id) => api.get(`/innovation/campagnes/${id}/rapport/`),
+    // NTIDE30 — clonage (copie brouillon, même segment/message/tag).
+    cloner: (id) => api.post(`/innovation/campagnes/${id}/cloner/`),
+    // NTIDE34 — dashboard admin « Nos campagnes innovation ».
+    tableauBord: () => api.get('/innovation/campagnes/tableau-bord/'),
+    // NTIDE35 — segments proposables (multi-select rôles/départements).
+    segmentsDisponibles: () => api.get('/innovation/campagnes/segments-disponibles/'),
+    // NTIDE33 — chatter de campagne (historique + note manuelle).
+    historique: (id) => api.get(`/innovation/campagnes/${id}/historique/`),
+    noter: (id, body) => api.post(`/innovation/campagnes/${id}/noter/`, { body }),
+  },
+
+  // ── Canal feedback produit in-app (NTIDE36+, bouton discret) ──
+  feedback: {
+    // NTIDE37 — tout utilisateur connecté peut envoyer un feedback.
+    create: (data) => api.post('/innovation/feedback-produit/', data),
+    // NTIDE38 — liste/détail réservés au palier admin.
+    list: (params) => api.get('/innovation/feedback-produit/', { params }),
+    get: (id) => api.get(`/innovation/feedback-produit/${id}/`),
+    // NTIDE38 — agrégation par thème (counts + citations).
+    resume: () => api.get('/innovation/feedback-resume/'),
+    // NTIDE39 — fermeture via annonce produit (« c'est livré »).
+    lierAnnonce: (id, data) =>
+      api.post(`/innovation/feedback-produit/${id}/lier-annonce/`, data),
   },
 }
 

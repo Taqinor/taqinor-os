@@ -62,6 +62,17 @@ DATEFIELD_AUTO_NOW_ALLOWLIST = {
     "backend/django_core/apps/facturation/models.py:888",
     "backend/django_core/apps/facturation/models.py:1072",
     "backend/django_core/apps/ventes/models.py:750",  # NoteDebit.date_emission — remapped +4 (QX43 ModeInstallation.COMMERCIAL insert), same reviewed date-anchor field
+    # NTASS — champs DATE métier (jour, pas horodatage) : date d'ajout d'un
+    # actif couvert et date de déclaration d'un sinistre ; même motif que les
+    # dates-ancre ventes ci-dessus (l'horodatage précis vit dans TenantModel.
+    # created_at). Pas un bug de fuseau à corriger.
+    "backend/django_core/apps/assurances/models.py:290",  # ActifCouvert.date_ajout
+    "backend/django_core/apps/assurances/models.py:340",  # DeclarationSinistre.date_declaration
+    # NTEDU4 — Inscription.date_demande : date (jour) de la demande d'inscription,
+    # même motif que les dates-ancre facture/paiement ci-dessus (pas un horodatage).
+    # Remappé 255->259 (NTEDU25 : Eleve.allergies inséré avant Inscription
+    # dans models.py), même champ.
+    "backend/django_core/apps/education/models.py:259",
 }
 TIMESTAMP_AS_DATEFIELD_ALLOWLIST = {
     # CommissionPartenaire.paye_le — date de paiement (jour, pas horodatage),

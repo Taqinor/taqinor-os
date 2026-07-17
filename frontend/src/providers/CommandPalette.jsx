@@ -22,6 +22,17 @@ import {
 // VX13 — ROUTE/TYPE_LABEL + recherche débouncée mutualisés avec GlobalSearch
 // (barre du haut) : plus aucune table dupliquée (cf. lib/search/entityRoutes.js).
 import { ROUTE, TYPE_LABEL, TYPE_ACCENT, useEntitySearch } from '../lib/search/entityRoutes'
+// NTUX10 — quick-create universel : Lead/Client/Ticket SAV/Produit s'ouvrent
+// en MODAL par-dessus l'écran courant (jamais une navigation) — remplace, dans
+// la section « Créer » de la palette UNIQUEMENT, les entrées nav lead/client
+// de CREATE_ACTIONS ci-dessus (Devis reste nav : écran dédié, cf.
+// providers/shortcuts.js). Le raccourci clavier direct `c l`/`c c`
+// (ShortcutsProvider, code totalement séparé) est inchangé.
+import { filterQuickCreateTypes, openQuickCreate } from '../features/uxviews/quickcreate/quickCreateEvents'
+
+// Ids CREATE_ACTIONS (commandActions.js, dérivés de CREATE_SHORTCUTS) dont la
+// version MODAL (ci-dessus) remplace la version nav dans la palette.
+const QUICK_CREATE_REPLACES_NAV_IDS = new Set(['c-l', 'c-c'])
 
 export function CommandPalette() {
   const [open, setOpen] = useState(false)
@@ -41,6 +52,9 @@ export function CommandPalette() {
   // VX220(b) — actions de CRÉATION, section dédiée « Créer » (jamais mélangée
   // à la navigation « Actions » ci-dessus).
   const createActions = useMemo(() => filterCreateActions(term), [term])
+  // NTUX10 — quick-create MODAL (lead/client/ticket/produit), fusionné dans la
+  // MÊME section « Créer » que `createActions` — jamais une section dupliquée.
+  const quickCreateTypes = useMemo(() => filterQuickCreateTypes(term), [term])
   // Récents (entités ouvertes via la palette) relus à chaque ouverture — DÉRIVÉS
   // via useMemo, donc aucun setState synchrone dans un effet (règle lint).
   const recent = useMemo(() => (open ? readRecentEntities() : []), [open])
@@ -60,8 +74,16 @@ export function CommandPalette() {
       secs.push({ key: 'actions', title: 'Actions', kind: 'action', rows })
     }
     // VX220(b) — « Créer » — section dédiée, jamais mélangée à « Actions ».
-    if (createActions.length) {
-      const rows = createActions.map((a) => {
+    // NTUX10 — fusionne les entrées nav restantes (Devis — écran dédié) avec
+    // le quick-create MODAL (Lead/Client/Ticket SAV/Produit) dans CETTE MÊME
+    // section, en excluant les doublons nav que le modal remplace.
+    const navCreateActions = createActions.filter((a) => !QUICK_CREATE_REPLACES_NAV_IDS.has(a.id))
+    const createRows = [
+      ...navCreateActions.map((a) => ({ ...a, quickCreateType: undefined })),
+      ...quickCreateTypes.map((t) => ({ id: `qc-${t.id}`, label: t.label, quickCreateType: t.id })),
+    ]
+    if (createRows.length) {
+      const rows = createRows.map((a) => {
         const index = f.length
         f.push({ kind: 'create', action: a })
         return { ...a, index }
@@ -90,7 +112,7 @@ export function CommandPalette() {
       }
     }
     return { sections: secs, flat: f }
-  }, [actions, createActions, recent, groups, term])
+  }, [actions, createActions, quickCreateTypes, recent, groups, term])
 
   const close = useCallback(() => {
     setOpen(false)
@@ -144,7 +166,12 @@ export function CommandPalette() {
   // Ouvre une cible quelconque de la liste aplatie.
   const activate = useCallback((entry) => {
     if (!entry) return
-    if (entry.kind === 'action' || entry.kind === 'create') {
+    // NTUX10 — une entrée « Créer » quick-create ouvre son MODAL par-dessus
+    // l'écran courant (aucune navigation) ; les autres entrées « Créer »
+    // (Devis — écran dédié) et « Actions » gardent le comportement nav existant.
+    if (entry.kind === 'create' && entry.action.quickCreateType) {
+      openQuickCreate(entry.action.quickCreateType)
+    } else if (entry.kind === 'action' || entry.kind === 'create') {
       navigate(entry.action.to)
     } else if (entry.kind === 'recent') {
       const make = ROUTE[entry.entity.type]

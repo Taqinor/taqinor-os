@@ -7,8 +7,9 @@ from rest_framework import serializers
 
 from .models import (
     ActeMedical, ActeRealise, Admission, Convention, FactureSante,
-    GrilleTarifaire, PaiementSante, Patient, Praticien, PriseEnCharge,
-    RendezVous, Salle)
+    GrilleTarifaire, HoraireOuverturePraticien, IndisponibilitePraticien,
+    MotifConsultation, PaiementSante, Patient, Praticien, PraticienSite,
+    PriseEnCharge, RendezVous, Salle)
 
 
 def _meme_societe(serializer, value, label):
@@ -30,7 +31,7 @@ class PraticienSerializer(serializers.ModelSerializer):
         model = Praticien
         fields = [
             'id', 'user', 'nom', 'specialite', 'numero_ordre',
-            'couleur_agenda', 'actif',
+            'couleur_agenda', 'actif', 'duree_consultation_defaut_min',
         ]
 
 
@@ -68,15 +69,21 @@ class RendezVousSerializer(serializers.ModelSerializer):
     statut_display = serializers.CharField(source='get_statut_display', read_only=True)
     patient_nom = serializers.SerializerMethodField()
     praticien_nom = serializers.SerializerMethodField()
+    annule_par_display = serializers.CharField(
+        source='get_annule_par_display', read_only=True)
+    delai_annulation_h = serializers.ReadOnlyField()
 
     class Meta:
         model = RendezVous
         fields = [
             'id', 'patient', 'patient_nom', 'praticien', 'praticien_nom',
             'salle', 'date_heure_debut', 'duree_min', 'type_acte', 'statut',
-            'statut_display', 'motif_court', 'cree_par',
+            'statut_display', 'motif_court', 'cree_par', 'annule_par',
+            'annule_par_display', 'date_annulation', 'delai_annulation_h',
         ]
-        read_only_fields = ['cree_par']
+        read_only_fields = [
+            'cree_par', 'annule_par', 'date_annulation',
+        ]
 
     def get_patient_nom(self, obj):
         return str(obj.patient) if obj.patient_id else None
@@ -225,6 +232,50 @@ class GrilleTarifaireSerializer(serializers.ModelSerializer):
 
     def validate_acte(self, value):
         return _meme_societe(self, value, 'Acte médical')
+
+
+class HoraireOuverturePraticienSerializer(serializers.ModelSerializer):
+    jour_semaine_display = serializers.CharField(
+        source='get_jour_semaine_display', read_only=True)
+
+    class Meta:
+        model = HoraireOuverturePraticien
+        fields = [
+            'id', 'praticien', 'jour_semaine', 'jour_semaine_display',
+            'heure_debut', 'heure_fin',
+        ]
+
+    def validate_praticien(self, value):
+        return _meme_societe(self, value, 'Praticien')
+
+
+class IndisponibilitePraticienSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = IndisponibilitePraticien
+        fields = ['id', 'praticien', 'date_debut', 'date_fin', 'motif']
+
+    def validate_praticien(self, value):
+        return _meme_societe(self, value, 'Praticien')
+
+
+class PraticienSiteSerializer(serializers.ModelSerializer):
+    salle_nom = serializers.CharField(source='salle.nom', read_only=True)
+
+    class Meta:
+        model = PraticienSite
+        fields = ['id', 'praticien', 'salle', 'salle_nom']
+
+    def validate_praticien(self, value):
+        return _meme_societe(self, value, 'Praticien')
+
+    def validate_salle(self, value):
+        return _meme_societe(self, value, 'Salle')
+
+
+class MotifConsultationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MotifConsultation
+        fields = ['id', 'libelle', 'actif']
 
 
 class ActeMedicalSerializer(serializers.ModelSerializer):

@@ -10,6 +10,9 @@ const ApprobationsAttentionCard = lazy(() => import('../components/ApprobationsA
 const OnboardingBanner = lazy(() => import('../components/OnboardingBanner'))
 // NTDMO13 — widget « Premiers pas » (checklist onboarding, autonome).
 const PremiersPasWidget = lazy(() => import('../components/PremiersPasWidget'))
+// NTUX11 — historique de navigation récente unifié (autonome : ne rend rien
+// si aucune entité récente).
+const RecentEntitiesWidget = lazy(() => import('../features/uxviews/RecentEntitiesWidget'))
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -1268,6 +1271,11 @@ export function Component() {
               si aucune équipe ou si le rôle n'y a pas accès). */}
           <Suspense fallback={null}>
             <MesEquipesCard />
+          </Suspense>
+
+          {/* NTUX11 — Récents (autonome : ne rend rien sans entité récente). */}
+          <Suspense fallback={null}>
+            <RecentEntitiesWidget />
           </Suspense>
 
           {/* FG8 — Flux d'activités planifiées (records.Activity).

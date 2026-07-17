@@ -644,6 +644,42 @@ def encours_clients_par_tiers(company):
     return [v for v in par_client.values() if v['encours'] > 0]
 
 
+def encours_ouvert_par_tiers(company):
+    """NTCRD4 — encours documentaire OUVERT par client, filtré PAR STATUT :
+    somme du reste dû des factures dont le statut n'est ni ``PAYEE`` ni
+    ``ANNULEE``. Distinct de ``encours_clients_par_tiers`` (YLEDG13, montant-dû
+    only, qui inclut une ``PAYEE`` sans règlement enregistré) : ici l'exclusion
+    est portée par le STATUT du document, ce que le module crédit exige (une
+    facture marquée soldée ne compte plus dans l'exposition, quel que soit son
+    reste dû résiduel). Point d'entrée cross-app sanctionné pour ``apps.credit``
+    (jamais un import direct de ``ventes.models``). Renvoie une liste de dicts
+    ``{'tiers_id', 'nom', 'encours', 'references'}`` (encours > 0). Lecture
+    seule."""
+    from decimal import Decimal
+    from .models import Facture
+
+    par_client = {}
+    qs = (Facture.objects
+          .filter(company=company)
+          .exclude(statut__in=[Facture.Statut.PAYEE, Facture.Statut.ANNULEE])
+          .select_related('client'))
+    for facture in qs:
+        du = facture.montant_du
+        if not du:
+            continue
+        client = facture.client
+        entry = par_client.setdefault(client.id, {
+            'tiers_id': client.id,
+            'nom': (f'{client.prenom} {client.nom}'.strip()
+                    if hasattr(client, 'prenom') else str(client)),
+            'encours': Decimal('0'),
+            'references': [],
+        })
+        entry['encours'] += Decimal(du)
+        entry['references'].append(facture.reference)
+    return [v for v in par_client.values() if v['encours'] > 0]
+
+
 def ca_devis_factures_par_clients(company, client_ids):
     """XSAL9 — CA (devis + factures) agrégé, PAR client, pour une liste
     d'ids clients d'une même société. Point d'entrée cross-app sanctionné
@@ -1078,3 +1114,40 @@ def devis_events_for_lead(lead_id, company):
             })
     events.sort(key=lambda e: (e['at'] or ''), reverse=True)
     return events
+
+
+def carnet_commande_par_mois(company, mois_debut, mois_fin):
+    """NTFPA12 — revenu ENGAGÉ (carnet de commandes) par mois de facturation
+    prévue, pour ``apps.fpa`` (driver revenu engagé).
+
+    Agrège les ``Devis`` ``accepte`` NON encore facturés (aucune ``Facture``
+    liée) dont la date de référence (``date_acceptation``) tombe dans
+    ``[mois_debut, mois_fin]``. C'est du signé (100 % pondéré), distinct du
+    pipeline probabiliste NTFPA11 — un devis accepté sort automatiquement du
+    pipeline (son lead passe SIGNED), donc pas de double-compte. Lecture seule ;
+    renvoie ``{'YYYY-MM': Decimal}``.
+    """
+    from decimal import Decimal
+
+    from .models import Devis
+
+    candidats = (
+        Devis.objects
+        .filter(company=company, statut=Devis.Statut.ACCEPTE,
+                date_acceptation__isnull=False,
+                date_acceptation__gte=mois_debut,
+                date_acceptation__lte=mois_fin)
+        .exclude(factures__isnull=False)
+        .distinct()
+        .prefetch_related('lignes')
+    )
+    par_mois = {}
+    for devis in candidats:
+        d = devis.date_acceptation
+        cle = f'{d.year:04d}-{d.month:02d}'
+        try:
+            montant = Decimal(str(devis.total_ttc or 0))
+        except Exception:
+            montant = Decimal('0')
+        par_mois[cle] = par_mois.get(cle, Decimal('0')) + montant
+    return par_mois

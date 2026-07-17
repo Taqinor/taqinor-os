@@ -93,6 +93,15 @@ test('pushRecentEntity: tête de liste, dédoublonnage type+id, troncature à 6'
   assert.equal(readRecentEntities().length, 6)
 })
 
+test('pushRecentEntity: NTUX11 — chaque entrée porte un horodatage `ts` (Date.now())', () => {
+  clear()
+  const before = Date.now()
+  pushRecentEntity({ type: 'client', id: 42, label: 'Alaoui' })
+  const [entry] = readRecentEntities()
+  assert.ok(typeof entry.ts === 'number')
+  assert.ok(entry.ts >= before)
+})
+
 test('pushRecentEntity: entité invalide ignorée', () => {
   clear()
   pushRecentEntity(null)

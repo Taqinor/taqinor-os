@@ -63,6 +63,13 @@ class ApiKeyAuthentication(authentication.BaseAuthentication):
             raise exceptions.AuthenticationFailed('Clé API invalide.')
         if not api_key.enabled:
             raise exceptions.AuthenticationFailed('Clé API désactivée.')
+        # NTAPI23 — la grace period de rotation est TERMINÉE : une clé
+        # au-delà de `expire_le` est rejetée comme n'importe quelle clé
+        # désactivée (la nouvelle clé émise par `rotate()` continue de
+        # fonctionner sans interruption).
+        if api_key.est_expiree:
+            raise exceptions.AuthenticationFailed(
+                'Clé API expirée (période de grâce de rotation terminée).')
 
         # Trace d'usage (best-effort, non bloquant).
         ApiKey.objects.filter(pk=api_key.pk).update(last_used_at=timezone.now())

@@ -13,7 +13,7 @@ from decimal import Decimal, InvalidOperation
 from django.contrib.contenttypes.models import ContentType
 
 from .models import (
-    AdCampaignMirror, AdMirror, AdSetMirror, InsightSnapshot,
+    AdCampaignMirror, AdCreativeMirror, AdMirror, AdSetMirror, InsightSnapshot,
 )
 
 
@@ -124,21 +124,118 @@ def sync_ads(company, payloads, *, created_via_engine=False):
     return mirrors
 
 
+def _extract_creative_fields(creative):
+    """ADSDEEP11 — Aplati un nœud ``creative{…}`` Meta en champs de miroir.
+
+    Lit d'abord les champs directs (``body``/``title``/…) puis retombe sur
+    ``object_story_spec`` (link_data/video_data — dossier creative §1) pour le
+    texte/CTA/média. Tolère un payload partiel/incomplet (asset_feed_spec)."""
+    creative = creative or {}
+    oss = creative.get('object_story_spec') or {}
+    link_data = oss.get('link_data') or {}
+    video_data = oss.get('video_data') or {}
+    afs = creative.get('asset_feed_spec') or {}
+
+    body = (creative.get('body') or link_data.get('message')
+            or video_data.get('message') or '')
+    title = (creative.get('title') or link_data.get('name')
+             or video_data.get('title') or '')
+    description = (creative.get('description')
+                   or link_data.get('description') or '')
+    cta = (creative.get('call_to_action_type')
+           or (link_data.get('call_to_action') or {}).get('type')
+           or (video_data.get('call_to_action') or {}).get('type') or '')
+    link_url = (link_data.get('link')
+                or (link_data.get('call_to_action') or {})
+                .get('value', {}).get('link') or '')
+    image_hash = (link_data.get('image_hash')
+                  or (oss.get('photo_data') or {}).get('image_hash') or '')
+    video_id = (creative.get('video_id') or video_data.get('video_id') or '')
+    return {
+        'creative_meta_id': str(creative.get('id') or ''),
+        'body': body or '',
+        'title': (title or '')[:255],
+        'description': description or '',
+        'cta_type': (cta or '')[:64],
+        'link_url': link_url or '',
+        'image_hash': (image_hash or '')[:128],
+        'video_id': (video_id or '')[:64],
+        'instagram_permalink_url': creative.get(
+            'instagram_permalink_url') or '',
+        'effective_object_story_id': (creative.get(
+            'effective_object_story_id') or '')[:128],
+        'asset_feed_spec': afs if isinstance(afs, dict) else {},
+    }
+
+
+def sync_ad_creative(company, ad_mirror, creative_payload):
+    """ADSDEEP11 — Upsert idempotent du miroir de créatif d'une ad (OneToOne).
+
+    ``creative_payload`` est le nœud ``creative`` retourné par
+    ``GET /<ad>?fields=creative{…}``. Company dérivée de l'ad. Renvoie
+    ``(mirror, created)``."""
+    from django.utils import timezone
+
+    fields = _extract_creative_fields(creative_payload)
+    fields['fetched_at'] = timezone.now()
+    return AdCreativeMirror.objects.update_or_create(
+        company=company, ad=ad_mirror, defaults=fields)
+
+
+def resolve_results(objective, normalized_row):
+    """ADSDEEP6 — Nombre de « résultats » HOMOGÈNE d'une campagne selon son
+    objectif : une campagne CTWA compte des conversations, une campagne
+    OUTCOME_LEADS compte des leads, etc. (mapping ``metrics``). Repli sur le
+    ``results`` brut Meta si la métrique dédiée est absente. Renvoie ``None`` si
+    rien n'est disponible."""
+    from .metrics import result_metric_for_objective
+
+    metric = result_metric_for_objective(objective)['metric']
+    value = (normalized_row or {}).get(metric)
+    if value is None:
+        value = (normalized_row or {}).get('results')
+    return value
+
+
 def upsert_insight(company, target, *, date, spend=None, results=None,
-                   frequency=None, cpl=None):
+                   frequency=None, cpl=None, impressions=None, reach=None,
+                   clicks=None, link_clicks=None, conversations=None,
+                   leads_count=None, video_metrics=None):
     """Upsert un ``InsightSnapshot`` daté sur un miroir (FK générique).
 
     Clé idempotente : ``(company, content_type, object_id, date)`` — un même
     jour re-synchronisé met à jour la ligne existante au lieu d'en créer une
     nouvelle.
+
+    ADSDEEP1 — les colonnes typées additionnelles (impressions/reach/clicks/
+    link_clicks/conversations/leads_count/video_metrics) sont écrites quand la
+    synchro les fournit ; un appelant ancien (4 arguments) laisse ces colonnes
+    NULL sans jamais écraser une valeur existante par un None fourni
+    explicitement (les rows historiques restent intacts).
     """
     ct = ContentType.objects.get_for_model(target)
+    defaults = {
+        'spend': _to_decimal(spend),
+        'results': _to_int(results),
+        'frequency': _to_decimal(frequency),
+        'cpl': _to_decimal(cpl),
+    }
+    # Colonnes ADSDEEP1 : n'écrire que ce qui est réellement fourni (None laissé
+    # de côté pour ne jamais annuler une valeur déjà en base sur un re-sync
+    # partiel). ``video_metrics`` a un défaut {} en base : ne l'écrire que si
+    # non-None.
+    for name, value in (
+            ('impressions', _to_int(impressions)),
+            ('reach', _to_int(reach)),
+            ('clicks', _to_int(clicks)),
+            ('link_clicks', _to_int(link_clicks)),
+            ('conversations', _to_int(conversations)),
+            ('leads_count', _to_int(leads_count))):
+        if value is not None:
+            defaults[name] = value
+    if video_metrics is not None:
+        defaults['video_metrics'] = video_metrics
     obj, _ = InsightSnapshot.objects.update_or_create(
         company=company, content_type=ct, object_id=target.pk, date=date,
-        defaults={
-            'spend': _to_decimal(spend),
-            'results': _to_int(results),
-            'frequency': _to_decimal(frequency),
-            'cpl': _to_decimal(cpl),
-        })
+        defaults=defaults)
     return obj

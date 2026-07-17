@@ -114,3 +114,34 @@ class PatientApiTests(TestCase):
         obj = Patient.objects.get(id=resp.data['id'])
         self.assertTrue(obj.numero_dossier)
         self.assertEqual(obj.company, self.company)
+
+    def test_search_by_nom_cin_telephone(self):
+        """NTSAN18 — écran Réception : recherche patient par nom/CIN/téléphone."""
+        Patient.objects.create(
+            company=self.company, nom='Bennani', prenom='Sara',
+            cin='BK12345', telephone='0600000001')
+        Patient.objects.create(
+            company=self.company, nom='Chraibi', prenom='Omar',
+            cin='JA98765', telephone='0600000002')
+
+        api = auth(self.user)
+
+        resp_nom = api.get(self.BASE, {'q': 'benn'})
+        self.assertEqual(resp_nom.status_code, 200)
+        rows = resp_nom.data.get('results', resp_nom.data)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]['nom'], 'Bennani')
+
+        resp_cin = api.get(self.BASE, {'q': 'JA987'})
+        rows_cin = resp_cin.data.get('results', resp_cin.data)
+        self.assertEqual(len(rows_cin), 1)
+        self.assertEqual(rows_cin[0]['nom'], 'Chraibi')
+
+        resp_tel = api.get(self.BASE, {'q': '0600000001'})
+        rows_tel = resp_tel.data.get('results', resp_tel.data)
+        self.assertEqual(len(rows_tel), 1)
+        self.assertEqual(rows_tel[0]['nom'], 'Bennani')
+
+        resp_none = api.get(self.BASE, {'q': 'inconnu'})
+        rows_none = resp_none.data.get('results', resp_none.data)
+        self.assertEqual(len(rows_none), 0)

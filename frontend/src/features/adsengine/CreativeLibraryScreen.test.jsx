@@ -47,6 +47,21 @@ describe('CreativeLibraryScreen (ENG27)', () => {
     expect(screen.getByText(/3 réponses WhatsApp/)).toBeInTheDocument()
   })
 
+  it('ADSDEEP15 — rend un <video> pour un reel avec preview_url et un <img> pour un statique', async () => {
+    mocks.list.mockResolvedValue({ data: [
+      { id: 10, designation: 'Reel', asset_type: 'reel', is_video: true,
+        preview_url: 'https://minio/signed/reel.mp4', policy_stamp: { passed: true } },
+      { id: 11, designation: 'Statique', asset_type: 'static', is_video: false,
+        preview_url: 'https://minio/signed/img.png', policy_stamp: { passed: true } },
+    ] })
+    renderScreen()
+    await waitFor(() => expect(mocks.list).toHaveBeenCalled())
+    const video = await screen.findByTestId('ae-creative-video')
+    expect(video.tagName).toBe('VIDEO')
+    expect(video).toHaveAttribute('src', 'https://minio/signed/reel.mp4')
+    expect(screen.getByTestId('ae-creative-img')).toHaveAttribute('src', 'https://minio/signed/img.png')
+  })
+
   it('policy-check humain : l\'asset passe pending → vérifié une fois toutes les règles confirmées', async () => {
     renderScreen()
     await waitFor(() => expect(mocks.list).toHaveBeenCalled())

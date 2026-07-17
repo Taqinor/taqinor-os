@@ -31,6 +31,84 @@ def _parse_date(value):
         return None
 
 
+# ADSDEEP2 — champs insights niveau ad/adset (dossier insights-api §1 + §3).
+# Une seule liste de champs demandée à l'edge COMPTE avec ``level=ad|adset`` :
+# diffusion + conversion (``actions[]``) + métriques vidéo (AdsActionStats).
+AD_INSIGHT_FIELDS = (
+    'spend', 'impressions', 'reach', 'clicks', 'frequency',
+    'inline_link_clicks', 'results', 'actions',
+    'video_p25_watched_actions', 'video_p50_watched_actions',
+    'video_p75_watched_actions', 'video_p95_watched_actions',
+    'video_p100_watched_actions', 'video_play_actions',
+    'video_6_sec_watched_actions', 'video_15_sec_watched_actions',
+    'video_30_sec_watched_actions', 'video_thruplay_watched_actions',
+    'video_avg_time_watched_actions',
+)
+
+# Fenêtre glissante (jours) pour la synchro ad/adset — les insights fins sont
+# lus sur les 7 derniers jours (le détail campagne reste sur ``maximum``).
+AD_INSIGHT_WINDOW_DAYS = 7
+
+
+def _account_node(conn):
+    """Nœud de compte publicitaire (``act_<id>``) depuis la connexion, ou ''."""
+    acct = str(conn.ad_account_id or '').strip()
+    if not acct:
+        return ''
+    return acct if acct.startswith('act_') else f'act_{acct}'
+
+
+def _sync_level_insights(company, conn, client, *, level):
+    """ADSDEEP2 — Synchronise les snapshots niveau ``ad`` ou ``adset``.
+
+    Tire les insights de l'edge COMPTE avec ``level=ad|adset``,
+    ``time_increment=1`` (une ligne par jour) sur une fenêtre 7 j glissants,
+    puis upserte un ``InsightSnapshot`` par (miroir, jour) — colonnes typées
+    ADSDEEP1 comprises. Les rows sans id d'objet, ou sans miroir correspondant,
+    sont ignorés (jamais d'erreur). Débloque ``attribution.variant_attribution``,
+    la fréquence dans ``rules_engine`` et le CBO de ``budget_applier`` — tous
+    DÉJÀ codés et affamés de snapshots ad/adset (dossier existing-map §1)."""
+    from . import sync
+    from .models import AdMirror, AdSetMirror
+    from .platforms.base import normalize_insight_row
+
+    node = _account_node(conn)
+    if not node:
+        return
+    id_field = 'ad_id' if level == 'ad' else 'adset_id'
+    mirror_model = AdMirror if level == 'ad' else AdSetMirror
+    today = datetime.date.today()
+    since = today - datetime.timedelta(days=AD_INSIGHT_WINDOW_DAYS - 1)
+    rows = client.get_insights(
+        node,
+        fields=AD_INSIGHT_FIELDS + (id_field,),
+        params={
+            'level': level,
+            'time_increment': 1,
+            'time_range': {
+                'since': since.isoformat(), 'until': today.isoformat()},
+        })
+    mirrors = {
+        m.meta_id: m
+        for m in mirror_model.objects.filter(company=company)}
+    for row in rows or []:
+        obj_id = str(row.get(id_field) or '').strip()
+        mirror = mirrors.get(obj_id)
+        if mirror is None:
+            continue  # ad/adset non miroité (synchro miroirs à faire d'abord)
+        day = _parse_date(row.get('date_start')) or today
+        norm = normalize_insight_row(row)
+        sync.upsert_insight(
+            company, mirror, date=day,
+            spend=norm['spend'], results=norm['results'],
+            frequency=norm['frequency'], cpl=norm['cpl'],
+            impressions=norm['impressions'], reach=norm['reach'],
+            clicks=norm['clicks'], link_clicks=norm['link_clicks'],
+            conversations=norm['conversations'],
+            leads_count=norm['leads_count'],
+            video_metrics=norm['video_metrics'])
+
+
 def _sync_company(conn):
     """Synchronise UNE société depuis sa connexion Meta active (avec token).
 
@@ -60,6 +138,15 @@ def _sync_company(conn):
     sync.sync_adsets(company, client.get_adsets())
     sync.sync_ads(company, client.get_ads())
 
+    # ADSDEEP2 — snapshots niveau adset PUIS ad (edge compte, level=…). Placés
+    # AVANT la boucle campagne pour que le dernier appel get_insights reste
+    # celui de la campagne (fenêtre ``maximum`` — contrat ENG6 préservé).
+    _sync_level_insights(company, conn, client, level='adset')
+    _sync_level_insights(company, conn, client, level='ad')
+
+    # ADSDEEP11 — miroir du créatif LIVE de chaque ad (best-effort).
+    sync_ad_creatives(company, client)
+
     today = datetime.date.today()
     for camp in AdCampaignMirror.objects.filter(company=company):
         # ENG6 — insights sur TOUT l'historique, ventilés par JOUR. Sans
@@ -78,6 +165,257 @@ def _sync_company(conn):
                 company, camp, date=day,
                 spend=row.get('spend'), results=row.get('results'),
                 frequency=row.get('frequency'), cpl=row.get('cpl'))
+
+
+# ── ADSDEEP8 — Spécifications de breakdown (combos LÉGAUX uniquement) ─────────
+# Dossier insights-api §2 : seules certaines permutations passent, et les
+# breakdowns HORAIRES perdent reach/frequency/unique_*. Chaque spec porte les
+# ``breakdowns`` Meta, la liste de ``fields`` sûre sous CE breakdown, et une
+# fonction qui fabrique la ``key`` de ventilation stockée (ex. "25-34/f").
+# Champs de base ventilables partout (jamais reach/frequency ici — ils sautent
+# sous certains breakdowns ; on ne les demande qu'où c'est légal).
+_BREAKDOWN_BASE_FIELDS = ('spend', 'impressions', 'clicks', 'actions')
+
+
+def _key_age_gender(row):
+    age = str(row.get('age') or '').strip()
+    gender = str(row.get('gender') or '').strip()
+    return f'{age}/{gender[:1]}' if age or gender else ''
+
+
+def _key_platform(row):
+    plat = str(row.get('publisher_platform') or '').strip()
+    pos = str(row.get('platform_position') or '').strip()
+    # "instagram/instagram_reels" → "instagram/reels" (le préfixe redondant sauté).
+    pos = pos.replace(f'{plat}_', '') if plat and pos.startswith(plat) else pos
+    return f'{plat}/{pos}' if plat or pos else ''
+
+
+def _key_region(row):
+    return str(row.get('region') or '').strip()
+
+
+def _key_hourly(row):
+    raw = str(
+        row.get('hourly_stats_aggregated_by_advertiser_time_zone') or '').strip()
+    # "14:00:00 - 14:59:59" → "14"
+    return raw.split(':', 1)[0] if raw else ''
+
+
+# dimension → {breakdowns, fields, key_fn}. Les fields d'HOURLY excluent
+# volontairement reach/frequency (combo illégal — dossier §2).
+BREAKDOWN_SPECS = {
+    'age_gender': {
+        'breakdowns': ('age', 'gender'),
+        'fields': _BREAKDOWN_BASE_FIELDS,
+        'key_fn': _key_age_gender,
+    },
+    'platform': {
+        'breakdowns': ('publisher_platform', 'platform_position'),
+        'fields': _BREAKDOWN_BASE_FIELDS,
+        'key_fn': _key_platform,
+    },
+    'region': {
+        'breakdowns': ('region',),
+        'fields': _BREAKDOWN_BASE_FIELDS,
+        'key_fn': _key_region,
+    },
+    'hourly': {
+        'breakdowns': ('hourly_stats_aggregated_by_advertiser_time_zone',),
+        # PAS de reach/frequency/unique_* sous breakdown horaire (illégal).
+        'fields': _BREAKDOWN_BASE_FIELDS,
+        'key_fn': _key_hourly,
+    },
+}
+
+# Fenêtre glissante (jours) des breakdowns — agrégat sur 28 j (pas de
+# time_increment : une ligne par clé de ventilation, pas par jour).
+BREAKDOWN_WINDOW_DAYS = 28
+
+
+def sync_breakdowns_for_campaign(company, client, campaign_mirror):
+    """ADSDEEP8 — Synchronise les 4 dimensions de breakdown d'UNE campagne.
+
+    Pour chaque dimension (âge×genre, placement, région, horaire) tire l'insight
+    ventilé sur une fenêtre 28 j glissants avec les combos LÉGAUX uniquement
+    (``BREAKDOWN_SPECS``) et upserte une ligne ``InsightBreakdown`` par clé.
+    Idempotent (upsert par clé). Best-effort par dimension : une dimension en
+    échec n'empêche pas les autres. Renvoie le nombre de lignes upsertées."""
+    from .models import InsightBreakdown
+    from .platforms.base import normalize_insight_row
+
+    today = datetime.date.today()
+    since = today - datetime.timedelta(days=BREAKDOWN_WINDOW_DAYS - 1)
+    written = 0
+    for dimension, spec in BREAKDOWN_SPECS.items():
+        try:
+            rows = client.get_insights(
+                campaign_mirror.meta_id,
+                fields=spec['fields'],
+                params={
+                    'breakdowns': ','.join(spec['breakdowns']),
+                    'time_range': {
+                        'since': since.isoformat(), 'until': today.isoformat()},
+                })
+        except Exception:  # noqa: BLE001 — une dimension en échec n'arrête pas
+            continue
+        for row in rows or []:
+            key = spec['key_fn'](row)
+            if not key:
+                continue
+            norm = normalize_insight_row(row)
+            InsightBreakdown.upsert(
+                company, campaign_mirror, date=today,
+                dimension=dimension, key=key,
+                spend=norm['spend'], impressions=norm['impressions'],
+                clicks=norm['clicks'], results=norm['results'],
+                conversations=norm['conversations'])
+            written += 1
+    return written
+
+
+@shared_task(name='adsengine.sync_breakdowns_weekly')
+def sync_breakdowns_weekly():
+    """ADSDEEP8 — Beat HEBDO : synchronise les breakdowns de chaque campagne
+    miroir des sociétés à connexion Meta active. NO-OP propre sans connexion
+    live. Best-effort par société. Renvoie le nombre de campagnes traitées."""
+    from authentication.selectors import active_companies
+
+    from .meta_client import MetaClient
+    from .models import AdCampaignMirror, MetaConnection
+
+    processed = 0
+    for company in active_companies():
+        conn = MetaConnection.objects.filter(
+            company=company, enabled=True).first()
+        if conn is None or not conn.is_live:
+            continue
+        try:
+            client = MetaClient.from_connection(conn)
+            for camp in AdCampaignMirror.objects.filter(company=company):
+                sync_breakdowns_for_campaign(company, client, camp)
+                processed += 1
+        except Exception:  # pragma: no cover - défensif, isolation société
+            logger.warning(
+                'adsengine.sync_breakdowns_weekly: échec société %s',
+                company.pk, exc_info=True)
+            continue
+    logger.info(
+        'adsengine.sync_breakdowns_weekly: %s campagne(s) traitée(s)',
+        processed)
+    return {'campaigns_processed': processed}
+
+
+def sync_ad_creatives(company, client):
+    """ADSDEEP11 — Miroite le créatif LIVE de chaque ad d'une société.
+
+    Lit ``GET /<ad>?fields=creative{…}`` par ad et upserte le miroir (idempotent,
+    OneToOne). Best-effort par ad ; NO-OP propre si le client n'expose pas
+    ``get_ad_creative`` (mock ancien). Renvoie le nombre de miroirs upsertés."""
+    from . import sync
+    from .models import AdMirror
+
+    fetch = getattr(client, 'get_ad_creative', None)
+    if not callable(fetch):
+        return 0
+    written = 0
+    for ad in AdMirror.objects.filter(company=company):
+        try:
+            creative = fetch(ad.meta_id)
+        except Exception:  # noqa: BLE001 — une ad en échec n'arrête pas les autres
+            continue
+        if creative:
+            sync.sync_ad_creative(company, ad, creative)
+            written += 1
+    return written
+
+
+def pull_ad_leads_for_company(company, conn, client):
+    """ADSDEEP18 — Pull-sync des leads lead-form d'une société.
+
+    Pour chaque ad miroir, tire ``GET /<ad_id>/leads`` (fenêtre Meta 90 j),
+    résout adset/campaign via l'ad, crée le lead CRM via le MÊME service que le
+    webhook (``crm.services.create_lead_from_meta_lead_ads`` — idempotent par
+    ``leadgen_id``, jamais un doublon) et émet ``meta_lead_captured`` pour que le
+    MÊME récepteur upserte le MetaLeadMirror : webhook et pull CONVERGENT sur le
+    même miroir. Best-effort par ad. Renvoie le nombre de leads traités."""
+    from core.events import meta_lead_captured
+
+    from .models import AdMirror
+
+    get_leads = getattr(client, 'get_ad_leads', None)
+    if not callable(get_leads):
+        return 0
+    processed = 0
+    # Cache adset/campaign par ad (une seule résolution par ad).
+    for ad in AdMirror.objects.filter(company=company):
+        try:
+            leads = get_leads(ad.meta_id)
+        except Exception:  # noqa: BLE001 — une ad en échec n'arrête pas les autres
+            continue
+        if not leads:
+            continue
+        try:
+            targeting = client.get_ad_targeting_ids(ad.meta_id)
+        except Exception:  # noqa: BLE001
+            targeting = {'adset_id': '', 'campaign_id': ''}
+        for lead_row in leads:
+            leadgen_id = str(lead_row.get('id') or '').strip()
+            if not leadgen_id:
+                continue
+            field_data = lead_row.get('field_data') or []
+            form_id = str(lead_row.get('form_id') or '')
+            try:
+                from apps.crm.services import create_lead_from_meta_lead_ads
+                lead = create_lead_from_meta_lead_ads(
+                    company=company, leadgen_id=leadgen_id,
+                    field_data=field_data, ad_id=ad.meta_id,
+                    adgroup_id=targeting.get('adset_id', ''), form_id=form_id)
+            except Exception:  # noqa: BLE001 — un lead en échec n'arrête pas
+                logger.warning(
+                    'adsengine.pull_ad_leads: création lead échouée (%s)',
+                    leadgen_id, exc_info=True)
+                continue
+            # Même événement que le webhook → même récepteur → même miroir.
+            try:
+                meta_lead_captured.send(
+                    sender='adsengine.pull_ad_leads', lead=lead,
+                    company=company, leadgen_id=leadgen_id, ad_id=ad.meta_id,
+                    adset_id=targeting.get('adset_id', ''),
+                    campaign_id=targeting.get('campaign_id', ''),
+                    form_id=form_id, created_time=lead_row.get('created_time'),
+                    is_organic=False)
+            except Exception:  # noqa: BLE001 — best-effort
+                pass
+            processed += 1
+    return processed
+
+
+@shared_task(name='adsengine.pull_meta_leads')
+def pull_meta_leads():
+    """ADSDEEP18 — Beat : pull-sync des leads lead-form des sociétés à connexion
+    Meta active. NO-OP propre sans connexion live. Best-effort par société."""
+    from authentication.selectors import active_companies
+
+    from .meta_client import MetaClient
+    from .models import MetaConnection
+
+    total = 0
+    for company in active_companies():
+        conn = MetaConnection.objects.filter(
+            company=company, enabled=True).first()
+        if conn is None or not conn.is_live:
+            continue
+        try:
+            client = MetaClient.from_connection(conn)
+            total += pull_ad_leads_for_company(company, conn, client)
+        except Exception:  # pragma: no cover - défensif, isolation société
+            logger.warning(
+                'adsengine.pull_meta_leads: échec société %s',
+                company.pk, exc_info=True)
+            continue
+    logger.info('adsengine.pull_meta_leads: %s lead(s) traité(s)', total)
+    return {'leads_processed': total}
 
 
 @shared_task(name='adsengine.sync_insights_daily')

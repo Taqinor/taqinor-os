@@ -43,6 +43,10 @@ const Journal = lazy(() => import('../../pages/Journal'))
 // Composant déposé sous `features/parametres/` (pas `pages/parametres/`) —
 // Files list de NTMKT10 dans docs/plans/PLAN_CRM_VENTES.md.
 const DomaineEnvoi = lazy(() => import('./DomaineEnvoi'))
+// NTUX23 — rapport « configuration des vues actives » (réservé responsable/
+// admin, reflète `IsResponsableOrAdmin` côté backend — `toutes-company/`/
+// `export-xlsx/` de SavedViewViewSet).
+const VuesConfigurationPage = lazy(() => import('../../pages/parametres/VuesConfigurationPage'))
 
 const config = {
   key: 'parametres',
@@ -53,6 +57,7 @@ const config = {
     { path: '/parametres/notifications', component: NotificationsPreferences },
     { path: '/parametres/alertes-kpi', component: KpiAlertesPage, roles: ['responsable', 'admin'] },
     { path: '/parametres/marketing', component: DomaineEnvoi, roles: ['responsable', 'admin'] },
+    { path: '/parametres/vues', component: VuesConfigurationPage, roles: ['responsable', 'admin'] },
     {
       path: '/journal',
       component: Journal,

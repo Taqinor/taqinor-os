@@ -19,6 +19,8 @@ export default function CampaignsScreen() {
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState(null) // détail chargé
   const [ranking, setRanking] = useState([])
+  // ADSDEEP19 — comptes de leads RÉELS par campagne (meta_id → nombre).
+  const [realLeads, setRealLeads] = useState({})
   const [syncing, setSyncing] = useState(false)
   const [msg, setMsg] = useState('')
   // Devise du compte Meta (les budgets/dépenses sont dans CETTE devise, souvent
@@ -34,6 +36,13 @@ export default function CampaignsScreen() {
     adsengineApi.campaigns.creativeRanking()
       .then(r => setRanking(rankCreatives(Array.isArray(r.data) ? r.data : (r.data?.results || []))))
       .catch(() => setRanking([]))
+    // ADSDEEP19 — comptes de leads RÉELS (remplace le « Leads: 0 » des insights).
+    const realLeadsFn = adsengineApi.metrics?.realLeads
+    if (realLeadsFn) {
+      realLeadsFn()
+        .then(r => setRealLeads(r?.data?.by_campaign || {}))
+        .catch(() => setRealLeads({}))
+    }
     const connGet = adsengineApi.connection?.get
     if (connGet) {
       connGet()
@@ -124,7 +133,13 @@ export default function CampaignsScreen() {
             <dt style={{ color: '#64748b' }}>Budget/jour</dt>
             <dd style={{ margin: 0 }}>{formatMoney(selected.budget_quotidien_mad ?? selected.daily_budget_mad, currency)}</dd>
             <dt style={{ color: '#64748b' }}>Leads</dt>
-            <dd style={{ margin: 0 }}>{formatNumber(selected.nb_leads ?? selected.leads)}</dd>
+            {/* ADSDEEP19 — compte RÉEL (MetaLeadMirror) prioritaire sur les
+                insights ; repli sur nb_leads si la clé de campagne est absente. */}
+            <dd style={{ margin: 0 }} data-testid="ae-camp-real-leads">
+              {formatNumber(
+                realLeads[selected.meta_id] ?? realLeads[selected.campaign_meta_id]
+                ?? selected.nb_leads ?? selected.leads)}
+            </dd>
           </dl>
         </section>
       )}

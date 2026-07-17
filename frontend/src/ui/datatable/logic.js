@@ -412,6 +412,34 @@ export function columnWidthVars(resolvedColumns = []) {
   return { vars, get }
 }
 
+/* --------------------------------------------- Groupement (NTUX19) ------- */
+
+/**
+ * NTUX19 — Regroupe des lignes par la valeur d'une colonne. Conserve l'ordre
+ * de PREMIÈRE APPARITION des groupes (pas un tri alphabétique — stable et
+ * prévisible vis-à-vis du tri déjà appliqué en amont). `accessor(row, id)`
+ * extrait la valeur de regroupement ; une valeur vide/null/undefined
+ * regroupe sous la clé `''` (rendue « Non renseigné » côté composant).
+ * Renvoie `[{ key, rows }]`. Ne mute pas l'entrée.
+ */
+export function groupRows(rows, groupById, accessor) {
+  const get = accessor || ((r, id) => r?.[id])
+  const groups = []
+  const byKey = new Map()
+  for (const row of rows || []) {
+    const raw = get(row, groupById)
+    const key = raw === null || raw === undefined || raw === '' ? '' : String(raw)
+    let g = byKey.get(key)
+    if (!g) {
+      g = { key, rows: [] }
+      byKey.set(key, g)
+      groups.push(g)
+    }
+    g.rows.push(row)
+  }
+  return groups
+}
+
 /* ----------------------------------------- Virtualisation (windowing) ---- */
 
 /**
