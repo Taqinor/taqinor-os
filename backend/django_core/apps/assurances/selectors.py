@@ -157,3 +157,68 @@ def couverture_par_actif(company, type_actif, actif_ref):
         'polices_entreprise': polices_entreprise,
         'polices_flotte': polices_flotte,
     }
+
+
+# ── NTASS21 — Tableau de bord assurances ───────────────────────────────────
+
+def tableau_bord_assurances(company, today=None):
+    """NTASS21 — indicateurs de synthèse assurances d'une société (lecture
+    seule, aucun nouveau modèle) : nombre de polices actives par type, prime
+    annuelle totale, sinistres ouverts vs clos, montant réclamé vs indemnisé
+    (12 derniers mois), polices/attestations expirant sous 30 jours, et taux
+    de sinistralité (sinistres/an ÷ polices actives)."""
+    from django.db.models import Count, Sum
+
+    from .models import DeclarationSinistre, IndemnisationSinistre
+
+    if today is None:
+        today = datetime.date.today()
+    il_y_a_12_mois = today - datetime.timedelta(days=365)
+
+    polices_actives = PoliceAssurance.objects.filter(
+        company=company, statut=PoliceAssurance.Statut.ACTIVE)
+    par_type = {
+        row['type_police']: row['n']
+        for row in polices_actives.values('type_police').annotate(n=Count('id'))
+    }
+    nb_polices_actives = polices_actives.count()
+    prime_totale = polices_actives.aggregate(
+        s=Sum('prime_annuelle_ht'))['s'] or 0
+
+    sinistres = DeclarationSinistre.objects.filter(company=company)
+    statuts_ouverts = [
+        DeclarationSinistre.Statut.DECLARE,
+        DeclarationSinistre.Statut.EN_EXPERTISE,
+    ]
+    sinistres_ouverts = sinistres.filter(statut__in=statuts_ouverts).count()
+    sinistres_clos = sinistres.exclude(statut__in=statuts_ouverts).count()
+
+    sinistres_12m = sinistres.filter(date_survenance__gte=il_y_a_12_mois)
+    nb_sinistres_12m = sinistres_12m.count()
+    indemnisations_12m = IndemnisationSinistre.objects.filter(
+        company=company, declaration__date_survenance__gte=il_y_a_12_mois)
+    total_reclame = indemnisations_12m.aggregate(
+        s=Sum('montant_reclame'))['s'] or 0
+    total_indemnise = indemnisations_12m.aggregate(
+        s=Sum('montant_indemnise'))['s'] or 0
+
+    polices_expirant_30j = polices_expirantes(
+        company, within=30, today=today).count()
+    attestations_expirant_30j = attestations_expirantes(
+        company, within=30, today=today).count()
+
+    taux_sinistralite = (
+        nb_sinistres_12m / nb_polices_actives if nb_polices_actives else 0)
+
+    return {
+        'polices_actives_par_type': par_type,
+        'nb_polices_actives': nb_polices_actives,
+        'prime_annuelle_totale': prime_totale,
+        'sinistres_ouverts': sinistres_ouverts,
+        'sinistres_clos': sinistres_clos,
+        'montant_reclame_12m': total_reclame,
+        'montant_indemnise_12m': total_indemnise,
+        'polices_expirant_30j': polices_expirant_30j,
+        'attestations_expirant_30j': attestations_expirant_30j,
+        'taux_sinistralite': round(taux_sinistralite, 3),
+    }

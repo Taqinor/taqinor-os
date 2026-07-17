@@ -23,6 +23,7 @@ from .serializers import (
 )
 from .selectors import (
     attestations_expirantes, couverture_par_actif, polices_expirantes,
+    tableau_bord_assurances,
 )
 from .services import (
     CHAMPS_SUIVIS_POLICE, CHAMPS_SUIVIS_SINISTRE, enregistrer_indemnisation,
@@ -412,3 +413,14 @@ def couverture_actif(request):
     data = couverture_par_actif(
         request.user.company, type_actif, actif_ref_int)
     return Response(data)
+
+
+@api_view(['GET'])
+@permission_classes([HasPermissionOrLegacy('assurances_voir')])
+def tableau_bord(request):
+    """NTASS21 — tableau de bord assurances (lecture seule).
+
+    ``GET /assurances/tableau-bord/`` : prime totale, polices actives par type,
+    sinistres ouverts/clos, réclamé vs indemnisé (12 mois), expirations 30j et
+    taux de sinistralité."""
+    return Response(tableau_bord_assurances(request.user.company))
