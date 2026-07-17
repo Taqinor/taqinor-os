@@ -82,6 +82,11 @@ class ReglageCredit(models.Model):
     # NTCRD21 — date de la dernière alerte d'exposition émise (dédup : une
     # seule alerte par jour, pas de spam).
     derniere_alerte_exposition_le = models.DateField(null=True, blank=True)
+    # NTCRD29 — devise de référence pour la consolidation multi-devise (défaut
+    # MAD = comportement actuel inchangé). La conversion réelle par document
+    # (taux déjà stocké sur facture/devis) est appliquée par l'appelant quand
+    # un sélecteur ventes expose devise+taux par document.
+    devise_consolidation = models.CharField(max_length=3, default='MAD')
     date_creation = models.DateTimeField(auto_now_add=True)
     date_modification = models.DateTimeField(auto_now=True)
 
