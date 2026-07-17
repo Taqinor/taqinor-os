@@ -248,7 +248,7 @@ describe('MesIdeesPage (NTIDE15)', () => {
     render(wrap(<MesIdeesPage />))
 
     await waitFor(() => expect(innovationApiMock.list).toHaveBeenCalledWith({ owner: 1 }))
-    expect(await screen.findByText('Ma première idée')).toBeTruthy()
+    expect((await screen.findAllByText('Ma première idée')).length).toBeGreaterThan(0)
   })
 })
 
@@ -364,7 +364,7 @@ describe('ProposerIdeeForm (NTIDE8/NTIDE9)', () => {
     render(wrap(<ProposerIdeeForm />, { route: '/ventes/devis?edit=42' }))
 
     const user = userEvent.setup()
-    await user.click(await screen.findByRole('checkbox'))
+    await user.click((await screen.findAllByRole('checkbox'))[0])
     await user.type(screen.getByLabelText('Titre'), 'Sans lien')
     await user.click(screen.getByRole('button', { name: /Proposer l'idée/ }))
 

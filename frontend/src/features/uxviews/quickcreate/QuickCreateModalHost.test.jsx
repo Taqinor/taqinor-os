@@ -44,7 +44,7 @@ describe('QuickCreateModalHost (NTUX10)', () => {
   it('la sauvegarde ferme le modal et affiche un toast de succès', () => {
     render(<QuickCreateModalHost />)
     act(() => openQuickCreate('client'))
-    screen.getByText('Sauver client').click()
+    act(() => screen.getByText('Sauver client').click())
     expect(toast.success).toHaveBeenCalledWith('Client créé.')
     expect(screen.queryByTestId('mock-client-modal')).not.toBeInTheDocument()
   })
