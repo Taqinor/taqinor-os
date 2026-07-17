@@ -2515,6 +2515,138 @@ def accepter_suggestions_rapprochement(rapprochement):
     return {'pointees': pointees, 'ignorees': ignorees}
 
 
+# ── NTTRE4 — Rapprochement auto APPRENANT (au-delà des règles déclaratives) ─
+#
+# XACC3 (au-dessus) note un candidat de façon DÉCLARATIVE (montant/date/réf).
+# NTTRE4 ajoute une couche STATISTIQUE : elle APPREND de l'historique des
+# ``PointageReleve`` déjà validés de la société — quel libellé récurrent a
+# historiquement été pointé vers quel compte du grand livre — et propose la
+# meilleure ligne GL NON LETTRÉE pour une nouvelle ligne de relevé au libellé
+# similaire. Stdlib pur (distance de Levenshtein), aucune dépendance ML. Ne
+# poste JAMAIS : la suggestion pré-remplit seulement ``accepter_suggestions_
+# rapprochement`` (l'humain valide toujours).
+
+def _normaliser_libelle_appris(texte):
+    """Normalise un libellé pour la comparaison apprise (minuscules, sans
+    chiffres/ponctuation, espaces compactés)."""
+    import re
+    texte = (texte or '').lower()
+    texte = re.sub(r'[^a-zàâäéèêëïîôöùûüç ]', ' ', texte)
+    return re.sub(r'\s+', ' ', texte).strip()
+
+
+def _distance_levenshtein(a, b):
+    """Distance de Levenshtein classique (stdlib, O(len(a)*len(b)))."""
+    if a == b:
+        return 0
+    if not a:
+        return len(b)
+    if not b:
+        return len(a)
+    precedente = list(range(len(b) + 1))
+    for i, ca in enumerate(a, start=1):
+        courante = [i]
+        for j, cb in enumerate(b, start=1):
+            cout = 0 if ca == cb else 1
+            courante.append(min(
+                precedente[j] + 1,       # suppression
+                courante[j - 1] + 1,     # insertion
+                precedente[j - 1] + cout,  # substitution
+            ))
+        precedente = courante
+    return precedente[-1]
+
+
+def _similarite_libelle_appris(a, b):
+    """Similarité de libellé 0..1 (1 = identique) fondée sur Levenshtein."""
+    if not a and not b:
+        return 1.0
+    longueur = max(len(a), len(b)) or 1
+    return max(0.0, 1.0 - _distance_levenshtein(a, b) / longueur)
+
+
+def suggerer_rapprochement_appris(ligne_releve, *, seuil_similarite=0.5):
+    """NTTRE4 — Suggestion APPRISE d'appariement pour une ligne de relevé.
+
+    Construit un score de similarité (libellé normalisé + montant + fréquence
+    du tiers récurrent) à partir de l'HISTORIQUE des ``PointageReleve`` déjà
+    validés de la société, et propose la meilleure ``LigneEcriture`` du grand
+    livre NON encore lettrée pour ``ligne_releve``. Renvoie ``None`` si aucun
+    historique ou aucune correspondance au-dessus de ``seuil_similarite``, sinon
+    ``{'ligne_releve_id', 'ligne_gl_id', 'confiance' (0..1), 'similarite',
+    'frequence', 'pattern_libelle', 'montant_concordant'}``. Lecture seule —
+    n'auto-poste jamais.
+    """
+    from .models import LigneEcriture, PointageReleve
+
+    company = ligne_releve.company
+    cible = _normaliser_libelle_appris(ligne_releve.libelle)
+    if not cible:
+        return None
+
+    # 1. HISTORIQUE : agrège les pointages validés par libellé source normalisé.
+    patterns = {}  # libellé normalisé -> {'freq', 'comptes': {compte_id: n}}
+    historiques = (PointageReleve.objects
+                   .filter(company=company)
+                   .exclude(ligne_releve_id=ligne_releve.id)
+                   .select_related('ligne_releve', 'ligne_gl'))
+    for pointage in historiques:
+        lib = _normaliser_libelle_appris(pointage.ligne_releve.libelle)
+        if not lib:
+            continue
+        entree = patterns.setdefault(lib, {'freq': 0, 'comptes': {}})
+        entree['freq'] += 1
+        cid = pointage.ligne_gl.compte_id
+        entree['comptes'][cid] = entree['comptes'].get(cid, 0) + 1
+    if not patterns:
+        return None
+
+    # 2. Meilleur pattern historique par similarité de libellé.
+    meilleur_lib, meilleure_sim = None, 0.0
+    for lib in patterns:
+        sim = _similarite_libelle_appris(cible, lib)
+        if sim > meilleure_sim:
+            meilleure_sim, meilleur_lib = sim, lib
+    if meilleur_lib is None or meilleure_sim < seuil_similarite:
+        return None
+    pattern = patterns[meilleur_lib]
+    compte_appris = max(pattern['comptes'], key=pattern['comptes'].get)
+    frequence = pattern['freq']
+
+    # 3. Meilleure ligne GL NON lettrée (montant le plus proche) sur ce compte.
+    montant = ligne_releve.montant or Decimal('0')
+    deja_pointees = set(PointageReleve.objects.filter(
+        company=company).values_list('ligne_gl_id', flat=True))
+    meilleur_gl, meilleur_ecart = None, None
+    for gl in (LigneEcriture.objects
+               .filter(company=company, compte_id=compte_appris)
+               .select_related('ecriture')):
+        if gl.id in deja_pointees:
+            continue
+        montant_gl = (gl.debit or Decimal('0')) - (gl.credit or Decimal('0'))
+        ecart = abs(montant_gl - montant)
+        if meilleur_ecart is None or ecart < meilleur_ecart:
+            meilleur_ecart, meilleur_gl = ecart, gl
+    if meilleur_gl is None:
+        return None
+
+    tolerance = max(abs(montant) * Decimal('0.01'), Decimal('0.01'))
+    montant_concordant = meilleur_ecart <= tolerance
+    poids_frequence = min(frequence, 10) / 10.0
+    confiance = (0.55 * meilleure_sim
+                 + 0.30 * (1.0 if montant_concordant else 0.0)
+                 + 0.15 * poids_frequence)
+    return {
+        'ligne_releve_id': ligne_releve.id,
+        'ligne_gl_id': meilleur_gl.id,
+        'confiance': round(min(1.0, confiance), 3),
+        'similarite': round(meilleure_sim, 3),
+        'frequence': frequence,
+        'pattern_libelle': meilleur_lib,
+        'montant_concordant': montant_concordant,
+    }
+
+
 # ── XACC4 — Modèles de rapprochement (règles de contrepartie automatique) ──
 
 def modele_correspondant(company, libelle_releve):
