@@ -2016,7 +2016,7 @@ class RapprochementBancaireViewSet(_ComptaBaseViewSet):
         # défaut ; seul un rôle fin explicitement privé du code est affecté.
         if self.action in ('lignes_gl', 'resume', 'suggestions'):
             return [IsResponsableOrAdmin()]
-        if self.action in ('ligne_releve', 'ocr_import'):
+        if self.action in ('ligne_releve', 'ocr_import', 'import_releve'):
             return [HasPermissionOrLegacy('compta_saisir')()]
         if self.action in ('pointer', 'accepter_suggestions', 'cloturer'):
             return [HasPermissionOrLegacy('compta_valider')()]
@@ -2162,6 +2162,63 @@ class RapprochementBancaireViewSet(_ComptaBaseViewSet):
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
         return Response(services.controler_solde_releve_ocr(champs_bruts))
+
+    @action(detail=True, methods=['post'], url_path='import-releve',
+            parser_classes=[MultiPartParser, FormParser])
+    def import_releve(self, request, pk=None):
+        """NTTRE1-3 — Importe un relevé bancaire au format normalisé.
+
+        Query ``?format=cfonb120|mt940|camt053`` ; corps multipart ``releve``
+        (fichier). Parse le fichier via ``bank_formats`` puis matérialise chaque
+        ligne parsée en ``LigneReleve`` via ``services.ajouter_ligne_releve``
+        (aucun nouveau modèle). Rejette avec un message FR clair si le format est
+        inconnu ou le fichier mal formé.
+        """
+        from .bank_formats import (
+            parser_camt053, parser_cfonb120, parser_mt940)
+
+        rapprochement = self.get_object()  # scopé société par TenantMixin.
+        parseurs = {
+            'cfonb120': parser_cfonb120,
+            'mt940': parser_mt940,
+            'camt053': parser_camt053,
+        }
+        fmt = (request.query_params.get('format')
+               or request.data.get('format') or '').lower()
+        parseur = parseurs.get(fmt)
+        if parseur is None:
+            return Response(
+                {'detail': "Format inconnu : utilisez « cfonb120 », "
+                           "« mt940 » ou « camt053 »."},
+                status=status.HTTP_400_BAD_REQUEST)
+        releve = request.FILES.get('releve')
+        if releve is None:
+            return Response(
+                {'releve': "Le fichier 'releve' est obligatoire."},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            lignes_parsees = parseur(releve.read())
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        creees = []
+        try:
+            for ligne in lignes_parsees:
+                creees.append(services.ajouter_ligne_releve(
+                    rapprochement,
+                    date_operation=ligne.get('date_operation'),
+                    libelle=ligne.get('libelle', '') or '',
+                    montant=ligne.get('montant'),
+                    reference=ligne.get('reference', '') or '',
+                ))
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {'lignes_creees': LigneReleveSerializer(creees, many=True).data,
+             'nombre': len(creees)},
+            status=status.HTTP_201_CREATED)
 
 
 # ── FG124 — Caisse / petty cash (journal d'espèces) ────────────────────────
