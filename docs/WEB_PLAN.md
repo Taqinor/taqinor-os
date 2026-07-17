@@ -331,7 +331,7 @@ la beauté vit sur la page tokenisée + les PDF.*
   mt-nearest-install / mt-cost-of-waiting) ; capture Playwright des 3 profils ; CRM reçoit
   toujours estimateShown ; tests adaptés documentés.
   (@lane: web-journey) (@model: opus) (@after: WJ121)
-- [ ] WJ126 — **Page /proposition : 4 variantes de devis (la vitrine client).** Rendre la
+- [x] WJ126 — **Page /proposition : 4 variantes de devis (la vitrine client).** Rendre la
   page tokenisée mode-aware (payload QX49) : AGRICOLE — héros pompe (CV/kW, m³/jour à HMT,
   champ kWc), graphe mensuel eau livrée vs besoin culture, bloc bassin + FDA 30 % (caveat),
   économies diesel ; INDUSTRIEL — tuiles couverture/autoconso/économies par bande,
@@ -1832,6 +1832,10 @@ each for Lydec/Redal/Amendis).
 ---
 
 ## DONE LOG (agent appends one plain-language line per completed task)
+
+### 2026-07-17 — WJ122/123/124/126 unblocked & shipped (QX43-52 landed on main, batch 1)
+- **Prérequis vérifiés sur `main` (pas seulement la case cochée) :** QX44 (catégories commerciales + day-share + questions, `frontend/src/features/ventes/solar.js:87-186`), QX48 (moteur FAO-56 `quote_engine/agricole/agronomy.py` : 20 cultures, 8 zones, ETc mensuel), QX49 (payload proposition `mode_installation`+`mode_kpis`+`categorie_commerciale`, `public_views.py:479-629`), QX50 (`constants_82_21.py`), QX51 (whitelist webhook commercial/industriel v2, `crm/webhooks.py:335-372`). Un scout a extrait les contrats exacts à mirrorer (un web run édite apps/web, ne peut pas importer le backend).
+- **WJ126 (web-proposal):** la page tokenisée /proposition est désormais MODE-AWARE (4 variantes). Nouveaux types `ProposalModeKpis`/`InstallMode` + helpers PURS testés (`resolveInstallMode` branche sur `mode_installation`, JAMAIS `inst_type` ; `agricoleKpis`/`autoconsoKpis` renvoient `null` hors de leur mode → zéro fuite inter-mode). AGRICOLE : héros pompe (CV/kW, m³/j à HMT, champ kWc), mini-graphe livraison mensuelle, bassin, FDA 30 % (si `fda_eligible`), diesel qualitatif. INDUSTRIEL : tuiles autoconso/couverture/éco/payback, ligne injection + mention ANRE obligatoire (si `injection_kwh_an`), mini-cashflow 10 ans, tranches/CBAM. COMMERCIAL : tuiles + bloc archétype par `categorie_commerciale`. RÉSIDENTIEL inchangé (WJ119/WJ120). Cartes batterie jamais sur pompage. **Bug pré-existant corrigé :** `instLabel` comparait `inst_type` (label capitalisé au runtime) à des littéraux minuscules → ne matchait jamais ; branche maintenant sur `installMode`. FR/EN/AR. Tests 4 fixtures par mode (blocs corrects, blocs d'autres modes absents, KPI manquant → omission honnête).
 
 ### 2026-07-16 — WJ117–WJ126 drain (4 modes + règle anti-concurrent) — web-only lanes
 - **WJ117 (web-journey):** l'état sélectionné des 8 groupes de cartes du parcours devis est enfin VISIBLE — une règle CSS non-layered `.cine-card[aria-pressed="true"]` dans global.css (bordure brass 2px sans décalage de layout, fond teinté brass 10 %, ✓ en coin RTL-aware, label gras) bat le shorthand `.cine-card` qui écrasait l'utilitaire Tailwind layered togglé par le JS. aria-pressed était déjà câblé sur les 3 locales — zéro changement JS. Test source-level (16 assertions) en substitut des captures Playwright (apps/web n'a que vitest) ; focus-visible W209 intact.
