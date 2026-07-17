@@ -15,8 +15,9 @@ from rest_framework.test import APIClient
 from authentication.models import Company
 
 from .models import (
-    AnneeScolaire, Classe, Eleve, Famille, GrilleTarifaire, Inscription,
-    Matiere, MatiereClasse, Niveau, Presence, Remise, Seance)
+    AnneeScolaire, Classe, Eleve, Evaluation, Famille, GrilleTarifaire,
+    Inscription, Matiere, MatiereClasse, Niveau, Note, Presence, Remise,
+    Seance)
 from .services import affecter_classe, valider_inscription
 
 User = get_user_model()
@@ -486,3 +487,71 @@ class NTEDU14MatiereCoefficientTests(EducationTestCaseMixin, TestCase):
         response = self.client.post(
             url, {'nom': 'Maths', 'code': 'MATH'}, format='json')
         self.assertEqual(response.status_code, 201, response.content)
+
+
+class NTEDU15SaisieNotesTests(EducationTestCaseMixin, TestCase):
+    """NTEDU15 — saisie des notes en masse, restreinte à l'enseignant assigné
+    à la ``matiere_classe`` (AUTH)."""
+
+    def setUp(self):
+        super().setUp()
+        from apps.rh.models import DossierEmploye
+
+        self.matiere = Matiere.objects.create(company=self.company, nom='Maths')
+        self.prof_a = DossierEmploye.objects.create(
+            company=self.company, matricule='PROF-A', nom='A', prenom='A')
+        self.prof_b = DossierEmploye.objects.create(
+            company=self.company, matricule='PROF-B', nom='B', prenom='B')
+        self.matiere_classe = MatiereClasse.objects.create(
+            company=self.company, classe=self.classe, matiere=self.matiere,
+            enseignant=self.prof_a)
+        self.evaluation = Evaluation.objects.create(
+            company=self.company, matiere_classe=self.matiere_classe,
+            type=Evaluation.Type.CONTROLE, date=date(2026, 10, 1))
+        self.eleve = Eleve.objects.create(
+            company=self.company, famille=self.famille, nom='X', prenom='Y',
+            classe=self.classe)
+
+    def test_enseignant_assigne_peut_saisir_ses_propres_notes(self):
+        self.prof_a.user = self.user
+        self.prof_a.save(update_fields=['user'])
+
+        url = '/api/django/education/notes/bulk-saisie/'
+        payload = {
+            'evaluation': self.evaluation.id,
+            'notes': [{'eleve': self.eleve.id, 'valeur': '15.5'}],
+        }
+        response = self.client.post(url, payload, format='json')
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(
+            Note.objects.get(evaluation=self.evaluation, eleve=self.eleve).valeur,
+            Decimal('15.50'))
+
+    def test_enseignant_non_assigne_ne_peut_pas_saisir(self):
+        self.prof_b.user = self.user
+        self.prof_b.save(update_fields=['user'])
+
+        url = '/api/django/education/notes/bulk-saisie/'
+        payload = {
+            'evaluation': self.evaluation.id,
+            'notes': [{'eleve': self.eleve.id, 'valeur': '15.5'}],
+        }
+        response = self.client.post(url, payload, format='json')
+        self.assertEqual(response.status_code, 403, response.content)
+        self.assertFalse(
+            Note.objects.filter(
+                evaluation=self.evaluation, eleve=self.eleve).exists())
+
+    def test_note_absente_valeur_nulle(self):
+        self.prof_a.user = self.user
+        self.prof_a.save(update_fields=['user'])
+
+        url = '/api/django/education/notes/bulk-saisie/'
+        payload = {
+            'evaluation': self.evaluation.id,
+            'notes': [{'eleve': self.eleve.id, 'valeur': None}],
+        }
+        response = self.client.post(url, payload, format='json')
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertIsNone(
+            Note.objects.get(evaluation=self.evaluation, eleve=self.eleve).valeur)

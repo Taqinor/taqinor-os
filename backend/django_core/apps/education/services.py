@@ -272,3 +272,24 @@ def reinscrire_en_masse(*, company, annee_source, annee_cible):
         crees.append(inscription)
 
     return {'creees': crees, 'deja_existantes': deja_existantes}
+
+
+# =============================================================================
+# NTEDU15 — permission de saisie des notes (AUTH).
+# =============================================================================
+
+def peut_saisir_notes(user, matiere_classe):
+    """NTEDU15 — un enseignant ne peut saisir des notes QUE sur les
+    classes/matières qui lui sont assignées (``MatiereClasse.enseignant`` ==
+    son ``rh.DossierEmploye``, résolu via ``user.dossier_employe`` — JAMAIS
+    un import direct de ``apps.rh.models``). Un compte superuser ou palier
+    Responsable/Admin (repli légacy, comme ``core.permissions.
+    _user_has_or_legacy``) contourne la restriction (administration)."""
+    if getattr(user, 'is_superuser', False):
+        return True
+    if getattr(user, 'is_responsable', False):
+        return True
+    dossier = getattr(user, 'dossier_employe', None)
+    if dossier is None:
+        return False
+    return matiere_classe.enseignant_id == dossier.id

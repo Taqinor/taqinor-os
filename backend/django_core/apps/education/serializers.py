@@ -2,9 +2,9 @@
 from rest_framework import serializers
 
 from .models import (
-    AnneeScolaire, Classe, EcheancierScolarite, Eleve, Famille,
+    AnneeScolaire, Classe, EcheancierScolarite, Eleve, Evaluation, Famille,
     GrilleTarifaire, Inscription, LigneEcheance, Matiere, MatiereClasse,
-    Niveau, Presence, Remise, Seance)
+    Niveau, Note, Presence, Remise, Seance)
 
 
 class AnneeScolaireSerializer(serializers.ModelSerializer):
@@ -141,4 +141,24 @@ class MatiereClasseSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'classe', 'matiere', 'matiere_nom', 'enseignant',
             'coefficient']
+        read_only_fields = ['id']
+
+
+# =============================================================================
+# NTEDU15 — Évaluations et notes.
+# =============================================================================
+
+class EvaluationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Evaluation
+        fields = [
+            'id', 'matiere_classe', 'type', 'date', 'coefficient_evaluation',
+            'bareme']
+        read_only_fields = ['id']
+
+
+class NoteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Note
+        fields = ['id', 'evaluation', 'eleve', 'valeur', 'appreciation']
         read_only_fields = ['id']

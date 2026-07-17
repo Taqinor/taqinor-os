@@ -581,3 +581,73 @@ class MatiereClasse(TenantModel):
 
     def __str__(self):
         return f"{self.matiere} — {self.classe} (coef. {self.coefficient})"
+
+
+# =============================================================================
+# NTEDU15 — Évaluations et notes.
+# =============================================================================
+
+class Evaluation(TenantModel):
+    """NTEDU15 — évaluation (contrôle/examen/devoir) rattachée à une
+    ``MatiereClasse`` (jamais globale : coefficient/barème sont propres à la
+    matière ENSEIGNÉE DANS CETTE CLASSE). La saisie en masse des notes
+    (``NoteViewSet.bulk_saisie``) est restreinte à l'enseignant de cette
+    ``matiere_classe`` (AUTH — ``services.peut_saisir_notes``)."""
+
+    class Type(models.TextChoices):
+        CONTROLE = 'controle', 'Contrôle'
+        EXAMEN = 'examen', 'Examen'
+        DEVOIR = 'devoir', 'Devoir'
+
+    matiere_classe = models.ForeignKey(
+        MatiereClasse, on_delete=models.CASCADE, related_name='evaluations',  # on_delete: composition (parent-enfant)
+        verbose_name='Matière de classe')
+    type = models.CharField(
+        max_length=10, choices=Type.choices, default=Type.CONTROLE,
+        verbose_name="Type d'évaluation")
+    date = models.DateField(verbose_name='Date')
+    coefficient_evaluation = models.DecimalField(
+        max_digits=4, decimal_places=2, default=Decimal('1'),
+        verbose_name="Coefficient de l'évaluation")
+    bareme = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('20'),
+        verbose_name='Barème')
+
+    class Meta:
+        verbose_name = 'Évaluation'
+        verbose_name_plural = 'Évaluations'
+        ordering = ['-date']
+
+    def __str__(self):
+        return f"{self.get_type_display()} — {self.matiere_classe} ({self.date})"
+
+
+class Note(TenantModel):
+    """NTEDU15 — note d'un élève à une évaluation. ``valeur`` NULLABLE = élève
+    absent à l'évaluation (jamais un 0 fictif qui fausserait une moyenne)."""
+
+    evaluation = models.ForeignKey(
+        Evaluation, on_delete=models.CASCADE, related_name='notes',  # on_delete: composition (parent-enfant)
+        verbose_name='Évaluation')
+    eleve = models.ForeignKey(
+        Eleve, on_delete=models.CASCADE, related_name='notes',  # on_delete: composition (parent-enfant)
+        verbose_name='Élève')
+    valeur = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        verbose_name='Valeur')
+    appreciation = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Appréciation')
+
+    class Meta:
+        verbose_name = 'Note'
+        verbose_name_plural = 'Notes'
+        ordering = ['-evaluation__date']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['evaluation', 'eleve'],
+                name='education_note_unique_par_evaluation_eleve'),
+        ]
+
+    def __str__(self):
+        valeur = self.valeur if self.valeur is not None else 'absent'
+        return f"{self.eleve} — {self.evaluation} : {valeur}"

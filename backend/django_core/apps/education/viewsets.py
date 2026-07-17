@@ -4,7 +4,7 @@ Tous les viewsets héritent de ``core.viewsets.CompanyScopedModelViewSet`` :
 queryset filtré par ``request.user.company``, ``company`` forcée côté serveur
 en création (jamais lue du corps de requête).
 """
-from rest_framework import mixins, viewsets
+from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
@@ -13,14 +13,15 @@ from core.mixins import TenantMixin
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
-    AnneeScolaire, Classe, EcheancierScolarite, Eleve, Famille,
-    GrilleTarifaire, Inscription, Matiere, MatiereClasse, Niveau, Presence,
-    Remise, Seance)
+    AnneeScolaire, Classe, EcheancierScolarite, Eleve, Evaluation, Famille,
+    GrilleTarifaire, Inscription, Matiere, MatiereClasse, Niveau, Note,
+    Presence, Remise, Seance)
 from .serializers import (
     AnneeScolaireSerializer, ClasseSerializer, EcheancierScolariteSerializer,
-    EleveSerializer, FamilleSerializer, GrilleTarifaireSerializer,
-    InscriptionSerializer, MatiereClasseSerializer, MatiereSerializer,
-    NiveauSerializer, PresenceSerializer, RemiseSerializer, SeanceSerializer)
+    EleveSerializer, EvaluationSerializer, FamilleSerializer,
+    GrilleTarifaireSerializer, InscriptionSerializer, MatiereClasseSerializer,
+    MatiereSerializer, NiveauSerializer, NoteSerializer, PresenceSerializer,
+    RemiseSerializer, SeanceSerializer)
 
 
 class AnneeScolaireViewSet(CompanyScopedModelViewSet):
@@ -343,3 +344,59 @@ class MatiereClasseViewSet(CompanyScopedModelViewSet):
     queryset = MatiereClasse.objects.select_related(
         'classe', 'matiere', 'enseignant').all()
     serializer_class = MatiereClasseSerializer
+
+
+# =============================================================================
+# NTEDU15 — Évaluations et notes.
+# =============================================================================
+
+class EvaluationViewSet(CompanyScopedModelViewSet):
+    queryset = Evaluation.objects.select_related('matiere_classe').all()
+    serializer_class = EvaluationSerializer
+
+
+class NoteViewSet(CompanyScopedModelViewSet):
+    queryset = Note.objects.select_related('evaluation', 'eleve').all()
+    serializer_class = NoteSerializer
+
+    @action(detail=False, methods=['post'], url_path='bulk-saisie')
+    def bulk_saisie(self, request):
+        """NTEDU15 — saisie de notes pour une évaluation entière EN UN SEUL
+        appel API. Corps attendu : ``{"evaluation": <id>, "notes":
+        [{"eleve": <id>, "valeur": <num|null>, "appreciation": "..."}]}``.
+        ``upsert`` (create/update) par (evaluation, eleve). AUTH — un
+        enseignant ne peut saisir QUE sur ses propres ``matiere_classe``
+        (``services.peut_saisir_notes``) ; un admin/superuser contourne."""
+        from .services import peut_saisir_notes
+
+        company = request.user.company
+        evaluation_id = request.data.get('evaluation')
+        evaluation = Evaluation.objects.filter(
+            company=company, pk=evaluation_id).select_related(
+            'matiere_classe').first()
+        if evaluation is None:
+            raise ValidationError({'evaluation': 'Évaluation introuvable.'})
+        if not peut_saisir_notes(request.user, evaluation.matiere_classe):
+            return Response(
+                {'detail': (
+                    "Vous ne pouvez saisir des notes que sur vos propres "
+                    "classes/matières.")},
+                status=status.HTTP_403_FORBIDDEN)
+
+        entrees = request.data.get('notes') or []
+        resultats = []
+        for entree in entrees:
+            eleve_id = entree.get('eleve')
+            eleve = Eleve.objects.filter(company=company, pk=eleve_id).first()
+            if eleve is None:
+                raise ValidationError(
+                    {'eleve': f'Élève introuvable : {eleve_id}.'})
+            note, _created = Note.objects.update_or_create(
+                company=company, evaluation=evaluation, eleve=eleve,
+                defaults={
+                    'valeur': entree.get('valeur'),
+                    'appreciation': entree.get('appreciation', ''),
+                })
+            resultats.append(note)
+
+        return Response(NoteSerializer(resultats, many=True).data)
