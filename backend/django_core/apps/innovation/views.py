@@ -32,7 +32,16 @@ class IdeeViewSet(CompanyScopedModelViewSet):
 
     Aucun ``destroy`` : une idée se ferme (action ``fermer``), elle ne se
     supprime jamais (dossier de décision produit, comme les litiges/dossiers
-    légaux ailleurs dans le dépôt)."""
+    légaux ailleurs dans le dépôt).
+
+    NTIDE21 — cette même route (GET liste + GET détail, déjà company-scoped
+    via ``CompanyScopedModelViewSet``, déjà ouverte à « tout utilisateur
+    connecté ») EST l'API que le futur portail client réutilisera : aucune
+    route dupliquée à créer. Seul ``permission_classes`` changerait le jour
+    où un portail externe existe réellement — volontairement PAS fait ici
+    (« idées portée interne pour now ») : ouvrir un accès non-authentifié
+    à la boîte à idées interne d'une société serait une régression de
+    confidentialité, pas une préparation."""
 
     queryset = Idee.objects.select_related('auteur').all()
     serializer_class = IdeeSerializer
