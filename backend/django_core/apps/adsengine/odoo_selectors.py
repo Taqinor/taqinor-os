@@ -21,6 +21,7 @@ fonctions renvoient vide (no-op propre — jamais un appel réseau ni un 500).
 """
 from __future__ import annotations
 
+import re as _re
 from decimal import Decimal, InvalidOperation
 
 from .odoo_client import OdooClient
@@ -239,3 +240,92 @@ def lead_stage_counts(client=None):
         label = _m2o_label(lead.get('stage_id')) or '(sans étape)'
         counts[label] = counts.get(label, 0) + 1
     return counts
+
+
+# ── ADSDEEP21 — Parser des noms de leads Odoo (attribution ESTIMÉE) ──────────
+# Les noms de leads Odoo encodent souvent le formulaire/la campagne/la date, p.
+# ex. « DAZZLEMEDAI-TAQINOR FORM-26/03/2026 ». Pour les deals SANS match
+# téléphone (les seuls exacts), on en tire une SUGGESTION d'attribution —
+# TOUJOURS étiquetée « estimation », JAMAIS fondue dans les chiffres exacts.
+_DATE_RE = _re.compile(r'\b(\d{1,2}/\d{1,2}/\d{2,4})\b')
+
+
+def parse_odoo_lead_name(name):
+    """Extrait ``{source, form_hint, campaign_hint, date, raw}`` d'un nom de lead
+    Odoo encodé, ou ``None`` si le nom ne porte aucun indice exploitable.
+
+    Heuristique tolérante (jamais d'erreur) : segments séparés par ``-``, date au
+    format ``jj/mm/aaaa`` isolée, segment contenant « FORM » retenu comme
+    ``form_hint``. Le premier segment alphanumérique fait office de ``source``
+    (agence/canal), et le ``campaign_hint`` = concat des segments non-date
+    (signature stable pour regrouper des deals estimés d'une même origine)."""
+    if not name or not str(name).strip():
+        return None
+    raw = str(name).strip()
+    date = None
+    m = _DATE_RE.search(raw)
+    if m:
+        date = m.group(1)
+    segments = [s.strip() for s in raw.split('-') if s.strip()]
+    non_date_segments = [s for s in segments if not _DATE_RE.fullmatch(s)]
+    form_hint = ''
+    for seg in non_date_segments:
+        if 'FORM' in seg.upper():
+            form_hint = seg
+            break
+    source = non_date_segments[0] if non_date_segments else ''
+    campaign_hint = ' '.join(non_date_segments)
+    if not (source or form_hint or date):
+        return None
+    return {
+        'source': source,
+        'form_hint': form_hint,
+        'campaign_hint': campaign_hint,
+        'date': date,
+        'raw': raw,
+    }
+
+
+def estimated_attribution_from_names(deals, *, matched_phone_keys=None):
+    """ADSDEEP21 — Suggestion d'attribution par NOM pour les deals SANS match
+    téléphone exact.
+
+    ``matched_phone_keys`` = ensemble des clés téléphone déjà attribuées de façon
+    EXACTE (par ``odoo_metrics``). Chaque deal dont le téléphone n'y figure pas
+    (ou est vide) voit son ``source_name`` parsé ; les deals sont regroupés par
+    ``campaign_hint``. Renvoie ::
+
+        {'estimations': [{campaign_hint, form_hint, date, count, deal_ids,
+                          attribution_type: 'estimation'}, ...],
+         'unparseable': int}
+
+    Le champ ``attribution_type`` vaut TOUJOURS ``'estimation'`` : ces chiffres ne
+    doivent JAMAIS être fondus avec l'attribution exacte (deux colonnes distinctes
+    côté UI). Ne lève jamais."""
+    matched = set(matched_phone_keys or ())
+    groups = {}
+    unparseable = 0
+    for deal in deals or []:
+        phone = deal.get('phone_norm') or ''
+        if phone and phone in matched:
+            continue  # déjà attribué de façon EXACTE — jamais ré-estimé
+        parsed = parse_odoo_lead_name(deal.get('source_name'))
+        if parsed is None:
+            unparseable += 1
+            continue
+        key = parsed['campaign_hint']
+        bucket = groups.setdefault(key, {
+            'campaign_hint': parsed['campaign_hint'],
+            'form_hint': parsed['form_hint'],
+            'date': parsed['date'],
+            'count': 0,
+            'deal_ids': [],
+            'attribution_type': 'estimation',
+        })
+        bucket['count'] += 1
+        if deal.get('lead_id') is not None:
+            bucket['deal_ids'].append(deal['lead_id'])
+    return {
+        'estimations': [groups[k] for k in sorted(groups)],
+        'unparseable': unparseable,
+    }
