@@ -228,10 +228,14 @@ export interface EstimateShown {
   pompeCv?: number;
   champKwc?: number;
   m3Jour?: number;
+  // WJ124 — bassin de stockage suggéré (m³) : besoin journalier de pointe (1×),
+  // borne basse de la fourchette 1-3× montrée au client.
+  bassinM3?: number;
 }
 const ESTIMATE_SHOWN_NUMERIC_KEYS = [
   'kwc', 'prodKwh', 'ecoMadMonthLow', 'ecoMadMonthHigh', 'ecoMadYearLow',
   'ecoMadYearHigh', 'tauxAutoconso', 'tauxCouverture', 'pompeCv', 'champKwc', 'm3Jour',
+  'bassinM3',
 ] as const;
 
 /**

@@ -45,6 +45,26 @@ const CC_Q_LABEL: Record<string, string> = {
 const CC_OPT_LABEL: Record<string, string> = {
   midi: 'Midday', soir: 'Evening', continu: 'Continuous', electrique: 'Electric', gaz: 'Gas',
 };
+// WJ124 — crop + region cards rendered at build from the QX48 agronomy engine
+// (single source). VALUES = CROP_STAGES / ET0_MONTHLY keys (drive the water
+// engine); labels/icons below are localised for this /en/ page.
+import { CROP_KEYS, REGION_KEYS } from '../../../lib/agronomy';
+const CROP_META: Record<string, { label: string; icon: string }> = {
+  agrumes: { label: 'Citrus', icon: '🍊' }, olivier: { label: 'Olive', icon: '🫒' },
+  dattier: { label: 'Date palm', icon: '🌴' }, avocatier: { label: 'Avocado', icon: '🥑' },
+  arganier: { label: 'Argan', icon: '🌳' }, 'banane-serre': { label: 'Banana (greenhouse)', icon: '🍌' },
+  luzerne: { label: 'Alfalfa', icon: '🌿' }, myrtille: { label: 'Blueberry', icon: '🫐' },
+  amandier: { label: 'Almond', icon: '🌰' }, vigne: { label: 'Grapevine', icon: '🍇' },
+  grenadier: { label: 'Pomegranate', icon: '🔴' }, figuier: { label: 'Fig', icon: '🌳' },
+  'tomate-serre': { label: 'Tomato (greenhouse)', icon: '🍅' }, 'poivron-serre': { label: 'Pepper (greenhouse)', icon: '🫑' },
+  'pomme-de-terre': { label: 'Potato', icon: '🥔' }, oignon: { label: 'Onion', icon: '🧅' },
+  'melon-pasteque': { label: 'Melon / Watermelon', icon: '🍉' }, cereales: { label: 'Cereals', icon: '🌾' },
+  fraise: { label: 'Strawberry', icon: '🍓' }, cannabis: { label: 'Cannabis (licensed)', icon: '🌿' },
+};
+const REGION_LABEL: Record<string, string> = {
+  'souss-massa': 'Souss-Massa', doukkala: 'Doukkala', tadla: 'Tadla', saiss: 'Saïss',
+  oriental: 'Oriental', 'draa-tafilalet': 'Drâa-Tafilalet', 'gharb-loukkos': 'Gharb-Loukkos', haouz: 'Haouz',
+};
 import { NAP, WHATSAPP_LEADS } from '../../../lib/nap';
 import { whatsappLink } from '../../../lib/whatsapp';
 import Logo from '../../../components/Logo.astro';
@@ -799,9 +819,54 @@ const noscriptTelHref = `tel:${NAP.phone}`;
              estimateFromBill (WJ111 guard). ===== -->
         <div id="mt-sub-agricole" hidden>
           <p class="mt-6 text-lune-soft">
-            Your pumping system is sized on water, not a bill: depth and water need are
-            enough for a first estimate.
+            Your pumping system is sized on water, not a bill. Tell us your crop and region
+            — we estimate your water need — or enter your flow/TDH directly if you know them.
           </p>
+
+          <!-- WJ124 — (0) CROP + REGION: the agronomy engine (FAO-56, QX48) derives
+               the peak-month water need → required flow → pump. This is the "I don't
+               know my flow" path; the hydraulic path below ("I know my flow/TDH")
+               stays intact. -->
+          <div class="cine-card mt-5 space-y-5 p-5 sm:p-6">
+            <fieldset>
+              <legend class="text-sm text-lune-soft">Your main crop</legend>
+              <div class="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-5">
+                {CROP_KEYS.map((k) => (
+                  <button type="button" class="mt-culture-card cine-card flex flex-col items-center gap-1 border border-white/15 p-2.5 text-center transition-colors"
+                    data-value={k} aria-pressed="false">
+                    <span aria-hidden="true" class="text-xl leading-none">{CROP_META[k]?.icon ?? '🌱'}</span>
+                    <span class="text-xs font-semibold text-white">{CROP_META[k]?.label ?? k}</span>
+                  </button>
+                ))}
+              </div>
+              <select id="mt-culture" name="culture" class="sr-only" tabindex="-1" aria-hidden="true">
+                <option value="">Choose…</option>
+                {CROP_KEYS.map((k) => <option value={k}>{CROP_META[k]?.label ?? k}</option>)}
+              </select>
+            </fieldset>
+
+            <fieldset>
+              <legend class="text-sm text-lune-soft">Your region</legend>
+              <div class="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {REGION_KEYS.map((k) => (
+                  <button type="button" class="mt-region-card cine-card border p-2.5 text-center text-sm text-white transition-colors"
+                    data-value={k} aria-pressed="false">{REGION_LABEL[k] ?? k}</button>
+                ))}
+              </div>
+            </fieldset>
+
+            <label class="block text-sm text-lune-soft">
+              <span>Irrigated surface (hectares)</span>
+              <input id="mt-surface-ha" name="surfaceHa" type="number" step="any" inputmode="decimal"
+                aria-describedby="mt-surface-ha-err" placeholder="e.g. 5" class={`${inputClass} mt-1`} />
+              <span id="mt-surface-ha-err" hidden role="alert" class="mt-1 block text-xs text-alert-300"></span>
+            </label>
+
+            <p id="mt-agri-water-note" hidden class="text-sm text-lune-soft" aria-live="polite">
+              Estimated peak need: <strong id="mt-agri-water-value" class="text-white">—</strong>
+              <span class="text-xs text-lune-faint"> (FAO-56, hottest month — refined after a borehole visit).</span>
+            </p>
+          </div>
 
           <div class="cine-card mt-5 space-y-5 p-5 sm:p-6">
             <!-- (a) Water source — drives the pump type (submersible / surface) -->
@@ -877,33 +942,8 @@ const noscriptTelHref = `tel:${NAP.phone}`;
             </p>
           </div>
 
-          <!-- (f) Farm (optional) -->
-          <details id="mt-agri-exploitation" class="cine-card mt-3 p-5 sm:p-6">
-            <summary class="cursor-pointer select-none text-sm font-semibold text-brass-300">
-              Your farm (optional)
-            </summary>
-            <div class="mt-4 grid gap-4 sm:grid-cols-2">
-              <label class="block text-sm text-lune-soft">
-                <span>Main crop</span>
-                <select id="mt-culture" name="culture" class={`${inputClass} mt-1`}>
-                  <option value="">Choose…</option>
-                  <option value="agrumes">Citrus</option>
-                  <option value="maraichage">Market gardening</option>
-                  <option value="olivier">Olive trees</option>
-                  <option value="dattier">Date palms</option>
-                  <option value="cereales">Cereals</option>
-                  <option value="luzerne">Alfalfa</option>
-                  <option value="autre">Other</option>
-                </select>
-              </label>
-              <label class="block text-sm text-lune-soft">
-                <span>Surface (ha)</span>
-                <input id="mt-surface-ha" name="surfaceHa" type="number" step="any" inputmode="decimal"
-                  aria-describedby="mt-surface-ha-err" placeholder="e.g. 5" class={`${inputClass} mt-1`} />
-                <span id="mt-surface-ha-err" hidden role="alert" class="mt-1 block text-xs text-alert-300"></span>
-              </label>
-            </div>
-          </details>
+          <!-- WJ124 — crop + surface (former "Your farm") moved to the top of the
+               panel (they now drive the water engine). -->
 
           <!-- (g) Current pump (optional) — feeds the fuel-savings calculation -->
           <details id="mt-agri-pompe-acc" class="cine-card mt-3 p-5 sm:p-6">
@@ -2003,6 +2043,8 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   import { estimatePro } from '../../../lib/estimatorPro';
   // WJ122 — commercial per-category questions + key→webhook mapping (QX51).
   import { COMMERCIAL_CATEGORY_QUESTIONS, COMMERCIAL_QUESTION_WEBHOOK_KEY } from '../../../lib/commercialCategories';
+  // WJ124 — agronomy water engine (crop → m³/day need) — QX48 mirror.
+  import { monthlyWaterDemand } from '../../../lib/agronomy';
   import { estimateAgricole } from '../../../lib/estimatorAgricole';
   // QX — auto-derives the range from the exact amount (fix "redundant
   // range"). `billRangeLabel` returns FR text (lib, out of scope) — this
@@ -2219,7 +2261,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
         step, mode, ombrage,
         visitWindowPart, visitWindowWeek,
         futureLoads: Array.from(futureLoads),
-        sel: { proUnit, tension, activity, surfaceType, generator, waterSource, irrigation, waterUnit, commercialCategory, ccUnit, equipes },
+        sel: { proUnit, tension, activity, surfaceType, generator, waterSource, irrigation, waterUnit, commercialCategory, ccUnit, equipes, regionAgricole },
         capturePin, captureOutline,
         fields, checks,
       };
@@ -2738,6 +2780,8 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   let ccUnit = savedSel.ccUnit || 'mad';
   // WJ123 — INDUSTRIAL mode: shift pattern (self-consumption ceiling).
   let equipes = savedSel.equipes || '';
+  // WJ124 — AGRICULTURAL mode: agronomy region (drives the FAO-56 water engine).
+  let regionAgricole = savedSel.regionAgricole || '';
   function wireCardGroup(
     selector: string,
     getCurrent: () => string,
@@ -2792,6 +2836,29 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   syncCommercialQuestions();
   // WJ123 — INDUSTRIAL: shift pattern (the self-consumption ceiling recomputes).
   wireCardGroup('.mt-equipes', () => equipes, (v) => { equipes = v; }, { allowUnset: true, recompute: true });
+  // WJ124 — AGRICULTURAL: region (cards) drives the water engine; crop (cards)
+  // syncs the sr-only mt-culture <select> (the payload source of truth).
+  wireCardGroup('.mt-region-card', () => regionAgricole, (v) => { regionAgricole = v; }, { allowUnset: true, recompute: true });
+  const cultureSelect = $('mt-culture') as HTMLSelectElement | null;
+  function syncCultureCards() {
+    const current = cultureSelect?.value || '';
+    document.querySelectorAll<HTMLButtonElement>('.mt-culture-card').forEach((b) => {
+      const on = current !== '' && b.dataset.value === current;
+      b.setAttribute('aria-pressed', String(on));
+      b.classList.toggle('border-brass-400', on);
+      b.classList.toggle('border-white/15', !on);
+    });
+  }
+  document.querySelectorAll<HTMLButtonElement>('.mt-culture-card').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      if (cultureSelect) cultureSelect.value = cultureSelect.value === btn.dataset.value ? '' : (btn.dataset.value || '');
+      syncCultureCards();
+      markDataEntered();
+      saveWizardState();
+      computeEstimate();
+    });
+  });
+  syncCultureCards();
   // AGRICULTURAL — the water source drives the pump type (submersible/surface).
   wireCardGroup('.mt-water-source', () => waterSource, (v) => { waterSource = v; }, { allowUnset: true, recompute: true });
   wireCardGroup('.mt-irrigation', () => irrigation, (v) => { irrigation = v; }, { allowUnset: true });
@@ -3235,12 +3302,34 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     hypotheses: { pumpEff: number; pvFactor: number };
   }
   function computeAgricoleEstimate(): AgricoleEstimateOk | null {
+    let debitM3h = waterUnit === 'm3h' ? (num('mt-water-need') ?? undefined) : undefined;
+    let besoinM3j = waterUnit === 'm3j' ? (num('mt-water-need') ?? undefined) : undefined;
+    // WJ124 — without an explicit flow/need, derive the peak-month need via the
+    // FAO-56 agronomy engine (crop + region + surface + irrigation). The "I know
+    // my flow/TDH" path (entered values) keeps priority.
+    let agroPeak: number | null = null;
+    if (debitM3h == null && besoinM3j == null) {
+      const crop = val('mt-culture');
+      const surfaceHa = num('mt-surface-ha');
+      if (crop && regionAgricole && surfaceHa != null && surfaceHa > 0) {
+        const md = monthlyWaterDemand(crop, regionAgricole, surfaceHa, irrigation || undefined);
+        if (md.peak_m3_farm_day > 0) { besoinM3j = md.peak_m3_farm_day; agroPeak = md.peak_m3_farm_day; }
+      }
+    }
+    // WJ125 — the peak need is a SIZING value: never shown before the lead is sent
+    // (gated public journey). It still feeds the calculation (and the CRM) silently.
+    const waterNote = $('mt-agri-water-note');
+    if (waterNote) waterNote.hidden = agroPeak == null || PUBLIC_ESTIMATE_GATED;
+    if (!PUBLIC_ESTIMATE_GATED && agroPeak != null) {
+      const waterVal = $('mt-agri-water-value');
+      if (waterVal) waterVal.textContent = `${fmtNum(Math.round(agroPeak))} m³/day`;
+    }
     const raw = estimateAgricole({
       hmtM: num('mt-hmt') ?? undefined,
       profondeurM: num('mt-profondeur') ?? undefined,
       refoulementM: undefined,
-      debitM3h: waterUnit === 'm3h' ? (num('mt-water-need') ?? undefined) : undefined,
-      besoinM3j: waterUnit === 'm3j' ? (num('mt-water-need') ?? undefined) : undefined,
+      debitM3h,
+      besoinM3j,
       heuresPompage: num('mt-heures-pompage') ?? undefined,
       pompeType: waterSource === 'puits' || waterSource === 'forage' ? 'immergee' : waterSource ? 'surface' : undefined,
       fuelSpendMadMonth: num('mt-fuel-spend') ?? undefined,
@@ -3257,6 +3346,8 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       const cOk = ag.champKwc > 0;
       if (cOk) s.champKwc = ag.champKwc;
       if (ag.m3Jour > 0) s.m3Jour = ag.m3Jour;
+      // WJ124 — suggested reservoir = daily need (1×), low end of the 1-3× range.
+      if (ag.m3Jour > 0) s.bassinM3 = ag.m3Jour;
       const fOk = (ag.fuelSavingMadYearLow ?? 0) > 0 && (ag.fuelSavingMadYearHigh ?? 0) > 0;
       if (fOk) { s.ecoMadYearLow = ag.fuelSavingMadYearLow as number; s.ecoMadYearHigh = ag.fuelSavingMadYearHigh as number; }
       estimateShown = s;
@@ -3287,6 +3378,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       : null;
     setCard('mt-agri-eau-card', 'mt-agri-eau', eauLabel);
     if (eauOk) shown.m3Jour = ag.m3Jour;
+    if (eauOk) shown.bassinM3 = ag.m3Jour;
     const fuelOk = (ag.fuelSavingMadYearLow ?? 0) > 0 && (ag.fuelSavingMadYearHigh ?? 0) > 0;
     const fuelLabel = fuelOk ? `${formatMadRange(ag.fuelSavingMadYearLow as number, ag.fuelSavingMadYearHigh as number)}/year` : null;
     setCard('mt-agri-fuel-card', 'mt-agri-fuel', fuelLabel);
@@ -4050,6 +4142,8 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       heuresPompage: mode === 'agricole' ? (num('mt-heures-pompage') ?? undefined) : undefined,
       irrigation: irrigation || undefined,
       culture: val('mt-culture') || undefined,
+      // WJ124 — agronomy region (drives the FAO-56 water engine on the proposal).
+      regionAgricole: regionAgricole || undefined,
       surfaceHa: num('mt-surface-ha') ?? undefined,
       pompeActuelle: val('mt-pompe-actuelle') || undefined,
       pompeCvActuelle: num('mt-pompe-cv') ?? undefined,
