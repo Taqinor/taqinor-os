@@ -5400,3 +5400,226 @@ def comparatif_entites(cycle, indicateurs=None):
         'total_ca_avant_elimination': total_ca,
         'total_resultat_avant_elimination': total_resultat,
     }
+
+
+# ── NTMAR11 — Contrôles pré-dépôt TVA (cohérence avant SIMPL) ────────────────
+
+def controles_predepot_tva(declaration):
+    """NTMAR11 — alertes de cohérence avant dépôt SIMPL d'une ``DeclarationTVA``.
+
+    Renvoie une liste de messages (vide = saine) :
+      * TVA déductible > collectée sans crédit antérieur justifié ;
+      * écart entre le snapshot figé de la déclaration et le grand livre
+        recalculé sur la même période (collectée/déductible) ;
+      * incohérence interne du net à déclarer / crédit reportable.
+    Lecture seule, scopée société (via la company de la déclaration)."""
+    alertes = []
+    collectee = declaration.tva_collectee or Decimal('0')
+    deductible = declaration.tva_deductible or Decimal('0')
+    anterieur = declaration.credit_anterieur or Decimal('0')
+
+    if deductible > collectee and anterieur <= 0:
+        alertes.append(
+            "TVA déductible supérieure à la TVA collectée sans crédit de TVA "
+            "antérieur justifié — vérifier le report ou le prorata de déduction.")
+
+    # Écart avec le grand livre recalculé sur la même période.
+    gl = preparer_declaration_tva(
+        declaration.company, date_debut=declaration.date_debut,
+        date_fin=declaration.date_fin, regime=declaration.regime,
+        methode=declaration.methode)
+    if _q(gl['tva_collectee']) != _q(collectee):
+        alertes.append(
+            f"Écart TVA collectée : déclaration {_q(collectee)} ≠ grand livre "
+            f"{_q(gl['tva_collectee'])}.")
+    if _q(gl['tva_deductible']) != _q(deductible):
+        alertes.append(
+            f"Écart TVA déductible : déclaration {_q(deductible)} ≠ grand livre "
+            f"{_q(gl['tva_deductible'])}.")
+
+    # Cohérence interne du net à déclarer / crédit reportable.
+    net = collectee - deductible - anterieur
+    attendu_a_declarer = net if net >= 0 else Decimal('0')
+    attendu_reportable = -net if net < 0 else Decimal('0')
+    if _q(declaration.tva_a_declarer) != _q(attendu_a_declarer):
+        alertes.append(
+            "Incohérence du montant à déclarer par rapport au snapshot "
+            "collectée/déductible/crédit.")
+    if _q(declaration.credit_reportable) != _q(attendu_reportable):
+        alertes.append(
+            "Incohérence du crédit reportable par rapport au snapshot.")
+    return alertes
+
+
+# ── NTMAR17 — Bordereau de versement RAS filtré par type (loyers…) ──────────
+
+def bordereau_versement_ras_par_type(company, type_prestation, *,
+                                     date_debut=None, date_fin=None,
+                                     statut=None):
+    """NTMAR17 — bordereau de versement RAS restreint à UN type de prestation
+    (ex. ``loyers``). Réutilise ``bordereau_versement_ras`` puis re-filtre les
+    pièces sur ``type_prestation`` en amont via ``_retenues_qs``. Renvoie la
+    même forme que ``bordereau_versement_ras`` (lignes par prestataire)."""
+    # Réutilise la logique de regroupement en filtrant d'abord le queryset.
+    qs = _retenues_qs(
+        company, date_debut=date_debut, date_fin=date_fin, statut=statut,
+    ).filter(type_prestation=type_prestation).order_by('tiers_id', 'id')
+    par_tiers = {}
+    ordre = []
+    for ras in qs:
+        if ras.tiers_id is not None:
+            cle = ('tiers', ras.tiers_type, ras.tiers_id)
+        else:
+            cle = ('libre', ras.tiers_nom, ras.identifiant_fiscal)
+        entry = par_tiers.get(cle)
+        if entry is None:
+            entry = {
+                'tiers_type': ras.tiers_type, 'tiers_id': ras.tiers_id,
+                'tiers_nom': ras.tiers_nom,
+                'identifiant_fiscal': ras.identifiant_fiscal,
+                'base': Decimal('0'), 'montant': Decimal('0'), 'nb_pieces': 0,
+            }
+            par_tiers[cle] = entry
+            ordre.append(cle)
+        if not entry['tiers_nom'] and ras.tiers_nom:
+            entry['tiers_nom'] = ras.tiers_nom
+        if not entry['identifiant_fiscal'] and ras.identifiant_fiscal:
+            entry['identifiant_fiscal'] = ras.identifiant_fiscal
+        entry['base'] += ras.base or Decimal('0')
+        entry['montant'] += ras.montant or Decimal('0')
+        entry['nb_pieces'] += 1
+    lignes = [par_tiers[cle] for cle in ordre]
+    lignes.sort(key=lambda e: e['montant'], reverse=True)
+    total_montant = sum((e['montant'] for e in lignes), Decimal('0'))
+    return {
+        'type_prestation': type_prestation,
+        'date_debut': date_debut, 'date_fin': date_fin,
+        'lignes': lignes,
+        'total_a_verser': total_montant,
+    }
+
+
+# ── NTMAR19 — Récapitulatif annuel des RAS (tous types, par bénéficiaire) ────
+
+def recapitulatif_ras_annuel(company, annee):
+    """NTMAR19 — consolide les RAS de l'année par bénéficiaire ET par type de
+    prestation (honoraires/loyers/prestation étrangère…), prêt pour l'annexe
+    déclarative. Renvoie ``{'annee', 'lignes': [{tiers…, 'par_type': {type:
+    {base, retenue}}, 'total_base', 'total_retenue'}], 'totaux_par_type': {…},
+    'total_retenue'}``. Lecture seule, scopée société, bornée à l'année."""
+    annee = int(annee)
+    date_debut = date(annee, 1, 1)
+    date_fin = date(annee, 12, 31)
+    qs = _retenues_qs(company, date_debut=date_debut, date_fin=date_fin) \
+        .order_by('tiers_id', 'id')
+
+    par_tiers = {}
+    ordre = []
+    totaux_par_type = {}
+    total_retenue = Decimal('0')
+    for ras in qs:
+        if ras.tiers_id is not None:
+            cle = ('tiers', ras.tiers_type, ras.tiers_id)
+        else:
+            cle = ('libre', ras.tiers_nom, ras.identifiant_fiscal)
+        entry = par_tiers.get(cle)
+        if entry is None:
+            entry = {
+                'tiers_type': ras.tiers_type, 'tiers_id': ras.tiers_id,
+                'tiers_nom': ras.tiers_nom,
+                'identifiant_fiscal': ras.identifiant_fiscal,
+                'par_type': {}, 'total_base': Decimal('0'),
+                'total_retenue': Decimal('0'),
+            }
+            par_tiers[cle] = entry
+            ordre.append(cle)
+        if not entry['tiers_nom'] and ras.tiers_nom:
+            entry['tiers_nom'] = ras.tiers_nom
+        base = ras.base or Decimal('0')
+        retenue = ras.montant or Decimal('0')
+        t = ras.type_prestation
+        bucket = entry['par_type'].setdefault(
+            t, {'base': Decimal('0'), 'retenue': Decimal('0')})
+        bucket['base'] += base
+        bucket['retenue'] += retenue
+        entry['total_base'] += base
+        entry['total_retenue'] += retenue
+        tt = totaux_par_type.setdefault(
+            t, {'base': Decimal('0'), 'retenue': Decimal('0')})
+        tt['base'] += base
+        tt['retenue'] += retenue
+        total_retenue += retenue
+
+    lignes = [par_tiers[cle] for cle in ordre]
+    lignes.sort(key=lambda e: e['total_retenue'], reverse=True)
+    return {
+        'annee': annee,
+        'lignes': lignes,
+        'totaux_par_type': totaux_par_type,
+        'total_retenue': total_retenue,
+    }
+
+
+# ── NTMAR20 — Synthèse mensuelle des droits de timbre par mode d'acquittement ─
+
+def synthese_timbre_mensuelle(company, annee, mois):
+    """NTMAR20 — synthèse des droits de timbre acquittés sur les règlements en
+    espèces d'un mois, ventilée par mode d'acquittement (papier/électronique).
+    Renvoie ``{'annee', 'mois', 'lignes': [{'facture_ref', 'base', 'montant',
+    'mode_acquittement'}], 'total_par_mode': {mode: montant}, 'total'}``.
+    Lecture seule, scopée société."""
+    annee, mois = int(annee), int(mois)
+    date_debut = date(annee, mois, 1)
+    date_fin = _fin_de_mois(date_debut, 0)
+    qs = _timbres_qs(
+        company, date_debut=date_debut, date_fin=date_fin,
+    ).order_by('date_encaissement', 'id')
+    lignes = []
+    total_par_mode = {}
+    total = Decimal('0')
+    for tf in qs:
+        montant = tf.montant or Decimal('0')
+        mode = tf.mode_acquittement or 'papier'
+        lignes.append({
+            'id': tf.id,
+            'facture_ref': tf.facture_ref,
+            'date_encaissement': tf.date_encaissement,
+            'base': tf.base or Decimal('0'),
+            'montant': montant,
+            'mode_acquittement': mode,
+        })
+        total_par_mode[mode] = total_par_mode.get(mode, Decimal('0')) + montant
+        total += montant
+    return {
+        'annee': annee, 'mois': mois,
+        'lignes': lignes,
+        'total_par_mode': total_par_mode,
+        'total': total,
+    }
+
+
+# ── NTMAR24 — Cautions bancaires de marché à restituer (mainlevée) ──────────
+
+def cautions_a_restituer(company, *, within=None, today=None):
+    """NTMAR24 — cautions bancaires ACTIVES dont l'échéance arrive (à restituer/
+    lever). ``within`` (jours) restreint aux échéances proches ; ``None`` = toutes
+    les cautions actives échéancées. Renvoie une liste triée par date d'échéance.
+    Lecture seule, scopée société."""
+    today = today or timezone.localdate()
+    qs = CautionBancaire.objects.filter(
+        company=company, statut=CautionBancaire.Statut.ACTIVE,
+        date_echeance__isnull=False)
+    if within is not None:
+        qs = qs.filter(date_echeance__lte=today + timedelta(days=within))
+    qs = qs.order_by('date_echeance', 'id')
+    return [{
+        'id': c.id,
+        'reference': c.reference,
+        'type_caution': c.type_caution,
+        'marche_ref': c.marche_ref,
+        'tiers_nom': c.tiers_nom,
+        'banque': c.banque,
+        'montant': c.montant or Decimal('0'),
+        'date_echeance': c.date_echeance,
+        'date_mainlevee': c.date_mainlevee,
+    } for c in qs]
