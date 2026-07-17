@@ -14,12 +14,13 @@ from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
     AnneeScolaire, Classe, EcheancierScolarite, Eleve, Famille,
-    GrilleTarifaire, Inscription, Niveau, Presence, Remise, Seance)
+    GrilleTarifaire, Inscription, Matiere, MatiereClasse, Niveau, Presence,
+    Remise, Seance)
 from .serializers import (
     AnneeScolaireSerializer, ClasseSerializer, EcheancierScolariteSerializer,
     EleveSerializer, FamilleSerializer, GrilleTarifaireSerializer,
-    InscriptionSerializer, NiveauSerializer, PresenceSerializer,
-    RemiseSerializer, SeanceSerializer)
+    InscriptionSerializer, MatiereClasseSerializer, MatiereSerializer,
+    NiveauSerializer, PresenceSerializer, RemiseSerializer, SeanceSerializer)
 
 
 class AnneeScolaireViewSet(CompanyScopedModelViewSet):
@@ -326,3 +327,19 @@ class PresenceViewSet(CompanyScopedModelViewSet):
             resultats.append(presence)
 
         return Response(PresenceSerializer(resultats, many=True).data)
+
+
+class MatiereViewSet(CompanyScopedModelViewSet):
+    queryset = Matiere.objects.select_related('niveau').all()
+    serializer_class = MatiereSerializer
+
+
+class MatiereClasseViewSet(CompanyScopedModelViewSet):
+    """NTEDU14 — coefficient d'une matière POUR une classe donnée (jamais
+    global) : la contrainte base ``education_coefficient_unique_par_classe_
+    matiere`` garantit une seule ligne par (classe, matière) — deux classes
+    du même niveau peuvent porter des coefficients différents."""
+
+    queryset = MatiereClasse.objects.select_related(
+        'classe', 'matiere', 'enseignant').all()
+    serializer_class = MatiereClasseSerializer

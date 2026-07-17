@@ -16,7 +16,7 @@ from authentication.models import Company
 
 from .models import (
     AnneeScolaire, Classe, Eleve, Famille, GrilleTarifaire, Inscription,
-    Niveau, Presence, Remise, Seance)
+    Matiere, MatiereClasse, Niveau, Presence, Remise, Seance)
 from .services import affecter_classe, valider_inscription
 
 User = get_user_model()
@@ -448,3 +448,41 @@ class NTEDU13NotificationAbsenceTests(EducationTestCaseMixin, TestCase):
                 company=self.company, seance=self.seance1, eleve=self.eleve,
                 statut=Presence.Statut.PRESENT)
             self.assertEqual(mocked.call_count, 0)
+
+
+class NTEDU14MatiereCoefficientTests(EducationTestCaseMixin, TestCase):
+    """NTEDU14 — coefficient d'une matière, spécifique à la classe."""
+
+    def test_coefficient_specifique_a_la_classe_pas_global(self):
+        matiere = Matiere.objects.create(company=self.company, nom='Maths')
+        classe2 = Classe.objects.create(
+            company=self.company, annee_scolaire=self.annee,
+            niveau=self.niveau_cp, nom='CP B', capacite_max=30)
+
+        mc1 = MatiereClasse.objects.create(
+            company=self.company, classe=self.classe, matiere=matiere,
+            coefficient=2)
+        mc2 = MatiereClasse.objects.create(
+            company=self.company, classe=classe2, matiere=matiere,
+            coefficient=3)
+
+        self.assertNotEqual(mc1.coefficient, mc2.coefficient)
+
+    def test_deux_lignes_pour_la_meme_classe_matiere_est_refuse(self):
+        from django.db import IntegrityError, transaction
+
+        matiere = Matiere.objects.create(company=self.company, nom='Maths')
+        MatiereClasse.objects.create(
+            company=self.company, classe=self.classe, matiere=matiere,
+            coefficient=2)
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                MatiereClasse.objects.create(
+                    company=self.company, classe=self.classe, matiere=matiere,
+                    coefficient=3)
+
+    def test_endpoint_crud_matiere(self):
+        url = '/api/django/education/matieres/'
+        response = self.client.post(
+            url, {'nom': 'Maths', 'code': 'MATH'}, format='json')
+        self.assertEqual(response.status_code, 201, response.content)

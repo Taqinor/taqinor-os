@@ -525,3 +525,59 @@ class Presence(TenantModel):
 
     def __str__(self):
         return f"{self.eleve} — {self.seance} — {self.get_statut_display()}"
+
+
+# =============================================================================
+# NTEDU14 — Matières et coefficients.
+# =============================================================================
+
+class Matiere(TenantModel):
+    """NTEDU14 — matière enseignable (nationale/transverse si ``niveau`` est
+    vide, ou spécifique à un niveau)."""
+
+    nom = models.CharField(max_length=100, verbose_name='Nom')
+    code = models.CharField(max_length=20, blank=True, default='', verbose_name='Code')
+    niveau = models.ForeignKey(
+        Niveau, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='matieres', verbose_name='Niveau')
+
+    class Meta:
+        verbose_name = 'Matière'
+        verbose_name_plural = 'Matières'
+        ordering = ['nom']
+
+    def __str__(self):
+        return self.nom
+
+
+class MatiereClasse(TenantModel):
+    """NTEDU14 — coefficient d'une matière POUR une classe donnée (jamais
+    global) : deux classes du même niveau peuvent porter des coefficients
+    différents pour la même matière. ``enseignant`` référence
+    ``rh.DossierEmploye`` par FK à chaîne."""
+
+    classe = models.ForeignKey(
+        Classe, on_delete=models.CASCADE, related_name='matieres_classe',
+        verbose_name='Classe')
+    matiere = models.ForeignKey(
+        Matiere, on_delete=models.CASCADE, related_name='classes_matiere',
+        verbose_name='Matière')
+    enseignant = models.ForeignKey(
+        'rh.DossierEmploye', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='matieres_enseignees', verbose_name='Enseignant')
+    coefficient = models.DecimalField(
+        max_digits=4, decimal_places=2, default=Decimal('1'),
+        verbose_name='Coefficient')
+
+    class Meta:
+        verbose_name = 'Matière de classe'
+        verbose_name_plural = 'Matières de classe'
+        ordering = ['classe', 'matiere']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['classe', 'matiere'],
+                name='education_coefficient_unique_par_classe_matiere'),
+        ]
+
+    def __str__(self):
+        return f"{self.matiere} — {self.classe} (coef. {self.coefficient})"
