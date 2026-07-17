@@ -1756,10 +1756,10 @@ class ChangelogRead(TimestampedModel):
     """
 
     user = models.ForeignKey(
-        'authentication.CustomUser', on_delete=models.CASCADE,
+        'authentication.CustomUser', on_delete=models.CASCADE,  # on_delete: composition (rattache)
         related_name='changelog_reads', verbose_name='Utilisateur')
     entry = models.ForeignKey(
-        ChangelogEntry, on_delete=models.CASCADE,
+        ChangelogEntry, on_delete=models.CASCADE,  # on_delete: composition (parent-enfant)
         related_name='reads', verbose_name='Note de version')
 
     class Meta:
@@ -1802,10 +1802,10 @@ class PartageDashboard(TimestampedModel):
     immédiate via ``actif=False`` (kill-switch) ; ``expires_at`` optionnel.
     """
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: tenant (societe)
         related_name='dashboard_partages', verbose_name='Société')
     dashboard = models.ForeignKey(
-        Dashboard, on_delete=models.CASCADE, related_name='partages_publics',
+        Dashboard, on_delete=models.CASCADE, related_name='partages_publics',  # on_delete: composition (parent-enfant)
         verbose_name='Dashboard')
     token = models.CharField(
         max_length=64, unique=True, default=_default_dashboard_partage_token,
@@ -1853,13 +1853,13 @@ class DashboardPartageInterne(TimestampedModel):
         EDITION = 'edition', 'Édition'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: tenant (societe)
         related_name='dashboard_partages_internes', verbose_name='Société')
     dashboard = models.ForeignKey(
-        Dashboard, on_delete=models.CASCADE,
+        Dashboard, on_delete=models.CASCADE,  # on_delete: composition (parent-enfant)
         related_name='partages_internes', verbose_name='Dashboard')
     utilisateur = models.ForeignKey(
-        'authentication.CustomUser', on_delete=models.CASCADE,
+        'authentication.CustomUser', on_delete=models.CASCADE,  # on_delete: composition (rattache)
         null=True, blank=True, related_name='dashboard_partages_recus')
     # Rôle legacy (texte libre aligné sur CustomUser.role_legacy) — SANS FK,
     # pour rester cohérent avec le reste du partage par rôle dans le repo.
@@ -1911,7 +1911,7 @@ class RetentionRun(TimestampedModel):
     ]
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: tenant (societe)
         related_name='retention_runs', verbose_name='Société',
         null=True, blank=True,
         help_text='Nulle pour un balayage système transverse à toutes les '
@@ -1978,11 +1978,11 @@ class ContentTranslation(TimestampedModel):
         AR = 'ar', 'العربية'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: tenant (societe)
         related_name='content_translations', verbose_name='Société')
 
     content_type = models.ForeignKey(
-        'contenttypes.ContentType', on_delete=models.CASCADE)
+        'contenttypes.ContentType', on_delete=models.CASCADE)  # on_delete: composition (parent-enfant)
     object_id = models.CharField(max_length=64)
     content_object = GenericForeignKey('content_type', 'object_id')
 
@@ -2032,7 +2032,7 @@ class TenantUsageSnapshot(TimestampedModel):
     """
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: tenant (societe)
         related_name='usage_snapshots', verbose_name='Société')
     jour = models.DateField(
         'Jour', help_text="Jour de l'instantané (UTC).")
@@ -2285,7 +2285,7 @@ class BackgroundJob(TenantModel):
     ]
 
     user = models.ForeignKey(
-        'authentication.CustomUser', on_delete=models.CASCADE,
+        'authentication.CustomUser', on_delete=models.CASCADE,  # on_delete: composition (rattache)
         related_name='background_jobs', verbose_name='Utilisateur')
     kind = models.CharField('Type', max_length=64)
     statut = models.CharField(
@@ -2355,7 +2355,7 @@ class OutboxEvent(TimestampedModel):
     ]
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: tenant (societe)
         related_name='outbox_events', null=True, blank=True,
         verbose_name='Société')
     event_name = models.CharField('Événement', max_length=100)

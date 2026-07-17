@@ -111,7 +111,7 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/innovation/services.py:139` | get_or_create | InnovationSettings.objects | company |
 | `backend/django_core/apps/innovation/services.py:180` | get_or_create | Tag.objects | company, nom |
 | `backend/django_core/apps/innovation/services.py:186` | get_or_create | TaggedItem.objects | content_type, object_id, tag |
-| `backend/django_core/apps/innovation/views.py:453` | get_or_create | InnovationSettings.objects | company |
+| `backend/django_core/apps/innovation/views.py:527` | get_or_create | InnovationSettings.objects | company |
 | `backend/django_core/apps/installations/field_capture.py:79` | get_or_create | MaterielConsommation.objects | intervention |
 | `backend/django_core/apps/installations/field_capture.py:334` | get_or_create | SafetyChecklistSlot.objects | cle, company |
 | `backend/django_core/apps/installations/field_capture.py:344` | get_or_create | SafetySignoff.objects | intervention |

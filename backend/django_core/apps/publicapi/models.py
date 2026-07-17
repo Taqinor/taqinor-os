@@ -73,7 +73,7 @@ class ApiKey(models.Model):
 
     company = models.ForeignKey(
         'authentication.Company',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: tenant (societe)
         related_name='api_keys',
     )
     label = models.CharField(max_length=120)
@@ -183,7 +183,7 @@ class Webhook(models.Model):
 
     company = models.ForeignKey(
         'authentication.Company',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: tenant (societe)
         related_name='webhooks',
     )
     label = models.CharField(max_length=120, blank=True, default='')
@@ -235,12 +235,12 @@ class WebhookDelivery(models.Model):
 
     company = models.ForeignKey(
         'authentication.Company',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: tenant (societe)
         related_name='webhook_deliveries',
     )
     webhook = models.ForeignKey(
         Webhook,
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: composition (parent-enfant)
         related_name='deliveries',
     )
     event = models.CharField(max_length=50)
@@ -298,12 +298,12 @@ class WebhookDeliveryAttempt(TenantModel):
     # company REDÉCLARÉ à l'identique pour conserver le related_name historique.
     company = models.ForeignKey(
         'authentication.Company',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: tenant (societe)
         related_name='webhook_delivery_attempts',
     )
     delivery = models.ForeignKey(
         WebhookDelivery,
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: composition (parent-enfant)
         related_name='attempts',
     )
     # Numéro de tentative GLOBAL pour cette livraison (2..6 — la tentative 1
@@ -341,7 +341,7 @@ class IdempotencyRecord(models.Model):
 
     company = models.ForeignKey(
         'authentication.Company',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: tenant (societe)
         related_name='publicapi_idempotency_records',
     )
     api_key = models.ForeignKey(
