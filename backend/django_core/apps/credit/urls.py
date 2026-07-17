@@ -5,6 +5,8 @@ from . import views
 
 router = DefaultRouter()
 router.register(r'limites', views.LimiteCreditViewSet, basename='limitecredit')
+router.register(r'derogations', views.DerogationCreditViewSet,
+                basename='derogationcredit')
 
 urlpatterns = [
     path('ping/', views.ping, name='credit-ping'),

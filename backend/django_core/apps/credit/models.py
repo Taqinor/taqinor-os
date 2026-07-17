@@ -94,3 +94,62 @@ class ReglageCredit(models.Model):
             return cls.objects.get(company=company)
         except cls.DoesNotExist:
             return cls(company=company)
+
+
+class DerogationCredit(models.Model):
+    """NTCRD9 — dérogation crédit : demande → approbation/rejet Directeur/
+    Administrateur. Reprend le PATTERN (jamais le modèle) de
+    ``contrats.selectors.resoudre_regle_approbation`` — pas de lien métier
+    direct avec ``apps.contrats``, donc aucun import."""
+
+    class Statut(models.TextChoices):
+        EN_ATTENTE = 'en_attente', 'En attente'
+        APPROUVEE = 'approuvee', 'Approuvée'
+        REJETEE = 'rejetee', 'Rejetée'
+        EXPIREE = 'expiree', 'Expirée'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='derogations_credit')
+    client = models.ForeignKey(
+        'crm.Client', on_delete=models.CASCADE,
+        related_name='derogations_credit')
+    # NTCRD28 — devis/BC concerné (contexte, optionnel — string-FK, jamais
+    # un import de apps.ventes.models).
+    devis = models.ForeignKey(
+        'ventes.Devis', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='derogations_credit')
+    montant_demande = models.DecimalField(max_digits=14, decimal_places=2)
+    motif = models.TextField(blank=True, default='')
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices, default=Statut.EN_ATTENTE)
+    demandeur = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+        blank=True, related_name='derogations_credit_demandees')
+    approuvee_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+        blank=True, related_name='derogations_credit_decidees')
+    date_decision = models.DateTimeField(null=True, blank=True)
+    # Validité de 30 jours par défaut à compter de l'APPROBATION (posée au
+    # moment de l'approbation, pas à la création).
+    valide_jusqu_au = models.DateTimeField(null=True, blank=True)
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Dérogation crédit'
+        verbose_name_plural = 'Dérogations crédit'
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return f'Dérogation {self.client_id} — {self.montant_demande} ({self.statut})'
+
+    @property
+    def est_valide(self):
+        """Vrai si APPROUVEE et non expirée (``valide_jusqu_au`` dans le futur
+        ou non posée)."""
+        from django.utils import timezone
+        if self.statut != self.Statut.APPROUVEE:
+            return False
+        if self.valide_jusqu_au is None:
+            return True
+        return timezone.now() <= self.valide_jusqu_au

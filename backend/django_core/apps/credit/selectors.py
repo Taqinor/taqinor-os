@@ -60,3 +60,19 @@ def disponible_credit(client):
         'disponible': disponible, 'pct_utilise': pct_utilise,
         'depasse': disponible < 0,
     }
+
+
+def derogation_valide_pour(client, montant):
+    """NTCRD9 — vrai si le client a une ``DerogationCredit`` APPROUVEE, non
+    expirée, dont le ``montant_demande`` couvre ``montant`` (>= montant de la
+    transaction). Lève ainsi le hold de blocage pour CE montant précis."""
+    from decimal import Decimal
+
+    from .models import DerogationCredit
+
+    montant = Decimal(montant or 0)
+    for d in DerogationCredit.objects.filter(
+            client=client, statut=DerogationCredit.Statut.APPROUVEE):
+        if d.est_valide and d.montant_demande >= montant:
+            return True
+    return False

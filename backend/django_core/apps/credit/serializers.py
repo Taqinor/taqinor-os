@@ -1,7 +1,7 @@
 """apps.credit.serializers — peuplé tâche par tâche."""
 from rest_framework import serializers
 
-from .models import LimiteCredit, ReglageCredit
+from .models import DerogationCredit, LimiteCredit, ReglageCredit
 
 
 class LimiteCreditSerializer(serializers.ModelSerializer):
@@ -24,3 +24,19 @@ class ReglageCreditSerializer(serializers.ModelSerializer):
             'date_creation', 'date_modification',
         ]
         read_only_fields = ['id', 'date_creation', 'date_modification']
+
+
+class DerogationCreditSerializer(serializers.ModelSerializer):
+    est_valide = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = DerogationCredit
+        fields = [
+            'id', 'client', 'devis', 'montant_demande', 'motif', 'statut',
+            'demandeur', 'approuvee_par', 'date_decision', 'valide_jusqu_au',
+            'date_creation', 'est_valide',
+        ]
+        read_only_fields = [
+            'id', 'statut', 'demandeur', 'approuvee_par', 'date_decision',
+            'valide_jusqu_au', 'date_creation', 'est_valide',
+        ]

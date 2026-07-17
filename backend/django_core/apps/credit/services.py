@@ -27,7 +27,7 @@ def verifier_hold_credit(client, montant_transaction=None):
             'depassement': Decimal('0'), 'disponible': None,
         }
 
-    from .selectors import encours_client
+    from .selectors import derogation_valide_pour, encours_client
 
     encours = encours_client(client)
     disponible = limite_obj.montant_limite - encours
@@ -36,7 +36,12 @@ def verifier_hold_credit(client, montant_transaction=None):
     mode = limite_obj.mode_hold
 
     if mode == LimiteCredit.ModeHold.BLOCAGE:
-        autorise = depassement <= 0
+        # NTCRD9 — une dérogation approuvée non expirée couvrant ce montant
+        # lève le hold de blocage pour cette transaction précise.
+        if depassement <= 0:
+            autorise = True
+        else:
+            autorise = derogation_valide_pour(client, montant_transaction)
     else:
         # 'aucun' et 'avertissement' : jamais bloquant.
         autorise = True
@@ -45,3 +50,50 @@ def verifier_hold_credit(client, montant_transaction=None):
         'autorise': autorise, 'mode': mode, 'depassement': depassement,
         'disponible': disponible,
     }
+
+
+def creer_demande_derogation(client, montant_demande, *, motif='', user=None,
+                             devis=None, company=None):
+    """NTCRD9 — crée une demande de dérogation crédit (statut ``en_attente``).
+
+    La société est posée côté serveur (jamais lue du corps) : par défaut celle
+    du client."""
+    from .models import DerogationCredit
+
+    return DerogationCredit.objects.create(
+        company=company or client.company, client=client,
+        montant_demande=montant_demande, motif=motif or '', demandeur=user,
+        devis=devis)
+
+
+def approuver_derogation(derogation, user, *, jours_validite=30):
+    """NTCRD9 — approuve une dérogation : statut ``approuvee`` + fenêtre de
+    validité (défaut 30 jours à compter de MAINTENANT). Réservé côté vue au
+    rôle Directeur/Administrateur."""
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from .models import DerogationCredit
+
+    now = timezone.now()
+    derogation.statut = DerogationCredit.Statut.APPROUVEE
+    derogation.approuvee_par = user
+    derogation.date_decision = now
+    derogation.valide_jusqu_au = now + timedelta(days=jours_validite)
+    derogation.save(update_fields=[
+        'statut', 'approuvee_par', 'date_decision', 'valide_jusqu_au'])
+    return derogation
+
+
+def rejeter_derogation(derogation, user):
+    """NTCRD9 — rejette une dérogation (statut ``rejetee`` + décideur/date)."""
+    from django.utils import timezone
+
+    from .models import DerogationCredit
+
+    derogation.statut = DerogationCredit.Statut.REJETEE
+    derogation.approuvee_par = user
+    derogation.date_decision = timezone.now()
+    derogation.save(update_fields=['statut', 'approuvee_par', 'date_decision'])
+    return derogation
