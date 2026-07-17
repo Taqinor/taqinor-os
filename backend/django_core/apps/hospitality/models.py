@@ -528,3 +528,122 @@ class IngredientRecette(models.Model):
 
     def __str__(self):
         return f'{self.quantite} {self.unite} — {self.produit_id}'
+
+
+# ── NTHOT18 — Salles événementielles ────────────────────────────────────────
+# NTHOT18 est construite AVANT NTHOT17 dans ce lot malgré l'ordre demandé :
+# le modèle ``EvenementBanquet`` (NTHOT17) porte un FK réel vers
+# ``SalleEvenement`` (NTHOT18) — dépendance de schéma inversée par rapport à
+# l'ordre de numérotation, corrigée ici pour ne jamais générer de migration
+# invalide (cf. rapport de fin de lot).
+
+class SalleEvenement(TenantModel):
+    """Salle événementielle (distincte d'une ``Chambre`` — louée au créneau,
+    jamais à la nuitée)."""
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: cascade tenant (purge des données de la société supprimée)
+        related_name='hospitality_salles_evenement',
+        verbose_name='Société',
+    )
+    nom = models.CharField(max_length=150)
+    capacite_max = models.PositiveIntegerField(default=0)
+    # Liste JSON libre des aménagements disponibles (ex. théâtre/banquet/
+    # cocktail) — jamais des choices figées, un établissement définit ses
+    # propres configurations de salle.
+    types_amenagement_disponibles = models.JSONField(default=list, blank=True)
+    tarif_location_ht = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal('0'))
+    description = models.TextField(blank=True, default='')
+
+    class Meta:
+        verbose_name = 'Salle événementielle'
+        verbose_name_plural = 'Salles événementielles'
+        ordering = ['nom']
+
+    def __str__(self):
+        return self.nom
+
+
+# ── NTHOT17 — Événements/banquets ───────────────────────────────────────────
+
+class EvenementBanquet(TenantModel):
+    """Événement/banquet — devis d'événement généré via le flux devis
+    ventes existant (``services.generer_devis_evenement``, NTHOT17), jamais
+    un moteur de devis parallèle (rule #4).
+
+    NB schéma : la spec NTHOT17 nomme le champ ``date_evenement`` (singulier)
+    mais la validation de chevauchement de salle (NTHOT18, même pattern que
+    ``Reservation``/NTHOT3) exige un CRÉNEAU — ``date_debut``/``date_fin``
+    (DateTimeField) portent donc ce rôle ; ``date_evenement`` reste exposée en
+    lecture comme la date calendaire du créneau (propriété ci-dessous)."""
+
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        CONFIRME = 'confirme', 'Confirmé'
+        ANNULE = 'annule', 'Annulé'
+        TERMINE = 'termine', 'Terminé'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: cascade tenant (purge des données de la société supprimée)
+        related_name='hospitality_evenements_banquet',
+        verbose_name='Société',
+    )
+    # Client résolu (pattern « resolve_client_for_lead », CLAUDE.md) : soit un
+    # compte CRM déjà connu, soit un lead à résoudre côté service — jamais les
+    # deux résolus indépendamment (même règle que ``Devis.client``/``lead``).
+    client = models.ForeignKey(
+        'crm.Client',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='hospitality_evenements_banquet',
+        verbose_name='Client CRM',
+    )
+    lead = models.ForeignKey(
+        'crm.Lead',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='hospitality_evenements_banquet',
+        verbose_name='Lead',
+    )
+    nom_evenement = models.CharField(max_length=150)
+    date_debut = models.DateTimeField(verbose_name='Début du créneau')
+    date_fin = models.DateTimeField(verbose_name='Fin du créneau')
+    nb_convives = models.PositiveIntegerField(default=0)
+    salle = models.ForeignKey(
+        SalleEvenement,
+        on_delete=models.PROTECT,  # on_delete: jamais une suppression silencieuse d'une salle encore réservée par un événement
+        null=True, blank=True,
+        related_name='evenements',
+        verbose_name='Salle',
+    )
+    # Menu choisi (NTHOT13) — consommé par le BEO (NTHOT19).
+    menu_recettes = models.ManyToManyField(
+        Recette, blank=True, related_name='evenements_banquet')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.BROUILLON)
+    # Identifiant souple (jamais un import de apps.ventes.models) vers le
+    # Devis ventes généré (NTHOT17) — un seul devis par événement, posé à la
+    # génération, jamais recréé.
+    devis_ventes_id = models.PositiveIntegerField(null=True, blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='hospitality_evenements_banquet_crees',
+    )
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Événement / banquet'
+        verbose_name_plural = 'Événements / banquets'
+        ordering = ['-date_debut']
+
+    def __str__(self):
+        return f'{self.nom_evenement} ({self.date_debut:%Y-%m-%d})'
+
+    @property
+    def date_evenement(self):
+        return self.date_debut.date() if self.date_debut else None

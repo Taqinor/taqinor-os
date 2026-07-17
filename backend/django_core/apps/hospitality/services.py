@@ -6,8 +6,8 @@ from django.db import transaction
 from django.utils import timezone
 
 from .models import (
-    Chambre, FicheClient, Folio, LigneFolio, ParametresTaxeSejour,
-    PlanTarifaire, Reservation, TacheMenage,
+    Chambre, EvenementBanquet, FicheClient, Folio, LigneFolio,
+    ParametresTaxeSejour, PlanTarifaire, Reservation, TacheMenage,
 )
 
 FICHE_CLIENT_CHAMPS_REQUIS = [
@@ -406,3 +406,84 @@ def check_in(reservation, *, fiches_data, user=None):
     reservation.statut = Reservation.Statut.EN_COURS
     reservation.save(update_fields=['statut', 'chambre'])
     return fiches
+
+
+# ── NTHOT18 — Salles événementielles (chevauchement) ────────────────────────
+
+class SalleOverlapError(ValueError):
+    """Levée quand un événement CONFIRMÉ chevauche un autre événement
+    CONFIRMÉ sur la MÊME salle (même pattern que NTHOT3 sur ``Chambre``)."""
+
+
+def check_salle_overlap(salle, date_debut, date_fin, *, exclude_id=None):
+    """Refuse un événement ``confirme`` qui chevaucherait un autre événement
+    ``confirme`` sur la même salle. No-op si ``salle`` est ``None`` (événement
+    sans salle assignée pour l'instant)."""
+    if salle is None:
+        return
+    qs = EvenementBanquet.objects.filter(
+        salle=salle,
+        statut=EvenementBanquet.Statut.CONFIRME,
+        date_debut__lt=date_fin,
+        date_fin__gt=date_debut,
+    )
+    if exclude_id is not None:
+        qs = qs.exclude(pk=exclude_id)
+    if qs.exists():
+        raise SalleOverlapError(
+            f'La salle {salle.nom} est déjà réservée sur un créneau qui '
+            'chevauche ces dates.')
+
+
+# ── NTHOT17 — Événements/banquets (résolution client) ───────────────────────
+
+def resolve_client_evenement(company, *, client_id=None, lead_id=None):
+    """Résout le client d'un ``EvenementBanquet`` — soit un client CRM déjà
+    connu (``client_id``), soit un lead à résoudre via
+    ``apps.crm.services.resolve_client_for_lead`` (pattern CLAUDE.md, jamais
+    un import de ``apps.crm.models`` en dehors de ce module). Renvoie
+    ``(client, lead)`` — au plus l'un des deux résolus explicitement, l'autre
+    conservé pour traçabilité (même règle que ``Devis.client``/``lead``)."""
+    lead = None
+    if lead_id:
+        from apps.crm.models import Lead
+        lead = Lead.objects.filter(pk=lead_id, company=company).first()
+
+    if client_id:
+        from apps.crm.selectors import get_company_client
+        client = get_company_client(company, client_id)
+        return client, lead
+
+    if lead is not None:
+        from apps.crm.services import resolve_client_for_lead
+        client = resolve_client_for_lead(lead)
+        return client, lead
+
+    return None, None
+
+
+def creer_evenement(
+        *, company, user, nom_evenement, date_debut, date_fin,
+        nb_convives=0, salle=None, statut=EvenementBanquet.Statut.BROUILLON,
+        client_id=None, lead_id=None):
+    """Crée un ``EvenementBanquet`` avec validation de chevauchement de salle
+    (NTHOT18, appliquée UNIQUEMENT si ``statut=confirme`` — un brouillon ne
+    bloque jamais une salle)."""
+    if statut == EvenementBanquet.Statut.CONFIRME:
+        check_salle_overlap(salle, date_debut, date_fin)
+
+    client, lead = resolve_client_evenement(
+        company, client_id=client_id, lead_id=lead_id)
+
+    return EvenementBanquet.objects.create(
+        company=company,
+        client=client,
+        lead=lead,
+        nom_evenement=nom_evenement,
+        date_debut=date_debut,
+        date_fin=date_fin,
+        nb_convives=nb_convives,
+        salle=salle,
+        statut=statut,
+        created_by=user,
+    )

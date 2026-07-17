@@ -6,8 +6,9 @@
 from rest_framework import serializers
 
 from .models import (
-    Chambre, FicheClient, Folio, IngredientRecette, LigneFolio, MainCourante,
-    PlanTarifaire, Recette, Reservation, TacheMenage, TypeChambre,
+    Chambre, EvenementBanquet, FicheClient, Folio, IngredientRecette,
+    LigneFolio, MainCourante, PlanTarifaire, Recette, Reservation,
+    SalleEvenement, TacheMenage, TypeChambre,
 )
 
 
@@ -239,3 +240,53 @@ class RecetteSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 'allergenes doit être une liste de codes texte.')
         return value
+
+
+class SalleEvenementSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SalleEvenement
+        fields = [
+            'id', 'nom', 'capacite_max', 'types_amenagement_disponibles',
+            'tarif_location_ht', 'description',
+        ]
+
+
+class EvenementBanquetSerializer(serializers.ModelSerializer):
+    """NTHOT17/NTHOT18. ``company``/``statut``/``client``/``lead``/
+    ``devis_ventes_id`` sont posés côté serveur (jamais lus tels quels du
+    corps) : ``client_id``/``lead_id`` en écriture sont résolus par
+    ``services.resolve_client_evenement`` côté vue."""
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    salle_nom = serializers.CharField(source='salle.nom', read_only=True)
+    client_id = serializers.IntegerField(
+        required=False, allow_null=True, write_only=True)
+    lead_id = serializers.IntegerField(
+        required=False, allow_null=True, write_only=True)
+
+    class Meta:
+        model = EvenementBanquet
+        fields = [
+            'id', 'nom_evenement', 'date_debut', 'date_fin', 'date_evenement',
+            'nb_convives', 'salle', 'salle_nom', 'menu_recettes', 'statut',
+            'statut_display', 'client', 'client_id', 'lead', 'lead_id',
+            'devis_ventes_id', 'date_creation',
+        ]
+        read_only_fields = [
+            'client', 'lead', 'devis_ventes_id', 'date_evenement',
+            'date_creation',
+        ]
+
+    def validate_salle(self, value):
+        _check_same_company(self, value, 'salle')
+        return value
+
+    def validate(self, attrs):
+        date_debut = attrs.get(
+            'date_debut', getattr(self.instance, 'date_debut', None))
+        date_fin = attrs.get(
+            'date_fin', getattr(self.instance, 'date_fin', None))
+        if date_debut and date_fin and date_fin <= date_debut:
+            raise serializers.ValidationError(
+                {'date_fin': 'La fin doit être postérieure au début.'})
+        return attrs

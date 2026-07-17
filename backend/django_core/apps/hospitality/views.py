@@ -20,14 +20,15 @@ from core.viewsets import CompanyScopedModelViewSet
 
 from . import selectors, services
 from .models import (
-    Chambre, Folio, IngredientRecette, MainCourante, PlanTarifaire, Recette,
-    Reservation, TacheMenage, TypeChambre,
+    Chambre, EvenementBanquet, Folio, IngredientRecette, MainCourante,
+    PlanTarifaire, Recette, Reservation, SalleEvenement, TacheMenage,
+    TypeChambre,
 )
 from .serializers import (
-    ChambreSerializer, FicheClientSerializer, FolioSerializer,
-    IngredientRecetteSerializer, MainCouranteSerializer,
+    ChambreSerializer, EvenementBanquetSerializer, FicheClientSerializer,
+    FolioSerializer, IngredientRecetteSerializer, MainCouranteSerializer,
     PlanTarifaireSerializer, RecetteSerializer, ReservationSerializer,
-    TacheMenageSerializer, TypeChambreSerializer,
+    SalleEvenementSerializer, TacheMenageSerializer, TypeChambreSerializer,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -372,6 +373,93 @@ class RecetteViewSet(CompanyScopedModelViewSet):
             IngredientRecette, pk=ingredient_id, recette=recette)
         ingredient.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class SalleEvenementViewSet(CompanyScopedModelViewSet):
+    """NTHOT18 — Salles événementielles, CRUD scopé société."""
+    queryset = SalleEvenement.objects.all()
+    serializer_class = SalleEvenementSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom']
+    ordering_fields = ['nom', 'capacite_max']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+
+class EvenementBanquetViewSet(CompanyScopedModelViewSet):
+    """NTHOT17/NTHOT18 — Événements/banquets. La création/mise à jour passe
+    par ``services.creer_evenement``/la garde de chevauchement de salle
+    (NTHOT18, uniquement entre événements ``confirme``)."""
+    queryset = EvenementBanquet.objects.select_related(
+        'salle', 'client', 'lead').prefetch_related('menu_recettes').all()
+    serializer_class = EvenementBanquetSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_debut', 'date_fin', 'date_creation']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        v = serializer.validated_data
+        try:
+            evenement = services.creer_evenement(
+                company=request.user.company,
+                user=request.user,
+                nom_evenement=v['nom_evenement'],
+                date_debut=v['date_debut'],
+                date_fin=v['date_fin'],
+                nb_convives=v.get('nb_convives', 0),
+                salle=v.get('salle'),
+                statut=v.get('statut', EvenementBanquet.Statut.BROUILLON),
+                client_id=v.get('client_id'),
+                lead_id=v.get('lead_id'),
+            )
+        except services.SalleOverlapError as exc:
+            return Response(
+                {'salle': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        menu_recettes = v.get('menu_recettes')
+        if menu_recettes:
+            evenement.menu_recettes.set(menu_recettes)
+        out = self.get_serializer(evenement)
+        headers = self.get_success_headers(out.data)
+        return Response(
+            out.data, status=status.HTTP_201_CREATED, headers=headers)
+
+    def perform_update(self, serializer):
+        """Ré-applique la garde de chevauchement de salle sur mise à jour
+        (même raisonnement que ``ReservationViewSet.perform_update``,
+        NTHOT3) : un PATCH qui change ``salle``/``date_debut``/``date_fin``/
+        ``statut`` DOIT être re-validé."""
+        instance = serializer.instance
+        company = self.request.user.company
+        v = serializer.validated_data
+        salle = v.get('salle', instance.salle)
+        if salle is not None and salle.company_id != company.id:
+            raise ValidationError({'salle': 'Salle introuvable pour votre société.'})
+        date_debut = v.get('date_debut', instance.date_debut)
+        date_fin = v.get('date_fin', instance.date_fin)
+        statut = v.get('statut', instance.statut)
+        if statut == EvenementBanquet.Statut.CONFIRME:
+            try:
+                services.check_salle_overlap(
+                    salle, date_debut, date_fin, exclude_id=instance.pk)
+            except services.SalleOverlapError as exc:
+                raise ValidationError({'salle': str(exc)})
+        serializer.save()
 
 
 class TableauBordView(views.APIView):
