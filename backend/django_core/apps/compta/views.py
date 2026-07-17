@@ -17,6 +17,7 @@ from rest_framework.decorators import (
     action, api_view, permission_classes, throttle_classes,
 )
 from rest_framework.exceptions import ValidationError
+from rest_framework.negotiation import DefaultContentNegotiation
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -2000,6 +2001,23 @@ class DotationAmortissementViewSet(_ComptaBaseViewSet):
 
 # ── FG123 — Rapprochement bancaire (relevé ↔ écritures) ────────────────────
 
+class _BankFormatContentNegotiation(DefaultContentNegotiation):
+    """NTTRE1-3 — sur ``import-releve`` le paramètre ``?format=`` désigne le FORMAT
+    BANCAIRE (cfonb120/mt940/camt053), PAS le renderer DRF.
+
+    Sans cette surcharge, DRF traite ``?format=cfonb120`` comme un override de
+    renderer (``URL_FORMAT_OVERRIDE``) et lève un ``Http404`` (« Pas trouvé »)
+    car aucun renderer ne porte ce format — AVANT même d'exécuter la vue (dans
+    ``initial()``), d'où un 404 au lieu du 201/400 attendu. On neutralise donc
+    l'override par query param et on rend toujours du JSON (endpoint interne)."""
+
+    def select_renderer(self, request, renderers, format_suffix=None):
+        for renderer in renderers:
+            if renderer.format == 'json':
+                return renderer, renderer.media_type
+        return renderers[0], renderers[0].media_type
+
+
 class RapprochementBancaireViewSet(_ComptaBaseViewSet):
     """Rapprochements bancaires (FG123) : pointer relevé ↔ grand livre.
 
@@ -2188,7 +2206,8 @@ class RapprochementBancaireViewSet(_ComptaBaseViewSet):
         return Response(services.controler_solde_releve_ocr(champs_bruts))
 
     @action(detail=True, methods=['post'], url_path='import-releve',
-            parser_classes=[MultiPartParser, FormParser])
+            parser_classes=[MultiPartParser, FormParser],
+            content_negotiation_class=_BankFormatContentNegotiation)
     def import_releve(self, request, pk=None):
         """NTTRE1-3 — Importe un relevé bancaire au format normalisé.
 
@@ -2924,7 +2943,8 @@ class PaymentRunViewSet(_ComptaBaseViewSet):
             user=request.user, detail=f'total={run.total}')
         return Response(self.get_serializer(run).data)
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=['post'],
+            permission_classes=[HasPermissionOrLegacy('compta_valider')])
     def approuver(self, request, pk=None):
         """NTTRE5 — Première approbation (approbateur ≠ créateur).
 
@@ -2944,7 +2964,8 @@ class PaymentRunViewSet(_ComptaBaseViewSet):
             user=request.user, detail=f'statut={run.statut} total={run.total}')
         return Response(self.get_serializer(run).data)
 
-    @action(detail=True, methods=['post'], url_path='approuver-final')
+    @action(detail=True, methods=['post'], url_path='approuver-final',
+            permission_classes=[HasPermissionOrLegacy('compta_valider')])
     def approuver_final(self, request, pk=None):
         """NTTRE5 — Seconde approbation (approbateur ≠ premier ≠ créateur).
 
