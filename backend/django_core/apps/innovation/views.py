@@ -100,6 +100,16 @@ class IdeeViewSet(CompanyScopedModelViewSet):
         data = selectors.contextes_frequents(request.user.company)
         return Response({'results': data})
 
+    # ── NTIDE20 — dédup : idées similaires (avant de proposer un doublon) ────
+    @action(detail=False, methods=['get'], url_path='similaires',
+            permission_classes=[IsAnyRole])
+    def similaires(self, request):
+        """« Existe-t-il une idée similaire ? » — top 3, recherche
+        titre+description (``?q=texte``)."""
+        texte = request.query_params.get('q', '')
+        data = selectors.idees_similaires(request.user.company, texte)
+        return Response({'results': data})
+
     # ── NTIDE6 — tableau de bord admin ──────────────────────────────────────
     @action(detail=False, methods=['get'], url_path='tableau-bord',
             permission_classes=[IsAdminOrResponsableTier])

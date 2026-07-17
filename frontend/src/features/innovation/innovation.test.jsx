@@ -22,6 +22,7 @@ const innovationApiMock = vi.hoisted(() => ({
   create: vi.fn(),
   update: vi.fn(),
   contextes: vi.fn(() => Promise.resolve({ data: { results: [] } })),
+  similaires: vi.fn(() => Promise.resolve({ data: { results: [] } })),
   examiner: vi.fn(),
   retenir: vi.fn(),
   realiser: vi.fn(),
@@ -300,6 +301,31 @@ describe('ProposerIdeeForm (NTIDE8/NTIDE9)', () => {
     await waitFor(() => expect(innovationApiMock.create).toHaveBeenCalled())
     const [payload] = innovationApiMock.create.mock.calls[0]
     expect(payload.draft).toBe(true)
+  })
+
+  it('NTIDE20 — recherche des idées similaires et vote dessus au lieu de dupliquer', async () => {
+    innovationApiMock.similaires.mockResolvedValue({
+      data: {
+        results: [
+          { id: 42, titre: 'Idée déjà proposée', contexte: 'SAV', statut: 'ouvert', votes_count: 4 },
+        ],
+      },
+    })
+    innovationApiMock.vote.mockResolvedValue({ data: { id: 1 } })
+    const { default: ProposerIdeeForm } = await import('./ProposerIdeeForm')
+    render(wrap(<ProposerIdeeForm />))
+
+    const user = userEvent.setup()
+    await user.type(screen.getByLabelText('Titre'), 'Export PDF')
+
+    await waitFor(
+      () => expect(innovationApiMock.similaires).toHaveBeenCalledWith('Export PDF'),
+      { timeout: 2000 },
+    )
+    expect(await screen.findByText('Idée déjà proposée')).toBeTruthy()
+
+    await user.click(screen.getByRole('button', { name: /4/ }))
+    await waitFor(() => expect(innovationApiMock.vote).toHaveBeenCalledWith(42))
   })
 
   it('NTIDE10 — propose les contextes fréquents en autocomplétion (datalist)', async () => {

@@ -1,9 +1,10 @@
 import { useEffect, useId, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Send, Save } from 'lucide-react'
-import { Button, Input, Textarea, Checkbox, toast } from '../../ui'
+import { Send, Save, ThumbsUp, Search } from 'lucide-react'
+import { Button, Input, Textarea, Checkbox, Badge, toast } from '../../ui'
 import innovationApi from '../../api/innovationApi'
 import { contexteFromPath, linkedFromLocation } from './linkedContext'
+import { StatutIdeePill } from './innovationStatus'
 
 /* ============================================================================
    NTIDE8/NTIDE9/NTIDE10/NTIDE11/NTIDE18 — Formulaire « Proposer une idée »,
@@ -29,6 +30,8 @@ export default function ProposerIdeeForm({ onCreated, onCancel, compact = false 
   const [submitting, setSubmitting] = useState(false)
   // NTIDE18 — brouillon (reste interne à l'auteur tant que non publié).
   const [draft, setDraft] = useState(false)
+  // NTIDE20 — « Existe-t-il une idée similaire ? » (dédup, top 3, debounce).
+  const [similaires, setSimilaires] = useState([])
 
   const linked = linkedFromLocation(location.pathname, location.search)
   const [lierIdee, setLierIdee] = useState(!!linked)
@@ -38,6 +41,29 @@ export default function ProposerIdeeForm({ onCreated, onCancel, compact = false 
       .then((res) => setSuggestions(res.data?.results || []))
       .catch(() => setSuggestions([]))
   }, [])
+
+  // NTIDE20 — recherche debouncée dès 3 caractères, annulée à chaque frappe.
+  useEffect(() => {
+    const t = titre.trim()
+    if (t.length < 3) { setSimilaires([]); return undefined }
+    const handle = setTimeout(() => {
+      innovationApi.similaires(t)
+        .then((res) => setSimilaires(res.data?.results || []))
+        .catch(() => setSimilaires([]))
+    }, 300)
+    return () => clearTimeout(handle)
+  }, [titre])
+
+  const handleVoterExistante = async (ideeId) => {
+    try {
+      await innovationApi.vote(ideeId)
+      toast.success('Vote enregistré sur une idée existante — merci !')
+      setSimilaires([])
+    } catch (err) {
+      const detail = err?.response?.data?.idee?.[0] || err?.response?.data?.detail
+      toast.error(detail || 'Vote impossible.')
+    }
+  }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -79,6 +105,30 @@ export default function ProposerIdeeForm({ onCreated, onCancel, compact = false 
           required
         />
       </div>
+
+      {similaires.length > 0 && (
+        <div className="flex flex-col gap-2 rounded-lg border border-border bg-muted/30 p-3">
+          <p className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground">
+            <Search className="size-3.5" aria-hidden="true" />
+            Existe-t-il une idée similaire ? Votez plutôt que dupliquer :
+          </p>
+          <ul className="flex flex-col gap-1.5">
+            {similaires.map((s) => (
+              <li key={s.id} className="flex items-center justify-between gap-2 text-sm">
+                <span className="flex min-w-0 items-center gap-2">
+                  <span className="truncate">{s.titre}</span>
+                  <StatutIdeePill status={s.statut} />
+                  {s.contexte && <Badge tone="neutral">{s.contexte}</Badge>}
+                </span>
+                <Button type="button" size="sm" variant="outline"
+                        onClick={() => handleVoterExistante(s.id)}>
+                  <ThumbsUp className="size-3.5" /> {s.votes_count}
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className="flex flex-col gap-1.5">
         <label htmlFor="idee-description" className="text-sm font-medium">Description</label>

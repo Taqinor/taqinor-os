@@ -78,6 +78,25 @@ def contextes_frequents(company, limit=5):
     return [row['contexte'] for row in heat_par_contexte(company)[:limit]]
 
 
+def idees_similaires(company, texte, limit=3):
+    """NTIDE20 — « Existe-t-il une idée similaire ? » : recherche simple
+    ``icontains`` titre+description (même patron que ``apps.kb.selectors``),
+    top N par votes (plus de votes = plus consolidée), plus récente d'abord
+    en cas d'égalité. Exclut les brouillons d'autrui (invisibles/hors sujet
+    pour la dédup) et les idées masquées (modération, NTIDE19)."""
+    from django.db.models import Q
+
+    from .models import Idee
+
+    texte = (texte or '').strip()
+    if not texte:
+        return []
+    qs = (Idee.objects.filter(company=company, draft=False, archived=False)
+          .filter(Q(titre__icontains=texte) | Q(description__icontains=texte))
+          .order_by('-votes_count', '-created_at')[:limit])
+    return list(qs.values('id', 'titre', 'contexte', 'votes_count', 'statut'))
+
+
 def tableau_bord_idees(company):
     """NTIDE6 — agrégat complet du tableau de bord admin (une seule lecture)."""
     return {

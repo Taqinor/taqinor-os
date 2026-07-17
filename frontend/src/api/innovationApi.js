@@ -18,6 +18,9 @@ const innovationApi = {
   // ── Autocomplétion contexte (NTIDE10) ──
   contextes: () => api.get('/innovation/idees/contextes/'),
 
+  // ── Dédup : idées similaires (NTIDE20, top 3 titre+description) ──
+  similaires: (q) => api.get('/innovation/idees/similaires/', { params: { q } }),
+
   // ── Tableau de bord admin (NTIDE6) ──
   tableauBord: () => api.get('/innovation/idees/tableau-bord/'),
 
