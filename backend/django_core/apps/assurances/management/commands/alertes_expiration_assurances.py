@@ -9,7 +9,9 @@ from django.core.management.base import BaseCommand
 
 from authentication.models import Company, CustomUser
 
-from apps.assurances.selectors import polices_expirantes
+from apps.assurances.selectors import (
+    attestations_expirantes, polices_expirantes,
+)
 
 #: Horizons d'alerte (jours) — J-60/J-30/J-7 (NTASS8).
 HORIZONS_ALERTE = [60, 30, 7]
@@ -54,6 +56,24 @@ class Command(BaseCommand):
                     body=(
                         f'{police.get_type_police_display()} — '
                         f'échéance dans ≤ {horizon} jours.'),
+                    company=company,
+                    reason='alertes_expiration_assurances',
+                )
+                total_notifiees += 1
+
+            # NTASS18 — alertes d'attestations (distinctes des polices) :
+            # une attestation expirante n'est PAS renouvelée automatiquement,
+            # juste signalée pour ré-émission par l'assureur.
+            for attestation in attestations_expirantes(
+                    company, within=horizon_max):
+                notify_many(
+                    destinataires, 'assurance_police_expirante',
+                    title=(
+                        f'Attestation {attestation.police.numero_police} '
+                        f'expire le {attestation.date_validite}'),
+                    body=(
+                        f'Attestation « {attestation.emise_pour} » — '
+                        'ré-émission par l\'assureur requise.'),
                     company=company,
                     reason='alertes_expiration_assurances',
                 )

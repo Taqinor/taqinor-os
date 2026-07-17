@@ -6,7 +6,7 @@ il importe PARESSEUSEMENT les selectors des autres apps — jamais leurs
 ``models`` — pour résoudre des libellés d'actifs transverses (NTASS7/20)."""
 import datetime
 
-from .models import ActifCouvert, PoliceAssurance
+from .models import ActifCouvert, AttestationAssurance, PoliceAssurance
 
 
 def resoudre_libelle_actif(company, type_actif, actif_ref):
@@ -95,3 +95,19 @@ def libelle_risque(risque_ref):
         return grc_selectors.libelle_risque(risque_ref)
     except Exception:  # noqa: BLE001 - dégradation gracieuse défensive
         return None
+
+
+# ── NTASS18 — Alertes d'expiration d'attestations ──────────────────────────
+
+def attestations_expirantes(company, within=30, today=None):
+    """NTASS18 — Attestations d'assurance VALIDES dont ``date_validite`` tombe
+    sous ``within`` jours (inclusif). Une attestation expirée n'est JAMAIS
+    renouvelée automatiquement (ré-émission par l'assureur requise), juste
+    signalée. ``today`` INJECTABLE. Lecture seule, scopée société."""
+    if today is None:
+        today = datetime.date.today()
+    horizon = today + datetime.timedelta(days=within)
+    return AttestationAssurance.objects.filter(
+        company=company, statut=AttestationAssurance.Statut.VALIDE,
+        date_validite__lte=horizon,
+    ).select_related('police').order_by('date_validite', 'id')

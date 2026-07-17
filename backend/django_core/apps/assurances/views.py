@@ -21,7 +21,7 @@ from .serializers import (
     PoliceActivitySerializer, PoliceAssuranceSerializer,
     SinistreActivitySerializer,
 )
-from .selectors import polices_expirantes
+from .selectors import attestations_expirantes, polices_expirantes
 from .services import (
     CHAMPS_SUIVIS_POLICE, CHAMPS_SUIVIS_SINISTRE, enregistrer_indemnisation,
     generer_echeancier_prime, log_police_creation, log_police_note,
@@ -351,3 +351,19 @@ class AttestationAssuranceViewSet(_AssurancesBaseViewSet):
     queryset = AttestationAssurance.objects.select_related('police')
     serializer_class = AttestationAssuranceSerializer
     filterset_fields = ['police', 'statut']
+
+    @action(detail=False, methods=['get'], url_path='expirantes')
+    def expirantes(self, request):
+        """NTASS18 — Attestations VALIDES expirant sous ``?within=N`` jours
+        (défaut 30). Alerte DISTINCTE de l'alerte police (une police active
+        peut avoir une attestation datée)."""
+        try:
+            within = int(request.query_params.get('within', 30))
+        except (TypeError, ValueError):
+            within = 30
+        qs = attestations_expirantes(request.user.company, within=within)
+        page = self.paginate_queryset(qs)
+        serializer = self.get_serializer(page or qs, many=True)
+        if page is not None:
+            return self.get_paginated_response(serializer.data)
+        return Response(serializer.data)
