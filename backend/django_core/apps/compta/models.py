@@ -399,6 +399,15 @@ class LigneEcriture(models.Model):
         on_delete=models.SET_NULL, null=True, blank=True,
         related_name='lignes_ecriture',
         verbose_name='Centre de coût')
+    # NTFIN14 — livre parallèle (multi-GAAP) ciblé par la ligne. NULL =
+    # référentiel principal (comportement historique intact, rétro-compatible).
+    referentiel = models.ForeignKey(
+        'compta.ReferentielComptable',
+        # on_delete: SET_NULL — supprimer un référentiel ne doit pas effacer les
+        # écritures ; la ligne retombe sur le référentiel principal (NULL).
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='lignes_ecriture',
+        verbose_name='Référentiel comptable')
 
     class Meta:
         verbose_name = "Ligne d'écriture"
@@ -4325,6 +4334,15 @@ class CentreCout(models.Model):
     axe = models.CharField(
         max_length=12, choices=Axe.choices, default=Axe.CHANTIER,
         verbose_name='Axe analytique')
+    # NTFIN16 — axe analytique configurable (dimension société). NULL = repli
+    # sur l'enum figé ``axe`` ci-dessus (rétro-compatible).
+    axe_ref = models.ForeignKey(
+        'compta.AxeAnalytique',
+        # on_delete: SET_NULL — supprimer un axe configurable ne doit pas
+        # effacer le centre ; il retombe sur l'enum ``axe`` (NULL).
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='centres_cout',
+        verbose_name='Axe analytique (configurable)')
     actif = models.BooleanField(default=True, verbose_name='Actif')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
@@ -4561,6 +4579,18 @@ class EntiteConsolidation(models.Model):
     )
     libelle = models.CharField(
         max_length=200, blank=True, default='', verbose_name='Libellé')
+    # NTFIN1 — rattache l'entité à un cycle de consolidation daté (nullable :
+    # les entités FG153 pré-existantes n'ont pas de cycle et restent valides).
+    cycle = models.ForeignKey(
+        'compta.CycleConsolidation',
+        # on_delete: SET_NULL — supprimer un cycle (brouillon jeté) ne doit pas
+        # effacer le périmètre-membre historique ; l'entité redevient orpheline
+        # de cycle, jamais perdue.
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='entites',
+        verbose_name='Cycle de consolidation',
+    )
     pourcentage_interet = models.DecimalField(
         max_digits=5, decimal_places=2, default=Decimal('100.00'),
         verbose_name="Pourcentage d'intérêt (%)")
@@ -6953,3 +6983,608 @@ class PlanRelanceTresorerie(TenantModel):
         if not eligibles:
             return None
         return max(eligibles, key=lambda p: p.get('jours') or 0)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Groupe NTFIN — Finance entreprise (grand groupe)
+# Consolidation multi-sociétés complète (collecte → conversion → matching
+# interco → éliminations → titres/goodwill/minoritaires → états consolidés),
+# multi-référentiel/multi-GAAP, analytique multi-axes, allocations, engagement,
+# close management, rapprochements de comptes, IFRS 15. Étend le socle compta
+# existant (EntiteConsolidation/FG153, cpc_consolide, grand livre, immos…).
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ── NTFIN1 — Périmètre & cycle de consolidation ────────────────────────────
+
+class CycleConsolidation(TenantModel):
+    """Cycle de consolidation daté d'un groupe (NTFIN1).
+
+    ``company`` = société tête de groupe (posée côté serveur par le socle).
+    Un cycle cadre une campagne de consolidation sur un ``exercice`` donné, avec
+    sa devise de présentation et son état d'avancement (ouvert → collecte →
+    eliminations → validé → publié). Un cycle ``verrouille=True`` refuse toute
+    modification de ses données agrégées (collecte, éliminations…) — garde-fou
+    d'audit posé par ``services`` (les endpoints 400 sur cycle verrouillé).
+    Hérite de ``core.models.TenantModel`` (company + horodatage).
+    """
+    class Statut(models.TextChoices):
+        OUVERT = 'ouvert', 'Ouvert'
+        COLLECTE = 'collecte', 'Collecte'
+        ELIMINATIONS = 'eliminations', 'Éliminations'
+        VALIDE = 'valide', 'Validé'
+        PUBLIE = 'publie', 'Publié'
+
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    exercice = models.ForeignKey(
+        ExerciceComptable,
+        # on_delete: PROTECT — un cycle de consolidation s'appuie sur un
+        # exercice fiscal ; on n'efface jamais un exercice encore référencé par
+        # un cycle (données de groupe auditables).
+        on_delete=models.PROTECT,
+        related_name='cycles_consolidation',
+        verbose_name='Exercice',
+    )
+    date_debut = models.DateField(verbose_name='Début de période')
+    date_fin = models.DateField(verbose_name='Fin de période')
+    devise_presentation = models.CharField(
+        max_length=3, default='MAD',
+        verbose_name='Devise de présentation (ISO 4217)')
+    statut = models.CharField(
+        max_length=14, choices=Statut.choices, default=Statut.OUVERT,
+        verbose_name='Statut')
+    verrouille = models.BooleanField(
+        default=False, verbose_name='Verrouillé')
+    tolerance_interco = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Tolérance de matching interco',
+        help_text='Écart absolu toléré pour apparier deux soldes réciproques.')
+
+    class Meta:
+        verbose_name = 'Cycle de consolidation'
+        verbose_name_plural = 'Cycles de consolidation'
+        ordering = ['-date_debut', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'exercice', 'libelle'],
+                name='uniq_cycle_consol_par_exercice'),
+        ]
+
+    def __str__(self):
+        return f'{self.libelle} ({self.date_debut}–{self.date_fin})'
+
+    def clean(self):
+        super().clean()
+        if self.date_debut and self.date_fin and self.date_fin < self.date_debut:
+            raise ValidationError(
+                "La date de fin doit être postérieure à la date de début.")
+
+    @property
+    def est_verrouille(self):
+        return self.verrouille or self.statut == self.Statut.PUBLIE
+
+
+# ── NTFIN2 — Collecte & liasse de remontée par entité ──────────────────────
+
+class LiasseRemontee(TenantModel):
+    """Liasse de remontée d'une entité pour un cycle de consolidation (NTFIN2).
+
+    Fige un snapshot de la balance N (par compte) d'une société membre, lu via
+    son grand livre local. ``entite`` = ``authentication.Company`` (référentiel
+    partagé, foundation app — exempt de la règle cross-app). ``snapshot_balance``
+    est une liste JSON de ``{numero, intitule, classe, debit, credit}`` figée à
+    la collecte. Idempotent par (cycle, entite) : re-collecter écrase le
+    snapshot sans dupliquer. Hérite de ``core.models.TenantModel``.
+    """
+    class Statut(models.TextChoices):
+        A_COLLECTER = 'a_collecter', 'À collecter'
+        COLLECTE = 'collecte', 'Collectée'
+        VALIDE = 'valide', 'Validée'
+
+    cycle = models.ForeignKey(
+        CycleConsolidation,
+        # on_delete: CASCADE — une liasse n'existe que pour SON cycle ; jeter le
+        # cycle jette ses remontées agrégées (aucune écriture GL réelle ici, ce
+        # sont des snapshots de travail recalculables).
+        on_delete=models.CASCADE,
+        related_name='liasses',
+        verbose_name='Cycle de consolidation',
+    )
+    entite = models.ForeignKey(
+        'authentication.Company',
+        # on_delete: CASCADE — la remontée d'une société supprimée n'a plus de
+        # sens ; snapshot de travail, jamais une pièce comptable.
+        on_delete=models.CASCADE,
+        related_name='liasses_remontee',
+        verbose_name='Entité',
+    )
+    statut = models.CharField(
+        max_length=12, choices=Statut.choices, default=Statut.A_COLLECTER,
+        verbose_name='Statut')
+    date_collecte = models.DateTimeField(
+        null=True, blank=True, verbose_name='Collectée le')
+    devise_locale = models.CharField(
+        max_length=3, default='MAD', verbose_name='Devise locale (ISO 4217)')
+    snapshot_balance = models.JSONField(
+        default=list, blank=True, verbose_name='Snapshot de balance')
+
+    class Meta:
+        verbose_name = 'Liasse de remontée'
+        verbose_name_plural = 'Liasses de remontée'
+        ordering = ['cycle', 'entite']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['cycle', 'entite'], name='uniq_liasse_cycle_entite'),
+        ]
+
+    def __str__(self):
+        return f'Liasse {self.entite_id} @ cycle {self.cycle_id} ({self.statut})'
+
+
+# ── NTFIN4 — Mapping compte local → compte groupe ──────────────────────────
+
+class MappingConsolidation(TenantModel):
+    """Table de correspondance plan local → compte de groupe (NTFIN4).
+
+    Un préfixe de compte local (``plan_local_prefixe``) est mappé vers un
+    ``compte_groupe`` du référentiel de la tête de groupe. Le service
+    d'agrégation applique le mapping le plus spécifique (préfixe le plus long)
+    lors de la construction de la balance groupe. DISTINCT de ``MappingCompte``
+    (DC22, mapping famille→compte pour l'auto-écriture) : ici c'est le
+    référentiel de CONSOLIDATION. Hérite de ``core.models.TenantModel``.
+    """
+    plan_local_prefixe = models.CharField(
+        max_length=20, verbose_name='Préfixe de compte local')
+    compte_groupe = models.ForeignKey(
+        CompteComptable,
+        # on_delete: PROTECT — un compte de groupe cible d'un mapping ne doit pas
+        # être supprimé tant qu'une règle de consolidation le référence.
+        on_delete=models.PROTECT,
+        related_name='mappings_consolidation',
+        verbose_name='Compte de groupe',
+    )
+    libelle = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Libellé')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+
+    class Meta:
+        verbose_name = 'Mapping de consolidation'
+        verbose_name_plural = 'Mappings de consolidation'
+        ordering = ['plan_local_prefixe']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'plan_local_prefixe'],
+                name='uniq_mapping_consol_prefixe'),
+        ]
+
+    def __str__(self):
+        return f'{self.plan_local_prefixe} → {self.compte_groupe_id}'
+
+
+# ── NTFIN6 — Matching des opérations inter-co ──────────────────────────────
+
+class OperationInterco(TenantModel):
+    """Opération réciproque entre deux entités du périmètre (NTFIN6).
+
+    Rapproche une créance/dette (ou produit/charge) déclarée des deux côtés sur
+    un ``compte_reciproque``. ``montant_declare_a`` = montant vu par
+    ``entite_debit`` ; ``montant_declare_b`` = montant vu par ``entite_credit``.
+    Le service ``apparier_intercos`` calcule l'``ecart`` et pose le ``statut``
+    (apparié si écart ≤ tolérance du cycle). Hérite de ``TenantModel``.
+    """
+    class Statut(models.TextChoices):
+        NON_APPARIE = 'non_apparie', 'Non apparié'
+        APPARIE = 'apparie', 'Apparié'
+        ECART = 'ecart', 'Écart'
+
+    cycle = models.ForeignKey(
+        CycleConsolidation,
+        # on_delete: CASCADE — une opération interco appartient à son cycle de
+        # travail ; jeter le cycle jette ses rapprochements (recalculables).
+        on_delete=models.CASCADE,
+        related_name='intercos',
+        verbose_name='Cycle de consolidation',
+    )
+    entite_debit = models.ForeignKey(
+        'authentication.Company',
+        # on_delete: CASCADE — le rapprochement perd son sens si l'une des
+        # sociétés disparaît (donnée de travail, pas une écriture).
+        on_delete=models.CASCADE,
+        related_name='intercos_debit',
+        verbose_name='Entité débitrice',
+    )
+    entite_credit = models.ForeignKey(
+        'authentication.Company',
+        # on_delete: CASCADE — idem entite_debit.
+        on_delete=models.CASCADE,
+        related_name='intercos_credit',
+        verbose_name='Entité créditrice',
+    )
+    compte_reciproque = models.CharField(
+        max_length=20, verbose_name='Compte réciproque (CGNC)')
+    libelle = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Libellé')
+    montant_declare_a = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant déclaré (débit)')
+    montant_declare_b = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant déclaré (crédit)')
+    ecart = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Écart')
+    statut = models.CharField(
+        max_length=12, choices=Statut.choices, default=Statut.NON_APPARIE,
+        verbose_name='Statut')
+
+    class Meta:
+        verbose_name = 'Opération inter-sociétés'
+        verbose_name_plural = 'Opérations inter-sociétés'
+        ordering = ['cycle', 'id']
+
+    def __str__(self):
+        return (f'Interco {self.entite_debit_id}↔{self.entite_credit_id} '
+                f'{self.compte_reciproque} ({self.statut})')
+
+
+# ── NTFIN7 — Journaux d'élimination interco ────────────────────────────────
+
+class EcritureElimination(TenantModel):
+    """Écriture d'élimination de consolidation (NTFIN7).
+
+    Journal d'élimination porté sur les comptes de GROUPE (créances/dettes
+    réciproques, marge interne, dividendes, titres). ``lignes`` = liste JSON de
+    ``{compte, libelle, debit, credit}`` (comptes de groupe, chaîne). Équilibre
+    Σ débit = Σ crédit vérifié dans ``clean()``. ``source_interco`` relie
+    éventuellement l'élimination à l'opération réciproque appariée (NTFIN6).
+    Hérite de ``core.models.TenantModel``.
+    """
+    class Type(models.TextChoices):
+        RECIPROQUE = 'reciproque', 'Créances/dettes réciproques'
+        MARGE_INTERNE = 'marge_interne', 'Marge interne sur stock'
+        DIVIDENDE = 'dividende', 'Dividendes internes'
+        TITRES = 'titres', 'Titres de participation'
+        MINORITAIRES = 'minoritaires', 'Intérêts minoritaires'
+
+    cycle = models.ForeignKey(
+        CycleConsolidation,
+        # on_delete: CASCADE — une écriture d'élimination n'existe que dans son
+        # cycle de consolidation (jamais postée au GL réel d'une société) ;
+        # jeter le cycle jette ses éliminations de travail.
+        on_delete=models.CASCADE,
+        related_name='eliminations',
+        verbose_name='Cycle de consolidation',
+    )
+    type_elimination = models.CharField(
+        max_length=14, choices=Type.choices, default=Type.RECIPROQUE,
+        verbose_name="Type d'élimination")
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    lignes = models.JSONField(
+        default=list, blank=True, verbose_name="Lignes d'élimination")
+    automatique = models.BooleanField(
+        default=False, verbose_name='Générée automatiquement')
+    source_interco = models.ForeignKey(
+        OperationInterco,
+        # on_delete: SET_NULL — l'élimination trace l'opération source, mais on
+        # ne veut pas supprimer une écriture d'élimination si son interco source
+        # est purgée ; le lien se dénoue simplement.
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='eliminations',
+        verbose_name='Opération interco source',
+    )
+
+    class Meta:
+        verbose_name = "Écriture d'élimination"
+        verbose_name_plural = "Écritures d'élimination"
+        ordering = ['cycle', 'id']
+
+    def __str__(self):
+        return f'Élim {self.type_elimination} — {self.libelle}'
+
+    @property
+    def total_debit(self):
+        return sum((Decimal(str(li.get('debit') or 0))
+                    for li in (self.lignes or [])), Decimal('0'))
+
+    @property
+    def total_credit(self):
+        return sum((Decimal(str(li.get('credit') or 0))
+                    for li in (self.lignes or [])), Decimal('0'))
+
+    def clean(self):
+        super().clean()
+        if self.lignes and self.total_debit != self.total_credit:
+            raise ValidationError(
+                "L'écriture d'élimination doit être équilibrée : "
+                f"Σ débit ({self.total_debit}) ≠ Σ crédit ({self.total_credit}).")
+
+
+# ── NTFIN8 — Élimination des marges internes sur stock ─────────────────────
+
+class MargeInterneStock(TenantModel):
+    """Marge interne incluse dans un stock détenu en fin d'exercice (NTFIN8).
+
+    Enregistre la marge non réalisée sur un stock vendu entre deux entités et
+    encore détenu à la clôture ; le service ``eliminer_marge_interne`` la
+    retranche du résultat consolidé et du stock (avec impôt différé). Hérite de
+    ``core.models.TenantModel``.
+    """
+    cycle = models.ForeignKey(
+        CycleConsolidation,
+        # on_delete: CASCADE — donnée de travail rattachée au cycle.
+        on_delete=models.CASCADE,
+        related_name='marges_internes',
+        verbose_name='Cycle de consolidation',
+    )
+    entite_vendeuse = models.ForeignKey(
+        'authentication.Company',
+        # on_delete: CASCADE — donnée de travail, pas une écriture.
+        on_delete=models.CASCADE,
+        related_name='marges_internes_vendeuse',
+        verbose_name='Entité vendeuse',
+    )
+    entite_acheteuse = models.ForeignKey(
+        'authentication.Company',
+        # on_delete: CASCADE — idem.
+        on_delete=models.CASCADE,
+        related_name='marges_internes_acheteuse',
+        verbose_name='Entité acheteuse',
+    )
+    montant_stock = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant du stock détenu')
+    taux_marge = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('0'),
+        verbose_name='Taux de marge (%)')
+    taux_impot = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('30'),
+        verbose_name='Taux d\'impôt différé (%)')
+    elimination = models.ForeignKey(
+        EcritureElimination,
+        # on_delete: SET_NULL — l'écriture d'élimination générée est traçée ;
+        # sa purge ne doit pas effacer la donnée de marge source.
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='marges_internes',
+        verbose_name='Écriture d\'élimination générée',
+    )
+
+    class Meta:
+        verbose_name = 'Marge interne sur stock'
+        verbose_name_plural = 'Marges internes sur stock'
+        ordering = ['cycle', 'id']
+
+    def __str__(self):
+        return f'Marge interne {self.montant_stock} @ cycle {self.cycle_id}'
+
+    @property
+    def marge_non_realisee(self):
+        return (self.montant_stock * self.taux_marge / Decimal('100')).quantize(
+            Decimal('0.01'))
+
+
+# ── NTFIN9 — Élimination des titres + goodwill ─────────────────────────────
+
+class EliminationTitres(TenantModel):
+    """Élimination des titres de participation & goodwill (NTFIN9).
+
+    Élimine les titres détenus dans une ``entite_fille`` contre la quote-part de
+    ses capitaux propres, et dégage l'``ecart_acquisition`` (goodwill si positif,
+    badwill si négatif). Hérite de ``core.models.TenantModel``.
+    """
+    class Methode(models.TextChoices):
+        ACQUISITION = 'acquisition', 'Méthode de l\'acquisition'
+        MISE_EN_EQUIVALENCE = 'equivalence', 'Mise en équivalence'
+
+    cycle = models.ForeignKey(
+        CycleConsolidation,
+        # on_delete: CASCADE — donnée de travail rattachée au cycle.
+        on_delete=models.CASCADE,
+        related_name='eliminations_titres',
+        verbose_name='Cycle de consolidation',
+    )
+    entite_fille = models.ForeignKey(
+        'authentication.Company',
+        # on_delete: CASCADE — donnée de travail, pas une écriture.
+        on_delete=models.CASCADE,
+        related_name='eliminations_titres',
+        verbose_name='Entité fille',
+    )
+    valeur_titres = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Valeur des titres')
+    quote_part_capitaux_propres = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Quote-part de capitaux propres')
+    ecart_acquisition = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Écart d\'acquisition (goodwill)')
+    methode = models.CharField(
+        max_length=12, choices=Methode.choices, default=Methode.ACQUISITION,
+        verbose_name='Méthode')
+    elimination = models.ForeignKey(
+        EcritureElimination,
+        # on_delete: SET_NULL — l'écriture générée est traçée ; sa purge ne doit
+        # pas effacer la donnée d'élimination des titres source.
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='eliminations_titres',
+        verbose_name='Écriture d\'élimination générée',
+    )
+
+    class Meta:
+        verbose_name = 'Élimination de titres'
+        verbose_name_plural = 'Éliminations de titres'
+        ordering = ['cycle', 'id']
+
+    def __str__(self):
+        return f'Titres {self.entite_fille_id} → goodwill {self.ecart_acquisition}'
+
+    def calculer_ecart(self):
+        """Goodwill = valeur des titres − quote-part de capitaux propres."""
+        self.ecart_acquisition = (
+            self.valeur_titres - self.quote_part_capitaux_propres)
+        return self.ecart_acquisition
+
+
+# ── NTFIN13 — Référentiel comptable (livres parallèles) ────────────────────
+
+class ReferentielComptable(TenantModel):
+    """Livre comptable parallèle (multi-GAAP) d'une société (NTFIN13).
+
+    Une société tient un référentiel PRINCIPAL (CGNC par défaut, ``est_principal
+    =True``) et, en option, des livres parallèles (IFRS, GROUPE, FISCAL). Une
+    écriture peut cibler un référentiel (``LigneEcriture.referentiel``) ; NULL =
+    référentiel principal (comportement historique intact, rétro-compatible).
+    Hérite de ``core.models.TenantModel``.
+    """
+    class Code(models.TextChoices):
+        CGNC = 'CGNC', 'CGNC (Maroc)'
+        IFRS = 'IFRS', 'IFRS'
+        GROUPE = 'GROUPE', 'Référentiel de groupe'
+        FISCAL = 'FISCAL', 'Référentiel fiscal'
+
+    code = models.CharField(
+        max_length=10, choices=Code.choices, default=Code.CGNC,
+        verbose_name='Code du référentiel')
+    libelle = models.CharField(max_length=120, verbose_name='Libellé')
+    devise_fonctionnelle = models.CharField(
+        max_length=3, default='MAD', verbose_name='Devise fonctionnelle')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    est_principal = models.BooleanField(
+        default=False, verbose_name='Référentiel principal')
+
+    class Meta:
+        verbose_name = 'Référentiel comptable'
+        verbose_name_plural = 'Référentiels comptables'
+        ordering = ['company', 'code']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'code'], name='uniq_referentiel_par_code'),
+            # Un seul référentiel principal par société.
+            models.UniqueConstraint(
+                fields=['company'], condition=models.Q(est_principal=True),
+                name='uniq_referentiel_principal_par_societe'),
+        ]
+
+    def __str__(self):
+        return f'{self.code} — {self.libelle}'
+
+
+# ── NTFIN15 — Écritures d'ajustement GAAP (delta CGNC→IFRS) ────────────────
+
+class AjustementGaap(TenantModel):
+    """Ajustement de retraitement GAAP dans un livre parallèle (NTFIN15).
+
+    Trace un delta de traitement (étalement IFRS 16, juste valeur…) postée dans
+    un référentiel cible SANS toucher au livre CGNC. Le bilan IFRS = bilan CGNC
+    + Σ ajustements GAAP du référentiel IFRS, chaque delta traçable et
+    réversible. Hérite de ``core.models.TenantModel``.
+    """
+    referentiel = models.ForeignKey(
+        ReferentielComptable,
+        # on_delete: PROTECT — un ajustement appartient à un référentiel ; on ne
+        # supprime pas un référentiel encore porteur d'ajustements (auditabilité).
+        on_delete=models.PROTECT,
+        related_name='ajustements_gaap',
+        verbose_name='Référentiel cible',
+    )
+    type_ajustement = models.CharField(
+        max_length=60, blank=True, default='',
+        verbose_name='Type d\'ajustement')
+    motif = models.CharField(max_length=255, verbose_name='Motif')
+    ecriture = models.ForeignKey(
+        EcritureComptable,
+        # on_delete: SET_NULL — l'écriture générée est traçée ; la purger ne doit
+        # pas effacer la ligne d'ajustement source.
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='ajustements_gaap',
+        verbose_name='Écriture générée',
+    )
+    reversible = models.BooleanField(
+        default=True, verbose_name='Réversible')
+
+    class Meta:
+        verbose_name = 'Ajustement GAAP'
+        verbose_name_plural = 'Ajustements GAAP'
+        ordering = ['-id']
+
+    def __str__(self):
+        return f'Ajustement {self.referentiel_id} — {self.motif}'
+
+
+# ── NTFIN16 — Axes analytiques configurables (dimensions Intacct) ──────────
+
+class AxeAnalytique(TenantModel):
+    """Axe/dimension analytique défini par la société (NTFIN16).
+
+    Complète l'enum figé ``CentreCout.Axe`` par des axes libres (projet, centre,
+    produit, région, marché, canal…). Un ``CentreCout`` peut se rattacher à un
+    axe via ``CentreCout.axe_ref`` ; une ``LigneEcriture`` peut porter plusieurs
+    valeurs d'axes simultanément (``ImputationAxe``). Hérite de ``TenantModel``.
+    """
+    code = models.CharField(max_length=30, verbose_name='Code')
+    libelle = models.CharField(max_length=120, verbose_name='Libellé')
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+
+    class Meta:
+        verbose_name = 'Axe analytique'
+        verbose_name_plural = 'Axes analytiques'
+        ordering = ['ordre', 'code']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'code'], name='uniq_axe_analytique_code'),
+        ]
+
+    def __str__(self):
+        return f'{self.code} — {self.libelle}'
+
+
+# ── NTFIN17 — Imputation multi-axes sur une ligne d'écriture ───────────────
+
+class ImputationAxe(TenantModel):
+    """Imputation d'une ligne d'écriture sur un axe analytique (NTFIN17).
+
+    Permet à UNE ``LigneEcriture`` de porter simultanément une valeur par
+    plusieurs axes (projet=P1 ET centre=Agadir ET produit=Solaire). Additif au
+    ``centre_cout`` mono-axe existant. Hérite de ``core.models.TenantModel``.
+    """
+    ligne_ecriture = models.ForeignKey(
+        LigneEcriture,
+        # on_delete: CASCADE — une imputation n'a de sens qu'attachée à sa ligne
+        # d'écriture ; supprimer la ligne retire ses imputations analytiques.
+        on_delete=models.CASCADE,
+        related_name='imputations_axes',
+        verbose_name="Ligne d'écriture",
+    )
+    axe = models.ForeignKey(
+        AxeAnalytique,
+        # on_delete: PROTECT — on ne supprime pas un axe encore utilisé par des
+        # imputations (intégrité analytique).
+        on_delete=models.PROTECT,
+        related_name='imputations',
+        verbose_name='Axe analytique',
+    )
+    centre_cout = models.ForeignKey(
+        'compta.CentreCout',
+        # on_delete: PROTECT — la valeur d'axe pointe un centre ; on ne supprime
+        # pas un centre encore imputé.
+        on_delete=models.PROTECT,
+        related_name='imputations_axes',
+        verbose_name='Centre de coût (valeur de l\'axe)',
+    )
+
+    class Meta:
+        verbose_name = 'Imputation analytique multi-axes'
+        verbose_name_plural = 'Imputations analytiques multi-axes'
+        ordering = ['ligne_ecriture', 'axe']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['ligne_ecriture', 'axe'],
+                name='uniq_imputation_ligne_axe'),
+        ]
+
+    def __str__(self):
+        return f'Ligne {self.ligne_ecriture_id} / axe {self.axe_id}'
