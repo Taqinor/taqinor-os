@@ -504,6 +504,34 @@ class MetaClient:
         return self._request(
             'POST', self._account_edge('ads'), data=payload)
 
+    def duplicate_adset_with_ad(self, *, campaign_id, new_adset_name,
+                                new_ad_name, creative_id,
+                                adset_extra_fields=None, ad_extra_fields=None):
+        """ADSDEEP37 — Duplique un ad set (+ UNE ad qui RÉUTILISE le créatif LIVE
+        de la source) : 2 créations en séquence, TOUJOURS PAUSED (aucune des
+        deux signatures internes n'accepte de ``status`` — même garantie que
+        les créations normales, invariant permanent règle #3).
+
+        ``creative_id`` DOIT venir d'``AdCreativeMirror.creative_meta_id``
+        (dossier ADSDEEP11 — un ``AdMirror`` seul ne porte PAS le créatif, donc
+        dupliquer sans passer par le miroir de créatif est impossible).
+        ``adset_extra_fields`` porte la copie du budget/ciblage de la source
+        (construit par l'appelant depuis le miroir — « adset = copie du payload
+        miroir »). Renvoie ``{adset, ad}`` (les deux payloads Graph)."""
+        adset = self.create_adset(
+            name=new_adset_name, campaign_id=campaign_id,
+            extra_fields=adset_extra_fields)
+        new_adset_id = str((adset or {}).get('id') or '')
+        if not new_adset_id:
+            raise MetaError(
+                "Duplication : création de l'ad set échouée (aucun id renvoyé).")
+        extra = dict(ad_extra_fields or {})
+        extra.pop('status', None)
+        extra['creative'] = json.dumps({'creative_id': creative_id})
+        ad = self.create_ad(
+            name=new_ad_name, adset_id=new_adset_id, extra_fields=extra)
+        return {'adset': adset, 'ad': ad}
+
     def create_ad_with_object_story_spec(self, *, name, adset_id,
                                          object_story_spec, extra_fields=None):
         """ADSENG30 — Crée une ad « style post » via ``object_story_spec``.

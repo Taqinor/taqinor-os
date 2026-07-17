@@ -266,6 +266,50 @@ def propose_internal_dayparting_pause(company, *, adset, grid, now=None,
         payload={'target_type': 'adset', 'target_meta_id': adset.meta_id})
 
 
+# ── ADSDEEP37 — Duplication (ad set + 1 ad réutilisant le créatif LIVE) ──────
+KIND_DUPLICATE = 'duplicate'
+
+
+def propose_duplicate(company, *, adset, name_suffix=' (copie)', reason_fr=None):
+    """ADSDEEP37 — Propose une DUPLICATION d'``adset`` (``AdSetMirror`` source,
+    même société) : un NOUVEL ad set (copie du budget du miroir) + UNE ad qui
+    RÉUTILISE le créatif LIVE de la première ad source portant un
+    ``AdCreativeMirror`` (``AdMirror`` seul ne porte pas le créatif — dossier
+    ADSDEEP11). Lève ``ValueError`` (jamais une action créée à moitié) si aucun
+    créatif LIVE n'est trouvé, ou si l'ad set n'a pas de campagne/nom miroir."""
+    if not adset.campaign_id or not adset.campaign or not adset.campaign.meta_id:
+        raise ValueError(
+            "Ad set sans campagne miroir (meta_id) : duplication impossible.")
+    source_ad = (adset.ads
+                 .filter(creative_mirror__isnull=False)
+                 .exclude(creative_mirror__creative_meta_id='')
+                 .first())
+    if source_ad is None:
+        raise ValueError(
+            "Aucun créatif LIVE (AdCreativeMirror) trouvé pour cet ad set : "
+            "dupliquer sans créatif est impossible — resynchroniser d'abord.")
+    creative_id = source_ad.creative_mirror.creative_meta_id
+
+    new_adset_name = f'{adset.name}{name_suffix}'
+    new_ad_name = f'{source_ad.name}{name_suffix}'
+    adset_extra_fields = {}
+    if adset.budget is not None:
+        adset_extra_fields['daily_budget'] = int(adset.budget)
+
+    reason_fr = reason_fr or f"Dupliquer l'ad set « {adset.name} » ({new_adset_name})."
+    payload = {
+        'campaign_id': adset.campaign.meta_id,
+        'new_adset_name': new_adset_name,
+        'adset_extra_fields': adset_extra_fields,
+        'new_ad_name': new_ad_name,
+        'creative_id': creative_id,
+        'source_adset_id': adset.meta_id,
+        'source_ad_id': source_ad.meta_id,
+    }
+    return propose_action(
+        company, kind=KIND_DUPLICATE, reason_fr=reason_fr, payload=payload)
+
+
 def propose_pause_for_month(company, *, target_meta_id, target_type='campaign',
                             reason_fr=None):
     """ADSENG22 — Propose une pause « pour le mois » (chemin breach-imminent du
@@ -419,6 +463,17 @@ def _dispatch(client, action):
             adset_id=payload.get('adset_id', ''),
             daily_budget=payload.get('daily_budget'),
             extra_fields=payload.get('extra_fields'))
+    if kind == KIND_DUPLICATE:
+        # ADSDEEP37 — duplication (adset + 1 ad réutilisant le créatif LIVE de
+        # la source). Les 2 créations internes sont TOUJOURS PAUSED (garanti par
+        # meta_client — invariant permanent règle #3).
+        return client.duplicate_adset_with_ad(
+            campaign_id=payload.get('campaign_id', ''),
+            new_adset_name=payload.get('new_adset_name', ''),
+            new_ad_name=payload.get('new_ad_name', ''),
+            creative_id=payload.get('creative_id', ''),
+            adset_extra_fields=payload.get('adset_extra_fields'),
+            ad_extra_fields=payload.get('ad_extra_fields'))
     if kind == KIND_SET_SCHEDULE:
         # ADSDEEP36 — horaire NATIF (adset_schedule). Aucun ``status`` n'est
         # jamais envoyé (invariant permanent règle #3).
