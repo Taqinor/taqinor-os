@@ -79,6 +79,6 @@ describe('RessourcesPage (NTAGR12)', () => {
     await waitFor(() => expect(screen.getAllByText('Fatima Z.').length).toBeGreaterThan(0))
 
     await user.click(screen.getByRole('button', { name: /Nouveau pointage/ }))
-    expect(await screen.findByText('Nouveau pointage')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Nouveau pointage' })).toBeInTheDocument()
   })
 })
