@@ -35,3 +35,19 @@ def escalader_rappels_demandes_task():
     )
     escalated = escalader_rappels_demandes()
     return {'escalated': escalated}
+
+
+@shared_task(name='crm.snapshot_forecast_hebdo')
+def snapshot_forecast_hebdo_task():
+    """NTCRM6 — Enveloppe Celery Beat de la commande de gestion homonyme.
+
+    Planifiée dans ``erp_agentique/celery.py`` (``beat_schedule``). Crée/
+    upsert le snapshot forecast hebdomadaire (idempotent par semaine ISO +
+    owner). Même patron : réutilise entièrement la commande de gestion
+    (testable hors Celery via ``manage.py snapshot_forecast_hebdo``).
+    """
+    from apps.crm.management.commands.snapshot_forecast_hebdo import (
+        snapshot_forecast_hebdo,
+    )
+    nb = snapshot_forecast_hebdo()
+    return {'snapshots': nb}

@@ -18,12 +18,15 @@ resolved automatically, without ever creating duplicates:
 The resolved link is persisted on the lead, so every later quote from the
 same lead reuses the same client. Everything stays tenant-scoped.
 """
+import logging
 import re as _re
 
 from django.utils import timezone
 
 from . import activity, stages
 from .models import Canal, Client, Lead, LeadActivity, PointContact
+
+logger = logging.getLogger(__name__)
 
 # Mouvement automatique du funnel à partir des statuts DOCUMENT du devis
 # (couche séparée et permanente — CLAUDE.md règles #2/#4) :
@@ -64,6 +67,47 @@ _CONTACT_KINDS = frozenset([
 _STAGE_CONTACTED = 'CONTACTED'
 
 
+def _emit_stage_changed(lead, old_stage, new_stage, user=None):
+    """NTCRM12 — Émet ``core.events.lead_stage_changed`` pour TOUT point
+    d'entrée qui fait bouger ``Lead.stage``. No-op si l'étape n'a pas changé.
+    Best-effort : n'échoue jamais l'appelant."""
+    if old_stage == new_stage:
+        return
+    try:
+        from core.events import lead_stage_changed
+        lead_stage_changed.send(
+            sender=Lead, lead=lead, old_stage=old_stage, new_stage=new_stage,
+            user=user)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            'NTCRM12: émission lead_stage_changed échouée pour le lead #%s',
+            getattr(lead, 'pk', '?'), exc_info=True)
+
+
+def generer_playbook_progress(lead, new_stage):
+    """NTCRM12 — Quand ``lead`` entre dans ``new_stage``, crée la progression
+    (``LeadPlaybookProgress``, une par tâche) pour CHAQUE playbook ACTIF de la
+    société portant une étape sur ``new_stage``. Idempotent (``unique_together
+    (lead, tache)``, ``get_or_create``) : rejouer l'événement (ex. réactivation
+    YLEAD11 qui repasse par la même étape) ne duplique jamais les tâches.
+    Ne bloque JAMAIS le changement d'étape (avertissement seulement — cohérent
+    avec « never auto-move ») : appelé en best-effort par le récepteur."""
+    from .models import LeadPlaybookProgress, PlaybookEtape
+
+    etapes = PlaybookEtape.objects.filter(
+        playbook__company=lead.company, playbook__actif=True,
+        stage=new_stage,
+    ).prefetch_related('taches')
+    created = []
+    for etape in etapes:
+        for tache in etape.taches.all():
+            _progress, was_created = LeadPlaybookProgress.objects.get_or_create(
+                lead=lead, tache=tache)
+            if was_created:
+                created.append(_progress)
+    return created
+
+
 def avancer_stage_new_vers_contacted(lead, user) -> bool:
     """Avance le stage du lead NEW → CONTACTED lors du premier contact.
 
@@ -98,6 +142,7 @@ def avancer_stage_new_vers_contacted(lead, user) -> bool:
         new_value=stages.STAGE_LABELS[_STAGE_CONTACTED],
         body='auto — premier contact',
     )
+    _emit_stage_changed(lead, stages.NEW, _STAGE_CONTACTED, user)
     return True
 
 
@@ -152,6 +197,7 @@ def reactivate_lead_on_new_touch(lead, *, source='site web') -> bool:
             new_value=stages.STAGE_LABELS[cible],
             body=f'auto — réactivation ({source})',
         )
+        _emit_stage_changed(lead, ancien_stage, cible, None)
     return True
 
 
@@ -185,6 +231,7 @@ def avancer_stage_pour_devis(devis, ancien_statut, nouveau_statut, user):
     ancien_stage = lead.stage
     lead.stage = stage_cible
     lead.save(update_fields=['stage'])
+    _emit_stage_changed(lead, ancien_stage, stage_cible, user)
 
     if stage_cible == 'SIGNED':
         # QJ9 — CAPI SignedQuote : le hook réside dans ventes.services.accept_devis
@@ -372,8 +419,18 @@ def _next_balanced_round_robin_commercial(company, plafond):
     return eligibles[0]
 
 
-def default_responsable_for(company):
+def default_responsable_for(company, lead_attrs=None):
     """Responsable assigné par défaut aux nouveaux leads d'une société.
+
+    NTCRM1 — quand ``lead_attrs`` (dict brut : ville/type_installation/
+    montant_estime/canal — le lead n'existe pas encore à ce stade) est fourni,
+    le moteur de territoires (``apps.territoires``) est consulté EN PREMIER :
+    si au moins un territoire actif matche, son membre résolu par rotation
+    l'emporte. Sinon (aucun territoire ne matche, ``lead_attrs`` absent, ou
+    l'app territoires échoue) — repli sur le comportement round-robin XSAL11
+    ci-dessous, STRICTEMENT inchangé. ``lead_attrs=None`` (défaut) est donc
+    byte-identique au comportement pré-NTCRM1 pour tout appelant existant qui
+    ne le passe pas.
 
     XSAL11 — quand ``CompanyProfile.round_robin_leads_actif`` est ON, la
     rotation ÉQUILIBRÉE (en sautant les commerciaux saturés — plafond
@@ -387,6 +444,16 @@ def default_responsable_for(company):
     """
     if company is None:
         return None
+    if lead_attrs is not None:
+        try:
+            from apps.territoires.services import resoudre_owner_pour_attrs
+            territoire_owner = resoudre_owner_pour_attrs(company, lead_attrs)
+            if territoire_owner is not None:
+                return territoire_owner
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            logger.warning(
+                'NTCRM1: résolution territoire échouée, repli round-robin',
+                exc_info=True)
     from apps.parametres.models import CompanyProfile
     profile = CompanyProfile.objects.filter(company=company).first()
     explicit = profile.responsable_defaut_leads if profile else None
@@ -3012,6 +3079,7 @@ def avancer_stage_lead_vers(lead, user, stage_cible):
     lead.stage = stage_cible
     lead.save(update_fields=['stage'])
     activity.log_bulk_change(lead, user, 'stage', ancien, stage_cible)
+    _emit_stage_changed(lead, ancien, stage_cible, user)
     return True
 
 

@@ -90,6 +90,10 @@ _APP_URLS = [
     path('identity/', include('apps.identity.urls')),
     # Groupe ENG — Moteur publicitaire Meta Ads dans l'ERP.
     path('adsengine/', include('apps.adsengine.urls')),
+    # NTCRM1 — Moteur de territoires (règles d'affectation round-robin).
+    path('territoires/', include('apps.territoires.urls')),
+    # NTCRM8 — Contacts multi-rôles par client (organigramme d'achat).
+    path('contacts/', include('apps.contacts.urls')),
 ]
 
 urlpatterns = [
