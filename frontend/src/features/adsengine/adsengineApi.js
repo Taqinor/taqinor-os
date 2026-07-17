@@ -142,6 +142,12 @@ const adsengineApi = {
     get: (id) => api.get(`/adsengine/simulations/${id}/`),
   },
 
+  // ── ADSDEEP9/10 — Breakdowns (audience & diffusion : démo/placement/région/heure) ──
+  breakdowns: {
+    // Ventilations d'un objet (campaign/adset/ad) ; dimension & since optionnels.
+    list: (params) => api.get('/adsengine/breakdowns/', { params }),
+  },
+
   // ── ENG33/ENG45 — Reporting (drill-downs : variantes, entonnoir, cohortes) ──
   // Routeur backend FR : « reporting/{variantes,entonnoir,cohortes} » (ADSENGINT1).
   reports: {
