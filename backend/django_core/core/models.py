@@ -1725,6 +1725,15 @@ class ChangelogEntry(TimestampedModel):
         'Publié', default=False,
         help_text="Une note non publiée n'apparaît pas dans le fil.")
     publie_le = models.DateTimeField('Publié le', null=True, blank=True)
+    # NTAPI24 — marque un « changement cassant » pour le fil `changelog API`
+    # (`apps.publicapi`, `GET /api/public/changelog/`) : orthogonal à
+    # `categorie` (une note peut être une amélioration ET casser une
+    # intégration existante). Additif, défaut False — n'affecte aucune note
+    # existante ni le fil produit générique (FG399, inchangé).
+    breaking = models.BooleanField(
+        'Changement cassant (API)', default=False,
+        help_text="Coché pour une note du fil « changelog API » qui casse "
+                  "une intégration existante (NTAPI24).")
 
     class Meta:
         verbose_name = 'Note de version'

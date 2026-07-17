@@ -34,4 +34,10 @@ class PublicApiResponseMixin:
         api_key = getattr(request, 'auth', None)
         version = getattr(api_key, 'api_version', None) or DEFAULT_API_VERSION
         response[API_VERSION_HEADER] = version
+        # NTAPI23 — une clé en grace period de rotation (``expire_le`` posé,
+        # encore valide) porte un en-tête ``Deprecation`` sur CHAQUE appel,
+        # pour que l'intégration cliente sache migrer avant l'échéance.
+        expire_le = getattr(api_key, 'expire_le', None)
+        if expire_le:
+            response['Deprecation'] = expire_le.isoformat()
         return response

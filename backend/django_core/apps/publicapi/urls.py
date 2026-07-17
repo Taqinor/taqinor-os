@@ -8,7 +8,7 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     ApiKeyViewSet, WebhookViewSet, CatalogueView, DocsView, OcrToCrmView,
-    ApiUsagePlanView,
+    ApiUsagePlanView, SandboxTryView,
 )
 
 router = DefaultRouter()
@@ -23,5 +23,8 @@ urlpatterns = [
     path('ocr-to-crm/', OcrToCrmView.as_view(), name='publicapi-ocr-to-crm'),
     # NTAPI7 — plan d'API nommé (gratuit/pro/entreprise) de la société.
     path('plan/', ApiUsagePlanView.as_view(), name='publicapi-plan'),
+    # NTAPI21 — « essayer » un endpoint depuis la console de docs (session
+    # admin, jamais une clé brute côté client), scopé au bac à sable NTAPI27.
+    path('sandbox/try/', SandboxTryView.as_view(), name='publicapi-sandbox-try'),
     path('', include(router.urls)),
 ]

@@ -19,14 +19,25 @@ from django.db import models
 from core.crypto_fields import EncryptedCharField
 from core.models import TenantModel
 
-from .constants import SCOPE_CHOICES, EVENT_CHOICES
+from .constants import SCOPE_CHOICES, EVENT_CHOICES, ENV_CHOICES, ENV_LIVE, ENV_TEST
 
 
 # Préfixe lisible de toute clé émise (aide au repérage côté client/logs).
 API_KEY_PREFIX = 'tqk_'
+# NTAPI26 — préfixe DISTINCT par environnement (repérage immédiat, façon
+# Stripe `sk_test_`/`sk_live_`) : une clé `test` ne peut jamais être confondue
+# avec une clé `live` en la regardant dans un log/un `.env`.
+API_KEY_PREFIX_BY_ENV = {
+    ENV_LIVE: 'tqk_live_',
+    ENV_TEST: 'tqk_test_',
+}
 # Longueur de la part visible (préfixe inclus) stockée en clair pour identifier
-# une clé sans jamais révéler le secret complet.
-VISIBLE_PREFIX_LEN = 12
+# une clé sans jamais révéler le secret complet. NTAPI26 — élargie de 12 à 18
+# pour qu'un préfixe `tqk_test_`/`tqk_live_` (9 car.) laisse encore 9 car. de
+# secret visibles (repérage fiable) ; le préfixe legacy `tqk_`
+# (`ServiceAccount`, inchangé) en laisse simplement plus qu'avant — purement
+# cosmétique, jamais utilisé pour l'authentification (qui reste `key_hash`).
+VISIBLE_PREFIX_LEN = 18
 
 
 def hash_key(raw_key):
@@ -46,9 +57,15 @@ def hash_key(raw_key):
     ).hexdigest()
 
 
-def generate_raw_key():
-    """Génère une nouvelle clé en clair (préfixe + secret URL-safe)."""
-    return API_KEY_PREFIX + secrets.token_urlsafe(32)
+def generate_raw_key(environnement=None):
+    """Génère une nouvelle clé en clair (préfixe + secret URL-safe).
+
+    NTAPI26 — ``environnement`` (``'test'``/``'live'``) sélectionne un préfixe
+    DISTINCT (``tqk_test_``/``tqk_live_``) ; ``None`` (``ServiceAccount``,
+    comportement historique inchangé) garde le préfixe legacy ``tqk_``.
+    """
+    prefix = API_KEY_PREFIX_BY_ENV.get(environnement, API_KEY_PREFIX)
+    return prefix + secrets.token_urlsafe(32)
 
 
 class ApiKey(models.Model):
@@ -72,6 +89,19 @@ class ApiKey(models.Model):
     # épinglée 'v1' reste sur 'v1' même via un path non-versionné. Changer de
     # version est une action admin explicite (jamais automatique).
     api_version = models.CharField(max_length=10, default='v1', blank=True)
+    # NTAPI26 — environnement de la clé : `live` (données réelles, défaut,
+    # comportement historique) ou `test` (bac à sable NTAPI27 — la clé est
+    # alors émise DIRECTEMENT sur la société-jumelle sandbox, jamais sur la
+    # société réelle : l'isolation vient du même scoping `company_id` que
+    # toute clé, sans code spécial dans les vues publiques).
+    environnement = models.CharField(
+        max_length=4, choices=ENV_CHOICES, default=ENV_LIVE, blank=True)
+    # NTAPI23 — rotation SANS COUPURE (grace period) : une fois posé, cette
+    # clé reste valide jusqu'à cette date (défaut +7 j), après quoi
+    # `ApiKeyAuthentication` la rejette comme n'importe quelle clé désactivée.
+    # `None` = clé permanente (pas de rotation en cours), comportement
+    # historique inchangé.
+    expire_le = models.DateTimeField(null=True, blank=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -93,14 +123,17 @@ class ApiKey(models.Model):
         return f'{self.label} ({self.prefix}…)'
 
     @classmethod
-    def issue(cls, *, company, label, scopes, created_by=None):
+    def issue(cls, *, company, label, scopes, created_by=None, environnement=None):
         """Crée une clé et renvoie (instance, clé_en_clair).
 
         La clé en clair n'est disponible qu'ici, à la création — elle n'est
-        jamais re-stockée. Seuls les scopes connus sont retenus.
+        jamais re-stockée. Seuls les scopes connus sont retenus. NTAPI26 —
+        ``environnement`` défaut ``live`` ; une clé ``test`` porte un préfixe
+        distinct (``tqk_test_``).
         """
         from .constants import ALL_SCOPES
-        raw_key = generate_raw_key()
+        environnement = environnement if environnement in (ENV_LIVE, ENV_TEST) else ENV_LIVE
+        raw_key = generate_raw_key(environnement)
         clean_scopes = [s for s in (scopes or []) if s in ALL_SCOPES]
         instance = cls.objects.create(
             company=company,
@@ -109,11 +142,40 @@ class ApiKey(models.Model):
             prefix=raw_key[:VISIBLE_PREFIX_LEN],
             scopes=clean_scopes,
             created_by=created_by,
+            environnement=environnement,
         )
         return instance, raw_key
 
     def has_scope(self, scope):
         return scope in (self.scopes or [])
+
+    @property
+    def est_expiree(self):
+        """NTAPI23 — clé en fin de grace period (rotation) : au-delà de
+        `expire_le`, une clé cesse d'être valide même si `enabled=True`."""
+        if not self.expire_le:
+            return False
+        from django.utils import timezone
+        return self.expire_le <= timezone.now()
+
+    def rotate(self, *, grace_jours=7, created_by=None):
+        """NTAPI23 — rotation sans coupure : émet une NOUVELLE clé (mêmes
+        label/scopes/environnement) et pose `expire_le` = maintenant +
+        `grace_jours` (défaut 7) sur CETTE clé — elle reste valide jusque-là,
+        puis seule la nouvelle fonctionne. Renvoie (nouvelle_instance,
+        nouvelle_clé_en_clair)."""
+        from django.utils import timezone
+        import datetime
+        new_instance, raw_key = ApiKey.issue(
+            company=self.company,
+            label=f'{self.label} (rotation)',
+            scopes=self.scopes,
+            created_by=created_by or self.created_by,
+            environnement=self.environnement,
+        )
+        self.expire_le = timezone.now() + datetime.timedelta(days=max(1, grace_jours))
+        self.save(update_fields=['expire_le'])
+        return new_instance, raw_key
 
 
 class Webhook(models.Model):
@@ -415,3 +477,47 @@ class WebhookDeliveryArchive(models.Model):
 
     def __str__(self):
         return f'archive:{self.original_id}'
+
+
+class SandboxTenant(models.Model):
+    """NTAPI27 — bac à sable API : société-jumelle ISOLÉE portant les données
+    de démo d'une société réelle.
+
+    Une clé ``environnement='test'`` (NTAPI26) est émise DIRECTEMENT sur
+    ``sandbox_company`` — jamais sur ``company`` — donc l'isolation vient du
+    même scoping ``company_id`` qu'utilise TOUTE clé d'API : aucun code
+    spécial n'est nécessaire dans les viewsets publics pour garantir qu'une
+    clé test ne touche jamais les données réelles, et qu'une clé live n'a
+    aucun moyen d'atteindre le sandbox (elle ne porte que l'id de la société
+    réelle). ``sandbox_company`` est une ``authentication.Company`` normale
+    (foundation, exempte de la frontière cross-app) — jamais de modification
+    du modèle ``Company`` lui-même.
+    """
+    company = models.OneToOneField(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: le bac à sable n'existe que pour sa société réelle
+        related_name='sandbox_tenant',
+        help_text='Société réelle propriétaire de ce bac à sable.',
+    )
+    sandbox_company = models.OneToOneField(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: la société-jumelle est détruite avec son bac à sable
+        related_name='sandbox_of',
+        help_text='Société-jumelle isolée portant les données de démo.',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    reset_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Dernière remise à l'état initial (POST sandbox/reset/).")
+
+    class Meta:
+        verbose_name = 'Bac à sable API'
+        verbose_name_plural = 'Bacs à sable API'
+
+    def __str__(self):
+        return f'Sandbox(company={self.company_id} → sandbox={self.sandbox_company_id})'
+
+
+# Re-export additionnel (NTAPI23/26/27) — gardé séparé du premier `__all__`
+# ci-dessus pour ne pas réordonner les symboles déjà exportés.
+__all__ += ['SandboxTenant', 'API_KEY_PREFIX_BY_ENV']
