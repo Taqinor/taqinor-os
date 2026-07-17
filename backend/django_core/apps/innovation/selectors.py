@@ -105,3 +105,27 @@ def tableau_bord_idees(company):
         'plus_recentes': plus_recentes(company),
         'heat_contexte': heat_par_contexte(company),
     }
+
+
+def timeline(company, statut=None, contexte=None):
+    """NTIDE23 — nombre d'idées PROPOSÉES par jour (``created_at``), filtres
+    statut/contexte optionnels, ordre chronologique croissant (adapté à un
+    graphe Recharts). Mêmes exclusions que le tableau de bord (NTIDE6) : une
+    idée brouillon (NTIDE18) ou masquée (NTIDE19) n'apparaît pas dans un
+    agrégat de liste."""
+    from django.db.models import Count
+    from django.db.models.functions import TruncDate
+
+    from .models import Idee
+
+    qs = Idee.objects.filter(company=company, draft=False, archived=False)
+    if statut:
+        qs = qs.filter(statut=statut)
+    if contexte:
+        qs = qs.filter(contexte__iexact=contexte)
+    qs = (qs.annotate(jour=TruncDate('created_at'))
+          .values('jour')
+          .annotate(nombre=Count('id'))
+          .order_by('jour'))
+    return [{'date': row['jour'].isoformat(), 'nombre': row['nombre']}
+            for row in qs if row['jour'] is not None]

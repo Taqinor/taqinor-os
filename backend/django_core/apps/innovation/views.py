@@ -416,3 +416,19 @@ class InnovationSettingsView(APIView):
         return Response(serializer.data)
 
     put = patch
+
+
+class TimelineView(APIView):
+    """NTIDE23 — graphe « idées par jour » (Recharts, ``chart-theme``/
+    ``AreaSansAxe`` côté frontend), filtres ``?statut=``/``?contexte=``.
+    Même palier que le tableau de bord (``IdeasSeeAll``, NTIDE22/NTIDE6) :
+    surface d'administration, pas une lecture ouverte à tous."""
+
+    permission_classes = [IdeasSeeAll]
+
+    def get(self, request):
+        params = request.query_params
+        data = selectors.timeline(
+            request.user.company,
+            statut=params.get('statut'), contexte=params.get('contexte'))
+        return Response({'results': data})

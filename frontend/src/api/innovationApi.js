@@ -24,6 +24,10 @@ const innovationApi = {
   // ── Tableau de bord admin (NTIDE6) ──
   tableauBord: () => api.get('/innovation/idees/tableau-bord/'),
 
+  // ── Timeline — idées par jour (NTIDE23) ──
+  // params: statut / contexte.
+  timeline: (params) => api.get('/innovation/timeline/', { params }),
+
   // ── Machine à états (POST) — palier Directeur/Responsable (NTIDE5) ──
   examiner: (id) => api.post(`/innovation/idees/${id}/examiner/`),
   retenir: (id) => api.post(`/innovation/idees/${id}/retenir/`),

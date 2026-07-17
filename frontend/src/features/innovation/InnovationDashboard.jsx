@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Lightbulb, ThumbsUp, Clock, LayoutGrid } from 'lucide-react'
 import { ModuleDashboard } from '../../ui/module'
 import { EmptyState } from '../../ui'
+import { AreaSansAxe } from '../../ui/charts'
 import innovationApi from '../../api/innovationApi'
 import { STATUT_MAP, StatutIdeePill } from './innovationStatus'
 
@@ -11,6 +12,7 @@ import { STATUT_MAP, StatutIdeePill } from './innovationStatus'
    votes, plus récentes, heat-chart par contexte. Drill-down vers la liste
    filtrée / le détail. Réservé au palier admin/responsable côté serveur
    (route elle-même gatée, voir module.config.jsx).
+   NTIDE23 — timeline « idées par jour » (graphe Recharts) en bas de page.
    ========================================================================== */
 
 export default function InnovationDashboard() {
@@ -18,6 +20,7 @@ export default function InnovationDashboard() {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [timeline, setTimeline] = useState([])
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount
@@ -25,6 +28,13 @@ export default function InnovationDashboard() {
       .then((res) => setData(res.data))
       .catch(() => setError('Impossible de charger le tableau de bord.'))
       .finally(() => setLoading(false))
+  }, [])
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount
+    innovationApi.timeline()
+      .then((res) => setTimeline(res.data?.results || []))
+      .catch(() => setTimeline([]))
   }, [])
 
   const parStatut = data?.par_statut || {}
@@ -108,6 +118,15 @@ export default function InnovationDashboard() {
     </ul>
   ) : <EmptyState title="Aucun contexte" description="Aucune idée avec un contexte renseigné." />
 
+  const timelineNode = timeline.length > 0 ? (
+    <AreaSansAxe
+      data={timeline.map((t) => ({ label: t.date, value: t.nombre }))}
+      name="Idées proposées"
+      tone="primary"
+      height={180}
+    />
+  ) : <EmptyState title="Aucune donnée" description="Aucune idée proposée sur la période." />
+
   return (
     <div className="page flex flex-col gap-6">
       <h1 className="inline-flex items-center gap-2 font-display text-xl font-semibold tracking-tight">
@@ -122,6 +141,7 @@ export default function InnovationDashboard() {
           { title: 'Top 5 par votes', node: topVotesNode },
           { title: 'Plus récentes', node: recentesNode },
           { title: 'Idées par contexte', node: heatNode, span: 'full' },
+          { title: 'Idées par jour', node: timelineNode, span: 'full' },
         ]}
       />
     </div>
