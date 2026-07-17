@@ -311,6 +311,11 @@ export const DataTable = forwardRef(function DataTable(
     hidePagination = false,
     // eslint-disable-next-line no-unused-vars
     expandedPanels,
+    // NTUX16 — préférences de colonnes mémorisées par écran/utilisateur
+    // (`useColumnPrefs(ecran)`), INDÉPENDANTES des vues nommées (NTUX1/2).
+    // Opt-in : non fourni, comportement strictement inchangé.
+    initialColumnState,
+    onColumnStateChange,
     // pagination
     pageSize: initialPageSize = 25,
     pageSizeOptions = [10, 25, 50, 100],
@@ -362,6 +367,7 @@ export const DataTable = forwardRef(function DataTable(
     initialPageSize, initialView: savedViews?.[0]?.id ?? null,
     manualSorting, manualFiltering, manualPagination, rowCount, summary,
     persistToUrl, urlKey,
+    initialColumnState, onColumnStateChange,
   })
 
   const {

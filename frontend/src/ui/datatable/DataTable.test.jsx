@@ -762,3 +762,31 @@ describe('NTUX15 — export respecte la vue active (colonnes visibles/ordre/filt
     expect(exportRows).toHaveLength(DATA.length)
   })
 })
+
+/* ============================== NTUX16 — PRÉFÉRENCES DE COLONNES PAR ÉCRAN ============================== */
+
+describe('NTUX16 — initialColumnState / onColumnStateChange (préférences de colonnes)', () => {
+  it('sans initialColumnState (79 écrans existants) : état par défaut inchangé', () => {
+    const { container } = renderTable()
+    // Les 3 colonnes par défaut sont toutes visibles (desktop + repli carte mobile — VX43).
+    expect(container.querySelectorAll('thead th').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Ville').length).toBeGreaterThan(0)
+  })
+
+  it('un initialColumnState fourni (colonne masquée) s\'applique dès le montage', () => {
+    renderTable({ initialColumnState: { order: ['nom', 'ville', 'montant'], hidden: { ville: true }, pinned: {}, widths: {} } })
+    expect(screen.queryByText('Ville')).not.toBeInTheDocument()
+  })
+
+  it('masquer une colonne notifie onColumnStateChange avec le nouvel état', async () => {
+    const user = userEvent.setup()
+    const onColumnStateChange = vi.fn()
+    renderTable({ onColumnStateChange })
+    onColumnStateChange.mockClear() // ignore l'appel initial (état par défaut)
+    await user.click(screen.getByRole('button', { name: /colonnes/i }))
+    await user.click(screen.getByRole('menuitemcheckbox', { name: /ville/i }))
+    expect(onColumnStateChange).toHaveBeenCalled()
+    const lastState = onColumnStateChange.mock.calls.at(-1)[0]
+    expect(lastState.hidden.ville).toBe(true)
+  })
+})
