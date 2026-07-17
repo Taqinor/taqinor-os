@@ -6,7 +6,7 @@ from .views import (
     HypotheseRecrutementViewSet, LigneBudgetDepartementViewSet,
     LignePrevisionGlissanteViewSet, LigneScenarioViewSet,
     PrevisionGlissanteViewSet, ScenarioBudgetaireViewSet,
-    SoumissionBudgetDepartementViewSet,
+    SoumissionBudgetDepartementViewSet, VarianceViewSet,
 )
 
 router = DefaultRouter()
@@ -32,6 +32,7 @@ router.register(
 router.register(r'scenarios', ScenarioBudgetaireViewSet, basename='fpa-scenario')
 router.register(
     r'lignes-scenario', LigneScenarioViewSet, basename='fpa-ligne-scenario')
+router.register(r'variance', VarianceViewSet, basename='fpa-variance')
 router.register(r'drivers', DriversViewSet, basename='fpa-drivers')
 
 urlpatterns = [

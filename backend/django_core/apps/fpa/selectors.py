@@ -147,3 +147,101 @@ def revenu_engage_carnet(company, mois_debut, mois_fin):
 
     return ventes_selectors.carnet_commande_par_mois(
         company, mois_debut, mois_fin)
+
+
+def _ecart(a, b):
+    """Écart (€, %) de ``a`` par rapport à ``b`` (base). % = None si base 0."""
+    a = Decimal(str(a or 0))
+    b = Decimal(str(b or 0))
+    ecart_eur = a - b
+    ecart_pct = (ecart_eur / abs(b) * Decimal('100')) if b != 0 else None
+    return ecart_eur, ecart_pct
+
+
+def prefixes_categorie(company, categorie):
+    """NTFPA21 — préfixes CGNC couvrant une catégorie (mapping ou repli)."""
+    from .models import DEFAULT_COMPTE_CGNC_PREFIXES, MappingCategorieCompte
+
+    mappes = list(
+        MappingCategorieCompte.objects
+        .filter(company=company, categorie=categorie)
+        .values_list('compte_cgnc_prefixe', flat=True))
+    if mappes:
+        return tuple(mappes)
+    return DEFAULT_COMPTE_CGNC_PREFIXES.get(categorie, ())
+
+
+def variance_budget_vs_reel(company, cycle, mois):
+    """NTFPA19 — variance par département/catégorie pour un mois : ``prévu``
+    (LigneBudgetDepartement) vs ``réel`` comptable (grand livre par préfixe
+    CGNC mappé, NTFPA21, via ``compta.selectors``) vs dernière prévision
+    glissante du même mois.
+
+    Renvoie une liste de dicts par (département, catégorie) avec les 3 valeurs
+    et l'écart €/% des 3 paires (prévu/réel, prévu/forecast, réel/forecast) +
+    un drapeau ``depassement`` (réel > prévu de plus de 10 %). Lecture seule.
+    """
+    from apps.compta import selectors as compta_selectors
+
+    from .models import (
+        CycleBudgetaire, LigneBudgetDepartement, LignePrevisionGlissante,
+    )
+
+    if not isinstance(cycle, CycleBudgetaire):
+        cycle = CycleBudgetaire.objects.filter(
+            company=company, pk=cycle).first()
+    if cycle is None:
+        return []
+    annee = cycle.date_debut.year
+
+    # Réel comptable par catégorie pour ce mois (une lecture GL par catégorie).
+    lignes = LigneBudgetDepartement.objects.filter(
+        company=company, cycle=cycle, mois=mois
+    ).select_related('departement')
+
+    reel_par_categorie = {}
+    forecast_par_categorie = {}
+
+    def _reel(categorie):
+        if categorie not in reel_par_categorie:
+            reel_par_categorie[categorie] = compta_selectors.total_reel_par_prefixes_mois(
+                company, prefixes_categorie(company, categorie), annee, mois)
+        return reel_par_categorie[categorie]
+
+    def _forecast(categorie):
+        if categorie not in forecast_par_categorie:
+            # Dernière prévision glissante portant ce mois relatif=mois.
+            ligne = (
+                LignePrevisionGlissante.objects
+                .filter(company=company, categorie=categorie, mois_relatif=mois)
+                .order_by('-prevision__date_reference')
+                .first())
+            forecast_par_categorie[categorie] = (
+                ligne.montant_prevu if ligne else Decimal('0'))
+        return forecast_par_categorie[categorie]
+
+    resultat = []
+    for ligne in lignes:
+        prevu = Decimal(str(ligne.montant_prevu or 0))
+        reel = Decimal(str(_reel(ligne.categorie) or 0))
+        forecast = Decimal(str(_forecast(ligne.categorie) or 0))
+        e_pr_reel = _ecart(reel, prevu)
+        e_pr_fc = _ecart(forecast, prevu)
+        e_reel_fc = _ecart(reel, forecast)
+        depassement = bool(
+            prevu != 0 and (reel - prevu) / abs(prevu) > Decimal('0.10'))
+        resultat.append({
+            'departement_id': ligne.departement_id,
+            'departement': ligne.departement.nom,
+            'categorie': ligne.categorie,
+            'mois': mois,
+            'prevu': prevu, 'reel': reel, 'forecast': forecast,
+            'ecart_prevu_reel_eur': e_pr_reel[0],
+            'ecart_prevu_reel_pct': e_pr_reel[1],
+            'ecart_prevu_forecast_eur': e_pr_fc[0],
+            'ecart_prevu_forecast_pct': e_pr_fc[1],
+            'ecart_reel_forecast_eur': e_reel_fc[0],
+            'ecart_reel_forecast_pct': e_reel_fc[1],
+            'depassement': depassement,
+        })
+    return resultat

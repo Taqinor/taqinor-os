@@ -362,6 +362,29 @@ class HypotheseRecrutementViewSet(TenantMixin, viewsets.ModelViewSet):
         return qs
 
 
+class VarianceViewSet(viewsets.ViewSet):
+    """NTFPA19 — analyse des écarts (variance) prévu/réel/forecast, en lecture."""
+
+    def list(self, request):
+        cycle_id = request.query_params.get('cycle')
+        mois = request.query_params.get('mois')
+        if not cycle_id or not mois:
+            return Response(
+                {'detail': 'cycle et mois requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        from .selectors import variance_budget_vs_reel
+        rows = variance_budget_vs_reel(
+            request.user.company, cycle_id, int(mois))
+        # Decimals → str pour la sérialisation JSON.
+        payload = []
+        for r in rows:
+            payload.append({
+                k: (str(v) if v is not None and hasattr(v, 'is_signed') else v)
+                for k, v in r.items()
+            })
+        return Response(payload)
+
+
 class DriversViewSet(viewsets.ViewSet):
     """NTFPA9/11/12 — drivers de planning (endpoints de calcul, aucun modèle
     propre). Company scopée via ``request.user.company``."""

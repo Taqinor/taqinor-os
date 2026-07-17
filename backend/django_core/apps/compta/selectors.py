@@ -4128,3 +4128,29 @@ def moyenne_mensuelle_par_prefixes(company, prefixes, mois_reference, *,
             continue
         total += bucket['total_debit'] - bucket['total_credit']
     return total / Decimal(n_mois)
+
+
+def total_reel_par_prefixes_mois(company, prefixes, annee, mois, *,
+                                 validees_seulement=True):
+    """NTFPA19 — total réel comptable (Σ débit − Σ crédit) des comptes dont le
+    numéro commence par l'un des ``prefixes``, sur le mois ``(annee, mois)``.
+
+    Lecture seule ; point d'entrée pour ``apps.fpa`` (variance budget vs réel).
+    Renvoie ``Decimal('0')`` si aucun mouvement. Jamais un import de
+    ``LigneEcriture`` côté FP&A."""
+    prefixes = tuple(str(p) for p in (prefixes or ()))
+    if not prefixes:
+        return Decimal('0')
+    date_debut = date(annee, mois, 1)
+    if mois == 12:
+        date_fin = date(annee, 12, 31)
+    else:
+        date_fin = date(annee, mois + 1, 1) - timedelta(days=1)
+    comptes = grand_livre(
+        company, date_debut=date_debut, date_fin=date_fin,
+        validees_seulement=validees_seulement)
+    total = Decimal('0')
+    for bucket in comptes:
+        if str(bucket['numero']).startswith(prefixes):
+            total += bucket['total_debit'] - bucket['total_credit']
+    return total
