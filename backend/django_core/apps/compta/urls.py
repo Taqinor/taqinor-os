@@ -19,6 +19,7 @@ from .views import (
     portail_mon_releve, portail_mon_releve_pdf, portail_contester_facture,
     AppelTelephoniqueViewSet,
     BaremeIndemniteViewSet, BordereauRemiseViewSet, BudgetViewSet,
+    AcompteISViewSet, ConventionFiscaleViewSet,
     CaisseViewSet, CampagneViewSet, CautionBancaireViewSet, CentreCoutViewSet,
     EnvoiCampagneViewSet, ListeDiffusionViewSet, AbonnementListeViewSet,
     ApprobationEnvoiCampagneViewSet,
@@ -120,6 +121,8 @@ router.register(r'retenues-source', RetenueSourceViewSet)
 router.register(r'timbres-fiscaux', TimbreFiscalViewSet)
 router.register(r'retenues-garantie', RetenueGarantieViewSet)
 router.register(r'cautions-bancaires', CautionBancaireViewSet)
+router.register(r'acomptes-is', AcompteISViewSet)
+router.register(r'conventions-fiscales', ConventionFiscaleViewSet)
 router.register(r'contrats-avancement', ContratAvancementViewSet)
 router.register(r'travaux-en-cours', TravauxEnCoursViewSet)
 router.register(r'commission-payout-runs', CommissionPayoutRunViewSet)
