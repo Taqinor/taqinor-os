@@ -66,6 +66,47 @@ def fiche_credit_client(request, client_id):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
+def exposition_credit(request):
+    """NTCRD19 — rapport d'exposition consolidée (trié par risque). ``?format=
+    xlsx`` renvoie un classeur .xlsx (jamais de ``prix_achat``/marge)."""
+    from django.http import HttpResponse
+
+    from .selectors import rapport_exposition
+
+    lignes = rapport_exposition(request.user.company)
+
+    if request.query_params.get('format') == 'xlsx':
+        from apps.records.xlsx import workbook_bytes
+
+        header = [
+            'Client', 'Encours', 'Limite', 'Disponible', '% utilisé',
+            'Dépasse', 'Score', 'Mode hold', 'Garantie assurance',
+            'Dépasse garantie',
+        ]
+        rows = [
+            [
+                ligne['client_nom'], ligne['encours'], ligne['limite'],
+                ligne['disponible'], ligne['pct_utilise'], ligne['depasse'],
+                ligne['lettre_score'], ligne['mode_hold'],
+                ligne['garantie_assurance'], ligne['depasse_garantie'],
+            ]
+            for ligne in lignes
+        ]
+        content = workbook_bytes(header, rows, sheet_title='exposition_credit')
+        resp = HttpResponse(
+            content,
+            content_type=(
+                'application/vnd.openxmlformats-officedocument.'
+                'spreadsheetml.sheet'))
+        resp['Content-Disposition'] = (
+            'attachment; filename="exposition_credit.xlsx"')
+        return resp
+
+    return Response({'count': len(lignes), 'resultats': lignes})
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def score_credit_client(request, client_id):
     """NTCRD12 — score crédit d'un client (lettre A-E + position vs limite +
     recommandation lisible). Company-scopé, 404 propre hors société."""

@@ -154,6 +154,59 @@ def condition_paiement_client(client):
         company=client.company, segment=segment).first()
 
 
+def rapport_exposition(company, clients=None):
+    """NTCRD19 — rapport d'exposition consolidée : pour tous les clients actifs
+    de ``company`` (ou la liste ``clients`` fournie — NTCRD36 visibilité
+    restreinte), encours réel, limite, disponible, lettre de score et garantie
+    assurance si applicable, trié par RISQUE décroissant (pondération simple
+    documentée : score de la lettre + pct utilisé). Lecture seule.
+
+    Le tri combine deux signaux normalisés (0-1) sans nouvel algorithme opaque :
+    ``risque = lettre_num/4 + min(pct_utilise, 1)`` — une lettre E (num 4) et un
+    dépassement pèsent le plus. Tri stable (id en clé secondaire)."""
+    from apps.crm.selectors import client_base_qs
+    from apps.ventes.selectors import comportement_paiement
+
+    from .models import LimiteCredit
+
+    if clients is None:
+        clients = list(client_base_qs(company))
+
+    lettre_num = {'A': 0, 'B': 1, 'C': 2, 'D': 3, 'E': 4}
+    limites = {
+        lc.client_id: lc
+        for lc in LimiteCredit.objects.filter(company=company, actif=True)
+    }
+
+    lignes = []
+    for client in clients:
+        dispo = disponible_credit(client)
+        score = comportement_paiement(client)
+        quota = quota_assurance_utilise(client)
+        lc = limites.get(client.id)
+        pct = dispo['pct_utilise'] or 0.0
+        risque = lettre_num.get(score['lettre'], 0) / 4.0 + min(pct, 1.0)
+        lignes.append({
+            'client_id': client.id,
+            'client_nom': (f"{client.prenom or ''} {client.nom}".strip()),
+            'encours': dispo['encours'],
+            'limite': dispo['limite'],
+            'disponible': dispo['disponible'],
+            'pct_utilise': dispo['pct_utilise'],
+            'depasse': dispo['depasse'],
+            'lettre_score': score['lettre'],
+            'mode_hold': lc.mode_hold if lc else None,
+            'garantie_assurance': quota['garanti'],
+            'depasse_garantie': quota['depasse_garantie'],
+            '_risque': risque,
+        })
+
+    lignes.sort(key=lambda ligne: (-ligne['_risque'], ligne['client_id']))
+    for ligne in lignes:
+        del ligne['_risque']
+    return lignes
+
+
 def score_credit(client):
     """NTCRD12 — enveloppe fine autour de
     ``apps.ventes.selectors.comportement_paiement`` (jamais réimplémenté ici)

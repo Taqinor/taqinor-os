@@ -23,5 +23,6 @@ urlpatterns = [
          name='credit-fiche-client'),
     path('clients/<int:client_id>/score/', views.score_credit_client,
          name='credit-score-client'),
+    path('exposition/', views.exposition_credit, name='credit-exposition'),
     path('', include(router.urls)),
 ]
