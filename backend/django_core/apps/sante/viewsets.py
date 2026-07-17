@@ -141,6 +141,27 @@ class RendezVousViewSet(CompanyScopedModelViewSet):
             exclude_id=instance.id)
         super().perform_update(serializer)
 
+    @action(detail=True, methods=['post'], url_path='annuler')
+    def annuler(self, request, pk=None):
+        """NTSAN37 — annulation & no-show : `{"annule_par": "patient"|
+        "clinique"}`. Le calcul du délai d'annulation est TOUJOURS correct ;
+        `penalite_applicable` reste `false` tant que
+        `ParametragePenaliteAnnulation.actif` n'est pas explicitement
+        activé par la clinique (jamais de facturation automatique)."""
+        from .services import annuler_rendez_vous
+
+        annule_par = request.data.get('annule_par')
+        if annule_par not in dict(RendezVous.AnnuleParChoix.choices):
+            raise ValidationError(
+                {'annule_par': "Attendu 'patient' ou 'clinique'."})
+
+        rendez_vous = self.get_object()
+        rendez_vous, penalite_applicable = annuler_rendez_vous(
+            rendez_vous, annule_par=annule_par)
+        payload = RendezVousSerializer(rendez_vous).data
+        payload['penalite_applicable'] = penalite_applicable
+        return Response(payload)
+
 
 class HoraireOuverturePraticienViewSet(CompanyScopedModelViewSet):
     """NTSAN30 — horaires d'ouverture hebdomadaires d'un praticien, consommés

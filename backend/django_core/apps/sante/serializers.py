@@ -69,15 +69,21 @@ class RendezVousSerializer(serializers.ModelSerializer):
     statut_display = serializers.CharField(source='get_statut_display', read_only=True)
     patient_nom = serializers.SerializerMethodField()
     praticien_nom = serializers.SerializerMethodField()
+    annule_par_display = serializers.CharField(
+        source='get_annule_par_display', read_only=True)
+    delai_annulation_h = serializers.ReadOnlyField()
 
     class Meta:
         model = RendezVous
         fields = [
             'id', 'patient', 'patient_nom', 'praticien', 'praticien_nom',
             'salle', 'date_heure_debut', 'duree_min', 'type_acte', 'statut',
-            'statut_display', 'motif_court', 'cree_par',
+            'statut_display', 'motif_court', 'cree_par', 'annule_par',
+            'annule_par_display', 'date_annulation', 'delai_annulation_h',
         ]
-        read_only_fields = ['cree_par']
+        read_only_fields = [
+            'cree_par', 'annule_par', 'date_annulation',
+        ]
 
     def get_patient_nom(self, obj):
         return str(obj.patient) if obj.patient_id else None

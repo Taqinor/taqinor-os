@@ -181,6 +181,18 @@ class RendezVous(TenantModel):
         null=True, blank=True, related_name='sante_rdv_crees',
         verbose_name='Créé par')
 
+    # NTSAN37 — annulation & no-show : qui a annulé + horodatage (pour
+    # calculer le délai d'annulation, services.annuler_rendez_vous).
+    class AnnuleParChoix(models.TextChoices):
+        PATIENT = 'patient', 'Patient'
+        CLINIQUE = 'clinique', 'Clinique'
+
+    annule_par = models.CharField(
+        max_length=10, choices=AnnuleParChoix.choices, blank=True, default='',
+        verbose_name='Annulé par')
+    date_annulation = models.DateTimeField(
+        null=True, blank=True, verbose_name="Date et heure d'annulation")
+
     class Meta:
         verbose_name = 'Rendez-vous'
         verbose_name_plural = 'Rendez-vous'
@@ -196,6 +208,15 @@ class RendezVous(TenantModel):
 
     def __str__(self):
         return f'{self.patient_id} @ {self.date_heure_debut}'
+
+    @property
+    def delai_annulation_h(self):
+        """NTSAN37 — délai (heures, arrondi 2 décimales) entre l'annulation
+        et le début du RDV. ``None`` si le RDV n'a pas (encore) été annulé."""
+        if not self.date_annulation:
+            return None
+        delta = self.date_heure_debut - self.date_annulation
+        return round(delta.total_seconds() / 3600, 2)
 
 
 class Admission(TenantModel):
@@ -646,3 +667,43 @@ class MotifConsultation(TenantModel):
 
     def __str__(self):
         return self.libelle
+
+
+class ParametragePenaliteAnnulation(TenantModel):
+    """NTSAN37 — paramétrage (par société) des frais d'annulation tardive.
+    ``actif`` est FAUX PAR DÉFAUT — (DECISION founder) : le calcul du délai
+    d'annulation (``RendezVous.delai_annulation_h``) est TOUJOURS correct,
+    mais AUCUNE facturation de pénalité n'est câblée automatiquement dans ce
+    lot (créer une ``FactureSante`` de pénalité reste une décision distincte
+    du founder, hors périmètre) — ``actif`` ne conditionne ici que le
+    calcul du DROIT à pénalité renvoyé par
+    ``services.annuler_rendez_vous``, jamais un encaissement automatique."""
+
+    actif = models.BooleanField(
+        default=False, verbose_name='Pénalité activée')
+    delai_min_h = models.PositiveIntegerField(
+        default=24,
+        verbose_name="Délai minimum avant RDV (heures) pour éviter la pénalité")
+    montant_penalite_ttc = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0,
+        verbose_name='Montant de la pénalité TTC')
+
+    class Meta:
+        verbose_name = "Paramétrage pénalité d'annulation"
+        verbose_name_plural = "Paramétrages pénalité d'annulation"
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company'],
+                name='sante_parametrage_penalite_unique_par_societe'),
+        ]
+
+    def __str__(self):
+        return f'Pénalité annulation ({self.company_id})'
+
+    @classmethod
+    def get(cls, company):
+        """Renvoie (en la créant si besoin) le paramétrage unique de cette
+        société — toujours ``actif=False`` à la création (jamais activé par
+        défaut, DECISION founder)."""
+        obj, _ = cls.objects.get_or_create(company=company)
+        return obj

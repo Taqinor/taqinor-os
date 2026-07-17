@@ -352,6 +352,43 @@ def enregistrer_paiement(
     return paiement
 
 
+def annuler_rendez_vous(rendez_vous, *, annule_par, date_annulation=None):
+    """NTSAN37 — annule un ``RendezVous`` (statut → ``annule``), pose
+    ``annule_par``/``date_annulation`` et calcule le délai d'annulation
+    (``RendezVous.delai_annulation_h``).
+
+    Frais d'annulation tardive : le calcul du délai est TOUJOURS correct,
+    mais la facturation d'une pénalité reste DÉSACTIVÉE tant que
+    ``ParametragePenaliteAnnulation.actif`` n'est pas explicitement activé
+    par la clinique (jamais activé par défaut — DECISION founder). Ce
+    service ne crée AUCUNE ``FactureSante`` de pénalité (câblage de la
+    facturation réelle hors périmètre de ce lot, décision distincte du
+    founder) : il renvoie seulement ``penalite_applicable`` (bool), un
+    indicateur que l'écran peut afficher.
+
+    Renvoie ``(rendez_vous, penalite_applicable)``."""
+    from django.utils import timezone
+
+    from .models import ParametragePenaliteAnnulation, RendezVous
+
+    date_annulation = date_annulation or timezone.now()
+    rendez_vous.statut = RendezVous.Statut.ANNULE
+    rendez_vous.annule_par = annule_par
+    rendez_vous.date_annulation = date_annulation
+    rendez_vous.save(
+        update_fields=['statut', 'annule_par', 'date_annulation'])
+
+    penalite_applicable = False
+    parametrage = ParametragePenaliteAnnulation.objects.filter(
+        company=rendez_vous.company).first()
+    if parametrage is not None and parametrage.actif:
+        delai_h = rendez_vous.delai_annulation_h
+        if delai_h is not None and delai_h < parametrage.delai_min_h:
+            penalite_applicable = True
+
+    return rendez_vous, penalite_applicable
+
+
 def verifier_prise_en_charge(prise_en_charge, *, user=None):
     """NTSAN12 — à appeler quand une `PriseEnCharge` bascule refusee/expiree :
     journalise (chatter + audit, `records.Activity` via `apps.audit.
