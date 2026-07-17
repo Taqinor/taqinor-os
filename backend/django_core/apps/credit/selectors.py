@@ -62,6 +62,45 @@ def disponible_credit(client):
     }
 
 
+def fiche_credit(client):
+    """NTCRD10 — vue consolidée « fiche crédit client » : limite, encours,
+    disponible, pct utilisé, lettre de score (via
+    ``apps.ventes.selectors.comportement_paiement`` — jamais réimplémenté ici),
+    mode de hold actif, et historique des dérogations. Lecture seule."""
+    from apps.ventes.selectors import comportement_paiement
+
+    from .models import DerogationCredit, LimiteCredit
+
+    dispo = disponible_credit(client)
+    limite_obj = LimiteCredit.objects.filter(client=client, actif=True).first()
+    score = comportement_paiement(client)
+
+    derogations = [
+        {
+            'id': d.id, 'montant_demande': d.montant_demande,
+            'statut': d.statut, 'motif': d.motif,
+            'date_creation': d.date_creation,
+            'date_decision': d.date_decision,
+            'valide_jusqu_au': d.valide_jusqu_au,
+            'est_valide': d.est_valide,
+        }
+        for d in DerogationCredit.objects.filter(client=client)
+    ]
+
+    return {
+        'client_id': client.id,
+        'limite': dispo['limite'],
+        'encours': dispo['encours'],
+        'disponible': dispo['disponible'],
+        'pct_utilise': dispo['pct_utilise'],
+        'depasse': dispo['depasse'],
+        'mode_hold': limite_obj.mode_hold if limite_obj else None,
+        'lettre_score': score['lettre'],
+        'score': score['score'],
+        'derogations': derogations,
+    }
+
+
 def derogation_valide_pour(client, montant):
     """NTCRD9 — vrai si le client a une ``DerogationCredit`` APPROUVEE, non
     expirée, dont le ``montant_demande`` couvre ``montant`` (>= montant de la

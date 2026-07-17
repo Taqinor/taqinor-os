@@ -39,6 +39,25 @@ def ping(request):
     return Response({'app': 'credit', 'status': 'ok'})
 
 
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def fiche_credit_client(request, client_id):
+    """NTCRD10 — fiche crédit consolidée d'un client (limite, encours,
+    disponible, score, mode de hold, dérogations). Client borné société via
+    ``crm.selectors.get_company_client`` (jamais un import de ``crm.models``).
+    404 propre si le client n'existe pas / appartient à une autre société."""
+    from apps.crm.selectors import get_company_client
+
+    from .selectors import fiche_credit
+
+    client = get_company_client(request.user.company, client_id)
+    if client is None:
+        return Response(
+            {'detail': 'Client introuvable.'},
+            status=status.HTTP_404_NOT_FOUND)
+    return Response(fiche_credit(client))
+
+
 class LimiteCreditViewSet(CompanyScopedModelViewSet):
     """NTCRD2 — CRUD limite de crédit par client, company-scopé."""
     queryset = LimiteCredit.objects.select_related('client', 'cree_par').all()
