@@ -483,3 +483,65 @@ class DepenseCharges(TenantModel):
 
     def __str__(self):
         return f'{self.budget_charges} — {self.date} : {self.montant_reel}'
+
+
+class RegularisationCharges(TenantModel):
+    """NTPRO13 — Régularisation annuelle des charges d'un bail (provisions
+    encaissées vs quote-part réelle NTPRO12)."""
+
+    class Sens(models.TextChoices):
+        A_REMBOURSER = 'a_rembourser', 'À rembourser'
+        A_FACTURER = 'a_facturer', 'À facturer'
+        NEUTRE = 'neutre', 'Neutre (solde nul)'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: cascade tenant (purge des données de la société supprimée)
+        related_name='immobilier_regularisations_charges',
+        verbose_name='Société',
+    )
+    bail = models.ForeignKey(
+        Bail, on_delete=models.CASCADE,  # on_delete: cascade parent→enfant (composant du parent)
+        related_name='regularisations_charges',
+        verbose_name='Bail')
+    exercice = models.PositiveIntegerField(verbose_name='Exercice (année)')
+    provisions_encaissees = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0,
+        verbose_name='Provisions encaissées')
+    quote_part_reelle = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0,
+        verbose_name='Quote-part réelle')
+    solde = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0,
+        verbose_name='Solde (provisions - quote-part)')
+    sens = models.CharField(
+        max_length=12, choices=Sens.choices, default=Sens.NEUTRE,
+        verbose_name='Sens')
+    # NTPRO13 — références LÂCHES vers le document ventes émis (jamais les
+    # deux à la fois sur une même régularisation) : `apps.ventes.services`
+    # n'expose aucune primitive générique de création d'« Avoir » autonome
+    # pour un appelant cross-app (le modèle `Avoir` exige un `facture` FK
+    # source non-nul) — seule `creer_facture_classique` est exposée. Le cas
+    # « à rembourser » réutilise donc cette MÊME primitive avec des montants
+    # NÉGATIFS (une facture négative est un mécanisme de crédit déjà toléré
+    # par `Facture`, sans contrainte de positivité) plutôt que d'ajouter une
+    # nouvelle fonction dans `apps.ventes.services` (app EXISTANTE, hors
+    # périmètre de cette session). Voir DONE LOG NTPRO13.
+    facture_ventes_id = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='ID facture ventes (à facturer)')
+    avoir_ventes_id = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='ID avoir ventes (à rembourser — facture négative)')
+    date_emission = models.DateTimeField(
+        null=True, blank=True, verbose_name="Date d'émission du document")
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Régularisation de charges'
+        verbose_name_plural = 'Régularisations de charges'
+        ordering = ['-exercice', '-id']
+        unique_together = [('bail', 'exercice')]
+
+    def __str__(self):
+        return f'{self.bail} — régularisation {self.exercice}'

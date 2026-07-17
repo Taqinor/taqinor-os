@@ -8,7 +8,8 @@ from rest_framework import serializers
 
 from .models import (
     Bail, Batiment, BudgetCharges, DepenseCharges, EcheanceLoyer, Local,
-    Locataire, Niveau, RelanceLoyer, RevisionLoyer, Site,
+    Locataire, Niveau, RegularisationCharges, RelanceLoyer, RevisionLoyer,
+    Site,
 )
 
 
@@ -251,3 +252,25 @@ class DepenseChargesSerializer(serializers.ModelSerializer):
     def validate_budget_charges(self, value):
         _check_same_company(self, value, 'budget_charges')
         return value
+
+
+class RegularisationChargesSerializer(serializers.ModelSerializer):
+    """NTPRO13 — Régularisation annuelle des charges d'un bail (LECTURE
+    SEULE côté API : une ligne naît TOUJOURS de `generer_regularisation`,
+    jamais d'un POST libre)."""
+    sens_display = serializers.CharField(
+        source='get_sens_display', read_only=True)
+    bail_local_reference = serializers.CharField(
+        source='bail.local.reference', read_only=True)
+    bail_locataire_nom = serializers.CharField(
+        source='bail.locataire.nom', read_only=True)
+
+    class Meta:
+        model = RegularisationCharges
+        fields = [
+            'id', 'bail', 'bail_local_reference', 'bail_locataire_nom',
+            'exercice', 'provisions_encaissees', 'quote_part_reelle',
+            'solde', 'sens', 'sens_display', 'facture_ventes_id',
+            'avoir_ventes_id', 'date_emission', 'date_creation', 'company',
+        ]
+        read_only_fields = fields

@@ -13,13 +13,13 @@ from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
     Bail, Batiment, BudgetCharges, DepenseCharges, EcheanceLoyer, Local,
-    Locataire, Niveau, RelanceLoyer, Site,
+    Locataire, Niveau, RegularisationCharges, RelanceLoyer, Site,
 )
 from .serializers import (
     BailSerializer, BatimentSerializer, BudgetChargesSerializer,
     DepenseChargesSerializer, EcheanceLoyerSerializer, LocalSerializer,
-    LocataireSerializer, NiveauSerializer, RelanceLoyerSerializer,
-    RevisionLoyerSerializer, SiteSerializer,
+    LocataireSerializer, NiveauSerializer, RegularisationChargesSerializer,
+    RelanceLoyerSerializer, RevisionLoyerSerializer, SiteSerializer,
 )
 
 
@@ -89,6 +89,24 @@ class BatimentViewSet(_ImmobilierBaseViewSet):
                 status=status.HTTP_400_BAD_REQUEST)
         data = services.repartir_charges(batiment, int(exercice))
         return Response(data)
+
+    @action(detail=True, methods=['post'], url_path='generer-regularisation',
+            permission_classes=[ScopedPermission])
+    def generer_regularisation(self, request, pk=None):
+        """NTPRO13 — Génère/recalcule la régularisation annuelle des charges
+        de chaque bail actif du bâtiment pour ``exercice`` (idempotent)."""
+        from . import services
+
+        batiment = self.get_object()
+        exercice = request.data.get('exercice')
+        if not exercice:
+            return Response(
+                {'detail': 'exercice est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        resultats = services.generer_regularisation(batiment, int(exercice))
+        return Response(
+            RegularisationChargesSerializer(resultats, many=True).data,
+            status=status.HTTP_201_CREATED)
 
 
 class NiveauViewSet(_ImmobilierBaseViewSet):
@@ -383,6 +401,54 @@ class DepenseChargesViewSet(_ImmobilierBaseViewSet):
         if budget_id:
             qs = qs.filter(budget_charges_id=budget_id)
         return qs
+
+
+class RegularisationChargesViewSet(_ImmobilierBaseViewSet):
+    """NTPRO13 — Régularisations de charges (LECTURE seule côté API : une
+    ligne naît TOUJOURS de `batiments/{id}/generer-regularisation/`)."""
+    queryset = RegularisationCharges.objects.select_related(
+        'bail', 'bail__local', 'bail__locataire').all()
+    serializer_class = RegularisationChargesSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['exercice', 'date_creation']
+    http_method_names = ['get', 'head', 'options', 'post']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        bail_id = self.request.query_params.get('bail')
+        exercice = self.request.query_params.get('exercice')
+        sens = self.request.query_params.get('sens')
+        if bail_id:
+            qs = qs.filter(bail_id=bail_id)
+        if exercice:
+            qs = qs.filter(exercice=exercice)
+        if sens:
+            qs = qs.filter(sens=sens)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        # Aucune création directe : une RegularisationCharges naît TOUJOURS
+        # de `batiments/{id}/generer-regularisation/`.
+        return Response(
+            {'detail': "Utiliser batiments/{id}/generer-regularisation/."},
+            status=status.HTTP_405_METHOD_NOT_ALLOWED)
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[ScopedPermission])
+    def emettre(self, request, pk=None):
+        """NTPRO13 — Émet le document ventes (facture ou avoir) correspondant
+        au sens de la régularisation. Neutre → aucun document, 200 no-op."""
+        from . import services
+
+        regularisation = self.get_object()
+        try:
+            document_id = services.emettre_regularisation(regularisation)
+        except services.ClientVentesIntrouvableError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        data = self.get_serializer(regularisation).data
+        data['document_ventes_id'] = document_id
+        return Response(data, status=status.HTTP_200_OK)
 
 
 class RelanceLoyerViewSet(_ImmobilierBaseViewSet):

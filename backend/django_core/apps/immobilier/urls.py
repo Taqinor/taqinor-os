@@ -4,7 +4,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     BailViewSet, BatimentViewSet, BudgetChargesViewSet, DepenseChargesViewSet,
     EcheanceLoyerViewSet, LocalViewSet, LocataireViewSet, NiveauViewSet,
-    RelanceLoyerViewSet, SiteViewSet,
+    RegularisationChargesViewSet, RelanceLoyerViewSet, SiteViewSet,
 )
 
 router = DefaultRouter()
@@ -18,6 +18,7 @@ router.register(r'echeances-loyer', EcheanceLoyerViewSet)
 router.register(r'relances-loyer', RelanceLoyerViewSet)
 router.register(r'budgets-charges', BudgetChargesViewSet)
 router.register(r'depenses-charges', DepenseChargesViewSet)
+router.register(r'regularisations-charges', RegularisationChargesViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

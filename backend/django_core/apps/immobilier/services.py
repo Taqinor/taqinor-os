@@ -418,3 +418,141 @@ def repartir_charges(batiment, exercice):
         'mode_repartition': batiment.mode_repartition,
         'par_local': par_local,
     }
+
+
+def generer_regularisation(batiment, exercice):
+    """NTPRO13 — Compare, par bail actif de ``batiment`` sur ``exercice``, les
+    provisions de charges ENCAISSÉES (Σ ``EcheanceLoyer.montant_charges``
+    émises/payées/relancées de l'année) à la quote-part RÉELLE (NTPRO12,
+    ``repartir_charges``) → une ``RegularisationCharges`` par bail (jamais
+    deux fois le même bail — ``update_or_create`` sur (bail, exercice),
+    IDEMPOTENT : relancer ne touche jamais un document déjà émis, seulement
+    les montants recalculés).
+
+    Un local occupé par PLUSIEURS baux successifs la même année (turnover en
+    cours d'exercice) reçoit sa quote-part attribuée à CHAQUE bail (limite
+    documentée — cas non couvert par ce lot). Renvoie la liste des
+    ``RegularisationCharges`` créées/mises à jour."""
+    from decimal import Decimal
+
+    from .models import EcheanceLoyer, RegularisationCharges
+
+    repartition = repartir_charges(batiment, exercice)
+    quote_part_par_local = {
+        row['local_id']: row['quote_part'] for row in repartition['par_local']
+    }
+
+    echeances = (
+        EcheanceLoyer.objects
+        .filter(
+            bail__local__niveau__batiment=batiment,
+            periode_debut__year=exercice,
+            statut__in=[
+                EcheanceLoyer.Statut.EMISE, EcheanceLoyer.Statut.PAYEE,
+                EcheanceLoyer.Statut.RELANCEE,
+            ],
+        )
+        .select_related('bail')
+    )
+
+    provisions_par_bail = {}
+    local_par_bail = {}
+    for echeance in echeances:
+        provisions_par_bail[echeance.bail_id] = (
+            provisions_par_bail.get(echeance.bail_id, Decimal('0'))
+            + echeance.montant_charges
+        )
+        local_par_bail[echeance.bail_id] = echeance.bail.local_id
+
+    resultats = []
+    for bail_id, provisions in provisions_par_bail.items():
+        quote_part = quote_part_par_local.get(
+            local_par_bail[bail_id], Decimal('0'))
+        solde = provisions - quote_part
+        if solde > 0:
+            sens = RegularisationCharges.Sens.A_REMBOURSER
+        elif solde < 0:
+            sens = RegularisationCharges.Sens.A_FACTURER
+        else:
+            sens = RegularisationCharges.Sens.NEUTRE
+
+        regularisation, _ = RegularisationCharges.objects.update_or_create(
+            company=batiment.company, bail_id=bail_id, exercice=exercice,
+            defaults={
+                'provisions_encaissees': provisions,
+                'quote_part_reelle': quote_part,
+                'solde': solde,
+                'sens': sens,
+            })
+        resultats.append(regularisation)
+
+    return resultats
+
+
+@transaction.atomic
+def emettre_regularisation(regularisation):
+    """NTPRO13 — Émet le document ventes de ``regularisation`` selon son
+    ``sens`` : une facture complémentaire (``a_facturer``) ou un « avoir »
+    (``a_rembourser`` — voir la note sur `RegularisationCharges` : réutilise
+    ``creer_facture_classique`` avec des montants NÉGATIFS, faute d'une
+    primitive dédiée exposée par ``apps.ventes.services``). ``neutre`` ne crée
+    RIEN. IDEMPOTENT sous verrou de ligne : un document déjà émis n'est jamais
+    recréé, jamais dupliqué en un second type. Renvoie l'id du document créé
+    (ou déjà existant), ou ``None`` pour un solde neutre."""
+    from decimal import Decimal
+
+    from django.utils import timezone
+
+    from .models import RegularisationCharges
+
+    locked = RegularisationCharges.objects.select_for_update().get(
+        pk=regularisation.pk)
+    if locked.facture_ventes_id or locked.avoir_ventes_id:
+        regularisation.facture_ventes_id = locked.facture_ventes_id
+        regularisation.avoir_ventes_id = locked.avoir_ventes_id
+        return locked.facture_ventes_id or locked.avoir_ventes_id
+
+    if locked.sens == RegularisationCharges.Sens.NEUTRE:
+        return None
+
+    bail = locked.bail
+    locataire = bail.locataire
+    client_id = locataire.client_ventes_id
+    if not client_id:
+        client_id = resolve_client_ventes_for_locataire(locataire)
+    if not client_id:
+        raise ClientVentesIntrouvableError(
+            f'Aucun client ventes résolu pour le locataire {locataire}.')
+
+    from apps.crm.selectors import get_company_client
+    client = get_company_client(locked.company, client_id)
+    if client is None:
+        raise ClientVentesIntrouvableError(
+            f'Client ventes {client_id} introuvable pour cette société.')
+
+    from apps.ventes.services import creer_facture_classique
+
+    libelle = f'Régularisation charges {locked.exercice} — {bail.local}'
+    montant_abs = abs(locked.solde)
+
+    if locked.sens == RegularisationCharges.Sens.A_FACTURER:
+        facture = creer_facture_classique(
+            company=locked.company, client=client, user=None,
+            taux_tva=Decimal('0'), montant_ht=montant_abs,
+            montant_tva=Decimal('0'), montant_ttc=montant_abs,
+            libelle=libelle)
+        RegularisationCharges.objects.filter(pk=locked.pk).update(
+            facture_ventes_id=facture.id, date_emission=timezone.now())
+        regularisation.facture_ventes_id = facture.id
+        return facture.id
+
+    montant_negatif = -montant_abs
+    avoir = creer_facture_classique(
+        company=locked.company, client=client, user=None,
+        taux_tva=Decimal('0'), montant_ht=montant_negatif,
+        montant_tva=Decimal('0'), montant_ttc=montant_negatif,
+        libelle=f'AVOIR — {libelle}')
+    RegularisationCharges.objects.filter(pk=locked.pk).update(
+        avoir_ventes_id=avoir.id, date_emission=timezone.now())
+    regularisation.avoir_ventes_id = avoir.id
+    return avoir.id
