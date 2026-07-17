@@ -8,9 +8,14 @@ from rest_framework.views import APIView
 from authentication.permissions import IsResponsableOrAdmin
 from core.viewsets import CompanyScopedModelViewSet
 
-from .models import DerogationCredit, LimiteCredit, ReglageCredit
+from .models import (
+    ConditionPaiementSegment, DerogationCredit, LimiteCredit, ReglageCredit,
+    SegmentClientCredit,
+)
 from .serializers import (
-    DerogationCreditSerializer, LimiteCreditSerializer, ReglageCreditSerializer,
+    ConditionPaiementSegmentSerializer, DerogationCreditSerializer,
+    LimiteCreditSerializer, ReglageCreditSerializer,
+    SegmentClientCreditSerializer,
 )
 
 
@@ -141,3 +146,27 @@ class DerogationCreditViewSet(CompanyScopedModelViewSet):
         rejeter_derogation(derogation, request.user)
         return Response(
             self.get_serializer(derogation).data, status=status.HTTP_200_OK)
+
+
+class ConditionPaiementSegmentViewSet(CompanyScopedModelViewSet):
+    """NTCRD13/15 — CRUD des conditions de paiement par segment. Lecture
+    ouverte à tout authentifié ; écriture réservée Directeur/Administrateur."""
+    queryset = ConditionPaiementSegment.objects.all()
+    serializer_class = ConditionPaiementSegmentSerializer
+
+    def get_permissions(self):
+        if self.action in ('create', 'update', 'partial_update', 'destroy'):
+            return [IsDirecteurOrAdmin()]
+        return super().get_permissions()
+
+
+class SegmentClientCreditViewSet(CompanyScopedModelViewSet):
+    """NTCRD13 — affectation d'un client à un segment crédit. Écriture réservée
+    Directeur/Administrateur."""
+    queryset = SegmentClientCredit.objects.select_related('client').all()
+    serializer_class = SegmentClientCreditSerializer
+
+    def get_permissions(self):
+        if self.action in ('create', 'update', 'partial_update', 'destroy'):
+            return [IsDirecteurOrAdmin()]
+        return super().get_permissions()

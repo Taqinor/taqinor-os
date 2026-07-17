@@ -96,6 +96,62 @@ class ReglageCredit(models.Model):
             return cls(company=company)
 
 
+class ConditionPaiementSegment(models.Model):
+    """NTCRD13 — conditions de paiement par segment client.
+
+    ``segment`` est un TEXTE LIBRE (``Client.segment`` NTSRV10 n'existe pas
+    encore — repli additif) : le résolveur choisit la condition du segment du
+    client, sinon repli sur les réglages société actuels (AUCUN changement du
+    comportement par défaut). ``mode_hold_override`` permet à un segment « grand
+    compte » d'être plus permissif que le défaut société."""
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='conditions_paiement_segment')
+    segment = models.CharField(max_length=100)
+    delai_paiement_jours = models.PositiveIntegerField(default=0)
+    pct_acompte_defaut = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        help_text="% d'acompte par défaut pour ce segment (vide = défaut société).")
+    mode_hold_override = models.CharField(
+        max_length=20, choices=LimiteCredit.ModeHold.choices,
+        blank=True, default='',
+        help_text='Surcharge le mode de hold pour ce segment (vide = défaut société).')
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Condition de paiement par segment'
+        verbose_name_plural = 'Conditions de paiement par segment'
+        unique_together = [('company', 'segment')]
+        ordering = ['segment']
+
+    def __str__(self):
+        return f'{self.segment} — {self.delai_paiement_jours} j'
+
+
+class SegmentClientCredit(models.Model):
+    """NTCRD13 — affectation locale d'un client à un segment crédit (repli
+    additif tant que ``Client.segment`` NTSRV10 n'existe pas). Un client sans
+    affectation = aucun segment = comportement société par défaut inchangé."""
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='segments_client_credit')
+    client = models.OneToOneField(
+        'crm.Client', on_delete=models.CASCADE,
+        related_name='segment_credit')
+    segment = models.CharField(max_length=100)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Segment crédit du client'
+        verbose_name_plural = 'Segments crédit des clients'
+
+    def __str__(self):
+        return f'{self.client_id} → {self.segment}'
+
+
 class DerogationCredit(models.Model):
     """NTCRD9 — dérogation crédit : demande → approbation/rejet Directeur/
     Administrateur. Reprend le PATTERN (jamais le modèle) de

@@ -7,6 +7,10 @@ router = DefaultRouter()
 router.register(r'limites', views.LimiteCreditViewSet, basename='limitecredit')
 router.register(r'derogations', views.DerogationCreditViewSet,
                 basename='derogationcredit')
+router.register(r'conditions-segment', views.ConditionPaiementSegmentViewSet,
+                basename='conditionpaiementsegment')
+router.register(r'segments-client', views.SegmentClientCreditViewSet,
+                basename='segmentclientcredit')
 
 urlpatterns = [
     path('ping/', views.ping, name='credit-ping'),

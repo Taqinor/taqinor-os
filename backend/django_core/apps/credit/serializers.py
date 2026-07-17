@@ -1,7 +1,10 @@
 """apps.credit.serializers — peuplé tâche par tâche."""
 from rest_framework import serializers
 
-from .models import DerogationCredit, LimiteCredit, ReglageCredit
+from .models import (
+    ConditionPaiementSegment, DerogationCredit, LimiteCredit, ReglageCredit,
+    SegmentClientCredit,
+)
 
 
 class LimiteCreditSerializer(serializers.ModelSerializer):
@@ -24,6 +27,23 @@ class ReglageCreditSerializer(serializers.ModelSerializer):
             'date_creation', 'date_modification',
         ]
         read_only_fields = ['id', 'date_creation', 'date_modification']
+
+
+class ConditionPaiementSegmentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ConditionPaiementSegment
+        fields = [
+            'id', 'segment', 'delai_paiement_jours', 'pct_acompte_defaut',
+            'mode_hold_override', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['id', 'date_creation', 'date_modification']
+
+
+class SegmentClientCreditSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SegmentClientCredit
+        fields = ['id', 'client', 'segment', 'date_modification']
+        read_only_fields = ['id', 'date_modification']
 
 
 class DerogationCreditSerializer(serializers.ModelSerializer):

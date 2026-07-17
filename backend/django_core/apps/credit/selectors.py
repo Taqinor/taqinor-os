@@ -101,6 +101,30 @@ def fiche_credit(client):
     }
 
 
+def segment_du_client(client):
+    """NTCRD13 — segment crédit affecté à un client (repli local
+    ``SegmentClientCredit``), ou ``None`` si aucun (comportement société par
+    défaut inchangé)."""
+    from .models import SegmentClientCredit
+
+    lien = SegmentClientCredit.objects.filter(client=client).first()
+    return lien.segment if lien else None
+
+
+def condition_paiement_client(client):
+    """NTCRD13 — condition de paiement résolue pour un client : la
+    ``ConditionPaiementSegment`` de son segment si présent, sinon ``None``
+    (l'appelant retombe alors sur les réglages société actuels — AUCUN
+    changement du comportement par défaut). Lecture seule."""
+    from .models import ConditionPaiementSegment
+
+    segment = segment_du_client(client)
+    if not segment:
+        return None
+    return ConditionPaiementSegment.objects.filter(
+        company=client.company, segment=segment).first()
+
+
 def score_credit(client):
     """NTCRD12 — enveloppe fine autour de
     ``apps.ventes.selectors.comportement_paiement`` (jamais réimplémenté ici)
