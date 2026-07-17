@@ -4126,13 +4126,16 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       // WJ123 — INDUSTRIAL v2: shifts + weekend + context (webhook whitelist QX51).
       // `weekend` is a SEPARATE boolean, never a 5th shift value.
       equipes: (mode === 'industriel' || mode === 'professionnel') ? (equipes || undefined) : undefined,
-      weekend: (mode === 'industriel' || mode === 'professionnel') ? (($('mt-weekend') as HTMLInputElement | null)?.checked === true) : undefined,
-      cosPhiConnu: num('mt-cos-phi') ?? undefined,
-      groupeKva: num('mt-groupe-kva') ?? undefined,
-      dieselDhMois: num('mt-diesel-dh') ?? undefined,
-      surfaceToitureM2: num('mt-surface-m2') ?? undefined,
-      ombriere: surfaceType === 'ombriere' ? true : undefined,
-      terrain: surfaceType === 'terrain' ? true : undefined,
+      weekend: (mode === 'industriel' || mode === 'professionnel') && (($('mt-weekend') as HTMLInputElement | null)?.checked === true) ? true : undefined,
+      cosPhiConnu: (mode === 'industriel' || mode === 'professionnel') ? (num('mt-cos-phi') ?? undefined) : undefined,
+      groupeKva: (mode === 'industriel' || mode === 'professionnel') ? (num('mt-groupe-kva') ?? undefined) : undefined,
+      dieselDhMois: (mode === 'industriel' || mode === 'professionnel') ? (num('mt-diesel-dh') ?? undefined) : undefined,
+      // surface_toiture_m2 = roof surface in the strict sense (the backend
+      // distinguishes ground: webhooks.py:303-304) — only send it for a real roof;
+      // ombrière/terrain are described by their booleans, never a fake roof.
+      surfaceToitureM2: (mode === 'industriel' || mode === 'professionnel') && (surfaceType === 'bac_acier' || surfaceType === 'terrasse') ? (num('mt-surface-m2') ?? undefined) : undefined,
+      ombriere: (mode === 'industriel' || mode === 'professionnel') && surfaceType === 'ombriere' ? true : undefined,
+      terrain: (mode === 'industriel' || mode === 'professionnel') && surfaceType === 'terrain' ? true : undefined,
       // QX — AGRICULTURAL sub-panel (pumping).
       waterSource: waterSource || undefined,
       profondeurM: num('mt-profondeur') ?? undefined,

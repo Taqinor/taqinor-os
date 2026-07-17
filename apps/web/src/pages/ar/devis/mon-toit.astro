@@ -3799,13 +3799,16 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       // WJ123 — mode INDUSTRIEL v2 : équipes + weekend + contexte (liste blanche
       // webhook QX51). `weekend` est un booléen SÉPARÉ, jamais une 5e équipe.
       equipes: (mode === 'industriel' || mode === 'professionnel') ? (equipes || undefined) : undefined,
-      weekend: (mode === 'industriel' || mode === 'professionnel') ? (($('mt-weekend') as HTMLInputElement | null)?.checked === true) : undefined,
-      cosPhiConnu: num('mt-cos-phi') ?? undefined,
-      groupeKva: num('mt-groupe-kva') ?? undefined,
-      dieselDhMois: num('mt-diesel-dh') ?? undefined,
-      surfaceToitureM2: num('mt-surface-m2') ?? undefined,
-      ombriere: surfaceType === 'ombriere' ? true : undefined,
-      terrain: surfaceType === 'terrain' ? true : undefined,
+      weekend: (mode === 'industriel' || mode === 'professionnel') && (($('mt-weekend') as HTMLInputElement | null)?.checked === true) ? true : undefined,
+      cosPhiConnu: (mode === 'industriel' || mode === 'professionnel') ? (num('mt-cos-phi') ?? undefined) : undefined,
+      groupeKva: (mode === 'industriel' || mode === 'professionnel') ? (num('mt-groupe-kva') ?? undefined) : undefined,
+      dieselDhMois: (mode === 'industriel' || mode === 'professionnel') ? (num('mt-diesel-dh') ?? undefined) : undefined,
+      // surface_toiture_m2 = surface de TOIT au sens strict (le backend distingue
+      // le sol : webhooks.py:303-304) — ne l'envoyer que pour une vraie toiture ;
+      // ombrière/terrain sont décrits par leurs booléens, jamais une fausse toiture.
+      surfaceToitureM2: (mode === 'industriel' || mode === 'professionnel') && (surfaceType === 'bac_acier' || surfaceType === 'terrasse') ? (num('mt-surface-m2') ?? undefined) : undefined,
+      ombriere: (mode === 'industriel' || mode === 'professionnel') && surfaceType === 'ombriere' ? true : undefined,
+      terrain: (mode === 'industriel' || mode === 'professionnel') && surfaceType === 'terrain' ? true : undefined,
       // QX — sous-panneau AGRICOLE (pompage).
       waterSource: waterSource || undefined,
       profondeurM: num('mt-profondeur') ?? undefined,
