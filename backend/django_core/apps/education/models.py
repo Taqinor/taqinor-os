@@ -737,3 +737,49 @@ class ParametresEducation(models.Model):
     def get(cls, company):
         obj, _ = cls.objects.get_or_create(company=company)
         return obj
+
+
+# =============================================================================
+# NTEDU21 — Emploi du temps par classe.
+# =============================================================================
+
+class CreneauEmploiDuTemps(TenantModel):
+    """NTEDU21 — créneau hebdomadaire récurrent d'une classe. Un conflit
+    (même classe, même enseignant ou même salle sur un créneau qui chevauche
+    déjà un autre créneau ACTIF) est REJETÉ EN AMONT par
+    ``services.verifier_conflit_creneau`` (jamais un 500 — la base ne porte
+    aucune contrainte d'exclusion, la garde est applicative, comme
+    ``GrilleTarifaireViewSet._guard_doublon``). Matérialisé en ``Seance``
+    (NTEDU12) chaque semaine par NTEDU22 (``services_planning.
+    generer_seances_semaine``), fériés exclus."""
+
+    class JourSemaine(models.IntegerChoices):
+        LUNDI = 0, 'Lundi'
+        MARDI = 1, 'Mardi'
+        MERCREDI = 2, 'Mercredi'
+        JEUDI = 3, 'Jeudi'
+        VENDREDI = 4, 'Vendredi'
+        SAMEDI = 5, 'Samedi'
+        DIMANCHE = 6, 'Dimanche'
+
+    classe = models.ForeignKey(
+        Classe, on_delete=models.CASCADE,  # on_delete: composition (parent-enfant)
+        related_name='creneaux_emploi_du_temps', verbose_name='Classe')
+    matiere_classe = models.ForeignKey(
+        MatiereClasse, on_delete=models.CASCADE,  # on_delete: composition (parent-enfant)
+        related_name='creneaux_emploi_du_temps', verbose_name='Matière de classe')
+    jour_semaine = models.PositiveSmallIntegerField(
+        choices=JourSemaine.choices, verbose_name='Jour de la semaine')
+    heure_debut = models.TimeField(verbose_name='Heure de début')
+    heure_fin = models.TimeField(verbose_name='Heure de fin')
+    salle = models.CharField(
+        max_length=50, blank=True, default='', verbose_name='Salle')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+
+    class Meta:
+        verbose_name = 'Créneau emploi du temps'
+        verbose_name_plural = 'Créneaux emploi du temps'
+        ordering = ['jour_semaine', 'heure_debut']
+
+    def __str__(self):
+        return f"{self.classe} — {self.get_jour_semaine_display()} {self.heure_debut}"

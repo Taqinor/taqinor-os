@@ -14,16 +14,17 @@ from core.mixins import TenantMixin
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
-    AnneeScolaire, Classe, EcheancierScolarite, Eleve, Evaluation, Famille,
-    GrilleTarifaire, Inscription, Matiere, MatiereClasse, Niveau, Note,
-    ParametresEducation, Presence, Remise, Seance)
+    AnneeScolaire, Classe, CreneauEmploiDuTemps, EcheancierScolarite, Eleve,
+    Evaluation, Famille, GrilleTarifaire, Inscription, Matiere,
+    MatiereClasse, Niveau, Note, ParametresEducation, Presence, Remise,
+    Seance)
 from .serializers import (
-    AnneeScolaireSerializer, ClasseSerializer, EcheancierScolariteSerializer,
-    EleveSerializer, EvaluationSerializer, FamilleSerializer,
-    GrilleTarifaireSerializer, InscriptionSerializer, MatiereClasseSerializer,
-    MatiereSerializer, NiveauSerializer, NoteSerializer,
-    ParametresEducationSerializer, PresenceSerializer, RemiseSerializer,
-    SeanceSerializer)
+    AnneeScolaireSerializer, ClasseSerializer, CreneauEmploiDuTempsSerializer,
+    EcheancierScolariteSerializer, EleveSerializer, EvaluationSerializer,
+    FamilleSerializer, GrilleTarifaireSerializer, InscriptionSerializer,
+    MatiereClasseSerializer, MatiereSerializer, NiveauSerializer,
+    NoteSerializer, ParametresEducationSerializer, PresenceSerializer,
+    RemiseSerializer, SeanceSerializer)
 
 
 class AnneeScolaireViewSet(CompanyScopedModelViewSet):
@@ -463,3 +464,58 @@ class ParametresEducationViewSet(CompanyScopedModelViewSet):
         serializer.is_valid(raise_exception=True)
         serializer.save(company=company)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+# =============================================================================
+# NTEDU21 — Emploi du temps par classe.
+# =============================================================================
+
+class CreneauEmploiDuTempsViewSet(CompanyScopedModelViewSet):
+    """NTEDU21 — un conflit (classe/enseignant/salle sur un créneau qui
+    chevauche déjà un autre créneau actif) est REJETÉ en 400 EXPLICITE par
+    ``services_planning.verifier_conflit_creneau`` (jamais un 500 — même
+    patron que ``GrilleTarifaireViewSet``)."""
+
+    queryset = CreneauEmploiDuTemps.objects.select_related(
+        'classe', 'matiere_classe__matiere', 'matiere_classe__enseignant').all()
+    serializer_class = CreneauEmploiDuTempsSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        classe_id = self.request.query_params.get('classe')
+        if classe_id:
+            qs = qs.filter(classe_id=classe_id)
+        return qs
+
+    def perform_create(self, serializer):
+        """Conflit vérifié EN AMONT sur une instance NON SAUVEGARDÉE — jamais
+        un créer-puis-annuler (même patron que ``GrilleTarifaireViewSet.
+        _guard_doublon``)."""
+        from .services_planning import verifier_conflit_creneau
+
+        data = serializer.validated_data
+        candidat = CreneauEmploiDuTemps(
+            company=self.request.user.company, classe=data['classe'],
+            matiere_classe=data['matiere_classe'],
+            jour_semaine=data['jour_semaine'], heure_debut=data['heure_debut'],
+            heure_fin=data['heure_fin'], salle=data.get('salle', ''),
+            actif=data.get('actif', True))
+        verifier_conflit_creneau(candidat)
+        super().perform_create(serializer)
+
+    def perform_update(self, serializer):
+        from .services_planning import verifier_conflit_creneau
+
+        instance = serializer.instance
+        data = serializer.validated_data
+        candidat = CreneauEmploiDuTemps(
+            pk=instance.pk, company=instance.company,
+            classe=data.get('classe', instance.classe),
+            matiere_classe=data.get('matiere_classe', instance.matiere_classe),
+            jour_semaine=data.get('jour_semaine', instance.jour_semaine),
+            heure_debut=data.get('heure_debut', instance.heure_debut),
+            heure_fin=data.get('heure_fin', instance.heure_fin),
+            salle=data.get('salle', instance.salle),
+            actif=data.get('actif', instance.actif))
+        verifier_conflit_creneau(candidat)
+        super().perform_update(serializer)

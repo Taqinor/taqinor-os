@@ -15,9 +15,9 @@ from rest_framework.test import APIClient
 from authentication.models import Company
 
 from .models import (
-    AnneeScolaire, Classe, Eleve, Evaluation, Famille, GrilleTarifaire,
-    Inscription, Matiere, MatiereClasse, Niveau, Note, ParametresEducation,
-    Presence, Remise, Seance)
+    AnneeScolaire, Classe, CreneauEmploiDuTemps, Eleve, Evaluation, Famille,
+    GrilleTarifaire, Inscription, Matiere, MatiereClasse, Niveau, Note,
+    ParametresEducation, Presence, Remise, Seance)
 from .services import affecter_classe, valider_inscription
 
 User = get_user_model()
@@ -642,3 +642,72 @@ class NTEDU19ParametresEducationTests(EducationTestCaseMixin, TestCase):
         self.assertEqual(response_patch.status_code, 200, response_patch.content)
         self.assertEqual(
             ParametresEducation.get(self.company).nombre_echeances_defaut, 8)
+
+
+class NTEDU21EmploiDuTempsTests(EducationTestCaseMixin, TestCase):
+    """NTEDU21 — conflit de créneau (classe/enseignant/salle) rejeté en 400."""
+
+    def setUp(self):
+        super().setUp()
+        from apps.rh.models import DossierEmploye
+
+        self.matiere = Matiere.objects.create(company=self.company, nom='Maths')
+        self.prof = DossierEmploye.objects.create(
+            company=self.company, matricule='PROF-1', nom='P', prenom='P')
+        self.classe2 = Classe.objects.create(
+            company=self.company, annee_scolaire=self.annee,
+            niveau=self.niveau_cp, nom='CP B', capacite_max=30)
+        self.mc1 = MatiereClasse.objects.create(
+            company=self.company, classe=self.classe, matiere=self.matiere,
+            enseignant=self.prof)
+        self.mc2 = MatiereClasse.objects.create(
+            company=self.company, classe=self.classe2, matiere=self.matiere,
+            enseignant=self.prof)
+
+    def test_meme_enseignant_deux_classes_meme_creneau_est_refuse(self):
+        url = '/api/django/education/emploi-du-temps/'
+        payload1 = {
+            'classe': self.classe.id, 'matiere_classe': self.mc1.id,
+            'jour_semaine': 0, 'heure_debut': '08:00', 'heure_fin': '09:00',
+        }
+        response1 = self.client.post(url, payload1, format='json')
+        self.assertEqual(response1.status_code, 201, response1.content)
+
+        payload2 = {
+            'classe': self.classe2.id, 'matiere_classe': self.mc2.id,
+            'jour_semaine': 0, 'heure_debut': '08:30', 'heure_fin': '09:30',
+        }
+        response2 = self.client.post(url, payload2, format='json')
+        self.assertEqual(response2.status_code, 400, response2.content)
+        self.assertIn('enseignant', response2.data['detail'].lower())
+
+    def test_creneaux_non_chevauchants_meme_enseignant_ok(self):
+        url = '/api/django/education/emploi-du-temps/'
+        payload1 = {
+            'classe': self.classe.id, 'matiere_classe': self.mc1.id,
+            'jour_semaine': 0, 'heure_debut': '08:00', 'heure_fin': '09:00',
+        }
+        response1 = self.client.post(url, payload1, format='json')
+        self.assertEqual(response1.status_code, 201, response1.content)
+
+        payload2 = {
+            'classe': self.classe2.id, 'matiere_classe': self.mc2.id,
+            'jour_semaine': 0, 'heure_debut': '09:00', 'heure_fin': '10:00',
+        }
+        response2 = self.client.post(url, payload2, format='json')
+        self.assertEqual(response2.status_code, 201, response2.content)
+
+    def test_filtre_par_classe(self):
+        CreneauEmploiDuTemps.objects.create(
+            company=self.company, classe=self.classe,
+            matiere_classe=self.mc1, jour_semaine=0,
+            heure_debut=time(8, 0), heure_fin=time(9, 0))
+        CreneauEmploiDuTemps.objects.create(
+            company=self.company, classe=self.classe2,
+            matiere_classe=self.mc2, jour_semaine=0,
+            heure_debut=time(9, 0), heure_fin=time(10, 0))
+
+        url = f'/api/django/education/emploi-du-temps/?classe={self.classe.id}'
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(len(response.data), 1)

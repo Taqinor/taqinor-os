@@ -2,9 +2,10 @@
 from rest_framework import serializers
 
 from .models import (
-    AnneeScolaire, Classe, EcheancierScolarite, Eleve, Evaluation, Famille,
-    GrilleTarifaire, Inscription, LigneEcheance, Matiere, MatiereClasse,
-    Niveau, Note, ParametresEducation, Presence, Remise, Seance)
+    AnneeScolaire, Classe, CreneauEmploiDuTemps, EcheancierScolarite, Eleve,
+    Evaluation, Famille, GrilleTarifaire, Inscription, LigneEcheance,
+    Matiere, MatiereClasse, Niveau, Note, ParametresEducation, Presence,
+    Remise, Seance)
 
 
 class AnneeScolaireSerializer(serializers.ModelSerializer):
@@ -175,4 +176,17 @@ class ParametresEducationSerializer(serializers.ModelSerializer):
             'id', 'nombre_echeances_defaut', 'taux_remise_fratrie_defaut',
             'grille_mentions', 'delai_relance_impaye_jours', 'devise',
             'notifier_incidents_mineurs']
+        read_only_fields = ['id']
+
+
+# =============================================================================
+# NTEDU21 — Emploi du temps par classe.
+# =============================================================================
+
+class CreneauEmploiDuTempsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CreneauEmploiDuTemps
+        fields = [
+            'id', 'classe', 'matiere_classe', 'jour_semaine', 'heure_debut',
+            'heure_fin', 'salle', 'actif']
         read_only_fields = ['id']
