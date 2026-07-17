@@ -371,6 +371,13 @@ class DeclarationSinistre(models.Model):
     # (NTGRC) ; résolue en libellé à la volée, no-op tant que l'app n'existe pas.
     risque_ref = models.PositiveIntegerField(
         null=True, blank=True, verbose_name='Risque ERM lié (string-FK NTGRC)')
+    # NTASS16 — bascule vers contentieux : string-FK (id brut) vers le futur
+    # module NTJUR, posée EN RETOUR par NTJUR quand il reprend le dossier ;
+    # ``conteste`` marque un sinistre refusé escaladé, sans créer le dossier ici.
+    dossier_contentieux_ref = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='Dossier contentieux lié (string-FK NTJUR)')
+    conteste = models.BooleanField(default=False, verbose_name='Contesté')
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

@@ -111,10 +111,11 @@ class DeclarationSinistreSerializer(serializers.ModelSerializer):
             'date_declaration', 'nature_sinistre', 'type_sinistre',
             'type_sinistre_display', 'montant_estime_degats', 'statut',
             'description', 'flotte_sinistre_id', 'risque_ref', 'risque_libelle',
-            'created_at',
+            'dossier_contentieux_ref', 'conteste', 'created_at',
         ]
         read_only_fields = [
-            'id', 'company', 'numero_dossier', 'date_declaration', 'created_at',
+            'id', 'company', 'numero_dossier', 'date_declaration',
+            'dossier_contentieux_ref', 'conteste', 'created_at',
         ]
 
     def get_risque_libelle(self, obj):

@@ -326,3 +326,18 @@ class DeclarationSinistreViewSet(_AssurancesBaseViewSet):
             'ecriture_id': ecriture.id,
             'ecriture_statut': ecriture.statut,
         }, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='marquer-conteste')
+    def marquer_conteste(self, request, pk=None):
+        """NTASS16 — marque un sinistre refusé/contesté escaladé : pose
+        ``conteste=True`` (le ``statut`` reste ``refuse``), SANS créer de
+        dossier contentieux — prépare seulement le terrain pour que le futur
+        module NTJUR le référence en retour (``dossier_contentieux_ref``)."""
+        declaration = self.get_object()
+        declaration.conteste = True
+        declaration.save(update_fields=['conteste'])
+        log_sinistre_note(
+            declaration, request.user,
+            'Sinistre marqué contesté (escalade contentieux préparée).')
+        return Response(
+            DeclarationSinistreSerializer(declaration).data)
