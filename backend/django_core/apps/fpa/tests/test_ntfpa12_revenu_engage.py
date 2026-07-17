@@ -19,8 +19,10 @@ class TestRevenuEngageCarnet(TestCase):
             company=self.company, nom='Client A')
 
     def _devis_accepte(self, date_acceptation, montant):
+        self._ref_seq = getattr(self, '_ref_seq', 0) + 1
         devis = Devis.objects.create(
             company=self.company, client=self.client_obj,
+            reference=f'DEV-NTFPA12-{self._ref_seq:04d}',
             statut=Devis.Statut.ACCEPTE, date_acceptation=date_acceptation)
         LigneDevis.objects.create(
             devis=devis, designation='Panneau', quantite=1,

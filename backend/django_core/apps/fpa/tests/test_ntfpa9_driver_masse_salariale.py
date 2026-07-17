@@ -7,6 +7,7 @@ from django.test import TestCase
 
 from authentication.models import Company
 from apps.paie.models import ParametrePaie, ProfilPaie
+from apps.rh.models import DossierEmploye
 from apps.fpa.services import projeter_masse_salariale
 
 
@@ -19,8 +20,11 @@ class TestProjeterMasseSalariale(TestCase):
             taux_amo_patronal=Decimal('2.26'),
             taux_allocations_familiales=Decimal('6.4'),
             taux_formation_pro=Decimal('1.6'))
+        dossier = DossierEmploye.objects.create(
+            company=self.company, matricule='NTFPA9-1', nom='Test', prenom='FPA')
         ProfilPaie.objects.create(
-            company=self.company, salaire_base=Decimal('10000'), actif=True)
+            company=self.company, employe=dossier,
+            salaire_base=Decimal('10000'), actif=True)
 
     def test_recrutements_et_depart_recalculent_la_courbe(self):
         hypotheses = [
