@@ -278,6 +278,19 @@ class FactureSanteViewSet(CompanyScopedModelViewSet):
             FactureSanteSerializer(facture).data,
             status=status.HTTP_201_CREATED)
 
+    @action(detail=False, methods=['get'], url_path='statistiques')
+    def statistiques(self, request):
+        """NTSAN28 — actes les plus facturés (volume + CA) et répartition du
+        CA par convention. Filtres optionnels `?date_debut=&date_fin=`
+        (AAAA-MM-JJ)."""
+        from .selectors import statistiques_actes_et_conventions
+
+        data = statistiques_actes_et_conventions(
+            request.user.company,
+            date_debut=request.query_params.get('date_debut'),
+            date_fin=request.query_params.get('date_fin'))
+        return Response(data)
+
 
 class PaiementSanteViewSet(CompanyScopedModelViewSet):
     """NTSAN15 — encaissement. `montant`/`facture_sante` viennent du corps de
