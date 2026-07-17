@@ -39,6 +39,10 @@ const NotificationsPreferences = lazy(() => import('../../pages/parametres/Notif
 // reflète `IsResponsableOrAdmin` côté backend).
 const KpiAlertesPage = lazy(() => import('../../pages/parametres/KpiAlertesPage'))
 const Journal = lazy(() => import('../../pages/Journal'))
+// NTUX23 — rapport « configuration des vues actives » (réservé responsable/
+// admin, reflète `IsResponsableOrAdmin` côté backend — `toutes-company/`/
+// `export-xlsx/` de SavedViewViewSet).
+const VuesConfigurationPage = lazy(() => import('../../pages/parametres/VuesConfigurationPage'))
 
 const config = {
   key: 'parametres',
@@ -48,6 +52,7 @@ const config = {
     { path: '/parametres/export', component: ExportSauvegarde },
     { path: '/parametres/notifications', component: NotificationsPreferences },
     { path: '/parametres/alertes-kpi', component: KpiAlertesPage, roles: ['responsable', 'admin'] },
+    { path: '/parametres/vues', component: VuesConfigurationPage, roles: ['responsable', 'admin'] },
     {
       path: '/journal',
       component: Journal,
