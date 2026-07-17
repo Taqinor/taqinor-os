@@ -75,6 +75,13 @@ class ReglageCredit(models.Model):
     seuil_alerte_pct = models.DecimalField(
         max_digits=5, decimal_places=2, default=80,
         help_text="Seuil (% de la limite) déclenchant une alerte avant blocage.")
+    # NTCRD21 — seuil d'encours consolidé société déclenchant une alerte au
+    # Directeur (0 = désactivé, défaut = comportement actuel inchangé).
+    seuil_alerte_exposition_globale = models.DecimalField(
+        max_digits=16, decimal_places=2, default=0)
+    # NTCRD21 — date de la dernière alerte d'exposition émise (dédup : une
+    # seule alerte par jour, pas de spam).
+    derniere_alerte_exposition_le = models.DateField(null=True, blank=True)
     date_creation = models.DateTimeField(auto_now_add=True)
     date_modification = models.DateTimeField(auto_now=True)
 
