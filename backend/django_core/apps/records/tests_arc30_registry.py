@@ -65,6 +65,10 @@ HISTORICAL_TARGETS = {
     # records (ARC8), ciblées par ``apps/credit/platform.py``.
     ('credit', 'limitecredit'),
     ('credit', 'derogationcredit'),
+    # NTADM47 — l'entité (hiérarchie intra-tenant) journalise ses transitions
+    # (renommage/re-parentage) via le chatter générique records (ARC8), ciblée
+    # par ``apps/entites/platform.py``.
+    ('entites', 'entite'),
 }
 
 
@@ -79,7 +83,7 @@ class TestAllowedTargetsNonRegression(SimpleTestCase):
             f"en trop: {resolved - HISTORICAL_TARGETS}")
 
     def test_len_matches(self):
-        self.assertEqual(len(ALLOWED_TARGETS), 30)
+        self.assertEqual(len(ALLOWED_TARGETS), 31)
 
     def test_contains_works_for_each_historical_pair(self):
         for pair in HISTORICAL_TARGETS:

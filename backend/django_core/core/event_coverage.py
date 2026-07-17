@@ -66,6 +66,14 @@ ALLOWED_UNCONSUMED = {
     # budgétaire FP&A. Aucun abonné requis dans le lot NTFPA (pose du crochet
     # pour un futur module paie/reporting), comme les seams ci-dessus.
     "budget_cycle_clos",
+    # NTADM40 — ``entite_created``/``entite_deactivated`` : seams émis par
+    # ``apps/entites/services.py`` à la création/désactivation d'une ``Entite``
+    # (hiérarchie intra-tenant), pour permettre à d'autres apps de réagir sans
+    # import direct (ex. invalidation d'un cache d'agrégats par entité). Aucun
+    # abonné métier requis aujourd'hui — réservés ici plutôt qu'orphelins,
+    # comme les seams ci-dessus.
+    "entite_created",
+    "entite_deactivated",
 }
 
 # Membres ``EventType`` déclarés mais sans producteur ``notify()`` encore câblé
