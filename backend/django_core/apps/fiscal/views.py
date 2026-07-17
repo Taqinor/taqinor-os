@@ -3,6 +3,7 @@ from django.db import models as django_models
 from rest_framework.decorators import action, api_view
 from rest_framework.response import Response
 
+from authentication.permissions import IsResponsableOrAdmin
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
@@ -29,6 +30,13 @@ class ObligationFiscaleViewSet(CompanyScopedModelViewSet):
     queryset = ObligationFiscale.objects.all()
     serializer_class = ObligationFiscaleSerializer
     filterset_fields = ['type_obligation', 'actif']
+
+    def get_permissions(self):
+        # NTMAR — la conformité fiscale (obligations, calendrier, rappels,
+        # tableau de bord) est réservée Responsable/Directeur/Admin ;
+        # company-scopée par CompanyScopedModelViewSet. Garde par action
+        # (pattern d'or crm/compta, YRBAC13).
+        return [IsResponsableOrAdmin()]
 
     @action(detail=False, methods=['post'], url_path='seed-standard')
     def seed_standard(self, request):
@@ -74,6 +82,11 @@ class AttestationTenantViewSet(CompanyScopedModelViewSet):
     serializer_class = AttestationTenantSerializer
     filterset_fields = ['type_attestation']
 
+    def get_permissions(self):
+        # NTMAR28/29 — attestations tenant réservées Responsable/Directeur/
+        # Admin (company-scopé). Garde par action (pattern d'or, YRBAC13).
+        return [IsResponsableOrAdmin()]
+
     @action(detail=False, methods=['get'], url_path='expirantes')
     def expirantes(self, request):
         """NTMAR28 — attestations expirant sous ``?within=N`` jours (défaut 30)."""
@@ -96,6 +109,11 @@ class BeneficiaireEffectifViewSet(CompanyScopedModelViewSet):
     """CRUD du registre UBO (NTMAR30)."""
     queryset = BeneficiaireEffectif.objects.all()
     serializer_class = BeneficiaireEffectifSerializer
+
+    def get_permissions(self):
+        # NTMAR30/31 — registre UBO réservé Responsable/Directeur/Admin
+        # (company-scopé). Garde par action (pattern d'or, YRBAC13).
+        return [IsResponsableOrAdmin()]
 
     @action(detail=False, methods=['get'], url_path='registre')
     def registre(self, request):
@@ -132,6 +150,12 @@ class VeilleReglementaireViewSet(CompanyScopedModelViewSet):
         if domaine:
             qs = qs.filter(domaine=domaine)
         return qs
+
+    def get_permissions(self):
+        # NTMAR32/33 — veille réglementaire réservée Responsable/Directeur/
+        # Admin (company-scopé + entrées globales en lecture seule). Garde
+        # par action (pattern d'or, YRBAC13).
+        return [IsResponsableOrAdmin()]
 
     @action(detail=True, methods=['post'], url_path='marquer-impact-traite')
     def marquer_impact_traite(self, request, pk=None):

@@ -6,6 +6,9 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
+from authentication.permissions import (
+    HasPermissionOrLegacy, IsResponsableOrAdmin,
+)
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import FactureElectronique, TransmissionDGI
@@ -33,6 +36,21 @@ class FactureElectroniqueViewSet(CompanyScopedModelViewSet):
     serializer_class = FactureElectroniqueSerializer
     http_method_names = ['get', 'post', 'head', 'options']
     filterset_fields = ['facture_id', 'statut', 'mode']
+
+    def get_permissions(self):
+        # NTMAR — la facturation électronique DGI est une action fiscale
+        # sensible : lecture (list/retrieve/telecharger/controler) réservée
+        # Responsable/Directeur/Admin ; les ÉCRITURES (generer/regenerer/
+        # preparer-signature/transmettre) exigent en plus le palier de saisie
+        # compta (``compta_saisir``, déjà octroyé par défaut au Responsable —
+        # aucune régression pour les rôles par défaut). Fine-garde par action
+        # (pattern d'or crm/compta, YRBAC13), company-scopé par le mixin.
+        if self.action in (
+            'generer_action', 'regenerer_action',
+            'preparer_signature_action', 'transmettre_action',
+        ):
+            return [HasPermissionOrLegacy('compta_saisir')()]
+        return [IsResponsableOrAdmin()]
 
     @action(detail=False, methods=['post'], url_path='generer')
     def generer_action(self, request):
