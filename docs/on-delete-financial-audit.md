@@ -15,6 +15,8 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/apps/achats/models.py:665` | PaiementFournisseur.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/achats/models.py:720` | RetourFournisseur.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/achats/models.py:753` | LigneRetourFournisseur.produit | stock.Produit | PROTECT |
+| `backend/django_core/apps/adminops/models.py:38` | SandboxEnvironment.sandbox_company | authentication.Company | SET_NULL |
+| `backend/django_core/apps/adminops/models.py:135` | AdminOpsSettings.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/adsengine/models.py:40` | MetaConnection.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/adsengine/models.py:95` | GuardrailConfig.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/adsengine/models.py:743` | CreativePolicy.company | authentication.Company | CASCADE |

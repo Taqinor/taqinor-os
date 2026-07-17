@@ -5,6 +5,9 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | Fichier:ligne | Appel | Récepteur | Clés de lookup |
 |---|---|---|---|
 | `backend/django_core/apps/accessreview/sod.py:127` | get_or_create | SodRule.objects | company, permission_a, permission_b |
+| `backend/django_core/apps/adminops/config_package_service.py:105` | update_or_create | Role.objects | company, nom |
+| `backend/django_core/apps/adminops/config_package_service.py:115` | update_or_create | CustomFieldDef.objects | code, company, module |
+| `backend/django_core/apps/adminops/config_package_service.py:125` | update_or_create | MessageTemplate.objects | cle, company |
 | `backend/django_core/apps/adsengine/brief.py:178` | update_or_create | WeeklyBrief.objects | company, period_start |
 | `backend/django_core/apps/adsengine/flightrunner.py:375` | update_or_create | AdCampaignMirror.objects | company, meta_id |
 | `backend/django_core/apps/adsengine/flightrunner.py:385` | update_or_create | AdSetMirror.objects | company, meta_id |
