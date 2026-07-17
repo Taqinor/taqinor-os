@@ -3,6 +3,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from core.mixins import TenantMixin
+from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
     CommentaireVariance, CycleBudgetaire, Departement, HypotheseRecrutement,
@@ -20,7 +21,7 @@ from .serializers import (
 )
 
 
-class DepartementViewSet(TenantMixin, viewsets.ModelViewSet):
+class DepartementViewSet(CompanyScopedModelViewSet):
     """NTFPA1 — CRUD des départements FP&A, scopé société."""
 
     queryset = Departement.objects.select_related('responsable', 'parent').all()
@@ -54,7 +55,7 @@ class DepartementViewSet(TenantMixin, viewsets.ModelViewSet):
         return super().list(request, *args, **kwargs)
 
 
-class CycleBudgetaireViewSet(TenantMixin, viewsets.ModelViewSet):
+class CycleBudgetaireViewSet(CompanyScopedModelViewSet):
     """NTFPA2 — Cycles budgétaires : machine d'états gardée (brouillon →
     ouvert_saisie → en_validation → clos), transitions illégales refusées
     (400)."""
@@ -121,7 +122,7 @@ class CycleBudgetaireViewSet(TenantMixin, viewsets.ModelViewSet):
             status=status.HTTP_201_CREATED)
 
 
-class LigneBudgetDepartementViewSet(TenantMixin, viewsets.ModelViewSet):
+class LigneBudgetDepartementViewSet(CompanyScopedModelViewSet):
     """NTFPA3 — Lignes de budget départemental (saisie mensuelle par
     catégorie). NTFPA6 — un cycle clos refuse toute écriture (400, via le
     ``ValidationError`` levé par ``LigneBudgetDepartement.save()``)."""
@@ -263,7 +264,7 @@ class SoumissionBudgetDepartementViewSet(TenantMixin, viewsets.ReadOnlyModelView
         return Response(ActivitySerializer(activite).data)
 
 
-class PrevisionGlissanteViewSet(TenantMixin, viewsets.ModelViewSet):
+class PrevisionGlissanteViewSet(CompanyScopedModelViewSet):
     """NTFPA8 — Prévisions glissantes (rolling forecast 12-18 mois) +
     génération depuis la moyenne des 3 derniers mois réels (compta)."""
 
@@ -303,7 +304,7 @@ class PrevisionGlissanteViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(PrevisionGlissanteSerializer(prevision).data)
 
 
-class LignePrevisionGlissanteViewSet(TenantMixin, viewsets.ModelViewSet):
+class LignePrevisionGlissanteViewSet(CompanyScopedModelViewSet):
     """NTFPA8 — édition directe des points d'une prévision glissante (une
     modification manuelle pose ``source='manuel'``, jamais réécrasée)."""
 
@@ -317,7 +318,7 @@ class LignePrevisionGlissanteViewSet(TenantMixin, viewsets.ModelViewSet):
         return qs
 
 
-class ScenarioBudgetaireViewSet(TenantMixin, viewsets.ModelViewSet):
+class ScenarioBudgetaireViewSet(CompanyScopedModelViewSet):
     """NTFPA15/16/17/18 — Scénarios what-if : deltas appliqués en lecture,
     comparaison côte-à-côte, promotion en base, analyse de sensibilité."""
 
@@ -381,7 +382,7 @@ class ScenarioBudgetaireViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response({'variable': variable, 'points': points})
 
 
-class LigneScenarioViewSet(TenantMixin, viewsets.ModelViewSet):
+class LigneScenarioViewSet(CompanyScopedModelViewSet):
     """NTFPA15 — deltas d'un scénario (jamais écrits dans le cycle réel)."""
 
     queryset = LigneScenario.objects.all()
@@ -394,7 +395,7 @@ class LigneScenarioViewSet(TenantMixin, viewsets.ModelViewSet):
         return qs
 
 
-class HypotheseRecrutementViewSet(TenantMixin, viewsets.ModelViewSet):
+class HypotheseRecrutementViewSet(CompanyScopedModelViewSet):
     """NTFPA10 — Hypothèses de recrutement/départ (alimente le driver masse
     salariale NTFPA9)."""
 
@@ -462,7 +463,7 @@ class VarianceViewSet(viewsets.ViewSet):
         return Response(payload)
 
 
-class MappingCategorieCompteViewSet(TenantMixin, viewsets.ModelViewSet):
+class MappingCategorieCompteViewSet(CompanyScopedModelViewSet):
     """NTFPA21 — mapping catégorie FP&A ↔ préfixe de compte CGNC (utilisé par
     la variance NTFPA19 pour traduire les catégories vers les classes
     comptables réelles sans coder en dur le plan CGNC)."""
@@ -477,7 +478,7 @@ class MappingCategorieCompteViewSet(TenantMixin, viewsets.ModelViewSet):
         return qs
 
 
-class CommentaireVarianceViewSet(TenantMixin, viewsets.ModelViewSet):
+class CommentaireVarianceViewSet(CompanyScopedModelViewSet):
     """NTFPA20 — commentaires de variance (un par cellule, historique complet)."""
 
     queryset = CommentaireVariance.objects.select_related('auteur').all()
