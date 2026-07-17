@@ -313,7 +313,7 @@ class FacteurEmissionReference(TenantModel):
         verbose_name="Valeur (facteur d'émission)")
     source = models.CharField(
         max_length=255, blank=True, default='', verbose_name='Source')
-    date_maj = models.DateField(verbose_name='Date de mise à jour')
+    date_maj = models.DateTimeField(verbose_name='Date de mise à jour')
     version = models.PositiveIntegerField(default=1, verbose_name='Version')
     actif = models.BooleanField(default=True, verbose_name='Version active')
 

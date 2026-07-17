@@ -64,7 +64,7 @@ function useReservationsData() {
 
 export default function CalendrierReservations() {
   const { chambres, reservations, error, load } = useReservationsData()
-  const jours = useMemo(buildJours, [])
+  const jours = useMemo(() => buildJours(), [])
   const [selection, setSelection] = useState(null) // { chambreId, startIdx, endIdx }
   const [dragging, setDragging] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)

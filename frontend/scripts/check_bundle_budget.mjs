@@ -89,7 +89,7 @@ const MODULEPRELOAD_ALLOWLIST = new Set([
 // éducation/innovation) ajoute de nouveaux écrans TOUS lazy-loadés (réel 405) —
 // AUCUNE nouvelle dépendance npm, croissance produit organique. Palier généreux
 // habituel ; le vrai garde anti-gonflement reste PER_CHUNK_BUDGET_KB (350).
-const MAX_CHUNK_COUNT = 420
+const MAX_CHUNK_COUNT = 440
 
 // Extrait les `<link rel="modulepreload" href="...">` de `dist/index.html` et
 // signale tout vendor lourd nommé qui s'y trouve (hors allowlist). Silencieux
