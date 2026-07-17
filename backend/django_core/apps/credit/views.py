@@ -66,6 +66,59 @@ def fiche_credit_client(request, client_id):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
+def rapport_derogations_view(request):
+    """NTCRD26 — rapport « Dérogations crédit » sur une période
+    (``?date_debut=&date_fin=`` en ISO). ``?format=xlsx`` renvoie un classeur.
+    Company-scopé."""
+    from datetime import date as _date
+
+    from django.http import HttpResponse
+
+    from .selectors import rapport_derogations
+
+    def _parse(name):
+        raw = request.query_params.get(name)
+        if not raw:
+            return None
+        try:
+            return _date.fromisoformat(raw)
+        except ValueError:
+            return None
+
+    rapport = rapport_derogations(
+        request.user.company, _parse('date_debut'), _parse('date_fin'))
+
+    if request.query_params.get('format') == 'xlsx':
+        from apps.records.xlsx import workbook_bytes
+
+        header = [
+            'ID', 'Client', 'Montant', 'Statut', 'Demandeur', 'Décideur',
+            'Créée le', 'Décidée le', 'Délai (h)',
+        ]
+        rows = [
+            [
+                ligne['id'], ligne['client_id'], ligne['montant_demande'],
+                ligne['statut'], ligne['demandeur'], ligne['decideur'],
+                ligne['date_creation'], ligne['date_decision'],
+                ligne['delai_traitement_h'],
+            ]
+            for ligne in rapport['lignes']
+        ]
+        content = workbook_bytes(header, rows, sheet_title='derogations')
+        resp = HttpResponse(
+            content,
+            content_type=(
+                'application/vnd.openxmlformats-officedocument.'
+                'spreadsheetml.sheet'))
+        resp['Content-Disposition'] = (
+            'attachment; filename="derogations_credit.xlsx"')
+        return resp
+
+    return Response(rapport)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def badges_credit_view(request):
     """NTCRD23 — pastilles d'état crédit pour une liste d'ids clients
     (``?client_ids=1,2,3``), company-scopé. Lecture seule/léger."""

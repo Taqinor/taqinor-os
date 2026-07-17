@@ -26,6 +26,8 @@ urlpatterns = [
     path('clients/<int:client_id>/position-pdf/', views.position_credit_pdf,
          name='credit-position-pdf'),
     path('exposition/', views.exposition_credit, name='credit-exposition'),
+    path('rapport-derogations/', views.rapport_derogations_view,
+         name='credit-rapport-derogations'),
     path('badges/', views.badges_credit_view, name='credit-badges'),
     path('', include(router.urls)),
 ]

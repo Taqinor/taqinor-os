@@ -237,6 +237,51 @@ def rapport_exposition(company, clients=None):
     return lignes
 
 
+def rapport_derogations(company, date_debut=None, date_fin=None):
+    """NTCRD26 — liste des ``DerogationCredit`` d'une société sur une période
+    (``date_creation`` dans [date_debut, date_fin]), avec statut, montant,
+    décideur et délai de traitement moyen (heures création→décision, sur les
+    dérogations décidées). Renvoie ``{'lignes': [...], 'nb_approuvees': int,
+    'delai_traitement_moyen_h': float|None}``. Company-scopé, lecture seule."""
+    from .models import DerogationCredit
+
+    qs = DerogationCredit.objects.filter(company=company).select_related(
+        'demandeur', 'approuvee_par', 'client')
+    if date_debut is not None:
+        qs = qs.filter(date_creation__date__gte=date_debut)
+    if date_fin is not None:
+        qs = qs.filter(date_creation__date__lte=date_fin)
+
+    lignes = []
+    delais = []
+    nb_approuvees = 0
+    for d in qs:
+        if d.statut == DerogationCredit.Statut.APPROUVEE:
+            nb_approuvees += 1
+        delai_h = None
+        if d.date_decision and d.date_creation:
+            delai_h = (d.date_decision - d.date_creation).total_seconds() / 3600.0
+            delais.append(delai_h)
+        lignes.append({
+            'id': d.id,
+            'client_id': d.client_id,
+            'montant_demande': d.montant_demande,
+            'statut': d.statut,
+            'demandeur': getattr(d.demandeur, 'username', None),
+            'decideur': getattr(d.approuvee_par, 'username', None),
+            'date_creation': d.date_creation,
+            'date_decision': d.date_decision,
+            'delai_traitement_h': delai_h,
+        })
+
+    delai_moyen = round(sum(delais) / len(delais), 2) if delais else None
+    return {
+        'lignes': lignes,
+        'nb_approuvees': nb_approuvees,
+        'delai_traitement_moyen_h': delai_moyen,
+    }
+
+
 def score_credit(client):
     """NTCRD12 — enveloppe fine autour de
     ``apps.ventes.selectors.comportement_paiement`` (jamais réimplémenté ici)
