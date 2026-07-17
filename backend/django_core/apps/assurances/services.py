@@ -10,13 +10,18 @@ from decimal import ROUND_HALF_UP, Decimal
 from django.core.exceptions import ValidationError
 from django.db.models import Max
 
+# ARC8 — le chatter converge sur ``records.Activity`` : ``records`` est une app
+# de FONDATION, son ``services.py`` est donc importable directement (frontière
+# cross-app exemptée pour records/core/authentication).
+from apps.records.models import Activity
+from apps.records.services import log_activity, log_note
+
 from .models import (
     ActifCouvert, DeclarationSinistre, EcheancePrime, ExigenceAssuranceMarche,
-    GarantiePolice, IndemnisationSinistre, PoliceActivity, PoliceAssurance,
-    SinistreActivity,
+    GarantiePolice, IndemnisationSinistre, PoliceAssurance,
 )
 
-# ── NTASS3 — Chatter PoliceAssurance ────────────────────────────────────────
+# ── NTASS3 — Chatter PoliceAssurance (adossé à records.Activity, ARC8) ───────
 
 #: Champs de ``PoliceAssurance`` dont la transition est auto-loggée (NTASS3).
 CHAMPS_SUIVIS_POLICE = {
@@ -27,22 +32,20 @@ CHAMPS_SUIVIS_POLICE = {
 
 
 def log_police_creation(police, user):
-    """Journalise la création d'une police (entrée ``creation``)."""
-    return PoliceActivity.objects.create(
-        company=police.company, police=police,
-        kind=PoliceActivity.Kind.CREATION, user=user)
+    """Journalise la création d'une police (entrée ``creation``, ARC8)."""
+    return log_activity(
+        police, Activity.Kind.CREATION, user=user, company=police.company)
 
 
 def log_police_transition(police, champ, champ_label, ancienne_valeur,
                           nouvelle_valeur, user):
-    """Journalise un changement de champ suivi (NTASS3)."""
-    return PoliceActivity.objects.create(
-        company=police.company, police=police,
-        kind=PoliceActivity.Kind.MODIFICATION,
-        champ=champ, champ_label=champ_label,
-        ancienne_valeur='' if ancienne_valeur is None else str(ancienne_valeur),
-        nouvelle_valeur='' if nouvelle_valeur is None else str(nouvelle_valeur),
-        user=user)
+    """Journalise un changement de champ suivi (NTASS3, ARC8)."""
+    return log_activity(
+        police, Activity.Kind.MODIFICATION, user=user,
+        field=champ, field_label=champ_label,
+        old_value='' if ancienne_valeur is None else str(ancienne_valeur),
+        new_value='' if nouvelle_valeur is None else str(nouvelle_valeur),
+        company=police.company)
 
 
 def log_police_transitions_auto(police, valeurs_avant, user):
@@ -60,10 +63,8 @@ def log_police_transitions_auto(police, valeurs_avant, user):
 
 
 def log_police_note(police, user, body):
-    """Ajoute une note manuelle au chatter d'une police (NTASS3)."""
-    return PoliceActivity.objects.create(
-        company=police.company, police=police,
-        kind=PoliceActivity.Kind.NOTE, description=body, user=user)
+    """Ajoute une note manuelle au chatter d'une police (NTASS3, ARC8)."""
+    return log_note(police, user, body, company=police.company)
 
 
 # ── NTASS5 — Échéancier de primes ───────────────────────────────────────────
@@ -273,22 +274,21 @@ CHAMPS_SUIVIS_SINISTRE = {
 
 
 def log_sinistre_creation(declaration, user):
-    """Journalise la création d'une déclaration de sinistre (NTASS11)."""
-    return SinistreActivity.objects.create(
-        company=declaration.company, declaration=declaration,
-        kind=SinistreActivity.Kind.CREATION, user=user)
+    """Journalise la création d'une déclaration de sinistre (NTASS11, ARC8)."""
+    return log_activity(
+        declaration, Activity.Kind.CREATION, user=user,
+        company=declaration.company)
 
 
 def log_sinistre_transition(declaration, champ, champ_label, ancienne_valeur,
                             nouvelle_valeur, user):
-    """Journalise un changement de champ suivi (NTASS11)."""
-    return SinistreActivity.objects.create(
-        company=declaration.company, declaration=declaration,
-        kind=SinistreActivity.Kind.MODIFICATION,
-        champ=champ, champ_label=champ_label,
-        ancienne_valeur='' if ancienne_valeur is None else str(ancienne_valeur),
-        nouvelle_valeur='' if nouvelle_valeur is None else str(nouvelle_valeur),
-        user=user)
+    """Journalise un changement de champ suivi (NTASS11, ARC8)."""
+    return log_activity(
+        declaration, Activity.Kind.MODIFICATION, user=user,
+        field=champ, field_label=champ_label,
+        old_value='' if ancienne_valeur is None else str(ancienne_valeur),
+        new_value='' if nouvelle_valeur is None else str(nouvelle_valeur),
+        company=declaration.company)
 
 
 def log_sinistre_transitions_auto(declaration, valeurs_avant, user):
@@ -305,10 +305,8 @@ def log_sinistre_transitions_auto(declaration, valeurs_avant, user):
 
 
 def log_sinistre_note(declaration, user, body):
-    """Ajoute une note manuelle au chatter d'un sinistre (NTASS11)."""
-    return SinistreActivity.objects.create(
-        company=declaration.company, declaration=declaration,
-        kind=SinistreActivity.Kind.NOTE, description=body, user=user)
+    """Ajoute une note manuelle au chatter d'un sinistre (NTASS11, ARC8)."""
+    return log_note(declaration, user, body, company=declaration.company)
 
 
 # ── NTASS12 — Suivi d'indemnisation vs franchise ────────────────────────────

@@ -1,14 +1,19 @@
 """Vues du registre des assurances & sinistres d'entreprise (NTASS)."""
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import IntegrityError
-from rest_framework import status, viewsets
+from rest_framework import status
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from authentication.permissions import HasPermissionOrLegacy
-from core.mixins import TenantMixin
 from core.permissions import WriteScopedPermissionMixin
+from core.viewsets import CompanyScopedModelViewSet
+# ARC8 — chatter générique adossé à records.Activity. records est une app de
+# FONDATION : l'import direct de son serializer/service est autorisé (frontière
+# cross-app exemptée pour records/core/authentication).
+from apps.records.serializers import ChatterActivitySerializer
+from apps.records.services import chatter_qs
 
 from .models import (
     ActifCouvert, AttestationAssurance, Assureur, Courtier, DeclarationSinistre,
@@ -18,8 +23,7 @@ from .serializers import (
     ActifCouvertSerializer, AttestationAssuranceSerializer, AssureurSerializer,
     CourtierSerializer, DeclarationSinistreSerializer, EcheancePrimeSerializer,
     ExigenceAssuranceMarcheSerializer, GarantiePoliceSerializer,
-    IndemnisationSinistreSerializer, PoliceActivitySerializer,
-    PoliceAssuranceSerializer, SinistreActivitySerializer,
+    IndemnisationSinistreSerializer, PoliceAssuranceSerializer,
 )
 from .selectors import (
     attestations_expirantes, couverture_par_actif, polices_expirantes,
@@ -42,9 +46,10 @@ def _detail_django_validation_error(exc):
 
 
 class _AssurancesBaseViewSet(
-        WriteScopedPermissionMixin, TenantMixin, viewsets.ModelViewSet):
-    """Base commune : société scopée (TenantMixin) + lecture/écriture
-    fine-grainées (NTASS29 — ``assurances_voir``/``assurances_gerer``).
+        WriteScopedPermissionMixin, CompanyScopedModelViewSet):
+    """Base commune : société scopée (SCA4 — ``CompanyScopedModelViewSet``,
+    qui porte ``TenantMixin``) + lecture/écriture fine-grainées (NTASS29 —
+    ``assurances_voir``/``assurances_gerer``).
 
     Comptes légacy sans rôle fin : repli historique Responsable/Administrateur
     préservé (voir ``core.permissions.WriteScopedPermissionMixin``)."""
@@ -127,21 +132,21 @@ class PoliceAssuranceViewSet(_AssurancesBaseViewSet):
 
     @action(detail=True, methods=['get'], url_path='historique')
     def historique(self, request, pk=None):
-        """NTASS3 — timeline chatter de la police (plus récent d'abord)."""
+        """NTASS3 — timeline chatter de la police (plus récent d'abord, ARC8)."""
         police = self.get_object()
-        return Response(
-            PoliceActivitySerializer(police.activites.all(), many=True).data)
+        qs = chatter_qs(police, company=request.user.company)
+        return Response(ChatterActivitySerializer(qs, many=True).data)
 
     @action(detail=True, methods=['post'], url_path='noter')
     def noter(self, request, pk=None):
-        """NTASS3 — note manuelle (auteur posé côté serveur)."""
+        """NTASS3 — note manuelle (auteur posé côté serveur, ARC8)."""
         police = self.get_object()
         body = (request.data.get('body') or '').strip()
         if not body:
             return Response({'body': 'Note vide.'},
                             status=status.HTTP_400_BAD_REQUEST)
         act = log_police_note(police, request.user, body)
-        return Response(PoliceActivitySerializer(act).data,
+        return Response(ChatterActivitySerializer(act).data,
                         status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=['get'], url_path='expirantes')
@@ -286,21 +291,21 @@ class DeclarationSinistreViewSet(_AssurancesBaseViewSet):
 
     @action(detail=True, methods=['get'], url_path='historique')
     def historique(self, request, pk=None):
-        """NTASS11 — timeline chatter du sinistre (plus récent d'abord)."""
+        """NTASS11 — timeline chatter du sinistre (plus récent d'abord, ARC8)."""
         declaration = self.get_object()
-        return Response(SinistreActivitySerializer(
-            declaration.activites.all(), many=True).data)
+        qs = chatter_qs(declaration, company=request.user.company)
+        return Response(ChatterActivitySerializer(qs, many=True).data)
 
     @action(detail=True, methods=['post'], url_path='noter')
     def noter(self, request, pk=None):
-        """NTASS11 — note manuelle (auteur posé côté serveur)."""
+        """NTASS11 — note manuelle (auteur posé côté serveur, ARC8)."""
         declaration = self.get_object()
         body = (request.data.get('body') or '').strip()
         if not body:
             return Response({'body': 'Note vide.'},
                             status=status.HTTP_400_BAD_REQUEST)
         act = log_sinistre_note(declaration, request.user, body)
-        return Response(SinistreActivitySerializer(act).data,
+        return Response(ChatterActivitySerializer(act).data,
                         status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['post'], url_path='enregistrer-indemnisation')
@@ -376,8 +381,8 @@ class DeclarationSinistreViewSet(_AssurancesBaseViewSet):
 class AttestationAssuranceViewSet(_AssurancesBaseViewSet):
     """CRUD des attestations d'assurance que NOUS détenons (NTASS17).
 
-    ``?police=<id>`` filtre les attestations d'une police. Accepte l'upload
-    multipart du document scanné (FileField ``document``)."""
+    ``?police=<id>`` filtre les attestations d'une police. Le document scanné
+    est rattaché via ``records.Attachment`` (ARC26), pas un FileField local."""
     queryset = AttestationAssurance.objects.select_related('police')
     serializer_class = AttestationAssuranceSerializer
     filterset_fields = ['police', 'statut']
