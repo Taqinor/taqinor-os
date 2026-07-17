@@ -9,6 +9,7 @@ from decimal import Decimal
 from rest_framework import serializers
 
 from .models import (
+    AcompteIS, ConventionFiscale,
     AppelTelephonique, AvancementRevenu, BaremeIndemnite, BordereauRemise,
     Budget, BudgetLigne,
     Caisse, Campagne, CautionBancaire, CentreCout, CessionImmobilisation,
@@ -1140,7 +1141,8 @@ class RetenueSourceSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'reference', 'piece', 'date_piece', 'type_prestation',
             'type_prestation_display', 'tiers_type', 'tiers_id', 'tiers_nom',
-            'identifiant_fiscal', 'base', 'taux', 'montant', 'net_a_payer',
+            'identifiant_fiscal', 'pays_beneficiaire', 'convention_appliquee',
+            'base', 'taux', 'montant', 'net_a_payer',
             'statut', 'statut_display', 'libelle', 'created_by',
             'date_creation',
         ]
@@ -1177,9 +1179,9 @@ class TimbreFiscalSerializer(serializers.ModelSerializer):
         model = TimbreFiscal
         fields = [
             'id', 'reference', 'date_encaissement', 'paiement_id',
-            'facture_ref', 'mode_reglement', 'tiers_type', 'tiers_id',
-            'tiers_nom', 'base', 'taux', 'minimum', 'montant', 'statut',
-            'statut_display', 'libelle', 'created_by', 'date_creation',
+            'facture_ref', 'mode_reglement', 'mode_acquittement', 'tiers_type',
+            'tiers_id', 'tiers_nom', 'base', 'taux', 'minimum', 'montant',
+            'statut', 'statut_display', 'libelle', 'created_by', 'date_creation',
         ]
         read_only_fields = [
             'reference', 'montant', 'statut', 'created_by', 'date_creation',
@@ -3185,3 +3187,38 @@ class EtapeAuditConsolidationSerializer(serializers.ModelSerializer):
             'hash_precedent', 'hash', 'detail', 'created_at',
         ]
         read_only_fields = fields
+
+
+# ── NTMAR12/18 — Acomptes IS & conventions fiscales ─────────────────────────
+
+class AcompteISSerializer(serializers.ModelSerializer):
+    """Acompte provisionnel d'IS matérialisé (NTMAR12)."""
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = AcompteIS
+        fields = [
+            'id', 'exercice', 'rang', 'montant', 'date_echeance', 'statut',
+            'statut_display', 'date_creation',
+        ]
+        read_only_fields = [
+            'exercice', 'rang', 'montant', 'date_echeance', 'date_creation',
+        ]
+
+
+class ConventionFiscaleSerializer(serializers.ModelSerializer):
+    """Convention fiscale de non-double-imposition par pays (NTMAR18)."""
+    class Meta:
+        model = ConventionFiscale
+        fields = [
+            'id', 'pays', 'code_pays', 'taux_conventionnel', 'libelle',
+            'actif', 'date_creation',
+        ]
+        read_only_fields = ['id', 'date_creation']
+
+    def validate_taux_conventionnel(self, value):
+        if value is not None and (value < 0 or value > 100):
+            raise serializers.ValidationError(
+                "Le taux conventionnel doit être compris entre 0 et 100 %.")
+        return value

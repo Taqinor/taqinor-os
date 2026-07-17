@@ -143,6 +143,13 @@ class TransmissionDGI(TenantModel):
         verbose_name = 'Transmission DGI'
         verbose_name_plural = 'Transmissions DGI'
         ordering = ['-date_creation', '-id']
+        constraints = [
+            # NTMAR7 — une seule file de transmission par e-facture (le service
+            # ``transmettre`` fait un get_or_create idempotent sur ce couple).
+            models.UniqueConstraint(
+                fields=['company', 'einvoice'],
+                name='uniq_transmission_dgi_einvoice'),
+        ]
 
     def __str__(self):
         return f'Transmission {self.einvoice_id} ({self.statut})'

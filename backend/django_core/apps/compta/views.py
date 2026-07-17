@@ -37,6 +37,7 @@ from apps.audit.recorder import record as _audit_record
 
 from . import selectors, services
 from .models import (
+    AcompteIS, ConventionFiscale,
     AppelTelephonique,
     BaremeIndemnite, BordereauRemise, Budget, BudgetLigne, Caisse,
     Campagne, CautionBancaire, CentreCout, CessionImmobilisation, CodePromotion,
@@ -96,6 +97,7 @@ from .models import (
     EtapeAuditConsolidation,
 )
 from .serializers import (
+    AcompteISSerializer, ConventionFiscaleSerializer,
     AppelTelephoniqueSerializer, AvancementRevenuSerializer,
     BaremeIndemniteSerializer,
     BordereauRemiseSerializer, BudgetSerializer, CaisseSerializer,
@@ -338,9 +340,13 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
     permission_classes = [IsResponsableOrAdmin]
 
     def get_permissions(self):
-        # YRBAC13 — toutes les actions de ce viewset sont des rapports en
-        # LECTURE SEULE (GET) ; garde explicite par action pour le scanner
-        # YRBAC4, comportement STRICTEMENT inchangé (IsResponsableOrAdmin).
+        # YRBAC13 — les rapports en LECTURE restent IsResponsableOrAdmin.
+        # NTMAR12 — ``materialiser_acomptes_is`` est une ÉCRITURE (matérialise
+        # des AcompteIS) : gardée par ``compta_saisir`` (même palier que les
+        # autres saisies), jamais downgradée par ce get_permissions (bug class
+        # #25 : un get_permissions qui écrase les permission_classes d'@action).
+        if self.action == 'materialiser_acomptes_is':
+            return [HasPermissionOrLegacy('compta_saisir')()]
         return [IsResponsableOrAdmin()]
 
     def _periode(self, request):
@@ -894,6 +900,69 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
         if params.get('export') == 'csv':
             return self._export_aide_is_csv(exercice, data)
         return Response(data)
+
+    def _resolve_exercice_ntmar(self, request):
+        """NTMAR12 — résout l'exercice depuis query_params OU corps (POST),
+        scopé société, ou ``None`` (distinct de ``_resolve_exercice`` qui ne lit
+        que query_params et renvoie un tuple)."""
+        exercice_id = request.query_params.get('exercice') \
+            or request.data.get('exercice')
+        if not exercice_id:
+            return None
+        return ExerciceComptable.objects.filter(
+            company=request.user.company, pk=exercice_id).first()
+
+    @action(detail=False, methods=['get'], url_path='export-simpl-is',
+            permission_classes=[IsResponsableOrAdmin])
+    def export_simpl_is(self, request):
+        """NTMAR12 — export SIMPL-IS (structure DGI, XML) d'un exercice :
+        résultat fiscal, IS dû, 4 acomptes datés, régularisation. ``?exercice=``
+        (requis), ``reintegrations``/``deductions``/``is_reference`` optionnels."""
+        exercice = self._resolve_exercice_ntmar(request)
+        if exercice is None:
+            return Response(
+                {'detail': "Le paramètre 'exercice' est requis (scopé société)."},
+                status=status.HTTP_400_BAD_REQUEST)
+        params = request.query_params
+        try:
+            xml = services.export_simpl_is(
+                request.user.company, exercice,
+                is_reference=self._decimal_param(params, 'is_reference'),
+                reintegrations=self._decimal_param(params, 'reintegrations'),
+                deductions=self._decimal_param(params, 'deductions'),
+                validees_seulement=params.get('validees') == '1')
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        resp = HttpResponse(xml, content_type='application/xml; charset=utf-8')
+        resp['X-Content-Type-Options'] = 'nosniff'
+        resp['Content-Disposition'] = (
+            f'attachment; filename="simpl_is_exercice_{exercice.pk}.xml"')
+        return resp
+
+    @action(detail=False, methods=['post'], url_path='materialiser-acomptes-is',
+            permission_classes=[HasPermissionOrLegacy('compta_saisir')])
+    def materialiser_acomptes_is(self, request):
+        """NTMAR12 — matérialise (idempotent) les 4 ``AcompteIS`` d'un exercice
+        pour le suivi de paiement. Corps : ``{"exercice": <id>, "is_reference"?}``."""
+        exercice = self._resolve_exercice_ntmar(request)
+        if exercice is None:
+            return Response(
+                {'detail': "Le paramètre 'exercice' est requis (scopé société)."},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            acomptes = services.materialiser_acomptes_is(
+                request.user.company, exercice,
+                is_reference=self._decimal_param(
+                    request.data, 'is_reference'))
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            AcompteISSerializer(acomptes, many=True).data,
+            status=status.HTTP_201_CREATED)
 
     @staticmethod
     def _decimal_param(params, key):
@@ -4003,7 +4072,8 @@ class DeclarationTVAViewSet(_ComptaBaseViewSet):
         # gardée par ``compta_valider`` (même palier que le reste du cycle de
         # validation, COMPTA40). Lecture (export/comparatif/bordereau) reste
         # IsResponsableOrAdmin, inchangée.
-        if self.action in ('export', 'comparatif', 'bordereau_pdf'):
+        if self.action in ('export', 'comparatif', 'bordereau_pdf',
+                           'export_simpl', 'controles_predepot'):
             return [IsResponsableOrAdmin()]
         if self.action == 'preparer':
             return [HasPermissionOrLegacy('compta_saisir')()]
@@ -4064,6 +4134,28 @@ class DeclarationTVAViewSet(_ComptaBaseViewSet):
         decl = self.get_object()  # scopée société par TenantMixin.
         decl = services.deposer_declaration_tva(decl)
         return Response(self.get_serializer(decl).data)
+
+    @action(detail=True, methods=['get'], url_path='export-simpl',
+            permission_classes=[IsResponsableOrAdmin])
+    def export_simpl(self, request, pk=None):
+        """NTMAR10 — export SIMPL-TVA (structure DGI, XML). Le CSV humain
+        (``export``) reste disponible séparément. Company-scopée (404)."""
+        decl = self.get_object()
+        xml = services.export_simpl_tva(decl)
+        resp = HttpResponse(xml, content_type='application/xml; charset=utf-8')
+        resp['X-Content-Type-Options'] = 'nosniff'
+        resp['Content-Disposition'] = (
+            f'attachment; filename="simpl_tva_{decl.reference or decl.id}.xml"')
+        return resp
+
+    @action(detail=True, methods=['get'], url_path='controles-predepot',
+            permission_classes=[IsResponsableOrAdmin])
+    def controles_predepot(self, request, pk=None):
+        """NTMAR11 — alertes de cohérence avant dépôt SIMPL (liste vide =
+        saine). Company-scopée (404)."""
+        decl = self.get_object()
+        alertes = selectors.controles_predepot_tva(decl)
+        return Response({'alertes': alertes, 'sain': not alertes})
 
     @action(detail=True, methods=['get'])
     def comparatif(self, request, pk=None):
@@ -4183,6 +4275,8 @@ class RetenueSourceViewSet(_ComptaBaseViewSet):
                 tiers_id=vd.get('tiers_id'),
                 tiers_nom=vd.get('tiers_nom', '') or '',
                 identifiant_fiscal=vd.get('identifiant_fiscal', '') or '',
+                pays_beneficiaire=vd.get('pays_beneficiaire', '') or '',
+                convention_appliquee=vd.get('convention_appliquee'),
                 piece=vd.get('piece', '') or '',
                 libelle=vd.get('libelle', '') or '',
                 user=request.user)
@@ -4200,11 +4294,34 @@ class RetenueSourceViewSet(_ComptaBaseViewSet):
         # lecture (bordereau/export/attestations) restent IsResponsableOrAdmin,
         # inchangés.
         if self.action in ('bordereau', 'export', 'attestation',
-                           'attestation_annuelle'):
+                           'attestation_annuelle', 'bordereau_loyers',
+                           'recapitulatif_annuel'):
             return [IsResponsableOrAdmin()]
         if self.action == 'verser':
             return [HasPermissionOrLegacy('compta_valider')()]
         return super().get_permissions()
+
+    @action(detail=False, methods=['get'], url_path='bordereau-loyers',
+            permission_classes=[IsResponsableOrAdmin])
+    def bordereau_loyers(self, request):
+        """NTMAR17 — bordereau de versement RAS restreint aux LOYERS
+        (``?date_debut=&date_fin=&statut=``). Regroupé par bailleur."""
+        params = request.query_params
+        data = selectors.bordereau_versement_ras_par_type(
+            request.user.company, RetenueSource.TypePrestation.LOYERS,
+            date_debut=params.get('date_debut') or None,
+            date_fin=params.get('date_fin') or None,
+            statut=params.get('statut') or None)
+        return Response(data)
+
+    @action(detail=False, methods=['get'], url_path='recapitulatif-annuel',
+            permission_classes=[IsResponsableOrAdmin])
+    def recapitulatif_annuel(self, request):
+        """NTMAR19 — récapitulatif annuel des RAS tous types par bénéficiaire
+        et par type (``?annee=YYYY``, défaut année courante)."""
+        annee = request.query_params.get('annee') or timezone.now().year
+        data = selectors.recapitulatif_ras_annuel(request.user.company, annee)
+        return Response(data)
 
     @action(detail=True, methods=['post'])
     def verser(self, request, pk=None):
@@ -4428,6 +4545,7 @@ class TimbreFiscalViewSet(_ComptaBaseViewSet):
                 tiers_id=vd.get('tiers_id'),
                 tiers_nom=vd.get('tiers_nom', '') or '',
                 libelle=vd.get('libelle', '') or '',
+                mode_acquittement=vd.get('mode_acquittement'),
                 user=request.user)
         except DjangoValidationError as exc:
             return Response(
@@ -4488,6 +4606,23 @@ class TimbreFiscalViewSet(_ComptaBaseViewSet):
             'attachment; filename="timbres_fiscaux_'
             f"{data['date_debut'] or 'periode'}_{data['date_fin'] or ''}.csv\"")
         return resp
+
+    @action(detail=False, methods=['get'], url_path='synthese-mensuelle',
+            permission_classes=[IsResponsableOrAdmin])
+    def synthese_mensuelle(self, request):
+        """NTMAR20 — synthèse mensuelle des droits de timbre par mode
+        d'acquittement (papier/électronique). ``?annee=YYYY&mois=MM`` (défaut
+        mois courant)."""
+        now = timezone.now()
+        try:
+            annee = int(request.query_params.get('annee') or now.year)
+            mois = int(request.query_params.get('mois') or now.month)
+        except (TypeError, ValueError):
+            return Response({'detail': 'annee/mois invalides.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        data = selectors.synthese_timbre_mensuelle(
+            request.user.company, annee, mois)
+        return Response(data)
 
 
 class RetenueGarantieViewSet(_ComptaBaseViewSet):
@@ -4707,6 +4842,78 @@ class CautionBancaireViewSet(_ComptaBaseViewSet):
                 'attachment; filename="cautions_bancaires_echeances.csv"')
             return resp
         return Response(data)
+
+    @action(detail=False, methods=['get'], url_path='a-restituer',
+            permission_classes=[IsResponsableOrAdmin])
+    def a_restituer(self, request):
+        """NTMAR24 — cautions ACTIVES échéancées à restituer/lever, avec la date
+        de mainlevée. ``?within=N`` restreint aux échéances proches (jours),
+        sinon toutes. Lecture seule, scopée société."""
+        within = request.query_params.get('within')
+        try:
+            within = int(within) if within not in (None, '') else None
+        except (TypeError, ValueError):
+            within = None
+        data = selectors.cautions_a_restituer(
+            request.user.company, within=within)
+        return Response({'lignes': data, 'nb': len(data)})
+
+
+class AcompteISViewSet(_ComptaBaseViewSet):
+    """Acomptes provisionnels d'IS matérialisés (NTMAR12).
+
+    Lecture + action ``marquer-paye``. La matérialisation des 4 acomptes se fait
+    via ``etats-comptables/materialiser-acomptes-is/`` (dérivée du calcul FG140,
+    jamais imposée par le corps). Société scopée ; Admin/Responsable."""
+    queryset = AcompteIS.objects.select_related('exercice').all()
+    serializer_class = AcompteISSerializer
+    http_method_names = ['get', 'post', 'head', 'options']
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_echeance', 'rang', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        exercice = params.get('exercice')
+        if exercice:
+            qs = qs.filter(exercice_id=exercice)
+        statut = params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def get_permissions(self):
+        if self.action == 'marquer_paye':
+            return [HasPermissionOrLegacy('compta_valider')()]
+        return super().get_permissions()
+
+    @action(detail=True, methods=['post'], url_path='marquer-paye',
+            permission_classes=[HasPermissionOrLegacy('compta_valider')])
+    def marquer_paye(self, request, pk=None):
+        """NTMAR12 — marque l'acompte comme payé."""
+        acompte = self.get_object()
+        acompte.statut = AcompteIS.Statut.PAYE
+        acompte.save(update_fields=['statut'])
+        return Response(self.get_serializer(acompte).data)
+
+
+class ConventionFiscaleViewSet(_ComptaBaseViewSet):
+    """Conventions fiscales de non-double-imposition par pays (NTMAR18).
+
+    Alimente le taux RAS conventionnel réduit appliqué aux prestations
+    étrangères. Société scopée posée côté serveur ; Admin/Responsable."""
+    queryset = ConventionFiscale.objects.all()
+    serializer_class = ConventionFiscaleSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['pays', 'code_pays', 'libelle']
+    ordering_fields = ['pays', 'taux_conventionnel', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        actif = self.request.query_params.get('actif')
+        if actif in ('0', '1'):
+            qs = qs.filter(actif=(actif == '1'))
+        return qs
 
 
 class ContratAvancementViewSet(_ComptaBaseViewSet):

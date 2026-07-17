@@ -3306,6 +3306,9 @@ class RetenueSource(models.Model):
         REDEVANCES = 'redevances', 'Redevances'
         LOYERS = 'loyers', 'Loyers'
         PRESTATIONS = 'prestations', 'Prestations de services'
+        # NTMAR18 — prestations rendues par un bénéficiaire ÉTRANGER (RAS
+        # spécifique, taux réduit possible via une convention fiscale).
+        PRESTATION_ETRANGERE = 'prestation_etrangere', 'Prestation étrangère'
         AUTRE = 'autre', 'Autre'
 
     class Statut(models.TextChoices):
@@ -3344,6 +3347,14 @@ class RetenueSource(models.Model):
     identifiant_fiscal = models.CharField(
         max_length=30, blank=True, default='',
         verbose_name='Identifiant fiscal (IF/ICE)')
+    # NTMAR18 — RAS sur prestations étrangères : pays du bénéficiaire +
+    # indicateur d'application d'un taux conventionnel réduit (voir
+    # ``ConventionFiscale``). Vides/false par défaut = RAS domestique classique.
+    pays_beneficiaire = models.CharField(
+        max_length=80, blank=True, default='',
+        verbose_name='Pays du bénéficiaire')
+    convention_appliquee = models.BooleanField(
+        default=False, verbose_name='Taux conventionnel appliqué')
     # ── Montants FIGÉS au calcul (snapshot auditable) ──
     base = models.DecimalField(
         max_digits=14, decimal_places=2, default=Decimal('0'),
@@ -3456,6 +3467,13 @@ class TimbreFiscal(models.Model):
     mode_reglement = models.CharField(
         max_length=20, blank=True, default='especes',
         verbose_name='Mode de règlement')
+    # NTMAR20 — mode d'acquittement du droit de timbre : timbre papier
+    # (physique) vs timbre électronique. Sert au rapport de synthèse mensuel
+    # des quotités (``selectors.synthese_timbre_mensuelle``).
+    mode_acquittement = models.CharField(
+        max_length=12,
+        choices=[('papier', 'Timbre papier'), ('electronique', 'Timbre électronique')],
+        default='papier', verbose_name="Mode d'acquittement")
     # ── Tiers payeur (auxiliaire string-FK, jamais d'import modèle) ──
     tiers_type = models.CharField(
         max_length=20, blank=True, default='', verbose_name='Type de tiers')
@@ -8795,3 +8813,95 @@ class EtapeAuditConsolidation(TenantModel):
                 "La piste d'audit de consolidation est inaltérable : un "
                 "maillon déjà scellé ne peut pas être modifié.")
         super().save(*args, **kwargs)
+
+
+# ── NTMAR18 — Conventions fiscales de non-double-imposition ─────────────────
+
+class ConventionFiscale(TenantModel):
+    """Convention fiscale de non-double-imposition par pays (NTMAR18).
+
+    Permet d'appliquer le taux CONVENTIONNEL réduit de RAS sur une prestation
+    versée à un bénéficiaire d'un pays conventionné, au lieu du taux de droit
+    commun. Héritage ``TenantModel`` (socle SCA4) — company FK posée serveur.
+    """
+
+    # SCA4 — socle TenantModel ; ``company`` REdéclarée (related_name ARC1).
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: tenant — le référentiel des conventions disparaît avec la société
+        related_name='conventions_fiscales', verbose_name='Société')
+    pays = models.CharField(max_length=80, verbose_name='Pays bénéficiaire')
+    code_pays = models.CharField(
+        max_length=3, blank=True, default='', verbose_name='Code pays (ISO)')
+    taux_conventionnel = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('0'),
+        verbose_name='Taux conventionnel (%)')
+    libelle = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Libellé')
+    actif = models.BooleanField(default=True, verbose_name='Active')
+    date_creation = models.DateTimeField(auto_now_add=True, verbose_name='Créée le')
+
+    class Meta:
+        verbose_name = 'Convention fiscale'
+        verbose_name_plural = 'Conventions fiscales'
+        ordering = ['pays']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'pays'], name='uniq_convention_fiscale_pays'),
+        ]
+
+    def __str__(self):
+        return f'{self.pays} — {self.taux_conventionnel}%'
+
+    def clean(self):
+        super().clean()
+        if self.taux_conventionnel is not None and (
+                self.taux_conventionnel < 0 or self.taux_conventionnel > 100):
+            raise ValidationError(
+                "Le taux conventionnel doit être compris entre 0 et 100 %.")
+
+
+# ── NTMAR12 — Échéancier des acomptes d'IS provisionnels ─────────────────────
+
+class AcompteIS(TenantModel):
+    """Acompte provisionnel d'IS matérialisé (NTMAR12, étend FG140).
+
+    Le CALCUL des 4 acomptes reste dans ``selectors.echeancier_acomptes`` (25 %
+    de l'IS de référence, échéances 3/6/9/12ᵉ mois). Ce modèle PERSISTE
+    l'échéancier pour le suivi de paiement. ``exercice_id`` référence
+    ``ExerciceComptable`` (même app — FK réelle) via ``exercice``.
+    """
+    class Statut(models.TextChoices):
+        A_PAYER = 'a_payer', 'À payer'
+        PAYE = 'paye', 'Payé'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: tenant
+        related_name='acomptes_is', verbose_name='Société')
+    exercice = models.ForeignKey(
+        'ExerciceComptable',
+        on_delete=models.CASCADE,  # on_delete: l'échéancier suit son exercice comptable
+        related_name='acomptes_is', verbose_name='Exercice')
+    rang = models.PositiveSmallIntegerField(verbose_name='Rang (1-4)')
+    montant = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant')
+    date_echeance = models.DateField(verbose_name="Date d'échéance")
+    statut = models.CharField(
+        max_length=8, choices=Statut.choices, default=Statut.A_PAYER,
+        verbose_name='Statut')
+    date_creation = models.DateTimeField(auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Acompte IS'
+        verbose_name_plural = 'Acomptes IS'
+        ordering = ['exercice', 'rang']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'exercice', 'rang'],
+                name='uniq_acompte_is_rang'),
+        ]
+
+    def __str__(self):
+        return f'Acompte IS {self.rang}/4 ({self.montant})'
