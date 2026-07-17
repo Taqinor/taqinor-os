@@ -177,6 +177,21 @@ class InnovationSettings(TenantModel):
     seuil_votes_notification = models.PositiveIntegerField(
         default=3, verbose_name="Seuil de votes pour notifier l'auteur")
 
+    class Frequence(models.TextChoices):
+        QUOTIDIEN = 'quotidien', 'Quotidien'
+        HEBDO = 'hebdo', 'Hebdomadaire'
+
+    # NTIDE40 — digest feedback produit (canal founder, NTIDE36+) : DÉSACTIVÉ
+    # par défaut, comme ``campagnes_activees`` ci-dessus (rien ne change tant
+    # que l'admin ne l'active pas explicitement). ``feedback_digest_frequence``
+    # n'est lu QUE si ``feedback_digest_actif`` est True (cf.
+    # ``apps.innovation.tasks.feedback_digest_run``).
+    feedback_digest_actif = models.BooleanField(
+        default=False, verbose_name='Digest feedback produit activé')
+    feedback_digest_frequence = models.CharField(
+        max_length=10, choices=Frequence.choices, default=Frequence.QUOTIDIEN,
+        verbose_name='Fréquence du digest feedback produit')
+
     class Meta:
         verbose_name = 'Paramètres innovation'
         verbose_name_plural = 'Paramètres innovation'
@@ -253,3 +268,96 @@ class CampagneInnovation(TenantModel):
 
     def __str__(self):
         return self.nom
+
+
+class AnnonceProduit(TenantModel):
+    """Annonce produit (NTIDE39) — repli LOCAL et volontairement simple tant
+    que le référentiel plateforme (NTADM18) n'est pas bâti : seulement ce
+    dont ``FeedbackProduit.annonce`` a besoin pour afficher « vous l'aviez
+    demandé, c'est livré ». Jamais fusionné avec NTADM18 le jour où il
+    existe (cf. règle de frontière du domaine, en tête de fichier) — ce
+    modèle se retirera alors au profit d'une référence opaque, comme
+    ``Idee.linked_type``/``linked_id``."""
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        # on_delete: annonces scopées société — disparaissent avec elle (nettoyage tenant standard).
+        on_delete=models.CASCADE,
+        related_name='innovation_annonces', verbose_name='Société')
+    titre = models.CharField(max_length=255, verbose_name='Titre')
+    description = models.TextField(
+        blank=True, default='', verbose_name='Description')
+    lien = models.URLField(blank=True, default='', verbose_name='Lien')
+
+    class Meta:
+        verbose_name = 'Annonce produit'
+        verbose_name_plural = 'Annonces produit'
+        ordering = ['-created_at', '-id']
+
+    def __str__(self):
+        return self.titre
+
+
+class FeedbackProduit(TenantModel):
+    """Retour produit envoyé au founder (NTIDE36) — canal 1→N founder, PAS
+    conversationnel (``apps.chat`` reste la messagerie d'équipe, cf. règle de
+    frontière du domaine). JAMAIS accessible via un menu/UI normal : seul le
+    bouton discret (NTIDE37) y poste, et seul le palier admin
+    (``IdeasSeeAll``) le consulte (NTIDE38)."""
+
+    class Theme(models.TextChoices):
+        UX = 'ux', 'UX'
+        PERFORMANCE = 'performance', 'Performance'
+        FEATURE = 'feature', 'Fonctionnalité'
+        BUG = 'bug', 'Bug'
+        AUTRE = 'autre', 'Autre'
+
+    class Statut(models.TextChoices):
+        ENVOYE = 'envoye', 'Envoyé'
+        LU = 'lu', 'Lu'
+        ADRESSE = 'adresse', 'Adressé'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        # on_delete: feedback scopé société — disparaît avec elle (nettoyage tenant standard).
+        on_delete=models.CASCADE,
+        related_name='innovation_feedbacks', verbose_name='Société')
+    auteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='feedbacks_produit',
+        verbose_name='Auteur')
+    titre = models.CharField(max_length=255, verbose_name='Titre')
+    description = models.TextField(
+        blank=True, default='', verbose_name='Description')
+    theme = models.CharField(
+        max_length=12, choices=Theme.choices, default=Theme.AUTRE,
+        verbose_name='Thème')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.ENVOYE,
+        verbose_name='Statut')
+    # NTIDE39 — lien vers l'annonce produit qui a fermé ce feedback. Le
+    # feedback lui-même n'est jamais supprimé (dossier produit, même
+    # convention que ``Idee`` qui ne se supprime jamais) : seule la
+    # référence à l'annonce peut disparaître si celle-ci est retirée.
+    annonce = models.ForeignKey(
+        AnnonceProduit,
+        # on_delete: le lien de fermeture disparaît avec l'annonce ; le feedback reste (dossier produit).
+        on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='feedbacks_fermes',
+        verbose_name='Fermé via annonce')
+    message_fermeture = models.TextField(
+        blank=True, default='', verbose_name='Message de fermeture')
+
+    class Meta:
+        verbose_name = 'Feedback produit'
+        verbose_name_plural = 'Feedbacks produit'
+        ordering = ['-created_at', '-id']
+        indexes = [
+            models.Index(fields=['company', 'theme'],
+                         name='innovation_fb_co_theme'),
+            models.Index(fields=['company', 'statut'],
+                         name='innovation_fb_co_statut'),
+        ]
+
+    def __str__(self):
+        return self.titre
