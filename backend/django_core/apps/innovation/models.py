@@ -229,6 +229,11 @@ class CampagneInnovation(TenantModel):
         null=True, blank=True, verbose_name='Date de début')
     date_fin = models.DateField(
         null=True, blank=True, verbose_name='Date de fin')
+    # NTIDE27 — affiché en haut du formulaire « Proposer une idée » quand
+    # l'utilisateur connecté matche le segment de la campagne (« Nous
+    # cherchons vos idées sur … »). Optionnel — vide = pas de bandeau.
+    message_incitation = models.TextField(
+        blank=True, default='', verbose_name="Message d'incitation")
 
     class Meta:
         verbose_name = 'Campagne innovation'

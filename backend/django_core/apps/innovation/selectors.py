@@ -135,6 +135,31 @@ def users_for_campaign(company, campagne):
             .distinct())
 
 
+def campagne_active_pour_utilisateur(user):
+    """NTIDE27 — la campagne ACTIVE (s'il y en a une) dont le segment matche
+    le rôle FIN de ``user`` (même règle que ``users_for_campaign``, en sens
+    inverse : depuis l'utilisateur vers LA campagne à lui montrer sur le
+    formulaire « Proposer une idée »). La plus récente en cas de plusieurs
+    correspondances. ``None`` si l'utilisateur n'a pas de rôle fin, ou si
+    aucune campagne active ne le cible.
+
+    Filtrage fait en PYTHON (pas de lookup JSON spécifique au backend) : le
+    nombre de campagnes ACTIVES d'une société reste petit, et ``contains``
+    sur un ``JSONField`` diverge selon le moteur de base de données."""
+    from .models import CampagneInnovation
+
+    role_nom = getattr(getattr(user, 'role', None), 'nom', None)
+    if not role_nom:
+        return None
+    qs = (CampagneInnovation.objects.filter(
+        company_id=user.company_id, statut=CampagneInnovation.Statut.ACTIVE)
+        .order_by('-created_at', '-id'))
+    for campagne in qs:
+        if campagne.cible_departement == role_nom or role_nom in (campagne.segment or []):
+            return campagne
+    return None
+
+
 def timeline(company, statut=None, contexte=None):
     """NTIDE23 — nombre d'idées PROPOSÉES par jour (``created_at``), filtres
     statut/contexte optionnels, ordre chronologique croissant (adapté à un

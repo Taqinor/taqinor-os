@@ -2,12 +2,14 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
-    IdeeViewSet, InnovationSettingsView, TimelineView, VoteIdeeViewSet,
+    CampagneInnovationViewSet, IdeeViewSet, InnovationSettingsView,
+    TimelineView, VoteIdeeViewSet,
 )
 
 router = DefaultRouter()
 router.register(r'idees', IdeeViewSet, basename='idee')
 router.register(r'votes', VoteIdeeViewSet, basename='vote-idee')
+router.register(r'campagnes', CampagneInnovationViewSet, basename='campagne-innovation')
 
 urlpatterns = [
     # NTIDE7 — Paramètres → Avancé « Campagnes innovation » (singleton société).

@@ -73,6 +73,16 @@ const innovationApi = {
     get: () => api.get('/innovation/parametres/'),
     update: (data) => api.patch('/innovation/parametres/', data),
   },
+
+  // ── Campagnes d'innovation ciblées (NTIDE25+, palier Directeur/Admin) ──
+  campagnes: {
+    list: (params) => api.get('/innovation/campagnes/', { params }),
+    get: (id) => api.get(`/innovation/campagnes/${id}/`),
+    create: (data) => api.post('/innovation/campagnes/', data),
+    update: (id, data) => api.patch(`/innovation/campagnes/${id}/`, data),
+    // NTIDE27 — bandeau d'incitation (tout utilisateur connecté).
+    incitation: () => api.get('/innovation/campagnes/incitation/'),
+  },
 }
 
 export default innovationApi

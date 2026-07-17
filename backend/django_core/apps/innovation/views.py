@@ -18,13 +18,13 @@ from authentication.permissions import IsAdminOrResponsableTier
 from core.viewsets import CompanyScopedModelViewSet
 
 from . import selectors, services
-from .models import Idee, InnovationSettings, VoteIdee
+from .models import CampagneInnovation, Idee, InnovationSettings, VoteIdee
 from .permissions import (
     IdeasChangeStatus, IdeasModerate, IdeasSeeAll, IdeasVote,
 )
 from .serializers import (
-    IdeeDetailSerializer, IdeeSerializer, InnovationSettingsSerializer,
-    VoteIdeeSerializer,
+    CampagneInnovationSerializer, IdeeDetailSerializer, IdeeSerializer,
+    IncitationSerializer, InnovationSettingsSerializer, VoteIdeeSerializer,
 )
 
 
@@ -371,6 +371,30 @@ class VoteIdeeViewSet(CompanyScopedModelViewSet):
         (``votes_my_ideas``)."""
         qs = self.get_queryset().filter(idee__auteur=request.user)
         return Response(VoteIdeeSerializer(qs, many=True).data)
+
+
+class CampagneInnovationViewSet(CompanyScopedModelViewSet):
+    """Campagnes d'innovation ciblées (NTIDE25) : gestion réservée au palier
+    Directeur/Admin (``IdeasSeeAll``), SAUF ``incitation`` — lue par tout
+    utilisateur connecté (``IdeasVote``) pour afficher le bandeau du
+    formulaire « Proposer une idée » (NTIDE27)."""
+
+    queryset = CampagneInnovation.objects.all()
+    serializer_class = CampagneInnovationSerializer
+    permission_classes = [IdeasSeeAll]
+
+    def get_permissions(self):
+        if self.action == 'incitation':
+            return [IdeasVote()]
+        return super().get_permissions()
+
+    # ── NTIDE27 — bandeau d'incitation (formulaire proposer une idée) ───────
+    @action(detail=False, methods=['get'], url_path='incitation')
+    def incitation(self, request):
+        campagne = selectors.campagne_active_pour_utilisateur(request.user)
+        if campagne is None:
+            return Response({'campagne': None})
+        return Response({'campagne': IncitationSerializer(campagne).data})
 
 
 class InnovationSettingsView(APIView):
