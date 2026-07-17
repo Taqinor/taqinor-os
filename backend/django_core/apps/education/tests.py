@@ -711,3 +711,50 @@ class NTEDU21EmploiDuTempsTests(EducationTestCaseMixin, TestCase):
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200, response.content)
         self.assertEqual(len(response.data), 1)
+
+
+class NTEDU22GenerationSeancesTests(EducationTestCaseMixin, TestCase):
+    """NTEDU22 — génération hebdomadaire des séances, fériés exclus."""
+
+    def setUp(self):
+        super().setUp()
+        self.matiere = Matiere.objects.create(company=self.company, nom='Maths')
+        self.matiere_classe = MatiereClasse.objects.create(
+            company=self.company, classe=self.classe, matiere=self.matiere)
+
+    def test_semaine_avec_ferie_ne_genere_aucune_seance_ce_jour(self):
+        from .services_planning import generer_seances_semaine
+
+        # Fête du Travail (1er mai) — férié fixe marocain. Lundi 27 avril 2026.
+        lundi = date(2026, 4, 27)  # lundi
+        vendredi_ferie = date(2026, 5, 1)  # vendredi -> jour_semaine=4
+
+        CreneauEmploiDuTemps.objects.create(
+            company=self.company, classe=self.classe,
+            matiere_classe=self.matiere_classe, jour_semaine=0,  # lundi
+            heure_debut=time(8, 0), heure_fin=time(9, 0))
+        CreneauEmploiDuTemps.objects.create(
+            company=self.company, classe=self.classe,
+            matiere_classe=self.matiere_classe, jour_semaine=4,  # vendredi férié
+            heure_debut=time(8, 0), heure_fin=time(9, 0))
+
+        creees = generer_seances_semaine(self.company, semaine_debut=lundi)
+
+        dates_generees = {s.date for s in creees}
+        self.assertIn(lundi, dates_generees)
+        self.assertNotIn(vendredi_ferie, dates_generees)
+
+    def test_generation_est_idempotente(self):
+        from .services_planning import generer_seances_semaine
+
+        lundi = date(2026, 9, 7)
+        CreneauEmploiDuTemps.objects.create(
+            company=self.company, classe=self.classe,
+            matiere_classe=self.matiere_classe, jour_semaine=0,
+            heure_debut=time(8, 0), heure_fin=time(9, 0))
+
+        creees1 = generer_seances_semaine(self.company, semaine_debut=lundi)
+        creees2 = generer_seances_semaine(self.company, semaine_debut=lundi)
+        self.assertEqual(len(creees1), 1)
+        self.assertEqual(len(creees2), 0)
+        self.assertEqual(Seance.objects.filter(classe=self.classe).count(), 1)

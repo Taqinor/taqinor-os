@@ -4,6 +4,9 @@ créneau et matérialisation hebdomadaire des séances.
 Module dédié (comme ``services_remises``/``services_echeancier``/
 ``services_cantine``) : logique propre à l'emploi du temps, isolée du reste
 de ``services.py``."""
+from datetime import timedelta
+
+from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
 
@@ -44,3 +47,46 @@ def verifier_conflit_creneau(creneau):
             raise ValidationError({'detail': (
                 "Conflit de salle : cette salle est déjà occupée sur ce "
                 "jour/horaire.")})
+
+
+def _lundi_semaine_prochaine(today=None):
+    """Lundi de la semaine CIVILE suivante (jamais la semaine en cours)."""
+    today = today or timezone.localdate()
+    jours_avant_lundi = (7 - today.weekday()) % 7 or 7
+    return today + timedelta(days=jours_avant_lundi)
+
+
+def generer_seances_semaine(company, *, semaine_debut=None):
+    """NTEDU22 — matérialise les ``Seance`` (NTEDU12) de la semaine à venir à
+    partir des ``CreneauEmploiDuTemps`` ACTIFS (récurrence hebdomadaire),
+    calendrier scolaire respecté (jours fériés marocains exclus via
+    ``core.calendar.is_holiday`` — fondation partagée, aucun modèle
+    ``JourFerieEducation`` dupliqué). Idempotent (``get_or_create`` par
+    classe/matière/date/heure de début) : rejouer la génération ne duplique
+    jamais une séance."""
+    from core.calendar import is_holiday
+
+    from .models import CreneauEmploiDuTemps, Seance
+
+    semaine_debut = semaine_debut or _lundi_semaine_prochaine()
+    creneaux = CreneauEmploiDuTemps.objects.filter(
+        company=company, actif=True).select_related(
+        'classe', 'matiere_classe__matiere', 'matiere_classe__enseignant')
+
+    creees = []
+    for creneau in creneaux:
+        date_seance = semaine_debut + timedelta(days=creneau.jour_semaine)
+        if is_holiday(date_seance):
+            continue  # NTEDU22 — jour férié : aucune séance générée ce jour-là.
+        seance, created = Seance.objects.get_or_create(
+            company=company, classe=creneau.classe,
+            matiere=creneau.matiere_classe.matiere.nom, date=date_seance,
+            heure_debut=creneau.heure_debut,
+            defaults={
+                'heure_fin': creneau.heure_fin,
+                'enseignant': creneau.matiere_classe.enseignant,
+                'salle': creneau.salle,
+            })
+        if created:
+            creees.append(seance)
+    return creees
