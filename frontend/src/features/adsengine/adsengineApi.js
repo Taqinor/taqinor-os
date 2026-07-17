@@ -158,8 +158,9 @@ const adsengineApi = {
   },
   previews: {
     // Snippet iframe d'aperçu Meta (valide 24 h — refetch par affichage).
+    // Param `ad_format` (PAS `format` — réservé par DRF pour la négociation de contenu).
     get: (adMetaId, format) =>
-      api.get(`/adsengine/ads/${adMetaId}/previews/`, { params: { format } }),
+      api.get(`/adsengine/ads/${adMetaId}/previews/`, { params: { ad_format: format } }),
   },
 
   // ── ENG33/ENG45 — Reporting (drill-downs : variantes, entonnoir, cohortes) ──

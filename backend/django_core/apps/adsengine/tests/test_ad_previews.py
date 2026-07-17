@@ -50,7 +50,7 @@ class AdPreviewsTests(TestCase):
         mock_cls.from_connection.return_value = FakeClient()
         resp = auth(self.viewer).get(
             '/api/django/adsengine/ads/ad1/previews/',
-            {'format': 'INSTAGRAM_STORY'})
+            {'ad_format': 'INSTAGRAM_STORY'})
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertEqual(resp.data['format'], 'INSTAGRAM_STORY')
         self.assertIn('<iframe', resp.data['body'])
@@ -58,7 +58,7 @@ class AdPreviewsTests(TestCase):
     def test_non_whitelisted_format_rejected(self):
         resp = auth(self.viewer).get(
             '/api/django/adsengine/ads/ad1/previews/',
-            {'format': 'DESKTOP_HACK'})
+            {'ad_format': 'DESKTOP_HACK'})
         self.assertEqual(resp.status_code, 400)
 
     def test_cross_company_ad_is_404(self):

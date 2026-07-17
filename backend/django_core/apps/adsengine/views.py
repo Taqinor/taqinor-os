@@ -1760,7 +1760,10 @@ class AdPreviewsView(APIView):
         company, err = _adseng_company_gate(request, 'adsengine_view')
         if err is not None:
             return err
-        ad_format = (request.query_params.get('format')
+        # NB : le paramètre s'appelle ``ad_format`` (PAS ``format``) — ``format``
+        # est réservé par DRF pour la négociation de contenu (``?format=json``) et
+        # un ``?format=INSTAGRAM_STORY`` renverrait un 404 avant même la vue.
+        ad_format = (request.query_params.get('ad_format')
                      or 'MOBILE_FEED_STANDARD').strip()
         if ad_format not in PREVIEW_FORMATS:
             return Response(

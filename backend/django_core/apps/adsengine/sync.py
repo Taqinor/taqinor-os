@@ -150,7 +150,7 @@ def _extract_creative_fields(creative):
                 .get('value', {}).get('link') or '')
     image_hash = (link_data.get('image_hash')
                   or (oss.get('photo_data') or {}).get('image_hash') or '')
-    video_id = video_data.get('video_id') or ''
+    video_id = (creative.get('video_id') or video_data.get('video_id') or '')
     return {
         'creative_meta_id': str(creative.get('id') or ''),
         'body': body or '',
