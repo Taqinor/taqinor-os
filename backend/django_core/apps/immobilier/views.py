@@ -6,19 +6,24 @@ ajoutée plus tard sans changer la forme des endpoints.
 """
 from rest_framework import filters, status
 from rest_framework.decorators import action
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 
 from core.permissions import ScopedPermission
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
-    Bail, Batiment, EcheanceLoyer, Local, Locataire, Niveau, RelanceLoyer,
-    Site,
+    Bail, Batiment, BudgetCharges, DepenseCharges, EcheanceLoyer,
+    ElementEtatLieux, EtatLieuxImmo, Local, Locataire, Niveau,
+    PhotoEtatLieux, PieceEtatLieux, RegularisationCharges, RelanceLoyer, Site,
 )
 from .serializers import (
-    BailSerializer, BatimentSerializer, EcheanceLoyerSerializer,
-    LocalSerializer, LocataireSerializer, NiveauSerializer,
-    RelanceLoyerSerializer, RevisionLoyerSerializer, SiteSerializer,
+    BailSerializer, BatimentSerializer, BudgetChargesSerializer,
+    DepenseChargesSerializer, EcheanceLoyerSerializer, ElementEtatLieuxSerializer,
+    EtatLieuxImmoSerializer, LocalSerializer, LocataireSerializer,
+    NiveauSerializer, PhotoEtatLieuxSerializer, PieceEtatLieuxSerializer,
+    RegularisationChargesSerializer, RelanceLoyerSerializer,
+    RevisionLoyerSerializer, SiteSerializer,
 )
 
 
@@ -72,6 +77,40 @@ class BatimentViewSet(_ImmobilierBaseViewSet):
             request.user.company, batiment_id=batiment.id,
             periode=request.query_params.get('periode'))
         return Response(data)
+
+    @action(detail=True, methods=['get'], url_path='repartition-charges',
+            permission_classes=[ScopedPermission])
+    def repartition_charges(self, request, pk=None):
+        """NTPRO12 — Répartition des dépenses réelles de charges par local
+        occupé (tantièmes ou surface selon ``mode_repartition``)."""
+        from . import services
+
+        batiment = self.get_object()
+        exercice = request.query_params.get('exercice')
+        if not exercice:
+            return Response(
+                {'detail': 'Le paramètre exercice est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        data = services.repartir_charges(batiment, int(exercice))
+        return Response(data)
+
+    @action(detail=True, methods=['post'], url_path='generer-regularisation',
+            permission_classes=[ScopedPermission])
+    def generer_regularisation(self, request, pk=None):
+        """NTPRO13 — Génère/recalcule la régularisation annuelle des charges
+        de chaque bail actif du bâtiment pour ``exercice`` (idempotent)."""
+        from . import services
+
+        batiment = self.get_object()
+        exercice = request.data.get('exercice')
+        if not exercice:
+            return Response(
+                {'detail': 'exercice est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        resultats = services.generer_regularisation(batiment, int(exercice))
+        return Response(
+            RegularisationChargesSerializer(resultats, many=True).data,
+            status=status.HTTP_201_CREATED)
 
 
 class NiveauViewSet(_ImmobilierBaseViewSet):
@@ -323,6 +362,233 @@ class EcheanceLoyerViewSet(_ImmobilierBaseViewSet):
         return Response(
             RelanceLoyerSerializer(relance).data,
             status=status.HTTP_201_CREATED)
+
+
+class BudgetChargesViewSet(_ImmobilierBaseViewSet):
+    """NTPRO10 — Budget de charges par bâtiment/exercice/poste."""
+    queryset = BudgetCharges.objects.select_related('batiment').all()
+    serializer_class = BudgetChargesSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['exercice', 'poste', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        batiment_id = self.request.query_params.get('batiment')
+        exercice = self.request.query_params.get('exercice')
+        if batiment_id:
+            qs = qs.filter(batiment_id=batiment_id)
+        if exercice:
+            qs = qs.filter(exercice=exercice)
+        return qs
+
+    @action(detail=True, methods=['get'],
+            permission_classes=[ScopedPermission])
+    def consommation(self, request, pk=None):
+        """NTPRO11 — Total consommé (dépenses réelles) vs budgété, écart %."""
+        from . import selectors
+
+        budget = self.get_object()
+        return Response(selectors.consommation_budget(budget))
+
+
+class DepenseChargesViewSet(_ImmobilierBaseViewSet):
+    """NTPRO11 — Dépenses réelles de charges rattachées à un budget."""
+    queryset = DepenseCharges.objects.select_related(
+        'budget_charges', 'budget_charges__batiment').all()
+    serializer_class = DepenseChargesSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        budget_id = self.request.query_params.get('budget_charges')
+        if budget_id:
+            qs = qs.filter(budget_charges_id=budget_id)
+        return qs
+
+
+class RegularisationChargesViewSet(_ImmobilierBaseViewSet):
+    """NTPRO13 — Régularisations de charges (LECTURE seule côté API : une
+    ligne naît TOUJOURS de `batiments/{id}/generer-regularisation/`)."""
+    queryset = RegularisationCharges.objects.select_related(
+        'bail', 'bail__local', 'bail__locataire').all()
+    serializer_class = RegularisationChargesSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['exercice', 'date_creation']
+    http_method_names = ['get', 'head', 'options', 'post']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        bail_id = self.request.query_params.get('bail')
+        exercice = self.request.query_params.get('exercice')
+        sens = self.request.query_params.get('sens')
+        if bail_id:
+            qs = qs.filter(bail_id=bail_id)
+        if exercice:
+            qs = qs.filter(exercice=exercice)
+        if sens:
+            qs = qs.filter(sens=sens)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        # Aucune création directe : une RegularisationCharges naît TOUJOURS
+        # de `batiments/{id}/generer-regularisation/`.
+        return Response(
+            {'detail': "Utiliser batiments/{id}/generer-regularisation/."},
+            status=status.HTTP_405_METHOD_NOT_ALLOWED)
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[ScopedPermission])
+    def emettre(self, request, pk=None):
+        """NTPRO13 — Émet le document ventes (facture ou avoir) correspondant
+        au sens de la régularisation. Neutre → aucun document, 200 no-op."""
+        from . import services
+
+        regularisation = self.get_object()
+        try:
+            document_id = services.emettre_regularisation(regularisation)
+        except services.ClientVentesIntrouvableError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        data = self.get_serializer(regularisation).data
+        data['document_ventes_id'] = document_id
+        return Response(data, status=status.HTTP_200_OK)
+
+
+class EtatLieuxImmoViewSet(_ImmobilierBaseViewSet):
+    """NTPRO15 — États des lieux (entrée/sortie) d'un bail, pré-remplis
+    depuis la grille standard du type de local à la création."""
+    queryset = EtatLieuxImmo.objects.select_related(
+        'bail', 'bail__local').prefetch_related('pieces__elements').all()
+    serializer_class = EtatLieuxImmoSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        bail_id = self.request.query_params.get('bail')
+        moment = self.request.query_params.get('moment')
+        if bail_id:
+            qs = qs.filter(bail_id=bail_id)
+        if moment:
+            qs = qs.filter(moment=moment)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        """NTPRO15 — Crée l'état des lieux PRÉ-REMPLI (grille standard) via
+        ``services.creer_etat_lieux`` : jamais un POST libre qui contournerait
+        le pré-remplissage."""
+        from . import services
+
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        bail = serializer.validated_data['bail']
+        etat_lieux = services.creer_etat_lieux(
+            bail, serializer.validated_data['moment'],
+            technicien=serializer.validated_data.get('technicien'),
+            date=serializer.validated_data.get('date'))
+        out = self.get_serializer(etat_lieux)
+        return Response(out.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'],
+            url_path=r'elements/(?P<element_id>[^/.]+)/photos',
+            parser_classes=[MultiPartParser, FormParser, JSONParser],
+            permission_classes=[ScopedPermission])
+    def ajouter_photo(self, request, pk=None, element_id=None):
+        """NTPRO16 — Téléverse une photo (multipart, champ ``photo``) sur un
+        élément de CET état des lieux (borné à la société via
+        ``get_object``, puis l'élément est cherché dans SES pièces — jamais
+        un id d'élément d'un autre état des lieux)."""
+        from . import services
+
+        etat_lieux = self.get_object()
+        try:
+            element = ElementEtatLieux.objects.get(
+                pk=element_id, piece__etat_lieux=etat_lieux)
+        except (ElementEtatLieux.DoesNotExist, ValueError):
+            return Response(
+                {'detail': 'Élément introuvable pour cet état des lieux.'},
+                status=status.HTTP_404_NOT_FOUND)
+
+        file = request.FILES.get('photo') or request.FILES.get('file')
+        if not file:
+            return Response(
+                {'detail': 'Le fichier photo est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            photo = services.ajouter_photo_element(
+                element, file, uploaded_by=request.user)
+        except services.PhotoInvalideError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            PhotoEtatLieuxSerializer(photo).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'],
+            url_path=r'photos/(?P<photo_id>[^/.]+)/download',
+            permission_classes=[ScopedPermission])
+    def telecharger_photo(self, request, pk=None, photo_id=None):
+        """NTPRO16 — Proxy même-origine (comme `ged.DocumentVersion.apercu`)
+        pour servir les octets d'une photo sans exposer l'hôte MinIO
+        interne. Bornée à cet état des lieux (jamais une photo d'un autre)."""
+        from django.http import HttpResponse
+
+        from apps.records.storage import fetch_attachment
+
+        etat_lieux = self.get_object()
+        try:
+            photo = PhotoEtatLieux.objects.get(
+                pk=photo_id, element__piece__etat_lieux=etat_lieux)
+        except (PhotoEtatLieux.DoesNotExist, ValueError):
+            return Response(
+                {'detail': 'Photo introuvable pour cet état des lieux.'},
+                status=status.HTTP_404_NOT_FOUND)
+
+        data, err = fetch_attachment(photo.file_key)
+        if err:
+            return Response({'detail': err}, status=status.HTTP_404_NOT_FOUND)
+        response = HttpResponse(
+            data, content_type=photo.mime or 'application/octet-stream')
+        safe_name = (photo.filename or 'photo').replace('"', '')
+        response['Content-Disposition'] = f'inline; filename="{safe_name}"'
+        return response
+
+
+class PieceEtatLieuxViewSet(_ImmobilierBaseViewSet):
+    """NTPRO15 — Pièces inspectées (créées automatiquement via la grille
+    standard — pas de création directe, seulement lecture/mise à jour de
+    l'état/commentaire relevés sur le terrain)."""
+    queryset = PieceEtatLieux.objects.select_related('etat_lieux').all()
+    serializer_class = PieceEtatLieuxSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['ordre']
+    http_method_names = ['get', 'patch', 'head', 'options']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        etat_lieux_id = self.request.query_params.get('etat_lieux')
+        if etat_lieux_id:
+            qs = qs.filter(etat_lieux_id=etat_lieux_id)
+        return qs
+
+
+class ElementEtatLieuxViewSet(_ImmobilierBaseViewSet):
+    """NTPRO15 — Éléments inspectés (créés automatiquement via la grille
+    standard — pas de création directe, seulement lecture/mise à jour de
+    l'état/commentaire relevés sur le terrain)."""
+    queryset = ElementEtatLieux.objects.select_related('piece').all()
+    serializer_class = ElementEtatLieuxSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['ordre']
+    http_method_names = ['get', 'patch', 'head', 'options']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        piece_id = self.request.query_params.get('piece')
+        if piece_id:
+            qs = qs.filter(piece_id=piece_id)
+        return qs
 
 
 class RelanceLoyerViewSet(_ImmobilierBaseViewSet):
