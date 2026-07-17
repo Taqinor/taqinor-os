@@ -184,6 +184,11 @@ INSTALLED_APPS = [
     # canal de feedback produit in-app. Additif, company-scopé ; le chatter
     # réutilise records.Activity (ARC8), aucun modèle *Activity maison.
     'apps.innovation',
+    # NTEDU1 — Éducation (établissement scolaire) : structure année/niveau/
+    # classe, dossier famille/élève, inscriptions (liste d'attente), scolarité
+    # (grille tarifaire/remises/échéancier), présences, matières. Additive,
+    # scopée société côté serveur.
+    'apps.education',
 ]
 
 MIDDLEWARE = [
