@@ -360,6 +360,38 @@ class ExperimentViewSet(AdsengineViewSet):
                 .order_by('-created_at', '-id'))
         return Response(DecisionLogSerializer(logs, many=True).data)
 
+    @action(detail=True, methods=['post'], url_path='sync-ad-study')
+    def sync_ad_study(self, request, pk=None):
+        """ADSDEEP34 — Lit (LECTURE SEULE côté Meta) les résultats de l'étude
+        A/B native liée à cette expérience (``experiment.meta_study_id``) et
+        journalise un ``DecisionLog``. Écriture → ``adsengine_manage`` (hérité :
+        cette action DÉCLENCHE un appel externe même si Meta n'y écrit rien).
+        404 structuré si l'expérience ne porte encore aucun ``meta_study_id``."""
+        from .meta_client import MetaClient
+        from .models import MetaConnection
+        from .serializers import DecisionLogSerializer as _DLS
+        from .services import sync_ad_study_results
+
+        experiment = self.get_object()  # borné société
+        if not experiment.meta_study_id:
+            return Response(
+                {'detail': "Aucune étude native (meta_study_id) liée à cette "
+                           "expérience."}, status=404)
+        connection = MetaConnection.objects.filter(
+            company=experiment.company, enabled=True).first()
+        if connection is None:
+            return Response(
+                {'detail': 'Aucune connexion Meta active.'}, status=400)
+        client = MetaClient.from_connection(connection)
+        try:
+            log = sync_ad_study_results(experiment, client=client)
+        except Exception as exc:  # panne réseau/API Meta → jamais une 500 nue
+            return Response({'detail': str(exc)}, status=502)
+        if log is None:
+            return Response(
+                {'detail': "Aucune étude native liée."}, status=404)
+        return Response(_DLS(log).data)
+
 
 class ExperimentArmViewSet(AdsengineViewSet):
     """ADSENG3 — CRUD des bras d'expérience (créatifs candidats)."""

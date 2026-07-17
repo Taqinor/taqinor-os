@@ -531,6 +531,69 @@ class MetaClient:
         return self._request(
             'POST', self._account_edge('ads'), data=payload)
 
+    # ── ADSDEEP34 — A/B test NATIF Meta (ad_studies, SPLIT_TEST_V2) ──────────
+    # Bornes documentées (dossier §7) : 2-5 cellules, ``treatment_percentage``
+    # >= 10 %, somme des cellules = 100 %. Validées ICI (fail-fast) — jamais un
+    # rejet Graph tardif après un aller-retour réseau.
+    AD_STUDY_MIN_CELLS = 2
+    AD_STUDY_MAX_CELLS = 5
+    AD_STUDY_MIN_TREATMENT_PCT = 10
+
+    @classmethod
+    def _validate_ad_study_cells(cls, cells):
+        cells = list(cells or [])
+        if not (cls.AD_STUDY_MIN_CELLS <= len(cells) <= cls.AD_STUDY_MAX_CELLS):
+            raise MetaError(
+                "Une étude SPLIT_TEST_V2 exige entre "
+                f"{cls.AD_STUDY_MIN_CELLS} et {cls.AD_STUDY_MAX_CELLS} cellules "
+                f"(reçu {len(cells)}).")
+        total_pct = sum(float(c.get('treatment_percentage', 0) or 0) for c in cells)
+        if abs(total_pct - 100) > 0.01:
+            raise MetaError(
+                "La somme des treatment_percentage doit faire 100 "
+                f"(reçu {total_pct}).")
+        for cell in cells:
+            pct = float(cell.get('treatment_percentage', 0) or 0)
+            if pct < cls.AD_STUDY_MIN_TREATMENT_PCT:
+                raise MetaError(
+                    "Chaque cellule doit avoir treatment_percentage >= "
+                    f"{cls.AD_STUDY_MIN_TREATMENT_PCT} % (reçu {pct} pour "
+                    f"« {cell.get('name', '?')} »).")
+        return cells
+
+    def create_ad_study(self, *, name, cells, extra_fields=None):
+        """ADSDEEP34 — Crée une étude A/B NATIVE Meta (``POST /act_<id>/ad_studies``,
+        ``type=SPLIT_TEST_V2`` — dossier §7).
+
+        ``cells`` : 2-5 dicts ``{name, treatment_percentage, campaigns|adsets|
+        ads: [ids]}`` — ces ids référencent des objets DÉJÀ créés (par le reste
+        du moteur, donc TOUJOURS nés PAUSED — cette méthode ne crée ni campagne
+        ni adset elle-même et n'envoie AUCUN ``status`` : une étude ne porte pas
+        de statut de type campagne/adset).
+
+        IMMUABLE APRÈS LANCEMENT (dossier §7) : ``treatment_percentage`` et
+        ``start_time`` ne peuvent plus changer une fois l'étude créée — l'UI
+        DOIT l'annoncer à l'approbateur AVANT la proposition (``services.
+        propose_ad_study`` porte l'avertissement) ; ce client, lui, ne fait que
+        transmettre — il ne « réédite » jamais une étude déjà lancée."""
+        cells = self._validate_ad_study_cells(cells)
+        base = {'name': name, 'type': 'SPLIT_TEST_V2', 'cells': json.dumps(cells)}
+        payload = dict(base)
+        extras = dict(extra_fields or {})
+        extras.pop('status', None)  # une étude ne porte pas de champ status
+        payload.update(extras)
+        return self._request(
+            'POST', self._account_edge('ad_studies'), data=payload)
+
+    def get_ad_study_results(self, study_id):
+        """ADSDEEP34 — Lit (LECTURE SEULE) les résultats d'une étude native déjà
+        créée (``GET /<study_id>``). Renvoie le dict brut (ou ``{}``) — la
+        normalisation en ``DecisionLog`` vit dans ``services.
+        sync_ad_study_results`` (aucun write Meta ici)."""
+        payload = self._request('GET', f'{study_id}', params={'fields': (
+            'id,name,type,cells,start_time,end_time,confidence_level,results')})
+        return payload if isinstance(payload, dict) else {}
+
     # ── Éditions d'objets existants (ADSDEEP30 — JAMAIS de status) ───────────
     @staticmethod
     def _edit_payload(base, extra_fields):

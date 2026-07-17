@@ -161,6 +161,67 @@ def propose_action(company, *, kind, reason_fr, payload=None, auto=False):
         status=EngineAction.Statut.PROPOSEE, auto=auto)
 
 
+# ── ADSDEEP34 — A/B test NATIF Meta (ad_studies SPLIT_TEST_V2) ───────────────
+# Kind en constante simple (même pattern que les kinds trésorerie ADSENG22 —
+# ``pacing.KIND_*`` — hors de ``EngineAction.Kind`` : le ``CharField.choices``
+# n'est pas appliqué par Django au ``save()``, donc aucune migration requise
+# pour un nouveau kind qui suit ce pattern déjà établi).
+KIND_CREATE_AD_STUDY = 'create_ad_study'
+
+WARN_AD_STUDY_IMMUTABLE = (
+    "Étude A/B native Meta : la répartition (treatment_percentage) et la date "
+    "de début sont IMMUABLES après le lancement — seule la date de fin reste "
+    "éditable.")
+
+
+def propose_ad_study(company, *, name, cells, experiment=None, reason_fr=None):
+    """ADSDEEP34 — Propose la création d'une étude A/B NATIVE (``ad_studies``
+    SPLIT_TEST_V2, dossier §7) : validation de FORME dès la proposition (2-5
+    cellules, treatment_percentage >= 10 %, somme 100 — fail-fast, la MÊME borne
+    que ``MetaClient.create_ad_study`` revalidera au dispatch). L'avertissement
+    d'IMMUTABILITÉ après lancement est poussé dans ``payload['warnings']`` — donc
+    rendu à l'approbateur, comme les avertissements ADSDEEP31/32."""
+    cells = list(cells or [])
+    if not (2 <= len(cells) <= 5):
+        raise ValueError(
+            f"Une étude SPLIT_TEST_V2 exige entre 2 et 5 cellules (reçu {len(cells)}).")
+    total_pct = sum(float(c.get('treatment_percentage', 0) or 0) for c in cells)
+    if abs(total_pct - 100) > 0.01:
+        raise ValueError(
+            f"La somme des treatment_percentage doit faire 100 (reçu {total_pct}).")
+    if any(float(c.get('treatment_percentage', 0) or 0) < 10 for c in cells):
+        raise ValueError(
+            "Chaque cellule doit avoir treatment_percentage >= 10 %.")
+    reason_fr = reason_fr or (
+        f"Lancer l'étude A/B native « {name} » ({len(cells)} cellules).")
+    payload = {
+        'name': name, 'cells': cells,
+        'experiment_id': experiment.pk if experiment is not None else None,
+        'warnings': [WARN_AD_STUDY_IMMUTABLE],
+    }
+    return propose_action(
+        company, kind=KIND_CREATE_AD_STUDY, reason_fr=reason_fr, payload=payload)
+
+
+def sync_ad_study_results(experiment, *, client):
+    """ADSDEEP34 — Lit (LECTURE SEULE — AUCUN write Meta) les résultats de
+    l'étude native liée à ``experiment.meta_study_id`` et journalise un
+    ``DecisionLog`` REJOUABLE (même contrat que le reste de la science, ADSENG3).
+    No-op (renvoie ``None``) si l'expérience ne porte encore aucun
+    ``meta_study_id`` (aucune étude native créée pour l'instant)."""
+    if not experiment.meta_study_id:
+        return None
+    from .models import DecisionLog
+    raw = client.get_ad_study_results(experiment.meta_study_id)
+    results = raw.get('results') if isinstance(raw.get('results'), dict) else {}
+    return DecisionLog.objects.create(
+        company=experiment.company, experiment=experiment,
+        inputs={'meta_study_id': experiment.meta_study_id, 'cells': raw.get('cells')},
+        posteriors=results, allocations={},
+        summary_fr=(
+            f"Résultats lus depuis l'étude native Meta {experiment.meta_study_id}."))
+
+
 def propose_pause_for_month(company, *, target_meta_id, target_type='campaign',
                             reason_fr=None):
     """ADSENG22 — Propose une pause « pour le mois » (chemin breach-imminent du
@@ -313,6 +374,13 @@ def _dispatch(client, action):
         return client.update_adset_budget(
             adset_id=payload.get('adset_id', ''),
             daily_budget=payload.get('daily_budget'),
+            extra_fields=payload.get('extra_fields'))
+    if kind == KIND_CREATE_AD_STUDY:
+        # ADSDEEP34 — étude A/B native (ad_studies SPLIT_TEST_V2). Aucun
+        # ``status`` n'est jamais envoyé (une étude n'en porte pas) ; les cellules
+        # référencent des objets DÉJÀ nés PAUSED par le reste du moteur.
+        return client.create_ad_study(
+            name=payload.get('name', ''), cells=payload.get('cells', []),
             extra_fields=payload.get('extra_fields'))
     if kind == KIND_ENABLE_CBO:
         # ADSENG22 — ``enable_cbo`` est PROPOSE-ONLY : activer l'Advantage+

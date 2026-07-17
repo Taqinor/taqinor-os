@@ -885,6 +885,14 @@ class Experiment(TenantModel):
     end_date = models.DateField(
         null=True, blank=True, verbose_name='Fin')
     notes = models.TextField(blank=True, default='', verbose_name='Notes')
+    # ADSDEEP34 — id de l'étude A/B NATIVE Meta (``ad_studies``, SPLIT_TEST_V2)
+    # liée à cette expérience, quand elle existe côté Meta (vide sinon — une
+    # expérience peut rester purement interne, sans étude native). Posé par
+    # ``services.propose_ad_study``/l'application de l'action ; lu par
+    # ``services.sync_ad_study_results`` pour la synchro des résultats.
+    meta_study_id = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name="ID d'étude native Meta (ad_studies)")
 
     class Meta:
         verbose_name = 'Expérience publicitaire'

@@ -206,9 +206,13 @@ class ExperimentSerializer(serializers.ModelSerializer):
         model = Experiment
         fields = [
             'id', 'name', 'tested_variable', 'status', 'campaign', 'adset',
-            'start_date', 'end_date', 'notes', 'created_at', 'updated_at',
+            'start_date', 'end_date', 'notes',
+            # ADSDEEP34 — lien vers l'étude A/B native Meta (posé par le
+            # service, jamais par le client — read-only).
+            'meta_study_id',
+            'created_at', 'updated_at',
         ]
-        read_only_fields = ['created_at', 'updated_at']
+        read_only_fields = ['meta_study_id', 'created_at', 'updated_at']
 
     def validate_campaign(self, value):
         return _same_company(self, value)
