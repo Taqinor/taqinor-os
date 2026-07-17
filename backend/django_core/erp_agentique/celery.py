@@ -426,6 +426,18 @@ app.conf.beat_schedule = {
         'task': 'adsengine.run_active_flightplans',
         'schedule': crontab(hour=7, minute=5),
     },
+    # ADSDEEP8 — synchro HEBDO des breakdowns (âge×genre, placements, régions,
+    # heures) des campagnes miroir. Lundi, heure creuse. NO-OP sans connexion Meta.
+    'adsengine-sync-breakdowns-weekly': {
+        'task': 'adsengine.sync_breakdowns_weekly',
+        'schedule': crontab(hour=7, minute=15, day_of_week=1),
+    },
+    # ADSDEEP18 — pull-sync QUOTIDIEN des leads lead-form (convergence avec le
+    # webhook, idempotent par leadgen_id). NO-OP propre sans connexion Meta live.
+    'adsengine-pull-meta-leads': {
+        'task': 'adsengine.pull_meta_leads',
+        'schedule': crontab(hour=7, minute=25),
+    },
     # NTCRD21 — alerte quotidienne d'exposition crédit consolidée (07:20).
     # Best-effort, une alerte par jour et par société (dédup), no-op tant que
     # le seuil société vaut 0 (défaut).

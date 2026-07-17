@@ -139,6 +139,20 @@ def variant_attribution(company, *, qualifying_stage=None, ad_ids=None):
             # Organique (aucun utm, canal non-Meta) : exclu du dénominateur.
             organic_excluded += 1
 
+    # ADSDEEP20 — signatures Odoo RÉELLES par ad (deal signé → phone_key →
+    # MetaLeadMirror → ad_id), avec coût/signature sur la dépense ad réelle.
+    # Best-effort + guardé : sans connecteur Odoo configuré, tout reste 0 (aucun
+    # appel réseau) — le CRM-signed historique ci-dessus est inchangé.
+    odoo_by_ad = {}
+    try:
+        from .odoo_client import is_configured as _odoo_configured
+        if _odoo_configured():
+            from .odoo_metrics import odoo_signatures_by_ad
+            odoo_res = odoo_signatures_by_ad(company)
+            odoo_by_ad = {a['ad_id']: a for a in odoo_res.get('ads', [])}
+    except Exception:  # noqa: BLE001 — l'attribution CRM ne dépend jamais d'Odoo
+        odoo_by_ad = {}
+
     variant_rows = []
     for meta_id, bucket in variants.items():
         ad = by_meta[meta_id]
@@ -147,6 +161,7 @@ def variant_attribution(company, *, qualifying_stage=None, ad_ids=None):
                 if bucket['qualified'] else None)
         cps = (_q2(spend / bucket['signed'])
                if bucket['signed'] else None)
+        odoo = odoo_by_ad.get(meta_id, {})
         variant_rows.append({
             'meta_id': meta_id,
             'name': ad.name or '',
@@ -158,6 +173,10 @@ def variant_attribution(company, *, qualifying_stage=None, ad_ids=None):
             'cost_per_signature': cps,
             'lead_ids': bucket['lead_ids'],
             'signed_lead_ids': bucket['signed_lead_ids'],
+            # ADSDEEP20 — signatures Odoo par ad (deals traçables).
+            'odoo_signed': odoo.get('signatures', 0),
+            'odoo_cost_per_signature': odoo.get('cost_per_signature'),
+            'odoo_signed_deal_ids': odoo.get('deal_ids', []),
         })
     # Tri par coût-par-signature ascendant (les meilleurs d'abord) ; les ads sans
     # signature en fin de liste.

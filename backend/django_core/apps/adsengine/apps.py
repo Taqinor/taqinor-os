@@ -35,3 +35,9 @@ class AdsengineConfig(AppConfig):
         # modèles crm) émet un événement sur chaque transition d'étape STAGES.py.
         from . import capi_crm
         capi_crm.connect()
+
+        # ADSDEEP17 — abonne le récepteur domaine ``meta_lead_captured`` (le
+        # webhook CRM existant l'émet) pour matérialiser un MetaLeadMirror sans
+        # que ``adsengine`` importe ``apps.crm``.
+        from . import receivers
+        receivers.connect()

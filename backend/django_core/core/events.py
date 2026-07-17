@@ -413,6 +413,15 @@ importe ``apps.audit``.
 """
 import django.dispatch
 
+# ADSDEEP17 — Émis quand un lead Meta Lead Ads est capturé par le webhook CRM
+# EXISTANT (``apps/crm/webhooks.meta_lead_ads_webhook``, après
+# ``create_lead_from_meta_lead_ads``). Permet à ``adsengine`` de matérialiser un
+# ``MetaLeadMirror`` (leads PAR AD) sans que ``crm`` importe ``apps.adsengine``.
+# Arguments : lead (crm.Lead), company, leadgen_id, ad_id, adset_id,
+# campaign_id, form_id, created_time (str|None), is_organic (bool). Abonné dans
+# ce repo : adsengine (apps/adsengine/receivers.py).
+meta_lead_captured = django.dispatch.Signal()
+
 # Émis à l'acceptation d'un devis.
 # Abonné dans ce repo : crm (avance l'étape du lead → SIGNED).
 devis_accepted = django.dispatch.Signal()
