@@ -24,6 +24,7 @@ Entièrement additif.
 """
 from django.conf import settings
 from django.core.exceptions import ValidationError
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
 from core.models import TenantModel
@@ -204,3 +205,40 @@ class ObjectifESGTrajectoire(TenantModel):
     def __str__(self):
         return (f'{self.indicateur_code} → {self.valeur_cible} '
                 f'({self.annee_cible})')
+
+
+class PartiePrenanteESG(TenantModel):
+    """Registre des parties prenantes ESG — matérialité simplifiée (NTESG12).
+
+    DISTINCT du ``PartieInteressee`` QHSE (SMQ/ISO, portée qualité) : ce
+    registre est spécifiquement la matérialité RSE/extra-financière exigée
+    par les cadres CSRD-like et les appels d'offres (matrice 2x2
+    influence × intérêt, chacun noté 1-5 par l'utilisateur).
+    """
+
+    class Categorie(models.TextChoices):
+        CLIENT = 'client', 'Client'
+        FOURNISSEUR = 'fournisseur', 'Fournisseur'
+        COLLABORATEUR = 'collaborateur', 'Collaborateur'
+        COLLECTIVITE = 'collectivite', 'Collectivité'
+        ACTIONNAIRE = 'actionnaire', 'Actionnaire'
+
+    nom = models.CharField(max_length=255, verbose_name='Nom')
+    categorie = models.CharField(
+        max_length=15, choices=Categorie.choices, verbose_name='Catégorie')
+    enjeux = models.TextField(
+        blank=True, default='', verbose_name='Enjeux prioritaires')
+    influence = models.PositiveSmallIntegerField(
+        validators=[MinValueValidator(1), MaxValueValidator(5)],
+        verbose_name='Influence (1-5)')
+    interet = models.PositiveSmallIntegerField(
+        validators=[MinValueValidator(1), MaxValueValidator(5)],
+        verbose_name='Intérêt (1-5)')
+
+    class Meta:
+        verbose_name = 'Partie prenante ESG'
+        verbose_name_plural = 'Parties prenantes ESG'
+        ordering = ['-influence', '-interet', 'nom']
+
+    def __str__(self):
+        return f'{self.nom} ({self.get_categorie_display()})'

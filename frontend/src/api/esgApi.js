@@ -46,6 +46,14 @@ const esgApi = {
     remove: (id) => api.delete(`/esg/objectifs-esg/${id}/`),
     trajectoire: (id) => api.get(`/esg/objectifs-esg/${id}/trajectoire/`),
   },
+
+  // ── Parties prenantes ESG / matérialité (NTESG12) ──
+  partiesPrenantes: {
+    list: (params) => api.get('/esg/parties-prenantes-esg/', { params }),
+    create: (data) => api.post('/esg/parties-prenantes-esg/', data),
+    update: (id, data) => api.patch(`/esg/parties-prenantes-esg/${id}/`, data),
+    remove: (id) => api.delete(`/esg/parties-prenantes-esg/${id}/`),
+  },
 }
 
 export default esgApi

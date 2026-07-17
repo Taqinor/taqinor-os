@@ -14,10 +14,10 @@ from core.permissions import ScopedPermission
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import CatalogueIndicateurESG, ObjectifESGTrajectoire, \
-    PeriodeReportingESG
+    PartiePrenanteESG, PeriodeReportingESG
 from .serializers import (
     CatalogueIndicateurESGSerializer, ObjectifESGTrajectoireSerializer,
-    PeriodeReportingESGSerializer,
+    PartiePrenanteESGSerializer, PeriodeReportingESGSerializer,
 )
 
 
@@ -145,3 +145,12 @@ class ObjectifESGTrajectoireViewSet(CompanyScopedModelViewSet):
 
         objectif = self.get_object()
         return Response(trajectoire_vs_realise(objectif))
+
+
+class PartiePrenanteESGViewSet(CompanyScopedModelViewSet):
+    """Registre des parties prenantes ESG — matérialité simplifiée
+    (NTESG12) : CRUD complet, la matrice 2x2 influence×intérêt se construit
+    côté frontend à partir de la liste."""
+
+    queryset = PartiePrenanteESG.objects.all()
+    serializer_class = PartiePrenanteESGSerializer

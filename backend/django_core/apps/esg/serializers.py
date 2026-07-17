@@ -8,8 +8,8 @@ change que via l'action ``figer`` (machine à états à sens unique, NTESG1).
 from rest_framework import serializers
 
 from .models import (
-    CatalogueIndicateurESG, ObjectifESGTrajectoire, PeriodeReportingESG,
-    SnapshotESG,
+    CatalogueIndicateurESG, ObjectifESGTrajectoire, PartiePrenanteESG,
+    PeriodeReportingESG, SnapshotESG,
 )
 
 
@@ -128,3 +128,16 @@ class ObjectifESGTrajectoireSerializer(serializers.ModelSerializer):
                         'Un objectif existe déjà pour cet indicateur et '
                         'cette année cible.')})
         return attrs
+
+
+class PartiePrenanteESGSerializer(serializers.ModelSerializer):
+    categorie_display = serializers.CharField(
+        source='get_categorie_display', read_only=True)
+
+    class Meta:
+        model = PartiePrenanteESG
+        fields = [
+            'id', 'nom', 'categorie', 'categorie_display', 'enjeux',
+            'influence', 'interet', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
