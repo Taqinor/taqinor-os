@@ -59,7 +59,7 @@ def _make_devis_with_ligne(company, client, ref='DEV-QJ10-0002'):
     sku = f'SKU-{ref[-4:]}'
     produit = Produit.objects.create(
         company=company, nom=f'Panneau {ref}', sku=sku,
-        prix_vente=Decimal('1200'), prix_achat=Decimal('800'),
+        prix_vente=Decimal('1200'), prix_achat=Decimal('73951'),
         quantite_stock=10)
     LigneDevis.objects.create(
         devis=devis, produit=produit, designation='Panneau 400W',
@@ -142,7 +142,7 @@ class TestDevisSignatureCreated(TestCase):
             f"lignes={lignes_str}"
         )
         self.assertNotIn('prix_achat', payload)
-        self.assertNotIn('800', payload)  # prix_achat value not in hash
+        self.assertNotIn('73951', payload)  # prix_achat value not in hash (distinctive: avoids ISO-timestamp substring flake)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -271,7 +271,7 @@ class TestDevisSignatureNoPrixAchat(TestCase):
         # The hash is a 64-char hex string; no internal data leaks into it.
         self.assertEqual(len(sig.content_hash), 64)
         # The hash cannot be the string "prix_achat" (obviously) — but also
-        # the hash field itself must not embed the raw prix_achat VALUE "800"
+        # the hash field itself must not embed the raw prix_achat VALUE "73951"
         # (it's a SHA-256 hex output, so this just verifies the contract).
         self.assertNotIn('prix_achat', sig.content_hash)
 

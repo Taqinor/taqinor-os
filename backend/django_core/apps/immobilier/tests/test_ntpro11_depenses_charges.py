@@ -119,7 +119,7 @@ class Ntpro11DepensesChargesTests(TestCase):
             f'/api/django/immobilier/budgets-charges/{self.budget_a.id}/'
             'consommation/')
         self.assertEqual(resp.status_code, 200, resp.data)
-        self.assertEqual(resp.data['total_reel'], '1000.00')
+        self.assertEqual(resp.data['total_reel'], Decimal('1000.00'))
 
     def test_filtre_par_budget(self):
         d1 = DepenseCharges.objects.create(
