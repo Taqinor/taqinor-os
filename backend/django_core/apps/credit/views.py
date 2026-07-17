@@ -325,8 +325,25 @@ class DerogationCreditViewSet(CompanyScopedModelViewSet):
         return super().get_permissions()
 
     def perform_create(self, serializer):
-        serializer.save(
+        derogation = serializer.save(
             company=self.request.user.company, demandeur=self.request.user)
+        # NTCRD28 — notifie le(s) Directeur(s)/admin(s) qu'une demande attend
+        # une décision (best-effort, jamais bloquant).
+        try:
+            from authentication.models import CustomUser
+            from apps.notifications.models import EventType
+            from apps.notifications.services import notify_many
+            notify_many(
+                list(CustomUser.admins_actifs_qs(self.request.user.company)),
+                EventType.DIGEST,
+                'Demande de dérogation crédit à décider',
+                body=(
+                    f'Client {derogation.client_id} — '
+                    f'{derogation.montant_demande} MAD. Motif : '
+                    f'{derogation.motif[:120]}'),
+                company=self.request.user.company)
+        except Exception:  # pragma: no cover - notification best-effort
+            pass
 
     @action(detail=True, methods=['post'])
     def approuver(self, request, pk=None):
