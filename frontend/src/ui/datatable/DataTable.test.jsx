@@ -700,3 +700,65 @@ describe('NTUX11 — trackRecent : capture des « récents » au clic direct sur
     expect(pushRecentEntityMock).not.toHaveBeenCalled()
   })
 })
+
+/* ============================== NTUX15 — EXPORT CONFIGURABLE PAR VUE ============================== */
+
+describe('NTUX15 — export respecte la vue active (colonnes visibles/ordre/filtre/tri)', () => {
+  it('exporte uniquement les colonnes VISIBLES, dans leur ORDRE courant (colonne masquée exclue)', async () => {
+    const user = userEvent.setup()
+    const onExport = vi.fn()
+    renderTable({
+      onExport,
+      columns: [
+        { id: 'nom', header: 'Nom' },
+        { id: 'ville', header: 'Ville' },
+        { id: 'montant', header: 'Montant', align: 'right', numeric: true },
+      ],
+    })
+    // Masque « Ville » via le gestionnaire de colonnes (H31). Le menu reste
+    // ouvert après la case à cocher (ColumnManager `onSelect` preventDefault,
+    // pour cocher plusieurs colonnes sans le rouvrir) — Échap le referme.
+    await user.click(screen.getByRole('button', { name: /colonnes/i }))
+    await user.click(screen.getByRole('menuitemcheckbox', { name: /ville/i }))
+    await user.keyboard('{Escape}')
+    await user.click(screen.getByRole('button', { name: /^exporter$/i }))
+    const [, exportCols] = onExport.mock.calls[0]
+    expect(exportCols.map((c) => c.id)).toEqual(['nom', 'montant'])
+  })
+
+  it('sans sélection : un clic simple exporte tout (comportement historique inchangé)', async () => {
+    const user = userEvent.setup()
+    const onExport = vi.fn()
+    renderTable({ onExport, selectable: true })
+    await user.click(screen.getByRole('button', { name: /^exporter$/i }))
+    const [exportRows] = onExport.mock.calls[0]
+    expect(exportRows).toHaveLength(DATA.length)
+  })
+
+  it('avec des lignes cochées : un CHOIX explicite « tout » vs « la sélection uniquement » est proposé', async () => {
+    const user = userEvent.setup()
+    const onExport = vi.fn()
+    const { container } = renderTable({ onExport, selectable: true })
+    const table = container.querySelector('[data-dt-table]')
+    await user.click(within(table).getByLabelText('Sélectionner la ligne 1'))
+    await user.click(screen.getByRole('button', { name: /^exporter$/i }))
+    expect(screen.getByText(/exporter tout/i)).toBeInTheDocument()
+    expect(screen.getByText(/exporter la sélection uniquement/i)).toBeInTheDocument()
+    await user.click(screen.getByText(/exporter la sélection uniquement/i))
+    const [exportRows] = onExport.mock.calls.at(-1)
+    expect(exportRows).toHaveLength(1)
+    expect(exportRows[0]).toEqual(DATA[0])
+  })
+
+  it('le choix « exporter tout » ignore la sélection cochée', async () => {
+    const user = userEvent.setup()
+    const onExport = vi.fn()
+    const { container } = renderTable({ onExport, selectable: true })
+    const table = container.querySelector('[data-dt-table]')
+    await user.click(within(table).getByLabelText('Sélectionner la ligne 1'))
+    await user.click(screen.getByRole('button', { name: /^exporter$/i }))
+    await user.click(screen.getByText(/exporter tout/i))
+    const [exportRows] = onExport.mock.calls.at(-1)
+    expect(exportRows).toHaveLength(DATA.length)
+  })
+})

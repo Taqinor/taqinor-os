@@ -500,9 +500,18 @@ export const DataTable = forwardRef(function DataTable(
     [savedViews, setView, setSorting, setColumnFilters, onQueryChange, setPageIndex],
   )
 
-  /* ---- Export (H33) : callback injecté sinon fallback CSV client ---- */
-  const handleExport = useCallback(() => {
-    const exportRows = selectedKeys.length ? selectedRows : allRows
+  /* ---- Export (H33) : callback injecté sinon fallback CSV client ----
+     NTUX15 — respecte déjà la vue active SANS changement ici : `resolvedColumns`
+     (colonnes visibles, dans l'ordre courant — H31/H33) et `allRows` (lignes
+     filtrées + triées — useDataTable) reflètent la configuration en cours.
+     `scope` ('auto'|'all'|'selection') ajoute un CHOIX explicite quand des
+     lignes sont cochées, au lieu du repli automatique historique (silencieux) :
+     'auto' préserve exactement le comportement d'avant NTUX15. */
+  const handleExport = useCallback((scope = 'auto') => {
+    const exportRows =
+      scope === 'selection' ? selectedRows :
+      scope === 'all' ? allRows :
+      selectedKeys.length ? selectedRows : allRows
     const exportCols = resolvedColumns.map((c) => ({
       id: c.id,
       header: c.header ?? c.id,
@@ -526,6 +535,9 @@ export const DataTable = forwardRef(function DataTable(
     a.click()
     URL.revokeObjectURL(url)
   }, [selectedKeys, selectedRows, allRows, resolvedColumns, onExport, exportName])
+  // NTUX15 — choix explicite disponible seulement quand une sélection existe
+  // (sinon un seul export possible : « tout », bouton simple inchangé).
+  const canChooseExportScope = selectable && selectedKeys.length > 0
 
   /* ---- Réordonnancement par glisser-déposer (HTML5, sans dépendance) ---- */
   const onHeaderDrop = useCallback(
@@ -732,10 +744,32 @@ export const DataTable = forwardRef(function DataTable(
             {columns.some((c) => c.hideable !== false) && (
               <ColumnManager columns={columns} columnState={columnState} dispatch={dispatchColumns} />
             )}
-            <Button variant="outline" size="sm" onClick={handleExport}>
-              <Download />
-              <span className="hidden sm:inline">Exporter</span>
-            </Button>
+            {/* NTUX15 — quand une sélection existe, un menu propose le choix
+                explicite « tout » vs « la sélection uniquement » ; sinon,
+                bouton simple inchangé (exporte tout, comportement historique). */}
+            {canChooseExportScope ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm">
+                    <Download />
+                    <span className="hidden sm:inline">Exporter</span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onSelect={() => handleExport('all')}>
+                    Exporter tout ({allRows.length})
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => handleExport('selection')}>
+                    Exporter la sélection uniquement ({selectedKeys.length})
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <Button variant="outline" size="sm" onClick={() => handleExport('all')}>
+                <Download />
+                <span className="hidden sm:inline">Exporter</span>
+              </Button>
+            )}
           </div>
         </div>
       )}
