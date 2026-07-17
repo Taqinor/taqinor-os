@@ -23,7 +23,7 @@ class LimiteCredit(TenantModel):
         BLOCAGE = 'blocage', 'Blocage'
 
     client = models.ForeignKey(
-        'crm.Client', on_delete=models.CASCADE,
+        'crm.Client', on_delete=models.CASCADE,  # on_delete: composition — la limite de crédit n'existe que pour son client, supprimée avec lui
         related_name='limites_credit')
     # NULL = pas de limite définie pour ce client (aucun blocage n'est
     # jamais déclenché — comportement historique inchangé).
@@ -65,7 +65,7 @@ class ReglageCredit(TenantModel):
     # OneToOneField (unicité DB + related_name historique préservé). Le garde
     # SCA4 exempte une redéclaration sur un modèle qui hérite de TenantModel.
     company = models.OneToOneField(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: tenant — les réglages crédit d'une société disparaissent avec la société (scope multi-société)
         related_name='reglage_credit', verbose_name='Société')
     mode_hold_defaut = models.CharField(
         max_length=20, choices=LimiteCredit.ModeHold.choices,
@@ -156,7 +156,7 @@ class SegmentClientCredit(TenantModel):
     affectation = aucun segment = comportement société par défaut inchangé."""
 
     client = models.OneToOneField(
-        'crm.Client', on_delete=models.CASCADE,
+        'crm.Client', on_delete=models.CASCADE,  # on_delete: composition — le segment crédit n'existe que pour son client, supprimé avec lui
         related_name='segment_credit')
     segment = models.CharField(max_length=100)
     date_modification = models.DateTimeField(auto_now=True)
@@ -177,7 +177,7 @@ class EncoursCache(TenantModel):
     donnée périmée."""
 
     client = models.OneToOneField(
-        'crm.Client', on_delete=models.CASCADE,
+        'crm.Client', on_delete=models.CASCADE,  # on_delete: composition — le cache d'encours n'existe que pour son client, supprimé avec lui
         related_name='encours_cache_credit')
     encours = models.DecimalField(max_digits=16, decimal_places=2, default=0)
     calcule_le = models.DateTimeField(auto_now=True)
@@ -203,7 +203,7 @@ class DerogationCredit(TenantModel):
         EXPIREE = 'expiree', 'Expirée'
 
     client = models.ForeignKey(
-        'crm.Client', on_delete=models.CASCADE,
+        'crm.Client', on_delete=models.CASCADE,  # on_delete: composition — la dérogation crédit n'existe que pour son client, supprimée avec lui
         related_name='derogations_credit')
     # NTCRD28 — devis/BC concerné (contexte, optionnel — string-FK, jamais
     # un import de apps.ventes.models).
@@ -291,10 +291,10 @@ class EncoursGarantiClient(TenantModel):
         REDUIT = 'reduit', 'Réduit'
 
     police = models.ForeignKey(
-        PoliceAssuranceCredit, on_delete=models.CASCADE,
+        PoliceAssuranceCredit, on_delete=models.CASCADE,  # on_delete: composition — l'encours garanti n'existe que pour sa police d'assurance-crédit, supprimé avec elle
         related_name='encours_garantis')
     client = models.ForeignKey(
-        'crm.Client', on_delete=models.CASCADE,
+        'crm.Client', on_delete=models.CASCADE,  # on_delete: composition — l'encours garanti n'existe que pour son client, supprimé avec lui
         related_name='encours_garantis_credit')
     montant_garanti = models.DecimalField(max_digits=14, decimal_places=2)
     date_agrement = models.DateField(null=True, blank=True)

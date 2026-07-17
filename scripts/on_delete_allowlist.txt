@@ -2044,3 +2044,7 @@ backend/django_core/apps/adsengine/models.py:769
 backend/django_core/apps/adsengine/models.py:1043
 backend/django_core/apps/adsengine/models.py:1123
 backend/django_core/apps/adsengine/models.py:260
+# NTFPA1 — Departement.responsable = pointeur MANAGER nullable (SET_NULL), pas le
+# scope tenant (celui-ci est company). Un responsable supprimé laisse le
+# département sans manager sans le dé-scoper ; SET_NULL est le comportement voulu.
+backend/django_core/apps/fpa/models.py:26

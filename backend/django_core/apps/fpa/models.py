@@ -122,11 +122,11 @@ class LigneBudgetDepartement(TenantModel):
     ``compta.EcritureComptable._verifier_periode_ouverte``)."""
 
     cycle = models.ForeignKey(
-        CycleBudgetaire, on_delete=models.CASCADE,
+        CycleBudgetaire, on_delete=models.CASCADE,  # on_delete: composition — la ligne budgétaire n'existe que dans son cycle, supprimée avec lui
         related_name='lignes_budget', verbose_name='Cycle budgétaire',
     )
     departement = models.ForeignKey(
-        Departement, on_delete=models.CASCADE,
+        Departement, on_delete=models.CASCADE,  # on_delete: composition — la ligne budgétaire n'existe que pour son département, supprimée avec lui
         related_name='lignes_budget', verbose_name='Département',
     )
     categorie = models.CharField(
@@ -205,11 +205,11 @@ class SoumissionBudgetDepartement(TenantModel):
         REJETE = 'rejete', 'Rejeté'
 
     cycle = models.ForeignKey(
-        CycleBudgetaire, on_delete=models.CASCADE,
+        CycleBudgetaire, on_delete=models.CASCADE,  # on_delete: composition — la soumission n'existe que dans son cycle, supprimée avec lui
         related_name='soumissions', verbose_name='Cycle budgétaire',
     )
     departement = models.ForeignKey(
-        Departement, on_delete=models.CASCADE,
+        Departement, on_delete=models.CASCADE,  # on_delete: composition — la soumission n'existe que pour son département, supprimée avec lui
         related_name='soumissions_budget', verbose_name='Département',
     )
     statut = models.CharField(
@@ -289,7 +289,7 @@ class PrevisionGlissante(TenantModel):
     horizon_mois = models.PositiveSmallIntegerField(
         choices=HORIZONS, default=12, verbose_name='Horizon (mois)')
     departement = models.ForeignKey(
-        Departement, on_delete=models.CASCADE, null=True, blank=True,
+        Departement, on_delete=models.CASCADE, null=True, blank=True,  # on_delete: composition — la prévision glissante n'existe que pour son département, supprimée avec lui
         related_name='previsions_glissantes',
         verbose_name='Département (vide = vue globale)',
     )
@@ -318,7 +318,7 @@ class LignePrevisionGlissante(TenantModel):
     (``services.generer_prevision_glissante``) ne doit JAMAIS écraser."""
 
     prevision = models.ForeignKey(
-        PrevisionGlissante, on_delete=models.CASCADE,
+        PrevisionGlissante, on_delete=models.CASCADE,  # on_delete: composition — la ligne de prévision n'existe que pour sa prévision, supprimée avec elle
         related_name='lignes', verbose_name='Prévision glissante',
     )
     mois_relatif = models.PositiveSmallIntegerField(
@@ -366,7 +366,7 @@ class HypotheseRecrutement(TenantModel):
     )
     poste = models.CharField(max_length=150, verbose_name='Poste')
     departement = models.ForeignKey(
-        Departement, on_delete=models.CASCADE,
+        Departement, on_delete=models.CASCADE,  # on_delete: composition — l'hypothèse de recrutement n'existe que pour son département, supprimée avec lui
         related_name='hypotheses_recrutement', verbose_name='Département',
     )
     date_effet = models.DateField(verbose_name="Date d'effet")
@@ -405,7 +405,7 @@ class ScenarioBudgetaire(TenantModel):
         ARCHIVE = 'archive', 'Archivé'
 
     cycle = models.ForeignKey(
-        CycleBudgetaire, on_delete=models.CASCADE,
+        CycleBudgetaire, on_delete=models.CASCADE,  # on_delete: composition — le scénario n'existe que dans son cycle, supprimé avec lui
         related_name='scenarios', verbose_name='Cycle budgétaire',
     )
     nom = models.CharField(max_length=150, verbose_name='Nom')
@@ -436,11 +436,11 @@ class LigneScenario(TenantModel):
     (ou une ligne budget de référence), jamais écrit dans le cycle réel."""
 
     scenario = models.ForeignKey(
-        ScenarioBudgetaire, on_delete=models.CASCADE,
+        ScenarioBudgetaire, on_delete=models.CASCADE,  # on_delete: composition — la ligne de scénario n'existe que dans son scénario, supprimée avec lui
         related_name='lignes', verbose_name='Scénario',
     )
     ligne_budget = models.ForeignKey(
-        LigneBudgetDepartement, on_delete=models.CASCADE, null=True, blank=True,
+        LigneBudgetDepartement, on_delete=models.CASCADE, null=True, blank=True,  # on_delete: composition — la ligne de scénario référence sa ligne budgétaire source, supprimée avec elle
         related_name='deltas_scenario',
         verbose_name='Ligne budget de référence (optionnel)',
     )
@@ -467,11 +467,11 @@ class CommentaireVariance(TenantModel):
     variance, rattachée à une cellule (cycle+département+catégorie+mois)."""
 
     cycle = models.ForeignKey(
-        CycleBudgetaire, on_delete=models.CASCADE,
+        CycleBudgetaire, on_delete=models.CASCADE,  # on_delete: composition — le commentaire de variance n'existe que dans son cycle, supprimé avec lui
         related_name='commentaires_variance', verbose_name='Cycle budgétaire',
     )
     departement = models.ForeignKey(
-        Departement, on_delete=models.CASCADE,
+        Departement, on_delete=models.CASCADE,  # on_delete: composition — le commentaire de variance n'existe que pour son département, supprimé avec lui
         related_name='commentaires_variance', verbose_name='Département',
     )
     categorie = models.CharField(

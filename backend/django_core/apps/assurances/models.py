@@ -28,7 +28,7 @@ class Assureur(TenantModel):
     # ``company`` est REdéclarée pour conserver le ``related_name`` historique
     # (motif ARC1 documenté).
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: tenant — les données d'assurance d'une société disparaissent avec la société (scope multi-société)
         related_name='assureurs', verbose_name='Société')
     raison_sociale = models.CharField(max_length=200, verbose_name='Raison sociale')
     ice = models.CharField(max_length=30, blank=True, default='', verbose_name='ICE')
@@ -55,7 +55,7 @@ class Courtier(TenantModel):
 
     # SCA4 — socle ``TenantModel`` ; ``company`` REdéclarée (related_name ARC1).
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: tenant — les données d'assurance d'une société disparaissent avec la société (scope multi-société)
         related_name='courtiers', verbose_name='Société')
     raison_sociale = models.CharField(max_length=200, verbose_name='Raison sociale')
     numero_agrement = models.CharField(
@@ -104,7 +104,7 @@ class PoliceAssurance(TenantModel):
 
     # SCA4 — socle ``TenantModel`` ; ``company`` REdéclarée (related_name ARC1).
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: tenant — les données d'assurance d'une société disparaissent avec la société (scope multi-société)
         related_name='polices_assurance', verbose_name='Société')
     assureur = models.ForeignKey(
         Assureur, on_delete=models.PROTECT,
@@ -178,10 +178,10 @@ class GarantiePolice(TenantModel):
 
     # SCA4 — socle ``TenantModel`` ; ``company`` REdéclarée (related_name ARC1).
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: tenant — les données d'assurance d'une société disparaissent avec la société (scope multi-société)
         related_name='garanties_police', verbose_name='Société')
     police = models.ForeignKey(
-        PoliceAssurance, on_delete=models.CASCADE, related_name='garanties')
+        PoliceAssurance, on_delete=models.CASCADE, related_name='garanties')  # on_delete: composition — une garantie n'existe que pour sa police, supprimée avec elle
     libelle_garantie = models.CharField(
         max_length=200, verbose_name='Libellé de la garantie')
     plafond_indemnisation = models.DecimalField(
@@ -228,10 +228,10 @@ class EcheancePrime(TenantModel):
 
     # SCA4 — socle ``TenantModel`` ; ``company`` REdéclarée (related_name ARC1).
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: tenant — les données d'assurance d'une société disparaissent avec la société (scope multi-société)
         related_name='echeances_prime', verbose_name='Société')
     police = models.ForeignKey(
-        PoliceAssurance, on_delete=models.CASCADE, related_name='echeances_prime')
+        PoliceAssurance, on_delete=models.CASCADE, related_name='echeances_prime')  # on_delete: composition — une échéance de prime n'existe que pour sa police, supprimée avec elle
     date_echeance_paiement = models.DateField(verbose_name="Date d'échéance")
     montant = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     periodicite = models.CharField(
@@ -276,10 +276,10 @@ class ActifCouvert(TenantModel):
 
     # SCA4 — socle ``TenantModel`` ; ``company`` REdéclarée (related_name ARC1).
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: tenant — les données d'assurance d'une société disparaissent avec la société (scope multi-société)
         related_name='actifs_couverts', verbose_name='Société')
     police = models.ForeignKey(
-        PoliceAssurance, on_delete=models.CASCADE, related_name='actifs_couverts')
+        PoliceAssurance, on_delete=models.CASCADE, related_name='actifs_couverts')  # on_delete: composition — un actif couvert n'existe que pour sa police, supprimé avec elle
     type_actif = models.CharField(
         max_length=15, choices=TypeActif.choices, default=TypeActif.AUTRE)
     actif_ref = models.PositiveIntegerField(
@@ -329,7 +329,7 @@ class DeclarationSinistre(TenantModel):
 
     # SCA4 — socle ``TenantModel`` ; ``company`` REdéclarée (related_name ARC1).
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: tenant — les données d'assurance d'une société disparaissent avec la société (scope multi-société)
         related_name='declarations_sinistre', verbose_name='Société')
     police = models.ForeignKey(
         PoliceAssurance, on_delete=models.PROTECT,
@@ -397,10 +397,10 @@ class IndemnisationSinistre(TenantModel):
 
     # SCA4 — socle ``TenantModel`` ; ``company`` REdéclarée (related_name ARC1).
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: tenant — les données d'assurance d'une société disparaissent avec la société (scope multi-société)
         related_name='indemnisations_sinistre', verbose_name='Société')
     declaration = models.OneToOneField(
-        DeclarationSinistre, on_delete=models.CASCADE,
+        DeclarationSinistre, on_delete=models.CASCADE,  # on_delete: composition — une indemnisation n'existe que pour sa déclaration de sinistre, supprimée avec elle
         related_name='indemnisation')
     montant_reclame = models.DecimalField(
         max_digits=14, decimal_places=2, default=0)
@@ -444,10 +444,10 @@ class AttestationAssurance(TenantModel):
 
     # SCA4 — socle ``TenantModel`` ; ``company`` REdéclarée (related_name ARC1).
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: tenant — les données d'assurance d'une société disparaissent avec la société (scope multi-société)
         related_name='attestations_assurance', verbose_name='Société')
     police = models.ForeignKey(
-        PoliceAssurance, on_delete=models.CASCADE, related_name='attestations')
+        PoliceAssurance, on_delete=models.CASCADE, related_name='attestations')  # on_delete: composition — une attestation n'existe que pour sa police, supprimée avec elle
     date_emission = models.DateField(verbose_name="Date d'émission")
     date_validite = models.DateField(verbose_name='Date de validité')
     emise_pour = models.CharField(
@@ -487,7 +487,7 @@ class ExigenceAssuranceMarche(TenantModel):
 
     # SCA4 — socle ``TenantModel`` ; ``company`` REdéclarée (related_name ARC1).
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: tenant — les données d'assurance d'une société disparaissent avec la société (scope multi-société)
         related_name='exigences_assurance_marche', verbose_name='Société')
     marche_ref = models.PositiveIntegerField(
         verbose_name='Référence du marché (string-FK)')
