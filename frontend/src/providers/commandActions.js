@@ -78,6 +78,12 @@ export function readRecentEntities() {
  * pushRecentEntity — place l'entité ouverte en tête (dédoublonnée par type+id),
  * tronque à RECENT_MAX, persiste, et renvoie la nouvelle liste. Entité invalide
  * ou stockage indisponible → renvoie la liste courante sans rien écrire.
+ *
+ * NTUX11 — chaque entrée porte désormais `ts` (horodatage d'ouverture,
+ * `Date.now()`), champ ADDITIF : les entrées déjà en localStorage sans `ts`
+ * restent lisibles (`ts` vaut simplement `undefined`) — RecentEntitiesWidget
+ * l'affiche en horodatage relatif (`lib/format.js timeAgo`), le reste
+ * (palette ⌘K) l'ignore, comportement inchangé.
  */
 export function pushRecentEntity(entity) {
   if (!entity || entity.id == null || !entity.type) return readRecentEntities()
@@ -88,7 +94,7 @@ export function pushRecentEntity(entity) {
       (e) => !(e.type === entity.type && String(e.id) === String(entity.id)),
     )
     const next = [
-      { type: entity.type, id: entity.id, label: entity.label || '' },
+      { type: entity.type, id: entity.id, label: entity.label || '', ts: Date.now() },
       ...prev,
     ].slice(0, RECENT_MAX)
     s.setItem(RECENT_KEY, JSON.stringify(next))

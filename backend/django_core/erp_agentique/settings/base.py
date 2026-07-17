@@ -196,6 +196,14 @@ INSTALLED_APPS = [
     # décennale, multirisque, cyber, homme-clé) ; distinct des polices/sinistres
     # véhicule (flotte) et des cautions bancaires marché (compta).
     'apps.assurances',
+    # NTEDU1 — Éducation (établissement scolaire) : structure année/niveau/
+    # classe, dossier famille/élève, inscriptions (liste d'attente), scolarité
+    # (grille tarifaire/remises/échéancier), présences, matières. Additive,
+    # scopée société côté serveur.
+    'apps.education',
+    # NTUX1 — Vues sauvegardées serveur (personnelles/partagées), fondation de
+    # la couche UX power-user (NTUX2-11). Additive, company-scopée.
+    'apps.uxviews',
 ]
 
 MIDDLEWARE = [
@@ -784,6 +792,8 @@ CELERY_TASK_ROUTES = {
     'credit.expirer_derogations': {'queue': 'scheduled'},
     'credit.alerter_polices_expirantes': {'queue': 'scheduled'},
     'credit.recalculer_encours_quotidien': {'queue': 'scheduled'},
+    # NTSAN31 — alerte J-7 avant expiration d'une PriseEnCharge santé.
+    'sante.alertes_prise_en_charge_expirant': {'queue': 'scheduled'},
     # NTPLT27 — 4e queue `bulk` pour le travail de masse (imports dataimport,
     # exports planifiés volumineux, backfills, seed à l'échelle). Un import de
     # 100 000 lignes ne doit plus retarder un digest planifié ni un rendu PDF

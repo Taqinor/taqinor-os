@@ -101,6 +101,10 @@ _APP_URLS = [
     path('fpa/', include('apps.fpa.urls')),
     # Groupe NTASS — Registre des assurances & sinistres d'entreprise.
     path('assurances/', include('apps.assurances.urls')),
+    # NTEDU1 — Éducation (établissement scolaire).
+    path('education/', include('apps.education.urls')),
+    # NTUX1 — Vues sauvegardées serveur (personnelles/partagées).
+    path('uxviews/', include('apps.uxviews.urls')),
 ]
 
 urlpatterns = [

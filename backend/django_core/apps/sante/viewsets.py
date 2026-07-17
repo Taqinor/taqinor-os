@@ -11,19 +11,23 @@ from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from apps.core.destroy_mixins import UsageGuardedDestroyMixin
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
     ActeMedical, ActeRealise, Admission, Convention, FactureSante,
-    GrilleTarifaire, PaiementSante, Patient, Praticien, PriseEnCharge,
-    RendezVous, Salle)
+    GrilleTarifaire, HoraireOuverturePraticien, IndisponibilitePraticien,
+    MotifConsultation, PaiementSante, Patient, Praticien, PraticienSite,
+    PriseEnCharge, RendezVous, Salle)
 from .serializers import (
     ActeMedicalSerializer, ActeRealiseSerializer, AdmissionSerializer,
     ConventionSerializer, FactureSanteSerializer, GrilleTarifaireSerializer,
-    PaiementSanteSerializer, PatientSerializer, PraticienSerializer,
-    PriseEnChargeSerializer, RendezVousSerializer, SalleSerializer)
+    HoraireOuverturePraticienSerializer, IndisponibilitePraticienSerializer,
+    MotifConsultationSerializer, PaiementSanteSerializer, PatientSerializer,
+    PraticienSerializer, PraticienSiteSerializer, PriseEnChargeSerializer,
+    RendezVousSerializer, SalleSerializer)
 
 
 class PraticienViewSet(CompanyScopedModelViewSet):
@@ -43,6 +47,19 @@ class PatientViewSet(CompanyScopedModelViewSet):
 
     queryset = Patient.objects.select_related('client').all()
     serializer_class = PatientSerializer
+
+    def get_queryset(self):
+        """NTSAN18 — recherche accueil/réception par ``?q=`` (nom, prénom,
+        CIN ou téléphone), utilisée par l'écran « Réception »."""
+        qs = super().get_queryset()
+        q = self.request.query_params.get('q')
+        if q:
+            from django.db.models import Q
+            qs = qs.filter(
+                Q(nom__icontains=q) | Q(prenom__icontains=q) |
+                Q(cin__icontains=q) | Q(telephone__icontains=q) |
+                Q(whatsapp__icontains=q))
+        return qs
 
     def perform_create(self, serializer):
         super().perform_create(serializer)
@@ -79,23 +96,38 @@ class RendezVousViewSet(CompanyScopedModelViewSet):
 
     def _guard(self, *, praticien, salle, date_heure_debut, duree_min,
                exclude_id=None):
-        from .services import verifier_chevauchement_rdv
+        from .services import (
+            verifier_chevauchement_rdv, verifier_horaires_praticien)
         message = verifier_chevauchement_rdv(
             company=self.request.user.company, praticien=praticien,
             salle=salle, date_heure_debut=date_heure_debut,
             duree_min=duree_min, exclude_id=exclude_id)
         if message:
             raise ValidationError({'detail': message})
+        # NTSAN30 — horaires d'ouverture + indisponibilités du praticien.
+        message = verifier_horaires_praticien(
+            praticien=praticien, date_heure_debut=date_heure_debut,
+            duree_min=duree_min)
+        if message:
+            raise ValidationError({'detail': message})
 
     def perform_create(self, serializer):
         data = serializer.validated_data
+        praticien = data.get('praticien')
+        duree_min = data.get('duree_min', 30)
+        # NTSAN35 — si le client n'a PAS envoyé `duree_min` explicitement,
+        # pré-remplit depuis la durée par défaut du praticien sélectionné
+        # (paramétrage clinique) ; un `duree_min` explicite reste TOUJOURS
+        # prioritaire (modifiable manuellement par l'utilisateur).
+        if ('duree_min' not in self.request.data and praticien is not None
+                and praticien.duree_consultation_defaut_min):
+            duree_min = praticien.duree_consultation_defaut_min
         self._guard(
-            praticien=data.get('praticien'), salle=data.get('salle'),
-            date_heure_debut=data['date_heure_debut'],
-            duree_min=data.get('duree_min', 30))
+            praticien=praticien, salle=data.get('salle'),
+            date_heure_debut=data['date_heure_debut'], duree_min=duree_min)
         serializer.save(
             company=self.request.user.company,
-            cree_par=self.request.user)
+            cree_par=self.request.user, duree_min=duree_min)
 
     def perform_update(self, serializer):
         instance = serializer.instance
@@ -108,6 +140,63 @@ class RendezVousViewSet(CompanyScopedModelViewSet):
             duree_min=data.get('duree_min', instance.duree_min),
             exclude_id=instance.id)
         super().perform_update(serializer)
+
+    @action(detail=True, methods=['post'], url_path='annuler')
+    def annuler(self, request, pk=None):
+        """NTSAN37 — annulation & no-show : `{"annule_par": "patient"|
+        "clinique"}`. Le calcul du délai d'annulation est TOUJOURS correct ;
+        `penalite_applicable` reste `false` tant que
+        `ParametragePenaliteAnnulation.actif` n'est pas explicitement
+        activé par la clinique (jamais de facturation automatique)."""
+        from .services import annuler_rendez_vous
+
+        annule_par = request.data.get('annule_par')
+        if annule_par not in dict(RendezVous.AnnuleParChoix.choices):
+            raise ValidationError(
+                {'annule_par': "Attendu 'patient' ou 'clinique'."})
+
+        rendez_vous = self.get_object()
+        rendez_vous, penalite_applicable = annuler_rendez_vous(
+            rendez_vous, annule_par=annule_par)
+        payload = RendezVousSerializer(rendez_vous).data
+        payload['penalite_applicable'] = penalite_applicable
+        return Response(payload)
+
+
+class HoraireOuverturePraticienViewSet(CompanyScopedModelViewSet):
+    """NTSAN30 — horaires d'ouverture hebdomadaires d'un praticien, consommés
+    par le calcul de disponibilités (NTSAN29) et la garde de création de
+    ``RendezVous`` (``services.verifier_horaires_praticien``)."""
+
+    queryset = HoraireOuverturePraticien.objects.select_related('praticien').all()
+    serializer_class = HoraireOuverturePraticienSerializer
+
+
+class IndisponibilitePraticienViewSet(CompanyScopedModelViewSet):
+    """NTSAN30 — indisponibilités ponctuelles d'un praticien (congé,
+    formation…), bloquant TOUJOURS la prise de RDV sur la période."""
+
+    queryset = IndisponibilitePraticien.objects.select_related('praticien').all()
+    serializer_class = IndisponibilitePraticienSerializer
+
+
+class MotifConsultationViewSet(CompanyScopedModelViewSet):
+    """NTSAN35 — motifs de consultation prédéfinis, paramétrables PAR
+    SOCIÉTÉ (jamais codés en dur)."""
+
+    queryset = MotifConsultation.objects.all()
+    serializer_class = MotifConsultationSerializer
+
+
+class PraticienSiteViewSet(CompanyScopedModelViewSet):
+    """NTSAN32 — rattachement M2M léger praticien↔site (salle), pour un
+    praticien itinérant consultant dans plusieurs cliniques du même groupe.
+    L'agenda consolidé tous sites confondus reste le comportement PAR DÉFAUT
+    de ``RendezVousViewSet`` (filtre ``praticien`` seul) ; ``?salle=`` filtre
+    par site."""
+
+    queryset = PraticienSite.objects.select_related('praticien', 'salle').all()
+    serializer_class = PraticienSiteSerializer
 
 
 class AdmissionViewSet(CompanyScopedModelViewSet):
@@ -264,6 +353,60 @@ class FactureSanteViewSet(CompanyScopedModelViewSet):
         return Response(
             FactureSanteSerializer(facture).data,
             status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['get'], url_path='statistiques')
+    def statistiques(self, request):
+        """NTSAN28 — actes les plus facturés (volume + CA) et répartition du
+        CA par convention. Filtres optionnels `?date_debut=&date_fin=`
+        (AAAA-MM-JJ)."""
+        from .selectors import statistiques_actes_et_conventions
+
+        data = statistiques_actes_et_conventions(
+            request.user.company,
+            date_debut=request.query_params.get('date_debut'),
+            date_fin=request.query_params.get('date_fin'))
+        return Response(data)
+
+
+class DisponibilitesView(APIView):
+    """NTSAN29 — `GET /api/django/sante/disponibilites/?praticien=&date=` :
+    créneaux libres d'un praticien pour un jour donné. Lecture seule, SANS
+    exposition publique ni auth patient en v1 — juste la disponibilité en
+    lecture pour un futur module de prise de RDV en ligne (NTCOL, hors
+    périmètre de ce lot). Authentification standard du projet (voir
+    `REST_FRAMEWORK` défauts) : pas de route publique."""
+
+    def get(self, request):
+        import datetime as dt
+
+        from .models import Praticien
+        from .selectors import creneaux_disponibles
+
+        praticien_id = request.query_params.get('praticien')
+        date_str = request.query_params.get('date')
+        if not praticien_id or not date_str:
+            raise ValidationError(
+                {'detail': 'Paramètres `praticien` et `date` requis.'})
+
+        praticien = Praticien.objects.filter(
+            company=request.user.company, pk=praticien_id).first()
+        if praticien is None:
+            raise ValidationError({'praticien': 'Praticien introuvable.'})
+
+        try:
+            date = dt.datetime.strptime(date_str, '%Y-%m-%d').date()
+        except ValueError:
+            raise ValidationError({'date': 'Format attendu AAAA-MM-JJ.'})
+
+        try:
+            duree_min = int(request.query_params.get('duree_min', 30))
+        except ValueError:
+            duree_min = 30
+
+        creneaux = creneaux_disponibles(
+            company=request.user.company, praticien=praticien, date=date,
+            duree_min=duree_min)
+        return Response({'creneaux': [c.isoformat() for c in creneaux]})
 
 
 class PaiementSanteViewSet(CompanyScopedModelViewSet):

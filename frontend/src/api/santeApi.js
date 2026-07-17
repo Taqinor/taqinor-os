@@ -21,6 +21,7 @@ const santeApi = {
   },
 
   // ── Patients ──
+  // `q` (NTSAN18 — écran Réception) cherche par nom/prénom/CIN/téléphone.
   patients: {
     list: (params) => api.get('/sante/patients/', { params }),
     get: (id) => api.get(`/sante/patients/${id}/`),
@@ -34,6 +35,9 @@ const santeApi = {
     create: (data) => api.post('/sante/rendezvous/', data),
     update: (id, data) => api.patch(`/sante/rendezvous/${id}/`, data),
     remove: (id) => api.delete(`/sante/rendezvous/${id}/`),
+    // NTSAN18 — bouton « Patient arrivé » de l'écran Réception : bascule le
+    // statut en salle d'attente (le serveur reste source de vérité).
+    checkin: (id) => api.patch(`/sante/rendezvous/${id}/`, { statut: 'arrive' }),
   },
 
   // ── Nomenclature des actes (NTSAN7 — paramétrage clinique) ──

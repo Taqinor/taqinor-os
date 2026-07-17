@@ -32,6 +32,9 @@ import { rowsToCSV, exportFileName } from './csv.js'
 import { useDataTable } from './useDataTable.js'
 import { ColumnManager } from './ColumnManager.jsx'
 import { BulkActionBar } from './BulkActionBar.jsx'
+// NTUX11 — mémoire des « récents » unifiée (déjà alimentée par la palette
+// ⌘K) ; réutilisée ici (jamais dupliquée) via la prop opt-in `trackRecent`.
+import { pushRecentEntity } from '../../providers/commandActions.js'
 import { usePrefersReducedMotion } from '../../hooks/usePrefersReducedMotion'
 
 // VX135 — AUCUNE liste de l'app n'animait tri/filtre/ajout (téléportation des
@@ -262,6 +265,13 @@ export const DataTable = forwardRef(function DataTable(
     // (max 2 actions révélées, comme rowActions révèle ses 2 actions rapides).
     swipeActions,
     onRowClick,
+    // NTUX11 — (row) => {type, id, label} | null. OPT-IN : non fourni (la
+    // quasi-totalité des ~79 écrans), aucun changement de comportement.
+    // Fourni, chaque ouverture de ligne via `onRowClick` (clic ou Entrée)
+    // alimente AUSSI la mémoire des « récents » unifiée (déjà utilisée par la
+    // palette ⌘K, providers/commandActions.js) — généralise la capture au-delà
+    // des ouvertures via la palette, sans dupliquer sa logique de stockage.
+    trackRecent,
     onRowPrefetch, // (row) => void — H133 : préchargement au survol/intention
     renderExpanded, // (row) => ReactNode → ligne dépliable
     /* ---- ARC49/ARC53 — Échappatoires ADDITIVES (100 % opt-in) ------------
@@ -396,6 +406,11 @@ export const DataTable = forwardRef(function DataTable(
   const [scrollLeft, setScrollLeft] = useState(0)
   // N160 — ligne active pour la navigation clavier (index dans la page courante).
   const [activeRow, setActiveRow] = useState(-1)
+  // NTUX8 — curseur de CELLULE (édition inline type tableur), DISTINCT du
+  // curseur de LIGNE ci-dessus (N160 navigue la grille au repos ; ceci ne
+  // pilote QUE les cellules `editable` déjà en édition ou visées par un
+  // Tab/Entrée). `null` = aucune navigation cellule en cours.
+  const [activeCell, setActiveCell] = useState(null) // { rowKey, colId } | null
   // H131 — ancre de sélection par plage (dernier index basculé sans Maj).
   const rangeAnchor = useRef(null)
 
@@ -420,6 +435,20 @@ export const DataTable = forwardRef(function DataTable(
     },
     [pageKeys, selected, onToggleRow],
   )
+
+  /* ---- NTUX11 — Ouverture de ligne : capture optionnelle des « récents " ----
+     Enveloppe `onRowClick` SANS EN CHANGER LA SIGNATURE : `trackRecent` non
+     fourni → cette fonction se réduit à `onRowClick` (comportement identique,
+     zéro coût). Fourni → alimente `pushRecentEntity` AVANT d'appeler
+     `onRowClick`, pour les 4 points d'ouverture (clic bureau, carte mobile,
+     Entrée/Espace carte, Entrée grille — cf. `onGridKeyDown` ci-dessous). */
+  const handleRowClick = useCallback((row) => {
+    if (trackRecent) {
+      const entity = trackRecent(row)
+      if (entity) pushRecentEntity(entity)
+    }
+    onRowClick?.(row)
+  }, [trackRecent, onRowClick])
 
   /* ---- Recherche globale anti-rebond (O66) ----
      La valeur AFFICHÉE dans le champ reste instantanée (`searchInput`) ; seul le
@@ -526,6 +555,36 @@ export const DataTable = forwardRef(function DataTable(
     [],
   )
 
+  /* ---- NTUX8 — Navigation clavier type tableur entre cellules éditables ----
+     `editableColIds` = colonnes `editable` dans leur ORDRE AFFICHÉ (celui de
+     `resolvedColumns`, qui reflète déjà réordonnancement/masquage). Tab/Maj+Tab
+     avance/recule d'une colonne éditable, en enjambant la fin de ligne vers la
+     colonne éditable suivante de la ligne suivante ; Entrée (`'down'`) reste
+     sur la MÊME colonne, ligne suivante. En bout de grille → referme le
+     curseur (repli propre, jamais d'erreur). */
+  const editableColIds = useMemo(
+    () => resolvedColumns.filter((c) => c.editable).map((c) => c.id),
+    [resolvedColumns],
+  )
+  const moveActiveCell = useCallback((fromRowKey, fromColId, direction) => {
+    if (!editableColIds.length) return
+    const rowIdx = rows.findIndex((r, i) => keyOf(r, pageOffset + i) === fromRowKey)
+    if (rowIdx < 0) return
+    if (direction === 'down') {
+      const nextRowIdx = rowIdx + 1
+      if (nextRowIdx >= rows.length) { setActiveCell(null); return }
+      setActiveCell({ rowKey: keyOf(rows[nextRowIdx], pageOffset + nextRowIdx), colId: fromColId })
+      return
+    }
+    const colIdx = editableColIds.indexOf(fromColId)
+    let nextColIdx = colIdx + (direction === 'prev' ? -1 : 1)
+    let nextRowIdx = rowIdx
+    if (nextColIdx >= editableColIds.length) { nextColIdx = 0; nextRowIdx += 1 }
+    else if (nextColIdx < 0) { nextColIdx = editableColIds.length - 1; nextRowIdx -= 1 }
+    if (nextRowIdx < 0 || nextRowIdx >= rows.length) { setActiveCell(null); return }
+    setActiveCell({ rowKey: keyOf(rows[nextRowIdx], pageOffset + nextRowIdx), colId: editableColIds[nextColIdx] })
+  }, [editableColIds, rows, keyOf, pageOffset])
+
   /* ---- O164 — Virtualisation : explicite OU auto au-delà du seuil ----
      `virtualize` force la fenêtre ; sinon on l'active automatiquement quand la
      page dépasse ~100 lignes (catalogue stock, grosses listes de leads), avec
@@ -567,7 +626,7 @@ export const DataTable = forwardRef(function DataTable(
   const cellPadX = 'px-3'
 
   /* ---- Cellule (avec surlignage + clic ligne) ---- */
-  function renderCell(c, row) {
+  function renderCell(c, row, rowKey) {
     const value = c.accessor ? c.accessor(row) : row?.[c.id]
     // VX249(a) — `editable`/`onSave`/`validate` documentés dans le contrat de
     // colonne (H31/H32) mais jamais consommés jusqu'ici : première
@@ -587,6 +646,11 @@ export const DataTable = forwardRef(function DataTable(
               await c.onSave?.(draft, r)
               setPulseMap((prev) => ({ ...prev, [cellKey]: (prev[cellKey] ?? 0) + 1 }))
             }}
+            // NTUX8 — navigation clavier type tableur : la cellule visée par un
+            // Tab/Entrée réussi s'ouvre automatiquement (`autoEdit`), et
+            // remonte sa propre position pour calculer la SUIVANTE.
+            autoEdit={!!rowKey && activeCell?.rowKey === rowKey && activeCell?.colId === c.id}
+            onCommitNav={rowKey ? (direction) => moveActiveCell(rowKey, c.id, direction) : undefined}
           />
         </FieldSavedPulse>
       )
@@ -622,11 +686,11 @@ export const DataTable = forwardRef(function DataTable(
         const idx = activeRow < 0 ? 0 : activeRow
         if (rows[idx] && onRowClick) {
           e.preventDefault()
-          onRowClick(rows[idx])
+          handleRowClick(rows[idx])
         }
       }
     },
-    [rows, activeRow, onRowClick],
+    [rows, activeRow, onRowClick, handleRowClick],
   )
 
   const hasToolbar = !hideToolbar
@@ -922,7 +986,7 @@ export const DataTable = forwardRef(function DataTable(
                                 isSelected ? 'bg-primary/5' : 'hover:bg-muted/40',
                                 isActive && 'bg-accent/40 ring-1 ring-inset ring-ring/30',
                               )}
-                              onClick={onRowClick ? () => onRowClick(row) : undefined}
+                              onClick={onRowClick ? () => handleRowClick(row) : undefined}
                               onMouseEnter={onRowPrefetch ? () => onRowPrefetch(row) : undefined}
                               onFocus={onRowPrefetch ? () => onRowPrefetch(row) : undefined}
                               aria-selected={selectable ? isSelected : undefined}
@@ -978,9 +1042,13 @@ export const DataTable = forwardRef(function DataTable(
                                       pinnedLeft && scrollLeft > 0 && 'shadow-[2px_0_4px_-2px_rgb(12_19_53/0.18)]',
                                       pinnedRight && 'shadow-[-2px_0_4px_-2px_rgb(12_19_53/0.18)]',
                                       firstCol && 'font-medium text-foreground',
+                                      // NTUX8 — curseur de cellule visible (bordure focus) sur la
+                                      // colonne éditable actuellement ciblée par Tab/Entrée.
+                                      c.editable && activeCell?.rowKey === rowKey && activeCell?.colId === c.id
+                                        && 'ring-2 ring-inset ring-ring',
                                     )}
                                   >
-                                    {renderCell(c, row)}
+                                    {renderCell(c, row, rowKey)}
                                   </td>
                                 )
                               })}
@@ -1124,13 +1192,13 @@ export const DataTable = forwardRef(function DataTable(
                       isSelected ? 'border-primary bg-primary/5' : 'border-border',
                       onRowClick && 'cursor-pointer focus-ring',
                     )}
-                    onClick={onRowClick ? () => onRowClick(row) : undefined}
+                    onClick={onRowClick ? () => handleRowClick(row) : undefined}
                     onKeyDown={
                       onRowClick
                         ? (e) => {
                             if (e.key === 'Enter' || e.key === ' ') {
                               e.preventDefault()
-                              onRowClick(row)
+                              handleRowClick(row)
                             }
                           }
                         : undefined

@@ -39,6 +39,9 @@ const crmApi = {
   restaurerCorbeille: (corbeilleId) =>
     api.post(`/core/corbeille/${corbeilleId}/restaurer/`),
   getHistoriqueLead: (id) => api.get(`/crm/leads/${id}/historique/`),
+  // NTMOB4 — file de relance du jour (FG31/VX83, crm.selectors.relances_du_jour).
+  // ?scope=overdue|today|week (défaut today). {count, results:[Lead]}.
+  getRelances: (params) => api.get('/crm/leads/relances/', { params }),
   // Employés assignables (id, username, poste, avatar_url) — ouvert à la
   // Commerciale (le sélecteur de responsable doit marcher pour elle aussi).
   getAssignableUsers: () => api.get('/crm/assignable-users/'),
