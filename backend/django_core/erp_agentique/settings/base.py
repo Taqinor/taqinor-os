@@ -189,6 +189,10 @@ INSTALLED_APPS = [
     # réservations, check-in/out, folio client unifié, housekeeping). Nouvelle
     # app greenfield, multi-société, additive.
     'apps.hospitality',
+    # Groupe NTCON — Vertical BTP/EPC vendable : réserves géo-localisées sur
+    # plan, RFI, visas de documents techniques, journal de chantier,
+    # avenants, DGD. Nouvelle app greenfield, additive.
+    'apps.btp_chantier',
 ]
 
 MIDDLEWARE = [

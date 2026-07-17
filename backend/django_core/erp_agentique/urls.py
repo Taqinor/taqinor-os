@@ -97,6 +97,8 @@ _APP_URLS = [
     path('immobilier/', include('apps.immobilier.urls')),
     # Groupe NTHOT — Vertical hôtellerie & restauration.
     path('hospitality/', include('apps.hospitality.urls')),
+    # Groupe NTCON — Vertical BTP/EPC (réserves, RFI, visas, journal, DGD…).
+    path('btp-chantier/', include('apps.btp_chantier.urls')),
 ]
 
 urlpatterns = [
