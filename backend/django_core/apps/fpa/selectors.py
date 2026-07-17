@@ -201,6 +201,77 @@ def _somme_dict(d):
     return total
 
 
+def export_synthese_fpa(company, cycle):
+    """NTFPA25 — classeur .xlsx multi-onglets pour le board (P&L prévisionnel,
+    variance par département, scénarios comparés), openpyxl (déjà dépendance).
+
+    Réutilise le neutraliseur d'injection de ``apps.records.xlsx`` par cellule.
+    Renvoie ``bytes`` prêts à streamer, ou ``None`` si le cycle est introuvable.
+    """
+    import io
+
+    from openpyxl import Workbook
+    from openpyxl.styles import Font
+
+    from apps.records.xlsx import coerce_cell
+
+    from .models import CycleBudgetaire, ScenarioBudgetaire
+
+    if not isinstance(cycle, CycleBudgetaire):
+        cycle = CycleBudgetaire.objects.filter(company=company, pk=cycle).first()
+    if cycle is None:
+        return None
+
+    wb = Workbook()
+    bold = Font(bold=True)
+
+    def _sheet(titre, headers, rows):
+        ws = wb.create_sheet(title=str(titre)[:31])
+        ws.append(list(headers))
+        for c in ws[1]:
+            c.font = bold
+        for row in rows:
+            ws.append([coerce_cell(v) for v in row])
+        return ws
+
+    wb.remove(wb.active)  # retire la feuille par défaut vide
+
+    # Onglet 1 — P&L prévisionnel (consolidation).
+    conso = consolidation_entreprise(company, cycle)
+    pl_rows = [
+        ['Revenu prévisionnel', conso['revenu_previsionnel']],
+        ['  dont pipeline pondéré', conso['revenu_pipeline']],
+        ['  dont carnet engagé', conso['revenu_carnet']],
+        ['Total dépenses budgétées', conso['total_depenses']],
+        ['Marge brute prévisionnelle', conso['marge_brute_previsionnelle']],
+    ]
+    _sheet('P&L prévisionnel', ['Poste', 'Montant (MAD)'], pl_rows)
+
+    # Onglet 2 — Variance par département (mois 1 par défaut, vue de synthèse).
+    var_rows = []
+    for row in variance_budget_vs_reel(company, cycle, 1):
+        var_rows.append([
+            row['departement'], row['categorie'], row['prevu'],
+            row['reel'], row['forecast'], row['ecart_prevu_reel_eur'],
+        ])
+    _sheet('Variance', ['Département', 'Catégorie', 'Prévu', 'Réel',
+                        'Forecast', 'Écart P/R'], var_rows)
+
+    # Onglet 3 — Scénarios comparés.
+    scenario_ids = list(
+        ScenarioBudgetaire.objects
+        .filter(company=company, cycle=cycle).values_list('pk', flat=True))
+    comp = comparer_scenarios(company, cycle.pk, scenario_ids)
+    sc_rows = [['Budget de base', comp['base'], Decimal('0')]]
+    for r in comp['scenarios']:
+        sc_rows.append([r['nom'], r['total'], r['ecart']])
+    _sheet('Scénarios', ['Scénario', 'Total', 'Écart vs base'], sc_rows)
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
 def revenu_pipeline_total(company, mois_debut, mois_fin):
     """Total du revenu pipeline pondéré sur une période (somme des mois)."""
     from apps.crm import selectors as crm_selectors

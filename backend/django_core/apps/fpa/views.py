@@ -89,6 +89,24 @@ class CycleBudgetaireViewSet(TenantMixin, viewsets.ModelViewSet):
         cycle.save(update_fields=['statut'])
         return Response(CycleBudgetaireSerializer(cycle).data)
 
+    @action(detail=True, methods=['get'], url_path='export')
+    def export(self, request, pk=None):
+        cycle = self.get_object()
+        from django.http import HttpResponse
+
+        from .selectors import export_synthese_fpa
+        contenu = export_synthese_fpa(request.user.company, cycle)
+        if contenu is None:
+            return Response(
+                {'detail': 'Cycle introuvable.'}, status=status.HTTP_404_NOT_FOUND)
+        resp = HttpResponse(
+            contenu,
+            content_type='application/vnd.openxmlformats-officedocument.'
+                         'spreadsheetml.sheet')
+        nom = f'synthese_fpa_{cycle.pk}.xlsx'
+        resp['Content-Disposition'] = f'attachment; filename="{nom}"'
+        return resp
+
     @action(detail=True, methods=['post'], url_path='dupliquer')
     def dupliquer(self, request, pk=None):
         cycle_source = self.get_object()
