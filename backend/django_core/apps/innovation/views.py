@@ -14,13 +14,14 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from authentication.permissions import (
-    IsAdminOrResponsableTier, IsAnyRole, IsResponsableOrAdmin,
-)
+from authentication.permissions import IsAdminOrResponsableTier
 from core.viewsets import CompanyScopedModelViewSet
 
 from . import selectors, services
 from .models import Idee, InnovationSettings, VoteIdee
+from .permissions import (
+    IdeasChangeStatus, IdeasModerate, IdeasSeeAll, IdeasVote,
+)
 from .serializers import (
     IdeeDetailSerializer, IdeeSerializer, InnovationSettingsSerializer,
     VoteIdeeSerializer,
@@ -46,7 +47,8 @@ class IdeeViewSet(CompanyScopedModelViewSet):
     queryset = Idee.objects.select_related('auteur').all()
     serializer_class = IdeeSerializer
     http_method_names = ['get', 'post', 'patch', 'head', 'options']
-    permission_classes = [IsAnyRole]
+    # NTIDE22 — ``ideas_vote`` : tout utilisateur interne connecté.
+    permission_classes = [IdeasVote]
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['votes_count', 'created_at', 'id']
     ordering = ['-created_at']
@@ -103,7 +105,7 @@ class IdeeViewSet(CompanyScopedModelViewSet):
 
     # ── NTIDE10 — autocomplétion du contexte ────────────────────────────────
     @action(detail=False, methods=['get'], url_path='contextes',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IdeasVote])
     def contextes(self, request):
         """Les 5 contextes existants les plus fréquents (autocomplétion)."""
         data = selectors.contextes_frequents(request.user.company)
@@ -111,7 +113,7 @@ class IdeeViewSet(CompanyScopedModelViewSet):
 
     # ── NTIDE20 — dédup : idées similaires (avant de proposer un doublon) ────
     @action(detail=False, methods=['get'], url_path='similaires',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IdeasVote])
     def similaires(self, request):
         """« Existe-t-il une idée similaire ? » — top 3, recherche
         titre+description (``?q=texte``)."""
@@ -121,7 +123,7 @@ class IdeeViewSet(CompanyScopedModelViewSet):
 
     # ── NTIDE6 — tableau de bord admin ──────────────────────────────────────
     @action(detail=False, methods=['get'], url_path='tableau-bord',
-            permission_classes=[IsAdminOrResponsableTier])
+            permission_classes=[IdeasSeeAll])
     def tableau_bord(self, request):
         """KPI par statut, top votes, plus récentes, heat-chart contexte."""
         return Response(selectors.tableau_bord_idees(request.user.company))
@@ -139,25 +141,25 @@ class IdeeViewSet(CompanyScopedModelViewSet):
         return Response(IdeeSerializer(idee).data)
 
     @action(detail=True, methods=['post'], url_path='examiner',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[IdeasChangeStatus])
     def examiner(self, request, pk=None):
         """ouvert → examinée."""
         return self._transition(request, Idee.Statut.EXAMINEE)
 
     @action(detail=True, methods=['post'], url_path='retenir',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[IdeasChangeStatus])
     def retenir(self, request, pk=None):
         """examinée → retenue."""
         return self._transition(request, Idee.Statut.RETENUE)
 
     @action(detail=True, methods=['post'], url_path='realiser',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[IdeasChangeStatus])
     def realiser(self, request, pk=None):
         """retenue → réalisée."""
         return self._transition(request, Idee.Statut.REALISEE)
 
     @action(detail=True, methods=['post'], url_path='fermer',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[IdeasChangeStatus])
     def fermer(self, request, pk=None):
         """ouvert|examinée|retenue → fermée. Note de fermeture optionnelle
         (``{"note": "..."}``), journalisée dans le chatter."""
@@ -165,7 +167,7 @@ class IdeeViewSet(CompanyScopedModelViewSet):
 
     # ── NTIDE18 — publier une idée brouillon (draft → False) ─────────────────
     @action(detail=True, methods=['post'], url_path='publier',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IdeasVote])
     def publier(self, request, pk=None):
         """Réservé à l'auteur du brouillon (403 sinon). Une fois publiée,
         l'idée redevient visible de toute la société (``get_queryset``).
@@ -187,19 +189,19 @@ class IdeeViewSet(CompanyScopedModelViewSet):
 
     # ── NTIDE19 — modération : masquer une idée sans la supprimer ────────────
     @action(detail=True, methods=['post'], url_path='masquer',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IdeasVote])
     def masquer(self, request, pk=None):
-        """Palier Directeur/Responsable uniquement. Ne supprime jamais
-        l'idée : elle disparaît des listes normales (``get_queryset``) mais
-        reste consultable via ``?include_archived=1`` (même palier).
-        Journalise dans le chatter générique (ARC8).
+        """Palier Directeur/Responsable uniquement (``ideas_moderate``, NTIDE22).
+        Ne supprime jamais l'idée : elle disparaît des listes normales
+        (``get_queryset``) mais reste consultable via ``?include_archived=1``
+        (même palier). Journalise dans le chatter générique (ARC8).
 
         ``get_object`` (scopé société) d'ABORD → une idée d'une autre société
         est un 404 (isolation, jamais un 403 qui révèlerait son existence) ;
         le contrôle de palier vient ENSUITE → 403 pour un non-Responsable de la
         même société."""
         idee = self.get_object()
-        if not IsResponsableOrAdmin().has_permission(request, self):
+        if not IdeasModerate().has_permission(request, self):
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied(
                 'Réservé au palier Directeur/Responsable.')
@@ -216,7 +218,7 @@ class IdeeViewSet(CompanyScopedModelViewSet):
 
     # ── NTIDE17 — l'auteur ré-ouvre sa propre idée fermée/examinée ───────────
     @action(detail=True, methods=['post'], url_path='reouvrir',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IdeasVote])
     def reouvrir(self, request, pk=None):
         """« Notion de "auteur peut modifier" » : réservé à l'auteur (403
         sinon), depuis FERMÉE/EXAMINÉE uniquement (verrouillé après
@@ -231,7 +233,7 @@ class IdeeViewSet(CompanyScopedModelViewSet):
 
     # ── NTIDE14 — lier une idée à un devis/ticket/chantier (opaque string-FK) ─
     @action(detail=True, methods=['post'], url_path='lier',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IdeasVote])
     def lier(self, request, pk=None):
         """Corps : ``{linked_type: 'devis'|'ticket'|'chantier', linked_id:
         N}``. Saisie MANUELLE (type + identifiant) — jamais une recherche
@@ -269,7 +271,7 @@ class IdeeViewSet(CompanyScopedModelViewSet):
         return Response(IdeeSerializer(idee).data)
 
     @action(detail=True, methods=['get'], url_path='historique',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IdeasVote])
     def historique(self, request, pk=None):
         """Timeline chatter (générique ``records.Activity``, ARC8)."""
         idee = self.get_object()
@@ -280,7 +282,7 @@ class IdeeViewSet(CompanyScopedModelViewSet):
 
     # ── NTIDE12 — export .xlsx (paramètres → campagnes innovation) ──────────
     @action(detail=False, methods=['get'], url_path='export-xlsx',
-            permission_classes=[IsAdminOrResponsableTier])
+            permission_classes=[IdeasSeeAll])
     def export_xlsx(self, request):
         """Exporte les idées (filtres statut/contexte/date déjà appliqués par
         ``get_queryset``) en .xlsx."""
@@ -290,7 +292,7 @@ class IdeeViewSet(CompanyScopedModelViewSet):
 
     # ── NTIDE13 — actions en masse (admin) ───────────────────────────────────
     @action(detail=False, methods=['post'], url_path='bulk',
-            permission_classes=[IsAdminOrResponsableTier])
+            permission_classes=[IdeasSeeAll])
     def bulk(self, request):
         """Corps : {ids: [...], action: 'set_statut'|'add_tag'|'remove_tag'
         |'export', + paramètres}. ``export`` court-circuite vers le .xlsx de
@@ -330,7 +332,8 @@ class VoteIdeeViewSet(CompanyScopedModelViewSet):
     queryset = VoteIdee.objects.select_related('votant', 'idee').all()
     serializer_class = VoteIdeeSerializer
     http_method_names = ['get', 'post', 'delete', 'head', 'options']
-    permission_classes = [IsAnyRole]
+    # NTIDE22 — ``ideas_vote`` : tout utilisateur interne connecté.
+    permission_classes = [IdeasVote]
 
     def perform_create(self, serializer):
         idee = serializer.validated_data['idee']
@@ -355,14 +358,14 @@ class VoteIdeeViewSet(CompanyScopedModelViewSet):
 
     # ── Sélecteurs exposés (NTIDE2) ──────────────────────────────────────────
     @action(detail=False, methods=['get'], url_path='recents',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IdeasVote])
     def recents(self, request):
         """Votes récents de la société (``votes_recents``)."""
         qs = self.get_queryset().order_by('-created_at')[:20]
         return Response(VoteIdeeSerializer(qs, many=True).data)
 
     @action(detail=False, methods=['get'], url_path='mes-idees',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IdeasVote])
     def mes_idees(self, request):
         """Votes reçus sur les idées PROPOSÉES par l'appelant
         (``votes_my_ideas``)."""
