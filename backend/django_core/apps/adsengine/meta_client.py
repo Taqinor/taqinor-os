@@ -645,6 +645,106 @@ class MetaClient:
     # (règle permanente #3) — vérifié par test. ``update_status_paused`` ne peut,
     # elle, QUE poser PAUSED (aucun status paramétrable).
 
+    # ── ADSDEEP33 — Lot (batch) Graph : opérations SIMPLES groupées ──────────
+    # ``POST /?batch=[...]`` (dossier write-surface §8) : 50 opérations MAX, PAS
+    # transactionnel (chaque sous-réponse s'inspecte individuellement),
+    # ``error_user_msg`` FAIT pour être montré verbatim à l'approbateur. AUCUNE
+    # clé d'idempotence côté Graph — un retry réseau peut dupliquer ; c'est donc
+    # le JOURNAL EngineAction (réclamation CAS avant tout appel réseau, cf.
+    # ``services.apply_batch``) qui sert d'unique dédup, jamais ce client.
+    MAX_BATCH_OPERATIONS = 50
+
+    @staticmethod
+    def _encode_batch_body(body):
+        """Encode un dict de champs en corps ``application/x-www-form-urlencoded``
+        (les objets imbriqués voyagent en JSON, comme sur tout appel Graph)."""
+        from urllib.parse import quote_plus
+        parts = []
+        for key, value in dict(body or {}).items():
+            raw = json.dumps(value) if isinstance(value, (dict, list)) else str(value)
+            parts.append(f'{quote_plus(str(key))}={quote_plus(raw)}')
+        return '&'.join(parts)
+
+    def build_batch_op_rename(self, *, object_id, name):
+        """ADSDEEP33 — Opération de lot : renommage (même garde que
+        ``rename_object`` — AUCUN ``status`` ne peut y être glissé)."""
+        payload = self._edit_payload({'name': name}, None)
+        return {'method': 'POST', 'relative_url': object_id,
+                'body': self._encode_batch_body(payload)}
+
+    def build_batch_op_spend_cap(self, *, campaign_id, spend_cap):
+        """ADSDEEP33 — Opération de lot : plafond de dépense (même garde que
+        ``set_campaign_spend_cap``)."""
+        payload = self._edit_payload({'spend_cap': spend_cap}, None)
+        return {'method': 'POST', 'relative_url': campaign_id,
+                'body': self._encode_batch_body(payload)}
+
+    def build_batch_op_pause(self, *, object_id):
+        """ADSDEEP33 — Opération de lot : mise en pause. Le corps FORCE
+        ``status=PAUSED`` via ``_forced_status_payload`` (MÊME défense en
+        profondeur que ``update_status_paused`` — invariant permanent règle #3 :
+        aucune opération de lot ne peut jamais activer / dé-pauser quoi que ce
+        soit)."""
+        payload = self._forced_status_payload({}, None)
+        return {'method': 'POST', 'relative_url': object_id,
+                'body': self._encode_batch_body(payload)}
+
+    def batch_execute(self, operations):
+        """ADSDEEP33 — Exécute un LOT d'opérations Graph en UN SEUL appel HTTP.
+
+        ``operations`` : liste de dicts ``{method, relative_url, body}`` (voir
+        les ``build_batch_op_*`` ci-dessus). Renvoie la liste des résultats DANS
+        LE MÊME ORDRE, chacun ``{'success': True, 'body': {...}}`` ou
+        ``{'success': False, 'error': {...}, 'error_user_msg': '...'}`` —
+        ``error_user_msg`` est repris VERBATIM du champ Graph fait pour être
+        montré à l'approbateur (dossier §8). PAS TRANSACTIONNEL : une opération
+        en erreur n'annule jamais les autres — chaque sous-réponse est inspectée
+        indépendamment. Lève ``MetaError`` en amont si le lot dépasse
+        ``MAX_BATCH_OPERATIONS`` (jamais un rejet Graph tardif)."""
+        if not operations:
+            return []
+        if len(operations) > self.MAX_BATCH_OPERATIONS:
+            raise MetaError(
+                f"Lot Graph limité à {self.MAX_BATCH_OPERATIONS} opérations "
+                f"(reçu {len(operations)}).")
+        batch_spec = [
+            {'method': op.get('method', 'POST'),
+             'relative_url': op.get('relative_url', ''),
+             **({'body': op['body']} if op.get('body') else {})}
+            for op in operations
+        ]
+        raw = self._request('POST', '', data={'batch': json.dumps(batch_spec)})
+        rows = raw if isinstance(raw, list) else []
+        results = []
+        for row in rows:
+            row = row or {}
+            code = row.get('code')
+            body_raw = row.get('body')
+            try:
+                body = json.loads(body_raw) if isinstance(body_raw, str) else (body_raw or {})
+            except (ValueError, TypeError):
+                body = {}
+            if not isinstance(body, dict):
+                body = {}
+            if code is not None and 200 <= int(code) < 300:
+                results.append({'success': True, 'body': body})
+            else:
+                err = body.get('error') or {}
+                results.append({
+                    'success': False,
+                    'error': err,
+                    'error_user_msg': err.get('error_user_msg', '') or '',
+                })
+        # Graph peut renvoyer MOINS de lignes qu'attendu sur une panne partielle
+        # (défense) : les opérations sans sous-réponse sont marquées en échec
+        # explicite (jamais un succès silencieux non prouvé).
+        while len(results) < len(operations):
+            results.append({
+                'success': False, 'error': {},
+                'error_user_msg': 'Aucune sous-réponse Graph reçue pour cette opération.',
+            })
+        return results
+
     # ── Hygiène ──────────────────────────────────────────────────────────────
     def close(self):
         if self._owns_client:

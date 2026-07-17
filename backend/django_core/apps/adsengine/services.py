@@ -486,6 +486,148 @@ def apply_action(action, *, connection=None, client=None):
     return action
 
 
+# ── ADSDEEP33 — Lot (batch) : kinds SIMPLES routables en UN SEUL appel Graph ──
+# Limite de lot — miroir de ``MetaClient.MAX_BATCH_OPERATIONS`` (dupliquée en
+# constante simple ici pour éviter d'instancier un client rien que pour lire la
+# borne avant même de savoir s'il y en a un).
+MetaClientBatchLimit = 50
+
+# Un kind hors de cette liste (ex. EDIT_COPY, CREATE_AD, DUPLICATE — plusieurs
+# appels réseau internes) reste dispatché INDIVIDUELLEMENT via ``apply_action``.
+_BATCHABLE_KINDS = frozenset({
+    EngineAction.Kind.RENAME, EngineAction.Kind.SET_SPEND_CAP,
+    EngineAction.Kind.PAUSE, KIND_PAUSE_FOR_MONTH,
+})
+
+
+def _build_batch_op(client, action):
+    """ADSDEEP33 — Construit l'opération de lot (method/relative_url/body) pour
+    UNE action APPROUVÉE dont le kind est batchable. Lève ``ValueError`` pour un
+    kind non batchable (jamais un lot silencieusement incomplet)."""
+    payload = action.payload or {}
+    kind = action.kind
+    if kind == EngineAction.Kind.RENAME:
+        return client.build_batch_op_rename(
+            object_id=payload.get('object_id', ''), name=payload.get('name', ''))
+    if kind == EngineAction.Kind.SET_SPEND_CAP:
+        return client.build_batch_op_spend_cap(
+            campaign_id=payload.get('campaign_id', ''),
+            spend_cap=payload.get('spend_cap'))
+    if kind in (EngineAction.Kind.PAUSE, KIND_PAUSE_FOR_MONTH):
+        guardrails.enforce_paused_only('PAUSED', company=action.company)
+        return client.build_batch_op_pause(object_id=payload.get('target_meta_id', ''))
+    raise ValueError(f"Kind non batchable pour le lot ADSDEEP33 : {kind}")
+
+
+def apply_batch(actions, *, connection=None, client=None):
+    """ADSDEEP33 — Applique un LOT d'actions APPROUVÉES en UN SEUL appel Graph
+    (``POST /?batch=``, ≤50 opérations, PAS transactionnel — dossier §8).
+
+    Chaque action est RÉCLAMÉE (CAS ``approuvee → appliquee``) INDIVIDUELLEMENT
+    et AVANT tout appel réseau — exactement la même discipline qu'``apply_action``
+    (ENGFIX3) : le journal EngineAction (ids déjà réclamés) est l'unique dédup,
+    Graph n'ayant AUCUNE clé d'idempotence. Un échec PARTIEL du lot (ex. l'opération
+    2/3 renvoie une erreur) laisse les opérations RÉUSSIES ``appliquee`` et
+    repasse SEULEMENT la ou les opérations en échec ``echouee`` — jamais tout
+    le lot invalidé pour la faute d'une seule (PAS transactionnel, comme Graph
+    lui-même). ``error_user_msg`` est repris VERBATIM dans ``action.error``.
+
+    Renvoie la liste des actions (même ordre que l'entrée), chacune avec son
+    statut final exact."""
+    if not actions:
+        return []
+    if len(actions) > MetaClientBatchLimit:
+        raise ValueError(
+            f"Un lot est limité à {MetaClientBatchLimit} opérations Graph.")
+
+    for action in actions:
+        if action.status != EngineAction.Statut.APPROUVEE:
+            raise ActionNotApproved(
+                "Action non approuvée : refus d'appliquer en lot (le client "
+                "Meta n'est jamais atteint).")
+
+    if client is None:
+        from .meta_client import MetaClient
+        from .models import MetaConnection
+        company = actions[0].company
+        if connection is None:
+            connection = MetaConnection.objects.filter(
+                company=company, enabled=True).first()
+        if connection is None:
+            raise ActionNotApproved(
+                "Aucune connexion Meta active : application impossible.")
+        client = MetaClient.from_connection(connection)
+
+    from django.db import transaction
+
+    # Réclamation atomique de CHAQUE action AVANT tout appel réseau — le journal
+    # (statut déjà passé APPLIQUEE en base) est l'unique dédup si le lot entier
+    # doit être rejoué après une panne (Graph n'a aucune clé d'idempotence).
+    claimed_actions = []
+    for action in actions:
+        with transaction.atomic():
+            claimed = (EngineAction.objects
+                       .filter(pk=action.pk, status=EngineAction.Statut.APPROUVEE)
+                       .update(status=EngineAction.Statut.APPLIQUEE))
+        if claimed != 1:
+            raise ActionNotApproved(
+                "Action déjà réclamée ou non approuvée : refus d'appliquer en "
+                "lot (aucun double-dispatch).")
+        action.status = EngineAction.Statut.APPLIQUEE
+        claimed_actions.append(action)
+
+    # Garde-fous AVANT dispatch + construction de l'opération — une violation ou
+    # un kind non batchable ne fait échouer QUE cette action-là.
+    ops, batchable = [], []
+    for action in claimed_actions:
+        try:
+            _guard_before_dispatch(action)
+            if action.kind not in _BATCHABLE_KINDS:
+                raise ValueError(
+                    f"Kind non batchable pour le lot ADSDEEP33 : {action.kind}")
+            op = _build_batch_op(client, action)
+        except Exception as exc:
+            action.status = EngineAction.Statut.ECHOUEE
+            action.error = str(exc)
+            action.save(update_fields=['status', 'error', 'updated_at'])
+            continue
+        ops.append(op)
+        batchable.append(action)
+
+    if not batchable:
+        return claimed_actions
+
+    try:
+        results = client.batch_execute(ops)
+    except Exception as exc:
+        # Panne du lot ENTIER (réseau/HTTP) — repasse toutes les opérations
+        # encore en jeu en échec (jamais laissées faussement « appliquee »).
+        for action in batchable:
+            action.status = EngineAction.Statut.ECHOUEE
+            action.error = str(exc)
+            action.save(update_fields=['status', 'error', 'updated_at'])
+        return claimed_actions
+
+    for action, result in zip(batchable, results):
+        if result.get('success'):
+            action.applied_at = timezone.now()
+            action.result = result.get('body') or {}
+            action.error = ''
+            action.save(update_fields=[
+                'status', 'applied_at', 'result', 'error', 'updated_at'])
+        else:
+            # ``error_user_msg`` FAIT pour être montré verbatim à l'approbateur
+            # (dossier §8) ; repli sur le message brut si absent.
+            action.status = EngineAction.Statut.ECHOUEE
+            action.error = (
+                result.get('error_user_msg')
+                or (result.get('error') or {}).get('message', '')
+                or 'Échec Graph (lot).')
+            action.save(update_fields=['status', 'error', 'updated_at'])
+
+    return claimed_actions
+
+
 def execute_auto_action(company, *, kind, reason_fr, payload=None,
                         config=None, client=None, connection=None):
     """ENG8 — Exécute une action en respectant les toggles de capacités.
