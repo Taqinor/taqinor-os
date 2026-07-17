@@ -6,8 +6,8 @@
 from rest_framework import serializers
 
 from .models import (
-    Chambre, FicheClient, Folio, LigneFolio, PlanTarifaire, Reservation,
-    TacheMenage, TypeChambre,
+    Chambre, FicheClient, Folio, LigneFolio, MainCourante, PlanTarifaire,
+    Reservation, TacheMenage, TypeChambre,
 )
 
 
@@ -181,3 +181,25 @@ class TacheMenageSerializer(serializers.ModelSerializer):
     def validate_chambre(self, value):
         _check_same_company(self, value, 'chambre')
         return value
+
+
+class MainCouranteSerializer(serializers.ModelSerializer):
+    """NTHOT12 — main courante. ``auteur``/``date_note`` posés côté serveur
+    (jamais lus du corps) : le nom de l'auteur figé (indépendant d'un
+    changement ultérieur de compte) est exposé en lecture via ``auteur_nom``."""
+    categorie_display = serializers.CharField(
+        source='get_categorie_display', read_only=True)
+    auteur_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = MainCourante
+        fields = [
+            'id', 'categorie', 'categorie_display', 'texte', 'cible_type',
+            'cible_id', 'auteur', 'auteur_nom', 'date_note',
+        ]
+        read_only_fields = ['auteur', 'date_note']
+
+    def get_auteur_nom(self, obj):
+        if obj.auteur_id is None:
+            return ''
+        return obj.auteur.get_full_name() or obj.auteur.username

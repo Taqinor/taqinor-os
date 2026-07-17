@@ -44,6 +44,10 @@ const hospitalityApi = {
 
   // ── Tableau de bord RevPAR/ADR/TO (NTHOT11) ──
   tableauBord: (params) => api.get('/hospitality/tableau-bord/', { params }),
+
+  // ── Main courante / passations d'équipe (NTHOT12) ── journal append-only.
+  listMainCourante: (params) => api.get('/hospitality/main-courante/', { params }),
+  createMainCourante: (data) => api.post('/hospitality/main-courante/', data),
 }
 
 export default hospitalityApi

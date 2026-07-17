@@ -19,12 +19,13 @@ from core.viewsets import CompanyScopedModelViewSet
 
 from . import selectors, services
 from .models import (
-    Chambre, Folio, PlanTarifaire, Reservation, TacheMenage, TypeChambre,
+    Chambre, Folio, MainCourante, PlanTarifaire, Reservation, TacheMenage,
+    TypeChambre,
 )
 from .serializers import (
     ChambreSerializer, FicheClientSerializer, FolioSerializer,
-    PlanTarifaireSerializer, ReservationSerializer, TacheMenageSerializer,
-    TypeChambreSerializer,
+    MainCouranteSerializer, PlanTarifaireSerializer, ReservationSerializer,
+    TacheMenageSerializer, TypeChambreSerializer,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -293,6 +294,36 @@ class TacheMenageViewSet(CompanyScopedModelViewSet):
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(tache).data)
+
+
+class MainCouranteViewSet(CompanyScopedModelViewSet):
+    """NTHOT12 — Main courante / passations d'équipe. Journal APPEND-ONLY :
+    seuls list/retrieve/create sont exposés (une note n'est ni modifiée ni
+    supprimée — intégrité du journal). Lecture/écriture ouvertes à tout rôle
+    authentifié (saisie rapide depuis n'importe quel écran)."""
+    queryset = MainCourante.objects.select_related('auteur').all()
+    serializer_class = MainCouranteSerializer
+    http_method_names = ['get', 'post', 'head', 'options']
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_note']
+
+    def get_permissions(self):
+        return [IsAnyRole()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        categorie = params.get('categorie')
+        if categorie:
+            qs = qs.filter(categorie=categorie)
+        date = params.get('date')
+        if date:
+            qs = qs.filter(date_note__date=date)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company, auteur=self.request.user)
 
 
 class TableauBordView(views.APIView):

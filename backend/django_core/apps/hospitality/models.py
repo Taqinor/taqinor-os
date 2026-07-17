@@ -407,3 +407,50 @@ class TacheMenage(TenantModel):
 
     def __str__(self):
         return f'{self.get_type_tache_display()} — {self.chambre}'
+
+
+# ── NTHOT12 — Main courante / passations d'équipe ───────────────────────────
+
+class MainCourante(TenantModel):
+    """Journal chronologique consultable par l'équipe entrante en début de
+    service (passation) — saisie rapide depuis n'importe quel écran
+    hôtellerie (widget flottant côté front). Append-only : aucune édition ni
+    suppression exposée (intégrité du journal, comme un chatter)."""
+
+    class Categorie(models.TextChoices):
+        RESERVATION = 'reservation', 'Réservation'
+        INCIDENT = 'incident', 'Incident'
+        CONSIGNE = 'consigne', 'Consigne'
+        FINANCE = 'finance', 'Finance'
+        AUTRE = 'autre', 'Autre'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: cascade tenant (purge des données de la société supprimée)
+        related_name='hospitality_main_courante',
+        verbose_name='Société',
+    )
+    auteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='hospitality_main_courante_notes',
+        verbose_name='Auteur',
+    )
+    categorie = models.CharField(
+        max_length=15, choices=Categorie.choices, default=Categorie.AUTRE)
+    texte = models.TextField()
+    # Cible générique optionnelle (ex. 'reservation'/'chambre' + son id) —
+    # identifiant souple, jamais une FK dure (une note peut cibler n'importe
+    # quel objet hôtellerie sans coupler ce modèle à tous les autres).
+    cible_type = models.CharField(max_length=30, blank=True, default='')
+    cible_id = models.PositiveIntegerField(null=True, blank=True)
+    date_note = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Main courante'
+        verbose_name_plural = 'Main courante'
+        ordering = ['-date_note']
+
+    def __str__(self):
+        return f'{self.get_categorie_display()} — {self.date_note:%Y-%m-%d %H:%M}'
