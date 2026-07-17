@@ -8574,3 +8574,224 @@ class LigneImmobilisationEnCours(TenantModel):
 
     def __str__(self):
         return f'{self.libelle} ({self.montant})'
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Groupe NTFIN — Reconnaissance du revenu IFRS 15 & états consolidés
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ── NTFIN46 — Contrat de revenu & obligations de performance (IFRS 15) ─────
+
+class ContratRevenu(TenantModel):
+    """Contrat de revenu IFRS 15 (étapes 1-2) — NTFIN46.
+
+    Distinct de ``ContratAvancement`` (FG146, % completion pur BTP) : ce contrat
+    porte des ``ObligationPerformance`` distinctes (matériel livré, maintenance
+    12 mois…). Le client et le devis d'origine sont référencés par string-ref.
+    Hérite de ``core.models.TenantModel``.
+    """
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        ACTIF = 'actif', 'Actif'
+        CLOTURE = 'cloture', 'Clôturé'
+
+    reference = models.CharField(
+        max_length=50, blank=True, default='', verbose_name='Référence')
+    libelle = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Libellé')
+    client_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID du client (string-ref)')
+    client_nom = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Client')
+    source_devis_ref = models.CharField(
+        max_length=50, blank=True, default='',
+        verbose_name="Devis d'origine (string-ref)")
+    montant_transaction = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant du prix de transaction')
+    devise = models.CharField(
+        max_length=3, default='MAD', verbose_name='Devise')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.BROUILLON,
+        verbose_name='Statut')
+
+    class Meta:
+        verbose_name = 'Contrat de revenu (IFRS 15)'
+        verbose_name_plural = 'Contrats de revenu (IFRS 15)'
+        ordering = ['-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'reference'],
+                condition=models.Q(reference__gt=''),
+                name='uniq_contrat_revenu_ref'),
+        ]
+
+    def __str__(self):
+        return f'{self.reference or "Contrat"} — {self.client_nom}'
+
+
+class ObligationPerformance(TenantModel):
+    """Obligation de performance d'un contrat de revenu (IFRS 15) — NTFIN46.
+
+    ``prix_vente_specifique`` (standalone selling price) sert à l'allocation du
+    prix de transaction (NTFIN47) ; ``prix_alloue`` reçoit le résultat.
+    ``methode_reconnaissance`` = à une date (livraison) ou dans le temps
+    (linéaire sur ``duree_mois``). Hérite de ``core.models.TenantModel``.
+    """
+    class Methode(models.TextChoices):
+        A_UNE_DATE = 'a_une_date', 'À une date (transfert du contrôle)'
+        DANS_LE_TEMPS = 'dans_le_temps', 'Dans le temps (linéaire)'
+
+    class Statut(models.TextChoices):
+        EN_ATTENTE = 'en_attente', 'En attente'
+        EN_COURS = 'en_cours', 'En cours'
+        REMPLIE = 'remplie', 'Remplie'
+
+    contrat = models.ForeignKey(
+        ContratRevenu,
+        # on_delete: CASCADE — une obligation n'existe qu'attachée à son contrat.
+        on_delete=models.CASCADE,
+        related_name='obligations',
+        verbose_name='Contrat de revenu',
+    )
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    prix_vente_specifique = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Prix de vente spécifique (standalone)')
+    prix_alloue = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Prix alloué')
+    methode_reconnaissance = models.CharField(
+        max_length=14, choices=Methode.choices, default=Methode.A_UNE_DATE,
+        verbose_name='Méthode de reconnaissance')
+    duree_mois = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='Durée (mois, pour reconnaissance dans le temps)')
+    date_debut = models.DateField(
+        null=True, blank=True, verbose_name='Date de début')
+    statut = models.CharField(
+        max_length=12, choices=Statut.choices, default=Statut.EN_ATTENTE,
+        verbose_name='Statut')
+    montant_facture = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant facturé (à ce jour)')
+
+    class Meta:
+        verbose_name = 'Obligation de performance'
+        verbose_name_plural = 'Obligations de performance'
+        ordering = ['contrat', 'id']
+
+    def __str__(self):
+        return f'{self.libelle} ({self.prix_alloue})'
+
+    @property
+    def montant_reconnu(self):
+        return sum(
+            (e.montant_a_reconnaitre for e in self.echeances.filter(
+                statut=EcheancierReconnaissance.Statut.RECONNU)),
+            Decimal('0'))
+
+
+# ── NTFIN48 — Échéancier de reconnaissance & produit constaté d'avance ─────
+
+class EcheancierReconnaissance(TenantModel):
+    """Échéance de reconnaissance du revenu d'une obligation (IFRS 15, NTFIN48).
+
+    Une ligne par période : ``montant_a_reconnaitre`` planifié puis reconnu
+    (statut ``reconnu`` + écriture soldant le produit constaté d'avance 4870).
+    Hérite de ``core.models.TenantModel``.
+    """
+    class Statut(models.TextChoices):
+        PLANIFIE = 'planifie', 'Planifié'
+        RECONNU = 'reconnu', 'Reconnu'
+
+    obligation = models.ForeignKey(
+        ObligationPerformance,
+        # on_delete: CASCADE — une échéance n'existe qu'attachée à son obligation.
+        on_delete=models.CASCADE,
+        related_name='echeances',
+        verbose_name='Obligation de performance',
+    )
+    date = models.DateField(verbose_name='Date de reconnaissance')
+    montant_a_reconnaitre = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant à reconnaître')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.PLANIFIE,
+        verbose_name='Statut')
+    ecriture = models.ForeignKey(
+        EcritureComptable,
+        # on_delete: SET_NULL — l'écriture de reconnaissance est traçée ; sa
+        # purge ne doit pas effacer la donnée d'échéance source.
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='echeances_reconnaissance',
+        verbose_name='Écriture de reconnaissance',
+    )
+
+    class Meta:
+        verbose_name = 'Échéance de reconnaissance'
+        verbose_name_plural = 'Échéances de reconnaissance'
+        ordering = ['obligation', 'date', 'id']
+
+    def __str__(self):
+        return f'{self.date} — {self.montant_a_reconnaitre} ({self.statut})'
+
+
+# ── NTFIN55 — Piste d'audit renforcée des opérations de consolidation ──────
+
+class EtapeAuditConsolidation(TenantModel):
+    """Maillon d'audit d'une étape de consolidation (NTFIN55, append-only).
+
+    Étend le principe de ``PisteAuditComptable`` (hash-chaîné) aux étapes d'un
+    cycle de consolidation (collecte, conversion, matching, élimination,
+    publication). Chaque maillon fige l'acteur, l'horodatage serveur et un hash
+    du snapshot de balance, enchaîné au précédent — rejouable et auditable,
+    sans écraser l'historique. Append-only (``save`` refuse toute modification).
+    Hérite de ``core.models.TenantModel``.
+    """
+    cycle = models.ForeignKey(
+        CycleConsolidation,
+        # on_delete: CASCADE — un maillon d'audit appartient à son cycle ;
+        # jeter le cycle jette sa piste d'audit de travail.
+        on_delete=models.CASCADE,
+        related_name='etapes_audit',
+        verbose_name='Cycle de consolidation',
+    )
+    etape = models.CharField(max_length=40, verbose_name='Étape')
+    acteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        # on_delete: SET_NULL — trace l'acteur ; sa purge ne casse pas le maillon.
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='etapes_audit_consolidation',
+        verbose_name='Acteur',
+    )
+    sequence = models.PositiveIntegerField(verbose_name='Rang dans la chaîne')
+    hash_snapshot = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name='Hash du snapshot de balance')
+    hash_precedent = models.CharField(
+        max_length=64, blank=True, default='', verbose_name='Hash précédent')
+    hash = models.CharField(max_length=64, verbose_name='Hash du maillon')
+    detail = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Détail')
+
+    class Meta:
+        verbose_name = "Maillon d'audit de consolidation"
+        verbose_name_plural = "Piste d'audit de consolidation"
+        ordering = ['cycle', 'sequence']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['cycle', 'sequence'],
+                name='uniq_etape_audit_conso_seq'),
+        ]
+
+    def __str__(self):
+        return f'Étape {self.etape} #{self.sequence} ({self.hash[:12]}…)'
+
+    def save(self, *args, **kwargs):
+        # Append-only : un maillon déjà scellé ne peut plus être modifié.
+        if self.pk is not None:
+            raise ValidationError(
+                "La piste d'audit de consolidation est inaltérable : un "
+                "maillon déjà scellé ne peut pas être modifié.")
+        super().save(*args, **kwargs)

@@ -98,6 +98,16 @@ Généré par `python scripts/check_money_fields.py --decimal-places`. Tableau d
 | `backend/django_core/apps/compta/models.py:7879` | EngagementComptable.montant_liquide | 14 | 2 |
 | `backend/django_core/apps/compta/models.py:8115` | AccrualCloture.montant | 14 | 2 |
 | `backend/django_core/apps/compta/models.py:8168` | JustificationVariation.montant_variation | 14 | 2 |
+| `backend/django_core/apps/compta/models.py:8235` | RapprochementCompte.solde_gl | 14 | 2 |
+| `backend/django_core/apps/compta/models.py:8238` | RapprochementCompte.solde_justifie | 14 | 2 |
+| `backend/django_core/apps/compta/models.py:8309` | LigneJustificationCompte.montant | 14 | 2 |
+| `backend/django_core/apps/compta/models.py:8519` | ImmobilisationEnCours.montant_cumule | 14 | 2 |
+| `backend/django_core/apps/compta/models.py:8560` | LigneImmobilisationEnCours.montant | 14 | 2 |
+| `backend/django_core/apps/compta/models.py:8609` | ContratRevenu.montant_transaction | 14 | 2 |
+| `backend/django_core/apps/compta/models.py:8658` | ObligationPerformance.prix_vente_specifique | 14 | 2 |
+| `backend/django_core/apps/compta/models.py:8661` | ObligationPerformance.prix_alloue | 14 | 2 |
+| `backend/django_core/apps/compta/models.py:8675` | ObligationPerformance.montant_facture | 14 | 2 |
+| `backend/django_core/apps/compta/models.py:8716` | EcheancierReconnaissance.montant_a_reconnaitre | 14 | 2 |
 | `backend/django_core/apps/contrats/models.py:148` | Contrat.montant | 14 | 2 |
 | `backend/django_core/apps/contrats/models.py:760` | RegleApprobation.montant_min | 14 | 2 |
 | `backend/django_core/apps/contrats/models.py:763` | RegleApprobation.montant_max | 14 | 2 |

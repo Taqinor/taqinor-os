@@ -69,6 +69,8 @@ from .models import (
     ComposantImmobilisation, DepreciationImmobilisation,
     MutationImmobilisation, ImmobilisationEnCours,
     LigneImmobilisationEnCours,
+    ContratRevenu, ObligationPerformance, EcheancierReconnaissance,
+    EtapeAuditConsolidation,
 )
 
 
@@ -3124,3 +3126,62 @@ class ImmobilisationEnCoursSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'montant_cumule', 'statut', 'date_mise_en_service',
             'immobilisation', 'created_at', 'updated_at']
+
+
+# ── NTFIN46-56 — IFRS 15 & états consolidés ────────────────────────────────
+
+class EcheancierReconnaissanceSerializer(serializers.ModelSerializer):
+    """NTFIN48 — Échéance de reconnaissance du revenu."""
+    class Meta:
+        model = EcheancierReconnaissance
+        fields = [
+            'id', 'obligation', 'date', 'montant_a_reconnaitre', 'statut',
+            'ecriture', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['statut', 'ecriture', 'created_at', 'updated_at']
+
+
+class ObligationPerformanceSerializer(serializers.ModelSerializer):
+    """NTFIN46 — Obligation de performance d'un contrat de revenu."""
+    echeances = EcheancierReconnaissanceSerializer(many=True, read_only=True)
+    montant_reconnu = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True)
+    methode_display = serializers.CharField(
+        source='get_methode_reconnaissance_display', read_only=True)
+
+    class Meta:
+        model = ObligationPerformance
+        fields = [
+            'id', 'contrat', 'libelle', 'prix_vente_specifique',
+            'prix_alloue', 'methode_reconnaissance', 'methode_display',
+            'duree_mois', 'date_debut', 'statut', 'montant_facture',
+            'montant_reconnu', 'echeances', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['prix_alloue', 'created_at', 'updated_at']
+
+
+class ContratRevenuSerializer(serializers.ModelSerializer):
+    """NTFIN46 — Contrat de revenu (IFRS 15)."""
+    obligations = ObligationPerformanceSerializer(many=True, read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = ContratRevenu
+        fields = [
+            'id', 'reference', 'libelle', 'client_id', 'client_nom',
+            'source_devis_ref', 'montant_transaction', 'devise', 'statut',
+            'statut_display', 'obligations', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+
+class EtapeAuditConsolidationSerializer(serializers.ModelSerializer):
+    """NTFIN55 — Maillon d'audit d'une étape de consolidation."""
+    class Meta:
+        model = EtapeAuditConsolidation
+        fields = [
+            'id', 'cycle', 'etape', 'acteur', 'sequence', 'hash_snapshot',
+            'hash_precedent', 'hash', 'detail', 'created_at',
+        ]
+        read_only_fields = fields

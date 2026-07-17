@@ -90,6 +90,8 @@ from .models import (
     RapprochementCompte, LigneJustificationCompte,
     DepreciationImmobilisation, MutationImmobilisation,
     ImmobilisationEnCours,
+    ObligationPerformance, EcheancierReconnaissance,
+    EtapeAuditConsolidation,
 )
 
 
@@ -13661,3 +13663,190 @@ def mettre_en_service_encours(encours, *, date_mise_en_service=None,
     encours.save(update_fields=[
         'statut', 'date_mise_en_service', 'immobilisation', 'updated_at'])
     return immo
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Groupe NTFIN — Reconnaissance du revenu IFRS 15 & états consolidés
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ── NTFIN47 — Allocation du prix de transaction (IFRS 15 étape 4) ──────────
+
+def allouer_prix_transaction(contrat):
+    """NTFIN47 — répartit le prix de transaction au prorata des PVS (IFRS 15).
+
+    Alloue ``contrat.montant_transaction`` entre ses obligations au prorata de
+    leur ``prix_vente_specifique`` (standalone selling price). La dernière
+    obligation reçoit le résiduel (arrondi). Renvoie la liste des obligations.
+    """
+    obligations = list(contrat.obligations.all())
+    total_pvs = sum(
+        (o.prix_vente_specifique or Decimal('0') for o in obligations),
+        Decimal('0'))
+    if total_pvs <= 0:
+        raise ValidationError(
+            "Impossible d'allouer : la somme des prix de vente spécifiques "
+            "est nulle.")
+    montant = contrat.montant_transaction or Decimal('0')
+    alloue = Decimal('0')
+    for i, o in enumerate(obligations):
+        if i == len(obligations) - 1:
+            part = montant - alloue
+        else:
+            part = (montant * o.prix_vente_specifique / total_pvs).quantize(
+                _CENT)
+        alloue += part
+        o.prix_alloue = part
+        o.save(update_fields=['prix_alloue', 'updated_at'])
+    return obligations
+
+
+# ── NTFIN48 — Échéancier & produit constaté d'avance (IFRS 15 étape 5) ─────
+
+def generer_echeancier_reconnaissance(obligation):
+    """NTFIN48 — génère l'échéancier de reconnaissance d'une obligation.
+
+    ``dans_le_temps`` : ``duree_mois`` échéances linéaires (dernière = résiduel)
+    à compter de ``date_debut``. ``a_une_date`` : une seule échéance au
+    ``date_debut``. Idempotent : ne régénère pas si des échéances existent.
+    Renvoie la liste des échéances.
+    """
+    import calendar
+    if obligation.echeances.exists():
+        return list(obligation.echeances.all())
+    montant = obligation.prix_alloue or Decimal('0')
+    debut = obligation.date_debut or timezone.localdate()
+    echeances = []
+    if (obligation.methode_reconnaissance
+            == ObligationPerformance.Methode.DANS_LE_TEMPS
+            and obligation.duree_mois):
+        n = obligation.duree_mois
+        part = (montant / Decimal(n)).quantize(_CENT)
+        cumul = Decimal('0')
+        for i in range(n):
+            mois_total = debut.month - 1 + i
+            annee = debut.year + mois_total // 12
+            mois = mois_total % 12 + 1
+            jour = min(debut.day, calendar.monthrange(annee, mois)[1])
+            d = debut.replace(year=annee, month=mois, day=jour)
+            m = part if i < n - 1 else (montant - cumul)
+            cumul += m
+            echeances.append(EcheancierReconnaissance.objects.create(
+                company=obligation.company, obligation=obligation, date=d,
+                montant_a_reconnaitre=m))
+    else:
+        echeances.append(EcheancierReconnaissance.objects.create(
+            company=obligation.company, obligation=obligation, date=debut,
+            montant_a_reconnaitre=montant))
+    return echeances
+
+
+@transaction.atomic
+def reconnaitre_echeance(echeance, *, compte_pca='4870', compte_produit='7111',
+                         user=None):
+    """NTFIN48 — reconnaît une échéance (solde le produit constaté d'avance).
+
+    Débit ``compte_pca`` (487 produit constaté d'avance) / crédit
+    ``compte_produit`` (7xxx). Idempotent : une échéance déjà reconnue n'est pas
+    redoublée. Renvoie l'échéance.
+    """
+    if echeance.statut == EcheancierReconnaissance.Statut.RECONNU:
+        return echeance
+    montant = echeance.montant_a_reconnaitre
+    if montant is None or montant <= 0:
+        raise ValidationError("Le montant à reconnaître doit être positif.")
+    compte_pca_obj = _assurer_compte(echeance.company, compte_pca)
+    compte_prod_obj = _assurer_compte(echeance.company, compte_produit)
+    ecriture = creer_ecriture_od(
+        echeance.company, echeance.date,
+        f'Reconnaissance revenu IFRS 15 (obligation {echeance.obligation_id})',
+        [
+            {'compte': compte_pca_obj,
+             'libelle': "Solde produit constaté d'avance",
+             'debit': str(montant), 'credit': '0'},
+            {'compte': compte_prod_obj, 'libelle': 'Revenu reconnu',
+             'debit': '0', 'credit': str(montant)},
+        ], created_by=user, statut=EcritureComptable.Statut.VALIDEE)
+    echeance.statut = EcheancierReconnaissance.Statut.RECONNU
+    echeance.ecriture = ecriture
+    echeance.save(update_fields=['statut', 'ecriture', 'updated_at'])
+    return echeance
+
+
+# ── NTFIN55 — Piste d'audit renforcée des opérations de consolidation ──────
+
+def enregistrer_etape_audit_consolidation(cycle, etape, *, acteur=None,
+                                          snapshot=None, detail=''):
+    """NTFIN55 — scelle un maillon d'audit d'une étape de consolidation.
+
+    Chaîne le maillon au précédent du même cycle : ``hash = SHA256(
+    hash_precedent + etape + hash_snapshot + sequence)``. Append-only : chaque
+    republication laisse une trace horodatée distincte sans écraser l'historique.
+    Renvoie le maillon.
+    """
+    dernier = EtapeAuditConsolidation.objects.filter(
+        cycle=cycle).order_by('-sequence').first()
+    sequence = (dernier.sequence + 1) if dernier else 1
+    hash_precedent = dernier.hash if dernier else ''
+    hash_snapshot = ''
+    if snapshot is not None:
+        hash_snapshot = hashlib.sha256(
+            str(snapshot).encode('utf-8')).hexdigest()
+    empreinte = f'{hash_precedent}{etape}{hash_snapshot}{sequence}'
+    hash_maillon = hashlib.sha256(empreinte.encode('utf-8')).hexdigest()
+    return EtapeAuditConsolidation.objects.create(
+        company=cycle.company, cycle=cycle, etape=etape, acteur=acteur,
+        sequence=sequence, hash_snapshot=hash_snapshot,
+        hash_precedent=hash_precedent, hash=hash_maillon, detail=detail or '')
+
+
+# ── NTFIN56 — Simulation de consolidation (what-if périmètre) ──────────────
+
+def simuler_consolidation(cycle, ajustements_perimetre=None):
+    """NTFIN56 — recalcule un bilan/CPC consolidé provisoire (what-if).
+
+    ``ajustements_perimetre`` : liste de dicts ``{'entite_id', 'pourcentage'}``
+    (nouveau % d'intérêt) et/ou ``{'entite_id', 'retirer': True}``. Recalcule les
+    intérêts minoritaires et le résultat part groupe SANS écrire aucune écriture
+    définitive (le cycle publié n'est pas altéré). Renvoie un dict provisoire.
+    """
+    from . import selectors as _sel
+    ajustements = {a['entite_id']: a for a in (ajustements_perimetre or [])}
+    cpc = _sel.cpc_consolide_v2(cycle)
+    resultat_total = cpc['resultat']
+    # Recalcule la part minoritaire simulée par entité intégrée globalement.
+    membres = EntiteConsolidation.objects.filter(
+        cycle=cycle, actif=True,
+        methode=EntiteConsolidation.Methode.INTEGRATION_GLOBALE)
+    part_minoritaires = Decimal('0')
+    perimetre = []
+    for m in membres:
+        adj = ajustements.get(m.entite_id)
+        if adj and adj.get('retirer'):
+            continue
+        pct = Decimal(str(adj['pourcentage'])) if adj and 'pourcentage' in adj \
+            else (m.pourcentage_interet or Decimal('0'))
+        liasse = LiasseRemontee.objects.filter(
+            cycle=cycle, entite=m.entite).first()
+        resultat_entite = Decimal('0')
+        if liasse:
+            for li in (liasse.snapshot_balance or []):
+                classe = li.get('classe') or _classe_de_numero(li['numero'])
+                if classe in (6, 7):
+                    resultat_entite += (
+                        Decimal(str(li.get('credit') or 0))
+                        - Decimal(str(li.get('debit') or 0)))
+        pct_min = Decimal('100') - pct
+        part = (resultat_entite * pct_min / Decimal('100')).quantize(_CENT)
+        part_minoritaires += part
+        perimetre.append({
+            'entite_id': m.entite_id, 'pourcentage_interet': pct,
+            'resultat_entite': resultat_entite,
+            'part_minoritaire': part})
+    return {
+        'cycle': cycle.id,
+        'simulation': True,
+        'resultat_consolide': resultat_total,
+        'part_minoritaires': part_minoritaires,
+        'resultat_part_groupe': resultat_total - part_minoritaires,
+        'perimetre': perimetre,
+    }

@@ -150,6 +150,8 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/apps/compta/models.py:7328` | MargeInterneStock.entite_vendeuse | authentication.Company | CASCADE |
 | `backend/django_core/apps/compta/models.py:7335` | MargeInterneStock.entite_acheteuse | authentication.Company | CASCADE |
 | `backend/django_core/apps/compta/models.py:7395` | EliminationTitres.entite_fille | authentication.Company | CASCADE |
+| `backend/django_core/apps/compta/models.py:8474` | MutationImmobilisation.entite_source | authentication.Company | SET_NULL |
+| `backend/django_core/apps/compta/models.py:8481` | MutationImmobilisation.entite_cible | authentication.Company | SET_NULL |
 | `backend/django_core/apps/contrats/models.py:66` | Contrat.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/contrats/models.py:349` | PartieContrat.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/contrats/models.py:400` | ContratLien.company | authentication.Company | CASCADE |

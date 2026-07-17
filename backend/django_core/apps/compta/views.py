@@ -92,6 +92,8 @@ from .models import (
     RapprochementCompte, LigneJustificationCompte,
     ComposantImmobilisation, DepreciationImmobilisation,
     MutationImmobilisation, ImmobilisationEnCours, LigneImmobilisationEnCours,
+    ContratRevenu, ObligationPerformance, EcheancierReconnaissance,
+    EtapeAuditConsolidation,
 )
 from .serializers import (
     AppelTelephoniqueSerializer, AvancementRevenuSerializer,
@@ -174,6 +176,8 @@ from .serializers import (
     ComposantImmobilisationSerializer, DepreciationImmobilisationSerializer,
     MutationImmobilisationSerializer, ImmobilisationEnCoursSerializer,
     LigneImmobilisationEnCoursSerializer,
+    ContratRevenuSerializer, ObligationPerformanceSerializer,
+    EcheancierReconnaissanceSerializer, EtapeAuditConsolidationSerializer,
 )
 
 
@@ -563,6 +567,12 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
                 company=request.user.company, id=ref_id).first()
         return Response(selectors.projection_dotations(
             request.user.company, annees=annees, referentiel=ref))
+
+    @action(detail=False, methods=['get'], url_path='positions-contrat-revenu')
+    def positions_contrat_revenu(self, request):
+        """NTFIN49 — actif sur contrat / produit différé par contrat (IFRS 15)."""
+        return Response(
+            selectors.positions_contrat_revenu(request.user.company))
 
     @action(detail=False, methods=['get'])
     def cpc(self, request):
@@ -7935,7 +7945,7 @@ class CycleConsolidationViewSet(_ComptaBaseViewSet):
         if self.action in (
                 'create', 'update', 'partial_update', 'destroy',
                 'ouvrir', 'verrouiller', 'collecter', 'apparier',
-                'generer_reciproques', 'interets_minoritaires'):
+                'generer_reciproques', 'interets_minoritaires', 'simuler'):
             return [HasPermissionOrLegacy('compta_valider')()]
         return super().get_permissions()
 
@@ -8037,6 +8047,131 @@ class CycleConsolidationViewSet(_ComptaBaseViewSet):
         """NTFIN12 — Moniteur d'avancement de la consolidation."""
         cycle = self.get_object()
         return Response(selectors.moniteur_consolidation(cycle))
+
+    def _cycle_precedent(self, request):
+        cp_id = request.query_params.get('cycle_precedent')
+        if not cp_id:
+            return None
+        return CycleConsolidation.objects.filter(
+            company=request.user.company, pk=cp_id).first()
+
+    @action(detail=True, methods=['get'], url_path='tableau-flux')
+    def tableau_flux(self, request, pk=None):
+        """NTFIN50 — Tableau des flux de trésorerie consolidé (indirecte)."""
+        cycle = self.get_object()
+        return Response(selectors.tableau_flux_consolide(
+            cycle, cycle_precedent=self._cycle_precedent(request)))
+
+    @action(detail=True, methods=['get'], url_path='variation-capitaux')
+    def variation_capitaux(self, request, pk=None):
+        """NTFIN51 — Variation des capitaux propres consolidés."""
+        cycle = self.get_object()
+        return Response(selectors.variation_capitaux_consolides(
+            cycle, cycle_precedent=self._cycle_precedent(request)))
+
+    @action(detail=True, methods=['get'])
+    def annexes(self, request, pk=None):
+        """NTFIN52 — Notes annexes consolidées (jeu de tableaux)."""
+        cycle = self.get_object()
+        return Response(selectors.annexes_consolidation(cycle))
+
+    @action(detail=True, methods=['get'])
+    def comparatif(self, request, pk=None):
+        """NTFIN53 — Comparatif inter-entités (benchmark groupe)."""
+        cycle = self.get_object()
+        return Response(selectors.comparatif_entites(cycle))
+
+    @action(detail=True, methods=['get'], url_path='etapes-audit')
+    def etapes_audit(self, request, pk=None):
+        """NTFIN55 — Piste d'audit des étapes de consolidation."""
+        cycle = self.get_object()
+        qs = EtapeAuditConsolidation.objects.filter(cycle=cycle)
+        return Response(
+            EtapeAuditConsolidationSerializer(qs, many=True).data)
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[HasPermissionOrLegacy('compta_valider')])
+    def simuler(self, request, pk=None):
+        """NTFIN56 — Simulation what-if de périmètre (sans écriture définitive)."""
+        cycle = self.get_object()
+        ajustements = request.data.get('ajustements_perimetre') or []
+        try:
+            data = services.simuler_consolidation(cycle, ajustements)
+        except DjangoValidationError as exc:
+            return _err400(exc)
+        return Response(data)
+
+    @action(detail=True, methods=['get'], url_path='export-liasse')
+    def export_liasse(self, request, pk=None):
+        """NTFIN54 — Export XLSX de la liasse de consolidation (``?export=xlsx``)."""
+        cycle = self.get_object()
+        if request.query_params.get('export') != 'xlsx':
+            return Response(
+                {'detail': "Seul 'export=xlsx' est supporté pour la liasse "
+                           "de consolidation."},
+                status=status.HTTP_400_BAD_REQUEST)
+        from openpyxl import Workbook
+        from openpyxl.styles import Font
+        from apps.records.xlsx import coerce_cell, XLSX_CONTENT_TYPE
+
+        bilan = selectors.bilan_consolide(cycle)
+        cpc = selectors.cpc_consolide_v2(cycle)
+        flux = selectors.tableau_flux_consolide(cycle)
+        capitaux = selectors.variation_capitaux_consolides(cycle)
+        annexes = selectors.annexes_consolidation(cycle)
+        comparatif = selectors.comparatif_entites(cycle)
+
+        def _feuille(wb, titre, headers, rows, first=False):
+            ws = wb.active if first else wb.create_sheet()
+            ws.title = titre[:31]
+            ws.append(list(headers))
+            bold = Font(bold=True)
+            for cell in ws[1]:
+                cell.font = bold
+            for row in rows:
+                ws.append([coerce_cell(v) for v in row])
+            return ws
+
+        wb = Workbook()
+        _feuille(wb, 'Bilan consolidé', ['Classe', 'Débit', 'Crédit'],
+                 [[k, v['debit'], v['credit']]
+                  for k, v in bilan['par_classe'].items()]
+                 + [['Total actif', bilan['total_actif'], ''],
+                    ['Total passif', bilan['total_passif_avec_resultat'], ''],
+                    ['Résultat', bilan['resultat'], '']],
+                 first=True)
+        _feuille(wb, 'CPC consolidé', ['Poste', 'Montant'],
+                 [['Produits', cpc['total_produits']],
+                  ['Charges', cpc['total_charges']],
+                  ['Résultat', cpc['resultat']]])
+        _feuille(wb, 'Tableau de flux', ['Flux', 'Montant'],
+                 [['Exploitation', flux['flux_exploitation']],
+                  ['Investissement', flux['flux_investissement']],
+                  ['Financement', flux['flux_financement']],
+                  ['Variation trésorerie', flux['variation_tresorerie']]])
+        _feuille(wb, 'Variation capitaux', ['Poste', 'Montant'],
+                 [['Ouverture', capitaux['capitaux_ouverture']],
+                  ['Résultat part groupe', capitaux['resultat_part_groupe']],
+                  ['Résultat minoritaires',
+                   capitaux['resultat_part_minoritaires']],
+                  ['Clôture part groupe',
+                   capitaux['capitaux_cloture_part_groupe']]])
+        _feuille(wb, 'Périmètre',
+                 ['Entité', 'Libellé', 'Méthode', '% intérêt'],
+                 [[p['entite_id'], p['libelle'], p['methode'],
+                   p['pourcentage_interet']] for p in annexes['perimetre']])
+        _feuille(wb, 'Comparatif entités',
+                 ['Entité', 'CA', 'Résultat', 'Marge %'],
+                 [[li['entite_id'], li['ca'], li['resultat'], li['marge_pct']]
+                  for li in comparatif['lignes']])
+
+        import io as _io
+        buf = _io.BytesIO()
+        wb.save(buf)
+        resp = HttpResponse(buf.getvalue(), content_type=XLSX_CONTENT_TYPE)
+        resp['Content-Disposition'] = (
+            f'attachment; filename="liasse_consolidation_{cycle.id}.xlsx"')
+        return resp
 
 
 class LiasseRemonteeViewSet(_ComptaBaseViewSet):
@@ -8868,3 +9003,95 @@ class LigneImmobilisationEnCoursViewSet(_ComptaBaseViewSet):
         encours = instance.encours
         instance.delete()
         self._recalculer_cumul(encours)
+
+
+# ── NTFIN46-48 — Reconnaissance du revenu IFRS 15 ──────────────────────────
+
+class ContratRevenuViewSet(_ComptaBaseViewSet):
+    """Contrats de revenu IFRS 15 (NTFIN46) + action ``allouer`` (NTFIN47)."""
+    queryset = ContratRevenu.objects.prefetch_related(
+        'obligations__echeances').all()
+    serializer_class = ContratRevenuSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id']
+
+    def get_permissions(self):
+        if self.action == 'allouer':
+            return [HasPermissionOrLegacy('compta_valider')()]
+        return super().get_permissions()
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[HasPermissionOrLegacy('compta_valider')])
+    def allouer(self, request, pk=None):
+        """NTFIN47 — alloue le prix de transaction au prorata des PVS."""
+        contrat = self.get_object()
+        try:
+            services.allouer_prix_transaction(contrat)
+        except DjangoValidationError as exc:
+            return _err400(exc)
+        contrat.refresh_from_db()
+        return Response(self.get_serializer(contrat).data)
+
+
+class ObligationPerformanceViewSet(_ComptaBaseViewSet):
+    """Obligations de performance (NTFIN46) + ``generer-echeancier`` (NTFIN48)."""
+    queryset = ObligationPerformance.objects.select_related(
+        'contrat').prefetch_related('echeances').all()
+    serializer_class = ObligationPerformanceSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        contrat = self.request.query_params.get('contrat')
+        if contrat:
+            qs = qs.filter(contrat_id=contrat)
+        return qs
+
+    def get_permissions(self):
+        if self.action == 'generer_echeancier':
+            return [HasPermissionOrLegacy('compta_valider')()]
+        return super().get_permissions()
+
+    @action(detail=True, methods=['post'], url_path='generer-echeancier',
+            permission_classes=[HasPermissionOrLegacy('compta_valider')])
+    def generer_echeancier(self, request, pk=None):
+        """NTFIN48 — génère l'échéancier de reconnaissance de l'obligation."""
+        obligation = self.get_object()
+        try:
+            echeances = services.generer_echeancier_reconnaissance(obligation)
+        except DjangoValidationError as exc:
+            return _err400(exc)
+        return Response(
+            EcheancierReconnaissanceSerializer(echeances, many=True).data,
+            status=status.HTTP_201_CREATED)
+
+
+class EcheancierReconnaissanceViewSet(_ComptaBaseViewSet):
+    """Échéances de reconnaissance (NTFIN48) + action ``reconnaitre``."""
+    queryset = EcheancierReconnaissance.objects.select_related(
+        'obligation', 'ecriture').all()
+    serializer_class = EcheancierReconnaissanceSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        obligation = self.request.query_params.get('obligation')
+        if obligation:
+            qs = qs.filter(obligation_id=obligation)
+        return qs
+
+    def get_permissions(self):
+        if self.action == 'reconnaitre':
+            return [HasPermissionOrLegacy('compta_valider')()]
+        return super().get_permissions()
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[HasPermissionOrLegacy('compta_valider')])
+    def reconnaitre(self, request, pk=None):
+        """NTFIN48 — reconnaît l'échéance (solde le produit constaté d'avance)."""
+        echeance = self.get_object()
+        try:
+            services.reconnaitre_echeance(echeance, user=request.user)
+        except DjangoValidationError as exc:
+            return _err400(exc)
+        return Response(self.get_serializer(echeance).data)

@@ -83,6 +83,8 @@ from .views import (
     ComposantImmobilisationViewSet, DepreciationImmobilisationViewSet,
     MutationImmobilisationViewSet, ImmobilisationEnCoursViewSet,
     LigneImmobilisationEnCoursViewSet,
+    ContratRevenuViewSet, ObligationPerformanceViewSet,
+    EcheancierReconnaissanceViewSet,
 )
 
 router = DefaultRouter()
@@ -253,6 +255,10 @@ router.register(r'mutations-immobilisation', MutationImmobilisationViewSet)
 router.register(r'immobilisations-en-cours', ImmobilisationEnCoursViewSet)
 router.register(r'lignes-immobilisation-en-cours',
                 LigneImmobilisationEnCoursViewSet)
+# ── NTFIN — Reconnaissance du revenu IFRS 15 ───────────────────────────────
+router.register(r'contrats-revenu', ContratRevenuViewSet)
+router.register(r'obligations-performance', ObligationPerformanceViewSet)
+router.register(r'echeances-reconnaissance', EcheancierReconnaissanceViewSet)
 
 urlpatterns = [
     # XMKT30 (partiel) — calendrier marketing agrégé (campagnes + posts

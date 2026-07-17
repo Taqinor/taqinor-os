@@ -31,6 +31,7 @@ from .models import (
     InstanceCloture, TacheCloture, JustificationVariation, AccrualCloture,
     RapprochementCompte,
     PlanAmortissement,
+    ContratRevenu,
 )
 
 
@@ -5176,4 +5177,226 @@ def projection_dotations(company, annees=5, referentiel=None):
         'referentiel': getattr(referentiel, 'code', None),
         'par_actif': par_actif,
         'totaux_par_annee': totaux,
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Groupe NTFIN — Reconnaissance du revenu IFRS 15 & états consolidés
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ── NTFIN49 — Actif/passif sur contrat (contract asset / deferred revenue) ─
+
+def positions_contrat_revenu(company, periode=None):
+    """NTFIN49 — position par contrat : revenu reconnu vs facturé (IFRS 15).
+
+    Par contrat : total reconnu (échéances reconnues) vs total facturé
+    (``montant_facture`` des obligations) → actif sur contrat (reconnu >
+    facturé) ou produit différé (facturé > reconnu). Lecture seule.
+    """
+    lignes = []
+    total_actif = Decimal('0')
+    total_differe = Decimal('0')
+    for contrat in ContratRevenu.objects.filter(
+            company=company).prefetch_related('obligations__echeances'):
+        reconnu = Decimal('0')
+        facture = Decimal('0')
+        for o in contrat.obligations.all():
+            facture += o.montant_facture or Decimal('0')
+            for e in o.echeances.all():
+                if e.statut == 'reconnu':
+                    reconnu += e.montant_a_reconnaitre or Decimal('0')
+        position = reconnu - facture
+        actif_contrat = position if position > 0 else Decimal('0')
+        produit_differe = -position if position < 0 else Decimal('0')
+        total_actif += actif_contrat
+        total_differe += produit_differe
+        lignes.append({
+            'contrat_id': contrat.id,
+            'reference': contrat.reference,
+            'reconnu': reconnu,
+            'facture': facture,
+            'actif_sur_contrat': actif_contrat,
+            'produit_differe': produit_differe,
+        })
+    return {
+        'lignes': lignes,
+        'total_actif_sur_contrat': total_actif,
+        'total_produit_differe': total_differe,
+    }
+
+
+# ── NTFIN50-53 — États consolidés (flux, capitaux, annexes, comparatif) ────
+
+def _soldes_par_classe_consolide(cycle):
+    """Soldes nets (débit − crédit) par classe d'un bilan consolidé (NTFIN11)."""
+    b = bilan_consolide(cycle)
+    soldes = {}
+    for k, v in b['par_classe'].items():
+        soldes[int(k)] = (v['debit'] or Decimal('0')) - (
+            v['credit'] or Decimal('0'))
+    return soldes, b
+
+
+def tableau_flux_consolide(cycle, cycle_precedent=None):
+    """NTFIN50 — tableau des flux de trésorerie consolidé (méthode indirecte).
+
+    Construit exploitation/investissement/financement à partir des variations du
+    bilan consolidé N vs N-1 (ouverture = 0 sans N-1) et du résultat consolidé.
+    La variation de trésorerie du tableau réconcilie EXACTEMENT la variation de
+    trésorerie du bilan consolidé (identité comptable). Lecture seule.
+    """
+    soldes_n, bilan_n = _soldes_par_classe_consolide(cycle)
+    soldes_c = {}
+    if cycle_precedent is not None:
+        soldes_c, _ = _soldes_par_classe_consolide(cycle_precedent)
+
+    def delta(classe):
+        return soldes_n.get(classe, Decimal('0')) - soldes_c.get(
+            classe, Decimal('0'))
+
+    resultat = bilan_n['resultat']
+    # Actif (2,3,5) en solde débiteur ; passif (1,4) en solde créditeur.
+    delta_immo = delta(2)             # actif immobilisé
+    delta_circulant = delta(3)        # actif circulant hors tréso
+    delta_treso = delta(5)            # trésorerie
+    delta_capitaux = -delta(1)        # capitaux/financement permanent (passif)
+    delta_dettes_expl = -delta(4)     # dettes d'exploitation (passif)
+
+    flux_exploitation = resultat + delta_dettes_expl - delta_circulant
+    flux_investissement = -delta_immo
+    flux_financement = delta_capitaux
+    variation_tresorerie = (
+        flux_exploitation + flux_investissement + flux_financement)
+    return {
+        'cycle': cycle.id,
+        'resultat_consolide': resultat,
+        'flux_exploitation': flux_exploitation,
+        'flux_investissement': flux_investissement,
+        'flux_financement': flux_financement,
+        'variation_tresorerie': variation_tresorerie,
+        'variation_tresorerie_bilan': delta_treso,
+        'reconcilie': variation_tresorerie == delta_treso,
+    }
+
+
+def variation_capitaux_consolides(cycle, cycle_precedent=None,
+                                  dividendes=None, ecart_conversion=None):
+    """NTFIN51 — variation des capitaux propres consolidés (part groupe/minoritaires).
+
+    Capitaux clôture = ouverture + résultat − dividendes ± écart de conversion,
+    part groupe et part minoritaires séparées. Ouverture = 0 sans N-1. Lecture
+    seule.
+    """
+    soldes_n, bilan_n = _soldes_par_classe_consolide(cycle)
+    capitaux_ouverture = Decimal('0')
+    if cycle_precedent is not None:
+        soldes_c, _ = _soldes_par_classe_consolide(cycle_precedent)
+        capitaux_ouverture = -soldes_c.get(1, Decimal('0'))
+    resultat = bilan_n['resultat']
+    dividendes = Decimal(str(dividendes or 0))
+    ecart = Decimal(str(ecart_conversion or 0))
+    # Part minoritaire du résultat (mêmes règles que NTFIN10).
+    part_min_resultat = Decimal('0')
+    membres = EntiteConsolidation.objects.filter(
+        cycle=cycle, actif=True,
+        methode=EntiteConsolidation.Methode.INTEGRATION_GLOBALE)
+    for m in membres:
+        pct_min = Decimal('100') - (m.pourcentage_interet or Decimal('0'))
+        if pct_min <= 0:
+            continue
+        liasse = LiasseRemontee.objects.filter(
+            cycle=cycle, entite=m.entite).first()
+        if not liasse:
+            continue
+        r = Decimal('0')
+        for li in (liasse.snapshot_balance or []):
+            classe = li.get('classe') or _classe_num(li['numero'])
+            if classe in (6, 7):
+                r += (Decimal(str(li.get('credit') or 0))
+                      - Decimal(str(li.get('debit') or 0)))
+        part_min_resultat += (r * pct_min / Decimal('100')).quantize(
+            Decimal('0.01'))
+    resultat_part_groupe = resultat - part_min_resultat
+    cloture_groupe = (capitaux_ouverture + resultat_part_groupe
+                      - dividendes + ecart)
+    return {
+        'cycle': cycle.id,
+        'capitaux_ouverture': capitaux_ouverture,
+        'resultat_part_groupe': resultat_part_groupe,
+        'resultat_part_minoritaires': part_min_resultat,
+        'dividendes': dividendes,
+        'ecart_conversion': ecart,
+        'capitaux_cloture_part_groupe': cloture_groupe,
+    }
+
+
+def annexes_consolidation(cycle):
+    """NTFIN52 — jeu de tableaux d'annexe consolidés.
+
+    Tableau de périmètre (entité + méthode + % d'intérêt, cohérent NTFIN1),
+    variation des immobilisations consolidées, échéancier des dettes, engagements
+    hors bilan agrégés. Lecture seule.
+    """
+    soldes, _ = _soldes_par_classe_consolide(cycle)
+    perimetre = []
+    for m in EntiteConsolidation.objects.filter(
+            cycle=cycle, actif=True).select_related('entite'):
+        perimetre.append({
+            'entite_id': m.entite_id,
+            'libelle': m.libelle or getattr(m.entite, 'nom', ''),
+            'methode': m.methode,
+            'pourcentage_interet': m.pourcentage_interet,
+        })
+    return {
+        'cycle': cycle.id,
+        'perimetre': perimetre,
+        'immobilisations_consolidees': soldes.get(2, Decimal('0')),
+        'dettes_consolidees': -soldes.get(4, Decimal('0')),
+        'engagements_hors_bilan': Decimal('0'),
+    }
+
+
+def comparatif_entites(cycle, indicateurs=None):
+    """NTFIN53 — comparatif inter-entités (benchmark groupe).
+
+    Une ligne par entité du périmètre : CA (classe 7), marge %, résultat, à
+    partir de sa liasse collectée. Somme au consolidé AVANT éliminations.
+    Lecture seule.
+    """
+    lignes = []
+    total_ca = Decimal('0')
+    total_resultat = Decimal('0')
+    for m in EntiteConsolidation.objects.filter(
+            cycle=cycle, actif=True).select_related('entite'):
+        liasse = LiasseRemontee.objects.filter(
+            cycle=cycle, entite=m.entite).first()
+        ca = Decimal('0')
+        charges = Decimal('0')
+        if liasse:
+            for li in (liasse.snapshot_balance or []):
+                classe = li.get('classe') or _classe_num(li['numero'])
+                credit = Decimal(str(li.get('credit') or 0))
+                debit = Decimal(str(li.get('debit') or 0))
+                if classe == 7:
+                    ca += credit - debit
+                elif classe == 6:
+                    charges += debit - credit
+        resultat = ca - charges
+        marge_pct = ((resultat / ca * Decimal('100')).quantize(Decimal('0.01'))
+                     if ca else Decimal('0'))
+        total_ca += ca
+        total_resultat += resultat
+        lignes.append({
+            'entite_id': m.entite_id,
+            'libelle': m.libelle or getattr(m.entite, 'nom', ''),
+            'ca': ca,
+            'resultat': resultat,
+            'marge_pct': marge_pct,
+        })
+    lignes.sort(key=lambda x: x['ca'], reverse=True)
+    return {
+        'cycle': cycle.id,
+        'lignes': lignes,
+        'total_ca_avant_elimination': total_ca,
+        'total_resultat_avant_elimination': total_resultat,
     }
