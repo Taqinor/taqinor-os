@@ -394,6 +394,34 @@ class MetaClient:
         data = (payload or {}).get('data') or []
         return data[0] if data else {}
 
+    def get_ad_leads(self, ad_id, *, since_unix=None):
+        """ADSDEEP18 — Leads d'une ad lead-form (``GET /<ad_id>/leads``).
+
+        Renvoie la liste des leads (``id``/``created_time``/``field_data``/
+        ``form_id``/``ad_id``). Fenêtre Meta = 90 j (les leads plus anciens sont
+        supprimés côté Meta — Odoo est la seule source historique). Filtrage date
+        optionnel via ``since_unix`` (``time_created > since``)."""
+        params = {
+            'fields': 'id,created_time,ad_id,form_id,field_data',
+        }
+        if since_unix is not None:
+            params['filtering'] = json.dumps([{
+                'field': 'time_created', 'operator': 'GREATER_THAN',
+                'value': int(since_unix)}])
+        return self._paged(f'{ad_id}/leads', params=params)
+
+    def get_ad_targeting_ids(self, ad_id):
+        """ADSDEEP18 — Résout ``adset_id``/``campaign_id`` d'une ad (le lead ne
+        les porte pas — dossier leads-capi §1)."""
+        payload = self._request(
+            'GET', f'{ad_id}', params={'fields': 'adset_id,campaign_id'})
+        if not isinstance(payload, dict):
+            return {'adset_id': '', 'campaign_id': ''}
+        return {
+            'adset_id': str(payload.get('adset_id') or ''),
+            'campaign_id': str(payload.get('campaign_id') or ''),
+        }
+
     def get_ad_previews(self, ad_id, ad_format):
         """ADSDEEP13 — Snippet iframe d'aperçu Meta pour un format. L'iframe
         n'est valide que 24 h → jamais persister, refetch par affichage."""

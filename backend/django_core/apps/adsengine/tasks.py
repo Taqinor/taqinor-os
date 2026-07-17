@@ -330,6 +330,94 @@ def sync_ad_creatives(company, client):
     return written
 
 
+def pull_ad_leads_for_company(company, conn, client):
+    """ADSDEEP18 — Pull-sync des leads lead-form d'une société.
+
+    Pour chaque ad miroir, tire ``GET /<ad_id>/leads`` (fenêtre Meta 90 j),
+    résout adset/campaign via l'ad, crée le lead CRM via le MÊME service que le
+    webhook (``crm.services.create_lead_from_meta_lead_ads`` — idempotent par
+    ``leadgen_id``, jamais un doublon) et émet ``meta_lead_captured`` pour que le
+    MÊME récepteur upserte le MetaLeadMirror : webhook et pull CONVERGENT sur le
+    même miroir. Best-effort par ad. Renvoie le nombre de leads traités."""
+    from core.events import meta_lead_captured
+
+    from .models import AdMirror
+
+    get_leads = getattr(client, 'get_ad_leads', None)
+    if not callable(get_leads):
+        return 0
+    processed = 0
+    # Cache adset/campaign par ad (une seule résolution par ad).
+    for ad in AdMirror.objects.filter(company=company):
+        try:
+            leads = get_leads(ad.meta_id)
+        except Exception:  # noqa: BLE001 — une ad en échec n'arrête pas les autres
+            continue
+        if not leads:
+            continue
+        try:
+            targeting = client.get_ad_targeting_ids(ad.meta_id)
+        except Exception:  # noqa: BLE001
+            targeting = {'adset_id': '', 'campaign_id': ''}
+        for lead_row in leads:
+            leadgen_id = str(lead_row.get('id') or '').strip()
+            if not leadgen_id:
+                continue
+            field_data = lead_row.get('field_data') or []
+            form_id = str(lead_row.get('form_id') or '')
+            try:
+                from apps.crm.services import create_lead_from_meta_lead_ads
+                lead = create_lead_from_meta_lead_ads(
+                    company=company, leadgen_id=leadgen_id,
+                    field_data=field_data, ad_id=ad.meta_id,
+                    adgroup_id=targeting.get('adset_id', ''), form_id=form_id)
+            except Exception:  # noqa: BLE001 — un lead en échec n'arrête pas
+                logger.warning(
+                    'adsengine.pull_ad_leads: création lead échouée (%s)',
+                    leadgen_id, exc_info=True)
+                continue
+            # Même événement que le webhook → même récepteur → même miroir.
+            try:
+                meta_lead_captured.send(
+                    sender='adsengine.pull_ad_leads', lead=lead,
+                    company=company, leadgen_id=leadgen_id, ad_id=ad.meta_id,
+                    adset_id=targeting.get('adset_id', ''),
+                    campaign_id=targeting.get('campaign_id', ''),
+                    form_id=form_id, created_time=lead_row.get('created_time'),
+                    is_organic=False)
+            except Exception:  # noqa: BLE001 — best-effort
+                pass
+            processed += 1
+    return processed
+
+
+@shared_task(name='adsengine.pull_meta_leads')
+def pull_meta_leads():
+    """ADSDEEP18 — Beat : pull-sync des leads lead-form des sociétés à connexion
+    Meta active. NO-OP propre sans connexion live. Best-effort par société."""
+    from authentication.selectors import active_companies
+
+    from .meta_client import MetaClient
+    from .models import MetaConnection
+
+    total = 0
+    for company in active_companies():
+        conn = MetaConnection.objects.filter(
+            company=company, enabled=True).first()
+        if conn is None or not conn.is_live:
+            continue
+        try:
+            client = MetaClient.from_connection(conn)
+            total += pull_ad_leads_for_company(company, conn, client)
+        except Exception:  # pragma: no cover - défensif, isolation société
+            logger.warning(
+                'adsengine.pull_meta_leads: échec société %s',
+                company.pk, exc_info=True)
+            continue
+    logger.info('adsengine.pull_meta_leads: %s lead(s) traité(s)', total)
+    return {'leads_processed': total}
+
+
 @shared_task(name='adsengine.sync_insights_daily')
 def sync_insights_daily():
     """ENG6 — Synchro quotidienne des insights, société par société.
