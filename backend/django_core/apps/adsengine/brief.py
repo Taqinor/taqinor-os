@@ -37,6 +37,69 @@ def weekly_window(now=None):
     return start, end
 
 
+# ── ADSDEEP48 — Benchmarks internes (cadence créative + taux de gagnants) ────
+# Repères du dossier concurrent (Motion, benchmark §2) : les comptes qui
+# performent le mieux sortent 12-19 créatifs neufs/semaine avec ~9 % de
+# gagnants. Ce sont des REPÈRES affichés à côté du chiffre réel — jamais un
+# objectif imposé ni une action déclenchée automatiquement.
+CADENCE_TARGET_MIN = 12
+CADENCE_TARGET_MAX = 19
+WINNER_RATE_BENCHMARK = 0.09
+
+STATUS_BELOW_TARGET = 'sous_cible'
+STATUS_ON_TARGET = 'dans_la_cible'
+STATUS_ABOVE_TARGET = 'au_dessus_cible'
+
+
+def weekly_creative_cadence(company, *, start, end):
+    """ADSDEEP48 — Nombre de ``CreativeAsset`` NEUFS créés sur la fenêtre
+    ``[start, end]`` (bornes incluses) — le rythme de production créative de la
+    semaine, comparé au repère marché [12, 19]/semaine (dossier concurrent).
+    Renvoie ``{count, target_min, target_max, statut}``."""
+    from .models import CreativeAsset
+
+    count = CreativeAsset.objects.filter(
+        company=company, created_at__date__gte=start,
+        created_at__date__lte=end).count()
+    if count < CADENCE_TARGET_MIN:
+        statut = STATUS_BELOW_TARGET
+    elif count > CADENCE_TARGET_MAX:
+        statut = STATUS_ABOVE_TARGET
+    else:
+        statut = STATUS_ON_TARGET
+    return {'count': count, 'target_min': CADENCE_TARGET_MIN,
+            'target_max': CADENCE_TARGET_MAX, 'statut': statut}
+
+
+def winner_rate(company, *, start, end):
+    """ADSDEEP48 — Fraction de GAGNANTS parmi les ads LANCÉS sur la fenêtre
+    ``[start, end]`` (``AdMirror.created_at``) : un ad est un « gagnant » s'il a
+    généré AU MOINS 1 résultat cumulé (``InsightSnapshot.results``) à ce jour.
+    Repère marché : ~9 % (dossier concurrent). ``valeur`` est ``None`` si AUCUN
+    ad n'a été lancé sur la fenêtre — JAMAIS un taux de 0 % fabriqué sur un
+    dénominateur nul."""
+    from .models import AdMirror
+
+    launched = list(AdMirror.objects.filter(
+        company=company, created_at__date__gte=start,
+        created_at__date__lte=end))
+    total = len(launched)
+    if total == 0:
+        return {'valeur': None, 'gagnants': 0, 'total': 0,
+                'reference_marche': WINNER_RATE_BENCHMARK}
+
+    ct = ContentType.objects.get_for_model(AdMirror)
+    winners = 0
+    for ad in launched:
+        agg = InsightSnapshot.objects.filter(
+            company=company, content_type=ct, object_id=ad.pk).aggregate(
+                total_results=Sum('results'))
+        if (agg['total_results'] or 0) > 0:
+            winners += 1
+    return {'valeur': winners / total, 'gagnants': winners, 'total': total,
+            'reference_marche': WINNER_RATE_BENCHMARK}
+
+
 def _fatigue_level(freq):
     """Niveau de fatigue à partir de la fréquence moyenne (Decimal|None)."""
     if freq is None:
@@ -168,6 +231,9 @@ def build_brief(company, *, now=None, create_proposals=True):
         'signatures_cumulees': summary['total_signed'],
         'sla_ok': bool(last_date is not None and last_date >= start),
         'derniere_sync': (last_date.isoformat() if last_date else None),
+        # ADSDEEP48 — benchmarks internes (cadence créative + taux de gagnants).
+        'cadence_creative': weekly_creative_cadence(company, start=start, end=end),
+        'taux_de_gagnants': winner_rate(company, start=start, end=end),
         'propositions': [
             {'id': p.id, 'kind': p.kind, 'reason_fr': p.reason_fr}
             for p in proposals
@@ -205,6 +271,27 @@ def render_markdown(data):
             f"- Coût par signature (cumulé) : "
             f"{data['cout_par_signature_cumule']} MAD "
             f"pour {data['signatures_cumulees']} signature(s).")
+    # ADSDEEP48 — benchmarks internes (cadence créative + taux de gagnants),
+    # repères du dossier concurrent (Motion, benchmark §2).
+    cadence = data.get('cadence_creative')
+    if cadence is not None:
+        statut_fr = cadence['statut'].replace('_', ' ')
+        lines.append(
+            f"- Cadence créative : {cadence['count']} créatif(s) neuf(s) cette "
+            f"semaine (repère marché {cadence['target_min']}-"
+            f"{cadence['target_max']}/semaine) → {statut_fr}.")
+    gagnants = data.get('taux_de_gagnants')
+    if gagnants is not None:
+        if gagnants['valeur'] is not None:
+            lines.append(
+                f"- Taux de gagnants : {gagnants['gagnants']}/"
+                f"{gagnants['total']} ad(s) lancé(s) cette semaine "
+                f"({gagnants['valeur'] * 100:.0f} %, repère marché "
+                f"~{gagnants['reference_marche'] * 100:.0f} %).")
+        else:
+            lines.append(
+                '- Taux de gagnants : aucun ad lancé cette semaine — '
+                'indicateur non calculable.')
     lines.append(
         f"- SLA de synchronisation : "
         f"{'à jour' if data['sla_ok'] else 'EN RETARD'}"
