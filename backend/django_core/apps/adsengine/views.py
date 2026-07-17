@@ -1687,3 +1687,58 @@ class MediaResolveView(APIView):
         # Cache la seule URL (Redis, ≤30 min) — JAMAIS d'écriture en base.
         cache.set(cache_key, url, self.CACHE_TTL)
         return Response({'url': url, 'cached': False})
+
+
+# ── ADSDEEP13 — Proxy previews (aperçus rendus par Meta) ──────────────────────
+# Formats d'aperçu whitelistés (dossier creative-retrieval §5). L'iframe n'est
+# valide que 24 h ⇒ jamais stockée, refetch par affichage.
+PREVIEW_FORMATS = (
+    'MOBILE_FEED_STANDARD', 'INSTAGRAM_STANDARD',
+    'FACEBOOK_REELS_MOBILE', 'INSTAGRAM_STORY',
+)
+
+
+class AdPreviewsView(APIView):
+    """ADSDEEP13 — Snippet iframe d'aperçu Meta d'une ad, pour un format
+    whitelisté.
+
+    ``GET /api/django/adsengine/ads/<ad_meta_id>/previews/?format=<FORMAT>`` —
+    l'ad doit appartenir à la société de l'appelant (isolation). L'iframe (valide
+    24 h) n'est JAMAIS persistée : refetch à chaque affichage. Company-scopé +
+    gaté ``adsengine_view``."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
+
+    def get(self, request, ad_meta_id):
+        company, err = _adseng_company_gate(request, 'adsengine_view')
+        if err is not None:
+            return err
+        ad_format = (request.query_params.get('format')
+                     or 'MOBILE_FEED_STANDARD').strip()
+        if ad_format not in PREVIEW_FORMATS:
+            return Response(
+                {'detail': 'Format non autorisé.',
+                 'formats': list(PREVIEW_FORMATS)}, status=400)
+
+        from .models import AdMirror
+
+        ad = AdMirror.objects.filter(
+            company=company, meta_id=ad_meta_id).first()
+        if ad is None:
+            return Response({'detail': 'Ad introuvable.'}, status=404)
+
+        conn = MetaConnection.objects.filter(
+            company=company, enabled=True).first()
+        if conn is None or not conn.is_live:
+            return Response({'detail': 'Connexion Meta indisponible.'},
+                            status=404)
+
+        from .meta_client import MetaClient, MetaError
+
+        client = MetaClient.from_connection(conn)
+        try:
+            body = client.get_ad_previews(ad_meta_id, ad_format)
+        except MetaError:
+            return Response({'detail': 'Aperçu indisponible.'}, status=404)
+        # iframe NON persistée (valide 24 h) — rendue telle quelle à l'affichage.
+        return Response({'format': ad_format, 'body': body})

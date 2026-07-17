@@ -10,7 +10,8 @@ from rest_framework.routers import DefaultRouter
 
 from .odoo_views import OdooCostPerSignatureView
 from .views import (
-    AdCampaignMirrorViewSet, AnomalyEventViewSet, ArmDailyStatViewSet,
+    AdCampaignMirrorViewSet, AdPreviewsView, AnomalyEventViewSet,
+    ArmDailyStatViewSet,
     BacklogDropAssetView, BacklogListView, BacklogLotApproveView,
     BreakdownsView, BriefLatestView, CampaignFunnelView, CohortReportView,
     CostPerSignatureView,
@@ -114,5 +115,8 @@ urlpatterns = [
     # ADSDEEP12 — résolveur de médias frais (URL jouable non persistée).
     path('media/<str:ref>/', MediaResolveView.as_view(),
          name='adsengine-media-resolve'),
+    # ADSDEEP13 — proxy previews (iframe Meta, jamais persistée).
+    path('ads/<str:ad_meta_id>/previews/', AdPreviewsView.as_view(),
+         name='adsengine-ad-previews'),
     path('', include(router.urls)),
 ]
