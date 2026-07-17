@@ -382,3 +382,74 @@ class Remise(TenantModel):
     def __str__(self):
         cible = self.eleve or self.famille
         return f"{self.get_type_display()} — {cible}"
+
+
+# =============================================================================
+# NTEDU8 — Échéancier de scolarité.
+# =============================================================================
+
+class EcheancierScolarite(TenantModel):
+    """NTEDU8 — échéancier de scolarité d'un élève pour une année scolaire,
+    généré automatiquement à la validation de l'inscription (``services_
+    echeancier.generer_echeancier``)."""
+
+    eleve = models.ForeignKey(
+        Eleve, on_delete=models.CASCADE, related_name='echeanciers',
+        verbose_name='Élève')
+    annee_scolaire = models.ForeignKey(
+        AnneeScolaire, on_delete=models.CASCADE, related_name='echeanciers',
+        verbose_name='Année scolaire')
+    grille_tarifaire = models.ForeignKey(
+        GrilleTarifaire, on_delete=models.PROTECT, related_name='echeanciers',
+        verbose_name='Grille tarifaire')
+    remises = models.ManyToManyField(
+        Remise, blank=True, related_name='echeanciers',
+        verbose_name='Remises appliquées')
+    montant_total = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant total')
+    nombre_echeances = models.PositiveIntegerField(
+        default=10, verbose_name="Nombre d'échéances")
+
+    class Meta:
+        verbose_name = 'Échéancier de scolarité'
+        verbose_name_plural = 'Échéanciers de scolarité'
+        ordering = ['-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['eleve', 'annee_scolaire'],
+                name='education_un_echeancier_par_eleve_annee'),
+        ]
+
+    def __str__(self):
+        return f"Échéancier {self.eleve} — {self.annee_scolaire}"
+
+
+class LigneEcheance(TenantModel):
+    """NTEDU8 — ligne d'échéance mensuelle d'un échéancier."""
+
+    class Statut(models.TextChoices):
+        A_VENIR = 'a_venir', 'À venir'
+        FACTUREE = 'facturee', 'Facturée'
+        PAYEE = 'payee', 'Payée'
+        EN_RETARD = 'en_retard', 'En retard'
+
+    echeancier = models.ForeignKey(
+        EcheancierScolarite, on_delete=models.CASCADE, related_name='lignes',
+        verbose_name='Échéancier')
+    libelle = models.CharField(max_length=150, verbose_name='Libellé')
+    montant = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant')
+    date_echeance = models.DateField(verbose_name="Date d'échéance")
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.A_VENIR,
+        verbose_name='Statut')
+
+    class Meta:
+        verbose_name = "Ligne d'échéance"
+        verbose_name_plural = "Lignes d'échéance"
+        ordering = ['date_echeance']
+
+    def __str__(self):
+        return f"{self.libelle} ({self.date_echeance})"

@@ -6,6 +6,7 @@ lot, dont les tests dédiés sont ajoutés section par section au fil des
 commits (une classe de tests par tâche, en dessous de ce module).
 """
 from datetime import date
+from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -302,3 +303,59 @@ class NTEDU7RemiseFratrieTests(EducationTestCaseMixin, TestCase):
         self.assertEqual(response.status_code, 200, response.content)
         remise.refresh_from_db()
         self.assertEqual(remise.statut, Remise.Statut.APPROUVEE)
+
+
+class NTEDU8EcheancierTests(EducationTestCaseMixin, TestCase):
+    """NTEDU8 — échéancier de scolarité auto-généré à la validation."""
+
+    def setUp(self):
+        super().setUp()
+        GrilleTarifaire.objects.create(
+            company=self.company, annee_scolaire=self.annee,
+            niveau=self.niveau_cp, frais_inscription=Decimal('500'),
+            scolarite_annuelle=Decimal('12000'))
+
+    def test_valider_inscription_genere_echeancier_complet(self):
+        eleve = Eleve.objects.create(
+            company=self.company, famille=self.famille, nom='Bennani',
+            prenom='Yasmine')
+        inscription = Inscription.objects.create(
+            company=self.company, eleve=eleve, annee_scolaire=self.annee,
+            classe_demandee=self.classe)
+        valider_inscription(inscription, user=self.user)
+
+        echeancier = eleve.echeanciers.get(annee_scolaire=self.annee)
+        self.assertEqual(echeancier.lignes.count(), 10)
+        self.assertEqual(echeancier.montant_total, Decimal('12500.00'))
+        self.assertEqual(
+            sum((ligne.montant for ligne in echeancier.lignes.all()),
+                Decimal('0')),
+            echeancier.montant_total)
+
+    def test_generation_est_idempotente(self):
+        from .services_echeancier import generer_echeancier
+
+        eleve = Eleve.objects.create(
+            company=self.company, famille=self.famille, nom='Bennani',
+            prenom='Yasmine', classe=self.classe)
+        e1 = generer_echeancier(eleve, self.annee)
+        e2 = generer_echeancier(eleve, self.annee)
+        self.assertEqual(e1.id, e2.id)
+
+    def test_endpoint_echeancier_lecture_seule(self):
+        eleve = Eleve.objects.create(
+            company=self.company, famille=self.famille, nom='Bennani',
+            prenom='Yasmine')
+        inscription = Inscription.objects.create(
+            company=self.company, eleve=eleve, annee_scolaire=self.annee,
+            classe_demandee=self.classe)
+        valider_inscription(inscription, user=self.user)
+        echeancier = eleve.echeanciers.get(annee_scolaire=self.annee)
+
+        url = f'/api/django/education/echeanciers/{echeancier.id}/'
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(len(response.data['lignes']), 10)
+
+        response_post = self.client.post(url, {}, format='json')
+        self.assertEqual(response_post.status_code, 405)

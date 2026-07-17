@@ -4,19 +4,21 @@ Tous les viewsets héritent de ``core.viewsets.CompanyScopedModelViewSet`` :
 queryset filtré par ``request.user.company``, ``company`` forcée côté serveur
 en création (jamais lue du corps de requête).
 """
+from rest_framework import mixins, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
+from core.mixins import TenantMixin
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
-    AnneeScolaire, Classe, Eleve, Famille, GrilleTarifaire, Inscription,
-    Niveau, Remise)
+    AnneeScolaire, Classe, EcheancierScolarite, Eleve, Famille,
+    GrilleTarifaire, Inscription, Niveau, Remise)
 from .serializers import (
-    AnneeScolaireSerializer, ClasseSerializer, EleveSerializer,
-    FamilleSerializer, GrilleTarifaireSerializer, InscriptionSerializer,
-    NiveauSerializer, RemiseSerializer)
+    AnneeScolaireSerializer, ClasseSerializer, EcheancierScolariteSerializer,
+    EleveSerializer, FamilleSerializer, GrilleTarifaireSerializer,
+    InscriptionSerializer, NiveauSerializer, RemiseSerializer)
 
 
 class AnneeScolaireViewSet(CompanyScopedModelViewSet):
@@ -262,3 +264,16 @@ class RemiseViewSet(CompanyScopedModelViewSet):
         remise.approuve_par = request.user
         remise.save(update_fields=['statut', 'approuve_par'])
         return Response(RemiseSerializer(remise).data)
+
+
+class EcheancierScolariteViewSet(
+        TenantMixin, mixins.RetrieveModelMixin, mixins.ListModelMixin,
+        viewsets.GenericViewSet):
+    """NTEDU8 — échéancier de scolarité, EN LECTURE SEULE : généré
+    exclusivement par ``services_echeancier.generer_echeancier`` à la
+    validation d'une inscription, jamais créé/modifié directement via l'API."""
+
+    queryset = EcheancierScolarite.objects.select_related(
+        'eleve', 'annee_scolaire', 'grille_tarifaire').prefetch_related(
+        'lignes').all()
+    serializer_class = EcheancierScolariteSerializer
