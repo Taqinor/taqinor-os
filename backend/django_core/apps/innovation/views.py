@@ -295,6 +295,7 @@ class InnovationSettingsView(APIView):
             'segment_defaut': 'Segment par défaut',
             'theme_couleur_cta': 'Thème couleur du CTA',
             'message_relance': 'Message de relance',
+            'seuil_votes_notification': 'Seuil de votes pour notifier l\'auteur',
         }
         anciennes = {f: getattr(instance, f) for f in champs_label}
         serializer.save()

@@ -151,6 +151,12 @@ class InnovationSettings(TenantModel):
         default=ThemeCouleur.PRIMARY, verbose_name='Thème couleur du CTA')
     message_relance = models.TextField(
         blank=True, default='', verbose_name='Message de relance')
+    # NTIDE16 — nombre de votes qui déclenche UNE notification (in-app +
+    # email via ``notify()``) à l'auteur de l'idée (``services._maybe_
+    # notify_seuil_votes``, déclenchée une seule fois, exactement au moment
+    # où le seuil est atteint — jamais répétée à chaque vote suivant).
+    seuil_votes_notification = models.PositiveIntegerField(
+        default=3, verbose_name="Seuil de votes pour notifier l'auteur")
 
     class Meta:
         verbose_name = 'Paramètres innovation'

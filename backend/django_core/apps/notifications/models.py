@@ -198,6 +198,10 @@ class EventType(models.TextChoices):
     # MFA, passkey…) notifié à l'utilisateur concerné — non désactivable.
     SECURITY_ALERT = 'security_alert', 'Alerte de sécurité'
     SECURITY_CHANGE = 'security_change', 'Changement de sécurité'
+    # NTIDE16 — une idée (apps.innovation.Idee) ATTEINT le seuil de votes
+    # configuré (InnovationSettings.seuil_votes_notification, défaut 3) :
+    # notifie l'auteur (in-app + email, préférences respectées par notify()).
+    IDEA_VOTE = 'idea_vote', 'Vote reçu sur une idée'
 
 
 class Channel(models.TextChoices):

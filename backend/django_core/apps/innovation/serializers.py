@@ -75,5 +75,5 @@ class InnovationSettingsSerializer(serializers.ModelSerializer):
         model = InnovationSettings
         fields = [
             'campagnes_activees', 'segment_defaut', 'theme_couleur_cta',
-            'message_relance',
+            'message_relance', 'seuil_votes_notification',
         ]

@@ -79,7 +79,37 @@ def voter(idee, user):
         raise VoteInterdit('Vous avez déjà voté pour cette idée.') from exc
     Idee.objects.filter(pk=idee.pk).update(votes_count=F('votes_count') + 1)
     idee.refresh_from_db(fields=['votes_count'])
+    _maybe_notify_seuil_votes(idee)
     return vote
+
+
+# ── Notification de seuil de votes (NTIDE16) ────────────────────────────────
+
+
+def _maybe_notify_seuil_votes(idee):
+    """Notifie l'auteur (in-app + email, préférences utilisateur respectées
+    par ``notify()``) quand l'idée ATTEINT — exactement, pas dépasse — le
+    seuil configuré (``InnovationSettings.seuil_votes_notification``, défaut
+    3) : une seule notification par idée, jamais répétée à chaque vote
+    suivant. No-op silencieux si l'idée n'a pas d'auteur (idée importée/
+    créée en admin) ou si le seuil est désactivé (0)."""
+    if not idee.auteur_id:
+        return
+    from .models import InnovationSettings
+
+    reglages, _ = InnovationSettings.objects.get_or_create(company=idee.company)
+    seuil = reglages.seuil_votes_notification
+    if seuil <= 0 or idee.votes_count != seuil:
+        return
+
+    from apps.notifications.models import EventType
+    from apps.notifications.services import notify
+
+    notify(
+        idee.auteur, EventType.IDEA_VOTE,
+        f'Votre idée « {idee.titre} » a atteint {seuil} votes',
+        body=f'Elle totalise maintenant {idee.votes_count} vote(s).',
+        link=f'/innovation/idees/{idee.id}', company=idee.company)
 
 
 @transaction.atomic
