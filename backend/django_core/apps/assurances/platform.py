@@ -11,7 +11,14 @@ PLATFORM = {
     # rapport d'expertise, photos de dégâts sur un sinistre). L'union
     # paresseuse de records.ALLOWED_TARGETS lit ce manifeste (ARC30) : aucun
     # besoin d'éditer apps/records/models.py.
-    'record_targets': ['assurances.declarationsinistre'],
+    # ARC26 — le contrat de police scanné (``policeassurance``) et l'attestation
+    # scannée (``attestationassurance``) passent aussi par records.Attachment
+    # (remplacent les anciens FileField ``document_police`` / ``document``).
+    'record_targets': [
+        'assurances.declarationsinistre',
+        'assurances.policeassurance',
+        'assurances.attestationassurance',
+    ],
     'searchable_models': [],
     'customfield_models': [],
     'import_specs': [],

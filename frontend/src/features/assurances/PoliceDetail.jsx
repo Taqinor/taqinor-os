@@ -25,7 +25,9 @@ function useLoader(fn, deps) {
       .catch(() => setData([]))
       .finally(() => setLoading(false))
   }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // reload() sets the loading flag synchronously on mount/deps change — the
+  // load-on-mount loading state, same pattern as the sibling assurances lists.
+  // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
   useEffect(() => { reload() }, deps)
   return { data, loading, reload }
 }

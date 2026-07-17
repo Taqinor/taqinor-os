@@ -4,7 +4,7 @@ from rest_framework import serializers
 from .models import (
     ActifCouvert, AttestationAssurance, Assureur, Courtier, DeclarationSinistre,
     EcheancePrime, ExigenceAssuranceMarche, GarantiePolice,
-    IndemnisationSinistre, PoliceActivity, PoliceAssurance, SinistreActivity,
+    IndemnisationSinistre, PoliceAssurance,
 )
 from .selectors import resoudre_libelle_actif
 
@@ -47,7 +47,7 @@ class PoliceAssuranceSerializer(serializers.ModelSerializer):
             'courtier_nom', 'numero_police', 'type_police',
             'type_police_display', 'libelle', 'date_effet', 'date_echeance',
             'tacite_reconduction', 'prime_annuelle_ht', 'statut',
-            'document_police', 'notes', 'police_precedente', 'employe_ref',
+            'notes', 'police_precedente', 'employe_ref',
             'employe_couvert_libelle', 'cyber_clauses', 'created_at',
             'updated_at',
         ]
@@ -72,18 +72,8 @@ class PoliceAssuranceSerializer(serializers.ModelSerializer):
         return value
 
 
-class PoliceActivitySerializer(serializers.ModelSerializer):
-    user_nom = serializers.CharField(
-        source='user.get_full_name', read_only=True, default='')
-
-    class Meta:
-        model = PoliceActivity
-        fields = [
-            'id', 'police', 'kind', 'champ', 'champ_label',
-            'ancienne_valeur', 'nouvelle_valeur', 'description',
-            'user', 'user_nom', 'created_at',
-        ]
-        read_only_fields = fields
+# ARC8 — plus de ``PoliceActivitySerializer`` maison : le chatter se lit via
+# ``records.ChatterActivitySerializer`` (voir ``views.py``).
 
 
 class GarantiePoliceSerializer(serializers.ModelSerializer):
@@ -138,18 +128,8 @@ class DeclarationSinistreSerializer(serializers.ModelSerializer):
         return value
 
 
-class SinistreActivitySerializer(serializers.ModelSerializer):
-    user_nom = serializers.CharField(
-        source='user.get_full_name', read_only=True, default='')
-
-    class Meta:
-        model = SinistreActivity
-        fields = [
-            'id', 'declaration', 'kind', 'champ', 'champ_label',
-            'ancienne_valeur', 'nouvelle_valeur', 'description',
-            'user', 'user_nom', 'created_at',
-        ]
-        read_only_fields = fields
+# ARC8 — plus de ``SinistreActivitySerializer`` maison : le chatter se lit via
+# ``records.ChatterActivitySerializer`` (voir ``views.py``).
 
 
 class IndemnisationSinistreSerializer(serializers.ModelSerializer):
@@ -217,7 +197,7 @@ class AttestationAssuranceSerializer(serializers.ModelSerializer):
     class Meta:
         model = AttestationAssurance
         fields = [
-            'id', 'company', 'police', 'document', 'date_emission',
+            'id', 'company', 'police', 'date_emission',
             'date_validite', 'emise_pour', 'statut', 'created_at',
         ]
         read_only_fields = ['id', 'company', 'created_at']

@@ -14,15 +14,19 @@ Frontières (voir docs/plans/PLAN_FINANCE.md Groupe NTASS) :
     (string-FK ``dossier_contentieux_ref``) ;
   - le futur NTPRO sera la cible string-FK pour les sites/biens immobiliers.
 """
-from django.conf import settings
 from django.db import models
+
+from core.models import TenantModel
 
 
 # ── NTASS1 — Registre des assureurs & courtiers ────────────────────────────
 
-class Assureur(models.Model):
+class Assureur(TenantModel):
     """Compagnie d'assurance (NTASS1). Registre scopé société."""
 
+    # SCA4 — socle multi-société via ``TenantModel`` (FK company + timestamps).
+    # ``company`` est REdéclarée pour conserver le ``related_name`` historique
+    # (motif ARC1 documenté).
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
         related_name='assureurs', verbose_name='Société')
@@ -42,13 +46,14 @@ class Assureur(models.Model):
         return self.raison_sociale
 
 
-class Courtier(models.Model):
+class Courtier(TenantModel):
     """Courtier / intermédiaire d'assurance (NTASS1), distinct de l'assureur.
 
     Registre scopé société. Un courtier n'émet pas les polices lui-même (c'est
     l'assureur) mais intermédie ; ``numero_agrement`` est son numéro d'agrément
     professionnel (ACAPS au Maroc)."""
 
+    # SCA4 — socle ``TenantModel`` ; ``company`` REdéclarée (related_name ARC1).
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
         related_name='courtiers', verbose_name='Société')
@@ -70,7 +75,7 @@ class Courtier(models.Model):
 
 # ── NTASS2 — Police d'assurance d'entreprise ───────────────────────────────
 
-class PoliceAssurance(models.Model):
+class PoliceAssurance(TenantModel):
     """Police d'assurance d'ENTREPRISE (NTASS2) — RC pro, décennale,
     multirisque, cyber, homme-clé, transport de marchandises, bris de machine,
     perte d'exploitation… Distincte de ``flotte.AssuranceVehicule`` (véhicule)
@@ -97,6 +102,7 @@ class PoliceAssurance(models.Model):
         RESILIEE = 'resiliee', 'Résiliée'
         EXPIREE = 'expiree', 'Expirée'
 
+    # SCA4 — socle ``TenantModel`` ; ``company`` REdéclarée (related_name ARC1).
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
         related_name='polices_assurance', verbose_name='Société')
@@ -121,9 +127,9 @@ class PoliceAssurance(models.Model):
         verbose_name='Prime annuelle HT')
     statut = models.CharField(
         max_length=15, choices=Statut.choices, default=Statut.ACTIVE)
-    document_police = models.FileField(
-        upload_to='assurances/polices/%Y/%m/', null=True, blank=True,
-        verbose_name='Contrat scanné')
+    # ARC26 — le contrat scanné n'est plus un FileField brut : il est rattaché
+    # via ``records.Attachment`` (cible ``assurances.policeassurance`` déclarée
+    # dans ``platform.py``), stocké MinIO comme toute pièce jointe transverse.
     notes = models.TextField(blank=True, default='')
     # NTASS9 — versioning léger : lien vers la police remplacée au renouvellement.
     police_precedente = models.ForeignKey(
@@ -139,8 +145,7 @@ class PoliceAssurance(models.Model):
     # prestataire forensic mandaté…). Champ libre, pas de nouveau modèle.
     cyber_clauses = models.JSONField(
         default=dict, blank=True, verbose_name='Clauses cyber (JSON)')
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    # ``created_at`` / ``updated_at`` fournis par ``TenantModel`` (SCA4).
 
     class Meta:
         ordering = ['date_echeance']
@@ -157,54 +162,21 @@ class PoliceAssurance(models.Model):
         return f'{self.numero_police} ({self.get_type_police_display()})'
 
 
-# ── NTASS3 — Chatter dédié « PoliceActivity » (pattern DevisActivity/
-# ContratActivity/crm.LeadActivity) ─────────────────────────────────────────
-
-class PoliceActivity(models.Model):
-    """Historique « chatter » d'une ``PoliceAssurance`` (NTASS3).
-
-    Deux familles d'entrées : automatiques (transitions de ``statut``,
-    ``date_echeance``, ``prime_annuelle_ht`` — champ/ancienne valeur/nouvelle
-    valeur, posées côté serveur) et manuelles (notes libres)."""
-
-    class Kind(models.TextChoices):
-        CREATION = 'creation', 'Création'
-        MODIFICATION = 'modification', 'Modification'
-        NOTE = 'note', 'Note'
-
-    company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
-        null=True, blank=True, related_name='police_activities')
-    police = models.ForeignKey(
-        PoliceAssurance, on_delete=models.CASCADE, related_name='activites')
-    kind = models.CharField(max_length=15, choices=Kind.choices)
-    champ = models.CharField(max_length=100, blank=True, null=True)
-    champ_label = models.CharField(max_length=150, blank=True, null=True)
-    ancienne_valeur = models.TextField(blank=True, null=True)
-    nouvelle_valeur = models.TextField(blank=True, null=True)
-    description = models.TextField(blank=True, null=True)
-    user = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
-        null=True, blank=True, related_name='police_activities')
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        verbose_name = 'Activité police'
-        verbose_name_plural = 'Activités police'
-        ordering = ['-created_at']
-        indexes = [models.Index(fields=['police', '-created_at'])]
-
-    def __str__(self):
-        return f'{self.police_id} {self.kind} {self.champ or ""}'.strip()
+# ── NTASS3 — Chatter police ─────────────────────────────────────────────────
+# ARC8 — le chatter de ``PoliceAssurance`` converge sur ``records.Activity``
+# (via ``records.services.log_activity`` — voir ``services.py``) : plus aucun
+# modèle ``*Activity`` maison. La timeline se lit via ``records.chatter_qs`` et
+# se sérialise avec ``records.ChatterActivitySerializer`` (voir ``views.py``).
 
 
 # ── NTASS4 — Garanties, plafonds & franchises par police ───────────────────
 
-class GarantiePolice(models.Model):
+class GarantiePolice(TenantModel):
     """Une garantie d'une ``PoliceAssurance`` avec son plafond/franchise
     propres (NTASS4). Une police porte plusieurs garanties (ex. une DÉCENNALE
     peut avoir 3 garanties à plafonds différents)."""
 
+    # SCA4 — socle ``TenantModel`` ; ``company`` REdéclarée (related_name ARC1).
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
         related_name='garanties_police', verbose_name='Société')
@@ -235,7 +207,7 @@ class GarantiePolice(models.Model):
 
 # ── NTASS5 — Échéancier de primes ───────────────────────────────────────────
 
-class EcheancePrime(models.Model):
+class EcheancePrime(TenantModel):
     """Une échéance de paiement de prime d'une ``PoliceAssurance`` (NTASS5).
 
     ``ecriture_ref`` est une string-FK (id brut, jamais une vraie FK) vers
@@ -254,6 +226,7 @@ class EcheancePrime(models.Model):
         PAYEE = 'payee', 'Payée'
         EN_RETARD = 'en_retard', 'En retard'
 
+    # SCA4 — socle ``TenantModel`` ; ``company`` REdéclarée (related_name ARC1).
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
         related_name='echeances_prime', verbose_name='Société')
@@ -285,7 +258,7 @@ class EcheancePrime(models.Model):
 
 # ── NTASS7 — Actifs/sites couverts par police (string-FK transverse) ──────
 
-class ActifCouvert(models.Model):
+class ActifCouvert(TenantModel):
     """Un actif (site/véhicule/équipement) couvert par une police (NTASS7).
 
     ``actif_ref`` est une string-FK (id brut, JAMAIS une vraie FK cross-app) —
@@ -301,6 +274,7 @@ class ActifCouvert(models.Model):
         EQUIPEMENT = 'equipement', 'Équipement'
         AUTRE = 'autre', 'Autre'
 
+    # SCA4 — socle ``TenantModel`` ; ``company`` REdéclarée (related_name ARC1).
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
         related_name='actifs_couverts', verbose_name='Société')
@@ -327,7 +301,7 @@ class ActifCouvert(models.Model):
 
 # ── NTASS10 — Déclaration de sinistre transverse (hors véhicule) ──────────
 
-class DeclarationSinistre(models.Model):
+class DeclarationSinistre(TenantModel):
     """Sinistre TRANSVERSE (hors véhicule — le sinistre véhicule reste
     ``flotte.Sinistre`` FLOTTE25, référencé ici en string-FK optionnel
     ``flotte_sinistre_id`` quand un sinistre véhicule implique AUSSI une
@@ -353,6 +327,7 @@ class DeclarationSinistre(models.Model):
         REFUSE = 'refuse', 'Refusé'
         CLOS = 'clos', 'Clos'
 
+    # SCA4 — socle ``TenantModel`` ; ``company`` REdéclarée (related_name ARC1).
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
         related_name='declarations_sinistre', verbose_name='Société')
@@ -388,7 +363,7 @@ class DeclarationSinistre(models.Model):
         null=True, blank=True,
         verbose_name='Dossier contentieux lié (string-FK NTJUR)')
     conteste = models.BooleanField(default=False, verbose_name='Contesté')
-    created_at = models.DateTimeField(auto_now_add=True)
+    # ``created_at`` / ``updated_at`` fournis par ``TenantModel`` (SCA4).
 
     class Meta:
         ordering = ['-date_survenance']
@@ -404,47 +379,15 @@ class DeclarationSinistre(models.Model):
         return f'{self.reference} ({self.get_type_sinistre_display()})'
 
 
-# ── NTASS11 — Chatter dédié « SinistreActivity » ───────────────────────────
-
-class SinistreActivity(models.Model):
-    """Historique « chatter » d'une ``DeclarationSinistre`` (NTASS11), même
-    patron que ``PoliceActivity``/``ReclamationActivity``/``ContratActivity``.
-    """
-
-    class Kind(models.TextChoices):
-        CREATION = 'creation', 'Création'
-        MODIFICATION = 'modification', 'Modification'
-        NOTE = 'note', 'Note'
-
-    company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
-        null=True, blank=True, related_name='sinistre_activities')
-    declaration = models.ForeignKey(
-        DeclarationSinistre, on_delete=models.CASCADE, related_name='activites')
-    kind = models.CharField(max_length=15, choices=Kind.choices)
-    champ = models.CharField(max_length=100, blank=True, null=True)
-    champ_label = models.CharField(max_length=150, blank=True, null=True)
-    ancienne_valeur = models.TextField(blank=True, null=True)
-    nouvelle_valeur = models.TextField(blank=True, null=True)
-    description = models.TextField(blank=True, null=True)
-    user = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
-        null=True, blank=True, related_name='sinistre_activities')
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        verbose_name = 'Activité sinistre'
-        verbose_name_plural = 'Activités sinistre'
-        ordering = ['-created_at']
-        indexes = [models.Index(fields=['declaration', '-created_at'])]
-
-    def __str__(self):
-        return f'{self.declaration_id} {self.kind} {self.champ or ""}'.strip()
+# ── NTASS11 — Chatter sinistre ──────────────────────────────────────────────
+# ARC8 — le chatter de ``DeclarationSinistre`` converge sur ``records.Activity``
+# (via ``records.services.log_activity`` — voir ``services.py``) : plus aucun
+# modèle ``*Activity`` maison. La timeline se lit via ``records.chatter_qs``.
 
 
 # ── NTASS12 — Suivi d'indemnisation vs franchise ───────────────────────────
 
-class IndemnisationSinistre(models.Model):
+class IndemnisationSinistre(TenantModel):
     """Suivi de l'indemnisation d'une ``DeclarationSinistre`` (NTASS12).
 
     ``franchise_appliquee`` est COPIÉE (snapshot, jamais une FK) depuis la
@@ -452,6 +395,7 @@ class IndemnisationSinistre(models.Model):
     garantie change plus tard. ``reste_a_charge`` = ``montant_reclame`` −
     ``montant_indemnise`` (propriété calculée, pas stockée)."""
 
+    # SCA4 — socle ``TenantModel`` ; ``company`` REdéclarée (related_name ARC1).
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
         related_name='indemnisations_sinistre', verbose_name='Société')
@@ -469,8 +413,7 @@ class IndemnisationSinistre(models.Model):
     # NTASS13 — string-FK vers compta.EcritureComptable (jamais une vraie FK).
     ecriture_ref = models.PositiveIntegerField(
         null=True, blank=True, verbose_name='Référence écriture comptable')
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    # ``created_at`` / ``updated_at`` fournis par ``TenantModel`` (SCA4).
 
     class Meta:
         verbose_name = 'Indemnisation de sinistre'
@@ -486,26 +429,25 @@ class IndemnisationSinistre(models.Model):
 
 # ── NTASS17 — Attestations d'assurance émises par NOS assureurs (GED) ──────
 
-class AttestationAssurance(models.Model):
+class AttestationAssurance(TenantModel):
     """Attestation d'assurance que NOUS détenons en tant qu'ASSURÉ (NTASS17),
     exigée par les maîtres d'ouvrage BTP (miroir de l'attestation fournisseur
     NTP2P7, côté « nous sommes l'assuré »).
 
-    Le document est stocké via le storage projet (MinIO, même convention que
-    ``PoliceAssurance.document_police``) — pas d'édition du module GED."""
+    ARC26 — l'attestation scannée est rattachée via ``records.Attachment``
+    (cible ``assurances.attestationassurance`` déclarée dans ``platform.py``),
+    stockée MinIO comme toute pièce jointe transverse."""
 
     class Statut(models.TextChoices):
         VALIDE = 'valide', 'Valide'
         EXPIREE = 'expiree', 'Expirée'
 
+    # SCA4 — socle ``TenantModel`` ; ``company`` REdéclarée (related_name ARC1).
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
         related_name='attestations_assurance', verbose_name='Société')
     police = models.ForeignKey(
         PoliceAssurance, on_delete=models.CASCADE, related_name='attestations')
-    document = models.FileField(
-        upload_to='assurances/attestations/%Y/%m/', null=True, blank=True,
-        verbose_name='Attestation scannée')
     date_emission = models.DateField(verbose_name="Date d'émission")
     date_validite = models.DateField(verbose_name='Date de validité')
     emise_pour = models.CharField(
@@ -513,7 +455,7 @@ class AttestationAssurance(models.Model):
         verbose_name='Émise pour (client / marché)')
     statut = models.CharField(
         max_length=10, choices=Statut.choices, default=Statut.VALIDE)
-    created_at = models.DateTimeField(auto_now_add=True)
+    # ``created_at`` / ``updated_at`` fournis par ``TenantModel`` (SCA4).
 
     class Meta:
         ordering = ['-date_validite']
@@ -530,7 +472,7 @@ class AttestationAssurance(models.Model):
 
 # ── NTASS19 — Checklist conformité assurance par marché/appel d'offres ─────
 
-class ExigenceAssuranceMarche(models.Model):
+class ExigenceAssuranceMarche(TenantModel):
     """Exigence d'assurance d'un marché/appel d'offres (NTASS19).
 
     ``marche_ref`` est une string-FK (id brut) vers ``apps/ao`` (ou un
@@ -543,6 +485,7 @@ class ExigenceAssuranceMarche(models.Model):
         CONFORME = 'conforme', 'Conforme'
         NON_CONFORME = 'non_conforme', 'Non conforme'
 
+    # SCA4 — socle ``TenantModel`` ; ``company`` REdéclarée (related_name ARC1).
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
         related_name='exigences_assurance_marche', verbose_name='Société')
@@ -559,7 +502,7 @@ class ExigenceAssuranceMarche(models.Model):
     statut_verification = models.CharField(
         max_length=15, choices=StatutVerification.choices,
         default=StatutVerification.A_VERIFIER)
-    created_at = models.DateTimeField(auto_now_add=True)
+    # ``created_at`` / ``updated_at`` fournis par ``TenantModel`` (SCA4).
 
     class Meta:
         ordering = ['id']
