@@ -3,7 +3,7 @@
 Trois étages (voir docs/new_tasks_plan.md, Groupe NTIDE) :
 
 1. Boîte à idées interne — ``Idee`` (NTIDE1), suivi de ``VoteIdee`` (NTIDE2).
-2. Campagnes d'innovation ciblées — hors périmètre de ce lot (NTIDE25+).
+2. Campagnes d'innovation ciblées — ``CampagneInnovation`` (NTIDE25+).
 3. Canal feedback produit in-app — hors périmètre de ce lot (NTIDE36+).
 
 Multi-société : tous les modèles héritent de ``core.models.TenantModel``
@@ -14,6 +14,14 @@ from django.conf import settings
 from django.db import models
 
 from core.models import TenantModel
+
+# NTIDE25/26 — rôles proposables comme cible de campagne QUAND le référentiel
+# Departement (NTFPA1, ``apps.fpa``) n'est PAS réutilisé : même liste que le
+# dropdown de repli du singleton ``InnovationSettings.segment_defaut``
+# (NTIDE7). Jamais un import cross-app d'``apps.fpa``/``apps.rh`` — un nom de
+# département reste une chaîne opaque, au même titre qu'un nom de rôle
+# (cf. ``CampagneInnovation.cible_departement``/``segment``).
+ROLES_CIBLABLES = ['Technicien', 'Commercial', 'Directeur']
 
 
 class Idee(TenantModel):
@@ -175,3 +183,61 @@ class InnovationSettings(TenantModel):
 
     def __str__(self):
         return f'Paramètres innovation — {self.company_id}'
+
+
+class CampagneInnovation(TenantModel):
+    """Campagne d'innovation ciblée (NTIDE25) : incite un SEGMENT précis
+    (rôles, ou département quand NTFPA1 est réutilisé) à proposer des idées
+    sur un sujet donné, avec un tag auto-appliqué (NTIDE28).
+
+    ``cible_departement``/``segment`` sont des références OPAQUES (chaînes) —
+    jamais un ``ForeignKey`` vers ``apps.fpa.Departement`` (cross-app
+    interdit, cf. règle de frontière) : le nom de département SI le
+    référentiel NTFPA1 est bâti pour cette société, sinon un nom de rôle
+    (``ROLES_CIBLABLES``, repli NTIDE26)."""
+
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        ACTIVE = 'active', 'Active'
+        FERMEE = 'fermee', 'Fermée'
+
+    # Redéclaré à l'identique (ARC1) : related_name explicite dédié.
+    company = models.ForeignKey(
+        'authentication.Company',
+        # on_delete: campagnes scopées société — disparaissent avec elle (nettoyage tenant standard).
+        on_delete=models.CASCADE,
+        related_name='innovation_campagnes', verbose_name='Société')
+    nom = models.CharField(max_length=255, verbose_name='Nom')
+    description = models.TextField(
+        blank=True, default='', verbose_name='Description')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.BROUILLON,
+        verbose_name='Statut')
+    # Cible MONO-valeur (raccourci d'affichage — « Nous ciblons le
+    # Technicien » / « … le département Pompage ») : nom de Departement
+    # (NTFPA1) si bâti, sinon un des ``ROLES_CIBLABLES``. Vide = pas de
+    # cible unique affichée (seul ``segment`` compte alors).
+    cible_departement = models.CharField(
+        max_length=80, blank=True, default='',
+        verbose_name='Cible (département ou rôle)')
+    # Segment MULTI-valeur (NTIDE26/NTIDE35) : toujours un tableau de
+    # chaînes (rôles ou départements), jamais un objet. Repli utilisé par
+    # ``selectors.users_for_campaign`` quand ``cible_departement`` seul ne
+    # suffit pas (bulk multi-rôles).
+    segment = models.JSONField(default=list, blank=True, verbose_name='Segment')
+    date_debut = models.DateField(
+        null=True, blank=True, verbose_name='Date de début')
+    date_fin = models.DateField(
+        null=True, blank=True, verbose_name='Date de fin')
+
+    class Meta:
+        verbose_name = 'Campagne innovation'
+        verbose_name_plural = 'Campagnes innovation'
+        ordering = ['-created_at', '-id']
+        indexes = [
+            models.Index(fields=['company', 'statut'],
+                         name='innovation_camp_co_statut'),
+        ]
+
+    def __str__(self):
+        return self.nom
