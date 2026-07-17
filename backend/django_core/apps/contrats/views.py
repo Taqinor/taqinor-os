@@ -382,7 +382,8 @@ class ContratViewSet(ChatterViewSetMixin, _ContratsBaseViewSet):
                 for k, v in data['net_par_responsable'].items()},
         })
 
-    @action(detail=False, methods=['get'], url_path='metriques-saas')
+    @action(detail=False, methods=['get'], url_path='metriques-saas',
+            permission_classes=[HasPermissionOrLegacy('contrat_voir')])
     def metriques_saas(self, request):
         """Métriques SaaS niveau investisseur : ARR bridge, Quick Ratio,
         Rule of 40 — NTSUB12.
@@ -968,7 +969,8 @@ class ContratViewSet(ChatterViewSetMixin, _ContratsBaseViewSet):
             status=status.HTTP_201_CREATED,
         )
 
-    @action(detail=True, methods=['post'], url_path='changer-plan')
+    @action(detail=True, methods=['post'], url_path='changer-plan',
+            permission_classes=[HasPermissionOrLegacy('contrat_gerer')])
     def changer_plan(self, request, pk=None):
         """Change le plan d'abonnement du contrat avec proration — NTSUB7.
 
@@ -2665,7 +2667,8 @@ class PlanAbonnementViewSet(_ContratsBaseViewSet):
             qs = qs.filter(actif=actif.lower() in ('1', 'true', 'oui'))
         return qs
 
-    @action(detail=False, methods=['get'], url_path='export')
+    @action(detail=False, methods=['get'], url_path='export',
+            permission_classes=[HasPermissionOrLegacy('contrat_voir')])
     def export(self, request):
         """Export .xlsx du catalogue (plans / add-ons / paliers) — NTSUB21.
 
@@ -2843,7 +2846,8 @@ class CompteurUsageViewSet(_ContratsBaseViewSet):
         out = self.get_serializer(compteur)
         return Response(out.data, status=status.HTTP_201_CREATED)
 
-    @action(detail=False, methods=['post'], url_path='import-csv')
+    @action(detail=False, methods=['post'], url_path='import-csv',
+            permission_classes=[HasPermissionOrLegacy('contrat_gerer')])
     def import_csv(self, request):
         """Import CSV en masse de compteurs d'usage — NTSUB31.
 
