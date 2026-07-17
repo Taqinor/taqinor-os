@@ -1,0 +1,44 @@
+/* eslint-disable react-refresh/only-export-components --
+   Fichier de configuration de module (données + composants lazy), pas un module
+   de composants : le fast-refresh ne s'y applique pas (même contrat que
+   `router/moduleRoutes.jsx`). */
+import { lazy } from 'react'
+import { ShieldCheck } from 'lucide-react'
+
+/* ============================================================================
+   NTASS25 — Configuration du module ERP « Assurances » (registre des polices
+   d'entreprise & sinistres transverses).
+   ----------------------------------------------------------------------------
+   Un seul fichier auto-enregistré par `router/moduleRoutes.jsx` (glob) : nav
+   Sidebar gatée, titres de page, libellé de fil d'Ariane, routes lazy. Aucune
+   édition du routeur / de la Sidebar / de routes.meta.
+
+   Données SENSIBLES (primes, sinistres, indemnisations) : gaté par défaut au
+   palier responsable/admin (aligné sur le backend `assurances_voir`/`gerer`).
+   ========================================================================== */
+
+const ROLES = ['responsable', 'admin']
+
+const PolicesList = lazy(() => import('./PolicesList'))
+
+const SC = <ShieldCheck size={17} strokeWidth={1.75} aria-hidden="true" />
+
+export default {
+  key: 'assurances',
+  order: 75,
+  nav: {
+    label: 'ASSURANCES',
+    accent: 'lune', // documentaire/financier = accent lune (dérivé)
+    items: [
+      { to: '/assurances', label: 'Polices', icon: SC, roles: ROLES },
+    ],
+  },
+  // routes.meta : du plus spécifique au plus général.
+  titles: [
+    ['/assurances', "Polices d'assurance"],
+  ],
+  sectionLabels: { assurances: 'Assurances' },
+  routes: [
+    { path: '/assurances', component: PolicesList, roles: ROLES },
+  ],
+}
