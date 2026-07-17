@@ -222,6 +222,50 @@ def sync_ad_study_results(experiment, *, client):
             f"Résultats lus depuis l'étude native Meta {experiment.meta_study_id}."))
 
 
+# ── ADSDEEP36 — Dayparting : horaire NATIF (lifetime budget) OU planification
+# INTERNE (budget quotidien, jamais un adrule Meta auto-exécuté) ────────────
+KIND_SET_SCHEDULE = 'set_schedule'
+
+
+def propose_native_schedule(company, *, adset_id, grid, reason_fr=None):
+    """ADSDEEP36 — Propose l'horaire NATIF Meta (``adset_schedule``) pour un ad
+    set en budget LIFETIME. La grille est convertie en blocs natifs DÈS la
+    proposition (``dayparting.to_native_adset_schedule`` — fail-fast : une
+    grille invalide lève ici, jamais un rejet Graph tardif)."""
+    from . import dayparting
+    native = dayparting.to_native_adset_schedule(grid)
+    reason_fr = reason_fr or (
+        f"Poser un horaire de diffusion (dayparting natif) sur l'ad set {adset_id}.")
+    payload = {'adset_id': adset_id, 'adset_schedule': native, 'grid': grid,
+               'mode': 'native'}
+    return propose_action(
+        company, kind=KIND_SET_SCHEDULE, reason_fr=reason_fr, payload=payload)
+
+
+def propose_internal_dayparting_pause(company, *, adset, grid, now=None,
+                                      reason_fr=None):
+    """ADSDEEP36 — Chemin INTERNE (ad set à budget QUOTIDIEN, le natif exige un
+    budget lifetime) : propose une PAUSE (kind EXISTANT ``pause``, ENGFIX5 —
+    JAMAIS un adrule Meta auto-exécuté, dossier §6) si ``now`` tombe hors de la
+    fenêtre autorisée par ``grid``. Renvoie ``None`` (rien à proposer) si l'ad
+    set est déjà en pause ou dans sa fenêtre — ne propose JAMAIS de
+    ré-activation (aucune méthode ne l'exécute, invariant permanent règle #3)."""
+    from django.utils import timezone as dj_tz
+
+    from . import dayparting
+    now = now or dj_tz.now()
+    is_paused = (adset.status or '').upper() == 'PAUSED'
+    if not dayparting.internal_pause_needed(
+            grid, now=now, is_currently_paused=is_paused):
+        return None
+    reason_fr = reason_fr or (
+        f"Dayparting interne : « {adset.name} » hors fenêtre autorisée à "
+        f"{now.strftime('%H:%M')} ({now.strftime('%A')}) — mise en pause proposée.")
+    return propose_action(
+        company, kind=EngineAction.Kind.PAUSE, reason_fr=reason_fr,
+        payload={'target_type': 'adset', 'target_meta_id': adset.meta_id})
+
+
 def propose_pause_for_month(company, *, target_meta_id, target_type='campaign',
                             reason_fr=None):
     """ADSENG22 — Propose une pause « pour le mois » (chemin breach-imminent du
@@ -374,6 +418,13 @@ def _dispatch(client, action):
         return client.update_adset_budget(
             adset_id=payload.get('adset_id', ''),
             daily_budget=payload.get('daily_budget'),
+            extra_fields=payload.get('extra_fields'))
+    if kind == KIND_SET_SCHEDULE:
+        # ADSDEEP36 — horaire NATIF (adset_schedule). Aucun ``status`` n'est
+        # jamais envoyé (invariant permanent règle #3).
+        return client.set_adset_schedule(
+            adset_id=payload.get('adset_id', ''),
+            adset_schedule=payload.get('adset_schedule', []),
             extra_fields=payload.get('extra_fields'))
     if kind == KIND_CREATE_AD_STUDY:
         # ADSDEEP34 — étude A/B native (ad_studies SPLIT_TEST_V2). Aucun

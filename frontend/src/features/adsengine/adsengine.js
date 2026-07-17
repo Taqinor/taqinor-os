@@ -331,6 +331,22 @@ export function filterActionLog(actions, { statut, mode } = {}) {
   })
 }
 
+// ── ADSDEEP36 — Dayparting : grille heure×jour (miroir de dayparting.py) ──
+// Représentation PARTAGÉE avec le backend : 7 jours (lundi→dimanche) × 24
+// heures, 1 = diffusion autorisée. Une case PAR HEURE ⇒ toute borne est, par
+// construction, toujours à l'heure pleine (jamais de saisie de minutes).
+export const DP_DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
+export const DP_DAY_LABELS = {
+  mon: 'Lun', tue: 'Mar', wed: 'Mer', thu: 'Jeu', fri: 'Ven', sat: 'Sam', sun: 'Dim',
+}
+
+// Grille neuve : toutes les heures ALLOUÉES par défaut (miroir de
+// ``dayparting.empty_grid`` côté backend).
+export function emptyGrid(allowed = true) {
+  const row = () => Array.from({ length: 24 }, () => (allowed ? 1 : 0))
+  return DP_DAYS.reduce((acc, day) => { acc[day] = row(); return acc }, {})
+}
+
 // ── ENG39 — Expérimentations (bandit) : posteriors lisibles par un humain ──
 // Pourcentage (fraction 0..1 → « 72 % »). L'API donne une PROBABILITÉ (p_best,
 // allocation) ; on ne fait que la formater — « — » si la donnée manque.

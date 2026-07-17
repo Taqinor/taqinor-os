@@ -675,6 +675,30 @@ class MetaClient:
         payload = self._edit_payload(base, extra_fields)
         return self._request('POST', f'{object_id}', data=payload)
 
+    def set_adset_schedule(self, *, adset_id, adset_schedule, extra_fields=None):
+        """ADSDEEP36 — Dayparting NATIF Meta : pose ``adset_schedule`` sur un ad
+        set (exige côté Meta un ad set en BUDGET LIFETIME + pacing day_parting —
+        contrainte NON vérifiable depuis ce seul appel réseau ; l'appelant
+        (``services.propose_native_schedule``) choisit ce chemin uniquement pour
+        les ad sets lifetime-budget, jamais pour du budget quotidien).
+
+        Chaque plage DOIT être bornée à l'HEURE PLEINE (``start_minute``/
+        ``end_minute`` multiples de 60) — validé ICI (fail-fast), jamais laissé
+        remonter en erreur Graph tardive. Édition : AUCUN ``status`` n'est
+        jamais envoyé (invariant permanent règle #3 — un horaire ne peut ni
+        activer ni dé-pauser)."""
+        for block in adset_schedule or []:
+            start = block.get('start_minute')
+            end = block.get('end_minute')
+            if start is None or end is None or start % 60 != 0 or end % 60 != 0:
+                raise MetaError(
+                    "adset_schedule : chaque plage doit être bornée à l'heure "
+                    f"pleine (minutes multiples de 60) — reçu start={start}, "
+                    f"end={end}.")
+        base = {'adset_schedule': json.dumps(list(adset_schedule or []))}
+        payload = self._edit_payload(base, extra_fields)
+        return self._request('POST', f'{adset_id}', data=payload)
+
     def set_campaign_spend_cap(self, *, campaign_id, spend_cap,
                                extra_fields=None):
         """ADSDEEP30 — Pose le plafond de dépense TOTAL d'une campagne
