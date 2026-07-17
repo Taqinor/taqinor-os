@@ -28,6 +28,12 @@ from django.utils import timezone
 from authentication.mixins import TenantMixin
 from authentication.permissions import HasPermissionOrLegacy, IsResponsableOrAdmin
 
+# NTTRE42 — la trace d'audit des actions sensibles trésorerie est écrite ICI (vue)
+# et non dans ``compta.services`` : ``ventes`` importe ``compta.services`` mais
+# jamais ``compta.views``, ce qui garde ``ventes`` libre de toute dépendance
+# transitive vers ``apps.audit`` (contrat import-linter M4 « ventes → audit »).
+from apps.audit.recorder import record as _audit_record
+
 from . import selectors, services
 from .models import (
     AppelTelephonique,
@@ -2636,6 +2642,11 @@ class EffetViewSet(_ComptaBaseViewSet):
             return Response(
                 {'detail': exc.messages[0] if exc.messages else str(exc)},
                 status=status.HTTP_400_BAD_REQUEST)
+        # NTTRE42 — trace d'audit (au niveau vue : cf. import _audit_record).
+        _audit_record(
+            'effet.endossement', instance=effet, company=effet.company,
+            user=request.user,
+            detail=f'beneficiaire={effet.beneficiaire_endossement}')
         return Response(self.get_serializer(effet).data)
 
     @action(detail=True, methods=['post'], url_path='constater-protet')
@@ -2656,6 +2667,10 @@ class EffetViewSet(_ComptaBaseViewSet):
             return Response(
                 {'detail': exc.messages[0] if exc.messages else str(exc)},
                 status=status.HTTP_400_BAD_REQUEST)
+        # NTTRE42 — trace d'audit (au niveau vue : cf. import _audit_record).
+        _audit_record(
+            'effet.protet', instance=effet, company=effet.company,
+            user=request.user, detail=f'frais={effet.frais_protet}')
         return Response(self.get_serializer(effet).data)
 
 
@@ -2903,6 +2918,10 @@ class PaymentRunViewSet(_ComptaBaseViewSet):
                 {'detail': exc.messages[0] if exc.messages else str(exc)},
                 status=status.HTTP_400_BAD_REQUEST)
         run.refresh_from_db()
+        # NTTRE42 — trace d'audit (au niveau vue : cf. import _audit_record).
+        _audit_record(
+            'payment_run.postee', instance=run, company=run.company,
+            user=request.user, detail=f'total={run.total}')
         return Response(self.get_serializer(run).data)
 
     @action(detail=True, methods=['post'])
@@ -2919,6 +2938,10 @@ class PaymentRunViewSet(_ComptaBaseViewSet):
             return Response(
                 {'detail': exc.messages[0] if exc.messages else str(exc)},
                 status=status.HTTP_400_BAD_REQUEST)
+        # NTTRE42 — trace d'audit (au niveau vue : cf. import _audit_record).
+        _audit_record(
+            'payment_run.approbation_1', instance=run, company=run.company,
+            user=request.user, detail=f'statut={run.statut} total={run.total}')
         return Response(self.get_serializer(run).data)
 
     @action(detail=True, methods=['post'], url_path='approuver-final')
@@ -2934,6 +2957,10 @@ class PaymentRunViewSet(_ComptaBaseViewSet):
             return Response(
                 {'detail': exc.messages[0] if exc.messages else str(exc)},
                 status=status.HTTP_400_BAD_REQUEST)
+        # NTTRE42 — trace d'audit (au niveau vue : cf. import _audit_record).
+        _audit_record(
+            'payment_run.approbation_2', instance=run, company=run.company,
+            user=request.user, detail=f'statut={run.statut} total={run.total}')
         return Response(self.get_serializer(run).data)
 
     @action(detail=True, methods=['get'], url_path='fichier-virement')
@@ -3039,7 +3066,12 @@ class PouvoirBancaireViewSet(_ComptaBaseViewSet):
         pouvoir = self.get_object()  # scopé société par TenantMixin.
         pouvoir.statut = PouvoirBancaire.Statut.REVOQUE
         pouvoir.save(update_fields=['statut', 'updated_at'])
-        services._auditer_action_sensible(
+        # NTTRE42 — trace d'audit (au niveau vue : cf. import _audit_record) ;
+        # NTTRE41 — chatter conservé via le service (records, non contraint).
+        _audit_record(
+            'pouvoir_bancaire.revocation', instance=pouvoir,
+            company=pouvoir.company, user=request.user)
+        services._chatter_action_sensible(
             pouvoir, request.user, 'pouvoir_bancaire.revocation')
         return Response(self.get_serializer(pouvoir).data)
 

@@ -3413,7 +3413,7 @@ def endosser_effet(effet, *, beneficiaire, date_endossement=None, user=None):
     effet.date_endossement = date_endossement or timezone.now().date()
     effet.save(update_fields=[
         'statut', 'beneficiaire_endossement', 'date_endossement'])
-    _auditer_action_sensible(
+    _chatter_action_sensible(
         effet, user, 'effet.endossement',
         detail=f'beneficiaire={beneficiaire}')
     return effet
@@ -3438,7 +3438,7 @@ def constater_protet(effet, *, frais_protet=None, date_protet=None, user=None):
     effet.date_protet = date_protet or timezone.now().date()
     effet.frais_protet = frais
     effet.save(update_fields=['date_protet', 'frais_protet'])
-    _auditer_action_sensible(
+    _chatter_action_sensible(
         effet, user, 'effet.protet', detail=f'frais={frais}')
     return effet
 
@@ -4036,7 +4036,7 @@ def poster_payment_run(run, *, user=None):
     run.ecriture = ecriture
     run.statut = PaymentRun.Statut.POSTEE
     run.save(update_fields=['posted', 'ecriture', 'statut'])
-    _auditer_action_sensible(
+    _chatter_action_sensible(
         run, user, 'payment_run.postee', detail=f'total={run.total}')
 
     # YLEDG8 — pour chaque ligne référençant une FactureFournisseur (posée par
@@ -4185,7 +4185,7 @@ def approuver_payment_run(run, user):
         run.statut = PaymentRun.Statut.EN_ATTENTE_APPROBATION
     run.save(update_fields=[
         'approbateur_1', 'date_approbation_1', 'statut'])
-    _auditer_payment_run(run, user, 'approbation_1')
+    _chatter_payment_run(run, user, 'approbation_1')
     return run
 
 
@@ -4209,24 +4209,25 @@ def approuver_final_payment_run(run, user):
     run.approbateur_2 = user
     run.date_approbation_2 = timezone.now()
     run.save(update_fields=['approbateur_2', 'date_approbation_2'])
-    _auditer_payment_run(run, user, 'approbation_2')
+    _chatter_payment_run(run, user, 'approbation_2')
     return run
 
 
-def _auditer_action_sensible(instance, user, action, detail=''):
-    """NTTRE41/42 — Trace une action sensible trésorerie dans ``AuditLog`` ET le
-    chatter ``records.Activity``.
+def _chatter_action_sensible(instance, user, action, detail=''):
+    """NTTRE41 — Trace une action sensible trésorerie dans le chatter
+    ``records.Activity`` (best-effort, ne lève jamais).
 
-    Réutilise le recorder d'audit (``apps.audit.recorder.record``) ET le chatter
-    générique (``apps.records.services.log_activity``) — best-effort, ne lève
-    jamais. Utilisé par les approbations/postings de PaymentRun (NTTRE5), la
-    révocation de PouvoirBancaire (NTTRE6) et l'endossement/protêt (NTTRE7). Ainsi
-    chaque approbation, endossement et protêt génère automatiquement une entrée
-    ``Activity`` visible en écran détail (NTTRE41), sans action manuelle.
+    L'entrée ``AuditLog`` (NTTRE42) est écrite au niveau VUE
+    (``apps/compta/views.py``, ``from apps.audit.recorder import record``) et NON
+    ici : ``apps.compta.services`` doit rester libre de toute dépendance vers
+    ``apps.audit`` pour respecter le contrat import-linter M4 — ``ventes`` importe
+    ``compta.services`` mais ne doit jamais atteindre transitivement ``apps.audit``
+    (``ventes`` n'importe pas ``compta.views``). Utilisé par les
+    approbations/postings de PaymentRun (NTTRE5), la révocation de
+    PouvoirBancaire (NTTRE6) et l'endossement/protêt (NTTRE7) : chaque action
+    génère automatiquement une entrée ``Activity`` visible en écran détail
+    (NTTRE41), sans action manuelle.
     """
-    from apps.audit.recorder import record
-    record(action, instance=instance, company=instance.company, user=user,
-           detail=detail)
     try:  # NTTRE41 — chatter (best-effort, ne bloque jamais l'action).
         from apps.records.models import Activity
         from apps.records.services import log_activity
@@ -4237,8 +4238,8 @@ def _auditer_action_sensible(instance, user, action, detail=''):
         pass
 
 
-def _auditer_payment_run(run, user, action):
-    _auditer_action_sensible(
+def _chatter_payment_run(run, user, action):
+    _chatter_action_sensible(
         run, user, f'payment_run.{action}',
         detail=f'statut={run.statut} total={run.total}')
 
