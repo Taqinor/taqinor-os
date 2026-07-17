@@ -375,9 +375,135 @@ def trajectoire_vs_realise(objectif):
     return resultats
 
 
+# ── NTESG9 — intensité carbone normalisée ──────────────────────────────────
+
+def _source_ca_periode(company, date_debut, date_fin):
+    """Chiffre d'affaires (HT) de la période via ``ventes.selectors``.
+
+    Somme des ``total_ht`` renvoyés par ``analyse_facturation`` (factures
+    ``ANNULEE`` déjà exclues par ce sélecteur) — dénominateur « MAD de CA »
+    de l'intensité carbone (NTESG9)."""
+    try:
+        from apps.ventes.selectors import analyse_facturation
+    except Exception as exc:  # noqa: BLE001
+        return {'disponible': False,
+                'raison': f"ventes indisponible ({exc.__class__.__name__})"}
+    try:
+        lignes = analyse_facturation(company, date_debut, date_fin)
+    except Exception as exc:  # noqa: BLE001
+        return {'disponible': False,
+                'raison': f"erreur ventes.selectors.analyse_facturation "
+                          f"({exc.__class__.__name__})"}
+    total_ht = float(sum((ligne.get('total_ht') or 0) for ligne in lignes))
+    if not total_ht:
+        return {'disponible': False,
+                'raison': "Aucune facture émise sur la période (CA nul)."}
+    return {'disponible': True, 'total_ht': total_ht}
+
+
+def _source_kwc_installes(company, date_debut, date_fin):
+    """kWc totaux installés sur la période — AUCUN sélecteur exposé par
+    ``installations.selectors`` pour une somme de ``puissance_installee_kwc``
+    au moment de ce lane (NTESG9) : dégrade proprement, même politique que
+    ``_source_bilan_carbone`` (jamais un import de ``installations.models``
+    pour contourner la frontière cross-app)."""
+    return {
+        'disponible': False,
+        'raison': (
+            "Aucun sélecteur apps.installations.selectors n'expose une "
+            "somme de kWc installés au moment de ce lane (NTESG9) — "
+            "nécessite un ajout côté apps/installations/selectors.py, hors "
+            "périmètre de cette app."),
+    }
+
+
+def intensite_carbone(periode_esg):
+    """NTESG9 — Intensité carbone normalisée (tCO2e / MAD de CA, / kWc
+    installé, / ETP) d'une période.
+
+    Numérateur : ``BilanCarbone.total_tco2e`` lu via ``_source_bilan_carbone``
+    (toujours ``disponible=False`` tant qu'aucun sélecteur qhse ne l'expose —
+    voir sa docstring). Dénominateurs lus en lecture seule via
+    ``ventes.selectors`` (CA), ``installations.selectors`` (kWc, dégradé),
+    ``rh.selectors`` (effectif, réutilise ``_source_effectifs``).
+
+    Chaque ratio se calcule INDÉPENDAMMENT des deux autres : l'absence du
+    numérateur OU d'un seul dénominateur omet CE ratio (``disponible=False``
+    + ``raison``) sans empêcher le calcul des ratios dont les données sont
+    présentes — jamais une division par zéro affichée comme 0."""
+    company = periode_esg.company
+    date_debut = periode_esg.date_debut
+    date_fin = periode_esg.date_fin
+    annee = date_fin.year if date_fin else (
+        date_debut.year if date_debut else None)
+
+    numerateur = _safe(_source_bilan_carbone, company, annee)
+    total_tco2e = (
+        numerateur.get('total_tco2e') if numerateur.get('disponible')
+        else None)
+
+    def _ratio(source, unite):
+        if total_tco2e is None:
+            return {
+                'disponible': False, 'valeur': None, 'unite': unite,
+                'raison': numerateur.get('raison') or (
+                    "Bilan carbone (tCO2e) indisponible pour cette "
+                    "période."),
+            }
+        if not source.get('disponible'):
+            return {
+                'disponible': False, 'valeur': None, 'unite': unite,
+                'raison': source.get('raison'),
+            }
+        return None  # dénominateur disponible : calculé par l'appelant.
+
+    ca_source = _safe(_source_ca_periode, company, date_debut, date_fin)
+    kwc_source = _safe(_source_kwc_installes, company, date_debut, date_fin)
+    etp_source = _safe(_source_effectifs, company)
+
+    def _finaliser(source, unite, cle_valeur):
+        degrade = _ratio(source, unite)
+        if degrade is not None:
+            return degrade
+        denominateur = source.get(cle_valeur)
+        if not denominateur:
+            return {
+                'disponible': False, 'valeur': None, 'unite': unite,
+                'raison': (
+                    "Dénominateur nul — ratio non calculé (jamais affiché "
+                    "comme 0)."),
+            }
+        return {
+            'disponible': True,
+            'valeur': round(total_tco2e / denominateur, 6),
+            'unite': unite,
+            'raison': None,
+        }
+
+    return {
+        'methode': (
+            "Intensité = total tCO2e (bilan carbone figé) ÷ dénominateur "
+            "de la période. Un ratio est omis (jamais affiché comme 0) si "
+            "le numérateur ou le dénominateur est absent ou nul."),
+        'numerateur': {
+            'disponible': numerateur.get('disponible', False),
+            'total_tco2e': total_tco2e,
+            'raison': numerateur.get('raison'),
+        },
+        'ratios': {
+            'par_mad_ca': _finaliser(ca_source, 'tCO2e/MAD CA', 'total_ht'),
+            'par_kwc_installe': _finaliser(
+                kwc_source, 'tCO2e/kWc installé', 'total_kwc'),
+            'par_etp': _finaliser(
+                etp_source, 'tCO2e/ETP', 'effectif_actif'),
+        },
+    }
+
+
 __all__ = [
     'agreger_indicateurs_periode',
     'donnees_effectives_periode',
     'couverture_catalogue',
     'trajectoire_vs_realise',
+    'intensite_carbone',
 ]
