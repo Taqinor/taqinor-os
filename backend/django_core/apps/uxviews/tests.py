@@ -5,7 +5,10 @@ multi-société, visibilité PERSONNELLE (owner uniquement) vs EQUIPE (toute la
 société), garde-fou `definir-par-defaut-role` (Directeur/Admin uniquement, un
 seul défaut actif par rôle+écran), garde-fous de suppression.
 """
+import json
+
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
@@ -226,3 +229,70 @@ class SavedViewApiTests(TestCase):
         self.assertEqual(roles_col['Équipe'], 'Commercial')
         # openpyxl relit une cellule chaîne-vide comme None (l'export écrit bien '').
         self.assertIn(roles_col['Perso'], (None, ''))
+
+    # ── NTUX34 — import CSV de vues sauvegardées entre environnements ──────
+    def _csv(self, rows):
+        lines = ['ecran,nom,configuration']
+        for ecran, nom, configuration in rows:
+            lines.append(f'{ecran},{nom},"{configuration}"')
+        return SimpleUploadedFile(
+            'vues.csv', ('\n'.join(lines)).encode('utf-8'), content_type='text/csv')
+
+    def test_importer_forbidden_for_commercial(self):
+        fichier = self._csv([('crm.leads', 'V1', json.dumps({}))])
+        resp = auth(self.commercial1).post(f'{self.BASE}importer/', {'fichier': fichier}, format='multipart')
+        self.assertEqual(resp.status_code, 403)
+
+    def test_importer_creates_valid_rows_as_personal_views_owned_by_caller(self):
+        config = json.dumps({'colonnes_visibles': ['nom'], 'filtres': {'op': 'AND', 'conditions': []}})
+        fichier = self._csv([('crm.leads', 'Mes leads chauds', config.replace('"', '""'))])
+        resp = auth(self.directeur).post(f'{self.BASE}importer/', {'fichier': fichier}, format='multipart')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(len(resp.data['created']), 1)
+        self.assertEqual(resp.data['erreurs'], [])
+        view = SavedView.objects.get(id=resp.data['created'][0]['id'])
+        self.assertEqual(view.owner, self.directeur)
+        self.assertEqual(view.company, self.co_a)
+        self.assertEqual(view.visibilite, SavedView.Visibilite.PERSONNELLE)
+        self.assertEqual(view.configuration['colonnes_visibles'], ['nom'])
+
+    def test_importer_reports_invalid_json_line_with_its_number_and_still_imports_valid_rows(self):
+        good = json.dumps({'colonnes_visibles': ['nom']}).replace('"', '""')
+        lines = [
+            'ecran,nom,configuration',
+            f'crm.leads,Vue valide,"{good}"',
+            'crm.leads,Vue cassée,"{pas du json valide"',
+        ]
+        fichier = SimpleUploadedFile(
+            'vues.csv', ('\n'.join(lines)).encode('utf-8'), content_type='text/csv')
+        resp = auth(self.directeur).post(f'{self.BASE}importer/', {'fichier': fichier}, format='multipart')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(len(resp.data['created']), 1)
+        self.assertEqual(len(resp.data['erreurs']), 1)
+        self.assertEqual(resp.data['erreurs'][0]['ligne'], 2)
+        self.assertIn('JSON', resp.data['erreurs'][0]['message'])
+
+    def test_importer_never_silently_overwrites_renames_with_import_suffix(self):
+        SavedView.objects.create(
+            company=self.co_a, owner=self.directeur, ecran='crm.leads', nom='Mes leads',
+            configuration={'ancien': True},
+        )
+        config = json.dumps({'nouveau': True}).replace('"', '""')
+        fichier = self._csv([('crm.leads', 'Mes leads', config)])
+        resp = auth(self.directeur).post(f'{self.BASE}importer/', {'fichier': fichier}, format='multipart')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(SavedView.objects.filter(company=self.co_a, owner=self.directeur, ecran='crm.leads').count(), 2)
+        imported = SavedView.objects.get(
+            company=self.co_a, owner=self.directeur, ecran='crm.leads', nom='Mes leads (import)')
+        self.assertEqual(imported.configuration, {'nouveau': True})
+        original = SavedView.objects.get(
+            company=self.co_a, owner=self.directeur, ecran='crm.leads', nom='Mes leads')
+        self.assertEqual(original.configuration, {'ancien': True})
+
+    def test_importer_rejects_malformed_configuration_structure(self):
+        bad = json.dumps({'colonnes_visibles': 'pas-une-liste'}).replace('"', '""')
+        fichier = self._csv([('crm.leads', 'Vue mal formée', bad)])
+        resp = auth(self.directeur).post(f'{self.BASE}importer/', {'fichier': fichier}, format='multipart')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['created'], [])
+        self.assertEqual(len(resp.data['erreurs']), 1)
