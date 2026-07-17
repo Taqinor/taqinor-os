@@ -104,6 +104,67 @@ def real_lead_counts(company):
     return {'by_ad': by_ad, 'by_campaign': by_campaign, 'total': total}
 
 
+def conversations_per_ad(company):
+    """ADSDEEP25 — Conversations WhatsApp RÉELLES par ad (``CtwaReferral``) +
+    signatures rapprochées par téléphone.
+
+    Complète la métrique AGRÉGÉE de Meta (``InsightSnapshot.conversations`` =
+    ``messaging_conversation_started_7d``, un simple compteur) par le compte
+    RÉEL de conversations CTWA reçues sur le webhook Cloud API (ADSDEEP24), PAR
+    ad, avec la jointure signatures : « cette ad a produit N conversations, M
+    signées ». Les signatures viennent du CRM (leads au stade SIGNÉ, clé
+    ``STAGES.py``) rapprochées par ``phone_key`` normalisé QW10 — lu via
+    ``crm.selectors.signed_lead_phone_keys`` (jamais un import de
+    ``crm.models``). Company-scopé.
+
+    Renvoie ``{by_ad, total_conversations, total_signed}`` où ``by_ad`` est une
+    liste ordonnée par ``ad_id`` de ::
+
+        {ad_id, conversations, unique_contacts, signed}
+
+    ``conversations`` = nombre de messages CTWA reçus pour l'ad (chaque message
+    entrant issu d'une pub = un démarrage de conversation) ; ``unique_contacts``
+    = numéros distincts ; ``signed`` = numéros distincts qui ont signé.
+    """
+    from apps.crm.selectors import signed_lead_phone_keys
+
+    from .models import CtwaReferral
+
+    signed_keys = signed_lead_phone_keys(company)
+
+    buckets = {}
+    for ref in (CtwaReferral.objects
+                .filter(company=company)
+                .exclude(ad_id='')
+                .only('ad_id', 'phone_key')):
+        bucket = buckets.setdefault(
+            ref.ad_id, {'conversations': 0, 'phones': set()})
+        bucket['conversations'] += 1
+        if ref.phone_key:
+            bucket['phones'].add(ref.phone_key)
+
+    by_ad = []
+    total_conversations = total_signed = 0
+    for ad_id in sorted(buckets):
+        bucket = buckets[ad_id]
+        phones = bucket['phones']
+        conversations = bucket['conversations']
+        signed = len(phones & signed_keys)
+        by_ad.append({
+            'ad_id': ad_id,
+            'conversations': conversations,
+            'unique_contacts': len(phones),
+            'signed': signed,
+        })
+        total_conversations += conversations
+        total_signed += signed
+    return {
+        'by_ad': by_ad,
+        'total_conversations': total_conversations,
+        'total_signed': total_signed,
+    }
+
+
 def _campaign_spend_map(company, campaigns):
     """Dépense cumulée (``InsightSnapshot.spend``) par miroir de campagne.
 

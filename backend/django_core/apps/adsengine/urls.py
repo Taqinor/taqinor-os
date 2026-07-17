@@ -11,7 +11,7 @@ from rest_framework.routers import DefaultRouter
 from .odoo_views import OdooCostPerSignatureView
 from .views import (
     AdCampaignMirrorViewSet, AdPreviewsView, AnomalyEventViewSet,
-    ArmDailyStatViewSet,
+    ArmDailyStatViewSet, ConversationsPerAdView,
     BacklogDropAssetView, BacklogListView, BacklogLotApproveView,
     BreakdownsView, BriefLatestView, CampaignFunnelView, CohortReportView,
     CostPerSignatureView,
@@ -116,6 +116,9 @@ urlpatterns = [
     # ADSDEEP19 — comptes de leads RÉELS par ad / campagne (MetaLeadMirror).
     path('metrics/real-leads/', RealLeadsView.as_view(),
          name='adsengine-real-leads'),
+    # ADSDEEP25 — conversations WhatsApp RÉELLES par ad (CtwaReferral) + signés.
+    path('metrics/conversations-per-ad/', ConversationsPerAdView.as_view(),
+         name='adsengine-conversations-per-ad'),
     # ADSDEEP12 — résolveur de médias frais (URL jouable non persistée).
     path('media/<str:ref>/', MediaResolveView.as_view(),
          name='adsengine-media-resolve'),
