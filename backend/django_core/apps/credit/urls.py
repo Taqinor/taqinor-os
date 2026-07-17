@@ -11,6 +11,10 @@ router.register(r'conditions-segment', views.ConditionPaiementSegmentViewSet,
                 basename='conditionpaiementsegment')
 router.register(r'segments-client', views.SegmentClientCreditViewSet,
                 basename='segmentclientcredit')
+router.register(r'polices-assurance', views.PoliceAssuranceCreditViewSet,
+                basename='policeassurancecredit')
+router.register(r'encours-garantis', views.EncoursGarantiClientViewSet,
+                basename='encoursgaranticlient')
 
 urlpatterns = [
     path('ping/', views.ping, name='credit-ping'),

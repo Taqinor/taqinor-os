@@ -2,8 +2,8 @@
 from rest_framework import serializers
 
 from .models import (
-    ConditionPaiementSegment, DerogationCredit, LimiteCredit, ReglageCredit,
-    SegmentClientCredit,
+    ConditionPaiementSegment, DerogationCredit, EncoursGarantiClient,
+    LimiteCredit, PoliceAssuranceCredit, ReglageCredit, SegmentClientCredit,
 )
 
 
@@ -44,6 +44,27 @@ class SegmentClientCreditSerializer(serializers.ModelSerializer):
         model = SegmentClientCredit
         fields = ['id', 'client', 'segment', 'date_modification']
         read_only_fields = ['id', 'date_modification']
+
+
+class PoliceAssuranceCreditSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PoliceAssuranceCredit
+        fields = [
+            'id', 'assureur', 'numero_police', 'date_debut', 'date_fin',
+            'franchise', 'taux_couverture_pct', 'plafond_global', 'actif',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['id', 'date_creation', 'date_modification']
+
+
+class EncoursGarantiClientSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EncoursGarantiClient
+        fields = [
+            'id', 'police', 'client', 'montant_garanti', 'date_agrement',
+            'statut_agrement', 'reference_assureur', 'date_creation',
+        ]
+        read_only_fields = ['id', 'date_creation']
 
 
 class DerogationCreditSerializer(serializers.ModelSerializer):

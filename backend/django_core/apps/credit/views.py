@@ -9,12 +9,13 @@ from authentication.permissions import IsResponsableOrAdmin
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
-    ConditionPaiementSegment, DerogationCredit, LimiteCredit, ReglageCredit,
-    SegmentClientCredit,
+    ConditionPaiementSegment, DerogationCredit, EncoursGarantiClient,
+    LimiteCredit, PoliceAssuranceCredit, ReglageCredit, SegmentClientCredit,
 )
 from .serializers import (
     ConditionPaiementSegmentSerializer, DerogationCreditSerializer,
-    LimiteCreditSerializer, ReglageCreditSerializer,
+    EncoursGarantiClientSerializer, LimiteCreditSerializer,
+    PoliceAssuranceCreditSerializer, ReglageCreditSerializer,
     SegmentClientCreditSerializer,
 )
 
@@ -170,3 +171,38 @@ class SegmentClientCreditViewSet(CompanyScopedModelViewSet):
         if self.action in ('create', 'update', 'partial_update', 'destroy'):
             return [IsDirecteurOrAdmin()]
         return super().get_permissions()
+
+
+class PoliceAssuranceCreditViewSet(CompanyScopedModelViewSet):
+    """NTCRD16 — CRUD registre déclaratif des polices d'assurance-crédit.
+    Écriture réservée Directeur/Administrateur (aucun appel externe)."""
+    queryset = PoliceAssuranceCredit.objects.all()
+    serializer_class = PoliceAssuranceCreditSerializer
+
+    def get_permissions(self):
+        if self.action in ('create', 'update', 'partial_update', 'destroy'):
+            return [IsDirecteurOrAdmin()]
+        return super().get_permissions()
+
+
+class EncoursGarantiClientViewSet(CompanyScopedModelViewSet):
+    """NTCRD17 — encours garantis par police + client (filtrable par
+    ``police``/``client``). Écriture réservée Directeur/Administrateur."""
+    queryset = EncoursGarantiClient.objects.select_related(
+        'police', 'client').all()
+    serializer_class = EncoursGarantiClientSerializer
+
+    def get_permissions(self):
+        if self.action in ('create', 'update', 'partial_update', 'destroy'):
+            return [IsDirecteurOrAdmin()]
+        return super().get_permissions()
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        police = self.request.query_params.get('police')
+        client = self.request.query_params.get('client')
+        if police:
+            qs = qs.filter(police_id=police)
+        if client:
+            qs = qs.filter(client_id=client)
+        return qs

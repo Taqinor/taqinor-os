@@ -209,3 +209,74 @@ class DerogationCredit(models.Model):
         if self.valide_jusqu_au is None:
             return True
         return timezone.now() <= self.valide_jusqu_au
+
+
+class PoliceAssuranceCredit(models.Model):
+    """NTCRD16 — police d'assurance-crédit : REGISTRE DÉCLARATIF (aucune
+    intégration/appel API assureur — Allianz Trade/Coface/Atradius saisis à la
+    main). company-scopé."""
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='polices_assurance_credit')
+    assureur = models.CharField(max_length=150)
+    numero_police = models.CharField(max_length=100, blank=True, default='')
+    date_debut = models.DateField(null=True, blank=True)
+    date_fin = models.DateField(null=True, blank=True)
+    franchise = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True)
+    taux_couverture_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        help_text='Taux de couverture assureur (ex. 90 %).')
+    plafond_global = models.DecimalField(
+        max_digits=16, decimal_places=2, null=True, blank=True,
+        help_text='Encours max garanti, tous clients confondus.')
+    actif = models.BooleanField(default=True)
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Police d'assurance-crédit"
+        verbose_name_plural = "Polices d'assurance-crédit"
+        ordering = ['-date_debut', '-id']
+
+    def __str__(self):
+        return f'{self.assureur} — {self.numero_police}'
+
+
+class EncoursGarantiClient(models.Model):
+    """NTCRD17 — quota garanti par l'assureur pour UN client, sous une police.
+    Un client sans encours garanti déclaré est simplement « non couvert »
+    (aucune hypothèse silencieuse)."""
+
+    class StatutAgrement(models.TextChoices):
+        ACCORDE = 'accorde', 'Accordé'
+        REFUSE = 'refuse', 'Refusé'
+        EN_ATTENTE = 'en_attente', 'En attente'
+        REDUIT = 'reduit', 'Réduit'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='encours_garantis_client')
+    police = models.ForeignKey(
+        PoliceAssuranceCredit, on_delete=models.CASCADE,
+        related_name='encours_garantis')
+    client = models.ForeignKey(
+        'crm.Client', on_delete=models.CASCADE,
+        related_name='encours_garantis_credit')
+    montant_garanti = models.DecimalField(max_digits=14, decimal_places=2)
+    date_agrement = models.DateField(null=True, blank=True)
+    statut_agrement = models.CharField(
+        max_length=20, choices=StatutAgrement.choices,
+        default=StatutAgrement.EN_ATTENTE)
+    reference_assureur = models.CharField(max_length=100, blank=True, default='')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Encours garanti client'
+        verbose_name_plural = 'Encours garantis client'
+        unique_together = [('police', 'client')]
+        ordering = ['-date_agrement', '-id']
+
+    def __str__(self):
+        return f'{self.client_id} — {self.montant_garanti} ({self.police_id})'
