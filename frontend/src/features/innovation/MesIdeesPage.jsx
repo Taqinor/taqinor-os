@@ -25,15 +25,16 @@ export default function MesIdeesPage() {
 
   useEffect(() => {
     if (!currentUser?.id) return
+    /* eslint-disable react-hooks/set-state-in-effect -- chargement au montage */
     setLoading(true)
     setError(null)
+    /* eslint-enable react-hooks/set-state-in-effect */
     innovationApi.list({ owner: currentUser.id })
       .then((res) => {
         setIdees(Array.isArray(res.data) ? res.data : (res.data?.results ?? []))
       })
       .catch(() => setError('Impossible de charger vos idées.'))
       .finally(() => setLoading(false))
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount
   }, [currentUser?.id])
 
   const columns = useMemo(() => [

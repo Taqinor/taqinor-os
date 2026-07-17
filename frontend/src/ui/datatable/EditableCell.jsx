@@ -63,9 +63,11 @@ export function EditableCell({
   // ne se déclenche JAMAIS (comportement des 79 écrans existants inchangé).
   useEffect(() => {
     if (autoEdit && !editing && !readOnly) {
+      /* eslint-disable react-hooks/set-state-in-effect -- ouverture programmatique commandée par le parent (flanc montant d'autoEdit) */
       setDraft(value ?? '')
       setError(null)
       setEditing(true)
+      /* eslint-enable react-hooks/set-state-in-effect */
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- ne réagit qu'au flanc montant de `autoEdit`, pas à `value`/`editing` (évite une boucle de réouverture après commit).
   }, [autoEdit])

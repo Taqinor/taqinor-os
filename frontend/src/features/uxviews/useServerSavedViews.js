@@ -62,7 +62,9 @@ export function useServerSavedViews(ecran) {
       .finally(() => setLoading(false))
   }, [ecran])
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage / au changement de params
   useEffect(() => { refresh() }, [refresh])
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- lecture préférence locale au montage / changement d'écran
   useEffect(() => { setPrefId(readPref(ecran)) }, [ecran])
 
   const mine = useMemo(() => views.filter((v) => String(v.owner) === String(userId)), [views, userId])

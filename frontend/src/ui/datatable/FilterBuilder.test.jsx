@@ -1,6 +1,6 @@
 // NTUX3/4 — FilterBuilder : groupes ET/OU (2 niveaux max), sélection
 // colonne/opérateur, ajout/retrait de condition et de sous-groupe.
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import FilterBuilder from './FilterBuilder'
 import { emptyGroup } from './filterLogic'

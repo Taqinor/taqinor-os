@@ -168,10 +168,16 @@ class IdeeViewSet(CompanyScopedModelViewSet):
             permission_classes=[IsAnyRole])
     def publier(self, request, pk=None):
         """Réservé à l'auteur du brouillon (403 sinon). Une fois publiée,
-        l'idée redevient visible de toute la société (``get_queryset``)."""
-        idee = self.get_object()
+        l'idée redevient visible de toute la société (``get_queryset``).
+
+        On résout l'idée dans la SOCIÉTÉ (jamais via ``get_queryset`` qui masque
+        les brouillons d'autrui) : un non-auteur de la même société doit voir un
+        403 explicite ; une idée d'une AUTRE société reste un 404 (isolation)."""
+        from django.shortcuts import get_object_or_404
+        from rest_framework.exceptions import PermissionDenied
+        from .models import Idee
+        idee = get_object_or_404(Idee, pk=pk, company=request.user.company)
         if idee.auteur_id != request.user.id:
-            from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied(
                 "Seul l'auteur peut publier son brouillon.")
         if idee.draft:
@@ -180,14 +186,22 @@ class IdeeViewSet(CompanyScopedModelViewSet):
         return Response(IdeeSerializer(idee).data)
 
     # ── NTIDE19 — modération : masquer une idée sans la supprimer ────────────
-    @action(detail=True, methods=['post'], url_path='masquer',
-            permission_classes=[IsResponsableOrAdmin])
+    @action(detail=True, methods=['post'], url_path='masquer')
     def masquer(self, request, pk=None):
         """Palier Directeur/Responsable uniquement. Ne supprime jamais
         l'idée : elle disparaît des listes normales (``get_queryset``) mais
         reste consultable via ``?include_archived=1`` (même palier).
-        Journalise dans le chatter générique (ARC8)."""
+        Journalise dans le chatter générique (ARC8).
+
+        ``get_object`` (scopé société) d'ABORD → une idée d'une autre société
+        est un 404 (isolation, jamais un 403 qui révèlerait son existence) ;
+        le contrôle de palier vient ENSUITE → 403 pour un non-Responsable de la
+        même société."""
         idee = self.get_object()
+        if not IsResponsableOrAdmin().has_permission(request, self):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied(
+                'Réservé au palier Directeur/Responsable.')
         if not idee.archived:
             idee.archived = True
             idee.save(update_fields=['archived', 'updated_at'])

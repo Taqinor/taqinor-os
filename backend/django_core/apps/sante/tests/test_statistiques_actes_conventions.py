@@ -3,6 +3,7 @@ convention correspondent EXACTEMENT à la somme de
 ``FactureSante.part_tiers_payant_ttc`` groupée par convention.
 """
 import datetime as dt
+from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.db.models import Sum
@@ -90,7 +91,7 @@ class StatistiquesActesConventionsTests(TestCase):
         row = data['par_acte'][0]
         self.assertEqual(row['acte_id'], self.acte.id)
         self.assertEqual(row['volume'], 2)
-        self.assertEqual(row['chiffre_affaires'], self.acte.tarif_base_ttc * 2)
+        self.assertEqual(row['chiffre_affaires'], Decimal(self.acte.tarif_base_ttc) * 2)
 
     def test_endpoint_scoped_by_tenant(self):
         api = auth(self.user)
