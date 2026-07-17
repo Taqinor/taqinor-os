@@ -30,6 +30,11 @@ const innovationApi = {
   // ── Chatter (historique, NTIDE5) ──
   historique: (id) => api.get(`/innovation/idees/${id}/historique/`),
 
+  // ── Lier à un devis/ticket/chantier (NTIDE14, opaque string-FK) ──
+  lier: (id, linkedType, linkedId) =>
+    api.post(`/innovation/idees/${id}/lier/`,
+      { linked_type: linkedType, linked_id: linkedId }),
+
   // ── Export .xlsx (NTIDE12, filtres statut/contexte/date appliqués) ──
   exportXlsx: (params) =>
     api.get('/innovation/idees/export-xlsx/', { params, responseType: 'blob' }),

@@ -1,12 +1,16 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
-  ThumbsUp, Search, CheckCircle2, Rocket, XCircle, Send,
+  ThumbsUp, Search, CheckCircle2, Rocket, XCircle, Send, Link2,
 } from 'lucide-react'
 import { DetailShell } from '../../ui/module'
-import { Button, Textarea, EmptyState, Spinner, DefinitionList, Badge, toast } from '../../ui'
+import {
+  Button, Textarea, Input, EmptyState, Spinner, DefinitionList, Badge, toast,
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+} from '../../ui'
 import { formatDateTime } from '../../lib/format'
 import innovationApi from '../../api/innovationApi'
+import FilterSelect from './FilterSelect'
 import {
   STATUT_MAP, StatutIdeePill, transitionsPour, estTerminal, TRANSITION_LABELS,
 } from './innovationStatus'
@@ -39,6 +43,10 @@ export default function IdeeDetail() {
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState('')
   const [showFermerNote, setShowFermerNote] = useState(false)
+  // ── NTIDE14 — modale « Lier à devis/ticket/chantier » ──
+  const [showLierDialog, setShowLierDialog] = useState(false)
+  const [lierType, setLierType] = useState('devis')
+  const [lierId, setLierId] = useState('')
 
   const load = () => {
     setLoading(true)
@@ -72,6 +80,23 @@ export default function IdeeDetail() {
       toast.error(err?.response?.status === 403
         ? "Action réservée au palier Directeur/Responsable."
         : 'Transition impossible.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleLier = async () => {
+    const id = Number(lierId)
+    if (!lierType || !id || id <= 0) { toast.error('Choisissez un type et un identifiant valides.'); return }
+    setBusy(true)
+    try {
+      await innovationApi.lier(idee.id, lierType, id)
+      toast.success('Idée liée.')
+      setShowLierDialog(false)
+      setLierId('')
+      await load()
+    } catch {
+      toast.error('Impossible de lier cette idée.')
     } finally {
       setBusy(false)
     }
@@ -161,6 +186,10 @@ export default function IdeeDetail() {
       <Button type="button" variant="outline" onClick={handleVote} disabled={busy}>
         <ThumbsUp /> Voter
       </Button>
+      <Button type="button" variant="outline" disabled={busy}
+              onClick={() => setShowLierDialog(true)}>
+        <Link2 /> Lier à devis/ticket/chantier
+      </Button>
       {!estTerminal(idee.statut) && transitions.map((key) => {
         const Icon = TRANSITION_ICONS[key]
         if (key === 'fermer') {
@@ -205,6 +234,48 @@ export default function IdeeDetail() {
           </div>
         </div>
       )}
+
+      <Dialog open={showLierDialog} onOpenChange={setShowLierDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Lier à devis/ticket/chantier</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="lier-type" className="text-sm font-medium">Type</label>
+              <FilterSelect
+                id="lier-type"
+                value={lierType}
+                onChange={setLierType}
+                options={[
+                  { value: 'devis', label: 'Devis' },
+                  { value: 'ticket', label: 'Ticket SAV' },
+                  { value: 'chantier', label: 'Chantier' },
+                ]}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="lier-id" className="text-sm font-medium">Identifiant</label>
+              <Input
+                id="lier-id"
+                type="number"
+                min="1"
+                value={lierId}
+                onChange={(e) => setLierId(e.target.value)}
+                placeholder="ex. 42"
+              />
+            </div>
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <Button type="button" variant="ghost" onClick={() => setShowLierDialog(false)} disabled={busy}>
+                Annuler
+              </Button>
+              <Button type="button" onClick={handleLier} disabled={busy}>
+                <Link2 /> Lier
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <DetailShell
         title={idee.titre}

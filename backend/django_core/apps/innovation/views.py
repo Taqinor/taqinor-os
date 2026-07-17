@@ -125,6 +125,45 @@ class IdeeViewSet(CompanyScopedModelViewSet):
         (``{"note": "..."}``), journalisée dans le chatter."""
         return self._transition(request, Idee.Statut.FERMEE)
 
+    # ── NTIDE14 — lier une idée à un devis/ticket/chantier (opaque string-FK) ─
+    @action(detail=True, methods=['post'], url_path='lier',
+            permission_classes=[IsAnyRole])
+    def lier(self, request, pk=None):
+        """Corps : ``{linked_type: 'devis'|'ticket'|'chantier', linked_id:
+        N}``. Saisie MANUELLE (type + identifiant) — jamais une recherche
+        live dans les modèles ``ventes``/``sav``/``installations`` (cross-app
+        interdit, cf. règle de frontière) : ``linked_id`` reste une référence
+        OPAQUE, exactement comme la pré-détection de création (NTIDE11).
+        Journalise le lien dans le chatter générique (ARC8)."""
+        idee = self.get_object()
+        linked_type = (request.data.get('linked_type') or '').strip()
+        linked_id_raw = request.data.get('linked_id')
+        if linked_type not in Idee.LinkedType.values:
+            return Response({'linked_type': 'Type invalide.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            linked_id = int(linked_id_raw)
+            if linked_id <= 0:
+                raise ValueError
+        except (TypeError, ValueError):
+            return Response({'linked_id': 'Identifiant invalide.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        old_type, old_id = idee.linked_type, idee.linked_id
+        idee.linked_type = linked_type
+        idee.linked_id = linked_id
+        idee.save(update_fields=['linked_type', 'linked_id', 'updated_at'])
+
+        from apps.records.models import Activity
+        from apps.records.services import log_activity
+        old_label = f'{old_type} #{old_id}' if old_type else ''
+        new_label = f'{linked_type} #{linked_id}'
+        log_activity(
+            idee, Activity.Kind.MODIFICATION, user=request.user,
+            field='linked_type', field_label='Lié à',
+            old_value=old_label, new_value=new_label, company=idee.company)
+        return Response(IdeeSerializer(idee).data)
+
     @action(detail=True, methods=['get'], url_path='historique',
             permission_classes=[IsAnyRole])
     def historique(self, request, pk=None):
