@@ -234,6 +234,13 @@ INSTALLED_APPS = [
     # NTUX1 — Vues sauvegardées serveur (personnelles/partagées), fondation de
     # la couche UX power-user (NTUX2-11). Additive, company-scopée.
     'apps.uxviews',
+    # Groupe NTMAR — Facturation électronique DGI (schéma XML derrière flag,
+    # dry-run/réel), scaffold de signature électronique et file d'attente de
+    # transmission Simpl inerte (gated, voir EINVOICE_ENABLED).
+    'apps.einvoice',
+    # Groupe NTMAR — Calendrier fiscal marocain, attestations tenant, registre
+    # UBO et veille réglementaire actionnable.
+    'apps.fiscal',
 ]
 
 MIDDLEWARE = [
@@ -1137,3 +1144,24 @@ REQUEST_ACCESS_LOG = (
 # seuil (ms), une ligne WARNING 'core.slow_request' est émise (durée/path/tenant),
 # et en DEBUG le compte SQL + les 3 requêtes les plus longues (CaptureQueries).
 SLOW_REQUEST_MS = int(os.environ.get('SLOW_REQUEST_MS', '0') or '0')
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Groupe NTMAR — Maroc & Afrique : e-invoicing DGI, PSP & mobile money (gated).
+#
+# NTMAR5 — flag maître de la facturation électronique DGI (apps.einvoice).
+# OFF par défaut : l'app reste entièrement inerte (aucune écriture, aucun
+# appel réseau) tant que le founder ne l'active pas explicitement.
+EINVOICE_ENABLED = os.environ.get('EINVOICE_ENABLED', '0') == '1'
+
+# NTMAR6 — provider de signature électronique certifiée. ``noop`` (défaut) :
+# ``preparer_signature`` calcule l'empreinte mais ne signe JAMAIS — la
+# signature certifiée dépend de la plateforme DGI live (gaté G14, décret non
+# publié). Aucun provider réel n'est câblé dans ce lot.
+EINVOICE_SIGNATURE_PROVIDER = os.environ.get(
+    'EINVOICE_SIGNATURE_PROVIDER', 'noop')
+
+# NTMAR7 — étend G14 : transmission Simpl réelle. OFF par défaut ; sans URL/clé
+# configurée, ``transmettre()`` enregistre seulement l'intention (statut
+# ``en_attente``) et n'émet AUCUNE requête sortante.
+DGI_TRANSMISSION_ENABLED = os.environ.get('DGI_TRANSMISSION_ENABLED', '0') == '1'
+DGI_TRANSMISSION_URL = os.environ.get('DGI_TRANSMISSION_URL', '')
