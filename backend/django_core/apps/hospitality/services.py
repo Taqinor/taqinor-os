@@ -8,7 +8,22 @@ from django.utils import timezone
 from .models import (
     Chambre, EvenementBanquet, FicheClient, Folio, LigneFolio,
     ParametresTaxeSejour, PlanTarifaire, Reservation, TacheMenage,
+    TicketPension,
 )
+
+# NTHOT20 — jours de séjour × repas générés par formule de pension (une entrée
+# par TypeRepas ACTIVÉ pour la formule). La demi-pension retient
+# petit-déjeuner + dîner (convention hôtelière marocaine la plus courante).
+_REPAS_PAR_FORMULE = {
+    Reservation.FormulePension.AUCUNE: [],
+    Reservation.FormulePension.PETIT_DEJEUNER: [
+        TicketPension.TypeRepas.PETIT_DEJEUNER],
+    Reservation.FormulePension.DEMI_PENSION: [
+        TicketPension.TypeRepas.PETIT_DEJEUNER, TicketPension.TypeRepas.DINER],
+    Reservation.FormulePension.PENSION_COMPLETE: [
+        TicketPension.TypeRepas.PETIT_DEJEUNER,
+        TicketPension.TypeRepas.DEJEUNER, TicketPension.TypeRepas.DINER],
+}
 
 FICHE_CLIENT_CHAMPS_REQUIS = [
     'nom_complet', 'nationalite', 'type_piece', 'numero_piece',
@@ -405,7 +420,64 @@ def check_in(reservation, *, fiches_data, user=None):
     chambre.save(update_fields=['statut'])
     reservation.statut = Reservation.Statut.EN_COURS
     reservation.save(update_fields=['statut', 'chambre'])
+    # NTHOT20 — génère les tickets pension du séjour (un par jour × repas
+    # inclus dans la formule) ; no-op si formule_pension=aucune.
+    _generer_tickets_pension(reservation)
     return fiches
+
+
+# ── NTHOT20 — Petit-déjeuner / pension tracking ─────────────────────────────
+
+def _generer_tickets_pension(reservation):
+    """Génère UN ``TicketPension`` par jour de séjour × repas inclus dans
+    ``reservation.formule_pension`` — idempotent (``get_or_create`` sur la
+    contrainte unique réservation+date+type_repas), donc rejouable sans
+    doublon si le check-in est retenté."""
+    repas = _REPAS_PAR_FORMULE.get(reservation.formule_pension, [])
+    if not repas:
+        return []
+    tickets = []
+    for i in range(reservation.nb_nuits):
+        jour = reservation.date_arrivee + datetime.timedelta(days=i)
+        for type_repas in repas:
+            ticket, _ = TicketPension.objects.get_or_create(
+                company=reservation.company, reservation=reservation,
+                date=jour, type_repas=type_repas)
+            tickets.append(ticket)
+    return tickets
+
+
+def pointer_repas_ou_facturer(
+        reservation, *, date_repas, type_repas, montant_ht=None,
+        description=''):
+    """NTHOT20 — Pointe un repas consommé au restaurant contre un ticket
+    pension inclus dans la formule (le repas n'est ALORS jamais refacturé au
+    folio), sinon — repas hors formule — ajoute une ``LigneFolio`` normale
+    (``montant_ht`` fourni par l'appelant, ex. le POS restaurant) si le folio
+    de la réservation existe.
+
+    Renvoie le ``TicketPension`` pointé (repas inclus, pas de facturation),
+    ou la ``LigneFolio`` créée (repas hors formule facturé), ou ``None``
+    (repas hors formule sans folio/``montant_ht`` — rien à faire ici, la
+    facturation reste à la charge de l'appelant)."""
+    ticket = TicketPension.objects.filter(
+        reservation=reservation, date=date_repas, type_repas=type_repas,
+        consomme=False,
+    ).first()
+    if ticket is not None:
+        ticket.consomme = True
+        ticket.date_consommation = timezone.now()
+        ticket.save(update_fields=['consomme', 'date_consommation'])
+        return ticket
+
+    folio = getattr(reservation, 'folio', None)
+    if folio is None or montant_ht is None:
+        return None
+    return LigneFolio.objects.create(
+        folio=folio, origine=LigneFolio.Origine.RESTAURANT,
+        description=description or f'Repas {type_repas} du {date_repas}',
+        montant_ht=montant_ht,
+    )
 
 
 # ── NTHOT18 — Salles événementielles (chevauchement) ────────────────────────

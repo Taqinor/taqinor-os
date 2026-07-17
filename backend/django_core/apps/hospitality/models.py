@@ -198,6 +198,17 @@ class Reservation(TenantModel):
     prix_nuit_snapshot = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True)
 
+    # ── NTHOT20 — Petit-déjeuner / pension tracking ──
+    class FormulePension(models.TextChoices):
+        AUCUNE = 'aucune', 'Aucune'
+        PETIT_DEJEUNER = 'petit_dejeuner', 'Petit-déjeuner'
+        DEMI_PENSION = 'demi_pension', 'Demi-pension'
+        PENSION_COMPLETE = 'pension_complete', 'Pension complète'
+
+    formule_pension = models.CharField(
+        max_length=16, choices=FormulePension.choices,
+        default=FormulePension.AUCUNE)
+
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -647,3 +658,50 @@ class EvenementBanquet(TenantModel):
     @property
     def date_evenement(self):
         return self.date_debut.date() if self.date_debut else None
+
+
+# ── NTHOT20 — Petit-déjeuner / pension tracking ─────────────────────────────
+
+class TicketPension(TenantModel):
+    """Un repas inclus dans la formule de pension d'UNE réservation, pour UN
+    jour de séjour — généré au check-in (NTHOT5) d'après
+    ``Reservation.formule_pension``. Pointable au restaurant (scan ou saisie
+    manuelle numéro de chambre côté POS salle, hors périmètre ici — NTHOT15)
+    pour éviter la double-facturation d'un repas déjà inclus au forfait
+    (``services.pointer_repas_ou_facturer``)."""
+
+    class TypeRepas(models.TextChoices):
+        PETIT_DEJEUNER = 'petit_dejeuner', 'Petit-déjeuner'
+        DEJEUNER = 'dejeuner', 'Déjeuner'
+        DINER = 'diner', 'Dîner'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: cascade tenant (purge des données de la société supprimée)
+        related_name='hospitality_tickets_pension',
+        verbose_name='Société',
+    )
+    reservation = models.ForeignKey(
+        Reservation,
+        on_delete=models.CASCADE,  # on_delete: cascade parent→enfant (composant du parent)
+        related_name='tickets_pension',
+        verbose_name='Réservation',
+    )
+    date = models.DateField()
+    type_repas = models.CharField(max_length=15, choices=TypeRepas.choices)
+    consomme = models.BooleanField(default=False)
+    date_consommation = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Ticket pension'
+        verbose_name_plural = 'Tickets pension'
+        ordering = ['date', 'type_repas']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['reservation', 'date', 'type_repas'],
+                name='hospitality_ticket_pension_unique_par_jour_repas',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.get_type_repas_display()} — {self.date} (rés. #{self.reservation_id})'
