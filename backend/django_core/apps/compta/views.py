@@ -81,6 +81,10 @@ from .models import (
     BilletEvenement,
     QuestionEvenement,
     CommunicationEvenement,
+    CycleConsolidation, LiasseRemontee, MappingConsolidation,
+    OperationInterco, EcritureElimination, MargeInterneStock,
+    EliminationTitres,
+    ReferentielComptable, AjustementGaap, AxeAnalytique, ImputationAxe,
 )
 from .serializers import (
     AppelTelephoniqueSerializer, AvancementRevenuSerializer,
@@ -147,6 +151,12 @@ from .serializers import (
     ObligationFiscaleSerializer,
     FamilleTvaNonDeductibleSerializer,
     CompensationSerializer,
+    CycleConsolidationSerializer, LiasseRemonteeSerializer,
+    MappingConsolidationSerializer, OperationIntercoSerializer,
+    EcritureEliminationSerializer, MargeInterneStockSerializer,
+    EliminationTitresSerializer,
+    ReferentielComptableSerializer, AjustementGaapSerializer,
+    AxeAnalytiqueSerializer, ImputationAxeSerializer,
 )
 
 
@@ -391,6 +401,46 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
             if isinstance(result, Response):
                 return result
             return self._pdf_response(result, 'balance.pdf')
+        return Response(data)
+
+    @action(detail=False, methods=['get'], url_path='balance-referentiel')
+    def balance_referentiel(self, request):
+        """NTFIN14 — Balance d'un livre parallèle (``?referentiel=<id>``)."""
+        company = request.user.company
+        periode = self._periode(request)
+        ref = None
+        ref_id = request.query_params.get('referentiel')
+        if ref_id:
+            ref = ReferentielComptable.objects.filter(
+                company=company, id=ref_id).first()
+        data = selectors.balance_par_referentiel(company, ref, **periode)
+        return Response(data)
+
+    @action(detail=False, methods=['get'], url_path='balance-analytique')
+    def balance_analytique(self, request):
+        """NTFIN18 — Balance analytique multi-axes (pivot axe × valeur)."""
+        params = request.query_params
+        axes = params.getlist('axe') or None
+        data = selectors.balance_analytique(
+            request.user.company, axes=axes,
+            compte_prefixe=params.get('compte') or None,
+            date_debut=params.get('date_debut') or None,
+            date_fin=params.get('date_fin') or None)
+        return Response(data)
+
+    @action(detail=False, methods=['get'], url_path='resultat-analytique')
+    def resultat_analytique(self, request):
+        """NTFIN19 — Résultat analytique par axe (``?axe=<code>``)."""
+        params = request.query_params
+        axe_code = params.get('axe')
+        if not axe_code:
+            return Response(
+                {'detail': "Le paramètre 'axe' est requis."},
+                status=status.HTTP_400_BAD_REQUEST)
+        data = selectors.resultat_par_axe(
+            request.user.company, axe_code,
+            date_debut=params.get('date_debut') or None,
+            date_fin=params.get('date_fin') or None)
         return Response(data)
 
     @action(detail=False, methods=['get'])
@@ -7715,3 +7765,351 @@ class FamilleTvaNonDeductibleViewSet(_ComptaBaseViewSet):
     serializer_class = FamilleTvaNonDeductibleSerializer
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['famille']
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Groupe NTFIN — Consolidation multi-sociétés (grand groupe)
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _err400(exc):
+    return Response(
+        {'detail': exc.messages[0] if getattr(exc, 'messages', None)
+         else str(exc)},
+        status=status.HTTP_400_BAD_REQUEST)
+
+
+class CycleConsolidationViewSet(_ComptaBaseViewSet):
+    """Cycles de consolidation (NTFIN1) + tout le moniteur de consolidation.
+
+    CRUD des cycles + actions : ``ouvrir``/``verrouiller`` (NTFIN1),
+    ``collecter`` (NTFIN2), ``controles-collecte`` (NTFIN3), ``intercos`` +
+    ``apparier`` (NTFIN6), ``eliminations`` + ``generer-reciproques`` (NTFIN7),
+    ``interets-minoritaires`` (NTFIN10), ``etats-consolides`` (NTFIN11),
+    ``moniteur`` (NTFIN12). Société scopée ; écritures ``compta_valider``.
+    """
+    queryset = CycleConsolidation.objects.select_related('exercice').all()
+    serializer_class = CycleConsolidationSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_debut', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def get_permissions(self):
+        if self.action in (
+                'create', 'update', 'partial_update', 'destroy',
+                'ouvrir', 'verrouiller', 'collecter', 'apparier',
+                'generer_reciproques', 'interets_minoritaires'):
+            return [HasPermissionOrLegacy('compta_valider')()]
+        return super().get_permissions()
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[HasPermissionOrLegacy('compta_valider')])
+    def ouvrir(self, request, pk=None):
+        """NTFIN1 — Rouvre un cycle verrouillé."""
+        cycle = self.get_object()
+        services.ouvrir_cycle_consolidation(cycle)
+        return Response(self.get_serializer(cycle).data)
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[HasPermissionOrLegacy('compta_valider')])
+    def verrouiller(self, request, pk=None):
+        """NTFIN1 — Verrouille un cycle (fige ses données agrégées)."""
+        cycle = self.get_object()
+        services.verrouiller_cycle_consolidation(cycle)
+        return Response(self.get_serializer(cycle).data)
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[HasPermissionOrLegacy('compta_valider')])
+    def collecter(self, request, pk=None):
+        """NTFIN2 — Collecte la balance de chaque entité du périmètre."""
+        cycle = self.get_object()
+        try:
+            liasses = services.collecter_cycle(cycle)
+        except DjangoValidationError as exc:
+            return _err400(exc)
+        cycle.refresh_from_db()
+        return Response({
+            'cycle': CycleConsolidationSerializer(cycle).data,
+            'liasses': LiasseRemonteeSerializer(liasses, many=True).data,
+        })
+
+    @action(detail=True, methods=['get'], url_path='controles-collecte')
+    def controles_collecte(self, request, pk=None):
+        """NTFIN3 — Contrôles de validation de la collecte."""
+        cycle = self.get_object()
+        return Response(selectors.controles_collecte(cycle))
+
+    @action(detail=True, methods=['get'])
+    def intercos(self, request, pk=None):
+        """NTFIN6 — Liste des opérations inter-sociétés du cycle."""
+        cycle = self.get_object()
+        qs = OperationInterco.objects.filter(cycle=cycle)
+        return Response(OperationIntercoSerializer(qs, many=True).data)
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[HasPermissionOrLegacy('compta_valider')])
+    def apparier(self, request, pk=None):
+        """NTFIN6 — Rapproche les opérations réciproques du cycle."""
+        cycle = self.get_object()
+        try:
+            ops = services.apparier_intercos(cycle)
+        except DjangoValidationError as exc:
+            return _err400(exc)
+        return Response(OperationIntercoSerializer(ops, many=True).data)
+
+    @action(detail=True, methods=['get'])
+    def eliminations(self, request, pk=None):
+        """NTFIN7 — Liste des écritures d'élimination du cycle."""
+        cycle = self.get_object()
+        qs = EcritureElimination.objects.filter(cycle=cycle)
+        return Response(EcritureEliminationSerializer(qs, many=True).data)
+
+    @action(detail=True, methods=['post'], url_path='generer-reciproques',
+            permission_classes=[HasPermissionOrLegacy('compta_valider')])
+    def generer_reciproques(self, request, pk=None):
+        """NTFIN7 — Génère les éliminations des intercos appariés."""
+        cycle = self.get_object()
+        try:
+            elims = services.generer_eliminations_reciproques(cycle)
+        except DjangoValidationError as exc:
+            return _err400(exc)
+        return Response(EcritureEliminationSerializer(elims, many=True).data)
+
+    @action(detail=True, methods=['post'], url_path='interets-minoritaires',
+            permission_classes=[HasPermissionOrLegacy('compta_valider')])
+    def interets_minoritaires(self, request, pk=None):
+        """NTFIN10 — Calcule et poste les intérêts minoritaires."""
+        cycle = self.get_object()
+        try:
+            elims = services.calculer_interets_minoritaires(cycle)
+        except DjangoValidationError as exc:
+            return _err400(exc)
+        return Response(EcritureEliminationSerializer(elims, many=True).data)
+
+    @action(detail=True, methods=['get'], url_path='etats-consolides')
+    def etats_consolides(self, request, pk=None):
+        """NTFIN11 — Bilan & CPC consolidés du cycle."""
+        cycle = self.get_object()
+        return Response({
+            'bilan': selectors.bilan_consolide(cycle),
+            'cpc': selectors.cpc_consolide_v2(cycle),
+        })
+
+    @action(detail=True, methods=['get'])
+    def moniteur(self, request, pk=None):
+        """NTFIN12 — Moniteur d'avancement de la consolidation."""
+        cycle = self.get_object()
+        return Response(selectors.moniteur_consolidation(cycle))
+
+
+class LiasseRemonteeViewSet(_ComptaBaseViewSet):
+    """Liasses de remontée collectées par cycle (NTFIN2, lecture)."""
+    queryset = LiasseRemontee.objects.select_related('cycle', 'entite').all()
+    serializer_class = LiasseRemonteeSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['cycle', 'id']
+    http_method_names = ['get', 'head', 'options']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        cycle = self.request.query_params.get('cycle')
+        if cycle:
+            qs = qs.filter(cycle_id=cycle)
+        return qs
+
+
+class MappingConsolidationViewSet(_ComptaBaseViewSet):
+    """Mappings compte local → compte groupe (NTFIN4). Company-scopé."""
+    queryset = MappingConsolidation.objects.select_related(
+        'compte_groupe').all()
+    serializer_class = MappingConsolidationSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['plan_local_prefixe']
+
+
+class OperationIntercoViewSet(_ComptaBaseViewSet):
+    """Opérations inter-sociétés (NTFIN6). CRUD + matching via le cycle."""
+    queryset = OperationInterco.objects.select_related(
+        'cycle', 'entite_debit', 'entite_credit').all()
+    serializer_class = OperationIntercoSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['cycle', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        cycle = self.request.query_params.get('cycle')
+        if cycle:
+            qs = qs.filter(cycle_id=cycle)
+        return qs
+
+
+class MargeInterneStockViewSet(_ComptaBaseViewSet):
+    """Marges internes sur stock (NTFIN8) + action ``eliminer``."""
+    queryset = MargeInterneStock.objects.select_related('cycle').all()
+    serializer_class = MargeInterneStockSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['cycle', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        cycle = self.request.query_params.get('cycle')
+        if cycle:
+            qs = qs.filter(cycle_id=cycle)
+        return qs
+
+    def get_permissions(self):
+        if self.action in (
+                'create', 'update', 'partial_update', 'destroy', 'eliminer'):
+            return [HasPermissionOrLegacy('compta_valider')()]
+        return super().get_permissions()
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[HasPermissionOrLegacy('compta_valider')])
+    def eliminer(self, request, pk=None):
+        """NTFIN8 — Poste l'élimination de la marge interne + impôt différé."""
+        marge = self.get_object()
+        try:
+            elim = services.eliminer_marge_interne(marge)
+        except DjangoValidationError as exc:
+            return _err400(exc)
+        return Response(EcritureEliminationSerializer(elim).data)
+
+
+class EliminationTitresViewSet(_ComptaBaseViewSet):
+    """Éliminations de titres + goodwill (NTFIN9) + action ``eliminer``."""
+    queryset = EliminationTitres.objects.select_related(
+        'cycle', 'entite_fille').all()
+    serializer_class = EliminationTitresSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['cycle', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        cycle = self.request.query_params.get('cycle')
+        if cycle:
+            qs = qs.filter(cycle_id=cycle)
+        return qs
+
+    def get_permissions(self):
+        if self.action in (
+                'create', 'update', 'partial_update', 'destroy', 'eliminer'):
+            return [HasPermissionOrLegacy('compta_valider')()]
+        return super().get_permissions()
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[HasPermissionOrLegacy('compta_valider')])
+    def eliminer(self, request, pk=None):
+        """NTFIN9 — Poste l'élimination des titres et dégage le goodwill."""
+        elim_titres = self.get_object()
+        try:
+            elim = services.eliminer_titres(elim_titres)
+        except DjangoValidationError as exc:
+            return _err400(exc)
+        return Response(EcritureEliminationSerializer(elim).data)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Groupe NTFIN — Multi-référentiel & analytique multi-axes
+# ═══════════════════════════════════════════════════════════════════════════
+
+class ReferentielComptableViewSet(_ComptaBaseViewSet):
+    """Référentiels comptables / livres parallèles (NTFIN13) + ``seed``."""
+    queryset = ReferentielComptable.objects.all()
+    serializer_class = ReferentielComptableSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['code', 'id']
+
+    @action(detail=False, methods=['post'],
+            permission_classes=[HasPermissionOrLegacy('compta_saisir')])
+    def seed(self, request):
+        """NTFIN13 — Amorce le référentiel CGNC principal (idempotent)."""
+        ref = services.seed_referentiel_principal(request.user.company)
+        return Response(self.get_serializer(ref).data)
+
+
+class AjustementGaapViewSet(_ComptaBaseViewSet):
+    """Ajustements de retraitement GAAP (NTFIN15) + action ``poster``."""
+    queryset = AjustementGaap.objects.select_related(
+        'referentiel', 'ecriture').all()
+    serializer_class = AjustementGaapSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        ref = self.request.query_params.get('referentiel')
+        if ref:
+            qs = qs.filter(referentiel_id=ref)
+        return qs
+
+    def get_permissions(self):
+        if self.action in (
+                'create', 'update', 'partial_update', 'destroy', 'poster'):
+            return [HasPermissionOrLegacy('compta_saisir')()]
+        return super().get_permissions()
+
+    @action(detail=False, methods=['post'],
+            permission_classes=[HasPermissionOrLegacy('compta_saisir')])
+    def poster(self, request):
+        """NTFIN15 — Poste un ajustement GAAP dans un livre parallèle.
+
+        Corps : ``{referentiel, motif, type_ajustement?, lignes: [{compte_numero,
+        debit, credit, libelle?}]}``. Les comptes sont résolus par numéro.
+        """
+        company = request.user.company
+        data = request.data
+        ref = ReferentielComptable.objects.filter(
+            company=company, id=data.get('referentiel')).first()
+        if ref is None:
+            return Response({'detail': 'Référentiel inconnu.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        lignes = []
+        for li in data.get('lignes', []):
+            compte = CompteComptable.objects.filter(
+                company=company, numero=li.get('compte_numero')).first()
+            if compte is None:
+                return Response(
+                    {'detail': f"Compte {li.get('compte_numero')} inconnu."},
+                    status=status.HTTP_400_BAD_REQUEST)
+            lignes.append({
+                'compte': compte, 'debit': li.get('debit') or 0,
+                'credit': li.get('credit') or 0,
+                'libelle': li.get('libelle', '')})
+        try:
+            aj = services.poster_ajustement_gaap(
+                company, ref, lignes, data.get('motif', ''),
+                type_ajustement=data.get('type_ajustement', ''),
+                created_by=request.user)
+        except DjangoValidationError as exc:
+            return _err400(exc)
+        return Response(self.get_serializer(aj).data,
+                        status=status.HTTP_201_CREATED)
+
+
+class AxeAnalytiqueViewSet(_ComptaBaseViewSet):
+    """Axes analytiques configurables (NTFIN16). Company-scopé."""
+    queryset = AxeAnalytique.objects.all()
+    serializer_class = AxeAnalytiqueSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['ordre', 'code']
+
+
+class ImputationAxeViewSet(_ComptaBaseViewSet):
+    """Imputations analytiques multi-axes d'une ligne (NTFIN17)."""
+    queryset = ImputationAxe.objects.select_related(
+        'ligne_ecriture', 'axe', 'centre_cout').all()
+    serializer_class = ImputationAxeSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['ligne_ecriture', 'axe']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        ligne = self.request.query_params.get('ligne_ecriture')
+        if ligne:
+            qs = qs.filter(ligne_ecriture_id=ligne)
+        return qs
