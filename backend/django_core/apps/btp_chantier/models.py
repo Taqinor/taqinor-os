@@ -14,10 +14,12 @@ from django.conf import settings
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.db import models
 
+from core.models import TenantModel
+
 
 # ── NTCON1 — ReserveChantier (punch-list géo-localisée sur plan) ───────────
 
-class ReserveChantier(models.Model):
+class ReserveChantier(TenantModel):
     """Une réserve (punch-list) posée sur un plan (document GED) d'un chantier.
 
     Distincte de XFSM18 (``installations``) qui part d'une réserve EXISTANTE
@@ -102,7 +104,7 @@ class ReserveChantier(models.Model):
         return f'Réserve #{self.pk} — {self.get_gravite_display()}'
 
 
-class ReserveChantierHistorique(models.Model):
+class ReserveChantierHistorique(TenantModel):
     """NTCON2 — historique des transitions de statut d'une ``ReserveChantier``.
 
     Trace minimale (ancien → nouveau statut, auteur+date serveur, motif
@@ -133,7 +135,7 @@ class ReserveChantierHistorique(models.Model):
         return f'{self.reserve_id}: {self.ancien_statut} → {self.nouveau_statut}'
 
 
-class SignatureBtp(models.Model):
+class SignatureBtp(TenantModel):
     """NTCON2/NTCON8 — point de capture de signature électronique IN-APP.
 
     Réplique le PATTERN de ``contrats.SignatureContrat`` (loi 53-05 : un nom
@@ -181,7 +183,7 @@ class SignatureBtp(models.Model):
 
 # ── NTCON3 — RFI (Request For Information) ──────────────────────────────────
 
-class RFI(models.Model):
+class RFI(TenantModel):
     """Question technique posée au MOE/BE, avec délai de réponse (NTCON3).
 
     ``numero`` est INCRÉMENTAL PAR CHANTIER (jamais ``count()+1`` — pattern
@@ -249,7 +251,7 @@ class RFI(models.Model):
         return f'RFI #{self.numero} — chantier {self.chantier_id}'
 
 
-class RFIReponse(models.Model):
+class RFIReponse(TenantModel):
     """Réponse à un ``RFI`` (NTCON3). Pièces jointes via ``records.
     Attachment`` (déclaré dans ``platform.py``)."""
     company = models.ForeignKey(
@@ -277,7 +279,7 @@ class RFIReponse(models.Model):
 
 # ── NTCON5 — Visas de documents techniques ──────────────────────────────────
 
-class VisaDocument(models.Model):
+class VisaDocument(TenantModel):
     """Cycle soumission → observations → approbation d'un document technique
     (plan d'exécution, note de calcul, fiche technique, méthode…) — NTCON5.
 
@@ -369,7 +371,7 @@ class VisaDocument(models.Model):
 
 # ── NTCON6 — Journal de chantier quotidien ──────────────────────────────────
 
-class JournalChantier(models.Model):
+class JournalChantier(TenantModel):
     """Entrée quotidienne du journal de chantier (NTCON6) — une par jour par
     chantier (contrainte unique). Photos via ``records.Attachment``
     (déclaré dans ``platform.py``)."""

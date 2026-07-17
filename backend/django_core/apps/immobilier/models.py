@@ -10,8 +10,10 @@ convention que ``chantier_id``/``ged_document_id`` ailleurs dans le repo.
 """
 from django.db import models
 
+from core.models import TenantModel
 
-class Site(models.Model):
+
+class Site(TenantModel):
     """NTPRO1 — Racine du patrimoine (un ensemble immobilier / adresse)."""
 
     company = models.ForeignKey(
@@ -41,7 +43,7 @@ class Site(models.Model):
         return self.nom
 
 
-class Batiment(models.Model):
+class Batiment(TenantModel):
     """NTPRO1 — Bâtiment d'un site."""
 
     company = models.ForeignKey(
@@ -73,7 +75,7 @@ class Batiment(models.Model):
         return f'{self.site.nom} / {self.nom}'
 
 
-class Niveau(models.Model):
+class Niveau(TenantModel):
     """NTPRO1 — Niveau (étage) d'un bâtiment."""
 
     company = models.ForeignKey(
@@ -98,7 +100,7 @@ class Niveau(models.Model):
         return f'{self.batiment.nom} / {self.numero}'
 
 
-class Local(models.Model):
+class Local(TenantModel):
     """NTPRO1 — Local (unité louable) d'un niveau."""
 
     class TypeLocal(models.TextChoices):
@@ -145,7 +147,7 @@ class Local(models.Model):
         return f'{self.niveau} / {self.reference}'
 
 
-class Locataire(models.Model):
+class Locataire(TenantModel):
     """NTPRO2 — Locataire (personne ou société), distinct du CRM."""
 
     class TypeLocataire(models.TextChoices):
@@ -186,7 +188,7 @@ class Locataire(models.Model):
         return self.nom
 
 
-class Bail(models.Model):
+class Bail(TenantModel):
     """NTPRO3 — Bail (habitation loi 67-12 ou commercial loi 49-16)."""
 
     class TypeBail(models.TextChoices):
@@ -264,7 +266,7 @@ class Bail(models.Model):
         return f'Bail {self.local} / {self.locataire}'
 
 
-class RevisionLoyer(models.Model):
+class RevisionLoyer(TenantModel):
     """NTPRO4 — Historique IMMUABLE des révisions de loyer d'un bail."""
 
     company = models.ForeignKey(
@@ -298,7 +300,7 @@ class RevisionLoyer(models.Model):
         return f'{self.bail} — révision {self.date_effet}'
 
 
-class EcheanceLoyer(models.Model):
+class EcheanceLoyer(TenantModel):
     """NTPRO6 — Échéance mensuelle de loyer (générée pour un bail actif)."""
 
     class Statut(models.TextChoices):
@@ -347,7 +349,7 @@ class EcheanceLoyer(models.Model):
         return f'{self.bail} — {self.periode_debut}'
 
 
-class RelanceLoyer(models.Model):
+class RelanceLoyer(TenantModel):
     """NTPRO8 — Relance d'impayé sur une échéance de loyer (distincte des
     relances devis existantes)."""
 

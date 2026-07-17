@@ -14,6 +14,7 @@ from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.viewsets import CompanyScopedModelViewSet
 
 from . import selectors, services
 from .models import (
@@ -28,7 +29,7 @@ from .serializers import (
 READ_ACTIONS = ['list', 'retrieve']
 
 
-class TypeChambreViewSet(TenantMixin, viewsets.ModelViewSet):
+class TypeChambreViewSet(CompanyScopedModelViewSet):
     """Catégories de chambre (Standard/Suite/Riad-suite…), CRUD scopé société."""
     queryset = TypeChambre.objects.all()
     serializer_class = TypeChambreSerializer
@@ -42,7 +43,7 @@ class TypeChambreViewSet(TenantMixin, viewsets.ModelViewSet):
         return [IsResponsableOrAdmin()]
 
 
-class ChambreViewSet(TenantMixin, viewsets.ModelViewSet):
+class ChambreViewSet(CompanyScopedModelViewSet):
     """Chambres/unités, CRUD scopé société. Filtre ``?statut=``."""
     queryset = Chambre.objects.select_related('type_chambre').all()
     serializer_class = ChambreSerializer
@@ -63,7 +64,7 @@ class ChambreViewSet(TenantMixin, viewsets.ModelViewSet):
         return qs
 
 
-class PlanTarifaireViewSet(TenantMixin, viewsets.ModelViewSet):
+class PlanTarifaireViewSet(CompanyScopedModelViewSet):
     """Plans tarifaires (rack/corporate/ota) par type de chambre, CRUD scopé
     société (NTHOT2)."""
     queryset = PlanTarifaire.objects.select_related('type_chambre').all()
@@ -84,7 +85,7 @@ class PlanTarifaireViewSet(TenantMixin, viewsets.ModelViewSet):
         return qs
 
 
-class ReservationViewSet(TenantMixin, viewsets.ModelViewSet):
+class ReservationViewSet(CompanyScopedModelViewSet):
     """Réservations, CRUD scopé société (NTHOT3). Filtre ``?statut=&date_
     arrivee=``. La création passe par ``services.creer_reservation``
     (validation de chevauchement + résolution client + snapshot prix)."""
@@ -234,7 +235,7 @@ class FolioViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
         return Response(self.get_serializer(folio).data)
 
 
-class TacheMenageViewSet(TenantMixin, viewsets.ModelViewSet):
+class TacheMenageViewSet(CompanyScopedModelViewSet):
     """Tâches de ménage (NTHOT9). Une femme/homme de chambre (rôle non
     responsable/admin) ne voit QUE ses tâches assignées ; Responsable/Admin
     voient tout (vue de pilotage). Filtre optionnel ``?statut=``."""

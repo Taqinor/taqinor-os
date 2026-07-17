@@ -12,10 +12,12 @@ from decimal import Decimal
 from django.conf import settings
 from django.db import models
 
+from core.models import TenantModel
+
 
 # ── NTHOT1 — Plan des chambres / unités ─────────────────────────────────────
 
-class TypeChambre(models.Model):
+class TypeChambre(TenantModel):
     """Catégorie de chambre (Standard/Suite/Riad-suite…)."""
 
     company = models.ForeignKey(
@@ -38,7 +40,7 @@ class TypeChambre(models.Model):
         return self.libelle
 
 
-class Chambre(models.Model):
+class Chambre(TenantModel):
     """Chambre/unité physique de l'établissement."""
 
     class Statut(models.TextChoices):
@@ -85,7 +87,7 @@ class Chambre(models.Model):
 
 # ── NTHOT2 — Tarification saisonnière (rack/corporate/ota) ─────────────────
 
-class PlanTarifaire(models.Model):
+class PlanTarifaire(TenantModel):
     """Prix par nuit d'un type de chambre pour une période/canal donnés.
 
     Plusieurs plans peuvent se chevaucher : le prix applicable est résolu par
@@ -131,7 +133,7 @@ class PlanTarifaire(models.Model):
 
 # ── NTHOT3 — Réservations (walk-in/téléphone/email) ─────────────────────────
 
-class Reservation(models.Model):
+class Reservation(TenantModel):
     """Réservation walk-in/téléphone/email/OTA (saisie manuelle uniquement —
     aucune intégration OTA automatique, cf. NTHOT4 gated)."""
 
@@ -219,7 +221,7 @@ class Reservation(models.Model):
 
 # ── NTHOT5 — Fiche de police marocaine (check-in) ───────────────────────────
 
-class FicheClient(models.Model):
+class FicheClient(TenantModel):
     """Fiche de police par occupant (réglementation police des étrangers/
     nationaux), requise pour le check-in — un occupant sans fiche complète
     bloque l'action ``check-in``."""
@@ -258,7 +260,7 @@ class FicheClient(models.Model):
 
 # ── NTHOT7 — Folio client unifié ────────────────────────────────────────────
 
-class Folio(models.Model):
+class Folio(TenantModel):
     """Folio client : toutes les lignes facturables d'un séjour (nuitées,
     extras, restaurant, taxe de séjour) avant clôture en UNE facture ventes
     consolidée (``services.cloturer_folio``, via ``apps.ventes.services``,
@@ -335,7 +337,7 @@ class LigneFolio(models.Model):
 
 # ── NTHOT8 — Taxe de séjour paramétrable ───────────────────────────────────
 
-class ParametresTaxeSejour(models.Model):
+class ParametresTaxeSejour(TenantModel):
     """Paramètres de taxe de séjour, une ligne par société. Appliquée
     automatiquement à la clôture du folio (``services.cloturer_folio``)."""
 
@@ -360,7 +362,7 @@ class ParametresTaxeSejour(models.Model):
 
 # ── NTHOT9 — Housekeeping ───────────────────────────────────────────────────
 
-class TacheMenage(models.Model):
+class TacheMenage(TenantModel):
     """Tâche de ménage assignée à une femme/homme de chambre. Créée
     automatiquement au check-out (``services.check_out``, type ``depart``)."""
 

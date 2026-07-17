@@ -15,10 +15,12 @@ import datetime
 from django.core.exceptions import ValidationError
 from django.db import models
 
+from core.models import TenantModel
+
 
 # ── NTAGR1 — Exploitation + Parcelle ────────────────────────────────────────
 
-class Exploitation(models.Model):
+class Exploitation(TenantModel):
     """Une exploitation agricole (ou membre d'une coopérative) d'une société."""
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
@@ -39,7 +41,7 @@ class Exploitation(models.Model):
         return self.nom
 
 
-class Parcelle(models.Model):
+class Parcelle(TenantModel):
     """Une parcelle cultivable d'une exploitation, avec son polygone GPS."""
 
     class Statut(models.TextChoices):
@@ -73,7 +75,7 @@ class Parcelle(models.Model):
 
 # ── NTAGR2 — CampagneCulturale ──────────────────────────────────────────────
 
-class CampagneCulturale(models.Model):
+class CampagneCulturale(TenantModel):
     """Cycle semis→récolte d'une culture sur une parcelle.
 
     Une parcelle ne peut avoir qu'une seule campagne ``en_cours`` à la fois
@@ -161,7 +163,7 @@ def check_dar_guard(*, type_etape, date, intrant, campagne):
             f"date de récolte du {date_recolte_contraignante.isoformat()}.")
 
 
-class EtapeCampagne(models.Model):
+class EtapeCampagne(TenantModel):
     """Étape horodatée d'une campagne (semis, traitement, irrigation…)."""
 
     class TypeEtape(models.TextChoices):
@@ -204,7 +206,7 @@ class EtapeCampagne(models.Model):
 
 # ── NTAGR5 — IntrantAgricole (catalogue agronomique, lié à stock.Produit) ───
 
-class IntrantAgricole(models.Model):
+class IntrantAgricole(TenantModel):
     """Attributs agronomiques d'un ``stock.Produit`` (semence/engrais/phyto).
 
     Le stock physique reste géré EXCLUSIVEMENT par ``apps.stock`` — ce modèle
@@ -240,7 +242,7 @@ class IntrantAgricole(models.Model):
 
 # ── NTAGR9 — Main d'œuvre saisonnière ───────────────────────────────────────
 
-class EquipeSaisonniere(models.Model):
+class EquipeSaisonniere(TenantModel):
     """Équipe de travailleurs saisonniers d'une exploitation."""
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
@@ -257,7 +259,7 @@ class EquipeSaisonniere(models.Model):
         return self.nom
 
 
-class PointageAgricole(models.Model):
+class PointageAgricole(TenantModel):
     """Pointage journalier par équipe/travailleur/tâche/parcelle.
 
     Donnée agricole INFORMATIVE — ne crée aucun élément de paie (voir

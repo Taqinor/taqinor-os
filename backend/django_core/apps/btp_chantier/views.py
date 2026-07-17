@@ -2,12 +2,12 @@
 lecture/écriture fine-grainée (``WriteScopedPermissionMixin``)."""
 from django.contrib.contenttypes.models import ContentType
 from django.shortcuts import get_object_or_404
-from rest_framework import status, viewsets
+from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from authentication.mixins import TenantMixin
 from core.permissions import WriteScopedPermissionMixin
+from core.viewsets import CompanyScopedModelViewSet
 
 from . import selectors, services
 from .models import JournalChantier, RFI, ReserveChantier, VisaDocument
@@ -48,7 +48,7 @@ def _photos_pour(instance, phase=None):
 
 
 class ReserveChantierViewSet(
-        WriteScopedPermissionMixin, TenantMixin, viewsets.ModelViewSet):
+        WriteScopedPermissionMixin, CompanyScopedModelViewSet):
     """Réserves de chantier (punch-list géo-localisée sur plan) — NTCON1/2.
 
     Filtres liste : ``?lot=&statut=&gravite=&chantier=``. Actions
@@ -130,7 +130,7 @@ class ReserveChantierViewSet(
         return Response(ReserveChantierSerializer(reserve).data)
 
 
-class RFIViewSet(WriteScopedPermissionMixin, TenantMixin, viewsets.ModelViewSet):
+class RFIViewSet(WriteScopedPermissionMixin, CompanyScopedModelViewSet):
     """RFI (Request For Information) — NTCON3.
 
     Filtres liste : ``?chantier=&statut=``. Triée par échéance dépassée en
@@ -195,7 +195,7 @@ class RFIViewSet(WriteScopedPermissionMixin, TenantMixin, viewsets.ModelViewSet)
 
 
 class VisaDocumentViewSet(
-        WriteScopedPermissionMixin, TenantMixin, viewsets.ModelViewSet):
+        WriteScopedPermissionMixin, CompanyScopedModelViewSet):
     """Visas de documents techniques — NTCON5 (soumission→observations→
     approbation, state machine stricte)."""
     queryset = VisaDocument.objects.select_related(
@@ -272,7 +272,7 @@ class VisaDocumentViewSet(
 
 
 class JournalChantierViewSet(
-        WriteScopedPermissionMixin, TenantMixin, viewsets.ModelViewSet):
+        WriteScopedPermissionMixin, CompanyScopedModelViewSet):
     """Journal de chantier quotidien — NTCON6.
 
     Filtres liste : ``?chantier=&du=&au=``. Une entrée par jour par chantier

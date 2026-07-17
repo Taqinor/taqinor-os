@@ -2,11 +2,11 @@
 écriture, tout rôle authentifié en lecture — même patron que ``apps.flotte``/
 ``apps.qhse``)."""
 from django.http import HttpResponse
-from rest_framework import filters, viewsets
+from rest_framework import filters
 from rest_framework.decorators import action
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
-from core.mixins import TenantMixin
+from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
     CampagneCulturale, EquipeSaisonniere, EtapeCampagne, Exploitation,
@@ -21,9 +21,9 @@ from .serializers import (
 READ_ACTIONS = {'list', 'retrieve'}
 
 
-class _AgricultureBaseViewSet(TenantMixin, viewsets.ModelViewSet):
-    """Base : société scopée (TenantMixin). Lecture tout rôle, écriture
-    responsable/admin."""
+class _AgricultureBaseViewSet(CompanyScopedModelViewSet):
+    """Base : société scopée (CompanyScopedModelViewSet). Lecture tout rôle,
+    écriture responsable/admin."""
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:

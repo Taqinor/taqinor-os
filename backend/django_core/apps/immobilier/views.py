@@ -4,11 +4,11 @@ Aucune permission fine dédiée (comme ``apps.flotte``) : ``IsAuthenticated``
 (défaut DRF global) suffit pour ce premier lot — une gate fine pourra être
 ajoutée plus tard sans changer la forme des endpoints.
 """
-from rest_framework import filters, status, viewsets
+from rest_framework import filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from core.mixins import TenantMixin
+from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
     Bail, Batiment, EcheanceLoyer, Local, Locataire, Niveau, RelanceLoyer,
@@ -21,7 +21,7 @@ from .serializers import (
 )
 
 
-class _ImmobilierBaseViewSet(TenantMixin, viewsets.ModelViewSet):
+class _ImmobilierBaseViewSet(CompanyScopedModelViewSet):
     """Base commune : société scopée (get_queryset + perform_create/update)."""
     pass
 
