@@ -15,8 +15,8 @@ from authentication.models import Company
 
 from .models import (
     AnneeScolaire, Classe, Eleve, Famille, GrilleTarifaire, Inscription,
-    Niveau)
-from .services import affecter_classe
+    Niveau, Remise)
+from .services import affecter_classe, valider_inscription
 
 User = get_user_model()
 
@@ -247,3 +247,58 @@ class NTEDU6GrilleTarifaireTests(EducationTestCaseMixin, TestCase):
             'frais_inscription': '600', 'scolarite_annuelle': '13000',
         }, format='json')
         self.assertEqual(response2.status_code, 400, response2.content)
+
+
+class NTEDU7RemiseFratrieTests(EducationTestCaseMixin, TestCase):
+    """NTEDU7 — remise fratrie auto-détectée, toujours en brouillon."""
+
+    def setUp(self):
+        super().setUp()
+        self.classe_libre = Classe.objects.create(
+            company=self.company, annee_scolaire=self.annee,
+            niveau=self.niveau_cp, nom='CP B', capacite_max=30)
+
+    def test_deuxieme_enfant_meme_famille_propose_remise_fratrie_brouillon(self):
+        eleve1 = Eleve.objects.create(
+            company=self.company, famille=self.famille, nom='Bennani',
+            prenom='Yasmine')
+        inscription1 = Inscription.objects.create(
+            company=self.company, eleve=eleve1, annee_scolaire=self.annee,
+            classe_demandee=self.classe_libre)
+        valider_inscription(inscription1, user=self.user)
+        self.assertEqual(
+            Remise.objects.filter(famille=self.famille).count(), 0,
+            "un seul enfant inscrit : pas encore de remise fratrie")
+
+        eleve2 = Eleve.objects.create(
+            company=self.company, famille=self.famille, nom='Bennani',
+            prenom='Sami')
+        inscription2 = Inscription.objects.create(
+            company=self.company, eleve=eleve2, annee_scolaire=self.annee,
+            classe_demandee=self.classe_libre)
+        valider_inscription(inscription2, user=self.user)
+
+        remises = Remise.objects.filter(
+            famille=self.famille, type=Remise.Type.FRATRIE)
+        self.assertEqual(remises.count(), 1)
+        self.assertEqual(remises.first().statut, Remise.Statut.BROUILLON)
+
+    def test_remise_fratrie_jamais_auto_appliquee_sans_validation(self):
+        for prenom in ('Yasmine', 'Sami'):
+            eleve = Eleve.objects.create(
+                company=self.company, famille=self.famille, nom='Bennani',
+                prenom=prenom)
+            inscription = Inscription.objects.create(
+                company=self.company, eleve=eleve, annee_scolaire=self.annee,
+                classe_demandee=self.classe_libre)
+            valider_inscription(inscription, user=self.user)
+
+        remise = Remise.objects.get(
+            famille=self.famille, type=Remise.Type.FRATRIE)
+        self.assertEqual(remise.statut, Remise.Statut.BROUILLON)
+
+        url = f'/api/django/education/remises/{remise.id}/approuver/'
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, 200, response.content)
+        remise.refresh_from_db()
+        self.assertEqual(remise.statut, Remise.Statut.APPROUVEE)

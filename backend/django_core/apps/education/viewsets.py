@@ -12,11 +12,11 @@ from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
     AnneeScolaire, Classe, Eleve, Famille, GrilleTarifaire, Inscription,
-    Niveau)
+    Niveau, Remise)
 from .serializers import (
     AnneeScolaireSerializer, ClasseSerializer, EleveSerializer,
     FamilleSerializer, GrilleTarifaireSerializer, InscriptionSerializer,
-    NiveauSerializer)
+    NiveauSerializer, RemiseSerializer)
 
 
 class AnneeScolaireViewSet(CompanyScopedModelViewSet):
@@ -235,3 +235,30 @@ class GrilleTarifaireViewSet(CompanyScopedModelViewSet):
             active=data.get('active', instance.active),
             exclude_id=instance.id)
         super().perform_update(serializer)
+
+
+class RemiseViewSet(CompanyScopedModelViewSet):
+    """NTEDU7 — remises fratrie/bourse. Une remise ``fratrie`` détectée
+    automatiquement (``services_remises.detecter_remise_fratrie``) arrive
+    TOUJOURS en ``brouillon`` — seules les actions ``approuver``/``rejeter``
+    changent son statut (jamais une mutation directe via ``PATCH statut``,
+    exclu des champs modifiables du serializer)."""
+
+    queryset = Remise.objects.select_related('famille', 'eleve').all()
+    serializer_class = RemiseSerializer
+
+    @action(detail=True, methods=['post'], url_path='approuver')
+    def approuver(self, request, pk=None):
+        remise = self.get_object()
+        remise.statut = Remise.Statut.APPROUVEE
+        remise.approuve_par = request.user
+        remise.save(update_fields=['statut', 'approuve_par'])
+        return Response(RemiseSerializer(remise).data)
+
+    @action(detail=True, methods=['post'], url_path='rejeter')
+    def rejeter(self, request, pk=None):
+        remise = self.get_object()
+        remise.statut = Remise.Statut.REJETEE
+        remise.approuve_par = request.user
+        remise.save(update_fields=['statut', 'approuve_par'])
+        return Response(RemiseSerializer(remise).data)

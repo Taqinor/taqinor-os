@@ -318,3 +318,67 @@ class GrilleTarifaire(TenantModel):
 
     def __str__(self):
         return f"{self.niveau} — {self.annee_scolaire}"
+
+
+# =============================================================================
+# NTEDU7 — Remises fratrie et bourses.
+# =============================================================================
+
+class Remise(TenantModel):
+    """NTEDU7 — remise (fratrie/bourse/autre) appliquée à l'échéancier
+    (NTEDU8). Reste ``brouillon`` tant qu'elle n'est pas explicitement
+    ``approuvee`` — la remise fratrie détectée automatiquement (``services_
+    remises.detecter_remise_fratrie``) n'est JAMAIS auto-appliquée sans
+    validation."""
+
+    class Type(models.TextChoices):
+        FRATRIE = 'fratrie', 'Fratrie'
+        BOURSE = 'bourse', 'Bourse'
+        AUTRE = 'autre', 'Autre'
+
+    class Mode(models.TextChoices):
+        POURCENTAGE = 'pourcentage', 'Pourcentage'
+        MONTANT_FIXE = 'montant_fixe', 'Montant fixe'
+
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        APPROUVEE = 'approuvee', 'Approuvée'
+        REJETEE = 'rejetee', 'Rejetée'
+
+    famille = models.ForeignKey(
+        Famille, on_delete=models.CASCADE, null=True, blank=True,
+        related_name='remises', verbose_name='Famille')
+    eleve = models.ForeignKey(
+        Eleve, on_delete=models.CASCADE, null=True, blank=True,
+        related_name='remises', verbose_name='Élève')
+    type = models.CharField(
+        max_length=10, choices=Type.choices, verbose_name='Type')
+    mode = models.CharField(
+        max_length=15, choices=Mode.choices, default=Mode.POURCENTAGE,
+        verbose_name='Mode')
+    valeur = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal('0'),
+        verbose_name='Valeur')
+    motif = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Motif')
+    valable_annee_scolaire = models.ForeignKey(
+        AnneeScolaire, on_delete=models.CASCADE, related_name='remises',
+        verbose_name='Année scolaire')
+    justificatif = models.ForeignKey(
+        'ged.Document', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='remises_education', verbose_name='Justificatif (GED)')
+    approuve_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='education_remises_approuvees', verbose_name='Approuvé par')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.BROUILLON,
+        verbose_name='Statut')
+
+    class Meta:
+        verbose_name = 'Remise'
+        verbose_name_plural = 'Remises'
+        ordering = ['-id']
+
+    def __str__(self):
+        cible = self.eleve or self.famille
+        return f"{self.get_type_display()} — {cible}"
