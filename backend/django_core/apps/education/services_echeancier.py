@@ -42,13 +42,19 @@ def generer_echeancier(eleve, annee_scolaire):
     if grille is None:
         return None
 
+    from .models import ParametresEducation
     from .services_remises import montant_remises_approuvees
 
     montant_brut = grille.frais_inscription + grille.scolarite_annuelle
     remise_totale, remises = montant_remises_approuvees(
         eleve, annee_scolaire, grille.scolarite_annuelle)
     montant_total = max(Decimal('0'), montant_brut - remise_totale)
-    nombre_echeances = 10
+    # NTEDU19 — nombre d'échéances par défaut PARAMÉTRABLE par société
+    # (``ParametresEducation.get`` singleton get_or_create) : changer le
+    # réglage pré-remplit automatiquement le PROCHAIN échéancier généré, sans
+    # ressaisie. 10 reste le défaut historique tant qu'aucun réglage dédié
+    # n'a été posé.
+    nombre_echeances = ParametresEducation.get(eleve.company).nombre_echeances_defaut
 
     with transaction.atomic():
         echeancier = EcheancierScolarite.objects.create(

@@ -4,7 +4,7 @@ from rest_framework import serializers
 from .models import (
     AnneeScolaire, Classe, EcheancierScolarite, Eleve, Evaluation, Famille,
     GrilleTarifaire, Inscription, LigneEcheance, Matiere, MatiereClasse,
-    Niveau, Note, Presence, Remise, Seance)
+    Niveau, Note, ParametresEducation, Presence, Remise, Seance)
 
 
 class AnneeScolaireSerializer(serializers.ModelSerializer):
@@ -161,4 +161,18 @@ class NoteSerializer(serializers.ModelSerializer):
     class Meta:
         model = Note
         fields = ['id', 'evaluation', 'eleve', 'valeur', 'appreciation']
+        read_only_fields = ['id']
+
+
+# =============================================================================
+# NTEDU19 — Paramètres école.
+# =============================================================================
+
+class ParametresEducationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ParametresEducation
+        fields = [
+            'id', 'nombre_echeances_defaut', 'taux_remise_fratrie_defaut',
+            'grille_mentions', 'delai_relance_impaye_jours', 'devise',
+            'notifier_incidents_mineurs']
         read_only_fields = ['id']

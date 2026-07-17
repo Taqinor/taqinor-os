@@ -16,8 +16,8 @@ from authentication.models import Company
 
 from .models import (
     AnneeScolaire, Classe, Eleve, Evaluation, Famille, GrilleTarifaire,
-    Inscription, Matiere, MatiereClasse, Niveau, Note, Presence, Remise,
-    Seance)
+    Inscription, Matiere, MatiereClasse, Niveau, Note, ParametresEducation,
+    Presence, Remise, Seance)
 from .services import affecter_classe, valider_inscription
 
 User = get_user_model()
@@ -587,3 +587,58 @@ class NTEDU18CertificatScolariteTests(EducationTestCaseMixin, TestCase):
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200, response.content)
         self.assertEqual(response['Content-Type'], 'application/pdf')
+
+
+class NTEDU19ParametresEducationTests(EducationTestCaseMixin, TestCase):
+    """NTEDU19 — les réglages société pré-remplissent AUTOMATIQUEMENT les
+    prochaines grilles/échéanciers générés, sans ressaisie."""
+
+    def test_taux_fratrie_defaut_pre_rempli_sur_remise_auto_detectee(self):
+        from .services_remises import detecter_remise_fratrie
+
+        ParametresEducation.objects.create(
+            company=self.company, taux_remise_fratrie_defaut=Decimal('15'))
+
+        eleve1 = Eleve.objects.create(
+            company=self.company, famille=self.famille, nom='B', prenom='1')
+        eleve2 = Eleve.objects.create(
+            company=self.company, famille=self.famille, nom='B', prenom='2')
+        self.famille.eleves.filter(pk__in=[eleve1.pk, eleve2.pk]).update(
+            statut=Eleve.Statut.INSCRIT)
+
+        remise = detecter_remise_fratrie(eleve2, self.annee)
+        self.assertEqual(remise.valeur, Decimal('15.00'))
+
+    def test_nombre_echeances_defaut_pre_rempli_sur_echeancier(self):
+        from .services_echeancier import generer_echeancier
+
+        ParametresEducation.objects.create(
+            company=self.company, nombre_echeances_defaut=12)
+        GrilleTarifaire.objects.create(
+            company=self.company, annee_scolaire=self.annee,
+            niveau=self.niveau_cp, frais_inscription=Decimal('500'),
+            scolarite_annuelle=Decimal('12000'))
+        eleve = Eleve.objects.create(
+            company=self.company, famille=self.famille, nom='X', prenom='Y',
+            classe=self.classe)
+
+        echeancier = generer_echeancier(eleve, self.annee)
+        self.assertEqual(echeancier.nombre_echeances, 12)
+        self.assertEqual(echeancier.lignes.count(), 12)
+
+    def test_get_est_un_singleton_par_societe(self):
+        obj1 = ParametresEducation.get(self.company)
+        obj2 = ParametresEducation.get(self.company)
+        self.assertEqual(obj1.id, obj2.id)
+
+    def test_endpoint_singleton_get_or_create(self):
+        url = '/api/django/education/parametres/'
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.data['nombre_echeances_defaut'], 10)
+
+        response_patch = self.client.post(
+            url, {'nombre_echeances_defaut': 8}, format='json')
+        self.assertEqual(response_patch.status_code, 200, response_patch.content)
+        self.assertEqual(
+            ParametresEducation.get(self.company).nombre_echeances_defaut, 8)

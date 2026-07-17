@@ -16,13 +16,14 @@ from core.viewsets import CompanyScopedModelViewSet
 from .models import (
     AnneeScolaire, Classe, EcheancierScolarite, Eleve, Evaluation, Famille,
     GrilleTarifaire, Inscription, Matiere, MatiereClasse, Niveau, Note,
-    Presence, Remise, Seance)
+    ParametresEducation, Presence, Remise, Seance)
 from .serializers import (
     AnneeScolaireSerializer, ClasseSerializer, EcheancierScolariteSerializer,
     EleveSerializer, EvaluationSerializer, FamilleSerializer,
     GrilleTarifaireSerializer, InscriptionSerializer, MatiereClasseSerializer,
-    MatiereSerializer, NiveauSerializer, NoteSerializer, PresenceSerializer,
-    RemiseSerializer, SeanceSerializer)
+    MatiereSerializer, NiveauSerializer, NoteSerializer,
+    ParametresEducationSerializer, PresenceSerializer, RemiseSerializer,
+    SeanceSerializer)
 
 
 class AnneeScolaireViewSet(CompanyScopedModelViewSet):
@@ -433,3 +434,32 @@ class NoteViewSet(CompanyScopedModelViewSet):
             resultats.append(note)
 
         return Response(NoteSerializer(resultats, many=True).data)
+
+
+# =============================================================================
+# NTEDU19 — Paramètres école.
+# =============================================================================
+
+class ParametresEducationViewSet(CompanyScopedModelViewSet):
+    """NTEDU19 — réglages par défaut de l'établissement. Singleton par
+    société (même patron que ``sav.SavSlaSettingsViewSet``) : ``list``
+    renvoie l'unique enregistrement (get_or_create), l'écriture passe par
+    ``create`` (upsert PATCH-like)."""
+
+    queryset = ParametresEducation.objects.all()
+    serializer_class = ParametresEducationSerializer
+
+    def list(self, request, *args, **kwargs):
+        company = request.user.company
+        if company is None:
+            return Response({})
+        obj = ParametresEducation.get(company)
+        return Response(self.get_serializer(obj).data)
+
+    def create(self, request, *args, **kwargs):
+        company = request.user.company
+        obj = ParametresEducation.get(company)
+        serializer = self.get_serializer(obj, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(company=company)
+        return Response(serializer.data, status=status.HTTP_200_OK)

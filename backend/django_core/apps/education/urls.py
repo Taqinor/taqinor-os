@@ -5,7 +5,8 @@ from .viewsets import (
     AnneeScolaireViewSet, ClasseViewSet, EcheancierScolariteViewSet,
     EleveViewSet, EvaluationViewSet, FamilleViewSet, GrilleTarifaireViewSet,
     InscriptionViewSet, MatiereClasseViewSet, MatiereViewSet, NiveauViewSet,
-    NoteViewSet, PresenceViewSet, RemiseViewSet, SeanceViewSet)
+    NoteViewSet, ParametresEducationViewSet, PresenceViewSet, RemiseViewSet,
+    SeanceViewSet)
 
 router = DefaultRouter()
 router.register(
@@ -31,6 +32,8 @@ router.register(
 router.register(
     r'evaluations', EvaluationViewSet, basename='education-evaluation')
 router.register(r'notes', NoteViewSet, basename='education-note')
+router.register(
+    r'parametres', ParametresEducationViewSet, basename='education-parametres')
 
 urlpatterns = [
     path('', include(router.urls)),

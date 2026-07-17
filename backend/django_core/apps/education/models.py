@@ -691,3 +691,49 @@ class CertificatScolarite(TenantModel):
 
     def __str__(self):
         return f"{self.numero} — {self.eleve}"
+
+
+# =============================================================================
+# NTEDU19 — Paramètres école.
+# =============================================================================
+
+class ParametresEducation(models.Model):
+    """NTEDU19 — réglages par défaut de l'établissement, MÊME PATRON que
+    ``apps.sav.SavSlaSettings`` : singleton par société via
+    ``ParametresEducation.get(company)`` (get_or_create), jamais un
+    ``objects.create`` direct côté appelant. Consommé par
+    ``services_remises._taux_fratrie_par_defaut`` (NTEDU7) et
+    ``services_echeancier.generer_echeancier`` (NTEDU8) — changer un réglage
+    ici pré-remplit automatiquement les PROCHAINES grilles/échéanciers
+    générés, sans ressaisie. ``notifier_incidents_mineurs`` (NTEDU27) pilote
+    la notification parent des incidents de gravité mineure (majeure =
+    toujours notifiée)."""
+
+    company = models.OneToOneField(
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: réglages liés au cycle de vie de la société
+        related_name='education_parametres', verbose_name='Société')
+    nombre_echeances_defaut = models.PositiveIntegerField(
+        default=10, verbose_name="Nombre d'échéances par défaut")
+    taux_remise_fratrie_defaut = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('10'),
+        verbose_name='Taux de remise fratrie par défaut (%)')
+    grille_mentions = models.JSONField(
+        default=dict, blank=True, verbose_name='Grille des mentions')
+    delai_relance_impaye_jours = models.PositiveIntegerField(
+        default=15, verbose_name="Délai de relance impayé (jours)")
+    devise = models.CharField(
+        max_length=3, default='MAD', verbose_name='Devise')
+    notifier_incidents_mineurs = models.BooleanField(
+        default=False, verbose_name='Notifier les incidents mineurs')
+
+    class Meta:
+        verbose_name = 'Paramètres éducation'
+        verbose_name_plural = 'Paramètres éducation'
+
+    def __str__(self):
+        return f"Paramètres — {self.company}"
+
+    @classmethod
+    def get(cls, company):
+        obj, _ = cls.objects.get_or_create(company=company)
+        return obj
