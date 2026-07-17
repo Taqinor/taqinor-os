@@ -29,6 +29,19 @@ class TransitionInvalide(ValueError):
     courant de l'idée."""
 
 
+class ReouvertureInterdite(ValueError):
+    """Levée quand l'auteur tente de ré-ouvrir une idée qui n'est pas dans un
+    statut ré-ouvrable, ou quand un tiers (pas l'auteur) tente l'action
+    (NTIDE17)."""
+
+
+# NTIDE17 — l'auteur peut ré-ouvrir sa propre idée FERMÉE ou EXAMINÉE (retour
+# à OUVERT, avant tout examen approfondi) ; verrouillé dès que l'idée a été
+# RETENUE (ou RÉALISÉE) — l'auteur ne défait jamais une décision déjà prise
+# par le palier Directeur/Responsable.
+REOUVRIR_DEPUIS = frozenset({Idee.Statut.FERMEE, Idee.Statut.EXAMINEE})
+
+
 def transitionner(idee, *, target, user, note=''):
     """Applique une transition de statut si elle est légale, journalise le
     changement dans le chatter générique (``records.Activity``, ARC8).
@@ -52,6 +65,32 @@ def transitionner(idee, *, target, user, note=''):
         idee, Activity.Kind.MODIFICATION, user=user, field='statut',
         field_label='Statut', old_value=old, new_value=target,
         body=note or '', company=idee.company)
+    return idee
+
+
+def reouvrir(idee, user):
+    """NTIDE17 — l'AUTEUR (et uniquement l'auteur) ré-ouvre sa propre idée
+    depuis FERMÉE ou EXAMINÉE vers OUVERT. Verrouillé dès RETENUE/RÉALISÉE.
+    Journalise la transition dans le chatter générique (ARC8), comme les
+    transitions du palier Directeur/Responsable (``transitionner``)."""
+    if idee.auteur_id != user.id:
+        raise ReouvertureInterdite(
+            "Seul l'auteur peut ré-ouvrir son idée.")
+    if idee.statut not in REOUVRIR_DEPUIS:
+        raise ReouvertureInterdite(
+            f"Ré-ouverture impossible depuis « {idee.get_statut_display()} » "
+            '(verrouillée après « Retenue »).')
+
+    old = idee.statut
+    idee.statut = Idee.Statut.OUVERT
+    idee.save(update_fields=['statut', 'updated_at'])
+
+    from apps.records.models import Activity
+    from apps.records.services import log_activity
+    log_activity(
+        idee, Activity.Kind.MODIFICATION, user=user, field='statut',
+        field_label='Statut', old_value=old, new_value=Idee.Statut.OUVERT,
+        body="Ré-ouverte par l'auteur.", company=idee.company)
     return idee
 
 

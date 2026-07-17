@@ -28,6 +28,7 @@ const innovationApiMock = vi.hoisted(() => ({
   fermer: vi.fn(),
   historique: vi.fn(),
   lier: vi.fn(),
+  reouvrir: vi.fn(),
   vote: vi.fn(),
   retirerVote: vi.fn(),
   votesRecents: vi.fn(),
@@ -178,6 +179,41 @@ describe('IdeeDetail', () => {
     const user = userEvent.setup()
     await user.click(screen.getByRole('button', { name: /Voter/ }))
     await waitFor(() => expect(innovationApiMock.vote).toHaveBeenCalledWith('3'))
+  })
+
+  it('NTIDE17 — l\'auteur voit « Ré-ouvrir » sur une idée fermée et peut la ré-ouvrir', async () => {
+    innovationApiMock.get.mockResolvedValue({
+      data: {
+        id: 4, titre: 'Idée fermée', statut: 'fermee', votes_count: 1,
+        auteur: 1, historique: [],
+      },
+    })
+    innovationApiMock.reouvrir.mockResolvedValue({ data: { id: 4 } })
+    const { default: IdeeDetail } = await import('./IdeeDetail')
+    render(wrap(
+      <Routes><Route path="/innovation/idees/:id" element={<IdeeDetail />} /></Routes>,
+      { route: '/innovation/idees/4' },
+    ))
+    await waitFor(() => expect(screen.getByText('Idée fermée')).toBeTruthy())
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: /Ré-ouvrir/ }))
+    await waitFor(() => expect(innovationApiMock.reouvrir).toHaveBeenCalledWith('4'))
+  })
+
+  it('NTIDE17 — un non-auteur ne voit pas « Ré-ouvrir » sur une idée fermée', async () => {
+    innovationApiMock.get.mockResolvedValue({
+      data: {
+        id: 5, titre: 'Idée fermée (autre auteur)', statut: 'fermee',
+        votes_count: 1, auteur: 99, historique: [],
+      },
+    })
+    const { default: IdeeDetail } = await import('./IdeeDetail')
+    render(wrap(
+      <Routes><Route path="/innovation/idees/:id" element={<IdeeDetail />} /></Routes>,
+      { route: '/innovation/idees/5' },
+    ))
+    await waitFor(() => expect(screen.getByText('Idée fermée (autre auteur)')).toBeTruthy())
+    expect(screen.queryByRole('button', { name: /Ré-ouvrir/ })).toBeNull()
   })
 })
 

@@ -125,6 +125,21 @@ class IdeeViewSet(CompanyScopedModelViewSet):
         (``{"note": "..."}``), journalisée dans le chatter."""
         return self._transition(request, Idee.Statut.FERMEE)
 
+    # ── NTIDE17 — l'auteur ré-ouvre sa propre idée fermée/examinée ───────────
+    @action(detail=True, methods=['post'], url_path='reouvrir',
+            permission_classes=[IsAnyRole])
+    def reouvrir(self, request, pk=None):
+        """« Notion de "auteur peut modifier" » : réservé à l'auteur (403
+        sinon), depuis FERMÉE/EXAMINÉE uniquement (verrouillé après
+        RETENUE/RÉALISÉE — géré côté serveur, 400 sinon)."""
+        idee = self.get_object()
+        try:
+            services.reouvrir(idee, request.user)
+        except services.ReouvertureInterdite as exc:
+            return Response({'statut': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(IdeeSerializer(idee).data)
+
     # ── NTIDE14 — lier une idée à un devis/ticket/chantier (opaque string-FK) ─
     @action(detail=True, methods=['post'], url_path='lier',
             permission_classes=[IsAnyRole])

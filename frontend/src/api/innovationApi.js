@@ -35,6 +35,9 @@ const innovationApi = {
     api.post(`/innovation/idees/${id}/lier/`,
       { linked_type: linkedType, linked_id: linkedId }),
 
+  // ── Ré-ouverture par l'auteur (NTIDE17, fermée/examinée uniquement) ──
+  reouvrir: (id) => api.post(`/innovation/idees/${id}/reouvrir/`),
+
   // ── Export .xlsx (NTIDE12, filtres statut/contexte/date appliqués) ──
   exportXlsx: (params) =>
     api.get('/innovation/idees/export-xlsx/', { params, responseType: 'blob' }),

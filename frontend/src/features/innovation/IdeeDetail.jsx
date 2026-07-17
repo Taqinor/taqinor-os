@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { useSelector } from 'react-redux'
 import {
-  ThumbsUp, Search, CheckCircle2, Rocket, XCircle, Send, Link2,
+  ThumbsUp, Search, CheckCircle2, Rocket, XCircle, Send, Link2, RotateCcw,
 } from 'lucide-react'
 import { DetailShell } from '../../ui/module'
 import {
@@ -37,6 +38,7 @@ function labelLinkedType(v) {
 export default function IdeeDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const currentUser = useSelector((s) => s.auth.user)
   const [idee, setIdee] = useState(null)
   const [activites, setActivites] = useState([])
   const [loading, setLoading] = useState(true)
@@ -80,6 +82,19 @@ export default function IdeeDetail() {
       toast.error(err?.response?.status === 403
         ? "Action réservée au palier Directeur/Responsable."
         : 'Transition impossible.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleReouvrir = async () => {
+    setBusy(true)
+    try {
+      await innovationApi.reouvrir(id)
+      toast.success('Idée ré-ouverte.')
+      await load()
+    } catch (err) {
+      toast.error(err?.response?.data?.statut || 'Ré-ouverture impossible.')
     } finally {
       setBusy(false)
     }
@@ -181,6 +196,11 @@ export default function IdeeDetail() {
   )
 
   const transitions = transitionsPour(idee.statut)
+  // NTIDE17 — l'auteur peut ré-ouvrir depuis fermée/examinée uniquement
+  // (verrouillé après retenue/réalisée) ; serveur fait autorité (403/400
+  // affichés en toast si l'un de ces garde-fous a changé entre-temps).
+  const peutReouvrir = idee.auteur === currentUser?.id
+    && ['fermee', 'examinee'].includes(idee.statut)
   const actions = (
     <>
       <Button type="button" variant="outline" onClick={handleVote} disabled={busy}>
@@ -190,6 +210,11 @@ export default function IdeeDetail() {
               onClick={() => setShowLierDialog(true)}>
         <Link2 /> Lier à devis/ticket/chantier
       </Button>
+      {peutReouvrir && (
+        <Button type="button" variant="outline" onClick={handleReouvrir} disabled={busy}>
+          <RotateCcw /> Ré-ouvrir
+        </Button>
+      )}
       {!estTerminal(idee.statut) && transitions.map((key) => {
         const Icon = TRANSITION_ICONS[key]
         if (key === 'fermer') {
