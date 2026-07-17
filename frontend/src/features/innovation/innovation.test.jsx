@@ -268,6 +268,21 @@ describe('ProposerIdeeForm (NTIDE8/NTIDE9)', () => {
     expect(innovationApiMock.create).not.toHaveBeenCalled()
   })
 
+  it('NTIDE18 — coche « Enregistrer en brouillon » : payload.draft = true', async () => {
+    innovationApiMock.create.mockResolvedValue({ data: { id: 10 } })
+    const { default: ProposerIdeeForm } = await import('./ProposerIdeeForm')
+    render(wrap(<ProposerIdeeForm />))
+
+    const user = userEvent.setup()
+    await user.type(screen.getByLabelText('Titre'), 'Idée pas encore prête')
+    await user.click(screen.getByRole('checkbox', { name: /Enregistrer en brouillon/ }))
+    await user.click(screen.getByRole('button', { name: /Enregistrer en brouillon/ }))
+
+    await waitFor(() => expect(innovationApiMock.create).toHaveBeenCalled())
+    const [payload] = innovationApiMock.create.mock.calls[0]
+    expect(payload.draft).toBe(true)
+  })
+
   it('NTIDE10 — propose les contextes fréquents en autocomplétion (datalist)', async () => {
     innovationApiMock.contextes.mockResolvedValueOnce({
       data: { results: ['SAV', 'Devis', 'Stock'] },

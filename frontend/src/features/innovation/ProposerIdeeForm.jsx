@@ -1,17 +1,20 @@
 import { useEffect, useId, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Send } from 'lucide-react'
+import { Send, Save } from 'lucide-react'
 import { Button, Input, Textarea, Checkbox, toast } from '../../ui'
 import innovationApi from '../../api/innovationApi'
 import { contexteFromPath, linkedFromLocation } from './linkedContext'
 
 /* ============================================================================
-   NTIDE8/NTIDE9/NTIDE10/NTIDE11 — Formulaire « Proposer une idée », partagé
-   entre la page dédiée (/innovation/proposer) et le CTA modal (Intercom-style,
-   monté sur chaque écran). Contexte autodétecté depuis la route courante
-   (NTIDE9, ex. leads → « CRM »), avec autocomplétion des 5 contextes les plus
-   fréquents (NTIDE10). Propose de lier l'idée au document ouvert quand un
-   signal fiable existe dans l'URL (NTIDE11, ex. devis en édition).
+   NTIDE8/NTIDE9/NTIDE10/NTIDE11/NTIDE18 — Formulaire « Proposer une idée »,
+   partagé entre la page dédiée (/innovation/proposer) et le CTA modal
+   (Intercom-style, monté sur chaque écran). Contexte autodétecté depuis la
+   route courante (NTIDE9, ex. leads → « CRM »), avec autocomplétion des 5
+   contextes les plus fréquents (NTIDE10). Propose de lier l'idée au document
+   ouvert quand un signal fiable existe dans l'URL (NTIDE11, ex. devis en
+   édition). « Enregistrer en brouillon » (NTIDE18) : l'idée reste interne à
+   l'auteur (invisible des autres) jusqu'à ce qu'il la publie depuis son
+   détail (bouton « Publier »).
    ========================================================================== */
 
 export default function ProposerIdeeForm({ onCreated, onCancel, compact = false }) {
@@ -24,6 +27,8 @@ export default function ProposerIdeeForm({ onCreated, onCancel, compact = false 
   const [contexte, setContexte] = useState(() => contexteFromPath(location.pathname))
   const [suggestions, setSuggestions] = useState([])
   const [submitting, setSubmitting] = useState(false)
+  // NTIDE18 — brouillon (reste interne à l'auteur tant que non publié).
+  const [draft, setDraft] = useState(false)
 
   const linked = linkedFromLocation(location.pathname, location.search)
   const [lierIdee, setLierIdee] = useState(!!linked)
@@ -40,13 +45,17 @@ export default function ProposerIdeeForm({ onCreated, onCancel, compact = false 
     if (!t) { toast.error('Le titre est obligatoire.'); return }
     setSubmitting(true)
     try {
-      const payload = { titre: t, description: description.trim(), contexte: contexte.trim() }
+      const payload = {
+        titre: t, description: description.trim(), contexte: contexte.trim(), draft,
+      }
       if (lierIdee && linked) {
         payload.linked_type = linked.type
         payload.linked_id = linked.id
       }
       const res = await innovationApi.create(payload)
-      toast.success("Merci ! L'équipe examinera votre idée.")
+      toast.success(draft
+        ? 'Brouillon enregistré — visible uniquement par vous.'
+        : "Merci ! L'équipe examinera votre idée.")
       setTitre(''); setDescription('')
       if (onCreated) onCreated(res.data)
       else navigate(`/innovation/idees/${res.data.id}`)
@@ -103,6 +112,11 @@ export default function ProposerIdeeForm({ onCreated, onCancel, compact = false 
         </label>
       )}
 
+      <label className="flex items-center gap-2 text-sm text-muted-foreground">
+        <Checkbox checked={draft} onCheckedChange={(v) => setDraft(!!v)} />
+        Enregistrer en brouillon (visible uniquement par vous, pour l'instant)
+      </label>
+
       <div className="flex items-center justify-end gap-2 pt-1">
         {onCancel && (
           <Button type="button" variant="ghost" onClick={onCancel} disabled={submitting}>
@@ -110,7 +124,7 @@ export default function ProposerIdeeForm({ onCreated, onCancel, compact = false 
           </Button>
         )}
         <Button type="submit" disabled={submitting}>
-          <Send /> Proposer l'idée
+          {draft ? <><Save /> Enregistrer en brouillon</> : <><Send /> Proposer l'idée</>}
         </Button>
       </div>
     </form>

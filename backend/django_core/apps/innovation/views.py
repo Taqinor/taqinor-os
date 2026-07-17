@@ -49,6 +49,11 @@ class IdeeViewSet(CompanyScopedModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
+        # NTIDE18 — une idée en brouillon (draft=True) reste interne à son
+        # auteur : invisible de tout le monde d'autre, y compris dans les
+        # exports/actions en masse admin (qui réutilisent get_queryset()).
+        from django.db.models import Q
+        qs = qs.filter(Q(draft=False) | Q(auteur=self.request.user))
         params = self.request.query_params
         statut = params.get('statut')
         if statut:
@@ -65,8 +70,13 @@ class IdeeViewSet(CompanyScopedModelViewSet):
         return qs
 
     def perform_create(self, serializer):
+        # NTIDE18 — « Enregistrer en brouillon » : lu directement du corps
+        # (c'est l'intention même de la case à cocher), jamais depuis un
+        # champ PATCH-able ensuite (``draft`` est read-only, cf. serializer).
+        draft = bool(self.request.data.get('draft'))
         idee = serializer.save(
-            company=self.request.user.company, auteur=self.request.user)
+            company=self.request.user.company, auteur=self.request.user,
+            draft=draft)
         from apps.records.models import Activity
         from apps.records.services import log_activity
         log_activity(
@@ -124,6 +134,22 @@ class IdeeViewSet(CompanyScopedModelViewSet):
         """ouvert|examinée|retenue → fermée. Note de fermeture optionnelle
         (``{"note": "..."}``), journalisée dans le chatter."""
         return self._transition(request, Idee.Statut.FERMEE)
+
+    # ── NTIDE18 — publier une idée brouillon (draft → False) ─────────────────
+    @action(detail=True, methods=['post'], url_path='publier',
+            permission_classes=[IsAnyRole])
+    def publier(self, request, pk=None):
+        """Réservé à l'auteur du brouillon (403 sinon). Une fois publiée,
+        l'idée redevient visible de toute la société (``get_queryset``)."""
+        idee = self.get_object()
+        if idee.auteur_id != request.user.id:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied(
+                "Seul l'auteur peut publier son brouillon.")
+        if idee.draft:
+            idee.draft = False
+            idee.save(update_fields=['draft', 'updated_at'])
+        return Response(IdeeSerializer(idee).data)
 
     # ── NTIDE17 — l'auteur ré-ouvre sa propre idée fermée/examinée ───────────
     @action(detail=True, methods=['post'], url_path='reouvrir',

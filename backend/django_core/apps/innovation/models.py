@@ -69,6 +69,11 @@ class Idee(TenantModel):
         verbose_name='Type lié (devis/ticket/chantier)')
     linked_id = models.PositiveIntegerField(
         null=True, blank=True, verbose_name='ID lié (opaque)')
+    # NTIDE18 — « Enregistrer en brouillon » : tant que True, l'idée reste
+    # interne à son auteur (invisible des autres dans les listes/le tableau
+    # de bord, cf. ``IdeeViewSet.get_queryset``/``selectors``) ; passe à
+    # False quand l'auteur clique « Publier ».
+    draft = models.BooleanField(default=False, verbose_name='Brouillon')
 
     class Meta:
         verbose_name = 'Idée'

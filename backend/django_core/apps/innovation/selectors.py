@@ -13,7 +13,10 @@ def idees_par_statut(company):
     from .models import Idee
 
     S = Idee.Statut
-    qs = Idee.objects.filter(company=company)
+    # NTIDE18 — une idée en brouillon reste interne à son auteur : jamais
+    # comptée dans les agrégats admin (mêmes chiffres qu'avant qu'elle soit
+    # publiée).
+    qs = Idee.objects.filter(company=company, draft=False)
     compte = qs.aggregate(
         ouvert=Count('id', filter=Q(statut=S.OUVERT)),
         examinee=Count('id', filter=Q(statut=S.EXAMINEE)),
@@ -37,7 +40,7 @@ def top_votes(company, limit=5):
     d'abord en cas d'égalité."""
     from .models import Idee
 
-    qs = (Idee.objects.filter(company=company)
+    qs = (Idee.objects.filter(company=company, draft=False)
           .order_by('-votes_count', '-created_at')[:limit])
     return list(qs.values('id', 'titre', 'votes_count', 'statut', 'contexte'))
 
@@ -46,7 +49,8 @@ def plus_recentes(company, limit=5):
     """NTIDE6 — N idées les plus récemment proposées."""
     from .models import Idee
 
-    qs = Idee.objects.filter(company=company).order_by('-created_at', '-id')[:limit]
+    qs = (Idee.objects.filter(company=company, draft=False)
+          .order_by('-created_at', '-id')[:limit])
     return list(qs.values(
         'id', 'titre', 'votes_count', 'statut', 'contexte', 'created_at'))
 
@@ -58,7 +62,7 @@ def heat_par_contexte(company):
 
     from .models import Idee
 
-    qs = (Idee.objects.filter(company=company)
+    qs = (Idee.objects.filter(company=company, draft=False)
           .exclude(contexte='')
           .values('contexte')
           .annotate(nombre=Count('id'))

@@ -28,14 +28,19 @@ class IdeeSerializer(serializers.ModelSerializer):
             'id', 'titre', 'description', 'contexte', 'statut',
             'statut_display', 'auteur', 'auteur_nom', 'votes_count',
             'linked_type', 'linked_type_display', 'linked_id',
-            'date_creation',
+            'date_creation', 'draft',
         ]
         # ``statut`` ne se modifie pas par PATCH direct : le cycle de vie
         # passe par les actions de transition (examiner/retenir/réaliser/
         # fermer, NTIDE5) qui appliquent la machine à états et journalisent
         # le chatter. ``votes_count`` est dénormalisé, maintenu par
-        # VoteIdeeViewSet — jamais écrit directement.
-        read_only_fields = ['auteur', 'votes_count', 'statut', 'date_creation']
+        # VoteIdeeViewSet — jamais écrit directement. ``draft`` (NTIDE18)
+        # suit le même patron : jamais un champ PATCH-able, posé explicitement
+        # dans ``perform_create`` (depuis le corps, c'est l'intention même de
+        # la case « Enregistrer en brouillon ») puis basculé à False
+        # uniquement par l'action ``publier``.
+        read_only_fields = [
+            'auteur', 'votes_count', 'statut', 'date_creation', 'draft']
 
     def get_auteur_nom(self, obj):
         return getattr(obj.auteur, 'username', None)

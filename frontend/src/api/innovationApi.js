@@ -38,6 +38,9 @@ const innovationApi = {
   // ── Ré-ouverture par l'auteur (NTIDE17, fermée/examinée uniquement) ──
   reouvrir: (id) => api.post(`/innovation/idees/${id}/reouvrir/`),
 
+  // ── Publier un brouillon (NTIDE18, draft → False, réservé à l'auteur) ──
+  publier: (id) => api.post(`/innovation/idees/${id}/publier/`),
+
   // ── Export .xlsx (NTIDE12, filtres statut/contexte/date appliqués) ──
   exportXlsx: (params) =>
     api.get('/innovation/idees/export-xlsx/', { params, responseType: 'blob' }),

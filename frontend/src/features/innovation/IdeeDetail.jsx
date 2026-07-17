@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useSelector } from 'react-redux'
 import {
   ThumbsUp, Search, CheckCircle2, Rocket, XCircle, Send, Link2, RotateCcw,
+  Upload,
 } from 'lucide-react'
 import { DetailShell } from '../../ui/module'
 import {
@@ -100,6 +101,19 @@ export default function IdeeDetail() {
     }
   }
 
+  const handlePublier = async () => {
+    setBusy(true)
+    try {
+      await innovationApi.publier(id)
+      toast.success('Idée publiée — visible par toute la société.')
+      await load()
+    } catch {
+      toast.error('Publication impossible.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const handleLier = async () => {
     const id = Number(lierId)
     if (!lierType || !id || id <= 0) { toast.error('Choisissez un type et un identifiant valides.'); return }
@@ -145,6 +159,12 @@ export default function IdeeDetail() {
     { term: 'Votes', description: String(idee.votes_count ?? 0) },
     { term: 'Proposée le', description: formatDateTime(idee.date_creation) },
   ]
+  if (idee.draft) {
+    items.push({
+      term: 'Visibilité',
+      description: <Badge tone="warning">Brouillon — visible uniquement par vous</Badge>,
+    })
+  }
   if (idee.linked_type) {
     items.push({
       term: 'Lié à',
@@ -196,13 +216,18 @@ export default function IdeeDetail() {
   )
 
   const transitions = transitionsPour(idee.statut)
+  const estAuteur = idee.auteur === currentUser?.id
   // NTIDE17 — l'auteur peut ré-ouvrir depuis fermée/examinée uniquement
   // (verrouillé après retenue/réalisée) ; serveur fait autorité (403/400
   // affichés en toast si l'un de ces garde-fous a changé entre-temps).
-  const peutReouvrir = idee.auteur === currentUser?.id
-    && ['fermee', 'examinee'].includes(idee.statut)
+  const peutReouvrir = estAuteur && ['fermee', 'examinee'].includes(idee.statut)
   const actions = (
     <>
+      {idee.draft && estAuteur && (
+        <Button type="button" onClick={handlePublier} disabled={busy}>
+          <Upload /> Publier
+        </Button>
+      )}
       <Button type="button" variant="outline" onClick={handleVote} disabled={busy}>
         <ThumbsUp /> Voter
       </Button>
