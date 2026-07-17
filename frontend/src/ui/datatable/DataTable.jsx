@@ -396,6 +396,11 @@ export const DataTable = forwardRef(function DataTable(
   const [scrollLeft, setScrollLeft] = useState(0)
   // N160 — ligne active pour la navigation clavier (index dans la page courante).
   const [activeRow, setActiveRow] = useState(-1)
+  // NTUX8 — curseur de CELLULE (édition inline type tableur), DISTINCT du
+  // curseur de LIGNE ci-dessus (N160 navigue la grille au repos ; ceci ne
+  // pilote QUE les cellules `editable` déjà en édition ou visées par un
+  // Tab/Entrée). `null` = aucune navigation cellule en cours.
+  const [activeCell, setActiveCell] = useState(null) // { rowKey, colId } | null
   // H131 — ancre de sélection par plage (dernier index basculé sans Maj).
   const rangeAnchor = useRef(null)
 
@@ -526,6 +531,36 @@ export const DataTable = forwardRef(function DataTable(
     [],
   )
 
+  /* ---- NTUX8 — Navigation clavier type tableur entre cellules éditables ----
+     `editableColIds` = colonnes `editable` dans leur ORDRE AFFICHÉ (celui de
+     `resolvedColumns`, qui reflète déjà réordonnancement/masquage). Tab/Maj+Tab
+     avance/recule d'une colonne éditable, en enjambant la fin de ligne vers la
+     colonne éditable suivante de la ligne suivante ; Entrée (`'down'`) reste
+     sur la MÊME colonne, ligne suivante. En bout de grille → referme le
+     curseur (repli propre, jamais d'erreur). */
+  const editableColIds = useMemo(
+    () => resolvedColumns.filter((c) => c.editable).map((c) => c.id),
+    [resolvedColumns],
+  )
+  const moveActiveCell = useCallback((fromRowKey, fromColId, direction) => {
+    if (!editableColIds.length) return
+    const rowIdx = rows.findIndex((r, i) => keyOf(r, pageOffset + i) === fromRowKey)
+    if (rowIdx < 0) return
+    if (direction === 'down') {
+      const nextRowIdx = rowIdx + 1
+      if (nextRowIdx >= rows.length) { setActiveCell(null); return }
+      setActiveCell({ rowKey: keyOf(rows[nextRowIdx], pageOffset + nextRowIdx), colId: fromColId })
+      return
+    }
+    const colIdx = editableColIds.indexOf(fromColId)
+    let nextColIdx = colIdx + (direction === 'prev' ? -1 : 1)
+    let nextRowIdx = rowIdx
+    if (nextColIdx >= editableColIds.length) { nextColIdx = 0; nextRowIdx += 1 }
+    else if (nextColIdx < 0) { nextColIdx = editableColIds.length - 1; nextRowIdx -= 1 }
+    if (nextRowIdx < 0 || nextRowIdx >= rows.length) { setActiveCell(null); return }
+    setActiveCell({ rowKey: keyOf(rows[nextRowIdx], pageOffset + nextRowIdx), colId: editableColIds[nextColIdx] })
+  }, [editableColIds, rows, keyOf, pageOffset])
+
   /* ---- O164 — Virtualisation : explicite OU auto au-delà du seuil ----
      `virtualize` force la fenêtre ; sinon on l'active automatiquement quand la
      page dépasse ~100 lignes (catalogue stock, grosses listes de leads), avec
@@ -567,7 +602,7 @@ export const DataTable = forwardRef(function DataTable(
   const cellPadX = 'px-3'
 
   /* ---- Cellule (avec surlignage + clic ligne) ---- */
-  function renderCell(c, row) {
+  function renderCell(c, row, rowKey) {
     const value = c.accessor ? c.accessor(row) : row?.[c.id]
     // VX249(a) — `editable`/`onSave`/`validate` documentés dans le contrat de
     // colonne (H31/H32) mais jamais consommés jusqu'ici : première
@@ -587,6 +622,11 @@ export const DataTable = forwardRef(function DataTable(
               await c.onSave?.(draft, r)
               setPulseMap((prev) => ({ ...prev, [cellKey]: (prev[cellKey] ?? 0) + 1 }))
             }}
+            // NTUX8 — navigation clavier type tableur : la cellule visée par un
+            // Tab/Entrée réussi s'ouvre automatiquement (`autoEdit`), et
+            // remonte sa propre position pour calculer la SUIVANTE.
+            autoEdit={!!rowKey && activeCell?.rowKey === rowKey && activeCell?.colId === c.id}
+            onCommitNav={rowKey ? (direction) => moveActiveCell(rowKey, c.id, direction) : undefined}
           />
         </FieldSavedPulse>
       )
@@ -978,9 +1018,13 @@ export const DataTable = forwardRef(function DataTable(
                                       pinnedLeft && scrollLeft > 0 && 'shadow-[2px_0_4px_-2px_rgb(12_19_53/0.18)]',
                                       pinnedRight && 'shadow-[-2px_0_4px_-2px_rgb(12_19_53/0.18)]',
                                       firstCol && 'font-medium text-foreground',
+                                      // NTUX8 — curseur de cellule visible (bordure focus) sur la
+                                      // colonne éditable actuellement ciblée par Tab/Entrée.
+                                      c.editable && activeCell?.rowKey === rowKey && activeCell?.colId === c.id
+                                        && 'ring-2 ring-inset ring-ring',
                                     )}
                                   >
-                                    {renderCell(c, row)}
+                                    {renderCell(c, row, rowKey)}
                                   </td>
                                 )
                               })}
