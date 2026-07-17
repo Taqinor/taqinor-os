@@ -7,11 +7,13 @@ parcelle, campagne, intrant, équipe) est vérifiée appartenir à la MÊME
 société que l'appelant — sinon un id d'une autre société laisserait fuir de
 la donnée cross-tenant via une relation."""
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db.models import F
 from rest_framework import serializers
 
 from .models import (
     CampagneCulturale, EquipeSaisonniere, EtapeCampagne, Exploitation,
-    IntrantAgricole, Parcelle, PointageAgricole, check_dar_guard,
+    IntrantAgricole, MaterielAgricole, Parcelle, PointageAgricole,
+    UtilisationMateriel, check_dar_guard,
 )
 
 
@@ -197,3 +199,49 @@ class PointageAgricoleSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 'Renseignez une équipe ou un nom de travailleur libre.')
         return attrs
+
+
+class MaterielAgricoleSerializer(serializers.ModelSerializer):
+    type_materiel_display = serializers.CharField(
+        source='get_type_materiel_display', read_only=True)
+
+    class Meta:
+        model = MaterielAgricole
+        fields = [
+            'id', 'company', 'nom', 'type_materiel', 'type_materiel_display',
+            'numero_serie', 'heures_moteur', 'parcelle_affectee',
+            'date_creation',
+        ]
+        read_only_fields = ['id', 'company', 'date_creation']
+
+    def validate_parcelle_affectee(self, value):
+        _check_same_company(self, value, 'parcelle_affectee')
+        return value
+
+
+class UtilisationMaterielSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UtilisationMateriel
+        fields = [
+            'id', 'company', 'materiel', 'campagne', 'date',
+            'heures_utilisees', 'cout_carburant_mad', 'date_creation',
+        ]
+        read_only_fields = ['id', 'company', 'date_creation']
+
+    def validate_materiel(self, value):
+        _check_same_company(self, value, 'materiel')
+        return value
+
+    def validate_campagne(self, value):
+        _check_same_company(self, value, 'campagne')
+        return value
+
+    def create(self, validated_data):
+        # NTAGR11 — chaque utilisation incrémente ATOMIQUEMENT (F()) les
+        # heures moteur cumulées du matériel — jamais une lecture-puis-
+        # écriture qui perdrait des mises à jour concurrentes.
+        utilisation = super().create(validated_data)
+        MaterielAgricole.objects.filter(pk=utilisation.materiel_id).update(
+            heures_moteur=F('heures_moteur') + utilisation.heures_utilisees)
+        utilisation.materiel.refresh_from_db(fields=['heures_moteur'])
+        return utilisation

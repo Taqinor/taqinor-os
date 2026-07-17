@@ -10,12 +10,14 @@ from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
     CampagneCulturale, EquipeSaisonniere, EtapeCampagne, Exploitation,
-    IntrantAgricole, Parcelle, PointageAgricole,
+    IntrantAgricole, MaterielAgricole, Parcelle, PointageAgricole,
+    UtilisationMateriel,
 )
 from .serializers import (
     CampagneCulturaleSerializer, EquipeSaisonniereSerializer,
     EtapeCampagneSerializer, ExploitationSerializer,
-    IntrantAgricoleSerializer, ParcelleSerializer, PointageAgricoleSerializer,
+    IntrantAgricoleSerializer, MaterielAgricoleSerializer, ParcelleSerializer,
+    PointageAgricoleSerializer, UtilisationMaterielSerializer,
 )
 
 READ_ACTIONS = {'list', 'retrieve'}
@@ -155,4 +157,33 @@ class PointageAgricoleViewSet(_AgricultureBaseViewSet):
         equipe_id = params.get('equipe_id')
         if equipe_id:
             qs = qs.filter(equipe_id=equipe_id)
+        return qs
+
+
+class MaterielAgricoleViewSet(_AgricultureBaseViewSet):
+    """NTAGR11 — Matériel agricole (pattern flotte, heures moteur cumulées)."""
+    queryset = MaterielAgricole.objects.all()
+    serializer_class = MaterielAgricoleSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom', 'numero_serie']
+    ordering_fields = ['nom', 'heures_moteur', 'date_creation']
+
+
+class UtilisationMaterielViewSet(_AgricultureBaseViewSet):
+    """NTAGR11 — Utilisations de matériel. Filtrable
+    ``?materiel_id=&campagne_id=``."""
+    queryset = UtilisationMateriel.objects.all()
+    serializer_class = UtilisationMaterielSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        materiel_id = params.get('materiel_id')
+        if materiel_id:
+            qs = qs.filter(materiel_id=materiel_id)
+        campagne_id = params.get('campagne_id')
+        if campagne_id:
+            qs = qs.filter(campagne_id=campagne_id)
         return qs

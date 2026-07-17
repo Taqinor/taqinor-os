@@ -321,3 +321,72 @@ class PointageAgricole(TenantModel):
         if not self.equipe_id and not self.travailleur_nom:
             raise ValidationError(
                 "Renseignez une équipe ou un nom de travailleur libre.")
+
+
+# ── NTAGR11 — Matériel agricole (pattern flotte.EnginRoulant, jamais dupliqué) ─
+
+class MaterielAgricole(TenantModel):
+    """Matériel agricole non immatriculé suivi au compteur d'heures moteur.
+
+    Même PATTERN que ``flotte.EnginRoulant.compteur_heures`` (heures cumulées),
+    mais reste dans ``apps.agriculture`` : le matériel agricole n'est pas un
+    véhicule immatriculé soumis aux obligations réglementaires de
+    ``apps.flotte`` (vignette/assurance véhicule) — donc pas de duplication de
+    flotte, juste le même patron d'heures moteur."""
+
+    class TypeMateriel(models.TextChoices):
+        TRACTEUR = 'tracteur', 'Tracteur'
+        MOISSONNEUSE = 'moissonneuse', 'Moissonneuse'
+        PULVERISATEUR = 'pulverisateur', 'Pulvérisateur'
+        OUTIL = 'outil', 'Outil'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        # on_delete: cascade tenant (purge des données de la société supprimée)
+        related_name='materiels_agricoles')
+    nom = models.CharField(max_length=255)
+    type_materiel = models.CharField(
+        max_length=20, choices=TypeMateriel.choices,
+        default=TypeMateriel.TRACTEUR)
+    numero_serie = models.CharField(max_length=100, blank=True, default='')
+    heures_moteur = models.DecimalField(
+        max_digits=10, decimal_places=1, default=0)
+    parcelle_affectee = models.ForeignKey(
+        Parcelle, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='materiels_affectes')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['nom']
+
+    def __str__(self):
+        return self.nom
+
+
+class UtilisationMateriel(TenantModel):
+    """Utilisation journalière d'un ``MaterielAgricole`` — chaque création
+    incrémente ``MaterielAgricole.heures_moteur`` (voir ``serializers.py``,
+    mise à jour atomique via ``F()``)."""
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        # on_delete: cascade tenant (purge des données de la société supprimée)
+        related_name='utilisations_materiel_agricole')
+    materiel = models.ForeignKey(
+        MaterielAgricole, on_delete=models.CASCADE,
+        # on_delete: cascade parent→enfant (composant du parent)
+        related_name='utilisations')
+    campagne = models.ForeignKey(
+        CampagneCulturale, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='utilisations_materiel')
+    date = models.DateField()
+    heures_utilisees = models.DecimalField(max_digits=8, decimal_places=1)
+    cout_carburant_mad = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True)
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-date', '-id']
+
+    def __str__(self):
+        return f'{self.materiel.nom} — {self.date}'
