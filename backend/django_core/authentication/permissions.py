@@ -46,9 +46,21 @@ class IsAdminOrResponsableTier(BasePermission):
 
 
 class IsAnyRole(BasePermission):
-    """Any authenticated user."""
+    """Any authenticated INTERNAL user.
+
+    NTPRT5 — exclut explicitement les comptes PORTAIL externes
+    (``portee != interne``) : ``IsAnyRole`` garde des routes INTERNES (p. ex.
+    les lectures CRM), qu'un compte portail ne doit jamais atteindre (il reçoit
+    403). Un collaborateur interne (``portee == interne``, le défaut) est
+    inchangé — aucune régression.
+    """
     def has_permission(self, request, view):
-        return bool(request.user and request.user.is_authenticated)
+        user = request.user
+        return bool(
+            user
+            and user.is_authenticated
+            and getattr(user, 'portee', 'interne') == 'interne'
+        )
 
 
 def HasPermissionOrLegacy(code):
