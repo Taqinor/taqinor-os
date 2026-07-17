@@ -390,3 +390,66 @@ class UtilisationMateriel(TenantModel):
 
     def __str__(self):
         return f'{self.materiel.nom} — {self.date}'
+
+
+# ── NTAGR13 — Irrigation (lien pompage solaire installations existant) ─────
+
+class PointIrrigation(TenantModel):
+    """Compteur d'eau par parcelle. Source optionnellement liée à un système
+    de pompage solaire déjà vendu (``installations.Installation`` —
+    string-ref ``installation_id``, lu via ``apps.installations.selectors``,
+    jamais un import de modèle étranger)."""
+
+    class TypeSource(models.TextChoices):
+        PUITS = 'puits', 'Puits'
+        POMPAGE_SOLAIRE = 'pompage_solaire', 'Pompage solaire'
+        RESEAU = 'reseau', 'Réseau'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        # on_delete: cascade tenant (purge des données de la société supprimée)
+        related_name='points_irrigation')
+    parcelle = models.ForeignKey(
+        Parcelle, on_delete=models.CASCADE,
+        # on_delete: cascade parent→enfant (composant du parent)
+        related_name='points_irrigation')
+    type_source = models.CharField(
+        max_length=20, choices=TypeSource.choices, default=TypeSource.PUITS)
+    installation_id = models.IntegerField(null=True, blank=True)
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return f'{self.get_type_source_display()} — {self.parcelle.nom}'
+
+
+class RelevePointIrrigation(TenantModel):
+    """Relevé de volume d'eau (et coût énergie, si source payante) d'un
+    ``PointIrrigation``.
+
+    Si le point est rattaché à un pompage solaire (``installation_id``
+    renseigné), ``cout_energie_mad`` peut rester ``None`` — le pompage solaire
+    n'a pas de coût variable (NTAGR14 l'affiche comme "irrigation solaire :
+    0 MAD variable", distinct d'un coût non renseigné)."""
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        # on_delete: cascade tenant (purge des données de la société supprimée)
+        related_name='releves_irrigation')
+    point = models.ForeignKey(
+        PointIrrigation, on_delete=models.CASCADE,
+        # on_delete: cascade parent→enfant (composant du parent)
+        related_name='releves')
+    date = models.DateField()
+    volume_m3 = models.DecimalField(max_digits=10, decimal_places=2)
+    cout_energie_mad = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True)
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-date', '-id']
+
+    def __str__(self):
+        return f'{self.point} — {self.date}'

@@ -13,7 +13,8 @@ from rest_framework import serializers
 from .models import (
     CampagneCulturale, EquipeSaisonniere, EtapeCampagne, Exploitation,
     IntrantAgricole, MaterielAgricole, Parcelle, PointageAgricole,
-    UtilisationMateriel, check_dar_guard,
+    PointIrrigation, RelevePointIrrigation, UtilisationMateriel,
+    check_dar_guard,
 )
 
 
@@ -245,3 +246,47 @@ class UtilisationMaterielSerializer(serializers.ModelSerializer):
             heures_moteur=F('heures_moteur') + utilisation.heures_utilisees)
         utilisation.materiel.refresh_from_db(fields=['heures_moteur'])
         return utilisation
+
+
+class PointIrrigationSerializer(serializers.ModelSerializer):
+    type_source_display = serializers.CharField(
+        source='get_type_source_display', read_only=True)
+
+    class Meta:
+        model = PointIrrigation
+        fields = [
+            'id', 'company', 'parcelle', 'type_source', 'type_source_display',
+            'installation_id', 'date_creation',
+        ]
+        read_only_fields = ['id', 'company', 'date_creation']
+
+    def validate_parcelle(self, value):
+        _check_same_company(self, value, 'parcelle')
+        return value
+
+    def validate_installation_id(self, value):
+        # NTAGR13 — l'installation (pompage solaire) doit exister et
+        # appartenir à la même société. Lue EXCLUSIVEMENT via
+        # apps.installations.selectors (jamais un import de modèle).
+        if value is None:
+            return value
+        from apps.installations.selectors import installation_scoped
+        company = _company(self)
+        if company is not None and installation_scoped(company, value) is None:
+            raise serializers.ValidationError(
+                'Aucune installation avec cet id pour votre société.')
+        return value
+
+
+class RelevePointIrrigationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = RelevePointIrrigation
+        fields = [
+            'id', 'company', 'point', 'date', 'volume_m3',
+            'cout_energie_mad', 'date_creation',
+        ]
+        read_only_fields = ['id', 'company', 'date_creation']
+
+    def validate_point(self, value):
+        _check_same_company(self, value, 'point')
+        return value

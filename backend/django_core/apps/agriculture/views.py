@@ -11,13 +11,14 @@ from core.viewsets import CompanyScopedModelViewSet
 from .models import (
     CampagneCulturale, EquipeSaisonniere, EtapeCampagne, Exploitation,
     IntrantAgricole, MaterielAgricole, Parcelle, PointageAgricole,
-    UtilisationMateriel,
+    PointIrrigation, RelevePointIrrigation, UtilisationMateriel,
 )
 from .serializers import (
     CampagneCulturaleSerializer, EquipeSaisonniereSerializer,
     EtapeCampagneSerializer, ExploitationSerializer,
     IntrantAgricoleSerializer, MaterielAgricoleSerializer, ParcelleSerializer,
-    PointageAgricoleSerializer, UtilisationMaterielSerializer,
+    PointageAgricoleSerializer, PointIrrigationSerializer,
+    RelevePointIrrigationSerializer, UtilisationMaterielSerializer,
 )
 
 READ_ACTIONS = {'list', 'retrieve'}
@@ -186,4 +187,35 @@ class UtilisationMaterielViewSet(_AgricultureBaseViewSet):
         campagne_id = params.get('campagne_id')
         if campagne_id:
             qs = qs.filter(campagne_id=campagne_id)
+        return qs
+
+
+class PointIrrigationViewSet(_AgricultureBaseViewSet):
+    """NTAGR13 — Points d'irrigation (compteur d'eau par parcelle).
+    Filtrable ``?parcelle_id=``."""
+    queryset = PointIrrigation.objects.all()
+    serializer_class = PointIrrigationSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        parcelle_id = self.request.query_params.get('parcelle_id')
+        if parcelle_id:
+            qs = qs.filter(parcelle_id=parcelle_id)
+        return qs
+
+
+class RelevePointIrrigationViewSet(_AgricultureBaseViewSet):
+    """NTAGR13 — Relevés d'un point d'irrigation. Filtrable ``?point_id=``."""
+    queryset = RelevePointIrrigation.objects.all()
+    serializer_class = RelevePointIrrigationSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        point_id = self.request.query_params.get('point_id')
+        if point_id:
+            qs = qs.filter(point_id=point_id)
         return qs
