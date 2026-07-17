@@ -308,6 +308,18 @@ class AdMirror(TenantModel):
         null=True, blank=True, related_name='ads',
         verbose_name='Ad set')
 
+    # ── ADSDEEP46 — Tags de convention de nommage (parser PUR, ``naming.py``,
+    # jamais un LLM). Extraits POSITIONNELLEMENT du ``name`` Meta selon une
+    # convention configurable (ex. ``DATE_FORMAT_HOOK_ANGLE``) ; vides tant que
+    # le nom ne matche pas ou que la société n'a pas de convention. Additifs,
+    # jamais requis : une ad sans tag reste utilisable partout ailleurs.
+    hook_tag = models.CharField(
+        max_length=64, blank=True, default='', verbose_name='Tag accroche')
+    angle_tag = models.CharField(
+        max_length=64, blank=True, default='', verbose_name='Tag angle')
+    format_tag = models.CharField(
+        max_length=64, blank=True, default='', verbose_name='Tag format')
+
     class Meta:
         verbose_name = "Miroir d'ad"
         verbose_name_plural = "Miroirs d'ad"
@@ -793,6 +805,16 @@ class CreativeAsset(TenantModel):
     cta = models.CharField(
         max_length=40, blank=True, default='',
         verbose_name="Appel à l'action (CTA)")
+
+    # ── ADSDEEP46 — Tags de convention de nommage (mêmes champs qu'``AdMirror``,
+    # parser PUR ``naming.py``). Source = le nom de fichier ``file_key`` (sans
+    # chemin ni extension) : la bibliothèque MAISON n'a pas de ``name`` Meta.
+    hook_tag = models.CharField(
+        max_length=64, blank=True, default='', verbose_name='Tag accroche')
+    angle_tag = models.CharField(
+        max_length=64, blank=True, default='', verbose_name='Tag angle')
+    format_tag = models.CharField(
+        max_length=64, blank=True, default='', verbose_name='Tag format')
 
     class Meta:
         verbose_name = 'Asset créatif'
