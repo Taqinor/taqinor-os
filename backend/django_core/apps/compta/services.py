@@ -92,6 +92,7 @@ from .models import (
     ImmobilisationEnCours,
     ObligationPerformance, EcheancierReconnaissance,
     EtapeAuditConsolidation,
+    AcompteIS,
 )
 
 
@@ -5641,10 +5642,25 @@ def solder_tva_periode(periode, *, user=None):
 
 # ── FG139 — Retenue à la source (RAS) sur honoraires/prestations ───────────
 
+def taux_ras_conventionnel(company, pays_beneficiaire):
+    """NTMAR18 — taux RAS conventionnel réduit d'une prestation étrangère si une
+    ``ConventionFiscale`` active existe pour ``pays_beneficiaire`` (matché sur le
+    nom du pays, insensible à la casse), sinon ``None`` (taux de droit commun)."""
+    from .models import ConventionFiscale
+
+    if not pays_beneficiaire:
+        return None
+    convention = ConventionFiscale.objects.filter(
+        company=company, actif=True,
+        pays__iexact=pays_beneficiaire.strip()).first()
+    return convention.taux_conventionnel if convention else None
+
+
 def enregistrer_retenue_source(company, *, date_piece, base, taux=None,
                                type_prestation=None, tiers_type='', tiers_id=None,
                                tiers_nom='', identifiant_fiscal='', piece='',
-                               libelle='', user=None):
+                               libelle='', pays_beneficiaire='',
+                               convention_appliquee=None, user=None):
     """Enregistre une RAS sur une pièce d'honoraires/prestation (FG139).
 
     Calcule le ``montant`` retenu = base × taux % (arrondi 2 décimales) et FIGE le
@@ -5654,14 +5670,31 @@ def enregistrer_retenue_source(company, *, date_piece, base, taux=None,
     corps). Le tiers prestataire est référencé par auxiliaire string-FK
     (``tiers_type`` / ``tiers_id``) — jamais d'import cross-app de modèle. Renvoie
     la retenue.
+
+    NTMAR18 — pour une prestation étrangère (``type_prestation=
+    prestation_etrangere``) sans ``taux`` explicite, on applique le taux
+    CONVENTIONNEL réduit si une ``ConventionFiscale`` active couvre
+    ``pays_beneficiaire`` (sinon le taux de droit commun). ``convention_
+    appliquee`` est posé automatiquement en conséquence si non fourni.
     """
     from apps.ventes.utils.references import create_with_reference
+
+    # NTMAR18 — résolution du taux conventionnel pour une prestation étrangère
+    # quand aucun taux n'est imposé explicitement.
+    taux_applique = taux
+    convention_effective = bool(convention_appliquee)
+    if (taux is None
+            and type_prestation == RetenueSource.TypePrestation.PRESTATION_ETRANGERE):
+        taux_conv = taux_ras_conventionnel(company, pays_beneficiaire)
+        if taux_conv is not None:
+            taux_applique = taux_conv
+            convention_effective = True
 
     ras = RetenueSource(
         company=company,
         date_piece=date_piece,
         base=Decimal(base or 0),
-        taux=(Decimal(taux) if taux is not None
+        taux=(Decimal(taux_applique) if taux_applique is not None
               else RetenueSource.TAUX_DEFAUT),
         type_prestation=(type_prestation
                          or RetenueSource.TypePrestation.HONORAIRES),
@@ -5669,6 +5702,8 @@ def enregistrer_retenue_source(company, *, date_piece, base, taux=None,
         tiers_id=tiers_id,
         tiers_nom=tiers_nom or '',
         identifiant_fiscal=identifiant_fiscal or '',
+        pays_beneficiaire=pays_beneficiaire or '',
+        convention_appliquee=convention_effective,
         piece=piece or '',
         statut=RetenueSource.Statut.A_VERSER,
         libelle=libelle or '',
@@ -5711,7 +5746,7 @@ def enregistrer_timbre_fiscal(company, *, date_encaissement, base,
                               mode_reglement=MODE_ESPECES, taux=None,
                               minimum=None, paiement_id=None, facture_ref='',
                               tiers_type='', tiers_id=None, tiers_nom='',
-                              libelle='', user=None):
+                              libelle='', mode_acquittement=None, user=None):
     """Enregistre le droit de timbre sur un encaissement ESPÈCES (FG144).
 
     Le droit de timbre marocain de quittance frappe la somme reçue EN ESPÈCES :
@@ -5740,6 +5775,7 @@ def enregistrer_timbre_fiscal(company, *, date_encaissement, base,
         minimum=(Decimal(minimum) if minimum is not None
                  else TimbreFiscal.MINIMUM_DEFAUT),
         mode_reglement=MODE_ESPECES,
+        mode_acquittement=(mode_acquittement or 'papier'),
         paiement_id=paiement_id,
         facture_ref=facture_ref or '',
         tiers_type=tiers_type or '',
@@ -13853,3 +13889,125 @@ def simuler_consolidation(cycle, ajustements_perimetre=None):
         'resultat_part_groupe': resultat_total - part_minoritaires,
         'perimetre': perimetre,
     }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Groupe NTMAR — Télédéclarations SIMPL (formats EDI structurés)
+#
+# NOTE DE PÉRIMÈTRE (CLAUDE.md / instructions NTMAR) : ces exports produisent un
+# fichier STRUCTURÉ et RECHARGEABLE portant tous les postes de la déclaration
+# (au format XML DGI-shaped, positions nommées). Le CSV humain existant reste
+# inchangé. La correspondance BYTE-À-BYTE avec le gabarit officiel SIMPL de la
+# DGI (encodage positionnel exact) doit être validée par le fondateur contre la
+# spec DGI publiée — ce module fournit le socle de données et la structure, pas
+# un connecteur certifié (aucun appel réseau, aucune transmission ici).
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _xml_escape(value):
+    return (str(value)
+            .replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;'))
+
+
+def export_simpl_tva(declaration):
+    """NTMAR10 — génère le fichier SIMPL-TVA (structure DGI) d'une
+    ``DeclarationTVA``. Renvoie une str XML portant tous les postes attendus
+    (régime, période, TVA collectée/déductible/crédit/net à déclarer/reportable)
+    aux positions nommées, rechargeable sans erreur de structure. Le CSV humain
+    existant n'est pas modifié."""
+    d = declaration
+    postes = [
+        ('Regime', d.regime),
+        ('Methode', d.methode),
+        ('PeriodeDebut', d.date_debut.isoformat() if d.date_debut else ''),
+        ('PeriodeFin', d.date_fin.isoformat() if d.date_fin else ''),
+        ('TVACollectee', str(d.tva_collectee or Decimal('0'))),
+        ('TVADeductible', str(d.tva_deductible or Decimal('0'))),
+        ('CreditAnterieur', str(d.credit_anterieur or Decimal('0'))),
+        ('TVAADeclarer', str(d.tva_a_declarer or Decimal('0'))),
+        ('CreditReportable', str(d.credit_reportable or Decimal('0'))),
+    ]
+    lignes = '\n'.join(
+        f'  <Poste code="{code}">{_xml_escape(val)}</Poste>' for code, val in postes)
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<!-- SIMPL-TVA (structure DGI, NTMAR10) - genere localement, non '
+        'transmis. Encodage positionnel exact a valider contre la spec DGI. -->\n'
+        f'<DeclarationTVA reference="{_xml_escape(d.reference or "")}">\n'
+        f'{lignes}\n'
+        '</DeclarationTVA>\n'
+    )
+
+
+def materialiser_acomptes_is(company, exercice, *, is_reference=None,
+                             validees_seulement=False):
+    """NTMAR12 — matérialise (idempotent) les 4 ``AcompteIS`` d'un exercice à
+    partir du calcul ``selectors.echeancier_acomptes`` (FG140). Ne recrée pas un
+    rang déjà présent (``get_or_create`` par (company, exercice, rang)) et ne
+    touche jamais un acompte déjà payé. Renvoie la liste des ``AcompteIS``."""
+    from . import selectors as compta_selectors
+
+    if exercice.company_id != company.id:
+        raise ValidationError("L'exercice n'appartient pas à cette société.")
+    echeancier = compta_selectors.echeancier_acomptes(
+        company, exercice, is_reference=is_reference,
+        validees_seulement=validees_seulement)
+    resultats = []
+    for acompte in echeancier['acomptes']:
+        obj, _created = AcompteIS.objects.get_or_create(
+            company=company, exercice=exercice, rang=acompte['numero'],
+            defaults={
+                'montant': acompte['montant'],
+                'date_echeance': acompte['date_echeance'],
+            })
+        resultats.append(obj)
+    return resultats
+
+
+def export_simpl_is(company, exercice, *, is_reference=None,
+                    reintegrations=None, deductions=None,
+                    validees_seulement=False):
+    """NTMAR12 — génère le fichier SIMPL-IS (structure DGI) d'un exercice :
+    résultat fiscal, IS dû, les 4 acomptes datés et la régularisation. Renvoie
+    une str XML rechargeable. Réutilise ``selectors.estimer_is`` /
+    ``echeancier_acomptes`` / ``regularisation_is`` (aucun nouveau calcul)."""
+    from . import selectors as compta_selectors
+
+    if exercice.company_id != company.id:
+        raise ValidationError("L'exercice n'appartient pas à cette société.")
+    estimation = compta_selectors.estimer_is(
+        company, exercice, reintegrations=reintegrations, deductions=deductions,
+        validees_seulement=validees_seulement)
+    echeancier = compta_selectors.echeancier_acomptes(
+        company, exercice, is_reference=is_reference,
+        validees_seulement=validees_seulement)
+    regul = compta_selectors.regularisation_is(
+        company, exercice, is_reference=is_reference,
+        reintegrations=reintegrations, deductions=deductions,
+        validees_seulement=validees_seulement)
+
+    acomptes_xml = '\n'.join(
+        f'    <Acompte rang="{a["numero"]}" echeance="{a["date_echeance"].isoformat()}">'
+        f'{a["montant"]}</Acompte>'
+        for a in echeancier['acomptes'])
+    postes = [
+        ('ExerciceDebut', exercice.date_debut.isoformat()),
+        ('ExerciceFin', exercice.date_fin.isoformat()),
+        ('ResultatFiscal', str(estimation['resultat_fiscal'])),
+        ('ISDu', str(estimation['is_du'])),
+        ('TotalAcomptes', str(echeancier['total_acomptes'])),
+        ('Regularisation', str(regul['regularisation'])),
+        ('SensRegularisation', regul['sens']),
+    ]
+    lignes = '\n'.join(
+        f'  <Poste code="{code}">{_xml_escape(val)}</Poste>' for code, val in postes)
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<!-- SIMPL-IS (structure DGI, NTMAR12) - genere localement, non '
+        'transmis. Encodage positionnel exact a valider contre la spec DGI. -->\n'
+        f'<DeclarationIS exercice="{exercice.id}">\n'
+        f'{lignes}\n'
+        '  <Acomptes>\n'
+        f'{acomptes_xml}\n'
+        '  </Acomptes>\n'
+        '</DeclarationIS>\n'
+    )
