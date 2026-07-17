@@ -1475,6 +1475,29 @@ class PlanAbonnementSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'created_at']
 
+    def validate_code(self, value):
+        """Unicité (company, code) scopée société — NTSUB1.
+
+        ``company`` étant posée CÔTÉ SERVEUR (jamais dans le corps), le
+        ``UniqueTogetherValidator`` standard de DRF ne couvre pas cette
+        contrainte : sans ce garde, un code dupliqué atteindrait la contrainte
+        d'unicité en base et remonterait en 500. On valide donc explicitement
+        pour renvoyer un 400 propre (un même code reste autorisé dans une AUTRE
+        société).
+        """
+        request = self.context.get('request')
+        if request is None:
+            return value
+        qs = PlanAbonnement.objects.filter(
+            company=request.user.company, code=value)
+        if self.instance is not None:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError(
+                "Un plan d'abonnement avec ce code existe déjà pour votre "
+                "société.")
+        return value
+
     def validate_plan_recurrent(self, plan_recurrent):
         request = self.context.get('request')
         if request is not None and \
