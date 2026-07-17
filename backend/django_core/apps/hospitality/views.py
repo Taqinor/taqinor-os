@@ -8,6 +8,7 @@ housekeeping assignées à l'utilisateur courant).
 """
 import datetime
 
+from django.shortcuts import get_object_or_404
 from rest_framework import filters, status, views, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
@@ -19,12 +20,15 @@ from core.viewsets import CompanyScopedModelViewSet
 
 from . import selectors, services
 from .models import (
-    Chambre, Folio, PlanTarifaire, Reservation, TacheMenage, TypeChambre,
+    Chambre, EvenementBanquet, Folio, IngredientRecette, MainCourante,
+    PlanTarifaire, Recette, Reservation, SalleEvenement, TacheMenage,
+    TypeChambre,
 )
 from .serializers import (
-    ChambreSerializer, FicheClientSerializer, FolioSerializer,
-    PlanTarifaireSerializer, ReservationSerializer, TacheMenageSerializer,
-    TypeChambreSerializer,
+    ChambreSerializer, EvenementBanquetSerializer, FicheClientSerializer,
+    FolioSerializer, IngredientRecetteSerializer, MainCouranteSerializer,
+    PlanTarifaireSerializer, RecetteSerializer, ReservationSerializer,
+    SalleEvenementSerializer, TacheMenageSerializer, TypeChambreSerializer,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -293,6 +297,212 @@ class TacheMenageViewSet(CompanyScopedModelViewSet):
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(tache).data)
+
+
+class MainCouranteViewSet(CompanyScopedModelViewSet):
+    """NTHOT12 — Main courante / passations d'équipe. Journal APPEND-ONLY :
+    seuls list/retrieve/create sont exposés (une note n'est ni modifiée ni
+    supprimée — intégrité du journal). Lecture/écriture ouvertes à tout rôle
+    authentifié (saisie rapide depuis n'importe quel écran)."""
+    queryset = MainCourante.objects.select_related('auteur').all()
+    serializer_class = MainCouranteSerializer
+    http_method_names = ['get', 'post', 'head', 'options']
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_note']
+
+    def get_permissions(self):
+        return [IsAnyRole()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        categorie = params.get('categorie')
+        if categorie:
+            qs = qs.filter(categorie=categorie)
+        date = params.get('date')
+        if date:
+            qs = qs.filter(date_note__date=date)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company, auteur=self.request.user)
+
+
+class RecetteViewSet(CompanyScopedModelViewSet):
+    """NTHOT13 — Cartes/menus (recettes), CRUD scopé société avec
+    sous-ressource ``ingredients`` (GET liste / POST ajoute ; DELETE sur
+    ``ingredients/{ingredient_id}/`` retire une ligne)."""
+    queryset = Recette.objects.prefetch_related('ingredients__produit').all()
+    serializer_class = RecetteSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom_plat']
+    ordering_fields = ['nom_plat', 'prix_vente_ht']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS + ['ingredients']:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    @action(detail=True, methods=['get', 'post'], url_path='ingredients')
+    def ingredients(self, request, pk=None):
+        recette = self.get_object()
+        if request.method == 'POST':
+            if not request.user.is_responsable:
+                return Response(
+                    {'detail': "Réservé aux rôles Responsable/Administrateur."},
+                    status=status.HTTP_403_FORBIDDEN)
+            serializer = IngredientRecetteSerializer(
+                data=request.data, context={'request': request})
+            serializer.is_valid(raise_exception=True)
+            ingredient = IngredientRecette.objects.create(
+                recette=recette, **serializer.validated_data)
+            return Response(
+                IngredientRecetteSerializer(ingredient).data,
+                status=status.HTTP_201_CREATED)
+        return Response(
+            IngredientRecetteSerializer(
+                recette.ingredients.all(), many=True).data)
+
+    @action(detail=True, methods=['delete'],
+            url_path=r'ingredients/(?P<ingredient_id>\d+)',
+            permission_classes=[IsResponsableOrAdmin])
+    def ingredient_delete(self, request, pk=None, ingredient_id=None):
+        recette = self.get_object()
+        ingredient = get_object_or_404(
+            IngredientRecette, pk=ingredient_id, recette=recette)
+        ingredient.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class SalleEvenementViewSet(CompanyScopedModelViewSet):
+    """NTHOT18 — Salles événementielles, CRUD scopé société."""
+    queryset = SalleEvenement.objects.all()
+    serializer_class = SalleEvenementSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom']
+    ordering_fields = ['nom', 'capacite_max']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+
+class EvenementBanquetViewSet(CompanyScopedModelViewSet):
+    """NTHOT17/NTHOT18 — Événements/banquets. La création/mise à jour passe
+    par ``services.creer_evenement``/la garde de chevauchement de salle
+    (NTHOT18, uniquement entre événements ``confirme``)."""
+    queryset = EvenementBanquet.objects.select_related(
+        'salle', 'client', 'lead').prefetch_related('menu_recettes').all()
+    serializer_class = EvenementBanquetSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_debut', 'date_fin', 'date_creation']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        v = serializer.validated_data
+        try:
+            evenement = services.creer_evenement(
+                company=request.user.company,
+                user=request.user,
+                nom_evenement=v['nom_evenement'],
+                date_debut=v['date_debut'],
+                date_fin=v['date_fin'],
+                nb_convives=v.get('nb_convives', 0),
+                salle=v.get('salle'),
+                statut=v.get('statut', EvenementBanquet.Statut.BROUILLON),
+                client_id=v.get('client_id'),
+                lead_id=v.get('lead_id'),
+            )
+        except services.SalleOverlapError as exc:
+            return Response(
+                {'salle': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        menu_recettes = v.get('menu_recettes')
+        if menu_recettes:
+            evenement.menu_recettes.set(menu_recettes)
+        out = self.get_serializer(evenement)
+        headers = self.get_success_headers(out.data)
+        return Response(
+            out.data, status=status.HTTP_201_CREATED, headers=headers)
+
+    def perform_update(self, serializer):
+        """Ré-applique la garde de chevauchement de salle sur mise à jour
+        (même raisonnement que ``ReservationViewSet.perform_update``,
+        NTHOT3) : un PATCH qui change ``salle``/``date_debut``/``date_fin``/
+        ``statut`` DOIT être re-validé."""
+        instance = serializer.instance
+        company = self.request.user.company
+        v = serializer.validated_data
+        salle = v.get('salle', instance.salle)
+        if salle is not None and salle.company_id != company.id:
+            raise ValidationError({'salle': 'Salle introuvable pour votre société.'})
+        date_debut = v.get('date_debut', instance.date_debut)
+        date_fin = v.get('date_fin', instance.date_fin)
+        statut = v.get('statut', instance.statut)
+        if statut == EvenementBanquet.Statut.CONFIRME:
+            try:
+                services.check_salle_overlap(
+                    salle, date_debut, date_fin, exclude_id=instance.pk)
+            except services.SalleOverlapError as exc:
+                raise ValidationError({'salle': str(exc)})
+        serializer.save()
+
+    # ── NTHOT17 — Génération du devis d'événement (flux devis existant) ─────
+    @action(detail=True, methods=['post'], url_path='generer-devis',
+            permission_classes=[IsResponsableOrAdmin])
+    def generer_devis(self, request, pk=None):
+        """Génère UN Devis ventes brouillon pour cet événement (rule #4 :
+        jamais un moteur de devis parallèle, jamais un PDF alternatif)."""
+        evenement = self.get_object()
+        try:
+            devis = services.generer_devis_evenement(
+                evenement, user=request.user)
+        except services.GenerationDevisEvenementError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {
+                'devis_id': devis.id,
+                'devis_reference': devis.reference,
+                **self.get_serializer(evenement).data,
+            },
+            status=status.HTTP_200_OK)
+
+    # ── NTHOT19 — BEO (Banquet Event Order) imprimable ──────────────────────
+    @action(detail=True, methods=['get'], url_path='beo-pdf')
+    def beo_pdf(self, request, pk=None):
+        """PDF « BEO » (NTHOT19) — document interne, jamais ``/proposal``
+        (rule #4). Régénéré à la demande depuis l'état COURANT de
+        l'événement."""
+        from django.http import HttpResponse
+
+        from .pdf import render_beo_pdf
+
+        evenement = self.get_object()
+        try:
+            pdf_bytes = render_beo_pdf(evenement)
+        except RuntimeError as exc:
+            return Response(
+                {'detail': str(exc)},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = (
+            f'attachment; filename="beo-{evenement.pk}.pdf"')
+        return response
 
 
 class TableauBordView(views.APIView):

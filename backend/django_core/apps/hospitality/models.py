@@ -198,6 +198,17 @@ class Reservation(TenantModel):
     prix_nuit_snapshot = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True)
 
+    # ── NTHOT20 — Petit-déjeuner / pension tracking ──
+    class FormulePension(models.TextChoices):
+        AUCUNE = 'aucune', 'Aucune'
+        PETIT_DEJEUNER = 'petit_dejeuner', 'Petit-déjeuner'
+        DEMI_PENSION = 'demi_pension', 'Demi-pension'
+        PENSION_COMPLETE = 'pension_complete', 'Pension complète'
+
+    formule_pension = models.CharField(
+        max_length=16, choices=FormulePension.choices,
+        default=FormulePension.AUCUNE)
+
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -407,3 +418,290 @@ class TacheMenage(TenantModel):
 
     def __str__(self):
         return f'{self.get_type_tache_display()} — {self.chambre}'
+
+
+# ── NTHOT12 — Main courante / passations d'équipe ───────────────────────────
+
+class MainCourante(TenantModel):
+    """Journal chronologique consultable par l'équipe entrante en début de
+    service (passation) — saisie rapide depuis n'importe quel écran
+    hôtellerie (widget flottant côté front). Append-only : aucune édition ni
+    suppression exposée (intégrité du journal, comme un chatter)."""
+
+    class Categorie(models.TextChoices):
+        RESERVATION = 'reservation', 'Réservation'
+        INCIDENT = 'incident', 'Incident'
+        CONSIGNE = 'consigne', 'Consigne'
+        FINANCE = 'finance', 'Finance'
+        AUTRE = 'autre', 'Autre'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: cascade tenant (purge des données de la société supprimée)
+        related_name='hospitality_main_courante',
+        verbose_name='Société',
+    )
+    auteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='hospitality_main_courante_notes',
+        verbose_name='Auteur',
+    )
+    categorie = models.CharField(
+        max_length=15, choices=Categorie.choices, default=Categorie.AUTRE)
+    texte = models.TextField()
+    # Cible générique optionnelle (ex. 'reservation'/'chambre' + son id) —
+    # identifiant souple, jamais une FK dure (une note peut cibler n'importe
+    # quel objet hôtellerie sans coupler ce modèle à tous les autres).
+    cible_type = models.CharField(max_length=30, blank=True, default='')
+    cible_id = models.PositiveIntegerField(null=True, blank=True)
+    date_note = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Main courante'
+        verbose_name_plural = 'Main courante'
+        ordering = ['-date_note']
+
+    def __str__(self):
+        return f'{self.get_categorie_display()} — {self.date_note:%Y-%m-%d %H:%M}'
+
+
+# ── NTHOT13 — Cartes/menus avec recettes et fiches techniques ───────────────
+
+# Liste de référence (informative — le champ ``allergenes`` reste une liste
+# JSON librement éditable, jamais des choices figées : la réglementation
+# évolue et un établissement peut vouloir un libellé propre).
+ALLERGENES_REFERENCE = [
+    'gluten', 'crustaces', 'oeufs', 'poisson', 'arachides', 'soja', 'lactose',
+    'fruits_a_coque', 'celeri', 'moutarde', 'sesame', 'sulfites', 'lupin',
+    'mollusques',
+]
+
+
+class Recette(TenantModel):
+    """Carte/menu — fiche technique d'un plat (NTHOT13)."""
+
+    class CategorieMenu(models.TextChoices):
+        ENTREE = 'entree', 'Entrée'
+        PLAT = 'plat', 'Plat'
+        DESSERT = 'dessert', 'Dessert'
+        BOISSON = 'boisson', 'Boisson'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: cascade tenant (purge des données de la société supprimée)
+        related_name='hospitality_recettes',
+        verbose_name='Société',
+    )
+    nom_plat = models.CharField(max_length=150, verbose_name='Nom du plat')
+    categorie_menu = models.CharField(
+        max_length=10, choices=CategorieMenu.choices, default=CategorieMenu.PLAT)
+    prix_vente_ht = models.DecimalField(
+        max_digits=10, decimal_places=2, verbose_name='Prix de vente HT')
+    description = models.TextField(blank=True, default='')
+    # Liste JSON de codes allergènes (voir ALLERGENES_REFERENCE) — librement
+    # éditable, jamais figée en choices (obligation réglementaire évolutive).
+    allergenes = models.JSONField(default=list, blank=True)
+
+    class Meta:
+        verbose_name = 'Recette'
+        verbose_name_plural = 'Recettes'
+        ordering = ['nom_plat']
+
+    def __str__(self):
+        return self.nom_plat
+
+
+class IngredientRecette(models.Model):
+    """Ligne d'ingrédient d'une recette — quantité + unité d'un produit du
+    catalogue stock (résolu via ``apps.stock.selectors``, jamais un import
+    direct du modèle ``stock.Produit`` en dehors de la FK string ci-dessous,
+    qui ne déclenche AUCUN import Python — pattern déjà en usage sur
+    ``Reservation.client`` FK ``'crm.Client'``)."""
+
+    recette = models.ForeignKey(
+        Recette, on_delete=models.CASCADE,  # on_delete: cascade parent→enfant (composant du parent)
+        related_name='ingredients')
+    produit = models.ForeignKey(
+        'stock.Produit',
+        on_delete=models.PROTECT,  # on_delete: jamais une suppression silencieuse d'un produit encore utilisé dans une fiche technique
+        related_name='hospitality_ingredients_recette',
+        verbose_name='Produit (stock)',
+    )
+    quantite = models.DecimalField(max_digits=10, decimal_places=3)
+    unite = models.CharField(max_length=20, default='unite')
+
+    class Meta:
+        verbose_name = 'Ingrédient de recette'
+        verbose_name_plural = 'Ingrédients de recette'
+        ordering = ['id']
+
+    def __str__(self):
+        return f'{self.quantite} {self.unite} — {self.produit_id}'
+
+
+# ── NTHOT18 — Salles événementielles ────────────────────────────────────────
+# NTHOT18 est construite AVANT NTHOT17 dans ce lot malgré l'ordre demandé :
+# le modèle ``EvenementBanquet`` (NTHOT17) porte un FK réel vers
+# ``SalleEvenement`` (NTHOT18) — dépendance de schéma inversée par rapport à
+# l'ordre de numérotation, corrigée ici pour ne jamais générer de migration
+# invalide (cf. rapport de fin de lot).
+
+class SalleEvenement(TenantModel):
+    """Salle événementielle (distincte d'une ``Chambre`` — louée au créneau,
+    jamais à la nuitée)."""
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: cascade tenant (purge des données de la société supprimée)
+        related_name='hospitality_salles_evenement',
+        verbose_name='Société',
+    )
+    nom = models.CharField(max_length=150)
+    capacite_max = models.PositiveIntegerField(default=0)
+    # Liste JSON libre des aménagements disponibles (ex. théâtre/banquet/
+    # cocktail) — jamais des choices figées, un établissement définit ses
+    # propres configurations de salle.
+    types_amenagement_disponibles = models.JSONField(default=list, blank=True)
+    tarif_location_ht = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal('0'))
+    description = models.TextField(blank=True, default='')
+
+    class Meta:
+        verbose_name = 'Salle événementielle'
+        verbose_name_plural = 'Salles événementielles'
+        ordering = ['nom']
+
+    def __str__(self):
+        return self.nom
+
+
+# ── NTHOT17 — Événements/banquets ───────────────────────────────────────────
+
+class EvenementBanquet(TenantModel):
+    """Événement/banquet — devis d'événement généré via le flux devis
+    ventes existant (``services.generer_devis_evenement``, NTHOT17), jamais
+    un moteur de devis parallèle (rule #4).
+
+    NB schéma : la spec NTHOT17 nomme le champ ``date_evenement`` (singulier)
+    mais la validation de chevauchement de salle (NTHOT18, même pattern que
+    ``Reservation``/NTHOT3) exige un CRÉNEAU — ``date_debut``/``date_fin``
+    (DateTimeField) portent donc ce rôle ; ``date_evenement`` reste exposée en
+    lecture comme la date calendaire du créneau (propriété ci-dessous)."""
+
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        CONFIRME = 'confirme', 'Confirmé'
+        ANNULE = 'annule', 'Annulé'
+        TERMINE = 'termine', 'Terminé'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: cascade tenant (purge des données de la société supprimée)
+        related_name='hospitality_evenements_banquet',
+        verbose_name='Société',
+    )
+    # Client résolu (pattern « resolve_client_for_lead », CLAUDE.md) : soit un
+    # compte CRM déjà connu, soit un lead à résoudre côté service — jamais les
+    # deux résolus indépendamment (même règle que ``Devis.client``/``lead``).
+    client = models.ForeignKey(
+        'crm.Client',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='hospitality_evenements_banquet',
+        verbose_name='Client CRM',
+    )
+    lead = models.ForeignKey(
+        'crm.Lead',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='hospitality_evenements_banquet',
+        verbose_name='Lead',
+    )
+    nom_evenement = models.CharField(max_length=150)
+    date_debut = models.DateTimeField(verbose_name='Début du créneau')
+    date_fin = models.DateTimeField(verbose_name='Fin du créneau')
+    nb_convives = models.PositiveIntegerField(default=0)
+    salle = models.ForeignKey(
+        SalleEvenement,
+        on_delete=models.PROTECT,  # on_delete: jamais une suppression silencieuse d'une salle encore réservée par un événement
+        null=True, blank=True,
+        related_name='evenements',
+        verbose_name='Salle',
+    )
+    # Menu choisi (NTHOT13) — consommé par le BEO (NTHOT19).
+    menu_recettes = models.ManyToManyField(
+        Recette, blank=True, related_name='evenements_banquet')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.BROUILLON)
+    # Identifiant souple (jamais un import de apps.ventes.models) vers le
+    # Devis ventes généré (NTHOT17) — un seul devis par événement, posé à la
+    # génération, jamais recréé.
+    devis_ventes_id = models.PositiveIntegerField(null=True, blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='hospitality_evenements_banquet_crees',
+    )
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Événement / banquet'
+        verbose_name_plural = 'Événements / banquets'
+        ordering = ['-date_debut']
+
+    def __str__(self):
+        return f'{self.nom_evenement} ({self.date_debut:%Y-%m-%d})'
+
+    @property
+    def date_evenement(self):
+        return self.date_debut.date() if self.date_debut else None
+
+
+# ── NTHOT20 — Petit-déjeuner / pension tracking ─────────────────────────────
+
+class TicketPension(TenantModel):
+    """Un repas inclus dans la formule de pension d'UNE réservation, pour UN
+    jour de séjour — généré au check-in (NTHOT5) d'après
+    ``Reservation.formule_pension``. Pointable au restaurant (scan ou saisie
+    manuelle numéro de chambre côté POS salle, hors périmètre ici — NTHOT15)
+    pour éviter la double-facturation d'un repas déjà inclus au forfait
+    (``services.pointer_repas_ou_facturer``)."""
+
+    class TypeRepas(models.TextChoices):
+        PETIT_DEJEUNER = 'petit_dejeuner', 'Petit-déjeuner'
+        DEJEUNER = 'dejeuner', 'Déjeuner'
+        DINER = 'diner', 'Dîner'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: cascade tenant (purge des données de la société supprimée)
+        related_name='hospitality_tickets_pension',
+        verbose_name='Société',
+    )
+    reservation = models.ForeignKey(
+        Reservation,
+        on_delete=models.CASCADE,  # on_delete: cascade parent→enfant (composant du parent)
+        related_name='tickets_pension',
+        verbose_name='Réservation',
+    )
+    date = models.DateField()
+    type_repas = models.CharField(max_length=15, choices=TypeRepas.choices)
+    consomme = models.BooleanField(default=False)
+    date_consommation = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Ticket pension'
+        verbose_name_plural = 'Tickets pension'
+        ordering = ['date', 'type_repas']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['reservation', 'date', 'type_repas'],
+                name='hospitality_ticket_pension_unique_par_jour_repas',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.get_type_repas_display()} — {self.date} (rés. #{self.reservation_id})'
