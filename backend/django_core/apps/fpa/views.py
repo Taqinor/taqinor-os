@@ -5,13 +5,15 @@ from rest_framework.response import Response
 from core.mixins import TenantMixin
 
 from .models import (
-    CycleBudgetaire, Departement, LigneBudgetDepartement,
-    LignePrevisionGlissante, PrevisionGlissante, SoumissionBudgetDepartement,
+    CycleBudgetaire, Departement, HypotheseRecrutement,
+    LigneBudgetDepartement, LignePrevisionGlissante, PrevisionGlissante,
+    SoumissionBudgetDepartement,
 )
 from .serializers import (
     CycleBudgetaireSerializer, DepartementSerializer,
-    LigneBudgetDepartementSerializer, LignePrevisionGlissanteSerializer,
-    PrevisionGlissanteSerializer, SoumissionBudgetDepartementSerializer,
+    HypotheseRecrutementSerializer, LigneBudgetDepartementSerializer,
+    LignePrevisionGlissanteSerializer, PrevisionGlissanteSerializer,
+    SoumissionBudgetDepartementSerializer,
 )
 
 
@@ -259,6 +261,26 @@ class LignePrevisionGlissanteViewSet(TenantMixin, viewsets.ModelViewSet):
         qs = super().get_queryset()
         if prevision_id := self.request.query_params.get('prevision'):
             qs = qs.filter(prevision_id=prevision_id)
+        return qs
+
+
+class HypotheseRecrutementViewSet(TenantMixin, viewsets.ModelViewSet):
+    """NTFPA10 — Hypothèses de recrutement/départ (alimente le driver masse
+    salariale NTFPA9)."""
+
+    queryset = HypotheseRecrutement.objects.select_related(
+        'departement', 'prevision_glissante').all()
+    serializer_class = HypotheseRecrutementSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_effet']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        if departement_id := params.get('departement'):
+            qs = qs.filter(departement_id=departement_id)
+        if statut := params.get('statut'):
+            qs = qs.filter(statut=statut)
         return qs
 
 

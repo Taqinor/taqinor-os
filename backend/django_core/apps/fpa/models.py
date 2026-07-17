@@ -369,3 +369,56 @@ class LignePrevisionGlissante(models.Model):
 
     def __str__(self):
         return f'{self.prevision_id} M+{self.mois_relatif} {self.categorie}'
+
+
+class HypotheseRecrutement(models.Model):
+    """NTFPA10 — Hypothèse d'embauche/départ alimentant le driver masse
+    salariale (NTFPA9). Une hypothèse « confirmée » signale un mouvement réel
+    (recrutement signé) : la vue de variance (NTFPA16) bascule alors la ligne
+    masse-salariale de « prévu » à « engagé »."""
+
+    class TypeMouvement(models.TextChoices):
+        EMBAUCHE = 'embauche', 'Embauche'
+        DEPART = 'depart', 'Départ'
+
+    class Statut(models.TextChoices):
+        HYPOTHESE = 'hypothese', 'Hypothèse'
+        CONFIRME = 'confirme', 'Confirmé'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='fpa_hypotheses_recrutement', verbose_name='Société',
+    )
+    prevision_glissante = models.ForeignKey(
+        PrevisionGlissante, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='hypotheses_recrutement',
+        verbose_name='Prévision glissante liée',
+    )
+    poste = models.CharField(max_length=150, verbose_name='Poste')
+    departement = models.ForeignKey(
+        Departement, on_delete=models.CASCADE,
+        related_name='hypotheses_recrutement', verbose_name='Département',
+    )
+    date_effet = models.DateField(verbose_name="Date d'effet")
+    salaire_brut_estime = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0,
+        verbose_name='Salaire brut estimé')
+    type_mouvement = models.CharField(
+        max_length=10, choices=TypeMouvement.choices,
+        default=TypeMouvement.EMBAUCHE, verbose_name='Type de mouvement')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.HYPOTHESE,
+        verbose_name='Statut')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Hypothèse de recrutement'
+        ordering = ['date_effet']
+
+    def __str__(self):
+        return f'{self.poste} ({self.type_mouvement}, {self.date_effet})'
+
+    @property
+    def est_engage(self):
+        """NTFPA16 — une hypothèse confirmée est « engagée » (vs « prévu »)."""
+        return self.statut == self.Statut.CONFIRME

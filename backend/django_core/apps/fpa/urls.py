@@ -3,8 +3,9 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     CycleBudgetaireViewSet, DepartementViewSet, DriversViewSet,
-    LigneBudgetDepartementViewSet, LignePrevisionGlissanteViewSet,
-    PrevisionGlissanteViewSet, SoumissionBudgetDepartementViewSet,
+    HypotheseRecrutementViewSet, LigneBudgetDepartementViewSet,
+    LignePrevisionGlissanteViewSet, PrevisionGlissanteViewSet,
+    SoumissionBudgetDepartementViewSet,
 )
 
 router = DefaultRouter()
@@ -24,6 +25,9 @@ router.register(
 router.register(
     r'lignes-prevision-glissante', LignePrevisionGlissanteViewSet,
     basename='fpa-ligne-prevision-glissante')
+router.register(
+    r'hypotheses-recrutement', HypotheseRecrutementViewSet,
+    basename='fpa-hypothese-recrutement')
 router.register(r'drivers', DriversViewSet, basename='fpa-drivers')
 
 urlpatterns = [
