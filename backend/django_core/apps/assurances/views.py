@@ -12,14 +12,14 @@ from core.permissions import WriteScopedPermissionMixin
 
 from .models import (
     ActifCouvert, AttestationAssurance, Assureur, Courtier, DeclarationSinistre,
-    EcheancePrime, GarantiePolice, PoliceAssurance,
+    EcheancePrime, ExigenceAssuranceMarche, GarantiePolice, PoliceAssurance,
 )
 from .serializers import (
     ActifCouvertSerializer, AttestationAssuranceSerializer, AssureurSerializer,
     CourtierSerializer, DeclarationSinistreSerializer, EcheancePrimeSerializer,
-    GarantiePoliceSerializer, IndemnisationSinistreSerializer,
-    PoliceActivitySerializer, PoliceAssuranceSerializer,
-    SinistreActivitySerializer,
+    ExigenceAssuranceMarcheSerializer, GarantiePoliceSerializer,
+    IndemnisationSinistreSerializer, PoliceActivitySerializer,
+    PoliceAssuranceSerializer, SinistreActivitySerializer,
 )
 from .selectors import attestations_expirantes, polices_expirantes
 from .services import (
@@ -28,6 +28,7 @@ from .services import (
     log_police_transitions_auto, log_sinistre_creation, log_sinistre_note,
     log_sinistre_transitions_auto, proposer_ecriture_indemnisation,
     proposer_ecriture_prime, renouveler_police,
+    verifier_conformite_assurance_marche,
 )
 
 
@@ -367,3 +368,21 @@ class AttestationAssuranceViewSet(_AssurancesBaseViewSet):
         if page is not None:
             return self.get_paginated_response(serializer.data)
         return Response(serializer.data)
+
+
+class ExigenceAssuranceMarcheViewSet(_AssurancesBaseViewSet):
+    """Checklist de conformité assurance par marché/appel d'offres (NTASS19).
+
+    ``?marche_ref=<id>`` filtre les exigences d'un marché."""
+    queryset = ExigenceAssuranceMarche.objects.all()
+    serializer_class = ExigenceAssuranceMarcheSerializer
+    filterset_fields = ['marche_ref', 'type_police_requis', 'statut_verification']
+
+    @action(detail=True, methods=['post'], url_path='verifier')
+    def verifier(self, request, pk=None):
+        """NTASS19 — croise les polices actives de la société avec l'exigence
+        et pose ``statut_verification`` (conforme / non_conforme)."""
+        exigence = self.get_object()
+        verifier_conformite_assurance_marche(exigence)
+        return Response(
+            ExigenceAssuranceMarcheSerializer(exigence).data)

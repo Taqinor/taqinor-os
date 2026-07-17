@@ -3,8 +3,8 @@ from rest_framework import serializers
 
 from .models import (
     ActifCouvert, AttestationAssurance, Assureur, Courtier, DeclarationSinistre,
-    EcheancePrime, GarantiePolice, IndemnisationSinistre, PoliceActivity,
-    PoliceAssurance, SinistreActivity,
+    EcheancePrime, ExigenceAssuranceMarche, GarantiePolice,
+    IndemnisationSinistre, PoliceActivity, PoliceAssurance, SinistreActivity,
 )
 from .selectors import resoudre_libelle_actif
 
@@ -220,3 +220,19 @@ class AttestationAssuranceSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 'La police doit appartenir à la même société.')
         return value
+
+
+class ExigenceAssuranceMarcheSerializer(serializers.ModelSerializer):
+    type_police_requis_display = serializers.CharField(
+        source='get_type_police_requis_display', read_only=True)
+
+    class Meta:
+        model = ExigenceAssuranceMarche
+        fields = [
+            'id', 'company', 'marche_ref', 'type_police_requis',
+            'type_police_requis_display', 'montant_couverture_minimum',
+            'statut_verification', 'created_at',
+        ]
+        read_only_fields = [
+            'id', 'company', 'statut_verification', 'created_at',
+        ]

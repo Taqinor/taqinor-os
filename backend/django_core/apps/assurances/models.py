@@ -516,3 +516,46 @@ class AttestationAssurance(models.Model):
 
     def __str__(self):
         return f'Attestation {self.police_id} → {self.emise_pour}'.strip()
+
+
+# ── NTASS19 — Checklist conformité assurance par marché/appel d'offres ─────
+
+class ExigenceAssuranceMarche(models.Model):
+    """Exigence d'assurance d'un marché/appel d'offres (NTASS19).
+
+    ``marche_ref`` est une string-FK (id brut) vers ``apps/ao`` (ou un
+    devis/contrat) — jamais une vraie FK cross-app. Le service
+    ``verifier_conformite_assurance_marche`` croise les polices ACTIVES de la
+    société avec les exigences et pose ``statut_verification``."""
+
+    class StatutVerification(models.TextChoices):
+        A_VERIFIER = 'a_verifier', 'À vérifier'
+        CONFORME = 'conforme', 'Conforme'
+        NON_CONFORME = 'non_conforme', 'Non conforme'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='exigences_assurance_marche', verbose_name='Société')
+    marche_ref = models.PositiveIntegerField(
+        verbose_name='Référence du marché (string-FK)')
+    # Même jeu de choix que PoliceAssurance.type_police (réutilisé, jamais
+    # redéclaré — la conformité croise sur ce type).
+    type_police_requis = models.CharField(
+        max_length=30, choices=PoliceAssurance.TypePolice.choices,
+        verbose_name='Type de police requis')
+    montant_couverture_minimum = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0,
+        verbose_name='Couverture minimum exigée')
+    statut_verification = models.CharField(
+        max_length=15, choices=StatutVerification.choices,
+        default=StatutVerification.A_VERIFIER)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['id']
+        verbose_name = "Exigence d'assurance de marché"
+        verbose_name_plural = "Exigences d'assurance de marché"
+        indexes = [models.Index(fields=['company', 'marche_ref'])]
+
+    def __str__(self):
+        return f'Marché {self.marche_ref} — {self.get_type_police_requis_display()}'

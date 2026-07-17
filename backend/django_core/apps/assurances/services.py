@@ -8,10 +8,12 @@ import datetime
 from decimal import ROUND_HALF_UP, Decimal
 
 from django.core.exceptions import ValidationError
+from django.db.models import Max
 
 from .models import (
-    ActifCouvert, DeclarationSinistre, EcheancePrime, GarantiePolice,
-    IndemnisationSinistre, PoliceActivity, PoliceAssurance, SinistreActivity,
+    ActifCouvert, DeclarationSinistre, EcheancePrime, ExigenceAssuranceMarche,
+    GarantiePolice, IndemnisationSinistre, PoliceActivity, PoliceAssurance,
+    SinistreActivity,
 )
 
 # ── NTASS3 — Chatter PoliceAssurance ────────────────────────────────────────
@@ -398,3 +400,37 @@ def proposer_ecriture_indemnisation(indemnisation, *, user=None):
     indemnisation.ecriture_ref = ecriture.id
     indemnisation.save(update_fields=['ecriture_ref'])
     return ecriture
+
+
+# ── NTASS19 — Conformité assurance par marché ───────────────────────────────
+
+def verifier_conformite_assurance_marche(exigence):
+    """NTASS19 — croise les polices ACTIVES de la société avec UNE exigence de
+    marché et pose ``statut_verification``.
+
+    Conforme si au moins une police ACTIVE du ``type_police_requis`` a une
+    ``prime_annuelle_ht``… non — la couverture se mesure par le plafond des
+    GARANTIES : conforme si une police active du bon type porte une garantie
+    dont le ``plafond_indemnisation`` ≥ ``montant_couverture_minimum`` (ou si
+    le minimum exigé est 0). Sinon non conforme. Renvoie l'exigence à jour."""
+    company = exigence.company
+    polices = PoliceAssurance.objects.filter(
+        company=company, statut=PoliceAssurance.Statut.ACTIVE,
+        type_police=exigence.type_police_requis)
+
+    conforme = False
+    for police in polices:
+        if exigence.montant_couverture_minimum <= 0:
+            conforme = True
+            break
+        plafond_max = police.garanties.aggregate(
+            m=Max('plafond_indemnisation'))['m'] or 0
+        if plafond_max >= exigence.montant_couverture_minimum:
+            conforme = True
+            break
+
+    exigence.statut_verification = (
+        ExigenceAssuranceMarche.StatutVerification.CONFORME if conforme
+        else ExigenceAssuranceMarche.StatutVerification.NON_CONFORME)
+    exigence.save(update_fields=['statut_verification'])
+    return exigence
