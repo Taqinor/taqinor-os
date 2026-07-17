@@ -275,6 +275,29 @@ class InsightSnapshot(TenantModel):
         max_digits=12, decimal_places=2, null=True, blank=True,
         verbose_name='Coût par lead')
 
+    # ── ADSDEEP1 — colonnes de diffusion/conversion typées (dossier
+    # insights-api). Alimentées par ``sync.upsert_insight`` depuis les champs
+    # normalisés de ``platforms.base.normalize_insight_row`` (parsing de
+    # ``actions[]``/AdsActionStats). Nullable + ADDITIF : les anciens rows
+    # restent intacts (valeurs None). ``conversations`` = action
+    # ``onsite_conversion.messaging_conversation_started_7d`` ; ``leads_count``
+    # = action ``lead`` ; ``video_metrics`` = dict p25/50/75/95/100 + plays +
+    # 6s/15s/30s + thruplay + avg_time (jamais de champ vidéo « 3 s » — inexistant).
+    impressions = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Impressions')
+    reach = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Portée (reach)')
+    clicks = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Clics')
+    link_clicks = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Clics sur lien')
+    conversations = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Conversations WhatsApp')
+    leads_count = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Leads')
+    video_metrics = models.JSONField(
+        default=dict, blank=True, verbose_name='Métriques vidéo')
+
     class Meta:
         verbose_name = 'Instantané de performance'
         verbose_name_plural = 'Instantanés de performance'

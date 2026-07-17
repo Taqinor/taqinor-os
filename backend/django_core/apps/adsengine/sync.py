@@ -125,20 +125,44 @@ def sync_ads(company, payloads, *, created_via_engine=False):
 
 
 def upsert_insight(company, target, *, date, spend=None, results=None,
-                   frequency=None, cpl=None):
+                   frequency=None, cpl=None, impressions=None, reach=None,
+                   clicks=None, link_clicks=None, conversations=None,
+                   leads_count=None, video_metrics=None):
     """Upsert un ``InsightSnapshot`` daté sur un miroir (FK générique).
 
     Clé idempotente : ``(company, content_type, object_id, date)`` — un même
     jour re-synchronisé met à jour la ligne existante au lieu d'en créer une
     nouvelle.
+
+    ADSDEEP1 — les colonnes typées additionnelles (impressions/reach/clicks/
+    link_clicks/conversations/leads_count/video_metrics) sont écrites quand la
+    synchro les fournit ; un appelant ancien (4 arguments) laisse ces colonnes
+    NULL sans jamais écraser une valeur existante par un None fourni
+    explicitement (les rows historiques restent intacts).
     """
     ct = ContentType.objects.get_for_model(target)
+    defaults = {
+        'spend': _to_decimal(spend),
+        'results': _to_int(results),
+        'frequency': _to_decimal(frequency),
+        'cpl': _to_decimal(cpl),
+    }
+    # Colonnes ADSDEEP1 : n'écrire que ce qui est réellement fourni (None laissé
+    # de côté pour ne jamais annuler une valeur déjà en base sur un re-sync
+    # partiel). ``video_metrics`` a un défaut {} en base : ne l'écrire que si
+    # non-None.
+    for name, value in (
+            ('impressions', _to_int(impressions)),
+            ('reach', _to_int(reach)),
+            ('clicks', _to_int(clicks)),
+            ('link_clicks', _to_int(link_clicks)),
+            ('conversations', _to_int(conversations)),
+            ('leads_count', _to_int(leads_count))):
+        if value is not None:
+            defaults[name] = value
+    if video_metrics is not None:
+        defaults['video_metrics'] = video_metrics
     obj, _ = InsightSnapshot.objects.update_or_create(
         company=company, content_type=ct, object_id=target.pk, date=date,
-        defaults={
-            'spend': _to_decimal(spend),
-            'results': _to_int(results),
-            'frequency': _to_decimal(frequency),
-            'cpl': _to_decimal(cpl),
-        })
+        defaults=defaults)
     return obj
