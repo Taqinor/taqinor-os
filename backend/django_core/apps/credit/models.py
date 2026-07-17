@@ -7,8 +7,10 @@ références vers Client/Devis/BonCommande se font en string-FK
 from django.conf import settings
 from django.db import models
 
+from core.models import TenantModel
 
-class LimiteCredit(models.Model):
+
+class LimiteCredit(TenantModel):
     """NTCRD2 — limite de crédit (encours max autorisé) par client.
 
     Un client SANS ``LimiteCredit`` (ou avec ``montant_limite=None``) n'a
@@ -20,9 +22,6 @@ class LimiteCredit(models.Model):
         AVERTISSEMENT = 'avertissement', 'Avertissement'
         BLOCAGE = 'blocage', 'Blocage'
 
-    company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
-        related_name='limites_credit')
     client = models.ForeignKey(
         'crm.Client', on_delete=models.CASCADE,
         related_name='limites_credit')
@@ -54,16 +53,20 @@ class LimiteCredit(models.Model):
         return f'{self.client_id} — {self.montant_limite} {self.devise}'
 
 
-class ReglageCredit(models.Model):
+class ReglageCredit(TenantModel):
     """NTCRD3 — réglages crédit par société (1-1), défauts NON bloquants.
 
     Les défauts reproduisent le comportement actuel (aucun hold tant que le
     founder n'active rien) : ``mode_hold_defaut`` reste ``avertissement``
     (jamais ``blocage`` sans opt-in explicite)."""
 
+    # Redéclaration ARC1 : le socle ``TenantModel`` fournit une FK ``company``,
+    # mais ce réglage est 1-1 par société ; on redéclare donc ``company`` en
+    # OneToOneField (unicité DB + related_name historique préservé). Le garde
+    # SCA4 exempte une redéclaration sur un modèle qui hérite de TenantModel.
     company = models.OneToOneField(
         'authentication.Company', on_delete=models.CASCADE,
-        related_name='reglage_credit')
+        related_name='reglage_credit', verbose_name='Société')
     mode_hold_defaut = models.CharField(
         max_length=20, choices=LimiteCredit.ModeHold.choices,
         default=LimiteCredit.ModeHold.AVERTISSEMENT,
@@ -116,7 +119,7 @@ class ReglageCredit(models.Model):
             return cls(company=company)
 
 
-class ConditionPaiementSegment(models.Model):
+class ConditionPaiementSegment(TenantModel):
     """NTCRD13 — conditions de paiement par segment client.
 
     ``segment`` est un TEXTE LIBRE (``Client.segment`` NTSRV10 n'existe pas
@@ -125,9 +128,6 @@ class ConditionPaiementSegment(models.Model):
     comportement par défaut). ``mode_hold_override`` permet à un segment « grand
     compte » d'être plus permissif que le défaut société."""
 
-    company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
-        related_name='conditions_paiement_segment')
     segment = models.CharField(max_length=100)
     delai_paiement_jours = models.PositiveIntegerField(default=0)
     pct_acompte_defaut = models.DecimalField(
@@ -150,14 +150,11 @@ class ConditionPaiementSegment(models.Model):
         return f'{self.segment} — {self.delai_paiement_jours} j'
 
 
-class SegmentClientCredit(models.Model):
+class SegmentClientCredit(TenantModel):
     """NTCRD13 — affectation locale d'un client à un segment crédit (repli
     additif tant que ``Client.segment`` NTSRV10 n'existe pas). Un client sans
     affectation = aucun segment = comportement société par défaut inchangé."""
 
-    company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
-        related_name='segments_client_credit')
     client = models.OneToOneField(
         'crm.Client', on_delete=models.CASCADE,
         related_name='segment_credit')
@@ -172,16 +169,13 @@ class SegmentClientCredit(models.Model):
         return f'{self.client_id} → {self.segment}'
 
 
-class EncoursCache(models.Model):
+class EncoursCache(TenantModel):
     """NTCRD32 — cache court de l'encours d'un client (rafraîchi par un job
     quotidien) pour éviter de recalculer l'encours en temps réel à chaque
     affichage de liste (badges NTCRD23). Les HOOKS bloquants (NTCRD6) ne lisent
     JAMAIS ce cache — ils calculent en LIVE pour ne jamais autoriser sur une
     donnée périmée."""
 
-    company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
-        related_name='encours_cache_credit')
     client = models.OneToOneField(
         'crm.Client', on_delete=models.CASCADE,
         related_name='encours_cache_credit')
@@ -196,7 +190,7 @@ class EncoursCache(models.Model):
         return f'{self.client_id} → {self.encours} ({self.calcule_le})'
 
 
-class DerogationCredit(models.Model):
+class DerogationCredit(TenantModel):
     """NTCRD9 — dérogation crédit : demande → approbation/rejet Directeur/
     Administrateur. Reprend le PATTERN (jamais le modèle) de
     ``contrats.selectors.resoudre_regle_approbation`` — pas de lien métier
@@ -208,9 +202,6 @@ class DerogationCredit(models.Model):
         REJETEE = 'rejetee', 'Rejetée'
         EXPIREE = 'expiree', 'Expirée'
 
-    company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
-        related_name='derogations_credit')
     client = models.ForeignKey(
         'crm.Client', on_delete=models.CASCADE,
         related_name='derogations_credit')
@@ -255,14 +246,11 @@ class DerogationCredit(models.Model):
         return timezone.now() <= self.valide_jusqu_au
 
 
-class PoliceAssuranceCredit(models.Model):
+class PoliceAssuranceCredit(TenantModel):
     """NTCRD16 — police d'assurance-crédit : REGISTRE DÉCLARATIF (aucune
     intégration/appel API assureur — Allianz Trade/Coface/Atradius saisis à la
     main). company-scopé."""
 
-    company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
-        related_name='polices_assurance_credit')
     assureur = models.CharField(max_length=150)
     numero_police = models.CharField(max_length=100, blank=True, default='')
     date_debut = models.DateField(null=True, blank=True)
@@ -291,7 +279,7 @@ class PoliceAssuranceCredit(models.Model):
         return f'{self.assureur} — {self.numero_police}'
 
 
-class EncoursGarantiClient(models.Model):
+class EncoursGarantiClient(TenantModel):
     """NTCRD17 — quota garanti par l'assureur pour UN client, sous une police.
     Un client sans encours garanti déclaré est simplement « non couvert »
     (aucune hypothèse silencieuse)."""
@@ -302,9 +290,6 @@ class EncoursGarantiClient(models.Model):
         EN_ATTENTE = 'en_attente', 'En attente'
         REDUIT = 'reduit', 'Réduit'
 
-    company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
-        related_name='encours_garantis_client')
     police = models.ForeignKey(
         PoliceAssuranceCredit, on_delete=models.CASCADE,
         related_name='encours_garantis')

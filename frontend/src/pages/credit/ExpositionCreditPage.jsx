@@ -30,12 +30,22 @@ export default function ExpositionCreditPage({ onOpenClient }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    setLoading(true)
-    creditApi
-      .getExposition()
-      .then((res) => setRows(res.data.resultats || []))
-      .catch(() => setError('Chargement impossible.'))
-      .finally(() => setLoading(false))
+    let alive = true
+    async function load() {
+      setLoading(true)
+      try {
+        const res = await creditApi.getExposition()
+        if (alive) setRows(res.data.resultats || [])
+      } catch {
+        if (alive) setError('Chargement impossible.')
+      } finally {
+        if (alive) setLoading(false)
+      }
+    }
+    load()
+    return () => {
+      alive = false
+    }
   }, [])
 
   async function exportXlsx() {
