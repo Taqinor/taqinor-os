@@ -395,7 +395,7 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/apps/hospitality/models.py:526` | IngredientRecette.produit | stock.Produit | PROTECT |
 | `backend/django_core/apps/hospitality/models.py:555` | SalleEvenement.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/hospitality/models.py:599` | EvenementBanquet.company | authentication.Company | CASCADE |
-| `backend/django_core/apps/hospitality/models.py:678` | TicketPension.company | authentication.Company | CASCADE |
+| `backend/django_core/apps/hospitality/models.py:694` | TicketPension.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/immobilier/models.py:20` | Site.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/immobilier/models.py:54` | Batiment.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/immobilier/models.py:93` | Niveau.company | authentication.Company | CASCADE |

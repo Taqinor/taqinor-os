@@ -369,8 +369,11 @@ class RecetteViewSet(CompanyScopedModelViewSet):
             permission_classes=[IsResponsableOrAdmin])
     def ingredient_delete(self, request, pk=None, ingredient_id=None):
         recette = self.get_object()
+        # Scopé via le queryset DÉJÀ tenant-scopé de ``recette`` (elle-même
+        # obtenue par ``self.get_object()``) — jamais IngredientRecette non
+        # scopé (IngredientRecette n'a pas de FK company directe).
         ingredient = get_object_or_404(
-            IngredientRecette, pk=ingredient_id, recette=recette)
+            recette.ingredients.all(), pk=ingredient_id)
         ingredient.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 

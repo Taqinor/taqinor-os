@@ -657,7 +657,23 @@ class EvenementBanquet(TenantModel):
 
     @property
     def date_evenement(self):
-        return self.date_debut.date() if self.date_debut else None
+        """Date (sans heure) de ``date_debut``.
+
+        ``date_debut`` peut être une chaîne ISO plutôt qu'un ``datetime`` sur
+        une instance fraîchement créée avec une valeur brute (ex.
+        ``EvenementBanquet.objects.create(date_debut='2026-09-01T10:00:00Z')``
+        en test ou via un appel service direct) : Django ne convertit
+        l'attribut Python qu'au prochain rechargement depuis la base, jamais
+        au ``.create()`` lui-même. On tolère donc les deux formes plutôt que
+        de planter sur ``'str' object has no attribute 'date'``."""
+        value = self.date_debut
+        if not value:
+            return None
+        if isinstance(value, str):
+            from django.utils.dateparse import parse_datetime
+
+            value = parse_datetime(value)
+        return value.date() if value else None
 
 
 # ── NTHOT20 — Petit-déjeuner / pension tracking ─────────────────────────────

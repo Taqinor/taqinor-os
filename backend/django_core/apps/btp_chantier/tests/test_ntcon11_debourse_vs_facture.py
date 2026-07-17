@@ -46,9 +46,14 @@ class DebourseVsFactureTests(TestCase):
         produit = make_produit(self.co, prix_achat=Decimal('100.00'))
         make_reservation_stock(
             self.co, self.chantier, produit, quantite=10, consomme=True)
-        # Réservation NON consommée -> ne doit jamais compter.
+        # Réservation NON consommée -> ne doit jamais compter. Produit
+        # DISTINCT : StockReservation porte une contrainte unique
+        # (installation, produit) — réutiliser le même produit percuterait
+        # cette contrainte plutôt que de tester le filtre consomme=False.
+        produit_non_consomme = make_produit(self.co, prix_achat=Decimal('50.00'))
         make_reservation_stock(
-            self.co, self.chantier, produit, quantite=999, consomme=False)
+            self.co, self.chantier, produit_non_consomme, quantite=999,
+            consomme=False)
 
         # ── Facturé ──────────────────────────────────────────────────────
         situation = make_situation(self.co, self.projet, numero=1)

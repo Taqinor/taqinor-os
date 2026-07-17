@@ -123,9 +123,14 @@ def alerter_derive_trajectoire(periode, *, seuil_pct=None):
     from .selectors import trajectoire_vs_realise
 
     seuil = seuil_pct if seuil_pct is not None else SEUIL_ALERTE_DERIVE_PCT_DEFAUT
-    company = periode.company
-    if company is None:
+    # ``company_id`` d'abord : ``periode.company`` lève
+    # ``RelatedObjectDoesNotExist`` (jamais ``None``) dès que la FK n'est pas
+    # nullable et que ``company_id`` est vide — accéder à ``company_id``
+    # (toujours sûr, jamais de requête ni d'exception) évite ce crash avant
+    # même d'atteindre la garde « sans société ».
+    if periode.company_id is None:
         return []
+    company = periode.company
     annee_limite = periode.date_fin.year if periode.date_fin else None
 
     objectifs_en_derive = []
@@ -170,21 +175,31 @@ def creer_version_facteur(
 
     JAMAIS un écrasement silencieux : la (les) version(s) précédente(s) de
     la même ``(company, categorie, unite)`` sont désactivées (``actif=
-    False``, jamais supprimées — historique intégral conservé) ; la
-    nouvelle version est numérotée ``max(version) + 1`` (jamais
-    ``count() + 1`` — ARC6, une ligne désactivée par erreur ne doit jamais
-    faire régresser la numérotation) et devient la référence active.
-    Renvoie la nouvelle ``FacteurEmissionReference``.
+    False``, jamais supprimées par CE service — historique intégral
+    conservé) ; la nouvelle version est numérotée via un compteur PERSISTANT
+    (``FacteurEmissionVersionCounter``, incrémenté sous verrou), jamais un
+    ``max(version)`` recalculé sur les lignes ``FacteurEmissionReference``
+    restantes — ARC6, une version supprimée MANUELLEMENT (hors service, ex.
+    corrigeant une saisie erronée) ne doit jamais faire régresser puis
+    réutiliser un numéro déjà attribué. Renvoie la nouvelle
+    ``FacteurEmissionReference``.
     """
-    from django.db.models import Max
+    from django.db import transaction
 
-    from .models import FacteurEmissionReference
+    from .models import FacteurEmissionReference, FacteurEmissionVersionCounter
 
-    qs_existant = FacteurEmissionReference.objects.filter(
-        company=company, categorie=categorie, unite=unite)
-    version_max = qs_existant.aggregate(m=Max('version'))['m'] or 0
-    qs_existant.filter(actif=True).update(actif=False)
-    return FacteurEmissionReference.objects.create(
-        company=company, categorie=categorie, unite=unite, valeur=valeur,
-        source=source or '', date_maj=date_maj, version=version_max + 1,
-        actif=True)
+    with transaction.atomic():
+        compteur, _ = FacteurEmissionVersionCounter.objects.select_for_update().get_or_create(
+            company=company, categorie=categorie, unite=unite)
+        compteur.dernier_version += 1
+        compteur.save(update_fields=['dernier_version'])
+        nouvelle_version = compteur.dernier_version
+
+        FacteurEmissionReference.objects.filter(
+            company=company, categorie=categorie, unite=unite, actif=True,
+        ).update(actif=False)
+
+        return FacteurEmissionReference.objects.create(
+            company=company, categorie=categorie, unite=unite, valeur=valeur,
+            source=source or '', date_maj=date_maj, version=nouvelle_version,
+            actif=True)

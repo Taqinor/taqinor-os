@@ -329,3 +329,33 @@ class FacteurEmissionReference(TenantModel):
 
     def __str__(self):
         return f'{self.categorie} ({self.unite}) v{self.version}'
+
+
+class FacteurEmissionVersionCounter(TenantModel):
+    """Compteur PERSISTANT de version pour ``FacteurEmissionReference``
+    (NTESG16, ARC6).
+
+    Une ligne ``FacteurEmissionReference`` peut être supprimée manuellement
+    (pas de soft-delete ici) — sans ce compteur SÉPARÉ, un simple
+    ``max(version)`` recalculé sur les lignes RESTANTES ferait régresser puis
+    RÉUTILISER un numéro de version déjà attribué (violerait la traçabilité
+    d'audit : « version 2 » doit toujours désigner la même valeur historique,
+    même si cette ligne a depuis été supprimée). Incrémenté sous verrou
+    (``select_for_update``) par ``services.creer_version_facteur`` UNIQUEMENT
+    — jamais lu/affiché directement ailleurs."""
+
+    categorie = models.CharField(max_length=120)
+    unite = models.CharField(max_length=30)
+    dernier_version = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        verbose_name = "Compteur de version de facteur d'émission"
+        verbose_name_plural = "Compteurs de version de facteur d'émission"
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'categorie', 'unite'],
+                name='esg_facteur_version_counter_co_cat_unite_uniq'),
+        ]
+
+    def __str__(self):
+        return f'{self.categorie} ({self.unite}) — dernier v{self.dernier_version}'
