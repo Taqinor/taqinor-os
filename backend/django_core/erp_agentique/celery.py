@@ -450,6 +450,13 @@ app.conf.beat_schedule = {
         'task': 'adsengine.evaluate_optimization_rules',
         'schedule': crontab(hour=6, minute=55),
     },
+    # ADSDEEP42 — boucle QUART-HORAIRE du Gardien : évalue les règles opt-in
+    # (RulePolicy.cadence_minutes>0), bornée par le budgeteur de rate-limit
+    # ADSDEEP5 (jamais un 613). NO-OP tant qu'aucune règle n'a opté.
+    'adsengine-evaluate-quarter-hourly': {
+        'task': 'adsengine.evaluate_quarter_hourly',
+        'schedule': crontab(minute='*/15'),
+    },
     # ADSENG35 — boucle du FlightRunner (quotidienne, après le gardien de 06:55).
     # NO-OP par défaut : ne tourne que pour les sociétés ayant ACTIVÉ le mode
     # autonome (préflight ADSENG38 vert) et sans interrupteur global engagé.

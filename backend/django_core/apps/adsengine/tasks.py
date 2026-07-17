@@ -584,6 +584,47 @@ def evaluate_optimization_rules():
     return result
 
 
+@shared_task(name='adsengine.evaluate_quarter_hourly')
+def evaluate_quarter_hourly():
+    """ADSDEEP42 — Boucle QUART-HORAIRE du Gardien (toutes les 15 min).
+
+    Évalue UNIQUEMENT les ``RulePolicy`` opt-in à cette cadence
+    (``cadence_minutes>0``) — jamais toutes les règles critiques : le fondateur
+    élève explicitement une règle jugée assez critique pour un rythme de 15 min.
+
+    BORNÉE par le budgeteur de rate-limit ADSDEEP5 : une société dont le compte
+    Meta est en throttle (usage connu ≥ seuil) est SAUTÉE ce tick — jamais un 613
+    provoqué par la haute fréquence (l'évaluation lit les miroirs locaux, mais une
+    proposition auto-appliquable pourrait toucher l'API : on ne tourne pas sur un
+    compte déjà contraint). NO-OP propre tant qu'aucune règle n'a opté (0 par
+    défaut). Best-effort par société. Renvoie ``{'evaluated', 'throttled_skipped'}``."""
+    from authentication.selectors import active_companies
+
+    from . import meta_client, rules_engine
+    from .models import MetaConnection
+
+    evaluated = throttled = 0
+    for company in active_companies():
+        conn = MetaConnection.objects.filter(company=company).first()
+        if conn is not None and conn.ad_account_id:
+            status = meta_client.rate_limit_status(conn.ad_account_id)
+            if status and status.get('throttled'):
+                throttled += 1
+                continue  # ADSDEEP5 — budget de rate-limit épuisé : on saute
+        try:
+            evaluated += rules_engine.evaluate_company(
+                company, quarter_hourly=True)
+        except Exception:  # noqa: BLE001 — isolation par société
+            logger.warning(
+                'adsengine.evaluate_quarter_hourly: échec société %s',
+                getattr(company, 'pk', company), exc_info=True)
+            continue
+
+    result = {'evaluated': evaluated, 'throttled_skipped': throttled}
+    logger.info('adsengine.evaluate_quarter_hourly: %s', result)
+    return result
+
+
 @shared_task(name='adsengine.run_active_flightplans')
 def run_active_flightplans():
     """ADSENG35 — Boucle du FlightRunner (quotidienne, après la synchro ENG6).

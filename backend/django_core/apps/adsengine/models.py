@@ -1075,6 +1075,14 @@ class RulePolicy(TenantModel):
         default=dict, blank=True, verbose_name='Paramètres')
     cadence_hours = models.PositiveIntegerField(
         default=6, verbose_name='Cadence (heures)')
+    # ADSDEEP42 — cadence QUART-HORAIRE opt-in (minutes). 0 = désactivé (défaut) :
+    # la règle ne tourne qu'à sa cadence de template (boucles 6 h / quotidienne).
+    # >0 (typiquement 15) = la règle est aussi évaluée par la boucle quart-horaire
+    # dédiée, BORNÉE par le budgeteur de rate-limit ADSDEEP5 (jamais un 613). Une
+    # cadence sub-quart-horaire reste proscrite (dd-guardian §A9) : la boucle
+    # tourne au plus toutes les 15 min quel que soit ce nombre.
+    cadence_minutes = models.PositiveIntegerField(
+        default=0, verbose_name='Cadence quart-horaire (minutes, 0 = désactivé)')
     # Cooldown de dédup PAR entité (heures) — 0 = défaut de la sévérité.
     cooldown_hours = models.PositiveIntegerField(
         default=0, verbose_name='Cooldown par entité (heures)')

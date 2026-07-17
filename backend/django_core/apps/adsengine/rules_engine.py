@@ -646,9 +646,14 @@ def _record_last_result(policy, result):
 
 
 def evaluate_company(company, *, cadences=None, now=None, client=None,
-                     config=None):
+                     config=None, quarter_hourly=False):
     """Évalue les ``RulePolicy`` activées d'une société pour les cadences
     demandées. ``cadences`` None = toutes. Renvoie le nombre de règles évaluées.
+
+    ADSDEEP42 — ``quarter_hourly=True`` : n'évalue QUE les règles opt-in à la
+    boucle quart-horaire (``cadence_minutes>0``), quelle que soit la cadence de
+    leur template (le fondateur juge la règle assez critique pour 15 min). Ce
+    mode IGNORE le filtre ``cadences`` (la sélection se fait sur ``cadence_minutes``).
 
     Best-effort par règle : une exception sur une règle est consignée
     (``evaluated: False`` + alerte règle-inopérante) et n'empêche pas les
@@ -670,7 +675,11 @@ def evaluate_company(company, *, cadences=None, now=None, client=None,
             _record_last_result(
                 policy, {'evaluated': False, 'reason': 'template inconnu'})
             continue
-        if cadences is not None and template['cadence'] not in cadences:
+        if quarter_hourly:
+            # ADSDEEP42 — boucle quart-horaire : seulement les règles opt-in.
+            if not getattr(policy, 'cadence_minutes', 0):
+                continue  # pas opt-in — ne touche pas last_result
+        elif cadences is not None and template['cadence'] not in cadences:
             continue  # pas le tour de cette cadence — ne touche pas last_result
 
         evaluator = _EVALUATORS.get(policy.template_key)
