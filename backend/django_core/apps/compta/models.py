@@ -8329,3 +8329,248 @@ class LigneJustificationCompte(TenantModel):
 
     def __str__(self):
         return f'{self.libelle} ({self.montant})'
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Groupe NTFIN — Immobilisations avancées
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ── NTFIN40 — Composants d'immobilisation (IAS 16) ─────────────────────────
+
+class ComposantImmobilisation(TenantModel):
+    """Composant amortissable d'un actif (approche par composants, IAS 16).
+
+    Permet d'amortir séparément les composants d'un actif (structure vs
+    onduleur vs panneaux) avec des durées distinctes. Chaque composant porte sa
+    propre ``valeur``, ``duree_amortissement`` et ``methode`` ; la dotation
+    annuelle totale de l'actif = Σ des dotations de ses composants. Hérite de
+    ``core.models.TenantModel``.
+    """
+    class Methode(models.TextChoices):
+        LINEAIRE = 'lineaire', 'Linéaire'
+        DEGRESSIF = 'degressif', 'Dégressif'
+
+    immobilisation = models.ForeignKey(
+        Immobilisation,
+        # on_delete: CASCADE — un composant n'existe qu'attaché à son actif.
+        on_delete=models.CASCADE,
+        related_name='composants',
+        verbose_name='Immobilisation',
+    )
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    valeur = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Valeur du composant')
+    duree_amortissement = models.PositiveIntegerField(
+        verbose_name="Durée d'amortissement (années)")
+    methode = models.CharField(
+        max_length=10, choices=Methode.choices, default=Methode.LINEAIRE,
+        verbose_name="Méthode d'amortissement")
+
+    class Meta:
+        verbose_name = "Composant d'immobilisation"
+        verbose_name_plural = "Composants d'immobilisation"
+        ordering = ['immobilisation', 'id']
+
+    def __str__(self):
+        return f'{self.libelle} ({self.valeur})'
+
+    @property
+    def dotation_annuelle(self):
+        """Dotation linéaire annuelle du composant (valeur / durée)."""
+        if not self.duree_amortissement:
+            return Decimal('0')
+        return (self.valeur / Decimal(self.duree_amortissement)).quantize(
+            Decimal('0.01'))
+
+
+# ── NTFIN41 — Dépréciation / impairment (IAS 36) ───────────────────────────
+
+class DepreciationImmobilisation(TenantModel):
+    """Test de dépréciation d'une immobilisation (impairment, IAS 36).
+
+    Quand la valeur recouvrable < valeur comptable, on constate une perte de
+    valeur (``perte_valeur``), réversible si la valeur remonte. Hérite de
+    ``core.models.TenantModel``.
+    """
+    immobilisation = models.ForeignKey(
+        Immobilisation,
+        # on_delete: CASCADE — un test de dépréciation n'a de sens que pour son
+        # actif ; supprimer l'actif retire ses tests (aucune écriture GL ici).
+        on_delete=models.CASCADE,
+        related_name='depreciations',
+        verbose_name='Immobilisation',
+    )
+    date_test = models.DateField(verbose_name='Date du test')
+    valeur_recuperable = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Valeur recouvrable')
+    valeur_comptable = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Valeur comptable (VNC)')
+    perte_valeur = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Perte de valeur')
+    reversible = models.BooleanField(default=True, verbose_name='Réversible')
+    reprise = models.BooleanField(
+        default=False, verbose_name='Reprise de dépréciation')
+    ecriture = models.ForeignKey(
+        EcritureComptable,
+        # on_delete: SET_NULL — l'écriture de dépréciation générée est traçée ;
+        # sa purge ne doit pas effacer la donnée de test source.
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='depreciations_immo',
+        verbose_name='Écriture générée',
+    )
+
+    class Meta:
+        verbose_name = "Dépréciation d'immobilisation"
+        verbose_name_plural = "Dépréciations d'immobilisation"
+        ordering = ['-date_test', '-id']
+
+    def __str__(self):
+        return f'Dépréciation {self.immobilisation_id} ({self.perte_valeur})'
+
+    def calculer_perte(self):
+        """Perte = max(0, valeur comptable − valeur recouvrable)."""
+        ecart = (self.valeur_comptable or Decimal('0')) - (
+            self.valeur_recuperable or Decimal('0'))
+        self.perte_valeur = ecart if ecart > 0 else Decimal('0')
+        return self.perte_valeur
+
+
+# ── NTFIN42 — Mutation / transfert d'immobilisation ────────────────────────
+
+class MutationImmobilisation(TenantModel):
+    """Transfert d'un actif entre centres analytiques ou entités (NTFIN42).
+
+    Trace le déplacement d'une immobilisation d'un centre/axe (ou entité) à un
+    autre ; les futures dotations sont réaffectées au nouveau centre à compter
+    de la ``date`` de mutation. Un changement d'entité déclenche une écriture
+    inter-co (traçée par string-ref). Hérite de ``core.models.TenantModel``.
+    """
+    immobilisation = models.ForeignKey(
+        Immobilisation,
+        # on_delete: CASCADE — une mutation n'a de sens que pour son actif.
+        on_delete=models.CASCADE,
+        related_name='mutations',
+        verbose_name='Immobilisation',
+    )
+    ancien_centre = models.ForeignKey(
+        'compta.CentreCout',
+        # on_delete: SET_NULL — l'ancien centre est indicatif ; sa purge ne
+        # casse pas la trace de mutation.
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='mutations_immo_depuis',
+        verbose_name='Ancien centre',
+    )
+    nouveau_centre = models.ForeignKey(
+        'compta.CentreCout',
+        # on_delete: SET_NULL — idem ancien_centre.
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='mutations_immo_vers',
+        verbose_name='Nouveau centre',
+    )
+    entite_source = models.ForeignKey(
+        'authentication.Company',
+        # on_delete: SET_NULL — entité indicative (foundation app).
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='mutations_immo_source',
+        verbose_name='Entité source',
+    )
+    entite_cible = models.ForeignKey(
+        'authentication.Company',
+        # on_delete: SET_NULL — idem entite_source.
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='mutations_immo_cible',
+        verbose_name='Entité cible',
+    )
+    date = models.DateField(verbose_name='Date de mutation')
+    motif = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Motif')
+
+    class Meta:
+        verbose_name = "Mutation d'immobilisation"
+        verbose_name_plural = "Mutations d'immobilisation"
+        ordering = ['-date', '-id']
+
+    def __str__(self):
+        return f'Mutation {self.immobilisation_id} @ {self.date}'
+
+
+# ── NTFIN43 — Immobilisations en cours (CIP) & mise en service ─────────────
+
+class ImmobilisationEnCours(TenantModel):
+    """Immobilisation en cours de production (CIP, compte 23) — NTFIN43.
+
+    Cumule les montants engagés d'un chantier immobilisé (par source string-ref)
+    avant sa mise en service. ``mettre_en_service`` transfère le cumul vers une
+    ``Immobilisation`` (compte 2) amortissable et solde le compte 23. Hérite de
+    ``core.models.TenantModel``.
+    """
+    class Statut(models.TextChoices):
+        EN_COURS = 'en_cours', 'En cours'
+        MIS_EN_SERVICE = 'mis_en_service', 'Mis en service'
+
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    compte_encours = models.CharField(
+        max_length=20, default='231',
+        verbose_name='Compte immobilisation en cours (classe 23)')
+    montant_cumule = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant cumulé engagé')
+    statut = models.CharField(
+        max_length=16, choices=Statut.choices, default=Statut.EN_COURS,
+        verbose_name='Statut')
+    date_mise_en_service = models.DateField(
+        null=True, blank=True, verbose_name='Date de mise en service')
+    immobilisation = models.ForeignKey(
+        Immobilisation,
+        # on_delete: SET_NULL — l'immobilisation créée à la mise en service est
+        # traçée ; sa purge ne doit pas effacer l'historique du chantier.
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='origine_encours',
+        verbose_name='Immobilisation mise en service',
+    )
+
+    class Meta:
+        verbose_name = 'Immobilisation en cours (CIP)'
+        verbose_name_plural = 'Immobilisations en cours (CIP)'
+        ordering = ['-id']
+
+    def __str__(self):
+        return f'{self.libelle} ({self.montant_cumule})'
+
+
+class LigneImmobilisationEnCours(TenantModel):
+    """Montant engagé cumulé sur une immobilisation en cours (NTFIN43).
+
+    Chaque ligne ajoute un montant au cumul du CIP, avec sa source (string-ref).
+    Hérite de ``core.models.TenantModel``.
+    """
+    encours = models.ForeignKey(
+        ImmobilisationEnCours,
+        # on_delete: CASCADE — une ligne n'existe qu'attachée à son CIP.
+        on_delete=models.CASCADE,
+        related_name='lignes',
+        verbose_name='Immobilisation en cours',
+    )
+    libelle = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Libellé')
+    montant = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant')
+    date = models.DateField(null=True, blank=True, verbose_name='Date')
+    source_type = models.CharField(
+        max_length=40, blank=True, default='',
+        verbose_name='Type de source (string-ref)')
+    source_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID de la source (string-ref)')
+
+    class Meta:
+        verbose_name = "Ligne d'immobilisation en cours"
+        verbose_name_plural = "Lignes d'immobilisation en cours"
+        ordering = ['encours', 'id']
+
+    def __str__(self):
+        return f'{self.libelle} ({self.montant})'

@@ -90,6 +90,8 @@ from .models import (
     ModeleCloture, TacheClotureModele, InstanceCloture, TacheCloture,
     AccrualCloture, JustificationVariation, ModeleEcriture,
     RapprochementCompte, LigneJustificationCompte,
+    ComposantImmobilisation, DepreciationImmobilisation,
+    MutationImmobilisation, ImmobilisationEnCours, LigneImmobilisationEnCours,
 )
 from .serializers import (
     AppelTelephoniqueSerializer, AvancementRevenuSerializer,
@@ -169,6 +171,9 @@ from .serializers import (
     InstanceClotureSerializer, TacheClotureSerializer,
     AccrualClotureSerializer, JustificationVariationSerializer,
     RapprochementCompteSerializer, LigneJustificationCompteSerializer,
+    ComposantImmobilisationSerializer, DepreciationImmobilisationSerializer,
+    MutationImmobilisationSerializer, ImmobilisationEnCoursSerializer,
+    LigneImmobilisationEnCoursSerializer,
 )
 
 
@@ -532,6 +537,32 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
                             status=status.HTTP_400_BAD_REQUEST)
         return Response(
             selectors.rapprochements_en_retard(request.user.company, periode))
+
+    @action(detail=False, methods=['get'], url_path='registre-immobilisations')
+    def registre_immobilisations(self, request):
+        """NTFIN44 — registre des immos multi-référentiel (``?referentiel=<id>``)."""
+        company = request.user.company
+        ref = None
+        ref_id = request.query_params.get('referentiel')
+        if ref_id:
+            ref = ReferentielComptable.objects.filter(
+                company=company, id=ref_id).first()
+        return Response(selectors.registre_immobilisations(company, referentiel=ref))
+
+    @action(detail=False, methods=['get'], url_path='projection-dotations')
+    def projection_dotations(self, request):
+        """NTFIN45 — projection des dotations futures (``?annees=5``)."""
+        try:
+            annees = int(request.query_params.get('annees') or 5)
+        except (TypeError, ValueError):
+            annees = 5
+        ref = None
+        ref_id = request.query_params.get('referentiel')
+        if ref_id:
+            ref = ReferentielComptable.objects.filter(
+                company=request.user.company, id=ref_id).first()
+        return Response(selectors.projection_dotations(
+            request.user.company, annees=annees, referentiel=ref))
 
     @action(detail=False, methods=['get'])
     def cpc(self, request):
@@ -8687,3 +8718,153 @@ class LigneJustificationCompteViewSet(_ComptaBaseViewSet):
         rappr = instance.rapprochement
         instance.delete()
         services.recalculer_rapprochement_compte(rappr)
+
+
+# ── NTFIN40-45 — Immobilisations avancées ──────────────────────────────────
+
+class ComposantImmobilisationViewSet(_ComptaBaseViewSet):
+    """Composants d'immobilisation (NTFIN40) + action ``plans``."""
+    queryset = ComposantImmobilisation.objects.select_related(
+        'immobilisation').all()
+    serializer_class = ComposantImmobilisationSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        immo = self.request.query_params.get('immobilisation')
+        if immo:
+            qs = qs.filter(immobilisation_id=immo)
+        return qs
+
+    @action(detail=False, methods=['get'],
+            permission_classes=[IsResponsableOrAdmin])
+    def plans(self, request):
+        """NTFIN40 — plans par composant d'un actif (``?immobilisation=<id>``)."""
+        immo = Immobilisation.objects.filter(
+            company=request.user.company,
+            pk=request.query_params.get('immobilisation')).first()
+        if immo is None:
+            return Response({'detail': 'Immobilisation inconnue.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(selectors.plans_composants_immobilisation(immo))
+
+
+class DepreciationImmobilisationViewSet(_ComptaBaseViewSet):
+    """Tests de dépréciation d'immobilisation (NTFIN41) + ``poster``/``reprendre``."""
+    queryset = DepreciationImmobilisation.objects.select_related(
+        'immobilisation', 'ecriture').all()
+    serializer_class = DepreciationImmobilisationSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        immo = self.request.query_params.get('immobilisation')
+        if immo:
+            qs = qs.filter(immobilisation_id=immo)
+        return qs
+
+    def get_permissions(self):
+        if self.action in ('poster', 'reprendre'):
+            return [HasPermissionOrLegacy('compta_valider')()]
+        return super().get_permissions()
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[HasPermissionOrLegacy('compta_valider')])
+    def poster(self, request, pk=None):
+        """NTFIN41 — poste la dépréciation (si recouvrable < comptable)."""
+        dep = self.get_object()
+        try:
+            services.poster_depreciation_immobilisation(dep, user=request.user)
+        except DjangoValidationError as exc:
+            return _err400(exc)
+        return Response(self.get_serializer(dep).data)
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[HasPermissionOrLegacy('compta_valider')])
+    def reprendre(self, request, pk=None):
+        """NTFIN41 — reprise de dépréciation (valeur remontée)."""
+        dep = self.get_object()
+        try:
+            reprise = services.reprendre_depreciation_immobilisation(
+                dep, request.data.get('montant'),
+                user=request.user)
+        except (DjangoValidationError, ValueError, TypeError) as exc:
+            return _err400(exc)
+        return Response(self.get_serializer(reprise).data,
+                        status=status.HTTP_201_CREATED)
+
+
+class MutationImmobilisationViewSet(_ComptaBaseViewSet):
+    """Mutations/transferts d'immobilisation (NTFIN42)."""
+    queryset = MutationImmobilisation.objects.select_related(
+        'immobilisation', 'ancien_centre', 'nouveau_centre').all()
+    serializer_class = MutationImmobilisationSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        immo = self.request.query_params.get('immobilisation')
+        if immo:
+            qs = qs.filter(immobilisation_id=immo)
+        return qs
+
+
+class ImmobilisationEnCoursViewSet(_ComptaBaseViewSet):
+    """Immobilisations en cours (CIP, NTFIN43) + ``mettre-en-service``."""
+    queryset = ImmobilisationEnCours.objects.prefetch_related('lignes').all()
+    serializer_class = ImmobilisationEnCoursSerializer
+
+    def get_permissions(self):
+        if self.action == 'mettre_en_service':
+            return [HasPermissionOrLegacy('compta_valider')()]
+        return super().get_permissions()
+
+    @action(detail=True, methods=['post'], url_path='mettre-en-service',
+            permission_classes=[HasPermissionOrLegacy('compta_valider')])
+    def mettre_en_service(self, request, pk=None):
+        """NTFIN43 — transfère le CIP vers une immobilisation amortissable."""
+        encours = self.get_object()
+        date_mes = request.data.get('date_mise_en_service')
+        try:
+            immo = services.mettre_en_service_encours(
+                encours,
+                date_mise_en_service=_parse_date(date_mes) if date_mes else None,
+                user=request.user)
+        except (DjangoValidationError, ValueError, TypeError) as exc:
+            return _err400(exc)
+        encours.refresh_from_db()
+        return Response({
+            'encours': self.get_serializer(encours).data,
+            'immobilisation_id': immo.id if immo else None,
+        })
+
+
+class LigneImmobilisationEnCoursViewSet(_ComptaBaseViewSet):
+    """Lignes de montants engagés d'un CIP (NTFIN43)."""
+    queryset = LigneImmobilisationEnCours.objects.select_related(
+        'encours').all()
+    serializer_class = LigneImmobilisationEnCoursSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        encours = self.request.query_params.get('encours')
+        if encours:
+            qs = qs.filter(encours_id=encours)
+        return qs
+
+    def _recalculer_cumul(self, encours):
+        from django.db.models import Sum as _Sum
+        total = encours.lignes.aggregate(t=_Sum('montant'))['t'] or 0
+        from decimal import Decimal as _D
+        encours.montant_cumule = _D(str(total))
+        encours.save(update_fields=['montant_cumule', 'updated_at'])
+
+    def perform_create(self, serializer):
+        obj = serializer.save(company=self.request.user.company)
+        self._recalculer_cumul(obj.encours)
+
+    def perform_update(self, serializer):
+        obj = serializer.save(company=self.request.user.company)
+        self._recalculer_cumul(obj.encours)
+
+    def perform_destroy(self, instance):
+        encours = instance.encours
+        instance.delete()
+        self._recalculer_cumul(encours)

@@ -66,6 +66,9 @@ from .models import (
     ModeleCloture, TacheClotureModele, InstanceCloture, TacheCloture,
     AccrualCloture, JustificationVariation,
     RapprochementCompte, LigneJustificationCompte,
+    ComposantImmobilisation, DepreciationImmobilisation,
+    MutationImmobilisation, ImmobilisationEnCours,
+    LigneImmobilisationEnCours,
 )
 
 
@@ -3050,3 +3053,74 @@ class RapprochementCompteSerializer(serializers.ModelSerializer):
 
     def validate_compte(self, value):
         return _meme_societe(self, value, 'Compte')
+
+
+# ── NTFIN40-45 — Immobilisations avancées ──────────────────────────────────
+
+class ComposantImmobilisationSerializer(serializers.ModelSerializer):
+    """NTFIN40 — Composant amortissable d'un actif (IAS 16)."""
+    dotation_annuelle = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = ComposantImmobilisation
+        fields = [
+            'id', 'immobilisation', 'libelle', 'valeur',
+            'duree_amortissement', 'methode', 'dotation_annuelle',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+
+class DepreciationImmobilisationSerializer(serializers.ModelSerializer):
+    """NTFIN41 — Test de dépréciation d'immobilisation (IAS 36)."""
+    class Meta:
+        model = DepreciationImmobilisation
+        fields = [
+            'id', 'immobilisation', 'date_test', 'valeur_recuperable',
+            'valeur_comptable', 'perte_valeur', 'reversible', 'reprise',
+            'ecriture', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'perte_valeur', 'reprise', 'ecriture', 'created_at', 'updated_at']
+
+
+class MutationImmobilisationSerializer(serializers.ModelSerializer):
+    """NTFIN42 — Mutation/transfert d'immobilisation."""
+    class Meta:
+        model = MutationImmobilisation
+        fields = [
+            'id', 'immobilisation', 'ancien_centre', 'nouveau_centre',
+            'entite_source', 'entite_cible', 'date', 'motif',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+
+class LigneImmobilisationEnCoursSerializer(serializers.ModelSerializer):
+    """NTFIN43 — Montant engagé cumulé sur un CIP."""
+    class Meta:
+        model = LigneImmobilisationEnCours
+        fields = [
+            'id', 'encours', 'libelle', 'montant', 'date', 'source_type',
+            'source_id', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+
+class ImmobilisationEnCoursSerializer(serializers.ModelSerializer):
+    """NTFIN43 — Immobilisation en cours (CIP)."""
+    lignes = LigneImmobilisationEnCoursSerializer(many=True, read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = ImmobilisationEnCours
+        fields = [
+            'id', 'libelle', 'compte_encours', 'montant_cumule', 'statut',
+            'statut_display', 'date_mise_en_service', 'immobilisation',
+            'lignes', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'montant_cumule', 'statut', 'date_mise_en_service',
+            'immobilisation', 'created_at', 'updated_at']

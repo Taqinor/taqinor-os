@@ -30,6 +30,7 @@ from .models import (
     EngagementComptable,
     InstanceCloture, TacheCloture, JustificationVariation, AccrualCloture,
     RapprochementCompte,
+    PlanAmortissement,
 )
 
 
@@ -5037,4 +5038,142 @@ def rapprochements_en_retard(company, periode):
         'lignes': lignes,
         'nb_en_retard': len(lignes),
         'total_ecart_non_justifie': total_ecart,
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Groupe NTFIN — Immobilisations avancées (composants, registre, projection)
+# ═══════════════════════════════════════════════════════════════════════════
+
+def plans_composants_immobilisation(immobilisation):
+    """NTFIN40 — plans d'amortissement par composant (IAS 16).
+
+    Un plan distinct par composant (durées propres) ; la dotation annuelle
+    totale de l'actif = Σ des dotations des composants. Lecture seule.
+    """
+    composants = []
+    total = Decimal('0')
+    for c in immobilisation.composants.all():
+        dot = c.dotation_annuelle
+        total += dot
+        composants.append({
+            'id': c.id, 'libelle': c.libelle, 'valeur': c.valeur,
+            'duree': c.duree_amortissement, 'methode': c.methode,
+            'dotation_annuelle': dot,
+        })
+    return {
+        'immobilisation_id': immobilisation.id,
+        'composants': composants,
+        'dotation_annuelle_totale': total,
+    }
+
+
+def _vnc_lineaire(cout, duree, date_debut, date_reference):
+    """VNC linéaire d'un actif à ``date_reference`` (années entières écoulées)."""
+    cout = cout or Decimal('0')
+    if not duree:
+        return cout
+    annees_ecoulees = max(0, date_reference.year - date_debut.year)
+    annees_ecoulees = min(annees_ecoulees, duree)
+    dotation_an = (cout / Decimal(duree)).quantize(Decimal('0.01'))
+    cumul = (dotation_an * Decimal(annees_ecoulees)).quantize(Decimal('0.01'))
+    vnc = cout - cumul
+    return vnc if vnc > 0 else Decimal('0')
+
+
+def registre_immobilisations(company, referentiel=None, date_reference=None):
+    """NTFIN44 — registre des immobilisations multi-référentiel (CGNC vs IFRS).
+
+    Pour chaque immobilisation : coût, base d'amortissement et VNC. Le
+    référentiel PRINCIPAL (CGNC) lit le ``PlanAmortissement`` (durée fiscale).
+    Un référentiel NON principal (IFRS) applique l'approche par COMPOSANTS
+    (NTFIN40) quand ils existent — durées IFRS distinctes → VNC IFRS ≠ VNC CGNC.
+    Lecture seule.
+    """
+    from datetime import date as _date
+    date_ref = date_reference or _date.today()
+    est_principal = referentiel is None or getattr(
+        referentiel, 'est_principal', True)
+    lignes = []
+    total_vnc = Decimal('0')
+    for immo in Immobilisation.objects.filter(company=company):
+        plan = PlanAmortissement.objects.filter(immobilisation=immo).first()
+        composants = list(immo.composants.all())
+        if not est_principal and composants:
+            # Vue IFRS par composants (durées propres).
+            vnc = Decimal('0')
+            duree_aff = None
+            debut = plan.date_debut if plan else immo.date_acquisition
+            for c in composants:
+                vnc += _vnc_lineaire(
+                    c.valeur, c.duree_amortissement, debut, date_ref)
+            base = sum((c.valeur for c in composants), Decimal('0'))
+        else:
+            base = plan.base_amortissable if plan else immo.cout
+            duree_aff = plan.duree_annees if plan else None
+            debut = plan.date_debut if plan else immo.date_acquisition
+            vnc = _vnc_lineaire(base, duree_aff, debut, date_ref)
+        total_vnc += vnc
+        lignes.append({
+            'immobilisation_id': immo.id,
+            'libelle': immo.libelle,
+            'cout': immo.cout,
+            'base_amortissable': base,
+            'vnc': vnc,
+            'par_composants': (not est_principal and bool(composants)),
+        })
+    return {
+        'referentiel': getattr(referentiel, 'code', None),
+        'date_reference': date_ref,
+        'lignes': lignes,
+        'total_vnc': total_vnc,
+    }
+
+
+def projection_dotations(company, annees=5, referentiel=None):
+    """NTFIN45 — projection des dotations futures (roll-forward) sur N ans.
+
+    Pour chaque actif à plan linéaire : N dotations annuelles et la VNC
+    décroissante. Renvoie ``{'annees', 'par_actif': [...], 'totaux_par_annee'}``.
+    Lecture seule.
+    """
+    from datetime import date as _date
+    annee_courante = _date.today().year
+    par_actif = []
+    totaux = {annee_courante + i: Decimal('0') for i in range(annees)}
+    for plan in PlanAmortissement.objects.filter(
+            company=company).select_related('immobilisation'):
+        if not plan.duree_annees:
+            continue
+        base = plan.base_amortissable or Decimal('0')
+        dotation_an = (base / Decimal(plan.duree_annees)).quantize(
+            Decimal('0.01'))
+        debut_annee = plan.date_debut.year
+        projection = []
+        for i in range(annees):
+            an = annee_courante + i
+            annees_ecoulees = an - debut_annee
+            if 0 <= annees_ecoulees < plan.duree_annees:
+                dot = dotation_an
+            else:
+                dot = Decimal('0')
+            cumul = (dotation_an * Decimal(
+                min(max(annees_ecoulees + 1, 0), plan.duree_annees))
+            ).quantize(Decimal('0.01'))
+            vnc = base - cumul
+            projection.append({
+                'annee': an, 'dotation': dot,
+                'vnc': vnc if vnc > 0 else Decimal('0')})
+            totaux[an] += dot
+        par_actif.append({
+            'immobilisation_id': plan.immobilisation_id,
+            'libelle': plan.immobilisation.libelle,
+            'dotation_annuelle': dotation_an,
+            'projection': projection,
+        })
+    return {
+        'annees': annees,
+        'referentiel': getattr(referentiel, 'code', None),
+        'par_actif': par_actif,
+        'totaux_par_annee': totaux,
     }

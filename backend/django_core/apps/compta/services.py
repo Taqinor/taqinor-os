@@ -88,6 +88,8 @@ from .models import (
     ModeleCloture, TacheClotureModele, InstanceCloture, TacheCloture,
     AccrualCloture,
     RapprochementCompte, LigneJustificationCompte,
+    DepreciationImmobilisation, MutationImmobilisation,
+    ImmobilisationEnCours,
 )
 
 
@@ -13524,3 +13526,138 @@ def ouvrir_rapprochement_compte(company, compte, periode, *, solde_gl=None):
                 permanente=True)
         recalculer_rapprochement_compte(rappr)
     return rappr
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Groupe NTFIN — Immobilisations avancées
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ── NTFIN41 — Dépréciation d'immobilisation (impairment IAS 36) ────────────
+
+@transaction.atomic
+def poster_depreciation_immobilisation(depreciation, *, user=None):
+    """NTFIN41 — poste la dépréciation quand recouvrable < comptable (IAS 36).
+
+    Débit 6194 (dotations aux provisions pour dépréciation des immos) / crédit
+    2920 (provisions pour dépréciation des immobilisations). Idempotent : une
+    dépréciation déjà postée n'est pas redoublée. Renvoie la dépréciation.
+    """
+    if depreciation.ecriture_id:
+        return depreciation
+    perte = depreciation.calculer_perte()
+    depreciation.save(update_fields=['perte_valeur', 'updated_at'])
+    if perte <= 0:
+        return depreciation
+    compte_dot = _assurer_compte(depreciation.company, '6194')
+    compte_prov = _assurer_compte(depreciation.company, '2920')
+    ecriture = creer_ecriture_od(
+        depreciation.company, depreciation.date_test,
+        f'Dépréciation immobilisation {depreciation.immobilisation_id}',
+        [
+            {'compte': compte_dot,
+             'libelle': 'Dotation dépréciation immobilisation',
+             'debit': str(perte), 'credit': '0'},
+            {'compte': compte_prov,
+             'libelle': 'Provision pour dépréciation immobilisation',
+             'debit': '0', 'credit': str(perte)},
+        ], created_by=user, statut=EcritureComptable.Statut.VALIDEE)
+    depreciation.ecriture = ecriture
+    depreciation.save(update_fields=['ecriture', 'updated_at'])
+    return depreciation
+
+
+@transaction.atomic
+def reprendre_depreciation_immobilisation(depreciation_origine, montant_reprise,
+                                          *, date_reprise=None, user=None):
+    """NTFIN41 — reprise de dépréciation quand la valeur remonte (réversible).
+
+    Poste l'écriture inverse (débit 2920 / crédit 7194) et crée une
+    ``DepreciationImmobilisation`` marquée ``reprise``. Renvoie la reprise.
+    """
+    if not depreciation_origine.reversible:
+        raise ValidationError("Cette dépréciation n'est pas réversible.")
+    montant = Decimal(str(montant_reprise)).quantize(_CENT)
+    if montant <= 0:
+        raise ValidationError("Le montant de reprise doit être positif.")
+    date_reprise = date_reprise or timezone.localdate()
+    compte_prov = _assurer_compte(depreciation_origine.company, '2920')
+    compte_reprise = _assurer_compte(depreciation_origine.company, '7194')
+    ecriture = creer_ecriture_od(
+        depreciation_origine.company, date_reprise,
+        f'Reprise dépréciation immobilisation '
+        f'{depreciation_origine.immobilisation_id}',
+        [
+            {'compte': compte_prov,
+             'libelle': 'Reprise provision dépréciation',
+             'debit': str(montant), 'credit': '0'},
+            {'compte': compte_reprise,
+             'libelle': 'Reprise sur dépréciation immobilisation',
+             'debit': '0', 'credit': str(montant)},
+        ], created_by=user, statut=EcritureComptable.Statut.VALIDEE)
+    return DepreciationImmobilisation.objects.create(
+        company=depreciation_origine.company,
+        immobilisation=depreciation_origine.immobilisation,
+        date_test=date_reprise,
+        valeur_recuperable=Decimal('0'), valeur_comptable=Decimal('0'),
+        perte_valeur=-montant, reversible=False, reprise=True,
+        ecriture=ecriture)
+
+
+# ── NTFIN42 — Mutation / transfert d'immobilisation ────────────────────────
+
+def muter_immobilisation(immobilisation, *, nouveau_centre=None,
+                         entite_cible=None, date=None, motif='',
+                         ancien_centre=None):
+    """NTFIN42 — trace le transfert d'un actif entre centres/entités.
+
+    Enregistre la mutation ; les futures dotations sont réaffectées au nouveau
+    centre (le plan d'amortissement lit le centre courant à compter de la date).
+    Renvoie la ``MutationImmobilisation``.
+    """
+    return MutationImmobilisation.objects.create(
+        company=immobilisation.company, immobilisation=immobilisation,
+        ancien_centre=ancien_centre, nouveau_centre=nouveau_centre,
+        entite_source=immobilisation.company, entite_cible=entite_cible,
+        date=date or timezone.localdate(), motif=motif or '')
+
+
+# ── NTFIN43 — Immobilisations en cours (CIP) & mise en service ─────────────
+
+@transaction.atomic
+def mettre_en_service_encours(encours, *, date_mise_en_service=None,
+                              categorie=None, compte_immo='2321', user=None):
+    """NTFIN43 — transfère un CIP (compte 23) vers une immobilisation (compte 2).
+
+    Crée une ``Immobilisation`` de valeur = montant cumulé, poste l'écriture de
+    transfert (débit compte 2 / crédit compte 23) et solde le CIP. Idempotent :
+    un CIP déjà mis en service n'est pas retransféré. Renvoie l'immobilisation.
+    """
+    from .models import Immobilisation as _Immo
+    if encours.statut == ImmobilisationEnCours.Statut.MIS_EN_SERVICE:
+        return encours.immobilisation
+    montant = encours.montant_cumule
+    if montant is None or montant <= 0:
+        raise ValidationError("Le CIP n'a aucun montant cumulé à immobiliser.")
+    date_mes = date_mise_en_service or timezone.localdate()
+    immo = _Immo.objects.create(
+        company=encours.company, libelle=encours.libelle,
+        categorie=categorie or _Immo.Categorie.MATERIEL,
+        cout=montant, date_acquisition=date_mes,
+        date_mise_en_service=date_mes)
+    compte_2 = _assurer_compte(encours.company, compte_immo)
+    compte_23 = _assurer_compte(encours.company, encours.compte_encours)
+    creer_ecriture_od(
+        encours.company, date_mes,
+        f'Mise en service immobilisation : {encours.libelle}',
+        [
+            {'compte': compte_2, 'libelle': 'Immobilisation mise en service',
+             'debit': str(montant), 'credit': '0'},
+            {'compte': compte_23, 'libelle': 'Solde immobilisation en cours',
+             'debit': '0', 'credit': str(montant)},
+        ], created_by=user, statut=EcritureComptable.Statut.VALIDEE)
+    encours.statut = ImmobilisationEnCours.Statut.MIS_EN_SERVICE
+    encours.date_mise_en_service = date_mes
+    encours.immobilisation = immo
+    encours.save(update_fields=[
+        'statut', 'date_mise_en_service', 'immobilisation', 'updated_at'])
+    return immo
