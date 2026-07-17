@@ -31,7 +31,7 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='retenuesource',
             name='type_prestation',
-            field=models.CharField(choices=[('honoraires', 'Honoraires'), ('redevances', 'Redevances'), ('loyers', 'Loyers'), ('prestations', 'Prestations de services'), ('prestation_etrangere', 'Prestation étrangère'), ('autre', 'Autre')], default='honoraires', max_length=12, verbose_name='Type de prestation'),
+            field=models.CharField(choices=[('honoraires', 'Honoraires'), ('redevances', 'Redevances'), ('loyers', 'Loyers'), ('prestations', 'Prestations de services'), ('prestation_etrangere', 'Prestation étrangère'), ('autre', 'Autre')], default='honoraires', max_length=24, verbose_name='Type de prestation'),
         ),
         migrations.CreateModel(
             name='AcompteIS',

@@ -3334,7 +3334,7 @@ class RetenueSource(models.Model):
         verbose_name='Pièce / facture')
     date_piece = models.DateField(verbose_name='Date de la pièce')
     type_prestation = models.CharField(
-        max_length=12, choices=TypePrestation.choices,
+        max_length=24, choices=TypePrestation.choices,
         default=TypePrestation.HONORAIRES, verbose_name='Type de prestation')
     # ── Tiers prestataire (auxiliaire string-FK, jamais d'import modèle) ──
     tiers_type = models.CharField(
