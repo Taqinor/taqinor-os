@@ -27,12 +27,20 @@ const innovationApiMock = vi.hoisted(() => ({
   realiser: vi.fn(),
   fermer: vi.fn(),
   historique: vi.fn(),
+  lier: vi.fn(),
   vote: vi.fn(),
   retirerVote: vi.fn(),
   votesRecents: vi.fn(),
   mesVotes: vi.fn(),
 }))
 vi.mock('../../api/innovationApi', () => ({ default: innovationApiMock }))
+
+// NTIDE15 (« Mes idées ») lit l'utilisateur connecté via useSelector — pas de
+// Provider redux dans `wrap()`, on stub directement (patron
+// UsersManagement.test.jsx).
+vi.mock('react-redux', () => ({
+  useSelector: (sel) => sel({ auth: { user: { id: 1, username: 'demo_user' } } }),
+}))
 
 // jsdom n'implémente pas ResizeObserver (Radix Switch/Select).
 beforeAll(() => {
@@ -170,6 +178,21 @@ describe('IdeeDetail', () => {
     const user = userEvent.setup()
     await user.click(screen.getByRole('button', { name: /Voter/ }))
     await waitFor(() => expect(innovationApiMock.vote).toHaveBeenCalledWith('3'))
+  })
+})
+
+describe('MesIdeesPage (NTIDE15)', () => {
+  it('charge les idées de l\'utilisateur connecté (filtre owner) et les affiche', async () => {
+    innovationApiMock.list.mockResolvedValue({
+      data: [
+        { id: 1, titre: 'Ma première idée', statut: 'ouvert', votes_count: 2, date_creation: '2026-07-01T10:00:00Z' },
+      ],
+    })
+    const { default: MesIdeesPage } = await import('./MesIdeesPage')
+    render(wrap(<MesIdeesPage />))
+
+    await waitFor(() => expect(innovationApiMock.list).toHaveBeenCalledWith({ owner: 1 }))
+    expect(await screen.findByText('Ma première idée')).toBeTruthy()
   })
 })
 
