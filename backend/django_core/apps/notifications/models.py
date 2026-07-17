@@ -855,7 +855,7 @@ class AnnonceLecture(models.Model):
     fonctionnel, seulement du reporting + relance)."""
 
     annonce = models.ForeignKey(
-        Annonce, on_delete=models.CASCADE, related_name='lectures')
+        Annonce, on_delete=models.CASCADE, related_name='lectures')  # on_delete: composition (parent-enfant)
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,  # on_delete: tenant (societe)
         related_name='annonce_lectures')
@@ -891,7 +891,7 @@ class AnnonceRelance(models.Model):
     ne signifie jamais une lecture confirmée."""
 
     annonce = models.ForeignKey(
-        Annonce, on_delete=models.CASCADE, related_name='relances')
+        Annonce, on_delete=models.CASCADE, related_name='relances')  # on_delete: composition (parent-enfant)
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,  # on_delete: tenant (societe)
         related_name='annonce_relances')
