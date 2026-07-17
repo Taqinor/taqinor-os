@@ -882,3 +882,35 @@ describe('NTUX19 — groupBy (grouper par colonne, en-têtes collapsibles + sous
     expect(screen.getByRole('button', { name: /non renseigné.*2/i })).toBeInTheDocument()
   })
 })
+
+/* ============================== NTUX22 — APERÇU AU SURVOL (PEEK) ============================== */
+
+describe('NTUX22 — rowPeek (aperçu au survol, HoverCard sur la 1re colonne desktop)', () => {
+  it('sans rowPeek (79 écrans existants) : rendu inchangé, aucun peek au survol', async () => {
+    const user = userEvent.setup()
+    const { container } = renderTable()
+    const table = container.querySelector('[data-dt-table]')
+    await user.hover(within(table).getByText('Kasri'))
+    expect(screen.queryByText(/résumé/i)).not.toBeInTheDocument()
+  })
+
+  it('un survol prolongé (délai par défaut ~400ms) affiche le résumé condensé fourni par rowPeek', async () => {
+    const user = userEvent.setup()
+    const rowPeek = (row) => <div>Résumé — {row.montant} MAD</div>
+    const { container } = renderTable({ rowPeek })
+    const table = container.querySelector('[data-dt-table]')
+    const cell = within(table).getByText('Kasri').closest('td')
+    await user.hover(cell)
+    expect(await screen.findByText('Résumé — 1200 MAD', {}, { timeout: 2000 })).toBeInTheDocument()
+  }, 10000)
+
+  it('rowPeekDelay personnalisé raccourcit le délai de survol', async () => {
+    const user = userEvent.setup()
+    const rowPeek = (row) => <div>Peek {row.nom}</div>
+    const { container } = renderTable({ rowPeek, rowPeekDelay: 10 })
+    const table = container.querySelector('[data-dt-table]')
+    const cell = within(table).getByText('Kasri').closest('td')
+    await user.hover(cell)
+    expect(await screen.findByText('Peek Kasri', {}, { timeout: 1000 })).toBeInTheDocument()
+  })
+})

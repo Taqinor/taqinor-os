@@ -21,6 +21,8 @@ import { EmptyState } from '../EmptyState'
 // (pulse vert sur LA cellule à la sauvegarde, jamais un toast pour ça).
 import { EditableCell } from './EditableCell'
 import { FieldSavedPulse } from '../FieldSavedPulse'
+// NTUX22 — aperçu au survol (peek) sur la 1re colonne des lignes desktop.
+import { HoverCard, HoverCardTrigger, HoverCardContent } from '../HoverCard'
 import { Tabs, TabsList, TabsTrigger } from '../Tabs'
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
@@ -276,6 +278,13 @@ export const DataTable = forwardRef(function DataTable(
     // des ouvertures via la palette, sans dupliquer sa logique de stockage.
     trackRecent,
     onRowPrefetch, // (row) => void — H133 : préchargement au survol/intention
+    // NTUX22 — aperçu au survol (peek) : `(row) => ReactNode` rendu dans un
+    // HoverCard ancré sur la 1re colonne (desktop uniquement, 100% opt-in).
+    // Purement client-side — réutilise les données déjà chargées par la
+    // liste (aucun nouvel appel réseau). `rowPeekDelay` (ms) contrôle le
+    // délai de survol prolongé avant affichage (défaut 400 ms).
+    rowPeek,
+    rowPeekDelay = 400,
     renderExpanded, // (row) => ReactNode → ligne dépliable
     /* ---- ARC49/ARC53 — Échappatoires ADDITIVES (100 % opt-in) ------------
        Le moteur est consommé par ~79 écrans ; TOUTES les propriétés ci-dessous
@@ -1225,30 +1234,45 @@ export const DataTable = forwardRef(function DataTable(
                                 const pinnedLeft = c.pinned === 'left'
                                 const pinnedRight = c.pinned === 'right'
                                 const firstCol = ci === 0
+                                const cellStyle = {
+                                  left: pinnedLeft ? pinEdges.left[c.id] : undefined,
+                                  right: pinnedRight ? pinEdges.right[c.id] : undefined,
+                                }
+                                const cellClassName = cn(
+                                  cellPadX, cellPadY, 'align-middle',
+                                  // H129 — colonnes numériques : chiffres tabulaires + alignés à droite.
+                                  c.align === 'right' && 'text-right tabular-nums',
+                                  c.align === 'center' && 'text-center',
+                                  c.numeric && 'text-right tabular-nums',
+                                  (pinnedLeft || pinnedRight || (firstCol && c.frozen)) && 'sticky z-[1] bg-inherit',
+                                  pinnedLeft && scrollLeft > 0 && 'shadow-[2px_0_4px_-2px_rgb(12_19_53/0.18)]',
+                                  pinnedRight && 'shadow-[-2px_0_4px_-2px_rgb(12_19_53/0.18)]',
+                                  firstCol && 'font-medium text-foreground',
+                                  // NTUX8 — curseur de cellule visible (bordure focus) sur la
+                                  // colonne éditable actuellement ciblée par Tab/Entrée.
+                                  c.editable && activeCell?.rowKey === rowKey && activeCell?.colId === c.id
+                                    && 'ring-2 ring-inset ring-ring',
+                                )
+                                // NTUX22 — aperçu au survol (peek), 1re colonne uniquement,
+                                // opt-in via `rowPeek`. `HoverCardTrigger asChild` clone ses
+                                // props sur le `<td>` lui-même (aucun wrapper DOM injecté —
+                                // structure de tableau préservée).
+                                if (firstCol && rowPeek) {
+                                  return (
+                                    <HoverCard key={c.id} openDelay={rowPeekDelay} closeDelay={0}>
+                                      <HoverCardTrigger asChild>
+                                        <td role="gridcell" style={cellStyle} className={cellClassName}>
+                                          {renderCell(c, row, rowKey)}
+                                        </td>
+                                      </HoverCardTrigger>
+                                      <HoverCardContent align="start">
+                                        {rowPeek(row)}
+                                      </HoverCardContent>
+                                    </HoverCard>
+                                  )
+                                }
                                 return (
-                                  <td
-                                    key={c.id}
-                                    role="gridcell"
-                                    style={{
-                                      left: pinnedLeft ? pinEdges.left[c.id] : undefined,
-                                      right: pinnedRight ? pinEdges.right[c.id] : undefined,
-                                    }}
-                                    className={cn(
-                                      cellPadX, cellPadY, 'align-middle',
-                                      // H129 — colonnes numériques : chiffres tabulaires + alignés à droite.
-                                      c.align === 'right' && 'text-right tabular-nums',
-                                      c.align === 'center' && 'text-center',
-                                      c.numeric && 'text-right tabular-nums',
-                                      (pinnedLeft || pinnedRight || (firstCol && c.frozen)) && 'sticky z-[1] bg-inherit',
-                                      pinnedLeft && scrollLeft > 0 && 'shadow-[2px_0_4px_-2px_rgb(12_19_53/0.18)]',
-                                      pinnedRight && 'shadow-[-2px_0_4px_-2px_rgb(12_19_53/0.18)]',
-                                      firstCol && 'font-medium text-foreground',
-                                      // NTUX8 — curseur de cellule visible (bordure focus) sur la
-                                      // colonne éditable actuellement ciblée par Tab/Entrée.
-                                      c.editable && activeCell?.rowKey === rowKey && activeCell?.colId === c.id
-                                        && 'ring-2 ring-inset ring-ring',
-                                    )}
-                                  >
+                                  <td key={c.id} role="gridcell" style={cellStyle} className={cellClassName}>
                                     {renderCell(c, row, rowKey)}
                                   </td>
                                 )
