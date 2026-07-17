@@ -31,6 +31,9 @@ CATEGORIES = {
     # Regroupement commercial transverse (appels d'offres, marketing, portail
     # client) — modules ao/marketing/portail.
     'Commercial',
+    # Verticaux métier (secteurs d'activité) — agriculture, hôtellerie,
+    # BTP/chantier, immobilier, ESG…
+    'Verticaux',
 }
 
 

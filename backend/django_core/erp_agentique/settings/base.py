@@ -152,6 +152,11 @@ INSTALLED_APPS = [
     'apps.qhse',
     'apps.kb',
     'apps.litiges',
+    # Groupe NTESG — Reporting ESG/durabilité consolidé (périodes figées,
+    # agrégation cross-app EN LECTURE via selectors.py, catalogue GRI-lite,
+    # rapports PDF/xlsx, trajectoires d'objectifs). Lit qhse/flotte/rh en
+    # lecture seule ; ne réécrit jamais leurs données sources.
+    'apps.esg',
     # XPOS1 — Vente comptoir (point of sale, accessoires).
     'apps.pos',
     # ARC17 — Répertoire unifié des tiers (res.partner). COUCHE FONDATION :
@@ -172,6 +177,22 @@ INSTALLED_APPS = [
     # propose→approuve→applique, création TOUJOURS PAUSED). App satellite
     # multi-société ; tout no-ope sans token/clé configuré.
     'apps.adsengine',
+    # NTAGR1 — Vertical Agriculture (exploitations, parcelles, campagnes
+    # culturales, intrants, main d'œuvre saisonnière). Multi-société,
+    # additif ; intrants liés à apps.stock via string-ref (jamais dupliqué).
+    'apps.agriculture',
+    # Groupe NTPRO — Vertical immobilier & facilities (patrimoine, baux,
+    # quittancement, GMAO bâtiment). App satellite multi-société ; aucune
+    # écriture Facture ici (délègue à apps.ventes.services).
+    'apps.immobilier',
+    # Groupe NTHOT — Vertical hôtellerie & restauration (plan de chambres,
+    # réservations, check-in/out, folio client unifié, housekeeping). Nouvelle
+    # app greenfield, multi-société, additive.
+    'apps.hospitality',
+    # Groupe NTCON — Vertical BTP/EPC vendable : réserves géo-localisées sur
+    # plan, RFI, visas de documents techniques, journal de chantier,
+    # avenants, DGD. Nouvelle app greenfield, additive.
+    'apps.btp_chantier',
     # NTEXT13 — registre de packages d'extension (marketplace interne no-code).
     # Catalogue READ-ONLY (registre global) ; installation par tenant hors
     # périmètre de ce lot (NTEXT14, non construite ici).

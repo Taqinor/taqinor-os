@@ -69,6 +69,9 @@ _APP_URLS = [
     path('achats/', include('apps.achats.urls')),
     # FLOTTE1 — Gestion de flotte (véhicules + engins roulants, interne).
     path('flotte/', include('apps.flotte.urls')),
+    # NTAGR1 — Vertical Agriculture (exploitations, parcelles, campagnes,
+    # intrants, main d'œuvre saisonnière).
+    path('agriculture/', include('apps.agriculture.urls')),
     # AG1 — Catalogue d'actions agentiques (métadonnées, filtré par caller).
     path('agent/', include('apps.agent.urls')),
     # Group S — Messagerie interne d'équipe (« Discuss »).
@@ -81,6 +84,8 @@ _APP_URLS = [
     path('qhse/', include('apps.qhse.urls')),
     path('kb/', include('apps.kb.urls')),
     path('litiges/', include('apps.litiges.urls')),
+    # Groupe NTESG — Reporting ESG/durabilité consolidé.
+    path('esg/', include('apps.esg.urls')),
     # ARC17 — Répertoire des tiers (res.partner), couche fondation.
     path('tiers/', include('apps.tiers.urls')),
     # XPLT21 — Softphone VoIP intégré (SIP/WebRTC, gated).
@@ -91,6 +96,12 @@ _APP_URLS = [
     path('identity/', include('apps.identity.urls')),
     # Groupe ENG — Moteur publicitaire Meta Ads dans l'ERP.
     path('adsengine/', include('apps.adsengine.urls')),
+    # Groupe NTPRO — Vertical immobilier & facilities.
+    path('immobilier/', include('apps.immobilier.urls')),
+    # Groupe NTHOT — Vertical hôtellerie & restauration.
+    path('hospitality/', include('apps.hospitality.urls')),
+    # Groupe NTCON — Vertical BTP/EPC (réserves, RFI, visas, journal, DGD…).
+    path('btp-chantier/', include('apps.btp_chantier.urls')),
     # NTSAN1 — Santé (cabinet/clinique).
     path('sante/', include('apps.sante.urls')),
     # Groupe NTIDE — Boîte à idées interne, campagnes d'innovation, feedback.
