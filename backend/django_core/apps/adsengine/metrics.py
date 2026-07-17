@@ -28,6 +28,45 @@ from django.db.models import Sum
 
 from .models import AdCampaignMirror, InsightSnapshot
 
+# ── ADSDEEP6 — Objectif de campagne → métrique « résultats » homogène ─────────
+# Meta rapporte ``results`` selon l'objectif, mais l'objectif lui-même n'a pas
+# de nom métier partagé côté ERP. Cette table (DONNÉES, pas de logique) associe
+# chaque objectif à la métrique qui FAIT SENS et à son libellé FR, pour que
+# ``results``/``cpl`` aient une signification homogène par campagne et que le
+# dashboard affiche « conversations » (CTWA) vs « leads » (OUTCOME_LEADS) plutôt
+# qu'un « résultats » opaque. ``metric`` désigne une clé de
+# ``platforms.base.normalize_insight_row`` (conversations/leads_count/…).
+DEFAULT_RESULT_METRIC = {'metric': 'results', 'label_fr': 'résultats'}
+RESULT_METRIC_BY_OBJECTIVE = {
+    # CTWA / messagerie → conversations WhatsApp (action
+    # messaging_conversation_started_7d).
+    'OUTCOME_ENGAGEMENT': {'metric': 'conversations', 'label_fr': 'conversations'},
+    'MESSAGES': {'metric': 'conversations', 'label_fr': 'conversations'},
+    'CONVERSATIONS': {'metric': 'conversations', 'label_fr': 'conversations'},
+    'OUTCOME_MESSAGES': {'metric': 'conversations', 'label_fr': 'conversations'},
+    # Génération de leads → leads.
+    'OUTCOME_LEADS': {'metric': 'leads_count', 'label_fr': 'leads'},
+    'LEAD_GENERATION': {'metric': 'leads_count', 'label_fr': 'leads'},
+    # Trafic → clics sur lien.
+    'OUTCOME_TRAFFIC': {'metric': 'link_clicks', 'label_fr': 'clics sur lien'},
+    'LINK_CLICKS': {'metric': 'link_clicks', 'label_fr': 'clics sur lien'},
+    # Notoriété → impressions.
+    'OUTCOME_AWARENESS': {'metric': 'impressions', 'label_fr': 'impressions'},
+    'BRAND_AWARENESS': {'metric': 'impressions', 'label_fr': 'impressions'},
+    # Ventes → résultats génériques (achats), libellé dédié.
+    'OUTCOME_SALES': {'metric': 'results', 'label_fr': 'achats'},
+    'CONVERSIONS': {'metric': 'results', 'label_fr': 'conversions'},
+}
+
+
+def result_metric_for_objective(objective):
+    """ADSDEEP6 — Métrique « résultats » + libellé FR pour un objectif Meta.
+
+    Renvoie un dict ``{metric, label_fr}`` ; repli sur ``résultats`` générique
+    pour un objectif inconnu/absent (jamais d'erreur)."""
+    key = (objective or '').strip().upper()
+    return RESULT_METRIC_BY_OBJECTIVE.get(key, DEFAULT_RESULT_METRIC)
+
 
 def _campaign_spend_map(company, campaigns):
     """Dépense cumulée (``InsightSnapshot.spend``) par miroir de campagne.
@@ -80,6 +119,8 @@ def cost_per_signature(company):
         bucket = signed.get(key, {'signed_count': 0, 'signed_lead_ids': []})
         count = bucket['signed_count']
         cps = (spend / count) if count else None
+        # ADSDEEP6 — libellé homogène de la métrique « résultats » par objectif.
+        metric_info = result_metric_for_objective(camp.objective)
         results.append({
             'campaign_meta_id': camp.meta_id,
             'campaign_name': camp.name,
@@ -88,6 +129,9 @@ def cost_per_signature(company):
             'signed_count': count,
             'cost_per_signature': (str(cps) if cps is not None else None),
             'signed_lead_ids': list(bucket['signed_lead_ids']),
+            'objective': camp.objective or '',
+            'result_metric': metric_info['metric'],
+            'result_metric_label': metric_info['label_fr'],
         })
     return results
 

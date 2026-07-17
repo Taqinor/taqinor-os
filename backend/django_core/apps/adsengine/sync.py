@@ -124,6 +124,21 @@ def sync_ads(company, payloads, *, created_via_engine=False):
     return mirrors
 
 
+def resolve_results(objective, normalized_row):
+    """ADSDEEP6 — Nombre de « résultats » HOMOGÈNE d'une campagne selon son
+    objectif : une campagne CTWA compte des conversations, une campagne
+    OUTCOME_LEADS compte des leads, etc. (mapping ``metrics``). Repli sur le
+    ``results`` brut Meta si la métrique dédiée est absente. Renvoie ``None`` si
+    rien n'est disponible."""
+    from .metrics import result_metric_for_objective
+
+    metric = result_metric_for_objective(objective)['metric']
+    value = (normalized_row or {}).get(metric)
+    if value is None:
+        value = (normalized_row or {}).get('results')
+    return value
+
+
 def upsert_insight(company, target, *, date, spend=None, results=None,
                    frequency=None, cpl=None, impressions=None, reach=None,
                    clicks=None, link_clicks=None, conversations=None,
