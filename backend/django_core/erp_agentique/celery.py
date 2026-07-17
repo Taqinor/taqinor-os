@@ -499,6 +499,12 @@ app.conf.beat_schedule = {
         'task': 'innovation.feedback_digest_run',
         'schedule': crontab(hour=8, minute=40),
     },
+    # NTEDU40 — relance réinscription (élèves sans Inscription pour l'année
+    # suivante après la date limite paramétrable) : quotidien, heure creuse.
+    'education-relancer-reinscriptions': {
+        'task': 'education.relancer_reinscriptions',
+        'schedule': crontab(hour=7, minute=50),
+    },
 }
 
 # YHARD6 — compteurs Celery succès/échec (process-local, best-effort) pour
