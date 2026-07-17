@@ -15,14 +15,12 @@ d'un objet FP&A passe par le mixin de chatter générique de fondation
 from django.conf import settings
 from django.db import models
 
+from core.models import TenantModel
 
-class Departement(models.Model):
+
+class Departement(TenantModel):
     """NTFPA1 — Unité organisationnelle FP&A (hiérarchie intra-société)."""
 
-    company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
-        related_name='fpa_departements', verbose_name='Société',
-    )
     code = models.CharField(max_length=30, verbose_name='Code')
     nom = models.CharField(max_length=150, verbose_name='Nom')
     responsable = models.ForeignKey(
@@ -59,7 +57,7 @@ class Departement(models.Model):
         return ids
 
 
-class CycleBudgetaire(models.Model):
+class CycleBudgetaire(TenantModel):
     """NTFPA2 — Cycle budgétaire d'entreprise (ex. « Budget 2027 »).
 
     ``exercice_comptable_id`` référence ``compta.ExerciceComptable`` en
@@ -77,10 +75,6 @@ class CycleBudgetaire(models.Model):
         ANNUEL = 'annuel', 'Annuel'
         TRIMESTRIEL = 'trimestriel', 'Trimestriel'
 
-    company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
-        related_name='fpa_cycles_budgetaires', verbose_name='Société',
-    )
     nom = models.CharField(max_length=120, verbose_name='Nom')
     exercice_comptable_id = models.PositiveIntegerField(
         null=True, blank=True,
@@ -120,17 +114,13 @@ class Categorie(models.TextChoices):
     AUTRE = 'autre', 'Autre'
 
 
-class LigneBudgetDepartement(models.Model):
+class LigneBudgetDepartement(TenantModel):
     """NTFPA3 — Ligne de budget mensuelle d'un département, par catégorie.
 
     NTFPA6 — verrouillage post-clôture : ``save()``/``delete()`` refusent toute
     écriture dès que ``cycle.statut == CLOS`` (même patron que
     ``compta.EcritureComptable._verifier_periode_ouverte``)."""
 
-    company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
-        related_name='fpa_lignes_budget', verbose_name='Société',
-    )
     cycle = models.ForeignKey(
         CycleBudgetaire, on_delete=models.CASCADE,
         related_name='lignes_budget', verbose_name='Cycle budgétaire',
@@ -202,7 +192,7 @@ class LigneBudgetDepartement(models.Model):
         return super().delete(*args, **kwargs)
 
 
-class SoumissionBudgetDepartement(models.Model):
+class SoumissionBudgetDepartement(TenantModel):
     """NTFPA5 — Workflow soumission/validation d'un budget de département pour
     un cycle donné. Statut LOCAL au workflow (jamais lié à STAGES.py ni au
     ``CycleBudgetaire.statut``, même patron que ``contrats.EtapeApprobation``
@@ -214,10 +204,6 @@ class SoumissionBudgetDepartement(models.Model):
         VALIDE = 'valide', 'Validé'
         REJETE = 'rejete', 'Rejeté'
 
-    company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
-        related_name='fpa_soumissions_budget', verbose_name='Société',
-    )
     cycle = models.ForeignKey(
         CycleBudgetaire, on_delete=models.CASCADE,
         related_name='soumissions', verbose_name='Cycle budgétaire',
@@ -271,7 +257,7 @@ DEFAULT_COMPTE_CGNC_PREFIXES = {
 }
 
 
-class MappingCategorieCompte(models.Model):
+class MappingCategorieCompte(TenantModel):
     """NTFPA21 — Mapping catégorie budgétaire FP&A ↔ préfixe de compte CGNC.
 
     Une catégorie peut être couverte par PLUSIEURS préfixes de compte (ex.
@@ -279,10 +265,6 @@ class MappingCategorieCompte(models.Model):
     repli est ``DEFAULT_COMPTE_CGNC_PREFIXES`` (comportement additif, jamais
     bloquant)."""
 
-    company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
-        related_name='fpa_mappings_categorie_compte', verbose_name='Société',
-    )
     categorie = models.CharField(
         max_length=20, choices=Categorie.choices, verbose_name='Catégorie FP&A')
     compte_cgnc_prefixe = models.CharField(
@@ -298,15 +280,11 @@ class MappingCategorieCompte(models.Model):
         return f'{self.categorie} → {self.compte_cgnc_prefixe}'
 
 
-class PrevisionGlissante(models.Model):
+class PrevisionGlissante(TenantModel):
     """NTFPA8 — Prévision glissante (rolling forecast) 12-18 mois."""
 
     HORIZONS = [(12, '12 mois'), (18, '18 mois')]
 
-    company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
-        related_name='fpa_previsions_glissantes', verbose_name='Société',
-    )
     date_reference = models.DateField(verbose_name='Mois de départ')
     horizon_mois = models.PositiveSmallIntegerField(
         choices=HORIZONS, default=12, verbose_name='Horizon (mois)')
@@ -333,16 +311,12 @@ class SourcePrevision(models.TextChoices):
     STATISTIQUE = 'statistique', 'Statistique'
 
 
-class LignePrevisionGlissante(models.Model):
+class LignePrevisionGlissante(TenantModel):
     """NTFPA8 — Point mensuel d'une prévision glissante.
 
     ``source='manuel'`` marque un ajustement humain qu'une régénération
     (``services.generer_prevision_glissante``) ne doit JAMAIS écraser."""
 
-    company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
-        related_name='fpa_lignes_prevision_glissante', verbose_name='Société',
-    )
     prevision = models.ForeignKey(
         PrevisionGlissante, on_delete=models.CASCADE,
         related_name='lignes', verbose_name='Prévision glissante',
@@ -371,7 +345,7 @@ class LignePrevisionGlissante(models.Model):
         return f'{self.prevision_id} M+{self.mois_relatif} {self.categorie}'
 
 
-class HypotheseRecrutement(models.Model):
+class HypotheseRecrutement(TenantModel):
     """NTFPA10 — Hypothèse d'embauche/départ alimentant le driver masse
     salariale (NTFPA9). Une hypothèse « confirmée » signale un mouvement réel
     (recrutement signé) : la vue de variance (NTFPA16) bascule alors la ligne
@@ -385,10 +359,6 @@ class HypotheseRecrutement(models.Model):
         HYPOTHESE = 'hypothese', 'Hypothèse'
         CONFIRME = 'confirme', 'Confirmé'
 
-    company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
-        related_name='fpa_hypotheses_recrutement', verbose_name='Société',
-    )
     prevision_glissante = models.ForeignKey(
         PrevisionGlissante, on_delete=models.SET_NULL, null=True, blank=True,
         related_name='hypotheses_recrutement',
@@ -424,7 +394,7 @@ class HypotheseRecrutement(models.Model):
         return self.statut == self.Statut.CONFIRME
 
 
-class ScenarioBudgetaire(models.Model):
+class ScenarioBudgetaire(TenantModel):
     """NTFPA15 — Scénario what-if nommé sur un cycle. Un scénario ne modifie
     JAMAIS les lignes du cycle réel : il porte des deltas appliqués en LECTURE
     pour calculer un total dérivé à la volée."""
@@ -434,10 +404,6 @@ class ScenarioBudgetaire(models.Model):
         ACTIF = 'actif', 'Actif'
         ARCHIVE = 'archive', 'Archivé'
 
-    company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
-        related_name='fpa_scenarios', verbose_name='Société',
-    )
     cycle = models.ForeignKey(
         CycleBudgetaire, on_delete=models.CASCADE,
         related_name='scenarios', verbose_name='Cycle budgétaire',
@@ -465,14 +431,10 @@ class ScenarioBudgetaire(models.Model):
         return self.nom
 
 
-class LigneScenario(models.Model):
+class LigneScenario(TenantModel):
     """NTFPA15 — Delta d'un scénario : appliqué en LECTURE sur une catégorie
     (ou une ligne budget de référence), jamais écrit dans le cycle réel."""
 
-    company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
-        related_name='fpa_lignes_scenario', verbose_name='Société',
-    )
     scenario = models.ForeignKey(
         ScenarioBudgetaire, on_delete=models.CASCADE,
         related_name='lignes', verbose_name='Scénario',
@@ -500,14 +462,10 @@ class LigneScenario(models.Model):
         return f'{self.scenario_id} — {self.categorie or self.ligne_budget_id}'
 
 
-class CommentaireVariance(models.Model):
+class CommentaireVariance(TenantModel):
     """NTFPA20 — Explication traçable (qui, quand, pourquoi) d'un écart de
     variance, rattachée à une cellule (cycle+département+catégorie+mois)."""
 
-    company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
-        related_name='fpa_commentaires_variance', verbose_name='Société',
-    )
     cycle = models.ForeignKey(
         CycleBudgetaire, on_delete=models.CASCADE,
         related_name='commentaires_variance', verbose_name='Cycle budgétaire',

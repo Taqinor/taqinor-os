@@ -8,7 +8,7 @@ from django.test import TestCase
 
 from authentication.models import Company
 from apps.compta.models import (
-    CompteComptable, EcritureComptable, Journal, LigneEcriture,
+    CompteComptable, EcritureComptable, Journal, LigneEcriture, PlanComptable,
 )
 from apps.fpa.models import (
     Categorie, CycleBudgetaire, Departement, LigneBudgetDepartement,
@@ -31,11 +31,14 @@ class TestMappingCategorieCompte(TestCase):
             categorie=Categorie.MARKETING, mois=1, montant_prevu=Decimal('1000'))
         self.journal = Journal.objects.create(
             company=self.company, code='OD', libelle='OD')
+        self.plan = PlanComptable.objects.create(company=self.company)
         self.c701 = CompteComptable.objects.create(
-            company=self.company, numero='7111', intitule='Ventes')
+            company=self.company, plan=self.plan,
+            numero='7111', intitule='Ventes')
         # Charge sur compte 622 = 800.
         self.c622 = CompteComptable.objects.create(
-            company=self.company, numero='6221', intitule='Annonces')
+            company=self.company, plan=self.plan,
+            numero='6221', intitule='Annonces')
         self._charge(self.c622, Decimal('800'))
 
     def _charge(self, compte, montant):
@@ -60,7 +63,8 @@ class TestMappingCategorieCompte(TestCase):
     def test_changement_mapping_recalcule_sans_code(self):
         # Ajoute une charge sur 613 = 500, et map marketing → 613.
         c613 = CompteComptable.objects.create(
-            company=self.company, numero='6135', intitule='Loc.')
+            company=self.company, plan=self.plan,
+            numero='6135', intitule='Loc.')
         self._charge(c613, Decimal('500'))
         MappingCategorieCompte.objects.create(
             company=self.company, categorie=Categorie.MARKETING,

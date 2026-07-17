@@ -41,11 +41,20 @@ def auth(user):
 
 
 class _FakeDevis:
-    """Objet minimal portant les attributs lus par le récepteur compta."""
+    """Objet minimal portant les attributs lus par le récepteur compta.
+
+    ``pk`` est présent mais ``None`` : un stub non persisté n'a pas de clé
+    primaire. Les récepteurs abonnés au signal PARTAGÉ ``devis_accepted`` /
+    ``devis_refused`` gardent ce cas (``getattr(devis, 'pk', None) is None`` →
+    no-op) ; exposer l'attribut évite un ``AttributeError`` chez un récepteur
+    qui lirait ``devis.pk`` directement, sans changer la sémantique « aucun
+    vrai devis » du stub.
+    """
     def __init__(self, company, lead_id):
         self.company = company
         self.lead_id = lead_id
         self.statut = 'accepte'
+        self.pk = None
 
 
 def make_sequence(co, stage_declencheur=''):

@@ -7,7 +7,7 @@ from django.test import TestCase
 
 from authentication.models import Company
 from apps.compta.models import (
-    CompteComptable, EcritureComptable, Journal, LigneEcriture,
+    CompteComptable, EcritureComptable, Journal, LigneEcriture, PlanComptable,
 )
 from apps.fpa.models import (
     Categorie, CycleBudgetaire, Departement, LigneBudgetDepartement,
@@ -36,10 +36,13 @@ class TestVarianceBudgetVsReel(TestCase):
         # Réel comptable janvier = 1500 (dépassement +50 %).
         self.journal = Journal.objects.create(
             company=self.company, code='OD', libelle='OD')
+        self.plan = PlanComptable.objects.create(company=self.company)
         self.c622 = CompteComptable.objects.create(
-            company=self.company, numero='6226', intitule='Publicité')
+            company=self.company, plan=self.plan,
+            numero='6226', intitule='Publicité')
         self.c701 = CompteComptable.objects.create(
-            company=self.company, numero='7111', intitule='Ventes')
+            company=self.company, plan=self.plan,
+            numero='7111', intitule='Ventes')
         ecr = EcritureComptable.objects.create(
             company=self.company, journal=self.journal,
             date_ecriture=date(2027, 1, 15), libelle='Pub')

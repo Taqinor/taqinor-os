@@ -15,16 +15,22 @@ class TestDupliquerCyclePrecedent(TestCase):
     def setUp(self):
         self.company, _ = Company.objects.get_or_create(
             slug='ntfpa7-co', defaults={'nom': 'NTFPA7 Co'})
+        # Cycle créé OUVERT (brouillon) le temps de saisir ses lignes — un cycle
+        # clos refuse toute écriture de ligne (NTFPA6, ``save()``). On le clôt
+        # APRÈS la saisie, comme dans le flux réel.
         self.cycle_2026 = CycleBudgetaire.objects.create(
             company=self.company, nom='Budget 2026',
             date_debut=date(2026, 1, 1), date_fin=date(2026, 12, 31),
-            statut=CycleBudgetaire.Statut.CLOS)
+            statut=CycleBudgetaire.Statut.BROUILLON)
         self.dept = Departement.objects.create(
             company=self.company, code='IT', nom='IT')
         for mois in range(1, 13):
             LigneBudgetDepartement.objects.create(
                 company=self.company, cycle=self.cycle_2026, departement=self.dept,
                 categorie=Categorie.IT, mois=mois, montant_prevu=Decimal('1000'))
+        # Clôture le cycle source une fois les lignes saisies.
+        self.cycle_2026.statut = CycleBudgetaire.Statut.CLOS
+        self.cycle_2026.save(update_fields=['statut'])
 
     def test_duplique_les_12_mois_en_brouillon_editable(self):
         cycle_2027 = dupliquer_cycle_precedent(
