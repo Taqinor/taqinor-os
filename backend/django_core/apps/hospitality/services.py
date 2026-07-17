@@ -487,3 +487,55 @@ def creer_evenement(
         statut=statut,
         created_by=user,
     )
+
+
+class GenerationDevisEvenementError(ValueError):
+    """Levée quand un devis d'événement ne peut pas être généré (aucun
+    client résolu, ou un devis a déjà été généré pour cet événement)."""
+
+
+def generer_devis_evenement(evenement, *, user):
+    """NTHOT17 — Génère UN devis ventes BROUILLON pour ``evenement``, via
+    ``apps.ventes.services.create_devis_pour_ticket`` (function-local, JAMAIS
+    un import de ``apps.ventes.models`` ni un moteur de devis parallèle —
+    rule #4 : le seul chemin client-facing reste ``/proposal``). Idempotent
+    au niveau service : un devis déjà généré (``devis_ventes_id`` posé)
+    refuse une seconde génération plutôt que d'en créer un doublon — la
+    resoumission passe par le cycle devis standard (édition dans
+    ``/ventes/devis``), jamais par cette fonction.
+
+    Les lignes menu/salle/prestations restent à COMPLÉTER dans l'éditeur de
+    devis (même choix que ``create_draft_devis_from_ocr``/
+    ``create_devis_from_reserve`` — un devis brouillon sans lignes catalogue
+    imposées est le point d'entrée sûr, la note résume le contexte de
+    l'événement pour la saisie)."""
+    if evenement.devis_ventes_id:
+        raise GenerationDevisEvenementError(
+            'Un devis a déjà été généré pour cet événement.')
+    if evenement.client_id is None:
+        raise GenerationDevisEvenementError(
+            "Impossible de générer un devis : aucun client CRM résolu sur "
+            "l'événement.")
+
+    from apps.ventes.services import create_devis_pour_ticket
+
+    notes = [f"Devis d'événement — {evenement.nom_evenement}",
+             f"Date : {evenement.date_evenement}",
+             f"Convives : {evenement.nb_convives}"]
+    if evenement.salle_id:
+        notes.append(f"Salle : {evenement.salle.nom}")
+    menu = list(evenement.menu_recettes.all())
+    if menu:
+        notes.append(
+            'Menu : ' + ', '.join(r.nom_plat for r in menu))
+
+    devis = create_devis_pour_ticket(
+        company=evenement.company,
+        user=user,
+        client_id=evenement.client_id,
+        lignes=[],
+        note='\n'.join(notes),
+    )
+    evenement.devis_ventes_id = devis.id
+    evenement.save(update_fields=['devis_ventes_id'])
+    return devis

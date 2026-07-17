@@ -461,6 +461,27 @@ class EvenementBanquetViewSet(CompanyScopedModelViewSet):
                 raise ValidationError({'salle': str(exc)})
         serializer.save()
 
+    # ── NTHOT17 — Génération du devis d'événement (flux devis existant) ─────
+    @action(detail=True, methods=['post'], url_path='generer-devis',
+            permission_classes=[IsResponsableOrAdmin])
+    def generer_devis(self, request, pk=None):
+        """Génère UN Devis ventes brouillon pour cet événement (rule #4 :
+        jamais un moteur de devis parallèle, jamais un PDF alternatif)."""
+        evenement = self.get_object()
+        try:
+            devis = services.generer_devis_evenement(
+                evenement, user=request.user)
+        except services.GenerationDevisEvenementError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {
+                'devis_id': devis.id,
+                'devis_reference': devis.reference,
+                **self.get_serializer(evenement).data,
+            },
+            status=status.HTTP_200_OK)
+
 
 class TableauBordView(views.APIView):
     """NTHOT11 — Tableau de bord RevPAR/ADR/TO. ``?debut=&fin=`` (YYYY-MM-DD,
