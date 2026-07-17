@@ -158,6 +158,10 @@ _COMPTES_CGNC = [
      'charge'),
     # Classe 6 — Charges
     ('6111', 'Achats de marchandises', False, False, 'charge'),
+    # NTASS6 — primes d'assurance d'entreprise (RC pro, décennale,
+    # multirisque, cyber, homme-clé…), débitées lors de la proposition
+    # d'écriture sur échéance de prime (apps.assurances.services).
+    ('6134', 'Assurances', False, False, 'charge'),
     # XACC6 — Variation de stock de marchandises (inventaire permanent) : une
     # SORTIE valorisée débite cette charge (le CGNC compte la variation de
     # stock en charge, contrepartie du crédit 3111).
@@ -184,6 +188,10 @@ _COMPTES_CGNC = [
      'circulant', False, False, 'produit'),
     ('7132', 'Variation des stocks de travaux en cours', False, False,
      'produit'),
+    # NTASS13 — indemnités d'assurances reçues (produit non courant),
+    # créditées lors de la proposition d'écriture sur indemnisation encaissée
+    # (apps.assurances.services). Contrepartie de la trésorerie (banque 5141).
+    ('7582', "Indemnités d'assurances reçues", False, False, 'produit'),
 ]
 
 
