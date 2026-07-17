@@ -36,6 +36,9 @@ class PoliceAssuranceSerializer(serializers.ModelSerializer):
         source='courtier.raison_sociale', read_only=True, default='')
     type_police_display = serializers.CharField(
         source='get_type_police_display', read_only=True)
+    # NTASS22 — libellé de l'employé couvert (police homme-clé), résolu à la
+    # volée via rh.selectors (null si rh absent / employé introuvable).
+    employe_couvert_libelle = serializers.SerializerMethodField()
 
     class Meta:
         model = PoliceAssurance
@@ -44,10 +47,14 @@ class PoliceAssuranceSerializer(serializers.ModelSerializer):
             'courtier_nom', 'numero_police', 'type_police',
             'type_police_display', 'libelle', 'date_effet', 'date_echeance',
             'tacite_reconduction', 'prime_annuelle_ht', 'statut',
-            'document_police', 'notes', 'police_precedente',
-            'created_at', 'updated_at',
+            'document_police', 'notes', 'police_precedente', 'employe_ref',
+            'employe_couvert_libelle', 'created_at', 'updated_at',
         ]
         read_only_fields = ['id', 'company', 'created_at', 'updated_at']
+
+    def get_employe_couvert_libelle(self, obj):
+        from .selectors import libelle_employe_couvert
+        return libelle_employe_couvert(obj.company, obj.employe_ref)
 
     def validate_assureur(self, value):
         request = self.context.get('request')

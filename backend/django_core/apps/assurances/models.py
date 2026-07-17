@@ -129,6 +129,11 @@ class PoliceAssurance(models.Model):
     police_precedente = models.ForeignKey(
         'self', on_delete=models.SET_NULL, null=True, blank=True,
         related_name='polices_suivantes', verbose_name='Police précédente')
+    # NTASS22 — assurance HOMME-CLÉ : string-FK (id brut) vers rh.DossierEmploye
+    # (jamais une vraie FK cross-app) ; résolu en libellé via rh.selectors.
+    employe_ref = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='Employé couvert (homme-clé, string-FK rh)')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

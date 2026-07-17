@@ -222,3 +222,26 @@ def tableau_bord_assurances(company, today=None):
         'attestations_expirant_30j': attestations_expirant_30j,
         'taux_sinistralite': round(taux_sinistralite, 3),
     }
+
+
+# ── NTASS22 — Assurance homme-clé liée au dossier employé ──────────────────
+
+def libelle_employe_couvert(company, employe_ref):
+    """NTASS22 — libellé lisible de l'employé couvert par une police homme-clé
+    (string-FK vers ``rh.DossierEmploye``, jamais une vraie FK). Import
+    PARESSEUX de ``rh.selectors`` (jamais ``rh.models``) : lit le selector
+    existant ``fiche_identite_employe`` et compose « Prénom Nom ». Renvoie
+    ``None`` si l'app rh est absente ou l'employé introuvable (défensif)."""
+    if employe_ref is None:
+        return None
+    try:
+        from apps.rh import selectors as rh_selectors
+        fiche = rh_selectors.fiche_identite_employe(company, employe_ref)
+    except Exception:  # noqa: BLE001 - dégradation gracieuse défensive
+        return None
+    if not fiche:
+        return None
+    prenom = (fiche.get('prenom') or '').strip()
+    nom = (fiche.get('nom') or '').strip()
+    libelle = f'{prenom} {nom}'.strip()
+    return libelle or None
