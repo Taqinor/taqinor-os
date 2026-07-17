@@ -482,6 +482,28 @@ class EvenementBanquetViewSet(CompanyScopedModelViewSet):
             },
             status=status.HTTP_200_OK)
 
+    # ── NTHOT19 — BEO (Banquet Event Order) imprimable ──────────────────────
+    @action(detail=True, methods=['get'], url_path='beo-pdf')
+    def beo_pdf(self, request, pk=None):
+        """PDF « BEO » (NTHOT19) — document interne, jamais ``/proposal``
+        (rule #4). Régénéré à la demande depuis l'état COURANT de
+        l'événement."""
+        from django.http import HttpResponse
+
+        from .pdf import render_beo_pdf
+
+        evenement = self.get_object()
+        try:
+            pdf_bytes = render_beo_pdf(evenement)
+        except RuntimeError as exc:
+            return Response(
+                {'detail': str(exc)},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = (
+            f'attachment; filename="beo-{evenement.pk}.pdf"')
+        return response
+
 
 class TableauBordView(views.APIView):
     """NTHOT11 — Tableau de bord RevPAR/ADR/TO. ``?debut=&fin=`` (YYYY-MM-DD,
