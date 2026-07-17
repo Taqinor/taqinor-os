@@ -106,6 +106,16 @@ _APP_URLS = [
     path('sante/', include('apps.sante.urls')),
     # Groupe NTIDE — Boîte à idées interne, campagnes d'innovation, feedback.
     path('innovation/', include('apps.innovation.urls')),
+    # Groupe NTCRD — Gestion du crédit client.
+    path('credit/', include('apps.credit.urls')),
+    # Groupe NTFPA — FP&A (budgets, prévisions glissantes, scénarios).
+    path('fpa/', include('apps.fpa.urls')),
+    # Groupe NTASS — Registre des assurances & sinistres d'entreprise.
+    path('assurances/', include('apps.assurances.urls')),
+    # NTEDU1 — Éducation (établissement scolaire).
+    path('education/', include('apps.education.urls')),
+    # NTUX1 — Vues sauvegardées serveur (personnelles/partagées).
+    path('uxviews/', include('apps.uxviews.urls')),
 ]
 
 urlpatterns = [
@@ -164,6 +174,9 @@ urlpatterns = [
          include('apps.installations.public_urls')),
     # XPUR22 — Portail fournisseur en lecture seule (sans login).
     path('api/django/public/stock/', include('apps.stock.public_urls')),
+    # NTEDU31/32/34 — Portail parents (établissement scolaire), sans login.
+    path('api/django/public/education/',
+         include('apps.education.public_urls')),
     # NTSEC — Fondation Identité & accès (NTSEC11 : allowlist IP/CIDR).
     path('api/django/identity/', include('apps.identity.urls')),
     # NTSEC19/20 — Gouvernance des accès (revue d'accès + SoD).

@@ -120,6 +120,20 @@ BASELINE_DRIFT: set[tuple[str, str]] = {
     # dérive héritée que les cibles ci-dessus) — retirer le jour où l'idée
     # deviendra cherchable via apps/reporting/search.py.
     ('innovation.idee', 'chatter_sans_recherche'),
+    # NTASS14/ARC26 — sinistre, police et attestation d'assurance sont
+    # chatter-isés via records.Attachment (constat, rapport d'expertise,
+    # contrat/attestation scannés) mais pas encore cherchables : dérive
+    # assumée identique aux cibles ci-dessus — retirer le jour où assurances
+    # entrera dans apps/reporting/search.py.
+    ('assurances.declarationsinistre', 'chatter_sans_recherche'),
+    ('assurances.policeassurance', 'chatter_sans_recherche'),
+    ('assurances.attestationassurance', 'chatter_sans_recherche'),
+    # NTCRD43 — LimiteCredit et DerogationCredit sont chatter-isés via records
+    # (changement de limite NTCRD22, décision de dérogation) mais pas encore
+    # cherchables : même dérive assumée — retirer le jour où crédit entrera
+    # dans apps/reporting/search.py.
+    ('credit.limitecredit', 'chatter_sans_recherche'),
+    ('credit.derogationcredit', 'chatter_sans_recherche'),
 }
 
 

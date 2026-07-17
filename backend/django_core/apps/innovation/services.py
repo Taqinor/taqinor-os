@@ -29,6 +29,19 @@ class TransitionInvalide(ValueError):
     courant de l'idée."""
 
 
+class ReouvertureInterdite(ValueError):
+    """Levée quand l'auteur tente de ré-ouvrir une idée qui n'est pas dans un
+    statut ré-ouvrable, ou quand un tiers (pas l'auteur) tente l'action
+    (NTIDE17)."""
+
+
+# NTIDE17 — l'auteur peut ré-ouvrir sa propre idée FERMÉE ou EXAMINÉE (retour
+# à OUVERT, avant tout examen approfondi) ; verrouillé dès que l'idée a été
+# RETENUE (ou RÉALISÉE) — l'auteur ne défait jamais une décision déjà prise
+# par le palier Directeur/Responsable.
+REOUVRIR_DEPUIS = frozenset({Idee.Statut.FERMEE, Idee.Statut.EXAMINEE})
+
+
 def transitionner(idee, *, target, user, note=''):
     """Applique une transition de statut si elle est légale, journalise le
     changement dans le chatter générique (``records.Activity``, ARC8).
@@ -52,6 +65,32 @@ def transitionner(idee, *, target, user, note=''):
         idee, Activity.Kind.MODIFICATION, user=user, field='statut',
         field_label='Statut', old_value=old, new_value=target,
         body=note or '', company=idee.company)
+    return idee
+
+
+def reouvrir(idee, user):
+    """NTIDE17 — l'AUTEUR (et uniquement l'auteur) ré-ouvre sa propre idée
+    depuis FERMÉE ou EXAMINÉE vers OUVERT. Verrouillé dès RETENUE/RÉALISÉE.
+    Journalise la transition dans le chatter générique (ARC8), comme les
+    transitions du palier Directeur/Responsable (``transitionner``)."""
+    if idee.auteur_id != user.id:
+        raise ReouvertureInterdite(
+            "Seul l'auteur peut ré-ouvrir son idée.")
+    if idee.statut not in REOUVRIR_DEPUIS:
+        raise ReouvertureInterdite(
+            f"Ré-ouverture impossible depuis « {idee.get_statut_display()} » "
+            '(verrouillée après « Retenue »).')
+
+    old = idee.statut
+    idee.statut = Idee.Statut.OUVERT
+    idee.save(update_fields=['statut', 'updated_at'])
+
+    from apps.records.models import Activity
+    from apps.records.services import log_activity
+    log_activity(
+        idee, Activity.Kind.MODIFICATION, user=user, field='statut',
+        field_label='Statut', old_value=old, new_value=Idee.Statut.OUVERT,
+        body="Ré-ouverte par l'auteur.", company=idee.company)
     return idee
 
 
@@ -79,7 +118,37 @@ def voter(idee, user):
         raise VoteInterdit('Vous avez déjà voté pour cette idée.') from exc
     Idee.objects.filter(pk=idee.pk).update(votes_count=F('votes_count') + 1)
     idee.refresh_from_db(fields=['votes_count'])
+    _maybe_notify_seuil_votes(idee)
     return vote
+
+
+# ── Notification de seuil de votes (NTIDE16) ────────────────────────────────
+
+
+def _maybe_notify_seuil_votes(idee):
+    """Notifie l'auteur (in-app + email, préférences utilisateur respectées
+    par ``notify()``) quand l'idée ATTEINT — exactement, pas dépasse — le
+    seuil configuré (``InnovationSettings.seuil_votes_notification``, défaut
+    3) : une seule notification par idée, jamais répétée à chaque vote
+    suivant. No-op silencieux si l'idée n'a pas d'auteur (idée importée/
+    créée en admin) ou si le seuil est désactivé (0)."""
+    if not idee.auteur_id:
+        return
+    from .models import InnovationSettings
+
+    reglages, _ = InnovationSettings.objects.get_or_create(company=idee.company)
+    seuil = reglages.seuil_votes_notification
+    if seuil <= 0 or idee.votes_count != seuil:
+        return
+
+    from apps.notifications.models import EventType
+    from apps.notifications.services import notify
+
+    notify(
+        idee.auteur, EventType.IDEA_VOTE,
+        f'Votre idée « {idee.titre} » a atteint {seuil} votes',
+        body=f'Elle totalise maintenant {idee.votes_count} vote(s).',
+        link=f'/innovation/idees/{idee.id}', company=idee.company)
 
 
 @transaction.atomic
@@ -158,6 +227,142 @@ def bulk_set_statut(company, ids, target, user):
         else:
             appliquees.append(idee.id)
     return {'appliquees': appliquees, 'ignorees': ignorees}
+
+
+# ── Tag automatique de campagne (NTIDE28) ───────────────────────────────────
+
+
+def maybe_apply_campagne_tag(idee, user):
+    """NTIDE28 — si ``user`` matche le segment d'une campagne ACTIVE portant
+    un ``tag_auto`` (``selectors.campagne_active_pour_utilisateur``, même
+    règle que le bandeau d'incitation NTIDE27), applique ce tag à ``idee``
+    automatiquement. Réutilise ``bulk_add_tag`` (``records.Tag``/
+    ``TaggedItem``) — le tag reste ensuite modifiable manuellement comme
+    n'importe quel autre (pas verrouillé). No-op silencieux si aucune
+    campagne ne matche, ou si elle n'a pas de ``tag_auto``."""
+    from . import selectors
+
+    campagne = selectors.campagne_active_pour_utilisateur(user)
+    if campagne is None or not campagne.tag_auto:
+        return
+    bulk_add_tag(idee.company, [idee.id], campagne.tag_auto)
+
+
+# ── Notification de lancement de campagne (NTIDE31) ─────────────────────────
+
+
+def notifier_campagne_lancee(campagne):
+    """NTIDE31 — quand une campagne passe brouillon → active (détecté côté
+    vue, ``CampagneInnovationViewSet.perform_update``), notifie CHAQUE
+    utilisateur du segment ciblé (``selectors.users_for_campaign`` — même
+    règle que le bandeau d'incitation NTIDE27/le tag auto NTIDE28) : in-app
+    systématique + email OPT-IN — l'arbitrage canal/préférence reste dans
+    ``notify()``/``NotificationPreference`` (``notify_many``, best-effort
+    par destinataire), jamais dupliqué ici. Tag
+    ``EventType.INNOVATION_CAMPAIGN``. No-op silencieux si le segment ne
+    cible personne."""
+    from apps.notifications.models import EventType
+    from apps.notifications.services import notify_many
+
+    from . import selectors
+
+    utilisateurs = selectors.users_for_campaign(campagne.company, campagne)
+    titre = f"Nouvelle campagne d'innovation : {campagne.nom}"
+    corps = campagne.message_incitation or campagne.description or ''
+    notify_many(
+        utilisateurs, EventType.INNOVATION_CAMPAIGN, titre, body=corps,
+        link='/innovation/proposer', company=campagne.company)
+
+
+# ── Chatter de campagne (NTIDE33) — même pattern générique que NTIDE5/17/19 ──
+# (``records.Activity`` via ``log_activity``, ARC8) : aucun modèle
+# ``CampagneActivity`` maison, la cible change (``CampagneInnovation`` au
+# lieu d'``Idee``) mais le mécanisme de chatter reste le SEUL point d'écriture
+# partagé — jamais une deuxième table de journal à maintenir en synchro.
+
+# Champs suivis pour le journal AUTOMATIQUE de changement (NTIDE33) : statut/
+# segment/message/tag, exactement ceux cités par le critère d'acceptation.
+CAMPAGNE_CHAMPS_SUIVIS = {
+    'statut': 'Statut',
+    'segment': 'Segment',
+    'message_incitation': "Message d'incitation",
+    'tag_auto': 'Tag automatique',
+}
+
+
+def log_campagne_creation(campagne, user):
+    """NTIDE33 — journalise la création d'une campagne dans son chatter."""
+    from apps.records.models import Activity
+    from apps.records.services import log_activity
+    log_activity(
+        campagne, Activity.Kind.CREATION, user=user, company=campagne.company)
+
+
+def log_campagne_changes(campagne, anciennes_valeurs, user):
+    """NTIDE33 — journalise CHAQUE champ suivi (``CAMPAGNE_CHAMPS_SUIVIS``)
+    dont la valeur a changé entre ``anciennes_valeurs`` (snapshot posé par la
+    vue AVANT ``serializer.save()``) et l'état courant de ``campagne`` (APRÈS
+    sauvegarde). Une ligne de chatter par champ modifié — jamais une seule
+    ligne fourre-tout, même convention que le journal automatique des idées
+    (``transitionner``)."""
+    from apps.records.models import Activity
+    from apps.records.services import log_activity
+
+    for champ, label in CAMPAGNE_CHAMPS_SUIVIS.items():
+        ancienne = anciennes_valeurs.get(champ)
+        nouvelle = getattr(campagne, champ)
+        if ancienne == nouvelle:
+            continue
+        log_activity(
+            campagne, Activity.Kind.MODIFICATION, user=user, field=champ,
+            field_label=label, old_value=str(ancienne), new_value=str(nouvelle),
+            company=campagne.company)
+
+
+def noter_campagne(campagne, user, body):
+    """NTIDE33 — note manuelle de chatter sur une campagne (« Manual
+    noter » du critère d'acceptation), même raccourci que
+    ``records.services.log_note``."""
+    from apps.records.services import log_note
+    return log_note(campagne, user, body, company=campagne.company)
+
+
+# ── Fermeture de feedback via annonce produit (NTIDE39) ─────────────────────
+
+
+def fermer_feedback_via_annonce(feedback, *, annonce_id=None, annonce_data=None,
+                                message=''):
+    """NTIDE39 — « vous l'aviez demandé, c'est livré » : lie ``feedback`` à
+    une ``AnnonceProduit`` (existante via ``annonce_id``, OU nouvelle créée
+    depuis ``annonce_data`` — repli LOCAL tant que NTADM18 n'est pas bâti,
+    cf. ``models.AnnonceProduit``) et passe son statut à ``adresse``.
+
+    Exactement l'un des deux (``annonce_id``/``annonce_data``) est requis.
+    ``message`` (optionnel) est le texte affiché au auteur du feedback."""
+    from .models import AnnonceProduit, FeedbackProduit
+
+    if annonce_id:
+        annonce = AnnonceProduit.objects.filter(
+            company=feedback.company, id=annonce_id).first()
+        if annonce is None:
+            raise ValidationError('Annonce introuvable.')
+    elif annonce_data:
+        titre = (annonce_data.get('titre') or '').strip()
+        if not titre:
+            raise ValidationError("Titre de l'annonce requis.")
+        annonce = AnnonceProduit.objects.create(
+            company=feedback.company, titre=titre,
+            description=annonce_data.get('description') or '',
+            lien=annonce_data.get('lien') or '')
+    else:
+        raise ValidationError("« annonce_id » ou « annonce » requis.")
+
+    feedback.annonce = annonce
+    feedback.statut = FeedbackProduit.Statut.ADRESSE
+    feedback.message_fermeture = message or ''
+    feedback.save(update_fields=[
+        'annonce', 'statut', 'message_fermeture', 'updated_at'])
+    return feedback
 
 
 BULK_ACTIONS = frozenset({'set_statut', 'add_tag', 'remove_tag'})

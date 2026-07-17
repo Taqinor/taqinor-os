@@ -23,6 +23,10 @@ from .models import (
     TauxDevise, TimbreFiscal,
     ClotureCaisse, DotationAmortissement, EcritureComptable,
     NoteFrais, Provision, RapprochementBancaire,
+    CycleConsolidation, LiasseRemontee, MappingConsolidation,
+    OperationInterco, EcritureElimination,
+    PeriodeComptable,
+    ReferentielComptable, ImputationAxe,
 )
 
 
@@ -1195,6 +1199,103 @@ def position_tresorerie(company, *, date_fin=None, validees_seulement=False):
     return {'comptes': comptes, 'total': total, 'encours_emprunts': encours_emprunts}
 
 
+def comptes_sous_seuil(company, *, date_fin=None):
+    """NTTRE8 — Comptes de trésorerie dont le solde courant est sous un seuil.
+
+    Pour chaque ``CompteTresorerie`` actif portant un ``seuil_alerte_bas`` ou un
+    ``seuil_alerte_decouvert``, compare le solde courant (solde_initial +
+    mouvements GL, comme ``position_tresorerie``). Renvoie la liste des comptes
+    en alerte : ``[{'id', 'libelle', 'solde', 'seuil_alerte_bas',
+    'seuil_alerte_decouvert', 'sous_bas', 'sous_decouvert'}]``. Lecture seule,
+    scopée société.
+    """
+    resultat = []
+    treso_qs = CompteTresorerie.objects.filter(
+        company=company, actif=True).select_related('compte_comptable')
+    for treso in treso_qs:
+        seuil_bas = treso.seuil_alerte_bas
+        seuil_dec = treso.seuil_alerte_decouvert
+        if seuil_bas is None and seuil_dec is None:
+            continue
+        solde = (treso.solde_initial or Decimal('0')) + solde_compte(
+            company, treso.compte_comptable, date_fin=date_fin)
+        sous_bas = seuil_bas is not None and solde < seuil_bas
+        sous_dec = seuil_dec is not None and solde < seuil_dec
+        if sous_bas or sous_dec:
+            resultat.append({
+                'id': treso.id,
+                'libelle': treso.libelle,
+                'solde': solde,
+                'seuil_alerte_bas': seuil_bas,
+                'seuil_alerte_decouvert': seuil_dec,
+                'sous_bas': sous_bas,
+                'sous_decouvert': sous_dec,
+            })
+    return resultat
+
+
+def analyse_frais_bancaires(company, *, debut=None, fin=None):
+    """NTTRE9 — Analyse des frais bancaires dans le temps (lecture seule).
+
+    Agrège les écritures GL sur les comptes de frais bancaires (par défaut 6147,
+    élargissable via ``ParametresTresorerie.comptes_frais_bancaires`` — NTTRE28)
+    par compte de trésorerie (banque) et par mois. Le compte bancaire est déduit
+    de la ligne de trésorerie (classe 5) présente dans la même écriture. Renvoie
+    ``{'par_compte': [{'compte_id', 'libelle', 'mois': [{'mois', 'montant'}],
+    'total'}], 'total': Decimal}``. Cohérent avec le grand livre.
+    """
+    from .models import ParametresTresorerie
+
+    params = ParametresTresorerie.objects.filter(company=company).first()
+    numeros = (params.comptes_frais_bancaires
+               if params and params.comptes_frais_bancaires else ['6147'])
+    comptes_treso = list(CompteTresorerie.objects.filter(company=company))
+    treso_par_compte = {t.compte_comptable_id: t for t in comptes_treso}
+    treso_par_id = {t.id: t for t in comptes_treso}
+
+    qs = LigneEcriture.objects.filter(
+        company=company, compte__numero__in=numeros).select_related(
+        'ecriture').prefetch_related('ecriture__lignes')
+    if debut:
+        qs = qs.filter(ecriture__date_ecriture__gte=debut)
+    if fin:
+        qs = qs.filter(ecriture__date_ecriture__lte=fin)
+
+    # agg[compte_treso_id][mois] = total des frais
+    agg = {}
+    total_global = Decimal('0')
+    for lg in qs:
+        montant = (lg.debit or Decimal('0')) - (lg.credit or Decimal('0'))
+        if montant == 0:
+            continue
+        treso = None
+        for sib in lg.ecriture.lignes.all():
+            candidat = treso_par_compte.get(sib.compte_id)
+            if candidat is not None:
+                treso = candidat
+                break
+        treso_id = treso.id if treso else None
+        mois = lg.ecriture.date_ecriture.strftime('%Y-%m')
+        agg.setdefault(treso_id, {}).setdefault(mois, Decimal('0'))
+        agg[treso_id][mois] += montant
+        total_global += montant
+
+    par_compte = []
+    for treso_id, mois_map in agg.items():
+        treso = treso_par_id.get(treso_id)
+        libelle = treso.libelle if treso else 'Non rattaché'
+        mois_liste = [{'mois': m, 'montant': mois_map[m]}
+                      for m in sorted(mois_map)]
+        par_compte.append({
+            'compte_id': treso_id,
+            'libelle': libelle,
+            'mois': mois_liste,
+            'total': sum(mois_map.values(), Decimal('0')),
+        })
+    par_compte.sort(key=lambda c: (c['compte_id'] is None, c['compte_id'] or 0))
+    return {'par_compte': par_compte, 'total': total_global}
+
+
 def projection_tresorerie(company, *, date_fin=None, validees_seulement=False):
     """Projection nette de trésorerie : position actuelle ± AR/AP/paie/impôts.
 
@@ -1659,7 +1760,8 @@ def caisses_de(company):
 
 # ── FG126 — Prévisionnel de trésorerie roulant 13 semaines ─────────────────
 
-def previsionnel_tresorerie(company, *, date_debut=None, nb_semaines=13):
+def previsionnel_tresorerie(company, *, date_debut=None, nb_semaines=13,
+                            scenario=None):
     """Prévisionnel de trésorerie roulant sur ``nb_semaines`` semaines (FG126).
 
     Construit une projection SEMAINE PAR SEMAINE en partant de la position de
@@ -1667,9 +1769,14 @@ def previsionnel_tresorerie(company, *, date_debut=None, nb_semaines=13):
     chaque semaine, les ``LignePrevisionnelTresorerie`` prévues qui y tombent
     (montant signé : + encaissement, − décaissement) PLUS les effets ouverts
     (FG127/FG128) dont l'échéance tombe dans la semaine (effets à recevoir → +,
-    à payer → −). Renvoie ``{'solde_initial', 'date_debut', 'semaines': [...]}``
-    où chaque semaine porte ``{'index', 'date_debut', 'date_fin', 'entrees',
-    'sorties', 'flux_net', 'solde_fin', 'lignes': [...]}``. Lecture seule.
+    à payer → −). Renvoie ``{'solde_initial', 'date_debut', 'semaines': [...],
+    'date_rupture_estimee'}`` où chaque semaine porte ``{'index', 'date_debut',
+    'date_fin', 'entrees', 'sorties', 'flux_net', 'solde_fin', 'lignes': [...]}``.
+
+    NTTRE16 — ``scenario`` (realiste/optimiste/pessimiste) filtre les lignes
+    manuelles : ``None`` ou ``'realiste'`` = comportement historique (les lignes
+    réalistes, défaut du champ). NTTRE18 — ``date_rupture_estimee`` = première
+    date où le solde projeté passe sous zéro (``None`` sinon). Lecture seule.
     """
     debut = date_debut or timezone.localdate()
     # Cale le début sur le lundi de la semaine de ``debut``.
@@ -1679,9 +1786,12 @@ def previsionnel_tresorerie(company, *, date_debut=None, nb_semaines=13):
     solde_initial = solde
 
     fin_horizon = debut + timedelta(weeks=nb_semaines)
-    lignes_prev = list(LignePrevisionnelTresorerie.objects.filter(
-        company=company, date_prevue__gte=debut,
-        date_prevue__lt=fin_horizon).order_by('date_prevue', 'id'))
+    lignes_prev_qs = LignePrevisionnelTresorerie.objects.filter(
+        company=company, date_prevue__gte=debut, date_prevue__lt=fin_horizon)
+    # NTTRE16 — filtre scénario : réaliste (défaut) = comportement inchangé.
+    lignes_prev_qs = lignes_prev_qs.filter(
+        scenario=scenario or LignePrevisionnelTresorerie.Scenario.REALISTE)
+    lignes_prev = list(lignes_prev_qs.order_by('date_prevue', 'id'))
     effets = list(Effet.objects.filter(
         company=company, date_echeance__gte=debut,
         date_echeance__lt=fin_horizon,
@@ -1755,11 +1865,18 @@ def previsionnel_tresorerie(company, *, date_debut=None, nb_semaines=13):
             'solde_fin': solde,
             'lignes': lignes,
         })
+    # NTTRE18 — première semaine où le solde projeté passe sous zéro.
+    date_rupture = None
+    for semaine in semaines:
+        if semaine['solde_fin'] < 0:
+            date_rupture = semaine['date_debut']
+            break
     return {
         'solde_initial': solde_initial,
         'date_debut': debut,
         'nb_semaines': nb_semaines,
         'semaines': semaines,
+        'date_rupture_estimee': date_rupture,
     }
 
 
@@ -4054,3 +4171,479 @@ def kpi_echeances(company):
          'label': 'Échéances dépassées (effets ouverts)',
          'valeur': depassees, 'unite': 'effets'},
     ]
+
+
+# ── NTFPA2 — lecture minimale pour l'app FP&A (apps.fpa) ────────────────────
+# `apps.fpa.CycleBudgetaire.exercice_comptable_id` référence
+# `ExerciceComptable` en STRING-ID (jamais un FK dur — cross-app boundary) ;
+# ce sélecteur est le SEUL point de lecture que FP&A utilise pour résoudre le
+# libellé/les bornes d'un exercice. Lecture seule, scopé société.
+def get_exercice_label(company, exercice_id):
+    """Libellé + bornes d'un ``ExerciceComptable`` (ou ``None`` si absent/hors
+    société) — utilisé par ``apps.fpa`` sans jamais importer ``ExerciceComptable``
+    directement."""
+    if not exercice_id:
+        return None
+    from .models import ExerciceComptable
+
+    exercice = ExerciceComptable.objects.filter(
+        company=company, pk=exercice_id).first()
+    if exercice is None:
+        return None
+    return {
+        'id': exercice.pk,
+        'libelle': exercice.libelle or f'Exercice {exercice.date_debut}',
+        'date_debut': exercice.date_debut,
+        'date_fin': exercice.date_fin,
+        'statut': exercice.statut,
+    }
+
+
+def _mois_precedents(mois_reference, n_mois):
+    """``n_mois`` tuples ``(annee, mois)`` STRICTEMENT avant ``mois_reference``
+    (le mois de ``mois_reference`` lui-même est exclu), du plus ancien au plus
+    récent."""
+    annee, mois = mois_reference.year, mois_reference.month
+    bornes = []
+    for i in range(n_mois, 0, -1):
+        m = mois - i
+        a = annee
+        while m <= 0:
+            m += 12
+            a -= 1
+        bornes.append((a, m))
+    return bornes
+
+
+def moyenne_mensuelle_par_prefixes(company, prefixes, mois_reference, *,
+                                   n_mois=3, validees_seulement=True):
+    """NTFPA8 — moyenne mensuelle du montant net (Σ débit − Σ crédit) des
+    comptes du plan CGNC dont le numéro commence par l'un des ``prefixes``,
+    sur les ``n_mois`` mois CLOS précédant ``mois_reference`` (le mois de
+    référence lui-même est exclu).
+
+    Lecture seule ; c'est le SEUL point d'entrée que ``apps.fpa`` utilise pour
+    amorcer une prévision glissante depuis le réel comptable (jamais un import
+    direct de ``LigneEcriture``). Renvoie ``Decimal('0')`` si aucun mouvement.
+    """
+    prefixes = tuple(str(p) for p in (prefixes or ()))
+    if not prefixes:
+        return Decimal('0')
+
+    mois_bornes = _mois_precedents(mois_reference, n_mois)
+    annee_debut, mois_debut = mois_bornes[0]
+    date_debut = date(annee_debut, mois_debut, 1)
+    # Dernier jour du mois juste avant mois_reference.
+    date_fin = date(mois_reference.year, mois_reference.month, 1) - timedelta(days=1)
+
+    comptes = grand_livre(
+        company, date_debut=date_debut, date_fin=date_fin,
+        validees_seulement=validees_seulement)
+    total = Decimal('0')
+    for bucket in comptes:
+        if not str(bucket['numero']).startswith(prefixes):
+            continue
+        total += bucket['total_debit'] - bucket['total_credit']
+    return total / Decimal(n_mois)
+
+
+def total_reel_par_prefixes_mois(company, prefixes, annee, mois, *,
+                                 validees_seulement=True):
+    """NTFPA19 — total réel comptable (Σ débit − Σ crédit) des comptes dont le
+    numéro commence par l'un des ``prefixes``, sur le mois ``(annee, mois)``.
+
+    Lecture seule ; point d'entrée pour ``apps.fpa`` (variance budget vs réel).
+    Renvoie ``Decimal('0')`` si aucun mouvement. Jamais un import de
+    ``LigneEcriture`` côté FP&A."""
+    prefixes = tuple(str(p) for p in (prefixes or ()))
+    if not prefixes:
+        return Decimal('0')
+    date_debut = date(annee, mois, 1)
+    if mois == 12:
+        date_fin = date(annee, 12, 31)
+    else:
+        date_fin = date(annee, mois + 1, 1) - timedelta(days=1)
+    comptes = grand_livre(
+        company, date_debut=date_debut, date_fin=date_fin,
+        validees_seulement=validees_seulement)
+    total = Decimal('0')
+    for bucket in comptes:
+        if str(bucket['numero']).startswith(prefixes):
+            total += bucket['total_debit'] - bucket['total_credit']
+    return total
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Groupe NTFIN — Restitutions de consolidation (lecture seule)
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _classe_num(numero):
+    n = str(numero or '').strip()
+    return int(n[0]) if n[:1].isdigit() else 0
+
+
+# ── NTFIN3 — Contrôles de validation de collecte ───────────────────────────
+
+def controles_collecte(cycle):
+    """Anomalies bloquantes/avertissements de la collecte d'un cycle (NTFIN3).
+
+    Par liasse d'entité, remonte : balance déséquilibrée (Σ débit ≠ Σ crédit,
+    ``bloquant``), compte hors plan de mapping (``avertissement``), devise
+    manquante (``avertissement``), période non close chez l'entité
+    (``avertissement``). Renvoie ``{'anomalies': [...], 'bloquant': bool}``.
+    """
+    mapping_prefixes = list(
+        MappingConsolidation.objects.filter(company=cycle.company, actif=True)
+        .values_list('plan_local_prefixe', flat=True))
+    anomalies = []
+    for liasse in LiasseRemontee.objects.filter(cycle=cycle).select_related(
+            'entite'):
+        total_debit = Decimal('0')
+        total_credit = Decimal('0')
+        for li in (liasse.snapshot_balance or []):
+            total_debit += Decimal(str(li.get('debit') or 0))
+            total_credit += Decimal(str(li.get('credit') or 0))
+            numero = str(li.get('numero') or '')
+            if mapping_prefixes and not any(
+                    numero.startswith(p) for p in mapping_prefixes):
+                anomalies.append({
+                    'entite': liasse.entite_id, 'severite': 'avertissement',
+                    'type': 'compte_non_mappe',
+                    'message': f'Compte {numero} hors plan de mapping.'})
+        if total_debit != total_credit:
+            anomalies.append({
+                'entite': liasse.entite_id, 'severite': 'bloquant',
+                'type': 'balance_desequilibree',
+                'message': (f'Balance déséquilibrée : débit {total_debit} ≠ '
+                            f'crédit {total_credit}.')})
+        if not liasse.devise_locale:
+            anomalies.append({
+                'entite': liasse.entite_id, 'severite': 'avertissement',
+                'type': 'devise_manquante',
+                'message': 'Devise locale manquante.'})
+        # Période non close chez l'entité à la date de fin du cycle.
+        if not PeriodeComptable.date_verrouillee(
+                liasse.entite_id, cycle.date_fin):
+            anomalies.append({
+                'entite': liasse.entite_id, 'severite': 'avertissement',
+                'type': 'periode_non_close',
+                'message': 'Période comptable non close à la date de fin.'})
+    bloquant = any(a['severite'] == 'bloquant' for a in anomalies)
+    return {'anomalies': anomalies, 'bloquant': bloquant}
+
+
+# ── NTFIN11 — Bilan & CPC consolidés (v2, distinct de FG153) ───────────────
+
+def _appliquer_eliminations_par_classe(cycle, base_par_classe):
+    """Empile les lignes d'élimination d'un cycle par classe CGNC (helper)."""
+    for elim in EcritureElimination.objects.filter(cycle=cycle):
+        for li in (elim.lignes or []):
+            classe = _classe_num(li.get('compte'))
+            base_par_classe.setdefault(classe, {
+                'debit': Decimal('0'), 'credit': Decimal('0')})
+            base_par_classe[classe]['debit'] += Decimal(
+                str(li.get('debit') or 0))
+            base_par_classe[classe]['credit'] += Decimal(
+                str(li.get('credit') or 0))
+    return base_par_classe
+
+
+def bilan_consolide(cycle):
+    """Bilan consolidé équilibré d'un cycle (NTFIN11, distinct de FG153).
+
+    Empile la balance groupe agrégée (liasses mappées) + toutes les écritures
+    d'élimination (réciproques, marge, titres/goodwill, minoritaires), agrégées
+    par classe CGNC, et produit actif (classes 2,3,5) / passif (classes 1,4) +
+    résultat (classes 6,7). Renvoie ``{'actif', 'passif', 'resultat',
+    'total_actif', 'total_passif', 'equilibre'}``.
+    """
+    from . import services as _svc
+    agg = _svc.agreger_balance_groupe(cycle)
+    par_classe = {}
+    for numero, slot in agg.items():
+        classe = slot['classe'] or _classe_num(numero)
+        par_classe.setdefault(classe, {
+            'debit': Decimal('0'), 'credit': Decimal('0')})
+        par_classe[classe]['debit'] += slot['debit']
+        par_classe[classe]['credit'] += slot['credit']
+    _appliquer_eliminations_par_classe(cycle, par_classe)
+    total_actif = Decimal('0')
+    total_passif = Decimal('0')
+    resultat = Decimal('0')
+    for classe, s in par_classe.items():
+        solde = s['debit'] - s['credit']
+        if classe in (2, 3, 5):
+            total_actif += solde
+        elif classe in (1, 4):
+            total_passif += -solde
+        elif classe in (6, 7):
+            # Résultat = produits (crédit) − charges (débit).
+            resultat += s['credit'] - s['debit']
+    # Le résultat consolidé est porté au passif pour équilibrer.
+    total_passif_avec_resultat = total_passif + resultat
+    return {
+        'cycle': cycle.id,
+        'par_classe': {str(k): {
+            'debit': v['debit'], 'credit': v['credit']}
+            for k, v in par_classe.items()},
+        'total_actif': total_actif,
+        'total_passif': total_passif,
+        'resultat': resultat,
+        'total_passif_avec_resultat': total_passif_avec_resultat,
+        'equilibre': total_actif == total_passif_avec_resultat,
+    }
+
+
+def cpc_consolide_v2(cycle):
+    """CPC consolidé v2 d'un cycle (NTFIN11, distinct de FG153 cpc_consolide).
+
+    Résultat consolidé = Σ produits − Σ charges des balances agrégées, ajusté
+    des éliminations touchant les classes 6/7 (marge interne, dividendes…).
+    Renvoie ``{'total_produits', 'total_charges', 'resultat'}``.
+    """
+    from . import services as _svc
+    agg = _svc.agreger_balance_groupe(cycle)
+    total_produits = Decimal('0')
+    total_charges = Decimal('0')
+    for numero, slot in agg.items():
+        classe = slot['classe'] or _classe_num(numero)
+        if classe == 7:
+            total_produits += slot['credit'] - slot['debit']
+        elif classe == 6:
+            total_charges += slot['debit'] - slot['credit']
+    for elim in EcritureElimination.objects.filter(cycle=cycle):
+        for li in (elim.lignes or []):
+            classe = _classe_num(li.get('compte'))
+            debit = Decimal(str(li.get('debit') or 0))
+            credit = Decimal(str(li.get('credit') or 0))
+            if classe == 7:
+                total_produits += credit - debit
+            elif classe == 6:
+                total_charges += debit - credit
+    return {
+        'cycle': cycle.id,
+        'total_produits': total_produits,
+        'total_charges': total_charges,
+        'resultat': total_produits - total_charges,
+    }
+
+
+# ── NTFIN12 — Moniteur de consolidation ────────────────────────────────────
+
+def moniteur_consolidation(cycle):
+    """État d'avancement par étape d'un cycle de consolidation (NTFIN12).
+
+    Par étape (collecte, contrôles, conversion, matching interco, éliminations,
+    titres/goodwill, minoritaires, états), renvoie le statut fait/en_cours/
+    a_faire + le nombre d'anomalies bloquantes restantes. Bloque la publication
+    tant qu'une étape amont a des anomalies bloquantes.
+    """
+    nb_membres = EntiteConsolidation.objects.filter(
+        cycle=cycle, actif=True).count()
+    nb_liasses = LiasseRemontee.objects.filter(
+        cycle=cycle, statut__in=[LiasseRemontee.Statut.COLLECTE,
+                                 LiasseRemontee.Statut.VALIDE]).count()
+    controles = controles_collecte(cycle)
+    nb_bloquants = sum(1 for a in controles['anomalies']
+                       if a['severite'] == 'bloquant')
+    nb_intercos = OperationInterco.objects.filter(cycle=cycle).count()
+    nb_intercos_ecart = OperationInterco.objects.filter(
+        cycle=cycle, statut=OperationInterco.Statut.ECART).count()
+    nb_elims = EcritureElimination.objects.filter(cycle=cycle).count()
+    nb_elims_titres = EcritureElimination.objects.filter(
+        cycle=cycle, type_elimination=EcritureElimination.Type.TITRES).count()
+    nb_minoritaires = EcritureElimination.objects.filter(
+        cycle=cycle,
+        type_elimination=EcritureElimination.Type.MINORITAIRES).count()
+
+    def _statut(fait, en_cours):
+        if fait:
+            return 'fait'
+        return 'en_cours' if en_cours else 'a_faire'
+
+    etapes = [
+        {'etape': 'collecte',
+         'statut': _statut(nb_membres and nb_liasses >= nb_membres,
+                           nb_liasses > 0),
+         'anomalies_bloquantes': 0},
+        {'etape': 'controles',
+         'statut': _statut(nb_liasses > 0 and nb_bloquants == 0,
+                           nb_liasses > 0),
+         'anomalies_bloquantes': nb_bloquants},
+        {'etape': 'conversion',
+         'statut': _statut(False, nb_liasses > 0),
+         'anomalies_bloquantes': 0},
+        {'etape': 'matching_interco',
+         'statut': _statut(nb_intercos and nb_intercos_ecart == 0,
+                           nb_intercos > 0),
+         'anomalies_bloquantes': nb_intercos_ecart},
+        {'etape': 'eliminations',
+         'statut': _statut(nb_elims > 0, False),
+         'anomalies_bloquantes': 0},
+        {'etape': 'titres_goodwill',
+         'statut': _statut(nb_elims_titres > 0, False),
+         'anomalies_bloquantes': 0},
+        {'etape': 'minoritaires',
+         'statut': _statut(nb_minoritaires > 0, False),
+         'anomalies_bloquantes': 0},
+        {'etape': 'etats',
+         'statut': _statut(
+             cycle.statut in (CycleConsolidation.Statut.VALIDE,
+                              CycleConsolidation.Statut.PUBLIE), False),
+         'anomalies_bloquantes': 0},
+    ]
+    total_bloquants = sum(e['anomalies_bloquantes'] for e in etapes)
+    return {
+        'cycle': cycle.id,
+        'etapes': etapes,
+        'publication_possible': total_bloquants == 0,
+        'total_anomalies_bloquantes': total_bloquants,
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Groupe NTFIN — Multi-référentiel & analytique multi-axes (lecture seule)
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ── NTFIN14 — Balance par référentiel (livre parallèle) ────────────────────
+
+def balance_par_referentiel(company, referentiel, *, date_debut=None,
+                            date_fin=None, validees_seulement=False):
+    """Balance d'un livre parallèle (NTFIN14).
+
+    ``referentiel`` = ``ReferentielComptable`` (ou ``None`` = principal). Le
+    livre PRINCIPAL agrège les lignes taguées ``referentiel`` NULL (comportement
+    historique) + celles explicitement taguées principal ; un livre parallèle
+    (IFRS…) n'agrège QUE ses propres lignes. Renvoie la même forme que
+    ``balance_generale`` (débit/crédit/solde par compte + totaux).
+    """
+    qs = _lignes_qs(company, date_debut=date_debut, date_fin=date_fin,
+                    validees_seulement=validees_seulement)
+    principal = ReferentielComptable.objects.filter(
+        company=company, est_principal=True).first()
+    ref_id = referentiel.id if referentiel is not None else (
+        principal.id if principal else None)
+    est_principal = (referentiel is None) or (
+        principal is not None and ref_id == principal.id)
+    if est_principal:
+        cond = Q(referentiel__isnull=True)
+        if principal is not None:
+            cond |= Q(referentiel_id=principal.id)
+        qs = qs.filter(cond)
+    else:
+        qs = qs.filter(referentiel_id=ref_id)
+    agg = qs.values(
+        'compte__numero', 'compte__intitule', 'compte__classe',
+    ).annotate(debit=Sum('debit'), credit=Sum('credit')).order_by(
+        'compte__numero')
+    lignes = []
+    total_debit = Decimal('0')
+    total_credit = Decimal('0')
+    for row in agg:
+        debit = row['debit'] or Decimal('0')
+        credit = row['credit'] or Decimal('0')
+        solde = debit - credit
+        total_debit += debit
+        total_credit += credit
+        lignes.append({
+            'numero': row['compte__numero'],
+            'intitule': row['compte__intitule'],
+            'classe': row['compte__classe'],
+            'debit': debit, 'credit': credit,
+            'solde_debiteur': solde if solde > 0 else Decimal('0'),
+            'solde_crediteur': -solde if solde < 0 else Decimal('0'),
+        })
+    return {
+        'referentiel': ref_id,
+        'lignes': lignes,
+        'total_debit': total_debit,
+        'total_credit': total_credit,
+        'equilibree': total_debit == total_credit,
+    }
+
+
+# ── NTFIN18 — Grand livre & balance analytiques multi-axes (pivot) ─────────
+
+def balance_analytique(company, *, axes=None, compte_prefixe=None,
+                       date_debut=None, date_fin=None):
+    """Balance analytique croisée par axe × valeur (NTFIN18).
+
+    Agrège les soldes des lignes imputées (``ImputationAxe`` — NTFIN17) par
+    combinaison (axe, centre de coût=valeur). Filtrable par liste de codes
+    ``axes`` et par préfixe de compte. Une charge imputée projet+centre remonte
+    filtrée par l'un OU l'autre axe et à leur intersection (croisement axe ×
+    valeur). Renvoie ``{'lignes': [{axe, axe_code, centre, centre_code, debit,
+    credit, solde}], 'axes': [...]}``.
+    """
+    qs = ImputationAxe.objects.filter(company=company).select_related(
+        'axe', 'centre_cout', 'ligne_ecriture', 'ligne_ecriture__compte',
+        'ligne_ecriture__ecriture')
+    if axes:
+        qs = qs.filter(axe__code__in=list(axes))
+    if compte_prefixe:
+        qs = qs.filter(
+            ligne_ecriture__compte__numero__startswith=compte_prefixe)
+    if date_debut:
+        qs = qs.filter(ligne_ecriture__ecriture__date_ecriture__gte=date_debut)
+    if date_fin:
+        qs = qs.filter(ligne_ecriture__ecriture__date_ecriture__lte=date_fin)
+    croise = {}
+    for imp in qs:
+        key = (imp.axe_id, imp.centre_cout_id)
+        slot = croise.setdefault(key, {
+            'axe': imp.axe_id, 'axe_code': imp.axe.code,
+            'centre': imp.centre_cout_id, 'centre_code': imp.centre_cout.code,
+            'debit': Decimal('0'), 'credit': Decimal('0')})
+        slot['debit'] += imp.ligne_ecriture.debit
+        slot['credit'] += imp.ligne_ecriture.credit
+    lignes = []
+    for slot in croise.values():
+        slot['solde'] = slot['debit'] - slot['credit']
+        lignes.append(slot)
+    lignes.sort(key=lambda s: (s['axe_code'], s['centre_code']))
+    axes_vus = sorted({s['axe_code'] for s in lignes})
+    return {'lignes': lignes, 'axes': axes_vus}
+
+
+# ── NTFIN19 — Résultat analytique par axe (CR dimensionnel) ────────────────
+
+def resultat_par_axe(company, axe_code, *, date_debut=None, date_fin=None):
+    """Compte de résultat dimensionnel par valeur d'axe (NTFIN19).
+
+    Pour un axe donné, produit produits (comptes classe 7) − charges (classe 6)
+    par valeur d'axe (centre de coût), à partir des lignes imputées
+    (``ImputationAxe``). Renvoie ``{'axe': code, 'valeurs': [{centre, centre_code,
+    produits, charges, resultat}], 'total_resultat'}``.
+    """
+    qs = ImputationAxe.objects.filter(
+        company=company, axe__code=axe_code,
+        ligne_ecriture__compte__classe__in=[6, 7]).select_related(
+        'centre_cout', 'ligne_ecriture', 'ligne_ecriture__compte',
+        'ligne_ecriture__ecriture')
+    if date_debut:
+        qs = qs.filter(ligne_ecriture__ecriture__date_ecriture__gte=date_debut)
+    if date_fin:
+        qs = qs.filter(ligne_ecriture__ecriture__date_ecriture__lte=date_fin)
+    par_valeur = {}
+    total_resultat = Decimal('0')
+    for imp in qs:
+        ligne = imp.ligne_ecriture
+        classe = ligne.compte.classe
+        slot = par_valeur.setdefault(imp.centre_cout_id, {
+            'centre': imp.centre_cout_id, 'centre_code': imp.centre_cout.code,
+            'produits': Decimal('0'), 'charges': Decimal('0')})
+        if classe == 7:
+            montant = ligne.credit - ligne.debit
+            slot['produits'] += montant
+            total_resultat += montant
+        else:
+            montant = ligne.debit - ligne.credit
+            slot['charges'] += montant
+            total_resultat -= montant
+    valeurs = []
+    for slot in par_valeur.values():
+        slot['resultat'] = slot['produits'] - slot['charges']
+        valeurs.append(slot)
+    valeurs.sort(key=lambda s: s['centre_code'])
+    return {
+        'axe': axe_code, 'valeurs': valeurs, 'total_resultat': total_resultat}

@@ -13,6 +13,9 @@ vi.mock('../../features/ia/CopilotPanel', () => ({ default: () => null }))
 // copilote : neutralisé ici pour ne pas tirer son arbre d'import réel (axios,
 // Radix Dialog) dans ce test de coquille de mise en page.
 vi.mock('../../features/innovation/SuggestionCTA', () => ({ default: () => null }))
+// NTIDE37 — bouton « Envoyer un retour », même patron/raison que SuggestionCTA
+// ci-dessus.
+vi.mock('../../features/innovation/FeedbackButton', () => ({ default: () => null }))
 vi.mock('../../ui/OfflineState', () => ({ OfflineBanner: () => null }))
 vi.mock('react-router-dom', async (orig) => ({
   ...(await orig()),

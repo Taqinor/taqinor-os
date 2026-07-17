@@ -1,12 +1,18 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { useSelector } from 'react-redux'
 import {
-  ThumbsUp, Search, CheckCircle2, Rocket, XCircle, Send,
+  ThumbsUp, Search, CheckCircle2, Rocket, XCircle, Send, Link2, RotateCcw,
+  Upload, EyeOff,
 } from 'lucide-react'
 import { DetailShell } from '../../ui/module'
-import { Button, Textarea, EmptyState, Spinner, DefinitionList, Badge, toast } from '../../ui'
+import {
+  Button, Textarea, Input, EmptyState, Spinner, DefinitionList, Badge, toast,
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+} from '../../ui'
 import { formatDateTime } from '../../lib/format'
 import innovationApi from '../../api/innovationApi'
+import FilterSelect from './FilterSelect'
 import {
   STATUT_MAP, StatutIdeePill, transitionsPour, estTerminal, TRANSITION_LABELS,
 } from './innovationStatus'
@@ -33,12 +39,17 @@ function labelLinkedType(v) {
 export default function IdeeDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const currentUser = useSelector((s) => s.auth.user)
   const [idee, setIdee] = useState(null)
   const [activites, setActivites] = useState([])
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState('')
   const [showFermerNote, setShowFermerNote] = useState(false)
+  // ── NTIDE14 — modale « Lier à devis/ticket/chantier » ──
+  const [showLierDialog, setShowLierDialog] = useState(false)
+  const [lierType, setLierType] = useState('devis')
+  const [lierId, setLierId] = useState('')
 
   const load = () => {
     setLoading(true)
@@ -77,6 +88,65 @@ export default function IdeeDetail() {
     }
   }
 
+  const handleReouvrir = async () => {
+    setBusy(true)
+    try {
+      await innovationApi.reouvrir(id)
+      toast.success('Idée ré-ouverte.')
+      await load()
+    } catch (err) {
+      toast.error(err?.response?.data?.statut || 'Ré-ouverture impossible.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handlePublier = async () => {
+    setBusy(true)
+    try {
+      await innovationApi.publier(id)
+      toast.success('Idée publiée — visible par toute la société.')
+      await load()
+    } catch {
+      toast.error('Publication impossible.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleMasquer = async () => {
+    if (!window.confirm('Masquer cette idée ? Elle disparaîtra des listes (jamais supprimée, reste accessible en admin).')) return
+    setBusy(true)
+    try {
+      await innovationApi.masquer(id)
+      toast.success('Idée masquée.')
+      await load()
+    } catch (err) {
+      toast.error(err?.response?.status === 403
+        ? 'Action réservée au palier Directeur/Responsable.'
+        : 'Impossible de masquer cette idée.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleLier = async () => {
+    const id = Number(lierId)
+    if (!lierType || !id || id <= 0) { toast.error('Choisissez un type et un identifiant valides.'); return }
+    setBusy(true)
+    try {
+      await innovationApi.lier(idee.id, lierType, id)
+      toast.success('Idée liée.')
+      setShowLierDialog(false)
+      setLierId('')
+      await load()
+    } catch {
+      toast.error('Impossible de lier cette idée.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const handleVote = async () => {
     setBusy(true)
     try {
@@ -105,6 +175,18 @@ export default function IdeeDetail() {
     { term: 'Votes', description: String(idee.votes_count ?? 0) },
     { term: 'Proposée le', description: formatDateTime(idee.date_creation) },
   ]
+  if (idee.draft) {
+    items.push({
+      term: 'Visibilité',
+      description: <Badge tone="warning">Brouillon — visible uniquement par vous</Badge>,
+    })
+  }
+  if (idee.archived) {
+    items.push({
+      term: 'Modération',
+      description: <Badge tone="destructive">Masquée — invisible des listes</Badge>,
+    })
+  }
   if (idee.linked_type) {
     items.push({
       term: 'Lié à',
@@ -156,11 +238,35 @@ export default function IdeeDetail() {
   )
 
   const transitions = transitionsPour(idee.statut)
+  const estAuteur = idee.auteur === currentUser?.id
+  // NTIDE17 — l'auteur peut ré-ouvrir depuis fermée/examinée uniquement
+  // (verrouillé après retenue/réalisée) ; serveur fait autorité (403/400
+  // affichés en toast si l'un de ces garde-fous a changé entre-temps).
+  const peutReouvrir = estAuteur && ['fermee', 'examinee'].includes(idee.statut)
   const actions = (
     <>
+      {idee.draft && estAuteur && (
+        <Button type="button" onClick={handlePublier} disabled={busy}>
+          <Upload /> Publier
+        </Button>
+      )}
       <Button type="button" variant="outline" onClick={handleVote} disabled={busy}>
         <ThumbsUp /> Voter
       </Button>
+      <Button type="button" variant="outline" disabled={busy}
+              onClick={() => setShowLierDialog(true)}>
+        <Link2 /> Lier à devis/ticket/chantier
+      </Button>
+      {peutReouvrir && (
+        <Button type="button" variant="outline" onClick={handleReouvrir} disabled={busy}>
+          <RotateCcw /> Ré-ouvrir
+        </Button>
+      )}
+      {!idee.archived && (
+        <Button type="button" variant="outline" onClick={handleMasquer} disabled={busy}>
+          <EyeOff /> Masquer
+        </Button>
+      )}
       {!estTerminal(idee.statut) && transitions.map((key) => {
         const Icon = TRANSITION_ICONS[key]
         if (key === 'fermer') {
@@ -205,6 +311,48 @@ export default function IdeeDetail() {
           </div>
         </div>
       )}
+
+      <Dialog open={showLierDialog} onOpenChange={setShowLierDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Lier à devis/ticket/chantier</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="lier-type" className="text-sm font-medium">Type</label>
+              <FilterSelect
+                id="lier-type"
+                value={lierType}
+                onChange={setLierType}
+                options={[
+                  { value: 'devis', label: 'Devis' },
+                  { value: 'ticket', label: 'Ticket SAV' },
+                  { value: 'chantier', label: 'Chantier' },
+                ]}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="lier-id" className="text-sm font-medium">Identifiant</label>
+              <Input
+                id="lier-id"
+                type="number"
+                min="1"
+                value={lierId}
+                onChange={(e) => setLierId(e.target.value)}
+                placeholder="ex. 42"
+              />
+            </div>
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <Button type="button" variant="ghost" onClick={() => setShowLierDialog(false)} disabled={busy}>
+                Annuler
+              </Button>
+              <Button type="button" onClick={handleLier} disabled={busy}>
+                <Link2 /> Lier
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <DetailShell
         title={idee.titre}

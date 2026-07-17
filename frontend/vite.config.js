@@ -207,6 +207,20 @@ export default defineConfig({
   // `injectManifest.globPatterns` ci-dessus inclut déjà `**/*.js`.
   build: {
     chunkSizeWarningLimit: 900, // ko (gzip non compté) — alerte, pas une erreur
+    // VX185 (suite) — n'INJECTE PAS de `<link rel="modulepreload">` pour les
+    // gros chunks vendors au BOOT (index.html, /login inclus). Rolldown déduplique
+    // parfois un symbole d'un chunk partagé (ex. `datatable`, moteur DataTable
+    // réutilisable) DANS le chunk d'entrée, ce qui force son préchargement sur
+    // TOUTE page — même celles qui n'en ont pas besoin. Ce filtre retire du
+    // préchargement les seuls chunks lourds nommés (mêmes noms que
+    // `scripts/check_bundle_budget.mjs` HEAVY_VENDOR_CHUNK_NAMES) : ils restent
+    // chargés à la demande par la route qui les importe (React.lazy), jamais au
+    // boot. Ne change PAS le graphe de chunks, seulement la liste de preload.
+    modulePreload: {
+      resolveDependencies: (_filename, deps) => deps.filter(
+        (dep) => !/(?:^|\/)(?:datatable|recharts|pdfjs-dist|roof-tool)-[\w-]+\.js$/.test(dep),
+      ),
+    },
     rollupOptions: {
       output: {
         // Découpe les gros vendors en chunks dédiés (mis en cache séparément du

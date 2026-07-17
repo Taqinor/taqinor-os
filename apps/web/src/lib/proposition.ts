@@ -60,6 +60,15 @@ export interface ProposalQuote {
   client_addr?: string;
   client_phone?: string;
   inst_type?: string;
+  /**
+   * WJ126/QX49 — clé machine MINUSCULE du mode d'installation
+   * (`residentiel|industriel|commercial|agricole`, cf. `Devis.ModeInstallation`
+   * backend). Le builder la pose AUSSI ici (dans `data`, donc dans `quote`) en
+   * plus du niveau racine du payload. C'est le champ sur lequel la page branche
+   * ses 4 variantes — jamais l'ancien `inst_type` (libellé capitalisé qui ne
+   * matchait aucun littéral minuscule, bug historique). Absent → résidentiel.
+   */
+  mode_installation?: string | null;
   puissance_kwc?: number;
   nb_panneaux?: number;
   watt_par_panneau?: number;
@@ -105,6 +114,29 @@ export interface ProposalResponse {
   client_name: string;
   statut: string;
   quote: ProposalQuote;
+  /**
+   * WJ126/QX49 — mode d'installation (clé machine MINUSCULE, cf.
+   * `Devis.ModeInstallation`) exposé au NIVEAU RACINE du payload par
+   * `proposal_data`. C'est la source de vérité de la variante à rendre —
+   * `resolveInstallMode` la lit ici en priorité (repli `quote.mode_installation`,
+   * puis résidentiel). Jamais l'ancien `inst_type`. Absent/vide → résidentiel.
+   */
+  mode_installation?: string | null;
+  /**
+   * WJ126/QX49 — catégorie commerciale (`hotel|restaurant|commerce|bureau|
+   * sante|ecole|hammam|boulangerie|froid|autre`, cf. quote_engine/commercial/
+   * categories.py). Présente uniquement en mode commercial ; `null` sinon. Sert
+   * à choisir l'archétype de bloc commercial (`commercialArchetype`).
+   */
+  categorie_commerciale?: string | null;
+  /**
+   * WJ126/QX49 — bloc KPI par mode, whitelist STRICTE côté serveur (jamais
+   * prix_achat/marge — RULE #4). Forme selon le mode : `AgricoleKpis` (pompage)
+   * ou `AutoconsoKpis` (industriel/commercial) ; `null` en résidentiel (ou hors
+   * mode géré). La page ne re-calcule rien : `agricoleKpis`/`autoconsoKpis`
+   * l'extraient typé, chaque champ absent devenant `null` (jamais fabriqué).
+   */
+  mode_kpis?: ProposalModeKpis | null;
   roof_image_url: string | null;
   /**
    * Production solaire estimée, kWh/mois (12 valeurs, index 0 = janvier). Peut
@@ -2142,3 +2174,322 @@ export function buildProposalTrackPayload(
     page: `/proposition/${token}`,
   };
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// WJ126 · Proposition MODE-AWARE — 4 variantes (résidentiel / agricole /
+// industriel / commercial) à partir du bloc QX49 exposé par le backend
+// (`mode_installation` clé machine minuscule, `mode_kpis` whitelisté,
+// `categorie_commerciale`). TOUTE la logique de choix de variante + d'extraction
+// de KPI vit ici (pure, testée sans DOM) ; la page ne fait que brancher sur
+// `resolveInstallMode` et rendre ce que ces fonctions renvoient.
+//
+// DISCIPLINE « ZÉRO CHIFFRE INVENTÉ » : un KPI absent du payload devient `null`
+// (jamais 0, jamais une valeur fabriquée) — la page l'omet honnêtement. AUCUN
+// champ d'un mode ne fuit dans un autre : `agricoleKpis` ne renvoie rien hors
+// pompage, `autoconsoKpis` rien hors industriel/commercial. La page ne branche
+// JAMAIS sur `inst_type` (libellé capitalisé qui ne matchait aucun littéral
+// minuscule) — uniquement sur `mode_installation` (clé machine QX49).
+// ════════════════════════════════════════════════════════════════════════════
+
+/** Les 4 marchés du générateur de devis (clé machine minuscule, cf.
+ *  `Devis.ModeInstallation` backend). Repli résidentiel quand absent/inconnu. */
+export type InstallMode = 'residentiel' | 'industriel' | 'commercial' | 'agricole';
+
+/**
+ * WJ126/QX49 — KPI POMPAGE (agricole). Chaque nombre est soit une valeur backend
+ * réelle, soit `null` (jamais fabriqué). `fda_eligible` : irrigation localisée
+ * (goutte) → subvention FDA envisageable « sous réserve », jamais promise.
+ */
+export interface AgricoleKpis {
+  pompe_cv: number | null;
+  pompe_kw: number | null;
+  hmt_m: number | null;
+  debit_hmt_m3h: number | null;
+  m3_jour: number | null;
+  champ_kwc: number | null;
+  bassin_m3: number | null;
+  fda_eligible: boolean;
+}
+
+/**
+ * WJ126/QX49 — KPI AUTOCONSOMMATION (industriel/commercial). L'injection 82-21
+ * n'est présente (`injection_kwh_an`/`injection_dh_an` non nuls) que si le
+ * backend l'a réellement calculée sur ce devis — sinon `null`, jamais promise.
+ */
+export interface AutoconsoKpis {
+  taux_autoconso: number | null;
+  taux_couverture: number | null;
+  economies_annuelles: number | null;
+  payback: number | null;
+  injection_kwh_an: number | null;
+  injection_dh_an: number | null;
+}
+
+/** Union lâche du bloc `mode_kpis` backend (forme réelle choisie par le mode). */
+export type ProposalModeKpis = Partial<AgricoleKpis> & Partial<AutoconsoKpis>;
+
+/** Coercition défensive d'un KPI en nombre fini (accepte number ou chaîne
+ *  numérique — le backend `_kpi_num` renvoie des floats, mais on ne casse pas
+ *  sur une string) ; toute autre entrée → `null` (jamais 0 fabriqué). */
+function kpiNumber(v: unknown): number | null {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+  if (typeof v === 'string' && v.trim() !== '') {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
+/**
+ * WJ126 — Résout la variante à rendre à partir de `mode_installation` (clé
+ * machine QX49, MINUSCULE). Lit le niveau racine du payload en priorité, puis
+ * `quote.mode_installation` (le builder l'y place aussi), et JAMAIS `inst_type`.
+ * La comparaison est tolérante (`includes` + minuscule) pour absorber un futur
+ * alias (`professionnel` = nom interne d'industriel) sans jamais matcher un
+ * mode par erreur. Absent/vide/inconnu → `residentiel` (repli honnête).
+ */
+export function resolveInstallMode(
+  p: Pick<ProposalResponse, 'mode_installation' | 'quote'>,
+): InstallMode {
+  const raw =
+    p.mode_installation ??
+    (p.quote as { mode_installation?: string | null } | undefined)?.mode_installation ??
+    '';
+  const s = String(raw).trim().toLowerCase();
+  if (s.includes('agricole') || s.includes('pompage')) return 'agricole';
+  if (s.includes('commercial') && !s.includes('industriel')) return 'commercial';
+  if (s.includes('industriel') || s.includes('professionnel')) return 'industriel';
+  return 'residentiel';
+}
+
+/**
+ * WJ126 — Extrait les KPI pompage TYPÉS. Renvoie `null` hors mode agricole
+ * (zéro fuite inter-mode). En mode agricole mais `mode_kpis` absent/partiel :
+ * renvoie l'objet avec chaque champ à `null` (+ `fda_eligible: false`) — la page
+ * rend alors le héros pompage et OMET honnêtement chaque valeur manquante.
+ */
+export function agricoleKpis(
+  p: Pick<ProposalResponse, 'mode_installation' | 'mode_kpis' | 'quote'>,
+): AgricoleKpis | null {
+  if (resolveInstallMode(p) !== 'agricole') return null;
+  const k = (p.mode_kpis ?? {}) as ProposalModeKpis;
+  return {
+    pompe_cv: kpiNumber(k.pompe_cv),
+    pompe_kw: kpiNumber(k.pompe_kw),
+    hmt_m: kpiNumber(k.hmt_m),
+    debit_hmt_m3h: kpiNumber(k.debit_hmt_m3h),
+    m3_jour: kpiNumber(k.m3_jour),
+    champ_kwc: kpiNumber(k.champ_kwc),
+    bassin_m3: kpiNumber(k.bassin_m3),
+    fda_eligible: k.fda_eligible === true,
+  };
+}
+
+/**
+ * WJ126 — Extrait les KPI autoconsommation TYPÉS. Renvoie `null` hors
+ * industriel/commercial (zéro fuite inter-mode). En mode industriel/commercial
+ * mais `mode_kpis` absent/partiel : objet à champs `null` — omission honnête.
+ */
+export function autoconsoKpis(
+  p: Pick<ProposalResponse, 'mode_installation' | 'mode_kpis' | 'quote'>,
+): AutoconsoKpis | null {
+  const mode = resolveInstallMode(p);
+  if (mode !== 'industriel' && mode !== 'commercial') return null;
+  const k = (p.mode_kpis ?? {}) as ProposalModeKpis;
+  return {
+    taux_autoconso: kpiNumber(k.taux_autoconso),
+    taux_couverture: kpiNumber(k.taux_couverture),
+    economies_annuelles: kpiNumber(k.economies_annuelles),
+    payback: kpiNumber(k.payback),
+    injection_kwh_an: kpiNumber(k.injection_kwh_an),
+    injection_dh_an: kpiNumber(k.injection_dh_an),
+  };
+}
+
+/** WJ126 — Vrai quand l'injection 82-21 est RÉELLEMENT calculée (kWh/an positif) :
+ *  seule condition d'affichage de la ligne injection + mention ANRE. */
+export function hasInjection(k: AutoconsoKpis | null): boolean {
+  return !!k && k.injection_kwh_an !== null && k.injection_kwh_an > 0;
+}
+
+/** WJ126 — Un point du mini-cashflow autoconsommation (net cumulé, MAD). */
+export interface CashflowPoint {
+  /** Année (0 = mise en service). */
+  year: number;
+  /** Trésorerie nette cumulée à cette année (négative avant le point mort). */
+  cumulative: number;
+}
+
+/**
+ * WJ126 — Mini-cashflow 10 ans (industriel/commercial) : `-investissement TTC`
+ * + `économies_annuelles × année`. MÊME modèle linéaire que le PDF et
+ * `savingsHeadline` (0 % d'escalade tarifaire, `BILL_INFLATION_RATE`) — aucune
+ * dérive inventée. Renvoie `null` si l'économie annuelle ou le TTC réel manque
+ * (jamais un cashflow construit sur un chiffre fabriqué).
+ */
+export function autoconsoCashflow(
+  p: ProposalResponse,
+  opt: OptionKey,
+  k: AutoconsoKpis | null,
+  years: number = 10,
+): CashflowPoint[] | null {
+  if (!k) return null;
+  const annual = k.economies_annuelles;
+  const outlay = optionTtc(p, opt);
+  if (
+    annual === null || annual <= 0 ||
+    !Number.isFinite(outlay) || outlay <= 0 ||
+    years <= 0
+  ) {
+    return null;
+  }
+  const pts: CashflowPoint[] = [];
+  for (let y = 0; y <= years; y++) {
+    pts.push({ year: y, cumulative: Math.round(-outlay + annual * y) });
+  }
+  return pts;
+}
+
+/** WJ126 — Livraison d'eau estimée d'un mois (m³). */
+export interface WaterDeliveryMonth {
+  /** Index du mois (0 = janvier). */
+  monthIndex: number;
+  /** Volume estimé livré ce mois (m³) — dérivé, jamais mesuré. */
+  m3: number;
+}
+
+/**
+ * WJ126 — Répartition MENSUELLE INDICATIVE de la livraison d'eau (agricole) :
+ * capacité annuelle ≈ `m3_jour × 365` répartie selon la PART d'ensoleillement de
+ * chaque mois (`monthly_production`), le pompage solaire suivant le soleil. C'est
+ * une DÉRIVATION documentée à partir de deux valeurs PRÉSENTES (m3_jour +
+ * production mensuelle), pas un chiffre inventé ; la page l'étiquette clairement
+ * « estimation — capacité, suit l'ensoleillement ». Renvoie `null` (bloc omis)
+ * si `m3_jour` ou la série de production manque. AUCUNE série de BESOIN culture
+ * n'existe dans ce payload (elle vient de QX48/WJ124) — la page n'affiche donc
+ * QUE la livraison, jamais une courbe « besoin » fabriquée.
+ */
+export function agricoleMonthlyDelivery(
+  p: Pick<ProposalResponse, 'monthly_production'>,
+  k: AgricoleKpis | null,
+): WaterDeliveryMonth[] | null {
+  if (!k || k.m3_jour === null || k.m3_jour <= 0) return null;
+  const prod = monthlySeries(p.monthly_production);
+  if (!prod) return null;
+  const sum = prod.reduce((a, b) => a + b, 0);
+  if (sum <= 0) return null;
+  const annual = k.m3_jour * 365;
+  return prod.map((v, i) => ({
+    monthIndex: i,
+    m3: Math.round((v / sum) * annual),
+  }));
+}
+
+/** WJ126 — Archétype de bloc commercial (contenu QUALITATIF, aucun chiffre). */
+export interface CommercialArchetype {
+  key: string;
+  icon: string;
+  labelFr: string;
+  labelEn: string;
+  labelAr: string;
+  accrocheFr: string;
+  accrocheEn: string;
+  accrocheAr: string;
+}
+
+/**
+ * WJ126 — Table d'archétypes commerciaux, MIROIR de
+ * `quote_engine/commercial/categories.py METADATA` (les accroches FR sont
+ * reprises telles quelles ; EN/AR sont des traductions). Contenu 100 %
+ * QUALITATIF — aucun nombre (les chiffres réels viennent des KPI backend, pas
+ * d'ici). Catégorie absente/inconnue → `autre` (bloc générique honnête).
+ */
+const COMMERCIAL_ARCHETYPES: Record<string, CommercialArchetype> = {
+  hotel: {
+    key: 'hotel', icon: '🏨',
+    labelFr: 'Hôtel / Riad', labelEn: 'Hotel / Riad', labelAr: 'فندق / رياض',
+    accrocheFr: 'Chaque nuitée mieux margée : le solaire allège la climatisation, la piscine et la blanchisserie.',
+    accrocheEn: 'Better margin per night: solar eases air-conditioning, the pool and the laundry.',
+    accrocheAr: 'هامش أفضل لكل ليلة: تخفّف الطاقة الشمسية التكييف والمسبح والمغسلة.',
+  },
+  restaurant: {
+    key: 'restaurant', icon: '🍽️',
+    labelFr: 'Restaurant / Café', labelEn: 'Restaurant / Café', labelAr: 'مطعم / مقهى',
+    accrocheFr: 'Sécurisez la chaîne du froid et maîtrisez le poste énergie de votre cuisine.',
+    accrocheEn: 'Secure the cold chain and control your kitchen’s energy costs.',
+    accrocheAr: 'أمّنوا سلسلة التبريد وتحكّموا في تكلفة طاقة مطبخكم.',
+  },
+  commerce: {
+    key: 'commerce', icon: '🛒',
+    labelFr: 'Commerce / Supermarché', labelEn: 'Retail / Supermarket', labelAr: 'متجر / سوبر ماركت',
+    accrocheFr: 'Froid alimentaire, éclairage et climatisation : votre base diurne couverte par le solaire.',
+    accrocheEn: 'Food refrigeration, lighting and cooling: your daytime base covered by solar.',
+    accrocheAr: 'تبريد الأغذية والإنارة والتكييف: قاعدتكم النهارية تغطّيها الطاقة الشمسية.',
+  },
+  bureau: {
+    key: 'bureau', icon: '🏢',
+    labelFr: 'Bureau / Siège', labelEn: 'Office / HQ', labelAr: 'مكتب / مقر',
+    accrocheFr: 'Vos heures de bureau coïncident avec le soleil : autoconsommation élevée, peu d’export.',
+    accrocheEn: 'Your office hours match the sun: high self-consumption, little export.',
+    accrocheAr: 'ساعات عملكم تتزامن مع الشمس: استهلاك ذاتي مرتفع وتصدير قليل.',
+  },
+  sante: {
+    key: 'sante', icon: '🏥',
+    labelFr: 'Santé (clinique / cabinet)', labelEn: 'Healthcare (clinic / practice)', labelAr: 'صحة (عيادة)',
+    accrocheFr: 'Continuité de service et maîtrise du coût énergie, en journée comme en garde.',
+    accrocheEn: 'Service continuity and energy-cost control, by day and on call.',
+    accrocheAr: 'استمرارية الخدمة وضبط تكلفة الطاقة، نهاراً وأثناء المداومة.',
+  },
+  ecole: {
+    key: 'ecole', icon: '🎓',
+    labelFr: 'École privée', labelEn: 'Private school', labelAr: 'مدرسة خاصة',
+    accrocheFr: 'Consommation en période scolaire, production toute l’année : un budget énergie prévisible.',
+    accrocheEn: 'Consumption during term, production all year: a predictable energy budget.',
+    accrocheAr: 'استهلاك خلال الموسم الدراسي وإنتاج طوال السنة: ميزانية طاقة متوقّعة.',
+  },
+  hammam: {
+    key: 'hammam', icon: '🧖',
+    labelFr: 'Hammam / Spa / Gym', labelEn: 'Hammam / Spa / Gym', labelAr: 'حمام / سبا / نادٍ رياضي',
+    accrocheFr: 'Chauffe de l’eau et confort thermique : le solaire allège votre poste énergie.',
+    accrocheEn: 'Water heating and thermal comfort: solar eases your energy costs.',
+    accrocheAr: 'تسخين الماء والراحة الحرارية: تخفّف الطاقة الشمسية تكلفة طاقتكم.',
+  },
+  boulangerie: {
+    key: 'boulangerie', icon: '🥖',
+    labelFr: 'Boulangerie', labelEn: 'Bakery', labelAr: 'مخبزة',
+    accrocheFr: 'Le solaire couvre le froid, l’éclairage et la clim de jour — en toute transparence sur la cuisson.',
+    accrocheEn: 'Solar covers refrigeration, lighting and daytime cooling — transparent about baking.',
+    accrocheAr: 'تغطّي الطاقة الشمسية التبريد والإنارة والتكييف نهاراً — بشفافية بشأن الخَبز.',
+  },
+  froid: {
+    key: 'froid', icon: '❄️',
+    labelFr: 'Entrepôt froid', labelEn: 'Cold storage', labelAr: 'مستودع تبريد',
+    accrocheFr: 'Sécurisez votre chaîne du froid et abaissez le coût de la base 24 h.',
+    accrocheEn: 'Secure your cold chain and cut the cost of the 24 h base load.',
+    accrocheAr: 'أمّنوا سلسلة التبريد واخفضوا تكلفة الحمل الأساسي على مدار 24 ساعة.',
+  },
+  autre: {
+    key: 'autre', icon: '🏪',
+    labelFr: 'Commerce', labelEn: 'Business', labelAr: 'نشاط تجاري',
+    accrocheFr: 'Le solaire couvre la consommation diurne de votre établissement en autoconsommation.',
+    accrocheEn: 'Solar covers your premises’ daytime consumption in self-consumption.',
+    accrocheAr: 'تغطّي الطاقة الشمسية الاستهلاك النهاري لمنشأتكم عبر الاستهلاك الذاتي.',
+  },
+};
+
+/**
+ * WJ126 — Résout l'archétype commercial d'une `categorie_commerciale` (miroir
+ * du backend). Catégorie absente/inconnue → `autre` (jamais un crash, jamais un
+ * bloc fabriqué) — renvoie TOUJOURS un archétype exploitable.
+ */
+export function commercialArchetype(category: string | null | undefined): CommercialArchetype {
+  const key = String(category ?? '').trim().toLowerCase();
+  return COMMERCIAL_ARCHETYPES[key] ?? COMMERCIAL_ARCHETYPES.autre;
+}
+
+/** WJ126 — Mois FR/EN/AR courts (0 = janvier) pour l'axe du mini-graphe eau. */
+export const MONTHS_SHORT: Record<PropLang, string[]> = {
+  fr: ['jan', 'fév', 'mar', 'avr', 'mai', 'jun', 'jul', 'aoû', 'sep', 'oct', 'nov', 'déc'],
+  en: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+  ar: ['ينا', 'فبر', 'مار', 'أبر', 'ماي', 'يون', 'يول', 'غشت', 'شت', 'أكت', 'نون', 'دجن'],
+};

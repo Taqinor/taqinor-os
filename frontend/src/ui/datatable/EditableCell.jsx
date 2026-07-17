@@ -16,6 +16,21 @@ import { Spinner } from '../Spinner'
      — distinct d'un simple manque de `onSave` (le style reste « lecture
      seule », pas grisé comme un `disabled`).
    Contrôlé côté affichage par `value` ; ce composant ne mute que son brouillon.
+
+   NTUX8 — navigation clavier type tableur, 100 % OPT-IN (les ~79 écrans
+   existants qui n'utilisent AUCUNE des deux props ci-dessous ne voient AUCUN
+   changement de comportement) :
+   - `autoEdit` : quand `true`, la cellule s'ouvre automatiquement en édition
+     au montage/changement (commandé par le PARENT — DataTable pilote un
+     curseur `activeCell` et pousse `autoEdit` sur la cellule ciblée après un
+     Tab/Entrée réussi, au lieu que ce composant gère lui-même la navigation
+     inter-cellules).
+   - `onCommitNav(direction)` : appelé APRÈS un commit RÉUSSI (jamais si une
+     erreur de validation garde la cellule ouverte) déclenché par Tab
+     (`'next'`/`'prev'` selon Maj) ou Entrée (`'down'`) — Tab n'a un
+     comportement spécial QUE si cette prop est fournie ; sans elle, Tab garde
+     son comportement natif du navigateur (focus au contrôle suivant),
+     inchangé.
    ========================================================================== */
 export function EditableCell({
   value,
@@ -27,6 +42,8 @@ export function EditableCell({
   inputType = 'text',
   className,
   readOnly = false,
+  autoEdit,
+  onCommitNav,
 }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
@@ -41,6 +58,20 @@ export function EditableCell({
     }
   }, [editing])
 
+  // NTUX8 — ouverture programmatique commandée par le parent (curseur
+  // `activeCell` de DataTable). `autoEdit` non fourni (undefined) → cet effet
+  // ne se déclenche JAMAIS (comportement des 79 écrans existants inchangé).
+  useEffect(() => {
+    if (autoEdit && !editing && !readOnly) {
+      /* eslint-disable react-hooks/set-state-in-effect -- ouverture programmatique commandée par le parent (flanc montant d'autoEdit) */
+      setDraft(value ?? '')
+      setError(null)
+      setEditing(true)
+      /* eslint-enable react-hooks/set-state-in-effect */
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ne réagit qu'au flanc montant de `autoEdit`, pas à `value`/`editing` (évite une boucle de réouverture après commit).
+  }, [autoEdit])
+
   const display = format ? format(value, row) : value ?? '—'
 
   function begin() {
@@ -50,29 +81,36 @@ export function EditableCell({
     setEditing(true)
   }
 
+  // NTUX8 — retourne désormais un booléen de succès (true = cellule fermée
+  // proprement, false = restée ouverte sur une erreur) : les appelants
+  // existants (`onBlur={commit}`) ignorent la valeur de retour, AUCUN
+  // changement de comportement pour eux. Seul le clavier Tab/Entrée
+  // ci-dessous s'en sert pour décider s'il navigue vers la cellule suivante.
   async function commit() {
     // Garde anti-double-commit : `disabled={saving}` sur l'input peut lui
     // faire perdre le focus (→ un second onBlur/commit) pendant l'attente.
-    if (saving) return
+    if (saving) return false
     const err = validate ? validate(draft, row) : null
     if (err) {
       setError(err)
-      return
+      return false
     }
     if (String(draft) === String(value ?? '')) {
       setEditing(false)
       setError(null)
-      return
+      return true
     }
     setSaving(true)
     setError(null)
     try {
       await onSave?.(draft, row)
       setEditing(false)
+      return true
     } catch (e) {
       // Rejet serveur : la cellule RESTE ouverte (rouverte), message affiché
       // au lieu de se refermer en silence sur un échec.
       setError(e?.response?.data?.detail || e?.message || 'Échec de l’enregistrement — réessayez.')
+      return false
     } finally {
       setSaving(false)
     }
@@ -127,10 +165,19 @@ export function EditableCell({
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
               e.preventDefault()
-              commit()
+              // NTUX8 — Entrée valide ET descend d'une ligne (comportement
+              // tableur standard) QUAND `onCommitNav` est fourni ; sinon,
+              // comportement historique inchangé (juste `commit()`).
+              commit().then((ok) => { if (ok) onCommitNav?.('down') })
             } else if (e.key === 'Escape') {
               e.preventDefault()
               cancel()
+            } else if (e.key === 'Tab' && onCommitNav) {
+              // NTUX8 — navigation inter-cellules : commit puis avance/recule
+              // d'une colonne éditable (Maj+Tab = arrière). Comportement
+              // natif du navigateur préservé quand `onCommitNav` est absent.
+              e.preventDefault()
+              commit().then((ok) => { if (ok) onCommitNav(e.shiftKey ? 'prev' : 'next') })
             }
           }}
           onBlur={commit}

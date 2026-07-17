@@ -62,10 +62,29 @@ app.conf.enable_utc = False
 #   - YSERV5 : génération automatique des visites préventives dues (07:45) —
 #     apps/sav/tasks.py (opt-in par société, OFF par défaut = no-op ;
 #     réutilise generer_visites_dues, idempotent).
+#   - NTSAN31 : alerte J-7 avant expiration d'une PriseEnCharge santé (07:40)
+#     — apps/sante/tasks.py (idempotent par jour+PriseEnCharge, miroir du
+#     pattern apps/rh/tasks.py alertes_expiration).
+#   - NTEDU22 : matérialisation hebdomadaire des séances depuis l'emploi du
+#     temps actif (dimanche 20:00, fériés marocains exclus) — apps/education/
+#     tasks.py (idempotent par classe/matière/date/heure de début).
+#   - NTIDE40 : digest feedback produit non-lu par thème (08:40), gated PAR
+#     SOCIÉTÉ (InnovationSettings.feedback_digest_actif, désactivé par
+#     défaut) — apps/innovation/tasks.py (no-op tant qu'aucune société ne
+#     l'active ; la fréquence hebdo, elle, ne notifie que le lundi).
 app.conf.beat_schedule = {
     'ventes-check-overdue-factures': {
         'task': 'ventes.check_overdue_factures',
         'schedule': crontab(hour=0, minute=30),
+    },
+    # NTTRE29/31 — trésorerie : alerte rupture (quotidien) + relances du jour.
+    'compta-recalculer-alerte-rupture': {
+        'task': 'compta.recalculer_alerte_rupture',
+        'schedule': crontab(hour=6, minute=45),
+    },
+    'compta-relances-tresorerie-du-jour': {
+        'task': 'compta.relances_tresorerie_du_jour',
+        'schedule': crontab(hour=7, minute=5),
     },
     'ventes-expire-stale-devis': {
         'task': 'ventes.expire_stale_devis',
@@ -192,6 +211,18 @@ app.conf.beat_schedule = {
     'contrats-reconductions-et-alertes-daily': {
         'task': 'contrats.reconductions_et_alertes_daily',
         'schedule': crontab(hour=7, minute=15),
+    },
+    # NTSUB5 — conversion des essais d'abonnement échus + alerte J-3,
+    # quotidien (heure creuse).
+    'contrats-convertir-essais-expires-daily': {
+        'task': 'contrats.convertir_essais_expires_daily',
+        'schedule': crontab(hour=2, minute=30),
+    },
+    # NTSUB8 — séquences de dunning (relances impayés multi-étapes),
+    # quotidien.
+    'contrats-executer-dunning-daily': {
+        'task': 'contrats.executer_dunning_daily',
+        'schedule': crontab(hour=8, minute=0),
     },
     # XKB27 — envoie les messages chat programmés dus + notifie les rappels
     # dus (« me rappeler ce message »). Cadence fine (toutes les 5 min) pour
@@ -425,6 +456,66 @@ app.conf.beat_schedule = {
     'adsengine-run-active-flightplans': {
         'task': 'adsengine.run_active_flightplans',
         'schedule': crontab(hour=7, minute=5),
+    },
+    # ADSDEEP8 — synchro HEBDO des breakdowns (âge×genre, placements, régions,
+    # heures) des campagnes miroir. Lundi, heure creuse. NO-OP sans connexion Meta.
+    'adsengine-sync-breakdowns-weekly': {
+        'task': 'adsengine.sync_breakdowns_weekly',
+        'schedule': crontab(hour=7, minute=15, day_of_week=1),
+    },
+    # ADSDEEP18 — pull-sync QUOTIDIEN des leads lead-form (convergence avec le
+    # webhook, idempotent par leadgen_id). NO-OP propre sans connexion Meta live.
+    'adsengine-pull-meta-leads': {
+        'task': 'adsengine.pull_meta_leads',
+        'schedule': crontab(hour=7, minute=25),
+    },
+    # NTCRD21 — alerte quotidienne d'exposition crédit consolidée (07:20).
+    # Best-effort, une alerte par jour et par société (dédup), no-op tant que
+    # le seuil société vaut 0 (défaut).
+    'credit-alerter-exposition-globale': {
+        'task': 'credit.alerter_exposition_globale',
+        'schedule': crontab(hour=7, minute=20),
+    },
+    # NTCRD33 — expiration quotidienne des dérogations crédit échues (01:15).
+    'credit-expirer-derogations': {
+        'task': 'credit.expirer_derogations',
+        'schedule': crontab(hour=1, minute=15),
+    },
+    # NTCRD34 — alerte hebdomadaire (lundi 07:25) des polices d'assurance-crédit
+    # proches de leur échéance (J-30).
+    'credit-alerter-polices-expirantes': {
+        'task': 'credit.alerter_polices_expirantes',
+        'schedule': crontab(hour=7, minute=25, day_of_week=1),
+    },
+    # NTCRD32 — rafraîchit le cache court d'encours (quotidien, 02:10).
+    'credit-recalculer-encours-quotidien': {
+        'task': 'credit.recalculer_encours_quotidien',
+        'schedule': crontab(hour=2, minute=10),
+    },
+    # NTSAN31 — alerte J-7 avant expiration d'une PriseEnCharge santé (évite
+    # les actes réalisés hors couverture), quotidien, heure creuse matinale.
+    'sante-alertes-prise-en-charge-expirant': {
+        'task': 'sante.alertes_prise_en_charge_expirant',
+        'schedule': crontab(hour=7, minute=40),
+    },
+    # NTEDU22 — matérialise les séances de la semaine à venir depuis l'emploi
+    # du temps actif. Dimanche soir (heure creuse), avant la semaine ciblée.
+    'education-generer-seances-semaine': {
+        'task': 'education.generer_seances_semaine',
+        'schedule': crontab(hour=20, minute=0, day_of_week=0),
+    },
+    # NTIDE40 — digest feedback produit non-lu par thème, gated PAR SOCIÉTÉ
+    # (InnovationSettings.feedback_digest_actif), quotidien (heure creuse
+    # matinale, la fréquence hebdo interne ne notifie que le lundi).
+    'innovation-feedback-digest': {
+        'task': 'innovation.feedback_digest_run',
+        'schedule': crontab(hour=8, minute=40),
+    },
+    # NTEDU40 — relance réinscription (élèves sans Inscription pour l'année
+    # suivante après la date limite paramétrable) : quotidien, heure creuse.
+    'education-relancer-reinscriptions': {
+        'task': 'education.relancer_reinscriptions',
+        'schedule': crontab(hour=7, minute=50),
     },
 }
 

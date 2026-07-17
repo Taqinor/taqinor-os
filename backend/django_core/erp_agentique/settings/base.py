@@ -205,6 +205,26 @@ INSTALLED_APPS = [
     # canal de feedback produit in-app. Additif, company-scopé ; le chatter
     # réutilise records.Activity (ARC8), aucun modèle *Activity maison.
     'apps.innovation',
+    # Groupe NTCRD — Gestion du crédit client (limite de crédit, credit hold,
+    # scoring, assurance-crédit, exposition consolidée). Foundation-adjacent :
+    # ne modifie AUCUN modèle ventes/crm existant, string-FK uniquement.
+    'apps.credit',
+    # Groupe NTFPA — FP&A entreprise : cycles budgétaires par département,
+    # prévisions glissantes, scénarios what-if, variance analysis. DISTINCT
+    # du budget micro par chantier (gestion_projet.BudgetProjet, PROJ21/22).
+    'apps.fpa',
+    # Groupe NTASS — Registre des assurances & sinistres d'entreprise (RC pro,
+    # décennale, multirisque, cyber, homme-clé) ; distinct des polices/sinistres
+    # véhicule (flotte) et des cautions bancaires marché (compta).
+    'apps.assurances',
+    # NTEDU1 — Éducation (établissement scolaire) : structure année/niveau/
+    # classe, dossier famille/élève, inscriptions (liste d'attente), scolarité
+    # (grille tarifaire/remises/échéancier), présences, matières. Additive,
+    # scopée société côté serveur.
+    'apps.education',
+    # NTUX1 — Vues sauvegardées serveur (personnelles/partagées), fondation de
+    # la couche UX power-user (NTUX2-11). Additive, company-scopée.
+    'apps.uxviews',
 ]
 
 MIDDLEWARE = [
@@ -709,6 +729,8 @@ CELERY_TASK_ROUTES = {
     'chat.transcribe_voice_attachment': {'queue': 'interactive'},
     # Toutes les tâches planifiées (beat_schedule) → `scheduled`.
     'ventes.check_overdue_factures': {'queue': 'scheduled'},
+    'compta.recalculer_alerte_rupture': {'queue': 'scheduled'},
+    'compta.relances_tresorerie_du_jour': {'queue': 'scheduled'},
     'ventes.expire_stale_devis': {'queue': 'scheduled'},
     'ventes.relance_reminders': {'queue': 'scheduled'},
     'ventes.devis_followup_nudges': {'queue': 'scheduled'},
@@ -735,6 +757,8 @@ CELERY_TASK_ROUTES = {
     'ged.notifier_emetteurs_expiration_signature': {'queue': 'scheduled'},
     'contrats.generer_factures_recurrentes_dues': {'queue': 'scheduled'},
     'contrats.reconductions_et_alertes_daily': {'queue': 'scheduled'},
+    'contrats.convertir_essais_expires_daily': {'queue': 'scheduled'},
+    'contrats.executer_dunning_daily': {'queue': 'scheduled'},
     'chat.send_scheduled_messages': {'queue': 'scheduled'},
     'chat.send_due_reminders': {'queue': 'scheduled'},
     'chat.retention_sweep': {'queue': 'scheduled'},
@@ -784,6 +808,23 @@ CELERY_TASK_ROUTES = {
     'adsengine.evaluate_optimization_rules': {'queue': 'scheduled'},
     # ADSENG35 — boucle du FlightRunner (quotidienne, autonomie gated).
     'adsengine.run_active_flightplans': {'queue': 'scheduled'},
+    # ADSDEEP8/18 — sync hebdo des breakdowns + pull quotidien des leads.
+    'adsengine.sync_breakdowns_weekly': {'queue': 'scheduled'},
+    'adsengine.pull_meta_leads': {'queue': 'scheduled'},
+    # NTCRD21/32/33/34 — jobs crédit planifiés (exposition, encours, dérogations,
+    # polices assurance-crédit expirantes).
+    'credit.alerter_exposition_globale': {'queue': 'scheduled'},
+    'credit.expirer_derogations': {'queue': 'scheduled'},
+    'credit.alerter_polices_expirantes': {'queue': 'scheduled'},
+    'credit.recalculer_encours_quotidien': {'queue': 'scheduled'},
+    # NTSAN31 — alerte J-7 avant expiration d'une PriseEnCharge santé.
+    'sante.alertes_prise_en_charge_expirant': {'queue': 'scheduled'},
+    # NTEDU22 — matérialisation hebdomadaire des séances (emploi du temps).
+    'education.generer_seances_semaine': {'queue': 'scheduled'},
+    # NTIDE40 — digest feedback produit non-lu, gated par société.
+    'innovation.feedback_digest_run': {'queue': 'scheduled'},
+    # NTEDU40 — relance réinscription (notifie l'administration, quotidien).
+    'education.relancer_reinscriptions': {'queue': 'scheduled'},
     # NTPLT27 — 4e queue `bulk` pour le travail de masse (imports dataimport,
     # exports planifiés volumineux, backfills, seed à l'échelle). Un import de
     # 100 000 lignes ne doit plus retarder un digest planifié ni un rendu PDF

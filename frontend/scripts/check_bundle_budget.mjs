@@ -84,7 +84,12 @@ const MODULEPRELOAD_ALLOWLIST = new Set([
 // chunks < 1 Ko gzip d'icônes lucide individuelles, cf. VX189). Généreux :
 // n'attrape qu'une régression de structure massive, pas la croissance produit
 // normale (chaque écran lazy-loadé ajoute un chunk).
-const MAX_CHUNK_COUNT = 400
+// 2026-07-17 : 400 -> 420. Le batch plateforme NT (portail développeur API /
+// webhooks, page de configuration des vues sauvegardées + assistant, frontends
+// éducation/innovation) ajoute de nouveaux écrans TOUS lazy-loadés (réel 405) —
+// AUCUNE nouvelle dépendance npm, croissance produit organique. Palier généreux
+// habituel ; le vrai garde anti-gonflement reste PER_CHUNK_BUDGET_KB (350).
+const MAX_CHUNK_COUNT = 420
 
 // Extrait les `<link rel="modulepreload" href="...">` de `dist/index.html` et
 // signale tout vendor lourd nommé qui s'y trouve (hors allowlist). Silencieux

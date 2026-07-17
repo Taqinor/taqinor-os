@@ -17,8 +17,10 @@ import { useSelector } from 'react-redux'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from '../ui/Dialog'
+import { Input } from '../ui/Input'
 import {
-  GOTO_SHORTCUTS, CREATE_SHORTCUTS, GLOBAL_SHORTCUTS, isTypingTarget,
+  GOTO_SHORTCUTS, CREATE_SHORTCUTS, GLOBAL_SHORTCUTS, EDIT_SHORTCUTS,
+  filterShortcutGroups, isTypingTarget,
 } from './shortcuts'
 import {
   FOCUSED_RECORD_SHORTCUTS, ActiveScreenProvider, useActiveScreen,
@@ -114,6 +116,10 @@ export function ShortcutsProvider({ children }) {
 // `ActiveScreenProvider` rendu ci-dessus, pas son propre parent).
 function ShortcutsCheatsheet({ open, onOpenChange, profile }) {
   const { activeScreen } = useActiveScreen()
+  // NTUX18 — recherche EN DIRECT dans la cheatsheet elle-même : filtre
+  // chaque groupe par libellé (filterShortcutGroups, providers/shortcuts.js).
+  // Réinitialisée à la fermeture pour ne pas rouvrir sur un filtre périmé.
+  const [filterQuery, setFilterQuery] = useState('')
   const focusedEntry = activeScreen ? FOCUSED_RECORD_SHORTCUTS[activeScreen] : null
   // `ShortcutGroup` attend `{keys, label}` (comme GOTO_SHORTCUTS/CREATE_SHORTCUTS) ;
   // le registre focusedRecordShortcuts.js utilise `key` (singulier, une seule
@@ -123,8 +129,32 @@ function ShortcutsCheatsheet({ open, onOpenChange, profile }) {
     : []
   const roleMatches = focusedEntry ? (focusedEntry.roles ?? []).includes(profile) : false
 
+  // NTUX18 — cheatsheet enrichie : les groupes existants (Général/Navigation/
+  // Créer) gagnent « Édition » (NTUX5 édition en masse via BulkActionBar,
+  // NTUX8 navigation clavier en grille, NTUX10 quick-create — regroupés par
+  // catégorie), le tout filtrable par la recherche ci-dessus.
+  const groups = [
+    // VX248 — « Pour votre rôle » EN TÊTE : filtre d'AFFICHAGE seulement (les
+    // touches marchent pour tout le monde, peu importe le rôle — seul
+    // l'ORDRE d'apprentissage passif change).
+    ...(focusedEntry && roleMatches
+      ? [{ title: `${focusedEntry.title} — pour votre rôle`, items: focusedItems }]
+      : []),
+    { title: 'Général', items: GLOBAL_SHORTCUTS },
+    { title: 'Navigation rapide', items: GOTO_SHORTCUTS },
+    { title: 'Créer', items: CREATE_SHORTCUTS },
+    { title: 'Édition', items: EDIT_SHORTCUTS },
+    ...(focusedEntry && !roleMatches
+      ? [{ title: `${focusedEntry.title} (autres rôles)`, items: focusedItems }]
+      : []),
+  ]
+  const visibleGroups = filterShortcutGroups(groups, filterQuery)
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={(o) => { onOpenChange(o); if (!o) setFilterQuery('') }}
+    >
       <DialogContent aria-label="Aide des raccourcis clavier">
         <DialogHeader>
           <DialogTitle>Raccourcis clavier</DialogTitle>
@@ -132,24 +162,17 @@ function ShortcutsCheatsheet({ open, onOpenChange, profile }) {
             Gagnez du temps avec ces raccourcis. Ils sont inactifs pendant la saisie.
           </DialogDescription>
         </DialogHeader>
+        <Input
+          value={filterQuery}
+          onChange={(e) => setFilterQuery(e.target.value)}
+          placeholder="Rechercher un raccourci…"
+          aria-label="Rechercher un raccourci"
+        />
         <div className="flex flex-col gap-4">
-          {/* VX248 — « Pour votre rôle » EN TÊTE : filtre d'AFFICHAGE
-              seulement (les touches marchent pour tout le monde, peu importe
-              le rôle — seul l'ORDRE d'apprentissage passif change). */}
-          {focusedEntry && roleMatches && (
-            <ShortcutGroup
-              title={`${focusedEntry.title} — pour votre rôle`}
-              items={focusedItems}
-            />
-          )}
-          <ShortcutGroup title="Général" items={GLOBAL_SHORTCUTS} />
-          <ShortcutGroup title="Navigation rapide" items={GOTO_SHORTCUTS} />
-          <ShortcutGroup title="Créer" items={CREATE_SHORTCUTS} />
-          {focusedEntry && !roleMatches && (
-            <ShortcutGroup
-              title={`${focusedEntry.title} (autres rôles)`}
-              items={focusedItems}
-            />
+          {visibleGroups.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Aucun raccourci ne correspond à « {filterQuery} ».</p>
+          ) : (
+            visibleGroups.map((g) => <ShortcutGroup key={g.title} title={g.title} items={g.items} />)
           )}
         </div>
       </DialogContent>

@@ -275,7 +275,7 @@ la beauté vit sur la page tokenisée + les PDF.*
   models.py:296-300). Stepper/labels par mode.
   **Done =** 4 cartes, leads commercial typés `commercial` (et industriel `industriel`) dans le
   CRM, tests capture. (@lane: web-journey) (@model: sonnet)
-- [BLOCKED: attend QX51] WJ122 — **Panneau questions COMMERCIAL par catégorie.** Étape 2 commerciale : cartes
+- [x] WJ122 — **Panneau questions COMMERCIAL par catégorie.** Étape 2 commerciale : cartes
   catégorie (9 + Autre, pictos) puis 2-4 questions SPÉCIFIQUES à la catégorie choisie
   (même liste que QX44 — hôtel chambres/occupation/piscine ; restaurant chambres froides/
   horaires/cuisson ; boulangerie four/cuisson nocturne ; froid T°/volume/récolte ; école
@@ -286,7 +286,7 @@ la beauté vit sur la page tokenisée + les PDF.*
   Payload : categorieCommerciale + réponses (whitelist QX51). FR/EN/AR. **Done =** hôtel ≠
   bureau à facture égale à l'écran ; payload persisté ; tests. (@lane: web-journey)
   (@model: opus) (@after: WJ121, QX51)
-- [BLOCKED: attend QX51] WJ123 — **Panneau INDUSTRIEL v2 (équipes, MT, réalisme).** Étape 2 industrielle :
+- [x] WJ123 — **Panneau INDUSTRIEL v2 (équipes, MT, réalisme).** Étape 2 industrielle :
   pattern d'équipes en cartes (Journée 1x8 / 2x8 / 3x8-continu / continu+weekend) →
   day-share et PLAFOND d'autoconsommation honnête (1x8 ~70-85 %, 2x8 ~55-70 %, continu
   ~25-40 % — recherche 2026-07-16) ; puissance souscrite kVA ; 12 mois de kWh (facultatif,
@@ -297,7 +297,7 @@ la beauté vit sur la page tokenisée + les PDF.*
   ligne injection potentielle APRÈS QX50 (sinon absente). Payload → QX51. FR/EN/AR.
   **Done =** un 3x8 ne voit plus une autoconso de bureau ; tests plafonds. 
   (@lane: web-journey) (@model: opus) (@after: WJ121, QX51)
-- [BLOCKED: attend QX48] WJ124 — **Moteur agricole web : culture → eau → pompe.** Étape 2 agricole enrichie :
+- [x] WJ124 — **Moteur agricole web : culture → eau → pompe.** Étape 2 agricole enrichie :
   culture (cartes ~16 cultures QX48, pictos), région (8 zones dont gharb-loukkos/haouz),
   surface (ha), irrigation, + option « je connais mon débit/HMT » (chemin actuel conservé).
   Sans débit connu : besoin d'eau via le miroir web des tables QX48 (Kc mensuels, pluie
@@ -331,7 +331,7 @@ la beauté vit sur la page tokenisée + les PDF.*
   mt-nearest-install / mt-cost-of-waiting) ; capture Playwright des 3 profils ; CRM reçoit
   toujours estimateShown ; tests adaptés documentés.
   (@lane: web-journey) (@model: opus) (@after: WJ121)
-- [BLOCKED: attend QX49] WJ126 — **Page /proposition : 4 variantes de devis (la vitrine client).** Rendre la
+- [x] WJ126 — **Page /proposition : 4 variantes de devis (la vitrine client).** Rendre la
   page tokenisée mode-aware (payload QX49) : AGRICOLE — héros pompe (CV/kW, m³/jour à HMT,
   champ kWc), graphe mensuel eau livrée vs besoin culture, bloc bassin + FDA 30 % (caveat),
   économies diesel ; INDUSTRIEL — tuiles couverture/autoconso/économies par bande,
@@ -1832,6 +1832,38 @@ each for Lydec/Redal/Amendis).
 ---
 
 ## DONE LOG (agent appends one plain-language line per completed task)
+
+### 2026-07-17 — Fix-forward après revue adversariale Fable (WJ122-126)
+Une passe Fable (autorisée — batch de constantes physiques/tarifaires client-facing) a trouvé
+des défauts réels après le merge de PR #432 ; corrigés en fix-forward (`main` reste revertable) :
+- **surfaceToitureM2 (finding 2, corrigé) :** n'envoie plus la surface au sol/ombrière comme
+  surface de TOIT (le backend distingue le sol, webhooks.py:303-304) — gaté à bac_acier/terrasse.
+- **Champs industriels non gatés (finding 6, corrigé) :** cosPhiConnu/groupeKva/dieselDhMois/
+  surfaceToitureM2/ombriere/terrain gatés au mode industriel (des valeurs de session périmées ne
+  peuvent plus accompagner un lead résidentiel/agricole) ; `weekend` envoyé uniquement si coché
+  (plus de « faux non » affirmatif).
+- **Proposition commerciale (finding 4, corrigé) :** la courbe et le simulateur batterie se
+  basent désormais sur `mode_installation` (QX49) et non `inst_type` — un devis commercial
+  retrouve les variantes été/Ramadan + le simulateur batterie (que le libellé combiné
+  « Industrielle / Commerciale » lui retirait).
+- **Ligne injection (finding 5, corrigé) :** porte maintenant la mention tarifaire ANRE
+  obligatoire (fenêtre 03/2026–02/2027, plafond en révision).
+- **GATED — SUIVI BACKEND (findings 1 & 3, hors périmètre web) :** `regionAgricole` (WJ124) et
+  `estimateShown.bassinM3` (WJ124) sont ÉMIS par le site mais le webhook QX51
+  (`crm/webhooks.py _extract_web_questionnaire` / `_ESTIMATE_SHOWN_KEYS`) ne les PERSISTE PAS —
+  la région (qui pilote la série ET0 derrière le dimensionnement pompe/m³-jour) et le bassin sont
+  perdus côté CRM. **À AJOUTER PAR UN RUN BACKEND/PLATEFORME** (une ligne `_choice`/`_num` dans la
+  whitelist QX51 pour `region_agricole` + `bassin_m3`), et **trancher la convention bassin**
+  (site = 1× besoin de pointe vs proposition backend = 2× ≈ 2 jours d'autonomie). Émission
+  laissée en place (compat ascendante, ignorée sans dommage jusqu'à l'ajout backend). Un web run
+  ne peut pas éditer le backend.
+
+### 2026-07-17 — WJ122/123/124/126 unblocked & shipped (QX43-52 landed on main, batch 1)
+- **WJ122 (web-journey):** le mode « commercial » a désormais SON PROPRE panneau étape-2 (`mt-sub-commercial`) : cartes catégorie (10, pictos) → 2-4 questions spécifiques par catégorie + facture MAD⇄kWh. Nouveau `lib/commercialCategories.ts` = port VERBATIM de QX44 (`solar.js:87-186`, commenté SOURCE) : catégories, `COMMERCIAL_DAY_SHARE` (bureau 80 % vs hôtel 55 %), questions. `estimatorPro.ts` prend `categorieCommerciale` → hôtel ≠ bureau à facture égale. Payload → whitelist QX51 (clés camelCase `categorieCommerciale`+réponses) ajoutées à `lead.ts` (interface + `validateLead`, jamais silencieusement droppées ; `temperatureConsigne` accepte le négatif). FR/EN/AR. Tests parité + hôtel<bureau + traversée validateLead.
+- **WJ123 (web-journey):** panneau INDUSTRIEL v2 : cartes de régime d'équipes (`equipes` = 1x8/2x8/3x8/continu, aligné sur le webhook) + toggle `weekend` séparé → PLAFOND d'autoconsommation honnête (`SHIFT_DAY_SHARE_CEILING` 1x8 0.775 / 2x8 0.625 / 3x8+continu 0.325, première occurrence chiffrée, cité « recherche 2026-07-16 à vérifier fondateur ») : un 3x8 ne montre plus l'autoconso d'un bureau. Champs kVA/diesel/cos φ/surface. Nouveau `lib/constants82_21.ts` = miroir QX50 (tarifs ANRE 0.21/0.18, plafond 20 %, MENTION obligatoire) ; ligne injection OFF par défaut (`enableInjection`), absente du parcours public gaté. Payload `equipes/weekend/cosPhiConnu/groupeKva/dieselDhMois/surfaceToitureM2/ombriere/terrain` → `lead.ts`. FR/EN/AR. Tests plafonds monotones + injection.
+- **WJ124 (web-journey):** moteur agricole culture→eau→pompe. Nouveau `lib/agronomy.ts` = port VERBATIM du moteur FAO-56 QX48 (`agronomy.py`) : `CROP_STAGES` (20 cultures), `ET0_MONTHLY`/`RAIN_EFF_MONTHLY` (8 zones), `IRRIGATION_EFFICIENCY`, `monthlyWaterDemand` (série mensuelle, `Math.round` = référence de parité). Cartes culture (20) + région (8 zones) + surface(ha) ; sans débit connu → besoin de pointe m³/j → pompe/champ via l'`estimateAgricole` existant + bassin suggéré. Le chemin « je connais mon débit/HMT » reste intact et prioritaire. Besoin de pointe = valeur dimensionnante → gaté WJ125. `regionAgricole` → `lead.ts`. Parité testée (avocat-Gharb-5ha-goutte → 306,9 m³/j → pompe 20 CV, champ 20,59 kWc). FR/EN/AR.
+- **Prérequis vérifiés sur `main` (pas seulement la case cochée) :** QX44 (catégories commerciales + day-share + questions, `frontend/src/features/ventes/solar.js:87-186`), QX48 (moteur FAO-56 `quote_engine/agricole/agronomy.py` : 20 cultures, 8 zones, ETc mensuel), QX49 (payload proposition `mode_installation`+`mode_kpis`+`categorie_commerciale`, `public_views.py:479-629`), QX50 (`constants_82_21.py`), QX51 (whitelist webhook commercial/industriel v2, `crm/webhooks.py:335-372`). Un scout a extrait les contrats exacts à mirrorer (un web run édite apps/web, ne peut pas importer le backend).
+- **WJ126 (web-proposal):** la page tokenisée /proposition est désormais MODE-AWARE (4 variantes). Nouveaux types `ProposalModeKpis`/`InstallMode` + helpers PURS testés (`resolveInstallMode` branche sur `mode_installation`, JAMAIS `inst_type` ; `agricoleKpis`/`autoconsoKpis` renvoient `null` hors de leur mode → zéro fuite inter-mode). AGRICOLE : héros pompe (CV/kW, m³/j à HMT, champ kWc), mini-graphe livraison mensuelle, bassin, FDA 30 % (si `fda_eligible`), diesel qualitatif. INDUSTRIEL : tuiles autoconso/couverture/éco/payback, ligne injection + mention ANRE obligatoire (si `injection_kwh_an`), mini-cashflow 10 ans, tranches/CBAM. COMMERCIAL : tuiles + bloc archétype par `categorie_commerciale`. RÉSIDENTIEL inchangé (WJ119/WJ120). Cartes batterie jamais sur pompage. **Bug pré-existant corrigé :** `instLabel` comparait `inst_type` (label capitalisé au runtime) à des littéraux minuscules → ne matchait jamais ; branche maintenant sur `installMode`. FR/EN/AR. Tests 4 fixtures par mode (blocs corrects, blocs d'autres modes absents, KPI manquant → omission honnête).
 
 ### 2026-07-16 — WJ117–WJ126 drain (4 modes + règle anti-concurrent) — web-only lanes
 - **WJ117 (web-journey):** l'état sélectionné des 8 groupes de cartes du parcours devis est enfin VISIBLE — une règle CSS non-layered `.cine-card[aria-pressed="true"]` dans global.css (bordure brass 2px sans décalage de layout, fond teinté brass 10 %, ✓ en coin RTL-aware, label gras) bat le shorthand `.cine-card` qui écrasait l'utilitaire Tailwind layered togglé par le JS. aria-pressed était déjà câblé sur les 3 locales — zéro changement JS. Test source-level (16 assertions) en substitut des captures Playwright (apps/web n'a que vitest) ; focus-visible W209 intact.

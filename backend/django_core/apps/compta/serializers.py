@@ -24,7 +24,8 @@ from .models import (
     Immobilisation, IndemniteChantier, Journal, LigneEcriture,
     LignePrevisionnelTresorerie, LigneReleve, MessageWhatsAppEntrant,
     ModeleDevis, MouvementCaisse, NoteFrais, OuverturePartage, RapportNoteFrais,
-    PaymentRun, PaymentRunLine, PeriodeComptable, PlafondNoteFrais,
+    ParametresTresorerie, PaymentRun, PaymentRunLine, PeriodeComptable,
+    PlafondNoteFrais, PlanRelanceTresorerie, PouvoirBancaire,
     PlanAmortissement,
     PlanComptable, Provision, ProvisionCreance, Rapprochement, RapprochementBancaire,
     RelanceDevisAbandonne, RetenueGarantie, RetenueSource, SequenceRelance,
@@ -56,6 +57,10 @@ from .models import (
     QuestionEvenement,
     CommunicationEvenement,
     PostSocial,
+    CycleConsolidation, LiasseRemontee, MappingConsolidation,
+    OperationInterco, EcritureElimination, MargeInterneStock,
+    EliminationTitres,
+    ReferentielComptable, AjustementGaap, AxeAnalytique, ImputationAxe,
 )
 
 
@@ -208,6 +213,7 @@ class CompteTresorerieSerializer(serializers.ModelSerializer):
             'id', 'type_compte', 'type_compte_display', 'libelle', 'banque',
             'rib', 'iban', 'swift', 'devise', 'solde_initial',
             'compte_comptable', 'compte_numero', 'actif', 'date_creation',
+            'seuil_alerte_bas', 'seuil_alerte_decouvert',
         ]
         read_only_fields = ['date_creation']
 
@@ -396,8 +402,12 @@ class LigneReleveSerializer(serializers.ModelSerializer):
         source='get_statut_display', read_only=True)
     montant_pointe = serializers.DecimalField(
         max_digits=14, decimal_places=2, read_only=True)
+    montant_mad = serializers.DecimalField(
+        max_digits=16, decimal_places=2, read_only=True)
     ecart = serializers.DecimalField(
         max_digits=14, decimal_places=2, read_only=True)
+    ecart_mad = serializers.DecimalField(
+        max_digits=16, decimal_places=2, read_only=True)
     est_concordante = serializers.BooleanField(read_only=True)
     lignes_gl = serializers.PrimaryKeyRelatedField(
         many=True, read_only=True)
@@ -406,8 +416,9 @@ class LigneReleveSerializer(serializers.ModelSerializer):
         model = LigneReleve
         fields = [
             'id', 'rapprochement', 'date_operation', 'libelle', 'reference',
-            'montant', 'statut', 'statut_display', 'lignes_gl',
-            'montant_pointe', 'ecart', 'est_concordante', 'date_creation',
+            'montant', 'devise', 'taux_change', 'statut', 'statut_display',
+            'lignes_gl', 'montant_pointe', 'montant_mad', 'ecart', 'ecart_mad',
+            'est_concordante', 'date_creation',
         ]
         read_only_fields = [
             'rapprochement', 'statut', 'statut_display', 'lignes_gl',
@@ -598,7 +609,7 @@ class LignePrevisionnelTresorerieSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'libelle', 'categorie', 'categorie_display', 'date_prevue',
             'montant', 'recurrence', 'recurrence_display', 'commentaire',
-            'date_creation',
+            'scenario', 'date_creation',
         ]
         read_only_fields = ['date_creation']
 
@@ -635,12 +646,14 @@ class EffetSerializer(serializers.ModelSerializer):
             'agios_escompte', 'interets_escompte', 'date_escompte',
             'ecriture_escompte_id', 'ecriture_apurement_escompte_id',
             'beneficiaire_endossement', 'date_endossement',
+            'date_protet', 'frais_protet',
         ]
         read_only_fields = [
             'statut', 'bordereau', 'frais_rejet', 'date_creation',
             'agios_escompte', 'interets_escompte', 'date_escompte',
             'ecriture_escompte_id', 'ecriture_apurement_escompte_id',
             'beneficiaire_endossement', 'date_endossement',
+            'date_protet', 'frais_protet',
         ]
 
     def validate_montant(self, value):
@@ -784,10 +797,14 @@ class PaymentRunSerializer(serializers.ModelSerializer):
             'id', 'reference', 'mode_paiement', 'mode_paiement_display',
             'compte_tresorerie', 'compte_libelle', 'date_paiement', 'statut',
             'statut_display', 'total', 'posted', 'ecriture', 'note', 'lignes',
-            'date_creation',
+            'date_creation', 'format_export',
+            'approbateur_1', 'approbateur_2', 'date_approbation_1',
+            'date_approbation_2',
         ]
         read_only_fields = [
-            'statut', 'total', 'posted', 'ecriture', 'date_creation']
+            'statut', 'total', 'posted', 'ecriture', 'date_creation',
+            'approbateur_1', 'approbateur_2', 'date_approbation_1',
+            'date_approbation_2']
 
     def validate_compte_tresorerie(self, value):
         value = _meme_societe(self, value, 'Compte de trésorerie')
@@ -795,6 +812,63 @@ class PaymentRunSerializer(serializers.ModelSerializer):
                 CompteTresorerie.Type.BANQUE):
             raise serializers.ValidationError(
                 "Le règlement par virement se débite d'un compte bancaire.")
+        return value
+
+
+class PouvoirBancaireSerializer(serializers.ModelSerializer):
+    """NTTRE6 — Pouvoir bancaire (signataire autorisé sur un compte)."""
+    compte_libelle = serializers.CharField(
+        source='compte_tresorerie.libelle', read_only=True, default='')
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = PouvoirBancaire
+        fields = [
+            'id', 'compte_tresorerie', 'compte_libelle', 'titulaire_nom',
+            'titulaire_cin', 'utilisateur', 'plafond_signature_seul',
+            'plafond_signature_conjointe', 'date_debut', 'date_fin',
+            'statut', 'statut_display', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+    def validate_compte_tresorerie(self, value):
+        return _meme_societe(self, value, 'Compte de trésorerie')
+
+
+class ParametresTresorerieSerializer(serializers.ModelSerializer):
+    """NTTRE27 — Réglages trésorerie par société (singleton)."""
+
+    class Meta:
+        model = ParametresTresorerie
+        fields = [
+            'id', 'double_validation_paiement_actif',
+            'delai_alerte_rupture_jours', 'format_export_virement_defaut',
+            'scenario_previsionnel_defaut', 'comptes_frais_bancaires',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+
+class PlanRelanceTresorerieSerializer(serializers.ModelSerializer):
+    """NTTRE11 — Plan de relance de recouvrement segmenté."""
+
+    class Meta:
+        model = PlanRelanceTresorerie
+        fields = [
+            'id', 'nom', 'segment_client', 'paliers', 'actif',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+    def validate_paliers(self, value):
+        if not isinstance(value, list):
+            raise serializers.ValidationError(
+                "Les paliers doivent être une liste.")
+        for palier in value:
+            if not isinstance(palier, dict) or 'jours' not in palier:
+                raise serializers.ValidationError(
+                    "Chaque palier doit être un objet avec au moins « jours ».")
         return value
 
 
@@ -2553,3 +2627,197 @@ class DomaineEnvoiSerializer(serializers.ModelSerializer):
             'spf_verifie', 'dkim_verifie', 'dmarc_verifie',
             'derniere_verification_le',
         ]
+
+
+# ── NTFIN — Consolidation multi-sociétés ───────────────────────────────────
+
+class CycleConsolidationSerializer(serializers.ModelSerializer):
+    """NTFIN1 — Cycle de consolidation daté."""
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = CycleConsolidation
+        fields = [
+            'id', 'libelle', 'exercice', 'date_debut', 'date_fin',
+            'devise_presentation', 'statut', 'statut_display', 'verrouille',
+            'tolerance_interco', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['statut', 'verrouille', 'created_at', 'updated_at']
+
+    def validate_exercice(self, value):
+        return _meme_societe(self, value, 'Exercice')
+
+
+class LiasseRemonteeSerializer(serializers.ModelSerializer):
+    """NTFIN2 — Liasse de remontée (snapshot de balance d'une entité)."""
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = LiasseRemontee
+        fields = [
+            'id', 'cycle', 'entite', 'statut', 'statut_display',
+            'date_collecte', 'devise_locale', 'snapshot_balance',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'statut', 'date_collecte', 'snapshot_balance',
+            'created_at', 'updated_at']
+
+    def validate_cycle(self, value):
+        return _meme_societe(self, value, 'Cycle')
+
+
+class MappingConsolidationSerializer(serializers.ModelSerializer):
+    """NTFIN4 — Mapping compte local → compte groupe."""
+    compte_groupe_numero = serializers.CharField(
+        source='compte_groupe.numero', read_only=True, default='')
+
+    class Meta:
+        model = MappingConsolidation
+        fields = [
+            'id', 'plan_local_prefixe', 'compte_groupe',
+            'compte_groupe_numero', 'libelle', 'actif',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+    def validate_compte_groupe(self, value):
+        return _meme_societe(self, value, 'Compte de groupe')
+
+
+class OperationIntercoSerializer(serializers.ModelSerializer):
+    """NTFIN6 — Opération inter-sociétés (matching réciproque)."""
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = OperationInterco
+        fields = [
+            'id', 'cycle', 'entite_debit', 'entite_credit',
+            'compte_reciproque', 'libelle', 'montant_declare_a',
+            'montant_declare_b', 'ecart', 'statut', 'statut_display',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['ecart', 'statut', 'created_at', 'updated_at']
+
+    def validate_cycle(self, value):
+        return _meme_societe(self, value, 'Cycle')
+
+
+class EcritureEliminationSerializer(serializers.ModelSerializer):
+    """NTFIN7 — Écriture d'élimination de consolidation."""
+    type_display = serializers.CharField(
+        source='get_type_elimination_display', read_only=True)
+    total_debit = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True)
+    total_credit = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = EcritureElimination
+        fields = [
+            'id', 'cycle', 'type_elimination', 'type_display', 'libelle',
+            'lignes', 'automatique', 'source_interco',
+            'total_debit', 'total_credit', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['automatique', 'created_at', 'updated_at']
+
+    def validate_cycle(self, value):
+        return _meme_societe(self, value, 'Cycle')
+
+
+class MargeInterneStockSerializer(serializers.ModelSerializer):
+    """NTFIN8 — Marge interne sur stock détenu."""
+    marge_non_realisee = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = MargeInterneStock
+        fields = [
+            'id', 'cycle', 'entite_vendeuse', 'entite_acheteuse',
+            'montant_stock', 'taux_marge', 'taux_impot', 'marge_non_realisee',
+            'elimination', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['elimination', 'created_at', 'updated_at']
+
+    def validate_cycle(self, value):
+        return _meme_societe(self, value, 'Cycle')
+
+
+class EliminationTitresSerializer(serializers.ModelSerializer):
+    """NTFIN9 — Élimination des titres + goodwill."""
+    methode_display = serializers.CharField(
+        source='get_methode_display', read_only=True)
+
+    class Meta:
+        model = EliminationTitres
+        fields = [
+            'id', 'cycle', 'entite_fille', 'valeur_titres',
+            'quote_part_capitaux_propres', 'ecart_acquisition', 'methode',
+            'methode_display', 'elimination', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'ecart_acquisition', 'elimination', 'created_at', 'updated_at']
+
+    def validate_cycle(self, value):
+        return _meme_societe(self, value, 'Cycle')
+
+
+# ── NTFIN — Multi-référentiel & analytique multi-axes ──────────────────────
+
+class ReferentielComptableSerializer(serializers.ModelSerializer):
+    """NTFIN13 — Référentiel comptable (livre parallèle)."""
+    code_display = serializers.CharField(
+        source='get_code_display', read_only=True)
+
+    class Meta:
+        model = ReferentielComptable
+        fields = [
+            'id', 'code', 'code_display', 'libelle', 'devise_fonctionnelle',
+            'actif', 'est_principal', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+
+class AjustementGaapSerializer(serializers.ModelSerializer):
+    """NTFIN15 — Ajustement de retraitement GAAP."""
+    class Meta:
+        model = AjustementGaap
+        fields = [
+            'id', 'referentiel', 'type_ajustement', 'motif', 'ecriture',
+            'reversible', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['ecriture', 'created_at', 'updated_at']
+
+    def validate_referentiel(self, value):
+        return _meme_societe(self, value, 'Référentiel')
+
+
+class AxeAnalytiqueSerializer(serializers.ModelSerializer):
+    """NTFIN16 — Axe analytique configurable (dimension)."""
+    class Meta:
+        model = AxeAnalytique
+        fields = [
+            'id', 'code', 'libelle', 'ordre', 'actif',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+
+class ImputationAxeSerializer(serializers.ModelSerializer):
+    """NTFIN17 — Imputation multi-axes d'une ligne d'écriture."""
+    class Meta:
+        model = ImputationAxe
+        fields = [
+            'id', 'ligne_ecriture', 'axe', 'centre_cout',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+    def validate_axe(self, value):
+        return _meme_societe(self, value, 'Axe')
+
+    def validate_centre_cout(self, value):
+        return _meme_societe(self, value, 'Centre de coût')

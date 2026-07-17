@@ -1,8 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  GOTO_SHORTCUTS, GLOBAL_SHORTCUTS, isTypingTarget,
-  isMacPlatform, quickSearchShortcutLabel,
+  GOTO_SHORTCUTS, GLOBAL_SHORTCUTS, CREATE_SHORTCUTS, EDIT_SHORTCUTS,
+  isTypingTarget, isMacPlatform, quickSearchShortcutLabel, filterShortcutGroups,
 } from './shortcuts.js'
 
 test('isTypingTarget: vrai pour les champs de saisie', () => {
@@ -64,4 +64,49 @@ test('quickSearchShortcutLabel: "⌘ K" sur Mac, "Ctrl K" sur Windows/Linux (la 
   assert.equal(quickSearchShortcutLabel({ platform: 'MacIntel' }), '⌘ K')
   assert.equal(quickSearchShortcutLabel({ platform: 'Win32' }), 'Ctrl K')
   assert.equal(quickSearchShortcutLabel({ platform: 'Linux x86_64' }), 'Ctrl K')
+})
+
+// NTUX18 — cheatsheet enrichie : raccourcis d'édition (NTUX8) + recherche EN
+// DIRECT filtrant les groupes de la cheatsheet.
+test('EDIT_SHORTCUTS: bien formés (keys + libellé), couvre Tab/Maj+Tab/Entrée/Échap', () => {
+  assert.ok(EDIT_SHORTCUTS.length >= 4)
+  for (const s of EDIT_SHORTCUTS) {
+    assert.ok(s.keys && s.keys.length > 0)
+    assert.ok(s.label && s.label.length > 0)
+  }
+  const keys = EDIT_SHORTCUTS.map((s) => s.keys)
+  assert.ok(keys.includes('Tab'))
+  assert.ok(keys.includes('Entrée'))
+  assert.ok(keys.includes('Échap'))
+})
+
+test('filterShortcutGroups: requête vide renvoie tous les groupes inchangés', () => {
+  const groups = [{ title: 'Créer', items: CREATE_SHORTCUTS }, { title: 'Édition', items: EDIT_SHORTCUTS }]
+  assert.deepEqual(filterShortcutGroups(groups, ''), groups)
+  assert.deepEqual(filterShortcutGroups(groups, '   '), groups)
+})
+
+test('filterShortcutGroups: "créer" filtre vers les raccourcis de création (insensible à la casse)', () => {
+  const groups = [
+    { title: 'Créer', items: CREATE_SHORTCUTS },
+    { title: 'Édition', items: EDIT_SHORTCUTS },
+  ]
+  const result = filterShortcutGroups(groups, 'CRÉER')
+  assert.equal(result.length, 1)
+  assert.equal(result[0].title, 'Créer')
+  assert.equal(result[0].items.length, CREATE_SHORTCUTS.length)
+})
+
+test('filterShortcutGroups: un groupe sans correspondance disparaît entièrement', () => {
+  const groups = [
+    { title: 'Créer', items: CREATE_SHORTCUTS },
+    { title: 'Édition', items: EDIT_SHORTCUTS },
+  ]
+  const result = filterShortcutGroups(groups, 'cellule')
+  assert.deepEqual(result.map((g) => g.title), ['Édition'])
+})
+
+test('filterShortcutGroups: aucune correspondance nulle part renvoie une liste vide', () => {
+  const groups = [{ title: 'Créer', items: CREATE_SHORTCUTS }]
+  assert.deepEqual(filterShortcutGroups(groups, 'zzz-introuvable'), [])
 })

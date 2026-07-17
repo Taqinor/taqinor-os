@@ -10,6 +10,9 @@ import Layout from '../components/layout/Layout'
 // router, au chokepoint commun des écrans authentifiés (WithLayout).
 import { CommandPalette } from '../providers/CommandPalette'
 import { ShortcutsProvider } from '../providers/ShortcutsProvider'
+// NTUX10 — hôte du quick-create universel (⌘K → « Créer… »), même chokepoint
+// que CommandPalette ci-dessus (indépendant de son cycle de vie).
+import QuickCreateModalHost from '../features/uxviews/quickcreate/QuickCreateModalHost'
 // O65 — Repli « skeleton-first » pendant le chargement lazy d'un bundle de page.
 import RouteFallback from '../components/RouteFallback'
 // L880 — Error-boundary de route globale : écran FR de récupération au lieu
@@ -168,6 +171,7 @@ function WithLayout({ children }) {
         </RouteErrorBoundary>
       </Layout>
       <CommandPalette />
+      <QuickCreateModalHost />
     </ShortcutsProvider>
   )
 }

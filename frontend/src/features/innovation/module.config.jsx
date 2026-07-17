@@ -19,6 +19,8 @@ const IdeesPage = lazy(() => import('./IdeesPage'))
 const IdeeDetail = lazy(() => import('./IdeeDetail'))
 const ProposerIdeePage = lazy(() => import('./ProposerIdeePage'))
 const InnovationDashboard = lazy(() => import('./InnovationDashboard'))
+// NTIDE15 — mes idées (route dédiée).
+const MesIdeesPage = lazy(() => import('./MesIdeesPage'))
 
 const ADMIN_RESPONSABLE = ['responsable', 'admin']
 const TOUS_ROLES = ['normal', 'responsable', 'admin']
@@ -37,6 +39,12 @@ const config = {
         roles: TOUS_ROLES,
       },
       {
+        to: '/innovation/mes-idees',
+        label: 'Mes idées',
+        icon: <Lightbulb size={17} strokeWidth={1.75} aria-hidden="true" />,
+        roles: TOUS_ROLES,
+      },
+      {
         to: '/innovation/tableau-bord',
         label: 'Tableau de bord',
         icon: <Lightbulb size={17} strokeWidth={1.75} aria-hidden="true" />,
@@ -47,6 +55,7 @@ const config = {
   titles: [
     ['/innovation/idees', 'Boîte à idées'],
     ['/innovation/proposer', 'Proposer une idée'],
+    ['/innovation/mes-idees', 'Mes idées'],
     ['/innovation/tableau-bord', 'Tableau de bord — Idées'],
   ],
   sectionLabels: { innovation: 'Innovation' },
@@ -54,6 +63,7 @@ const config = {
     { path: '/innovation/idees', component: IdeesPage },
     { path: '/innovation/idees/:id', component: IdeeDetail },
     { path: '/innovation/proposer', component: ProposerIdeePage },
+    { path: '/innovation/mes-idees', component: MesIdeesPage },
     { path: '/innovation/tableau-bord', component: InnovationDashboard, roles: ADMIN_RESPONSABLE },
   ],
 }

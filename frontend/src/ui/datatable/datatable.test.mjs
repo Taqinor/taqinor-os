@@ -10,6 +10,7 @@ import {
   toggleSelected, setAllSelected, selectionState,
   computeWindow,
   pinnedEdgeOffsets, columnWidthVars,
+  groupRows,
 } from './logic.js'
 import {
   encodeSort, decodeSort, encodeFilters, decodeFilters,
@@ -531,4 +532,42 @@ test('exportFileName: base assainie + horodatage', () => {
   assert.equal(name, 'Leads-relancer-2026-06-18.csv')
   assert.match(exportFileName(), /^export-\d{4}-\d{2}-\d{2}\.csv$/)
   assert.match(exportFileName('x', { ext: 'xlsx' }), /\.xlsx$/)
+})
+
+/* ============================== NTUX19 — GROUPEMENT DE LIGNES ============================== */
+
+test('groupRows: regroupe par colonne, ordre de PREMIÈRE APPARITION des groupes', () => {
+  const rows = [
+    { id: 1, statut: 'envoye' },
+    { id: 2, statut: 'accepte' },
+    { id: 3, statut: 'envoye' },
+    { id: 4, statut: 'refuse' },
+    { id: 5, statut: 'accepte' },
+  ]
+  const groups = groupRows(rows, 'statut')
+  assert.deepEqual(groups.map((g) => g.key), ['envoye', 'accepte', 'refuse'])
+  assert.deepEqual(groups[0].rows.map((r) => r.id), [1, 3])
+  assert.deepEqual(groups[1].rows.map((r) => r.id), [2, 5])
+  assert.deepEqual(groups[2].rows.map((r) => r.id), [4])
+})
+
+test('groupRows: valeurs vides/null/undefined regroupent sous la clé \'\'', () => {
+  const rows = [{ id: 1, x: null }, { id: 2, x: '' }, { id: 3, x: undefined }, { id: 4, x: 'a' }]
+  const groups = groupRows(rows, 'x')
+  assert.equal(groups.length, 2)
+  assert.equal(groups[0].key, '')
+  assert.deepEqual(groups[0].rows.map((r) => r.id), [1, 2, 3])
+  assert.equal(groups[1].key, 'a')
+})
+
+test('groupRows: liste vide/absente → aucun groupe (jamais une erreur)', () => {
+  assert.deepEqual(groupRows([], 'x'), [])
+  assert.deepEqual(groupRows(undefined, 'x'), [])
+})
+
+test('groupRows: respecte un accessor personnalisé (comme les autres fonctions du moteur)', () => {
+  const rows = [{ id: 1, meta: { statut: 'A' } }, { id: 2, meta: { statut: 'B' } }, { id: 3, meta: { statut: 'A' } }]
+  const accessor = (row, id) => row.meta?.[id]
+  const groups = groupRows(rows, 'statut', accessor)
+  assert.deepEqual(groups.map((g) => g.key), ['A', 'B'])
 })

@@ -1724,3 +1724,60 @@ def reporting_lead_rows(company, *, date_start=None, date_end=None):
             'signature_date': signature_date,
         })
     return rows
+
+
+def revenu_pipeline_pondere_par_mois(company, mois_debut, mois_fin):
+    """NTFPA11 — revenu prévisionnel PONDÉRÉ-PROBABILITÉ du pipeline CRM,
+    agrégé par mois de clôture prévue (``Lead.date_cloture_prevue``).
+
+    Sélecteur de LECTURE pour ``apps.fpa`` (driver revenu pipeline) : FP&A ne
+    lit jamais ``crm.models`` directement. Pour chaque lead OUVERT (ni SIGNED,
+    ni perdu) dont la clôture prévue tombe dans ``[mois_debut, mois_fin]``, la
+    contribution du mois = Σ(valeur prévisionnelle × probabilité de gain), en
+    réutilisant les scorers déjà en place dans ``apps.reporting.pipeline``
+    (``_lead_forecast_value`` × ``_lead_win_weight``, core ``win_probability``)
+    — jamais de logique dupliquée. Recalculé à la demande (aucun cache).
+
+    Renvoie un dict ``{'YYYY-MM': Decimal}`` pour les seuls mois porteurs.
+    """
+    from decimal import Decimal
+
+    from apps.reporting.pipeline import _lead_forecast_value, _lead_win_weight
+    from . import stages as stage_mod
+    from .models import Lead
+
+    ouvertes = [
+        k for k in stage_mod.STAGES if k not in (stage_mod.SIGNED, stage_mod.COLD)
+    ]
+    qs = (
+        Lead.objects
+        .filter(company=company, is_archived=False, perdu=False,
+                stage__in=ouvertes,
+                date_cloture_prevue__isnull=False,
+                date_cloture_prevue__gte=mois_debut,
+                date_cloture_prevue__lte=mois_fin)
+        .prefetch_related('devis')
+    )
+    par_mois = {}
+    for lead in qs:
+        d = lead.date_cloture_prevue
+        cle = f'{d.year:04d}-{d.month:02d}'
+        contribution = _lead_forecast_value(lead) * _lead_win_weight(lead)
+        par_mois[cle] = par_mois.get(cle, Decimal('0')) + contribution
+    return par_mois
+
+
+def existing_lead_emails(company, emails):
+    """NTAPI27 — sous-ensemble de ``emails`` déjà présent comme
+    ``Lead.email`` pour ``company``. Sélecteur de LECTURE pour
+    ``apps.publicapi`` (seed idempotent du bac à sable API) : jamais
+    d'import direct de ``Lead`` hors de ``crm``."""
+    from .models import Lead
+
+    emails = [e for e in (emails or []) if e]
+    if not emails:
+        return set()
+    return set(
+        Lead.objects.filter(company=company, email__in=emails)
+        .values_list('email', flat=True)
+    )

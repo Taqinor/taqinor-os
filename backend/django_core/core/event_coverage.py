@@ -62,6 +62,10 @@ ALLOWED_UNCONSUMED = {
     # Volontairement sans abonné aujourd'hui (aucun consommateur métier requis),
     # donc réservé ici plutôt que d'être un orphelin — comme les seams ci-dessus.
     "document_statut_change",
+    # NTFPA29 — ``budget_cycle_clos`` : seam émis à la clôture d'un cycle
+    # budgétaire FP&A. Aucun abonné requis dans le lot NTFPA (pose du crochet
+    # pour un futur module paie/reporting), comme les seams ci-dessus.
+    "budget_cycle_clos",
 }
 
 # Membres ``EventType`` déclarés mais sans producteur ``notify()`` encore câblé

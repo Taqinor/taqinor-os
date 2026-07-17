@@ -1305,6 +1305,22 @@ def meta_lead_ads_webhook(request):
                     adgroup_id=adgroup_id, form_id=form_id,
                     access_token=access_token)
                 created_leads.append(lead.pk)
+                # ADSDEEP17 — événement domaine (M6) : ``adsengine`` matérialise
+                # un MetaLeadMirror (leads par ad) SANS que ``crm`` l'importe.
+                # Best-effort : un abonné en échec ne casse jamais la capture.
+                try:
+                    from core.events import meta_lead_captured
+                    meta_lead_captured.send(
+                        sender='crm.meta_lead_ads_webhook', lead=lead,
+                        company=company, leadgen_id=str(leadgen_id),
+                        ad_id=ad_id, adset_id=adgroup_id, campaign_id='',
+                        form_id=form_id,
+                        created_time=value.get('created_time'),
+                        is_organic=not bool(ad_id))
+                except Exception:  # noqa: BLE001 — best-effort
+                    logger.warning(
+                        'meta_lead_ads_webhook: émission meta_lead_captured '
+                        'échouée (leadgen %s)', leadgen_id, exc_info=True)
         return JsonResponse({'detail': 'Traité.', 'lead_ids': created_leads},
                             status=200)
     except Exception:

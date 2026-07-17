@@ -413,6 +413,15 @@ importe ``apps.audit``.
 """
 import django.dispatch
 
+# ADSDEEP17 — Émis quand un lead Meta Lead Ads est capturé par le webhook CRM
+# EXISTANT (``apps/crm/webhooks.meta_lead_ads_webhook``, après
+# ``create_lead_from_meta_lead_ads``). Permet à ``adsengine`` de matérialiser un
+# ``MetaLeadMirror`` (leads PAR AD) sans que ``crm`` importe ``apps.adsengine``.
+# Arguments : lead (crm.Lead), company, leadgen_id, ad_id, adset_id,
+# campaign_id, form_id, created_time (str|None), is_organic (bool). Abonné dans
+# ce repo : adsengine (apps/adsengine/receivers.py).
+meta_lead_captured = django.dispatch.Signal()
+
 # Émis à l'acceptation d'un devis.
 # Abonné dans ce repo : crm (avance l'étape du lead → SIGNED).
 devis_accepted = django.dispatch.Signal()
@@ -611,6 +620,13 @@ incident_declared = django.dispatch.Signal()
 # user (peut être None), company. Aucun abonné obligatoire (pose du seam pour
 # audit/notifications/KPI d'un futur type de document construit sur le kit).
 document_statut_change = django.dispatch.Signal()
+
+# NTFPA29 — Émis EXACTEMENT une fois quand un ``fpa.CycleBudgetaire`` passe à
+# ``clos`` (action ``clore`` gardée côté service FP&A). Pose le crochet pour
+# qu'un futur module (paie, reporting…) réagisse à la clôture d'un cycle
+# budgétaire sans couplage direct. Aucun abonné requis dans le lot NTFPA.
+# Arguments : company, cycle_id, totaux (dict, ex. {'total_depenses': ...}).
+budget_cycle_clos = django.dispatch.Signal()
 
 
 # ===========================================================================

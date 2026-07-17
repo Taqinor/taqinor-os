@@ -3,7 +3,7 @@
 Trois étages (voir docs/new_tasks_plan.md, Groupe NTIDE) :
 
 1. Boîte à idées interne — ``Idee`` (NTIDE1), suivi de ``VoteIdee`` (NTIDE2).
-2. Campagnes d'innovation ciblées — hors périmètre de ce lot (NTIDE25+).
+2. Campagnes d'innovation ciblées — ``CampagneInnovation`` (NTIDE25+).
 3. Canal feedback produit in-app — hors périmètre de ce lot (NTIDE36+).
 
 Multi-société : tous les modèles héritent de ``core.models.TenantModel``
@@ -14,6 +14,14 @@ from django.conf import settings
 from django.db import models
 
 from core.models import TenantModel
+
+# NTIDE25/26 — rôles proposables comme cible de campagne QUAND le référentiel
+# Departement (NTFPA1, ``apps.fpa``) n'est PAS réutilisé : même liste que le
+# dropdown de repli du singleton ``InnovationSettings.segment_defaut``
+# (NTIDE7). Jamais un import cross-app d'``apps.fpa``/``apps.rh`` — un nom de
+# département reste une chaîne opaque, au même titre qu'un nom de rôle
+# (cf. ``CampagneInnovation.cible_departement``/``segment``).
+ROLES_CIBLABLES = ['Technicien', 'Commercial', 'Directeur']
 
 
 class Idee(TenantModel):
@@ -69,6 +77,17 @@ class Idee(TenantModel):
         verbose_name='Type lié (devis/ticket/chantier)')
     linked_id = models.PositiveIntegerField(
         null=True, blank=True, verbose_name='ID lié (opaque)')
+    # NTIDE18 — « Enregistrer en brouillon » : tant que True, l'idée reste
+    # interne à son auteur (invisible des autres dans les listes/le tableau
+    # de bord, cf. ``IdeeViewSet.get_queryset``/``selectors``) ; passe à
+    # False quand l'auteur clique « Publier ».
+    draft = models.BooleanField(default=False, verbose_name='Brouillon')
+    # NTIDE19 — modération de contenu : le palier Directeur/Responsable peut
+    # « masquer » une idée SANS la supprimer (action ``masquer``). Une idée
+    # masquée disparaît des listes normales mais reste consultable en admin
+    # (``?include_archived=1``, réservé au même palier).
+    archived = models.BooleanField(
+        default=False, verbose_name='Masquée (modération)')
 
     class Meta:
         verbose_name = 'Idée'
@@ -151,6 +170,27 @@ class InnovationSettings(TenantModel):
         default=ThemeCouleur.PRIMARY, verbose_name='Thème couleur du CTA')
     message_relance = models.TextField(
         blank=True, default='', verbose_name='Message de relance')
+    # NTIDE16 — nombre de votes qui déclenche UNE notification (in-app +
+    # email via ``notify()``) à l'auteur de l'idée (``services._maybe_
+    # notify_seuil_votes``, déclenchée une seule fois, exactement au moment
+    # où le seuil est atteint — jamais répétée à chaque vote suivant).
+    seuil_votes_notification = models.PositiveIntegerField(
+        default=3, verbose_name="Seuil de votes pour notifier l'auteur")
+
+    class Frequence(models.TextChoices):
+        QUOTIDIEN = 'quotidien', 'Quotidien'
+        HEBDO = 'hebdo', 'Hebdomadaire'
+
+    # NTIDE40 — digest feedback produit (canal founder, NTIDE36+) : DÉSACTIVÉ
+    # par défaut, comme ``campagnes_activees`` ci-dessus (rien ne change tant
+    # que l'admin ne l'active pas explicitement). ``feedback_digest_frequence``
+    # n'est lu QUE si ``feedback_digest_actif`` est True (cf.
+    # ``apps.innovation.tasks.feedback_digest_run``).
+    feedback_digest_actif = models.BooleanField(
+        default=False, verbose_name='Digest feedback produit activé')
+    feedback_digest_frequence = models.CharField(
+        max_length=10, choices=Frequence.choices, default=Frequence.QUOTIDIEN,
+        verbose_name='Fréquence du digest feedback produit')
 
     class Meta:
         verbose_name = 'Paramètres innovation'
@@ -158,3 +198,166 @@ class InnovationSettings(TenantModel):
 
     def __str__(self):
         return f'Paramètres innovation — {self.company_id}'
+
+
+class CampagneInnovation(TenantModel):
+    """Campagne d'innovation ciblée (NTIDE25) : incite un SEGMENT précis
+    (rôles, ou département quand NTFPA1 est réutilisé) à proposer des idées
+    sur un sujet donné, avec un tag auto-appliqué (NTIDE28).
+
+    ``cible_departement``/``segment`` sont des références OPAQUES (chaînes) —
+    jamais un ``ForeignKey`` vers ``apps.fpa.Departement`` (cross-app
+    interdit, cf. règle de frontière) : le nom de département SI le
+    référentiel NTFPA1 est bâti pour cette société, sinon un nom de rôle
+    (``ROLES_CIBLABLES``, repli NTIDE26)."""
+
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        ACTIVE = 'active', 'Active'
+        FERMEE = 'fermee', 'Fermée'
+
+    # Redéclaré à l'identique (ARC1) : related_name explicite dédié.
+    company = models.ForeignKey(
+        'authentication.Company',
+        # on_delete: campagnes scopées société — disparaissent avec elle (nettoyage tenant standard).
+        on_delete=models.CASCADE,
+        related_name='innovation_campagnes', verbose_name='Société')
+    nom = models.CharField(max_length=255, verbose_name='Nom')
+    description = models.TextField(
+        blank=True, default='', verbose_name='Description')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.BROUILLON,
+        verbose_name='Statut')
+    # Cible MONO-valeur (raccourci d'affichage — « Nous ciblons le
+    # Technicien » / « … le département Pompage ») : nom de Departement
+    # (NTFPA1) si bâti, sinon un des ``ROLES_CIBLABLES``. Vide = pas de
+    # cible unique affichée (seul ``segment`` compte alors).
+    cible_departement = models.CharField(
+        max_length=80, blank=True, default='',
+        verbose_name='Cible (département ou rôle)')
+    # Segment MULTI-valeur (NTIDE26/NTIDE35) : toujours un tableau de
+    # chaînes (rôles ou départements), jamais un objet. Repli utilisé par
+    # ``selectors.users_for_campaign`` quand ``cible_departement`` seul ne
+    # suffit pas (bulk multi-rôles).
+    segment = models.JSONField(default=list, blank=True, verbose_name='Segment')
+    date_debut = models.DateField(
+        null=True, blank=True, verbose_name='Date de début')
+    date_fin = models.DateField(
+        null=True, blank=True, verbose_name='Date de fin')
+    # NTIDE27 — affiché en haut du formulaire « Proposer une idée » quand
+    # l'utilisateur connecté matche le segment de la campagne (« Nous
+    # cherchons vos idées sur … »). Optionnel — vide = pas de bandeau.
+    message_incitation = models.TextField(
+        blank=True, default='', verbose_name="Message d'incitation")
+    # NTIDE28 — tag (``records.Tag``, réutilisé — jamais un champ tags
+    # maison) auto-appliqué à toute idée proposée par un utilisateur du
+    # segment PENDANT que la campagne est active (``services.
+    # maybe_apply_campagne_tag``). Vide = pas d'auto-tag. Le tag reste
+    # modifiable manuellement ensuite (pas verrouillé).
+    tag_auto = models.CharField(
+        max_length=80, blank=True, default='', verbose_name='Tag automatique')
+
+    class Meta:
+        verbose_name = 'Campagne innovation'
+        verbose_name_plural = 'Campagnes innovation'
+        ordering = ['-created_at', '-id']
+        indexes = [
+            models.Index(fields=['company', 'statut'],
+                         name='innovation_camp_co_statut'),
+        ]
+
+    def __str__(self):
+        return self.nom
+
+
+class AnnonceProduit(TenantModel):
+    """Annonce produit (NTIDE39) — repli LOCAL et volontairement simple tant
+    que le référentiel plateforme (NTADM18) n'est pas bâti : seulement ce
+    dont ``FeedbackProduit.annonce`` a besoin pour afficher « vous l'aviez
+    demandé, c'est livré ». Jamais fusionné avec NTADM18 le jour où il
+    existe (cf. règle de frontière du domaine, en tête de fichier) — ce
+    modèle se retirera alors au profit d'une référence opaque, comme
+    ``Idee.linked_type``/``linked_id``."""
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        # on_delete: annonces scopées société — disparaissent avec elle (nettoyage tenant standard).
+        on_delete=models.CASCADE,
+        related_name='innovation_annonces', verbose_name='Société')
+    titre = models.CharField(max_length=255, verbose_name='Titre')
+    description = models.TextField(
+        blank=True, default='', verbose_name='Description')
+    lien = models.URLField(blank=True, default='', verbose_name='Lien')
+
+    class Meta:
+        verbose_name = 'Annonce produit'
+        verbose_name_plural = 'Annonces produit'
+        ordering = ['-created_at', '-id']
+
+    def __str__(self):
+        return self.titre
+
+
+class FeedbackProduit(TenantModel):
+    """Retour produit envoyé au founder (NTIDE36) — canal 1→N founder, PAS
+    conversationnel (``apps.chat`` reste la messagerie d'équipe, cf. règle de
+    frontière du domaine). JAMAIS accessible via un menu/UI normal : seul le
+    bouton discret (NTIDE37) y poste, et seul le palier admin
+    (``IdeasSeeAll``) le consulte (NTIDE38)."""
+
+    class Theme(models.TextChoices):
+        UX = 'ux', 'UX'
+        PERFORMANCE = 'performance', 'Performance'
+        FEATURE = 'feature', 'Fonctionnalité'
+        BUG = 'bug', 'Bug'
+        AUTRE = 'autre', 'Autre'
+
+    class Statut(models.TextChoices):
+        ENVOYE = 'envoye', 'Envoyé'
+        LU = 'lu', 'Lu'
+        ADRESSE = 'adresse', 'Adressé'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        # on_delete: feedback scopé société — disparaît avec elle (nettoyage tenant standard).
+        on_delete=models.CASCADE,
+        related_name='innovation_feedbacks', verbose_name='Société')
+    auteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='feedbacks_produit',
+        verbose_name='Auteur')
+    titre = models.CharField(max_length=255, verbose_name='Titre')
+    description = models.TextField(
+        blank=True, default='', verbose_name='Description')
+    theme = models.CharField(
+        max_length=12, choices=Theme.choices, default=Theme.AUTRE,
+        verbose_name='Thème')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.ENVOYE,
+        verbose_name='Statut')
+    # NTIDE39 — lien vers l'annonce produit qui a fermé ce feedback. Le
+    # feedback lui-même n'est jamais supprimé (dossier produit, même
+    # convention que ``Idee`` qui ne se supprime jamais) : seule la
+    # référence à l'annonce peut disparaître si celle-ci est retirée.
+    annonce = models.ForeignKey(
+        AnnonceProduit,
+        # on_delete: le lien de fermeture disparaît avec l'annonce ; le feedback reste (dossier produit).
+        on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='feedbacks_fermes',
+        verbose_name='Fermé via annonce')
+    message_fermeture = models.TextField(
+        blank=True, default='', verbose_name='Message de fermeture')
+
+    class Meta:
+        verbose_name = 'Feedback produit'
+        verbose_name_plural = 'Feedbacks produit'
+        ordering = ['-created_at', '-id']
+        indexes = [
+            models.Index(fields=['company', 'theme'],
+                         name='innovation_fb_co_theme'),
+            models.Index(fields=['company', 'statut'],
+                         name='innovation_fb_co_statut'),
+        ]
+
+    def __str__(self):
+        return self.titre

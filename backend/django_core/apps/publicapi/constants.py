@@ -67,3 +67,14 @@ EVENT_CHOICES = [
     (EVENT_LIVRAISON_LIVREE, 'Livraison — livrée'),
 ]
 ALL_EVENTS = [code for code, _ in EVENT_CHOICES]
+
+
+# ── NTAPI26 — environnement d'une clé (préfixe distinct, isolation bac à
+# sable) ───────────────────────────────────────────────────────────────────
+ENV_TEST = 'test'
+ENV_LIVE = 'live'
+ENV_CHOICES = [
+    (ENV_TEST, 'Test (bac à sable, `tqk_test_…`)'),
+    (ENV_LIVE, 'Live (données réelles, `tqk_live_…`)'),
+]
+ALL_ENVIRONMENTS = [code for code, _ in ENV_CHOICES]

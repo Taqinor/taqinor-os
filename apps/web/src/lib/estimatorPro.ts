@@ -13,6 +13,9 @@
  * moment du devis chiffré.
  */
 
+import { commercialDayShare } from './commercialCategories';
+import { injectionAnnuelle, MENTION_82_21 } from './constants82_21';
+
 // ── Constantes MIROIR de frontend/src/features/ventes/solar.js ──────────────
 // GHI mensuelle Maroc (kWh/m²) — copie EXACTE de solar.js GHI (elle-même
 // miroir de backend quote_engine/constants.py, parité testée côté ERP).
@@ -54,6 +57,23 @@ export const DAY_SHARE_BY_PROFILE = {
 /** Sans profil déclaré : 0.80, le défaut ERP (dayUsagePct 80 % en C&I). */
 export const DEFAULT_DAY_SHARE = 0.8;
 
+/**
+ * WJ123 — PLAFOND HONNÊTE d'autoconsommation par pattern d'équipes industriel.
+ * Ces valeurs N'EXISTENT dans AUCUNE table backend : elles sont encodées ICI
+ * pour la première fois (recherche WEB_PLAN WJ123 « recherche 2026-07-16 »,
+ * ESTIMATION à vérifier fondateur). Un site en 3x8/continu consomme surtout la
+ * nuit → sa part diurne (donc son autoconsommation solaire SANS batterie) est
+ * bien plus basse qu'un bureau (0.80). Le solaire déplace les heures PLEINES
+ * (~1,01 DH/kWh), la POINTE seulement avec batterie — jamais l'inverse.
+ * Milieux des fourchettes du plan : 1x8 70-85 %, 2x8 55-70 %, 3x8/continu 25-40 %.
+ */
+export const SHIFT_DAY_SHARE_CEILING: Record<string, number> = {
+  '1x8': 0.775, // journée 1×8 : ~70-85 % — ESTIMATION à vérifier fondateur
+  '2x8': 0.625, // 2×8 : ~55-70 % — ESTIMATION à vérifier fondateur
+  '3x8': 0.325, // 3×8 continu : ~25-40 % — ESTIMATION à vérifier fondateur
+  continu: 0.325, // 24/7 continu : ~25-40 % — ESTIMATION à vérifier fondateur
+};
+
 /** Surface ≈ 6 m²/kWc (panneaux 710 W + allées/ombres, hypothèse marché). */
 export const M2_PER_KWC = 6;
 
@@ -78,6 +98,29 @@ export interface ProInputs {
   activityProfile?: 'day' | 'day_evening' | 'continuous' | null;
   surfaceType?: 'bac_acier' | 'terrasse' | 'ombriere' | 'terrain' | null;
   surfaceM2?: number | null;
+  /**
+   * WJ122 — catégorie COMMERCIALE (hotel/restaurant/bureau…). Quand elle est
+   * fournie, sa part diurne par archétype (commercialDayShare, SOURCE solar.js
+   * QX44) PRIME sur `activityProfile` : un hôtel (55 %) et un bureau (80 %) à
+   * facture égale produisent alors une autoconsommation/couverture DIFFÉRENTES.
+   * Absente ⇒ comportement inchangé (DAY_SHARE_BY_PROFILE / défaut 0.80).
+   */
+  categorieCommerciale?: string | null;
+  /**
+   * WJ123 — pattern d'équipes INDUSTRIEL (1x8/2x8/3x8/continu). Quand il est
+   * fourni, son PLAFOND d'autoconsommation honnête (SHIFT_DAY_SHARE_CEILING)
+   * prime sur `activityProfile` : un 3x8 (0.325) ne voit plus l'autoconso d'un
+   * bureau (0.80). Priorité : catégorie commerciale > équipes > profil > défaut.
+   */
+  equipes?: string | null;
+  /**
+   * WJ123 — active le calcul d'une ligne d'injection POTENTIELLE (décret 82-21,
+   * SOURCE constants82_21.ts / QX50). OFF PAR DÉFAUT (le parcours public ne
+   * l'active pas — ligne « absente » tant qu'aucun devis ne l'inclut). Quand
+   * true, l'estimation porte `injectionPotential` (plafond 20 %, tarif net,
+   * mention réglementaire OBLIGATOIRE).
+   */
+  enableInjection?: boolean;
 }
 
 export interface ProEstimate {
@@ -94,6 +137,12 @@ export interface ProEstimate {
   paybackYearsHigh: number;
   surfaceCapped: boolean;
   hypotheses: { tarifMadKwh: number; dayShare: number; prixKwcLow: number; prixKwcHigh: number };
+  /**
+   * WJ123 — ligne d'injection POTENTIELLE (82-21), présente UNIQUEMENT quand
+   * `enableInjection` a été demandé (OFF par défaut). `mention` est le texte
+   * réglementaire OBLIGATOIRE à afficher avec toute ligne d'injection.
+   */
+  injectionPotential?: { kwh: number; dh: number; mention: string };
 }
 
 export type ProEstimateResult = ProEstimate | { ok: false; reason: 'missing_conso' | 'too_large' | 'invalid' };
@@ -110,7 +159,7 @@ function isBadNumber(v: number | null | undefined): boolean {
  * DIURNE de la consommation, jamais plus).
  */
 export function estimatePro(inputs: ProInputs): ProEstimateResult {
-  const { monthlyKwh, monthlyMad, raccordement, activityProfile, surfaceM2 } = inputs;
+  const { monthlyKwh, monthlyMad, raccordement, activityProfile, surfaceM2, categorieCommerciale, equipes, enableInjection } = inputs;
 
   // Garde 'invalid' : une valeur FOURNIE mais NaN/négative n'est jamais devinée.
   if (isBadNumber(monthlyKwh) || isBadNumber(monthlyMad) || isBadNumber(surfaceM2)) {
@@ -132,7 +181,19 @@ export function estimatePro(inputs: ProInputs): ProEstimateResult {
   }
 
   const consoAnnuelle = consoMensuelle * 12;
-  const dayShare = (activityProfile && DAY_SHARE_BY_PROFILE[activityProfile]) || DEFAULT_DAY_SHARE;
+  // WJ122 — une catégorie commerciale VALIDE (day-share par archétype QX44) prime
+  // sur le profil d'activité générique : hôtel 55 % ≠ bureau 80 % à facture égale.
+  // Sinon on garde le comportement historique (DAY_SHARE_BY_PROFILE / défaut).
+  const catShare = categorieCommerciale != null && categorieCommerciale !== ''
+    ? commercialDayShare(categorieCommerciale) / 100
+    : null;
+  // WJ123 — un pattern d'équipes industriel impose son PLAFOND honnête (un 3x8
+  // ne voit plus l'autoconso d'un bureau). Priorité : commercial > équipes >
+  // profil d'activité > défaut.
+  const shiftShare = equipes != null && equipes !== '' && SHIFT_DAY_SHARE_CEILING[equipes] != null
+    ? SHIFT_DAY_SHARE_CEILING[equipes]
+    : null;
+  const dayShare = catShare ?? shiftShare ?? ((activityProfile && DAY_SHARE_BY_PROFILE[activityProfile]) || DEFAULT_DAY_SHARE);
 
   // Dimensionnement : production annuelle ≈ conso annuelle × part diurne
   // (autoconsommation d'abord — on ne dimensionne jamais pour injecter).
@@ -178,6 +239,15 @@ export function estimatePro(inputs: ProInputs): ProEstimateResult {
   const paybackYearsLow = Math.round(((PRIX_KWC_LOW * kwc) / ecoAnnuelleMadHigh) * 10) / 10;
   const paybackYearsHigh = Math.round(((PRIX_KWC_HIGH * kwc) / ecoAnnuelleMadLow) * 10) / 10;
 
+  // WJ123 — ligne d'injection POTENTIELLE (82-21) : OFF PAR DÉFAUT. Calculée
+  // seulement sur demande explicite (jamais sur le parcours public gaté) et
+  // TOUJOURS accompagnée de sa mention réglementaire.
+  let injectionPotential: { kwh: number; dh: number; mention: string } | undefined;
+  if (enableInjection) {
+    const inj = injectionAnnuelle(prodA, autoconsomme);
+    injectionPotential = { kwh: inj.kwh, dh: inj.dh, mention: MENTION_82_21 };
+  }
+
   return {
     ok: true,
     kwc,
@@ -192,5 +262,6 @@ export function estimatePro(inputs: ProInputs): ProEstimateResult {
     paybackYearsHigh,
     surfaceCapped,
     hypotheses: { tarifMadKwh: tarif, dayShare, prixKwcLow: PRIX_KWC_LOW, prixKwcHigh: PRIX_KWC_HIGH },
+    ...(injectionPotential ? { injectionPotential } : {}),
   };
 }
