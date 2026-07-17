@@ -185,6 +185,10 @@ INSTALLED_APPS = [
     # quittancement, GMAO bâtiment). App satellite multi-société ; aucune
     # écriture Facture ici (délègue à apps.ventes.services).
     'apps.immobilier',
+    # Groupe NTHOT — Vertical hôtellerie & restauration (plan de chambres,
+    # réservations, check-in/out, folio client unifié, housekeeping). Nouvelle
+    # app greenfield, multi-société, additive.
+    'apps.hospitality',
 ]
 
 MIDDLEWARE = [

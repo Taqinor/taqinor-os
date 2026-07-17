@@ -95,6 +95,8 @@ _APP_URLS = [
     path('adsengine/', include('apps.adsengine.urls')),
     # Groupe NTPRO — Vertical immobilier & facilities.
     path('immobilier/', include('apps.immobilier.urls')),
+    # Groupe NTHOT — Vertical hôtellerie & restauration.
+    path('hospitality/', include('apps.hospitality.urls')),
 ]
 
 urlpatterns = [
