@@ -95,6 +95,8 @@ _APP_URLS = [
     path('sante/', include('apps.sante.urls')),
     # Groupe NTIDE — Boîte à idées interne, campagnes d'innovation, feedback.
     path('innovation/', include('apps.innovation.urls')),
+    # NTEDU1 — Éducation (établissement scolaire).
+    path('education/', include('apps.education.urls')),
 ]
 
 urlpatterns = [
