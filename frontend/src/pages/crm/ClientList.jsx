@@ -444,6 +444,9 @@ export default function ClientList() {
             onExport={exportRows}
             exportName="clients"
             onRowClick={(c) => setDetailClient(c)}
+            // NTUX11 — ouvrir un client depuis la liste (pas seulement via ⌘K)
+            // l'ajoute aux « récents » (RecentEntitiesWidget, Dashboard).
+            trackRecent={(c) => ({ type: 'client', id: c.id, label: c.nom })}
             emptyTitle="Aucun résultat"
             emptyDescription="Aucun client ne correspond à ces filtres."
             emptyAction={<Button size="sm" onClick={openNew}><Plus className="size-4" /> Nouveau client</Button>}

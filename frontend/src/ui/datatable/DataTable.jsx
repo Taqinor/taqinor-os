@@ -32,6 +32,9 @@ import { rowsToCSV, exportFileName } from './csv.js'
 import { useDataTable } from './useDataTable.js'
 import { ColumnManager } from './ColumnManager.jsx'
 import { BulkActionBar } from './BulkActionBar.jsx'
+// NTUX11 — mémoire des « récents » unifiée (déjà alimentée par la palette
+// ⌘K) ; réutilisée ici (jamais dupliquée) via la prop opt-in `trackRecent`.
+import { pushRecentEntity } from '../../providers/commandActions.js'
 import { usePrefersReducedMotion } from '../../hooks/usePrefersReducedMotion'
 
 // VX135 — AUCUNE liste de l'app n'animait tri/filtre/ajout (téléportation des
@@ -262,6 +265,13 @@ export const DataTable = forwardRef(function DataTable(
     // (max 2 actions révélées, comme rowActions révèle ses 2 actions rapides).
     swipeActions,
     onRowClick,
+    // NTUX11 — (row) => {type, id, label} | null. OPT-IN : non fourni (la
+    // quasi-totalité des ~79 écrans), aucun changement de comportement.
+    // Fourni, chaque ouverture de ligne via `onRowClick` (clic ou Entrée)
+    // alimente AUSSI la mémoire des « récents » unifiée (déjà utilisée par la
+    // palette ⌘K, providers/commandActions.js) — généralise la capture au-delà
+    // des ouvertures via la palette, sans dupliquer sa logique de stockage.
+    trackRecent,
     onRowPrefetch, // (row) => void — H133 : préchargement au survol/intention
     renderExpanded, // (row) => ReactNode → ligne dépliable
     /* ---- ARC49/ARC53 — Échappatoires ADDITIVES (100 % opt-in) ------------
@@ -425,6 +435,20 @@ export const DataTable = forwardRef(function DataTable(
     },
     [pageKeys, selected, onToggleRow],
   )
+
+  /* ---- NTUX11 — Ouverture de ligne : capture optionnelle des « récents " ----
+     Enveloppe `onRowClick` SANS EN CHANGER LA SIGNATURE : `trackRecent` non
+     fourni → cette fonction se réduit à `onRowClick` (comportement identique,
+     zéro coût). Fourni → alimente `pushRecentEntity` AVANT d'appeler
+     `onRowClick`, pour les 4 points d'ouverture (clic bureau, carte mobile,
+     Entrée/Espace carte, Entrée grille — cf. `onGridKeyDown` ci-dessous). */
+  const handleRowClick = useCallback((row) => {
+    if (trackRecent) {
+      const entity = trackRecent(row)
+      if (entity) pushRecentEntity(entity)
+    }
+    onRowClick?.(row)
+  }, [trackRecent, onRowClick])
 
   /* ---- Recherche globale anti-rebond (O66) ----
      La valeur AFFICHÉE dans le champ reste instantanée (`searchInput`) ; seul le
@@ -662,11 +686,11 @@ export const DataTable = forwardRef(function DataTable(
         const idx = activeRow < 0 ? 0 : activeRow
         if (rows[idx] && onRowClick) {
           e.preventDefault()
-          onRowClick(rows[idx])
+          handleRowClick(rows[idx])
         }
       }
     },
-    [rows, activeRow, onRowClick],
+    [rows, activeRow, onRowClick, handleRowClick],
   )
 
   const hasToolbar = !hideToolbar
@@ -962,7 +986,7 @@ export const DataTable = forwardRef(function DataTable(
                                 isSelected ? 'bg-primary/5' : 'hover:bg-muted/40',
                                 isActive && 'bg-accent/40 ring-1 ring-inset ring-ring/30',
                               )}
-                              onClick={onRowClick ? () => onRowClick(row) : undefined}
+                              onClick={onRowClick ? () => handleRowClick(row) : undefined}
                               onMouseEnter={onRowPrefetch ? () => onRowPrefetch(row) : undefined}
                               onFocus={onRowPrefetch ? () => onRowPrefetch(row) : undefined}
                               aria-selected={selectable ? isSelected : undefined}
@@ -1168,13 +1192,13 @@ export const DataTable = forwardRef(function DataTable(
                       isSelected ? 'border-primary bg-primary/5' : 'border-border',
                       onRowClick && 'cursor-pointer focus-ring',
                     )}
-                    onClick={onRowClick ? () => onRowClick(row) : undefined}
+                    onClick={onRowClick ? () => handleRowClick(row) : undefined}
                     onKeyDown={
                       onRowClick
                         ? (e) => {
                             if (e.key === 'Enter' || e.key === ' ') {
                               e.preventDefault()
-                              onRowClick(row)
+                              handleRowClick(row)
                             }
                           }
                         : undefined

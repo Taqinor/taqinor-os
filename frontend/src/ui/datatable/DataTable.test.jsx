@@ -5,6 +5,13 @@ import { axe } from 'vitest-axe'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 import { setStoredDensity } from '../../design/theme.js'
+
+// NTUX11 — espionne `pushRecentEntity` (providers/commandActions.js) pour le
+// bloc de tests `trackRecent` en fin de fichier ; n'affecte aucun autre test
+// (module réel non consommé ailleurs dans ce fichier).
+const pushRecentEntityMock = vi.fn()
+vi.mock('../../providers/commandActions.js', () => ({ pushRecentEntity: (...a) => pushRecentEntityMock(...a) }))
+
 import { DataTable } from './DataTable.jsx'
 
 /* ============================================================================
@@ -658,5 +665,38 @@ describe('NTUX8 — édition inline avec navigation clavier (Tab/Entrée)', () =
     fireEvent.keyDown(table.querySelector('input'), { key: 'Escape' })
     expect(table.querySelector('input')).toBeNull()
     expect(within(table).getByText('Kasri')).toBeInTheDocument() // valeur d'origine, pas "brouillon"
+  })
+})
+
+/* ============================== NTUX11 — RÉCENTS (trackRecent) ============================== */
+
+describe('NTUX11 — trackRecent : capture des « récents » au clic direct sur une ligne', () => {
+  beforeEach(() => pushRecentEntityMock.mockClear())
+
+  it('sans trackRecent (79 écrans existants) : onRowClick fonctionne sans jamais appeler pushRecentEntity', () => {
+    const onRowClick = vi.fn()
+    const { container } = renderTable({ onRowClick })
+    const table = container.querySelector('[data-dt-table]')
+    fireEvent.click(within(table).getByText('Kasri'))
+    expect(onRowClick).toHaveBeenCalledWith(DATA[0])
+    expect(pushRecentEntityMock).not.toHaveBeenCalled()
+  })
+
+  it('avec trackRecent : le clic sur une ligne alimente pushRecentEntity ET appelle toujours onRowClick', () => {
+    const onRowClick = vi.fn()
+    const trackRecent = (row) => ({ type: 'client', id: row.id, label: row.nom })
+    const { container } = renderTable({ onRowClick, trackRecent })
+    const table = container.querySelector('[data-dt-table]')
+    fireEvent.click(within(table).getByText('Kasri'))
+    expect(pushRecentEntityMock).toHaveBeenCalledWith({ type: 'client', id: 1, label: 'Kasri' })
+    expect(onRowClick).toHaveBeenCalledWith(DATA[0])
+  })
+
+  it('trackRecent renvoyant null n\'appelle pas pushRecentEntity', () => {
+    const trackRecent = () => null
+    const { container } = renderTable({ onRowClick: vi.fn(), trackRecent })
+    const table = container.querySelector('[data-dt-table]')
+    fireEvent.click(within(table).getByText('Kasri'))
+    expect(pushRecentEntityMock).not.toHaveBeenCalled()
   })
 })
