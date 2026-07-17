@@ -1230,6 +1230,68 @@ def comptes_sous_seuil(company, *, date_fin=None):
     return resultat
 
 
+def analyse_frais_bancaires(company, *, debut=None, fin=None):
+    """NTTRE9 — Analyse des frais bancaires dans le temps (lecture seule).
+
+    Agrège les écritures GL sur les comptes de frais bancaires (par défaut 6147,
+    élargissable via ``ParametresTresorerie.comptes_frais_bancaires`` — NTTRE28)
+    par compte de trésorerie (banque) et par mois. Le compte bancaire est déduit
+    de la ligne de trésorerie (classe 5) présente dans la même écriture. Renvoie
+    ``{'par_compte': [{'compte_id', 'libelle', 'mois': [{'mois', 'montant'}],
+    'total'}], 'total': Decimal}``. Cohérent avec le grand livre.
+    """
+    from .models import ParametresTresorerie
+
+    params = ParametresTresorerie.objects.filter(company=company).first()
+    numeros = (params.comptes_frais_bancaires
+               if params and params.comptes_frais_bancaires else ['6147'])
+    comptes_treso = list(CompteTresorerie.objects.filter(company=company))
+    treso_par_compte = {t.compte_comptable_id: t for t in comptes_treso}
+    treso_par_id = {t.id: t for t in comptes_treso}
+
+    qs = LigneEcriture.objects.filter(
+        company=company, compte__numero__in=numeros).select_related(
+        'ecriture').prefetch_related('ecriture__lignes')
+    if debut:
+        qs = qs.filter(ecriture__date_ecriture__gte=debut)
+    if fin:
+        qs = qs.filter(ecriture__date_ecriture__lte=fin)
+
+    # agg[compte_treso_id][mois] = total des frais
+    agg = {}
+    total_global = Decimal('0')
+    for lg in qs:
+        montant = (lg.debit or Decimal('0')) - (lg.credit or Decimal('0'))
+        if montant == 0:
+            continue
+        treso = None
+        for sib in lg.ecriture.lignes.all():
+            candidat = treso_par_compte.get(sib.compte_id)
+            if candidat is not None:
+                treso = candidat
+                break
+        treso_id = treso.id if treso else None
+        mois = lg.ecriture.date_ecriture.strftime('%Y-%m')
+        agg.setdefault(treso_id, {}).setdefault(mois, Decimal('0'))
+        agg[treso_id][mois] += montant
+        total_global += montant
+
+    par_compte = []
+    for treso_id, mois_map in agg.items():
+        treso = treso_par_id.get(treso_id)
+        libelle = treso.libelle if treso else 'Non rattaché'
+        mois_liste = [{'mois': m, 'montant': mois_map[m]}
+                      for m in sorted(mois_map)]
+        par_compte.append({
+            'compte_id': treso_id,
+            'libelle': libelle,
+            'mois': mois_liste,
+            'total': sum(mois_map.values(), Decimal('0')),
+        })
+    par_compte.sort(key=lambda c: (c['compte_id'] is None, c['compte_id'] or 0))
+    return {'par_compte': par_compte, 'total': total_global}
+
+
 def projection_tresorerie(company, *, date_fin=None, validees_seulement=False):
     """Projection nette de trésorerie : position actuelle ± AR/AP/paie/impôts.
 

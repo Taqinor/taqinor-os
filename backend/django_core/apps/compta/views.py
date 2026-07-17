@@ -485,6 +485,21 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
             'projection': projection,
         })
 
+    @action(detail=False, methods=['get'], url_path='frais-bancaires')
+    def frais_bancaires(self, request):
+        """NTTRE9 — Analyse des frais bancaires par compte et par mois.
+
+        Query ``?debut=YYYY-MM-DD&fin=YYYY-MM-DD``. Agrège les écritures GL des
+        comptes de frais (réglage NTTRE28) par compte de trésorerie et par mois.
+        Lecture seule, scopée société, Admin/Responsable.
+        """
+        params = request.query_params
+        data = selectors.analyse_frais_bancaires(
+            request.user.company,
+            debut=params.get('debut') or None,
+            fin=params.get('fin') or None)
+        return Response(data)
+
     @action(detail=False, methods=['get'], url_path='previsionnel-tresorerie')
     def previsionnel_tresorerie(self, request):
         """Prévisionnel de trésorerie roulant 13 semaines (FG126).
