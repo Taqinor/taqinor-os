@@ -97,3 +97,68 @@ def rejeter_derogation(derogation, user):
     derogation.date_decision = timezone.now()
     derogation.save(update_fields=['statut', 'approuvee_par', 'date_decision'])
     return derogation
+
+
+def _html_position_credit(client):
+    """NTCRD25 — construit le fragment HTML du rapport interne « Position
+    crédit client » (filigrane USAGE INTERNE). AUCUNE donnée ``prix_achat``/
+    marge — document de contrôle interne réservé Direction/Finance. Testable
+    sans WeasyPrint (rendu HTML pur)."""
+    from html import escape
+
+    from apps.ventes.selectors import encours_clients_par_tiers
+
+    from .selectors import fiche_credit
+
+    fiche = fiche_credit(client)
+    nom = escape(f"{client.prenom or ''} {client.nom}".strip())
+
+    # Détail des factures ouvertes (references) — via le sélecteur ventes
+    # existant (jamais un import de ventes.models).
+    factures_lignes = ''
+    for entry in encours_clients_par_tiers(client.company):
+        if entry['tiers_id'] == client.id:
+            for ref in entry['references']:
+                factures_lignes += f'<li>{escape(str(ref))}</li>'
+
+    def _mad(value):
+        if value is None:
+            return '—'
+        return f'{value} MAD'
+
+    derogations_html = ''.join(
+        f"<li>{_mad(d['montant_demande'])} — {escape(str(d['statut']))}</li>"
+        for d in fiche['derogations']
+    ) or '<li>Aucune</li>'
+
+    return f"""
+    <html><head><meta charset="utf-8">
+    <style>
+      .filigrane {{ color:#c00; font-weight:bold; letter-spacing:2px; }}
+      body {{ font-family: sans-serif; font-size: 12px; }}
+      h1 {{ font-size: 18px; }}
+    </style></head>
+    <body>
+      <p class="filigrane">USAGE INTERNE</p>
+      <h1>Position crédit — {nom}</h1>
+      <p>Limite : {_mad(fiche['limite'])}</p>
+      <p>Encours : {_mad(fiche['encours'])}</p>
+      <p>Disponible : {_mad(fiche['disponible'])}</p>
+      <p>Lettre de score : {escape(str(fiche['lettre_score']))}</p>
+      <p>Mode de hold : {escape(str(fiche['mode_hold'] or 'aucun'))}</p>
+      <h2>Factures ouvertes</h2>
+      <ul>{factures_lignes or '<li>Aucune</li>'}</ul>
+      <h2>Dérogations</h2>
+      <ul>{derogations_html}</ul>
+    </body></html>
+    """
+
+
+def generer_pdf_position_credit(client):
+    """NTCRD25 — rend le PDF interne « Position crédit client » via le service
+    PDF partagé (``core.pdf.render_pdf`` — moteur WeasyPrint legacy, JAMAIS
+    ``/proposal``/quote_engine : ce n'est pas un document client). Renvoie des
+    bytes."""
+    from core.pdf import render_pdf
+
+    return render_pdf(html=_html_position_credit(client))

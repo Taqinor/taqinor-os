@@ -119,6 +119,35 @@ def exposition_credit(request):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
+def position_credit_pdf(request, client_id):
+    """NTCRD25 — PDF interne « Position crédit client » (filigrane USAGE
+    INTERNE, réservé Direction/Finance). Company-scopé ; 503 propre si le
+    moteur PDF est indisponible."""
+    from django.http import HttpResponse
+
+    from apps.crm.selectors import get_company_client
+
+    from .services import generer_pdf_position_credit
+
+    client = get_company_client(request.user.company, client_id)
+    if client is None:
+        return Response(
+            {'detail': 'Client introuvable.'},
+            status=status.HTTP_404_NOT_FOUND)
+    try:
+        pdf = generer_pdf_position_credit(client)
+    except RuntimeError:
+        return Response(
+            {'detail': 'Moteur PDF indisponible.'},
+            status=status.HTTP_503_SERVICE_UNAVAILABLE)
+    resp = HttpResponse(pdf, content_type='application/pdf')
+    resp['Content-Disposition'] = (
+        f'attachment; filename="position_credit_{client_id}.pdf"')
+    return resp
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def score_credit_client(request, client_id):
     """NTCRD12 — score crédit d'un client (lettre A-E + position vs limite +
     recommandation lisible). Company-scopé, 404 propre hors société."""
