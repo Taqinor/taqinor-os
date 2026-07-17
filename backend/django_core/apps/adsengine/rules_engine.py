@@ -636,6 +636,69 @@ def _act_on_finding(company, policy, template, finding, *, config, client):
     return action
 
 
+# ── ADSDEEP43 — Journal d'exécution ENRICHI (le « pourquoi » de chaque passe) ──
+def _condition_fr(template, finding):
+    """ADSDEEP43 — Phrase FR expliquant la CONDITION testée et son verdict à partir
+    du bloc ``computed`` du finding (jamais un simple booléen : quelles valeurs,
+    quel seuil, quelle fenêtre → vrai/faux). Couvre les trois formes v2 (seuil /
+    fenêtres comparées / classement) + fréquence + repli générique. Toujours non
+    vide."""
+    c = finding.get('computed', {}) or {}
+    target = finding.get('target_meta_id', '?')
+    if finding.get('insufficient_data'):
+        return (f"{target} : données insuffisantes "
+                f"({c.get('samples', 0)} échantillon(s)) — non évaluable.")
+    verdict = 'vrai' if finding.get('fired') else 'faux'
+    # Fenêtres comparées (« court vs long × facteur »).
+    if 'short' in c and 'long' in c and 'boundary' in c:
+        arrow = '>' if c.get('direction') == 'up' else '<'
+        return (
+            f"{c.get('metric', 'métrique')} {c.get('short')} sur {c.get('short_days')} j "
+            f"{arrow} {c.get('long')} × {c.get('factor')} = {c.get('boundary')} sur "
+            f"{c.get('long_days')} j → {verdict}.")
+    # Classement top-N.
+    if 'rank' in c and 'top_n' in c:
+        return (
+            f"Dépense {c.get('spend')} — rang {c.get('rank')} "
+            f"(top-{c.get('top_n')} : {'oui' if c.get('in_top_n') else 'non'}), "
+            f"résultats {c.get('results')} < {c.get('min_results')} → {verdict}.")
+    # Fréquence (évaluateur historique).
+    if 'frequency' in c and 'threshold' in c:
+        return (f"Fréquence {c.get('frequency')} > seuil {c.get('threshold')} "
+                f"→ {verdict}.")
+    # Seuil sur métrique dérivée (gt/lt).
+    if 'value' in c and 'threshold' in c:
+        op = '>' if c.get('operator') == 'gt' else '<'
+        return (
+            f"{c.get('metric', 'métrique')} {c.get('value')} {op} "
+            f"seuil {c.get('threshold')} sur {c.get('window_days', '?')} j "
+            f"→ {verdict}.")
+    return (f"{template.get('label_fr', 'Règle')} pour {target} → {verdict}.")
+
+
+def _action_summary(action):
+    """ADSDEEP43 — Résumé JSON-safe de l'action PROPOSÉE d'un déclenchement (le
+    DELTA appliqué) : type, id, statut, raison, et les chiffres clés du payload
+    (budget courant→proposé, cible de pause…). Rendu tel quel sur l'écran Règles."""
+    payload = action.payload or {}
+    delta = {}
+    if 'new_daily_budget_mad' in payload:
+        # Montée de budget : delta MAD lisible (courant→proposé).
+        cur = payload.get('current_budget')
+        delta = {
+            'type': 'budget',
+            'current_mad': (round(float(cur) / 100, 2) if cur is not None
+                            else None),
+            'new_mad': payload.get('new_daily_budget_mad')}
+    elif payload.get('target_meta_id') and action.kind in ('pause',):
+        delta = {'type': 'pause', 'target': payload.get('target_meta_id')}
+    elif payload.get('new_adset_name'):
+        delta = {'type': 'duplicate', 'new_adset': payload.get('new_adset_name')}
+    return {
+        'id': action.pk, 'kind': action.kind, 'status': action.status,
+        'reason_fr': action.reason_fr, 'delta': delta}
+
+
 def _record_last_result(policy, result):
     """Écrit ``last_result`` + ``last_evaluated_at`` (à CHAQUE évaluation)."""
     from django.utils import timezone
@@ -705,11 +768,16 @@ def evaluate_company(company, *, cadences=None, now=None, client=None,
         fired_any = False
         summaries = []
         for finding in findings:
-            summaries.append({
+            # ADSDEEP43 — entrée de journal ENRICHIE : entité évaluée, verdict de
+            # condition avec ses valeurs (``condition_fr``), et — si déclenchée —
+            # le delta de l'action proposée (``action``).
+            entry = {
                 'target': finding.get('target_meta_id'),
+                'target_type': finding.get('target_type'),
                 'fired': finding.get('fired', False),
                 'insufficient_data': finding.get('insufficient_data', False),
-                'computed': finding.get('computed', {})})
+                'computed': finding.get('computed', {}),
+                'condition_fr': _condition_fr(template, finding)}
             if finding.get('insufficient_data'):
                 # Branche insufficient_data : ALERTE toujours (piège Madgicx).
                 _emit_alert(
@@ -720,8 +788,11 @@ def evaluate_company(company, *, cadences=None, now=None, client=None,
                     dry_run=policy.dry_run, insufficient=True)
             elif finding.get('fired'):
                 fired_any = True
-                _act_on_finding(company, policy, template, finding,
-                                config=config, client=client)
+                action = _act_on_finding(company, policy, template, finding,
+                                         config=config, client=client)
+                if action is not None:
+                    entry['action'] = _action_summary(action)
+            summaries.append(entry)
 
         _record_last_result(policy, {
             'evaluated': True, 'fired': fired_any,

@@ -22,6 +22,7 @@ export default function RulesScreen() {
   const [templates, setTemplates] = useState([])
   const [anomalies, setAnomalies] = useState([])
   const [history, setHistory] = useState([])
+  const [journal, setJournal] = useState([]) // ADSDEEP43 — journal d'exécution enrichi
   const [loading, setLoading] = useState(true)
   const [dryRuns, setDryRuns] = useState({}) // key → { resume_fr, objets_touches }
   const [busyKey, setBusyKey] = useState(null)
@@ -40,6 +41,10 @@ export default function RulesScreen() {
       .then(r => setHistory(normalizeAlerts(r.data)))
       .catch(() => setHistory([]))
       .finally(() => setLoading(false))
+    // ADSDEEP43 — journal d'exécution enrichi (le « pourquoi » de chaque passe).
+    adsengineApi.rules.journal()
+      .then(r => setJournal(Array.isArray(r.data?.results) ? r.data.results : []))
+      .catch(() => setJournal([]))
   }, [])
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
@@ -185,6 +190,64 @@ export default function RulesScreen() {
                     )
                   })}
                 </ul>
+              )}
+          </section>
+
+          {/* ── ADSDEEP43 — Journal d'exécution ENRICHI (le « pourquoi ») ── */}
+          <section className="ae-rules-journal" data-testid="ae-rules-journal">
+            <h3 style={{ margin: '0 0 0.6rem' }}>Journal d&apos;exécution</h3>
+            {journal.length === 0
+              ? <p data-testid="ae-rules-journal-empty" style={{ color: '#64748b' }}>
+                  Aucune règle évaluée pour l&apos;instant.</p>
+              : (
+                <div style={{ display: 'grid', gap: '0.6rem' }}>
+                  {journal.map(j => (
+                    <article key={j.id} className="card ae-rule-run" data-testid="ae-rule-run"
+                      style={{ padding: '0.85rem', border: '1px solid #e2e8f0' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        <strong>{j.label_fr}</strong>
+                        {j.dry_run && (
+                          <span className="badge" style={{ background: '#f1f5f9', color: '#475569' }}>Simulation</span>
+                        )}
+                        <span className="badge" data-testid="ae-rule-run-verdict"
+                          style={j.fired
+                            ? { background: '#fee2e2', color: '#b91c1c' }
+                            : { background: '#dcfce7', color: '#166534' }}>
+                          {j.fired ? 'Déclenchée' : (j.evaluated ? 'Sans déclenchement' : 'Non câblée')}
+                        </span>
+                        {j.last_evaluated_at && (
+                          <span style={{ marginLeft: 'auto', color: '#94a3b8', fontSize: '0.8rem' }}>
+                            {new Date(j.last_evaluated_at).toLocaleString('fr-FR')}
+                          </span>
+                        )}
+                      </div>
+                      {(j.findings || []).length === 0
+                        ? <p style={{ margin: '0.35rem 0 0', color: '#64748b', fontSize: '0.9rem' }}>
+                            Aucune entité surveillée sur la dernière passe.</p>
+                        : (
+                          <ul style={{ listStyle: 'none', margin: '0.5rem 0 0', padding: 0, display: 'grid', gap: '0.4rem' }}>
+                            {(j.findings || []).map((f, i) => (
+                              <li key={`${j.id}-${f.target || i}`} data-testid="ae-rule-run-finding"
+                                style={{ background: '#f8fafc', borderRadius: 6, padding: '0.5rem 0.6rem' }}>
+                                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'baseline', flexWrap: 'wrap' }}>
+                                  <strong style={{ fontSize: '0.85rem' }}>{f.target || '—'}</strong>
+                                  <span style={{ color: '#334155', fontSize: '0.85rem' }}>{f.condition_fr || '—'}</span>
+                                </div>
+                                {f.action && (
+                                  <div data-testid="ae-rule-run-delta"
+                                    style={{ marginTop: '0.3rem', color: '#5b21b6', fontSize: '0.82rem' }}>
+                                    Action proposée : {f.action.reason_fr}
+                                    {f.action.delta?.type === 'budget'
+                                      && ` (${f.action.delta.current_mad ?? '?'} → ${f.action.delta.new_mad} MAD/j)`}
+                                  </div>
+                                )}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                    </article>
+                  ))}
+                </div>
               )}
           </section>
         </div>

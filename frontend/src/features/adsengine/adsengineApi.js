@@ -131,6 +131,9 @@ const adsengineApi = {
     // Simulation « dry-run » d'un gabarit : objets touchés + effet, sans appliquer.
     dryRun: (templateKey, payload) =>
       api.post('/adsengine/regles/dry-run/', { template: templateKey, ...payload }),
+    // ADSDEEP43 — journal d'exécution ENRICHI : par règle, la dernière passe avec
+    // le verdict de condition (valeurs) + le delta de l'action proposée.
+    journal: () => api.get('/adsengine/regles/journal/'),
   },
 
   // ── ENG16/ENG43 — Anomalies (flux avec sévérités) ──

@@ -549,6 +549,38 @@ class RulePolicyViewSet(AdsengineViewSet):
         return Response(
             {'resume_fr': resume_fr, 'objets_touches': objets_touches})
 
+    # ADSDEEP43 — Journal d'exécution ENRICHI des règles de la société : pour
+    # chaque règle, la dernière passe avec — par entité surveillée — le verdict de
+    # condition (valeurs comparées, ``condition_fr``) et le delta de l'action
+    # proposée (``action``) — le « pourquoi » de chaque déclenchement, rendu sur
+    # l'écran Règles. Lecture ``adsengine_view``.
+    @action(detail=False, methods=['get'],
+            permission_classes=[HasPermissionOrLegacy('adsengine_view')])
+    def journal(self, request):
+        from . import rule_templates as rt
+        company = getattr(request.user, 'company', None)
+        if company is None:
+            return Response({'detail': 'Aucune société.'}, status=400)
+        items = []
+        policies = (RulePolicy.objects
+                    .filter(company=company)
+                    .order_by('-last_evaluated_at', 'template_key'))
+        for p in policies:
+            tpl = rt.get_template(p.template_key)
+            lr = p.last_result or {}
+            items.append({
+                'id': p.pk,
+                'template_key': p.template_key,
+                'label_fr': tpl['label_fr'] if tpl else p.template_key,
+                'enabled': p.enabled,
+                'dry_run': p.dry_run,
+                'last_evaluated_at': p.last_evaluated_at,
+                'evaluated': lr.get('evaluated', False),
+                'fired': lr.get('fired', False),
+                'findings': lr.get('findings', []),
+            })
+        return Response({'results': items})
+
 
 class AnomalyEventViewSet(AdsengineViewSet):
     """ADSENG4 — Liste (lecture seule) des anomalies détectées par le gardien."""
