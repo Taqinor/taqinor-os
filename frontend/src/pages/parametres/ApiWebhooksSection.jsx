@@ -6,10 +6,12 @@
 import { useEffect, useState } from 'react'
 import {
   KeyRound, Webhook as WebhookIcon, Plus, Trash2, Copy, Check, Ban, BookOpen,
+  RotateCw, History, Send, Play,
 } from 'lucide-react'
 import publicapiApi from '../../api/publicapiApi'
 import {
   Card, CardContent, Button, Input, Spinner, Badge, Switch, Checkbox, toast,
+  RadioGroup, RadioGroupItem,
 } from '../../ui'
 import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { SectionTitle } from './peComponents'
@@ -161,6 +163,104 @@ function DocsReference() {
   )
 }
 
+// NTAPI21 — console de docs interactive (Redoc-like, self-contained, 100 %
+// local). Rend l'OpenAPI 3.1 (NTAPI20, `/api/public/openapi.json`) en
+// référence lisible et permet un « essai » côté client : l'appel de
+// démonstration passe par la SESSION admin (jamais une clé API brute) vers
+// le bac à sable NTAPI27, renvoyant une VRAIE réponse (jamais de données
+// réelles).
+function InteractiveConsole() {
+  const [open, setOpen] = useState(false)
+  const [schema, setSchema] = useState(null)
+  const [error, setError] = useState(false)
+  const [trying, setTrying] = useState(false)
+  const [tryResult, setTryResult] = useState(null)
+
+  const toggle = () => {
+    const next = !open
+    setOpen(next)
+    if (next && !schema) {
+      publicapiApi.getOpenApiSchema()
+        .then(r => setSchema(r.data))
+        .catch(() => setError(true))
+    }
+  }
+
+  const essayer = async () => {
+    setTrying(true)
+    setTryResult(null)
+    try {
+      const r = await publicapiApi.sandboxTry('leads')
+      setTryResult(r.data)
+    } catch (e) {
+      toast.error(e?.response?.data?.detail ?? 'Essai impossible.')
+    } finally {
+      setTrying(false)
+    }
+  }
+
+  const paths = schema ? Object.entries(schema.paths || {}) : []
+
+  return (
+    <Card>
+      <CardContent className="pt-4 sm:pt-5">
+        <div className="flex items-center justify-between gap-2">
+          <SectionTitle icon={<BookOpen className="size-4" />} label="Console de documentation interactive" />
+          <Button type="button" size="sm" variant="outline" onClick={toggle}>
+            {open ? 'Masquer' : 'Ouvrir la console'}
+          </Button>
+        </div>
+        <p className="mb-3 text-sm text-muted-foreground">
+          Document OpenAPI 3.1 complet, généré depuis l'API elle-même — dépliez un
+          endpoint puis « Essayer » exécute un vrai appel de démonstration contre le
+          bac à sable (jamais vos données réelles).
+        </p>
+
+        {open && error && (
+          <p className="text-sm text-destructive">Document OpenAPI indisponible pour le moment.</p>
+        )}
+        {open && !schema && !error && (
+          <p className="text-sm text-muted-foreground"><Spinner /> Chargement du schéma…</p>
+        )}
+        {open && schema && (
+          <div className="flex flex-col gap-3 text-sm">
+            <p className="text-xs text-muted-foreground">
+              {schema.info?.title} — v{schema.info?.version} · {paths.length} chemin(s) documenté(s)
+            </p>
+            <div className="flex flex-col gap-2">
+              {paths.map(([chemin, ops]) => (
+                <details key={chemin} className="rounded-lg border border-border p-2">
+                  <summary className="cursor-pointer text-xs font-medium">
+                    {Object.keys(ops).map(m => m.toUpperCase()).join(', ')} <code>{chemin}</code>
+                  </summary>
+                  <div className="mt-2 flex flex-col gap-1 text-xs text-muted-foreground">
+                    {Object.entries(ops).map(([method, op]) => (
+                      <div key={method}>{method.toUpperCase()} — {op.summary}</div>
+                    ))}
+                  </div>
+                </details>
+              ))}
+            </div>
+            <div className="rounded-lg border border-border p-3">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs font-medium">Essai de démonstration — <code>GET /api/public/leads/</code> (bac à sable)</p>
+                <Button type="button" size="sm" onClick={essayer} disabled={trying}>
+                  <Play className="size-4" /> {trying ? 'Essai…' : 'Essayer'}
+                </Button>
+              </div>
+              {tryResult && (
+                <pre className="mt-2 max-h-64 overflow-auto rounded bg-background px-2 py-1 text-xs">
+                  <code>{JSON.stringify(tryResult, null, 2)}</code>
+                </pre>
+              )}
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 export default function ApiWebhooksSection() {
   const [loading, setLoading] = useState(true)
   const [catalogue, setCatalogue] = useState({ scopes: [], events: [] })
@@ -170,7 +270,13 @@ export default function ApiWebhooksSection() {
   // Formulaire de création de clé.
   const [newKeyLabel, setNewKeyLabel] = useState('')
   const [newKeyScopes, setNewKeyScopes] = useState([])
+  // NTAPI26 — environnement de la nouvelle clé (`live` par défaut).
+  const [newKeyEnv, setNewKeyEnv] = useState('live')
   const [revealedKey, setRevealedKey] = useState(null)
+  // NTAPI22 — plan d'API + usage consommé (jour/mois).
+  const [plan, setPlan] = useState(null)
+  // NTAPI25 — historique de livraison déplié par webhook (id → liste).
+  const [openDeliveries, setOpenDeliveries] = useState({})
 
   // Formulaire de création de webhook.
   const [newHookUrl, setNewHookUrl] = useState('')
@@ -208,6 +314,7 @@ export default function ApiWebhooksSection() {
     publicapiApi.getCatalogue()
       .then(r => setCatalogue(r.data))
       .catch(() => setCatalogue({ scopes: [], events: [] }))
+    publicapiApi.getPlan().then(r => setPlan(r.data)).catch(() => {})
     loadAll()
   }, [])
 
@@ -218,11 +325,53 @@ export default function ApiWebhooksSection() {
     if (!newKeyLabel.trim()) return
     try {
       const r = await publicapiApi.createKey({
-        label: newKeyLabel.trim(), scopes: newKeyScopes })
+        label: newKeyLabel.trim(), scopes: newKeyScopes, environnement: newKeyEnv })
       setRevealedKey(r.data.key)
-      setNewKeyLabel(''); setNewKeyScopes([])
+      setNewKeyLabel(''); setNewKeyScopes([]); setNewKeyEnv('live')
       loadAll()
     } catch (e) { toast.error(e?.response?.data?.detail ?? 'Création impossible.') }
+  }
+  // NTAPI23 — rotation sans coupure : nouvelle clé + grace period sur l'ancienne.
+  const rotateKey = (k) => setPendingAction({
+    severity: 'medium',
+    title: `Faire tourner la clé « ${k.label} » ?`,
+    description: "Une nouvelle clé est émise immédiatement ; l'ancienne reste "
+      + 'valide 7 jours (période de grâce) pour laisser le temps de migrer vos '
+      + 'intégrations, puis cesse de fonctionner.',
+    confirmLabel: 'Faire tourner',
+    run: async () => {
+      try {
+        const r = await publicapiApi.rotateKey(k.id)
+        setRevealedKey(r.data.key)
+        loadAll()
+      } catch (e) { toast.error(e?.response?.data?.detail ?? 'Rotation impossible.') }
+    },
+  })
+  const toggleDeliveries = async (webhookId) => {
+    if (openDeliveries[webhookId]) {
+      setOpenDeliveries(prev => { const n = { ...prev }; delete n[webhookId]; return n })
+      return
+    }
+    try {
+      const r = await publicapiApi.getWebhookDeliveries(webhookId)
+      setOpenDeliveries(prev => ({ ...prev, [webhookId]: r.data.results ?? r.data }))
+    } catch { toast.error('Historique indisponible.') }
+  }
+  const replay = async (webhookId, deliveryId) => {
+    try {
+      await publicapiApi.replayDelivery(webhookId, deliveryId)
+      toast.success('Livraison rejouée.')
+      const r = await publicapiApi.getWebhookDeliveries(webhookId)
+      setOpenDeliveries(prev => ({ ...prev, [webhookId]: r.data.results ?? r.data }))
+    } catch { toast.error('Rejeu impossible.') }
+  }
+  const sendTestPing = async (webhookId) => {
+    try {
+      await publicapiApi.testPingWebhook(webhookId)
+      toast.success('Ping de test envoyé.')
+      const r = await publicapiApi.getWebhookDeliveries(webhookId)
+      setOpenDeliveries(prev => ({ ...prev, [webhookId]: r.data.results ?? r.data }))
+    } catch { toast.error('Envoi du ping impossible.') }
   }
   const revokeKey = (k) => setPendingAction({
     severity: 'medium',
@@ -295,6 +444,16 @@ export default function ApiWebhooksSection() {
             cochés. La clé complète n'est affichée qu'à la création.
           </p>
 
+          {/* NTAPI22 — quota consommé (jour/mois) de la société. */}
+          {plan && (
+            <p className="mb-3 text-xs text-muted-foreground">
+              Usage — aujourd'hui : <strong>{plan.usage_jour}</strong>
+              {plan.quota_par_jour ? ` / ${plan.quota_par_jour}` : ''} req. · ce mois-ci :{' '}
+              <strong>{plan.usage_mois}</strong>
+              {plan.quota_par_mois ? ` / ${plan.quota_par_mois}` : ''} req. (plan « {plan.code} »)
+            </p>
+          )}
+
           {/* Création */}
           <div className="rounded-lg border border-border p-3">
             <div className="flex flex-col gap-2 sm:flex-row">
@@ -316,6 +475,18 @@ export default function ApiWebhooksSection() {
                 </label>
               ))}
             </div>
+            {/* NTAPI26 — environnement : `test` opère sur un bac à sable isolé
+                (NTAPI27), `live` sur les données réelles. */}
+            <RadioGroup
+              value={newKeyEnv} onValueChange={setNewKeyEnv}
+              className="mt-2 flex flex-row gap-4">
+              <label className="flex items-center gap-2 text-sm">
+                <RadioGroupItem value="live" id="key-env-live" /> Live (données réelles)
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <RadioGroupItem value="test" id="key-env-test" /> Test (bac à sable de démo)
+              </label>
+            </RadioGroup>
             {revealedKey && (
               <RevealOnce label="Votre nouvelle clé API" value={revealedKey}
                 onDismiss={() => setRevealedKey(null)} />
@@ -334,16 +505,24 @@ export default function ApiWebhooksSection() {
                   <div className="flex items-center gap-2">
                     <span className="font-medium">{k.label}</span>
                     {!k.enabled && <Badge variant="secondary">Révoquée</Badge>}
+                    {k.environnement === 'test' && <Badge tone="info">Test</Badge>}
+                    {k.expire_le && <Badge tone="outline">Rotation en cours — expire {new Date(k.expire_le).toLocaleDateString()}</Badge>}
                   </div>
                   <div className="text-xs text-muted-foreground">
                     <code>{k.prefix}…</code> · {(k.scopes || []).join(', ') || 'aucun droit'}
+                    {' · '}dernier usage : {k.last_used_at ? new Date(k.last_used_at).toLocaleString() : 'jamais'}
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
                   {k.enabled && (
-                    <Button type="button" size="sm" variant="ghost" onClick={() => revokeKey(k)}>
-                      <Ban className="size-4" /> Révoquer
-                    </Button>
+                    <>
+                      <Button type="button" size="sm" variant="ghost" onClick={() => rotateKey(k)}>
+                        <RotateCw className="size-4" /> Rotation
+                      </Button>
+                      <Button type="button" size="sm" variant="ghost" onClick={() => revokeKey(k)}>
+                        <Ban className="size-4" /> Révoquer
+                      </Button>
+                    </>
                   )}
                   <Button type="button" size="sm" variant="ghost" onClick={() => deleteKey(k)}>
                     <Trash2 className="size-4" />
@@ -404,22 +583,51 @@ export default function ApiWebhooksSection() {
             )}
             {webhooks.map(h => (
               <div key={h.id}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border px-3 py-2">
-                <div className="min-w-0">
-                  <div className="font-medium">{h.label || h.target_url}</div>
-                  <div className="break-all text-xs text-muted-foreground">
-                    {h.target_url} · {(h.events || []).join(', ') || 'aucun évènement'}
+                className="flex flex-col gap-2 rounded-lg border border-border px-3 py-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="font-medium">{h.label || h.target_url}</div>
+                    <div className="break-all text-xs text-muted-foreground">
+                      {h.target_url} · {(h.events || []).join(', ') || 'aucun évènement'}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Switch checked={h.enabled} onCheckedChange={() => toggleWebhook(h)} />
+                    <Button type="button" size="sm" variant="ghost" onClick={() => sendTestPing(h.id)}>
+                      <Send className="size-4" /> Ping de test
+                    </Button>
+                    <Button type="button" size="sm" variant="ghost" onClick={() => toggleDeliveries(h.id)}>
+                      <History className="size-4" /> Historique
+                    </Button>
+                    <Button type="button" size="sm" variant="ghost" onClick={() => rotateSecret(h)}>
+                      Régénérer le secret
+                    </Button>
+                    <Button type="button" size="sm" variant="ghost" onClick={() => deleteWebhook(h)}>
+                      <Trash2 className="size-4" />
+                    </Button>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Switch checked={h.enabled} onCheckedChange={() => toggleWebhook(h)} />
-                  <Button type="button" size="sm" variant="ghost" onClick={() => rotateSecret(h)}>
-                    Régénérer le secret
-                  </Button>
-                  <Button type="button" size="sm" variant="ghost" onClick={() => deleteWebhook(h)}>
-                    <Trash2 className="size-4" />
-                  </Button>
-                </div>
+                {/* NTAPI25 — historique de livraison + rejeu d'une livraison échouée. */}
+                {openDeliveries[h.id] && (
+                  <div className="flex flex-col gap-1 border-t border-border pt-2">
+                    {openDeliveries[h.id].length === 0 && (
+                      <p className="text-xs text-muted-foreground">Aucune livraison pour l'instant.</p>
+                    )}
+                    {openDeliveries[h.id].map(d => (
+                      <div key={d.id}
+                        className="flex flex-wrap items-center justify-between gap-2 rounded bg-background px-2 py-1 text-xs">
+                        <span>
+                          {d.event} — <Badge tone={d.status === 'success' ? 'success' : 'danger'}>{d.status}</Badge>
+                          {' '}{new Date(d.created_at).toLocaleString()}
+                          {d.response_status ? ` · HTTP ${d.response_status}` : ''}
+                        </span>
+                        <Button type="button" size="sm" variant="ghost" onClick={() => replay(h.id, d.id)}>
+                          Rejouer
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -428,6 +636,9 @@ export default function ApiWebhooksSection() {
 
       {/* ── Référence de l'API (FG105) ── */}
       <DocsReference />
+
+      {/* ── Console de docs interactive (NTAPI21) ── */}
+      <InteractiveConsole />
 
       <ConfirmDialog
         open={!!pendingAction}

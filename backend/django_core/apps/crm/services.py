@@ -3381,3 +3381,16 @@ def archiver_anciens(now, jours, apply_=True):
         LeadActivity, LeadActivityArchive, _leadactivity_to_archive,
         cutoff_field='created_at', now=now, jours=jours, apply_=apply_,
     )
+
+
+def delete_leads_for_company(company):
+    """NTAPI27 — supprime TOUS les leads de ``company``. Point d'entrée
+    d'ÉCRITURE cross-app sanctionné pour ``apps.publicapi`` (reset du bac à
+    sable API) : ``company`` y est TOUJOURS la société-jumelle sandbox,
+    jamais une société réelle — l'appelant en est seul responsable. Renvoie
+    le nombre supprimé."""
+    from .models import Lead
+    qs = Lead.objects.filter(company=company)
+    count = qs.count()
+    qs.delete()
+    return count

@@ -12,6 +12,7 @@ from rest_framework.views import APIView
 from authentication.permissions import IsAdminOrResponsableTier
 from core.api_usage import plan_pour_societe
 
+from .constants import ENV_LIVE, ENV_TEST
 from .models import ApiKey, Webhook, WebhookDelivery
 from .serializers import (
     ApiKeySerializer, ApiKeyCreateSerializer, WebhookSerializer,
@@ -116,8 +117,14 @@ class ApiUsagePlanView(APIView):
     permission_classes = [IsAdminOrResponsableTier]
 
     def get(self, request):
+        from core.api_usage import usage_jour, usage_mois
         plan = plan_pour_societe(request.user.company)
-        return Response(ApiUsagePlanSerializer(plan).data)
+        data = ApiUsagePlanSerializer(plan).data
+        # NTAPI22 — « quota consommé » affiché dans le portail développeur :
+        # additif au contrat existant (le plan lui-même reste inchangé).
+        data['usage_jour'] = usage_jour(request.user.company)
+        data['usage_mois'] = usage_mois(request.user.company)
+        return Response(data)
 
     def patch(self, request):
         plan = plan_pour_societe(request.user.company)
@@ -141,11 +148,22 @@ class ApiKeyViewSet(_CompanyScopedMixin, viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         in_ser = ApiKeyCreateSerializer(data=request.data)
         in_ser.is_valid(raise_exception=True)
+        company = request.user.company
+        environnement = in_ser.validated_data.get('environnement') or ENV_LIVE
+        if environnement == ENV_TEST:
+            # NTAPI26/27 — une clé « test » est émise DIRECTEMENT sur la
+            # société-jumelle sandbox (jamais sur la société réelle) : le
+            # scoping company_id habituel garantit alors, sans aucun code
+            # spécial ailleurs, qu'elle ne peut jamais lire/écrire de données
+            # réelles.
+            from .services import get_or_create_sandbox
+            company = get_or_create_sandbox(company).sandbox_company
         instance, raw_key = ApiKey.issue(
-            company=request.user.company,
+            company=company,
             label=in_ser.validated_data['label'],
             scopes=in_ser.validated_data['scopes'],
             created_by=request.user,
+            environnement=environnement,
         )
         data = ApiKeySerializer(instance).data
         # La clé en clair n'est disponible QUE dans cette réponse de création.
@@ -159,6 +177,25 @@ class ApiKeyViewSet(_CompanyScopedMixin, viewsets.ModelViewSet):
         instance.enabled = False
         instance.save(update_fields=['enabled'])
         return Response(ApiKeySerializer(instance).data)
+
+    @action(detail=True, methods=['post'])
+    def rotate(self, request, pk=None):
+        """NTAPI23 — rotation sans coupure : émet une nouvelle clé (mêmes
+        scopes/environnement), garde l'ancienne valide jusqu'à `expire_le`
+        (`grace_jours`, défaut 7). L'ancienne continue de fonctionner (avec
+        l'en-tête `Deprecation`) jusqu'à l'échéance, puis seule la nouvelle."""
+        instance = self.get_object()
+        grace_jours = request.data.get('grace_jours')
+        try:
+            grace_jours = int(grace_jours) if grace_jours is not None else 7
+        except (TypeError, ValueError):
+            grace_jours = 7
+        new_instance, raw_key = instance.rotate(
+            grace_jours=grace_jours, created_by=request.user)
+        data = ApiKeySerializer(new_instance).data
+        data['key'] = raw_key  # une seule fois, jamais re-stocké
+        data['ancienne_cle'] = ApiKeySerializer(instance).data
+        return _no_store(Response(data, status=status.HTTP_201_CREATED))
 
 
 class WebhookViewSet(_CompanyScopedMixin, viewsets.ModelViewSet):
@@ -324,3 +361,36 @@ class ServiceAccountViewSet(viewsets.ModelViewSet):
         instance.actif = False
         instance.save(update_fields=['actif'])
         return Response({'actif': False})
+
+
+class SandboxTryView(APIView):
+    """NTAPI21 — « essayer » un endpoint depuis la console de docs interactive
+    (``/parametres/api/docs``), authentifié par la SESSION admin (jamais une
+    clé API brute exposée côté client) : exécute un appel de démonstration
+    RÉEL contre le bac à sable NTAPI27 de la société courante (créé/seedé au
+    besoin). Réservé au palier admin/responsable, comme le reste de l'écran
+    Paramètres → API & Webhooks. Ne renvoie JAMAIS de donnée réelle."""
+    permission_classes = [IsAdminOrResponsableTier]
+
+    _RESOURCES = ('leads',)
+
+    def post(self, request):
+        resource = (request.data.get('resource') or 'leads').strip().lower()
+        if resource not in self._RESOURCES:
+            return Response(
+                {'detail': f"Ressource non démontrable : « {resource} » "
+                           f"(disponible : {', '.join(self._RESOURCES)})."},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        from .services import get_or_create_sandbox
+        from .public_serializers import PublicLeadSerializer
+        from apps.crm.models import Lead
+
+        tenant = get_or_create_sandbox(request.user.company)
+        qs = Lead.objects.filter(
+            company=tenant.sandbox_company).order_by('-date_creation')[:5]
+        return Response({
+            'resource': resource,
+            'sandbox': True,
+            'results': PublicLeadSerializer(qs, many=True).data,
+        })

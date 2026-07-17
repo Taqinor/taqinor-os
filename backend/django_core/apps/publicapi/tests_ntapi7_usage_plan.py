@@ -89,3 +89,13 @@ class Ntapi7UsagePlanTests(TestCase):
             role_legacy='normal')
         resp = _session_client(limited).get('/api/django/publicapi/plan/')
         self.assertEqual(resp.status_code, 403)
+
+    def test_get_includes_consumed_usage_ntapi22(self):
+        # NTAPI22 — le portail développeur affiche le « quota consommé » :
+        # additif au contrat existant, jamais de fuite inter-société.
+        resp = _session_client(self.admin_a).get('/api/django/publicapi/plan/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn('usage_jour', resp.data)
+        self.assertIn('usage_mois', resp.data)
+        self.assertEqual(resp.data['usage_jour'], 0)
+        self.assertEqual(resp.data['usage_mois'], 0)
