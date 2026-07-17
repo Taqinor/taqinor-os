@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import marketingApi from '../../api/marketingApi'
-import { emptyRuleForm, ruleFormFromRegles, buildRegles, reglesKey } from './segmentBuilder'
+import { ruleFormFromRegles, buildRegles, reglesKey } from './segmentBuilder'
 
 /* ============================================================================
    NTMKT4 — Constructeur de segment no-code + prévisualisation live.

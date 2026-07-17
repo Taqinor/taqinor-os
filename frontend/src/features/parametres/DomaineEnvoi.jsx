@@ -75,7 +75,7 @@ export default function DomaineEnvoi() {
 
       <form onSubmit={ajouter} style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
         <input className="form-input" data-testid="domaine-nouveau"
-          placeholder="ex. taqinor.ma" required value={nouveauDomaine}
+          placeholder="ex. votredomaine.ma" required value={nouveauDomaine}
           onChange={e => setNouveauDomaine(e.target.value)} style={{ flex: '1 1 220px' }} />
         <button type="submit" className="btn btn-primary" data-testid="domaine-ajouter">
           Ajouter

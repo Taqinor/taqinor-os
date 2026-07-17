@@ -10,7 +10,7 @@
 
 // Parse un texte CSV en { headers: string[], rows: string[][] }.
 export function parseCsv(text) {
-  const content = (text || '').replace(/^﻿/, '') // BOM éventuel
+  const content = (text || '').replace(/^\uFEFF/, '') // BOM eventuel
   const rows = []
   let row = []
   let field = ''
