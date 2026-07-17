@@ -3448,3 +3448,64 @@ class CompteurUsage(TenantModel):
             f'{self.code_compteur} {self.type_cible}#{self.cible_id} '
             f'[{self.periode_debut}..{self.periode_fin}] = {self.quantite}'
         )
+
+
+class EssaiAbonnement(TenantModel):
+    """Période d'essai (trial) d'un abonnement avant facturation — NTSUB5.
+
+    Aucun contrat/abonnement ne pouvait démarrer « en essai » : ``Contrat.statut``
+    passait directement à actif/facturation active. Un ``EssaiAbonnement`` déclare
+    qu'une cible (``Contrat`` ou ``sav.ContratMaintenance`` via le couple typé
+    ``(type_cible, cible_id)`` — jamais un FK dur cross-app) est en ESSAI jusqu'à
+    ``date_fin_essai`` : pendant l'essai la facturation reste gelée (l'appelant
+    force ``facturation_active=False`` sur les échéanciers, réutilisant le
+    garde-fou YSUBS8) et aucune échéance n'est générée.
+
+    La commande planifiée ``convertir_essais_expires`` (beat quotidien, patron
+    YSUBS1/2) ACTIVE la facturation à ``date_fin_essai`` SAUF si la cible a été
+    annulée avant (contrat ``resilie``), et notifie le responsable J-3 avant la
+    fin d'essai (idempotence via ``notifie_j3``).
+
+    Multi-tenant : ``company`` héritée de ``TenantModel``, posée CÔTÉ SERVEUR.
+    """
+
+    type_cible = models.CharField(
+        max_length=20,
+        choices=AbonnementAddOnLigne.TypeCible.choices,
+        verbose_name='Type de cible')
+    cible_id = models.PositiveIntegerField(verbose_name='ID de la cible')
+    date_fin_essai = models.DateField(verbose_name="Date de fin d'essai")
+    converti = models.BooleanField(default=False, verbose_name='Converti')
+    date_conversion = models.DateField(
+        null=True, blank=True, verbose_name='Date de conversion')
+    plan_apres_essai = models.ForeignKey(
+        'PlanAbonnement',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='essais',
+        verbose_name="Plan d'abonnement après essai",
+    )
+    # Idempotence de la notification J-3 : posée une fois, jamais renvoyée.
+    notifie_j3 = models.BooleanField(
+        default=False, verbose_name='Notifié J-3')
+
+    class Meta:
+        verbose_name = "Essai d'abonnement"
+        verbose_name_plural = "Essais d'abonnement"
+        ordering = ['-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'type_cible', 'cible_id'],
+                name='contrats_essai_uniq_cible'),
+        ]
+        indexes = [
+            models.Index(
+                fields=['company', 'converti', 'date_fin_essai'],
+                name='contrats_essai_co_fin'),
+        ]
+
+    def __str__(self):
+        return (
+            f'Essai {self.type_cible}#{self.cible_id} '
+            f'→ {self.date_fin_essai} ({"converti" if self.converti else "en cours"})'
+        )

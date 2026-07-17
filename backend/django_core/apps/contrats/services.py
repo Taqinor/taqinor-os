@@ -45,6 +45,7 @@ Contenu :
   (règle interdite pour ce pilote — voir ``docs/PLAN.md`` SCA35).
 """
 import html as _html
+import logging
 import re
 from datetime import timedelta
 from decimal import Decimal
@@ -61,6 +62,8 @@ from .machine_etats import (  # noqa: F401 — réexport (point d'entrée servic
     statuts_suivants,
     transition_permise,
 )
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # ARC34 — émission automation générique sur transition de statut du Contrat
@@ -4399,3 +4402,144 @@ def total_usage_periode(company, *, type_cible, cible_id, code_compteur,
         .aggregate(total=Sum('quantite'))['total']
     )
     return total if total is not None else Decimal('0')
+
+
+# ---------------------------------------------------------------------------
+# NTSUB5 — Période d'essai (trial) sur abonnement + conversion planifiée
+# ---------------------------------------------------------------------------
+
+
+class EssaiAbonnementError(Exception):
+    """Levée quand un essai d'abonnement ne peut pas être démarré."""
+
+
+def demarrer_essai_contrat(contrat, *, date_fin_essai, plan_apres_essai=None,
+                           auteur=None):
+    """Démarre une période d'essai sur un ``Contrat`` — NTSUB5.
+
+    Gèle la facturation (``facturation_active=False`` sur tous les échéanciers
+    du contrat — réutilise le garde-fou YSUBS8 : aucune échéance générée tant
+    que la facturation n'est pas active) et crée un ``EssaiAbonnement`` daté.
+    Idempotent par cible (contrainte d'unicité) : un second appel sur le même
+    contrat lève ``EssaiAbonnementError``. Journalise au chatter. Renvoie
+    l'essai créé.
+    """
+    from .models import AbonnementAddOnLigne, EcheancierContrat, EssaiAbonnement
+
+    if EssaiAbonnement.objects.filter(
+            company=contrat.company,
+            type_cible=AbonnementAddOnLigne.TypeCible.CONTRAT,
+            cible_id=contrat.id).exists():
+        raise EssaiAbonnementError(
+            "Un essai existe déjà pour ce contrat.")
+
+    EcheancierContrat.objects.filter(
+        company=contrat.company, contrat=contrat,
+        facturation_active=True).update(facturation_active=False)
+
+    essai = EssaiAbonnement.objects.create(
+        company=contrat.company,
+        type_cible=AbonnementAddOnLigne.TypeCible.CONTRAT,
+        cible_id=contrat.id, date_fin_essai=date_fin_essai,
+        plan_apres_essai=plan_apres_essai)
+    journaliser_transition(
+        contrat, field='essai', old_value='',
+        new_value=f"En essai jusqu'au {date_fin_essai}",
+        message="Démarrage de la période d'essai.", auteur=auteur)
+    return essai
+
+
+def convertir_essais_expires(company, *, today=None, alerte_j3_jours=3):
+    """Convertit les essais échus + notifie J-3 avant la fin — NTSUB5.
+
+    Pour une société, à ``today`` (injectable pour les tests) :
+
+    (a) tout ``EssaiAbonnement`` non converti dont ``date_fin_essai <= today``
+        et dont le contrat lié n'est PAS résilié devient facturable :
+        réactive ``facturation_active=True`` sur ses échéanciers, génère le
+        plan (YSUBS8), marque ``converti=True`` + ``date_conversion`` et
+        journalise. Un contrat résilié avant terme n'est JAMAIS converti ;
+    (b) tout essai non converti dont ``date_fin_essai == today +
+        alerte_j3_jours`` et non encore notifié déclenche UNE notification J-3
+        au responsable (idempotence via ``notifie_j3``).
+
+    Renvoie ``{'convertis', 'alertes_j3'}``. Best-effort par essai : une
+    exception n'empêche jamais les suivants.
+    """
+    from datetime import timedelta
+
+    from .models import (
+        AbonnementAddOnLigne, Contrat, EcheancierContrat, EssaiAbonnement,
+    )
+
+    if today is None:
+        today = timezone.localdate()
+
+    total = {'convertis': 0, 'alertes_j3': 0}
+
+    essais = EssaiAbonnement.objects.filter(company=company, converti=False)
+    for essai in essais:
+        try:
+            # (a) conversion des essais échus.
+            if essai.date_fin_essai <= today:
+                if essai.type_cible != AbonnementAddOnLigne.TypeCible.CONTRAT:
+                    continue  # cible sav gérée par son app (hors périmètre)
+                contrat = Contrat.objects.filter(
+                    company=company, id=essai.cible_id).first()
+                if contrat is None or contrat.statut == Contrat.Statut.RESILIE:
+                    continue  # annulé avant terme → jamais converti
+                for echeancier in EcheancierContrat.objects.filter(
+                        company=company, contrat=contrat):
+                    echeancier.facturation_active = True
+                    echeancier.save(update_fields=['facturation_active'])
+                    try:
+                        generer_echeancier_depuis_dates(contrat, echeancier)
+                    except Exception:  # pragma: no cover - best-effort
+                        pass
+                essai.converti = True
+                essai.date_conversion = today
+                essai.save(update_fields=['converti', 'date_conversion'])
+                journaliser_transition(
+                    contrat, field='essai', old_value='en essai',
+                    new_value='converti',
+                    message="Fin d'essai : facturation activée.")
+                total['convertis'] += 1
+            # (b) alerte J-3.
+            elif (essai.date_fin_essai == today + timedelta(
+                    days=alerte_j3_jours) and not essai.notifie_j3):
+                if essai.type_cible == AbonnementAddOnLigne.TypeCible.CONTRAT:
+                    contrat = Contrat.objects.filter(
+                        company=company, id=essai.cible_id).first()
+                    if contrat is not None:
+                        _notifier_responsable_contrat(
+                            contrat, "Fin d'essai imminente",
+                            f"L'essai du contrat « {contrat.objet} » se "
+                            f"termine le {essai.date_fin_essai}.")
+                essai.notifie_j3 = True
+                essai.save(update_fields=['notifie_j3'])
+                total['alertes_j3'] += 1
+        except Exception:  # pragma: no cover - défensif, isolation
+            logger.warning(
+                'convertir_essais_expires: échec essai #%s (société %s)',
+                essai.pk, company.pk, exc_info=True)
+
+    return total
+
+
+def _notifier_responsable_contrat(contrat, titre, body, link='/contrats'):
+    """Notifie le responsable d'un contrat (in-app), best-effort — NTSUB5/34.
+
+    Frontière cross-app : ``apps.notifications.services`` seulement (import
+    fonction-local, jamais ses models/views). Aucun responsable = skip
+    silencieux. Une erreur de notification ne remonte jamais.
+    """
+    if not contrat.responsable_id:
+        return
+    try:
+        from apps.notifications.services import notify
+
+        notify(
+            contrat.responsable, 'digest', titre, body=body,
+            link=link, company=contrat.company)
+    except Exception:  # pragma: no cover - best-effort
+        pass

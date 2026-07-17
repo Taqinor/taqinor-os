@@ -213,3 +213,35 @@ def reconductions_et_alertes_daily():
         total['alertes_semees'], total['alertes_envoyees'],
         total['contrats_reconduits'])
     return total
+
+
+@shared_task(name='contrats.convertir_essais_expires_daily')
+def convertir_essais_expires_daily():
+    """NTSUB5 — Conversion des essais échus + alerte J-3, par société, quotidien.
+
+    Fine enveloppe planifiable de ``services.convertir_essais_expires`` (toute
+    la logique métier — activation de la facturation à la fin d'essai, sauf
+    contrat résilié ; notification J-3 idempotente — y vit, testable sans
+    Celery). Chaque société est isolée (une exception n'empêche jamais les
+    suivantes). Renvoie ``{'convertis', 'alertes_j3'}`` agrégé.
+    """
+    from authentication.selectors import active_companies
+
+    from . import services
+
+    total = {'convertis': 0, 'alertes_j3': 0}
+    for company in active_companies():
+        try:
+            res = services.convertir_essais_expires(company)
+            total['convertis'] += res['convertis']
+            total['alertes_j3'] += res['alertes_j3']
+        except Exception:  # pragma: no cover - défensif, isolation société
+            logger.warning(
+                'contrats.convertir_essais_expires_daily: échec société %s',
+                company.pk, exc_info=True)
+
+    logger.info(
+        'contrats.convertir_essais_expires_daily: %s essai(s) converti(s), '
+        '%s alerte(s) J-3',
+        total['convertis'], total['alertes_j3'])
+    return total
