@@ -484,6 +484,15 @@ class EngineAction(TenantModel):
         # n'active JAMAIS rien : c'est l'action de sécurité par excellence. La
         # cible (campaign/adset/ad + meta_id) vit dans ``payload``.
         PAUSE = 'pause', 'Mettre en pause'
+        # ADSDEEP31 — surface d'ÉDITION (agir sur des objets EXISTANTS). AUCUN de
+        # ces kinds n'active ni ne dé-pause quoi que ce soit (invariant permanent
+        # règle #3) : ils routent vers les méthodes d'édition de ``meta_client``
+        # (ADSDEEP30) qui n'envoient JAMAIS de ``status``. EDIT_COPY est un
+        # *significant edit* Meta → l'approbateur voit un avertissement de reset
+        # d'apprentissage + perte de preuve sociale (portés dans ``payload``).
+        EDIT_COPY = 'edit_copy', 'Éditer le texte / créatif'
+        SET_SPEND_CAP = 'set_spend_cap', 'Poser un plafond de dépense'
+        RENAME = 'rename', 'Renommer un objet'
 
     kind = models.CharField(
         max_length=32, choices=Kind.choices, verbose_name='Type')

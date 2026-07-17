@@ -103,15 +103,60 @@ def assert_creative_ok_for_ad(company, kind, payload):
             "être référencé par une création d'ad.")
 
 
+# ── ADSDEEP31 — Avertissements montrés à l'APPROBATEUR (surface d'édition) ────
+# EDIT_COPY (changer le texte / le créatif d'une ad existante) est un
+# *significant edit* Meta : (a) il RÉINITIALISE la phase d'apprentissage de
+# l'ad set (Meta ré-explore — coûts instables quelques jours) ; (b) changer le
+# texte crée un NOUVEAU post → la preuve sociale accumulée (J'aime, commentaires,
+# partages) est PERDUE. Les DEUX avertissements sont poussés dans
+# ``payload['warnings']`` à la proposition et donc rendus à l'approbateur.
+WARN_LEARNING_RESET = (
+    "Édition significative : cette action réinitialise la phase d'apprentissage "
+    "de l'ad set (Meta ré-explore — coûts instables pendant quelques jours).")
+WARN_SOCIAL_PROOF_LOSS = (
+    "Changer le texte crée un NOUVEAU post : la preuve sociale déjà accumulée "
+    "(J'aime, commentaires, partages) est perdue.")
+
+
+def edit_warnings(kind, payload=None):
+    """ADSDEEP31 — Avertissements à montrer à l'approbateur pour une action de la
+    surface d'édition. ``EDIT_COPY`` = édition significative ⇒ reset
+    d'apprentissage ET, le texte changeant, création d'un nouveau post ⇒ perte de
+    preuve sociale : les DEUX avertissements. ``RENAME`` / ``SET_SPEND_CAP`` ne
+    réinitialisent rien et ne recréent aucun post → aucun avertissement."""
+    if kind == EngineAction.Kind.EDIT_COPY:
+        return [WARN_LEARNING_RESET, WARN_SOCIAL_PROOF_LOSS]
+    return []
+
+
+def _merge_warnings(payload, warns):
+    """Fusionne ``warns`` dans ``payload['warnings']`` sans doublon (préserve
+    tout avertissement déjà fourni par l'appelant, ex. le reset-seuil ADSDEEP32)."""
+    if not warns:
+        return payload
+    existing = list(payload.get('warnings') or [])
+    for w in warns:
+        if w not in existing:
+            existing.append(w)
+    payload['warnings'] = existing
+    return payload
+
+
 def propose_action(company, *, kind, reason_fr, payload=None, auto=False):
-    """Crée une action PROPOSÉE. ``reason_fr`` (une phrase FR) est obligatoire."""
+    """Crée une action PROPOSÉE. ``reason_fr`` (une phrase FR) est obligatoire.
+
+    ADSDEEP31 — pour un kind de la surface d'édition, les avertissements destinés
+    à l'approbateur (reset d'apprentissage / perte de preuve sociale) sont
+    injectés dans ``payload['warnings']`` (fusionnés, jamais un doublon)."""
     if not (reason_fr and str(reason_fr).strip()):
         raise ValueError(
             "Une raison en une phrase (français) est obligatoire pour proposer "
             "une action.")
     assert_creative_ok_for_ad(company, kind, payload)
+    payload = dict(payload or {})
+    _merge_warnings(payload, edit_warnings(kind, payload))
     return EngineAction.objects.create(
-        company=company, kind=kind, payload=payload or {},
+        company=company, kind=kind, payload=payload,
         reason_fr=str(reason_fr).strip(),
         status=EngineAction.Statut.PROPOSEE, auto=auto)
 
@@ -236,6 +281,28 @@ def _dispatch(client, action):
         return client.update_status_paused(
             object_id=payload.get('target_meta_id', ''),
             level=payload.get('target_type'))
+    if kind == EngineAction.Kind.EDIT_COPY:
+        # ADSDEEP31 — édition du texte / créatif d'une ad EXISTANTE. Route vers
+        # ``swap_ad_creative`` (crée un NOUVEAU adcreative puis rattache — dossier
+        # §4) : aucun ``status`` n'est envoyé (jamais d'activation, invariant #3).
+        return client.swap_ad_creative(
+            ad_id=payload.get('ad_id', ''),
+            creative_spec=payload.get('creative_spec'),
+            creative_id=payload.get('creative_id'),
+            extra_fields=payload.get('extra_fields'))
+    if kind == EngineAction.Kind.SET_SPEND_CAP:
+        # ADSDEEP31 — plafond de dépense TOTAL d'une campagne. Un plafond ne peut
+        # QUE limiter la dépense (jamais activer) — aucun ``status`` envoyé.
+        return client.set_campaign_spend_cap(
+            campaign_id=payload.get('campaign_id', ''),
+            spend_cap=payload.get('spend_cap'),
+            extra_fields=payload.get('extra_fields'))
+    if kind == EngineAction.Kind.RENAME:
+        # ADSDEEP31 — renommage (name uniquement). N'active ni ne dé-pause rien.
+        return client.rename_object(
+            object_id=payload.get('object_id', ''),
+            name=payload.get('name', ''),
+            extra_fields=payload.get('extra_fields'))
     if kind in (KIND_INCREASE_PACE, KIND_REBALANCE_ADSET_BUDGET):
         # ADSENG22 — Changement de budget ad set (increase_pace / rebalance).
         # Les garde-fous budget ont été appliqués AVANT par
