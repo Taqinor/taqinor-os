@@ -130,3 +130,47 @@ class EntiteApiTests(TestCase):
         resp = self.client_api.get(f'/api/django/entites/entites/{e.id}/historique/')
         self.assertEqual(resp.status_code, 200)
         self.assertTrue(any(a['field_label'] == 'Nom' for a in resp.data))
+
+
+class EntiteImportTests(TestCase):
+    """NTADM43 — import CSV 2 passes (holding→filiale→agence)."""
+
+    def setUp(self):
+        self.company = _company()
+
+    def test_import_hierarchie_trois_niveaux(self):
+        from ..import_service import commit
+        csv_bytes = (
+            'code,nom,code_parent\n'
+            'AG,Agence,F1\n'   # enfant AVANT son parent
+            'F1,Filiale,H\n'
+            'H,Holding,\n'
+        ).encode('utf-8')
+        result = commit(csv_bytes, 'e.csv', self.company)
+        self.assertEqual(result['created'], 3)
+        self.assertEqual(result['erreurs'], [])
+        ag = Entite.objects.get(company=self.company, code='AG')
+        self.assertEqual(ag.parent.code, 'F1')
+        self.assertEqual(ag.parent.parent.code, 'H')
+
+    def test_import_parent_inconnu_dry_run(self):
+        from ..import_service import dry_run
+        csv_bytes = b'code,nom,code_parent\nA,Alpha,ZZZ\n'
+        result = dry_run(csv_bytes, 'e.csv', self.company)
+        self.assertTrue(any('ZZZ' in e['motif'] for e in result['erreurs']))
+
+
+class EntiteExportTests(TestCase):
+    """NTADM28 — export xlsx du référentiel."""
+
+    def setUp(self):
+        self.company = _company()
+        self.admin = _admin(self.company)
+        self.client_api = APIClient()
+        self.client_api.force_authenticate(self.admin)
+
+    def test_export_xlsx(self):
+        creer_entite(self.company, nom='Holding', code='H')
+        resp = self.client_api.get('/api/django/entites/entites/export/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn('spreadsheet', resp['Content-Type'])

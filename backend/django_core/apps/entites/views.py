@@ -3,7 +3,7 @@ from rest_framework.response import Response
 
 from core.viewsets import CompanyScopedModelViewSet
 
-from . import selectors, services
+from . import import_service, selectors, services
 from .models import Entite
 from .permissions import IsAdministrateur
 from .serializers import EntiteSerializer
@@ -94,3 +94,46 @@ class EntiteViewSet(CompanyScopedModelViewSet):
         from apps.records.services import log_note
         log_note(entite, request.user, body)
         return Response({'ok': True})
+
+    @action(detail=False, methods=['get'], permission_classes=[IsAdministrateur])
+    def export(self, request):
+        """NTADM28 — export xlsx du référentiel (code/nom/parent/actif).
+
+        Les colonnes nb_devis_rattaches/nb_leads_rattaches restent à 0 tant que
+        NTADM2 (FK `entite` sur crm.Lead/ventes.Devis) n'est pas livré — cette
+        tâche est DIFFÉRÉE (migration foreign app, hors périmètre NTADM lane).
+        """
+        from apps.records.xlsx import build_xlsx_response
+
+        company = request.user.company
+        entites = Entite.objects.filter(company=company).select_related('parent').order_by('code')
+        headers = ['Code', 'Nom', 'Parent', 'Actif',
+                   'Nb devis rattachés', 'Nb leads rattachés']
+        rows = [
+            [e.code, e.nom, e.parent.code if e.parent else '',
+             'Oui' if e.actif else 'Non', 0, 0]
+            for e in entites
+        ]
+        return build_xlsx_response('entites', headers, rows, sheet_title='Entités')
+
+    @action(detail=False, methods=['post'], permission_classes=[IsAdministrateur])
+    def importer(self, request):
+        """NTADM43 — import CSV en masse (dry-run par défaut ; `commit=1` écrit).
+
+        Colonnes CSV : code, nom, code_parent (optionnel). Résolution des
+        parents par code en 2 passes.
+        """
+        fichier = request.FILES.get('fichier')
+        if fichier is None:
+            return Response({'detail': 'Fichier requis.'}, status=400)
+        file_bytes = fichier.read()
+        filename = fichier.name
+        commit = request.data.get('commit') in ('1', 'true', 'True', True)
+        try:
+            if commit:
+                result = import_service.commit(file_bytes, filename, request.user.company)
+            else:
+                result = import_service.dry_run(file_bytes, filename, request.user.company)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        return Response(result)
