@@ -391,6 +391,17 @@ class CampagneInnovationViewSet(CompanyScopedModelViewSet):
             return [IdeasVote()]
         return super().get_permissions()
 
+    def perform_update(self, serializer):
+        # NTIDE31 — notifie le segment ciblé UNIQUEMENT sur la transition
+        # brouillon → active (jamais réactive→réactive/fermée→active, etc. —
+        # une campagne déjà active republiée n'inonde pas son segment).
+        ancien_statut = serializer.instance.statut
+        super().perform_update(serializer)
+        campagne = serializer.instance
+        if (ancien_statut != CampagneInnovation.Statut.ACTIVE
+                and campagne.statut == CampagneInnovation.Statut.ACTIVE):
+            services.notifier_campagne_lancee(campagne)
+
     # ── NTIDE27 — bandeau d'incitation (formulaire proposer une idée) ───────
     @action(detail=False, methods=['get'], url_path='incitation')
     def incitation(self, request):

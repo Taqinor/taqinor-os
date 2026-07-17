@@ -248,6 +248,32 @@ def maybe_apply_campagne_tag(idee, user):
     bulk_add_tag(idee.company, [idee.id], campagne.tag_auto)
 
 
+# ── Notification de lancement de campagne (NTIDE31) ─────────────────────────
+
+
+def notifier_campagne_lancee(campagne):
+    """NTIDE31 — quand une campagne passe brouillon → active (détecté côté
+    vue, ``CampagneInnovationViewSet.perform_update``), notifie CHAQUE
+    utilisateur du segment ciblé (``selectors.users_for_campaign`` — même
+    règle que le bandeau d'incitation NTIDE27/le tag auto NTIDE28) : in-app
+    systématique + email OPT-IN — l'arbitrage canal/préférence reste dans
+    ``notify()``/``NotificationPreference`` (``notify_many``, best-effort
+    par destinataire), jamais dupliqué ici. Tag
+    ``EventType.INNOVATION_CAMPAIGN``. No-op silencieux si le segment ne
+    cible personne."""
+    from apps.notifications.models import EventType
+    from apps.notifications.services import notify_many
+
+    from . import selectors
+
+    utilisateurs = selectors.users_for_campaign(campagne.company, campagne)
+    titre = f"Nouvelle campagne d'innovation : {campagne.nom}"
+    corps = campagne.message_incitation or campagne.description or ''
+    notify_many(
+        utilisateurs, EventType.INNOVATION_CAMPAIGN, titre, body=corps,
+        link='/innovation/proposer', company=campagne.company)
+
+
 BULK_ACTIONS = frozenset({'set_statut', 'add_tag', 'remove_tag'})
 
 
