@@ -766,6 +766,8 @@ CELERY_TASK_ROUTES = {
     # ADSDEEP8/18 — sync hebdo des breakdowns + pull quotidien des leads.
     'adsengine.sync_breakdowns_weekly': {'queue': 'scheduled'},
     'adsengine.pull_meta_leads': {'queue': 'scheduled'},
+    # NTSAN31 — alerte J-7 avant expiration d'une PriseEnCharge santé.
+    'sante.alertes_prise_en_charge_expirant': {'queue': 'scheduled'},
     # NTPLT27 — 4e queue `bulk` pour le travail de masse (imports dataimport,
     # exports planifiés volumineux, backfills, seed à l'échelle). Un import de
     # 100 000 lignes ne doit plus retarder un digest planifié ni un rendu PDF
