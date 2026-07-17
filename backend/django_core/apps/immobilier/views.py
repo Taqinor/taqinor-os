@@ -12,13 +12,14 @@ from core.permissions import ScopedPermission
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
-    Bail, Batiment, EcheanceLoyer, Local, Locataire, Niveau, RelanceLoyer,
-    Site,
+    Bail, Batiment, BudgetCharges, EcheanceLoyer, Local, Locataire, Niveau,
+    RelanceLoyer, Site,
 )
 from .serializers import (
-    BailSerializer, BatimentSerializer, EcheanceLoyerSerializer,
-    LocalSerializer, LocataireSerializer, NiveauSerializer,
-    RelanceLoyerSerializer, RevisionLoyerSerializer, SiteSerializer,
+    BailSerializer, BatimentSerializer, BudgetChargesSerializer,
+    EcheanceLoyerSerializer, LocalSerializer, LocataireSerializer,
+    NiveauSerializer, RelanceLoyerSerializer, RevisionLoyerSerializer,
+    SiteSerializer,
 )
 
 
@@ -323,6 +324,24 @@ class EcheanceLoyerViewSet(_ImmobilierBaseViewSet):
         return Response(
             RelanceLoyerSerializer(relance).data,
             status=status.HTTP_201_CREATED)
+
+
+class BudgetChargesViewSet(_ImmobilierBaseViewSet):
+    """NTPRO10 — Budget de charges par bâtiment/exercice/poste."""
+    queryset = BudgetCharges.objects.select_related('batiment').all()
+    serializer_class = BudgetChargesSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['exercice', 'poste', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        batiment_id = self.request.query_params.get('batiment')
+        exercice = self.request.query_params.get('exercice')
+        if batiment_id:
+            qs = qs.filter(batiment_id=batiment_id)
+        if exercice:
+            qs = qs.filter(exercice=exercice)
+        return qs
 
 
 class RelanceLoyerViewSet(_ImmobilierBaseViewSet):

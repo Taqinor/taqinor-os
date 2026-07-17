@@ -7,8 +7,8 @@ multi-tenant).
 from rest_framework import serializers
 
 from .models import (
-    Bail, Batiment, EcheanceLoyer, Local, Locataire, Niveau, RelanceLoyer,
-    RevisionLoyer, Site,
+    Bail, Batiment, BudgetCharges, EcheanceLoyer, Local, Locataire, Niveau,
+    RelanceLoyer, RevisionLoyer, Site,
 )
 
 
@@ -207,4 +207,25 @@ class RelanceLoyerSerializer(serializers.ModelSerializer):
 
     def validate_echeance_loyer(self, value):
         _check_same_company(self, value, 'echeance_loyer')
+        return value
+
+
+class BudgetChargesSerializer(serializers.ModelSerializer):
+    """NTPRO10 — Budget de charges par bâtiment/exercice/poste."""
+    poste_display = serializers.CharField(
+        source='get_poste_display', read_only=True)
+    batiment_nom = serializers.CharField(
+        source='batiment.nom', read_only=True)
+
+    class Meta:
+        model = BudgetCharges
+        fields = [
+            'id', 'batiment', 'batiment_nom', 'exercice', 'poste',
+            'poste_display', 'montant_budgete_annuel', 'date_creation',
+            'company',
+        ]
+        read_only_fields = ['id', 'date_creation', 'company']
+
+    def validate_batiment(self, value):
+        _check_same_company(self, value, 'batiment')
         return value

@@ -396,3 +396,45 @@ class RelanceLoyer(TenantModel):
 
     def __str__(self):
         return f'Relance N{self.niveau} — {self.echeance_loyer}'
+
+
+class BudgetCharges(TenantModel):
+    """NTPRO10 — Budget de charges (par bâtiment, exercice et poste)."""
+
+    class Poste(models.TextChoices):
+        ASCENSEUR = 'ascenseur', 'Ascenseur'
+        NETTOYAGE = 'nettoyage', 'Nettoyage'
+        GARDIENNAGE = 'gardiennage', 'Gardiennage'
+        ELECTRICITE_COMMUNS = 'electricite_communs', 'Électricité communs'
+        EAU_COMMUNS = 'eau_communs', 'Eau communs'
+        ASSURANCE_IMMEUBLE = 'assurance_immeuble', 'Assurance immeuble'
+        ENTRETIEN_ESPACES_VERTS = (
+            'entretien_espaces_verts', 'Entretien espaces verts')
+        AUTRE = 'autre', 'Autre'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: cascade tenant (purge des données de la société supprimée)
+        related_name='immobilier_budgets_charges',
+        verbose_name='Société',
+    )
+    batiment = models.ForeignKey(
+        Batiment, on_delete=models.CASCADE,  # on_delete: cascade parent→enfant (composant du parent)
+        related_name='budgets_charges',
+        verbose_name='Bâtiment')
+    exercice = models.PositiveIntegerField(verbose_name='Exercice (année)')
+    poste = models.CharField(
+        max_length=30, choices=Poste.choices, verbose_name='Poste')
+    montant_budgete_annuel = models.DecimalField(
+        max_digits=10, decimal_places=2,
+        verbose_name='Montant budgété annuel')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Budget de charges'
+        verbose_name_plural = 'Budgets de charges'
+        ordering = ['-exercice', 'poste', 'id']
+        unique_together = [('batiment', 'exercice', 'poste')]
+
+    def __str__(self):
+        return f'{self.batiment} — {self.get_poste_display()} {self.exercice}'
