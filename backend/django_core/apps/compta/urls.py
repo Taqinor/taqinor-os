@@ -75,6 +75,8 @@ from .views import (
     MargeInterneStockViewSet, EliminationTitresViewSet,
     ReferentielComptableViewSet, AjustementGaapViewSet,
     AxeAnalytiqueViewSet, ImputationAxeViewSet,
+    CleRepartitionViewSet, LigneCleRepartitionViewSet, RunAllocationViewSet,
+    AllocationRecurrenteViewSet, EngagementComptableViewSet,
 )
 
 router = DefaultRouter()
@@ -221,6 +223,12 @@ router.register(r'referentiels-comptables', ReferentielComptableViewSet)
 router.register(r'ajustements-gaap', AjustementGaapViewSet)
 router.register(r'axes-analytiques', AxeAnalytiqueViewSet)
 router.register(r'imputations-axes', ImputationAxeViewSet)
+# ── NTFIN — Allocations & comptabilité d'engagement (encumbrance) ──────────
+router.register(r'cles-repartition', CleRepartitionViewSet)
+router.register(r'lignes-cle-repartition', LigneCleRepartitionViewSet)
+router.register(r'allocations', RunAllocationViewSet)
+router.register(r'allocations-recurrentes', AllocationRecurrenteViewSet)
+router.register(r'engagements', EngagementComptableViewSet)
 
 urlpatterns = [
     # XMKT30 (partiel) — calendrier marketing agrégé (campagnes + posts

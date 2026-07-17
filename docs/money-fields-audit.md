@@ -93,6 +93,9 @@ Généré par `python scripts/check_money_fields.py --decimal-places`. Tableau d
 | `backend/django_core/apps/compta/models.py:7206` | OperationInterco.montant_declare_a | 14 | 2 |
 | `backend/django_core/apps/compta/models.py:7209` | OperationInterco.montant_declare_b | 14 | 2 |
 | `backend/django_core/apps/compta/models.py:7333` | MargeInterneStock.montant_stock | 14 | 2 |
+| `backend/django_core/apps/compta/models.py:7725` | RunAllocation.montant_reparti | 14 | 2 |
+| `backend/django_core/apps/compta/models.py:7867` | EngagementComptable.montant_engage | 14 | 2 |
+| `backend/django_core/apps/compta/models.py:7870` | EngagementComptable.montant_liquide | 14 | 2 |
 | `backend/django_core/apps/contrats/models.py:148` | Contrat.montant | 14 | 2 |
 | `backend/django_core/apps/contrats/models.py:760` | RegleApprobation.montant_min | 14 | 2 |
 | `backend/django_core/apps/contrats/models.py:763` | RegleApprobation.montant_max | 14 | 2 |
@@ -119,8 +122,10 @@ Généré par `python scripts/check_money_fields.py --decimal-places`. Tableau d
 | `backend/django_core/apps/crm/models.py:1466` | PointContact.cout | 12 | 2 |
 | `backend/django_core/apps/crm/models.py:1970` | CommissionPartenaire.base_ht | 14 | 2 |
 | `backend/django_core/apps/crm/models.py:1976` | CommissionPartenaire.montant | 14 | 2 |
-| `backend/django_core/apps/education/models.py:408` | EcheancierScolarite.montant_total | 10 | 2 |
-| `backend/django_core/apps/education/models.py:441` | LigneEcheance.montant | 10 | 2 |
+| `backend/django_core/apps/education/models.py:412` | EcheancierScolarite.montant_total | 10 | 2 |
+| `backend/django_core/apps/education/models.py:445` | LigneEcheance.montant | 10 | 2 |
+| `backend/django_core/apps/education/models.py:452` | LigneEcheance.cantine_montant | 10 | 2 |
+| `backend/django_core/apps/education/models.py:728` | ParametresEducation.taux_remise_fratrie_defaut | 5 | 2 |
 | `backend/django_core/apps/facturation/models.py:94` | Facture.montant_ht | 12 | 2 |
 | `backend/django_core/apps/facturation/models.py:97` | Facture.montant_tva | 12 | 2 |
 | `backend/django_core/apps/facturation/models.py:100` | Facture.montant_ttc | 12 | 2 |

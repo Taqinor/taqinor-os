@@ -27,6 +27,7 @@ from .models import (
     OperationInterco, EcritureElimination,
     PeriodeComptable,
     ReferentielComptable, ImputationAxe,
+    EngagementComptable,
 )
 
 
@@ -4647,3 +4648,141 @@ def resultat_par_axe(company, axe_code, *, date_debut=None, date_fin=None):
     valeurs.sort(key=lambda s: s['centre_code'])
     return {
         'axe': axe_code, 'valeurs': valeurs, 'total_resultat': total_resultat}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Groupe NTFIN — Contrôle budgétaire à l'engagement (NTFIN24/25)
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _realise_compte(company, compte, *, centre_cout=None, annee=None):
+    """Réalisé net d'un compte (+ centre) sur une année (charge = débiteur)."""
+    qs = LigneEcriture.objects.filter(company=company, compte=compte)
+    if centre_cout is not None:
+        qs = qs.filter(centre_cout=centre_cout)
+    if annee is not None:
+        qs = qs.filter(ecriture__date_ecriture__gte=date(annee, 1, 1),
+                       ecriture__date_ecriture__lte=date(annee, 12, 31))
+    agg = qs.aggregate(debit=Sum('debit'), credit=Sum('credit'))
+    debit = agg['debit'] or Decimal('0')
+    credit = agg['credit'] or Decimal('0')
+    if compte.classe == 7:
+        return credit - debit
+    return debit - credit
+
+
+def _engage_ouvert(company, compte, *, centre_cout=None):
+    """Somme des résiduels d'engagement (encumbrance) ouverts (NTFIN23)."""
+    qs = EngagementComptable.objects.filter(
+        company=company, compte=compte).exclude(
+        statut=EngagementComptable.Statut.SOLDE)
+    if centre_cout is not None:
+        qs = qs.filter(centre_cout=centre_cout)
+    total = Decimal('0')
+    for eng in qs:
+        total += eng.montant_residuel
+    return total
+
+
+def disponible_budgetaire_compte(company, *, compte, centre_cout=None, periode):
+    """NTFIN24 — disponible = budget − engagé − réalisé, par compte/centre.
+
+    ``periode`` : une ``date`` dans l'année budgétaire visée. Renvoie ``None``
+    si aucun budget n'est défini (aucun contrôle possible) ; sinon
+    ``{'budget', 'engage', 'realise', 'disponible', 'controle', 'budget_id'}``.
+    Lecture seule, scopée société.
+    """
+    annee = periode.year
+    budget = Budget.objects.filter(
+        company=company, annee=annee).order_by('-id').first()
+    if budget is None:
+        return None
+    lignes_qs = budget.lignes.filter(compte=compte)
+    if centre_cout is not None:
+        lignes_qs = lignes_qs.filter(centre_cout=centre_cout)
+    if not lignes_qs.exists():
+        return None
+    budgete = sum((bl.montant_annuel for bl in lignes_qs), Decimal('0'))
+    realise = _realise_compte(company, compte, centre_cout=centre_cout,
+                              annee=annee)
+    engage = _engage_ouvert(company, compte, centre_cout=centre_cout)
+    return {
+        'budget_id': budget.id,
+        'controle': budget.controle,
+        'budget': budgete,
+        'realise': realise,
+        'engage': engage,
+        'disponible': budgete - engage - realise,
+    }
+
+
+def disponible_budgetaire(budget_ligne):
+    """NTFIN24 — disponible d'une ligne de budget (budget − engagé − réalisé).
+
+    Intègre les engagements ouverts NTFIN23 EN PLUS du réalisé. Renvoie
+    ``{'budget', 'engage', 'realise', 'disponible', 'taux_consommation'}``.
+    """
+    company = budget_ligne.company
+    annee = budget_ligne.budget.annee
+    compte = budget_ligne.compte
+    centre = budget_ligne.centre_cout
+    budgete = budget_ligne.montant_annuel
+    realise = _realise_compte(company, compte, centre_cout=centre, annee=annee)
+    engage = _engage_ouvert(company, compte, centre_cout=centre)
+    consomme = engage + realise
+    return {
+        'budget': budgete,
+        'engage': engage,
+        'realise': realise,
+        'disponible': budgete - consomme,
+        'taux_consommation': (
+            (consomme / budgete * Decimal('100')).quantize(Decimal('0.01'))
+            if budgete else Decimal('0')),
+    }
+
+
+def execution_budgetaire(company, exercice):
+    """NTFIN25 — état d'exécution budgétaire avec engagements.
+
+    ``exercice`` : un ``ExerciceComptable`` (son année est déduite) ou un entier
+    (année). Pour chaque ligne du budget de l'année : budget, engagé, réalisé,
+    disponible, taux de consommation. Invariant : engagé + réalisé + disponible
+    = budget par ligne. Lecture seule, scopée société.
+    """
+    annee = getattr(getattr(exercice, 'date_debut', None), 'year', None)
+    if annee is None:
+        annee = int(exercice)
+    budget = Budget.objects.filter(
+        company=company, annee=annee).order_by('-id').first()
+    lignes = []
+    total_budget = Decimal('0')
+    total_engage = Decimal('0')
+    total_realise = Decimal('0')
+    total_disponible = Decimal('0')
+    if budget is not None:
+        for bl in budget.lignes.select_related('compte', 'centre_cout').all():
+            d = disponible_budgetaire(bl)
+            total_budget += d['budget']
+            total_engage += d['engage']
+            total_realise += d['realise']
+            total_disponible += d['disponible']
+            lignes.append({
+                'ligne_id': bl.id,
+                'compte_numero': bl.compte.numero,
+                'compte_intitule': bl.compte.intitule,
+                'centre_cout': bl.centre_cout.code if bl.centre_cout else '',
+                'libelle': bl.libelle,
+                'budget': d['budget'],
+                'engage': d['engage'],
+                'realise': d['realise'],
+                'disponible': d['disponible'],
+                'taux_consommation': d['taux_consommation'],
+            })
+    return {
+        'annee': annee,
+        'budget_id': budget.id if budget else None,
+        'lignes': lignes,
+        'total_budget': total_budget,
+        'total_engage': total_engage,
+        'total_realise': total_realise,
+        'total_disponible': total_disponible,
+    }

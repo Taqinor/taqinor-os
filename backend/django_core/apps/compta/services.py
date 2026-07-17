@@ -83,6 +83,8 @@ from .models import (
     CycleConsolidation, LiasseRemontee, MappingConsolidation,
     OperationInterco, EcritureElimination,
     ReferentielComptable, AjustementGaap,
+    RunAllocation, AllocationRecurrente,
+    EngagementComptable,
 )
 
 
@@ -12979,3 +12981,252 @@ def poster_ajustement_gaap(company, referentiel_cible, lignes, motif, *,
         company=company, referentiel=referentiel_cible,
         type_ajustement=type_ajustement or '', motif=motif,
         ecriture=ecriture, reversible=True)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Groupe NTFIN — Moteur d'allocations & comptabilité d'engagement (encumbrance)
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ── NTFIN20 — Clés de répartition ──────────────────────────────────────────
+
+def valider_cle_repartition(cle):
+    """NTFIN20 — vérifie que Σ des coefficients d'une clé vaut 100 %.
+
+    Lève ``ValidationError`` si la somme des coefficients de ses lignes n'est
+    pas égale à 100 (une clé sans ligne est refusée). Renvoie la clé.
+    """
+    total = cle.total_coefficients
+    if total != Decimal('100'):
+        raise ValidationError(
+            "La clé de répartition doit sommer à 100 % "
+            f"(actuel : {total} %).")
+    return cle
+
+
+# ── NTFIN21 — Moteur d'allocation (déversement de charges indirectes) ──────
+
+def _solde_compte_centre(company, compte_numero, *, centre_cout=None,
+                         date_fin=None):
+    """Solde débiteur net (débit − crédit) d'un compte (+ centre) au GL."""
+    qs = LigneEcriture.objects.filter(
+        company=company, compte__numero=compte_numero)
+    if centre_cout is not None:
+        qs = qs.filter(centre_cout=centre_cout)
+    if date_fin is not None:
+        qs = qs.filter(ecriture__date_ecriture__lte=date_fin)
+    agg = qs.aggregate(debit=Sum('debit'), credit=Sum('credit'))
+    return (agg['debit'] or Decimal('0')) - (agg['credit'] or Decimal('0'))
+
+
+@transaction.atomic
+def executer_allocation(company, compte_source, cle, periode, *,
+                        referentiel=None, montant=None, centre_source=None,
+                        created_by=None):
+    """Déverse un compte/centre source vers les cibles d'une clé (NTFIN21).
+
+    ``montant`` (optionnel) : montant à répartir ; par défaut le solde débiteur
+    net du ``compte_source`` (+ ``centre_source``) au grand livre à la fin de la
+    ``periode``. Poste une OD d'allocation qui déplace analytiquement la charge
+    du centre source vers les centres cibles (crédit source, débit cibles au
+    prorata des coefficients de la clé) — le solde comptable du compte reste
+    inchangé, seule la ventilation analytique bouge. Réversible via
+    ``reverser_allocation``. Renvoie le ``RunAllocation`` créé.
+    """
+    valider_cle_repartition(cle)
+    if montant is None:
+        montant = _solde_compte_centre(
+            company, compte_source, centre_cout=centre_source,
+            date_fin=periode)
+    montant = Decimal(str(montant)).quantize(_CENT)
+    if montant <= 0:
+        raise ValidationError(
+            "Aucun montant à répartir pour cette allocation.")
+    lignes = [
+        {'compte': compte_source,
+         'libelle': f'Déversement source {compte_source}',
+         'debit': '0', 'credit': str(montant),
+         'centre_cout': centre_source},
+    ]
+    reparti = Decimal('0')
+    lignes_cle = list(cle.lignes.select_related('centre_cout').all())
+    for i, li in enumerate(lignes_cle):
+        if i == len(lignes_cle) - 1:
+            part = montant - reparti  # dernier reçoit le résiduel (arrondi)
+        else:
+            part = (montant * (li.coefficient or Decimal('0'))
+                    / Decimal('100')).quantize(_CENT)
+        reparti += part
+        lignes.append({
+            'compte': compte_source,
+            'libelle': f'Allocation vers {li.centre_cout.code}',
+            'debit': str(part), 'credit': '0',
+            'centre_cout': li.centre_cout})
+    journal = _journal(company, Journal.Type.OPERATIONS_DIVERSES)
+    ecriture = creer_ecriture(
+        company, journal, periode,
+        f'Allocation {compte_source} ({cle.code})', lignes,
+        created_by=created_by, statut=EcritureComptable.Statut.VALIDEE,
+        referentiel=referentiel)
+    return RunAllocation.objects.create(
+        company=company, cle=cle, compte_source=compte_source,
+        centre_source=centre_source, referentiel=referentiel,
+        periode=periode, montant_reparti=montant, ecriture=ecriture,
+        statut=RunAllocation.Statut.EXECUTEE)
+
+
+@transaction.atomic
+def reverser_allocation(run, *, created_by=None):
+    """NTFIN21 — extourne une allocation (OD inverse), la marque ``reversee``."""
+    if run.statut == RunAllocation.Statut.REVERSEE:
+        raise ValidationError("Cette allocation est déjà réversée.")
+    lignes = []
+    if run.ecriture_id:
+        for lg in run.ecriture.lignes.all():
+            lignes.append({
+                'compte': lg.compte.numero,
+                'libelle': f'Extourne {lg.libelle}',
+                'debit': str(lg.credit), 'credit': str(lg.debit),
+                'centre_cout': lg.centre_cout})
+    if lignes:
+        journal = _journal(run.company, Journal.Type.OPERATIONS_DIVERSES)
+        creer_ecriture(
+            run.company, journal, run.periode,
+            f'Extourne allocation {run.compte_source}', lignes,
+            created_by=created_by, statut=EcritureComptable.Statut.VALIDEE,
+            referentiel=run.referentiel)
+    run.statut = RunAllocation.Statut.REVERSEE
+    run.save(update_fields=['statut', 'updated_at'])
+    return run
+
+
+# ── NTFIN22 — Allocations récurrentes planifiées ───────────────────────────
+
+def generer_allocations_recurrentes(company, *, jusqua=None):
+    """NTFIN22 — exécute les allocations récurrentes échues (idempotent).
+
+    Pour chaque ``AllocationRecurrente`` active dont ``prochaine_echeance`` ≤
+    ``jusqua`` (défaut aujourd'hui), exécute l'allocation via NTFIN21 et avance
+    l'échéance. IDEMPOTENT par (clé, compte_source, période) : une allocation
+    déjà exécutée pour la période n'est pas redoublée. Renvoie
+    ``{'generees': [...], 'ignorees': [...]}``.
+    """
+    jusqua = jusqua or timezone.localdate()
+    generees, ignorees = [], []
+    recurrentes = AllocationRecurrente.objects.filter(
+        company=company, actif=True,
+        prochaine_echeance__lte=jusqua).select_related('cle')
+    for rec in recurrentes:
+        echeance = rec.prochaine_echeance
+        # Boucle de rattrapage : plusieurs périodes échues d'un coup.
+        while echeance <= jusqua:
+            deja = RunAllocation.objects.filter(
+                company=company, cle=rec.cle,
+                compte_source=rec.compte_source, periode=echeance,
+                statut=RunAllocation.Statut.EXECUTEE).exists()
+            if deja:
+                ignorees.append({
+                    'allocation_id': rec.id, 'periode': echeance.isoformat(),
+                    'raison': 'déjà exécutée pour cette période'})
+            else:
+                try:
+                    run = executer_allocation(
+                        company, rec.compte_source, rec.cle, echeance,
+                        referentiel=rec.referentiel,
+                        centre_source=rec.centre_source)
+                    generees.append({
+                        'allocation_id': rec.id, 'run_id': run.id,
+                        'periode': echeance.isoformat()})
+                except ValidationError as exc:
+                    ignorees.append({
+                        'allocation_id': rec.id,
+                        'periode': echeance.isoformat(),
+                        'raison': '; '.join(exc.messages)})
+            echeance = rec.echeance_suivante(echeance)
+        rec.prochaine_echeance = echeance
+        rec.derniere_generation = jusqua
+        rec.save(update_fields=['prochaine_echeance', 'derniere_generation',
+                                'updated_at'])
+    return {'generees': generees, 'ignorees': ignorees}
+
+
+# ── NTFIN23 — Engagements (encumbrance) ────────────────────────────────────
+
+def engager(company, *, compte, montant, date_engagement, type_engagement=None,
+            centre_cout=None, referentiel=None, source_type='', source_id=None,
+            reference='', libelle=''):
+    """NTFIN23 — crée un engagement comptable (réserve un budget à la commande).
+
+    ``compte`` est un ``CompteComptable``. Renvoie l'``EngagementComptable``.
+    """
+    eng = EngagementComptable(
+        company=company, compte=compte,
+        montant_engage=Decimal(str(montant)).quantize(_CENT),
+        date_engagement=date_engagement,
+        type_engagement=type_engagement or EngagementComptable.Type.BON_COMMANDE,
+        centre_cout=centre_cout, referentiel=referentiel,
+        source_type=source_type or '', source_id=source_id,
+        reference=reference or '', libelle=libelle or '',
+        statut=EngagementComptable.Statut.ENGAGE)
+    eng.full_clean()
+    eng.save()
+    return eng
+
+
+def liquider(engagement, montant):
+    """NTFIN23 — liquide (consomme) une part d'un engagement à la facturation.
+
+    Ajoute ``montant`` au liquidé et met à jour le statut (engagé →
+    partiellement liquidé → soldé). Refuse un dépassement du montant engagé.
+    Renvoie l'engagement.
+    """
+    montant = Decimal(str(montant)).quantize(_CENT)
+    nouveau = (engagement.montant_liquide or Decimal('0')) + montant
+    if nouveau > engagement.montant_engage:
+        raise ValidationError(
+            "La liquidation dépasserait le montant engagé "
+            f"({engagement.montant_engage}).")
+    engagement.montant_liquide = nouveau
+    if nouveau >= engagement.montant_engage:
+        engagement.statut = EngagementComptable.Statut.SOLDE
+    elif nouveau > 0:
+        engagement.statut = EngagementComptable.Statut.PARTIELLEMENT_LIQUIDE
+    engagement.save(update_fields=['montant_liquide', 'statut', 'updated_at'])
+    return engagement
+
+
+# ── NTFIN24 — Contrôle budgétaire à l'engagement ───────────────────────────
+
+def verifier_disponible_engagement(company, *, compte, centre_cout=None,
+                                   montant, periode):
+    """NTFIN24 — contrôle qu'un nouvel engagement tient dans le disponible.
+
+    Disponible = budget − engagé − réalisé (le contrôle XACC21 ne comptait que
+    le réalisé). Renvoie un dict ``{'statut': 'ok'|'avertissement'|'blocage',
+    'disponible', 'budget', 'engage', 'realise', 'controle'}``. Ne LÈVE PAS :
+    l'appelant décide (la vue 400 sur ``blocage``). Sans budget défini →
+    ``statut='ok'`` (aucun contrôle possible, comportement historique).
+    """
+    from . import selectors as _sel
+    montant = Decimal(str(montant)).quantize(_CENT)
+    dispo = _sel.disponible_budgetaire_compte(
+        company, compte=compte, centre_cout=centre_cout, periode=periode)
+    if dispo is None:
+        return {'statut': 'ok', 'disponible': None, 'budget': None,
+                'engage': Decimal('0'), 'realise': Decimal('0'),
+                'controle': None}
+    apres = dispo['disponible'] - montant
+    if apres >= 0:
+        statut = 'ok'
+    elif dispo['controle'] == Budget.Controle.BLOQUANT:
+        statut = 'blocage'
+    else:
+        statut = 'avertissement'
+    return {
+        'statut': statut,
+        'disponible': dispo['disponible'],
+        'disponible_apres': apres,
+        'budget': dispo['budget'],
+        'engage': dispo['engage'],
+        'realise': dispo['realise'],
+        'controle': dispo['controle'],
+    }

@@ -7588,3 +7588,311 @@ class ImputationAxe(TenantModel):
 
     def __str__(self):
         return f'Ligne {self.ligne_ecriture_id} / axe {self.axe_id}'
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Groupe NTFIN — Moteur d'allocations & comptabilité d'engagement (encumbrance)
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ── NTFIN20 — Clés de répartition (bases d'allocation) ─────────────────────
+
+class CleRepartition(TenantModel):
+    """Clé de répartition d'une charge indirecte (NTFIN20).
+
+    Définit COMMENT un solde (frais généraux…) se déverse vers des centres/axes
+    cibles : ``type`` (manuel/statistique/proportionnel) + ``base`` (m2,
+    effectif, CA, personnalisée). Les ``LigneCleRepartition`` portent les
+    coefficients par cible ; le moteur d'allocation (NTFIN21) répartit au
+    prorata des coefficients. Hérite de ``core.models.TenantModel``.
+    """
+    class Type(models.TextChoices):
+        MANUEL = 'manuel', 'Manuel (coefficients saisis)'
+        STATISTIQUE = 'statistique', 'Statistique'
+        PROPORTIONNEL = 'proportionnel', 'Proportionnel'
+
+    class Base(models.TextChoices):
+        M2 = 'm2', 'Surface (m²)'
+        EFFECTIF = 'effectif', 'Effectifs'
+        CA = 'ca', "Chiffre d'affaires"
+        PERSONNALISEE = 'personnalisee', 'Base personnalisée'
+
+    code = models.CharField(max_length=30, verbose_name='Code')
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    type_cle = models.CharField(
+        max_length=14, choices=Type.choices, default=Type.MANUEL,
+        verbose_name='Type de clé')
+    base = models.CharField(
+        max_length=14, choices=Base.choices, default=Base.PERSONNALISEE,
+        verbose_name='Base de répartition')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+
+    class Meta:
+        verbose_name = 'Clé de répartition'
+        verbose_name_plural = 'Clés de répartition'
+        ordering = ['code']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'code'], name='uniq_cle_repartition_code'),
+        ]
+
+    def __str__(self):
+        return f'{self.code} — {self.libelle}'
+
+    @property
+    def total_coefficients(self):
+        return sum((li.coefficient or Decimal('0')
+                    for li in self.lignes.all()), Decimal('0'))
+
+
+class LigneCleRepartition(TenantModel):
+    """Coefficient d'une cible dans une clé de répartition (NTFIN20).
+
+    ``coefficient`` exprimé en pourcentage (Σ = 100 pour une clé valide). La
+    cible est un ``centre_cout`` (axe analytique). Hérite de ``TenantModel``.
+    """
+    cle = models.ForeignKey(
+        CleRepartition,
+        # on_delete: CASCADE — une ligne de clé n'existe qu'attachée à sa clé.
+        on_delete=models.CASCADE,
+        related_name='lignes',
+        verbose_name='Clé de répartition',
+    )
+    centre_cout = models.ForeignKey(
+        'compta.CentreCout',
+        # on_delete: PROTECT — on ne supprime pas un centre encore ciblé par une
+        # clé de répartition (intégrité analytique).
+        on_delete=models.PROTECT,
+        related_name='lignes_cle_repartition',
+        verbose_name='Centre/axe cible',
+    )
+    coefficient = models.DecimalField(
+        max_digits=7, decimal_places=4, default=Decimal('0'),
+        verbose_name='Coefficient (%)')
+
+    class Meta:
+        verbose_name = 'Ligne de clé de répartition'
+        verbose_name_plural = 'Lignes de clé de répartition'
+        ordering = ['cle', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['cle', 'centre_cout'],
+                name='uniq_ligne_cle_centre'),
+        ]
+
+    def __str__(self):
+        return f'{self.cle_id} → {self.centre_cout_id} ({self.coefficient}%)'
+
+
+# ── NTFIN21 — Moteur d'allocation (déversement de charges indirectes) ──────
+
+class RunAllocation(TenantModel):
+    """Exécution d'une allocation (NTFIN21).
+
+    Trace un déversement d'un ``compte_source`` (solde/charge indirecte) vers
+    les cibles d'une ``cle`` sur une période, en postant une OD d'allocation
+    réversible (``ecriture``). ``reversee`` marque une allocation extournée.
+    Hérite de ``core.models.TenantModel``.
+    """
+    class Statut(models.TextChoices):
+        EXECUTEE = 'executee', 'Exécutée'
+        REVERSEE = 'reversee', 'Réversée'
+
+    cle = models.ForeignKey(
+        CleRepartition,
+        # on_delete: PROTECT — on ne supprime pas une clé encore référencée par
+        # un run d'allocation (traçabilité).
+        on_delete=models.PROTECT,
+        related_name='runs',
+        verbose_name='Clé de répartition',
+    )
+    compte_source = models.CharField(
+        max_length=20, verbose_name='Compte source')
+    centre_source = models.ForeignKey(
+        'compta.CentreCout',
+        # on_delete: SET_NULL — le centre source est indicatif ; sa purge ne
+        # doit pas effacer le run.
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='runs_allocation_source',
+        verbose_name='Centre source')
+    referentiel = models.ForeignKey(
+        ReferentielComptable,
+        # on_delete: SET_NULL — le référentiel cible est indicatif ; NULL =
+        # principal.
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='runs_allocation',
+        verbose_name='Référentiel')
+    periode = models.DateField(verbose_name='Période (mois de référence)')
+    montant_reparti = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant réparti')
+    ecriture = models.ForeignKey(
+        EcritureComptable,
+        # on_delete: SET_NULL — l'OD générée est traçée ; sa purge ne doit pas
+        # effacer le run source.
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='runs_allocation',
+        verbose_name="Écriture d'allocation générée")
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.EXECUTEE,
+        verbose_name='Statut')
+
+    class Meta:
+        verbose_name = "Run d'allocation"
+        verbose_name_plural = "Runs d'allocation"
+        ordering = ['-periode', '-id']
+
+    def __str__(self):
+        return f'Allocation {self.compte_source} {self.periode} ({self.montant_reparti})'
+
+
+# ── NTFIN22 — Allocations récurrentes planifiées ───────────────────────────
+
+class AllocationRecurrente(TenantModel):
+    """Allocation planifiée exécutée périodiquement (NTFIN22).
+
+    Réutilise le pattern ``AbonnementEcriture`` : ``prochaine_echeance`` avance
+    après chaque exécution ; la commande ``generer_allocations_dues`` exécute
+    les allocations échues via NTFIN21, idempotente par (allocation, période).
+    Hérite de ``core.models.TenantModel``.
+    """
+    class Periodicite(models.TextChoices):
+        MENSUELLE = 'mensuelle', 'Mensuelle'
+        TRIMESTRIELLE = 'trimestrielle', 'Trimestrielle'
+
+    cle = models.ForeignKey(
+        CleRepartition,
+        # on_delete: PROTECT — on ne supprime pas une clé encore planifiée.
+        on_delete=models.PROTECT,
+        related_name='allocations_recurrentes',
+        verbose_name='Clé de répartition',
+    )
+    libelle = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Libellé')
+    compte_source = models.CharField(
+        max_length=20, verbose_name='Compte source')
+    centre_source = models.ForeignKey(
+        'compta.CentreCout',
+        # on_delete: SET_NULL — centre source indicatif.
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='allocations_recurrentes_source',
+        verbose_name='Centre source')
+    referentiel = models.ForeignKey(
+        ReferentielComptable,
+        # on_delete: SET_NULL — référentiel cible indicatif (NULL = principal).
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='allocations_recurrentes',
+        verbose_name='Référentiel')
+    periodicite = models.CharField(
+        max_length=14, choices=Periodicite.choices,
+        default=Periodicite.MENSUELLE, verbose_name='Périodicité')
+    prochaine_echeance = models.DateField(verbose_name='Prochaine échéance')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    derniere_generation = models.DateField(
+        null=True, blank=True, verbose_name='Dernière génération')
+
+    class Meta:
+        verbose_name = 'Allocation récurrente'
+        verbose_name_plural = 'Allocations récurrentes'
+        ordering = ['prochaine_echeance']
+
+    def __str__(self):
+        return self.libelle or f'Allocation récurrente {self.compte_source}'
+
+    def echeance_suivante(self, depuis):
+        """Échéance suivante après ``depuis`` selon la périodicité (stdlib)."""
+        import calendar
+        pas = 1 if self.periodicite == self.Periodicite.MENSUELLE else 3
+        mois_total = depuis.month - 1 + pas
+        annee = depuis.year + mois_total // 12
+        mois = mois_total % 12 + 1
+        dernier_jour = calendar.monthrange(annee, mois)[1]
+        jour = min(depuis.day, dernier_jour)
+        return depuis.replace(year=annee, month=mois, day=jour)
+
+
+# ── NTFIN23 — Engagements (encumbrance) sur commande & note de frais ───────
+
+class EngagementComptable(TenantModel):
+    """Engagement comptable (encumbrance) sur un compte/centre (NTFIN23).
+
+    Réserve un budget à la commande (``engager``) puis le solde à la
+    facturation (``liquider``). ``montant_engage`` = total réservé ;
+    ``montant_liquide`` = part déjà consommée ; le résiduel = engagé − liquidé.
+    La pièce source (bon de commande, note de frais, marché) est référencée par
+    string-ref (``source_type`` + ``source_id``), jamais un FK cross-app.
+    Hérite de ``core.models.TenantModel``.
+    """
+    class Type(models.TextChoices):
+        BON_COMMANDE = 'bon_commande', 'Bon de commande'
+        NOTE_FRAIS = 'note_frais', 'Note de frais'
+        MARCHE = 'marche', 'Marché'
+
+    class Statut(models.TextChoices):
+        ENGAGE = 'engage', 'Engagé'
+        PARTIELLEMENT_LIQUIDE = 'partiellement_liquide', 'Partiellement liquidé'
+        SOLDE = 'solde', 'Soldé'
+
+    referentiel = models.ForeignKey(
+        ReferentielComptable,
+        # on_delete: SET_NULL — référentiel indicatif (NULL = principal).
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='engagements',
+        verbose_name='Référentiel')
+    type_engagement = models.CharField(
+        max_length=14, choices=Type.choices, default=Type.BON_COMMANDE,
+        verbose_name="Type d'engagement")
+    source_type = models.CharField(
+        max_length=40, blank=True, default='',
+        verbose_name='Type de pièce source (string-ref)')
+    source_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID de la pièce source (string-ref)')
+    reference = models.CharField(
+        max_length=50, blank=True, default='', verbose_name='Référence')
+    compte = models.ForeignKey(
+        CompteComptable,
+        # on_delete: PROTECT — un compte engagé ne doit pas être supprimé tant
+        # qu'un engagement le référence.
+        on_delete=models.PROTECT,
+        related_name='engagements',
+        verbose_name='Compte')
+    centre_cout = models.ForeignKey(
+        'compta.CentreCout',
+        # on_delete: SET_NULL — centre indicatif ; sa purge ne casse pas
+        # l'engagement.
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='engagements',
+        verbose_name='Centre de coût')
+    libelle = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Libellé')
+    montant_engage = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant engagé')
+    montant_liquide = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant liquidé')
+    date_engagement = models.DateField(verbose_name="Date d'engagement")
+    statut = models.CharField(
+        max_length=22, choices=Statut.choices, default=Statut.ENGAGE,
+        verbose_name='Statut')
+
+    class Meta:
+        verbose_name = 'Engagement comptable'
+        verbose_name_plural = 'Engagements comptables'
+        ordering = ['-date_engagement', '-id']
+
+    def __str__(self):
+        return f'Engagement {self.reference or self.type_engagement} ({self.montant_engage})'
+
+    @property
+    def montant_residuel(self):
+        return (self.montant_engage or Decimal('0')) - (
+            self.montant_liquide or Decimal('0'))
+
+    def clean(self):
+        super().clean()
+        if self.montant_engage is not None and self.montant_engage < 0:
+            raise ValidationError("Le montant engagé ne peut pas être négatif.")
+        if (self.montant_liquide is not None and self.montant_engage is not None
+                and self.montant_liquide > self.montant_engage):
+            raise ValidationError(
+                "Le montant liquidé ne peut pas dépasser le montant engagé.")

@@ -85,6 +85,8 @@ from .models import (
     OperationInterco, EcritureElimination, MargeInterneStock,
     EliminationTitres,
     ReferentielComptable, AjustementGaap, AxeAnalytique, ImputationAxe,
+    CleRepartition, LigneCleRepartition, RunAllocation, AllocationRecurrente,
+    EngagementComptable,
 )
 from .serializers import (
     AppelTelephoniqueSerializer, AvancementRevenuSerializer,
@@ -157,6 +159,9 @@ from .serializers import (
     EliminationTitresSerializer,
     ReferentielComptableSerializer, AjustementGaapSerializer,
     AxeAnalytiqueSerializer, ImputationAxeSerializer,
+    CleRepartitionSerializer, LigneCleRepartitionSerializer,
+    RunAllocationSerializer, AllocationRecurrenteSerializer,
+    EngagementComptableSerializer,
 )
 
 
@@ -7778,6 +7783,17 @@ def _err400(exc):
         status=status.HTTP_400_BAD_REQUEST)
 
 
+def _parse_date(value):
+    """Parse une date ISO (str) → ``date`` ; lève ``ValueError`` si invalide."""
+    from datetime import date as _date
+    if value is None or value == '':
+        raise ValueError("Date requise.")
+    if isinstance(value, _date):
+        return value
+    parsed = _date.fromisoformat(str(value))
+    return parsed
+
+
 class CycleConsolidationViewSet(_ComptaBaseViewSet):
     """Cycles de consolidation (NTFIN1) + tout le moniteur de consolidation.
 
@@ -8113,3 +8129,186 @@ class ImputationAxeViewSet(_ComptaBaseViewSet):
         if ligne:
             qs = qs.filter(ligne_ecriture_id=ligne)
         return qs
+
+
+# ── NTFIN20-25 — Allocations & comptabilité d'engagement (encumbrance) ─────
+
+class CleRepartitionViewSet(_ComptaBaseViewSet):
+    """Clés de répartition (NTFIN20). Company-scopé + action ``valider``."""
+    queryset = CleRepartition.objects.prefetch_related(
+        'lignes__centre_cout').all()
+    serializer_class = CleRepartitionSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['code']
+
+    @action(detail=True, methods=['get'],
+            permission_classes=[IsResponsableOrAdmin])
+    def valider(self, request, pk=None):
+        """NTFIN20 — vérifie Σ coefficients = 100 % (OK/400)."""
+        cle = self.get_object()
+        try:
+            services.valider_cle_repartition(cle)
+        except DjangoValidationError as exc:
+            return _err400(exc)
+        return Response({'valide': True,
+                         'total_coefficients': cle.total_coefficients})
+
+
+class LigneCleRepartitionViewSet(_ComptaBaseViewSet):
+    """Lignes (coefficients) d'une clé de répartition (NTFIN20)."""
+    queryset = LigneCleRepartition.objects.select_related(
+        'cle', 'centre_cout').all()
+    serializer_class = LigneCleRepartitionSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        cle = self.request.query_params.get('cle')
+        if cle:
+            qs = qs.filter(cle_id=cle)
+        return qs
+
+
+class RunAllocationViewSet(_ComptaBaseViewSet):
+    """Runs d'allocation (NTFIN21) : liste + ``executer`` + ``reverser``."""
+    queryset = RunAllocation.objects.select_related(
+        'cle', 'centre_source', 'referentiel', 'ecriture').all()
+    serializer_class = RunAllocationSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['periode', 'id']
+    http_method_names = ['get', 'post', 'head', 'options']
+
+    def get_permissions(self):
+        if self.action in ('executer', 'reverser'):
+            return [HasPermissionOrLegacy('compta_valider')()]
+        return super().get_permissions()
+
+    @action(detail=False, methods=['post'],
+            permission_classes=[HasPermissionOrLegacy('compta_valider')])
+    def executer(self, request):
+        """NTFIN21 — déverse un compte source vers les cibles d'une clé."""
+        company = request.user.company
+        data = request.data
+        cle = CleRepartition.objects.filter(
+            company=company, pk=data.get('cle')).first()
+        if cle is None:
+            return Response({'detail': 'Clé de répartition inconnue.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            periode = _parse_date(data.get('periode'))
+            centre_source = None
+            if data.get('centre_source'):
+                centre_source = CentreCout.objects.filter(
+                    company=company, pk=data.get('centre_source')).first()
+            referentiel = None
+            if data.get('referentiel'):
+                referentiel = ReferentielComptable.objects.filter(
+                    company=company, pk=data.get('referentiel')).first()
+            run = services.executer_allocation(
+                company, data.get('compte_source'), cle, periode,
+                referentiel=referentiel, montant=data.get('montant'),
+                centre_source=centre_source, created_by=request.user)
+        except (DjangoValidationError, ValueError, TypeError) as exc:
+            return _err400(exc)
+        return Response(RunAllocationSerializer(run).data,
+                        status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[HasPermissionOrLegacy('compta_valider')])
+    def reverser(self, request, pk=None):
+        """NTFIN21 — extourne une allocation exécutée."""
+        run = self.get_object()
+        try:
+            services.reverser_allocation(run, created_by=request.user)
+        except DjangoValidationError as exc:
+            return _err400(exc)
+        return Response(self.get_serializer(run).data)
+
+
+class AllocationRecurrenteViewSet(_ComptaBaseViewSet):
+    """Allocations récurrentes planifiées (NTFIN22)."""
+    queryset = AllocationRecurrente.objects.select_related(
+        'cle', 'centre_source', 'referentiel').all()
+    serializer_class = AllocationRecurrenteSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['prochaine_echeance', 'id']
+
+
+class EngagementComptableViewSet(_ComptaBaseViewSet):
+    """Engagements comptables — encumbrance (NTFIN23-24).
+
+    CRUD (création = engagement) + ``liquider`` (NTFIN23) + ``verifier-
+    disponible`` (NTFIN24, contrôle budget − engagé − réalisé).
+    """
+    queryset = EngagementComptable.objects.select_related(
+        'compte', 'centre_cout', 'referentiel').all()
+    serializer_class = EngagementComptableSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_engagement', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def get_permissions(self):
+        if self.action in ('liquider',):
+            return [HasPermissionOrLegacy('compta_valider')()]
+        return super().get_permissions()
+
+    def create(self, request, *args, **kwargs):
+        """NTFIN24 — refuse (400) un engagement qui dépasse un budget bloquant."""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        compte = serializer.validated_data.get('compte')
+        centre = serializer.validated_data.get('centre_cout')
+        montant = serializer.validated_data.get('montant_engage')
+        date_eng = serializer.validated_data.get('date_engagement')
+        check = services.verifier_disponible_engagement(
+            request.user.company, compte=compte, centre_cout=centre,
+            montant=montant, periode=date_eng)
+        if check['statut'] == 'blocage':
+            return Response(
+                {'detail': "Budget dépassé (contrôle bloquant) : "
+                           "engagement refusé.", 'controle': check},
+                status=status.HTTP_400_BAD_REQUEST)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED,
+                        headers=headers)
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[HasPermissionOrLegacy('compta_valider')])
+    def liquider(self, request, pk=None):
+        """NTFIN23 — liquide (consomme) une part de l'engagement."""
+        eng = self.get_object()
+        try:
+            services.liquider(eng, request.data.get('montant'))
+        except (DjangoValidationError, ValueError, TypeError) as exc:
+            return _err400(exc)
+        return Response(self.get_serializer(eng).data)
+
+    @action(detail=False, methods=['post'], url_path='verifier-disponible',
+            permission_classes=[IsResponsableOrAdmin])
+    def verifier_disponible(self, request):
+        """NTFIN24 — contrôle le disponible pour un montant projeté."""
+        company = request.user.company
+        data = request.data
+        compte = CompteComptable.objects.filter(
+            company=company, pk=data.get('compte')).first()
+        if compte is None:
+            return Response({'detail': 'Compte inconnu.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        centre = None
+        if data.get('centre_cout'):
+            centre = CentreCout.objects.filter(
+                company=company, pk=data.get('centre_cout')).first()
+        try:
+            periode = _parse_date(data.get('periode'))
+            check = services.verifier_disponible_engagement(
+                company, compte=compte, centre_cout=centre,
+                montant=data.get('montant') or 0, periode=periode)
+        except (ValueError, TypeError) as exc:
+            return _err400(exc)
+        return Response(check)

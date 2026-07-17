@@ -61,6 +61,8 @@ from .models import (
     OperationInterco, EcritureElimination, MargeInterneStock,
     EliminationTitres,
     ReferentielComptable, AjustementGaap, AxeAnalytique, ImputationAxe,
+    CleRepartition, LigneCleRepartition, RunAllocation, AllocationRecurrente,
+    EngagementComptable,
 )
 
 
@@ -2821,3 +2823,99 @@ class ImputationAxeSerializer(serializers.ModelSerializer):
 
     def validate_centre_cout(self, value):
         return _meme_societe(self, value, 'Centre de coût')
+
+
+# ── NTFIN20-25 — Allocations & engagement (encumbrance) ────────────────────
+
+class LigneCleRepartitionSerializer(serializers.ModelSerializer):
+    """NTFIN20 — Coefficient d'une cible dans une clé de répartition."""
+    centre_code = serializers.CharField(
+        source='centre_cout.code', read_only=True)
+
+    class Meta:
+        model = LigneCleRepartition
+        fields = [
+            'id', 'cle', 'centre_cout', 'centre_code', 'coefficient',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+    def validate_centre_cout(self, value):
+        return _meme_societe(self, value, 'Centre de coût')
+
+
+class CleRepartitionSerializer(serializers.ModelSerializer):
+    """NTFIN20 — Clé de répartition (base d'allocation)."""
+    lignes = LigneCleRepartitionSerializer(many=True, read_only=True)
+    total_coefficients = serializers.DecimalField(
+        max_digits=9, decimal_places=4, read_only=True)
+    type_display = serializers.CharField(
+        source='get_type_cle_display', read_only=True)
+
+    class Meta:
+        model = CleRepartition
+        fields = [
+            'id', 'code', 'libelle', 'type_cle', 'type_display', 'base',
+            'actif', 'lignes', 'total_coefficients',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+
+class RunAllocationSerializer(serializers.ModelSerializer):
+    """NTFIN21 — Run d'allocation (déversement)."""
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = RunAllocation
+        fields = [
+            'id', 'cle', 'compte_source', 'centre_source', 'referentiel',
+            'periode', 'montant_reparti', 'ecriture', 'statut',
+            'statut_display', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'montant_reparti', 'ecriture', 'statut', 'created_at', 'updated_at']
+
+    def validate_cle(self, value):
+        return _meme_societe(self, value, 'Clé de répartition')
+
+
+class AllocationRecurrenteSerializer(serializers.ModelSerializer):
+    """NTFIN22 — Allocation récurrente planifiée."""
+    class Meta:
+        model = AllocationRecurrente
+        fields = [
+            'id', 'cle', 'libelle', 'compte_source', 'centre_source',
+            'referentiel', 'periodicite', 'prochaine_echeance', 'actif',
+            'derniere_generation', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['derniere_generation', 'created_at', 'updated_at']
+
+    def validate_cle(self, value):
+        return _meme_societe(self, value, 'Clé de répartition')
+
+
+class EngagementComptableSerializer(serializers.ModelSerializer):
+    """NTFIN23 — Engagement comptable (encumbrance)."""
+    montant_residuel = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    type_display = serializers.CharField(
+        source='get_type_engagement_display', read_only=True)
+
+    class Meta:
+        model = EngagementComptable
+        fields = [
+            'id', 'referentiel', 'type_engagement', 'type_display',
+            'source_type', 'source_id', 'reference', 'compte', 'centre_cout',
+            'libelle', 'montant_engage', 'montant_liquide', 'montant_residuel',
+            'date_engagement', 'statut', 'statut_display',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'montant_liquide', 'statut', 'created_at', 'updated_at']
+
+    def validate_compte(self, value):
+        return _meme_societe(self, value, 'Compte')
