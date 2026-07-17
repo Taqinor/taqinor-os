@@ -531,6 +531,98 @@ class MetaClient:
         return self._request(
             'POST', self._account_edge('ads'), data=payload)
 
+    # ── Éditions d'objets existants (ADSDEEP30 — JAMAIS de status) ───────────
+    @staticmethod
+    def _edit_payload(base, extra_fields):
+        """Fusionne ``base`` + ``extra_fields`` en RETIRANT tout ``status``.
+
+        Les méthodes d'édition (échange de créatif / renommage / plafond) ne
+        touchent JAMAIS au statut : un ``status`` glissé via ``extra_fields`` est
+        retiré et n'est jamais réémis — aucune d'elles ne peut donc activer /
+        dé-pauser un objet (invariant permanent règle #3). À la DIFFÉRENCE des
+        créations, on n'écrit PAS ``PAUSED`` : une édition laisse le statut Meta
+        inchangé (elle ne repause pas non plus un objet en ligne — elle n'écrit
+        aucun statut du tout)."""
+        payload = dict(base)
+        extras = dict(extra_fields or {})
+        extras.pop('status', None)
+        payload.update(extras)
+        payload.pop('status', None)  # mot final : jamais de status sur une édition
+        return payload
+
+    def swap_ad_creative(self, *, ad_id, creative_spec=None, creative_id=None,
+                         extra_fields=None):
+        """ADSDEEP30 — Remplace le créatif d'une ad EXISTANTE (dossier §4).
+
+        ``AdCreative`` est **write-once** pour son contenu : on ne peut pas éditer
+        le texte / média d'un créatif en place. Le SEUL chemin est donc :
+
+          1. créer un NOUVEAU adcreative (``POST /act_<id>/adcreatives``) portant
+             le nouveau contenu (``creative_spec``) — sauf si ``creative_id`` est
+             déjà fourni (réutilisation d'un créatif existant) ;
+          2. le rattacher à l'ad SANS rien toucher d'autre :
+             ``POST /<ad_id>`` avec ``{"creative": {"creative_id": <nouveau>}}``.
+
+        Même ``ad_id`` → l'historique d'insights est conservé. AUCUN ``status``
+        n'est envoyé à AUCUNE des deux étapes : la méthode ne peut ni créer un
+        objet actif ni dé-pauser l'ad (invariant permanent règle #3). ⚠ côté Meta
+        c'est un *significant edit* (re-review + reset d'apprentissage) et un
+        changement de texte crée un NOUVEAU post (perte de preuve sociale) —
+        l'avertissement est porté par la couche EngineAction (ADSDEEP31), pas ici.
+
+        Renvoie ``{creative_id, created_creative, ad_update}``.
+        """
+        new_creative_id = str(creative_id or '').strip()
+        created = None
+        if not new_creative_id:
+            if not creative_spec:
+                raise MetaError(
+                    "swap_ad_creative exige creative_spec ou creative_id.")
+            # Les objets imbriqués (object_story_spec, asset_feed_spec…) voyagent
+            # en JSON dans les paramètres de formulaire Meta. ``status`` retiré :
+            # jamais posé sur le nouveau créatif non plus.
+            spec = {}
+            for key, value in dict(creative_spec).items():
+                if key == 'status':
+                    continue
+                spec[key] = (json.dumps(value)
+                             if isinstance(value, (dict, list)) else value)
+            created = self._request(
+                'POST', self._account_edge('adcreatives'), data=spec)
+            new_creative_id = str((created or {}).get('id') or '').strip()
+            if not new_creative_id:
+                raise MetaError(
+                    "Création du nouveau créatif échouée : aucun id renvoyé.")
+        base = {'creative': json.dumps({'creative_id': new_creative_id})}
+        payload = self._edit_payload(base, extra_fields)
+        result = self._request('POST', f'{ad_id}', data=payload)
+        return {
+            'creative_id': new_creative_id,
+            'created_creative': created,
+            'ad_update': result if isinstance(result, dict) else {
+                'result': result},
+        }
+
+    def rename_object(self, *, object_id, name, extra_fields=None):
+        """ADSDEEP30 — Renomme un objet Meta (campagne / adset / ad / créatif) :
+        le SEUL champ édité est ``name``. ``POST /<object_id>`` avec ``{name}``.
+        Aucun ``status`` n'est jamais envoyé (invariant permanent : le renommage
+        ne peut ni activer ni dé-pauser — règle #3)."""
+        base = {'name': name}
+        payload = self._edit_payload(base, extra_fields)
+        return self._request('POST', f'{object_id}', data=payload)
+
+    def set_campaign_spend_cap(self, *, campaign_id, spend_cap,
+                               extra_fields=None):
+        """ADSDEEP30 — Pose le plafond de dépense TOTAL d'une campagne
+        (``spend_cap``, unités mineures Meta ; ``0`` = sans plafond — dossier §1).
+        ``POST /<campaign_id>``. Un plafond ne PEUT QUE limiter la dépense — il
+        n'active jamais rien : aucun ``status`` n'est envoyé (invariant permanent
+        règle #3)."""
+        base = {'spend_cap': spend_cap}
+        payload = self._edit_payload(base, extra_fields)
+        return self._request('POST', f'{campaign_id}', data=payload)
+
     # ── Mise en pause (PAUSED-only — jamais de kwarg status) ─────────────────
     def update_status_paused(self, *, object_id, level=None):
         """ENGFIX5 — Met un objet (campagne / adset / ad) en ``PAUSED`` — et RIEN
