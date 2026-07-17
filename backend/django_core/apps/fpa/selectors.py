@@ -13,3 +13,14 @@ def budget_total_annuel(company, cycle_id, *, departement_id=None, categorie=Non
     if categorie is not None:
         qs = qs.filter(categorie=categorie)
     return qs.aggregate(total=Sum('montant_prevu'))['total'] or 0
+
+
+def revenu_engage_carnet(company, mois_debut, mois_fin):
+    """NTFPA12 — revenu ENGAGÉ (carnet de commandes) par mois, lu via
+    ``ventes.selectors`` (jamais ``ventes.models``). Renvoie ``{'YYYY-MM':
+    Decimal}`` — devis acceptés non facturés, 100 % pondéré (déjà signé),
+    distinct du pipeline probabiliste NTFPA11 (pas de double-compte)."""
+    from apps.ventes import selectors as ventes_selectors
+
+    return ventes_selectors.carnet_commande_par_mois(
+        company, mois_debut, mois_fin)

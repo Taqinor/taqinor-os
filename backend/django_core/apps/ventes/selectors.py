@@ -1078,3 +1078,40 @@ def devis_events_for_lead(lead_id, company):
             })
     events.sort(key=lambda e: (e['at'] or ''), reverse=True)
     return events
+
+
+def carnet_commande_par_mois(company, mois_debut, mois_fin):
+    """NTFPA12 — revenu ENGAGÉ (carnet de commandes) par mois de facturation
+    prévue, pour ``apps.fpa`` (driver revenu engagé).
+
+    Agrège les ``Devis`` ``accepte`` NON encore facturés (aucune ``Facture``
+    liée) dont la date de référence (``date_acceptation``) tombe dans
+    ``[mois_debut, mois_fin]``. C'est du signé (100 % pondéré), distinct du
+    pipeline probabiliste NTFPA11 — un devis accepté sort automatiquement du
+    pipeline (son lead passe SIGNED), donc pas de double-compte. Lecture seule ;
+    renvoie ``{'YYYY-MM': Decimal}``.
+    """
+    from decimal import Decimal
+
+    from .models import Devis
+
+    candidats = (
+        Devis.objects
+        .filter(company=company, statut=Devis.Statut.ACCEPTE,
+                date_acceptation__isnull=False,
+                date_acceptation__gte=mois_debut,
+                date_acceptation__lte=mois_fin)
+        .exclude(factures__isnull=False)
+        .distinct()
+        .prefetch_related('lignes')
+    )
+    par_mois = {}
+    for devis in candidats:
+        d = devis.date_acceptation
+        cle = f'{d.year:04d}-{d.month:02d}'
+        try:
+            montant = Decimal(str(devis.total_ttc or 0))
+        except Exception:
+            montant = Decimal('0')
+        par_mois[cle] = par_mois.get(cle, Decimal('0')) + montant
+    return par_mois
