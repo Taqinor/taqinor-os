@@ -1789,3 +1789,20 @@ class AdPreviewsView(APIView):
             return Response({'detail': 'Aperçu indisponible.'}, status=404)
         # iframe NON persistée (valide 24 h) — rendue telle quelle à l'affichage.
         return Response({'format': ad_format, 'body': body})
+
+
+class RealLeadsView(APIView):
+    """ADSDEEP19 — Comptes de leads RÉELS par ad / par campagne (MetaLeadMirror).
+
+    ``GET /api/django/adsengine/metrics/real-leads/`` — company-scopé, gaté
+    ``adsengine_view``. Remplace le « Leads: 0 » des insights par le vrai nombre
+    de leads capturés (webhook + pull, dédupliqués). Aucun secret."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
+
+    def get(self, request):
+        company, err = _adseng_company_gate(request, 'adsengine_view')
+        if err is not None:
+            return err
+        from .metrics import real_lead_counts
+        return Response(real_lead_counts(company))

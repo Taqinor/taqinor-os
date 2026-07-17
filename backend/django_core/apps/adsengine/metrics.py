@@ -68,6 +68,42 @@ def result_metric_for_objective(objective):
     return RESULT_METRIC_BY_OBJECTIVE.get(key, DEFAULT_RESULT_METRIC)
 
 
+def real_lead_counts(company):
+    """ADSDEEP19 — Comptes de leads RÉELS par ad et par campagne (MetaLeadMirror).
+
+    Remplace le « Leads: 0 » issu des insights par le vrai nombre de leads
+    capturés (webhook + pull, dédupliqués par ``leadgen_id``). Le ``campaign_id``
+    d'un miroir peut être vide (le webhook leadgen ne le pousse pas) : dans ce
+    cas la campagne est résolue via l'échelle miroir ``ad_id`` → ``AdMirror`` →
+    ``AdSetMirror`` → ``AdCampaignMirror``. Company-scopé. Renvoie
+    ``{by_ad, by_campaign, total}`` (``by_campaign`` clé = meta_id de campagne)."""
+    from .models import AdMirror, MetaLeadMirror
+
+    mirrors = list(MetaLeadMirror.objects.filter(company=company))
+    total = len(mirrors)
+    by_ad = {}
+    for m in mirrors:
+        if m.ad_id:
+            by_ad[m.ad_id] = by_ad.get(m.ad_id, 0) + 1
+
+    # Échelle ad_id → campagne (meta_id) via les miroirs (une seule requête).
+    ad_to_campaign = {}
+    ad_qs = (AdMirror.objects
+             .filter(company=company)
+             .select_related('adset__campaign'))
+    for ad in ad_qs:
+        camp = getattr(getattr(ad, 'adset', None), 'campaign', None)
+        if camp is not None:
+            ad_to_campaign[ad.meta_id] = camp.meta_id
+
+    by_campaign = {}
+    for m in mirrors:
+        camp_id = m.campaign_id or ad_to_campaign.get(m.ad_id, '')
+        if camp_id:
+            by_campaign[camp_id] = by_campaign.get(camp_id, 0) + 1
+    return {'by_ad': by_ad, 'by_campaign': by_campaign, 'total': total}
+
+
 def _campaign_spend_map(company, campaigns):
     """Dépense cumulée (``InsightSnapshot.spend``) par miroir de campagne.
 

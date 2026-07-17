@@ -22,7 +22,7 @@ from .views import (
     GuardrailConfigViewSet, GuardrailSingletonView, MediaResolveView,
     MetaConnectionHealthView,
     MetaConnectionStatusView, MetaConnectionViewSet, MetricsDashboardView,
-    MetricsLeadsView, MetricsPacingView, PacingStateViewSet,
+    MetricsLeadsView, MetricsPacingView, PacingStateViewSet, RealLeadsView,
     ReconciliationListView, ReconciliationSnapshotViewSet, ReportExportView,
     RulePolicyViewSet, SimulationDetailView, SimulationListView, StatusView,
     VariantReportView, WiringHealthView,
@@ -112,6 +112,9 @@ urlpatterns = [
          name='adsengine-reporting-export'),
     # ADSDEEP9 — ventilations (audience & diffusion) d'un objet publicitaire.
     path('breakdowns/', BreakdownsView.as_view(), name='adsengine-breakdowns'),
+    # ADSDEEP19 — comptes de leads RÉELS par ad / campagne (MetaLeadMirror).
+    path('metrics/real-leads/', RealLeadsView.as_view(),
+         name='adsengine-real-leads'),
     # ADSDEEP12 — résolveur de médias frais (URL jouable non persistée).
     path('media/<str:ref>/', MediaResolveView.as_view(),
          name='adsengine-media-resolve'),
