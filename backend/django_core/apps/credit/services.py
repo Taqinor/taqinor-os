@@ -122,7 +122,26 @@ def approuver_derogation(derogation, user, *, jours_validite=30):
     derogation.valide_jusqu_au = now + timedelta(days=jours_validite)
     derogation.save(update_fields=[
         'statut', 'approuvee_par', 'date_decision', 'valide_jusqu_au'])
+    _log_decision_derogation(derogation, user, 'approuvée')
     return derogation
+
+
+def _log_decision_derogation(derogation, user, verbe):
+    """NTCRD43 — journalise la décision de dérogation dans le chatter records
+    UNIFIÉ, rattaché au CLIENT (une seule source d'enregistrement, visible dans
+    le fil d'activité générique du client). Best-effort, jamais bloquant."""
+    try:
+        from apps.crm.selectors import get_company_client
+        from apps.records.services import log_note
+
+        client = get_company_client(derogation.company, derogation.client_id)
+        if client is not None:
+            log_note(
+                client, user,
+                f'Dérogation crédit {verbe} : {derogation.montant_demande} MAD.',
+                company=derogation.company)
+    except Exception:  # pragma: no cover - journalisation best-effort
+        pass
 
 
 def rejeter_derogation(derogation, user):
@@ -135,6 +154,7 @@ def rejeter_derogation(derogation, user):
     derogation.approuvee_par = user
     derogation.date_decision = timezone.now()
     derogation.save(update_fields=['statut', 'approuvee_par', 'date_decision'])
+    _log_decision_derogation(derogation, user, 'rejetée')
     return derogation
 
 
