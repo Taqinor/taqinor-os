@@ -19,6 +19,8 @@ Cross-app : ``enseignant``/``enseignant_principal`` référencent
 CHAÎNE (jamais d'import direct des modèles `rh`/`records`), conformément à la
 règle de frontière cross-app.
 """
+from decimal import Decimal
+
 from django.conf import settings
 from django.db import models
 from django.db.models import Q
@@ -267,3 +269,52 @@ class Inscription(TenantModel):
 
     def __str__(self):
         return f"{self.eleve} — {self.annee_scolaire}"
+
+
+# =============================================================================
+# NTEDU6 — Grille tarifaire par niveau.
+# =============================================================================
+
+class GrilleTarifaire(TenantModel):
+    """NTEDU6 — grille tarifaire d'un niveau pour une année scolaire. Une
+    seule ligne ACTIVE par (annee_scolaire, niveau) — contrainte unique
+    partielle sur ``active=True`` (une grille désactivée peut être conservée
+    en historique sans violer la contrainte)."""
+
+    annee_scolaire = models.ForeignKey(
+        AnneeScolaire, on_delete=models.CASCADE, related_name='grilles_tarifaires',
+        verbose_name='Année scolaire')
+    niveau = models.ForeignKey(
+        Niveau, on_delete=models.CASCADE, related_name='grilles_tarifaires',
+        verbose_name='Niveau')
+    frais_inscription = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal('0'),
+        verbose_name="Frais d'inscription")
+    scolarite_annuelle = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal('0'),
+        verbose_name='Scolarité annuelle')
+    transport_mensuel = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        verbose_name='Transport mensuel')
+    cantine_mensuelle = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        verbose_name='Cantine mensuelle')
+    activites_annuelles = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        verbose_name='Activités annuelles')
+    devise = models.CharField(
+        max_length=3, default='MAD', verbose_name='Devise')
+    active = models.BooleanField(default=True, verbose_name='Active')
+
+    class Meta:
+        verbose_name = 'Grille tarifaire'
+        verbose_name_plural = 'Grilles tarifaires'
+        ordering = ['annee_scolaire', 'niveau__ordre']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['annee_scolaire', 'niveau'], condition=Q(active=True),
+                name='education_une_grille_active_par_annee_niveau'),
+        ]
+
+    def __str__(self):
+        return f"{self.niveau} — {self.annee_scolaire}"

@@ -2,7 +2,8 @@
 from rest_framework import serializers
 
 from .models import (
-    AnneeScolaire, Classe, Eleve, Famille, Inscription, Niveau)
+    AnneeScolaire, Classe, Eleve, Famille, GrilleTarifaire, Inscription,
+    Niveau)
 
 
 class AnneeScolaireSerializer(serializers.ModelSerializer):
@@ -65,3 +66,13 @@ class InscriptionSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'id', 'date_demande', 'date_decision', 'decide_par',
             'position_liste_attente', 'statut', 'classe_affectee']
+
+
+class GrilleTarifaireSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = GrilleTarifaire
+        fields = [
+            'id', 'annee_scolaire', 'niveau', 'frais_inscription',
+            'scolarite_annuelle', 'transport_mensuel', 'cantine_mensuelle',
+            'activites_annuelles', 'devise', 'active']
+        read_only_fields = ['id']

@@ -14,7 +14,8 @@ from rest_framework.test import APIClient
 from authentication.models import Company
 
 from .models import (
-    AnneeScolaire, Classe, Eleve, Famille, Inscription, Niveau)
+    AnneeScolaire, Classe, Eleve, Famille, GrilleTarifaire, Inscription,
+    Niveau)
 from .services import affecter_classe
 
 User = get_user_model()
@@ -213,3 +214,36 @@ class NTEDU5ListeAttenteTests(EducationTestCaseMixin, TestCase):
         self.assertEqual(len(response.data), 1)
         self.assertEqual(response.data[0]['id'], self.inscription_attente.id)
         self.assertEqual(response.data[0]['position_liste_attente'], 1)
+
+
+class NTEDU6GrilleTarifaireTests(EducationTestCaseMixin, TestCase):
+    """NTEDU6 — grille tarifaire : une seule ligne active par
+    (annee_scolaire, niveau)."""
+
+    def test_une_seule_grille_active_par_annee_niveau_en_base(self):
+        from django.db import IntegrityError, transaction
+
+        GrilleTarifaire.objects.create(
+            company=self.company, annee_scolaire=self.annee,
+            niveau=self.niveau_cp, frais_inscription=500,
+            scolarite_annuelle=12000)
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                GrilleTarifaire.objects.create(
+                    company=self.company, annee_scolaire=self.annee,
+                    niveau=self.niveau_cp, frais_inscription=600,
+                    scolarite_annuelle=13000)
+
+    def test_endpoint_refuse_doublon_en_400_pas_500(self):
+        url = '/api/django/education/grilles-tarifaires/'
+        response1 = self.client.post(url, {
+            'annee_scolaire': self.annee.id, 'niveau': self.niveau_cp.id,
+            'frais_inscription': '500', 'scolarite_annuelle': '12000',
+        }, format='json')
+        self.assertEqual(response1.status_code, 201, response1.content)
+
+        response2 = self.client.post(url, {
+            'annee_scolaire': self.annee.id, 'niveau': self.niveau_cp.id,
+            'frais_inscription': '600', 'scolarite_annuelle': '13000',
+        }, format='json')
+        self.assertEqual(response2.status_code, 400, response2.content)

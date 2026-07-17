@@ -10,10 +10,13 @@ from rest_framework.response import Response
 
 from core.viewsets import CompanyScopedModelViewSet
 
-from .models import AnneeScolaire, Classe, Eleve, Famille, Inscription, Niveau
+from .models import (
+    AnneeScolaire, Classe, Eleve, Famille, GrilleTarifaire, Inscription,
+    Niveau)
 from .serializers import (
     AnneeScolaireSerializer, ClasseSerializer, EleveSerializer,
-    FamilleSerializer, InscriptionSerializer, NiveauSerializer)
+    FamilleSerializer, GrilleTarifaireSerializer, InscriptionSerializer,
+    NiveauSerializer)
 
 
 class AnneeScolaireViewSet(CompanyScopedModelViewSet):
@@ -188,3 +191,47 @@ class InscriptionViewSet(CompanyScopedModelViewSet):
                 {'detail': 'Aucun candidat en liste d\'attente à promouvoir.'},
                 status=200)
         return Response(InscriptionSerializer(promu).data)
+
+
+class GrilleTarifaireViewSet(CompanyScopedModelViewSet):
+    """NTEDU6 — grille tarifaire par (année scolaire, niveau). Une seule
+    ligne ACTIVE par couple : la contrainte base
+    (``education_une_grille_active_par_annee_niveau``) est l'arbitre final,
+    mais un doublon est refusé en amont en 400 (jamais un 500 IntegrityError)
+    par une vérification explicite avant écriture."""
+
+    queryset = GrilleTarifaire.objects.select_related(
+        'annee_scolaire', 'niveau').all()
+    serializer_class = GrilleTarifaireSerializer
+
+    def _guard_doublon(self, *, annee_scolaire, niveau, active, exclude_id=None):
+        if not active:
+            return
+        qs = GrilleTarifaire.objects.filter(
+            company=self.request.user.company, annee_scolaire=annee_scolaire,
+            niveau=niveau, active=True)
+        if exclude_id is not None:
+            qs = qs.exclude(pk=exclude_id)
+        if qs.exists():
+            raise ValidationError({
+                'detail': (
+                    'Une grille tarifaire active existe déjà pour cette '
+                    'année scolaire et ce niveau.')})
+
+    def perform_create(self, serializer):
+        data = serializer.validated_data
+        self._guard_doublon(
+            annee_scolaire=data['annee_scolaire'], niveau=data['niveau'],
+            active=data.get('active', True))
+        super().perform_create(serializer)
+
+    def perform_update(self, serializer):
+        instance = serializer.instance
+        data = serializer.validated_data
+        self._guard_doublon(
+            annee_scolaire=data.get(
+                'annee_scolaire', instance.annee_scolaire),
+            niveau=data.get('niveau', instance.niveau),
+            active=data.get('active', instance.active),
+            exclude_id=instance.id)
+        super().perform_update(serializer)
