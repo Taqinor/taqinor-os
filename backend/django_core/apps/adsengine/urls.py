@@ -27,6 +27,7 @@ from .views import (
     RulePolicyViewSet, SimulationDetailView, SimulationListView, StatusView,
     VariantReportView, WiringHealthView,
 )
+from .whatsapp_webhook import WhatsAppCloudWebhookView
 
 router = DefaultRouter()
 router.register(r'connexions', MetaConnectionViewSet, basename='meta-connexion')
@@ -121,5 +122,9 @@ urlpatterns = [
     # ADSDEEP13 — proxy previews (iframe Meta, jamais persistée).
     path('ads/<str:ad_meta_id>/previews/', AdPreviewsView.as_view(),
          name='adsengine-ad-previews'),
+    # ADSDEEP24 — récepteur webhook WhatsApp Cloud API (CTWA referral). Public,
+    # gated WHATSAPP_CLOUD_VERIFY_TOKEN + WHATSAPP_CLOUD_APP_SECRET (404 sinon).
+    path('whatsapp/webhook/', WhatsAppCloudWebhookView.as_view(),
+         name='adsengine-whatsapp-webhook'),
     path('', include(router.urls)),
 ]

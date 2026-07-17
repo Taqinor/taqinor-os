@@ -1408,3 +1408,61 @@ class ReconciliationSnapshot(TenantModel):
 
     def __str__(self):
         return f'Réconciliation {self.date} (écart {self.delta_leads})'
+
+
+class CtwaReferral(TenantModel):
+    """ADSDEEP24 — Référence CTWA (Click-to-WhatsApp) d'un message ENTRANT.
+
+    L'objet ``referral`` d'un message WhatsApp Cloud API entrant (topic
+    ``messages``) EST l'attribution par ad d'une conversation CTWA (dossier
+    leads-capi §5) : ``source_id`` (= AD ID), ``source_type`` (``ad``/``post``),
+    ``headline`` et surtout ``ctwa_clid`` (click id — clé de la future boucle
+    CAPI Business Messaging, gated ADSENG34). Le téléphone n'est JAMAIS stocké
+    en clair : seul le ``phone_key`` NORMALISÉ (via
+    ``crm.selectors.normalize_phone_key`` — la MÊME clé QW10 que
+    ``MetaLeadMirror``) rapproche la conversation d'un lead CRM (``crm_lead_id``
+    — référence STRING, jamais une FK cross-app dure, frontière M3).
+
+    Upsert idempotent par ``(company, wa_message_id)`` : un rejeu du webhook Meta
+    (Cloud API réémet un message non-acquitté) ne duplique jamais la référence.
+    """
+
+    wa_message_id = models.CharField(
+        max_length=128, verbose_name='ID message WhatsApp')
+    ad_id = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name='ID ad (source_id)')
+    ctwa_clid = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Click ID CTWA')
+    source_type = models.CharField(
+        max_length=16, blank=True, default='',
+        verbose_name='Type de source (ad/post)')
+    headline = models.TextField(
+        blank=True, default='', verbose_name='Titre de la pub')
+    ts = models.DateTimeField(
+        null=True, blank=True, verbose_name='Horodatage du message')
+    phone_key = models.CharField(
+        max_length=32, blank=True, default='',
+        verbose_name='Clé téléphone normalisée')
+    # Référence STRING au lead CRM (jamais une FK cross-app dure — frontière M3).
+    crm_lead_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID lead CRM')
+
+    class Meta:
+        verbose_name = 'Référence CTWA'
+        verbose_name_plural = 'Références CTWA'
+        ordering = ['-created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'wa_message_id'],
+                name='uniq_adseng_ctwa_msg'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'ad_id'],
+                         name='adseng_ctwa_co_ad_idx'),
+            models.Index(fields=['company', 'phone_key'],
+                         name='adseng_ctwa_co_ph_idx'),
+        ]
+
+    def __str__(self):
+        return f'CTWA {self.wa_message_id} (ad {self.ad_id or "?"})'
