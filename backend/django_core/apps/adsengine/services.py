@@ -32,6 +32,13 @@ logger = logging.getLogger(__name__)
 # plafond (voir ``_centimes_to_mad`` / ``_guard_before_dispatch``).
 CENTIMES_PER_MAD = 100
 
+# ADSDEEP40 — Borne LEARNING-SAFE d'une montée de budget de règle (surf-scaling).
+# Meta réinitialise la phase d'apprentissage au-delà de ~20 % de variation
+# (``models.LEARNING_RESET_BUDGET_PCT``) : une montée de règle est CLAMPÉE à ce
+# plafond AVANT même l'applicateur budget (qui la resserre encore à ``MAX_STEP_PCT``
+# = 15 %/jour). Un pas > 20 % est donc structurellement impossible par ce chemin.
+LEARNING_SAFE_MAX_PCT = 20
+
 
 # ── ENG8 — Toggles de capacités (par société) ────────────────────────────────
 # Chaque ``kind`` auto-applicable est associé au champ booléen de capacité qui,
@@ -308,6 +315,29 @@ def propose_duplicate(company, *, adset, name_suffix=' (copie)', reason_fr=None)
     }
     return propose_action(
         company, kind=KIND_DUPLICATE, reason_fr=reason_fr, payload=payload)
+
+
+# ── ADSDEEP40 — Action de règle « montée de budget » LEARNING-SAFE (≤20 %) ────
+def propose_learning_safe_scale_up(company, *, adset_meta_id,
+                                   current_daily_budget_mad, scale_pct,
+                                   reason_fr, config=None):
+    """ADSDEEP40 — Propose une MONTÉE de budget ad set learning-safe (surf-scaling)
+    — TOUJOURS propose-first (jamais auto-appliquée : une ``EngineAction`` proposée,
+    l'approbation humaine reste requise).
+
+    Double bornage inviolable : ``scale_pct`` est d'abord CLAMPÉ à
+    ``LEARNING_SAFE_MAX_PCT`` (20 %, le seuil de reset d'apprentissage Meta), puis
+    délégué à ``budget_applier.propose_increase_pace`` qui le resserre encore à
+    ``MAX_STEP_PCT`` (15 %/jour) ET au plafond quotidien. Le budget proposé ne peut
+    donc JAMAIS dépasser +20 % du courant (en pratique +15 %). ``current_daily_budget_mad``
+    est en MAD (le miroir stocke des centimes — l'appelant convertit). Une pause /
+    dé-pause n'est JAMAIS possible par ce chemin (montée de budget uniquement)."""
+    from . import budget_applier
+    bump = min(float(scale_pct), float(LEARNING_SAFE_MAX_PCT))
+    return budget_applier.propose_increase_pace(
+        company, adset_meta_id=adset_meta_id,
+        current_daily_budget_mad=current_daily_budget_mad,
+        reason_fr=reason_fr, bump_pct=bump, config=config)
 
 
 def propose_pause_for_month(company, *, target_meta_id, target_type='campaign',

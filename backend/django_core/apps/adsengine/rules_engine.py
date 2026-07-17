@@ -393,6 +393,18 @@ def _eval_rank_low_result(company, policy, template, *, now, config):
     return findings
 
 
+def _eval_stop_loss(company, policy, template, *, now, config):
+    """ADSDEEP40 — Stop-loss : CPL d'une campagne au-dessus d'un plafond DUR sur la
+    fenêtre ⇒ PAUSE PROPOSÉE (jamais auto, jamais une activation — l'action
+    ``pause`` du template ``stop_loss_cpl`` est propose-first via ``_act_on_finding``).
+    Réutilise l'évaluateur générique « métrique dérivée vs seuil » avec la métrique
+    CPL (le template ne portait pas de bloc ``v2`` — on l'injecte ici, sans toucher
+    au catalogue fixe)."""
+    spec = {'metric': 'cpl', 'operator': 'gt', 'threshold_param': 'threshold_mad'}
+    return _eval_metric_threshold(
+        company, policy, {**template, 'v2': spec}, now=now, config=config)
+
+
 # Registre template_key → évaluateur. Les templates dépendant d'une autre lane
 # (pacing, réconciliation) ou d'une donnée non encore stockée (impressions pour
 # zéro-delivery) ne sont PAS câblés ici et sont consignés ``evaluated: False``
@@ -400,6 +412,8 @@ def _eval_rank_low_result(company, policy, template, *, now, config):
 _EVALUATORS = {
     'frequency_high': _eval_frequency_high,
     'cpl_band': _eval_cpl_band,
+    # ADSDEEP40 — stop-loss (CPL campagne > plafond dur ⇒ pause proposée).
+    'stop_loss_cpl': _eval_stop_loss,
     # ADSDEEP38 — vocabulaire de conditions v2 (métriques dérivées / fenêtres
     # comparées / classement top-N).
     'cost_per_conversation_high': _eval_metric_threshold,
@@ -490,6 +504,69 @@ def _emit_alert(company, *, template_key, finding, message, action=None,
                 'computed': finding.get('computed', {})})
 
 
+# ── ADSDEEP40 — Actions de règle v2 (montée de budget learning-safe / duplication)
+def _propose_v2_action(company, policy, template, finding, *, config, dry_run):
+    """ADSDEEP40 — Matérialise l'ACTION de règle v2 d'un finding DÉCLENCHÉ,
+    TOUJOURS propose-first (jamais ``execute_auto_action`` : la seule auto-application
+    bornée reste ENG8, réservée à rotate/rebalance). L'intention est lue dans
+    ``template['v2']['action']`` :
+
+      * ``budget_scale_up`` → montée de budget learning-safe (surf-scaling) sur
+        l'ad set ciblé : ``scale_pct`` (param whitelisté) est plafonné à 20 %
+        (reset d'apprentissage Meta) par ``services.propose_learning_safe_scale_up``,
+        puis à 15 %/j + plafond quotidien par l'applicateur budget ;
+      * ``duplicate`` → duplication de l'ad set gagnant (nouvel ad set PAUSED + ad
+        réutilisant le créatif LIVE — ``services.propose_duplicate``).
+
+    Renvoie l'``EngineAction`` PROPOSÉE, ou ``None`` si rien n'est proposable
+    (ad set introuvable, budget courant inconnu, pas de créatif LIVE). Une pause /
+    dé-pause n'est JAMAIS produite par ce chemin (invariant permanent règle #3).
+    En simulation, la raison est préfixée « [Simulation] »."""
+    from . import services
+    from .models import AdSetMirror
+
+    intent = (template.get('v2') or {}).get('action')
+    target_id = finding.get('target_meta_id', '')
+    prefix = '[Simulation] ' if dry_run else ''
+
+    if intent == 'budget_scale_up':
+        adset = AdSetMirror.objects.filter(
+            company=company, meta_id=target_id).first()
+        if adset is None or adset.budget is None:
+            return None  # pas de base budget → alerte seule
+        current_mad = float(adset.budget) / services.CENTIMES_PER_MAD
+        if current_mad <= 0:
+            return None
+        params = rule_templates.resolve_params(policy.template_key, policy.params)
+        scale_pct = float(params.get(
+            'scale_pct', services.LEARNING_SAFE_MAX_PCT))
+        reason = (
+            f"{prefix}Surf-scaling : le CPL de l'ad set {target_id} s'améliore "
+            f"(fenêtre courte < longue) — montée de budget learning-safe "
+            f"(≤{services.LEARNING_SAFE_MAX_PCT} %) proposée.")
+        return services.propose_learning_safe_scale_up(
+            company, adset_meta_id=target_id,
+            current_daily_budget_mad=current_mad, scale_pct=scale_pct,
+            reason_fr=reason, config=config)
+
+    if intent == 'duplicate':
+        adset = AdSetMirror.objects.filter(
+            company=company, meta_id=target_id).first()
+        if adset is None:
+            return None
+        reason = (
+            f"{prefix}Dupliquer l'ad set gagnant « {adset.name} » pour scaler "
+            f"horizontalement (nouvel ad set PAUSED + ad réutilisant le créatif "
+            f"LIVE).")
+        try:
+            return services.propose_duplicate(
+                company, adset=adset, reason_fr=reason)
+        except ValueError:
+            return None  # pas de créatif LIVE / campagne miroir → alerte seule
+
+    return None
+
+
 def _act_on_finding(company, policy, template, finding, *, config, client):
     """Matérialise l'action/alerte d'un finding DÉCLENCHÉ (jamais d'action
     directe : toujours via ``services``). Déduplique par cooldown. Renvoie
@@ -505,6 +582,27 @@ def _act_on_finding(company, policy, template, finding, *, config, client):
         return None  # cooldown / idempotence : jamais de doublon
 
     reason = _reason_fr({**template, '_key': template_key}, finding)
+
+    # ADSDEEP40 — action de règle v2 (montée de budget / duplication) : TOUJOURS
+    # propose-first, prend le pas sur le chemin kind-based dès que le template
+    # porte un hint ``v2['action']``. On estampille (template_key, target) dans le
+    # payload pour que la dédup cooldown (``_recently_acted``) couvre aussi ces
+    # actions (leurs payloads budget/duplication ne les portent pas nativement).
+    v2_intent = (template.get('v2') or {}).get('action')
+    if v2_intent:
+        action = _propose_v2_action(
+            company, policy, template, finding, config=config,
+            dry_run=policy.dry_run)
+        if action is not None:
+            payload = dict(action.payload or {})
+            payload.setdefault('template_key', template_key)
+            payload.setdefault('target_meta_id', target_meta_id)
+            action.payload = payload
+            action.save(update_fields=['payload', 'updated_at'])
+        _emit_alert(company, template_key=template_key, finding=finding,
+                    message=reason, action=action, dry_run=policy.dry_run)
+        return action
+
     kind = rule_templates.action_kind(template_key)
     payload = {
         'template_key': template_key,
