@@ -10,8 +10,8 @@ from decimal import ROUND_HALF_UP, Decimal
 from django.core.exceptions import ValidationError
 
 from .models import (
-    ActifCouvert, EcheancePrime, GarantiePolice, PoliceActivity,
-    PoliceAssurance, SinistreActivity,
+    ActifCouvert, DeclarationSinistre, EcheancePrime, GarantiePolice,
+    IndemnisationSinistre, PoliceActivity, PoliceAssurance, SinistreActivity,
 )
 
 # ── NTASS3 — Chatter PoliceAssurance ────────────────────────────────────────
@@ -307,3 +307,43 @@ def log_sinistre_note(declaration, user, body):
     return SinistreActivity.objects.create(
         company=declaration.company, declaration=declaration,
         kind=SinistreActivity.Kind.NOTE, description=body, user=user)
+
+
+# ── NTASS12 — Suivi d'indemnisation vs franchise ────────────────────────────
+
+def enregistrer_indemnisation(declaration, *, montant_reclame,
+                              montant_indemnise, franchise_appliquee=None,
+                              date_versement=None, garantie_id=None, user=None):
+    """NTASS12 — pose (ou met à jour) l'indemnisation d'une déclaration de
+    sinistre et fait passer son statut à ``indemnise``.
+
+    ``franchise_appliquee`` : si non fournie explicitement, COPIÉE (snapshot)
+    depuis la ``GarantiePolice`` désignée par ``garantie_id`` (sinon la
+    première garantie de la police, sinon 0) — jamais une FK vivante."""
+    if franchise_appliquee is None:
+        garantie = None
+        if garantie_id is not None:
+            garantie = GarantiePolice.objects.filter(
+                id=garantie_id, police=declaration.police).first()
+        if garantie is None:
+            garantie = declaration.police.garanties.first()
+        franchise_appliquee = garantie.franchise_montant if garantie else 0
+
+    indemnisation, _ = IndemnisationSinistre.objects.update_or_create(
+        declaration=declaration,
+        defaults={
+            'company': declaration.company,
+            'montant_reclame': montant_reclame,
+            'franchise_appliquee': franchise_appliquee,
+            'montant_indemnise': montant_indemnise,
+            'date_versement': date_versement,
+        })
+
+    ancien_statut = declaration.statut
+    declaration.statut = DeclarationSinistre.Statut.INDEMNISE
+    declaration.save(update_fields=['statut'])
+    if ancien_statut != declaration.statut:
+        log_sinistre_transition(
+            declaration, 'statut', 'Statut', ancien_statut,
+            declaration.statut, user)
+    return indemnisation

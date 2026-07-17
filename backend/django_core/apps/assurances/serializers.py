@@ -3,7 +3,8 @@ from rest_framework import serializers
 
 from .models import (
     ActifCouvert, Assureur, Courtier, DeclarationSinistre, EcheancePrime,
-    GarantiePolice, PoliceActivity, PoliceAssurance, SinistreActivity,
+    GarantiePolice, IndemnisationSinistre, PoliceActivity, PoliceAssurance,
+    SinistreActivity,
 )
 from .selectors import resoudre_libelle_actif
 
@@ -130,6 +131,20 @@ class SinistreActivitySerializer(serializers.ModelSerializer):
             'id', 'declaration', 'kind', 'champ', 'champ_label',
             'ancienne_valeur', 'nouvelle_valeur', 'description',
             'user', 'user_nom', 'created_at',
+        ]
+        read_only_fields = fields
+
+
+class IndemnisationSinistreSerializer(serializers.ModelSerializer):
+    reste_a_charge = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = IndemnisationSinistre
+        fields = [
+            'id', 'company', 'declaration', 'montant_reclame',
+            'franchise_appliquee', 'montant_indemnise', 'reste_a_charge',
+            'date_versement', 'created_at', 'updated_at',
         ]
         read_only_fields = fields
 

@@ -17,15 +17,16 @@ from .models import (
 from .serializers import (
     ActifCouvertSerializer, AssureurSerializer, CourtierSerializer,
     DeclarationSinistreSerializer, EcheancePrimeSerializer,
-    GarantiePoliceSerializer, PoliceActivitySerializer,
-    PoliceAssuranceSerializer, SinistreActivitySerializer,
+    GarantiePoliceSerializer, IndemnisationSinistreSerializer,
+    PoliceActivitySerializer, PoliceAssuranceSerializer,
+    SinistreActivitySerializer,
 )
 from .selectors import polices_expirantes
 from .services import (
-    CHAMPS_SUIVIS_POLICE, CHAMPS_SUIVIS_SINISTRE, generer_echeancier_prime,
-    log_police_creation, log_police_note, log_police_transitions_auto,
-    log_sinistre_creation, log_sinistre_note, log_sinistre_transitions_auto,
-    proposer_ecriture_prime, renouveler_police,
+    CHAMPS_SUIVIS_POLICE, CHAMPS_SUIVIS_SINISTRE, enregistrer_indemnisation,
+    generer_echeancier_prime, log_police_creation, log_police_note,
+    log_police_transitions_auto, log_sinistre_creation, log_sinistre_note,
+    log_sinistre_transitions_auto, proposer_ecriture_prime, renouveler_police,
 )
 
 
@@ -270,3 +271,30 @@ class DeclarationSinistreViewSet(_AssurancesBaseViewSet):
         act = log_sinistre_note(declaration, request.user, body)
         return Response(SinistreActivitySerializer(act).data,
                         status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='enregistrer-indemnisation')
+    def enregistrer_indemnisation_action(self, request, pk=None):
+        """NTASS12 — pose l'indemnisation (réclamé/franchise/indemnisé) et
+        fait passer le sinistre à ``indemnise``. Corps : ``montant_reclame``,
+        ``montant_indemnise`` (requis) ; ``franchise_appliquee``,
+        ``date_versement``, ``garantie_id`` (optionnels)."""
+        declaration = self.get_object()
+        try:
+            montant_reclame = request.data['montant_reclame']
+            montant_indemnise = request.data['montant_indemnise']
+        except KeyError as exc:
+            return Response(
+                {str(exc).strip("'"): 'Champ requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        indemnisation = enregistrer_indemnisation(
+            declaration,
+            montant_reclame=montant_reclame,
+            montant_indemnise=montant_indemnise,
+            franchise_appliquee=request.data.get('franchise_appliquee'),
+            date_versement=request.data.get('date_versement'),
+            garantie_id=request.data.get('garantie_id'),
+            user=request.user,
+        )
+        return Response(
+            IndemnisationSinistreSerializer(indemnisation).data,
+            status=status.HTTP_201_CREATED)

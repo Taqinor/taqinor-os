@@ -419,3 +419,42 @@ class SinistreActivity(models.Model):
 
     def __str__(self):
         return f'{self.declaration_id} {self.kind} {self.champ or ""}'.strip()
+
+
+# ── NTASS12 — Suivi d'indemnisation vs franchise ───────────────────────────
+
+class IndemnisationSinistre(models.Model):
+    """Suivi de l'indemnisation d'une ``DeclarationSinistre`` (NTASS12).
+
+    ``franchise_appliquee`` est COPIÉE (snapshot, jamais une FK) depuis la
+    ``GarantiePolice`` concernée au moment du calcul — reste stable même si la
+    garantie change plus tard. ``reste_a_charge`` = ``montant_reclame`` −
+    ``montant_indemnise`` (propriété calculée, pas stockée)."""
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='indemnisations_sinistre', verbose_name='Société')
+    declaration = models.OneToOneField(
+        DeclarationSinistre, on_delete=models.CASCADE,
+        related_name='indemnisation')
+    montant_reclame = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0)
+    franchise_appliquee = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0,
+        verbose_name='Franchise appliquée (snapshot)')
+    montant_indemnise = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0)
+    date_versement = models.DateField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Indemnisation de sinistre'
+        verbose_name_plural = 'Indemnisations de sinistre'
+
+    @property
+    def reste_a_charge(self):
+        return self.montant_reclame - self.montant_indemnise
+
+    def __str__(self):
+        return f'{self.declaration_id} — indemnisé {self.montant_indemnise}'
