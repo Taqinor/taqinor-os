@@ -19,6 +19,10 @@ ON_DEMAND_ALLOWLIST = {
     # ENG18 — génération de variantes créatives : déclenchée à la demande
     # depuis la bibliothèque créative (jamais périodique).
     'adsengine.generate_creative_variants',
+    # NTADM10 — création d'un environnement sandbox : orchestrée à la demande
+    # depuis l'endpoint ``adminops/sandbox/creer/`` (jamais périodique ; la
+    # purge NTADM11 et le rappel NTADM35 sont, eux, planifiés dans le beat).
+    'adminops.cloner_sandbox',
 }
 
 

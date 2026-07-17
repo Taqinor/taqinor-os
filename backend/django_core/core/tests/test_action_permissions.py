@@ -22,6 +22,12 @@ UNGUARDED_ACTION_BASELINE = {
     # (Directeur only) + company-scopées. Le scanner ne crédite que les gardes
     # PAR action (permission_classes=/get_permissions) → dette coarse acceptée.
     "accessreview": 3,
+    # NTADM10/13/14 — SandboxEnvironmentViewSet (2 @action creer/prolonger) +
+    # ConfigPackageViewSet (3 @action exporter/previsualiser/appliquer) : gardés
+    # au niveau CLASSE par ``permission_classes = [IsAdministrateur]``
+    # (Administrateur only) + company-scopés. Le scanner ne crédite que les
+    # gardes PAR action → dette coarse figée (fine-grain ultérieur, YRBAC3).
+    "adminops": 5,
     # NTASS — les viewsets assurances héritent de ``_AssurancesBaseViewSet``
     # (WriteScopedPermissionMixin + CompanyScopedModelViewSet) : gardés au
     # niveau CLASSE (read/write assurances_voir/gerer, company-scopé, zéro fuite

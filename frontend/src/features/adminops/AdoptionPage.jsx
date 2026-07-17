@@ -21,6 +21,7 @@ export default function AdoptionPage() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
     setLoading(true)
     adminopsApi
       .adoption(Number(periode))

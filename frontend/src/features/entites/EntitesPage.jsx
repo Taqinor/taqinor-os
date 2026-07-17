@@ -64,6 +64,7 @@ export default function EntitesPage() {
       .finally(() => setLoading(false))
   }
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
   useEffect(load, [])
 
   const handleRename = async (node) => {

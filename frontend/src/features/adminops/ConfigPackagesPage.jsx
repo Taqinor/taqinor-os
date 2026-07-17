@@ -36,6 +36,7 @@ export default function ConfigPackagesPage() {
       .finally(() => setLoading(false))
   }
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
   useEffect(load, [])
 
   const exporter = async () => {

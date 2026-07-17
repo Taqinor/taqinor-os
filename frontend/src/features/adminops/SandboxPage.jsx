@@ -31,6 +31,7 @@ export default function SandboxPage() {
       .finally(() => setLoading(false))
   }
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
   useEffect(load, [])
 
   const creer = async () => {

@@ -1,7 +1,7 @@
 /* eslint-disable react-refresh/only-export-components --
    Fichier de configuration de module (données + composants lazy), pas un module
    de composants : le fast-refresh ne s'y applique pas. */
-import { lazy } from 'react'
+import { createElement, lazy } from 'react'
 import { HeartPulse, FlaskConical, Package, BarChart3, Settings, Stethoscope } from 'lucide-react'
 
 /* ============================================================================
@@ -19,7 +19,9 @@ const AdoptionPage = lazy(() => import('./AdoptionPage'))
 const DiagnosticPage = lazy(() => import('./DiagnosticPage'))
 const AdminSettingsPage = lazy(() => import('./AdminSettingsPage'))
 
-const icon = (C) => <C size={17} strokeWidth={1.75} aria-hidden="true" />
+// createElement pour ne PAS déclarer de « composant » dans un fichier de config.
+const icon = (Comp) =>
+  createElement(Comp, { size: 17, strokeWidth: 1.75, 'aria-hidden': 'true' })
 
 export default {
   key: 'adminops',
