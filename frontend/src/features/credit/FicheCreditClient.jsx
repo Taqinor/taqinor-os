@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import creditApi from '../../api/creditApi'
+import { formatMAD } from '../../lib/format'
 
 /* ============================================================================
    NTCRD10 — Fiche crédit client (composant autonome, réutilisable comme onglet
@@ -9,11 +10,6 @@ import creditApi from '../../api/creditApi'
    des dérogations. Aucune donnée `prix_achat`/marge n'est jamais demandée ni
    rendue. L'édition de la limite est gardée côté serveur (Directeur/Admin).
    ========================================================================== */
-
-function formatMAD(value) {
-  if (value === null || value === undefined) return '—'
-  return `${Number(value).toLocaleString('fr-FR')} MAD`
-}
 
 export default function FicheCreditClient({ clientId }) {
   const [fiche, setFiche] = useState(null)

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import creditApi from '../../api/creditApi'
+import { formatMAD } from '../../lib/format'
 
 /* ============================================================================
    NTCRD28 — Wizard « Demande de dérogation » (côté commercial), déclenché
@@ -55,10 +56,10 @@ export default function DemandeDerogationWizard({
   return (
     <div className="credit-derog-wizard" data-testid="credit-derogation-wizard">
       <h3>Demande de dérogation crédit</h3>
-      <p>Montant concerné : {Number(montant || 0).toLocaleString('fr-FR')} MAD</p>
+      <p>Montant concerné : {formatMAD(montant || 0)}</p>
       {encoursApres !== null && (
         <p>
-          Encours si approuvée : {encoursApres.toLocaleString('fr-FR')} MAD
+          Encours si approuvée : {formatMAD(encoursApres)}
         </p>
       )}
       <label>

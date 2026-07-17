@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import creditApi from '../../api/creditApi'
+import { formatMAD } from '../../lib/format'
 
 /* ============================================================================
    NTCRD20 — Page « Exposition crédit » (route cible /ventes/exposition-credit,
@@ -17,11 +18,6 @@ function riskClass(row) {
     return 'credit-expo__row--orange'
   }
   return 'credit-expo__row--green'
-}
-
-function formatMAD(v) {
-  if (v === null || v === undefined) return '—'
-  return `${Number(v).toLocaleString('fr-FR')} MAD`
 }
 
 export default function ExpositionCreditPage({ onOpenClient }) {

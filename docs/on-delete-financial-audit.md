@@ -27,6 +27,16 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/apps/ao/models.py:279` | PieceSoumission.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/ao/models.py:327` | EcheanceAO.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/ao/models.py:375` | ResultatAO.company | authentication.Company | CASCADE |
+| `backend/django_core/apps/assurances/models.py:30` | Assureur.company | authentication.Company | CASCADE |
+| `backend/django_core/apps/assurances/models.py:57` | Courtier.company | authentication.Company | CASCADE |
+| `backend/django_core/apps/assurances/models.py:106` | PoliceAssurance.company | authentication.Company | CASCADE |
+| `backend/django_core/apps/assurances/models.py:180` | GarantiePolice.company | authentication.Company | CASCADE |
+| `backend/django_core/apps/assurances/models.py:230` | EcheancePrime.company | authentication.Company | CASCADE |
+| `backend/django_core/apps/assurances/models.py:278` | ActifCouvert.company | authentication.Company | CASCADE |
+| `backend/django_core/apps/assurances/models.py:331` | DeclarationSinistre.company | authentication.Company | CASCADE |
+| `backend/django_core/apps/assurances/models.py:399` | IndemnisationSinistre.company | authentication.Company | CASCADE |
+| `backend/django_core/apps/assurances/models.py:446` | AttestationAssurance.company | authentication.Company | CASCADE |
+| `backend/django_core/apps/assurances/models.py:489` | ExigenceAssuranceMarche.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/audit/models.py:61` | AuditLog.company | authentication.Company | SET_NULL |
 | `backend/django_core/apps/automation/models.py:150` | ModeleMessage.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/automation/models.py:211` | AutomationRule.company | authentication.Company | CASCADE |
@@ -165,6 +175,8 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/apps/contrats/models.py:2910` | CautionLocationLog.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/contrats/models.py:2985` | PlanRecurrent.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/contrats/models.py:3072` | ParametresLocation.company | authentication.Company | CASCADE |
+| `backend/django_core/apps/credit/models.py:67` | ReglageCredit.company | authentication.Company | CASCADE |
+| `backend/django_core/apps/credit/models.py:210` | DerogationCredit.devis | ventes.Devis | SET_NULL |
 | `backend/django_core/apps/crm/models.py:13` | Client.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/crm/models.py:412` | Lead.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/crm/models.py:839` | WebsiteLeadPayload.company | authentication.Company | CASCADE |

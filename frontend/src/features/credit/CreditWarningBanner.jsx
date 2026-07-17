@@ -1,6 +1,7 @@
 import { useState } from 'react'
 
 import creditApi from '../../api/creditApi'
+import { formatMAD } from '../../lib/format'
 
 /* ============================================================================
    NTCRD11 — Bannière d'alerte crédit affichée AVANT confirmation d'une
@@ -64,7 +65,7 @@ export default function CreditWarningBanner({
           ? 'Client en blocage crédit : dépassement de sa limite. '
           : 'Attention : ce client approche/dépasse sa limite de crédit. '}
         {warning.depassement > 0 &&
-          `Dépassement estimé : ${Number(warning.depassement).toLocaleString('fr-FR')} MAD.`}
+          `Dépassement estimé : ${formatMAD(warning.depassement)}.`}
       </p>
 
       {bloquant && !done && (
