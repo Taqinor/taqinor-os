@@ -27,7 +27,7 @@ class SavedView(TenantModel):
         EQUIPE = 'EQUIPE', "Partagée à l'équipe"
 
     owner = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,  # on_delete: composition (utilisateur)
         related_name='saved_views',
     )
     # Identifiant stable d'écran côté frontend, ex. 'crm.leads', 'ventes.devis'.

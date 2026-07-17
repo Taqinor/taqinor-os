@@ -159,10 +159,10 @@ class RendezVous(TenantModel):
         ABSENT = 'absent', 'Absent'
 
     patient = models.ForeignKey(
-        Patient, on_delete=models.CASCADE, related_name='rendez_vous',
+        Patient, on_delete=models.CASCADE, related_name='rendez_vous',  # on_delete: composition (parent-enfant)
         verbose_name='Patient')
     praticien = models.ForeignKey(
-        Praticien, on_delete=models.CASCADE, related_name='rendez_vous',
+        Praticien, on_delete=models.CASCADE, related_name='rendez_vous',  # on_delete: composition (rattache)
         verbose_name='Praticien')
     salle = models.ForeignKey(
         Salle, on_delete=models.SET_NULL, null=True, blank=True,
@@ -238,13 +238,13 @@ class Admission(TenantModel):
         CLOTUREE = 'cloturee', 'Clôturée'
 
     patient = models.ForeignKey(
-        Patient, on_delete=models.CASCADE, related_name='admissions',
+        Patient, on_delete=models.CASCADE, related_name='admissions',  # on_delete: composition (parent-enfant)
         verbose_name='Patient')
     rdv = models.ForeignKey(
         RendezVous, on_delete=models.SET_NULL, null=True, blank=True,
         related_name='admissions', verbose_name='Rendez-vous')
     praticien = models.ForeignKey(
-        Praticien, on_delete=models.CASCADE, related_name='admissions',
+        Praticien, on_delete=models.CASCADE, related_name='admissions',  # on_delete: composition (rattache)
         verbose_name='Praticien')
     date_admission = models.DateTimeField(verbose_name="Date d'admission")
     date_sortie = models.DateTimeField(
@@ -335,10 +335,10 @@ class GrilleTarifaire(TenantModel):
     ``ActeMedical.tarif_base_ttc`` (voir ``selectors.tarif_applicable``)."""
 
     convention = models.ForeignKey(
-        Convention, on_delete=models.CASCADE,
+        Convention, on_delete=models.CASCADE,  # on_delete: composition (parent-enfant)
         related_name='grilles_tarifaires', verbose_name='Convention')
     acte = models.ForeignKey(
-        ActeMedical, on_delete=models.CASCADE,
+        ActeMedical, on_delete=models.CASCADE,  # on_delete: composition (parent-enfant)
         related_name='grilles_tarifaires', verbose_name='Acte')
     tarif_convention_ttc = models.DecimalField(
         max_digits=10, decimal_places=2, default=0,
@@ -372,13 +372,13 @@ class ActeRealise(TenantModel):
     facture qui a réglé cet acte."""
 
     admission = models.ForeignKey(
-        Admission, on_delete=models.CASCADE, related_name='actes_realises',
+        Admission, on_delete=models.CASCADE, related_name='actes_realises',  # on_delete: composition (parent-enfant)
         verbose_name='Admission')
     patient = models.ForeignKey(
-        Patient, on_delete=models.CASCADE, related_name='actes_realises',
+        Patient, on_delete=models.CASCADE, related_name='actes_realises',  # on_delete: composition (parent-enfant)
         verbose_name='Patient')
     praticien = models.ForeignKey(
-        Praticien, on_delete=models.CASCADE, related_name='actes_realises',
+        Praticien, on_delete=models.CASCADE, related_name='actes_realises',  # on_delete: composition (rattache)
         verbose_name='Praticien')
     acte = models.ForeignKey(
         ActeMedical, on_delete=models.PROTECT, related_name='realisations',
@@ -427,10 +427,10 @@ class PriseEnCharge(TenantModel):
         EXPIREE = 'expiree', 'Expirée'
 
     patient = models.ForeignKey(
-        Patient, on_delete=models.CASCADE, related_name='prises_en_charge',
+        Patient, on_delete=models.CASCADE, related_name='prises_en_charge',  # on_delete: composition (parent-enfant)
         verbose_name='Patient')
     convention = models.ForeignKey(
-        Convention, on_delete=models.CASCADE, related_name='prises_en_charge',
+        Convention, on_delete=models.CASCADE, related_name='prises_en_charge',  # on_delete: composition (parent-enfant)
         verbose_name='Convention')
     admission = models.ForeignKey(
         Admission, on_delete=models.SET_NULL, null=True, blank=True,
@@ -484,10 +484,10 @@ class FactureSante(TenantModel):
         IMPAYEE = 'impayee', 'Impayée'
 
     patient = models.ForeignKey(
-        Patient, on_delete=models.CASCADE, related_name='factures_sante',
+        Patient, on_delete=models.CASCADE, related_name='factures_sante',  # on_delete: composition (parent-enfant)
         verbose_name='Patient')
     admission = models.ForeignKey(
-        Admission, on_delete=models.CASCADE, related_name='factures_sante',
+        Admission, on_delete=models.CASCADE, related_name='factures_sante',  # on_delete: composition (parent-enfant)
         verbose_name='Admission')
     convention = models.ForeignKey(
         Convention, on_delete=models.SET_NULL, null=True, blank=True,
@@ -537,7 +537,7 @@ class PaiementSante(TenantModel):
         TIERS_PAYANT = 'tiers_payant', 'Tiers payant'
 
     facture_sante = models.ForeignKey(
-        FactureSante, on_delete=models.CASCADE, related_name='paiements',
+        FactureSante, on_delete=models.CASCADE, related_name='paiements',  # on_delete: composition (parent-enfant)
         verbose_name='Facture santé')
     montant = models.DecimalField(
         max_digits=12, decimal_places=2, verbose_name='Montant')
