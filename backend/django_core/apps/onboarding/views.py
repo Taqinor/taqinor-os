@@ -27,14 +27,16 @@ class OnboardingProgressViewSet(viewsets.ViewSet):
             self._company(request), request.user)
         return Response(resume)
 
-    @action(detail=True, methods=['post'], url_path='ignorer')
+    @action(detail=True, methods=['post'], url_path='ignorer',
+            permission_classes=[IsAuthenticated])
     def ignorer(self, request, pk=None):
         services.ignorer_item(self._company(request), request.user, pk)
         return Response(
             resume_pour_utilisateur(self._company(request), request.user),
             status=status.HTTP_200_OK)
 
-    @action(detail=False, methods=['post'], url_path='ignorer-tout')
+    @action(detail=False, methods=['post'], url_path='ignorer-tout',
+            permission_classes=[IsAuthenticated])
     def ignorer_tout(self, request):
         services.ignorer_tout(self._company(request), request.user)
         return Response(
