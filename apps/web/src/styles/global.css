@@ -420,6 +420,41 @@ summary:focus-visible {
   }
 }
 
+/* ─── WJ117 — État sélectionné des cartes-boutons (bug cascade layers) ──────
+   Les groupes de cartes du parcours devis (.mt-mode/.mt-roof-card/.mt-tension/
+   .mt-activity/.mt-water-source/.mt-irrigation/.mt-water-unit/.mt-pro-unit)
+   togglent bien aria-pressed + l'utilitaire Tailwind `border-brass-400`, mais
+   ces utilitaires vivent dans un @layer (Tailwind v4) alors que `.cine-card`
+   ci-dessus est NON layered et pose `border: 1px solid …` par shorthand — et
+   une règle hors layer gagne toujours sur une règle layered : l'état
+   sélectionné était INVISIBLE. Fix : UNE règle non-layered (rester HORS de
+   tout @layer est le point du fix) sur l'état ARIA déjà togglé par le JS des
+   3 locales répare les 8 groupes × 3 locales d'un coup. Bordure or 2px
+   visible (border-color 1px + ring inset 1px = zéro décalage de layout, même
+   recette que .rp9-chip[aria-pressed] de toiture-3d-pro-11), fond teinté
+   brass à 10 %, ✓ en coin (inset-inline-end : suit le RTL arabe), label en
+   gras. Le ring clavier :focus-visible global (W209) est un `outline` — il
+   reste intact par-dessus cet état. */
+.cine-card[aria-pressed="true"] {
+  position: relative;
+  border-color: var(--color-brass-400);
+  background-color: rgb(232 181 74 / 0.10);
+  box-shadow:
+    inset 0 0 0 1px var(--color-brass-400),
+    0 24px 60px -30px rgb(0 0 0 / 0.8);
+  font-weight: 700;
+}
+.cine-card[aria-pressed="true"]::after {
+  content: '✓';
+  position: absolute;
+  top: 0.3rem;
+  inset-inline-end: 0.45rem;
+  font-size: 0.75rem;
+  line-height: 1;
+  color: var(--color-brass-300);
+  pointer-events: none;
+}
+
 /* CTA doré qui irradie au survol */
 .glow {
   box-shadow: 0 0 0 0 rgb(232 181 74 / 0.4);

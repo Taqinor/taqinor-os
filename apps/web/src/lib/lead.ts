@@ -81,7 +81,12 @@ export const UTM_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_conten
 export type UtmKey = (typeof UTM_KEYS)[number];
 
 // ——— WJ30 : vocabulaires des champs FACULTATIFS élargis (pass-through webhook) ———
-export const LEAD_MODES = ['residentiel', 'professionnel', 'agricole'] as const;
+// WJ121 — 4 vrais modes au départ du parcours : la carte « Professionnel » est
+// scindée en 'industriel' (usine, production) et 'commercial' (hôtel, commerce,
+// services). 'professionnel' reste ACCEPTÉ ici comme alias de compatibilité
+// (sessions en cours, anciens liens ; le backend webhooks.py mappe déjà
+// professionnel→industriel) mais n'est plus jamais ÉMIS par le site.
+export const LEAD_MODES = ['residentiel', 'professionnel', 'industriel', 'commercial', 'agricole'] as const;
 export type LeadModeId = (typeof LEAD_MODES)[number];
 
 export const RACCORDEMENTS = ['monophase', 'triphase', 'inconnu'] as const;
@@ -162,13 +167,18 @@ export const POMPES_ACTUELLES = ['aucune', 'diesel', 'butane', 'electrique'] as 
 export type PompeActuelleId = (typeof POMPES_ACTUELLES)[number];
 
 /**
- * Plafond de facture mensuelle saisissable (MAD) PAR MODE — le professionnel
- * monte à 1 M MAD (sites C&I), résidentiel/agricole gardent le plafond
- * historique 200 000. Constante partagée écran/serveur (une seule source).
+ * Plafond de facture mensuelle saisissable (MAD) PAR MODE — les modes C&I
+ * (industriel/commercial, et l'alias hérité professionnel) montent à 1 M MAD,
+ * résidentiel/agricole gardent le plafond historique 200 000. WJ121 :
+ * industriel ET commercial reprennent le plafond professionnel existant —
+ * jamais un nouveau chiffre métier inventé. Constante partagée écran/serveur
+ * (une seule source).
  */
 export const MAX_BILL_BY_MODE: Record<LeadModeId, number> = {
   residentiel: 200_000,
   professionnel: 1_000_000,
+  industriel: 1_000_000,
+  commercial: 1_000_000,
   agricole: 200_000,
 };
 
@@ -644,7 +654,8 @@ export function validateLead(body: unknown): ValidationResult {
   const roofType = cleanStr(b.roofType, 20);
   if (!quickCallback && !ROOF_TYPES.some((r) => r.id === roofType)) errors.roofType = 'Type de toiture requis';
 
-  // — QX : la tranche de facture reste REQUISE en résidentiel/professionnel
+  // — QX : la tranche de facture reste REQUISE en résidentiel et dans les
+  //   modes C&I (industriel/commercial, alias hérité professionnel — WJ121)
   //   mais devient FACULTATIVE en mode agricole (un projet pompage se
   //   dimensionne sur HMT × débit, pas sur une facture d'électricité — on ne
   //   force jamais une tranche fabriquée). Une tranche fournie ET valide est

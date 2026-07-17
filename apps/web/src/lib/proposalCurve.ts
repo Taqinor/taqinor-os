@@ -12,13 +12,20 @@
  *  - Sans production annuelle, on dessine une cloche NORMALISÉE clairement libellée
  *    « profil — année type » (forme illustrative, AUCUN chiffre d'axe) — le visuel
  *    le plus persuasif ne disparaît jamais, mais ne ment pas non plus.
- *  - La forme horaire (cloche solaire + double-bosse de conso matin/soir) est un
- *    PROFIL physique standard normalisé à 1, jamais une donnée chiffrée affichée.
+ *  - WJ119 — la forme horaire de consommation N'EST PLUS une double-gaussienne
+ *    générique : elle porte `BASELINE_SHAPE` (applianceConsumption.ts, la même
+ *    silhouette marocaine soirée-dominante que l'outil « Affiner ma consommation »,
+ *    pic 19h-21h ≈26 % de l'énergie), avec des variantes été/Ramadan et des
+ *    profils dédiés par MODE (industriel équipes, commercial, agricole pompage).
+ *    Reste un PROFIL normalisé à 1, jamais une donnée chiffrée affichée — le
+ *    libellé « profil type au Maroc, ajusté à votre facture » (page) le dit
+ *    explicitement, jamais « mesuré ».
  *
  * Mouvement : l'animation (tracé de la courbe + soleil qui se lève) est gérée 100 %
  * en CSS dans la page et GATÉE derrière `prefers-reduced-motion: no-preference` —
  * ce module n'émet que la géométrie statique (zéro CLS, lisible sans JS ni motion).
  */
+import { BASELINE_SHAPE } from './applianceConsumption';
 
 /** Heures représentées (5 h → 21 h), pas horaire. */
 const HOUR_START = 5;
@@ -39,16 +46,175 @@ export function solarProfile(hour: number): number {
   return s * s; // cloche douce, pic à midi solaire
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// WJ119 — Silhouette de consommation RÉELLEMENT marocaine, par MODE (résidentiel/
+// industriel/commercial/agricole) + variante (normale/été/Ramadan). Chaque forme
+// est un tableau de 24 poids (heure 0-23), jamais une donnée chiffrée : normalisée
+// à son propre maximum (∈ [0,1]) juste avant l'échantillonnage, exactement comme
+// l'ancienne double-gaussienne qu'elle remplace.
+// ════════════════════════════════════════════════════════════════════════════
+
+/** Les 4 marchés reconnus par le générateur de devis (residentiel par défaut). */
+export type ProposalCurveMode = 'residentiel' | 'industriel' | 'commercial' | 'agricole';
+
+/** Variante saisonnière/religieuse — n'a de sens que pour résidentiel/commercial. */
+export type ProposalCurveVariant = 'normal' | 'ete' | 'ramadan';
+
+/** Régime d'équipes d'un site industriel — 1x8 par défaut (aucun champ backend
+ *  ne le porte encore aujourd'hui, cf. resolveProposalCurveMode). */
+export type IndustrialShift = '1x8' | '2x8' | '3x8';
+
+export interface ConsumptionShapeOptions {
+  mode?: ProposalCurveMode;
+  variant?: ProposalCurveVariant;
+  industrialShift?: IndustrialShift;
+}
+
 /**
- * Profil de consommation domestique normalisé (double bosse matin + soirée).
- * Valeur ∈ [0,1] par heure. Profil de charge résidentiel standard, illustratif.
+ * WJ119 — Normalise le champ backend `ProposalQuote.inst_type` (valeurs
+ * OBSERVÉES aujourd'hui : "Résidentielle" / "Industrielle / Commerciale" /
+ * "Agricole" — builder.py `inst_type = {...}.get(mode, "Résidentielle")") ou une
+ * future clé machine minuscule (residentiel/industriel/commercial/agricole/
+ * professionnel — ce dernier étant le nom interne du mode "industriel" côté
+ * simulateur, mon-toit.astro MODE_LABEL) en l'un des 4 modes de courbe reconnus.
+ * Absent/inconnu → 'residentiel' (repli honnête, jamais un mode fabriqué). Le
+ * backend NE DISTINGUE PAS ENCORE industriel de commercial (une seule catégorie
+ * combinée "Industrielle / Commerciale" — la table d'archétypes par catégorie
+ * QX44 n'est pas construite) : le combiné retombe sur 'industriel', son mode
+ * interne réel, tant qu'aucun champ ne permet de séparer les deux.
  */
-export function consumptionProfile(hour: number): number {
-  const morning = Math.exp(-Math.pow((hour - 7.5) / 2.0, 2)); // pic matin
-  const evening = Math.exp(-Math.pow((hour - 20) / 2.2, 2)) * 1.15; // pic soirée
-  const base = 0.18; // veille permanente
-  const v = base + 0.7 * morning + 0.85 * evening;
-  return Math.min(1, v);
+export function resolveProposalCurveMode(instType: string | null | undefined): ProposalCurveMode {
+  const s = (instType ?? '').trim().toLowerCase();
+  if (!s) return 'residentiel';
+  if (s.includes('agricole') || s.includes('pompage')) return 'agricole';
+  if (s.includes('commercial') && !s.includes('industriel')) return 'commercial';
+  if (s.includes('industriel') || s.includes('professionnel')) return 'industriel';
+  return 'residentiel';
+}
+
+/** Normalise une forme brute (poids quelconques ≥ 0) à son propre maximum (∈ [0,1]). */
+function normalizeShape(shape: readonly number[]): number[] {
+  let max = 0;
+  for (const w of shape) if (Number.isFinite(w) && w > max) max = w;
+  if (max <= 0) return shape.map(() => 0);
+  return shape.map((w) => (Number.isFinite(w) && w > 0 ? w / max : 0));
+}
+
+/** Échantillonne une forme normalisée de 24 poids (heure 0-23) à une heure
+ *  QUELCONQUE (interpolation linéaire entre les deux heures entières voisines,
+ *  circulaire — minuit suit 23 h). */
+function sampleShape(shape: readonly number[], hour: number): number {
+  const h = ((hour % 24) + 24) % 24;
+  const h0 = Math.floor(h);
+  const h1 = (h0 + 1) % 24;
+  const frac = h - h0;
+  const v0 = shape[h0] ?? 0;
+  const v1 = shape[h1] ?? 0;
+  return v0 + (v1 - v0) * frac;
+}
+
+/** WJ119 — été/intérieur : +40-60 % 13h-18h (climatisation) — ESTIMATION (multi-
+ *  plicateur médian retenu, à confirmer/affiner avec des factures d'été réelles,
+ *  APPLIANCES_NOTES.md). Ne s'applique qu'au résidentiel/commercial (toggle page). */
+const SUMMER_BOOST_HOURS: readonly number[] = [13, 14, 15, 16, 17, 18];
+const SUMMER_BOOST_MULT = 1.5;
+
+/** WJ119 — Ramadan : journée de jeûne −30 à −40 % (retenu −35 %, ESTIMATION),
+ *  pic iftar au coucher du soleil (retenu 19 h, ×1.8) et bosse suhoor 3h-5h
+ *  (repas avant l'aube, retenu ×2.5) — ordres de grandeur documentés, jamais un
+ *  chiffre mesuré. */
+const RAMADAN_DAY_HOUR_START = 6;
+const RAMADAN_DAY_HOUR_END = 18; // inclus
+const RAMADAN_DAY_FACTOR = 0.65;
+const RAMADAN_SUHOOR_HOURS: readonly number[] = [3, 4, 5];
+const RAMADAN_SUHOOR_MULT = 2.5;
+const RAMADAN_IFTAR_HOUR = 19;
+const RAMADAN_IFTAR_MULT = 1.8;
+
+/** Applique la variante été/Ramadan à une forme de base (résidentiel ou
+ *  commercial) ; 'normal' renvoie la forme telle quelle. */
+function applySeasonalVariant(base: readonly number[], variant: ProposalCurveVariant): number[] {
+  const out = base.slice();
+  if (variant === 'ete') {
+    for (const h of SUMMER_BOOST_HOURS) out[h] *= SUMMER_BOOST_MULT;
+  } else if (variant === 'ramadan') {
+    for (let h = RAMADAN_DAY_HOUR_START; h <= RAMADAN_DAY_HOUR_END; h++) out[h] *= RAMADAN_DAY_FACTOR;
+    for (const h of RAMADAN_SUHOOR_HOURS) out[h] *= RAMADAN_SUHOOR_MULT;
+    out[RAMADAN_IFTAR_HOUR] *= RAMADAN_IFTAR_MULT;
+  }
+  return out;
+}
+
+/** WJ119 — Profil industriel par régime d'équipes. Poids plats : 1 = poste actif,
+ *  `INDUSTRIAL_STANDBY_WEIGHT` = veille/éclairage de sécurité hors poste (jamais
+ *  zéro : un site industriel garde toujours un socle hors production). Aucun champ
+ *  backend ne porte le régime aujourd'hui → repli 1x8 (ESTIMATION documentée). */
+const INDUSTRIAL_STANDBY_WEIGHT = 0.15;
+
+function industrialShape(shift: IndustrialShift): number[] {
+  if (shift === '3x8') return new Array(24).fill(1); // continu, trois équipes qui se relaient
+  const out = new Array(24).fill(INDUSTRIAL_STANDBY_WEIGHT);
+  // 1x8 : poste de jour unique (8h-16h) ; 2x8 : plateau 06h-22h (deux équipes).
+  const [start, end] = shift === '2x8' ? [6, 22] : [8, 16];
+  for (let h = start; h < end; h++) out[h] = 1;
+  return out;
+}
+
+/** WJ119 — Archétype commercial GÉNÉRIQUE (horaires commerce courants 9h-19h) —
+ *  UNE seule forme, pas de table par catégorie (QX44 pas encore construite) :
+ *  ESTIMATION honnête, jamais présentée comme mesurée. */
+const COMMERCIAL_OPEN_HOUR = 9;
+const COMMERCIAL_CLOSE_HOUR = 19;
+const COMMERCIAL_OFFHOURS_WEIGHT = 0.1;
+
+function commercialShape(): number[] {
+  const out = new Array(24).fill(COMMERCIAL_OFFHOURS_WEIGHT);
+  for (let h = COMMERCIAL_OPEN_HOUR; h < COMMERCIAL_CLOSE_HOUR; h++) out[h] = 1;
+  return out;
+}
+
+/** WJ119 — Fenêtre de pompage agricole = heures de JOUR (le pompage solaire
+ *  tourne SUR le soleil, sans onduleur ni batterie — CLAUDE.md) : plate le jour,
+ *  NULLE la nuit (aucune énergie stockée pour pomper après le coucher). */
+const AGRICOLE_PUMP_START_HOUR = 7;
+const AGRICOLE_PUMP_END_HOUR = 19;
+
+function agricoleShape(): number[] {
+  const out = new Array(24).fill(0);
+  for (let h = AGRICOLE_PUMP_START_HOUR; h < AGRICOLE_PUMP_END_HOUR; h++) out[h] = 1;
+  return out;
+}
+
+/** Construit la forme BRUTE (non normalisée) du mode/variante/régime demandé. */
+function rawConsumptionShape(options: ConsumptionShapeOptions): number[] {
+  const mode = options.mode ?? 'residentiel';
+  const variant = options.variant ?? 'normal';
+  switch (mode) {
+    case 'industriel':
+      return industrialShape(options.industrialShift ?? '1x8');
+    case 'commercial':
+      // Été/Ramadan restent pertinents pour un commerce (clim, horaires resserrés
+      // pendant le jeûne) — même modulation que le résidentiel, appliquée à
+      // l'archétype commercial plutôt qu'à BASELINE_SHAPE.
+      return applySeasonalVariant(commercialShape(), variant);
+    case 'agricole':
+      return agricoleShape();
+    case 'residentiel':
+    default:
+      return applySeasonalVariant(BASELINE_SHAPE, variant);
+  }
+}
+
+/**
+ * Profil de consommation normalisé (0-23h, interpolé pour une heure quelconque).
+ * Résidentiel/normal (repli par défaut) = silhouette marocaine soirée-dominante
+ * (BASELINE_SHAPE, applianceConsumption.ts — pic 19h-21h ≈26 % de l'énergie),
+ * jamais une double-gaussienne générique. Valeur ∈ [0,1], jamais un chiffre
+ * affiché — ce n'est qu'une FORME, illustrative par construction (WJ119).
+ */
+export function consumptionProfile(hour: number, options: ConsumptionShapeOptions = {}): number {
+  const shape = normalizeShape(rawConsumptionShape(options));
+  return sampleShape(shape, hour);
 }
 
 function esc(s: string): string {
@@ -155,18 +321,25 @@ const SCALE_LABELS: Record<CurveLang, { peak: string; dailyAvg: string; typicalY
  * lisibles sur petit écran, et le groupe de repère porte des `data-*` (déjà
  * formatés) qu'un petit script de la page lit au TAP (le survol/`<title>` est
  * invisible au tactile).
+ *
+ * WJ119 — `consumptionOptions` sélectionne le MODE (residentiel/industriel/
+ * commercial/agricole) et la variante (normal/été/Ramadan) de la silhouette de
+ * consommation — repli residentiel/normal (BASELINE_SHAPE), rétro-compatible :
+ * un appelant qui n'en fournit pas obtient exactement le nouveau profil marocain
+ * par défaut, jamais l'ancienne double-gaussienne.
  */
 export function renderYearCurve(
   annualProdKwh: number | null | undefined,
   box: CurveBox = DEFAULT_CURVE_BOX,
   lang: CurveLang = 'fr',
+  consumptionOptions: ConsumptionShapeOptions = {},
 ): DailyCurve {
   const annual = typeof annualProdKwh === 'number' && Number.isFinite(annualProdKwh) && annualProdKwh > 0
     ? annualProdKwh : null;
   const hasRealScale = annual !== null;
 
   const solar = pathFromProfile(solarProfile, box, true);
-  const cons = pathFromProfile(consumptionProfile, box, false);
+  const cons = pathFromProfile((h) => consumptionProfile(h, consumptionOptions), box, false);
 
   const plotH = box.height - box.padTop - box.padBottom;
   const baseY = box.padTop + plotH;
