@@ -11,3 +11,8 @@ backend/django_core/apps/crm/models.py::Client.code_parrainage
 #     re-imported lead whose predecessor was soft-deleted will collide. The
 #     fix is a crm model + partial-index migration (needs DB verification).
 backend/django_core/apps/crm/models.py::Lead(company,external_system,external_id)
+#
+# NTEXT13 — extensions.ExtensionPackage is a GLOBAL marketplace catalogue (no
+# company FK, reviewed global-by-design in tenant_exempt_models.txt); its `code`
+# is legitimately globally unique across the shared registry, not tenant data.
+backend/django_core/apps/extensions/models.py::ExtensionPackage.code

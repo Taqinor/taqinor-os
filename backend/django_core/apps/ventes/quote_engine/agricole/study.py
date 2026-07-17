@@ -176,6 +176,58 @@ def build(ctx) -> str:
                      f'≈ <b>{fmt(prod_kwh)} kWh</b> captés par an font tourner votre pompe, '
                      f'sans une goutte de gasoil ni une bonbonne de butane.</div></div>')
 
+    # ── QX47 — besoin de la culture (ETc mensuel, moteur QX48) vs eau livrée ──
+    _MONTHS_1 = ["J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"]
+    monthly_need = d.get("monthly_need_m3day")
+    delivered = d.get("m3_jour_delivered")
+    chart_html = ""
+    if monthly_need and any((v or 0) > 0 for v in monthly_need):
+        dvals = list(monthly_need)
+        if delivered:
+            dvals = dvals + [float(delivered)]
+        dmax = max(dvals) or 1.0
+        bars = ""
+        for i, v in enumerate(monthly_need):
+            h = round((v or 0) / dmax * 20.0, 1)
+            covered = (not delivered) or (v <= float(delivered))
+            cls = "a2-wc-ok" if covered else "a2-wc-tight"
+            bars += (f'<td class="a2-wc-bc"><div class="a2-wc-bar {cls}" '
+                     f'style="height:{h}mm"></div>'
+                     f'<div class="a2-wc-mn">{_MONTHS_1[i]}</div></td>')
+        line_html = ""
+        if delivered:
+            ly = round((1 - float(delivered) / dmax) * 20.0, 1)
+            line_html = (f'<div class="a2-wc-line" style="top:{ly}mm">'
+                         f'<span>eau livrée ≈ {fmt(round(float(delivered)))} m³/j</span></div>')
+        chart_html = (
+            '<div class="a2-card a2-wc">'
+            '<div class="a2-h2">Le besoin de votre culture au fil de l\'année, face à l\'eau livrée</div>'
+            f'<div class="a2-wc-plot"><table class="a2-wc-bars"><tr>{bars}</tr></table>{line_html}</div>'
+            '<div class="a2-wc-cap">Barres = besoin de la culture (m³/jour, méthode FAO-56 par mois) · '
+            'ligne = eau livrée par la pompe. Vert = couvert, ambre = mois tendu.</div>'
+            '</div>')
+
+    # ── QX47 — bassin de stockage recommandé (1-3× le besoin journalier) ─────
+    bassin_reco = d.get("bassin_reco_m3")
+    bassin_html = ""
+    if bassin_reco:
+        autonomie = d.get("bassin_autonomie_j") or 2
+        bmin = d.get("bassin_min_m3")
+        bmax = d.get("bassin_max_m3")
+        bassin_html = (
+            '<div class="a2-bassin"><div class="a2-bassin-ic">💧</div>'
+            '<div class="a2-bassin-tx"><div class="a2-bassin-h">Bassin de stockage recommandé</div>'
+            f'<div class="a2-bassin-t">≈ <b>{fmt(bassin_reco)} m³</b> — soit '
+            f'<b>~{autonomie} jours d\'autonomie</b>. Fourchette utile de 1 à 3× le '
+            f'besoin journalier ({fmt(bmin)}-{fmt(bmax)} m³) : un tampon jour/nuit et '
+            'pour les jours peu ensoleillés.</div></div></div>')
+
+    # Bloc « eau » de bas de page : le chart + le bassin (QX47) quand des données
+    # d'exploitation existent, sinon le strip « carburant » historique (repli).
+    water_block = chart_html + bassin_html
+    if not water_block:
+        water_block = sun_strip
+
     css = f"""
 <style>
 .a2-root{{font-family:{f_sans};color:{ink};width:210mm;height:297mm;background:#fff;
@@ -244,6 +296,26 @@ def build(ctx) -> str:
 .a2-sun svg{{flex-shrink:0;}}
 .a2-sun-t{{font-size:9pt;color:{ink};line-height:1.45;}}
 .a2-sun-t b{{color:{C['earth']};font-weight:700;}}
+/* QX47 — besoin culture vs eau livrée (barres CSS, jamais matplotlib) */
+.a2-wc{{margin-top:12px;}}
+.a2-wc-plot{{position:relative;margin-top:4px;}}
+.a2-wc-bars{{width:100%;height:20mm;border-spacing:3px 0;}}
+.a2-wc-bc{{vertical-align:bottom;text-align:center;}}
+.a2-wc-bar{{width:100%;border-radius:3px 3px 0 0;}}
+.a2-wc-ok{{background:{green};}}
+.a2-wc-tight{{background:{gold};}}
+.a2-wc-mn{{font-size:6pt;color:{muted_2};margin-top:2px;}}
+.a2-wc-line{{position:absolute;left:0;right:0;border-top:2px dashed {water};}}
+.a2-wc-line span{{position:absolute;right:0;top:-9pt;font-size:6.5pt;color:{water};
+  font-weight:700;background:#fff;padding:0 3px;}}
+.a2-wc-cap{{font-size:7pt;color:{muted_2};margin-top:5px;line-height:1.3;}}
+.a2-bassin{{display:flex;align-items:flex-start;gap:10px;margin-top:11px;
+  border:1px solid #CDE3F2;border-left:5px solid {water};border-radius:14px;
+  background:linear-gradient(110deg,{water_bg},#fff 72%);padding:11px 14px;}}
+.a2-bassin-ic{{font-size:15pt;flex-shrink:0;}}
+.a2-bassin-h{{font-family:{f_serif};font-weight:700;font-size:11pt;color:{navy};}}
+.a2-bassin-t{{font-size:8.6pt;color:{ink};line-height:1.4;margin-top:3px;}}
+.a2-bassin-t b{{color:{navy};}}
 </style>
 """
     sch_html = ""
@@ -271,7 +343,7 @@ def build(ctx) -> str:
     </div>
   </div>
   {facts_block}
-  {sun_strip}
+  {water_block}
 </div>
 """
     return html

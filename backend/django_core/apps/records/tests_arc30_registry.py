@@ -52,6 +52,9 @@ HISTORICAL_TARGETS = {
     ('btp_chantier', 'reservechantier'),
     ('btp_chantier', 'journalchantier'),
     ('btp_chantier', 'rfireponse'),
+    # NTIDE1 — boîte à idées : l'historique/tags d'une idée passe par le
+    # chatter/tag générique records (ARC8/FG9), pas un modèle *Activity maison.
+    ('innovation', 'idee'),
 }
 
 
@@ -66,7 +69,7 @@ class TestAllowedTargetsNonRegression(SimpleTestCase):
             f"en trop: {resolved - HISTORICAL_TARGETS}")
 
     def test_len_matches(self):
-        self.assertEqual(len(ALLOWED_TARGETS), 24)
+        self.assertEqual(len(ALLOWED_TARGETS), 25)
 
     def test_contains_works_for_each_historical_pair(self):
         for pair in HISTORICAL_TARGETS:

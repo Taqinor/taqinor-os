@@ -61,7 +61,7 @@ DATEFIELD_AUTO_NOW_ALLOWLIST = {
     "backend/django_core/apps/facturation/models.py:113",
     "backend/django_core/apps/facturation/models.py:888",
     "backend/django_core/apps/facturation/models.py:1072",
-    "backend/django_core/apps/ventes/models.py:746",
+    "backend/django_core/apps/ventes/models.py:750",  # NoteDebit.date_emission — remapped +4 (QX43 ModeInstallation.COMMERCIAL insert), same reviewed date-anchor field
 }
 TIMESTAMP_AS_DATEFIELD_ALLOWLIST = {
     # CommissionPartenaire.paye_le — date de paiement (jour, pas horodatage),

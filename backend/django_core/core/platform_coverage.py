@@ -108,6 +108,11 @@ BASELINE_DRIFT: set[tuple[str, str]] = {
     # SCA36 (2026-07-10) — pilote 3 du kit (dégradation gracieuse sans
     # totaux) : même dérive assumée que SCA34, même remède futur.
     ('installations.demandeachat', 'chatter_sans_recherche'),
+    # NTIDE1 (2026-07-16) — l'idée gagne le chatter/tag générique records
+    # (ARC8/FG9) ; son câblage en recherche globale est un trou assumé (même
+    # dérive héritée que les cibles ci-dessus) — retirer le jour où l'idée
+    # deviendra cherchable via apps/reporting/search.py.
+    ('innovation.idee', 'chatter_sans_recherche'),
 }
 
 

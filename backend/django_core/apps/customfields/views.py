@@ -12,6 +12,51 @@ from .serializers import (
     _module_model,
 )
 
+# NTEXT2 — largeur/formatage suggérés par type de champ pour la vue LISTE
+# auto-générée (purement indicatif, le front reste libre de les ajuster).
+_COLONNE_LARGEUR_PAR_TYPE = {
+    'text': 200, 'number': 110, 'date': 130, 'boolean': 90,
+    'choice': 160, 'relation': 200, 'fichier': 160, 'ia': 220,
+}
+_COLONNE_FORMAT_PAR_TYPE = {
+    'text': 'texte', 'number': 'nombre', 'date': 'date', 'boolean': 'oui_non',
+    'choice': 'badge', 'relation': 'lien', 'fichier': 'fichier', 'ia': 'texte',
+}
+
+
+def _colonne_liste(field_def):
+    """NTEXT2 — schéma d'une colonne de liste pour un CustomFieldDef donné."""
+    return {
+        'code': field_def.code,
+        'libelle': field_def.libelle,
+        'type': field_def.type,
+        'largeur': _COLONNE_LARGEUR_PAR_TYPE.get(field_def.type, 150),
+        'formatage': _COLONNE_FORMAT_PAR_TYPE.get(field_def.type, 'texte'),
+    }
+
+
+def _champ_formulaire(field_def):
+    """NTEXT3 — schéma d'un champ de formulaire pour un CustomFieldDef donné.
+
+    Les conditions XPLT15 (visible_si/requis_si/lecture_seule_si) sont
+    renvoyées TELLES QUELLES (arbres core.rules) pour évaluation front ;
+    requis_si reste de toute façon RE-VALIDÉ côté serveur par
+    ``serializers.validate_custom_data`` — le front ne fait jamais foi seul."""
+    conditions = field_def.conditions or {}
+    return {
+        'code': field_def.code,
+        'libelle': field_def.libelle,
+        'type': field_def.type,
+        'obligatoire': field_def.obligatoire,
+        'options': field_def.options or [],
+        # XPLT14 — module cible d'un champ RELATION (ignoré sinon).
+        'module_cible': field_def.relation_module
+        if field_def.type == 'relation' else None,
+        'visible_si': conditions.get('visible_si'),
+        'requis_si': conditions.get('requis_si'),
+        'lecture_seule_si': conditions.get('lecture_seule_si'),
+    }
+
 
 class CustomFieldDefViewSet(TenantMixin, viewsets.ModelViewSet):
     """Définitions de champs personnalisés (Paramètres). Lecture tout rôle
@@ -200,3 +245,39 @@ class CustomRecordViewSet(TenantMixin, viewsets.ModelViewSet):
     def perform_destroy(self, instance):
         self._check_object_permission('gerer')
         instance.delete()
+
+    def vue_liste(self, request, *args, **kwargs):
+        """NTEXT2 — schéma de liste auto-générée (colonnes ``visible_liste``)
+        + les données paginées de l'objet. Multi-tenant strict : la société
+        vient de ``request.user`` (via ``_objet``/``get_queryset``), jamais du
+        corps ni de l'URL au-delà du ``object_code``."""
+        objet = self._objet()
+        self._check_object_permission('voir')
+        champs = CustomFieldDef.objects.filter(
+            company=request.user.company, module=objet.field_module,
+            actif=True, visible_liste=True).order_by('ordre', 'libelle')
+        colonnes = [_colonne_liste(c) for c in champs]
+
+        queryset = CustomRecord.objects.filter(
+            company=request.user.company, objet=objet)
+        page = self.paginate_queryset(queryset)
+        objects = page if page is not None else list(queryset)
+        serializer = CustomRecordSerializer(objects, many=True)
+        if page is not None:
+            paginated = self.get_paginated_response(serializer.data)
+            data = dict(paginated.data)
+        else:
+            data = {'count': len(objects), 'next': None,
+                    'previous': None, 'results': serializer.data}
+        data['colonnes'] = colonnes
+        return Response(data)
+
+    def vue_formulaire(self, request, *args, **kwargs):
+        """NTEXT3 — schéma de formulaire auto-généré (tous les champs actifs
+        de l'objet, ordonnés) pour un rendu no-code du formulaire de saisie."""
+        objet = self._objet()
+        self._check_object_permission('voir')
+        champs = CustomFieldDef.objects.filter(
+            company=request.user.company, module=objet.field_module,
+            actif=True).order_by('ordre', 'libelle')
+        return Response({'champs': [_champ_formulaire(c) for c in champs]})

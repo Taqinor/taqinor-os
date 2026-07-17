@@ -49,12 +49,15 @@ import {
   TVA_STANDARD_DEFAUT, TVA_PANNEAUX_DEFAUT,
   kwhFromBill, buildEtudeParamsChoice, multiPropertyPreviewTTC,
   productibleForCity,
+  COMMERCIAL_CATEGORIES, COMMERCIAL_CATEGORY_QUESTIONS, commercialDayShare,
 } from '../../features/ventes/solar'
 import { formatNumber, formatMAD, formatDateTime } from '../../lib/format'
 
+// QX43 — 4 marchés réels : industriel et commercial sont désormais distincts.
 const MODE_OPTIONS = [
   { value: 'residentiel', label: '🏠 Résidentiel' },
-  { value: 'industriel', label: '🏭 Industriel / Commercial' },
+  { value: 'industriel', label: '🏭 Industriel' },
+  { value: 'commercial', label: '🏪 Commercial' },
   { value: 'agricole', label: '🌾 Agricole (pompage)' },
 ]
 
@@ -338,6 +341,15 @@ export default function DevisGenerator({
     setMultiAccordionOpen(modeInstallation !== 'agricole')
   }, [modeInstallation])
   const [consoMensuelle, setConsoMensuelle] = useState('')
+  // QX44 — étude commerciale par catégorie (mode commercial). categorie +
+  // réponses par catégorie (clés snake_case), stockées dans etude_params.
+  const [categorieCommerciale, setCategorieCommerciale] = useState('hotel')
+  const [commercialAnswers, setCommercialAnswers] = useState({})
+  const setCommercialAnswer = (key, val) =>
+    setCommercialAnswers(prev => ({ ...prev, [key]: val }))
+  // QX50 — injection du surplus (loi 82-21). OFF par défaut, activable par devis
+  // (industriel/commercial) ; la ligne ne s'affiche jamais sans sa mention.
+  const [injectionEnabled, setInjectionEnabled] = useState(false)
   const [prixCible, setPrixCible] = useState('')
   // ── Logique de devis éditable (D5 ; Paramètres → Avancé). Défauts = constantes
   // historiques du simulateur, donc le devis est identique tant que rien n'est
@@ -398,17 +410,19 @@ export default function DevisGenerator({
     fHiver, fEte, monthly, distributeur, realBillMode, realBillMad, realBillKwh,
     nbPanneaux, panelW, structureType, dayUsage, lines, tauxTva, discountPct,
     multiMode, nombreProprietes, villaGroups, modeInstallation, consoMensuelle,
+    categorieCommerciale, commercialAnswers, injectionEnabled,
     prixCible, remiseMax, accessoiresOnly,
     pompeCv, pompeType, pompeAlim, pompeHmt, pompeDebit, pompeProfondeur,
     pompeDistance, pompeHeures, farmRegion, farmCrop, farmSurfaceHa,
     farmIrrigation, farmFuel, farmFuelSpend, farmFuelPeriod, farmHmtStatic,
     farmHmtDrawdown,
-     
+
   }), [
     leadId, clientId, dateValidite, instType, scenario, recommendedChoice, note,
     fHiver, fEte, monthly, distributeur, realBillMode, realBillMad, realBillKwh,
     nbPanneaux, panelW, structureType, dayUsage, lines, tauxTva, discountPct,
     multiMode, nombreProprietes, villaGroups, modeInstallation, consoMensuelle,
+    categorieCommerciale, commercialAnswers, injectionEnabled,
     prixCible, remiseMax, accessoiresOnly,
     pompeCv, pompeType, pompeAlim, pompeHmt, pompeDebit, pompeProfondeur,
     pompeDistance, pompeHeures, farmRegion, farmCrop, farmSurfaceHa,
@@ -458,6 +472,9 @@ export default function DevisGenerator({
     if (Array.isArray(d.villaGroups)) setVillaGroups(d.villaGroups)
     if (d.modeInstallation != null) setModeInstallation(d.modeInstallation)
     if (d.consoMensuelle != null) setConsoMensuelle(d.consoMensuelle)
+    if (d.categorieCommerciale != null) setCategorieCommerciale(d.categorieCommerciale)
+    if (d.commercialAnswers && typeof d.commercialAnswers === 'object') setCommercialAnswers(d.commercialAnswers)
+    if (d.injectionEnabled != null) setInjectionEnabled(d.injectionEnabled)
     if (d.prixCible != null) setPrixCible(d.prixCible)
     if (d.remiseMax != null) setRemiseMax(d.remiseMax)
     if (d.accessoiresOnly != null) setAccessoiresOnly(d.accessoiresOnly)
@@ -612,6 +629,11 @@ export default function DevisGenerator({
     if (m === 'industriel') {
       onInstTypeChange('Industrielle')
       setScenario('Sans batterie') // défaut industriel : sans batterie, réseau
+    } else if (m === 'commercial') {
+      // QX43 — commercial : comme l'industriel, autoconsommation réseau sans
+      // batterie par défaut (l'étude par catégorie arrive avec QX44).
+      onInstTypeChange('Commerciale')
+      setScenario('Sans batterie')
     } else if (m === 'agricole') {
       onInstTypeChange('Agricole')
     } else {
@@ -780,6 +802,19 @@ export default function DevisGenerator({
         .reduce((s, r) => s + (parseFloat(r.quantite) || 0), 0)
       if (panneaux > 0) setNbPanneaux(String(panneaux))
       const e = d.etude_params || {}
+      // QX50 — round-trip de l'injection 82-21 (flag activé si l'étude la porte).
+      if (e.injection_82_21 || e.injection_dh_an != null) setInjectionEnabled(true)
+      // QX44 — round-trip de l'étude commerciale : catégorie + réponses par
+      // catégorie (clés snake_case) réinjectées dans le formulaire.
+      if (e.categorie_commerciale) {
+        setCategorieCommerciale(String(e.categorie_commerciale))
+        const qs = COMMERCIAL_CATEGORY_QUESTIONS[String(e.categorie_commerciale)] || []
+        const ans = {}
+        for (const q of qs) {
+          if (e[q.key] !== undefined && e[q.key] !== null) ans[q.key] = e[q.key]
+        }
+        setCommercialAnswers(ans)
+      }
       if (e.pompe_cv) setPompeCv(String(e.pompe_cv))
       if (e.hmt_m) setPompeHmt(String(e.hmt_m))
       if (e.debit_souhaite_m3h) setPompeDebit(String(e.debit_souhaite_m3h))
@@ -1174,8 +1209,9 @@ export default function DevisGenerator({
       panelW: parseFloat(panelW) || 710,
       structureType,
     })
-    // Mode industriel : sans batterie par défaut (réseau seul, triphasé)
-    if (modeInstallation === 'industriel') {
+    // Modes industriel ET commercial (QX44) : sans batterie par défaut
+    // (autoconsommation réseau, pas de stockage).
+    if (modeInstallation === 'industriel' || modeInstallation === 'commercial') {
       generated = generated.map(r =>
         (isBattery(r.designation) || isHybridInverter(r.designation))
           ? { ...r, quantite: 0 } : r)
@@ -1289,6 +1325,22 @@ export default function DevisGenerator({
       let etudeParams = null
       if (modeInstallation === 'industriel' && etudeIndustrielle) {
         etudeParams = etudeIndustrielle
+      } else if (modeInstallation === 'commercial') {
+        // QX44 — étude commerciale (si conso saisie) + catégorie + réponses par
+        // catégorie (clés snake_case, coercition de type ; jamais de prix_achat).
+        const answers = {}
+        for (const q of (COMMERCIAL_CATEGORY_QUESTIONS[categorieCommerciale] || [])) {
+          const raw = commercialAnswers[q.key]
+          if (raw === undefined || raw === '' || raw === null) continue
+          answers[q.key] = q.type === 'number'
+            ? (parseFloat(raw) || 0)
+            : q.type === 'bool' ? !!raw : String(raw)
+        }
+        etudeParams = {
+          ...(etudeCommerciale || {}),
+          categorie_commerciale: categorieCommerciale,
+          ...answers,
+        }
       } else if (modeInstallation === 'agricole' && pompageSel) {
         etudeParams = buildEtudePompage(pompageSel, {
           typePompe: pompeType, alim: pompeAlim,
@@ -1486,8 +1538,24 @@ export default function DevisGenerator({
         kwp, consoMensuelleKwh: consoKwhDerivee,
         dayUsagePct: dayUsage, totalTtc: kpiTotal,
         kwhPrice: quoteLogic.kwhPrice, efficiency: quoteLogic.efficiency,
+        injectionEnabled,
       })
     : null
+
+  // QX44 — étude COMMERCIALE : même moteur d'autoconsommation que l'industriel,
+  // mais le day-share vient de l'ARCHÉTYPE de la catégorie (hôtel 55 ≠ bureau 80)
+  // → à facture égale, une étude hôtel diffère d'une étude bureau.
+  const etudeCommerciale = (modeInstallation === 'commercial' && kwp > 0
+      && consoKwhDerivee > 0)
+    ? computeEtudeIndustrielle({
+        kwp, consoMensuelleKwh: consoKwhDerivee,
+        dayUsagePct: commercialDayShare(categorieCommerciale), totalTtc: kpiTotal,
+        kwhPrice: quoteLogic.kwhPrice, efficiency: quoteLogic.efficiency,
+        injectionEnabled,
+      })
+    : null
+  // Étude « industriel/commercial » unifiée pour l'aperçu écran + la persistance.
+  const etudeCI = etudeIndustrielle || etudeCommerciale
 
   // Disponibilité de l'option « avec batterie » (règle : jamais sans onduleur)
   const avecDispo = avecBatterieAvailability(lines, produits, kwp)
@@ -1629,7 +1697,7 @@ export default function DevisGenerator({
             {modeInstallation === 'residentiel' && kwp > 36 && (
               <div className="mt-3 rounded-lg border border-info/30 bg-info/10 p-3 text-sm text-info">
                 Ce système fait {formatNumber(kwp, { decimals: 2 })} kWc — au-delà de l'échelle résidentielle.
-                Le mode Industriel / Commercial produira un document plus adapté
+                Le mode Industriel ou Commercial produira un document plus adapté
                 (étude d'autoconsommation, option unique). Vous pouvez ignorer cette suggestion.
               </div>
             )}
@@ -1895,7 +1963,7 @@ export default function DevisGenerator({
               </div>
             </div>
 
-            {modeInstallation === 'industriel' && (
+            {(modeInstallation === 'industriel' || modeInstallation === 'commercial') && (
               <div className="mt-3.5 grid gap-4 sm:grid-cols-2">
                 <div className="grid gap-1.5">
                   <Label htmlFor="gen-conso">Consommation mensuelle (kWh) — pour l'étude</Label>
@@ -1903,6 +1971,74 @@ export default function DevisGenerator({
                          placeholder="ex: 12000" value={consoMensuelle}
                          onChange={e => setConsoMensuelle(e.target.value)} />
                 </div>
+                {/* QX50 — injection du surplus (loi 82-21), OFF par défaut */}
+                <div className="grid gap-1.5">
+                  <Label>Injection du surplus (loi 82-21)</Label>
+                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input type="checkbox" checked={injectionEnabled}
+                           onChange={e => setInjectionEnabled(e.target.checked)} />
+                    Valoriser le surplus injecté (plafond 20 %, tarif ANRE net)
+                  </label>
+                  <p className="text-xs text-muted-foreground">
+                    Tarif ANRE 03/2026-02/2027, plafond en révision.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* QX44 — étude commerciale par catégorie */}
+            {modeInstallation === 'commercial' && (
+              <div className="mt-3.5">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="grid gap-1.5">
+                    <Label>Catégorie commerciale</Label>
+                    <Select value={categorieCommerciale} onValueChange={setCategorieCommerciale}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {COMMERCIAL_CATEGORIES.map(c => (
+                          <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Profil de charge diurne ≈ {commercialDayShare(categorieCommerciale)} %
+                      (ajuste l'autoconsommation de l'étude).
+                    </p>
+                  </div>
+                </div>
+                {(COMMERCIAL_CATEGORY_QUESTIONS[categorieCommerciale] || []).length > 0 && (
+                  <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                    {(COMMERCIAL_CATEGORY_QUESTIONS[categorieCommerciale] || []).map(q => (
+                      <div className="grid gap-1.5" key={q.key}>
+                        <Label htmlFor={`gen-com-${q.key}`}>{q.label}</Label>
+                        {q.type === 'number' && (
+                          <Input id={`gen-com-${q.key}`} type="number" min="0" step="any"
+                                 value={commercialAnswers[q.key] ?? ''}
+                                 onChange={e => setCommercialAnswer(q.key, e.target.value)} />
+                        )}
+                        {q.type === 'select' && (
+                          <Select value={commercialAnswers[q.key] ?? ''}
+                                  onValueChange={v => setCommercialAnswer(q.key, v)}>
+                            <SelectTrigger id={`gen-com-${q.key}`}><SelectValue placeholder="—" /></SelectTrigger>
+                            <SelectContent>
+                              {q.options.map(o => (
+                                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+                        {q.type === 'bool' && (
+                          <label className="flex items-center gap-2 text-sm cursor-pointer">
+                            <input id={`gen-com-${q.key}`} type="checkbox"
+                                   checked={!!commercialAnswers[q.key]}
+                                   onChange={e => setCommercialAnswer(q.key, e.target.checked)} />
+                            Oui
+                          </label>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </CardContent>
@@ -2219,22 +2355,22 @@ export default function DevisGenerator({
             </Button>
           </GenCardHeader>
           <CardContent className={`gen-preview-body pt-4${previewCollapsed ? ' m-collapsed' : ''}`}>
-            {etudeIndustrielle && (
+            {etudeCI && (
               <div className="gen-metrics-grid" style={{ marginBottom: '0.75rem' }}>
                 <MetricCard label="Taux d'autoconsommation"
-                            value={`${etudeIndustrielle.taux_autoconso} %`}
+                            value={`${etudeCI.taux_autoconso} %`}
                             unit="part de la production consommée" accent />
-                {etudeIndustrielle.taux_couverture != null && (
+                {etudeCI.taux_couverture != null && (
                   <MetricCard label="Taux de couverture"
-                              value={`${etudeIndustrielle.taux_couverture} %`}
+                              value={`${etudeCI.taux_couverture} %`}
                               unit="part de la conso couverte" accent />
                 )}
                 <MetricCard label="Économies annuelles (étude)"
-                            value={fmtNum(etudeIndustrielle.economies_annuelles)}
+                            value={fmtNum(etudeCI.economies_annuelles)}
                             unit="MAD / an" />
-                {etudeIndustrielle.payback != null && (
+                {etudeCI.payback != null && (
                   <MetricCard label="Payback (étude)"
-                              value={`${etudeIndustrielle.payback} ans`}
+                              value={`${etudeCI.payback} ans`}
                               unit="retour sur invest." />
                 )}
               </div>

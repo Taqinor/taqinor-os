@@ -49,19 +49,22 @@ def _bucket_prefix(doc_prefix, period):
     return f"{doc_prefix}-{seg}" if seg else str(doc_prefix)
 
 
-def next_reference(model, doc_prefix, company, *, padding=4, period='monthly'):
+def next_reference(model, doc_prefix, company, *, padding=4, period='monthly',
+                   field='reference'):
     """Prochaine référence libre pour cette société/période.
 
     Les défauts (padding 4, remise à zéro mensuelle) reproduisent EXACTEMENT
     l'historique 'DEV-202606-0003'. `period` ∈ {'monthly','yearly','none'} pilote
     le seau de remise à zéro ; `padding` la largeur de zéro-padding. La règle
     plus-haut-utilisé+1 (sans trou, race-safe) est inchangée — seuls le radical
-    du seau et la largeur de padding varient.
+    du seau et la largeur de padding varient. `field` nomme le champ porteur de
+    la référence (défaut 'reference' — rétro-compatible ; un modèle dont le
+    numéro vit ailleurs, ex. `Patient.numero_dossier`, le passe explicitement).
     """
     prefix = _bucket_prefix(doc_prefix, period)
     refs = model.objects.filter(
-        company=company, reference__startswith=prefix,
-    ).values_list('reference', flat=True)
+        company=company, **{f'{field}__startswith': prefix},
+    ).values_list(field, flat=True)
     highest = 0
     for ref in refs:
         m = _SUFFIX_RE.search(ref)

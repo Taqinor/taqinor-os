@@ -76,6 +76,115 @@ export const DAY_USAGE_DEFAULTS = {
   'Agricole': 100,
 }
 
+// ── QX44 — Étude COMMERCIALE par catégorie ────────────────────────────────────
+// Chaque marché commercial a une signature de consommation DIURNE distincte : un
+// bureau consomme le jour (autoconsommation élevée), un hôtel/restaurant a un pic
+// du soir. Le « day-share » (part de la conso pendant les heures solaires)
+// remplace l'unique DAY_USAGE_DEFAULTS['Commerciale']=80 par une table par
+// catégorie. SOURCE = archétype de charge documenté ; EST. = estimation marché à
+// vérifier fondateur (QXG6 durcira ces valeurs). Réglable société (override).
+// Miroir informatif du questionnaire webhook (QX51) — clés snake_case.
+export const COMMERCIAL_CATEGORIES = [
+  { value: 'hotel', label: 'Hôtel / Riad' },
+  { value: 'restaurant', label: 'Restaurant / Café' },
+  { value: 'commerce', label: 'Commerce / Supermarché' },
+  { value: 'bureau', label: 'Bureau / Siège' },
+  { value: 'sante', label: 'Santé (clinique / cabinet)' },
+  { value: 'ecole', label: 'École privée' },
+  { value: 'hammam', label: 'Hammam / Spa / Gym' },
+  { value: 'boulangerie', label: 'Boulangerie' },
+  { value: 'froid', label: 'Entrepôt froid' },
+  { value: 'autre', label: 'Autre commerce' },
+]
+
+// Day-share (%) par catégorie — part de la consommation consommée en journée.
+export const COMMERCIAL_DAY_SHARE = {
+  bureau: 80,      // SOURCE archétype bureau : conso ~9h-18h alignée au solaire
+  ecole: 85,       // SOURCE école (période scolaire) : forte conso diurne
+  commerce: 75,    // EST. supermarché : froid + éclairage jour, pic soir modéré
+  sante: 70,       // EST. clinique : diurne dominant, garde de nuit résiduelle
+  restaurant: 70,  // EST. restaurant : services midi + soir → part solaire moyenne
+  hammam: 65,      // EST. hammam/spa/gym : chauffe jour + soirée
+  hotel: 55,       // EST. hôtel : occupation soir/nuit, base diurne (clim/piscine)
+  froid: 50,       // EST. entrepôt froid : base 24 h, part solaire ≈ heures de jour
+  boulangerie: 45, // EST. boulangerie : cuisson souvent nocturne → faible part solaire
+  autre: 80,       // repli = ancien défaut Commerciale
+}
+export const COMMERCIAL_DAY_SHARE_DEFAUT = 80
+
+// Day-share effectif d'une catégorie (override société optionnel, borné 10-100).
+export function commercialDayShare(category, { override } = {}) {
+  if (override && typeof override === 'object' && override[category] != null) {
+    const v = parseFloat(override[category])
+    if (Number.isFinite(v) && v > 0) return Math.min(100, Math.max(10, v))
+  }
+  return COMMERCIAL_DAY_SHARE[category] ?? COMMERCIAL_DAY_SHARE_DEFAUT
+}
+
+// Questions 2-4 par catégorie (recherche 2026-07-16). key = clé snake_case
+// stockée dans etude_params (et acceptée par le webhook QX51). type =
+// 'number' | 'bool' | 'select' (+ options).
+export const COMMERCIAL_CATEGORY_QUESTIONS = {
+  hotel: [
+    { key: 'chambres', label: 'Nombre de chambres', type: 'number' },
+    { key: 'occupation_pct', label: "Taux d'occupation annuel (%)", type: 'number' },
+    { key: 'piscine', label: 'Piscine chauffée', type: 'bool' },
+  ],
+  restaurant: [
+    { key: 'chambres_froides', label: 'Chambres froides', type: 'number' },
+    {
+      key: 'horaires', label: 'Horaires', type: 'select', options: [
+        { value: 'midi', label: 'Midi' }, { value: 'soir', label: 'Soir' },
+        { value: 'continu', label: 'Continu' },
+      ],
+    },
+    {
+      key: 'cuisson', label: 'Cuisson', type: 'select', options: [
+        { value: 'electrique', label: 'Électrique' }, { value: 'gaz', label: 'Gaz' },
+      ],
+    },
+  ],
+  commerce: [
+    { key: 'surface_vente_m2', label: 'Surface de vente (m²)', type: 'number' },
+    { key: 'chambres_froides', label: 'Meubles / chambres froids', type: 'number' },
+  ],
+  bureau: [
+    { key: 'effectif', label: 'Effectif (postes)', type: 'number' },
+    { key: 'clim', label: 'Climatisation centralisée', type: 'bool' },
+  ],
+  sante: [
+    { key: 'lits', label: 'Nombre de lits', type: 'number' },
+    { key: 'garde_nuit', label: 'Garde de nuit', type: 'bool' },
+  ],
+  ecole: [
+    { key: 'effectif', label: 'Effectif (élèves)', type: 'number' },
+    { key: 'internat', label: 'Internat', type: 'bool' },
+    { key: 'fermeture_estivale', label: 'Fermeture estivale', type: 'bool' },
+  ],
+  hammam: [
+    { key: 'surface_m2', label: 'Surface (m²)', type: 'number' },
+    {
+      key: 'chauffe', label: 'Chauffe eau', type: 'select', options: [
+        { value: 'electrique', label: 'Électrique' }, { value: 'gaz', label: 'Gaz' },
+      ],
+    },
+  ],
+  boulangerie: [
+    {
+      key: 'four', label: 'Four', type: 'select', options: [
+        { value: 'electrique', label: 'Électrique' }, { value: 'gaz', label: 'Gaz' },
+      ],
+    },
+    { key: 'cuisson_nocturne', label: 'Cuisson nocturne', type: 'bool' },
+  ],
+  froid: [
+    { key: 'temperature_consigne', label: 'Température de consigne (°C)', type: 'number' },
+    { key: 'volume_m3', label: 'Volume froid (m³)', type: 'number' },
+    { key: 'saisonnalite_recolte', label: 'Pic saisonnier (récolte)', type: 'bool' },
+  ],
+  autre: [],
+}
+
 // ── Format monétaire (port exact de formatMoney) ─────────────────────────────
 export function formatMoney(val) {
   if (val === null || val === undefined || isNaN(val)) return '0 MAD'
@@ -804,7 +913,43 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
 // ONEE et le rendement de la société (Paramètres → Avancé) pilotent l'étude à
 // l'écran, plus seulement le PDF. Sans valeur → constantes historiques
 // (parité simulateur garantie).
-export function computeEtudeIndustrielle({ kwp, consoMensuelleKwh, dayUsagePct, totalTtc, kwhPrice, efficiency }) {
+// ── QX50 — Injection 82-21 (miroir de quote_engine/constants_82_21.py) ────────
+// Décret 82-21 (2-25-100, BO 09/03/2026, en vigueur 09/06/2026). TOUTES ces
+// valeurs sont ESTIMÉES (recherche 2026-07-16) et à VÉRIFIER FONDATEUR (QXG6) :
+// elles pilotent une ligne OFF par défaut, activée devis par devis, et ne
+// s'affichent JAMAIS sans la mention réglementaire INJECTION_82_21.MENTION.
+export const INJECTION_82_21 = {
+  TARIF_POINTE: 0.21,        // DH/kWh — à vérifier fondateur
+  TARIF_HORS_POINTE: 0.18,   // DH/kWh — à vérifier fondateur
+  FRAIS_RESEAU_C1: 6.07,     // c/kWh — à vérifier fondateur
+  FRAIS_RESEAU_C2: 6.38,     // c/kWh — à vérifier fondateur
+  PLAFOND_PCT: 20,           // % de la production — décret en révision (à vérifier)
+  MENTION: 'Tarif ANRE 03/2026-02/2027, plafond en révision',
+}
+INJECTION_82_21.FRAIS_RESEAU_DH = (INJECTION_82_21.FRAIS_RESEAU_C1 + INJECTION_82_21.FRAIS_RESEAU_C2) / 100
+
+// Tarif NET (rachat − frais réseau), DH/kWh, jamais négatif. Injection diurne →
+// tarif HORS POINTE net par défaut (prudent, jamais la pointe sans stockage).
+export function netTarif8221(pointe = false) {
+  const base = pointe ? INJECTION_82_21.TARIF_POINTE : INJECTION_82_21.TARIF_HORS_POINTE
+  return Math.max(0, base - INJECTION_82_21.FRAIS_RESEAU_DH)
+}
+
+// Surplus injectable (kWh) plafonné à 20 % de la prod + sa valeur nette (DH).
+// Retourne { kwh, dh }, ≥ 0, arrondis. Miroir de injection_annuelle().
+export function injection8221(productionKwh, autoconsommeKwh, pointe = false) {
+  const prod = Math.max(0, parseFloat(productionKwh) || 0)
+  const auto = Math.max(0, parseFloat(autoconsommeKwh) || 0)
+  const surplus = Math.max(0, prod - auto)
+  const plafond = prod * INJECTION_82_21.PLAFOND_PCT / 100
+  const kwh = Math.min(surplus, plafond)
+  const dh = kwh * netTarif8221(pointe)
+  return { kwh: Math.round(kwh), dh: Math.round(dh) }
+}
+
+// QX50 — `injectionEnabled` (défaut false, OFF) ajoute la ligne d'injection
+// 82-21 SANS toucher l'étude d'autoconsommation : étude avec = étude sans + ligne.
+export function computeEtudeIndustrielle({ kwp, consoMensuelleKwh, dayUsagePct, totalTtc, kwhPrice, efficiency, injectionEnabled = false }) {
   if (!kwp || kwp <= 0) return null
   const PRICE = (Number.isFinite(Number(kwhPrice)) && Number(kwhPrice) > 0) ? Number(kwhPrice) : KWH_PRICE
   const EFF = (Number.isFinite(Number(efficiency)) && Number(efficiency) > 0) ? Number(efficiency) : EFFICIENCY
@@ -826,7 +971,7 @@ export function computeEtudeIndustrielle({ kwp, consoMensuelleKwh, dayUsagePct, 
   const economies = autoconsomme * PRICE
   const payback = (economies > 0 && totalTtc > 0)
     ? Math.round(totalTtc / economies * 10) / 10 : null
-  return {
+  const out = {
     kwc: Math.round(kwp * 100) / 100,
     production_annuelle: Math.round(prodA),
     conso_annuelle: consoA ? Math.round(consoA) : null,
@@ -838,6 +983,15 @@ export function computeEtudeIndustrielle({ kwp, consoMensuelleKwh, dayUsagePct, 
     prod_mensuelle: prodM.map(v => Math.round(v)),
     conso_mensuelle: consoA ? Array(12).fill(Math.round(consoMois)) : null,
   }
+  // QX50 — injection 82-21 : ligne SÉPARÉE (ne modifie pas l'étude ci-dessus).
+  // OFF par défaut ; activée par devis. La mention est portée par le renderer.
+  if (injectionEnabled) {
+    const inj = injection8221(prodA, autoconsomme)
+    out.injection_kwh_an = inj.kwh
+    out.injection_dh_an = inj.dh
+    out.injection_82_21 = true
+  }
+  return out
 }
 
 // ── QF7 — fusion des paramètres d'étude + choix scénario/option, TOUS modes ──
@@ -868,6 +1022,38 @@ export const CV_TO_KW = 0.7355
 // la pompe tourne à régime nominal bien au-delà des heures équivalentes
 // plein-soleil ; ~7 h/jour est l'hypothèse marché retenue — modifiable).
 export const HEURES_POMPAGE_DEFAUT = 7
+
+// ── QX48(f) — garde de suffisance hydraulique du repli CV ─────────────────────
+// Puissance hydraulique P(kW) = ρ·g·Q·H / 3,6e6 = Q·H·0,002725 (Q m³/h, H m,
+// ρ=1000, g=9,81). La puissance ARBRE/électrique = hydraulique ÷ η (rendement
+// wire-to-water). On compare la pompe SAISIE (CV→kW) au minimum requis quand
+// HMT + débit sont renseignés, et on AVERTIT si sous-dimensionnée — JAMAIS un
+// blocage. η défaut 0,5 (EST. wire-to-water pompe solaire immergée, à vérifier
+// fondateur : la plage réaliste est ~0,35-0,55).
+export const PUMP_WIRE_TO_WATER_ETA = 0.5 // EST. — à vérifier fondateur
+
+export function pumpHydraulicKwMin(debit, hmt, eta = PUMP_WIRE_TO_WATER_ETA) {
+  const Q = parseFloat(debit)
+  const H = parseFloat(hmt)
+  const e = parseFloat(eta)
+  if (!(Q > 0) || !(H > 0) || !(e > 0)) return null
+  return Math.round((Q * H * 2.725 / (1000 * e)) * 100) / 100
+}
+
+// Avertissement (string) si la pompe saisie (kW) est sous le minimum hydraulique
+// requis, sinon null. Ne bloque JAMAIS le devis.
+export function pumpSufficiencyWarning({ hmt, debit, cvKw, eta = PUMP_WIRE_TO_WATER_ETA } = {}) {
+  const kwMin = pumpHydraulicKwMin(debit, hmt, eta)
+  const kw = parseFloat(cvKw)
+  if (kwMin == null || !(kw > 0)) return null
+  if (kw < kwMin * 0.98) {
+    return `Pompe possiblement sous-dimensionnée : ~${kwMin.toFixed(1)} kW requis `
+      + `pour ${parseFloat(debit)} m³/h à ${parseFloat(hmt)} m HMT `
+      + `(η≈${eta}), pompe saisie ${Math.round(kw * 100) / 100} kW. `
+      + 'Vérifiez le CV ou la HMT.'
+  }
+  return null
+}
 
 // Champ PV ≈ 1.4 × puissance pompe (approche marché 1.3–1.5×), panneaux 710 W
 export function champFromKw(kw) {
@@ -1017,11 +1203,17 @@ export function pompageSelection(produits, { cv, typePompe, hmt, debit, heures, 
   // QX40 — dégradation VERS LE CHEMIN CV avec avertissement visible quand une
   // pompe à courbe convenait mais aucune n'était compatible avec la phase/
   // tension demandée (jamais une pompe 380 V pour une demande mono/220 V).
-  const warning = sel.phaseMismatch
+  const phaseWarn = sel.phaseMismatch
     ? `Aucune pompe à courbe compatible ${alim === 'mono' ? 'monophasée 220 V'
         : 'triphasée 380 V'} n'est disponible et pricée : dimensionnement par CV `
       + '(vérifiez la tension de la pompe et du variateur).'
     : null
+  // QX48(f) — garde de suffisance hydraulique : si HMT + débit sont saisis, on
+  // compare la pompe CV saisie au minimum requis et on avertit si sous-
+  // dimensionnée (jamais bloquant). Cumulable avec l'avertissement de phase.
+  const cvKw = Math.round(cvNum * CV_TO_KW * 100) / 100
+  const suffWarn = pumpSufficiencyWarning({ hmt, debit, cvKw })
+  const warning = [phaseWarn, suffWarn].filter(Boolean).join(' ') || null
   return {
     mode: 'cv',
     pump: null,
