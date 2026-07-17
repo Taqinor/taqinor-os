@@ -2,7 +2,7 @@
    Fichier de configuration de module (données + composant lazy), pas un module
    de composants : le fast-refresh ne s'y applique pas (cf. moduleRoutes.jsx). */
 import { lazy } from 'react'
-import { ClipboardList, Stethoscope } from 'lucide-react'
+import { ClipboardList, Stethoscope, UserPlus } from 'lucide-react'
 
 /* ============================================================================
    NTSAN — Config du module Santé (cabinet/clinique), auto-enregistrée.
@@ -15,6 +15,7 @@ import { ClipboardList, Stethoscope } from 'lucide-react'
 
 const SanteAgenda = lazy(() => import('./SanteAgenda'))
 const NomenclatureActesScreen = lazy(() => import('./NomenclatureActesScreen'))
+const ReceptionScreen = lazy(() => import('./ReceptionScreen'))
 
 const config = {
   key: 'sante',
@@ -23,6 +24,12 @@ const config = {
     label: 'SANTÉ',
     accent: 'primary',
     items: [
+      {
+        to: '/sante/reception',
+        label: 'Réception',
+        icon: <UserPlus size={17} strokeWidth={1.75} aria-hidden="true" />,
+        roles: ['normal', 'responsable', 'admin'],
+      },
       {
         to: '/sante/agenda',
         label: 'Agenda',
@@ -38,11 +45,16 @@ const config = {
     ],
   },
   titles: [
+    ['/sante/reception', 'Réception (Santé)'],
     ['/sante/agenda', 'Agenda (Santé)'],
     ['/sante/nomenclature-actes', 'Nomenclature des actes'],
   ],
   sectionLabels: { sante: 'Santé' },
   routes: [
+    {
+      path: '/sante/reception', component: ReceptionScreen,
+      roles: ['normal', 'responsable', 'admin'],
+    },
     {
       path: '/sante/agenda', component: SanteAgenda,
       roles: ['normal', 'responsable', 'admin'],

@@ -44,6 +44,19 @@ class PatientViewSet(CompanyScopedModelViewSet):
     queryset = Patient.objects.select_related('client').all()
     serializer_class = PatientSerializer
 
+    def get_queryset(self):
+        """NTSAN18 — recherche accueil/réception par ``?q=`` (nom, prénom,
+        CIN ou téléphone), utilisée par l'écran « Réception »."""
+        qs = super().get_queryset()
+        q = self.request.query_params.get('q')
+        if q:
+            from django.db.models import Q
+            qs = qs.filter(
+                Q(nom__icontains=q) | Q(prenom__icontains=q) |
+                Q(cin__icontains=q) | Q(telephone__icontains=q) |
+                Q(whatsapp__icontains=q))
+        return qs
+
     def perform_create(self, serializer):
         super().perform_create(serializer)
         from .services import attribuer_numero_dossier
