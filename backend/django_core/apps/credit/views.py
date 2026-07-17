@@ -123,13 +123,56 @@ def score_credit_client(request, client_id):
 
 
 class LimiteCreditViewSet(CompanyScopedModelViewSet):
-    """NTCRD2 — CRUD limite de crédit par client, company-scopé."""
+    """NTCRD2 — CRUD limite de crédit par client, company-scopé.
+
+    NTCRD22 — tout changement de ``montant_limite``/``mode_hold`` est journalisé
+    dans le chatter générique ``records`` (ancien→nouveau + acteur côté
+    serveur), consultable via ``historique``."""
     queryset = LimiteCredit.objects.select_related('client', 'cree_par').all()
     serializer_class = LimiteCreditSerializer
 
     def perform_create(self, serializer):
         serializer.save(
             company=self.request.user.company, cree_par=self.request.user)
+
+    def perform_update(self, serializer):
+        # NTCRD22 — capture l'ancien état AVANT sauvegarde pour journaliser le
+        # diff (montant + mode de hold) côté chatter records (best-effort).
+        instance = serializer.instance
+        ancien_montant = instance.montant_limite
+        ancien_mode = instance.mode_hold
+        super().perform_update(serializer)
+        nouvel = serializer.instance
+        try:
+            from apps.records.services import log_field_change
+            if ancien_montant != nouvel.montant_limite:
+                log_field_change(
+                    nouvel, 'montant_limite', ancien_montant,
+                    nouvel.montant_limite, user=self.request.user,
+                    field_label='Limite de crédit')
+            if ancien_mode != nouvel.mode_hold:
+                log_field_change(
+                    nouvel, 'mode_hold', ancien_mode, nouvel.mode_hold,
+                    user=self.request.user, field_label='Mode de hold')
+        except Exception:  # pragma: no cover - journalisation best-effort
+            pass
+
+    @action(detail=True, methods=['get'])
+    def historique(self, request, pk=None):
+        """NTCRD22 — timeline des changements de cette limite (chatter records)."""
+        from apps.records.services import chatter_qs
+        limite = self.get_object()
+        entries = [
+            {
+                'id': a.id, 'kind': a.kind, 'field': a.field,
+                'field_label': a.field_label, 'old_value': a.old_value,
+                'new_value': a.new_value, 'body': a.body,
+                'created_at': a.created_at,
+                'acteur': getattr(a.created_by, 'username', None),
+            }
+            for a in chatter_qs(limite, company=request.user.company)
+        ]
+        return Response({'count': len(entries), 'entries': entries})
 
 
 class ReglageCreditView(APIView):
