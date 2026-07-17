@@ -36,6 +36,10 @@ const innovationApiMock = vi.hoisted(() => ({
   retirerVote: vi.fn(),
   votesRecents: vi.fn(),
   mesVotes: vi.fn(),
+  // NTIDE27 — bandeau d'incitation (défaut : aucune campagne matchée).
+  campagnes: {
+    incitation: vi.fn(() => Promise.resolve({ data: { campagne: null } })),
+  },
 }))
 vi.mock('../../api/innovationApi', () => ({ default: innovationApiMock }))
 
@@ -278,6 +282,22 @@ describe('ProposerIdeeForm (NTIDE8/NTIDE9)', () => {
     const { default: ProposerIdeeForm } = await import('./ProposerIdeeForm')
     render(wrap(<ProposerIdeeForm />, { route: '/crm/leads' }))
     expect((await screen.findByLabelText('Contexte')).value).toBe('CRM')
+  })
+
+  it("NTIDE27 — affiche le bandeau d'incitation quand une campagne matche l'utilisateur", async () => {
+    innovationApiMock.campagnes.incitation.mockResolvedValueOnce({
+      data: { campagne: { id: 1, nom: 'Idées pompage', message_incitation: 'Parlez-nous du pompage.' } },
+    })
+    const { default: ProposerIdeeForm } = await import('./ProposerIdeeForm')
+    render(wrap(<ProposerIdeeForm />))
+    expect(await screen.findByText('Parlez-nous du pompage.')).toBeInTheDocument()
+  })
+
+  it("NTIDE27 — aucun bandeau quand aucune campagne ne matche", async () => {
+    const { default: ProposerIdeeForm } = await import('./ProposerIdeeForm')
+    render(wrap(<ProposerIdeeForm />))
+    await screen.findByLabelText('Titre')
+    expect(screen.queryByText(/Parlez-nous/)).not.toBeInTheDocument()
   })
 
   it('refuse un titre vide', async () => {

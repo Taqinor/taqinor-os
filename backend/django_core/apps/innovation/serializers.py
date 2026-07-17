@@ -6,7 +6,7 @@
 """
 from rest_framework import serializers
 
-from .models import Idee, InnovationSettings, VoteIdee
+from .models import CampagneInnovation, Idee, InnovationSettings, VoteIdee
 
 
 class IdeeSerializer(serializers.ModelSerializer):
@@ -85,3 +85,34 @@ class InnovationSettingsSerializer(serializers.ModelSerializer):
             'campagnes_activees', 'segment_defaut', 'theme_couleur_cta',
             'message_relance', 'seuil_votes_notification',
         ]
+
+
+class CampagneInnovationSerializer(serializers.ModelSerializer):
+    """Sérialiseur de la campagne d'innovation (NTIDE25) — ``statut`` se
+    modifie par PATCH direct (contrairement à ``Idee.statut``) : le cycle
+    d'une campagne (brouillon→active→fermée) n'a pas de garde métier propre
+    par transition, juste une notification au passage à ``active``
+    (NTIDE31, côté vue)."""
+
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = CampagneInnovation
+        fields = [
+            'id', 'nom', 'description', 'statut', 'statut_display',
+            'cible_departement', 'segment', 'date_debut', 'date_fin',
+            'message_incitation', 'tag_auto', 'created_at',
+        ]
+        read_only_fields = ['created_at']
+
+
+class IncitationSerializer(serializers.Serializer):
+    """NTIDE27 — bandeau d'incitation affiché sur le formulaire « Proposer
+    une idée » quand l'utilisateur matche le segment d'une campagne active.
+    ``None`` (représenté par ``campagne: null`` côté JSON) si aucune."""
+
+    id = serializers.IntegerField(source='pk')
+    nom = serializers.CharField()
+    message_incitation = serializers.CharField()
+    date_fin = serializers.DateField()

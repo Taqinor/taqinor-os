@@ -1,6 +1,6 @@
 import { useEffect, useId, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Send, Save, ThumbsUp, Search } from 'lucide-react'
+import { Send, Save, ThumbsUp, Search, Megaphone } from 'lucide-react'
 import { Button, Input, Textarea, Checkbox, Badge, toast } from '../../ui'
 import innovationApi from '../../api/innovationApi'
 import { contexteFromPath, linkedFromLocation } from './linkedContext'
@@ -16,6 +16,8 @@ import { StatutIdeePill } from './innovationStatus'
    édition). « Enregistrer en brouillon » (NTIDE18) : l'idée reste interne à
    l'auteur (invisible des autres) jusqu'à ce qu'il la publie depuis son
    détail (bouton « Publier »).
+   NTIDE27 — bandeau d'incitation en haut du formulaire quand l'utilisateur
+   matche le segment d'une campagne active (« Nous cherchons vos idées sur… »).
    ========================================================================== */
 
 export default function ProposerIdeeForm({ onCreated, onCancel, compact = false }) {
@@ -35,11 +37,20 @@ export default function ProposerIdeeForm({ onCreated, onCancel, compact = false 
 
   const linked = linkedFromLocation(location.pathname, location.search)
   const [lierIdee, setLierIdee] = useState(!!linked)
+  // NTIDE27 — campagne active matchant l'utilisateur (ou null).
+  const [campagne, setCampagne] = useState(null)
 
   useEffect(() => {
     innovationApi.contextes()
       .then((res) => setSuggestions(res.data?.results || []))
       .catch(() => setSuggestions([]))
+  }, [])
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount
+    innovationApi.campagnes.incitation()
+      .then((res) => setCampagne(res.data?.campagne || null))
+      .catch(() => setCampagne(null))
   }, [])
 
   // NTIDE20 — recherche debouncée dès 3 caractères, annulée à chaque frappe.
@@ -95,6 +106,13 @@ export default function ProposerIdeeForm({ onCreated, onCancel, compact = false 
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+      {campagne?.message_incitation && (
+        <div className="flex items-start gap-2 rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm">
+          <Megaphone className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden="true" />
+          <p>{campagne.message_incitation}</p>
+        </div>
+      )}
+
       <div className="flex flex-col gap-1.5">
         <label htmlFor="idee-titre" className="text-sm font-medium">Titre</label>
         <Input

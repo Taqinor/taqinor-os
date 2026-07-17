@@ -24,6 +24,10 @@ const innovationApi = {
   // ── Tableau de bord admin (NTIDE6) ──
   tableauBord: () => api.get('/innovation/idees/tableau-bord/'),
 
+  // ── Timeline — idées par jour (NTIDE23) ──
+  // params: statut / contexte.
+  timeline: (params) => api.get('/innovation/timeline/', { params }),
+
   // ── Machine à états (POST) — palier Directeur/Responsable (NTIDE5) ──
   examiner: (id) => api.post(`/innovation/idees/${id}/examiner/`),
   retenir: (id) => api.post(`/innovation/idees/${id}/retenir/`),
@@ -68,6 +72,20 @@ const innovationApi = {
   parametres: {
     get: () => api.get('/innovation/parametres/'),
     update: (data) => api.patch('/innovation/parametres/', data),
+  },
+
+  // ── Campagnes d'innovation ciblées (NTIDE25+, palier Directeur/Admin) ──
+  campagnes: {
+    list: (params) => api.get('/innovation/campagnes/', { params }),
+    get: (id) => api.get(`/innovation/campagnes/${id}/`),
+    create: (data) => api.post('/innovation/campagnes/', data),
+    update: (id, data) => api.patch(`/innovation/campagnes/${id}/`, data),
+    // NTIDE27 — bandeau d'incitation (tout utilisateur connecté).
+    incitation: () => api.get('/innovation/campagnes/incitation/'),
+    // NTIDE29 — rapport (ciblés/proposées/top votes/conversion).
+    rapport: (id) => api.get(`/innovation/campagnes/${id}/rapport/`),
+    // NTIDE30 — clonage (copie brouillon, même segment/message/tag).
+    cloner: (id) => api.post(`/innovation/campagnes/${id}/cloner/`),
   },
 }
 

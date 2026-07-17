@@ -202,6 +202,11 @@ class EventType(models.TextChoices):
     # configuré (InnovationSettings.seuil_votes_notification, défaut 3) :
     # notifie l'auteur (in-app + email, préférences respectées par notify()).
     IDEA_VOTE = 'idea_vote', 'Vote reçu sur une idée'
+    # NTIDE31 — une campagne d'innovation (apps.innovation.CampagneInnovation)
+    # passe brouillon → active : notifie chaque utilisateur du segment ciblé
+    # (in-app systématique + email opt-in, préférences respectées par
+    # notify()).
+    INNOVATION_CAMPAIGN = 'innovation_campagne', "Campagne d'innovation lancée"
 
 
 class Channel(models.TextChoices):
