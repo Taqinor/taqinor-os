@@ -1545,3 +1545,92 @@ def catalogue_abonnement_export(company):
         ('Paliers', ['Cible', 'Seuil min', 'Seuil max', 'Prix unitaire',
                      'Mode'], paliers_rows),
     ]
+
+
+# ---------------------------------------------------------------------------
+# NTSUB12 — Métriques SaaS avancées : ARR bridge, Quick Ratio, Rule of 40
+# ---------------------------------------------------------------------------
+
+
+def arr_bridge(company, debut, fin):
+    """Pont d'ARR sur ``[debut, fin]`` (ARR = MRR × 12) — NTSUB12.
+
+    Réutilise la cascade ``mouvements_mrr`` (XCTR7, montants MENSUELS) et la
+    convertit en annuel (×12). ``arr_fin`` = MRR combiné courant × 12 ;
+    ``arr_debut`` = ``arr_fin − net×12`` (le net mensuel × 12 = variation
+    annuelle). Renvoie
+    ``{'arr_debut','new','expansion','contraction','churn','arr_fin'}`` (tous
+    ``Decimal``). ``contraction``/``churn`` sont négatifs (cohérent XCTR7).
+    """
+    from decimal import Decimal
+
+    mov = mouvements_mrr(company, debut, fin)
+    douze = Decimal('12')
+    arr_fin = (mrr_combine(company) * douze).quantize(Decimal('0.01'))
+    net_annuel = (mov['net'] * douze).quantize(Decimal('0.01'))
+    arr_debut = (arr_fin - net_annuel).quantize(Decimal('0.01'))
+    return {
+        'arr_debut': arr_debut,
+        'new': (mov['new'] * douze).quantize(Decimal('0.01')),
+        'expansion': (mov['expansion'] * douze).quantize(Decimal('0.01')),
+        'contraction': (mov['contraction'] * douze).quantize(Decimal('0.01')),
+        'churn': (mov['churn'] * douze).quantize(Decimal('0.01')),
+        'arr_fin': arr_fin,
+    }
+
+
+def quick_ratio(company, debut, fin):
+    """SaaS Quick Ratio = (new + expansion) / (|contraction| + |churn|) — NTSUB12.
+
+    Div-by-zéro GARDÉE : dénominateur nul (aucune perte de MRR sur la période)
+    → renvoie ``None`` (indéfini) plutôt que de lever. ``Decimal`` arrondi 2
+    décimales sinon.
+    """
+    from decimal import Decimal
+
+    mov = mouvements_mrr(company, debut, fin)
+    numerateur = mov['new'] + mov['expansion']
+    denominateur = abs(mov['contraction']) + abs(mov['churn'])
+    if denominateur == 0:
+        return None
+    return (numerateur / denominateur).quantize(Decimal('0.01'))
+
+
+def rule_of_40(company, debut, fin):
+    """Rule of 40 = croissance ARR % + marge % — NTSUB12.
+
+    Croissance ARR % = ``net_annuel / arr_debut × 100`` (``None`` si
+    ``arr_debut`` nul — div-by-zéro gardée). La marge % est lue best-effort via
+    ``compta.selectors.pilotage_financier`` (frontière cross-app, import
+    fonction-local) ; indisponible → marge ``None``. Renvoie
+    ``{'croissance_arr_pct','marge_pct','rule_of_40'}`` (``rule_of_40`` = somme
+    quand les deux composantes existent, sinon ``None``).
+    """
+    from decimal import Decimal
+
+    bridge = arr_bridge(company, debut, fin)
+    arr_debut = bridge['arr_debut']
+    net_annuel = bridge['arr_fin'] - arr_debut
+    croissance = (
+        (net_annuel / arr_debut * Decimal('100')).quantize(Decimal('0.01'))
+        if arr_debut else None)
+
+    marge_pct = None
+    try:
+        from apps.compta.selectors import pilotage_financier
+
+        cockpit = pilotage_financier(
+            company, date_debut=debut, date_fin=fin)
+        marge_pct = cockpit.get('marge_brute_pct')
+    except Exception:  # pragma: no cover - compta absente / best-effort
+        marge_pct = None
+
+    rule = None
+    if croissance is not None and marge_pct is not None:
+        rule = (croissance + Decimal(str(marge_pct))).quantize(Decimal('0.01'))
+
+    return {
+        'croissance_arr_pct': croissance,
+        'marge_pct': marge_pct,
+        'rule_of_40': rule,
+    }

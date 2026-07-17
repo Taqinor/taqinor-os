@@ -382,6 +382,54 @@ class ContratViewSet(ChatterViewSetMixin, _ContratsBaseViewSet):
                 for k, v in data['net_par_responsable'].items()},
         })
 
+    @action(detail=False, methods=['get'], url_path='metriques-saas')
+    def metriques_saas(self, request):
+        """Métriques SaaS niveau investisseur : ARR bridge, Quick Ratio,
+        Rule of 40 — NTSUB12.
+
+        Filtres ``?debut=AAAA-MM-JJ&fin=AAAA-MM-JJ`` (défaut : mois courant).
+        Lecture seule, scopée société. Div-by-zéro gardée (Quick Ratio /
+        croissance ARR renvoient ``null`` si indéfinis)."""
+        from datetime import date as _date
+
+        from django.utils import timezone as _tz
+
+        debut_raw = request.query_params.get('debut')
+        fin_raw = request.query_params.get('fin')
+        try:
+            debut = (
+                _date.fromisoformat(debut_raw) if debut_raw
+                else _tz.localdate().replace(day=1))
+            fin = _date.fromisoformat(fin_raw) if fin_raw else _tz.localdate()
+        except ValueError:
+            return Response(
+                {'detail': 'debut/fin invalides (AAAA-MM-JJ).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        if debut > fin:
+            return Response(
+                {'detail': 'debut doit précéder fin.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        company = request.user.company
+        bridge = selectors.arr_bridge(company, debut, fin)
+        qr = selectors.quick_ratio(company, debut, fin)
+        ro40 = selectors.rule_of_40(company, debut, fin)
+        return Response({
+            'arr_bridge': {k: _money(v) for k, v in bridge.items()},
+            'quick_ratio': str(qr) if qr is not None else None,
+            'rule_of_40': {
+                'croissance_arr_pct': (
+                    str(ro40['croissance_arr_pct'])
+                    if ro40['croissance_arr_pct'] is not None else None),
+                'marge_pct': (
+                    str(ro40['marge_pct'])
+                    if ro40['marge_pct'] is not None else None),
+                'rule_of_40': (
+                    str(ro40['rule_of_40'])
+                    if ro40['rule_of_40'] is not None else None),
+            },
+        })
+
     @action(detail=False, methods=['get'], url_path='cohortes-retention')
     def cohortes_retention(self, request):
         """Cohortes de rétention contrats (logo + revenu, NRR/GRR) — XCTR8.
