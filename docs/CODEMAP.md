@@ -766,7 +766,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (648)**
+**Done (650)**
 
 - `ERR1` — [FastAPI] NL→SQL agent has no SELECT-only enforcement in code…
 - `ERR2` — [FastAPI] NL→SQL tenant isolation is defeatable four ways…
@@ -929,6 +929,8 @@ Things this map could not fully verify from source — do not over-trust:
 - `ADSENG48` — Extraction de l'interface `AdsPlatform`
 - `ADSENG49` — Matrice de capacités plateforme comme DONNÉES
 - `ADSENG53` — Runbook opérateur du moteur
+- `ADSENGINT1` — Réconcilier les chemins d'API adsengine front↔back
+- `ADSENGINT2` — Câbler les endpoints backend que la console appelle mais qui n'existent pas
 - `ARC1` — Modèle de base `core.TenantModel`
 - `ARC2` — `CompanyScopedModelViewSet` : le viewset de base unique
 - `ARC3` — Sweep TenantMixin : installations
@@ -1417,16 +1419,80 @@ Things this map could not fully verify from source — do not over-trust:
 - `VX250` — La fiche annonce son état et ses relations : « en attente de… » + compteurs (@lane…
 - `VX251` — Le dispatch au glisser-déposer : réaffecter une intervention comme
 
-**Open — to build (37)**
+**Open — to build (101)**
 
 - `ERR114` — [ventes/quote_engine]
+- `ADSDEEP1` — Élargir `InsightSnapshot`
+- `ADSDEEP2` — Sync quotidien niveau AD + ADSET
+- `ADSDEEP3` — Backfill historique des insights
+- `ADSDEEP4` — Fenêtres d'attribution + version Graph centralisées
+- `ADSDEEP5` — Budgeteur de rate-limit
+- `ADSDEEP6` — Mapping objectif→métrique « résultats »
+- `ADSDEEP7` — Modèle `InsightBreakdown`
+- `ADSDEEP8` — Sync des breakdowns
+- `ADSDEEP9` — Endpoints breakdowns
+- `ADSDEEP10` — UI « Audience & diffusion »
+- `ADSDEEP11` — Modèle `AdCreativeMirror` + sync
+- `ADSDEEP12` — Résolveur de médias frais
+- `ADSDEEP13` — Proxy previews
+- `ADSDEEP14` — UI « Créatif »
+- `ADSDEEP15` — Réparer les previews de la créathèque
+- `ADSDEEP16` — Sonde « accès asset Page »
+- `ADSDEEP17` — Modèle `MetaLeadMirror`
+- `ADSDEEP18` — Pull-sync des leads
+- `ADSDEEP19` — Compteurs leads RÉELS par ad/campagne
+- `ADSDEEP20` — Signatures Odoo par AD
+- `ADSDEEP21` — Parser des noms Odoo
+- `ADSDEEP22` — Cockpit par-ad
+- `ADSDEEP23` — Rétention 90 j visible
+- `ADSDEEP24` — Récepteur webhook WhatsApp Cloud API
+- `ADSDEEP25` — Conversations par ad
+- `ADSDEEP26` — MAJ `docs/engine/ctwa-decision.md`
+- `ADSDEEP27` — Émetteur Conversion-Leads
+- `ADSDEEP28` — Événement amont `lead_received`
+- `ADSDEEP29` — Mapping étapes → événements en DONNÉES
+- `ADSDEEP30` — Écritures meta_client nouvelles
+- `ADSDEEP31` — EngineAction kinds `EDIT_COPY`/`SET_SPEND_CAP`/`RENAME`
+- `ADSDEEP32` — `learning_stage_info` par adset
+- `ADSDEEP33` — Batch writer
+- `ADSDEEP34` — Tests A/B natifs (`ad_studies` SPLIT_TEST_V2)
+- `ADSDEEP35` — UI composeur EDIT_COPY
+- `ADSDEEP36` — Dayparting
+- `ADSDEEP37` — Duplication
+- `ADSDEEP38` — Vocabulaire de conditions v2
+- `ADSDEEP39` — Sélection par motif de nom
+- `ADSDEEP40` — Actions de règles v2
+- `ADSDEEP41` — Bundles « Stratégies » FR
+- `ADSDEEP42` — Cadence 15 min
+- `ADSDEEP43` — Journal d'exécution enrichi
+- `ADSDEEP44` — Métriques dérivées par ad
+- `ADSDEEP45` — Détection de fatigue créative
+- `ADSDEEP46` — Parser de convention de noms + tags auto
+- `ADSDEEP47` — Leaderboard créatifs
+- `ADSDEEP48` — Benchmarks internes
+- `ADSDEEP49` — `PagePostMirror` + sync
+- `ADSDEEP50` — Éditer le message d'un post
+- `ADSDEEP51` — Créer des posts
+- `ADSDEEP52` — Booster un post existant
+- `ADSDEEP53` — Inbox commentaires (posts + dark posts)
+- `ADSDEEP54` — UI Inbox commentaires
+- `ADSDEEP55` — Instagram
+- `ADSDEEP56` — UI Instagram
+- `ADSDEEP57` — [GATED: consentement fondateur XMKT36] Custom Audiences depuis le CRM
+- `ADSDEEP58` — [GATED: même gate] Lookalikes
+- `ADSDEEP59` — Audiences d'ENGAGEMENT (non gated — aucune donnée CRM n'est envoyée)
+- `ADSDEEP60` — Hiérarchie navigable Campagne→AdSets→Ads
+- `ADSDEEP61` — Dashboard v2
+- `ADSDEEP62` — Digest quotidien FR
+- `ADSDEEP63` — Audit de compte à la demande
+- `ADSDEEP64` — e2e Playwright de la console pub étendue
+- `ADSDEEP65` — Runbook v2
+- `ADSDEEP66` — Fenêtres de données visibles partout
 - `ADSENG19` — [GATED: décision fondateur] Règle Meta native homme-mort
 - `ADSENG34` — [GATED: décision fondateur — coût/architecture] Boucle ctwa_clid complète
 - `ADSENG50` — [GATED: budget fondateur] Adaptateur Google Ads
 - `ADSENG51` — [GATED: produit] Adaptateur Snapchat
 - `ADSENG52` — [GATED: budget fondateur ≥450 MAD/j] Adaptateur TikTok
-- `ADSENGINT1` — Réconcilier les chemins d'API adsengine front↔back
-- `ADSENGINT2` — Câbler les endpoints backend que la console appelle mais qui n'existent pas
 - `ADSENGINT3` — Specs e2e Playwright de la console adsengine
 - `N100` — Build out multi-tenant operation on the existing tenant_id foundation (strict…
 - `N101` — Tenant administration console (manage tenants/plans/usage/support) + self-serve signup…
