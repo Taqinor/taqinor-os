@@ -182,9 +182,14 @@ describe.each(LOCALES)('WJ121 — 4 cartes de mode dans mon-toit.astro (%s)', (_
     expect(src).toContain("if (mode === 'professionnel') mode = 'industriel';");
   });
 
-  it('industriel et commercial partagent le sous-panneau/moteur pro via isProMode (WJ122/WJ123 : panneaux dédiés)', () => {
+  it('industriel et commercial partagent le MOTEUR pro via isProMode ; WJ122 : commercial a son PROPRE panneau', () => {
     expect(src).toContain('function isProMode(');
-    expect(src).toContain('pro.hidden = !isProMode(m);');
+    // WJ122 — le panneau pro ne s'affiche plus que pour industriel (+ alias
+    // professionnel) ; 'commercial' a désormais son propre sous-panneau. Le
+    // MOTEUR (computeProEstimate) reste partagé via isProMode côté CALCUL.
+    expect(src).toContain("pro.hidden = !(m === 'industriel' || m === 'professionnel');");
+    expect(src).toContain("commercial.hidden = m !== 'commercial';");
+    expect(src).toContain('isProMode(mode)');
     // Plus aucun branchement métier sur l'ancien littéral (seule la ligne de
     // migration ci-dessus peut le mentionner).
     const businessBranches = src.match(/mode === 'professionnel'/g) ?? [];

@@ -7,6 +7,7 @@
  */
 import { isBillRangeId, localEstimateBand, qualifiesForCrm, type BillRangeId, type EstimateBand } from './billRange';
 import { normalizeMoroccanPhone } from './phone';
+import { COMMERCIAL_CATEGORY_IDS } from './commercialCategories';
 
 // ─────────────────────────────────────────────────────────────────────────
 // W317 — same-origin enforcement + honeypot, partagés par TOUS les proxies
@@ -165,6 +166,32 @@ export type IrrigationId = (typeof IRRIGATIONS)[number];
 
 export const POMPES_ACTUELLES = ['aucune', 'diesel', 'butane', 'electrique'] as const;
 export type PompeActuelleId = (typeof POMPES_ACTUELLES)[number];
+
+// ——— WJ122 : mode COMMERCIAL — vocabulaires FACULTATIFS additifs (même
+// discipline que WJ30/WJ31 : validés un à un, écartés si malformés, jamais
+// bloquants). `categorieCommerciale` + les réponses par catégorie miroir de
+// COMMERCIAL_CATEGORY_QUESTIONS (lib/commercialCategories.ts) et de la liste
+// blanche webhook QX51 (SOURCE: backend/django_core/apps/crm/webhooks.py
+// `_extract_web_questionnaire`). ———
+export const CUISSON_MODES = ['electrique', 'gaz'] as const;
+export type CuissonModeId = (typeof CUISSON_MODES)[number];
+
+export const HORAIRES_MODES = ['midi', 'soir', 'continu'] as const;
+export type HoraireModeId = (typeof HORAIRES_MODES)[number];
+
+// ——— WJ123 : mode INDUSTRIEL v2 — pattern d'équipes. SOURCE: webhooks.py
+// `_extract_web_questionnaire` (enum `equipes` = 1x8/2x8/3x8/continu, `weekend`
+// est un booléen SÉPARÉ, jamais une 5e valeur combinée). ———
+export const EQUIPES_MODES = ['1x8', '2x8', '3x8', 'continu'] as const;
+export type EquipeModeId = (typeof EQUIPES_MODES)[number];
+
+// ——— WJ124 : mode AGRICOLE — région (8 zones agronomiques FAO). SOURCE:
+// backend/django_core/apps/ventes/quote_engine/agricole/agronomy.py ET0_MONTHLY. ———
+export const REGIONS_AGRICOLES = [
+  'souss-massa', 'doukkala', 'tadla', 'saiss', 'oriental',
+  'draa-tafilalet', 'gharb-loukkos', 'haouz',
+] as const;
+export type RegionAgricoleId = (typeof REGIONS_AGRICOLES)[number];
 
 /**
  * Plafond de facture mensuelle saisissable (MAD) PAR MODE — les modes C&I
@@ -340,6 +367,43 @@ export interface ValidatedLead {
   pompeActuelle?: PompeActuelleId;
   pompeCvActuelle?: number;
   fuelSpendMad?: number;
+  // — WJ124 : région agronomique (8 zones FAO) — pilote le moteur eau agricole
+  //   (agronomy.ts) quand le débit/HMT n'est pas connu. Même discipline WJ30.
+  regionAgricole?: RegionAgricoleId;
+  // — WJ122 : mode COMMERCIAL — catégorie + réponses par catégorie (facultatives,
+  //   validées une à une, écartées si malformées, jamais bloquantes). Les clés
+  //   camelCase correspondent EXACTEMENT à la liste blanche webhook QX51.
+  categorieCommerciale?: (typeof COMMERCIAL_CATEGORY_IDS)[number];
+  chambres?: number;
+  occupationPct?: number;
+  chambresFroides?: number;
+  effectif?: number;
+  lits?: number;
+  surfaceVenteM2?: number;
+  volumeM3?: number;
+  /** Température de consigne (froid) — peut être NÉGATIVE (ex. -18 °C). */
+  temperatureConsigne?: number;
+  cuisson?: CuissonModeId;
+  four?: CuissonModeId;
+  chauffe?: CuissonModeId;
+  horaires?: HoraireModeId;
+  cuissonNocturne?: boolean;
+  piscine?: boolean;
+  blanchisserie?: boolean;
+  internat?: boolean;
+  fermetureEstivale?: boolean;
+  saisonnaliteRecolte?: boolean;
+  gardeNuit?: boolean;
+  clim?: boolean;
+  // — WJ123 : mode INDUSTRIEL v2 — profil de charge affiné (facultatif, additif).
+  equipes?: EquipeModeId;
+  weekend?: boolean;
+  cosPhiConnu?: number;
+  groupeKva?: number;
+  dieselDhMois?: number;
+  surfaceToitureM2?: number;
+  ombriere?: boolean;
+  terrain?: boolean;
   // Instantané de l'estimation affichée (liste blanche stricte — cf. EstimateShown).
   estimateShown?: EstimateShown;
 }
@@ -370,6 +434,17 @@ function cleanPositiveNumber(v: unknown, max: number): number | null {
   if (v == null || v === '') return null;
   const n = Number(v);
   return Number.isFinite(n) && n > 0 && n <= max ? n : null;
+}
+
+/**
+ * WJ122 — nombre fini borné [min, max] AUTORISANT le négatif et le zéro (la
+ * température de consigne d'un froid peut valoir -18 °C, ou 0). Écarté (null)
+ * hors bornes ou non numérique — jamais deviné.
+ */
+function cleanBoundedSignedNumber(v: unknown, min: number, max: number): number | null {
+  if (v == null || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) && n >= min && n <= max ? n : null;
 }
 
 /** Valeur d'une liste fermée, sinon null (on ne devine pas). */
@@ -620,6 +695,81 @@ function validateOptionalFields(b: Record<string, unknown>): Partial<ValidatedLe
 
   const fuelSpendMad = cleanPositiveNumber(b.fuelSpendMad, MAX_BILL_MAD);
   if (fuelSpendMad != null) opt.fuelSpendMad = fuelSpendMad;
+
+  // ——— WJ124 : région agronomique (agricole) ———
+  const regionAgricole = cleanEnum(b.regionAgricole, REGIONS_AGRICOLES);
+  if (regionAgricole) opt.regionAgricole = regionAgricole;
+
+  // ——— WJ122 : mode COMMERCIAL — catégorie + réponses (facultatives, écartées
+  // si malformées, jamais bloquantes ; bornes miroir de la liste blanche webhook). ———
+  const categorieCommerciale = cleanEnum(b.categorieCommerciale, COMMERCIAL_CATEGORY_IDS);
+  if (categorieCommerciale) opt.categorieCommerciale = categorieCommerciale;
+
+  const chambres = cleanPositiveNumber(b.chambres, 100_000);
+  if (chambres != null) opt.chambres = chambres;
+
+  const occupationPct = cleanPositiveNumber(b.occupationPct, 100);
+  if (occupationPct != null) opt.occupationPct = occupationPct;
+
+  const chambresFroides = cleanPositiveNumber(b.chambresFroides, 10_000);
+  if (chambresFroides != null) opt.chambresFroides = chambresFroides;
+
+  const effectif = cleanPositiveNumber(b.effectif, 1_000_000);
+  if (effectif != null) opt.effectif = effectif;
+
+  const lits = cleanPositiveNumber(b.lits, 100_000);
+  if (lits != null) opt.lits = lits;
+
+  const surfaceVenteM2 = cleanPositiveNumber(b.surfaceVenteM2, 1_000_000);
+  if (surfaceVenteM2 != null) opt.surfaceVenteM2 = surfaceVenteM2;
+
+  const volumeM3 = cleanPositiveNumber(b.volumeM3, 10_000_000);
+  if (volumeM3 != null) opt.volumeM3 = volumeM3;
+
+  const temperatureConsigne = cleanBoundedSignedNumber(b.temperatureConsigne, -60, 60);
+  if (temperatureConsigne != null) opt.temperatureConsigne = temperatureConsigne;
+
+  const cuisson = cleanEnum(b.cuisson, CUISSON_MODES);
+  if (cuisson) opt.cuisson = cuisson;
+
+  const four = cleanEnum(b.four, CUISSON_MODES);
+  if (four) opt.four = four;
+
+  const chauffe = cleanEnum(b.chauffe, CUISSON_MODES);
+  if (chauffe) opt.chauffe = chauffe;
+
+  const horaires = cleanEnum(b.horaires, HORAIRES_MODES);
+  if (horaires) opt.horaires = horaires;
+
+  if (typeof b.cuissonNocturne === 'boolean') opt.cuissonNocturne = b.cuissonNocturne;
+  if (typeof b.piscine === 'boolean') opt.piscine = b.piscine;
+  if (typeof b.blanchisserie === 'boolean') opt.blanchisserie = b.blanchisserie;
+  if (typeof b.internat === 'boolean') opt.internat = b.internat;
+  if (typeof b.fermetureEstivale === 'boolean') opt.fermetureEstivale = b.fermetureEstivale;
+  if (typeof b.saisonnaliteRecolte === 'boolean') opt.saisonnaliteRecolte = b.saisonnaliteRecolte;
+  if (typeof b.gardeNuit === 'boolean') opt.gardeNuit = b.gardeNuit;
+  if (typeof b.clim === 'boolean') opt.clim = b.clim;
+
+  // ——— WJ123 : mode INDUSTRIEL v2 — profil de charge affiné ———
+  const equipes = cleanEnum(b.equipes, EQUIPES_MODES);
+  if (equipes) opt.equipes = equipes;
+
+  if (typeof b.weekend === 'boolean') opt.weekend = b.weekend;
+
+  const cosPhiConnu = cleanPositiveNumber(b.cosPhiConnu, 1);
+  if (cosPhiConnu != null) opt.cosPhiConnu = cosPhiConnu;
+
+  const groupeKva = cleanPositiveNumber(b.groupeKva, 1_000_000);
+  if (groupeKva != null) opt.groupeKva = groupeKva;
+
+  const dieselDhMois = cleanPositiveNumber(b.dieselDhMois, MAX_BILL_MAD);
+  if (dieselDhMois != null) opt.dieselDhMois = dieselDhMois;
+
+  const surfaceToitureM2 = cleanPositiveNumber(b.surfaceToitureM2, 1_000_000);
+  if (surfaceToitureM2 != null) opt.surfaceToitureM2 = surfaceToitureM2;
+
+  if (typeof b.ombriere === 'boolean') opt.ombriere = b.ombriere;
+  if (typeof b.terrain === 'boolean') opt.terrain = b.terrain;
 
   const estimateShown = cleanEstimateShown(b.estimateShown);
   if (estimateShown) opt.estimateShown = estimateShown;

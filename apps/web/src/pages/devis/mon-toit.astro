@@ -25,6 +25,9 @@
 import Layout from '../../layouts/Layout.astro';
 import { BILL_RANGES } from '../../lib/billRange';
 import { ROOF_TYPES } from '../../lib/lead';
+// WJ122 — cartes catégorie + questions COMMERCIALES rendues au build depuis la
+// source unique portée de solar.js (QX44).
+import { COMMERCIAL_CATEGORIES, COMMERCIAL_CATEGORY_QUESTIONS } from '../../lib/commercialCategories';
 import { NAP, WHATSAPP_LEADS } from '../../lib/nap';
 import { whatsappLink } from '../../lib/whatsapp';
 import Logo from '../../components/Logo.astro';
@@ -711,6 +714,84 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
               </label>
             </div>
           </details>
+        </div>
+
+        <!-- ===== WJ122 — SOUS-PANNEAU COMMERCIAL : catégorie d'activité (cartes)
+             puis 2-4 questions SPÉCIFIQUES à la catégorie + facture MAD⇄kWh.
+             Le day-share par archétype (commercialDayShare, SOURCE solar.js QX44)
+             fait qu'un hôtel ≠ un bureau à facture égale. Alimente estimatorPro
+             (autoconsommation C&I) via `categorieCommerciale`. ===== -->
+        <div id="mt-sub-commercial" hidden>
+          <p class="mt-6 text-lune-soft">
+            Votre établissement a un profil de consommation particulier — choisissez
+            votre activité pour une estimation adaptée.
+          </p>
+
+          <div class="cine-card mt-5 space-y-5 p-5 sm:p-6">
+            <!-- (a) Catégorie d'activité -->
+            <fieldset>
+              <legend class="text-sm text-lune-soft">Votre activité</legend>
+              <div class="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-5">
+                {COMMERCIAL_CATEGORIES.map((c) => (
+                  <button type="button" class="mt-commercial-cat cine-card flex flex-col items-center gap-1.5 border border-white/15 p-3 text-center transition-colors"
+                    data-value={c.value} aria-pressed="false">
+                    <span aria-hidden="true" class="text-2xl leading-none">{c.icon}</span>
+                    <span class="text-xs font-semibold text-white">{c.label}</span>
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+
+            <!-- (b) Facture mensuelle — bascule MAD ⇄ kWh, UN seul champ -->
+            <div>
+              <p class="text-sm text-lune-soft">Votre consommation mensuelle</p>
+              <div class="mt-2 grid grid-cols-2 gap-2" role="group" aria-label="Unité de consommation">
+                <button type="button" class="mt-cc-unit cine-card border p-2.5 text-center text-sm text-white transition-colors" data-value="mad" aria-pressed="true">MAD / mois</button>
+                <button type="button" class="mt-cc-unit cine-card border p-2.5 text-center text-sm text-white transition-colors" data-value="kwh" aria-pressed="false">kWh / mois</button>
+              </div>
+              <label class="mt-2 block text-sm text-lune-soft">
+                <span class="sr-only">Montant mensuel</span>
+                <input id="mt-cc-bill" name="ccBill" type="number" step="any" inputmode="decimal"
+                  aria-describedby="mt-cc-bill-err" placeholder="ex : 25 000" class={`${inputClass} mt-1`} />
+                <span id="mt-cc-bill-err" hidden role="alert" class="mt-1 block text-xs text-alert-300"></span>
+              </label>
+            </div>
+
+            <!-- (c) Questions SPÉCIFIQUES à la catégorie choisie (une seule grille
+                 visible à la fois — pilotée par le choix de catégorie ci-dessus). -->
+            {COMMERCIAL_CATEGORIES.filter((c) => COMMERCIAL_CATEGORY_QUESTIONS[c.value].length > 0).map((c) => (
+              <div id={`mt-cc-questions-${c.value}`} class="mt-commercial-questions space-y-4 border-t border-white/10 pt-4" hidden>
+                <p class="text-sm font-semibold text-brass-300">Précisions — {c.label}</p>
+                {COMMERCIAL_CATEGORY_QUESTIONS[c.value].map((q) => (
+                  q.type === 'bool' ? (
+                    <label class="flex items-start gap-3 text-sm text-lune-soft">
+                      <input id={`mt-cc-${c.value}-${q.key}`} type="checkbox" class="mt-1 h-5 w-5 flex-none accent-brass-400" />
+                      <span>{q.label}</span>
+                    </label>
+                  ) : q.type === 'select' ? (
+                    <label class="block text-sm text-lune-soft">
+                      <span>{q.label}</span>
+                      <select id={`mt-cc-${c.value}-${q.key}`} class={`${inputClass} mt-1`}>
+                        <option value="">Choisir…</option>
+                        {(q.options ?? []).map((o) => <option value={o.value}>{o.label}</option>)}
+                      </select>
+                    </label>
+                  ) : (
+                    <label class="block text-sm text-lune-soft">
+                      <span>{q.label}</span>
+                      <input id={`mt-cc-${c.value}-${q.key}`} type="number" step="any" inputmode="decimal"
+                        placeholder="—" class={`${inputClass} mt-1`} />
+                    </label>
+                  )
+                ))}
+              </div>
+            ))}
+
+            <p class="text-xs text-lune-faint">
+              Estimation indicative (autoconsommation, loi 82-21). Une étude détaillée
+              est réalisée par un ingénieur.
+            </p>
+          </div>
         </div>
 
         <!-- ===== QX — SOUS-PANNEAU AGRICOLE (nouveau) : hydraulique (source /
@@ -1980,6 +2061,8 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
   // estimateFromBill, inchangé.
   import { estimatePro } from '../../lib/estimatorPro';
   import { estimateAgricole } from '../../lib/estimatorAgricole';
+  // WJ122 — questions commerciales par catégorie + mapping clé→webhook (QX51).
+  import { COMMERCIAL_CATEGORY_QUESTIONS, COMMERCIAL_QUESTION_WEBHOOK_KEY } from '../../lib/commercialCategories';
   // QX — dérivation automatique de la tranche depuis le montant exact (fix
   // « tranche redondante ») + libellé pour la ligne de confirmation.
   import { billRangeFromExact, billRangeLabel, type BillRangeId } from '../../lib/billRange';
@@ -2181,6 +2264,8 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     'mt-raison-sociale', 'mt-facility-type', 'mt-site-count',
     // QX — sous-panneau PROFESSIONNEL (étape 2).
     'mt-pro-bill', 'mt-puissance-kva', 'mt-surface-m2',
+    // WJ122 — sous-panneau COMMERCIAL (facture).
+    'mt-cc-bill',
     // QX — sous-panneau AGRICOLE (étape 2).
     'mt-profondeur', 'mt-hmt', 'mt-water-need', 'mt-heures-pompage',
     'mt-culture', 'mt-surface-ha', 'mt-pompe-actuelle', 'mt-pompe-cv', 'mt-fuel-spend',
@@ -2204,7 +2289,7 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
         step, mode, ombrage,
         visitWindowPart, visitWindowWeek,
         futureLoads: Array.from(futureLoads),
-        sel: { proUnit, tension, activity, surfaceType, generator, waterSource, irrigation, waterUnit },
+        sel: { proUnit, tension, activity, surfaceType, generator, waterSource, irrigation, waterUnit, commercialCategory, ccUnit },
         capturePin, captureOutline,
         fields, checks,
       };
@@ -2284,10 +2369,13 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     const m = mode || 'residentiel';
     const res = $('mt-sub-residentiel');
     const pro = $('mt-sub-professionnel');
+    const commercial = $('mt-sub-commercial');
     const agri = $('mt-sub-agricole');
     if (res) res.hidden = m !== 'residentiel';
-    // WJ121 — industriel ET commercial partagent le sous-panneau pro (WJ122/WJ123 : panneaux dédiés).
-    if (pro) pro.hidden = !isProMode(m);
+    // WJ122 — 'commercial' a désormais son PROPRE panneau (cartes catégorie) ;
+    // 'industriel' (et l'alias hérité 'professionnel') gardent le panneau pro.
+    if (pro) pro.hidden = !(m === 'industriel' || m === 'professionnel');
+    if (commercial) commercial.hidden = m !== 'commercial';
     if (agri) agri.hidden = m !== 'agricole';
   }
   function syncModeCards() {
@@ -2716,6 +2804,9 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
   let waterSource = savedSel.waterSource || '';
   let irrigation = savedSel.irrigation || '';
   let waterUnit = savedSel.waterUnit || 'm3h';
+  // WJ122 — mode COMMERCIAL : catégorie active + unité de facture (MAD/kWh).
+  let commercialCategory = savedSel.commercialCategory || '';
+  let ccUnit = savedSel.ccUnit || 'mad';
   function wireCardGroup(
     selector: string,
     getCurrent: () => string,
@@ -2755,6 +2846,19 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
   wireCardGroup('.mt-surface-type', () => surfaceType, (v) => { surfaceType = v; }, { allowUnset: true, recompute: true });
   wireCardGroup('.mt-generator', () => generator, (v) => { generator = v; }, { allowUnset: true });
   syncKvaVisibility();
+  // WJ122 — COMMERCIAL : cartes catégorie (montrent la grille de questions
+  // spécifique) + bascule d'unité de facture. Le choix de catégorie recalcule
+  // l'estimation (day-share par archétype → hôtel ≠ bureau à facture égale).
+  function syncCommercialQuestions() {
+    document.querySelectorAll<HTMLElement>('.mt-commercial-questions').forEach((el) => { el.hidden = true; });
+    if (commercialCategory) {
+      const g = $(`mt-cc-questions-${commercialCategory}`);
+      if (g) g.hidden = false;
+    }
+  }
+  wireCardGroup('.mt-commercial-cat', () => commercialCategory, (v) => { commercialCategory = v; }, { allowUnset: true, recompute: true, onChange: syncCommercialQuestions });
+  wireCardGroup('.mt-cc-unit', () => ccUnit, (v) => { ccUnit = v || 'mad'; }, { recompute: true });
+  syncCommercialQuestions();
   // AGRICOLE — la source d'eau pilote le type de pompe (immergée/surface).
   wireCardGroup('.mt-water-source', () => waterSource, (v) => { waterSource = v; }, { allowUnset: true, recompute: true });
   wireCardGroup('.mt-irrigation', () => irrigation, (v) => { irrigation = v; }, { allowUnset: true });
@@ -2772,7 +2876,7 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
   syncHeuresLabel();
   // Recalcul en direct sur chaque champ numérique qui pilote un chiffre affiché
   // (même patron que mt-facture-hiver / mt-bill-kwh côté résidentiel).
-  for (const id of ['mt-pro-bill', 'mt-puissance-kva', 'mt-surface-m2', 'mt-profondeur', 'mt-hmt', 'mt-water-need', 'mt-fuel-spend']) {
+  for (const id of ['mt-pro-bill', 'mt-cc-bill', 'mt-puissance-kva', 'mt-surface-m2', 'mt-profondeur', 'mt-hmt', 'mt-water-need', 'mt-fuel-spend']) {
     $(id)?.addEventListener('input', computeEstimate);
   }
 
@@ -3020,6 +3124,11 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     surfaceCapped: boolean;
     hypotheses: { tarifMadKwh: number; dayShare: number; prixKwcLow: number; prixKwcHigh: number };
   }
+  // WJ122 — la facture C&I vient du panneau ACTIF : 'commercial' a son propre
+  // champ (mt-cc-bill / ccUnit), 'industriel' garde mt-pro-bill / proUnit.
+  const proBillId = () => (mode === 'commercial' ? 'mt-cc-bill' : 'mt-pro-bill');
+  const proBillErrId = () => (mode === 'commercial' ? 'mt-cc-bill-err' : 'mt-pro-bill-err');
+  const proBillUnit = () => (mode === 'commercial' ? ccUnit : proUnit);
   function computeProEstimate(): boolean {
     const unavail = $('mt-estimate-unavailable');
     const toolarge = $('mt-estimate-toolarge');
@@ -3035,7 +3144,7 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
       estimateShown = null;
       if (printBtn) printBtn.hidden = true;
     };
-    const proBill = num('mt-pro-bill');
+    const proBill = num(proBillId());
     if (proBill == null || proBill <= 0) {
       if (proMissing) proMissing.hidden = false;
       clearShown();
@@ -3045,7 +3154,7 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
       return false;
     }
     // WJ121 — plafond du mode C&I actif (industriel et commercial partagent 1 M MAD).
-    if (proUnit === 'mad' && proBill > maxBillFor(mode)) {
+    if (proBillUnit() === 'mad' && proBill > maxBillFor(mode)) {
       if (toolargePro) toolargePro.hidden = false;
       clearShown();
       fillDocChrome();
@@ -3053,14 +3162,17 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
       announceEstimate("À cette échelle, votre site relève d'une étude dédiée — un ingénieur vous contacte.");
       return true;
     }
-    setFieldError('mt-pro-bill', 'mt-pro-bill-err', null);
+    setFieldError(proBillId(), proBillErrId(), null);
     const raw = estimatePro({
-      monthlyKwh: proUnit === 'kwh' ? proBill : undefined,
-      monthlyMad: proUnit === 'mad' ? proBill : undefined,
+      monthlyKwh: proBillUnit() === 'kwh' ? proBill : undefined,
+      monthlyMad: proBillUnit() === 'mad' ? proBill : undefined,
       raccordement: tension === 'mt' ? 'mt' : 'bt',
       activityProfile: activity === 'day_evening' || activity === 'continuous' ? activity : 'day',
       surfaceType: surfaceType ? (surfaceType as 'bac_acier' | 'terrasse' | 'ombriere' | 'terrain') : undefined,
       surfaceM2: num('mt-surface-m2') ?? undefined,
+      // WJ122 — la catégorie commerciale (day-share par archétype) prime sur le
+      // profil d'activité : hôtel 55 % ≠ bureau 80 % à facture égale.
+      categorieCommerciale: mode === 'commercial' && commercialCategory ? commercialCategory : undefined,
     }) as unknown as ProEstimateOk | { ok: false; reason: 'missing_conso' | 'too_large' | 'invalid' };
     if (!raw.ok) {
       if (raw.reason === 'too_large') {
@@ -3733,6 +3845,16 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     const n = num('mt-pro-bill');
     setFieldError('mt-pro-bill', 'mt-pro-bill-err', n == null || n <= 0 ? 'Montant invalide — chiffres uniquement.' : null);
   });
+  // WJ122 — même validation légère de perte de focus pour la facture COMMERCIALE.
+  $('mt-cc-bill')?.addEventListener('blur', () => {
+    const raw = val('mt-cc-bill').trim();
+    if (raw === '') {
+      setFieldError('mt-cc-bill', 'mt-cc-bill-err', null);
+      return;
+    }
+    const n = num('mt-cc-bill');
+    setFieldError('mt-cc-bill', 'mt-cc-bill-err', n == null || n <= 0 ? 'Montant invalide — chiffres uniquement.' : null);
+  });
   // Contact : chaque champ se valide dès la perte de focus (miroir léger de
   // validateLead — l'envoi final reste validé par validateLead au complet).
   $('mt-name')?.addEventListener('blur', () => {
@@ -3765,14 +3887,14 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
         scrollToInvalid($('mt-puissance-kva'));
         return false;
       }
-      const raw = val('mt-pro-bill').trim();
-      const n = num('mt-pro-bill');
+      const raw = val(proBillId()).trim();
+      const n = num(proBillId());
       if (raw === '' || n == null || n <= 0) {
-        setFieldError('mt-pro-bill', 'mt-pro-bill-err', 'Indiquez votre consommation mensuelle (MAD ou kWh) pour calculer votre estimation.');
-        scrollToInvalid($('mt-pro-bill'));
+        setFieldError(proBillId(), proBillErrId(), 'Indiquez votre consommation mensuelle (MAD ou kWh) pour calculer votre estimation.');
+        scrollToInvalid($(proBillId()));
         return false;
       }
-      setFieldError('mt-pro-bill', 'mt-pro-bill-err', null);
+      setFieldError(proBillId(), proBillErrId(), null);
       return true;
     }
     if (mode === 'agricole') {
@@ -3817,10 +3939,10 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
   // implicite = kWh × tarif des hypothèses du moteur (le même chiffre que le
   // document) ; « gt10000 » reste factuellement vrai pour tout gros compte. ———
   function resolveProBillRange(): string {
-    const v = num('mt-pro-bill');
+    const v = num(proBillId());
     if (v == null || v <= 0) return '';
     let mad: number | null = null;
-    if (proUnit === 'mad') mad = v;
+    if (proBillUnit() === 'mad') mad = v;
     else if (lastProTarifMadKwh != null && lastProTarifMadKwh > 0) mad = v * lastProTarifMadKwh;
     if (mad == null || !(mad > 0)) return '';
     const rid = billRangeFromExact(mad);
@@ -3873,6 +3995,32 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     return out;
   }
 
+  // WJ122 — réponses de la catégorie commerciale ACTIVE, mappées snake_case →
+  // camelCase de la liste blanche webhook (QX51). Seules les questions dotées
+  // d'une clé webhook sont transmises (surface_m2 hammam ⇒ jamais envoyée) ; un
+  // booléen n'est joint que s'il est coché, un nombre/select que s'il est saisi.
+  function readCommercialAnswers(): Record<string, unknown> {
+    const out: Record<string, unknown> = {};
+    if (mode !== 'commercial' || !commercialCategory) return out;
+    const qs = COMMERCIAL_CATEGORY_QUESTIONS[commercialCategory] || [];
+    for (const q of qs) {
+      const webhookKey = COMMERCIAL_QUESTION_WEBHOOK_KEY[q.key];
+      if (!webhookKey) continue;
+      const domId = `mt-cc-${commercialCategory}-${q.key}`;
+      const el = $(domId) as HTMLInputElement | HTMLSelectElement | null;
+      if (!el) continue;
+      if (q.type === 'bool') {
+        if ((el as HTMLInputElement).checked === true) out[webhookKey] = true;
+      } else if (q.type === 'number') {
+        const n = num(domId);
+        if (n != null) out[webhookKey] = n;
+      } else {
+        const v = el.value;
+        if (v) out[webhookKey] = v;
+      }
+    }
+    return out;
+  }
   /** Construit le corps de lead + renvoie les erreurs client (miroir validateLead). */
   function buildBody(): { body: Record<string, unknown>; errors: Record<string, string> } {
     const eteDifferente = eteToggle?.checked === true;
@@ -3946,8 +4094,13 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
       surfaceType: surfaceType || undefined,
       surfaceM2: num('mt-surface-m2') ?? undefined,
       hasGenerator: generator ? generator === 'oui' : undefined,
-      proMonthlyKwh: proUnit === 'kwh' ? (num('mt-pro-bill') ?? undefined) : undefined,
-      proMonthlyMad: proUnit === 'mad' ? (num('mt-pro-bill') ?? undefined) : undefined,
+      // WJ122 — la conso C&I vient du panneau actif (commercial : mt-cc-bill).
+      proMonthlyKwh: proBillUnit() === 'kwh' ? (num(proBillId()) ?? undefined) : undefined,
+      proMonthlyMad: proBillUnit() === 'mad' ? (num(proBillId()) ?? undefined) : undefined,
+      // WJ122 — mode COMMERCIAL : catégorie + réponses spécifiques (liste blanche
+      // webhook QX51 ; hôtel ≠ bureau à facture égale via le day-share archétype).
+      categorieCommerciale: mode === 'commercial' ? (commercialCategory || undefined) : undefined,
+      ...readCommercialAnswers(),
       // QX — sous-panneau AGRICOLE (pompage).
       waterSource: waterSource || undefined,
       profondeurM: num('mt-profondeur') ?? undefined,

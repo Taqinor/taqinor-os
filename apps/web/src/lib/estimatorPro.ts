@@ -13,6 +13,8 @@
  * moment du devis chiffré.
  */
 
+import { commercialDayShare } from './commercialCategories';
+
 // ── Constantes MIROIR de frontend/src/features/ventes/solar.js ──────────────
 // GHI mensuelle Maroc (kWh/m²) — copie EXACTE de solar.js GHI (elle-même
 // miroir de backend quote_engine/constants.py, parité testée côté ERP).
@@ -78,6 +80,14 @@ export interface ProInputs {
   activityProfile?: 'day' | 'day_evening' | 'continuous' | null;
   surfaceType?: 'bac_acier' | 'terrasse' | 'ombriere' | 'terrain' | null;
   surfaceM2?: number | null;
+  /**
+   * WJ122 — catégorie COMMERCIALE (hotel/restaurant/bureau…). Quand elle est
+   * fournie, sa part diurne par archétype (commercialDayShare, SOURCE solar.js
+   * QX44) PRIME sur `activityProfile` : un hôtel (55 %) et un bureau (80 %) à
+   * facture égale produisent alors une autoconsommation/couverture DIFFÉRENTES.
+   * Absente ⇒ comportement inchangé (DAY_SHARE_BY_PROFILE / défaut 0.80).
+   */
+  categorieCommerciale?: string | null;
 }
 
 export interface ProEstimate {
@@ -110,7 +120,7 @@ function isBadNumber(v: number | null | undefined): boolean {
  * DIURNE de la consommation, jamais plus).
  */
 export function estimatePro(inputs: ProInputs): ProEstimateResult {
-  const { monthlyKwh, monthlyMad, raccordement, activityProfile, surfaceM2 } = inputs;
+  const { monthlyKwh, monthlyMad, raccordement, activityProfile, surfaceM2, categorieCommerciale } = inputs;
 
   // Garde 'invalid' : une valeur FOURNIE mais NaN/négative n'est jamais devinée.
   if (isBadNumber(monthlyKwh) || isBadNumber(monthlyMad) || isBadNumber(surfaceM2)) {
@@ -132,7 +142,13 @@ export function estimatePro(inputs: ProInputs): ProEstimateResult {
   }
 
   const consoAnnuelle = consoMensuelle * 12;
-  const dayShare = (activityProfile && DAY_SHARE_BY_PROFILE[activityProfile]) || DEFAULT_DAY_SHARE;
+  // WJ122 — une catégorie commerciale VALIDE (day-share par archétype QX44) prime
+  // sur le profil d'activité générique : hôtel 55 % ≠ bureau 80 % à facture égale.
+  // Sinon on garde le comportement historique (DAY_SHARE_BY_PROFILE / défaut).
+  const catShare = categorieCommerciale != null && categorieCommerciale !== ''
+    ? commercialDayShare(categorieCommerciale) / 100
+    : null;
+  const dayShare = catShare ?? ((activityProfile && DAY_SHARE_BY_PROFILE[activityProfile]) || DEFAULT_DAY_SHARE);
 
   // Dimensionnement : production annuelle ≈ conso annuelle × part diurne
   // (autoconsommation d'abord — on ne dimensionne jamais pour injecter).

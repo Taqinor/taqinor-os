@@ -24,6 +24,27 @@
 import Layout from '../../../layouts/Layout.astro';
 import { BILL_RANGES } from '../../../lib/billRange';
 import { ROOF_TYPES } from '../../../lib/lead';
+// WJ122 — commercial category cards + questions rendered at build from the single
+// source ported from solar.js (QX44). Category VALUES drive logic; labels below
+// are localised for this /en/ page.
+import { COMMERCIAL_CATEGORIES, COMMERCIAL_CATEGORY_QUESTIONS } from '../../../lib/commercialCategories';
+const CC_CAT_LABEL: Record<string, string> = {
+  hotel: 'Hotel / Riad', restaurant: 'Restaurant / Café', commerce: 'Shop / Supermarket',
+  bureau: 'Office / HQ', sante: 'Healthcare (clinic)', ecole: 'Private school',
+  hammam: 'Hammam / Spa / Gym', boulangerie: 'Bakery', froid: 'Cold storage', autre: 'Other business',
+};
+const CC_Q_LABEL: Record<string, string> = {
+  chambres: 'Number of rooms', occupation_pct: 'Annual occupancy rate (%)', piscine: 'Heated pool',
+  chambres_froides: 'Cold rooms', horaires: 'Opening hours', cuisson: 'Cooking',
+  surface_vente_m2: 'Sales floor area (m²)', effectif: 'Headcount', clim: 'Central air conditioning',
+  lits: 'Number of beds', garde_nuit: 'Night shift', internat: 'Boarding',
+  fermeture_estivale: 'Summer closure', surface_m2: 'Area (m²)', chauffe: 'Water heating',
+  four: 'Oven', cuisson_nocturne: 'Night baking', temperature_consigne: 'Setpoint temperature (°C)',
+  volume_m3: 'Cold volume (m³)', saisonnalite_recolte: 'Seasonal peak (harvest)',
+};
+const CC_OPT_LABEL: Record<string, string> = {
+  midi: 'Midday', soir: 'Evening', continu: 'Continuous', electrique: 'Electric', gaz: 'Gas',
+};
 import { NAP, WHATSAPP_LEADS } from '../../../lib/nap';
 import { whatsappLink } from '../../../lib/whatsapp';
 import Logo from '../../../components/Logo.astro';
@@ -648,6 +669,82 @@ const noscriptTelHref = `tel:${NAP.phone}`;
               </label>
             </div>
           </details>
+        </div>
+
+        <!-- ===== WJ122 — COMMERCIAL SUB-PANEL: activity category (cards) then
+             2-4 category-SPECIFIC questions + MAD⇄kWh bill. The archetype
+             day-share (commercialDayShare, SOURCE solar.js QX44) makes a hotel ≠
+             an office at equal bill. Feeds estimatorPro via `categorieCommerciale`. ===== -->
+        <div id="mt-sub-commercial" hidden>
+          <p class="mt-6 text-lune-soft">
+            Your business has a specific consumption profile — pick your activity for a
+            tailored estimate.
+          </p>
+
+          <div class="cine-card mt-5 space-y-5 p-5 sm:p-6">
+            <!-- (a) Activity category -->
+            <fieldset>
+              <legend class="text-sm text-lune-soft">Your activity</legend>
+              <div class="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-5">
+                {COMMERCIAL_CATEGORIES.map((c) => (
+                  <button type="button" class="mt-commercial-cat cine-card flex flex-col items-center gap-1.5 border border-white/15 p-3 text-center transition-colors"
+                    data-value={c.value} aria-pressed="false">
+                    <span aria-hidden="true" class="text-2xl leading-none">{c.icon}</span>
+                    <span class="text-xs font-semibold text-white">{CC_CAT_LABEL[c.value] ?? c.label}</span>
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+
+            <!-- (b) Monthly bill — MAD ⇄ kWh toggle, single field -->
+            <div>
+              <p class="text-sm text-lune-soft">Your monthly consumption</p>
+              <div class="mt-2 grid grid-cols-2 gap-2" role="group" aria-label="Consumption unit">
+                <button type="button" class="mt-cc-unit cine-card border p-2.5 text-center text-sm text-white transition-colors" data-value="mad" aria-pressed="true">MAD / month</button>
+                <button type="button" class="mt-cc-unit cine-card border p-2.5 text-center text-sm text-white transition-colors" data-value="kwh" aria-pressed="false">kWh / month</button>
+              </div>
+              <label class="mt-2 block text-sm text-lune-soft">
+                <span class="sr-only">Monthly amount</span>
+                <input id="mt-cc-bill" name="ccBill" type="number" step="any" inputmode="decimal"
+                  aria-describedby="mt-cc-bill-err" placeholder="e.g. 25,000" class={`${inputClass} mt-1`} />
+                <span id="mt-cc-bill-err" hidden role="alert" class="mt-1 block text-xs text-alert-300"></span>
+              </label>
+            </div>
+
+            <!-- (c) Category-SPECIFIC questions (one grid visible at a time). -->
+            {COMMERCIAL_CATEGORIES.filter((c) => COMMERCIAL_CATEGORY_QUESTIONS[c.value].length > 0).map((c) => (
+              <div id={`mt-cc-questions-${c.value}`} class="mt-commercial-questions space-y-4 border-t border-white/10 pt-4" hidden>
+                <p class="text-sm font-semibold text-brass-300">Details — {CC_CAT_LABEL[c.value] ?? c.label}</p>
+                {COMMERCIAL_CATEGORY_QUESTIONS[c.value].map((q) => (
+                  q.type === 'bool' ? (
+                    <label class="flex items-start gap-3 text-sm text-lune-soft">
+                      <input id={`mt-cc-${c.value}-${q.key}`} type="checkbox" class="mt-1 h-5 w-5 flex-none accent-brass-400" />
+                      <span>{CC_Q_LABEL[q.key] ?? q.label}</span>
+                    </label>
+                  ) : q.type === 'select' ? (
+                    <label class="block text-sm text-lune-soft">
+                      <span>{CC_Q_LABEL[q.key] ?? q.label}</span>
+                      <select id={`mt-cc-${c.value}-${q.key}`} class={`${inputClass} mt-1`}>
+                        <option value="">Choose…</option>
+                        {(q.options ?? []).map((o) => <option value={o.value}>{CC_OPT_LABEL[o.value] ?? o.label}</option>)}
+                      </select>
+                    </label>
+                  ) : (
+                    <label class="block text-sm text-lune-soft">
+                      <span>{CC_Q_LABEL[q.key] ?? q.label}</span>
+                      <input id={`mt-cc-${c.value}-${q.key}`} type="number" step="any" inputmode="decimal"
+                        placeholder="—" class={`${inputClass} mt-1`} />
+                    </label>
+                  )
+                ))}
+              </div>
+            ))}
+
+            <p class="text-xs text-lune-faint">
+              Indicative estimate (self-consumption, law 82-21). A detailed study is
+              carried out by an engineer.
+            </p>
+          </div>
         </div>
 
         <!-- ===== QX — AGRICULTURAL SUB-PANEL (new): hydraulics (source /
@@ -1858,6 +1955,8 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   // self-consumption) and AGRICULTURAL (pumping). Residential stays on
   // estimateFromBill, unchanged.
   import { estimatePro } from '../../../lib/estimatorPro';
+  // WJ122 — commercial per-category questions + key→webhook mapping (QX51).
+  import { COMMERCIAL_CATEGORY_QUESTIONS, COMMERCIAL_QUESTION_WEBHOOK_KEY } from '../../../lib/commercialCategories';
   import { estimateAgricole } from '../../../lib/estimatorAgricole';
   // QX — auto-derives the range from the exact amount (fix "redundant
   // range"). `billRangeLabel` returns FR text (lib, out of scope) — this
@@ -2047,6 +2146,8 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     'mt-raison-sociale', 'mt-facility-type', 'mt-site-count',
     // QX — PROFESSIONAL sub-panel (step 2).
     'mt-pro-bill', 'mt-puissance-kva', 'mt-surface-m2',
+    // WJ122 — COMMERCIAL sub-panel (bill).
+    'mt-cc-bill',
     // QX — AGRICULTURAL sub-panel (step 2).
     'mt-profondeur', 'mt-hmt', 'mt-water-need', 'mt-heures-pompage',
     'mt-culture', 'mt-surface-ha', 'mt-pompe-actuelle', 'mt-pompe-cv', 'mt-fuel-spend',
@@ -2070,7 +2171,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
         step, mode, ombrage,
         visitWindowPart, visitWindowWeek,
         futureLoads: Array.from(futureLoads),
-        sel: { proUnit, tension, activity, surfaceType, generator, waterSource, irrigation, waterUnit },
+        sel: { proUnit, tension, activity, surfaceType, generator, waterSource, irrigation, waterUnit, commercialCategory, ccUnit },
         capturePin, captureOutline,
         fields, checks,
       };
@@ -2148,10 +2249,13 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     const m = mode || 'residentiel';
     const res = $('mt-sub-residentiel');
     const pro = $('mt-sub-professionnel');
+    const commercial = $('mt-sub-commercial');
     const agri = $('mt-sub-agricole');
     if (res) res.hidden = m !== 'residentiel';
-    // WJ121 — industrial AND commercial share the pro sub-panel (WJ122/WJ123: dedicated panels).
-    if (pro) pro.hidden = !isProMode(m);
+    // WJ122 — 'commercial' now has its OWN panel (category cards); 'industrial'
+    // (and the legacy 'professionnel' alias) keep the pro panel.
+    if (pro) pro.hidden = !(m === 'industriel' || m === 'professionnel');
+    if (commercial) commercial.hidden = m !== 'commercial';
     if (agri) agri.hidden = m !== 'agricole';
   }
   function syncModeCards() {
@@ -2581,6 +2685,9 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   let waterSource = savedSel.waterSource || '';
   let irrigation = savedSel.irrigation || '';
   let waterUnit = savedSel.waterUnit || 'm3h';
+  // WJ122 — COMMERCIAL mode: active category + bill unit (MAD/kWh).
+  let commercialCategory = savedSel.commercialCategory || '';
+  let ccUnit = savedSel.ccUnit || 'mad';
   function wireCardGroup(
     selector: string,
     getCurrent: () => string,
@@ -2620,6 +2727,19 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   wireCardGroup('.mt-surface-type', () => surfaceType, (v) => { surfaceType = v; }, { allowUnset: true, recompute: true });
   wireCardGroup('.mt-generator', () => generator, (v) => { generator = v; }, { allowUnset: true });
   syncKvaVisibility();
+  // WJ122 — COMMERCIAL: category cards (reveal the matching question grid) + bill
+  // unit toggle. Picking a category recomputes the estimate (archetype day-share
+  // → hotel ≠ office at equal bill).
+  function syncCommercialQuestions() {
+    document.querySelectorAll<HTMLElement>('.mt-commercial-questions').forEach((el) => { el.hidden = true; });
+    if (commercialCategory) {
+      const g = $(`mt-cc-questions-${commercialCategory}`);
+      if (g) g.hidden = false;
+    }
+  }
+  wireCardGroup('.mt-commercial-cat', () => commercialCategory, (v) => { commercialCategory = v; }, { allowUnset: true, recompute: true, onChange: syncCommercialQuestions });
+  wireCardGroup('.mt-cc-unit', () => ccUnit, (v) => { ccUnit = v || 'mad'; }, { recompute: true });
+  syncCommercialQuestions();
   // AGRICULTURAL — the water source drives the pump type (submersible/surface).
   wireCardGroup('.mt-water-source', () => waterSource, (v) => { waterSource = v; }, { allowUnset: true, recompute: true });
   wireCardGroup('.mt-irrigation', () => irrigation, (v) => { irrigation = v; }, { allowUnset: true });
@@ -2637,7 +2757,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   syncHeuresLabel();
   // Live recompute on every numeric field that drives a shown figure (same
   // pattern as mt-facture-hiver / mt-bill-kwh on the residential side).
-  for (const id of ['mt-pro-bill', 'mt-puissance-kva', 'mt-surface-m2', 'mt-profondeur', 'mt-hmt', 'mt-water-need', 'mt-fuel-spend']) {
+  for (const id of ['mt-pro-bill', 'mt-cc-bill', 'mt-puissance-kva', 'mt-surface-m2', 'mt-profondeur', 'mt-hmt', 'mt-water-need', 'mt-fuel-spend']) {
     $(id)?.addEventListener('input', computeEstimate);
   }
 
@@ -2883,6 +3003,11 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     surfaceCapped: boolean;
     hypotheses: { tarifMadKwh: number; dayShare: number; prixKwcLow: number; prixKwcHigh: number };
   }
+  // WJ122 — the C&I bill comes from the ACTIVE panel: 'commercial' has its own
+  // field (mt-cc-bill / ccUnit), 'industrial' keeps mt-pro-bill / proUnit.
+  const proBillId = () => (mode === 'commercial' ? 'mt-cc-bill' : 'mt-pro-bill');
+  const proBillErrId = () => (mode === 'commercial' ? 'mt-cc-bill-err' : 'mt-pro-bill-err');
+  const proBillUnit = () => (mode === 'commercial' ? ccUnit : proUnit);
   function computeProEstimate(): boolean {
     const unavail = $('mt-estimate-unavailable');
     const toolarge = $('mt-estimate-toolarge');
@@ -2898,7 +3023,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       estimateShown = null;
       if (printBtn) printBtn.hidden = true;
     };
-    const proBill = num('mt-pro-bill');
+    const proBill = num(proBillId());
     if (proBill == null || proBill <= 0) {
       if (proMissing) proMissing.hidden = false;
       clearShown();
@@ -2908,7 +3033,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       return false;
     }
     // WJ121 — cap of the active C&I mode (industrial and commercial share 1M MAD).
-    if (proUnit === 'mad' && proBill > maxBillFor(mode)) {
+    if (proBillUnit() === 'mad' && proBill > maxBillFor(mode)) {
       if (toolargePro) toolargePro.hidden = false;
       clearShown();
       fillDocChrome();
@@ -2916,14 +3041,17 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       announceEstimate('At this scale, your site needs a dedicated study — an engineer will contact you.');
       return true;
     }
-    setFieldError('mt-pro-bill', 'mt-pro-bill-err', null);
+    setFieldError(proBillId(), proBillErrId(), null);
     const raw = estimatePro({
-      monthlyKwh: proUnit === 'kwh' ? proBill : undefined,
-      monthlyMad: proUnit === 'mad' ? proBill : undefined,
+      monthlyKwh: proBillUnit() === 'kwh' ? proBill : undefined,
+      monthlyMad: proBillUnit() === 'mad' ? proBill : undefined,
       raccordement: tension === 'mt' ? 'mt' : 'bt',
       activityProfile: activity === 'day_evening' || activity === 'continuous' ? activity : 'day',
       surfaceType: surfaceType ? (surfaceType as 'bac_acier' | 'terrasse' | 'ombriere' | 'terrain') : undefined,
       surfaceM2: num('mt-surface-m2') ?? undefined,
+      // WJ122 — the commercial category (archetype day-share) overrides the
+      // activity profile: hotel 55% ≠ office 80% at equal bill.
+      categorieCommerciale: mode === 'commercial' && commercialCategory ? commercialCategory : undefined,
     }) as unknown as ProEstimateOk | { ok: false; reason: 'missing_conso' | 'too_large' | 'invalid' };
     if (!raw.ok) {
       if (raw.reason === 'too_large') {
@@ -3593,6 +3721,16 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     const n = num('mt-pro-bill');
     setFieldError('mt-pro-bill', 'mt-pro-bill-err', n == null || n <= 0 ? 'Invalid amount — numbers only.' : null);
   });
+  // WJ122 — same light blur validation for the COMMERCIAL bill.
+  $('mt-cc-bill')?.addEventListener('blur', () => {
+    const raw = val('mt-cc-bill').trim();
+    if (raw === '') {
+      setFieldError('mt-cc-bill', 'mt-cc-bill-err', null);
+      return;
+    }
+    const n = num('mt-cc-bill');
+    setFieldError('mt-cc-bill', 'mt-cc-bill-err', n == null || n <= 0 ? 'Invalid amount — numbers only.' : null);
+  });
   // Contact: every field validates as soon as it loses focus (a light
   // mirror of validateLead — the final submission stays validated by the
   // full validateLead).
@@ -3626,14 +3764,14 @@ const noscriptTelHref = `tel:${NAP.phone}`;
         scrollToInvalid($('mt-puissance-kva'));
         return false;
       }
-      const raw = val('mt-pro-bill').trim();
-      const n = num('mt-pro-bill');
+      const raw = val(proBillId()).trim();
+      const n = num(proBillId());
       if (raw === '' || n == null || n <= 0) {
-        setFieldError('mt-pro-bill', 'mt-pro-bill-err', 'Enter your monthly consumption (MAD or kWh) to calculate your estimate.');
-        scrollToInvalid($('mt-pro-bill'));
+        setFieldError(proBillId(), proBillErrId(), 'Enter your monthly consumption (MAD or kWh) to calculate your estimate.');
+        scrollToInvalid($(proBillId()));
         return false;
       }
-      setFieldError('mt-pro-bill', 'mt-pro-bill-err', null);
+      setFieldError(proBillId(), proBillErrId(), null);
       return true;
     }
     if (mode === 'agricole') {
@@ -3677,10 +3815,10 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   // implicit MAD = kWh × the engine's assumed tariff (the same figure as the
   // document); "gt10000" stays factually true for any large account. ———
   function resolveProBillRange(): string {
-    const v = num('mt-pro-bill');
+    const v = num(proBillId());
     if (v == null || v <= 0) return '';
     let mad: number | null = null;
-    if (proUnit === 'mad') mad = v;
+    if (proBillUnit() === 'mad') mad = v;
     else if (lastProTarifMadKwh != null && lastProTarifMadKwh > 0) mad = v * lastProTarifMadKwh;
     if (mad == null || !(mad > 0)) return '';
     const rid = billRangeFromExact(mad);
@@ -3732,6 +3870,32 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     return out;
   }
 
+  // WJ122 — active commercial category answers, mapped snake_case → the webhook
+  // whitelist camelCase (QX51). Only questions with a webhook key are sent
+  // (hammam surface_m2 ⇒ never sent); a boolean is joined only when checked, a
+  // number/select only when filled.
+  function readCommercialAnswers(): Record<string, unknown> {
+    const out: Record<string, unknown> = {};
+    if (mode !== 'commercial' || !commercialCategory) return out;
+    const qs = COMMERCIAL_CATEGORY_QUESTIONS[commercialCategory] || [];
+    for (const q of qs) {
+      const webhookKey = COMMERCIAL_QUESTION_WEBHOOK_KEY[q.key];
+      if (!webhookKey) continue;
+      const domId = `mt-cc-${commercialCategory}-${q.key}`;
+      const el = $(domId) as HTMLInputElement | HTMLSelectElement | null;
+      if (!el) continue;
+      if (q.type === 'bool') {
+        if ((el as HTMLInputElement).checked === true) out[webhookKey] = true;
+      } else if (q.type === 'number') {
+        const n = num(domId);
+        if (n != null) out[webhookKey] = n;
+      } else {
+        const v = el.value;
+        if (v) out[webhookKey] = v;
+      }
+    }
+    return out;
+  }
   /** Builds the lead body + returns client-side errors (mirrors validateLead). */
   function buildBody(): { body: Record<string, unknown>; errors: Record<string, string> } {
     const eteDifferente = eteToggle?.checked === true;
@@ -3805,8 +3969,13 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       surfaceType: surfaceType || undefined,
       surfaceM2: num('mt-surface-m2') ?? undefined,
       hasGenerator: generator ? generator === 'oui' : undefined,
-      proMonthlyKwh: proUnit === 'kwh' ? (num('mt-pro-bill') ?? undefined) : undefined,
-      proMonthlyMad: proUnit === 'mad' ? (num('mt-pro-bill') ?? undefined) : undefined,
+      // WJ122 — C&I consumption comes from the active panel (commercial: mt-cc-bill).
+      proMonthlyKwh: proBillUnit() === 'kwh' ? (num(proBillId()) ?? undefined) : undefined,
+      proMonthlyMad: proBillUnit() === 'mad' ? (num(proBillId()) ?? undefined) : undefined,
+      // WJ122 — COMMERCIAL mode: category + category-specific answers (webhook
+      // whitelist QX51; hotel ≠ office at equal bill via the archetype day-share).
+      categorieCommerciale: mode === 'commercial' ? (commercialCategory || undefined) : undefined,
+      ...readCommercialAnswers(),
       // QX — AGRICULTURAL sub-panel (pumping).
       waterSource: waterSource || undefined,
       profondeurM: num('mt-profondeur') ?? undefined,
