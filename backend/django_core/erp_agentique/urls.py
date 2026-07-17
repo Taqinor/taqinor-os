@@ -97,6 +97,8 @@ _APP_URLS = [
     path('innovation/', include('apps.innovation.urls')),
     # NTEDU1 — Éducation (établissement scolaire).
     path('education/', include('apps.education.urls')),
+    # NTUX1 — Vues sauvegardées serveur (personnelles/partagées).
+    path('uxviews/', include('apps.uxviews.urls')),
 ]
 
 urlpatterns = [

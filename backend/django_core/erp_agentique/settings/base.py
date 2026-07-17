@@ -189,6 +189,9 @@ INSTALLED_APPS = [
     # (grille tarifaire/remises/échéancier), présences, matières. Additive,
     # scopée société côté serveur.
     'apps.education',
+    # NTUX1 — Vues sauvegardées serveur (personnelles/partagées), fondation de
+    # la couche UX power-user (NTUX2-11). Additive, company-scopée.
+    'apps.uxviews',
 ]
 
 MIDDLEWARE = [

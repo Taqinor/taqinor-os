@@ -54,3 +54,76 @@ describe('EditableCell (VX127)', () => {
     expect(document.querySelector('input')).toHaveValue('999')
   })
 })
+
+/* NTUX8 — navigation clavier type tableur, 100 % opt-in (`autoEdit`/
+   `onCommitNav`). Sans ces deux props, le comportement ci-dessus reste
+   BYTE-IDENTIQUE (déjà couvert par les tests VX127 ci-dessus, qui ne les
+   passent jamais). */
+describe('EditableCell (NTUX8 — navigation clavier)', () => {
+  it('Tab SANS onCommitNav garde le comportement natif (pas de preventDefault, pas de commit forcé)', () => {
+    const onSave = vi.fn()
+    render(<EditableCell value="12" onSave={onSave} />)
+    fireEvent.doubleClick(screen.getByText('12'))
+    const input = document.querySelector('input')
+    fireEvent.change(input, { target: { value: '20' } })
+    const event = fireEvent.keyDown(input, { key: 'Tab' })
+    // `fireEvent.keyDown` renvoie `false` si `preventDefault()` a été appelé —
+    // ici il ne doit PAS l'être (comportement natif préservé sans onCommitNav).
+    expect(event).toBe(true)
+    expect(onSave).not.toHaveBeenCalled()
+  })
+
+  it('Tab AVEC onCommitNav commit puis appelle onCommitNav("next")', async () => {
+    const onSave = vi.fn().mockResolvedValue({})
+    const onCommitNav = vi.fn()
+    render(<EditableCell value="12" onSave={onSave} onCommitNav={onCommitNav} />)
+    fireEvent.doubleClick(screen.getByText('12'))
+    const input = document.querySelector('input')
+    fireEvent.change(input, { target: { value: '20' } })
+    fireEvent.keyDown(input, { key: 'Tab' })
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith('20', undefined))
+    await waitFor(() => expect(onCommitNav).toHaveBeenCalledWith('next'))
+  })
+
+  it('Maj+Tab appelle onCommitNav("prev")', async () => {
+    const onSave = vi.fn().mockResolvedValue({})
+    const onCommitNav = vi.fn()
+    render(<EditableCell value="12" onSave={onSave} onCommitNav={onCommitNav} />)
+    fireEvent.doubleClick(screen.getByText('12'))
+    fireEvent.change(document.querySelector('input'), { target: { value: '20' } })
+    fireEvent.keyDown(document.querySelector('input'), { key: 'Tab', shiftKey: true })
+    await waitFor(() => expect(onCommitNav).toHaveBeenCalledWith('prev'))
+  })
+
+  it('Entrée avec onCommitNav valide ET appelle onCommitNav("down")', async () => {
+    const onSave = vi.fn().mockResolvedValue({})
+    const onCommitNav = vi.fn()
+    render(<EditableCell value="12" onSave={onSave} onCommitNav={onCommitNav} />)
+    fireEvent.doubleClick(screen.getByText('12'))
+    fireEvent.change(document.querySelector('input'), { target: { value: '20' } })
+    fireEvent.keyDown(document.querySelector('input'), { key: 'Enter' })
+    await waitFor(() => expect(onCommitNav).toHaveBeenCalledWith('down'))
+  })
+
+  it('une erreur de validation garde la cellule ouverte et N\'APPELLE PAS onCommitNav', async () => {
+    const validate = () => 'Valeur invalide.'
+    const onCommitNav = vi.fn()
+    render(<EditableCell value="12" onSave={vi.fn()} validate={validate} onCommitNav={onCommitNav} />)
+    fireEvent.doubleClick(screen.getByText('12'))
+    fireEvent.change(document.querySelector('input'), { target: { value: 'x' } })
+    fireEvent.keyDown(document.querySelector('input'), { key: 'Tab' })
+    expect(await screen.findByText('Valeur invalide.')).toBeTruthy()
+    expect(onCommitNav).not.toHaveBeenCalled()
+    expect(document.querySelector('input')).not.toBeNull() // toujours en édition
+  })
+
+  it('autoEdit=true ouvre la cellule automatiquement sans double-clic', () => {
+    render(<EditableCell value="12" onSave={vi.fn()} autoEdit />)
+    expect(document.querySelector('input')).toHaveValue('12')
+  })
+
+  it('autoEdit=true sur une cellule readOnly n\'ouvre PAS l\'édition', () => {
+    render(<EditableCell value="12" onSave={vi.fn()} autoEdit readOnly />)
+    expect(document.querySelector('input')).toBeNull()
+  })
+})
