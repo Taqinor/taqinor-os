@@ -75,7 +75,9 @@ def _eval_frequency_high(company, policy, template, *, now, config):
     ct = ContentType.objects.get_for_model(AdSetMirror)
 
     findings = []
-    for adset in AdSetMirror.objects.filter(company=company):
+    # ADSDEEP39 — restreint au motif de nom de la règle (Selection Filter).
+    _, adsets = _scoped_mirrors(company, policy, 'adset')
+    for adset in adsets:
         agg = (InsightSnapshot.objects
                .filter(company=company, content_type=ct, object_id=adset.pk,
                        date__gte=start)
@@ -121,7 +123,9 @@ def _eval_cpl_band(company, policy, template, *, now, config):
     ct = ContentType.objects.get_for_model(AdCampaignMirror)
 
     findings = []
-    for camp in AdCampaignMirror.objects.filter(company=company):
+    # ADSDEEP39 — restreint au motif de nom de la règle (Selection Filter).
+    _, campaigns = _scoped_mirrors(company, policy, 'campaign')
+    for camp in campaigns:
         snaps = list(InsightSnapshot.objects.filter(
             company=company, content_type=ct, object_id=camp.pk,
             date__gte=start).order_by('date'))

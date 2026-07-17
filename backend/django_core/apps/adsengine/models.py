@@ -1078,6 +1078,16 @@ class RulePolicy(TenantModel):
     # Cooldown de dédup PAR entité (heures) — 0 = défaut de la sévérité.
     cooldown_hours = models.PositiveIntegerField(
         default=0, verbose_name='Cooldown par entité (heures)')
+    # ADSDEEP39 — Selection Filter (Bïrch) : la règle cible DYNAMIQUEMENT les
+    # objets (campagnes/ad sets/ads selon le scope du template) dont le NOM
+    # matche ce motif glob insensible à la casse (ex. « PROSPECTION* »). Vide =
+    # toute la société (aucune restriction). S'applique aux objets FUTURS : le
+    # moteur relit les miroirs à CHAQUE beat, donc une campagne créée APRÈS la
+    # règle et matchant le motif est automatiquement couverte (jamais un
+    # ciblage figé par id).
+    name_pattern = models.CharField(
+        max_length=120, blank=True, default='',
+        verbose_name='Motif de nom (sélection dynamique)')
     last_evaluated_at = models.DateTimeField(
         null=True, blank=True, verbose_name='Dernière évaluation')
     last_result = models.JSONField(
