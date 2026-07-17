@@ -14,6 +14,7 @@ import {
   RadioGroup, RadioGroupItem,
 } from '../../ui'
 import { ConfirmDialog } from '../../ui/ConfirmDialog'
+import { formatDateTime } from '../../lib/format'
 import { SectionTitle } from './peComponents'
 
 // Bloc « copier une fois » : affiche un secret généré avec un bouton copier.
@@ -510,7 +511,7 @@ export default function ApiWebhooksSection() {
                   </div>
                   <div className="text-xs text-muted-foreground">
                     <code>{k.prefix}…</code> · {(k.scopes || []).join(', ') || 'aucun droit'}
-                    {' · '}dernier usage : {k.last_used_at ? new Date(k.last_used_at).toLocaleString() : 'jamais'}
+                    {' · '}dernier usage : {k.last_used_at ? formatDateTime(k.last_used_at) : 'jamais'}
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
@@ -618,7 +619,7 @@ export default function ApiWebhooksSection() {
                         className="flex flex-wrap items-center justify-between gap-2 rounded bg-background px-2 py-1 text-xs">
                         <span>
                           {d.event} — <Badge tone={d.status === 'success' ? 'success' : 'danger'}>{d.status}</Badge>
-                          {' '}{new Date(d.created_at).toLocaleString()}
+                          {' '}{formatDateTime(d.created_at)}
                           {d.response_status ? ` · HTTP ${d.response_status}` : ''}
                         </span>
                         <Button type="button" size="sm" variant="ghost" onClick={() => replay(h.id, d.id)}>
