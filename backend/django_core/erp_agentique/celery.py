@@ -208,6 +208,18 @@ app.conf.beat_schedule = {
         'task': 'contrats.reconductions_et_alertes_daily',
         'schedule': crontab(hour=7, minute=15),
     },
+    # NTSUB5 — conversion des essais d'abonnement échus + alerte J-3,
+    # quotidien (heure creuse).
+    'contrats-convertir-essais-expires-daily': {
+        'task': 'contrats.convertir_essais_expires_daily',
+        'schedule': crontab(hour=2, minute=30),
+    },
+    # NTSUB8 — séquences de dunning (relances impayés multi-étapes),
+    # quotidien.
+    'contrats-executer-dunning-daily': {
+        'task': 'contrats.executer_dunning_daily',
+        'schedule': crontab(hour=8, minute=0),
+    },
     # XKB27 — envoie les messages chat programmés dus + notifie les rappels
     # dus (« me rappeler ce message »). Cadence fine (toutes les 5 min) pour
     # qu'un message programmé parte proche de l'heure choisie, sans surcharger

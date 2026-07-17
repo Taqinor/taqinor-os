@@ -2,16 +2,20 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
+    AbonnementAddOnLigneViewSet,
+    AddOnAbonnementViewSet,
     AlerteContratViewSet,
     AvenantViewSet,
     CautionViewSet,
     ClauseContratViewSet,
     ClauseViewSet,
+    CompteurUsageViewSet,
     ContratLienViewSet,
     ContratViewSet,
     CycleFacturationLogViewSet,
     EcheancierContratViewSet,
     EngagementSLAViewSet,
+    EtapeDunningViewSet,
     IndexationPrixViewSet,
     JalonContratViewSet,
     LigneEcheanceViewSet,
@@ -20,13 +24,16 @@ from .views import (
     MotifResiliationViewSet,
     ObligationViewSet,
     OrdreLocationViewSet,
+    PalierUsageViewSet,
     ParametresLocationViewSet,
     PartieContratViewSet,
     PieceConformiteViewSet,
+    PlanAbonnementViewSet,
     PlanRecurrentViewSet,
     RegleApprobationViewSet,
     ResiliationViewSet,
     RetenueGarantieViewSet,
+    SequenceDunningViewSet,
     VersionContratViewSet,
 )
 
@@ -57,6 +64,13 @@ router.register(r'ordres-location', OrdreLocationViewSet)
 router.register(r'plans-recurrents', PlanRecurrentViewSet)
 router.register(r'motifs-resiliation', MotifResiliationViewSet)
 router.register(r'parametres-location', ParametresLocationViewSet)
+router.register(r'plans-abonnement', PlanAbonnementViewSet)
+router.register(r'addons-abonnement', AddOnAbonnementViewSet)
+router.register(r'addon-lignes', AbonnementAddOnLigneViewSet)
+router.register(r'paliers-usage', PalierUsageViewSet)
+router.register(r'compteurs-usage', CompteurUsageViewSet)
+router.register(r'sequences-dunning', SequenceDunningViewSet)
+router.register(r'etapes-dunning', EtapeDunningViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),
