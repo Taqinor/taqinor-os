@@ -599,6 +599,37 @@ const noscriptTelHref = `tel:${NAP.phone}`;
               </div>
             </fieldset>
 
+            <!-- WJ123 — (c bis) SHIFT PATTERN: honest self-consumption ceiling (a
+                 3-shift plant no longer shows an office's self-consumption).
+                 Weekend is a SEPARATE boolean (never a combined 5th value). -->
+            <fieldset id="mt-equipes-wrap">
+              <legend class="text-sm text-lune-soft">Production rhythm (shifts)</legend>
+              <div class="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <button type="button" class="mt-equipes cine-card border p-3 text-center text-sm text-white transition-colors" data-value="1x8" aria-pressed="false">Daytime (1×8)</button>
+                <button type="button" class="mt-equipes cine-card border p-3 text-center text-sm text-white transition-colors" data-value="2x8" aria-pressed="false">2×8</button>
+                <button type="button" class="mt-equipes cine-card border p-3 text-center text-sm text-white transition-colors" data-value="3x8" aria-pressed="false">3×8 continuous</button>
+                <button type="button" class="mt-equipes cine-card border p-3 text-center text-sm text-white transition-colors" data-value="continu" aria-pressed="false">Continuous 24/7</button>
+              </div>
+              <label class="mt-3 flex items-start gap-3 text-sm text-lune-soft">
+                <input id="mt-weekend" name="weekend" type="checkbox" class="mt-1 h-5 w-5 flex-none accent-brass-400" />
+                <span>Production on weekends too</span>
+              </label>
+              <p class="mt-2 text-xs text-lune-faint">
+                Solar shifts your FULL-rate hours (~1.01 MAD/kWh); PEAK is only covered
+                with a battery — never the other way round. The more you produce at night
+                (3×8, continuous), the less solar alone covers — an honest estimate,
+                refined after a study.
+              </p>
+            </fieldset>
+
+            <!-- WJ123 — power factor cos φ (optional): a real MV/industrial site input. -->
+            <label class="block text-sm text-lune-soft">
+              <span>Power factor cos φ (if known) — optional</span>
+              <input id="mt-cos-phi" name="cosPhiConnu" type="number" step="any" inputmode="decimal"
+                aria-describedby="mt-cos-phi-err" placeholder="e.g. 0.92" class={`${inputClass} mt-1`} />
+              <span id="mt-cos-phi-err" hidden role="alert" class="mt-1 block text-xs text-alert-300"></span>
+            </label>
+
             <p class="text-xs text-lune-faint">
               A detailed medium-voltage study is carried out by an engineer — this estimate
               is indicative (law 82-21, self-consumption).
@@ -640,6 +671,21 @@ const noscriptTelHref = `tel:${NAP.phone}`;
                 <button type="button" class="mt-generator cine-card border p-2.5 text-center text-sm text-white transition-colors" data-value="non" aria-pressed="false">No</button>
               </div>
             </fieldset>
+            <!-- WJ123 — generator: rating + monthly diesel spend (substitution hook). -->
+            <div class="mt-4 grid gap-4 sm:grid-cols-2">
+              <label class="block text-sm text-lune-soft">
+                <span>Generator rating (kVA)</span>
+                <input id="mt-groupe-kva" name="groupeKva" type="number" step="any" inputmode="decimal"
+                  aria-describedby="mt-groupe-kva-err" placeholder="e.g. 250" class={`${inputClass} mt-1`} />
+                <span id="mt-groupe-kva-err" hidden role="alert" class="mt-1 block text-xs text-alert-300"></span>
+              </label>
+              <label class="block text-sm text-lune-soft">
+                <span>Diesel spend (MAD/month)</span>
+                <input id="mt-diesel-dh" name="dieselDhMois" type="number" step="any" inputmode="decimal"
+                  aria-describedby="mt-diesel-dh-err" placeholder="e.g. 30,000" class={`${inputClass} mt-1`} />
+                <span id="mt-diesel-dh-err" hidden role="alert" class="mt-1 block text-xs text-alert-300"></span>
+              </label>
+            </div>
             <label class="mt-4 block text-sm text-lune-soft">
               <span>Company name</span>
               <input id="mt-raison-sociale" name="raisonSociale" type="text" autocomplete="organization"
@@ -2146,13 +2192,15 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     'mt-raison-sociale', 'mt-facility-type', 'mt-site-count',
     // QX — PROFESSIONAL sub-panel (step 2).
     'mt-pro-bill', 'mt-puissance-kva', 'mt-surface-m2',
+    // WJ123 — INDUSTRIAL v2 sub-panel (cos φ, generator).
+    'mt-cos-phi', 'mt-groupe-kva', 'mt-diesel-dh',
     // WJ122 — COMMERCIAL sub-panel (bill).
     'mt-cc-bill',
     // QX — AGRICULTURAL sub-panel (step 2).
     'mt-profondeur', 'mt-hmt', 'mt-water-need', 'mt-heures-pompage',
     'mt-culture', 'mt-surface-ha', 'mt-pompe-actuelle', 'mt-pompe-cv', 'mt-fuel-spend',
   ];
-  const PERSISTED_CHECK_FIELDS = ['mt-ete-differente', 'mt-contact-whatsapp', 'mt-contact-phone', 'mt-consent', 'mt-battery-interest'];
+  const PERSISTED_CHECK_FIELDS = ['mt-ete-differente', 'mt-contact-whatsapp', 'mt-contact-phone', 'mt-consent', 'mt-battery-interest', 'mt-weekend'];
   let restoring = false; // WJ61 — avoids re-saving WHILE rehydrating.
   function saveWizardState() {
     if (restoring) return;
@@ -2171,7 +2219,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
         step, mode, ombrage,
         visitWindowPart, visitWindowWeek,
         futureLoads: Array.from(futureLoads),
-        sel: { proUnit, tension, activity, surfaceType, generator, waterSource, irrigation, waterUnit, commercialCategory, ccUnit },
+        sel: { proUnit, tension, activity, surfaceType, generator, waterSource, irrigation, waterUnit, commercialCategory, ccUnit, equipes },
         capturePin, captureOutline,
         fields, checks,
       };
@@ -2688,6 +2736,8 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   // WJ122 — COMMERCIAL mode: active category + bill unit (MAD/kWh).
   let commercialCategory = savedSel.commercialCategory || '';
   let ccUnit = savedSel.ccUnit || 'mad';
+  // WJ123 — INDUSTRIAL mode: shift pattern (self-consumption ceiling).
+  let equipes = savedSel.equipes || '';
   function wireCardGroup(
     selector: string,
     getCurrent: () => string,
@@ -2740,6 +2790,8 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   wireCardGroup('.mt-commercial-cat', () => commercialCategory, (v) => { commercialCategory = v; }, { allowUnset: true, recompute: true, onChange: syncCommercialQuestions });
   wireCardGroup('.mt-cc-unit', () => ccUnit, (v) => { ccUnit = v || 'mad'; }, { recompute: true });
   syncCommercialQuestions();
+  // WJ123 — INDUSTRIAL: shift pattern (the self-consumption ceiling recomputes).
+  wireCardGroup('.mt-equipes', () => equipes, (v) => { equipes = v; }, { allowUnset: true, recompute: true });
   // AGRICULTURAL — the water source drives the pump type (submersible/surface).
   wireCardGroup('.mt-water-source', () => waterSource, (v) => { waterSource = v; }, { allowUnset: true, recompute: true });
   wireCardGroup('.mt-irrigation', () => irrigation, (v) => { irrigation = v; }, { allowUnset: true });
@@ -2757,7 +2809,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   syncHeuresLabel();
   // Live recompute on every numeric field that drives a shown figure (same
   // pattern as mt-facture-hiver / mt-bill-kwh on the residential side).
-  for (const id of ['mt-pro-bill', 'mt-cc-bill', 'mt-puissance-kva', 'mt-surface-m2', 'mt-profondeur', 'mt-hmt', 'mt-water-need', 'mt-fuel-spend']) {
+  for (const id of ['mt-pro-bill', 'mt-cc-bill', 'mt-puissance-kva', 'mt-surface-m2', 'mt-profondeur', 'mt-hmt', 'mt-water-need', 'mt-fuel-spend', 'mt-cos-phi', 'mt-groupe-kva', 'mt-diesel-dh']) {
     $(id)?.addEventListener('input', computeEstimate);
   }
 
@@ -3052,6 +3104,9 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       // WJ122 — the commercial category (archetype day-share) overrides the
       // activity profile: hotel 55% ≠ office 80% at equal bill.
       categorieCommerciale: mode === 'commercial' && commercialCategory ? commercialCategory : undefined,
+      // WJ123 — the industrial shift pattern imposes its honest ceiling: a 3x8
+      // no longer shows an office's self-consumption.
+      equipes: (mode === 'industriel' || mode === 'professionnel') && equipes ? equipes : undefined,
     }) as unknown as ProEstimateOk | { ok: false; reason: 'missing_conso' | 'too_large' | 'invalid' };
     if (!raw.ok) {
       if (raw.reason === 'too_large') {
@@ -3976,6 +4031,16 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       // whitelist QX51; hotel ≠ office at equal bill via the archetype day-share).
       categorieCommerciale: mode === 'commercial' ? (commercialCategory || undefined) : undefined,
       ...readCommercialAnswers(),
+      // WJ123 — INDUSTRIAL v2: shifts + weekend + context (webhook whitelist QX51).
+      // `weekend` is a SEPARATE boolean, never a 5th shift value.
+      equipes: (mode === 'industriel' || mode === 'professionnel') ? (equipes || undefined) : undefined,
+      weekend: (mode === 'industriel' || mode === 'professionnel') ? (($('mt-weekend') as HTMLInputElement | null)?.checked === true) : undefined,
+      cosPhiConnu: num('mt-cos-phi') ?? undefined,
+      groupeKva: num('mt-groupe-kva') ?? undefined,
+      dieselDhMois: num('mt-diesel-dh') ?? undefined,
+      surfaceToitureM2: num('mt-surface-m2') ?? undefined,
+      ombriere: surfaceType === 'ombriere' ? true : undefined,
+      terrain: surfaceType === 'terrain' ? true : undefined,
       // QX — AGRICULTURAL sub-panel (pumping).
       waterSource: waterSource || undefined,
       profondeurM: num('mt-profondeur') ?? undefined,

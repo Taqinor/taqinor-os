@@ -644,6 +644,37 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
               </div>
             </fieldset>
 
+            <!-- WJ123 — (c bis) PATTERN D'ÉQUIPES : plafond d'autoconsommation
+                 honnête (un 3x8 ne voit plus l'autoconso d'un bureau). Le weekend
+                 est un booléen SÉPARÉ (jamais une 5e valeur combinée). -->
+            <fieldset id="mt-equipes-wrap">
+              <legend class="text-sm text-lune-soft">Rythme de production (équipes)</legend>
+              <div class="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <button type="button" class="mt-equipes cine-card border p-3 text-center text-sm text-white transition-colors" data-value="1x8" aria-pressed="false">Journée (1×8)</button>
+                <button type="button" class="mt-equipes cine-card border p-3 text-center text-sm text-white transition-colors" data-value="2x8" aria-pressed="false">2×8</button>
+                <button type="button" class="mt-equipes cine-card border p-3 text-center text-sm text-white transition-colors" data-value="3x8" aria-pressed="false">3×8 continu</button>
+                <button type="button" class="mt-equipes cine-card border p-3 text-center text-sm text-white transition-colors" data-value="continu" aria-pressed="false">Continu 24/7</button>
+              </div>
+              <label class="mt-3 flex items-start gap-3 text-sm text-lune-soft">
+                <input id="mt-weekend" name="weekend" type="checkbox" class="mt-1 h-5 w-5 flex-none accent-brass-400" />
+                <span>Production aussi le week-end</span>
+              </label>
+              <p class="mt-2 text-xs text-lune-faint">
+                Le solaire déplace vos heures PLEINES (~1,01 DH/kWh) ; la POINTE ne se
+                couvre qu'avec une batterie — jamais l'inverse. Plus vous produisez la
+                nuit (3×8, continu), moins le solaire seul couvre — une estimation
+                honnête, affinée après étude.
+              </p>
+            </fieldset>
+
+            <!-- WJ123 — cos φ (facultatif) : paramètre réel de site MT/industriel. -->
+            <label class="block text-sm text-lune-soft">
+              <span>Facteur de puissance cos φ (si connu) — facultatif</span>
+              <input id="mt-cos-phi" name="cosPhiConnu" type="number" step="any" inputmode="decimal"
+                aria-describedby="mt-cos-phi-err" placeholder="Ex. 0,92" class={`${inputClass} mt-1`} />
+              <span id="mt-cos-phi-err" hidden role="alert" class="mt-1 block text-xs text-alert-300"></span>
+            </label>
+
             <p class="text-xs text-lune-faint">
               Étude moyenne tension détaillée par un ingénieur — cette estimation est
               indicative (loi 82-21, autoconsommation).
@@ -685,6 +716,22 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
                 <button type="button" class="mt-generator cine-card border p-2.5 text-center text-sm text-white transition-colors" data-value="non" aria-pressed="false">Non</button>
               </div>
             </fieldset>
+            <!-- WJ123 — groupe électrogène : puissance + dépense diesel (accroche
+                 substitution). Facultatifs, additifs. -->
+            <div class="mt-4 grid gap-4 sm:grid-cols-2">
+              <label class="block text-sm text-lune-soft">
+                <span>Puissance du groupe (kVA)</span>
+                <input id="mt-groupe-kva" name="groupeKva" type="number" step="any" inputmode="decimal"
+                  aria-describedby="mt-groupe-kva-err" placeholder="Ex. 250" class={`${inputClass} mt-1`} />
+                <span id="mt-groupe-kva-err" hidden role="alert" class="mt-1 block text-xs text-alert-300"></span>
+              </label>
+              <label class="block text-sm text-lune-soft">
+                <span>Dépense diesel (DH/mois)</span>
+                <input id="mt-diesel-dh" name="dieselDhMois" type="number" step="any" inputmode="decimal"
+                  aria-describedby="mt-diesel-dh-err" placeholder="Ex. 30 000" class={`${inputClass} mt-1`} />
+                <span id="mt-diesel-dh-err" hidden role="alert" class="mt-1 block text-xs text-alert-300"></span>
+              </label>
+            </div>
             <label class="mt-4 block text-sm text-lune-soft">
               <span data-i18n data-fr="Raison sociale" data-ar="التسمية الاجتماعية">Raison sociale</span>
               <input id="mt-raison-sociale" name="raisonSociale" type="text" autocomplete="organization"
@@ -2264,13 +2311,15 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     'mt-raison-sociale', 'mt-facility-type', 'mt-site-count',
     // QX — sous-panneau PROFESSIONNEL (étape 2).
     'mt-pro-bill', 'mt-puissance-kva', 'mt-surface-m2',
+    // WJ123 — sous-panneau INDUSTRIEL v2 (cos φ, groupe électrogène).
+    'mt-cos-phi', 'mt-groupe-kva', 'mt-diesel-dh',
     // WJ122 — sous-panneau COMMERCIAL (facture).
     'mt-cc-bill',
     // QX — sous-panneau AGRICOLE (étape 2).
     'mt-profondeur', 'mt-hmt', 'mt-water-need', 'mt-heures-pompage',
     'mt-culture', 'mt-surface-ha', 'mt-pompe-actuelle', 'mt-pompe-cv', 'mt-fuel-spend',
   ];
-  const PERSISTED_CHECK_FIELDS = ['mt-ete-differente', 'mt-contact-whatsapp', 'mt-contact-phone', 'mt-consent', 'mt-battery-interest'];
+  const PERSISTED_CHECK_FIELDS = ['mt-ete-differente', 'mt-contact-whatsapp', 'mt-contact-phone', 'mt-consent', 'mt-battery-interest', 'mt-weekend'];
   let restoring = false; // WJ61 — évite de ré-enregistrer PENDANT la réhydratation elle-même.
   function saveWizardState() {
     if (restoring) return;
@@ -2289,7 +2338,7 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
         step, mode, ombrage,
         visitWindowPart, visitWindowWeek,
         futureLoads: Array.from(futureLoads),
-        sel: { proUnit, tension, activity, surfaceType, generator, waterSource, irrigation, waterUnit, commercialCategory, ccUnit },
+        sel: { proUnit, tension, activity, surfaceType, generator, waterSource, irrigation, waterUnit, commercialCategory, ccUnit, equipes },
         capturePin, captureOutline,
         fields, checks,
       };
@@ -2807,6 +2856,8 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
   // WJ122 — mode COMMERCIAL : catégorie active + unité de facture (MAD/kWh).
   let commercialCategory = savedSel.commercialCategory || '';
   let ccUnit = savedSel.ccUnit || 'mad';
+  // WJ123 — mode INDUSTRIEL : pattern d'équipes (plafond d'autoconsommation).
+  let equipes = savedSel.equipes || '';
   function wireCardGroup(
     selector: string,
     getCurrent: () => string,
@@ -2859,6 +2910,8 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
   wireCardGroup('.mt-commercial-cat', () => commercialCategory, (v) => { commercialCategory = v; }, { allowUnset: true, recompute: true, onChange: syncCommercialQuestions });
   wireCardGroup('.mt-cc-unit', () => ccUnit, (v) => { ccUnit = v || 'mad'; }, { recompute: true });
   syncCommercialQuestions();
+  // WJ123 — INDUSTRIEL : pattern d'équipes (le plafond d'autoconsommation recalcule).
+  wireCardGroup('.mt-equipes', () => equipes, (v) => { equipes = v; }, { allowUnset: true, recompute: true });
   // AGRICOLE — la source d'eau pilote le type de pompe (immergée/surface).
   wireCardGroup('.mt-water-source', () => waterSource, (v) => { waterSource = v; }, { allowUnset: true, recompute: true });
   wireCardGroup('.mt-irrigation', () => irrigation, (v) => { irrigation = v; }, { allowUnset: true });
@@ -2876,7 +2929,7 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
   syncHeuresLabel();
   // Recalcul en direct sur chaque champ numérique qui pilote un chiffre affiché
   // (même patron que mt-facture-hiver / mt-bill-kwh côté résidentiel).
-  for (const id of ['mt-pro-bill', 'mt-cc-bill', 'mt-puissance-kva', 'mt-surface-m2', 'mt-profondeur', 'mt-hmt', 'mt-water-need', 'mt-fuel-spend']) {
+  for (const id of ['mt-pro-bill', 'mt-cc-bill', 'mt-puissance-kva', 'mt-surface-m2', 'mt-profondeur', 'mt-hmt', 'mt-water-need', 'mt-fuel-spend', 'mt-cos-phi', 'mt-groupe-kva', 'mt-diesel-dh']) {
     $(id)?.addEventListener('input', computeEstimate);
   }
 
@@ -3173,6 +3226,9 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
       // WJ122 — la catégorie commerciale (day-share par archétype) prime sur le
       // profil d'activité : hôtel 55 % ≠ bureau 80 % à facture égale.
       categorieCommerciale: mode === 'commercial' && commercialCategory ? commercialCategory : undefined,
+      // WJ123 — le pattern d'équipes industriel impose son plafond honnête : un
+      // 3x8 ne voit plus l'autoconsommation d'un bureau.
+      equipes: (mode === 'industriel' || mode === 'professionnel') && equipes ? equipes : undefined,
     }) as unknown as ProEstimateOk | { ok: false; reason: 'missing_conso' | 'too_large' | 'invalid' };
     if (!raw.ok) {
       if (raw.reason === 'too_large') {
@@ -4101,6 +4157,16 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
       // webhook QX51 ; hôtel ≠ bureau à facture égale via le day-share archétype).
       categorieCommerciale: mode === 'commercial' ? (commercialCategory || undefined) : undefined,
       ...readCommercialAnswers(),
+      // WJ123 — mode INDUSTRIEL v2 : équipes + weekend + contexte (liste blanche
+      // webhook QX51). `weekend` est un booléen SÉPARÉ, jamais une 5e équipe.
+      equipes: (mode === 'industriel' || mode === 'professionnel') ? (equipes || undefined) : undefined,
+      weekend: (mode === 'industriel' || mode === 'professionnel') ? (($('mt-weekend') as HTMLInputElement | null)?.checked === true) : undefined,
+      cosPhiConnu: num('mt-cos-phi') ?? undefined,
+      groupeKva: num('mt-groupe-kva') ?? undefined,
+      dieselDhMois: num('mt-diesel-dh') ?? undefined,
+      surfaceToitureM2: num('mt-surface-m2') ?? undefined,
+      ombriere: surfaceType === 'ombriere' ? true : undefined,
+      terrain: surfaceType === 'terrain' ? true : undefined,
       // QX — sous-panneau AGRICOLE (pompage).
       waterSource: waterSource || undefined,
       profondeurM: num('mt-profondeur') ?? undefined,
