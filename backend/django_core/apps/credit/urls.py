@@ -27,6 +27,7 @@ urlpatterns = [
          name='credit-position-pdf'),
     path('clients/<int:client_id>/limite-suggeree/',
          views.limite_suggeree_view, name='credit-limite-suggeree'),
+    path('import-limites/', views.importer_limites, name='credit-import-limites'),
     path('exposition/', views.exposition_credit, name='credit-exposition'),
     path('rapport-derogations/', views.rapport_derogations_view,
          name='credit-rapport-derogations'),

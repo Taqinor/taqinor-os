@@ -138,6 +138,56 @@ def rejeter_derogation(derogation, user):
     return derogation
 
 
+def importer_limites_csv(company, file_bytes, filename, *, user=None):
+    """NTCRD39 — import CSV/XLSX en masse de limites de crédit initiales.
+
+    Réutilise le PARSEUR de ``apps.dataimport`` (``parsing.iter_rows`` —
+    importable, jamais une édition de ``dataimport.services``). Colonnes
+    attendues : ``client`` (email OU id), ``montant_limite``, ``mode_hold``
+    (optionnel). Validation LIGNE À LIGNE : un client introuvable met la ligne
+    en erreur sans bloquer le batch. Idempotent par (company, client) —
+    ``update_or_create``. Renvoie ``{'crees': int, 'erreurs': [{ligne, motif}]}``.
+    """
+    from apps.crm.selectors import find_client_by_email, get_company_client
+    from apps.dataimport.parsing import iter_rows, normalize_header
+
+    from .models import LimiteCredit
+
+    _headers, rows = iter_rows(file_bytes, filename)
+    modes_valides = {c.value for c in LimiteCredit.ModeHold}
+
+    crees = 0
+    erreurs = []
+    for idx, row in enumerate(rows, start=1):
+        norm = {normalize_header(k): v for k, v in row.items()}
+        ref = (norm.get('client') or '').strip()
+        montant_raw = (norm.get('montant_limite') or norm.get('montant') or '').strip()
+        mode = (norm.get('mode_hold') or '').strip().lower()
+
+        client = None
+        if ref.isdigit():
+            client = get_company_client(company, int(ref))
+        if client is None and '@' in ref:
+            client = find_client_by_email(ref, company)
+        if client is None:
+            erreurs.append({'ligne': idx, 'motif': f'Client introuvable : {ref!r}'})
+            continue
+
+        try:
+            montant = Decimal(montant_raw) if montant_raw else None
+        except Exception:
+            erreurs.append({'ligne': idx, 'motif': f'Montant invalide : {montant_raw!r}'})
+            continue
+
+        defaults = {'company': company, 'montant_limite': montant, 'cree_par': user}
+        if mode in modes_valides:
+            defaults['mode_hold'] = mode
+        LimiteCredit.objects.update_or_create(client=client, defaults=defaults)
+        crees += 1
+
+    return {'crees': crees, 'erreurs': erreurs}
+
+
 def _html_position_credit(client):
     """NTCRD25 — construit le fragment HTML du rapport interne « Position
     crédit client » (filigrane USAGE INTERNE). AUCUNE donnée ``prix_achat``/

@@ -241,6 +241,24 @@ def score_credit_client(request, client_id):
     return Response(score_credit(client))
 
 
+@api_view(['POST'])
+@permission_classes([IsDirecteurOrAdmin])
+def importer_limites(request):
+    """NTCRD39 — import CSV/XLSX en masse de limites de crédit (Directeur/
+    Admin). Corps multipart : champ ``fichier``. Validation ligne à ligne,
+    rapport d'erreurs renvoyé."""
+    fichier = request.FILES.get('fichier')
+    if fichier is None:
+        return Response(
+            {'detail': 'Fichier manquant (champ "fichier").'},
+            status=status.HTTP_400_BAD_REQUEST)
+    from .services import importer_limites_csv
+    rapport = importer_limites_csv(
+        request.user.company, fichier.read(), fichier.name,
+        user=request.user)
+    return Response(rapport)
+
+
 class LimiteCreditViewSet(CompanyScopedModelViewSet):
     """NTCRD2 — CRUD limite de crédit par client, company-scopé.
 
