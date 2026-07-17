@@ -188,6 +188,10 @@ INSTALLED_APPS = [
     # scoring, assurance-crédit, exposition consolidée). Foundation-adjacent :
     # ne modifie AUCUN modèle ventes/crm existant, string-FK uniquement.
     'apps.credit',
+    # Groupe NTFPA — FP&A entreprise : cycles budgétaires par département,
+    # prévisions glissantes, scénarios what-if, variance analysis. DISTINCT
+    # du budget micro par chantier (gestion_projet.BudgetProjet, PROJ21/22).
+    'apps.fpa',
 ]
 
 MIDDLEWARE = [

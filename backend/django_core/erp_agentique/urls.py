@@ -97,6 +97,8 @@ _APP_URLS = [
     path('innovation/', include('apps.innovation.urls')),
     # Groupe NTCRD — Gestion du crédit client.
     path('credit/', include('apps.credit.urls')),
+    # Groupe NTFPA — FP&A (budgets, prévisions glissantes, scénarios).
+    path('fpa/', include('apps.fpa.urls')),
 ]
 
 urlpatterns = [
