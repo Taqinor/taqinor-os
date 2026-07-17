@@ -104,6 +104,7 @@ export default function AdCreativePanel({ adMetaId, creative }) {
       {showPreview && (
         <div
           data-testid="ae-creative-preview"
+          // check-no-danger-allow: aperçu iframe Meta officiel (Graph API generatepreviews), proxifié via notre endpoint authentifié ADSDEEP13
           dangerouslySetInnerHTML={{ __html: previewHtml }}
         />
       )}
