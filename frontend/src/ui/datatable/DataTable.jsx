@@ -349,10 +349,18 @@ export const DataTable = forwardRef(function DataTable(
     // compris des listes qui EN ONT un dans leur toolbar.
     emptyAction = null,
     'aria-label': ariaLabel = 'Tableau de données',
+    // NTUX17 — surcharge de densité PAR VUE (`SavedView.configuration.densite`),
+    // au-delà de la préférence GLOBALE utilisateur (`theme-context`, F20).
+    // Opt-in : non fournie, la densité globale s'applique comme avant.
+    densityOverride,
   },
   ref,
 ) {
-  const { density } = useDensity()
+  const { density: globalDensity } = useDensity()
+  // NTUX17 — une vue sauvegardée peut imposer sa propre densité (ex. « Stock
+  // compact ») indépendamment de la préférence globale de l'utilisateur ;
+  // l'absence de surcharge laisse le comportement global inchangé.
+  const density = densityOverride ?? globalDensity
   const compact = density === 'compact'
 
   /* ---- H129 — Hauteur de ligne par densité ----

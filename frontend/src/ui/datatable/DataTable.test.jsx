@@ -790,3 +790,28 @@ describe('NTUX16 — initialColumnState / onColumnStateChange (préférences de 
     expect(lastState.hidden.ville).toBe(true)
   })
 })
+
+/* ============================== NTUX17 — DENSITÉ PAR VUE ============================== */
+
+describe('NTUX17 — densityOverride (densité par vue sauvegardée)', () => {
+  it('sans densityOverride : la densité GLOBALE (confort) pilote la hauteur de ligne', () => {
+    setStoredDensity('comfortable')
+    const { container } = renderTable()
+    const tr = container.querySelector('[data-dt-table] tbody tr')
+    expect(tr.style.height).toBe('40px')
+  })
+
+  it('densityOverride="compact" s\'applique MÊME si la préférence globale est confort', () => {
+    setStoredDensity('comfortable')
+    const { container } = renderTable({ densityOverride: 'compact' })
+    const tr = container.querySelector('[data-dt-table] tbody tr')
+    expect(tr.style.height).toBe('32px')
+  })
+
+  it('densityOverride absent laisse la densité globale « compact » inchangée', () => {
+    setStoredDensity('compact')
+    const { container } = renderTable()
+    const tr = container.querySelector('[data-dt-table] tbody tr')
+    expect(tr.style.height).toBe('32px')
+  })
+})
