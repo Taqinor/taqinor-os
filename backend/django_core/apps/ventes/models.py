@@ -309,6 +309,14 @@ class Devis(models.Model):
     def total_ttc(self):
         return self.total_ht + self.total_tva
 
+    @property
+    def approbation_remise_en_attente(self):
+        """NTCPQ8 — True si une étape d'approbation de remise (cpq) est encore
+        en attente pour ce devis. Lecture cross-app cpq via sélecteur (import
+        local, aucun couplage au niveau module)."""
+        from apps.cpq.selectors import premiere_etape_en_attente
+        return premiere_etape_en_attente(self) is not None
+
 
 class LigneDevis(models.Model):
     # ── XSAL14 — Type de ligne : produit (défaut) / section / note ────────────
@@ -2000,6 +2008,11 @@ class ListePrix(models.Model):
         related_name='listes_prix')
     nom = models.CharField(max_length=150)
     devise = models.CharField(max_length=10, default='MAD')
+    # NTCPQ4 — segmentation multi-segment : choix libre référentiel (ex.
+    # Résidentiel / Industriel / Revendeur). Vide = liste par défaut (aucun
+    # segment ciblé). La résolution de prix (services.prix_applicable) retient
+    # la liste dont le segment correspond au client, hors listes expirées.
+    segment_client = models.CharField(max_length=100, blank=True, default='')
     date_debut = models.DateField(null=True, blank=True)
     date_fin = models.DateField(null=True, blank=True)
     archived = models.BooleanField(default=False)

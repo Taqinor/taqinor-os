@@ -84,6 +84,12 @@ const ventesApi = {
   refuserDevis: (id, payload = {}) => api.post(`/ventes/devis/${id}/refuser/`, payload),
   historiqueDevis: (id) => api.get(`/ventes/devis/${id}/historique/`),
   noterDevis: (id, body) => api.post(`/ventes/devis/${id}/noter/`, { body }),
+  // NTCPQ8 — approbation de remise par paliers (matrice NTCPQ7).
+  approbationDevis: (id) => api.get(`/ventes/devis/${id}/approbation/`),
+  approuverEtapeDevis: (id, commentaire = '') =>
+    api.post(`/ventes/devis/${id}/approuver-etape/`, { commentaire }),
+  rejeterEtapeDevis: (id, motif = '') =>
+    api.post(`/ventes/devis/${id}/rejeter-etape/`, { motif }),
   // Export comptable : journal des ventes + résumé TVA (.xlsx) sur une période.
   journalVentes: (params) =>
     api.get('/ventes/journal-ventes/', { params, responseType: 'blob' }),

@@ -137,6 +137,8 @@ class DevisViewSet(IdempotentCreateMixin, CompanyScopedModelViewSet):
             'atomic', 'replace_lines',
             # QX22be — WhatsApp preview (read-only, no status change).
             'whatsapp_preview',
+            # NTCPQ8 — approbation de remise (lecture + décisions).
+            'approbation', 'approuver_etape', 'rejeter_etape',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
@@ -1201,6 +1203,39 @@ class DevisViewSet(IdempotentCreateMixin, CompanyScopedModelViewSet):
         return Response(
             DevisSerializer(devis, context={'request': request}).data)
 
+    @action(detail=True, methods=['get'], url_path='approbation',
+            permission_classes=[IsResponsableOrAdmin])
+    def approbation(self, request, pk=None):
+        """NTCPQ8 — Liste les étapes d'approbation de remise du devis."""
+        devis = self.get_object()
+        from apps.cpq.selectors import etapes_approbation_devis
+        return Response(etapes_approbation_devis(devis))
+
+    @action(detail=True, methods=['post'], url_path='approuver-etape',
+            permission_classes=[IsResponsableOrAdmin])
+    def approuver_etape(self, request, pk=None):
+        """NTCPQ8 — Approuve l'étape courante d'approbation de remise."""
+        devis = self.get_object()
+        from apps.cpq.services import approuver_etape_devis
+        commentaire = (request.data.get('commentaire') or '').strip()
+        etape, toutes_approuvees = approuver_etape_devis(
+            devis, user=request.user, commentaire=commentaire)
+        return Response({
+            'detail': 'Étape approuvée.',
+            'etape_id': etape.id,
+            'toutes_approuvees': toutes_approuvees,
+        })
+
+    @action(detail=True, methods=['post'], url_path='rejeter-etape',
+            permission_classes=[IsResponsableOrAdmin])
+    def rejeter_etape(self, request, pk=None):
+        """NTCPQ8 — Rejette l'étape courante : renvoie le devis en brouillon."""
+        devis = self.get_object()
+        from apps.cpq.services import rejeter_etape_devis
+        motif = (request.data.get('motif') or '').strip()
+        etape = rejeter_etape_devis(devis, user=request.user, motif=motif)
+        return Response({'detail': 'Étape rejetée.', 'etape_id': etape.id})
+
     @action(detail=True, methods=['get'], url_path='historique',
             permission_classes=[IsAnyRole])
     def historique(self, request, pk=None):
@@ -1415,6 +1450,15 @@ class DevisViewSet(IdempotentCreateMixin, CompanyScopedModelViewSet):
             f'Remise de {remise} % supérieure au seuil de {seuil} % : '
             "l'approbation d'un administrateur est requise avant l'envoi.")})
 
+    def _guard_matrix_approval(self, devis):
+        """NTCPQ7/8 — instancie les étapes d'approbation par palier de remise
+        pour ce devis puis bloque l'envoi tant qu'une étape est en attente. Un
+        devis sans remise qualifiante ne crée aucune étape (envoi libre)."""
+        from apps.cpq.services import lancer_approbation_devis
+        from ..services import verifier_devis_envoyable
+        lancer_approbation_devis(devis)
+        verifier_devis_envoyable(devis)
+
     def perform_update(self, serializer):
         from rest_framework.exceptions import ValidationError
         # YDOCF2 — un devis figé (accepté/refusé/expiré) ne doit plus être
@@ -1455,6 +1499,11 @@ class DevisViewSet(IdempotentCreateMixin, CompanyScopedModelViewSet):
             'remise_globale', serializer.instance.remise_globale)
         self._guard_discount_approval(
             serializer.instance, ancien_statut, nouveau_statut, remise)
+        # NTCPQ7/8 — matrice d'approbation par paliers de remise : à la
+        # tentative d'envoi, instancie les étapes requises et bloque tant
+        # qu'une étape est en attente (en plus du seuil unique T17 ci-dessus).
+        if nouveau_statut == Devis.Statut.ENVOYE and ancien_statut != Devis.Statut.ENVOYE:  # noqa: E501
+            self._guard_matrix_approval(serializer.instance)
         super().perform_update(serializer)
         # VX98 — dernier auteur de modification (server-side, jamais du corps) :
         # alimente la puce de fraîcheur. Pattern archived_by.
@@ -1474,6 +1523,10 @@ class DevisViewSet(IdempotentCreateMixin, CompanyScopedModelViewSet):
     )
     def generer_pdf(self, request, pk=None):
         devis = self.get_object()
+        # NTCPQ7/8 — bloque la génération PDF tant qu'une étape d'approbation de
+        # remise reste en attente (aucune étape → comportement inchangé).
+        from ..services import verifier_devis_envoyable
+        verifier_devis_envoyable(devis)
         from ..quote_engine import clean_pdf_options
         from ..tasks import task_generate_devis_pdf
         # Format options (simulator parity) — whitelisted server-side.

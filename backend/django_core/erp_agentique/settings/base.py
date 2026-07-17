@@ -185,6 +185,11 @@ INSTALLED_APPS = [
     # Additif : ContactClient référence crm.Client par FK STRING, ne retire
     # rien aux champs contact existants sur Client (comportement inchangé).
     'apps.contacts',
+    # Groupe NTCPQ — CPQ (Configure-Price-Quote) enterprise : options/
+    # contraintes produit, moteur de règles, offres groupées, listes de prix
+    # multi-segment, approbations de remise, configurateur guidé, clauses/CGV.
+    # App satellite en aval de ventes ; string-FK vers ventes/stock/crm.
+    'apps.cpq',
 ]
 
 MIDDLEWARE = [

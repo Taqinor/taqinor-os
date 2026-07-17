@@ -94,6 +94,9 @@ _APP_URLS = [
     path('territoires/', include('apps.territoires.urls')),
     # NTCRM8 — Contacts multi-rôles par client (organigramme d'achat).
     path('contacts/', include('apps.contacts.urls')),
+    # Groupe NTCPQ — CPQ enterprise (options/contraintes, règles, offres
+    # groupées, prix contractuels, approbations de remise, configurateur).
+    path('cpq/', include('apps.cpq.urls')),
 ]
 
 urlpatterns = [
