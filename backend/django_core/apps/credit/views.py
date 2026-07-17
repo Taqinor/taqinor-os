@@ -58,6 +58,23 @@ def fiche_credit_client(request, client_id):
     return Response(fiche_credit(client))
 
 
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def score_credit_client(request, client_id):
+    """NTCRD12 — score crédit d'un client (lettre A-E + position vs limite +
+    recommandation lisible). Company-scopé, 404 propre hors société."""
+    from apps.crm.selectors import get_company_client
+
+    from .selectors import score_credit
+
+    client = get_company_client(request.user.company, client_id)
+    if client is None:
+        return Response(
+            {'detail': 'Client introuvable.'},
+            status=status.HTTP_404_NOT_FOUND)
+    return Response(score_credit(client))
+
+
 class LimiteCreditViewSet(CompanyScopedModelViewSet):
     """NTCRD2 — CRUD limite de crédit par client, company-scopé."""
     queryset = LimiteCredit.objects.select_related('client', 'cree_par').all()

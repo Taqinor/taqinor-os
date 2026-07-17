@@ -101,6 +101,38 @@ def fiche_credit(client):
     }
 
 
+def score_credit(client):
+    """NTCRD12 — enveloppe fine autour de
+    ``apps.ventes.selectors.comportement_paiement`` (jamais réimplémenté ici)
+    + la position vs limite de crédit (NTCRD5). Renvoie lettre A-E + disponible
+    + une recommandation lisible. Lecture seule."""
+    from apps.ventes.selectors import comportement_paiement
+
+    score = comportement_paiement(client)
+    dispo = disponible_credit(client)
+
+    if dispo['limite'] is None:
+        recommandation = 'Aucune limite définie — marge illimitée.'
+    elif dispo['depasse']:
+        recommandation = 'Limite atteinte, dérogation requise.'
+    elif dispo['pct_utilise'] is not None and dispo['pct_utilise'] >= 0.8:
+        recommandation = 'Proche de la limite — vigilance.'
+    else:
+        recommandation = 'Marge confortable.'
+
+    return {
+        'client_id': client.id,
+        'lettre': score['lettre'],
+        'score': score['score'],
+        'limite': dispo['limite'],
+        'encours': dispo['encours'],
+        'disponible': dispo['disponible'],
+        'pct_utilise': dispo['pct_utilise'],
+        'depasse': dispo['depasse'],
+        'recommandation': recommandation,
+    }
+
+
 def derogation_valide_pour(client, montant):
     """NTCRD9 — vrai si le client a une ``DerogationCredit`` APPROUVEE, non
     expirée, dont le ``montant_demande`` couvre ``montant`` (>= montant de la
