@@ -61,10 +61,6 @@ class EventType(models.TextChoices):
     CHANTIER_DUE = 'chantier_due', 'Chantier à installer'
     FACTURE_OVERDUE = 'facture_overdue', 'Facture en retard'
     WARRANTY_EXPIRING = 'warranty_expiring', 'Garantie bientôt expirée'
-    # NTASS8 — police/attestation d'assurance d'entreprise (RC pro, décennale,
-    # multirisque, cyber, homme-clé…) approchant de sa date d'échéance.
-    ASSURANCE_POLICE_EXPIRANTE = (
-        'assurance_police_expirante', "Police d'assurance bientôt expirée")
     MAINTENANCE_DUE = 'maintenance_due', 'Visite de maintenance due'
     STOCK_LOW = 'stock_low', 'Stock bas'
     # ZSTK2 — un lot/réception approche de sa date de péremption (fenêtre
