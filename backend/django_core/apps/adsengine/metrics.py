@@ -233,6 +233,134 @@ def cost_per_signature(company):
     return results
 
 
+# ── ADSDEEP44 — Métriques créatives dérivées PAR AD (barre Motion, benchmark §2) ─
+# Toutes calculées depuis ``InsightSnapshot.video_metrics`` (ADSDEEP1, dossier
+# insights-api §3) + ``impressions``. AUCUN champ vidéo « 3 s » n'existe chez Meta
+# (dossier insights-api §3, video_play_actions/video_6_15_30_sec_watched_actions/
+# video_p25-100_watched_actions/video_thruplay_watched_actions/
+# video_avg_time_watched_actions) : le hook rate utilise DÉLIBÉRÉMENT ``s6``
+# (video_6_sec_watched_actions), jamais un « video_3s » inventé — même si le
+# benchmark générique concurrent (Motion) parle de 3 s. Chaque formule est
+# NULL-SAFE : un dénominateur nul/absent OU un champ vidéo absent renvoie
+# ``None`` — JAMAIS un 0 fabriqué (un 0 affiché laisserait croire à une mesure
+# réelle de zéro plutôt qu'à une donnée manquante).
+def hook_rate(video_metrics, impressions):
+    """Hook rate = vues 6 s / impressions (PAS de champ 3 s — inexistant chez
+    Meta, dossier insights-api §3). ``None`` si ``s6`` absent ou impressions
+    nulles/absentes (jamais un faux 0)."""
+    vm = video_metrics or {}
+    s6 = vm.get('s6')
+    if s6 is None or not impressions:
+        return None
+    return float(s6) / float(impressions)
+
+
+def hold_rate(video_metrics):
+    """Hold rate = ThruPlay / lectures (``plays``) — définition RETENUE par le
+    dossier insights-api §3 (le benchmark générique concurrent dit « 15 s / 3 s » ;
+    adapté ici puisque le champ 3 s n'existe pas chez Meta)."""
+    vm = video_metrics or {}
+    plays = vm.get('plays')
+    thruplay = vm.get('thruplay')
+    if not plays or thruplay is None:
+        return None
+    return float(thruplay) / float(plays)
+
+
+def ratio_15s_to_6s(video_metrics):
+    """Ratio de rétention 15 s / 6 s : au-delà du hook (6 s), la vidéo garde-t-elle
+    l'attention ? ``None`` si l'un des deux champs est absent/nul."""
+    vm = video_metrics or {}
+    s6 = vm.get('s6')
+    s15 = vm.get('s15')
+    if not s6 or s15 is None:
+        return None
+    return float(s15) / float(s6)
+
+
+_RETENTION_QUARTILES = ('p25', 'p50', 'p75', 'p100')
+
+
+def retention_curve(video_metrics):
+    """Courbe de rétention 25/50/75/100 % — chaque point = (vues au quartile) /
+    lectures totales (``plays``). Un point sans donnée (ou ``plays`` nul/absent)
+    est ``None`` (jamais un 0 fabriqué) ; les AUTRES points restent calculables
+    indépendamment (une ad sans ``p100`` peut quand même exposer ``p25``)."""
+    vm = video_metrics or {}
+    plays = vm.get('plays')
+    curve = {}
+    for key in _RETENTION_QUARTILES:
+        val = vm.get(key)
+        curve[key] = (float(val) / float(plays)
+                      if (plays and val is not None) else None)
+    return curve
+
+
+def watch_time_avg(video_metrics):
+    """Temps de visionnage moyen (secondes, replays inclus) — passthrough
+    null-safe du champ ``avg_time`` (dossier insights-api §3)."""
+    vm = video_metrics or {}
+    val = vm.get('avg_time')
+    return float(val) if val is not None else None
+
+
+def derived_ad_video_metrics(video_metrics, impressions):
+    """ADSDEEP44 — Bundle des métriques créatives dérivées d'UN
+    snapshot/agrégat (hook rate / hold rate / ratio 15-6 / courbe de rétention /
+    temps de visionnage moyen). Chaque clé est indépendamment null-safe :
+    l'absence d'une métrique vidéo (ex. ad statique, sans lecture) ne bloque
+    jamais le calcul des autres."""
+    return {
+        'hook_rate': hook_rate(video_metrics, impressions),
+        'hold_rate': hold_rate(video_metrics),
+        'ratio_15s_to_6s': ratio_15s_to_6s(video_metrics),
+        'retention': retention_curve(video_metrics),
+        'watch_time_avg_s': watch_time_avg(video_metrics),
+    }
+
+
+# Clés CUMULATIVES (comptes AdsActionStats) sommées telles quelles sur une
+# fenêtre ; ``avg_time`` est déjà une MOYENNE journalière côté Meta — la sommer
+# fausserait le sens (elle est moyennée séparément, cf. ``sum_video_metrics``).
+_VIDEO_SUM_KEYS = ('p25', 'p50', 'p75', 'p95', 'p100', 'plays', 's6', 's15',
+                   's30', 'thruplay')
+
+
+def sum_video_metrics(snapshots):
+    """Somme des ``video_metrics`` (+ impressions) d'une liste de
+    ``InsightSnapshot`` sur une fenêtre. Une clé JAMAIS rapportée par aucun
+    snapshot de la fenêtre reste ABSENTE du résultat (jamais un 0 fabriqué pour
+    une métrique jamais mesurée) ; ``avg_time`` est la MOYENNE (pas la somme)
+    des jours où elle est présente. Renvoie ``(totals_dict, impressions|None)``."""
+    totals = {}
+    avg_times = []
+    impressions = 0
+    has_impressions = False
+    for snap in snapshots:
+        vm = getattr(snap, 'video_metrics', None) or {}
+        for key in _VIDEO_SUM_KEYS:
+            val = vm.get(key)
+            if val is not None:
+                totals[key] = totals.get(key, 0.0) + float(val)
+        if vm.get('avg_time') is not None:
+            avg_times.append(float(vm['avg_time']))
+        impr = getattr(snap, 'impressions', None)
+        if impr is not None:
+            impressions += int(impr)
+            has_impressions = True
+    if avg_times:
+        totals['avg_time'] = sum(avg_times) / len(avg_times)
+    return totals, (impressions if has_impressions else None)
+
+
+def ad_video_metrics_for_window(snapshots):
+    """ADSDEEP44 — Bundle dérivé agrégé sur une fenêtre de ``InsightSnapshot``
+    (somme des ``video_metrics`` + impressions, puis les mêmes formules
+    dérivées null-safe que :func:`derived_ad_video_metrics`)."""
+    totals, impressions = sum_video_metrics(snapshots)
+    return derived_ad_video_metrics(totals, impressions)
+
+
 def cost_per_signature_summary(company):
     """Agrégat société : dépense totale, signatures totales, coût-par-signature
     global + le détail par campagne. La dépense totale se réconcilie avec la
