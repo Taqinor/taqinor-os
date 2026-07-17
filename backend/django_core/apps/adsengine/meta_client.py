@@ -354,6 +354,53 @@ class MetaClient:
             query['fields'] = ','.join(fields)
         return self._paged(f'{object_id}/insights', params=query)
 
+    # ── Créatif LIVE (ADSDEEP11/12/13) ───────────────────────────────────────
+    # Sous-champs du nœud ``creative`` demandés pour miroiter le créatif diffusé
+    # (dossier creative-retrieval §1). ``body`` n'est PAS peuplé pour les vidéos
+    # → on lit aussi ``object_story_spec``/``asset_feed_spec``.
+    CREATIVE_SUBFIELDS = (
+        'id', 'body', 'title', 'description', 'call_to_action_type',
+        'image_hash', 'video_id', 'thumbnail_url', 'image_url',
+        'instagram_permalink_url', 'effective_object_story_id',
+        'object_story_spec', 'asset_feed_spec')
+
+    def get_ad_creative(self, ad_id):
+        """ADSDEEP11 — Lit le nœud ``creative{…}`` d'une ad (le créatif LIVE).
+        Renvoie le dict ``creative`` (ou ``{}``)."""
+        sub = '{' + ','.join(self.CREATIVE_SUBFIELDS) + '}'
+        payload = self._request(
+            'GET', f'{ad_id}', params={'fields': f'creative{sub}'})
+        creative = (payload or {}).get('creative')
+        return creative if isinstance(creative, dict) else {}
+
+    def get_video_source(self, video_id):
+        """ADSDEEP12 — URL mp4 CDN JOUABLE d'une vidéo (``source``). EXPIRE
+        ~1 h : ne JAMAIS la persister — refetch à l'affichage (cache court)."""
+        payload = self._request(
+            'GET', f'{video_id}',
+            params={'fields': 'source,picture,length,permalink_url'})
+        return payload if isinstance(payload, dict) else {}
+
+    def get_ad_image(self, image_hash):
+        """ADSDEEP12 — Métadonnées d'image par hash ; ``permalink_url`` est la
+        seule URL PERMANENTE utilisable pour l'affichage (``url``/``url_128``
+        sont temporaires)."""
+        if not self.ad_account_id:
+            raise MetaError("ad_account_id manquant sur la connexion Meta.")
+        payload = self._request(
+            'GET', self._account_edge('adimages'),
+            params={'hashes': json.dumps([image_hash]),
+                    'fields': 'hash,url,url_128,permalink_url,name,width,height'})
+        data = (payload or {}).get('data') or []
+        return data[0] if data else {}
+
+    def get_ad_previews(self, ad_id, ad_format):
+        """ADSDEEP13 — Snippet iframe d'aperçu Meta pour un format. L'iframe
+        n'est valide que 24 h → jamais persister, refetch par affichage."""
+        rows = self._paged(
+            f'{ad_id}/previews', params={'ad_format': ad_format})
+        return rows[0].get('body', '') if rows else ''
+
     def _read_list(self, path, *, fields=None, limit=None):
         params = {}
         if fields:

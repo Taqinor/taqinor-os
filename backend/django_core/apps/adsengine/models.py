@@ -249,6 +249,59 @@ class AdMirror(TenantModel):
         return f'Ad {self.meta_id} ({self.status or "?"})'
 
 
+class AdCreativeMirror(TenantModel):
+    """ADSDEEP11 — Miroir du CRÉATIF LIVE d'une ad Meta (copie/vidéo/image).
+
+    ``OneToOne`` sur ``AdMirror`` (un créatif effectif par ad). Reflète le
+    contenu réellement diffusé (dossier creative-retrieval §1) : texte
+    (``body``/``title``/``description``), ``cta_type``, ``link_url``, et les
+    IDENTIFIANTS PERMANENTS des médias (``image_hash``/``video_id``) — jamais une
+    URL CDN (elles expirent ~1 h : le résolveur ADSDEEP12 fabrique une URL fraîche
+    à l'affichage). ``asset_feed_spec`` porte le créatif dynamique/Advantage+ tel
+    quel (le round-trip GET peut revenir INCOMPLET — bug forum connu, toléré).
+    Upsert idempotent par ``ad`` (OneToOne).
+    """
+
+    ad = models.OneToOneField(
+        'adsengine.AdMirror', on_delete=models.CASCADE,
+        related_name='creative_mirror', verbose_name='Ad')
+    creative_meta_id = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name='ID créatif Meta')
+    body = models.TextField(blank=True, default='', verbose_name='Texte principal')
+    title = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Titre')
+    description = models.TextField(
+        blank=True, default='', verbose_name='Description')
+    cta_type = models.CharField(
+        max_length=64, blank=True, default='', verbose_name='Type de CTA')
+    link_url = models.TextField(blank=True, default='', verbose_name='Lien')
+    image_hash = models.CharField(
+        max_length=128, blank=True, default='',
+        verbose_name='Hash image (permanent)')
+    video_id = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name='ID vidéo (permanent)')
+    instagram_permalink_url = models.TextField(
+        blank=True, default='', verbose_name='Permalien Instagram')
+    effective_object_story_id = models.CharField(
+        max_length=128, blank=True, default='',
+        verbose_name='ID post de Page diffusé')
+    asset_feed_spec = models.JSONField(
+        default=dict, blank=True,
+        verbose_name='Spéc. créatif dynamique (peut être incomplète)')
+    fetched_at = models.DateTimeField(
+        null=True, blank=True, verbose_name='Récupéré le')
+
+    class Meta:
+        verbose_name = 'Miroir de créatif'
+        verbose_name_plural = 'Miroirs de créatif'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'Créatif ad {self.ad_id} ({self.creative_meta_id or "?"})'
+
+
 class InsightSnapshot(TenantModel):
     """ENG5 — Instantané de performance daté d'un objet publicitaire.
 

@@ -13,7 +13,7 @@ from decimal import Decimal, InvalidOperation
 from django.contrib.contenttypes.models import ContentType
 
 from .models import (
-    AdCampaignMirror, AdMirror, AdSetMirror, InsightSnapshot,
+    AdCampaignMirror, AdCreativeMirror, AdMirror, AdSetMirror, InsightSnapshot,
 )
 
 
@@ -122,6 +122,64 @@ def sync_ads(company, payloads, *, created_via_engine=False):
             obj.save()
         mirrors.append(obj)
     return mirrors
+
+
+def _extract_creative_fields(creative):
+    """ADSDEEP11 — Aplati un nœud ``creative{…}`` Meta en champs de miroir.
+
+    Lit d'abord les champs directs (``body``/``title``/…) puis retombe sur
+    ``object_story_spec`` (link_data/video_data — dossier creative §1) pour le
+    texte/CTA/média. Tolère un payload partiel/incomplet (asset_feed_spec)."""
+    creative = creative or {}
+    oss = creative.get('object_story_spec') or {}
+    link_data = oss.get('link_data') or {}
+    video_data = oss.get('video_data') or {}
+    afs = creative.get('asset_feed_spec') or {}
+
+    body = (creative.get('body') or link_data.get('message')
+            or video_data.get('message') or '')
+    title = (creative.get('title') or link_data.get('name')
+             or video_data.get('title') or '')
+    description = (creative.get('description')
+                   or link_data.get('description') or '')
+    cta = (creative.get('call_to_action_type')
+           or (link_data.get('call_to_action') or {}).get('type')
+           or (video_data.get('call_to_action') or {}).get('type') or '')
+    link_url = (link_data.get('link')
+                or (link_data.get('call_to_action') or {})
+                .get('value', {}).get('link') or '')
+    image_hash = (link_data.get('image_hash')
+                  or (oss.get('photo_data') or {}).get('image_hash') or '')
+    video_id = video_data.get('video_id') or ''
+    return {
+        'creative_meta_id': str(creative.get('id') or ''),
+        'body': body or '',
+        'title': (title or '')[:255],
+        'description': description or '',
+        'cta_type': (cta or '')[:64],
+        'link_url': link_url or '',
+        'image_hash': (image_hash or '')[:128],
+        'video_id': (video_id or '')[:64],
+        'instagram_permalink_url': creative.get(
+            'instagram_permalink_url') or '',
+        'effective_object_story_id': (creative.get(
+            'effective_object_story_id') or '')[:128],
+        'asset_feed_spec': afs if isinstance(afs, dict) else {},
+    }
+
+
+def sync_ad_creative(company, ad_mirror, creative_payload):
+    """ADSDEEP11 — Upsert idempotent du miroir de créatif d'une ad (OneToOne).
+
+    ``creative_payload`` est le nœud ``creative`` retourné par
+    ``GET /<ad>?fields=creative{…}``. Company dérivée de l'ad. Renvoie
+    ``(mirror, created)``."""
+    from django.utils import timezone
+
+    fields = _extract_creative_fields(creative_payload)
+    fields['fetched_at'] = timezone.now()
+    return AdCreativeMirror.objects.update_or_create(
+        company=company, ad=ad_mirror, defaults=fields)
 
 
 def resolve_results(objective, normalized_row):

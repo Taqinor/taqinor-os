@@ -144,6 +144,9 @@ def _sync_company(conn):
     _sync_level_insights(company, conn, client, level='adset')
     _sync_level_insights(company, conn, client, level='ad')
 
+    # ADSDEEP11 — miroir du créatif LIVE de chaque ad (best-effort).
+    sync_ad_creatives(company, client)
+
     today = datetime.date.today()
     for camp in AdCampaignMirror.objects.filter(company=company):
         # ENG6 — insights sur TOUT l'historique, ventilés par JOUR. Sans
@@ -301,6 +304,30 @@ def sync_breakdowns_weekly():
         'adsengine.sync_breakdowns_weekly: %s campagne(s) traitée(s)',
         processed)
     return {'campaigns_processed': processed}
+
+
+def sync_ad_creatives(company, client):
+    """ADSDEEP11 — Miroite le créatif LIVE de chaque ad d'une société.
+
+    Lit ``GET /<ad>?fields=creative{…}`` par ad et upserte le miroir (idempotent,
+    OneToOne). Best-effort par ad ; NO-OP propre si le client n'expose pas
+    ``get_ad_creative`` (mock ancien). Renvoie le nombre de miroirs upsertés."""
+    from . import sync
+    from .models import AdMirror
+
+    fetch = getattr(client, 'get_ad_creative', None)
+    if not callable(fetch):
+        return 0
+    written = 0
+    for ad in AdMirror.objects.filter(company=company):
+        try:
+            creative = fetch(ad.meta_id)
+        except Exception:  # noqa: BLE001 — une ad en échec n'arrête pas les autres
+            continue
+        if creative:
+            sync.sync_ad_creative(company, ad, creative)
+            written += 1
+    return written
 
 
 @shared_task(name='adsengine.sync_insights_daily')
