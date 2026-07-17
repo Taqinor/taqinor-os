@@ -4374,6 +4374,13 @@ def changer_plan_contrat(contrat, nouveau_plan, *, type_changement='immediat',
     contrat.plan_recurrent = nouveau_plan.plan_recurrent
     contrat.save(update_fields=['plan_abonnement', 'plan_recurrent'])
 
+    # NTSUB34 — notifie le responsable du changement de plan (upgrade/downgrade).
+    sens = 'upgrade' if delta > 0 else ('downgrade' if delta < 0 else 'sans effet')
+    _notifier_responsable_contrat(
+        contrat, 'Changement de plan effectué',
+        f"Le contrat « {contrat.objet} » a changé de plan ({sens}) vers "
+        f"« {nouveau_plan.code} ».")
+
     prorata = None
     # Prorata immédiat UNIQUEMENT pour un upgrade immédiat.
     if delta > 0 and type_changement == 'immediat':
@@ -4647,6 +4654,11 @@ def convertir_essais_expires(company, *, today=None, alerte_j3_jours=3):
                     contrat, field='essai', old_value='en essai',
                     new_value='converti',
                     message="Fin d'essai : facturation activée.")
+                # NTSUB34 — notifie le responsable de la conversion réussie.
+                _notifier_responsable_contrat(
+                    contrat, 'Essai converti en abonnement payant',
+                    f"L'essai du contrat « {contrat.objet} » est converti : "
+                    f"la facturation est désormais active.")
                 total['convertis'] += 1
             # (b) alerte J-3.
             elif (essai.date_fin_essai == today + timedelta(
@@ -4756,6 +4768,9 @@ def executer_dunning_contrat(contrat, *, today=None):
         company=contrat.company, sequence=sequence,
         jour_offset__lte=jours_impaye).order_by('ordre', 'jour_offset', 'id')
 
+    premiere_relance = not EtapeDunningLog.objects.filter(
+        company=contrat.company, contrat=contrat).exists()
+
     for etape in etapes:
         _, cree = EtapeDunningLog.objects.get_or_create(
             company=contrat.company, contrat=contrat, etape=etape,
@@ -4763,6 +4778,13 @@ def executer_dunning_contrat(contrat, *, today=None):
         if not cree:
             continue  # déjà jouée (idempotence)
         _envoyer_etape_dunning(contrat, etape)
+        # NTSUB34 — notifie le responsable à l'ENTRÉE en dunning (1re relance).
+        if premiere_relance:
+            _notifier_responsable_contrat(
+                contrat, 'Entrée en séquence de relance (dunning)',
+                f"Le contrat « {contrat.objet} » est entré en relance "
+                f"pour impayé.")
+            premiere_relance = False
         journaliser_transition(
             contrat, field='dunning', old_value='',
             new_value=f'Étape J+{etape.jour_offset} ({etape.get_canal_display()})',
