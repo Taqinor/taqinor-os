@@ -96,3 +96,18 @@ class InnovationSettingsTests(TestCase):
             company=self.co_b, campagnes_activees=True)
         resp = auth(self.admin_a).get(self.BASE)
         self.assertFalse(resp.data['campagnes_activees'])
+
+    def test_feedback_digest_defaults(self):
+        resp = auth(self.admin_a).get(self.BASE)
+        self.assertFalse(resp.data['feedback_digest_actif'])
+        self.assertEqual(resp.data['feedback_digest_frequence'], 'quotidien')
+
+    def test_patch_feedback_digest_fields(self):
+        resp = auth(self.admin_a).patch(
+            self.BASE,
+            {'feedback_digest_actif': True, 'feedback_digest_frequence': 'hebdo'},
+            format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        obj = InnovationSettings.objects.get(company=self.co_a)
+        self.assertTrue(obj.feedback_digest_actif)
+        self.assertEqual(obj.feedback_digest_frequence, 'hebdo')

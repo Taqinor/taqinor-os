@@ -32,3 +32,24 @@ def generer_seances_semaine_task():
                 'education.generer_seances_semaine: échec société %s',
                 company.id)
     return total
+
+
+@shared_task(name='education.relancer_reinscriptions')
+def relancer_reinscriptions_task():
+    """NTEDU40 — au-delà de la date limite paramétrable
+    (``ParametresEducation.date_limite_reinscription``, no-op tant que non
+    renseignée), notifie l'ADMINISTRATION de chaque société des élèves sans
+    réinscription créée pour l'année suivante. Best-effort par société."""
+    from authentication.models import Company
+
+    from .services import relancer_reinscriptions_dues
+
+    total = 0
+    for company in Company.objects.all():
+        try:
+            total += relancer_reinscriptions_dues(company)
+        except Exception:  # noqa: BLE001 - défensif, best-effort
+            logger.exception(
+                'education.relancer_reinscriptions: échec société %s',
+                company.id)
+    return total

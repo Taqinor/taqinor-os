@@ -6,7 +6,10 @@
 """
 from rest_framework import serializers
 
-from .models import CampagneInnovation, Idee, InnovationSettings, VoteIdee
+from .models import (
+    AnnonceProduit, CampagneInnovation, FeedbackProduit, Idee,
+    InnovationSettings, VoteIdee,
+)
 
 
 class IdeeSerializer(serializers.ModelSerializer):
@@ -84,6 +87,8 @@ class InnovationSettingsSerializer(serializers.ModelSerializer):
         fields = [
             'campagnes_activees', 'segment_defaut', 'theme_couleur_cta',
             'message_relance', 'seuil_votes_notification',
+            # NTIDE40 — digest feedback produit (désactivé par défaut).
+            'feedback_digest_actif', 'feedback_digest_frequence',
         ]
 
 
@@ -107,6 +112,23 @@ class CampagneInnovationSerializer(serializers.ModelSerializer):
         read_only_fields = ['created_at']
 
 
+class CampagneInnovationDetailSerializer(CampagneInnovationSerializer):
+    """Sérialiseur de détail (NTIDE33) — ajoute l'historique (chatter
+    générique, même pattern que ``IdeeDetailSerializer``)."""
+
+    historique = serializers.SerializerMethodField()
+
+    class Meta(CampagneInnovationSerializer.Meta):
+        fields = CampagneInnovationSerializer.Meta.fields + ['historique']
+
+    def get_historique(self, obj):
+        from apps.records.serializers import ChatterActivitySerializer
+        from apps.records.services import chatter_qs
+
+        qs = chatter_qs(obj, company=obj.company)
+        return ChatterActivitySerializer(qs, many=True).data
+
+
 class IncitationSerializer(serializers.Serializer):
     """NTIDE27 — bandeau d'incitation affiché sur le formulaire « Proposer
     une idée » quand l'utilisateur matche le segment d'une campagne active.
@@ -116,3 +138,43 @@ class IncitationSerializer(serializers.Serializer):
     nom = serializers.CharField()
     message_incitation = serializers.CharField()
     date_fin = serializers.DateField()
+
+
+class AnnonceProduitSerializer(serializers.ModelSerializer):
+    """NTIDE39 — annonce produit, repli local (cf. ``models.AnnonceProduit``)."""
+
+    class Meta:
+        model = AnnonceProduit
+        fields = ['id', 'titre', 'description', 'lien', 'created_at']
+        read_only_fields = ['created_at']
+
+
+class FeedbackProduitSerializer(serializers.ModelSerializer):
+    """NTIDE36 — feedback produit (canal founder). ``statut``/``annonce``/
+    ``message_fermeture`` ne se modifient jamais par PATCH direct : la
+    lecture (``retrieve``) bascule ``envoye`` → ``lu`` côté serveur, la
+    fermeture passe par l'action ``lier-annonce`` (NTIDE39)."""
+
+    theme_display = serializers.CharField(
+        source='get_theme_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    auteur_nom = serializers.SerializerMethodField()
+    annonce_titre = serializers.CharField(
+        source='annonce.titre', read_only=True, default=None)
+    date_creation = serializers.DateTimeField(
+        source='created_at', read_only=True)
+
+    class Meta:
+        model = FeedbackProduit
+        fields = [
+            'id', 'titre', 'description', 'theme', 'theme_display',
+            'statut', 'statut_display', 'auteur', 'auteur_nom', 'annonce',
+            'annonce_titre', 'message_fermeture', 'date_creation',
+        ]
+        read_only_fields = [
+            'auteur', 'statut', 'annonce', 'message_fermeture',
+            'date_creation']
+
+    def get_auteur_nom(self, obj):
+        return getattr(obj.auteur, 'username', None)

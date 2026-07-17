@@ -30,6 +30,11 @@ const CopilotPanel = lazy(() => import('../../features/ia/CopilotPanel'))
 // utilisateur qui ne l'ouvre jamais.
 const SuggestionCTA = lazy(() => import('../../features/innovation/SuggestionCTA'))
 
+// NTIDE37 — bouton discret « Envoyer un retour » (canal feedback produit,
+// FeedbackProduit — distinct de la boîte à idées ci-dessus), même patron de
+// chargement paresseux.
+const FeedbackButton = lazy(() => import('../../features/innovation/FeedbackButton'))
+
 function readCollapsed() {
   try {
     return window.localStorage.getItem(COLLAPSE_KEY) === '1'
@@ -146,6 +151,12 @@ export default function Layout({ children }) {
           lui-même est le déclencheur, pas un panneau ouvert d'ailleurs. */}
       <Suspense fallback={null}>
         <SuggestionCTA />
+      </Suspense>
+      {/* NTIDE37 — bouton « Envoyer un retour », même patron de montage que
+          SuggestionCTA ci-dessus (canal distinct : feedback produit 1→N
+          founder, pas la boîte à idées). */}
+      <Suspense fallback={null}>
+        <FeedbackButton />
       </Suspense>
     </div>
   )

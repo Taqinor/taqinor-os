@@ -1,8 +1,14 @@
-# SCA4 — baseline GELÉE des modèles déclarant une FK company à la main (pré-socle).
-# Inventaire du 2026-07-10. Un modèle converti à core.TenantModel DISPARAÎT ici
 # (il ne matche plus le scan) — la liste ne peut que DÉCROÎTRE. Ne JAMAIS ajouter
-# un nouveau modèle ici pour contourner le garde : héritez de TenantModel.
 # Format : une entrée app.NomClasse par ligne. YDATA4 fera le sweep de complétude.
+# Inventaire du 2026-07-10. Un modèle converti à core.TenantModel DISPARAÎT ici
+# SCA4 — baseline GELÉE des modèles déclarant une FK company à la main (pré-socle).
+# un nouveau modèle ici pour contourner le garde : héritez de TenantModel.
+achats.BonCommandeFournisseur
+achats.FactureFournisseur
+achats.PaiementFournisseur
+achats.PrixFournisseur
+achats.ReceptionFournisseur
+achats.RetourFournisseur
 agent.AgentActionLog
 ao.AppelOffre
 ao.BordereauPrix
@@ -42,7 +48,6 @@ compta.ChargeConstateeAvance
 compta.ClotureCaisse
 compta.CodePromotion
 compta.ColonneEtatPersonnalise
-crm.CommissionPartenaire
 compta.CommissionPayoutLine
 compta.CommissionPayoutRun
 compta.Compensation
@@ -89,7 +94,6 @@ compta.MouvementCaisse
 compta.NoteFrais
 compta.ObligationFiscale
 compta.OffreFinancement
-crm.Partenaire
 compta.PaymentRun
 compta.PaymentRunLine
 compta.PeriodeComptable
@@ -112,9 +116,7 @@ compta.RetenueSource
 compta.SessionGuidedSelling
 compta.SimulationFinancement
 compta.SimulationPublique
-crm.SoumissionLeadPartenaire
 compta.TauxDevise
-crm.TerritoireCommercial
 compta.TimbreFiscal
 compta.TranchePaiement
 compta.TravauxEnCours
@@ -155,6 +157,7 @@ crm.BookingLink
 crm.Canal
 crm.ChatSessionPublique
 crm.Client
+crm.CommissionPartenaire
 crm.ConcurrentPerte
 crm.EquipeCommerciale
 crm.Lead
@@ -164,9 +167,12 @@ crm.MessageTemplate
 crm.MotifPerte
 crm.ObjectifCommercial
 crm.Parrainage
+crm.Partenaire
 crm.PlanActivite
 crm.PointContact
 crm.SiteProfile
+crm.SoumissionLeadPartenaire
+crm.TerritoireCommercial
 crm.WebsiteLeadPayload
 customfields.CustomFieldDef
 customfields.CustomObjectDef
@@ -528,6 +534,7 @@ pos.ShareLinkTicket
 pos.VenteComptoir
 publicapi.ApiKey
 publicapi.IdempotencyRecord
+publicapi.SandboxTenant
 publicapi.ServiceAccount
 publicapi.Webhook
 publicapi.WebhookDelivery
@@ -731,7 +738,6 @@ sav.WorksheetMaintenanceModele
 stock.AchatsParametres
 stock.AcompteFournisseur
 stock.AvoirFournisseur
-achats.BonCommandeFournisseur
 stock.Categorie
 stock.CategorieFournisseur
 stock.ConditionnementProduit
@@ -739,7 +745,6 @@ stock.ContactFournisseur
 stock.DocumentConformiteFournisseur
 stock.EcheanceFactureFournisseur
 stock.EmplacementStock
-achats.FactureFournisseur
 stock.FicheTechnique
 stock.Fournisseur
 stock.ImputationAvoirFournisseur
@@ -751,13 +756,9 @@ stock.Marque
 stock.ModeleBonCommandeFournisseur
 stock.MouvementStock
 stock.NomenclatureCodeBarres
-achats.PaiementFournisseur
 stock.PortailFournisseurToken
-achats.PrixFournisseur
 stock.Produit
 stock.ProfilSaisonnier
-achats.ReceptionFournisseur
-achats.RetourFournisseur
 stock.RevalorisationStock
 stock.RevisionKit
 stock.SousTraitantProfile
