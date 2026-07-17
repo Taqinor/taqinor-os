@@ -274,6 +274,97 @@ def notifier_campagne_lancee(campagne):
         link='/innovation/proposer', company=campagne.company)
 
 
+# ── Chatter de campagne (NTIDE33) — même pattern générique que NTIDE5/17/19 ──
+# (``records.Activity`` via ``log_activity``, ARC8) : aucun modèle
+# ``CampagneActivity`` maison, la cible change (``CampagneInnovation`` au
+# lieu d'``Idee``) mais le mécanisme de chatter reste le SEUL point d'écriture
+# partagé — jamais une deuxième table de journal à maintenir en synchro.
+
+# Champs suivis pour le journal AUTOMATIQUE de changement (NTIDE33) : statut/
+# segment/message/tag, exactement ceux cités par le critère d'acceptation.
+CAMPAGNE_CHAMPS_SUIVIS = {
+    'statut': 'Statut',
+    'segment': 'Segment',
+    'message_incitation': "Message d'incitation",
+    'tag_auto': 'Tag automatique',
+}
+
+
+def log_campagne_creation(campagne, user):
+    """NTIDE33 — journalise la création d'une campagne dans son chatter."""
+    from apps.records.models import Activity
+    from apps.records.services import log_activity
+    log_activity(
+        campagne, Activity.Kind.CREATION, user=user, company=campagne.company)
+
+
+def log_campagne_changes(campagne, anciennes_valeurs, user):
+    """NTIDE33 — journalise CHAQUE champ suivi (``CAMPAGNE_CHAMPS_SUIVIS``)
+    dont la valeur a changé entre ``anciennes_valeurs`` (snapshot posé par la
+    vue AVANT ``serializer.save()``) et l'état courant de ``campagne`` (APRÈS
+    sauvegarde). Une ligne de chatter par champ modifié — jamais une seule
+    ligne fourre-tout, même convention que le journal automatique des idées
+    (``transitionner``)."""
+    from apps.records.models import Activity
+    from apps.records.services import log_activity
+
+    for champ, label in CAMPAGNE_CHAMPS_SUIVIS.items():
+        ancienne = anciennes_valeurs.get(champ)
+        nouvelle = getattr(campagne, champ)
+        if ancienne == nouvelle:
+            continue
+        log_activity(
+            campagne, Activity.Kind.MODIFICATION, user=user, field=champ,
+            field_label=label, old_value=str(ancienne), new_value=str(nouvelle),
+            company=campagne.company)
+
+
+def noter_campagne(campagne, user, body):
+    """NTIDE33 — note manuelle de chatter sur une campagne (« Manual
+    noter » du critère d'acceptation), même raccourci que
+    ``records.services.log_note``."""
+    from apps.records.services import log_note
+    return log_note(campagne, user, body, company=campagne.company)
+
+
+# ── Fermeture de feedback via annonce produit (NTIDE39) ─────────────────────
+
+
+def fermer_feedback_via_annonce(feedback, *, annonce_id=None, annonce_data=None,
+                                message=''):
+    """NTIDE39 — « vous l'aviez demandé, c'est livré » : lie ``feedback`` à
+    une ``AnnonceProduit`` (existante via ``annonce_id``, OU nouvelle créée
+    depuis ``annonce_data`` — repli LOCAL tant que NTADM18 n'est pas bâti,
+    cf. ``models.AnnonceProduit``) et passe son statut à ``adresse``.
+
+    Exactement l'un des deux (``annonce_id``/``annonce_data``) est requis.
+    ``message`` (optionnel) est le texte affiché au auteur du feedback."""
+    from .models import AnnonceProduit, FeedbackProduit
+
+    if annonce_id:
+        annonce = AnnonceProduit.objects.filter(
+            company=feedback.company, id=annonce_id).first()
+        if annonce is None:
+            raise ValidationError('Annonce introuvable.')
+    elif annonce_data:
+        titre = (annonce_data.get('titre') or '').strip()
+        if not titre:
+            raise ValidationError("Titre de l'annonce requis.")
+        annonce = AnnonceProduit.objects.create(
+            company=feedback.company, titre=titre,
+            description=annonce_data.get('description') or '',
+            lien=annonce_data.get('lien') or '')
+    else:
+        raise ValidationError("« annonce_id » ou « annonce » requis.")
+
+    feedback.annonce = annonce
+    feedback.statut = FeedbackProduit.Statut.ADRESSE
+    feedback.message_fermeture = message or ''
+    feedback.save(update_fields=[
+        'annonce', 'statut', 'message_fermeture', 'updated_at'])
+    return feedback
+
+
 BULK_ACTIONS = frozenset({'set_statut', 'add_tag', 'remove_tag'})
 
 

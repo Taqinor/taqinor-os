@@ -207,6 +207,11 @@ class EventType(models.TextChoices):
     # (in-app systématique + email opt-in, préférences respectées par
     # notify()).
     INNOVATION_CAMPAIGN = 'innovation_campagne', "Campagne d'innovation lancée"
+    # NTIDE40 — digest (quotidien/hebdo, gated via InnovationSettings.
+    # feedback_digest_actif) du feedback produit (apps.innovation.
+    # FeedbackProduit) non-lu, par thème — notifie les gérants/staff de
+    # chaque société (même patron de destinataires que N76 daily_digest).
+    FEEDBACK_DIGEST = 'feedback_digest', 'Récapitulatif feedback produit'
 
 
 class Channel(models.TextChoices):
