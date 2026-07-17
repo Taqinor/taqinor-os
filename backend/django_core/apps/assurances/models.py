@@ -445,6 +445,9 @@ class IndemnisationSinistre(models.Model):
     montant_indemnise = models.DecimalField(
         max_digits=14, decimal_places=2, default=0)
     date_versement = models.DateField(null=True, blank=True)
+    # NTASS13 — string-FK vers compta.EcritureComptable (jamais une vraie FK).
+    ecriture_ref = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Référence écriture comptable')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

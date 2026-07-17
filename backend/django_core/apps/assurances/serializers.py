@@ -144,7 +144,7 @@ class IndemnisationSinistreSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'company', 'declaration', 'montant_reclame',
             'franchise_appliquee', 'montant_indemnise', 'reste_a_charge',
-            'date_versement', 'created_at', 'updated_at',
+            'date_versement', 'ecriture_ref', 'created_at', 'updated_at',
         ]
         read_only_fields = fields
 

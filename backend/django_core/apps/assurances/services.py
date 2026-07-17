@@ -347,3 +347,54 @@ def enregistrer_indemnisation(declaration, *, montant_reclame,
             declaration, 'statut', 'Statut', ancien_statut,
             declaration.statut, user)
     return indemnisation
+
+
+# ── NTASS13 — Écriture comptable proposée sur indemnisation reçue ──────────
+
+#: Compte CGNC banque (trésorerie encaissant l'indemnité).
+_COMPTE_BANQUE_INDEMNISATION = '5141'
+#: Compte CGNC produit — indemnités d'assurances reçues (produit non courant).
+_COMPTE_PRODUIT_INDEMNISATION = '7582'
+
+
+def proposer_ecriture_indemnisation(indemnisation, *, user=None):
+    """NTASS13 — PROPOSE (brouillon) l'écriture comptable d'une indemnisation
+    encaissée : débite la banque (5141), crédite le produit « Indemnités
+    d'assurances reçues » (7582, produit non courant).
+
+    Écrit UNIQUEMENT via ``compta.services`` (jamais ``compta.models``) ; le
+    verrouillage de période est délégué à ``creer_ecriture_od`` (FG115).
+    L'écriture est TOUJOURS créée en ``brouillon`` (jamais auto-postée) et
+    ``indemnisation.ecriture_ref`` est lié."""
+    from apps.compta import services as compta_services  # cross-app WRITE
+    from apps.compta.models import EcritureComptable
+
+    declaration = indemnisation.declaration
+    company = indemnisation.company
+    requis = [_COMPTE_BANQUE_INDEMNISATION, _COMPTE_PRODUIT_INDEMNISATION]
+    if any(compta_services.get_compte(company, num) is None for num in requis):
+        compta_services.seed_plan_comptable(company)
+    compte_banque = compta_services.get_compte(
+        company, _COMPTE_BANQUE_INDEMNISATION)
+    compte_produit = compta_services.get_compte(
+        company, _COMPTE_PRODUIT_INDEMNISATION)
+
+    date_ecriture = indemnisation.date_versement or datetime.date.today()
+    libelle = (
+        f'Indemnisation sinistre {declaration.reference} — police '
+        f'{declaration.police.numero_police}')
+    ecriture = compta_services.creer_ecriture_od(
+        company, date_ecriture, libelle,
+        [
+            {'compte': compte_banque, 'libelle': libelle,
+             'debit': indemnisation.montant_indemnise, 'credit': 0},
+            {'compte': compte_produit, 'libelle': libelle,
+             'debit': 0, 'credit': indemnisation.montant_indemnise},
+        ],
+        reference=f'INDEM-{declaration.reference}',
+        created_by=user,
+        statut=EcritureComptable.Statut.BROUILLON,
+    )
+    indemnisation.ecriture_ref = ecriture.id
+    indemnisation.save(update_fields=['ecriture_ref'])
+    return ecriture

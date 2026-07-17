@@ -26,7 +26,8 @@ from .services import (
     CHAMPS_SUIVIS_POLICE, CHAMPS_SUIVIS_SINISTRE, enregistrer_indemnisation,
     generer_echeancier_prime, log_police_creation, log_police_note,
     log_police_transitions_auto, log_sinistre_creation, log_sinistre_note,
-    log_sinistre_transitions_auto, proposer_ecriture_prime, renouveler_police,
+    log_sinistre_transitions_auto, proposer_ecriture_indemnisation,
+    proposer_ecriture_prime, renouveler_police,
 )
 
 
@@ -298,3 +299,30 @@ class DeclarationSinistreViewSet(_AssurancesBaseViewSet):
         return Response(
             IndemnisationSinistreSerializer(indemnisation).data,
             status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'],
+            url_path='proposer-ecriture-indemnisation',
+            permission_classes=[HasPermissionOrLegacy(
+                'assurances_proposer_ecriture')])
+    def proposer_ecriture_indemnisation_action(self, request, pk=None):
+        """NTASS13 — propose (brouillon) l'écriture comptable de
+        l'indemnisation encaissée (débit banque / crédit produit non courant).
+        Réservé compta/admin (``assurances_proposer_ecriture``, NTASS29)."""
+        declaration = self.get_object()
+        indemnisation = getattr(declaration, 'indemnisation', None)
+        if indemnisation is None:
+            return Response(
+                {'detail': "Aucune indemnisation enregistrée sur ce sinistre."},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            ecriture = proposer_ecriture_indemnisation(
+                indemnisation, user=request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': _detail_django_validation_error(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            'indemnisation': IndemnisationSinistreSerializer(indemnisation).data,
+            'ecriture_id': ecriture.id,
+            'ecriture_statut': ecriture.statut,
+        }, status=status.HTTP_201_CREATED)

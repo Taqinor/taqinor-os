@@ -188,6 +188,10 @@ _COMPTES_CGNC = [
      'circulant', False, False, 'produit'),
     ('7132', 'Variation des stocks de travaux en cours', False, False,
      'produit'),
+    # NTASS13 — indemnités d'assurances reçues (produit non courant),
+    # créditées lors de la proposition d'écriture sur indemnisation encaissée
+    # (apps.assurances.services). Contrepartie de la trésorerie (banque 5141).
+    ('7582', "Indemnités d'assurances reçues", False, False, 'produit'),
 ]
 
 
