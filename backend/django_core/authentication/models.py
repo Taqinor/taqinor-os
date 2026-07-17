@@ -364,6 +364,14 @@ class CustomUser(AbstractUser):
                 continue
             if perm.startswith('records_scope'):
                 continue
+            # NTPRT1 — les marqueurs d'accès portail (``portail_*``) sont un axe
+            # de permission EXTERNE distinct du catalogue interne : ils
+            # n'accordent JAMAIS une action d'écriture INTERNE. Un compte portail
+            # n'est donc jamais considéré « responsable » interne et ne peut
+            # franchir aucune garde ``IsResponsableOrAdmin`` — l'enforcement fin
+            # (accès borné aux endpoints portail) arrive avec NTPRT5.
+            if perm.startswith('portail_'):
+                continue
             return True
         return False
 
@@ -480,6 +488,37 @@ class CustomUser(AbstractUser):
     # l'onglet sécurité). Nullable : null pour tout compte qui n'a jamais changé
     # son mot de passe via le flux dédié — additif, aucun défaut imposé.
     password_changed_at = models.DateTimeField(null=True, blank=True)
+
+    # ── NTPRT1 — Portée du compte : interne (ERP) vs portail externe ──────────
+    # ``portee`` distingue un collaborateur INTERNE (défaut — comportement
+    # inchangé : tout compte existant reste ``interne``) d'un compte PORTAIL
+    # externe en libre-service (client / fournisseur / partenaire). Le login JWT
+    # standard est réutilisé TEL QUEL — jamais un second système d'auth.
+    # Les ids ci-dessous rattachent un compte portail à SON entité par
+    # STRING-REF (l'entier de l'id cible SEUL), JAMAIS un ForeignKey cross-app :
+    # aucun import du modèle d'une autre app (crm.Client / fournisseur /
+    # partenaire). La classe de permission qui borne un compte portail à ses
+    # seuls endpoints ``/api/django/portail/*`` (et à SON id) est posée par une
+    # tâche ultérieure (NTPRT5) ; ces champs en sont la fondation DONNÉE.
+    # Additifs, défaut ``interne`` / NULL → aucun compte existant n'est affecté.
+    PORTEE_INTERNE = 'interne'
+    PORTEE_PORTAIL_CLIENT = 'portail_client'
+    PORTEE_PORTAIL_FOURNISSEUR = 'portail_fournisseur'
+    PORTEE_PORTAIL_PARTENAIRE = 'portail_partenaire'
+    PORTEE_CHOICES = [
+        (PORTEE_INTERNE, 'Interne'),
+        (PORTEE_PORTAIL_CLIENT, 'Portail client'),
+        (PORTEE_PORTAIL_FOURNISSEUR, 'Portail fournisseur'),
+        (PORTEE_PORTAIL_PARTENAIRE, 'Portail partenaire'),
+    ]
+    portee = models.CharField(
+        max_length=24,
+        choices=PORTEE_CHOICES,
+        default=PORTEE_INTERNE,
+    )
+    portail_client_id = models.PositiveIntegerField(null=True, blank=True)
+    portail_fournisseur_id = models.PositiveIntegerField(null=True, blank=True)
+    portail_partenaire_id = models.PositiveIntegerField(null=True, blank=True)
 
     groups = models.ManyToManyField(
         Group,

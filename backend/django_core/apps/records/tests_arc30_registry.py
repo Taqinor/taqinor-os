@@ -47,6 +47,9 @@ HISTORICAL_TARGETS = {
     # SCA36 — pilote 3 du kit core.documents (dégradation gracieuse sans
     # totaux ; chatter câblé sur son viewset).
     ('installations', 'demandeachat'),
+    # NTIDE1 — boîte à idées : l'historique/tags d'une idée passe par le
+    # chatter/tag générique records (ARC8/FG9), pas un modèle *Activity maison.
+    ('innovation', 'idee'),
 }
 
 
@@ -61,7 +64,7 @@ class TestAllowedTargetsNonRegression(SimpleTestCase):
             f"en trop: {resolved - HISTORICAL_TARGETS}")
 
     def test_len_matches(self):
-        self.assertEqual(len(ALLOWED_TARGETS), 21)
+        self.assertEqual(len(ALLOWED_TARGETS), 22)
 
     def test_contains_works_for_each_historical_pair(self):
         for pair in HISTORICAL_TARGETS:

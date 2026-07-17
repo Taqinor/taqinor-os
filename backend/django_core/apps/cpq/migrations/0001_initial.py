@@ -11,10 +11,10 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
-        ('authentication', '0024_company_est_demo_mode_presentation'),
+        ('authentication', '0025_company_est_demo_mode_presentation'),
         ('crm', '0062_lead_web_questionnaire_estimate'),
         ('stock', '0080_odx19_achats_split_repoint'),
-        ('ventes', '0087_ntcpq4_listeprix_segment'),
+        ('ventes', '0088_ntcpq4_listeprix_segment'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 

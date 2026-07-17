@@ -29,6 +29,7 @@ from .constants import (
     SCOPE_READ_LEADS, SCOPE_READ_DEVIS,
     SCOPE_READ_FACTURES, SCOPE_READ_CHANTIERS, SCOPE_READ_STOCK,
 )
+from .public_response import PublicApiResponseMixin
 from .public_serializers import (
     PublicLeadSerializer, PublicDevisSerializer,
     PublicFactureSerializer, PublicChantierSerializer,
@@ -40,7 +41,7 @@ from .public_serializers import (
 _RESERVED_PARAMS = {'page', 'page_size', 'ordering', 'format', 'updated_since'}
 
 
-class PublicReadOnlyViewSet(viewsets.ReadOnlyModelViewSet):
+class PublicReadOnlyViewSet(PublicApiResponseMixin, viewsets.ReadOnlyModelViewSet):
     """Base commune : auth par clé, scope, throttle par clé, scope société.
 
     La société vient TOUJOURS de la clé (request.auth.company_id), jamais d'un

@@ -53,6 +53,43 @@ def _augment(data: dict) -> dict:
     eco = economics.compute(d, company_id=d.get("_company_id"))
     d.update(eco)
 
+    # QX47 — série MENSUELLE du besoin de la culture (moteur QX48) pour le
+    # graphe « eau livrée vs besoin culture », et bassin recommandé. Dégrade
+    # proprement (None) quand la culture/surface manque — aucun chiffre inventé.
+    from . import agronomy
+    _e = data.get("etude") or {}
+    _crop = (_e.get("crop") or "").strip().lower() or None
+    _region = (_e.get("region") or "").strip().lower() or None
+    _surface = _e.get("surface_ha")
+    _method = (_e.get("irrigation_method") or "").strip().lower() or None
+    d["monthly_need_m3day"] = None
+    d["etc_mm_day"] = None
+    try:
+        _has_surface = float(_surface or 0) > 0
+    except (TypeError, ValueError):
+        _has_surface = False
+    if _crop and _has_surface:
+        _m = agronomy.monthly_water_demand(
+            crop=_crop, region=_region, surface_ha=_surface, method=_method)
+        d["monthly_need_m3day"] = _m["gross_m3_farm_day"]
+        d["etc_mm_day"] = _m["etc_mm_day"]
+    d["m3_jour_delivered"] = _e.get("m3_jour")
+    # Bassin recommandé : 1-3× le besoin journalier de pointe (2× par défaut →
+    # ~2 jours d'autonomie). Source : bonne pratique irrigation (tampon jour/nuit
+    # + aléas). Rendu SEULEMENT si le besoin de pointe est connu.
+    _besoin = d.get("besoin_m3j")
+    d["bassin_reco_m3"] = None
+    d["bassin_autonomie_j"] = None
+    try:
+        _b = float(_besoin or 0)
+    except (TypeError, ValueError):
+        _b = 0.0
+    if _b > 0:
+        d["bassin_min_m3"] = round(_b)          # 1× → ~1 jour
+        d["bassin_reco_m3"] = round(_b * 2)     # 2× → ~2 jours (recommandé)
+        d["bassin_max_m3"] = round(_b * 3)      # 3× → ~3 jours
+        d["bassin_autonomie_j"] = 2
+
     d.setdefault("client_full", d.get("client_name") or "Client")
     d["validity_days"] = d.get("validity_days", 30)
     d["site_url"] = d.get("site_url", "taqinor.ma")

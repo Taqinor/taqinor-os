@@ -48,11 +48,15 @@ const PER_CHUNK_BUDGET_KB = 350
 // garde anti-gonflement reste PER_CHUNK_BUDGET_KB (350) + les budgets vendors
 // par chunk ; ce total ne sert qu'à attraper une régression MASSIVE. Ici ~91 Ko
 // de marge au-dessus du réel (2248.8) — le garde reste actif au-dessus de 2340.
-// 2026-07-17 : 2340 -> 2440 Ko. Le shell frontend Marketing PLAN_CRM_VENTES
-// (NTMKT1-11 : 9 écrans Campagnes/Séquences/Segments/Listes/Événements/Enquêtes/
-// Fidélité/Domaine d'envoi + dashboard) ajoute ~26 Ko gzip — AUCUNE nouvelle
-// dépendance npm. Palier généreux (~100 Ko) pour couvrir la suite des écrans
-// CRM/Marketing du domaine sans re-bumper à chaque vague (convention fondateur).
+// 2026-07-16 : 2340 -> 2440 Ko. Le batch plateforme (nouveaux frontends santé
+// [SanteAgenda, NomenclatureActes], innovation [boîte à idées : liste, détail,
+// dashboard, CTA, paramètres], et les 4 modes du générateur de devis QX) porte
+// le réel à ~2341.8 Ko — palier généreux habituel (~100 Ko), pas de nouvelle
+// dépendance npm, écrans lazy-loadés ; le garde per-chunk (350) reste actif.
+// 2026-07-17 : le shell frontend Marketing PLAN_CRM_VENTES (NTMKT1-11 : 9 écrans
+// Campagnes/Séquences/Segments/Listes/Événements/Enquêtes/Fidélité/Domaine
+// d'envoi + dashboard) ajoute ~26 Ko gzip sur ce même palier 2440 (AUCUNE
+// nouvelle dépendance npm) — réel cumulé ~2368 Ko, sous le budget.
 const TOTAL_BUDGET_KB = 2440
 const VENDOR_CHUNK_BUDGETS_KB = {
   recharts: 450,

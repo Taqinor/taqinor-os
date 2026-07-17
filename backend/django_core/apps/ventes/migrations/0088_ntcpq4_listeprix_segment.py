@@ -4,7 +4,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("ventes", "0086_xsal14_ligne_section_note"),
+        ("ventes", "0087_qx43_mode_commercial"),
     ]
 
     operations = [

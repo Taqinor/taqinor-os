@@ -12,7 +12,7 @@ class Migration(migrations.Migration):
     """
 
     dependencies = [
-        ('authentication', '0023_yhard1_encrypt_totp_secret'),
+        ('authentication', '0024_ntprt1_customuser_portee'),
     ]
 
     operations = [

@@ -2533,7 +2533,11 @@ class SupportOfflineSerializer(serializers.ModelSerializer):
     class Meta:
         model = SupportOffline
         fields = ['id', 'nom', 'url_cible', 'nb_scans', 'date_creation']
-        read_only_fields = ['url_cible', 'nb_scans', 'date_creation']
+        # url_cible est writable-on-create : perform_create le lit depuis
+        # validated_data et re-dérive l'URL taguée UTM côté serveur via
+        # services.creer_support_offline. Le laisser read-only le retirait de
+        # validated_data → url_cible=None → 500 sur toute création par l'API.
+        read_only_fields = ['nb_scans', 'date_creation']
 
 
 class DomaineEnvoiSerializer(serializers.ModelSerializer):

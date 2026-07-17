@@ -53,7 +53,7 @@ révision), frais réseau ≈6,07+6,38 c/kWh à déduire.*
 > inventé — chaque constante tarifaire/Kc porte sa source en commentaire + flag « à vérifier
 > fondateur » quand estimée ; prix_achat jamais client-facing.
 
-- [ ] QX43 — **Mode `commercial` de bout en bout côté ERP.** `Devis.ModeInstallation` gagne
+- [x] QX43 — **Mode `commercial` de bout en bout côté ERP.** `Devis.ModeInstallation` gagne
   `COMMERCIAL='commercial'` (ventes/models.py:93-97, migration additive) et le label
   INDUSTRIEL redevient « Industriel » (il dit « Industriel / Commercial » aujourd'hui).
   DevisGenerator.jsx `MODE_OPTIONS` (:55-59) passe à 4 (🏪 Commercial). builder.py :
@@ -66,7 +66,7 @@ révision), frais réseau ≈6,07+6,38 c/kWh à déduire.*
   résidentiel silencieux ; tests de non-régression sur les 3 modes existants.
   (SCHEMA — migration additive : nouveau choix de champ ModeInstallation)
   (@lane: ventes-backend) (@model: sonnet)
-- [ ] QX44 — **Étude COMMERCIALE par catégorie dans le générateur.** DevisGenerator mode
+- [x] QX44 — **Étude COMMERCIALE par catégorie dans le générateur.** DevisGenerator mode
   commercial : select « Catégorie » (hôtel/riad, restaurant/café, commerce/supermarché,
   bureau/siège, santé, école privée, hammam/spa/gym, boulangerie, entrepôt froid, autre) +
   2-4 questions par catégorie (hôtel : chambres+occupation+piscine ; restaurant : chambres
@@ -82,7 +82,7 @@ révision), frais réseau ≈6,07+6,38 c/kWh à déduire.*
   avec QX43 → même lane (union `plan_lanes.py`), séquentiel après le mode commercial de QX43.
   **Done =** une étude commerciale hôtel ≠ bureau à facture égale ;
   etude_params round-trip édition ; tests. (@lane: ventes-frontend) (@model: opus) (@after: QX43)
-- [ ] QX45 — **Renderer INDUSTRIEL dédié (quote_engine/industriel/).** Nouveau package
+- [x] QX45 — **Renderer INDUSTRIEL dédié (quote_engine/industriel/).** Nouveau package
   miroir de residential/ + agricole/ (renderer.py expose `is_industrial(devis, pdf_options)`
   + `render_pdf_bytes(data)` + exception `Unsupported`, EXACTEMENT comme agricole/residential ;
   câblé dans le dispatch `generate_premium_devis_pdf` builder.py:1442-1463, AVANT le repli
@@ -102,7 +102,7 @@ révision), frais réseau ≈6,07+6,38 c/kWh à déduire.*
   (test_quote_engine.py:343-356) appelle le moteur legacy `generate_premium_pdf` EN DIRECT, hors
   du dispatch `generate_premium_devis_pdf` — il ne voit donc jamais le nouveau renderer.
   (@lane: quote-engine) (@model: opus)
-- [ ] QX46 — **Renderer COMMERCIAL dédié (quote_engine/commercial/).** Package miroir exposant
+- [x] QX46 — **Renderer COMMERCIAL dédié (quote_engine/commercial/).** Package miroir exposant
   `is_commercial(devis, pdf_options)` + `render_pdf_bytes` + `Unsupported`, câblé dans le dispatch
   `generate_premium_devis_pdf` builder.py:1442-1463 avant le repli legacy (comme QX45).
   P1 cover catégorie-aware (label + pictogramme catégorie, KPIs
@@ -114,7 +114,7 @@ révision), frais réseau ≈6,07+6,38 c/kWh à déduire.*
   `etude_params.categorie_commerciale` (QX44) ; sans catégorie → blocs génériques.
   **Done =** PDF commercial distinct, blocs conditionnels par catégorie testés, 3 pages.
   (@lane: quote-engine) (@model: opus) (@after: QX43, QX44)
-- [ ] QX47 — **Devis AGRICOLE : le document que le fermier comprend.** Étendre
+- [x] QX47 — **Devis AGRICOLE : le document que le fermier comprend.** Étendre
   quote_engine/agricole/ : (a) graphique mensuel « eau livrée (pompe, m³/j) vs besoin de la
   culture (ETc mensuel) » — dépend des stades Kc de QX48 ; (b) bloc bassin recommandé (m³ =
   1-3× besoin journalier, « X jours d'autonomie ») ; (c) ligne subvention FDA 30 % avec
@@ -126,7 +126,7 @@ révision), frais réseau ≈6,07+6,38 c/kWh à déduire.*
   NOTE : le devis agricole CHIFFRABLE reste gaté par QXG3 (11 pompes à courbe prix=0) —
   le rendu doit dégrader proprement sans prix. **Done =** 4 pages agricoles enrichies,
   tests page-count/snapshot à jour. (@lane: quote-engine) (@model: sonnet) (@after: QX48)
-- [ ] QX48 — **Moteur agronomique v2 (FAO-56 réel, partagé).** Étendre
+- [x] QX48 — **Moteur agronomique v2 (FAO-56 réel, partagé).** Étendre
   frontend/src/features/ventes/agronomy.js + le miroir backend quote_engine/agricole/
   agronomy.py : (a) table cultures ~16 entrées (agrumes, olivier, amandier, dattier,
   avocatier, myrtille/fraise, tomate/poivron serre, pomme de terre, oignon, melon/pastèque,
@@ -142,14 +142,14 @@ révision), frais réseau ≈6,07+6,38 c/kWh à déduire.*
   avertissement « pompe sous-dimensionnée » (jamais un blocage). **Done =** besoins
   mensuels par culture/région testés contre 3 valeurs citées ; miroirs front/back alignés
   (test de parité) ; garde CV testée. (@lane: ventes-frontend) (@model: opus)
-- [ ] QX49 — **Payload proposition mode-complet.** public_views.py : le payload proposal
+- [x] QX49 — **Payload proposition mode-complet.** public_views.py : le payload proposal
   expose `mode_installation`, `categorie_commerciale`, et un bloc KPI par mode (pompage :
   pompe_cv/kw, hmt_m, debit_hmt_m3h, m3_jour, champ_kwc, bassin_m3, fda_eligible ;
   industriel/commercial : taux_autoconso, taux_couverture, economies_annuelles, payback,
   injection_kwh_an/injection_dh_an si calculés) — whitelist stricte côté serveur, jamais
   prix_achat/marge. Tests payload par mode. **Done =** la page web peut rendre 4 variantes
   sans re-calcul client. (@lane: ventes-backend) (@model: sonnet) (@after: QX43)
-- [ ] QX50 — **Ligne injection 82-21 (industriel/commercial).** computeEtudeIndustrielle +
+- [x] QX50 — **Ligne injection 82-21 (industriel/commercial).** computeEtudeIndustrielle +
   builder : option `injection` — surplus = max(0, prod − autoconsommé) plafonné à 20 % de
   la production, valorisé au tarif ANRE période courante (0,21 pointe / 0,18 hors pointe
   DH/kWh) NET des frais d'accès réseau (≈6,07 + 6,38 c/kWh), OFF par défaut, activable par
@@ -158,7 +158,7 @@ révision), frais réseau ≈6,07+6,38 c/kWh à déduire.*
   solar.js) que le fondateur peut vérifier ligne à ligne. **Done =** étude avec injection
   = étude sans + ligne bornée ; jamais affichée sans la mention ; tests bornes 20 %/net.
   (@lane: quote-engine) (@model: opus) (@after: QX43)
-- [ ] QX51 — **Webhook : questionnaire commercial/industriel v2 persisté.** Étendre la
+- [x] QX51 — **Webhook : questionnaire commercial/industriel v2 persisté.** Étendre la
   whitelist `_extract_web_questionnaire` (webhooks.py) : `categorie_commerciale` + réponses
   par catégorie (chambres, occupation_pct, chambres_froides, cuisson, four, cuisson_nocturne,
   temperature_consigne, effectif, internat, fermeture_estivale, piscine, blanchisserie…),
@@ -167,7 +167,7 @@ révision), frais réseau ≈6,07+6,38 c/kWh à déduire.*
   choix fermés ; note chatter enrichie (résumé par catégorie). Byte-identique sans les
   nouveaux champs. **Done =** tests mapping + note + tolérance. (@lane: crm-webhook)
   (@model: sonnet)
-- [ ] QX52 — **`instType`/`type_installation` : parité 4 modes (backend+frontend).** Balayage
+- [x] QX52 — **`instType`/`type_installation` : parité 4 modes (backend+frontend).** Balayage
   des surfaces mode↔type SAUF apps/web (voir NB) : (1) webhooks `_MARKET_MODE_ALIASES`
   (webhooks.py:185-196) mappe DÉJÀ correctement `commercial`→commercial et `professionnel`/
   `professional`→industriel — RIEN à changer, juste garder + tester ; (2) `autoQuote.js`
@@ -233,6 +233,10 @@ the journey the best in the world for the CLIENT and the COMMERCIAL user.*
 
 *From Reda: (1) when the client opens the returned quote he must see HIS OWN HOME in interactive 3D with the panels (zoom/rotate) — the web viewer is WEB_PLAN WJ25–WJ28, this QJ26 is the backend unlock; (2) when the client asks to be contacted, the lead's HANDLER and the handler's SUPERIOR must both be notified; (3) a « contacter mon supérieur » button on quote generation notifies the creator's superior; (4) support multi-villa quotes — multiply one villa ×N (identical) OR add different villas one by one, all in ONE quote document. Research confirmed the pieces exist: `CustomUser.supervisor` self-FK (added 2026-06-18), `Lead.owner` (handler), `Devis.created_by` (creator), the `notify()` service + extensible EventType (QJ2), and the `roof_layout` JSON already stored on the Devis — the public proposal payload just doesn't expose it, and no server-side contact-request endpoint exists yet.*
 
+
+#### DONE LOG — QX ROUND 7 (4 modèles de devis) (2026-07-16)
+
+Groupe QX43-52 drainé (lane quote-engine, un seul merge). **QX43** mode `commercial` de bout en bout (`Devis.ModeInstallation` +COMMERCIAL, migration additive 0087 sur Devis ET DevisPreset, builder + DevisGenerator 4 modes). **QX44** étude commerciale par catégorie (10 catégories, table archétypes day-share sourcée). **QX45** renderer industriel dédié (3 pages CFO, câblé AVANT le legacy — règle #4 préservée, renderers grandfathered ARC11/SCA29 comme residential/agricole). **QX46** renderer commercial catégorie-aware. **QX47** devis agricole enrichi (graphe ETc mensuel vs eau livrée + bassin recommandé). **QX48** moteur agronomique v2 FAO-56 (~20 cultures sourcées, séries mensuelles, miroir front/back byte-identique). **QX49** payload proposition mode-complet (whitelist stricte, jamais prix_achat/marge). **QX50** ligne injection 82-21 (`constants_82_21.py` sourcé + miroir solar.js, OFF par défaut, plafond 20% net frais réseau, mention obligatoire). **QX51** webhook questionnaire commercial/industriel v2. **QX52** parité instType/type_installation 4 modes. Toutes les constantes tarifaires/Kc estimées portent « à vérifier fondateur » (QXG6 les durcira). QXG1-6 restent GATED (comptes/données/vérifs fondateur).
 
 #### DONE LOG — PLAN2 VX vérification + 2 build (2026-07-13)
 

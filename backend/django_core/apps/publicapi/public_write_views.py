@@ -17,10 +17,11 @@ from apps.crm.models import Lead
 from .auth import ApiKeyAuthentication, ApiKeyRateThrottle
 from .constants import SCOPE_WRITE_LEADS, SCOPE_WRITE_ACTIVITIES
 from .idempotency import get_idempotency_key, replay_or_none, remember
+from .public_response import PublicApiResponseMixin
 from .public_serializers import PublicLeadSerializer
 
 
-class PublicWriteAPIView(APIView):
+class PublicWriteAPIView(PublicApiResponseMixin, APIView):
     """Base commune : auth par clé d'API, throttle par clé, scope requis
     déclaré par la sous-classe (`required_scope`), idempotence optionnelle.
 

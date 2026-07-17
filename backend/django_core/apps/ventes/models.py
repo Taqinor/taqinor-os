@@ -92,7 +92,11 @@ class Devis(models.Model):
     # ── Multi-marchés (2026-06) — additif, tout optionnel ──
     class ModeInstallation(models.TextChoices):
         RESIDENTIEL = 'residentiel', 'Résidentiel'
-        INDUSTRIEL = 'industriel', 'Industriel / Commercial'
+        # QX43 — industriel et commercial sont désormais deux marchés distincts
+        # (4 modes réels). Le label INDUSTRIEL redevient « Industriel » ; le
+        # nouveau COMMERCIAL couvre hôtel/restaurant/commerce/bureau…
+        INDUSTRIEL = 'industriel', 'Industriel'
+        COMMERCIAL = 'commercial', 'Commercial'
         AGRICOLE = 'agricole', 'Agricole (pompage)'
 
     mode_installation = models.CharField(

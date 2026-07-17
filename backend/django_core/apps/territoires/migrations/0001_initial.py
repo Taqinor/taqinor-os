@@ -10,7 +10,7 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
-        ('authentication', '0024_company_est_demo_mode_presentation'),
+        ('authentication', '0025_company_est_demo_mode_presentation'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 

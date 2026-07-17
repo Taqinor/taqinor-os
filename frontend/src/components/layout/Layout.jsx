@@ -26,6 +26,11 @@ const COLLAPSE_KEY = 'taqinor.sidebar.collapsed'
 // démontage sur fermeture, pour ne pas perdre l'état de la conversation).
 const CopilotPanel = lazy(() => import('../../features/ia/CopilotPanel'))
 
+// NTIDE9 — CTA « Suggérer une amélioration » (Intercom-style), chargé
+// paresseusement comme le copilote : n'ajoute rien au chemin froid pour un
+// utilisateur qui ne l'ouvre jamais.
+const SuggestionCTA = lazy(() => import('../../features/innovation/SuggestionCTA'))
+
 function readCollapsed() {
   try {
     return window.localStorage.getItem(COLLAPSE_KEY) === '1'
@@ -138,6 +143,13 @@ export default function Layout({ children }) {
           qu'à la première visite (drapeau localStorage) et rejouable depuis
           les Paramètres. Rend null le reste du temps. */}
       <OnboardingCoachmarks />
+      {/* NTIDE9 — CTA « Suggérer une amélioration », visible sur chaque écran
+          authentifié. Chargé paresseusement (fallback null le temps du
+          chunk) ; toujours monté (contrairement au copilote) car LE bouton
+          lui-même est le déclencheur, pas un panneau ouvert d'ailleurs. */}
+      <Suspense fallback={null}>
+        <SuggestionCTA />
+      </Suspense>
     </div>
   )
 }

@@ -13,6 +13,9 @@ import {
 import { SectionTitle, Field } from './peComponents'
 // VX233 — feed d'audit extrait, paramétrable par section (filtre dynamique ici).
 import SettingsAuditFeed from './SettingsAuditFeed'
+// NTIDE7 — Campagnes innovation (boîte à idées), composant autonome (modèle
+// backend séparé, apps/innovation) — même patron que SettingsAuditFeed.
+import CampagnesInnovationSettings from '../../features/innovation/CampagnesInnovationSettings'
 
 export default function AvanceSection({
   form, set,
@@ -269,6 +272,9 @@ export default function AvanceSection({
           </div>
         </CardContent>
       </Card>
+
+      {/* NTIDE7 — Campagnes innovation (boîte à idées interne). */}
+      <CampagnesInnovationSettings />
 
       {/* L765 — Journal des modifications (audit N55, lecture seule) */}
       <Card>

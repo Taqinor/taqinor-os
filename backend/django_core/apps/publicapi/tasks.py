@@ -7,6 +7,13 @@ tentative HTTP signée, journalise le résultat, puis re-tente avec un backoff
 exponentiel + jitter dans une fenêtre bornée (`max_retries=8`). Toutes les
 tentatives partagent le même `event_id` (porté par le payload). Best-effort :
 le broker/HTTP ne bloque jamais l'appelant métier.
+
+NTAPI8 — une fois CETTE fenêtre rapide épuisée (`MaxRetriesExceededError`),
+la cascade de reprises PROGRAMMÉES à cadence longue (`retry.py` — 1 min,
+5 min, 30 min, 2 h, 6 h, jusqu'à 6 tentatives au total) prend le relais, via
+la commande `retry_webhook_deliveries` (Celery-beat ou manuelle). Les deux
+mécanismes ne se chevauchent jamais : le second ne démarre qu'après l'échec
+DÉFINITIF du premier.
 """
 import logging
 
@@ -45,9 +52,9 @@ def deliver_webhook(self, webhook_id, event, payload):
     outcome, response_status, error = delivery._send(webhook, event, payload)
     status = (WebhookDelivery.Statut.SUCCESS if outcome == 'success'
               else WebhookDelivery.Statut.FAILED)
-    delivery._record(webhook, event, payload,
-                     status=status, response_status=response_status,
-                     error=error)
+    record = delivery._record(webhook, event, payload,
+                              status=status, response_status=response_status,
+                              error=error)
 
     if outcome == 'failed':
         try:
@@ -56,4 +63,15 @@ def deliver_webhook(self, webhook_id, event, payload):
         except self.MaxRetriesExceededError:
             logger.warning('Webhook %s en échec après %s reprises',
                            webhook_id, self.max_retries)
+            # NTAPI8 — la fenêtre RAPIDE (Celery) est épuisée : programme la
+            # cascade LONGUE (1 min, 5 min, 30 min, 2 h, 6 h) sur la dernière
+            # tentative journalisée, best-effort (jamais bloquant ici).
+            if record is not None:
+                try:
+                    from .retry import schedule_first_retry
+                    schedule_first_retry(record)
+                except Exception:  # noqa: BLE001
+                    logger.exception(
+                        'Could not schedule NTAPI8 long-tail retry for '
+                        'delivery %s', record.pk)
     return outcome
