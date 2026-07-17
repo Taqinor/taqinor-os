@@ -87,8 +87,8 @@ class CycleBudgetaireViewSet(TenantMixin, viewsets.ModelViewSet):
             return Response(
                 {'detail': "Un cycle brouillon ou déjà clos ne peut pas être clôturé."},
                 status=status.HTTP_400_BAD_REQUEST)
-        cycle.statut = CycleBudgetaire.Statut.CLOS
-        cycle.save(update_fields=['statut'])
+        from .services import clore_cycle
+        clore_cycle(cycle)
         return Response(CycleBudgetaireSerializer(cycle).data)
 
     @action(detail=True, methods=['get'], url_path='export')

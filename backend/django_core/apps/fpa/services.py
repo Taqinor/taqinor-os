@@ -5,6 +5,24 @@ from django.utils import timezone
 from .models import CycleBudgetaire, SoumissionBudgetDepartement
 
 
+def clore_cycle(cycle):
+    """NTFPA29 — passe un cycle à ``clos`` et émet l'événement domaine
+    ``budget_cycle_clos`` (core.events) EXACTEMENT une fois. Le verrouillage des
+    lignes (NTFPA6) découle du statut ``clos`` au niveau ``save()``."""
+    from .models import CycleBudgetaire
+    from .selectors import budget_total_annuel
+
+    cycle.statut = CycleBudgetaire.Statut.CLOS
+    cycle.save(update_fields=['statut'])
+
+    totaux = {'total_depenses': budget_total_annuel(cycle.company, cycle.pk)}
+    from core import events
+    events.budget_cycle_clos.send(
+        sender='apps.fpa.services.clore_cycle',
+        company=cycle.company, cycle_id=cycle.pk, totaux=totaux)
+    return cycle
+
+
 def notifier_ouverture_cycle(cycle):
     """NTFPA28 — à l'ouverture d'un cycle en saisie, notifie chaque responsable
     de département ACTIF (best-effort, réutilise ``notifications.notify``)."""
