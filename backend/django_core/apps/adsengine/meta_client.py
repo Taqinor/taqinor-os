@@ -30,6 +30,19 @@ from .api_version import GRAPH_BASE_URL, GRAPH_VERSION  # noqa: F401
 # Statut FORCÉ de toute création — codé en dur, jamais surchargeable.
 FORCED_STATUS = 'PAUSED'
 
+# ── ADSDEEP4 — Fenêtres d'attribution, SOURCE UNIQUE ─────────────────────────
+# ``action_attribution_windows`` demandé sur chaque pull d'insights de
+# conversion. Les fenêtres VIVANTES au 2026-07 (dossier insights-api §4). Les
+# fenêtres ``7d_view`` et ``28d_view`` sont MORTES depuis 2026-01-12 : les
+# demander renvoie SILENCIEUSEMENT aucune donnée (aucune erreur Graph) — donc
+# jamais les coder. Un test-garde (``test_attribution_windows``) échoue si l'une
+# d'elles réapparaît quelque part dans ce module.
+ATTRIBUTION_WINDOWS = ('1d_click', '7d_click', '1d_view')
+
+# Fenêtres INTERDITES (mortes en silence) — listées pour la garde uniquement,
+# jamais émises.
+DEAD_ATTRIBUTION_WINDOWS = ('7d_view', '28d_view')
+
 
 # ── Taxonomie d'erreurs ──────────────────────────────────────────────────────
 class MetaError(Exception):
