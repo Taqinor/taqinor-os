@@ -1632,3 +1632,58 @@ class BreakdownsView(APIView):
         if since:
             qs = qs.filter(date__gte=since)
         return Response(InsightBreakdownSerializer(qs, many=True).data)
+
+
+class MediaResolveView(APIView):
+    """ADSDEEP12 — Résolveur de médias FRAIS d'un créatif.
+
+    ``GET /api/django/adsengine/media/<ref>/?kind=video|image`` — fetch à la
+    volée l'URL JOUABLE d'une vidéo (``/<video_id>?fields=source`` — expire
+    ~1 h) ou l'URL PERMANENTE d'une image (``adimages`` ``permalink_url``). Le
+    résultat est mis en cache Redis ≤30 min et n'est JAMAIS persisté en base (les
+    URLs CDN expirent). 404 propre sans média / sans connexion Meta live.
+    Company-scopé + gaté ``adsengine_view``."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
+    # Durée de cache (s) — < durée de vie CDN (~1 h). Jamais persisté en base.
+    CACHE_TTL = 1800
+
+    def get(self, request, ref):
+        company, err = _adseng_company_gate(request, 'adsengine_view')
+        if err is not None:
+            return err
+        kind = (request.query_params.get('kind') or 'video').strip().lower()
+        if kind not in ('video', 'image'):
+            return Response({'detail': 'kind invalide (video|image).'},
+                            status=400)
+
+        from django.core.cache import cache
+
+        cache_key = f'adsengine-media:{company.pk}:{kind}:{ref}'
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return Response({'url': cached, 'cached': True})
+
+        conn = MetaConnection.objects.filter(
+            company=company, enabled=True).first()
+        if conn is None or not conn.is_live:
+            return Response({'detail': 'Connexion Meta indisponible.'},
+                            status=404)
+
+        from .meta_client import MetaClient, MetaError
+
+        client = MetaClient.from_connection(conn)
+        try:
+            if kind == 'video':
+                data = client.get_video_source(ref)
+                url = (data or {}).get('source') or ''
+            else:
+                data = client.get_ad_image(ref)
+                url = (data or {}).get('permalink_url') or ''
+        except MetaError:
+            return Response({'detail': 'Média introuvable.'}, status=404)
+        if not url:
+            return Response({'detail': 'Média introuvable.'}, status=404)
+        # Cache la seule URL (Redis, ≤30 min) — JAMAIS d'écriture en base.
+        cache.set(cache_key, url, self.CACHE_TTL)
+        return Response({'url': url, 'cached': False})

@@ -18,7 +18,8 @@ from .views import (
     CreativeGenerationBatchViewSet, CreativePolicyViewSet, DecisionLogViewSet,
     EngineActionViewSet, EngineAlertViewSet, ExperimentArmViewSet,
     ExperimentViewSet, FlightPhaseViewSet, FlightPlanViewSet,
-    GuardrailConfigViewSet, GuardrailSingletonView, MetaConnectionHealthView,
+    GuardrailConfigViewSet, GuardrailSingletonView, MediaResolveView,
+    MetaConnectionHealthView,
     MetaConnectionStatusView, MetaConnectionViewSet, MetricsDashboardView,
     MetricsLeadsView, MetricsPacingView, PacingStateViewSet,
     ReconciliationListView, ReconciliationSnapshotViewSet, ReportExportView,
@@ -110,5 +111,8 @@ urlpatterns = [
          name='adsengine-reporting-export'),
     # ADSDEEP9 — ventilations (audience & diffusion) d'un objet publicitaire.
     path('breakdowns/', BreakdownsView.as_view(), name='adsengine-breakdowns'),
+    # ADSDEEP12 — résolveur de médias frais (URL jouable non persistée).
+    path('media/<str:ref>/', MediaResolveView.as_view(),
+         name='adsengine-media-resolve'),
     path('', include(router.urls)),
 ]
