@@ -68,6 +68,10 @@ app.conf.enable_utc = False
 #   - NTEDU22 : matérialisation hebdomadaire des séances depuis l'emploi du
 #     temps actif (dimanche 20:00, fériés marocains exclus) — apps/education/
 #     tasks.py (idempotent par classe/matière/date/heure de début).
+#   - NTIDE40 : digest feedback produit non-lu par thème (08:40), gated PAR
+#     SOCIÉTÉ (InnovationSettings.feedback_digest_actif, désactivé par
+#     défaut) — apps/innovation/tasks.py (no-op tant qu'aucune société ne
+#     l'active ; la fréquence hebdo, elle, ne notifie que le lundi).
 app.conf.beat_schedule = {
     'ventes-check-overdue-factures': {
         'task': 'ventes.check_overdue_factures',
@@ -487,6 +491,19 @@ app.conf.beat_schedule = {
     'education-generer-seances-semaine': {
         'task': 'education.generer_seances_semaine',
         'schedule': crontab(hour=20, minute=0, day_of_week=0),
+    },
+    # NTIDE40 — digest feedback produit non-lu par thème, gated PAR SOCIÉTÉ
+    # (InnovationSettings.feedback_digest_actif), quotidien (heure creuse
+    # matinale, la fréquence hebdo interne ne notifie que le lundi).
+    'innovation-feedback-digest': {
+        'task': 'innovation.feedback_digest_run',
+        'schedule': crontab(hour=8, minute=40),
+    },
+    # NTEDU40 — relance réinscription (élèves sans Inscription pour l'année
+    # suivante après la date limite paramétrable) : quotidien, heure creuse.
+    'education-relancer-reinscriptions': {
+        'task': 'education.relancer_reinscriptions',
+        'schedule': crontab(hour=7, minute=50),
     },
 }
 

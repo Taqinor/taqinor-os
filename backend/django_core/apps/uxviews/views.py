@@ -1,6 +1,9 @@
+import json
+
 from django.db.models import Q
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
@@ -8,6 +11,25 @@ from core.viewsets import CompanyScopedModelViewSet
 
 from .models import SavedView
 from .serializers import SavedViewSerializer
+
+
+def _is_valid_configuration(configuration):
+    """NTUX34 — validation STRUCTURELLE de `configuration` (aucun registre de
+    champs par écran n'existe côté serveur — `SavedView.configuration` est un
+    blob JSON opaque au backend, cf. models.py — donc on vérifie sa FORME,
+    pas la validité métier de chaque champ). `colonnes_visibles`, si présent,
+    doit être une liste ; `filtres`, si présent, doit respecter le contrat
+    `{op, conditions: [...]}`  de `filterLogic.js` (`isGroup`)."""
+    if not isinstance(configuration, dict):
+        return False
+    colonnes = configuration.get('colonnes_visibles')
+    if colonnes is not None and not isinstance(colonnes, list):
+        return False
+    filtres = configuration.get('filtres')
+    if filtres is not None:
+        if not isinstance(filtres, dict) or not isinstance(filtres.get('conditions'), list):
+            return False
+    return True
 
 
 class SavedViewViewSet(CompanyScopedModelViewSet):
@@ -32,10 +54,10 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
         )
 
     def get_permissions(self):
-        # NTUX23 — les deux actions de gouvernance (liste TOUTE la company,
-        # export xlsx) sont réservées Directeur/Admin, comme
-        # `definir_par_defaut_role` (NTUX2).
-        if self.action in ('definir_par_defaut_role', 'toutes_company', 'export_xlsx'):
+        # NTUX23/34 — les actions de gouvernance de l'écran `/parametres/vues`
+        # (liste TOUTE la company, export xlsx, import CSV) sont réservées
+        # Directeur/Admin, comme `definir_par_defaut_role` (NTUX2).
+        if self.action in ('definir_par_defaut_role', 'toutes_company', 'export_xlsx', 'importer'):
             return [IsResponsableOrAdmin()]
         return [IsAnyRole()]
 
@@ -130,3 +152,70 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
             ])
         return build_xlsx_response(
             'vues-sauvegardees.xlsx', headers, rows, sheet_title='Vues sauvegardées')
+
+    @action(detail=False, methods=['post'], url_path='importer', parser_classes=[MultiPartParser])
+    def importer(self, request):
+        """NTUX34 — import CSV/XLSX de `SavedView` entre environnements (ex.
+        staging → prod, ou d'une company sœur), depuis `/parametres/vues`
+        (NTUX23). Colonnes attendues : `ecran`, `nom`, `configuration` (JSON
+        sérialisé). Directeur/Admin uniquement.
+
+        Validation STRICTE ligne par ligne (numérotée à partir de 1 = 1re
+        ligne de données, après l'en-tête) : JSON invalide ou structure
+        `configuration` invalide (cf. `_is_valid_configuration`) → ligne
+        REJETÉE avec un message, les autres lignes valides sont importées
+        quand même — jamais un import tout-ou-rien.
+
+        Jamais d'écrasement silencieux : une vue existante du même
+        (owner, écran, nom) est renommée `<nom> (import)` plutôt que
+        remplacée. La vue importée devient TOUJOURS personnelle (owner =
+        l'utilisateur qui importe, jamais une visibilité équipe automatique —
+        le partage reste un acte explicite, cf. `definir_par_defaut_role`)."""
+        from apps.dataimport.parsing import iter_rows, normalize_header
+
+        fichier = request.FILES.get('fichier')
+        if not fichier:
+            raise ValidationError({'fichier': 'Un fichier CSV ou XLSX est requis.'})
+
+        _headers, raw_rows = iter_rows(fichier.read(), fichier.name)
+        rows = [
+            {normalize_header(k): v for k, v in row.items()}
+            for row in raw_rows
+        ]
+
+        created = []
+        erreurs = []
+        for i, row in enumerate(rows, start=1):
+            ecran = str(row.get('ecran') or '').strip()
+            nom = str(row.get('nom') or '').strip()
+            config_raw = row.get('configuration')
+            if not ecran or not nom:
+                erreurs.append({'ligne': i, 'message': "colonnes 'ecran' et 'nom' requises."})
+                continue
+            try:
+                configuration = json.loads(config_raw) if config_raw else {}
+            except (TypeError, ValueError):
+                erreurs.append({'ligne': i, 'message': 'JSON de configuration invalide.'})
+                continue
+            if not _is_valid_configuration(configuration):
+                erreurs.append({
+                    'ligne': i,
+                    'message': "configuration invalide : 'colonnes_visibles' doit être une liste et "
+                               "'filtres' doit être un groupe {op, conditions}.",
+                })
+                continue
+
+            final_nom = nom
+            if SavedView.objects.filter(
+                company=request.user.company, owner=request.user, ecran=ecran, nom=nom,
+            ).exists():
+                final_nom = f'{nom} (import)'
+
+            view = SavedView.objects.create(
+                company=request.user.company, owner=request.user,
+                ecran=ecran, nom=final_nom, configuration=configuration,
+                visibilite=SavedView.Visibilite.PERSONNELLE,
+            )
+            created.append(SavedViewSerializer(view).data)
+
+        return Response({'created': created, 'erreurs': erreurs})

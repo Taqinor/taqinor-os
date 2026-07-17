@@ -96,3 +96,81 @@ def archiver_anciens(now, jours, apply_=True):
         WebhookDelivery, WebhookDeliveryArchive, _webhook_delivery_to_archive,
         cutoff_field='created_at', now=now, jours=jours, apply_=apply_,
     )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# NTAPI27 — Bac à sable API : société-jumelle isolée + jeu de données de démo.
+#
+# Une clé `environnement='test'` (NTAPI26) est émise directement sur la
+# société-jumelle (`SandboxTenant.sandbox_company`) : AUCUN code spécial
+# n'est nécessaire dans les viewsets publics pour garantir l'isolation — le
+# scoping `company_id` habituel suffit. Les écritures de démo passent
+# EXCLUSIVEMENT par les points d'entrée cross-app déjà sanctionnés (XPLT5 —
+# `crm.services.create_lead_from_public_api`, le même que celui qu'un vrai
+# appelant `leads:write` utilise), jamais par un import direct de
+# `apps.crm.models` — la frontière inter-app reste intacte y compris pour du
+# code purement interne.
+
+DEMO_LEADS = [
+    {'nom': 'Ferme Solaire Atlas (démo)', 'email': 'demo.atlas@sandbox.taqinor.ma',
+     'telephone': '+212600000001', 'ville': 'Marrakech', 'canal': 'site_web'},
+    {'nom': 'Villa Zenata (démo)', 'email': 'demo.zenata@sandbox.taqinor.ma',
+     'telephone': '+212600000002', 'ville': 'Casablanca', 'canal': 'recommandation'},
+    {'nom': 'Coopérative Agricole Souss (démo)', 'email': 'demo.souss@sandbox.taqinor.ma',
+     'telephone': '+212600000003', 'ville': 'Agadir', 'canal': 'salon'},
+]
+
+
+def get_or_create_sandbox(company):
+    """NTAPI27 — renvoie le `SandboxTenant` de `company` (le crée + seed au
+    besoin). Idempotent : un appel répété réutilise le même sandbox."""
+    from authentication.models import Company
+    from .models import SandboxTenant
+
+    tenant = SandboxTenant.objects.filter(company=company).first()
+    if tenant:
+        return tenant
+
+    sandbox_company = Company.objects.create(
+        nom=f'{company.nom} — Bac à sable API',
+        actif=True,
+    )
+    tenant = SandboxTenant.objects.create(
+        company=company, sandbox_company=sandbox_company)
+    seed_sandbox_for_company(tenant)
+    return tenant
+
+
+def seed_sandbox_for_company(tenant):
+    """NTAPI27 — seed IDEMPOTENT/ADDITIF le sandbox de `tenant` : ne recrée
+    jamais un lead de démo déjà présent (dédup sur l'email, via le
+    sélecteur `crm.selectors.existing_lead_emails` — jamais d'import direct
+    de `apps.crm.models`). Renvoie le nombre de leads créés."""
+    from apps.crm.services import create_lead_from_public_api
+    from apps.crm.selectors import existing_lead_emails
+
+    already = existing_lead_emails(
+        tenant.sandbox_company, [d['email'] for d in DEMO_LEADS])
+    created = 0
+    for demo in DEMO_LEADS:
+        if demo['email'] in already:
+            continue
+        create_lead_from_public_api(company=tenant.sandbox_company, fields=demo)
+        created += 1
+    return created
+
+
+def reset_sandbox(tenant):
+    """NTAPI27 — remet le sandbox de `tenant` à son état initial : supprime
+    TOUTES les données de la société-jumelle (jamais celles de la société
+    réelle — `sandbox_company` est un id distinct), via le service
+    d'ÉCRITURE cross-app sanctionné `crm.services.delete_leads_for_company`,
+    puis reseed le jeu de démo. Renvoie le nombre de leads recréés."""
+    from django.utils import timezone
+    from apps.crm.services import delete_leads_for_company
+
+    delete_leads_for_company(tenant.sandbox_company)
+    created = seed_sandbox_for_company(tenant)
+    tenant.reset_at = timezone.now()
+    tenant.save(update_fields=['reset_at'])
+    return created

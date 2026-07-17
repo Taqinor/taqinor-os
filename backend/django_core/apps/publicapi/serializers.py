@@ -8,7 +8,10 @@ from rest_framework import serializers
 
 from core.models import ApiUsagePlan
 
-from .constants import ALL_SCOPES, ALL_EVENTS, SCOPE_CHOICES, EVENT_CHOICES
+from .constants import (
+    ALL_SCOPES, ALL_EVENTS, SCOPE_CHOICES, EVENT_CHOICES,
+    ALL_ENVIRONMENTS, ENV_LIVE,
+)
 from .models import ApiKey, ServiceAccount, Webhook, WebhookDelivery
 from .validators import UnsafeWebhookURL, validate_webhook_target_url
 
@@ -21,6 +24,9 @@ class ApiKeySerializer(serializers.ModelSerializer):
         model = ApiKey
         fields = [
             'id', 'label', 'prefix', 'scopes', 'enabled', 'api_version',
+            # NTAPI26 — environnement (test/live). NTAPI23 — grace period de
+            # rotation en cours (None = clé permanente).
+            'environnement', 'expire_le',
             'created_by', 'created_by_nom', 'created_at', 'last_used_at',
         ]
         read_only_fields = fields
@@ -38,6 +44,10 @@ class ApiKeyCreateSerializer(serializers.Serializer):
     scopes = serializers.ListField(
         child=serializers.ChoiceField(choices=ALL_SCOPES),
         allow_empty=True, default=list)
+    # NTAPI26 — environnement de la clé (défaut `live`, comportement
+    # historique inchangé pour tout appelant qui ne l'envoie pas).
+    environnement = serializers.ChoiceField(
+        choices=ALL_ENVIRONMENTS, required=False, default=ENV_LIVE)
 
     def validate_label(self, value):
         value = value.strip()

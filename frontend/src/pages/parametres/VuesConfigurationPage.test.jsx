@@ -17,10 +17,12 @@ function renderPage(ui) {
 
 const listAllSavedViews = vi.fn()
 const exportSavedViewsXlsx = vi.fn()
+const importSavedViews = vi.fn()
 vi.mock('../../api/uxviewsApi', () => ({
   default: {
     listAllSavedViews: (...a) => listAllSavedViews(...a),
     exportSavedViewsXlsx: (...a) => exportSavedViewsXlsx(...a),
+    importSavedViews: (...a) => importSavedViews(...a),
   },
 }))
 
@@ -52,6 +54,7 @@ const VIEWS = [
 beforeEach(() => {
   listAllSavedViews.mockReset()
   exportSavedViewsXlsx.mockReset()
+  importSavedViews.mockReset()
   downloadBlobMock.mockReset()
 })
 
@@ -90,5 +93,40 @@ describe('VuesConfigurationPage (NTUX23 — rapport de gouvernance des vues)', (
     await user.click(screen.getByRole('button', { name: /exporter \(xlsx\)/i }))
     await waitFor(() => expect(exportSavedViewsXlsx).toHaveBeenCalled())
     await waitFor(() => expect(downloadBlobMock).toHaveBeenCalledWith(blob, 'vues-sauvegardees.xlsx'))
+  })
+
+  it("NTUX34 — « Importer des vues » envoie le fichier choisi et recharge la liste si des vues sont créées", async () => {
+    const user = userEvent.setup()
+    listAllSavedViews.mockResolvedValue({ data: VIEWS })
+    importSavedViews.mockResolvedValue({ data: { created: [{ id: 3 }], erreurs: [] } })
+    renderPage(<VuesConfigurationPage />)
+    await screen.findAllByText('Mes leads chauds')
+
+    const file = new File(['ecran,nom,configuration\ncrm.leads,Vue,{}'], 'vues.csv', { type: 'text/csv' })
+    const input = document.querySelector('input[type="file"]')
+    await user.upload(input, file)
+
+    await waitFor(() => expect(importSavedViews).toHaveBeenCalledWith(file))
+    // La liste est rechargée après un import réussi (2 appels : montage + après import).
+    await waitFor(() => expect(listAllSavedViews).toHaveBeenCalledTimes(2))
+  })
+
+  it('NTUX34 — les lignes rejetées sont affichées avec leur numéro et leur message', async () => {
+    const user = userEvent.setup()
+    listAllSavedViews.mockResolvedValue({ data: VIEWS })
+    importSavedViews.mockResolvedValue({
+      data: { created: [], erreurs: [{ ligne: 2, message: 'JSON de configuration invalide.' }] },
+    })
+    renderPage(<VuesConfigurationPage />)
+    await screen.findAllByText('Mes leads chauds')
+
+    const file = new File(['ecran,nom,configuration\ncrm.leads,Vue,pas-du-json'], 'vues.csv', { type: 'text/csv' })
+    const input = document.querySelector('input[type="file"]')
+    await user.upload(input, file)
+
+    expect(await screen.findByTestId('vc-import-erreurs')).toBeInTheDocument()
+    expect(screen.getByText(/Ligne 2 — JSON de configuration invalide\./)).toBeInTheDocument()
+    // Aucune vue créée : pas de rechargement supplémentaire (juste le montage).
+    await waitFor(() => expect(listAllSavedViews).toHaveBeenCalledTimes(1))
   })
 })

@@ -8,6 +8,7 @@ from django.http import HttpResponse
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from core.mixins import TenantMixin
@@ -46,10 +47,80 @@ class ClasseViewSet(CompanyScopedModelViewSet):
     queryset = Classe.objects.select_related('annee_scolaire', 'niveau').all()
     serializer_class = ClasseSerializer
 
+    @action(detail=True, methods=['get'], url_path='export',
+            permission_classes=[IsAuthenticated])
+    def export(self, request, pk=None):
+        """NTEDU37 — export de la liste de classe (contacts parents inclus),
+        usage administratif. ``?type=pdf|xlsx`` (défaut xlsx). On N'utilise PAS
+        ``?format=`` : c'est le paramètre RÉSERVÉ de négociation de contenu DRF
+        (``URL_FORMAT_OVERRIDE``) — ``?format=pdf`` chercherait un renderer
+        « pdf » inexistant et renverrait 404 avant d'atteindre cette action."""
+        classe = self.get_object()
+        fmt = (request.query_params.get('type') or 'xlsx').lower()
+        if fmt not in ('pdf', 'xlsx'):
+            raise ValidationError({'type': "doit être 'pdf' ou 'xlsx'."})
+
+        from .exports import export_classe_pdf_bytes, export_classe_xlsx_bytes
+
+        if fmt == 'pdf':
+            data = export_classe_pdf_bytes(classe)
+            resp = HttpResponse(data, content_type='application/pdf')
+            resp['Content-Disposition'] = (
+                f'attachment; filename="classe-{classe.id}.pdf"')
+            return resp
+
+        data = export_classe_xlsx_bytes(classe)
+        resp = HttpResponse(data, content_type=(
+            'application/vnd.openxmlformats-officedocument.'
+            'spreadsheetml.sheet'))
+        resp['Content-Disposition'] = (
+            f'attachment; filename="classe-{classe.id}.xlsx"')
+        return resp
+
+    @action(detail=True, methods=['get'], url_path='trombinoscope',
+            permission_classes=[IsAuthenticated])
+    def trombinoscope(self, request, pk=None):
+        """NTEDU38 — galerie photo des élèves de la classe (réutilise
+        ``Eleve.photo``, pas de nouveau stockage). Un élève sans photo
+        renvoie ``photo_url: null`` — le front affiche un avatar générique,
+        jamais une image cassée."""
+        classe = self.get_object()
+        eleves = classe.eleves.all().order_by('nom', 'prenom')
+        results = [{
+            'id': e.id,
+            'nom': e.nom,
+            'prenom': e.prenom,
+            'photo_url': (
+                f'/api/django/records/attachments/{e.photo_id}/download/'
+                if e.photo_id else None),
+        } for e in eleves]
+        return Response({'count': len(results), 'results': results})
+
 
 class FamilleViewSet(CompanyScopedModelViewSet):
     queryset = Famille.objects.all()
     serializer_class = FamilleSerializer
+
+    @action(detail=True, methods=['post'], url_path='compte-parent',
+            permission_classes=[IsAuthenticated])
+    def compte_parent(self, request, pk=None):
+        """NTEDU31 — crée/renvoie (idempotent) le compte portail parent de
+        cette famille pour l'email fourni. Action ADMIN (session ERP
+        authentifiée) — le compte lui-même n'est ensuite consommé QUE par le
+        token via les endpoints publics (``public_views.py``)."""
+        famille = self.get_object()
+        email = (request.data.get('email') or '').strip().lower()
+        if not email:
+            raise ValidationError({'email': 'Email requis.'})
+
+        from .services import generer_ou_regenerer_compte_parent
+        compte = generer_ou_regenerer_compte_parent(famille, email)
+        return Response({
+            'id': compte.id,
+            'email': compte.email,
+            'token_acces': compte.token_acces,
+            'actif': compte.actif,
+        }, status=status.HTTP_201_CREATED)
 
 
 class EleveViewSet(CompanyScopedModelViewSet):

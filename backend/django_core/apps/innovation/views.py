@@ -18,13 +18,18 @@ from authentication.permissions import IsAdminOrResponsableTier
 from core.viewsets import CompanyScopedModelViewSet
 
 from . import selectors, services
-from .models import CampagneInnovation, Idee, InnovationSettings, VoteIdee
+from .models import (
+    AnnonceProduit, CampagneInnovation, FeedbackProduit, Idee,
+    InnovationSettings, VoteIdee,
+)
 from .permissions import (
     IdeasChangeStatus, IdeasModerate, IdeasSeeAll, IdeasVote,
 )
 from .serializers import (
-    CampagneInnovationSerializer, IdeeDetailSerializer, IdeeSerializer,
-    IncitationSerializer, InnovationSettingsSerializer, VoteIdeeSerializer,
+    AnnonceProduitSerializer, CampagneInnovationDetailSerializer,
+    CampagneInnovationSerializer, FeedbackProduitSerializer,
+    IdeeDetailSerializer, IdeeSerializer, IncitationSerializer,
+    InnovationSettingsSerializer, VoteIdeeSerializer,
 )
 
 
@@ -391,24 +396,92 @@ class CampagneInnovationViewSet(CompanyScopedModelViewSet):
             return [IdeasVote()]
         return super().get_permissions()
 
+    def get_serializer_class(self):
+        if self.action == 'retrieve':
+            return CampagneInnovationDetailSerializer
+        return CampagneInnovationSerializer
+
+    def perform_create(self, serializer):
+        # NTIDE33 — journalise la création dans le chatter générique (même
+        # convention que l'idée, ARC8).
+        super().perform_create(serializer)
+        services.log_campagne_creation(serializer.instance, self.request.user)
+
     def perform_update(self, serializer):
+        # NTIDE33 — snapshot AVANT sauvegarde des champs suivis (statut/
+        # segment/message/tag) pour le journal automatique de changement.
+        anciennes = {
+            champ: getattr(serializer.instance, champ)
+            for champ in services.CAMPAGNE_CHAMPS_SUIVIS
+        }
         # NTIDE31 — notifie le segment ciblé UNIQUEMENT sur la transition
         # brouillon → active (jamais réactive→réactive/fermée→active, etc. —
         # une campagne déjà active republiée n'inonde pas son segment).
         ancien_statut = serializer.instance.statut
         super().perform_update(serializer)
         campagne = serializer.instance
+        services.log_campagne_changes(campagne, anciennes, self.request.user)
         if (ancien_statut != CampagneInnovation.Statut.ACTIVE
                 and campagne.statut == CampagneInnovation.Statut.ACTIVE):
             services.notifier_campagne_lancee(campagne)
 
-    # ── NTIDE27 — bandeau d'incitation (formulaire proposer une idée) ───────
+    # ── NTIDE27/NTIDE32 — bandeau d'incitation (formulaire proposer une idée) ─
     @action(detail=False, methods=['get'], url_path='incitation')
     def incitation(self, request):
+        """``campagne`` : la campagne active (NON expirée) ciblant
+        l'utilisateur, ou ``null``. NTIDE32 — quand une campagne QUI CIBLAIT
+        l'utilisateur vient de dépasser sa ``date_fin`` (mais que l'admin ne
+        l'a pas explicitement fermée), ``fermee`` bascule à ``true`` et
+        ``campagne_fermee``/``date_fin`` permettent d'afficher « Campagne
+        fermée le XX » à la place du bandeau d'incitation."""
         campagne = selectors.campagne_active_pour_utilisateur(request.user)
-        if campagne is None:
-            return Response({'campagne': None})
-        return Response({'campagne': IncitationSerializer(campagne).data})
+        if campagne is not None:
+            return Response({
+                'campagne': IncitationSerializer(campagne).data,
+                'fermee': False,
+            })
+        expiree = selectors.campagne_expiree_pour_utilisateur(request.user)
+        if expiree is not None:
+            return Response({
+                'campagne': None, 'fermee': True,
+                'campagne_fermee': expiree.nom, 'date_fin': expiree.date_fin,
+            })
+        return Response({'campagne': None, 'fermee': False})
+
+    # ── NTIDE34 — dashboard admin « Nos campagnes innovation » ──────────────
+    @action(detail=False, methods=['get'], url_path='tableau-bord')
+    def tableau_bord(self, request):
+        return Response(selectors.tableau_bord_campagnes(request.user.company))
+
+    # ── NTIDE35 — segments proposables (multi-select rôles/départements) ────
+    @action(detail=False, methods=['get'], url_path='segments-disponibles')
+    def segments_disponibles(self, request):
+        return Response({
+            'results': selectors.segments_disponibles(request.user.company),
+        })
+
+    # ── NTIDE33 — chatter de campagne (historique + note manuelle) ──────────
+    @action(detail=True, methods=['get'], url_path='historique')
+    def historique(self, request, pk=None):
+        campagne = self.get_object()
+        from apps.records.serializers import ChatterActivitySerializer
+        from apps.records.services import chatter_qs
+        qs = chatter_qs(campagne, company=campagne.company)
+        return Response(ChatterActivitySerializer(qs, many=True).data)
+
+    @action(detail=True, methods=['post'], url_path='noter')
+    def noter(self, request, pk=None):
+        campagne = self.get_object()
+        body = (request.data.get('body') or '').strip()
+        if not body:
+            return Response({'body': 'Note requise.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        services.noter_campagne(campagne, request.user, body)
+        from apps.records.serializers import ChatterActivitySerializer
+        from apps.records.services import chatter_qs
+        qs = chatter_qs(campagne, company=campagne.company)
+        return Response(ChatterActivitySerializer(qs, many=True).data,
+                        status=status.HTTP_201_CREATED)
 
     # ── NTIDE29 — rapport (nb ciblés/proposées, top votes, conversion) ──────
     @action(detail=True, methods=['get'], url_path='rapport')
@@ -436,6 +509,7 @@ class CampagneInnovationViewSet(CompanyScopedModelViewSet):
             message_incitation=campagne.message_incitation,
             tag_auto=campagne.tag_auto,
         )
+        services.log_campagne_creation(clone, request.user)
         return Response(
             CampagneInnovationSerializer(clone).data,
             status=status.HTTP_201_CREATED)
@@ -471,6 +545,8 @@ class InnovationSettingsView(APIView):
             'theme_couleur_cta': 'Thème couleur du CTA',
             'message_relance': 'Message de relance',
             'seuil_votes_notification': 'Seuil de votes pour notifier l\'auteur',
+            'feedback_digest_actif': 'Digest feedback produit activé',
+            'feedback_digest_frequence': 'Fréquence du digest feedback produit',
         }
         anciennes = {f: getattr(instance, f) for f in champs_label}
         serializer.save()
@@ -500,3 +576,86 @@ class TimelineView(APIView):
             request.user.company,
             statut=params.get('statut'), contexte=params.get('contexte'))
         return Response({'results': data})
+
+
+class FeedbackProduitViewSet(CompanyScopedModelViewSet):
+    """Canal feedback produit in-app (NTIDE36) : « suggestion → founder
+    agrégée par thème ». JAMAIS accessible via un menu/UI normal — seul le
+    bouton discret (NTIDE37, ``SuggestionCTA``-style) crée un feedback ; seul
+    le palier admin (``IdeasSeeAll``) le liste/lit/ferme (NTIDE38/NTIDE39).
+
+    Aucun ``destroy``/``update`` direct : le feedback ne se supprime ni ne se
+    modifie par PATCH — le cycle de vie passe par la lecture (``envoye`` →
+    ``lu``, côté serveur) et l'action ``lier-annonce`` (``lu``/``envoye`` →
+    ``adresse``, NTIDE39)."""
+
+    queryset = FeedbackProduit.objects.select_related('auteur', 'annonce').all()
+    serializer_class = FeedbackProduitSerializer
+    http_method_names = ['get', 'post', 'head', 'options']
+    # NTIDE38 — agrégation/liste/détail réservés au palier admin.
+    permission_classes = [IdeasSeeAll]
+
+    def get_permissions(self):
+        # NTIDE37 — « no auth, le USER du JWT suffit » : tout utilisateur
+        # interne connecté peut ENVOYER un feedback (comme il peut proposer
+        # une idée, NTIDE4/8) ; seule la LECTURE reste réservée à l'admin.
+        if self.action == 'create':
+            return [IdeasVote()]
+        return super().get_permissions()
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company, auteur=self.request.user)
+
+    def retrieve(self, request, *args, **kwargs):
+        """NTIDE36/38 — ouvrir un feedback ``envoye`` le bascule ``lu``
+        (« vu par le founder »), côté serveur, jamais un champ PATCH-able."""
+        instance = self.get_object()
+        if instance.statut == FeedbackProduit.Statut.ENVOYE:
+            instance.statut = FeedbackProduit.Statut.LU
+            instance.save(update_fields=['statut', 'updated_at'])
+        return Response(self.get_serializer(instance).data)
+
+    # ── NTIDE39 — fermeture via annonce produit (« vous l'aviez demandé,
+    #    c'est livré ») ────────────────────────────────────────────────────
+    @action(detail=True, methods=['post'], url_path='lier-annonce')
+    def lier_annonce(self, request, pk=None):
+        """Corps : ``{annonce_id: N}`` (annonce existante) OU ``{annonce:
+        {titre, description, lien}}`` (nouvelle annonce créée à la volée),
+        + ``message`` optionnel affiché à l'auteur du feedback."""
+        feedback = self.get_object()
+        try:
+            services.fermer_feedback_via_annonce(
+                feedback,
+                annonce_id=request.data.get('annonce_id'),
+                annonce_data=request.data.get('annonce'),
+                message=request.data.get('message', ''))
+        except DjangoValidationError as exc:
+            detail = exc.messages[0] if hasattr(exc, 'messages') else str(exc)
+            return Response({'detail': detail},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(FeedbackProduitSerializer(feedback).data)
+
+
+class AnnonceProduitViewSet(CompanyScopedModelViewSet):
+    """Annonces produit (NTIDE39) — repli LOCAL et simple tant que le
+    référentiel plateforme (NTADM18) n'est pas bâti. Gestion réservée au
+    palier admin (même palier que le feedback qu'elle ferme)."""
+
+    queryset = AnnonceProduit.objects.all()
+    serializer_class = AnnonceProduitSerializer
+    http_method_names = ['get', 'post', 'head', 'options']
+    permission_classes = [IdeasSeeAll]
+
+
+class FeedbackResumeView(APIView):
+    """NTIDE38 — agrégation admin du feedback produit par thème (counts +
+    citations d'exemple). Même palier que le tableau de bord d'idées
+    (``IdeasSeeAll``) : surface d'administration, jamais ouverte à tous."""
+
+    permission_classes = [IdeasSeeAll]
+
+    def get(self, request):
+        return Response({
+            'results': selectors.feedback_by_theme(request.user.company),
+        })

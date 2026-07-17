@@ -1765,3 +1765,19 @@ def revenu_pipeline_pondere_par_mois(company, mois_debut, mois_fin):
         contribution = _lead_forecast_value(lead) * _lead_win_weight(lead)
         par_mois[cle] = par_mois.get(cle, Decimal('0')) + contribution
     return par_mois
+
+
+def existing_lead_emails(company, emails):
+    """NTAPI27 — sous-ensemble de ``emails`` déjà présent comme
+    ``Lead.email`` pour ``company``. Sélecteur de LECTURE pour
+    ``apps.publicapi`` (seed idempotent du bac à sable API) : jamais
+    d'import direct de ``Lead`` hors de ``crm``."""
+    from .models import Lead
+
+    emails = [e for e in (emails or []) if e]
+    if not emails:
+        return set()
+    return set(
+        Lead.objects.filter(company=company, email__in=emails)
+        .values_list('email', flat=True)
+    )

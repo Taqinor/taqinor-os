@@ -798,6 +798,10 @@ CELERY_TASK_ROUTES = {
     'sante.alertes_prise_en_charge_expirant': {'queue': 'scheduled'},
     # NTEDU22 — matérialisation hebdomadaire des séances (emploi du temps).
     'education.generer_seances_semaine': {'queue': 'scheduled'},
+    # NTIDE40 — digest feedback produit non-lu, gated par société.
+    'innovation.feedback_digest_run': {'queue': 'scheduled'},
+    # NTEDU40 — relance réinscription (notifie l'administration, quotidien).
+    'education.relancer_reinscriptions': {'queue': 'scheduled'},
     # NTPLT27 — 4e queue `bulk` pour le travail de masse (imports dataimport,
     # exports planifiés volumineux, backfills, seed à l'échelle). Un import de
     # 100 000 lignes ne doit plus retarder un digest planifié ni un rendu PDF

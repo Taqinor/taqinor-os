@@ -16,6 +16,17 @@ const uxviewsApi = {
   // (au-delà du filtre perso/équipe de listSavedViews), + export .xlsx.
   listAllSavedViews: () => api.get('/uxviews/saved-views/toutes-company/'),
   exportSavedViewsXlsx: () => api.get('/uxviews/saved-views/export-xlsx/', { responseType: 'blob' }),
+  // NTUX34 — import CSV/XLSX de vues sauvegardées entre environnements
+  // (Directeur/Admin uniquement, 403 côté serveur sinon) : renvoie
+  // `{created: [...vues...], erreurs: [{ligne, message}]}`, jamais un
+  // tout-ou-rien (les lignes valides sont importées même si d'autres échouent).
+  importSavedViews: (file) => {
+    const form = new FormData()
+    form.append('fichier', file)
+    return api.post('/uxviews/saved-views/importer/', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
 }
 
 export default uxviewsApi

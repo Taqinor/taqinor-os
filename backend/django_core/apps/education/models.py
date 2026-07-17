@@ -736,6 +736,12 @@ class ParametresEducation(models.Model):
         max_length=3, default='MAD', verbose_name='Devise')
     notifier_incidents_mineurs = models.BooleanField(
         default=False, verbose_name='Notifier les incidents mineurs')
+    date_limite_reinscription = models.DateField(
+        null=True, blank=True,
+        verbose_name='Date limite de réinscription')  # NTEDU40 — au-delà de
+    # cette date, ``services.relancer_reinscriptions_dues`` notifie
+    # l'administration (jamais les familles) des élèves sans Inscription
+    # créée pour l'année scolaire suivante. Vide = tâche inactive (no-op).
 
     class Meta:
         verbose_name = 'Paramètres éducation'
@@ -903,3 +909,43 @@ class IncidentDiscipline(TenantModel):
 
     def __str__(self):
         return f"{self.get_type_display()} — {self.eleve} ({self.date})"
+
+
+# =============================================================================
+# NTEDU31 — Portail parents : compte d'accès (auth).
+# =============================================================================
+
+class CompteParent(TenantModel):
+    """NTEDU31 — compte d'accès au portail parents, MÊME PATRON que
+    ``apps.portail.ComptePortailClient`` (FG228) : accès TOKENISÉ, jamais un
+    mot de passe (pas de canal de reset à maintenir), aucune donnée
+    d'identité dupliquée (le nom vient de ``Famille``). ``famille`` est un FK
+    DIRECT — les deux modèles vivent dans la MÊME app, ce n'est pas une
+    frontière cross-app. Une famille peut avoir plusieurs comptes (un par
+    parent/email), chaque email restant unique PAR SOCIÉTÉ. Résolution
+    PUBLIQUE (``public_views.py``) EXCLUSIVEMENT par ``token_acces`` — jamais
+    de session admin, jamais un id de famille lu depuis l'URL."""
+
+    famille = models.ForeignKey(
+        Famille, on_delete=models.CASCADE,  # on_delete: composition (parent-enfant)
+        related_name='comptes_parent', verbose_name='Famille')
+    email = models.EmailField(verbose_name='Email')
+    token_acces = models.CharField(
+        max_length=64, unique=True, db_index=True,
+        verbose_name="Token d'accès")
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    derniere_connexion = models.DateTimeField(
+        null=True, blank=True, verbose_name='Dernière connexion')
+
+    class Meta:
+        verbose_name = 'Compte parent (portail)'
+        verbose_name_plural = 'Comptes parent (portail)'
+        ordering = ['-created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'email'],
+                name='education_compte_parent_email_unique_par_societe'),
+        ]
+
+    def __str__(self):
+        return f'Portail parent — {self.email}'
