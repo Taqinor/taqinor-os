@@ -80,6 +80,9 @@ from .models import (
     SupportOffline,
     DomaineEnvoi,
     CommunicationEvenement,
+    CycleConsolidation, LiasseRemontee, MappingConsolidation,
+    OperationInterco, EcritureElimination,
+    ReferentielComptable, AjustementGaap,
 )
 
 
@@ -280,12 +283,16 @@ def get_centre_cout(company, centre_cout_id):
 @transaction.atomic
 def creer_ecriture(company, journal, date_ecriture, libelle, lignes, *,
                    reference='', source_type='', source_id=None,
-                   created_by=None, statut=None):
+                   created_by=None, statut=None, referentiel=None):
     """Crée une écriture équilibrée et ses lignes, ou lève ``ValidationError``.
 
     ``lignes`` est une liste de dicts : ``{'compte', 'debit', 'credit',
     'libelle'?, 'tiers_type'?, 'tiers_id'?}``. La somme des débits doit égaler
     la somme des crédits, sinon RIEN n'est créé (transaction atomique).
+
+    NTFIN14 — ``referentiel`` (optionnel) tague TOUTES les lignes vers un livre
+    parallèle (multi-GAAP) ; une ligne peut aussi porter son propre
+    ``'referentiel'``. NULL = référentiel principal (comportement historique).
     """
     debit_total = sum((Decimal(lig.get('debit') or 0) for lig in lignes),
                       Decimal('0'))
@@ -320,6 +327,7 @@ def creer_ecriture(company, journal, date_ecriture, libelle, lignes, *,
             tiers_type=ligne.get('tiers_type', '') or '',
             tiers_id=ligne.get('tiers_id'),
             centre_cout=ligne.get('centre_cout'),
+            referentiel=ligne.get('referentiel') or referentiel,
         )
         # XACC20 — auto-imputation analytique : si aucune ventilation/centre de
         # coût n'est déjà fourni sur la ligne ET qu'une règle matche, on
@@ -12536,3 +12544,438 @@ def domaine_envoi_authentifie(company, domaine):
     (avertissement, comportement conservateur)."""
     obj = DomaineEnvoi.objects.filter(company=company, domaine=domaine).first()
     return bool(obj and obj.authentifie)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Groupe NTFIN — Moteur de consolidation multi-sociétés (grand groupe)
+# ═══════════════════════════════════════════════════════════════════════════
+
+_CENT = Decimal('0.01')
+
+
+def _classe_de_numero(numero):
+    """Classe CGNC (1-8) déduite du premier chiffre d'un numéro de compte."""
+    n = str(numero or '').strip()
+    return int(n[0]) if n[:1].isdigit() else 0
+
+
+def _verifier_cycle_modifiable(cycle):
+    """NTFIN1 — refuse toute mutation des données agrégées d'un cycle verrouillé."""
+    if cycle.est_verrouille:
+        raise ValidationError(
+            "Cycle de consolidation verrouillé : ses données agrégées ne "
+            "peuvent plus être modifiées.")
+
+
+def ouvrir_cycle_consolidation(cycle):
+    """NTFIN1 — (ré)ouvre un cycle verrouillé pour reprendre la consolidation."""
+    cycle.verrouille = False
+    if cycle.statut == CycleConsolidation.Statut.PUBLIE:
+        cycle.statut = CycleConsolidation.Statut.ELIMINATIONS
+    cycle.save(update_fields=['verrouille', 'statut', 'updated_at'])
+    return cycle
+
+
+def verrouiller_cycle_consolidation(cycle):
+    """NTFIN1 — verrouille un cycle (fige ses données agrégées)."""
+    cycle.verrouille = True
+    cycle.save(update_fields=['verrouille', 'updated_at'])
+    return cycle
+
+
+# ── NTFIN2 — Collecte de la balance d'une entité ───────────────────────────
+
+def collecter_balance_entite(cycle, entite_company, *, devise_locale=None):
+    """Fige un snapshot de la balance N d'une société membre (NTFIN2).
+
+    Lit la balance générale cumulée de ``entite_company`` à la date de fin du
+    cycle (via ``balance_generale``, son grand livre local) et l'enregistre dans
+    une ``LiasseRemontee``. Idempotent par (cycle, entite) : re-collecter écrase
+    le snapshot sans dupliquer. Refuse si le cycle est verrouillé.
+    """
+    from . import selectors as _sel
+    _verifier_cycle_modifiable(cycle)
+    bal = _sel.balance_generale(entite_company, date_fin=cycle.date_fin)
+    snapshot = [{
+        'numero': li['numero'],
+        'intitule': li['intitule'],
+        'classe': li['classe'],
+        'debit': str(li['debit']),
+        'credit': str(li['credit']),
+    } for li in bal['lignes']]
+    liasse, _ = LiasseRemontee.objects.update_or_create(
+        company=cycle.company, cycle=cycle, entite=entite_company,
+        defaults={
+            'statut': LiasseRemontee.Statut.COLLECTE,
+            'date_collecte': timezone.now(),
+            'devise_locale': devise_locale or 'MAD',
+            'snapshot_balance': snapshot,
+        })
+    return liasse
+
+
+def collecter_cycle(cycle):
+    """NTFIN2 — collecte la tête de groupe + toutes ses entités du périmètre.
+
+    La société tête de groupe (``cycle.company``) est elle-même consolidée : sa
+    balance est collectée en plus de celles des filiales membres.
+    """
+    _verifier_cycle_modifiable(cycle)
+    liasses = [collecter_balance_entite(cycle, cycle.company)]
+    membres = EntiteConsolidation.objects.filter(
+        cycle=cycle, actif=True).select_related('entite')
+    for m in membres:
+        if m.entite_id == cycle.company_id:
+            continue  # déjà collectée en tant que tête.
+        liasses.append(collecter_balance_entite(cycle, m.entite))
+    if cycle.statut == CycleConsolidation.Statut.OUVERT:
+        cycle.statut = CycleConsolidation.Statut.COLLECTE
+        cycle.save(update_fields=['statut', 'updated_at'])
+    return liasses
+
+
+# ── NTFIN4 — Mapping compte local → compte groupe ──────────────────────────
+
+def mapper_compte_groupe(company, numero_local):
+    """NTFIN4 — compte de groupe pour un numéro local (préfixe le plus long).
+
+    Renvoie le ``CompteComptable`` de groupe mappé, ou ``None`` si aucun mapping
+    actif ne couvre ``numero_local``.
+    """
+    numero = str(numero_local or '')
+    candidats = [
+        m for m in MappingConsolidation.objects.filter(
+            company=company, actif=True).select_related('compte_groupe')
+        if numero.startswith(m.plan_local_prefixe)]
+    if not candidats:
+        return None
+    meilleur = max(candidats, key=lambda m: len(m.plan_local_prefixe))
+    return meilleur.compte_groupe
+
+
+def agreger_balance_groupe(cycle):
+    """NTFIN4/11 — balance groupe agrégée des liasses collectées.
+
+    Applique le mapping de consolidation à chaque ligne de chaque snapshot et
+    somme par compte de groupe (numéro). Un compte local non mappé conserve son
+    propre numéro (remonté comme anomalie par les contrôles NTFIN3). Renvoie un
+    dict ``{numero_groupe: {'debit', 'credit', 'intitule', 'classe'}}``.
+    """
+    agg = {}
+    for liasse in LiasseRemontee.objects.filter(cycle=cycle):
+        for li in (liasse.snapshot_balance or []):
+            compte_groupe = mapper_compte_groupe(cycle.company, li['numero'])
+            if compte_groupe is not None:
+                numero = compte_groupe.numero
+                intitule = compte_groupe.intitule
+                classe = compte_groupe.classe
+            else:
+                numero = li['numero']
+                intitule = li.get('intitule', '')
+                classe = li.get('classe') or _classe_de_numero(numero)
+            slot = agg.setdefault(numero, {
+                'debit': Decimal('0'), 'credit': Decimal('0'),
+                'intitule': intitule, 'classe': classe})
+            slot['debit'] += Decimal(str(li.get('debit') or 0))
+            slot['credit'] += Decimal(str(li.get('credit') or 0))
+    return agg
+
+
+# ── NTFIN5 — Conversion de devise d'une entité (cours de clôture) ──────────
+
+def convertir_entite(liasse, taux_cloture, taux_moyen):
+    """Convertit la balance d'une entité en devise de présentation (NTFIN5).
+
+    Méthode du cours de clôture : les postes de bilan (classes 1-5) sont
+    convertis au ``taux_cloture``, les comptes de résultat (classes 6-7) au
+    ``taux_moyen``. L'écart qui en résulte (le résultat converti au cours moyen
+    diffère du solde de bilan converti au cours de clôture) est l'**écart de
+    conversion** (CTA), porté en réserves de conversion pour équilibrer la
+    balance convertie au centime.
+
+    Renvoie ``{'lignes': [...], 'ecart_conversion', 'total_debit',
+    'total_credit'}`` où ``lignes`` reprend chaque compte converti.
+    """
+    taux_cloture = Decimal(str(taux_cloture))
+    taux_moyen = Decimal(str(taux_moyen))
+    lignes = []
+    total_debit = Decimal('0')
+    total_credit = Decimal('0')
+    for li in (liasse.snapshot_balance or []):
+        classe = li.get('classe') or _classe_de_numero(li['numero'])
+        taux = taux_moyen if classe in (6, 7) else taux_cloture
+        debit = (Decimal(str(li.get('debit') or 0)) * taux).quantize(_CENT)
+        credit = (Decimal(str(li.get('credit') or 0)) * taux).quantize(_CENT)
+        total_debit += debit
+        total_credit += credit
+        lignes.append({
+            'numero': li['numero'], 'intitule': li.get('intitule', ''),
+            'classe': classe, 'debit': debit, 'credit': credit})
+    # CTA : le plug qui rééquilibre la balance convertie (Σ débit = Σ crédit).
+    # ecart > 0 → il manque du débit (on ajoute la CTA au débit) ; ecart < 0 →
+    # il manque du crédit. La balance convertie AVEC CTA est équilibrée au
+    # centime.
+    ecart = total_credit - total_debit
+    debit_equilibre = total_debit + (ecart if ecart > 0 else Decimal('0'))
+    credit_equilibre = total_credit + (-ecart if ecart < 0 else Decimal('0'))
+    return {
+        'lignes': lignes,
+        'ecart_conversion': ecart,
+        'total_debit': total_debit,
+        'total_credit': total_credit,
+        'debit_equilibre': debit_equilibre,
+        'credit_equilibre': credit_equilibre,
+        'equilibre': debit_equilibre == credit_equilibre,
+    }
+
+
+# ── NTFIN6 — Matching des opérations inter-co ──────────────────────────────
+
+def apparier_intercos(cycle):
+    """Rapproche les opérations réciproques d'un cycle (NTFIN6).
+
+    Pour chaque ``OperationInterco``, calcule l'écart entre les deux montants
+    déclarés et pose le statut : ``apparie`` si l'écart ≤ tolérance du cycle,
+    sinon ``ecart``. Refuse si le cycle est verrouillé.
+    """
+    _verifier_cycle_modifiable(cycle)
+    tolerance = cycle.tolerance_interco or Decimal('0')
+    resultats = []
+    for op in OperationInterco.objects.filter(cycle=cycle):
+        ecart = (op.montant_declare_a - op.montant_declare_b)
+        op.ecart = abs(ecart)
+        if op.ecart <= tolerance:
+            op.statut = OperationInterco.Statut.APPARIE
+        else:
+            op.statut = OperationInterco.Statut.ECART
+        op.save(update_fields=['ecart', 'statut', 'updated_at'])
+        resultats.append(op)
+    return resultats
+
+
+# ── NTFIN7 — Journaux d'élimination interco (créances/dettes réciproques) ──
+
+def generer_eliminations_reciproques(cycle):
+    """Génère les écritures d'élimination des intercos appariés (NTFIN7).
+
+    Pour chaque ``OperationInterco`` ``apparie``, crée une ``EcritureElimination``
+    de type ``reciproque`` annulant exactement le solde réciproque apparié
+    (montant apparié = le plus petit des deux montants déclarés) sur le compte
+    de groupe réciproque : on annule la créance (crédit) et la dette (débit) du
+    même montant. Idempotent : un interco déjà éliminé n'est pas redoublé.
+    Refuse si le cycle est verrouillé.
+    """
+    _verifier_cycle_modifiable(cycle)
+    ecritures = []
+    for op in OperationInterco.objects.filter(
+            cycle=cycle, statut=OperationInterco.Statut.APPARIE):
+        if EcritureElimination.objects.filter(
+                cycle=cycle, source_interco=op).exists():
+            continue
+        montant = min(op.montant_declare_a, op.montant_declare_b)
+        if montant <= 0:
+            continue
+        elim = EcritureElimination.objects.create(
+            company=cycle.company, cycle=cycle,
+            type_elimination=EcritureElimination.Type.RECIPROQUE,
+            libelle=f'Élimination réciproque {op.compte_reciproque}',
+            automatique=True, source_interco=op,
+            lignes=[
+                {'compte': op.compte_reciproque,
+                 'libelle': 'Annulation dette réciproque',
+                 'debit': str(montant), 'credit': '0'},
+                {'compte': op.compte_reciproque,
+                 'libelle': 'Annulation créance réciproque',
+                 'debit': '0', 'credit': str(montant)},
+            ])
+        ecritures.append(elim)
+    return ecritures
+
+
+# ── NTFIN8 — Élimination des marges internes sur stock ─────────────────────
+
+def eliminer_marge_interne(marge):
+    """Élimine la marge interne non réalisée sur stock (NTFIN8).
+
+    Retranche la marge incluse dans le stock détenu en fin d'exercice du
+    résultat consolidé (débit résultat/charge, crédit stock) et constate l'impôt
+    différé actif correspondant (débit impôt différé, crédit charge d'impôt).
+    Impact net sur le résultat = marge × (1 − taux d'impôt). Renvoie l'écriture
+    d'élimination générée (type ``marge_interne``). Refuse si cycle verrouillé.
+    """
+    cycle = marge.cycle
+    _verifier_cycle_modifiable(cycle)
+    m = marge.marge_non_realisee
+    impot = (m * (marge.taux_impot or Decimal('0')) / Decimal('100')).quantize(_CENT)
+    lignes = [
+        # Élimination de la marge : réduit le stock et le résultat.
+        {'compte': '7', 'libelle': 'Élimination marge interne (résultat)',
+         'debit': str(m), 'credit': '0'},
+        {'compte': '3', 'libelle': 'Réduction stock (marge interne)',
+         'debit': '0', 'credit': str(m)},
+    ]
+    if impot > 0:
+        lignes += [
+            {'compte': '3', 'libelle': 'Impôt différé actif',
+             'debit': str(impot), 'credit': '0'},
+            {'compte': '6', 'libelle': 'Produit d\'impôt différé',
+             'debit': '0', 'credit': str(impot)},
+        ]
+    elim = EcritureElimination.objects.create(
+        company=cycle.company, cycle=cycle,
+        type_elimination=EcritureElimination.Type.MARGE_INTERNE,
+        libelle='Élimination marge interne sur stock',
+        automatique=True, lignes=lignes)
+    marge.elimination = elim
+    marge.save(update_fields=['elimination', 'updated_at'])
+    return elim
+
+
+# ── NTFIN9 — Élimination des titres + goodwill ─────────────────────────────
+
+def eliminer_titres(elim_titres):
+    """Élimine les titres d'une fille et dégage le goodwill (NTFIN9).
+
+    Élimine la valeur des titres contre la quote-part de capitaux propres de la
+    fille et porte l'écart d'acquisition (goodwill) à l'actif consolidé. Débit :
+    capitaux propres (quote-part) + goodwill (si positif) ; crédit : titres. Un
+    badwill (écart négatif) est porté au crédit (produit). Renvoie l'écriture
+    d'élimination (type ``titres``). Refuse si cycle verrouillé.
+    """
+    cycle = elim_titres.cycle
+    _verifier_cycle_modifiable(cycle)
+    goodwill = elim_titres.calculer_ecart()
+    lignes = [
+        {'compte': '1', 'libelle': 'Élimination quote-part capitaux propres',
+         'debit': str(elim_titres.quote_part_capitaux_propres), 'credit': '0'},
+    ]
+    if goodwill >= 0:
+        if goodwill > 0:
+            lignes.append({
+                'compte': '2', 'libelle': 'Goodwill (écart d\'acquisition)',
+                'debit': str(goodwill), 'credit': '0'})
+    else:
+        # Badwill : produit constaté (crédit).
+        lignes.append({
+            'compte': '7', 'libelle': 'Badwill (écart d\'acquisition négatif)',
+            'debit': '0', 'credit': str(-goodwill)})
+    lignes.append({
+        'compte': '2', 'libelle': 'Élimination titres de participation',
+        'debit': '0', 'credit': str(elim_titres.valeur_titres)})
+    elim = EcritureElimination.objects.create(
+        company=cycle.company, cycle=cycle,
+        type_elimination=EcritureElimination.Type.TITRES,
+        libelle=f'Élimination titres {elim_titres.entite_fille_id}',
+        automatique=True, lignes=lignes)
+    elim_titres.elimination = elim
+    elim_titres.save(update_fields=['elimination', 'ecart_acquisition',
+                                    'updated_at'])
+    return elim
+
+
+# ── NTFIN10 — Intérêts minoritaires ────────────────────────────────────────
+
+def calculer_interets_minoritaires(cycle):
+    """Répartit la quote-part des minoritaires (NTFIN10).
+
+    Pour chaque filiale en intégration globale détenue à moins de 100 %,
+    attribue aux minoritaires (100 % − pourcentage d'intérêt) leur part des
+    capitaux propres ET du résultat, via une écriture d'élimination dédiée
+    (type ``minoritaires``) : débit capitaux propres / résultat, crédit poste
+    « Intérêts minoritaires » (passif). Renvoie la liste des écritures générées.
+    Le résultat de chaque filiale est lu depuis sa liasse collectée (soldes des
+    classes 6/7 du snapshot). Refuse si cycle verrouillé.
+    """
+    _verifier_cycle_modifiable(cycle)
+    ecritures = []
+    membres = EntiteConsolidation.objects.filter(
+        cycle=cycle, actif=True,
+        methode=EntiteConsolidation.Methode.INTEGRATION_GLOBALE)
+    for m in membres:
+        pct_minoritaire = Decimal('100') - (m.pourcentage_interet or Decimal('0'))
+        if pct_minoritaire <= 0:
+            continue
+        liasse = LiasseRemontee.objects.filter(
+            cycle=cycle, entite=m.entite).first()
+        if not liasse:
+            continue
+        resultat = Decimal('0')
+        capitaux = Decimal('0')
+        for li in (liasse.snapshot_balance or []):
+            classe = li.get('classe') or _classe_de_numero(li['numero'])
+            solde = Decimal(str(li.get('credit') or 0)) - Decimal(
+                str(li.get('debit') or 0))
+            if classe in (6, 7):
+                resultat += solde  # produit − charge = résultat
+            elif classe == 1:
+                capitaux += solde  # capitaux propres = solde créditeur
+        part_resultat = (resultat * pct_minoritaire / Decimal('100')).quantize(_CENT)
+        part_capitaux = (capitaux * pct_minoritaire / Decimal('100')).quantize(_CENT)
+        total = part_resultat + part_capitaux
+        if total == 0:
+            continue
+        elim = EcritureElimination.objects.create(
+            company=cycle.company, cycle=cycle,
+            type_elimination=EcritureElimination.Type.MINORITAIRES,
+            libelle=f'Intérêts minoritaires {m.entite_id}',
+            automatique=True,
+            lignes=[
+                {'compte': '1', 'libelle': 'Capitaux propres part minoritaires',
+                 'debit': str(part_capitaux), 'credit': '0'},
+                {'compte': '1', 'libelle': 'Résultat part minoritaires',
+                 'debit': str(part_resultat), 'credit': '0'},
+                {'compte': '1', 'libelle': 'Intérêts minoritaires (passif)',
+                 'debit': '0', 'credit': str(total)},
+            ])
+        ecritures.append(elim)
+    return ecritures
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Groupe NTFIN — Multi-référentiel / multi-GAAP
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ── NTFIN13 — Référentiel comptable (livres parallèles) ────────────────────
+
+def seed_referentiel_principal(company):
+    """Amorce le référentiel CGNC principal d'une société (NTFIN13, idempotent).
+
+    Garantit qu'une société possède exactement un référentiel principal (CGNC).
+    Les états existants lisent le principal — rétro-compatible. Renvoie le
+    référentiel principal.
+    """
+    principal = ReferentielComptable.objects.filter(
+        company=company, est_principal=True).first()
+    if principal:
+        return principal
+    ref, _ = ReferentielComptable.objects.get_or_create(
+        company=company, code=ReferentielComptable.Code.CGNC,
+        defaults={'libelle': 'CGNC (Maroc)', 'devise_fonctionnelle': 'MAD',
+                  'est_principal': True, 'actif': True})
+    if not ref.est_principal:
+        ref.est_principal = True
+        ref.save(update_fields=['est_principal', 'updated_at'])
+    return ref
+
+
+# ── NTFIN15 — Écritures d'ajustement GAAP (delta CGNC→IFRS) ────────────────
+
+def poster_ajustement_gaap(company, referentiel_cible, lignes, motif, *,
+                           type_ajustement='', created_by=None):
+    """Poste un ajustement de retraitement GAAP dans un livre parallèle (NTFIN15).
+
+    Crée une écriture équilibrée dont TOUTES les lignes sont taguées
+    ``referentiel_cible`` (sans toucher au livre CGNC) et enregistre un
+    ``AjustementGaap`` traçable/réversible. ``lignes`` : liste de dicts
+    ``{'compte', 'debit', 'credit', 'libelle'?}``. Renvoie l'``AjustementGaap``.
+    """
+    journal = _journal(company, Journal.Type.OPERATIONS_DIVERSES)
+    ecriture = creer_ecriture(
+        company, journal, timezone.now().date(),
+        f'Ajustement GAAP : {motif}', lignes,
+        created_by=created_by, statut=EcritureComptable.Statut.VALIDEE,
+        referentiel=referentiel_cible)
+    return AjustementGaap.objects.create(
+        company=company, referentiel=referentiel_cible,
+        type_ajustement=type_ajustement or '', motif=motif,
+        ecriture=ecriture, reversible=True)

@@ -70,6 +70,11 @@ from .views import (
     FamilleTvaNonDeductibleViewSet,
     LettrageViewSet,
     CompensationViewSet,
+    CycleConsolidationViewSet, LiasseRemonteeViewSet,
+    MappingConsolidationViewSet, OperationIntercoViewSet,
+    MargeInterneStockViewSet, EliminationTitresViewSet,
+    ReferentielComptableViewSet, AjustementGaapViewSet,
+    AxeAnalytiqueViewSet, ImputationAxeViewSet,
 )
 
 router = DefaultRouter()
@@ -203,6 +208,19 @@ router.register(r'communications-evenement', CommunicationEvenementViewSet)
 router.register(r'supports-offline', SupportOfflineViewSet)
 # ── XMKT33 — Assistant d'authentification du domaine d'envoi ───────────────
 router.register(r'domaines-envoi', DomaineEnvoiViewSet)
+# ── NTFIN — Consolidation multi-sociétés (grand groupe) ────────────────────
+router.register(r'cycles-consolidation', CycleConsolidationViewSet,
+                basename='cycle-consolidation')
+router.register(r'liasses-remontee', LiasseRemonteeViewSet)
+router.register(r'mappings-consolidation', MappingConsolidationViewSet)
+router.register(r'operations-interco', OperationIntercoViewSet)
+router.register(r'marges-internes-stock', MargeInterneStockViewSet)
+router.register(r'eliminations-titres', EliminationTitresViewSet)
+# ── NTFIN — Multi-référentiel & analytique multi-axes ──────────────────────
+router.register(r'referentiels-comptables', ReferentielComptableViewSet)
+router.register(r'ajustements-gaap', AjustementGaapViewSet)
+router.register(r'axes-analytiques', AxeAnalytiqueViewSet)
+router.register(r'imputations-axes', ImputationAxeViewSet)
 
 urlpatterns = [
     # XMKT30 (partiel) — calendrier marketing agrégé (campagnes + posts

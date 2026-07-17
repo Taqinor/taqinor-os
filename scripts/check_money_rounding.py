@@ -47,16 +47,17 @@ BASELINE_ALLOWLIST = {
     "backend/django_core/apps/ventes/quote_engine/builder.py:1268",
     "backend/django_core/apps/ventes/quote_engine/builder.py:741",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1262",
-    # compta/services.py entries re-based (NTTRE treasury batch, 2026-07-17,
-    # added ~453 lines above them; same NPS/ROI/percentage round() sites, unmoved
-    # logic, verified uniform +453 line shift, NOT new sites — bug-class #34).
-    "backend/django_core/apps/compta/services.py:9582",
-    "backend/django_core/apps/compta/services.py:7526",
-    "backend/django_core/apps/compta/services.py:7529",
-    "backend/django_core/apps/compta/services.py:12050",
-    "backend/django_core/apps/compta/services.py:12452",
-    "backend/django_core/apps/compta/services.py:8835",
-    "backend/django_core/apps/compta/services.py:8839",
+    # compta/services.py entries re-based (NTFIN consolidation batch, 2026-07-17,
+    # +8 lines above them from NTFIN model imports/creer_ecriture referentiel;
+    # same NPS/ROI/percentage round() sites, unmoved logic, verified uniform +8
+    # line shift, NOT new sites — bug-class #34).
+    "backend/django_core/apps/compta/services.py:9590",
+    "backend/django_core/apps/compta/services.py:7534",
+    "backend/django_core/apps/compta/services.py:7537",
+    "backend/django_core/apps/compta/services.py:12058",
+    "backend/django_core/apps/compta/services.py:12460",
+    "backend/django_core/apps/compta/services.py:8843",
+    "backend/django_core/apps/compta/services.py:8847",
     # XSAL14 (2026-07-16) — builder.py edits shifted existing display-round
     # sites; re-based 1:1 (premium engine, sanctioned rounding).
     "backend/django_core/apps/ventes/quote_engine/builder.py:1285",
