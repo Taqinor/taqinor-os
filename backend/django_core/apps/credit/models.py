@@ -172,6 +172,30 @@ class SegmentClientCredit(models.Model):
         return f'{self.client_id} → {self.segment}'
 
 
+class EncoursCache(models.Model):
+    """NTCRD32 — cache court de l'encours d'un client (rafraîchi par un job
+    quotidien) pour éviter de recalculer l'encours en temps réel à chaque
+    affichage de liste (badges NTCRD23). Les HOOKS bloquants (NTCRD6) ne lisent
+    JAMAIS ce cache — ils calculent en LIVE pour ne jamais autoriser sur une
+    donnée périmée."""
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='encours_cache_credit')
+    client = models.OneToOneField(
+        'crm.Client', on_delete=models.CASCADE,
+        related_name='encours_cache_credit')
+    encours = models.DecimalField(max_digits=16, decimal_places=2, default=0)
+    calcule_le = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Cache d'encours crédit"
+        verbose_name_plural = "Caches d'encours crédit"
+
+    def __str__(self):
+        return f'{self.client_id} → {self.encours} ({self.calcule_le})'
+
+
 class DerogationCredit(models.Model):
     """NTCRD9 — dérogation crédit : demande → approbation/rejet Directeur/
     Administrateur. Reprend le PATTERN (jamais le modèle) de

@@ -62,6 +62,41 @@ def alerter_exposition_globale_pour_societe(company, *, today=None):
     return True
 
 
+def recalculer_encours_pour_societe(company):
+    """NTCRD32 — rafraîchit le cache d'encours (``EncoursCache``) de tous les
+    clients d'une société. Idempotent (upsert). Renvoie le nombre de clients
+    rafraîchis."""
+    from apps.crm.selectors import client_base_qs
+
+    from .models import EncoursCache
+    from .selectors import encours_client
+
+    n = 0
+    for client in client_base_qs(company):
+        EncoursCache.objects.update_or_create(
+            client=client,
+            defaults={'company': company, 'encours': encours_client(client)})
+        n += 1
+    return n
+
+
+@shared_task(name='credit.recalculer_encours_quotidien')
+def recalculer_encours_quotidien():
+    """NTCRD32 — job quotidien : rafraîchit le cache d'encours de toutes les
+    sociétés (best-effort). Renvoie le total de clients rafraîchis."""
+    from authentication.models import Company
+
+    total = 0
+    for company in Company.objects.all():
+        try:
+            total += recalculer_encours_pour_societe(company)
+        except Exception as exc:  # pragma: no cover - défensif
+            logger.warning(
+                'credit.recalculer_encours_quotidien: société %s échouée : %s',
+                getattr(company, 'id', '?'), exc)
+    return total
+
+
 @shared_task(name='credit.alerter_exposition_globale')
 def alerter_exposition_globale():
     """NTCRD21 — balaye toutes les sociétés et émet l'alerte d'exposition
