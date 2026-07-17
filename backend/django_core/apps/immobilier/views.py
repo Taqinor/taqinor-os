@@ -6,6 +6,7 @@ ajoutée plus tard sans changer la forme des endpoints.
 """
 from rest_framework import filters, status
 from rest_framework.decorators import action
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 
 from core.permissions import ScopedPermission
@@ -14,14 +15,15 @@ from core.viewsets import CompanyScopedModelViewSet
 from .models import (
     Bail, Batiment, BudgetCharges, DepenseCharges, EcheanceLoyer,
     ElementEtatLieux, EtatLieuxImmo, Local, Locataire, Niveau,
-    PieceEtatLieux, RegularisationCharges, RelanceLoyer, Site,
+    PhotoEtatLieux, PieceEtatLieux, RegularisationCharges, RelanceLoyer, Site,
 )
 from .serializers import (
     BailSerializer, BatimentSerializer, BudgetChargesSerializer,
     DepenseChargesSerializer, EcheanceLoyerSerializer, ElementEtatLieuxSerializer,
     EtatLieuxImmoSerializer, LocalSerializer, LocataireSerializer,
-    NiveauSerializer, PieceEtatLieuxSerializer, RegularisationChargesSerializer,
-    RelanceLoyerSerializer, RevisionLoyerSerializer, SiteSerializer,
+    NiveauSerializer, PhotoEtatLieuxSerializer, PieceEtatLieuxSerializer,
+    RegularisationChargesSerializer, RelanceLoyerSerializer,
+    RevisionLoyerSerializer, SiteSerializer,
 )
 
 
@@ -487,6 +489,70 @@ class EtatLieuxImmoViewSet(_ImmobilierBaseViewSet):
             date=serializer.validated_data.get('date'))
         out = self.get_serializer(etat_lieux)
         return Response(out.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'],
+            url_path=r'elements/(?P<element_id>[^/.]+)/photos',
+            parser_classes=[MultiPartParser, FormParser, JSONParser],
+            permission_classes=[ScopedPermission])
+    def ajouter_photo(self, request, pk=None, element_id=None):
+        """NTPRO16 — Téléverse une photo (multipart, champ ``photo``) sur un
+        élément de CET état des lieux (borné à la société via
+        ``get_object``, puis l'élément est cherché dans SES pièces — jamais
+        un id d'élément d'un autre état des lieux)."""
+        from . import services
+
+        etat_lieux = self.get_object()
+        try:
+            element = ElementEtatLieux.objects.get(
+                pk=element_id, piece__etat_lieux=etat_lieux)
+        except (ElementEtatLieux.DoesNotExist, ValueError):
+            return Response(
+                {'detail': 'Élément introuvable pour cet état des lieux.'},
+                status=status.HTTP_404_NOT_FOUND)
+
+        file = request.FILES.get('photo') or request.FILES.get('file')
+        if not file:
+            return Response(
+                {'detail': 'Le fichier photo est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            photo = services.ajouter_photo_element(
+                element, file, uploaded_by=request.user)
+        except services.PhotoInvalideError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            PhotoEtatLieuxSerializer(photo).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'],
+            url_path=r'photos/(?P<photo_id>[^/.]+)/download',
+            permission_classes=[ScopedPermission])
+    def telecharger_photo(self, request, pk=None, photo_id=None):
+        """NTPRO16 — Proxy même-origine (comme `ged.DocumentVersion.apercu`)
+        pour servir les octets d'une photo sans exposer l'hôte MinIO
+        interne. Bornée à cet état des lieux (jamais une photo d'un autre)."""
+        from django.http import HttpResponse
+
+        from apps.records.storage import fetch_attachment
+
+        etat_lieux = self.get_object()
+        try:
+            photo = PhotoEtatLieux.objects.get(
+                pk=photo_id, element__piece__etat_lieux=etat_lieux)
+        except (PhotoEtatLieux.DoesNotExist, ValueError):
+            return Response(
+                {'detail': 'Photo introuvable pour cet état des lieux.'},
+                status=status.HTTP_404_NOT_FOUND)
+
+        data, err = fetch_attachment(photo.file_key)
+        if err:
+            return Response({'detail': err}, status=status.HTTP_404_NOT_FOUND)
+        response = HttpResponse(
+            data, content_type=photo.mime or 'application/octet-stream')
+        safe_name = (photo.filename or 'photo').replace('"', '')
+        response['Content-Disposition'] = f'inline; filename="{safe_name}"'
+        return response
 
 
 class PieceEtatLieuxViewSet(_ImmobilierBaseViewSet):

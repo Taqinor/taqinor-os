@@ -619,3 +619,26 @@ def creer_etat_lieux(bail, moment, *, technicien=None, date=None):
                 ordre=ordre_element)
 
     return etat_lieux
+
+
+class PhotoInvalideError(Exception):
+    """NTPRO16 — fichier refusé par ``records.storage`` (taille/format)."""
+
+
+def ajouter_photo_element(element, file, *, uploaded_by=None):
+    """NTPRO16 — Valide + téléverse ``file`` (MinIO, ``records.storage`` —
+    mêmes gardes magic-bytes/10 Mo que le reste du repo) et l'attache à
+    ``element`` en tant que ``PhotoEtatLieux``. Lève ``PhotoInvalideError``
+    (jamais silencieux) si le fichier est refusé — l'appelant (vue) traduit en
+    400."""
+    from apps.records.storage import store_attachment
+
+    from .models import PhotoEtatLieux
+
+    meta, err = store_attachment(file, company=element.company)
+    if err:
+        raise PhotoInvalideError(err)
+
+    return PhotoEtatLieux.objects.create(
+        company=element.company, element=element, uploaded_by=uploaded_by,
+        **meta)

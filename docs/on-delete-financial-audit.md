@@ -395,6 +395,7 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/apps/immobilier/models.py:562` | EtatLieuxImmo.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/immobilier/models.py:603` | PieceEtatLieux.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/immobilier/models.py:639` | ElementEtatLieux.company | authentication.Company | CASCADE |
+| `backend/django_core/apps/immobilier/models.py:676` | PhotoEtatLieux.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/innovation/models.py:52` | Idee.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/innovation/models.py:112` | VoteIdee.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/innovation/models.py:156` | InnovationSettings.company | authentication.Company | CASCADE |

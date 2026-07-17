@@ -9,7 +9,8 @@ from rest_framework import serializers
 from .models import (
     Bail, Batiment, BudgetCharges, DepenseCharges, EcheanceLoyer,
     ElementEtatLieux, EtatLieuxImmo, Local, Locataire, Niveau,
-    PieceEtatLieux, RegularisationCharges, RelanceLoyer, RevisionLoyer, Site,
+    PhotoEtatLieux, PieceEtatLieux, RegularisationCharges, RelanceLoyer,
+    RevisionLoyer, Site,
 )
 
 
@@ -276,18 +277,41 @@ class RegularisationChargesSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+class PhotoEtatLieuxSerializer(serializers.ModelSerializer):
+    """NTPRO16 — Photo comparative (entrée/sortie) d'un élément inspecté."""
+
+    class Meta:
+        model = PhotoEtatLieux
+        fields = [
+            'id', 'element', 'filename', 'size', 'mime', 'created_at',
+            'company',
+        ]
+        read_only_fields = fields
+
+
 class ElementEtatLieuxSerializer(serializers.ModelSerializer):
-    """NTPRO15 — Élément inspecté d'une pièce (sol/murs/plafond/…)."""
+    """NTPRO15/16 — Élément inspecté d'une pièce (sol/murs/plafond/…), avec
+    ses photos et — sur un élément de SORTIE — les photos d'ENTRÉE du même
+    élément embarquées pour comparaison AUTOMATIQUE (NTPRO16 : jamais de
+    requête manuelle supplémentaire côté frontend)."""
     etat_display = serializers.CharField(
         source='get_etat_display', read_only=True)
+    photos = PhotoEtatLieuxSerializer(many=True, read_only=True)
+    photos_entree = serializers.SerializerMethodField()
 
     class Meta:
         model = ElementEtatLieux
         fields = [
             'id', 'piece', 'element', 'etat', 'etat_display', 'commentaire',
-            'ordre', 'company',
+            'ordre', 'photos', 'photos_entree', 'company',
         ]
         read_only_fields = ['id', 'company']
+
+    def get_photos_entree(self, obj):
+        from . import selectors
+        photos = selectors.photos_entree_comparables(obj)
+        return PhotoEtatLieuxSerializer(
+            photos, many=True, context=self.context).data
 
     def validate_piece(self, value):
         _check_same_company(self, value, 'piece')

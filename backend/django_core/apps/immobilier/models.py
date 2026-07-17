@@ -662,3 +662,43 @@ class ElementEtatLieux(TenantModel):
 
     def __str__(self):
         return f'{self.piece} — {self.element}'
+
+
+class PhotoEtatLieux(TenantModel):
+    """NTPRO16 — Photo comparative (entrée/sortie) d'un élément inspecté.
+
+    ``phase`` n'est PAS stockée sur la photo : elle se déduit toujours du
+    ``moment`` de l'`EtatLieuxImmo` parent (via `element.piece.etat_lieux.
+    moment`) — une seule source de vérité, jamais deux champs qui pourraient
+    diverger. Stockage MinIO via `records.storage` — même convention que
+    `ged.DocumentVersion` (clé objet + métadonnées, jamais un `FileField`)."""
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: cascade tenant (purge des données de la société supprimée)
+        related_name='immobilier_photos_etat_lieux',
+        verbose_name='Société',
+    )
+    element = models.ForeignKey(
+        ElementEtatLieux, on_delete=models.CASCADE,  # on_delete: cascade parent→enfant (composant du parent)
+        related_name='photos',
+        verbose_name='Élément')
+    # Clé objet MinIO (bucket erp-uploads) — conventions records.storage.
+    file_key = models.CharField(max_length=500)
+    filename = models.CharField(max_length=255, blank=True, default='')
+    size = models.PositiveIntegerField(default=0)
+    mime = models.CharField(max_length=120, blank=True, default='')
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,  # on_delete: SET_NULL — utilisateur supprimé ne doit jamais effacer la photo (null=True posé, champ non-tenant)
+        null=True, blank=True, related_name='photos_etat_lieux_immo',
+        verbose_name='Déposée par')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Photo (état des lieux)'
+        verbose_name_plural = 'Photos (état des lieux)'
+        ordering = ['-created_at', '-id']
+
+    def __str__(self):
+        return f'{self.element} — {self.filename or self.file_key}'

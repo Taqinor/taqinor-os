@@ -182,3 +182,46 @@ def consommation_budget(budget_charges):
         'ecart': ecart,
         'ecart_pct': ecart_pct,
     }
+
+
+def photos_entree_comparables(element_sortie):
+    """NTPRO16 — Photos de l'élément d'ENTRÉE correspondant à
+    ``element_sortie`` (même bail, même nom de pièce, même élément), pour la
+    comparaison visuelle automatique entrée/sortie. Résolution par
+    ``nom_piece``/``element`` (correspondance texte, insensible à la casse) —
+    PAS par pk (les pièces/éléments d'entrée et de sortie sont deux grilles
+    distinctes, même si générées depuis le même type de local).
+
+    Renvoie toujours une liste (jamais d'exception) : vide si
+    ``element_sortie`` appartient lui-même à un état d'ENTRÉE (rien à comparer
+    contre lui-même), ou si aucun état d'entrée / pièce / élément
+    correspondant n'existe."""
+    from .models import ElementEtatLieux, EtatLieuxImmo
+
+    piece = element_sortie.piece
+    etat_lieux = piece.etat_lieux
+    if etat_lieux.moment != EtatLieuxImmo.Moment.SORTIE:
+        return []
+
+    etat_entree = (
+        EtatLieuxImmo.objects
+        .filter(bail=etat_lieux.bail, moment=EtatLieuxImmo.Moment.ENTREE)
+        .order_by('-date', '-id')
+        .first()
+    )
+    if etat_entree is None:
+        return []
+
+    element_entree = (
+        ElementEtatLieux.objects
+        .filter(
+            piece__etat_lieux=etat_entree,
+            piece__nom_piece__iexact=piece.nom_piece,
+            element__iexact=element_sortie.element,
+        )
+        .first()
+    )
+    if element_entree is None:
+        return []
+
+    return list(element_entree.photos.all())
