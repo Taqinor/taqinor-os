@@ -149,6 +149,66 @@ def revenu_engage_carnet(company, mois_debut, mois_fin):
         company, mois_debut, mois_fin)
 
 
+def consolidation_entreprise(company, cycle):
+    """NTFPA23 — roll-up de toutes les ``LigneBudgetDepartement`` d'un cycle
+    vers un P&L prévisionnel simplifié : revenu prévisionnel (pipeline + carnet)
+    − dépenses budgétées par catégorie, à 12 mois, avec sous-totaux par
+    catégorie et marge brute prévisionnelle.
+
+    Le total des dépenses consolidées ÉGALE EXACTEMENT la somme des lignes
+    département (test de cohérence). Lecture seule."""
+    from .models import CycleBudgetaire
+
+    if not isinstance(cycle, CycleBudgetaire):
+        cycle = CycleBudgetaire.objects.filter(company=company, pk=cycle).first()
+    if cycle is None:
+        return None
+
+    depenses_par_categorie = {}
+    total_depenses = Decimal('0')
+    for row in (
+        LigneBudgetDepartement.objects
+        .filter(company=company, cycle=cycle)
+        .values('categorie')
+        .annotate(total=Sum('montant_prevu'))
+    ):
+        montant = Decimal(str(row['total'] or 0))
+        depenses_par_categorie[row['categorie']] = montant
+        total_depenses += montant
+
+    # Revenu prévisionnel = pipeline pondéré + carnet engagé sur l'année.
+    pipeline = revenu_pipeline_total(company, cycle.date_debut, cycle.date_fin)
+    carnet = _somme_dict(revenu_engage_carnet(
+        company, cycle.date_debut, cycle.date_fin))
+    revenu = pipeline + carnet
+
+    marge_brute = revenu - total_depenses
+    return {
+        'cycle_id': cycle.pk,
+        'revenu_previsionnel': revenu,
+        'revenu_pipeline': pipeline,
+        'revenu_carnet': carnet,
+        'depenses_par_categorie': depenses_par_categorie,
+        'total_depenses': total_depenses,
+        'marge_brute_previsionnelle': marge_brute,
+    }
+
+
+def _somme_dict(d):
+    total = Decimal('0')
+    for v in (d or {}).values():
+        total += Decimal(str(v or 0))
+    return total
+
+
+def revenu_pipeline_total(company, mois_debut, mois_fin):
+    """Total du revenu pipeline pondéré sur une période (somme des mois)."""
+    from apps.crm import selectors as crm_selectors
+
+    return _somme_dict(crm_selectors.revenu_pipeline_pondere_par_mois(
+        company, mois_debut, mois_fin))
+
+
 def _ecart(a, b):
     """Écart (€, %) de ``a`` par rapport à ``b`` (base). % = None si base 0."""
     a = Decimal(str(a or 0))

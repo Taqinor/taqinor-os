@@ -364,6 +364,31 @@ class HypotheseRecrutementViewSet(TenantMixin, viewsets.ModelViewSet):
         return qs
 
 
+class ConsolidationViewSet(viewsets.ViewSet):
+    """NTFPA23 — consolidation multi-département (P&L prévisionnel simplifié)."""
+
+    def list(self, request):
+        cycle_id = request.query_params.get('cycle')
+        if not cycle_id:
+            return Response(
+                {'detail': 'cycle requis.'}, status=status.HTTP_400_BAD_REQUEST)
+        from .selectors import consolidation_entreprise
+        result = consolidation_entreprise(request.user.company, cycle_id)
+        if result is None:
+            return Response(
+                {'detail': 'Cycle introuvable.'}, status=status.HTTP_404_NOT_FOUND)
+        return Response({
+            'cycle_id': result['cycle_id'],
+            'revenu_previsionnel': str(result['revenu_previsionnel']),
+            'revenu_pipeline': str(result['revenu_pipeline']),
+            'revenu_carnet': str(result['revenu_carnet']),
+            'depenses_par_categorie': {
+                k: str(v) for k, v in result['depenses_par_categorie'].items()},
+            'total_depenses': str(result['total_depenses']),
+            'marge_brute_previsionnelle': str(result['marge_brute_previsionnelle']),
+        })
+
+
 class VarianceViewSet(viewsets.ViewSet):
     """NTFPA19 — analyse des écarts (variance) prévu/réel/forecast, en lecture."""
 

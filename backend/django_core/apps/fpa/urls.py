@@ -2,12 +2,12 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
-    CommentaireVarianceViewSet, CycleBudgetaireViewSet, DepartementViewSet,
-    DriversViewSet, HypotheseRecrutementViewSet, LigneBudgetDepartementViewSet,
-    LignePrevisionGlissanteViewSet, LigneScenarioViewSet,
-    MappingCategorieCompteViewSet, PrevisionGlissanteViewSet,
-    ScenarioBudgetaireViewSet, SoumissionBudgetDepartementViewSet,
-    VarianceViewSet,
+    CommentaireVarianceViewSet, ConsolidationViewSet, CycleBudgetaireViewSet,
+    DepartementViewSet, DriversViewSet, HypotheseRecrutementViewSet,
+    LigneBudgetDepartementViewSet, LignePrevisionGlissanteViewSet,
+    LigneScenarioViewSet, MappingCategorieCompteViewSet,
+    PrevisionGlissanteViewSet, ScenarioBudgetaireViewSet,
+    SoumissionBudgetDepartementViewSet, VarianceViewSet,
 )
 
 router = DefaultRouter()
@@ -34,6 +34,8 @@ router.register(r'scenarios', ScenarioBudgetaireViewSet, basename='fpa-scenario'
 router.register(
     r'lignes-scenario', LigneScenarioViewSet, basename='fpa-ligne-scenario')
 router.register(r'variance', VarianceViewSet, basename='fpa-variance')
+router.register(
+    r'consolidation', ConsolidationViewSet, basename='fpa-consolidation')
 router.register(
     r'commentaires-variance', CommentaireVarianceViewSet,
     basename='fpa-commentaire-variance')
