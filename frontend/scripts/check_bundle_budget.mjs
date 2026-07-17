@@ -53,6 +53,8 @@ const PER_CHUNK_BUDGET_KB = 350
 // dashboard, CTA, paramètres], et les 4 modes du générateur de devis QX) porte
 // le réel à ~2341.8 Ko — palier généreux habituel (~100 Ko), pas de nouvelle
 // dépendance npm, écrans lazy-loadés ; le garde per-chunk (350) reste actif.
+// + 5 verticales (agriculture, immobilier, hospitality, esg, btp_chantier),
+// toutes lazy-loadées, ajoutent ~7.7 Ko gzip — le réel combiné reste < 2440.
 const TOTAL_BUDGET_KB = 2440
 const VENDOR_CHUNK_BUDGETS_KB = {
   recharts: 450,
