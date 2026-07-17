@@ -3,7 +3,8 @@ from rest_framework import serializers
 from .models import (
     CommentaireVariance, CycleBudgetaire, Departement, HypotheseRecrutement,
     LigneBudgetDepartement, LignePrevisionGlissante, LigneScenario,
-    PrevisionGlissante, ScenarioBudgetaire, SoumissionBudgetDepartement,
+    MappingCategorieCompte, PrevisionGlissante, ScenarioBudgetaire,
+    SoumissionBudgetDepartement,
 )
 
 
@@ -135,3 +136,13 @@ class CommentaireVarianceSerializer(serializers.ModelSerializer):
             return (getattr(obj.auteur, 'get_full_name', lambda: '')()
                     or obj.auteur.username)
         return ''
+
+
+class MappingCategorieCompteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MappingCategorieCompte
+        fields = [
+            'id', 'company', 'categorie', 'compte_cgnc_prefixe',
+            'compte_cgnc_libelle',
+        ]
+        read_only_fields = ['id', 'company']

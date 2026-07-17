@@ -5,8 +5,9 @@ from .views import (
     CommentaireVarianceViewSet, CycleBudgetaireViewSet, DepartementViewSet,
     DriversViewSet, HypotheseRecrutementViewSet, LigneBudgetDepartementViewSet,
     LignePrevisionGlissanteViewSet, LigneScenarioViewSet,
-    PrevisionGlissanteViewSet, ScenarioBudgetaireViewSet,
-    SoumissionBudgetDepartementViewSet, VarianceViewSet,
+    MappingCategorieCompteViewSet, PrevisionGlissanteViewSet,
+    ScenarioBudgetaireViewSet, SoumissionBudgetDepartementViewSet,
+    VarianceViewSet,
 )
 
 router = DefaultRouter()
@@ -36,6 +37,9 @@ router.register(r'variance', VarianceViewSet, basename='fpa-variance')
 router.register(
     r'commentaires-variance', CommentaireVarianceViewSet,
     basename='fpa-commentaire-variance')
+router.register(
+    r'mapping-categories', MappingCategorieCompteViewSet,
+    basename='fpa-mapping-categorie')
 router.register(r'drivers', DriversViewSet, basename='fpa-drivers')
 
 urlpatterns = [

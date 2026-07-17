@@ -7,14 +7,16 @@ from core.mixins import TenantMixin
 from .models import (
     CommentaireVariance, CycleBudgetaire, Departement, HypotheseRecrutement,
     LigneBudgetDepartement, LignePrevisionGlissante, LigneScenario,
-    PrevisionGlissante, ScenarioBudgetaire, SoumissionBudgetDepartement,
+    MappingCategorieCompte, PrevisionGlissante, ScenarioBudgetaire,
+    SoumissionBudgetDepartement,
 )
 from .serializers import (
     CommentaireVarianceSerializer, CycleBudgetaireSerializer,
     DepartementSerializer, HypotheseRecrutementSerializer,
     LigneBudgetDepartementSerializer, LignePrevisionGlissanteSerializer,
-    LigneScenarioSerializer, PrevisionGlissanteSerializer,
-    ScenarioBudgetaireSerializer, SoumissionBudgetDepartementSerializer,
+    LigneScenarioSerializer, MappingCategorieCompteSerializer,
+    PrevisionGlissanteSerializer, ScenarioBudgetaireSerializer,
+    SoumissionBudgetDepartementSerializer,
 )
 
 
@@ -383,6 +385,21 @@ class VarianceViewSet(viewsets.ViewSet):
                 for k, v in r.items()
             })
         return Response(payload)
+
+
+class MappingCategorieCompteViewSet(TenantMixin, viewsets.ModelViewSet):
+    """NTFPA21 — mapping catégorie FP&A ↔ préfixe de compte CGNC (utilisé par
+    la variance NTFPA19 pour traduire les catégories vers les classes
+    comptables réelles sans coder en dur le plan CGNC)."""
+
+    queryset = MappingCategorieCompte.objects.all()
+    serializer_class = MappingCategorieCompteSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if categorie := self.request.query_params.get('categorie'):
+            qs = qs.filter(categorie=categorie)
+        return qs
 
 
 class CommentaireVarianceViewSet(TenantMixin, viewsets.ModelViewSet):
