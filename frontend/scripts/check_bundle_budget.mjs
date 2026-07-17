@@ -89,6 +89,9 @@ const MODULEPRELOAD_ALLOWLIST = new Set([
 // éducation/innovation) ajoute de nouveaux écrans TOUS lazy-loadés (réel 405) —
 // AUCUNE nouvelle dépendance npm, croissance produit organique. Palier généreux
 // habituel ; le vrai garde anti-gonflement reste PER_CHUNK_BUDGET_KB (350).
+// 2026-07-17 : 420 -> 440. 5 verticaux (agriculture/immobilier/hospitality/esg/
+// btp_chantier), tous les écrans lazy-loadés → +chunks (réel 426) — croissance
+// produit organique, aucune nouvelle dépendance npm ; garde per-chunk (350) actif.
 const MAX_CHUNK_COUNT = 440
 
 // Extrait les `<link rel="modulepreload" href="...">` de `dist/index.html` et
