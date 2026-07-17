@@ -6,7 +6,8 @@ from .viewsets import (
     ConventionViewSet, DisponibilitesView, FactureSanteViewSet,
     GrilleTarifaireViewSet, HoraireOuverturePraticienViewSet,
     IndisponibilitePraticienViewSet, PaiementSanteViewSet, PatientViewSet,
-    PraticienViewSet, PriseEnChargeViewSet, RendezVousViewSet, SalleViewSet)
+    PraticienSiteViewSet, PraticienViewSet, PriseEnChargeViewSet,
+    RendezVousViewSet, SalleViewSet)
 
 router = DefaultRouter()
 router.register(r'praticiens', PraticienViewSet, basename='sante-praticien')
@@ -19,6 +20,8 @@ router.register(
 router.register(
     r'indisponibilites-praticien', IndisponibilitePraticienViewSet,
     basename='sante-indisponibilite-praticien')
+router.register(
+    r'sites-praticien', PraticienSiteViewSet, basename='sante-praticien-site')
 router.register(r'admissions', AdmissionViewSet, basename='sante-admission')
 router.register(
     r'actes-medicaux', ActeMedicalViewSet, basename='sante-acte-medical')

@@ -19,13 +19,15 @@ from core.viewsets import CompanyScopedModelViewSet
 from .models import (
     ActeMedical, ActeRealise, Admission, Convention, FactureSante,
     GrilleTarifaire, HoraireOuverturePraticien, IndisponibilitePraticien,
-    PaiementSante, Patient, Praticien, PriseEnCharge, RendezVous, Salle)
+    PaiementSante, Patient, Praticien, PraticienSite, PriseEnCharge,
+    RendezVous, Salle)
 from .serializers import (
     ActeMedicalSerializer, ActeRealiseSerializer, AdmissionSerializer,
     ConventionSerializer, FactureSanteSerializer, GrilleTarifaireSerializer,
     HoraireOuverturePraticienSerializer, IndisponibilitePraticienSerializer,
     PaiementSanteSerializer, PatientSerializer, PraticienSerializer,
-    PriseEnChargeSerializer, RendezVousSerializer, SalleSerializer)
+    PraticienSiteSerializer, PriseEnChargeSerializer, RendezVousSerializer,
+    SalleSerializer)
 
 
 class PraticienViewSet(CompanyScopedModelViewSet):
@@ -147,6 +149,17 @@ class IndisponibilitePraticienViewSet(CompanyScopedModelViewSet):
 
     queryset = IndisponibilitePraticien.objects.select_related('praticien').all()
     serializer_class = IndisponibilitePraticienSerializer
+
+
+class PraticienSiteViewSet(CompanyScopedModelViewSet):
+    """NTSAN32 — rattachement M2M léger praticien↔site (salle), pour un
+    praticien itinérant consultant dans plusieurs cliniques du même groupe.
+    L'agenda consolidé tous sites confondus reste le comportement PAR DÉFAUT
+    de ``RendezVousViewSet`` (filtre ``praticien`` seul) ; ``?salle=`` filtre
+    par site."""
+
+    queryset = PraticienSite.objects.select_related('praticien', 'salle').all()
+    serializer_class = PraticienSiteSerializer
 
 
 class AdmissionViewSet(CompanyScopedModelViewSet):

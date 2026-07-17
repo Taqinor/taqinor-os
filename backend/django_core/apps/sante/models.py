@@ -589,3 +589,36 @@ class IndisponibilitePraticien(TenantModel):
 
     def __str__(self):
         return f'{self.praticien_id} indisponible {self.date_debut} → {self.date_fin}'
+
+
+class PraticienSite(TenantModel):
+    """NTSAN32 — rattachement M2M léger d'un praticien à un site/salle,
+    utile pour les praticiens itinérants qui consultent dans plusieurs
+    cliniques du MÊME groupe (multi-tenant déjà scopé par ``company`` ;
+    ceci gère le multi-site DANS une même société). L'agenda d'un praticien
+    consolidé tous sites confondus est le comportement PAR DÉFAUT de
+    ``RendezVousViewSet`` (filtre ``praticien`` seul, sans ``salle``) — ce
+    modèle n'ajoute que la liste des sites d'un praticien et le filtre par
+    site (``?salle=``, déjà supporté)."""
+
+    praticien = models.ForeignKey(
+        # on_delete: le rattachement disparaît avec le praticien (composition)
+        Praticien, on_delete=models.CASCADE,
+        related_name='sites', verbose_name='Praticien')
+    salle = models.ForeignKey(
+        # on_delete: le rattachement disparaît avec le site/salle (composition)
+        Salle, on_delete=models.CASCADE,
+        related_name='praticiens_associes', verbose_name='Site (salle)')
+
+    class Meta:
+        verbose_name = 'Site du praticien'
+        verbose_name_plural = 'Sites du praticien'
+        ordering = ['praticien', 'salle']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'praticien', 'salle'],
+                name='sante_praticien_site_unique'),
+        ]
+
+    def __str__(self):
+        return f'{self.praticien_id} @ {self.salle_id}'

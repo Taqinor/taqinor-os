@@ -8,7 +8,8 @@ from rest_framework import serializers
 from .models import (
     ActeMedical, ActeRealise, Admission, Convention, FactureSante,
     GrilleTarifaire, HoraireOuverturePraticien, IndisponibilitePraticien,
-    PaiementSante, Patient, Praticien, PriseEnCharge, RendezVous, Salle)
+    PaiementSante, Patient, Praticien, PraticienSite, PriseEnCharge,
+    RendezVous, Salle)
 
 
 def _meme_societe(serializer, value, label):
@@ -249,6 +250,20 @@ class IndisponibilitePraticienSerializer(serializers.ModelSerializer):
 
     def validate_praticien(self, value):
         return _meme_societe(self, value, 'Praticien')
+
+
+class PraticienSiteSerializer(serializers.ModelSerializer):
+    salle_nom = serializers.CharField(source='salle.nom', read_only=True)
+
+    class Meta:
+        model = PraticienSite
+        fields = ['id', 'praticien', 'salle', 'salle_nom']
+
+    def validate_praticien(self, value):
+        return _meme_societe(self, value, 'Praticien')
+
+    def validate_salle(self, value):
+        return _meme_societe(self, value, 'Salle')
 
 
 class ActeMedicalSerializer(serializers.ModelSerializer):
