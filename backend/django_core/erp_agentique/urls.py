@@ -71,6 +71,9 @@ _APP_URLS = [
     path('achats/', include('apps.achats.urls')),
     # FLOTTE1 — Gestion de flotte (véhicules + engins roulants, interne).
     path('flotte/', include('apps.flotte.urls')),
+    # NTAGR1 — Vertical Agriculture (exploitations, parcelles, campagnes,
+    # intrants, main d'œuvre saisonnière).
+    path('agriculture/', include('apps.agriculture.urls')),
     # AG1 — Catalogue d'actions agentiques (métadonnées, filtré par caller).
     path('agent/', include('apps.agent.urls')),
     # Group S — Messagerie interne d'équipe (« Discuss »).
@@ -83,6 +86,8 @@ _APP_URLS = [
     path('qhse/', include('apps.qhse.urls')),
     path('kb/', include('apps.kb.urls')),
     path('litiges/', include('apps.litiges.urls')),
+    # Groupe NTESG — Reporting ESG/durabilité consolidé.
+    path('esg/', include('apps.esg.urls')),
     # ARC17 — Répertoire des tiers (res.partner), couche fondation.
     path('tiers/', include('apps.tiers.urls')),
     # XPLT21 — Softphone VoIP intégré (SIP/WebRTC, gated).
@@ -100,6 +105,12 @@ _APP_URLS = [
     # Groupe NTCPQ — CPQ enterprise (options/contraintes, règles, offres
     # groupées, prix contractuels, approbations de remise, configurateur).
     path('cpq/', include('apps.cpq.urls')),
+    # Groupe NTPRO — Vertical immobilier & facilities.
+    path('immobilier/', include('apps.immobilier.urls')),
+    # Groupe NTHOT — Vertical hôtellerie & restauration.
+    path('hospitality/', include('apps.hospitality.urls')),
+    # Groupe NTCON — Vertical BTP/EPC (réserves, RFI, visas, journal, DGD…).
+    path('btp-chantier/', include('apps.btp_chantier.urls')),
     # NTSAN1 — Santé (cabinet/clinique).
     path('sante/', include('apps.sante.urls')),
     # Groupe NTIDE — Boîte à idées interne, campagnes d'innovation, feedback.
@@ -110,6 +121,9 @@ _APP_URLS = [
     path('fpa/', include('apps.fpa.urls')),
     # Groupe NTASS — Registre des assurances & sinistres d'entreprise.
     path('assurances/', include('apps.assurances.urls')),
+    # Groupe NTADM — Administration enterprise.
+    path('entites/', include('apps.entites.urls')),
+    path('adminops/', include('apps.adminops.urls')),
     # NTEDU1 — Éducation (établissement scolaire).
     path('education/', include('apps.education.urls')),
     # NTUX1 — Vues sauvegardées serveur (personnelles/partagées).

@@ -57,6 +57,8 @@ const PER_CHUNK_BUDGET_KB = 350
 // Campagnes/Séquences/Segments/Listes/Événements/Enquêtes/Fidélité/Domaine
 // d'envoi + dashboard) ajoute ~26 Ko gzip sur ce même palier 2440 (AUCUNE
 // nouvelle dépendance npm) — réel cumulé ~2368 Ko, sous le budget.
+// + 5 verticales (agriculture, immobilier, hospitality, esg, btp_chantier),
+// toutes lazy-loadées, ajoutent ~7.7 Ko gzip — le réel combiné reste < 2440.
 const TOTAL_BUDGET_KB = 2440
 const VENDOR_CHUNK_BUDGETS_KB = {
   recharts: 450,

@@ -481,6 +481,15 @@ class ModeleEcriture(models.Model):
     # période suivante) — réutilise COMPTA11 (``services.extourner_ecriture``).
     extourne_auto = models.BooleanField(
         default=False, verbose_name='Extourne automatique')
+    # NTFIN32 — modèle d'OD récurrente de CLÔTURE (dotations, provisions
+    # standards). ``cloture=True`` le rend matérialisable en un clic depuis une
+    # tâche de clôture (NTFIN27) ; ``categorie_cloture`` le rattache à la
+    # catégorie de tâche cochée. Additif (défaut False = comportement actuel).
+    cloture = models.BooleanField(
+        default=False, verbose_name='Modèle de clôture')
+    categorie_cloture = models.CharField(
+        max_length=14, blank=True, default='',
+        verbose_name='Catégorie de clôture')
     actif = models.BooleanField(default=True, verbose_name='Actif')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
@@ -7588,3 +7597,1201 @@ class ImputationAxe(TenantModel):
 
     def __str__(self):
         return f'Ligne {self.ligne_ecriture_id} / axe {self.axe_id}'
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Groupe NTFIN — Moteur d'allocations & comptabilité d'engagement (encumbrance)
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ── NTFIN20 — Clés de répartition (bases d'allocation) ─────────────────────
+
+class CleRepartition(TenantModel):
+    """Clé de répartition d'une charge indirecte (NTFIN20).
+
+    Définit COMMENT un solde (frais généraux…) se déverse vers des centres/axes
+    cibles : ``type`` (manuel/statistique/proportionnel) + ``base`` (m2,
+    effectif, CA, personnalisée). Les ``LigneCleRepartition`` portent les
+    coefficients par cible ; le moteur d'allocation (NTFIN21) répartit au
+    prorata des coefficients. Hérite de ``core.models.TenantModel``.
+    """
+    class Type(models.TextChoices):
+        MANUEL = 'manuel', 'Manuel (coefficients saisis)'
+        STATISTIQUE = 'statistique', 'Statistique'
+        PROPORTIONNEL = 'proportionnel', 'Proportionnel'
+
+    class Base(models.TextChoices):
+        M2 = 'm2', 'Surface (m²)'
+        EFFECTIF = 'effectif', 'Effectifs'
+        CA = 'ca', "Chiffre d'affaires"
+        PERSONNALISEE = 'personnalisee', 'Base personnalisée'
+
+    code = models.CharField(max_length=30, verbose_name='Code')
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    type_cle = models.CharField(
+        max_length=14, choices=Type.choices, default=Type.MANUEL,
+        verbose_name='Type de clé')
+    base = models.CharField(
+        max_length=14, choices=Base.choices, default=Base.PERSONNALISEE,
+        verbose_name='Base de répartition')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+
+    class Meta:
+        verbose_name = 'Clé de répartition'
+        verbose_name_plural = 'Clés de répartition'
+        ordering = ['code']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'code'], name='uniq_cle_repartition_code'),
+        ]
+
+    def __str__(self):
+        return f'{self.code} — {self.libelle}'
+
+    @property
+    def total_coefficients(self):
+        return sum((li.coefficient or Decimal('0')
+                    for li in self.lignes.all()), Decimal('0'))
+
+
+class LigneCleRepartition(TenantModel):
+    """Coefficient d'une cible dans une clé de répartition (NTFIN20).
+
+    ``coefficient`` exprimé en pourcentage (Σ = 100 pour une clé valide). La
+    cible est un ``centre_cout`` (axe analytique). Hérite de ``TenantModel``.
+    """
+    cle = models.ForeignKey(
+        CleRepartition,
+        # on_delete: CASCADE — une ligne de clé n'existe qu'attachée à sa clé.
+        on_delete=models.CASCADE,
+        related_name='lignes',
+        verbose_name='Clé de répartition',
+    )
+    centre_cout = models.ForeignKey(
+        'compta.CentreCout',
+        # on_delete: PROTECT — on ne supprime pas un centre encore ciblé par une
+        # clé de répartition (intégrité analytique).
+        on_delete=models.PROTECT,
+        related_name='lignes_cle_repartition',
+        verbose_name='Centre/axe cible',
+    )
+    coefficient = models.DecimalField(
+        max_digits=7, decimal_places=4, default=Decimal('0'),
+        verbose_name='Coefficient (%)')
+
+    class Meta:
+        verbose_name = 'Ligne de clé de répartition'
+        verbose_name_plural = 'Lignes de clé de répartition'
+        ordering = ['cle', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['cle', 'centre_cout'],
+                name='uniq_ligne_cle_centre'),
+        ]
+
+    def __str__(self):
+        return f'{self.cle_id} → {self.centre_cout_id} ({self.coefficient}%)'
+
+
+# ── NTFIN21 — Moteur d'allocation (déversement de charges indirectes) ──────
+
+class RunAllocation(TenantModel):
+    """Exécution d'une allocation (NTFIN21).
+
+    Trace un déversement d'un ``compte_source`` (solde/charge indirecte) vers
+    les cibles d'une ``cle`` sur une période, en postant une OD d'allocation
+    réversible (``ecriture``). ``reversee`` marque une allocation extournée.
+    Hérite de ``core.models.TenantModel``.
+    """
+    class Statut(models.TextChoices):
+        EXECUTEE = 'executee', 'Exécutée'
+        REVERSEE = 'reversee', 'Réversée'
+
+    cle = models.ForeignKey(
+        CleRepartition,
+        # on_delete: PROTECT — on ne supprime pas une clé encore référencée par
+        # un run d'allocation (traçabilité).
+        on_delete=models.PROTECT,
+        related_name='runs',
+        verbose_name='Clé de répartition',
+    )
+    compte_source = models.CharField(
+        max_length=20, verbose_name='Compte source')
+    centre_source = models.ForeignKey(
+        'compta.CentreCout',
+        # on_delete: SET_NULL — le centre source est indicatif ; sa purge ne
+        # doit pas effacer le run.
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='runs_allocation_source',
+        verbose_name='Centre source')
+    referentiel = models.ForeignKey(
+        ReferentielComptable,
+        # on_delete: SET_NULL — le référentiel cible est indicatif ; NULL =
+        # principal.
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='runs_allocation',
+        verbose_name='Référentiel')
+    periode = models.DateField(verbose_name='Période (mois de référence)')
+    montant_reparti = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant réparti')
+    ecriture = models.ForeignKey(
+        EcritureComptable,
+        # on_delete: SET_NULL — l'OD générée est traçée ; sa purge ne doit pas
+        # effacer le run source.
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='runs_allocation',
+        verbose_name="Écriture d'allocation générée")
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.EXECUTEE,
+        verbose_name='Statut')
+
+    class Meta:
+        verbose_name = "Run d'allocation"
+        verbose_name_plural = "Runs d'allocation"
+        ordering = ['-periode', '-id']
+
+    def __str__(self):
+        return f'Allocation {self.compte_source} {self.periode} ({self.montant_reparti})'
+
+
+# ── NTFIN22 — Allocations récurrentes planifiées ───────────────────────────
+
+class AllocationRecurrente(TenantModel):
+    """Allocation planifiée exécutée périodiquement (NTFIN22).
+
+    Réutilise le pattern ``AbonnementEcriture`` : ``prochaine_echeance`` avance
+    après chaque exécution ; la commande ``generer_allocations_dues`` exécute
+    les allocations échues via NTFIN21, idempotente par (allocation, période).
+    Hérite de ``core.models.TenantModel``.
+    """
+    class Periodicite(models.TextChoices):
+        MENSUELLE = 'mensuelle', 'Mensuelle'
+        TRIMESTRIELLE = 'trimestrielle', 'Trimestrielle'
+
+    cle = models.ForeignKey(
+        CleRepartition,
+        # on_delete: PROTECT — on ne supprime pas une clé encore planifiée.
+        on_delete=models.PROTECT,
+        related_name='allocations_recurrentes',
+        verbose_name='Clé de répartition',
+    )
+    libelle = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Libellé')
+    compte_source = models.CharField(
+        max_length=20, verbose_name='Compte source')
+    centre_source = models.ForeignKey(
+        'compta.CentreCout',
+        # on_delete: SET_NULL — centre source indicatif.
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='allocations_recurrentes_source',
+        verbose_name='Centre source')
+    referentiel = models.ForeignKey(
+        ReferentielComptable,
+        # on_delete: SET_NULL — référentiel cible indicatif (NULL = principal).
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='allocations_recurrentes',
+        verbose_name='Référentiel')
+    periodicite = models.CharField(
+        max_length=14, choices=Periodicite.choices,
+        default=Periodicite.MENSUELLE, verbose_name='Périodicité')
+    prochaine_echeance = models.DateField(verbose_name='Prochaine échéance')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    derniere_generation = models.DateField(
+        null=True, blank=True, verbose_name='Dernière génération')
+
+    class Meta:
+        verbose_name = 'Allocation récurrente'
+        verbose_name_plural = 'Allocations récurrentes'
+        ordering = ['prochaine_echeance']
+
+    def __str__(self):
+        return self.libelle or f'Allocation récurrente {self.compte_source}'
+
+    def echeance_suivante(self, depuis):
+        """Échéance suivante après ``depuis`` selon la périodicité (stdlib)."""
+        import calendar
+        pas = 1 if self.periodicite == self.Periodicite.MENSUELLE else 3
+        mois_total = depuis.month - 1 + pas
+        annee = depuis.year + mois_total // 12
+        mois = mois_total % 12 + 1
+        dernier_jour = calendar.monthrange(annee, mois)[1]
+        jour = min(depuis.day, dernier_jour)
+        return depuis.replace(year=annee, month=mois, day=jour)
+
+
+# ── NTFIN23 — Engagements (encumbrance) sur commande & note de frais ───────
+
+class EngagementComptable(TenantModel):
+    """Engagement comptable (encumbrance) sur un compte/centre (NTFIN23).
+
+    Réserve un budget à la commande (``engager``) puis le solde à la
+    facturation (``liquider``). ``montant_engage`` = total réservé ;
+    ``montant_liquide`` = part déjà consommée ; le résiduel = engagé − liquidé.
+    La pièce source (bon de commande, note de frais, marché) est référencée par
+    string-ref (``source_type`` + ``source_id``), jamais un FK cross-app.
+    Hérite de ``core.models.TenantModel``.
+    """
+    class Type(models.TextChoices):
+        BON_COMMANDE = 'bon_commande', 'Bon de commande'
+        NOTE_FRAIS = 'note_frais', 'Note de frais'
+        MARCHE = 'marche', 'Marché'
+
+    class Statut(models.TextChoices):
+        ENGAGE = 'engage', 'Engagé'
+        PARTIELLEMENT_LIQUIDE = 'partiellement_liquide', 'Partiellement liquidé'
+        SOLDE = 'solde', 'Soldé'
+
+    referentiel = models.ForeignKey(
+        ReferentielComptable,
+        # on_delete: SET_NULL — référentiel indicatif (NULL = principal).
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='engagements',
+        verbose_name='Référentiel')
+    type_engagement = models.CharField(
+        max_length=14, choices=Type.choices, default=Type.BON_COMMANDE,
+        verbose_name="Type d'engagement")
+    source_type = models.CharField(
+        max_length=40, blank=True, default='',
+        verbose_name='Type de pièce source (string-ref)')
+    source_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID de la pièce source (string-ref)')
+    reference = models.CharField(
+        max_length=50, blank=True, default='', verbose_name='Référence')
+    compte = models.ForeignKey(
+        CompteComptable,
+        # on_delete: PROTECT — un compte engagé ne doit pas être supprimé tant
+        # qu'un engagement le référence.
+        on_delete=models.PROTECT,
+        related_name='engagements',
+        verbose_name='Compte')
+    centre_cout = models.ForeignKey(
+        'compta.CentreCout',
+        # on_delete: SET_NULL — centre indicatif ; sa purge ne casse pas
+        # l'engagement.
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='engagements',
+        verbose_name='Centre de coût')
+    libelle = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Libellé')
+    montant_engage = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant engagé')
+    montant_liquide = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant liquidé')
+    date_engagement = models.DateField(verbose_name="Date d'engagement")
+    statut = models.CharField(
+        max_length=22, choices=Statut.choices, default=Statut.ENGAGE,
+        verbose_name='Statut')
+
+    class Meta:
+        verbose_name = 'Engagement comptable'
+        verbose_name_plural = 'Engagements comptables'
+        ordering = ['-date_engagement', '-id']
+
+    def __str__(self):
+        return f'Engagement {self.reference or self.type_engagement} ({self.montant_engage})'
+
+    @property
+    def montant_residuel(self):
+        return (self.montant_engage or Decimal('0')) - (
+            self.montant_liquide or Decimal('0'))
+
+    def clean(self):
+        super().clean()
+        if self.montant_engage is not None and self.montant_engage < 0:
+            raise ValidationError("Le montant engagé ne peut pas être négatif.")
+        if (self.montant_liquide is not None and self.montant_engage is not None
+                and self.montant_liquide > self.montant_engage):
+            raise ValidationError(
+                "Le montant liquidé ne peut pas dépasser le montant engagé.")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Groupe NTFIN — Close management (clôture rapide)
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ── NTFIN26 — Modèle de checklist de clôture ───────────────────────────────
+
+class ModeleCloture(TenantModel):
+    """Modèle de checklist de clôture (NTFIN26).
+
+    Gabarit d'un cycle de clôture (mensuel/trimestriel/annuel) ; ses
+    ``TacheClotureModele`` définissent l'ordre, le responsable et la catégorie
+    des tâches. Instancié par période via ``InstanceCloture`` (NTFIN27). Hérite
+    de ``core.models.TenantModel``.
+    """
+    class Periodicite(models.TextChoices):
+        MENSUELLE = 'mensuelle', 'Mensuelle'
+        TRIMESTRIELLE = 'trimestrielle', 'Trimestrielle'
+        ANNUELLE = 'annuelle', 'Annuelle'
+
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    periodicite = models.CharField(
+        max_length=14, choices=Periodicite.choices,
+        default=Periodicite.MENSUELLE, verbose_name='Périodicité')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+
+    class Meta:
+        verbose_name = 'Modèle de clôture'
+        verbose_name_plural = 'Modèles de clôture'
+        ordering = ['periodicite', 'libelle']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'libelle', 'periodicite'],
+                name='uniq_modele_cloture'),
+        ]
+
+    def __str__(self):
+        return f'{self.libelle} ({self.get_periodicite_display()})'
+
+
+class CategorieTacheCloture(models.TextChoices):
+    """Catégorie d'une tâche de clôture (partagée NTFIN26/27/32)."""
+    RAPPROCHEMENT = 'rapprochement', 'Rapprochement'
+    ACCRUAL = 'accrual', 'Accrual / régularisation'
+    ANALYSE = 'analyse', 'Analyse'
+    REPORTING = 'reporting', 'Reporting'
+
+
+class TacheClotureModele(TenantModel):
+    """Tâche-modèle d'une checklist de clôture (NTFIN26). Hérite de TenantModel."""
+    modele = models.ForeignKey(
+        ModeleCloture,
+        # on_delete: CASCADE — une tâche-modèle n'existe qu'attachée à son modèle.
+        on_delete=models.CASCADE,
+        related_name='taches',
+        verbose_name='Modèle de clôture',
+    )
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    role_responsable = models.CharField(
+        max_length=60, blank=True, default='',
+        verbose_name='Rôle responsable')
+    obligatoire = models.BooleanField(default=True, verbose_name='Obligatoire')
+    categorie = models.CharField(
+        max_length=14, choices=CategorieTacheCloture.choices,
+        default=CategorieTacheCloture.ANALYSE, verbose_name='Catégorie')
+
+    class Meta:
+        verbose_name = 'Tâche-modèle de clôture'
+        verbose_name_plural = 'Tâches-modèle de clôture'
+        ordering = ['modele', 'ordre', 'id']
+
+    def __str__(self):
+        return f'{self.ordre}. {self.libelle}'
+
+
+# ── NTFIN27 — Instance de clôture (workspace de période) ───────────────────
+
+class InstanceCloture(TenantModel):
+    """Workspace de clôture d'une période (NTFIN27).
+
+    Matérialise un ``ModeleCloture`` sur une ``PeriodeComptable`` : une
+    ``TacheCloture`` par tâche-modèle. Le statut global suit l'avancement.
+    Hérite de ``core.models.TenantModel``.
+    """
+    class Statut(models.TextChoices):
+        OUVERT = 'ouvert', 'Ouvert'
+        EN_COURS = 'en_cours', 'En cours'
+        VALIDE = 'valide', 'Validé'
+
+    periode = models.ForeignKey(
+        PeriodeComptable,
+        # on_delete: CASCADE — le workspace de clôture n'a de sens que pour sa
+        # période ; supprimer la période retire son instance de clôture.
+        on_delete=models.CASCADE,
+        related_name='instances_cloture',
+        verbose_name='Période',
+    )
+    modele = models.ForeignKey(
+        ModeleCloture,
+        # on_delete: SET_NULL — le modèle source est indicatif une fois
+        # instancié ; sa purge ne casse pas l'instance déjà matérialisée.
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='instances',
+        verbose_name='Modèle de clôture',
+    )
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.OUVERT,
+        verbose_name='Statut')
+    date_cible = models.DateField(
+        null=True, blank=True, verbose_name='Date cible de clôture')
+
+    class Meta:
+        verbose_name = 'Instance de clôture'
+        verbose_name_plural = 'Instances de clôture'
+        ordering = ['-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'periode'],
+                name='uniq_instance_cloture_periode'),
+        ]
+
+    def __str__(self):
+        return f'Clôture période {self.periode_id} ({self.statut})'
+
+
+class TacheCloture(TenantModel):
+    """Tâche concrète d'une instance de clôture (NTFIN27). Hérite de TenantModel."""
+    class Statut(models.TextChoices):
+        A_FAIRE = 'a_faire', 'À faire'
+        EN_COURS = 'en_cours', 'En cours'
+        FAIT = 'fait', 'Fait'
+        NA = 'na', 'Non applicable'
+
+    instance = models.ForeignKey(
+        InstanceCloture,
+        # on_delete: CASCADE — une tâche n'existe qu'attachée à son instance.
+        on_delete=models.CASCADE,
+        related_name='taches',
+        verbose_name='Instance de clôture',
+    )
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    obligatoire = models.BooleanField(default=True, verbose_name='Obligatoire')
+    categorie = models.CharField(
+        max_length=14, choices=CategorieTacheCloture.choices,
+        default=CategorieTacheCloture.ANALYSE, verbose_name='Catégorie')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.A_FAIRE,
+        verbose_name='Statut')
+    assigne_a = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        # on_delete: SET_NULL — un utilisateur supprimé ne doit pas effacer la
+        # tâche ; l'assignation se dénoue.
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='taches_cloture_assignees',
+        verbose_name='Assigné à')
+    fait_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        # on_delete: SET_NULL — trace l'acteur ; sa purge ne casse pas la tâche.
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='taches_cloture_faites',
+        verbose_name='Fait par')
+    fait_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Fait le')
+    piece_jointe_key = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Pièce jointe (clé de stockage)')
+
+    class Meta:
+        verbose_name = 'Tâche de clôture'
+        verbose_name_plural = 'Tâches de clôture'
+        ordering = ['instance', 'ordre', 'id']
+
+    def __str__(self):
+        return f'{self.libelle} ({self.statut})'
+
+
+# ── NTFIN29 — Accruals automatiques (avec extourne) ────────────────────────
+
+class AccrualCloture(TenantModel):
+    """Accrual de clôture (charge/produit à recevoir) avec extourne (NTFIN29).
+
+    Poste une OD de régularisation à la clôture (``ecriture``) et son extourne
+    automatique au 1er jour de la période suivante (``ecriture_extourne``). La
+    pièce source est référencée par string-ref. Hérite de ``TenantModel``.
+    """
+    class Type(models.TextChoices):
+        CHARGE_A_PAYER = 'charge_a_payer', 'Charge à payer'
+        PRODUIT_A_RECEVOIR = 'produit_a_recevoir', 'Produit à recevoir'
+        FNP = 'fnp', 'Facture non parvenue'
+
+    periode = models.ForeignKey(
+        PeriodeComptable,
+        # on_delete: CASCADE — un accrual de clôture est rattaché à sa période.
+        on_delete=models.CASCADE,
+        related_name='accruals_cloture',
+        verbose_name='Période',
+    )
+    type_accrual = models.CharField(
+        max_length=20, choices=Type.choices,
+        default=Type.CHARGE_A_PAYER, verbose_name="Type d'accrual")
+    compte_charge_produit = models.CharField(
+        max_length=20, verbose_name='Compte de charge/produit')
+    compte_contrepartie = models.CharField(
+        max_length=20, verbose_name='Compte de contrepartie')
+    montant = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant')
+    libelle = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Libellé')
+    source_type = models.CharField(
+        max_length=40, blank=True, default='',
+        verbose_name='Type de pièce source (string-ref)')
+    source_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID de la pièce source (string-ref)')
+    ecriture = models.ForeignKey(
+        EcritureComptable,
+        # on_delete: SET_NULL — l'OD d'accrual est traçée ; sa purge ne doit pas
+        # effacer la donnée d'accrual source.
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='accruals_cloture',
+        verbose_name="Écriture d'accrual")
+    ecriture_extourne = models.ForeignKey(
+        EcritureComptable,
+        # on_delete: SET_NULL — l'extourne est traçée ; idem.
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='accruals_cloture_extourne',
+        verbose_name="Écriture d'extourne")
+
+    class Meta:
+        verbose_name = 'Accrual de clôture'
+        verbose_name_plural = 'Accruals de clôture'
+        ordering = ['-id']
+
+    def __str__(self):
+        return f'Accrual {self.type_accrual} {self.montant} (période {self.periode_id})'
+
+
+# ── NTFIN31 — Justification des variations ─────────────────────────────────
+
+class JustificationVariation(TenantModel):
+    """Commentaire justifiant une variation matérielle (NTFIN31).
+
+    Documente un écart signalé par l'analyse de variation NTFIN30. Statut
+    ``expliquee``/``non_expliquee``. Hérite de ``core.models.TenantModel``.
+    """
+    class Statut(models.TextChoices):
+        EXPLIQUEE = 'expliquee', 'Expliquée'
+        NON_EXPLIQUEE = 'non_expliquee', 'Non expliquée'
+
+    periode = models.ForeignKey(
+        PeriodeComptable,
+        # on_delete: CASCADE — une justification est rattachée à sa période.
+        on_delete=models.CASCADE,
+        related_name='justifications_variation',
+        verbose_name='Période',
+    )
+    compte = models.CharField(max_length=20, verbose_name='Compte')
+    montant_variation = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant de la variation')
+    commentaire = models.TextField(
+        blank=True, default='', verbose_name='Commentaire')
+    statut = models.CharField(
+        max_length=14, choices=Statut.choices, default=Statut.EXPLIQUEE,
+        verbose_name='Statut')
+    auteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        # on_delete: SET_NULL — trace l'auteur ; sa purge ne casse pas la
+        # justification.
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='justifications_variation',
+        verbose_name='Auteur')
+
+    class Meta:
+        verbose_name = 'Justification de variation'
+        verbose_name_plural = 'Justifications de variation'
+        ordering = ['-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'periode', 'compte'],
+                name='uniq_justif_variation_periode_compte'),
+        ]
+
+    def __str__(self):
+        return f'Justif {self.compte} période {self.periode_id} ({self.statut})'
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Groupe NTFIN — Rapprochements de comptes de bilan (workflow 4 yeux)
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ── NTFIN35 — Rapprochement de compte de bilan ─────────────────────────────
+
+class RapprochementCompte(TenantModel):
+    """Rapprochement d'un compte de bilan quelconque (NTFIN35).
+
+    Au-delà du bancaire (``RapprochementBancaire`` reste dédié au bancaire) :
+    rapproche tout compte de bilan (fournisseurs, comptes d'attente, TVA,
+    comptes courants) — ``solde_gl`` (grand livre) vs ``solde_justifie`` (somme
+    des ``LigneJustificationCompte``), ``ecart`` = gl − justifié. Workflow
+    préparateur → réviseur (NTFIN37, revue 4 yeux). Hérite de ``TenantModel``.
+    """
+    class Statut(models.TextChoices):
+        A_RAPPROCHER = 'a_rapprocher', 'À rapprocher'
+        EN_COURS = 'en_cours', 'En cours'
+        SOUMIS = 'soumis', 'Soumis à revue'
+        RAPPROCHE = 'rapproche', 'Rapproché'
+        VALIDE = 'valide', 'Validé'
+
+    compte = models.ForeignKey(
+        CompteComptable,
+        # on_delete: PROTECT — un compte rapproché ne doit pas être supprimé
+        # tant qu'un rapprochement le référence (piste d'audit).
+        on_delete=models.PROTECT,
+        related_name='rapprochements_compte',
+        verbose_name='Compte',
+    )
+    periode = models.ForeignKey(
+        PeriodeComptable,
+        # on_delete: CASCADE — un rapprochement est rattaché à sa période.
+        on_delete=models.CASCADE,
+        related_name='rapprochements_compte',
+        verbose_name='Période',
+    )
+    solde_gl = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Solde grand livre')
+    solde_justifie = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Solde justifié')
+    ecart = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Écart')
+    statut = models.CharField(
+        max_length=14, choices=Statut.choices, default=Statut.A_RAPPROCHER,
+        verbose_name='Statut')
+    preparateur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        # on_delete: SET_NULL — trace le préparateur ; sa purge ne casse pas le
+        # rapprochement.
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='rapprochements_compte_prepares',
+        verbose_name='Préparateur')
+    reviseur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        # on_delete: SET_NULL — trace le réviseur ; idem.
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='rapprochements_compte_revises',
+        verbose_name='Réviseur')
+    date_soumission = models.DateTimeField(
+        null=True, blank=True, verbose_name='Soumis le')
+    date_validation = models.DateTimeField(
+        null=True, blank=True, verbose_name='Validé le')
+    commentaire = models.TextField(
+        blank=True, default='', verbose_name='Commentaire')
+
+    class Meta:
+        verbose_name = 'Rapprochement de compte'
+        verbose_name_plural = 'Rapprochements de compte'
+        ordering = ['-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'compte', 'periode'],
+                name='uniq_rapprochement_compte_periode'),
+        ]
+
+    def __str__(self):
+        return f'Rappr. {self.compte_id} période {self.periode_id} ({self.statut})'
+
+    def recalculer_ecart(self):
+        self.ecart = (self.solde_gl or Decimal('0')) - (
+            self.solde_justifie or Decimal('0'))
+        return self.ecart
+
+
+# ── NTFIN36 — Lignes justificatives d'un rapprochement de compte ───────────
+
+class LigneJustificationCompte(TenantModel):
+    """Élément justificatif du solde d'un rapprochement de compte (NTFIN36).
+
+    ``type_element`` = écriture / document / reconciliant. La source est
+    référencée par string-ref. La somme des lignes = ``solde_justifie`` du
+    rapprochement (contrôlé à la validation). Hérite de ``TenantModel``.
+    """
+    class TypeElement(models.TextChoices):
+        ECRITURE = 'ecriture', 'Écriture'
+        DOCUMENT = 'document', 'Document'
+        RECONCILIANT = 'reconciliant', 'Élément réconciliant'
+
+    rapprochement = models.ForeignKey(
+        RapprochementCompte,
+        # on_delete: CASCADE — une ligne justificative n'existe qu'attachée à
+        # son rapprochement.
+        on_delete=models.CASCADE,
+        related_name='lignes',
+        verbose_name='Rapprochement',
+    )
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    montant = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant')
+    type_element = models.CharField(
+        max_length=14, choices=TypeElement.choices,
+        default=TypeElement.ECRITURE, verbose_name="Type d'élément")
+    source_type = models.CharField(
+        max_length=40, blank=True, default='',
+        verbose_name='Type de source (string-ref)')
+    source_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID de la source (string-ref)')
+    permanente = models.BooleanField(
+        default=False,
+        verbose_name='Ligne permanente (reportée N+1)',
+        help_text='NTFIN39 — reportée automatiquement à la période suivante.')
+
+    class Meta:
+        verbose_name = 'Ligne justificative de compte'
+        verbose_name_plural = 'Lignes justificatives de compte'
+        ordering = ['rapprochement', 'id']
+
+    def __str__(self):
+        return f'{self.libelle} ({self.montant})'
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Groupe NTFIN — Immobilisations avancées
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ── NTFIN40 — Composants d'immobilisation (IAS 16) ─────────────────────────
+
+class ComposantImmobilisation(TenantModel):
+    """Composant amortissable d'un actif (approche par composants, IAS 16).
+
+    Permet d'amortir séparément les composants d'un actif (structure vs
+    onduleur vs panneaux) avec des durées distinctes. Chaque composant porte sa
+    propre ``valeur``, ``duree_amortissement`` et ``methode`` ; la dotation
+    annuelle totale de l'actif = Σ des dotations de ses composants. Hérite de
+    ``core.models.TenantModel``.
+    """
+    class Methode(models.TextChoices):
+        LINEAIRE = 'lineaire', 'Linéaire'
+        DEGRESSIF = 'degressif', 'Dégressif'
+
+    immobilisation = models.ForeignKey(
+        Immobilisation,
+        # on_delete: CASCADE — un composant n'existe qu'attaché à son actif.
+        on_delete=models.CASCADE,
+        related_name='composants',
+        verbose_name='Immobilisation',
+    )
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    valeur = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Valeur du composant')
+    duree_amortissement = models.PositiveIntegerField(
+        verbose_name="Durée d'amortissement (années)")
+    methode = models.CharField(
+        max_length=10, choices=Methode.choices, default=Methode.LINEAIRE,
+        verbose_name="Méthode d'amortissement")
+
+    class Meta:
+        verbose_name = "Composant d'immobilisation"
+        verbose_name_plural = "Composants d'immobilisation"
+        ordering = ['immobilisation', 'id']
+
+    def __str__(self):
+        return f'{self.libelle} ({self.valeur})'
+
+    @property
+    def dotation_annuelle(self):
+        """Dotation linéaire annuelle du composant (valeur / durée)."""
+        if not self.duree_amortissement:
+            return Decimal('0')
+        return (self.valeur / Decimal(self.duree_amortissement)).quantize(
+            Decimal('0.01'))
+
+
+# ── NTFIN41 — Dépréciation / impairment (IAS 36) ───────────────────────────
+
+class DepreciationImmobilisation(TenantModel):
+    """Test de dépréciation d'une immobilisation (impairment, IAS 36).
+
+    Quand la valeur recouvrable < valeur comptable, on constate une perte de
+    valeur (``perte_valeur``), réversible si la valeur remonte. Hérite de
+    ``core.models.TenantModel``.
+    """
+    immobilisation = models.ForeignKey(
+        Immobilisation,
+        # on_delete: CASCADE — un test de dépréciation n'a de sens que pour son
+        # actif ; supprimer l'actif retire ses tests (aucune écriture GL ici).
+        on_delete=models.CASCADE,
+        related_name='depreciations',
+        verbose_name='Immobilisation',
+    )
+    date_test = models.DateField(verbose_name='Date du test')
+    valeur_recuperable = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Valeur recouvrable')
+    valeur_comptable = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Valeur comptable (VNC)')
+    perte_valeur = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Perte de valeur')
+    reversible = models.BooleanField(default=True, verbose_name='Réversible')
+    reprise = models.BooleanField(
+        default=False, verbose_name='Reprise de dépréciation')
+    ecriture = models.ForeignKey(
+        EcritureComptable,
+        # on_delete: SET_NULL — l'écriture de dépréciation générée est traçée ;
+        # sa purge ne doit pas effacer la donnée de test source.
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='depreciations_immo',
+        verbose_name='Écriture générée',
+    )
+
+    class Meta:
+        verbose_name = "Dépréciation d'immobilisation"
+        verbose_name_plural = "Dépréciations d'immobilisation"
+        ordering = ['-date_test', '-id']
+
+    def __str__(self):
+        return f'Dépréciation {self.immobilisation_id} ({self.perte_valeur})'
+
+    def calculer_perte(self):
+        """Perte = max(0, valeur comptable − valeur recouvrable)."""
+        ecart = (self.valeur_comptable or Decimal('0')) - (
+            self.valeur_recuperable or Decimal('0'))
+        self.perte_valeur = ecart if ecart > 0 else Decimal('0')
+        return self.perte_valeur
+
+
+# ── NTFIN42 — Mutation / transfert d'immobilisation ────────────────────────
+
+class MutationImmobilisation(TenantModel):
+    """Transfert d'un actif entre centres analytiques ou entités (NTFIN42).
+
+    Trace le déplacement d'une immobilisation d'un centre/axe (ou entité) à un
+    autre ; les futures dotations sont réaffectées au nouveau centre à compter
+    de la ``date`` de mutation. Un changement d'entité déclenche une écriture
+    inter-co (traçée par string-ref). Hérite de ``core.models.TenantModel``.
+    """
+    immobilisation = models.ForeignKey(
+        Immobilisation,
+        # on_delete: CASCADE — une mutation n'a de sens que pour son actif.
+        on_delete=models.CASCADE,
+        related_name='mutations',
+        verbose_name='Immobilisation',
+    )
+    ancien_centre = models.ForeignKey(
+        'compta.CentreCout',
+        # on_delete: SET_NULL — l'ancien centre est indicatif ; sa purge ne
+        # casse pas la trace de mutation.
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='mutations_immo_depuis',
+        verbose_name='Ancien centre',
+    )
+    nouveau_centre = models.ForeignKey(
+        'compta.CentreCout',
+        # on_delete: SET_NULL — idem ancien_centre.
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='mutations_immo_vers',
+        verbose_name='Nouveau centre',
+    )
+    entite_source = models.ForeignKey(
+        'authentication.Company',
+        # on_delete: SET_NULL — entité indicative (foundation app).
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='mutations_immo_source',
+        verbose_name='Entité source',
+    )
+    entite_cible = models.ForeignKey(
+        'authentication.Company',
+        # on_delete: SET_NULL — idem entite_source.
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='mutations_immo_cible',
+        verbose_name='Entité cible',
+    )
+    date = models.DateField(verbose_name='Date de mutation')
+    motif = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Motif')
+
+    class Meta:
+        verbose_name = "Mutation d'immobilisation"
+        verbose_name_plural = "Mutations d'immobilisation"
+        ordering = ['-date', '-id']
+
+    def __str__(self):
+        return f'Mutation {self.immobilisation_id} @ {self.date}'
+
+
+# ── NTFIN43 — Immobilisations en cours (CIP) & mise en service ─────────────
+
+class ImmobilisationEnCours(TenantModel):
+    """Immobilisation en cours de production (CIP, compte 23) — NTFIN43.
+
+    Cumule les montants engagés d'un chantier immobilisé (par source string-ref)
+    avant sa mise en service. ``mettre_en_service`` transfère le cumul vers une
+    ``Immobilisation`` (compte 2) amortissable et solde le compte 23. Hérite de
+    ``core.models.TenantModel``.
+    """
+    class Statut(models.TextChoices):
+        EN_COURS = 'en_cours', 'En cours'
+        MIS_EN_SERVICE = 'mis_en_service', 'Mis en service'
+
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    compte_encours = models.CharField(
+        max_length=20, default='231',
+        verbose_name='Compte immobilisation en cours (classe 23)')
+    montant_cumule = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant cumulé engagé')
+    statut = models.CharField(
+        max_length=16, choices=Statut.choices, default=Statut.EN_COURS,
+        verbose_name='Statut')
+    date_mise_en_service = models.DateField(
+        null=True, blank=True, verbose_name='Date de mise en service')
+    immobilisation = models.ForeignKey(
+        Immobilisation,
+        # on_delete: SET_NULL — l'immobilisation créée à la mise en service est
+        # traçée ; sa purge ne doit pas effacer l'historique du chantier.
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='origine_encours',
+        verbose_name='Immobilisation mise en service',
+    )
+
+    class Meta:
+        verbose_name = 'Immobilisation en cours (CIP)'
+        verbose_name_plural = 'Immobilisations en cours (CIP)'
+        ordering = ['-id']
+
+    def __str__(self):
+        return f'{self.libelle} ({self.montant_cumule})'
+
+
+class LigneImmobilisationEnCours(TenantModel):
+    """Montant engagé cumulé sur une immobilisation en cours (NTFIN43).
+
+    Chaque ligne ajoute un montant au cumul du CIP, avec sa source (string-ref).
+    Hérite de ``core.models.TenantModel``.
+    """
+    encours = models.ForeignKey(
+        ImmobilisationEnCours,
+        # on_delete: CASCADE — une ligne n'existe qu'attachée à son CIP.
+        on_delete=models.CASCADE,
+        related_name='lignes',
+        verbose_name='Immobilisation en cours',
+    )
+    libelle = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Libellé')
+    montant = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant')
+    date = models.DateField(null=True, blank=True, verbose_name='Date')
+    source_type = models.CharField(
+        max_length=40, blank=True, default='',
+        verbose_name='Type de source (string-ref)')
+    source_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID de la source (string-ref)')
+
+    class Meta:
+        verbose_name = "Ligne d'immobilisation en cours"
+        verbose_name_plural = "Lignes d'immobilisation en cours"
+        ordering = ['encours', 'id']
+
+    def __str__(self):
+        return f'{self.libelle} ({self.montant})'
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Groupe NTFIN — Reconnaissance du revenu IFRS 15 & états consolidés
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ── NTFIN46 — Contrat de revenu & obligations de performance (IFRS 15) ─────
+
+class ContratRevenu(TenantModel):
+    """Contrat de revenu IFRS 15 (étapes 1-2) — NTFIN46.
+
+    Distinct de ``ContratAvancement`` (FG146, % completion pur BTP) : ce contrat
+    porte des ``ObligationPerformance`` distinctes (matériel livré, maintenance
+    12 mois…). Le client et le devis d'origine sont référencés par string-ref.
+    Hérite de ``core.models.TenantModel``.
+    """
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        ACTIF = 'actif', 'Actif'
+        CLOTURE = 'cloture', 'Clôturé'
+
+    reference = models.CharField(
+        max_length=50, blank=True, default='', verbose_name='Référence')
+    libelle = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Libellé')
+    client_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID du client (string-ref)')
+    client_nom = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Client')
+    source_devis_ref = models.CharField(
+        max_length=50, blank=True, default='',
+        verbose_name="Devis d'origine (string-ref)")
+    montant_transaction = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant du prix de transaction')
+    devise = models.CharField(
+        max_length=3, default='MAD', verbose_name='Devise')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.BROUILLON,
+        verbose_name='Statut')
+
+    class Meta:
+        verbose_name = 'Contrat de revenu (IFRS 15)'
+        verbose_name_plural = 'Contrats de revenu (IFRS 15)'
+        ordering = ['-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'reference'],
+                condition=models.Q(reference__gt=''),
+                name='uniq_contrat_revenu_ref'),
+        ]
+
+    def __str__(self):
+        return f'{self.reference or "Contrat"} — {self.client_nom}'
+
+
+class ObligationPerformance(TenantModel):
+    """Obligation de performance d'un contrat de revenu (IFRS 15) — NTFIN46.
+
+    ``prix_vente_specifique`` (standalone selling price) sert à l'allocation du
+    prix de transaction (NTFIN47) ; ``prix_alloue`` reçoit le résultat.
+    ``methode_reconnaissance`` = à une date (livraison) ou dans le temps
+    (linéaire sur ``duree_mois``). Hérite de ``core.models.TenantModel``.
+    """
+    class Methode(models.TextChoices):
+        A_UNE_DATE = 'a_une_date', 'À une date (transfert du contrôle)'
+        DANS_LE_TEMPS = 'dans_le_temps', 'Dans le temps (linéaire)'
+
+    class Statut(models.TextChoices):
+        EN_ATTENTE = 'en_attente', 'En attente'
+        EN_COURS = 'en_cours', 'En cours'
+        REMPLIE = 'remplie', 'Remplie'
+
+    contrat = models.ForeignKey(
+        ContratRevenu,
+        # on_delete: CASCADE — une obligation n'existe qu'attachée à son contrat.
+        on_delete=models.CASCADE,
+        related_name='obligations',
+        verbose_name='Contrat de revenu',
+    )
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    prix_vente_specifique = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Prix de vente spécifique (standalone)')
+    prix_alloue = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Prix alloué')
+    methode_reconnaissance = models.CharField(
+        max_length=14, choices=Methode.choices, default=Methode.A_UNE_DATE,
+        verbose_name='Méthode de reconnaissance')
+    duree_mois = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='Durée (mois, pour reconnaissance dans le temps)')
+    date_debut = models.DateField(
+        null=True, blank=True, verbose_name='Date de début')
+    statut = models.CharField(
+        max_length=12, choices=Statut.choices, default=Statut.EN_ATTENTE,
+        verbose_name='Statut')
+    montant_facture = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant facturé (à ce jour)')
+
+    class Meta:
+        verbose_name = 'Obligation de performance'
+        verbose_name_plural = 'Obligations de performance'
+        ordering = ['contrat', 'id']
+
+    def __str__(self):
+        return f'{self.libelle} ({self.prix_alloue})'
+
+    @property
+    def montant_reconnu(self):
+        return sum(
+            (e.montant_a_reconnaitre for e in self.echeances.filter(
+                statut=EcheancierReconnaissance.Statut.RECONNU)),
+            Decimal('0'))
+
+
+# ── NTFIN48 — Échéancier de reconnaissance & produit constaté d'avance ─────
+
+class EcheancierReconnaissance(TenantModel):
+    """Échéance de reconnaissance du revenu d'une obligation (IFRS 15, NTFIN48).
+
+    Une ligne par période : ``montant_a_reconnaitre`` planifié puis reconnu
+    (statut ``reconnu`` + écriture soldant le produit constaté d'avance 4870).
+    Hérite de ``core.models.TenantModel``.
+    """
+    class Statut(models.TextChoices):
+        PLANIFIE = 'planifie', 'Planifié'
+        RECONNU = 'reconnu', 'Reconnu'
+
+    obligation = models.ForeignKey(
+        ObligationPerformance,
+        # on_delete: CASCADE — une échéance n'existe qu'attachée à son obligation.
+        on_delete=models.CASCADE,
+        related_name='echeances',
+        verbose_name='Obligation de performance',
+    )
+    date = models.DateField(verbose_name='Date de reconnaissance')
+    montant_a_reconnaitre = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant à reconnaître')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.PLANIFIE,
+        verbose_name='Statut')
+    ecriture = models.ForeignKey(
+        EcritureComptable,
+        # on_delete: SET_NULL — l'écriture de reconnaissance est traçée ; sa
+        # purge ne doit pas effacer la donnée d'échéance source.
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='echeances_reconnaissance',
+        verbose_name='Écriture de reconnaissance',
+    )
+
+    class Meta:
+        verbose_name = 'Échéance de reconnaissance'
+        verbose_name_plural = 'Échéances de reconnaissance'
+        ordering = ['obligation', 'date', 'id']
+
+    def __str__(self):
+        return f'{self.date} — {self.montant_a_reconnaitre} ({self.statut})'
+
+
+# ── NTFIN55 — Piste d'audit renforcée des opérations de consolidation ──────
+
+class EtapeAuditConsolidation(TenantModel):
+    """Maillon d'audit d'une étape de consolidation (NTFIN55, append-only).
+
+    Étend le principe de ``PisteAuditComptable`` (hash-chaîné) aux étapes d'un
+    cycle de consolidation (collecte, conversion, matching, élimination,
+    publication). Chaque maillon fige l'acteur, l'horodatage serveur et un hash
+    du snapshot de balance, enchaîné au précédent — rejouable et auditable,
+    sans écraser l'historique. Append-only (``save`` refuse toute modification).
+    Hérite de ``core.models.TenantModel``.
+    """
+    cycle = models.ForeignKey(
+        CycleConsolidation,
+        # on_delete: CASCADE — un maillon d'audit appartient à son cycle ;
+        # jeter le cycle jette sa piste d'audit de travail.
+        on_delete=models.CASCADE,
+        related_name='etapes_audit',
+        verbose_name='Cycle de consolidation',
+    )
+    etape = models.CharField(max_length=40, verbose_name='Étape')
+    acteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        # on_delete: SET_NULL — trace l'acteur ; sa purge ne casse pas le maillon.
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='etapes_audit_consolidation',
+        verbose_name='Acteur',
+    )
+    sequence = models.PositiveIntegerField(verbose_name='Rang dans la chaîne')
+    hash_snapshot = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name='Hash du snapshot de balance')
+    hash_precedent = models.CharField(
+        max_length=64, blank=True, default='', verbose_name='Hash précédent')
+    hash = models.CharField(max_length=64, verbose_name='Hash du maillon')
+    detail = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Détail')
+
+    class Meta:
+        verbose_name = "Maillon d'audit de consolidation"
+        verbose_name_plural = "Piste d'audit de consolidation"
+        ordering = ['cycle', 'sequence']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['cycle', 'sequence'],
+                name='uniq_etape_audit_conso_seq'),
+        ]
+
+    def __str__(self):
+        return f'Étape {self.etape} #{self.sequence} ({self.hash[:12]}…)'
+
+    def save(self, *args, **kwargs):
+        # Append-only : un maillon déjà scellé ne peut plus être modifié.
+        if self.pk is not None:
+            raise ValidationError(
+                "La piste d'audit de consolidation est inaltérable : un "
+                "maillon déjà scellé ne peut pas être modifié.")
+        super().save(*args, **kwargs)

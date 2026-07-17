@@ -640,6 +640,15 @@ document_statut_change = django.dispatch.Signal()
 budget_cycle_clos = django.dispatch.Signal()
 
 
+# NTADM40 — ``apps.entites`` émet ces 2 événements à la création/désactivation
+# d'une ``Entite`` (jamais de suppression dure). Permet à d'autres apps de
+# réagir (ex. invalider un cache d'agrégats par entité) sans import direct de
+# ``apps.entites.models``. Arguments des deux signaux : ``entite`` (instance
+# ``Entite``), ``user`` (peut être None).
+entite_created = django.dispatch.Signal()
+entite_deactivated = django.dispatch.Signal()
+
+
 # ===========================================================================
 # NTPLT9/10 — Outbox transactionnel FIABLE (façade au-dessus des signaux M6).
 #

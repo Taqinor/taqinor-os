@@ -504,6 +504,34 @@ app.conf.beat_schedule = {
         'task': 'sante.alertes_prise_en_charge_expirant',
         'schedule': crontab(hour=7, minute=40),
     },
+    # NTADM11 — purge quotidienne des sandbox expirés (soft puis hard après
+    # délai de grâce), 03:05.
+    'adminops-purger-sandbox-expires': {
+        'task': 'adminops.purger_sandbox_expires',
+        'schedule': crontab(hour=3, minute=5),
+    },
+    # NTADM35 — rappel J-3 / J-48h avant expiration d'un sandbox, 07:35.
+    'adminops-rappeler-sandbox-a-expirer': {
+        'task': 'adminops.rappeler_sandbox_a_expirer',
+        'schedule': crontab(hour=7, minute=35),
+    },
+    # NTADM36 — recalcul quotidien du health score (historique/tendance), 02:35.
+    'adminops-recalculer-health-score-tenants': {
+        'task': 'adminops.recalculer_health_score_tenants',
+        'schedule': crontab(hour=2, minute=35),
+    },
+    # NTADM38 — purge mensuelle du contenu des vieux packages de config (1er du
+    # mois, 03:35).
+    'adminops-purger-config-packages-anciens': {
+        'task': 'adminops.purger_config_packages_anciens',
+        'schedule': crontab(hour=3, minute=35, day_of_month=1),
+    },
+    # NTADM16 — purge quotidienne des EvenementUsage au-delà de la rétention
+    # configurée (RGPD/CNDP-safe), 03:50.
+    'adminops-purger-evenements-usage': {
+        'task': 'adminops.purger_evenements_usage',
+        'schedule': crontab(hour=3, minute=50),
+    },
     # NTEDU22 — matérialise les séances de la semaine à venir depuis l'emploi
     # du temps actif. Dimanche soir (heure creuse), avant la semaine ciblée.
     'education-generer-seances-semaine': {

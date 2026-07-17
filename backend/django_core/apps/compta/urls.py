@@ -75,6 +75,16 @@ from .views import (
     MargeInterneStockViewSet, EliminationTitresViewSet,
     ReferentielComptableViewSet, AjustementGaapViewSet,
     AxeAnalytiqueViewSet, ImputationAxeViewSet,
+    CleRepartitionViewSet, LigneCleRepartitionViewSet, RunAllocationViewSet,
+    AllocationRecurrenteViewSet, EngagementComptableViewSet,
+    ModeleClotureViewSet, TacheClotureModeleViewSet, InstanceClotureViewSet,
+    TacheClotureViewSet, AccrualClotureViewSet, JustificationVariationViewSet,
+    RapprochementCompteViewSet, LigneJustificationCompteViewSet,
+    ComposantImmobilisationViewSet, DepreciationImmobilisationViewSet,
+    MutationImmobilisationViewSet, ImmobilisationEnCoursViewSet,
+    LigneImmobilisationEnCoursViewSet,
+    ContratRevenuViewSet, ObligationPerformanceViewSet,
+    EcheancierReconnaissanceViewSet,
 )
 
 router = DefaultRouter()
@@ -221,6 +231,34 @@ router.register(r'referentiels-comptables', ReferentielComptableViewSet)
 router.register(r'ajustements-gaap', AjustementGaapViewSet)
 router.register(r'axes-analytiques', AxeAnalytiqueViewSet)
 router.register(r'imputations-axes', ImputationAxeViewSet)
+# ── NTFIN — Allocations & comptabilité d'engagement (encumbrance) ──────────
+router.register(r'cles-repartition', CleRepartitionViewSet)
+router.register(r'lignes-cle-repartition', LigneCleRepartitionViewSet)
+router.register(r'allocations', RunAllocationViewSet)
+router.register(r'allocations-recurrentes', AllocationRecurrenteViewSet)
+router.register(r'engagements', EngagementComptableViewSet)
+# ── NTFIN — Close management (clôture rapide) ──────────────────────────────
+router.register(r'modeles-cloture', ModeleClotureViewSet)
+router.register(r'taches-cloture-modele', TacheClotureModeleViewSet)
+router.register(r'instances-cloture', InstanceClotureViewSet)
+router.register(r'taches-cloture', TacheClotureViewSet)
+router.register(r'accruals-cloture', AccrualClotureViewSet)
+router.register(r'justifications-variation', JustificationVariationViewSet)
+# ── NTFIN — Rapprochements de comptes de bilan (workflow 4 yeux) ───────────
+router.register(r'rapprochements-compte', RapprochementCompteViewSet)
+router.register(r'lignes-justification-compte', LigneJustificationCompteViewSet)
+# ── NTFIN — Immobilisations avancées ───────────────────────────────────────
+router.register(r'composants-immobilisation', ComposantImmobilisationViewSet)
+router.register(r'depreciations-immobilisation',
+                DepreciationImmobilisationViewSet)
+router.register(r'mutations-immobilisation', MutationImmobilisationViewSet)
+router.register(r'immobilisations-en-cours', ImmobilisationEnCoursViewSet)
+router.register(r'lignes-immobilisation-en-cours',
+                LigneImmobilisationEnCoursViewSet)
+# ── NTFIN — Reconnaissance du revenu IFRS 15 ───────────────────────────────
+router.register(r'contrats-revenu', ContratRevenuViewSet)
+router.register(r'obligations-performance', ObligationPerformanceViewSet)
+router.register(r'echeances-reconnaissance', EcheancierReconnaissanceViewSet)
 
 urlpatterns = [
     # XMKT30 (partiel) — calendrier marketing agrégé (campagnes + posts
