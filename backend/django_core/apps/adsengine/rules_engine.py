@@ -405,6 +405,110 @@ def _eval_stop_loss(company, policy, template, *, now, config):
         company, policy, {**template, 'v2': spec}, now=now, config=config)
 
 
+# ══════════════════════════════════════════════════════════════════════════
+# ADSDEEP45 — Fatigue créative COMBINÉE (fréquence × déclin CTR [× hausse
+# CPA]), barre Motion (benchmark concurrent §2). Scope AD (la rotation se
+# décide PAR créatif, pas par campagne) : chaque ad DÉCLENCHÉE matérialise une
+# ``AnomalyEvent`` (kind ``creative_fatigue``) + une ``EngineAction``
+# ROTATE_CREATIVE PROPOSÉE (jamais auto-appliquée — ``services.propose_action``
+# est la SEULE voie d'écriture, comme partout ailleurs dans ce moteur). Ce
+# détecteur n'est PAS un template du catalogue ``RulePolicy`` (pas de nouveau
+# choix ``template_key`` — évite une migration pour un simple ajout de
+# ``choices``) : c'est une fonction autonome, appelable depuis un beat dédié ou
+# directement (tests, commande de gestion).
+# ══════════════════════════════════════════════════════════════════════════
+DEFAULT_FATIGUE_THRESHOLDS = {
+    'freq_ceiling': 4.0,
+    'ctr_decline_warn': 0.25,
+    'ctr_decline_critical': 0.35,
+    'cpa_increase_warn': 0.40,
+    'cpa_increase_critical': 0.50,
+}
+
+
+def _ctr(snaps):
+    """CTR = clics / impressions sur une liste de snapshots (``None`` si
+    impressions nulles/absentes — jamais un faux 0)."""
+    clicks = _sum_attr(snaps, 'clicks')
+    impr = _sum_attr(snaps, 'impressions')
+    return (clicks / impr) if impr > 0 else None
+
+
+def _cpa(snaps):
+    """Coût par résultat sur une liste de snapshots (``None`` si 0 résultat)."""
+    spend = _sum_attr(snaps, 'spend')
+    results = _sum_attr(snaps, 'results')
+    return (spend / results) if results > 0 else None
+
+
+def evaluate_creative_fatigue(company, *, now=None, window_days=7,
+                              baseline_days=14, thresholds=None,
+                              min_samples=3):
+    """ADSDEEP45 — Évalue la fatigue créative PAR AD pour ``company`` : fenêtre
+    COURTE (``window_days``) vs fenêtre de RÉFÉRENCE immédiatement PRÉCÉDENTE
+    (``baseline_days``, JAMAIS chevauchante — le déclin se lit court vs passé
+    récent, pas court vs un cumul qui l'inclurait). Chaque ad DÉCLENCHÉE
+    matérialise l'anomalie + la proposition de rotation. Renvoie la liste des
+    findings (audit ; la dédup/cooldown, comme pour les autres évaluateurs,
+    reste la responsabilité de l'appelant cadencé)."""
+    from django.contrib.contenttypes.models import ContentType
+
+    from . import anomaly, services
+    from .models import AdMirror, EngineAction, InsightSnapshot
+
+    params = dict(DEFAULT_FATIGUE_THRESHOLDS)
+    if thresholds:
+        params.update({k: v for k, v in thresholds.items() if k in params})
+    now = now or datetime.datetime.now()
+    ct = ContentType.objects.get_for_model(AdMirror)
+
+    window_start = _window_start_date(now, window_days)
+    baseline_end = window_start - datetime.timedelta(days=1)
+    baseline_start = baseline_end - datetime.timedelta(
+        days=max(1, baseline_days) - 1)
+
+    findings = []
+    for ad in AdMirror.objects.filter(company=company):
+        recent = _window_snaps(company, ct, ad.pk, now=now, days=window_days)
+        baseline = list(InsightSnapshot.objects.filter(
+            company=company, content_type=ct, object_id=ad.pk,
+            date__gte=baseline_start, date__lte=baseline_end))
+
+        freqs = [float(s.frequency) for s in recent
+                 if getattr(s, 'frequency', None) is not None]
+        frequency = max(freqs) if freqs else None
+
+        det = anomaly.detect_creative_fatigue(
+            frequency=frequency,
+            ctr_current=_ctr(recent), ctr_baseline=_ctr(baseline),
+            cpa_current=_cpa(recent), cpa_baseline=_cpa(baseline),
+            recent_samples=len(recent), baseline_samples=len(baseline),
+            min_samples=min_samples, **params)
+
+        entry = {
+            'ad_meta_id': ad.meta_id, 'ad_object_id': ad.pk,
+            'fired': det.fired, 'insufficient_data': det.insufficient_data,
+            'computed': det.computed, 'severity': det.severity}
+        if det.insufficient_data:
+            findings.append(entry)
+            continue
+        if det.fired:
+            anomaly.record_anomaly(
+                company, det, entity_type='ad', entity_meta_id=ad.meta_id)
+            reason = f'[Fatigue créative] {det.message_fr} (ad {ad.meta_id}).'
+            action = services.propose_action(
+                company, kind=EngineAction.Kind.ROTATE_CREATIVE,
+                reason_fr=reason,
+                payload={'template_key': 'creative_fatigue_combo',
+                         'target_type': 'ad', 'target_meta_id': ad.meta_id,
+                         'target_object_id': ad.pk, 'computed': det.computed})
+            entry['action'] = {
+                'id': action.pk, 'kind': action.kind,
+                'reason_fr': action.reason_fr}
+        findings.append(entry)
+    return findings
+
+
 # Registre template_key → évaluateur. Les templates dépendant d'une autre lane
 # (pacing, réconciliation) ou d'une donnée non encore stockée (impressions pour
 # zéro-delivery) ne sont PAS câblés ici et sont consignés ``evaluated: False``
