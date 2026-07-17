@@ -299,6 +299,31 @@ def peut_saisir_notes(user, matiere_classe):
 # NTEDU18 — certificat de scolarité imprimable (numéroté, jamais count()+1).
 # =============================================================================
 
+
+# =============================================================================
+# NTEDU31 — Portail parents : compte d'accès (auth, token, sans mot de passe).
+# =============================================================================
+
+def generer_ou_regenerer_compte_parent(famille, email):
+    """NTEDU31 — crée (ou renvoie, idempotent) le ``CompteParent`` de
+    ``famille`` pour ``email`` (unique par société). AUCUNE donnée d'identité
+    dupliquée : ``email`` est saisi explicitement côté admin (peut différer
+    de ``Famille.parent1_email``/``parent2_email``, ex. adresse dédiée
+    portail). Jamais un mot de passe posé ici — accès exclusivement par
+    ``token_acces`` (même patron que ``portail.ComptePortailClient``)."""
+    import secrets
+
+    from .models import CompteParent
+
+    compte = CompteParent.objects.filter(
+        company=famille.company, email=email).first()
+    if compte is not None:
+        return compte
+    return CompteParent.objects.create(
+        company=famille.company, famille=famille, email=email,
+        token_acces=secrets.token_urlsafe(32), actif=True)
+
+
 def generer_certificat_scolarite(eleve, annee_scolaire, *, user=None):
     """NTEDU18 — génère un NOUVEAU certificat de scolarité PDF pour
     ``eleve``. ``numero`` attribué via ``core.numbering.next_reference``

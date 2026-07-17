@@ -8,6 +8,7 @@ from django.http import HttpResponse
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from core.mixins import TenantMixin
@@ -50,6 +51,27 @@ class ClasseViewSet(CompanyScopedModelViewSet):
 class FamilleViewSet(CompanyScopedModelViewSet):
     queryset = Famille.objects.all()
     serializer_class = FamilleSerializer
+
+    @action(detail=True, methods=['post'], url_path='compte-parent',
+            permission_classes=[IsAuthenticated])
+    def compte_parent(self, request, pk=None):
+        """NTEDU31 — crée/renvoie (idempotent) le compte portail parent de
+        cette famille pour l'email fourni. Action ADMIN (session ERP
+        authentifiée) — le compte lui-même n'est ensuite consommé QUE par le
+        token via les endpoints publics (``public_views.py``)."""
+        famille = self.get_object()
+        email = (request.data.get('email') or '').strip().lower()
+        if not email:
+            raise ValidationError({'email': 'Email requis.'})
+
+        from .services import generer_ou_regenerer_compte_parent
+        compte = generer_ou_regenerer_compte_parent(famille, email)
+        return Response({
+            'id': compte.id,
+            'email': compte.email,
+            'token_acces': compte.token_acces,
+            'actif': compte.actif,
+        }, status=status.HTTP_201_CREATED)
 
 
 class EleveViewSet(CompanyScopedModelViewSet):
