@@ -438,3 +438,38 @@ class BudgetCharges(TenantModel):
 
     def __str__(self):
         return f'{self.batiment} — {self.get_poste_display()} {self.exercice}'
+
+
+class DepenseCharges(TenantModel):
+    """NTPRO11 — Dépense réelle de charges rattachée à un budget."""
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: cascade tenant (purge des données de la société supprimée)
+        related_name='immobilier_depenses_charges',
+        verbose_name='Société',
+    )
+    budget_charges = models.ForeignKey(
+        BudgetCharges, on_delete=models.CASCADE,  # on_delete: cascade parent→enfant (composant du parent)
+        related_name='depenses',
+        verbose_name='Budget de charges')
+    date = models.DateField(verbose_name='Date')
+    montant_reel = models.DecimalField(
+        max_digits=10, decimal_places=2, verbose_name='Montant réel')
+    # NTPRO11 — référence LÂCHE (jamais un import de apps.stock.models) vers
+    # une pièce d'achat fournisseur existante, même convention que
+    # `plan_ged_document_id` sur `Batiment`.
+    facture_fournisseur_id = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name="ID pièce d'achat fournisseur")
+    ged_document_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID justificatif GED')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Dépense de charges'
+        verbose_name_plural = 'Dépenses de charges'
+        ordering = ['-date', '-id']
+
+    def __str__(self):
+        return f'{self.budget_charges} — {self.date} : {self.montant_reel}'

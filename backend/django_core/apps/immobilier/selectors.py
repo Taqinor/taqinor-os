@@ -155,3 +155,30 @@ def rentabilite_actif(company, *, site_id=None, batiment_id=None, periode=None):
         'marge_nette': marge_nette,
         'par_local': par_local,
     }
+
+
+def consommation_budget(budget_charges):
+    """NTPRO11 — Total consommé (dépenses réelles) vs budgété pour UN
+    ``BudgetCharges`` (un poste, un exercice, un bâtiment), avec l'écart en
+    pourcentage. ``ecart_pct`` est ``None`` quand le budget est nul (jamais de
+    division par zéro)."""
+    from decimal import Decimal
+
+    from django.db.models import Sum
+
+    total_reel = (
+        budget_charges.depenses.aggregate(total=Sum('montant_reel'))['total']
+        or Decimal('0')
+    )
+    budgete = budget_charges.montant_budgete_annuel or Decimal('0')
+    ecart = total_reel - budgete
+    ecart_pct = None
+    if budgete:
+        ecart_pct = (ecart / budgete * 100).quantize(Decimal('0.01'))
+    return {
+        'budget_charges_id': budget_charges.id,
+        'montant_budgete_annuel': budgete,
+        'total_reel': total_reel,
+        'ecart': ecart,
+        'ecart_pct': ecart_pct,
+    }

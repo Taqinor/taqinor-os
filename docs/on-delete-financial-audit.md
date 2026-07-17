@@ -390,6 +390,7 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/apps/immobilier/models.py:317` | EcheanceLoyer.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/immobilier/models.py:371` | RelanceLoyer.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/immobilier/models.py:415` | BudgetCharges.company | authentication.Company | CASCADE |
+| `backend/django_core/apps/immobilier/models.py:446` | DepenseCharges.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/innovation/models.py:52` | Idee.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/innovation/models.py:112` | VoteIdee.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/innovation/models.py:156` | InnovationSettings.company | authentication.Company | CASCADE |

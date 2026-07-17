@@ -12,14 +12,14 @@ from core.permissions import ScopedPermission
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
-    Bail, Batiment, BudgetCharges, EcheanceLoyer, Local, Locataire, Niveau,
-    RelanceLoyer, Site,
+    Bail, Batiment, BudgetCharges, DepenseCharges, EcheanceLoyer, Local,
+    Locataire, Niveau, RelanceLoyer, Site,
 )
 from .serializers import (
     BailSerializer, BatimentSerializer, BudgetChargesSerializer,
-    EcheanceLoyerSerializer, LocalSerializer, LocataireSerializer,
-    NiveauSerializer, RelanceLoyerSerializer, RevisionLoyerSerializer,
-    SiteSerializer,
+    DepenseChargesSerializer, EcheanceLoyerSerializer, LocalSerializer,
+    LocataireSerializer, NiveauSerializer, RelanceLoyerSerializer,
+    RevisionLoyerSerializer, SiteSerializer,
 )
 
 
@@ -341,6 +341,31 @@ class BudgetChargesViewSet(_ImmobilierBaseViewSet):
             qs = qs.filter(batiment_id=batiment_id)
         if exercice:
             qs = qs.filter(exercice=exercice)
+        return qs
+
+    @action(detail=True, methods=['get'],
+            permission_classes=[ScopedPermission])
+    def consommation(self, request, pk=None):
+        """NTPRO11 — Total consommé (dépenses réelles) vs budgété, écart %."""
+        from . import selectors
+
+        budget = self.get_object()
+        return Response(selectors.consommation_budget(budget))
+
+
+class DepenseChargesViewSet(_ImmobilierBaseViewSet):
+    """NTPRO11 — Dépenses réelles de charges rattachées à un budget."""
+    queryset = DepenseCharges.objects.select_related(
+        'budget_charges', 'budget_charges__batiment').all()
+    serializer_class = DepenseChargesSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        budget_id = self.request.query_params.get('budget_charges')
+        if budget_id:
+            qs = qs.filter(budget_charges_id=budget_id)
         return qs
 
 
