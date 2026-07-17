@@ -8,8 +8,13 @@ cette app reste découplée — cf. CLAUDE.md règle de frontière cross-app).""
 from django.core.exceptions import ValidationError
 from django.db import models
 
+from core.models import TenantModel
 
-class ContactClient(models.Model):
+
+class ContactClient(TenantModel):
+    """ARC1 — hérite de ``core.models.TenantModel``; ``company`` redéclaré à
+    l'identique (related_name historique)."""
+
     class RoleAchat(models.TextChoices):
         DECIDEUR = 'decideur', 'Décideur'
         INFLUENCEUR = 'influenceur', 'Influenceur'

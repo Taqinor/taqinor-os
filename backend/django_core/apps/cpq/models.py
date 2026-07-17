@@ -9,13 +9,20 @@ import uuid
 from django.conf import settings
 from django.db import models
 
+from core.models import TenantModel
 
-class OptionProduit(models.Model):
+
+class OptionProduit(TenantModel):
     """NTCPQ1 — Option de configuration d'un produit.
 
     Regroupe des produits par ``groupe_option`` (ex. « Onduleur », « Batterie »)
     et marque si le groupe est obligatoire dans une configuration. String-FK
-    vers ``stock.Produit`` (aucun import cross-app)."""
+    vers ``stock.Produit`` (aucun import cross-app).
+
+    ARC1 — hérite de ``core.models.TenantModel`` (FK ``company`` + timestamps).
+    ``company`` est REDÉCLARÉ ci-dessous à l'identique pour préserver
+    l'accesseur inverse historique (``company.cpq_options_produit``)."""
+    # Redéclaré à l'identique (ARC1) : conserve le related_name historique.
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
         related_name='cpq_options_produit')
@@ -42,12 +49,15 @@ class OptionProduit(models.Model):
         return f'{self.groupe_option} · produit {self.produit_id}'
 
 
-class ContrainteCompatibilite(models.Model):
+class ContrainteCompatibilite(TenantModel):
     """NTCPQ1 — Contrainte de compatibilité entre deux produits.
 
     ``INCOMPATIBLE`` : les deux produits ne peuvent coexister (violation
     bloquante). ``REQUIERT`` : si ``produit_a`` est présent, ``produit_b`` doit
-    l'être aussi (bloquant). ``RECOMMANDE`` : suggestion (avertissement seul)."""
+    l'être aussi (bloquant). ``RECOMMANDE`` : suggestion (avertissement seul).
+
+    ARC1 — hérite de ``core.models.TenantModel``; ``company`` redéclaré à
+    l'identique (related_name historique)."""
     class TypeContrainte(models.TextChoices):
         INCOMPATIBLE = 'INCOMPATIBLE', 'Incompatible'
         REQUIERT = 'REQUIERT', 'Requiert'
@@ -90,7 +100,7 @@ class ContrainteCompatibilite(models.Model):
             self.TypeContrainte.INCOMPATIBLE, self.TypeContrainte.REQUIERT)
 
 
-class RegleProduitCPQ(models.Model):
+class RegleProduitCPQ(TenantModel):
     """NTCPQ2 — Règle produit data-driven réutilisant ``core.rules``.
 
     ``condition_group`` est un arbre de conditions ET/OU/NON évalué par
@@ -98,7 +108,10 @@ class RegleProduitCPQ(models.Model):
     réécrit). ``actions`` est une liste libre de dicts (ex.
     ``[{"type": "exiger_option", "valeur": "triphase"}]``) renvoyée quand la
     règle se déclenche. Aucune action n'est exécutée par le modèle : le
-    déclenchement est purement déclaratif (l'appelant décide de la suite)."""
+    déclenchement est purement déclaratif (l'appelant décide de la suite).
+
+    ARC1 — hérite de ``core.models.TenantModel``; ``company`` redéclaré à
+    l'identique (related_name historique)."""
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
         related_name='cpq_regles_produit')
@@ -125,13 +138,16 @@ class RegleProduitCPQ(models.Model):
         return self.nom
 
 
-class OffreGroupee(models.Model):
+class OffreGroupee(TenantModel):
     """NTCPQ3 — Bundle produit à prix cascadé.
 
     ``prix_total`` (optionnel) : quand il est renseigné et que les lignes sont
     en mode ``FIXE``, le total du bundle PRIME et est réparti au prorata du prix
     catalogue sur les lignes lors de l'application au devis. Sinon chaque ligne
-    est valorisée selon son propre ``mode_prix``."""
+    est valorisée selon son propre ``mode_prix``.
+
+    ARC1 — hérite de ``core.models.TenantModel``; ``company`` redéclaré à
+    l'identique (related_name historique)."""
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
         related_name='cpq_offres_groupees')
@@ -188,13 +204,16 @@ class LigneOffreGroupee(models.Model):
         return f'{self.offre_id} · produit {self.produit_id} × {self.quantite}'
 
 
-class PrixContractuel(models.Model):
+class PrixContractuel(TenantModel):
     """NTCPQ5 — Prix négocié par contrat nommé pour un couple client/produit.
 
     Prime sur TOUTE liste de prix générique (segment, assignée…) pour ce couple
     client/produit tant qu'il est dans sa fenêtre de validité (priorité 1 dans
     ``ventes.services.prix_applicable``). Liaisons string-FK (aucun import des
-    modèles crm/stock)."""
+    modèles crm/stock).
+
+    ARC1 — hérite de ``core.models.TenantModel``; ``company`` redéclaré à
+    l'identique (related_name historique)."""
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
         related_name='cpq_prix_contractuels')
@@ -238,12 +257,15 @@ class PrixContractuel(models.Model):
         return True
 
 
-class SeuilMargeFamille(models.Model):
+class SeuilMargeFamille(TenantModel):
     """NTCPQ6 — Garde-fou de marge minimale par famille (catégorie) produit.
 
     INTERNE only : sert au check serveur qui pose ``marge_sous_seuil`` sur le
     détail devis (staff). N'apparaît JAMAIS dans un PDF/proposition client
-    (règle #4). String-FK vers ``stock.Categorie``."""
+    (règle #4). String-FK vers ``stock.Categorie``.
+
+    ARC1 — hérite de ``core.models.TenantModel``; ``company`` redéclaré à
+    l'identique (related_name historique)."""
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
         related_name='cpq_seuils_marge')
@@ -268,14 +290,17 @@ class SeuilMargeFamille(models.Model):
         return f'{self.categorie_id} ≥ {self.marge_min_pct}%'
 
 
-class RegleApprobationRemise(models.Model):
+class RegleApprobationRemise(TenantModel):
     """NTCPQ7 — Règle d'approbation par PROFONDEUR de remise (calquée sur
     ``contrats.RegleApprobation``, mais par intervalle de remise % au lieu de
     montant).
 
     Le résolveur (``services.resoudre_regle_remise``) retient, parmi les règles
     actives de la société, la plus SPÉCIFIQUE (intervalle le plus étroit, puis
-    ``priorite``, puis id récent) couvrant la remise réelle du devis."""
+    ``priorite``, puis id récent) couvrant la remise réelle du devis.
+
+    ARC1 — hérite de ``core.models.TenantModel``; ``company`` redéclaré à
+    l'identique (related_name historique)."""
 
     class NiveauApprobation(models.TextChoices):
         RESPONSABLE = 'responsable', 'Responsable'
@@ -330,13 +355,16 @@ class RegleApprobationRemise(models.Model):
         return self.remise_max_pct - self.remise_min_pct
 
 
-class EtapeApprobationDevis(models.Model):
+class EtapeApprobationDevis(TenantModel):
     """NTCPQ7 — Étape séquentielle d'approbation de remise d'un devis (même
     schéma que ``contrats.EtapeApprobation``).
 
     Statut LOCAL (``en_attente`` → ``approuve``/``rejete``), sans lien avec le
     funnel STAGES.py ni le statut du devis. ``devis`` est une string-FK vers
-    ``ventes.Devis`` (aucun import cross-app des modèles)."""
+    ``ventes.Devis`` (aucun import cross-app des modèles).
+
+    ARC1 — hérite de ``core.models.TenantModel``; ``company`` redéclaré à
+    l'identique (related_name historique)."""
 
     class Statut(models.TextChoices):
         EN_ATTENTE = 'en_attente', 'En attente'
@@ -380,13 +408,16 @@ class EtapeApprobationDevis(models.Model):
         return f'Devis {self.devis_id} · étape {self.niveau} · {self.statut}'
 
 
-class QuestionConfigurateur(models.Model):
+class QuestionConfigurateur(TenantModel):
     """NTCPQ9 — Question du configurateur guidé (backend pour FG211).
 
     ``options`` (JSON) porte les choix proposés et, par convention, une clé
     ``champ`` : le nom du champ de contexte utilisé pour évaluer les règles
     produit (NTCPQ2). Ex. ``{"champ": "kwc", "choices": [...]}``. Sans ``champ``,
-    la clé de contexte est ``q<id>``."""
+    la clé de contexte est ``q<id>``.
+
+    ARC1 — hérite de ``core.models.TenantModel``; ``company`` redéclaré à
+    l'identique (related_name historique)."""
     class TypeQuestion(models.TextChoices):
         CHOIX_UNIQUE = 'CHOIX_UNIQUE', 'Choix unique'
         CHOIX_MULTIPLE = 'CHOIX_MULTIPLE', 'Choix multiple'
@@ -422,12 +453,16 @@ class QuestionConfigurateur(models.Model):
         return opts.get('champ') or f'q{self.pk}'
 
 
-class SessionConfigurateur(models.Model):
+class SessionConfigurateur(TenantModel):
     """NTCPQ9 — Session du configurateur (anonyme ou liée à un devis brouillon).
 
     ``token`` identifie la session côté API. ``devis`` (string-FK) est renseigné
     quand la session a généré un devis (NTCPQ10) — sert aussi à la purge
-    NTCPQ34 (une session sans devis inactive > 30 j est purgeable)."""
+    NTCPQ34 (une session sans devis inactive > 30 j est purgeable).
+
+    ARC1 — hérite de ``core.models.TenantModel``; ``company`` redéclaré à
+    l'identique (related_name historique). ``created_at``/``updated_at``
+    hérités de TenantModel (à l'identique)."""
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
         related_name='cpq_sessions_configurateur')
@@ -435,8 +470,6 @@ class SessionConfigurateur(models.Model):
     devis = models.ForeignKey(
         'ventes.Devis', on_delete=models.SET_NULL, null=True, blank=True,
         related_name='cpq_sessions_configurateur')
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         verbose_name = 'Session configurateur'

@@ -4,7 +4,7 @@ from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
-from core.models import SoftDeleteModel
+from core.models import SoftDeleteModel, TenantModel
 
 from .stages import STAGE_CHOICES, NEW
 
@@ -2081,11 +2081,14 @@ class LeadActivityArchive(models.Model):
 
 
 # ── NTCRM4 — Catégories de forecast (commit/best-case/pipeline/omis) ─────────
-class ForecastEntry(models.Model):
+class ForecastEntry(TenantModel):
     """Catégorisation forecast d'UN lead, liée 1-1 pour ne pas alourdir
     ``Lead``. Un lead SANS ``ForecastEntry`` explicite est classé PIPELINE par
     défaut (voir ``montant_effectif``/le sélecteur ``forecast_rollup`` — aucune
-    migration de données requise)."""
+    migration de données requise).
+
+    ARC1 — hérite de ``core.models.TenantModel``; ``company`` redéclaré à
+    l'identique (related_name historique)."""
 
     class Categorie(models.TextChoices):
         COMMIT = 'commit', 'Commit'
@@ -2138,11 +2141,15 @@ class ForecastEntry(models.Model):
 
 
 # ── NTCRM6 — Snapshots hebdomadaires du forecast ──────────────────────────────
-class ForecastSnapshot(models.Model):
+class ForecastSnapshot(TenantModel):
     """Photo hebdomadaire agrégée du forecast (glissement visible dans le
     temps) — créée par ``manage.py snapshot_forecast_hebdo`` (idempotente : un
     seul snapshot par semaine ISO + owner, upsert). ``owner`` nul = snapshot
-    SOCIÉTÉ (tous commerciaux confondus) ; renseigné = snapshot individuel."""
+    SOCIÉTÉ (tous commerciaux confondus) ; renseigné = snapshot individuel.
+
+    ARC1 — hérite de ``core.models.TenantModel``; ``company`` redéclaré à
+    l'identique (related_name historique). ``created_at`` hérité de
+    TenantModel (à l'identique)."""
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
         related_name='forecast_snapshots')
@@ -2155,7 +2162,6 @@ class ForecastSnapshot(models.Model):
     owner = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
         null=True, blank=True, related_name='forecast_snapshots')
-    created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         verbose_name = 'Snapshot de forecast'
@@ -2173,9 +2179,14 @@ class ForecastSnapshot(models.Model):
 
 
 # ── NTCRM10 — Plan de compte (Account Planning) formel ────────────────────────
-class PlanCompte(models.Model):
+class PlanCompte(TenantModel):
     """Plan de compte stratégique pour un client (création MANUELLE only —
-    réservé aux comptes stratégiques, pas tous les clients)."""
+    réservé aux comptes stratégiques, pas tous les clients).
+
+    ARC1 — hérite de ``core.models.TenantModel``; ``company`` redéclaré à
+    l'identique (related_name historique). Les timestamps propres
+    (``date_creation``/``date_modification``) restent distincts des
+    ``created_at``/``updated_at`` hérités (noms différents, conservés)."""
 
     class Statut(models.TextChoices):
         BROUILLON = 'brouillon', 'Brouillon'
@@ -2276,7 +2287,9 @@ class RevueCompte(models.Model):
 
 
 # ── NTCRM12 — Playbooks de vente par étape (STAGES.py — jamais codé en dur) ──
-class Playbook(models.Model):
+class Playbook(TenantModel):
+    """ARC1 — hérite de ``core.models.TenantModel``; ``company`` redéclaré à
+    l'identique (related_name historique)."""
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
         related_name='playbooks')

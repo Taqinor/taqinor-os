@@ -13,9 +13,17 @@ Deux modèles :
 from django.conf import settings
 from django.db import models
 
+from core.models import TenantModel
 
-class OnboardingChecklistItem(models.Model):
-    """Item de checklist « Premiers pas » (catalogue, généralement global)."""
+
+class OnboardingChecklistItem(TenantModel):
+    """Item de checklist « Premiers pas » (catalogue, généralement global).
+
+    ARC1 — hérite de ``core.models.TenantModel``; ``company`` redéclaré
+    ci-dessous (related_name historique conservé) avec ``null=True,
+    blank=True`` — divergence VOLONTAIRE du socle (par défaut obligatoire) :
+    ``company`` NULL = item de catalogue GLOBAL (partagé par toutes les
+    sociétés)."""
     # ``company`` NULL = item de catalogue GLOBAL (partagé par toutes les
     # sociétés). Présent pour la portée multi-tenant (YDATA4) ; les items seedés
     # sont globaux (company=None).
@@ -52,8 +60,11 @@ class OnboardingChecklistItem(models.Model):
         return role_nom in self.roles_cibles
 
 
-class OnboardingProgress(models.Model):
-    """Avancement d'un item de checklist pour un utilisateur (company-scopé)."""
+class OnboardingProgress(TenantModel):
+    """Avancement d'un item de checklist pour un utilisateur (company-scopé).
+
+    ARC1 — hérite de ``core.models.TenantModel``; ``company`` redéclaré à
+    l'identique (related_name historique)."""
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
         related_name='onboarding_progress')

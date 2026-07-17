@@ -13,8 +13,13 @@ services`` (imports fonction-locaux, jamais au niveau module).
 from django.conf import settings
 from django.db import models
 
+from core.models import TenantModel
 
-class Territoire(models.Model):
+
+class Territoire(TenantModel):
+    """ARC1 — hérite de ``core.models.TenantModel``; ``company`` redéclaré à
+    l'identique (related_name historique)."""
+
     class TypeTerritoire(models.TextChoices):
         GEO = 'geo', 'Géographique'
         SEGMENT = 'segment', 'Segment'
