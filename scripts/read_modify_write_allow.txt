@@ -28,3 +28,4 @@ backend/django_core/apps/stock/services.py::remplacer_composant_masse
 backend/django_core/apps/stock/services.py::resoudre_exception_facture
 backend/django_core/apps/stock/services.py::reviser_bcf
 backend/django_core/apps/stock/services.py::sortir_lot_entrepot
+backend/django_core/apps/btp_chantier/services.py::deverrouiller_dgd

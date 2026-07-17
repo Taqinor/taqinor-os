@@ -20,6 +20,10 @@ const immobilierApi = {
     ...crud('batiments'),
     rentabilite: (id, params) =>
       api.get(`/immobilier/batiments/${id}/rentabilite/`, { params }),
+    repartitionCharges: (id, params) =>
+      api.get(`/immobilier/batiments/${id}/repartition-charges/`, { params }),
+    genererRegularisation: (id, data) =>
+      api.post(`/immobilier/batiments/${id}/generer-regularisation/`, data),
   },
   niveaux: crud('niveaux'),
   locaux: crud('locaux'),
@@ -47,6 +51,17 @@ const immobilierApi = {
       api.post(`/immobilier/echeances-loyer/${id}/relancer/`, data),
   },
   relancesLoyer: crud('relances-loyer'),
+  budgetsCharges: {
+    ...crud('budgets-charges'),
+    consommation: (id) =>
+      api.get(`/immobilier/budgets-charges/${id}/consommation/`),
+  },
+  depensesCharges: crud('depenses-charges'),
+  regularisationsCharges: {
+    ...crud('regularisations-charges'),
+    emettre: (id) =>
+      api.post(`/immobilier/regularisations-charges/${id}/emettre/`),
+  },
 }
 
 export default immobilierApi

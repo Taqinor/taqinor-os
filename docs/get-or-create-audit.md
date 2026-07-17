@@ -103,6 +103,7 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/einvoice/services.py:168` | get_or_create | TransmissionDGI.objects | company, einvoice |
 | `backend/django_core/apps/entites/import_service.py:86` | update_or_create | Entite.objects | code, company |
 | `backend/django_core/apps/esg/management/commands/seed_catalogue_esg.py:22` | get_or_create | CatalogueIndicateurESG.objects | code, company |
+| `backend/django_core/apps/esg/services.py:192` | get_or_create | FacteurEmissionVersionCounter.objects.select_for_update() | categorie, company, unite |
 | `backend/django_core/apps/fiscal/services.py:38` | get_or_create | ObligationFiscale.objects | company, type_obligation |
 | `backend/django_core/apps/fiscal/services.py:102` | get_or_create | EcheanceFiscale.objects | company, obligation, periode_debut, periode_fin |
 | `backend/django_core/apps/flotte/management/commands/seed_baremes_vignette.py:75` | get_or_create | BaremeVignette.objects | annee, company, cv_max, cv_min, energie |
@@ -125,6 +126,8 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/gestion_projet/services.py:1052` | get_or_create | ReglageTemps.objects | company |
 | `backend/django_core/apps/gestion_projet/services.py:1322` | get_or_create | JourFerie.objects | calendrier, company, date |
 | `backend/django_core/apps/gestion_projet/views.py:563` | get_or_create | EvaluationProjet.objects | company, projet |
+| `backend/django_core/apps/hospitality/services.py:443` | get_or_create | TicketPension.objects | company, date, reservation, type_repas |
+| `backend/django_core/apps/immobilier/services.py:479` | update_or_create | RegularisationCharges.objects | bail_id, company, exercice |
 | `backend/django_core/apps/innovation/services.py:139` | get_or_create | InnovationSettings.objects | company |
 | `backend/django_core/apps/innovation/services.py:180` | get_or_create | Tag.objects | company, nom |
 | `backend/django_core/apps/innovation/services.py:186` | get_or_create | TaggedItem.objects | content_type, object_id, tag |

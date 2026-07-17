@@ -18,7 +18,7 @@ from django.utils import timezone
 from apps.crm.models import Client
 from apps.parametres.models_company import CompanyProfile
 from apps.ventes.models import EmailLog, Facture
-from apps.ventes.scheduled import pre_echeance_reminders
+from apps.ventes.scheduled import pre_echeance_reminders, casablanca_today
 
 MONTH = timezone.now().strftime('%Y%m')
 
@@ -40,7 +40,10 @@ class XFAC7PreEcheanceTests(TestCase):
     def setUp(self):
         self.company = make_company()
         self.client_obj = make_client(self.company)
-        today = timezone.now().date()
+        # Anchor to the SAME "today" basis the sweep uses (casablanca_today,
+        # Africa/Casablanca) — using UTC now().date() here flaked the J-5 window
+        # by one day when CI ran between 23:00–24:00 UTC (Casablanca already J+1).
+        today = casablanca_today()
         self.facture = Facture.objects.create(
             company=self.company, reference=f'FAC-{MONTH}-0001',
             client=self.client_obj, statut=Facture.Statut.EMISE,
@@ -95,7 +98,7 @@ class XFAC7PreEcheanceTests(TestCase):
         # échéance à J+5 ne correspond plus à N=3 → pas de rappel.
         sent = pre_echeance_reminders()
         self.assertEqual(sent, 0)
-        self.facture.date_echeance = timezone.now().date() + timedelta(days=3)
+        self.facture.date_echeance = casablanca_today() + timedelta(days=3)
         self.facture.save(update_fields=['date_echeance'])
         sent = pre_echeance_reminders()
         self.assertEqual(sent, 1)

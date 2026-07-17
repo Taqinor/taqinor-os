@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Leaf, Users, Landmark, FileText, FileSpreadsheet, Lock } from 'lucide-react'
+import { Leaf, Users, Landmark, FileText, FileSpreadsheet, Lock, Award } from 'lucide-react'
 import esgApi from '../../api/esgApi'
 import {
   Card, CardHeader, CardTitle, CardContent, Badge, Button, Progress,
@@ -43,6 +43,7 @@ const STATUT_TONE = {
 export default function EsgCockpit() {
   const [couverture, setCouverture] = useState(null)
   const [periodes, setPeriodes] = useState([])
+  const [badge, setBadge] = useState(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(false)
   const [busyId, setBusyId] = useState(null)
@@ -55,12 +56,14 @@ export default function EsgCockpit() {
   const fetchCockpit = useCallback(() => Promise.allSettled([
     esgApi.catalogue.couverture(),
     esgApi.periodes.list(),
-  ]).then(([couvRes, periodesRes]) => {
+    esgApi.catalogue.badgeMaturite(),
+  ]).then(([couvRes, periodesRes, badgeRes]) => {
     setCouverture(couvRes.status === 'fulfilled' ? couvRes.value.data : null)
     const rows = periodesRes.status === 'fulfilled'
       ? (periodesRes.value.data?.results ?? periodesRes.value.data ?? [])
       : []
     setPeriodes(rows)
+    setBadge(badgeRes.status === 'fulfilled' ? badgeRes.value.data : null)
     setLoadError(couvRes.status === 'rejected' && periodesRes.status === 'rejected')
   }).finally(() => setLoading(false)), [])
 
@@ -147,6 +150,18 @@ export default function EsgCockpit() {
           indicateurs QHSE/RH/flotte, jamais de chiffre inventé.
         </p>
       </div>
+
+      {badge && (
+        <Card className="mb-4">
+          <CardContent className="flex items-center gap-3 py-4">
+            <Award size={22} strokeWidth={1.75} aria-hidden="true" />
+            <div>
+              <p className="text-2xl font-bold">{badge.score} / 100</p>
+              <p className="text-xs text-muted-foreground">{badge.disclaimer}</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {!hasCatalogue ? (
         <EmptyState

@@ -375,9 +375,316 @@ def trajectoire_vs_realise(objectif):
     return resultats
 
 
+# ── NTESG15 — badge de maturité ESG interne ─────────────────────────────────
+
+DISCLAIMER_BADGE_MATURITE = (
+    'Auto-évaluation interne Taqinor OS — ne remplace aucune certification/'
+    'notation externe (EcoVadis, B Corp, etc.).')
+
+
+def badge_maturite_esg(company):
+    """Badge de maturité ESG interne — score composite 0-100 (NTESG15).
+
+    AUTO-ÉVALUATION INTERNE, jamais présentée comme une certification/
+    notation externe (voir ``DISCLAIMER_BADGE_MATURITE``, toujours affiché
+    à côté du score côté frontend). Trois composantes pondérées à 1/3
+    chacune (poids fixe tant que ``ParametresESG``/NTESG20 — hors périmètre
+    de ce lane — n'introduit pas de pondération éditable par société) :
+
+    * couverture du catalogue GRI-lite (NTESG3, ``couverture_catalogue``) ;
+    * % d'indicateurs QHSE40 AYANT une cible définie qui l'atteignent
+      (``atteinte_cible`` — ne compte que les indicateurs avec cible
+      renseignée, jamais tous les indicateurs) ;
+    * % de codes du catalogue GRI-lite dotés d'une trajectoire ESG ACTIVE
+      (NTESG7, ``ObjectifESGTrajectoire.actif``).
+
+    Chaque composante non calculable (aucune donnée) compte pour 0 dans le
+    score composite mais reste signalée ``disponible=False`` — le score
+    n'est jamais caché, seulement partiel.
+    """
+    from .models import CatalogueIndicateurESG, ObjectifESGTrajectoire
+
+    vide = {
+        'score': 0.0,
+        'composantes': {
+            'couverture_catalogue': {'disponible': False, 'valeur_pct': 0.0},
+            'atteinte_cibles': {'disponible': False, 'valeur_pct': 0.0},
+            'trajectoires_actives': {'disponible': False, 'valeur_pct': 0.0},
+        },
+        'disclaimer': DISCLAIMER_BADGE_MATURITE,
+    }
+    if company is None:
+        return vide
+
+    couverture = couverture_catalogue(company)
+    couverture_pct = couverture.get('global_pct', 0.0)
+    couverture_disponible = any(
+        bloc.get('total', 0) for bloc in couverture.get('piliers', {}).values())
+
+    atteinte_pct = 0.0
+    atteinte_disponible = False
+    try:
+        from apps.qhse.selectors import export_esg
+        data = export_esg(company)
+        avec_cible = [
+            ligne for ligne in data.get('lignes', [])
+            if ligne.get('atteinte_cible') is not None
+        ]
+        if avec_cible:
+            atteints = sum(1 for ligne in avec_cible if ligne['atteinte_cible'])
+            atteinte_pct = round(atteints * 100.0 / len(avec_cible), 1)
+            atteinte_disponible = True
+    except Exception:  # noqa: BLE001 - dégradation gracieuse
+        pass
+
+    codes_catalogue = set(
+        CatalogueIndicateurESG.objects.filter(company=company)
+        .values_list('code', flat=True))
+    trajectoire_pct = 0.0
+    trajectoire_disponible = False
+    if codes_catalogue:
+        codes_avec_trajectoire = set(
+            ObjectifESGTrajectoire.objects.filter(
+                company=company, actif=True,
+                indicateur_code__in=codes_catalogue)
+            .values_list('indicateur_code', flat=True))
+        trajectoire_pct = round(
+            len(codes_avec_trajectoire) * 100.0 / len(codes_catalogue), 1)
+        trajectoire_disponible = True
+
+    score = round((couverture_pct + atteinte_pct + trajectoire_pct) / 3.0, 1)
+
+    return {
+        'score': score,
+        'composantes': {
+            'couverture_catalogue': {
+                'disponible': bool(couverture_disponible),
+                'valeur_pct': couverture_pct},
+            'atteinte_cibles': {
+                'disponible': atteinte_disponible, 'valeur_pct': atteinte_pct},
+            'trajectoires_actives': {
+                'disponible': trajectoire_disponible,
+                'valeur_pct': trajectoire_pct},
+        },
+        'disclaimer': DISCLAIMER_BADGE_MATURITE,
+    }
+
+
+# ── NTESG11 — comparateur multi-période (N vs N-1) ─────────────────────────
+
+def comparer_periodes(periode_reference, periode_n):
+    """Comparateur multi-période N vs N-1 (NTESG11).
+
+    Compare, pilier par pilier puis indicateur par indicateur (code
+    ``qhse.IndicateurESG``), les données effectives (NTESG1/2,
+    ``donnees_effectives_periode`` — snapshot gelé si figée, aperçu live
+    sinon) de deux périodes. Un indicateur présent dans une seule des deux
+    périodes est signalé ``comparable=False`` (« non comparable ») — JAMAIS
+    traité comme une variation de +100 %/-100 %.
+
+    Renvoie ``{'periode_reference': {...}, 'periode_n': {...},
+    'piliers': {pilier: [{'code', 'libelle', 'comparable', ...}, ...]}}``.
+    """
+    donnees_ref = donnees_effectives_periode(periode_reference)
+    donnees_n = donnees_effectives_periode(periode_n)
+    piliers_ref = (
+        (donnees_ref.get('sources') or {}).get('indicateurs_esg') or {}
+    ).get('piliers') or {}
+    piliers_n = (
+        (donnees_n.get('sources') or {}).get('indicateurs_esg') or {}
+    ).get('piliers') or {}
+
+    tous_piliers = sorted(set(piliers_ref) | set(piliers_n))
+    resultat_piliers = {}
+    for pilier in tous_piliers:
+        lignes_ref = {
+            ligne.get('code'): ligne
+            for ligne in (piliers_ref.get(pilier) or {}).get('lignes', [])
+            if ligne.get('code')
+        }
+        lignes_n = {
+            ligne.get('code'): ligne
+            for ligne in (piliers_n.get(pilier) or {}).get('lignes', [])
+            if ligne.get('code')
+        }
+        codes = sorted(set(lignes_ref) | set(lignes_n))
+        entrees = []
+        for code in codes:
+            ligne_ref = lignes_ref.get(code)
+            ligne_n = lignes_n.get(code)
+            libelle = (ligne_n or ligne_ref or {}).get('libelle')
+            if ligne_ref is None or ligne_n is None:
+                entrees.append({
+                    'code': code, 'libelle': libelle, 'comparable': False,
+                    'raison': "Indicateur absent d'une des deux périodes.",
+                })
+                continue
+            try:
+                valeur_ref = (
+                    float(ligne_ref['valeur'])
+                    if ligne_ref.get('valeur') is not None else None)
+                valeur_n = (
+                    float(ligne_n['valeur'])
+                    if ligne_n.get('valeur') is not None else None)
+            except (TypeError, ValueError):
+                valeur_ref = valeur_n = None
+            if valeur_ref is None or valeur_n is None:
+                entrees.append({
+                    'code': code, 'libelle': libelle, 'comparable': False,
+                    'raison': 'Valeur manquante ou non numérique.',
+                })
+                continue
+            variation_abs = round(valeur_n - valeur_ref, 4)
+            variation_pct = (
+                round((valeur_n - valeur_ref) * 100.0 / abs(valeur_ref), 2)
+                if valeur_ref else None)
+            entrees.append({
+                'code': code, 'libelle': libelle, 'comparable': True,
+                'valeur_reference': valeur_ref, 'valeur_n': valeur_n,
+                'variation_abs': variation_abs,
+                'variation_pct': variation_pct,
+            })
+        resultat_piliers[pilier] = entrees
+
+    return {
+        'periode_reference': {
+            'id': periode_reference.pk, 'libelle': periode_reference.libelle},
+        'periode_n': {'id': periode_n.pk, 'libelle': periode_n.libelle},
+        'piliers': resultat_piliers,
+    }
+
+
 __all__ = [
+    'intensite_carbone',
     'agreger_indicateurs_periode',
     'donnees_effectives_periode',
     'couverture_catalogue',
     'trajectoire_vs_realise',
+    'badge_maturite_esg',
+    'comparer_periodes',
 ]
+
+
+# ── NTESG9 — intensité carbone normalisée ──────────────────────────────────
+
+def _source_ca_periode(company, date_debut, date_fin):
+    """Chiffre d'affaires (HT) de la période via ``ventes.selectors``.
+
+    Somme des ``total_ht`` renvoyés par ``analyse_facturation`` (factures
+    ``ANNULEE`` déjà exclues par ce sélecteur) — dénominateur « MAD de CA »
+    de l'intensité carbone (NTESG9)."""
+    try:
+        from apps.ventes.selectors import analyse_facturation
+    except Exception as exc:  # noqa: BLE001
+        return {'disponible': False,
+                'raison': f"ventes indisponible ({exc.__class__.__name__})"}
+    try:
+        lignes = analyse_facturation(company, date_debut, date_fin)
+    except Exception as exc:  # noqa: BLE001
+        return {'disponible': False,
+                'raison': f"erreur ventes.selectors.analyse_facturation "
+                          f"({exc.__class__.__name__})"}
+    total_ht = float(sum((ligne.get('total_ht') or 0) for ligne in lignes))
+    if not total_ht:
+        return {'disponible': False,
+                'raison': "Aucune facture émise sur la période (CA nul)."}
+    return {'disponible': True, 'total_ht': total_ht}
+
+
+def _source_kwc_installes(company, date_debut, date_fin):
+    """kWc totaux installés sur la période — AUCUN sélecteur exposé par
+    ``installations.selectors`` pour une somme de ``puissance_installee_kwc``
+    au moment de ce lane (NTESG9) : dégrade proprement, même politique que
+    ``_source_bilan_carbone`` (jamais un import de ``installations.models``
+    pour contourner la frontière cross-app)."""
+    return {
+        'disponible': False,
+        'raison': (
+            "Aucun sélecteur apps.installations.selectors n'expose une "
+            "somme de kWc installés au moment de ce lane (NTESG9) — "
+            "nécessite un ajout côté apps/installations/selectors.py, hors "
+            "périmètre de cette app."),
+    }
+
+
+def intensite_carbone(periode_esg):
+    """NTESG9 — Intensité carbone normalisée (tCO2e / MAD de CA, / kWc
+    installé, / ETP) d'une période.
+
+    Numérateur : ``BilanCarbone.total_tco2e`` lu via ``_source_bilan_carbone``
+    (toujours ``disponible=False`` tant qu'aucun sélecteur qhse ne l'expose —
+    voir sa docstring). Dénominateurs lus en lecture seule via
+    ``ventes.selectors`` (CA), ``installations.selectors`` (kWc, dégradé),
+    ``rh.selectors`` (effectif, réutilise ``_source_effectifs``).
+
+    Chaque ratio se calcule INDÉPENDAMMENT des deux autres : l'absence du
+    numérateur OU d'un seul dénominateur omet CE ratio (``disponible=False``
+    + ``raison``) sans empêcher le calcul des ratios dont les données sont
+    présentes — jamais une division par zéro affichée comme 0."""
+    company = periode_esg.company
+    date_debut = periode_esg.date_debut
+    date_fin = periode_esg.date_fin
+    annee = date_fin.year if date_fin else (
+        date_debut.year if date_debut else None)
+
+    numerateur = _safe(_source_bilan_carbone, company, annee)
+    total_tco2e = (
+        numerateur.get('total_tco2e') if numerateur.get('disponible')
+        else None)
+
+    def _ratio(source, unite):
+        if total_tco2e is None:
+            return {
+                'disponible': False, 'valeur': None, 'unite': unite,
+                'raison': numerateur.get('raison') or (
+                    "Bilan carbone (tCO2e) indisponible pour cette "
+                    "période."),
+            }
+        if not source.get('disponible'):
+            return {
+                'disponible': False, 'valeur': None, 'unite': unite,
+                'raison': source.get('raison'),
+            }
+        return None  # dénominateur disponible : calculé par l'appelant.
+
+    ca_source = _safe(_source_ca_periode, company, date_debut, date_fin)
+    kwc_source = _safe(_source_kwc_installes, company, date_debut, date_fin)
+    etp_source = _safe(_source_effectifs, company)
+
+    def _finaliser(source, unite, cle_valeur):
+        degrade = _ratio(source, unite)
+        if degrade is not None:
+            return degrade
+        denominateur = source.get(cle_valeur)
+        if not denominateur:
+            return {
+                'disponible': False, 'valeur': None, 'unite': unite,
+                'raison': (
+                    "Dénominateur nul — ratio non calculé (jamais affiché "
+                    "comme 0)."),
+            }
+        return {
+            'disponible': True,
+            'valeur': round(total_tco2e / denominateur, 6),
+            'unite': unite,
+            'raison': None,
+        }
+
+    return {
+        'methode': (
+            "Intensité = total tCO2e (bilan carbone figé) ÷ dénominateur "
+            "de la période. Un ratio est omis (jamais affiché comme 0) si "
+            "le numérateur ou le dénominateur est absent ou nul."),
+        'numerateur': {
+            'disponible': numerateur.get('disponible', False),
+            'total_tco2e': total_tco2e,
+            'raison': numerateur.get('raison'),
+        },
+        'ratios': {
+            'par_mad_ca': _finaliser(ca_source, 'tCO2e/MAD CA', 'total_ht'),
+            'par_kwc_installe': _finaliser(
+                kwc_source, 'tCO2e/kWc installé', 'total_kwc'),
+            'par_etp': _finaliser(
+                etp_source, 'tCO2e/ETP', 'effectif_actif'),
+        },
+    }

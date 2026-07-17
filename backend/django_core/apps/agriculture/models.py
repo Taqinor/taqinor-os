@@ -321,3 +321,181 @@ class PointageAgricole(TenantModel):
         if not self.equipe_id and not self.travailleur_nom:
             raise ValidationError(
                 "Renseignez une équipe ou un nom de travailleur libre.")
+
+
+# ── NTAGR11 — Matériel agricole (pattern flotte.EnginRoulant, jamais dupliqué) ─
+
+class MaterielAgricole(TenantModel):
+    """Matériel agricole non immatriculé suivi au compteur d'heures moteur.
+
+    Même PATTERN que ``flotte.EnginRoulant.compteur_heures`` (heures cumulées),
+    mais reste dans ``apps.agriculture`` : le matériel agricole n'est pas un
+    véhicule immatriculé soumis aux obligations réglementaires de
+    ``apps.flotte`` (vignette/assurance véhicule) — donc pas de duplication de
+    flotte, juste le même patron d'heures moteur."""
+
+    class TypeMateriel(models.TextChoices):
+        TRACTEUR = 'tracteur', 'Tracteur'
+        MOISSONNEUSE = 'moissonneuse', 'Moissonneuse'
+        PULVERISATEUR = 'pulverisateur', 'Pulvérisateur'
+        OUTIL = 'outil', 'Outil'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        # on_delete: cascade tenant (purge des données de la société supprimée)
+        related_name='materiels_agricoles')
+    nom = models.CharField(max_length=255)
+    type_materiel = models.CharField(
+        max_length=20, choices=TypeMateriel.choices,
+        default=TypeMateriel.TRACTEUR)
+    numero_serie = models.CharField(max_length=100, blank=True, default='')
+    heures_moteur = models.DecimalField(
+        max_digits=10, decimal_places=1, default=0)
+    parcelle_affectee = models.ForeignKey(
+        Parcelle, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='materiels_affectes')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['nom']
+
+    def __str__(self):
+        return self.nom
+
+
+class UtilisationMateriel(TenantModel):
+    """Utilisation journalière d'un ``MaterielAgricole`` — chaque création
+    incrémente ``MaterielAgricole.heures_moteur`` (voir ``serializers.py``,
+    mise à jour atomique via ``F()``)."""
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        # on_delete: cascade tenant (purge des données de la société supprimée)
+        related_name='utilisations_materiel_agricole')
+    materiel = models.ForeignKey(
+        MaterielAgricole, on_delete=models.CASCADE,
+        # on_delete: cascade parent→enfant (composant du parent)
+        related_name='utilisations')
+    campagne = models.ForeignKey(
+        CampagneCulturale, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='utilisations_materiel')
+    date = models.DateField()
+    heures_utilisees = models.DecimalField(max_digits=8, decimal_places=1)
+    cout_carburant_mad = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True)
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-date', '-id']
+
+    def __str__(self):
+        return f'{self.materiel.nom} — {self.date}'
+
+
+# ── NTAGR13 — Irrigation (lien pompage solaire installations existant) ─────
+
+class PointIrrigation(TenantModel):
+    """Compteur d'eau par parcelle. Source optionnellement liée à un système
+    de pompage solaire déjà vendu (``installations.Installation`` —
+    string-ref ``installation_id``, lu via ``apps.installations.selectors``,
+    jamais un import de modèle étranger)."""
+
+    class TypeSource(models.TextChoices):
+        PUITS = 'puits', 'Puits'
+        POMPAGE_SOLAIRE = 'pompage_solaire', 'Pompage solaire'
+        RESEAU = 'reseau', 'Réseau'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        # on_delete: cascade tenant (purge des données de la société supprimée)
+        related_name='points_irrigation')
+    parcelle = models.ForeignKey(
+        Parcelle, on_delete=models.CASCADE,
+        # on_delete: cascade parent→enfant (composant du parent)
+        related_name='points_irrigation')
+    type_source = models.CharField(
+        max_length=20, choices=TypeSource.choices, default=TypeSource.PUITS)
+    installation_id = models.IntegerField(null=True, blank=True)
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return f'{self.get_type_source_display()} — {self.parcelle.nom}'
+
+
+class RelevePointIrrigation(TenantModel):
+    """Relevé de volume d'eau (et coût énergie, si source payante) d'un
+    ``PointIrrigation``.
+
+    Si le point est rattaché à un pompage solaire (``installation_id``
+    renseigné), ``cout_energie_mad`` peut rester ``None`` — le pompage solaire
+    n'a pas de coût variable (NTAGR14 l'affiche comme "irrigation solaire :
+    0 MAD variable", distinct d'un coût non renseigné)."""
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        # on_delete: cascade tenant (purge des données de la société supprimée)
+        related_name='releves_irrigation')
+    point = models.ForeignKey(
+        PointIrrigation, on_delete=models.CASCADE,
+        # on_delete: cascade parent→enfant (composant du parent)
+        related_name='releves')
+    date = models.DateField()
+    volume_m3 = models.DecimalField(max_digits=10, decimal_places=2)
+    cout_energie_mad = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True)
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-date', '-id']
+
+    def __str__(self):
+        return f'{self.point} — {self.date}'
+
+
+# ── NTAGR15 — LotRecolte (lié à stock, jamais un second système de lots) ───
+
+class LotRecolte(TenantModel):
+    """Lot de récolte — numéro unique par société généré via
+    ``core.numbering`` (jamais ``count()+1`` — voir
+    ``services.creer_lot_recolte``), rattachement OPTIONNEL à un lot stock
+    physique existant.
+
+    ``stock_lot_id`` porte le ``numero_lot`` (texte) d'un ``stock.LotEntrepot``
+    quand le produit récolté est AUSSI suivi en stock physique — c'est la
+    SEULE clé de traçabilité cross-app exposée en lecture par
+    ``apps.stock.selectors.trace_serie(company, numero_lot=...)`` (NTAGR16) ;
+    jamais un import de ``stock.models``, et le stock physique reste géré
+    EXCLUSIVEMENT par ``apps.stock`` — ce champ ne DUPLIQUE aucun système de
+    traçabilité, il référence juste la clé publique existante."""
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        # on_delete: cascade tenant (purge des données de la société supprimée)
+        related_name='lots_recolte')
+    campagne = models.ForeignKey(
+        CampagneCulturale, on_delete=models.CASCADE,
+        # on_delete: cascade parent→enfant (composant du parent)
+        related_name='lots_recolte')
+    date_recolte = models.DateField()
+    quantite_qtl = models.DecimalField(max_digits=10, decimal_places=2)
+    calibre = models.CharField(max_length=50, blank=True, default='')
+    # A/B/C ou label libre (pas de choices figées — marché agricole marocain
+    # utilise des grilles de qualité variables selon la culture/coopérative).
+    qualite = models.CharField(max_length=50, blank=True, default='')
+    numero_lot = models.CharField(max_length=40, blank=True, default='', db_index=True)
+    stock_lot_id = models.CharField(max_length=100, blank=True, default='')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-date_recolte', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'numero_lot'],
+                name='uniq_lotrecolte_numero_par_societe'),
+        ]
+
+    def __str__(self):
+        return self.numero_lot or f'Lot #{self.pk}'
