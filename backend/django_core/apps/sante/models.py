@@ -36,6 +36,13 @@ class Praticien(TenantModel):
         max_length=20, blank=True, default='#2563eb',
         verbose_name='Couleur agenda')
     actif = models.BooleanField(default=True, verbose_name='Actif')
+    # NTSAN35 — paramétrage clinique : durée par défaut de consultation pour
+    # ce praticien (pré-remplit RendezVous.duree_min à la création côté
+    # serveur si le client n'en envoie pas — voir RendezVousViewSet.
+    # perform_create), modifiable manuellement par l'utilisateur.
+    duree_consultation_defaut_min = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='Durée par défaut de consultation (min)')
 
     class Meta:
         verbose_name = 'Praticien'
@@ -174,6 +181,18 @@ class RendezVous(TenantModel):
         null=True, blank=True, related_name='sante_rdv_crees',
         verbose_name='Créé par')
 
+    # NTSAN37 — annulation & no-show : qui a annulé + horodatage (pour
+    # calculer le délai d'annulation, services.annuler_rendez_vous).
+    class AnnuleParChoix(models.TextChoices):
+        PATIENT = 'patient', 'Patient'
+        CLINIQUE = 'clinique', 'Clinique'
+
+    annule_par = models.CharField(
+        max_length=10, choices=AnnuleParChoix.choices, blank=True, default='',
+        verbose_name='Annulé par')
+    date_annulation = models.DateTimeField(
+        null=True, blank=True, verbose_name="Date et heure d'annulation")
+
     class Meta:
         verbose_name = 'Rendez-vous'
         verbose_name_plural = 'Rendez-vous'
@@ -189,6 +208,15 @@ class RendezVous(TenantModel):
 
     def __str__(self):
         return f'{self.patient_id} @ {self.date_heure_debut}'
+
+    @property
+    def delai_annulation_h(self):
+        """NTSAN37 — délai (heures, arrondi 2 décimales) entre l'annulation
+        et le début du RDV. ``None`` si le RDV n'a pas (encore) été annulé."""
+        if not self.date_annulation:
+            return None
+        delta = self.date_heure_debut - self.date_annulation
+        return round(delta.total_seconds() / 3600, 2)
 
 
 class Admission(TenantModel):
@@ -529,3 +557,153 @@ class PaiementSante(TenantModel):
 
     def __str__(self):
         return f'{self.facture_sante_id} — {self.montant}'
+
+
+class HoraireOuverturePraticien(TenantModel):
+    """NTSAN30 — horaire d'ouverture hebdomadaire d'un praticien (nourrit le
+    calcul de disponibilités NTSAN29 et la garde de création de
+    ``RendezVous``). Un praticien SANS ligne d'horaire configurée n'est PAS
+    restreint (défaut 08:00-18:00 côté ``selectors.creneaux_disponibles`` /
+    aucune garde côté ``services.verifier_horaires_praticien``) — additif,
+    jamais de régression pour un praticien déjà en service avant
+    paramétrage."""
+
+    class JourSemaine(models.IntegerChoices):
+        LUNDI = 0, 'Lundi'
+        MARDI = 1, 'Mardi'
+        MERCREDI = 2, 'Mercredi'
+        JEUDI = 3, 'Jeudi'
+        VENDREDI = 4, 'Vendredi'
+        SAMEDI = 5, 'Samedi'
+        DIMANCHE = 6, 'Dimanche'
+
+    praticien = models.ForeignKey(
+        # on_delete: un horaire n'existe que pour son praticien (composition)
+        Praticien, on_delete=models.CASCADE,
+        related_name='horaires_ouverture', verbose_name='Praticien')
+    jour_semaine = models.PositiveSmallIntegerField(
+        choices=JourSemaine.choices, verbose_name='Jour de la semaine')
+    heure_debut = models.TimeField(verbose_name='Heure de début')
+    heure_fin = models.TimeField(verbose_name='Heure de fin')
+
+    class Meta:
+        verbose_name = "Horaire d'ouverture praticien"
+        verbose_name_plural = "Horaires d'ouverture praticien"
+        ordering = ['praticien', 'jour_semaine', 'heure_debut']
+
+    def __str__(self):
+        return (
+            f'{self.praticien_id} / {self.get_jour_semaine_display()} '
+            f'{self.heure_debut}-{self.heure_fin}')
+
+
+class IndisponibilitePraticien(TenantModel):
+    """NTSAN30 — indisponibilité ponctuelle d'un praticien (congé, formation,
+    absence) bloquant la prise de RDV sur la période, quels que soient les
+    horaires d'ouverture configurés."""
+
+    praticien = models.ForeignKey(
+        # on_delete: une indisponibilité n'existe que pour son praticien (composition)
+        Praticien, on_delete=models.CASCADE,
+        related_name='indisponibilites', verbose_name='Praticien')
+    date_debut = models.DateTimeField(verbose_name='Date et heure de début')
+    date_fin = models.DateTimeField(verbose_name='Date et heure de fin')
+    motif = models.CharField(max_length=255, blank=True, default='', verbose_name='Motif')
+
+    class Meta:
+        verbose_name = 'Indisponibilité praticien'
+        verbose_name_plural = 'Indisponibilités praticien'
+        ordering = ['-date_debut']
+
+    def __str__(self):
+        return f'{self.praticien_id} indisponible {self.date_debut} → {self.date_fin}'
+
+
+class PraticienSite(TenantModel):
+    """NTSAN32 — rattachement M2M léger d'un praticien à un site/salle,
+    utile pour les praticiens itinérants qui consultent dans plusieurs
+    cliniques du MÊME groupe (multi-tenant déjà scopé par ``company`` ;
+    ceci gère le multi-site DANS une même société). L'agenda d'un praticien
+    consolidé tous sites confondus est le comportement PAR DÉFAUT de
+    ``RendezVousViewSet`` (filtre ``praticien`` seul, sans ``salle``) — ce
+    modèle n'ajoute que la liste des sites d'un praticien et le filtre par
+    site (``?salle=``, déjà supporté)."""
+
+    praticien = models.ForeignKey(
+        # on_delete: le rattachement disparaît avec le praticien (composition)
+        Praticien, on_delete=models.CASCADE,
+        related_name='sites', verbose_name='Praticien')
+    salle = models.ForeignKey(
+        # on_delete: le rattachement disparaît avec le site/salle (composition)
+        Salle, on_delete=models.CASCADE,
+        related_name='praticiens_associes', verbose_name='Site (salle)')
+
+    class Meta:
+        verbose_name = 'Site du praticien'
+        verbose_name_plural = 'Sites du praticien'
+        ordering = ['praticien', 'salle']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'praticien', 'salle'],
+                name='sante_praticien_site_unique'),
+        ]
+
+    def __str__(self):
+        return f'{self.praticien_id} @ {self.salle_id}'
+
+
+class MotifConsultation(TenantModel):
+    """NTSAN35 — motif de consultation prédéfini, paramétrable PAR SOCIÉTÉ
+    (jamais codé en dur), pour pré-remplir ``RendezVous.motif_court`` côté
+    écran de prise de RDV."""
+
+    libelle = models.CharField(max_length=255, verbose_name='Libellé')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+
+    class Meta:
+        verbose_name = 'Motif de consultation'
+        verbose_name_plural = 'Motifs de consultation'
+        ordering = ['libelle']
+
+    def __str__(self):
+        return self.libelle
+
+
+class ParametragePenaliteAnnulation(TenantModel):
+    """NTSAN37 — paramétrage (par société) des frais d'annulation tardive.
+    ``actif`` est FAUX PAR DÉFAUT — (DECISION founder) : le calcul du délai
+    d'annulation (``RendezVous.delai_annulation_h``) est TOUJOURS correct,
+    mais AUCUNE facturation de pénalité n'est câblée automatiquement dans ce
+    lot (créer une ``FactureSante`` de pénalité reste une décision distincte
+    du founder, hors périmètre) — ``actif`` ne conditionne ici que le
+    calcul du DROIT à pénalité renvoyé par
+    ``services.annuler_rendez_vous``, jamais un encaissement automatique."""
+
+    actif = models.BooleanField(
+        default=False, verbose_name='Pénalité activée')
+    delai_min_h = models.PositiveIntegerField(
+        default=24,
+        verbose_name="Délai minimum avant RDV (heures) pour éviter la pénalité")
+    montant_penalite_ttc = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0,
+        verbose_name='Montant de la pénalité TTC')
+
+    class Meta:
+        verbose_name = "Paramétrage pénalité d'annulation"
+        verbose_name_plural = "Paramétrages pénalité d'annulation"
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company'],
+                name='sante_parametrage_penalite_unique_par_societe'),
+        ]
+
+    def __str__(self):
+        return f'Pénalité annulation ({self.company_id})'
+
+    @classmethod
+    def get(cls, company):
+        """Renvoie (en la créant si besoin) le paramétrage unique de cette
+        société — toujours ``actif=False`` à la création (jamais activé par
+        défaut, DECISION founder)."""
+        obj, _ = cls.objects.get_or_create(company=company)
+        return obj

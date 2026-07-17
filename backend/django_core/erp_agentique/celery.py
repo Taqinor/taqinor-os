@@ -62,6 +62,9 @@ app.conf.enable_utc = False
 #   - YSERV5 : génération automatique des visites préventives dues (07:45) —
 #     apps/sav/tasks.py (opt-in par société, OFF par défaut = no-op ;
 #     réutilise generer_visites_dues, idempotent).
+#   - NTSAN31 : alerte J-7 avant expiration d'une PriseEnCharge santé (07:40)
+#     — apps/sante/tasks.py (idempotent par jour+PriseEnCharge, miroir du
+#     pattern apps/rh/tasks.py alertes_expiration).
 app.conf.beat_schedule = {
     'ventes-check-overdue-factures': {
         'task': 'ventes.check_overdue_factures',
@@ -437,6 +440,12 @@ app.conf.beat_schedule = {
     'adsengine-pull-meta-leads': {
         'task': 'adsengine.pull_meta_leads',
         'schedule': crontab(hour=7, minute=25),
+    },
+    # NTSAN31 — alerte J-7 avant expiration d'une PriseEnCharge santé (évite
+    # les actes réalisés hors couverture), quotidien, heure creuse matinale.
+    'sante-alertes-prise-en-charge-expirant': {
+        'task': 'sante.alertes_prise_en_charge_expirant',
+        'schedule': crontab(hour=7, minute=40),
     },
 }
 
