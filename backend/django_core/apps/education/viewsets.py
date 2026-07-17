@@ -47,6 +47,52 @@ class ClasseViewSet(CompanyScopedModelViewSet):
     queryset = Classe.objects.select_related('annee_scolaire', 'niveau').all()
     serializer_class = ClasseSerializer
 
+    @action(detail=True, methods=['get'], url_path='export',
+            permission_classes=[IsAuthenticated])
+    def export(self, request, pk=None):
+        """NTEDU37 — export de la liste de classe (contacts parents inclus),
+        usage administratif. ``?format=pdf|xlsx`` (défaut xlsx)."""
+        classe = self.get_object()
+        fmt = (request.query_params.get('format') or 'xlsx').lower()
+        if fmt not in ('pdf', 'xlsx'):
+            raise ValidationError({'format': "doit être 'pdf' ou 'xlsx'."})
+
+        from .exports import export_classe_pdf_bytes, export_classe_xlsx_bytes
+
+        if fmt == 'pdf':
+            data = export_classe_pdf_bytes(classe)
+            resp = HttpResponse(data, content_type='application/pdf')
+            resp['Content-Disposition'] = (
+                f'attachment; filename="classe-{classe.id}.pdf"')
+            return resp
+
+        data = export_classe_xlsx_bytes(classe)
+        resp = HttpResponse(data, content_type=(
+            'application/vnd.openxmlformats-officedocument.'
+            'spreadsheetml.sheet'))
+        resp['Content-Disposition'] = (
+            f'attachment; filename="classe-{classe.id}.xlsx"')
+        return resp
+
+    @action(detail=True, methods=['get'], url_path='trombinoscope',
+            permission_classes=[IsAuthenticated])
+    def trombinoscope(self, request, pk=None):
+        """NTEDU38 — galerie photo des élèves de la classe (réutilise
+        ``Eleve.photo``, pas de nouveau stockage). Un élève sans photo
+        renvoie ``photo_url: null`` — le front affiche un avatar générique,
+        jamais une image cassée."""
+        classe = self.get_object()
+        eleves = classe.eleves.all().order_by('nom', 'prenom')
+        results = [{
+            'id': e.id,
+            'nom': e.nom,
+            'prenom': e.prenom,
+            'photo_url': (
+                f'/api/django/records/attachments/{e.photo_id}/download/'
+                if e.photo_id else None),
+        } for e in eleves]
+        return Response({'count': len(results), 'results': results})
+
 
 class FamilleViewSet(CompanyScopedModelViewSet):
     queryset = Famille.objects.all()
