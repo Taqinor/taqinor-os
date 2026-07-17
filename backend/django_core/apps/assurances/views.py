@@ -2,7 +2,7 @@
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import IntegrityError
 from rest_framework import status, viewsets
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
@@ -21,7 +21,9 @@ from .serializers import (
     IndemnisationSinistreSerializer, PoliceActivitySerializer,
     PoliceAssuranceSerializer, SinistreActivitySerializer,
 )
-from .selectors import attestations_expirantes, polices_expirantes
+from .selectors import (
+    attestations_expirantes, couverture_par_actif, polices_expirantes,
+)
 from .services import (
     CHAMPS_SUIVIS_POLICE, CHAMPS_SUIVIS_SINISTRE, enregistrer_indemnisation,
     generer_echeancier_prime, log_police_creation, log_police_note,
@@ -386,3 +388,27 @@ class ExigenceAssuranceMarcheViewSet(_AssurancesBaseViewSet):
         verifier_conformite_assurance_marche(exigence)
         return Response(
             ExigenceAssuranceMarcheSerializer(exigence).data)
+
+
+@api_view(['GET'])
+@permission_classes([HasPermissionOrLegacy('assurances_voir')])
+def couverture_actif(request):
+    """NTASS20 — registre consolidé « assurances par actif » (lecture seule).
+
+    ``GET /assurances/couverture-actif/?type_actif=&actif_ref=`` : toutes les
+    polices d'entreprise actives couvrant l'actif + (véhicule) sa police auto
+    flotte, sans doublon."""
+    type_actif = request.query_params.get('type_actif')
+    actif_ref = request.query_params.get('actif_ref')
+    if not type_actif or not actif_ref:
+        return Response(
+            {'detail': 'type_actif et actif_ref sont requis.'},
+            status=status.HTTP_400_BAD_REQUEST)
+    try:
+        actif_ref_int = int(actif_ref)
+    except (TypeError, ValueError):
+        return Response({'detail': 'actif_ref invalide.'},
+                        status=status.HTTP_400_BAD_REQUEST)
+    data = couverture_par_actif(
+        request.user.company, type_actif, actif_ref_int)
+    return Response(data)

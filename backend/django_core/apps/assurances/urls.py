@@ -9,7 +9,7 @@ from .views import (
     ActifCouvertViewSet, AttestationAssuranceViewSet, AssureurViewSet,
     CourtierViewSet, DeclarationSinistreViewSet, EcheancePrimeViewSet,
     ExigenceAssuranceMarcheViewSet, GarantiePoliceViewSet,
-    PoliceAssuranceViewSet,
+    PoliceAssuranceViewSet, couverture_actif,
 )
 
 router = DefaultRouter()
@@ -36,5 +36,7 @@ router.register(
     basename='assurances-exigence-marche')
 
 urlpatterns = [
+    # NTASS20 — registre consolidé « assurances par actif » (transverse).
+    path('couverture-actif/', couverture_actif, name='assurances-couverture-actif'),
     path('', include(router.urls)),
 ]

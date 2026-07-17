@@ -111,3 +111,49 @@ def attestations_expirantes(company, within=30, today=None):
         company=company, statut=AttestationAssurance.Statut.VALIDE,
         date_validite__lte=horizon,
     ).select_related('police').order_by('date_validite', 'id')
+
+
+# ── NTASS20 — Registre consolidé « assurances par actif » (transverse) ─────
+
+def couverture_par_actif(company, type_actif, actif_ref):
+    """NTASS20 — TOUTES les polices d'ENTREPRISE actives couvrant un actif
+    donné (via ``ActifCouvert`` NTASS7) + pour un actif VÉHICULE, résout EN
+    PLUS la police auto dédiée ``flotte.AssuranceVehicule`` (lecture SEULE via
+    ``flotte.selectors``, jamais ``flotte.models``). Sans doublon de données.
+
+    Renvoie ``{'polices_entreprise': [...], 'polices_flotte': [...]}`` (listes
+    de dicts). Lecture seule."""
+    polices_entreprise = []
+    couvertures = ActifCouvert.objects.filter(
+        company=company, type_actif=type_actif, actif_ref=actif_ref,
+        police__statut=PoliceAssurance.Statut.ACTIVE,
+    ).select_related('police', 'police__assureur')
+    for couverture in couvertures:
+        police = couverture.police
+        polices_entreprise.append({
+            'police_id': police.id,
+            'numero_police': police.numero_police,
+            'type_police': police.type_police,
+            'assureur': police.assureur.raison_sociale,
+            'date_echeance': police.date_echeance,
+        })
+
+    polices_flotte = []
+    if type_actif == ActifCouvert.TypeActif.VEHICULE:
+        try:
+            from apps.flotte import selectors as flotte_selectors
+            for assur in flotte_selectors.assurances_vehicule_de_la_societe(
+                    company, actif_flotte_id=actif_ref):
+                polices_flotte.append({
+                    'assurance_id': assur.id,
+                    'numero_police': assur.numero_police,
+                    'assureur': assur.assureur,
+                    'date_echeance': assur.date_echeance,
+                })
+        except Exception:  # noqa: BLE001 - dégradation gracieuse défensive
+            polices_flotte = []
+
+    return {
+        'polices_entreprise': polices_entreprise,
+        'polices_flotte': polices_flotte,
+    }
