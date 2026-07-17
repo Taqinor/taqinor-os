@@ -156,13 +156,26 @@ export default function CreativeLibraryScreen() {
                 return (
                   <article key={a.id} className="card ae-creative-card" data-testid="ae-creative-card"
                     style={{ padding: '0.75rem', border: '1px solid #e2e8f0' }}>
-                    {(a.preview_url || a.file_url)
-                      ? <img src={a.preview_url || a.file_url} alt={a.designation || 'Créatif'}
-                          style={{ width: '100%', maxHeight: 150, objectFit: 'cover', borderRadius: 6 }} />
-                      : <div style={{ height: 90, background: '#f1f5f9', borderRadius: 6,
-                          display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>
-                          {a.type || 'créatif'}
-                        </div>}
+                    {(() => {
+                      const src = a.preview_url || a.file_url
+                      // ADSDEEP15 — un reel/explainer se rend en <video> ; les
+                      // statiques en <img>. `is_video` (backend) prime, repli
+                      // sur le type d'asset.
+                      const isVideo = a.is_video ?? ['reel', 'explainer'].includes(a.asset_type || a.type)
+                      if (!src) {
+                        return (
+                          <div style={{ height: 90, background: '#f1f5f9', borderRadius: 6,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>
+                            {a.type || a.asset_type || 'créatif'}
+                          </div>
+                        )
+                      }
+                      return isVideo
+                        ? <video data-testid="ae-creative-video" src={src} controls
+                            style={{ width: '100%', maxHeight: 150, borderRadius: 6 }} />
+                        : <img data-testid="ae-creative-img" src={src} alt={a.designation || 'Créatif'}
+                            style={{ width: '100%', maxHeight: 150, objectFit: 'cover', borderRadius: 6 }} />
+                    })()}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.5rem' }}>
                       <strong>{a.designation || 'Créatif'}</strong>
                       <span className="badge" data-testid={`ae-creative-status-${a.id}`}
