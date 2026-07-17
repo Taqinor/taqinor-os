@@ -563,6 +563,38 @@ def run_active_flightplans():
     return {'companies_ran': ran}
 
 
+@shared_task(name='adsengine.emit_capi_signatures')
+def emit_capi_signatures():
+    """ADSDEEP27 — Beat quotidien : pousse au CRM Dataset Meta l'événement d'issue
+    de la boucle *Conversion Leads* (``signed_contract`` sur chaque deal signé
+    Odoo), idempotent (marqueur ``CapiOdooEvent``).
+
+    NO-OP propre sans ``CAPI_CRM_DATASET_ID`` + token : aucune société n'est
+    balayée, aucune lecture Odoo ni appel réseau. Best-effort par société ; une
+    société en échec n'empêche jamais les suivantes."""
+    from authentication.selectors import active_companies
+
+    from . import capi_odoo
+
+    if not capi_odoo.is_configured():
+        logger.info(
+            'adsengine.emit_capi_signatures: CRM Dataset non configuré — no-op')
+        return {'configured': False, 'signed': 0}
+
+    signed = 0
+    for company in active_companies():
+        try:
+            signed += capi_odoo.emit_signed_deals(company)['emitted']
+        except Exception:  # pragma: no cover - défensif, isolation société
+            logger.warning(
+                'adsengine.emit_capi_signatures: échec société %s',
+                company.pk, exc_info=True)
+            continue
+
+    logger.info('adsengine.emit_capi_signatures: %s signé(s)', signed)
+    return {'configured': True, 'signed': signed}
+
+
 @shared_task(name='adsengine.generate_creative_variants')
 def generate_creative_variants(base_asset_id, brand_fields=None, count=2):
     """ENG18 — Tâche « variantes » : 2-3 statiques d'un asset de base approuvé.

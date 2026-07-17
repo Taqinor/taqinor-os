@@ -469,6 +469,13 @@ app.conf.beat_schedule = {
         'task': 'adsengine.pull_meta_leads',
         'schedule': crontab(hour=7, minute=25),
     },
+    # ADSDEEP27 — boucle de retour CAPI « signatures » (CRM Dataset Meta) : push
+    # QUOTIDIEN de l'événement signed_contract par deal signé Odoo, idempotent
+    # (marqueur CapiOdooEvent). NO-OP propre sans CAPI_CRM_DATASET_ID + token.
+    'adsengine-emit-capi-signatures': {
+        'task': 'adsengine.emit_capi_signatures',
+        'schedule': crontab(hour=7, minute=35),
+    },
     # NTCRD21 — alerte quotidienne d'exposition crédit consolidée (07:20).
     # Best-effort, une alerte par jour et par société (dédup), no-op tant que
     # le seuil société vaut 0 (défaut).

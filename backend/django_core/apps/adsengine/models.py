@@ -1466,3 +1466,38 @@ class CtwaReferral(TenantModel):
 
     def __str__(self):
         return f'CTWA {self.wa_message_id} (ad {self.ad_id or "?"})'
+
+
+class CapiOdooEvent(TenantModel):
+    """ADSDEEP27/28 — Marqueur d'IDEMPOTENCE des événements CAPI CRM-Dataset émis
+    par la boucle de retour signatures (``lead_received`` + ``signed_contract``).
+
+    Le beat quotidien (``adsengine.emit_capi_signatures``) balaie chaque jour les
+    MÊMES leads Meta miroités et les MÊMES deals signés Odoo. Sans marqueur
+    persistant, chaque exécution réémettrait tout (la dedup Meta 48 h ne couvre
+    pas au-delà de 2 jours). Ce journal garantit qu'un événement (``event_key``
+    déterministe) n'est POSTé QU'UNE FOIS par société : avant tout envoi on vérifie
+    l'absence du marqueur, et on ne le crée qu'APRÈS un envoi réussi (un flag OFF,
+    un token absent ou un échec HTTP ne pose jamais de marqueur — l'événement
+    repartira au prochain passage une fois l'intégration active).
+
+    Unicité ``(company, event_key)`` : rejeu du beat idempotent, jamais un doublon.
+    """
+
+    event_key = models.CharField(
+        max_length=200, verbose_name="Clé d'événement (dedup)")
+    event_name = models.CharField(
+        max_length=64, verbose_name="Nom d'événement Meta")
+
+    class Meta:
+        verbose_name = 'Événement CAPI Odoo émis'
+        verbose_name_plural = 'Événements CAPI Odoo émis'
+        ordering = ['-created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'event_key'],
+                name='uniq_adseng_capi_odoo_event'),
+        ]
+
+    def __str__(self):
+        return f'CAPI {self.event_name} ({self.event_key})'
