@@ -234,6 +234,13 @@ class CampagneInnovation(TenantModel):
     # cherchons vos idées sur … »). Optionnel — vide = pas de bandeau.
     message_incitation = models.TextField(
         blank=True, default='', verbose_name="Message d'incitation")
+    # NTIDE28 — tag (``records.Tag``, réutilisé — jamais un champ tags
+    # maison) auto-appliqué à toute idée proposée par un utilisateur du
+    # segment PENDANT que la campagne est active (``services.
+    # maybe_apply_campagne_tag``). Vide = pas d'auto-tag. Le tag reste
+    # modifiable manuellement ensuite (pas verrouillé).
+    tag_auto = models.CharField(
+        max_length=80, blank=True, default='', verbose_name='Tag automatique')
 
     class Meta:
         verbose_name = 'Campagne innovation'

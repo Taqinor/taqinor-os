@@ -229,6 +229,25 @@ def bulk_set_statut(company, ids, target, user):
     return {'appliquees': appliquees, 'ignorees': ignorees}
 
 
+# ── Tag automatique de campagne (NTIDE28) ───────────────────────────────────
+
+
+def maybe_apply_campagne_tag(idee, user):
+    """NTIDE28 — si ``user`` matche le segment d'une campagne ACTIVE portant
+    un ``tag_auto`` (``selectors.campagne_active_pour_utilisateur``, même
+    règle que le bandeau d'incitation NTIDE27), applique ce tag à ``idee``
+    automatiquement. Réutilise ``bulk_add_tag`` (``records.Tag``/
+    ``TaggedItem``) — le tag reste ensuite modifiable manuellement comme
+    n'importe quel autre (pas verrouillé). No-op silencieux si aucune
+    campagne ne matche, ou si elle n'a pas de ``tag_auto``."""
+    from . import selectors
+
+    campagne = selectors.campagne_active_pour_utilisateur(user)
+    if campagne is None or not campagne.tag_auto:
+        return
+    bulk_add_tag(idee.company, [idee.id], campagne.tag_auto)
+
+
 BULK_ACTIONS = frozenset({'set_statut', 'add_tag', 'remove_tag'})
 
 

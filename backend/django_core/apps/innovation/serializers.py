@@ -102,7 +102,7 @@ class CampagneInnovationSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'nom', 'description', 'statut', 'statut_display',
             'cible_departement', 'segment', 'date_debut', 'date_fin',
-            'message_incitation', 'created_at',
+            'message_incitation', 'tag_auto', 'created_at',
         ]
         read_only_fields = ['created_at']
 

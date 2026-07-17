@@ -102,6 +102,9 @@ class IdeeViewSet(CompanyScopedModelViewSet):
         log_activity(
             idee, Activity.Kind.CREATION, user=self.request.user,
             company=idee.company)
+        # NTIDE28 — tag auto-appliqué si l'auteur matche le segment d'une
+        # campagne active portant un ``tag_auto`` (no-op silencieux sinon).
+        services.maybe_apply_campagne_tag(idee, self.request.user)
 
     # ── NTIDE10 — autocomplétion du contexte ────────────────────────────────
     @action(detail=False, methods=['get'], url_path='contextes',
