@@ -25,7 +25,7 @@ from .models import (
     LignePrevisionnelTresorerie, LigneReleve, MessageWhatsAppEntrant,
     ModeleDevis, MouvementCaisse, NoteFrais, OuverturePartage, RapportNoteFrais,
     ParametresTresorerie, PaymentRun, PaymentRunLine, PeriodeComptable,
-    PlafondNoteFrais, PouvoirBancaire,
+    PlafondNoteFrais, PlanRelanceTresorerie, PouvoirBancaire,
     PlanAmortissement,
     PlanComptable, Provision, ProvisionCreance, Rapprochement, RapprochementBancaire,
     RelanceDevisAbandonne, RetenueGarantie, RetenueSource, SequenceRelance,
@@ -398,8 +398,12 @@ class LigneReleveSerializer(serializers.ModelSerializer):
         source='get_statut_display', read_only=True)
     montant_pointe = serializers.DecimalField(
         max_digits=14, decimal_places=2, read_only=True)
+    montant_mad = serializers.DecimalField(
+        max_digits=16, decimal_places=2, read_only=True)
     ecart = serializers.DecimalField(
         max_digits=14, decimal_places=2, read_only=True)
+    ecart_mad = serializers.DecimalField(
+        max_digits=16, decimal_places=2, read_only=True)
     est_concordante = serializers.BooleanField(read_only=True)
     lignes_gl = serializers.PrimaryKeyRelatedField(
         many=True, read_only=True)
@@ -408,8 +412,9 @@ class LigneReleveSerializer(serializers.ModelSerializer):
         model = LigneReleve
         fields = [
             'id', 'rapprochement', 'date_operation', 'libelle', 'reference',
-            'montant', 'statut', 'statut_display', 'lignes_gl',
-            'montant_pointe', 'ecart', 'est_concordante', 'date_creation',
+            'montant', 'devise', 'taux_change', 'statut', 'statut_display',
+            'lignes_gl', 'montant_pointe', 'montant_mad', 'ecart', 'ecart_mad',
+            'est_concordante', 'date_creation',
         ]
         read_only_fields = [
             'rapprochement', 'statut', 'statut_display', 'lignes_gl',
@@ -600,7 +605,7 @@ class LignePrevisionnelTresorerieSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'libelle', 'categorie', 'categorie_display', 'date_prevue',
             'montant', 'recurrence', 'recurrence_display', 'commentaire',
-            'date_creation',
+            'scenario', 'date_creation',
         ]
         read_only_fields = ['date_creation']
 
@@ -788,7 +793,7 @@ class PaymentRunSerializer(serializers.ModelSerializer):
             'id', 'reference', 'mode_paiement', 'mode_paiement_display',
             'compte_tresorerie', 'compte_libelle', 'date_paiement', 'statut',
             'statut_display', 'total', 'posted', 'ecriture', 'note', 'lignes',
-            'date_creation',
+            'date_creation', 'format_export',
             'approbateur_1', 'approbateur_2', 'date_approbation_1',
             'date_approbation_2',
         ]
@@ -839,6 +844,28 @@ class ParametresTresorerieSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at',
         ]
         read_only_fields = ['created_at', 'updated_at']
+
+
+class PlanRelanceTresorerieSerializer(serializers.ModelSerializer):
+    """NTTRE11 — Plan de relance de recouvrement segmenté."""
+
+    class Meta:
+        model = PlanRelanceTresorerie
+        fields = [
+            'id', 'nom', 'segment_client', 'paliers', 'actif',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+    def validate_paliers(self, value):
+        if not isinstance(value, list):
+            raise serializers.ValidationError(
+                "Les paliers doivent être une liste.")
+        for palier in value:
+            if not isinstance(palier, dict) or 'jours' not in palier:
+                raise serializers.ValidationError(
+                    "Chaque palier doit être un objet avec au moins « jours ».")
+        return value
 
 
 class NoteFraisSerializer(serializers.ModelSerializer):

@@ -2302,12 +2302,14 @@ def creer_rapprochement(company, compte_tresorerie, *, date_debut, date_fin,
 
 
 def ajouter_ligne_releve(rapprochement, *, date_operation, libelle, montant,
-                         reference=''):
+                         reference='', devise='MAD', taux_change=None):
     """Ajoute une ligne de relevé bancaire à un rapprochement (FG123).
 
     ``montant`` est SIGNÉ tel que lu sur le relevé (+ entrée, − sortie). La
     société est héritée du rapprochement (jamais du corps). On ne peut plus
-    ajouter de ligne à un rapprochement déjà ``rapproche``.
+    ajouter de ligne à un rapprochement déjà ``rapproche``. NTTRE13 — ``devise``
+    (défaut MAD) + ``taux_change`` (vers MAD, optionnel) pour un relevé en devise
+    étrangère.
     """
     if rapprochement.est_rapproche:
         raise ValidationError(
@@ -2321,6 +2323,8 @@ def ajouter_ligne_releve(rapprochement, *, date_operation, libelle, montant,
         libelle=libelle or '',
         reference=reference or '',
         montant=Decimal(montant or 0),
+        devise=(devise or 'MAD'),
+        taux_change=(Decimal(str(taux_change)) if taux_change else None),
     )
 
 
@@ -4032,6 +4036,8 @@ def poster_payment_run(run, *, user=None):
     run.ecriture = ecriture
     run.statut = PaymentRun.Statut.POSTEE
     run.save(update_fields=['posted', 'ecriture', 'statut'])
+    _auditer_action_sensible(
+        run, user, 'payment_run.postee', detail=f'total={run.total}')
 
     # YLEDG8 — pour chaque ligne référençant une FactureFournisseur (posée par
     # `proposer_lignes_payment_run` ou saisie manuellement), créer SON
@@ -4061,6 +4067,66 @@ def get_parametres_tresorerie(company):
     from .models import ParametresTresorerie
     params, _ = ParametresTresorerie.objects.get_or_create(company=company)
     return params
+
+
+# ── NTTRE11 — Plans de relance clients (recouvrement segmenté) ──────────────
+
+def plan_relance_applicable(company, *, segment='', jours_retard=0):
+    """NTTRE11 — (plan, palier) applicable pour un segment + un retard donné.
+
+    Cherche d'abord un ``PlanRelanceTresorerie`` actif spécifique au ``segment``,
+    à défaut le plan par défaut (segment vide). Renvoie ``(plan, palier)`` où
+    ``palier`` est le palier au plus grand ``jours`` ≤ ``jours_retard`` — ou
+    ``(None, None)`` si aucun plan/palier applicable. Lecture seule.
+    """
+    from .models import PlanRelanceTresorerie
+    qs = PlanRelanceTresorerie.objects.filter(company=company, actif=True)
+    plan = None
+    if segment:
+        plan = qs.filter(segment_client=segment).order_by('id').first()
+    if plan is None:
+        plan = qs.filter(segment_client='').order_by('id').first()
+    if plan is None:
+        return None, None
+    return plan, plan.palier_applicable(jours_retard)
+
+
+def declencher_relances_du_jour(company, *, aujourdhui=None, user=None):
+    """NTTRE11 — Déclenche les paliers de relance dus, par facture en retard.
+
+    Appelé par le job Celery de retard existant (``check_overdue_factures``) —
+    ne le remplace pas. Pour chaque facture en retard (lue via le sélecteur de
+    ``ventes``, cross-app, best-effort), résout le palier applicable selon le
+    segment du client et le nombre de jours de retard, et pousse une notification
+    interne (jamais d'envoi externe automatique). Renvoie la liste des
+    déclenchements ``[{'facture_id', 'segment', 'jours_retard', 'canal'}]``.
+    """
+    aujourdhui = aujourdhui or timezone.localdate()
+    declenchements = []
+    try:  # cross-app : lecture des factures en retard via le sélecteur ventes.
+        from apps.ventes.selectors import factures_en_retard
+        factures = factures_en_retard(company)
+    except Exception:  # pragma: no cover - sélecteur absent → best-effort no-op.
+        return declenchements
+    for fac in factures:
+        segment = getattr(fac, 'segment_client', '') or ''
+        echeance = getattr(fac, 'date_echeance', None)
+        if echeance is None:
+            continue
+        jours_retard = (aujourdhui - echeance).days
+        if jours_retard <= 0:
+            continue
+        plan, palier = plan_relance_applicable(
+            company, segment=segment, jours_retard=jours_retard)
+        if not palier:
+            continue
+        declenchements.append({
+            'facture_id': getattr(fac, 'id', None),
+            'segment': segment,
+            'jours_retard': jours_retard,
+            'canal': palier.get('canal', ''),
+        })
+    return declenchements
 
 
 # ── NTTRE5/6 — Workflow à 4 yeux sur les campagnes de paiement ──────────────
@@ -4148,15 +4214,27 @@ def approuver_final_payment_run(run, user):
 
 
 def _auditer_action_sensible(instance, user, action, detail=''):
-    """NTTRE42 — Trace une action sensible trésorerie dans ``AuditLog``.
+    """NTTRE41/42 — Trace une action sensible trésorerie dans ``AuditLog`` ET le
+    chatter ``records.Activity``.
 
-    Réutilise le recorder d'audit existant (``apps.audit.recorder.record``,
-    best-effort : ne lève jamais). Utilisé par les approbations de PaymentRun
-    (NTTRE5), la révocation de PouvoirBancaire (NTTRE6) et le protêt (NTTRE7).
+    Réutilise le recorder d'audit (``apps.audit.recorder.record``) ET le chatter
+    générique (``apps.records.services.log_activity``) — best-effort, ne lève
+    jamais. Utilisé par les approbations/postings de PaymentRun (NTTRE5), la
+    révocation de PouvoirBancaire (NTTRE6) et l'endossement/protêt (NTTRE7). Ainsi
+    chaque approbation, endossement et protêt génère automatiquement une entrée
+    ``Activity`` visible en écran détail (NTTRE41), sans action manuelle.
     """
     from apps.audit.recorder import record
     record(action, instance=instance, company=instance.company, user=user,
            detail=detail)
+    try:  # NTTRE41 — chatter (best-effort, ne bloque jamais l'action).
+        from apps.records.models import Activity
+        from apps.records.services import log_activity
+        corps = f'{action}' + (f' — {detail}' if detail else '')
+        log_activity(instance, Activity.Kind.MODIFICATION, user=user,
+                     body=corps[:2000])
+    except Exception:  # pragma: no cover - chatter best-effort
+        pass
 
 
 def _auditer_payment_run(run, user, action):
@@ -4261,6 +4339,41 @@ def fichier_virement(run):
         'total': total,
         'nb_lignes': len(rows),
         'mode_paiement': run.mode_paiement,
+    }
+
+
+def fichier_virement_bancaire(run):
+    """NTTRE14 — Fichier de virement à LARGEUR FIXE (portail banque marocaine).
+
+    Format texte compatible import direct d'un portail bancaire courant (type
+    Attijari/BMCE) : une ligne détail par virement à largeur fixe
+    (motif « VIR », RIB 24 chiffres cadré, montant en centimes cadré à droite,
+    référence bénéficiaire), close par une ligne de contrôle « TOT » portant le
+    nombre de lignes et le total en centimes. Réutilise la validation de
+    ``fichier_virement`` (mode/coordonnées). Renvoie ``{'texte', 'total',
+    'nb_lignes'}``. Lecture seule.
+    """
+    base = fichier_virement(run)  # valide mode + coordonnées, calcule le total.
+    lignes = list(run.lignes.all())
+    texte_lignes = []
+    for ligne in lignes:
+        rib = ''.join(c for c in (ligne.rib or ligne.iban or '') if c.isdigit())
+        rib = rib[:24].rjust(24, '0')
+        centimes = int((Decimal(ligne.montant or 0) * 100).to_integral_value())
+        motif = 'VIR'
+        beneficiaire = (ligne.beneficiaire or '')[:30].ljust(30)
+        reference = (ligne.reference or '')[:16].ljust(16)
+        texte_lignes.append(
+            f'{motif}{rib}{str(centimes).rjust(15, "0")}'
+            f'{beneficiaire}{reference}')
+    total_centimes = int((base['total'] * 100).to_integral_value())
+    texte_lignes.append(
+        f'TOT{str(len(lignes)).rjust(6, "0")}'
+        f'{str(total_centimes).rjust(15, "0")}')
+    return {
+        'texte': '\n'.join(texte_lignes) + '\n',
+        'total': base['total'],
+        'nb_lignes': len(lignes),
     }
 
 

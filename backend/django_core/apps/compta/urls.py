@@ -36,6 +36,7 @@ from .views import (
     LignePrevisionnelTresorerieViewSet, MessageWhatsAppEntrantViewSet,
     ModeleDevisViewSet, NoteFraisViewSet, OuverturePartageViewSet,
     ParametresTresorerieView, PaymentRunViewSet, PouvoirBancaireViewSet,
+    PlanRelanceTresorerieViewSet,
     PeriodeComptableViewSet, PilotageViewSet, PlafondNoteFraisViewSet,
     PlanComptableViewSet,
     ProvisionCreanceViewSet, ProvisionViewSet,
@@ -93,6 +94,7 @@ router.register(r'effets', EffetViewSet)
 router.register(r'bordereaux', BordereauRemiseViewSet)
 router.register(r'payment-runs', PaymentRunViewSet)
 router.register(r'pouvoirs-bancaires', PouvoirBancaireViewSet)
+router.register(r'plans-relance-tresorerie', PlanRelanceTresorerieViewSet)
 router.register(r'notes-frais', NoteFraisViewSet)
 router.register(r'rapports-notes-frais', RapportNoteFraisViewSet)
 router.register(r'plafonds-notes-frais', PlafondNoteFraisViewSet)

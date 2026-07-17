@@ -1317,6 +1317,13 @@ class LigneReleve(models.Model):
     montant = models.DecimalField(
         max_digits=14, decimal_places=2, default=Decimal('0'),
         verbose_name='Montant')
+    # ── NTTRE13 — relevés en devise étrangère (défaut MAD = inchangé) ──
+    devise = models.CharField(
+        max_length=3, default='MAD', verbose_name='Devise')
+    taux_change = models.DecimalField(
+        max_digits=12, decimal_places=6, null=True, blank=True,
+        verbose_name='Taux de change (vers MAD)',
+        help_text='Taux du jour de l\'opération ; vide pour une ligne en MAD.')
     statut = models.CharField(
         max_length=12, choices=Statut.choices,
         default=Statut.NON_POINTEE, verbose_name='Statut')
@@ -1352,14 +1359,35 @@ class LigneReleve(models.Model):
         return total
 
     @property
+    def montant_mad(self):
+        """NTTRE13 — Montant de la ligne converti en MAD (× taux_change).
+
+        Pour une ligne en MAD (défaut, ``taux_change`` vide) : identique à
+        ``montant`` — aucune régression. Pour une devise étrangère : le montant
+        converti au taux enregistré, base de comparaison avec le GL en MAD.
+        """
+        montant = self.montant or Decimal('0')
+        if self.taux_change:
+            return (montant * self.taux_change).quantize(Decimal('0.01'))
+        return montant
+
+    @property
     def ecart(self):
-        """Écart entre le montant du relevé et le montant GL pointé (0 = concord)."""
+        """Écart entre le montant du relevé et le montant GL pointé (0 = concord),
+        dans la DEVISE du relevé (comportement historique)."""
         return (self.montant or Decimal('0')) - self.montant_pointe
 
     @property
+    def ecart_mad(self):
+        """NTTRE13 — Écart en MAD (montant converti − montant GL pointé en MAD)."""
+        return self.montant_mad - self.montant_pointe
+
+    @property
     def est_concordante(self):
-        """Vrai si au moins une ligne GL est pointée et l'écart est nul."""
-        return self.lignes_gl.exists() and self.ecart == Decimal('0')
+        """Vrai si au moins une ligne GL est pointée et l'écart (en MAD, base de
+        comparaison avec le grand livre) est nul. Pour une ligne en MAD, identique
+        au comportement historique (``ecart_mad == ecart``)."""
+        return self.lignes_gl.exists() and self.ecart_mad == Decimal('0')
 
 
 class PointageReleve(models.Model):
@@ -1828,6 +1856,12 @@ class LignePrevisionnelTresorerie(models.Model):
         HEBDOMADAIRE = 'hebdomadaire', 'Hebdomadaire'
         MENSUELLE = 'mensuelle', 'Mensuelle'
 
+    # ── NTTRE16 — scénarios (réaliste = comportement actuel inchangé) ──
+    class Scenario(models.TextChoices):
+        REALISTE = 'realiste', 'Réaliste'
+        OPTIMISTE = 'optimiste', 'Optimiste'
+        PESSIMISTE = 'pessimiste', 'Pessimiste'
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
@@ -1835,6 +1869,9 @@ class LignePrevisionnelTresorerie(models.Model):
         verbose_name='Société',
     )
     libelle = models.CharField(max_length=255, verbose_name='Libellé')
+    scenario = models.CharField(
+        max_length=12, choices=Scenario.choices,
+        default=Scenario.REALISTE, verbose_name='Scénario')
     categorie = models.CharField(
         max_length=15, choices=Categorie.choices,
         default=Categorie.AUTRE, verbose_name='Catégorie')
@@ -2227,6 +2264,11 @@ class PaymentRun(models.Model):
         EN_ATTENTE_APPROBATION = 'en_attente_approbation', "En attente d'approbation"
         POSTEE = 'postee', 'Postée au grand livre'
 
+    # ── NTTRE14 — format d'export du fichier de virement (CSV = défaut) ──
+    class FormatExport(models.TextChoices):
+        CSV = 'csv', 'CSV générique'
+        BANCAIRE = 'bancaire', 'Format banque marocaine (largeur fixe)'
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
@@ -2235,6 +2277,9 @@ class PaymentRun(models.Model):
     )
     reference = models.CharField(
         max_length=80, blank=True, default='', verbose_name='Référence')
+    format_export = models.CharField(
+        max_length=10, choices=FormatExport.choices,
+        default=FormatExport.CSV, verbose_name="Format d'export virement")
     mode_paiement = models.CharField(
         max_length=10, choices=ModePaiement.choices,
         default=ModePaiement.VIREMENT, verbose_name='Mode de paiement')
@@ -6868,3 +6913,43 @@ class ParametresTresorerie(TenantModel):
 
     def __str__(self):
         return f'Paramètres trésorerie — société {self.company_id}'
+
+
+# ── NTTRE11 — Plans de relance clients (recouvrement segmenté) ──────────────
+
+class PlanRelanceTresorerie(TenantModel):
+    """Plan de relance de recouvrement par segment client (NTTRE11).
+
+    DISTINCT du ``FollowupLevel`` ventes (rappel de devis) : ici c'est un plan de
+    RECOUVREMENT de factures impayées, segmenté et multi-paliers. ``paliers`` est
+    une liste JSON de dicts ``{'jours': int, 'canal': 'email'|'whatsapp'|'appel'|
+    'mise_en_demeure', 'libelle': str}`` — au J+N de retard, le palier applicable
+    déclenche une notification/tâche interne (jamais d'envoi externe automatique).
+    ``segment_client`` (optionnel) restreint le plan à un segment ; vide = plan
+    par défaut. Hérite de ``core.models.TenantModel``.
+    """
+    nom = models.CharField(max_length=160, verbose_name='Nom du plan')
+    segment_client = models.CharField(
+        max_length=60, blank=True, default='',
+        verbose_name='Segment client',
+        help_text='Vide = plan par défaut (tous segments).')
+    paliers = models.JSONField(
+        default=list, blank=True, verbose_name='Paliers',
+        help_text="Liste de {jours, canal, libelle} — ex. J+7 email doux…")
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+
+    class Meta:
+        verbose_name = 'Plan de relance trésorerie'
+        verbose_name_plural = 'Plans de relance trésorerie'
+        ordering = ['nom', 'id']
+
+    def __str__(self):
+        return f'{self.nom} ({self.segment_client or "tous segments"})'
+
+    def palier_applicable(self, jours_retard):
+        """Palier au plus grand ``jours`` ≤ ``jours_retard`` (ou None)."""
+        eligibles = [p for p in (self.paliers or [])
+                     if isinstance(p, dict) and (p.get('jours') or 0) <= jours_retard]
+        if not eligibles:
+            return None
+        return max(eligibles, key=lambda p: p.get('jours') or 0)

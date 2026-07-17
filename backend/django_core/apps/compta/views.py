@@ -44,7 +44,7 @@ from .models import (
     LignePrevisionnelTresorerie, LigneReleve, MessageWhatsAppEntrant,
     ModeleDevis, MouvementCaisse, NoteFrais, OuverturePartage, PostSocial,
     PaymentRun, PeriodeComptable, PlafondNoteFrais,
-    PlanComptable, PouvoirBancaire, Provision,
+    PlanComptable, PlanRelanceTresorerie, PouvoirBancaire, Provision,
     ProvisionCreance, RapportNoteFrais,
     Rapprochement, RapprochementBancaire, RelanceDevisAbandonne,
     RetenueGarantie, RetenueSource, SequenceRelance, SessionGuidedSelling,
@@ -107,7 +107,7 @@ from .serializers import (
     MessageWhatsAppEntrantSerializer, ModeleDevisSerializer,
     MouvementCaisseSerializer, NoteFraisSerializer, OuverturePartageSerializer,
     ParametresTresorerieSerializer, PaymentRunSerializer,
-    PouvoirBancaireSerializer,
+    PlanRelanceTresorerieSerializer, PouvoirBancaireSerializer,
     PeriodeComptableSerializer, PlanAmortissementSerializer,
     PlafondNoteFraisSerializer,
     PlanComptableSerializer, ProvisionSerializer, ProvisionCreanceSerializer,
@@ -518,7 +518,8 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
         data = selectors.previsionnel_tresorerie(
             company,
             date_debut=request.query_params.get('date_debut') or None,
-            nb_semaines=max(1, min(nb_semaines, 52)))
+            nb_semaines=max(1, min(nb_semaines, 52)),
+            scenario=request.query_params.get('scenario') or None)
         return Response(data)
 
     @action(detail=False, methods=['get'], url_path='balance-agee-fournisseurs')
@@ -2477,6 +2478,36 @@ class EffetViewSet(_ComptaBaseViewSet):
             qs = qs.filter(statut=statut)
         return qs
 
+    def list(self, request, *args, **kwargs):
+        # NTTRE38 — export XLSX de la situation des effets (retraitement compta).
+        if request.query_params.get('export') == 'xlsx':
+            from decimal import Decimal
+            from openpyxl import Workbook
+            from openpyxl.styles import Font
+            from apps.records.xlsx import coerce_cell, XLSX_CONTENT_TYPE
+            wb = Workbook()
+            ws = wb.active
+            ws.title = 'Effets'
+            ws.append(['Numéro', 'Type', 'Sens', 'Tireur', 'Banque',
+                       'Échéance', 'Statut', 'Montant'])
+            for cell in ws[1]:
+                cell.font = Font(bold=True)
+            total = Decimal('0')
+            for ef in self.filter_queryset(self.get_queryset()):
+                total += ef.montant or Decimal('0')
+                ws.append([coerce_cell(v) for v in [
+                    ef.numero, ef.get_type_effet_display(),
+                    ef.get_sens_display(), ef.tireur, ef.banque,
+                    ef.date_echeance, ef.get_statut_display(), ef.montant]])
+            ws.append(['', '', '', '', '', '', 'Total',
+                       coerce_cell(total)])
+            buf = io.BytesIO()
+            wb.save(buf)
+            resp = HttpResponse(buf.getvalue(), content_type=XLSX_CONTENT_TYPE)
+            resp['Content-Disposition'] = 'attachment; filename="effets.xlsx"'
+            return resp
+        return super().list(request, *args, **kwargs)
+
     def perform_create(self, serializer):
         serializer.save(
             company=self.request.user.company, created_by=self.request.user)
@@ -2914,7 +2945,19 @@ class PaymentRunViewSet(_ComptaBaseViewSet):
         ou si une ligne n'a aucune coordonnée bancaire. Lecture seule.
         """
         run = self.get_object()  # scopé société par TenantMixin.
+        # NTTRE14 — format bancaire à largeur fixe si demandé (query ?format=
+        # bancaire ou run.format_export=bancaire) ; CSV par défaut (inchangé).
+        fmt = (request.query_params.get('format')
+               or run.format_export or 'csv').lower()
         try:
+            if fmt == 'bancaire':
+                data = services.fichier_virement_bancaire(run)
+                resp = HttpResponse(
+                    data['texte'], content_type='text/plain; charset=utf-8')
+                resp['Content-Disposition'] = (
+                    'attachment; filename='
+                    f'"virements_{run.reference or run.id}.txt"')
+                return resp
             data = services.fichier_virement(run)
         except DjangoValidationError as exc:
             return Response(
@@ -2960,6 +3003,27 @@ class PouvoirBancaireViewSet(_ComptaBaseViewSet):
             qs = qs.filter(statut=statut)
         return qs
 
+    def list(self, request, *args, **kwargs):
+        # NTTRE36 — export CSV du registre des pouvoirs (audit annuel).
+        if request.query_params.get('export') == 'csv':
+            buffer = io.StringIO()
+            writer = csv.writer(buffer, delimiter=';')
+            writer.writerow([
+                'Titulaire', 'CIN', 'Compte', 'Plafond seul',
+                'Plafond conjoint', 'Début', 'Fin', 'Statut'])
+            for p in self.filter_queryset(self.get_queryset()):
+                writer.writerow([
+                    p.titulaire_nom, p.titulaire_cin,
+                    p.compte_tresorerie.libelle if p.compte_tresorerie_id else '',
+                    p.plafond_signature_seul, p.plafond_signature_conjointe,
+                    p.date_debut or '', p.date_fin or '', p.statut])
+            resp = HttpResponse(
+                buffer.getvalue(), content_type='text/csv; charset=utf-8')
+            resp['Content-Disposition'] = (
+                'attachment; filename="pouvoirs_bancaires.csv"')
+            return resp
+        return super().list(request, *args, **kwargs)
+
     def get_permissions(self):
         # NTTRE32 — la modification des signataires exige une permission dédiée
         # (distincte de la gestion trésorerie générique) ; la lecture reste
@@ -2995,6 +3059,27 @@ class ParametresTresorerieView(generics.RetrieveUpdateAPIView):
 
     def get_object(self):
         return services.get_parametres_tresorerie(self.request.user.company)
+
+
+# ── NTTRE11 — Plans de relance clients (recouvrement segmenté) ──────────────
+
+class PlanRelanceTresorerieViewSet(_ComptaBaseViewSet):
+    """Plans de relance de recouvrement segmentés (NTTRE11).
+
+    CRUD des plans multi-paliers (J+7 email, J+15 WhatsApp…), optionnellement
+    par segment client. Société scopée, posée côté serveur ; Admin/Responsable.
+    """
+    queryset = PlanRelanceTresorerie.objects.all()
+    serializer_class = PlanRelanceTresorerieSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['nom', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        segment = self.request.query_params.get('segment_client')
+        if segment:
+            qs = qs.filter(segment_client=segment)
+        return qs
 
 
 # ── FG135 — Notes de frais & remboursements employés ───────────────────────

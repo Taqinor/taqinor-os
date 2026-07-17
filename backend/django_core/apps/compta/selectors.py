@@ -1756,7 +1756,8 @@ def caisses_de(company):
 
 # ── FG126 — Prévisionnel de trésorerie roulant 13 semaines ─────────────────
 
-def previsionnel_tresorerie(company, *, date_debut=None, nb_semaines=13):
+def previsionnel_tresorerie(company, *, date_debut=None, nb_semaines=13,
+                            scenario=None):
     """Prévisionnel de trésorerie roulant sur ``nb_semaines`` semaines (FG126).
 
     Construit une projection SEMAINE PAR SEMAINE en partant de la position de
@@ -1764,9 +1765,14 @@ def previsionnel_tresorerie(company, *, date_debut=None, nb_semaines=13):
     chaque semaine, les ``LignePrevisionnelTresorerie`` prévues qui y tombent
     (montant signé : + encaissement, − décaissement) PLUS les effets ouverts
     (FG127/FG128) dont l'échéance tombe dans la semaine (effets à recevoir → +,
-    à payer → −). Renvoie ``{'solde_initial', 'date_debut', 'semaines': [...]}``
-    où chaque semaine porte ``{'index', 'date_debut', 'date_fin', 'entrees',
-    'sorties', 'flux_net', 'solde_fin', 'lignes': [...]}``. Lecture seule.
+    à payer → −). Renvoie ``{'solde_initial', 'date_debut', 'semaines': [...],
+    'date_rupture_estimee'}`` où chaque semaine porte ``{'index', 'date_debut',
+    'date_fin', 'entrees', 'sorties', 'flux_net', 'solde_fin', 'lignes': [...]}``.
+
+    NTTRE16 — ``scenario`` (realiste/optimiste/pessimiste) filtre les lignes
+    manuelles : ``None`` ou ``'realiste'`` = comportement historique (les lignes
+    réalistes, défaut du champ). NTTRE18 — ``date_rupture_estimee`` = première
+    date où le solde projeté passe sous zéro (``None`` sinon). Lecture seule.
     """
     debut = date_debut or timezone.localdate()
     # Cale le début sur le lundi de la semaine de ``debut``.
@@ -1776,9 +1782,12 @@ def previsionnel_tresorerie(company, *, date_debut=None, nb_semaines=13):
     solde_initial = solde
 
     fin_horizon = debut + timedelta(weeks=nb_semaines)
-    lignes_prev = list(LignePrevisionnelTresorerie.objects.filter(
-        company=company, date_prevue__gte=debut,
-        date_prevue__lt=fin_horizon).order_by('date_prevue', 'id'))
+    lignes_prev_qs = LignePrevisionnelTresorerie.objects.filter(
+        company=company, date_prevue__gte=debut, date_prevue__lt=fin_horizon)
+    # NTTRE16 — filtre scénario : réaliste (défaut) = comportement inchangé.
+    lignes_prev_qs = lignes_prev_qs.filter(
+        scenario=scenario or LignePrevisionnelTresorerie.Scenario.REALISTE)
+    lignes_prev = list(lignes_prev_qs.order_by('date_prevue', 'id'))
     effets = list(Effet.objects.filter(
         company=company, date_echeance__gte=debut,
         date_echeance__lt=fin_horizon,
@@ -1852,11 +1861,18 @@ def previsionnel_tresorerie(company, *, date_debut=None, nb_semaines=13):
             'solde_fin': solde,
             'lignes': lignes,
         })
+    # NTTRE18 — première semaine où le solde projeté passe sous zéro.
+    date_rupture = None
+    for semaine in semaines:
+        if semaine['solde_fin'] < 0:
+            date_rupture = semaine['date_debut']
+            break
     return {
         'solde_initial': solde_initial,
         'date_debut': debut,
         'nb_semaines': nb_semaines,
         'semaines': semaines,
+        'date_rupture_estimee': date_rupture,
     }
 
 
