@@ -48,7 +48,8 @@ class PoliceAssuranceSerializer(serializers.ModelSerializer):
             'type_police_display', 'libelle', 'date_effet', 'date_echeance',
             'tacite_reconduction', 'prime_annuelle_ht', 'statut',
             'document_police', 'notes', 'police_precedente', 'employe_ref',
-            'employe_couvert_libelle', 'created_at', 'updated_at',
+            'employe_couvert_libelle', 'cyber_clauses', 'created_at',
+            'updated_at',
         ]
         read_only_fields = ['id', 'company', 'created_at', 'updated_at']
 

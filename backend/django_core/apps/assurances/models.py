@@ -134,6 +134,11 @@ class PoliceAssurance(models.Model):
     employe_ref = models.PositiveIntegerField(
         null=True, blank=True,
         verbose_name='Employé couvert (homme-clé, string-FK rh)')
+    # NTASS23 — police CYBER : clauses IT structurées en JSON libre (plafond
+    # ransomware, notification CNDP sous X h, couverture perte de données,
+    # prestataire forensic mandaté…). Champ libre, pas de nouveau modèle.
+    cyber_clauses = models.JSONField(
+        default=dict, blank=True, verbose_name='Clauses cyber (JSON)')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
