@@ -367,6 +367,10 @@ class DeclarationSinistre(models.Model):
     # String-FK optionnelle — jamais dupliquée avec flotte.Sinistre (FLOTTE25).
     flotte_sinistre_id = models.PositiveIntegerField(
         null=True, blank=True, verbose_name='Sinistre véhicule lié (flotte)')
+    # NTASS15 — string-FK (id brut) vers le futur registre de risques ERM
+    # (NTGRC) ; résolue en libellé à la volée, no-op tant que l'app n'existe pas.
+    risque_ref = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Risque ERM lié (string-FK NTGRC)')
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

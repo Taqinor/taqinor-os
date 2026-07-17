@@ -100,6 +100,9 @@ class DeclarationSinistreSerializer(serializers.ModelSerializer):
     numero_dossier = serializers.CharField(source='reference', read_only=True)
     type_sinistre_display = serializers.CharField(
         source='get_type_sinistre_display', read_only=True)
+    # NTASS15 — libellé du risque ERM lié, résolu à la volée (null tant que
+    # le futur module NTGRC n'existe pas).
+    risque_libelle = serializers.SerializerMethodField()
 
     class Meta:
         model = DeclarationSinistre
@@ -107,11 +110,16 @@ class DeclarationSinistreSerializer(serializers.ModelSerializer):
             'id', 'company', 'police', 'numero_dossier', 'date_survenance',
             'date_declaration', 'nature_sinistre', 'type_sinistre',
             'type_sinistre_display', 'montant_estime_degats', 'statut',
-            'description', 'flotte_sinistre_id', 'created_at',
+            'description', 'flotte_sinistre_id', 'risque_ref', 'risque_libelle',
+            'created_at',
         ]
         read_only_fields = [
             'id', 'company', 'numero_dossier', 'date_declaration', 'created_at',
         ]
+
+    def get_risque_libelle(self, obj):
+        from .selectors import libelle_risque
+        return libelle_risque(obj.risque_ref)
 
     def validate_police(self, value):
         request = self.context.get('request')

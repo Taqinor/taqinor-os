@@ -76,3 +76,22 @@ def polices_expirantes(company, within=30, today=None):
     return polices_de_la_societe(
         company, statut=PoliceAssurance.Statut.ACTIVE,
     ).filter(date_echeance__lte=horizon).order_by('date_echeance', 'id')
+
+
+# ── NTASS15 — Lien sinistre → risque ERM (string-FK vers futur NTGRC) ──────
+
+def libelle_risque(risque_ref):
+    """NTASS15 — libellé lisible d'un risque ERM lié (string-FK, jamais une
+    vraie FK). Import PARESSEUX du module risques (futur NTGRC) : tant que
+    l'app n'existe pas, ``try/except ImportError`` renvoie ``None`` (no-op
+    silencieux) et l'API répond ``risque_libelle=null``."""
+    if risque_ref is None:
+        return None
+    try:
+        from apps.grc import selectors as grc_selectors  # futur NTGRC
+    except ImportError:
+        return None
+    try:
+        return grc_selectors.libelle_risque(risque_ref)
+    except Exception:  # noqa: BLE001 - dégradation gracieuse défensive
+        return None
