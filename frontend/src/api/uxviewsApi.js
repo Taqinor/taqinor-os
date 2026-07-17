@@ -11,6 +11,11 @@ const uxviewsApi = {
   // NTUX2 — Directeur/Admin uniquement (403 côté serveur sinon).
   definirParDefautRole: (id, roleId) =>
     api.post(`/uxviews/saved-views/${id}/definir-par-defaut-role/`, { role: roleId }),
+  // NTUX23 — rapport « configuration des vues actives » (Directeur/Admin
+  // uniquement, 403 côté serveur sinon) : TOUTES les vues de la company
+  // (au-delà du filtre perso/équipe de listSavedViews), + export .xlsx.
+  listAllSavedViews: () => api.get('/uxviews/saved-views/toutes-company/'),
+  exportSavedViewsXlsx: () => api.get('/uxviews/saved-views/export-xlsx/', { responseType: 'blob' }),
 }
 
 export default uxviewsApi

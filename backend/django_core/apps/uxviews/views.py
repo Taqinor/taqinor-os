@@ -32,7 +32,10 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
         )
 
     def get_permissions(self):
-        if self.action == 'definir_par_defaut_role':
+        # NTUX23 — les deux actions de gouvernance (liste TOUTE la company,
+        # export xlsx) sont réservées Directeur/Admin, comme
+        # `definir_par_defaut_role` (NTUX2).
+        if self.action in ('definir_par_defaut_role', 'toutes_company', 'export_xlsx'):
             return [IsResponsableOrAdmin()]
         return [IsAnyRole()]
 
@@ -83,3 +86,47 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
         instance.visibilite = SavedView.Visibilite.EQUIPE
         instance.save(update_fields=['role', 'est_defaut_role', 'visibilite', 'updated_at'])
         return Response(SavedViewSerializer(instance).data)
+
+    @action(detail=False, methods=['get'], url_path='toutes-company')
+    def toutes_company(self, request):
+        """NTUX23 — Rapport « configuration des vues actives » : liste ADMIN
+        de TOUTES les `SavedView` de la company (au-delà du filtre perso/
+        équipe de `list()`/`get_queryset` ci-dessus), pour l'écran de
+        gouvernance `/parametres/vues`. Directeur/Admin uniquement — sert de
+        base à l'audit avant un contrôle qualité ou un onboarding commercial."""
+        views = SavedView.objects.filter(
+            company=request.user.company,
+        ).select_related('owner', 'role').order_by('ecran', 'nom')
+        return Response(SavedViewSerializer(views, many=True).data)
+
+    @action(detail=False, methods=['get'], url_path='export-xlsx')
+    def export_xlsx(self, request):
+        """NTUX23 — export .xlsx du même rapport de gouvernance (colonnes :
+        écran, nom, propriétaire, visibilité, rôle par défaut, dernière
+        modification) — moteur .xlsx PARTAGÉ `apps.records.xlsx` (foundation
+        app, exempte de la frontière inter-apps), jamais le moteur
+        `quote_engine` (rule #4, hors périmètre — les vues n'ont rien à voir
+        avec les devis)."""
+        from apps.records.xlsx import build_xlsx_response
+
+        views = SavedView.objects.filter(
+            company=request.user.company,
+        ).select_related('owner', 'role').order_by('ecran', 'nom')
+        headers = ['Écran', 'Nom', 'Propriétaire', 'Visibilité', 'Rôle par défaut', 'Dernière modification']
+        rows = []
+        for v in views:
+            owner = v.owner
+            owner_nom = ''
+            if owner:
+                full = f'{getattr(owner, "first_name", "")} {getattr(owner, "last_name", "")}'.strip()
+                owner_nom = full or getattr(owner, 'username', '') or getattr(owner, 'email', '') or ''
+            rows.append([
+                v.ecran,
+                v.nom,
+                owner_nom,
+                v.get_visibilite_display(),
+                v.role.nom if v.est_defaut_role and v.role_id else '',
+                v.updated_at,
+            ])
+        return build_xlsx_response(
+            'vues-sauvegardees.xlsx', headers, rows, sheet_title='Vues sauvegardées')
