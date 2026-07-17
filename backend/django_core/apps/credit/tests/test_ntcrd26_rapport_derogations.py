@@ -57,7 +57,7 @@ class NTCRD26RapportDerogationsTests(TestCase):
         DerogationCredit.objects.create(
             company=self.company, client=self.client_obj,
             montant_demande=Decimal('5000'))
-        r = self.api.get('/api/django/credit/rapport-derogations/?format=xlsx')
+        r = self.api.get('/api/django/credit/rapport-derogations/?export=xlsx')
         self.assertEqual(r.status_code, 200)
         self.assertTrue(r.content[:2] == b'PK')
 

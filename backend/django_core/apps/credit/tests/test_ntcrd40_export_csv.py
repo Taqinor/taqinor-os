@@ -42,7 +42,7 @@ class NTCRD40ExportCsvTests(TestCase):
     def test_csv_export_bom_and_rows(self):
         r = self.api.get(
             f'/api/django/credit/rapport-derogations/'
-            f'?format=csv&client={self.client_obj.id}')
+            f'?export=csv&client={self.client_obj.id}')
         self.assertEqual(r.status_code, 200)
         self.assertTrue(r.content.startswith('﻿'.encode('utf-8')))
         text = r.content.decode('utf-8-sig')

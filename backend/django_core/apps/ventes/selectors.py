@@ -644,6 +644,42 @@ def encours_clients_par_tiers(company):
     return [v for v in par_client.values() if v['encours'] > 0]
 
 
+def encours_ouvert_par_tiers(company):
+    """NTCRD4 — encours documentaire OUVERT par client, filtré PAR STATUT :
+    somme du reste dû des factures dont le statut n'est ni ``PAYEE`` ni
+    ``ANNULEE``. Distinct de ``encours_clients_par_tiers`` (YLEDG13, montant-dû
+    only, qui inclut une ``PAYEE`` sans règlement enregistré) : ici l'exclusion
+    est portée par le STATUT du document, ce que le module crédit exige (une
+    facture marquée soldée ne compte plus dans l'exposition, quel que soit son
+    reste dû résiduel). Point d'entrée cross-app sanctionné pour ``apps.credit``
+    (jamais un import direct de ``ventes.models``). Renvoie une liste de dicts
+    ``{'tiers_id', 'nom', 'encours', 'references'}`` (encours > 0). Lecture
+    seule."""
+    from decimal import Decimal
+    from .models import Facture
+
+    par_client = {}
+    qs = (Facture.objects
+          .filter(company=company)
+          .exclude(statut__in=[Facture.Statut.PAYEE, Facture.Statut.ANNULEE])
+          .select_related('client'))
+    for facture in qs:
+        du = facture.montant_du
+        if not du:
+            continue
+        client = facture.client
+        entry = par_client.setdefault(client.id, {
+            'tiers_id': client.id,
+            'nom': (f'{client.prenom} {client.nom}'.strip()
+                    if hasattr(client, 'prenom') else str(client)),
+            'encours': Decimal('0'),
+            'references': [],
+        })
+        entry['encours'] += Decimal(du)
+        entry['references'].append(facture.reference)
+    return [v for v in par_client.values() if v['encours'] > 0]
+
+
 def ca_devis_factures_par_clients(company, client_ids):
     """XSAL9 — CA (devis + factures) agrégé, PAR client, pour une liste
     d'ids clients d'une même société. Point d'entrée cross-app sanctionné

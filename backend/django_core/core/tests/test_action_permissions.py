@@ -22,6 +22,12 @@ UNGUARDED_ACTION_BASELINE = {
     # (Directeur only) + company-scopées. Le scanner ne crédite que les gardes
     # PAR action (permission_classes=/get_permissions) → dette coarse acceptée.
     "accessreview": 3,
+    # NTASS — les viewsets assurances héritent de ``_AssurancesBaseViewSet``
+    # (WriteScopedPermissionMixin + CompanyScopedModelViewSet) : gardés au
+    # niveau CLASSE (read/write assurances_voir/gerer, company-scopé, zéro fuite
+    # cross-tenant), pas FINE-gardés par action → dette coarse figée, comme
+    # accessreview/chat. À fine-grainer plus tard (YRBAC3).
+    "assurances": 12,
     "automation": 1,
     "chat": 16,
     # compta 128->212, flotte 38->39, paie 55->70, rh 84->103, +stock/ventes:
@@ -42,6 +48,10 @@ UNGUARDED_ACTION_BASELINE = {
     "compta": 115,
     "contrats": 56,
     "flotte": 39,
+    # NTFPA — viewsets FP&A gardés au niveau CLASSE (CompanyScopedModelViewSet
+    # + rôle Directeur/FP&A), company-scopés ; dette coarse figée (fine-grain
+    # ultérieur, YRBAC3).
+    "fpa": 16,
     "gestion_projet": 70,
     "installations": 4,
     "kb": 34,

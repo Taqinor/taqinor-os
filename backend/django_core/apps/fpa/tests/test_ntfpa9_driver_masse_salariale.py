@@ -16,7 +16,8 @@ class TestProjeterMasseSalariale(TestCase):
         self.company, _ = Company.objects.get_or_create(
             slug='ntfpa9-co', defaults={'nom': 'NTFPA9 Co'})
         ParametrePaie.objects.create(
-            company=self.company, taux_cnss_patronal=Decimal('8.98'),
+            company=self.company, date_effet=date(2026, 1, 1),
+            taux_cnss_patronal=Decimal('8.98'),
             taux_amo_patronal=Decimal('2.26'),
             taux_allocations_familiales=Decimal('6.4'),
             taux_formation_pro=Decimal('1.6'))

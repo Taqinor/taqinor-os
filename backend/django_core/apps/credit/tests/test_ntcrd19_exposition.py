@@ -67,7 +67,7 @@ class NTCRD19ExpositionTests(TestCase):
 
     def test_xlsx_export(self):
         self._facture(self.c1, 4, '10000')
-        r = self.api.get('/api/django/credit/exposition/?format=xlsx')
+        r = self.api.get('/api/django/credit/exposition/?export=xlsx')
         self.assertEqual(r.status_code, 200)
         self.assertIn('spreadsheetml', r['Content-Type'])
         self.assertTrue(r.content[:2] == b'PK')  # xlsx = zip

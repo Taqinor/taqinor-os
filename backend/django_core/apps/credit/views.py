@@ -67,7 +67,7 @@ def fiche_credit_client(request, client_id):
 @permission_classes([IsAuthenticated])
 def rapport_derogations_view(request):
     """NTCRD26 — rapport « Dérogations crédit » sur une période
-    (``?date_debut=&date_fin=`` en ISO). ``?format=xlsx`` renvoie un classeur.
+    (``?date_debut=&date_fin=`` en ISO). ``?export=xlsx`` renvoie un classeur.
     Company-scopé."""
     from datetime import date as _date
 
@@ -107,7 +107,7 @@ def rapport_derogations_view(request):
             for ligne in rapport['lignes']
         ]
 
-    fmt = request.query_params.get('format')
+    fmt = request.query_params.get('export')
     if fmt == 'xlsx':
         from apps.records.xlsx import workbook_bytes
         content = workbook_bytes(header, _rows(), sheet_title='derogations')
@@ -153,7 +153,7 @@ def badges_credit_view(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def exposition_credit(request):
-    """NTCRD19 — rapport d'exposition consolidée (trié par risque). ``?format=
+    """NTCRD19 — rapport d'exposition consolidée (trié par risque). ``?export=
     xlsx`` renvoie un classeur .xlsx (jamais de ``prix_achat``/marge)."""
     from django.http import HttpResponse
 
@@ -170,7 +170,7 @@ def exposition_credit(request):
                               request.user))
     lignes = rapport_exposition(request.user.company, clients=clients_visibles)
 
-    if request.query_params.get('format') == 'xlsx':
+    if request.query_params.get('export') == 'xlsx':
         from apps.records.xlsx import workbook_bytes
 
         header = [

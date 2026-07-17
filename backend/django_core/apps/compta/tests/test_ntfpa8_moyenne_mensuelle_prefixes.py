@@ -8,6 +8,7 @@ from django.test import TestCase
 from authentication.models import Company
 from apps.compta.models import (
     CompteComptable, EcritureComptable, Journal, LigneEcriture,
+    PlanComptable,
 )
 from apps.compta.selectors import moyenne_mensuelle_par_prefixes
 
@@ -18,10 +19,13 @@ class TestMoyenneMensuellleParPrefixes(TestCase):
             slug='ntfpa8-co', defaults={'nom': 'NTFPA8 Co'})
         self.journal = Journal.objects.create(
             company=self.company, code='OD', libelle='Opérations diverses')
+        self.plan = PlanComptable.objects.create(company=self.company)
         self.compte_622 = CompteComptable.objects.create(
-            company=self.company, numero='6226', intitule='Publicité')
+            company=self.company, plan=self.plan,
+            numero='6226', intitule='Publicité')
         self.compte_701 = CompteComptable.objects.create(
-            company=self.company, numero='7111', intitule='Ventes')
+            company=self.company, plan=self.plan,
+            numero='7111', intitule='Ventes')
 
     def _ecriture(self, mois, montant_charge):
         ecr = EcritureComptable.objects.create(

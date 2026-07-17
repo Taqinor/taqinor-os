@@ -320,6 +320,13 @@ def enregistrer_indemnisation(declaration, *, montant_reclame,
     ``franchise_appliquee`` : si non fournie explicitement, COPIÉE (snapshot)
     depuis la ``GarantiePolice`` désignée par ``garantie_id`` (sinon la
     première garantie de la police, sinon 0) — jamais une FK vivante."""
+    # Les montants arrivent souvent en chaîne (corps JSON de l'API) : on les
+    # coerce en Decimal AVANT ``update_or_create``, sinon l'instance renvoyée
+    # porte les chaînes brutes (Django ne recharge pas depuis la base) et la
+    # propriété ``reste_a_charge`` (montant_reclame − montant_indemnise)
+    # planterait sur une soustraction de chaînes.
+    montant_reclame = Decimal(str(montant_reclame))
+    montant_indemnise = Decimal(str(montant_indemnise))
     if franchise_appliquee is None:
         garantie = None
         if garantie_id is not None:
@@ -328,6 +335,7 @@ def enregistrer_indemnisation(declaration, *, montant_reclame,
         if garantie is None:
             garantie = declaration.police.garanties.first()
         franchise_appliquee = garantie.franchise_montant if garantie else 0
+    franchise_appliquee = Decimal(str(franchise_appliquee))
 
     indemnisation, _ = IndemnisationSinistre.objects.update_or_create(
         declaration=declaration,

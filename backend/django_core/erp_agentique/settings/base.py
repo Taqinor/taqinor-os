@@ -778,6 +778,12 @@ CELERY_TASK_ROUTES = {
     # ADSDEEP8/18 — sync hebdo des breakdowns + pull quotidien des leads.
     'adsengine.sync_breakdowns_weekly': {'queue': 'scheduled'},
     'adsengine.pull_meta_leads': {'queue': 'scheduled'},
+    # NTCRD21/32/33/34 — jobs crédit planifiés (exposition, encours, dérogations,
+    # polices assurance-crédit expirantes).
+    'credit.alerter_exposition_globale': {'queue': 'scheduled'},
+    'credit.expirer_derogations': {'queue': 'scheduled'},
+    'credit.alerter_polices_expirantes': {'queue': 'scheduled'},
+    'credit.recalculer_encours_quotidien': {'queue': 'scheduled'},
     # NTPLT27 — 4e queue `bulk` pour le travail de masse (imports dataimport,
     # exports planifiés volumineux, backfills, seed à l'échelle). Un import de
     # 100 000 lignes ne doit plus retarder un digest planifié ni un rendu PDF

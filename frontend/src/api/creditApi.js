@@ -28,7 +28,7 @@ const creditApi = {
   getExposition: (params) => api.get('/credit/exposition/', { params }),
   exportExpositionXlsx: () =>
     api.get('/credit/exposition/', {
-      params: { format: 'xlsx' },
+      params: { export: 'xlsx' },
       responseType: 'blob',
     }),
 

@@ -12,19 +12,17 @@ from decimal import Decimal
 
 def encours_client(client):
     """NTCRD4 — encours documentaire réel d'un client : Σ factures ouvertes
-    (hors ``ANNULEE``/``PAYEE``), via le sélecteur EXISTANT
-    ``apps.ventes.selectors.encours_clients_par_tiers`` (YLEDG13, déjà exposé
-    cross-app — jamais un nouvel import/édition de ``ventes.selectors``).
+    (hors ``ANNULEE``/``PAYEE`` PAR STATUT), via le sélecteur cross-app
+    sanctionné ``apps.ventes.selectors.encours_ouvert_par_tiers`` (jamais un
+    import direct de ``ventes.models``). L'exclusion est portée par le STATUT
+    du document : une facture soldée ne compte plus dans l'exposition crédit.
 
-    LIMITE CONNUE (périmètre de ce lane) : ne compte QUE les factures
-    ouvertes — les BC ``LIVRE`` sans facture liée ne sont pas inclus, faute
-    d'un sélecteur ventes existant les exposant sans modifier
-    ``apps.ventes.selectors`` (hors périmètre déclaré de cette app). Un
-    sélecteur ventes dédié (``encours_ouvert``) pourrait fermer cet écart
-    dans une lane ventes future."""
-    from apps.ventes.selectors import encours_clients_par_tiers
+    LIMITE CONNUE : ne compte QUE les factures ouvertes — les BC ``LIVRE``
+    sans facture liée ne sont pas inclus, faute d'un sélecteur ventes les
+    exposant. Un sélecteur ventes dédié pourrait fermer cet écart plus tard."""
+    from apps.ventes.selectors import encours_ouvert_par_tiers
 
-    entries = encours_clients_par_tiers(client.company)
+    entries = encours_ouvert_par_tiers(client.company)
     for entry in entries:
         if entry['tiers_id'] == client.id:
             return entry['encours']

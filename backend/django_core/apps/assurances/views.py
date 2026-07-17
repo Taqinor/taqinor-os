@@ -77,6 +77,21 @@ class PoliceAssuranceViewSet(_AssurancesBaseViewSet):
     serializer_class = PoliceAssuranceSerializer
     filterset_fields = ['type_police', 'statut', 'assureur', 'courtier']
 
+    def get_queryset(self):
+        # ``DjangoFilterBackend`` n'est pas monté dans ce projet (les backends
+        # de filtre par défaut = Ordering/Search) : ``filterset_fields`` seul
+        # serait un no-op. On applique donc les mêmes champs À LA MAIN, exactement
+        # comme les autres viewsets de l'app (motif query_params), pour que
+        # ``?type_police=&statut=&assureur=&courtier=`` filtrent réellement la
+        # liste ET l'export xlsx (qui réutilise ``filter_queryset``).
+        qs = super().get_queryset()
+        params = self.request.query_params
+        for champ in ('type_police', 'statut', 'assureur', 'courtier'):
+            valeur = params.get(champ)
+            if valeur:
+                qs = qs.filter(**{champ: valeur})
+        return qs
+
     def list(self, request, *args, **kwargs):
         """NTASS24 — ``?export=xlsx`` télécharge le registre filtré (colonnes
         assureur/courtier/numéro/type/échéance/prime/statut). Réutilise le
