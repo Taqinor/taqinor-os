@@ -84,6 +84,8 @@ const innovationApi = {
     incitation: () => api.get('/innovation/campagnes/incitation/'),
     // NTIDE29 — rapport (ciblés/proposées/top votes/conversion).
     rapport: (id) => api.get(`/innovation/campagnes/${id}/rapport/`),
+    // NTIDE30 — clonage (copie brouillon, même segment/message/tag).
+    cloner: (id) => api.post(`/innovation/campagnes/${id}/cloner/`),
   },
 }
 

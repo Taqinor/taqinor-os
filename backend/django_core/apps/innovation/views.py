@@ -405,6 +405,30 @@ class CampagneInnovationViewSet(CompanyScopedModelViewSet):
         campagne = self.get_object()
         return Response(selectors.rapport_campagne(campagne))
 
+    # ── NTIDE30 — clonage (copie brouillon, même segment/message/tag) ───────
+    @action(detail=True, methods=['post'], url_path='cloner')
+    def cloner(self, request, pk=None):
+        """Copie brouillon du même segment/message/tag — jamais le statut
+        (toujours ``brouillon``, quel que soit celui de l'originale). Le nom
+        est suffixé « (copie) » ; renommage laissé à l'admin ensuite (simple
+        PATCH sur la copie créée)."""
+        campagne = self.get_object()
+        clone = CampagneInnovation.objects.create(
+            company=campagne.company,
+            nom=f'{campagne.nom} (copie)',
+            description=campagne.description,
+            statut=CampagneInnovation.Statut.BROUILLON,
+            cible_departement=campagne.cible_departement,
+            segment=campagne.segment,
+            date_debut=campagne.date_debut,
+            date_fin=campagne.date_fin,
+            message_incitation=campagne.message_incitation,
+            tag_auto=campagne.tag_auto,
+        )
+        return Response(
+            CampagneInnovationSerializer(clone).data,
+            status=status.HTTP_201_CREATED)
+
 
 class InnovationSettingsView(APIView):
     """Paramètres → Avancé « Campagnes innovation » (NTIDE7).
