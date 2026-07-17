@@ -1575,3 +1575,60 @@ class BacklogDropAssetView(APIView):
             status=CreativeBacklogItem.Statut.EN_FILE)
         return Response(
             CreativeBacklogItemSerializer(item).data, status=201)
+
+
+# ── ADSDEEP9 — Endpoints breakdowns (audience & diffusion) ────────────────────
+_BREAKDOWN_MIRROR_TYPES = {
+    'campaign': 'AdCampaignMirror',
+    'adset': 'AdSetMirror',
+    'ad': 'AdMirror',
+}
+
+
+class BreakdownsView(APIView):
+    """ADSDEEP9 — Ventilations (démo/placement/région/horaire) d'un objet
+    publicitaire, company-scopées et gatées ``adsengine_view``.
+
+    ``GET /api/django/adsengine/breakdowns/?object_type=campaign&object_id=<pk>
+    &dimension=age_gender&since=YYYY-MM-DD`` — ``object_type`` ∈ campaign/adset/
+    ad ; ``dimension`` et ``since`` optionnels (filtres). L'objet est résolu
+    DANS la société de l'appelant : un id d'une autre société renvoie 404 (jamais
+    de fuite cross-tenant). Aucun secret."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
+
+    def get(self, request):
+        company, err = _adseng_company_gate(request, 'adsengine_view')
+        if err is not None:
+            return err
+
+        from django.contrib.contenttypes.models import ContentType
+
+        from . import models as m
+        from .models import InsightBreakdown
+        from .serializers import InsightBreakdownSerializer
+
+        object_type = (request.query_params.get('object_type') or '').strip()
+        object_id = request.query_params.get('object_id')
+        model_name = _BREAKDOWN_MIRROR_TYPES.get(object_type)
+        if model_name is None or not object_id:
+            return Response(
+                {'detail': "Paramètres object_type (campaign/adset/ad) et "
+                           "object_id requis."}, status=400)
+        mirror_model = getattr(m, model_name)
+        # Résolution company-scopée : un objet d'une autre société → 404.
+        target = mirror_model.objects.filter(
+            company=company, pk=object_id).first()
+        if target is None:
+            return Response({'detail': 'Objet introuvable.'}, status=404)
+
+        ct = ContentType.objects.get_for_model(mirror_model)
+        qs = InsightBreakdown.objects.filter(
+            company=company, content_type=ct, object_id=target.pk)
+        dimension = (request.query_params.get('dimension') or '').strip()
+        if dimension:
+            qs = qs.filter(dimension=dimension)
+        since = (request.query_params.get('since') or '').strip()
+        if since:
+            qs = qs.filter(date__gte=since)
+        return Response(InsightBreakdownSerializer(qs, many=True).data)

@@ -7,8 +7,8 @@ from .models import (
     AdCampaignMirror, AnomalyEvent, ArmDailyStat, CreativeAsset,
     CreativeBacklogItem, CreativeGenerationBatch, CreativePolicy, DecisionLog,
     EngineAction, EngineAlert, Experiment, ExperimentArm, FlightPhase,
-    FlightPlan, GuardrailConfig, InsightSnapshot, MetaConnection, PacingState,
-    ReconciliationSnapshot, RulePolicy,
+    FlightPlan, GuardrailConfig, InsightBreakdown, InsightSnapshot,
+    MetaConnection, PacingState, ReconciliationSnapshot, RulePolicy,
 )
 
 
@@ -473,3 +473,19 @@ class AdCampaignMirrorSerializer(serializers.ModelSerializer):
 
     def get_nb_leads(self, obj):
         return int(self._insights(obj)['results'] or 0)
+
+
+class InsightBreakdownSerializer(serializers.ModelSerializer):
+    """ADSDEEP9 — Ligne de ventilation (démo/placement/région/horaire) exposée à
+    l'écran « Audience & diffusion ». Lecture seule ; aucun secret."""
+
+    dimension_display = serializers.CharField(
+        source='get_dimension_display', read_only=True)
+
+    class Meta:
+        model = InsightBreakdown
+        fields = [
+            'id', 'date', 'dimension', 'dimension_display', 'key',
+            'spend', 'impressions', 'clicks', 'results', 'conversations',
+        ]
+        read_only_fields = fields

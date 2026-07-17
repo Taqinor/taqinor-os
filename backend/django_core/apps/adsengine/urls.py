@@ -12,7 +12,8 @@ from .odoo_views import OdooCostPerSignatureView
 from .views import (
     AdCampaignMirrorViewSet, AnomalyEventViewSet, ArmDailyStatViewSet,
     BacklogDropAssetView, BacklogListView, BacklogLotApproveView,
-    BriefLatestView, CampaignFunnelView, CohortReportView, CostPerSignatureView,
+    BreakdownsView, BriefLatestView, CampaignFunnelView, CohortReportView,
+    CostPerSignatureView,
     CreativeAssetViewSet, CreativeBacklogItemViewSet,
     CreativeGenerationBatchViewSet, CreativePolicyViewSet, DecisionLogViewSet,
     EngineActionViewSet, EngineAlertViewSet, ExperimentArmViewSet,
@@ -107,5 +108,7 @@ urlpatterns = [
          name='adsengine-reporting-cohortes'),
     path('reporting/export/', ReportExportView.as_view(),
          name='adsengine-reporting-export'),
+    # ADSDEEP9 — ventilations (audience & diffusion) d'un objet publicitaire.
+    path('breakdowns/', BreakdownsView.as_view(), name='adsengine-breakdowns'),
     path('', include(router.urls)),
 ]
