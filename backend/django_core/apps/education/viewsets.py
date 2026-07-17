@@ -4,7 +4,8 @@ Tous les viewsets héritent de ``core.viewsets.CompanyScopedModelViewSet`` :
 queryset filtré par ``request.user.company``, ``company`` forcée côté serveur
 en création (jamais lue du corps de requête).
 """
-from rest_framework import mixins, viewsets
+from django.http import HttpResponse
+from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
@@ -13,14 +14,19 @@ from core.mixins import TenantMixin
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
-    AnneeScolaire, Classe, EcheancierScolarite, Eleve, Famille,
-    GrilleTarifaire, Inscription, Matiere, MatiereClasse, Niveau, Presence,
-    Remise, Seance)
+    AnneeScolaire, Classe, CreneauEmploiDuTemps, EcheancierScolarite, Eleve,
+    Evaluation, Famille, GrilleTarifaire, IncidentDiscipline, Inscription,
+    InscriptionCantine, Matiere, MatiereClasse, MenuCantine, Niveau, Note,
+    ParametresEducation, Presence, Remise, Seance)
 from .serializers import (
-    AnneeScolaireSerializer, ClasseSerializer, EcheancierScolariteSerializer,
-    EleveSerializer, FamilleSerializer, GrilleTarifaireSerializer,
+    AnneeScolaireSerializer, ClasseSerializer, CreneauEmploiDuTempsSerializer,
+    EcheancierScolariteSerializer, EleveSerializer, EvaluationSerializer,
+    FamilleSerializer, GrilleTarifaireSerializer,
+    IncidentDisciplineSerializer, InscriptionCantineSerializer,
     InscriptionSerializer, MatiereClasseSerializer, MatiereSerializer,
-    NiveauSerializer, PresenceSerializer, RemiseSerializer, SeanceSerializer)
+    MenuCantineSerializer, NiveauSerializer, NoteSerializer,
+    ParametresEducationSerializer, PresenceSerializer, RemiseSerializer,
+    SeanceSerializer)
 
 
 class AnneeScolaireViewSet(CompanyScopedModelViewSet):
@@ -66,6 +72,38 @@ class EleveViewSet(CompanyScopedModelViewSet):
         super().perform_create(serializer)
         from .services import attribuer_numero_dossier
         attribuer_numero_dossier(serializer.instance)
+
+    @action(detail=True, methods=['get'], url_path='certificat-scolarite')
+    def certificat_scolarite(self, request, pk=None):
+        """NTEDU18 — certificat de scolarité PDF à la demande, numéroté côté
+        serveur (``services.generer_certificat_scolarite`` — jamais un
+        ``count()+1``). Nécessite ``annee_scolaire`` en query param (ou
+        l'année ACTIVE de la société à défaut)."""
+        eleve = self.get_object()
+        annee_scolaire_id = request.query_params.get('annee_scolaire')
+        if annee_scolaire_id:
+            annee_scolaire = AnneeScolaire.objects.filter(
+                company=request.user.company, pk=annee_scolaire_id).first()
+        else:
+            annee_scolaire = AnneeScolaire.objects.filter(
+                company=request.user.company,
+                statut=AnneeScolaire.Statut.ACTIVE).first()
+        if annee_scolaire is None:
+            raise ValidationError(
+                {'annee_scolaire': 'Année scolaire introuvable.'})
+
+        from .services import generer_certificat_scolarite
+        try:
+            certificat, pdf_bytes = generer_certificat_scolarite(
+                eleve, annee_scolaire, user=request.user)
+        except RuntimeError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+        resp['Content-Disposition'] = (
+            f'attachment; filename="certificat_scolarite_'
+            f'{certificat.numero}.pdf"')
+        return resp
 
 
 class InscriptionViewSet(CompanyScopedModelViewSet):
@@ -343,3 +381,234 @@ class MatiereClasseViewSet(CompanyScopedModelViewSet):
     queryset = MatiereClasse.objects.select_related(
         'classe', 'matiere', 'enseignant').all()
     serializer_class = MatiereClasseSerializer
+
+
+# =============================================================================
+# NTEDU15 — Évaluations et notes.
+# =============================================================================
+
+class EvaluationViewSet(CompanyScopedModelViewSet):
+    queryset = Evaluation.objects.select_related('matiere_classe').all()
+    serializer_class = EvaluationSerializer
+
+
+class NoteViewSet(CompanyScopedModelViewSet):
+    queryset = Note.objects.select_related('evaluation', 'eleve').all()
+    serializer_class = NoteSerializer
+
+    @action(detail=False, methods=['post'], url_path='bulk-saisie')
+    def bulk_saisie(self, request):
+        """NTEDU15 — saisie de notes pour une évaluation entière EN UN SEUL
+        appel API. Corps attendu : ``{"evaluation": <id>, "notes":
+        [{"eleve": <id>, "valeur": <num|null>, "appreciation": "..."}]}``.
+        ``upsert`` (create/update) par (evaluation, eleve). AUTH — un
+        enseignant ne peut saisir QUE sur ses propres ``matiere_classe``
+        (``services.peut_saisir_notes``) ; un admin/superuser contourne."""
+        from .services import peut_saisir_notes
+
+        company = request.user.company
+        evaluation_id = request.data.get('evaluation')
+        evaluation = Evaluation.objects.filter(
+            company=company, pk=evaluation_id).select_related(
+            'matiere_classe').first()
+        if evaluation is None:
+            raise ValidationError({'evaluation': 'Évaluation introuvable.'})
+        if not peut_saisir_notes(request.user, evaluation.matiere_classe):
+            return Response(
+                {'detail': (
+                    "Vous ne pouvez saisir des notes que sur vos propres "
+                    "classes/matières.")},
+                status=status.HTTP_403_FORBIDDEN)
+
+        entrees = request.data.get('notes') or []
+        resultats = []
+        for entree in entrees:
+            eleve_id = entree.get('eleve')
+            eleve = Eleve.objects.filter(company=company, pk=eleve_id).first()
+            if eleve is None:
+                raise ValidationError(
+                    {'eleve': f'Élève introuvable : {eleve_id}.'})
+            note, _created = Note.objects.update_or_create(
+                company=company, evaluation=evaluation, eleve=eleve,
+                defaults={
+                    'valeur': entree.get('valeur'),
+                    'appreciation': entree.get('appreciation', ''),
+                })
+            resultats.append(note)
+
+        return Response(NoteSerializer(resultats, many=True).data)
+
+
+# =============================================================================
+# NTEDU19 — Paramètres école.
+# =============================================================================
+
+class ParametresEducationViewSet(CompanyScopedModelViewSet):
+    """NTEDU19 — réglages par défaut de l'établissement. Singleton par
+    société (même patron que ``sav.SavSlaSettingsViewSet``) : ``list``
+    renvoie l'unique enregistrement (get_or_create), l'écriture passe par
+    ``create`` (upsert PATCH-like)."""
+
+    queryset = ParametresEducation.objects.all()
+    serializer_class = ParametresEducationSerializer
+
+    def list(self, request, *args, **kwargs):
+        company = request.user.company
+        if company is None:
+            return Response({})
+        obj = ParametresEducation.get(company)
+        return Response(self.get_serializer(obj).data)
+
+    def create(self, request, *args, **kwargs):
+        company = request.user.company
+        obj = ParametresEducation.get(company)
+        serializer = self.get_serializer(obj, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(company=company)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+# =============================================================================
+# NTEDU21 — Emploi du temps par classe.
+# =============================================================================
+
+class CreneauEmploiDuTempsViewSet(CompanyScopedModelViewSet):
+    """NTEDU21 — un conflit (classe/enseignant/salle sur un créneau qui
+    chevauche déjà un autre créneau actif) est REJETÉ en 400 EXPLICITE par
+    ``services_planning.verifier_conflit_creneau`` (jamais un 500 — même
+    patron que ``GrilleTarifaireViewSet``)."""
+
+    queryset = CreneauEmploiDuTemps.objects.select_related(
+        'classe', 'matiere_classe__matiere', 'matiere_classe__enseignant').all()
+    serializer_class = CreneauEmploiDuTempsSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        classe_id = self.request.query_params.get('classe')
+        if classe_id:
+            qs = qs.filter(classe_id=classe_id)
+        return qs
+
+    def perform_create(self, serializer):
+        """Conflit vérifié EN AMONT sur une instance NON SAUVEGARDÉE — jamais
+        un créer-puis-annuler (même patron que ``GrilleTarifaireViewSet.
+        _guard_doublon``)."""
+        from .services_planning import verifier_conflit_creneau
+
+        data = serializer.validated_data
+        candidat = CreneauEmploiDuTemps(
+            company=self.request.user.company, classe=data['classe'],
+            matiere_classe=data['matiere_classe'],
+            jour_semaine=data['jour_semaine'], heure_debut=data['heure_debut'],
+            heure_fin=data['heure_fin'], salle=data.get('salle', ''),
+            actif=data.get('actif', True))
+        verifier_conflit_creneau(candidat)
+        super().perform_create(serializer)
+
+    def perform_update(self, serializer):
+        from .services_planning import verifier_conflit_creneau
+
+        instance = serializer.instance
+        data = serializer.validated_data
+        candidat = CreneauEmploiDuTemps(
+            pk=instance.pk, company=instance.company,
+            classe=data.get('classe', instance.classe),
+            matiere_classe=data.get('matiere_classe', instance.matiere_classe),
+            jour_semaine=data.get('jour_semaine', instance.jour_semaine),
+            heure_debut=data.get('heure_debut', instance.heure_debut),
+            heure_fin=data.get('heure_fin', instance.heure_fin),
+            salle=data.get('salle', instance.salle),
+            actif=data.get('actif', instance.actif))
+        verifier_conflit_creneau(candidat)
+        super().perform_update(serializer)
+
+
+# =============================================================================
+# NTEDU25 — Cantine (menus + inscriptions).
+# =============================================================================
+
+class MenuCantineViewSet(CompanyScopedModelViewSet):
+    queryset = MenuCantine.objects.all()
+    serializer_class = MenuCantineSerializer
+
+    @action(detail=False, methods=['get'], url_path='jour')
+    def jour(self, request):
+        """NTEDU25 — liste cantine du jour (élèves inscrits ce jour + alerte
+        allergie si le menu contient un allergène déclaré). Paramètre
+        ``date`` (YYYY-MM-DD), défaut aujourd'hui."""
+        from datetime import date as date_cls
+
+        from .services_cantine import eleves_cantine_du_jour
+
+        date_str = request.query_params.get('date')
+        if date_str:
+            try:
+                cible = date_cls.fromisoformat(date_str)
+            except ValueError:
+                raise ValidationError({'date': 'Format attendu : YYYY-MM-DD.'})
+        else:
+            from django.utils import timezone
+            cible = timezone.localdate()
+
+        resultats = eleves_cantine_du_jour(request.user.company, cible)
+        return Response([
+            {
+                'eleve': EleveSerializer(r['eleve']).data,
+                'alerte_allergie': r['alerte_allergie'],
+            }
+            for r in resultats
+        ])
+
+
+class InscriptionCantineViewSet(CompanyScopedModelViewSet):
+    """NTEDU25/NTEDU26 — chaque création/mise à jour re-synchronise la
+    composante cantine des lignes d'échéance FUTURES (jamais rétroactif —
+    ``services_cantine.resynchroniser_lignes_futures_cantine``)."""
+
+    queryset = InscriptionCantine.objects.select_related('eleve').all()
+    serializer_class = InscriptionCantineSerializer
+
+    def perform_create(self, serializer):
+        from .services_cantine import resynchroniser_lignes_futures_cantine
+
+        instance = serializer.save(company=self.request.user.company)
+        resynchroniser_lignes_futures_cantine(instance.eleve)
+
+    def perform_update(self, serializer):
+        from .services_cantine import resynchroniser_lignes_futures_cantine
+
+        instance = serializer.save()
+        resynchroniser_lignes_futures_cantine(instance.eleve)
+
+
+# =============================================================================
+# NTEDU27 — Discipline et incidents.
+# =============================================================================
+
+class IncidentDisciplineViewSet(CompanyScopedModelViewSet):
+    """NTEDU27 — workflow simple ``ouvert → en_traitement → clos`` : les
+    actions dédiées passent TOUJOURS par le viewset (jamais un PATCH
+    ``statut`` direct — même politique que ``Remise``). La notification
+    parent (majeur toujours, mineur si paramétré) est déclenchée par
+    ``signals.notifier_incident_discipline`` à la CRÉATION."""
+
+    queryset = IncidentDiscipline.objects.select_related('eleve').all()
+    serializer_class = IncidentDisciplineSerializer
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company, signale_par=self.request.user)
+
+    @action(detail=True, methods=['post'], url_path='demarrer-traitement')
+    def demarrer_traitement(self, request, pk=None):
+        incident = self.get_object()
+        incident.statut = IncidentDiscipline.Statut.EN_TRAITEMENT
+        incident.save(update_fields=['statut'])
+        return Response(IncidentDisciplineSerializer(incident).data)
+
+    @action(detail=True, methods=['post'], url_path='cloturer')
+    def cloturer(self, request, pk=None):
+        incident = self.get_object()
+        incident.statut = IncidentDiscipline.Statut.CLOS
+        incident.save(update_fields=['statut'])
+        return Response(IncidentDisciplineSerializer(incident).data)

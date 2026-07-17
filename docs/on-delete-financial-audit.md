@@ -205,6 +205,7 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/apps/dataimport/models.py:19` | ExternalRef.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/dataimport/models.py:49` | ImportMapping.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/dataimport/models.py:79` | ImportJob.company | authentication.Company | CASCADE |
+| `backend/django_core/apps/education/models.py:723` | ParametresEducation.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/facturation/models.py:40` | Facture.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/facturation/models.py:48` | Facture.bon_commande | ventes.BonCommande | SET_NULL |
 | `backend/django_core/apps/facturation/models.py:59` | Facture.devis | ventes.Devis | SET_NULL |

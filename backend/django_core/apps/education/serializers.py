@@ -2,9 +2,10 @@
 from rest_framework import serializers
 
 from .models import (
-    AnneeScolaire, Classe, EcheancierScolarite, Eleve, Famille,
-    GrilleTarifaire, Inscription, LigneEcheance, Matiere, MatiereClasse,
-    Niveau, Presence, Remise, Seance)
+    AnneeScolaire, Classe, CreneauEmploiDuTemps, EcheancierScolarite, Eleve,
+    Evaluation, Famille, GrilleTarifaire, IncidentDiscipline, Inscription,
+    InscriptionCantine, LigneEcheance, Matiere, MatiereClasse, MenuCantine,
+    Niveau, Note, ParametresEducation, Presence, Remise, Seance)
 
 
 class AnneeScolaireSerializer(serializers.ModelSerializer):
@@ -53,7 +54,8 @@ class EleveSerializer(serializers.ModelSerializer):
         model = Eleve
         fields = [
             'id', 'famille', 'nom', 'prenom', 'date_naissance', 'sexe',
-            'cin', 'photo', 'classe', 'statut', 'numero_dossier']
+            'cin', 'photo', 'classe', 'statut', 'numero_dossier',
+            'allergies']
         read_only_fields = ['id', 'numero_dossier']
 
 
@@ -142,3 +144,82 @@ class MatiereClasseSerializer(serializers.ModelSerializer):
             'id', 'classe', 'matiere', 'matiere_nom', 'enseignant',
             'coefficient']
         read_only_fields = ['id']
+
+
+# =============================================================================
+# NTEDU15 — Évaluations et notes.
+# =============================================================================
+
+class EvaluationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Evaluation
+        fields = [
+            'id', 'matiere_classe', 'type', 'date', 'coefficient_evaluation',
+            'bareme']
+        read_only_fields = ['id']
+
+
+class NoteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Note
+        fields = ['id', 'evaluation', 'eleve', 'valeur', 'appreciation']
+        read_only_fields = ['id']
+
+
+# =============================================================================
+# NTEDU19 — Paramètres école.
+# =============================================================================
+
+class ParametresEducationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ParametresEducation
+        fields = [
+            'id', 'nombre_echeances_defaut', 'taux_remise_fratrie_defaut',
+            'grille_mentions', 'delai_relance_impaye_jours', 'devise',
+            'notifier_incidents_mineurs']
+        read_only_fields = ['id']
+
+
+# =============================================================================
+# NTEDU21 — Emploi du temps par classe.
+# =============================================================================
+
+class CreneauEmploiDuTempsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CreneauEmploiDuTemps
+        fields = [
+            'id', 'classe', 'matiere_classe', 'jour_semaine', 'heure_debut',
+            'heure_fin', 'salle', 'actif']
+        read_only_fields = ['id']
+
+
+# =============================================================================
+# NTEDU25 — Cantine (menus + inscriptions).
+# =============================================================================
+
+class MenuCantineSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MenuCantine
+        fields = ['id', 'date', 'description', 'allergenes']
+        read_only_fields = ['id']
+
+
+class InscriptionCantineSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = InscriptionCantine
+        fields = [
+            'id', 'eleve', 'date_debut', 'date_fin', 'jours_semaine', 'actif']
+        read_only_fields = ['id']
+
+
+# =============================================================================
+# NTEDU27 — Discipline et incidents.
+# =============================================================================
+
+class IncidentDisciplineSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = IncidentDiscipline
+        fields = [
+            'id', 'eleve', 'date', 'type', 'gravite', 'description',
+            'signale_par', 'statut']
+        read_only_fields = ['id', 'signale_par', 'statut']

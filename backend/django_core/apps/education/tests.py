@@ -15,8 +15,10 @@ from rest_framework.test import APIClient
 from authentication.models import Company
 
 from .models import (
-    AnneeScolaire, Classe, Eleve, Famille, GrilleTarifaire, Inscription,
-    Matiere, MatiereClasse, Niveau, Presence, Remise, Seance)
+    AnneeScolaire, Classe, CreneauEmploiDuTemps, Eleve, Evaluation, Famille,
+    GrilleTarifaire, IncidentDiscipline, Inscription, InscriptionCantine,
+    LigneEcheance, Matiere, MatiereClasse, MenuCantine, Niveau, Note,
+    ParametresEducation, Presence, Remise, Seance)
 from .services import affecter_classe, valider_inscription
 
 User = get_user_model()
@@ -486,3 +488,472 @@ class NTEDU14MatiereCoefficientTests(EducationTestCaseMixin, TestCase):
         response = self.client.post(
             url, {'nom': 'Maths', 'code': 'MATH'}, format='json')
         self.assertEqual(response.status_code, 201, response.content)
+
+
+class NTEDU15SaisieNotesTests(EducationTestCaseMixin, TestCase):
+    """NTEDU15 — saisie des notes en masse, restreinte à l'enseignant assigné
+    à la ``matiere_classe`` (AUTH)."""
+
+    def setUp(self):
+        super().setUp()
+        from apps.rh.models import DossierEmploye
+
+        self.matiere = Matiere.objects.create(company=self.company, nom='Maths')
+        self.prof_a = DossierEmploye.objects.create(
+            company=self.company, matricule='PROF-A', nom='A', prenom='A')
+        self.prof_b = DossierEmploye.objects.create(
+            company=self.company, matricule='PROF-B', nom='B', prenom='B')
+        self.matiere_classe = MatiereClasse.objects.create(
+            company=self.company, classe=self.classe, matiere=self.matiere,
+            enseignant=self.prof_a)
+        self.evaluation = Evaluation.objects.create(
+            company=self.company, matiere_classe=self.matiere_classe,
+            type=Evaluation.Type.CONTROLE, date=date(2026, 10, 1))
+        self.eleve = Eleve.objects.create(
+            company=self.company, famille=self.famille, nom='X', prenom='Y',
+            classe=self.classe)
+
+    def test_enseignant_assigne_peut_saisir_ses_propres_notes(self):
+        self.prof_a.user = self.user
+        self.prof_a.save(update_fields=['user'])
+
+        url = '/api/django/education/notes/bulk-saisie/'
+        payload = {
+            'evaluation': self.evaluation.id,
+            'notes': [{'eleve': self.eleve.id, 'valeur': '15.5'}],
+        }
+        response = self.client.post(url, payload, format='json')
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(
+            Note.objects.get(evaluation=self.evaluation, eleve=self.eleve).valeur,
+            Decimal('15.50'))
+
+    def test_enseignant_non_assigne_ne_peut_pas_saisir(self):
+        self.prof_b.user = self.user
+        self.prof_b.save(update_fields=['user'])
+
+        url = '/api/django/education/notes/bulk-saisie/'
+        payload = {
+            'evaluation': self.evaluation.id,
+            'notes': [{'eleve': self.eleve.id, 'valeur': '15.5'}],
+        }
+        response = self.client.post(url, payload, format='json')
+        self.assertEqual(response.status_code, 403, response.content)
+        self.assertFalse(
+            Note.objects.filter(
+                evaluation=self.evaluation, eleve=self.eleve).exists())
+
+    def test_note_absente_valeur_nulle(self):
+        self.prof_a.user = self.user
+        self.prof_a.save(update_fields=['user'])
+
+        url = '/api/django/education/notes/bulk-saisie/'
+        payload = {
+            'evaluation': self.evaluation.id,
+            'notes': [{'eleve': self.eleve.id, 'valeur': None}],
+        }
+        response = self.client.post(url, payload, format='json')
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertIsNone(
+            Note.objects.get(evaluation=self.evaluation, eleve=self.eleve).valeur)
+
+
+class NTEDU18CertificatScolariteTests(EducationTestCaseMixin, TestCase):
+    """NTEDU18 — certificat de scolarité imprimable, numéroté séquentiel."""
+
+    def setUp(self):
+        super().setUp()
+        self.eleve1 = Eleve.objects.create(
+            company=self.company, famille=self.famille, nom='Bennani',
+            prenom='Yasmine', classe=self.classe)
+        self.eleve2 = Eleve.objects.create(
+            company=self.company, famille=self.famille, nom='Bennani',
+            prenom='Sami', classe=self.classe)
+
+    def test_deux_certificats_meme_jour_numeros_distincts_sequentiels(self):
+        from .services import generer_certificat_scolarite
+
+        cert1, _pdf1 = generer_certificat_scolarite(self.eleve1, self.annee)
+        cert2, _pdf2 = generer_certificat_scolarite(self.eleve2, self.annee)
+
+        self.assertNotEqual(cert1.numero, cert2.numero)
+        suffix1 = int(cert1.numero.rsplit('-', 1)[1])
+        suffix2 = int(cert2.numero.rsplit('-', 1)[1])
+        self.assertEqual(suffix2, suffix1 + 1)
+
+    def test_endpoint_certificat_scolarite_pdf(self):
+        url = (
+            f'/api/django/education/eleves/{self.eleve1.id}/'
+            f'certificat-scolarite/?annee_scolaire={self.annee.id}')
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response['Content-Type'], 'application/pdf')
+
+
+class NTEDU19ParametresEducationTests(EducationTestCaseMixin, TestCase):
+    """NTEDU19 — les réglages société pré-remplissent AUTOMATIQUEMENT les
+    prochaines grilles/échéanciers générés, sans ressaisie."""
+
+    def test_taux_fratrie_defaut_pre_rempli_sur_remise_auto_detectee(self):
+        from .services_remises import detecter_remise_fratrie
+
+        ParametresEducation.objects.create(
+            company=self.company, taux_remise_fratrie_defaut=Decimal('15'))
+
+        eleve1 = Eleve.objects.create(
+            company=self.company, famille=self.famille, nom='B', prenom='1')
+        eleve2 = Eleve.objects.create(
+            company=self.company, famille=self.famille, nom='B', prenom='2')
+        self.famille.eleves.filter(pk__in=[eleve1.pk, eleve2.pk]).update(
+            statut=Eleve.Statut.INSCRIT)
+
+        remise = detecter_remise_fratrie(eleve2, self.annee)
+        self.assertEqual(remise.valeur, Decimal('15.00'))
+
+    def test_nombre_echeances_defaut_pre_rempli_sur_echeancier(self):
+        from .services_echeancier import generer_echeancier
+
+        ParametresEducation.objects.create(
+            company=self.company, nombre_echeances_defaut=12)
+        GrilleTarifaire.objects.create(
+            company=self.company, annee_scolaire=self.annee,
+            niveau=self.niveau_cp, frais_inscription=Decimal('500'),
+            scolarite_annuelle=Decimal('12000'))
+        eleve = Eleve.objects.create(
+            company=self.company, famille=self.famille, nom='X', prenom='Y',
+            classe=self.classe)
+
+        echeancier = generer_echeancier(eleve, self.annee)
+        self.assertEqual(echeancier.nombre_echeances, 12)
+        self.assertEqual(echeancier.lignes.count(), 12)
+
+    def test_get_est_un_singleton_par_societe(self):
+        obj1 = ParametresEducation.get(self.company)
+        obj2 = ParametresEducation.get(self.company)
+        self.assertEqual(obj1.id, obj2.id)
+
+    def test_endpoint_singleton_get_or_create(self):
+        url = '/api/django/education/parametres/'
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.data['nombre_echeances_defaut'], 10)
+
+        response_patch = self.client.post(
+            url, {'nombre_echeances_defaut': 8}, format='json')
+        self.assertEqual(response_patch.status_code, 200, response_patch.content)
+        self.assertEqual(
+            ParametresEducation.get(self.company).nombre_echeances_defaut, 8)
+
+
+class NTEDU21EmploiDuTempsTests(EducationTestCaseMixin, TestCase):
+    """NTEDU21 — conflit de créneau (classe/enseignant/salle) rejeté en 400."""
+
+    def setUp(self):
+        super().setUp()
+        from apps.rh.models import DossierEmploye
+
+        self.matiere = Matiere.objects.create(company=self.company, nom='Maths')
+        self.prof = DossierEmploye.objects.create(
+            company=self.company, matricule='PROF-1', nom='P', prenom='P')
+        self.classe2 = Classe.objects.create(
+            company=self.company, annee_scolaire=self.annee,
+            niveau=self.niveau_cp, nom='CP B', capacite_max=30)
+        self.mc1 = MatiereClasse.objects.create(
+            company=self.company, classe=self.classe, matiere=self.matiere,
+            enseignant=self.prof)
+        self.mc2 = MatiereClasse.objects.create(
+            company=self.company, classe=self.classe2, matiere=self.matiere,
+            enseignant=self.prof)
+
+    def test_meme_enseignant_deux_classes_meme_creneau_est_refuse(self):
+        url = '/api/django/education/emploi-du-temps/'
+        payload1 = {
+            'classe': self.classe.id, 'matiere_classe': self.mc1.id,
+            'jour_semaine': 0, 'heure_debut': '08:00', 'heure_fin': '09:00',
+        }
+        response1 = self.client.post(url, payload1, format='json')
+        self.assertEqual(response1.status_code, 201, response1.content)
+
+        payload2 = {
+            'classe': self.classe2.id, 'matiere_classe': self.mc2.id,
+            'jour_semaine': 0, 'heure_debut': '08:30', 'heure_fin': '09:30',
+        }
+        response2 = self.client.post(url, payload2, format='json')
+        self.assertEqual(response2.status_code, 400, response2.content)
+        self.assertIn('enseignant', response2.data['detail'].lower())
+
+    def test_creneaux_non_chevauchants_meme_enseignant_ok(self):
+        url = '/api/django/education/emploi-du-temps/'
+        payload1 = {
+            'classe': self.classe.id, 'matiere_classe': self.mc1.id,
+            'jour_semaine': 0, 'heure_debut': '08:00', 'heure_fin': '09:00',
+        }
+        response1 = self.client.post(url, payload1, format='json')
+        self.assertEqual(response1.status_code, 201, response1.content)
+
+        payload2 = {
+            'classe': self.classe2.id, 'matiere_classe': self.mc2.id,
+            'jour_semaine': 0, 'heure_debut': '09:00', 'heure_fin': '10:00',
+        }
+        response2 = self.client.post(url, payload2, format='json')
+        self.assertEqual(response2.status_code, 201, response2.content)
+
+    def test_filtre_par_classe(self):
+        CreneauEmploiDuTemps.objects.create(
+            company=self.company, classe=self.classe,
+            matiere_classe=self.mc1, jour_semaine=0,
+            heure_debut=time(8, 0), heure_fin=time(9, 0))
+        CreneauEmploiDuTemps.objects.create(
+            company=self.company, classe=self.classe2,
+            matiere_classe=self.mc2, jour_semaine=0,
+            heure_debut=time(9, 0), heure_fin=time(10, 0))
+
+        url = f'/api/django/education/emploi-du-temps/?classe={self.classe.id}'
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(len(response.data), 1)
+
+
+class NTEDU22GenerationSeancesTests(EducationTestCaseMixin, TestCase):
+    """NTEDU22 — génération hebdomadaire des séances, fériés exclus."""
+
+    def setUp(self):
+        super().setUp()
+        self.matiere = Matiere.objects.create(company=self.company, nom='Maths')
+        self.matiere_classe = MatiereClasse.objects.create(
+            company=self.company, classe=self.classe, matiere=self.matiere)
+
+    def test_semaine_avec_ferie_ne_genere_aucune_seance_ce_jour(self):
+        from .services_planning import generer_seances_semaine
+
+        # Fête du Travail (1er mai) — férié fixe marocain. Lundi 27 avril 2026.
+        lundi = date(2026, 4, 27)  # lundi
+        vendredi_ferie = date(2026, 5, 1)  # vendredi -> jour_semaine=4
+
+        CreneauEmploiDuTemps.objects.create(
+            company=self.company, classe=self.classe,
+            matiere_classe=self.matiere_classe, jour_semaine=0,  # lundi
+            heure_debut=time(8, 0), heure_fin=time(9, 0))
+        CreneauEmploiDuTemps.objects.create(
+            company=self.company, classe=self.classe,
+            matiere_classe=self.matiere_classe, jour_semaine=4,  # vendredi férié
+            heure_debut=time(8, 0), heure_fin=time(9, 0))
+
+        creees = generer_seances_semaine(self.company, semaine_debut=lundi)
+
+        dates_generees = {s.date for s in creees}
+        self.assertIn(lundi, dates_generees)
+        self.assertNotIn(vendredi_ferie, dates_generees)
+
+    def test_generation_est_idempotente(self):
+        from .services_planning import generer_seances_semaine
+
+        lundi = date(2026, 9, 7)
+        CreneauEmploiDuTemps.objects.create(
+            company=self.company, classe=self.classe,
+            matiere_classe=self.matiere_classe, jour_semaine=0,
+            heure_debut=time(8, 0), heure_fin=time(9, 0))
+
+        creees1 = generer_seances_semaine(self.company, semaine_debut=lundi)
+        creees2 = generer_seances_semaine(self.company, semaine_debut=lundi)
+        self.assertEqual(len(creees1), 1)
+        self.assertEqual(len(creees2), 0)
+        self.assertEqual(Seance.objects.filter(classe=self.classe).count(), 1)
+
+
+class NTEDU25CantineAllergieTests(EducationTestCaseMixin, TestCase):
+    """NTEDU25 — menus + inscriptions cantine, alerte allergie (substring)."""
+
+    def setUp(self):
+        super().setUp()
+        self.eleve_allergique = Eleve.objects.create(
+            company=self.company, famille=self.famille, nom='X', prenom='Y',
+            classe=self.classe, allergies='Arachide, fruits à coque')
+        self.eleve_sans_allergie = Eleve.objects.create(
+            company=self.company, famille=self.famille, nom='X', prenom='Z',
+            classe=self.classe)
+        self.jour = date(2026, 9, 14)  # lundi
+        MenuCantine.objects.create(
+            company=self.company, date=self.jour, description='Poulet',
+            allergenes=['arachide', 'gluten'])
+        InscriptionCantine.objects.create(
+            company=self.company, eleve=self.eleve_allergique,
+            date_debut=self.jour, jours_semaine=['lundi'])
+        InscriptionCantine.objects.create(
+            company=self.company, eleve=self.eleve_sans_allergie,
+            date_debut=self.jour, jours_semaine=['lundi'])
+
+    def test_eleve_allergique_a_une_alerte_menu_du_jour(self):
+        from .services_cantine import eleves_cantine_du_jour
+
+        resultats = {
+            r['eleve'].id: r['alerte_allergie']
+            for r in eleves_cantine_du_jour(self.company, self.jour)}
+        self.assertTrue(resultats[self.eleve_allergique.id])
+        self.assertFalse(resultats[self.eleve_sans_allergie.id])
+
+    def test_endpoint_liste_du_jour(self):
+        url = f'/api/django/education/menus-cantine/jour/?date={self.jour}'
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200, response.content)
+        alertes = {r['eleve']['id']: r['alerte_allergie'] for r in response.data}
+        self.assertTrue(alertes[self.eleve_allergique.id])
+
+
+class NTEDU26CantineEcheancierTests(EducationTestCaseMixin, TestCase):
+    """NTEDU26 — facturation cantine proratisée dans l'échéancier."""
+
+    def setUp(self):
+        super().setUp()
+        GrilleTarifaire.objects.create(
+            company=self.company, annee_scolaire=self.annee,
+            niveau=self.niveau_cp, frais_inscription=Decimal('0'),
+            scolarite_annuelle=Decimal('12000'), cantine_mensuelle=Decimal('500'))
+        self.eleve = Eleve.objects.create(
+            company=self.company, famille=self.famille, nom='X', prenom='Y',
+            classe=self.classe)
+
+    def test_inscription_2j_semaine_facture_2_5e_du_tarif_plein(self):
+        InscriptionCantine.objects.create(
+            company=self.company, eleve=self.eleve,
+            date_debut=self.annee.date_debut,
+            jours_semaine=['lundi', 'mercredi'])
+
+        from .services_echeancier import generer_echeancier
+        echeancier = generer_echeancier(self.eleve, self.annee)
+
+        attendu_mensuel = (Decimal('500') * Decimal('2') / Decimal('5'))
+        for ligne in echeancier.lignes.all():
+            self.assertEqual(ligne.cantine_montant, attendu_mensuel)
+        self.assertEqual(
+            echeancier.montant_total,
+            Decimal('12000.00') + attendu_mensuel * echeancier.nombre_echeances)
+
+    def test_retirer_cantine_najuste_que_les_lignes_futures(self):
+        inscription = InscriptionCantine.objects.create(
+            company=self.company, eleve=self.eleve,
+            date_debut=self.annee.date_debut,
+            jours_semaine=['lundi', 'mercredi', 'vendredi'])
+
+        from .services_echeancier import generer_echeancier
+        echeancier = generer_echeancier(self.eleve, self.annee)
+        lignes = list(echeancier.lignes.all().order_by('date_echeance'))
+        premiere = lignes[0]
+        premiere.statut = LigneEcheance.Statut.FACTUREE
+        premiere.save(update_fields=['statut'])
+        montant_facture_avant = premiere.montant
+
+        inscription.actif = False
+        inscription.save(update_fields=['actif'])
+
+        from .services_cantine import resynchroniser_lignes_futures_cantine
+        resynchroniser_lignes_futures_cantine(self.eleve)
+
+        premiere.refresh_from_db()
+        self.assertEqual(premiere.montant, montant_facture_avant)
+
+        deuxieme = LigneEcheance.objects.get(pk=lignes[1].pk)
+        self.assertEqual(deuxieme.cantine_montant, Decimal('0'))
+
+
+class NTEDU27IncidentDisciplineTests(EducationTestCaseMixin, TestCase):
+    """NTEDU27 — incident disciplinaire, workflow + notification parent."""
+
+    def setUp(self):
+        super().setUp()
+        self.eleve = Eleve.objects.create(
+            company=self.company, famille=self.famille, nom='X', prenom='Y',
+            classe=self.classe)
+
+    def test_incident_majeur_notifie_toujours_le_parent(self):
+        from unittest.mock import patch
+
+        with patch(
+                'apps.notifications.services.send_whatsapp_campaign_message'
+        ) as mocked:
+            IncidentDiscipline.objects.create(
+                company=self.company, eleve=self.eleve, date=date(2026, 9, 15),
+                type=IncidentDiscipline.Type.COMPORTEMENT,
+                gravite=IncidentDiscipline.Gravite.MAJEUR)
+            self.assertEqual(mocked.call_count, 1)
+
+    def test_incident_mineur_ne_notifie_pas_par_defaut(self):
+        from unittest.mock import patch
+
+        with patch(
+                'apps.notifications.services.send_whatsapp_campaign_message'
+        ) as mocked:
+            IncidentDiscipline.objects.create(
+                company=self.company, eleve=self.eleve, date=date(2026, 9, 15),
+                type=IncidentDiscipline.Type.RETARD,
+                gravite=IncidentDiscipline.Gravite.MINEUR)
+            self.assertEqual(mocked.call_count, 0)
+
+    def test_incident_mineur_notifie_si_parametre_active(self):
+        from unittest.mock import patch
+
+        ParametresEducation.objects.create(
+            company=self.company, notifier_incidents_mineurs=True)
+        with patch(
+                'apps.notifications.services.send_whatsapp_campaign_message'
+        ) as mocked:
+            IncidentDiscipline.objects.create(
+                company=self.company, eleve=self.eleve, date=date(2026, 9, 15),
+                type=IncidentDiscipline.Type.RETARD,
+                gravite=IncidentDiscipline.Gravite.MINEUR)
+            self.assertEqual(mocked.call_count, 1)
+
+    def test_workflow_ouvert_en_traitement_clos(self):
+        incident = IncidentDiscipline.objects.create(
+            company=self.company, eleve=self.eleve, date=date(2026, 9, 15),
+            type=IncidentDiscipline.Type.AUTRE,
+            gravite=IncidentDiscipline.Gravite.MOYEN)
+        self.assertEqual(incident.statut, IncidentDiscipline.Statut.OUVERT)
+
+        url = f'/api/django/education/incidents/{incident.id}/demarrer-traitement/'
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, 200, response.content)
+        incident.refresh_from_db()
+        self.assertEqual(incident.statut, IncidentDiscipline.Statut.EN_TRAITEMENT)
+
+        url = f'/api/django/education/incidents/{incident.id}/cloturer/'
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, 200, response.content)
+        incident.refresh_from_db()
+        self.assertEqual(incident.statut, IncidentDiscipline.Statut.CLOS)
+
+
+class NTEDU30WhatsAppGatedTests(EducationTestCaseMixin, TestCase):
+    """NTEDU30 — [GATED: WhatsApp Business API] canal WhatsApp COST-gated,
+    déjà satisfait par la réutilisation du provider ``notifications.
+    whatsapp_bsp`` (QJ23/FG33) : sans ``WHATSAPP_BSP_ENABLED=1``, le repli
+    ``wa.me`` manuel est TOUJOURS utilisé, sans exception ni appel réseau."""
+
+    def test_sans_cle_api_le_canal_absence_utilise_le_lien_wame_manuel(self):
+        import os
+        from unittest.mock import patch
+
+        from apps.notifications.services import send_whatsapp_campaign_message
+
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop('WHATSAPP_BSP_ENABLED', None)
+            result = send_whatsapp_campaign_message(
+                self.company, recipient='+212600000000', body='Test NTEDU30')
+
+        self.assertEqual(result['provider'], 'manual')
+        self.assertIsNotNone(result['url'])
+        self.assertTrue(result['url'].startswith('https://wa.me/'))
+
+    def test_incident_majeur_notification_ne_leve_jamais_meme_sans_cle(self):
+        import os
+
+        os.environ.pop('WHATSAPP_BSP_ENABLED', None)
+        eleve = Eleve.objects.create(
+            company=self.company, famille=self.famille, nom='X', prenom='Y',
+            classe=self.classe)
+        # Aucune exception attendue même sans clé API configurée (fallback
+        # wa.me systématique — critère NTEDU30).
+        IncidentDiscipline.objects.create(
+            company=self.company, eleve=eleve, date=date(2026, 9, 15),
+            type=IncidentDiscipline.Type.COMPORTEMENT,
+            gravite=IncidentDiscipline.Gravite.MAJEUR)
