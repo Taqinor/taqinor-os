@@ -1383,16 +1383,43 @@ class TestResidentialQRESRound(TestCase):
         html = render.build_html(d)
         return html, HTML(string=html).render()
 
-    def test_every_sample_variant_renders_exactly_three_pages(self):
-        """La garde anti-débordement : les TROIS fixtures (deux options /
-        mono-option / page-3 chargée « long ») tiennent en 3 pages A4 — le
-        bloc signature ne bascule plus jamais sur une 4ᵉ page orpheline."""
+    # QRES17 — nombre de pages ATTENDU par fixture : un devis standard tient
+    # en 3 pages ; « plus5 » (5 lignes de plus) reste en 3 pages (tableau
+    # dense) ; « plus10 » (10 lignes de plus) DOIT déborder proprement en
+    # 4 pages (page équipement + page rentabilité dédiée), jamais rogner.
+    EXPECTED_PAGES = {"deux": 3, "sans": 3, "long": 3, "plus5": 3,
+                      "plus10": 4}
+
+    def test_page_count_per_variant_never_overflows_dirty(self):
+        """La garde anti-débordement : chaque fixture rend EXACTEMENT le
+        nombre de pages prévu — le bloc signature ne bascule plus jamais sur
+        une page orpheline, et un devis chargé AJOUTE une page proprement."""
         from apps.ventes.quote_engine.residential import sample_data
         for variant in sample_data.keys():
             _, doc = self._render(variant)
             self.assertEqual(
-                len(doc.pages), 3,
-                f'variant {variant!r}: expected 3 pages, got {len(doc.pages)}')
+                len(doc.pages), self.EXPECTED_PAGES[variant],
+                f'variant {variant!r}: expected '
+                f'{self.EXPECTED_PAGES[variant]} pages, got {len(doc.pages)}')
+
+    def test_overflow_quote_paginates_cleanly(self):
+        """« plus10 » : 4 pages numérotées « / 4 », TOUTES les lignes du devis
+        présentes (aucune avalée par le découpage), et la page rentabilité
+        dédiée existe."""
+        import fitz
+        from apps.ventes.quote_engine.residential import renderer, sample_data
+        data = sample_data.build("plus10")
+        pdf = renderer.render_pdf_bytes(data)
+        doc = fitz.open(stream=pdf, filetype='pdf')
+        self.assertEqual(len(doc), 4)
+        all_text = "\n".join(p.get_text() for p in doc)
+        for it in data["sans_items"]:
+            frag = it["designation"].split(" (")[0][:25]
+            self.assertIn(frag, all_text,
+                          f'ligne perdue par le découpage : {frag!r}')
+        self.assertIn("Page 2 / 4", all_text)
+        self.assertIn("Page 4 / 4", all_text)
+        self.assertIn("Rentabilité de votre investissement", all_text)
 
     def test_bottom_content_never_silently_clipped(self):
         """Le cadre .page (A4 fixe, overflow:hidden) peut ROGNER sans faire de
@@ -1432,7 +1459,7 @@ class TestResidentialQRESRound(TestCase):
         « Garantie 25 ans » contradictoire)."""
         from apps.ventes.quote_engine.residential import theme
         html, _ = self._render("deux")
-        for n, _u, label in theme.WARRANTIES:
+        for _n, _u, label, _sub in theme.WARRANTIES:
             self.assertIn(label, html)
         self.assertIn("Performance garantie 30 ans", html)
         self.assertNotIn("Garantie 25 ans", html)

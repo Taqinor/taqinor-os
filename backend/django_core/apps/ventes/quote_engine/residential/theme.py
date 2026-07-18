@@ -143,11 +143,13 @@ def fmt(n) -> str:
 # structures 20 ans). La bande de crédibilité (page 1), les badges (page 2) et
 # toute mention de garantie lisent CETTE liste — plus jamais deux chiffres
 # contradictoires (« 25 ans » vs « 30 ans ») dans le même PDF.
+# QRES25 — libellé un mot + sous-ligne (lisibilité badge) : (n, unité, libellé,
+# sous-libellé).
 WARRANTIES = [
-    ("10", "ans", "Onduleur"),
-    ("12", "ans", "Panneaux (produit)"),
-    ("20", "ans", "Structure"),
-    ("30", "ans", "Performance 87,4 %"),
+    ("10", "ans", "Onduleur", "garantie fabricant"),
+    ("12", "ans", "Panneaux", "garantie produit"),
+    ("20", "ans", "Structure", "fixations & supports"),
+    ("30", "ans", "Performance", "87,4 % de rendement garanti"),
 ]
 
 # French name particles that stay lowercase inside a name.
@@ -184,6 +186,20 @@ def titlecase_name(name) -> str:
             cap_token(p, first=(i == 0 and j == 0))
             for j, p in enumerate(parts)))
     return " ".join(out)
+
+
+def valid_until(date_str, days) -> str:
+    """QRES31 — échéance ABSOLUE : « 17/07/2026 » + 30 j → « 16/08/2026 ».
+
+    Une date butoir concrète ferme mieux qu'une durée relative (« 30 jours »
+    n'engage personne). Dérivée de la date du devis — jamais de l'horloge.
+    Renvoie '' si la date est illisible (le rendu retombe sur la durée)."""
+    try:
+        import datetime as _dt
+        d0 = _dt.datetime.strptime(str(date_str).strip(), "%d/%m/%Y")
+        return (d0 + _dt.timedelta(days=int(days))).strftime("%d/%m/%Y")
+    except Exception:
+        return ""
 
 
 def join_meta(*parts, sep=" · ") -> str:
@@ -274,7 +290,9 @@ def base_css() -> str:
 html, body {{ font-family:{FONT_SANS}; color:{C['ink']}; -weasy-hyphens:none; }}
 .page {{
   position:relative; width:210mm; height:297mm; overflow:hidden;
-  background:{C['paper']}; page-break-after:always;
+  /* QRES26 — fond de page très légèrement cassé : les cartes blanches se
+     détachent en douceur (profondeur « matière » sans lourdeur). */
+  background:#FBFBF9; page-break-after:always;
 }}
 .page:last-child {{ page-break-after:auto; }}
 .pad {{ padding:14mm 14mm 0 14mm; }}

@@ -15,12 +15,17 @@ Variants:
   - "long"  — the "deux" quote with every optional block filled (factures
               savings model, seller, financing, long hypotheses) — the
               worst-case page-3 density used by the pagination guard test.
+  - "plus5" — the "deux" quote with 5 extra accessory lines: must still fit
+              the 3-page layout (dense table).
+  - "plus10" — the "deux" quote with 10 extra lines: must overflow CLEANLY
+              into the variable-pagination layout (equipment page + dedicated
+              finance page → 4 pages, correctly numbered).
 """
 from __future__ import annotations
 
 
 def keys():
-    return ("deux", "sans", "long")
+    return ("deux", "sans", "long", "plus5", "plus10")
 
 
 def _cumulative(total_ttc, eco_year1, years=25, degradation=0.005,
@@ -32,6 +37,22 @@ def _cumulative(total_ttc, eco_year1, years=25, degradation=0.005,
         cumul += saving
         out.append(round(cumul))
     return out
+
+
+def _demo_roof_b64() -> str:
+    """QRES39 — photo d'installation réelle du dépôt d'assets, en guise de
+    « plan de toiture » de démonstration ('' si absente → schéma)."""
+    try:
+        import base64
+        from pathlib import Path
+        p = (Path(__file__).resolve().parent.parent / "assets" /
+             "installations" / "residentiel-12-installation.jpg")
+        if p.exists() and p.stat().st_size < 2_000_000:
+            return ("data:image/jpeg;base64,"
+                    + base64.b64encode(p.read_bytes()).decode())
+    except Exception:
+        pass
+    return ""
 
 
 def _totaux(items):
@@ -60,7 +81,7 @@ def build(variant: str = "deux") -> dict:
                    "marque": "Deye", "quantite": 1,
                    "prix_unit_ht": 16667.0, "taux_tva": 20}
     batterie = {"designation": "Batterie Lithium Dyness 5,12 kWh",
-                "marque": "Deyness", "quantite": 1,
+                "marque": "Dyness", "quantite": 1,
                 "prix_unit_ht": 13333.0, "taux_tva": 20}
     tableau = {"designation": "Tableau De Protection AC/DC", "marque": "",
                "quantite": 1, "prix_unit_ht": 1250.0, "taux_tva": 20}
@@ -114,7 +135,7 @@ def build(variant: str = "deux") -> dict:
                          "Onduleur réseau Huawei 5kW Monophasé",
                          "Structures + installation complète"],
         "avec_bullets": ["8 panneaux 710 W",
-                         "Onduleur hybride Deye 5kW",
+                         "Onduleur hybride Deye 5kW Monophasé",
                          "Batterie Lithium 5,12 kWh — vos soirées sur batterie"],
         "deux_options": True,
         "avec_ok": True,
@@ -133,12 +154,14 @@ def build(variant: str = "deux") -> dict:
         "hypotheses": {
             "titre": "Nos hypothèses",
             "items": [
-                "Tarif électricité retenu : 1,75 MAD/kWh (estimation)",
+                "Économies calculées sur un tarif résidentiel de référence "
+                "de 1,75 MAD/kWh — transmettez une facture récente et nous "
+                "les recalculons par tranches, sur votre barème exact.",
                 "Économies valorisées sur l'autoconsommation uniquement "
                 "(loi 82-21) — le surplus injecté n'est pas rémunéré (rachat "
                 "BT résidentiel différé par l'ANRE) ; plafond d'injection "
                 "20 % pré-intégré dans les taux d'autoconsommation.",
-                "Production estimée : ≈ 1651 kWh par kWc et par an "
+                "Production estimée : ≈ 1 651 kWh par kWc et par an "
                 "(irradiation moyenne au Maroc).",
                 "Dégradation panneau 0,5 %/an et escalade du tarif électrique "
                 "2 %/an (hypothèse prudente) intégrées au calcul de "
@@ -148,8 +171,12 @@ def build(variant: str = "deux") -> dict:
             ],
         },
         "financing": {"indicatif": True,
-                      "credit": {"mensualite": 620, "duree_mois": 120,
+                      "credit": {"mensualite": round(totaux_avec["ttc"] * 0.0111),
+                                 "duree_mois": 120,
                                  "programme_nom": "Crédit vert résidentiel"}},
+        # QRES39 — démo : vraie photo d'installation en guise de plan de
+        # toiture (le variant « sans » garde le repli schéma).
+        "roof_photo": _demo_roof_b64(),
         "links": {"signer":
                   "taqinor.ma/proposition/rKJtbjsY-qTML35ZnjQ9Lt_v4_demo"},
         "entreprise": {"nom": "TAQINOR Solutions",
@@ -161,20 +188,24 @@ def build(variant: str = "deux") -> dict:
 
     if variant == "sans":
         # Mono-option grid-tied — the DEV-202607-0021 shape (extreme numbers
-        # kept: they stress big-figure layout paths).
-        pan70 = dict(panneaux, quantite=70, taux_tva=20)
+        # kept: they stress big-figure layout paths). QRES47 — fixture
+        # COHÉRENTE : panneaux à 10 % de TVA comme partout, ROI dérivé du
+        # total réel (plus de 1,4 an contredisant prix/économie), mensualité
+        # calculée du total (même taux implicite que les autres variantes).
+        pan70 = dict(panneaux, quantite=70)
         items = [pan70, dict(ond_reseau)]
         tot = _totaux(items)
         bills21 = [7000, 8500, 12000, 14500, 16200, 16800,
                    16900, 14300, 12400, 9200, 7900, 6900]
         eco_s = 122057
+        _roi = round(tot["ttc"] / eco_s, 1)
         d.update({
             "sans_items": items, "avec_items": items,
             "totaux_sans": tot, "totaux_avec": tot,
             "total_sans": tot["ttc"], "total_avec": tot["ttc"],
             "puissance_kwc": 49.7, "nb_panneaux": 70, "prod_kwh": 82055,
             "conso_annuelle_kwh": None, "eco_s_ann": eco_s, "eco_a_ann": eco_s,
-            "roi_s": 1.4, "roi_a": 1.4,
+            "roi_s": _roi, "roi_a": _roi,
             "factures_mensuelles": bills21,
             "eco_a_monthly": [round(eco_s * b / sum(bills21)) for b in bills21],
             "cashflow_sans": _cumulative(tot["ttc"], eco_s),
@@ -186,27 +217,76 @@ def build(variant: str = "deux") -> dict:
             "client_name": "Srdgsdg", "client_full": "Srdgsdg",
             "client_addr": "casablanca, casablanca", "client_city": "casablanca",
             "client_phone": "+212661850412",
-            "tva_note": "TVA : 20 % appliquée sur l'ensemble des équipements "
-                        "et travaux.",
+            "roof_photo": "",          # pas de photo → schéma illustratif
+            "tva_note": ("TVA : 10% panneaux photovoltaïques · 20% autres "
+                         "équipements et prestations"),
             "financing": {"indicatif": True,
-                          "credit": {"mensualite": 1342, "duree_mois": 120,
+                          "credit": {"mensualite": round(tot["ttc"] * 0.0111),
+                                     "duree_mois": 120,
                                      "programme_nom": "Crédit vert résidentiel"}},
         })
+
+    elif variant in ("plus5", "plus10"):
+        # Lignes accessoires réalistes (catalogue simulateur) ajoutées AU
+        # DESSUS du devis « deux » : +5 doit rester sur la mise en page
+        # 3 pages (tableau dense) ; +10 doit déclencher la pagination
+        # variable (page équipement + page rentabilité → 4 pages propres).
+        extras = [
+            {"designation": "Câble solaire 6mm² (au mètre)", "marque": "",
+             "quantite": 80, "prix_unit_ht": 11.0, "taux_tva": 20},
+            {"designation": "Coffret de protection DC", "marque": "",
+             "quantite": 1, "prix_unit_ht": 950.0, "taux_tva": 20},
+            {"designation": "Parafoudre AC Type 2", "marque": "",
+             "quantite": 1, "prix_unit_ht": 620.0, "taux_tva": 20},
+            {"designation": "Mise à la terre complète + piquet", "marque": "",
+             "quantite": 1, "prix_unit_ht": 480.0, "taux_tva": 20},
+            {"designation": "Connecteurs MC4 (paire)", "marque": "",
+             "quantite": 6, "prix_unit_ht": 35.0, "taux_tva": 20},
+            {"designation": "Smart Meter monitoring", "marque": "Huawei",
+             "quantite": 1, "prix_unit_ht": 1500.0, "taux_tva": 20},
+            {"designation": "Clé Wifi (dongle)", "marque": "Huawei",
+             "quantite": 1, "prix_unit_ht": 900.0, "taux_tva": 20},
+            {"designation": "Chemin de câble aluminium (au mètre)",
+             "marque": "", "quantite": 20, "prix_unit_ht": 45.0,
+             "taux_tva": 20},
+            {"designation": "Disjoncteur différentiel 30 mA", "marque": "",
+             "quantite": 2, "prix_unit_ht": 380.0, "taux_tva": 20},
+            {"designation": "Transport et manutention", "marque": "",
+             "quantite": 1, "prix_unit_ht": 800.0, "taux_tva": 20},
+        ]
+        n = 5 if variant == "plus5" else 10
+        d["sans_items"] = sans_items + extras[:n]
+        d["avec_items"] = avec_items + extras[:n]
+        d["totaux_sans"] = _totaux(d["sans_items"])
+        d["totaux_avec"] = _totaux(d["avec_items"])
+        d["total_sans"] = d["totaux_sans"]["ttc"]
+        d["total_avec"] = d["totaux_avec"]["ttc"]
+        d["roi_s"] = round(d["totaux_sans"]["ttc"] / eco_s_ann, 1)
+        d["roi_a"] = round(d["totaux_avec"]["ttc"] / eco_a_ann, 1)
+        d["cashflow_sans"] = _cumulative(d["totaux_sans"]["ttc"], eco_s_ann)
+        d["cashflow_avec"] = _cumulative(d["totaux_avec"]["ttc"], eco_a_ann)
+        # QRES47 — mensualité recalculée du VRAI total (plus de 620 MAD
+        # figés face à trois totaux différents).
+        d["financing"] = {
+            "indicatif": True,
+            "credit": {"mensualite": round(d["totaux_avec"]["ttc"] * 0.0111),
+                       "duree_mois": 120,
+                       "programme_nom": "Crédit vert résidentiel"}}
 
     elif variant == "long":
         # Page-3 density torture: factures model with exemple + seller +
         # everything else already on. Used by the pagination guard.
         d["savings_method"] = {
             "model": "factures", "approximatif": True,
-            "facture_actuelle": 21400, "facture_avec_solaire": 6650,
-            "economie": 14750,
+            "facture_actuelle": 21400, "facture_avec_solaire": 6651,
+            "economie": 14749,
             "ligne_methode": (
                 "Chaque kWh est valorisé au prix de SA tranche (barème "
                 "progressif du distributeur) : facture actuelle moins facture "
                 "résiduelle après autoconsommation — jamais un prix moyen "
                 "inventé."),
-            "exemple": ("Facture actuelle ≈ 21 400 DH/an → avec solaire "
-                        "≈ 6 650 DH/an → économie ≈ 14 750 DH/an"),
+            "exemple": ("Facture actuelle ≈ 21 400 MAD/an → avec solaire "
+                        "≈ 6 651 MAD/an → économie ≈ 14 749 MAD/an"),
         }
         d["seller"] = {"nom": "Reda Kasri",
                        "telephone": "+212 6 61 85 04 10"}

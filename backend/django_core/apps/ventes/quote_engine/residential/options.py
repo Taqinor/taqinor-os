@@ -117,7 +117,16 @@ def _totals_chain(label, accent, tot, fmt, C, recommended=False):
     )
 
 
-def build(ctx) -> str:
+def build_pages(ctx) -> list:
+    """QRES17 — pagination VARIABLE (fondateur, 2026-07-18).
+
+    Rend 1..N pages « Votre installation » : un devis standard tient sur UNE
+    page (l'historique) ; un devis chargé (10+ lignes) découpe proprement —
+    page équipement (tableau complet, découpé par tranches de hauteur s'il le
+    faut, avec « suite ») puis page rentabilité dédiée (courbe plus grande +
+    garanties). Le pied « Page n / N » suit tout seul (QX6). Jamais de
+    débordement rogné ni de 4ᵉ page orpheline.
+    """
     from . import theme
 
     d = ctx["d"]
@@ -163,17 +172,24 @@ def build(ctx) -> str:
 
     # QX5 — le bloc « ce que chaque option ajoute » n'existe QUE pour un vrai
     # devis à deux options ; mono-option → aucun découpage delta.
+    # QRES27 — en-têtes recomposés (« Spécifique à … », plus de « ajoute »
+    # pendu), texte NAVY sur la barre or (jamais blanc sur #F5A623 — contraste)
+    # et une ligne « Pourquoi » sous l'option recommandée qui JUSTIFIE la
+    # recommandation au lieu de la seule pastille.
     if deux_options:
         deltas_html = (
             '<div class="p2-deltas">'
             '<div class="p2-dcard">'
             f'<div class="p2-dhead" style="background:{C["navy"]}">'
-            'Option 1 — Sans batterie <small>ajoute</small></div>'
+            'Spécifique à l&rsquo;option 1 — Sans batterie</div>'
             f'<div class="p2-dbody"><ul>{delta_sans_html}</ul></div></div>'
             '<div class="p2-dcard">'
-            f'<div class="p2-dhead" style="background:{C["gold"]}">'
-            'Option 2 — Avec batterie <small>ajoute</small></div>'
-            f'<div class="p2-dbody"><ul>{delta_avec_html}</ul></div></div>'
+            f'<div class="p2-dhead" style="background:{C["gold"]};'
+            f'color:{C["navy"]}">'
+            'Spécifique à l&rsquo;option 2 — Avec batterie</div>'
+            f'<div class="p2-dbody"><ul>{delta_avec_html}</ul>'
+            '<div class="p2-dwhy">Pourquoi nous la recommandons : vos '
+            'soirées et les coupures passent sur batterie.</div></div></div>'
             '</div>')
     else:
         deltas_html = ""
@@ -254,6 +270,15 @@ def build(ctx) -> str:
         gain25_label = "sans batterie"
     gain25 = max(0, round(_eco_ref * 25 - _tot_ref))
     gain25 = round(gain25 / 1000) * 1000
+    # QRES28 — le multiple (« ≈ 5,6× votre investissement ») rend le gain net
+    # tangible ; calculé, jamais inventé (gain net / investissement).
+    gain_mult = (round(gain25 / _tot_ref, 1) if _tot_ref and gain25 > 0
+                 else None)
+    gain_mult_txt = (f"{gain_mult:g}".replace(".", ",")
+                     if gain_mult and gain_mult >= 1 else None)
+    gain_mult_sub = (
+        f" — soit ≈ <b>{gain_mult_txt}×</b> votre investissement"
+        if gain_mult_txt else "")
 
     # QRES3 — sous-titre du graphe fidèle au devis : « deux scénarios »
     # seulement quand le document porte réellement deux options.
@@ -267,18 +292,54 @@ def build(ctx) -> str:
     badges_html = "".join(
         f'<div class="p2-badge"><div class="p2-badge-n">{n}'
         f'<span class="p2-badge-u">{u}</span></div>'
-        f'<div class="p2-badge-l">{label}</div></div>'
-        for n, u, label in theme.WARRANTIES)
+        f'<div class="p2-badge-l">{label}</div>'
+        f'<div class="p2-badge-s">{sub}</div></div>'
+        for n, u, label, sub in theme.WARRANTIES)
 
     # QRES6 — densité adaptative : un devis à beaucoup de lignes serre le
     # tableau au lieu de pousser la page en débordement (.page = A4 FIXE).
     _nrows = len(shared) + (len(delta_sans) + len(delta_avec)
                             if deux_options else 0)
-    dense_cls = " p2-dense" if _nrows > 9 else ""
+    dense = _nrows > 9
+
+    # ── QRES17 — modèle de hauteur (mm) : décide si tout tient sur UNE page ──
+    # Estimations calibrées sur le rendu réel (110 dpi) avec marge de sécurité ;
+    # la garde CI (pages exactes + bande légale non rognée) verrouille le tout.
+    def _row_mm(it, _dense):
+        base = 3.95 if _dense else 4.5
+        return base + (3.2 if len(str(it.get("designation") or "")) > 55
+                       else 0.0)
+
+    def _table_mm(items, _dense):
+        return 6.5 + sum(_row_mm(it, _dense) for it in items)
+
+    def _deltas_mm(_dense):
+        if not deux_options:
+            return 0.0
+        rows = max(len(delta_sans), len(delta_avec), 1)
+        return 7.0 + rows * (4.1 if _dense else 4.6)
+
+    fits_one = (_table_mm(shared, dense) + _deltas_mm(dense)) <= 66.0
+    dense_cls = " p2-dense" if (dense and fits_one) else ""
+
+    def _chunk_rows(items, budgets):
+        """Découpe les lignes par tranches de hauteur (budgets mm par page)."""
+        out, cur, h, bi = [], [], 0.0, 0
+        for it in items:
+            ih = _row_mm(it, False)
+            budget = budgets[min(bi, len(budgets) - 1)]
+            if cur and h + ih > budget:
+                out.append(cur)
+                cur, h, bi = [], 0.0, bi + 1
+            cur.append(it)
+            h += ih
+        if cur:
+            out.append(cur)
+        return out
 
     style = f"""
 <style>
-  .p2-wrap {{ padding:7mm 14mm 6mm 14mm; }}
+  .p2-wrap {{ padding:6mm 14mm 5mm 14mm; }}
 
   /* Section header */
   .p2-kick {{ font-size:8.5pt; letter-spacing:.22em; text-transform:uppercase;
@@ -287,11 +348,16 @@ def build(ctx) -> str:
     color:{C['navy']}; line-height:1.04; margin-top:1.5mm; letter-spacing:-.3px; }}
 
   /* Top band: roof schematic + spec list */
-  .p2-band {{ display:flex; align-items:center; gap:6mm; margin-top:2.5mm;
-    padding:1.7mm 5mm; background:{C['wash']}; border:1px solid {C['line']};
+  .p2-band {{ display:flex; align-items:center; gap:6mm; margin-top:2mm;
+    padding:1.2mm 5mm; background:{C['wash']}; border:1px solid {C['line']};
     border-radius:12px; }}
-  .p2-roof {{ flex:0 0 36mm; text-align:center; }}
-  .p2-roof img {{ width:34mm; height:auto; }}
+  .p2-roof {{ flex:0 0 32mm; text-align:center; }}
+  .p2-roof img {{ width:30mm; height:auto; }}
+  /* QRES39 — photo réelle de toiture : cadrée, arrondie, légendée */
+  .p2-roof-photo {{ width:30mm; height:17.5mm; object-fit:cover;
+    border-radius:9px; display:block; margin:0 auto; }}
+  .p2-roof-cap {{ font-size:6.3pt; color:{C['muted_2']}; margin-top:0.8mm;
+    letter-spacing:.06em; text-transform:uppercase; font-weight:700; }}
   .p2-specs {{ flex:1; display:flex; gap:5mm; }}
   .p2-spec {{ flex:1; display:flex; flex-direction:column; gap:1mm;
     padding-left:5mm; border-left:2px solid {C['line']}; }}
@@ -310,6 +376,8 @@ def build(ctx) -> str:
     text-transform:uppercase; color:{C['muted_2']}; font-weight:700;
     text-align:left; padding:0 0 2mm; border-bottom:1.5px solid {C['line']}; }}
   .p2-tbl th.p2-c, .p2-tbl td.p2-c {{ text-align:center; }}
+  /* QRES36 — gouttière P.U. ↔ TVA (les deux colonnes se frôlaient) */
+  .p2-tbl th:nth-child(4), .p2-tbl td:nth-child(4) {{ padding-left:14px; }}
   .p2-tbl th.p2-r, .p2-tbl td.p2-r {{ text-align:right; }}
   .p2-tbl tbody td {{ padding:1.15mm 0; border-bottom:1px solid {C['line_soft']};
     vertical-align:middle; }}
@@ -330,8 +398,13 @@ def build(ctx) -> str:
   .p2-dhead {{ padding:2.2mm 3.5mm; font-size:8.4pt; font-weight:700;
     color:#fff; }}
   .p2-dhead small {{ font-weight:500; opacity:.85; }}
-  .p2-dbody {{ flex:1 1 auto; display:flex; align-items:center; }}
+  /* QRES35 — display:block (PAS flex-column) : WeasyPrint rétrécissait la
+     colonne désignation et superposait prix et « Pourquoi » (cf.
+     RENDERING_NOTES, pièges flex). */
+  .p2-dbody {{ display:block; }}
   .p2-dbody ul {{ list-style:none; width:100%; }}
+  .p2-dwhy {{ padding:1.1mm 3.5mm 1.4mm; font-size:7.6pt; color:{C['muted']};
+    border-top:1px solid {C['line_soft']}; }}
   .p2-dbody li {{ display:flex; justify-content:space-between; align-items:center;
     padding:1.7mm 3.5mm; font-size:8.5pt; border-bottom:1px solid {C['line_soft']}; }}
   .p2-dbody li:last-child {{ border-bottom:none; }}
@@ -373,15 +446,28 @@ def build(ctx) -> str:
 
   /* Finance: rentabilité — the curve gets real height BESIDE airy stats */
   .p2-fin {{ margin-top:2mm; }}
-  .p2-fin-head {{ display:flex; align-items:baseline; }}
-  .p2-fin-title {{ font-family:{fonts['serif']}; font-weight:700; font-size:14pt;
-    color:{C['navy']}; margin-right:4mm; }}
-  .p2-fin-sub {{ font-size:8pt; color:{C['muted']}; }}
+  /* QRES29 — sous-titre sur SA ligne (l'inline collait au titre serif) */
+  .p2-fin-head {{ display:block; }}
+  .p2-fin-title {{ display:block; font-family:{fonts['serif']};
+    font-weight:700; font-size:13pt; color:{C['navy']}; }}
+  .p2-fin-sub {{ display:block; font-size:7.8pt; color:{C['muted']};
+    margin-top:0.2mm; }}
+  .p2-side-gain .p2-stat-s b {{ color:{C['gold_soft']}; }}
+  .p2-callout {{ margin-top:6mm; background:{C['navy']}; color:#fff;
+    border-radius:12px; padding:5mm 7mm; font-family:{fonts['display']};
+    font-size:13.5pt; line-height:1.25; }}
+  .p2-callout b {{ color:{C['gold']}; font-weight:400; }}
+  /* margin-left:auto est ignoré par WeasyPrint sur ce conteneur flex →
+     marge déterministe pour caler le TOTAL TTC sur le rail monétaire droit. */
+  .p2-totals-solo {{ width:60%; margin-left:40%; }}
+  .p2-tbl tbody td {{ font-feature-settings:'tnum' 1; }}
+  .p2-dcard, .p2-badge {{ box-shadow:0 1px 2px rgba(26,43,74,.04),
+    0 5px 14px rgba(26,43,74,.05); }}
 
   /* CSS table: chart cell (left, full height) + stats cell (right, airy) */
   .p2-fin-grid {{ display:table; width:100%; table-layout:fixed; margin-top:2.5mm; }}
   .p2-fin-cc {{ display:table-cell; width:60%; vertical-align:middle; }}
-  .p2-fin-cc img {{ display:block; height:33mm; width:auto; }}
+  .p2-fin-cc img {{ display:block; height:28.5mm; width:auto; }}
   .p2-fin-sc {{ display:table-cell; width:39%; vertical-align:middle;
     padding-left:9mm; }}
   .p2-side-stat {{ margin-bottom:2.5mm; }}
@@ -401,25 +487,50 @@ def build(ctx) -> str:
   .p2-fin-cap b {{ color:{C['navy']}; font-weight:700; font-style:normal; }}
 
   /* QRES5 — garanties (badges déplacés de la page 3) */
-  .p2-badges {{ display:flex; gap:9px; margin-top:1.5mm; }}
+  .p2-badges {{ display:flex; gap:9px; margin-top:0.8mm; }}
   .p2-badge {{ flex:1; text-align:center; border:1px solid {C['line']};
-    border-top:3px solid {C['gold']}; border-radius:11px; padding:9px 4px 8px;
+    border-top:3px solid {C['gold']}; border-radius:11px; padding:7px 4px 6px;
     background:{C['paper']}; }}
-  .p2-badge-n {{ font-family:{fonts['display']}; font-size:19pt;
+  .p2-badge-n {{ font-family:{fonts['display']}; font-size:17pt;
     color:{C['navy']}; line-height:1; }}
   .p2-badge-u {{ font-family:{fonts['sans']}; font-size:7.5pt;
     color:{C['gold']}; font-weight:700; margin-left:3px; }}
-  .p2-badge-l {{ font-size:7.2pt; color:{C['muted']}; font-weight:600;
-    margin-top:4px; letter-spacing:.02em; }}
+  .p2-badge-l {{ font-size:7.4pt; color:{C['navy']}; font-weight:700;
+    margin-top:4px; letter-spacing:.05em; text-transform:uppercase; }}
+  .p2-badge-s {{ font-size:6.4pt; color:{C['muted_2']}; margin-top:1.5px;
+    text-transform:none; letter-spacing:0; font-weight:500; }}
+
+  /* QRES17 — pages de continuation / page rentabilité dédiée */
+  .p2-cont-note {{ font-size:7.6pt; color:{C['muted']}; font-style:italic;
+    margin-top:2mm; text-align:right; }}
+  /* QRES37/38 — page rentabilité : courbe pleine largeur (bornée par la
+     largeur, jamais par une hauteur fixe qui la faisait déborder), stats en
+     rangée de trois sous la courbe. */
+  .p2-fin-wide {{ display:block; width:100%; height:auto; margin-top:4mm; }}
+  .p2-finstats {{ display:flex; gap:8mm; margin-top:5mm; }}
+  .p2-finstats .p2-side-stat {{ flex:1; margin-bottom:0; padding:4mm 5mm;
+    background:{C['paper']}; border:1px solid {C['line']}; border-radius:11px;
+    box-shadow:0 1px 2px rgba(26,43,74,.04),0 5px 14px rgba(26,43,74,.05); }}
+  .p2-fin-xl .p2-fin-sub {{ margin-top:0; }}
+  .p2-fin-xl {{ margin-top:6mm; }}
+  .p2-finpage-badges {{ margin-top:7mm; }}
 
   /* QRES6 — densité adaptative pour les tableaux longs */
   .p2-dense .p2-tbl {{ font-size:8.1pt; }}
   .p2-dense .p2-tbl tbody td {{ padding:0.8mm 0; }}
   .p2-dense .p2-band {{ padding:1.2mm 5mm; }}
   .p2-dense .p2-dbody li {{ padding:1.2mm 3.5mm; font-size:8.1pt; }}
-  .p2-dense .p2-fin-cc img {{ height:29mm; }}
-  .p2-dense .p2-badge {{ padding:7px 4px 6px; }}
-  .p2-dense .p2-badge-n {{ font-size:16pt; }}
+  .p2-dense .p2-fin-cc img {{ height:24.5mm; }}
+  .p2-dense .p2-badge {{ padding:5px 4px 4px; }}
+  .p2-dense .p2-badge-n {{ font-size:14pt; }}
+  .p2-dense .p2-badge-s {{ display:none; }}
+  .p2-dense .p2-dwhy {{ display:none; }}
+  .p2-dense .p2-band {{ padding:0.8mm 5mm; }}
+  .p2-dense .p2-spec-v {{ font-size:15pt; }}
+  .p2-dense .p2-tl {{ padding:0.8mm 0; }}
+  .p2-dense .p2-tot-grand {{ padding:1.8mm 0; }}
+  .p2-dense .p2-fin-cap {{ margin-top:1.5mm; font-size:6.9pt; }}
+  .p2-dense .p2-roof img {{ width:26mm; }}
 
   /* QJ30 — multi-propriétés */
   .p2-multi-wrap {{ margin-top:2.5mm; }}
@@ -439,44 +550,111 @@ def build(ctx) -> str:
 </style>
 """
 
-    html = f"""
-{style}
-<div class="p2-wrap{dense_cls}">
+    # ── QRES17 — fragments réutilisables, composés en 1..N pages ─────────────
+    head_html = (
+        '<div class="p2-kick">Votre installation</div>'
+        '<div class="p2-title">Le détail de votre projet</div>')
+    cont_head_html = (
+        '<div class="p2-kick">Votre installation</div>'
+        '<div class="p2-title">Équipement — suite</div>')
+    fin_head_html = (
+        '<div class="p2-kick">Votre rentabilité</div>'
+        '<div class="p2-title">Rentabilité de votre investissement</div>')
 
-  <div class="p2-kick">Votre installation</div>
-  <div class="p2-title">Le détail de votre projet</div>
+    # QRES39 — la VRAIE toiture du client (photo/plan joint au devis) remplace
+    # le schéma illustratif quand elle existe ; repli schéma sinon.
+    roof_photo = (d.get("roof_photo") or "").strip()
+    if roof_photo:
+        band_visual = (
+            f'<div><img class="p2-roof-photo" src="{roof_photo}" '
+            f'alt="Votre toiture — implantation des panneaux">'
+            '<div class="p2-roof-cap">Votre toiture</div></div>')
+    else:
+        band_visual = (f'<img src="{charts["roof"]}" '
+                       'alt="Schéma de l\'installation">')
+    band_html = (
+        f'<div class="p2-band">'
+        f'<div class="p2-roof">{band_visual}</div>'
+        f'<div class="p2-specs">{spec_html}</div></div>')
 
-  <div class="p2-band">
-    <div class="p2-roof"><img src="{charts['roof']}" alt="Schéma de l'installation"></div>
-    <div class="p2-specs">{spec_html}</div>
-  </div>
+    def _table_html(items, label):
+        rows = "".join(_row(it, fmt, produits_link) for it in items)
+        return (
+            f'<div class="p2-lbl">{label}</div>'
+            '<table class="p2-tbl"><thead><tr>'
+            '<th class="p2-d">Désignation</th>'
+            '<th class="p2-c">Qté</th>'
+            '<th class="p2-r">P.U. HT</th>'
+            '<th class="p2-c">TVA</th>'
+            '<th class="p2-r">Total HT</th>'
+            f'</tr></thead><tbody>{rows}</tbody></table>')
 
-  <div class="p2-lbl">{equipement_lbl}</div>
-  <table class="p2-tbl">
-    <thead>
-      <tr>
-        <th class="p2-d">Désignation</th>
-        <th class="p2-c">Qté</th>
-        <th class="p2-r">P.U. HT</th>
-        <th class="p2-c">TVA</th>
-        <th class="p2-r">Total HT</th>
-      </tr>
-    </thead>
-    <tbody>{rows_html}</tbody>
-  </table>
+    fiche_html = (
+        '<div class="p2-fiche">Chaque équipement renvoie à sa fiche technique '
+        'complète — bibliothèque&nbsp;: <a class="p2-fiche-btn" '
+        f'href="{_produits_href(produits_link)}">{produits_link}'
+        '<span class="p2-fiche-i"> &rsaquo;</span></a></div>')
 
-  {deltas_html}
+    # QRES30/48 — mono-option : carte de totaux PLEINE LARGEUR (les montants
+    # internes s'alignent déjà à droite, donc le TOTAL TTC retombe sur le rail
+    # monétaire — sans laisser un demi-bloc mort à gauche).
+    totals_wrap_cls = ""
+    closing_html = (
+        f'{deltas_html}'
+        f'{fiche_html}'
+        f'<div class="p2-totals{totals_wrap_cls}">{totals_html}</div>'
+        f'<div class="p2-tva-note">{tva_note}</div>'
+        f'{multi_html}')
 
-  <div class="p2-fiche">Chaque équipement renvoie à sa fiche technique complète —
-    bibliothèque&nbsp;: <a class="p2-fiche-btn"
-    href="{_produits_href(produits_link)}">{produits_link}<span class="p2-fiche-i"> &rsaquo;</span></a></div>
+    _stats_html = f"""
+        <div class="p2-side-stat">
+          <span class="p2-stat-k">Retour sur investissement</span>
+          <span class="p2-stat-v">{roi_range}</span>
+          <span class="p2-stat-s">l'installation se rembourse</span>
+        </div>
+        <div class="p2-side-stat p2-side-gain">
+          <span class="p2-stat-k">Gain net sur 25 ans</span>
+          <span class="p2-stat-v">≈ {fmt(gain25)} <small>MAD</small></span>
+          <span class="p2-stat-s">{gain25_label}{gain_mult_sub}</span>
+        </div>
+        <div class="p2-side-stat">
+          <span class="p2-stat-k">Performance garantie</span>
+          <span class="p2-stat-v">30 ans</span>
+          <span class="p2-stat-s">panneaux — 87,4 % de rendement à 30 ans</span>
+        </div>"""
+    _fin_cap = (
+        '<div class="p2-fin-cap">Projection <b>à tarif ONEE constant</b> — '
+        "toute hausse future du prix de l'électricité accélère votre "
+        'rentabilité, votre coût solaire restant fixe.</div>')
 
-  <div class="p2-totals">
-    {totals_html}
-  </div>
-  <div class="p2-tva-note">{tva_note}</div>
-  {multi_html}
+    # QRES46 — sur la page rentabilité dédiée, le bandeau navy porte déjà le
+    # gain net : la carte-stat « Gain net » disparaît (plus de doublon).
+    _stats_xl_html = f"""
+        <div class="p2-side-stat">
+          <span class="p2-stat-k">Retour sur investissement</span>
+          <span class="p2-stat-v">{roi_range}</span>
+          <span class="p2-stat-s">l'installation se rembourse</span>
+        </div>
+        <div class="p2-side-stat">
+          <span class="p2-stat-k">Performance garantie</span>
+          <span class="p2-stat-v">30 ans</span>
+          <span class="p2-stat-s">panneaux — 87,4 % de rendement à 30 ans</span>
+        </div>"""
 
+    def _fin_html(xl=False):
+        if xl:
+            # QRES38 — page rentabilité dédiée : composition VERTICALE (courbe
+            # pleine largeur, stats en rangée dessous) — la page respire au
+            # lieu de laisser sa moitié basse vide.
+            return f"""
+  <div class="p2-fin p2-fin-xl">
+    <div class="p2-fin-sub">{fin_sub}</div>
+    <img class="p2-fin-wide" src="{charts['payback']}"
+      alt="Courbe de rentabilité sur 25 ans">
+    <div class="p2-finstats">{_stats_xl_html}</div>
+    {_fin_cap}
+  </div>"""
+        return f"""
   <div class="p2-fin">
     <div class="p2-fin-head">
       <span class="p2-fin-title">Rentabilité sur 25 ans</span>
@@ -487,34 +665,60 @@ def build(ctx) -> str:
       <div class="p2-fin-cc">
         <img src="{charts['payback']}" alt="Courbe de rentabilité sur 25 ans">
       </div>
-      <div class="p2-fin-sc">
-        <div class="p2-side-stat">
-          <span class="p2-stat-k">Retour sur investissement</span>
-          <span class="p2-stat-v">{roi_range}</span>
-          <span class="p2-stat-s">l'installation se rembourse</span>
-        </div>
-        <div class="p2-side-stat">
-          <span class="p2-stat-k">Gain net sur 25 ans</span>
-          <span class="p2-stat-v">≈ {fmt(gain25)} <small>MAD</small></span>
-          <span class="p2-stat-s">{gain25_label}</span>
-        </div>
-        <div class="p2-side-stat">
-          <span class="p2-stat-k">Performance garantie</span>
-          <span class="p2-stat-v">30 ans</span>
-          <span class="p2-stat-s">panneaux — 87,4 % de rendement à 30 ans</span>
-        </div>
-      </div>
+      <div class="p2-fin-sc">{_stats_html}</div>
     </div>
 
-    <div class="p2-fin-cap">
-      Projection <b>à tarif ONEE constant</b> — toute hausse future du prix de
-      l'électricité accélère votre rentabilité, votre coût solaire restant fixe.
-    </div>
-  </div>
+    {_fin_cap}
+  </div>"""
 
-  <div class="p2-lbl">Nos garanties</div>
-  <div class="p2-badges">{badges_html}</div>
+    badges_block = (
+        '<div class="p2-lbl">Nos garanties</div>'
+        f'<div class="p2-badges">{badges_html}</div>')
 
-</div>
-"""
-    return html
+    def _wrap_page(inner, dense_c=""):
+        return f'{style}<div class="p2-wrap{dense_c}">{inner}</div>'
+
+    if fits_one:
+        # Mise en page historique : tout sur UNE page (dense si chargée).
+        return [_wrap_page(
+            head_html + band_html
+            + _table_html(shared, equipement_lbl)
+            + closing_html + _fin_html()
+            + badges_block, dense_cls)]
+
+    # ── Devis chargé : page(s) équipement + page rentabilité dédiée ──────────
+    # Budgets (mm) : 1ʳᵉ page équipement (bande projet + titre + clôture
+    # tableau), pages « suite » (titre court seulement — la clôture suit le
+    # DERNIER morceau de tableau).
+    chunks = _chunk_rows(shared, budgets=[118.0, 165.0])
+    pages = []
+    for i, chunk in enumerate(chunks):
+        is_first = i == 0
+        is_last = i == len(chunks) - 1
+        label = equipement_lbl if is_first else f"{equipement_lbl} (suite)"
+        inner = (head_html + band_html if is_first else cont_head_html)
+        inner += _table_html(chunk, label)
+        if not is_last:
+            inner += ('<div class="p2-cont-note">Suite de l\'équipement '
+                      'page suivante &rsaquo;</div>')
+        else:
+            inner += closing_html
+        pages.append(_wrap_page(inner))
+
+    # QRES28 — la page rentabilité dédiée (espace abondant) reçoit le bandeau
+    # navy de gain net (le chiffre-héros du document, en pleine largeur).
+    _callout = ""
+    if gain_mult_txt:
+        _callout = (
+            f'<div class="p2-callout">≈ {fmt(gain25)} MAD de gain net sur '
+            f'25 ans — <b>{gain_mult_txt}× le prix de votre installation'
+            '</b></div>')
+    pages.append(_wrap_page(
+        fin_head_html + _fin_html(xl=True) + _callout
+        + f'<div class="p2-finpage-badges">{badges_block}</div>'))
+    return pages
+
+
+def build(ctx) -> str:
+    """Compat : forme mono-chaîne (concatène les pages équipement)."""
+    return "".join(build_pages(ctx))

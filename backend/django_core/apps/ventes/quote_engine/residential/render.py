@@ -40,7 +40,10 @@ def _wrap(inner: str, n: int, data: dict, ident: dict, total: int = 3) -> str:
 def build_html(data: dict) -> str:
     ctx = build_ctx(data)
     ident = ctx["ident"]
-    pages = [cover.build(ctx), options.build(ctx), trust.build(ctx)]
+    # QRES17 — pagination variable : un devis chargé rend 2+ pages
+    # « installation » (tableau découpé + page rentabilité dédiée) ; le pied
+    # « Page n / N » lit le nombre RÉEL de pages (QX6).
+    pages = [cover.build(ctx)] + options.build_pages(ctx) + [trust.build(ctx)]
     total = len(pages)
     body = "".join(
         _wrap(inner, n, data, ident, total)
