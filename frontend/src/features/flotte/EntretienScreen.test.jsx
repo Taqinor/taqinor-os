@@ -19,7 +19,7 @@ beforeAll(() => {
 })
 
 const {
-  empty, signalementsCreate, garagesCreate, approuver, ordresList,
+  empty, signalementsCreate, garagesCreate, approuver, ordresList, generer,
 } = vi.hoisted(() => ({
   empty: () => Promise.resolve({ data: [] }),
   signalementsCreate: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
@@ -32,13 +32,14 @@ const {
       cout_total: 1200, statut: 'devis_recu', sous_garantie: true,
     }],
   }),
+  generer: vi.fn(() => Promise.resolve({ data: { nb_creees: 2, nb_existantes: 0, nb_plans_due: 2, echeances: [] } })),
 }))
 
 vi.mock('../../api/flotteApi', () => ({
   default: {
     actifs: { list: () => Promise.resolve({ data: [{ id: 1, label: '12345-A-6' }] }) },
     plansEntretien: { list: empty },
-    echeancesEntretien: { list: empty },
+    echeancesEntretien: { list: empty, generer: (...args) => generer(...args) },
     garages: { list: empty, create: (...args) => garagesCreate(...args) },
     ordresReparation: {
       list: ordresList,
@@ -65,6 +66,17 @@ function withProviders(ui) {
     </MemoryRouter>,
   )
 }
+
+describe('EntretienScreen — Échéances (WIR5 génération)', () => {
+  it('déclenche la génération des échéances et recharge la liste', async () => {
+    const user = userEvent.setup()
+    withProviders(<EntretienScreen />)
+
+    await user.click(await screen.findByRole('button', { name: 'Générer les échéances' }))
+
+    await waitFor(() => expect(generer).toHaveBeenCalled())
+  })
+})
 
 describe('EntretienScreen — Signalements (XFLT5)', () => {
   it('ouvre le formulaire « Signaler un problème » et crée le signalement', async () => {

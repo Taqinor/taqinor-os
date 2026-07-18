@@ -72,7 +72,23 @@ function PlansTab({ actifs }) {
 }
 
 function EcheancesTab() {
-  const { data, loading, error } = useFlotteResource(flotteApi.echeancesEntretien.list, { ouvertes: 'true' })
+  const { data, loading, error, reload } = useFlotteResource(flotteApi.echeancesEntretien.list, { ouvertes: 'true' })
+  const [generating, setGenerating] = useState(false)
+
+  const generer = async () => {
+    setGenerating(true)
+    try {
+      const res = await flotteApi.echeancesEntretien.generer()
+      const nb = res?.data?.nb_creees ?? 0
+      toast.success(nb > 0 ? `${nb} échéance(s) générée(s).` : 'Aucune nouvelle échéance due.')
+      reload()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || 'Génération impossible.')
+    } finally {
+      setGenerating(false)
+    }
+  }
+
   const items = useMemo(
     () => (data || []).map((e) => ({
       id: `ent-${e.id}`,
@@ -89,10 +105,18 @@ function EcheancesTab() {
     { id: 'due_km', header: 'Échéance km', align: 'right', numeric: true, width: 130, accessor: (r) => r.due_km, cell: (v) => (v ? `${formatNumber(v)} km` : '—') },
     { id: 'statut', header: 'Statut', width: 120, accessor: (r) => r.statut, cell: (v) => <EntretienStatutPill status={v} /> },
   ], [])
+
+  const actions = (
+    <Button onClick={generer} disabled={generating}>
+      {generating ? 'Génération…' : 'Générer les échéances'}
+    </Button>
+  )
+
   return (
     <div className="grid gap-4 lg:grid-cols-[1fr_340px]">
       <ListShell
         title="Échéances d’entretien"
+        actions={actions}
         columns={columns}
         rows={data}
         loading={loading}
