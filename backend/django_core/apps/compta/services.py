@@ -387,14 +387,31 @@ def valider_ecriture(ecriture, *, user):
 
 # ── FG109 / COMPTA12-14 — Auto-génération depuis les documents ─────────────
 
-def auto_ecritures_actif():
+def auto_ecritures_actif(company=None):
     """Toggle maître de l'auto-génération. OFF par défaut → rien ne change.
 
     Le founder active la passation automatique des écritures en posant
     ``COMPTA_AUTO_ECRITURES = True`` (settings) ou la variable d'env du même
     nom. Tant que c'est faux, aucun document ne génère d'écriture.
+
+    WIR24 — désormais réglable PAR SOCIÉTÉ via
+    ``parametres.CompanyProfile.comptabilite_auto_ecritures`` (défaut False), en
+    plus du réglage global. Le global reste un interrupteur MAÎTRE : s'il est
+    True, l'auto-génération est active pour TOUTES les sociétés (comportement +
+    tests historiques inchangés). S'il est False (défaut), on consulte le
+    drapeau de la ``company`` passée ; sans société (appel générique), on
+    retombe sur False — comportement byte-identique à l'ancienne signature.
     """
-    return bool(getattr(settings, 'COMPTA_AUTO_ECRITURES', False))
+    if bool(getattr(settings, 'COMPTA_AUTO_ECRITURES', False)):
+        return True
+    if company is None:
+        return False
+    # ``parametres`` est une app foundation (exemptée de la frontière
+    # inter-apps) : lecture directe du profil, sans effet de bord (pas de
+    # get_or_create — un profil absent = réglage à False).
+    from apps.parametres.models_company import CompanyProfile
+    profil = CompanyProfile.objects.filter(company=company).first()
+    return bool(profil and profil.comptabilite_auto_ecritures)
 
 
 def _comptes_requis(company):
@@ -452,10 +469,10 @@ def ecriture_pour_facture(facture, *, force=False, user=None):
     une fois tous les acomptes apurés. Une facture ``complete`` SANS acompte
     au devis est inchangée (apurement = 0).
     """
-    if not force and not auto_ecritures_actif():
-        return None
     company = facture.company
     if company is None:
+        return None
+    if not force and not auto_ecritures_actif(company):
         return None
     existante = _ecriture_existante(company, 'facture', facture.id)
     if existante:
@@ -556,10 +573,10 @@ def ecriture_pour_paiement(paiement, *, force=False, user=None):
     d'escompte accordé (compte 6386) qui solde le CLIENT au même titre que le
     règlement — le débit trésorerie reste le montant NET réellement encaissé.
     """
-    if not force and not auto_ecritures_actif():
-        return None
     company = paiement.company
     if company is None:
+        return None
+    if not force and not auto_ecritures_actif(company):
         return None
     existante = _ecriture_existante(company, 'paiement', paiement.id)
     if existante:
@@ -668,10 +685,10 @@ def ecriture_pour_paiement_especes_via_caisse(paiement, *, force=False,
     désactivée. Renvoie l'écriture du mouvement de caisse, ou ``None`` si
     désactivé ou si aucune caisse n'est configurée (fallback : l'appelant
     retombe sur ``ecriture_pour_paiement``)."""
-    if not force and not auto_ecritures_actif():
-        return None
     company = paiement.company
     if company is None:
+        return None
+    if not force and not auto_ecritures_actif(company):
         return None
     existante = _ecriture_existante(company, 'paiement', paiement.id)
     if existante:
@@ -867,10 +884,10 @@ def ecriture_pour_avoir(avoir, *, force=False, user=None):
     Débit 71xx Ventes (HT) + 4455 TVA, crédit 3421 Clients (TTC) — l'inverse de
     la facture. Idempotent. Renvoie l'écriture, ou None si désactivé.
     """
-    if not force and not auto_ecritures_actif():
-        return None
     company = avoir.company
     if company is None:
+        return None
+    if not force and not auto_ecritures_actif(company):
         return None
     existante = _ecriture_existante(company, 'avoir', avoir.id)
     if existante:
@@ -962,10 +979,10 @@ def ecriture_pour_facture_fournisseur(facture, *, force=False, user=None,
     charge. À 100 % (défaut), le comportement est STRICTEMENT identique à
     avant (aucune régression).
     """
-    if not force and not auto_ecritures_actif():
-        return None
     company = facture.company
     if company is None:
+        return None
+    if not force and not auto_ecritures_actif(company):
         return None
     existante = _ecriture_existante(company, 'facture_fournisseur', facture.id)
     if existante:
@@ -1038,10 +1055,10 @@ def ecriture_pour_paiement_fournisseur(paiement, *, force=False, user=None):
     caisse si mode ``especes``). Idempotent. Renvoie l'écriture, ou None si
     désactivé/non applicable.
     """
-    if not force and not auto_ecritures_actif():
-        return None
     company = paiement.company
     if company is None:
+        return None
+    if not force and not auto_ecritures_actif(company):
         return None
     existante = _ecriture_existante(
         company, 'paiement_fournisseur', paiement.id)
