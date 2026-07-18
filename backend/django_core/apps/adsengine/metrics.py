@@ -517,10 +517,12 @@ def dashboard_v2_metrics(company, *, as_of=None,
             'sparkline': _sparkline(conv_daily, start_date, as_of),
         },
         'mer': {
-            # Montants monétaires rendus à 2 décimales (jamais '120.0').
+            # Dépense Meta rendue à 2 décimales (jamais '120.0', elle vient d'un
+            # float ``load_daily_spend``) ; le CA signé Odoo est un Decimal exact
+            # rendu tel quel (str brut) — contrat des tests dashboard-v2.
             'spend': str(total_spend.quantize(Decimal('0.01'))),
             'spend_currency': spend_currency,
-            'signed_ca_mad': str(total_signed_ca.quantize(Decimal('0.01'))),
+            'signed_ca_mad': str(total_signed_ca),
             'signed_ca_currency': 'MAD',
             'mer_ratio': mer_ratio,
             'odoo_configured': signed_ca['configured'],
