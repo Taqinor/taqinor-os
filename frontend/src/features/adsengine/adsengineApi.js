@@ -178,6 +178,24 @@ const adsengineApi = {
     scatter: (params) => api.get('/adsengine/reporting/creatifs/nuage/', { params }),
   },
 
+  // ── ADSDEEP53/54 — Boîte de réception des commentaires (posts + dark posts) ──
+  // Routeur backend FR : « commentaires ». Chaque action inline CRÉE une
+  // proposition EngineAction (toute écriture passe par la boîte d'approbation —
+  // règle #3) ; le badge « caché-vérifié » vient du read-back backend.
+  comments: {
+    list: (params) => api.get('/adsengine/commentaires/', { params }),
+    // Compteurs par ad/post (non répondus, masqués) pour le cockpit.
+    counts: (params) => api.get('/adsengine/commentaires/compteurs/', { params }),
+    proposeHide: (id, payload) =>
+      api.post(`/adsengine/commentaires/${id}/masquer/`, payload),
+    proposeReply: (id, payload) =>
+      api.post(`/adsengine/commentaires/${id}/repondre/`, payload),
+    proposeDelete: (id) =>
+      api.post(`/adsengine/commentaires/${id}/supprimer/`),
+    proposePrivateReply: (id, payload) =>
+      api.post(`/adsengine/commentaires/${id}/reponse-privee/`, payload),
+  },
+
   // ── ENG27/ENG41 — Backlog par campagne (CreativeGenerationBatch) ──
   backlog: {
     // File par campagne : runway, diversité de hooks, lots de recombinaisons.
