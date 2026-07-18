@@ -1383,11 +1383,12 @@ class TestResidentialQRESRound(TestCase):
         html = render.build_html(d)
         return html, HTML(string=html).render()
 
-    # QRES17 — nombre de pages ATTENDU par fixture : un devis standard tient
-    # en 3 pages ; « plus5 » (5 lignes de plus) reste en 3 pages (tableau
-    # dense) ; « plus10 » (10 lignes de plus) DOIT déborder proprement en
-    # 4 pages (page équipement + page rentabilité dédiée), jamais rogner.
-    EXPECTED_PAGES = {"deux": 3, "sans": 3, "long": 3, "plus5": 3,
+    # QRES17/49 — nombre de pages ATTENDU par fixture : un devis standard
+    # tient en 3 pages ; un devis chargé (« plus5 », « plus10 » — la taille
+    # RÉELLE des devis du fondateur) PASSE en 4 pages : tableau équipement à
+    # l'aise + page rentabilité dédiée (grande courbe + financement). Le mode
+    # « dense » qui écrasait la courbe pour tasser en 3 pages n'existe plus.
+    EXPECTED_PAGES = {"deux": 3, "sans": 3, "long": 3, "plus5": 4,
                       "plus10": 4}
 
     def test_page_count_per_variant_never_overflows_dirty(self):
@@ -1403,23 +1404,27 @@ class TestResidentialQRESRound(TestCase):
                 f'{self.EXPECTED_PAGES[variant]} pages, got {len(doc.pages)}')
 
     def test_overflow_quote_paginates_cleanly(self):
-        """« plus10 » : 4 pages numérotées « / 4 », TOUTES les lignes du devis
-        présentes (aucune avalée par le découpage), et la page rentabilité
-        dédiée existe."""
+        """Devis chargés (« plus5 » ET « plus10 ») : 4 pages numérotées
+        « / 4 », TOUTES les lignes du devis présentes (aucune avalée par le
+        découpage), la page rentabilité dédiée existe et porte la bande de
+        financement (QRES50)."""
         import fitz
         from apps.ventes.quote_engine.residential import renderer, sample_data
-        data = sample_data.build("plus10")
-        pdf = renderer.render_pdf_bytes(data)
-        doc = fitz.open(stream=pdf, filetype='pdf')
-        self.assertEqual(len(doc), 4)
-        all_text = "\n".join(p.get_text() for p in doc)
-        for it in data["sans_items"]:
-            frag = it["designation"].split(" (")[0][:25]
-            self.assertIn(frag, all_text,
-                          f'ligne perdue par le découpage : {frag!r}')
-        self.assertIn("Page 2 / 4", all_text)
-        self.assertIn("Page 4 / 4", all_text)
-        self.assertIn("Rentabilité de votre investissement", all_text)
+        for variant in ("plus5", "plus10"):
+            data = sample_data.build(variant)
+            pdf = renderer.render_pdf_bytes(data)
+            doc = fitz.open(stream=pdf, filetype='pdf')
+            self.assertEqual(len(doc), 4, variant)
+            all_text = "\n".join(p.get_text() for p in doc)
+            for it in data["sans_items"]:
+                frag = it["designation"].split(" (")[0][:25]
+                self.assertIn(frag, all_text,
+                              f'{variant}: ligne perdue par le découpage : '
+                              f'{frag!r}')
+            self.assertIn("Page 2 / 4", all_text)
+            self.assertIn("Page 4 / 4", all_text)
+            self.assertIn("Rentabilité de votre investissement", all_text)
+            self.assertIn("Dans votre poche", all_text)
 
     def test_bottom_content_never_silently_clipped(self):
         """Le cadre .page (A4 fixe, overflow:hidden) peut ROGNER sans faire de

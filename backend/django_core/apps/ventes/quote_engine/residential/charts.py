@@ -152,13 +152,17 @@ def payback_curve(total_sans, total_avec, eco_s, eco_a, roi_s, roi_a,
     ax.fill_between(years, fill_curve, 0, where=(fill_curve < 0), color=NAVY,
                     alpha=0.05, zorder=1, interpolate=True)
     ax.axhline(0, color="#9AA6B5", linewidth=1.3, zorder=2)
-    # Décalée du bord droit pour ne jamais frôler le repère « 25 » de l'axe.
+    # QRES51 — polices de la courbe AGRANDIES partout (retour fondateur : le
+    # graphe n'était pas assez lisible). Décalée du bord droit pour ne jamais
+    # frôler le repère « 25 » de l'axe.
+    # AU-DESSUS de la ligne de zéro (sous elle, l'étiquette tombait sur les
+    # repères de l'axe quand le zéro est bas — payback très court).
     ax.annotate("seuil de rentabilité", (24.2, 0),
-                textcoords="offset points", xytext=(0, -3), fontsize=6.8,
-                color=MUTED, ha="right", va="top")
+                textcoords="offset points", xytext=(0, 4), fontsize=8.2,
+                color=MUTED, ha="right", va="bottom")
 
     for curve, col, label, _roi, _dy in series:
-        ax.plot(years, curve, color=col, linewidth=2.6, label=label,
+        ax.plot(years, curve, color=col, linewidth=2.9, label=label,
                 zorder=4, solid_capstyle="round")
 
     # Break-even dots ON the zero crossing (that IS the payback moment).
@@ -166,7 +170,7 @@ def payback_curve(total_sans, total_avec, eco_s, eco_a, roi_s, roi_a,
     for curve, col, _label, roi, _dy in series:
         if not roi:
             continue
-        ax.scatter([roi], [0], s=64, color=col, zorder=6,
+        ax.scatter([roi], [0], s=80, color=col, zorder=6,
                    edgecolor="white", linewidth=1.6, marker="o")
     # QRES15/20 — UNE étiquette intelligente : ROI proches → un libellé
     # combiné (plus jamais deux textes qui se chevauchent) ; mono-option →
@@ -182,23 +186,23 @@ def payback_curve(total_sans, total_avec, eco_s, eco_a, roi_s, roi_a,
         # Posée SOUS la ligne de zéro (le lavis d'investissement y est vide) —
         # au-dessus, elle recoupait les courbes qui montent.
         ax.annotate(lbl, (max(uniq), 0), textcoords="offset points",
-                    xytext=(10, -12), fontsize=7.6, color=INK,
+                    xytext=(11, -14), fontsize=9, color=INK,
                     fontweight="bold")
 
     ax.set_xlim(0, 25)
     ymin = min(float(min(c[0] for c, *_ in series)) * 1.15, -1.0)
     ymax_v = max(float(max(c[-1] for c, *_ in series)), 1.0)
     ax.set_ylim(ymin, ymax_v * 1.08)
-    ax.set_xlabel("Années", fontsize=8, color=MUTED)
+    ax.set_xlabel("Années", fontsize=9.5, color=MUTED)
     # QRES19 — plus d'axe vertical pivoté : étiquette horizontale compacte.
-    ax.text(0.0, 1.03, "k MAD", transform=ax.transAxes, fontsize=7,
+    ax.text(0.0, 1.03, "k MAD", transform=ax.transAxes, fontsize=8.5,
             color=MUTED, ha="left", va="bottom")
-    ax.tick_params(labelsize=7.5, colors=MUTED)
+    ax.tick_params(labelsize=9, colors=MUTED)
     ax.yaxis.set_major_formatter(
         plt.FuncFormatter(lambda v, _: f"{int(v):,}".replace(",", " ")))
     _clean(ax)
     if deux:
-        ax.legend(loc="upper left", frameon=False, fontsize=8.5,
+        ax.legend(loc="upper left", frameon=False, fontsize=10,
                   labelcolor=INK, handlelength=1.4)
     fig.tight_layout()
     return _uri(fig)
@@ -241,15 +245,22 @@ def roof_layout(nb_panneaux, w=2.9, h=2.2) -> str:
 
 
 def build_all(data: dict) -> dict:
+    _pb_kw = dict(
+        cashflow_sans=data.get("cashflow_sans"),
+        cashflow_avec=data.get("cashflow_avec"),
+        deux=bool(data.get("deux_options", True)),
+        avec_ok=bool(data.get("avec_ok", True)))
+    _pb_args = (data["total_sans"], data["total_avec"],
+                data["eco_s_ann"], data["eco_a_ann"],
+                data["roi_s"], data["roi_a"])
     return {
         "bill": bill_before_after(data["bills_before"], data["bills_after"]),
         "coverage": coverage_donut(data["coverage_pct"]),
-        "payback": payback_curve(
-            data["total_sans"], data["total_avec"],
-            data["eco_s_ann"], data["eco_a_ann"], data["roi_s"], data["roi_a"],
-            cashflow_sans=data.get("cashflow_sans"),
-            cashflow_avec=data.get("cashflow_avec"),
-            deux=bool(data.get("deux_options", True)),
-            avec_ok=bool(data.get("avec_ok", True))),
+        "payback": payback_curve(*_pb_args, **_pb_kw),
+        # QRES51 — variante PLEINE PAGE pour la page rentabilité dédiée :
+        # ratio plus haut (la courbe affichée sur 182 mm gagne ~20 mm de
+        # hauteur), mêmes données, mêmes polices (déjà agrandies — affichées
+        # plus grand encore à cette échelle).
+        "payback_xl": payback_curve(*_pb_args, h=3.2, **_pb_kw),
         "roof": roof_layout(data["nb_panneaux"]),
     }

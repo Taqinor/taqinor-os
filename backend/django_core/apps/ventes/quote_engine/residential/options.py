@@ -296,37 +296,35 @@ def build_pages(ctx) -> list:
         f'<div class="p2-badge-s">{sub}</div></div>'
         for n, u, label, sub in theme.WARRANTIES)
 
-    # QRES6 — densité adaptative : un devis à beaucoup de lignes serre le
-    # tableau au lieu de pousser la page en débordement (.page = A4 FIXE).
-    _nrows = len(shared) + (len(delta_sans) + len(delta_avec)
-                            if deux_options else 0)
-    dense = _nrows > 9
-
     # ── QRES17 — modèle de hauteur (mm) : décide si tout tient sur UNE page ──
     # Estimations calibrées sur le rendu réel (110 dpi) avec marge de sécurité ;
     # la garde CI (pages exactes + bande légale non rognée) verrouille le tout.
-    def _row_mm(it, _dense):
-        base = 3.95 if _dense else 4.5
-        return base + (3.2 if len(str(it.get("designation") or "")) > 55
-                       else 0.0)
+    def _row_mm(it):
+        return 4.5 + (3.2 if len(str(it.get("designation") or "")) > 55
+                      else 0.0)
 
-    def _table_mm(items, _dense):
-        return 6.5 + sum(_row_mm(it, _dense) for it in items)
+    def _table_mm(items):
+        return 6.5 + sum(_row_mm(it) for it in items)
 
-    def _deltas_mm(_dense):
+    def _deltas_mm():
         if not deux_options:
             return 0.0
         rows = max(len(delta_sans), len(delta_avec), 1)
-        return 7.0 + rows * (4.1 if _dense else 4.6)
+        return 7.0 + rows * 4.6
 
-    fits_one = (_table_mm(shared, dense) + _deltas_mm(dense)) <= 66.0
-    dense_cls = " p2-dense" if (dense and fits_one) else ""
+    # QRES49 (fondateur, 2026-07-18) — FINI le mode « dense » qui écrasait la
+    # courbe de rentabilité pour tasser un devis chargé en 3 pages : un devis
+    # dont l'équipement dépasse le confort de la page unique PASSE en mise en
+    # page multi-pages — tableau à l'aise + la page rentabilité dédiée (grande
+    # courbe) que le fondateur préfère. La densité ne rapetisse plus jamais le
+    # graphe ni les badges.
+    fits_one = (_table_mm(shared) + _deltas_mm()) <= 46.0
 
     def _chunk_rows(items, budgets):
         """Découpe les lignes par tranches de hauteur (budgets mm par page)."""
         out, cur, h, bi = [], [], 0.0, 0
         for it in items:
-            ih = _row_mm(it, False)
+            ih = _row_mm(it)
             budget = budgets[min(bi, len(budgets) - 1)]
             if cur and h + ih > budget:
                 out.append(cur)
@@ -368,7 +366,7 @@ def build_pages(ctx) -> list:
 
   /* Block label */
   .p2-lbl {{ font-size:8.5pt; letter-spacing:.16em; text-transform:uppercase;
-    color:{C['navy']}; font-weight:700; margin:3.5mm 0 1.5mm; }}
+    color:{C['navy']}; font-weight:700; margin:3mm 0 1.5mm; }}
 
   /* Shared equipment table */
   .p2-tbl {{ width:100%; border-collapse:collapse; font-size:8.7pt; }}
@@ -392,7 +390,7 @@ def build_pages(ctx) -> list:
   .p2-tot {{ font-weight:700; color:{C['navy']}; white-space:nowrap; }}
 
   /* Per-option delta mini-cards */
-  .p2-deltas {{ display:flex; gap:5mm; margin-top:2mm; align-items:stretch; }}
+  .p2-deltas {{ display:flex; gap:5mm; margin-top:1.5mm; align-items:stretch; }}
   .p2-dcard {{ flex:1; border:1px solid {C['line']}; border-radius:10px;
     overflow:hidden; display:flex; flex-direction:column; }}
   .p2-dhead {{ padding:2.2mm 3.5mm; font-size:8.4pt; font-weight:700;
@@ -412,13 +410,13 @@ def build_pages(ctx) -> list:
   .p2-dl-p {{ color:{C['navy']}; font-weight:700; white-space:nowrap;
     margin-left:6px; }}
 
-  .p2-fiche {{ font-size:8pt; color:{C['muted']}; margin-top:2mm; }}
+  .p2-fiche {{ font-size:8pt; color:{C['muted']}; margin-top:1.5mm; }}
   .p2-fiche-btn {{ text-decoration:none; color:{C['navy']}; font-weight:700;
     white-space:nowrap; }}
   .p2-fiche-i {{ color:{C['gold']}; font-weight:700; }}
 
   /* Totals chains side by side */
-  .p2-totals {{ display:flex; gap:5mm; margin-top:2.5mm; }}
+  .p2-totals {{ display:flex; gap:5mm; margin-top:2mm; }}
   .p2-tot-card {{ flex:1; border:1px solid {C['line']};
     border-radius:0 0 10px 10px; background:{C['paper']};
     box-shadow:0 1px 3px rgba(26,43,74,.05); }}
@@ -441,11 +439,11 @@ def build_pages(ctx) -> list:
     color:{C['navy']}; }}
   .p2-grand-v small {{ font-family:{fonts['sans']}; font-size:8.5pt;
     color:{C['muted']}; font-weight:600; }}
-  .p2-tva-note {{ font-size:7.4pt; color:{C['muted']}; margin-top:2mm;
+  .p2-tva-note {{ font-size:7.4pt; color:{C['muted']}; margin-top:1.5mm;
     text-align:center; }}
 
   /* Finance: rentabilité — the curve gets real height BESIDE airy stats */
-  .p2-fin {{ margin-top:2mm; }}
+  .p2-fin {{ margin-top:1.5mm; }}
   /* QRES29 — sous-titre sur SA ligne (l'inline collait au titre serif) */
   .p2-fin-head {{ display:block; }}
   .p2-fin-title {{ display:block; font-family:{fonts['serif']};
@@ -465,11 +463,13 @@ def build_pages(ctx) -> list:
     0 5px 14px rgba(26,43,74,.05); }}
 
   /* CSS table: chart cell (left, full height) + stats cell (right, airy) */
-  .p2-fin-grid {{ display:table; width:100%; table-layout:fixed; margin-top:2.5mm; }}
-  .p2-fin-cc {{ display:table-cell; width:60%; vertical-align:middle; }}
-  .p2-fin-cc img {{ display:block; height:28.5mm; width:auto; }}
-  .p2-fin-sc {{ display:table-cell; width:39%; vertical-align:middle;
-    padding-left:9mm; }}
+  /* QRES51 — courbe agrandie (retour fondateur) : 36 mm au lieu de 28,5,
+     compensée par les marges resserrées de la page. */
+  .p2-fin-grid {{ display:table; width:100%; table-layout:fixed; margin-top:1.5mm; }}
+  .p2-fin-cc {{ display:table-cell; width:62%; vertical-align:middle; }}
+  .p2-fin-cc img {{ display:block; height:36mm; width:auto; max-width:100%; }}
+  .p2-fin-sc {{ display:table-cell; width:38%; vertical-align:middle;
+    padding-left:8mm; }}
   .p2-side-stat {{ margin-bottom:2.5mm; }}
   .p2-side-stat:last-child {{ margin-bottom:0; }}
   .p2-stat-k {{ display:block; font-size:6.7pt; letter-spacing:.12em;
@@ -483,7 +483,7 @@ def build_pages(ctx) -> list:
     margin-top:0.8mm; line-height:1.2; }}
   .p2-stat-s b {{ color:{C['green']}; font-weight:700; }}
   .p2-fin-cap {{ font-size:7.3pt; color:{C['muted']}; text-align:center;
-    margin-top:3mm; font-style:italic; }}
+    margin-top:2mm; font-style:italic; }}
   .p2-fin-cap b {{ color:{C['navy']}; font-weight:700; font-style:normal; }}
 
   /* QRES5 — garanties (badges déplacés de la page 3) */
@@ -515,22 +515,34 @@ def build_pages(ctx) -> list:
   .p2-fin-xl {{ margin-top:6mm; }}
   .p2-finpage-badges {{ margin-top:7mm; }}
 
-  /* QRES6 — densité adaptative pour les tableaux longs */
-  .p2-dense .p2-tbl {{ font-size:8.1pt; }}
-  .p2-dense .p2-tbl tbody td {{ padding:0.8mm 0; }}
-  .p2-dense .p2-band {{ padding:1.2mm 5mm; }}
-  .p2-dense .p2-dbody li {{ padding:1.2mm 3.5mm; font-size:8.1pt; }}
-  .p2-dense .p2-fin-cc img {{ height:24.5mm; }}
-  .p2-dense .p2-badge {{ padding:5px 4px 4px; }}
-  .p2-dense .p2-badge-n {{ font-size:14pt; }}
-  .p2-dense .p2-badge-s {{ display:none; }}
-  .p2-dense .p2-dwhy {{ display:none; }}
-  .p2-dense .p2-band {{ padding:0.8mm 5mm; }}
-  .p2-dense .p2-spec-v {{ font-size:15pt; }}
-  .p2-dense .p2-tl {{ padding:0.8mm 0; }}
-  .p2-dense .p2-tot-grand {{ padding:1.8mm 0; }}
-  .p2-dense .p2-fin-cap {{ margin-top:1.5mm; font-size:6.9pt; }}
-  .p2-dense .p2-roof img {{ width:26mm; }}
+  /* QRES50 — bande financement de la page rentabilité (économies − crédit =
+     dans votre poche) : séparation par cellules fixes, jamais par flex gap */
+  .p2-finband {{ display:flex; align-items:stretch; margin-top:1mm; }}
+  .p2-fb-c {{ flex:1; text-align:center; padding:4mm 3mm;
+    background:{C['paper']}; border:1px solid {C['line']}; border-radius:11px;
+    box-shadow:0 1px 2px rgba(26,43,74,.04),0 5px 14px rgba(26,43,74,.05); }}
+  .p2-fb-sep {{ flex:0 0 10mm; text-align:center; align-self:center;
+    font-family:{fonts['display']}; font-size:15pt; color:{C['muted_2']}; }}
+  .p2-fb-k {{ display:block; font-size:6.7pt; letter-spacing:.12em;
+    text-transform:uppercase; color:{C['muted_2']}; font-weight:700;
+    margin-bottom:1mm; }}
+  .p2-fb-v {{ display:block; font-family:{fonts['display']}; font-size:14.5pt;
+    color:{C['navy']}; }}
+  .p2-fb-v small {{ font-family:{fonts['sans']}; font-size:7.5pt;
+    color:{C['muted']}; font-weight:600; }}
+  .p2-fb-net {{ border:1.5px solid {C['gold']}; background:#FFFCF5; }}
+  .p2-fb-net .p2-fb-v {{ color:{C['gold_soft']}; }}
+
+  /* QRES53 — bande impact environnemental (page rentabilité) */
+  .p2-impact {{ display:flex; gap:8mm; margin-top:1mm; }}
+  .p2-imp-c {{ flex:1; text-align:center; padding:3.5mm 3mm;
+    background:linear-gradient(180deg,{C['green_bg']},#ffffff 85%);
+    border:1px solid {C['green_bg']}; border-left:4px solid {C['green']};
+    border-radius:11px; }}
+  .p2-imp-v {{ display:block; font-family:{fonts['display']}; font-size:14.5pt;
+    color:{C['green']}; }}
+  .p2-imp-l {{ display:block; font-size:7pt; color:{C['muted']};
+    margin-top:1mm; line-height:1.3; }}
 
   /* QJ30 — multi-propriétés */
   .p2-multi-wrap {{ margin-top:2.5mm; }}
@@ -646,10 +658,13 @@ def build_pages(ctx) -> list:
             # QRES38 — page rentabilité dédiée : composition VERTICALE (courbe
             # pleine largeur, stats en rangée dessous) — la page respire au
             # lieu de laisser sa moitié basse vide.
+            # QRES51 — variante haute de la courbe (charts['payback_xl']) :
+            # affichée sur 182 mm, elle gagne ~20 mm de hauteur et ses
+            # polices déjà agrandies deviennent très lisibles.
             return f"""
   <div class="p2-fin p2-fin-xl">
     <div class="p2-fin-sub">{fin_sub}</div>
-    <img class="p2-fin-wide" src="{charts['payback']}"
+    <img class="p2-fin-wide" src="{charts.get('payback_xl', charts['payback'])}"
       alt="Courbe de rentabilité sur 25 ans">
     <div class="p2-finstats">{_stats_xl_html}</div>
     {_fin_cap}
@@ -679,18 +694,26 @@ def build_pages(ctx) -> list:
         return f'{style}<div class="p2-wrap{dense_c}">{inner}</div>'
 
     if fits_one:
-        # Mise en page historique : tout sur UNE page (dense si chargée).
+        # Mise en page historique : tout sur UNE page (petits devis).
         return [_wrap_page(
             head_html + band_html
             + _table_html(shared, equipement_lbl)
             + closing_html + _fin_html()
-            + badges_block, dense_cls)]
+            + badges_block)]
 
     # ── Devis chargé : page(s) équipement + page rentabilité dédiée ──────────
     # Budgets (mm) : 1ʳᵉ page équipement (bande projet + titre + clôture
     # tableau), pages « suite » (titre court seulement — la clôture suit le
     # DERNIER morceau de tableau).
     chunks = _chunk_rows(shared, budgets=[118.0, 165.0])
+
+    # QRES52 — quand LA page équipement (non découpée) garde une réserve
+    # confortable, les badges de garantie la terminent — à côté de
+    # l'équipement qu'ils couvrent, plus de bas de page vide ; sinon ils
+    # clôturent la page rentabilité comme avant.
+    _est_equip = 13 + 26 + _table_mm(shared) + (71 if deux_options else 55)
+    badges_on_equip = len(chunks) == 1 and (271 - _est_equip) >= 60
+
     pages = []
     for i, chunk in enumerate(chunks):
         is_first = i == 0
@@ -703,6 +726,8 @@ def build_pages(ctx) -> list:
                       'page suivante &rsaquo;</div>')
         else:
             inner += closing_html
+            if badges_on_equip:
+                inner += f'<div class="p2-finpage-badges">{badges_block}</div>'
         pages.append(_wrap_page(inner))
 
     # QRES28 — la page rentabilité dédiée (espace abondant) reçoit le bandeau
@@ -713,9 +738,77 @@ def build_pages(ctx) -> list:
             f'<div class="p2-callout">≈ {fmt(gain25)} MAD de gain net sur '
             f'25 ans — <b>{gain_mult_txt}× le prix de votre installation'
             '</b></div>')
+
+    # QRES50 (fondateur, 2026-07-18) — la zone blanche du bas de page devient
+    # l'argument cashflow-positif : bande « économies − crédit = dans votre
+    # poche », données réelles du bloc financing uniquement (sinon omise).
+    fin_d = d.get("financing") or {}
+    fin_credit = fin_d.get("credit") or {}
+    finband_html = ""
+    if fin_d.get("indicatif") and fin_credit.get("mensualite"):
+        _mens = int(round(fin_credit["mensualite"]))
+        _eco_ref_m = (d.get("eco_a_ann") if (deux_options or avec_ok)
+                      else d.get("eco_s_ann")) or 0
+        _eco_mois = int(round(_eco_ref_m / 12.0))
+        if _eco_mois > _mens:
+            _duree_ans = round((fin_credit.get("duree_mois") or 0) / 12)
+            _prog = fin_credit.get("programme_nom") or "crédit vert"
+            finband_html = (
+                '<div class="p2-lbl" style="margin-top:8mm">Financement '
+                'possible — et si vous financiez au lieu de payer '
+                'comptant&nbsp;?</div>'
+                '<div class="p2-finband">'
+                '<div class="p2-fb-c"><span class="p2-fb-k">Économies '
+                'estimées</span>'
+                f'<span class="p2-fb-v">≈ {fmt(_eco_mois)} '
+                '<small>MAD/mois</small></span></div>'
+                '<div class="p2-fb-sep">&minus;</div>'
+                '<div class="p2-fb-c"><span class="p2-fb-k">Crédit</span>'
+                f'<span class="p2-fb-v">≈ {fmt(_mens)} '
+                '<small>MAD/mois</small></span></div>'
+                '<div class="p2-fb-sep">=</div>'
+                '<div class="p2-fb-c p2-fb-net"><span class="p2-fb-k">Dans '
+                'votre poche</span>'
+                f'<span class="p2-fb-v">≈ +{fmt(_eco_mois - _mens)} '
+                '<small>MAD/mois</small></span></div>'
+                '</div>'
+                f'<div class="p2-fin-cap">sur {_duree_ans} ans ({_prog}) — '
+                'indicatif, à confirmer avec votre banque.</div>')
+
+    # QRES53 — l'impact environnemental complète la page rentabilité (le
+    # retour de l'investissement ne se compte pas qu'en dirhams) : mêmes
+    # facteurs de calcul que la page 1 (0,81 t CO₂/MWh, ~21 kg CO₂/arbre/an),
+    # cumul 25 ans PRUDENT (dégradation panneau 0,5 %/an intégrée, ×23,5).
+    _prod = d.get("prod_kwh") or 0
+    impact_html = ""
+    if _prod:
+        _co2_t = _prod * 0.81 / 1000.0
+        _trees = max(1, round(_prod * 0.81 / 21))
+        _co2_25 = _co2_t * 23.5
+
+        def _fr1(v):
+            return (f"{v:.1f}".replace(".", ",") if v < 10
+                    else fmt(round(v)))
+        impact_html = (
+            '<div class="p2-lbl" style="margin-top:7mm">Et pour la planète'
+            '</div>'
+            '<div class="p2-impact">'
+            f'<div class="p2-imp-c"><span class="p2-imp-v">≈ {_fr1(_co2_t)} '
+            't</span><span class="p2-imp-l">de CO<sub>2</sub> évitées '
+            'chaque année</span></div>'
+            f'<div class="p2-imp-c"><span class="p2-imp-v">≈ {fmt(_trees)}'
+            '</span><span class="p2-imp-l">arbres plantés — l\'équivalent '
+            'annuel</span></div>'
+            f'<div class="p2-imp-c"><span class="p2-imp-v">≈ {_fr1(_co2_25)} '
+            't</span><span class="p2-imp-l">de CO<sub>2</sub> évitées sur '
+            '25 ans</span></div>'
+            '</div>')
+
+    _fin_badges = ("" if badges_on_equip
+                   else f'<div class="p2-finpage-badges">{badges_block}</div>')
     pages.append(_wrap_page(
         fin_head_html + _fin_html(xl=True) + _callout
-        + f'<div class="p2-finpage-badges">{badges_block}</div>'))
+        + finband_html + impact_html + _fin_badges))
     return pages
 
 
