@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useMemo, useState, useEffect, useRef, useCallback } from 'react'
 import { Paperclip } from 'lucide-react'
 import { Button, IconButton } from '../../../ui'
 import api from '../../../api/axios'
@@ -61,7 +61,11 @@ export default function TimelineTab({
   // (rafraîchi par le shell au montage, et par nos propres actions) a des
   // entrées, il devient la source (plus complet — jusqu'à N entrées, pas
   // limité à 50, et déjà rafraîchi après une action locale).
-  const entries = (historique && historique.length > 0) ? historique : (state.server?.chatter_recent ?? [])
+  const chatterRecent = state.server?.chatter_recent
+  const entries = useMemo(
+    () => ((historique && historique.length > 0) ? historique : (chatterRecent ?? [])),
+    [historique, chatterRecent],
+  )
 
   const [filter, setFilter] = useState(readFilter)
   const changeFilter = useCallback((key) => { setFilter(key); writeFilter(key) }, [])
@@ -71,10 +75,20 @@ export default function TimelineTab({
   // paresseux (une fois par lead), silencieux si vide ou en erreur (jamais de
   // toast pour un enrichissement passif).
   const [touch, setTouch] = useState(null)
-  useEffect(() => {
+  // Reset pendant le rendu (jamais de setState synchrone en effet — lint v7),
+  // le GET paresseux reste en effet avec garde d'annulation.
+  const [touchFor, setTouchFor] = useState(leadId)
+  if (touchFor !== leadId) {
+    setTouchFor(leadId)
     setTouch(null)
-    if (!leadId) return
-    crmApi.getLeadPointsContact(leadId).then((r) => setTouch(r.data)).catch(() => {})
+  }
+  useEffect(() => {
+    if (!leadId) return undefined
+    let cancelled = false
+    crmApi.getLeadPointsContact(leadId)
+      .then((r) => { if (!cancelled) setTouch(r.data) })
+      .catch(() => {})
+    return () => { cancelled = true }
   }, [leadId])
 
   // NTMKT11 — lien cliquable vers la campagne/séquence source d'une touche

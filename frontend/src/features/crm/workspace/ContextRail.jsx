@@ -62,13 +62,16 @@ export default function ContextRail({
 
   const [localComposer, setLocalComposer] = useState(state.composer)
   const [localWa, setLocalWa] = useState(state.wa)
-  useEffect(() => {
-    // Réinitialisation garantie à CHAQUE changement de lead (repli local
-    // uniquement — l'engine se réinitialise déjà lui-même via LOAD_LEAD).
+  // Réinitialisation garantie à CHAQUE changement de lead (repli local
+  // uniquement — l'engine se réinitialise déjà lui-même via LOAD_LEAD).
+  // Motif « adjust state during render » (react-hooks v7 interdit le
+  // setState synchrone en effet) — même pattern que SectionContact.
+  const [localFor, setLocalFor] = useState(leadId)
+  if (localFor !== leadId) {
+    setLocalFor(leadId)
     setLocalComposer(state.composer)
     setLocalWa(state.wa)
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- volontaire : uniquement au changement de lead
-  }, [leadId])
+  }
 
   const composer = dispatch ? state.composer : localComposer
   const setComposer = useCallback((patch) => {
@@ -108,7 +111,13 @@ export default function ContextRail({
       <Tabs value={tab} onValueChange={changeTab}>
         <TabsList className="lw-context-tabs">
           <TabsTrigger value="historique">Historique</TabsTrigger>
-          <TabsTrigger value="devis">Devis{nbDevis ? ` (${nbDevis})` : ''}</TabsTrigger>
+          {/* `.lead-devis-badge` + « N devis » : hook du spec e2e CI-GATED
+              devis.spec.js E4 (l'ancien badge d'en-tête LeadForm a disparu
+              avec LW13) — la CLASSE est le contrat, le style vient des
+              tokens de l'onglet. */}
+          <TabsTrigger value="devis">
+            <span className="lead-devis-badge">{nbDevis ? `${nbDevis} devis` : 'Devis'}</span>
+          </TabsTrigger>
           <TabsTrigger value="activites">Activités{openActivites ? ` (${openActivites})` : ''}</TabsTrigger>
           <TabsTrigger value="pieces">Pièces{nbPieces ? ` (${nbPieces})` : ''}</TabsTrigger>
         </TabsList>
