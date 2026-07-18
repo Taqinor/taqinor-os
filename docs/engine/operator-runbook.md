@@ -1,8 +1,11 @@
-# Guide de l'opérateur — Moteur de publicités (ADSENG53)
+# Guide de l'opérateur — Moteur de publicités (ADSENG53, v2 — ADSDEEP65)
 
 > Pour Meryem et Reda. Zéro jargon technique. Ce guide explique comment **piloter**
 > le moteur au quotidien : lancer un plan, lire le brief, répondre aux alertes,
 > couper le moteur en urgence, et la checklist avant d'activer le mode autonome.
+> **v2** ajoute le récapitulatif quotidien, l'audit de compte à la demande, et une
+> section « ce que le moteur ne peut PAS faire » — pour ne jamais rien promettre
+> que Meta lui-même ne permet pas.
 
 ## En une phrase
 
@@ -119,6 +122,73 @@ manque. Quand tout est vert, le mode devient **activable** — mais il reste
 l'administrateur). L'éteindre est toujours possible, sans condition.
 
 ---
+
+## 7. Le récapitulatif quotidien (ADSDEEP62)
+
+Chaque matin, vous recevez un **récapitulatif de la veille** (in-app, et par
+email si votre adresse est configurée pour ce canal) : dépense, conversations
+WhatsApp, leads, signatures (quand le connecteur Odoo est branché), nombre
+d'alertes actives, et la meilleure pub de la veille quand la donnée existe.
+
+- **Vous ne voulez plus le recevoir ?** Désactivez-le dans vos préférences de
+  notification (comme n'importe quel autre récapitulatif) — c'est un
+  interrupteur PAR PERSONNE, jamais global.
+- **Une case reste vide (signatures, meilleure pub) ?** C'est volontaire : le
+  moteur n'invente jamais un chiffre. Une case vide veut dire « donnée pas
+  encore disponible », pas « zéro ».
+- Il ne remplace pas le *Brief* hebdomadaire (section 2) — c'est un coup d'œil
+  quotidien plus court, le brief reste l'analyse de la semaine.
+
+## 8. L'audit de compte à la demande (ADSDEEP63)
+
+Dans l'écran *Reporting*, un onglet **« Audit de compte »** lance, sur simple
+clic, une vérification de santé de votre compte publicitaire — pas de
+planification automatique, vous décidez quand le lancer :
+
+- **Structure & nommage** — combien de vos pubs suivent une convention de
+  nommage reconnaissable (utile pour les classements par accroche/angle).
+- **Fragmentation budgétaire** — des campagnes découpées en trop d'ad sets, au
+  point que plusieurs restent bloqués en apprentissage en même temps (signe
+  qu'il faut consolider).
+- **Fatigue créative** — les mêmes campagnes que le brief hebdomadaire
+  repèrent une fréquence de diffusion trop élevée (section « fatigue »).
+- **Tracking** — le pixel et la Conversions API (CAPI) sont-ils bien
+  branchés ? Des liens de pub partent-ils sans paramètre de suivi (UTM) ?
+- **Fenêtres de données** — un rappel des délais de conservation Meta (leads,
+  insights, ventilations) pour ne jamais être surpris par une donnée qui a
+  disparu.
+
+Chaque ligne de l'audit porte un **lien direct** vers l'écran où agir — jamais
+juste un chiffre sans suite possible.
+
+## 9. Ce que le moteur NE PEUT PAS faire (limites honnêtes)
+
+Certaines limites viennent de Meta lui-même, pas de notre moteur — les
+connaître évite d'attendre une fonctionnalité qui n'existe nulle part côté
+concurrence non plus :
+
+- **Comparer le chevauchement d'audiences n'est pas possible par API.** L'outil
+  de comparaison d'audiences existe dans Ads Manager, mais Meta ne l'expose pas
+  aux logiciels tiers — ce chiffre ne peut être lu que directement dans Meta.
+- **L'attribution n'est jamais « temps réel ».** Les résultats remontent avec
+  1 jour ou plus de retard côté Meta ; le moteur (et vous) devez donc attendre
+  **3 à 7 jours** avant de juger qu'une pub « ne marche pas » — agir plus tôt
+  risque de couper une pub qui était simplement en train de rattraper son
+  retard de comptage.
+- **Un changement important réinitialise l'apprentissage.** Changer le budget
+  de plus de 20 %, ou changer le créatif d'un ad set, relance sa phase
+  d'apprentissage chez Meta (quelques jours de coûts instables) — le moteur
+  vous avertit avant ce genre d'action, mais ne peut pas contourner la règle
+  Meta elle-même.
+- **La légende d'une publication Instagram est figée après publication.** Le
+  moteur ne peut la lire que telle qu'elle a été publiée — il ne peut jamais la
+  modifier après coup (seul le TEXTE d'un post de PAGE Facebook, publié par le
+  moteur, reste éditable).
+- **Seuls les posts publiés PAR le moteur sont modifiables.** Un post publié à
+  la main dans Meta Business Suite (avant l'installation du moteur, ou par
+  quelqu'un d'autre) ne peut pas être édité depuis l'ERP — Meta lui-même
+  refuserait la modification ; le moteur vous prévient proprement plutôt que
+  d'essayer et d'échouer en silence.
 
 ## Règles d'or de sécurité
 
