@@ -442,6 +442,8 @@ function ChargesGlTab() {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState('')
   const [file, setFile] = useState(null)
+  // WIR37 — journal de paie → comptabilité (PAIE33/XPAI17).
+  const [ecritureResult, setEcritureResult] = useState(null)
 
   useEffect(() => {
     paieApi.getPeriodes()
@@ -473,6 +475,24 @@ function ChargesGlTab() {
       toast.success('Rapprochement AFFEBDS effectué.')
     } catch (e) {
       toast.error(e?.response?.data?.detail || 'Rapprochement impossible.')
+    } finally { setBusy('') }
+  }
+
+  // WIR37 — passe l'écriture OD équilibrée du journal de paie (bulletins
+  // validés de la période) vers compta, via `compta.services` côté serveur.
+  // `ventile` = variante avec ventilation analytique (XPAI17).
+  const passerEcriture = async (ventile) => {
+    if (!periodeId) { toast.error('Choisissez une période.'); return }
+    const kind = ventile ? 'ecriture-ventilee' : 'ecriture'
+    setBusy(kind)
+    try {
+      const { data } = ventile
+        ? await paieApi.journalVentile(Number(periodeId))
+        : await paieApi.journalDePaie(Number(periodeId))
+      setEcritureResult(data)
+      toast.success('Écriture comptable passée.')
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'Passage en comptabilité impossible.')
     } finally { setBusy('') }
   }
 
@@ -532,6 +552,36 @@ function ChargesGlTab() {
             <UploadCloud size={16} aria-hidden="true" /> Rapprocher
           </Button>
         </div>
+      </Card>
+
+      {/* WIR37 — journal de paie → comptabilité (PAIE33). Aucun déclencheur
+          UI n'existait jusqu'ici pour `paieApi.journalDePaie`/`journalVentile`
+          (backend + service compta déjà construits et testés). */}
+      <Card className="flex flex-col gap-3 p-4 sm:p-5">
+        <h3 className="font-display font-semibold">
+          Journal de paie → comptabilité
+        </h3>
+        <p className="text-sm text-muted-foreground">
+          Passe l’écriture OD équilibrée des bulletins validés de la période
+          sélectionnée (débit rémunérations/charges patronales, crédit
+          CNSS/AMO, IR, CIMR, net à payer).
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <Button loading={busy === 'ecriture'}
+            onClick={() => passerEcriture(false)}>
+            <Banknote size={16} aria-hidden="true" /> Passer l’écriture comptable
+          </Button>
+          <Button variant="outline" loading={busy === 'ecriture-ventilee'}
+            onClick={() => passerEcriture(true)}>
+            <Banknote size={16} aria-hidden="true" /> Écriture ventilée (analytique)
+          </Button>
+        </div>
+        {ecritureResult && (
+          <p className="text-sm text-success">
+            Écriture {ecritureResult.reference
+              || `#${ecritureResult.ecriture_id || ecritureResult.id}`} passée en comptabilité.
+          </p>
+        )}
       </Card>
     </div>
   )
