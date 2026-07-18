@@ -137,6 +137,24 @@ def fmt(n) -> str:
     return f"{n:,.0f}".replace(",", " ")
 
 
+# ── QRES5 — garanties canoniques (UNE source pour tout le document) ──────────
+# Chiffres traçables aux fiches produit du catalogue (Canadian Solar TOPHiKu7 :
+# 12 ans produit / 30 ans performance linéaire 87,4 % ; onduleurs 10 ans ;
+# structures 20 ans). La bande de crédibilité (page 1), les badges (page 2) et
+# toute mention de garantie lisent CETTE liste — plus jamais deux chiffres
+# contradictoires (« 25 ans » vs « 30 ans ») dans le même PDF.
+# QRES25 — libellé un mot + sous-ligne (lisibilité badge) : (n, unité, libellé,
+# sous-libellé).
+# QRES56 (fondateur, 2026-07-18) — la garantie « Structure 20 ans » est
+# RETIRÉE sur décision fondateur : trois garanties traçables aux fiches
+# produit, rien de plus.
+WARRANTIES = [
+    ("2", "ans", "Installation", "main-d'œuvre TAQINOR"),
+    ("10", "ans", "Onduleur", "garantie fabricant"),
+    ("12", "ans", "Panneaux", "garantie produit"),
+    ("30", "ans", "Performance", "87,4 % garanti"),
+]
+
 # French name particles that stay lowercase inside a name.
 _NAME_PARTICLES = {"de", "du", "des", "la", "le", "les", "van", "von",
                    "el", "al", "ben", "bin", "ould", "aït", "ait"}
@@ -173,11 +191,42 @@ def titlecase_name(name) -> str:
     return " ".join(out)
 
 
+def valid_until(date_str, days) -> str:
+    """QRES31 — échéance ABSOLUE : « 17/07/2026 » + 30 j → « 16/08/2026 ».
+
+    Une date butoir concrète ferme mieux qu'une durée relative (« 30 jours »
+    n'engage personne). Dérivée de la date du devis — jamais de l'horloge.
+    Renvoie '' si la date est illisible (le rendu retombe sur la durée)."""
+    try:
+        import datetime as _dt
+        d0 = _dt.datetime.strptime(str(date_str).strip(), "%d/%m/%Y")
+        return (d0 + _dt.timedelta(days=int(days))).strftime("%d/%m/%Y")
+    except Exception:
+        return ""
+
+
 def join_meta(*parts, sep=" · ") -> str:
     """Join non-empty, stripped meta fragments with `sep` (no dangling commas/dots
-    when a field like the address or city is missing)."""
-    clean = [str(p).strip().strip(",").strip() for p in parts if p and str(p).strip()]
-    return sep.join(c for c in clean if c)
+    when a field like the address or city is missing).
+
+    QRES2 — dédoublonne les morceaux répétés : l'adresse saisie contient
+    souvent déjà la ville (« casablanca, casablanca · casablanca »), le PDF ne
+    doit jamais imprimer deux fois le même morceau. Un fragment n'est gardé que
+    s'il apporte au moins un morceau (séparé par des virgules) encore inédit."""
+    seen_bits: set = set()
+    out = []
+    for p in parts:
+        if not p or not str(p).strip():
+            continue
+        kept = []
+        for b in (x.strip() for x in str(p).split(",")):
+            if b and b.lower() not in seen_bits:
+                kept.append(b)
+                seen_bits.add(b.lower())
+        frag = ", ".join(kept)
+        if frag:
+            out.append(frag)
+    return sep.join(out)
 
 
 def fiche_slug(designation, marque="") -> str:
@@ -244,7 +293,9 @@ def base_css() -> str:
 html, body {{ font-family:{FONT_SANS}; color:{C['ink']}; -weasy-hyphens:none; }}
 .page {{
   position:relative; width:210mm; height:297mm; overflow:hidden;
-  background:{C['paper']}; page-break-after:always;
+  /* QRES26 — fond de page très légèrement cassé : les cartes blanches se
+     détachent en douceur (profondeur « matière » sans lourdeur). */
+  background:#FBFBF9; page-break-after:always;
 }}
 .page:last-child {{ page-break-after:auto; }}
 .pad {{ padding:14mm 14mm 0 14mm; }}
@@ -266,6 +317,11 @@ html, body {{ font-family:{FONT_SANS}; color:{C['ink']}; -weasy-hyphens:none; }}
 }}
 .foot b {{ color:#fff; font-weight:700; letter-spacing:.04em; }}
 .foot a {{ color:{C['gold']}; text-decoration:none; }}
+
+/* QRES62 — joints élastiques : inertes (hauteur 0) au 1ᵉʳ rendu ; le
+   renderer les remplace par des espaceurs dimensionnés après MESURE du vide
+   réel de chaque page (distribution dynamique de l'espace). */
+.qj {{ height:0; margin:0; padding:0; }}
 
 /* Reusable card */
 .card {{ border:1px solid {C['line']}; border-radius:12px; background:{C['paper']}; }}

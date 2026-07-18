@@ -54,6 +54,7 @@ apps/ventes/quote_engine/industriel/trust.py
 apps/ventes/quote_engine/residential/cover.py
 apps/ventes/quote_engine/residential/options.py
 apps/ventes/quote_engine/residential/renderer.py
+apps/ventes/quote_engine/residential/sample_data.py
 apps/ventes/quote_engine/residential/theme.py
 apps/ventes/quote_engine/residential/trust.py
 apps/ventes/services.py

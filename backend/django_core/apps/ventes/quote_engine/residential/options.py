@@ -117,7 +117,18 @@ def _totals_chain(label, accent, tot, fmt, C, recommended=False):
     )
 
 
-def build(ctx) -> str:
+def build_pages(ctx) -> list:
+    """QRES17 — pagination VARIABLE (fondateur, 2026-07-18).
+
+    Rend 1..N pages « Votre installation » : un devis standard tient sur UNE
+    page (l'historique) ; un devis chargé (10+ lignes) découpe proprement —
+    page équipement (tableau complet, découpé par tranches de hauteur s'il le
+    faut, avec « suite ») puis page rentabilité dédiée (courbe plus grande +
+    garanties). Le pied « Page n / N » suit tout seul (QX6). Jamais de
+    débordement rogné ni de 4ᵉ page orpheline.
+    """
+    from . import theme
+
     d = ctx["d"]
     C = ctx["C"]
     fmt = ctx["fmt"]
@@ -161,17 +172,24 @@ def build(ctx) -> str:
 
     # QX5 — le bloc « ce que chaque option ajoute » n'existe QUE pour un vrai
     # devis à deux options ; mono-option → aucun découpage delta.
+    # QRES27 — en-têtes recomposés (« Spécifique à … », plus de « ajoute »
+    # pendu), texte NAVY sur la barre or (jamais blanc sur #F5A623 — contraste)
+    # et une ligne « Pourquoi » sous l'option recommandée qui JUSTIFIE la
+    # recommandation au lieu de la seule pastille.
     if deux_options:
         deltas_html = (
             '<div class="p2-deltas">'
             '<div class="p2-dcard">'
             f'<div class="p2-dhead" style="background:{C["navy"]}">'
-            'Option 1 — Sans batterie <small>ajoute</small></div>'
+            'Spécifique à l&rsquo;option 1 — Sans batterie</div>'
             f'<div class="p2-dbody"><ul>{delta_sans_html}</ul></div></div>'
             '<div class="p2-dcard">'
-            f'<div class="p2-dhead" style="background:{C["gold"]}">'
-            'Option 2 — Avec batterie <small>ajoute</small></div>'
-            f'<div class="p2-dbody"><ul>{delta_avec_html}</ul></div></div>'
+            f'<div class="p2-dhead" style="background:{C["gold"]};'
+            f'color:{C["navy"]}">'
+            'Spécifique à l&rsquo;option 2 — Avec batterie</div>'
+            f'<div class="p2-dbody"><ul>{delta_avec_html}</ul>'
+            '<div class="p2-dwhy">Pourquoi nous la recommandons : vos '
+            'soirées et les coupures passent sur batterie.</div></div></div>'
             '</div>')
     else:
         deltas_html = ""
@@ -250,12 +268,78 @@ def build(ctx) -> str:
     else:
         _eco_ref, _tot_ref = d.get("eco_s_ann", 0), d.get("total_sans", 0)
         gain25_label = "sans batterie"
-    gain25 = max(0, round(_eco_ref * 25 - _tot_ref))
+    # QRES58 — le gain net 25 ans sort du VRAI cashflow (dégradation 0,5 %/an
+    # intégrée — ce que les hypothèses promettent) : plus jamais un eco×25 plat
+    # qui surévaluait ~7 % ; repli Σ(0,995^t) ≈ 23,56 si le cumul manque.
+    _cf_ref = (d.get("cashflow_avec") if (deux_options or avec_ok)
+               else d.get("cashflow_sans")) or []
+    if _cf_ref:
+        gain25 = max(0, round(_cf_ref[-1]))
+    else:
+        gain25 = max(0, round(_eco_ref * 23.56 - _tot_ref))
     gain25 = round(gain25 / 1000) * 1000
+    # QRES28 — le multiple (« ≈ 5,6× votre investissement ») rend le gain net
+    # tangible ; calculé, jamais inventé (gain net / investissement).
+    gain_mult = (round(gain25 / _tot_ref, 1) if _tot_ref and gain25 > 0
+                 else None)
+    gain_mult_txt = (f"{gain_mult:g}".replace(".", ",")
+                     if gain_mult and gain_mult >= 1 else None)
+    gain_mult_sub = (
+        f" — soit ≈ <b>{gain_mult_txt}×</b> votre investissement"
+        if gain_mult_txt else "")
+
+    # QRES3 — sous-titre du graphe fidèle au devis : « deux scénarios »
+    # seulement quand le document porte réellement deux options.
+    fin_sub = ("gain cumulé, deux scénarios — le point marque le retour "
+               "sur investissement" if deux_options
+               else "gain cumulé — le point marque le retour sur investissement")
+
+    # QRES57 — les garanties vivent en bande fine sur la page signature
+    # (trust.py, source unique theme.WARRANTIES) : plus de cartes badges en
+    # page 2 — l'espace revient à la courbe de rentabilité.
+
+    # ── QRES17 — modèle de hauteur (mm) : décide si tout tient sur UNE page ──
+    # Estimations calibrées sur le rendu réel (110 dpi) avec marge de sécurité ;
+    # la garde CI (pages exactes + bande légale non rognée) verrouille le tout.
+    def _row_mm(it):
+        return 4.5 + (3.2 if len(str(it.get("designation") or "")) > 55
+                      else 0.0)
+
+    def _table_mm(items):
+        return 6.5 + sum(_row_mm(it) for it in items)
+
+    def _deltas_mm():
+        if not deux_options:
+            return 0.0
+        rows = max(len(delta_sans), len(delta_avec), 1)
+        return 7.0 + rows * 4.6
+
+    # QRES49/57 (fondateur, 2026-07-18) — un devis de la taille RÉELLE des
+    # devis du fondateur (~13 lignes, fixture « plus5 ») tient en 3 pages AVEC
+    # la grande courbe : on a retiré de la page 2 ce qui était redondant (les
+    # cartes badges → bande fine sur la page signature ; la ligne « fiches
+    # techniques » → fusionnée à la légende TVA). Seuls les très gros devis
+    # (~12 lignes communes et plus) passent en 4 pages.
+    fits_one = (_table_mm(shared) + _deltas_mm()) <= 68.0
+
+    def _chunk_rows(items, budgets):
+        """Découpe les lignes par tranches de hauteur (budgets mm par page)."""
+        out, cur, h, bi = [], [], 0.0, 0
+        for it in items:
+            ih = _row_mm(it)
+            budget = budgets[min(bi, len(budgets) - 1)]
+            if cur and h + ih > budget:
+                out.append(cur)
+                cur, h, bi = [], 0.0, bi + 1
+            cur.append(it)
+            h += ih
+        if cur:
+            out.append(cur)
+        return out
 
     style = f"""
 <style>
-  .p2-wrap {{ padding:7mm 14mm 6mm 14mm; }}
+  .p2-wrap {{ padding:6mm 14mm 5mm 14mm; }}
 
   /* Section header */
   .p2-kick {{ font-size:8.5pt; letter-spacing:.22em; text-transform:uppercase;
@@ -264,11 +348,16 @@ def build(ctx) -> str:
     color:{C['navy']}; line-height:1.04; margin-top:1.5mm; letter-spacing:-.3px; }}
 
   /* Top band: roof schematic + spec list */
-  .p2-band {{ display:flex; align-items:center; gap:6mm; margin-top:2.5mm;
-    padding:1.7mm 5mm; background:{C['wash']}; border:1px solid {C['line']};
+  .p2-band {{ display:flex; align-items:center; gap:6mm; margin-top:2mm;
+    padding:1.2mm 5mm; background:{C['wash']}; border:1px solid {C['line']};
     border-radius:12px; }}
-  .p2-roof {{ flex:0 0 36mm; text-align:center; }}
-  .p2-roof img {{ width:34mm; height:auto; }}
+  .p2-roof {{ flex:0 0 32mm; text-align:center; }}
+  .p2-roof img {{ width:30mm; height:auto; }}
+  /* QRES39 — photo réelle de toiture : cadrée, arrondie, légendée */
+  .p2-roof-photo {{ width:30mm; height:17.5mm; object-fit:cover;
+    border-radius:9px; display:block; margin:0 auto; }}
+  .p2-roof-cap {{ font-size:6.3pt; color:{C['muted_2']}; margin-top:0.8mm;
+    letter-spacing:.06em; text-transform:uppercase; font-weight:700; }}
   .p2-specs {{ flex:1; display:flex; gap:5mm; }}
   .p2-spec {{ flex:1; display:flex; flex-direction:column; gap:1mm;
     padding-left:5mm; border-left:2px solid {C['line']}; }}
@@ -279,7 +368,7 @@ def build(ctx) -> str:
 
   /* Block label */
   .p2-lbl {{ font-size:8.5pt; letter-spacing:.16em; text-transform:uppercase;
-    color:{C['navy']}; font-weight:700; margin:3.5mm 0 1.5mm; }}
+    color:{C['navy']}; font-weight:700; margin:3mm 0 1.5mm; }}
 
   /* Shared equipment table */
   .p2-tbl {{ width:100%; border-collapse:collapse; font-size:8.7pt; }}
@@ -287,6 +376,8 @@ def build(ctx) -> str:
     text-transform:uppercase; color:{C['muted_2']}; font-weight:700;
     text-align:left; padding:0 0 2mm; border-bottom:1.5px solid {C['line']}; }}
   .p2-tbl th.p2-c, .p2-tbl td.p2-c {{ text-align:center; }}
+  /* QRES36 — gouttière P.U. ↔ TVA (les deux colonnes se frôlaient) */
+  .p2-tbl th:nth-child(4), .p2-tbl td:nth-child(4) {{ padding-left:14px; }}
   .p2-tbl th.p2-r, .p2-tbl td.p2-r {{ text-align:right; }}
   .p2-tbl tbody td {{ padding:1.15mm 0; border-bottom:1px solid {C['line_soft']};
     vertical-align:middle; }}
@@ -301,14 +392,19 @@ def build(ctx) -> str:
   .p2-tot {{ font-weight:700; color:{C['navy']}; white-space:nowrap; }}
 
   /* Per-option delta mini-cards */
-  .p2-deltas {{ display:flex; gap:5mm; margin-top:2mm; align-items:stretch; }}
+  .p2-deltas {{ display:flex; gap:5mm; margin-top:1.5mm; align-items:stretch; }}
   .p2-dcard {{ flex:1; border:1px solid {C['line']}; border-radius:10px;
     overflow:hidden; display:flex; flex-direction:column; }}
   .p2-dhead {{ padding:2.2mm 3.5mm; font-size:8.4pt; font-weight:700;
     color:#fff; }}
   .p2-dhead small {{ font-weight:500; opacity:.85; }}
-  .p2-dbody {{ flex:1 1 auto; display:flex; align-items:center; }}
+  /* QRES35 — display:block (PAS flex-column) : WeasyPrint rétrécissait la
+     colonne désignation et superposait prix et « Pourquoi » (cf.
+     RENDERING_NOTES, pièges flex). */
+  .p2-dbody {{ display:block; }}
   .p2-dbody ul {{ list-style:none; width:100%; }}
+  .p2-dwhy {{ padding:1.1mm 3.5mm 1.4mm; font-size:7.6pt; color:{C['muted']};
+    border-top:1px solid {C['line_soft']}; }}
   .p2-dbody li {{ display:flex; justify-content:space-between; align-items:center;
     padding:1.7mm 3.5mm; font-size:8.5pt; border-bottom:1px solid {C['line_soft']}; }}
   .p2-dbody li:last-child {{ border-bottom:none; }}
@@ -316,13 +412,13 @@ def build(ctx) -> str:
   .p2-dl-p {{ color:{C['navy']}; font-weight:700; white-space:nowrap;
     margin-left:6px; }}
 
-  .p2-fiche {{ font-size:8pt; color:{C['muted']}; margin-top:2mm; }}
+  .p2-fiche {{ font-size:8pt; color:{C['muted']}; margin-top:1.5mm; }}
   .p2-fiche-btn {{ text-decoration:none; color:{C['navy']}; font-weight:700;
     white-space:nowrap; }}
   .p2-fiche-i {{ color:{C['gold']}; font-weight:700; }}
 
   /* Totals chains side by side */
-  .p2-totals {{ display:flex; gap:5mm; margin-top:2.5mm; }}
+  .p2-totals {{ display:flex; gap:5mm; margin-top:2mm; }}
   .p2-tot-card {{ flex:1; border:1px solid {C['line']};
     border-radius:0 0 10px 10px; background:{C['paper']};
     box-shadow:0 1px 3px rgba(26,43,74,.05); }}
@@ -345,22 +441,42 @@ def build(ctx) -> str:
     color:{C['navy']}; }}
   .p2-grand-v small {{ font-family:{fonts['sans']}; font-size:8.5pt;
     color:{C['muted']}; font-weight:600; }}
-  .p2-tva-note {{ font-size:7.4pt; color:{C['muted']}; margin-top:2mm;
+  .p2-tva-note {{ font-size:7.4pt; color:{C['muted']}; margin-top:1.5mm;
     text-align:center; }}
 
   /* Finance: rentabilité — the curve gets real height BESIDE airy stats */
-  .p2-fin {{ margin-top:2mm; }}
-  .p2-fin-head {{ display:flex; align-items:baseline; }}
-  .p2-fin-title {{ font-family:{fonts['serif']}; font-weight:700; font-size:14pt;
-    color:{C['navy']}; margin-right:4mm; }}
-  .p2-fin-sub {{ font-size:8pt; color:{C['muted']}; }}
+  .p2-fin {{ margin-top:1.5mm; }}
+  /* QRES29 — sous-titre sur SA ligne (l'inline collait au titre serif) */
+  .p2-fin-head {{ display:block; }}
+  .p2-fin-title {{ display:block; font-family:{fonts['serif']};
+    font-weight:700; font-size:13pt; color:{C['navy']}; }}
+  .p2-fin-sub {{ display:block; font-size:7.8pt; color:{C['muted']};
+    margin-top:0.2mm; }}
+  .p2-side-gain .p2-stat-s b {{ color:{C['gold_soft']}; }}
+  .p2-callout {{ margin-top:6mm; background:{C['navy']}; color:#fff;
+    border-radius:12px; padding:5mm 7mm; font-family:{fonts['display']};
+    font-size:13.5pt; line-height:1.25; }}
+  .p2-callout b {{ color:{C['gold']}; font-weight:400; }}
+  /* margin-left:auto est ignoré par WeasyPrint sur ce conteneur flex →
+     marge déterministe pour caler le TOTAL TTC sur le rail monétaire droit. */
+  .p2-totals-solo {{ width:60%; margin-left:40%; }}
+  .p2-tbl tbody td {{ font-feature-settings:'tnum' 1; }}
+  .p2-dcard, .p2-badge {{ box-shadow:0 1px 2px rgba(26,43,74,.04),
+    0 5px 14px rgba(26,43,74,.05); }}
 
   /* CSS table: chart cell (left, full height) + stats cell (right, airy) */
-  .p2-fin-grid {{ display:table; width:100%; table-layout:fixed; margin-top:2.5mm; }}
-  .p2-fin-cc {{ display:table-cell; width:60%; vertical-align:middle; }}
-  .p2-fin-cc img {{ display:block; height:33mm; width:auto; }}
-  .p2-fin-sc {{ display:table-cell; width:39%; vertical-align:middle;
-    padding-left:9mm; }}
+  /* QRES51/57 — courbe agrandie (retour fondateur) : 42 mm — l'espace des
+     anciennes cartes badges lui revient. */
+  .p2-fin-grid {{ display:table; width:100%; table-layout:fixed; margin-top:1.5mm; }}
+  .p2-fin-cc {{ display:table-cell; width:62%; vertical-align:middle; }}
+  .p2-fin-cc img {{ display:block; height:42mm; width:auto; max-width:100%; }}
+  /* QRES63 — page légère (mono-option minimal) : la courbe et ses stats
+     grandissent pour nourrir l'espace disponible, avant toute respiration */
+  .p2-light .p2-fin-cc img {{ height:52mm; }}
+  .p2-light .p2-fin-sc .p2-stat-v {{ font-size:16.5pt; }}
+  .p2-light .p2-fin-sc .p2-stat-s {{ font-size:7.8pt; }}
+  .p2-fin-sc {{ display:table-cell; width:38%; vertical-align:middle;
+    padding-left:8mm; }}
   .p2-side-stat {{ margin-bottom:2.5mm; }}
   .p2-side-stat:last-child {{ margin-bottom:0; }}
   .p2-stat-k {{ display:block; font-size:6.7pt; letter-spacing:.12em;
@@ -374,8 +490,51 @@ def build(ctx) -> str:
     margin-top:0.8mm; line-height:1.2; }}
   .p2-stat-s b {{ color:{C['green']}; font-weight:700; }}
   .p2-fin-cap {{ font-size:7.3pt; color:{C['muted']}; text-align:center;
-    margin-top:3mm; font-style:italic; }}
+    margin-top:2mm; font-style:italic; }}
   .p2-fin-cap b {{ color:{C['navy']}; font-weight:700; font-style:normal; }}
+
+  /* QRES17 — pages de continuation / page rentabilité dédiée */
+  .p2-cont-note {{ font-size:7.6pt; color:{C['muted']}; font-style:italic;
+    margin-top:2mm; text-align:right; }}
+  /* QRES37/38 — page rentabilité : courbe pleine largeur (bornée par la
+     largeur, jamais par une hauteur fixe qui la faisait déborder), stats en
+     rangée de trois sous la courbe. */
+  .p2-fin-wide {{ display:block; width:100%; height:auto; margin-top:4mm; }}
+  .p2-finstats {{ display:flex; gap:8mm; margin-top:5mm; }}
+  .p2-finstats .p2-side-stat {{ flex:1; margin-bottom:0; padding:4mm 5mm;
+    background:{C['paper']}; border:1px solid {C['line']}; border-radius:11px;
+    box-shadow:0 1px 2px rgba(26,43,74,.04),0 5px 14px rgba(26,43,74,.05); }}
+  .p2-fin-xl .p2-fin-sub {{ margin-top:0; }}
+  .p2-fin-xl {{ margin-top:6mm; }}
+
+  /* QRES50 — bande financement de la page rentabilité (économies − crédit =
+     dans votre poche) : séparation par cellules fixes, jamais par flex gap */
+  .p2-finband {{ display:flex; align-items:stretch; margin-top:1mm; }}
+  .p2-fb-c {{ flex:1; text-align:center; padding:4mm 3mm;
+    background:{C['paper']}; border:1px solid {C['line']}; border-radius:11px;
+    box-shadow:0 1px 2px rgba(26,43,74,.04),0 5px 14px rgba(26,43,74,.05); }}
+  .p2-fb-sep {{ flex:0 0 10mm; text-align:center; align-self:center;
+    font-family:{fonts['display']}; font-size:15pt; color:{C['muted_2']}; }}
+  .p2-fb-k {{ display:block; font-size:6.7pt; letter-spacing:.12em;
+    text-transform:uppercase; color:{C['muted_2']}; font-weight:700;
+    margin-bottom:1mm; }}
+  .p2-fb-v {{ display:block; font-family:{fonts['display']}; font-size:14.5pt;
+    color:{C['navy']}; }}
+  .p2-fb-v small {{ font-family:{fonts['sans']}; font-size:7.5pt;
+    color:{C['muted']}; font-weight:600; }}
+  .p2-fb-net {{ border:1.5px solid {C['gold']}; background:#FFFCF5; }}
+  .p2-fb-net .p2-fb-v {{ color:{C['gold_soft']}; }}
+
+  /* QRES53 — bande impact environnemental (page rentabilité) */
+  .p2-impact {{ display:flex; gap:8mm; margin-top:1mm; }}
+  .p2-imp-c {{ flex:1; text-align:center; padding:3.5mm 3mm;
+    background:linear-gradient(180deg,{C['green_bg']},#ffffff 85%);
+    border:1px solid {C['green_bg']}; border-left:4px solid {C['green']};
+    border-radius:11px; }}
+  .p2-imp-v {{ display:block; font-family:{fonts['display']}; font-size:14.5pt;
+    color:{C['green']}; }}
+  .p2-imp-l {{ display:block; font-size:7pt; color:{C['muted']};
+    margin-top:1mm; line-height:1.3; }}
 
   /* QJ30 — multi-propriétés */
   .p2-multi-wrap {{ margin-top:2.5mm; }}
@@ -395,79 +554,258 @@ def build(ctx) -> str:
 </style>
 """
 
-    html = f"""
-{style}
-<div class="p2-wrap">
+    # ── QRES17 — fragments réutilisables, composés en 1..N pages ─────────────
+    head_html = (
+        '<div class="p2-kick">Votre installation</div>'
+        '<div class="p2-title">Le détail de votre projet</div>')
+    cont_head_html = (
+        '<div class="p2-kick">Votre installation</div>'
+        '<div class="p2-title">Équipement — suite</div>')
+    fin_head_html = (
+        '<div class="p2-kick">Votre rentabilité</div>'
+        '<div class="p2-title">Rentabilité de votre investissement</div>')
 
-  <div class="p2-kick">Votre installation</div>
-  <div class="p2-title">Le détail de votre projet</div>
+    # QRES39 — la VRAIE toiture du client (photo/plan joint au devis) remplace
+    # le schéma illustratif quand elle existe ; repli schéma sinon.
+    roof_photo = (d.get("roof_photo") or "").strip()
+    if roof_photo:
+        band_visual = (
+            f'<div><img class="p2-roof-photo" src="{roof_photo}" '
+            f'alt="Votre toiture — implantation des panneaux">'
+            '<div class="p2-roof-cap">Votre toiture</div></div>')
+    else:
+        band_visual = (f'<img src="{charts["roof"]}" '
+                       'alt="Schéma de l\'installation">')
+    band_html = (
+        f'<div class="p2-band">'
+        f'<div class="p2-roof">{band_visual}</div>'
+        f'<div class="p2-specs">{spec_html}</div></div>')
 
-  <div class="p2-band">
-    <div class="p2-roof"><img src="{charts['roof']}" alt="Schéma de l'installation"></div>
-    <div class="p2-specs">{spec_html}</div>
-  </div>
+    def _table_html(items, label):
+        rows = "".join(_row(it, fmt, produits_link) for it in items)
+        return (
+            f'<div class="p2-lbl">{label}</div>'
+            '<table class="p2-tbl"><thead><tr>'
+            '<th class="p2-d">Désignation</th>'
+            '<th class="p2-c">Qté</th>'
+            '<th class="p2-r">P.U. HT</th>'
+            '<th class="p2-c">TVA</th>'
+            '<th class="p2-r">Total HT</th>'
+            f'</tr></thead><tbody>{rows}</tbody></table>')
 
-  <div class="p2-lbl">{equipement_lbl}</div>
-  <table class="p2-tbl">
-    <thead>
-      <tr>
-        <th class="p2-d">Désignation</th>
-        <th class="p2-c">Qté</th>
-        <th class="p2-r">P.U. HT</th>
-        <th class="p2-c">TVA</th>
-        <th class="p2-r">Total HT</th>
-      </tr>
-    </thead>
-    <tbody>{rows_html}</tbody>
-  </table>
+    # QRES57 — la ligne « fiches techniques » fusionne avec la légende TVA
+    # (une seule ligne de légende sous les totaux, ~5 mm rendus à la courbe).
+    fiche_inline = (
+        ' &middot; fiches techniques&nbsp;: <a class="p2-fiche-btn" '
+        f'href="{_produits_href(produits_link)}">{produits_link}'
+        '<span class="p2-fiche-i"> &rsaquo;</span></a>')
 
-  {deltas_html}
+    # QRES30/48 — mono-option : carte de totaux PLEINE LARGEUR (les montants
+    # internes s'alignent déjà à droite, donc le TOTAL TTC retombe sur le rail
+    # monétaire — sans laisser un demi-bloc mort à gauche).
+    totals_wrap_cls = ""
+    closing_html = (
+        f'{deltas_html}'
+        f'<div class="p2-totals{totals_wrap_cls}">{totals_html}</div>'
+        f'<div class="p2-tva-note">{tva_note}{fiche_inline}</div>'
+        f'{multi_html}')
 
-  <div class="p2-fiche">Chaque équipement renvoie à sa fiche technique complète —
-    bibliothèque&nbsp;: <a class="p2-fiche-btn"
-    href="{_produits_href(produits_link)}">{produits_link}<span class="p2-fiche-i"> &rsaquo;</span></a></div>
+    _stats_html = f"""
+        <div class="p2-side-stat">
+          <span class="p2-stat-k">Retour sur investissement</span>
+          <span class="p2-stat-v">{roi_range}</span>
+          <span class="p2-stat-s">l'installation se rembourse</span>
+        </div>
+        <div class="p2-side-stat p2-side-gain">
+          <span class="p2-stat-k">Gain net sur 25 ans</span>
+          <span class="p2-stat-v">≈ {fmt(gain25)} <small>MAD</small></span>
+          <span class="p2-stat-s">{gain25_label}{gain_mult_sub}</span>
+        </div>
+        <div class="p2-side-stat">
+          <span class="p2-stat-k">Performance garantie</span>
+          <span class="p2-stat-v">30 ans</span>
+          <span class="p2-stat-s">panneaux — 87,4 % de rendement à 30 ans</span>
+        </div>"""
+    # QRES59 — libellé NEUTRE (beaucoup de clients sont chez une régie, pas
+    # l'ONEE) ; seule mention « toute hausse vous profite » du document.
+    _fin_cap = (
+        '<div class="p2-fin-cap">Projection <b>à tarif électricité '
+        'constant</b> — toute hausse future du prix de l\'électricité '
+        'accélère votre rentabilité, votre coût solaire restant fixe.</div>')
 
-  <div class="p2-totals">
-    {totals_html}
-  </div>
-  <div class="p2-tva-note">{tva_note}</div>
-  {multi_html}
-
-  <div class="p2-fin">
-    <div class="p2-fin-head">
-      <span class="p2-fin-title">Rentabilité sur 25 ans</span>
-      <span class="p2-fin-sub">gain cumulé, deux scénarios — le point marque le retour sur investissement</span>
-    </div>
-
-    <div class="p2-fin-grid">
-      <div class="p2-fin-cc">
-        <img src="{charts['payback']}" alt="Courbe de rentabilité sur 25 ans">
-      </div>
-      <div class="p2-fin-sc">
+    # QRES46 — sur la page rentabilité dédiée, le bandeau navy porte déjà le
+    # gain net : la carte-stat « Gain net » disparaît (plus de doublon).
+    _stats_xl_html = f"""
         <div class="p2-side-stat">
           <span class="p2-stat-k">Retour sur investissement</span>
           <span class="p2-stat-v">{roi_range}</span>
           <span class="p2-stat-s">l'installation se rembourse</span>
         </div>
         <div class="p2-side-stat">
-          <span class="p2-stat-k">Gain net sur 25 ans</span>
-          <span class="p2-stat-v">≈ {fmt(gain25)} <small>MAD</small></span>
-          <span class="p2-stat-s">{gain25_label}</span>
-        </div>
-        <div class="p2-side-stat">
-          <span class="p2-stat-k">Production garantie</span>
-          <span class="p2-stat-v">25 ans</span>
-          <span class="p2-stat-s">panneaux &amp; performance</span>
-        </div>
+          <span class="p2-stat-k">Performance garantie</span>
+          <span class="p2-stat-v">30 ans</span>
+          <span class="p2-stat-s">panneaux — 87,4 % de rendement à 30 ans</span>
+        </div>"""
+
+    def _fin_html(xl=False):
+        if xl:
+            # QRES38 — page rentabilité dédiée : composition VERTICALE (courbe
+            # pleine largeur, stats en rangée dessous) — la page respire au
+            # lieu de laisser sa moitié basse vide.
+            # QRES51 — variante haute de la courbe (charts['payback_xl']) :
+            # affichée sur 182 mm, elle gagne ~20 mm de hauteur et ses
+            # polices déjà agrandies deviennent très lisibles.
+            return f"""
+  <div class="p2-fin p2-fin-xl">
+    <div class="p2-fin-sub">{fin_sub}</div>
+    <img class="p2-fin-wide" src="{charts.get('payback_xl', charts['payback'])}"
+      alt="Courbe de rentabilité sur 25 ans">
+    <div class="p2-finstats">{_stats_xl_html}</div>
+    {_fin_cap}
+  </div>"""
+        return f"""
+  <div class="p2-fin">
+    <div class="p2-fin-head">
+      <span class="p2-fin-title">Rentabilité sur 25 ans</span>
+      <span class="p2-fin-sub">{fin_sub}</span>
+    </div>
+
+    <div class="p2-fin-grid">
+      <div class="p2-fin-cc">
+        <img src="{charts['payback']}" alt="Courbe de rentabilité sur 25 ans">
       </div>
+      <div class="p2-fin-sc">{_stats_html}</div>
     </div>
 
-    <div class="p2-fin-cap">
-      Projection <b>à tarif ONEE constant</b> — toute hausse future du prix de
-      l'électricité accélère votre rentabilité, votre coût solaire restant fixe.
-    </div>
-  </div>
+    {_fin_cap}
+  </div>"""
 
-</div>
-"""
-    return html
+    def _wrap_page(inner, dense_c=""):
+        return f'{style}<div class="p2-wrap{dense_c}">{inner}</div>'
+
+    if fits_one:
+        # Mise en page historique : tout sur UNE page (devis ≤ ~11 lignes).
+        # QRES62 — joints élastiques : le renderer mesure le vide résiduel de
+        # la page rendue et le redistribue sur ces joints (aucun bas de page
+        # « tassé en haut, troué en bas »).
+        # QRES63 — page LÉGÈRE (≤ 4 lignes, ex. devis mono-option minimal) :
+        # la courbe grandit (52 mm) au lieu de laisser l'élastique combler un
+        # vide géant — l'espace nourrit le contenu avant les respirations.
+        light_cls = (" p2-light"
+                     if (not deux_options and len(shared) <= 4) else "")
+        return [_wrap_page(
+            head_html + band_html
+            + _table_html(shared, equipement_lbl)
+            + '<div class="qj" data-w="35"></div>'
+            + closing_html
+            + '<div class="qj" data-w="65"></div>'
+            + _fin_html(), light_cls)]
+
+    # ── Devis chargé : page(s) équipement + page rentabilité dédiée ──────────
+    # Budgets (mm) : 1ʳᵉ page équipement (bande projet + titre + clôture
+    # tableau), pages « suite » (titre court seulement — la clôture suit le
+    # DERNIER morceau de tableau).
+    chunks = _chunk_rows(shared, budgets=[118.0, 165.0])
+    pages = []
+    for i, chunk in enumerate(chunks):
+        is_first = i == 0
+        is_last = i == len(chunks) - 1
+        label = equipement_lbl if is_first else f"{equipement_lbl} (suite)"
+        inner = (head_html + band_html if is_first else cont_head_html)
+        inner += _table_html(chunk, label)
+        if not is_last:
+            inner += ('<div class="p2-cont-note">Suite de l\'équipement '
+                      'page suivante &rsaquo;</div>')
+        else:
+            # QRES62 — joint élastique avant la clôture (totaux) : absorbe le
+            # vide résiduel mesuré de la dernière page équipement.
+            inner += '<div class="qj" data-w="100"></div>' + closing_html
+        pages.append(_wrap_page(inner))
+
+    # QRES28 — la page rentabilité dédiée (espace abondant) reçoit le bandeau
+    # navy de gain net (le chiffre-héros du document, en pleine largeur).
+    _callout = ""
+    if gain_mult_txt:
+        _callout = (
+            f'<div class="p2-callout">≈ {fmt(gain25)} MAD de gain net sur '
+            f'25 ans — <b>{gain_mult_txt}× le prix de votre installation'
+            '</b></div>')
+
+    # QRES50 (fondateur, 2026-07-18) — la zone blanche du bas de page devient
+    # l'argument cashflow-positif : bande « économies − crédit = dans votre
+    # poche », données réelles du bloc financing uniquement (sinon omise).
+    fin_d = d.get("financing") or {}
+    fin_credit = fin_d.get("credit") or {}
+    finband_html = ""
+    if fin_d.get("indicatif") and fin_credit.get("mensualite"):
+        _mens = int(round(fin_credit["mensualite"]))
+        _eco_ref_m = (d.get("eco_a_ann") if (deux_options or avec_ok)
+                      else d.get("eco_s_ann")) or 0
+        _eco_mois = int(round(_eco_ref_m / 12.0))
+        if _eco_mois > _mens:
+            _duree_ans = round((fin_credit.get("duree_mois") or 0) / 12)
+            _prog = fin_credit.get("programme_nom") or "crédit vert"
+            finband_html = (
+                '<div class="p2-lbl" style="margin-top:8mm">Financement '
+                'possible — et si vous financiez au lieu de payer '
+                'comptant&nbsp;?</div>'
+                '<div class="p2-finband">'
+                '<div class="p2-fb-c"><span class="p2-fb-k">Économies '
+                'estimées</span>'
+                f'<span class="p2-fb-v">≈ {fmt(_eco_mois)} '
+                '<small>MAD/mois</small></span></div>'
+                '<div class="p2-fb-sep">&minus;</div>'
+                '<div class="p2-fb-c"><span class="p2-fb-k">Crédit</span>'
+                f'<span class="p2-fb-v">≈ {fmt(_mens)} '
+                '<small>MAD/mois</small></span></div>'
+                '<div class="p2-fb-sep">=</div>'
+                '<div class="p2-fb-c p2-fb-net"><span class="p2-fb-k">Dans '
+                'votre poche</span>'
+                f'<span class="p2-fb-v">≈ +{fmt(_eco_mois - _mens)} '
+                '<small>MAD/mois</small></span></div>'
+                '</div>'
+                f'<div class="p2-fin-cap">sur {_duree_ans} ans ({_prog}) — '
+                'indicatif, à confirmer avec votre banque.</div>')
+
+    # QRES53 — l'impact environnemental complète la page rentabilité (le
+    # retour de l'investissement ne se compte pas qu'en dirhams) : mêmes
+    # facteurs de calcul que la page 1 (0,81 t CO₂/MWh, ~21 kg CO₂/arbre/an),
+    # cumul 25 ans PRUDENT (dégradation panneau 0,5 %/an intégrée, ×23,5).
+    _prod = d.get("prod_kwh") or 0
+    impact_html = ""
+    if _prod:
+        _co2_t = _prod * 0.81 / 1000.0
+        _trees = max(1, round(_prod * 0.81 / 21))
+        _co2_25 = _co2_t * 23.5
+
+        def _fr1(v):
+            return (f"{v:.1f}".replace(".", ",") if v < 10
+                    else fmt(round(v)))
+        impact_html = (
+            '<div class="p2-lbl" style="margin-top:7mm">Et pour la planète'
+            '</div>'
+            '<div class="p2-impact">'
+            f'<div class="p2-imp-c"><span class="p2-imp-v">≈ {_fr1(_co2_t)} '
+            't</span><span class="p2-imp-l">de CO<sub>2</sub> évitées '
+            'chaque année</span></div>'
+            f'<div class="p2-imp-c"><span class="p2-imp-v">≈ {fmt(_trees)}'
+            '</span><span class="p2-imp-l">arbres plantés — l\'équivalent '
+            'annuel</span></div>'
+            f'<div class="p2-imp-c"><span class="p2-imp-v">≈ {_fr1(_co2_25)} '
+            't</span><span class="p2-imp-l">de CO<sub>2</sub> évitées sur '
+            '25 ans</span></div>'
+            '</div>')
+
+    # QRES62 — joints élastiques de la page rentabilité : le vide mesuré se
+    # répartit entre courbe→bandeau→financement→impact (page toujours pleine).
+    pages.append(_wrap_page(
+        fin_head_html + _fin_html(xl=True)
+        + '<div class="qj" data-w="40"></div>' + _callout
+        + '<div class="qj" data-w="35"></div>' + finband_html
+        + '<div class="qj" data-w="25"></div>' + impact_html))
+    return pages
+
+
+def build(ctx) -> str:
+    """Compat : forme mono-chaîne (concatène les pages équipement)."""
+    return "".join(build_pages(ctx))

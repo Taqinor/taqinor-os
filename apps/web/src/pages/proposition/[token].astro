@@ -3599,7 +3599,18 @@ const signConfig = ok
   // le navigateur suivre le lien normalement (tel:/wa.me s'ouvrent tout de
   // suite) et on poste en parallèle vers le proxy same-origin — un échec ne
   // gêne jamais le client, il garde de toute façon son canal instantané.
-  import { buildContactBody, type ContactChannel } from '../../lib/proposition';
+  // QRES66 — installmentSplit est appelé PLUS BAS dans CE script client (échéancier
+  // au changement de durée) mais n'était importé que dans le frontmatter SERVEUR :
+  // ReferenceError au chargement sur toute page complète → TOUT le module mourait
+  // (échéancier ET curseur batterie muets, sans erreur visible). L'import client
+  // manquant est LA cause racine du curseur batterie mort.
+  import {
+    buildContactBody,
+    installmentSplit,
+    formatMAD,
+    type InstallmentMonths,
+    type ContactChannel,
+  } from '../../lib/proposition';
   // WJ120 — moteur du simulateur batterie (PUR) importé ES pour un recalcul 100 %
   // local au curseur (aucun re-fetch). Regroupé dans CE script (cf. note WJ34/WJ53
   // ci-dessous) ; batterySim n'a aucune dépendance runtime lourde.
@@ -3973,7 +3984,6 @@ const signConfig = ok
     } catch {
       return;
     }
-
     const bsWin = window as unknown as {
       __propCurrentLang?: () => BsLang;
       __propRegisterBusyLabel?: (fn: (l: BsLang) => void) => void;
@@ -4041,9 +4051,17 @@ const signConfig = ok
       renderPrice(n);
     }
 
-    const slider = document.getElementById('battery-sim-slider') as HTMLInputElement | null;
-    slider?.addEventListener('input', () => {
-      const n = Math.max(0, Math.min(cfg.maxUnits, Number(slider.value) || 0));
+    // QRES66 — délégation au NIVEAU DOCUMENT, jamais un listener direct sur le
+    // nœud : constaté en prod, le curseur présent au chargement n'était plus le
+    // nœud du DOM final (les scripts d'init de la page reconstruisent des
+    // sous-arbres après l'exécution de ce module) → le listener direct mourait
+    // avec le nœud remplacé et le curseur restait muet, sans aucune erreur.
+    // La délégation sur `document` capte l'événement `input` quel que soit le
+    // nœud curseur vivant, quel que soit l'ordre d'exécution des modules.
+    document.addEventListener('input', (ev) => {
+      const t = ev.target as HTMLInputElement | null;
+      if (!t || t.id !== 'battery-sim-slider') return;
+      const n = Math.max(0, Math.min(cfg.maxUnits, Number(t.value) || 0));
       update(n);
     });
 

@@ -1367,6 +1367,176 @@ class TestResidentialRenderer(TestCase):
         self.assertIn('data:image/png', html)
 
 
+@tag('pdf')
+class TestResidentialQRESRound(TestCase):
+    """QRES — corrections du rendu résidentiel (audit fondateur 2026-07-17) :
+    pagination JAMAIS débordée (le vrai devis DEV-202607-0021 rendait 4 pages
+    physiques étiquetées « Page 3 / 3 »), lien de signature court, plus de
+    scénario batterie fantôme sur un devis mono-option, garanties à source
+    unique, bande légale alignée sur le pied de page, méta client dédoublonnée."""
+
+    def _render(self, variant):
+        from weasyprint import HTML
+        from apps.ventes.quote_engine.residential import (
+            renderer, render, sample_data)
+        d = renderer._augment(sample_data.build(variant))
+        html = render.build_html(d)
+        return html, HTML(string=html).render()
+
+    # QRES17/49/57 — nombre de pages ATTENDU par fixture : un devis de la
+    # taille réelle du fondateur (« plus5 », ~13 lignes) tient en 3 pages AVEC
+    # la grande courbe (cartes badges et ligne fiches retirées de la page 2) ;
+    # seuls les très gros devis (« plus10 ») passent en 4 pages (tableau à
+    # l'aise + page rentabilité dédiée).
+    EXPECTED_PAGES = {"deux": 3, "sans": 3, "long": 3, "plus5": 3,
+                      "plus10": 4}
+
+    def test_page_count_per_variant_never_overflows_dirty(self):
+        """La garde anti-débordement : chaque fixture rend EXACTEMENT le
+        nombre de pages prévu — le bloc signature ne bascule plus jamais sur
+        une page orpheline, et un devis chargé AJOUTE une page proprement."""
+        from apps.ventes.quote_engine.residential import sample_data
+        for variant in sample_data.keys():
+            _, doc = self._render(variant)
+            self.assertEqual(
+                len(doc.pages), self.EXPECTED_PAGES[variant],
+                f'variant {variant!r}: expected '
+                f'{self.EXPECTED_PAGES[variant]} pages, got {len(doc.pages)}')
+
+    def test_overflow_quote_paginates_cleanly(self):
+        """Devis très chargé (« plus10 ») : 4 pages numérotées « / 4 »,
+        TOUTES les lignes du devis présentes (aucune avalée par le
+        découpage), la page rentabilité dédiée existe et porte la bande de
+        financement (QRES50)."""
+        import fitz
+        from apps.ventes.quote_engine.residential import renderer, sample_data
+        for variant in ("plus10",):
+            data = sample_data.build(variant)
+            pdf = renderer.render_pdf_bytes(data)
+            doc = fitz.open(stream=pdf, filetype='pdf')
+            self.assertEqual(len(doc), 4, variant)
+            all_text = "\n".join(p.get_text() for p in doc)
+            for it in data["sans_items"]:
+                frag = it["designation"].split(" (")[0][:25]
+                self.assertIn(frag, all_text,
+                              f'{variant}: ligne perdue par le découpage : '
+                              f'{frag!r}')
+            self.assertIn("Page 2 / 4", all_text)
+            self.assertIn("Page 4 / 4", all_text)
+            self.assertIn("Rentabilité de votre investissement", all_text)
+            self.assertIn("Dans votre poche", all_text)
+
+    def test_bottom_content_never_silently_clipped(self):
+        """Le cadre .page (A4 fixe, overflow:hidden) peut ROGNER sans faire de
+        4ᵉ page : une page 3 trop haute perdait silencieusement la bande légale
+        (SARLAU/RC/ICE). On rastérise le VRAI PDF (chemin complet, distribution
+        élastique QRES62 incluse) et on exige la bande légale + la clause
+        non-contractuelle physiquement sur la dernière page."""
+        import fitz
+        from apps.ventes.quote_engine.residential import renderer, sample_data
+        for variant in sample_data.keys():
+            pdf = renderer.render_pdf_bytes(sample_data.build(variant))
+            doc = fitz.open(stream=pdf, filetype='pdf')
+            last = doc[-1].get_text()
+            self.assertIn('SARLAU', last,
+                          f'variant {variant!r}: legal band clipped off page 3')
+            self.assertIn('non contractuelles', last,
+                          f'variant {variant!r}: disclaimer clause clipped')
+
+    def test_no_page_ends_with_a_large_void(self):
+        """QRES62 — distribution dynamique de l'espace : après le second
+        passage (mesure du PDF réel → joints élastiques), plus AUCUNE page ne
+        garde un vide résiduel exploitable > 12 mm — le « petit espace en bas »
+        signalé par le fondateur ne peut pas revenir, quel que soit le nombre
+        de pages du devis."""
+        from apps.ventes.quote_engine.residential import renderer, sample_data
+        for variant in sample_data.keys():
+            pdf = renderer.render_pdf_bytes(sample_data.build(variant))
+            residual = renderer._measure_page_slack(pdf)
+            self.assertTrue(
+                all(v <= 12 for v in residual.values()),
+                f'variant {variant!r}: residual voids {residual}')
+
+    def test_hypotheses_live_on_the_web_proposal_not_the_pdf(self):
+        """QRES61 (fondateur) — les hypothèses de calcul quittent le papier :
+        plus de bande « Nos hypothèses » dans le PDF (la proposition en ligne
+        les porte, WJ32/W359) ; le papier garde UNE clause non-contractuelle
+        qui y renvoie."""
+        html, _ = self._render("deux")
+        self.assertNotIn("p3-hyp", html)
+        self.assertNotIn("Nos hypothèses", html)
+        self.assertIn("Estimations non contractuelles", html)
+        self.assertIn("proposition en ligne", html)
+
+    def test_sign_link_token_never_displayed_as_text(self):
+        """Le lien tokenisé vit dans le href et le QR ; le bouton n'affiche que
+        « hôte/segment » (l'URL complète débordait sous le QR)."""
+        html, _ = self._render("deux")
+        token_tail = "rKJtbjsY-qTML35ZnjQ9Lt_v4_demo"
+        self.assertEqual(html.count(token_tail), 1)          # href uniquement
+        self.assertIn("Signez en ligne", html)
+        self.assertIn("taqinor.ma/proposition</a>", html)
+
+    def test_mono_option_has_no_phantom_battery_scenario(self):
+        """Un devis réseau seul ne mentionne plus « Avec batterie » ni « deux
+        scénarios » nulle part (cartes, sous-titre du graphe, accord)."""
+        html, _ = self._render("sans")
+        self.assertNotIn("deux scénarios", html)
+        self.assertNotIn("Avec batterie", html)
+
+    def test_warranties_single_source(self):
+        """theme.WARRANTIES est LA source : badges en page 2, bande de
+        crédibilité page 1 alignée (30 ans performance — plus aucun
+        « Garantie 25 ans » contradictoire)."""
+        from apps.ventes.quote_engine.residential import theme
+        html, _ = self._render("deux")
+        for _n, _u, label, _sub in theme.WARRANTIES:
+            self.assertIn(label, html)
+        self.assertIn("Performance garantie 30 ans", html)
+        self.assertNotIn("Garantie 25 ans", html)
+        self.assertNotIn("garantie sur 25 ans", html)
+
+    def test_legal_band_contact_matches_footer(self):
+        """La bande légale lit l'identité résolue : même email que le pied de
+        page (le PDF réel imprimait .ma en pied et .com dans la bande)."""
+        html, _ = self._render("deux")   # profil TAQINOR avec contact@taqinor.ma
+        self.assertNotIn("contact@taqinor.com", html)
+        self.assertGreaterEqual(html.count("contact@taqinor.ma"), 2)
+
+    def test_hypotheses_deduplicated_by_builder_shape(self):
+        """La fixture (miroir du builder corrigé) ne porte plus qu'UNE mention
+        de la loi 82-21 dans les hypothèses — servies à la proposition EN
+        LIGNE (le PDF ne les rend plus, QRES61)."""
+        from apps.ventes.quote_engine.residential import sample_data
+        items = sample_data.build("deux")["hypotheses"]["items"]
+        self.assertEqual(sum("82-21" in i for i in items), 1)
+
+    def test_join_meta_dedups_repeated_fragments(self):
+        """« casablanca, casablanca · casablanca » → « casablanca » (l'adresse
+        saisie contient souvent déjà la ville)."""
+        from apps.ventes.quote_engine.residential import theme
+        self.assertEqual(
+            theme.join_meta("casablanca, casablanca", "casablanca",
+                            "+212661850412"),
+            "casablanca · +212661850412")
+        self.assertEqual(
+            theme.join_meta("12 rue des Orangers", "Casablanca",
+                            "+212600000000"),
+            "12 rue des Orangers · Casablanca · +212600000000")
+
+    def test_builder_hypotheses_mention_8221_once(self):
+        """Le builder réel dédoublonne : une seule formulation 82-21 dans le
+        bloc hypothèses (il en cumulait deux, plus celle de la méthode)."""
+        from apps.ventes.quote_engine.pricing import cashflow_assumptions
+        notes = cashflow_assumptions()["notes"]
+        self.assertTrue(any("82-21" in n for n in notes))
+        self.assertTrue(any("injection" in n.lower() for n in notes))
+        # plus de décimale anglaise dans les notes rendues au client
+        joined = " ".join(notes)
+        self.assertNotIn("0.5", joined)
+        self.assertNotIn("2.0", joined)
+
+
 class TestCanonicalProductible(TestCase):
     """QX38 — un seul modèle de productible (PVGIS par ville), partagé par
     l'écran, le PDF et la proposition web. CompanyProfile.productible (1600)
@@ -1410,9 +1580,11 @@ class TestCanonicalProductible(TestCase):
         devis.lead = lead
         devis.save(update_fields=['lead'])
         data = build_quote_data(devis)
-        # 7.1 kWc × 1687 (Agadir PVGIS) = 11 977 kWh/an
+        # QRES54 — 7,1 kWc × 1687 (Agadir PVGIS) × 0,86 (pertes système 14 %)
+        from apps.ventes.quote_engine.pricing import PRODUCTION_DERATE
         self.assertEqual(data['puissance_kwc'], 7.1)
-        self.assertEqual(data['prod_kwh'], round(7.1 * 1687))
+        self.assertEqual(data['prod_kwh'],
+                         round(7.1 * 1687 * PRODUCTION_DERATE))
 
     def test_onee_tranche_ceilings_aligned(self):
         """QX38 — les plafonds ONEE représentent les vraies bandes cumulées
@@ -1460,7 +1632,9 @@ class TestHonestCashflowPayback(TestCase):
         a = cashflow_assumptions()
         self.assertEqual(a['years'], 25)
         self.assertEqual(a['degradation_pct'], 0.5)
-        self.assertGreater(a['escalation_pct'], 0)
+        # QRES54 (fondateur) — AUCUNE hausse tarifaire supposée : la projection
+        # est à tarif constant, seule la dégradation érode les économies.
+        self.assertEqual(a['escalation_pct'], 0.0)
         self.assertTrue(any('82-21' in n for n in a['notes']))
         self.assertTrue(any('injection' in n.lower() for n in a['notes']))
 
@@ -2176,7 +2350,7 @@ class TestSavingsMath(TestCase):
             autoconso_sans=0.60,
             autoconso_avec=0.85,
         )
-        prod = roi["prod_kwh"]   # = 5 * 1240 = 6200
+        prod = roi["prod_kwh"]   # 5 kWc × 1240 × 0,86 (QRES54, pertes 14 %)
         # Option 1 savings = production × autoconso_sans × tarif
         self.assertEqual(roi["eco_s_ann"], round(prod * 0.60 * 1.75))
         # Option 2 savings = production × autoconso_avec × tarif

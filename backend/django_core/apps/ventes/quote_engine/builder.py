@@ -48,6 +48,45 @@ _BRAND_TOKENS = [
 ]
 
 
+def _roof_photo_data_uri(devis) -> str:
+    """QRES39 (fondateur, 2026-07-18) — visuel RÉEL de la toiture du client.
+
+    Cherche parmi les pièces jointes du devis (``records.Attachment``, magasin
+    MinIO existant — records est une app fondation, import direct autorisé) la
+    plus récente IMAGE dont le nom évoque la toiture (toiture / calepinage /
+    implantation / roof / panneaux) et la renvoie en data-URI : la page « Le
+    détail de votre projet » remplace alors le schéma illustratif par la vraie
+    toiture du client. '' si absente (repli schéma). Jamais bloquant, jamais
+    plus de 6 Mo. Le vendeur n'a RIEN de nouveau à apprendre : il joint la
+    photo/le plan au devis via le panneau de pièces jointes existant.
+    """
+    try:
+        import base64
+        from django.contrib.contenttypes.models import ContentType
+        from apps.records.models import Attachment
+        from apps.records.storage import fetch_attachment
+        ct = ContentType.objects.get(app_label='ventes', model='devis')
+        keys = ('toiture', 'calepinage', 'implantation', 'roof', 'panneaux')
+        att = None
+        for a in (Attachment.objects
+                  .filter(content_type=ct, object_id=devis.pk)
+                  .order_by('-created_at')[:50]):
+            if not (a.mime or '').startswith('image/'):
+                continue
+            if any(k in (a.filename or '').lower() for k in keys):
+                att = a
+                break
+        if att is None:
+            return ""
+        data, err = fetch_attachment(att.file_key)
+        if err or not data or len(data) > 6 * 1024 * 1024:
+            return ""
+        return (f"data:{att.mime};base64,"
+                + base64.b64encode(data).decode())
+    except Exception:
+        return ""
+
+
 def _parse_marque(*texts) -> str:
     """Extract the product brand from designation/product name (one-page badge)."""
     blob = " ".join(t for t in texts if t).lower()
@@ -828,10 +867,12 @@ def build_quote_data(devis, pdf_options=None) -> dict:
                 "progressif du distributeur) : facture actuelle moins facture "
                 "résiduelle après autoconsommation — jamais un prix moyen "
                 "inventé."),
+            # QRES40 — MAD partout (le document n'emploie jamais « DH » :
+            # une seule unité monétaire, aucune hésitation possible).
             "exemple": (
-                f"Facture actuelle ≈ {_fr_int(roi['facture_sans'])} DH/an → "
-                f"avec solaire ≈ {_fr_int(_sm_avec)} DH/an → économie ≈ "
-                f"{_fr_int(roi['facture_sans'] - _sm_avec)} DH/an"),
+                f"Facture actuelle ≈ {_fr_int(roi['facture_sans'])} MAD/an → "
+                f"avec solaire ≈ {_fr_int(_sm_avec)} MAD/an → économie ≈ "
+                f"{_fr_int(roi['facture_sans'] - _sm_avec)} MAD/an"),
         }
     elif savings_model == "etude":
         savings_method = {
@@ -855,9 +896,9 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             "approximatif": True,
             "ligne_methode": (
                 "Estimation : production annuelle × part autoconsommée × tarif "
-                "kWh — loi 82-21 : seuls les kWh autoconsommés sont valorisés, "
-                "le surplus injecté n'est pas rémunéré. Fournissez une facture "
-                "réelle pour un calcul par tranche exact."),
+                "kWh (loi 82-21 : seul l'autoconsommé est valorisé — détail "
+                "dans nos hypothèses). Fournissez une facture réelle pour un "
+                "calcul par tranche exact."),
             "exemple": None,
         }
 
@@ -882,30 +923,70 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             + (" (approximatif — distributeur privé)" if _util_approx
                else " (barème public)"))
     elif _tarif_txt:
-        _src = _util_name or "moyenne de référence"
-        hypotheses.append(
-            f"Tarif électricité retenu : {_tarif_txt} MAD/kWh"
-            + (f" ({_src})" if _util_name else " (estimation)"))
+        # QRES16 (fondateur, 2026-07-18) — ne JAMAIS présenter le défaut
+        # interne du simulateur comme un « tarif retenu » réfléchi : le 1,75
+        # historique (constants.KWH_PRICE, marqué « ne pas afficher dans les
+        # PDF/UI ») s'imprimait tel quel via ce bloc et fragilisait la
+        # confiance. Un tarif ÉGAL au défaut est présenté comme référence de
+        # calcul avec le chemin vers l'exactitude (facture → barème par
+        # tranches) ; un tarif réellement personnalisé reste affiché comme
+        # tel ; le cas barème (« factures ») garde sa ligne dédiée ci-dessus.
+        # QRES55 (fondateur, 2026-07-18) — le tarif de référence interne ne
+        # s'affiche JAMAIS en chiffres sur le document (ni « 1,75 » ni un
+        # autre) : la ligne dit la MÉTHODE et le chemin vers l'exactitude.
+        # Seul un tarif réellement personnalisé (saisi pour CE devis, différent
+        # du défaut) reste affiché, car c'est la donnée du client.
+        from .constants import KWH_PRICE as _KWH_DEFAULT
+        if _util_name:
+            hypotheses.append(
+                f"Tarif électricité retenu : {_tarif_txt} MAD/kWh "
+                f"({_util_name})")
+        elif abs(float(_tarif_val) - float(_KWH_DEFAULT)) < 1e-6:
+            hypotheses.append(
+                "Tarif électricité : référence résidentielle prudente — "
+                "transmettez une facture récente et nous recalculons vos "
+                "économies par tranches, sur votre barème exact.")
+        else:
+            hypotheses.append(
+                f"Tarif électricité : {_tarif_txt} MAD/kWh, personnalisé "
+                "pour votre profil de consommation — un calcul par tranches "
+                "sur facture réelle reste possible.")
+    # QRES55 — formulations COMPACTES (le fondateur veut la même transparence
+    # « en plus petit ») : une idée, une ligne courte.
     hypotheses.append(
-        "Économies valorisées sur l'autoconsommation uniquement (loi 82-21) — "
-        "le surplus injecté n'est pas rémunéré (rachat BT résidentiel différé "
-        "par l'ANRE).")
+        "Loi 82-21 : seuls les kWh autoconsommés réduisent la facture — le "
+        "surplus injecté n'est pas rémunéré (plafond d'injection 20 % "
+        "intégré, rachat BT non publié).")
     if _prod_factor:
+        # QRES54 — production NETTE affichée : pertes système de 14 % déduites
+        # (PRODUCTION_DERATE), la même que TOUS les calculs du document.
+        from .pricing import PRODUCTION_DERATE as _DERATE
         hypotheses.append(
-            f"Production estimée : ≈ {int(round(_prod_factor))} kWh par kWc et "
-            "par an (irradiation moyenne au Maroc), performance panneaux "
-            "garantie sur 25 ans.")
+            f"Production estimée : ≈ {_fr_int(_prod_factor * _DERATE)} "
+            "kWh par kWc et par an, pertes système de 14 % déduites.")
+    _ac_s = roi.get("autoconso_sans")
+    _ac_a = roi.get("autoconso_avec")
+    if _ac_s and _ac_a:
+        hypotheses.append(
+            f"Autoconsommation retenue : {int(round(_ac_s * 100))} % sans "
+            f"batterie · {int(round(_ac_a * 100))} % avec batterie.")
     # QX39 — hypothèses du cashflow 25 ans (dégradation/escalade/batterie),
     # documentées et rendues sur le PDF/la proposition. Le payback vient
     # désormais du croisement du cumul à zéro, pas d'un ratio année-1.
+    # QRES1 — dédoublonnage SÉMANTIQUE : le bloc cumulait trois formulations de
+    # la loi 82-21 (la sienne, celle de savings_method, celle du cashflow) —
+    # une idée n'apparaît qu'une fois, le mur de texte de la page 3 disparaît.
     _cf_assum = roi.get("cashflow_assumptions") or {}
     for _n in (_cf_assum.get("notes") or []):
         _n = str(_n).strip()
-        if _n and _n not in hypotheses:
-            hypotheses.append(_n)
-    hypotheses.append(
-        "Estimations non contractuelles ; toute hausse future du tarif "
-        "électrique améliore votre rentabilité.")
+        if not _n or _n in hypotheses:
+            continue
+        if "82-21" in _n and any("82-21" in h for h in hypotheses):
+            continue
+        hypotheses.append(_n)
+    # QRES59 — « toute hausse vous profite » ne se dit qu'UNE fois (la note
+    # cashflow ci-dessus) : la ligne finale reste sobre.
+    hypotheses.append("Estimations non contractuelles.")
     hypotheses_block = {
         "titre": "Nos hypothèses",
         "items": hypotheses,
@@ -1108,6 +1189,9 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "ref": devis.reference,
         "date": devis.date_creation.strftime("%d/%m/%Y"),
         "client_name": client_name or "Client",
+        # QRES39 — vraie toiture du client (pièce jointe image du devis dont
+        # le nom évoque la toiture) ; '' → schéma illustratif.
+        "roof_photo": _roof_photo_data_uri(devis),
         "client_addr": client.adresse or "",
         "client_phone": client.telephone or "",
         "client_ice": (getattr(client, "ice", "") or ""),

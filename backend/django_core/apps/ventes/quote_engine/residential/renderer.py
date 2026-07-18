@@ -146,6 +146,43 @@ def _augment(data: dict) -> dict:
     return d
 
 
+def _measure_page_slack(pdf_bytes: bytes) -> dict:
+    """QRES62 — vide résiduel exploitable par page (mm), MESURÉ sur le PDF
+    réellement rendu (PyMuPDF). La page 1 (cover pleine page) est exclue ;
+    pour chaque autre page : bas du contenu = max(y) des blocs de texte et
+    tracés au-dessus de la bande de pied fixe (13 mm), vide = distance entre
+    ce bas et le pied, moins une marge esthétique (6 mm) et une garde de
+    sécurité (4 mm). {} si PyMuPDF est absent ou sur toute erreur — le rendu
+    passe-1 reste alors servi tel quel (dégradation propre)."""
+    try:
+        import fitz
+    except Exception:
+        return {}
+    out = {}
+    try:
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        for i in range(1, len(doc)):
+            page = doc[i]
+            mm = page.rect.height / 297.0            # points par millimètre
+            footer_top = page.rect.height - 13.0 * mm
+            bottom = 0.0
+            for b in page.get_text("blocks"):
+                if b[3] < footer_top - 0.5 * mm:
+                    bottom = max(bottom, b[3])
+            for dr in page.get_drawings():
+                if dr["rect"].y1 < footer_top - 0.5 * mm:
+                    bottom = max(bottom, dr["rect"].y1)
+            if bottom <= 0:
+                continue
+            slack = (footer_top - bottom) / mm - 6.0 - 4.0
+            if slack >= 4.0:
+                out[i + 1] = round(min(slack, 68.0), 1)
+        doc.close()
+    except Exception:
+        return {}
+    return out
+
+
 def render_pdf_bytes(data: dict) -> bytes:
     """Render the redesigned residential proposal to PDF bytes, or raise
     Unsupported when the quote data isn't the residential two-option shape.
@@ -153,6 +190,14 @@ def render_pdf_bytes(data: dict) -> bytes:
     QX8 — un second rendu du MÊME devis inchangé réutilise les octets déjà
     rendus (cache LRU par empreinte de données), sans refaire polices/logo/
     graphiques/WeasyPrint. Toute édition change l'empreinte → vrai re-rendu.
+
+    QRES62 — distribution DYNAMIQUE de l'espace : le document est rendu une
+    première fois, le vide résiduel de chaque page est mesuré sur le PDF
+    réel, puis le document est re-rendu UNE fois avec ce vide réparti sur les
+    joints élastiques des gabarits (avant l'accord, le CTA, la bande légale,
+    les totaux, le bandeau de gain…). Si le second passage changeait le
+    nombre de pages (impossible en pratique : la garde de 4 mm l'empêche),
+    le passe-1 est servi — jamais de régression de pagination.
     """
     from weasyprint import HTML
     from . import render as residential_render
@@ -166,9 +211,17 @@ def render_pdf_bytes(data: dict) -> bytes:
             _PDF_CACHE.move_to_end(key)  # LRU : marque comme récemment utilisé
             return hit
 
-    html = residential_render.build_html(d)
     base = str(Path(residential_render.__file__).resolve().parent)
-    pdf_bytes = HTML(string=html, base_url=f"file://{base}/").write_pdf()
+    html = residential_render.build_html(d)
+    doc1 = HTML(string=html, base_url=f"file://{base}/").render()
+    pdf_bytes = doc1.write_pdf()
+
+    slack = _measure_page_slack(pdf_bytes)
+    if slack:
+        html2 = residential_render.build_html(d, elastic=slack)
+        doc2 = HTML(string=html2, base_url=f"file://{base}/").render()
+        if len(doc2.pages) == len(doc1.pages):
+            pdf_bytes = doc2.write_pdf()
 
     if key is not None:
         _PDF_CACHE[key] = pdf_bytes

@@ -87,6 +87,22 @@ BASELINE_ALLOWLIST = {
     "backend/django_core/apps/ventes/quote_engine/builder.py:1307",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1360",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1361",
+    # QRES (2026-07-18) — les blocs hypothèses/tarif/photo-toiture ajoutés dans
+    # builder.py ont décalé les MÊMES arrondis d'affichage existants (déjà
+    # revus : PU/ROI/TVA affichés, jamais un calcul monétaire persisté).
+    "backend/django_core/apps/ventes/quote_engine/builder.py:214",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:215",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:547",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:642",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:644",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:669",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:671",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:815",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:828",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1385",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1391",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1444",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1445",
 }
 
 TARGET_FILES = [
