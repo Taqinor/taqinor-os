@@ -64,7 +64,7 @@ waves:
       ARC sweeps that consume the noyau primitives, and the SCA kit
       DocumentMetier (SCA30-38) which composes ARC1/2/6/8/10/11 into one
       abstraction — both gated on ARC-noyau reaching its threshold.
-    groups: [ARC-sweep, SCA-kit-document, ADSENG, ADSDEEP]
+    groups: [ARC-sweep, SCA-kit-document, ADSENG, ADSDEEP, ASG, AGEN, SIG]
   B:
     order: 3
     description: >-
@@ -143,6 +143,18 @@ edges:
     wave: A2
     after:
       ENG-noyau: 80
+  - group: ASG
+    wave: A2
+    after:
+      ADSENG: 80
+  - group: AGEN
+    wave: A2
+    after:
+      ADSENG: 80
+  - group: SIG
+    wave: A2
+    after:
+      ADSENG: 80
   # ADSDEEP (2026-07-16) : suite « Publicité niveau concurrent » — bâtie sur le
   # moteur ADSENG livré (miroirs, boîte d'approbation, règles, attribution).
   - group: ADSDEEP

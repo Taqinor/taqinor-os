@@ -10,13 +10,14 @@ import { MemoryRouter } from 'react-router-dom'
 const mocks = vi.hoisted(() => ({
   templates: vi.fn(),
   dryRun: vi.fn(),
+  journal: vi.fn(),
   anomalies: vi.fn(),
   history: vi.fn(),
 }))
 
 vi.mock('./adsengineApi', () => ({
   default: {
-    rules: { templates: mocks.templates, dryRun: mocks.dryRun },
+    rules: { templates: mocks.templates, dryRun: mocks.dryRun, journal: mocks.journal },
     anomalies: { list: mocks.anomalies },
     alerts: { history: mocks.history },
   },
@@ -47,6 +48,19 @@ beforeEach(() => {
   ] })
   mocks.history.mockResolvedValue({ data: { alerts: [
     { id: 1, niveau: 'alerte', message: 'Fréquence élevée', quand: '2026-07-12' },
+  ] } })
+  // ADSDEEP43 — journal d'exécution enrichi (condition avec valeurs + delta).
+  mocks.journal.mockResolvedValue({ data: { results: [
+    { id: 1, template_key: 'surf_scale_budget',
+      label_fr: 'Surf-scaling — CPL en amélioration', enabled: true, dry_run: false,
+      last_evaluated_at: '2026-07-16T10:00:00Z', evaluated: true, fired: true,
+      findings: [
+        { target: 'as1', target_type: 'adset', fired: true, insufficient_data: false,
+          condition_fr: 'cpl 1.0 sur 3 j < 3.0 × 0.9 = 2.7 sur 7 j → vrai.',
+          action: { id: 5, kind: 'increase_pace', status: 'proposee',
+            reason_fr: 'Surf-scaling : montée de budget learning-safe.',
+            delta: { type: 'budget', current_mad: 100.0, new_mad: 115.0 } } },
+      ] },
   ] } })
 })
 
@@ -82,5 +96,15 @@ describe('RulesScreen (ENG43)', () => {
   it('affiche l\'historique des alertes', async () => {
     renderScreen()
     expect(await screen.findByTestId('ae-alert-history-row')).toHaveTextContent('Fréquence élevée')
+  })
+
+  it('ADSDEEP43 — journal d\'exécution enrichi : condition (valeurs) + delta', async () => {
+    renderScreen()
+    const run = await screen.findByTestId('ae-rule-run')
+    expect(run).toHaveTextContent('Surf-scaling')
+    expect(screen.getByTestId('ae-rule-run-verdict')).toHaveTextContent('Déclenchée')
+    const finding = screen.getByTestId('ae-rule-run-finding')
+    expect(finding).toHaveTextContent('cpl 1.0 sur 3 j < 3.0 × 0.9 = 2.7 sur 7 j → vrai.')
+    expect(screen.getByTestId('ae-rule-run-delta')).toHaveTextContent('100 → 115 MAD/j')
   })
 })

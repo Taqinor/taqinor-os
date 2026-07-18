@@ -75,7 +75,9 @@ def _eval_frequency_high(company, policy, template, *, now, config):
     ct = ContentType.objects.get_for_model(AdSetMirror)
 
     findings = []
-    for adset in AdSetMirror.objects.filter(company=company):
+    # ADSDEEP39 — restreint au motif de nom de la règle (Selection Filter).
+    _, adsets = _scoped_mirrors(company, policy, 'adset')
+    for adset in adsets:
         agg = (InsightSnapshot.objects
                .filter(company=company, content_type=ct, object_id=adset.pk,
                        date__gte=start)
@@ -121,7 +123,9 @@ def _eval_cpl_band(company, policy, template, *, now, config):
     ct = ContentType.objects.get_for_model(AdCampaignMirror)
 
     findings = []
-    for camp in AdCampaignMirror.objects.filter(company=company):
+    # ADSDEEP39 — restreint au motif de nom de la règle (Selection Filter).
+    _, campaigns = _scoped_mirrors(company, policy, 'campaign')
+    for camp in campaigns:
         snaps = list(InsightSnapshot.objects.filter(
             company=company, content_type=ct, object_id=camp.pk,
             date__gte=start).order_by('date'))
@@ -146,6 +150,366 @@ def _eval_cpl_band(company, policy, template, *, now, config):
     return findings
 
 
+# ══════════════════════════════════════════════════════════════════════════
+# ADSDEEP38 — Vocabulaire de conditions v2 : métriques dérivées, fenêtres
+# comparées, classement top/bottom-N. Un évaluateur GÉNÉRIQUE par forme de
+# condition (seuil / fenêtres comparées / classement) lit le bloc ``v2`` du
+# template pour choisir la métrique — jamais de logique dupliquée en base.
+# ══════════════════════════════════════════════════════════════════════════
+def _mirror_model_for_scope(scope):
+    """Modèle miroir pour un ``scope`` de template (campaign/adset/ad)."""
+    from .models import AdCampaignMirror, AdMirror, AdSetMirror
+    return {
+        'campaign': AdCampaignMirror, 'adset': AdSetMirror, 'ad': AdMirror,
+    }.get(scope)
+
+
+def _name_matches(pattern, name):
+    """ADSDEEP39 — Vrai si ``name`` matche le motif de sélection (glob
+    insensible à la casse, style Bïrch Selection Filter). Un motif vide matche
+    TOUT (aucune restriction). ``*``/``?`` supportés (fnmatch)."""
+    import fnmatch
+    if not pattern:
+        return True
+    return fnmatch.fnmatch((name or '').lower(), str(pattern).lower())
+
+
+def _scoped_mirrors(company, policy, scope):
+    """Liste des miroirs d'un scope pour la société, RESTREINTE au motif de nom
+    de la règle (ADSDEEP39 — s'applique DYNAMIQUEMENT, donc aux campagnes
+    FUTURES matchant le motif puisque l'évaluation relit les miroirs à chaque
+    beat). Un motif vide = tous les miroirs."""
+    model = _mirror_model_for_scope(scope)
+    if model is None:
+        return None, []
+    pattern = getattr(policy, 'name_pattern', '') or ''
+    mirrors = [
+        m for m in model.objects.filter(company=company)
+        if _name_matches(pattern, m.name)]
+    return model, mirrors
+
+
+def _sum_attr(snaps, attr):
+    """Somme d'un attribut numérique sur des snapshots (ignore les None)."""
+    total = 0.0
+    for s in snaps:
+        v = getattr(s, attr, None)
+        if v is not None:
+            try:
+                total += float(v)
+            except (TypeError, ValueError):
+                continue
+    return total
+
+
+def _sum_video(snaps, key):
+    """Somme d'une clé de ``video_metrics`` (ex. ``s6``) sur des snapshots."""
+    total = 0.0
+    for s in snaps:
+        vm = getattr(s, 'video_metrics', None) or {}
+        v = vm.get(key)
+        if v is not None:
+            try:
+                total += float(v)
+            except (TypeError, ValueError):
+                continue
+    return total
+
+
+def _derived_metric(snaps, metric):
+    """Valeur d'une métrique DÉRIVÉE sur une fenêtre de snapshots.
+
+    Renvoie ``(valeur|None, samples)`` : ``None`` quand le dénominateur est nul
+    ou la donnée absente (le déclencheur retombe alors sur ``insufficient_data``
+    — jamais un faux 0). ``samples`` = nombre de snapshots de la fenêtre."""
+    n = len(snaps)
+    if metric == 'cpl':
+        spend = _sum_attr(snaps, 'spend')
+        results = _sum_attr(snaps, 'results')
+        return ((spend / results) if results > 0 else None), n
+    if metric == 'cost_per_conversation':
+        spend = _sum_attr(snaps, 'spend')
+        conv = _sum_attr(snaps, 'conversations')
+        return ((spend / conv) if conv > 0 else None), n
+    if metric == 'ctr_link':
+        clicks = _sum_attr(snaps, 'link_clicks')
+        impr = _sum_attr(snaps, 'impressions')
+        return ((clicks / impr) if impr > 0 else None), n
+    if metric == 'hold_rate':
+        s6 = _sum_video(snaps, 's6')
+        impr = _sum_attr(snaps, 'impressions')
+        return ((s6 / impr) if impr > 0 else None), n
+    if metric == 'spend':
+        return _sum_attr(snaps, 'spend'), n
+    if metric == 'frequency':
+        freqs = [float(s.frequency) for s in snaps
+                 if getattr(s, 'frequency', None) is not None]
+        return ((max(freqs)) if freqs else None), n
+    return None, n
+
+
+def _window_snaps(company, ct, obj_pk, *, now, days):
+    """Snapshots d'un objet sur une fenêtre glissante de ``days`` jours."""
+    from .models import InsightSnapshot
+    start = _window_start_date(now, days)
+    return list(InsightSnapshot.objects.filter(
+        company=company, content_type=ct, object_id=obj_pk, date__gte=start))
+
+
+def _eval_metric_threshold(company, policy, template, *, now, config):
+    """ADSDEEP38 — Évaluateur GÉNÉRIQUE « métrique dérivée vs seuil » (opérateurs
+    ``gt``/``lt``). Lit ``template['v2']`` (metric/operator/threshold_param).
+    Sous le plancher d'échantillons → ``insufficient_data``."""
+    from django.contrib.contenttypes.models import ContentType
+
+    spec = template.get('v2', {})
+    metric = spec['metric']
+    operator = spec.get('operator', 'gt')
+    params = rule_templates.resolve_params(policy.template_key, policy.params)
+    threshold = float(params.get(spec['threshold_param']))
+    window_days = int(params.get('window_days', 7))
+    min_samples = int(params.get('min_samples', 3))
+    scope = template['scope']
+    model, mirrors = _scoped_mirrors(company, policy, scope)
+    if model is None:
+        return []
+    ct = ContentType.objects.get_for_model(model)
+
+    findings = []
+    for m in mirrors:
+        snaps = _window_snaps(company, ct, m.pk, now=now, days=window_days)
+        value, n = _derived_metric(snaps, metric)
+        base = {'target_type': scope, 'target_meta_id': m.meta_id,
+                'target_object_id': m.pk, 'severity': template['severity']}
+        if n < min_samples or value is None:
+            findings.append({**base, 'fired': False, 'insufficient_data': True,
+                             'computed': {'metric': metric, 'value': value,
+                                          'samples': n}})
+            continue
+        fired = value > threshold if operator == 'gt' else value < threshold
+        findings.append({
+            **base, 'fired': fired, 'insufficient_data': False,
+            'computed': {'metric': metric, 'value': round(value, 4),
+                         'threshold': threshold, 'operator': operator,
+                         'window_days': window_days, 'samples': n}})
+    return findings
+
+
+def _eval_window_regression(company, policy, template, *, now, config):
+    """ADSDEEP38 — Évaluateur GÉNÉRIQUE « fenêtres comparées » (« CPA 3 j > CPA
+    7 j × 1,2 »). Compare la métrique sur une fenêtre COURTE vs une fenêtre
+    LONGUE × facteur. ``direction`` ``up`` = déclenche si court > long × facteur
+    (dégradation) ; ``down`` = si court < long × facteur (amélioration, surf-
+    scaling). La fenêtre longue borne le plancher d'échantillons."""
+    from django.contrib.contenttypes.models import ContentType
+
+    spec = template.get('v2', {})
+    metric = spec['metric']
+    direction = spec.get('direction', 'up')
+    params = rule_templates.resolve_params(policy.template_key, policy.params)
+    short_days = int(params.get('short_days', 3))
+    long_days = int(params.get('long_days', 7))
+    factor = float(params.get('regression_factor',
+                              params.get('improve_factor', 1.0)))
+    min_samples = int(params.get('min_samples', 3))
+    scope = template['scope']
+    model, mirrors = _scoped_mirrors(company, policy, scope)
+    if model is None:
+        return []
+    ct = ContentType.objects.get_for_model(model)
+
+    findings = []
+    for m in mirrors:
+        short_snaps = _window_snaps(company, ct, m.pk, now=now, days=short_days)
+        long_snaps = _window_snaps(company, ct, m.pk, now=now, days=long_days)
+        short_val, _ = _derived_metric(short_snaps, metric)
+        long_val, long_n = _derived_metric(long_snaps, metric)
+        base = {'target_type': scope, 'target_meta_id': m.meta_id,
+                'target_object_id': m.pk, 'severity': template['severity']}
+        if (long_n < min_samples or short_val is None or long_val is None
+                or long_val <= 0):
+            findings.append({**base, 'fired': False, 'insufficient_data': True,
+                             'computed': {'metric': metric,
+                                          'short': short_val, 'long': long_val,
+                                          'samples': long_n}})
+            continue
+        boundary = long_val * factor
+        fired = short_val > boundary if direction == 'up' else (
+            short_val < boundary)
+        findings.append({
+            **base, 'fired': fired, 'insufficient_data': False,
+            'computed': {'metric': metric, 'short': round(short_val, 4),
+                         'long': round(long_val, 4), 'factor': factor,
+                         'boundary': round(boundary, 4), 'direction': direction,
+                         'short_days': short_days, 'long_days': long_days,
+                         'samples': long_n}})
+    return findings
+
+
+def _eval_rank_low_result(company, policy, template, *, now, config):
+    """ADSDEEP38 — Évaluateur GÉNÉRIQUE « classement top-N » : classe les objets
+    du scope par dépense décroissante sur la fenêtre, prend les ``top_n``
+    premiers, et DÉCLENCHE ceux dont les résultats restent sous le plancher
+    ``min_results`` (top dépensiers sans résultat). Les objets sans assez de
+    snapshots sont ``insufficient_data`` (jamais un skip muet)."""
+    from django.contrib.contenttypes.models import ContentType
+
+    params = rule_templates.resolve_params(policy.template_key, policy.params)
+    top_n = int(params.get('top_n', 3))
+    min_results = float(params.get('min_results', 1))
+    window_days = int(params.get('window_days', 7))
+    min_samples = int(params.get('min_samples', 3))
+    scope = template['scope']
+    model, mirrors = _scoped_mirrors(company, policy, scope)
+    if model is None:
+        return []
+    ct = ContentType.objects.get_for_model(model)
+
+    ranked = []
+    findings = []
+    for m in mirrors:
+        snaps = _window_snaps(company, ct, m.pk, now=now, days=window_days)
+        base = {'target_type': scope, 'target_meta_id': m.meta_id,
+                'target_object_id': m.pk, 'severity': template['severity']}
+        if len(snaps) < min_samples:
+            findings.append({**base, 'fired': False, 'insufficient_data': True,
+                             'computed': {'metric': 'spend', 'value': None,
+                                          'samples': len(snaps)}})
+            continue
+        spend = _sum_attr(snaps, 'spend')
+        results = _sum_attr(snaps, 'results')
+        ranked.append((spend, results, base))
+    # Classement top-N par dépense décroissante.
+    ranked.sort(key=lambda r: r[0], reverse=True)
+    for idx, (spend, results, base) in enumerate(ranked):
+        in_top = idx < top_n
+        fired = in_top and results < min_results
+        findings.append({
+            **base, 'fired': fired, 'insufficient_data': False,
+            'computed': {'metric': 'spend', 'spend': round(spend, 4),
+                         'results': results, 'rank': idx + 1, 'top_n': top_n,
+                         'min_results': min_results, 'in_top_n': in_top,
+                         'window_days': window_days}})
+    return findings
+
+
+def _eval_stop_loss(company, policy, template, *, now, config):
+    """ADSDEEP40 — Stop-loss : CPL d'une campagne au-dessus d'un plafond DUR sur la
+    fenêtre ⇒ PAUSE PROPOSÉE (jamais auto, jamais une activation — l'action
+    ``pause`` du template ``stop_loss_cpl`` est propose-first via ``_act_on_finding``).
+    Réutilise l'évaluateur générique « métrique dérivée vs seuil » avec la métrique
+    CPL (le template ne portait pas de bloc ``v2`` — on l'injecte ici, sans toucher
+    au catalogue fixe)."""
+    spec = {'metric': 'cpl', 'operator': 'gt', 'threshold_param': 'threshold_mad'}
+    return _eval_metric_threshold(
+        company, policy, {**template, 'v2': spec}, now=now, config=config)
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# ADSDEEP45 — Fatigue créative COMBINÉE (fréquence × déclin CTR [× hausse
+# CPA]), barre Motion (benchmark concurrent §2). Scope AD (la rotation se
+# décide PAR créatif, pas par campagne) : chaque ad DÉCLENCHÉE matérialise une
+# ``AnomalyEvent`` (kind ``creative_fatigue``) + une ``EngineAction``
+# ROTATE_CREATIVE PROPOSÉE (jamais auto-appliquée — ``services.propose_action``
+# est la SEULE voie d'écriture, comme partout ailleurs dans ce moteur). Ce
+# détecteur n'est PAS un template du catalogue ``RulePolicy`` (pas de nouveau
+# choix ``template_key`` — évite une migration pour un simple ajout de
+# ``choices``) : c'est une fonction autonome, appelable depuis un beat dédié ou
+# directement (tests, commande de gestion).
+# ══════════════════════════════════════════════════════════════════════════
+DEFAULT_FATIGUE_THRESHOLDS = {
+    'freq_ceiling': 4.0,
+    'ctr_decline_warn': 0.25,
+    'ctr_decline_critical': 0.35,
+    'cpa_increase_warn': 0.40,
+    'cpa_increase_critical': 0.50,
+}
+
+
+def _ctr(snaps):
+    """CTR = clics / impressions sur une liste de snapshots (``None`` si
+    impressions nulles/absentes — jamais un faux 0)."""
+    clicks = _sum_attr(snaps, 'clicks')
+    impr = _sum_attr(snaps, 'impressions')
+    return (clicks / impr) if impr > 0 else None
+
+
+def _cpa(snaps):
+    """Coût par résultat sur une liste de snapshots (``None`` si 0 résultat)."""
+    spend = _sum_attr(snaps, 'spend')
+    results = _sum_attr(snaps, 'results')
+    return (spend / results) if results > 0 else None
+
+
+def evaluate_creative_fatigue(company, *, now=None, window_days=7,
+                              baseline_days=14, thresholds=None,
+                              min_samples=3):
+    """ADSDEEP45 — Évalue la fatigue créative PAR AD pour ``company`` : fenêtre
+    COURTE (``window_days``) vs fenêtre de RÉFÉRENCE immédiatement PRÉCÉDENTE
+    (``baseline_days``, JAMAIS chevauchante — le déclin se lit court vs passé
+    récent, pas court vs un cumul qui l'inclurait). Chaque ad DÉCLENCHÉE
+    matérialise l'anomalie + la proposition de rotation. Renvoie la liste des
+    findings (audit ; la dédup/cooldown, comme pour les autres évaluateurs,
+    reste la responsabilité de l'appelant cadencé)."""
+    from django.contrib.contenttypes.models import ContentType
+    from django.utils import timezone
+
+    from . import anomaly, services
+    from .models import AdMirror, EngineAction, InsightSnapshot
+
+    params = dict(DEFAULT_FATIGUE_THRESHOLDS)
+    if thresholds:
+        params.update({k: v for k, v in thresholds.items() if k in params})
+    now = now or timezone.now()
+    ct = ContentType.objects.get_for_model(AdMirror)
+
+    window_start = _window_start_date(now, window_days)
+    baseline_end = window_start - datetime.timedelta(days=1)
+    baseline_start = baseline_end - datetime.timedelta(
+        days=max(1, baseline_days) - 1)
+
+    findings = []
+    for ad in AdMirror.objects.filter(company=company):
+        recent = _window_snaps(company, ct, ad.pk, now=now, days=window_days)
+        baseline = list(InsightSnapshot.objects.filter(
+            company=company, content_type=ct, object_id=ad.pk,
+            date__gte=baseline_start, date__lte=baseline_end))
+
+        freqs = [float(s.frequency) for s in recent
+                 if getattr(s, 'frequency', None) is not None]
+        frequency = max(freqs) if freqs else None
+
+        det = anomaly.detect_creative_fatigue(
+            frequency=frequency,
+            ctr_current=_ctr(recent), ctr_baseline=_ctr(baseline),
+            cpa_current=_cpa(recent), cpa_baseline=_cpa(baseline),
+            recent_samples=len(recent), baseline_samples=len(baseline),
+            min_samples=min_samples, **params)
+
+        entry = {
+            'ad_meta_id': ad.meta_id, 'ad_object_id': ad.pk,
+            'fired': det.fired, 'insufficient_data': det.insufficient_data,
+            'computed': det.computed, 'severity': det.severity}
+        if det.insufficient_data:
+            findings.append(entry)
+            continue
+        if det.fired:
+            anomaly.record_anomaly(
+                company, det, entity_type='ad', entity_meta_id=ad.meta_id)
+            reason = f'[Fatigue créative] {det.message_fr} (ad {ad.meta_id}).'
+            action = services.propose_action(
+                company, kind=EngineAction.Kind.ROTATE_CREATIVE,
+                reason_fr=reason,
+                payload={'template_key': 'creative_fatigue_combo',
+                         'target_type': 'ad', 'target_meta_id': ad.meta_id,
+                         'target_object_id': ad.pk, 'computed': det.computed})
+            entry['action'] = {
+                'id': action.pk, 'kind': action.kind,
+                'reason_fr': action.reason_fr}
+        findings.append(entry)
+    return findings
+
+
 # Registre template_key → évaluateur. Les templates dépendant d'une autre lane
 # (pacing, réconciliation) ou d'une donnée non encore stockée (impressions pour
 # zéro-delivery) ne sont PAS câblés ici et sont consignés ``evaluated: False``
@@ -153,6 +517,17 @@ def _eval_cpl_band(company, policy, template, *, now, config):
 _EVALUATORS = {
     'frequency_high': _eval_frequency_high,
     'cpl_band': _eval_cpl_band,
+    # ADSDEEP40 — stop-loss (CPL campagne > plafond dur ⇒ pause proposée).
+    'stop_loss_cpl': _eval_stop_loss,
+    # ADSDEEP38 — vocabulaire de conditions v2 (métriques dérivées / fenêtres
+    # comparées / classement top-N).
+    'cost_per_conversation_high': _eval_metric_threshold,
+    'link_ctr_low': _eval_metric_threshold,
+    'hold_rate_low': _eval_metric_threshold,
+    'cpa_window_regression': _eval_window_regression,
+    'frequency_ratio_regression': _eval_window_regression,
+    'surf_scale_budget': _eval_window_regression,
+    'top_spend_low_result': _eval_rank_low_result,
 }
 
 
@@ -234,6 +609,69 @@ def _emit_alert(company, *, template_key, finding, message, action=None,
                 'computed': finding.get('computed', {})})
 
 
+# ── ADSDEEP40 — Actions de règle v2 (montée de budget learning-safe / duplication)
+def _propose_v2_action(company, policy, template, finding, *, config, dry_run):
+    """ADSDEEP40 — Matérialise l'ACTION de règle v2 d'un finding DÉCLENCHÉ,
+    TOUJOURS propose-first (jamais ``execute_auto_action`` : la seule auto-application
+    bornée reste ENG8, réservée à rotate/rebalance). L'intention est lue dans
+    ``template['v2']['action']`` :
+
+      * ``budget_scale_up`` → montée de budget learning-safe (surf-scaling) sur
+        l'ad set ciblé : ``scale_pct`` (param whitelisté) est plafonné à 20 %
+        (reset d'apprentissage Meta) par ``services.propose_learning_safe_scale_up``,
+        puis à 15 %/j + plafond quotidien par l'applicateur budget ;
+      * ``duplicate`` → duplication de l'ad set gagnant (nouvel ad set PAUSED + ad
+        réutilisant le créatif LIVE — ``services.propose_duplicate``).
+
+    Renvoie l'``EngineAction`` PROPOSÉE, ou ``None`` si rien n'est proposable
+    (ad set introuvable, budget courant inconnu, pas de créatif LIVE). Une pause /
+    dé-pause n'est JAMAIS produite par ce chemin (invariant permanent règle #3).
+    En simulation, la raison est préfixée « [Simulation] »."""
+    from . import services
+    from .models import AdSetMirror
+
+    intent = (template.get('v2') or {}).get('action')
+    target_id = finding.get('target_meta_id', '')
+    prefix = '[Simulation] ' if dry_run else ''
+
+    if intent == 'budget_scale_up':
+        adset = AdSetMirror.objects.filter(
+            company=company, meta_id=target_id).first()
+        if adset is None or adset.budget is None:
+            return None  # pas de base budget → alerte seule
+        current_mad = float(adset.budget) / services.CENTIMES_PER_MAD
+        if current_mad <= 0:
+            return None
+        params = rule_templates.resolve_params(policy.template_key, policy.params)
+        scale_pct = float(params.get(
+            'scale_pct', services.LEARNING_SAFE_MAX_PCT))
+        reason = (
+            f"{prefix}Surf-scaling : le CPL de l'ad set {target_id} s'améliore "
+            f"(fenêtre courte < longue) — montée de budget learning-safe "
+            f"(≤{services.LEARNING_SAFE_MAX_PCT} %) proposée.")
+        return services.propose_learning_safe_scale_up(
+            company, adset_meta_id=target_id,
+            current_daily_budget_mad=current_mad, scale_pct=scale_pct,
+            reason_fr=reason, config=config)
+
+    if intent == 'duplicate':
+        adset = AdSetMirror.objects.filter(
+            company=company, meta_id=target_id).first()
+        if adset is None:
+            return None
+        reason = (
+            f"{prefix}Dupliquer l'ad set gagnant « {adset.name} » pour scaler "
+            f"horizontalement (nouvel ad set PAUSED + ad réutilisant le créatif "
+            f"LIVE).")
+        try:
+            return services.propose_duplicate(
+                company, adset=adset, reason_fr=reason)
+        except ValueError:
+            return None  # pas de créatif LIVE / campagne miroir → alerte seule
+
+    return None
+
+
 def _act_on_finding(company, policy, template, finding, *, config, client):
     """Matérialise l'action/alerte d'un finding DÉCLENCHÉ (jamais d'action
     directe : toujours via ``services``). Déduplique par cooldown. Renvoie
@@ -249,6 +687,27 @@ def _act_on_finding(company, policy, template, finding, *, config, client):
         return None  # cooldown / idempotence : jamais de doublon
 
     reason = _reason_fr({**template, '_key': template_key}, finding)
+
+    # ADSDEEP40 — action de règle v2 (montée de budget / duplication) : TOUJOURS
+    # propose-first, prend le pas sur le chemin kind-based dès que le template
+    # porte un hint ``v2['action']``. On estampille (template_key, target) dans le
+    # payload pour que la dédup cooldown (``_recently_acted``) couvre aussi ces
+    # actions (leurs payloads budget/duplication ne les portent pas nativement).
+    v2_intent = (template.get('v2') or {}).get('action')
+    if v2_intent:
+        action = _propose_v2_action(
+            company, policy, template, finding, config=config,
+            dry_run=policy.dry_run)
+        if action is not None:
+            payload = dict(action.payload or {})
+            payload.setdefault('template_key', template_key)
+            payload.setdefault('target_meta_id', target_meta_id)
+            action.payload = payload
+            action.save(update_fields=['payload', 'updated_at'])
+        _emit_alert(company, template_key=template_key, finding=finding,
+                    message=reason, action=action, dry_run=policy.dry_run)
+        return action
+
     kind = rule_templates.action_kind(template_key)
     payload = {
         'template_key': template_key,
@@ -282,6 +741,69 @@ def _act_on_finding(company, policy, template, finding, *, config, client):
     return action
 
 
+# ── ADSDEEP43 — Journal d'exécution ENRICHI (le « pourquoi » de chaque passe) ──
+def _condition_fr(template, finding):
+    """ADSDEEP43 — Phrase FR expliquant la CONDITION testée et son verdict à partir
+    du bloc ``computed`` du finding (jamais un simple booléen : quelles valeurs,
+    quel seuil, quelle fenêtre → vrai/faux). Couvre les trois formes v2 (seuil /
+    fenêtres comparées / classement) + fréquence + repli générique. Toujours non
+    vide."""
+    c = finding.get('computed', {}) or {}
+    target = finding.get('target_meta_id', '?')
+    if finding.get('insufficient_data'):
+        return (f"{target} : données insuffisantes "
+                f"({c.get('samples', 0)} échantillon(s)) — non évaluable.")
+    verdict = 'vrai' if finding.get('fired') else 'faux'
+    # Fenêtres comparées (« court vs long × facteur »).
+    if 'short' in c and 'long' in c and 'boundary' in c:
+        arrow = '>' if c.get('direction') == 'up' else '<'
+        return (
+            f"{c.get('metric', 'métrique')} {c.get('short')} sur {c.get('short_days')} j "
+            f"{arrow} {c.get('long')} × {c.get('factor')} = {c.get('boundary')} sur "
+            f"{c.get('long_days')} j → {verdict}.")
+    # Classement top-N.
+    if 'rank' in c and 'top_n' in c:
+        return (
+            f"Dépense {c.get('spend')} — rang {c.get('rank')} "
+            f"(top-{c.get('top_n')} : {'oui' if c.get('in_top_n') else 'non'}), "
+            f"résultats {c.get('results')} < {c.get('min_results')} → {verdict}.")
+    # Fréquence (évaluateur historique).
+    if 'frequency' in c and 'threshold' in c:
+        return (f"Fréquence {c.get('frequency')} > seuil {c.get('threshold')} "
+                f"→ {verdict}.")
+    # Seuil sur métrique dérivée (gt/lt).
+    if 'value' in c and 'threshold' in c:
+        op = '>' if c.get('operator') == 'gt' else '<'
+        return (
+            f"{c.get('metric', 'métrique')} {c.get('value')} {op} "
+            f"seuil {c.get('threshold')} sur {c.get('window_days', '?')} j "
+            f"→ {verdict}.")
+    return (f"{template.get('label_fr', 'Règle')} pour {target} → {verdict}.")
+
+
+def _action_summary(action):
+    """ADSDEEP43 — Résumé JSON-safe de l'action PROPOSÉE d'un déclenchement (le
+    DELTA appliqué) : type, id, statut, raison, et les chiffres clés du payload
+    (budget courant→proposé, cible de pause…). Rendu tel quel sur l'écran Règles."""
+    payload = action.payload or {}
+    delta = {}
+    if 'new_daily_budget_mad' in payload:
+        # Montée de budget : delta MAD lisible (courant→proposé).
+        cur = payload.get('current_budget')
+        delta = {
+            'type': 'budget',
+            'current_mad': (round(float(cur) / 100, 2) if cur is not None
+                            else None),
+            'new_mad': payload.get('new_daily_budget_mad')}
+    elif payload.get('target_meta_id') and action.kind in ('pause',):
+        delta = {'type': 'pause', 'target': payload.get('target_meta_id')}
+    elif payload.get('new_adset_name'):
+        delta = {'type': 'duplicate', 'new_adset': payload.get('new_adset_name')}
+    return {
+        'id': action.pk, 'kind': action.kind, 'status': action.status,
+        'reason_fr': action.reason_fr, 'delta': delta}
+
+
 def _record_last_result(policy, result):
     """Écrit ``last_result`` + ``last_evaluated_at`` (à CHAQUE évaluation)."""
     from django.utils import timezone
@@ -292,9 +814,14 @@ def _record_last_result(policy, result):
 
 
 def evaluate_company(company, *, cadences=None, now=None, client=None,
-                     config=None):
+                     config=None, quarter_hourly=False):
     """Évalue les ``RulePolicy`` activées d'une société pour les cadences
     demandées. ``cadences`` None = toutes. Renvoie le nombre de règles évaluées.
+
+    ADSDEEP42 — ``quarter_hourly=True`` : n'évalue QUE les règles opt-in à la
+    boucle quart-horaire (``cadence_minutes>0``), quelle que soit la cadence de
+    leur template (le fondateur juge la règle assez critique pour 15 min). Ce
+    mode IGNORE le filtre ``cadences`` (la sélection se fait sur ``cadence_minutes``).
 
     Best-effort par règle : une exception sur une règle est consignée
     (``evaluated: False`` + alerte règle-inopérante) et n'empêche pas les
@@ -316,7 +843,11 @@ def evaluate_company(company, *, cadences=None, now=None, client=None,
             _record_last_result(
                 policy, {'evaluated': False, 'reason': 'template inconnu'})
             continue
-        if cadences is not None and template['cadence'] not in cadences:
+        if quarter_hourly:
+            # ADSDEEP42 — boucle quart-horaire : seulement les règles opt-in.
+            if not getattr(policy, 'cadence_minutes', 0):
+                continue  # pas opt-in — ne touche pas last_result
+        elif cadences is not None and template['cadence'] not in cadences:
             continue  # pas le tour de cette cadence — ne touche pas last_result
 
         evaluator = _EVALUATORS.get(policy.template_key)
@@ -342,11 +873,16 @@ def evaluate_company(company, *, cadences=None, now=None, client=None,
         fired_any = False
         summaries = []
         for finding in findings:
-            summaries.append({
+            # ADSDEEP43 — entrée de journal ENRICHIE : entité évaluée, verdict de
+            # condition avec ses valeurs (``condition_fr``), et — si déclenchée —
+            # le delta de l'action proposée (``action``).
+            entry = {
                 'target': finding.get('target_meta_id'),
+                'target_type': finding.get('target_type'),
                 'fired': finding.get('fired', False),
                 'insufficient_data': finding.get('insufficient_data', False),
-                'computed': finding.get('computed', {})})
+                'computed': finding.get('computed', {}),
+                'condition_fr': _condition_fr(template, finding)}
             if finding.get('insufficient_data'):
                 # Branche insufficient_data : ALERTE toujours (piège Madgicx).
                 _emit_alert(
@@ -357,8 +893,11 @@ def evaluate_company(company, *, cadences=None, now=None, client=None,
                     dry_run=policy.dry_run, insufficient=True)
             elif finding.get('fired'):
                 fired_any = True
-                _act_on_finding(company, policy, template, finding,
-                                config=config, client=client)
+                action = _act_on_finding(company, policy, template, finding,
+                                         config=config, client=client)
+                if action is not None:
+                    entry['action'] = _action_summary(action)
+            summaries.append(entry)
 
         _record_last_result(policy, {
             'evaluated': True, 'fired': fired_any,

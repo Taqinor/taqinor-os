@@ -18,8 +18,8 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/apps/adminops/models.py:38` | SandboxEnvironment.sandbox_company | authentication.Company | SET_NULL |
 | `backend/django_core/apps/adminops/models.py:135` | AdminOpsSettings.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/adsengine/models.py:40` | MetaConnection.company | authentication.Company | CASCADE |
-| `backend/django_core/apps/adsengine/models.py:95` | GuardrailConfig.company | authentication.Company | CASCADE |
-| `backend/django_core/apps/adsengine/models.py:743` | CreativePolicy.company | authentication.Company | CASCADE |
+| `backend/django_core/apps/adsengine/models.py:101` | GuardrailConfig.company | authentication.Company | CASCADE |
+| `backend/django_core/apps/adsengine/models.py:853` | CreativePolicy.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/agent/models.py:28` | AgentActionLog.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/agriculture/models.py:25` | Exploitation.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/agriculture/models.py:53` | Parcelle.company | authentication.Company | CASCADE |

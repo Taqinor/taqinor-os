@@ -184,14 +184,15 @@ class MetaClient:
     """
 
     def __init__(self, *, access_token, ad_account_id=None, page_id=None,
-                 base_url=GRAPH_BASE_URL, http_client=None, max_retries=3,
-                 backoff_base=0.5):
+                 ig_user_id=None, base_url=GRAPH_BASE_URL, http_client=None,
+                 max_retries=3, backoff_base=0.5):
         if not access_token:
             raise MetaAuthError(
                 "Token Meta manquant : connexion non configurée ou désactivée.")
         self._token = access_token
         self.ad_account_id = ad_account_id
         self.page_id = page_id
+        self.ig_user_id = ig_user_id
         self._base_url = base_url.rstrip('/')
         self._client = http_client or httpx.Client(timeout=30.0)
         self._owns_client = http_client is None
@@ -213,6 +214,7 @@ class MetaClient:
             access_token=token,
             ad_account_id=connection.ad_account_id or None,
             page_id=connection.page_id or None,
+            ig_user_id=getattr(connection, 'ig_user_id', '') or None,
             **kwargs,
         )
 
@@ -224,6 +226,21 @@ class MetaClient:
         if not str(acct).startswith('act_'):
             acct = f'act_{acct}'
         return f'{acct}/{edge}'
+
+    def _page_edge(self, edge):
+        """ADSDEEP49 — Chemin d'un edge de la Page (``<page_id>/<edge>``). Lève si
+        la connexion n'a pas de ``page_id`` (aucun appel sur une Page inconnue)."""
+        if not self.page_id:
+            raise MetaError("page_id manquant sur la connexion Meta.")
+        return f'{self.page_id}/{edge}'
+
+    def _ig_edge(self, edge):
+        """ADSDEEP55 — Chemin d'un edge du compte IG (``<ig_user_id>/<edge>``).
+        Lève si la connexion n'a pas d'``ig_user_id`` (aucun appel sur un compte
+        Instagram inconnu — tout le pan IG no-ope proprement en amont)."""
+        if not self.ig_user_id:
+            raise MetaError("ig_user_id manquant sur la connexion Meta.")
+        return f'{self.ig_user_id}/{edge}'
 
     def _sleep(self, attempt):
         if self._backoff_base:
@@ -429,6 +446,30 @@ class MetaClient:
             f'{ad_id}/previews', params={'ad_format': ad_format})
         return rows[0].get('body', '') if rows else ''
 
+    # ── ADSDEEP49 — Posts ORGANIQUES de Page (lecture + cross-check ads_posts) ─
+    # ``application`` permet de déduire ``created_by_app`` côté synchro : l'app ne
+    # peut ÉDITER que les posts créés par elle-même (dossier organic-posts §1).
+    PAGE_POST_FIELDS = (
+        'id', 'message', 'created_time', 'permalink_url', 'is_published',
+        'scheduled_publish_time', 'application')
+
+    def get_page_posts(self, *, fields=None, limit=None):
+        """ADSDEEP49 — Lit les posts de la Page (``GET /<page_id>/posts``).
+        Renvoie la liste COMPLÈTE (toutes les pages, curseur ``after``)."""
+        return self._read_list(
+            self._page_edge('posts'),
+            fields=fields or self.PAGE_POST_FIELDS, limit=limit)
+
+    def get_ads_posts_ids(self):
+        """ADSDEEP49 — Ensemble des IDs de TOUS les posts de la Page utilisés en
+        ads (dark compris) via ``GET /<page_id>/ads_posts``. Sert au cross-check
+        ``ad_linked`` (un post adossé à une pub est risqué à éditer/supprimer —
+        dossier organic-posts §1)."""
+        rows = self._read_list(self._page_edge('ads_posts'), fields=('id',))
+        return {
+            str(r.get('id') or '').strip()
+            for r in rows or [] if isinstance(r, dict) and r.get('id')}
+
     def _read_list(self, path, *, fields=None, limit=None):
         params = {}
         if fields:
@@ -504,6 +545,34 @@ class MetaClient:
         return self._request(
             'POST', self._account_edge('ads'), data=payload)
 
+    def duplicate_adset_with_ad(self, *, campaign_id, new_adset_name,
+                                new_ad_name, creative_id,
+                                adset_extra_fields=None, ad_extra_fields=None):
+        """ADSDEEP37 — Duplique un ad set (+ UNE ad qui RÉUTILISE le créatif LIVE
+        de la source) : 2 créations en séquence, TOUJOURS PAUSED (aucune des
+        deux signatures internes n'accepte de ``status`` — même garantie que
+        les créations normales, invariant permanent règle #3).
+
+        ``creative_id`` DOIT venir d'``AdCreativeMirror.creative_meta_id``
+        (dossier ADSDEEP11 — un ``AdMirror`` seul ne porte PAS le créatif, donc
+        dupliquer sans passer par le miroir de créatif est impossible).
+        ``adset_extra_fields`` porte la copie du budget/ciblage de la source
+        (construit par l'appelant depuis le miroir — « adset = copie du payload
+        miroir »). Renvoie ``{adset, ad}`` (les deux payloads Graph)."""
+        adset = self.create_adset(
+            name=new_adset_name, campaign_id=campaign_id,
+            extra_fields=adset_extra_fields)
+        new_adset_id = str((adset or {}).get('id') or '')
+        if not new_adset_id:
+            raise MetaError(
+                "Duplication : création de l'ad set échouée (aucun id renvoyé).")
+        extra = dict(ad_extra_fields or {})
+        extra.pop('status', None)
+        extra['creative'] = json.dumps({'creative_id': creative_id})
+        ad = self.create_ad(
+            name=new_ad_name, adset_id=new_adset_id, extra_fields=extra)
+        return {'adset': adset, 'ad': ad}
+
     def create_ad_with_object_story_spec(self, *, name, adset_id,
                                          object_story_spec, extra_fields=None):
         """ADSENG30 — Crée une ad « style post » via ``object_story_spec``.
@@ -531,6 +600,603 @@ class MetaClient:
         return self._request(
             'POST', self._account_edge('ads'), data=payload)
 
+    # ── ADSDEEP34 — A/B test NATIF Meta (ad_studies, SPLIT_TEST_V2) ──────────
+    # Bornes documentées (dossier §7) : 2-5 cellules, ``treatment_percentage``
+    # >= 10 %, somme des cellules = 100 %. Validées ICI (fail-fast) — jamais un
+    # rejet Graph tardif après un aller-retour réseau.
+    AD_STUDY_MIN_CELLS = 2
+    AD_STUDY_MAX_CELLS = 5
+    AD_STUDY_MIN_TREATMENT_PCT = 10
+
+    @classmethod
+    def _validate_ad_study_cells(cls, cells):
+        cells = list(cells or [])
+        if not (cls.AD_STUDY_MIN_CELLS <= len(cells) <= cls.AD_STUDY_MAX_CELLS):
+            raise MetaError(
+                "Une étude SPLIT_TEST_V2 exige entre "
+                f"{cls.AD_STUDY_MIN_CELLS} et {cls.AD_STUDY_MAX_CELLS} cellules "
+                f"(reçu {len(cells)}).")
+        total_pct = sum(float(c.get('treatment_percentage', 0) or 0) for c in cells)
+        if abs(total_pct - 100) > 0.01:
+            raise MetaError(
+                "La somme des treatment_percentage doit faire 100 "
+                f"(reçu {total_pct}).")
+        for cell in cells:
+            pct = float(cell.get('treatment_percentage', 0) or 0)
+            if pct < cls.AD_STUDY_MIN_TREATMENT_PCT:
+                raise MetaError(
+                    "Chaque cellule doit avoir treatment_percentage >= "
+                    f"{cls.AD_STUDY_MIN_TREATMENT_PCT} % (reçu {pct} pour "
+                    f"« {cell.get('name', '?')} »).")
+        return cells
+
+    def create_ad_study(self, *, name, cells, extra_fields=None):
+        """ADSDEEP34 — Crée une étude A/B NATIVE Meta (``POST /act_<id>/ad_studies``,
+        ``type=SPLIT_TEST_V2`` — dossier §7).
+
+        ``cells`` : 2-5 dicts ``{name, treatment_percentage, campaigns|adsets|
+        ads: [ids]}`` — ces ids référencent des objets DÉJÀ créés (par le reste
+        du moteur, donc TOUJOURS nés PAUSED — cette méthode ne crée ni campagne
+        ni adset elle-même et n'envoie AUCUN ``status`` : une étude ne porte pas
+        de statut de type campagne/adset).
+
+        IMMUABLE APRÈS LANCEMENT (dossier §7) : ``treatment_percentage`` et
+        ``start_time`` ne peuvent plus changer une fois l'étude créée — l'UI
+        DOIT l'annoncer à l'approbateur AVANT la proposition (``services.
+        propose_ad_study`` porte l'avertissement) ; ce client, lui, ne fait que
+        transmettre — il ne « réédite » jamais une étude déjà lancée."""
+        cells = self._validate_ad_study_cells(cells)
+        base = {'name': name, 'type': 'SPLIT_TEST_V2', 'cells': json.dumps(cells)}
+        payload = dict(base)
+        extras = dict(extra_fields or {})
+        extras.pop('status', None)  # une étude ne porte pas de champ status
+        payload.update(extras)
+        return self._request(
+            'POST', self._account_edge('ad_studies'), data=payload)
+
+    def get_ad_study_results(self, study_id):
+        """ADSDEEP34 — Lit (LECTURE SEULE) les résultats d'une étude native déjà
+        créée (``GET /<study_id>``). Renvoie le dict brut (ou ``{}``) — la
+        normalisation en ``DecisionLog`` vit dans ``services.
+        sync_ad_study_results`` (aucun write Meta ici)."""
+        payload = self._request('GET', f'{study_id}', params={'fields': (
+            'id,name,type,cells,start_time,end_time,confidence_level,results')})
+        return payload if isinstance(payload, dict) else {}
+
+    # ── Éditions d'objets existants (ADSDEEP30 — JAMAIS de status) ───────────
+    @staticmethod
+    def _edit_payload(base, extra_fields):
+        """Fusionne ``base`` + ``extra_fields`` en RETIRANT tout ``status``.
+
+        Les méthodes d'édition (échange de créatif / renommage / plafond) ne
+        touchent JAMAIS au statut : un ``status`` glissé via ``extra_fields`` est
+        retiré et n'est jamais réémis — aucune d'elles ne peut donc activer /
+        dé-pauser un objet (invariant permanent règle #3). À la DIFFÉRENCE des
+        créations, on n'écrit PAS ``PAUSED`` : une édition laisse le statut Meta
+        inchangé (elle ne repause pas non plus un objet en ligne — elle n'écrit
+        aucun statut du tout)."""
+        payload = dict(base)
+        extras = dict(extra_fields or {})
+        extras.pop('status', None)
+        payload.update(extras)
+        payload.pop('status', None)  # mot final : jamais de status sur une édition
+        return payload
+
+    def swap_ad_creative(self, *, ad_id, creative_spec=None, creative_id=None,
+                         extra_fields=None):
+        """ADSDEEP30 — Remplace le créatif d'une ad EXISTANTE (dossier §4).
+
+        ``AdCreative`` est **write-once** pour son contenu : on ne peut pas éditer
+        le texte / média d'un créatif en place. Le SEUL chemin est donc :
+
+          1. créer un NOUVEAU adcreative (``POST /act_<id>/adcreatives``) portant
+             le nouveau contenu (``creative_spec``) — sauf si ``creative_id`` est
+             déjà fourni (réutilisation d'un créatif existant) ;
+          2. le rattacher à l'ad SANS rien toucher d'autre :
+             ``POST /<ad_id>`` avec ``{"creative": {"creative_id": <nouveau>}}``.
+
+        Même ``ad_id`` → l'historique d'insights est conservé. AUCUN ``status``
+        n'est envoyé à AUCUNE des deux étapes : la méthode ne peut ni créer un
+        objet actif ni dé-pauser l'ad (invariant permanent règle #3). ⚠ côté Meta
+        c'est un *significant edit* (re-review + reset d'apprentissage) et un
+        changement de texte crée un NOUVEAU post (perte de preuve sociale) —
+        l'avertissement est porté par la couche EngineAction (ADSDEEP31), pas ici.
+
+        Renvoie ``{creative_id, created_creative, ad_update}``.
+        """
+        new_creative_id = str(creative_id or '').strip()
+        created = None
+        if not new_creative_id:
+            if not creative_spec:
+                raise MetaError(
+                    "swap_ad_creative exige creative_spec ou creative_id.")
+            # Les objets imbriqués (object_story_spec, asset_feed_spec…) voyagent
+            # en JSON dans les paramètres de formulaire Meta. ``status`` retiré :
+            # jamais posé sur le nouveau créatif non plus.
+            spec = {}
+            for key, value in dict(creative_spec).items():
+                if key == 'status':
+                    continue
+                spec[key] = (json.dumps(value)
+                             if isinstance(value, (dict, list)) else value)
+            created = self._request(
+                'POST', self._account_edge('adcreatives'), data=spec)
+            new_creative_id = str((created or {}).get('id') or '').strip()
+            if not new_creative_id:
+                raise MetaError(
+                    "Création du nouveau créatif échouée : aucun id renvoyé.")
+        base = {'creative': json.dumps({'creative_id': new_creative_id})}
+        payload = self._edit_payload(base, extra_fields)
+        result = self._request('POST', f'{ad_id}', data=payload)
+        return {
+            'creative_id': new_creative_id,
+            'created_creative': created,
+            'ad_update': result if isinstance(result, dict) else {
+                'result': result},
+        }
+
+    def rename_object(self, *, object_id, name, extra_fields=None):
+        """ADSDEEP30 — Renomme un objet Meta (campagne / adset / ad / créatif) :
+        le SEUL champ édité est ``name``. ``POST /<object_id>`` avec ``{name}``.
+        Aucun ``status`` n'est jamais envoyé (invariant permanent : le renommage
+        ne peut ni activer ni dé-pauser — règle #3)."""
+        base = {'name': name}
+        payload = self._edit_payload(base, extra_fields)
+        return self._request('POST', f'{object_id}', data=payload)
+
+    def set_adset_schedule(self, *, adset_id, adset_schedule, extra_fields=None):
+        """ADSDEEP36 — Dayparting NATIF Meta : pose ``adset_schedule`` sur un ad
+        set (exige côté Meta un ad set en BUDGET LIFETIME + pacing day_parting —
+        contrainte NON vérifiable depuis ce seul appel réseau ; l'appelant
+        (``services.propose_native_schedule``) choisit ce chemin uniquement pour
+        les ad sets lifetime-budget, jamais pour du budget quotidien).
+
+        Chaque plage DOIT être bornée à l'HEURE PLEINE (``start_minute``/
+        ``end_minute`` multiples de 60) — validé ICI (fail-fast), jamais laissé
+        remonter en erreur Graph tardive. Édition : AUCUN ``status`` n'est
+        jamais envoyé (invariant permanent règle #3 — un horaire ne peut ni
+        activer ni dé-pauser)."""
+        for block in adset_schedule or []:
+            start = block.get('start_minute')
+            end = block.get('end_minute')
+            if start is None or end is None or start % 60 != 0 or end % 60 != 0:
+                raise MetaError(
+                    "adset_schedule : chaque plage doit être bornée à l'heure "
+                    f"pleine (minutes multiples de 60) — reçu start={start}, "
+                    f"end={end}.")
+        base = {'adset_schedule': json.dumps(list(adset_schedule or []))}
+        payload = self._edit_payload(base, extra_fields)
+        return self._request('POST', f'{adset_id}', data=payload)
+
+    def set_campaign_spend_cap(self, *, campaign_id, spend_cap,
+                               extra_fields=None):
+        """ADSDEEP30 — Pose le plafond de dépense TOTAL d'une campagne
+        (``spend_cap``, unités mineures Meta ; ``0`` = sans plafond — dossier §1).
+        ``POST /<campaign_id>``. Un plafond ne PEUT QUE limiter la dépense — il
+        n'active jamais rien : aucun ``status`` n'est envoyé (invariant permanent
+        règle #3)."""
+        base = {'spend_cap': spend_cap}
+        payload = self._edit_payload(base, extra_fields)
+        return self._request('POST', f'{campaign_id}', data=payload)
+
+    # ── ADSDEEP50 — Éditer le texte d'un post de Page (message SEUL) ──────────
+    def edit_page_post(self, *, post_id, message, extra_fields=None):
+        """ADSDEEP50 — Édite le TEXTE d'un post de Page (``POST /<post_id>``).
+
+        SEUL le ``message`` est éditable : le visuel (image/vidéo) d'un post
+        PUBLIÉ est IMMUABLE côté Meta (dossier organic-posts §1 — le changer =
+        supprimer + recréer, perte de l'historique d'engagement). Comme toute
+        édition, AUCUN ``status`` n'est jamais envoyé (invariant permanent
+        règle #3). La contrainte « posts créés par l'app SEULEMENT » est vérifiée
+        en amont (``services.propose_edit_post`` refuse proprement un post non
+        créé par l'app) — Meta la rejetterait de toute façon."""
+        base = {'message': message}
+        payload = self._edit_payload(base, extra_fields)
+        return self._request('POST', f'{post_id}', data=payload)
+
+    # ── ADSDEEP51 — Publier des posts de Page (organique, pages_manage_posts) ─
+    # Fenêtre de programmation Meta (dossier organic-posts §2) : 10 min à 30 j.
+    SCHEDULE_MIN_SECONDS = 10 * 60
+    SCHEDULE_MAX_SECONDS = 30 * 24 * 3600
+    # Taille max d'une vidéo (Resumable Upload API, dossier §2) : 1,75 Go.
+    MAX_VIDEO_BYTES = int(1.75 * 1024 * 1024 * 1024)
+
+    def _validate_schedule(self, scheduled_publish_time):
+        """Fail-fast : une programmation doit tomber entre 10 min et 30 j dans le
+        futur (jamais un rejet Graph tardif après un aller-retour réseau)."""
+        try:
+            ts = int(scheduled_publish_time)
+        except (TypeError, ValueError):
+            raise MetaError(
+                "scheduled_publish_time doit être un horodatage unix (secondes).")
+        delta = ts - int(time.time())
+        if not (self.SCHEDULE_MIN_SECONDS <= delta <= self.SCHEDULE_MAX_SECONDS):
+            raise MetaError(
+                "La programmation d'un post doit tomber entre 10 minutes et "
+                "30 jours dans le futur (dossier organic-posts §2).")
+
+    def create_page_post(self, *, message='', link='', published=True,
+                         scheduled_publish_time=None, attached_media=None,
+                         extra_fields=None):
+        """ADSDEEP51 — Crée un post via ``POST /<page_id>/feed``. Trois modes :
+
+          * PUBLIÉ — ``published=True`` (affiché tout de suite) ;
+          * DARK — ``published=False`` SANS programmation : objet post complet
+            jamais affiché sur la Page, réutilisable en ad (``object_story_id``) ;
+          * PROGRAMMÉ — ``published=False`` + ``scheduled_publish_time`` (fenêtre
+            10 min-30 j revalidée ici, fail-fast).
+
+        ``attached_media`` porte les ``{"media_fbid": …}`` des photos
+        pré-uploadées (post multi-photos). Ce n'est PAS un objet publicitaire :
+        aucun ``status`` de campagne/adset/ad n'est en jeu ici."""
+        if scheduled_publish_time is not None:
+            published = False
+            self._validate_schedule(scheduled_publish_time)
+        body = {'published': 'true' if published else 'false'}
+        if message:
+            body['message'] = message
+        if link:
+            body['link'] = link
+        if scheduled_publish_time is not None:
+            body['scheduled_publish_time'] = int(scheduled_publish_time)
+        for i, media in enumerate(attached_media or []):
+            body[f'attached_media[{i}]'] = json.dumps(media)
+        body.update(dict(extra_fields or {}))
+        return self._request('POST', self._page_edge('feed'), data=body)
+
+    def upload_page_photo(self, *, image_url='', published=False, caption='',
+                          extra_fields=None):
+        """ADSDEEP51 — Upload une photo (``POST /<page_id>/photos``).
+        ``published=False`` (défaut) sert au post multi-photos (récupérer le
+        ``id``/media_fbid sans afficher) ; ``published=True`` = simple
+        publication photo."""
+        body = {'published': 'true' if published else 'false'}
+        if image_url:
+            body['url'] = image_url
+        if caption:
+            body['caption'] = caption
+        body.update(dict(extra_fields or {}))
+        return self._request('POST', self._page_edge('photos'), data=body)
+
+    def create_multi_photo_post(self, *, message='', image_urls=None,
+                                extra_fields=None):
+        """ADSDEEP51 — Post multi-photos : upload chaque photo ``published=false``
+        (récupère les media_fbid) puis ``POST /feed`` avec ``attached_media``
+        (dossier organic-posts §2)."""
+        media = []
+        for url in image_urls or []:
+            photo = self.upload_page_photo(image_url=url, published=False)
+            fbid = str((photo or {}).get('id') or '').strip()
+            if not fbid:
+                raise MetaError(
+                    "Upload photo échoué (aucun id/media_fbid renvoyé).")
+            media.append({'media_fbid': fbid})
+        return self.create_page_post(
+            message=message, published=True, attached_media=media,
+            extra_fields=extra_fields)
+
+    def upload_page_video(self, *, file_url='', message='', file_size=None,
+                          extra_fields=None):
+        """ADSDEEP51 — Publie une vidéo (``POST /<page_id>/videos``). Les gros
+        fichiers passent par la Resumable Upload API côté client d'upload ; ici on
+        BORNE la taille à 1,75 Go (dossier §2, fail-fast) et on transmet
+        ``file_url`` + ``description``."""
+        if file_size is not None:
+            try:
+                size = int(file_size)
+            except (TypeError, ValueError):
+                size = 0
+            if size > self.MAX_VIDEO_BYTES:
+                raise MetaError(
+                    "Vidéo trop lourde : 1,75 Go maximum (dossier "
+                    "organic-posts §2).")
+        body = {}
+        if file_url:
+            body['file_url'] = file_url
+        if message:
+            body['description'] = message
+        body.update(dict(extra_fields or {}))
+        return self._request('POST', self._page_edge('videos'), data=body)
+
+    # ── ADSDEEP52 — Booster un post existant (object_story_id — preuve sociale) ─
+    def boost_page_post(self, *, post_id, adset_id, name, extra_fields=None):
+        """ADSDEEP52 — Booste un post EXISTANT : crée un adcreative portant
+        ``object_story_id`` (la preuve sociale — J'aime/commentaires/partages —
+        est PRÉSERVÉE ; on n'utilise JAMAIS ``object_story_spec`` ici, qui
+        créerait un post NEUF aux compteurs à zéro) puis une ad qui le porte,
+        née PAUSED (invariant permanent règle #3 — ``create_ad`` force PAUSED,
+        aucune activation possible).
+
+        Renvoie ``{creative, ad}`` (les deux payloads Graph)."""
+        if not post_id:
+            raise MetaError("boost_page_post exige un post_id.")
+        creative = self._request(
+            'POST', self._account_edge('adcreatives'),
+            data={'object_story_id': post_id})
+        creative_id = str((creative or {}).get('id') or '').strip()
+        if not creative_id:
+            raise MetaError(
+                "Boost : création du créatif échouée (aucun id renvoyé).")
+        extra = dict(extra_fields or {})
+        extra.pop('status', None)
+        extra['creative'] = json.dumps({'creative_id': creative_id})
+        ad = self.create_ad(name=name, adset_id=adset_id, extra_fields=extra)
+        return {'creative': creative, 'ad': ad}
+
+    # ── ADSDEEP53 — Commentaires (posts organiques ET dark/ad posts) ─────────
+    # Champs demandés par défaut (dossier organic-posts §3). ``is_hidden`` est
+    # DÉLIBÉRÉMENT re-lu par ``get_comment`` après tout masquage : il est
+    # « éventuellement consistant » (masqué côté API mais parfois visible côté FB,
+    # unhide parfois refusé alors que hide passe) — on ne le CROIT jamais en
+    # aveugle (read-back obligatoire, dossier §3).
+    COMMENT_FIELDS = (
+        'id', 'message', 'from', 'created_time', 'like_count', 'is_hidden',
+        'can_hide', 'can_remove', 'comment_count', 'permalink_url', 'parent')
+
+    def get_object_comments(self, object_id, *, fields=None, comment_filter='toplevel',
+                            limit=None):
+        """ADSDEEP53 — Lit les commentaires d'un objet (``GET /<object_id>/
+        comments``). ``object_id`` = un post organique OU l'``effective_object_
+        story_id`` d'un dark post (mêmes edges — dossier §3). ``comment_filter``
+        ∈ {toplevel, stream}. Renvoie la liste COMPLÈTE (toutes les pages)."""
+        params = {'fields': ','.join(fields or self.COMMENT_FIELDS)}
+        if comment_filter:
+            params['filter'] = comment_filter
+        if limit is not None:
+            params['limit'] = limit
+        return self._paged(f'{object_id}/comments', params=params)
+
+    def get_comment(self, comment_id, *, fields=None):
+        """ADSDEEP53 — Re-lit UN commentaire (``GET /<comment_id>``) — le read-back
+        du masquage. Renvoie le dict brut (ou ``{}``)."""
+        payload = self._request(
+            'GET', f'{comment_id}',
+            params={'fields': ','.join(fields or self.COMMENT_FIELDS)})
+        return payload if isinstance(payload, dict) else {}
+
+    def hide_comment(self, *, comment_id, hidden=True):
+        """ADSDEEP53 — Masque / démasque un commentaire (``POST /<comment_id>``
+        ``is_hidden=…``). ``is_hidden`` est l'un des DEUX seuls champs écrivables
+        d'un commentaire (avec ``message``). AUCUN ``status`` d'objet publicitaire
+        n'est en jeu ici. Le read-back de vérification est fait par l'appelant
+        (``services._dispatch_hide_comment`` re-GET puis compare)."""
+        return self._request(
+            'POST', f'{comment_id}',
+            data={'is_hidden': 'true' if hidden else 'false'})
+
+    def reply_to_comment(self, *, comment_id, message, attachment_url=None):
+        """ADSDEEP53 — Répond à un commentaire (``POST /<comment_id>/comments``)."""
+        body = {'message': message}
+        if attachment_url:
+            body['attachment_url'] = attachment_url
+        return self._request('POST', f'{comment_id}/comments', data=body)
+
+    def delete_comment(self, *, comment_id):
+        """ADSDEEP53 — Supprime un commentaire (``DELETE /<comment_id>``) — la Page
+        propriétaire de l'objet. Passe TOUJOURS par une ``EngineAction`` approuvée
+        (jamais un appel direct non journalisé)."""
+        return self._request('DELETE', f'{comment_id}')
+
+    def private_reply(self, *, comment_id, message):
+        """ADSDEEP53 — Réponse privée (DM) à un commentaire (``POST /<comment_id>/
+        private_replies``). Meta n'en autorise QU'UNE par commentaire, dans les
+        7 jours (dossier §3) — le garde-fou est appliqué à la proposition
+        (``services.propose_private_reply``) ; ce client ne fait que transmettre."""
+        return self._request(
+            'POST', f'{comment_id}/private_replies', data={'message': message})
+
+    # ── ADSDEEP55 — Instagram (compte Business relié à la Page) ──────────────
+    # ``caption`` est LECTURE SEULE (immuable après publication, dossier §4) —
+    # aucune méthode d'édition de légende n'existe (analogue à l'absence de toute
+    # méthode d'activation, invariant #3). Le SEUL champ écrivable d'un média est
+    # ``comment_enabled``.
+    IG_MEDIA_FIELDS = (
+        'id', 'caption', 'media_type', 'media_url', 'permalink', 'timestamp',
+        'like_count', 'comments_count', 'is_comment_enabled')
+    IG_COMMENT_FIELDS = (
+        'id', 'text', 'username', 'timestamp', 'like_count', 'hidden',
+        'parent_id')
+    # Quota de publication IG (dossier §4) : 50 publications / 24 h (à vérifier
+    # par compte via ``content_publishing_limit`` — jamais codé en dur comme
+    # source de vérité, seulement en repli si l'endpoint ne renvoie rien).
+    IG_PUBLISH_QUOTA_DEFAULT = 50
+    # Spec REELS (dossier §4) : MP4/MOV H.264, ≤ 300 Mo.
+    MAX_REEL_BYTES = 300 * 1024 * 1024
+    IG_MEDIA_TYPES = ('IMAGE', 'VIDEO', 'REELS', 'STORIES', 'CAROUSEL')
+    # États du container renvoyés par ``status_code`` (dossier §4).
+    IG_CONTAINER_MAX_POLLS = 30
+    IG_CONTAINER_POLL_SECONDS = 2.0
+
+    def get_page_ig_account(self):
+        """ADSDEEP55 — Résout l'``ig_user_id`` depuis la Page
+        (``GET /<page_id>?fields=instagram_business_account{id,username}``).
+        Renvoie l'ID (ou ``''`` si la Page n'a pas de compte IG relié)."""
+        payload = self._request(
+            'GET', self._page_edge('').rstrip('/'),
+            params={'fields': 'instagram_business_account{id,username}'})
+        acct = (payload or {}).get('instagram_business_account') or {}
+        return str(acct.get('id') or '')
+
+    def get_ig_media(self, *, fields=None, limit=None):
+        """ADSDEEP55 — Lit les médias du compte IG (``GET /<ig_user_id>/media``).
+        Renvoie la liste COMPLÈTE (toutes les pages)."""
+        return self._read_list(
+            self._ig_edge('media'), fields=fields or self.IG_MEDIA_FIELDS,
+            limit=limit)
+
+    def get_ig_media_comments(self, media_id, *, fields=None):
+        """ADSDEEP55 — Commentaires d'un média IG
+        (``GET /<ig_media_id>/comments``)."""
+        return self._paged(
+            f'{media_id}/comments',
+            params={'fields': ','.join(fields or self.IG_COMMENT_FIELDS)})
+
+    def hide_ig_comment(self, *, comment_id, hidden=True):
+        """ADSDEEP55 — Masque / démasque un commentaire IG
+        (``POST /<ig_comment_id>`` ``hide=…``)."""
+        return self._request(
+            'POST', f'{comment_id}',
+            data={'hide': 'true' if hidden else 'false'})
+
+    def reply_ig_comment(self, *, comment_id, message):
+        """ADSDEEP55 — Répond à un commentaire IG
+        (``POST /<ig_comment_id>/replies``)."""
+        return self._request(
+            'POST', f'{comment_id}/replies', data={'message': message})
+
+    def delete_ig_comment(self, *, comment_id):
+        """ADSDEEP55 — Supprime un commentaire IG (``DELETE /<ig_comment_id>``)."""
+        return self._request('DELETE', f'{comment_id}')
+
+    def set_ig_comment_enabled(self, *, media_id, enabled):
+        """ADSDEEP55 — Coupe / rouvre les commentaires d'un média
+        (``POST /<ig_media_id>`` ``comment_enabled=…`` — SEUL champ écrivable d'un
+        média IG ; la légende, elle, est immuable)."""
+        return self._request(
+            'POST', f'{media_id}',
+            data={'comment_enabled': 'true' if enabled else 'false'})
+
+    def get_ig_publishing_limit(self):
+        """ADSDEEP55 — Quota de publication du compte
+        (``GET /<ig_user_id>/content_publishing_limit``). Renvoie
+        ``{used, total}`` (``used`` = ``quota_usage`` ; ``total`` = ``config.
+        quota_total`` ou le repli 50). Robuste à un payload absent/partiel."""
+        payload = self._request(
+            'GET', self._ig_edge('content_publishing_limit'),
+            params={'fields': 'config,quota_usage'})
+        data = (payload or {}).get('data') or []
+        row = data[0] if data else (payload or {})
+        used = row.get('quota_usage')
+        config = row.get('config') or {}
+        total = config.get('quota_total', self.IG_PUBLISH_QUOTA_DEFAULT)
+        try:
+            used = int(used) if used is not None else None
+        except (TypeError, ValueError):
+            used = None
+        try:
+            total = int(total)
+        except (TypeError, ValueError):
+            total = self.IG_PUBLISH_QUOTA_DEFAULT
+        return {'used': used, 'total': total}
+
+    def create_ig_container(self, *, image_url=None, video_url=None,
+                            media_type=None, caption='', alt_text=None,
+                            file_size=None, extra_fields=None):
+        """ADSDEEP55 — Crée un container de publication
+        (``POST /<ig_user_id>/media``). ``caption`` est posée ICI (à la création)
+        et devient IMMUABLE après publication (aucune ré-édition). Un Reel
+        (``media_type=REELS``) exige ``video_url`` et est borné à 300 Mo (fail-fast).
+        Renvoie ``{id: creation_id}``."""
+        mtype = str(media_type or '').strip().upper()
+        if mtype and mtype not in self.IG_MEDIA_TYPES:
+            raise MetaError(
+                f"media_type Instagram invalide : {mtype} "
+                f"(attendu l'un de {', '.join(self.IG_MEDIA_TYPES)}).")
+        if mtype in ('VIDEO', 'REELS') and not video_url:
+            raise MetaError(
+                "Une publication vidéo/Reel exige video_url.")
+        if mtype in ('IMAGE', '') and not image_url and not video_url:
+            raise MetaError(
+                "Une publication image exige image_url.")
+        if file_size is not None:
+            try:
+                size = int(file_size)
+            except (TypeError, ValueError):
+                size = 0
+            if size > self.MAX_REEL_BYTES:
+                raise MetaError(
+                    "Vidéo trop lourde pour un Reel : 300 Mo maximum "
+                    "(dossier organic-posts-ig §4).")
+        body = {}
+        if image_url:
+            body['image_url'] = image_url
+        if video_url:
+            body['video_url'] = video_url
+        if mtype:
+            body['media_type'] = mtype
+        if caption:
+            body['caption'] = caption
+        if alt_text:
+            body['alt_text'] = alt_text
+        body.update(dict(extra_fields or {}))
+        return self._request('POST', self._ig_edge('media'), data=body)
+
+    def get_ig_container_status(self, creation_id):
+        """ADSDEEP55 — État d'un container (``GET /<creation_id>?fields=status_code``).
+        ``status_code`` ∈ {EXPIRED, ERROR, FINISHED, IN_PROGRESS, PUBLISHED}."""
+        payload = self._request(
+            'GET', f'{creation_id}', params={'fields': 'status_code,status'})
+        return payload if isinstance(payload, dict) else {}
+
+    def publish_ig_container(self, *, creation_id):
+        """ADSDEEP55 — Publie un container prêt
+        (``POST /<ig_user_id>/media_publish`` ``creation_id=…``). Renvoie
+        ``{id: published_media_id}``."""
+        return self._request(
+            'POST', self._ig_edge('media_publish'),
+            data={'creation_id': creation_id})
+
+    def publish_ig_media(self, *, image_url=None, video_url=None,
+                         media_type=None, caption='', alt_text=None,
+                         file_size=None, extra_fields=None,
+                         max_polls=None, poll_seconds=None):
+        """ADSDEEP55 — Flux de publication IG COMPLET en 2 temps (dossier §4) :
+
+          1. QUOTA — ``content_publishing_limit`` ; refus fail-fast si le quota
+             24 h est atteint (``used >= total``) — jamais un rejet Graph tardif ;
+          2. CONTAINER — ``create_ig_container`` (la ``caption`` est posée ici,
+             immuable ensuite) ;
+          3. POLL — attend ``status_code=FINISHED`` (lève sur ERROR/EXPIRED,
+             borne dure de polls) ;
+          4. PUBLISH — ``publish_ig_container``.
+
+        Renvoie ``{creation_id, media_id, polls, quota}``. AUCUNE édition de
+        légende n'est possible (par conception, comme l'absence d'activation)."""
+        quota = self.get_ig_publishing_limit()
+        if (quota.get('used') is not None
+                and quota.get('total') is not None
+                and quota['used'] >= quota['total']):
+            raise MetaError(
+                "Quota de publication Instagram atteint "
+                f"({quota['used']}/{quota['total']} sur 24 h) — publication "
+                "refusée (dossier organic-posts-ig §4).")
+        container = self.create_ig_container(
+            image_url=image_url, video_url=video_url, media_type=media_type,
+            caption=caption, alt_text=alt_text, file_size=file_size,
+            extra_fields=extra_fields)
+        creation_id = str((container or {}).get('id') or '').strip()
+        if not creation_id:
+            raise MetaError(
+                "Création du container Instagram échouée (aucun id renvoyé).")
+        max_polls = int(max_polls or self.IG_CONTAINER_MAX_POLLS)
+        poll_seconds = (self.IG_CONTAINER_POLL_SECONDS
+                        if poll_seconds is None else poll_seconds)
+        polls = 0
+        for _ in range(max_polls):
+            polls += 1
+            status = self.get_ig_container_status(creation_id)
+            code = str(status.get('status_code') or '').upper()
+            if code == 'FINISHED':
+                break
+            if code in ('ERROR', 'EXPIRED'):
+                raise MetaError(
+                    f"Container Instagram en échec (status_code={code}).")
+            if poll_seconds:
+                time.sleep(poll_seconds)
+        else:
+            raise MetaError(
+                "Container Instagram jamais prêt (status_code FINISHED non "
+                f"atteint après {max_polls} vérifications).")
+        published = self.publish_ig_container(creation_id=creation_id)
+        media_id = str((published or {}).get('id') or '').strip()
+        return {
+            'creation_id': creation_id, 'media_id': media_id,
+            'polls': polls, 'quota': quota}
+
+    # NOTE : il n'existe DÉLIBÉRÉMENT aucune méthode d'édition de légende IG
+    # (``edit_ig_caption``) — la caption est immuable après publication (dossier
+    # §4), exactement comme il n'existe aucune méthode d'activation (invariant #3).
+
     # ── Mise en pause (PAUSED-only — jamais de kwarg status) ─────────────────
     def update_status_paused(self, *, object_id, level=None):
         """ENGFIX5 — Met un objet (campagne / adset / ad) en ``PAUSED`` — et RIEN
@@ -552,6 +1218,220 @@ class MetaClient:
     # resume / enable. Une campagne ne peut jamais être activée par ce client
     # (règle permanente #3) — vérifié par test. ``update_status_paused`` ne peut,
     # elle, QUE poser PAUSED (aucun status paramétrable).
+
+    # ── ADSDEEP33 — Lot (batch) Graph : opérations SIMPLES groupées ──────────
+    # ``POST /?batch=[...]`` (dossier write-surface §8) : 50 opérations MAX, PAS
+    # transactionnel (chaque sous-réponse s'inspecte individuellement),
+    # ``error_user_msg`` FAIT pour être montré verbatim à l'approbateur. AUCUNE
+    # clé d'idempotence côté Graph — un retry réseau peut dupliquer ; c'est donc
+    # le JOURNAL EngineAction (réclamation CAS avant tout appel réseau, cf.
+    # ``services.apply_batch``) qui sert d'unique dédup, jamais ce client.
+    MAX_BATCH_OPERATIONS = 50
+
+    @staticmethod
+    def _encode_batch_body(body):
+        """Encode un dict de champs en corps ``application/x-www-form-urlencoded``
+        (les objets imbriqués voyagent en JSON, comme sur tout appel Graph)."""
+        from urllib.parse import quote_plus
+        parts = []
+        for key, value in dict(body or {}).items():
+            raw = json.dumps(value) if isinstance(value, (dict, list)) else str(value)
+            parts.append(f'{quote_plus(str(key))}={quote_plus(raw)}')
+        return '&'.join(parts)
+
+    def build_batch_op_rename(self, *, object_id, name):
+        """ADSDEEP33 — Opération de lot : renommage (même garde que
+        ``rename_object`` — AUCUN ``status`` ne peut y être glissé)."""
+        payload = self._edit_payload({'name': name}, None)
+        return {'method': 'POST', 'relative_url': object_id,
+                'body': self._encode_batch_body(payload)}
+
+    def build_batch_op_spend_cap(self, *, campaign_id, spend_cap):
+        """ADSDEEP33 — Opération de lot : plafond de dépense (même garde que
+        ``set_campaign_spend_cap``)."""
+        payload = self._edit_payload({'spend_cap': spend_cap}, None)
+        return {'method': 'POST', 'relative_url': campaign_id,
+                'body': self._encode_batch_body(payload)}
+
+    def build_batch_op_pause(self, *, object_id):
+        """ADSDEEP33 — Opération de lot : mise en pause. Le corps FORCE
+        ``status=PAUSED`` via ``_forced_status_payload`` (MÊME défense en
+        profondeur que ``update_status_paused`` — invariant permanent règle #3 :
+        aucune opération de lot ne peut jamais activer / dé-pauser quoi que ce
+        soit)."""
+        payload = self._forced_status_payload({}, None)
+        return {'method': 'POST', 'relative_url': object_id,
+                'body': self._encode_batch_body(payload)}
+
+    def batch_execute(self, operations):
+        """ADSDEEP33 — Exécute un LOT d'opérations Graph en UN SEUL appel HTTP.
+
+        ``operations`` : liste de dicts ``{method, relative_url, body}`` (voir
+        les ``build_batch_op_*`` ci-dessus). Renvoie la liste des résultats DANS
+        LE MÊME ORDRE, chacun ``{'success': True, 'body': {...}}`` ou
+        ``{'success': False, 'error': {...}, 'error_user_msg': '...'}`` —
+        ``error_user_msg`` est repris VERBATIM du champ Graph fait pour être
+        montré à l'approbateur (dossier §8). PAS TRANSACTIONNEL : une opération
+        en erreur n'annule jamais les autres — chaque sous-réponse est inspectée
+        indépendamment. Lève ``MetaError`` en amont si le lot dépasse
+        ``MAX_BATCH_OPERATIONS`` (jamais un rejet Graph tardif)."""
+        if not operations:
+            return []
+        if len(operations) > self.MAX_BATCH_OPERATIONS:
+            raise MetaError(
+                f"Lot Graph limité à {self.MAX_BATCH_OPERATIONS} opérations "
+                f"(reçu {len(operations)}).")
+        batch_spec = [
+            {'method': op.get('method', 'POST'),
+             'relative_url': op.get('relative_url', ''),
+             **({'body': op['body']} if op.get('body') else {})}
+            for op in operations
+        ]
+        raw = self._request('POST', '', data={'batch': json.dumps(batch_spec)})
+        rows = raw if isinstance(raw, list) else []
+        results = []
+        for row in rows:
+            row = row or {}
+            code = row.get('code')
+            body_raw = row.get('body')
+            try:
+                body = json.loads(body_raw) if isinstance(body_raw, str) else (body_raw or {})
+            except (ValueError, TypeError):
+                body = {}
+            if not isinstance(body, dict):
+                body = {}
+            if code is not None and 200 <= int(code) < 300:
+                results.append({'success': True, 'body': body})
+            else:
+                err = body.get('error') or {}
+                results.append({
+                    'success': False,
+                    'error': err,
+                    'error_user_msg': err.get('error_user_msg', '') or '',
+                })
+        # Graph peut renvoyer MOINS de lignes qu'attendu sur une panne partielle
+        # (défense) : les opérations sans sous-réponse sont marquées en échec
+        # explicite (jamais un succès silencieux non prouvé).
+        while len(results) < len(operations):
+            results.append({
+                'success': False, 'error': {},
+                'error_user_msg': 'Aucune sous-réponse Graph reçue pour cette opération.',
+            })
+        return results
+
+    # ── ADSDEEP57 — Custom Audiences (identifiants CRM DÉJÀ hachés SHA-256) ────
+    # INVARIANT PII : ce client ne reçoit QUE des identifiants DÉJÀ hachés
+    # SHA-256 — le hachage/normalisation vit dans ``audiences.py``, JAMAIS ici.
+    # Il ne construit, n'accepte et n'émet JAMAIS de PII en clair. La création
+    # d'une audience ne porte PAS de ``status`` (ce n'est ni une campagne, ni un
+    # adset, ni une ad — l'invariant PAUSED règle #3 ne s'y applique pas).
+    CUSTOM_AUDIENCE_MAX_USERS_PER_CALL = 10000
+
+    def create_custom_audience(self, *, name, customer_file_source,
+                               subtype='CUSTOM', description='',
+                               extra_fields=None):
+        """ADSDEEP57 — Crée une Custom Audience
+        (``POST /act_<id>/customaudiences``). ``subtype=CUSTOM`` +
+        ``customer_file_source`` (``USER_PROVIDED_ONLY`` par défaut). Aucune
+        donnée utilisateur n'est envoyée ICI — le peuplement passe ensuite par
+        ``add_users_to_audience`` (identifiants déjà hachés)."""
+        base = {
+            'name': name,
+            'subtype': subtype,
+            'customer_file_source': customer_file_source,
+        }
+        if description:
+            base['description'] = description
+        base.update(dict(extra_fields or {}))
+        return self._request(
+            'POST', self._account_edge('customaudiences'), data=base)
+
+    def add_users_to_audience(self, *, audience_id, schema, data,
+                              session=None, replace=False):
+        """ADSDEEP57 — Peuple une Custom Audience. ``replace=True`` → edge
+        ``usersreplace`` (remplacement ATOMIQUE de toute l'audience sur la
+        session, sans reset du learning) ; sinon edge ``users`` (ajout).
+
+        ``data`` = lignes d'identifiants DÉJÀ hachés SHA-256 (le client ne hache
+        rien — aucune PII en clair ne transite ici). Borne DURE ≤10 000
+        lignes/appel (fenêtre de session Meta) : au-delà, lève ``MetaError``
+        AVANT tout aller-retour réseau (l'appelant découpe en sessions)."""
+        rows = list(data or [])
+        if len(rows) > self.CUSTOM_AUDIENCE_MAX_USERS_PER_CALL:
+            raise MetaError(
+                "Session Custom Audience limitée à "
+                f"{self.CUSTOM_AUDIENCE_MAX_USERS_PER_CALL} lignes/appel "
+                f"(reçu {len(rows)}).")
+        edge = 'usersreplace' if replace else 'users'
+        payload = {'payload': json.dumps({'schema': schema, 'data': rows})}
+        if session is not None:
+            payload['session'] = json.dumps(session)
+        return self._request('POST', f'{audience_id}/{edge}', data=payload)
+
+    def delete_custom_audience(self, *, audience_id):
+        """ADSDEEP57 — Supprime une Custom Audience (``DELETE /<AUD_ID>``)."""
+        return self._request('DELETE', f'{audience_id}')
+
+    def get_audience(self, audience_id, *, fields=None):
+        """ADSDEEP58 — Lit l'état d'une audience (LECTURE SEULE) : taille
+        approximative + ``operation_status``/``delivery_status`` (préparation
+        d'un lookalike). Renvoie le dict brut (ou ``{}``)."""
+        flds = ','.join(fields or (
+            'id', 'name', 'subtype', 'approximate_count_lower_bound',
+            'approximate_count_upper_bound', 'operation_status',
+            'delivery_status'))
+        payload = self._request(
+            'GET', f'{audience_id}', params={'fields': flds})
+        return payload if isinstance(payload, dict) else {}
+
+    def create_lookalike_audience(self, *, name, lookalike_spec,
+                                  extra_fields=None):
+        """ADSDEEP58 — Crée un lookalike (``subtype=LOOKALIKE`` +
+        ``lookalike_spec`` JSON : ``origin_audience_id`` = l'audience seed ≥100
+        matchés, ``country``, ``ratio``…). Aucune donnée utilisateur ici — le
+        lookalike dérive d'une seed déjà peuplée côté Meta."""
+        base = {
+            'name': name,
+            'subtype': 'LOOKALIKE',
+            'lookalike_spec': json.dumps(lookalike_spec),
+        }
+        base.update(dict(extra_fields or {}))
+        return self._request(
+            'POST', self._account_edge('customaudiences'), data=base)
+
+    def create_engagement_audience(self, *, name, rule, extra_fields=None):
+        """ADSDEEP59 — Crée une audience d'ENGAGEMENT (``subtype=ENGAGEMENT`` +
+        ``rule`` JSON ``event_sources`` page/ig_business/lead). AUCUNE donnée
+        CRM n'est envoyée : l'objet est purement Meta-side (interactions
+        formulaire/Page/IG déjà côté Meta), donc NON soumis au gate
+        consentement des Custom Audiences CRM."""
+        base = {
+            'name': name,
+            'subtype': 'ENGAGEMENT',
+            'rule': json.dumps(rule),
+        }
+        base.update(dict(extra_fields or {}))
+        return self._request(
+            'POST', self._account_edge('customaudiences'), data=base)
+
+    def get_delivery_estimate(self, *, targeting_spec,
+                              optimization_goal='REACH'):
+        """ADSDEEP59 — Estimation d'audience AVANT usage
+        (``GET /act_<id>/delivery_estimate`` avec ``targeting_spec``, dossier
+        §5). Renvoie le 1er élément ``data`` (``estimate_ready``, ``estimate_dau``,
+        ``estimate_mau_*``…) ou ``{}``."""
+        params = {
+            'targeting_spec': json.dumps(targeting_spec),
+            'optimization_goal': optimization_goal,
+        }
+        payload = self._request(
+            'GET', self._account_edge('delivery_estimate'), params=params)
+        if not isinstance(payload, dict):
+            return {}
+        data = payload.get('data')
+        if isinstance(data, list) and data:
+            return data[0] if isinstance(data[0], dict) else {}
+        return payload if 'estimate_ready' in payload else {}
 
     # ── Hygiène ──────────────────────────────────────────────────────────────
     def close(self):

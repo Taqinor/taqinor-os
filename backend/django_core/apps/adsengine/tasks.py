@@ -58,6 +58,74 @@ def _account_node(conn):
     return acct if acct.startswith('act_') else f'act_{acct}'
 
 
+# ── ADSDEEP32 — Phase d'apprentissage par ad set (learning_stage_info) ────────
+# Champs demandés à l'edge ``adsets`` pour miroiter la phase d'apprentissage.
+ADSET_LEARNING_FIELDS = ('id', 'learning_stage_info')
+
+
+def _parse_meta_ts(value):
+    """Horodatage Meta (unix int/str OU ISO-8601) → datetime aware, ou None."""
+    if value in (None, ''):
+        return None
+    from django.utils import timezone as _tz
+    try:
+        # Unix (secondes) → datetime aware UTC directement (jamais via une
+        # heure locale naïve, qui décalerait l'instant selon le fuseau serveur).
+        return datetime.datetime.fromtimestamp(
+            int(value), datetime.timezone.utc)
+    except (ValueError, TypeError, OverflowError, OSError):
+        pass
+    try:
+        dt = datetime.datetime.fromisoformat(
+            str(value).replace('Z', '+00:00'))
+    except (ValueError, TypeError):
+        return None
+    if _tz.is_naive(dt):
+        dt = _tz.make_aware(dt, datetime.timezone.utc)
+    return dt
+
+
+def sync_adset_learning(company, client):
+    """ADSDEEP32 — Miroite ``learning_stage_info`` par ad set (dossier §2).
+
+    Lit ``GET /act_<id>/adsets?fields=learning_stage_info`` et met à jour chaque
+    ``AdSetMirror`` : ``learning_status`` (LEARNING/SUCCESS/FAIL normalisé, '' si
+    inconnu), ``last_sig_edit`` (last_sig_edit_ts) et le dict brut
+    ``learning_stage_info``. Best-effort ; NO-OP propre si le client n'expose pas
+    ``get_adsets``. Renvoie le nombre d'ad sets mis à jour."""
+    from .models import AdSetMirror
+
+    reader = getattr(client, 'get_adsets', None)
+    if not callable(reader):
+        return 0
+    try:
+        rows = reader(fields=ADSET_LEARNING_FIELDS)
+    except Exception:  # noqa: BLE001 — l'apprentissage n'empêche jamais la synchro
+        return 0
+    by_id = {
+        str(r.get('id') or '').strip(): r
+        for r in (rows or []) if isinstance(r, dict)}
+    updated = 0
+    for adset in AdSetMirror.objects.filter(company=company):
+        row = by_id.get(adset.meta_id)
+        if not row:
+            continue
+        info = row.get('learning_stage_info')
+        if not isinstance(info, dict):
+            info = {}
+        status = str(info.get('status') or '').strip().upper()
+        if status not in ('LEARNING', 'SUCCESS', 'FAIL'):
+            status = ''
+        last_sig = _parse_meta_ts(info.get('last_sig_edit_ts'))
+        adset.learning_stage_info = info
+        adset.learning_status = status
+        if last_sig is not None:
+            adset.last_sig_edit = last_sig
+        adset.save()
+        updated += 1
+    return updated
+
+
 def _sync_level_insights(company, conn, client, *, level):
     """ADSDEEP2 — Synchronise les snapshots niveau ``ad`` ou ``adset``.
 
@@ -144,8 +212,20 @@ def _sync_company(conn):
     _sync_level_insights(company, conn, client, level='adset')
     _sync_level_insights(company, conn, client, level='ad')
 
+    # ADSDEEP32 — phase d'apprentissage par ad set (learning_stage_info).
+    sync_adset_learning(company, client)
+
     # ADSDEEP11 — miroir du créatif LIVE de chaque ad (best-effort).
     sync_ad_creatives(company, client)
+
+    # ADSDEEP49 — miroir des posts organiques de la Page (best-effort).
+    sync_page_posts(company, conn, client)
+
+    # ADSDEEP53 — miroir des commentaires (posts organiques + dark/ad posts).
+    sync_comments_for_company(company, client)
+
+    # ADSDEEP55 — miroir des médias Instagram + leurs commentaires (best-effort).
+    sync_instagram_for_company(company, conn, client)
 
     today = datetime.date.today()
     for camp in AdCampaignMirror.objects.filter(company=company):
@@ -330,6 +410,127 @@ def sync_ad_creatives(company, client):
     return written
 
 
+def sync_page_posts(company, conn, client):
+    """ADSDEEP49 — Miroite les posts ORGANIQUES de la Page (best-effort).
+
+    Lit ``GET /<page>/posts`` puis croise ``GET /<page>/ads_posts`` pour marquer
+    ``ad_linked``. ``created_by_app`` (posts éditables — l'app ne peut éditer que
+    les siens) est déduit de l'``app_id`` lu dans les credentials write-only de la
+    connexion. NO-OP propre si le client n'expose pas ``get_page_posts`` (mock
+    ancien) ou si la connexion n'a pas de ``page_id``. Renvoie le nombre de
+    miroirs upsertés."""
+    from . import sync
+
+    reader = getattr(client, 'get_page_posts', None)
+    if not callable(reader) or not (conn.page_id or ''):
+        return 0
+    try:
+        posts = reader()
+    except Exception:  # noqa: BLE001 — les posts n'empêchent jamais la synchro
+        return 0
+    ad_ids = set()
+    get_ads = getattr(client, 'get_ads_posts_ids', None)
+    if callable(get_ads):
+        try:
+            ad_ids = get_ads()
+        except Exception:  # noqa: BLE001 — cross-check best-effort
+            ad_ids = set()
+    app_id = str((conn.credentials or {}).get('app_id') or '')
+    mirrors = sync.sync_page_posts(
+        company, posts, ad_linked_ids=ad_ids, app_id=app_id)
+    return len(mirrors)
+
+
+def sync_comments_for_company(company, client):
+    """ADSDEEP53 — Miroite les commentaires de TOUS les objets commentables d'une
+    société : (a) chaque post organique miroir (``PagePostMirror``) ; (b) chaque
+    dark/ad post via l'``effective_object_story_id`` du créatif miroir
+    (``AdCreativeMirror``). Best-effort par objet ; NO-OP propre si le client
+    n'expose pas ``get_object_comments`` (mock ancien). Renvoie le nombre de
+    commentaires miroités."""
+    from . import comments as comments_mod
+    from .models import AdCreativeMirror, PagePostMirror
+
+    reader = getattr(client, 'get_object_comments', None)
+    if not callable(reader):
+        return 0
+    written = 0
+
+    def _pull(object_meta_id, source):
+        nonlocal written
+        if not object_meta_id:
+            return
+        try:
+            rows = reader(object_meta_id)
+        except Exception:  # noqa: BLE001 — un objet en échec n'arrête pas les autres
+            return
+        mirrors = comments_mod.sync_comments(
+            company, rows, object_meta_id=object_meta_id, source=source)
+        written += len(mirrors)
+
+    # (a) Posts organiques.
+    for post in PagePostMirror.objects.filter(company=company):
+        _pull(post.meta_id, 'post')
+
+    # (b) Dark/ad posts : l'ID du post diffusé vit sur le créatif miroir.
+    seen = set()
+    for cm in (AdCreativeMirror.objects
+               .filter(company=company)
+               .exclude(effective_object_story_id='')):
+        osid = str(cm.effective_object_story_id or '').strip()
+        if osid and osid not in seen:
+            seen.add(osid)
+            _pull(osid, 'ad')
+
+    return written
+
+
+def sync_instagram_for_company(company, conn, client):
+    """ADSDEEP55 — Miroite le compte Instagram Business relié : d'abord résout
+    l'``ig_user_id`` (via ``GET /<page>?fields=instagram_business_account`` s'il
+    manque, et le persiste sur la connexion), puis upserte les médias
+    (``caption`` en LECTURE SEULE) et, par média, leurs commentaires. Best-effort ;
+    NO-OP propre si le client n'expose pas ``get_ig_media`` (mock ancien) ou si
+    aucun compte IG n'est relié. Renvoie le nombre de médias miroités."""
+    from . import instagram as ig
+
+    reader = getattr(client, 'get_ig_media', None)
+    if not callable(reader):
+        return 0
+
+    # Résolution de l'ig_user_id (best-effort) si la connexion n'en a pas encore.
+    if not getattr(client, 'ig_user_id', None):
+        resolver = getattr(client, 'get_page_ig_account', None)
+        if callable(resolver) and (conn.page_id or ''):
+            try:
+                ig_id = str(resolver() or '').strip()
+            except Exception:  # noqa: BLE001 — la résolution IG n'arrête pas la synchro
+                ig_id = ''
+            if ig_id:
+                client.ig_user_id = ig_id
+                if getattr(conn, 'ig_user_id', '') != ig_id:
+                    conn.ig_user_id = ig_id
+                    conn.save(update_fields=['ig_user_id'])
+    if not getattr(client, 'ig_user_id', None):
+        return 0
+
+    try:
+        media_rows = reader()
+    except Exception:  # noqa: BLE001 — les médias n'empêchent jamais la synchro
+        return 0
+    mirrors = ig.sync_ig_media(company, media_rows)
+
+    get_comments = getattr(client, 'get_ig_media_comments', None)
+    if callable(get_comments):
+        for m in mirrors:
+            try:
+                rows = get_comments(m.meta_id)
+            except Exception:  # noqa: BLE001 — un média en échec n'arrête pas les autres
+                continue
+            ig.sync_ig_comments(company, rows, media_meta_id=m.meta_id)
+    return len(mirrors)
+
+
 def pull_ad_leads_for_company(company, conn, client):
     """ADSDEEP18 — Pull-sync des leads lead-form d'une société.
 
@@ -481,6 +682,18 @@ def generate_weekly_brief():
     return {'briefs_generated': generated}
 
 
+@shared_task(name='adsengine.daily_ads_digest')
+def daily_ads_digest():
+    """ADSDEEP62 — Digest quotidien FR (dépense/conversations/leads/
+    signatures/alertes actives/top ad de la veille), émis via le moteur de
+    notifications unifié, opt-out par utilisateur respecté. Voir
+    ``digest.py`` pour la logique — best-effort par société, NO-OP propre
+    sans campagne synchronisée (même garde que ``generate_weekly_brief``)."""
+    from . import digest as digest_mod
+
+    return digest_mod.run_daily_digest_for_all()
+
+
 @shared_task(name='adsengine.evaluate_guardrails')
 def evaluate_guardrails():
     """ADSENG15 — Boucle CRITIQUE du Gardien (toutes les 6 h).
@@ -510,6 +723,47 @@ def evaluate_optimization_rules():
     result = rules_engine.evaluate_all(
         cadences=rules_engine.OPTIMIZATION_CADENCES)
     logger.info('adsengine.evaluate_optimization_rules: %s', result)
+    return result
+
+
+@shared_task(name='adsengine.evaluate_quarter_hourly')
+def evaluate_quarter_hourly():
+    """ADSDEEP42 — Boucle QUART-HORAIRE du Gardien (toutes les 15 min).
+
+    Évalue UNIQUEMENT les ``RulePolicy`` opt-in à cette cadence
+    (``cadence_minutes>0``) — jamais toutes les règles critiques : le fondateur
+    élève explicitement une règle jugée assez critique pour un rythme de 15 min.
+
+    BORNÉE par le budgeteur de rate-limit ADSDEEP5 : une société dont le compte
+    Meta est en throttle (usage connu ≥ seuil) est SAUTÉE ce tick — jamais un 613
+    provoqué par la haute fréquence (l'évaluation lit les miroirs locaux, mais une
+    proposition auto-appliquable pourrait toucher l'API : on ne tourne pas sur un
+    compte déjà contraint). NO-OP propre tant qu'aucune règle n'a opté (0 par
+    défaut). Best-effort par société. Renvoie ``{'evaluated', 'throttled_skipped'}``."""
+    from authentication.selectors import active_companies
+
+    from . import meta_client, rules_engine
+    from .models import MetaConnection
+
+    evaluated = throttled = 0
+    for company in active_companies():
+        conn = MetaConnection.objects.filter(company=company).first()
+        if conn is not None and conn.ad_account_id:
+            status = meta_client.rate_limit_status(conn.ad_account_id)
+            if status and status.get('throttled'):
+                throttled += 1
+                continue  # ADSDEEP5 — budget de rate-limit épuisé : on saute
+        try:
+            evaluated += rules_engine.evaluate_company(
+                company, quarter_hourly=True)
+        except Exception:  # noqa: BLE001 — isolation par société
+            logger.warning(
+                'adsengine.evaluate_quarter_hourly: échec société %s',
+                getattr(company, 'pk', company), exc_info=True)
+            continue
+
+    result = {'evaluated': evaluated, 'throttled_skipped': throttled}
+    logger.info('adsengine.evaluate_quarter_hourly: %s', result)
     return result
 
 
@@ -561,6 +815,43 @@ def run_active_flightplans():
     logger.info(
         'adsengine.run_active_flightplans: %s société(s) exécutée(s)', ran)
     return {'companies_ran': ran}
+
+
+@shared_task(name='adsengine.emit_capi_signatures')
+def emit_capi_signatures():
+    """ADSDEEP27/28 — Beat quotidien : pousse au CRM Dataset Meta les deux bornes
+    de la boucle *Conversion Leads* — l'amont ``lead_received`` (par
+    ``MetaLeadMirror``) et l'issue ``signed_contract`` (par deal signé Odoo) —
+    idempotents (marqueur ``CapiOdooEvent``). Meta exige AU MOINS deux étapes par
+    ``lead_id`` : un lead signé porte donc bien réception + signature.
+
+    NO-OP propre sans ``CAPI_CRM_DATASET_ID`` + token : aucune société n'est
+    balayée, aucune lecture Odoo ni appel réseau. Best-effort par société ; une
+    société en échec n'empêche jamais les suivantes."""
+    from authentication.selectors import active_companies
+
+    from . import capi_odoo
+
+    if not capi_odoo.is_configured():
+        logger.info(
+            'adsengine.emit_capi_signatures: CRM Dataset non configuré — no-op')
+        return {'configured': False, 'received': 0, 'signed': 0}
+
+    received = signed = 0
+    for company in active_companies():
+        try:
+            received += capi_odoo.emit_lead_received(company)['emitted']
+            signed += capi_odoo.emit_signed_deals(company)['emitted']
+        except Exception:  # pragma: no cover - défensif, isolation société
+            logger.warning(
+                'adsengine.emit_capi_signatures: échec société %s',
+                company.pk, exc_info=True)
+            continue
+
+    logger.info(
+        'adsengine.emit_capi_signatures: %s reçu(s), %s signé(s)',
+        received, signed)
+    return {'configured': True, 'received': received, 'signed': signed}
 
 
 @shared_task(name='adsengine.generate_creative_variants')

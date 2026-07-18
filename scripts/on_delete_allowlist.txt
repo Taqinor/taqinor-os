@@ -2052,3 +2052,6 @@ backend/django_core/core/models.py:910
 backend/django_core/core/models.py:915
 backend/django_core/core/models.py:981
 backend/django_core/core/models.py:984
+backend/django_core/apps/adsengine/models.py:101
+backend/django_core/apps/adsengine/models.py:243
+backend/django_core/apps/adsengine/models.py:312

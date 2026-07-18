@@ -10,23 +10,33 @@ from rest_framework.routers import DefaultRouter
 
 from .odoo_views import OdooCostPerSignatureView
 from .views import (
-    AdCampaignMirrorViewSet, AdPreviewsView, AnomalyEventViewSet,
-    ArmDailyStatViewSet,
+    AccountAuditView,
+    AdCampaignMirrorViewSet, AdPreviewsView, AdsCockpitView, AnomalyEventViewSet,
+    ArmDailyStatViewSet, ConversationsPerAdView,
     BacklogDropAssetView, BacklogListView, BacklogLotApproveView,
     BreakdownsView, BriefLatestView, CampaignFunnelView, CohortReportView,
-    CostPerSignatureView,
+    CommentCountsView, CommentDeleteView, CommentHideView, CommentListView,
+    CommentPrivateReplyView, CommentReplyView,
+    AudienceDeliveryEstimateView, EngagementAudienceView,
+    CostPerSignatureView, CreativeLeaderboardView, CreativeScatterView,
     CreativeAssetViewSet, CreativeBacklogItemViewSet,
     CreativeGenerationBatchViewSet, CreativePolicyViewSet, DecisionLogViewSet,
     EngineActionViewSet, EngineAlertViewSet, ExperimentArmViewSet,
     ExperimentViewSet, FlightPhaseViewSet, FlightPlanViewSet,
-    GuardrailConfigViewSet, GuardrailSingletonView, MediaResolveView,
+    GuardrailConfigViewSet, GuardrailSingletonView,
+    InstagramCommentDeleteView, InstagramCommentHideView,
+    InstagramCommentListView, InstagramCommentReplyView,
+    InstagramMediaListView, InstagramMediaToggleCommentsView,
+    InstagramPublishView, InstagramQuotaView, MediaResolveView,
     MetaConnectionHealthView,
-    MetaConnectionStatusView, MetaConnectionViewSet, MetricsDashboardView,
+    MetaConnectionStatusView, MetaConnectionViewSet, MetricsDashboardV2View,
+    MetricsDashboardView,
     MetricsLeadsView, MetricsPacingView, PacingStateViewSet, RealLeadsView,
     ReconciliationListView, ReconciliationSnapshotViewSet, ReportExportView,
     RulePolicyViewSet, SimulationDetailView, SimulationListView, StatusView,
     VariantReportView, WiringHealthView,
 )
+from .whatsapp_webhook import WhatsAppCloudWebhookView
 
 router = DefaultRouter()
 router.register(r'connexions', MetaConnectionViewSet, basename='meta-connexion')
@@ -84,6 +94,9 @@ urlpatterns = [
          name='adsengine-metrics-leads'),
     path('metrics/pacing/', MetricsPacingView.as_view(),
          name='adsengine-metrics-pacing'),
+    # ADSDEEP61 — Dashboard v2 : conversations réelles + MER mixte (2 devises).
+    path('metrics/dashboard-v2/', MetricsDashboardV2View.as_view(),
+         name='adsengine-metrics-dashboard-v2'),
     # ENG42 — réconciliation (liste reshaped pour l'écran).
     path('reconciliation/', ReconciliationListView.as_view(),
          name='adsengine-reconciliation'),
@@ -110,16 +123,77 @@ urlpatterns = [
          name='adsengine-reporting-cohortes'),
     path('reporting/export/', ReportExportView.as_view(),
          name='adsengine-reporting-export'),
+    # ADSDEEP47 — leaderboard créatif (hook/angle/format, spend-weighted) +
+    # nuage hook rate × dépense (quadrants FR).
+    path('reporting/creatifs/classement/', CreativeLeaderboardView.as_view(),
+         name='adsengine-reporting-creatifs-classement'),
+    path('reporting/creatifs/nuage/', CreativeScatterView.as_view(),
+         name='adsengine-reporting-creatifs-nuage'),
+    # ADSDEEP63 — audit de compte à la demande (structure/naming, fragmentation
+    # budgétaire, fatigue, tracking, fenêtres de données), 100 % lecture.
+    path('reporting/audit/', AccountAuditView.as_view(),
+         name='adsengine-reporting-audit'),
     # ADSDEEP9 — ventilations (audience & diffusion) d'un objet publicitaire.
     path('breakdowns/', BreakdownsView.as_view(), name='adsengine-breakdowns'),
     # ADSDEEP19 — comptes de leads RÉELS par ad / campagne (MetaLeadMirror).
     path('metrics/real-leads/', RealLeadsView.as_view(),
          name='adsengine-real-leads'),
+    # ADSDEEP25 — conversations WhatsApp RÉELLES par ad (CtwaReferral) + signés.
+    path('metrics/conversations-per-ad/', ConversationsPerAdView.as_view(),
+         name='adsengine-conversations-per-ad'),
+    # ADSDEEP22 — cockpit par ad (écran-console quotidien).
+    path('metrics/ads-cockpit/', AdsCockpitView.as_view(),
+         name='adsengine-ads-cockpit'),
     # ADSDEEP12 — résolveur de médias frais (URL jouable non persistée).
     path('media/<str:ref>/', MediaResolveView.as_view(),
          name='adsengine-media-resolve'),
     # ADSDEEP13 — proxy previews (iframe Meta, jamais persistée).
     path('ads/<str:ad_meta_id>/previews/', AdPreviewsView.as_view(),
          name='adsengine-ad-previews'),
+    # ADSDEEP24 — récepteur webhook WhatsApp Cloud API (CTWA referral). Public,
+    # gated WHATSAPP_CLOUD_VERIFY_TOKEN + WHATSAPP_CLOUD_APP_SECRET (404 sinon).
+    path('whatsapp/webhook/', WhatsAppCloudWebhookView.as_view(),
+         name='adsengine-whatsapp-webhook'),
+    # ADSDEEP53/54 — boîte de réception des commentaires (posts + dark posts).
+    path('commentaires/', CommentListView.as_view(),
+         name='adsengine-comments-list'),
+    path('commentaires/compteurs/', CommentCountsView.as_view(),
+         name='adsengine-comments-counts'),
+    path('commentaires/<int:comment_id>/masquer/', CommentHideView.as_view(),
+         name='adsengine-comments-hide'),
+    path('commentaires/<int:comment_id>/repondre/', CommentReplyView.as_view(),
+         name='adsengine-comments-reply'),
+    path('commentaires/<int:comment_id>/supprimer/',
+         CommentDeleteView.as_view(), name='adsengine-comments-delete'),
+    path('commentaires/<int:comment_id>/reponse-privee/',
+         CommentPrivateReplyView.as_view(),
+         name='adsengine-comments-private-reply'),
+    # ADSDEEP55/56 — Instagram (compte Business relié).
+    path('instagram/medias/', InstagramMediaListView.as_view(),
+         name='adsengine-ig-media-list'),
+    path('instagram/quota/', InstagramQuotaView.as_view(),
+         name='adsengine-ig-quota'),
+    path('instagram/publier/', InstagramPublishView.as_view(),
+         name='adsengine-ig-publish'),
+    path('instagram/commentaires/', InstagramCommentListView.as_view(),
+         name='adsengine-ig-comments-list'),
+    path('instagram/commentaires/<int:comment_id>/masquer/',
+         InstagramCommentHideView.as_view(), name='adsengine-ig-comments-hide'),
+    path('instagram/commentaires/<int:comment_id>/repondre/',
+         InstagramCommentReplyView.as_view(),
+         name='adsengine-ig-comments-reply'),
+    path('instagram/commentaires/<int:comment_id>/supprimer/',
+         InstagramCommentDeleteView.as_view(),
+         name='adsengine-ig-comments-delete'),
+    path('instagram/medias/<str:media_meta_id>/commentaires-actif/',
+         InstagramMediaToggleCommentsView.as_view(),
+         name='adsengine-ig-media-toggle-comments'),
+    # ADSDEEP59 — audiences d'engagement (picker composeur d'adset) + estimation
+    # d'audience avant usage. NON gated consentement (aucune donnée CRM envoyée).
+    path('audiences/engagement/', EngagementAudienceView.as_view(),
+         name='adsengine-audiences-engagement'),
+    path('audiences/delivery-estimate/',
+         AudienceDeliveryEstimateView.as_view(),
+         name='adsengine-audiences-delivery-estimate'),
     path('', include(router.urls)),
 ]
