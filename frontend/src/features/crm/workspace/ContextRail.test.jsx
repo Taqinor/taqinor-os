@@ -71,7 +71,7 @@ describe('LW19 — ContextRail : onglets + badges', () => {
   it('rend 4 onglets, Historique actif par défaut', () => {
     renderWithStore(<ContextRail {...baseProps()} />)
     expect(screen.getByRole('tab', { name: 'Historique' })).toHaveAttribute('data-state', 'active')
-    expect(screen.getByRole('tab', { name: /Devis \(1\)/ })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /1 devis/ })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Activités' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Pièces' })).toBeInTheDocument()
   })
@@ -91,8 +91,8 @@ describe('LW19 — ContextRail : onglets + badges', () => {
   it('changer d\'onglet (clavier/clic) mémorise le choix par session', async () => {
     const user = userEvent.setup()
     renderWithStore(<ContextRail {...baseProps()} />)
-    await user.click(screen.getByRole('tab', { name: /Devis/ }))
-    expect(screen.getByRole('tab', { name: /Devis/ })).toHaveAttribute('data-state', 'active')
+    await user.click(screen.getByRole('tab', { name: /devis/i }))
+    expect(screen.getByRole('tab', { name: /devis/i })).toHaveAttribute('data-state', 'active')
     expect(sessionStorage.getItem('taqinor.lw.contextTab')).toBe('devis')
   })
 
@@ -101,7 +101,7 @@ describe('LW19 — ContextRail : onglets + badges', () => {
     renderWithStore(<ContextRail {...baseProps()} />)
     screen.getByRole('tab', { name: 'Historique' }).focus()
     await user.keyboard('{ArrowRight}')
-    expect(screen.getByRole('tab', { name: /Devis/ })).toHaveFocus()
+    expect(screen.getByRole('tab', { name: /devis/i })).toHaveFocus()
   })
 
   it('un remontage relit l\'onglet mémorisé en session', () => {
