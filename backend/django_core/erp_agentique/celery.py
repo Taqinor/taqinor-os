@@ -277,6 +277,16 @@ app.conf.beat_schedule = {
         'task': 'sav.generer_visites_dues_quotidien',
         'schedule': crontab(hour=7, minute=45),
     },
+    # WIR30 — pré-alerte SLA (J-x) + escalade à la violation (XSAV6,
+    # apps/sav/views.py scan_sla_pre_alerts_and_escalations), bâtie/testée
+    # mais jamais planifiée jusqu'ici. DISTINCT de scan_sla_breaches
+    # (planifiée séparément par NTSRV38). OFF par défaut par société
+    # (sla_warning_days=0, escalade_activee=False) : no-op tant qu'aucun
+    # réglage n'est activé.
+    'sav-scan-sla-pre-alerts-and-escalations': {
+        'task': 'sav.scan_sla_pre_alerts_and_escalations_quotidien',
+        'schedule': crontab(hour=7, minute=42),
+    },
     # XFSM21 — météo J+3 sur les poses planifiées (Open-Meteo, gratuit,
     # sans clé), quotidien, heure creuse matinale.
     'installations-meteo-planning-j3': {

@@ -803,6 +803,8 @@ CELERY_TASK_ROUTES = {
     'rh.alertes_expiration': {'queue': 'scheduled'},
     'rh.alertes_cdd': {'queue': 'scheduled'},
     'sav.generer_visites_dues_quotidien': {'queue': 'scheduled'},
+    # WIR30 — pré-alerte SLA (J-x) + escalade à la violation.
+    'sav.scan_sla_pre_alerts_and_escalations_quotidien': {'queue': 'scheduled'},
     'stock.recompute_reordering': {'queue': 'scheduled'},
     'core.dump_database': {'queue': 'scheduled'},
     'core.restore_drill': {'queue': 'scheduled'},
