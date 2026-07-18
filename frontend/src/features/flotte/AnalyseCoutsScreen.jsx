@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Tabs, TabsList, TabsTrigger, TabsContent, Segmented, Spinner, EmptyState,
-  Badge,
+  Badge, Button, toast,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+  Label, Input, confirmLeaveIfDirty,
 } from '../../ui'
 import { ListShell } from '../../ui/module'
 import PageHeader from '../../components/layout/PageHeader'
 import flotteApi from '../../api/flotteApi'
+import useFlotteResource from './useFlotteResource'
 import { formatMAD, formatNumber } from '../../lib/format'
 
 /* ============================================================================
@@ -26,9 +29,237 @@ const GROUP_BY_OPTIONS = [
   { value: 'type_service', label: 'Type de service' },
 ]
 
+// WIR46 — Catégories de coût (miroir fidèle de `CoutVehicule.Categorie`,
+// backend/apps/flotte/models.py) : aucun consommateur d'écriture n'existait
+// pour `CoutVehiculeViewSet` malgré un backend full CRUD.
+const COUT_CATEGORIES = [
+  { value: 'carburant', label: 'Carburant' },
+  { value: 'entretien', label: 'Entretien' },
+  { value: 'assurance', label: 'Assurance' },
+  { value: 'vignette', label: 'Vignette' },
+  { value: 'amende', label: 'Amende' },
+  { value: 'peage', label: 'Péage' },
+  { value: 'parking', label: 'Parking' },
+  { value: 'lavage', label: 'Lavage' },
+  { value: 'contrat', label: 'Contrat' },
+  { value: 'autre', label: 'Autre' },
+]
+
+// WIR46 — Catégories budgétaires (miroir fidèle de `BudgetFlotte.Categorie`).
+const BUDGET_CATEGORIES = [
+  { value: 'carburant', label: 'Carburant' },
+  { value: 'entretien', label: 'Entretien' },
+  { value: 'assurance', label: 'Assurance' },
+  { value: 'vignette', label: 'Vignette' },
+  { value: 'contrat', label: 'Contrat' },
+  { value: 'autre', label: 'Autre' },
+]
+
+// WIR46 — Dialogue de saisie d'un coût d'exploitation divers (péage/parking/
+// lavage…) sur `CoutVehiculeViewSet` (full CRUD, aucun consommateur d'écriture).
+function CoutVehiculeDialog({ actifs = [], onClose, onSaved }) {
+  const [actifFlotte, setActifFlotte] = useState('')
+  const [categorie, setCategorie] = useState('peage')
+  const [date, setDate] = useState('')
+  const [montant, setMontant] = useState('')
+  const [fournisseur, setFournisseur] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [serverError, setServerError] = useState(null)
+
+  const peutEnregistrer = Boolean(actifFlotte && date && montant !== '')
+  const dirty = Boolean(actifFlotte || date || montant || fournisseur || categorie !== 'peage')
+  const closeIfConfirmed = () => { if (confirmLeaveIfDirty(dirty)) onClose?.() }
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!peutEnregistrer) return
+    setSaving(true)
+    setServerError(null)
+    try {
+      await flotteApi.couts.create({
+        actif_flotte: Number(actifFlotte),
+        categorie,
+        date,
+        montant: Number(montant),
+        fournisseur,
+      })
+      onSaved?.()
+    } catch (err) {
+      const data = err?.response?.data
+      setServerError(
+        data?.montant
+        || data?.detail
+        || (typeof data === 'string' ? data : 'Enregistrement impossible.'),
+      )
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) closeIfConfirmed() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Nouveau coût d’exploitation</DialogTitle>
+        </DialogHeader>
+
+        <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="cout-actif">Actif (véhicule ou engin)</Label>
+              <select
+                id="cout-actif"
+                autoFocus
+                value={actifFlotte}
+                onChange={(e) => setActifFlotte(e.target.value)}
+                className="h-9 rounded-md border border-border bg-card px-3 text-sm"
+              >
+                <option value="">— Choisir —</option>
+                {actifs.map((a) => (
+                  <option key={a.id} value={a.id}>{a.label || `#${a.id}`}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="cout-categorie">Catégorie</Label>
+              <select
+                id="cout-categorie"
+                value={categorie}
+                onChange={(e) => setCategorie(e.target.value)}
+                className="h-9 rounded-md border border-border bg-card px-3 text-sm"
+              >
+                {COUT_CATEGORIES.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="cout-date">Date</Label>
+              <Input id="cout-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="cout-montant">Montant (MAD)</Label>
+              <Input id="cout-montant" type="number" step="any" value={montant} onChange={(e) => setMontant(e.target.value)} />
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="cout-fournisseur">Fournisseur (saisie libre)</Label>
+            <Input id="cout-fournisseur" value={fournisseur} onChange={(e) => setFournisseur(e.target.value)} />
+          </div>
+
+          {serverError && (
+            <p className="text-sm text-destructive" role="alert">{serverError}</p>
+          )}
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={closeIfConfirmed}>Annuler</Button>
+            <Button type="submit" disabled={!peutEnregistrer || saving}>
+              {saving ? 'Enregistrement…' : 'Créer'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// WIR46 — Dialogue de saisie du budget flotte annuel par catégorie
+// (`BudgetFlotteViewSet`, full CRUD sans consommateur d'écriture — « Budgété »
+// restait toujours à 0).
+function BudgetFlotteDialog({ anneeParDefaut, onClose, onSaved }) {
+  const [annee, setAnnee] = useState(String(anneeParDefaut))
+  const [categorie, setCategorie] = useState('carburant')
+  const [montantBudgete, setMontantBudgete] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [serverError, setServerError] = useState(null)
+
+  const peutEnregistrer = Boolean(annee && montantBudgete !== '')
+  const dirty = Boolean(montantBudgete || categorie !== 'carburant' || annee !== String(anneeParDefaut))
+  const closeIfConfirmed = () => { if (confirmLeaveIfDirty(dirty)) onClose?.() }
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!peutEnregistrer) return
+    setSaving(true)
+    setServerError(null)
+    try {
+      await flotteApi.budgets.create({
+        annee: Number(annee),
+        categorie,
+        montant_budgete: Number(montantBudgete),
+      })
+      onSaved?.()
+    } catch (err) {
+      const data = err?.response?.data
+      setServerError(
+        data?.montant_budgete
+        || data?.non_field_errors?.[0]
+        || data?.detail
+        || (typeof data === 'string' ? data : 'Enregistrement impossible.'),
+      )
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) closeIfConfirmed() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Nouvelle ligne budgétaire</DialogTitle>
+        </DialogHeader>
+
+        <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="budget-annee">Année</Label>
+              <Input id="budget-annee" type="number" step="1" autoFocus value={annee} onChange={(e) => setAnnee(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="budget-categorie">Catégorie</Label>
+              <select
+                id="budget-categorie"
+                value={categorie}
+                onChange={(e) => setCategorie(e.target.value)}
+                className="h-9 rounded-md border border-border bg-card px-3 text-sm"
+              >
+                {BUDGET_CATEGORIES.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="budget-montant">Montant budgété (MAD)</Label>
+            <Input id="budget-montant" type="number" step="any" value={montantBudgete} onChange={(e) => setMontantBudgete(e.target.value)} />
+          </div>
+
+          {serverError && (
+            <p className="text-sm text-destructive" role="alert">{serverError}</p>
+          )}
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={closeIfConfirmed}>Annuler</Button>
+            <Button type="submit" disabled={!peutEnregistrer || saving}>
+              {saving ? 'Enregistrement…' : 'Créer'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function PivotTab() {
   const [groupBy, setGroupBy] = useState('vehicule')
   const [state, setState] = useState({ loading: true, error: null, data: null })
+  const [showForm, setShowForm] = useState(false)
+  const { data: actifs } = useFlotteResource(flotteApi.actifs.list, {})
 
   const load = useCallback(() => {
     let cancelled = false
@@ -62,7 +293,10 @@ function PivotTab() {
 
   return (
     <div className="flex flex-col gap-4">
-      <Segmented options={GROUP_BY_OPTIONS} value={groupBy} onChange={setGroupBy} aria-label="Regrouper par" />
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <Segmented options={GROUP_BY_OPTIONS} value={groupBy} onChange={setGroupBy} aria-label="Regrouper par" />
+        <Button onClick={() => setShowForm(true)}>Nouveau coût</Button>
+      </div>
       {state.loading ? (
         <div className="flex items-center gap-2 py-6 text-sm text-muted-foreground"><Spinner className="size-4" /> Chargement…</div>
       ) : state.error ? (
@@ -90,6 +324,13 @@ function PivotTab() {
             />
           )}
         </>
+      )}
+      {showForm && (
+        <CoutVehiculeDialog
+          actifs={actifs}
+          onClose={() => setShowForm(false)}
+          onSaved={() => { setShowForm(false); load(); toast.success('Coût enregistré.') }}
+        />
       )}
     </div>
   )
@@ -159,6 +400,7 @@ function RemplacementTab() {
 function BudgetTab() {
   const [annee, setAnnee] = useState(new Date().getFullYear())
   const [state, setState] = useState({ loading: true, error: null, data: null })
+  const [showForm, setShowForm] = useState(false)
 
   const load = useCallback(() => {
     let cancelled = false
@@ -204,12 +446,15 @@ function BudgetTab() {
 
   return (
     <div className="flex flex-col gap-4">
-      <Segmented
-        options={years.map((y) => ({ value: String(y), label: String(y) }))}
-        value={String(annee)}
-        onChange={(v) => setAnnee(Number(v))}
-        aria-label="Année"
-      />
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <Segmented
+          options={years.map((y) => ({ value: String(y), label: String(y) }))}
+          value={String(annee)}
+          onChange={(v) => setAnnee(Number(v))}
+          aria-label="Année"
+        />
+        <Button onClick={() => setShowForm(true)}>Nouveau budget</Button>
+      </div>
       <ListShell
         title={`Budget flotte ${annee} — vs réalisé`}
         columns={columns}
@@ -218,6 +463,13 @@ function BudgetTab() {
         emptyTitle="Aucune catégorie"
         emptyDescription="Aucune ligne budgétaire."
       />
+      {showForm && (
+        <BudgetFlotteDialog
+          anneeParDefaut={annee}
+          onClose={() => setShowForm(false)}
+          onSaved={() => { setShowForm(false); load(); toast.success('Ligne budgétaire créée.') }}
+        />
+      )}
     </div>
   )
 }
