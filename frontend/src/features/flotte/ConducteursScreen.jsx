@@ -13,6 +13,9 @@ import AffectationDialog from './AffectationDialog'
 import MasseAffectationDialog from './MasseAffectationDialog'
 import SignatureDialog from './SignatureDialog'
 import ConducteurDialog from './ConducteurDialog'
+import ReservationDialog from './ReservationDialog'
+import DemandeVehiculeDialog from './DemandeVehiculeDialog'
+import EtatDesLieuxDialog from './EtatDesLieuxDialog'
 
 /* ============================================================================
    UX17 — Conducteurs & affectations (`/flotte/conducteurs`).
@@ -200,8 +203,9 @@ function AffectationsTab({ conducteurs, vehicules }) {
   )
 }
 
-function ReservationsTab() {
-  const { data, loading, error } = useFlotteResource(flotteApi.reservations.list, {})
+function ReservationsTab({ conducteurs, vehicules }) {
+  const [showForm, setShowForm] = useState(false)
+  const { data, loading, error, reload } = useFlotteResource(flotteApi.reservations.list, {})
   const columns = useMemo(() => [
     { id: 'vehicule', header: 'Véhicule', width: 180, accessor: (r) => r.vehicule_label || r.vehicule, cell: (v) => v || '—' },
     { id: 'conducteur', header: 'Conducteur', width: 160, accessor: (r) => r.conducteur_nom || r.conducteur, cell: (v) => v || '—' },
@@ -210,24 +214,83 @@ function ReservationsTab() {
     { id: 'motif', header: 'Motif', width: 200, accessor: (r) => r.motif, cell: (v) => v || '—' },
     { id: 'statut', header: 'Statut', width: 120, accessor: (r) => r.statut_display || r.statut, cell: (v) => v || '—' },
   ], [])
+
+  const actions = (
+    <Button onClick={() => setShowForm(true)}>Nouvelle réservation</Button>
+  )
+
   return (
-    <ListShell
-      title="Réservations & demandes de pool"
-      subtitle="Créneaux réservés et demandes de véhicule en attente."
-      columns={columns}
-      rows={data}
-      loading={loading}
-      error={error}
-      exportName="reservations"
-      emptyTitle="Aucune réservation"
-      emptyDescription="Aucune réservation enregistrée."
-    />
+    <>
+      <ListShell
+        title="Réservations & demandes de pool"
+        subtitle="Créneaux réservés et demandes de véhicule en attente."
+        actions={actions}
+        columns={columns}
+        rows={data}
+        loading={loading}
+        error={error}
+        exportName="reservations"
+        emptyTitle="Aucune réservation"
+        emptyDescription="Aucune réservation enregistrée."
+      />
+      {showForm && (
+        <ReservationDialog
+          conducteurs={conducteurs}
+          vehicules={vehicules}
+          onClose={() => setShowForm(false)}
+          onSaved={() => { setShowForm(false); reload(); toast.success('Réservation enregistrée.') }}
+        />
+      )}
+    </>
   )
 }
 
-function EtatsDesLieuxTab() {
+// WIR41(b) — Demandes de véhicule du pool (FLOTTE32) : aucun consommateur
+// frontend n'existait pour `DemandeVehiculeViewSet` (full CRUD côté serveur).
+function DemandesVehiculeTab() {
+  const [showForm, setShowForm] = useState(false)
+  const { data, loading, error, reload } = useFlotteResource(flotteApi.demandesVehicule.list, {})
+  const columns = useMemo(() => [
+    { id: 'besoin', header: 'Besoin', width: 220, accessor: (r) => r.besoin, cell: (v) => v || '—' },
+    { id: 'demandeur', header: 'Demandeur', width: 160, accessor: (r) => r.demandeur_nom, cell: (v) => v || '—' },
+    { id: 'date_debut_souhaitee', header: 'Début souhaité', width: 140, accessor: (r) => r.date_debut_souhaitee, cell: (v) => (v ? formatDate(v) : '—') },
+    { id: 'date_fin_souhaitee', header: 'Fin souhaitée', width: 140, accessor: (r) => r.date_fin_souhaitee, cell: (v) => (v ? formatDate(v) : '—') },
+    { id: 'vehicule_attribue', header: 'Véhicule attribué', width: 160, accessor: (r) => r.vehicule_label, cell: (v) => v || '—' },
+    { id: 'statut', header: 'Statut', width: 120, accessor: (r) => r.statut_display || r.statut, cell: (v) => v || '—' },
+  ], [])
+
+  const actions = (
+    <Button onClick={() => setShowForm(true)}>Demander un véhicule</Button>
+  )
+
+  return (
+    <>
+      <ListShell
+        title="Demandes de véhicule"
+        subtitle="Pool partagé : demande, décision et véhicule attribué."
+        actions={actions}
+        columns={columns}
+        rows={data}
+        loading={loading}
+        error={error}
+        exportName="demandes-vehicule"
+        emptyTitle="Aucune demande"
+        emptyDescription="Aucune demande de véhicule enregistrée."
+      />
+      {showForm && (
+        <DemandeVehiculeDialog
+          onClose={() => setShowForm(false)}
+          onSaved={() => { setShowForm(false); reload(); toast.success('Demande enregistrée.') }}
+        />
+      )}
+    </>
+  )
+}
+
+function EtatsDesLieuxTab({ conducteurs, vehicules }) {
   const { data, loading, error, reload } = useFlotteResource(flotteApi.etatsDesLieux.list, {})
   const [signing, setSigning] = useState(null) // { etat, role }
+  const [showForm, setShowForm] = useState(false)
 
   const columns = useMemo(() => [
     { id: 'vehicule', header: 'Véhicule', width: 170, accessor: (r) => r.vehicule_label || r.vehicule, cell: (v) => v || '—' },
@@ -267,11 +330,16 @@ function EtatsDesLieuxTab() {
     return actions
   }
 
+  const actions = (
+    <Button onClick={() => setShowForm(true)}>Nouveau constat</Button>
+  )
+
   return (
     <>
       <ListShell
         title="États des lieux"
         subtitle="Constats départ / retour avec relevé kilométrique et e-signature."
+        actions={actions}
         columns={columns}
         rows={data}
         loading={loading}
@@ -287,6 +355,14 @@ function EtatsDesLieuxTab() {
           role={signing.role}
           onClose={() => setSigning(null)}
           onSaved={() => { setSigning(null); reload(); toast.success('Signature enregistrée.') }}
+        />
+      )}
+      {showForm && (
+        <EtatDesLieuxDialog
+          conducteurs={conducteurs}
+          vehicules={vehicules}
+          onClose={() => setShowForm(false)}
+          onSaved={() => { setShowForm(false); reload(); toast.success('Constat créé.') }}
         />
       )}
     </>
@@ -375,6 +451,7 @@ export default function ConducteursScreen() {
           <TabsTrigger value="conducteurs">Conducteurs</TabsTrigger>
           <TabsTrigger value="affectations">Affectations</TabsTrigger>
           <TabsTrigger value="reservations">Réservations</TabsTrigger>
+          <TabsTrigger value="demandes">Demandes de véhicule</TabsTrigger>
           <TabsTrigger value="etats">États des lieux</TabsTrigger>
           <TabsTrigger value="charte">Charte véhicule</TabsTrigger>
         </TabsList>
@@ -382,8 +459,13 @@ export default function ConducteursScreen() {
         <TabsContent value="affectations">
           <AffectationsTab conducteurs={conducteurs} vehicules={vehicules} />
         </TabsContent>
-        <TabsContent value="reservations"><ReservationsTab /></TabsContent>
-        <TabsContent value="etats"><EtatsDesLieuxTab /></TabsContent>
+        <TabsContent value="reservations">
+          <ReservationsTab conducteurs={conducteurs} vehicules={vehicules} />
+        </TabsContent>
+        <TabsContent value="demandes"><DemandesVehiculeTab /></TabsContent>
+        <TabsContent value="etats">
+          <EtatsDesLieuxTab conducteurs={conducteurs} vehicules={vehicules} />
+        </TabsContent>
         <TabsContent value="charte"><CharteTab conducteurs={conducteurs} /></TabsContent>
       </Tabs>
     </div>

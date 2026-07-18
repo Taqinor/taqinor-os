@@ -21,6 +21,7 @@ beforeAll(() => {
 
 const {
   signer, accuserCreate, empty, etatsList, conducteursCreate, getEmployes,
+  reservationsCreate, demandesVehiculeCreate, etatsDesLieuxCreate,
 } = vi.hoisted(() => ({
   signer: vi.fn(() => Promise.resolve({ data: {} })),
   accuserCreate: vi.fn(() => Promise.resolve({ data: {} })),
@@ -36,6 +37,9 @@ const {
   getEmployes: vi.fn(() => Promise.resolve({
     data: [{ id: 42, nom: 'Alami', prenom: 'Youssef', telephone: '0600000000' }],
   })),
+  reservationsCreate: vi.fn(() => Promise.resolve({ data: { id: 11 } })),
+  demandesVehiculeCreate: vi.fn(() => Promise.resolve({ data: { id: 12 } })),
+  etatsDesLieuxCreate: vi.fn(() => Promise.resolve({ data: { id: 13 } })),
 }))
 
 vi.mock('../../api/flotteApi', () => ({
@@ -44,10 +48,15 @@ vi.mock('../../api/flotteApi', () => ({
       list: () => Promise.resolve({ data: [{ id: 1, nom: 'Karim' }] }),
       create: (...args) => conducteursCreate(...args),
     },
-    vehicules: { list: empty },
+    vehicules: { list: () => Promise.resolve({ data: [{ id: 7, immatriculation: '12345-A-6' }] }) },
     affectations: { list: empty },
-    reservations: { list: empty },
-    etatsDesLieux: { list: etatsList, signer: (...args) => signer(...args) },
+    reservations: { list: empty, create: (...args) => reservationsCreate(...args) },
+    demandesVehicule: { list: empty, create: (...args) => demandesVehiculeCreate(...args) },
+    etatsDesLieux: {
+      list: etatsList,
+      signer: (...args) => signer(...args),
+      create: (...args) => etatsDesLieuxCreate(...args),
+    },
     chartesVehicule: { list: () => Promise.resolve({ data: [{ id: 1, version: 2, date_publication: '2026-06-01' }] }) },
     accusesCharte: { list: empty, create: (...args) => accuserCreate(...args) },
   },
@@ -112,6 +121,62 @@ describe('ConducteursScreen — Conducteurs (WIR4 création)', () => {
         employe_id: 42, nom: 'Alami Youssef',
         carte_conducteur_pro_numero: 'CCP-1',
       }),
+    ))
+  })
+})
+
+describe('ConducteursScreen — Réservations (WIR41a création)', () => {
+  it('crée une réservation depuis l’onglet Réservations', async () => {
+    const user = userEvent.setup()
+    withProviders(<ConducteursScreen />)
+
+    await user.click(screen.getByRole('tab', { name: 'Réservations' }))
+    await user.click(await screen.findByRole('button', { name: 'Nouvelle réservation' }))
+
+    await user.selectOptions(screen.getByLabelText('Véhicule'), '7')
+    await user.type(screen.getByLabelText('Début'), '2026-08-01T08:00')
+    await user.type(screen.getByLabelText('Fin'), '2026-08-01T18:00')
+    await user.click(screen.getByRole('button', { name: 'Réserver' }))
+
+    await waitFor(() => expect(reservationsCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ vehicule: 7 }),
+    ))
+  })
+})
+
+describe('ConducteursScreen — Demandes de véhicule (WIR41b)', () => {
+  it('soumet une demande depuis le nouvel onglet', async () => {
+    const user = userEvent.setup()
+    withProviders(<ConducteursScreen />)
+
+    await user.click(screen.getByRole('tab', { name: 'Demandes de véhicule' }))
+    await user.click(await screen.findByRole('button', { name: 'Demander un véhicule' }))
+
+    await user.type(screen.getByLabelText('Besoin / objet de la demande'), 'Mission chantier')
+    await user.type(screen.getByLabelText('Début souhaité'), '2026-08-01')
+    await user.type(screen.getByLabelText('Fin souhaitée'), '2026-08-03')
+    await user.click(screen.getByRole('button', { name: 'Demander' }))
+
+    await waitFor(() => expect(demandesVehiculeCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ besoin: 'Mission chantier' }),
+    ))
+  })
+})
+
+describe('ConducteursScreen — États des lieux (WIR41c création du constat)', () => {
+  it('crée un constat avant toute signature', async () => {
+    const user = userEvent.setup()
+    withProviders(<ConducteursScreen />)
+
+    await user.click(screen.getByRole('tab', { name: 'États des lieux' }))
+    await user.click(await screen.findByRole('button', { name: 'Nouveau constat' }))
+
+    await user.selectOptions(screen.getByLabelText('Véhicule'), '7')
+    await user.type(screen.getByLabelText('Date du constat'), '2026-08-01T09:00')
+    await user.click(screen.getByRole('button', { name: 'Créer le constat' }))
+
+    await waitFor(() => expect(etatsDesLieuxCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ vehicule: 7, moment: 'depart' }),
     ))
   })
 })
