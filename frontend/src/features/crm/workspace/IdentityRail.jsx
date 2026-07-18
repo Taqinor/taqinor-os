@@ -57,7 +57,6 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
   useEffect(() => {
     if (saveState === 'saved' && relancePendingRef.current) {
       relancePendingRef.current = false
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- pulse au succès de sauvegarde
       setRelancePulse((n) => n + 1)
     }
   }, [saveState])
