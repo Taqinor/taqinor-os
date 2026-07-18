@@ -208,13 +208,12 @@ const stockApi = {
   // FG59 — scorecard performance d'un fournisseur (admin).
   performanceFournisseur: (fournisseurId) =>
     api.get(`/stock/fournisseurs/${fournisseurId}/performance/`),
-  // XPUR25 — fiche fournisseur 360 : agrégat BCF ouverts/en retard, réceptions
-  // attendues, factures ouvertes/solde total dû, derniers paiements,
-  // retours/avoirs, score de performance, documents de conformité (statut
-  // d'expiration), accords de prix actifs. BLOCKED : endpoint backend
-  // `fournisseurs/{id}/vue-360/` pas encore construit (voir docs/PLAN.md XPUR25) —
-  // l'appel 404 aujourd'hui ; la page affiche un état « indisponible » (pas de
-  // crash) tant qu'il n'existe pas.
+  // XPUR25 / WIR27 — fiche fournisseur 360 : agrégat BCF ouverts/en retard,
+  // réceptions attendues, factures ouvertes/solde total dû, retours/avoirs,
+  // score de performance (OTD), conformité (XPUR1), accords de prix actifs
+  // (paliers XPUR14). `fournisseurs/{id}/vue-360/` — action construite côté
+  // serveur (voir apps/stock/views/fournisseur.py `FournisseurViewSet.
+  // vue_360`).
   getFournisseur360: (id) => api.get(`/stock/fournisseurs/${id}/vue-360/`),
   // Onglets détaillés — réutilisent les endpoints EXISTANTS déjà câblés
   // ailleurs (WR4/FG55/FG56/FG58/FG59, XPUR1, XPUR9), filtrés par fournisseur
@@ -238,6 +237,12 @@ const stockApi = {
   // XPUR1 — documents de conformité, filtrés serveur par ?fournisseur=.
   getDocumentsConformiteFournisseur: (fournisseurId) =>
     api.get('/stock/documents-conformite-fournisseur/', { params: { fournisseur: fournisseurId } }),
+  // WIR26 — Paramètres → Achats (singleton par société). GET crée le réglage
+  // si besoin (`AchatsParametres.for_company`) ; PATCH exige un `id` (route
+  // détail du ViewSet), obtenu via le GET précédent.
+  getAchatsParametres: () => api.get('/stock/achats-parametres/'),
+  updateAchatsParametres: (id, data) =>
+    api.patch(`/stock/achats-parametres/${id}/`, data),
   // FG55 — PDF d'une facture fournisseur (blob, interne).
   factureFournisseurPdf: (id) =>
     api.get(`/stock/factures-fournisseur/${id}/pdf/`, { responseType: 'blob' }),

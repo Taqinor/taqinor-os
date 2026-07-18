@@ -34,6 +34,10 @@ const StockList = lazy(() => import('../../pages/stock/StockList'))
 const MouvementsPage = lazy(() => import('../../pages/stock/MouvementsPage'))
 const CategoriesStock = lazy(() => import('../../pages/stock/CategoriesStock'))
 const FournisseursStock = lazy(() => import('../../pages/stock/FournisseursStock'))
+// XPUR25/WIR27 — fiche fournisseur 360 (BCF/factures/retours/conformité/
+// accords de prix), jusqu'ici construite mais routée nulle part. Atteinte
+// depuis un lien de `FournisseursStock.jsx` (pas d'entrée de menu dédiée).
+const FournisseurFiche360 = lazy(() => import('../../pages/stock/FournisseurFiche360'))
 const BonsCommandeFournisseur = lazy(() => import('../../pages/stock/BonsCommandeFournisseur'))
 const ModelesBcf = lazy(() => import('../../pages/stock/ModelesBcf'))
 const ReceptionsFournisseur = lazy(() => import('../../pages/stock/ReceptionsFournisseur'))
@@ -65,6 +69,7 @@ const config = {
     { path: '/stock/mouvements', component: MouvementsPage },
     { path: '/stock/categories', component: CategoriesStock },
     { path: '/stock/fournisseurs', component: FournisseursStock },
+    { path: '/stock/fournisseurs/:id/360', component: FournisseurFiche360 },
     { path: '/stock/bons-commande-fournisseur', component: BonsCommandeFournisseur },
     { path: '/stock/modeles-bcf', component: ModelesBcf },
     { path: '/stock/receptions-fournisseur', component: ReceptionsFournisseur },

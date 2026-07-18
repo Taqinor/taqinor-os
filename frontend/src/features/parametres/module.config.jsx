@@ -71,6 +71,11 @@ const Playbooks = lazy(() => import('./Playbooks'))
 // WIR8 — Paramètres → Hôtellerie : taxe de séjour (singleton société, réservé
 // responsable/admin — reflète `IsResponsableOrAdmin` côté backend).
 const TaxeSejourHospitality = lazy(() => import('./TaxeSejourHospitality'))
+// WIR26 — Paramètres → Achats (`stock.AchatsParametres`, singleton par
+// société) : conformité (XPUR1), RAS-TVA (XPUR2), tolérances 3-voies
+// (XPUR10). Écriture réservée responsable/admin (le backend applique déjà
+// `stock_modifier`/legacy responsable ; lecture ouverte à tout rôle).
+const AchatsParametresPage = lazy(() => import('../../pages/parametres/AchatsParametresPage'))
 
 const config = {
   key: 'parametres',
@@ -93,6 +98,7 @@ const config = {
     { path: '/parametres/territoires', component: Territoires, roles: ['responsable', 'admin'] },
     { path: '/parametres/playbooks', component: Playbooks, roles: ['responsable', 'admin'] },
     { path: '/parametres/hospitality/taxe-sejour', component: TaxeSejourHospitality, roles: ['responsable', 'admin'] },
+    { path: '/parametres/achats', component: AchatsParametresPage, roles: ['responsable', 'admin'] },
     {
       path: '/journal',
       component: Journal,

@@ -66,6 +66,12 @@ class FournisseurViewSet(CompanyScopedModelViewSet):
             # ouverte à tout rôle porteur du droit `stock_modifier` (get_permissions
             # prime sur le permission_classes de l'@action, d'où ce cas explicite).
             return [HasPermissionOrLegacy('stock_modifier')()]
+        elif self.action == 'vue_360':
+            # XPUR25/WIR27 — agrégat fiche fournisseur 360 : lecture, ouverte à
+            # tout rôle porteur du droit de lecture stock (même garde que
+            # `performance` ci-dessus — get_permissions prime sur le
+            # permission_classes de l'@action, d'où ce cas explicite).
+            return [HasPermissionOrLegacy('stock_voir')()]
         elif self.action in WRITE_ACTIONS:
             return [HasPermissionOrLegacy('stock_modifier')()]
         elif self.action == 'destroy':
@@ -167,6 +173,100 @@ class FournisseurViewSet(CompanyScopedModelViewSet):
                 status=status.HTTP_404_NOT_FOUND)
         revoquer_token_portail_fournisseur(token_obj)
         return Response(PortailFournisseurTokenSerializer(token_obj).data)
+
+    @action(detail=True, methods=['get'], url_path='vue-360')
+    def vue_360(self, request, *args, **kwargs):
+        """XPUR25/WIR27 — agrégat fiche fournisseur 360 : BCF ouverts/en
+        retard, réceptions attendues, factures ouvertes/solde dû,
+        retours/avoirs, score de performance (OTD), conformité (XPUR1),
+        accords de prix actifs (paliers de prix XPUR14 en vigueur). Lecture
+        seule, INTERNE (prix d'achat/soldes jamais client-facing).
+        `FournisseurFiche360.jsx` consomme cet agrégat pour son résumé + son
+        onglet « Accords de prix » (les 4 autres onglets utilisent leurs
+        propres endpoints détaillés, déjà câblés ailleurs — WR4/XPUR1)."""
+        from decimal import Decimal
+        from django.db.models import Q
+        from django.utils import timezone
+        from ..models import AvoirFournisseur, PalierPrixFournisseur
+        from ..services import fournisseur_conformite_manquante, otd_stats
+
+        fournisseur = self.get_object()
+        company = request.user.company
+        today = timezone.now().date()
+
+        bons = BonCommandeFournisseur.objects.filter(
+            company=company, fournisseur=fournisseur)
+        bcf_ouverts = bons.filter(statut__in=[
+            BonCommandeFournisseur.Statut.BROUILLON,
+            BonCommandeFournisseur.Statut.ENVOYE,
+        ]).count()
+
+        # Un seul passage sur les BCF ENVOYÉS : « réceptions attendues » = pas
+        # encore entièrement reçus ; « en retard » = en plus, la date promise
+        # (confirmée sinon prévue) est dépassée. Même logique que
+        # `services.otd_stats`/`supplier_performance`, jamais dupliquée.
+        receptions_attendues = 0
+        bcf_en_retard = 0
+        for bc in bons.filter(
+                statut=BonCommandeFournisseur.Statut.ENVOYE).prefetch_related('lignes'):
+            if bc.est_entierement_recu:
+                continue
+            receptions_attendues += 1
+            ref_date = bc.date_confirmee_fournisseur or bc.date_livraison_prevue
+            if ref_date and ref_date < today:
+                bcf_en_retard += 1
+
+        factures_ouvertes_qs = FactureFournisseur.objects.filter(
+            company=company, fournisseur=fournisseur,
+        ).exclude(statut=FactureFournisseur.Statut.PAYEE)
+        factures_ouvertes = factures_ouvertes_qs.count()
+        solde_total_du = sum(
+            (f.solde_du for f in factures_ouvertes_qs), Decimal('0'))
+
+        nb_retours = RetourFournisseur.objects.filter(
+            company=company, fournisseur=fournisseur,
+        ).exclude(statut=RetourFournisseur.Statut.ANNULE).count()
+        nb_avoirs = AvoirFournisseur.objects.filter(
+            company=company, fournisseur=fournisseur).count()
+
+        problemes = fournisseur_conformite_manquante(fournisseur)
+
+        # XPUR14 — paliers de prix EN VIGUEUR (fenêtre de validité du tarif
+        # parent, `PrixFournisseur.est_en_vigueur`) : « accords de prix
+        # actifs » de cette fiche.
+        paliers = (PalierPrixFournisseur.objects
+                   .filter(prix_fournisseur__company=company,
+                           prix_fournisseur__fournisseur=fournisseur)
+                   .filter(Q(prix_fournisseur__date_debut__isnull=True)
+                           | Q(prix_fournisseur__date_debut__lte=today))
+                   .filter(Q(prix_fournisseur__date_fin__isnull=True)
+                           | Q(prix_fournisseur__date_fin__gte=today))
+                   .select_related('prix_fournisseur'))
+        accords_prix = [
+            {
+                'contrat_id': p.id,
+                'produit_id': p.prix_fournisseur.produit_id,
+                'prix_convenu': str(p.prix),
+            }
+            for p in paliers
+        ]
+
+        otd = otd_stats(company, fournisseur)
+
+        return Response({
+            'fournisseur_id': fournisseur.id,
+            'bcf_ouverts': bcf_ouverts,
+            'bcf_en_retard': bcf_en_retard,
+            'receptions_attendues': receptions_attendues,
+            'factures_ouvertes': factures_ouvertes,
+            'solde_total_du': str(solde_total_du),
+            'score_performance': otd['otd_a_lheure_pct'],
+            'nb_retours_avoirs': nb_retours + nb_avoirs,
+            'accords_prix_actifs': len(accords_prix),
+            'accords_prix': accords_prix,
+            'conformite_ok': not problemes,
+            'conformite_documents_manquants': len(problemes),
+        })
 
 
 class ContactFournisseurViewSet(CompanyScopedModelViewSet):
