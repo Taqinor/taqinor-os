@@ -7,7 +7,7 @@ import {
   UserPlus, ShoppingCart, Receipt, FileMinus, Wallet, CalendarClock,
   CalendarDays, HardHat, Wrench, Cpu, BarChart3, Search, Bot, UserCog, Shield,
   ScrollText, Settings, DownloadCloud, LogOut, ChevronLeft, ChevronRight, Key,
-  Briefcase, User as UserIcon, FolderOpen, Inbox, AlertTriangle, Tv,
+  Briefcase, User as UserIcon, FolderOpen, Inbox, AlertTriangle, Tv, ListChecks,
 } from 'lucide-react'
 import { logoutUser } from '../../features/auth/store/authSlice'
 // UX1 — Sections de navigation des modules « coquille », enregistrées par
@@ -72,6 +72,7 @@ const I = {
   wallet:       mk(Wallet),
   ocr:          mk(Search),
   agent_ia:     mk(Bot),
+  agent_actions: mk(ListChecks),
   reporting:    mk(BarChart3),
   utilisateurs: mk(UserCog),
   parametres:   mk(Settings),
@@ -174,6 +175,10 @@ export const NAV_SECTIONS = [
     items: [
       { to: '/ia/ocr',               label: 'OCR',              k: 'nav.ocr',        icon: I.ocr,          roles: ['responsable','admin'] },
       { to: '/ia/agent',             label: 'Agent IA',         k: 'nav.agent_ia',   icon: I.agent_ia,     roles: ['admin'] },
+      // WIR23 — catalogue + historique/annuler des actions IA (AgentActions.jsx,
+      // testé, route déjà enregistrée router/index.jsx:241, authLoader — les
+      // actions elles-mêmes sont filtrées par permission côté serveur).
+      { to: '/ia/actions',           label: 'Actions IA',       k: 'nav.agent_actions', icon: I.agent_actions, roles: ['normal','responsable','admin'] },
     ],
   },
   navFor('reporting'),

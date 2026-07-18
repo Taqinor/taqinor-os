@@ -2,7 +2,7 @@
    Fichier de configuration de module (données + pages lazy), pas un module de
    composants : le fast-refresh ne s'y applique pas (cf. router/moduleRoutes). */
 import { lazy } from 'react'
-import { FileText, ShoppingCart, Receipt, FileMinus, Wallet, CalendarClock } from 'lucide-react'
+import { FileText, ShoppingCart, Receipt, FileMinus, Wallet, CalendarClock, AlertTriangle, Tags } from 'lucide-react'
 
 /* ============================================================================
    ARC54 — Migration des routes legacy Ventes vers le registre (phase 2, après
@@ -25,6 +25,14 @@ import { FileText, ShoppingCart, Receipt, FileMinus, Wallet, CalendarClock } fro
    fonctionnel only, zéro changement visuel). Sidebar lit désormais cette
    section par clé (`navFor('ventes')`), à la même place dans l'ordre
    d'affichage.
+
+   WIR23 — `ListesPrixPage` (route déjà enregistrée ci-dessous, API XSAL1-2
+   prête) et `DevisActionBoardPage` (route déjà enregistrée, miroir de
+   `/sav/action-requise`/ZSAV6) étaient construites/testées mais orphelines
+   de menu. Rôles alignés sur ce que la page permet réellement : lecture
+   `ListesPrixPage` ouverte à tout rôle authentifié (écriture Responsable/
+   Admin gardée serveur, cf. `apps/ventes/views/liste_prix.py`) ;
+   `DevisActionBoardPage` réservé responsable/admin, comme son miroir SAV.
    ========================================================================== */
 
 // eslint-disable-next-line no-unused-vars -- Comp est un composant polymorphe, rendu via <Comp> ci-dessous
@@ -56,6 +64,12 @@ const config = {
       { to: '/ventes/avoirs',        label: 'Avoirs',           k: 'nav.avoirs',     icon: navIcon(FileMinus),        roles: ['normal','responsable','admin'] },
       { to: '/ventes/paiements',     label: 'Encaissements',    k: 'nav.encaissements', icon: navIcon(Wallet),    roles: ['normal','responsable','admin'] },
       { to: '/ventes/relances',      label: 'Relances / Impayés', k: 'nav.relances', icon: navIcon(CalendarClock),      roles: ['responsable','admin'] },
+      // WIR23 — miroir de `/sav/action-requise` (ZSAV6) : « quels devis
+      // traiter aujourd'hui » (QX29/QX30), réservé responsable/admin.
+      { to: '/ventes/devis/action-requise', label: 'Action requise', k: 'nav.devis_action_requise', icon: navIcon(AlertTriangle), roles: ['responsable','admin'] },
+      // WIR23 — lecture ouverte à tout rôle (écriture Responsable/Admin
+      // gardée serveur, cf. apps/ventes/views/liste_prix.py).
+      { to: '/ventes/listes-prix',   label: 'Listes de prix',   k: 'nav.listes_prix', icon: navIcon(Tags),  roles: ['normal','responsable','admin'] },
     ],
   },
   routes: [
