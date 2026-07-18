@@ -52,12 +52,33 @@ TRACKED_FIELDS = {
     'visite_prevue_le': 'Visite prévue le',
     'visite_effectuee': 'Visite effectuée',
     'visite_notes': 'Notes de visite',
+    # LW27 — champs de pilotage réel absents jusque-là de l'allowlist (~36
+    # champs) : forecast pondéré (montant_estime/date_cloture_prevue),
+    # qualification site QK1 (distributeur/roof_age/ownership/
+    # project_timeline/financing_intent), champs site pro QW2 (facility_type/
+    # site_count/visit_window_part/visit_window_week). JAMAIS utm/meta_ad/
+    # custom_data — bruit système, volontairement exclus.
+    'montant_estime': 'Montant estimé (MAD)',
+    'date_cloture_prevue': 'Date de clôture prévue',
+    'distributeur': "Distributeur d'électricité",
+    'project_timeline': 'Horizon du projet',
+    'financing_intent': 'Financement envisagé',
+    'facility_type': 'Type de site (pro)',
+    'site_count': 'Nombre de sites (pro)',
+    'visit_window_part': 'Créneau de visite préféré',
+    'visit_window_week': 'Semaine de visite préférée',
+    'roof_age': 'Âge de la toiture (ans)',
+    'ownership': "Statut d'occupation",
 }
 
 _CHOICE_FIELDS = {
     'stage', 'canal', 'priorite', 'type_installation', 'raccordement',
     'type_toiture', 'orientation', 'ombrage', 'structure_pref',
     'batterie_souhaitee',
+    # LW27 — champs choices parmi les 11 nouveaux (montant_estime,
+    # date_cloture_prevue et roof_age sont des valeurs libres, pas des choices).
+    'distributeur', 'project_timeline', 'financing_intent', 'facility_type',
+    'site_count', 'visit_window_part', 'visit_window_week', 'ownership',
 }
 
 _BOOL_LABELS = {True: 'Oui', False: 'Non'}
