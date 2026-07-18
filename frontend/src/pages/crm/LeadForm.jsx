@@ -862,6 +862,10 @@ export default function LeadForm({
   // Archiver / restaurer depuis la fiche : on rafraîchit puis on ferme.
   const [archiveBusy, setArchiveBusy] = useState(false)
   const toggleArchive = async () => {
+    // LW4 — appelée aussi bien par le bouton que par le raccourci « a »
+    // (L897) : `onSaved();onClose()` jetait silencieusement toute édition
+    // non sauvée. Même garde que `guardedClose` (✕/overlay/Escape).
+    if (!confirmLeaveIfDirty(isDirty)) return
     setArchiveBusy(true)
     try {
       if (lead.is_archived) {
@@ -1027,6 +1031,10 @@ export default function LeadForm({
           setCleanFieldsJSON(JSON.stringify(reset))
           setErrors({})
           setDups([])
+          // LW4 — les champs personnalisés (T11) N'ÉTAIENT PAS remis à zéro
+          // ici : le lead SUIVANT créé en rafale héritait silencieusement des
+          // `custom_data` du lead PRÉCÉDENT (envoyés au payload ligne ~966).
+          setCustomData({})
           // VX249(b) — le lead SUIVANT reçoit de NOUVEAUX défauts VX93
           // (owner=moi, ville mémorisée juste au-dessus) : « suggéré »
           // redevient vrai, jamais figé « touché » par le lead précédent.
