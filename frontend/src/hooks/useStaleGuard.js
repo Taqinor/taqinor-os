@@ -67,7 +67,17 @@ export function useStaleGuard({
     setStaleInfo(null)
   }, [])
 
-  return { staleInfo, checkBeforeSave, dismiss, force }
+  // LW3 — à appeler quand l'appelant change D'ENREGISTREMENT (ex. navigation
+  // J/K entre leads) : une bannière « périmé » affichée pour le lead A n'a
+  // aucun sens sur le lead B, et « Enregistrer quand même » forcerait sinon
+  // la sauvegarde du MAUVAIS enregistrement. Efface aussi le forçage à usage
+  // unique — il ne doit jamais survivre à un changement d'enregistrement.
+  const reset = useCallback(() => {
+    forcedRef.current = false
+    setStaleInfo(null)
+  }, [])
+
+  return { staleInfo, checkBeforeSave, dismiss, force, reset }
 }
 
 export default useStaleGuard

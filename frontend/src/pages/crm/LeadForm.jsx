@@ -526,6 +526,28 @@ export default function LeadForm({
     // valent alors toujours false via `!isEdit`, mais on repart propre).
     setOwnerTouched(false)
     setVilleTouched(false)
+    // LW3 — cet effet ne resynchronisait QUE fields/errors/customData : tout
+    // l'état SATELLITE (non couvert par `fields`) survivait à la navigation
+    // ◀▶/J-K entre leads, avec un vrai risque de fuite inter-leads (mauvais
+    // document envoyé par WhatsApp, note classée sur le mauvais lead,
+    // facture inline patchée sur le mauvais lead, bannière de fraîcheur qui
+    // force-sauvegarde le MAUVAIS enregistrement). Tout ce qui suit doit
+    // repartir de zéro à chaque changement DE lead, exactement comme à une
+    // ouverture fraîche.
+    setWaSelected(new Set())
+    setWaPreview(null)
+    setWaLangue(lead?.langue_preferee || 'fr')
+    setNoteBody('')
+    setNoteFile(null)
+    if (noteFileInputRef.current) noteFileInputRef.current.value = ''
+    setNoteError(null)
+    setBillEditing(false)
+    setBillHiver(lead?.facture_hiver != null ? String(lead.facture_hiver) : '')
+    setBillEte(lead?.facture_ete != null ? String(lead.facture_ete) : '')
+    setBillError(null)
+    setDevisActionMsg(null)
+    setCardPaste(null)
+    staleGuard.reset()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lead?.id])
 
@@ -840,6 +862,10 @@ export default function LeadForm({
   // Archiver / restaurer depuis la fiche : on rafraîchit puis on ferme.
   const [archiveBusy, setArchiveBusy] = useState(false)
   const toggleArchive = async () => {
+    // LW4 — appelée aussi bien par le bouton que par le raccourci « a »
+    // (L897) : `onSaved();onClose()` jetait silencieusement toute édition
+    // non sauvée. Même garde que `guardedClose` (✕/overlay/Escape).
+    if (!confirmLeaveIfDirty(isDirty)) return
     setArchiveBusy(true)
     try {
       if (lead.is_archived) {
@@ -864,9 +890,21 @@ export default function LeadForm({
     try {
       const updated = await dispatch(updateLead({ id: lead.id, data: { stage: newStage } })).unwrap()
       setLiveLead(updated)
-      const merged = { ...fields, stage: updated.stage ?? newStage }
-      setFields(merged)
-      setCleanFieldsJSON(JSON.stringify(merged))
+      const resolvedStage = updated.stage ?? newStage
+      // LW2 — ce raccourci ne PATCHe QUE `{stage}` côté serveur : fusionner
+      // UNIQUEMENT cette clé dans l'instantané PROPRE EXISTANT (jamais
+      // `{...fields, stage}`, qui absorbait silencieusement toute édition en
+      // cours sur un AUTRE champ — l'instantané « propre » avalait des
+      // éditions jamais réellement enregistrées → isDirty passait à faux →
+      // fermeture/J-K sans avertissement, éditions perdues).
+      const clean = JSON.parse(cleanFieldsJSON)
+      setCleanFieldsJSON(JSON.stringify({ ...clean, stage: resolvedStage }))
+      // Ne pousser la nouvelle étape dans `fields` que si l'utilisateur n'a
+      // pas déjà une édition en cours sur CE champ précis (sinon on
+      // écraserait une sélection manuelle pas encore enregistrée).
+      if (fields.stage === clean.stage) {
+        setFields({ ...fields, stage: resolvedStage })
+      }
       onSaved?.()
     } catch { /* erreur silencieuse */ }
   }
@@ -993,6 +1031,10 @@ export default function LeadForm({
           setCleanFieldsJSON(JSON.stringify(reset))
           setErrors({})
           setDups([])
+          // LW4 — les champs personnalisés (T11) N'ÉTAIENT PAS remis à zéro
+          // ici : le lead SUIVANT créé en rafale héritait silencieusement des
+          // `custom_data` du lead PRÉCÉDENT (envoyés au payload ligne ~966).
+          setCustomData({})
           // VX249(b) — le lead SUIVANT reçoit de NOUVEAUX défauts VX93
           // (owner=moi, ville mémorisée juste au-dessus) : « suggéré »
           // redevient vrai, jamais figé « touché » par le lead précédent.
@@ -1261,7 +1303,16 @@ export default function LeadForm({
           </div>
         )}
 
-        <form onSubmit={handleSubmit} noValidate>
+        {/* LW1 — le shell ResponsiveDialog (grid/flex overflow-hidden, VX89)
+            ne borne le `<form>` qu'à condition que CE dernier porte lui-même
+            une hauteur bornée : sans classe, `.modal-body` (flex:1,
+            overflow-y:auto) ne rencontrait jamais de conteneur borné et le
+            débordement était simplement clippé (submit hors d'atteinte sur
+            petit viewport, Dialog ET Sheet mobile). `flex flex-col flex-1
+            min-h-0 overflow-hidden` fonctionne identiquement que le parent
+            soit grid (desktop) ou flex (Sheet) — ne touche pas à la règle
+            `.modal > form` d'index.css, encore portée par UsersManagement. */}
+        <form onSubmit={handleSubmit} noValidate className="flex flex-col flex-1 min-h-0 overflow-hidden">
           <div className="lead-form-layout">
             <nav className="lead-nav" aria-label="Sections du lead">
               {buildNavSections({ agricole, isEdit, hasWebOrigin, dupCount: dups.length })
