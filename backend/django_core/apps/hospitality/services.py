@@ -6,9 +6,24 @@ from django.db import transaction
 from django.utils import timezone
 
 from .models import (
-    Chambre, FicheClient, Folio, LigneFolio, ParametresTaxeSejour,
-    PlanTarifaire, Reservation, TacheMenage,
+    Chambre, EvenementBanquet, FicheClient, Folio, LigneFolio,
+    ParametresTaxeSejour, PlanTarifaire, Reservation, TacheMenage,
+    TicketPension,
 )
+
+# NTHOT20 — jours de séjour × repas générés par formule de pension (une entrée
+# par TypeRepas ACTIVÉ pour la formule). La demi-pension retient
+# petit-déjeuner + dîner (convention hôtelière marocaine la plus courante).
+_REPAS_PAR_FORMULE = {
+    Reservation.FormulePension.AUCUNE: [],
+    Reservation.FormulePension.PETIT_DEJEUNER: [
+        TicketPension.TypeRepas.PETIT_DEJEUNER],
+    Reservation.FormulePension.DEMI_PENSION: [
+        TicketPension.TypeRepas.PETIT_DEJEUNER, TicketPension.TypeRepas.DINER],
+    Reservation.FormulePension.PENSION_COMPLETE: [
+        TicketPension.TypeRepas.PETIT_DEJEUNER,
+        TicketPension.TypeRepas.DEJEUNER, TicketPension.TypeRepas.DINER],
+}
 
 FICHE_CLIENT_CHAMPS_REQUIS = [
     'nom_complet', 'nationalite', 'type_piece', 'numero_piece',
@@ -405,4 +420,194 @@ def check_in(reservation, *, fiches_data, user=None):
     chambre.save(update_fields=['statut'])
     reservation.statut = Reservation.Statut.EN_COURS
     reservation.save(update_fields=['statut', 'chambre'])
+    # NTHOT20 — génère les tickets pension du séjour (un par jour × repas
+    # inclus dans la formule) ; no-op si formule_pension=aucune.
+    _generer_tickets_pension(reservation)
     return fiches
+
+
+# ── NTHOT20 — Petit-déjeuner / pension tracking ─────────────────────────────
+
+def _generer_tickets_pension(reservation):
+    """Génère UN ``TicketPension`` par jour de séjour × repas inclus dans
+    ``reservation.formule_pension`` — idempotent (``get_or_create`` sur la
+    contrainte unique réservation+date+type_repas), donc rejouable sans
+    doublon si le check-in est retenté."""
+    repas = _REPAS_PAR_FORMULE.get(reservation.formule_pension, [])
+    if not repas:
+        return []
+    tickets = []
+    for i in range(reservation.nb_nuits):
+        jour = reservation.date_arrivee + datetime.timedelta(days=i)
+        for type_repas in repas:
+            ticket, _ = TicketPension.objects.get_or_create(
+                company=reservation.company, reservation=reservation,
+                date=jour, type_repas=type_repas)
+            tickets.append(ticket)
+    return tickets
+
+
+def pointer_repas_ou_facturer(
+        reservation, *, date_repas, type_repas, montant_ht=None,
+        description=''):
+    """NTHOT20 — Pointe un repas consommé au restaurant contre un ticket
+    pension inclus dans la formule (le repas n'est ALORS jamais refacturé au
+    folio), sinon — repas hors formule — ajoute une ``LigneFolio`` normale
+    (``montant_ht`` fourni par l'appelant, ex. le POS restaurant) si le folio
+    de la réservation existe.
+
+    Renvoie le ``TicketPension`` pointé (repas inclus, pas de facturation),
+    ou la ``LigneFolio`` créée (repas hors formule facturé), ou ``None``
+    (repas hors formule sans folio/``montant_ht`` — rien à faire ici, la
+    facturation reste à la charge de l'appelant)."""
+    ticket = TicketPension.objects.filter(
+        reservation=reservation, date=date_repas, type_repas=type_repas,
+        consomme=False,
+    ).first()
+    if ticket is not None:
+        ticket.consomme = True
+        ticket.date_consommation = timezone.now()
+        ticket.save(update_fields=['consomme', 'date_consommation'])
+        return ticket
+
+    folio = getattr(reservation, 'folio', None)
+    if folio is None or montant_ht is None:
+        return None
+    return LigneFolio.objects.create(
+        folio=folio, origine=LigneFolio.Origine.RESTAURANT,
+        description=description or f'Repas {type_repas} du {date_repas}',
+        montant_ht=montant_ht,
+    )
+
+
+# ── NTHOT18 — Salles événementielles (chevauchement) ────────────────────────
+
+class SalleOverlapError(ValueError):
+    """Levée quand un événement CONFIRMÉ chevauche un autre événement
+    CONFIRMÉ sur la MÊME salle (même pattern que NTHOT3 sur ``Chambre``)."""
+
+
+def check_salle_overlap(salle, date_debut, date_fin, *, exclude_id=None):
+    """Refuse un événement ``confirme`` qui chevaucherait un autre événement
+    ``confirme`` sur la même salle. No-op si ``salle`` est ``None`` (événement
+    sans salle assignée pour l'instant)."""
+    if salle is None:
+        return
+    qs = EvenementBanquet.objects.filter(
+        salle=salle,
+        statut=EvenementBanquet.Statut.CONFIRME,
+        date_debut__lt=date_fin,
+        date_fin__gt=date_debut,
+    )
+    if exclude_id is not None:
+        qs = qs.exclude(pk=exclude_id)
+    if qs.exists():
+        raise SalleOverlapError(
+            f'La salle {salle.nom} est déjà réservée sur un créneau qui '
+            'chevauche ces dates.')
+
+
+# ── NTHOT17 — Événements/banquets (résolution client) ───────────────────────
+
+def resolve_client_evenement(company, *, client_id=None, lead_id=None):
+    """Résout le client d'un ``EvenementBanquet`` — soit un client CRM déjà
+    connu (``client_id``), soit un lead à résoudre via
+    ``apps.crm.services.resolve_client_for_lead`` (pattern CLAUDE.md, jamais
+    un import de ``apps.crm.models`` en dehors de ce module). Renvoie
+    ``(client, lead)`` — au plus l'un des deux résolus explicitement, l'autre
+    conservé pour traçabilité (même règle que ``Devis.client``/``lead``)."""
+    lead = None
+    if lead_id:
+        from apps.crm.models import Lead
+        lead = Lead.objects.filter(pk=lead_id, company=company).first()
+
+    if client_id:
+        from apps.crm.selectors import get_company_client
+        client = get_company_client(company, client_id)
+        return client, lead
+
+    if lead is not None:
+        from apps.crm.services import resolve_client_for_lead
+        client = resolve_client_for_lead(lead)
+        return client, lead
+
+    return None, None
+
+
+def creer_evenement(
+        *, company, user, nom_evenement, date_debut, date_fin,
+        nb_convives=0, salle=None, statut=EvenementBanquet.Statut.BROUILLON,
+        client_id=None, lead_id=None):
+    """Crée un ``EvenementBanquet`` avec validation de chevauchement de salle
+    (NTHOT18, appliquée UNIQUEMENT si ``statut=confirme`` — un brouillon ne
+    bloque jamais une salle)."""
+    if statut == EvenementBanquet.Statut.CONFIRME:
+        check_salle_overlap(salle, date_debut, date_fin)
+
+    client, lead = resolve_client_evenement(
+        company, client_id=client_id, lead_id=lead_id)
+
+    return EvenementBanquet.objects.create(
+        company=company,
+        client=client,
+        lead=lead,
+        nom_evenement=nom_evenement,
+        date_debut=date_debut,
+        date_fin=date_fin,
+        nb_convives=nb_convives,
+        salle=salle,
+        statut=statut,
+        created_by=user,
+    )
+
+
+class GenerationDevisEvenementError(ValueError):
+    """Levée quand un devis d'événement ne peut pas être généré (aucun
+    client résolu, ou un devis a déjà été généré pour cet événement)."""
+
+
+def generer_devis_evenement(evenement, *, user):
+    """NTHOT17 — Génère UN devis ventes BROUILLON pour ``evenement``, via
+    ``apps.ventes.services.create_devis_pour_ticket`` (function-local, JAMAIS
+    un import de ``apps.ventes.models`` ni un moteur de devis parallèle —
+    rule #4 : le seul chemin client-facing reste ``/proposal``). Idempotent
+    au niveau service : un devis déjà généré (``devis_ventes_id`` posé)
+    refuse une seconde génération plutôt que d'en créer un doublon — la
+    resoumission passe par le cycle devis standard (édition dans
+    ``/ventes/devis``), jamais par cette fonction.
+
+    Les lignes menu/salle/prestations restent à COMPLÉTER dans l'éditeur de
+    devis (même choix que ``create_draft_devis_from_ocr``/
+    ``create_devis_from_reserve`` — un devis brouillon sans lignes catalogue
+    imposées est le point d'entrée sûr, la note résume le contexte de
+    l'événement pour la saisie)."""
+    if evenement.devis_ventes_id:
+        raise GenerationDevisEvenementError(
+            'Un devis a déjà été généré pour cet événement.')
+    if evenement.client_id is None:
+        raise GenerationDevisEvenementError(
+            "Impossible de générer un devis : aucun client CRM résolu sur "
+            "l'événement.")
+
+    from apps.ventes.services import create_devis_pour_ticket
+
+    notes = [f"Devis d'événement — {evenement.nom_evenement}",
+             f"Date : {evenement.date_evenement}",
+             f"Convives : {evenement.nb_convives}"]
+    if evenement.salle_id:
+        notes.append(f"Salle : {evenement.salle.nom}")
+    menu = list(evenement.menu_recettes.all())
+    if menu:
+        notes.append(
+            'Menu : ' + ', '.join(r.nom_plat for r in menu))
+
+    devis = create_devis_pour_ticket(
+        company=evenement.company,
+        user=user,
+        client_id=evenement.client_id,
+        lignes=[],
+        note='\n'.join(notes),
+    )
+    evenement.devis_ventes_id = devis.id
+    evenement.save(update_fields=['devis_ventes_id'])
+    return devis

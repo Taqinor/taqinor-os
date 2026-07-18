@@ -4,7 +4,8 @@ from rest_framework import serializers
 
 from .models import (
     RFI, RFIReponse, ReserveChantier, ReserveChantierHistorique,
-    JournalChantier, SignatureBtp, VisaDocument,
+    AvenantChantier, DecompteGeneral, DiffusionPlan, JournalChantier,
+    SignatureBtp, VisaDocument,
 )
 
 
@@ -157,6 +158,87 @@ class JournalChantierSerializer(serializers.ModelSerializer):
             'materiel_present', 'evenements', 'visiteurs', 'created_at',
         ]
         read_only_fields = ['id', 'redacteur', 'created_at']
+
+    def validate_chantier(self, value):
+        return _meme_societe(self, value, 'Chantier')
+
+
+# ── NTCON7/NTCON8 — Avenant de chantier ─────────────────────────────────────
+
+class AvenantChantierSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AvenantChantier
+        fields = [
+            'id', 'chantier', 'avenant_contrat_id', 'reference',
+            'description', 'montant_ht', 'impact_delai_jours',
+            'impact_budget', 'lignes', 'statut', 'token_expires_at',
+            'budget_projet_id', 'facture_id', 'motif_refus', 'cree_par',
+            'approuve_par', 'date_approbation', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'reference', 'statut', 'token_expires_at',
+            'budget_projet_id', 'facture_id', 'motif_refus', 'cree_par',
+            'approuve_par', 'date_approbation', 'created_at', 'updated_at',
+        ]
+
+    def validate_chantier(self, value):
+        return _meme_societe(self, value, 'Chantier')
+
+
+class AvenantChantierPublicSerializer(serializers.ModelSerializer):
+    """NTCON8 — vue publique (lien tokenisé, sans authentification) : jamais
+    de coût interne, jamais d'ID d'autres objets internes."""
+    class Meta:
+        model = AvenantChantier
+        fields = [
+            'reference', 'description', 'montant_ht', 'impact_delai_jours',
+            'lignes', 'statut', 'token_expires_at',
+        ]
+        read_only_fields = fields
+
+
+# ── NTCON9/NTCON10 — DGD (Décompte Général et Définitif) ───────────────────
+
+class DecompteGeneralSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DecompteGeneral
+        fields = [
+            'id', 'chantier', 'reference', 'montant_marche_initial_ht',
+            'situations_incluses', 'total_avenants_ht',
+            'total_situations_facturees_ht', 'retenue_garantie_id',
+            'retenue_garantie_montant', 'solde_du_ht', 'statut',
+            'motif_contestation', 'montant_conteste', 'date_notification',
+            'date_finalisation', 'finalise_par', 'historique_deverrouillage',
+            'cree_par', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'reference', 'total_avenants_ht',
+            'total_situations_facturees_ht', 'retenue_garantie_montant',
+            'solde_du_ht', 'statut', 'motif_contestation',
+            'montant_conteste', 'date_notification', 'date_finalisation',
+            'finalise_par', 'historique_deverrouillage', 'cree_par',
+            'created_at', 'updated_at',
+        ]
+
+    def validate_chantier(self, value):
+        return _meme_societe(self, value, 'Chantier')
+
+
+# ── NTCON12/NTCON13 — Diffusion contrôlée de plans ──────────────────────────
+
+class DiffusionPlanSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DiffusionPlan
+        fields = [
+            'id', 'chantier', 'document_ged_id', 'version_diffusee',
+            'destinataires_internes', 'destinataires_externes',
+            'partage_ged_id', 'date_diffusion', 'accuse_reception',
+            'cree_par', 'created_at',
+        ]
+        read_only_fields = [
+            'id', 'partage_ged_id', 'date_diffusion', 'accuse_reception',
+            'cree_par', 'created_at',
+        ]
 
     def validate_chantier(self, value):
         return _meme_societe(self, value, 'Chantier')

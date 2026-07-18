@@ -7,7 +7,9 @@ multi-tenant).
 from rest_framework import serializers
 
 from .models import (
-    Bail, Batiment, EcheanceLoyer, Local, Locataire, Niveau, RelanceLoyer,
+    Bail, Batiment, BudgetCharges, DepenseCharges, EcheanceLoyer,
+    ElementEtatLieux, EtatLieuxImmo, Local, Locataire, Niveau,
+    PhotoEtatLieux, PieceEtatLieux, RegularisationCharges, RelanceLoyer,
     RevisionLoyer, Site,
 )
 
@@ -47,7 +49,8 @@ class BatimentSerializer(serializers.ModelSerializer):
         model = Batiment
         fields = [
             'id', 'site', 'site_nom', 'nom', 'nb_niveaux',
-            'annee_construction', 'plan_ged_document_id', 'company',
+            'annee_construction', 'plan_ged_document_id',
+            'mode_repartition', 'company',
         ]
         read_only_fields = ['id', 'company']
 
@@ -207,4 +210,156 @@ class RelanceLoyerSerializer(serializers.ModelSerializer):
 
     def validate_echeance_loyer(self, value):
         _check_same_company(self, value, 'echeance_loyer')
+        return value
+
+
+class BudgetChargesSerializer(serializers.ModelSerializer):
+    """NTPRO10 — Budget de charges par bâtiment/exercice/poste."""
+    poste_display = serializers.CharField(
+        source='get_poste_display', read_only=True)
+    batiment_nom = serializers.CharField(
+        source='batiment.nom', read_only=True)
+
+    class Meta:
+        model = BudgetCharges
+        fields = [
+            'id', 'batiment', 'batiment_nom', 'exercice', 'poste',
+            'poste_display', 'montant_budgete_annuel', 'date_creation',
+            'company',
+        ]
+        read_only_fields = ['id', 'date_creation', 'company']
+
+    def validate_batiment(self, value):
+        _check_same_company(self, value, 'batiment')
+        return value
+
+
+class DepenseChargesSerializer(serializers.ModelSerializer):
+    """NTPRO11 — Dépense réelle rattachée à un budget de charges."""
+    budget_poste = serializers.CharField(
+        source='budget_charges.poste', read_only=True)
+    budget_batiment = serializers.CharField(
+        source='budget_charges.batiment.nom', read_only=True)
+
+    class Meta:
+        model = DepenseCharges
+        fields = [
+            'id', 'budget_charges', 'budget_poste', 'budget_batiment',
+            'date', 'montant_reel', 'facture_fournisseur_id',
+            'ged_document_id', 'date_creation', 'company',
+        ]
+        read_only_fields = ['id', 'date_creation', 'company']
+
+    def validate_budget_charges(self, value):
+        _check_same_company(self, value, 'budget_charges')
+        return value
+
+
+class RegularisationChargesSerializer(serializers.ModelSerializer):
+    """NTPRO13 — Régularisation annuelle des charges d'un bail (LECTURE
+    SEULE côté API : une ligne naît TOUJOURS de `generer_regularisation`,
+    jamais d'un POST libre)."""
+    sens_display = serializers.CharField(
+        source='get_sens_display', read_only=True)
+    bail_local_reference = serializers.CharField(
+        source='bail.local.reference', read_only=True)
+    bail_locataire_nom = serializers.CharField(
+        source='bail.locataire.nom', read_only=True)
+
+    class Meta:
+        model = RegularisationCharges
+        fields = [
+            'id', 'bail', 'bail_local_reference', 'bail_locataire_nom',
+            'exercice', 'provisions_encaissees', 'quote_part_reelle',
+            'solde', 'sens', 'sens_display', 'facture_ventes_id',
+            'avoir_ventes_id', 'date_emission', 'date_creation', 'company',
+        ]
+        read_only_fields = fields
+
+
+class PhotoEtatLieuxSerializer(serializers.ModelSerializer):
+    """NTPRO16 — Photo comparative (entrée/sortie) d'un élément inspecté."""
+
+    class Meta:
+        model = PhotoEtatLieux
+        fields = [
+            'id', 'element', 'filename', 'size', 'mime', 'created_at',
+            'company',
+        ]
+        read_only_fields = fields
+
+
+class ElementEtatLieuxSerializer(serializers.ModelSerializer):
+    """NTPRO15/16 — Élément inspecté d'une pièce (sol/murs/plafond/…), avec
+    ses photos et — sur un élément de SORTIE — les photos d'ENTRÉE du même
+    élément embarquées pour comparaison AUTOMATIQUE (NTPRO16 : jamais de
+    requête manuelle supplémentaire côté frontend)."""
+    etat_display = serializers.CharField(
+        source='get_etat_display', read_only=True)
+    photos = PhotoEtatLieuxSerializer(many=True, read_only=True)
+    photos_entree = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ElementEtatLieux
+        fields = [
+            'id', 'piece', 'element', 'etat', 'etat_display', 'commentaire',
+            'ordre', 'photos', 'photos_entree', 'company',
+        ]
+        read_only_fields = ['id', 'company']
+
+    def get_photos_entree(self, obj):
+        from . import selectors
+        photos = selectors.photos_entree_comparables(obj)
+        return PhotoEtatLieuxSerializer(
+            photos, many=True, context=self.context).data
+
+    def validate_piece(self, value):
+        _check_same_company(self, value, 'piece')
+        return value
+
+
+class PieceEtatLieuxSerializer(serializers.ModelSerializer):
+    """NTPRO15 — Pièce inspectée d'un état des lieux (+ éléments imbriqués)."""
+    etat_general_display = serializers.CharField(
+        source='get_etat_general_display', read_only=True)
+    elements = ElementEtatLieuxSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = PieceEtatLieux
+        fields = [
+            'id', 'etat_lieux', 'nom_piece', 'etat_general',
+            'etat_general_display', 'commentaire', 'ordre', 'elements',
+            'company',
+        ]
+        read_only_fields = ['id', 'company']
+
+    def validate_etat_lieux(self, value):
+        _check_same_company(self, value, 'etat_lieux')
+        return value
+
+
+class EtatLieuxImmoSerializer(serializers.ModelSerializer):
+    """NTPRO15 — État des lieux (+ pièces/éléments imbriqués, pré-remplis
+    depuis la grille standard du type de local à la création)."""
+    moment_display = serializers.CharField(
+        source='get_moment_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    bail_local_reference = serializers.CharField(
+        source='bail.local.reference', read_only=True)
+    pieces = PieceEtatLieuxSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = EtatLieuxImmo
+        fields = [
+            'id', 'bail', 'bail_local_reference', 'moment', 'moment_display',
+            'date', 'statut', 'statut_display', 'technicien', 'pieces',
+            'date_creation', 'company',
+        ]
+        read_only_fields = [
+            'id', 'statut', 'pieces', 'date_creation', 'company',
+        ]
+
+    def validate_bail(self, value):
+        _check_same_company(self, value, 'bail')
         return value

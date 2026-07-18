@@ -8,7 +8,8 @@ change que via l'action ``figer`` (machine à états à sens unique, NTESG1).
 from rest_framework import serializers
 
 from .models import (
-    CatalogueIndicateurESG, ObjectifESGTrajectoire, PeriodeReportingESG,
+    CatalogueIndicateurESG, DocumentPolitiqueESG, FacteurEmissionReference,
+    ObjectifESGTrajectoire, PartiePrenanteESG, PeriodeReportingESG,
     SnapshotESG,
 )
 
@@ -128,3 +129,45 @@ class ObjectifESGTrajectoireSerializer(serializers.ModelSerializer):
                         'Un objectif existe déjà pour cet indicateur et '
                         'cette année cible.')})
         return attrs
+
+
+class PartiePrenanteESGSerializer(serializers.ModelSerializer):
+    categorie_display = serializers.CharField(
+        source='get_categorie_display', read_only=True)
+
+    class Meta:
+        model = PartiePrenanteESG
+        fields = [
+            'id', 'nom', 'categorie', 'categorie_display', 'enjeux',
+            'influence', 'interet', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+
+class DocumentPolitiqueESGSerializer(serializers.ModelSerializer):
+    type_document_display = serializers.CharField(
+        source='get_type_document_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = DocumentPolitiqueESG
+        fields = [
+            'id', 'libelle', 'type_document', 'type_document_display',
+            'statut', 'statut_display', 'date_publication', 'date_revue',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+
+class FacteurEmissionReferenceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FacteurEmissionReference
+        fields = [
+            'id', 'categorie', 'unite', 'valeur', 'source', 'date_maj',
+            'version', 'actif', 'created_at', 'updated_at',
+        ]
+        # `version`/`actif` sont posés SERVEUR par
+        # `services.creer_version_facteur` (jamais un écrasement silencieux
+        # côté client) — voir `FacteurEmissionReferenceViewSet.perform_create`.
+        read_only_fields = ['version', 'actif', 'created_at', 'updated_at']

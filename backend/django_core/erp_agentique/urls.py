@@ -112,10 +112,17 @@ _APP_URLS = [
     path('fpa/', include('apps.fpa.urls')),
     # Groupe NTASS — Registre des assurances & sinistres d'entreprise.
     path('assurances/', include('apps.assurances.urls')),
+    # Groupe NTADM — Administration enterprise.
+    path('entites/', include('apps.entites.urls')),
+    path('adminops/', include('apps.adminops.urls')),
     # NTEDU1 — Éducation (établissement scolaire).
     path('education/', include('apps.education.urls')),
     # NTUX1 — Vues sauvegardées serveur (personnelles/partagées).
     path('uxviews/', include('apps.uxviews.urls')),
+    # Groupe NTMAR — Facturation électronique DGI (gated, EINVOICE_ENABLED).
+    path('einvoice/', include('apps.einvoice.urls')),
+    # Groupe NTMAR — Calendrier fiscal marocain, attestations, UBO, veille.
+    path('fiscal/', include('apps.fiscal.urls')),
 ]
 
 urlpatterns = [

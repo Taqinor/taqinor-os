@@ -134,6 +134,16 @@ BASELINE_DRIFT: set[tuple[str, str]] = {
     # dans apps/reporting/search.py.
     ('credit.limitecredit', 'chatter_sans_recherche'),
     ('credit.derogationcredit', 'chatter_sans_recherche'),
+    # NTADM47 — Entite est chatter-isée via records (renommage/re-parentage,
+    # cf. apps/entites/platform.py) mais pas encore cherchable : même dérive
+    # assumée que les cibles ci-dessus — retirer le jour où entites entrera
+    # dans apps/reporting/search.py.
+    ('entites.entite', 'chatter_sans_recherche'),
+    # NTESG13 — DocumentPolitiqueESG est chatter-isé via records.Attachment
+    # (dépôt des documents de politique RSE) mais pas encore cherchable :
+    # même dérive assumée que les cibles ci-dessus — retirer le jour où esg
+    # entrera dans apps/reporting/search.py.
+    ('esg.documentpolitiqueesg', 'chatter_sans_recherche'),
 }
 
 

@@ -22,6 +22,12 @@ UNGUARDED_ACTION_BASELINE = {
     # (Directeur only) + company-scopées. Le scanner ne crédite que les gardes
     # PAR action (permission_classes=/get_permissions) → dette coarse acceptée.
     "accessreview": 3,
+    # NTADM10/13/14 — SandboxEnvironmentViewSet (2 @action creer/prolonger) +
+    # ConfigPackageViewSet (3 @action exporter/previsualiser/appliquer) : gardés
+    # au niveau CLASSE par ``permission_classes = [IsAdministrateur]``
+    # (Administrateur only) + company-scopés. Le scanner ne crédite que les
+    # gardes PAR action → dette coarse figée (fine-grain ultérieur, YRBAC3).
+    "adminops": 5,
     # NTASS — les viewsets assurances héritent de ``_AssurancesBaseViewSet``
     # (WriteScopedPermissionMixin + CompanyScopedModelViewSet) : gardés au
     # niveau CLASSE (read/write assurances_voir/gerer, company-scopé, zéro fuite
@@ -47,6 +53,12 @@ UNGUARDED_ACTION_BASELINE = {
     # dette restante, follow-up possible.
     "compta": 115,
     "contrats": 56,
+    # NTADM1/28/43 — EntiteViewSet : 3 @action coarse (deplacer/tree/desactiver)
+    # gardées au niveau CLASSE par ``permission_classes = [IsAdministrateur]``
+    # (Administrateur only) + company-scopées (CompanyScopedModelViewSet) ; les
+    # 2 autres @action (export/importer) sont, elles, FINE-gardées par action.
+    # Dette coarse figée (fine-grain ultérieur, YRBAC3).
+    "entites": 3,
     "flotte": 39,
     # NTFPA — viewsets FP&A gardés au niveau CLASSE (CompanyScopedModelViewSet
     # + rôle Directeur/FP&A), company-scopés ; dette coarse figée (fine-grain

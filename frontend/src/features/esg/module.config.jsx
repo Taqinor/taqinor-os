@@ -15,6 +15,8 @@ import { Leaf } from 'lucide-react'
    ========================================================================== */
 
 const EsgCockpit = lazy(() => import('../../pages/esg/EsgCockpit'))
+// NTESG12 — matrice de matérialité (registre des parties prenantes RSE).
+const MatriceMaterialite = lazy(() => import('../../pages/esg/MatriceMaterialite'))
 
 const ROLES = ['responsable', 'admin']
 
@@ -26,14 +28,17 @@ const config = {
     accent: 'success',
     items: [
       { to: '/esg', label: 'Cockpit ESG', icon: <Leaf size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
+      { to: '/esg/materialite', label: 'Matrice de matérialité', icon: <Leaf size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
     ],
   },
   titles: [
     ['/esg', 'Cockpit ESG'],
+    ['/esg/materialite', 'Matrice de matérialité'],
   ],
   sectionLabels: { esg: 'ESG / RSE' },
   routes: [
     { path: '/esg', component: EsgCockpit, roles: ROLES },
+    { path: '/esg/materialite', component: MatriceMaterialite, roles: ROLES },
   ],
 }
 

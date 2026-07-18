@@ -217,6 +217,15 @@ INSTALLED_APPS = [
     # décennale, multirisque, cyber, homme-clé) ; distinct des polices/sinistres
     # véhicule (flotte) et des cautions bancaires marché (compta).
     'apps.assurances',
+    # Groupe NTADM — Administration enterprise. `apps.entites` : hiérarchie
+    # d'entités intra-tenant (holding/filiale/agence), additive, aucun modèle
+    # métier existant ne la référence encore (NTADM2 hors périmètre).
+    'apps.entites',
+    # Groupe NTADM — `apps.adminops` : health score, licences/sièges
+    # (lecture), sandbox, packages de config, adoption, annonces produit,
+    # diagnostic/support. Regroupe plusieurs sous-domaines admin plutôt que
+    # de créer 5+ micro-apps.
+    'apps.adminops',
     # NTEDU1 — Éducation (établissement scolaire) : structure année/niveau/
     # classe, dossier famille/élève, inscriptions (liste d'attente), scolarité
     # (grille tarifaire/remises/échéancier), présences, matières. Additive,
@@ -225,6 +234,13 @@ INSTALLED_APPS = [
     # NTUX1 — Vues sauvegardées serveur (personnelles/partagées), fondation de
     # la couche UX power-user (NTUX2-11). Additive, company-scopée.
     'apps.uxviews',
+    # Groupe NTMAR — Facturation électronique DGI (schéma XML derrière flag,
+    # dry-run/réel), scaffold de signature électronique et file d'attente de
+    # transmission Simpl inerte (gated, voir EINVOICE_ENABLED).
+    'apps.einvoice',
+    # Groupe NTMAR — Calendrier fiscal marocain, attestations tenant, registre
+    # UBO et veille réglementaire actionnable.
+    'apps.fiscal',
 ]
 
 MIDDLEWARE = [
@@ -826,6 +842,14 @@ CELERY_TASK_ROUTES = {
     'credit.recalculer_encours_quotidien': {'queue': 'scheduled'},
     # NTSAN31 — alerte J-7 avant expiration d'une PriseEnCharge santé.
     'sante.alertes_prise_en_charge_expirant': {'queue': 'scheduled'},
+    # NTADM10/11/16/35/36/38 — jobs adminops planifiés (sandbox clone/purge/
+    # rappel, health score, purge packages/usage).
+    'adminops.cloner_sandbox': {'queue': 'scheduled'},
+    'adminops.purger_sandbox_expires': {'queue': 'scheduled'},
+    'adminops.rappeler_sandbox_a_expirer': {'queue': 'scheduled'},
+    'adminops.recalculer_health_score_tenants': {'queue': 'scheduled'},
+    'adminops.purger_config_packages_anciens': {'queue': 'scheduled'},
+    'adminops.purger_evenements_usage': {'queue': 'scheduled'},
     # NTEDU22 — matérialisation hebdomadaire des séances (emploi du temps).
     'education.generer_seances_semaine': {'queue': 'scheduled'},
     # NTIDE40 — digest feedback produit non-lu, gated par société.
@@ -1127,3 +1151,24 @@ REQUEST_ACCESS_LOG = (
 # seuil (ms), une ligne WARNING 'core.slow_request' est émise (durée/path/tenant),
 # et en DEBUG le compte SQL + les 3 requêtes les plus longues (CaptureQueries).
 SLOW_REQUEST_MS = int(os.environ.get('SLOW_REQUEST_MS', '0') or '0')
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Groupe NTMAR — Maroc & Afrique : e-invoicing DGI, PSP & mobile money (gated).
+#
+# NTMAR5 — flag maître de la facturation électronique DGI (apps.einvoice).
+# OFF par défaut : l'app reste entièrement inerte (aucune écriture, aucun
+# appel réseau) tant que le founder ne l'active pas explicitement.
+EINVOICE_ENABLED = os.environ.get('EINVOICE_ENABLED', '0') == '1'
+
+# NTMAR6 — provider de signature électronique certifiée. ``noop`` (défaut) :
+# ``preparer_signature`` calcule l'empreinte mais ne signe JAMAIS — la
+# signature certifiée dépend de la plateforme DGI live (gaté G14, décret non
+# publié). Aucun provider réel n'est câblé dans ce lot.
+EINVOICE_SIGNATURE_PROVIDER = os.environ.get(
+    'EINVOICE_SIGNATURE_PROVIDER', 'noop')
+
+# NTMAR7 — étend G14 : transmission Simpl réelle. OFF par défaut ; sans URL/clé
+# configurée, ``transmettre()`` enregistre seulement l'intention (statut
+# ``en_attente``) et n'émet AUCUNE requête sortante.
+DGI_TRANSMISSION_ENABLED = os.environ.get('DGI_TRANSMISSION_ENABLED', '0') == '1'
+DGI_TRANSMISSION_URL = os.environ.get('DGI_TRANSMISSION_URL', '')
