@@ -76,8 +76,10 @@ const reportingApi = {
       params: { module, code, ...(params || {}) },
     }),
   // FG97 — Analytiques du Journal.
+  // WIR20 — préfixe corrigé : l'endpoint est monté sous `apps.audit.urls`
+  // (`/audit/analytics/`), jamais sous `/reporting/` (404 avant ce fix).
   auditAnalytics: (params) =>
-    api.get('/reporting/audit/analytics/', { params }),
+    api.get('/audit/analytics/', { params }),
   // FG98 — Cohortes / saisonnalité.
   cohorts: (params) =>
     api.get('/reporting/insights/cohorts/', { params }),

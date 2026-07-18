@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { useHasPermission, useIsAdmin } from '../hooks/useHasPermission'
 import { History, Download } from 'lucide-react'
 import auditApi from '../api/auditApi'
+import reportingApi from '../api/reportingApi'
 import {
   Card, CardHeader, CardTitle, CardContent, Segmented, MultiSelect,
   Button, Badge, Skeleton, EmptyState, IconButton,
@@ -288,11 +289,11 @@ export default function Journal() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allowed, requestKey])
 
-  // WIR18 — onglet « Sécurité », en plus de l'onglet « Activité »
-  // historique. Chargé PARESSEUSEMENT (seulement quand l'onglet est actif) :
-  // ne pèse jamais sur le chargement par défaut de l'onglet « Activité » et
-  // ne casse pas les tests existants qui ne mockent que
-  // `getStats`/`getEntries`/`getMeta`.
+  // WIR18/WIR20 — onglets « Sécurité » et « Analytiques », en plus de
+  // l'onglet « Activité » historique. Chargés PARESSEUSEMENT (seulement
+  // quand l'onglet est actif) : ne pèsent jamais sur le chargement par
+  // défaut de l'onglet « Activité » et ne cassent pas les tests existants
+  // qui ne mockent que `getStats`/`getEntries`/`getMeta`.
   const [tab, setTab] = useState('activite')
   const isAdmin = useIsAdmin()
 
@@ -343,6 +344,27 @@ export default function Journal() {
     }
   }
 
+  // WIR20 — onglet « Analytiques » : rollups FG97 (top utilisateurs, mix
+  // d'actions, activité quotidienne, échecs de connexion) sur la fenêtre
+  // par défaut du serveur (30 jours).
+  const [analytics, setAnalytics] = useState(null)
+  const [analyticsLoading, setAnalyticsLoading] = useState(false)
+  const [analyticsError, setAnalyticsError] = useState(null)
+
+  useEffect(() => {
+    if (!allowed || tab !== 'analytiques') return undefined
+    let cancelled = false
+    setAnalyticsLoading(true)
+    setAnalyticsError(null)
+    reportingApi.auditAnalytics()
+      .then((r) => { if (!cancelled) setAnalytics(r.data) })
+      .catch(() => {
+        if (!cancelled) setAnalyticsError("Impossible de charger les analytiques du Journal.")
+      })
+      .finally(() => { if (!cancelled) setAnalyticsLoading(false) })
+    return () => { cancelled = true }
+  }, [allowed, tab])
+
   // Reset de page géré dans les setters de filtres (pas d'effet → pas de
   // cascade de rendus).
   const resetPage = () => setPage(1)
@@ -379,11 +401,14 @@ export default function Journal() {
         subtitle="Qui a fait quoi, et quand — heures en Africa/Casablanca."
       />
 
-      {/* WIR18 — Activité (historique) / Sécurité (FG23 + export CSV admin). */}
+      {/* WIR18/WIR20 — Activité (historique) / Sécurité (FG23 + export CSV
+          admin) / Analytiques (FG97 : top utilisateurs, mix d'actions,
+          activité quotidienne, échecs de connexion). */}
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList className="mb-4">
           <TabsTrigger value="activite">Activité</TabsTrigger>
           <TabsTrigger value="securite">Sécurité</TabsTrigger>
+          <TabsTrigger value="analytiques">Analytiques</TabsTrigger>
         </TabsList>
 
         <TabsContent value="activite">
@@ -626,6 +651,125 @@ export default function Journal() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* WIR20 — onglet Analytiques (FG97) : rollups du Journal, fenêtre
+            par défaut serveur (30 jours). */}
+        <TabsContent value="analytiques">
+          {analyticsError ? (
+            <Card><CardContent className="py-10 text-center text-sm text-muted-foreground">{analyticsError}</CardContent></Card>
+          ) : analyticsLoading && !analytics ? (
+            <Skeleton className="h-48 w-full" />
+          ) : !analytics ? null : (
+            <div className="flex flex-col gap-4">
+              <p className="text-sm text-muted-foreground">
+                Fenêtre : {analytics.from} → {analytics.to} · {formatNumber(analytics.total_entries)} évènement(s)
+              </p>
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                <Card>
+                  <CardHeader><CardTitle>Top utilisateurs</CardTitle></CardHeader>
+                  <CardContent>
+                    {analytics.top_users.length === 0 ? (
+                      <ChartEmpty title="Aucune donnée" description="Aucune activité utilisateur sur la période." />
+                    ) : (
+                      <>
+                        {/* WIR20 — résumé texte : la donnée réelle reste visible
+                            même si le rendu SVG du graphe est indisponible. */}
+                        <p className="mb-2 text-sm text-foreground">
+                          Le plus actif : {analytics.top_users[0].actor_username}
+                          {' '}({formatNumber(analytics.top_users[0].count)} action(s))
+                        </p>
+                        <BarArrondie
+                          data={analytics.top_users}
+                          dataKey="count"
+                          categoryKey="actor_username"
+                          layout="vertical"
+                          tone="primary"
+                          name="Actions"
+                          height={220}
+                        />
+                      </>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader><CardTitle>Répartition des actions</CardTitle></CardHeader>
+                  <CardContent>
+                    {analytics.action_mix.length === 0 ? (
+                      <ChartEmpty title="Aucune donnée" description="Aucune action sur la période." />
+                    ) : (
+                      <>
+                        <p className="mb-2 text-sm text-foreground">
+                          Action la plus fréquente : {analytics.action_mix[0].label}
+                          {' '}({analytics.action_mix[0].pct}%)
+                        </p>
+                        <BarArrondie
+                          data={analytics.action_mix}
+                          dataKey="count"
+                          categoryKey="label"
+                          layout="vertical"
+                          tone="info"
+                          name="Occurrences"
+                          height={220}
+                        />
+                      </>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader><CardTitle>Activité quotidienne</CardTitle></CardHeader>
+                  <CardContent>
+                    {analytics.daily_counts.every((d) => d.count === 0) ? (
+                      <ChartEmpty title="Aucune activité" description="Aucune activité sur la fenêtre." />
+                    ) : (
+                      <>
+                        <p className="mb-2 text-sm text-foreground">
+                          Total sur la fenêtre :{' '}
+                          {formatNumber(analytics.daily_counts.reduce((sum, d) => sum + d.count, 0))} évènement(s)
+                        </p>
+                        <BarArrondie
+                          data={analytics.daily_counts}
+                          dataKey="count"
+                          categoryKey="date"
+                          tone="primary"
+                          name="Évènements"
+                          height={200}
+                          barSize={8}
+                        />
+                      </>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader><CardTitle>Échecs de connexion</CardTitle></CardHeader>
+                  <CardContent>
+                    {analytics.failed_logins.every((d) => d.count === 0) ? (
+                      <ChartEmpty title="Aucun échec" description="Aucun échec de connexion sur la fenêtre." />
+                    ) : (
+                      <>
+                        <p className="mb-2 text-sm text-foreground">
+                          Total sur la fenêtre :{' '}
+                          {formatNumber(analytics.failed_logins.reduce((sum, d) => sum + d.count, 0))} échec(s)
+                        </p>
+                        <BarArrondie
+                          data={analytics.failed_logins}
+                          dataKey="count"
+                          categoryKey="date"
+                          tone="danger"
+                          name="Échecs"
+                          height={200}
+                          barSize={8}
+                        />
+                      </>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          )}
         </TabsContent>
       </Tabs>
     </div>
