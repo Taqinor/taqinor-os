@@ -6525,3 +6525,261 @@ textarea.form-control {
 .lw-gps-link:hover {
   text-decoration: underline;
 }
+
+/* ── LW14 : rail identité — identité, contact, chips QX28, pile d'actions ──── */
+
+.lw-rail-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.85rem;
+}
+.lw-rail-avatar {
+  flex: 0 0 auto;
+}
+.lw-rail-headtext {
+  min-width: 0;
+}
+/* Nom du lead (échelle --text-h2). Complète la règle .lw-rail-name existante. */
+.lw-rail-headtext .lw-rail-name {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.lw-rail-archived {
+  padding: 0.05rem 0.4rem;
+  border-radius: 9999px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--muted-foreground);
+  background: color-mix(in oklch, var(--muted-foreground) 14%, transparent);
+}
+
+.lw-rail-contact {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin-bottom: 0.85rem;
+}
+.lw-rail-contact-link {
+  font-size: 0.85rem;
+  color: var(--info);
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lw-rail-contact-link:hover {
+  text-decoration: underline;
+}
+
+.lw-rail-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-bottom: 0.85rem;
+}
+
+.lw-rail-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.lw-rail-actions > * {
+  width: 100%;
+  justify-content: center;
+}
+
+/* ── LW15 : triade (responsable · prochaine action · relance) ──────────────── */
+
+.lw-rail-triade {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 0.85rem;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--card);
+}
+.lw-rail-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.lw-rail-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+.lw-rail-nextact {
+  font-size: 0.85rem;
+  color: var(--foreground);
+}
+.lw-rail-nextact[data-state="overdue"] {
+  color: var(--destructive);
+}
+.lw-rail-nextact-empty {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+.lw-rail-nextact-cta {
+  font-size: 0.8rem;
+  color: var(--info);
+  text-decoration: underline;
+}
+
+/* ── LW16 : StageControl — rangée d'étapes + pourrissement (rotting) ───────── */
+
+.lw-stage {
+  margin-bottom: 0.85rem;
+}
+.lw-stage-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+.lw-stage-pill {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  line-height: 0;
+}
+.lw-stage-pill--ghost {
+  cursor: pointer;
+  border-radius: 9999px;
+  opacity: 0.75;
+  transition: opacity var(--motion-fast) var(--ease-standard);
+}
+.lw-stage-pill--ghost:hover {
+  opacity: 1;
+}
+.lw-stage-pill--current {
+  cursor: default;
+}
+/* Ancienneté d'étape : neutre par défaut, chauffe avec la rampe rotting. */
+.lw-stage-since {
+  margin: 0.35rem 0 0;
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+.lw-stage-since--warning {
+  display: inline-block;
+  padding: 0.05rem 0.4rem;
+  border-radius: 9999px;
+  color: var(--warning);
+  background: color-mix(in oklch, var(--warning) 12%, transparent);
+}
+.lw-stage-since--danger {
+  display: inline-block;
+  padding: 0.05rem 0.4rem;
+  border-radius: 9999px;
+  color: var(--destructive);
+  background: color-mix(in oklch, var(--destructive) 12%, transparent);
+}
+
+/* ── LW17 : score expliqué (popover des raisons) ──────────────────────────── */
+
+.lw-rail-score {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.85rem;
+}
+.lw-rail-score-pop {
+  width: 18rem;
+}
+.lw-rail-score-title {
+  margin: 0 0 0.5rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--foreground);
+}
+.lw-rail-score-reasons {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.lw-rail-score-reasons li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--foreground);
+}
+.lw-rail-score-empty {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--muted-foreground);
+}
+.lw-rail-score-foot {
+  margin: 0.6rem 0 0;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+}
+
+/* ── LW18 : bannières intelligentes (doublons · client_match · carte) ─────── */
+
+.lw-banner-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.6rem;
+  padding: 0.5rem 0.65rem;
+  border-radius: var(--radius-md);
+  font-size: 0.85rem;
+  color: var(--foreground);
+}
+.lw-banner-card--warning {
+  border: 1px solid color-mix(in oklch, var(--warning) 45%, transparent);
+  background: color-mix(in oklch, var(--warning) 12%, transparent);
+}
+.lw-banner-card--info {
+  border: 1px solid color-mix(in oklch, var(--info) 40%, transparent);
+  background: color-mix(in oklch, var(--info) 10%, transparent);
+}
+.lw-banner-link {
+  color: var(--info);
+  font-size: 0.82rem;
+  text-decoration: underline;
+  white-space: nowrap;
+}
+
+.lw-dup-dialog {
+  max-width: 40rem;
+}
+.lw-dup-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+.lw-dup-table th,
+.lw-dup-table td {
+  padding: 0.4rem 0.5rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+.lw-dup-table th {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--muted-foreground);
+}
