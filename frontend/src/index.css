@@ -6590,3 +6590,51 @@ textarea.form-control {
   width: 100%;
   justify-content: center;
 }
+
+/* ── LW15 : triade (responsable · prochaine action · relance) ──────────────── */
+
+.lw-rail-triade {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 0.85rem;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--card);
+}
+.lw-rail-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.lw-rail-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+.lw-rail-nextact {
+  font-size: 0.85rem;
+  color: var(--foreground);
+}
+.lw-rail-nextact[data-state="overdue"] {
+  color: var(--destructive);
+}
+.lw-rail-nextact-empty {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+.lw-rail-nextact-cta {
+  font-size: 0.8rem;
+  color: var(--info);
+  text-decoration: underline;
+}

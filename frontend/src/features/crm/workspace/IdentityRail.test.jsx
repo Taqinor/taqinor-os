@@ -14,7 +14,29 @@ vi.mock('../../../api/crmApi', () => ({
   },
 }))
 vi.mock('../../../hooks/useDuplicateCheck', () => ({ useDuplicateCheck: () => [] }))
-vi.mock('../../../components/AssigneePicker', () => ({ default: () => <div data-testid="assignee" /> }))
+// AssigneePicker mocké en bouton cliquable pour tester le PATCH du responsable.
+vi.mock('../../../components/AssigneePicker', () => ({
+  default: ({ value, onChange }) => (
+    <button type="button" data-testid="assignee" onClick={() => onChange(9)}>{String(value ?? '')}</button>
+  ),
+}))
+// DatePicker (relance) → input date natif pour émettre onChange(Date) simplement.
+// Le reste du barrel ui reste RÉEL (Button/Badge/Avatar/FieldSavedPulse).
+vi.mock('../../../ui', async (importOriginal) => {
+  const actual = await importOriginal()
+  return {
+    ...actual,
+    DatePicker: ({ value, onChange }) => (
+      <input
+        data-testid="relance-input"
+        type="date"
+        defaultValue={value instanceof Date && !Number.isNaN(value.getTime())
+          ? value.toISOString().slice(0, 10) : ''}
+        onChange={(e) => onChange(e.target.value ? new Date(`${e.target.value}T00:00:00`) : null)}
+      />
+    ),
+  }
+})
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
@@ -92,5 +114,42 @@ describe('LW14 — IdentityRail identité + actions', () => {
     expect(screen.getByText(/Toit épinglé/)).toBeInTheDocument()
     expect(screen.getByText(/Facture saisie/)).toBeInTheDocument()
     expect(screen.getByText(/Prêt à deviser/)).toBeInTheDocument()
+  })
+})
+
+describe('LW15 — triade responsable · prochaine action · relance', () => {
+  let onAction
+  beforeEach(() => { onAction = vi.fn() })
+
+  it('affiche le badge d\'alerte quand le lead n\'a pas de prochaine action', () => {
+    render(<IdentityRail state={makeState()} onAction={onAction} users={[]} />)
+    expect(screen.getByText('Sans prochaine action')).toBeInTheDocument()
+  })
+
+  it('« Planifier » (sans prochaine action) ouvre le plan via onAction(plan)', () => {
+    render(<IdentityRail state={makeState()} onAction={onAction} users={[]} />)
+    fireEvent.click(screen.getByRole('button', { name: /Planifier/ }))
+    expect(onAction).toHaveBeenCalledWith('plan')
+  })
+
+  it('affiche le résumé de la prochaine action quand elle existe', () => {
+    const state = makeState({
+      next_activity: { state: 'today', due_date: '2026-08-01', summary: 'Rappeler le client' },
+    })
+    render(<IdentityRail state={state} onAction={onAction} users={[]} />)
+    expect(screen.getByText(/Rappeler le client/)).toBeInTheDocument()
+    expect(screen.queryByText('Sans prochaine action')).toBeNull()
+  })
+
+  it('changer le responsable PATCHe via onAction(set-field, owner)', () => {
+    render(<IdentityRail state={makeState()} onAction={onAction} users={[{ id: 9, username: 'Meriem' }]} />)
+    fireEvent.click(screen.getByTestId('assignee'))
+    expect(onAction).toHaveBeenCalledWith('set-field', { key: 'owner', value: 9 })
+  })
+
+  it('changer la relance PATCHe via onAction(set-field, relance_date) en date locale', () => {
+    render(<IdentityRail state={makeState()} onAction={onAction} users={[]} />)
+    fireEvent.change(screen.getByTestId('relance-input'), { target: { value: '2026-08-01' } })
+    expect(onAction).toHaveBeenCalledWith('set-field', { key: 'relance_date', value: '2026-08-01' })
   })
 })

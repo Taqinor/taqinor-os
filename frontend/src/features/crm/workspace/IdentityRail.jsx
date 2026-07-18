@@ -1,7 +1,22 @@
-import { Badge, Button, Avatar, AvatarFallback } from '../../../ui'
+import { useEffect, useRef, useState } from 'react'
+import {
+  Badge, Button, Avatar, AvatarFallback, DatePicker, FieldSavedPulse,
+} from '../../../ui'
 import { initials } from '../../../ui/Avatar'
 import { normalizeMaPhone } from '../../../lib/format'
+import AssigneePicker from '../../../components/AssigneePicker'
 import { getField } from './draftCore'
+
+// LW15 — Date locale « YYYY-MM-DD » depuis l'objet Date du DatePicker (jamais
+// via toISOString → pas de décalage UTC, cf. classe de bug LW5).
+function toIsoLocal(d) {
+  if (!d) return ''
+  const dt = d instanceof Date ? d : new Date(d)
+  if (Number.isNaN(dt.getTime())) return ''
+  const m = String(dt.getMonth() + 1).padStart(2, '0')
+  const j = String(dt.getDate()).padStart(2, '0')
+  return `${dt.getFullYear()}-${m}-${j}`
+}
 
 // LW14 — Rail identité (zone gauche, 288px) : tout ce qu'on regarde AVANT
 // d'appeler. Identité + contact cliquable + chips de préparation QX28 +
@@ -17,6 +32,27 @@ import { getField } from './draftCore'
 
 export default function IdentityRail({ state, onAction, users = [], archiveBusy = false }) {
   const server = state.server || {}
+
+  // ── Triade (LW15) : responsable · prochaine action · relance ────────────────
+  // La relance pulse (FieldSavedPulse) au succès de sauvegarde qui suit une
+  // édition faite depuis le rail. saveState hoisté (scalaire) pour la dep.
+  const saveState = state.saveState
+  const [relancePulse, setRelancePulse] = useState(0)
+  const relancePendingRef = useRef(false)
+  useEffect(() => {
+    if (saveState === 'saved' && relancePendingRef.current) {
+      relancePendingRef.current = false
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- pulse au succès de sauvegarde
+      setRelancePulse((n) => n + 1)
+    }
+  }, [saveState])
+  const owner = getField(state, 'owner')
+  const relance = getField(state, 'relance_date')
+  const nextActivity = server.next_activity
+  const onRelanceChange = (d) => {
+    relancePendingRef.current = true
+    onAction('set-field', { key: 'relance_date', value: toIsoLocal(d) })
+  }
 
   // ── Identité ───────────────────────────────────────────────────────────────
   const prenom = getField(state, 'prenom') || ''
@@ -94,6 +130,46 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
           )}
         </div>
       )}
+
+      {/* Triade obligatoire (LW15) : responsable · prochaine action · relance */}
+      <div className="lw-rail-triade">
+        <div className="lw-rail-field">
+          <span className="lw-rail-label">Responsable</span>
+          <AssigneePicker
+            users={users}
+            value={owner ?? ''}
+            onChange={(id) => onAction('set-field', { key: 'owner', value: id ?? '' })}
+          />
+        </div>
+        <div className="lw-rail-field">
+          <span className="lw-rail-label">Prochaine action</span>
+          {nextActivity ? (
+            <span className="lw-rail-nextact" data-state={nextActivity.state}>
+              ⏰ {nextActivity.summary} — {nextActivity.due_date}
+            </span>
+          ) : (
+            <button
+              type="button"
+              className="lw-rail-nextact-empty"
+              onClick={() => onAction('plan')}
+              title="Aucune activité planifiée — planifier une prochaine action"
+            >
+              <Badge tone="warning">Sans prochaine action</Badge>
+              <span className="lw-rail-nextact-cta">Planifier</span>
+            </button>
+          )}
+        </div>
+        <div className="lw-rail-field">
+          <span className="lw-rail-label">Relance le</span>
+          <FieldSavedPulse pulseKey={relancePulse}>
+            <DatePicker
+              value={relance ? new Date(`${relance}T00:00:00`) : null}
+              onChange={onRelanceChange}
+              clearable
+            />
+          </FieldSavedPulse>
+        </div>
+      </div>
 
       {/* Chips de préparation QX28 (ui/Badge — tokens uniquement, dark-safe) */}
       {(roofReady || factureReady || devisReady) && (
