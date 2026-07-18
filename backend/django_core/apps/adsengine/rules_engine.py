@@ -452,6 +452,7 @@ def evaluate_creative_fatigue(company, *, now=None, window_days=7,
     findings (audit ; la dédup/cooldown, comme pour les autres évaluateurs,
     reste la responsabilité de l'appelant cadencé)."""
     from django.contrib.contenttypes.models import ContentType
+    from django.utils import timezone
 
     from . import anomaly, services
     from .models import AdMirror, EngineAction, InsightSnapshot
@@ -459,7 +460,7 @@ def evaluate_creative_fatigue(company, *, now=None, window_days=7,
     params = dict(DEFAULT_FATIGUE_THRESHOLDS)
     if thresholds:
         params.update({k: v for k, v in thresholds.items() if k in params})
-    now = now or datetime.datetime.now()
+    now = now or timezone.now()
     ct = ContentType.objects.get_for_model(AdMirror)
 
     window_start = _window_start_date(now, window_days)
