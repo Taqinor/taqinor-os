@@ -2,7 +2,8 @@ import { useCallback, useMemo, useState } from 'react'
 import { UserPlus, AlertTriangle, FileCheck } from 'lucide-react'
 import {
   Button, Badge, Segmented, Tabs, TabsList, TabsTrigger, TabsContent,
-  toast,
+  toast, Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+  Label, Input, Textarea, confirmLeaveIfDirty,
 } from '../../ui'
 import { ListShell } from '../../ui/module'
 import flotteApi from '../../api/flotteApi'
@@ -369,8 +370,85 @@ function EtatsDesLieuxTab({ conducteurs, vehicules }) {
   )
 }
 
+// WIR44 — Publication d'une nouvelle version de la charte véhicule
+// (`chartesVehicule.create`) : seul l'accusé de lecture existait. `version`
+// est posée côté serveur (auto-incrémentée) — jamais du body ; le contenu
+// saisi (titre + texte) est encapsulé en fichier texte pour le champ
+// `document` (FileField) du modèle.
+function CharteVehiculeDialog({ onClose, onSaved }) {
+  const [titre, setTitre] = useState('')
+  const [contenu, setContenu] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [serverError, setServerError] = useState(null)
+
+  const peutEnregistrer = Boolean(titre.trim() && contenu.trim())
+  const dirty = Boolean(titre || contenu)
+  const closeIfConfirmed = () => { if (confirmLeaveIfDirty(dirty)) onClose?.() }
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!peutEnregistrer) return
+    setSaving(true)
+    setServerError(null)
+    try {
+      const fichier = new File([contenu], `${titre.trim()}.txt`, { type: 'text/plain' })
+      const formData = new FormData()
+      formData.append('document', fichier)
+      await flotteApi.chartesVehicule.create(formData)
+      onSaved?.()
+    } catch (err) {
+      const data = err?.response?.data
+      setServerError(
+        data?.detail
+        || (typeof data === 'string' ? data : 'Publication impossible.'),
+      )
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) closeIfConfirmed() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Publier une nouvelle version de la charte véhicule</DialogTitle>
+        </DialogHeader>
+
+        <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="charte-titre">Titre</Label>
+            <Input id="charte-titre" autoFocus value={titre} onChange={(e) => setTitre(e.target.value)} />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="charte-contenu">Contenu</Label>
+            <Textarea id="charte-contenu" value={contenu} onChange={(e) => setContenu(e.target.value)} rows={8} />
+          </div>
+
+          <p className="text-xs text-muted-foreground">
+            La version est numérotée automatiquement (auto-incrémentée) —
+            publier repasse les accusés de lecture des conducteurs « à faire ».
+          </p>
+
+          {serverError && (
+            <p className="text-sm text-destructive" role="alert">{serverError}</p>
+          )}
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={closeIfConfirmed}>Annuler</Button>
+            <Button type="submit" disabled={!peutEnregistrer || saving}>
+              {saving ? 'Publication…' : 'Publier'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function CharteTab({ conducteurs }) {
-  const { data: charte, loading: loadingCharte } = useFlotteResource(flotteApi.chartesVehicule.list, {})
+  const [showForm, setShowForm] = useState(false)
+  const { data: charte, loading: loadingCharte, reload: reloadCharte } = useFlotteResource(flotteApi.chartesVehicule.list, {})
   const { data: accuses, loading: loadingAccuses, reload } = useFlotteResource(flotteApi.accusesCharte.list, {})
   const derniere = useMemo(
     () => [...(charte || [])].sort((a, b) => (b.version || 0) - (a.version || 0))[0] || null,
@@ -415,13 +493,16 @@ function CharteTab({ conducteurs }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm">
-        <FileCheck className="size-4 text-muted-foreground" aria-hidden="true" />
-        {loadingCharte
-          ? 'Chargement de la charte…'
-          : derniere
-            ? `Charte véhicule en vigueur : version ${derniere.version} (publiée le ${formatDate(derniere.date_publication)}).`
-            : 'Aucune charte véhicule publiée pour cette société.'}
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border px-3 py-2 text-sm">
+        <span className="flex items-center gap-2">
+          <FileCheck className="size-4 text-muted-foreground" aria-hidden="true" />
+          {loadingCharte
+            ? 'Chargement de la charte…'
+            : derniere
+              ? `Charte véhicule en vigueur : version ${derniere.version} (publiée le ${formatDate(derniere.date_publication)}).`
+              : 'Aucune charte véhicule publiée pour cette société.'}
+        </span>
+        <Button size="sm" onClick={() => setShowForm(true)}>Publier une nouvelle version</Button>
       </div>
       <ListShell
         title="Accusés de lecture"
@@ -433,6 +514,17 @@ function CharteTab({ conducteurs }) {
         emptyTitle="Aucun conducteur"
         emptyDescription="Aucun conducteur à suivre."
       />
+      {showForm && (
+        <CharteVehiculeDialog
+          onClose={() => setShowForm(false)}
+          onSaved={() => {
+            setShowForm(false)
+            reloadCharte()
+            reload()
+            toast.success('Nouvelle version publiée — accusés de lecture repassés « à faire ».')
+          }}
+        />
+      )}
     </div>
   )
 }

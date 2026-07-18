@@ -21,7 +21,7 @@ beforeAll(() => {
 
 const {
   signer, accuserCreate, empty, etatsList, conducteursCreate, getEmployes,
-  reservationsCreate, demandesVehiculeCreate, etatsDesLieuxCreate,
+  reservationsCreate, demandesVehiculeCreate, etatsDesLieuxCreate, charteCreate,
 } = vi.hoisted(() => ({
   signer: vi.fn(() => Promise.resolve({ data: {} })),
   accuserCreate: vi.fn(() => Promise.resolve({ data: {} })),
@@ -40,6 +40,7 @@ const {
   reservationsCreate: vi.fn(() => Promise.resolve({ data: { id: 11 } })),
   demandesVehiculeCreate: vi.fn(() => Promise.resolve({ data: { id: 12 } })),
   etatsDesLieuxCreate: vi.fn(() => Promise.resolve({ data: { id: 13 } })),
+  charteCreate: vi.fn(() => Promise.resolve({ data: { id: 14, version: 3 } })),
 }))
 
 vi.mock('../../api/flotteApi', () => ({
@@ -57,7 +58,10 @@ vi.mock('../../api/flotteApi', () => ({
       signer: (...args) => signer(...args),
       create: (...args) => etatsDesLieuxCreate(...args),
     },
-    chartesVehicule: { list: () => Promise.resolve({ data: [{ id: 1, version: 2, date_publication: '2026-06-01' }] }) },
+    chartesVehicule: {
+      list: () => Promise.resolve({ data: [{ id: 1, version: 2, date_publication: '2026-06-01' }] }),
+      create: (...args) => charteCreate(...args),
+    },
     accusesCharte: { list: empty, create: (...args) => accuserCreate(...args) },
   },
 }))
@@ -194,5 +198,22 @@ describe('ConducteursScreen — Charte véhicule (XFLT17 accusé de lecture)', (
     // le premier.
     await user.click(screen.getAllByRole('button', { name: 'Accuser lecture' })[0])
     await waitFor(() => expect(accuserCreate).toHaveBeenCalledWith({ conducteur: 1 }))
+  })
+
+  it('publie une nouvelle version (WIR44) — accusés repassés « à faire »', async () => {
+    const user = userEvent.setup()
+    withProviders(<ConducteursScreen />)
+
+    await user.click(screen.getByRole('tab', { name: 'Charte véhicule' }))
+    await user.click(await screen.findByRole('button', { name: 'Publier une nouvelle version' }))
+
+    await user.type(screen.getByLabelText('Titre'), 'Charte 2026')
+    await user.type(screen.getByLabelText('Contenu'), 'Règles d’usage du véhicule…')
+    await user.click(screen.getByRole('button', { name: 'Publier' }))
+
+    await waitFor(() => expect(charteCreate).toHaveBeenCalled())
+    const formData = charteCreate.mock.calls[0][0]
+    expect(formData instanceof FormData).toBe(true)
+    expect(formData.get('document')).toBeTruthy()
   })
 })
