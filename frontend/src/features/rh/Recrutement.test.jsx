@@ -74,7 +74,9 @@ describe('Recrutement — ATS (XRH17-23)', () => {
     fireEvent.click(screen.getByRole('radio', { name: 'Recrutement' }))
 
     fireEvent.click(await screen.findByRole('button', { name: /Nouveau candidat/ }))
-    expect(screen.getByText('Nouveau candidat')).toBeInTheDocument()
+    // Le dialogue est ouvert : « Nouveau candidat » existe aussi sur le bouton,
+    // donc on vérifie la présence du dialogue lui-même (getByText matcherait 2).
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
 
     fireEvent.change(screen.getByLabelText('Poste visé'), { target: { value: '5' } })
     fireEvent.change(screen.getByLabelText('Nom du candidat'), { target: { value: 'Yassine Amrani' } })

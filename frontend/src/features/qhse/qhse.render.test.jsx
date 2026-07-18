@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
@@ -207,12 +208,18 @@ describe('NonConformites — NcrDetail (WIR32 — pont NCR↔SAV + dérogation)'
 
   it('affiche le taux de défaillance produit dans son onglet (tauxDefaillanceProduit)', async () => {
     qhseApi.nonConformites.list.mockResolvedValueOnce({ data: [ncrRow] })
-    qhseApi.nonConformites.tauxDefaillanceProduit.mockResolvedValueOnce({
+    // mockResolvedValue (persistant) et non ...Once : le panneau fetch dans un
+    // useEffect que StrictMode monte deux fois — un ...Once serait consommé au
+    // premier montage et le second rendu retomberait sur la valeur par défaut.
+    qhseApi.nonConformites.tauxDefaillanceProduit.mockResolvedValue({
       data: [{ produit_id: 3, produit_nom: 'Onduleur Huawei', nb_ncr: 4 }],
     })
     renderWith(<NonConformites />)
     await ouvrirNcr()
-    fireEvent.click(await screen.findByText('Taux de défaillance produit'))
+    // L'onglet est un trigger Radix : il s'active au focus, que `userEvent`
+    // simule (pointerdown→focus→click) mais pas `fireEvent.click` sur le libellé.
+    await userEvent.click(
+      await screen.findByRole('tab', { name: 'Taux de défaillance produit' }))
     expect(await screen.findByText('Onduleur Huawei')).toBeInTheDocument()
     expect(screen.getByText('4 NCR')).toBeInTheDocument()
   })

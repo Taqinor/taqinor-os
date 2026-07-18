@@ -85,9 +85,13 @@ class WorkflowStepDefinitionSerializer(serializers.ModelSerializer):
         return value
 
     def validate(self, attrs):
-        # En autonome (non imbriquée), la définition est obligatoire à la
-        # création (une étape sans définition n'a pas de rattachement).
-        if (not self.parent and self.instance is None
+        # En autonome (viewset des étapes), la définition est obligatoire à la
+        # création (une étape sans définition n'a pas de rattachement) ;
+        # imbriquée, elle est imposée par le parent (`_sync_steps`). Le viewset
+        # autonome pose `require_definition` dans le contexte : signal fiable,
+        # contrairement à `self.parent` qui n'est pas toujours lié lors d'une
+        # validation imbriquée `many=True`.
+        if (self.context.get('require_definition') and self.instance is None
                 and not attrs.get('definition')):
             raise serializers.ValidationError(
                 {'definition': 'Ce champ est obligatoire.'})

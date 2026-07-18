@@ -34,8 +34,13 @@ vi.mock('../../ui', async (importActual) => {
   }
 })
 
-vi.mock('../../api/paieApi', () => ({
-  default: {
+// `PaieDeclarations` consomme ~36 méthodes `paieApi` (getOrdresVirement/
+// getPeriodes au montage, puis etatCharges/coutGlobal/… par onglet). On ne
+// pilote que celles du chemin testé (getPeriodes + journalDePaie) et on laisse
+// un Proxy renvoyer une promesse vide pour toute autre méthode, afin qu'aucun
+// effet de montage ne casse le rendu.
+vi.mock('../../api/paieApi', () => {
+  const specific = {
     getPeriodes: vi.fn(() => Promise.resolve({
       data: [{ id: 3, libelle: 'Juillet 2026', mois: 7, annee: 2026 }],
     })),
@@ -45,8 +50,16 @@ vi.mock('../../api/paieApi', () => ({
     journalVentile: vi.fn(() => Promise.resolve({
       data: { id: 92, reference: 'PAIE-2026-07-V' },
     })),
-  },
-}))
+  }
+  const handler = {
+    get(target, prop) {
+      if (prop in target || typeof prop !== 'string') return target[prop]
+      target[prop] = vi.fn(() => Promise.resolve({ data: [] }))
+      return target[prop]
+    },
+  }
+  return { default: new Proxy(specific, handler) }
+})
 
 import paieApi from '../../api/paieApi'
 import PaieDeclarations from './PaieDeclarations.jsx'

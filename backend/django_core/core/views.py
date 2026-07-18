@@ -249,6 +249,14 @@ class WorkflowStepDefinitionViewSet(viewsets.ModelViewSet):
             return qs
         return qs.none()
 
+    def get_serializer_context(self):
+        # Chemin AUTONOME : `definition` est obligatoire (une étape isolée doit
+        # se rattacher). Le contexte imbriqué (via WorkflowDefinitionViewSet) ne
+        # pose pas ce drapeau, donc les étapes imbriquées restent facultatives.
+        ctx = super().get_serializer_context()
+        ctx['require_definition'] = True
+        return ctx
+
 
 class DashboardViewSet(TenantMixin, viewsets.ModelViewSet):
     """FG381 — dashboards sans-code, sauvegardés par utilisateur/société.
