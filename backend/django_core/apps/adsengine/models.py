@@ -50,6 +50,12 @@ class MetaConnection(TenantModel):
         verbose_name='ID compte publicitaire')
     page_id = models.CharField(
         max_length=64, blank=True, default='', verbose_name='ID Page')
+    # ADSDEEP55 — ID du compte Instagram Business relié à la Page. Résolu par la
+    # synchro (``GET /<page_id>?fields=instagram_business_account``) si vide ;
+    # tout le pan Instagram no-ope tant qu'il reste vide.
+    ig_user_id = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name='ID compte Instagram Business')
     pixel_id = models.CharField(
         max_length=64, blank=True, default='', verbose_name='ID Pixel')
     # Devise du compte publicitaire (ISO-4217, ex. « USD ») — Meta rapporte TOUS
@@ -186,8 +192,41 @@ class AdCampaignMirror(TenantModel):
         return f'Campagne {self.meta_id} ({self.status or "?"})'
 
 
+# ── ADSDEEP32 — Reset d'apprentissage : seuils + avertissements approbateur ───
+# Seuil documenté (dossier write-surface §2) : une variation de budget de PLUS de
+# 20 % réinitialise la phase d'apprentissage de l'ad set (comme un changement de
+# créatif, de ciblage ou de bid). Meta 2026 « Andromeda » a resserré les seuils :
+# on avertit LARGE (au franchissement du seuil documenté).
+LEARNING_RESET_BUDGET_PCT = 20
+WARN_LEARNING_RESET_BUDGET = (
+    "Variation de budget supérieure à 20 % : Meta réinitialise la phase "
+    "d'apprentissage de l'ad set (coûts instables pendant quelques jours).")
+WARN_LEARNING_RESET_CREATIVE = (
+    "Changement de créatif : Meta réinitialise la phase d'apprentissage de "
+    "l'ad set (coûts instables pendant quelques jours).")
+
+
+def _budget_change_pct(current, new):
+    """Variation ABSOLUE en % entre budget courant et nouveau (``None`` si l'un
+    est illisible ou si le courant est nul — pas de base de comparaison)."""
+    try:
+        current = float(current)
+        new = float(new)
+    except (TypeError, ValueError):
+        return None
+    if current <= 0:
+        return None
+    return abs(new - current) / current * 100.0
+
+
 class AdSetMirror(TenantModel):
     """ENG5 — Miroir local d'un ad set Meta (rattaché à un miroir de campagne)."""
+
+    # ADSDEEP32 — phase d'apprentissage Meta (learning_stage_info).
+    class LearningStatus(models.TextChoices):
+        LEARNING = 'LEARNING', 'En apprentissage'
+        SUCCESS = 'SUCCESS', 'Apprentissage réussi'
+        FAIL = 'FAIL', 'Apprentissage limité'
 
     meta_id = models.CharField(max_length=64, verbose_name='ID Meta')
     name = models.CharField(max_length=255, blank=True, default='',
@@ -206,6 +245,22 @@ class AdSetMirror(TenantModel):
         null=True, blank=True, related_name='adsets',
         verbose_name='Campagne')
 
+    # ── ADSDEEP32 — learning_stage_info (dossier write-surface §2) ──
+    # ``learning_status`` = statut normalisé (LEARNING/SUCCESS/FAIL ; '' = inconnu)
+    # pour piloter le badge UI ; ``last_sig_edit`` = horodatage de la dernière
+    # édition significative (last_sig_edit_ts) ; ``learning_stage_info`` = le dict
+    # BRUT de Meta (conversions, attribution_windows…) pour l'audit. Alimentés par
+    # ``tasks.sync_adset_learning``. Le badge frontend (ApprovalsScreen) est une
+    # tâche SÉPARÉE (ADSDEEP35).
+    learning_status = models.CharField(
+        max_length=16, choices=LearningStatus.choices, blank=True, default='',
+        verbose_name="Phase d'apprentissage")
+    last_sig_edit = models.DateTimeField(
+        null=True, blank=True, verbose_name='Dernière édition significative')
+    learning_stage_info = models.JSONField(
+        default=dict, blank=True,
+        verbose_name="Info de phase d'apprentissage (brut Meta)")
+
     class Meta:
         verbose_name = "Miroir d'ad set"
         verbose_name_plural = "Miroirs d'ad set"
@@ -218,6 +273,30 @@ class AdSetMirror(TenantModel):
 
     def __str__(self):
         return f'AdSet {self.meta_id} ({self.status or "?"})'
+
+    @property
+    def is_learning(self):
+        """Vrai si l'ad set est ENCORE en phase d'apprentissage (badge UI)."""
+        return self.learning_status == self.LearningStatus.LEARNING
+
+    def learning_reset_warnings(self, *, current_budget_mad=None,
+                                new_budget_mad=None, creative_change=False):
+        """ADSDEEP32 — Avertissements « cette action réinitialise l'apprentissage »
+        à montrer dans la boîte d'approbation quand une action franchit un SEUIL
+        de reset documenté (dossier §2) : variation de budget > 20 % OU changement
+        de créatif. Renvoie la liste (éventuellement vide) des avertissements FR.
+
+        Le reset survient QUE l'ad set soit déjà en apprentissage ou non (un
+        *significant edit* renvoie même un ad set optimisé en apprentissage) —
+        d'où un avertissement au franchissement du seuil, indépendamment de
+        ``learning_status``."""
+        warnings = []
+        if creative_change:
+            warnings.append(WARN_LEARNING_RESET_CREATIVE)
+        pct = _budget_change_pct(current_budget_mad, new_budget_mad)
+        if pct is not None and pct > LEARNING_RESET_BUDGET_PCT:
+            warnings.append(WARN_LEARNING_RESET_BUDGET)
+        return warnings
 
 
 class AdMirror(TenantModel):
@@ -234,6 +313,18 @@ class AdMirror(TenantModel):
         'adsengine.AdSetMirror', on_delete=models.CASCADE,
         null=True, blank=True, related_name='ads',
         verbose_name='Ad set')
+
+    # ── ADSDEEP46 — Tags de convention de nommage (parser PUR, ``naming.py``,
+    # jamais un LLM). Extraits POSITIONNELLEMENT du ``name`` Meta selon une
+    # convention configurable (ex. ``DATE_FORMAT_HOOK_ANGLE``) ; vides tant que
+    # le nom ne matche pas ou que la société n'a pas de convention. Additifs,
+    # jamais requis : une ad sans tag reste utilisable partout ailleurs.
+    hook_tag = models.CharField(
+        max_length=64, blank=True, default='', verbose_name='Tag accroche')
+    angle_tag = models.CharField(
+        max_length=64, blank=True, default='', verbose_name='Tag angle')
+    format_tag = models.CharField(
+        max_length=64, blank=True, default='', verbose_name='Tag format')
 
     class Meta:
         verbose_name = "Miroir d'ad"
@@ -484,6 +575,15 @@ class EngineAction(TenantModel):
         # n'active JAMAIS rien : c'est l'action de sécurité par excellence. La
         # cible (campaign/adset/ad + meta_id) vit dans ``payload``.
         PAUSE = 'pause', 'Mettre en pause'
+        # ADSDEEP31 — surface d'ÉDITION (agir sur des objets EXISTANTS). AUCUN de
+        # ces kinds n'active ni ne dé-pause quoi que ce soit (invariant permanent
+        # règle #3) : ils routent vers les méthodes d'édition de ``meta_client``
+        # (ADSDEEP30) qui n'envoient JAMAIS de ``status``. EDIT_COPY est un
+        # *significant edit* Meta → l'approbateur voit un avertissement de reset
+        # d'apprentissage + perte de preuve sociale (portés dans ``payload``).
+        EDIT_COPY = 'edit_copy', 'Éditer le texte / créatif'
+        SET_SPEND_CAP = 'set_spend_cap', 'Poser un plafond de dépense'
+        RENAME = 'rename', 'Renommer un objet'
 
     kind = models.CharField(
         max_length=32, choices=Kind.choices, verbose_name='Type')
@@ -712,6 +812,16 @@ class CreativeAsset(TenantModel):
         max_length=40, blank=True, default='',
         verbose_name="Appel à l'action (CTA)")
 
+    # ── ADSDEEP46 — Tags de convention de nommage (mêmes champs qu'``AdMirror``,
+    # parser PUR ``naming.py``). Source = le nom de fichier ``file_key`` (sans
+    # chemin ni extension) : la bibliothèque MAISON n'a pas de ``name`` Meta.
+    hook_tag = models.CharField(
+        max_length=64, blank=True, default='', verbose_name='Tag accroche')
+    angle_tag = models.CharField(
+        max_length=64, blank=True, default='', verbose_name='Tag angle')
+    format_tag = models.CharField(
+        max_length=64, blank=True, default='', verbose_name='Tag format')
+
     class Meta:
         verbose_name = 'Asset créatif'
         verbose_name_plural = 'Assets créatifs'
@@ -803,6 +913,14 @@ class Experiment(TenantModel):
     end_date = models.DateField(
         null=True, blank=True, verbose_name='Fin')
     notes = models.TextField(blank=True, default='', verbose_name='Notes')
+    # ADSDEEP34 — id de l'étude A/B NATIVE Meta (``ad_studies``, SPLIT_TEST_V2)
+    # liée à cette expérience, quand elle existe côté Meta (vide sinon — une
+    # expérience peut rester purement interne, sans étude native). Posé par
+    # ``services.propose_ad_study``/l'application de l'action ; lu par
+    # ``services.sync_ad_study_results`` pour la synchro des résultats.
+    meta_study_id = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name="ID d'étude native Meta (ad_studies)")
 
     class Meta:
         verbose_name = 'Expérience publicitaire'
@@ -985,9 +1103,27 @@ class RulePolicy(TenantModel):
         default=dict, blank=True, verbose_name='Paramètres')
     cadence_hours = models.PositiveIntegerField(
         default=6, verbose_name='Cadence (heures)')
+    # ADSDEEP42 — cadence QUART-HORAIRE opt-in (minutes). 0 = désactivé (défaut) :
+    # la règle ne tourne qu'à sa cadence de template (boucles 6 h / quotidienne).
+    # >0 (typiquement 15) = la règle est aussi évaluée par la boucle quart-horaire
+    # dédiée, BORNÉE par le budgeteur de rate-limit ADSDEEP5 (jamais un 613). Une
+    # cadence sub-quart-horaire reste proscrite (dd-guardian §A9) : la boucle
+    # tourne au plus toutes les 15 min quel que soit ce nombre.
+    cadence_minutes = models.PositiveIntegerField(
+        default=0, verbose_name='Cadence quart-horaire (minutes, 0 = désactivé)')
     # Cooldown de dédup PAR entité (heures) — 0 = défaut de la sévérité.
     cooldown_hours = models.PositiveIntegerField(
         default=0, verbose_name='Cooldown par entité (heures)')
+    # ADSDEEP39 — Selection Filter (Bïrch) : la règle cible DYNAMIQUEMENT les
+    # objets (campagnes/ad sets/ads selon le scope du template) dont le NOM
+    # matche ce motif glob insensible à la casse (ex. « PROSPECTION* »). Vide =
+    # toute la société (aucune restriction). S'applique aux objets FUTURS : le
+    # moteur relit les miroirs à CHAQUE beat, donc une campagne créée APRÈS la
+    # règle et matchant le motif est automatiquement couverte (jamais un
+    # ciblage figé par id).
+    name_pattern = models.CharField(
+        max_length=120, blank=True, default='',
+        verbose_name='Motif de nom (sélection dynamique)')
     last_evaluated_at = models.DateTimeField(
         null=True, blank=True, verbose_name='Dernière évaluation')
     last_result = models.JSONField(
@@ -1408,3 +1544,410 @@ class ReconciliationSnapshot(TenantModel):
 
     def __str__(self):
         return f'Réconciliation {self.date} (écart {self.delta_leads})'
+
+
+class CtwaReferral(TenantModel):
+    """ADSDEEP24 — Référence CTWA (Click-to-WhatsApp) d'un message ENTRANT.
+
+    L'objet ``referral`` d'un message WhatsApp Cloud API entrant (topic
+    ``messages``) EST l'attribution par ad d'une conversation CTWA (dossier
+    leads-capi §5) : ``source_id`` (= AD ID), ``source_type`` (``ad``/``post``),
+    ``headline`` et surtout ``ctwa_clid`` (click id — clé de la future boucle
+    CAPI Business Messaging, gated ADSENG34). Le téléphone n'est JAMAIS stocké
+    en clair : seul le ``phone_key`` NORMALISÉ (via
+    ``crm.selectors.normalize_phone_key`` — la MÊME clé QW10 que
+    ``MetaLeadMirror``) rapproche la conversation d'un lead CRM (``crm_lead_id``
+    — référence STRING, jamais une FK cross-app dure, frontière M3).
+
+    Upsert idempotent par ``(company, wa_message_id)`` : un rejeu du webhook Meta
+    (Cloud API réémet un message non-acquitté) ne duplique jamais la référence.
+    """
+
+    wa_message_id = models.CharField(
+        max_length=128, verbose_name='ID message WhatsApp')
+    ad_id = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name='ID ad (source_id)')
+    ctwa_clid = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Click ID CTWA')
+    source_type = models.CharField(
+        max_length=16, blank=True, default='',
+        verbose_name='Type de source (ad/post)')
+    headline = models.TextField(
+        blank=True, default='', verbose_name='Titre de la pub')
+    ts = models.DateTimeField(
+        null=True, blank=True, verbose_name='Horodatage du message')
+    phone_key = models.CharField(
+        max_length=32, blank=True, default='',
+        verbose_name='Clé téléphone normalisée')
+    # Référence STRING au lead CRM (jamais une FK cross-app dure — frontière M3).
+    crm_lead_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID lead CRM')
+
+    class Meta:
+        verbose_name = 'Référence CTWA'
+        verbose_name_plural = 'Références CTWA'
+        ordering = ['-created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'wa_message_id'],
+                name='uniq_adseng_ctwa_msg'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'ad_id'],
+                         name='adseng_ctwa_co_ad_idx'),
+            models.Index(fields=['company', 'phone_key'],
+                         name='adseng_ctwa_co_ph_idx'),
+        ]
+
+    def __str__(self):
+        return f'CTWA {self.wa_message_id} (ad {self.ad_id or "?"})'
+
+
+class CapiOdooEvent(TenantModel):
+    """ADSDEEP27/28 — Marqueur d'IDEMPOTENCE des événements CAPI CRM-Dataset émis
+    par la boucle de retour signatures (``lead_received`` + ``signed_contract``).
+
+    Le beat quotidien (``adsengine.emit_capi_signatures``) balaie chaque jour les
+    MÊMES leads Meta miroités et les MÊMES deals signés Odoo. Sans marqueur
+    persistant, chaque exécution réémettrait tout (la dedup Meta 48 h ne couvre
+    pas au-delà de 2 jours). Ce journal garantit qu'un événement (``event_key``
+    déterministe) n'est POSTé QU'UNE FOIS par société : avant tout envoi on vérifie
+    l'absence du marqueur, et on ne le crée qu'APRÈS un envoi réussi (un flag OFF,
+    un token absent ou un échec HTTP ne pose jamais de marqueur — l'événement
+    repartira au prochain passage une fois l'intégration active).
+
+    Unicité ``(company, event_key)`` : rejeu du beat idempotent, jamais un doublon.
+    """
+
+    event_key = models.CharField(
+        max_length=200, verbose_name="Clé d'événement (dedup)")
+    event_name = models.CharField(
+        max_length=64, verbose_name="Nom d'événement Meta")
+
+    class Meta:
+        verbose_name = 'Événement CAPI Odoo émis'
+        verbose_name_plural = 'Événements CAPI Odoo émis'
+        ordering = ['-created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'event_key'],
+                name='uniq_adseng_capi_odoo_event'),
+        ]
+
+    def __str__(self):
+        return f'CAPI {self.event_name} ({self.event_key})'
+
+
+class PagePostMirror(TenantModel):
+    """ADSDEEP49 — Miroir local d'un POST ORGANIQUE de la Page Facebook.
+
+    Reflet en LECTURE d'un post de la Page (dossier organic-posts §1). Deux
+    drapeaux gouvernent ce que l'ERP peut faire :
+
+      * ``created_by_app`` — Meta n'autorise l'ÉDITION que des posts créés PAR
+        l'app elle-même (les posts faits via Business Suite/autres outils sont
+        intouchables). Déduit en synchro par comparaison de l'``application.id``
+        du post à l'``app_id`` de la connexion.
+      * ``ad_linked`` — croisé via ``GET /<page_id>/ads_posts`` (liste TOUS les
+        posts utilisés en ads, dark compris) : un post adossé à une pub est à
+        RISQUE à éditer (re-review/désync) et le supprimer casserait la pub.
+
+    Le visuel d'un post PUBLIÉ est immuable côté Meta : seul le ``message`` est
+    éditable (ADSDEEP50). Upsert idempotent par ``(company, meta_id)``.
+    """
+
+    meta_id = models.CharField(max_length=64, verbose_name='ID post Meta')
+    message = models.TextField(blank=True, default='', verbose_name='Texte')
+    permalink = models.TextField(
+        blank=True, default='', verbose_name='Permalien')
+    created_time = models.DateTimeField(
+        null=True, blank=True, verbose_name='Créé le (Meta)')
+    is_published = models.BooleanField(
+        default=True, verbose_name='Publié')
+    scheduled_publish_time = models.DateTimeField(
+        null=True, blank=True, verbose_name='Publication programmée')
+    created_by_app = models.BooleanField(
+        default=False, verbose_name="Créé par l'app (éditable)")
+    ad_linked = models.BooleanField(
+        default=False, verbose_name='Adossé à une pub (édition à risque)')
+    fetched_at = models.DateTimeField(
+        null=True, blank=True, verbose_name='Récupéré le')
+
+    class Meta:
+        verbose_name = 'Miroir de post de Page'
+        verbose_name_plural = 'Miroirs de post de Page'
+        ordering = ['-created_time', '-created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'meta_id'],
+                name='uniq_adseng_page_post_meta'),
+        ]
+
+    def __str__(self):
+        state = 'publié' if self.is_published else 'non publié'
+        return f'Post {self.meta_id} ({state})'
+
+    @property
+    def is_editable_by_app(self):
+        """Vrai si l'app peut éditer ce post (contrainte Meta : uniquement les
+        posts créés par l'app elle-même)."""
+        return bool(self.created_by_app)
+
+
+class CommentMirror(TenantModel):
+    """ADSDEEP53 — Miroir local d'un COMMENTAIRE de post (organique OU dark/ad).
+
+    Reflet en LECTURE d'un commentaire (dossier organic-posts §3). ``object_meta_id``
+    porte l'ID de l'objet commenté : soit le ``meta_id`` d'un ``PagePostMirror``
+    (post organique), soit l'``effective_object_story_id`` du créatif d'une ad
+    (dark post) — d'où le drapeau ``source``. Upsert idempotent par
+    ``(company, meta_id)``.
+
+    Deux champs gouvernent la sûreté du masquage (dossier §3 — ``is_hidden`` est
+    « éventuellement consistant » : masqué côté API mais parfois visible côté FB) :
+
+      * ``is_hidden`` — dernier état CONNU (peut être périmé/faux tant qu'un
+        read-back ne l'a pas confirmé) ;
+      * ``hidden_verified`` — VRAI uniquement quand un masquage/démasquage a été
+        RE-VÉRIFIÉ par un re-GET (le badge « caché-vérifié » de l'UI ne s'allume
+        que sur ce drapeau).
+
+    ``private_reply_sent_at`` matérialise le garde-fou des réponses privées : UNE
+    seule par commentaire, dans les 7 jours (dossier §3).
+    """
+
+    class Source(models.TextChoices):
+        POST = 'post', 'Post organique'
+        AD = 'ad', 'Post publicitaire (dark)'
+
+    meta_id = models.CharField(
+        max_length=64, verbose_name='ID commentaire Meta')
+    object_meta_id = models.CharField(
+        max_length=128, blank=True, default='',
+        verbose_name='ID objet commenté (post / dark post)')
+    source = models.CharField(
+        max_length=8, choices=Source.choices, default=Source.POST,
+        verbose_name='Origine')
+    parent_meta_id = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name='ID commentaire parent (réponse)')
+    message = models.TextField(blank=True, default='', verbose_name='Message')
+    from_name = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Auteur')
+    from_id = models.CharField(
+        max_length=64, blank=True, default='', verbose_name='ID auteur')
+    created_time = models.DateTimeField(
+        null=True, blank=True, verbose_name='Créé le (Meta)')
+    like_count = models.PositiveIntegerField(
+        default=0, verbose_name='J’aime')
+    reply_count = models.PositiveIntegerField(
+        default=0, verbose_name='Réponses')
+    is_hidden = models.BooleanField(
+        default=False, verbose_name='Masqué (dernier état connu)')
+    hidden_verified = models.BooleanField(
+        default=False, verbose_name='Masquage re-vérifié (read-back)')
+    can_hide = models.BooleanField(default=True, verbose_name='Masquable')
+    can_remove = models.BooleanField(default=True, verbose_name='Supprimable')
+    answered = models.BooleanField(
+        default=False, verbose_name='Répondu (par la Page)')
+    permalink = models.TextField(
+        blank=True, default='', verbose_name='Permalien')
+    private_reply_sent_at = models.DateTimeField(
+        null=True, blank=True, verbose_name='Réponse privée envoyée le')
+    fetched_at = models.DateTimeField(
+        null=True, blank=True, verbose_name='Récupéré le')
+
+    class Meta:
+        verbose_name = 'Miroir de commentaire'
+        verbose_name_plural = 'Miroirs de commentaire'
+        ordering = ['-created_time', '-created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'meta_id'],
+                name='uniq_adseng_comment_meta'),
+        ]
+
+    def __str__(self):
+        return f'Commentaire {self.meta_id} ({self.get_source_display()})'
+
+
+class CommentKeywordRule(TenantModel):
+    """ADSDEEP53 — Règle de masquage AUTOMATIQUE par mot-clé (spam/insultes…).
+
+    Par défaut en mode PROPOSE (``auto=False``) : une correspondance ne fait que
+    PROPOSER un masquage (``EngineAction`` à approuver) — jamais un masquage
+    silencieux. Le masquage réellement automatique n'existe QUE si le fondateur
+    bascule explicitement ``auto=True`` sur la règle (même doctrine opt-in que les
+    toggles de capacités ENG8). ``keyword`` est comparé en minuscules « contient »
+    au message du commentaire. Idempotent par ``(company, keyword)``.
+    """
+
+    keyword = models.CharField(max_length=128, verbose_name='Mot-clé')
+    enabled = models.BooleanField(default=True, verbose_name='Active')
+    auto = models.BooleanField(
+        default=False,
+        verbose_name='Masquage automatique (sinon : proposition seule)')
+
+    class Meta:
+        verbose_name = 'Règle de masquage par mot-clé'
+        verbose_name_plural = 'Règles de masquage par mot-clé'
+        ordering = ['keyword']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'keyword'],
+                name='uniq_adseng_comment_kw'),
+        ]
+
+    def __str__(self):
+        mode = 'auto' if self.auto else 'propose'
+        return f'Mot-clé « {self.keyword} » ({mode})'
+
+
+class InstagramMediaMirror(TenantModel):
+    """ADSDEEP55 — Miroir local d'un MÉDIA Instagram (compte Business relié).
+
+    Reflet en LECTURE d'un média IG (dossier organic-posts-ig §4). La ``caption``
+    est **READ-ONLY** : Meta ne permet PAS de l'éditer après publication (Reels
+    compris) — l'UI l'affiche explicitement, et AUCUNE méthode d'édition de
+    légende n'existe (comme il n'existe aucune méthode d'activation, invariant #3
+    par analogie). Le SEUL champ écrivable d'un média est ``comment_enabled``
+    (couper/rouvrir les commentaires). Upsert idempotent par ``(company, meta_id)``.
+    """
+
+    class MediaType(models.TextChoices):
+        IMAGE = 'IMAGE', 'Image'
+        VIDEO = 'VIDEO', 'Vidéo'
+        REELS = 'REELS', 'Reel'
+        CAROUSEL = 'CAROUSEL_ALBUM', 'Carrousel'
+        STORY = 'STORY', 'Story'
+
+    meta_id = models.CharField(max_length=64, verbose_name='ID média IG')
+    caption = models.TextField(
+        blank=True, default='',
+        verbose_name='Légende (LECTURE SEULE — immuable après publication)')
+    media_type = models.CharField(
+        max_length=16, blank=True, default='', verbose_name='Type de média')
+    media_url = models.TextField(
+        blank=True, default='', verbose_name='URL du média')
+    permalink = models.TextField(
+        blank=True, default='', verbose_name='Permalien')
+    like_count = models.PositiveIntegerField(default=0, verbose_name='J’aime')
+    comments_count = models.PositiveIntegerField(
+        default=0, verbose_name='Commentaires')
+    view_count = models.PositiveIntegerField(default=0, verbose_name='Vues')
+    comment_enabled = models.BooleanField(
+        default=True, verbose_name='Commentaires ouverts')
+    timestamp = models.DateTimeField(
+        null=True, blank=True, verbose_name='Publié le')
+    fetched_at = models.DateTimeField(
+        null=True, blank=True, verbose_name='Récupéré le')
+
+    class Meta:
+        verbose_name = 'Miroir de média Instagram'
+        verbose_name_plural = 'Miroirs de média Instagram'
+        ordering = ['-timestamp', '-created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'meta_id'],
+                name='uniq_adseng_ig_media_meta'),
+        ]
+
+    def __str__(self):
+        return f'Média IG {self.meta_id} ({self.media_type or "?"})'
+
+
+class InstagramCommentMirror(TenantModel):
+    """ADSDEEP55 — Miroir local d'un COMMENTAIRE Instagram.
+
+    Masquage IG = ``POST /<ig_comment_id>`` ``hide=true`` (dossier §4). Upsert
+    idempotent par ``(company, meta_id)`` ; ``hidden``/``answered`` sont posés par
+    le cycle d'actions (jamais écrasés par la synchro)."""
+
+    meta_id = models.CharField(
+        max_length=64, verbose_name='ID commentaire IG')
+    media_meta_id = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name='ID média commenté')
+    parent_meta_id = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name='ID commentaire parent')
+    message = models.TextField(blank=True, default='', verbose_name='Message')
+    from_username = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Auteur')
+    like_count = models.PositiveIntegerField(default=0, verbose_name='J’aime')
+    hidden = models.BooleanField(default=False, verbose_name='Masqué')
+    answered = models.BooleanField(default=False, verbose_name='Répondu')
+    timestamp = models.DateTimeField(
+        null=True, blank=True, verbose_name='Créé le (IG)')
+    fetched_at = models.DateTimeField(
+        null=True, blank=True, verbose_name='Récupéré le')
+
+    class Meta:
+        verbose_name = 'Miroir de commentaire Instagram'
+        verbose_name_plural = 'Miroirs de commentaire Instagram'
+        ordering = ['-timestamp', '-created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'meta_id'],
+                name='uniq_adseng_ig_comment_meta'),
+        ]
+
+    def __str__(self):
+        return f'Commentaire IG {self.meta_id}'
+
+
+class InstagramPublishJob(TenantModel):
+    """ADSDEEP55 — Journal d'une PUBLICATION Instagram (flux container en 2 temps).
+
+    Publier sur IG = créer un container (``POST /<ig_user>/media``) → attendre
+    ``status_code=FINISHED`` → publier (``POST /<ig_user>/media_publish``, dossier
+    §4). Ce job matérialise cet état async (créé au moment de l'``apply`` d'une
+    ``EngineAction`` PUBLISH_IG) : ``creation_id`` (container), ``status_code`` Meta,
+    ``published_media_id`` en sortie. Le quota (``50 publications / 24 h``) est
+    VÉRIFIÉ avant création et REFLÉTÉ dans ``quota_used``/``quota_total`` (surfacé
+    à l'UI). La caption est posée à la CRÉATION du container et devient immuable —
+    aucune ré-édition n'est possible (ni exposée)."""
+
+    class Status(models.TextChoices):
+        PENDING = 'pending', 'En attente'
+        CREATED = 'created', 'Container créé'
+        FINISHED = 'finished', 'Container prêt'
+        PUBLISHED = 'published', 'Publié'
+        ERROR = 'error', 'Erreur'
+
+    media_type = models.CharField(
+        max_length=16, blank=True, default='', verbose_name='Type de média')
+    image_url = models.TextField(
+        blank=True, default='', verbose_name='URL image (JPEG)')
+    video_url = models.TextField(
+        blank=True, default='', verbose_name='URL vidéo (Reel)')
+    caption = models.TextField(
+        blank=True, default='', verbose_name='Légende (posée à la création)')
+    creation_id = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name='ID container (creation_id)')
+    published_media_id = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name='ID média publié')
+    status = models.CharField(
+        max_length=12, choices=Status.choices, default=Status.PENDING,
+        verbose_name='État')
+    status_code = models.CharField(
+        max_length=32, blank=True, default='',
+        verbose_name='Code de statut Meta (container)')
+    quota_used = models.IntegerField(
+        null=True, blank=True, verbose_name='Quota utilisé (24 h)')
+    quota_total = models.IntegerField(
+        null=True, blank=True, verbose_name='Quota total (24 h)')
+    scheduled_at = models.DateTimeField(
+        null=True, blank=True, verbose_name='Programmé pour')
+    error = models.TextField(blank=True, default='', verbose_name='Erreur')
+
+    class Meta:
+        verbose_name = 'Publication Instagram'
+        verbose_name_plural = 'Publications Instagram'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'Publication IG {self.get_status_display()} ({self.media_type or "?"})'

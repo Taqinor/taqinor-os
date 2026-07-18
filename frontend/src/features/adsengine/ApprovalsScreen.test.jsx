@@ -11,11 +11,15 @@ const mocks = vi.hoisted(() => ({
   pending: vi.fn(),
   approve: vi.fn(),
   reject: vi.fn(),
+  create: vi.fn(),
 }))
 
 vi.mock('./adsengineApi', () => ({
   default: {
-    actions: { pending: mocks.pending, approve: mocks.approve, reject: mocks.reject },
+    actions: {
+      pending: mocks.pending, approve: mocks.approve, reject: mocks.reject,
+      create: mocks.create,
+    },
   },
 }))
 
@@ -37,6 +41,7 @@ beforeEach(() => {
   mocks.pending.mockResolvedValue({ data: ACTIONS })
   mocks.approve.mockResolvedValue({ data: {} })
   mocks.reject.mockResolvedValue({ data: {} })
+  mocks.create.mockResolvedValue({ data: { id: 100 } })
 })
 
 describe('ApprovalsScreen (ENG25)', () => {
@@ -99,5 +104,48 @@ describe('ApprovalsScreen (ENG25)', () => {
     mocks.pending.mockResolvedValue({ data: [] })
     renderScreen()
     expect(await screen.findByTestId('ae-approvals-empty')).toBeInTheDocument()
+  })
+})
+
+describe('ApprovalsScreen — avertissements + composeur EDIT_COPY (ADSDEEP35)', () => {
+  const EDIT_ACTIONS = [
+    { id: 21, type: 'edit_copy', reason_fr: "Rafraîchir l'accroche.",
+      payload: {
+        warnings: ['Édition significative : réinitialise l’apprentissage.',
+                    'Perte de preuve sociale.'],
+        current_creative: { body: 'Ancien texte fatigué' },
+        creative_spec: { title: 'Nouveau', body: 'Nouveau texte frais' },
+      } },
+  ]
+
+  it('rend les avertissements du payload en chips ET le diff avant/après', async () => {
+    mocks.pending.mockResolvedValue({ data: EDIT_ACTIONS })
+    renderScreen()
+    await waitFor(() => expect(mocks.pending).toHaveBeenCalled())
+    const chips = screen.getAllByTestId('ae-warning-chip')
+    expect(chips).toHaveLength(2)
+    const diff = screen.getByTestId('ae-edit-copy-diff')
+    expect(diff).toHaveTextContent('Ancien texte fatigué')
+    expect(diff).toHaveTextContent('Nouveau texte frais')
+  })
+
+  it('le composeur EDIT_COPY se montre/masque et recharge la boîte après proposition', async () => {
+    mocks.pending.mockResolvedValue({ data: [] })
+    renderScreen()
+    await waitFor(() => expect(mocks.pending).toHaveBeenCalledTimes(1))
+    expect(screen.queryByTestId('ae-composer')).toBeNull()
+
+    fireEvent.click(screen.getByTestId('ae-toggle-composer'))
+    expect(screen.getByTestId('ae-composer')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByTestId('ae-composer-ad-id'), { target: { value: 'ad-7' } })
+    fireEvent.change(screen.getByTestId('ae-composer-proposed-body'), { target: { value: 'Texte neuf' } })
+    fireEvent.change(screen.getByTestId('ae-composer-reason'), { target: { value: 'Motif clair.' } })
+    fireEvent.click(screen.getByTestId('ae-composer-submit'))
+
+    await waitFor(() => expect(mocks.create).toHaveBeenCalled())
+    // Recharge la boîte + referme le composeur.
+    await waitFor(() => expect(mocks.pending).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(screen.queryByTestId('ae-composer')).toBeNull())
   })
 })

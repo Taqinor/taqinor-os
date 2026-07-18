@@ -4,11 +4,13 @@ from decimal import Decimal
 from rest_framework import serializers
 
 from .models import (
-    AdCampaignMirror, AnomalyEvent, ArmDailyStat, CreativeAsset,
-    CreativeBacklogItem, CreativeGenerationBatch, CreativePolicy, DecisionLog,
-    EngineAction, EngineAlert, Experiment, ExperimentArm, FlightPhase,
-    FlightPlan, GuardrailConfig, InsightBreakdown, InsightSnapshot,
-    MetaConnection, PacingState, ReconciliationSnapshot, RulePolicy,
+    AdCampaignMirror, AdMirror, AdSetMirror, AnomalyEvent, ArmDailyStat,
+    CommentMirror, CreativeAsset, CreativeBacklogItem,
+    CreativeGenerationBatch, CreativePolicy, DecisionLog, EngineAction,
+    EngineAlert, Experiment, ExperimentArm, FlightPhase, FlightPlan,
+    GuardrailConfig, InsightBreakdown, InsightSnapshot,
+    InstagramCommentMirror, InstagramMediaMirror, MetaConnection,
+    PacingState, ReconciliationSnapshot, RulePolicy,
 )
 
 
@@ -206,9 +208,13 @@ class ExperimentSerializer(serializers.ModelSerializer):
         model = Experiment
         fields = [
             'id', 'name', 'tested_variable', 'status', 'campaign', 'adset',
-            'start_date', 'end_date', 'notes', 'created_at', 'updated_at',
+            'start_date', 'end_date', 'notes',
+            # ADSDEEP34 — lien vers l'étude A/B native Meta (posé par le
+            # service, jamais par le client — read-only).
+            'meta_study_id',
+            'created_at', 'updated_at',
         ]
-        read_only_fields = ['created_at', 'updated_at']
+        read_only_fields = ['meta_study_id', 'created_at', 'updated_at']
 
     def validate_campaign(self, value):
         return _same_company(self, value)
@@ -496,6 +502,117 @@ class AdCampaignMirrorSerializer(serializers.ModelSerializer):
         return int(self._insights(obj)['results'] or 0)
 
 
+# ── ADSDEEP32 — Badge de phase d'apprentissage par ad set ─────────────────────
+# Libellé + tonalité par statut d'apprentissage (le rendu frontend — badge dans
+# ApprovalsScreen — est la tâche SÉPARÉE ADSDEEP35 ; ici on n'expose que la
+# donnée). '' (inconnu) → un badge neutre, jamais d'erreur.
+_LEARNING_BADGE = {
+    'LEARNING': {'label': 'En apprentissage', 'tone': 'info'},
+    'SUCCESS': {'label': 'Optimisé', 'tone': 'success'},
+    'FAIL': {'label': 'Apprentissage limité', 'tone': 'danger'},
+}
+
+
+def _spend_results_for(model, obj):
+    """ADSDEEP60 — Agrégat (dépense, résultats) mémoïsé par instance depuis les
+    ``InsightSnapshot`` rattachés à ``obj`` (FK générique). Factorisation
+    partagée par les sérialiseurs de miroir (campagne/ad set/ad) — même
+    formule que ``AdCampaignMirrorSerializer._insights``, sans dupliquer la
+    requête pour les nouveaux niveaux de la hiérarchie."""
+    cached = getattr(obj, '_ae_insights', None)
+    if cached is None:
+        from django.contrib.contenttypes.models import ContentType
+        from django.db.models import Sum
+        ct = ContentType.objects.get_for_model(model)
+        cached = (InsightSnapshot.objects
+                  .filter(company_id=obj.company_id, content_type=ct,
+                          object_id=obj.pk)
+                  .aggregate(spend=Sum('spend'), results=Sum('results')))
+        obj._ae_insights = cached
+    return cached
+
+
+class AdSetMirrorSerializer(serializers.ModelSerializer):
+    """ADSDEEP32/ADSDEEP60 — Miroir d'ad set (lecture seule) exposant la phase
+    d'apprentissage pour le badge UI + (ADSDEEP60) statut FR, budget converti
+    et dépense/résultats agrégés pour l'écran hiérarchique Campagnes→Ad
+    sets→Ads. Le miroir reflète l'état Meta (jamais d'activation) ;
+    company-scopé par le viewset."""
+
+    learning_badge = serializers.SerializerMethodField()
+    statut_display = serializers.SerializerMethodField()
+    budget_quotidien_mad = serializers.SerializerMethodField()
+    depense_mad = serializers.SerializerMethodField()
+    nb_leads = serializers.SerializerMethodField()
+
+    class Meta:
+        model = AdSetMirror
+        fields = [
+            'id', 'meta_id', 'name', 'status', 'statut_display', 'campaign',
+            'learning_status', 'last_sig_edit', 'learning_stage_info',
+            'learning_badge', 'budget_quotidien_mad', 'depense_mad',
+            'nb_leads', 'created_via_engine', 'created_at', 'updated_at',
+        ]
+        read_only_fields = fields
+
+    def get_learning_badge(self, obj):
+        """Badge {status, label, tone, is_learning, last_sig_edit} pour l'UI."""
+        meta = _LEARNING_BADGE.get(
+            obj.learning_status, {'label': 'Inconnu', 'tone': 'neutral'})
+        return {
+            'status': obj.learning_status or '',
+            'label': meta['label'],
+            'tone': meta['tone'],
+            'is_learning': obj.is_learning,
+            'last_sig_edit': (obj.last_sig_edit.isoformat()
+                              if obj.last_sig_edit else None),
+        }
+
+    def get_statut_display(self, obj):
+        return _META_STATUT_FR.get(obj.status, obj.status or '—')
+
+    def get_budget_quotidien_mad(self, obj):
+        if obj.budget is None:
+            return None
+        # Budget Meta en unités mineures (centimes) → MAD (unités majeures).
+        return str((obj.budget / Decimal('100')).quantize(Decimal('0.01')))
+
+    def get_depense_mad(self, obj):
+        return str(_spend_results_for(AdSetMirror, obj)['spend'] or Decimal('0'))
+
+    def get_nb_leads(self, obj):
+        return int(_spend_results_for(AdSetMirror, obj)['results'] or 0)
+
+
+class AdMirrorSerializer(serializers.ModelSerializer):
+    """ADSDEEP60 — Miroir d'ad (lecture seule) pour le 3ᵉ niveau de la
+    hiérarchie Campagnes→Ad sets→Ads : statut FR + dépense/résultats agrégés
+    depuis les mêmes ``InsightSnapshot`` (ad-level, ADSDEEP2). Aucune
+    activation ; company-scopé par le viewset appelant."""
+
+    statut_display = serializers.SerializerMethodField()
+    depense_mad = serializers.SerializerMethodField()
+    nb_leads = serializers.SerializerMethodField()
+
+    class Meta:
+        model = AdMirror
+        fields = [
+            'id', 'meta_id', 'name', 'status', 'statut_display', 'adset',
+            'depense_mad', 'nb_leads', 'hook_tag', 'angle_tag', 'format_tag',
+            'created_via_engine', 'created_at', 'updated_at',
+        ]
+        read_only_fields = fields
+
+    def get_statut_display(self, obj):
+        return _META_STATUT_FR.get(obj.status, obj.status or '—')
+
+    def get_depense_mad(self, obj):
+        return str(_spend_results_for(AdMirror, obj)['spend'] or Decimal('0'))
+
+    def get_nb_leads(self, obj):
+        return int(_spend_results_for(AdMirror, obj)['results'] or 0)
+
+
 class InsightBreakdownSerializer(serializers.ModelSerializer):
     """ADSDEEP9 — Ligne de ventilation (démo/placement/région/horaire) exposée à
     l'écran « Audience & diffusion ». Lecture seule ; aucun secret."""
@@ -508,5 +625,55 @@ class InsightBreakdownSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'date', 'dimension', 'dimension_display', 'key',
             'spend', 'impressions', 'clicks', 'results', 'conversations',
+        ]
+        read_only_fields = fields
+
+
+# ── ADSDEEP53/54 — Boîte de réception des commentaires ────────────────────────
+class CommentMirrorSerializer(serializers.ModelSerializer):
+    """ADSDEEP53 — Miroir de commentaire (lecture seule côté API : peuplé par la
+    synchro, jamais écrit par le client — toute action passe par la proposition
+    ``EngineAction`` via les vues dédiées, jamais un PATCH direct)."""
+
+    class Meta:
+        model = CommentMirror
+        fields = [
+            'id', 'meta_id', 'object_meta_id', 'source', 'parent_meta_id',
+            'message', 'from_name', 'from_id', 'created_time', 'like_count',
+            'reply_count', 'is_hidden', 'hidden_verified', 'can_hide',
+            'can_remove', 'answered', 'permalink', 'private_reply_sent_at',
+            'fetched_at', 'created_at', 'updated_at',
+        ]
+        read_only_fields = fields
+
+
+# ── ADSDEEP55/56 — Instagram (compte Business relié) ──────────────────────────
+class InstagramMediaMirrorSerializer(serializers.ModelSerializer):
+    """ADSDEEP55 — Miroir de média Instagram (lecture seule côté API). La
+    ``caption`` est immuable après publication — jamais éditable ici (le SEUL
+    champ écrivable, ``comment_enabled``, passe par la proposition dédiée)."""
+
+    class Meta:
+        model = InstagramMediaMirror
+        fields = [
+            'id', 'meta_id', 'caption', 'media_type', 'media_url',
+            'permalink', 'like_count', 'comments_count', 'view_count',
+            'comment_enabled', 'timestamp', 'fetched_at',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = fields
+
+
+class InstagramCommentMirrorSerializer(serializers.ModelSerializer):
+    """ADSDEEP55 — Miroir de commentaire Instagram (lecture seule côté API) ;
+    toute action (masquer/répondre/supprimer) passe par la proposition
+    ``EngineAction`` via les vues dédiées, jamais un PATCH direct."""
+
+    class Meta:
+        model = InstagramCommentMirror
+        fields = [
+            'id', 'meta_id', 'media_meta_id', 'parent_meta_id', 'message',
+            'from_username', 'like_count', 'hidden', 'answered', 'timestamp',
+            'fetched_at', 'created_at', 'updated_at',
         ]
         read_only_fields = fields

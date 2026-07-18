@@ -839,6 +839,13 @@ CELERY_TASK_ROUTES = {
     'adsengine.sync_insights_daily': {'queue': 'scheduled'},
     # ENG11 — brief hebdomadaire déterministe.
     'adsengine.generate_weekly_brief': {'queue': 'scheduled'},
+    # ADSDEEP62 — digest quotidien FR (dépense/conversations/leads/signatures/
+    # alertes/top ad de la veille).
+    'adsengine.daily_ads_digest': {'queue': 'scheduled'},
+    # ADSDEEP27 — émission CAPI des signatures Odoo (boucle retour quotidienne).
+    'adsengine.emit_capi_signatures': {'queue': 'scheduled'},
+    # ADSDEEP42 — évaluation des règles à cadence 15 min (opt-in par RulePolicy).
+    'adsengine.evaluate_quarter_hourly': {'queue': 'scheduled'},
     # ADSENG15 — boucles du Gardien (critique 6 h + optimisation quotidienne).
     'adsengine.evaluate_guardrails': {'queue': 'scheduled'},
     'adsengine.evaluate_optimization_rules': {'queue': 'scheduled'},

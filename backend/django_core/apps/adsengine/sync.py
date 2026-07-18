@@ -182,6 +182,69 @@ def sync_ad_creative(company, ad_mirror, creative_payload):
         company=company, ad=ad_mirror, defaults=fields)
 
 
+def _parse_dt(value):
+    """ADSDEEP49 — Horodatage Meta (unix int/str OU ISO-8601) → datetime aware,
+    ou None. ``scheduled_publish_time`` est unix ; ``created_time`` est ISO."""
+    if value in (None, ''):
+        return None
+    import datetime
+
+    from django.utils import timezone
+    try:
+        return datetime.datetime.fromtimestamp(
+            int(value), datetime.timezone.utc)
+    except (ValueError, TypeError, OverflowError, OSError):
+        pass
+    try:
+        dt = datetime.datetime.fromisoformat(
+            str(value).replace('Z', '+00:00'))
+    except (ValueError, TypeError):
+        return None
+    if timezone.is_naive(dt):
+        dt = timezone.make_aware(dt, datetime.timezone.utc)
+    return dt
+
+
+def sync_page_posts(company, posts, *, ad_linked_ids=None, app_id=''):
+    """ADSDEEP49 — Upsert idempotent des miroirs de posts de Page.
+
+    ``created_by_app`` = l'``application.id`` du post matche ``app_id`` (l'app ne
+    peut ÉDITER que ses propres posts — dossier organic-posts §1). ``ad_linked``
+    = le post figure dans ``ad_linked_ids`` (issu de ``GET /<page>/ads_posts``).
+    Idempotent par ``(company, meta_id)`` : une re-synchro écrase, jamais de
+    doublon. Renvoie la liste des miroirs."""
+    from django.utils import timezone
+
+    from .models import PagePostMirror
+
+    ad_ids = set(ad_linked_ids or set())
+    app_id = str(app_id or '').strip()
+    mirrors = []
+    for p in posts or []:
+        mid = str(p.get('id') or '').strip()
+        if not mid:
+            continue
+        application = p.get('application') or {}
+        app_of_post = str((application or {}).get('id') or '').strip()
+        created_by_app = bool(
+            app_id and app_of_post and app_of_post == app_id)
+        fields = {
+            'message': p.get('message', '') or '',
+            'permalink': p.get('permalink_url', '') or '',
+            'created_time': _parse_dt(p.get('created_time')),
+            'is_published': bool(p.get('is_published', True)),
+            'scheduled_publish_time': _parse_dt(
+                p.get('scheduled_publish_time')),
+            'created_by_app': created_by_app,
+            'ad_linked': mid in ad_ids,
+            'fetched_at': timezone.now(),
+        }
+        obj, _ = PagePostMirror.objects.update_or_create(
+            company=company, meta_id=mid, defaults=fields)
+        mirrors.append(obj)
+    return mirrors
+
+
 def resolve_results(objective, normalized_row):
     """ADSDEEP6 — Nombre de « résultats » HOMOGÈNE d'une campagne selon son
     objectif : une campagne CTWA compte des conversations, une campagne

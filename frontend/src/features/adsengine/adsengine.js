@@ -141,6 +141,13 @@ export const ACTION_TYPE_LABELS = {
   swap_creative: 'Rotation de créatif',
   enable_cbo: 'Activation du budget de campagne (CBO)',
   pause_for_month: "Mise en pause jusqu'à la fin du mois",
+  // ADSDEEP31/34/36/37 — surface d'édition + étude native + horaire + duplication.
+  edit_copy: 'Édition du texte / créatif',
+  set_spend_cap: 'Plafond de dépense',
+  rename: 'Renommage',
+  create_ad_study: 'Étude A/B native',
+  set_schedule: 'Horaire de diffusion (dayparting)',
+  duplicate: "Duplication d'ad set",
 }
 export function actionTypeLabel(type) {
   return ACTION_TYPE_LABELS[type] || type || 'Action'
@@ -184,6 +191,51 @@ export function actionCreative(action) {
     url: c.preview_url || c.file_url || c.url || '',
     designation: c.designation || c.nom || c.name || 'Créatif',
     type: c.type || '',
+  }
+}
+
+// ── ADSDEEP35 — Composeur EDIT_COPY (boîte d'approbation) ──
+// Avertissements portés par le backend (ADSDEEP31 : reset d'apprentissage /
+// perte de preuve sociale ; ADSDEEP32/34 : seuil budget/immutabilité étude) —
+// JAMAIS recalculés côté front, seulement lus tels quels dans le payload.
+export function actionWarnings(action) {
+  const list = action && action.payload && Array.isArray(action.payload.warnings)
+    ? action.payload.warnings
+    : []
+  return list.filter(Boolean)
+}
+
+// Avertissements STATIQUES montrés dans le composeur AVANT même la soumission
+// (le backend recalcule et pousse les MÊMES avertissements dans le payload une
+// fois la proposition créée — ``actionWarnings`` ci-dessus reste la source de
+// vérité affichée sur la carte de la boîte d'approbation).
+export const EDIT_COPY_STATIC_WARNINGS = [
+  "Édition significative : cette action réinitialise la phase d'apprentissage "
+  + "de l'ad set (Meta ré-explore — coûts instables pendant quelques jours).",
+  'Changer le texte crée un NOUVEAU post : la preuve sociale déjà accumulée '
+  + '(J’aime, commentaires, partages) est perdue.',
+]
+
+// Diff avant→après du texte d'une action EDIT_COPY : le texte ACTUEL (miroir
+// AdCreativeMirror, porté par le payload en `current_text` ou l'objet
+// `current_creative`) vs le texte PROPOSÉ (`creative_spec`). Renvoie null si
+// l'action n'est pas de type edit_copy ou ne porte aucun texte à comparer.
+export function editCopyDiff(action) {
+  if (!action || action.type !== 'edit_copy') return null
+  const p = action.payload || {}
+  const current = p.current_creative || p.current_text || null
+  const proposed = p.creative_spec || null
+  if (!current && !proposed) return null
+  const pick = (obj, key) => (obj && typeof obj === 'object' ? (obj[key] || '') : '')
+  return {
+    before: {
+      title: pick(current, 'title'), body: pick(current, 'body'),
+      description: pick(current, 'description'),
+    },
+    after: {
+      title: pick(proposed, 'title'), body: pick(proposed, 'body'),
+      description: pick(proposed, 'description'),
+    },
   }
 }
 
@@ -277,6 +329,22 @@ export function filterActionLog(actions, { statut, mode } = {}) {
     if (mode && actionMode(a) !== mode) return false
     return true
   })
+}
+
+// ── ADSDEEP36 — Dayparting : grille heure×jour (miroir de dayparting.py) ──
+// Représentation PARTAGÉE avec le backend : 7 jours (lundi→dimanche) × 24
+// heures, 1 = diffusion autorisée. Une case PAR HEURE ⇒ toute borne est, par
+// construction, toujours à l'heure pleine (jamais de saisie de minutes).
+export const DP_DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
+export const DP_DAY_LABELS = {
+  mon: 'Lun', tue: 'Mar', wed: 'Mer', thu: 'Jeu', fri: 'Ven', sat: 'Sam', sun: 'Dim',
+}
+
+// Grille neuve : toutes les heures ALLOUÉES par défaut (miroir de
+// ``dayparting.empty_grid`` côté backend).
+export function emptyGrid(allowed = true) {
+  const row = () => Array.from({ length: 24 }, () => (allowed ? 1 : 0))
+  return DP_DAYS.reduce((acc, day) => { acc[day] = row(); return acc }, {})
 }
 
 // ── ENG39 — Expérimentations (bandit) : posteriors lisibles par un humain ──
@@ -621,6 +689,56 @@ export function normalizeCohorts(raw) {
   }))
 }
 
+// ── ADSDEEP47 — Leaderboard créatif (hook/angle/format) + nuage hook rate ×
+// dépense (quadrants FR). Chiffres bruts de l'API, jamais recalculés côté front.
+export function normalizeLeaderboard(raw) {
+  const d = raw && typeof raw === 'object' ? raw : {}
+  const rows = Array.isArray(d.classement) ? d.classement : []
+  return {
+    dimension: d.dimension || 'hook',
+    periode: d.periode || null,
+    untaggedCount: numOrNull(d.untagged_count) ?? 0,
+    classement: rows.filter(Boolean).map((r, i) => ({
+      id: r.tag ?? String(i),
+      tag: r.tag || `(#${i + 1})`,
+      spend: numOrNull(r.spend),
+      results: numOrNull(r.results),
+      costPerResult: numOrNull(r.cost_per_result),
+      adCount: numOrNull(r.ad_count),
+      hookRateWeighted: numOrNull(r.hook_rate_weighted),
+    })),
+  }
+}
+
+// Libellés FR des quadrants (repli si l'API n'en fournit pas).
+export const SCATTER_QUADRANT_LABELS = {
+  pepites_cachees: 'Pépites cachées',
+  gouffres: 'Gouffres à budget',
+  gagnants_confirmes: 'Gagnants confirmés',
+  a_surveiller: 'À surveiller',
+}
+
+export function normalizeScatter(raw) {
+  const d = raw && typeof raw === 'object' ? raw : {}
+  const points = Array.isArray(d.points) ? d.points : []
+  return {
+    periode: d.periode || null,
+    medianHookRate: numOrNull(d.median_hook_rate),
+    medianSpend: numOrNull(d.median_spend),
+    points: points.filter(Boolean).map((p, i) => ({
+      id: p.ad_meta_id ?? String(i),
+      nom: p.name || p.ad_meta_id || `Ad ${i + 1}`,
+      hookTag: p.hook_tag || '',
+      angleTag: p.angle_tag || '',
+      formatTag: p.format_tag || '',
+      spend: numOrNull(p.spend),
+      hookRate: numOrNull(p.hook_rate),
+      quadrant: p.quadrant || '',
+      quadrantLabel: p.quadrant_label_fr || SCATTER_QUADRANT_LABELS[p.quadrant] || '',
+    })),
+  }
+}
+
 // Construit un CSV depuis des en-têtes + lignes (échappement RFC-4180 simple).
 export function toCsv(headers, rows) {
   const esc = (v) => {
@@ -630,4 +748,84 @@ export function toCsv(headers, rows) {
   const lines = [(headers || []).map(esc).join(',')]
   for (const r of (rows || [])) lines.push((r || []).map(esc).join(','))
   return lines.join('\n')
+}
+
+// ── ADSDEEP22 — Tri du cockpit par ad ──
+// Colonnes chiffrées : une valeur MANQUANTE (null/—, jamais fabriquée) est
+// TOUJOURS reléguée en fin de tri, quel que soit le sens (même convention que
+// `rankCreatives` pour les créatifs sans réponse WhatsApp).
+function cockpitSortValue(row, key) {
+  if (key === 'nom' || key === 'statut_display') {
+    return (row?.[key] || '').toLowerCase()
+  }
+  const raw = row?.[key]
+  if (raw == null) return null
+  const n = Number(raw)
+  return Number.isFinite(n) ? n : null
+}
+
+export function sortCockpitRows(rows, key, direction = 'asc') {
+  const list = [...(rows || [])]
+  const dir = direction === 'desc' ? -1 : 1
+  return list.sort((a, b) => {
+    const va = cockpitSortValue(a, key)
+    const vb = cockpitSortValue(b, key)
+    if (va == null && vb == null) return 0
+    if (va == null) return 1
+    if (vb == null) return -1
+    if (va < vb) return -1 * dir
+    if (va > vb) return 1 * dir
+    return 0
+  })
+}
+
+// ── ADSDEEP66 — Fenêtres/limites de données Meta (bandeau `DataWindowNotice`) ─
+// Doctrine (« pas de plafond silencieux ») : un écran qui affiche un nombre
+// borné dans le temps DOIT dire sa fenêtre. Fenêtre (jours) + messages FR par
+// type ; les mois sont convertis en jours à raison de 30 j/mois (approximation
+// d'affichage — jamais une date exacte). Constante pure — vit ici (et non dans
+// `DataWindowNotice.jsx`) pour que ce dernier reste un fichier de COMPOSANTS
+// uniquement (contrainte react-refresh/only-export-components).
+export const DATA_WINDOWS = {
+  leads: {
+    windowDays: 90,
+    message:
+      'Meta efface les leads après 90 jours — l’historique complet vit dans l’ERP/Odoo.',
+    warnMessage:
+      'Attention : certains leads approchent la fenêtre de 90 jours — ' +
+      'synchronisez avant leur suppression côté Meta.',
+  },
+  insights: {
+    windowDays: 37 * 30,
+    message:
+      'Meta ne conserve les insights détaillés que 37 mois glissants — ' +
+      'au-delà, l’historique n’est plus interrogeable côté Meta.',
+    warnMessage:
+      'Attention : la fenêtre de 37 mois d’insights Meta approche sa limite ' +
+      '— exportez l’historique avant la purge.',
+  },
+  uniques: {
+    windowDays: 13 * 30,
+    message:
+      'Les métriques UNIQUES (portée/reach, fréquence) ne sont disponibles ' +
+      'que sur 13 mois glissants côté Meta.',
+    warnMessage:
+      'Attention : la fenêtre de 13 mois des métriques uniques approche sa limite.',
+  },
+  breakdowns: {
+    windowDays: 28,
+    message:
+      'Les ventilations d’audience/diffusion (âge, placement, région, heure) ' +
+      'sont synchronisées sur une fenêtre glissante de 28 jours.',
+    warnMessage:
+      'Attention : la synchronisation des ventilations approche la limite de 28 jours.',
+  },
+  retention: {
+    windowDays: 13 * 30,
+    message:
+      'Meta ne conserve les données brutes que 13 mois — au-delà, seul ' +
+      'l’historique ERP/Odoo fait foi.',
+    warnMessage:
+      'Attention : des données approchent la limite de rétention Meta (13 mois).',
+  },
 }

@@ -31,6 +31,11 @@ KIND_ZERO_RESULTS = 'zero_results'
 KIND_COST_SPIKE = 'cost_spike'
 KIND_FREQUENCY_HIGH = 'frequency_high'
 KIND_OTHER = 'autre'
+# ADSDEEP45 — kind EN CONSTANTE SIMPLE, hors de ``AnomalyEvent.Kind.choices``
+# (même pattern déjà établi que ``services.KIND_CREATE_AD_STUDY`` : Django
+# n'applique PAS ``choices`` au ``.save()``, donc aucune migration requise pour
+# un nouveau kind qui suit ce pattern).
+KIND_CREATIVE_FATIGUE = 'creative_fatigue'
 
 
 @dataclass(frozen=True)
@@ -247,6 +252,93 @@ def detect_disapproved(status, *, rejection_reason=''):
             computed)
     return Detection('disapproved_ad', False, False, SEVERITY_CRITICAL,
                      KIND_OTHER, '', computed)
+
+
+# ── ADSDEEP45 — Fatigue créative COMBINÉE (fréquence × déclin CTR [× hausse
+# CPA]), barre Motion (benchmark concurrent §2) ──────────────────────────────
+# Seuils usuels du dossier concurrent : CTR −25 à −35 %, fréquence >4 (en
+# prospection), CPA +40 à +50 % ⇒ fatigue confirmée. La paire PRIMAIRE reste
+# fréquence × déclin CTR (le nom du diagnostic) ; une hausse de CPA est un
+# signal de CONFIRMATION qui ESCALADE la sévérité en CRITICAL, jamais le seul
+# déclencheur pris isolément.
+DEFAULT_FATIGUE_THRESHOLDS = {
+    'freq_ceiling': 4.0,
+    'ctr_decline_warn': 0.25,
+    'ctr_decline_critical': 0.35,
+    'cpa_increase_warn': 0.40,
+    'cpa_increase_critical': 0.50,
+}
+
+
+def detect_creative_fatigue(*, frequency, ctr_current, ctr_baseline,
+                            cpa_current=None, cpa_baseline=None,
+                            recent_samples=0, baseline_samples=0,
+                            freq_ceiling=4.0, ctr_decline_warn=0.25,
+                            ctr_decline_critical=0.35, cpa_increase_warn=0.40,
+                            cpa_increase_critical=0.50, min_samples=3):
+    """ADSDEEP45 — Fatigue créative : fréquence en fuite × déclin de CTR (+
+    hausse de CPA en confirmation/escalade). Compare une fenêtre COURTE
+    (``ctr_current``/``cpa_current``/``frequency``) à une fenêtre de RÉFÉRENCE
+    précédente (``ctr_baseline``/``cpa_baseline``) — les deux fenêtres sont
+    calculées par l'appelant (jamais ici : ce détecteur est PUR, aucun I/O).
+
+    Sous le plancher d'échantillons (fenêtre courte OU de référence), CTR de
+    référence nul, ou fréquence/CTR indisponibles → ``insufficient_data``
+    (ALERTE toujours — info —, jamais un skip muet, dd-guardian §B6). Le CPA
+    est OPTIONNEL : son absence ne bloque jamais l'évaluation fréquence×CTR."""
+    if (recent_samples < min_samples or baseline_samples < min_samples
+            or frequency is None or ctr_current is None
+            or ctr_baseline is None):
+        return _insufficient(
+            'creative_fatigue', KIND_CREATIVE_FATIGUE,
+            "Fatigue créative : historique insuffisant (fréquence/CTR) — "
+            "vérification impossible.",
+            {'recent_samples': recent_samples,
+             'baseline_samples': baseline_samples})
+    if ctr_baseline <= 0:
+        return _insufficient(
+            'creative_fatigue', KIND_CREATIVE_FATIGUE,
+            "Fatigue créative : CTR de référence nul — déclin non calculable.",
+            {'ctr_baseline': ctr_baseline})
+
+    ctr_decline_pct = (ctr_baseline - ctr_current) / ctr_baseline
+    cpa_increase_pct = None
+    if (cpa_current is not None and cpa_baseline is not None
+            and cpa_baseline > 0):
+        cpa_increase_pct = (cpa_current - cpa_baseline) / cpa_baseline
+
+    computed = {
+        'frequency': frequency, 'freq_ceiling': freq_ceiling,
+        'ctr_current': ctr_current, 'ctr_baseline': ctr_baseline,
+        'ctr_decline_pct': round(ctr_decline_pct, 4),
+        'cpa_current': cpa_current, 'cpa_baseline': cpa_baseline,
+        'cpa_increase_pct': (round(cpa_increase_pct, 4)
+                             if cpa_increase_pct is not None else None),
+    }
+
+    freq_over = frequency > freq_ceiling
+    ctr_confirmed = ctr_decline_pct >= ctr_decline_warn
+    cpa_confirmed = (cpa_increase_pct is not None
+                     and cpa_increase_pct >= cpa_increase_warn)
+
+    if not (freq_over and (ctr_confirmed or cpa_confirmed)):
+        return Detection('creative_fatigue', False, False, SEVERITY_WARNING,
+                         KIND_CREATIVE_FATIGUE, '', computed)
+
+    severity = SEVERITY_WARNING
+    if (ctr_decline_pct >= ctr_decline_critical
+            or (cpa_increase_pct is not None
+                and cpa_increase_pct >= cpa_increase_critical)):
+        severity = SEVERITY_CRITICAL
+
+    message = (
+        f"Fréquence {frequency:g} (seuil {freq_ceiling:g}) + CTR en baisse de "
+        f"{ctr_decline_pct * 100:.0f} % vs référence"
+        + (f", CPA +{cpa_increase_pct * 100:.0f} %"
+           if cpa_increase_pct is not None else '')
+        + " — fatigue créative confirmée : rotation conseillée.")
+    return Detection('creative_fatigue', True, False, severity,
+                     KIND_CREATIVE_FATIGUE, message, computed)
 
 
 # ── Matérialisation (câblage DB — le seul point non pur du module) ────────────

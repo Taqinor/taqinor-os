@@ -42,6 +42,9 @@ const adsengineApi = {
   // ── ENG10/ENG23 — Métriques du dashboard « un chiffre » ──
   metrics: {
     dashboard: (params) => api.get('/adsengine/metrics/dashboard/', { params }),
+    // ADSDEEP61 — Dashboard v2 : conversations réelles + MER mixte (2 devises,
+    // sparklines 14 j).
+    dashboardV2: (params) => api.get('/adsengine/metrics/dashboard-v2/', { params }),
     // Drill-down : la liste des leads réels derrière un chiffre (traçabilité).
     leads: (metric, params) =>
       api.get('/adsengine/metrics/leads/', { params: { metric, ...params } }),
@@ -49,6 +52,8 @@ const adsengineApi = {
     pacing: (params) => api.get('/adsengine/metrics/pacing/', { params }),
     // ADSDEEP19 — comptes de leads RÉELS par ad / campagne (MetaLeadMirror).
     realLeads: (params) => api.get('/adsengine/metrics/real-leads/', { params }),
+    // ADSDEEP22 — cockpit par ad (une ligne par ad, toutes métriques combinées).
+    adsCockpit: (params) => api.get('/adsengine/metrics/ads-cockpit/', { params }),
   },
 
   // ── ENG31/ENG42 — Réconciliation Meta-vs-ERP (écart + statut) ──
@@ -70,6 +75,8 @@ const adsengineApi = {
     syncNow: () => api.post('/adsengine/campaigns/sync-now/'),
     creativeRanking: (params) =>
       api.get('/adsengine/campaigns/creative-ranking/', { params }),
+    // ADSDEEP60 — hiérarchie Campagne → Ad sets → Ads (drill-down navigable).
+    hierarchy: (id) => api.get(`/adsengine/campaigns/${id}/hierarchie/`),
   },
 
   // ── ENG7/ENG25/ENG28 — EngineAction (boîte d'approbation + journal) ──
@@ -131,6 +138,9 @@ const adsengineApi = {
     // Simulation « dry-run » d'un gabarit : objets touchés + effet, sans appliquer.
     dryRun: (templateKey, payload) =>
       api.post('/adsengine/regles/dry-run/', { template: templateKey, ...payload }),
+    // ADSDEEP43 — journal d'exécution ENRICHI : par règle, la dernière passe avec
+    // le verdict de condition (valeurs) + le delta de l'action proposée.
+    journal: () => api.get('/adsengine/regles/journal/'),
   },
 
   // ── ENG16/ENG43 — Anomalies (flux avec sévérités) ──
@@ -169,6 +179,65 @@ const adsengineApi = {
     variants: (params) => api.get('/adsengine/reporting/variantes/', { params }),
     funnel: (params) => api.get('/adsengine/reporting/entonnoir/', { params }),
     cohorts: (params) => api.get('/adsengine/reporting/cohortes/', { params }),
+    // ADSDEEP47 — leaderboard créatif (hook/angle/format) + nuage hook rate ×
+    // dépense. `params` : { dimension, debut, fin }.
+    leaderboard: (params) => api.get('/adsengine/reporting/creatifs/classement/', { params }),
+    scatter: (params) => api.get('/adsengine/reporting/creatifs/nuage/', { params }),
+    // ADSDEEP63 — audit de compte à la demande (structure/naming, fragmentation
+    // budgétaire, fatigue, tracking, fenêtres de données). Jamais auto-chargé
+    // (bouton « Lancer l'audit »).
+    audit: () => api.get('/adsengine/reporting/audit/'),
+  },
+
+  // ── ADSDEEP53/54 — Boîte de réception des commentaires (posts + dark posts) ──
+  // Routeur backend FR : « commentaires ». Chaque action inline CRÉE une
+  // proposition EngineAction (toute écriture passe par la boîte d'approbation —
+  // règle #3) ; le badge « caché-vérifié » vient du read-back backend.
+  comments: {
+    list: (params) => api.get('/adsengine/commentaires/', { params }),
+    // Compteurs par ad/post (non répondus, masqués) pour le cockpit.
+    counts: (params) => api.get('/adsengine/commentaires/compteurs/', { params }),
+    proposeHide: (id, payload) =>
+      api.post(`/adsengine/commentaires/${id}/masquer/`, payload),
+    proposeReply: (id, payload) =>
+      api.post(`/adsengine/commentaires/${id}/repondre/`, payload),
+    proposeDelete: (id) =>
+      api.post(`/adsengine/commentaires/${id}/supprimer/`),
+    proposePrivateReply: (id, payload) =>
+      api.post(`/adsengine/commentaires/${id}/reponse-privee/`, payload),
+  },
+
+  // ── ADSDEEP55/56 — Instagram (compte Business relié) ──
+  // Routeur backend FR : « instagram ». Légende LECTURE SEULE (immuable) ;
+  // publication via le flux container (quota 50/24 h surfacé) ; toute écriture
+  // passe par une proposition EngineAction (règle #3).
+  instagram: {
+    media: (params) => api.get('/adsengine/instagram/medias/', { params }),
+    quota: () => api.get('/adsengine/instagram/quota/'),
+    proposePublish: (payload) => api.post('/adsengine/instagram/publier/', payload),
+    comments: (params) => api.get('/adsengine/instagram/commentaires/', { params }),
+    proposeHideComment: (id, payload) =>
+      api.post(`/adsengine/instagram/commentaires/${id}/masquer/`, payload),
+    proposeReplyComment: (id, payload) =>
+      api.post(`/adsengine/instagram/commentaires/${id}/repondre/`, payload),
+    proposeDeleteComment: (id) =>
+      api.post(`/adsengine/instagram/commentaires/${id}/supprimer/`),
+    proposeToggleComments: (mediaId, payload) =>
+      api.post(`/adsengine/instagram/medias/${mediaId}/commentaires-actif/`, payload),
+  },
+
+  // ── ADSDEEP59 — Audiences d'engagement (picker du composeur d'adset) ──
+  // NON gated consentement : aucune donnée CRM n'est envoyée (objets Meta-side).
+  // L'estimation d'audience est montrée AVANT usage (dossier §5).
+  audiences: {
+    // Catalogue des presets (openers/dropoff/submitted, page, IG) + rétention.
+    engagementPresets: () => api.get('/adsengine/audiences/engagement/'),
+    // Crée une audience d'engagement ({ preset_key, name?, source_id? }).
+    createEngagement: (payload) =>
+      api.post('/adsengine/audiences/engagement/', payload),
+    // Estimation d'audience avant usage ({ targeting_spec, optimization_goal? }).
+    deliveryEstimate: (payload) =>
+      api.post('/adsengine/audiences/delivery-estimate/', payload),
   },
 
   // ── ENG27/ENG41 — Backlog par campagne (CreativeGenerationBatch) ──
