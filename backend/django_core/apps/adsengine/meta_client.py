@@ -1319,6 +1319,120 @@ class MetaClient:
             })
         return results
 
+    # ── ADSDEEP57 — Custom Audiences (identifiants CRM DÉJÀ hachés SHA-256) ────
+    # INVARIANT PII : ce client ne reçoit QUE des identifiants DÉJÀ hachés
+    # SHA-256 — le hachage/normalisation vit dans ``audiences.py``, JAMAIS ici.
+    # Il ne construit, n'accepte et n'émet JAMAIS de PII en clair. La création
+    # d'une audience ne porte PAS de ``status`` (ce n'est ni une campagne, ni un
+    # adset, ni une ad — l'invariant PAUSED règle #3 ne s'y applique pas).
+    CUSTOM_AUDIENCE_MAX_USERS_PER_CALL = 10000
+
+    def create_custom_audience(self, *, name, customer_file_source,
+                               subtype='CUSTOM', description='',
+                               extra_fields=None):
+        """ADSDEEP57 — Crée une Custom Audience
+        (``POST /act_<id>/customaudiences``). ``subtype=CUSTOM`` +
+        ``customer_file_source`` (``USER_PROVIDED_ONLY`` par défaut). Aucune
+        donnée utilisateur n'est envoyée ICI — le peuplement passe ensuite par
+        ``add_users_to_audience`` (identifiants déjà hachés)."""
+        base = {
+            'name': name,
+            'subtype': subtype,
+            'customer_file_source': customer_file_source,
+        }
+        if description:
+            base['description'] = description
+        base.update(dict(extra_fields or {}))
+        return self._request(
+            'POST', self._account_edge('customaudiences'), data=base)
+
+    def add_users_to_audience(self, *, audience_id, schema, data,
+                              session=None, replace=False):
+        """ADSDEEP57 — Peuple une Custom Audience. ``replace=True`` → edge
+        ``usersreplace`` (remplacement ATOMIQUE de toute l'audience sur la
+        session, sans reset du learning) ; sinon edge ``users`` (ajout).
+
+        ``data`` = lignes d'identifiants DÉJÀ hachés SHA-256 (le client ne hache
+        rien — aucune PII en clair ne transite ici). Borne DURE ≤10 000
+        lignes/appel (fenêtre de session Meta) : au-delà, lève ``MetaError``
+        AVANT tout aller-retour réseau (l'appelant découpe en sessions)."""
+        rows = list(data or [])
+        if len(rows) > self.CUSTOM_AUDIENCE_MAX_USERS_PER_CALL:
+            raise MetaError(
+                "Session Custom Audience limitée à "
+                f"{self.CUSTOM_AUDIENCE_MAX_USERS_PER_CALL} lignes/appel "
+                f"(reçu {len(rows)}).")
+        edge = 'usersreplace' if replace else 'users'
+        payload = {'payload': json.dumps({'schema': schema, 'data': rows})}
+        if session is not None:
+            payload['session'] = json.dumps(session)
+        return self._request('POST', f'{audience_id}/{edge}', data=payload)
+
+    def delete_custom_audience(self, *, audience_id):
+        """ADSDEEP57 — Supprime une Custom Audience (``DELETE /<AUD_ID>``)."""
+        return self._request('DELETE', f'{audience_id}')
+
+    def get_audience(self, audience_id, *, fields=None):
+        """ADSDEEP58 — Lit l'état d'une audience (LECTURE SEULE) : taille
+        approximative + ``operation_status``/``delivery_status`` (préparation
+        d'un lookalike). Renvoie le dict brut (ou ``{}``)."""
+        flds = ','.join(fields or (
+            'id', 'name', 'subtype', 'approximate_count_lower_bound',
+            'approximate_count_upper_bound', 'operation_status',
+            'delivery_status'))
+        payload = self._request(
+            'GET', f'{audience_id}', params={'fields': flds})
+        return payload if isinstance(payload, dict) else {}
+
+    def create_lookalike_audience(self, *, name, lookalike_spec,
+                                  extra_fields=None):
+        """ADSDEEP58 — Crée un lookalike (``subtype=LOOKALIKE`` +
+        ``lookalike_spec`` JSON : ``origin_audience_id`` = l'audience seed ≥100
+        matchés, ``country``, ``ratio``…). Aucune donnée utilisateur ici — le
+        lookalike dérive d'une seed déjà peuplée côté Meta."""
+        base = {
+            'name': name,
+            'subtype': 'LOOKALIKE',
+            'lookalike_spec': json.dumps(lookalike_spec),
+        }
+        base.update(dict(extra_fields or {}))
+        return self._request(
+            'POST', self._account_edge('customaudiences'), data=base)
+
+    def create_engagement_audience(self, *, name, rule, extra_fields=None):
+        """ADSDEEP59 — Crée une audience d'ENGAGEMENT (``subtype=ENGAGEMENT`` +
+        ``rule`` JSON ``event_sources`` page/ig_business/lead). AUCUNE donnée
+        CRM n'est envoyée : l'objet est purement Meta-side (interactions
+        formulaire/Page/IG déjà côté Meta), donc NON soumis au gate
+        consentement des Custom Audiences CRM."""
+        base = {
+            'name': name,
+            'subtype': 'ENGAGEMENT',
+            'rule': json.dumps(rule),
+        }
+        base.update(dict(extra_fields or {}))
+        return self._request(
+            'POST', self._account_edge('customaudiences'), data=base)
+
+    def get_delivery_estimate(self, *, targeting_spec,
+                              optimization_goal='REACH'):
+        """ADSDEEP59 — Estimation d'audience AVANT usage
+        (``GET /act_<id>/delivery_estimate`` avec ``targeting_spec``, dossier
+        §5). Renvoie le 1er élément ``data`` (``estimate_ready``, ``estimate_dau``,
+        ``estimate_mau_*``…) ou ``{}``."""
+        params = {
+            'targeting_spec': json.dumps(targeting_spec),
+            'optimization_goal': optimization_goal,
+        }
+        payload = self._request(
+            'GET', self._account_edge('delivery_estimate'), params=params)
+        if not isinstance(payload, dict):
+            return {}
+        data = payload.get('data')
+        if isinstance(data, list) and data:
+            return data[0] if isinstance(data[0], dict) else {}
+        return payload if 'estimate_ready' in payload else {}
+
     # ── Hygiène ──────────────────────────────────────────────────────────────
     def close(self):
         if self._owns_client:
