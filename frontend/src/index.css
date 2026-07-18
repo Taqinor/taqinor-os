@@ -6525,3 +6525,23 @@ textarea.form-control {
 .lw-gps-link:hover {
   text-decoration: underline;
 }
+
+/* ── LW19 : rail contexte — onglets (Historique · Devis · Activités ·
+   Pièces) — tokens uniquement, zéro hex (D4#6). ──────────────────────────── */
+
+.lw-context-tabs {
+  width: 100%;
+  justify-content: space-between;
+}
+
+.lw-context-timeline,
+.lw-context-devis {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+/* Onglet Activités : bouton « Appliquer un plan » au-dessus du panneau. */
+.lw-context-activites-head {
+  margin-bottom: 0.5rem;
+}
