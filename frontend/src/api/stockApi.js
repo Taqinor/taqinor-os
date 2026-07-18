@@ -238,6 +238,12 @@ const stockApi = {
   // XPUR1 — documents de conformité, filtrés serveur par ?fournisseur=.
   getDocumentsConformiteFournisseur: (fournisseurId) =>
     api.get('/stock/documents-conformite-fournisseur/', { params: { fournisseur: fournisseurId } }),
+  // WIR26 — Paramètres → Achats (singleton par société). GET crée le réglage
+  // si besoin (`AchatsParametres.for_company`) ; PATCH exige un `id` (route
+  // détail du ViewSet), obtenu via le GET précédent.
+  getAchatsParametres: () => api.get('/stock/achats-parametres/'),
+  updateAchatsParametres: (id, data) =>
+    api.patch(`/stock/achats-parametres/${id}/`, data),
   // FG55 — PDF d'une facture fournisseur (blob, interne).
   factureFournisseurPdf: (id) =>
     api.get(`/stock/factures-fournisseur/${id}/pdf/`, { responseType: 'blob' }),

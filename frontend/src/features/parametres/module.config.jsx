@@ -47,6 +47,11 @@ const DomaineEnvoi = lazy(() => import('./DomaineEnvoi'))
 // admin, reflète `IsResponsableOrAdmin` côté backend — `toutes-company/`/
 // `export-xlsx/` de SavedViewViewSet).
 const VuesConfigurationPage = lazy(() => import('../../pages/parametres/VuesConfigurationPage'))
+// WIR26 — Paramètres → Achats (`stock.AchatsParametres`, singleton par
+// société) : conformité (XPUR1), RAS-TVA (XPUR2), tolérances 3-voies
+// (XPUR10). Écriture réservée responsable/admin (le backend applique déjà
+// `stock_modifier`/legacy responsable ; lecture ouverte à tout rôle).
+const AchatsParametresPage = lazy(() => import('../../pages/parametres/AchatsParametresPage'))
 
 const config = {
   key: 'parametres',
@@ -58,6 +63,7 @@ const config = {
     { path: '/parametres/alertes-kpi', component: KpiAlertesPage, roles: ['responsable', 'admin'] },
     { path: '/parametres/marketing', component: DomaineEnvoi, roles: ['responsable', 'admin'] },
     { path: '/parametres/vues', component: VuesConfigurationPage, roles: ['responsable', 'admin'] },
+    { path: '/parametres/achats', component: AchatsParametresPage, roles: ['responsable', 'admin'] },
     {
       path: '/journal',
       component: Journal,
