@@ -85,6 +85,11 @@ def build(ctx):
                else fmt(co2_t))
     trees = max(1, round(prod_kwh * 0.81 / 21))
     validity_days = d["validity_days"]
+    # QRES31 — échéance absolue sur la pastille (une date butoir concrète
+    # engage plus que « 30 jours ») ; repli sur la durée si date illisible.
+    _valid_until = theme.valid_until(date, validity_days)
+    validity_pill = (f"Valable jusqu'au {_valid_until}" if _valid_until
+                     else f"Validité {validity_days} jours")
     sans_bullets = d.get("sans_bullets", []) or []
     avec_bullets = d.get("avec_bullets", []) or []
     # QX5 — n'imprime JAMAIS d'option fantôme : deux cartes seulement quand le
@@ -98,6 +103,25 @@ def build(ctx):
     # QX7a — couverture solaire : étiquetée « estimation » quand la conso réelle
     # est inconnue (dérivée d'une facture, pas d'une conso kWh réelle).
     cov_est_txt = " (estimation)" if d.get("coverage_estimated") else ""
+    # QRES4 — cohérence donut / gros pourcentage : quand la couverture (part de
+    # la conso produite) dépasse nettement la baisse de facture (part
+    # autoconsommée valorisée), une ligne explique l'écart au lieu de laisser
+    # « −85 % » côtoyer « 100 % » sans lien apparent.
+    # QRES24 — le MENSUEL devient la ligne primaire du hook (l'ancrage le plus
+    # parlant pour un ménage) ; l'annuel passe en secondaire. Quand le devis
+    # porte deux options, une légende dit sur QUELLE option les chiffres du
+    # hook sont calculés (ils lisent l'option recommandée avec batterie).
+    opt_caption = ""
+    if deux_options:
+        opt_caption = ('<div class="c1-bigcut-cap">Chiffres calculés pour '
+                       'l\'option recommandée — avec batterie.</div>')
+
+    cov_gap_note = ""
+    if coverage_pct - pct_cut >= 10:
+        cov_gap_note = (
+            '<div class="c1-bigcut-note">Pourquoi pas −{cov} % ? Seuls les kWh '
+            'autoconsommés réduisent la facture (loi 82-21) — le surplus '
+            'injecté n\'est pas rémunéré.</div>').format(cov=coverage_pct)
 
     kwc_str = f"{kwc:.2f}".rstrip("0").rstrip(".").replace(".", ",")
     pkwc_sans = fmt(total_sans / kwc) if kwc else "—"
@@ -120,12 +144,14 @@ def build(ctx):
 
     # ── Hero background: real installation photo + navy gradient overlay so
     # the logo, ref and "Bonjour …" stay readable. No photo -> flat navy. ─────
+    # QRES23 — duotone navy CONTRÔLÉ : voiles renforcés (l'image refroidit,
+    # le bord droit reste navy — jamais de dérive brune sous le texte).
     if hero_img:
         hero_bg = (
-            "linear-gradient(180deg,rgba(15,30,53,0.70) 0%,"
-            "rgba(15,30,53,0.32) 42%,rgba(15,30,53,0.90) 100%),"
-            "linear-gradient(100deg,rgba(15,30,53,0.85) 0%,"
-            "rgba(15,30,53,0.38) 58%,rgba(15,30,53,0.12) 100%),"
+            "linear-gradient(180deg,rgba(15,30,53,0.78) 0%,"
+            "rgba(15,30,53,0.44) 42%,rgba(15,30,53,0.94) 100%),"
+            "linear-gradient(100deg,rgba(15,30,53,0.90) 0%,"
+            "rgba(20,36,62,0.52) 58%,rgba(26,43,74,0.34) 100%),"
             f"url('data:image/jpeg;base64,{hero_img}') center 38%/cover no-repeat"
         )
     else:
@@ -135,8 +161,11 @@ def build(ctx):
     css = f"""
 <style>
 .c1-root{{font-family:'{f_sans}',sans-serif;color:{ink};width:210mm;
-  height:297mm;position:relative;background:{paper};
+  height:297mm;position:relative;background:transparent;
   -webkit-print-color-adjust:exact;print-color-adjust:exact;}}
+/* QRES26 — profondeur matière : ombre douce commune aux cartes du hook. */
+.c1-hook-left,.c1-bill,.c1-kpi,.c1-opt,.c1-impact{{
+  box-shadow:0 1px 2px rgba(26,43,74,.04),0 5px 14px rgba(26,43,74,.05);}}
 .c1-root *{{box-sizing:border-box;}}
 .c1-serif{{font-family:'{f_display}','{f_serif}',Georgia,serif;font-weight:400;}}
 .c1-kicker{{font-size:7pt;letter-spacing:2.6px;font-weight:700;text-transform:uppercase;}}
@@ -165,17 +194,30 @@ def build(ctx):
 .c1-sub{{font-size:11pt;color:rgba(255,255,255,0.88);margin-top:7px;font-weight:400;}}
 
 /* ── CLIENT + CREDIBILITY LINE ─────────────────────────────────────────── */
-.c1-client{{display:flex;align-items:center;gap:9px;padding:5mm 14mm 0 14mm;
-  font-size:8.5pt;color:{muted};}}
-.c1-client b{{color:{ink};font-weight:700;}}
+/* QRES41 — rangée identité sûre pour les LONGUES adresses : le méta est un
+   bloc flex:1/min-width:0 qui REPLIE proprement (le téléphone ne chevauche
+   plus jamais le nom), la pastille reste calée en haut à droite. */
+/* QRES41 — TABLE CSS, pas flex (RENDERING_NOTES §1 : le flex WeasyPrint
+   superposait le méta replié sur le nom). Nom insécable | adresse qui replie
+   proprement | pastille calée à droite. */
+/* QRES60 — marge haute réduite : une adresse sur DEUX lignes ne pousse plus
+   les cartes d'option dans le pied de page (leur bord bas restait rogné). */
+.c1-client{{display:table;table-layout:auto;width:182mm;margin:3.5mm 14mm 0;
+  font-size:8.5pt;color:{muted};line-height:1.3;}}
+.c1-client-nom{{display:table-cell;white-space:nowrap;vertical-align:top;
+  color:{ink};font-weight:700;padding-right:8px;}}
+.c1-client-meta{{display:table-cell;width:100%;vertical-align:top;}}
+.c1-tag-cell{{display:table-cell;white-space:nowrap;vertical-align:top;
+  padding-left:9px;}}
 .c1-dot{{color:{line};font-weight:700;}}
-.c1-tag{{margin-left:auto;background:{wash};border:1px solid {line};border-radius:20px;
-  padding:2px 10px;font-size:7pt;font-weight:600;color:{navy};letter-spacing:.3px;}}
-.c1-trust{{display:flex;align-items:center;gap:8px;padding:2.6mm 14mm 0 14mm;}}
+.c1-tag{{display:inline-block;background:{wash};border:1px solid {line};
+  border-radius:20px;padding:2px 10px;font-size:7pt;font-weight:600;
+  color:{navy};letter-spacing:.3px;}}
+.c1-trust{{display:flex;align-items:center;gap:8px;padding:2mm 14mm 0 14mm;}}
 .c1-trust-line{{flex:1 1 0;height:1px;background:{line_soft};}}
-.c1-trust-txt{{font-size:7pt;letter-spacing:2px;text-transform:uppercase;
-  font-weight:700;color:{muted_2};white-space:nowrap;}}
-.c1-trust-txt b{{color:{navy};font-weight:700;}}
+.c1-trust-txt{{font-size:7pt;letter-spacing:.12em;text-transform:uppercase;
+  font-weight:700;color:{muted_2};white-space:nowrap;word-spacing:.35em;}}
+.c1-trust-txt b{{color:{muted_2};font-weight:700;}}
 
 /* ── MONEY HOOK ────────────────────────────────────────────────────────── */
 .c1-wrap{{padding:3.5mm 14mm 0 14mm;}}
@@ -193,12 +235,19 @@ def build(ctx):
   line-height:.82;letter-spacing:-1.5px;white-space:nowrap;margin-right:20px;}}
 .c1-bigcut-n span{{font-size:22pt;vertical-align:top;}}
 .c1-bigcut-t{{font-size:11.5pt;font-weight:700;color:{navy};line-height:1.15;}}
-.c1-bigcut-c{{font-size:9.5pt;color:{muted};margin-top:6px;white-space:nowrap;}}
-.c1-bigcut-c s{{color:{muted_2};text-decoration-thickness:1.5px;}}
-.c1-bigcut-c b{{color:{navy};font-weight:700;}}
+/* QRES42 — le NOUVEAU mensuel devient le héros chiffré (serif or, 29pt) ;
+   l'ancien, barré, le surplombe en gris discret. */
+.c1-bigcut-old{{font-size:8.5pt;color:{muted};margin-top:5px;white-space:nowrap;}}
+.c1-bigcut-old s{{color:{muted_2};text-decoration-thickness:1.3px;}}
+.c1-bigcut-new{{font-family:'{f_display}','{f_serif}',serif;font-size:29pt;
+  color:{gold};line-height:1.02;margin-top:2px;letter-spacing:-0.5px;
+  white-space:nowrap;}}
+.c1-bigcut-new span{{font-size:11pt;color:{muted};font-family:'{f_sans}',sans-serif;}}
 .c1-bigcut-m{{font-size:8pt;color:{muted};margin-top:3px;white-space:nowrap;}}
 .c1-bigcut-m s{{color:{muted_2};text-decoration-thickness:1.2px;}}
-.c1-bigcut-m b{{color:{gold};font-weight:700;}}
+.c1-bigcut-m b{{color:{navy};font-weight:700;}}
+.c1-bigcut-cap{{font-size:6.8pt;color:{muted_2};margin-top:4px;}}
+.c1-bigcut-note{{font-size:6.8pt;color:{muted_2};margin-top:6px;line-height:1.3;}}
 .c1-cut{{background:{gold};color:{navy_900};font-weight:700;font-size:9.5pt;
   padding:3px 11px;border-radius:20px;letter-spacing:.2px;white-space:nowrap;}}
 .c1-cmp{{display:flex;align-items:center;gap:12px;}}
@@ -243,12 +292,12 @@ def build(ctx):
   vertical-align:middle;margin:0 3px 0 8px;}}
 /* Cap chart height (PNG is ~3.3:1) so it stays crisp & airy, never dominates the
    page — centred so the shorter image reads as intentional, not floated. */
-.c1-bill img{{height:37mm;width:auto;max-width:100%;display:block;margin:0 auto;}}
+.c1-bill img{{height:33.5mm;width:auto;max-width:100%;display:block;margin:0 auto;}}
 
 /* ── KPI CHIPS ─────────────────────────────────────────────────────────── */
 .c1-kpis{{display:flex;gap:12px;margin-top:11px;}}
 .c1-kpi{{flex:1 1 0;min-width:0;border:1px solid {line};border-left:4px solid {gold};
-  border-radius:12px;padding:11px 14px;background:#fff;}}
+  border-radius:12px;padding:9px 14px;background:#fff;}}
 .c1-kpi-v{{font-family:'{f_display}','{f_serif}',serif;font-size:17pt;color:{navy};
   line-height:1.0;}}
 .c1-kpi-v .c1-u{{font-size:9pt;color:{muted};}}
@@ -263,7 +312,7 @@ def build(ctx):
 .c1-impact-t b{{color:{green};font-weight:700;}}
 
 /* ── OPTION CARDS ──────────────────────────────────────────────────────── */
-.c1-opts{{display:flex;gap:14px;margin-top:11px;}}
+.c1-opts{{display:flex;gap:14px;margin-top:9px;}}
 .c1-opt{{flex:1 1 0;min-width:0;border:1px solid {line};border-radius:14px;
   background:#fff;padding:13px 17px 12px;position:relative;display:flex;
   flex-direction:column;}}
@@ -284,11 +333,13 @@ def build(ctx):
   background:{green_bg};color:{green};border-radius:20px;padding:3px 11px;
   font-size:8pt;font-weight:700;margin-top:8px;}}
 .c1-roi svg{{width:11px;height:11px;}}
+.c1-opt-eco{{font-size:7.8pt;color:{muted};margin-top:5px;}}
+.c1-opt-eco b{{color:{green};font-weight:700;}}
 .c1-opt-hr{{height:1px;background:{line_soft};margin:9px 0 7px;}}
-.c1-opt ul{{list-style:none;padding:8px 0 0;margin:9px 0 0;
+.c1-opt ul{{list-style:none;padding:7px 0 0;margin:7px 0 0;
   border-top:1px solid {line_soft};}}
 .c1-opt li{{display:flex;align-items:flex-start;gap:7px;font-size:8pt;
-  color:{ink};line-height:1.35;margin-bottom:4px;}}
+  color:{ink};line-height:1.32;margin-bottom:3px;}}
 .c1-chk{{width:12px;height:12px;flex-shrink:0;margin-top:1px;}}
 .c1-opt li span{{min-width:0;}}
 .c1-note{{font-size:6.5pt;color:{muted_2};font-style:italic;margin-top:auto;
@@ -299,9 +350,18 @@ def build(ctx):
 """
 
     # ── QX5 — cartes d'option (deux OU une seule, jamais fantôme) ───────────
-    def _opt_card(kicker, name, price, pkwc, roi_v, bull, reco=False, full=False):
+    # QRES43 — chaque carte porte SON économie annuelle : l'option recommandée
+    # (plus chère, payback plus long) montre enfin POURQUOI elle gagne.
+    eco_s_ann = d.get("eco_s_ann")
+    eco_a_ann = d.get("eco_a_ann")
+
+    def _opt_card(kicker, name, price, pkwc, roi_v, bull, eco=None,
+                  reco=False, full=False):
         cls = "c1-opt" + (" c1-reco" if reco else "") + (" c1-opt-full" if full else "")
         pill = ('<span class="c1-reco-pill">Recommandé</span>' if reco else "")
+        eco_html = (
+            f'<div class="c1-opt-eco">Économie estimée ≈ <b>{fmt(eco)} '
+            'MAD/an</b></div>' if eco else "")
         return (
             f'<div class="{cls}">'
             f'<div class="c1-opt-head"><div>'
@@ -310,6 +370,7 @@ def build(ctx):
             f'<div class="c1-opt-price">{fmt(price)}<span class="c1-u">&nbsp;MAD</span></div>'
             f'<div class="c1-opt-kwc">soit {pkwc} MAD/kWc · TTC</div>'
             f'<div class="c1-roi">{_roi_svg(green)}Rentabilisé en {_yrs(roi_v)} ans</div>'
+            f'{eco_html}'
             f'<ul>{bullets(bull)}</ul>'
             f'<div class="c1-note">Détail &amp; équipement en page 2</div>'
             f'</div>')
@@ -317,18 +378,20 @@ def build(ctx):
     if deux_options:
         opts_html = (
             _opt_card("Option 1", "Sans batterie", total_sans, pkwc_sans,
-                      roi_s, sans_bullets)
+                      roi_s, sans_bullets, eco=eco_s_ann)
             + _opt_card("Option 2", "Avec batterie", total_avec, pkwc_avec,
-                        roi_a, avec_bullets, reco=True))
+                        roi_a, avec_bullets, eco=eco_a_ann, reco=True))
     elif avec_ok:
         # Option unique AVEC batterie : une carte pleine largeur, pas de « Sans »
         # fabriquée (dépourvue d'onduleur).
         opts_html = _opt_card("Votre installation", "Avec batterie", total_avec,
-                              pkwc_avec, roi_a, avec_bullets, full=True)
+                              pkwc_avec, roi_a, avec_bullets, eco=eco_a_ann,
+                              full=True)
     else:
         # Option unique SANS batterie (réseau seul) : une carte pleine largeur.
         opts_html = _opt_card("Votre installation", "Sans batterie", total_sans,
-                              pkwc_sans, roi_s, sans_bullets, full=True)
+                              pkwc_sans, roi_s, sans_bullets, eco=eco_s_ann,
+                              full=True)
 
     # ── HTML ────────────────────────────────────────────────────────────────
     html = f"""{css}
@@ -343,27 +406,28 @@ def build(ctx):
         <div class="c1-ref-l">Réf. devis</div>
         <div class="c1-ref-v">{ref}</div>
         <div class="c1-date">{date}</div>
-        <div class="c1-pill-gold">Validité {validity_days} jours</div>
+        <div class="c1-pill-gold">{validity_pill}</div>
       </div>
     </div>
     <div class="c1-hero-body">
       <div class="c1-kicker c1-hero-kicker">Proposition commerciale — Installation solaire</div>
       <div class="c1-serif c1-hello">Bonjour {first_name},</div>
-      <div class="c1-sub">Voici votre proposition d'installation solaire.</div>
+      <div class="c1-sub">Votre facture d'électricité réduite d'environ {pct_cut}&nbsp;% —
+        performance garantie 30&nbsp;ans.</div>
     </div>
   </div>
 
   <!-- CLIENT LINE ──────────────────────────────────────────────────────── -->
   <div class="c1-client">
-    <b>{client_full}</b>
-    {f'<span class="c1-dot">·</span><span>{client_meta}</span>' if client_meta else ''}
-    <span class="c1-tag">{inst_type}</span>
+    <b class="c1-client-nom">{client_full}</b>
+    <span class="c1-client-meta">{client_meta}</span>
+    <span class="c1-tag-cell"><span class="c1-tag">{inst_type}</span></span>
   </div>
 
   <!-- CREDIBILITY CUE (number-free) ──────────────────────────────────────── -->
   <div class="c1-trust">
     <div class="c1-trust-line"></div>
-    <div class="c1-trust-txt"><b>Ingénieurs solaires</b> · Garantie 25 ans · Suivi temps réel</div>
+    <div class="c1-trust-txt"><b>Ingénieurs solaires</b> &middot; Performance garantie 30 ans &middot; Suivi en temps réel</div>
     <div class="c1-trust-line"></div>
   </div>
 
@@ -377,12 +441,15 @@ def build(ctx):
           <div class="c1-bigcut-n">&minus;{pct_cut}<span>%</span></div>
           <div class="c1-bigcut-x">
             <div class="c1-bigcut-t">sur votre facture<br>d'électricité</div>
-            <div class="c1-bigcut-c">≈&nbsp;<s>{fmt(annual_before)} MAD/an</s>
+            <div class="c1-bigcut-old">≈&nbsp;<s>{fmt(month_before)} MAD/mois</s>
+              aujourd'hui</div>
+            <div class="c1-bigcut-new">{fmt(month_after)}<span>&nbsp;MAD/mois</span></div>
+            <div class="c1-bigcut-m">soit <s>{fmt(annual_before)} MAD/an</s>
               &nbsp;&rarr;&nbsp;<b>≈&nbsp;{fmt(annual_after)} MAD/an</b></div>
-            <div class="c1-bigcut-m">soit ≈&nbsp;<s>{fmt(month_before)}</s>
-              &nbsp;&rarr;&nbsp;<b>{fmt(month_after)} MAD/mois</b></div>
+            {opt_caption}
           </div>
         </div>
+        {cov_gap_note}
       </div>
       <div class="c1-hook-gap"></div>
       <div class="c1-hook-right">

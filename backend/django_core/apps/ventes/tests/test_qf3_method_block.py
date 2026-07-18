@@ -89,7 +89,7 @@ class TestSavingsMethodInData(TestCase):
         self.assertIsNotNone(sm['facture_actuelle'])
         self.assertIn('Facture actuelle', sm['exemple'])
         self.assertIn('économie', sm['exemple'])
-        self.assertIn('DH/an', sm['exemple'])
+        self.assertIn('MAD/an', sm['exemple'])
         # per-tranche principle stated in one line
         self.assertIn('tranche', sm['ligne_methode'])
 

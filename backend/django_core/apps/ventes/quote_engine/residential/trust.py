@@ -33,6 +33,15 @@ def _disp(url: str) -> str:
     return url
 
 
+def _disp_short(url: str) -> str:
+    """QRES7 — display form of the SIGN link: host + first path segment only
+    (« taqinor.ma/proposition »). The tokenized tail lives in the href and the
+    QR — printing it made the CTA button overflow under the QR block."""
+    disp = _disp(url)
+    parts = disp.split("/")
+    return "/".join(parts[:2]) if len(parts) > 2 else disp
+
+
 def _qr_data_uri(url: str, dark: str) -> str:
     """Premium scannable QR (rounded navy modules + centre TAQINOR logo) as a
     PNG data-URI. Uses `qrcode[pil]` (free, BSD-licensed, no API/cost). Error
@@ -99,65 +108,46 @@ def build(ctx) -> str:
         tva_note = tva_note[3:].lstrip(" :·-").strip()
 
     l_real = links.get("realisations", site_url + "/realisations")
-    # QK5 — /avis n'existe pas sur taqinor.ma : repli sur /realisations (page
-    # réelle des réalisations clients), jamais un lien 404 sur un PDF client.
-    l_avis = links.get("avis", site_url + "/realisations")
     l_gar = links.get("garanties", site_url + "/garanties")
     l_sign = links.get("signer", site_url + "/signer")
 
-    # ── QX7e — puces de valeur : les marques d'équipement viennent des VRAIES
-    # lignes du devis (item['marque']), jamais d'une liste boilerplate. Repli
-    # « équipements certifiés IEC » quand aucune marque n'est portée par les
-    # lignes. Les figures marketing (« Pourquoi … ») sont un texte éditable par
-    # la société via doc_texts.trust_values (repli sur les puces par défaut).
-    _seen, _brands = set(), []
-    for _it in (d.get("avec_items") or []) + (d.get("sans_items") or []):
-        _m = (_it.get("marque") or "").strip()
-        if _m and _m.lower() not in _seen:
-            _seen.add(_m.lower())
-            _brands.append(_m)
-    _brand_line = (
-        "Équipements premium certifiés — " + " · ".join(_brands[:4])
-        if _brands else "Équipements premium certifiés IEC")
-    values = [
-        "Ingénieurs spécialisés en énergie solaire",
-        _brand_line,
-        "Suivi de production en temps réel 24/7",
-    ]
-    # Texte éditable par la société (doc_texts.trust_values) : liste de puces qui
-    # remplace la valeur par défaut ci-dessus quand elle est renseignée.
+    # QRES57 — la rangée de puces PAR DÉFAUT disparaît (elle répétait mot pour
+    # mot le ruban de crédibilité de la page 1) au profit de la bande fine des
+    # garanties (source unique theme.WARRANTIES — les cartes badges de la
+    # page 2 sont retirées, l'espace revient à la courbe de rentabilité). Une
+    # société qui a personnalisé doc_texts.trust_values garde SA rangée.
+    values_html = ""
     _doc_texts = d.get("doc_texts") or {}
     _tv = _doc_texts.get("trust_values")
     if isinstance(_tv, (list, tuple)) and any(str(x).strip() for x in _tv):
         values = [str(x).strip() for x in _tv if str(x).strip()]
-    values_html = "".join(
-        f'<div class="p3-val"><span class="p3-dot"></span>'
-        f'<span class="p3-val-t">{v}</span></div>'
-        for v in values
-    )
-
-    # ── Garantie badges ─────────────────────────────────────────────────────
-    badges = [
-        ("10", "ans", "Onduleur"),
-        ("12", "ans", "Panneaux (produit)"),
-        ("20", "ans", "Structure"),
-        ("30", "ans", "Performance 87,4 %"),
-    ]
-    badges_html = "".join(
-        f'<div class="p3-badge"><div class="p3-badge-n">{n}'
-        f'<span class="p3-badge-u">{u}</span></div>'
-        f'<div class="p3-badge-l">{label}</div></div>'
-        for n, u, label in badges
-    )
+        values_html = (
+            '<div class="p3-values">'
+            + "".join(
+                f'<div class="p3-val"><span class="p3-dot"></span>'
+                f'<span class="p3-val-t">{v}</span></div>'
+                for v in values)
+            + '</div>')
+    gar_html = (
+        '<div class="p3-gar"><span class="p3-gar-t">Nos garanties</span>'
+        + " &middot; ".join(
+            f'<span class="p3-gar-i"><b>{n} {u}</b> — {label}'
+            f'{(" (" + sub + ")") if label == "Performance" else ""}</span>'
+            for n, u, label, sub in theme.WARRANTIES)
+        + '</div>')
 
     # ── Trust strip — LINK out, don't dump ──────────────────────────────────
     # QK5 — le libellé « avis clients » renvoie désormais vers /realisations
     # (page réelle des réalisations clients) : on ne fabrique jamais d'avis, on
     # renvoie vers des projets vérifiables. Libellé aligné sur la destination.
+    # QRES5 — les badges de garantie vivent en page 2 (à côté de l'équipement) ;
+    # QRES8 — trois liens DISTINCTS (les deux premiers pointaient tous deux sur
+    # /realisations : une carte dupliquée sur un PDF client).
+    l_prod = links.get("produits", site_url + "/produits")
     trust_items = [
-        ("Nos réalisations", l_real),
-        ("Avis & réalisations clients", l_avis),
-        ("Garanties &amp; certifications", l_gar),
+        ("Réalisations et avis clients", l_real),
+        ("Fiches techniques produits", l_prod),
+        ("Garanties et certifications", l_gar),
     ]
     trust_html = "".join(
         f'<a class="p3-trust-item" href="{_link(url)}">'
@@ -169,8 +159,14 @@ def build(ctx) -> str:
     # ── Conditions (compact) ────────────────────────────────────────────────
     paiement = (f"{acompte}% à la commande &middot; {materiel}% à la réception "
                 f"du matériel &middot; {solde}% à la mise en service")
+    # QRES31 — échéance absolue partout où la validité s'affiche.
+    _valid_until = theme.valid_until(d.get("date"), validity_days)
+    _validite_txt = (f"{validity_days} jours — jusqu'au {_valid_until}"
+                     if _valid_until else f"{validity_days} jours")
+    cta_deadline = (f" Offre valable jusqu'au {_valid_until}."
+                    if _valid_until else "")
     conditions = [
-        ("Validité de l'offre", f"{validity_days} jours"),
+        ("Validité de l'offre", _validite_txt),
         ("Paiement", paiement),
         ("TVA", tva_note or "Selon barème en vigueur"),
         ("Délai d'installation", "7 à 14 jours ouvrés"),
@@ -187,30 +183,58 @@ def build(ctx) -> str:
         if sm_ex:
             _v += f' <b>{sm_ex}{sm_approx}</b>'
         conditions.append(("Comment nous calculons vos économies", _v))
-    # QK4 — « Nos hypothèses » : les hypothèses derrière les économies (tarif,
-    # source du barème, autoconsommation-first loi 82-21, base de production),
-    # ajoutées comme une ligne de conditions (aucune hauteur de bloc en plus,
-    # la page reste à 3 pages). Le texte vient du builder (une source).
-    hyp = d.get("hypotheses") or {}
-    hyp_items = [str(i).strip() for i in (hyp.get("items") or []) if str(i).strip()]
-    if hyp_items:
-        conditions.append(
-            (hyp.get("titre") or "Nos hypothèses",
-             " &middot; ".join(hyp_items)))
-    # QK3 — financement (indicatif) : mensualité + programme, ajouté comme ligne
-    # de conditions (aucune hauteur de bloc en plus → la page reste à 3 pages).
-    # Le bloc vient du builder (QJ12) ; jamais de prix d'achat/marge.
+    # QRES61 (fondateur, 2026-07-18) — les hypothèses de calcul quittent le
+    # PDF : elles vivent sur la proposition EN LIGNE (page /proposition —
+    # disclosure « Nos hypothèses » WJ32 + page méthodologie W359, données
+    # déjà servies par proposal-data/QK4). Le papier garde UNE clause
+    # non-contractuelle dans la bande légale, rien d'autre.
+    # QK3 / QRES14 — financement (indicatif) : mensualité + programme, rendu
+    # comme MINI-CARTE dans la colonne droite (sous « Prochaines étapes ») —
+    # la mensualité gagne en visibilité commerciale, la carte Conditions
+    # raccourcit (c'est elle qui poussait la page en débordement) et la
+    # colonne droite cesse d'être à moitié vide. Jamais de prix d'achat/marge.
     fin = d.get("financing") or {}
     fin_credit = fin.get("credit") or {}
+    fin_card_html = ""
     if fin.get("indicatif") and fin_credit.get("mensualite"):
         _mens = int(round(fin_credit["mensualite"]))
+        _mens_txt = theme.fmt(_mens)
         _duree_ans = round((fin_credit.get("duree_mois") or 0) / 12)
         _prog = fin_credit.get("programme_nom") or "crédit vert"
-        _fin_v = (
-            f"À partir de ≈ {_mens:,}".replace(",", " ")
-            + f" MAD/mois sur {_duree_ans} ans ({_prog}) — indicatif, à "
-            "confirmer avec votre banque.")
-        conditions.append(("Financement possible", _fin_v))
+        # QRES32 — la juxtaposition qui vend : quand les économies mensuelles
+        # estimées COUVRENT la mensualité, on le dit (calculé, jamais promis).
+        _deux_fin = bool(d.get("deux_options", True))
+        _avec_fin = bool(d.get("avec_ok", True))
+        _eco_ref_fin = (d.get("eco_a_ann") if (_deux_fin or _avec_fin)
+                        else d.get("eco_s_ann")) or 0
+        _eco_mois = int(round(_eco_ref_fin / 12)) if _eco_ref_fin else 0
+        # QRES45 — mini-grand-livre à 3 lignes : crédit / économies / reste en
+        # poche (la juxtaposition qui vend, chiffrée — jamais promise).
+        _ledger = ""
+        # QRES64 — contenu SANS enveloppe : la cellule <td class="p3-tdfin">
+        # porte les styles de la carte (le tableau à rowspan aligne les bas
+        # des deux colonnes, quel que soit le côté le plus haut).
+        if _eco_mois > _mens:
+            _reste = _eco_mois - _mens
+            _ledger = (
+                '<div class="p3-fin-row"><span>Crédit</span>'
+                f'<span>≈ {_mens_txt} MAD/mois</span></div>'
+                '<div class="p3-fin-row"><span>Économies estimées</span>'
+                f'<span>≈ {theme.fmt(_eco_mois)} MAD/mois</span></div>'
+                '<div class="p3-fin-row p3-fin-net"><span>Dans votre poche'
+                f'</span><span>≈ +{theme.fmt(_reste)} MAD/mois</span></div>')
+            fin_card_html = (
+                '<div class="p3-fin-k">Financement possible</div>'
+                f'{_ledger}'
+                f'<div class="p3-fin-s">sur {_duree_ans} ans ({_prog}) — '
+                'indicatif, à confirmer avec votre banque.</div>')
+        else:
+            fin_card_html = (
+                '<div class="p3-fin-k">Financement possible</div>'
+                f'<div class="p3-fin-v">≈ {_mens_txt} '
+                '<small>MAD/mois</small></div>'
+                f'<div class="p3-fin-s">sur {_duree_ans} ans ({_prog}) — '
+                'indicatif, à confirmer avec votre banque.</div>')
     # QG7 — contact du conseiller (créateur du devis) : nom + tél, ajouté comme
     # ligne de conditions (données seulement). Repli société géré côté builder.
     seller = d.get("seller") or {}
@@ -239,17 +263,53 @@ def build(ctx) -> str:
         for n, t, s in steps
     )
 
+    # QRES64 — colonnes Conditions / Étapes(+Financement) en VRAI tableau
+    # HTML : la carte Conditions (rowspan) court sur toute la hauteur de la
+    # rangée et la carte Financement partage sa ligne de base — les quatre
+    # coins des colonnes s'alignent quel que soit le côté le plus haut.
+    _cols_head = (
+        '<colgroup><col><col class="p3-cgap"><col></colgroup>'
+        '<tr class="p3-crh">'
+        '<td><div class="p3-h">Conditions</div></td><td></td>'
+        '<td><div class="p3-h">Prochaines étapes</div></td></tr>')
+    if fin_card_html:
+        cols_html = (
+            f'<table class="p3-cols p3-block" cellspacing="0">{_cols_head}'
+            f'<tr><td class="p3-tdcard" rowspan="3">{cond_html}</td><td></td>'
+            f'<td class="p3-tdcard"><div class="p3-steps">{steps_html}</div>'
+            '</td></tr>'
+            '<tr class="p3-rgap"><td></td><td></td></tr>'
+            f'<tr><td></td><td class="p3-tdfin">{fin_card_html}</td></tr>'
+            '</table>')
+    else:
+        cols_html = (
+            f'<table class="p3-cols p3-block" cellspacing="0">{_cols_head}'
+            f'<tr><td class="p3-tdcard">{cond_html}</td><td></td>'
+            f'<td class="p3-tdcard"><div class="p3-steps">{steps_html}</div>'
+            '</td></tr></table>')
+
     # QX5 — « Option choisie » : deux cases seulement pour un vrai devis à deux
     # options ; mono-option → on nomme l'unique option (aucune case fantôme).
     _deux = bool(d.get("deux_options", True))
     _avec_ok = bool(d.get("avec_ok", True))
     if _deux:
-        accord_opt_html = (
-            'Option choisie :'
-            '<span class="p3-box"></span> Sans batterie'
-            '<span class="p3-box"></span> Avec batterie')
+        # QRES33/44 — le client coche une option CHIFFRÉE avant de signer
+        # (l'ancienne rangée de cases sans prix laissait signer un accord
+        # ambigu à 22 000 MAD d'écart). Bandeau pleine largeur sous l'en-tête,
+        # pastille « recommandé » (même langage visuel que la page 1).
+        _ts, _ta = d.get("total_sans"), d.get("total_avec")
+        accord_opt_html = ("Offre valable jusqu'au " + _valid_until
+                           if _valid_until else "")
+        accord_pick_html = (
+            '<div class="p3-accord-pick">Cochez votre option :'
+            f'<span class="p3-box"></span> Sans batterie — '
+            f'<b>{theme.fmt(_ts)} MAD TTC</b>'
+            f'<span class="p3-box"></span> Avec batterie — '
+            f'<b>{theme.fmt(_ta)} MAD TTC</b>'
+            '<span class="p3-reco-mini">recommandé</span></div>')
     else:
         accord_opt_html = ("Avec batterie" if _avec_ok else "Sans batterie")
+        accord_pick_html = ""
 
     # Scan-to-sign QR (degrades to the text link if qrcode is unavailable).
     qr_uri = _qr_data_uri(l_sign, C["navy"])
@@ -287,7 +347,12 @@ def build(ctx) -> str:
             '<b>TAQINOR Solutions SARLAU</b> au capital de 100 000,00 MAD'
             ' &middot; RC 691213 — Tribunal de Commerce de Casablanca'
             ' &middot; ICE 003799642000067 &middot; Gérant : M. Reda Kasri'
-            ' &middot; contact@taqinor.com &middot; +212 6 61 85 04 10'
+            # QRES10 — contact lu depuis l'identité RÉSOLUE (profil société →
+            # repli littéraux fondateur) : la bande légale affiche toujours LE
+            # MÊME email/téléphone que le pied de page (le PDF réel imprimait
+            # « contact@taqinor.ma » en pied et « contact@taqinor.com » ici).
+            f' &middot; {ident.get("email") or "contact@taqinor.com"}'
+            f' &middot; {ident.get("phone") or "+212 6 61 85 04 10"}'
             ' &middot; taqinor.ma'
         )
 
@@ -296,41 +361,37 @@ def build(ctx) -> str:
 /* Page-3 vertical rhythm — the wrap reserves a generous bottom band so the
    composition breathes evenly top-to-bottom and the legal fine print lands as
    an intentional margin ~8mm above the fixed 13mm footer (no awkward void). */
-.p3-wrap {{ padding:13mm 14mm 0 14mm; }}
+.p3-wrap {{ padding:11mm 14mm 0 14mm; }}
 .p3-kicker {{ font-size:8.5pt; letter-spacing:.24em; text-transform:uppercase;
   color:{C['gold']}; font-weight:700; }}
 .p3-title {{ font-family:{ctx['fonts']['serif']}; font-weight:700;
-  font-size:26pt; color:{C['navy']}; line-height:1.04; margin:4px 0 0;
+  font-size:23pt; color:{C['navy']}; line-height:1.04; margin:3px 0 0;
   letter-spacing:-.3px; }}
 
-/* Value points row */
-.p3-values {{ display:flex; gap:9px; margin:12px 0 14px; }}
+/* QRES57 — bande fine des garanties (remplace les cartes badges de la p.2) */
+.p3-gar {{ margin:10px 0 11px; background:{C['wash']};
+  border:1px solid {C['line_soft']}; border-left:4px solid {C['gold']};
+  border-radius:10px; padding:8px 14px; font-size:8.4pt; color:{C['ink']}; }}
+.p3-gar-t {{ font-size:7pt; letter-spacing:.14em; text-transform:uppercase;
+  color:{C['muted_2']}; font-weight:700; margin-right:10px; }}
+.p3-gar-i b {{ color:{C['navy']}; }}
+
+/* Value points row (uniquement si doc_texts.trust_values est personnalisé) */
+.p3-values {{ display:flex; gap:9px; margin:10px 0 11px; }}
 .p3-val {{ flex:1; display:flex; align-items:flex-start; gap:7px;
   background:{C['wash']}; border:1px solid {C['line_soft']}; border-radius:10px;
-  padding:11px 12px; }}
+  padding:8px 10px; }}
 .p3-dot {{ width:7px; height:7px; min-width:7px; border-radius:50%;
   background:{C['gold']}; margin-top:3px; }}
 .p3-val-t {{ font-size:8.5pt; color:{C['ink']}; font-weight:500; line-height:1.3; }}
 
 /* Section heading */
 .p3-h {{ font-family:{ctx['fonts']['serif']}; font-weight:700; font-size:12pt;
-  color:{C['navy']}; margin:0 0 8px; }}
-.p3-block {{ margin-bottom:14px; }}
-
-/* Garantie badges */
-.p3-badges {{ display:flex; gap:9px; }}
-.p3-badge {{ flex:1; text-align:center; border:1px solid {C['line']};
-  border-top:3px solid {C['gold']}; border-radius:11px; padding:14px 4px 12px;
-  background:{C['paper']}; }}
-.p3-badge-n {{ font-family:{ctx['fonts']['display']}; font-size:26pt;
-  color:{C['navy']}; line-height:1; }}
-.p3-badge-u {{ font-family:{ctx['fonts']['sans']}; font-size:8pt;
-  color:{C['gold']}; font-weight:700; margin-left:3px; }}
-.p3-badge-l {{ font-size:7.6pt; color:{C['muted']}; font-weight:600;
-  margin-top:6px; letter-spacing:.02em; }}
+  color:{C['navy']}; margin:0 0 6px; }}
+.p3-block {{ margin-bottom:11px; }}
 
 /* Trust strip (navy band, links out) */
-.p3-trust {{ background:{C['navy']}; border-radius:12px; padding:15px 16px;
+.p3-trust {{ background:{C['navy']}; border-radius:12px; padding:9px 16px;
   display:flex; gap:12px; }}
 .p3-trust-item {{ flex:1; text-decoration:none; display:block;
   border-right:1px solid rgba(255,255,255,.14); padding-right:12px; }}
@@ -341,11 +402,25 @@ def build(ctx) -> str:
   font-weight:600; }}
 
 /* Conditions + steps side by side */
-.p3-cols {{ display:flex; gap:12px; align-items:flex-start; }}
-.p3-col {{ flex:1; }}
+/* QRES64 — colonnes Conditions / Étapes+Financement en VRAI tableau :
+   hauteurs égales par construction, carte Conditions en rowspan sur toute
+   la rangée, carte Financement ancrée sur la MÊME ligne de base — plus
+   jamais de bas de colonnes en escalier (défaut relevé par le fondateur). */
+.p3-cols {{ width:100%; border-collapse:separate; border-spacing:0;
+  table-layout:fixed; }}
+.p3-cgap {{ width:12px; }}
+.p3-crh td {{ padding:0; }}
+.p3-tdcard {{ border:1px solid {C['line']}; border-radius:11px;
+  background:{C['paper']}; padding:12px 14px; vertical-align:top; }}
+.p3-rgap td {{ height:9px; }}
+.p3-tdfin {{ border:1px solid {C['gold']}; background:#FFFCF5;
+  border-radius:11px; padding:9px 14px 10px; vertical-align:top; }}
 .p3-card {{ border:1px solid {C['line']}; border-radius:11px;
   background:{C['paper']}; padding:12px 14px; }}
-.p3-cond-row {{ padding:7px 0; border-bottom:1px dashed {C['line_soft']}; }}
+/* QRES26 — profondeur matière commune aux blocs de la page 3. */
+.p3-card, .p3-tdcard, .p3-tdfin, .p3-accord, .p3-cta, .p3-val {{
+  box-shadow:0 1px 2px rgba(26,43,74,.04),0 5px 14px rgba(26,43,74,.05); }}
+.p3-cond-row {{ padding:4.6px 0; border-bottom:1px dashed {C['line_soft']}; }}
 .p3-cond-row:last-child {{ border-bottom:none; padding-bottom:1px; }}
 .p3-cond-row:first-child {{ padding-top:1px; }}
 .p3-cond-k {{ display:block; font-size:7pt; letter-spacing:.1em;
@@ -358,7 +433,7 @@ def build(ctx) -> str:
    rows flex-divide the card's full height, so the two cards are equal height
    with the steps evenly filling — no floating dots, no void, bottoms aligned. */
 .p3-steps {{ display:block; }}
-.p3-step {{ display:flex; align-items:center; padding:15px 0;
+.p3-step {{ display:flex; align-items:center; padding:10.5px 0;
   border-bottom:1px dashed {C['line_soft']}; }}
 .p3-step:first-child {{ padding-top:2px; }}
 .p3-step:last-child {{ border-bottom:none; padding-bottom:2px; }}
@@ -371,49 +446,83 @@ def build(ctx) -> str:
 
 /* Bon pour accord */
 .p3-accord {{ border:1.5px solid {C['navy']}; border-radius:13px;
-  margin-bottom:13px; overflow:hidden; }}
-.p3-accord-hd {{ background:{C['navy']}; color:#fff; padding:11px 16px;
+  margin-bottom:10px; overflow:hidden; }}
+.p3-accord-hd {{ background:{C['navy']}; color:#fff; padding:9px 16px;
   display:flex; align-items:center; justify-content:space-between; }}
 .p3-accord-ttl {{ font-family:{ctx['fonts']['serif']}; font-weight:700;
   font-size:11.5pt; letter-spacing:.02em; }}
 .p3-accord-opt {{ font-size:8.2pt; color:#dbe3f0; }}
 .p3-box {{ display:inline-block; width:9px; height:9px; border:1.4px solid #fff;
   border-radius:2px; margin:0 4px 0 10px; vertical-align:-1px; }}
+/* QRES44 — bandeau de choix d'option CHIFFRÉ sous l'en-tête d'accord */
+.p3-accord-pick {{ padding:7px 16px; background:{C['wash']};
+  border-bottom:1px solid {C['line']}; font-size:8.1pt; color:{C['ink']};
+  white-space:nowrap; }}
+.p3-accord-pick b {{ color:{C['navy']}; }}
+.p3-accord-pick .p3-box {{ width:12px; height:12px; border:1.4px solid
+  {C['navy']}; vertical-align:-2px; margin:0 5px 0 11px; }}
 .p3-accord-bd {{ display:flex; }}
-.p3-sig {{ flex:1; padding:13px 18px 15px; }}
+.p3-sig {{ flex:1; padding:10px 18px 11px; }}
 .p3-sig:first-child {{ border-right:1px dashed {C['line']}; }}
 .p3-sig-who {{ font-size:8.2pt; color:{C['navy']}; font-weight:700;
   text-transform:uppercase; letter-spacing:.06em; }}
 .p3-sig-name {{ font-size:9.2pt; color:{C['ink']}; font-weight:700;
   margin-top:2px; }}
-.p3-sig-hint {{ font-size:7.4pt; color:{C['muted']}; margin-top:3px; }}
-.p3-sig-line {{ border-bottom:1px solid {C['line']}; height:34px; margin-top:8px; }}
+.p3-sig-hint {{ font-size:7.4pt; color:{C['muted']}; margin-top:5px; }}
+/* QRES11 — vraie ZONE de signature (style des propositions industrielle /
+   hôtelière que le fondateur valide) : un cadre pointillé généreux où signer,
+   plus une simple ligne fine. */
+.p3-sig-zone {{ border:1.5px dashed {C['line']}; border-radius:8px;
+  height:12mm; margin-top:5px; background:{C['wash']}; }}
 
-/* CTA — gold close band with scan-to-sign QR */
-.p3-cta {{ background:{C['gold']}; border-radius:12px;
-  padding:15px 20px; display:flex; align-items:center; gap:18px;
+/* QRES34 — CTA inversé : bande NAVY, bouton OR (l'unique moment plein-or de
+   la page → il devient l'endroit où l'œil atterrit pour agir). */
+.p3-cta {{ background:{C['navy']}; border-radius:12px;
+  padding:9px 20px; display:flex; align-items:center; gap:18px;
   justify-content:space-between; }}
 .p3-cta-l {{ flex:1 1 auto; min-width:0; }}
-.p3-cta-t {{ color:{C['navy']}; font-size:11.5pt; font-weight:700;
+.p3-cta-t {{ color:#fff; font-size:11.5pt; font-weight:700;
   letter-spacing:-.1px; }}
-.p3-cta-s {{ color:{C['navy']}; font-size:8pt; opacity:.78; margin-top:2px; }}
-.p3-cta-btn {{ display:inline-block; margin-top:11px; background:{C['navy']};
-  color:#fff; font-size:9.5pt; font-weight:700; padding:9px 17px;
+.p3-cta-s {{ color:#c9d3e4; font-size:8pt; margin-top:2px; }}
+.p3-cta-btn {{ display:inline-block; margin-top:8px; background:{C['gold']};
+  color:{C['navy']}; font-size:9.5pt; font-weight:700; padding:8px 17px;
   border-radius:9px; white-space:nowrap; text-decoration:none; }}
-.p3-cta-btn span {{ color:{C['gold']}; }}
+.p3-cta-btn span {{ color:{C['navy']}; }}
 .p3-cta-qr {{ flex:0 0 auto; display:flex; flex-direction:column;
   align-items:center; padding-left:18px;
-  border-left:1.5px solid rgba(26,43,74,.22); }}
-.p3-cta-qr img {{ flex:0 0 auto; width:20mm; height:20mm; display:block;
-  background:#fff; border-radius:9px; padding:5px; margin:0 0 6px 0; }}
+  border-left:1.5px solid rgba(255,255,255,.22); }}
+.p3-cta-qr img {{ flex:0 0 auto; width:17mm; height:17mm; display:block;
+  background:#fff; border-radius:9px; padding:4px; margin:0 0 4px 0; }}
 .p3-cta-qr-t {{ flex:0 0 auto; font-size:7.8pt; font-weight:700;
-  color:{C['navy']}; line-height:1.25; letter-spacing:.01em;
+  color:#fff; line-height:1.25; letter-spacing:.01em;
   text-align:center; white-space:nowrap; }}
+.p3-reco-mini {{ display:inline-block; margin-left:6px; background:{C['gold']};
+  color:{C['navy']}; border-radius:999px; padding:1px 7px; font-size:6.6pt;
+  font-weight:700; vertical-align:1px; }}
+
+/* QRES14 — mini-carte financement (colonne droite, sous les étapes) */
+.p3-fincard {{ margin-top:9px; border:1px solid {C['gold']};
+  background:#FFFCF5; border-radius:11px; padding:9px 14px 10px; }}
+.p3-fin-k {{ font-size:7pt; letter-spacing:.1em; text-transform:uppercase;
+  color:{C['gold_soft']}; font-weight:700; margin-bottom:2px; }}
+.p3-fin-v {{ font-family:{ctx['fonts']['display']}; font-size:13.5pt;
+  color:{C['navy']}; line-height:1.1; }}
+.p3-fin-v small {{ font-family:{ctx['fonts']['sans']}; font-size:8pt;
+  color:{C['muted']}; font-weight:600; }}
+.p3-fin-s {{ font-size:7.2pt; color:{C['muted']}; margin-top:3px;
+  line-height:1.35; }}
+/* QRES45 — grand-livre financement */
+.p3-fin-row {{ display:flex; justify-content:space-between; font-size:8.2pt;
+  color:{C['ink']}; padding:2.2px 0; }}
+.p3-fin-row span:last-child {{ font-weight:700; color:{C['navy']}; }}
+.p3-fin-net {{ border-top:1px solid {C['gold']}; margin-top:2px;
+  padding-top:3.5px; }}
+.p3-fin-net span {{ color:{C['gold_soft']} !important; font-weight:700; }}
 
 /* Legal identifier band — refined fine print, intentional margin above footer */
-.p3-legal {{ margin-top:13px; padding-top:8px; border-top:1px solid {C['line']};
-  font-size:6.7pt; color:{C['muted_2']}; text-align:center; line-height:1.6;
-  letter-spacing:.015em; }}
+.p3-legal {{ margin-top:8px; margin-bottom:3mm; padding-top:6px;
+  border-top:1px solid {C['line']}; font-size:6.7pt; color:{C['muted_2']};
+  text-align:center; line-height:1.55; letter-spacing:.015em; }}
 .p3-legal b {{ color:{C['navy']}; font-weight:700; }}
 </style>
 
@@ -421,59 +530,51 @@ def build(ctx) -> str:
   <div class="p3-kicker">Confiance &amp; Engagement</div>
   <div class="p3-title">Pourquoi {brand}</div>
 
-  <div class="p3-values">{values_html}</div>
-
-  <div class="p3-block">
-    <div class="p3-h">Nos garanties</div>
-    <div class="p3-badges">{badges_html}</div>
-  </div>
+  {values_html}
+  {gar_html}
 
   <div class="p3-block">
     <div class="p3-h">La preuve, en ligne</div>
     <div class="p3-trust">{trust_html}</div>
   </div>
 
-  <div class="p3-cols p3-block">
-    <div class="p3-col">
-      <div class="p3-h">Conditions</div>
-      <div class="p3-card">{cond_html}</div>
-    </div>
-    <div class="p3-col">
-      <div class="p3-h">Prochaines étapes</div>
-      <div class="p3-card"><div class="p3-steps">{steps_html}</div></div>
-    </div>
-  </div>
+  {cols_html}
 
+  <div class="qj" data-w="40"></div>
   <div class="p3-accord">
     <div class="p3-accord-hd">
       <div class="p3-accord-ttl">Bon pour accord</div>
       <div class="p3-accord-opt">{accord_opt_html}</div>
     </div>
+    {accord_pick_html}
     <div class="p3-accord-bd">
       <div class="p3-sig">
-        <div class="p3-sig-who">Le client</div>
+        <div class="p3-sig-who">Bon pour accord — le client</div>
         <div class="p3-sig-name">{client_full}</div>
+        <div class="p3-sig-zone"></div>
         <div class="p3-sig-hint">Nom, date, mention « Bon pour accord » &amp; signature</div>
-        <div class="p3-sig-line"></div>
       </div>
       <div class="p3-sig">
-        <div class="p3-sig-who">{brand}</div>
-        <div class="p3-sig-name">Cachet &amp; signature</div>
+        <div class="p3-sig-who">Pour {brand}</div>
+        <div class="p3-sig-name">Cachet et signature</div>
+        <div class="p3-sig-zone"></div>
         <div class="p3-sig-hint">Le devis fait foi dès réception de l'acompte</div>
-        <div class="p3-sig-line"></div>
       </div>
     </div>
   </div>
 
+  <div class="qj" data-w="35"></div>
   <div class="p3-cta">
     <div class="p3-cta-l">
       <div class="p3-cta-t">Prêt à passer au solaire ?</div>
-      <div class="p3-cta-s">Validez votre devis en quelques clics, sans vous déplacer.</div>
-      <a class="p3-cta-btn" href="{_link(l_sign)}">Signez en ligne <span>&rarr;</span> {_disp(l_sign)}</a>
+      <div class="p3-cta-s">Validez votre devis en quelques clics, sans vous déplacer.{cta_deadline}</div>
+      <a class="p3-cta-btn" href="{_link(l_sign)}">Signez en ligne <span>&rarr;</span> {_disp_short(l_sign)}</a>
     </div>
     {qr_html}
   </div>
 
-  <div class="p3-legal">{legal}</div>
+  <div class="qj" data-w="25"></div>
+  <div class="p3-legal">{legal} &middot; Estimations non contractuelles —
+    hypothèses de calcul détaillées sur votre proposition en ligne.</div>
 </div>
 """

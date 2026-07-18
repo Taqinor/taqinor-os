@@ -68,6 +68,11 @@ UTILITY_TABLES = {
 # Sans batterie : résidentiel marocain typique (pas d'injection valorisée)
 AUTOCONSO_SANS = 0.60   # estimation — à affiner avec une étude de consommation
 AUTOCONSO_AVEC = 0.85   # avec batterie de stockage — idem
+# QRES54 (fondateur, 2026-07-18) — pertes système : la production BRUTE
+# (kWc × productible) est réduite de 14 % (ombrage, température, câblage,
+# onduleur, salissure) AVANT tout calcul d'économies — le simulateur du
+# fondateur raisonne sur cette production NETTE.
+PRODUCTION_DERATE = 0.86
 
 # Prix kWh ONEE de référence (FLAT) — utilisé quand AUCUNE donnée de conso n'est
 # disponible. Valeur « raisonnable » de milieu de gamme ONEE ; le résultat est
@@ -334,7 +339,12 @@ def two_bills_savings(
 # Documentées et rendues sur le PDF/la proposition ; jamais un chiffre inventé.
 CASHFLOW_YEARS = 25
 PANEL_DEGRADATION = 0.005        # 0,5 %/an — perte de production annuelle
-TARIFF_ESCALATION = 0.02         # +2 %/an — hypothèse PRUDENTE d'inflation ONEE
+# QRES54 (fondateur, 2026-07-18) — AUCUNE hausse tarifaire supposée : la
+# projection est à tarif constant (la légende du graphe le dit — le modèle
+# doit le FAIRE ; l'ancien +2 %/an la contredisait). Seule la dégradation
+# panneau (0,5 %/an) érode les économies. Toute hausse réelle du tarif ne
+# peut qu'améliorer le résultat.
+TARIFF_ESCALATION = 0.0
 BATTERY_ROUNDTRIP = 0.90         # rendement aller-retour batterie (option 2)
 INVERTER_REPLACE_YEAR = 12       # remplacement onduleur (année) — optionnel
 INVERTER_REPLACE_FRACTION = 0.08  # coût ≈ 8 % de l'investissement, à l'année ci-dessus
@@ -403,10 +413,21 @@ def compute_cashflow_payback(
     }
 
 
+def _fr_pct(v) -> str:
+    """0.5 -> '0,5' ; 2.0 -> '2' (French decimal comma, no trailing zero)."""
+    s = f"{float(v):g}"
+    return s.replace(".", ",")
+
+
 def cashflow_assumptions() -> dict:
     """QX39 — hypothèses documentées du cashflow, rendues sur le PDF/la
     proposition (autoconsommation d'abord ; rachat BT surplus toujours non
-    publié ; plafond d'injection 20 % pré-intégré via l'autoconso)."""
+    publié ; plafond d'injection 20 % pré-intégré via l'autoconso).
+
+    QRES1 — chaque idée tient en UNE note (la loi 82-21 et le plafond
+    d'injection fusionnés ; plus de « performance garantie 25 ans » redondant
+    avec les garanties produit) et les pourcentages s'écrivent à la française
+    (« 0,5 %/an », jamais « 0.5 »)."""
     return {
         "years": CASHFLOW_YEARS,
         "degradation_pct": round(PANEL_DEGRADATION * 100, 2),
@@ -414,13 +435,13 @@ def cashflow_assumptions() -> dict:
         "battery_roundtrip_pct": round(BATTERY_ROUNDTRIP * 100),
         "inverter_replace_year": INVERTER_REPLACE_YEAR,
         "notes": [
-            "Autoconsommation d'abord (loi 82-21) : seuls les kWh autoconsommés "
-            "sont valorisés ; le surplus injecté n'est pas rémunéré (tarif de "
-            "rachat BT résidentiel toujours non publié).",
-            "Plafond d'injection 20 % pré-intégré dans les taux d'autoconsommation.",
-            f"Dégradation panneau {round(PANEL_DEGRADATION * 100, 2)} %/an ; "
-            f"hypothèse d'escalade du tarif électrique {round(TARIFF_ESCALATION * 100, 1)} %/an "
-            "(prudente) ; performance garantie 25 ans.",
+            "Loi 82-21 : seuls les kWh autoconsommés réduisent la facture — "
+            "le surplus injecté n'est pas rémunéré (plafond d'injection 20 % "
+            "intégré).",
+            f"Dégradation panneau {_fr_pct(round(PANEL_DEGRADATION * 100, 2))} "
+            "%/an intégrée ; aucune hausse du tarif électrique supposée — "
+            "projection à tarif constant, toute hausse réelle améliore votre "
+            "résultat.",
         ],
     }
 
@@ -471,9 +492,13 @@ def calculate_savings_roi(
     """
     # DC2 — productible : repère société (CompanyProfile.productible_kwh_kwc)
     # quand fourni, sinon défaut historique 1240 (byte-identique).
+    # QRES54 — pertes système de 14 % déduites de la production brute
+    # (PRODUCTION_DERATE) : toute la chaîne (économies, factures par tranches,
+    # couverture, cashflow) raisonne sur la production NETTE.
     prod_factor = float(productible) if productible and productible > 0 \
         else _DEFAULT_PRODUCTIBLE
-    production_annuelle = round(puissance_kwc * prod_factor)
+    production_annuelle = round(
+        puissance_kwc * prod_factor * PRODUCTION_DERATE)
 
     # Tariff resolution
     if tarif_kwh_override is not None and tarif_kwh_override > 0:
