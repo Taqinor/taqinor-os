@@ -1071,7 +1071,15 @@ export default function LeadForm({
       // p-0 : .modal-header/.modal-body/.modal-footer portent déjà chacun
       // leur propre padding (comme avant ResponsiveDialog) — sans ce reset,
       // le p-5 par défaut de DialogContent doublerait la marge visuelle.
-      className="sm:max-w-5xl p-0 overflow-hidden gap-0"
+      // LW1(b) — `flex flex-col` : DialogContent est par défaut un GRID dont
+      // les rangées implicites (auto) ne rétrécissent JAMAIS sous leur
+      // contenu, même avec min-h-0/overflow-hidden sur l'enfant — vérifié
+      // empiriquement (repro Playwright) : en grid le corps reste
+      // inscrollable et le footer clippé. En colonne flex, le <form> borné
+      // (classe LW1) donne un .modal-body qui scrolle et un footer visible.
+      // tailwind-merge garde le DERNIER utilitaire display → `flex` remplace
+      // `grid` ici ; la variante Sheet mobile est déjà flex-col (sans effet).
+      className="sm:max-w-5xl p-0 overflow-hidden gap-0 flex flex-col"
       showClose={false}
     >
       <div className="modal-header">

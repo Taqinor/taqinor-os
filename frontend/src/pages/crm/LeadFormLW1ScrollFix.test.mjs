@@ -24,6 +24,13 @@ test('LW1 : le <form> porte les classes qui le bornent en hauteur (flex parent E
   )
 })
 
+test('LW1(b) : le shell ResponsiveDialog passe en colonne flex (un grid aux rangées auto ne rétrécit JAMAIS son contenu — vérifié par repro Playwright)', () => {
+  assert.match(
+    FORM_SRC,
+    /className="sm:max-w-5xl p-0 overflow-hidden gap-0 flex flex-col"/,
+  )
+})
+
 test('LW1 : la règle `.modal > form` d\'index.css reste intacte (portée par UsersManagement, VX89)', () => {
   assert.match(CSS_SRC, /\.modal > form \{/)
   // Elle garde son couple flex:1 + min-height:0 + overflow:hidden — la même

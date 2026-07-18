@@ -30,6 +30,9 @@ const LEAD_B = {
 vi.mock('react-router-dom', async (orig) => ({
   ...(await orig()),
   useNavigate: () => vi.fn(),
+  // Le lead de CE test porte des devis -> RelationCounters rend un <Link> :
+  // hors Router, le vrai Link jette (basename null). Stub minimal suffisant.
+  Link: ({ to: _to, children, ...p }) => <a {...p}>{children}</a>,
 }))
 
 vi.mock('../../api/axios', () => ({
