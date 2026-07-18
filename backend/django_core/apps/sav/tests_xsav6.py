@@ -117,3 +117,30 @@ class XSAV6PreAlertEscalationTest(TestCase):
         sla = SavSlaSettings.get(other)
         self.assertEqual(sla.sla_warning_days, 0)
         self.assertFalse(sla.escalade_activee)
+
+    # ── WIR30 — beat quotidien (tâche Celery jamais planifiée jusqu'ici) ────
+
+    def test_task_registered_in_beat_schedule_and_routes(self):
+        from django.conf import settings
+        from erp_agentique.celery import app
+        task_names = {e['task'] for e in app.conf.beat_schedule.values()}
+        self.assertIn(
+            'sav.scan_sla_pre_alerts_and_escalations_quotidien', task_names)
+        self.assertEqual(
+            settings.CELERY_TASK_ROUTES[
+                'sav.scan_sla_pre_alerts_and_escalations_quotidien']['queue'],
+            'scheduled')
+
+    def test_task_wrapper_delegates_to_scan(self):
+        from apps.sav.tasks import (
+            scan_sla_pre_alerts_and_escalations_quotidien,
+        )
+        sla = SavSlaSettings.get(self.company)
+        sla.sla_warning_days = 2
+        sla.save(update_fields=['sla_warning_days'])
+        ticket = self._ticket(date.today() + timedelta(days=1))
+
+        result = scan_sla_pre_alerts_and_escalations_quotidien()
+        self.assertEqual(result['pre_alerts'], 1)
+        ticket.refresh_from_db()
+        self.assertTrue(ticket.sla_pre_alert_notifiee)
