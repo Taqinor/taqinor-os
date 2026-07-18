@@ -905,40 +905,26 @@ class CompanyViewSet(viewsets.ModelViewSet):
                            "démonstration."},
                 status=status.HTTP_403_FORBIDDEN)
 
-        company_nom = company.nom
+        slug = company.slug
         # Le reset purge la société démo ET ses utilisateurs — dont l'admin
-        # agissant (``request.user``). On efface l'acteur d'audit du thread-local
-        # AVANT la purge : sinon les signaux CRUD déclenchés pendant le reset
-        # écriraient un journal d'audit avec une FK ``acteur`` vers un
-        # utilisateur qui vient d'être supprimé → IntegrityError → 500. Le
-        # middleware d'audit rappellera ``end_request()`` en fin de requête.
+        # agissant (``request.user``) et sa société. Après la purge,
+        # ``request.user`` est un objet FANTÔME (PK supprimée) : tout code du
+        # cycle de requête qui lit ``request.user.company`` (ex. le middleware
+        # d'observabilité côté réponse : ``getattr(user, 'company', None)`` — qui
+        # NE rattrape PAS ``Company.DoesNotExist``) lèverait → 500.
+        #   1) On efface l'acteur d'audit AVANT la purge : sinon les signaux CRUD
+        #      déclenchés pendant le reset écriraient un journal avec une FK
+        #      acteur supprimée.
+        #   2) On repasse ``request.user`` en ANONYME APRÈS : le reste de la pile
+        #      (middlewares de réponse) ne touche alors jamais l'utilisateur
+        #      supprimé. Pas de notification in-app : sa cible n'existe plus.
         from apps.audit import recorder
-        from core.tenant_context import clear_current_company
+        from django.contrib.auth.models import AnonymousUser
         recorder.end_request()
-        clear_current_company()
-        _run_demo_reset(company.slug)
-
-        # Notification in-app de confirmation (best-effort, ne bloque jamais).
-        # Le reset peut avoir supprimé l'utilisateur agissant ET la société
-        # (l'admin démo appartient à la société démo re-seedée) : la création de
-        # notification échouerait alors sur une FK supprimée. On l'isole dans un
-        # SAVEPOINT (transaction.atomic) pour que cet échec best-effort ne
-        # « poisonne » jamais la transaction de la requête (sinon 500 au commit).
-        try:
-            from django.db import transaction
-            from apps.notifications.services import notify
-            from apps.notifications.models import EventType
-            with transaction.atomic():
-                notify(
-                    request.user, EventType.SECURITY_CHANGE,
-                    'Données de démonstration réinitialisées',
-                    body=f'La société « {company_nom} » a été réinitialisée '
-                         'avec un nouveau jeu de données de démonstration.',
-                    company=company)
-        except Exception:
-            pass
+        _run_demo_reset(slug)
+        request.user = AnonymousUser()
         return Response({'detail': 'Données de démonstration réinitialisées.',
-                         'slug': company.slug})
+                         'slug': slug})
 
 
 # ── Double authentification (2FA TOTP) — opt-in par utilisateur (N96) ──────
