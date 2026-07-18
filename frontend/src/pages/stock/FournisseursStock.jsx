@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSelector } from 'react-redux'
+import { Link } from 'react-router-dom'
 import { useHasPermission, useIsAdmin, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
-import { Plus, Pencil, Trash2, Package, ShoppingCart, BarChart3, Upload } from 'lucide-react'
+import { Plus, Pencil, Trash2, Package, ShoppingCart, BarChart3, Upload, LayoutGrid } from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import { formatMAD } from '../../lib/format'
 import ExcelImport from '../../components/ExcelImport'
@@ -329,9 +330,17 @@ export default function FournisseursStock() {
       accessor: (f) => f.nb_produits ?? 0 },
     { id: 'nb_bons_commande', header: 'BCF', align: 'right', width: 80, searchable: false,
       accessor: (f) => f.nb_bons_commande ?? 0 },
-    { id: 'actions', header: '', width: 140, searchable: false, sortable: false,
+    { id: 'actions', header: '', width: 180, searchable: false, sortable: false,
       cell: (_v, f) => (
         <div className="flex items-center justify-end gap-1">
+          {/* XPUR25/WIR27 — fiche 360 (BCF/factures/retours/conformité/
+              accords de prix) — jusqu'ici construite mais routée nulle part. */}
+          <IconButton asChild size="md" variant="ghost" label="Fiche 360"
+                      onClick={(e) => e.stopPropagation()}>
+            <Link to={`/stock/fournisseurs/${f.id}/360`}>
+              <LayoutGrid className="size-4" aria-hidden="true" />
+            </Link>
+          </IconButton>
           {isAdmin && (
             <IconButton size="md" variant="ghost" label="Voir la performance"
                         onClick={(e) => { e.stopPropagation(); setScorecard(f) }}>

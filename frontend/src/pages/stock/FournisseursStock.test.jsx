@@ -12,6 +12,8 @@ import authReducer from '../../features/auth/store/authSlice'
    fiche (jusqu'ici seul un accès direct à la base pouvait les changer, alors
    que le blocage BCF/paiement est déjà appliqué et testé côté serveur —
    apps/stock/services.py:check_fournisseur_statut_commande/paiement).
+   WIR27 — lien « Fiche 360 » (XPUR25) vers la page jusqu'ici construite mais
+   routée nulle part.
    (ResizeObserver/hasPointerCapture/scrollIntoView requis par Radix Select
    sont déjà polyfillés globalement — src/test/setup.js — aucun stub local ici.)
    ========================================================================== */
@@ -59,13 +61,24 @@ function renderPage(store = makeStore()) {
   )
 }
 
-describe('FournisseursStock — statut de blocage (WIR26)', () => {
+describe('FournisseursStock — statut de blocage (WIR26) + fiche 360 (WIR27)', () => {
   it('affiche le statut de blocage de chaque fournisseur dans la liste', async () => {
     renderPage()
     const grid = await screen.findByRole('grid', { name: 'Fournisseurs' })
 
     expect(within(grid).getByText('Actif SARL')).toBeInTheDocument()
     expect(within(grid).getByText('Bloqué (commandes)')).toBeInTheDocument()
+  })
+
+  it('le lien « Fiche 360 » pointe vers /stock/fournisseurs/<id>/360 pour chaque ligne', async () => {
+    renderPage()
+    const grid = await screen.findByRole('grid', { name: 'Fournisseurs' })
+
+    const links = within(grid).getAllByRole('link', { name: 'Fiche 360' })
+    expect(links).toHaveLength(2)
+    expect(links.map((a) => a.getAttribute('href')).sort()).toEqual([
+      '/stock/fournisseurs/1/360', '/stock/fournisseurs/2/360',
+    ])
   })
 
   it('éditer le fournisseur bloqué pré-remplit statut + motif_blocage', async () => {
