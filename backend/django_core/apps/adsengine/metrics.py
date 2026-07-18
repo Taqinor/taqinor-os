@@ -25,7 +25,7 @@ import datetime
 from decimal import Decimal
 
 from django.contrib.contenttypes.models import ContentType
-from django.db.models import Sum
+from django.db.models import Avg, Count, Sum
 
 from .models import AdCampaignMirror, InsightSnapshot
 
@@ -532,3 +532,166 @@ def dashboard_v2_metrics(company, *, as_of=None,
                      "l'autre si les devises diffèrent."),
         },
     }
+
+
+# ── ADSDEEP22 — Cockpit par ad (écran-console quotidien du fondateur) ─────────
+COCKPIT_RECENT_DAYS = 7
+COCKPIT_MIN_FATIGUE_SAMPLES = 3
+
+
+def _ad_window_aggregates(company, ad_pks, start_date=None, end_date=None):
+    """``{ad_pk: {spend, results, clicks, impressions, frequency, samples}}``
+    agrégé sur ``[start_date, end_date]`` (ad-level ``InsightSnapshot``,
+    ADSDEEP2) — bornes optionnelles : omises, la requête porte sur TOUT
+    l'historique de l'ad (totaux du cockpit). ``frequency`` est une MOYENNE
+    (déjà une moyenne journalière côté Meta, cf. ``sum_video_metrics``) ;
+    ``samples`` = nombre de jours avec un instantané (plancher d'échantillons
+    du détecteur de fatigue ADSDEEP45)."""
+    from .models import AdMirror
+
+    if not ad_pks:
+        return {}
+    ct = ContentType.objects.get_for_model(AdMirror)
+    qs = InsightSnapshot.objects.filter(
+        company=company, content_type=ct, object_id__in=ad_pks)
+    if start_date is not None:
+        qs = qs.filter(date__gte=start_date)
+    if end_date is not None:
+        qs = qs.filter(date__lte=end_date)
+    rows = (qs.values('object_id')
+            .annotate(spend=Sum('spend'), results=Sum('results'),
+                      clicks=Sum('clicks'), impressions=Sum('impressions'),
+                      frequency=Avg('frequency'), samples=Count('id')))
+    return {r['object_id']: r for r in rows}
+
+
+def _ad_fatigue_badge(recent, baseline):
+    """ADSDEEP45 — Badge de fatigue créative pour UNE ad, dérivé des fenêtres
+    récente (7 j) vs référence (7 j précédents) déjà agrégées. Réutilise
+    ``anomaly.detect_creative_fatigue`` (détecteur PUR, déjà construit) — aucun
+    recalcul de la logique de seuils ici."""
+    from .anomaly import detect_creative_fatigue
+
+    recent = recent or {}
+    baseline = baseline or {}
+    recent_impr = recent.get('impressions') or 0
+    baseline_impr = baseline.get('impressions') or 0
+    ctr_current = (float(recent.get('clicks') or 0) / recent_impr
+                   if recent_impr else None)
+    ctr_baseline = (float(baseline.get('clicks') or 0) / baseline_impr
+                    if baseline_impr else None)
+    recent_results = recent.get('results') or 0
+    baseline_results = baseline.get('results') or 0
+    cpa_current = (float(recent.get('spend') or 0) / recent_results
+                   if recent_results else None)
+    cpa_baseline = (float(baseline.get('spend') or 0) / baseline_results
+                    if baseline_results else None)
+    frequency = recent.get('frequency')
+    detection = detect_creative_fatigue(
+        frequency=(float(frequency) if frequency is not None else None),
+        ctr_current=ctr_current, ctr_baseline=ctr_baseline,
+        cpa_current=cpa_current, cpa_baseline=cpa_baseline,
+        recent_samples=recent.get('samples') or 0,
+        baseline_samples=baseline.get('samples') or 0,
+        min_samples=COCKPIT_MIN_FATIGUE_SAMPLES)
+    return {
+        'fired': detection.fired,
+        'insufficient_data': detection.insufficient_data,
+        'severity': detection.severity,
+        'message_fr': detection.message_fr,
+    }
+
+
+def ads_cockpit_rows(company, *, as_of=None):
+    """ADSDEEP22 — Une ligne PAR AD pour le cockpit quotidien du fondateur :
+    miniature créatif (référence, pas d'URL persistée — le front résout via
+    ``media.resolve``), dépense/résultats agrégés, leads RÉELS (ADSDEEP19),
+    conversations WhatsApp réelles (ADSDEEP25), signatures + coût/signature
+    Odoo par ad (ADSDEEP20), fréquence, badge de fatigue (ADSDEEP45) et statut
+    + badge d'apprentissage HÉRITÉ de l'ad set parent (ADSDEEP32). Combine des
+    métriques DÉJÀ construites — aucune logique métier réimplémentée ici."""
+    from .models import AdCreativeMirror, AdMirror
+    from .odoo_metrics import odoo_signatures_by_ad
+    from .serializers import _LEARNING_BADGE, _META_STATUT_FR
+
+    as_of = as_of or datetime.date.today()
+    ads = list(AdMirror.objects.filter(company=company)
+               .select_related('adset', 'creative_mirror')
+               .order_by('-created_at'))
+    ad_pks = [a.pk for a in ads]
+
+    totals = _ad_window_aggregates(company, ad_pks, end_date=as_of)
+    recent_start = as_of - datetime.timedelta(days=COCKPIT_RECENT_DAYS - 1)
+    baseline_end = recent_start - datetime.timedelta(days=1)
+    baseline_start = baseline_end - datetime.timedelta(days=COCKPIT_RECENT_DAYS - 1)
+    recent_agg = _ad_window_aggregates(company, ad_pks, recent_start, as_of)
+    baseline_agg = _ad_window_aggregates(
+        company, ad_pks, baseline_start, baseline_end)
+
+    real_leads_by_ad = real_lead_counts(company)['by_ad']
+    conv_by_ad = {row['ad_id']: row
+                  for row in conversations_per_ad(company)['by_ad']}
+    odoo_by_ad = {}
+    odoo_configured = False
+    try:
+        odoo_result = odoo_signatures_by_ad(company)
+        odoo_configured = bool(odoo_result.get('configured'))
+        odoo_by_ad = {row['ad_id']: row for row in odoo_result.get('ads', [])}
+    except Exception:  # noqa: BLE001 — le cockpit ne casse jamais sur Odoo
+        pass
+
+    rows = []
+    for ad in ads:
+        total = totals.get(ad.pk, {})
+        spend = total.get('spend') or Decimal('0')
+        leads = real_leads_by_ad.get(ad.meta_id, 0)
+        cpl = (spend / leads) if leads else None
+
+        conv_row = conv_by_ad.get(ad.meta_id, {})
+        odoo_row = odoo_by_ad.get(ad.meta_id)
+        signatures = odoo_row['signatures'] if odoo_row else 0
+        cost_per_signature = odoo_row['cost_per_signature'] if odoo_row else None
+
+        adset = ad.adset
+        learning_status = getattr(adset, 'learning_status', '') or ''
+        learning_meta = _LEARNING_BADGE.get(
+            learning_status, {'label': 'Inconnu', 'tone': 'neutral'})
+
+        try:
+            creative = ad.creative_mirror
+        except AdCreativeMirror.DoesNotExist:
+            creative = None
+        thumbnail_ref = None
+        thumbnail_kind = 'image'
+        if creative is not None:
+            if creative.video_id:
+                thumbnail_ref, thumbnail_kind = creative.video_id, 'video'
+            elif creative.image_hash:
+                thumbnail_ref, thumbnail_kind = creative.image_hash, 'image'
+
+        rows.append({
+            'id': ad.id,
+            'meta_id': ad.meta_id,
+            'nom': ad.name,
+            'statut': ad.status,
+            'statut_display': _META_STATUT_FR.get(ad.status, ad.status or '—'),
+            'learning_badge': {
+                'status': learning_status,
+                'label': learning_meta['label'],
+                'tone': learning_meta['tone'],
+            },
+            'thumbnail_ref': thumbnail_ref,
+            'thumbnail_kind': thumbnail_kind,
+            'depense_mad': str(spend),
+            'conversations': conv_row.get('conversations', 0),
+            'nb_leads': leads,
+            'cpl_mad': (str(cpl) if cpl is not None else None),
+            'signatures': signatures,
+            'cost_per_signature_mad': cost_per_signature,
+            'odoo_configured': odoo_configured,
+            'frequency': (str(total['frequency'])
+                          if total.get('frequency') is not None else None),
+            'fatigue': _ad_fatigue_badge(
+                recent_agg.get(ad.pk), baseline_agg.get(ad.pk)),
+        })
+    return rows

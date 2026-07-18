@@ -52,6 +52,8 @@ const adsengineApi = {
     pacing: (params) => api.get('/adsengine/metrics/pacing/', { params }),
     // ADSDEEP19 — comptes de leads RÉELS par ad / campagne (MetaLeadMirror).
     realLeads: (params) => api.get('/adsengine/metrics/real-leads/', { params }),
+    // ADSDEEP22 — cockpit par ad (une ligne par ad, toutes métriques combinées).
+    adsCockpit: (params) => api.get('/adsengine/metrics/ads-cockpit/', { params }),
   },
 
   // ── ENG31/ENG42 — Réconciliation Meta-vs-ERP (écart + statut) ──

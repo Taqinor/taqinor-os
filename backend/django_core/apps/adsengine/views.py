@@ -2054,6 +2054,27 @@ class ConversationsPerAdView(APIView):
         return Response(conversations_per_ad(company))
 
 
+class AdsCockpitView(APIView):
+    """ADSDEEP22 — Cockpit par ad (écran-console quotidien du fondateur) :
+    une ligne par ad combinant miniature créatif, dépense, conversations,
+    leads réels, CPL, signatures + coût/signature (Odoo), fréquence, badge de
+    fatigue (ADSDEEP45) et statut + apprentissage (ADSDEEP32).
+
+    ``GET /api/django/adsengine/metrics/ads-cockpit/`` — company-scopé, gaté
+    ``adsengine_view``. Dérivé (aucune écriture) via
+    ``metrics.ads_cockpit_rows``, qui ne fait que COMBINER les métriques déjà
+    construites (ADSDEEP19/20/25/32/44/45) — aucune logique métier réécrite."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
+
+    def get(self, request):
+        company, err = _adseng_company_gate(request, 'adsengine_view')
+        if err is not None:
+            return err
+        from .metrics import ads_cockpit_rows
+        return Response(ads_cockpit_rows(company))
+
+
 # ══ ADSDEEP53/54 — Boîte de réception des commentaires (câblage front↔back) ═══
 # Vues MINCES : lecture des miroirs company-scopée + chaque action inline ne
 # fait que PROPOSER une ``EngineAction`` via les fonctions ``propose_*`` DÉJÀ

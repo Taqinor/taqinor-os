@@ -7,6 +7,7 @@ import {
   LayoutDashboard, PlugZap, Megaphone, ClipboardCheck,
   FileText, Images, History, FlaskConical, Route, Layers,
   SlidersHorizontal, MonitorPlay, BarChart3, MessagesSquare, Camera,
+  Gauge,
 } from 'lucide-react'
 
 /* ============================================================================
@@ -38,6 +39,7 @@ const SimulationScreen = lazy(() => import('./SimulationScreen'))
 const ReportsScreen = lazy(() => import('./ReportsScreen'))
 const CommentsInboxScreen = lazy(() => import('./CommentsInboxScreen'))
 const InstagramScreen = lazy(() => import('./InstagramScreen'))
+const AdsCockpitScreen = lazy(() => import('./AdsCockpitScreen'))
 
 const ROLES = ['responsable', 'admin']
 
@@ -49,6 +51,7 @@ const config = {
     accent: 'brass', // VX8 — croissance/commercial = accent brass (dérivé).
     items: [
       { to: '/publicite/tableau-de-bord', label: 'Tableau de bord', icon: <LayoutDashboard size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
+      { to: '/publicite/cockpit', label: 'Cockpit par ad', icon: <Gauge size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/publicite/approbations', label: 'Approbations', icon: <ClipboardCheck size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/publicite/campagnes', label: 'Campagnes', icon: <Megaphone size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/publicite/creatifs', label: 'Bibliothèque créative', icon: <Images size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
@@ -68,6 +71,7 @@ const config = {
   // routes.meta — du plus spécifique au plus général.
   titles: [
     ['/publicite/tableau-de-bord', 'Publicité — Tableau de bord'],
+    ['/publicite/cockpit', 'Publicité — Cockpit par ad'],
     ['/publicite/approbations', "Publicité — Boîte d'approbation"],
     ['/publicite/campagnes', 'Publicité — Campagnes'],
     ['/publicite/creatifs', 'Publicité — Bibliothèque créative'],
@@ -86,6 +90,7 @@ const config = {
   sectionLabels: { publicite: 'Publicité' },
   routes: [
     { path: '/publicite/tableau-de-bord', component: DashboardScreen, roles: ROLES },
+    { path: '/publicite/cockpit', component: AdsCockpitScreen, roles: ROLES },
     { path: '/publicite/approbations', component: ApprovalsScreen, roles: ROLES },
     { path: '/publicite/campagnes', component: CampaignsScreen, roles: ROLES },
     { path: '/publicite/creatifs', component: CreativeLibraryScreen, roles: ROLES },

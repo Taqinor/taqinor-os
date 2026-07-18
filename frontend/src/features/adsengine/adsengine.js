@@ -750,6 +750,35 @@ export function toCsv(headers, rows) {
   return lines.join('\n')
 }
 
+// ── ADSDEEP22 — Tri du cockpit par ad ──
+// Colonnes chiffrées : une valeur MANQUANTE (null/—, jamais fabriquée) est
+// TOUJOURS reléguée en fin de tri, quel que soit le sens (même convention que
+// `rankCreatives` pour les créatifs sans réponse WhatsApp).
+function cockpitSortValue(row, key) {
+  if (key === 'nom' || key === 'statut_display') {
+    return (row?.[key] || '').toLowerCase()
+  }
+  const raw = row?.[key]
+  if (raw == null) return null
+  const n = Number(raw)
+  return Number.isFinite(n) ? n : null
+}
+
+export function sortCockpitRows(rows, key, direction = 'asc') {
+  const list = [...(rows || [])]
+  const dir = direction === 'desc' ? -1 : 1
+  return list.sort((a, b) => {
+    const va = cockpitSortValue(a, key)
+    const vb = cockpitSortValue(b, key)
+    if (va == null && vb == null) return 0
+    if (va == null) return 1
+    if (vb == null) return -1
+    if (va < vb) return -1 * dir
+    if (va > vb) return 1 * dir
+    return 0
+  })
+}
+
 // ── ADSDEEP66 — Fenêtres/limites de données Meta (bandeau `DataWindowNotice`) ─
 // Doctrine (« pas de plafond silencieux ») : un écran qui affiche un nombre
 // borné dans le temps DOIT dire sa fenêtre. Fenêtre (jours) + messages FR par

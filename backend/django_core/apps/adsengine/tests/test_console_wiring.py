@@ -412,6 +412,32 @@ class ConsoleWiringTests(TestCase):
             f'{BASE}/campaigns/{self.campaign.pk}/hierarchie/')
         self.assertEqual(resp.status_code, 403)
 
+    # ── ADSDEEP22 — Cockpit par ad ─────────────────────────────────────────────
+    def test_ads_cockpit_shape_and_scoping(self):
+        from apps.adsengine.models import MetaLeadMirror
+        MetaLeadMirror.objects.create(
+            company=self.company, leadgen_id='lg-1', ad_id=self.ad.meta_id)
+
+        resp = auth(self.viewer).get(f'{BASE}/metrics/ads-cockpit/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        rows = resp.data
+        self.assertIsInstance(rows, list)
+        row = next(r for r in rows if r['meta_id'] == 'ad-1')
+        self.assertEqual(row['nom'], 'Ad A')
+        self.assertEqual(row['statut_display'], 'Active')
+        self.assertEqual(row['learning_badge']['label'], 'En apprentissage')
+        self.assertEqual(row['depense_mad'], '30.00')
+        self.assertEqual(row['nb_leads'], 1)  # MetaLeadMirror réel
+        self.assertEqual(row['cpl_mad'], '30.00')  # 30/1
+        self.assertEqual(row['signatures'], 0)  # Odoo non configuré en test
+        self.assertFalse(row['odoo_configured'])
+        self.assertIn('fatigue', row)
+        self.assertIn('conversations', row)
+
+    def test_ads_cockpit_requires_view_permission(self):
+        resp = auth(self.nobody).get(f'{BASE}/metrics/ads-cockpit/')
+        self.assertEqual(resp.status_code, 403)
+
     # ── ENG27 — Variantes (à la demande) ─────────────────────────────────────
     def test_variantes_action_noop_without_key(self):
         resp = auth(self.manager).post(
