@@ -906,6 +906,14 @@ class CompanyViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN)
 
         company_nom = company.nom
+        # Le reset purge la société démo ET ses utilisateurs — dont l'admin
+        # agissant (``request.user``). On efface l'acteur d'audit du thread-local
+        # AVANT la purge : sinon les signaux CRUD déclenchés pendant le reset
+        # écriraient un journal d'audit avec une FK ``acteur`` vers un
+        # utilisateur qui vient d'être supprimé → IntegrityError → 500. Le
+        # middleware d'audit rappellera ``end_request()`` en fin de requête.
+        from apps.audit import recorder
+        recorder.end_request()
         _run_demo_reset(company.slug)
 
         # Notification in-app de confirmation (best-effort, ne bloque jamais).
