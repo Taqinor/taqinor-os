@@ -132,7 +132,11 @@ const flotteApi = {
       headers: { 'Content-Type': 'multipart/form-data' },
     }),
   },
-  cartes: crud('cartes'),
+  cartes: {
+    ...crud('cartes'),
+    // FLOTTE14/WIR6 — pleins suspects (km incohérent / fraude / plafond dépassé).
+    anomalies: (params) => api.get('/flotte/cartes/anomalies/', { params }),
+  },
   sinistres: crud('sinistres'),
   infractions: crud('infractions'),
   relevesTelematiques: crud('releves-telematiques'),

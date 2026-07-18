@@ -1,5 +1,9 @@
-import { useMemo, useState } from 'react'
-import { Tabs, TabsList, TabsTrigger, TabsContent, Badge, Button, toast } from '../../ui'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { AlertTriangle } from 'lucide-react'
+import {
+  Tabs, TabsList, TabsTrigger, TabsContent, Badge, Button, Spinner, EmptyState,
+  toast,
+} from '../../ui'
 import { ListShell } from '../../ui/module'
 import flotteApi from '../../api/flotteApi'
 import { formatDate, formatDateTime, formatNumber } from '../../lib/format'
@@ -47,6 +51,60 @@ function PleinsTab() {
   )
 }
 
+// WIR6/FLOTTE14 — carte « Anomalies » : le détecteur serveur
+// (`CarteCarburantViewSet.anomalies`) tournait dans le vide, sans consommateur
+// frontend — une fraude détectée n'était jamais montrée à personne.
+function AnomaliesCard() {
+  const [state, setState] = useState({ loading: true, error: null, data: null })
+
+  const load = useCallback(() => {
+    let cancelled = false
+    setState({ loading: true, error: null, data: null })
+    flotteApi.cartes.anomalies()
+      .then((res) => { if (!cancelled) setState({ loading: false, error: null, data: res?.data || null }) })
+      .catch((err) => {
+        if (!cancelled) setState({ loading: false, error: err?.response?.data?.detail || 'Détection indisponible.', data: null })
+      })
+    return () => { cancelled = true }
+  }, [])
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  useEffect(() => { load() }, [load])
+
+  if (state.loading) {
+    return <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground"><Spinner className="size-4" /> Détection en cours…</div>
+  }
+  if (state.error) {
+    return <EmptyState title="Indisponible" description={state.error} />
+  }
+  const anomalies = state.data?.anomalies || []
+  if (anomalies.length === 0) {
+    return (
+      <div className="rounded-md border border-border p-3 text-sm text-muted-foreground">
+        Aucune anomalie détectée sur le carnet de carburant ({state.data?.nb_pleins ?? 0} plein(s) analysé(s)).
+      </div>
+    )
+  }
+  return (
+    <div className="flex flex-col gap-2 rounded-md border border-warning/40 p-3">
+      <p className="flex items-center gap-1.5 text-sm font-medium text-warning">
+        <AlertTriangle className="size-4" aria-hidden="true" />
+        {anomalies.length} anomalie(s) détectée(s)
+      </p>
+      <ul className="flex flex-col gap-2">
+        {anomalies.map((a, i) => (
+          <li key={`${a.plein_id}-${a.type}-${i}`} className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm">
+            <span>{a.message}</span>
+            <span className="text-xs text-muted-foreground">
+              {a.date_plein ? formatDate(a.date_plein) : '—'}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
 function CartesTab() {
   const { data, loading, error } = useFlotteResource(flotteApi.cartes.list, {})
   const columns = useMemo(() => [
@@ -63,8 +121,11 @@ function CartesTab() {
     },
   ], [])
   return (
-    <ListShell title="Cartes carburant" columns={columns} rows={data} loading={loading} error={error}
-      exportName="cartes-carburant" emptyTitle="Aucune carte" emptyDescription="Aucune carte carburant enregistrée." />
+    <div className="flex flex-col gap-4">
+      <AnomaliesCard />
+      <ListShell title="Cartes carburant" columns={columns} rows={data} loading={loading} error={error}
+        exportName="cartes-carburant" emptyTitle="Aucune carte" emptyDescription="Aucune carte carburant enregistrée." />
+    </div>
   )
 }
 
