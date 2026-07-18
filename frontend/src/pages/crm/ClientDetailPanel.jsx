@@ -12,6 +12,10 @@ import { Table } from '../reporting/Table'
 import ClientRgpdActions from './ClientRgpdActions'
 import OwnerChain from '../../components/OwnerChain'
 import OrgChartTab from './clients/OrgChartTab'
+// WIR16/NTCRM11 — Plan de compte (SWOT + objectifs + potentiel + timeline des
+// revues), conçu pour `clientId`/`planId` en props — `plans-compte/`/
+// `revues-compte/` déjà complets côté API.
+import PlanComptePage from './comptes/PlanComptePage'
 import { formatMAD } from '../../lib/format'
 import { telHref, waHref } from '../../lib/contactLinks'
 
@@ -159,6 +163,7 @@ export default function ClientDetailPanel({ client, onClose, onNewDevis, onChang
             <TabsList>
               <TabsTrigger value="documents">Documents</TabsTrigger>
               <TabsTrigger value="organigramme">Organigramme</TabsTrigger>
+              <TabsTrigger value="plan-compte">Plan de compte</TabsTrigger>
             </TabsList>
             <TabsContent value="documents">
               {loading && (
@@ -238,6 +243,9 @@ export default function ClientDetailPanel({ client, onClose, onNewDevis, onChang
             </TabsContent>
             <TabsContent value="organigramme">
               <OrgChartTab clientId={client.id} />
+            </TabsContent>
+            <TabsContent value="plan-compte">
+              <PlanComptePage clientId={client.id} />
             </TabsContent>
           </Tabs>
         </div>
