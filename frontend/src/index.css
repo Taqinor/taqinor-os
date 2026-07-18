@@ -6545,3 +6545,86 @@ textarea.form-control {
 .lw-context-activites-head {
   margin-bottom: 0.5rem;
 }
+
+/* ── LW20 : onglet Historique — en-tête multi-touch, filtre, notes épinglées. ── */
+
+/* En-tête multi-touch (points-contact/) — silencieux si vide (aucune règle
+   d'état vide nécessaire : le bloc n'est simplement pas rendu). */
+.lw-context-touch-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  padding: 0.4rem 0.6rem;
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--info) 8%, transparent);
+  font-size: 0.78rem;
+  color: var(--muted-foreground);
+}
+
+/* Filtre par type (Tous/Notes/Appels/E-mails/Devis/Système), persisté. */
+.lw-context-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.lw-context-filter-chip {
+  padding: 0.2rem 0.55rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+  background: transparent;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard);
+}
+.lw-context-filter-chip:hover {
+  color: var(--foreground);
+  background: color-mix(in oklch, var(--muted-foreground) 10%, transparent);
+}
+.lw-context-filter-chip.is-active {
+  color: var(--foreground);
+  font-weight: 600;
+  background: color-mix(in oklch, var(--module-accent-azur) 14%, transparent);
+  border-color: color-mix(in oklch, var(--module-accent-azur) 30%, transparent);
+}
+
+/* Notes épinglées (ChatterTimeline pinned=true) — section dédiée en tête,
+   hors chronologie. */
+.lw-context-chatter-pinned {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 0.35rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px dashed var(--border);
+}
+.lw-context-pin-badge {
+  margin-right: 0.3rem;
+  font-size: 0.9em;
+}
+.lw-context-pin-toggle {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--motion-fast) var(--ease-standard),
+    background-color var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard);
+}
+.chatter-item:hover .lw-context-pin-toggle,
+.lw-context-pin-toggle:focus-visible {
+  opacity: 1;
+}
+.lw-context-pin-toggle:hover {
+  background: color-mix(in oklch, var(--muted-foreground) 12%, transparent);
+  color: var(--foreground);
+}
