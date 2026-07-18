@@ -38,7 +38,7 @@ class LeadActivitySerializer(serializers.ModelSerializer):
         model = LeadActivity
         fields = [
             'id', 'kind', 'field', 'field_label', 'old_value', 'new_value',
-            'body', 'outcome', 'bulk', 'user_nom', 'created_at',
+            'body', 'outcome', 'bulk', 'pinned', 'user_nom', 'created_at',
             'attachment_url', 'attachment_filename', 'attachment_mime',
         ]
 

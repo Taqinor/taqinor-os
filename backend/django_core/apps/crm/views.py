@@ -624,11 +624,12 @@ class LeadViewSet(CompanyScopedModelViewSet):
                                           'client_match', 'points_contact',
                                           'scan_carte']:
             return [IsAnyRole()]
-        elif self.action in ('merge', 'convertir_client'):
+        elif self.action in (
+                'merge', 'convertir_client', 'epingler', 'desepingler'):
             # VX199 — fusion / conversion de lead : permission ERP FINE
             # (crm_modifier), pas le grossier IsResponsableOrAdmin. get_permissions
             # PRIME sur le permission_classes de l'@action, donc la garde fine
-            # doit être ICI.
+            # doit être ICI. LW28 — épingler/désépingler suivent la même règle.
             return [HasPermissionOrLegacy('crm_modifier')()]
         elif self.action in WRITE_ACTIONS + [
             'noter', 'devis_auto', 'archiver', 'restaurer',
@@ -949,14 +950,51 @@ class LeadViewSet(CompanyScopedModelViewSet):
         LW8 — ``select_related('user','attachment')`` : sans lui,
         ``LeadActivitySerializer.get_user_nom``/``get_attachment_*`` retouchent
         chacune une FK PAR LIGNE (N+1 réel, recon 02 §5). ``order_by`` explicite
-        (au lieu du tri implicite ``Meta.ordering`` du modèle)."""
+        (au lieu du tri implicite ``Meta.ordering`` du modèle) — LW28 : les
+        notes ÉPINGLÉES remontent en tête, hors chronologie."""
         lead = self.get_object()
         activites = (
             lead.activites
             .select_related('user', 'attachment')
-            .order_by('-created_at')
+            .order_by('-pinned', '-created_at')
         )
         return Response(LeadActivitySerializer(activites, many=True).data)
+
+    @action(detail=True, methods=['post'],
+            url_path=r'activites/(?P<activite_id>[^/.]+)/epingler',
+            permission_classes=[HasPermissionOrLegacy('crm_modifier')])
+    def epingler(self, request, pk=None, activite_id=None):
+        """LW28 — Épingle une entrée du chatter (mise en avant en tête,
+        hors chronologie). Scopée au lead courant (déjà company-scopé via
+        ``get_object()``) : un ``activite_id`` d'un AUTRE lead — même dans la
+        même société — ou d'une autre société renvoie 404, jamais une fuite."""
+        lead = self.get_object()
+        from .models import LeadActivity
+        try:
+            act = lead.activites.get(pk=activite_id)
+        except (LeadActivity.DoesNotExist, ValueError):
+            return Response({'detail': 'Activité introuvable.'}, status=404)
+        if not act.pinned:
+            act.pinned = True
+            act.save(update_fields=['pinned'])
+        return Response(LeadActivitySerializer(act).data)
+
+    @action(detail=True, methods=['post'],
+            url_path=r'activites/(?P<activite_id>[^/.]+)/desepingler',
+            permission_classes=[HasPermissionOrLegacy('crm_modifier')])
+    def desepingler(self, request, pk=None, activite_id=None):
+        """LW28 — Désépingle une entrée du chatter (retour dans la
+        chronologie normale). Même garde 404 hors-tenant que ``epingler``."""
+        lead = self.get_object()
+        from .models import LeadActivity
+        try:
+            act = lead.activites.get(pk=activite_id)
+        except (LeadActivity.DoesNotExist, ValueError):
+            return Response({'detail': 'Activité introuvable.'}, status=404)
+        if act.pinned:
+            act.pinned = False
+            act.save(update_fields=['pinned'])
+        return Response(LeadActivitySerializer(act).data)
 
     @action(detail=True, methods=['post'], url_path='appliquer-plan',
             permission_classes=[IsResponsableOrAdmin])
