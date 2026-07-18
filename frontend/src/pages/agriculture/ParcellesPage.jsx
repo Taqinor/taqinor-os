@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Sprout } from 'lucide-react'
+import { Sprout, FileText } from 'lucide-react'
 import {
   Badge, Button, Dialog, DialogContent, DialogHeader, DialogTitle,
   DialogFooter, Label, Input, toast, confirmLeaveIfDirty,
@@ -8,6 +8,7 @@ import { ListShell } from '../../ui/module'
 import MapView from '../../components/MapView'
 import agricultureApi from '../../api/agricultureApi'
 import useAgricultureResource from '../../features/agriculture/useAgricultureResource'
+import { openPdfInGesture } from '../../utils/pdfBlob'
 
 /* ============================================================================
    NTAGR4 — Écran « Parcelles » (`/agriculture/parcelles`).
@@ -16,6 +17,11 @@ import useAgricultureResource from '../../features/agriculture/useAgricultureRes
    `components/MapView.jsx`, patron `crm.SiteProfile`/lead GPS) à partir du
    premier point du polygone GPS de chaque parcelle, et un bouton
    « Démarrer une campagne » depuis une parcelle libre (jachère/préparation).
+   WIR52 — action de ligne « Registre phytosanitaire (PDF) » dès qu'une
+   campagne 'en_cours' est rattachée à la parcelle (`agricultureApi.campagnes
+   .registrePhytoPdf`, déjà exposé côté client mais jamais appelé) : le lien
+   parcelle→campagne vient de la liste réelle des campagnes, jamais du champ
+   `Parcelle.statut` seul (les deux ne sont pas synchronisés côté serveur).
    ========================================================================== */
 
 const STATUT_TONE = {
@@ -115,12 +121,42 @@ function DemarrerCampagneDialog({ parcelle, onClose, onSaved }) {
 export default function ParcellesPage() {
   const { data: parcelles, loading, error, reload } = useAgricultureResource(
     agricultureApi.parcelles.list, {})
+  // WIR52 — campagnes de la société, pour retrouver la campagne 'en_cours'
+  // d'une parcelle (source de vérité, indépendante de `Parcelle.statut`).
+  const { data: campagnes, reload: reloadCampagnes } = useAgricultureResource(
+    agricultureApi.campagnes.list, {})
   const [campagneParcelle, setCampagneParcelle] = useState(null)
 
   const markers = useMemo(
     () => (parcelles || []).map(parcelleToMarker).filter(Boolean),
     [parcelles],
   )
+
+  // WIR52 — parcelle_id → id de sa campagne 'en_cours' (une seule à la fois,
+  // contrainte serveur — apps/agriculture/serializers.py:validate).
+  const campagneEnCoursId = useMemo(() => {
+    const map = {}
+    for (const c of campagnes || []) {
+      if (c.statut === 'en_cours') map[c.parcelle] = c.id
+    }
+    return map
+  }, [campagnes])
+
+  // WIR52 — registre phytosanitaire ONSSA (NTAGR7) : jusqu'ici
+  // `agricultureApi.campagnes.registrePhytoPdf` n'avait aucun appelant.
+  const telechargerRegistrePhyto = (campagneId) => {
+    // VX48 — window.open SYNCHRONE, avant tout await (Safari iOS bloque en
+    // silence un window.open() qui suit un await).
+    const pending = openPdfInGesture()
+    agricultureApi.campagnes.registrePhytoPdf(campagneId)
+      .then((res) => {
+        const blob = new Blob([res.data], { type: 'application/pdf' })
+        if (!pending.deliver(blob, `registre-phyto-${campagneId}.pdf`)) {
+          toast.error('Ouverture bloquée par le navigateur.')
+        }
+      })
+      .catch(() => toast.error('Registre phytosanitaire indisponible.'))
+  }
 
   const columns = useMemo(() => [
     { id: 'nom', header: 'Parcelle', width: 180, accessor: (r) => r.nom, cell: (v) => v || '—' },
@@ -141,11 +177,21 @@ export default function ParcellesPage() {
   ], [])
 
   const rowActions = (row) => {
-    if (row.statut === 'en_culture') return []
-    return [{
-      id: 'demarrer-campagne', label: 'Démarrer une campagne',
-      onClick: () => setCampagneParcelle(row),
-    }]
+    const actions = []
+    if (row.statut !== 'en_culture') {
+      actions.push({
+        id: 'demarrer-campagne', label: 'Démarrer une campagne',
+        onClick: () => setCampagneParcelle(row),
+      })
+    }
+    const campagneId = campagneEnCoursId[row.id]
+    if (campagneId) {
+      actions.push({
+        id: 'registre-phyto', label: 'Registre phytosanitaire (PDF)', icon: FileText,
+        onClick: () => telechargerRegistrePhyto(campagneId),
+      })
+    }
+    return actions
   }
 
   return (
@@ -179,6 +225,7 @@ export default function ParcellesPage() {
           onSaved={() => {
             setCampagneParcelle(null)
             reload()
+            reloadCampagnes()
             toast.success('Campagne démarrée.')
           }}
         />

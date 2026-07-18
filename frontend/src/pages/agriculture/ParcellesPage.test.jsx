@@ -17,8 +17,15 @@ beforeAll(() => {
   }
 })
 
-const { campagnesCreate } = vi.hoisted(() => ({
+const { campagnesCreate, campagnesList, registrePhytoPdf } = vi.hoisted(() => ({
   campagnesCreate: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
+  // WIR52 — vide par défaut : aucun test existant (avant WIR52) n'attend une
+  // campagne rattachée, donc aucune action « Registre phytosanitaire » ne
+  // doit apparaître tant qu'un test ne surcharge pas explicitement la liste.
+  campagnesList: vi.fn(() => Promise.resolve({ data: [] })),
+  registrePhytoPdf: vi.fn(() => Promise.resolve({
+    data: new Blob(['%PDF-1.4'], { type: 'application/pdf' }),
+  })),
 }))
 
 vi.mock('../../api/agricultureApi', () => ({
@@ -39,7 +46,11 @@ vi.mock('../../api/agricultureApi', () => ({
         ],
       }),
     },
-    campagnes: { create: (...args) => campagnesCreate(...args) },
+    campagnes: {
+      create: (...args) => campagnesCreate(...args),
+      list: (...args) => campagnesList(...args),
+      registrePhytoPdf: (...args) => registrePhytoPdf(...args),
+    },
   },
 }))
 
@@ -82,5 +93,41 @@ describe('ParcellesPage (NTAGR4)', () => {
     // DataTable rend desktop + mobile (2 occurrences) — seule Parcelle Nord
     // (jachère) propose l'action, jamais Parcelle Sud (déjà en_culture).
     expect(screen.getAllByRole('button', { name: 'Démarrer une campagne' }).length).toBe(2)
+  })
+})
+
+// WIR52 — agricultureApi.campagnes.registrePhytoPdf(id) était exposé côté
+// client (NTAGR7) sans AUCUN composant appelant : le bouton n'existait nulle
+// part. Le lien parcelle → campagne vient de la liste réelle des campagnes
+// (jamais de `Parcelle.statut` seul, non synchronisé côté serveur).
+describe('ParcellesPage — registre phytosanitaire PDF (WIR52)', () => {
+  beforeEach(() => {
+    // jsdom n'implémente ni createObjectURL ni un vrai window.open (VX48/QS1).
+    URL.createObjectURL = vi.fn(() => 'blob:mock-url')
+    URL.revokeObjectURL = vi.fn()
+    window.open = vi.fn(() => ({}))
+  })
+
+  it('télécharge le PDF depuis l’action de ligne d’une parcelle en campagne', async () => {
+    campagnesList.mockResolvedValueOnce({
+      data: [{ id: 77, parcelle: 2, culture: 'Orge', statut: 'en_cours' }],
+    })
+    const user = userEvent.setup()
+    withProviders(<ParcellesPage />)
+    await waitFor(() => expect(screen.getAllByText('Parcelle Sud').length).toBeGreaterThan(0))
+
+    const boutons = screen.getAllByRole('button', { name: 'Registre phytosanitaire (PDF)' })
+    expect(boutons.length).toBeGreaterThan(0)
+    await user.click(boutons[0])
+
+    await waitFor(() => expect(registrePhytoPdf).toHaveBeenCalledWith(77))
+    await waitFor(() => expect(window.open).toHaveBeenCalledWith('', '_blank', 'noopener'))
+  })
+
+  it('n’offre pas le registre phyto pour une parcelle sans campagne en cours', async () => {
+    campagnesList.mockResolvedValueOnce({ data: [] })
+    withProviders(<ParcellesPage />)
+    await waitFor(() => expect(screen.getAllByText('Parcelle Sud').length).toBeGreaterThan(0))
+    expect(screen.queryByRole('button', { name: 'Registre phytosanitaire (PDF)' })).not.toBeInTheDocument()
   })
 })
