@@ -184,11 +184,21 @@ export default function LeadWorkspace({
         return leaveGuard(() => { if (leadId) navigate(`/devis-design/${leadId}`) })
       case 'open-devis': return setDevisPanel(payload || 'auto')
       case 'view-devis': setPanelDevisId(payload); return setDevisPanel('view')
+      // LW16-wire — édition rapide du rail (responsable/relance) : un simple
+      // SET_FIELD, débouncé/flushé par le moteur comme toute autre frappe.
+      case 'set-field': return setField(payload.key, payload.value)
+      // LW16-wire — StageControl (transitions non-SIGNED) : passe TOUJOURS par
+      // le moteur `changeStage` (flush-puis-PATCH dédié, LW23 s'en sert déjà
+      // pour 1-4) ; un recul de funnel refusé (400) surface un toast — géré
+      // à l'INTÉRIEUR de `changeStage` (useLeadDraft.js), un seul endroit
+      // pour les DEUX appelants (raccourci clavier + StageControl).
+      case 'change-stage': return changeStage(payload)
+      // 'apply-card' : volontairement inerte pour l'instant (hors périmètre).
       case 'refresh': return draft.refreshServer()
       case 'close': return leaveGuard(onClose)
       default: return undefined
     }
-  }, [doArchive, leaveGuard, leadId, navigate, draft, onClose])
+  }, [doArchive, leaveGuard, leadId, navigate, draft, onClose, setField, changeStage])
 
   // ── File de rafale (◀▶ + J/K), gardée par leaveGuard (draft flushé) ───────
   const queueIndex = (leadsQueue && mode === 'edit')

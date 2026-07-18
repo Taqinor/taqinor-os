@@ -1,5 +1,6 @@
 import { useReducer, useRef, useEffect, useCallback } from 'react'
 import crmApi from '../../../api/crmApi'
+import { toast } from '../../../ui'
 import { useDirtyGuard, confirmLeaveIfDirty } from '../../../ui/useDirtyGuard'
 import {
   reducer, initState, getField, isDirty, dirtyKeys, isSuggested,
@@ -168,16 +169,27 @@ export function useLeadDraft(lead, { mode = lead ? 'edit' : 'create', currentUse
   // ── changeStage : action du StageControl (blueprint D2#4) ─────────────────
   // `stage` n'entre jamais dans le draft : on vide d'abord les éditions en
   // cours, puis PATCH {stage} dédié. Le succès met à jour server.stage SEUL.
-  // SIGNED est intercepté en amont par StageControl (SigneDialog) ; un recul de
-  // funnel remonte un 400 que l'appelant transforme en toast.
+  // SIGNED est intercepté en amont par StageControl (SigneDialog). Un recul de
+  // funnel remonte un 400 côté serveur — géré ICI, UN SEUL endroit pour les
+  // DEUX appelants (raccourci clavier « 1-4 » LW23, StageControl LW16) :
+  // jamais dupliqué au point d'appel.
   const changeStage = useCallback(async (newStage) => {
     const st = stateRef.current
     if (st.mode !== 'edit' || getField(st, 'stage') === newStage) return
     await flush({})
-    const res = (await crmApi.updateLead(st.leadId, { stage: newStage })).data
-    dispatch({ type: 'SET_SERVER', res })
-    if (res && res.date_modification) openedAtRef.current = res.date_modification
-    onSavedRef.current?.()
+    try {
+      const res = (await crmApi.updateLead(st.leadId, { stage: newStage })).data
+      dispatch({ type: 'SET_SERVER', res })
+      if (res && res.date_modification) openedAtRef.current = res.date_modification
+      onSavedRef.current?.()
+    } catch (err) {
+      if (err?.response?.status === 400) {
+        toast.error("Retour d'étape non autorisé")
+      }
+      // Autre échec (réseau/serveur) : silencieux, comme le reste du moteur
+      // (best-effort) — le stage affiché reste simplement l'ancien (server
+      // jamais mis à jour), rien à réconcilier.
+    }
   }, [flush])
 
   // LW25/LW24 — GET complet systématique à l'ouverture (skeleton pendant le
