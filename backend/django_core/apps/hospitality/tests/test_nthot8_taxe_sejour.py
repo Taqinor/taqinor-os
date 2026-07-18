@@ -2,6 +2,10 @@
 
 Done = une réservation de 3 nuits/2 adultes/1 enfant avec exonération enfants
 calcule la taxe exacte, désactivée = aucune ligne ajoutée, tests.
+
+WIR8 — endpoint ``hospitality/parametres-taxe-sejour/`` (singleton société) :
+seul chemin d'écriture hors admin Django, jamais bloquant tant qu'aucune
+ligne n'est configurée.
 """
 from datetime import date
 from decimal import Decimal
@@ -15,7 +19,7 @@ from apps.hospitality.models import (
     TypeChambre,
 )
 
-from .helpers import make_company, make_user
+from .helpers import auth, make_company, make_user
 
 
 class CalculerTaxeSejourTests(TestCase):
@@ -117,3 +121,59 @@ class ClotureAvecTaxeSejourTests(TestCase):
         self.assertFalse(
             self.folio.lignes.filter(
                 origine=LigneFolio.Origine.TAXE_SEJOUR).exists())
+
+
+class ParametresTaxeSejourApiTests(TestCase):
+    """WIR8 — ``GET/PATCH hospitality/parametres-taxe-sejour/`` (singleton)."""
+
+    URL = '/api/django/hospitality/parametres-taxe-sejour/'
+
+    def setUp(self):
+        self.co = make_company('hot-taxe-api', 'Hôtel API')
+        self.admin = make_user(self.co, 'hot-taxe-api-admin', role='admin')
+        self.responsable = make_user(
+            self.co, 'hot-taxe-api-resp', role='responsable')
+        self.normal = make_user(self.co, 'hot-taxe-api-normal', role='normal')
+
+    def test_get_sans_configuration_renvoie_les_defauts_non_persistes(self):
+        r = auth(self.normal).get(self.URL)
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(Decimal(r.data['montant_par_nuit_par_personne']), Decimal('0'))
+        self.assertFalse(
+            ParametresTaxeSejour.objects.filter(company=self.co).exists())
+
+    def test_patch_requiert_responsable_ou_admin(self):
+        r = auth(self.normal).patch(
+            self.URL, {'montant_par_nuit_par_personne': '25'}, format='json')
+        self.assertEqual(r.status_code, 403)
+        self.assertFalse(
+            ParametresTaxeSejour.objects.filter(company=self.co).exists())
+
+    def test_responsable_configure_le_montant_et_ca_persiste(self):
+        r = auth(self.responsable).patch(
+            self.URL, {'montant_par_nuit_par_personne': '25', 'actif': True},
+            format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        params = ParametresTaxeSejour.objects.get(company=self.co)
+        self.assertEqual(
+            params.montant_par_nuit_par_personne, Decimal('25.00'))
+        self.assertTrue(params.actif)
+
+    def test_admin_reconfigure_puis_folio_clos_reflete_le_montant(self):
+        """Done = un admin définit le montant de la taxe de séjour depuis
+        l'UI, la ligne ``taxe_sejour`` d'un folio clos n'est plus jamais 0
+        par défaut de configuration (bout en bout, via l'endpoint)."""
+        auth(self.admin).patch(
+            self.URL, {'montant_par_nuit_par_personne': '20', 'actif': True},
+            format='json')
+
+        type_std = TypeChambre.objects.create(company=self.co, libelle='Standard')
+        chambre = Chambre.objects.create(
+            company=self.co, type_chambre=type_std, numero='2001')
+        reservation = Reservation.objects.create(
+            company=self.co, chambre=chambre,
+            date_arrivee=date(2026, 9, 1), date_depart=date(2026, 9, 4),
+            nb_adultes=2, nb_enfants=0,
+        )
+        self.assertEqual(
+            services.calculer_taxe_sejour(reservation), Decimal('120'))

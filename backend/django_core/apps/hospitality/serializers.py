@@ -7,8 +7,8 @@ from rest_framework import serializers
 
 from .models import (
     Chambre, EvenementBanquet, FicheClient, Folio, IngredientRecette,
-    LigneFolio, MainCourante, PlanTarifaire, Recette, Reservation,
-    SalleEvenement, TacheMenage, TypeChambre,
+    LigneFolio, MainCourante, ParametresTaxeSejour, PlanTarifaire, Recette,
+    Reservation, SalleEvenement, TacheMenage, TypeChambre,
 )
 
 
@@ -28,6 +28,17 @@ def _check_same_company(serializer, obj, field_label):
     if company is not None and obj.company_id != company.id:
         raise serializers.ValidationError(
             {field_label: f"{field_label} introuvable pour votre société."})
+
+
+# ── WIR8 — Taxe de séjour paramétrable (singleton société) ─────────────────
+
+class ParametresTaxeSejourSerializer(serializers.ModelSerializer):
+    """``company`` n'est jamais exposée (posée côté serveur, singleton get-or-
+    create par ``ParametresTaxeSejourView``)."""
+
+    class Meta:
+        model = ParametresTaxeSejour
+        fields = ['id', 'montant_par_nuit_par_personne', 'exoneration_enfants', 'actif']
 
 
 class TypeChambreSerializer(serializers.ModelSerializer):

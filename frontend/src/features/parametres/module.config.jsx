@@ -47,6 +47,9 @@ const DomaineEnvoi = lazy(() => import('./DomaineEnvoi'))
 // admin, reflète `IsResponsableOrAdmin` côté backend — `toutes-company/`/
 // `export-xlsx/` de SavedViewViewSet).
 const VuesConfigurationPage = lazy(() => import('../../pages/parametres/VuesConfigurationPage'))
+// WIR8 — Paramètres → Hôtellerie : taxe de séjour (singleton société, réservé
+// responsable/admin — reflète `IsResponsableOrAdmin` côté backend).
+const TaxeSejourHospitality = lazy(() => import('./TaxeSejourHospitality'))
 
 const config = {
   key: 'parametres',
@@ -58,6 +61,7 @@ const config = {
     { path: '/parametres/alertes-kpi', component: KpiAlertesPage, roles: ['responsable', 'admin'] },
     { path: '/parametres/marketing', component: DomaineEnvoi, roles: ['responsable', 'admin'] },
     { path: '/parametres/vues', component: VuesConfigurationPage, roles: ['responsable', 'admin'] },
+    { path: '/parametres/hospitality/taxe-sejour', component: TaxeSejourHospitality, roles: ['responsable', 'admin'] },
     {
       path: '/journal',
       component: Journal,
