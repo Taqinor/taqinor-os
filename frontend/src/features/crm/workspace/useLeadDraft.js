@@ -200,6 +200,10 @@ export function useLeadDraft(lead, { mode = lead ? 'edit' : 'create', currentUse
       type: 'LOAD_LEAD',
       payload: { lead: leadRef.current, mode, currentUserId, lastVille: readLastVille(), restoredDraft },
     })
+    // On lit `leadRef.current` (jamais `lead` directement) pour ne recharger
+    // qu'à un VRAI changement d'id/mode (un simple re-rendu du parent ne doit
+    // pas clobberer les éditions en cours — cf. commentaire liveLead LeadForm).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lead?.id, mode, currentUserId])
 
   // ── Autosauvegarde débouncée (édition seulement) ─────────────────────────

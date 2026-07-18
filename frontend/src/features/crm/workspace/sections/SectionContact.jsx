@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { Button, FormField, Input } from '../../../../ui'
 import { getField, isSuggested } from '../draftCore'
 import { useDuplicateCheck } from '../../../../hooks/useDuplicateCheck'
@@ -15,8 +15,14 @@ export default function SectionContact({ state, setField, errors = {}, mode, ref
 
   // VX237 — collage d'une carte de visite dans « Nom » : { nom, telephone }
   // détectés, JAMAIS répartis en silence — un bandeau propose « Répartir ».
+  // Remise à zéro au changement de lead via le motif « ajuster l'état au rendu »
+  // (React officiel) plutôt qu'un effet — jamais de fuite inter-leads.
   const [cardPaste, setCardPaste] = useState(null)
-  useEffect(() => { setCardPaste(null) }, [state.leadId]) // scope lead
+  const [prevLeadId, setPrevLeadId] = useState(state.leadId)
+  if (state.leadId !== prevLeadId) {
+    setPrevLeadId(state.leadId)
+    setCardPaste(null)
+  }
   const onNomPaste = (e) => {
     const text = e.clipboardData?.getData('text')
     const card = parsePasteCard(text)
