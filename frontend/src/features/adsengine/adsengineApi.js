@@ -183,6 +183,10 @@ const adsengineApi = {
     // dépense. `params` : { dimension, debut, fin }.
     leaderboard: (params) => api.get('/adsengine/reporting/creatifs/classement/', { params }),
     scatter: (params) => api.get('/adsengine/reporting/creatifs/nuage/', { params }),
+    // ADSDEEP63 — audit de compte à la demande (structure/naming, fragmentation
+    // budgétaire, fatigue, tracking, fenêtres de données). Jamais auto-chargé
+    // (bouton « Lancer l'audit »).
+    audit: () => api.get('/adsengine/reporting/audit/'),
   },
 
   // ── ADSDEEP53/54 — Boîte de réception des commentaires (posts + dark posts) ──

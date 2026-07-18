@@ -1156,6 +1156,22 @@ class CreativeScatterView(APIView):
         return Response(data)
 
 
+class AccountAuditView(APIView):
+    """ADSDEEP63 — Audit de compte à la demande (Madgicx-style, FR) :
+    structure/naming, fragmentation budgétaire, fatigue créative, tracking
+    (pixel/CAPI/UTM), fenêtres de données. 100 % LECTURE, company-scopé, gaté
+    ``adsengine_view`` (même permission que les autres vues reporting)."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
+
+    def get(self, request):
+        company, err = _adseng_reporting_company(request)
+        if err is not None:
+            return err
+        from .audit import run_account_audit
+        return Response(run_account_audit(company))
+
+
 class MetaConnectionStatusView(APIView):
     """ENG22 — Statut de connexion (GET) + enregistrement des identifiants
     (POST). Les identifiants sont **write-only** : un GET ne renvoie JAMAIS un

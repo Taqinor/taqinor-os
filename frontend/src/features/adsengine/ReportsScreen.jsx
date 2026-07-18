@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo, useCallback } from 'react'
-import { BarChart3, Download } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { BarChart3, Download, ClipboardList } from 'lucide-react'
 import adsengineApi from './adsengineApi'
 import {
   normalizeVariants, normalizeFunnel, normalizeCohorts, normalizeLeaderboard,
@@ -37,6 +38,24 @@ const PERIODS = [
   { key: 90, label: '90 jours' },
 ]
 
+// ADSDEEP63 — libellés FR des sections de l'audit de compte à la demande.
+const AUDIT_SECTION_LABELS = {
+  naming: 'Structure & nommage',
+  fragmentation_budgetaire: 'Fragmentation budgétaire',
+  fatigue: 'Fatigue créative',
+  tracking: 'Tracking (pixel/CAPI/UTM)',
+  fenetres_donnees: 'Fenêtres de données',
+}
+const AUDIT_SECTION_ORDER = [
+  'naming', 'fragmentation_budgetaire', 'fatigue', 'tracking', 'fenetres_donnees',
+]
+const AUDIT_STATUT_STYLE = {
+  ok: { bg: '#dcfce7', color: '#166534', label: 'OK' },
+  attention: { bg: '#fef3c7', color: '#92400e', label: 'Attention' },
+  inconnu: { bg: '#f1f5f9', color: '#475569', label: 'Non calculable' },
+  info: { bg: '#eff6ff', color: '#1e40af', label: 'Info' },
+}
+
 function periodParams(days) {
   const fin = new Date()
   const debut = new Date(fin)
@@ -57,6 +76,21 @@ export default function ReportsScreen() {
   const [leaderboard, setLeaderboard] = useState({ classement: [], untaggedCount: 0 })
   const [scatter, setScatter] = useState({ points: [], medianHookRate: null, medianSpend: null })
   const [creativeLoading, setCreativeLoading] = useState(true)
+
+  // ADSDEEP63 — audit de compte à la demande : jamais auto-chargé au montage,
+  // seulement au clic sur « Lancer l'audit ».
+  const [auditData, setAuditData] = useState(null)
+  const [auditLoading, setAuditLoading] = useState(false)
+  const [auditError, setAuditError] = useState(false)
+
+  const runAudit = useCallback(() => {
+    setAuditLoading(true)
+    setAuditError(false)
+    adsengineApi.reports.audit()
+      .then(r => setAuditData(r.data))
+      .catch(() => setAuditError(true))
+      .finally(() => setAuditLoading(false))
+  }, [])
 
   const load = useCallback(() => {
     setLoading(true)
@@ -128,6 +162,10 @@ export default function ReportsScreen() {
           data-testid="ae-reports-tab-creatifs"
           className={`btn ${tab === 'creatifs' ? 'btn-primary' : 'btn-secondary'}`}
           onClick={() => setTab('creatifs')}>Créatifs</button>
+        <button type="button" role="tab" aria-selected={tab === 'audit'}
+          data-testid="ae-reports-tab-audit"
+          className={`btn ${tab === 'audit' ? 'btn-primary' : 'btn-secondary'}`}
+          onClick={() => setTab('audit')}>Audit de compte</button>
       </div>
 
       {tab === 'apercu' && (
@@ -305,6 +343,79 @@ export default function ReportsScreen() {
                   )}
               </section>
             </>
+          )}
+        </div>
+      )}
+
+      {tab === 'audit' && (
+        <div style={{ display: 'grid', gap: '1rem' }} data-testid="ae-audit">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <button type="button" className="btn btn-primary"
+              data-testid="ae-audit-lancer" disabled={auditLoading}
+              onClick={runAudit}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+              <ClipboardList size={15} aria-hidden="true" />
+              {auditLoading ? 'Audit en cours…' : "Lancer l'audit"}
+            </button>
+            {auditData && (
+              <span style={{ color: '#64748b', fontSize: '0.85rem' }}>
+                Généré le {auditData.genere_le}
+              </span>
+            )}
+          </div>
+
+          {auditError && (
+            <p data-testid="ae-audit-error" style={{ color: '#b91c1c' }}>
+              L&apos;audit n&apos;a pas pu être généré. Réessayez.
+            </p>
+          )}
+
+          {!auditData && !auditLoading && !auditError && (
+            <p data-testid="ae-audit-empty" style={{ color: '#64748b' }}>
+              Audit à la demande — cliquez sur « Lancer l&apos;audit » pour
+              analyser structure/nommage, fragmentation budgétaire, fatigue
+              créative, tracking et fenêtres de données.
+            </p>
+          )}
+
+          {auditData && (
+            <div style={{ display: 'grid', gap: '0.9rem' }}>
+              {AUDIT_SECTION_ORDER
+                .filter(key => auditData.sections?.[key])
+                .map(key => {
+                  const section = auditData.sections[key]
+                  const style = AUDIT_STATUT_STYLE[section.statut] || AUDIT_STATUT_STYLE.inconnu
+                  return (
+                    <section key={key} data-testid={`ae-audit-section-${key}`}
+                      style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: '0.9rem' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between',
+                        alignItems: 'center', marginBottom: '0.4rem' }}>
+                        <h3 style={{ margin: 0, fontSize: '1rem' }}>
+                          {AUDIT_SECTION_LABELS[key] || key}
+                        </h3>
+                        <span data-testid={`ae-audit-statut-${key}`}
+                          style={{ background: style.bg, color: style.color,
+                            borderRadius: 999, padding: '0.15rem 0.6rem', fontSize: '0.75rem' }}>
+                          {style.label}
+                        </span>
+                      </div>
+                      <p style={{ margin: '0 0 0.4rem', color: '#334155' }}>{section.resume}</p>
+                      {section.items.length > 0 && (
+                        <ul style={{ margin: '0 0 0.4rem', paddingLeft: '1.1rem' }}>
+                          {section.items.map((item, i) => (
+                            <li key={i} data-testid="ae-audit-item">{item}</li>
+                          ))}
+                        </ul>
+                      )}
+                      {section.lien && (
+                        <Link to={section.lien} data-testid={`ae-audit-lien-${key}`}>
+                          Voir l&apos;écran
+                        </Link>
+                      )}
+                    </section>
+                  )
+                })}
+            </div>
           )}
         </div>
       )}

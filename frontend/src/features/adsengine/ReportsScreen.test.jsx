@@ -12,13 +12,14 @@ const mocks = vi.hoisted(() => ({
   cohorts: vi.fn(),
   leaderboard: vi.fn(),
   scatter: vi.fn(),
+  audit: vi.fn(),
 }))
 
 vi.mock('./adsengineApi', () => ({
   default: {
     reports: {
       variants: mocks.variants, funnel: mocks.funnel, cohorts: mocks.cohorts,
-      leaderboard: mocks.leaderboard, scatter: mocks.scatter,
+      leaderboard: mocks.leaderboard, scatter: mocks.scatter, audit: mocks.audit,
     },
   },
 }))
@@ -59,6 +60,21 @@ beforeEach(() => {
       { ad_meta_id: 'a2', name: 'Statique gouffre', spend: '950.00', hook_rate: 0.05,
         quadrant: 'gouffres', quadrant_label_fr: 'Gouffres à budget' },
     ],
+  } })
+  mocks.audit.mockResolvedValue({ data: {
+    genere_le: '2026-07-17',
+    sections: {
+      naming: { statut: 'attention', resume: '1/3 ad(s) taguée(s).',
+        items: ['2/3 ad(s) sans tag.'], lien: '/publicite/creatifs' },
+      fragmentation_budgetaire: { statut: 'ok', resume: 'Aucune fragmentation.',
+        items: [], lien: '/publicite/campagnes' },
+      fatigue: { statut: 'attention', resume: '1 campagne en fatigue forte.',
+        items: ['Camp X : fréquence 3.0'], lien: '/publicite/regles' },
+      tracking: { statut: 'ok', resume: 'Pixel, CAPI et UTM en ordre.',
+        items: [], lien: '/publicite/connexion' },
+      fenetres_donnees: { statut: 'info', resume: 'Rappel.',
+        items: ['Meta efface les leads après 90 jours.'], lien: '/publicite/reporting' },
+    },
   } })
 })
 
@@ -166,5 +182,49 @@ describe('ReportsScreen — onglet Créatifs (ADSDEEP47)', () => {
     screen.getByTestId('ae-reports-tab-creatifs').click()
     expect(await screen.findByTestId('ae-creatifs-leaderboard-empty')).toBeInTheDocument()
     expect(screen.getByTestId('ae-creatifs-scatter-empty')).toBeInTheDocument()
+  })
+})
+
+describe('ReportsScreen — onglet Audit de compte (ADSDEEP63)', () => {
+  it('n\'appelle jamais l\'audit tant que le bouton n\'est pas cliqué', async () => {
+    renderScreen()
+    await waitFor(() => expect(mocks.variants).toHaveBeenCalled())
+    screen.getByTestId('ae-reports-tab-audit').click()
+    expect(await screen.findByTestId('ae-audit-empty')).toBeInTheDocument()
+    expect(mocks.audit).not.toHaveBeenCalled()
+  })
+
+  it('lance l\'audit au clic et affiche les 5 sections', async () => {
+    renderScreen()
+    screen.getByTestId('ae-reports-tab-audit').click()
+    const bouton = await screen.findByTestId('ae-audit-lancer')
+    bouton.click()
+    await waitFor(() => expect(mocks.audit).toHaveBeenCalled())
+    expect(await screen.findByTestId('ae-audit-section-naming')).toBeInTheDocument()
+    expect(screen.getByTestId('ae-audit-section-fragmentation_budgetaire')).toBeInTheDocument()
+    expect(screen.getByTestId('ae-audit-section-fatigue')).toBeInTheDocument()
+    expect(screen.getByTestId('ae-audit-section-tracking')).toBeInTheDocument()
+    expect(screen.getByTestId('ae-audit-section-fenetres_donnees')).toBeInTheDocument()
+  })
+
+  it('affiche le statut et un lien actionnable par section', async () => {
+    renderScreen()
+    screen.getByTestId('ae-reports-tab-audit').click()
+    const bouton = await screen.findByTestId('ae-audit-lancer')
+    bouton.click()
+    await screen.findByTestId('ae-audit-section-naming')
+    expect(screen.getByTestId('ae-audit-statut-naming')).toHaveTextContent('Attention')
+    expect(screen.getByTestId('ae-audit-statut-tracking')).toHaveTextContent('OK')
+    const lien = screen.getByTestId('ae-audit-lien-naming')
+    expect(lien).toHaveAttribute('href', '/publicite/creatifs')
+  })
+
+  it('affiche une erreur si l\'audit échoue', async () => {
+    mocks.audit.mockRejectedValue(new Error('boom'))
+    renderScreen()
+    screen.getByTestId('ae-reports-tab-audit').click()
+    const bouton = await screen.findByTestId('ae-audit-lancer')
+    bouton.click()
+    expect(await screen.findByTestId('ae-audit-error')).toBeInTheDocument()
   })
 })
