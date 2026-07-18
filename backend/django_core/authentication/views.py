@@ -905,18 +905,26 @@ class CompanyViewSet(viewsets.ModelViewSet):
                            "démonstration."},
                 status=status.HTTP_403_FORBIDDEN)
 
+        company_nom = company.nom
         _run_demo_reset(company.slug)
 
         # Notification in-app de confirmation (best-effort, ne bloque jamais).
+        # Le reset peut avoir supprimé l'utilisateur agissant ET la société
+        # (l'admin démo appartient à la société démo re-seedée) : la création de
+        # notification échouerait alors sur une FK supprimée. On l'isole dans un
+        # SAVEPOINT (transaction.atomic) pour que cet échec best-effort ne
+        # « poisonne » jamais la transaction de la requête (sinon 500 au commit).
         try:
+            from django.db import transaction
             from apps.notifications.services import notify
             from apps.notifications.models import EventType
-            notify(
-                request.user, EventType.SECURITY_CHANGE,
-                'Données de démonstration réinitialisées',
-                body=f'La société « {company.nom} » a été réinitialisée '
-                     'avec un nouveau jeu de données de démonstration.',
-                company=company)
+            with transaction.atomic():
+                notify(
+                    request.user, EventType.SECURITY_CHANGE,
+                    'Données de démonstration réinitialisées',
+                    body=f'La société « {company_nom} » a été réinitialisée '
+                         'avec un nouveau jeu de données de démonstration.',
+                    company=company)
         except Exception:
             pass
         return Response({'detail': 'Données de démonstration réinitialisées.',
