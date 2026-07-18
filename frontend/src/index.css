@@ -6708,6 +6708,126 @@ textarea.form-control {
 }
 .lw-rail-score-reasons {
   margin: 0;
+/* ── LW19 : rail contexte — onglets (Historique · Devis · Activités ·
+   Pièces) — tokens uniquement, zéro hex (D4#6). ──────────────────────────── */
+
+.lw-context-tabs {
+  width: 100%;
+  justify-content: space-between;
+}
+
+.lw-context-timeline,
+.lw-context-devis {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+/* Onglet Activités : bouton « Appliquer un plan » au-dessus du panneau. */
+.lw-context-activites-head {
+  margin-bottom: 0.5rem;
+}
+
+/* ── LW20 : onglet Historique — en-tête multi-touch, filtre, notes épinglées. ── */
+
+/* En-tête multi-touch (points-contact/) — silencieux si vide (aucune règle
+   d'état vide nécessaire : le bloc n'est simplement pas rendu). */
+.lw-context-touch-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  padding: 0.4rem 0.6rem;
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--info) 8%, transparent);
+  font-size: 0.78rem;
+  color: var(--muted-foreground);
+}
+
+/* Filtre par type (Tous/Notes/Appels/E-mails/Devis/Système), persisté. */
+.lw-context-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.lw-context-filter-chip {
+  padding: 0.2rem 0.55rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+  background: transparent;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard);
+}
+.lw-context-filter-chip:hover {
+  color: var(--foreground);
+  background: color-mix(in oklch, var(--muted-foreground) 10%, transparent);
+}
+.lw-context-filter-chip.is-active {
+  color: var(--foreground);
+  font-weight: 600;
+  background: color-mix(in oklch, var(--module-accent-azur) 14%, transparent);
+  border-color: color-mix(in oklch, var(--module-accent-azur) 30%, transparent);
+}
+
+/* Notes épinglées (ChatterTimeline pinned=true) — section dédiée en tête,
+   hors chronologie. */
+.lw-context-chatter-pinned {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 0.35rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px dashed var(--border);
+}
+.lw-context-pin-badge {
+  margin-right: 0.3rem;
+  font-size: 0.9em;
+}
+.lw-context-pin-toggle {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--motion-fast) var(--ease-standard),
+    background-color var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard);
+}
+.chatter-item:hover .lw-context-pin-toggle,
+.lw-context-pin-toggle:focus-visible {
+  opacity: 1;
+}
+.lw-context-pin-toggle:hover {
+  background: color-mix(in oklch, var(--muted-foreground) 12%, transparent);
+  color: var(--foreground);
+}
+
+/* ── LW21 : onglet Devis — CTA devis auto, cartes chaîne document. ───────── */
+
+/* CTA « Devis automatique » (prêt) / liste des champs manquants (pas prêt). */
+.lw-context-devis-cta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+.lw-context-devis-missing {
+  padding: 0.5rem 0.65rem;
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in oklch, var(--warning) 40%, transparent);
+  background: color-mix(in oklch, var(--warning) 10%, transparent);
+}
+.lw-context-missing-list {
+  margin: 0.3rem 0 0;
   padding: 0;
   list-style: none;
   display: flex;
@@ -6782,4 +6902,103 @@ textarea.form-control {
   text-transform: uppercase;
   letter-spacing: 0.02em;
   color: var(--muted-foreground);
+  gap: 0.15rem;
+}
+.lw-context-missing-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--info);
+  text-decoration: underline;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.82rem;
+}
+
+/* Cartes devis (chaîne document, statut devis JAMAIS le funnel lead). */
+.lw-context-devis-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.lw-context-devis-card {
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--card);
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.lw-context-devis-card-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.lw-context-devis-ref {
+  flex: 1 1 auto;
+  text-align: left;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-weight: 600;
+  color: var(--foreground);
+  cursor: pointer;
+}
+.lw-context-devis-ref:hover {
+  text-decoration: underline;
+}
+.lw-context-devis-card-body {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+.lw-context-devis-date {
+  color: var(--muted-foreground);
+}
+.lw-context-devis-track {
+  margin: 0.1rem 0;
+}
+.lw-context-devis-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+/* ── LW22 : barre d'envoi WhatsApp multi-devis FR/Darija. ─────────────────── */
+
+.lw-context-wa-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding-top: 0.35rem;
+  border-top: 1px solid var(--border);
+}
+.lw-context-wa-langue {
+  display: inline-flex;
+  gap: 0.25rem;
+}
+.lw-context-wa-preview {
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: var(--muted);
+  padding: 0.75rem;
+  border-radius: var(--radius-md);
+  font-family: inherit;
+  font-size: 0.82rem;
+  margin: 0;
+}
+.lw-context-wa-links {
+  margin: 0.5rem 0 0;
+  padding-left: 1rem;
+}
+.lw-context-wa-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
 }
