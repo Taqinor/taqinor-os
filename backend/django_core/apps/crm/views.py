@@ -944,10 +944,19 @@ class LeadViewSet(CompanyScopedModelViewSet):
     @action(detail=True, methods=['get'], url_path='historique',
             permission_classes=[IsAnyRole])
     def historique(self, request, pk=None):
-        """Timeline chatter du lead (auto + notes), du plus récent au plus ancien."""
+        """Timeline chatter du lead (auto + notes), du plus récent au plus ancien.
+
+        LW8 — ``select_related('user','attachment')`` : sans lui,
+        ``LeadActivitySerializer.get_user_nom``/``get_attachment_*`` retouchent
+        chacune une FK PAR LIGNE (N+1 réel, recon 02 §5). ``order_by`` explicite
+        (au lieu du tri implicite ``Meta.ordering`` du modèle)."""
         lead = self.get_object()
-        return Response(
-            LeadActivitySerializer(lead.activites.all(), many=True).data)
+        activites = (
+            lead.activites
+            .select_related('user', 'attachment')
+            .order_by('-created_at')
+        )
+        return Response(LeadActivitySerializer(activites, many=True).data)
 
     @action(detail=True, methods=['post'], url_path='appliquer-plan',
             permission_classes=[IsResponsableOrAdmin])
