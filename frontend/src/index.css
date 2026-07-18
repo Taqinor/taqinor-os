@@ -6525,3 +6525,22 @@ textarea.form-control {
 .lw-gps-link:hover {
   text-decoration: underline;
 }
+
+/* ── LW25 : squelette d'ouverture (crossfade FadeSwap, en forme de grille) ── */
+
+/* Enveloppe de FadeSwap du corps (édition) : même remplissage flexible que
+   .lw-body ci-dessus — la mise en page réelle vient de la couche VISIBLE
+   (squelette ou grille), positionnée en absolu par FadeSwap (ui/FadeSwap.jsx). */
+.lw-skeleton-swap {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.lw-skeleton-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.lw-skeleton-pane--center {
+  padding: 1rem;
+  gap: 0.75rem;
+}

@@ -10,9 +10,11 @@ import {
   Button, IconButton, Switch,
   Dialog, DialogContent, DialogTitle,
   Sheet, SheetContent, SheetTitle,
+  SkeletonAvatar, SkeletonLine, SkeletonText, SkeletonCard, FadeSwap,
 } from '../../../ui'
 import { useIsMobile } from '../../../ui/ResponsiveDialog'
 import { useServerFieldErrors } from '../../../hooks/useServerFieldErrors'
+import { useDelayedLoading } from '../../../hooks/useDelayedLoading'
 import { isTypingTarget } from '../../../providers/shortcuts'
 import { useFocusedRecordShortcuts, LEAD_STAGE_SHORTCUTS } from '../../../providers/focusedRecordShortcuts'
 import { useLeadDraft, rememberVille } from './useLeadDraft'
@@ -79,7 +81,7 @@ export default function LeadWorkspace({
 
   const draft = useLeadDraft(lead, { mode, currentUserId, onSaved })
   const {
-    state, field, setField, saveState, leaveGuard, changeStage,
+    state, field, setField, saveState, leaveGuard, changeStage, loadFresh,
   } = draft
   // Primitives STABLES hoistées : le compilateur React (lint v7) refuse de
   // préserver un useCallback dont les deps mêlent optional-chaining et objet
@@ -198,6 +200,27 @@ export default function LeadWorkspace({
     if (!ids.length) return undefined
     return schedulePrefetch(ids, (id) => crmApi.getLead(id).then((r) => r.data))
   }, [mode, leadsQueue, prevInQueue, nextInQueue])
+
+  // ── LW25 : GET complet systématique à l'ouverture (+ LW24 : rejoué en
+  // arrière-plan à CHAQUE navigation J/K, même mécanisme unique — `loadFresh`
+  // remplace TOUJOURS le premier rendu, qu'il vienne de la ligne partielle ou
+  // du cache voisin, garde `res.id===leadId` déjà dans le réducteur). Piloté
+  // par `useDelayedLoading` : rien avant 300ms, squelette au-delà de 500ms —
+  // jamais de spinner nu (recon 03 #23).
+  const [leadLoading, setLeadLoading] = useState(false)
+  useEffect(() => {
+    if (mode !== 'edit' || !leadId) return undefined
+    let cancelled = false
+    // Synchronise le squelette avec le GET en vol (même patron que
+    // LeadDevisPanel.jsx setPreviewLoading) : ce n'est pas un dérivé de
+    // props/state, c'est le vrai début d'une opération réseau déclenchée PAR
+    // cet effet.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLeadLoading(true)
+    loadFresh(leadId).finally(() => { if (!cancelled) setLeadLoading(false) })
+    return () => { cancelled = true }
+  }, [mode, leadId, loadFresh])
+  const { showSkeleton } = useDelayedLoading(leadLoading)
 
   // ── LW23 : registre de raccourcis propre (a/d/n/1-4) ──────────────────────
   // `a` archiver (leaveGuard déjà structurel dans doArchive), `d` focus le
@@ -336,33 +359,75 @@ export default function LeadWorkspace({
         </div>
       )}
 
-      <div className={`lw-body ${mode === 'create' ? 'lw-body--create' : 'lw-body--edit'}`}>
-        {mode === 'edit' && (
-          <IdentityRail state={state} onAction={onAction} users={users} archiveBusy={archiveBusy} />
-        )}
-        <SectionsPane
-          state={state}
-          setField={setField}
-          errors={errors}
-          mode={mode}
-          focusSection={focusSection}
-          formId={CREATE_FORM_ID}
-          onSubmit={handleCreateSubmit}
-          refData={{
-            users, tagOptions, motifOptions, dups,
-            leadId: lead?.id ?? null, onOpenDuplicate, suggested: draft.suggested,
-          }}
-        />
-        {mode === 'edit' && (
-          <ContextRail
+      {mode === 'create' ? (
+        <div className="lw-body lw-body--create">
+          <SectionsPane
             state={state}
-            users={users}
-            historique={historique}
-            refreshHistorique={refreshHistorique}
-            onAction={onAction}
+            setField={setField}
+            errors={errors}
+            mode={mode}
+            focusSection={focusSection}
+            formId={CREATE_FORM_ID}
+            onSubmit={handleCreateSubmit}
+            refData={{
+              users, tagOptions, motifOptions, dups,
+              leadId: lead?.id ?? null, onOpenDuplicate, suggested: draft.suggested,
+            }}
           />
-        )}
-      </div>
+        </div>
+      ) : (
+        // LW25 — squelette EN FORME de la vraie grille (rail identité :
+        // avatar + 3 lignes ; centre : 2 cartes ; rail contexte : texte),
+        // crossfade via FadeSwap. Les champs déjà connus de la ligne
+        // (nom/stage/ville) restent visibles pendant ce temps : ils sont
+        // dans le bandeau (`nomTitre` ci-dessus) et l'IdentityRail — HORS de
+        // cette zone body, jamais masqués par le squelette.
+        <FadeSwap
+          loading={showSkeleton}
+          className="lw-skeleton-swap"
+          skeleton={(
+            <div className="lw-body lw-body--edit" aria-hidden="true">
+              <div className="lw-zone lw-rail-identity lw-skeleton-pane">
+                <SkeletonAvatar />
+                <SkeletonLine />
+                <SkeletonLine />
+                <SkeletonLine />
+              </div>
+              <div className="lw-zone lw-center lw-skeleton-pane lw-skeleton-pane--center">
+                <SkeletonCard />
+                <SkeletonCard />
+              </div>
+              <div className="lw-zone lw-rail-context lw-skeleton-pane">
+                <SkeletonText lines={5} />
+              </div>
+            </div>
+          )}
+        >
+          <div className="lw-body lw-body--edit">
+            <IdentityRail state={state} onAction={onAction} users={users} archiveBusy={archiveBusy} />
+            <SectionsPane
+              state={state}
+              setField={setField}
+              errors={errors}
+              mode={mode}
+              focusSection={focusSection}
+              formId={CREATE_FORM_ID}
+              onSubmit={handleCreateSubmit}
+              refData={{
+                users, tagOptions, motifOptions, dups,
+                leadId: lead?.id ?? null, onOpenDuplicate, suggested: draft.suggested,
+              }}
+            />
+            <ContextRail
+              state={state}
+              users={users}
+              historique={historique}
+              refreshHistorique={refreshHistorique}
+              onAction={onAction}
+            />
+          </div>
+        </FadeSwap>
+      )}
 
       {mode === 'create' && (
         <footer className="lw-footer">

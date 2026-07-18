@@ -180,6 +180,22 @@ export function useLeadDraft(lead, { mode = lead ? 'edit' : 'create', currentUse
     onSavedRef.current?.()
   }, [flush])
 
+  // LW25/LW24 — GET complet systématique à l'ouverture (skeleton pendant le
+  // vol côté LeadWorkspace) ET rejoué en arrière-plan à chaque navigation
+  // J/K, MÊME sur un voisin déjà rendu depuis le cache LW24 (le cache n'est
+  // qu'un premier rendu, jamais la source de vérité). Distinct de
+  // `refreshServer` : ne notifie PAS `onSaved` (ouvrir/naviguer une fiche
+  // n'est pas un enregistrement — `onSaved` sert au parent à rafraîchir SA
+  // liste après une vraie mutation, pas à chaque simple consultation).
+  const loadFresh = useCallback(async (id) => {
+    if (id == null) return
+    try {
+      const res = (await crmApi.getLead(id)).data
+      dispatch({ type: 'SET_SERVER', res })
+      if (res && res.id === id && res.date_modification) openedAtRef.current = res.date_modification
+    } catch { /* best-effort — le premier rendu (ligne/cache) reste affiché */ }
+  }, [])
+
   // Recharge la vérité serveur sans toucher au draft (après devis/facture/fusion).
   const refreshServer = useCallback(async () => {
     const st = stateRef.current
@@ -268,6 +284,7 @@ export function useLeadDraft(lead, { mode = lead ? 'edit' : 'create', currentUse
     leaveGuard,
     changeStage,
     refreshServer,
+    loadFresh,
     patchServer,
     resetForCreate,
     createPayload,
