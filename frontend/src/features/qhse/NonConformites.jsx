@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import {
   Plus, Eye, CheckCircle2, RefreshCw, ClipboardCheck, Gavel, Sparkles,
+  Wrench, ShieldAlert,
 } from 'lucide-react'
 import qhseApi from '../../api/qhseApi'
 import { ListShell, DetailShell } from '../../ui/module'
@@ -260,9 +261,137 @@ function NcrCreateDialog({ onClose, onCreated }) {
   )
 }
 
+// XQHS23 — taux de défaillance par produit (NCR d'origine SAV), affiché en
+// onglet sur le détail NCR ; jusqu'ici exposé côté API mais sans appelant.
+function TauxDefaillancePanel() {
+  const { rows, loading, error } = useQhseList(
+    () => qhseApi.nonConformites.tauxDefaillanceProduit(),
+  )
+  if (loading) return <p className="text-sm text-muted-foreground">Chargement…</p>
+  if (error) return <p className="text-sm text-destructive">{error}</p>
+  if (rows.length === 0) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        Aucune NCR d'origine SAV rattachée à un produit pour l'instant.
+      </p>
+    )
+  }
+  return (
+    <ul className="flex flex-col gap-2">
+      {rows.map((r) => (
+        <li key={r.produit_id ?? 'sans-produit'}
+          className="flex items-center justify-between gap-2 rounded-md border border-border p-2.5 text-sm">
+          <span>{r.produit_nom || 'Produit non identifié'}</span>
+          <Badge tone="neutral">{r.nb_ncr} NCR</Badge>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+// XQHS2 — création d'une dérogation (acceptation en l'état bornée) liée à
+// cette NCR. `statut`/`date_creation` sont read-only côté serveur
+// (DerogationSerializer) — jamais lus du corps ; `non_conformite` est validé
+// (même société) par `validate_non_conformite`.
+function DerogationCreateDialog({ ncr, onClose, onDone }) {
+  const [justification, setJustification] = useState('')
+  const [evaluationRisque, setEvaluationRisque] = useState('')
+  const [quantiteMax, setQuantiteMax] = useState('')
+  const [dateDebut, setDateDebut] = useState('')
+  const [dateExpiration, setDateExpiration] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function save() {
+    setSaving(true)
+    try {
+      await qhseApi.derogations.create({
+        non_conformite: ncr.id,
+        justification,
+        evaluation_risque: evaluationRisque,
+        quantite_max: quantiteMax ? Number(quantiteMax) : undefined,
+        date_debut: dateDebut || undefined,
+        date_expiration: dateExpiration || undefined,
+      })
+      toast.success('Dérogation créée.')
+      onDone()
+      onClose()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Création de la dérogation impossible.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent>
+        <DialogTitle>Créer une dérogation</DialogTitle>
+        <div className="flex flex-col gap-3">
+          <div>
+            <Label>Justification</Label>
+            <Textarea rows={2} placeholder="Justification de l'acceptation en l'état"
+              value={justification}
+              onChange={(e) => setJustification(e.target.value)} />
+          </div>
+          <div>
+            <Label>Évaluation du risque</Label>
+            <Textarea rows={2} placeholder="Évaluation du risque (optionnel)"
+              value={evaluationRisque}
+              onChange={(e) => setEvaluationRisque(e.target.value)} />
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <Label>Quantité max (optionnel)</Label>
+              <Input value={quantiteMax} onChange={(e) => setQuantiteMax(e.target.value)}
+                inputMode="numeric" />
+            </div>
+            <div>
+              <Label>Date de début</Label>
+              <Input type="date" value={dateDebut} onChange={(e) => setDateDebut(e.target.value)} />
+            </div>
+            <div>
+              <Label>Date d'expiration</Label>
+              <Input type="date" value={dateExpiration}
+                onChange={(e) => setDateExpiration(e.target.value)} />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="outline" onClick={onClose}>Annuler</Button>
+            <Button onClick={save} disabled={saving}>
+              {saving ? 'Enregistrement…' : 'Créer la dérogation'}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function NcrDetail({ ncr, onBack, onChanged }) {
   const [busy, setBusy] = useState(false)
   const [posingDisposition, setPosingDisposition] = useState(false)
+  // WIR32 — pont NCR↔SAV + création de dérogation, jusqu'ici sans aucun
+  // appelant réel côté écran (creerIntervention/tauxDefaillanceProduit dans
+  // qhseApi.js, DerogationsRegister en lecture seule).
+  const [creatingIntervention, setCreatingIntervention] = useState(false)
+  const [derogOpen, setDerogOpen] = useState(false)
+
+  async function creerInterventionSav() {
+    setCreatingIntervention(true)
+    try {
+      const r = await qhseApi.nonConformites.creerIntervention(ncr.id, {})
+      const ref = r.data?.ticket_reference
+      toast.success(r.data?.created
+        ? `Intervention SAV créée — ticket ${ref}`
+        : `Intervention SAV déjà ouverte — ticket ${ref}`)
+    } catch (err) {
+      toast.error(err?.response?.data?.detail
+        ?? "Impossible d'ouvrir une intervention SAV.")
+    } finally {
+      setCreatingIntervention(false)
+    }
+  }
+
   async function cloturer() {
     setBusy(true)
     try {
@@ -304,6 +433,16 @@ function NcrDetail({ ncr, onBack, onChanged }) {
                 <Gavel size={15} /> Poser disposition
               </Button>
             )}
+            {/* WIR32 — pont NCR→SAV (XQHS23), jusqu'ici sans appelant réel. */}
+            <Button size="sm" variant="outline" onClick={creerInterventionSav}
+              disabled={creatingIntervention}>
+              <Wrench size={15} /> Créer une intervention SAV
+            </Button>
+            {/* WIR32 — création de dérogation (XQHS2), DerogationsRegister
+                était lecture seule alors que la création est supportée. */}
+            <Button size="sm" variant="outline" onClick={() => setDerogOpen(true)}>
+              <ShieldAlert size={15} /> Créer une dérogation
+            </Button>
             {ncr.statut !== 'cloturee' && (
               <Button size="sm" onClick={cloturer} disabled={busy}>
                 <CheckCircle2 size={15} /> Clôturer
@@ -337,6 +476,13 @@ function NcrDetail({ ncr, onBack, onChanged }) {
               </div>
             ),
           },
+          {
+            // WIR32 — taux de défaillance par produit (XQHS23), jusqu'ici
+            // sans appelant réel côté écran.
+            value: 'taux-defaillance',
+            label: 'Taux de défaillance produit',
+            content: <TauxDefaillancePanel />,
+          },
         ]}
       />
       {posingDisposition && (
@@ -344,6 +490,13 @@ function NcrDetail({ ncr, onBack, onChanged }) {
           ncr={ncr}
           onClose={() => setPosingDisposition(false)}
           onDone={onChanged}
+        />
+      )}
+      {derogOpen && (
+        <DerogationCreateDialog
+          ncr={ncr}
+          onClose={() => setDerogOpen(false)}
+          onDone={() => {}}
         />
       )}
     </>
