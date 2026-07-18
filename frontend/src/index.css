@@ -6525,3 +6525,68 @@ textarea.form-control {
 .lw-gps-link:hover {
   text-decoration: underline;
 }
+
+/* ── LW14 : rail identité — identité, contact, chips QX28, pile d'actions ──── */
+
+.lw-rail-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.85rem;
+}
+.lw-rail-avatar {
+  flex: 0 0 auto;
+}
+.lw-rail-headtext {
+  min-width: 0;
+}
+/* Nom du lead (échelle --text-h2). Complète la règle .lw-rail-name existante. */
+.lw-rail-headtext .lw-rail-name {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.lw-rail-archived {
+  padding: 0.05rem 0.4rem;
+  border-radius: 9999px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--muted-foreground);
+  background: color-mix(in oklch, var(--muted-foreground) 14%, transparent);
+}
+
+.lw-rail-contact {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin-bottom: 0.85rem;
+}
+.lw-rail-contact-link {
+  font-size: 0.85rem;
+  color: var(--info);
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lw-rail-contact-link:hover {
+  text-decoration: underline;
+}
+
+.lw-rail-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-bottom: 0.85rem;
+}
+
+.lw-rail-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.lw-rail-actions > * {
+  width: 100%;
+  justify-content: center;
+}
