@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   Badge, Button, Avatar, AvatarFallback, DatePicker, FieldSavedPulse,
+  Popover, PopoverTrigger, PopoverContent,
 } from '../../../ui'
 import { initials } from '../../../ui/Avatar'
 import { normalizeMaPhone } from '../../../lib/format'
 import AssigneePicker from '../../../components/AssigneePicker'
+import ScoreBadge from '../ScoreBadge'
 import StageControl from './StageControl'
 import { getField } from './draftCore'
 
@@ -63,6 +65,10 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
   const sub = [societe, ville].filter(Boolean).join(' · ')
   const archived = !!server.is_archived
 
+  // ── Score + raisons (LW17) ──────────────────────────────────────────────────
+  const hasScore = server.score != null || server.score_label != null
+  const scoreReasons = Array.isArray(server.score_reasons) ? server.score_reasons : []
+
   // ── Contact (liens directs — jamais de mutation du lead) ────────────────────
   const telephone = (getField(state, 'telephone') || '').trim()
   const whatsapp = (getField(state, 'whatsapp') || '').trim()
@@ -113,6 +119,36 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
         onChangeStage={(key) => onAction('change-stage', key)}
         onSigne={() => onAction('signe')}
       />
+
+      {/* Score expliqué (LW17) : popover des raisons (score_reasons). */}
+      {hasScore && (
+        <div className="lw-rail-score">
+          <span className="lw-rail-label">Score</span>
+          <Popover>
+            <PopoverTrigger asChild>
+              <ScoreBadge lead={server} asTrigger />
+            </PopoverTrigger>
+            <PopoverContent align="start" className="lw-rail-score-pop">
+              <p className="lw-rail-score-title">Score de qualité — {server.score ?? 0}/100</p>
+              {scoreReasons.length > 0 ? (
+                <ul className="lw-rail-score-reasons">
+                  {scoreReasons.map((r, i) => (
+                    <li key={r.facteur ?? i}>
+                      <Badge tone={r.points >= 0 ? 'success' : 'danger'}>
+                        {r.points >= 0 ? '+' : ''}{r.points}
+                      </Badge>
+                      <span>{r.label}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="lw-rail-score-empty">Aucun facteur détaillé pour ce lead.</p>
+              )}
+              <p className="lw-rail-score-foot">Le score se recalcule à chaque modification.</p>
+            </PopoverContent>
+          </Popover>
+        </div>
+      )}
 
       {/* Contact cliquable */}
       {(callPhone || email || hasGps) && (

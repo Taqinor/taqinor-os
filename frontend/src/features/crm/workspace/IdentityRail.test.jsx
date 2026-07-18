@@ -153,3 +153,31 @@ describe('LW15 — triade responsable · prochaine action · relance', () => {
     expect(onAction).toHaveBeenCalledWith('set-field', { key: 'relance_date', value: '2026-08-01' })
   })
 })
+
+describe('LW17 — score expliqué (popover des raisons)', () => {
+  let onAction
+  beforeEach(() => { onAction = vi.fn() })
+
+  it('le badge de score ouvre un popover listant les raisons + le pied', async () => {
+    const state = makeState({
+      score: 72,
+      score_label: 'Chaud',
+      score_reasons: [
+        { facteur: 'facture', label: 'Facture élevée', points: 20 },
+        { facteur: 'canal', label: 'Canal direct', points: 15 },
+        { facteur: 'recence', label: 'Lead récent', points: -8 },
+      ],
+    })
+    render(<IdentityRail state={state} onAction={onAction} users={[]} />)
+    fireEvent.click(screen.getByRole('button', { name: /Score de qualité 72/ }))
+    expect(await screen.findByText('Facture élevée')).toBeInTheDocument()
+    expect(screen.getByText('Canal direct')).toBeInTheDocument()
+    expect(screen.getByText('Lead récent')).toBeInTheDocument()
+    expect(screen.getByText(/Le score se recalcule/)).toBeInTheDocument()
+  })
+
+  it('n\'affiche pas le bloc score quand le lead n\'a pas de score', () => {
+    render(<IdentityRail state={makeState()} onAction={onAction} users={[]} />)
+    expect(screen.queryByRole('button', { name: /Score de qualité/ })).toBeNull()
+  })
+})

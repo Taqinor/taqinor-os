@@ -6688,3 +6688,48 @@ textarea.form-control {
   color: var(--destructive);
   background: color-mix(in oklch, var(--destructive) 12%, transparent);
 }
+
+/* ── LW17 : score expliqué (popover des raisons) ──────────────────────────── */
+
+.lw-rail-score {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.85rem;
+}
+.lw-rail-score-pop {
+  width: 18rem;
+}
+.lw-rail-score-title {
+  margin: 0 0 0.5rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--foreground);
+}
+.lw-rail-score-reasons {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.lw-rail-score-reasons li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--foreground);
+}
+.lw-rail-score-empty {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--muted-foreground);
+}
+.lw-rail-score-foot {
+  margin: 0.6rem 0 0;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+}
