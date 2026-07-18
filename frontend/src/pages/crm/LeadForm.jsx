@@ -526,6 +526,28 @@ export default function LeadForm({
     // valent alors toujours false via `!isEdit`, mais on repart propre).
     setOwnerTouched(false)
     setVilleTouched(false)
+    // LW3 — cet effet ne resynchronisait QUE fields/errors/customData : tout
+    // l'état SATELLITE (non couvert par `fields`) survivait à la navigation
+    // ◀▶/J-K entre leads, avec un vrai risque de fuite inter-leads (mauvais
+    // document envoyé par WhatsApp, note classée sur le mauvais lead,
+    // facture inline patchée sur le mauvais lead, bannière de fraîcheur qui
+    // force-sauvegarde le MAUVAIS enregistrement). Tout ce qui suit doit
+    // repartir de zéro à chaque changement DE lead, exactement comme à une
+    // ouverture fraîche.
+    setWaSelected(new Set())
+    setWaPreview(null)
+    setWaLangue(lead?.langue_preferee || 'fr')
+    setNoteBody('')
+    setNoteFile(null)
+    if (noteFileInputRef.current) noteFileInputRef.current.value = ''
+    setNoteError(null)
+    setBillEditing(false)
+    setBillHiver(lead?.facture_hiver != null ? String(lead.facture_hiver) : '')
+    setBillEte(lead?.facture_ete != null ? String(lead.facture_ete) : '')
+    setBillError(null)
+    setDevisActionMsg(null)
+    setCardPaste(null)
+    staleGuard.reset()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lead?.id])
 
