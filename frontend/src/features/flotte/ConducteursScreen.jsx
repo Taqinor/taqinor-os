@@ -12,6 +12,7 @@ import useFlotteResource from './useFlotteResource'
 import AffectationDialog from './AffectationDialog'
 import MasseAffectationDialog from './MasseAffectationDialog'
 import SignatureDialog from './SignatureDialog'
+import ConducteurDialog from './ConducteurDialog'
 
 /* ============================================================================
    UX17 — Conducteurs & affectations (`/flotte/conducteurs`).
@@ -41,8 +42,9 @@ function PermisBadge({ dateExpiration }) {
 
 function ConducteursTab() {
   const [actif, setActif] = useState('')
+  const [showForm, setShowForm] = useState(false)
   const params = useMemo(() => (actif ? { actif } : {}), [actif])
-  const { data, loading, error } = useFlotteResource(flotteApi.conducteurs.list, params)
+  const { data, loading, error, reload } = useFlotteResource(flotteApi.conducteurs.list, params)
 
   const columns = useMemo(() => [
     { id: 'nom', header: 'Conducteur', width: 200, accessor: (r) => r.nom, cell: (v) => v || '—' },
@@ -88,21 +90,36 @@ function ConducteursTab() {
     <Segmented options={ACTIF_FILTERS} value={actif} onChange={setActif} aria-label="Filtrer par activité" />
   )
 
+  const actions = (
+    <Button onClick={() => setShowForm(true)}>
+      <UserPlus /> Nouveau conducteur
+    </Button>
+  )
+
   return (
-    <ListShell
-      title="Conducteurs"
-      subtitle="Chauffeurs et validité de leur permis."
-      filters={filters}
-      columns={columns}
-      rows={data}
-      loading={loading}
-      error={error}
-      searchable
-      searchPlaceholder="Rechercher nom, permis, téléphone…"
-      exportName="conducteurs"
-      emptyTitle="Aucun conducteur"
-      emptyDescription="Aucun conducteur ne correspond à ces filtres."
-    />
+    <>
+      <ListShell
+        title="Conducteurs"
+        subtitle="Chauffeurs et validité de leur permis."
+        filters={filters}
+        actions={actions}
+        columns={columns}
+        rows={data}
+        loading={loading}
+        error={error}
+        searchable
+        searchPlaceholder="Rechercher nom, permis, téléphone…"
+        exportName="conducteurs"
+        emptyTitle="Aucun conducteur"
+        emptyDescription="Aucun conducteur ne correspond à ces filtres."
+      />
+      {showForm && (
+        <ConducteurDialog
+          onClose={() => setShowForm(false)}
+          onSaved={() => { setShowForm(false); reload(); toast.success('Conducteur créé.') }}
+        />
+      )}
+    </>
   )
 }
 
